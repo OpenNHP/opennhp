@@ -7,6 +7,8 @@ define(function(require, exports, module) {
     var $ = window.Zepto,
         UI = $.AMUI;
 
+    // via https://github.com/twbs/bootstrap/blob/master/js/button.js
+
     // Button Class
 
     var Button = function(element, options) {

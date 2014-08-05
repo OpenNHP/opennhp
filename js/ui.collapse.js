@@ -7,7 +7,6 @@ define(function(require, exports, module) {
     var $ = window.Zepto,
         UI = $.AMUI;
 
-
     // Collapse Class
     // via https://github.com/twbs/bootstrap/blob/master/js/collapse.js
 

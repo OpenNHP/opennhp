@@ -157,7 +157,12 @@ gulp.task('watch', function() {
 
 
 gulp.task('zip', function () {
-    return gulp.src(['./docs/boilerplate/**', './dist/**', '!dist/demo/**/*', '!dist/test/**/*', '!dist/docs/**/*', '!dist/*.zip'])
+    return gulp.src(['./docs/boilerplate/**', './dist/**', '!dist/demo/**/*', '!dist/test/**/*', '!dist/docs/**/*', '!dist/*.zip',
+    'docs/examples/blog.html',
+    'docs/examples/landing.html',
+    'docs/examples/login.html',
+    'docs/examples/sidebar.html'
+    ])
         .pipe(zip('AmazeUI.zip', {comment: 'Created on ' + gutil.date(now, 'yyyy-mm-dd HH:mm:ss')}))
         .pipe(gulp.dest('dist'));
 });

@@ -1,7 +1,7 @@
 # Web 组件
 ---
 
-Amaze UI Web 组件把一些常见的网页组件拆分成不同的部分，进行类似 Web Components 的封装。
+Amaze UI Web 组件把一些常见的网页组件拆分成不同的部分，进行类似 Web Components 的封装（[Web 组件简介](/getting-started/widget-dev)、[开发规范](/getting-started/widget)）。
 
 ## Web 组件演示
     

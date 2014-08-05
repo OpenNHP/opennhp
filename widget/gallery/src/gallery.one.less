@@ -1,0 +1,74 @@
+/**
+  * Gallery Theme: one
+  * Theme ID: one
+  * Author: hzp (hzp@yunshipei.com)
+  */
+
+@global-body-bg: #f3f3f3;
+
+@global-primary: #15afef;
+
+@global-black: #000;
+
+@global-lighter-gray: rgb(226, 226, 226);
+@global-light-gray: #dfdfdf;
+@global-gray: #dedfe3;
+@global-dark-gray: #888;
+@global-darker-gray: #666;
+
+@global-mask-bg-color: rgba(92,92,92,0.6);
+
+.am-gallery-one {
+
+  @gallery-title-color: @global-darker-gray;
+  @gallery-desc-color: @gray-light;
+  @gallery-bg-color: @white;
+
+  @gallery-more-bg-color: @global-light-gray;
+  @gallery-more-a-color: @global-darker-gray;
+
+  padding: 0 5px;
+
+  > li {
+    padding: 5px;
+  }
+
+  .am-gallery-item {
+    padding: 5px;
+    background: @gallery-bg-color;
+    img {
+      width: 100%;
+      height: auto;
+    }
+  }
+
+  .am-gallery-title {
+    line-height: 34px;
+    font-weight: normal;
+    font-size: 1.4rem;
+    .text-overflow(block);
+    color: @gallery-title-color;
+  }
+
+  .am-gallery-desc {
+    color: @gallery-desc-color;
+    font-size: 1.2rem;
+  }
+
+  .am-gallery-more {
+    width: 100%;
+
+    a {
+      background: @gallery-more-bg-color;
+      color: @gallery-more-a-color;
+      height: 35px;
+      line-height: 35px;
+      font-size: 1.4rem;
+      display: block;
+      text-align: center;
+    }
+  }
+  .hook-am-gallery-one;
+}
+
+.hook-am-gallery-one() {}

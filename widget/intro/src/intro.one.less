@@ -1,0 +1,84 @@
+/**
+  * Intro Theme: one
+  * Theme ID: one
+  */
+
+@global-body-bg: #f3f3f3;
+
+@global-primary: #15afef;
+
+@global-black: #000;
+
+@global-lighter-gray: rgb(226, 226, 226);
+@global-light-gray: #dfdfdf;
+@global-gray: #dedfe3;
+@global-dark-gray: #888;
+@global-darker-gray: #666;
+
+@global-mask-bg-color: rgba(92,92,92,0.6);
+
+.am-intro-one {
+  @intro-bg-color: @white;
+  @intro-text-color: #222;
+  @intro-right-text-color: #222;
+  @intro-a-color: @global-primary;
+  @intro-border-color: #333;
+  @intro-top-after-bg-color: @global-primary;
+  position: relative;
+  padding-bottom: 10px;
+
+  .am-intro-top {
+    line-height: 40px;
+    background-color: @intro-bg-color;
+    color: @intro-text-color;
+    font-size: 18px;
+    padding:0 10px;
+    position: relative;
+    margin-bottom: 4px;
+
+    &:before{
+      content: '';
+      width: 4px;
+      height: 14px;
+      background: @intro-a-color;
+      display: inline-block;
+      vertical-align: top;
+      margin-top: 12px;
+      line-height: 40px;
+    }
+    a {
+      color: @intro-a-color;
+    }
+  }
+
+  .am-intro-more-top {
+    position: absolute;
+    right: 10px;
+    top: 0;
+    a {
+      font-size: 1.4rem;
+    }
+  }
+
+  .am-intro-left{
+    float: left;
+    display: inline;
+  }
+
+  .am-intro-right{
+    display: inline;
+    padding-left: 0;
+    font-size: 1.4rem;
+    color: @intro-right-text-color;
+
+    p{
+      display: inline;
+      margin: 0;
+      padding: 0;
+    }
+  }
+
+  .hook-am-intro-one;
+}
+
+.hook-am-intro-one() {}

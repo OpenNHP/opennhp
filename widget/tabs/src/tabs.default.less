@@ -1,0 +1,47 @@
+/**
+  * Tabs Theme: default
+  * Theme ID: default
+  */
+
+.am-tabs-default {
+
+  @tabs-bg-color: @gray-lighter;
+  @tabs-active-bg-color: @global-primary;
+  @tabs-text-color: @gray-darker;
+  @tabs-active-text-color: @white;
+
+  .am-tabs-hd {
+    padding: 0;
+    margin: 0;
+    line-height: 40px;
+    background-color: @tabs-bg-color;
+    color: @tabs-text-color;
+    > li {
+      list-style: none;
+      text-align: center;
+    }
+    > li.am-tabs-hd-active {
+      background-color: @tabs-active-bg-color;
+      color: @tabs-active-text-color;
+    }
+  }
+  .am-tabs-bd {
+    padding: 10px 0 0 0;
+    overflow: hidden;
+
+    .am-tabs-bd-content{
+      width: 3000px;
+      overflow: hidden;
+      position: relative;
+      left: 0;
+
+      > div {
+        //position: relative;
+        float: left;
+      }
+
+    }
+  }
+  .hook-am-tabs-default;
+}
+.hook-am-tabs-default() {};

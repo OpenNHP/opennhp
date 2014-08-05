@@ -1,0 +1,73 @@
+// JS Components helper classes
+// ========================================================================
+
+.am-fade {
+  opacity: 0;
+  .transition(opacity .2s linear);
+  &.am-in {
+    opacity: 1;
+  }
+}
+
+.am-collapsed {
+}
+
+.am-collapse {
+  display: none;
+
+  &.am-in {
+    display: block;
+  }
+  tr&.am-in {
+    display: table-row;
+  }
+  tbody&.am-in {
+    display: table-row-group;
+  }
+}
+
+.am-collapsing {
+  position: relative;
+  height: 0;
+  overflow: hidden;
+  .transition(height .35s ease);
+}
+
+// Sticky plugin
+
+.am-sticky {
+  position: fixed;
+  z-index: @z-index-sticky;
+  .transform-origin(0 0); // Needed for scale animation
+}
+
+
+// hide scroll bar when dimmer active
+.am-dimmer-active {
+  overflow: hidden;
+}
+
+.am-dimmer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: @z-index-dimmer;
+  visibility: hidden;
+  opacity: 0;
+  .transition(all .4s);
+  &.am-active {
+    visibility: visible;
+    opacity: 1;
+  }
+}
+
+// Style for collapse plugin
+
+[data-am-collapse] {
+  cursor: pointer;
+}

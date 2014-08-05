@@ -1,0 +1,29 @@
+/**
+  * Titlebar Theme: default
+  * Theme ID: default
+  */
+
+.am-titlebar-default {
+
+  @titlebar-bg-color: @global-primary;
+  @titlebar-text-color: @white;
+  @titlebar-border-color: @global-primary;
+  @titlebar-a-color: @white;
+
+  background-color: @titlebar-bg-color;
+
+  .am-titlebar-title {
+    color: @titlebar-text-color;
+    font-size: 1.8rem;
+    text-align:center;
+    font-weight:normal;
+
+    a {
+      color: @titlebar-a-color;
+    }
+  }
+
+  .hook-am-titlebar-default;
+}
+
+.hook-am-titlebar-default() {}

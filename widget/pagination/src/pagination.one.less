@@ -1,0 +1,61 @@
+/**
+  * Pagination Theme: one
+  * Theme ID: one
+  */
+@global-body-bg: #f3f3f3;
+
+@global-primary: #15afef;
+
+@global-black: #000;
+
+@global-lighter-gray: rgb(226, 226, 226);
+@global-light-gray: #dfdfdf;
+@global-gray: #dedfe3;
+@global-dark-gray: #888;
+@global-darker-gray: #666;
+
+@global-mask-bg-color: rgba(92,92,92,0.6);
+.am-pagination-one {
+
+  @pagination-a-bg-color: @white;
+  @pagination-a-text-color: @global-darker-gray;
+
+  @pagination-active-bd-color: @global-primary;
+  @pagination-active-a-color: @global-primary;
+
+  position: relative;
+  text-align: center;
+  > li{
+    list-style: none;
+    display: inline-block;
+    text-align: center;
+    border-radius: 0;
+    background: @pagination-a-bg-color;
+
+    > a {
+      display: block;
+      color: @pagination-a-text-color;
+    }
+  }
+
+  li.active{
+    > a{
+      border: 1px solid @pagination-active-bd-color !important;
+      color: @pagination-active-a-color;
+    }
+  }
+
+  li.am-pagination-prev,li.am-pagination-next{
+    border-radius: 0;
+    padding:0;
+    line-height: 35px;
+
+    > a {
+      display: block;
+      color: @pagination-a-text-color;
+      background: @pagination-a-bg-color;
+    }
+  }
+  .hook-am-pagination-one;
+}
+.hook-am-pagination-one() {};

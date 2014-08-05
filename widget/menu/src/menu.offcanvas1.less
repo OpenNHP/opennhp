@@ -1,0 +1,129 @@
+/**
+  * Menu Theme: offcanvas1
+  * Theme ID: oc1
+  * Author: Minwe (minwe@yunshipei.com)
+  */
+
+.am-menu-offcanvas1 {
+  @nav-offcanvas-lv1-textIndent-vertical: 10px;
+  @nav-offcanvas-lv2-textIndent-vertical: 15px;
+  @nav-offcanvas-lv1-a-height: 49px;
+  @nav-offcanvas-lv2-a-height: 44px;
+
+  @nav-offcanvas-color: #ccc;
+  @nav-offcanvas-hover-bg-color: lighten(@offcanvas-bar-background, 5%);
+  @nav-offcanvas-hover-color: #FFF;
+  @nav-offcanvas-active-bg-color: darken(@offcanvas-bar-background, 10%);
+  @nav-offcanvas-active-color: #FFF;
+
+  @nav-offcanvas-divider-border: darken(@offcanvas-bar-background, 10%);
+  @nav-offcanvas-nested-color: #EEE;
+  @nav-offcanvas-nested-hover-color: #FFF;
+
+  @nav-offcanvas-border-color: rgba(0, 0, 0, 0.3);
+
+  border-bottom: 1px solid @nav-offcanvas-border-color;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  .am-menu-sub {
+    border-top: 1px solid @nav-offcanvas-border-color;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    padding: 5px 0 5px 15px;
+    background-color: @nav-offcanvas-active-bg-color;
+    color: @nav-offcanvas-active-color;
+    font-size: 1.4rem;
+    display: none !important;
+  }
+
+  .am-menu-lv2{
+    & > li{
+      & > a{
+        height: @nav-offcanvas-lv2-a-height;
+        line-height: @nav-offcanvas-lv2-a-height;
+        text-indent: @nav-offcanvas-lv2-textIndent-vertical;
+        padding: 0;
+      }
+    }
+  }
+  .am-open .am-menu-sub {
+    display: block !important;
+    height: auto !important;
+  }
+
+  a {
+    &::after {
+      .am-icon-font;
+    }
+  }
+
+  & > li {
+    &.am-parent {
+      > a {
+        .transition(all 0.3s);
+        &::after {
+          content: @fa-var-angle-left;
+          position: absolute;
+          right: 1.5rem;
+          top: 1.3rem
+        }
+      }
+      &.am-open {
+        > a {
+          &::after {
+            content: @fa-var-angle-down;
+          }
+        }
+      }
+    }
+    > a {
+      position: relative;
+      color: @nav-offcanvas-color;
+      border-top: 1px solid @nav-offcanvas-border-color;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+      height: @nav-offcanvas-lv1-a-height;
+      line-height: @nav-offcanvas-lv1-a-height;
+      text-indent: @nav-offcanvas-lv1-textIndent-vertical;
+      padding: 0;
+
+    }
+  }
+
+  & > .am-open > a,
+  & > li > a:hover,
+  & > li > a:focus {
+    background-color: @nav-offcanvas-hover-bg-color;
+    color: @nav-offcanvas-hover-color;
+    outline: none;
+  }
+
+  /*
+  * Active
+  */
+  & > li.am-active > a {
+    background: @nav-offcanvas-active-bg-color;
+    color: @nav-offcanvas-active-color;
+  }
+
+  /*
+  * Sub-object: `am-nav-divider`
+  */
+  .am-nav-divider {
+    border-top: 1px solid @nav-offcanvas-divider-border;
+  }
+
+  /*
+  * Nested items
+  */
+  & ul a {
+    color: @nav-offcanvas-nested-color;
+  }
+  & ul a:hover {
+    color: @nav-offcanvas-nested-hover-color;
+  }
+
+  .hook-am-menu-offcanvas1;
+}
+
+.hook-am-menu-offcanvas1() {
+}

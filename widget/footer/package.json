@@ -1,0 +1,444 @@
+{
+    "name": "footer",
+
+    "version": "2.1.1",
+
+    "localName": {
+        "en": "Footer",
+        "zh-cn": "页脚"
+    },
+
+    "icon": "footer.png",
+
+    "author": {
+        "name": "Shengli",
+        "email": "china_victory@yunshipei.com"
+    },
+
+    "description": "页脚模块，含“云适配版 | 电脑版”模式选择及网站相关其它信息，如公司版权等。",
+
+    "poweredBy": "AllMobilize",
+
+    "styleBase": [
+        "variables.less",
+        "mixins.less",
+        "base.less",
+        "grid.less",
+        "block-grid.less",
+        "icon.less",
+        "utility.less"
+    ],
+
+    "template": "footer.hbs",
+
+    "styleDependencies": [
+        "icon.less",
+        "close.less",
+        "ui.add2home.less",
+        "ui.modal.less",
+        "ui.component.less"
+    ],
+
+    "style": "footer.less",
+
+    "themes": [
+        {
+            "id": "default",
+            "name": "default",
+            "desc": "默认",
+            "options": {
+                "modal": true,
+                "siteType": "",
+                "textPosition": ""
+            },
+            "hook": "hook-am-footer-default",
+            "variables": [
+                {
+                    "variable": "footer-bg-color",
+                    "name": "背景颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "footer-ysp-color",
+                    "name": "云适配版文字颜色",
+                    "default": "#999",
+                    "used": [
+                        {
+                            "selector": ".am-footer-ysp",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "footer-a-color",
+                    "name": "链接颜色",
+                    "default": "#555",
+                    "used": [
+                        {
+                            "selector": "a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "footer-divider-color",
+                    "name": "分隔线颜色",
+                    "default": "#ccc",
+                    "used": [
+                        {
+                            "selector": ".am-footer-divider",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "footer-text-color",
+                    "name": "版权信息颜色",
+                    "default": "#eee",
+                    "used": [
+                        {
+                            "selector": ".am-footer-text",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "options": {
+                            "modal": true,
+                            "techSupportCo": "诺亚方舟",
+                            "techSupportSite": "http://www.yunshipei.com/"
+                        },
+                        "content": {
+                            "owner": "云适配",
+                            "companyInfo": [
+                                {
+                                    "detail": "CopyRight©2013  AllMobilize Inc."
+                                },
+                                {
+                                    "detail": "京ICP备13033158"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": "clear",
+            "name": "clear",
+            "desc": "ios7默认",
+            "options": {
+                "modal": true,
+                "siteType": "",
+                "textPosition": ""
+            },
+            "hook": "hook-am-footer-clear",
+            "variables": [
+                {
+                    "variable": "footer-bg-color",
+                    "name": "背景颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "footer-ysp-color",
+                    "name": "云适配版文字颜色",
+                    "default": "#222",
+                    "used": [
+                        {
+                            "selector": ".am-footer-ysp",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "footer-a-color",
+                    "name": "链接颜色",
+                    "default": "#007aff",
+                    "used": [
+                        {
+                            "selector": "a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "footer-divider-color",
+                    "name": "分隔线颜色",
+                    "default": "#666",
+                    "used": [
+                        {
+                            "selector": ".am-footer-divider",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "footer-text-color",
+                    "name": "版权信息颜色",
+                    "default": "#777",
+                    "used": [
+                        {
+                            "selector": ".am-footer-text",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "options": {
+                            "modal": true,
+                            "techSupportCo": "诺亚方舟",
+                            "techSupportSite": "http://www.yunshipei.com/"
+                        },
+                        "content": {
+                            "owner": "云适配",
+                            "companyInfo": [
+                                {
+                                    "detail": "CopyRight©2013  AllMobilize Inc."
+                                },
+                                {
+                                    "detail": "京ICP备13033158"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ],
+            "hidden": 1
+        },
+        {
+            "id": "one",
+            "name": "one",
+            "desc": "简约风格",
+            "options": {
+                "modal": true,
+                "siteType": "",
+                "textPosition": ""
+            },
+            "hook": "hook-am-footer-one",
+            "variables": [
+                {
+                    "variable": "footer-ysp-color",
+                    "name": "云适配版文字颜色",
+                    "default": "#15afef",
+                    "used": [
+                        {
+                            "selector": ".am-footer-ysp",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "footer-a-color",
+                    "name": "链接颜色",
+                    "default": "#15afef",
+                    "used": [
+                        {
+                            "selector": "a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "footer-divider-color",
+                    "name": "分隔线颜色",
+                    "default": "#666",
+                    "used": [
+                        {
+                            "selector": ".am-footer-divider",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "am-footer-text-a",
+                    "name": "版权信息颜色",
+                    "default": "#000",
+                    "used": [
+                        {
+                            "selector": ".am-footer-text > a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "footer-text-color",
+                    "name": "文本颜色",
+                    "default": "#747474",
+                    "used": [
+                        {
+                            "selector": ".am-footer-text",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "options": {
+                            "modal": true,
+                            "techSupportCo": "云适配",
+                            "techSupportSite": "http://www.yunshipei.com/"
+                        },
+                        "content": {
+                            "owner"     : "云适配",
+                            "companyInfo": [{
+                                "detail" : ""
+                            },{
+                                "detail" : ""
+                            }]
+                        }
+                    }
+                }
+            ]
+        }
+    ],
+
+    "jsBase": [
+        "core.js",
+        "util.fastclick.js"
+    ],
+
+    "jsDependencies": [
+        "ui.dimmer.js",
+        "ui.modal.js",
+        "ui.add2home.js",
+        "util.cookie.js"
+    ],
+
+    "script": "footer.js",
+
+    "api": {
+        "id": {
+            "name": "ID",
+            "desc": "模块自定义ID，遵循CSS ID命名规范",
+            "type": "text",
+            "default": "",
+            "required": false
+        },
+
+        "className": {
+            "name": "Class",
+            "desc": "用户自定义模块class，遵循 CSS class 命名规范",
+            "type": "text",
+            "placeholder": "css类名，多个用空格分隔",
+            "default": "",
+            "required": false
+        },
+
+        "theme": {
+            "name": "主题",
+            "desc": "模块主题",
+            "type": "select",
+            "default": "default",
+            "required": true,
+            "dataList": "<%= pkg.themes %>"
+        },
+
+        "options": {
+            "modal": {
+                "name": "弹出层",
+                "desc": "可选值：'true'(默认) - ；'false' - 不显示",
+                "type": "select",
+                "required": true,
+                "default": true,
+                "dataList": [
+                    {
+                        "value": false,
+                        "title": "不显示"
+                    },
+                    {
+                        "value": true,
+                        "title": "显示"
+                    }
+                ]
+            },
+            "techSupportCo": {
+                "name": "技术支持公司",
+                "desc": "",
+                "type": "text",
+                "placeholder": "技术支持公司名称",
+                "default": "",
+                "required": false
+            },
+            "techSupportSite": {
+                "name": "技术支持网址",
+                "desc": "",
+                "type": "text",
+                "placeholder": "技术支持公司网址",
+                "default": "",
+                "required": false
+            },
+            "textPosition": {
+                "name": "文字位置",
+                "desc": "可选值：left - 左对齐；默认 - 居中",
+                "type": "select",
+                "required": false,
+                "default": "",
+                "dataList": [
+                    {
+                        "value": "",
+                        "title": "居中"
+                    },
+                    {
+                        "value": "left",
+                        "title": "左对齐"
+                    }
+                ]
+            }
+        },
+
+        "content": {
+            "type": "Object",
+            "item": {
+                "lang": {
+                    "type": "hidden",
+                    "default": "context.__lang",
+                    "desc": "自动获取浏览器语言，无需改动。若改动赋值为“en”则为英文，否则为中文！",
+                    "hidden": true
+                },
+
+                "owner": {
+                    "type": "text",
+                    "desc": "网站拥有者",
+                    "hidden": true
+                },
+
+                "companyInfo": {
+                    "type": "Array",
+                    "item": {
+                        "type": "text",
+                        "desc": "网站版权备案等信息"
+                    }
+                }
+            }
+        }
+    },
+
+    "readme": "http://docs.yunshipei.com/amui/#footer",
+
+    "example": "/*\n 此模块的使用方法：直接书写需要填写的公司字号，地址等内容。\n \n 常用用途：放在页面底部，书写公司的名称或者地址等信息。\n \n 了解AMUI模块详情，请访问http://ide.yunshipei.com/doc/amui/#footer。\n\n         示例代码：\n         var data = {\n             \"lang\"      : context.__lang, \n             \"owner\"     : \"xxx\",      \n             \"companyInfo\": [{       \n                  \"detail\": \"xxx\"   \n                 },{\n                 \"detail\": \"<a href = 'www.xxx.com' > xxx </a>\"  \n                 }]\n         };\n         return data;\n */\n\nvar data = {\n    \"lang\": context.__lang,     // 默认，无需改动。若改动赋值为“en”则为英文，否则为中文！\n    \"owner\": \"\",                // 网站名字 可以填写公司名称或者其他内容。\n    \"companyInfo\": [\n        {                       // 网站信息\n            \"detail\": \"\"        // 必要时可加 a 标签跳转到某个页面，网站的详细信息，在页面中的footer部分就可以看到这里的文字\n        },\n        {\n            \"detail\": \"\"        // 必要时可加 a 标签跳转到某个页面，网站的详细信息，在页面中的footer部分就可以看到这里的文字\n        }\n    ]\n};\nreturn data;\n",
+
+    "hidden": false
+}

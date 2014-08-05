@@ -1,0 +1,70 @@
+// ========================================================================
+// Modals - Popover
+// ========================================================================
+
+@popover-bg: #fff;
+@popover-border: #ddd;
+@popover-border-radius: @global-border-radius;
+@popover-duration: 300ms;
+
+.am-popover {
+  position: absolute;
+  //width: 240px;
+  margin: 0;
+  top: 0;
+  opacity: 0;
+  left: 0;
+  border-radius: @popover-border-radius;
+  background: @popover-bg;
+  border: 1px solid @popover-border;
+  display: none;
+  z-index: 1900;
+  .box-shadow(0 0 3px rgba(0, 0, 0, 0.15));
+  .transform(none);
+  .transition(@popover-duration);
+  .transition-property(opacity);
+  &.am-active {
+    display: block !important;
+    opacity: 1;
+  }
+}
+
+.am-popover-inner {
+  position: relative;
+  background: @popover-bg;
+  padding: 10px;
+  z-index: 110;
+  .scrollable();
+}
+
+.am-popover-caret {
+  position: absolute;
+  left: 5px;
+  top: 0;
+  z-index: 100;
+  .caret-up(10px, @popover-border);
+  overflow: hidden;
+
+  .am-popover-top & {
+    top: -10px;
+  }
+
+  .am-popover-bottom & {
+    top: auto;
+    bottom: -11px;
+    .rotate(180deg);
+  }
+
+  .am-popover-left & {
+    top: auto;
+    left: auto;
+    right: -13px;
+    .rotate(90deg);
+  }
+
+  .am-popover-right & {
+    right: auto;
+    left: -13px;
+    .rotate(-90deg);
+  }
+}

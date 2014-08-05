@@ -1,0 +1,11 @@
+[
+    {
+        "id": "clear",
+        "main": "clear/theme.clear.less"
+    },
+
+    {
+        "id": "one",
+        "main": "clear/theme.one.less"
+    }
+]

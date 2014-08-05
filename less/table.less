@@ -1,0 +1,206 @@
+// Name:                       Table
+//
+// Description:                Defines styles for tables
+//
+// Component:                `am-table`
+//
+// Modifiers:                `am-table-bd`
+//                           `am-table-bdrs`
+//                           `am-table-striped`
+//                           `am-table-hover`
+//
+// ========================================================================
+
+
+/* ========================================================================
+   Component: Table
+ ========================================================================== */
+
+table {
+  max-width: 100%;
+  background-color: @table-bg;
+  empty-cells: show;
+
+  code {
+    white-space: normal;
+  }
+}
+
+th {
+  text-align: left;
+}
+
+
+.am-table {
+  width: 100%;
+  margin-bottom: @global-margin;
+  .hook-table();
+
+  > thead,
+  > tbody,
+  > tfoot {
+    > tr {
+      > th,
+      > td {
+        padding: @table-cell-padding;
+        line-height: @table-line-height;
+        vertical-align: top;
+        border-top: 1px solid @table-border-color;
+      }
+    }
+  }
+
+  // Bottom align for headings
+  > thead > tr > th {
+    vertical-align: bottom;
+    border-bottom: 2px solid @table-border-color;
+  }
+
+  // Remove top border from thead
+  > caption + thead,
+  > colgroup + thead,
+  > thead:first-child {
+    > tr:first-child {
+      > th,
+      > td {
+        border-top: 0;
+      }
+    }
+  }
+
+  // multiple tbody
+  > tbody + tbody {
+    border-top: 2px solid @table-border-color;
+  }
+
+}
+
+
+/* Bordered version */
+
+.am-table-bd {
+  border: 1px solid @table-border-color;
+  .hook-table-bd();
+
+  > thead,
+  > tbody,
+  > tfoot {
+    > tr {
+      > th,
+      > td {
+        border: 1px solid @table-border-color;
+      }
+    }
+  }
+  > thead > tr {
+    > th,
+    > td {
+      border-bottom-width: 2px;
+    }
+  }
+}
+
+
+/* Border-radius version */
+
+.am-table-bdrs {
+  border: none;
+  .box-shadow(0 0 1px @gray-light);
+  border-radius: @global-border-radius;
+  .hook-table-bdrs();
+
+  > thead {
+    > tr:first-child {
+      > th:first-child,
+      > td:first-child {
+        border-top-left-radius: @global-border-radius;
+        border-left: none;
+      }
+
+      > th:last-child,
+      > td:last-child {
+        border-top-right-radius: @global-border-radius;
+        border-right: none;
+      }
+    }
+  }
+
+  > tbody {
+    > tr {
+      > th:first-child,
+      > td:first-child {
+        border-left: none;
+      }
+
+      > th:last-child,
+      > td:last-child {
+        border-right: none;
+      }
+    }
+
+    > tr:last-child {
+      > th,
+      > td {
+        border-bottom: none;
+      }
+
+      > th:first-child,
+      > td:first-child {
+        border-bottom-left-radius: @global-border-radius;
+      }
+
+      > th:last-child,
+      > td:last-child {
+        border-bottom-right-radius: @global-border-radius;
+      }
+    }
+  }
+}
+
+
+/* Zebra-striping */
+
+.am-table-striped > tbody > tr:nth-child(odd) {
+  > td,
+  > th {
+    background-color: @table-bg-striped;
+    .hook-table-striped();
+  }
+}
+
+
+/* Hover effect */
+
+.am-table-hover > tbody > tr:hover {
+  > td,
+  > th {
+    background-color: @table-bg-hover;
+    .hook-table-hover();
+  }
+}
+
+
+/* Active table backgrounds */
+
+.am-table > thead > tr,
+.am-table > tbody > tr,
+.am-table > tfoot > tr {
+  > td.am-active,
+  > th.am-active,
+  &.am-active > td,
+  &.am-active > th  {
+    background-color: @table-bg-active;
+    .hook-table-active();
+  }
+}
+
+
+// Hooks
+// ========================================================================
+
+.hook-table() {}
+.hook-table-bd() {}
+.hook-table-bdrs() {}
+.hook-table-striped() {}
+.hook-table-hover() {}
+.hook-table-active() {}

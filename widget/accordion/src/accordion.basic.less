@@ -1,0 +1,50 @@
+/**
+  * Accordion Theme: basic
+  * Theme ID: t1
+  * Author: Minwe (minwe@yunshipei.com)
+  */
+
+.am-accordion-basic {
+  @accordion-title-color: @gray-dark;
+  @accordion-title-active-color: @global-primary;
+
+  @accordion-content-color: #666;
+  margin: 1rem;
+
+  .am-accordion-title {
+    color: @accordion-title-color;
+    .transition(background-color 0.2s ease-out);
+    padding: 0.8rem 1rem;
+
+    &::before {
+      content: @fa-var-caret-right;
+      .am-icon-font;
+      .transition(all 0.2s linear);
+      .rotate(0deg);
+      margin-right: 5px;
+    }
+  }
+
+  .am-accordion-content {
+    padding: 0 1rem;
+    color: @accordion-content-color;
+    font-size: 1.4rem;
+  }
+
+  // active
+  .am-active {
+    .am-accordion-title {
+      color: @accordion-title-active-color;
+      &::before {
+        .rotate(90deg)
+      }
+    }
+    .am-accordion-content {
+      padding: 0.5rem 1rem 1.5rem;
+    }
+  }
+
+  .hook-am-accordion-basic;
+}
+
+.hook-am-accordion-basic() {};

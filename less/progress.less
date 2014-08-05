@@ -1,0 +1,129 @@
+// Name:                     Progress
+// Description:              Define style for progress
+//
+// Component:                `.am-progress`
+//
+// Modifiers:                `.am-progress-striped`
+//                           `.am-progress-sm`
+//                           `.am-progress-xs`
+//
+// States:                   `.am-active`
+//
+// ========================================================================
+
+
+/* ========================================================================
+   Component: Progress
+ ========================================================================== */
+
+/* Progress bar animation */
+
+@-webkit-keyframes progress-bar-stripes {
+  from  { background-position: 36px 0; }
+  to    { background-position: 0 0; }
+}
+
+@keyframes progress-bar-stripes {
+  from  { background-position: 36px 0; }
+  to    { background-position: 0 0; }
+}
+
+
+/*  Progress container */
+
+.am-progress {
+  overflow: hidden;
+  height: @progress-height;
+  margin-bottom: @line-height-computed;
+  background-color: @progress-bg;
+  border-radius: @global-border-radius;
+  .box-shadow(inset 0 1px 2px rgba(0, 0, 0, .1));
+
+  .hook-progress();
+}
+
+
+/* Progress bar */
+
+.am-progress-bar {
+  float: left;
+  width: 0;
+  height: 100%;
+  font-size: @progress-bar-font-size;
+  line-height: @progress-height;
+  color: @progress-bar-color;
+  text-align: center;
+  background-color: @progress-bar-bg;
+  .box-shadow(inset 0 -1px 0 rgba(0,0,0,.15));
+  .transition(width .6s ease);
+
+  .hook-progress-bar();
+
+  // Striped bar
+  .am-progress-striped & {
+    #gradient > .striped();
+    background-size: 36px 36px;
+  }
+
+  // Active animation
+
+  .am-progress.am-active & {
+    .animation(progress-bar-stripes 2s linear infinite);
+  }
+
+  // Lower value
+
+  &[aria-valuenow="1"],
+  &[aria-valuenow="2"] {
+    min-width: 30px;
+  }
+
+  &[aria-valuenow="0"] {
+    color: @gray-light;
+    min-width: 30px;
+    background: none;
+    box-shadow: none;
+  }
+}
+
+
+
+// Modifiers
+// ========================================================================
+
+.am-progress-bar-secondary {
+  .progress-bar-variant(@progress-bar-secondary-bg);
+}
+
+.am-progress-bar-success {
+  .progress-bar-variant(@progress-bar-success-bg);
+}
+
+.am-progress-bar-warning {
+  .progress-bar-variant(@progress-bar-warning-bg);
+}
+
+.am-progress-bar-danger {
+  .progress-bar-variant(@progress-bar-danger-bg);
+}
+
+
+
+// Size
+// ========================================================================
+
+.am-progress-xs {
+  height: @progress-height-xs;
+}
+
+.am-progress-sm {
+  height: @progress-height-sm;
+}
+
+
+// Hooks
+// ========================================================================
+
+.hook-progress() {}
+// .hook-progress-striped() {}
+.hook-progress-bar() {}

@@ -1,0 +1,185 @@
+// Name:                     Input group
+// Description:              Define style for input group
+//
+// Component:                `am-input-group`
+//
+// Modifiers:                ``
+//
+// Uses:                     Form
+//                           Button
+//
+// Via:                      http://getbootstrap.com/components/#input-groups
+//
+// ========================================================================
+
+
+/* ========================================================================
+   Component: Input group
+ ========================================================================== */
+
+.am-input-group {
+  position: relative;
+  display: table;
+  border-collapse: separate;
+
+  // reset padding and float for grid
+  &[class*="col-"] {
+    float: none;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .am-form-field {
+    position: relative;
+    z-index: 2;
+    float: left;
+    width: 100%;
+    margin-bottom: 0;
+  }
+}
+
+
+// Sizing options
+// ========================================================================
+
+.am-input-group-lg > .am-form-field,
+.am-input-group-lg > .am-input-group-label,
+.am-input-group-lg > .am-input-group-btn > .am-btn {
+  .am-input-lg();
+}
+
+.am-input-group-sm > .am-form-field,
+.am-input-group-sm > .am-input-group-label,
+.am-input-group-sm > .am-input-group-btn > .am-btn {
+  .am-input-sm();
+}
+
+
+// Display as table-cell
+// ========================================================================
+
+.am-input-group-label,
+.am-input-group-btn,
+.am-input-group .am-form-field {
+  display: table-cell;
+
+  &:not(:first-child):not(:last-child) {
+    border-radius: 0;
+  }
+}
+
+// Input group text
+
+.am-input-group-label,
+.am-input-group-btn {
+  width: 1%;
+  white-space: nowrap;
+  vertical-align: middle; // Match the inputs
+}
+
+
+// Text input groups
+// ========================================================================
+
+.am-input-group-label {
+  padding: @input-padding 1em;
+  font-size: @form-font-size;
+  font-weight: normal;
+  line-height: 1.2;
+  color: @input-color;
+  text-align: center;
+  background-color: @input-group-label-bg;
+  border: 1px solid @input-group-label-border-color;
+  border-radius: @global-border-radius;
+
+  // Sizing
+  &.am-input-sm {
+    //padding: @padding-small-vertical @padding-small-horizontal;
+    font-size: @form-font-size-sm;
+  }
+  &.am-input-lg {
+    //padding: @padding-large-vertical @padding-large-horizontal;
+    //font-size: @font-size-large;
+    font-size: @form-font-size-lg;
+  }
+
+  // Nuke default margins from checkboxes and radios to vertically center within.
+  input[type="radio"],
+  input[type="checkbox"] {
+    margin-top: 0;
+  }
+}
+
+
+// Reset rounded corners
+// ========================================================================
+
+.am-input-group .am-form-field:first-child,
+.am-input-group-label:first-child,
+.am-input-group-btn:first-child > .am-btn,
+.am-input-group-btn:first-child > .am-btn-group > .am-btn,
+.am-input-group-btn:first-child > .am-dropdown-toggle,
+.am-input-group-btn:last-child > .am-btn:not(:last-child):not(.dropdown-toggle),
+.am-input-group-btn:last-child > .am-btn-group:not(:last-child) > .am-btn {
+  .border-right-radius(0);
+}
+
+.am-input-group-label:first-child {
+  border-right: 0;
+}
+
+.am-input-group .am-form-field:last-child,
+.am-input-group-label:last-child,
+.am-input-group-btn:last-child > .am-btn,
+.am-input-group-btn:last-child > .am-btn-group > .am-btn,
+.am-input-group-btn:last-child > .am-dropdown-toggle,
+.am-input-group-btn:first-child > .am-btn:not(:first-child),
+.am-input-group-btn:first-child > .am-btn-group:not(:first-child) > .am-btn {
+  .border-left-radius(0);
+}
+
+.am-input-group-label:last-child {
+  border-left: 0;
+}
+
+
+// Button input groups
+// ========================================================================
+
+.am-input-group-btn {
+  position: relative;
+  // Jankily prevent input button groups from wrapping with `white-space` and
+  // `font-size` in combination with `inline-block` on buttons.
+  font-size: 0;
+  white-space: nowrap;
+
+  // Negative margin for spacing, position for bringing hovered/focused/actived
+  // element above the siblings.
+  > .am-btn {
+    position: relative;
+    border-color: @input-border;
+    + .am-btn {
+      margin-left: -1px;
+    }
+    // Bring the "active" button to the front
+    &:hover,
+    &:focus,
+    &:active {
+      z-index: 2;
+    }
+  }
+
+  // Negative margin to only have a 1px border between the two
+  &:first-child {
+    > .am-btn,
+    > .am-btn-group {
+      margin-right: -1px;
+    }
+  }
+  &:last-child {
+    > .am-btn,
+    > .am-btn-group {
+      margin-left: -1px;
+    }
+  }
+}

@@ -1,0 +1,65 @@
+// Name:                     Thumbnail
+// Description:              Defines style for thumbnail
+//
+// Component:                `.am-thumbnail`
+//
+// Sub-objects:              `.am-thumbnail-caption`
+//
+// Modifiers:
+//
+// ========================================================================
+
+
+/* ========================================================================
+   Component: Thumbnail
+ ========================================================================== */
+
+.am-thumbnail {
+  display: inline-block;
+  padding: @thumbnail-padding;
+  margin-bottom: @line-height-computed;
+  background-color: @thumbnail-bg;
+  border: 1px solid @thumbnail-border;
+  border-radius: @thumbnail-border-radius;
+  .transition(all .2s ease-in-out);
+  .hook-thumbnail();
+
+  > img,
+  a > img {
+    margin-left: auto;
+    margin-right: auto;
+    display: block;
+  }
+
+  // Add a hover state for linked versions only
+  a&:hover,
+  a&:focus,
+  a&.active {
+    border-color: @thumbnail-hover-border;
+    background-color: @thumbnail-hover-bg;
+    .hook-thumbnail-hover();
+  }
+}
+
+
+/* Image caption */
+
+.am-thumbnail-caption {
+  margin: 0;
+  padding: @thumbnail-caption-padding;
+  color: @thumbnail-caption-color;
+  font-weight: normal;
+  .hook-thumbnail-caption();
+
+  *:last-child {
+    margin-bottom: 0;
+  }
+}
+
+
+// Hooks
+// ========================================================================
+
+.hook-thumbnail() {}
+.hook-thumbnail-hover() {}
+.hook-thumbnail-caption() {}

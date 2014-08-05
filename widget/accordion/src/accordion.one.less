@@ -1,0 +1,85 @@
+/**
+  * Accordion Theme: one
+  * Theme ID: one
+  * Author: hzp (hzp@yunshipei.com)
+  */
+
+@global-body-bg: #f3f3f3;
+
+@global-primary: #15afef;
+
+@global-black: #000;
+
+@global-lighter-gray: rgb(226, 226, 226);
+@global-light-gray: #dfdfdf;
+@global-gray: #dedfe3;
+@global-dark-gray: #888;
+@global-darker-gray: #666;
+
+@global-mask-bg-color: rgba(92,92,92,0.6);
+
+.am-accordion-one {
+
+  @accordion-item-border-color: @global-light-gray;
+
+  @accordion-title-color: rgba(0, 0, 0, 0.6);
+  @accordion-title-active-color: rgba(0, 0, 0, 0.8);
+  @accordion-title-active-bg-color: rgba(0, 0, 0, 0.1);
+  @accordion-title-active-bd-color: fadeout(@global-primary, 60%);
+
+  @accordion-content-color: @global-darker-gray;
+  @accordion-bg-color: @white;
+  margin: 0 10px 0 10px;
+
+  .am-accordion-item {
+    border: 1px solid @accordion-item-border-color;
+    margin: .5rem 0;
+    background: @accordion-bg-color;
+  }
+
+  .am-accordion-title {
+    color: @accordion-title-color;
+    .transition(background-color 0.2s ease-out);
+    padding: 0.8rem 2rem 0.8rem 1rem;
+    position: relative;
+
+    &::after {
+      content: @fa-var-angle-right;
+      .am-icon-font;
+      .transition(all 0.2s linear);
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      margin-top: -0.8rem;
+    }
+
+    &:hover {
+      color: @accordion-title-active-color;
+    }
+  }
+
+  .am-accordion-content {
+    padding: 0 1rem;
+    color: @accordion-content-color;
+    font-size: 1.4rem;
+  }
+
+  // active
+  .am-active {
+    border: 1px solid @accordion-title-active-bd-color;
+    .am-accordion-title {
+      background-color: @accordion-title-active-bg-color;
+      color: @accordion-title-active-color;
+      &::after {
+        .rotate(90deg)
+      }
+    }
+    .am-accordion-content {
+      padding: 1rem 1rem 1.5rem;
+    }
+  }
+
+  .hook-am-accordion-one;
+}
+
+.hook-am-accordion-one() {}

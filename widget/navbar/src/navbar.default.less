@@ -1,0 +1,152 @@
+/**
+  * Menu Theme: default
+  * Theme ID: default
+  * Author: hzp (hzp@yunshipei.com)
+  */
+
+@am-navbar-boxshare-bg: lighten(@gray-lighter, 0.5%);
+
+@navbar-bg-color: @global-primary;
+@navbar-a-color: @white;
+
+.am-navbar-default {
+
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  background-color: @navbar-bg-color;
+  z-index: @z-index-navbar;
+
+  & > ul {
+    list-style: none;
+    padding-left: 0;
+  }
+
+  .am-navbar-item {
+    text-align: center;
+
+    a {
+      color: @navbar-a-color;
+      text-shadow: none;
+      display: inline-block;
+      width: 100%;
+      height: @navbar-height;
+      font-size: 12px;
+      text-align: center;
+
+      img {
+        vertical-align: middle;
+        height: 24px;
+        width: 24px;
+        display: inline;
+      }
+
+      span {
+        display: inline-block;
+        width: 24px;
+        height: 24px;
+        vertical-align: top;
+        margin: 4px auto 0;
+
+        &:before {
+          font-size: 22px;
+        }
+      }
+    }
+  }
+
+  .am-navbar-more-active {
+    & > a {
+      color: @navbar-a-color;
+      span {
+        &:before {
+          content: @fa-var-chevron-down;
+          color: @navbar-a-color;
+        }
+      }
+    }
+  }
+  .hook-am-navbar-default;
+
+}
+
+.am-navbar-top {
+
+  & > ul {
+
+    .am-navbar-item {
+      a {
+        line-height: 20px;
+        img {
+          display: block;
+          margin: 4px auto 0
+        }
+        span {
+          display: block;
+          line-height: 24px;
+          margin: 4px auto 0
+        }
+      }
+    }
+  }
+}
+
+.am-navbar-moreList {
+
+  @navbar-moreList-bg: darken(@navbar-bg-color, 15%);
+  @navbar-moreList-bd-top: darken(@navbar-bg-color, 6%);
+  @navbar-moreList-bd-bottom: darken(@navbar-bg-color, 25%);
+  @navbar-moreList-a-color: @white;
+
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+  background: @navbar-moreList-bg;
+  position: fixed;
+  bottom: 50px;
+  left: 0;
+  width: 100%;
+  z-index: @z-index-navbar - 1;
+  display: none;
+
+  li {
+    line-height: 40px;
+    border-top: 1px solid @navbar-moreList-bd-top;
+    border-bottom: 1px solid @navbar-moreList-bd-bottom;
+    position: relative;
+
+    &::after {
+      font-family: "FontAwesome";
+      content: "\f054";
+      color: @navbar-moreList-a-color;
+      display: inline-block;
+      position: absolute;
+      top: 0;
+      right: 20px;
+    }
+
+    a {
+      display: inline-block;
+      width: 100%;
+      height: 38px;
+      color: @navbar-moreList-a-color;
+      padding-left: 30px;
+
+      img {
+        vertical-align: middle;
+        height: 20px;
+        width: 20px;
+        display: inline;
+      }
+    }
+
+  }
+}
+
+#bdshare_weixin_qrcode_dialog {
+  height: 310px !important;
+}
+
+.hook-am-navbar-default() {
+}

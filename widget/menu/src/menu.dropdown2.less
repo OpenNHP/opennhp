@@ -1,0 +1,156 @@
+/**
+  * Menu Theme: dropdown2
+  * Theme ID: d2
+  * Author: Minwe (minwe@yunshipei.com)
+  */
+
+.am-menu-dropdown2 {
+
+  @trigger-color: #fff;
+
+  @lv2-color: #fff;
+  @lv2-bg-color: #727B8A;
+
+  @lv2-active-bg-color: #727B8A;
+  @lv2-a-height: 49px;
+
+  @lv3-color: #7E858F;
+  @lv3-bg-color: #F2F3F5;
+  @lv3-icon-color: #aaa;
+  @lv3-a-height: 44px;
+
+  @border-color: #4C5565;
+
+  a {
+    &::before, &::after {
+      .am-icon-font;
+    }
+  }
+  // level 1: trigger bars
+  > li.am-parent {
+    position: relative;
+    > a {
+      position: absolute;
+      right: 10px;
+      top: -36px;
+      width: 40px;
+      height: 24px;
+      overflow: hidden;
+      padding: 0;
+      text-align: right;
+      &:before {
+        content: @fa-var-bars;
+        color: @trigger-color;
+        height: 24px;
+        width: 40px;
+        font-size: 24px;
+      }
+    }
+  }
+
+  .am-menu-sub {
+    display: none;
+  }
+
+  .am-menu-lv2 {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: @z-index-dropdown;
+    a {
+      padding: 0.8rem;
+    }
+    & > li {
+      // parent links
+      > a {
+        border-bottom: 1px solid @border-color;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        background-color: @lv2-bg-color;
+        color: @lv2-color;
+        height: @lv2-a-height;
+        line-height: @lv2-a-height;
+        padding: 0;
+        text-indent: 10px;
+
+        &::after {
+        }
+      }
+
+      &.am-parent {
+        > a {
+          position: relative;
+
+
+          &::after {
+            content: @fa-var-angle-right;
+            margin-left: 0.8rem;
+          }
+        }
+
+        // active status
+        &.am-open {
+          background-color: @lv2-active-bg-color;
+          border-bottom: 1px solid @border-color;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+          > a {
+            border-bottom: none;
+            &::after {
+              content: @fa-var-angle-down;
+            }
+          }
+          .am-menu-lv3 {
+            margin-left: 8px;
+            background-color: @lv3-bg-color;
+          }
+        }
+      }
+    }
+  }
+
+  .am-menu-lv3 {
+    a {
+      color: @lv3-color;
+      height: @lv3-a-height;
+      line-height: @lv3-a-height;
+      padding: 0;
+      text-indent: 10px;
+
+      &::before {
+        content: @fa-var-angle-right;
+        color: @lv3-icon-color;
+        font-size: 16px;
+        margin-right: 5px;
+      }
+    }
+  }
+
+  .hook-am-menu-dropdown2;
+
+  @media (min-width: @breakpoint-md) {
+    & {
+      > .am-parent {
+        > a {
+          display: none;
+        }
+      }
+
+      .am-menu-lv2 {
+        background-color: @lv2-bg-color;
+        display: block;
+        & > li {
+          clear: none;
+
+        }
+      }
+
+      .am-menu-lv3 {
+        & > li {
+          clear: none;
+          width: auto;
+        }
+      }
+    }
+  }
+}
+
+.hook-am-menu-dropdown2() {}

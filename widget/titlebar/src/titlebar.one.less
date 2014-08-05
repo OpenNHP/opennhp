@@ -1,0 +1,92 @@
+/**
+  * Titlebar Theme: one
+  * Theme ID: one
+  */
+@global-body-bg: #f3f3f3;
+
+@global-primary: #15afef;
+
+@global-black: #000;
+
+@global-lighter-gray: rgb(226, 226, 226);
+@global-light-gray: #dfdfdf;
+@global-gray: #dedfe3;
+@global-dark-gray: #888;
+@global-darker-gray: #666;
+
+@global-mask-bg-color: rgba(92,92,92,0.6);
+
+.am-titlebar-one {
+
+  @titlebar-text-color: #15afef;//@global-primary;
+  @titlebar-title-color: #15afef;//@global-primary;
+  @titlebar-left-a-color: #000;
+  @titlebar-bg-color: #fff;
+  @titlebar-title-before: #15afef;//@global-primary;
+
+  @titlebar-right-a-color: #888;
+  margin: 0 10px!important;
+  padding: 0!important;
+  height: 39px!important;
+  line-height: 40px!important;
+  background: @titlebar-bg-color;
+  overflow: hidden;
+  border-bottom: 1px solid @titlebar-title-before;
+
+  .am-titlebar-left {
+    float: left;
+    padding-left: 5px;
+    position: relative;
+    color: @titlebar-left-a-color;
+    text-indent: 10px;
+    width: 80%;
+    .text-overflow();
+
+    &::before{
+      content: '';
+      width: 4px;
+      height: 30px;
+      position: absolute;
+      left: 5px;
+      top: 5px;
+      background: @titlebar-title-before;
+
+    }
+    img{
+      max-height: 30px;
+      vertical-align: top;
+      margin-top: 4px;
+    }
+    a{
+      color: @titlebar-left-a-color;
+    }
+
+    h1,h2,h3,h4,h5,h6,strong,em{
+      font-style: normal;
+      font-weight: normal;
+      margin-bottom: 0;
+    }
+
+    ul,li{
+      list-style: none;
+      padding-left: 0;
+    }
+
+
+  }
+
+  .am-titlebar-right {
+    float: right;
+    padding-right: 5px;
+    color: @titlebar-right-a-color;
+    font-size: 1.4rem;
+
+    a{
+      color: @titlebar-right-a-color;
+    }
+  }
+
+  .hook-am-titlebar-one;
+}
+
+.hook-am-titlebar-one() {}

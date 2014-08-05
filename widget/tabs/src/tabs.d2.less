@@ -1,0 +1,70 @@
+/**
+  * Tabs Theme: d2
+  * Theme ID: d2
+  */
+
+.am-tabs-d2 {
+
+  @tabs-bg-color: @gray-lighter;
+  @tabs-active-bg-color: lighten(@gray-lighter, 5.5%);
+  @tabs-text-color: @gray-darker;
+  @tabs-a-color: @global-primary;
+
+  .am-tabs-hd {
+    padding: 0;
+    margin: 0;
+    line-height: 40px;
+    color: @tabs-text-color;
+    background-color: @tabs-bg-color;
+    > li {
+      list-style: none;
+      text-align: center;
+    }
+    > li.am-tabs-hd-active {
+      background-color: @tabs-active-bg-color;
+      position: relative;
+      border-bottom: 2px solid @tabs-a-color;
+      height: 40px;
+      line-height: 39px;
+      color: @tabs-a-color;
+      -webkit-transition: all 0.5s;
+      -moz-transition: all 0.5s;
+      -o-transition: all 0.5s;
+      transition: all 0.5s;
+      &:after {
+        position: absolute;
+        width: 0;
+        height: 0;
+        bottom: 0px;
+        left: 50%;
+        margin-left: -5px;
+        border: 6px rgba(0, 0, 0, 0) solid;
+        content: "";
+        z-index: 1;
+        border-bottom-color: @tabs-a-color;
+        -webkit-transition: all 0.5s;
+        -moz-transition: all 0.5s;
+        -o-transition: all 0.5s;
+        transition: all 0.5s;
+      }
+    }
+  }
+  .am-tabs-bd {
+    padding: 10px 0 0 0;
+    overflow: hidden;
+
+    .am-tabs-bd-content{
+      width: 3000px;
+      overflow: hidden;
+      position: relative;
+      left: 0;
+
+      > div {
+        float: left;
+      }
+
+    }
+  }
+  .hook-am-tabs-d2;
+}
+.hook-am-tabs-d2() {};

@@ -1,0 +1,59 @@
+/**
+  * Footer Theme: default
+  * Theme ID: default
+  */
+
+.am-footer-default {
+
+  @footer-bg-color: #fff;
+  @footer-a-color: @gray;
+  @footer-ysp-color: @gray-light;
+
+  @footer-divider-color: #ccc;
+
+  @footer-text-color: @gray-light;
+  @footer-desktop-color: @gray-light;
+
+  background-color: @footer-bg-color;
+
+  a {
+    color: @footer-a-color;
+    font-weight: bold;
+  }
+
+  .am-footer-ysp {
+    color: @footer-ysp-color;
+    cursor: pointer;
+  }
+
+  .am-footer-divider {
+    color: @footer-divider-color;
+  }
+
+  .am-footer-desktop{
+    color: @footer-desktop-color;
+  }
+
+  .am-footer-text {
+    color: @footer-text-color;
+
+    p {
+      margin: 5px 0;
+    }
+  }
+
+  .hook-am-footer-default;
+
+  @media screen and  (min-width: @breakpoint-md) {
+    & {
+      .am-footer-text {
+        p {
+          display: inline-block;
+          margin: 5px;
+        }
+      }
+    }
+  }
+}
+
+.hook-am-footer-default() {}

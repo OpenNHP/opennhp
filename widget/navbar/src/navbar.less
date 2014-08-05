@@ -1,0 +1,51 @@
+//Base
+.am-navbar {
+  padding: 0 10px;
+  height: @navbar-height;
+  line-height:@navbar-height;
+  .hook-am-navbar;
+}
+
+@navbar-height: 49px;
+
+//给body 增加的className
+.with-fixed-navbar {
+  padding-bottom: @navbar-height;
+}
+
+// share 微信高度
+#bdshare_weixin_qrcode_dialog {
+  height: 310px !important;
+}
+
+
+.bdsharebuttonbox {
+  position: relative;
+  font-size: 16px !important;
+  height: 0;
+
+  a {
+    display: block;
+    width: 100%;
+    margin: 0 !important;
+    overflow: hidden;
+    color: #000;
+    background: none !important;
+    height: auto  !important;
+  }
+}
+
+#am-navbar-boxqrcode {
+  border: 5px solid @white;
+  width: 200px;
+  height: 200px;
+  overflow: hidden;
+  margin-left: -100px;
+
+  img {
+    width: 190px;
+    height: 190px;
+  }
+}
+
+.hook-am-navbar() {};

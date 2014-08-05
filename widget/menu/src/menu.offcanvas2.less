@@ -1,0 +1,55 @@
+/**
+  * Menu Theme: offcanvas2
+  * Theme ID: oc2
+  * Author: Minwe (minwe@yunshipei.com)
+  */
+
+.am-menu-offcanvas2 {
+
+  @nav-offcanvas-lv2-a-height: 44px;
+
+  @nav-offcanvas-color: #ccc;
+  @nav-offcanvas-bg-color: lighten(@offcanvas-bar-background, 5%);
+  @nav-offcanvas-hover-color: #FFF;
+
+  @nav-offcanvas-active-bg-color: darken(@offcanvas-bar-background, 5%);
+  @nav-offcanvas-active-color: #FFF;
+  @nav-offcanvas-border-color: rgba(0, 0, 0, 0.3);
+
+  padding: 10px 5px;
+
+  & > li {
+    padding: 5px;
+    > a {
+      .transition(all 0.3s);
+      background-color: @nav-offcanvas-bg-color;
+      color: @nav-offcanvas-color;
+      .text-overflow(block);
+      border: 1px solid @nav-offcanvas-border-color;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+      height: @nav-offcanvas-lv2-a-height;
+      line-height: @nav-offcanvas-lv2-a-height;
+      padding: 0;
+      text-align: center;
+    }
+  }
+
+  // Hover
+  & > li > a:hover,
+  & > li > a:focus { /* 1 */
+    background-color: @nav-offcanvas-active-bg-color;
+    color: @nav-offcanvas-hover-color;
+    outline: none; /* 2 */
+  }
+
+  // Active
+  & > li.am-active > a {
+    background-color: @nav-offcanvas-active-bg-color;
+    color: @nav-offcanvas-active-color;
+  }
+
+  .hook-am-menu-offcanvas2;
+}
+
+.hook-am-menu-offcanvas2() { }

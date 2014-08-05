@@ -1,0 +1,24 @@
+/**
+  * Gotop Theme: default
+  * Theme ID: default
+  */
+
+.am-gotop-default {
+
+  @gotop-a-bg-color: @global-primary;
+  @gotop-a-text-color: @white;
+
+  text-align: center;
+  margin: 10px 0;
+  a {
+    background-color: @gotop-a-bg-color;
+    padding: .5em 1.5em;
+    border-radius: 3px;
+    color: @gotop-a-text-color;
+    img {
+      display: none;
+    }
+  }
+  .hook-am-gotop-default;
+}
+.hook-am-gotop-default() {};

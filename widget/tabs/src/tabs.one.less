@@ -1,0 +1,131 @@
+/**
+  * Tabs Theme: one
+  * Theme ID: one
+  */
+
+@global-body-bg: #f3f3f3;
+
+@global-primary: #15afef;
+
+@global-black: #000;
+
+@global-lighter-gray: rgb(226, 226, 226);
+@global-light-gray: #dfdfdf;
+@global-gray: #dedfe3;
+@global-dark-gray: #888;
+@global-darker-gray: #666;
+
+@global-mask-bg-color: rgba(92,92,92,0.6);
+
+.am-tabs-one {
+
+  @tabs-bg-color: @white;
+  @tabs-li-text-color: @white;
+  @tabs-active-bg-color: @global-primary;
+  @tabs-text-color: @global-primary;
+  @tabs-a-color: @global-darker-gray;
+  @tabs-a-hover-color: @global-primary;
+  @tabs-db-color: @global-primary;
+
+  @tabs-more-color: @global-dark-gray;
+
+  padding: 10px 5px 0 5px;
+  margin: 0 10px;
+  background: @tabs-bg-color;
+  .am-tabs-hd {
+    padding: 0;
+    margin: 0;
+    line-height: 30px;
+    color: @tabs-text-color;
+    background-color: @tabs-bg-color;
+    border-left:1px solid @tabs-db-color;
+    border-top:1px solid @tabs-db-color;
+    border-bottom:1px solid @tabs-db-color;
+    border-radius: 5px;
+    font-size: 14px;
+
+    > li {
+      list-style: none;
+      text-align: center;
+      border-right: 1px solid @tabs-db-color;
+      .text-overflow();
+    }
+
+    > li:first-child {
+      border-top-left-radius: 4px;
+      border-bottom-left-radius: 4px;
+    }
+    > li:last-child {
+      border-top-right-radius: 4px;
+      border-bottom-right-radius: 4px;
+    }
+    > li.am-tabs-hd-active {
+      background-color: @tabs-active-bg-color;
+      color: @tabs-li-text-color;
+    }
+  }
+  .am-tabs-bd {
+    padding: 10px 0;
+    overflow: hidden;
+
+    .am-tabs-bd-content{
+      width: 3000px;
+      overflow: hidden;
+      left: 0;
+      position: relative;
+
+      & > div {
+        float: left;
+        ul{
+          list-style: none;
+          padding: 0 0 10px 0;
+          margin: 0 0 10px 0;
+          border-bottom: 1px solid @tabs-db-color;
+
+          li{
+            height: 30px;
+            line-height: 30px;
+            position: relative;
+            a{
+              color: @tabs-a-color;
+              .text-overflow();
+              padding-right: 60px;
+            }
+
+            span{
+              position: absolute;
+              right: 0;
+              top: 0;
+              color: @tabs-a-color;
+            }
+
+          }
+          li:hover{
+            a, span{color: @tabs-a-hover-color;}
+          }
+
+          li:active{
+            a, span{color: @tabs-a-hover-color;}
+          }
+        }
+
+        & > a{
+          color: @tabs-more-color;
+          float: right;
+        }
+
+        & > a:hover{
+          color: @tabs-a-hover-color;
+        }
+
+        & > a:active{
+          color: @tabs-a-hover-color;
+        }
+
+      }
+
+    }
+  }
+  .hook-am-tabs-one;
+}
+.hook-am-tabs-one() {};

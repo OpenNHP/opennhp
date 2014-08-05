@@ -1,0 +1,566 @@
+{
+    "name": "accordion",
+
+    "version": "1.1.0",
+
+    "localName": {
+        "en": "Accordion",
+        "zh-cn": "折叠面板"
+    },
+
+    "icon": "accordion.png",
+
+    "author": {
+        "name": "Minwe",
+        "email": "minwe@yunshipei.com"
+    },
+
+    "description": "类似手风琴的内容折叠模块",
+
+    "poweredBy": "AllMobilize",
+
+    "styleBase": [
+        "variables.less",
+        "mixins.less",
+        "base.less",
+        "grid.less",
+        "block-grid.less",
+        "icon.less",
+        "utility.less"
+    ],
+
+    "template": "accordion.hbs",
+
+    "styleDependencies": [
+        "icon.less",
+        "ui.accordion.less"
+    ],
+
+    "style": "accordion.less",
+
+    "themes": [
+        {
+            "id": "default",
+            "name": "default",
+            "desc": "圆角灰边",
+            "options": {
+                "multiple": false
+            },
+            "hook": "hook-am-accordion-default",
+            "variables": [
+                {
+                    "variable": "accordion-item-border-color",
+                    "name": "边框颜色",
+                    "default": "rgba(0, 0, 0, 0.05)",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-item",
+                            "property": "border-top-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-title-color",
+                    "name": "标题颜色",
+                    "default": "rgba(0, 0, 0, 0.6)",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-title-active-color",
+                    "name": "标题激活颜色",
+                    "default": "#428bca",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-title:hover",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-active .am-accordion-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-title-active-bg-color",
+                    "name": "标题激活背景颜色",
+                    "default": "#eee",
+                    "used": [
+                        {
+                            "selector": ".am-active .am-accordion-title",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-content-color",
+                    "name": "内容颜色",
+                    "default": "#666",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-content",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "content": [
+                            {
+                                "title": "云适配的技术原理是什么？",
+                                "content": "我们采用最先进的浏览器内核引擎渲染原理，通过Brwoser Render Engine把网页进行渲染，通过DOM Analyzer和Style Analyzer分析、分离数据和样式，分离后的数据和样式进行重新渲染，并且优化了HTML/CSS/Javascript代码，减少HTTP连接，产生云适配后的网页。",
+                                "active": true
+                            },
+                            {
+                                "title": "会不会由于我们的网站点击量大，出现云端服务器崩溃？",
+                                "content": "云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。"
+                            },
+                            {
+                                "title": "云适配相对其他手机适配服务有哪些优点？",
+                                "content": "1. 一行代码，简单快捷 <br>2. 网址不变且唯一 <br>3. 内容实时同步更新 <br>4. 云端跨平台适配 <br>5. 专属的一键拨叫 在线咨询 地图导航 二维码 一键分享实用功能。"
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "id": "t1",
+            "name": "basic",
+            "desc": "极简无边框",
+            "options": {
+                "multiple": false
+            },
+            "hook": "hook-am-accordion-basic",
+            "variables": [
+                {
+                    "variable": "accordion-title-color",
+                    "name": "标题颜色",
+                    "default": "#333",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-title-active-color",
+                    "name": "标题激活颜色",
+                    "default": "#428bca",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-title:hover",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-active .am-accordion-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-content-color",
+                    "name": "内容颜色",
+                    "default": "#666",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-content",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "content": [
+                            {
+                                "title": "云适配的技术原理是什么？",
+                                "content": "我们采用最先进的浏览器内核引擎渲染原理，通过Brwoser Render Engine把网页进行渲染，通过DOM Analyzer和Style Analyzer分析、分离数据和样式，分离后的数据和样式进行重新渲染，并且优化了HTML/CSS/Javascript代码，减少HTTP连接，产生云适配后的网页。",
+                                "active": true
+                            },
+                            {
+                                "title": "会不会由于我们的网站点击量大，出现云端服务器崩溃？",
+                                "content": "云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。"
+                            },
+                            {
+                                "title": "云适配相对其他手机适配服务有哪些优点？",
+                                "content": "1. 一行代码，简单快捷 <br>2. 网址不变且唯一 <br>3. 内容实时同步更新 <br>4. 云端跨平台适配 <br>5. 专属的一键拨叫 在线咨询 地图导航 二维码 一键分享实用功能。"
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "id": "t2",
+            "name": "gapped",
+            "desc": "扁平分离边框",
+            "options": {
+                "multiple": false
+            },
+            "hook": "hook-am-accordion-gapped",
+            "variables": [
+                {
+                    "variable": "accordion-item-border-color",
+                    "name": "边框颜色",
+                    "default": "rgba(0, 0, 0, 0.1)",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-item",
+                            "property": "border-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-title-color",
+                    "name": "标题颜色",
+                    "default": "rgba(0, 0, 0, 0.6)",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-title-active-color",
+                    "name": "标题激活颜色",
+                    "default": "rgba(0, 0, 0, 0.8)",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-title:hover",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-active .am-accordion-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-title-active-bg-color",
+                    "name": "标题激活背景颜色",
+                    "default": "rgba(0, 0, 0, 0.1)",
+                    "used": [
+                        {
+                            "selector": ".am-active .am-accordion-title",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-content-color",
+                    "name": "内容颜色",
+                    "default": "#666",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-content",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "content": [
+                            {
+                                "title": "云适配的技术原理是什么？",
+                                "content": "我们采用最先进的浏览器内核引擎渲染原理，通过Brwoser Render Engine把网页进行渲染，通过DOM Analyzer和Style Analyzer分析、分离数据和样式，分离后的数据和样式进行重新渲染，并且优化了HTML/CSS/Javascript代码，减少HTTP连接，产生云适配后的网页。",
+                                "active": true
+                            },
+                            {
+                                "title": "会不会由于我们的网站点击量大，出现云端服务器崩溃？",
+                                "content": "云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。"
+                            },
+                            {
+                                "title": "云适配相对其他手机适配服务有哪些优点？",
+                                "content": "1. 一行代码，简单快捷 <br>2. 网址不变且唯一 <br>3. 内容实时同步更新 <br>4. 云端跨平台适配 <br>5. 专属的一键拨叫 在线咨询 地图导航 二维码 一键分享实用功能。"
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "id": "clear",
+            "name": "clear",
+            "desc": "ios7风格",
+            "options": {
+                "multiple": false
+            },
+            "hook": "hook-am-accordion-clear",
+            "variables": [
+                {
+                    "variable": "accordion-item-border-color",
+                    "name": "边框颜色",
+                    "default": "#b2b2b2",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-item",
+                            "property": "border-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-title-color",
+                    "name": "标题颜色",
+                    "default": "#666666",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-title-active-color",
+                    "name": "标题激活颜色",
+                    "default": "#007aff",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-title:hover",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-active .am-accordion-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-title-active-bg-color",
+                    "name": "标题激活背景颜色",
+                    "default": "#ffffff",
+                    "used": [
+                        {
+                            "selector": ".am-active .am-accordion-title",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-content-color",
+                    "name": "内容颜色",
+                    "default": "#666",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-content",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "content": [
+                            {
+                                "title": "云适配的技术原理是什么？",
+                                "content": "我们采用最先进的浏览器内核引擎渲染原理，通过Brwoser Render Engine把网页进行渲染，通过DOM Analyzer和Style Analyzer分析、分离数据和样式，分离后的数据和样式进行重新渲染，并且优化了HTML/CSS/Javascript代码，减少HTTP连接，产生云适配后的网页。",
+                                "active": true
+                            },
+                            {
+                                "title": "会不会由于我们的网站点击量大，出现云端服务器崩溃？",
+                                "content": "云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。"
+                            },
+                            {
+                                "title": "云适配相对其他手机适配服务有哪些优点？",
+                                "content": "1. 一行代码，简单快捷 <br>2. 网址不变且唯一 <br>3. 内容实时同步更新 <br>4. 云端跨平台适配 <br>5. 专属的一键拨叫 在线咨询 地图导航 二维码 一键分享实用功能。"
+                            }
+                        ]
+                    }
+                }
+            ],
+            "hidden": 1
+        },
+        {
+            "id": "one",
+            "name": "one",
+            "desc": "简约风格",
+            "options": {
+                "multiple": false
+            },
+            "hook": "hook-am-accordion-one",
+            "variables": [
+                {
+                    "variable": "accordion-item-border-color",
+                    "name": "边框颜色",
+                    "default": "#dfdfdf",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-item",
+                            "property": "border-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-title-color",
+                    "name": "标题颜色",
+                    "default": "rgba(0,0,0,0.6)",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-content-color",
+                    "name": "内容颜色",
+                    "default": "#666",
+                    "used": [
+                        {
+                            "selector": ".am-accordion-content",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-content-color",
+                    "name": "激活边框颜色",
+                    "default": "rgba(21,175,239,0.4)",
+                    "used": [
+                        {
+                            "selector": ".am-active",
+                            "property": "border-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-title-active-color",
+                    "name": "激活标题文本颜色",
+                    "default": "rgba(21,175,239,0.4)",
+                    "used": [
+                        {
+                            "selector": ".am-active .am-accordion-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "accordion-title-active-bg-color",
+                    "name": "激活标题背景颜色",
+                    "default": "rgba(21,175,239,0.4)",
+                    "used": [
+                        {
+                            "selector": ".am-active .am-accordion-title",
+                            "property": "background-color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "content": [
+                            {
+                                "title": "云适配的技术原理是什么？",
+                                "content": "我们采用最先进的浏览器内核引擎渲染原理，通过Brwoser Render Engine把网页进行渲染，通过DOM Analyzer和Style Analyzer分析、分离数据和样式，分离后的数据和样式进行重新渲染，并且优化了HTML/CSS/Javascript代码，减少HTTP连接，产生云适配后的网页。",
+                                "active": true
+                            },
+                            {
+                                "title": "会不会由于我们的网站点击量大，出现云端服务器崩溃？",
+                                "content": "云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。"
+                            },
+                            {
+                                "title": "云适配相对其他手机适配服务有哪些优点？",
+                                "content": "1. 一行代码，简单快捷 <br>2. 网址不变且唯一 <br>3. 内容实时同步更新 <br>4. 云端跨平台适配 <br>5. 专属的一键拨叫 在线咨询 地图导航 二维码 一键分享实用功能。"
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    ],
+
+    "jsBase": [
+        "core.js",
+        "util.fastclick.js"
+    ],
+
+    "jsDependencies": [
+        "amui.accordion.js"
+    ],
+
+    "script": "accordion.js",
+
+    "api": {
+        "id": {
+            "name": "ID",
+            "desc": "模块自定义ID，遵循CSS ID命名规范",
+            "type": "text",
+            "default": "",
+            "required": false
+        },
+        "className": {
+            "name": "Class",
+            "desc": "用户自定义模块class，遵循 CSS class 命名规范",
+            "placeholder": "css类名，多个用空格分隔",
+            "type": "text",
+            "default": "",
+            "required": false
+        },
+        "theme": {
+            "name": "主题",
+            "desc": "模块主题",
+            "type": "select",
+            "default": "default",
+            "required": true,
+            "dataList": "<%= pkg.themes %>"
+        },
+        "options": {
+            "multiple": {
+                "name": "同时展开多个面板",
+                "desc": "是否允许同时展开多个面板",
+                "type": "select",
+                "default": false,
+                "required": false,
+                "dataList": [
+                    {
+                        "value": "false",
+                        "title": "不启用",
+                        "selected": true
+                    },
+                    {
+                        "value": true,
+                        "title": "启用"
+                    }
+                ]
+            }
+        },
+
+        "content": {
+            "type": "Array",
+            "item": {
+                "title": {
+                    "type": "text",
+                    "comment": "面板标题"
+                },
+                "content": {
+                    "type": "html",
+                    "comment": "面板内容"
+                }
+            }
+        }
+    },
+
+    "readme": "http://docs.yunshipei.com/amui/#accordion",
+
+    "example": "/*\n 此模块的使用方法：采集原PC网站上的标题以及内容的数据放到此模块的数据里。\n \n 常用用途：通常用来采集一些纯内容列表的页面。\n \n 了解AMUI折叠面板的模块详情，请访问http://ide.yunshipei.com/doc/amui/#accordion。\n\n         示例代码：\n         var data = [];\n         $(\".xx\").find(\"xx\").each(function(){\n             data.push({\n                 \"title\": $(this).find(\"xx\").text(), \n                 \"content\": $(this).find(\"xx\").html() \n             });\n         });\n*/\nvar data = [\n    {\n        \"title\": \"\",    // 面板标题 填写大标题\n        \"content\": \"\"   // 面板内容 填写下拉菜单中的内容\n    }\n];\n\nreturn data;\n",
+
+    "hidden": false
+}

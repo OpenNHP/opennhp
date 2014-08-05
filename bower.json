@@ -1,0 +1,8 @@
+{
+    "name": "AMUI",
+    "version": "1.0.0",
+    "dependencies": {
+        "zepto": "latest",
+        "handlebars": "latest"
+    }
+}

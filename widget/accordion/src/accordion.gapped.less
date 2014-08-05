@@ -1,0 +1,68 @@
+/**
+  * Accordion Theme: gapped
+  * Theme ID: t2
+  * Author: Minwe (minwe@yunshipei.com)
+  */
+
+.am-accordion-gapped {
+
+  @accordion-item-border-color: rgba(0, 0, 0, 0.1);
+
+  @accordion-title-color: rgba(0, 0, 0, 0.6);
+  @accordion-title-active-color: rgba(0, 0, 0, 0.8);
+  @accordion-title-active-bg-color: rgba(0, 0, 0, 0.1);
+
+  @accordion-content-color: #666;
+
+  margin: .5rem 1rem;
+
+  .am-accordion-item {
+    border: 1px solid @accordion-item-border-color;
+    margin: .5rem 0;
+  }
+
+  .am-accordion-title {
+    color: @accordion-title-color;
+    .transition(background-color 0.2s ease-out);
+    padding: 0.8rem 2rem 0.8rem 1rem;
+    position: relative;
+
+    &::after {
+      content: @fa-var-angle-right;
+      .am-icon-font;
+      .transition(all 0.2s linear);
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      margin-top: -0.8rem;
+    }
+
+    &:hover {
+      color: @accordion-title-active-color;
+    }
+  }
+
+  .am-accordion-content {
+    padding: 0 1rem;
+    color: @accordion-content-color;
+    font-size: 1.4rem;
+  }
+
+  // active
+  .am-active {
+    .am-accordion-title {
+      background-color: @accordion-title-active-bg-color;
+      color: @accordion-title-active-color;
+      &::after {
+        .rotate(90deg)
+      }
+    }
+    .am-accordion-content {
+      padding: 1rem 1rem 1.5rem;
+    }
+  }
+
+  .hook-am-accordion-gapped;
+}
+
+.hook-am-accordion-gapped() {}

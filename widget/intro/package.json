@@ -1,0 +1,457 @@
+{
+    "name": "intro",
+
+    "version": "2.0.0",
+
+    "localName": {
+        "en": "Intro",
+        "zh-cn": "简介"
+    },
+
+    "icon": "intro.png",
+
+    "author": {
+        "name": "Shengli",
+        "email": "china_victory@yunshipei.com"
+    },
+
+    "description": "多用于简单的场景，如网站简介、关于网站等",
+
+    "poweredBy": "AllMobilize",
+
+    "styleBase": [
+        "variables.less",
+        "mixins.less",
+        "base.less",
+        "grid.less",
+        "block-grid.less",
+        "icon.less",
+        "utility.less"
+    ],
+
+    "template": "intro.hbs",
+
+    "styleDependencies": [
+        "button.less"
+    ],
+
+    "style": "intro.less",
+
+    "themes": [
+        {
+            "id": "default",
+            "name": "default",
+            "desc": "默认",
+            "options": {
+                "leftCols": "5",
+                "rightCols": "7",
+                "position": "top"
+            },
+            "hook": "hook-am-intro-default",
+            "variables": [
+                {
+                    "variable": "intro-bg-color",
+                    "name": "背景颜色",
+                    "default": "#428bca",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "intro-text-color",
+                    "name": "文本颜色",
+                    "default": "#ffffff",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "intro-a-color",
+                    "name": "More链接颜色",
+                    "default": "#ffffff",
+                    "used": [
+                        {
+                            "selector": ".am-intro-top a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "intro-border-color",
+                    "name": "More边框颜色",
+                    "default": "#cccccc",
+                    "used": [
+                        {
+                            "selector": ".am-intro-more-bottom a",
+                            "property": "border-color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "options": {
+                            "leftCols": 5,
+                            "rightCols": 7,
+                            "position": "top"
+                        },
+                        "content": {
+                            "top": "栏目标题",
+                            "more": "<a href=\"#\">More »</a>",
+                            "left": "<img src=\"http://upload.wikimedia.org/wikipedia/zh/0/0c/GraceHopper.jpg\" alt=\"Grace\" />",
+                            "right": "<p>葛丽丝·穆雷·霍普，生于美国纽约州纽约市，美国海军准将及计算机科学家，世界最早一批的程式设计师之一，也是最早的女性程式设计师之一。</p>"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": "clear",
+            "name": "clear",
+            "desc": "ios7默认",
+            "options": {
+                "leftCols": "5",
+                "rightCols": "7",
+                "position": "top"
+            },
+            "hook": "hook-am-intro-clear",
+            "variables": [
+                {
+                    "variable": "intro-bg-color",
+                    "name": "背景颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "intro-text-color",
+                    "name": "文本颜色",
+                    "default": "#333",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "intro-a-color",
+                    "name": "链接颜色",
+                    "default": "#007aff",
+                    "used": [
+                        {
+                            "selector": ".am-intro-top a",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-intro-right a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "intro-top-before-bg-color",
+                    "name": "标题小方块颜色",
+                    "default": "#007aff",
+                    "used": [
+                        {
+                            "selector": ".am-intro-top::before",
+                            "property": "background-color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "options": {
+                            "leftCols": 5,
+                            "rightCols": 7,
+                            "position": "top"
+                        },
+                        "content": {
+                            "top": "栏目标题",
+                            "more": "<a href=\"#\">查看详情</a>",
+                            "left": "<img src=\"http://img4.duitang.com/uploads/item/201402/21/20140221160659_rdrHJ.thumb.600_0.jpeg\" alt=\"冰雪奇缘\" />",
+                            "right": "<p>冰雪奇缘（英语：Frozen）是2013年一部美国3D电脑动画电影。电影由华特<a href=\"##\">迪士尼动画</a>工作室制作，并由华特迪士尼工作室电影公司发行。这部影片由克里斯·巴克和詹妮弗·李导演，并由克里斯汀·贝尔、伊迪娜·门泽尔、<a href=\"##\">乔纳森·格罗夫</a>等配音。</p>"
+                        }
+                    }
+                }
+            ],
+            "hidden": 1
+        },
+        {
+            "id": "one",
+            "name": "one",
+            "desc": "简约风格",
+            "options": {
+                "leftCols": "5",
+                "rightCols": "7",
+                "position": "bottom"
+            },
+            "hook": "hook-am-intro-one",
+            "variables": [
+                {
+                    "variable": "intro-text-color",
+                    "name": "标题颜色",
+                    "default": "#222",
+                    "used": [
+                        {
+                            "selector": ".am-intro-top",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "intro-right-text-color",
+                    "name": "文本颜色",
+                    "default": "#222",
+                    "used": [
+                        {
+                            "selector": ".am-intro-right",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "intro-a-color",
+                    "name": "MORE链接颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-intro-more > a",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "options": {
+                            "leftCols": 5,
+                            "rightCols": 7,
+                            "position": "bottom"
+                        },
+                        "content": {
+                            "top" : "栏目标题",
+                            "more" : "<a href=\"#\">查看详情</a>",
+                            "left": "<img src=\"http://upload.wikimedia.org/wikipedia/zh/0/0c/GraceHopper.jpg\" alt=\"Grace\" />",
+                            "right": "<p>葛丽丝·穆雷·霍普，生于美国纽约州纽约市，美国海军准将及计算机科学家，世界最早一批的程式设计师之一，也是最早的女性程式设计师之一。</p>"
+                        }
+                    }
+                }
+            ]
+        }
+    ],
+
+    "jsBase": [
+        "core.js",
+        "util.fastclick.js"
+    ],
+
+    "jsDependencies": [],
+
+    "script": "intro.js",
+
+    "api": {
+        "id": {
+            "name": "ID",
+            "desc": "模块自定义ID，遵循CSS ID命名规范",
+            "type": "text",
+            "default": "",
+            "required": false
+        },
+        "className": {
+            "name": "自定Class",
+            "desc": "用户自定义模块class，遵循 CSS class 命名规范",
+            "type": "text",
+            "placeholder": "css类名，多个用空格分隔",
+            "default": "",
+            "required": false
+        },
+        "theme": {
+            "name": "主题",
+            "desc": "模块主题",
+            "type": "select",
+            "default": "default",
+            "required": true,
+            "dataList": "<%= pkg.themes %>"
+        },
+        "options": {
+            "leftCols": {
+                "name": "左部大小（单位：栅格数）",
+                "desc": "左部所占栅格数（2-10）",
+                "type": "select",
+                "default": "5",
+                "required": true,
+                "dataList": [
+                    {
+                        "value": "1",
+                        "title": "1"
+                    },
+                    {
+                        "value": "2",
+                        "title": "2"
+                    },
+                    {
+                        "value": "3",
+                        "title": "3"
+                    },
+                    {
+                        "value": "4",
+                        "title": "4"
+                    },
+                    {
+                        "value": "5",
+                        "title": "5"
+                    },
+                    {
+                        "value": "6",
+                        "title": "6"
+                    },
+                    {
+                        "value": "7",
+                        "title": "7"
+                    },
+                    {
+                        "value": "8",
+                        "title": "8"
+                    },
+                    {
+                        "value": "9",
+                        "title": "9"
+                    },
+                    {
+                        "value": "10",
+                        "title": "10"
+                    },
+                    {
+                        "value": "11",
+                        "title": "11"
+                    },
+                    {
+                        "value": "12",
+                        "title": "12"
+                    }
+                ]
+            },
+            "rightCols": {
+                "name": "右部大小（单位：栅格数）",
+                "desc": "右部所占栅格数（2-10）",
+                "type": "select",
+                "default": "7",
+                "required": true,
+                "dataList": [
+                    {
+                        "value": "1",
+                        "title": "1"
+                    },
+                    {
+                        "value": "2",
+                        "title": "2"
+                    },
+                    {
+                        "value": "3",
+                        "title": "3"
+                    },
+                    {
+                        "value": "4",
+                        "title": "4"
+                    },
+                    {
+                        "value": "5",
+                        "title": "5"
+                    },
+                    {
+                        "value": "6",
+                        "title": "6"
+                    },
+                    {
+                        "value": "7",
+                        "title": "7"
+                    },
+                    {
+                        "value": "8",
+                        "title": "8"
+                    },
+                    {
+                        "value": "9",
+                        "title": "9"
+                    },
+                    {
+                        "value": "10",
+                        "title": "10"
+                    },
+                    {
+                        "value": "11",
+                        "title": "11"
+                    },
+                    {
+                        "value": "12",
+                        "title": "12"
+                    }
+                ]
+            },
+            "position": {
+                "name": "更多链接位置",
+                "desc": "更多链接显示位置",
+                "type": "select",
+                "default": "top",
+                "required": false,
+                "dataList": [
+                    {
+                        "value": "top",
+                        "title": "右上部"
+                    },
+                    {
+                        "value": "bottom",
+                        "title": "下部"
+                    }
+                ]
+            }
+        },
+
+        "content": {
+            "type": "Object",
+            "item": {
+                "top": {
+                    "type": "text",
+                    "desc": "标题"
+                },
+                "more": {
+                    "type": "html",
+                    "desc": "更多链接"
+                },
+                "left": {
+                    "type": "html",
+                    "desc": "左栏内容"
+                },
+                "right": {
+                    "type": "html",
+                    "desc": "右栏内容"
+                }
+            }
+        }
+    },
+
+    "readme": "http://docs.yunshipei.com/amui/#intro",
+
+    "example": "/*\n 此模块的使用方法：采集原PC网站上的图片数据以及标题内容放到此模块。\n \n 常用用途：通常用来采集一些有单张图片以及图片注释文字的简介介绍等。\n \n 了解AMUI的模块详情，请访问http://ide.yunshipei.com/doc/amui/#intro。\n\n 示例代码：\n\n         var data = [];\n         $(\".listpart\").eq(1).find(\"li\").each(function(){\n             data.push({\n                 \"top\": $(this).find(\".news-pic\").find(\"img\").src(),  \n                 \"more\": \"more\", \n                 \"left\": $(this).find(\".headline\").find(\"a\").text(),\n                 \"right\":  $(this).find(\".headline\").find(\"img\").outerHTML()  \n             });\n         });\n         return data;\n*/\n\nvar data = {\n    \"top\": \"\",  // 标题\n    \"more\": \"\", // 更多链接（支持html标签）\n    \"left\": \"\", //左边的内容\n    \"right\": \"\" //右边的内容\n};\nreturn data;\n",
+
+    "hidden": false
+}

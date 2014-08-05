@@ -1,0 +1,126 @@
+// Name:                      Pagination
+// Description:               Defines style for navigation
+//
+// Component:                `am-pagination`
+//
+// Sub-objects:              `am-pagination-prev`
+//                           `am-pagination-next`
+//
+// Modifiers:                `am-pagination-left`
+//                           `am-pagination-right`
+//
+// States:                   `am-active`
+//                           `am-disabled`
+//
+// ========================================================================
+
+
+/* ========================================================================
+   Component: Pagination
+ ========================================================================== */
+
+.am-pagination {
+  padding-left: 0;
+  margin: @pagination-margin 0;
+  list-style: none;
+  color: @pagination-color;
+  .clearfix();
+  .hook-pagination();
+
+  > li {
+    display: inline;
+    .hook-pagination-item();
+
+    > a,
+    > span {
+      position: relative;
+      float: left; // Collapse white-space
+      // display: block;
+      padding: @pagination-padding;
+      text-decoration: none;
+      line-height: @pagination-line-height;
+      background-color: @pagination-bg;
+      border: 1px solid @pagination-border;
+      border-radius: @global-border-radius;
+      margin-bottom: 5px;
+      margin-right: 5px;
+      // margin-left: -1px;
+    }
+
+    /*&:first-child {
+      > a,
+      > span {
+        margin-left: 0;
+        .border-left-radius(@global-border-radius);
+      }
+    }*/
+
+    &:last-child {
+      > a,
+      > span {
+        margin-right: 0;
+      }
+    }
+  }
+
+  > li > a,
+  > li > span {
+    &:hover,
+    &:focus {
+      background-color: @pagination-hover-bg;
+    }
+  }
+
+  > .am-active > a,
+  > .am-active > span {
+    &,
+    &:hover,
+    &:focus {
+      z-index: 2;
+      color: @pagination-active-color;
+      background-color: @pagination-active-bg;
+      border-color: @pagination-active-bg;
+      cursor: default;
+    }
+    .hook-pagination-item-active();
+  }
+
+  > .am-disabled {
+    > span,
+    > span:hover,
+    > span:focus,
+    > a,
+    > a:hover,
+    > a:focus {
+      color: @pagination-disabled-color;
+      background-color: @pagination-bg;
+      border-color: @pagination-border;
+      cursor: not-allowed;
+      .hook-pagination-item-disabled();
+    }
+  }
+
+  .am-pagination-prev {
+    float: left;
+    a {
+      border-radius: @global-border-radius;
+    }
+  }
+
+  .am-pagination-next {
+    float: right;
+    a {
+      border-radius: @global-border-radius;
+    }
+  }
+}
+
+
+
+// Hooks
+// ========================================================================
+
+.hook-pagination() {}
+.hook-pagination-item() {}
+.hook-pagination-item-active() {}
+.hook-pagination-item-disabled() {}

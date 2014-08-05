@@ -1,0 +1,33 @@
+{{#this}}
+  <figure data-am-widget="figure" class="am am-figure {{#if theme}}am-figure-{{theme}}{{else}}am-figure-default{{/if}}{{#if options.zoomble}} am-figure-zoomable{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"{{#if id}}
+      id="{{id}}"{{/if}}>
+    {{#if options.figcaptionPosition}}
+      {{#ifCond options.figcaptionPosition '==' 'top'}}
+        {{#if content.figcaption}}
+          <figcaption class="am-figure-capition-top">
+            {{content.figcaption}}
+          </figcaption>
+        {{/if}}
+      {{/ifCond}}
+    {{/if}}
+
+    {{#if content.img}}
+      <img src="{{content.img}}" alt="{{#if content.imgAlt}}{{content.imgAlt}}{{else}}{{content.figcaption}}{{/if}}"/>
+    {{/if}}
+    {{#if options.figcaptionPosition}}
+      {{#ifCond options.figcaptionPosition '==' 'bottom'}}
+        {{#if content.figcaption}}
+          <figcaption class="am-figure-capition-btm">
+            {{content.figcaption}}
+          </figcaption>
+        {{/if}}
+      {{/ifCond}}
+    {{else}}
+      {{#if content.figcaption}}
+        <figcaption class="am-figure-capition-btm">
+          {{content.figcaption}}
+        </figcaption>
+      {{/if}}
+    {{/if}}
+  </figure>
+{{/this}}

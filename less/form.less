@@ -1,0 +1,465 @@
+// Name:                       Forms
+// Description:                Define style for form elements
+//
+// Modifiers:                  `.pre-scrollable`
+//
+// ==========================================================================
+
+
+/* Normalize non-controls */
+
+// Restyle and baseline non-control form elements.
+
+fieldset {
+  border: none;
+}
+
+legend {
+  display: block;
+  width: 100%;
+  margin-bottom: @line-height-computed;
+  font-size: (@form-font-size * 1.25);
+  line-height: inherit;
+  color: @legend-color;
+  border-bottom: 1px solid @legend-border-color;
+  padding-bottom: 0.5rem;
+}
+
+label {
+  display: inline-block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+
+// Normalize form controls
+
+// Override content-box in Normalize
+
+input[type="search"] {
+  .box-sizing(border-box);
+}
+
+
+// Position radios and checkboxes better
+
+input[type="radio"],
+input[type="checkbox"] {
+  margin: 4px 0 0;
+  margin-top: 1px \9; /* IE8-9 */
+  line-height: normal;
+}
+
+
+// Set the height of select and file controls to match text inputs
+
+input[type="file"] {
+  display: block;
+}
+
+
+// Make multiple select elements height not fixed
+
+select[multiple],
+select[size] {
+  height: auto;
+}
+
+
+// Fix optgroup Firefox bug per https://github.com/twbs/bootstrap/issues/7611
+
+select optgroup {
+  font-size: inherit;
+  font-style: inherit;
+  font-family: inherit;
+}
+
+
+// Focus for select, file, radio, and checkbox
+
+input[type="file"]:focus,
+input[type="radio"]:focus,
+input[type="checkbox"]:focus {
+  .tab-focus();
+}
+
+
+// Fix for Chrome number input
+// Setting certain font-sizes causes the `I` bar to appear on hover of the bottom increment button.
+// See https://github.com/twbs/bootstrap/issues/8350 for more.
+
+input[type="number"] {
+  &::-webkit-outer-spin-button,
+  &::-webkit-inner-spin-button {
+    height: auto;
+  }
+}
+
+// Adjust output element
+
+output {
+  display: block;
+  padding-top: @global-spacing;
+  font-size: @font-size-base;
+  line-height: @line-height-base;
+  color: @input-color;
+  vertical-align: middle;
+}
+
+
+
+// Common form controls
+
+.am-form select,
+.am-form textarea,
+.am-form input[type="text"],
+.am-form input[type="password"],
+.am-form input[type="datetime"],
+.am-form input[type="datetime-local"],
+.am-form input[type="date"],
+.am-form input[type="month"],
+.am-form input[type="time"],
+.am-form input[type="week"],
+.am-form input[type="number"],
+.am-form input[type="email"],
+.am-form input[type="url"],
+.am-form input[type="search"],
+.am-form input[type="tel"],
+.am-form input[type="color"],
+.am-form-field {
+  display: block;
+  width: 100%;
+  padding: @input-padding;
+  font-size: @form-font-size;
+  line-height: @form-line-height;
+  color: @input-color;
+  vertical-align: middle;
+  background-color: @input-bg;
+  background-image: none;
+  border: 1px solid @input-border;
+  border-radius: @input-border-radius;
+  //.box-shadow(inset 0 1px 1px rgba(0,0,0,.075));
+  .transition(~"border-color ease-in-out .15s, box-shadow ease-in-out .15s");
+
+  // `:focus` state
+  &:focus {
+    outline: 0;
+  }
+  .form-field-focus(@input-border-focus);
+
+  .placeholder();
+
+  // Disabled and read-only inputs
+  &[disabled],
+  &[readonly],
+  fieldset[disabled] & {
+    cursor: not-allowed;
+    background-color: @input-bg-disabled;
+  }
+}
+
+.am-form {
+  // Reset height for block field
+  textarea,
+  select[multiple],
+  select[size]  {
+    height: auto;
+  }
+}
+
+.am-form-select {
+  position: relative;
+
+  select {
+    // height: @form-select-height;
+    -webkit-appearance: none;
+
+    &.am-input-lg {
+      //height: @form-select-height-lg;
+    }
+    &.am-input-sm {
+      //height: @form-select-height-sm;
+    }
+  }
+
+  //&:not(*:root)
+
+  &:after {
+    // only for webkit browsers
+    position: absolute;
+    right: 5px;
+    margin-top: -24px;
+    content: '';
+    .caret-down(6px, @gray-light);
+  }
+}
+
+
+// help text
+
+.am-form-help {
+  display: block;
+  margin-top: 5px;
+  margin-bottom: 10px;
+  color: @gray-light;
+  font-size: 1.3rem;
+}
+
+
+// form group
+
+.am-form-group {
+  margin-bottom: 1.5rem;
+}
+
+
+// Checkboxes and radios
+// Indent the labels to position radios/checkboxes as hanging controls.
+
+.am-radio,
+.am-checkbox {
+  display: block;
+  min-height: @form-font-size * @form-line-height;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  padding-left: 20px;
+  vertical-align: middle;
+  label {
+    display: inline;
+    margin-bottom: 0;
+    font-weight: normal;
+    cursor: pointer;
+  }
+}
+
+.am-radio input[type="radio"],
+.am-radio-inline input[type="radio"],
+.am-checkbox input[type="checkbox"],
+.am-checkbox-inline input[type="checkbox"] {
+  float: left;
+  margin-left: -20px;
+  outline: none;
+}
+.am-radio + .am-radio,
+.am-checkbox + .am-checkbox {
+  margin-top: -5px; // Move up sibling radios or checkboxes for tighter spacing
+}
+
+
+// Radios and checkboxes inline
+
+.am-radio-inline,
+.am-checkbox-inline {
+  display: inline-block;
+  padding-left: 20px;
+  margin-bottom: 0;
+  vertical-align: middle;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.am-radio-inline + .am-radio-inline,
+.am-checkbox-inline + .am-checkbox-inline {
+  margin-top: 0;
+  margin-left: 10px; // space out consecutive inline controls
+}
+
+
+// Apply same disabled cursor tweak as for inputs
+//
+// Note: Neither radios nor checkboxes can be readonly.
+input[type="radio"],
+input[type="checkbox"],
+.am-radio,
+.am-radio-inline,
+.am-checkbox,
+.am-checkbox-inline {
+  &[disabled],
+  fieldset[disabled] & {
+    cursor: not-allowed;
+  }
+}
+
+
+
+/* Form field feedback states */
+
+// Warning
+.am-form-warning {
+  .form-field-validation(@state-warning-text; @state-warning-text);
+}
+// Error
+.am-form-error {
+  .form-field-validation(@state-danger-text; @state-danger-text);
+}
+// Success
+.am-form-success {
+  .form-field-validation(@state-success-text; @state-success-text);
+}
+
+
+
+/* Horizontal forms */
+
+.am-form-horizontal {
+  .am-form-label,
+  .am-radio,
+  .am-checkbox,
+  .am-radio-inline,
+  .am-checkbox-inline {
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: 0.6em;
+  }
+
+  .am-form-group {
+    .clearfix();
+  }
+
+  @media @medium-up {
+    .am-form-label {
+      text-align: right;
+    }
+  }
+}
+
+
+
+// Inline form elements
+
+.am-form-inline {
+
+  @media @medium-up {
+    .am-form-group {
+      display: inline-block;
+      margin-bottom: 0;
+      vertical-align: middle;
+    }
+
+    .am-form-field {
+      display: inline-block;
+      width: auto;
+      vertical-align: middle;
+    }
+
+    .am-input-group {
+      display: inline-table;
+      vertical-align: middle;
+
+      .am-input-group-addon,
+      .am-input-group-btn,
+      .am-form-control {
+        width: auto;
+      }
+    }
+
+    // Input groups need that 100% width though
+    .am-input-group > .am-form-field {
+      width: 100%;
+    }
+
+    .am-form-label {
+      margin-bottom: 0;
+      vertical-align: middle;
+    }
+
+    // Remove default margin on radios/checkboxes that were used for stacking, and
+    // then undo the floating of radios and checkboxes to match (which also avoids
+
+    .am-radio,
+    .am-checkbox {
+      display: inline-block;
+      margin-top: 0;
+      margin-bottom: 0;
+      padding-left: 0;
+      vertical-align: middle;
+    }
+    .am-radio input[type="radio"],
+    .am-checkbox input[type="checkbox"] {
+      float: none;
+      margin-left: 0;
+    }
+
+    // Validation states
+
+    .am-form-feedback .am-form-field-feedback {
+      top: 0;
+    }
+  }
+}
+
+
+
+/* Form field size */
+
+.am-input-sm {
+  font-size: @form-font-size-sm !important;
+}
+
+.am-input-lg {
+  font-size: @form-font-size-lg !important;
+}
+
+
+
+/* Form field feedback states */
+
+.am-form-icon {
+  position: relative;
+
+  .am-form-field {
+    padding-left: @input-padding + 1.25 !important;
+  }
+
+  [class*='am-icon-'] {
+    position: absolute;
+    left: @input-padding;
+    top:  50%;
+    display: block;
+    margin-top: -(@input-padding + 0.15);
+    z-index: 2;
+  }
+}
+
+
+/* Feedback Icon */
+
+.am-form-feedback {
+  position: relative;
+
+  .am-form-field {
+    padding-left: @input-padding !important;
+    padding-right: @input-padding + 1.25 !important;
+  }
+
+  [class*='am-icon-'] {
+    right: @input-padding;
+    left: auto;
+  }
+}
+
+
+/* Form set */
+
+.am-form-set {
+  margin-bottom: 1.5rem;
+  padding: 0;
+  > input {
+    position: relative;
+    top: -1px;
+    border-radius: 0 !important;
+    &:focus {
+      z-index: 2;
+    }
+
+    &:first-child {
+      top: 1px;
+      .border-top-radius(@input-border-radius) !important;
+    }
+
+    &:last-child {
+      top: -2px;
+      .border-bottom-radius(@input-border-radius) !important;
+    }
+  }
+}

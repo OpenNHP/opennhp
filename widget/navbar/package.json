@@ -1,0 +1,404 @@
+{
+    "name": "navbar",
+
+    "version": "1.1.0",
+
+    "localName": {
+        "en": "Navbar",
+        "zh-cn": "工具栏"
+    },
+
+    "icon": "navbar.png",
+
+    "author": {
+        "name": "Shengli",
+        "email": "china_victory@yunshipei.com"
+    },
+
+    "description": "页面底部工具栏",
+
+    "poweredBy": "AllMobilize",
+
+    "styleBase": [
+        "variables.less",
+        "mixins.less",
+        "base.less",
+        "grid.less",
+        "block-grid.less",
+        "icon.less",
+        "utility.less"
+    ],
+
+    "template": "navbar.hbs",
+
+    "styleDependencies": [
+        "ui.modal.less",
+        "ui.component.less",
+        "list.less",
+        "button.less"
+    ],
+
+    "style": "navbar.less",
+
+    "themes": [
+        {
+            "id": "default",
+            "name": "default",
+            "desc": "默认",
+            "options": {
+                "cols": 4,
+                "iconpos": "top"
+            },
+            "hook": "hook-am-navbar-default",
+            "variables": [
+                {
+                    "variable": "navbar-bg-color",
+                    "name": "背景颜色",
+                    "default": "#428bca",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        },
+                        {
+                            "selector": ".am-navbar-moreList",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "navbar-a-color",
+                    "name": "链接颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-navbar-item a",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "options": {
+                            "cols": "4",
+                            "iconpos": "top"
+                        },
+                        "content": [
+                            {
+                                "title": "一键拨号",
+                                "link": "tel:123456789",
+                                "icon": "phone",
+                                "dataApi": ""
+                            },
+                            {
+                                "title": "一键分享",
+                                "link": "###",
+                                "icon": "share-square-o",
+                                "dataApi": "data-am-navbar-share"
+                            },
+                            {
+                                "title": "二维码",
+                                "link": "###",
+                                "icon": "qrcode",
+                                "dataApi": "data-am-navbar-qrcode"
+                            },
+                            {
+                                "title": "关于我们",
+                                "link": "http://yunshipei.com",
+                                "icon": "user-md",
+                                "dataApi": ""
+                            },
+                            {
+                                "title": "下载说明",
+                                "link": "http://yunshipei.com",
+                                "icon": "download",
+                                "dataApi": ""
+                            },
+                            {
+                                "title": "联系我们",
+                                "link": "http://yunshipei.com",
+                                "icon": "location-arrow",
+                                "dataApi": ""
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "id": "clear",
+            "name": "clear",
+            "desc": "ios7默认",
+            "options": {
+                "cols": 4,
+                "iconpos": "top"
+            },
+            "hook": "hook-am-navbar-clear",
+            "variables": [
+                {
+                    "variable": "navbar-a-color",
+                    "name": "链接颜色",
+                    "default": "#929292",
+                    "used": [
+                        {
+                            "selector": ".am-navbar-item a",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "options": {
+                            "cols": "4",
+                            "iconpos": "top"
+                        },
+                        "content": [
+                            {
+                                "title": "一键拨号",
+                                "link": "tel:123456789",
+                                "icon": "phone",
+                                "dataApi": ""
+                            },
+                            {
+                                "title": "一键分享",
+                                "link": "###",
+                                "icon": "share-square-o",
+                                "dataApi": "data-am-navbar-share"
+                            },
+                            {
+                                "title": "二维码",
+                                "link": "###",
+                                "icon": "qrcode",
+                                "dataApi": "data-am-navbar-qrcode"
+                            },
+                            {
+                                "title": "关于我们",
+                                "link": "http://yunshipei.com",
+                                "icon": "user-md",
+                                "dataApi": ""
+                            },
+                            {
+                                "title": "下载说明",
+                                "link": "http://yunshipei.com",
+                                "icon": "download",
+                                "dataApi": ""
+                            },
+                            {
+                                "title": "联系我们",
+                                "link": "http://yunshipei.com",
+                                "icon": "location-arrow",
+                                "dataApi": ""
+                            }
+                        ]
+                    }
+                }
+            ],
+            "hidden": 1
+        },
+        {
+            "id": "one",
+            "name": "one",
+            "desc": "简约风格",
+            "options": {
+                "cols": 4,
+                "iconpos": "top"
+            },
+            "hook": "hook-am-navbar-one",
+            "variables": [
+                {
+                    "variable": "navbar-bg-color",
+                    "name": "背景颜色",
+                    "default": "#15afef",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "navbar-a-color",
+                    "name": "链接颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-navbar-item a",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "options": {
+                            "cols": "4",
+                            "iconpos": "top"
+                        },
+                        "content": [
+                            {
+                                "title": "电话",
+                                "link": "tel:123456789",
+                                "customIcon": "/i/navbar/phone.png",
+                                "dataApi": ""
+                            },
+                            {
+                                "title": "信息",
+                                "link": "###",
+                                "customIcon": "/i/navbar/Information.png",
+                                "dataApi": ""
+                            },
+                            {
+                                "title": "地图",
+                                "link": "###",
+                                "customIcon": "/i/navbar/map.png",
+                                "dataApi": ""
+                            },
+                            {
+                                "title": "分享",
+                                "link": "###",
+                                "customIcon": "/i/navbar/share.png",
+                                "dataApi": "data-am-navbar-share"
+                            },
+                            {
+                                "title": "收藏",
+                                "link": "###",
+                                "icon": "star",
+                                "dataApi": ""
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    ],
+
+    "jsBase": [
+        "core.js",
+        "util.fastclick.js"
+    ],
+
+    "jsDependencies": [
+        "ui.modal.js",
+        "ui.dimmer.js",
+        "util.qrcode.js"
+    ],
+
+    "script": "navbar.js",
+
+    "api": {
+        "id": {
+            "name": "ID",
+            "desc": "模块自定义ID，遵循CSS ID命名规范",
+            "type": "text",
+            "default": "",
+            "required": false
+        },
+
+        "className": {
+            "name": "Class",
+            "desc": "用户自定义模块class，遵循 CSS class 命名规范",
+            "type": "text",
+            "placeholder": "css类名，多个用空格分隔",
+            "default": "",
+            "required": false
+        },
+
+        "theme": {
+            "name": "主题",
+            "desc": "模块主题",
+            "type": "select",
+            "default": "default",
+            "required": false,
+            "dataList": "<%= pkg.themes %>"
+        },
+
+        "options": {
+            "cols": {
+                "name": "列数",
+                "desc": "分栏书面（建议1-4）",
+                "type": "select",
+                "required": false,
+                "default": 2,
+                "dataList": [
+                    {
+                        "value": 1,
+                        "title": "1"
+                    },
+                    {
+                        "value": 2,
+                        "title": "2"
+                    },
+                    {
+                        "value": 3,
+                        "title": "3"
+                    },
+                    {
+                        "value": 4,
+                        "title": "4"
+                    }
+                ]
+            },
+            "iconpos": {
+                "name": "图标位置",
+                "desc": "图标默认在左，可设置在上方",
+                "type": "select",
+                "required": false,
+                "default": "",
+                "dataList": [
+                    {
+                        "value": "",
+                        "title": "左边"
+                    },
+                    {
+                        "value": "top",
+                        "title": "上方"
+                    }
+                ]
+            }
+        },
+
+        "content": {
+            "type": "Array",
+            "item": {
+                "title": {
+                    "type": "text",
+                    "desc": "链接文本"
+                },
+
+                "link": {
+                    "type": "text",
+                    "链接地址": "链接地址"
+                },
+
+                "customIcon": {
+                    "type": "image",
+                    "desc": "自定义图标，上传图片或者填写icon地址"
+                },
+
+                "icon": {
+                    "type": "text",
+                    "desc": "Font Awesome 图标名称"
+                },
+
+                "dataApi": {
+                    "type": "text",
+                    "desc": "数据接口，分享模块data-am-navbar-share，二维码 data-am-navbar-qrcode"
+                }
+            }
+        }
+    },
+
+    "readme": "http://docs.yunshipei.com/amui/#navbar",
+
+    "example": "/*\n 此模块的使用方法：应用amui中现成的图标数据填写在以下数据中，直接形成想要的按钮。\n \n 常用用途：显示在手机下方固定的位置，有一键拨号、二维码等功能按钮。\n \n 了解AMUI模块详情，请访问http://ide.yunshipei.com/doc/amui/#icon。\n\n         示例代码：\n        \n         var data = [\n             {\n                 \"title\": \"拨号\", \n        \n                 \"link\": \"tel:0101245678\", \n        \n                 \"customIcon\": \"xxx.png\", \n        \n                 \"icon\": \"\",\n        \n                 \"dataApi\": \"\"\n             }，\n             {\n                 \"title\": \"分享\", \n        \n                 \"link\": \"\", \n        \n                 \"customIcon\": \"xxx.png\", \n        \n                 \"icon\": \"share\",\n        \n                 \"dataApi\": \"data-am-navbar-share\"\n             }\n         ];\n         return data;\n*/\n\nvar data = [\n    {\n        \"title\": \"\",        // title 值：要显示的文本\n\n        \"link\": \"\",         // link 值 ：如果是电话则写\"tel:0101245678\"\n\n        \"customIcon\": \"\",   // customIcon与下边的icon选用其中之一，customIcon用于上传自定义的小图标，写法：\"customIcon\": context.__root + \"xxx.png\"\n\n        \"icon\": \"\",         //icon 值,例如：分享的图标在AMUI中是am-icon-share ，则此时的icon写法为： \"icon\": \"share\" \n\n        \"dataApi\": \"\"       //dataApi 值可以填写\"data-am-navbar-share\"（用于分享模块） 或者\"data-am-navbar-qrcode\"(用于二维码模块)。若要使用自己上传的二维码 'data-am-navbar-qrcode = 二维码地址' 即可\n    }\n];\nreturn data;\n",
+
+    "hidden": false
+}

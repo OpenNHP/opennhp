@@ -1,0 +1,44 @@
+/**
+  * Pagination Theme: default
+  * Theme ID: default
+  */
+
+.am-pagination-default {
+
+  @pagination-a-bg-color: @gray-lighter;
+  @pagination-a-text-color: @gray-darker;
+  @pagination-active-bg-color: @global-primary;
+  @pagination-active-text-color: @white;
+
+  li, li.am-pagination-first, li.am-pagination-prev, li.am-pagination-next, li.am-pagination-last {
+    > a {
+      border-radius: 0;
+    }
+  }
+  > li:first-child > a{
+    border-bottom-left-radius: 0;
+    border-top-left-radius: 0;
+  }
+  li.am-pagination-next {
+    float: left;
+  }
+  li {
+    a {
+      border-radius: 0;
+      padding: 4px 12px;
+      background-color: @pagination-a-bg-color;
+      color: @pagination-a-text-color;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+  }
+  li.active, li:hover {
+    a {
+      background-color: @pagination-active-bg-color;
+      color: @pagination-active-text-color;
+    }
+  }
+  .hook-am-pagination-default;
+}
+
+.hook-am-pagination-default() {}

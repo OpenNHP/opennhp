@@ -1,0 +1,226 @@
+// Name:            Dropdown
+// Description:     Defines styles for a toggleable dropdown
+//
+// Component:       `am-dropdown`
+//
+// Sub-objects:     `am-dropdown-toggle`
+//                  `am-dropdown-content`
+//                  `am-dropdown-header`
+//
+// Modifiers:       `am-dropdown-flip`
+//                  `am-dropdown-center`
+//                  `am-dropdown-justify`
+//                  `am-dropdown-up`
+//                  `am-dropdown-stack`
+//                  `am-dropdown-navbar`
+//
+// States:          `am-active`
+//                  `am-disabled`
+//
+// Uses:            Animation
+//                  Grid: `uk-width-*`
+//                  Panel: `uk-panel`
+//                  Nav: `uk-nav`
+
+/**  Dropdown
+// ------------------------- */
+
+@dropdown-bg:                    #fff;
+@dropdown-border-color:          #ddd;
+@dropdown-divider-bg:            #e5e5e5;
+
+@dropdown-link-color:            @gray-dark;
+@dropdown-link-hover-color:      darken(@gray-dark, 5%);
+@dropdown-link-hover-bg:         #f5f5f5;
+
+@dropdown-link-active-color:     @component-active-color;
+@dropdown-link-active-bg:        @component-active-bg;
+
+@dropdown-link-disabled-color:   @gray-light;
+
+@dropdown-header-color:          @gray-light;
+
+@dropdown-caret-color:           darken(@dropdown-border-color, 5%);
+
+@caret-width-base: 6px;
+
+@dropdown-animation: am-slide-top-fixed;
+
+// The dropdown wrapper
+
+.am-dropdown {
+  position: relative;
+}
+
+.am-dropdown-toggle:focus {
+  outline: 0;
+}
+
+.am-dropdown-content {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: @z-index-dropdown;
+  display: none;
+  float: left;
+  min-width: 160px;
+  padding: 15px;
+  margin: 8px 0 0;
+  text-align: left;
+  background-color: @dropdown-bg;
+  border: 1px solid @dropdown-border-color;
+  border-radius: @global-border-radius;
+  background-clip: padding-box;
+
+  &:before {
+    content: "";
+    position: absolute;
+    top: -8px;
+    left: 10px;
+    .caret-up(8px, @dropdown-caret-color);
+
+  }
+
+  .am-active > & {
+    display: block;
+    .animation(@dropdown-animation 0.3s ease-in-out);
+  }
+
+  :first-child {
+    margin-top: 0;
+  }
+}
+
+// dropdown menu (ul)
+ul.am-dropdown-content {
+  list-style: none;
+  padding: 5px 0;
+
+  list-style: none;
+
+  // Aligns the dropdown menu to right
+  &.am-fr {
+    right: 0;
+    left: auto;
+  }
+
+  // Dividers (basically an hr) within the dropdown
+  .am-divider {
+    .nav-divider(@dropdown-divider-bg);
+  }
+
+  // Links within the dropdown menu
+  > li > a {
+    display: block;
+    padding: 6px 20px;
+    clear: both;
+    font-weight: normal;
+    color: @dropdown-link-color;
+    white-space: nowrap;
+
+    &:hover,
+    &:focus {
+      text-decoration: none;
+      color: @dropdown-link-hover-color;
+      background-color: @dropdown-link-hover-bg;
+    }
+  }
+
+
+  // Active state
+  > .am-active > a {
+    &,
+    &:hover,
+    &:focus {
+      color: @dropdown-link-active-color;
+      text-decoration: none;
+      outline: 0;
+      background-color: @dropdown-link-active-bg;
+    }
+  }
+
+  // Disabled state
+  > .am-disabled > a {
+    &,
+    &:hover,
+    &:focus {
+      color: @dropdown-link-disabled-color;
+    }
+  }
+
+  > .am-disabled > a {
+    &:hover,
+    &:focus {
+      text-decoration: none;
+      background-color: transparent;
+      background-image: none; // Remove CSS gradient
+      .reset-filter();
+      cursor: not-allowed;
+    }
+  }
+}
+
+
+// Dropdown section headers
+.am-dropdown-header {
+  display: block;
+  padding: 6px 20px;
+  font-size: @font-size-xs;
+  color: @dropdown-header-color;
+}
+
+
+// Right aligned dropdown
+.am-fr > .am-dropdown-content {
+  right: 0;
+  left: auto;
+
+  &:before {
+    right: 10px;
+    left: auto;
+  }
+}
+
+// TODO: 1. 分隔线上下间距调整
+//       2. 位置设置
+//       3. 与 navbar 混合
+
+/*// Allow for dropdowns to go bottom up (aka, dropup-menu)
+//
+// Just add .dropup after the standard .dropdown class and you're set, bro.
+// TODO: abstract this so that the navbar fixed styles are not placed here?
+
+.dropup,
+.navbar-fixed-bottom .dropdown {
+  // Reverse the caret
+  .caret {
+    border-top: 0;
+    border-bottom: @caret-width-base solid;
+    content: "";
+  }
+  // Different positioning for bottom up menu
+  .dropdown-menu {
+    top: auto;
+    bottom: 100%;
+    margin-bottom: 1px;
+  }
+}
+
+
+// Component alignment
+//
+// Reiterate per navbar.less and the modified component alignment there.
+
+@media (min-width: @grid-float-breakpoint) {
+  .navbar-right {
+    .dropdown-menu {
+      .dropdown-menu-right();
+    }
+    // Necessary for overrides of the default right aligned menu.
+    // Will remove come v4 in all likelihood.
+    .dropdown-menu-left {
+      .dropdown-menu-left();
+    }
+  }
+}*/
+

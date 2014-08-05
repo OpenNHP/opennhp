@@ -1,0 +1,49 @@
+.am-figure-default {
+  @figure-img-border-color: @gray-lighter;
+  @figure-color: @gray-dark;
+
+  margin: 10px;
+
+  img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    padding: 2px;
+    border: 1px solid @figure-img-border-color;
+    margin: 10px auto;
+  }
+
+  figcaption {
+    text-align: center;
+    font-size: 1.4rem;
+    margin-bottom: 15px;
+    color: @figure-color;
+  }
+
+  .hook-am-figure-default;
+}
+
+.hook-am-figure-default() {};
+
+.am-figure-zoomable {
+  @figure-icon-color: @gray-light;
+  @figure-icon-hover-color: @gray-lighter;
+
+  position: relative;
+  cursor: pointer;
+  &::after {
+    .am-icon-font;
+    content: @fa-var-search-plus;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    color: @figure-icon-color;
+    font-size: 1.6rem;
+    .transition(all 0.2s);
+  }
+  &:hover {
+    &::after {
+      color: @figure-icon-hover-color;
+    }
+  }
+}

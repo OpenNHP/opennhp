@@ -1,0 +1,235 @@
+// Name:                     Button Group
+// Description:              Define style for button group
+//
+// Component:                `am-btn-group`
+//
+// Modifiers:                ``
+//
+// Uses:                     Button
+//                           Icon
+//
+// ========================================================================
+
+
+/* ========================================================================
+   Component: Button Group
+ ========================================================================== */
+
+// Make the div behave like a button
+.am-btn-group,
+.am-btn-group-stacked {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle; // match .btn alignment given font-size hack above
+  > .am-btn {
+    position: relative;
+    float: left;
+    // Bring the "active" button to the front
+    &:hover,
+    &:focus,
+    &:active,
+    &.active {
+      z-index: 2;
+    }
+    &:focus {
+      // Remove focus outline when dropdown JS adds it after closing the menu
+      outline: 0;
+    }
+  }
+}
+
+
+
+// Prevent double borders when buttons are next to each other
+// ========================================================================
+.am-btn-group {
+  .am-btn + .am-btn,
+  .am-btn + .am-btn-group,
+  .am-btn-group + .am-btn,
+  .am-btn-group + .am-btn-group {
+    margin-left: -1px;
+  }
+}
+
+// Optional: Group multiple button groups together for a toolbar
+.am-btn-toolbar {
+  margin-left: -5px; // Offset the first child's margin
+  .clearfix();
+
+  .am-btn-group,
+  .am-input-group {
+    float: left;
+  }
+
+  > .am-btn,
+  > .am-btn-group,
+  > .am-input-group {
+    margin-left: 5px;
+  }
+
+}
+
+.am-btn-group > .am-btn:not(:first-child):not(:last-child):not(.am-dropdown-toggle) {
+  border-radius: 0;
+}
+
+// Set corners individual because sometimes a single button can be in a .btn-group and we need :first-child and :last-child to both match
+.am-btn-group > .am-btn:first-child {
+  margin-left: 0;
+  &:not(:last-child):not(.am-dropdown-toggle) {
+    .border-right-radius(0);
+  }
+}
+// Need .dropdown-toggle since :last-child doesn't apply given a .dropdown-menu immediately after it
+.am-btn-group > .am-btn:last-child:not(:first-child),
+.am-btn-group > .am-dropdown-toggle:not(:first-child) {
+  .border-left-radius(0);
+}
+
+// Custom edits for including btn-groups within btn-groups (useful for including dropdown buttons within a btn-group)
+.am-btn-group > .am-btn-group {
+  float: left;
+}
+.am-btn-group > .am-btn-group:not(:first-child):not(:last-child) > .am-btn {
+  border-radius: 0;
+}
+.am-btn-group > .am-btn-group:first-child {
+  > .am-btn:last-child,
+  > .am-dropdown-toggle {
+    .border-right-radius(0);
+  }
+}
+.am-btn-group > .am-btn-group:last-child > .am-btn:first-child {
+  .border-left-radius(0);
+}
+
+
+
+// Sizing
+// ========================================================================
+
+.am-btn-group-xs > .am-btn { &:extend(.am-btn-xs); }
+.am-btn-group-sm > .am-btn { &:extend(.am-btn-sm); }
+.am-btn-group-lg > .am-btn { &:extend(.am-btn-lg); }
+
+
+
+// Stacked button group
+// ========================================================================
+
+.am-btn-group-stacked {
+  > .am-btn,
+  > .am-btn-group,
+  > .am-btn-group > .am-btn {
+    display: block;
+    float: none;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  // Clear floats so dropdown menus can be properly placed
+  > .am-btn-group {
+    &:extend(.clearfix all);
+  > .am-btn {
+    float: none;
+  }
+  }
+
+  > .am-btn + .am-btn,
+  > .am-btn + .am-btn-group,
+  > .am-btn-group + .am-btn,
+  > .am-btn-group + .am-btn-group {
+    margin-top: -1px;
+    margin-left: 0;
+  }
+}
+
+.am-btn-group-stacked > .am-btn {
+  &:not(:first-child):not(:last-child) {
+    border-radius: 0;
+  }
+  &:first-child:not(:last-child) {
+    border-top-right-radius: @global-border-radius;
+    .border-bottom-radius(0);
+  }
+  &:last-child:not(:first-child) {
+    border-bottom-left-radius: @global-border-radius;
+    .border-top-radius(0);
+  }
+}
+.am-btn-group-stacked > .am-btn-group:not(:first-child):not(:last-child) > .am-btn {
+  border-radius: 0;
+}
+.am-btn-group-stacked > .am-btn-group:first-child:not(:last-child) {
+  > .am-btn:last-child,
+  > .am-dropdown-toggle {
+    .border-bottom-radius(0);
+  }
+}
+.am-btn-group-stacked > .am-btn-group:last-child:not(:first-child) > .am-btn:first-child {
+  .border-top-radius(0);
+}
+
+
+
+// Justify button group
+// ========================================================================
+
+.am-btn-group-justify {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  > .am-btn,
+  > .am-btn-group {
+    float: none;
+    display: table-cell;
+    width: 1%;
+  }
+  > .am-btn-group .am-btn {
+    width: 100%;
+  }
+}
+
+
+
+// Dropdown button group
+// ========================================================================
+
+.am-btn-group {
+  .am-dropdown {
+    float: left;
+    margin-left: -1px;
+    > .am-btn {
+      .border-left-radius(0);
+    }
+  }
+
+  .am-active .am-dropdown-toggle {
+    .box-shadow(inset 0 3px 5px rgba(0, 0, 0, .125));
+
+    // Show no shadow for `.btn-link` since it has no other button styles.
+    &.am-btn-link {
+      .box-shadow(none);
+    }
+  }
+
+  .am-dropdown-toggle:active,
+  .am-active .am-dropdown-toggle {
+    outline: 0;
+  }
+}
+
+
+
+// Checkbox and radio options
+// for JS Button plugin
+// ========================================================================
+
+[data-am-button] > .am-btn > input[type="radio"],
+[data-am-button] > .am-btn > input[type="checkbox"] {
+  position: absolute;
+  z-index: -1;
+  .opacity(0);
+}
+

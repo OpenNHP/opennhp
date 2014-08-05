@@ -1,0 +1,44 @@
+/**
+  * Pagination Theme: pop
+  * Theme ID: pop
+  */
+
+.am-pagination-pop {
+
+  @pagination-a-bg-color: #DFE2EA;
+  @pagination-a-text-color: #656F7E;
+
+  position: relative;
+  li {
+    a {
+      line-height: 36px;
+      background-color: @pagination-a-bg-color;
+      padding: 0 15px;
+      border: 0;
+      color: @pagination-a-text-color;
+    }
+  }
+  .am-pagination-select {
+    float: left;
+    position: absolute;
+    top: 0;
+    left: 50%;
+    margin-left: -35px;
+    width: 70px;
+    height: 36px;
+    select {
+      border: 0;
+      color: @pagination-a-text-color;
+      background-color: @pagination-a-bg-color;
+      line-height: 36px;
+      width: 70px;
+      height: 36px;
+      border-radius: 4px;
+      text-align: center;
+      -webkit-appearance: none;
+      padding-left: 20px;
+    }
+  }
+  .hook-am-pagination-pop;
+}
+.hook-am-pagination-pop() {};

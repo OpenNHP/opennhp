@@ -1,0 +1,94 @@
+/**
+  * Footer Theme: one
+  * Theme ID: one
+  */
+
+@global-body-bg: #f3f3f3;
+
+@global-primary: #15afef;
+
+@global-black: #000;
+
+@global-lighter-gray: rgb(226, 226, 226);
+@global-light-gray: #dfdfdf;
+@global-gray: #dedfe3;
+@global-dark-gray: #888;
+@global-darker-gray: #666;
+
+@global-mask-bg-color: rgba(92,92,92,0.6);
+
+.am-footer-one {
+
+  @footer-a-color: @global-primary;
+  @footer-ysp-color: @global-primary;
+
+  @footer-divider-color: @global-darker-gray;
+
+  @footer-text-color: lighten(@gray, 12%); //#777777
+  @am-footer-desktop-color: @global-darker-gray;
+  @am-footer-text-a: #000;
+  a {
+    color: @footer-a-color;
+    font-weight: bold;
+  }
+
+  #godesktop {
+    font-weight: normal;
+    color: @am-footer-desktop-color;
+  }
+
+  .am-footer-ysp {
+    color: @footer-ysp-color;
+    cursor: pointer;
+  }
+
+  .am-footer-divider {
+    color: @footer-divider-color;
+  }
+
+  .am-footer-desktop {
+    color: @am-footer-desktop-color;
+  }
+
+  .am-footer-text {
+    color: @footer-text-color;
+    overflow: hidden;
+    padding: 0 10px;
+    ul,li{
+      padding-left: 0;
+      list-style: none;
+    }
+
+
+    p{
+      margin: 4px 0;
+    }
+    a {
+      font-weight: normal;
+      color: @am-footer-text-a;
+      margin: 0 1px;
+    }
+    img{
+      display: block;
+      max-width: 100%;
+      margin: 0 auto 2px auto;
+    }
+
+  }
+
+  .hook-am-footer-one;
+
+  @media screen and  (min-width: @breakpoint-md) {
+    & {
+      .am-footer-text {
+        p {
+          display: inline-block;
+          margin: 5px;
+        }
+      }
+    }
+  }
+}
+
+.hook-am-footer-one() {
+}

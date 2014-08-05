@@ -1,0 +1,209 @@
+/**
+  * Menu Theme: one
+  * Theme ID: one
+  * Author: one (hzp@yunshipei.com)
+  */
+
+@global-body-bg: #f3f3f3;
+
+@global-primary: #15afef;
+
+@global-black: #000;
+
+@global-lighter-gray: rgb(226, 226, 226);
+@global-light-gray: #dfdfdf;
+@global-gray: #dedfe3;
+@global-dark-gray: #888;
+@global-darker-gray: #666;
+
+@global-mask-bg-color: rgba(92,92,92,0.6);
+
+.am-menu-one {
+  @am-menu-one-bd: #c4c4c4;
+  @am-menu-one-prev-bg: #dfdfdf;
+  @am-menu-one-prev-active-bg: #15aef0;
+
+  @am-menu-one-prev-color: #666;
+  @am-menu-one-prev-active-color: #fff;
+  @am-menu-one-prev-disabled: #bebebe;
+
+  @am-menulv3-bg: #fff;
+  @am-menulv2-bg: #f3f3f3;
+
+  @am-menu-a: #303030;
+
+  @am-menu-zIndex: 1050;
+  padding: 0 10px 10px 10px;
+  background: #fff;
+
+  & > li{
+    height: 40px;
+    position: relative;
+  }
+
+  .am-menu-wrap {
+    width: 100%;
+    padding: 0 24px;
+    float: left;
+    position: relative;
+    overflow-x: hidden;
+    background: @am-menulv2-bg;
+  }
+  .am-menu-lv2{
+    width: 2000px;
+    position: relative;
+    left: 0;
+
+    .am-menu-item{
+      float: left;
+      width: auto;
+      text-align: center;
+      clear: none;
+
+      & > a{
+        padding: 0 10px;
+        display: block;
+        height: 38px;
+        line-height: 38px;
+        font-size: 1.4rem;
+        border-top: 1px solid @am-menu-one-bd;
+        border-bottom: 1px solid @am-menu-one-bd;
+        color: @am-menu-a;
+        img{
+          height: 38px;
+        }
+      }
+
+      a.active{
+        position: relative;
+        z-index: @am-menu-zIndex + 10;
+        &::after{
+          content: '';
+          position: absolute;
+          left: 50%;
+          bottom: -1px;
+          margin-left: -4px;
+          .caret-up(8px; #fff);
+        }
+        &::before{
+          content: '';
+          position: absolute;
+          left: 50%;
+          bottom: 0px;
+          margin-left: -4px;
+          .caret-up(8px; @am-menu-one-bd);
+        }
+      }
+
+      .am-menu-lv3{
+        width: auto;
+        display: none;
+        border: 1px solid @am-menu-one-bd;
+        border-top: none;
+        position: relative;
+        top: 0;
+        left: -24px;
+        background: @am-menulv3-bg;
+        z-index: @am-menu-zIndex - 10;
+
+        a{
+          border: none;
+        }
+      }
+
+    }
+
+    .am-menu-item-more{
+      overflow: hidden;
+      height: 30px;
+
+      .am-menu-item-into{
+        display: inline-block;
+        text-align: center;
+        height: 24px;
+        line-height: 24px;
+        font-size: 14px;
+        padding: 0 4px;
+        float: right;
+        margin-right: 10px;
+
+        &::after{
+          .am-icon-font;
+          font-size: 2rem;
+          color: @am-menu-one-prev-color;
+          display: inline-block;
+          vertical-align: top;
+          margin: 1px 0 0 6px;
+          content: @fa-var-angle-right;
+        }
+      }
+      .am-menu-item-close{
+        display: inline-block;
+        text-align: center;
+        width: 24px;
+        height: 24px;
+        font-size: 2.4rem;
+        font-weight: 700;
+        line-height: 0;
+        color: #000;
+        text-shadow: 0 1px 0 #fff;
+        opacity: .2;
+        float: left;
+        margin-left: 10px;
+      }
+    }
+
+  }
+
+
+  .am-menu-prev,.am-menu-next{
+    display: block;
+    float: left;
+    width: 24px;
+    height: 38px;
+    border: 1px solid @am-menu-one-bd;
+    background: @am-menu-one-prev-bg;
+    position: absolute;
+    top: 0;
+    z-index: 10;
+    &::before{
+      .am-icon-font;
+      font-size: 2.4rem;
+      color: @am-menu-one-prev-color;
+      display: inline-block;
+      vertical-align: top;
+      margin: -3px 0 0 6px;
+    }
+  }
+
+  .am-menu-prev:hover,.am-menu-prev:active,.am-menu-next:hover,.am-menu-next:active{
+    background: @am-menu-one-prev-active-bg;
+    &::before{
+      color:@am-menu-one-prev-active-color;
+    }
+  }
+
+  .am-menu-disabled{
+    &::before{
+      color: @am-menu-one-prev-disabled;
+    }
+  }
+
+  .am-menu-next{
+    right: 0;
+    &::before{
+      content: @fa-var-angle-right;
+    }
+  }
+  .am-menu-prev{
+    left: 0;
+    &::before{
+      content: @fa-var-angle-left;
+    }
+  }
+
+  .hook-am-menu-one;
+}
+
+.hook-am-menu-one() {
+}

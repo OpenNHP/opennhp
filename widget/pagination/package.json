@@ -1,0 +1,734 @@
+{
+    "name": "pagination",
+
+    "version": "2.0.0",
+
+    "localName": {
+        "en": "Pagination",
+        "zh-cn": "分页"
+    },
+
+    "icon": "pagination.png",
+
+    "author": {
+        "name": "Shengli",
+        "email": "china_victory@yunshipei.com"
+    },
+
+    "description": "分页模块",
+
+    "poweredBy": "AllMobilize",
+
+    "styleBase": [
+        "variables.less",
+        "mixins.less",
+        "base.less",
+        "grid.less",
+        "block-grid.less",
+        "icon.less",
+        "utility.less"
+    ],
+
+    "template": "pagination.hbs",
+
+    "styleDependencies": [
+        "pagination.less"
+    ],
+
+    "style": "pagination.less",
+
+    "themes": [
+        {
+            "id": "default",
+            "name": "default",
+            "desc": "扁平数字按钮",
+            "options": {
+                "select": false
+            },
+            "hook": "hook-am-pagination-default",
+            "variables": [
+                {
+                    "variable": "pagination-a-bg-color",
+                    "name": "页码背景颜色",
+                    "default": "#eee",
+                    "used": [
+                        {
+                            "selector": "li a",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-a-text-color",
+                    "name": "页码文本颜色",
+                    "default": "#222",
+                    "used": [
+                        {
+                            "selector": "li a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-active-bg-color",
+                    "name": "活动链接背景颜色",
+                    "default": "#428bca",
+                    "used": [
+                        {
+                            "selector": "li.active a",
+                            "property": "background-color"
+                        },
+                        {
+                            "selector": "li:hover a",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-active-text-color",
+                    "name": "活动链接文本颜色",
+                    "default": "#ffffff",
+                    "used": [
+                        {
+                            "selector": "li.active a",
+                            "property": "color"
+                        },
+                        {
+                            "selector": "li:hover a",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "content": {
+                            "prevTitle": "上一页",
+                            "prevLink": "#",
+                            "nextTitle": "下一页",
+                            "nextLink": "#",
+                            "firstTitle": "第一页",
+                            "firstLink": "#",
+                            "lastTitle": "最末页",
+                            "lastLink": "#",
+                            "page": [
+                                {
+                                    "title": "1",
+                                    "link": "#"
+                                },
+                                {
+                                    "title": "2",
+                                    "link": "#",
+                                    "class": "active"
+                                },
+                                {
+                                    "title": "3",
+                                    "link": "#"
+                                },
+                                {
+                                    "title": "4",
+                                    "link": "#"
+                                },
+                                {
+                                    "title": "5",
+                                    "link": "#"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": "d2",
+            "name": "d2",
+            "desc": "上下页+数字",
+            "options": {
+                "select": false
+            },
+            "hook": "hook-am-pagination-d2",
+            "variables": [
+                {
+                    "variable": "pagination-a-bg-color",
+                    "name": "页码背景颜色",
+                    "default": "#DFE2EA",
+                    "used": [
+                        {
+                            "selector": "li a",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-a-text-color",
+                    "name": "页码文本颜色",
+                    "default": "#656F7E",
+                    "used": [
+                        {
+                            "selector": "li a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-active-bg-color",
+                    "name": "活动链接背景颜色",
+                    "default": "#3276B1",
+                    "used": [
+                        {
+                            "selector": "li.active a",
+                            "property": "background-color"
+                        },
+                        {
+                            "selector": "li:hover a",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-active-text-color",
+                    "name": "活动链接文本颜色",
+                    "default": "#ffffff",
+                    "used": [
+                        {
+                            "selector": "li.active a",
+                            "property": "color"
+                        },
+                        {
+                            "selector": "li:hover a",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "content": {
+                            "prevTitle": "上一页",
+                            "prevLink": "#",
+                            "nextTitle": "下一页",
+                            "nextLink": "#",
+                            "total": "5",
+                            "page": [
+                                {
+                                    "title": "2",
+                                    "link": "#",
+                                    "class": "active"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": "t1",
+            "name": "pop",
+            "desc": "上下页+数字选择",
+            "options": {
+                "select": true
+            },
+            "hook": "hook-am-pagination-pop",
+            "variables": [
+                {
+                    "variable": "pagination-a-bg-color",
+                    "name": "页码背景颜色",
+                    "default": "#DFE2EA",
+                    "used": [
+                        {
+                            "selector": "li a",
+                            "property": "background-color"
+                        },
+                        {
+                            "selector": ".am-pagination-select select",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-a-text-color",
+                    "name": "页码文本颜色",
+                    "default": "#656F7E",
+                    "used": [
+                        {
+                            "selector": "li a",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-pagination-select select",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "options": {
+                            "select": true
+                        },
+                        "content": {
+                            "prevTitle": "上一页",
+                            "prevLink": "#",
+                            "nextTitle": "下一页",
+                            "nextLink": "#",
+                            "total": "3",
+                            "page": [
+                                {
+                                    "title": "1",
+                                    "link": "#"
+                                },
+                                {
+                                    "title": "2",
+                                    "link": "#"
+                                },
+                                {
+                                    "title": "3",
+                                    "link": "#"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": "t2",
+            "name": "slide",
+            "desc": "上下页+数字选择2",
+            "options": {
+                "select": true
+            },
+            "hook": "hook-am-pagination-slide",
+            "variables": [
+                {
+                    "variable": "pagination-a-bg-color",
+                    "name": "页码背景颜色",
+                    "default": "#DFE2EA",
+                    "used": [
+                        {
+                            "selector": "li a",
+                            "property": "background-color"
+                        },
+                        {
+                            "selector": ".am-pagination-select select",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-a-text-color",
+                    "name": "页码文本颜色",
+                    "default": "#656F7E",
+                    "used": [
+                        {
+                            "selector": "li a",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-pagination-select select",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-active-bg-color",
+                    "name": "活动链接背景颜色",
+                    "default": "#3276B1",
+                    "used": [
+                        {
+                            "selector": "li.active a",
+                            "property": "background-color"
+                        },
+                        {
+                            "selector": "li:hover a",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-active-text-color",
+                    "name": "活动链接文本颜色",
+                    "default": "#FFFFFF",
+                    "used": [
+                        {
+                            "selector": "li.active a",
+                            "property": "color"
+                        },
+                        {
+                            "selector": "li:hover a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-border-color",
+                    "name": "边框颜色",
+                    "default": "#6F6A6A",
+                    "used": [
+                        {
+                            "selector": ".am-pagination-select:after",
+                            "property": "border-right-color"
+                        },
+                        {
+                            "selector": ".am-pagination-select:after",
+                            "property": "border-bottom-color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "options": {
+                            "select": true
+                        },
+                        "content": {
+                            "prevTitle": "上一页",
+                            "prevLink": "#",
+                            "nextTitle": "下一页",
+                            "nextLink": "#",
+                            "page": [
+                                {
+                                    "title": "1",
+                                    "link": "#"
+                                },
+                                {
+                                    "title": "2",
+                                    "link": "#",
+                                    "class": "active"
+                                },
+                                {
+                                    "title": "3",
+                                    "link": "#"
+                                },
+                                {
+                                    "title": "4",
+                                    "link": "#"
+                                },
+                                {
+                                    "title": "5",
+                                    "link": "#"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": "clear",
+            "name": "clear",
+            "desc": "ios7默认",
+            "options": {
+                "select": true
+            },
+            "hook": "hook-am-pagination-clear",
+            "variables": [
+                {
+                    "variable": "pagination-a-bg-color",
+                    "name": "页码背景颜色",
+                    "default": "#DFE2EA",
+                    "used": [
+                        {
+                            "selector": "li a",
+                            "property": "background-color"
+                        },
+                        {
+                            "selector": ".am-pagination-select select",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-a-text-color",
+                    "name": "页码文本颜色",
+                    "default": "#656F7E",
+                    "used": [
+                        {
+                            "selector": "li a",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-pagination-select select",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-active-bg-color",
+                    "name": "活动链接背景颜色",
+                    "default": "#3276B1",
+                    "used": [
+                        {
+                            "selector": "li.active a",
+                            "property": "background-color"
+                        },
+                        {
+                            "selector": "li:hover a",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-active-text-color",
+                    "name": "活动链接文本颜色",
+                    "default": "#FFFFFF",
+                    "used": [
+                        {
+                            "selector": "li.active a",
+                            "property": "color"
+                        },
+                        {
+                            "selector": "li:hover a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-border-color",
+                    "name": "边框颜色",
+                    "default": "#6F6A6A",
+                    "used": [
+                        {
+                            "selector": ".am-pagination-select:after",
+                            "property": "border-right-color"
+                        },
+                        {
+                            "selector": ".am-pagination-select:after",
+                            "property": "border-bottom-color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "options": {
+                            "select": true
+                        },
+                        "content": {
+                            "prevTitle": "<",
+                            "prevLink": "#",
+                            "nextTitle": ">",
+                            "nextLink": "#",
+                            "page": [
+                                {
+                                    "title": "1",
+                                    "link": "#"
+                                },
+                                {
+                                    "title": "2",
+                                    "link": "#",
+                                    "class": "active"
+                                },
+                                {
+                                    "title": "3",
+                                    "link": "#"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ],
+            "hidden": 1
+        },
+        {
+            "id": "one",
+            "name": "one",
+            "desc": "简约风格",
+            "options": {
+                "select": true
+            },
+            "hook": "hook-am-pagination-one",
+            "variables": [
+                {
+                    "variable": "pagination-a-bg-color",
+                    "name": "页码背景颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "li.am-pagination-prev a",
+                            "property": "background-color"
+                        },
+                        {
+                            "selector": "li.am-pagination-next a",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-a-text-color",
+                    "name": "页码文本颜色",
+                    "default": "#666",
+                    "used": [
+                        {
+                            "selector": "li.am-pagination-prev a",
+                            "property": "color"
+                        },
+                        {
+                            "selector": "li.am-pagination-next a",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "options": {
+                            "select": true
+                        },
+                        "content": {
+                            "prevTitle": "上一页",
+                            "prevLink": "#",
+                            "nextTitle": "下一页",
+                            "nextLink": "#",
+                            "page": [
+                                {
+                                    "title": "1",
+                                    "link": "#"
+                                },{
+                                    "title": "2",
+                                    "link": "#",
+                                    "class": "active"
+                                },{
+                                    "title": "3",
+                                    "link": "#"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    ],
+
+    "jsBase": [
+        "core.js",
+        "util.fastclick.js"
+    ],
+
+    "script": "pagination.js",
+
+    "api": {
+        "id": {
+            "name": "ID",
+            "desc": "模块自定义ID，遵循CSS ID命名规范",
+            "type": "text",
+            "default": "",
+            "required": false
+        },
+
+        "className": {
+            "name": "Class",
+            "desc": "用户自定义模块class，遵循 CSS class 命名规范",
+            "placeholder": "css类名，多个用空格分隔",
+            "type": "text",
+            "default": "",
+            "required": false
+        },
+
+        "theme": {
+            "name": "主题",
+            "desc": "模块主题",
+            "type": "select",
+            "default": "default",
+            "required": true,
+            "dataList": "<%= pkg.themes %>"
+        },
+
+        "options": {
+            "select": {
+                "name": "模式选择",
+                "desc": "模式选择，对应的是theme-2,theme-3",
+                "type": "select",
+                "default": false,
+                "required": false,
+                "dataList": [
+                    {
+                        "value": false,
+                        "title": "默认模式",
+                        "selected": true
+                    },
+                    {
+                        "value": true,
+                        "title": "选择模式"
+                    }
+                ]
+            }
+        },
+
+        "conent": {
+            "type": "Object",
+            "item": {
+                "prevTitle": {
+                    "type": "text",
+                    "desc": "上一页链接文字（可选）"
+                },
+
+                "prevLink": {
+                    "type": "text",
+                    "desc": "上一页链接"
+                },
+
+                "nextTitle": {
+                    "type": "text",
+                    "desc": "下一页链接文字（可选）"
+                },
+
+                "nextLink": {
+                    "type": "text",
+                    "desc": "下一页链接"
+                },
+
+                "firstTitle": {
+                    "type": "text",
+                    "desc": "第一页链接文字"
+                },
+
+                "firstLink": {
+                    "type": "text",
+                    "desc": "第一页链接"
+                },
+
+                "lastTitle": {
+                    "type": "text",
+                    "desc": "末页链接文字"
+                },
+
+                "lastLink": {
+                    "type": "text",
+                    "desc": "末页链接"
+                },
+
+                "total": {
+                    "type": "text",
+                    "desc": "总页数（可选，赋值时显示“3/5”样式，否则是“3”样式）"
+                },
+
+                "page": {
+                    "type": "Array",
+                    "item": {
+                        "title": {
+                            "type": "text",
+                            "desc": "页码"
+                        },
+                        "link": {
+                            "type": "text",
+                            "desc": "页面链接"
+                        }
+                    }
+                }
+            }
+        }
+    },
+
+    "readme": "http://docs.yunshipei.com/amui/#pagination",
+
+    "example": "/*\n 此模块的使用方法：这个模块的使用中，有不需要的部分可以选择删除或者不填，比方说示例代码中的第一页和最末页，我们选择了注释，不填。\n \n 常用用途：采集原PC网站上的分页导航，在手机页面上生成分页导航列表。\n \n 了解AMUI的模块详情，请访问http://ide.yunshipei.com/doc/amui/#pagination。\n\n         示例代码：\n        \n         var data = {\n        \n             \"prevTitle\": \"上一页\",  \n             \"prevLink\": $(\".page_list_span1\").find(\"a\").eq(0).attr(\"href\"),    \n        \n             \"nextTitle\": \"下一页\",  \n             \"nextLink\": $(\".page_list_span1\").find(\"a\").eq(1).attr(\"href\"),        \n        \n             //  \"firstTitle\": \"第一页\", \n             //  \"firstLink\": \"#\",      \n        \n             //  \"lastTitle\": \"最末页\",  \n             //  \"lastLink\": \"#\",       \n        \n             \"total\": \"\",        \n        \n             \"page\": [\n                 {\n                 \"title\": \"1\",\n                 \"link\": $(\".page_list_span1\").find(\"a\").eq(5).attr(\"href\") \n                 },\n                 {\n                 \"title\": \"2\",\n                 \"link\": $(\".page_list_span1\").find(\"a\").eq(6).attr(\"href\")\n                 }\n             ]\n            };\n         return data;\n*/\n\nvar data = {\n\n    \"prevTitle\": \"上一页\",  //（可选）内容可以填写成其它的内容\n    \"prevLink\": \"#\",        //（可选）直接填写原网站中a链接的href地址\n\n    \"nextTitle\": \"下一页\",  //（可选）内容可以填写成其它的内容\n    \"nextLink\": \"#\",        //（可选）直接填写原网站中a链接的href地址\n\n    \"firstTitle\": \"第一页\", //（可选）内容可以填写成其它的内容\n    \"firstLink\": \"#\",       //（可选）直接填写原网站中a链接的href地址\n\n    \"lastTitle\": \"最末页\",  //（可选）内容可以填写成其它的内容\n    \"lastLink\": \"#\",        //（可选）直接填写原网站中a链接的href地址\n\n    \"total\": \"\",            // （可选，赋值是“3/5”样式，否则是“3”样式）显示总的页数\n\n    \"page\": [\n        {\n            \"title\": \"1\",   \n            \"link\": \"#\"     //直接填写原网站中a链接的href地址，这里也可以用一个循环将原页面中的123456...页的链接地址添加进来。\n        },\n        {\n            \"title\": \"2\",\n            \"link\": \"#\"\n        }\n    ]\n};\nreturn data;\n",
+
+    "hidden": false
+}

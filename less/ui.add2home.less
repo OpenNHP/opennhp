@@ -1,0 +1,180 @@
+/**
+ *
+ * Main container
+ *
+ */
+#addToHomeScreen {
+  z-index:99999;
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-box-sizing:border-box;
+  box-sizing:border-box;
+  -webkit-touch-callout:none;
+  touch-callout:none;
+  width:240px;
+  font-size:15px;
+  padding:12px 14px;
+  text-align:left;
+  font-family:helvetica;
+  background-image:-webkit-gradient(linear,0 0,0 100%,color-stop(0,#fff),color-stop(0.02,#eee),color-stop(0.98,#ccc),color-stop(1,#a3a3a3));
+  border:1px solid #505050;
+  -webkit-border-radius:8px;
+  -webkit-background-clip:padding-box;
+  color:#333;
+  text-shadow:0 1px 0 rgba(255,255,255,0.75);
+  line-height:130%;
+  -webkit-box-shadow:0 0 4px rgba(0,0,0,0.5);
+}
+
+#addToHomeScreen.addToHomeIOS7 {
+  background:#f2f2f2 !important;
+  -webkit-border-radius:1px !important;
+  border:1px solid #ccc;
+  -webkit-box-shadow:0 0 4px rgba(0,0,0,0.2);
+}
+
+#addToHomeScreen.addToHomeIpad {
+  width:268px;
+  font-size:18px;
+  padding:14px;
+}
+
+/**
+ *
+ * The 'wide' class is added when the popup contains the touch icon
+ *
+ */
+#addToHomeScreen.addToHomeWide {
+  width:296px;
+}
+
+#addToHomeScreen.addToHomeIpad.addToHomeWide {
+  width:320px;
+  font-size:18px;
+  padding:14px;
+}
+
+/**
+ *
+ * The balloon arrow
+ *
+ */
+#addToHomeScreen .addToHomeArrow {
+  position:absolute;
+  background-image:-webkit-gradient(linear,0 0,100% 100%,color-stop(0,rgba(204,204,204,0)),color-stop(0.4,rgba(204,204,204,0)),color-stop(0.4,#ccc));
+  border-width:0 1px 1px 0;
+  border-style:solid;
+  border-color:#505050;
+  width:16px; height:16px;
+  -webkit-transform:rotateZ(45deg);
+  bottom:-9px;
+  left:50%;
+  margin-left:-8px;
+  -webkit-box-shadow:inset -1px -1px 0 #a9a9a9;
+  -webkit-border-bottom-right-radius:2px;
+}
+
+#addToHomeScreen.addToHomeIOS7 .addToHomeArrow {
+  background-image:-webkit-gradient(linear,0 0,100% 100%,color-stop(0,rgba(204,204,204,0)),color-stop(0.4,rgba(204,204,204,0)),color-stop(0.4,#f2f2f2)) !important;
+  -webkit-box-shadow:inset -1px -1px 0 #fff !important;
+  border-color:#ccc !important;
+}
+
+/**
+ *
+ * The balloon arrow for iPad
+ *
+ */
+#addToHomeScreen.addToHomeIpad .addToHomeArrow {
+  -webkit-transform:rotateZ(-135deg);
+  background-image:-webkit-gradient(linear,0 0,100% 100%,color-stop(0,rgba(238,238,238,0)),color-stop(0.4,rgba(238,238,238,0)),color-stop(0.4,#eee));
+  -webkit-box-shadow:inset -1px -1px 0 #fff;
+  top:-9px; bottom:auto; left:50%;
+}
+
+
+/**
+ *
+ * Close button
+ *
+ */
+#addToHomeScreen .addToHomeClose {
+  -webkit-box-sizing:border-box;
+  position:absolute;
+  right:4px;
+  top:4px;
+  width:18px;
+  height:18px; line-height:14px;
+  text-align:center;
+  text-indent:1px;
+  -webkit-border-radius:9px;
+  background:rgba(0,0,0,0.12);
+  color:#888;
+  -webkit-box-shadow:0 1px 0 #fff;
+  font-size:16px;
+}
+
+#addToHomeScreen.addToHomeIOS7 .addToHomeClose {
+  line-height:12px;
+  padding-right:1px;
+  background:transparent;
+  border: 1px solid #888;
+  -webkit-box-shadow:none;
+}
+
+/**
+ *
+ * The '+' icon, displayed only on iOS < 4.2
+ *
+ */
+#addToHomeScreen .addToHomePlus {
+  font-weight:bold;
+  font-size:1.3em;
+}
+
+
+/**
+ *
+ * The 'share' icon, displayed only on iOS >= 4.2
+ *
+ */
+#addToHomeScreen .addToHomeShare {
+  display:inline-block;
+  width:18px;
+  height:15px;
+  background-repeat:no-repeat;
+  background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAeCAQAAADu6HTYAAADPElEQVR4Xq3TX2gcRRzA8e/M7mVv2+TSNpc/TZtrY6jUGqgaSAmEChKLrYK0YH0RFC2CSCkEfCghiKU04J8qNigq6os+iQV98MHWFwVBrQQRWs21lBw5cw3NNb1/udu72RGG5Y77IzXW77D7sAwf5scyYoL6BGXSDKFZwaGpLvIUaeoCkvX1MmsM0Ny6oRSQYOLuIS+YZOpfQdqslpUxcZrzTVAz4qPwW2O3CeIwC/RSzeY6Ow1QhUrkr+YOWfEKDkEP8Rij7CHKJmrFSDHBdwGEE5wiGChPN+PnT8VdRtEIl1d4gRj/1EVe5ZSBKGh8iqQpo/Fo5+3C/gz0MYg4zgwbqday1/Q4B8BGQ45d/Hi54lakCrU5obOcidJpu1+Lg9whjabyaOYLnrIBFFaRD+xe2ybMDWY66GmP/WA9cGfGp0CWhy0wkMN8inepFiH2rV1j0NQSNQbFLRQnS8/8YSDBBpadfv4CYDub2fmeHDNAsL1MBWUel0iA+Xik6eHcyvD3vAMSU1TGuA/YRS+dD7ovCQN43GKRFCU20Kd3V/avDVVyAZ5niTEuLA5/zBGWg9EEEhfJKN200Tat8CmRAQb9+wv7soPlHt2tQorsz1uPbr0HTY4sJwrH47zJZwABBAKLMBoQXepwgTwdHCo+fXMkQ4lrxEmQ5AaXipPqDY9V2vn09tgvTPI71EEGYxM+/uMJLJ4svpgaWGKOi/xKgmqLSUGSUd5f2vIVJ/CgBaTIUsZ7ZBsn0+NzfMOXLFCXQyTcybN6ep5ZZgUOHn7jpfUpsZshdugPGf+E5zjbyHTSRyQ8xfRPPM/s63RHeuknSoT22mjmmnAOIMkUZ6D1xSfPPAfd1WFKM3sO2CMaHx8M1NjnXKHaAGGkOW0C02WeYHUz4qMtx+w5gUDS8NckYe5lHsMYwCZEPyEEmjLDZFmAS7CDviMdxyTkMNVBKEmYLvbiQQBIBBbCQG04bGQvFWz6CfsCQLWCigILFwcfkGYBiOpbYuOizTAyYyDdCtrGaRG1LCkIgMYEFhI0WqQZoSlbGRyHKe4qOx7iv2bVQW9dp4dlM/x6kmwnWQcd/Q3FCqwTEiT5s+6D5v/pb0SSHyg7uhMWAAAAAElFTkSuQmCC);
+  background-size:18px 15px;
+  text-indent:-9999em;
+  overflow:hidden;
+}
+
+#addToHomeScreen.addToHomeIOS7 .addToHomeShare {
+  width:11px;
+  background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACoAAAA8CAYAAAAQTCjdAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAASCQAAEgkB80sG3AAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAKjSURBVGiB7dpPiFVVHMDxz7m9NCtMyI2bEJEC25WrEkzHUXCRraIwdNE8ZxfYIlcis1ZEbGEzT1QCF4XgH1CyWhUoJKIWNRGEiCNKmkSiYTzfcfGuOokx77x3ZlS8382959zfn+/invvn3RdijHIRBrwkOINCYXEcdjpb7VyiYdBsLScwt5y6IloYdzqXo36Ro0gY9IKWo+5JwmzBt2HQnBw9ehYNazyn5TBee8Dh+Vq+CWu92GufnkTDR6ab7gDeBNHouMM/l9tXTXM0fGBmL726Fg1Dam74EsvKqR8VNowL2Yzj5f7rnnE4DHq2235diYYhhTGfC94up35T0y+6di/ITU0rKVd+sEi0P7xr2pSJOu8zvF+OzqEv7vDH/WFxt7/cshy/ticsN8sXYUht0kXDOlsF9XJ4UaEvNoz9X3zc5bKaZThbyr5jzJ4wlNY7KTgM+ES0vhz+KeiPw36fKC/ucAF9uFBOrTZm26SJCtaV27+xIo7cXdkTEhvOoh+XyxprU1qnim7CQdGK2HAyKRexYVShT3RItDElN+mkjiP2Ym+S3f01hv2EVal5WW6hU0ElmptaqJuBpXg6MbeFH2LDpU6CQ93zWIKnEvs0cayGU3glMfkOo1jQYewZzOuyz7FC95Jwo5OgUFfgeg993hh/eTqCTxOSm/iuk8DY0Ap1b2GhtHXxsfZN4j/X0fOx4auEIknEhqv4OiUn1L13Z/+xWfWVaG4q0dxUormpRHNTieamEs1NJZqbJ1Q0jHvdiJo5S2cVjSNOCHZhn3/SnuYnIvl3yomIIz7MXZMn9hydRCrR3FSiualEc1OJ5qYSzU0lmptKNDePjWgwcPePT7/g+4cp8wCW4GXaryK3tL+mLdD5x62ppllgu7bso8q/2HIbzGWdNmWnSJwAAAAASUVORK5CYII=);
+  background-size:11px 15px;
+}
+
+/**
+ *
+ * The touch icon (if available)
+ *
+ */
+#addToHomeScreen .addToHomeTouchIcon {
+  display:block;
+  float:left;
+  -webkit-border-radius:6px;
+  border-radius:6px;
+  -webkit-box-shadow:0 1px 3px rgba(0,0,0,0.5),
+  inset 0 0 2px rgba(255,255,255,0.9);
+  box-shadow:0 1px 3px rgba(0,0,0,0.5),
+  inset 0 0 2px rgba(255,255,255,0.9);
+  background-repeat:no-repeat;
+  width:57px; height:57px;
+  -webkit-background-size:57px 57px;
+  background-size:57px 57px;
+  margin:0 12px 0 0;
+  border:1px solid #333;
+  -webkit-background-clip:padding-box;
+  background-clip:padding-box;
+}

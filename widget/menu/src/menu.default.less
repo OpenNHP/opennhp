@@ -1,0 +1,32 @@
+// am menu default
+.am-menu-default {
+  @am-menu-a-color: @global-primary;
+  @am-menu-li-heihgt: 44px;
+  & > li{
+    height: @am-menu-li-heihgt;
+    line-height: @am-menu-li-heihgt;
+  }
+  a {
+    text-align: center;
+    .text-overflow(block);
+    padding: 0;
+    color: @am-menu-a-color;
+  }
+  .hook-am-menu-default;
+}
+
+.hook-am-menu-default() {}
+
+@media (min-width: @breakpoint-md) {
+  .am-menu-default {
+    li {
+      width: auto;
+      float: none;
+      display: inline-block;
+    }
+    a {
+      padding-left: 1.5rem;
+      padding-right: 1.5rem;
+    }
+  }
+}

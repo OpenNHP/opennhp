@@ -1,0 +1,126 @@
+/* Browser Resets
+*********************************/
+.am-container a:active,
+.am-slider a:active,
+.am-container a:focus,
+.am-slider a:focus  {outline: none;}
+.am-slides,
+.am-control-nav,
+.am-direction-nav {margin: 0; padding: 0; list-style: none;}
+
+/* FlexSlider Necessary Styles
+*********************************/
+.am-slider {
+  margin: 0;
+  padding: 0;
+  .am-slides {
+    .clearfix(); // Clearfix for the .slides element
+    &>li {
+    display: none;
+    -webkit-backface-visibility: hidden;
+    // Hide the slides before the JS is loaded. Avoids image jumping
+    position: relative;
+    }
+    img {
+      width: 100%;
+      display: block;
+    }
+  }
+}
+
+.am-pauseplay span {text-transform: capitalize;}
+
+/* No JavaScript Fallback */
+/* If you are not using another script, such as Modernizr, make sure you
+ * include js that eliminates this class on page load */
+.no-js .am-slides > li:first-child {
+  display: block;
+}
+
+/* FlexSlider Theme Core
+*********************************/
+.am-slider {
+  position: relative;
+}
+.am-viewport {
+  .transition(all 1s ease);
+}
+
+.carousel li {
+}
+
+/* Direction Nav */
+.am-direction-nav {
+  a {
+    &::before {
+    }
+    &.flex-next {
+      &::before {
+      }
+    }
+  }
+
+  .am-prev {
+  }
+
+  .am-next {
+
+  }
+
+  .am-disabled {
+
+  }
+}
+
+
+/* Pause/Play */
+.am-pauseplay {
+  a {
+    &::before {
+    }
+
+    &:hover {
+    }
+
+    &.am-play {
+      &::before {
+      }
+    }
+  }
+}
+
+// 描述信息
+.am-caption {
+
+}
+
+/* Control Nav */
+.am-control-nav {
+  position: absolute;
+  li {
+    display: inline-block;
+    a {
+      &:hover {
+      }
+
+      &.am-active {
+      }
+    }
+  }
+}
+
+.am-control-thumbs {
+  position: static;
+  overflow: hidden;
+  li {
+
+  }
+  img {
+
+    &:hover {
+    }
+  }
+  .am-active {
+
+  }
+}

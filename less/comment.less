@@ -1,0 +1,174 @@
+// Name:                      Comment
+// Description:               Define style for comment
+//
+// Component:                `.am-comment`
+//
+// Sub-objects:               `.am-comment-avatar`
+//                            `.am-comment-main`
+//                            `.am-comment-hd`
+//                            `.am-comment-title`
+//                            `.am-comment-meta`
+//                            `.am-comment-author`
+//                            `.am-comment-bd`
+//
+// Modifiers:                 `.am-comment-flip`
+//
+// ========================================================================
+
+/* ========================================================================
+   Component: Comment
+ ========================================================================== */
+
+.am-comment {
+  .clearfix();
+}
+
+.am-comment-avatar {
+  float: left;
+  width: @comment-avatar-size;
+  height: @comment-avatar-size;
+  border-radius: 50%;
+  border: 1px solid transparent;
+}
+
+.am-comment-main {
+  position: relative;
+  margin-left: @comment-avatar-size + @comment-avatar-margin;
+  border: 1px solid @comment-border-color;
+  border-radius: @global-border-radius;
+
+  &:before,
+  &:after {
+    position: absolute;
+    top: 11px;
+    left: -16px;
+    right: 100%;
+    width: 0;
+    height: 0;
+    display: block;
+    content: " ";
+    border-color: transparent;
+    border-style: solid solid outset;
+    pointer-events: none;
+  }
+
+  &:before {
+    border-right-color: @comment-border-color;
+    border-width: 8px;
+  }
+
+  &:after {
+    border-width: 7px;
+    border-right-color: @comment-hd-bg-color;
+    margin-top: 1px;
+    margin-left: 2px;
+  }
+}
+
+.am-comment-hd {
+  padding: 10px 15px;
+  background: @comment-hd-bg-color;
+  border-bottom: 1px solid #eee;
+}
+
+.am-comment-title {
+  margin: 0 0 @comment-title-margin-btm 0;
+  font-size: @comment-title-font-size;
+  line-height: @comment-title-line-height;
+}
+
+.am-comment-meta {
+  font-size: @comment-meta-font-size;
+  color: @comment-meta-color;
+  line-height: @comment-meta-line-height;
+
+  a {
+    color: @comment-meta-color;
+  }
+}
+
+.am-comment-author {
+  font-weight: bold;
+  color: @comment-meta-color;
+}
+
+.am-comment-bd {
+  padding: @comment-bd-padding;
+  overflow: hidden;
+  & > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+
+// Modifiers
+// ========================================================================
+
+.am-comment-flip {
+  .am-comment-avatar {
+    float: right;
+  }
+
+  .am-comment-main {
+    margin-left: auto;
+    margin-right: @comment-avatar-size + @comment-avatar-margin;
+
+    &:before,
+    &:after {
+      position: absolute;
+      left: 100%;
+      right: -16px;
+    }
+
+    &:before {
+      border-left-color: @comment-border-color;
+      border-right-color: transparent;
+    }
+
+    &:after {
+      border-left-color: @comment-hd-bg-color;
+      border-right-color: transparent;
+      margin-right: 2px;
+      margin-left: auto;
+    }
+  }
+}
+
+.am-comment-highlight {
+  .am-comment-avatar {
+    border-color: @comment-hl-border-color;
+  }
+
+  .am-comment-main {
+    border-color: @comment-hl-border-color;
+    &:before {
+      border-right-color: @comment-hl-border-color;
+    }
+  }
+
+  // Highlight and flip
+  &.am-comment-flip .am-comment-main {
+    &:before {
+      border-left-color: @comment-hl-border-color;
+      border-right-color: transparent;
+    }
+
+    &:after {
+      border-left-color: @comment-hd-bg-color;
+    }
+  }
+}
+
+
+// Comments list
+// ========================================================================
+
+.am-comments-list {
+  padding: 0;
+  list-style: none;
+}
+
+.am-comments-list .am-comment {
+  margin: @comment-list-margin-top 0 0 0;
+  list-style: none;
+}

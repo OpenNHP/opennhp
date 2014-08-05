@@ -1,0 +1,41 @@
+[
+    {
+        "name": "Cyan",
+        "primary": "#00bcf2"
+    },
+
+    {
+        "name": "Green",
+        "primary": "#5EB95E"
+    },
+
+    {
+        "name": "Indigo",
+        "primary": "#008ED4"
+    },
+
+    {
+        "name": "Orange",
+        "primary": "#F37B1D"
+    },
+
+    {
+        "name": "Purple",
+        "primary": "#8058A5"
+    },
+
+    {
+        "name": "Red",
+        "primary": "#DD514C"
+    },
+
+    {
+        "name": "Yellow",
+        "primary": "#ffb900"
+    },
+
+    {
+        "name": "gray",
+        "primary": "#8E8E93"
+    }
+]

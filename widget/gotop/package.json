@@ -1,0 +1,291 @@
+{
+    "name": "gotop",
+
+    "version": "2.0.0",
+
+    "localName": {
+        "en": "Gotop",
+        "zh-cn": "回顶部"
+    },
+
+    "icon": "gotop.png",
+
+    "author": {
+        "name": "Shengli",
+        "email": "china_victory@yunshipei.com"
+    },
+
+    "description": "回到顶部模块",
+
+    "poweredBy": "AllMobilize",
+
+    "styleBase": [
+        "variables.less",
+        "mixins.less",
+        "base.less",
+        "grid.less",
+        "block-grid.less",
+        "icon.less",
+        "utility.less"
+    ],
+
+    "template": "gotop.hbs",
+
+    "styleDependencies": [],
+
+    "style": "gotop.less",
+
+    "themes": [
+        {
+            "id": "default",
+            "name": "default",
+            "desc": "居中按钮",
+            "hook": "hook-am-gotop-default",
+            "variables": [
+                {
+                    "variable": "gotop-a-bg-color",
+                    "name": "背景颜色",
+                    "default": "#428bca",
+                    "used": [
+                        {
+                            "selector": "a",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "gotop-a-text-color",
+                    "name": "文字颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "a",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "content": {
+                            "hint": "回到顶部"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "mini",
+            "id": "t1",
+            "desc": "右侧小图标",
+            "hook": "hook-am-gotop-mini",
+            "variables": [
+                {
+                    "variable": "gotop-bg-color",
+                    "name": "背景颜色",
+                    "default": "#123456",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "gotop-a-color",
+                    "name": "图标颜色",
+                    "default": "#FFFFFF",
+                    "used": [
+                        {
+                            "selector": "a:after",
+                            "property": "border-bottom-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "gotop-border-color",
+                    "name": "边框颜色",
+                    "default": "#3B3B3B",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "border-color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "theme": "mini"
+                    }
+                }
+            ]
+        },
+        {
+            "id": "t2",
+            "name": "icon",
+            "desc": "右侧图片型",
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "content": {
+                            "img": "/i/gotop/goTop.gif"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": "clear",
+            "name": "clear",
+            "desc": "ios7默认",
+            "hook": "hook-am-gotop-clear",
+            "variables": [
+                {
+                    "variable": "gotop-a-bg-color",
+                    "name": "背景颜色",
+                    "default": "rgba(255,255,255,0.3)",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "gotop-a-bd-color",
+                    "name": "边框颜色",
+                    "default": "rgba(0,0,0,0.1)",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "border-color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "content": {
+                            "img": "/i/gotop/ios7Gotop.png"
+                        }
+                    }
+                }
+            ],
+            "hidden": 1
+        },
+        {
+            "id": "one",
+            "name": "one",
+            "desc": "简约风格",
+            "hook": "hook-am-gotop-one",
+            "variables": [
+                {
+                    "variable": "gotop-bg-color",
+                    "name": "背景颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "gotop-after-color",
+                    "name": "图标颜色",
+                    "default": "#15afef",
+                    "used": [
+                        {
+                            "selector": "a::after",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "gotop-border-color",
+                    "name": "边框颜色",
+                    "default": "#15afef",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "border-color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "theme": "one"
+                    }
+                }
+            ]
+        }
+    ],
+
+    "jsBase": [
+        "core.js",
+        "util.fastclick.js"
+    ],
+
+    "script": "gotop.js",
+
+    "api": {
+        "id": {
+            "name": "ID",
+            "desc": "模块自定义ID，遵循CSS ID命名规范",
+            "type": "text",
+            "default": "",
+            "required": false
+        },
+
+        "className": {
+            "name": "Class",
+            "desc": "用户自定义模块class，遵循 CSS class 命名规范",
+            "type": "text",
+            "placeholder": "css类名，多个用空格分隔",
+            "default": "",
+            "required": false
+        },
+
+        "theme": {
+            "name": "主题",
+            "desc": "模块主题",
+            "type": "select",
+            "default": "default",
+            "required": true,
+            "dataList": "<%= pkg.themes %>"
+        },
+
+        "options": null,
+
+        "content": {
+            "type": "Object",
+            "item": {
+                "img": {
+                    "type": "image",
+                    "desc": "图标（不建议使用，可设置成背景）"
+                },
+                "hint": {
+                    "type": "text",
+                    "desc": "回到顶部"
+                }
+            }
+        }
+    },
+
+    "readme": "http://docs.yunshipei.com/amui/#gotop",
+
+    "example": "var data = {\n\t\"img\": \"\",\t\t// 不建议使用，可设置成背景\n    \"hint\": \"回到顶部\"\t// 显示文字\n};\nreturn data;",
+
+    "hidden": false
+}

@@ -1,0 +1,94 @@
+/**
+  * Menu Theme: slide1
+  * Theme ID: s1
+  * Author: Minwe (minwe@yunshipei.com)
+  */
+
+.am-menu-slide1 {
+  @trigger-color: #fff;
+  @trigger-border-color: #eee;
+  @trigger-active-color: #59636D;
+  @trigger-active-bg-color: #fff;
+
+  @lv2-bg-color: #F2F3F5;
+  @lv2-color: #1D2028;
+
+  @lv2-a-heihgt: 44px;
+
+  a {
+    &::before {
+      .am-icon-font;
+    }
+  }
+
+  > .am-parent {
+    position: relative;
+    > a {
+      position: absolute;
+      right: 10px;
+      top: -36px;
+      width: auto;
+      overflow: hidden;
+      text-align: right;
+      color: @trigger-color;
+      border: 1px solid @trigger-border-color;
+      border-radius: 4px;
+      padding: 0.1rem 0.5rem;
+      font-size: 1.4rem;
+      .transition(all 0.3s);
+    }
+
+    &.am-open {
+      > a {
+        background-color: @trigger-active-bg-color;
+        color: @trigger-active-color;
+      }
+    }
+  }
+
+  .am-menu-sub {
+    display: none;
+  }
+
+  .am-menu-lv2 {
+    a {
+      padding: 0;
+      display: block;
+      height: @lv2-a-heihgt;
+      line-height: @lv2-a-heihgt;
+      text-align: center;
+    }
+    & > li {
+      > a {
+        background-color: @lv2-bg-color;
+        color: @lv2-color;
+      }
+    }
+  }
+  .hook-am-menu-slide1;
+
+  @media (min-width: @breakpoint-md) {
+    & {
+      > .am-parent {
+        > a {
+          display: none;
+        }
+      }
+      .am-menu-sub {
+        background-color: @lv2-bg-color;
+        display: block;
+        li {
+          width: auto;
+          clear: none;
+        }
+        a {
+          padding-left: 1.5rem;
+          padding-right: 1.5rem;
+        }
+      }
+    }
+  }
+}
+
+.hook-am-menu-slide1() {
+}

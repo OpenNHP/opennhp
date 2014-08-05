@@ -1,0 +1,31 @@
+{{#this}}
+  <ul data-am-widget="gallery" class="am-gallery{{#if options.cols}} sm-block-grid-{{options.cols}}{{else}} sm-block-grid-2{{/if}}
+  md-block-grid-3 lg-block-grid-4 {{#if
+  theme}}am-gallery-{{theme}}{{else}}am-gallery-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"{{#if options.gallery}} data-am-gallery{{/if}} {{#if id}}id="{{id}}"{{/if}}>
+    {{#each content}}
+      <li>
+        <div class="am-gallery-item">
+          {{#if link}}
+            <a href="{{link}}">
+              {{#if img}}<img src="{{img}}" alt="{{title}}"/>{{/if}}
+              {{#if title}}
+                <h3 class="am-gallery-title">{{{title}}}</h3>
+              {{/if}}
+              {{#if desc}}
+                <div class="am-gallery-desc">{{{desc}}}</div>
+              {{/if}}
+            </a>
+          {{else}}
+            {{#if img}}<img src="{{img}}" alt="{{title}}"/>{{/if}}
+            {{#if title}}
+              <h3 class="am-gallery-title">{{{title}}}</h3>
+            {{/if}}
+            {{#if desc}}
+              <div class="am-gallery-desc">{{{desc}}}</div>
+            {{/if}}
+          {{/if}}
+        </div>
+      </li>
+    {{/each}}
+  </ul>
+{{/this}}

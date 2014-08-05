@@ -1,0 +1,52 @@
+/**
+  * Gotop Theme: one
+  * Theme ID: one
+  */
+
+@global-body-bg: #f3f3f3;
+
+@global-primary: #15afef;
+
+@global-black: #000;
+
+@global-lighter-gray: rgb(226, 226, 226);
+@global-light-gray: #dfdfdf;
+@global-gray: #dedfe3;
+@global-dark-gray: #888;
+@global-darker-gray: #666;
+
+@global-mask-bg-color: rgba(92,92,92,0.6);
+
+.am-gotop-one {
+
+  @gotop-bg-color: @white;
+  @gotop-border-color: @global-primary;
+  @gotop-after-color: @global-primary;
+
+  width: 30px;
+  height: 30px;
+  background-color: @gotop-bg-color;
+  border-radius: 3px;
+  border: 1px solid @gotop-border-color;
+  margin: 10px 10px 10px auto;
+  float: right;
+  a {
+    display: block;
+    position: relative;
+    height: 100%;
+
+    &:after {
+      .am-icon-font;
+      content: "\f077";
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      color: @gotop-after-color;
+    }
+    img, span {
+      display: none;
+    }
+  }
+  .hook-am-gotop-one;
+}
+.hook-am-gotop-one() {};

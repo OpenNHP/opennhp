@@ -1,0 +1,166 @@
+/**
+  * Menu Theme: one
+  * Theme ID: one
+  * Author: hzp (hzp@yunshipei.com)
+  */
+@global-body-bg: #f3f3f3;
+
+@global-primary: #15afef;
+
+@global-black: #000;
+
+@global-lighter-gray: rgb(226, 226, 226);
+@global-light-gray: #dfdfdf;
+@global-gray: #dedfe3;
+@global-dark-gray: #888;
+@global-darker-gray: #666;
+
+@global-mask-bg-color: rgba(92,92,92,0.6);
+@am-navbar-boxshare-bg: lighten(@gray-lighter, 0.5%);
+
+.am-navbar-moreList {
+  @navbar-moreList-bg: darken(@global-primary, 15%);
+  @navbar-moreList-bd-top: darken(@global-primary, 6%);
+  @navbar-moreList-bd-bottom: darken(@global-primary, 25%);
+  @navbar-moreList-a-color: @white;
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+  background: @navbar-moreList-bg;
+  position: fixed;
+  bottom: 50px;
+  left: 0;
+  width: 100%;
+  z-index: @z-index-navbar - 1;
+  display: none;
+
+  li {
+    line-height: 40px;
+    border-top: 1px solid @navbar-moreList-bd-top;
+    border-bottom: 1px solid @navbar-moreList-bd-bottom;
+    position: relative;
+
+    &::after {
+      font-family: "FontAwesome";
+      content: "\f054";
+      color: @navbar-moreList-a-color;
+      display: inline-block;
+      position: absolute;
+      top: 0;
+      right: 20px;
+    }
+
+    a {
+      display: inline-block;
+      width: 100%;
+      height: 38px;
+      color: @navbar-moreList-a-color;
+      padding-left: 30px;
+
+      img {
+        vertical-align: middle;
+        height: 20px;
+        width: 20px;
+        display: inline;
+      }
+    }
+
+  }
+}
+
+#bdshare_weixin_qrcode_dialog {
+  height: 310px !important;
+}
+
+.am-navbar-one {
+  @navbar-bg-color: @global-primary;
+  @navbar-a-color: @white;
+
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  background-color: @navbar-bg-color;
+  z-index: @z-index-navbar;
+
+  & > ul {
+    list-style: none;
+    padding-left: 0;
+  }
+
+  .am-navbar-item {
+    text-align: center;
+
+    a {
+      color: @navbar-a-color;
+      text-shadow: 0 0 0;
+      display: inline-block;
+      width: 100%;
+      height: @navbar-height;
+      font-size: 12px;
+      text-align: center;
+
+      img {
+        vertical-align: middle;
+        height: 24px;
+        width: 24px;
+        display: inline;
+      }
+
+      span {
+        display: inline-block;
+        width: 24px;
+        height: 24px;
+        vertical-align: top;
+        margin: 4px auto 0;
+
+        &:before {
+          font-size: 22px;
+          vertical-align: bottom;
+        }
+      }
+    }
+  }
+
+  .am-navbar-more-active {
+    & > a {
+      color: @navbar-a-color;
+      span {
+        &::before {
+          content: "\f078"; //字体
+          color: @navbar-a-color;
+        }
+      }
+    }
+  }
+
+  .hook-am-navbar-one;
+
+}
+
+.am-navbar-top {
+
+  & > ul {
+
+    .am-navbar-item {
+
+      a {
+        line-height: 20px;
+
+        img {
+          display: block;
+          margin: 4px auto 0
+        }
+
+        span {
+          display: block;
+          line-height: 24px;
+          margin: 4px auto 0
+        }
+      }
+    }
+  }
+}
+
+.hook-am-navbar-one() {
+}

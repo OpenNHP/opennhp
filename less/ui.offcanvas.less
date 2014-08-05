@@ -1,0 +1,122 @@
+// Name:         Off-canvas
+//
+// Description:  Define style for off-canvas sidebar
+//
+// Component:    `am-offcanvas`
+//
+// Sub-objects:  `am-offcanvas-page`
+//               `am-offcanvas-bar`
+//
+// Modifiers:     `am-offcanvas-bar-flip`
+//
+// States:        `am-active`
+//
+// ========================================================================
+
+/* ========================================================================
+   Component: JS OffCanvas
+ ========================================================================== */
+
+
+/* Off-canvas overlay and bar container */
+
+.am-offcanvas {
+  display: none;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: @offcanvas-z-index;
+  background: @offcanvas-dimmer-background;
+
+  .hook-offcanvas;
+
+  &.am-active {
+    display: block;
+
+    .am-offcanvas-bar.am-offcanvas-bar-active {
+      .translate3d(0, 0, 0);
+    }
+  }
+}
+
+
+/**
+ * .am-offcanvas-page
+ *
+ * Prepares the whole HTML page to slide-out
+ * 1. Fix the main page and disallow scrolling
+ * 2. Side-out transition
+ */
+
+.am-offcanvas-page {
+  position: fixed;   /* 1 */
+  .transition(margin-left 0.3s ease-in-out); /* 2 */
+}
+
+
+/* Sub-object .am-offcanvas-bar */
+
+.am-offcanvas-bar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  .translate3d(-@offcanvas-bar-width, 0, 0);
+  z-index: @offcanvas-z-index + 1;
+  width: @offcanvas-bar-width;
+  max-width: 100%;
+  background: @offcanvas-bar-background;
+
+  overflow-y: auto;  /* scrollable */
+  -webkit-overflow-scrolling: touch; /* scrollable */
+
+  -webkit-transition: -webkit-transform 0.3s ease-in-out;
+  transition: transform 0.3s ease-in-out;
+
+  &:after {
+    content: "";
+    display: block;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 1px;
+    background: rgba(0, 0, 0, 0.6);
+    box-shadow: 0 0 5px 2px rgba(0, 0, 0, 0.6);
+  }
+
+  .hook-offcanvas-bar;
+}
+
+
+/* .am-offcanvas-bar-flip */
+
+.am-offcanvas-bar-flip {
+  left: auto;
+  right: 0;
+  .translate3d(100%, 0, 0);
+  &:after {
+    right: auto;
+    left: 0;
+    width: 1px;
+    background: rgba(0, 0, 0, 0.6);
+    box-shadow: 0 0 5px 2px rgba(0, 0, 0, 0.6);
+  }
+}
+
+.am-offcanvas-content {
+  padding: 15px;
+  color: #999;
+  a {
+    color: #ccc;
+  }
+}
+
+
+// Hooks
+// ========================================================================
+
+.hook-offcanvas() {}
+.hook-offcanvas-bar() {}

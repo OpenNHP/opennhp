@@ -1,0 +1,141 @@
+{
+    "name": "map",
+
+    "version": "1.0.0",
+
+    "localName": {
+        "en": "Map",
+        "zh-cn": "地图"
+    },
+
+    "icon": "map.png",
+
+    "author": {
+        "name": "Hzp",
+        "email": "hzp@yunshipei.com"
+    },
+
+    "description": "地图模块",
+
+    "poweredBy": "Baidu",
+
+    "styleBase": [
+        "variables.less",
+        "mixins.less",
+        "base.less",
+        "grid.less",
+        "block-grid.less",
+        "icon.less",
+        "utility.less"
+    ],
+
+    "template": "map.hbs",
+
+    "styleDependencies": [
+        "icon.less"
+    ],
+
+    "style": "map.less",
+
+    "themes": [
+        {
+            "id": "default",
+            "name": "default",
+            "desc": "默认",
+            "options": {
+                "name": "",
+                "address": ""
+            },
+            "hook": "hook-am-map-default",
+            "variables": [],
+            "demos": [
+                {
+                    "desc": "",
+                    "data": {
+                        "options": {
+                            "name":"云适配",
+                            "address":"北京市海淀区海淀大街27号亿景大厦3层西区",
+                            "longitude": "",
+                            "latitude": ""
+                        }
+                    }
+                }
+            ]
+        }
+    ],
+
+    "jsBase": [
+        "core.js",
+        "util.fastclick.js"
+    ],
+
+    "script": "map.js",
+
+    "api": {
+        "id": {
+            "name": "ID",
+            "desc": "模块自定义ID，遵循CSS ID命名规范",
+            "type": "text",
+            "default": "",
+            "required": false
+        },
+
+        "className": {
+            "name": "Class",
+            "desc": "用户自定义模块class，遵循 CSS class 命名规范",
+            "type": "text",
+            "placeholder": "css类名，多个用空格分隔",
+            "default": "",
+            "required": false
+        },
+
+        "theme": {
+            "name": "主题",
+            "desc": "模块主题",
+            "type": "select",
+            "default": "default",
+            "required": true,
+            "dataList": "<%= pkg.themes %>"
+        },
+
+        "options": {
+            "name": {
+                "name": "公司名称",
+                "desc": "",
+                "type": "text",
+                "default": "",
+                "required": false
+            },
+            "address": {
+                "name": "公司地址",
+                "desc": "",
+                "type": "text",
+                "default": "",
+                "required": false
+            },
+            "longitude": {
+                "name": "经度",
+                "desc": "",
+                "type": "text",
+                "default": "",
+                "required": false
+            },
+            "latitude": {
+                "name": "纬度",
+                "desc": "",
+                "type": "text",
+                "default": "",
+                "required": false
+            }
+        },
+
+        "content": null
+
+    },
+
+    "readme": "http://docs.yunshipei.com/amui/#map",
+
+    "example": "var data = {\n    // 地图选项\n    \"options\": {\n        \"name\": \"云适配\", //公司名称\n        \"address\": \"北京市海淀区海淀大街27号亿景大厦3层西区\" // 公司地址\n    }\n}\n\nreturn data;\n",
+
+    "hidden": false
+}

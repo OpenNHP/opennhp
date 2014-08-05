@@ -1,0 +1,12 @@
+{{#this}}
+  <div data-am-widget="gotop" class="am-gotop {{#if theme}}am-gotop-{{theme}}{{else}}am-gotop-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}" {{#if id}}id="{{id}}"{{/if}}>
+    <a href="#top" title="{{content.hint}}">
+      {{#if content.img}}
+        <img class="am-gotop-img" src="{{content.img}}" />
+      {{/if}}
+      {{#if content.hint}}
+        <span class="am-gotop-hint">{{content.hint}}</span>
+      {{/if}}
+    </a>
+  </div>
+{{/this}}

@@ -1,0 +1,26 @@
+{{#this }}
+  <div data-am-widget="intro"
+       class="am-intro am-cf {{#if theme}}am-intro-{{theme}}{{else}}am-intro-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"
+       {{#if id}}id="{{id}}"{{/if}}>
+    {{#if content.top}}
+      <div class="am-intro-top">
+        {{{content.top}}}
+        {{#ifCond options.position '==' 'top'}}
+          <div class="am-intro-more am-intro-more-top">{{{content.more}}}</div>
+        {{/ifCond}}
+      </div>
+    {{/if}}
+
+    {{#if content.left}}
+      <div
+          class="am-intro-left am-col {{#if options.leftCols}}col-sm-{{options.leftCols}}{{/if}}">{{{content.left}}}</div>
+    {{/if}}
+    {{#if content.right}}
+      <div
+          class="am-intro-right am-col {{#if options.rightCols}}col-sm-{{options.rightCols}}{{/if}}">{{{content.right}}}</div>
+    {{/if}}
+    {{#ifCond options.position '==' 'bottom'}}
+      <div class="am-intro-more am-intro-more-bottom">{{{content.more}}}</div>
+    {{/ifCond}}
+  </div>
+{{/this}}

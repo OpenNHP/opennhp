@@ -1,0 +1,471 @@
+{
+    "name": "tabs",
+
+    "version": "2.0.0",
+
+    "author": {
+        "name": "Shengli",
+        "email": "china_victory@yunshipei.com"
+    },
+
+    "localName": {
+        "en": "Tabs",
+        "zh-cn": "选项卡"
+    },
+
+    "icon": "tabs.png",
+
+    "description": "用于多标签切换",
+
+    "poweredBy": "AllMobilize",
+
+    "styleBase": [
+        "variables.less",
+        "mixins.less",
+        "base.less",
+        "grid.less",
+        "block-grid.less",
+        "icon.less",
+        "utility.less"
+    ],
+
+    "template": "tabs.hbs",
+
+    "styleDependencies": [],
+
+    "style": "tabs.less",
+
+    "themes": [
+        {
+            "id": "default",
+            "name": "default",
+            "desc": "浅蓝色选项卡",
+            "options": {
+                "cols": 3
+            },
+            "hook": "hook-am-tabs-default",
+            "variables": [
+                {
+                    "variable": "tabs-bg-color",
+                    "name": "背景颜色",
+                    "default": "#eee",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "tabs-text-color",
+                    "name": "文本颜色",
+                    "default": "#000",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "tabs-active-bg-color",
+                    "name": "活动项背景色",
+                    "default": "#428bca",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "tabs-active-text-color",
+                    "name": "活动项文本颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "options": {
+                            "cols": "3"
+                        },
+                        "content": [
+                            {
+                                "header": "栏目一",
+                                "substance": "栏目一的内容：<br>一行独家JS代码替代传统繁琐的编程开发和数据迁移工作，省去购买域名、服务器和人力开发运维成本，只需几个工作日适配成功，降低传统建站95%以上经济成本和相应时间成本。",
+                                "class": "active"
+                            },
+                            {
+                                "header": "栏目二",
+                                "substance": "栏目二的内容：<br>移动网址和PC网址始终一致，无需进行二次推广，有助提升网站在移动搜索引擎上的排名；也利于高值客户和深度客户记忆；同时利于聚合和统计移动流量，分析用户行为，形成大数据库。"
+                            },
+                            {
+                                "header": "栏目三",
+                                "substance": "栏目三的内容：<br>基于微软云计算平台Windows Azure,一次性打包解决手机和其他移动终端屏幕尺寸碎片化、屏幕分辨率不统一、浏览器分化三大移动终端适配难题，自动识别适配不同终端、系统，适配于全球超过5000种移动设备。"
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "id": "d2",
+            "name": "d2",
+            "desc": "下边框选项卡",
+            "options": {
+                "cols": 3
+            },
+            "hook": "hook-am-tabs-d2",
+            "variables": [
+                {
+                    "variable": "tabs-bg-color",
+                    "name": "背景颜色",
+                    "default": "#eee",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "tabs-text-color",
+                    "name": "文本颜色",
+                    "default": "#000",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "tabs-active-bg-color",
+                    "name": "活动选背景色",
+                    "default": "#FAFAFA",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "tabs-a-color",
+                    "name": "活动选文本颜色",
+                    "default": "#2F4DAC",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "property": "border-bottom-color"
+                        },
+                        {
+                            "selector": ".am-tabs-hd li.am-tabs-hd-active:after",
+                            "property": "border-bottom-color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "options": {
+                            "cols": "3"
+                        },
+                        "content": [
+                            {
+                                "header": "栏目一",
+                                "substance": "栏目一的内容：<br>一行独家JS代码替代传统繁琐的编程开发和数据迁移工作，省去购买域名、服务器和人力开发运维成本，只需几个工作日适配成功，降低传统建站95%以上经济成本和相应时间成本。",
+                                "class": "active"
+                            },
+                            {
+                                "header": "栏目二",
+                                "substance": "栏目二的内容：<br>移动网址和PC网址始终一致，无需进行二次推广，有助提升网站在移动搜索引擎上的排名；也利于高值客户和深度客户记忆；同时利于聚合和统计移动流量，分析用户行为，形成大数据库。"
+                            },
+                            {
+                                "header": "栏目三",
+                                "substance": "栏目三的内容：<br>基于微软云计算平台Windows Azure,一次性打包解决手机和其他移动终端屏幕尺寸碎片化、屏幕分辨率不统一、浏览器分化三大移动终端适配难题，自动识别适配不同终端、系统，适配于全球超过5000种移动设备。"
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "id": "clear",
+            "name": "clear",
+            "desc": "ios7默认",
+            "options": {
+                "cols": 3
+            },
+            "hook": "hook-am-tabs-clear",
+            "variables": [
+                {
+                    "variable": "tabs-bg-color",
+                    "name": "背景颜色",
+                    "default": "#eee",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "tabs-text-color",
+                    "name": "文本颜色",
+                    "default": "#000",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "tabs-active-bg-color",
+                    "name": "活动选背景色",
+                    "default": "#FAFAFA",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "tabs-a-color",
+                    "name": "活动选文本颜色",
+                    "default": "#2F4DAC",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "property": "border-bottom-color"
+                        },
+                        {
+                            "selector": ".am-tabs-hd li.am-tabs-hd-active:after",
+                            "property": "border-bottom-color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "options": {
+                            "cols": "3"
+                        },
+                        "content": [
+                            {
+                                "header": "栏目一",
+                                "substance": "栏目一的内容：<br>一行独家JS代码替代传统繁琐的编程开发和数据迁移工作，省去购买域名、服务器和人力开发运维成本，只需几个工作日适配成功，降低传统建站95%以上经济成本和相应时间成本。",
+                                "class": "active"
+                            },
+                            {
+                                "header": "栏目二",
+                                "substance": "栏目二的内容：<br>移动网址和PC网址始终一致，无需进行二次推广，有助提升网站在移动搜索引擎上的排名；也利于高值客户和深度客户记忆；同时利于聚合和统计移动流量，分析用户行为，形成大数据库。"
+                            },
+                            {
+                                "header": "栏目三",
+                                "substance": "栏目三的内容：<br>基于微软云计算平台Windows Azure,一次性打包解决手机和其他移动终端屏幕尺寸碎片化、屏幕分辨率不统一、浏览器分化三大移动终端适配难题，自动识别适配不同终端、系统，适配于全球超过5000种移动设备。"
+                            }
+                        ]
+                    }
+                }
+            ],
+            "hidden": 1
+        },
+        {
+            "id": "one",
+            "name": "one",
+            "desc": "简约风格",
+            "options": {
+                "cols": 3
+            },
+            "hook": "hook-am-tabs-one",
+            "variables": [
+                {
+                    "variable": "tabs-bg-color",
+                    "name": "背景颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "tabs-text-color",
+                    "name": "文本颜色",
+                    "default": "#15afef",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "tabs-active-bg-color",
+                    "name": "活动背景色",
+                    "default": "#15afef",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "property": "background-color"
+                        },
+                        {
+                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "property": "border-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "tabs-li-text-color",
+                    "name": "活动文本颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "options": {
+                            "cols": "3"
+                        },
+                        "content": [
+                            {
+                                "header": "栏目一",
+                                "substance": "栏目一的内容：<br>一行独家JS代码替代传统繁琐的编程开发和数据迁移工作，省去购买域名、服务器和人力开发运维成本，只需几个工作日适配成功，降低传统建站95%以上经济成本和相应时间成本。",
+                                "class": "active"
+                            },
+                            {
+                                "header": "栏目二",
+                                "substance": "栏目二的内容：<br>移动网址和PC网址始终一致，无需进行二次推广，有助提升网站在移动搜索引擎上的排名；也利于高值客户和深度客户记忆；同时利于聚合和统计移动流量，分析用户行为，形成大数据库。"
+                            },
+                            {
+                                "header": "栏目三",
+                                "substance": "栏目三的内容：<br>基于微软云计算平台Windows Azure,一次性打包解决手机和其他移动终端屏幕尺寸碎片化、屏幕分辨率不统一、浏览器分化三大移动终端适配难题，自动识别适配不同终端、系统，适配于全球超过5000种移动设备。"
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    ],
+
+    "jsBase": [
+        "core.js",
+        "util.fastclick.js"
+    ],
+
+    "jsDependencies": [],
+
+    "script": "tabs.js",
+
+    "api": {
+        "id": {
+            "name": "ID",
+            "desc": "模块自定义ID，遵循CSS ID命名规范",
+            "type": "text",
+            "default": "",
+            "required": false
+        },
+
+        "className": {
+            "name": "Class",
+            "desc": "用户自定义模块class，遵循 CSS class 命名规范",
+            "type": "text",
+            "placeholder": "css类名，多个用空格分隔",
+            "default": "",
+            "required": false
+        },
+
+        "theme": {
+            "name": "主题",
+            "desc": "模块主题",
+            "type": "select",
+            "default": "default",
+            "required": true,
+            "dataList": "<%= pkg.themes %>"
+        },
+
+        "options": {
+            "cols": {
+                "name": "列数",
+                "desc": "多少个栏目之间切换（建议2-6）",
+                "type": "select",
+                "required": false,
+                "default": 3,
+                "dataList": [
+                    {
+                        "value": 2,
+                        "title": "2"
+                    },
+                    {
+                        "value": 3,
+                        "title": "3"
+                    },
+                    {
+                        "value": 4,
+                        "title": "4"
+                    },
+                    {
+                        "value": 5,
+                        "title": "5"
+                    },
+                    {
+                        "value": 6,
+                        "title": "6"
+                    }
+                ]
+            }
+        },
+
+        "content": {
+            "type": "Array",
+            "item": {
+                "header": {
+                    "type": "text",
+                    "desc": "Tab 标题"
+                },
+                "substance": {
+                    "type": "html",
+                    "desc": "Tab 内容"
+                },
+                "class": {
+                    "type": "text",
+                    "desc": "激活状态（不激活则留空）",
+                    "hidden": true
+                }
+            }
+        }
+    },
+
+    "readme": "http://docs.yunshipei.com/amui/#tabs",
+
+    "example": "/*\n 此模块的使用方法：采集原PC网站上的tab切换数据，在手机页面上生成tab切换效果。\n \n 常用用途：通常用来采集一组tab切换标题以及文字等信息。\n \n 了解AMUI的模块详情，请访问http://ide.yunshipei.com/doc/amui/#tabs。\n\n         示例代码：\n        \n         var data = [];\n         $(\".listpart\").eq(1).find(\"li\").each(function(){\n             data.push({\n                 \"header\": $(this).find(\".news-pic\").find(\"img\").src(),  \n                 \"substance\": $(this).find(\".news-pic\").find(\"a\")html(), \n                 \"class\": \"\"\n             });\n         });\n         return data;\n*/\n\nvar data = [\n    {\n        \"header\" : \"\",      //每一个选项的标题\n        \"substance\" : \"\",   //内容部分\n        \"class\" : \"\"        //显示当前默认被选中的选项卡标题以及其内容，值是\"active\"，如果有多个选项，只允许一个tab被激活\n    }\n];\nreturn data;\n\n",
+
+    "hidden": false
+}

@@ -1,0 +1,53 @@
+{{#this}}
+  <ul data-am-widget="pagination" class="am-pagination {{#if theme}}am-pagination-{{theme}}{{else}}am-pagination-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}" {{#if id}}id="{{id}}"{{/if}}>
+    {{#if content.firstTitle}}
+      <li class="am-pagination-first">
+        <a href="{{content.firstLink}}">{{{content.firstTitle}}}</a>
+      </li>
+    {{/if}}
+    {{#if content.prevTitle}}
+      <li class="am-pagination-prev">
+        <a href="{{content.prevLink}}">{{{content.prevTitle}}}</a>
+      </li>
+    {{/if}}
+    {{#if options.select}}
+      <li class="am-pagination-select">
+        <select onchange="pageChange(this.options[this.options.selectedIndex].value)">
+          {{#if content.total}}
+            {{#each content.page}}
+              <option value="{{title}}" class="{{class}}">{{{title}}}/{{../content.total}}</options>
+            {{/each}}
+          {{else}}
+            {{#each content.page}}
+              <option value="{{title}}" class="{{class}}">{{{title}}}</options>
+            {{/each}}
+          {{/if}}
+        </select>
+      </li>
+    {{else}}
+      {{#if content.total}}
+        {{#each content.page}}
+          <li class="{{class}}">
+            <a href="{{link}}">{{{title}}}/{{../content.total}}</a>
+          </li>
+        {{/each}}
+      {{else}}
+        {{#each content.page}}
+          <li class="{{class}}">
+            <a href="{{link}}">{{{title}}}</a>
+          </li>
+        {{/each}}
+      {{/if}}
+    {{/if}}
+    {{#if content.nextTitle}}
+      <li class="am-pagination-next">
+        <a href="{{content.nextLink}}">{{{content.nextTitle}}}</a>
+      </li>
+    {{/if}}
+    {{#if content.lastTitle}}
+      <li class="am-pagination-last">
+        <a href="{{content.lastLink}}">{{{content.lastTitle}}}</a>
+      </li>
+    {{/if}}
+  </ul>
+{{/this}}

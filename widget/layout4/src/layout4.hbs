@@ -1,0 +1,17 @@
+{{#this}}
+  <div class="am-g am-layout am-layout-4{{#if options.collapsed}} am-g-collapse{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}}
+    {{className}}{{/if}}"{{#if id}} id="{{id}}"{{/if}}>
+    <div class="am-col col-sm-12 col-md-{{#if options.col1}}{{options.col1}}{{else}}3{{/if}}">
+      {{{parseLayout 0}}}
+    </div>
+    <div class="am-col col-sm-12 col-md-{{#if options.col2}}{{options.col2}}{{else}}3{{/if}}">
+      {{{parseLayout 1}}}
+    </div>
+    <div class="am-col col-sm-12 col-md-{{#if options.col3}}{{options.col3}}{{else}}3{{/if}}">
+      {{{parseLayout 2}}}
+    </div>
+    <div class="am-col col-sm-12 col-md-{{#if options.col4}}{{options.col4}}{{else}}3{{/if}}">
+      {{{parseLayout 3}}}
+    </div>
+  </div>
+{{/this}}

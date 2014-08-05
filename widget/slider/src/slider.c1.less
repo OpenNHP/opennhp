@@ -1,0 +1,72 @@
+/**
+  * Slider Theme: c1
+  * Theme ID: c1
+  */
+
+.am-slider-c1 {
+
+  @desc-color: @white;
+  @desc-bg-color: rgba(0,0,0,0.6);
+
+  @control-nav-bg-color: rgba(0,0,0,0.7);
+  @control-nav-active-bg-color: @global-primary;
+
+  .box-shadow(0 1px 4px rgba(0,0,0,.2));
+  .am-viewport {
+    max-height: 2000px;
+    .transition(all 1s ease);
+    .loading & {
+      max-height: 300px;
+    }
+  }
+
+  /* Control Nav */
+  .am-control-nav {
+    width: 100%;
+    position: absolute;
+    text-align: center;
+    height: 6px;
+    display: table;
+    bottom: 0;
+    font-size: 0;
+    line-height: 0;
+    li {
+      display: table-cell;
+      a {
+        width: 100%;
+        height: 6px;
+        display: block;
+        background-color: @control-nav-bg-color;
+        cursor: pointer;
+        text-indent: -9999px;
+        &:hover {
+          background: rgba(0,0,0,0.8);
+        }
+        &.am-active {
+          background-color: @control-nav-active-bg-color;
+          cursor: default;
+        }
+      }
+    }
+  }
+
+  // desc
+  .am-slider-desc {
+    background-color: @desc-bg-color;
+    position: absolute;
+    bottom: 6px;
+    padding: 8px;
+    width: 100%;
+    color: @desc-color;
+    .text-overflow(block);
+  }
+
+  .am-direction-nav,
+  .am-pauseplay {
+    display: none;
+  }
+
+  .hook-am-slider-c1;
+}
+
+.hook-am-slider-c1() {}

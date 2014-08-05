@@ -1,0 +1,667 @@
+{
+    "name": "titlebar",
+
+    "version": "2.0.0",
+
+    "localName": {
+        "en": "Titlebar",
+        "zh-cn": "标题栏"
+    },
+
+    "icon": "titlebar.png",
+
+    "author": {
+        "name": "Shengli",
+        "email": "china_victory@yunshipei.com"
+    },
+
+    "description": "多用于创建header、标题栏等",
+
+    "poweredBy": "AllMobilize",
+
+    "styleBase": [
+        "variables.less",
+        "mixins.less",
+        "base.less",
+        "grid.less",
+        "block-grid.less",
+        "icon.less",
+        "utility.less"
+    ],
+
+    "template": "titlebar.hbs",
+
+    "styleDependencies": ["button.less", "icon.less"],
+
+    "style": "titlebar.less",
+
+    "themes": [
+        {
+            "id": "default",
+            "name": "default",
+            "desc": "蓝色背景",
+            "hook": "hook-am-titlebar-default",
+            "variables": [
+                {
+                    "variable": "titlebar-bg-color",
+                    "name": "背景颜色",
+                    "default": "#428bca",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-text-color",
+                    "name": "文本颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-a-color",
+                    "name": "链接颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-title a",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "content": {
+                            "title": "栏目标题"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": "t1",
+            "name": "title1",
+            "desc": "浅灰背景",
+            "hook": "hook-am-titlebar-title1",
+            "variables": [
+                {
+                    "variable": "titlebar-bg-color",
+                    "name": "背景颜色",
+                    "default": "#F2F2F2",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-a-color",
+                    "name": "链接颜色",
+                    "default": "#333",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-left a",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-titlebar-left",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-border-color",
+                    "name": "上边框颜色",
+                    "default": "#1977D0",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-left",
+                            "property": "border-top-color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "content": {
+                            "left": "标题文字"
+                        }
+                    }
+                }
+            ],
+            "deprecated": 1
+        },
+        {
+            "id": "t2",
+            "name": "icon",
+            "desc": "深灰背景",
+            "hook": "hook-am-titlebar-icon",
+            "variables": [
+                {
+                    "variable": "titlebar-bg-color",
+                    "name": "背景颜色",
+                    "default": "#727b89",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-a-color",
+                    "name": "链接颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "a",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-titlebar-left",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "content": {
+                            "left": "<span class=\"am-icon-arrow-left\"></span>",
+                            "title": "<a href=\"/\">标题</a>",
+                            "right": "<span class=\"am-toolbar-menu\"><img src=\"http://docs.yunshipei.com/i/titlebar/menu.png\" /></span>"
+                        }
+                    }
+                }
+            ],
+            "deprecated": 1
+        },
+        {
+            "id": "t3",
+            "name": "column1",
+            "desc": "深底白字",
+            "hook": "hook-am-titlebar-column1",
+            "variables": [
+                {
+                    "variable": "titlebar-bg-color",
+                    "name": "背景颜色",
+                    "default": "#00599d",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-text-color",
+                    "name": "文本颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "content": {
+                            "left": "栏目标题",
+                            "right": "更多 >>"
+                        }
+                    }
+                }
+            ],
+            "deprecated": 1
+        },
+        {
+            "id": "t4",
+            "name": "column2",
+            "desc": "灰底蓝下边框",
+            "hook": "hook-am-titlebar-column2",
+            "variables": [
+                {
+                    "variable": "titlebar-bg-color",
+                    "name": "背景颜色",
+                    "default": "#dfe2ea",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-text-color",
+                    "name": "文本颜色",
+                    "default": "#1a356a",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-a-color",
+                    "name": "链接颜色",
+                    "default": "#a2a985",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-left a",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-titlebar-right a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-border-color",
+                    "name": "下边框颜色",
+                    "default": "#1a356a",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "border-bottom-color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "content": {
+                            "left": "栏目标题",
+                            "right": "频道 | 频道 | 频道"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": "t5",
+            "name": "column3",
+            "desc": "下边框多链接",
+            "hook": "hook-am-titlebar-column3",
+            "variables": [
+                {
+                    "variable": "titlebar-bg-color",
+                    "name": "背景颜色",
+                    "default": "#dfe2ea",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-text-color",
+                    "name": "文本颜色",
+                    "default": "#1a356a",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-a-color",
+                    "name": "链接颜色",
+                    "default": "#1a356a",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-title li a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-bd-color",
+                    "name": "下划线颜色",
+                    "default": "#1a356a",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-title li a.column-active",
+                            "property": "border-bottom-color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "content": {
+                            "title": "<ul><li><a href=\"#\" class=\"column-active\">频道</a></li><li><a href=\"#\">频道</a></li><li><a href=\"#\">频道</a></li><li><a href=\"#\">频道</a></li><li><a href=\"#\">频道</a></li></ul>"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": "t6",
+            "name": "button",
+            "desc": "蓝底白色按钮",
+            "hook": "hook-am-titlebar-button",
+            "variables": [
+                {
+                    "variable": "titlebar-bg-color",
+                    "name": "背景颜色",
+                    "default": "#00599d",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-text-color",
+                    "name": "文本颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-a-color",
+                    "name": "链接颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "a",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "content": {
+                            "left": "<button class=\"am-btn am-btn-default am-fr am-btn-sm\">返回</button>",
+                            "title": "<a href=\"/\">标题</a>",
+                            "right": "<button class=\"am-btn am-btn-default am-fr am-btn-sm\">主页</button>"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": "t7",
+            "name": "img",
+            "desc": "图标+文字",
+            "hook": "hook-am-titlebar-img",
+            "variables": [
+                {
+                    "variable": "titlebar-bg-color",
+                    "name": "背景颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-text-color",
+                    "name": "文本颜色",
+                    "default": "#ccc",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "content": {
+                            "title": "<img src=\"http://docs.yunshipei.com/i/titlebar/logo.png\" ></option>",
+                            "right": "导航"
+                        }
+                    }
+                }
+            ],
+            "deprecated": 1
+        },
+        {
+            "id": "clear",
+            "name": "clear",
+            "desc": "ios7默认",
+            "hook": "hook-am-titlebar-clear",
+            "variables": [
+                {
+                    "variable": "titlebar-bg-color",
+                    "name": "背景颜色",
+                    "default": "#428bca",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-text-color",
+                    "name": "文本颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-a-color",
+                    "name": "链接颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-title a",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "content": {
+                            "left": "<span class=\"am-icon-chevron-left\"></span>",
+                            "title": "Welcome",
+                            "right": "menu"
+                        }
+
+                    }
+                }
+            ],
+            "hidden": 1
+        },
+        {
+            "id": "one",
+            "name": "one",
+            "desc": "简约风格",
+            "hook": "hook-am-titlebar-one",
+            "variables": [
+                {
+                    "variable": "titlebar-bg-color",
+                    "name": "背景颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-left-a-color",
+                    "name": "文本颜色",
+                    "default": "#000",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-left",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-titlebar-left a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-title-before",
+                    "name": "边框颜色",
+                    "default": "#15afef",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "border-color"
+                        },
+                        {
+                            "selector": ".am-titlebar-left::before",
+                            "property": "background-color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "content": {
+                            "left": "<a href=#>栏目</a>",
+                            "title": "",
+                            "right": "<a href=#>MORE</a>"
+                        }
+
+                    }
+                }
+            ]
+        },
+        {
+            "id": "one1",
+            "name": "one1",
+            "desc": "简约风格（页头）",
+            "hook": "hook-am-titlebar-one1",
+            "variables": [
+                {
+                    "variable": "titlebar-bg-color",
+                    "name": "背景颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-text-color",
+                    "name": "文本颜色",
+                    "default": "#15afef",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-title",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "content": {
+                            "left": "<img src=\"http://amazeui.org/i/titlebar/oneHome.png\"/>",
+                            "title": "云适配AMUI",
+                            "right": "<img src=\"http://amazeui.org/i/titlebar/oneMenu.png\"/>"
+                        }
+
+                    }
+                }
+            ]
+        }
+    ],
+
+    "jsBase": [
+        "core.js",
+        "util.fastclick.js"
+    ],
+
+    "jsDependencies": [],
+
+    "script": "titlebar.js",
+
+    "api": {
+        "id": {
+            "name": "ID",
+            "desc": "模块自定义ID，遵循CSS ID命名规范",
+            "type": "text",
+            "default": "",
+            "required": false
+        },
+        "className": {
+            "name": "Class",
+            "desc": "用户自定义模块class，遵循 CSS class 命名规范",
+            "type": "text",
+            "placeholder": "css类名，多个用空格分隔",
+            "default": "",
+            "required": false
+        },
+        "theme": {
+            "name": "主题",
+            "desc": "模块主题",
+            "type": "select",
+            "default": "default",
+            "required": true,
+            "dataList": "<%= pkg.themes %>"
+        },
+        "content": {
+            "type": "Object",
+            "item": {
+                "left": {
+                    "type": "html",
+                    "desc": "左侧内容（可选，按需设置）"
+                },
+                "title": {
+                    "type": "html",
+                    "desc": "中间内容（可选，按需设置）"
+                },
+                "right": {
+                    "type": "html",
+                    "desc": "右侧内容（可选，按需设置）"
+                }
+            }
+        }
+    },
+
+    "readme": "http://docs.yunshipei.com/amui/#titlebar",
+
+    "example": "/*\n 此模块的使用方法： 将原PC网页的数据提取放在这里，最后显示在模块界面上。\n\n 常用用途：通常用来采放logo图片或者title文字。\n\n    示例代码：\n     var data = {\n         \"left\": $(\"#logopart\").html(),\n         \"title\": \"\",\n         \"right\": \"\"\n     };\n     return data;\n\n\n    或者：\n     var data = {\n         \"left\": \"\",\n         \"title\": \"<img src='\"+context.__root+\"logo.png'>\",\n         \"right\": \"\"\n     };\n     return data;\n\n */\n\nvar data = {\n    // 以下三项，可任意组合\n    \"left\": \"\",\t\t\t\t// Titlebar 左侧，可写 html 标签（可选）\n    \"title\": \"\",\t\t\t// Titlebar 中部，可写 html 标签（可选）\n    \"right\": \"\"\t\t\t\t// Titlebar 右侧，可写 html 标签（可选）\n};\nreturn data;\n",
+
+    "hidden": false
+}

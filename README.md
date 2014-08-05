@@ -1,5 +1,5 @@
 # [Amaze UI](http://amazeui.org/)
-![Amaze UI Logo](http://localhost:3000/i/ui/ui-logo.svg)
+![Amaze UI Logo](http://amazeui.org/i/ui/ui-logo.svg)
 ## 功能简介
 
 ### 为移动而生
@@ -20,7 +20,7 @@ Amaze UI 非常注重性能，基于轻量的 Zepto.js 开发，并使用 CSS3 �
 
 ## 下载及使用
 
-用户可以从 [Amaze UI](http://amazeui.org/getting-started) 下载打包好的模板。
+用户可以从 [Amaze UI 官网](http://amazeui.org/getting-started) 下载打包好的模板。
 
 所有文档存放在 `docs/` 目录下，为方便查看演示效果，建议通过 [Amaze UI 官网](http://amazeui.org/)查看文档。
 
@@ -85,7 +85,7 @@ gulp
 
 ### Bug 反馈
 
-欢迎给[提交 Bug](https://github.com/allmobilize/amazeui/issues)。
+欢迎给 Amaze UI [提交 Bug](https://github.com/allmobilize/amazeui/issues)。
 
 为了能最准确的传达所描述的问题， 建议你在反馈时附上演示，方便我们理解。
 

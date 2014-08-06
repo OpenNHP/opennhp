@@ -7728,17 +7728,19 @@ tbody.am-collapse.am-in {
   margin-top: -12px;
   z-index: 1001;
 }
+.pinch-zoom-container {
+  z-index: 1005;
+}
 /* The before element moves the image halfway from the top */
-/*#gallerySlider .placeholder:before {
+/*
+#gallerySlider .placeholder:before {
   content: "";
   display: inline-block;
   height: 50%;
   width: 1px;
   margin-right: -1px;
-}*/
-.pinch-zoom-container {
-  z-index: 1005;
 }
+*/
 .pinch-zoom img {
   position: absolute!important;
   margin: auto;

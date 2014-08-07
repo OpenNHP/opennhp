@@ -7,8 +7,11 @@ define(function(require, exports, module) {
     var $ = window.Zepto,
         UI = $.AMUI;
 
-    // Collapse Class
-    // via https://github.com/twbs/bootstrap/blob/master/js/collapse.js
+    /**
+     * @via https://github.com/twbs/bootstrap/blob/master/js/collapse.js
+     * @copyright Copyright 2013 Twitter, Inc.
+     * @license Apache 2.0
+     */
 
     var Collapse = function (element, options) {
         this.$element = $(element);

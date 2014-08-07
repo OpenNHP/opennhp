@@ -7,6 +7,11 @@ define(function(require, exports, module) {
         $w = $(window),
         $doc = $(document);
 
+    /**
+     * @reference https://github.com/nolimits4web/Framework7/blob/master/src/js/modals.js
+     * @license https://github.com/nolimits4web/Framework7/blob/master/LICENSE
+     */
+
     var Popover = function(element, options) {
         this.options = $.extend({}, Popover.DEFAULTS, options || {});
         this.$element = $(element);

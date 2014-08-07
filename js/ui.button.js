@@ -7,9 +7,11 @@ define(function(require, exports, module) {
     var $ = window.Zepto,
         UI = $.AMUI;
 
-    // via https://github.com/twbs/bootstrap/blob/master/js/button.js
-
-    // Button Class
+    /**
+     * @via https://github.com/twbs/bootstrap/blob/master/js/button.js
+     * @copyright Copyright 2013 Twitter, Inc.
+     * @license Apache 2.0
+     */
 
     var Button = function(element, options) {
         this.$element = $(element);

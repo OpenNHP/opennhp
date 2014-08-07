@@ -7,6 +7,11 @@ define(function(require, exports, module) {
     var $ = window.Zepto,
         UI = $.AMUI;
 
+    /**
+     * @via https://github.com/Minwe/bootstrap/blob/master/js/alert.js
+     * @copyright Copyright 2013 Twitter, Inc.
+     * @license Apache 2.0
+     */
 
     // Alert Class
     // NOTE: removeElement option is unavailable now

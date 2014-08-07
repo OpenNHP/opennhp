@@ -7,7 +7,7 @@ define(function(require, exports, module) {
     /**
      * Smooth Scroll
      * @param position
-     * via: http://mir.aculo.us/2014/01/19/scrolling-dom-elements-to-the-top-a-zepto-plugin/
+     * @via http://mir.aculo.us/2014/01/19/scrolling-dom-elements-to-the-top-a-zepto-plugin/
      */
 
     // Usage: $(element).smoothScroll([position])

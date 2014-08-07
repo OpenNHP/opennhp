@@ -20,7 +20,7 @@ Web 组件的样式有三个层级：
 3. Web 组件自身样式：Web 组件自身样式拆分出骨干样式和主题样式；每个 Web 组件可以有多个不同主题，主题基于骨干样式编写，每个主题相互独立。
     - 骨干样式以 `{widget}.less` 命名；
     - 默认主题以 `{widget}.default.less` 命名；
-    - 其他主题以 `{widget}`.{theme-name}.less` 命名。
+    - 其他主题以 `{widget}.{theme-name}.less` 命名。
 
 ## 目录结构及说明
 
@@ -78,6 +78,9 @@ Web 组件核心描述文件，`json` 格式，下面的注释仅为方便解释
 
     // 组件描述
     "description": "sample 描述",
+
+    // 组件驱动者
+    "poweredBy": "AllMobilize",
 
     // 基础样式（无需修改）
     "styleBase": [
@@ -206,7 +209,7 @@ Web 组件核心描述文件，`json` 格式，下面的注释仅为方便解释
 
         // 内容
         "content": {
-        	// 内容类型 Array 数组、Object（对象）
+        	  // 内容类型 Array 数组、Object（对象）
             "type": "Array",
             "item": {
                 "title": {
@@ -219,8 +222,60 @@ Web 组件核心描述文件，`json` 格式，下面的注释仅为方便解释
                 }
             }
         }
-    },
 
+        // 表单接口 - 测试接口，细节还会做调整
+        // 提供的表单接口必须支持跨域调用，并返回 JSON 数据
+        "forms": {
+            "signin": {
+                "url": "http://api.xxx.com/signin", // 提交数据的接口
+                "type": "POST",
+                "desc": "登录表单，你可以在这里写表单的描述信息",
+                "fields": { // 表单字段，字段名称应该和返回数据里的字段对应
+                    "username": {
+                        "name": "用户名",
+                        "placeholder": "请使用邮箱",
+                        "type": "text",
+                        "default": "",
+                        "required": true
+                    },
+                    "password": {
+                        "name": "密码",
+                        "placeholder": "设置密码",
+                        "type": "text",
+                        "default": "",
+                        "required": true
+                    },
+                    "submit": {
+                        "name": "提交信息",
+                        "type": "submit",
+                        "default": ""
+                    }
+                }
+            },
+
+            "signup": {
+                "url": "http://api.xxx.com/signup",
+                "type": "POST",
+                "desc": "注册表单，你可以在这里写表单的描述信息",
+                "fields": {
+                    "username": {
+                        "name": "用户名",
+                        "placeholder": "请使用邮箱",
+                        "type": "text",
+                        "default": "",
+                        "required": true
+                    },
+                    "password": {
+                        "name": "密码",
+                        "placeholder": "设置密码",
+                        "type": "text",
+                        "default": "",
+                        "required": true
+                    }
+                }
+            }
+        }
+    },
 
     // 是否隐藏组件 - 此选项供云适配 WebIDE 使用
     "hidden": false
@@ -321,6 +376,8 @@ Web 组件样式使用 less 编写。
 
 Amaze UI 使用 Seajs 、Zepto，Widget 的脚本需按照 Seajs 规范编写。
 
+__如果要在 JS 中动态插入外部样式、脚本，必须在 `load` 事件触发以后再执行相关操作，以免影响网页基本内容载入。__
+
 ```javascript
 define(function(require, exports, module) {
     // 按此方式使用 Zepto
@@ -353,4 +410,4 @@ slush amuiwidget
 
 ## 调试
 
-按照规范开发完 Web 组件以后，可以使用[调试工具](/widgets/debugger)预览调整。
+按照规范开发完 Web 组件以后， ~~可以使用[调试工具](/widgets/debugger)预览调整~~，调试工具暂时没有添加 JS 的入口，我们会尽快完善。

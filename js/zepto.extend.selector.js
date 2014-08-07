@@ -1,6 +1,10 @@
 define(function(require, exports, module) {
     var $ = window.Zepto;
 
+    // Zepto.js
+    // (c) 2010-2014 Thomas Fuchs
+    // Zepto.js may be freely distributed under the MIT license.
+
     var zepto = $.zepto, oldQsa = zepto.qsa, oldMatches = zepto.matches
 
     function visible(elem) {

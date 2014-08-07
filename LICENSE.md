@@ -39,7 +39,7 @@ License](https://github.com/nolimits4web/Framework7/blob/master/LICENSE))
 License](https://github.com/aliceui/aliceui.org/blob/master/LICENSE))
 * [Arale](https://github.com/aralejs/aralejs.org/) ([MIT
 License](https://github.com/aralejs/aralejs.org/blob/master/LICENSE))
-* [Pure](https://github.com/yui/pure)([BSD License] (https://github.com/yui/pure/blob/master/LICENSE.md))
+* [Pure](https://github.com/yui/pure) ([BSD License](https://github.com/yui/pure/blob/master/LICENSE.md))
 * [Semantic UI](https://github.com/Semantic-Org/Semantic-UI) ([MIT
 License](https://github.com/Semantic-Org/Semantic-UI/blob/master/LICENSE.md))
 * [FastClick](https://github.com/ftlabs/fastclick) ([MIT

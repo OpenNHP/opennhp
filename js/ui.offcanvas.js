@@ -9,6 +9,11 @@ define(function(require, exports, module) {
         $doc = $(document),
         scrollPos;
 
+    /**
+     * @via https://github.com/uikit/uikit/blob/master/src/js/offcanvas.js
+     * @license https://github.com/uikit/uikit/blob/master/LICENSE.md
+     */
+
     var OffCanvas = function(element, options) {
         this.$element = $(element);
         this.options = options;

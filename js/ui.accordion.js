@@ -5,6 +5,11 @@ define(function(require, exports, module) {
     require('./zepto.extend.selector');
     require('./zepto.extend.data');
 
+    /**
+     * @via https://github.com/Semantic-Org/Semantic-UI/blob/master/src/modules/accordion.js
+     * @license https://github.com/Semantic-Org/Semantic-UI/blob/master/LICENSE.md
+     */
+
     $.fn.accordion = function(parameters) {
         var $allModules = $(this),
 

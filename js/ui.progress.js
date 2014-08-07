@@ -6,8 +6,9 @@ define(function(require, exports, module) {
 
     var Progress = (function() {
 
-        /** NProgress (c) 2013, Rico Sta. Cruz
-         * http://ricostacruz.com/nprogress
+        /**
+         * NProgress (c) 2013, Rico Sta. Cruz
+         * @via http://ricostacruz.com/nprogress
          */
 
         var NProgress = {},

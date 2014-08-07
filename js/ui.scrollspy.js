@@ -8,7 +8,10 @@ define(function(require, exports, module) {
         UI = $.AMUI;
 
 
-    // Sticky Class
+    /**
+     * @via https://github.com/uikit/uikit/blob/master/src/js/scrollspy.js
+     * @license https://github.com/uikit/uikit/blob/master/LICENSE.md
+     */
 
     var ScrollSpy = function(element, options) {
 

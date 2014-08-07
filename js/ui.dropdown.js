@@ -7,6 +7,12 @@ define(function(require, exports, module) {
     var $ = window.Zepto,
         UI = $.AMUI;
 
+    /**
+     * @via https://github.com/Minwe/bootstrap/blob/master/js/dropdown.js
+     * @copyright Copyright 2013 Twitter, Inc.
+     * @license Apache 2.0
+     */
+
     var toggle = '[data-am-dropdown] > .am-dropdown-toggle';
 
     var Dropdown = function(element, options) {

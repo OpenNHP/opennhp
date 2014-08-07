@@ -13,6 +13,11 @@ define(function(require, exports, module) {
 
     var UI = $.AMUI;
 
+    /**
+     * @via https://github.com/uikit/uikit/blob/master/src/js/nav.js
+     * @license https://github.com/uikit/uikit/blob/master/LICENSE.md
+     */
+
     var Nav = function(element, options) {
 
         var $this = this, $element = $(element);

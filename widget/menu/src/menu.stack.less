@@ -1,27 +1,27 @@
 /**
-  * Menu Theme: vertical1
-  * Theme ID: v1
+  * Menu Theme: stack
+  * Theme ID: stack
   * Author: Minwe (minwe@yunshipei.com)
   */
 
-.am-menu-vertical1 {
-  @vertical-padding-vertical: 10px;
-  @vertical-padding-horizontal: 15px;
-  @vertical-lv1-a-height: 49px;
-  @vertical-lv2-a-height: 44px;
+.am-menu-stack {
+  @menu-padding-vertical: 10px;
+  @menu-padding-horizontal: 15px;
+  @menu-lv1-a-height: 49px;
+  @menu-lv2-a-height: 44px;
 
-  @vertical-lv1-bg-color: #F5F5F5;
-  @vertical-color: #333;
-  @vertical-hover-bg-color: #ddd;
-  @vertical-hover-color: #222;
-  @vertical-nested-color: #444;
-  @vertical-nested-hover-color: #333;
+  @menu-lv1-bg-color: #f5f5f5;
+  @menu-link-color: #333;
+  @menu-link-hover-bg: #ddd;
+  @menu-link-hover-color: #222;
+  @menu-link-nested-color: #444;
+  @menu-link-nested-hover-color: #333;
 
-  @vertical-bd-color: rgba(0, 0, 0, 0.15);
+  @menu-border-color: rgba(0, 0, 0, 0.15);
 
-  @vertical-lv2-left-padding: 2rem;
+  @menu-lv2-padding-horizontal: 2rem;
 
-  border-bottom: 1px solid @vertical-bd-color;
+  border-bottom: 1px solid @menu-border-color;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
 
   .am-menu-sub {
@@ -29,8 +29,8 @@
     font-size: 1.4rem;
     display: none;
     a {
-      border-bottom: 1px solid @vertical-bd-color;
-      padding-left: @vertical-lv2-left-padding;
+      border-bottom: 1px solid @menu-border-color;
+      padding-left: @menu-lv2-padding-horizontal;
     }
     li:last-child a {
       border-bottom: none;
@@ -43,7 +43,7 @@
     }
   }
 
-  & > li {
+  .am-menu-nav > li {
     &.am-parent {
       > a {
         .transition(all 0.3s);
@@ -56,7 +56,7 @@
       }
       &.am-open {
         > a {
-          border-bottom: 1px solid @vertical-bd-color;
+          border-bottom: 1px solid @menu-border-color;
           box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
           &::after {
             content: @fa-var-angle-down;
@@ -66,24 +66,24 @@
     }
     > a {
       position: relative;
-      color: @vertical-color;
-      background-color: @vertical-lv1-bg-color;
-      border-top: 1px solid @vertical-bd-color;
+      color: @menu-link-color;
+      background-color: @menu-lv1-bg-color;
+      border-top: 1px solid @menu-border-color;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-      height: @vertical-lv1-a-height;
-      line-height: @vertical-lv1-a-height;
+      height: @menu-lv1-a-height;
+      line-height: @menu-lv1-a-height;
       text-indent: 10px;
       padding: 0;
 
     }
   }
 
-  .am-menu-lv2{
-    & > li{
-      & > a{
+  .am-menu-lv2 {
+    & > li {
+      & > a {
 
-        height: @vertical-lv2-a-height;
-        line-height: @vertical-lv2-a-height;
+        height: @menu-lv2-a-height;
+        line-height: @menu-lv2-a-height;
         text-indent: 15px;
         padding: 0;
 
@@ -96,8 +96,8 @@
   & > li > a:hover,
   & > li > a:focus {
     /* 1 */
-    background-color: @vertical-hover-bg-color;
-    color: @vertical-hover-color;
+    background-color: @menu-link-hover-bg;
+    color: @menu-link-hover-color;
     outline: none; /* 2 */
   }
 
@@ -105,18 +105,18 @@
   * Nested items
   */
   & ul a {
-    color: @vertical-nested-color;
+    color: @menu-link-nested-color;
   }
   & ul a:hover {
-    color: @vertical-nested-hover-color;
+    color: @menu-link-nested-hover-color;
   }
 
-  .hook-am-menu-vertical1;
+  .hook-am-menu-default;
 
-  @media (min-width: @breakpoint-md) {
+  @media @medium-up {
     & {
       // level 1
-      background-color: @vertical-lv1-bg-color;
+      background-color: @menu-lv1-bg-color;
       a {
         padding-left: 1.5rem;
         padding-right: 1.5rem;
@@ -144,7 +144,7 @@
               }
             }
             .am-menu-sub {
-              background-color: @vertical-hover-bg-color;
+              background-color: @menu-link-hover-bg;
             }
           }
         }
@@ -166,5 +166,5 @@
   }
 }
 
-.hook-am-menu-vertical1() {
+.hook-am-menu-default() {
 }

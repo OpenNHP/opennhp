@@ -5,18 +5,15 @@
   */
 
 .am-menu-slide1 {
-  @trigger-color: #fff;
-  @trigger-border-color: #eee;
-  @trigger-active-color: #59636D;
-  @trigger-active-bg-color: #fff;
+  @trigger-color: #ddd;
+  @trigger-active-color: #fff;
 
   @lv2-bg-color: #F2F3F5;
-  @lv2-color: #1D2028;
-
-  @lv2-a-heihgt: 44px;
+  @lv2-color: #303338;
+  @lv2-a-height: 44px;
 
   a {
-    &::before {
+    &::before, &::after {
       .am-icon-font;
     }
   }
@@ -25,65 +22,81 @@
     position: relative;
     > a {
       position: absolute;
-      right: 10px;
-      top: -36px;
-      width: auto;
+      right: 0;
+      top: -50px;
+      width: 50px;
       overflow: hidden;
-      text-align: right;
+      padding: 0;
+      text-align: center;
       color: @trigger-color;
-      border: 1px solid @trigger-border-color;
-      border-radius: 4px;
-      padding: 0.1rem 0.5rem;
-      font-size: 1.4rem;
+      height: 50px;
       .transition(all 0.3s);
+      &::before {
+        content: @fa-var-bars;
+        height: 50px;
+        line-height: 50px;
+        width: 50px;
+        font-size: 24px;
+      }
     }
 
     &.am-open {
+      &::before {
+        .am-icon-font;
+        content: @fa-var-caret-up;
+        font-size: 24px;
+        color: @lv2-bg-color;
+        position: absolute;
+        right: 16px;
+        top: -16px;
+      }
       > a {
-        background-color: @trigger-active-bg-color;
         color: @trigger-active-color;
       }
     }
-  }
 
+  }
   .am-menu-sub {
+    position: relative;
     display: none;
   }
 
   .am-menu-lv2 {
     a {
-      padding: 0;
+      line-height: @lv2-a-height;
+      height: @lv2-a-height;
       display: block;
-      height: @lv2-a-heihgt;
-      line-height: @lv2-a-heihgt;
+      padding: 0;
       text-align: center;
     }
     & > li {
       > a {
         background-color: @lv2-bg-color;
         color: @lv2-color;
+        .text-overflow(block);
       }
     }
   }
+
   .hook-am-menu-slide1;
 
-  @media (min-width: @breakpoint-md) {
+  @media @medium-up {
     & {
       > .am-parent {
         > a {
           display: none;
         }
       }
-      .am-menu-sub {
+      .am-menu-lv2 {
         background-color: @lv2-bg-color;
         display: block;
         li {
           width: auto;
           clear: none;
-        }
-        a {
-          padding-left: 1.5rem;
-          padding-right: 1.5rem;
+          a {
+            padding-left: 1.5rem;
+            padding-right: 1.5rem;
+          }
         }
       }
     }

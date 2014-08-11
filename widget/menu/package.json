@@ -47,17 +47,19 @@
             "options": {
                 "cols": 3
             },
-            "variables": [{
-                "variable": "am-menu-a-color",
-                "name": "链接颜色",
-                "default": "#0e90d2",
-                "used": [
-                    {
-                        "selector": "a",
-                        "property": "color"
-                    }
-                ]
-            }],
+            "variables": [
+                {
+                    "variable": "am-menu-a-color",
+                    "name": "链接颜色",
+                    "default": "#0e90d2",
+                    "used": [
+                        {
+                            "selector": "a",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
             "demos": [
                 {
                     "desc": "横排",
@@ -110,7 +112,7 @@
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": "& > li.am-parent > a::before",
+                            "selector": "& > li.am-parent > a:before",
                             "property": "color"
                         }
                     ]
@@ -216,129 +218,24 @@
                     },
                     "content": [
                         {
-                            "subCols": 1,
                             "link": "##",
-                            "title": "Menu",
+                            "title": "公司",
                             "subMenu": [
                                 {
                                     "link": "##",
-                                    "title": "公司",
-                                    "subMenu": [
-                                        {
-                                            "link": "##",
-                                            "title": "公司"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "人物"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "趋势"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "投融资"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "创业公司"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "创业人物"
-                                        }
-                                    ]
+                                    "title": "公司"
                                 },
                                 {
                                     "link": "##",
-                                    "title": "人物",
-                                    "subMenu": [
-                                        {
-                                            "link": "##",
-                                            "title": "公司"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "人物"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "趋势"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "投融资"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "创业公司"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "创业人物"
-                                        }
-                                    ]
+                                    "title": "人物"
                                 },
                                 {
                                     "link": "##",
-                                    "title": "趋势",
-                                    "subMenu": [
-                                        {
-                                            "link": "##",
-                                            "title": "公司"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "人物"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "趋势"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "投融资"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "创业公司"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "创业人物"
-                                        }
-                                    ]
+                                    "title": "趋势"
                                 },
                                 {
                                     "link": "##",
-                                    "title": "投融资",
-                                    "subMenu": [
-                                        {
-                                            "link": "##",
-                                            "title": "公司"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "人物"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "趋势"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "投融资"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "创业公司"
-                                        },
-                                        {
-                                            "link": "##",
-                                            "title": "创业人物"
-                                        }
-                                    ]
+                                    "title": "投融资"
                                 },
                                 {
                                     "link": "##",
@@ -349,516 +246,118 @@
                                     "title": "创业人物"
                                 }
                             ]
+                        },
+                        {
+                            "link": "##",
+                            "title": "人物",
+                            "subMenu": [
+                                {
+                                    "link": "##",
+                                    "title": "公司"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "人物"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "趋势"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "投融资"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "创业公司"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "创业人物"
+                                }
+                            ]
+                        },
+                        {
+                            "link": "##",
+                            "title": "趋势",
+                            "subMenu": [
+                                {
+                                    "link": "##",
+                                    "title": "公司"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "人物"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "趋势"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "投融资"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "创业公司"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "创业人物"
+                                }
+                            ]
+                        },
+                        {
+                            "link": "##",
+                            "title": "投融资",
+                            "subMenu": [
+                                {
+                                    "link": "##",
+                                    "title": "公司"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "人物"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "趋势"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "投融资"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "创业公司"
+                                },
+                                {
+                                    "link": "##",
+                                    "title": "创业人物"
+                                }
+                            ]
+                        },
+                        {
+                            "link": "##",
+                            "title": "创业公司"
+                        },
+                        {
+                            "link": "##",
+                            "title": "创业人物"
                         }
                     ]
+
                 }
             }
         },
         {
             "id": "d2",
             "name": "dropdown2",
-            "desc": "二级下拉全宽2",
-            "options": {
-                "cols": "1"
-            },
-            "hook": "hook-am-menu-dropdown2",
-            "variables": [
-                {
-                    "variable": "trigger-color",
-                    "name": "触发菜单颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "& > li.am-parent > a:before",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-color",
-                    "name": "二级菜单颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-bg-color",
-                    "name": "二级菜单背景色",
-                    "default": "#727B8A",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "border-color",
-                    "name": "边框颜色",
-                    "default": "#4C5565",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a, .am-menu-lv2>li.am-parent.am-open",
-                            "property": "border-bottom-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-active-bg-color",
-                    "name": "二级菜单激活背景色",
-                    "default": "#727B8A",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li.am-parent.am-open",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv3-color",
-                    "name": "三级菜单颜色",
-                    "default": "#7E858F",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv3 a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv3-bg-color",
-                    "name": "三级菜单背景颜色",
-                    "default": "#F2F3F5",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2>li.am-parent.am-open .am-menu-lv3",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv3-icon-color",
-                    "name": "三级菜单Icon颜色",
-                    "default": "#aaa",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv3 a::before",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "desc": "",
-                    "data": {
-                        "options": {
-                            "cols": "1"
-                        },
-                        "content": [
-                            {
-                                "subCols": 1,
-                                "link": "##",
-                                "title": "Menu",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司",
-                                        "subMenu": [
-                                            {
-                                                "link": "##",
-                                                "title": "公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "人物"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "趋势"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "投融资"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业人物"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物",
-                                        "subMenu": [
-                                            {
-                                                "link": "##",
-                                                "title": "公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "人物"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "趋势"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "投融资"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业人物"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "趋势",
-                                        "subMenu": [
-                                            {
-                                                "link": "##",
-                                                "title": "公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "人物"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "趋势"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "投融资"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业人物"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "投融资",
-                                        "subMenu": [
-                                            {
-                                                "link": "##",
-                                                "title": "公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "人物"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "趋势"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "投融资"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业人物"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                }
-            ]
-        },
-        {
-            "id": "d3",
-            "name": "dropdown3",
-            "desc": "二级下拉非全宽",
-            "options": {
-                "cols": "1"
-            },
-            "hook": "hook-am-menu-dropdown3",
-            "variables": [
-                {
-                    "variable": "trigger-color",
-                    "name": "触发菜单颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "& > li.am-parent > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "trigger-active-color",
-                    "name": "触发菜单激活颜色",
-                    "default": "#F2F3F5",
-                    "used": [
-                        {
-                            "selector": "& > .am-parent.am-open > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-color",
-                    "name": "二级菜单颜色",
-                    "default": "#2A2D32",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-bg-color",
-                    "name": "二级菜单背景色",
-                    "default": "#F2F3F5",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2",
-                            "property": "background-color"
-                        },
-                        {
-                            "selector": "& > .am-parent.am-open > a::before",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "border-color",
-                    "name": "边框颜色",
-                    "default": "#D3D6DB",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a, .am-menu-lv2 > li.am-parent.am-open",
-                            "property": "border-bottom-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv3-color",
-                    "name": "三级菜单颜色",
-                    "default": "#7E858F",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv3 a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv3-bg-color",
-                    "name": "三级菜单背景颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li.am-parent.am-open .am-menu-lv3",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv3-icon-color",
-                    "name": "三级菜单Icon颜色",
-                    "default": "#aaa",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv3 a::before",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "desc": "",
-                    "data": {
-                        "options": {
-                            "cols": "1"
-                        },
-                        "content": [
-                            {
-                                "subCols": 1,
-                                "link": "##",
-                                "title": "Menu",
-                                "subMenuClassName": "",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司",
-                                        "subMenu": [
-                                            {
-                                                "link": "##",
-                                                "title": "公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "人物"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "趋势"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "投融资"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业人物"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物",
-                                        "subMenu": [
-                                            {
-                                                "link": "##",
-                                                "title": "公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "人物"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "趋势"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "投融资"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业人物"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "趋势",
-                                        "subMenu": [
-                                            {
-                                                "link": "##",
-                                                "title": "公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "人物"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "趋势"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "投融资"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业人物"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "投融资",
-                                        "subMenu": [
-                                            {
-                                                "link": "##",
-                                                "title": "公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "人物"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "趋势"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "投融资"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业人物"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                }
-            ]
-        },
-        {
-            "id": "d4",
-            "name": "dropdown4",
             "desc": "二级下拉横排",
             "options": {
                 "cols": "1"
             },
-            "hook": "hook-am-menu-dropdown4",
+            "hook": "hook-am-menu-dropdown2",
             "variables": [
                 {
                     "variable": "trigger-color",
@@ -936,367 +435,13 @@
                     "desc": "",
                     "data": {
                         "options": {
-                            "cols": "1"
+                            "cols": "4"
                         },
                         "content": [
                             {
-                                "subCols": 4,
                                 "link": "##",
-                                "title": "Menu",
-                                "subMenuClassName": "",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司",
-                                        "subCols": 3,
-                                        "subMenu": [
-                                            {
-                                                "link": "##",
-                                                "title": "公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "人物"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "趋势"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "投融资"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业人物"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物",
-                                        "subCols": 3,
-                                        "subMenu": [
-                                            {
-                                                "link": "##",
-                                                "title": "公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "人物"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "趋势"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "投融资"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业人物"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "趋势",
-                                        "subCols": 3,
-                                        "subMenu": [
-                                            {
-                                                "link": "##",
-                                                "title": "公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "人物"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "趋势"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "投融资"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业人物"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "投融资",
-                                        "subCols": 3,
-                                        "subMenu": [
-                                            {
-                                                "link": "##",
-                                                "title": "公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "人物"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "趋势"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "投融资"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业公司"
-                                            },
-                                            {
-                                                "link": "##",
-                                                "title": "创业人物"
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                }
-            ]
-        },
-        {
-            "id": "d5",
-            "name": "dropdown5",
-            "desc": "一级下拉全宽",
-            "options": {
-                "cols": "1"
-            },
-            "hook": "hook-am-menu-dropdown5",
-            "variables": [
-                {
-                    "variable": "trigger-color",
-                    "name": "触发菜单颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "& > li.am-parent > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "trigger-border-color",
-                    "name": "触发菜单边框颜色",
-                    "default": "#eee",
-                    "used": [
-                        {
-                            "selector": "& > li.am-parent > a::after",
-                            "property": "border-left-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-color",
-                    "name": "二级菜单颜色",
-                    "default": "#1D1F24",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-bg-color",
-                    "name": "二级菜单背景色",
-                    "default": "#DFE2E9",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "border-color",
-                    "name": "边框颜色",
-                    "default": "#ccc",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "border-bottom-color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "desc": "",
-                    "data": {
-                        "options": {
-                            "cols": "1"
-                        },
-                        "content": [
-                            {
-                                "subCols": 2,
-                                "link": "##",
-                                "title": "导航",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                }
-            ]
-        },
-        {
-            "id": "d6",
-            "name": "dropdown6",
-            "desc": "两列下拉",
-            "options": {
-                "cols": "2"
-            },
-            "hook": "hook-am-menu-dropdown6",
-            "variables": [
-                {
-                    "variable": "lv1-color",
-                    "name": "一级菜单颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "& > li > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv1-bg-color",
-                    "name": "一级菜单背景色",
-                    "default": "#727B8A",
-                    "used": [
-                        {
-                            "selector": "& > li > a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv1-active-bg-color",
-                    "name": "一级菜单激活背景色",
-                    "default": "#586474",
-                    "used": [
-                        {
-                            "selector": "& > li.am-open > a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-color",
-                    "name": "二级菜单颜色",
-                    "default": "#383C40",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-bg-color",
-                    "name": "二级菜单背景色",
-                    "default": "#F2F3F5",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "border-color",
-                    "name": "边框颜色",
-                    "default": "#ddd",
-                    "used": [
-                        {
-                            "selector": ".am-open > .am-menu-sub",
-                            "property": "border-color"
-                        },
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "border-bottom-color"
-                        },
-                        {
-                            "selector": "& > li.am-open > a::before",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "desc": "",
-                    "data": {
-                        "options": {
-                            "cols": "2"
-                        },
-                        "content": [
-                            {
-                                "subCols": 1,
-                                "link": "##",
-                                "title": "导航 1",
+                                "title": "公司",
+                                "subCols": 3,
                                 "subMenu": [
                                     {
                                         "link": "##",
@@ -1325,137 +470,9 @@
                                 ]
                             },
                             {
-                                "subCols": 1,
                                 "link": "##",
-                                "title": "导航 2",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "趋势"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "投融资"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                }
-            ]
-        },
-        {
-            "id": "d7",
-            "name": "dropdown7",
-            "desc": "两列下拉等分",
-            "options": {
-                "cols": "2"
-            },
-            "hook": "hook-am-menu-dropdown7",
-            "variables": [
-                {
-                    "variable": "lv1-color",
-                    "name": "一级菜单颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "& > li > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv1-bg-color",
-                    "name": "一级菜单背景色",
-                    "default": "#727B8A",
-                    "used": [
-                        {
-                            "selector": "& > li > a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv1-active-bg-color",
-                    "name": "一级菜单激活背景色",
-                    "default": "#586474",
-                    "used": [
-                        {
-                            "selector": "& > li.am-open > a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-color",
-                    "name": "二级菜单颜色",
-                    "default": "#383C40",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-bg-color",
-                    "name": "二级菜单背景色",
-                    "default": "#F2F3F5",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2, .am-menu-lv2 > li > a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "border-color",
-                    "name": "边框颜色",
-                    "default": "#ddd",
-                    "used": [
-                        {
-                            "selector": ".am-open > .am-menu-sub",
-                            "property": "border-color"
-                        },
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "border-bottom-color"
-                        },
-                        {
-                            "selector": "& > li.am-open > a::before",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "desc": "",
-                    "data": {
-                        "options": {
-                            "cols": "2"
-                        },
-                        "content": [
-                            {
-                                "subCols": 1,
-                                "link": "##",
-                                "title": "导航 1",
+                                "title": "人物",
+                                "subCols": 3,
                                 "subMenu": [
                                     {
                                         "link": "##",
@@ -1484,132 +501,9 @@
                                 ]
                             },
                             {
-                                "subCols": 1,
                                 "link": "##",
-                                "title": "导航 2",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "趋势"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "投融资"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                }
-            ]
-        },
-        {
-            "id": "d8",
-            "name": "dropdown8",
-            "desc": "三列下拉",
-            "options": {
-                "cols": "3"
-            },
-            "hook": "hook-am-menu-dropdown8",
-            "variables": [
-                {
-                    "variable": "lv1-color",
-                    "name": "一级菜单颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "& > li > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv1-bg-color",
-                    "name": "一级菜单背景色",
-                    "default": "#727B8A",
-                    "used": [
-                        {
-                            "selector": "& > li > a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv1-active-bg-color",
-                    "name": "一级菜单激活背景色",
-                    "default": "#586474",
-                    "used": [
-                        {
-                            "selector": "& > li.am-open > a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-color",
-                    "name": "二级菜单颜色",
-                    "default": "#383C40",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-bg-color",
-                    "name": "二级菜单背景色",
-                    "default": "#F2F3F5",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2, .am-menu-lv2 > li > a",
-                            "property": "background-color"
-                        },
-                        {
-                            "selector": "& > li.am-open > a::before",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "border-color",
-                    "name": "边框颜色",
-                    "default": "#ddd",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "border-bottom-color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "data": {
-                        "options": {
-                            "cols": "3"
-                        },
-                        "content": [
-                            {
-                                "subCols": 2,
-                                "link": "##",
-                                "title": "导航 1",
+                                "title": "趋势",
+                                "subCols": 3,
                                 "subMenu": [
                                     {
                                         "link": "##",
@@ -1638,9 +532,9 @@
                                 ]
                             },
                             {
-                                "subCols": 2,
                                 "link": "##",
-                                "title": "导航 2",
+                                "title": "投融资",
+                                "subCols": 3,
                                 "subMenu": [
                                     {
                                         "link": "##",
@@ -1669,223 +563,12 @@
                                 ]
                             },
                             {
-                                "subCols": 2,
                                 "link": "##",
-                                "title": "导航 3"
-                            }
-                        ]
-                    }
-                }
-            ]
-        },
-        {
-            "id": "d9",
-            "name": "dropdown9",
-            "desc": "一级下拉深灰底竖排",
-            "options": {
-                "cols": "1"
-            },
-            "hook": "hook-am-menu-dropdown9",
-            "variables": [
-                {
-                    "variable": "trigger-color",
-                    "name": "触发器颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "& > li.am-parent > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-color",
-                    "name": "二级菜单颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-bg-color",
-                    "name": "二级菜单背景色",
-                    "default": "#727B8A",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "border-color",
-                    "name": "边框颜色",
-                    "default": "#4C5565",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "border-bottom-color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "data": {
-                        "options": {
-                            "cols": "1"
-                        },
-                        "content": [
+                                "title": "创业公司"
+                            },
                             {
-                                "subCols": 1,
                                 "link": "##",
-                                "title": "导航",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                }
-            ]
-        },
-        {
-            "id": "d10",
-            "name": "dropdown10",
-            "desc": "一级下拉横排浅灰底",
-            "options": {
-                "cols": "1"
-            },
-            "hook": "hook-am-menu-dropdown10",
-            "variables": [
-                {
-                    "variable": "trigger-color",
-                    "name": "触发器颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "& > li > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-color",
-                    "name": "二级菜单颜色",
-                    "default": "#383C40",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-bg-color",
-                    "name": "二级菜单背景色",
-                    "default": "#F2F3F5",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2, .am-menu-lv2 > li > a",
-                            "property": "background-color"
-                        },
-                        {
-                            "selector": "& > li.am-open > a::before",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "border-color",
-                    "name": "边框颜色",
-                    "default": "#ddd",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li > a",
-                            "property": "border-bottom-color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "data": {
-                        "options": {
-                            "cols": "1"
-                        },
-                        "content": [
-                            {
-                                "subCols": 2,
-                                "link": "##",
-                                "title": "导航",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
+                                "title": "创业人物"
                             }
                         ]
                     }
@@ -1895,243 +578,15 @@
         {
             "id": "s1",
             "name": "slide1",
-            "desc": "一级下滑浅灰",
+            "desc": "指示箭头一级下滑1",
             "options": {
-                "cols": "1"
+                "cols": 1
             },
             "hook": "hook-am-menu-slide1",
             "variables": [
                 {
                     "variable": "trigger-color",
                     "name": "触发器颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "& > .am-parent > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "trigger-border-color",
-                    "name": "触发器边框颜色",
-                    "default": "#eee",
-                    "used": [
-                        {
-                            "selector": "&>.am-parent>a",
-                            "property": "border-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "trigger-active-color",
-                    "name": "触发器激活颜色",
-                    "default": "#59636D",
-                    "used": [
-                        {
-                            "selector": "& > .am-parent.am-open > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "trigger-active-bg-color",
-                    "name": "触发器激活背景颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "& > .am-parent.am-open > a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-bg-color",
-                    "name": "下滑菜单背景色",
-                    "default": "#F2F3F5",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2>li>a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-color",
-                    "name": "下滑菜单颜色",
-                    "default": "#1D2028",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2>li>a",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "data": {
-                        "options": {
-                            "cols": "1"
-                        },
-                        "content": [
-                            {
-                                "subCols": 3,
-                                "link": "##",
-                                "title": "Menu",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "趋势"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "投融资"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                }
-            ]
-        },
-        {
-            "id": "s2",
-            "name": "slide2",
-            "desc": "一级下滑深灰",
-            "options": {
-                "cols": 1
-            },
-            "hook": "hook-am-menu-slide2",
-            "variables": [
-                {
-                    "variable": "trigger-color",
-                    "name": "触发器颜色",
-                    "default": "#999",
-                    "used": [
-                        {
-                            "selector": "& > .am-parent > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "trigger-active-color",
-                    "name": "触发器激活颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "& > .am-parent.am-open > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "trigger-active-bg-color",
-                    "name": "触发器激活背景颜色",
-                    "default": "#586474",
-                    "used": [
-                        {
-                            "selector": "& > .am-parent.am-open > a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-bg-color",
-                    "name": "下滑菜单背景色",
-                    "default": "#727B8A",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-color",
-                    "name": "下滑菜单颜色",
-                    "default": "#DFE4EB",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2>li>a",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "desc": "",
-                    "data": {
-                        "options": {
-                            "cols": "1"
-                        },
-                        "content": [
-                            {
-                                "subCols": 3,
-                                "link": "##",
-                                "title": "Menu",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "趋势"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "投融资"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                }
-            ]
-        },
-        {
-            "id": "s3",
-            "name": "slide3",
-            "desc": "指示箭头一级下滑1",
-            "options": {
-                "cols": 1
-            },
-            "hook": "hook-am-menu-slide3",
-            "variables": [
-                {
-                    "variable": "trigger-color",
-                    "name": "触发器颜色",
                     "default": "#ddd",
                     "used": [
                         {
@@ -2186,272 +641,36 @@
                         },
                         "content": [
                             {
-                                "subCols": 4,
                                 "link": "##",
-                                "title": "导航",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                }
-            ]
-        },
-        {
-            "id": "s4",
-            "name": "slide4",
-            "desc": "指示箭头一级下滑2",
-            "options": {
-                "cols": 1
-            },
-            "hook": "hook-am-menu-slide4",
-            "variables": [
-                {
-                    "variable": "trigger-color",
-                    "name": "触发器颜色",
-                    "default": "#ddd",
-                    "used": [
-                        {
-                            "selector": "& > .am-parent > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "trigger-active-color",
-                    "name": "触发器激活颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "& > .am-parent.am-open > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-bg-color",
-                    "name": "下滑菜单背景色",
-                    "default": "#F2F3F5",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2>li>a",
-                            "property": "background-color"
-                        },
-                        {
-                            "selector": "& > .am-parent.am-open::before",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-color",
-                    "name": "下滑菜单颜色",
-                    "default": "#303338",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2>li>a",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "data": {
-                        "options": {
-                            "cols": "1"
-                        },
-                        "content": [
+                                "title": "公司"
+                            },
                             {
-                                "subCols": 5,
                                 "link": "##",
-                                "title": "导航 1",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创人"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创公"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创公"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创物"
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                }
-            ]
-        },
-        {
-            "id": "s5",
-            "name": "slide5",
-            "desc": "一级下滑竖排",
-            "options": {
-                "cols": 1
-            },
-            "hook": "hook-am-menu-slide5",
-            "variables": [
-                {
-                    "variable": "trigger-color",
-                    "name": "触发器颜色",
-                    "default": "#ddd",
-                    "used": [
-                        {
-                            "selector": "& > .am-parent > a",
-                            "property": "color"
-                        },
-                        {
-                            "selector": "&>.am-parent.am-open>a::after",
-                            "property": "border-left-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "trigger-active-color",
-                    "name": "触发器激活颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "& > .am-parent.am-open > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-bg-color",
-                    "name": "下滑菜单背景色",
-                    "default": "#F2F3F5",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2>li>a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-color",
-                    "name": "下滑菜单颜色",
-                    "default": "#303338",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2>li>a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv2-bd-color",
-                    "name": "下滑菜单边框颜色",
-                    "default": "#ddd",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2>li>a",
-                            "property": "border-bottom-color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "data": {
-                        "options": {
-                            "cols": "1"
-                        },
-                        "content": [
+                                "title": "人物"
+                            },
                             {
-                                "subCols": 1,
                                 "link": "##",
-                                "title": "导航",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    }
-                                ]
+                                "title": "创业公司"
+                            },
+                            {
+                                "link": "##",
+                                "title": "创业人物"
+                            },
+                            {
+                                "link": "##",
+                                "title": "公司"
+                            },
+                            {
+                                "link": "##",
+                                "title": "人物"
+                            },
+                            {
+                                "link": "##",
+                                "title": "创业公司"
+                            },
+                            {
+                                "link": "##",
+                                "title": "创业人物"
                             }
                         ]
                     }
@@ -2930,13 +1149,13 @@
             ]
         },
         {
-            "id": "v1",
-            "name": "vertical1",
-            "desc": "垂直二级",
+            "id": "stack",
+            "name": "stack",
+            "desc": "垂直菜单",
             "options": {
                 "cols": "1"
             },
-            "hook": "hook-am-menu-vertical1",
+            "hook": "hook-am-menu-stack",
             "variables": [
                 {
                     "variable": "vertical-lv1-bg-color",
@@ -3148,232 +1367,6 @@
                     }
                 }
             ]
-        },
-        {
-            "id": "clear",
-            "name": "clear",
-            "desc": "ios7默认",
-            "options": {
-                "cols": "1",
-                "offCanvas": true,
-                "offCanvasId": "menu3"
-            },
-            "hook": "hook-am-menu-clear",
-            "variables": [
-                {
-                    "variable": "vertical-lv1-bg-color",
-                    "name": "一级菜单背景色",
-                    "default": "#F5F5F5",
-                    "used": [
-                        {
-                            "selector": "& > li > a",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "vertical-color",
-                    "name": "一级菜单颜色",
-                    "default": "#333",
-                    "used": [
-                        {
-                            "selector": "& > li > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "vertical-hover-bg-color",
-                    "name": "一级菜单Hover背景色",
-                    "default": "#ddd",
-                    "used": [
-                        {
-                            "selector": "&>.am-open>a, &>li>a:hover,&>li>a:focus",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "vertical-hover-color",
-                    "name": "一级菜单Hover颜色",
-                    "default": "#222",
-                    "used": [
-                        {
-                            "selector": "&>.am-open>a, &>li>a:hover,&>li>a:focus",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "vertical-nested-color",
-                    "name": "二级菜单颜色",
-                    "default": "#444",
-                    "used": [
-                        {
-                            "selector": "& ul a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "vertical-nested-hover-color",
-                    "name": "二级菜单Hover颜色",
-                    "default": "#333",
-                    "used": [
-                        {
-                            "selector": "& ul a:hover",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "vertical-bd-color",
-                    "name": "边框颜色",
-                    "default": "rgba(0, 0, 0, 0.15)",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "border-bottom-color"
-                        },
-                        {
-                            "selector": ".am-menu-sub a",
-                            "property": "border-bottom-color"
-                        },
-                        {
-                            "selector": "& > li.am-parent.am-open > a",
-                            "property": "border-bottom-color"
-                        },
-                        {
-                            "selector": "& > li > a",
-                            "property": "border-top-color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "desc": "ios7(左侧二级)",
-                    "data": {
-                        "options": {
-                            "cols": "1",
-                            "offCanvas": true,
-                            "offCanvasId": "menu3"
-                        },
-                        "content": [
-                            {
-                                "subCols": 1,
-                                "link": "##",
-                                "title": "公司",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "趋势"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "投融资"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            },
-                            {
-                                "subCols": 1,
-                                "link": "##",
-                                "title": "人物",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "趋势"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "投融资"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            },
-                            {
-                                "subCols": 1,
-                                "link": "##",
-                                "title": "趋势",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "趋势"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "投融资"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            },
-                            {
-                                "subCols": 1,
-                                "link": "##",
-                                "title": "投融资"
-                            },
-                            {
-                                "subCols": 1,
-                                "link": "##",
-                                "title": "创业公司"
-                            },
-                            {
-                                "subCols": 1,
-                                "link": "##",
-                                "title": "创业人物"
-                            }
-                        ]
-                    },
-                    "helper": "<a href=\"#menu3\" class=\"am-btn am-btn-primary menu-trigger\" data-am-offcanvas>ios7(左侧二级)</a>"
-                }
-            ],
-            "hidden": 1
         },
         {
             "id": "one",

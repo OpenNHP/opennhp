@@ -1,29 +1,40 @@
-// am menu default
+/**
+  * Menu Theme: default
+  * Theme ID: default
+  * Author: Minwe (minwe@yunshipei.com)
+  */
+
 .am-menu-default {
   @am-menu-a-color: @global-primary;
   @am-menu-li-heihgt: 44px;
-  & > li{
-    height: @am-menu-li-heihgt;
-    line-height: @am-menu-li-heihgt;
+
+  .am-menu-nav {
+    & > li{
+      height: @am-menu-li-heihgt;
+      line-height: @am-menu-li-heihgt;
+    }
+
+    a {
+      text-align: center;
+      .text-overflow(block);
+      padding: 0;
+      color: @am-menu-a-color;
+    }
   }
-  a {
-    text-align: center;
-    .text-overflow(block);
-    padding: 0;
-    color: @am-menu-a-color;
-  }
+
   .hook-am-menu-default;
 }
 
 .hook-am-menu-default() {}
 
-@media (min-width: @breakpoint-md) {
+@media @medium-up {
   .am-menu-default {
     li {
       width: auto;
       float: none;
       display: inline-block;
     }
+
     a {
       padding-left: 1.5rem;
       padding-right: 1.5rem;

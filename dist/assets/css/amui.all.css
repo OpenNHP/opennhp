@@ -9548,17 +9548,25 @@ tbody.am-collapse.am-in {
 .am-menu li {
   list-style: none;
 }
-.am-menu a {
+.am-menu-toggle {
+  display: none;
+}
+.am-menu-nav a {
   display: block;
   padding: 0.8rem 0;
   -webkit-transition: all 0.45s;
   transition: all 0.45s;
 }
-.am-menu-default > li {
+/**
+  * Menu Theme: pills
+  * Theme ID: pills
+  * Author: Minwe (minwe@yunshipei.com)
+  */
+.am-menu-pills > li {
   height: 44px;
   line-height: 44px;
 }
-.am-menu-default a {
+.am-menu-pills a {
   text-align: center;
   display: block;
   word-wrap: normal;
@@ -11387,30 +11395,30 @@ tbody.am-collapse.am-in {
   color: #ffffff;
 }
 /**
-  * Menu Theme: vertical1
-  * Theme ID: v1
+  * Menu Theme: stack
+  * Theme ID: stack
   * Author: Minwe (minwe@yunshipei.com)
   */
-.am-menu-vertical1 {
+.am-menu-stack {
   border-bottom: 1px solid rgba(0, 0, 0, 0.15);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
   /*
   * Nested items
   */
 }
-.am-menu-vertical1 .am-menu-sub {
+.am-menu-stack .am-menu-sub {
   padding: 0;
   font-size: 1.4rem;
   display: none;
 }
-.am-menu-vertical1 .am-menu-sub a {
+.am-menu-stack .am-menu-sub a {
   border-bottom: 1px solid rgba(0, 0, 0, 0.15);
   padding-left: 2rem;
 }
-.am-menu-vertical1 .am-menu-sub li:last-child a {
+.am-menu-stack .am-menu-sub li:last-child a {
   border-bottom: none;
 }
-.am-menu-vertical1 a::after {
+.am-menu-stack a::after {
   /* 1 */
   /* 2 */
   /* 2 */
@@ -11432,24 +11440,24 @@ tbody.am-collapse.am-in {
   /* 5 */
   -moz-osx-font-smoothing: grayscale;
 }
-.am-menu-vertical1 > li.am-parent > a {
+.am-menu-stack .am-menu-nav > li.am-parent > a {
   -webkit-transition: all 0.3s;
   transition: all 0.3s;
 }
-.am-menu-vertical1 > li.am-parent > a::after {
+.am-menu-stack .am-menu-nav > li.am-parent > a::after {
   content: "\f105";
   position: absolute;
   right: 1.5rem;
   top: 1.3rem;
 }
-.am-menu-vertical1 > li.am-parent.am-open > a {
+.am-menu-stack .am-menu-nav > li.am-parent.am-open > a {
   border-bottom: 1px solid rgba(0, 0, 0, 0.15);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
 }
-.am-menu-vertical1 > li.am-parent.am-open > a::after {
+.am-menu-stack .am-menu-nav > li.am-parent.am-open > a::after {
   content: "\f107";
 }
-.am-menu-vertical1 > li > a {
+.am-menu-stack .am-menu-nav > li > a {
   position: relative;
   color: #333333;
   background-color: #f5f5f5;
@@ -11460,65 +11468,65 @@ tbody.am-collapse.am-in {
   text-indent: 10px;
   padding: 0;
 }
-.am-menu-vertical1 .am-menu-lv2 > li > a {
+.am-menu-stack .am-menu-lv2 > li > a {
   height: 44px;
   line-height: 44px;
   text-indent: 15px;
   padding: 0;
 }
-.am-menu-vertical1 > .am-open > a,
-.am-menu-vertical1 > li > a:hover,
-.am-menu-vertical1 > li > a:focus {
+.am-menu-stack > .am-open > a,
+.am-menu-stack > li > a:hover,
+.am-menu-stack > li > a:focus {
   /* 1 */
   background-color: #dddddd;
   color: #222222;
   outline: none;
   /* 2 */
 }
-.am-menu-vertical1 ul a {
+.am-menu-stack ul a {
   color: #444444;
 }
-.am-menu-vertical1 ul a:hover {
+.am-menu-stack ul a:hover {
   color: #333333;
 }
-@media (min-width: 640px) {
-  .am-menu-vertical1 {
+@media only screen and (min-width:641px) {
+  .am-menu-stack {
     background-color: #f5f5f5;
   }
-  .am-menu-vertical1 a {
+  .am-menu-stack a {
     padding-left: 1.5rem;
     padding-right: 1.5rem;
   }
-  .am-menu-vertical1 > li {
+  .am-menu-stack > li {
     float: left;
     width: auto;
     clear: none !important;
     display: inline-block;
   }
-  .am-menu-vertical1 > li.am-parent > a::after {
+  .am-menu-stack > li.am-parent > a::after {
     position: static;
     content: "\f107";
     -webkit-transition: all 0.15s;
     transition: all 0.15s;
   }
-  .am-menu-vertical1 > li.am-parent.am-open a {
+  .am-menu-stack > li.am-parent.am-open a {
     border-bottom: none;
   }
-  .am-menu-vertical1 > li.am-parent.am-open a::after {
+  .am-menu-stack > li.am-parent.am-open a::after {
     -webkit-transform: rotate(-180deg);
     -ms-transform: rotate(-180deg);
     transform: rotate(-180deg);
   }
-  .am-menu-vertical1 > li.am-parent.am-open .am-menu-sub {
+  .am-menu-stack > li.am-parent.am-open .am-menu-sub {
     background-color: #dddddd;
   }
-  .am-menu-vertical1 .am-menu-sub {
+  .am-menu-stack .am-menu-sub {
     position: absolute;
     z-index: 1999;
     left: 0;
     right: 0;
   }
-  .am-menu-vertical1 .am-menu-sub li {
+  .am-menu-stack .am-menu-sub li {
     width: auto;
     float: left;
     clear: none;

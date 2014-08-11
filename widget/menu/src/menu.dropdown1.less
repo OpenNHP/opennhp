@@ -7,19 +7,18 @@
 .am-menu-dropdown1 {
   @trigger-color: #fff;
   @lv2-color: #fff;
-  @lv2-bg-color: #727B8A;
+  @lv2-bg-color: #727b8a;
 
-  @lv2-active-color: #6B717D;
-  @lv2-active-bg-color: #C5C9D2;
+  @lv2-active-color: #6b717d;
+  @lv2-active-bg-color: #c5c9d2;
   @lv2-a-height: 49px;
 
-
-  @lv3-color: #7E858F;
+  @lv3-color: #7e858f;
   @lv3-icon-color: #aaa;
   @lv3-bg-color: #fff;
   @lv3-a-height: 44px;
 
-  @border-color: #4C5565;
+  @border-color: #4c5565;
 
   a {
     .transition(all 0.4s);
@@ -28,23 +27,25 @@
     }
   }
 
-  > li.am-parent {
-    position: relative;
-    > a {
-      position: absolute;
-      right: 10px;
-      top: -36px;
-      width: 40px;
-      height: 24px;
-      overflow: hidden;
-      padding: 0;
-      text-align: right;
-      &::before {
-        content: @fa-var-bars;
-        color: @trigger-color;
-        height: 24px;
+  .am-menu-nav {
+    > li.am-parent {
+      position: relative;
+      > a {
+        position: absolute;
+        right: 10px;
+        top: -36px;
         width: 40px;
-        font-size: 24px;
+        height: 24px;
+        overflow: hidden;
+        padding: 0;
+        text-align: right;
+        &::before {
+          content: @fa-var-bars;
+          color: @trigger-color;
+          height: 24px;
+          width: 40px;
+          font-size: 24px;
+        }
       }
     }
   }
@@ -53,7 +54,7 @@
     display: none;
   }
 
-  .am-menu-lv2 {
+  .am-menu-lv1 {
     position: absolute;
     left: 0;
     right: 0;
@@ -108,7 +109,7 @@
     }
   }
 
-  .am-menu-lv3 {
+  .am-menu-lv2 {
     background-color: @lv3-bg-color;
     a {
       color: @lv3-color;
@@ -129,15 +130,15 @@
 
   .hook-am-menu-dropdown1;
 
-  @media (min-width: @breakpoint-md) {
-    & {
+  @media @medium-up {
+    .am-menu-nav {
       > .am-parent {
         > a {
           display: none;
         }
       }
 
-      .am-menu-lv2 {
+      .am-menu-lv1 {
         background-color: @lv2-bg-color;
         display: block;
         & > li {
@@ -146,7 +147,7 @@
         }
       }
 
-      .am-menu-lv3 {
+      .am-menu-lv2 {
         & > li {
           clear: none;
           width: auto;
@@ -154,7 +155,6 @@
       }
     }
   }
-
 }
 
-.hook-am-menu-dropdown1() {};
+.hook-am-menu-dropdown1() {}

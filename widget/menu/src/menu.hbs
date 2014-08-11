@@ -8,7 +8,8 @@
     {{/if}}
 
     {{#if content}}
-      <ul class="am-menu-nav {{#if options.cols}}sm-block-grid-{{options.cols}}{{else}}sm-block-grid-1{{/if}}">
+      <ul class="am-menu-nav am-menu-lv1 {{#if options.cols}}sm-block-grid-{{options
+      .cols}}{{else}}sm-block-grid-1{{/if}}">
         {{#each content}}
           <li class="{{#if subMenu}}am-parent{{/if}}{{#if className}} {{className}}{{/if}}">
             <a href="{{link}}">{{{title}}}</a>

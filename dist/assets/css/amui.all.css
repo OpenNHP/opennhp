@@ -7728,17 +7728,19 @@ tbody.am-collapse.am-in {
   margin-top: -12px;
   z-index: 1001;
 }
+.pinch-zoom-container {
+  z-index: 1005;
+}
 /* The before element moves the image halfway from the top */
-/*#gallerySlider .placeholder:before {
+/*
+#gallerySlider .placeholder:before {
   content: "";
   display: inline-block;
   height: 50%;
   width: 1px;
   margin-right: -1px;
-}*/
-.pinch-zoom-container {
-  z-index: 1005;
 }
+*/
 .pinch-zoom img {
   position: absolute!important;
   margin: auto;
@@ -9010,6 +9012,75 @@ tbody.am-collapse.am-in {
 .am-gotop-one a img,
 .am-gotop-one a span {
   display: none;
+}
+.am-header {
+  height: 49px;
+  line-height: 49px;
+  padding: 0 10px;
+  font-size: 100%;
+}
+.am-header h2 {
+  margin-top: 0;
+  margin-bottom: 0;
+  font-size: 1.6rem;
+}
+/**
+  * header Theme: one
+  * Theme ID: one
+  */
+.am-header-one {
+  position: relative;
+  background: #ffffff;
+  padding: 0;
+  margin: 0;
+}
+.am-header-one .am-header-left {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  height: 34px;
+  width: 34px;
+}
+.am-header-one .am-header-left img {
+  height: 34px;
+  width: 34px;
+  background-size: 100%;
+  vertical-align: top;
+}
+.am-header-one .am-header-right {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  height: 34px;
+  width: 34px;
+}
+.am-header-one .am-header-right img {
+  height: 34px;
+  width: 34px;
+  background-size: 100%;
+  vertical-align: top;
+}
+.am-header-one .am-header-title {
+  color: #15afef;
+  text-align: center;
+  display: block;
+  word-wrap: normal;
+  /* for IE */
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 2rem;
+  font-weight: normal;
+  padding: 0 50px;
+}
+.am-header-one .am-header-title a {
+  color: #15afef;
+}
+.am-header-one .am-header-title img {
+  height: 34px;
+  width: auto;
+  margin-top: 8px;
+  vertical-align: top;
 }
 /**
   * Intro Theme: default

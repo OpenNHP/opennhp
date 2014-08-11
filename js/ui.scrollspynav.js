@@ -7,6 +7,10 @@ define(function(require, exports, module) {
     var $ = window.Zepto,
         UI = $.AMUI;
 
+    /**
+     * @via https://github.com/uikit/uikit/
+     * @license https://github.com/uikit/uikit/blob/master/LICENSE.md
+     */
 
     // ScrollSpyNav Class
 

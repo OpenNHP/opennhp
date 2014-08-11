@@ -2,6 +2,10 @@ define(function(require, exports, module) {
 
     var $ = window.Zepto;
 
+    // Zepto.js
+    // (c) 2010-2014 Thomas Fuchs
+    // Zepto.js may be freely distributed under the MIT license.
+
     var prefix = '', eventPrefix, endEventName, endAnimationName,
         vendors = { Webkit: 'webkit', Moz: '', O: 'o' },
         document = window.document, testEl = document.createElement('div'),

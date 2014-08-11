@@ -1,6 +1,9 @@
 define(function(require, exports, module) {
 
-    // via http://rtp-ch.github.io/pinchzoom/
+    /**
+     * @via http://rtp-ch.github.io/pinchzoom/
+     * @license GNU General Public License,
+     */
 
     var definePinchZoom = function(d) {
         var PinchZoom = function(h, g) {

@@ -4,9 +4,11 @@ define(function(require, exports, module) {
     var $ = window.Zepto,
         UI = $.AMUI;
 
-    // via https://github.com/sindresorhus/screenfull.js
-    // MIT © Sindre Sorhus
-    // version 1.2.1
+    /**
+     * @via https://github.com/sindresorhus/screenfull.js
+     * @license MIT © Sindre Sorhus
+     * @version 1.2.1
+     */
 
     'use strict';
 

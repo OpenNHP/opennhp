@@ -81,9 +81,8 @@ define(function(require, exports, module) {
 
     /*
      * Zepto FlexSlider v2.3
-     * Porting from jQuery FlexSlider v2.2.2
-     * Copyright 2012 WooThemes
-     * Contributing Author: Tyler Smith
+     * @desc Porting from jQuery FlexSlider v2.3, Contributing Author: Tyler Smith
+     * @license Copyright 2012 WooThemes GPLv2
      */
 
 

@@ -4,7 +4,7 @@
 感谢对 Amaze UI 的关注和支持，如遇到 Bug 或者使用问题，可以通过以下途径反馈给我们：
 
 - 在文档底部[评论中留言](#ds-thread)；
-- 在 Github 项目主页[提交 Issue](https://github.com/allmobilize/amazeui/issues)。
+- 在 GitHub 项目主页[提交 Issue](https://github.com/allmobilize/amazeui/issues)。
 
 __反馈注意事项__
 

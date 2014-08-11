@@ -12,6 +12,11 @@ define(function(require, exports, module) {
         $body = $('body'),
         supportTransition = UI.support.transition;
 
+    /**
+     * @reference https://github.com/nolimits4web/Framework7/blob/master/src/js/modals.js
+     * @license https://github.com/nolimits4web/Framework7/blob/master/LICENSE
+     */
+
     var Modal = function(element, options) {
         this.options = $.extend({}, Modal.DEFAULTS, options || {});
         this.$element = $(element);

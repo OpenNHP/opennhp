@@ -2,8 +2,9 @@ define(function(require, exports, module) {
     var $ = Zepto;
 
     /**
-     * ver 1.1.0
-     * via https://github.com/aralejs/qrcode/blob/master/src/qrcode.js
+     * @ver 1.1.0
+     * @via https://github.com/aralejs/qrcode/blob/master/src/qrcode.js
+     * @license http://aralejs.org/
      */
 
     var qrcodeAlgObjCache = [];

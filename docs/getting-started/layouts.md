@@ -6,25 +6,25 @@ Amaze UI 目前提供几个常见的布局示例，供开发者参考，后续�
 <div class="am-g">
     <div class="col-md-3 col-sm-6">
         <a class="am-thumbnail" href="/examples/landing.html">
-            <img class="am-img-thumbnail" src="http://ide.yunshipei.com/v3/api/viewResource/5b162ef2958dddbaaabfa8dbc57a6a90/landing.png" alt="landingPage"/>
+            <img class="am-img-thumbnail" src="http://amazeui.org/i/examples/landingPage.png" alt="landingPage"/>
             <figcaption class="am-thumbnail-caption">展示页面</figcaption>
         </a>
     </div>
     <div class="col-md-3 col-sm-6">
         <a class="am-thumbnail" href="/examples/login.html">
-            <img class="am-img-thumbnail" src="http://ide.yunshipei.com/v3/api/viewResource/5b162ef2958dddbaaabfa8dbc57a6a90/login.png" alt="loginPage"/>
+            <img class="am-img-thumbnail" src="http://amazeui.org/i/examples/loginPage.png" alt="loginPage"/>
             <figcaption class="am-thumbnail-caption">登录注册页面</figcaption>
         </a>
     </div>
     <div class="col-md-3 col-sm-6">
         <a class="am-thumbnail" href="/examples/blog.html">
-            <img class="am-img-thumbnail" src="http://ide.yunshipei.com/v3/api/viewResource/5b162ef2958dddbaaabfa8dbc57a6a90/blog.png" alt="blogPage"/>
+            <img class="am-img-thumbnail" src="http://amazeui.org/i/examples/blogPage.png" alt="blogPage"/>
             <figcaption class="am-thumbnail-caption">博客页面</figcaption>
         </a>
     </div>
     <div class="col-md-3 col-sm-6">
         <a class="am-thumbnail" href="/examples/sidebar.html">
-            <img class="am-img-thumbnail" src="http://ide.yunshipei.com/v3/api/viewResource/5b162ef2958dddbaaabfa8dbc57a6a90/sidebar.png" alt="alt="sidebarPage""/>
+            <img class="am-img-thumbnail" src="http://amazeui.org/i/examples/sidebarPage.png" alt="alt="sidebarPage""/>
             <figcaption class="am-thumbnail-caption">侧边栏页面</figcaption>
         </a>
     </div>

@@ -20,7 +20,20 @@
 
 ```javascript
 var data = {
-  "title": ""			//可写 html 标签（可选）
+
+  "left": "[{
+    "link": "",         //url : http://xxx.xxx.xxx。
+    "icon": "",         //class : 使用 Amaze UI 字体图标 http://www.amazeui.org/css/icon，优先使用字体图标。
+    "img": ""           //img : 图片
+  }]",                  //left、right 可以写多个
+
+  "title": "",			//可写 html 标签（可选）
+
+  "right": "[{
+      "link": "",
+      "icon": "",
+      "img": ""
+    }]"
 };
 
 return data;
@@ -40,7 +53,19 @@ return data;
   },
 
   "content": {
-    "title": ""
+    "left": [{
+        "link": "",
+        "icon": "",
+        "img": ""
+    }],
+
+    "title": "",
+
+    "right": [{
+        "link": "",
+        "icon": "",
+        "img": ""
+    }]
   }
 }
 ```

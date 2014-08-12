@@ -1,17 +1,18 @@
 {{#this}}
   <div data-am-widget="header" class="am-header{{#if theme}} am-header-{{theme}}{{else}} am-header-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"{{#if id}} id="{{id}}"{{/if}}>
-
+    {{#if content.left}}
     <div class="am-header-left">
-        {{#each content.left}}
-          <a href="{{content.left.link}}">
-              {{# if content.left.icon}}
-                <span class="am-icon-sm {{content.left.icon}} "></span>
+      {{#each content.left}}
+        <a href="{{link}}">
+          {{# if icon}}
+            <span class="am-icon-sm {{icon}} "></span>
               {{else}}
-                <img src="{{content.left.img}}"/>
+                <img src="{{img}}"/>
               {{/if}}
-          </a>
-        {{/each}}
+        </a>
+      {{/each}}
     </div>
+    {{/if}}
 
     {{#if content.title}}
       <h2 class="am-header-title">
@@ -19,18 +20,19 @@
       </h2>
     {{/if}}
 
+    {{#if content.right}}
     <div class="am-header-right">
-        {{#each content.right}}
-            <a href="{{content.right.link}}">
-              {{# if content.right.icon}}
-                <span class="am-icon-sm {{content.right.icon}} "></span>
-              {{else}}
-                  <img src="{{content.right.img}}"/>
-              {{/if}}
-
-            </a>
-        {{/each}}
+      {{#each content.right}}
+        <a href="{{link}}">
+          {{# if icon}}
+            <span class="am-icon-sm {{icon}} "></span>
+          {{else}}
+            <img src="{{img}}"/>
+          {{/if}}
+        </a>
+      {{/each}}
     </div>
+    {{/if}}
 
   </div>
 {{/this}}

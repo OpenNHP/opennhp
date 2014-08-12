@@ -163,7 +163,7 @@ gulp.task('zip', function () {
     'docs/examples/login.html',
     'docs/examples/sidebar.html'
     ])
-        .pipe(zip('AmazeUI.zip', {comment: 'Created on ' + gutil.date(now, 'yyyy-mm-dd HH:mm:ss')}))
+        .pipe(zip('AmazeUI-1.0.0-beta1.zip', {comment: 'Created on ' + gutil.date(now, 'yyyy-mm-dd HH:mm:ss')}))
         .pipe(gulp.dest('dist'));
 });
 

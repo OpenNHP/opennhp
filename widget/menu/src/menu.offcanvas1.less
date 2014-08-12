@@ -22,8 +22,10 @@
 
   @nav-offcanvas-border-color: rgba(0, 0, 0, 0.3);
 
-  border-bottom: 1px solid @nav-offcanvas-border-color;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
+  .am-menu-nav {
+    border-bottom: 1px solid @nav-offcanvas-border-color;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
 
   .am-menu-sub {
     border-top: 1px solid @nav-offcanvas-border-color;
@@ -35,7 +37,7 @@
     display: none !important;
   }
 
-  .am-menu-lv2{
+  .am-menu-lv1 {
     & > li{
       & > a{
         height: @nav-offcanvas-lv2-a-height;
@@ -45,6 +47,7 @@
       }
     }
   }
+
   .am-open .am-menu-sub {
     display: block !important;
     height: auto !important;
@@ -56,7 +59,7 @@
     }
   }
 
-  & > li {
+  .am-menu-nav > li {
     &.am-parent {
       > a {
         .transition(all 0.3s);
@@ -125,5 +128,4 @@
   .hook-am-menu-offcanvas1;
 }
 
-.hook-am-menu-offcanvas1() {
-}
+.hook-am-menu-offcanvas1() {  }

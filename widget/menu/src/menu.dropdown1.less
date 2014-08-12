@@ -5,49 +5,43 @@
   */
 
 .am-menu-dropdown1 {
-  @trigger-color: #fff;
-  @lv2-color: #fff;
-  @lv2-bg-color: #727b8a;
+  @menu-toggle-color: #fff;
+  @menu-lv1-color: #fff;
+  @menu-lv1-bg: @global-primary;
 
-  @lv2-active-color: #6b717d;
-  @lv2-active-bg-color: #c5c9d2;
-  @lv2-a-height: 49px;
+  @menu-lv1-active-color: #fff;
+  @menu-lv1-active-bg: darken(@global-primary, 5%);
+  @menu-lv1-link-height: 49px;
 
-  @lv3-color: #7e858f;
-  @lv3-icon-color: #aaa;
-  @lv3-bg-color: #fff;
-  @lv3-a-height: 44px;
+  @menu-sub-color: #555;
+  @menu-sub-icon-color: #aaa;
+  @menu-sub-bg: #fff;
+  @menu-sub-link-height: 44px;
 
-  @border-color: #4c5565;
+  @menu-border-color: darken(@menu-lv1-bg, 8%);
+
+  position: relative;
+
+  .am-menu-toggle {
+    position: absolute;
+    right: 10px;
+    top: -35px;
+    display: block;
+    color: @menu-toggle-color;
+  }
 
   a {
     .transition(all 0.4s);
-    &::before {
+    &:before {
       .am-icon-font;
     }
   }
 
   .am-menu-nav {
-    > li.am-parent {
-      position: relative;
-      > a {
-        position: absolute;
-        right: 10px;
-        top: -36px;
-        width: 40px;
-        height: 24px;
-        overflow: hidden;
-        padding: 0;
-        text-align: right;
-        &::before {
-          content: @fa-var-bars;
-          color: @trigger-color;
-          height: 24px;
-          width: 40px;
-          font-size: 24px;
-        }
-      }
-    }
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: @z-index-dropdown;
   }
 
   .am-menu-sub {
@@ -55,10 +49,6 @@
   }
 
   .am-menu-lv1 {
-    position: absolute;
-    left: 0;
-    right: 0;
-    z-index: @z-index-dropdown;
     a {
       padding: 0.8rem;
     }
@@ -76,16 +66,20 @@
 
         // active
         &.am-open {
+          > ul {
+            height: auto!important;
+          }
+
           > a {
-            background-color: @lv2-active-bg-color;
+            background-color: @menu-lv1-active-bg;
             border-bottom: none;
-            color: @lv2-active-color;
+            color: @menu-lv1-active-color;
             &::before {
               content: @fa-var-minus;
             }
             &::after {
               content: "";
-              .caret-down(8px, @lv2-active-bg-color);
+              .caret-down(8px, @menu-lv1-active-bg);
               position: absolute;
               top: 100%;
               left: 50%;
@@ -96,12 +90,12 @@
       }
 
       > a {
-        border-bottom: 1px solid @border-color;
+        border-bottom: 1px solid @menu-border-color;
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-        background-color: @lv2-bg-color;
-        color: @lv2-color;
-        height: @lv2-a-height;
-        line-height: @lv2-a-height;
+        background-color: @menu-lv1-bg;
+        color: @menu-lv1-color;
+        height: @menu-lv1-link-height;
+        line-height: @menu-lv1-link-height;
         padding: 0;
         text-indent: 10px;
 
@@ -110,17 +104,17 @@
   }
 
   .am-menu-lv2 {
-    background-color: @lv3-bg-color;
+    background-color: @menu-sub-bg;
     a {
-      color: @lv3-color;
-      height: @lv3-a-height;
-      line-height: @lv3-a-height;
+      color: @menu-sub-color;
+      height: @menu-sub-link-height;
+      line-height: @menu-sub-link-height;
       text-indent: 5px;
       padding: 0;
 
       &::before {
         content: @fa-var-angle-right;
-        color: @lv3-icon-color;
+        color: @menu-sub-icon-color;
         font-size: 16px;
         margin-right: 5px;
       }
@@ -130,7 +124,7 @@
 
   .hook-am-menu-dropdown1;
 
-  @media @medium-up {
+  /*@media @medium-up {
     .am-menu-nav {
       > .am-parent {
         > a {
@@ -154,7 +148,7 @@
         }
       }
     }
-  }
+  }*/
 }
 
 .hook-am-menu-dropdown1() {}

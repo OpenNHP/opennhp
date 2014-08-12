@@ -11,11 +11,20 @@ define(function(require, exports, module) {
         var $this, $next, $width, iNow, aNum, $menuLv2, $menuLv3;
 
         //排除掉one主题
-        $('.am-menu').not('[data-am-nav]').not('.am-menu-one').each(function() {
+        $('.am-menu .am-menu-nav').not('[data-am-nav]').not('.am-menu-one').each(function() {
             var nav = $(this);
             if (!nav.data('nav')) {
                 var obj = new UI.nav(nav, nav.data('am-nav') ? UI.utils.options(nav.data('am-nav')) : {});
             }
+        });
+
+        $('.am-menu-dropdown1 > .am-menu-toggle, .am-menu-dropdown2 > .am-menu-toggle, .am-menu-slide1 > .am-menu-toggle').on('click', function() {
+            var $this = $(this),
+                $nav = $this.next('.am-menu-nav');
+
+            $this.toggleClass('am-active');
+
+            $nav.collapse('toggle');
         });
 
         // has one class

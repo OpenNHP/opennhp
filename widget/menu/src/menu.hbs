@@ -1,6 +1,6 @@
 {{#this}}
   <nav data-am-widget="menu" class="am-menu {{#if theme}} am-menu-{{theme}}{{else}} am-menu-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}" {{options.dataset}} {{#if id}}id="{{id}}"{{/if}}>
-    <a href="#{{options.offCanvasId}}" class="am-menu-toggle" data-am-offcanvas><span class="am-icon-bars"></span></a>
+    <a href="#{{options.offCanvasId}}" class="am-menu-toggle"><span class="am-icon-bars"></span></a>
 
     {{#if options.offCanvas}} {{!-- offCanvas Wrap--}}
     <div class="am-offcanvas" id="{{options.offCanvasId}}">
@@ -9,7 +9,9 @@
 
     {{#if content}}
       <ul class="am-menu-nav am-menu-lv1 {{#if options.cols}}sm-block-grid-{{options
-      .cols}}{{else}}sm-block-grid-1{{/if}}">
+      .cols}}{{else}}sm-block-grid-1{{/if}}{{#ifCond theme '==' 'dropdown1'}} am-collapse{{/ifCond}}{{#ifCond theme
+      '==' 'dropdown2'}} am-collapse{{/ifCond}}{{#ifCond theme
+      '==' 'slide1'}} am-collapse{{/ifCond}}">
         {{#each content}}
           <li class="{{#if subMenu}}am-parent{{/if}}{{#if className}} {{className}}{{/if}}">
             <a href="{{link}}">{{{title}}}</a>

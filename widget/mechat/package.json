@@ -113,7 +113,7 @@
             "actions": [
                 {
                     "type": "submit",
-                    "text": "注册美洽",
+                    "text": "注册美洽"
                 },
                 {
                     "type": "link",

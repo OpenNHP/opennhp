@@ -64,10 +64,10 @@
             background-color: @menu-nav-top-link-active-bg;
             border-bottom: none;
             color: @menu-nav-top-link-active-color;
-            &::before {
+            &:before {
               content: @fa-var-minus;
             }
-            &::after {
+            &:after {
               content: "";
               .caret-down(8px, @menu-nav-top-link-active-bg);
               position: absolute;
@@ -88,7 +88,6 @@
         line-height: @menu-nav-link-height;
         padding: 0;
         text-indent: 10px;
-
       }
     }
   }
@@ -103,7 +102,7 @@
       text-indent: 5px;
       padding: 0;
 
-      &::before {
+      &:before {
         content: @fa-var-angle-right;
         color: @menu-nav-sub-link-icon-color;
         font-size: 16px;

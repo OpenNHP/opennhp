@@ -8,18 +8,9 @@
   @menu-toggle-color: #fff;
   @menu-toggle-active-color: #fff;
 
-  @menu-bg: #f5f5f5;
-  @menu-color: @gray-dark;
-  @menu-link-height: 44px;
-
-  position: relative;
-
-  a {
-    &:before,
-    &:after {
-      .am-icon-font;
-    }
-  }
+  @menu-nav-bg: #f5f5f5;
+  @menu-nav-link-color: @gray-dark;
+  @menu-nav-link-height: 44px;
 
   .am-menu-toggle {
     position: absolute;
@@ -31,30 +22,20 @@
 
   .am-menu-nav {
     &.am-in {
-      &::before {
+      &:before {
         .am-icon-font;
         content: @fa-var-caret-up;
         font-size: 24px;
-        color: @menu-bg;
+        color: @menu-nav-bg;
         position: absolute;
         right: 16px;
         top: -16px;
       }
-      > a {
-        color: @menu-toggle-active-color;
-      }
     }
-  }
 
-  .am-menu-sub {
-    position: relative;
-    display: none;
-  }
-
-  .am-menu-lv1 {
     a {
-      line-height: @menu-link-height;
-      height: @menu-link-height;
+      line-height: @menu-nav-link-height;
+      height: @menu-nav-link-height;
       display: block;
       padding: 0;
       text-align: center;
@@ -62,38 +43,46 @@
 
     & > li {
       > a {
-        background-color: @menu-bg;
-        color: @menu-color;
+        background-color: @menu-nav-bg;
+        color: @menu-nav-link-color;
         .text-overflow(block);
       }
     }
   }
 
+  .am-menu-sub {
+    position: relative;
+  }
+
   .hook-am-menu-slide1;
 
   @media @medium-up {
-    & {
-      .am-menu-toggle {
+    .am-menu-toggle {
+      display: none !important;
+    }
+
+    .am-menu-nav {
+      background-color: @menu-nav-bg;
+      display: block;
+
+      &.am-in:before {
         display: none;
       }
 
-      .am-menu-lv1 {
-        background-color: @menu-bg;
-        display: block;
-        li {
-          width: auto;
-          clear: none;
-          a {
-            padding-left: 1.5rem;
-            padding-right: 1.5rem;
-          }
+      li {
+        width: auto;
+        clear: none;
+        a {
+          padding-left: 1.5rem;
+          padding-right: 1.5rem;
         }
       }
     }
   }
 }
 
-.hook-am-menu-slide1() {}
+.hook-am-menu-slide1() {
+}
 
 // TODO:
 //    1. 增加二级菜单支持

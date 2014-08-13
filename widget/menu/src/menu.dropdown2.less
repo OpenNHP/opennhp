@@ -5,27 +5,16 @@
   */
 
 .am-menu-dropdown2 {
-
   @menu-toggle-color: #fff;
-  @menu-toggle-active-color: #F2F3F5;
 
-  @menu-color: @gray-dark;
-  @menu-active-color: @global-primary;
-  @menu-bg: #f5f5f5;
-  @menu-link-height: 44px;
+  @menu-nav-top-link-color: @gray-dark;
+  @menu-nav-top-link-active-color: @global-primary;
+  @menu-nav-top-link-bg: #f5f5f5;
+  @menu-nav-top-link-height: 44px;
 
-  @menu-sub-color: @gray;
-  @menu-sub-bg: #fff;
-  @menu-sub-link-height: 40px;
-
-  position: relative;
-
-  a {
-    &:before,
-    &:after {
-      .am-icon-font;
-    }
-  }
+  @menu-nav-sub-link-color: @gray;
+  @menu-nav-sub-link-bg: #fff;
+  @menu-nav-sub-link-height: 40px;
 
   .am-menu-toggle {
     position: absolute;
@@ -35,29 +24,25 @@
     color: @menu-toggle-color;
   }
 
-  // hide sub menu
-  .am-menu-sub {
-    display: none;
-  }
-
-  .am-menu-lv1 {
+  .am-menu-nav {
     position: absolute;
     left: 0;
     right: 0;
-    background-color: @menu-bg;
+    background-color: @menu-nav-top-link-bg;
     box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
     z-index: @z-index-dropdown;
+
     a {
-      height: @menu-link-height;
-      line-height: @menu-link-height;
+      height: @menu-nav-top-link-height;
+      line-height: @menu-nav-top-link-height;
       padding: 0;
       text-align: center;
     }
-    & > li {
 
+    & > li {
       // parent links
       > a {
-        color: @menu-color;
+        color: @menu-nav-top-link-color;
       }
 
       &.am-parent {
@@ -72,26 +57,25 @@
 
         // active status
         &.am-open {
-          a {
+          > .am-menu-sub {
+            background-color: @menu-nav-sub-link-bg;
           }
 
-          > .am-menu-lv2 {
-            background-color: @menu-sub-color;
-          }
           > a {
             position: relative;
             &:after {
               // content: @fa-var-angle-up;
-              color: @menu-active-color;
+              color: @menu-nav-top-link-active-color;
               .rotateX(180deg);
             }
+
             &:before {
               position: absolute;
-              font-size: 24px;
               top: 100%;
               margin-top: -16px;
               left: 50%;
               margin-left: -12px;
+              font-size: 24px;
               content: @fa-var-caret-up;
               color: rgba(0, 0, 0, 0.2);
             }
@@ -101,59 +85,62 @@
     }
   }
 
-  .am-menu-lv2 {
+  .am-menu-sub {
     position: absolute;
     left: 5px;
     right: 5px;
     border-radius: 2px;
     box-shadow: 0 0 3px rgba(0, 0, 0, 0.15);
+    background-color: @menu-nav-sub-link-bg;
+
     a {
-      color: @menu-sub-color;
-      background-color: @menu-sub-bg;
-      height: @menu-sub-link-height;
-      line-height: @menu-sub-link-height;
       padding: 0;
+      height: @menu-nav-sub-link-height;
+      color: @menu-nav-sub-link-color;
+      background-color: @menu-nav-sub-link-bg;
+      line-height: @menu-nav-sub-link-height;
     }
   }
 
   .hook-am-menu-dropdown2;
 
+  @media @medium-up {
+    .am-menu-toggle {
+      display: none !important;
+    }
 
-  /*@media @medium-up {
-    & {
-      > .am-parent {
-        > a {
-          display: none;
-        }
-      }
+    .am-menu-nav {
+      position: static;
+      display: block;
 
-      .am-menu-sub {
+      & > li {
+        float: none;
+        width: auto;
+        display: inline-block;
+
         a {
           padding-left: 1.5rem;
           padding-right: 1.5rem;
         }
       }
+    }
 
-      .am-menu-lv2 {
-        position: static;
-        display: block;
-        & > li {
-          clear: none;
-          width: auto;
-        }
+    .am-menu-sub {
+      left: auto;
+      right: auto;
+      z-index: @z-index-dropdown + 1;
+      & > li {
+        float: none;
+        width: auto;
       }
 
-      .am-menu-lv3 {
-        left: auto;
-        right: auto;
-        z-index: @z-index-dropdown + 1;
-        & > li {
-          clear: none;
-          width: auto;
-        }
+      a {
+        padding-left: 2rem;
+        padding-right: 2rem;
       }
     }
-  }*/
+  }
 }
 
-.hook-am-menu-dropdown2() {}
+.hook-am-menu-dropdown2() {
+}

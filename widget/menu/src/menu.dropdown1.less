@@ -6,19 +6,21 @@
 
 .am-menu-dropdown1 {
   @menu-toggle-color: #fff;
-  @menu-lv1-color: #fff;
-  @menu-lv1-bg: @global-primary;
 
-  @menu-lv1-active-color: #fff;
-  @menu-lv1-active-bg: darken(@global-primary, 5%);
-  @menu-lv1-link-height: 49px;
+  @menu-nav-link-height: 49px;
 
-  @menu-sub-color: #555;
-  @menu-sub-icon-color: #aaa;
-  @menu-sub-bg: #fff;
-  @menu-sub-link-height: 44px;
+  @menu-nav-top-link-color: #fff;
+  @menu-nav-top-link-bg: @global-primary;
+  @menu-nav-top-link-active-color: #fff;
+  @menu-nav-top-link-active-bg: darken(@global-primary, 5%);
 
-  @menu-border-color: darken(@menu-lv1-bg, 8%);
+  @menu-nav-sub-link-height: 44px;
+
+  @menu-nav-sub-link-color: #555;
+  @menu-nav-sub-link-icon-color: #aaa;
+  @menu-nav-sub-link-bg: #fff;
+
+  @menu-nav-border-color: darken(@menu-nav-top-link-bg, 8%);
 
   position: relative;
 
@@ -32,9 +34,6 @@
 
   a {
     .transition(all 0.4s);
-    &:before {
-      .am-icon-font;
-    }
   }
 
   .am-menu-nav {
@@ -42,17 +41,12 @@
     left: 0;
     right: 0;
     z-index: @z-index-dropdown;
-  }
 
-  .am-menu-sub {
-    display: none;
-  }
-
-  .am-menu-lv1 {
     a {
       padding: 0.8rem;
     }
-    & > li {
+
+    > li {
       &.am-parent {
         > a {
           position: relative;
@@ -66,20 +60,16 @@
 
         // active
         &.am-open {
-          > ul {
-            height: auto!important;
-          }
-
           > a {
-            background-color: @menu-lv1-active-bg;
+            background-color: @menu-nav-top-link-active-bg;
             border-bottom: none;
-            color: @menu-lv1-active-color;
+            color: @menu-nav-top-link-active-color;
             &::before {
               content: @fa-var-minus;
             }
             &::after {
               content: "";
-              .caret-down(8px, @menu-lv1-active-bg);
+              .caret-down(8px, @menu-nav-top-link-active-bg);
               position: absolute;
               top: 100%;
               left: 50%;
@@ -90,12 +80,12 @@
       }
 
       > a {
-        border-bottom: 1px solid @menu-border-color;
+        border-bottom: 1px solid @menu-nav-border-color;
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-        background-color: @menu-lv1-bg;
-        color: @menu-lv1-color;
-        height: @menu-lv1-link-height;
-        line-height: @menu-lv1-link-height;
+        background-color: @menu-nav-top-link-bg;
+        color: @menu-nav-top-link-color;
+        height: @menu-nav-link-height;
+        line-height: @menu-nav-link-height;
         padding: 0;
         text-indent: 10px;
 
@@ -103,18 +93,19 @@
     }
   }
 
-  .am-menu-lv2 {
-    background-color: @menu-sub-bg;
+  .am-menu-sub {
+    background-color: @menu-nav-sub-link-bg;
+
     a {
-      color: @menu-sub-color;
-      height: @menu-sub-link-height;
-      line-height: @menu-sub-link-height;
+      color: @menu-nav-sub-link-color;
+      height: @menu-nav-sub-link-height;
+      line-height: @menu-nav-sub-link-height;
       text-indent: 5px;
       padding: 0;
 
       &::before {
         content: @fa-var-angle-right;
-        color: @menu-sub-icon-color;
+        color: @menu-nav-sub-link-icon-color;
         font-size: 16px;
         margin-right: 5px;
       }
@@ -125,15 +116,17 @@
   .hook-am-menu-dropdown1;
 
   /*@media @medium-up {
+    .am-menu-toggle {
+      display: none!important;
+    }
+
     .am-menu-nav {
-      > .am-parent {
-        > a {
-          display: none;
-        }
+      &.am-collapse {
+        display: block;
       }
 
-      .am-menu-lv1 {
-        background-color: @lv2-bg-color;
+      .am-menu-sub {
+        background-color: ;//@menu-sub-bg;
         display: block;
         & > li {
           clear: none;
@@ -151,4 +144,7 @@
   }*/
 }
 
-.hook-am-menu-dropdown1() {}
+.hook-am-menu-dropdown1() {
+}
+
+// TODO: 响应式样式

@@ -93,36 +93,7 @@
             "dataList": ""
         },
 
-        "options": {
-            "unitname": {
-                "name": "UnitName",
-                "desc": "美洽企业名称",
-                "type": "text",
-                "placeholder": "美洽企业名称",
-                "default": "",
-                "required": true
-            },
-            "email": {
-                "name": "Email",
-                "desc": "美洽帐号",
-                "type": "text",
-                "placeholder": "美洽帐号",
-                "default": "",
-                "required": true
-            },
-            "actions": [
-                {
-                    "type": "submit",
-                    "text": "注册美洽"
-                },
-                {
-                    "type": "link",
-                    "text": "关于美洽",
-                    "link": "http://mechat.im",
-                    "target": "_blank"
-                }
-            ]
-        },
+        "options": null,
 
         "content": null,
 
@@ -137,14 +108,18 @@
                         "placeholder": "请使用邮箱",
                         "type": "text",
                         "default": "",
-                        "required": true
+                        "required": true,
+                        "memory": true,
+                        "necessary": true
                     },
                     "unitname": {
                         "name": "企业名称",
                         "placeholder": "企业名称",
                         "type": "text",
                         "default": "",
-                        "required": true
+                        "required": true,
+                        "memory": true,
+                        "necessary": true
                     },
                     "submit": {
                         "name": "开通美洽客服",
@@ -163,21 +138,22 @@
                         "placeholder": "请使用邮箱",
                         "type": "text",
                         "default": "",
-                        "required": true
+                        "required": true,
+                        "necessary": true
                     },
                     "unitname": {
                         "name": "企业名称",
                         "placeholder": "企业名称",
                         "type": "text",
                         "default": "",
-                        "required": true
+                        "required": true,
+                        "necessary": true
                     },
                     "password": {
                         "name": "帐号密码",
                         "placeholder": "帐号密码",
                         "type": "text",
-                        "default": "",
-                        "required": true
+                        "default": ""
                     },
                     "submit": {
                         "name": "绑定美洽",
@@ -187,23 +163,25 @@
                 }
             },
             "bindfail": {
-                "url": "http://open.mechatim.com/cgi-bin/check/unit2",
+                "url": "http://open.mechatim.com/cgi-bin/check/unit2?appid=T4v1KpVM7QOvzxgbQ9",
                 "type": "POST",
-                "desc": "密码错误，请重新输入密码以绑定。",
+                "desc": "密码错误，请重新输入密码以绑定。/n 修改密码地址：http://mechatim.com/password/find ",
                 "fields": {
                     "email": {
                         "name": "帐号名",
                         "placeholder": "请使用邮箱",
                         "type": "text",
                         "default": "",
-                        "required": true
+                        "required": true,
+                        "necessary": true
                     },
                     "unitname": {
                         "name": "企业名称",
                         "placeholder": "企业名称",
                         "type": "text",
                         "default": "",
-                        "required": true
+                        "required": true,
+                        "necessary": true
                     },
                     "password": {
                         "name": "帐号密码",
@@ -220,30 +198,92 @@
                 }
             },
             "bindsuccess": {
-                "url": "",
-                "type": "POST",
                 "desc": "绑定成功！你还可以登录美洽(http://mechat.im)下载手机APP,让客服工作变得轻松简单。",
-                "fields": {
+                "texts": {
+                    "addr": {
+                        "name": "登录地址",
+                        "desc": "",
+                        "type": "span",
+                        "required": true,
+                        "value": ""
+                    },
+                    "email": {
+                        "name": "登录邮箱",
+                        "desc": "",
+                        "type": "span",
+                        "value": "",
+                        "required": true,
+                        "memory": true
+                    },
+                    "name": {
+                        "name": "企业名称",
+                        "desc": "",
+                        "type": "span",
+                        "value": "",
+                        "required": true,
+                        "memory": true
+                    },
+                    "password": {
+                        "name": "初始密码",
+                        "desc": "",
+                        "type": "span",
+                        "requierd": true,
+                        "value": ""
+                    }
+                },
+                "options": {
                     "unitid": {
-                        "name": "企业ID",
-                        "placeholder": "企业ID",
+                        "name": "widget mechat id",
+                        "desc": "",
                         "type": "text",
-                        "default": "",
-                        "required": true
+                        "value": "",
+                        "required": true,
+                        "hidden": true
                     }
                 }
             },
             "addsuccess": {
-                "url": "",
-                "type": "POST",
                 "desc": "添加成功！你还可以登录美洽(http://mechat.im)下载手机APP,让客服工作变得轻松简单。",
-                "fields": {
+                "texts": {
+                    "addr": {
+                        "name": "登录地址",
+                        "desc": "",
+                        "type": "span",
+                        "required": true,
+                        "value": ""
+                    },
+                    "email": {
+                        "name": "登录邮箱",
+                        "desc": "",
+                        "type": "span",
+                        "value": "",
+                        "required": true,
+                        "memory": true
+                    },
+                    "name": {
+                        "name": "企业名称",
+                        "desc": "",
+                        "type": "span",
+                        "value": "",
+                        "required": true,
+                        "memory": true
+                    },
+                    "password": {
+                        "name": "初始密码",
+                        "desc": "",
+                        "type": "span",
+                        "requierd": true,
+                        "value": ""
+                    }
+                },
+                "options": {
                     "unitid": {
-                        "name": "企业ID",
-                        "placeholder": "企业ID",
+                        "name": "widget mechat id",
+                        "desc": "",
                         "type": "text",
-                        "default": "",
-                        "required": true
+                        "value": "",
+                        "required": true,
+                        "hidden": true
                     }
                 }
             }

@@ -191,13 +191,13 @@ __注意：__ 这里 `#my-offcanvas` 直接指向侧边栏元素，而不是触�
 $('#my-offcanvas').offCanvas({effect: 'push'});
 ```
 
-通过 `$().scrollspy(options)` 设置，参数同上。
+通过 `$().offCanvas(options)` 设置，参数同上。
 
 #### 方法
 
 - `$().offCanvas(options)` - 设置边栏参数并打开边栏
-- `$().alert('open')` - 打开边栏
-- `$().alert('close')` - 关闭边栏
+- `$().offCanvas('open')` - 打开边栏
+- `$().offCanvas('close')` - 关闭边栏
 
 #### 自定义事件
 

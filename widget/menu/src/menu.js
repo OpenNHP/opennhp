@@ -9,12 +9,39 @@ define(function(require, exports, module) {
 
     var menuInit = function() {
 
-        //排除掉one主题
-        $('.am-menu').not('[data-am-nav]').not('.am-menu-one').each(function() {
-            var nav = $(this);
-            if (!nav.data('nav')) {
-                var obj = new UI.nav(nav, nav.data('am-nav') ? UI.utils.options(nav.data('am-nav')) : {});
-            }
+        var $menus = $('[data-am-widget="menu"]');
+
+        $menus.find('.am-menu-nav .am-parent > a').on('click', function(e) {
+            e.preventDefault();
+            var $clicked = $(this),
+                $parent= $clicked.parent(),
+                $subMenu= $clicked.next('.am-menu-sub');
+            $parent.toggleClass('am-open');
+            $subMenu.collapse('toggle');
+            $parent.siblings('.am-parent').removeClass('am-open')
+                .children('.am-menu-sub.am-in').collapse('close');
+        });
+
+        // Dropdown/slidedown menu
+        $menus.filter('[data-am-menu-collapse]').find('> .am-menu-toggle').on('click', function(e) {
+            e.preventDefault();
+            var $this = $(this),
+                $nav = $this.next('.am-menu-nav');
+
+            $this.toggleClass('am-active');
+
+            $nav.collapse('toggle');
+        });
+
+        // OffCanvas menu
+        $menus.filter('[data-am-menu-offcanvas]').find('> .am-menu-toggle').on('click', function(e) {
+            e.preventDefault();
+            var $this = $(this),
+                $nav = $this.next('.am-offcanvas');
+
+            $this.toggleClass('am-active');
+
+            $nav.offCanvas('open');
         });
 
         $('.am-menu-one').each(function() {

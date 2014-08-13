@@ -1,42 +1,71 @@
 {{#this}}
-  <nav data-am-widget="menu" class="am-menu {{#if theme}} am-menu-{{theme}}{{else}} am-menu-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}" {{options.dataset}} {{#if id}}id="{{id}}"{{/if}}>
-    <a href="#{{options.offCanvasId}}" class="am-menu-toggle" data-am-offcanvas><span class="am-icon-bars"></span></a>
+  <nav data-am-widget="menu" class="am-menu {{#if theme}} am-menu-{{theme}}{{else}} am-menu-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}" {{options.dataset}} {{#if id}}id="{{id}}"{{/if}}
+    {{#ifCond theme '==' 'dropdown1'}} data-am-menu-collapse{{/ifCond}}
+    {{#ifCond theme '==' 'dropdown2'}} data-am-menu-collapse{{/ifCond}}
+    {{#ifCond theme '==' 'slide1'}} data-am-menu-collapse{{/ifCond}}
+    {{#ifCond theme '==' 'offcanvas1'}} data-am-menu-offcanvas{{/ifCond}}
+    {{#ifCond theme '==' 'offcanvas2'}} data-am-menu-offcanvas{{/ifCond}}> {{!-- 与模板深耦合，与 JS 浅耦合 --}}
+    <a href="javascript: void(0)" class="am-menu-toggle">
+      {{#if options.toggleTitle}}
+        <span class="am-menu-toggle-title">{{options.toggleTitle}}</span>
+      {{/if}}
+      {{#if options.toggleCustomIcon}}
+        <img src="options.toggleCustomIcon" alt="Menu Toggle"/>
+      {{else}}
+        {{#if options.toggleIcon}}
+          <i class="am-icon-{{options.toggleIcon}}"></i>
+          {{else}}
+          <i class="am-icon-bars"></i>
+        {{/if}}
+      {{/if}}
+    </a>
 
-    {{#if options.offCanvas}} {{!-- offCanvas Wrap--}}
-    <div class="am-offcanvas" id="{{options.offCanvasId}}">
+    {{!-- offCanvas menu Wrap --}}
+    {{!-- 问题：方便用户，但是与主题名称（类名）耦合过深 --}}
+    {{#ifCond theme '==' 'offcanvas1'}}
+    <div class="am-offcanvas">
       <div class="am-offcanvas-bar{{#if options.offCanvasFlip}} am-offcanvas-bar-flip{{/if}}">
-    {{/if}}
+    {{/ifCond}}
+    {{#ifCond theme '==' 'offcanvas2'}}
+    <div class="am-offcanvas">
+      <div class="am-offcanvas-bar{{#if options.offCanvasFlip}} am-offcanvas-bar-flip{{/if}}">
+    {{/ifCond}}
 
     {{#if content}}
-      <ul class="am-menu-nav {{#if options.cols}}sm-block-grid-{{options.cols}}{{else}}sm-block-grid-1{{/if}}">
+      <ul class="am-menu-nav {{#if options.cols}}sm-block-grid-{{options
+      .cols}}{{else}}sm-block-grid-1{{/if}}{{#ifCond theme '==' 'dropdown1'}} am-collapse{{/ifCond}}{{#ifCond theme
+      '==' 'dropdown2'}} am-collapse{{/ifCond}}{{#ifCond theme
+      '==' 'slide1'}} am-collapse{{/ifCond}}">
         {{#each content}}
           <li class="{{#if subMenu}}am-parent{{/if}}{{#if className}} {{className}}{{/if}}">
             <a href="{{link}}">{{{title}}}</a>
             {{#if subMenu}}
-              <ul class="am-menu-sub am-menu-lv2{{#if subCols}} sm-block-grid-{{subCols}}{{else}} sm-block-grid-1{{/if}} {{subMenuClassName}}">
+              <ul class="am-menu-sub am-collapse {{#if subCols}} sm-block-grid-{{subCols}}{{else}}
+              sm-block-grid-1{{/if}} {{subMenuClassName}}">
                 {{#each subMenu}}
                   <li class="{{#if subMenu}} am-parent{{/if}}{{#if className}} {{className}}{{/if}}">
                     <a href="{{link}}">{{{title}}}</a>
-                    {{#if subMenu}}{{!--三级菜单--}}
-                      <ul class="am-menu-sub am-menu-lv3{{#if subCols}} sm-block-grid-{{subCols}}{{else}} sm-block-grid-1{{/if}}">
-                        {{#each subMenu}}
-                          <li class="{{#if className}} {{className}}{{/if}}">
-                            <a href="{{link}}">{{{title}}}</a>
-                          </li>
-                        {{/each}}
-                      </ul>
-                    {{/if}}
                   </li>
                 {{/each}}
+                {{!-- 显示进入栏目链接 --}}
+                {{#if channelLink}}
+                  <li class="am-menu-nav-channel"><a href="{{link}}" title="{{title}}">{{{channelLink}}}</a></li>
+                {{/if}}
               </ul>
             {{/if}}
           </li>
         {{/each}}
       </ul>
     {{/if}}
-    {{#if options.offCanvas}}
+
+    {{#ifCond theme '==' 'offcanvas1'}}
       </div>
     </div>
-    {{/if}}
+    {{/ifCond}}
+    {{#ifCond theme '==' 'offcanvas2'}}
+      </div>
+    </div>
+    {{/ifCond}}
+    {{!-- 不要问我为什么这样写，我也不想这样 --}}
   </nav>
 {{/this}}

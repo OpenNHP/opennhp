@@ -5,98 +5,76 @@
   */
 
 .am-menu-slide1 {
-  @trigger-color: #ddd;
-  @trigger-active-color: #fff;
+  @menu-toggle-color: #fff;
+  @menu-toggle-active-color: #fff;
 
-  @lv2-bg-color: #F2F3F5;
-  @lv2-color: #303338;
-  @lv2-a-height: 44px;
+  @menu-nav-bg: #f5f5f5;
+  @menu-nav-link-color: @gray-dark;
+  @menu-nav-link-height: 44px;
 
-  a {
-    &::before, &::after {
-      .am-icon-font;
-    }
+  .am-menu-toggle {
+    position: absolute;
+    right: 10px;
+    top: -35px;
+    display: block;
+    color: @menu-toggle-color;
   }
 
-  > .am-parent {
-    position: relative;
-    > a {
-      position: absolute;
-      right: 0;
-      top: -50px;
-      width: 50px;
-      overflow: hidden;
-      padding: 0;
-      text-align: center;
-      color: @trigger-color;
-      height: 50px;
-      .transition(all 0.3s);
-      &::before {
-        content: @fa-var-bars;
-        height: 50px;
-        line-height: 50px;
-        width: 50px;
-        font-size: 24px;
-      }
-    }
-
-    &.am-open {
-      &::before {
+  .am-menu-nav {
+    &.am-in {
+      &:before {
         .am-icon-font;
         content: @fa-var-caret-up;
         font-size: 24px;
-        color: @lv2-bg-color;
+        color: @menu-nav-bg;
         position: absolute;
         right: 16px;
         top: -16px;
       }
-      > a {
-        color: @trigger-active-color;
-      }
     }
 
-  }
-  .am-menu-sub {
-    position: relative;
-    display: none;
-  }
-
-  .am-menu-lv2 {
     a {
-      line-height: @lv2-a-height;
-      height: @lv2-a-height;
+      line-height: @menu-nav-link-height;
+      height: @menu-nav-link-height;
       display: block;
       padding: 0;
       text-align: center;
     }
+
     & > li {
       > a {
-        background-color: @lv2-bg-color;
-        color: @lv2-color;
+        background-color: @menu-nav-bg;
+        color: @menu-nav-link-color;
         .text-overflow(block);
       }
     }
   }
 
+  .am-menu-sub {
+    position: relative;
+  }
+
   .hook-am-menu-slide1;
 
   @media @medium-up {
-    & {
-      > .am-parent {
-        > a {
-          display: none;
-        }
+    .am-menu-toggle {
+      display: none !important;
+    }
+
+    .am-menu-nav {
+      background-color: @menu-nav-bg;
+      display: block;
+
+      &.am-in:before {
+        display: none;
       }
-      .am-menu-lv2 {
-        background-color: @lv2-bg-color;
-        display: block;
-        li {
-          width: auto;
-          clear: none;
-          a {
-            padding-left: 1.5rem;
-            padding-right: 1.5rem;
-          }
+
+      li {
+        width: auto;
+        clear: none;
+        a {
+          padding-left: 1.5rem;
+          padding-right: 1.5rem;
         }
       }
     }
@@ -105,3 +83,7 @@
 
 .hook-am-menu-slide1() {
 }
+
+// TODO:
+//    1. 增加二级菜单支持
+//    2. 全宽样式支持

@@ -1,5 +1,7 @@
 var path = require('path');
 var fs = require('fs-extra');
+var _ = require('lodash');
+var format = require('util').format;
 
 var gulp = require('gulp');
 var gutil = require('gulp-util');
@@ -30,14 +32,58 @@ var now = new Date();
 
 var banner = [
     '/*! <%= pkg.name %> - v<%= pkg.version %>',
-        '(c) ' + gutil.date(now, 'yyyy') + ' AllMobilize, Inc.',
+    '(c) ' + gutil.date(now, 'yyyy') + ' AllMobilize, Inc.',
     '@license <%= pkg.license %>',
-        gutil.date(now, 'yyyy-mm-dd HH:mm:ss') + ' */ \r'
+    gutil.date(now, 'yyyy-mm-dd HH:mm:ss') + ' */ \r'
 ].join(' | ');
+
+// write widgets style and tpl
+var getWidgetFiles = function() {
+    var fsOptions = {encoding: 'utf8'};
+    var uiBase = fs.readFileSync('./less/amui.less', fsOptions);
+    var WIDGET_DIR = './widget';
+    var rejectWidgets = ['.DS_Store', 'blank', 'layout2', 'layout3', 'layout4', 'container', 'powered_by', 'tech_support', 'toolbar', 'switch_mode'];
+    var allWidgets = _.reject(fs.readdirSync(WIDGET_DIR), function(widget) {
+        return rejectWidgets.indexOf(widget) > -1;
+    });
+
+    var partials = '(function(undefined){\n';
+    partials += '  var registerAMUIPartials = function(hbs) {\n';
+
+    _.forEach(allWidgets, function(widget) {
+        // read widget package.json
+        var pkg = fs.readJsonFileSync(path.join(WIDGET_DIR, widget, 'package.json'));
+        var srcPath = '../widget/' + widget + '/src/';
+
+        uiBase += '\r\n// ' + widget + '\r\n';
+
+        uiBase += '@import "' + srcPath + pkg.style + '";' + "\r\n";
+        _.forEach(pkg.themes, function(item, index) {
+            if (!item.hidden && item.name) {
+                uiBase += '@import "' + srcPath + widget + '.' + item.name + '.less";' + "\r\n";
+            }
+        });
+
+        // read tpl
+        var tpl = fs.readFileSync(path.join(WIDGET_DIR, widget, 'src', widget + '.hbs'), fsOptions);
+        partials += format('    hbs.registerPartial("%s", %s); \n\n', widget, JSON.stringify(tpl));
+    });
+
+    fs.writeFileSync('./less/amui.all.less', uiBase);
+
+    partials += '  }; \n\n';
+    partials += '  if (typeof module !== \'undefined\' && module.exports) {\n';
+    partials += '    module.exports = registerAMUIPartials;\n' +
+    '  }\n\n';
+    partials += '  this.Handlebars && registerAMUIPartials(Handlebars);\n';
+    partials += '}).call(this);\n';
+
+    // write partials
+    fs.writeFileSync(path.join('./vendor/amazeui.hbs.partials.js'), partials);
+};
 
 
 // build to dist dir
-
 gulp.task('buildLess', function() {
     gulp.src(['./less/amui.all.less'])
         //.pipe(watch())
@@ -95,8 +141,8 @@ gulp.task('transport', ['copyUIJs'], function() {
 
 // concat
 gulp.task('concat', ['transport'], function() {
-    var seajs = path.join(__dirname,'vendor/seajs/sea.js');
-    var seaUse = path.join(__dirname,'/.build/seaUse.js');
+    var seajs = path.join(__dirname, 'vendor/seajs/sea.js');
+    var seaUse = path.join(__dirname, '/.build/seaUse.js');
     fs.outputFileSync(seaUse, 'seajs.use(' + JSON.stringify(modules) + ');');
 
     modules = [];
@@ -128,7 +174,7 @@ gulp.task('clean', ['concat'], function() {
 
 
 gulp.task('hbsHelper', function() {
-    gulp.src(['docs/assets/helper/handlebars.js', 'vendor/amazeui.partials.js'])
+    gulp.src(['vendor/amazeui.hbs.helper.js', 'vendor/amazeui.hbs.partials.js'])
         .pipe(concat('amui.widget.helper.js'))
         .pipe(gulp.dest('./dist/assets/js'))
         .pipe(uglify({
@@ -145,6 +191,9 @@ gulp.task('hbsHelper', function() {
 });
 
 
+gulp.task('widgetsFile', getWidgetFiles);
+
+
 // Rerun the task when a file changes
 
 gulp.task('watch', function() {
@@ -152,16 +201,16 @@ gulp.task('watch', function() {
     gulp.watch(['less/**/*.less', 'widget/*/src/*.less'], ['buildLess']);
     gulp.watch(['dist/amui*js'], ['copyFiles']);
     gulp.watch(['docs/assets/js/main.js'], ['amazeMain']);
+    gulp.watch(['widget/**/*.json', 'widget/**/*.hbs'], ['widgetsFile']);
 });
 
 
-
-gulp.task('zip', function () {
+gulp.task('zip', function() {
     return gulp.src(['./docs/boilerplate/**', './dist/**', '!dist/demo/**/*', '!dist/test/**/*', '!dist/docs/**/*', '!dist/*.zip',
-    'docs/examples/blog.html',
-    'docs/examples/landing.html',
-    'docs/examples/login.html',
-    'docs/examples/sidebar.html'
+        'docs/examples/blog.html',
+        'docs/examples/landing.html',
+        'docs/examples/login.html',
+        'docs/examples/sidebar.html'
     ])
         .pipe(zip('AmazeUI-1.0.0-beta1.zip', {comment: 'Created on ' + gutil.date(now, 'yyyy-mm-dd HH:mm:ss')}))
         .pipe(gulp.dest('dist'));
@@ -170,6 +219,6 @@ gulp.task('zip', function () {
 
 gulp.task('buildJs', ['copyWidgetJs', 'copyUIJs', 'transport', 'concat', 'clean']);
 
-gulp.task('init', ['bower', 'buildJs', 'hbsHelper', 'buildLess', 'watch']);
+// gulp.task('init', ['bower', 'buildJs', 'hbsHelper', 'buildLess', 'watch']);
 
-gulp.task('default', ['buildJs', 'buildLess', 'hbsHelper', 'watch']);
+gulp.task('default', ['widgetsFile', 'buildJs', 'buildLess', 'hbsHelper', 'watch']);

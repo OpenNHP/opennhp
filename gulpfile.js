@@ -25,7 +25,8 @@ var buildTmpDir = '.build/tmp/';
 var jsPaths = {
     widgets: [
         '*/src/*.js',
-        '!{powered_by,switch_mode,toolbar,tech_support,layout*,blank,container}/src/*.js']
+        '!{powered_by,switch_mode,toolbar,tech_support,layout*,blank,container}/src/*.js'],
+    hbsHelper: ['vendor/amazeui.hbs.helper.js', 'vendor/amazeui.hbs.partials.js']
 };
 
 var now = new Date();
@@ -86,12 +87,13 @@ var getWidgetFiles = function() {
 // build to dist dir
 gulp.task('buildLess', function() {
     gulp.src(['./less/amui.all.less'])
-        //.pipe(watch())
         .pipe(less({
             paths: [path.join(__dirname, 'less'), path.join(__dirname, 'widget/*/src')]
         }))
         .pipe(gulp.dest('./dist/assets/css'))
-        .pipe(minifyCSS())
+        // Disable advanced optimizations - selector & property merging, reduction, etc.
+        // for Issue #19 https://github.com/allmobilize/amazeui/issues/19
+        .pipe(minifyCSS({noAdvanced: true}))
         .pipe(rename({
             suffix: '.min',
             extname: ".css"
@@ -174,7 +176,7 @@ gulp.task('clean', ['concat'], function() {
 
 
 gulp.task('hbsHelper', function() {
-    gulp.src(['vendor/amazeui.hbs.helper.js', 'vendor/amazeui.hbs.partials.js'])
+    gulp.src(jsPaths.hbsHelper)
         .pipe(concat('amui.widget.helper.js'))
         .pipe(gulp.dest('./dist/assets/js'))
         .pipe(uglify({
@@ -190,9 +192,7 @@ gulp.task('hbsHelper', function() {
         .pipe(gulp.dest('./dist/assets/js'))
 });
 
-
 gulp.task('widgetsFile', getWidgetFiles);
-
 
 // Rerun the task when a file changes
 
@@ -202,6 +202,7 @@ gulp.task('watch', function() {
     gulp.watch(['dist/amui*js'], ['copyFiles']);
     gulp.watch(['docs/assets/js/main.js'], ['amazeMain']);
     gulp.watch(['widget/**/*.json', 'widget/**/*.hbs'], ['widgetsFile']);
+    gulp.watch(jsPaths.hbsHelper, ['hbsHelper']);
 });
 
 

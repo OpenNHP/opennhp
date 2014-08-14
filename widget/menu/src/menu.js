@@ -1,20 +1,19 @@
-define(function(require, exports, module) {
+define(function (require, exports, module) {
     require('ui.offcanvas');
-    var IScroll = require('ui.iscroll.js');
+    var IScroll = require('ui.iscroll');
 
     var $ = window.Zepto;
 
     var UI = $.AMUI;
 
-    var menuInit = function() {
-
+    var menuInit = function () {
         var $menus = $('[data-am-widget="menu"]');
 
-        $menus.find('.am-menu-nav .am-parent > a').on('click', function(e) {
+        $menus.find('.am-menu-nav .am-parent > a').on('click', function (e) {
             e.preventDefault();
             var $clicked = $(this),
-                $parent= $clicked.parent(),
-                $subMenu= $clicked.next('.am-menu-sub');
+                $parent = $clicked.parent(),
+                $subMenu = $clicked.next('.am-menu-sub');
             $parent.toggleClass('am-open');
             $subMenu.collapse('toggle');
             $parent.siblings('.am-parent').removeClass('am-open')
@@ -22,7 +21,7 @@ define(function(require, exports, module) {
         });
 
         // Dropdown/slidedown menu
-        $menus.filter('[data-am-menu-collapse]').find('> .am-menu-toggle').on('click', function(e) {
+        $menus.filter('[data-am-menu-collapse]').find('> .am-menu-toggle').on('click', function (e) {
             e.preventDefault();
             var $this = $(this),
                 $nav = $this.next('.am-menu-nav');
@@ -33,7 +32,7 @@ define(function(require, exports, module) {
         });
 
         // OffCanvas menu
-        $menus.filter('[data-am-menu-offcanvas]').find('> .am-menu-toggle').on('click', function(e) {
+        $menus.filter('[data-am-menu-offcanvas]').find('> .am-menu-toggle').on('click', function (e) {
             e.preventDefault();
             var $this = $(this),
                 $nav = $this.next('.am-offcanvas');
@@ -43,31 +42,27 @@ define(function(require, exports, module) {
             $nav.offCanvas('open');
         });
 
-        $('.am-menu-one').each(function() {
+        // one theme
+        $menus.filter('.am-menu-one').each(function () {
             var $this = $(this),
-                $wrap = $('<div class=\'am-menu-one-sub-warp\'></div>'),
+                $wrap = $('<div class="am-menu-nav-sub-wrap"></div>'),
                 allWidth = 0,
                 prevIndex,
                 $nav = $this.find('.am-menu-nav');
 
-            if ($('.am-menu-sub').length) {
+            $this.find('.am-parent').each(function () {
+                $(this).find('.am-menu-sub').appendTo($wrap);
 
-                $this.find('li').each(function() {
-                    if ($(this).hasClass('am-parent')) {
-                        $(this).attr('am-menu-warp', true);
-                        $(this).find('.am-menu-sub').appendTo($wrap);
-                    }
-                });
+            });
 
-                $this.append($wrap);
-            }
+            $this.append($wrap);
 
-            $nav.wrap('<div class=\'am-menu-nav-wrap\' id=\'am-menu\'>');
+            $nav.wrap('<div class="am-menu-nav-wrap" id="am-menu">');
 
             $nav.find('li').eq(0).addClass('am-active');
 
             // 计算出所有 li 宽度
-            $nav.children().each(function(i) {
+            $nav.children().each(function (i) {
                 allWidth += parseInt($(this).width());
             });
 
@@ -78,13 +73,16 @@ define(function(require, exports, module) {
                 scrollY: false
             });
 
-            $nav.children().on('click', function() {
-                $(this).addClass('am-active').siblings().removeClass('am-active');
+            $nav.children().on('click', function () {
+                var $clicked = $(this);
+                $clicked.addClass('am-active').siblings().removeClass('am-active');
 
                 $wrap.find('.am-menu-sub.am-in').collapse('close');
 
-                if ($(this).is('.am-parent') && !$(this).hasClass('.am-open')) {
-                    $('.am-menu-sub').eq($(this).index()).collapse('open');
+                if ($clicked.is('.am-parent')) {
+                    !$clicked.hasClass('.am-open') && $('.am-menu-sub').eq($clicked.index()).collapse('open');
+                } else {
+                    $clicked.siblings().removeClass('am-open');
                 }
 
                 // 第一次调用，没有prevIndex
@@ -101,22 +99,20 @@ define(function(require, exports, module) {
                 var within = $nav.offset();
 
                 if (dir ? offset.left + offset.width > $(document).width() : offset.left < 10) {
-                    menuScroll.scrollTo( dir ? within.left - offset.width - 10 : within.left - offset.left, 0, 400);
+                    menuScroll.scrollTo(dir ? within.left - offset.width - 10 : within.left - offset.left, 0, 400);
                 }
 
                 prevIndex = $(this).index();
 
             });
 
-            $this.on('touchmove', function(event) {
+            $this.on('touchmove', function (event) {
                 event.preventDefault();
             });
-
         });
-
     };
 
-    $(function() {
+    $(function () {
         menuInit();
     });
 

@@ -1,7 +1,6 @@
 define(function(require, exports, module) {
-    require('nav');
     require('ui.offcanvas');
-    var IScroll = require('iscroll.js');
+    var IScroll = require('ui.iscroll.js');
 
     var $ = window.Zepto;
 
@@ -46,21 +45,21 @@ define(function(require, exports, module) {
 
         $('.am-menu-one').each(function() {
             var $this = $(this),
-                $warp = $('<div class=\'am-menu-one-warp\'></div>'),
+                $wrap = $('<div class=\'am-menu-one-sub-warp\'></div>'),
                 allWidth = 0,
                 prevIndex,
                 $nav = $this.find('.am-menu-nav');
 
-            if ($('.am-menu-lv2').length) {
+            if ($('.am-menu-sub').length) {
 
                 $this.find('li').each(function() {
                     if ($(this).hasClass('am-parent')) {
                         $(this).attr('am-menu-warp', true);
-                        $(this).find('.am-menu-lv2').appendTo($warp);
+                        $(this).find('.am-menu-sub').appendTo($wrap);
                     }
                 });
 
-                $this.after($warp);
+                $this.append($wrap);
             }
 
             $nav.wrap('<div class=\'am-menu-nav-wrap\' id=\'am-menu\'>');
@@ -82,6 +81,12 @@ define(function(require, exports, module) {
             $nav.children().on('click', function() {
                 $(this).addClass('am-active').siblings().removeClass('am-active');
 
+                $wrap.find('.am-menu-sub.am-in').collapse('close');
+
+                if ($(this).is('.am-parent') && !$(this).hasClass('.am-open')) {
+                    $('.am-menu-sub').eq($(this).index()).collapse('open');
+                }
+
                 // 第一次调用，没有prevIndex
                 if (prevIndex === undefined) {
                     prevIndex = $(this).index() ? 0 : 1;
@@ -93,19 +98,10 @@ define(function(require, exports, module) {
 
                 // 点击的按钮，显示一半
                 var offset = target.offset() || $(this).offset();
-                var within = $nav.offset(),
-                    listOffset;
+                var within = $nav.offset();
 
-                console.log($(this).offset().left);
-
-                if (dir ? offset.left + offset.width > $(document).width() : offset.left + offset.width > 0) {
-                    console.log('zheng');
-                    listOffset = $nav.offset();
-
-                    //menuScroll.scrollTo( offset.left + offset.width, 0, 400);
-
-                } else {
-                    console.log('fu')
+                if (dir ? offset.left + offset.width > $(document).width() : offset.left < 10) {
+                    menuScroll.scrollTo( dir ? within.left - offset.width - 10 : within.left - offset.left, 0, 400);
                 }
 
                 prevIndex = $(this).index();
@@ -114,12 +110,10 @@ define(function(require, exports, module) {
 
             $this.on('touchmove', function(event) {
                 event.preventDefault();
-            })
+            });
+
         });
 
-        function isScrollNext() {
-
-        }
     };
 
     $(function() {

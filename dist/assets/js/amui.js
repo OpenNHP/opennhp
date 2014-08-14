@@ -1,4 +1,4 @@
-/*! AmazeUI - v1.0.0 | (c) 2014 AllMobilize, Inc. | @license MIT | 2014-08-13 16:08:20 */ /*! Sea.js 2.2.1 | seajs.org/LICENSE.md */
+/*! AmazeUI - v1.0.0 | (c) 2014 AllMobilize, Inc. | @license MIT | 2014-08-14 13:08:52 */ /*! Sea.js 2.2.1 | seajs.org/LICENSE.md */
 !function(a,b){function c(a){return function(b){return{}.toString.call(b)=="[object "+a+"]"}}function d(){return A++}function e(a){return a.match(D)[0]}function f(a){for(a=a.replace(E,"/");a.match(F);)a=a.replace(F,"/");return a=a.replace(G,"$1/")}function g(a){var b=a.length-1,c=a.charAt(b);return"#"===c?a.substring(0,b):".js"===a.substring(b-2)||a.indexOf("?")>0||".css"===a.substring(b-3)||"/"===c?a:a+".js"}function h(a){var b=v.alias;return b&&x(b[a])?b[a]:a}function i(a){var b=v.paths,c;return b&&(c=a.match(H))&&x(b[c[1]])&&(a=b[c[1]]+c[2]),a}function j(a){var b=v.vars;return b&&a.indexOf("{")>-1&&(a=a.replace(I,function(a,c){return x(b[c])?b[c]:a})),a}function k(a){var b=v.map,c=a;if(b)for(var d=0,e=b.length;e>d;d++){var f=b[d];if(c=z(f)?f(a)||a:a.replace(f[0],f[1]),c!==a)break}return c}function l(a,b){var c,d=a.charAt(0);if(J.test(a))c=a;else if("."===d)c=f((b?e(b):v.cwd)+a);else if("/"===d){var g=v.cwd.match(K);c=g?g[0]+a.substring(1):a}else c=v.base+a;return 0===c.indexOf("//")&&(c=location.protocol+c),c}function m(a,b){if(!a)return"";a=h(a),a=i(a),a=j(a),a=g(a);var c=l(a,b);return c=k(c)}function n(a){return a.hasAttribute?a.src:a.getAttribute("src",4)}function o(a,b,c){var d=S.test(a),e=L.createElement(d?"link":"script");if(c){var f=z(c)?c(a):c;f&&(e.charset=f)}p(e,b,d,a),d?(e.rel="stylesheet",e.href=a):(e.async=!0,e.src=a),T=e,R?Q.insertBefore(e,R):Q.appendChild(e),T=null}function p(a,c,d,e){function f(){a.onload=a.onerror=a.onreadystatechange=null,d||v.debug||Q.removeChild(a),a=null,c()}var g="onload"in a;return!d||!V&&g?(g?(a.onload=f,a.onerror=function(){C("error",{uri:e,node:a}),f()}):a.onreadystatechange=function(){/loaded|complete/.test(a.readyState)&&f()},b):(setTimeout(function(){q(a,c)},1),b)}function q(a,b){var c=a.sheet,d;if(V)c&&(d=!0);else if(c)try{c.cssRules&&(d=!0)}catch(e){"NS_ERROR_DOM_SECURITY_ERR"===e.name&&(d=!0)}setTimeout(function(){d?b():q(a,b)},20)}function r(){if(T)return T;if(U&&"interactive"===U.readyState)return U;for(var a=Q.getElementsByTagName("script"),b=a.length-1;b>=0;b--){var c=a[b];if("interactive"===c.readyState)return U=c}}function s(a){var b=[];return a.replace(X,"").replace(W,function(a,c,d){d&&b.push(d)}),b}function t(a,b){this.uri=a,this.dependencies=b||[],this.exports=null,this.status=0,this._waitings={},this._remain=0}if(!a.seajs){var u=a.seajs={version:"2.2.1"},v=u.data={},w=c("Object"),x=c("String"),y=Array.isArray||c("Array"),z=c("Function"),A=0,B=v.events={};u.on=function(a,b){var c=B[a]||(B[a]=[]);return c.push(b),u},u.off=function(a,b){if(!a&&!b)return B=v.events={},u;var c=B[a];if(c)if(b)for(var d=c.length-1;d>=0;d--)c[d]===b&&c.splice(d,1);else delete B[a];return u};var C=u.emit=function(a,b){var c=B[a],d;if(c)for(c=c.slice();d=c.shift();)d(b);return u},D=/[^?#]*\//,E=/\/\.\//g,F=/\/[^/]+\/\.\.\//,G=/([^:/])\/\//g,H=/^([^/:]+)(\/.+)$/,I=/{([^{]+)}/g,J=/^\/\/.|:\//,K=/^.*?\/\/.*?\//,L=document,M=e(L.URL),N=L.scripts,O=L.getElementById("seajsnode")||N[N.length-1],P=e(n(O)||M);u.resolve=m;var Q=L.head||L.getElementsByTagName("head")[0]||L.documentElement,R=Q.getElementsByTagName("base")[0],S=/\.css(?:\?|$)/i,T,U,V=+navigator.userAgent.replace(/.*(?:AppleWebKit|AndroidWebKit)\/(\d+).*/,"$1")<536;u.request=o;var W=/"(?:\\"|[^"])*"|'(?:\\'|[^'])*'|\/\*[\S\s]*?\*\/|\/(?:\\\/|[^\/\r\n])+\/(?=[^\/])|\/\/.*|\.\s*require|(?:^|[^$])\brequire\s*\(\s*(["'])(.+?)\1\s*\)/g,X=/\\\\/g,Y=u.cache={},Z,$={},_={},ab={},bb=t.STATUS={FETCHING:1,SAVED:2,LOADING:3,LOADED:4,EXECUTING:5,EXECUTED:6};t.prototype.resolve=function(){for(var a=this,b=a.dependencies,c=[],d=0,e=b.length;e>d;d++)c[d]=t.resolve(b[d],a.uri);return c},t.prototype.load=function(){var a=this;if(!(a.status>=bb.LOADING)){a.status=bb.LOADING;var c=a.resolve();C("load",c);for(var d=a._remain=c.length,e,f=0;d>f;f++)e=t.get(c[f]),e.status<bb.LOADED?e._waitings[a.uri]=(e._waitings[a.uri]||0)+1:a._remain--;if(0===a._remain)return a.onload(),b;var g={};for(f=0;d>f;f++)e=Y[c[f]],e.status<bb.FETCHING?e.fetch(g):e.status===bb.SAVED&&e.load();for(var h in g)g.hasOwnProperty(h)&&g[h]()}},t.prototype.onload=function(){var a=this;a.status=bb.LOADED,a.callback&&a.callback();var b=a._waitings,c,d;for(c in b)b.hasOwnProperty(c)&&(d=Y[c],d._remain-=b[c],0===d._remain&&d.onload());delete a._waitings,delete a._remain},t.prototype.fetch=function(a){function c(){u.request(g.requestUri,g.onRequest,g.charset)}function d(){delete $[h],_[h]=!0,Z&&(t.save(f,Z),Z=null);var a,b=ab[h];for(delete ab[h];a=b.shift();)a.load()}var e=this,f=e.uri;e.status=bb.FETCHING;var g={uri:f};C("fetch",g);var h=g.requestUri||f;return!h||_[h]?(e.load(),b):$[h]?(ab[h].push(e),b):($[h]=!0,ab[h]=[e],C("request",g={uri:f,requestUri:h,onRequest:d,charset:v.charset}),g.requested||(a?a[g.requestUri]=c:c()),b)},t.prototype.exec=function(){function a(b){return t.get(a.resolve(b)).exec()}var c=this;if(c.status>=bb.EXECUTING)return c.exports;c.status=bb.EXECUTING;var e=c.uri;a.resolve=function(a){return t.resolve(a,e)},a.async=function(b,c){return t.use(b,c,e+"_async_"+d()),a};var f=c.factory,g=z(f)?f(a,c.exports={},c):f;return g===b&&(g=c.exports),delete c.factory,c.exports=g,c.status=bb.EXECUTED,C("exec",c),g},t.resolve=function(a,b){var c={id:a,refUri:b};return C("resolve",c),c.uri||u.resolve(c.id,b)},t.define=function(a,c,d){var e=arguments.length;1===e?(d=a,a=b):2===e&&(d=c,y(a)?(c=a,a=b):c=b),!y(c)&&z(d)&&(c=s(""+d));var f={id:a,uri:t.resolve(a),deps:c,factory:d};if(!f.uri&&L.attachEvent){var g=r();g&&(f.uri=g.src)}C("define",f),f.uri?t.save(f.uri,f):Z=f},t.save=function(a,b){var c=t.get(a);c.status<bb.SAVED&&(c.id=b.id||a,c.dependencies=b.deps||[],c.factory=b.factory,c.status=bb.SAVED)},t.get=function(a,b){return Y[a]||(Y[a]=new t(a,b))},t.use=function(b,c,d){var e=t.get(d,y(b)?b:[b]);e.callback=function(){for(var b=[],d=e.resolve(),f=0,g=d.length;g>f;f++)b[f]=Y[d[f]].exec();c&&c.apply(a,b),delete e.callback},e.load()},t.preload=function(a){var b=v.preload,c=b.length;c?t.use(b,function(){b.splice(0,c),t.preload(a)},v.cwd+"_preload_"+d()):a()},u.use=function(a,b){return t.preload(function(){t.use(a,b,v.cwd+"_use_"+d())}),u},t.define.cmd={},a.define=t.define,u.Module=t,v.fetchedList=_,v.cid=d,u.require=function(a){var b=t.get(t.resolve(a));return b.status<bb.EXECUTING&&(b.onload(),b.exec()),b.exports};var cb=/^(.+?\/)(\?\?)?(seajs\/)+/;v.base=(P.match(cb)||["",P])[1],v.dir=P,v.cwd=M,v.charset="utf-8",v.preload=function(){var a=[],b=location.search.replace(/(seajs-\w+)(&|$)/g,"$1=1$2");return b+=" "+L.cookie,b.replace(/(seajs-\w+)=1/g,function(b,c){a.push(c)}),a}(),u.config=function(a){for(var b in a){var c=a[b],d=v[b];if(d&&w(d))for(var e in c)d[e]=c[e];else y(d)?c=d.concat(c):"base"===b&&("/"!==c.slice(-1)&&(c+="/"),c=l(c)),v[b]=c}return C("config",a),u}}}(this);
 
 define("core", [ "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
@@ -449,7 +449,1378 @@ define("header", [], function(require, exports, module) {
 define("intro", [], function(require, exports, module) {
     var $ = window.Zepto;
 });
-define("iscroll", [], function(require, exports, module) {
+define("list_news", [], function(require, exports, module) {
+    var $ = window.Zepto, listNewsInit = function() {
+        $(".am-list-news-one").each(function() {
+            amListNewsMore($(this));
+        });
+    };
+    function amListNewsMore(object) {
+        var $amList = object.find(".am-list");
+        var $listMore = "<a class='am-list-news-more am-btn am-btn-default' href='###'>更多 &gt;&gt;</a>";
+        if ($amList.children().length > 6) {
+            $amList.children().each(function(index) {
+                if (index > 5) {
+                    $(this).hide();
+                }
+            });
+            object.find(".am-list-news-more").remove();
+            object.append($listMore);
+        }
+        $(".am-list-news-more").on("click", function() {
+            $amList.children().show();
+            $(this).hide();
+        });
+    }
+    $(function() {
+        listNewsInit();
+    });
+    exports.init = listNewsInit;
+});
+define("map", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
+    require("core");
+    var $ = window.Zepto;
+    function addMapApi(callback) {
+        var $mapApi0 = $("<script/>", {
+            src: "http://api.map.baidu.com/getscript?type=quick&file=api&ak=WVAXZ05oyNRXS5egLImmentg&t=20140109092002"
+        });
+        $("body").append($mapApi0);
+        $mapApi0.on("load", function() {
+            var $mapApi1 = $("<script/>", {
+                src: "http://api.map.baidu.com/getscript?type=quick&file=feature&ak=WVAXZ05oyNRXS5egLImmentg&t=20140109092002"
+            });
+            $("body").append($mapApi1);
+            $mapApi1.on("load", function() {
+                var script = document.createElement("script");
+                script.textContent = "(" + callback.toString() + ")();";
+                $("body")[0].appendChild(script);
+            });
+        });
+    }
+    function addBdMap() {
+        // 如果使用 $ 选择符，minify 以后会报错: $ is undefined
+        // 即使传入 $ 也无效，改为使用原生方法
+        // 这个函数作为 callback 会插入到 body 以后才执行，应该是 $ 引用错误导致
+        var content = document.querySelector(".am-map"), defaultLng = 116.331398, //经度默认值
+        defaultLat = 39.897445, //纬度默认值
+        name = content.getAttribute("data-name"), address = content.getAttribute("data-address"), lng = content.getAttribute("data-longitude") || defaultLng, lat = content.getAttribute("data-latitude") || defaultLat;
+        var map = new BMap.Map("bd-map");
+        //实例化一个地理坐标点
+        var point = new BMap.Point(lng, lat);
+        //设初始化地图, options: 3-18
+        map.centerAndZoom(point, 18);
+        //添加地图缩放控件
+        map.addControl(new BMap.ZoomControl());
+        var opts = {
+            width: 200,
+            // 信息窗口宽度
+            //height: 'auto',     // 信息窗口高度
+            title: name
+        };
+        // 创建信息窗口对象
+        var infoWindow = new BMap.InfoWindow("地址：" + address, opts);
+        // 创建地址解析器实例
+        var myGeo = new BMap.Geocoder();
+        //判断有没有使用经纬度
+        if (lng == defaultLng && lat == defaultLat) {
+            // 使用地址反解析来设置地图
+            // 将地址解析结果显示在地图上,并调整地图视野
+            myGeo.getPoint(address, function(point) {
+                if (point) {
+                    map.centerAndZoom(point, 17);
+                    map.addOverlay(new BMap.Marker(point));
+                    map.openInfoWindow(infoWindow, point);
+                }
+            }, "");
+        } else {
+            // 使用经纬度来设置地图
+            myGeo.getLocation(point, function(result) {
+                map.centerAndZoom(point, 17);
+                map.addOverlay(new BMap.Marker(point));
+                if (address) {
+                    map.openInfoWindow(infoWindow, point);
+                } else {
+                    map.openInfoWindow(new BMap.InfoWindow(address, opts), point);
+                }
+            });
+        }
+    }
+    var mapInit = function() {
+        $(".am-map").length && addMapApi(addBdMap);
+    };
+    $(document).on("ready", mapInit);
+    exports.init = mapInit;
+});
+define("mechat", [], function(require, exports, module) {
+    var $ = window.Zepto;
+    var mechatInit = function() {
+        if (!$("#mechat").length) return;
+        var $mechat = $('[data-am-widget="mechat"]'), unitid = $mechat.attr("data-am-mechat-unitid"), $mechatData = $("<script></script>", {
+            charset: "utf-8",
+            id: "mechat_button_js",
+            src: "http://mechatim.com/js/unit/button.js?id=" + unitid
+        });
+        $("body").append($mechatData);
+    };
+    // Lazy load
+    $(window).on("load", mechatInit);
+    exports.init = mechatInit;
+});
+define("menu", [ "ui.offcanvas", "ui.iscroll" ], function(require, exports, module) {
+    require("ui.offcanvas");
+    var IScroll = require("ui.iscroll.js");
+    var $ = window.Zepto;
+    var UI = $.AMUI;
+    var menuInit = function() {
+        var $menus = $('[data-am-widget="menu"]');
+        $menus.find(".am-menu-nav .am-parent > a").on("click", function(e) {
+            e.preventDefault();
+            var $clicked = $(this), $parent = $clicked.parent(), $subMenu = $clicked.next(".am-menu-sub");
+            $parent.toggleClass("am-open");
+            $subMenu.collapse("toggle");
+            $parent.siblings(".am-parent").removeClass("am-open").children(".am-menu-sub.am-in").collapse("close");
+        });
+        // Dropdown/slidedown menu
+        $menus.filter("[data-am-menu-collapse]").find("> .am-menu-toggle").on("click", function(e) {
+            e.preventDefault();
+            var $this = $(this), $nav = $this.next(".am-menu-nav");
+            $this.toggleClass("am-active");
+            $nav.collapse("toggle");
+        });
+        // OffCanvas menu
+        $menus.filter("[data-am-menu-offcanvas]").find("> .am-menu-toggle").on("click", function(e) {
+            e.preventDefault();
+            var $this = $(this), $nav = $this.next(".am-offcanvas");
+            $this.toggleClass("am-active");
+            $nav.offCanvas("open");
+        });
+        $(".am-menu-one").each(function() {
+            var $this = $(this), $wrap = $("<div class='am-menu-one-sub-warp'></div>"), allWidth = 0, prevIndex, $nav = $this.find(".am-menu-nav");
+            if ($(".am-menu-sub").length) {
+                $this.find("li").each(function() {
+                    if ($(this).hasClass("am-parent")) {
+                        $(this).attr("am-menu-warp", true);
+                        $(this).find(".am-menu-sub").appendTo($wrap);
+                    }
+                });
+                $this.append($wrap);
+            }
+            $nav.wrap("<div class='am-menu-nav-wrap' id='am-menu'>");
+            $nav.find("li").eq(0).addClass("am-active");
+            // 计算出所有 li 宽度
+            $nav.children().each(function(i) {
+                allWidth += parseInt($(this).width());
+            });
+            $nav.width(allWidth);
+            var menuScroll = new IScroll("#am-menu", {
+                scrollX: true,
+                scrollY: false
+            });
+            $nav.children().on("click", function() {
+                $(this).addClass("am-active").siblings().removeClass("am-active");
+                $wrap.find(".am-menu-sub.am-in").collapse("close");
+                if ($(this).is(".am-parent") && !$(this).hasClass(".am-open")) {
+                    $(".am-menu-sub").eq($(this).index()).collapse("open");
+                }
+                // 第一次调用，没有prevIndex
+                if (prevIndex === undefined) {
+                    prevIndex = $(this).index() ? 0 : 1;
+                }
+                // 判断方向
+                var dir = $(this).index() > prevIndex;
+                var target = $(this)[dir ? "next" : "prev"]();
+                // 点击的按钮，显示一半
+                var offset = target.offset() || $(this).offset();
+                var within = $nav.offset();
+                if (dir ? offset.left + offset.width > $(document).width() : offset.left < 10) {
+                    menuScroll.scrollTo(dir ? within.left - offset.width - 10 : within.left - offset.left, 0, 400);
+                }
+                prevIndex = $(this).index();
+            });
+            $this.on("touchmove", function(event) {
+                event.preventDefault();
+            });
+        });
+    };
+    $(function() {
+        menuInit();
+    });
+    exports.init = menuInit;
+});
+define("navbar", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "util.qrcode", "ui.modal" ], function(require, exports, module) {
+    require("core");
+    var $ = window.Zepto, qrcode = require("util.qrcode"), modal = require("ui.modal");
+    var navbarInit = function() {
+        var _parent = $(".am-navbar"), parentUl = _parent.find("ul"), subLi = _parent.find("li"), oneWidth = subLi.width(), minWidth = 100, //每个li最小宽度
+        _more = null, _moreList = null, onOff = true, onOffCreat = true, // 防止多次的创建
+        $body = $("body");
+        var $share = $("[data-am-navbar-share]");
+        var $qrcode = $("[data-am-navbar-qrcode]");
+        var navbarPosition = _parent.css("position");
+        if (navbarPosition == "fixed") {
+            $body.addClass("with-fixed-navbar");
+        }
+        if ($qrcode.length) {
+            var qrImg = $("[data-am-navbar-qrcode]").attr("data-am-navbar-qrcode");
+            var url = window.location.href;
+            var qrData = $("<div class=\"am-modal am-modal-no-btn\" id='am-navbar-boxqrcode'>" + "<div class='am-modal-dialog' id='am-navbar-qrcode-data'></div>" + "</div>");
+            $body.append(qrData);
+            //判断上传自定义的二维码没有，否则生成二维码
+            if (qrImg) {
+                $("#am-navbar-qrcode-data").html('<img src="' + qrImg + '"/>');
+            } else {
+                var qrnode = new qrcode({
+                    render: "canvas",
+                    correctLevel: 0,
+                    text: url,
+                    width: 190,
+                    height: 190,
+                    background: "#fff",
+                    foreground: "#000"
+                });
+                $("#am-navbar-qrcode-data").html(qrnode);
+            }
+        }
+        //添加share className
+        $share.addClass("am-navbar-share");
+        $qrcode.addClass("am-navbar-qrcode");
+        if ($share.length) {
+            //share start
+            window._bd_share_config = {
+                common: {
+                    bdSnsKey: {},
+                    bdText: "",
+                    bdMini: "2",
+                    bdMiniList: false,
+                    bdPic: "",
+                    bdStyle: "1",
+                    bdSize: "16"
+                },
+                share: {
+                    bdSize: 24
+                }
+            };
+            $body.append($("<script />", {
+                src: "http://bdimg.share.baidu.com/static/api/js/share.js?v=89343201.js?cdnversion=" + ~(-new Date() / 36e5)
+            }));
+            var shareData = '<div class="bdsharebuttonbox">' + '<div class="am-modal-actions am-modal-out" id="am-navbar-share">' + '<div class="am-modal-actions-group">' + '<ul class="am-list">' + '<li class="am-modal-actions-header" data-cmd="more">分享到</li>' + '<li><a href="#" class="am-icon-qq" data-cmd="qzone" title="分享到QQ空间">QQ空间</a></li>' + '<li><a href="#" class="am-icon-weibo" data-cmd="tsina" title="分享到新浪微博">新浪微博</a></li>' + '<li><a href="#" class="am-icon-tencent-weibo" data-cmd="tqq" title="分享到腾讯微博">腾讯微博</a></li>' + '<li><a href="#" class="am-icon-renren" data-cmd="renren" title="分享到人人网">人人网</a></li>' + '<li><a href="#" class="am-icon-wechat" data-cmd="weixin" title="分享到微信">微信</a></li>' + "</ul>" + "</div>" + '<div class="am-modal-actions-group"><button type="button" class="am-btn am-btn-secondary am-btn-block" data-am-modal-close>取消</button></div>' + "</div>" + "</div>";
+            $body.append(shareData);
+            $share.on("click", function(event) {
+                event.preventDefault();
+                $("#am-navbar-share").modal();
+            });
+        }
+        if ($qrcode.length) {
+            //qrcode start
+            $qrcode.on("click", function(event) {
+                event.preventDefault();
+                $("#am-navbar-boxqrcode").modal();
+            });
+        }
+        //qrcode end
+        if (_parent.length) {
+            $body.append($('<ul class="am-navbar-moreList"></ul>'));
+        }
+        if (_parent.find("li").length * _parent.find("li").width() > $(window).width()) {
+            //如果li没有完全展示
+            //替换父级的class
+            displaceClass(_parent.find("li").length, parentUl);
+            var nowWidth = _parent.find("li").width();
+            if (nowWidth < minWidth) {
+                if (onOffCreat) {
+                    addMore();
+                    onOffCreat = false;
+                }
+                displaceClass(liLength(), parentUl);
+                addMoreLi(liLength());
+            }
+        }
+        //有问题的代码：
+        /*$(window).on("resize",function(){
+
+         if(_parent.find("li").length * _parent.find("li").width() > $(window).width()){ //如果li没有完全展示
+
+         //替换父级的class
+         displaceClass(_parent.find("li").length,parentUl);
+         var nowWidth = _parent.find("li").width();
+
+         //现在的宽度小于最小宽度
+         if(nowWidth < minWidth){
+
+         if(onOffCreat){
+         addMore();
+         onOffCreat = false;
+         }
+         displaceClass(liLength(),parentUl);
+         addMoreLi(liLength());
+         }else{
+
+         addParentLi(liLength());
+
+         if($(".am-navbar-moreList").children().length){
+         removeMore();
+         onOffCreat = true;
+         }
+
+         displaceClass(liLength(),parentUl);
+         }
+         }else{
+         displaceClass(_parent.find("li").length,parentUl);
+         if(_parent.find("li").width < minWidth){
+         console.log("小于")
+         }
+         }
+
+         })*/
+        _more = $(".am-navbar-more");
+        _moreList = $(".am-navbar-moreList");
+        _parent.on("click", ".am-navbar-more", function() {
+            if (onOff) {
+                _moreList.css({
+                    bottom: _moreList.height(),
+                    display: "block"
+                }).animate({
+                    bottom: 49
+                }, {
+                    duration: "fast",
+                    complete: function() {
+                        _more.addClass("am-navbar-more-active");
+                    }
+                });
+                onOff = !onOff;
+            } else {
+                _moreList.animate({
+                    bottom: -_moreList.height()
+                }, {
+                    complete: function() {
+                        $(this).css("display", "none");
+                        _more.removeClass("am-navbar-more-active");
+                    }
+                });
+                onOff = !onOff;
+            }
+        });
+        //添加more
+        function addMore() {
+            parentUl.append($('<li class="am-navbar-item am-navbar-more"><a href="javascript:;"><span class="am-icon-chevron-up"></span>更多</a></li>'));
+        }
+        //删除more
+        function removeMore() {
+            parentUl.find(".am-navbar-more").remove();
+        }
+        //计算合适的长度
+        function liLength() {
+            return parseInt($(window).width() / minWidth);
+        }
+        //移出parent下的li,并添加到moreList里面
+        function addMoreLi(len) {
+            subLi.not(".am-navbar-more").each(function(index) {
+                if (index > len - 2) {
+                    $(this).appendTo($(".am-navbar-moreList"));
+                }
+            });
+        }
+        //移出moreList里面的li,并添加到parent下面
+        function addParentLi(len) {
+            $(".am-navbar-moreList").children().first().appendTo(parentUl);
+        }
+        //替换class
+        function displaceClass(num, object) {
+            var $className = object.attr("class").replace(/sm-block-grid-\d/, "sm-block-grid-" + num);
+            object.attr("class", $className);
+        }
+    };
+    // DOMContentLoaded
+    $(function() {
+        navbarInit();
+    });
+    exports.init = navbarInit;
+});
+define("pagination", [], function(require, exports, module) {});
+define("paragraph", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "zepto.pinchzoom" ], function(require, exports, module) {
+    require("core");
+    var $ = window.Zepto;
+    // PinchZoom Plugin
+    var PinchZoom = require("zepto.pinchzoom");
+    var paragraphInit;
+    $.fn.paragraphZoomToggle = function() {
+        var $warpHead, $pinch, $zoomWrap, onOff = true, // 防止重复创建
+        $wrapDom = $("<div class='am-paragraph-wrap'><header></header><div class='pinch-zoom'></div></div>");
+        $zoomWrap = $(".am-paragraph-wrap");
+        $warpHead = $(".am-paragraph-wrap header");
+        $pinch = $zoomWrap.find(".pinch-zoom");
+        this.each(function() {
+            $(this).on("click", function() {
+                if (onOff && $(".am-paragraph").length) {
+                    $("body").append($wrapDom);
+                    $zoomWrap = $(".am-paragraph-wrap");
+                    $pinch = $zoomWrap.find(".pinch-zoom");
+                    $warpHead = $zoomWrap.find("header");
+                    $pinch.each(function() {
+                        new PinchZoom($(this), {});
+                    });
+                    onOff = false;
+                }
+                $pinch.html(this.outerHTML);
+                if ($(this).attr("alt")) {
+                    $warpHead.html($(this).attr("alt"));
+                } else {
+                    $warpHead.html("返回");
+                }
+                $zoomWrap.addClass("am-active").find("img").width($(window).width());
+            });
+        });
+    };
+    $.fn.paragraphTable = function(objWidth) {
+        var This = $(this), distX = 0, disX = 0, disY = 0, downX, downY, $parent, scrollY;
+        if (objWidth > $("body").width()) {
+            This.wrap("<div class='am-paragraph-table-container'><div class='am-paragraph-table-scroller'></div></div>");
+            $parent = This.parent();
+            $parent.width(objWidth);
+            $parent.height(This.height());
+            $parent.parent().height(This.height() + 20);
+            $parent.on("touchstart MSPointerDown pointerdown", function(ev) {
+                var oTarget = ev.targetTouches[0];
+                distX = oTarget.clientX - $(this).offset().left;
+                downX = oTarget.clientX;
+                downY = oTarget.clientY;
+                scrollY = undefined;
+                $(document).on("touchmove MSPointerMove pointermove", fnMove);
+                $(document).on("touchend MSPointerUp pointerup", fnUp);
+            });
+        }
+        function fnUp(ev) {
+            ev.preventDefault();
+            var oTarget = ev.changedTouches[0];
+            var L = $parent.offset().left;
+            // ->
+            if (L > 10) {
+                $parent.animate({
+                    left: 10
+                }, 500, "ease-out");
+            }
+            //<-
+            if (L < -$parent.width() + $(window).width() - 10) {
+                $parent.animate({
+                    left: -$parent.width() + $(window).width() - 10
+                }, 500, "ease-out");
+            }
+            $(document).off("touchend MSPointerUp pointerup", fnUp);
+            $(document).off("touchmove MSPointerMove pointermove", fnMove);
+        }
+        function fnMove(ev) {
+            var oTarget = ev.targetTouches[0];
+            disX = oTarget.clientX - downX;
+            disY = oTarget.clientY - downY;
+            if (typeof scrollY == "undefined") {
+                scrollY = !!(scrollY || Math.abs(disX) < Math.abs(disY));
+            }
+            if (!scrollY) {
+                ev.preventDefault();
+                This.parent().css("left", oTarget.clientX - distX);
+            }
+        }
+    };
+    paragraphInit = function() {
+        var $body = $("body"), $paragraph = $(".am-paragraph"), $tableWidth;
+        if ($paragraph.length && $paragraph.attr("data-am-imgParagraph")) {
+            $paragraph.find("img").paragraphZoomToggle();
+            $body.on("click", ".am-paragraph-wrap", function(e) {
+                e.preventDefault();
+                var target = e.target;
+                // Img is using pinch zoom
+                if (!$(target).is("img")) {
+                    $(this).toggleClass("am-active");
+                }
+            });
+        }
+        if ($paragraph.length && $paragraph.attr("data-am-tableParagraph")) {
+            $paragraph.find("table").each(function() {
+                $tableWidth = $(this).width();
+                $(this).paragraphTable($tableWidth);
+            });
+        }
+    };
+    $(window).on("load", function() {
+        paragraphInit();
+    });
+    exports.init = paragraphInit;
+});
+define("slider", [ "zepto.flexslider" ], function(require, exports, module) {
+    var $ = window.Zepto;
+    require("zepto.flexslider");
+    var sliderInit = function() {
+        $(".am-slider").not(".am-slider-manual").each(function(i, item) {
+            var options = $(item).attr("data-slider-config");
+            if (options) {
+                $(item).flexslider($.parseJSON(options));
+            } else {
+                $(item).flexslider();
+            }
+        });
+    };
+    $(document).on("ready", sliderInit);
+    exports.init = sliderInit;
+});
+define("sohucs", [], function(require, exports, module) {
+    var $ = window.Zepto;
+    var sohuCSInit = function() {
+        if (!$("#SOHUCS").length) return;
+        var $sohucs = $('[data-am-widget="sohucs"]'), appid = $sohucs.attr("data-am-sohucs-appid"), conf = $sohucs.attr("data-am-sohucs-conf"), $cy = $("<script></script>", {
+            charset: "utf-8",
+            id: "changyan_mobile_js",
+            src: "http://changyan.sohu.com/upload/mobile/wap-js/changyan_mobile.js?client_id=" + appid + "&conf=" + conf
+        });
+        $("body").append($cy);
+    };
+    // Lazy load
+    $(window).on("load", sohuCSInit);
+    exports.init = sohuCSInit;
+});
+define("tabs", [ "zepto.extend.touch", "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
+    require("zepto.extend.touch");
+    require("core");
+    var $ = window.Zepto;
+    var tabsInit = function() {
+        $(".am-tabs").each(function() {
+            amTabs($(this));
+        });
+    };
+    function amTabs(parent) {
+        var $tabsContent = parent.find(".am-tabs-bd-content"), $tabsDiv = $tabsContent.children(), oneWidth, iNow = 0, disX, disY, downY, downX, $tabLi = parent.find(".am-tabs-hd").children();
+        //设置tabsdiv宽度
+        $tabsContent.width($tabsContent.parent().width() * $tabsDiv.length);
+        $tabsDiv.width($tabsContent.parent().width());
+        oneWidth = $tabsDiv.width();
+        $(window).on("resize", function() {
+            $tabsContent.width($tabsContent.parent().width() * $tabsDiv.length);
+            $tabsDiv.width($tabsContent.parent().width());
+            oneWidth = $tabsDiv.width();
+        });
+        /*$tabsContent.on("touchstart MSPointerDown pointerdown", function(ev){
+         ev.preventDefault();
+         var oTarget = ev.targetTouches[0];
+         disX = oTarget.clientX - $tabsContent.offset().left;
+         disY = oTarget.clientY - $tabsContent.offset().top;
+         downX = oTarget.clientX;
+         downY = oTarget.clientY;
+         $( $tabsContent ).on("touchmove MSPointerMove pointermove", fnMove);
+         $( $tabsContent ).on("touchend MSPointerUp pointerup", fnUp);
+         });*/
+        $tabsContent.swipeRight(function() {
+            iNow--;
+            if (iNow < 0) {
+                iNow = 0;
+            }
+            $tabsContent.animate({
+                left: -iNow * oneWidth
+            });
+            $tabLi.removeClass("am-tabs-hd-active");
+            $tabLi.eq(iNow).addClass("am-tabs-hd-active");
+        });
+        $tabsContent.swipeLeft(function() {
+            iNow++;
+            if (iNow > $tabsDiv.length - 1) {
+                iNow = $tabsDiv.length - 1;
+            }
+            $tabsContent.animate({
+                left: -iNow * oneWidth
+            });
+            $tabLi.removeClass("am-tabs-hd-active");
+            $tabLi.eq(iNow).addClass("am-tabs-hd-active");
+        });
+        $tabLi.on("click", function() {
+            iNow = $(this).index();
+            $tabLi.removeClass("am-tabs-hd-active");
+            $tabLi.eq(iNow).addClass("am-tabs-hd-active");
+            $tabsContent.animate({
+                left: -iNow * oneWidth
+            });
+        });
+    }
+    $(function() {
+        tabsInit();
+    });
+    exports.init = tabsInit;
+});
+define("titlebar", [], function(require, exports, module) {});
+define("ui.accordion", [ "./zepto.extend.fx", "./zepto.extend.selector", "./zepto.extend.data" ], function(require, exports, module) {
+    var $ = window.Zepto;
+    require("./zepto.extend.fx");
+    require("./zepto.extend.selector");
+    require("./zepto.extend.data");
+    /**
+     * @via https://github.com/Semantic-Org/Semantic-UI/blob/master/src/modules/accordion.js
+     * @license https://github.com/Semantic-Org/Semantic-UI/blob/master/LICENSE.md
+     */
+    $.fn.accordion = function(parameters) {
+        var $allModules = $(this), query = arguments[0], methodInvoked = typeof query == "string", queryArguments = [].slice.call(arguments, 1), returnedValue;
+        $allModules.each(function() {
+            var settings = $.isPlainObject(parameters) ? $.extend(true, {}, $.fn.accordion.settings, parameters) : $.extend({}, $.fn.accordion.settings), className = settings.className, namespace = settings.namespace, selector = settings.selector, eventNamespace = "." + namespace, moduleNamespace = "module-" + namespace, $module = $(this), $title = $module.find(selector.title), $content = $module.find(selector.content), $item = $module.find(selector.item), element = this, instance = $module.data(moduleNamespace), module;
+            module = {
+                initialize: function() {
+                    // initializing
+                    $title.on("click" + eventNamespace, module.event.click);
+                    module.instantiate();
+                },
+                instantiate: function() {
+                    instance = module;
+                    $module.data(moduleNamespace, module);
+                },
+                destroy: function() {
+                    $module.removeData(moduleNamespace);
+                    $title.off(eventNamespace);
+                },
+                event: {
+                    click: function() {
+                        var $activeTitle = $(this), index = $item.index($activeTitle.parent(selector.item));
+                        module.toggle(index);
+                    }
+                },
+                toggle: function(index) {
+                    var $activeItem = $item.eq(index), contentIsOpen = $activeItem.hasClass(className.active);
+                    if (contentIsOpen) {
+                        if (settings.collapsible) {
+                            module.close(index);
+                        }
+                    } else {
+                        module.open(index);
+                    }
+                },
+                open: function(index) {
+                    var $activeItem = $item.eq(index), $activeContent = $activeItem.next(selector.content);
+                    if (!settings.multiple) {
+                        $item.not($activeItem).removeClass(className.active);
+                    }
+                    $activeItem.addClass(className.active);
+                    $activeContent.animate(settings.duration, settings.easing, function() {
+                        $.proxy(settings.onOpen, $activeContent)();
+                        $.proxy(settings.onChange, $activeContent)();
+                    });
+                },
+                close: function(index) {
+                    var $activeItem = $item.eq(index), $activeContent = $activeItem.find(selector.content);
+                    $activeItem.removeClass(className.active);
+                    $activeContent.animate(settings.duration, settings.easing, function() {
+                        $.proxy(settings.onClose, $activeContent)();
+                        $.proxy(settings.onChange, $activeContent)();
+                    });
+                },
+                setting: function(name, value) {
+                    if ($.isPlainObject(name)) {
+                        $.extend(true, settings, name);
+                    } else if (value !== undefined) {
+                        settings[name] = value;
+                    } else {
+                        return settings[name];
+                    }
+                },
+                internal: function(name, value) {
+                    if (value !== undefined) {
+                        if ($.isPlainObject(name)) {
+                            $.extend(true, module, name);
+                        } else {
+                            module[name] = value;
+                        }
+                    } else {
+                        return module[name];
+                    }
+                },
+                invoke: function(query, passedArguments, context) {
+                    var object = instance, maxDepth, found, response;
+                    passedArguments = passedArguments || queryArguments;
+                    context = element || context;
+                    if (typeof query == "string" && object !== undefined) {
+                        query = query.split(/[\. ]/);
+                        maxDepth = query.length - 1;
+                        $.each(query, function(depth, value) {
+                            var camelCaseValue = depth != maxDepth ? value + query[depth + 1].charAt(0).toUpperCase() + query[depth + 1].slice(1) : query;
+                            if ($.isPlainObject(object[camelCaseValue]) && depth != maxDepth) {
+                                object = object[camelCaseValue];
+                            } else if (object[camelCaseValue] !== undefined) {
+                                found = object[camelCaseValue];
+                                return false;
+                            } else if ($.isPlainObject(object[value]) && depth != maxDepth) {
+                                object = object[value];
+                            } else if (object[value] !== undefined) {
+                                found = object[value];
+                                return false;
+                            } else {
+                                return false;
+                            }
+                        });
+                    }
+                    if ($.isFunction(found)) {
+                        response = found.apply(context, passedArguments);
+                    } else if (found !== undefined) {
+                        response = found;
+                    }
+                    if ($.isArray(returnedValue)) {
+                        returnedValue.push(response);
+                    } else if (returnedValue !== undefined) {
+                        returnedValue = [ returnedValue, response ];
+                    } else if (response !== undefined) {
+                        returnedValue = response;
+                    }
+                    return found;
+                }
+            };
+            if (methodInvoked) {
+                if (instance === undefined) {
+                    module.initialize();
+                }
+                module.invoke(query);
+            } else {
+                if (instance !== undefined) {
+                    module.destroy();
+                }
+                module.initialize();
+            }
+        });
+        return returnedValue !== undefined ? returnedValue : this;
+    };
+    $.fn.accordion.settings = {
+        name: "Accordion",
+        namespace: "accordion",
+        multiple: false,
+        collapsible: true,
+        duration: 500,
+        easing: "ease-in-out",
+        onOpen: function() {},
+        onClose: function() {},
+        onChange: function() {},
+        className: {
+            active: "am-active"
+        },
+        selector: {
+            item: ".am-accordion-item",
+            title: ".am-accordion-title",
+            content: ".am-accordion-content"
+        }
+    };
+});
+define("ui.add2home", [], function(require, exports, module) {
+    /*!
+     * Add to Homescreen v2.0.11 ~ Copyright (c) 2013 Matteo Spinelli, http://cubiq.org
+     * Released under MIT license, http://cubiq.org/license
+     */
+    var addToHome = function(w) {
+        var nav = w.navigator, isIDevice = "platform" in nav && /iphone|ipod|ipad/gi.test(nav.platform), isIPad, isRetina, isSafari, isStandalone, OSVersion, startX = 0, startY = 0, lastVisit = 0, isExpired, isSessionActive, isReturningVisitor, balloon, overrideChecks, positionInterval, closeTimeout, options = {
+            autostart: true,
+            // Automatically open the balloon
+            returningVisitor: false,
+            // Show the balloon to returning visitors only (setting this to true is highly recommended)
+            animationIn: "drop",
+            // drop || bubble || fade
+            animationOut: "fade",
+            // drop || bubble || fade
+            startDelay: 2e3,
+            // 2 seconds from page load before the balloon appears
+            lifespan: 15e3,
+            // 15 seconds before it is automatically destroyed
+            bottomOffset: 14,
+            // Distance of the balloon from bottom
+            expire: 0,
+            // Minutes to wait before showing the popup again (0 = always displayed)
+            message: "",
+            // Customize your message or force a language ('' = automatic)
+            touchIcon: false,
+            // Display the touch icon
+            arrow: true,
+            // Display the balloon arrow
+            hookOnLoad: true,
+            // Should we hook to onload event? (really advanced usage)
+            closeButton: true,
+            // Let the user close the balloon
+            iterations: 100
+        }, intl = {
+            en_us: "Install this web app on your %device: tap %icon and then <strong>Add to Home Screen</strong>.",
+            zh_cn: "您可以将此应用安装到您的 %device 上。请按 %icon 然后选择<strong>添加至主屏幕</strong>。",
+            zh_tw: "您可以將此應用程式安裝到您的 %device 上。請按 %icon 然後點選<strong>加入主畫面螢幕</strong>。"
+        };
+        function init() {
+            // Preliminary check, all further checks are performed on iDevices only
+            if (!isIDevice) return;
+            var now = Date.now(), i;
+            // Merge local with global options
+            if (w.addToHomeConfig) {
+                for (i in w.addToHomeConfig) {
+                    options[i] = w.addToHomeConfig[i];
+                }
+            }
+            if (!options.autostart) options.hookOnLoad = false;
+            isIPad = /ipad/gi.test(nav.platform);
+            isRetina = w.devicePixelRatio && w.devicePixelRatio > 1;
+            isSafari = /Safari/i.test(nav.appVersion) && !/CriOS/i.test(nav.appVersion);
+            isStandalone = nav.standalone;
+            OSVersion = nav.appVersion.match(/OS (\d+_\d+)/i);
+            OSVersion = OSVersion && OSVersion[1] ? +OSVersion[1].replace("_", ".") : 0;
+            lastVisit = +w.localStorage.getItem("addToHome");
+            isSessionActive = w.sessionStorage.getItem("addToHomeSession");
+            isReturningVisitor = options.returningVisitor ? lastVisit && lastVisit + 28 * 24 * 60 * 60 * 1e3 > now : true;
+            if (!lastVisit) lastVisit = now;
+            // If it is expired we need to reissue a new balloon
+            isExpired = isReturningVisitor && lastVisit <= now;
+            if (options.hookOnLoad) w.addEventListener("load", loaded, false); else if (!options.hookOnLoad && options.autostart) loaded();
+        }
+        function loaded() {
+            w.removeEventListener("load", loaded, false);
+            if (!isReturningVisitor) w.localStorage.setItem("addToHome", Date.now()); else if (options.expire && isExpired) w.localStorage.setItem("addToHome", Date.now() + options.expire * 6e4);
+            if (!overrideChecks && (!isSafari || !isExpired || isSessionActive || isStandalone || !isReturningVisitor)) return;
+            var touchIcon = "", platform = nav.platform.split(" ")[0], language = nav.language.replace("-", "_");
+            balloon = document.createElement("div");
+            balloon.id = "addToHomeScreen";
+            balloon.style.cssText += "left:-9999px;-webkit-transition-property:-webkit-transform,opacity;-webkit-transition-duration:0;-webkit-transform:translate3d(0,0,0);position:" + (OSVersion < 5 ? "absolute" : "fixed");
+            // Localize message
+            if (options.message in intl) {
+                // You may force a language despite the user's locale
+                language = options.message;
+                options.message = "";
+            }
+            if (options.message === "") {
+                // We look for a suitable language (defaulted to en_us)
+                options.message = language in intl ? intl[language] : intl["en_us"];
+            }
+            if (options.touchIcon) {
+                touchIcon = isRetina ? document.querySelector('head link[rel^=apple-touch-icon][sizes="114x114"],head link[rel^=apple-touch-icon][sizes="144x144"],head link[rel^=apple-touch-icon]') : document.querySelector('head link[rel^=apple-touch-icon][sizes="57x57"],head link[rel^=apple-touch-icon]');
+                if (touchIcon) {
+                    touchIcon = '<span style="background-image:url(' + touchIcon.href + ')" class="addToHomeTouchIcon"></span>';
+                }
+            }
+            balloon.className = (OSVersion >= 7 ? "addToHomeIOS7 " : "") + (isIPad ? "addToHomeIpad" : "addToHomeIphone") + (touchIcon ? " addToHomeWide" : "");
+            balloon.innerHTML = touchIcon + options.message.replace("%device", platform).replace("%icon", OSVersion >= 4.2 ? '<span class="addToHomeShare"></span>' : '<span class="addToHomePlus">+</span>') + (options.arrow ? '<span class="addToHomeArrow"' + (OSVersion >= 7 && isIPad && touchIcon ? ' style="margin-left:-32px"' : "") + "></span>" : "") + (options.closeButton ? '<span class="addToHomeClose">×</span>' : "");
+            document.body.appendChild(balloon);
+            // Add the close action
+            if (options.closeButton) balloon.addEventListener("click", clicked, false);
+            if (!isIPad && OSVersion >= 6) window.addEventListener("orientationchange", orientationCheck, false);
+            setTimeout(show, options.startDelay);
+        }
+        function show() {
+            var duration, iPadXShift = 208;
+            // Set the initial position
+            if (isIPad) {
+                if (OSVersion < 5) {
+                    startY = w.scrollY;
+                    startX = w.scrollX;
+                } else if (OSVersion < 6) {
+                    iPadXShift = 160;
+                } else if (OSVersion >= 7) {
+                    iPadXShift = 143;
+                }
+                balloon.style.top = startY + options.bottomOffset + "px";
+                balloon.style.left = Math.max(startX + iPadXShift - Math.round(balloon.offsetWidth / 2), 9) + "px";
+                switch (options.animationIn) {
+                  case "drop":
+                    duration = "0.6s";
+                    balloon.style.webkitTransform = "translate3d(0," + -(w.scrollY + options.bottomOffset + balloon.offsetHeight) + "px,0)";
+                    break;
+
+                  case "bubble":
+                    duration = "0.6s";
+                    balloon.style.opacity = "0";
+                    balloon.style.webkitTransform = "translate3d(0," + (startY + 50) + "px,0)";
+                    break;
+
+                  default:
+                    duration = "1s";
+                    balloon.style.opacity = "0";
+                }
+            } else {
+                startY = w.innerHeight + w.scrollY;
+                if (OSVersion < 5) {
+                    startX = Math.round((w.innerWidth - balloon.offsetWidth) / 2) + w.scrollX;
+                    balloon.style.left = startX + "px";
+                    balloon.style.top = startY - balloon.offsetHeight - options.bottomOffset + "px";
+                } else {
+                    balloon.style.left = "50%";
+                    balloon.style.marginLeft = -Math.round(balloon.offsetWidth / 2) - (w.orientation % 180 && OSVersion >= 6 && OSVersion < 7 ? 40 : 0) + "px";
+                    balloon.style.bottom = options.bottomOffset + "px";
+                }
+                switch (options.animationIn) {
+                  case "drop":
+                    duration = "1s";
+                    balloon.style.webkitTransform = "translate3d(0," + -(startY + options.bottomOffset) + "px,0)";
+                    break;
+
+                  case "bubble":
+                    duration = "0.6s";
+                    balloon.style.webkitTransform = "translate3d(0," + (balloon.offsetHeight + options.bottomOffset + 50) + "px,0)";
+                    break;
+
+                  default:
+                    duration = "1s";
+                    balloon.style.opacity = "0";
+                }
+            }
+            balloon.offsetHeight;
+            // repaint trick
+            balloon.style.webkitTransitionDuration = duration;
+            balloon.style.opacity = "1";
+            balloon.style.webkitTransform = "translate3d(0,0,0)";
+            balloon.addEventListener("webkitTransitionEnd", transitionEnd, false);
+            closeTimeout = setTimeout(close, options.lifespan);
+        }
+        function manualShow(override) {
+            if (!isIDevice || balloon) return;
+            overrideChecks = override;
+            loaded();
+        }
+        function close() {
+            clearInterval(positionInterval);
+            clearTimeout(closeTimeout);
+            closeTimeout = null;
+            // check if the popup is displayed and prevent errors
+            if (!balloon) return;
+            var posY = 0, posX = 0, opacity = "1", duration = "0";
+            if (options.closeButton) balloon.removeEventListener("click", clicked, false);
+            if (!isIPad && OSVersion >= 6) window.removeEventListener("orientationchange", orientationCheck, false);
+            if (OSVersion < 5) {
+                posY = isIPad ? w.scrollY - startY : w.scrollY + w.innerHeight - startY;
+                posX = isIPad ? w.scrollX - startX : w.scrollX + Math.round((w.innerWidth - balloon.offsetWidth) / 2) - startX;
+            }
+            balloon.style.webkitTransitionProperty = "-webkit-transform,opacity";
+            switch (options.animationOut) {
+              case "drop":
+                if (isIPad) {
+                    duration = "0.4s";
+                    opacity = "0";
+                    posY += 50;
+                } else {
+                    duration = "0.6s";
+                    posY += balloon.offsetHeight + options.bottomOffset + 50;
+                }
+                break;
+
+              case "bubble":
+                if (isIPad) {
+                    duration = "0.8s";
+                    posY -= balloon.offsetHeight + options.bottomOffset + 50;
+                } else {
+                    duration = "0.4s";
+                    opacity = "0";
+                    posY -= 50;
+                }
+                break;
+
+              default:
+                duration = "0.8s";
+                opacity = "0";
+            }
+            balloon.addEventListener("webkitTransitionEnd", transitionEnd, false);
+            balloon.style.opacity = opacity;
+            balloon.style.webkitTransitionDuration = duration;
+            balloon.style.webkitTransform = "translate3d(" + posX + "px," + posY + "px,0)";
+        }
+        function clicked() {
+            w.sessionStorage.setItem("addToHomeSession", "1");
+            isSessionActive = true;
+            close();
+        }
+        function transitionEnd() {
+            balloon.removeEventListener("webkitTransitionEnd", transitionEnd, false);
+            balloon.style.webkitTransitionProperty = "-webkit-transform";
+            balloon.style.webkitTransitionDuration = "0.2s";
+            // We reached the end!
+            if (!closeTimeout) {
+                balloon.parentNode.removeChild(balloon);
+                balloon = null;
+                return;
+            }
+            // On iOS 4 we start checking the element position
+            if (OSVersion < 5 && closeTimeout) positionInterval = setInterval(setPosition, options.iterations);
+        }
+        function setPosition() {
+            var matrix = new WebKitCSSMatrix(w.getComputedStyle(balloon, null).webkitTransform), posY = isIPad ? w.scrollY - startY : w.scrollY + w.innerHeight - startY, posX = isIPad ? w.scrollX - startX : w.scrollX + Math.round((w.innerWidth - balloon.offsetWidth) / 2) - startX;
+            // Screen didn't move
+            if (posY == matrix.m42 && posX == matrix.m41) return;
+            balloon.style.webkitTransform = "translate3d(" + posX + "px," + posY + "px,0)";
+        }
+        // Clear local and session storages (this is useful primarily in development)
+        function reset() {
+            w.localStorage.removeItem("addToHome");
+            w.sessionStorage.removeItem("addToHomeSession");
+        }
+        function orientationCheck() {
+            balloon.style.marginLeft = -Math.round(balloon.offsetWidth / 2) - (w.orientation % 180 && OSVersion >= 6 && OSVersion < 7 ? 40 : 0) + "px";
+        }
+        // Bootstrap!
+        init();
+        return {
+            show: manualShow,
+            close: close,
+            reset: reset
+        };
+    }(window);
+});
+define("ui.alert", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
+    "use strict";
+    require("core");
+    var $ = window.Zepto, UI = $.AMUI;
+    /**
+     * @via https://github.com/Minwe/bootstrap/blob/master/js/alert.js
+     * @copyright Copyright 2013 Twitter, Inc.
+     * @license Apache 2.0
+     */
+    // Alert Class
+    // NOTE: removeElement option is unavailable now
+    var Alert = function(element, options) {
+        this.options = $.extend({}, Alert.DEFAULTS, options);
+        this.$element = $(element);
+        this.$element.addClass("am-fade am-in").on("click", ".am-close", $.proxy(this.close, this));
+    };
+    Alert.DEFAULTS = {
+        removeElement: true
+    };
+    Alert.prototype.close = function() {
+        var $this = $(this), $target = $this.hasClass("am-alert") ? $this : $this.parent(".am-alert");
+        $target.trigger("close:alert:amui");
+        $target.removeClass("am-in");
+        function processAlert() {
+            $target.off().trigger("closed:alert:amui").remove();
+        }
+        UI.support.transition && $target.hasClass("am-fade") ? $target.one(UI.support.transition.end, processAlert).emulateTransitionEnd(200) : processAlert();
+    };
+    UI.alert = Alert;
+    // Alert Plugin
+    $.fn.alert = function(option) {
+        return this.each(function() {
+            var $this = $(this), data = $this.data("amui.alert"), options = typeof option == "object" && option;
+            if (!data) {
+                $this.data("amui.alert", data = new Alert(this, options));
+            }
+            if (typeof option == "string") {
+                data[option].call($this);
+            }
+        });
+    };
+    // Init code
+    $(document).on("click.alert.amui", "[data-am-alert]", function(e) {
+        var $target = $(e.target);
+        $(this).addClass("am-fade am-in");
+        $target.is(".am-close") && $(this).alert("close");
+    });
+    module.exports = Alert;
+});
+define("ui.button", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
+    "use strict";
+    require("core");
+    var $ = window.Zepto, UI = $.AMUI;
+    /**
+     * @via https://github.com/twbs/bootstrap/blob/master/js/button.js
+     * @copyright Copyright 2013 Twitter, Inc.
+     * @license Apache 2.0
+     */
+    var Button = function(element, options) {
+        this.$element = $(element);
+        this.options = $.extend({}, Button.DEFAULTS, options);
+        this.isLoading = false;
+        this.hasSpinner = false;
+    };
+    Button.DEFAULTS = {
+        loadingText: "loading...",
+        loadingClass: "am-btn-loading",
+        loadingWithSpinner: '<span class="am-icon-refresh am-icon-spin"></span> loading...'
+    };
+    Button.prototype.setState = function(state) {
+        var d = "disabled", $el = this.$element, val = $el.is("input") ? "val" : "html", data = $el.data();
+        state = state + "Text";
+        if (data.resetText == null) {
+            $el.data("resetText", $el[val]());
+        }
+        // add spinner for element with html()
+        if (UI.support.animation && !this.hasSpinner && val === "html") {
+            this.options.loadingText = this.options.loadingWithSpinner;
+            this.hasSpinner = true;
+        }
+        $el[val](data[state] == null ? this.options[state] : data[state]);
+        // push to event loop to allow forms to submit
+        setTimeout($.proxy(function() {
+            if (state == "loadingText") {
+                this.isLoading = true;
+                $el.addClass(d + " " + this.options.loadingClass).attr(d, d);
+            } else if (this.isLoading) {
+                this.isLoading = false;
+                $el.removeClass(d + " " + this.options.loadingClass).removeAttr(d);
+            }
+        }, this), 0);
+    };
+    Button.prototype.toggle = function() {
+        var changed = true, $parent = this.$element.parent(".am-btn-group");
+        if ($parent.length) {
+            var $input = this.$element.find("input");
+            if ($input.prop("type") == "radio") {
+                if ($input.prop("checked") && this.$element.hasClass("am-active")) {
+                    changed = false;
+                } else {
+                    $parent.find(".am-active").removeClass("am-active");
+                }
+            }
+            if (changed) {
+                $input.prop("checked", !this.$element.hasClass("am-active")).trigger("change");
+            }
+        }
+        if (changed) {
+            this.$element.toggleClass("am-active");
+        }
+    };
+    // Button plugin
+    function Plugin(option) {
+        return this.each(function() {
+            var $this = $(this);
+            var data = $this.data("amui.button");
+            var options = typeof option == "object" && option;
+            if (!data) {
+                $this.data("amui.button", data = new Button(this, options));
+            }
+            if (option == "toggle") {
+                data.toggle();
+            } else if (option) {
+                data.setState(option);
+            }
+        });
+    }
+    $.fn.button = Plugin;
+    // Init code
+    $(document).on("click.button.amui", "[data-am-button]", function(e) {
+        var $btn = $(e.target);
+        if (!$btn.hasClass("am-btn")) {
+            $btn = $btn.closest(".am-btn");
+        }
+        Plugin.call($btn, "toggle");
+        e.preventDefault();
+    });
+    module.exports = Button;
+});
+define("ui.collapse", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
+    "use strict";
+    require("core");
+    var $ = window.Zepto, UI = $.AMUI;
+    /**
+     * @via https://github.com/twbs/bootstrap/blob/master/js/collapse.js
+     * @copyright Copyright 2013 Twitter, Inc.
+     * @license Apache 2.0
+     */
+    var Collapse = function(element, options) {
+        this.$element = $(element);
+        this.options = $.extend({}, Collapse.DEFAULTS, options);
+        this.transitioning = null;
+        if (this.options.parent) {
+            this.$parent = $(this.options.parent);
+        }
+        if (this.options.toggle) {
+            this.toggle();
+        }
+    };
+    Collapse.DEFAULTS = {
+        toggle: true
+    };
+    Collapse.prototype.open = function() {
+        if (this.transitioning || this.$element.hasClass("am-in")) return;
+        var startEvent = $.Event("open:collapse:amui");
+        this.$element.trigger(startEvent);
+        if (startEvent.isDefaultPrevented()) return;
+        var actives = this.$parent && this.$parent.find("> .am-panel > .am-in");
+        if (actives && actives.length) {
+            var hasData = actives.data("amui.collapse");
+            if (hasData && hasData.transitioning) return;
+            Plugin.call(actives, "close");
+            hasData || actives.data("amui.collapse", null);
+        }
+        this.$element.removeClass("am-collapse").addClass("am-collapsing").height(0);
+        this.transitioning = 1;
+        var complete = function() {
+            this.$element.removeClass("am-collapsing").addClass("am-collapse am-in").height("");
+            this.transitioning = 0;
+            this.$element.trigger("opened:collapse:amui");
+        };
+        if (!UI.support.transition) {
+            return complete.call(this);
+        }
+        this.$element.one(UI.support.transition.end, $.proxy(complete, this)).emulateTransitionEnd(350).height(this.$element[0].scrollHeight);
+    };
+    Collapse.prototype.close = function() {
+        if (this.transitioning || !this.$element.hasClass("am-in")) return;
+        var startEvent = $.Event("close:collapse:amui");
+        this.$element.trigger(startEvent);
+        if (startEvent.isDefaultPrevented()) return;
+        this.$element.height(this.$element.height());
+        this.$element[0].offsetHeight;
+        this.$element.addClass("am-collapsing").removeClass("am-collapse").removeClass("am-in");
+        this.transitioning = 1;
+        var complete = function() {
+            this.transitioning = 0;
+            this.$element.trigger("closed:collapse:amui").removeClass("am-collapsing").addClass("am-collapse");
+        };
+        if (!UI.support.transition) {
+            return complete.call(this);
+        }
+        this.$element.height(0).one(UI.support.transition.end, $.proxy(complete, this)).emulateTransitionEnd(350);
+    };
+    Collapse.prototype.toggle = function() {
+        this[this.$element.hasClass("am-in") ? "close" : "open"]();
+    };
+    UI.collapse = Collapse;
+    // Collapse Plugin
+    function Plugin(option) {
+        return this.each(function() {
+            var $this = $(this), data = $this.data("amui.collapse"), options = $.extend({}, Collapse.DEFAULTS, UI.utils.options($this.attr("data-am-collapse")), typeof option == "object" && option);
+            if (!data && options.toggle && option == "open") {
+                option = !option;
+            }
+            if (!data) {
+                $this.data("amui.collapse", data = new Collapse(this, options));
+            }
+            if (typeof option == "string") {
+                data[option]();
+            }
+        });
+    }
+    $.fn.collapse = Plugin;
+    // Init code
+    $(document).on("click.collapse.amui", "[data-am-collapse]", function(e) {
+        var href, $this = $(this), options = UI.utils.options($this.attr("data-am-collapse")), target = options.target || e.preventDefault() || (href = $this.attr("href")) && href.replace(/.*(?=#[^\s]+$)/, "");
+        var $target = $(target);
+        var data = $target.data("amui.collapse");
+        var option = data ? "toggle" : options;
+        var parent = options.parent;
+        var $parent = parent && $(parent);
+        if (!data || !data.transitioning) {
+            if ($parent) {
+                //'[data-am-collapse*="{parent: \'' + parent + '"]
+                $parent.find("[data-am-collapse]").not($this).addClass("am-collapsed");
+            }
+            $this[$target.hasClass("am-in") ? "addClass" : "removeClass"]("am-collapsed");
+        }
+        Plugin.call($target, option);
+    });
+    module.exports = Collapse;
+});
+define("ui.dimmer", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
+    require("core");
+    var $ = window.Zepto, UI = $.AMUI;
+    var $dimmer = $('<div class="am-dimmer" data-am-dimmer></div>'), $doc = $(document), $html = $("html");
+    var Dimmer = function() {
+        this.hasDimmer = $("[data-am-dimmer]").length ? true : false;
+        this.$element = $dimmer;
+        $(document).on("ready", $.proxy(this.init, this));
+    };
+    Dimmer.prototype.init = function() {
+        if (!this.hasDimmer) {
+            $dimmer.appendTo($("body"));
+            this.events();
+            this.hasDimmer = true;
+        }
+        $doc.trigger("init:dimmer:amui");
+        return this;
+    };
+    Dimmer.prototype.open = function(relatedElement) {
+        $html.addClass("am-dimmer-active");
+        $dimmer.addClass("am-active");
+        $(relatedElement).length && $(relatedElement).show();
+        $doc.trigger("open:dimmer:amui");
+        return this;
+    };
+    Dimmer.prototype.close = function(relatedElement) {
+        $dimmer.removeClass("am-active");
+        $html.removeClass("am-dimmer-active");
+        $(relatedElement).length && $(relatedElement).hide();
+        $doc.trigger("close:dimmer:amui");
+        return this;
+    };
+    Dimmer.prototype.events = function() {
+        var that = this;
+        $dimmer.on("click.dimmer.amui", function() {});
+    };
+    var dimmer = new Dimmer();
+    UI.dimmer = dimmer;
+    module.exports = dimmer;
+});
+define("ui.dropdown", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
+    "use strict";
+    require("core");
+    var $ = window.Zepto, UI = $.AMUI;
+    /**
+     * @via https://github.com/Minwe/bootstrap/blob/master/js/dropdown.js
+     * @copyright Copyright 2013 Twitter, Inc.
+     * @license Apache 2.0
+     */
+    var toggle = "[data-am-dropdown] > .am-dropdown-toggle";
+    var Dropdown = function(element, options) {
+        $(element).on("click.dropdown.amui", this.toggle);
+    };
+    Dropdown.prototype.toggle = function(e) {
+        var $this = $(this);
+        if ($this.is(".am-disabled, :disabled")) {
+            return;
+        }
+        var $parent = $this.parent(), isActive = $parent.hasClass("am-active");
+        clearDropdowns();
+        if (!isActive) {
+            var relatedTarget = {
+                relatedTarget: this
+            };
+            $parent.trigger(e = $.Event("open:dropdown:amui", relatedTarget));
+            if (e.isDefaultPrevented()) {
+                return;
+            }
+            $this.trigger("focus");
+            $parent.toggleClass("am-active").trigger(e = $.Event("opened:dropdown:amui", relatedTarget));
+        } else {
+            $this.blur();
+        }
+        return false;
+    };
+    Dropdown.prototype.keydown = function(e) {
+        if (!/(38|40|27)/.test(e.keyCode)) return;
+        var $this = $(this);
+        e.preventDefault();
+        e.stopPropagation();
+        if ($this.is(".am-disabled, :disabled")) {
+            return;
+        }
+        var $parent = $this.parent(), isActive = $parent.hasClass("am-active");
+        if (!isActive || isActive && e.keyCode == 27) {
+            if (e.which == 27) {
+                $parent.find(toggle).trigger("focus");
+            }
+            return $this.trigger("click");
+        }
+    };
+    function clearDropdowns(e) {
+        if (e && e.which === 3) return;
+        $(toggle).each(function() {
+            var $parent = $(this).parent(), relatedTarget = {
+                relatedTarget: this
+            };
+            if (!$parent.hasClass("am-active")) {
+                return;
+            }
+            $parent.trigger(e = $.Event("close:dropdown:amui", relatedTarget));
+            if (e.isDefaultPrevented()) return;
+            $parent.removeClass("am-active").trigger(e = $.Event("closed:dropdown:amui", relatedTarget));
+        });
+    }
+    UI.dropdown = Dropdown;
+    // Dropdown Plugin
+    function Plugin(option) {
+        return this.each(function() {
+            var $this = $(this);
+            var data = $this.data("amui.dropdown");
+            if (!data) {
+                $this.data("amui.dropdown", data = new Dropdown(this));
+            }
+            if (typeof option == "string") {
+                data[option].call($this);
+            }
+        });
+    }
+    $.fn.dropdown = Plugin;
+    // Init code
+    $(document).on("click.dropdown.amui", ".am-dropdown form", function(e) {
+        e.stopPropagation();
+    }).on("click.dropdown.amui", toggle, Dropdown.prototype.toggle).on("keydown.dropdown.amui", toggle, Dropdown.prototype.keydown);
+});
+define("ui.iscroll", [], function(require, exports, module) {
     /*! iScroll v5.1.2 ~ (c) 2008-2014 Matteo Spinelli ~ http://cubiq.org/license */
     (function(window, document, Math) {
         var rAF = window.requestAnimationFrame || window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame || window.oRequestAnimationFrame || window.msRequestAnimationFrame || function(callback) {
@@ -2002,1496 +3373,6 @@ define("iscroll", [], function(require, exports, module) {
             window.IScroll = IScroll;
         }
     })(window, document, Math);
-});
-define("list_news", [], function(require, exports, module) {
-    var $ = window.Zepto, listNewsInit = function() {
-        $(".am-list-news-one").each(function() {
-            amListNewsMore($(this));
-        });
-    };
-    function amListNewsMore(object) {
-        var $amList = object.find(".am-list");
-        var $listMore = "<a class='am-list-news-more am-btn am-btn-default' href='###'>更多 &gt;&gt;</a>";
-        if ($amList.children().length > 6) {
-            $amList.children().each(function(index) {
-                if (index > 5) {
-                    $(this).hide();
-                }
-            });
-            object.find(".am-list-news-more").remove();
-            object.append($listMore);
-        }
-        $(".am-list-news-more").on("click", function() {
-            $amList.children().show();
-            $(this).hide();
-        });
-    }
-    $(function() {
-        listNewsInit();
-    });
-    exports.init = listNewsInit;
-});
-define("map", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
-    require("core");
-    var $ = window.Zepto;
-    function addMapApi(callback) {
-        var $mapApi0 = $("<script/>", {
-            src: "http://api.map.baidu.com/getscript?type=quick&file=api&ak=WVAXZ05oyNRXS5egLImmentg&t=20140109092002"
-        });
-        $("body").append($mapApi0);
-        $mapApi0.on("load", function() {
-            var $mapApi1 = $("<script/>", {
-                src: "http://api.map.baidu.com/getscript?type=quick&file=feature&ak=WVAXZ05oyNRXS5egLImmentg&t=20140109092002"
-            });
-            $("body").append($mapApi1);
-            $mapApi1.on("load", function() {
-                var script = document.createElement("script");
-                script.textContent = "(" + callback.toString() + ")();";
-                $("body")[0].appendChild(script);
-            });
-        });
-    }
-    function addBdMap() {
-        // 如果使用 $ 选择符，minify 以后会报错: $ is undefined
-        // 即使传入 $ 也无效，改为使用原生方法
-        // 这个函数作为 callback 会插入到 body 以后才执行，应该是 $ 引用错误导致
-        var content = document.querySelector(".am-map"), defaultLng = 116.331398, //经度默认值
-        defaultLat = 39.897445, //纬度默认值
-        name = content.getAttribute("data-name"), address = content.getAttribute("data-address"), lng = content.getAttribute("data-longitude") || defaultLng, lat = content.getAttribute("data-latitude") || defaultLat;
-        var map = new BMap.Map("bd-map");
-        //实例化一个地理坐标点
-        var point = new BMap.Point(lng, lat);
-        //设初始化地图, options: 3-18
-        map.centerAndZoom(point, 18);
-        //添加地图缩放控件
-        map.addControl(new BMap.ZoomControl());
-        var opts = {
-            width: 200,
-            // 信息窗口宽度
-            //height: 'auto',     // 信息窗口高度
-            title: name
-        };
-        // 创建信息窗口对象
-        var infoWindow = new BMap.InfoWindow("地址：" + address, opts);
-        // 创建地址解析器实例
-        var myGeo = new BMap.Geocoder();
-        //判断有没有使用经纬度
-        if (lng == defaultLng && lat == defaultLat) {
-            // 使用地址反解析来设置地图
-            // 将地址解析结果显示在地图上,并调整地图视野
-            myGeo.getPoint(address, function(point) {
-                if (point) {
-                    map.centerAndZoom(point, 17);
-                    map.addOverlay(new BMap.Marker(point));
-                    map.openInfoWindow(infoWindow, point);
-                }
-            }, "");
-        } else {
-            // 使用经纬度来设置地图
-            myGeo.getLocation(point, function(result) {
-                map.centerAndZoom(point, 17);
-                map.addOverlay(new BMap.Marker(point));
-                if (address) {
-                    map.openInfoWindow(infoWindow, point);
-                } else {
-                    map.openInfoWindow(new BMap.InfoWindow(address, opts), point);
-                }
-            });
-        }
-    }
-    var mapInit = function() {
-        $(".am-map").length && addMapApi(addBdMap);
-    };
-    $(document).on("ready", mapInit);
-    exports.init = mapInit;
-});
-define("mechat", [], function(require, exports, module) {
-    var $ = window.Zepto;
-    var mechatInit = function() {
-        if (!$("#mechat").length) return;
-        var $mechat = $('[data-am-widget="mechat"]'), unitid = $mechat.attr("data-am-mechat-unitid"), $mechatData = $("<script></script>", {
-            charset: "utf-8",
-            id: "mechat_button_js",
-            src: "http://mechatim.com/js/unit/button.js?id=" + unitid
-        });
-        $("body").append($mechatData);
-    };
-    // Lazy load
-    $(window).on("load", mechatInit);
-    exports.init = mechatInit;
-});
-define("menu", [ "nav", "zepto.outerdemension", "zepto.extend.data", "zepto.extend.selector", "zepto.extend.fx", "core", "ui.offcanvas", "iscroll" ], function(require, exports, module) {
-    require("nav");
-    require("ui.offcanvas");
-    var IScroll = require("iscroll.js");
-    var $ = window.Zepto;
-    var UI = $.AMUI;
-    var menuInit = function() {
-        //排除掉one主题
-        $(".am-menu").not("[data-am-nav]").not(".am-menu-one").each(function() {
-            var nav = $(this);
-            if (!nav.data("nav")) {
-                var obj = new UI.nav(nav, nav.data("am-nav") ? UI.utils.options(nav.data("am-nav")) : {});
-            }
-        });
-        $(".am-menu-one").each(function() {
-            var $this = $(this), $warp = $("<div class='am-menu-one-warp'></div>"), allWidth = 0, prevIndex, $nav = $this.find(".am-menu-nav");
-            if ($(".am-menu-lv2").length) {
-                $this.find("li").each(function() {
-                    if ($(this).hasClass("am-parent")) {
-                        $(this).attr("am-menu-warp", true);
-                        $(this).find(".am-menu-lv2").appendTo($warp);
-                    }
-                });
-                $this.after($warp);
-            }
-            $nav.wrap("<div class='am-menu-nav-wrap' id='am-menu'>");
-            $nav.find("li").eq(0).addClass("am-active");
-            // 计算出所有 li 宽度
-            $nav.children().each(function(i) {
-                allWidth += parseInt($(this).width());
-            });
-            $nav.width(allWidth);
-            var menuScroll = new IScroll("#am-menu", {
-                scrollX: true,
-                scrollY: false
-            });
-            $nav.children().on("click", function() {
-                $(this).addClass("am-active").siblings().removeClass("am-active");
-                // 第一次调用，没有prevIndex
-                if (prevIndex === undefined) {
-                    prevIndex = $(this).index() ? 0 : 1;
-                }
-                // 判断方向
-                var dir = $(this).index() > prevIndex;
-                var target = $(this)[dir ? "next" : "prev"]();
-                // 点击的按钮，显示一半
-                var offset = target.offset() || $(this).offset();
-                var within = $nav.offset(), listOffset;
-                console.log($(this).offset().left);
-                if (dir ? offset.left + offset.width > $(document).width() : offset.left + offset.width > 0) {
-                    console.log("zheng");
-                    listOffset = $nav.offset();
-                } else {
-                    console.log("fu");
-                }
-                prevIndex = $(this).index();
-            });
-            $this.on("touchmove", function(event) {
-                event.preventDefault();
-            });
-        });
-        function isScrollNext() {}
-    };
-    $(function() {
-        menuInit();
-    });
-    exports.init = menuInit;
-});
-define("nav", [ "./zepto.outerdemension", "./zepto.extend.data", "./zepto.extend.selector", "./zepto.extend.fx", "./core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
-    require("./zepto.outerdemension");
-    require("./zepto.extend.data");
-    // selector extend
-    require("./zepto.extend.selector");
-    require("./zepto.extend.fx");
-    require("./core");
-    var $ = window.Zepto;
-    var UI = $.AMUI;
-    /**
-     * @via https://github.com/uikit/uikit/blob/master/src/js/nav.js
-     * @license https://github.com/uikit/uikit/blob/master/LICENSE.md
-     */
-    var Nav = function(element, options) {
-        var $this = this, $element = $(element);
-        if ($element.data("nav")) return;
-        this.options = $.extend({}, this.options, options);
-        this.element = $element.on("click", this.options.trigger, function(e) {
-            e.preventDefault();
-            // trigger link
-            var ele = $(this);
-            $this.toggleNav(ele.parent(".am-parent"));
-        });
-        // wrap sub menu
-        this.element.find(this.options.lists).each(function() {
-            var $ele = $(this), parent = $ele.parent();
-            // li.am-parent
-            var navHeight = getHeight($ele);
-            parent.data("list-container", $ele).attr("data-nav-height", navHeight);
-        });
-        this.element.data("nav", this);
-    };
-    $.extend(Nav.prototype, {
-        options: {
-            trigger: ".am-parent > a",
-            lists: ".am-parent > ul",
-            multiple: false
-        },
-        toggleNav: function(li, noanimation) {
-            var element = this.element, $li = $(li);
-            // 是否允许同时展开多个菜单
-            if (!this.options.multiple) {
-                $li.siblings(".am-open").each(function() {
-                    if ($(this).data("list-container")) {
-                        $(this).removeClass("am-open").data("list-container").animate({
-                            height: 0
-                        }, function() {});
-                    }
-                });
-            }
-            $li.toggleClass("am-open");
-            var targetMenu = $li.data("list-container"), targetMenuPosition = targetMenu.css("position");
-            if ($li.data("list-container")) {
-                if (noanimation) {
-                    $li.data("list-container").height($li.hasClass("am-open") ? "auto" : 0);
-                } else {
-                    // 三级菜单展开时增加二级菜单容器高度
-                    var parentWrap = $li.parents(".am-parent");
-                    // 二级菜单
-                    if (parentWrap.length > 0) {
-                        var parentNavWrap = parentWrap.eq(0).data("list-container");
-                        // 三级菜单展开且三级菜单非绝对定位时增加父级容器高度
-                        var addHeight = $li.hasClass("am-open") && targetMenuPosition != "absolute" ? Number($li.attr("data-nav-height")) : 0;
-                        parentNavWrap.animate({
-                            height: Number(parentWrap.attr("data-nav-height")) + addHeight
-                        });
-                        // 三级菜单绝对定位时
-                        if (targetMenuPosition == "absolute") {
-                            parentNavWrap.css({
-                                overflow: $li.hasClass("am-open") ? "visible" : "hidden"
-                            });
-                        }
-                    }
-                    $li.data("list-container").animate({
-                        height: $li.hasClass("am-open") ? $li.attr("data-nav-height") + "px" : 0
-                    });
-                    // 一级菜单闭合时闭合所有展开子菜单
-                    var subNavs = $li.find(".am-menu-sub");
-                    // console.log($li);
-                    if (subNavs.length > 0 && !$li.hasClass("am-open")) {
-                        // console.log(subNavs.length);
-                        subNavs.each(function(index, item) {
-                            $(item).animate({
-                                height: 0,
-                                overflow: "hidden"
-                            });
-                            $(item).parent(".am-parent.am-open").not($li).removeClass("am-open");
-                        });
-                    }
-                }
-            }
-        }
-    });
-    UI["nav"] = Nav;
-    // helper
-    function getHeight(ele) {
-        var $ele = ele, height = "auto";
-        if ($ele.is(":visible")) {
-            height = $ele.outerHeight();
-        } else {
-            var position = $ele.css("position");
-            // show element if it is hidden (it is needed if display is none)
-            $ele.show();
-            // place it so it displays as usually but hidden
-            $ele.css({
-                position: "absolute",
-                visibility: "hidden",
-                height: "auto"
-            });
-            // get naturally height
-            height = $ele.outerHeight();
-            //console.log($ele.outerHeight(), $ele.height());
-            // set initial css for animation
-            $ele.css({
-                position: position,
-                visibility: "visible",
-                overflow: "hidden",
-                height: 0
-            });
-        }
-        return height;
-    }
-    // init code
-    $(function() {
-        $("[data-am-nav]").each(function() {
-            var nav = $(this);
-            if (!nav.data("nav")) {
-                var obj = new Nav(nav, UI.utils.options(nav.data("am-nav")));
-            }
-        });
-    });
-});
-define("navbar", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "util.qrcode", "ui.modal" ], function(require, exports, module) {
-    require("core");
-    var $ = window.Zepto, qrcode = require("util.qrcode"), modal = require("ui.modal");
-    var navbarInit = function() {
-        var _parent = $(".am-navbar"), parentUl = _parent.find("ul"), subLi = _parent.find("li"), oneWidth = subLi.width(), minWidth = 100, //每个li最小宽度
-        _more = null, _moreList = null, onOff = true, onOffCreat = true, // 防止多次的创建
-        $body = $("body");
-        var $share = $("[data-am-navbar-share]");
-        var $qrcode = $("[data-am-navbar-qrcode]");
-        var navbarPosition = _parent.css("position");
-        if (navbarPosition == "fixed") {
-            $body.addClass("with-fixed-navbar");
-        }
-        if ($qrcode.length) {
-            var qrImg = $("[data-am-navbar-qrcode]").attr("data-am-navbar-qrcode");
-            var url = window.location.href;
-            var qrData = $("<div class=\"am-modal am-modal-no-btn\" id='am-navbar-boxqrcode'>" + "<div class='am-modal-dialog' id='am-navbar-qrcode-data'></div>" + "</div>");
-            $body.append(qrData);
-            //判断上传自定义的二维码没有，否则生成二维码
-            if (qrImg) {
-                $("#am-navbar-qrcode-data").html('<img src="' + qrImg + '"/>');
-            } else {
-                var qrnode = new qrcode({
-                    render: "canvas",
-                    correctLevel: 0,
-                    text: url,
-                    width: 190,
-                    height: 190,
-                    background: "#fff",
-                    foreground: "#000"
-                });
-                $("#am-navbar-qrcode-data").html(qrnode);
-            }
-        }
-        //添加share className
-        $share.addClass("am-navbar-share");
-        $qrcode.addClass("am-navbar-qrcode");
-        if ($share.length) {
-            //share start
-            window._bd_share_config = {
-                common: {
-                    bdSnsKey: {},
-                    bdText: "",
-                    bdMini: "2",
-                    bdMiniList: false,
-                    bdPic: "",
-                    bdStyle: "1",
-                    bdSize: "16"
-                },
-                share: {
-                    bdSize: 24
-                }
-            };
-            $body.append($("<script />", {
-                src: "http://bdimg.share.baidu.com/static/api/js/share.js?v=89343201.js?cdnversion=" + ~(-new Date() / 36e5)
-            }));
-            var shareData = '<div class="bdsharebuttonbox">' + '<div class="am-modal-actions am-modal-out" id="am-navbar-share">' + '<div class="am-modal-actions-group">' + '<ul class="am-list">' + '<li class="am-modal-actions-header" data-cmd="more">分享到</li>' + '<li><a href="#" class="am-icon-qq" data-cmd="qzone" title="分享到QQ空间">QQ空间</a></li>' + '<li><a href="#" class="am-icon-weibo" data-cmd="tsina" title="分享到新浪微博">新浪微博</a></li>' + '<li><a href="#" class="am-icon-tencent-weibo" data-cmd="tqq" title="分享到腾讯微博">腾讯微博</a></li>' + '<li><a href="#" class="am-icon-renren" data-cmd="renren" title="分享到人人网">人人网</a></li>' + '<li><a href="#" class="am-icon-wechat" data-cmd="weixin" title="分享到微信">微信</a></li>' + "</ul>" + "</div>" + '<div class="am-modal-actions-group"><button type="button" class="am-btn am-btn-secondary am-btn-block" data-am-modal-close>取消</button></div>' + "</div>" + "</div>";
-            $body.append(shareData);
-            $share.on("click", function(event) {
-                event.preventDefault();
-                $("#am-navbar-share").modal();
-            });
-        }
-        if ($qrcode.length) {
-            //qrcode start
-            $qrcode.on("click", function(event) {
-                event.preventDefault();
-                $("#am-navbar-boxqrcode").modal();
-            });
-        }
-        //qrcode end
-        if (_parent.length) {
-            $body.append($('<ul class="am-navbar-moreList"></ul>'));
-        }
-        if (_parent.find("li").length * _parent.find("li").width() > $(window).width()) {
-            //如果li没有完全展示
-            //替换父级的class
-            displaceClass(_parent.find("li").length, parentUl);
-            var nowWidth = _parent.find("li").width();
-            if (nowWidth < minWidth) {
-                if (onOffCreat) {
-                    addMore();
-                    onOffCreat = false;
-                }
-                displaceClass(liLength(), parentUl);
-                addMoreLi(liLength());
-            }
-        }
-        //有问题的代码：
-        /*$(window).on("resize",function(){
-
-         if(_parent.find("li").length * _parent.find("li").width() > $(window).width()){ //如果li没有完全展示
-
-         //替换父级的class
-         displaceClass(_parent.find("li").length,parentUl);
-         var nowWidth = _parent.find("li").width();
-
-         //现在的宽度小于最小宽度
-         if(nowWidth < minWidth){
-
-         if(onOffCreat){
-         addMore();
-         onOffCreat = false;
-         }
-         displaceClass(liLength(),parentUl);
-         addMoreLi(liLength());
-         }else{
-
-         addParentLi(liLength());
-
-         if($(".am-navbar-moreList").children().length){
-         removeMore();
-         onOffCreat = true;
-         }
-
-         displaceClass(liLength(),parentUl);
-         }
-         }else{
-         displaceClass(_parent.find("li").length,parentUl);
-         if(_parent.find("li").width < minWidth){
-         console.log("小于")
-         }
-         }
-
-         })*/
-        _more = $(".am-navbar-more");
-        _moreList = $(".am-navbar-moreList");
-        _parent.on("click", ".am-navbar-more", function() {
-            if (onOff) {
-                _moreList.css({
-                    bottom: _moreList.height(),
-                    display: "block"
-                }).animate({
-                    bottom: 49
-                }, {
-                    duration: "fast",
-                    complete: function() {
-                        _more.addClass("am-navbar-more-active");
-                    }
-                });
-                onOff = !onOff;
-            } else {
-                _moreList.animate({
-                    bottom: -_moreList.height()
-                }, {
-                    complete: function() {
-                        $(this).css("display", "none");
-                        _more.removeClass("am-navbar-more-active");
-                    }
-                });
-                onOff = !onOff;
-            }
-        });
-        //添加more
-        function addMore() {
-            parentUl.append($('<li class="am-navbar-item am-navbar-more"><a href="javascript:;"><span class="am-icon-chevron-up"></span>更多</a></li>'));
-        }
-        //删除more
-        function removeMore() {
-            parentUl.find(".am-navbar-more").remove();
-        }
-        //计算合适的长度
-        function liLength() {
-            return parseInt($(window).width() / minWidth);
-        }
-        //移出parent下的li,并添加到moreList里面
-        function addMoreLi(len) {
-            subLi.not(".am-navbar-more").each(function(index) {
-                if (index > len - 2) {
-                    $(this).appendTo($(".am-navbar-moreList"));
-                }
-            });
-        }
-        //移出moreList里面的li,并添加到parent下面
-        function addParentLi(len) {
-            $(".am-navbar-moreList").children().first().appendTo(parentUl);
-        }
-        //替换class
-        function displaceClass(num, object) {
-            var $className = object.attr("class").replace(/sm-block-grid-\d/, "sm-block-grid-" + num);
-            object.attr("class", $className);
-        }
-    };
-    // DOMContentLoaded
-    $(function() {
-        navbarInit();
-    });
-    exports.init = navbarInit;
-});
-define("pagination", [], function(require, exports, module) {});
-define("paragraph", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "zepto.pinchzoom" ], function(require, exports, module) {
-    require("core");
-    var $ = window.Zepto;
-    // PinchZoom Plugin
-    var PinchZoom = require("zepto.pinchzoom");
-    var paragraphInit;
-    $.fn.paragraphZoomToggle = function() {
-        var $warpHead, $pinch, $zoomWrap, onOff = true, // 防止重复创建
-        $wrapDom = $("<div class='am-paragraph-wrap'><header></header><div class='pinch-zoom'></div></div>");
-        $zoomWrap = $(".am-paragraph-wrap");
-        $warpHead = $(".am-paragraph-wrap header");
-        $pinch = $zoomWrap.find(".pinch-zoom");
-        this.each(function() {
-            $(this).on("click", function() {
-                if (onOff && $(".am-paragraph").length) {
-                    $("body").append($wrapDom);
-                    $zoomWrap = $(".am-paragraph-wrap");
-                    $pinch = $zoomWrap.find(".pinch-zoom");
-                    $warpHead = $zoomWrap.find("header");
-                    $pinch.each(function() {
-                        new PinchZoom($(this), {});
-                    });
-                    onOff = false;
-                }
-                $pinch.html(this.outerHTML);
-                if ($(this).attr("alt")) {
-                    $warpHead.html($(this).attr("alt"));
-                } else {
-                    $warpHead.html("返回");
-                }
-                $zoomWrap.addClass("am-active").find("img").width($(window).width());
-            });
-        });
-    };
-    $.fn.paragraphTable = function(objWidth) {
-        var This = $(this), distX = 0, disX = 0, disY = 0, downX, downY, $parent, scrollY;
-        if (objWidth > $("body").width()) {
-            This.wrap("<div class='am-paragraph-table-container'><div class='am-paragraph-table-scroller'></div></div>");
-            $parent = This.parent();
-            $parent.width(objWidth);
-            $parent.height(This.height());
-            $parent.parent().height(This.height() + 20);
-            $parent.on("touchstart MSPointerDown pointerdown", function(ev) {
-                var oTarget = ev.targetTouches[0];
-                distX = oTarget.clientX - $(this).offset().left;
-                downX = oTarget.clientX;
-                downY = oTarget.clientY;
-                scrollY = undefined;
-                $(document).on("touchmove MSPointerMove pointermove", fnMove);
-                $(document).on("touchend MSPointerUp pointerup", fnUp);
-            });
-        }
-        function fnUp(ev) {
-            ev.preventDefault();
-            var oTarget = ev.changedTouches[0];
-            var L = $parent.offset().left;
-            // ->
-            if (L > 10) {
-                $parent.animate({
-                    left: 10
-                }, 500, "ease-out");
-            }
-            //<-
-            if (L < -$parent.width() + $(window).width() - 10) {
-                $parent.animate({
-                    left: -$parent.width() + $(window).width() - 10
-                }, 500, "ease-out");
-            }
-            $(document).off("touchend MSPointerUp pointerup", fnUp);
-            $(document).off("touchmove MSPointerMove pointermove", fnMove);
-        }
-        function fnMove(ev) {
-            var oTarget = ev.targetTouches[0];
-            disX = oTarget.clientX - downX;
-            disY = oTarget.clientY - downY;
-            if (typeof scrollY == "undefined") {
-                scrollY = !!(scrollY || Math.abs(disX) < Math.abs(disY));
-            }
-            if (!scrollY) {
-                ev.preventDefault();
-                This.parent().css("left", oTarget.clientX - distX);
-            }
-        }
-    };
-    paragraphInit = function() {
-        var $body = $("body"), $paragraph = $(".am-paragraph"), $tableWidth;
-        if ($paragraph.length && $paragraph.attr("data-am-imgParagraph")) {
-            $paragraph.find("img").paragraphZoomToggle();
-            $body.on("click", ".am-paragraph-wrap", function(e) {
-                e.preventDefault();
-                var target = e.target;
-                // Img is using pinch zoom
-                if (!$(target).is("img")) {
-                    $(this).toggleClass("am-active");
-                }
-            });
-        }
-        if ($paragraph.length && $paragraph.attr("data-am-tableParagraph")) {
-            $paragraph.find("table").each(function() {
-                $tableWidth = $(this).width();
-                $(this).paragraphTable($tableWidth);
-            });
-        }
-    };
-    $(window).on("load", function() {
-        paragraphInit();
-    });
-    exports.init = paragraphInit;
-});
-define("slider", [ "zepto.flexslider" ], function(require, exports, module) {
-    var $ = window.Zepto;
-    require("zepto.flexslider");
-    var sliderInit = function() {
-        $(".am-slider").not(".am-slider-manual").each(function(i, item) {
-            var options = $(item).attr("data-slider-config");
-            if (options) {
-                $(item).flexslider($.parseJSON(options));
-            } else {
-                $(item).flexslider();
-            }
-        });
-    };
-    $(document).on("ready", sliderInit);
-    exports.init = sliderInit;
-});
-define("sohucs", [], function(require, exports, module) {
-    var $ = window.Zepto;
-    var sohuCSInit = function() {
-        if (!$("#SOHUCS").length) return;
-        var $sohucs = $('[data-am-widget="sohucs"]'), appid = $sohucs.attr("data-am-sohucs-appid"), conf = $sohucs.attr("data-am-sohucs-conf"), $cy = $("<script></script>", {
-            charset: "utf-8",
-            id: "changyan_mobile_js",
-            src: "http://changyan.sohu.com/upload/mobile/wap-js/changyan_mobile.js?client_id=" + appid + "&conf=" + conf
-        });
-        $("body").append($cy);
-    };
-    // Lazy load
-    $(window).on("load", sohuCSInit);
-    exports.init = sohuCSInit;
-});
-define("tabs", [ "zepto.extend.touch", "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
-    require("zepto.extend.touch");
-    require("core");
-    var $ = window.Zepto;
-    var tabsInit = function() {
-        $(".am-tabs").each(function() {
-            amTabs($(this));
-        });
-    };
-    function amTabs(parent) {
-        var $tabsContent = parent.find(".am-tabs-bd-content"), $tabsDiv = $tabsContent.children(), oneWidth, iNow = 0, disX, disY, downY, downX, $tabLi = parent.find(".am-tabs-hd").children();
-        //设置tabsdiv宽度
-        $tabsContent.width($tabsContent.parent().width() * $tabsDiv.length);
-        $tabsDiv.width($tabsContent.parent().width());
-        oneWidth = $tabsDiv.width();
-        $(window).on("resize", function() {
-            $tabsContent.width($tabsContent.parent().width() * $tabsDiv.length);
-            $tabsDiv.width($tabsContent.parent().width());
-            oneWidth = $tabsDiv.width();
-        });
-        /*$tabsContent.on("touchstart MSPointerDown pointerdown", function(ev){
-         ev.preventDefault();
-         var oTarget = ev.targetTouches[0];
-         disX = oTarget.clientX - $tabsContent.offset().left;
-         disY = oTarget.clientY - $tabsContent.offset().top;
-         downX = oTarget.clientX;
-         downY = oTarget.clientY;
-         $( $tabsContent ).on("touchmove MSPointerMove pointermove", fnMove);
-         $( $tabsContent ).on("touchend MSPointerUp pointerup", fnUp);
-         });*/
-        $tabsContent.swipeRight(function() {
-            iNow--;
-            if (iNow < 0) {
-                iNow = 0;
-            }
-            $tabsContent.animate({
-                left: -iNow * oneWidth
-            });
-            $tabLi.removeClass("am-tabs-hd-active");
-            $tabLi.eq(iNow).addClass("am-tabs-hd-active");
-        });
-        $tabsContent.swipeLeft(function() {
-            iNow++;
-            if (iNow > $tabsDiv.length - 1) {
-                iNow = $tabsDiv.length - 1;
-            }
-            $tabsContent.animate({
-                left: -iNow * oneWidth
-            });
-            $tabLi.removeClass("am-tabs-hd-active");
-            $tabLi.eq(iNow).addClass("am-tabs-hd-active");
-        });
-        $tabLi.on("click", function() {
-            iNow = $(this).index();
-            $tabLi.removeClass("am-tabs-hd-active");
-            $tabLi.eq(iNow).addClass("am-tabs-hd-active");
-            $tabsContent.animate({
-                left: -iNow * oneWidth
-            });
-        });
-    }
-    $(function() {
-        tabsInit();
-    });
-    exports.init = tabsInit;
-});
-define("titlebar", [], function(require, exports, module) {});
-define("ui.accordion", [ "./zepto.extend.fx", "./zepto.extend.selector", "./zepto.extend.data" ], function(require, exports, module) {
-    var $ = window.Zepto;
-    require("./zepto.extend.fx");
-    require("./zepto.extend.selector");
-    require("./zepto.extend.data");
-    /**
-     * @via https://github.com/Semantic-Org/Semantic-UI/blob/master/src/modules/accordion.js
-     * @license https://github.com/Semantic-Org/Semantic-UI/blob/master/LICENSE.md
-     */
-    $.fn.accordion = function(parameters) {
-        var $allModules = $(this), query = arguments[0], methodInvoked = typeof query == "string", queryArguments = [].slice.call(arguments, 1), returnedValue;
-        $allModules.each(function() {
-            var settings = $.isPlainObject(parameters) ? $.extend(true, {}, $.fn.accordion.settings, parameters) : $.extend({}, $.fn.accordion.settings), className = settings.className, namespace = settings.namespace, selector = settings.selector, eventNamespace = "." + namespace, moduleNamespace = "module-" + namespace, $module = $(this), $title = $module.find(selector.title), $content = $module.find(selector.content), $item = $module.find(selector.item), element = this, instance = $module.data(moduleNamespace), module;
-            module = {
-                initialize: function() {
-                    // initializing
-                    $title.on("click" + eventNamespace, module.event.click);
-                    module.instantiate();
-                },
-                instantiate: function() {
-                    instance = module;
-                    $module.data(moduleNamespace, module);
-                },
-                destroy: function() {
-                    $module.removeData(moduleNamespace);
-                    $title.off(eventNamespace);
-                },
-                event: {
-                    click: function() {
-                        var $activeTitle = $(this), index = $item.index($activeTitle.parent(selector.item));
-                        module.toggle(index);
-                    }
-                },
-                toggle: function(index) {
-                    var $activeItem = $item.eq(index), contentIsOpen = $activeItem.hasClass(className.active);
-                    if (contentIsOpen) {
-                        if (settings.collapsible) {
-                            module.close(index);
-                        }
-                    } else {
-                        module.open(index);
-                    }
-                },
-                open: function(index) {
-                    var $activeItem = $item.eq(index), $activeContent = $activeItem.next(selector.content);
-                    if (!settings.multiple) {
-                        $item.not($activeItem).removeClass(className.active);
-                    }
-                    $activeItem.addClass(className.active);
-                    $activeContent.animate(settings.duration, settings.easing, function() {
-                        $.proxy(settings.onOpen, $activeContent)();
-                        $.proxy(settings.onChange, $activeContent)();
-                    });
-                },
-                close: function(index) {
-                    var $activeItem = $item.eq(index), $activeContent = $activeItem.find(selector.content);
-                    $activeItem.removeClass(className.active);
-                    $activeContent.animate(settings.duration, settings.easing, function() {
-                        $.proxy(settings.onClose, $activeContent)();
-                        $.proxy(settings.onChange, $activeContent)();
-                    });
-                },
-                setting: function(name, value) {
-                    if ($.isPlainObject(name)) {
-                        $.extend(true, settings, name);
-                    } else if (value !== undefined) {
-                        settings[name] = value;
-                    } else {
-                        return settings[name];
-                    }
-                },
-                internal: function(name, value) {
-                    if (value !== undefined) {
-                        if ($.isPlainObject(name)) {
-                            $.extend(true, module, name);
-                        } else {
-                            module[name] = value;
-                        }
-                    } else {
-                        return module[name];
-                    }
-                },
-                invoke: function(query, passedArguments, context) {
-                    var object = instance, maxDepth, found, response;
-                    passedArguments = passedArguments || queryArguments;
-                    context = element || context;
-                    if (typeof query == "string" && object !== undefined) {
-                        query = query.split(/[\. ]/);
-                        maxDepth = query.length - 1;
-                        $.each(query, function(depth, value) {
-                            var camelCaseValue = depth != maxDepth ? value + query[depth + 1].charAt(0).toUpperCase() + query[depth + 1].slice(1) : query;
-                            if ($.isPlainObject(object[camelCaseValue]) && depth != maxDepth) {
-                                object = object[camelCaseValue];
-                            } else if (object[camelCaseValue] !== undefined) {
-                                found = object[camelCaseValue];
-                                return false;
-                            } else if ($.isPlainObject(object[value]) && depth != maxDepth) {
-                                object = object[value];
-                            } else if (object[value] !== undefined) {
-                                found = object[value];
-                                return false;
-                            } else {
-                                return false;
-                            }
-                        });
-                    }
-                    if ($.isFunction(found)) {
-                        response = found.apply(context, passedArguments);
-                    } else if (found !== undefined) {
-                        response = found;
-                    }
-                    if ($.isArray(returnedValue)) {
-                        returnedValue.push(response);
-                    } else if (returnedValue !== undefined) {
-                        returnedValue = [ returnedValue, response ];
-                    } else if (response !== undefined) {
-                        returnedValue = response;
-                    }
-                    return found;
-                }
-            };
-            if (methodInvoked) {
-                if (instance === undefined) {
-                    module.initialize();
-                }
-                module.invoke(query);
-            } else {
-                if (instance !== undefined) {
-                    module.destroy();
-                }
-                module.initialize();
-            }
-        });
-        return returnedValue !== undefined ? returnedValue : this;
-    };
-    $.fn.accordion.settings = {
-        name: "Accordion",
-        namespace: "accordion",
-        multiple: false,
-        collapsible: true,
-        duration: 500,
-        easing: "ease-in-out",
-        onOpen: function() {},
-        onClose: function() {},
-        onChange: function() {},
-        className: {
-            active: "am-active"
-        },
-        selector: {
-            item: ".am-accordion-item",
-            title: ".am-accordion-title",
-            content: ".am-accordion-content"
-        }
-    };
-});
-define("ui.add2home", [], function(require, exports, module) {
-    /*!
-     * Add to Homescreen v2.0.11 ~ Copyright (c) 2013 Matteo Spinelli, http://cubiq.org
-     * Released under MIT license, http://cubiq.org/license
-     */
-    var addToHome = function(w) {
-        var nav = w.navigator, isIDevice = "platform" in nav && /iphone|ipod|ipad/gi.test(nav.platform), isIPad, isRetina, isSafari, isStandalone, OSVersion, startX = 0, startY = 0, lastVisit = 0, isExpired, isSessionActive, isReturningVisitor, balloon, overrideChecks, positionInterval, closeTimeout, options = {
-            autostart: true,
-            // Automatically open the balloon
-            returningVisitor: false,
-            // Show the balloon to returning visitors only (setting this to true is highly recommended)
-            animationIn: "drop",
-            // drop || bubble || fade
-            animationOut: "fade",
-            // drop || bubble || fade
-            startDelay: 2e3,
-            // 2 seconds from page load before the balloon appears
-            lifespan: 15e3,
-            // 15 seconds before it is automatically destroyed
-            bottomOffset: 14,
-            // Distance of the balloon from bottom
-            expire: 0,
-            // Minutes to wait before showing the popup again (0 = always displayed)
-            message: "",
-            // Customize your message or force a language ('' = automatic)
-            touchIcon: false,
-            // Display the touch icon
-            arrow: true,
-            // Display the balloon arrow
-            hookOnLoad: true,
-            // Should we hook to onload event? (really advanced usage)
-            closeButton: true,
-            // Let the user close the balloon
-            iterations: 100
-        }, intl = {
-            en_us: "Install this web app on your %device: tap %icon and then <strong>Add to Home Screen</strong>.",
-            zh_cn: "您可以将此应用安装到您的 %device 上。请按 %icon 然后选择<strong>添加至主屏幕</strong>。",
-            zh_tw: "您可以將此應用程式安裝到您的 %device 上。請按 %icon 然後點選<strong>加入主畫面螢幕</strong>。"
-        };
-        function init() {
-            // Preliminary check, all further checks are performed on iDevices only
-            if (!isIDevice) return;
-            var now = Date.now(), i;
-            // Merge local with global options
-            if (w.addToHomeConfig) {
-                for (i in w.addToHomeConfig) {
-                    options[i] = w.addToHomeConfig[i];
-                }
-            }
-            if (!options.autostart) options.hookOnLoad = false;
-            isIPad = /ipad/gi.test(nav.platform);
-            isRetina = w.devicePixelRatio && w.devicePixelRatio > 1;
-            isSafari = /Safari/i.test(nav.appVersion) && !/CriOS/i.test(nav.appVersion);
-            isStandalone = nav.standalone;
-            OSVersion = nav.appVersion.match(/OS (\d+_\d+)/i);
-            OSVersion = OSVersion && OSVersion[1] ? +OSVersion[1].replace("_", ".") : 0;
-            lastVisit = +w.localStorage.getItem("addToHome");
-            isSessionActive = w.sessionStorage.getItem("addToHomeSession");
-            isReturningVisitor = options.returningVisitor ? lastVisit && lastVisit + 28 * 24 * 60 * 60 * 1e3 > now : true;
-            if (!lastVisit) lastVisit = now;
-            // If it is expired we need to reissue a new balloon
-            isExpired = isReturningVisitor && lastVisit <= now;
-            if (options.hookOnLoad) w.addEventListener("load", loaded, false); else if (!options.hookOnLoad && options.autostart) loaded();
-        }
-        function loaded() {
-            w.removeEventListener("load", loaded, false);
-            if (!isReturningVisitor) w.localStorage.setItem("addToHome", Date.now()); else if (options.expire && isExpired) w.localStorage.setItem("addToHome", Date.now() + options.expire * 6e4);
-            if (!overrideChecks && (!isSafari || !isExpired || isSessionActive || isStandalone || !isReturningVisitor)) return;
-            var touchIcon = "", platform = nav.platform.split(" ")[0], language = nav.language.replace("-", "_");
-            balloon = document.createElement("div");
-            balloon.id = "addToHomeScreen";
-            balloon.style.cssText += "left:-9999px;-webkit-transition-property:-webkit-transform,opacity;-webkit-transition-duration:0;-webkit-transform:translate3d(0,0,0);position:" + (OSVersion < 5 ? "absolute" : "fixed");
-            // Localize message
-            if (options.message in intl) {
-                // You may force a language despite the user's locale
-                language = options.message;
-                options.message = "";
-            }
-            if (options.message === "") {
-                // We look for a suitable language (defaulted to en_us)
-                options.message = language in intl ? intl[language] : intl["en_us"];
-            }
-            if (options.touchIcon) {
-                touchIcon = isRetina ? document.querySelector('head link[rel^=apple-touch-icon][sizes="114x114"],head link[rel^=apple-touch-icon][sizes="144x144"],head link[rel^=apple-touch-icon]') : document.querySelector('head link[rel^=apple-touch-icon][sizes="57x57"],head link[rel^=apple-touch-icon]');
-                if (touchIcon) {
-                    touchIcon = '<span style="background-image:url(' + touchIcon.href + ')" class="addToHomeTouchIcon"></span>';
-                }
-            }
-            balloon.className = (OSVersion >= 7 ? "addToHomeIOS7 " : "") + (isIPad ? "addToHomeIpad" : "addToHomeIphone") + (touchIcon ? " addToHomeWide" : "");
-            balloon.innerHTML = touchIcon + options.message.replace("%device", platform).replace("%icon", OSVersion >= 4.2 ? '<span class="addToHomeShare"></span>' : '<span class="addToHomePlus">+</span>') + (options.arrow ? '<span class="addToHomeArrow"' + (OSVersion >= 7 && isIPad && touchIcon ? ' style="margin-left:-32px"' : "") + "></span>" : "") + (options.closeButton ? '<span class="addToHomeClose">×</span>' : "");
-            document.body.appendChild(balloon);
-            // Add the close action
-            if (options.closeButton) balloon.addEventListener("click", clicked, false);
-            if (!isIPad && OSVersion >= 6) window.addEventListener("orientationchange", orientationCheck, false);
-            setTimeout(show, options.startDelay);
-        }
-        function show() {
-            var duration, iPadXShift = 208;
-            // Set the initial position
-            if (isIPad) {
-                if (OSVersion < 5) {
-                    startY = w.scrollY;
-                    startX = w.scrollX;
-                } else if (OSVersion < 6) {
-                    iPadXShift = 160;
-                } else if (OSVersion >= 7) {
-                    iPadXShift = 143;
-                }
-                balloon.style.top = startY + options.bottomOffset + "px";
-                balloon.style.left = Math.max(startX + iPadXShift - Math.round(balloon.offsetWidth / 2), 9) + "px";
-                switch (options.animationIn) {
-                  case "drop":
-                    duration = "0.6s";
-                    balloon.style.webkitTransform = "translate3d(0," + -(w.scrollY + options.bottomOffset + balloon.offsetHeight) + "px,0)";
-                    break;
-
-                  case "bubble":
-                    duration = "0.6s";
-                    balloon.style.opacity = "0";
-                    balloon.style.webkitTransform = "translate3d(0," + (startY + 50) + "px,0)";
-                    break;
-
-                  default:
-                    duration = "1s";
-                    balloon.style.opacity = "0";
-                }
-            } else {
-                startY = w.innerHeight + w.scrollY;
-                if (OSVersion < 5) {
-                    startX = Math.round((w.innerWidth - balloon.offsetWidth) / 2) + w.scrollX;
-                    balloon.style.left = startX + "px";
-                    balloon.style.top = startY - balloon.offsetHeight - options.bottomOffset + "px";
-                } else {
-                    balloon.style.left = "50%";
-                    balloon.style.marginLeft = -Math.round(balloon.offsetWidth / 2) - (w.orientation % 180 && OSVersion >= 6 && OSVersion < 7 ? 40 : 0) + "px";
-                    balloon.style.bottom = options.bottomOffset + "px";
-                }
-                switch (options.animationIn) {
-                  case "drop":
-                    duration = "1s";
-                    balloon.style.webkitTransform = "translate3d(0," + -(startY + options.bottomOffset) + "px,0)";
-                    break;
-
-                  case "bubble":
-                    duration = "0.6s";
-                    balloon.style.webkitTransform = "translate3d(0," + (balloon.offsetHeight + options.bottomOffset + 50) + "px,0)";
-                    break;
-
-                  default:
-                    duration = "1s";
-                    balloon.style.opacity = "0";
-                }
-            }
-            balloon.offsetHeight;
-            // repaint trick
-            balloon.style.webkitTransitionDuration = duration;
-            balloon.style.opacity = "1";
-            balloon.style.webkitTransform = "translate3d(0,0,0)";
-            balloon.addEventListener("webkitTransitionEnd", transitionEnd, false);
-            closeTimeout = setTimeout(close, options.lifespan);
-        }
-        function manualShow(override) {
-            if (!isIDevice || balloon) return;
-            overrideChecks = override;
-            loaded();
-        }
-        function close() {
-            clearInterval(positionInterval);
-            clearTimeout(closeTimeout);
-            closeTimeout = null;
-            // check if the popup is displayed and prevent errors
-            if (!balloon) return;
-            var posY = 0, posX = 0, opacity = "1", duration = "0";
-            if (options.closeButton) balloon.removeEventListener("click", clicked, false);
-            if (!isIPad && OSVersion >= 6) window.removeEventListener("orientationchange", orientationCheck, false);
-            if (OSVersion < 5) {
-                posY = isIPad ? w.scrollY - startY : w.scrollY + w.innerHeight - startY;
-                posX = isIPad ? w.scrollX - startX : w.scrollX + Math.round((w.innerWidth - balloon.offsetWidth) / 2) - startX;
-            }
-            balloon.style.webkitTransitionProperty = "-webkit-transform,opacity";
-            switch (options.animationOut) {
-              case "drop":
-                if (isIPad) {
-                    duration = "0.4s";
-                    opacity = "0";
-                    posY += 50;
-                } else {
-                    duration = "0.6s";
-                    posY += balloon.offsetHeight + options.bottomOffset + 50;
-                }
-                break;
-
-              case "bubble":
-                if (isIPad) {
-                    duration = "0.8s";
-                    posY -= balloon.offsetHeight + options.bottomOffset + 50;
-                } else {
-                    duration = "0.4s";
-                    opacity = "0";
-                    posY -= 50;
-                }
-                break;
-
-              default:
-                duration = "0.8s";
-                opacity = "0";
-            }
-            balloon.addEventListener("webkitTransitionEnd", transitionEnd, false);
-            balloon.style.opacity = opacity;
-            balloon.style.webkitTransitionDuration = duration;
-            balloon.style.webkitTransform = "translate3d(" + posX + "px," + posY + "px,0)";
-        }
-        function clicked() {
-            w.sessionStorage.setItem("addToHomeSession", "1");
-            isSessionActive = true;
-            close();
-        }
-        function transitionEnd() {
-            balloon.removeEventListener("webkitTransitionEnd", transitionEnd, false);
-            balloon.style.webkitTransitionProperty = "-webkit-transform";
-            balloon.style.webkitTransitionDuration = "0.2s";
-            // We reached the end!
-            if (!closeTimeout) {
-                balloon.parentNode.removeChild(balloon);
-                balloon = null;
-                return;
-            }
-            // On iOS 4 we start checking the element position
-            if (OSVersion < 5 && closeTimeout) positionInterval = setInterval(setPosition, options.iterations);
-        }
-        function setPosition() {
-            var matrix = new WebKitCSSMatrix(w.getComputedStyle(balloon, null).webkitTransform), posY = isIPad ? w.scrollY - startY : w.scrollY + w.innerHeight - startY, posX = isIPad ? w.scrollX - startX : w.scrollX + Math.round((w.innerWidth - balloon.offsetWidth) / 2) - startX;
-            // Screen didn't move
-            if (posY == matrix.m42 && posX == matrix.m41) return;
-            balloon.style.webkitTransform = "translate3d(" + posX + "px," + posY + "px,0)";
-        }
-        // Clear local and session storages (this is useful primarily in development)
-        function reset() {
-            w.localStorage.removeItem("addToHome");
-            w.sessionStorage.removeItem("addToHomeSession");
-        }
-        function orientationCheck() {
-            balloon.style.marginLeft = -Math.round(balloon.offsetWidth / 2) - (w.orientation % 180 && OSVersion >= 6 && OSVersion < 7 ? 40 : 0) + "px";
-        }
-        // Bootstrap!
-        init();
-        return {
-            show: manualShow,
-            close: close,
-            reset: reset
-        };
-    }(window);
-});
-define("ui.alert", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
-    "use strict";
-    require("core");
-    var $ = window.Zepto, UI = $.AMUI;
-    /**
-     * @via https://github.com/Minwe/bootstrap/blob/master/js/alert.js
-     * @copyright Copyright 2013 Twitter, Inc.
-     * @license Apache 2.0
-     */
-    // Alert Class
-    // NOTE: removeElement option is unavailable now
-    var Alert = function(element, options) {
-        this.options = $.extend({}, Alert.DEFAULTS, options);
-        this.$element = $(element);
-        this.$element.addClass("am-fade am-in").on("click", ".am-close", $.proxy(this.close, this));
-    };
-    Alert.DEFAULTS = {
-        removeElement: true
-    };
-    Alert.prototype.close = function() {
-        var $this = $(this), $target = $this.hasClass("am-alert") ? $this : $this.parent(".am-alert");
-        $target.trigger("close:alert:amui");
-        $target.removeClass("am-in");
-        function processAlert() {
-            $target.off().trigger("closed:alert:amui").remove();
-        }
-        UI.support.transition && $target.hasClass("am-fade") ? $target.one(UI.support.transition.end, processAlert).emulateTransitionEnd(200) : processAlert();
-    };
-    UI.alert = Alert;
-    // Alert Plugin
-    $.fn.alert = function(option) {
-        return this.each(function() {
-            var $this = $(this), data = $this.data("amui.alert"), options = typeof option == "object" && option;
-            if (!data) {
-                $this.data("amui.alert", data = new Alert(this, options));
-            }
-            if (typeof option == "string") {
-                data[option].call($this);
-            }
-        });
-    };
-    // Init code
-    $(document).on("click.alert.amui", "[data-am-alert]", function(e) {
-        var $target = $(e.target);
-        $(this).addClass("am-fade am-in");
-        $target.is(".am-close") && $(this).alert("close");
-    });
-    module.exports = Alert;
-});
-define("ui.button", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
-    "use strict";
-    require("core");
-    var $ = window.Zepto, UI = $.AMUI;
-    /**
-     * @via https://github.com/twbs/bootstrap/blob/master/js/button.js
-     * @copyright Copyright 2013 Twitter, Inc.
-     * @license Apache 2.0
-     */
-    var Button = function(element, options) {
-        this.$element = $(element);
-        this.options = $.extend({}, Button.DEFAULTS, options);
-        this.isLoading = false;
-        this.hasSpinner = false;
-    };
-    Button.DEFAULTS = {
-        loadingText: "loading...",
-        loadingClass: "am-btn-loading",
-        loadingWithSpinner: '<span class="am-icon-refresh am-icon-spin"></span> loading...'
-    };
-    Button.prototype.setState = function(state) {
-        var d = "disabled", $el = this.$element, val = $el.is("input") ? "val" : "html", data = $el.data();
-        state = state + "Text";
-        if (data.resetText == null) {
-            $el.data("resetText", $el[val]());
-        }
-        // add spinner for element with html()
-        if (UI.support.animation && !this.hasSpinner && val === "html") {
-            this.options.loadingText = this.options.loadingWithSpinner;
-            this.hasSpinner = true;
-        }
-        $el[val](data[state] == null ? this.options[state] : data[state]);
-        // push to event loop to allow forms to submit
-        setTimeout($.proxy(function() {
-            if (state == "loadingText") {
-                this.isLoading = true;
-                $el.addClass(d + " " + this.options.loadingClass).attr(d, d);
-            } else if (this.isLoading) {
-                this.isLoading = false;
-                $el.removeClass(d + " " + this.options.loadingClass).removeAttr(d);
-            }
-        }, this), 0);
-    };
-    Button.prototype.toggle = function() {
-        var changed = true, $parent = this.$element.parent(".am-btn-group");
-        if ($parent.length) {
-            var $input = this.$element.find("input");
-            if ($input.prop("type") == "radio") {
-                if ($input.prop("checked") && this.$element.hasClass("am-active")) {
-                    changed = false;
-                } else {
-                    $parent.find(".am-active").removeClass("am-active");
-                }
-            }
-            if (changed) {
-                $input.prop("checked", !this.$element.hasClass("am-active")).trigger("change");
-            }
-        }
-        if (changed) {
-            this.$element.toggleClass("am-active");
-        }
-    };
-    // Button plugin
-    function Plugin(option) {
-        return this.each(function() {
-            var $this = $(this);
-            var data = $this.data("amui.button");
-            var options = typeof option == "object" && option;
-            if (!data) {
-                $this.data("amui.button", data = new Button(this, options));
-            }
-            if (option == "toggle") {
-                data.toggle();
-            } else if (option) {
-                data.setState(option);
-            }
-        });
-    }
-    $.fn.button = Plugin;
-    // Init code
-    $(document).on("click.button.amui", "[data-am-button]", function(e) {
-        var $btn = $(e.target);
-        if (!$btn.hasClass("am-btn")) {
-            $btn = $btn.closest(".am-btn");
-        }
-        Plugin.call($btn, "toggle");
-        e.preventDefault();
-    });
-    module.exports = Button;
-});
-define("ui.collapse", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
-    "use strict";
-    require("core");
-    var $ = window.Zepto, UI = $.AMUI;
-    /**
-     * @via https://github.com/twbs/bootstrap/blob/master/js/collapse.js
-     * @copyright Copyright 2013 Twitter, Inc.
-     * @license Apache 2.0
-     */
-    var Collapse = function(element, options) {
-        this.$element = $(element);
-        this.options = $.extend({}, Collapse.DEFAULTS, options);
-        this.transitioning = null;
-        if (this.options.parent) {
-            this.$parent = $(this.options.parent);
-        }
-        if (this.options.toggle) {
-            this.toggle();
-        }
-    };
-    Collapse.DEFAULTS = {
-        toggle: true
-    };
-    Collapse.prototype.open = function() {
-        if (this.transitioning || this.$element.hasClass("am-in")) return;
-        var startEvent = $.Event("open:collapse:amui");
-        this.$element.trigger(startEvent);
-        if (startEvent.isDefaultPrevented()) return;
-        var actives = this.$parent && this.$parent.find("> .am-panel > .am-in");
-        if (actives && actives.length) {
-            var hasData = actives.data("amui.collapse");
-            if (hasData && hasData.transitioning) return;
-            Plugin.call(actives, "close");
-            hasData || actives.data("amui.collapse", null);
-        }
-        this.$element.removeClass("am-collapse").addClass("am-collapsing").height(0);
-        this.transitioning = 1;
-        var complete = function() {
-            this.$element.removeClass("am-collapsing").addClass("am-collapse am-in").height("");
-            this.transitioning = 0;
-            this.$element.trigger("opened:collapse:amui");
-        };
-        if (!UI.support.transition) {
-            return complete.call(this);
-        }
-        this.$element.one(UI.support.transition.end, $.proxy(complete, this)).emulateTransitionEnd(350).height(this.$element[0].scrollHeight);
-    };
-    Collapse.prototype.close = function() {
-        if (this.transitioning || !this.$element.hasClass("am-in")) return;
-        var startEvent = $.Event("close:collapse:amui");
-        this.$element.trigger(startEvent);
-        if (startEvent.isDefaultPrevented()) return;
-        this.$element.height(this.$element.height());
-        this.$element[0].offsetHeight;
-        this.$element.addClass("am-collapsing").removeClass("am-collapse").removeClass("am-in");
-        this.transitioning = 1;
-        var complete = function() {
-            this.transitioning = 0;
-            this.$element.trigger("closed:collapse:amui").removeClass("am-collapsing").addClass("am-collapse");
-        };
-        if (!UI.support.transition) {
-            return complete.call(this);
-        }
-        this.$element.height(0).one(UI.support.transition.end, $.proxy(complete, this)).emulateTransitionEnd(350);
-    };
-    Collapse.prototype.toggle = function() {
-        this[this.$element.hasClass("am-in") ? "close" : "open"]();
-    };
-    UI.collapse = Collapse;
-    // Collapse Plugin
-    function Plugin(option) {
-        return this.each(function() {
-            var $this = $(this), data = $this.data("amui.collapse"), options = $.extend({}, Collapse.DEFAULTS, UI.utils.options($this.attr("data-am-collapse")), typeof option == "object" && option);
-            if (!data && options.toggle && option == "open") {
-                option = !option;
-            }
-            if (!data) {
-                $this.data("amui.collapse", data = new Collapse(this, options));
-            }
-            if (typeof option == "string") {
-                data[option]();
-            }
-        });
-    }
-    $.fn.collapse = Plugin;
-    // Init code
-    $(document).on("click.collapse.amui", "[data-am-collapse]", function(e) {
-        var href, $this = $(this), options = UI.utils.options($this.attr("data-am-collapse")), target = options.target || e.preventDefault() || (href = $this.attr("href")) && href.replace(/.*(?=#[^\s]+$)/, "");
-        var $target = $(target);
-        var data = $target.data("amui.collapse");
-        var option = data ? "toggle" : options;
-        var parent = options.parent;
-        var $parent = parent && $(parent);
-        if (!data || !data.transitioning) {
-            if ($parent) {
-                //'[data-am-collapse*="{parent: \'' + parent + '"]
-                $parent.find("[data-am-collapse]").not($this).addClass("am-collapsed");
-            }
-            $this[$target.hasClass("am-in") ? "addClass" : "removeClass"]("am-collapsed");
-        }
-        Plugin.call($target, option);
-    });
-    module.exports = Collapse;
-});
-define("ui.dimmer", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
-    require("core");
-    var $ = window.Zepto, UI = $.AMUI;
-    var $dimmer = $('<div class="am-dimmer" data-am-dimmer></div>'), $doc = $(document), $html = $("html");
-    var Dimmer = function() {
-        this.hasDimmer = $("[data-am-dimmer]").length ? true : false;
-        this.$element = $dimmer;
-        $(document).on("ready", $.proxy(this.init, this));
-    };
-    Dimmer.prototype.init = function() {
-        if (!this.hasDimmer) {
-            $dimmer.appendTo($("body"));
-            this.events();
-            this.hasDimmer = true;
-        }
-        $doc.trigger("init:dimmer:amui");
-        return this;
-    };
-    Dimmer.prototype.open = function(relatedElement) {
-        $html.addClass("am-dimmer-active");
-        $dimmer.addClass("am-active");
-        $(relatedElement).length && $(relatedElement).show();
-        $doc.trigger("open:dimmer:amui");
-        return this;
-    };
-    Dimmer.prototype.close = function(relatedElement) {
-        $dimmer.removeClass("am-active");
-        $html.removeClass("am-dimmer-active");
-        $(relatedElement).length && $(relatedElement).hide();
-        $doc.trigger("close:dimmer:amui");
-        return this;
-    };
-    Dimmer.prototype.events = function() {
-        var that = this;
-        $dimmer.on("click.dimmer.amui", function() {});
-    };
-    var dimmer = new Dimmer();
-    UI.dimmer = dimmer;
-    module.exports = dimmer;
-});
-define("ui.dropdown", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
-    "use strict";
-    require("core");
-    var $ = window.Zepto, UI = $.AMUI;
-    /**
-     * @via https://github.com/Minwe/bootstrap/blob/master/js/dropdown.js
-     * @copyright Copyright 2013 Twitter, Inc.
-     * @license Apache 2.0
-     */
-    var toggle = "[data-am-dropdown] > .am-dropdown-toggle";
-    var Dropdown = function(element, options) {
-        $(element).on("click.dropdown.amui", this.toggle);
-    };
-    Dropdown.prototype.toggle = function(e) {
-        var $this = $(this);
-        if ($this.is(".am-disabled, :disabled")) {
-            return;
-        }
-        var $parent = $this.parent(), isActive = $parent.hasClass("am-active");
-        clearDropdowns();
-        if (!isActive) {
-            var relatedTarget = {
-                relatedTarget: this
-            };
-            $parent.trigger(e = $.Event("open:dropdown:amui", relatedTarget));
-            if (e.isDefaultPrevented()) {
-                return;
-            }
-            $this.trigger("focus");
-            $parent.toggleClass("am-active").trigger(e = $.Event("opened:dropdown:amui", relatedTarget));
-        } else {
-            $this.blur();
-        }
-        return false;
-    };
-    Dropdown.prototype.keydown = function(e) {
-        if (!/(38|40|27)/.test(e.keyCode)) return;
-        var $this = $(this);
-        e.preventDefault();
-        e.stopPropagation();
-        if ($this.is(".am-disabled, :disabled")) {
-            return;
-        }
-        var $parent = $this.parent(), isActive = $parent.hasClass("am-active");
-        if (!isActive || isActive && e.keyCode == 27) {
-            if (e.which == 27) {
-                $parent.find(toggle).trigger("focus");
-            }
-            return $this.trigger("click");
-        }
-    };
-    function clearDropdowns(e) {
-        if (e && e.which === 3) return;
-        $(toggle).each(function() {
-            var $parent = $(this).parent(), relatedTarget = {
-                relatedTarget: this
-            };
-            if (!$parent.hasClass("am-active")) {
-                return;
-            }
-            $parent.trigger(e = $.Event("close:dropdown:amui", relatedTarget));
-            if (e.isDefaultPrevented()) return;
-            $parent.removeClass("am-active").trigger(e = $.Event("closed:dropdown:amui", relatedTarget));
-        });
-    }
-    UI.dropdown = Dropdown;
-    // Dropdown Plugin
-    function Plugin(option) {
-        return this.each(function() {
-            var $this = $(this);
-            var data = $this.data("amui.dropdown");
-            if (!data) {
-                $this.data("amui.dropdown", data = new Dropdown(this));
-            }
-            if (typeof option == "string") {
-                data[option].call($this);
-            }
-        });
-    }
-    $.fn.dropdown = Plugin;
-    // Init code
-    $(document).on("click.dropdown.amui", ".am-dropdown form", function(e) {
-        e.stopPropagation();
-    }).on("click.dropdown.amui", toggle, Dropdown.prototype.toggle).on("keydown.dropdown.amui", toggle, Dropdown.prototype.keydown);
 });
 define("ui.modal", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "ui.dimmer" ], function(require, exports, module) {
     require("core");
@@ -9209,4 +9090,4 @@ define("zepto.touchgallery", [ "./zepto.extend.touch", "zepto.pinchzoom" ], func
         }
     };
 });
-seajs.use(["accordion","core","divider","figure","footer","gallery","gotop","header","intro","iscroll","list_news","map","mechat","menu","nav","navbar","pagination","paragraph","slider","sohucs","tabs","titlebar","ui.accordion","ui.add2home","ui.alert","ui.button","ui.collapse","ui.dimmer","ui.dropdown","ui.modal","ui.offcanvas","ui.popover","ui.progress","ui.scrollspy","ui.scrollspynav","ui.smooth-scroll","ui.sticky","util.cookie","util.fastclick","util.fullscreen","util.qrcode","zepto.extend.data","zepto.extend.fx","zepto.extend.selector","zepto.extend.touch","zepto.flexslider","zepto.outerdemension","zepto.pinchzoom","zepto.touchgallery"]);
+seajs.use(["accordion","core","divider","figure","footer","gallery","gotop","header","intro","list_news","map","mechat","menu","navbar","pagination","paragraph","slider","sohucs","tabs","titlebar","ui.accordion","ui.add2home","ui.alert","ui.button","ui.collapse","ui.dimmer","ui.dropdown","ui.iscroll","ui.modal","ui.offcanvas","ui.popover","ui.progress","ui.scrollspy","ui.scrollspynav","ui.smooth-scroll","ui.sticky","util.cookie","util.fastclick","util.fullscreen","util.qrcode","zepto.extend.data","zepto.extend.fx","zepto.extend.selector","zepto.extend.touch","zepto.flexslider","zepto.outerdemension","zepto.pinchzoom","zepto.touchgallery"]);

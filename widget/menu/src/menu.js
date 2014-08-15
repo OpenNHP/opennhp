@@ -1,25 +1,53 @@
 define(function(require, exports, module) {
-    require('nav');
     require('ui.offcanvas');
+    require('ui.collapse');
 
     var $ = window.Zepto;
 
     var UI = $.AMUI;
 
     var menuInit = function() {
-        //one theme variable
-        var $this, $next, $width, iNow, aNum, $menuLv2, $menuLv3;
 
-        //排除掉one主题
-        $('.am-menu').not('[data-am-nav]').not('.am-menu-one').each(function() {
-            var nav = $(this);
-            if (!nav.data('nav')) {
-                var obj = new UI.nav(nav, nav.data('am-nav') ? UI.utils.options(nav.data('am-nav')) : {});
-            }
+        var $menus = $('[data-am-widget="menu"]');
+
+        $menus.find('.am-menu-nav .am-parent > a').on('click', function(e) {
+            e.preventDefault();
+            var $clicked = $(this),
+                $parent= $clicked.parent(),
+                $subMenu= $clicked.next('.am-menu-sub');
+            $parent.toggleClass('am-open');
+            $subMenu.collapse('toggle');
+            $parent.siblings('.am-parent').removeClass('am-open')
+                .children('.am-menu-sub.am-in').collapse('close');
         });
+
+        // Dropdown/slidedown menu
+        $menus.filter('[data-am-menu-collapse]').find('> .am-menu-toggle').on('click', function(e) {
+            e.preventDefault();
+            var $this = $(this),
+                $nav = $this.next('.am-menu-nav');
+
+            $this.toggleClass('am-active');
+
+            $nav.collapse('toggle');
+        });
+
+        // OffCanvas menu
+        $menus.filter('[data-am-menu-offcanvas]').find('> .am-menu-toggle').on('click', function(e) {
+            e.preventDefault();
+            var $this = $(this),
+                $nav = $this.next('.am-offcanvas');
+
+            $this.toggleClass('am-active');
+
+            $nav.offCanvas('open');
+        });
+
 
         // has one class
         if ($('.am-menu').hasClass('am-menu-one')) {
+            var $this, $next, $width, iNow, aNum, $menuLv2, $menuLv3;
+
 
             $this = $('.am-menu-one');
             $next = $('<a>').attr({class: 'am-menu-next', href: 'javascript:;'});
@@ -60,7 +88,10 @@ define(function(require, exports, module) {
                 } else {
                     offAll();
                     $(this).addClass('active');
-                    $(this).siblings('.am-menu-lv3').css('display', 'block').animate({left: -$(this).offset().left + 10, opacity: 1}, 'fast', 'linear');
+                    $(this).siblings('.am-menu-lv3').css('display', 'block').animate({
+                        left: -$(this).offset().left + 10,
+                        opacity: 1
+                    }, 'fast', 'linear');
                     // FIXME: ide offset不一致，多加17px
                     //$(this).siblings('.am-menu-lv3').css('display', 'block').animate({left: -$(this).offset().left + 27, opacity: 1}, 'fast', 'linear');
                 }

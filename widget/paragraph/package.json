@@ -89,48 +89,6 @@
             }]
         },
         {
-            "id": "clear",
-            "name": "clear",
-            "desc": "ios7默认",
-            "hook": "hook-am-paragraph-clear",
-            "variables": [
-                {
-                    "variable": "paragraph-img-color",
-                    "name": "图片边框颜色",
-                    "default": "#eee",
-                    "used": [
-                        {
-                            "selector": "img",
-                            "property": "border-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "paragraph-a-color",
-                    "name": "链接颜色",
-                    "default": "#428bca",
-                    "used": [
-                        {
-                            "selector": "a",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [{
-                "data": {
-                    "options": {
-                        "imgParagraph": true,
-                        "tableParagraph": true
-                    },
-                    "content": {
-                        "content": "<p><b>导语：</b>随着2014年奥斯卡最佳歌曲奖被《<a href=\"http://yunshipei.com\">冰雪奇缘</a>》的主题曲《<a href=\"http://yunshipei.com\">Let it go</a>》斩获，其曲被各种语言翻唱传遍世界，带你回顾那些经典的歌声。</p><p>发布时间：2014-03-07</p><hr><h3>can you feel the love tonight</h3><p><img src=\"http://www.appgame.com/wp-content/uploads/2014/01/bingxue1.jpg\" alt=\"不可不看的冰雪奇缘\" />迪斯尼公司出品的第32部动画片《<a href=\"blog.yunshipei.com\">狮子王</a>》自上映之日便受到全世界的青睐。在这部影片中，主题曲《Can You Feel The Love Tonight》打动了无数孩子与大人而恒久不衰...</p>"
-                    }
-                }
-            }],
-            "hidden": 1
-        },
-        {
             "id": "one",
             "name": "one",
             "desc": "简约风格",

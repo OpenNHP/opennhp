@@ -37,7 +37,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "居中按钮",
             "hook": "hook-am-gotop-default",
@@ -78,7 +77,6 @@
         },
         {
             "name": "mini",
-            "id": "t1",
             "desc": "右侧小图标",
             "hook": "hook-am-gotop-mini",
             "variables": [
@@ -126,7 +124,6 @@
             ]
         },
         {
-            "id": "t2",
             "name": "icon",
             "desc": "右侧图片型",
             "demos": [
@@ -141,7 +138,6 @@
             ]
         },
         {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "hook": "hook-am-gotop-one",

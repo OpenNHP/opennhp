@@ -40,7 +40,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "圆角灰边",
             "options": {
@@ -132,7 +131,6 @@
             ]
         },
         {
-            "id": "t1",
             "name": "basic",
             "desc": "极简无边框",
             "options": {
@@ -202,7 +200,6 @@
             ]
         },
         {
-            "id": "t2",
             "name": "gapped",
             "desc": "扁平分离边框",
             "options": {
@@ -294,7 +291,6 @@
             ]
         },
         {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "options": {

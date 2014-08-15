@@ -37,7 +37,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "浅蓝色选项卡",
             "options": {
@@ -116,7 +115,6 @@
             ]
         },
         {
-            "id": "d2",
             "name": "d2",
             "desc": "下边框选项卡",
             "options": {
@@ -203,7 +201,6 @@
             ]
         },
         {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "options": {

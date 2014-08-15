@@ -43,7 +43,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "默认",
             "options": {
@@ -134,7 +133,6 @@
             ]
         },
         {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "options": {

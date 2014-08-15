@@ -37,7 +37,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "蓝色背景",
             "hook": "hook-am-titlebar-default",
@@ -87,7 +86,6 @@
             ]
         },
         {
-            "id": "t4",
             "name": "column2",
             "desc": "灰底蓝下边框",
             "hook": "hook-am-titlebar-column2",
@@ -153,7 +151,6 @@
             ]
         },
         {
-            "id": "t5",
             "name": "column3",
             "desc": "下边框多链接",
             "hook": "hook-am-titlebar-column3",
@@ -214,7 +211,6 @@
             ]
         },
         {
-            "id": "t6",
             "name": "button",
             "desc": "蓝底白色按钮",
             "hook": "hook-am-titlebar-button",
@@ -266,7 +262,6 @@
             ]
         },
         {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "hook": "hook-am-titlebar-one",

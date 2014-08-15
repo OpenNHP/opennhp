@@ -39,7 +39,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "默认",
             "options": {

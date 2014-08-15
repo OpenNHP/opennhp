@@ -39,7 +39,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "扁平数字按钮",
             "options": {
@@ -141,7 +140,6 @@
             ]
         },
         {
-            "id": "d2",
             "name": "d2",
             "desc": "上下页+数字",
             "options": {
@@ -224,7 +222,6 @@
             ]
         },
         {
-            "id": "t1",
             "name": "pop",
             "desc": "上下页+数字选择",
             "options": {
@@ -295,7 +292,6 @@
             ]
         },
         {
-            "id": "t2",
             "name": "slide",
             "desc": "上下页+数字选择2",
             "options": {
@@ -419,7 +415,6 @@
             ]
         },
         {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "options": {

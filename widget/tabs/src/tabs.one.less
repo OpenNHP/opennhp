@@ -3,21 +3,9 @@
   * Theme ID: one
   */
 
-@global-body-bg: #f3f3f3;
-
-@global-primary: #15afef;
-
-@global-black: #000;
-
-@global-lighter-gray: rgb(226, 226, 226);
-@global-light-gray: #dfdfdf;
-@global-gray: #dedfe3;
-@global-dark-gray: #888;
-@global-darker-gray: #666;
-
-@global-mask-bg-color: rgba(92,92,92,0.6);
-
 .am-tabs-one {
+  @global-primary: #15afef;
+  @global-dark-gray: #888;
 
   @tabs-bg-color: @white;
   @tabs-li-text-color: @white;
@@ -26,7 +14,6 @@
   @tabs-a-color: @global-darker-gray;
   @tabs-a-hover-color: @global-primary;
   @tabs-db-color: @global-primary;
-
   @tabs-more-color: @global-dark-gray;
 
   padding: 10px 5px 0 5px;
@@ -111,7 +98,6 @@
 
         & > a{
           color: @tabs-more-color;
-          float: right;
         }
 
         & > a:hover{

@@ -1307,12 +1307,12 @@
             "hook": "hook-am-menu-one",
             "variables": [
                 {
-                    "variable": "am-menulv2-bg",
+                    "variable": "menu-nav-bg",
                     "name": "背景颜色",
-                    "default": "#F3F3F3",
+                    "default": "#f5f5f5",
                     "used": [
                         {
-                            "selector": ".am-menu-wrap",
+                            "selector": "",
                             "property": "background-color"
                         }
                     ]
@@ -1320,11 +1320,37 @@
                 {
                     "variable": "am-menu-a",
                     "name": "文字颜色",
-                    "default": "#303030",
+                    "default": "#7d7d7d",
                     "used": [
                         {
-                            "selector": ".am-menu-lv2 .am-menu-item > a",
+                            "selector": ".am-menu-nav > li > a",
                             "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "am-menu-a-active",
+                    "name": "文字激活颜色",
+                    "default": "#555",
+                    "used": [
+                        {
+                            "selector": ".am-menu-nav .am-active > a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "menu-nav-active-border-color",
+                    "name": "激活边框颜色",
+                    "default": "#15afef",
+                    "used": [
+                        {
+                            "selector": ".am-menu-nav .am-active > a",
+                            "property": "border-color"
+                        },
+                        {
+                            "selector": ".am-menu-nav .am-open > a::before",
+                            "property": "border-bottom-color"
                         }
                     ]
                 }

@@ -4,31 +4,19 @@
   * Author: hzp (hzp@yunshipei.com)
   */
 
-@global-body-bg: #f3f3f3;
-
-@global-primary: #15afef;
-
-@global-black: #000;
-
-@global-lighter-gray: rgb(226, 226, 226);
-@global-light-gray: #dfdfdf;
-@global-gray: #dedfe3;
-@global-dark-gray: #888;
-@global-darker-gray: #666;
-
-@global-mask-bg-color: rgba(92,92,92,0.6);
-
 .am-accordion-one {
+  @global-primary: #15afef;
+  @global-darker-gray: #666;
+  @global-light-gray: #dfdfdf;
 
   @accordion-item-border-color: @global-light-gray;
-
   @accordion-title-color: rgba(0, 0, 0, 0.6);
   @accordion-title-active-color: rgba(0, 0, 0, 0.8);
   @accordion-title-active-bg-color: rgba(0, 0, 0, 0.1);
-  @accordion-title-active-bd-color: fadeout(@global-primary, 60%);
-
+  @accordion-title-active-bd-color: @global-primary;
   @accordion-content-color: @global-darker-gray;
   @accordion-bg-color: @white;
+
   margin: 0 10px 0 10px;
 
   .am-accordion-item {

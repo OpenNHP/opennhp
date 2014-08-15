@@ -4,7 +4,7 @@
     "version": "1.0.0",
 
     "localName": {
-        "en": "header",
+        "en": "Header",
         "zh-cn": "页头"
     },
 
@@ -14,6 +14,8 @@
         "name": "hzp",
         "email": "hzp@yunshipei.com"
     },
+
+    "poweredBy": "AllMobilize",
 
     "description": "自动转码项目页头",
 

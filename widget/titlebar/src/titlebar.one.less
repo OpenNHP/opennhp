@@ -2,29 +2,18 @@
   * Titlebar Theme: one
   * Theme ID: one
   */
-@global-body-bg: #f3f3f3;
-
-@global-primary: #15afef;
-
-@global-black: #000;
-
-@global-lighter-gray: rgb(226, 226, 226);
-@global-light-gray: #dfdfdf;
-@global-gray: #dedfe3;
-@global-dark-gray: #888;
-@global-darker-gray: #666;
-
-@global-mask-bg-color: rgba(92,92,92,0.6);
 
 .am-titlebar-one {
+  @global-primary: #15afef;
+  @global-dark-gray: #888;
 
-  @titlebar-text-color: #15afef;//@global-primary;
-  @titlebar-title-color: #15afef;//@global-primary;
-  @titlebar-left-a-color: #000;
-  @titlebar-bg-color: #fff;
-  @titlebar-title-before: #15afef;//@global-primary;
+  @titlebar-text-color: @global-primary;
+  @titlebar-title-color: @global-primary;
+  @titlebar-left-a-color: @black;
+  @titlebar-bg-color: @white;
+  @titlebar-title-before: @global-primary;
+  @titlebar-right-a-color: @global-dark-gray;
 
-  @titlebar-right-a-color: #888;
   margin: 0 10px!important;
   padding: 0!important;
   height: 39px!important;

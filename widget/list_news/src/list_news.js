@@ -24,7 +24,7 @@ define(function (require, exports, module) {
             object.append($listMore);
         }
 
-        $(".am-list-news-more").on("click", function() {
+        object.find(".am-list-news-more").on("click", function() {
             $amList.children().show();
             $(this).hide();
         });

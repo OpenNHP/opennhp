@@ -3,22 +3,11 @@
   * Theme ID: one
   * Author: hzp (hzp@yunshipei.com)
   */
-@global-body-bg: #f3f3f3;
 
-@global-primary: #15afef;
-
-@global-black: #000;
-
-@global-lighter-gray: rgb(226, 226, 226);
-@global-light-gray: #dfdfdf;
-@global-gray: #dedfe3;
-@global-dark-gray: #888;
-@global-darker-gray: #666;
-
-@global-mask-bg-color: rgba(92,92,92,0.6);
-@am-navbar-boxshare-bg: lighten(@gray-lighter, 0.5%);
 
 .am-navbar-moreList {
+  @global-primary: #15afef;
+
   @navbar-moreList-bg: darken(@global-primary, 15%);
   @navbar-moreList-bd-top: darken(@global-primary, 6%);
   @navbar-moreList-bd-bottom: darken(@global-primary, 25%);
@@ -41,12 +30,12 @@
     position: relative;
 
     &::after {
-      font-family: "FontAwesome";
-      content: "\f054";
+      .am-icon-font;
+      content: @fa-var-angle-right;
       color: @navbar-moreList-a-color;
       display: inline-block;
       position: absolute;
-      top: 0;
+      top: 12px;
       right: 20px;
     }
 
@@ -127,7 +116,8 @@
       color: @navbar-a-color;
       span {
         &::before {
-          content: "\f078"; //字体
+          .am-icon-font;
+          content: @fa-var-chevron-down;
           color: @navbar-a-color;
         }
       }

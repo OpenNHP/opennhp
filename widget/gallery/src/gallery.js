@@ -29,7 +29,7 @@ define(function (require, exports, module) {
             object.append(moreData);
         }
 
-        $('.am-gallery-more').on('click', function() {
+        object.find('.am-gallery-more').on('click', function() {
             object.children().show();
             $(this).hide();
         });

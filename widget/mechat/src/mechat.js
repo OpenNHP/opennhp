@@ -6,10 +6,9 @@ define(function(require, exports, module) {
         if (!$('#mechat').length) return;
 
         var $mechat = $('[data-am-widget="mechat"]'),
-            unitid = $mechat.attr('data-am-mechat-unitid'),
-            $mechatData = $('<script></script>', {
+            unitid = $mechat.data('am-mechat-unitid'),
+            $mechatData = $('<script>', {
                 charset: 'utf-8',
-                id: 'mechat_button_js',
                 src: 'http://mechatim.com/js/unit/button.js?id=' + unitid
             });
 

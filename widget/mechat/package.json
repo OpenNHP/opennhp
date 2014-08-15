@@ -1,11 +1,11 @@
 {
-    "name": "MeChat",
+    "name": "mechat",
 
     "version": "1.0.0",
 
     "localName": {
-        "en": "MeChat",
-        "zh-cn": "美洽"
+        "en": "Mechat",
+        "zh-cn": "美洽客服"
     },
 
     "icon": "mechat.png",
@@ -17,7 +17,9 @@
         "email": "trustmore@163.com"
     },
 
-    "description": "",
+    "description": "美洽在线客服平台",
+
+    "poweredBy": "Mechat",
 
     "styleBase": [
         "variables.less",
@@ -48,8 +50,7 @@
                     "desc": "",
                     "data": {
                         "options": {
-                            "unitname": "test",
-                            "email": "trustmore@163.com"
+                            "unitid": "2538"
                         }
                     }
                 }
@@ -99,6 +100,7 @@
 
         "forms": {
             "add": {
+                "title": "美洽在线客服",
                 "url": "http://open.mechatim.com/cgi-bin/create/unit2?appid=T4v1KpVM7QOvzxgbQ9",
                 "type": "POST",
                 "desc": "美洽是移动互联网时代的沟通新方式，开通美洽客服系统，可以让客人在手机网站上直接与你开启对话，并完全免费。",
@@ -136,10 +138,11 @@
                     "email": {
                         "name": "帐号名",
                         "placeholder": "请使用邮箱",
-                        "type": "text",
+                        "type": "email",
                         "default": "",
                         "required": true,
-                        "necessary": true
+                        "necessary": true,
+                        "disabled": true
                     },
                     "unitname": {
                         "name": "企业名称",
@@ -147,13 +150,16 @@
                         "type": "text",
                         "default": "",
                         "required": true,
-                        "necessary": true
+                        "necessary": true,
+                        "disabled": true
                     },
                     "password": {
                         "name": "帐号密码",
                         "placeholder": "帐号密码",
-                        "type": "text",
-                        "default": ""
+                        "type": "password",
+                        "default": "",
+                        "pattern": ".{6,20}",
+                        "pattern_tips": "密码大于6位小于20位"
                     },
                     "submit": {
                         "name": "绑定美洽",
@@ -163,17 +169,19 @@
                 }
             },
             "bindfail": {
+                "title": "密码错误",
                 "url": "http://open.mechatim.com/cgi-bin/check/unit2?appid=T4v1KpVM7QOvzxgbQ9",
                 "type": "POST",
-                "desc": "密码错误，请重新输入密码以绑定。/n 修改密码地址：http://mechatim.com/password/find ",
+                "desc": "请重新输入密码以绑定。</br> 修改密码地址：http://mechatim.com/password/find",
                 "fields": {
                     "email": {
                         "name": "帐号名",
                         "placeholder": "请使用邮箱",
-                        "type": "text",
+                        "type": "email",
                         "default": "",
                         "required": true,
-                        "necessary": true
+                        "necessary": true,
+                        "disabled": true
                     },
                     "unitname": {
                         "name": "企业名称",
@@ -181,14 +189,17 @@
                         "type": "text",
                         "default": "",
                         "required": true,
-                        "necessary": true
+                        "necessary": true,
+                        "disabled": true
                     },
                     "password": {
                         "name": "帐号密码",
                         "placeholder": "帐号密码",
-                        "type": "text",
+                        "type": "password",
                         "default": "",
-                        "required": true
+                        "required": true,
+                        "pattern": ".{6,20}",
+                        "pattern_tips": "密码大于6位小于20位"
                     },
                     "submit": {
                         "name": "绑定美洽",
@@ -198,7 +209,8 @@
                 }
             },
             "bindsuccess": {
-                "desc": "绑定成功！你还可以登录美洽(http://mechat.im)下载手机APP,让客服工作变得轻松简单。",
+                "title": "绑定成功！",
+                "desc": "你还可以登录美洽(http://mechat.im)下载手机APP,让客服工作变得轻松简单。",
                 "texts": {
                     "addr": {
                         "name": "登录地址",
@@ -243,7 +255,8 @@
                 }
             },
             "addsuccess": {
-                "desc": "添加成功！你还可以登录美洽(http://mechat.im)下载手机APP,让客服工作变得轻松简单。",
+                "title": "添加成功！",
+                "desc": "你还可以登录美洽(http://mechat.im)下载手机APP,让客服工作变得轻松简单。",
                 "texts": {
                     "addr": {
                         "name": "登录地址",

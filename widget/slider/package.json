@@ -1374,23 +1374,12 @@
             "hook": "hook-am-slider-one",
             "variables": [
                 {
-                    "variable": "direction-nav-color",
-                    "name": "前后导航按钮颜色",
-                    "default": "rgba(0,0,0,0.7)",
-                    "used": [
-                        {
-                            "selector": ".am-direction-nav a::before",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
                     "variable": "slider-dese-color",
                     "name": "描述文字颜色",
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": ".am-slider-desc",
+                            "selector": ".am-viewport .am-slider-desc",
                             "property": "color"
                         }
                     ]
@@ -1401,7 +1390,7 @@
                     "default": "rgba(0,0,0,0.5)",
                     "used": [
                         {
-                            "selector": ".am-slider-desc",
+                            "selector": ".am-viewport .am-slider-desc",
                             "property": "background-color"
                         }
                     ]
@@ -1411,9 +1400,9 @@
                 {
                     "desc": "",
                     "data": {
-                        "sliderConfig": {
-                            "controlNav": false
-                        },
+
+                        "sliderConfig": "{\"directionNav\":false}",
+
                         "content": [
                             {
                                 "img": "http://cn.bing.com/az/hprichv/LondonTrainStation_GettyRR_139321755_ZH-CN742316019.jpg",

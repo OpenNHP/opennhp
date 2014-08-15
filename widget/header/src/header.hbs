@@ -1,0 +1,38 @@
+{{#this}}
+  <div data-am-widget="header" class="am-header{{#if theme}} am-header-{{theme}}{{else}} am-header-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"{{#if id}} id="{{id}}"{{/if}}>
+    {{#if content.left}}
+    <div class="am-header-left">
+      {{#each content.left}}
+        <a href="{{link}}">
+          {{# if icon}}
+            <span class="am-icon-sm {{icon}} "></span>
+              {{else}}
+                <img src="{{img}}"/>
+              {{/if}}
+        </a>
+      {{/each}}
+    </div>
+    {{/if}}
+
+    {{#if content.title}}
+      <h2 class="am-header-title">
+        {{{content.title}}}
+      </h2>
+    {{/if}}
+
+    {{#if content.right}}
+    <div class="am-header-right">
+      {{#each content.right}}
+        <a href="{{link}}">
+          {{# if icon}}
+            <span class="am-icon-sm {{icon}} "></span>
+          {{else}}
+            <img src="{{img}}"/>
+          {{/if}}
+        </a>
+      {{/each}}
+    </div>
+    {{/if}}
+
+  </div>
+{{/this}}

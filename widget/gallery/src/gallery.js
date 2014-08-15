@@ -15,7 +15,7 @@ define(function (require, exports, module) {
     };
 
     function galleryMore(object) {
-        var moreData = $('<li class=\'am-gallery-more\'><a href=\'javascript:;\' class=\'am-btn am-btn-default\'>更多 &gt;&gt;</a></li>');
+        var moreData = $('<li class=\'am-gallery-more\'><a href=\'javascript:;\'>更多 &gt;&gt;</a></li>');
 
         if (object.children().length > 6) {
 
@@ -29,7 +29,7 @@ define(function (require, exports, module) {
             object.append(moreData);
         }
 
-        $('.am-gallery-more').on('click', function() {
+        object.find('.am-gallery-more').on('click', function() {
             object.children().show();
             $(this).hide();
         });

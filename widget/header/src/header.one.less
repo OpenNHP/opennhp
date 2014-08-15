@@ -1,0 +1,86 @@
+/**
+  * header Theme: one
+  * Theme ID: one
+  */
+@global-body-bg: #f3f3f3;
+
+@global-primary: #15afef;
+
+@global-black: #000;
+
+@global-lighter-gray: rgb(226, 226, 226);
+@global-light-gray: #dfdfdf;
+@global-gray: #dedfe3;
+@global-dark-gray: #888;
+@global-darker-gray: #666;
+
+@global-mask-bg-color: rgba(92,92,92,0.6);
+
+.am-header-one {
+
+  @header-text-color: @global-primary;
+  @header-title-color: #1c1c1c;
+  @header-left-bg-color: @global-light-gray;
+  @header-bg-color: @white;
+
+  position: relative;
+  background: @header-bg-color;
+  padding: 0;
+  margin: 0;
+
+  .am-header-left, .am-header-right {
+    position: absolute;
+    top: 10px;
+    height: 30px;
+    text-align: center;
+    line-height: 30px;
+
+    a {
+      margin: 0 5px;
+    }
+
+    a:last-child {
+      margin-right: 0;
+    }
+
+    a:first-child {
+      margin-left: 0;
+    }
+
+    img {
+      width: 30px;
+      height: 30px;
+      vertical-align: top;
+    }
+  }
+  .am-header-left {
+    left: 10px;
+  }
+
+  .am-header-right {
+    right: 10px;
+  }
+
+  .am-header-title {
+    color: @header-title-color;
+    text-align: center;
+    .text-overflow();
+    font-size: 2rem;
+    font-weight: normal;
+    padding: 0 50px;
+
+    a {
+      color: @header-title-color;
+    }
+
+    img{
+      height: 34px;
+      width: auto;
+      margin-top: 8px;
+      vertical-align: top;
+    }
+  }
+  .hook-am-header-one;
+}
+
+.hook-am-header-one() {}

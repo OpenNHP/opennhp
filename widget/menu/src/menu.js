@@ -1,4 +1,4 @@
-define(function (require, exports, module) {
+define(function(require, exports, module) {
     require('ui.offcanvas');
     var IScroll = require('ui.iscroll');
 
@@ -6,10 +6,10 @@ define(function (require, exports, module) {
 
     var UI = $.AMUI;
 
-    var menuInit = function () {
+    var menuInit = function() {
         var $menus = $('[data-am-widget="menu"]');
 
-        $menus.find('.am-menu-nav .am-parent > a').on('click', function (e) {
+        $menus.find('.am-menu-nav .am-parent > a').on('click', function(e) {
             e.preventDefault();
             var $clicked = $(this),
                 $parent = $clicked.parent(),
@@ -21,7 +21,7 @@ define(function (require, exports, module) {
         });
 
         // Dropdown/slidedown menu
-        $menus.filter('[data-am-menu-collapse]').find('> .am-menu-toggle').on('click', function (e) {
+        $menus.filter('[data-am-menu-collapse]').find('> .am-menu-toggle').on('click', function(e) {
             e.preventDefault();
             var $this = $(this),
                 $nav = $this.next('.am-menu-nav');
@@ -32,7 +32,7 @@ define(function (require, exports, module) {
         });
 
         // OffCanvas menu
-        $menus.filter('[data-am-menu-offcanvas]').find('> .am-menu-toggle').on('click', function (e) {
+        $menus.filter('[data-am-menu-offcanvas]').find('> .am-menu-toggle').on('click', function(e) {
             e.preventDefault();
             var $this = $(this),
                 $nav = $this.next('.am-offcanvas');
@@ -43,26 +43,27 @@ define(function (require, exports, module) {
         });
 
         // one theme
-        $menus.filter('.am-menu-one').each(function () {
+        $menus.filter('.am-menu-one').each(function() {
             var $this = $(this),
                 $wrap = $('<div class="am-menu-nav-sub-wrap"></div>'),
                 allWidth = 0,
                 prevIndex,
-                $nav = $this.find('.am-menu-nav');
+                $nav = $this.find('.am-menu-nav'),
+                $navTopItem = $nav.children('li');
 
-            $this.find('.am-parent').each(function () {
-                $(this).find('.am-menu-sub').appendTo($wrap);
-
+            $navTopItem.filter('.am-parent').each(function(index) {
+                $(this).attr('data-rel', '#am-menu-sub-' + index);
+                $(this).find('.am-menu-sub').attr('id', 'am-menu-sub-' + index).appendTo($wrap);
             });
 
             $this.append($wrap);
 
             $nav.wrap('<div class="am-menu-nav-wrap" id="am-menu">');
 
-            $nav.find('li').eq(0).addClass('am-active');
+            $navTopItem.eq(0).addClass('am-active');
 
             // 计算出所有 li 宽度
-            $nav.children().each(function (i) {
+            $navTopItem.each(function(i) {
                 allWidth += parseInt($(this).width());
             });
 
@@ -73,14 +74,14 @@ define(function (require, exports, module) {
                 scrollY: false
             });
 
-            $nav.children().on('click', function () {
+            $navTopItem.on('click', function() {
                 var $clicked = $(this);
                 $clicked.addClass('am-active').siblings().removeClass('am-active');
 
                 $wrap.find('.am-menu-sub.am-in').collapse('close');
 
                 if ($clicked.is('.am-parent')) {
-                    !$clicked.hasClass('.am-open') && $('.am-menu-sub').eq($clicked.index()).collapse('open');
+                    !$clicked.hasClass('.am-open') && $wrap.find($clicked.attr('data-rel')).collapse('open');
                 } else {
                     $clicked.siblings().removeClass('am-open');
                 }
@@ -92,7 +93,7 @@ define(function (require, exports, module) {
 
                 // 判断方向
                 var dir = $(this).index() > prevIndex;
-                var target = $(this)[ dir ? 'next' : 'prev' ]();
+                var target = $(this)[dir ? 'next' : 'prev']();
 
                 // 点击的按钮，显示一半
                 var offset = target.offset() || $(this).offset();
@@ -106,13 +107,13 @@ define(function (require, exports, module) {
 
             });
 
-            $this.on('touchmove', function (event) {
+            $this.on('touchmove', function(event) {
                 event.preventDefault();
             });
         });
     };
 
-    $(function () {
+    $(function() {
         menuInit();
     });
 

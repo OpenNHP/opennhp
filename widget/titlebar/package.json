@@ -37,7 +37,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "蓝色背景",
             "hook": "hook-am-titlebar-default",
@@ -87,149 +86,6 @@
             ]
         },
         {
-            "id": "t1",
-            "name": "title1",
-            "desc": "浅灰背景",
-            "hook": "hook-am-titlebar-title1",
-            "variables": [
-                {
-                    "variable": "titlebar-bg-color",
-                    "name": "背景颜色",
-                    "default": "#F2F2F2",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "titlebar-a-color",
-                    "name": "链接颜色",
-                    "default": "#333",
-                    "used": [
-                        {
-                            "selector": ".am-titlebar-left a",
-                            "property": "color"
-                        },
-                        {
-                            "selector": ".am-titlebar-left",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "titlebar-border-color",
-                    "name": "上边框颜色",
-                    "default": "#1977D0",
-                    "used": [
-                        {
-                            "selector": ".am-titlebar-left",
-                            "property": "border-top-color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "data": {
-                        "content": {
-                            "left": "标题文字"
-                        }
-                    }
-                }
-            ],
-            "deprecated": 1
-        },
-        {
-            "id": "t2",
-            "name": "icon",
-            "desc": "深灰背景",
-            "hook": "hook-am-titlebar-icon",
-            "variables": [
-                {
-                    "variable": "titlebar-bg-color",
-                    "name": "背景颜色",
-                    "default": "#727b89",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "titlebar-a-color",
-                    "name": "链接颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "a",
-                            "property": "color"
-                        },
-                        {
-                            "selector": ".am-titlebar-left",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "data": {
-                        "content": {
-                            "left": "<span class=\"am-icon-arrow-left\"></span>",
-                            "title": "<a href=\"/\">标题</a>",
-                            "right": "<span class=\"am-toolbar-menu\"><img src=\"http://docs.yunshipei.com/i/titlebar/menu.png\" /></span>"
-                        }
-                    }
-                }
-            ],
-            "deprecated": 1
-        },
-        {
-            "id": "t3",
-            "name": "column1",
-            "desc": "深底白字",
-            "hook": "hook-am-titlebar-column1",
-            "variables": [
-                {
-                    "variable": "titlebar-bg-color",
-                    "name": "背景颜色",
-                    "default": "#00599d",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "titlebar-text-color",
-                    "name": "文本颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "data": {
-                        "content": {
-                            "left": "栏目标题",
-                            "right": "更多 >>"
-                        }
-                    }
-                }
-            ],
-            "deprecated": 1
-        },
-        {
-            "id": "t4",
             "name": "column2",
             "desc": "灰底蓝下边框",
             "hook": "hook-am-titlebar-column2",
@@ -295,7 +151,6 @@
             ]
         },
         {
-            "id": "t5",
             "name": "column3",
             "desc": "下边框多链接",
             "hook": "hook-am-titlebar-column3",
@@ -356,7 +211,6 @@
             ]
         },
         {
-            "id": "t6",
             "name": "button",
             "desc": "蓝底白色按钮",
             "hook": "hook-am-titlebar-button",
@@ -408,102 +262,6 @@
             ]
         },
         {
-            "id": "t7",
-            "name": "img",
-            "desc": "图标+文字",
-            "hook": "hook-am-titlebar-img",
-            "variables": [
-                {
-                    "variable": "titlebar-bg-color",
-                    "name": "背景颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "titlebar-text-color",
-                    "name": "文本颜色",
-                    "default": "#ccc",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "data": {
-                        "content": {
-                            "title": "<img src=\"http://docs.yunshipei.com/i/titlebar/logo.png\" ></option>",
-                            "right": "导航"
-                        }
-                    }
-                }
-            ],
-            "deprecated": 1
-        },
-        {
-            "id": "clear",
-            "name": "clear",
-            "desc": "ios7默认",
-            "hook": "hook-am-titlebar-clear",
-            "variables": [
-                {
-                    "variable": "titlebar-bg-color",
-                    "name": "背景颜色",
-                    "default": "#428bca",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "titlebar-text-color",
-                    "name": "文本颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": ".am-titlebar-title",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "titlebar-a-color",
-                    "name": "链接颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": ".am-titlebar-title a",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "data": {
-                        "content": {
-                            "left": "<span class=\"am-icon-chevron-left\"></span>",
-                            "title": "Welcome",
-                            "right": "menu"
-                        }
-
-                    }
-                }
-            ],
-            "hidden": 1
-        },
-        {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "hook": "hook-am-titlebar-one",
@@ -557,48 +315,6 @@
                             "left": "<a href=#>栏目</a>",
                             "title": "",
                             "right": "<a href=#>MORE</a>"
-                        }
-
-                    }
-                }
-            ]
-        },
-        {
-            "id": "one1",
-            "name": "one1",
-            "desc": "简约风格（页头）",
-            "hook": "hook-am-titlebar-one1",
-            "variables": [
-                {
-                    "variable": "titlebar-bg-color",
-                    "name": "背景颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "titlebar-text-color",
-                    "name": "文本颜色",
-                    "default": "#15afef",
-                    "used": [
-                        {
-                            "selector": ".am-titlebar-title",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "data": {
-                        "content": {
-                            "left": "<img src=\"http://amazeui.org/i/titlebar/oneHome.png\"/>",
-                            "title": "云适配AMUI",
-                            "right": "<img src=\"http://amazeui.org/i/titlebar/oneMenu.png\"/>"
                         }
 
                     }

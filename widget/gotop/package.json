@@ -37,7 +37,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "居中按钮",
             "hook": "hook-am-gotop-default",
@@ -78,7 +77,6 @@
         },
         {
             "name": "mini",
-            "id": "t1",
             "desc": "右侧小图标",
             "hook": "hook-am-gotop-mini",
             "variables": [
@@ -126,7 +124,6 @@
             ]
         },
         {
-            "id": "t2",
             "name": "icon",
             "desc": "右侧图片型",
             "demos": [
@@ -141,48 +138,6 @@
             ]
         },
         {
-            "id": "clear",
-            "name": "clear",
-            "desc": "ios7默认",
-            "hook": "hook-am-gotop-clear",
-            "variables": [
-                {
-                    "variable": "gotop-a-bg-color",
-                    "name": "背景颜色",
-                    "default": "rgba(255,255,255,0.3)",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "gotop-a-bd-color",
-                    "name": "边框颜色",
-                    "default": "rgba(0,0,0,0.1)",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "border-color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "desc": "",
-                    "data": {
-                        "content": {
-                            "img": "/i/gotop/ios7Gotop.png"
-                        }
-                    }
-                }
-            ],
-            "hidden": 1
-        },
-        {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "hook": "hook-am-gotop-one",

@@ -5,152 +5,139 @@
   */
 
 .am-menu-dropdown2 {
+  @menu-toggle-color: #fff;
 
-  @trigger-color: #fff;
+  @menu-nav-top-link-color: @gray-dark;
+  @menu-nav-top-link-active-color: @global-primary;
+  @menu-nav-top-link-bg: #f5f5f5;
 
-  @lv2-color: #fff;
-  @lv2-bg-color: #727B8A;
+  @menu-nav-sub-link-color: @gray;
+  @menu-nav-sub-link-bg: #fff;
 
-  @lv2-active-bg-color: #727B8A;
-  @lv2-a-height: 49px;
+  @menu-nav-top-link-height: 44px;
+  @menu-nav-sub-link-height: 35px;
 
-  @lv3-color: #7E858F;
-  @lv3-bg-color: #F2F3F5;
-  @lv3-icon-color: #aaa;
-  @lv3-a-height: 44px;
-
-  @border-color: #4C5565;
-
-  a {
-    &::before, &::after {
-      .am-icon-font;
-    }
-  }
-  // level 1: trigger bars
-  > li.am-parent {
-    position: relative;
-    > a {
-      position: absolute;
-      right: 10px;
-      top: -36px;
-      width: 40px;
-      height: 24px;
-      overflow: hidden;
-      padding: 0;
-      text-align: right;
-      &:before {
-        content: @fa-var-bars;
-        color: @trigger-color;
-        height: 24px;
-        width: 40px;
-        font-size: 24px;
-      }
-    }
+  .am-menu-toggle {
+    position: absolute;
+    right: 10px;
+    top: -35px;
+    display: block;
+    color: @menu-toggle-color;
   }
 
-  .am-menu-sub {
-    display: none;
-  }
-
-  .am-menu-lv2 {
+  .am-menu-nav {
     position: absolute;
     left: 0;
     right: 0;
+    background-color: @menu-nav-top-link-bg;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
     z-index: @z-index-dropdown;
+
     a {
-      padding: 0.8rem;
+      height: @menu-nav-top-link-height;
+      line-height: @menu-nav-top-link-height;
+      padding: 0;
+      text-align: center;
     }
+
     & > li {
       // parent links
       > a {
-        border-bottom: 1px solid @border-color;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-        background-color: @lv2-bg-color;
-        color: @lv2-color;
-        height: @lv2-a-height;
-        line-height: @lv2-a-height;
-        padding: 0;
-        text-indent: 10px;
-
-        &::after {
-        }
+        color: @menu-nav-top-link-color;
       }
 
       &.am-parent {
         > a {
           position: relative;
-
-
-          &::after {
-            content: @fa-var-angle-right;
-            margin-left: 0.8rem;
+          &:after {
+            content: @fa-var-angle-down;
+            margin-left: 5px;
+            .transition(0.2s);
           }
         }
 
         // active status
         &.am-open {
-          background-color: @lv2-active-bg-color;
-          border-bottom: 1px solid @border-color;
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
           > a {
-            border-bottom: none;
-            &::after {
-              content: @fa-var-angle-down;
+            position: relative;
+            &:after {
+              // content: @fa-var-angle-up;
+              color: @menu-nav-top-link-active-color;
+              .rotateX(180deg);
             }
-          }
-          .am-menu-lv3 {
-            margin-left: 8px;
-            background-color: @lv3-bg-color;
+
+            &:before {
+              position: absolute;
+              top: 100%;
+              margin-top: -16px;
+              left: 50%;
+              margin-left: -12px;
+              font-size: 24px;
+              content: @fa-var-caret-up;
+              color: rgba(0, 0, 0, 0.2);
+            }
           }
         }
       }
     }
   }
 
-  .am-menu-lv3 {
-    a {
-      color: @lv3-color;
-      height: @lv3-a-height;
-      line-height: @lv3-a-height;
-      padding: 0;
-      text-indent: 10px;
+  .am-menu-sub {
+    position: absolute;
+    left: 5px;
+    right: 5px;
+    padding: 8px 0;
+    border-radius: 2px;
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.15);
+    background-color: @menu-nav-sub-link-bg;
 
-      &::before {
-        content: @fa-var-angle-right;
-        color: @lv3-icon-color;
-        font-size: 16px;
-        margin-right: 5px;
-      }
+    a {
+      padding: 0;
+      height: @menu-nav-sub-link-height;
+      color: @menu-nav-sub-link-color;
+      line-height: @menu-nav-sub-link-height;
     }
   }
 
   .hook-am-menu-dropdown2;
 
-  @media (min-width: @breakpoint-md) {
-    & {
-      > .am-parent {
-        > a {
-          display: none;
+  @media @medium-up {
+    .am-menu-toggle {
+      display: none !important;
+    }
+
+    .am-menu-nav {
+      position: static;
+      display: block;
+
+      & > li {
+        float: none;
+        width: auto;
+        display: inline-block;
+
+        a {
+          padding-left: 1.5rem;
+          padding-right: 1.5rem;
         }
       }
+    }
 
-      .am-menu-lv2 {
-        background-color: @lv2-bg-color;
-        display: block;
-        & > li {
-          clear: none;
-
-        }
+    .am-menu-sub {
+      left: auto;
+      right: auto;
+      z-index: @z-index-dropdown + 1;
+      & > li {
+        float: none;
+        width: auto;
       }
 
-      .am-menu-lv3 {
-        & > li {
-          clear: none;
-          width: auto;
-        }
+      a {
+        padding-left: 2rem;
+        padding-right: 2rem;
       }
     }
   }
 }
 
-.hook-am-menu-dropdown2() {}
+.hook-am-menu-dropdown2() {
+}

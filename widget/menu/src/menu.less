@@ -1,16 +1,31 @@
-// Base
+// Menu Base
 .am-menu {
-
+  position: relative;
   padding: 0;
   margin: 0;
+
   ul {
     padding: 0;
     margin: 0;
   }
+
   li {
     list-style: none;
   }
 
+  a {
+    &:after,
+    &:before {
+      .am-icon-font;
+    }
+  }
+}
+
+.am-menu-toggle {
+  display: none;
+}
+
+.am-menu-nav {
   a {
     display: block;
     padding: 0.8rem 0;

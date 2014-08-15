@@ -39,7 +39,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "默认",
             "options": {
@@ -114,87 +113,6 @@
             ]
         },
         {
-            "id": "clear",
-            "name": "clear",
-            "desc": "ios7默认",
-            "options": {
-                "leftCols": "5",
-                "rightCols": "7",
-                "position": "top"
-            },
-            "hook": "hook-am-intro-clear",
-            "variables": [
-                {
-                    "variable": "intro-bg-color",
-                    "name": "背景颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "intro-text-color",
-                    "name": "文本颜色",
-                    "default": "#333",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "intro-a-color",
-                    "name": "链接颜色",
-                    "default": "#007aff",
-                    "used": [
-                        {
-                            "selector": ".am-intro-top a",
-                            "property": "color"
-                        },
-                        {
-                            "selector": ".am-intro-right a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "intro-top-before-bg-color",
-                    "name": "标题小方块颜色",
-                    "default": "#007aff",
-                    "used": [
-                        {
-                            "selector": ".am-intro-top::before",
-                            "property": "background-color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "desc": "",
-                    "data": {
-                        "options": {
-                            "leftCols": 5,
-                            "rightCols": 7,
-                            "position": "top"
-                        },
-                        "content": {
-                            "top": "栏目标题",
-                            "more": "<a href=\"#\">查看详情</a>",
-                            "left": "<img src=\"http://img4.duitang.com/uploads/item/201402/21/20140221160659_rdrHJ.thumb.600_0.jpeg\" alt=\"冰雪奇缘\" />",
-                            "right": "<p>冰雪奇缘（英语：Frozen）是2013年一部美国3D电脑动画电影。电影由华特<a href=\"##\">迪士尼动画</a>工作室制作，并由华特迪士尼工作室电影公司发行。这部影片由克里斯·巴克和詹妮弗·李导演，并由克里斯汀·贝尔、伊迪娜·门泽尔、<a href=\"##\">乔纳森·格罗夫</a>等配音。</p>"
-                        }
-                    }
-                }
-            ],
-            "hidden": 1
-        },
-        {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "options": {

@@ -38,7 +38,7 @@ ___注意：为了方便查看效果，演示中的网格加了红色边框，�
 
 `.am-g` 的宽度被设置为 `100%`，会随着窗口自动缩放。
 
-可以在网格容器上添加 `.am-g-fixed` calss，将最大宽度限制为 `1000px`。
+可以在网格容器上添加 `.am-g-fixed` class，将最大宽度限制为 `1000px`。
 
 ```css
 .am-g {
@@ -238,7 +238,7 @@ TODO: 使用网站本身做演示（js 添加移除 类名）
 添加 `col-sm-offset-*`、`col-md-offset-*`、`col-lg-offset-*` 设置列的左边距。
 
 `````html
-<div class="am-g">
+<div class="am-g doc-am-g">
   <div class="col-sm-1">1</div>
   <div class="col-sm-11">11</div>
 </div>
@@ -248,7 +248,7 @@ TODO: 使用网站本身做演示（js 添加移除 类名）
 </div>
 <div class="am-g doc-am-g">
   <div class="col-sm-1">1</div>
-  <div class="col-sm-9 col-sm-2">9, offset 2</div>
+  <div class="col-sm-9 col-sm-offset-2">9, offset 2</div>
 </div>
 <div class="am-g doc-am-g">
   <div class="col-sm-1">1</div>
@@ -256,19 +256,19 @@ TODO: 使用网站本身做演示（js 添加移除 类名）
 </div>
 `````
 ```html
-<div class="am-g doc-am-g">
+<div class="am-g">
   <div class="col-sm-1">1</div>
   <div class="col-sm-11">11</div>
 </div>
-<div class="am-g doc-am-g">
+<div class="am-g">
   <div class="col-sm-1">1</div>
   <div class="col-sm-10 col-sm-offset-1">10, offset 1</div>
 </div>
-<div class="am-g doc-am-g">
+<div class="am-g">
   <div class="col-sm-1">1</div>
-  <div class="col-sm-9 col-sm-2">9, offset 2</div>
+  <div class="col-sm-9 col-sm-offset-2">9, offset 2</div>
 </div>
-<div class="am-g doc-am-g">
+<div class="am-g">
   <div class="col-sm-1">1</div>
   <div class="col-sm-8 col-sm-offset-3">8, offset 3</div>
 </div>

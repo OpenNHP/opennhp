@@ -37,7 +37,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "灰色分隔线",
             "hook": "hook-am-divider-default",
@@ -64,35 +63,6 @@
             ]
         },
         {
-            "id": "clear",
-            "name": "clear",
-            "desc": "ios7灰色分割线",
-            "hook": "hook-am-divider-clear",
-            "variables": [
-                {
-                    "variable": "divider-bg-color",
-                    "name": "分割线颜色",
-                    "default": "#b2b2b2",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "background-color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "desc": "",
-                    "data": {
-
-                    }
-                }
-            ],
-            "hidden": 1
-        },
-        {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "hook": "hook-am-divider-one",
@@ -112,9 +82,7 @@
             "demos": [
                 {
                     "desc": "",
-                    "data": {
-
-                    }
+                    "data": {}
                 }
             ]
         }

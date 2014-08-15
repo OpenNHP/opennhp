@@ -42,7 +42,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "默认",
             "options": {
@@ -129,80 +128,6 @@
             ]
         },
         {
-            "id": "clear",
-            "name": "clear",
-            "desc": "ios7默认",
-            "options": {
-                "cols": 4,
-                "iconpos": "top"
-            },
-            "hook": "hook-am-navbar-clear",
-            "variables": [
-                {
-                    "variable": "navbar-a-color",
-                    "name": "链接颜色",
-                    "default": "#929292",
-                    "used": [
-                        {
-                            "selector": ".am-navbar-item a",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "desc": "",
-                    "data": {
-                        "options": {
-                            "cols": "4",
-                            "iconpos": "top"
-                        },
-                        "content": [
-                            {
-                                "title": "一键拨号",
-                                "link": "tel:123456789",
-                                "icon": "phone",
-                                "dataApi": ""
-                            },
-                            {
-                                "title": "一键分享",
-                                "link": "###",
-                                "icon": "share-square-o",
-                                "dataApi": "data-am-navbar-share"
-                            },
-                            {
-                                "title": "二维码",
-                                "link": "###",
-                                "icon": "qrcode",
-                                "dataApi": "data-am-navbar-qrcode"
-                            },
-                            {
-                                "title": "关于我们",
-                                "link": "http://yunshipei.com",
-                                "icon": "user-md",
-                                "dataApi": ""
-                            },
-                            {
-                                "title": "下载说明",
-                                "link": "http://yunshipei.com",
-                                "icon": "download",
-                                "dataApi": ""
-                            },
-                            {
-                                "title": "联系我们",
-                                "link": "http://yunshipei.com",
-                                "icon": "location-arrow",
-                                "dataApi": ""
-                            }
-                        ]
-                    }
-                }
-            ],
-            "hidden": 1
-        },
-        {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "options": {

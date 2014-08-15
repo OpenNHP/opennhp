@@ -1,11 +1,11 @@
 {{#this}}
-  <section data-am-widget="accordion" class="am-accordion {{#if theme}}am-accordion-{{theme}}{{else}}am-accordion-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"{{#if id}} id="{{id}}"{{/if}} data-accordion-settings='{ {{#if options.multiple}}"multiple": true{{/if}} }'>
+  <section data-am-widget="accordion" class="am-accordion {{#if theme}}am-accordion-{{theme}}{{else}}am-accordion-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"{{#if id}} id="{{id}}"{{/if}} data-am-accordion='{ {{#if options.multiple}}"multiple": true{{/if}} }'>
     {{#each content}}
       <dl class="am-accordion-item{{#if active}} am-active{{/if}}">
         <dt class="am-accordion-title">
           {{{title}}}
         </dt>
-        <dd class="am-accordion-content">
+        <dd class="am-accordion-content am-collapse {{#if active}}am-in{{/if}}">
           {{{content}}}
         </dd>
       </dl>

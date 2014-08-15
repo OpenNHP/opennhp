@@ -1,25 +1,23 @@
 {
-    "name": "sohucs",
+    "name": "duoshuo",
 
     "version": "1.0.0",
 
     "localName": {
-        "en": "Changyan",
-        "zh-cn": "搜狐畅言"
+        "en": "Duoshuo",
+        "zh-cn": "多说"
     },
 
-    "icon": "sohucs.png",
-
-    "type": "social",
+    "icon": "duoshuo.png",
 
     "author": {
         "name": "minwe",
         "email": "minwe@yunshipei.com"
     },
 
-    "description": "搜狐畅言社交评论模块",
+    "description": "多说评论系统",
 
-    "poweredBy": "Sohu",
+    "poweredBy": "Duoshuo",
 
     "styleBase": [
         "variables.less",
@@ -27,30 +25,32 @@
         "base.less",
         "grid.less",
         "block-grid.less",
-        "icon.less",
         "utility.less"
     ],
 
-    "template": "sohucs.hbs",
+    "template": "duoshuo.hbs",
 
     "styleDependencies": [
+        "icon.less"
     ],
 
-    "style": "sohucs.less",
+    "style": "duoshuo.less",
 
     "themes": [
         {
+            "id": "default",
             "name": "default",
             "desc": "默认",
             "options": {},
-            "hook": "hook-am-sohucs-default",
+            "hook": "hook-am-duoshuo-default",
+            "variables": [
+            ],
             "demos": [
                 {
                     "desc": "",
                     "data": {
                         "options": {
-                            "appid": "cyr8nM16m",
-                            "conf": "prod_225178b1567029966f5f52fed7fc1179"
+                            "shortName": "amui"
                         }
                     }
                 }
@@ -63,9 +63,10 @@
         "util.fastclick.js"
     ],
 
-    "jsDependencies": [],
+    "jsDependencies": [
+    ],
 
-    "script": "sohucs.js",
+    "script": "duoshuo.js",
 
     "api": {
         "id": {
@@ -80,7 +81,6 @@
             "name": "Class",
             "desc": "用户自定义模块class，遵循 CSS class 命名规范",
             "type": "text",
-            "placeholder": "css类名，多个用空格分隔",
             "default": "",
             "required": false
         },
@@ -95,44 +95,37 @@
         },
 
         "options": {
-            "appid": {
-                "name": "AppID",
-                "desc": "畅言后台 appid 后面的值",
+            "shortName": {
+                "name": "网站代码",
+                "desc": "",
                 "type": "text",
-                "placeholder": "cyxxxxxxx",
                 "default": "",
                 "required": true
-            },
-            "conf": {
-                "name": "Conf",
-                "desc": "畅言后台 conf 后面值",
-                "type": "text",
-                "placeholder": "prod_xxx...",
-                "default": "",
-                "required": true
-            },
-            "actions": [
-                {
-                    "type": "link",
-                    "text": "注册畅言",
-                    "link": "http://changyan.sohu.com/register",
-                    "target": "_blank"
-                },
-                {
-                    "type": "link",
-                    "text": "使用说明",
-                    "link": "http://docs.yunshipei.com/amui/#sohucs",
-                    "target": "_blank"
-                }
-            ]
+            }
         },
 
-        "content": null
+        "content": {
+            "type": "Object",
+            "item": {
+                "threadKey": {
+                    "type": "text",
+                    "desc": "文章唯一 ID"
+                },
+                "title": {
+                    "type": "text",
+                    "desc": "文章标题"
+                },
+                "url": {
+                    "type": "text",
+                    "desc": "文章 URL"
+                }
+            }
+        }
     },
 
-    "readme": "http://docs.yunshipei.com/amui/#sohucs",
+    "readme": "http://amazeui.org/widgets/duoshuo/",
 
-    "example": null,
+    "example": "",
 
     "hidden": false
 }

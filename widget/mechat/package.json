@@ -60,7 +60,7 @@
 
     "jsBase": [
         "core.js",
-        "fastclick.js"
+        "uitil.fastclick.js"
     ],
 
     "jsDependencies": [],

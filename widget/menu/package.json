@@ -50,12 +50,12 @@
             },
             "variables": [
                 {
-                    "variable": "am-menu-a-color",
+                    "variable": "menu-nav-link-color",
                     "name": "链接颜色",
                     "default": "#0e90d2",
                     "used": [
                         {
-                            "selector": "a",
+                            "selector": ".am-menu-nav a",
                             "property": "color"
                         }
                     ]
@@ -101,111 +101,111 @@
         {
             "id": "d1",
             "name": "dropdown1",
-            "desc": "二级下拉全宽",
+            "desc": "下拉全宽",
             "options": {
                 "cols": "1"
             },
             "hook": "hook-am-menu-dropdown1",
             "variables": [
                 {
-                    "variable": "trigger-color",
-                    "name": "触发菜单颜色",
+                    "variable": "menu-toggle-color",
+                    "name": "触发按钮颜色",
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": "& > li.am-parent > a:before",
+                            "selector": ".am-menu-toggle",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "lv2-color",
-                    "name": "二级菜单颜色",
+                    "variable": "menu-nav-top-link-color",
+                    "name": "一级菜单颜色",
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": ".am-menu-lv2 > li > a",
+                            "selector": ".am-menu-nav > li > a",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "lv2-bg-color",
-                    "name": "二级菜单背景色",
-                    "default": "#727B8A",
+                    "variable": "menu-nav-top-link-bg",
+                    "name": "一级菜单背景色",
+                    "default": "#0e90d2",
                     "used": [
                         {
-                            "selector": ".am-menu-lv2 > li > a",
+                            "selector": ".am-menu-nav > li > a",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "border-color",
+                    "variable": "menu-nav-border-color",
                     "name": "边框颜色",
                     "default": "#4C5565",
                     "used": [
                         {
-                            "selector": ".am-menu-lv2 > li > a",
+                            "selector": ".am-menu-nav > li > a",
                             "property": "border-bottom-color"
                         }
                     ]
                 },
                 {
-                    "variable": "lv2-active-color",
-                    "name": "二级菜单激活颜色",
+                    "variable": "menu-nav-top-link-active-color",
+                    "name": "一级菜单激活颜色",
                     "default": "#6B717D",
                     "used": [
                         {
-                            "selector": ".am-menu-lv2 > li.am-parent.am-open > a",
+                            "selector": ".am-menu-nav > li.am-parent.am-open > a",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "lv2-active-bg-color",
-                    "name": "二级菜单激活背景色",
+                    "variable": "menu-nav-top-link-active-bg",
+                    "name": "一级菜单激活背景色",
                     "default": "#C5C9D2",
                     "used": [
                         {
-                            "selector": ".am-menu-lv2 > li.am-parent.am-open > a",
+                            "selector": ".am-menu-nav > li.am-parent.am-open > a",
                             "property": "background-color"
                         },
                         {
-                            "selector": ".am-menu-lv2>li.am-parent.am-open>a::after",
+                            "selector": ".am-menu-nav > li.am-parent.am-open>a::after",
                             "property": "border-top-color"
                         }
                     ]
                 },
                 {
-                    "variable": "lv3-color",
-                    "name": "三级菜单颜色",
+                    "variable": "menu-nav-sub-link-color",
+                    "name": "二级菜单颜色",
                     "default": "#7E858F",
                     "used": [
                         {
-                            "selector": ".am-menu-lv3 a",
+                            "selector": ".am-menu-sub a",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "lv3-bg-color",
-                    "name": "三级菜单背景颜色",
+                    "variable": "menu-nav-sub-link-bg",
+                    "name": "二级菜单背景色",
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": ".am-menu-lv3",
+                            "selector": ".am-menu-sub",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "lv3-icon-color",
-                    "name": "三级菜单Icon颜色",
+                    "variable": "menu-nav-sub-link-icon-color",
+                    "name": "二级菜单 Icon 颜色",
                     "default": "#aaa",
                     "used": [
                         {
-                            "selector": ".am-menu-lv3 a::before",
+                            "selector": ".am-menu-sub a:before",
                             "property": "color"
                         }
                     ]
@@ -354,79 +354,79 @@
         {
             "id": "d2",
             "name": "dropdown2",
-            "desc": "二级下拉横排",
+            "desc": "下拉横排",
             "options": {
-                "cols": "1"
+                "cols": "4"
             },
             "hook": "hook-am-menu-dropdown2",
             "variables": [
                 {
-                    "variable": "trigger-color",
-                    "name": "触发菜单颜色",
+                    "variable": "menu-toggle-color",
+                    "name": "触发按钮颜色",
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": "& > li.am-parent > a::before",
+                            "selector": ".am-menu-toggle",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "trigger-active-color",
-                    "name": "触发菜单激活颜色",
-                    "default": "#F2F3F5",
+                    "variable": "menu-nav-top-link-color",
+                    "name": "一级菜单颜色",
+                    "default": "#fff",
                     "used": [
                         {
-                            "selector": "& > li.am-parent.am-open > a::before",
+                            "selector": ".am-menu-nav > li > a",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "lv2-color",
+                    "variable": "menu-nav-top-link-bg",
+                    "name": "一级菜单背景色",
+                    "default": "#0e90d2",
+                    "used": [
+                        {
+                            "selector": ".am-menu-nav",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "menu-nav-top-link-active-color",
+                    "name": "一级菜单激活颜色",
+                    "default": "#6B717D",
+                    "used": [
+                        {
+                            "selector": ".am-menu-nav>li.am-parent.am-open>a:after",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "menu-nav-sub-link-color",
                     "name": "二级菜单颜色",
-                    "default": "#2A2D32",
+                    "default": "#555",
                     "used": [
                         {
-                            "selector": ".am-menu-lv2 > li > a",
+                            "selector": ".am-menu-sub a",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "lv2-bg-color",
+                    "variable": "menu-nav-sub-link-bg",
                     "name": "二级菜单背景色",
-                    "default": "#F2F3F5",
+                    "default": "#fff",
                     "used": [
                         {
-                            "selector": ".am-menu-lv2",
+                            "selector": ".am-menu-sub",
                             "property": "background-color"
                         },
                         {
-                            "selector": "& > li.am-parent.am-open::before",
+                            "selector": ".am-menu-nav>li.am-parent.am-open>a:before",
                             "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv3-color",
-                    "name": "三级菜单颜色",
-                    "default": "#7E858F",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv3 a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "lv3-bg-color",
-                    "name": "三级菜单背景颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": ".am-menu-lv2 > li.am-parent.am-open .am-menu-lv3",
-                            "property": "background-color"
                         }
                     ]
                 }
@@ -588,49 +588,38 @@
             "hook": "hook-am-menu-slide1",
             "variables": [
                 {
-                    "variable": "trigger-color",
-                    "name": "触发器颜色",
-                    "default": "#ddd",
-                    "used": [
-                        {
-                            "selector": "& > .am-parent > a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "trigger-active-color",
-                    "name": "触发器激活颜色",
+                    "variable": "menu-toggle-color",
+                    "name": "触发按钮颜色",
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": "& > .am-parent.am-open > a",
+                            "selector": ".am-menu-toggle",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "lv2-bg-color",
-                    "name": "下滑菜单背景色",
-                    "default": "#F2F3F5",
+                    "variable": "@menu-nav-bg",
+                    "name": "菜单背景色",
+                    "default": "#f5f5f5",
                     "used": [
                         {
-                            "selector": ".am-menu-lv2>li>a",
+                            "selector": ".am-menu-nav",
                             "property": "background-color"
                         },
                         {
-                            "selector": "& > .am-parent.am-open::before",
+                            "selector": ".am-menu-nav.am-in:before",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "lv2-color",
-                    "name": "下滑菜单颜色",
+                    "variable": "menu-nav-link-color",
+                    "name": "菜单颜色",
                     "default": "#303338",
                     "used": [
                         {
-                            "selector": ".am-menu-lv2>li>a",
+                            "selector": ".am-menu-nav>li>a",
                             "property": "color"
                         }
                     ]
@@ -690,89 +679,78 @@
             "hook": "hook-am-menu-offcanvas1",
             "variables": [
                 {
-                    "variable": "nav-offcanvas-color",
-                    "name": "链接颜色",
+                    "variable": "menu-toggle-color",
+                    "name": "触发按钮颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-menu-toggle",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "menu-nav-top-link-color",
+                    "name": "一级菜单颜色",
                     "default": "#ccc",
                     "used": [
                         {
-                            "selector": "& > li > a",
+                            "selector": ".am-menu-nav > li > a",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "nav-offcanvas-hover-color",
-                    "name": "链接Hover颜色",
+                    "variable": "menu-nav-top-link-hover-color",
+                    "name": "一级菜单 Hover 颜色",
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": "& > .am-open > a, & > li > a:hover, & > li > a:focus",
+                            "selector": ".am-menu-nav > .am-open > a, .am-menu-nav > li > a:hover, .am-menu-nav > li > a:focus",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "nav-offcanvas-hover-bg-color",
-                    "name": "链接Hover背景色",
+                    "variable": "menu-nav-top-link-hover-bg",
+                    "name": "一级菜单 Hover 背景色",
                     "default": "#404040",
                     "used": [
                         {
-                            "selector": "& > .am-open > a, & > li > a:hover, & > li > a:focus",
+                            "selector": ".am-menu-nav > .am-open > a, .am-menu-nav > li > a:hover, .am-menu-nav > li > a:focus",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "nav-offcanvas-active-color",
-                    "name": "链接激活颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "& > li.am-active > a, .am-menu-sub",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "nav-offcanvas-active-bg-color",
-                    "name": "链接激活背景色",
+                    "variable": "menu-nav-top-link-active-bg",
+                    "name": "二级菜单背景色",
                     "default": "#1a1a1a",
                     "used": [
                         {
-                            "selector": ".am-menu-sub, & > li.am-active > a",
+                            "selector": ".am-menu-sub",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "nav-offcanvas-nested-color",
+                    "variable": "menu-nav-sub-link-color",
                     "name": "二级菜单颜色",
                     "default": "#eee",
                     "used": [
                         {
-                            "selector": "& ul a",
+                            "selector": ".am-menu-sub a",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "nav-offcanvas-nested-hover-color",
-                    "name": "二级菜单Hover颜色",
+                    "variable": "menu-nav-sub-link-hover-color",
+                    "name": "二级菜单 Hover 颜色",
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": "& ul a:hover",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "nav-offcanvas-border-color",
-                    "name": "边框颜色",
-                    "default": "rgba(0, 0, 0, 0.3)",
-                    "used": [
-                        {
-                            "selector": "& ul a:hover",
+                            "selector": ".am-menu-sub a:hover",
                             "property": "color"
                         }
                     ]
@@ -780,77 +758,7 @@
             ],
             "demos": [
                 {
-                    "desc": "左侧一级",
-                    "helper": "",
-                    "data": {
-                        "options": {
-                            "cols": "1"
-                        },
-                        "content": [
-                            {
-                                "link": "##",
-                                "title": "公司"
-                            },
-                            {
-                                "link": "##",
-                                "title": "人物"
-                            },
-                            {
-                                "link": "##",
-                                "title": "趋势"
-                            },
-                            {
-                                "link": "##",
-                                "title": "投融资"
-                            },
-                            {
-                                "link": "##",
-                                "title": "创业公司"
-                            },
-                            {
-                                "link": "##",
-                                "title": "创业人物"
-                            }
-                        ]
-                    }
-                },
-                {
-                    "desc": "右侧一级",
-                    "data": {
-                        "options": {
-                            "cols": "1",
-                            "offCanvasFlip": true
-                        },
-                        "content": [
-                            {
-                                "link": "##",
-                                "title": "公司"
-                            },
-                            {
-                                "link": "##",
-                                "title": "人物"
-                            },
-                            {
-                                "link": "##",
-                                "title": "趋势"
-                            },
-                            {
-                                "link": "##",
-                                "title": "投融资"
-                            },
-                            {
-                                "link": "##",
-                                "title": "创业公司"
-                            },
-                            {
-                                "link": "##",
-                                "title": "创业人物"
-                            }
-                        ]
-                    }
-                },
-                {
-                    "desc": "左侧二级",
+                    "desc": "侧滑左侧",
                     "data": {
                         "options": {
                             "cols": "1"
@@ -966,6 +874,41 @@
                             }
                         ]
                     }
+                },
+                {
+                    "desc": "侧滑右侧",
+                    "data": {
+                        "options": {
+                            "cols": "1",
+                            "offCanvasFlip": true
+                        },
+                        "content": [
+                            {
+                                "link": "##",
+                                "title": "公司"
+                            },
+                            {
+                                "link": "##",
+                                "title": "人物"
+                            },
+                            {
+                                "link": "##",
+                                "title": "趋势"
+                            },
+                            {
+                                "link": "##",
+                                "title": "投融资"
+                            },
+                            {
+                                "link": "##",
+                                "title": "创业公司"
+                            },
+                            {
+                                "link": "##",
+                                "title": "创业人物"
+                            }
+                        ]
+                    }
                 }
             ]
         },
@@ -980,71 +923,82 @@
             "hook": "hook-am-menu-offcanvas2",
             "variables": [
                 {
-                    "variable": "nav-offcanvas-color",
+                    "variable": "menu-toggle-color",
+                    "name": "触发按钮颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-menu-toggle",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "menu-nav-link-color",
                     "name": "链接颜色",
                     "default": "#ccc",
                     "used": [
                         {
-                            "selector": "& > li > a",
+                            "selector": ".am-menu-nav > li > a",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "nav-offcanvas-bg-color",
+                    "variable": "menu-nav-link-bg",
                     "name": "链接背景色",
                     "default": "#404040",
                     "used": [
                         {
-                            "selector": "& > li > a",
+                            "selector": ".am-menu-nav > li > a",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "nav-offcanvas-hover-color",
-                    "name": "链接Hover颜色",
+                    "variable": "menu-nav-link-hover-color",
+                    "name": "链接 Hover 颜色",
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": "& > li > a:hover, & > li > a:focus",
+                            "selector": ".am-menu-nav > li > a:hover, .am-menu-nav > li > a:focus",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "nav-offcanvas-active-color",
+                    "variable": "menu-nav-link-active-color",
                     "name": "链接激活颜色",
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": "& > li.am-active > a",
+                            "selector": ".am-menu-nav > .am-active > a",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "nav-offcanvas-active-bg-color",
+                    "variable": "menu-nav-link-active-bg",
                     "name": "链接激活背景色",
                     "default": "#262626",
                     "used": [
                         {
-                            "selector": "& > li > a:hover, & > li > a:focus",
+                            "selector": ".am-menu-nav > li > a:hover, .am-menu-nav > li > a:focus",
                             "property": "background-color"
                         },
                         {
-                            "selector": "& > li.am-active > a",
+                            "selector": ".am-menu-nav > .am-active > a",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "nav-offcanvas-border-color",
+                    "variable": "menu-nav-border-color",
                     "name": "边框颜色",
                     "default": "rgba(0, 0, 0, 0.3)",
                     "used": [
                         {
-                            "selector": "& > li > a",
+                            "selector": ".am-menu-nav > li > a",
                             "property": "border-color"
                         }
                     ]
@@ -1052,7 +1006,7 @@
             ],
             "demos": [
                 {
-                    "desc": "右侧",
+                    "desc": "侧滑横排",
                     "data": {
                         "options": {
                             "cols": "3",
@@ -1146,82 +1100,78 @@
             "hook": "hook-am-menu-stack",
             "variables": [
                 {
-                    "variable": "vertical-lv1-bg-color",
+                    "variable": "menu-nav-top-bg",
                     "name": "一级菜单背景色",
                     "default": "#F5F5F5",
                     "used": [
                         {
-                            "selector": "& > li > a",
+                            "selector": ".am-menu-nav>li>a",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "vertical-color",
+                    "variable": "menu-nav-top-link-color",
                     "name": "一级菜单颜色",
                     "default": "#333",
                     "used": [
                         {
-                            "selector": "& > li > a",
+                            "selector": ".am-menu-nav > li > a",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "vertical-hover-bg-color",
-                    "name": "一级菜单Hover背景色",
+                    "variable": "menu-nav-top-link-hover-bg",
+                    "name": "一级 Hover 背景色",
                     "default": "#ddd",
                     "used": [
                         {
-                            "selector": "&>.am-open>a, &>li>a:hover,&>li>a:focus",
+                            "selector": ".am-menu-nav>.am-open>a, .am-menu-nav>li>a:hover,.am-menu-nav>li>a:focus",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "vertical-hover-color",
-                    "name": "一级菜单Hover颜色",
+                    "variable": "menu-nav-top-link-hover-color",
+                    "name": "一级 Hover 颜色",
                     "default": "#222",
                     "used": [
                         {
-                            "selector": "&>.am-open>a, &>li>a:hover,&>li>a:focus",
+                            "selector": ".am-menu-nav>.am-open>a, .am-menu-nav>li>a:hover,.am-menu-nav>li>a:focus",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "vertical-nested-color",
+                    "variable": "menu-nav-sub-link-color",
                     "name": "二级菜单颜色",
                     "default": "#444",
                     "used": [
                         {
-                            "selector": "& ul a",
+                            "selector": ".am-menu-sub a",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "vertical-nested-hover-color",
-                    "name": "二级菜单Hover颜色",
+                    "variable": "menu-nav-sub-link-hover-color",
+                    "name": "二级 Hover 颜色",
                     "default": "#333",
                     "used": [
                         {
-                            "selector": "& ul a:hover",
+                            "selector": ".am-menu-sub a:hover",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "vertical-bd-color",
+                    "variable": "menu-nav-border-color",
                     "name": "边框颜色",
-                    "default": "rgba(0, 0, 0, 0.15)",
+                    "default": "dedede",
                     "used": [
                         {
-                            "selector": "",
-                            "property": "border-bottom-color"
-                        },
-                        {
-                            "selector": ".am-menu-sub a",
+                            "selector": ".am-menu-nav",
                             "property": "border-bottom-color"
                         },
                         {
@@ -1229,7 +1179,7 @@
                             "property": "border-bottom-color"
                         },
                         {
-                            "selector": "& > li > a",
+                            "selector": ".am-menu-sub, .am-menu-nav > li > a",
                             "property": "border-top-color"
                         }
                     ]

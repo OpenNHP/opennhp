@@ -1,8 +1,8 @@
 /*!
- * Amaze UI 1.0.0 alpha
+ * Amaze UI 1.0.0 beta1
  *
  * @author: Amaze UI Team
- * @copyright:   AllMobilize Inc.
+ * @copyright: AllMobilize Inc.
  * @license: MIT
  * @contact: minwe@yunshipie.com, hzp@yunshipei.com
  */
@@ -9689,10 +9689,10 @@ tbody.am-collapse.am-in {
   border-bottom: none;
   color: #ffffff;
 }
-.am-menu-dropdown1 .am-menu-nav > li.am-parent.am-open > a::before {
+.am-menu-dropdown1 .am-menu-nav > li.am-parent.am-open > a:before {
   content: "\f068";
 }
-.am-menu-dropdown1 .am-menu-nav > li.am-parent.am-open > a::after {
+.am-menu-dropdown1 .am-menu-nav > li.am-parent.am-open > a:after {
   content: "";
   display: inline-block;
   width: 0;
@@ -9730,7 +9730,7 @@ tbody.am-collapse.am-in {
   text-indent: 5px;
   padding: 0;
 }
-.am-menu-dropdown1 .am-menu-sub a::before {
+.am-menu-dropdown1 .am-menu-sub a:before {
   content: "\f105";
   color: #aaaaaa;
   font-size: 16px;
@@ -9768,14 +9768,11 @@ tbody.am-collapse.am-in {
 .am-menu-dropdown2 .am-menu-nav > li.am-parent > a {
   position: relative;
 }
-.am-menu-dropdown2 .am-menu-nav > li.am-parent > a::after {
+.am-menu-dropdown2 .am-menu-nav > li.am-parent > a:after {
   content: "\f107";
   margin-left: 5px;
   -webkit-transition: 0.2s;
   transition: 0.2s;
-}
-.am-menu-dropdown2 .am-menu-nav > li.am-parent.am-open > .am-menu-sub {
-  background-color: #ffffff;
 }
 .am-menu-dropdown2 .am-menu-nav > li.am-parent.am-open > a {
   position: relative;
@@ -9800,16 +9797,16 @@ tbody.am-collapse.am-in {
   position: absolute;
   left: 5px;
   right: 5px;
+  padding: 8px 0;
   border-radius: 2px;
   box-shadow: 0 0 3px rgba(0, 0, 0, 0.15);
   background-color: #ffffff;
 }
 .am-menu-dropdown2 .am-menu-sub a {
   padding: 0;
-  height: 40px;
+  height: 35px;
   color: #555555;
-  background-color: #ffffff;
-  line-height: 40px;
+  line-height: 35px;
 }
 @media only screen and (min-width:641px) {
   .am-menu-dropdown2 .am-menu-toggle {
@@ -9854,6 +9851,9 @@ tbody.am-collapse.am-in {
   display: block;
   color: #ffffff;
 }
+.am-menu-slide1 .am-menu-nav {
+  background-color: #f5f5f5;
+}
 .am-menu-slide1 .am-menu-nav.am-in:before {
   /* 1 */
   /* 2 */
@@ -9890,7 +9890,6 @@ tbody.am-collapse.am-in {
   text-align: center;
 }
 .am-menu-slide1 .am-menu-nav > li > a {
-  background-color: #f5f5f5;
   color: #333333;
   display: block;
   word-wrap: normal;
@@ -9956,6 +9955,10 @@ tbody.am-collapse.am-in {
   color: #ffffff;
   outline: none;
 }
+.am-menu-offcanvas1 .am-menu-nav > .am-active > a {
+  background-color: #1a1a1a;
+  color: #ffffff;
+}
 .am-menu-offcanvas1 .am-menu-nav > .am-parent > a {
   -webkit-transition: all 0.3s;
   transition: all 0.3s;
@@ -9974,7 +9977,6 @@ tbody.am-collapse.am-in {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   padding: 5px 0 5px 15px;
   background-color: #1a1a1a;
-  color: #ffffff;
   font-size: 1.4rem;
 }
 .am-menu-offcanvas1 .am-menu-sub a {

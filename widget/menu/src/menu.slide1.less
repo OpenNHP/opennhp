@@ -21,6 +21,8 @@
   }
 
   .am-menu-nav {
+    background-color: @menu-nav-bg;
+
     &.am-in {
       &:before {
         .am-icon-font;
@@ -41,9 +43,8 @@
       text-align: center;
     }
 
-    & > li {
+    > li {
       > a {
-        background-color: @menu-nav-bg;
         color: @menu-nav-link-color;
         .text-overflow(block);
       }

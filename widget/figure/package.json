@@ -38,7 +38,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "灰色边框",
             "options": {
@@ -88,7 +87,6 @@
             ]
         },
         {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "options": {

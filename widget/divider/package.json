@@ -37,7 +37,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "灰色分隔线",
             "hook": "hook-am-divider-default",
@@ -64,7 +63,6 @@
             ]
         },
         {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "hook": "hook-am-divider-one",
@@ -84,9 +82,7 @@
             "demos": [
                 {
                     "desc": "",
-                    "data": {
-
-                    }
+                    "data": {}
                 }
             ]
         }

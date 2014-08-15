@@ -33,14 +33,13 @@
 
     "styleDependencies": [
         "icon.less",
-        "ui.accordion.less"
+        "ui.component.less"
     ],
 
     "style": "accordion.less",
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "圆角灰边",
             "options": {
@@ -112,6 +111,7 @@
                 {
                     "desc": "",
                     "data": {
+                        "options": {"multiple": true},
                         "content": [
                             {
                                 "title": "云适配的技术原理是什么？",
@@ -132,7 +132,6 @@
             ]
         },
         {
-            "id": "t1",
             "name": "basic",
             "desc": "极简无边框",
             "options": {
@@ -202,7 +201,6 @@
             ]
         },
         {
-            "id": "t2",
             "name": "gapped",
             "desc": "扁平分离边框",
             "options": {
@@ -294,7 +292,6 @@
             ]
         },
         {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "options": {

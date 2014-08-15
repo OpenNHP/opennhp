@@ -39,7 +39,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "无边框",
             "options": {
@@ -145,7 +144,6 @@
             ]
         },
         {
-            "id": "t1",
             "name": "overlay",
             "desc": "浮层标题",
             "options": {
@@ -212,7 +210,6 @@
             ]
         },
         {
-            "id": "t2",
             "name": "bordered",
             "desc": "容器边框",
             "options": {
@@ -282,7 +279,6 @@
             ]
         },
         {
-            "id": "t3",
             "name": "imgbordered",
             "desc": "图片边框",
             "options": {
@@ -352,7 +348,6 @@
             ]
         },
         {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "options": {

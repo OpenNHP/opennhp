@@ -41,7 +41,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "横排",
             "hook": "hook-am-menu-default",
@@ -99,7 +98,6 @@
             ]
         },
         {
-            "id": "d1",
             "name": "dropdown1",
             "desc": "下拉全宽",
             "options": {
@@ -347,12 +345,10 @@
                             "title": "创业人物"
                         }
                     ]
-
                 }
             }]
         },
         {
-            "id": "d2",
             "name": "dropdown2",
             "desc": "下拉横排",
             "options": {
@@ -579,7 +575,6 @@
             ]
         },
         {
-            "id": "s1",
             "name": "slide1",
             "desc": "指示箭头一级下滑1",
             "options": {
@@ -670,7 +665,6 @@
             ]
         },
         {
-            "id": "oc1",
             "name": "offcanvas1",
             "desc": "侧滑竖排",
             "options": {
@@ -913,7 +907,6 @@
             ]
         },
         {
-            "id": "oc2",
             "name": "offcanvas2",
             "desc": "侧滑横排",
             "options": {
@@ -1091,7 +1084,6 @@
             ]
         },
         {
-            "id": "stack",
             "name": "stack",
             "desc": "垂直菜单",
             "options": {
@@ -1307,7 +1299,6 @@
             ]
         },
         {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "options": {

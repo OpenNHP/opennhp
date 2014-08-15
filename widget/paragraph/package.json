@@ -37,7 +37,6 @@
 
     "themes": [
         {
-            "id": "default",
             "name": "default",
             "desc": "默认",
             "hook": "hook-am-paragraph-default",
@@ -89,7 +88,6 @@
             }]
         },
         {
-            "id": "one",
             "name": "one",
             "desc": "简约风格",
             "hook": "hook-am-paragraph-one",

@@ -33,7 +33,7 @@
 
     "styleDependencies": [
         "icon.less",
-        "ui.accordion.less"
+        "ui.component.less"
     ],
 
     "style": "accordion.less",
@@ -111,6 +111,7 @@
                 {
                     "desc": "",
                     "data": {
+                        "options": {"multiple": true},
                         "content": [
                             {
                                 "title": "云适配的技术原理是什么？",

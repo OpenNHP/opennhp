@@ -1,21 +1,42 @@
-define(function (require, exports, module) {
-    var accordion = require('ui.accordion');
+define(function(require, exports, module) {
+    require('ui.collapse');
 
     var $ = window.Zepto,
+        UI = $.AMUI,
         accordionInit = function() {
-            $('.am-accordion').each(function(index, item) {
-                var settings = $(item).attr('data-accordion-settings');
-                try {
-                    settings = JSON.parse(settings);
-                    $(item).accordion(settings);
-                } catch(e) {
-                    $(item).accordion();
-                }
+            var $accordion = $('[data-am-widget="accordion"]'),
+                selector = {
+                    item: '.am-accordion-item',
+                    title: '.am-accordion-title',
+                    content: '.am-accordion-content'
+                };
+
+            $accordion.each(function(i, item) {
+                var options = UI.utils.parseOptions($(item).attr('data-am-accordion')),
+                    $title = $accordion.find(selector.title);
+
+                $title.on('click', function() {
+                    var $content = $(this).next(selector.content),
+                        $parent = $(this).parent(selector.item),
+                        data = $content.data('amui.collapse');
+
+                    $parent.toggleClass('am-active');
+
+                    if (!data) {
+                        $content.collapse();
+                    } else {
+                        $content.collapse('toggle');
+                    }
+
+                    !options.multiple &&
+                    $(item).children('.am-active').not($parent).removeClass('am-active').find('.am-accordion-content.am-in').collapse('close');
+
+                });
             });
         };
 
     // Init on DOM ready
-    $(function () {
+    $(function() {
         accordionInit();
     });
 

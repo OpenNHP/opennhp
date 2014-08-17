@@ -52,11 +52,10 @@ var data = {
 return data;
 ```
 
-### 设置说明
+### 设置说明（0.9）
 
 - `options` 内 `select` 选项：默认是 theme-1，更改此属性后，使用 theme-2 或 theme-3；
-- 设置 `total` 值：显示形式为 `3/5`，否则为 `3` 形式；
-- `content` 中，可选值设置显示，否则不显示；
+- 设置总页数 `total` 值：显示形式为 `3/5`，否则为 `3` 形式；
 - 使用 `theme-2` 或 `theme-3` 时，页码改变调用函数为：pageChange()，需自行定义。
 
 ## 数据结构
@@ -76,13 +75,13 @@ return data;
   },
 
   "content": {
-    // 可选
-    "firstTitle": "第一页",
-    "firstLink": "#",
-
-    // 可选
+    // 上一页
     "prevTitle": "上一页",
     "prevLink": "#",
+
+    // 第一页
+    "firstTitle": "第一页",
+    "firstLink": "#",
 
     // 可选
     "nextTitle": "下一页",
@@ -92,12 +91,14 @@ return data;
     "lastTitle": "最末页",
     "lastLink": "#",
 
+    "total": "", // 总页数
+
     "page": [
       {
         "title": "1",
         "link": "#",
-        "total": "",
-        "class": ""
+        "class": "" // AMUI 0.9
+        "className": "", // AMUI 1.0
       }
     ]
   }

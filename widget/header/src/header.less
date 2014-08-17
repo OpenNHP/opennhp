@@ -1,18 +1,38 @@
 .am-header {
-  @am-header-height: 50px;
+  @am-header-height: 49px;
 
+  position: relative;
+  width: 100%;
   height: @am-header-height;
   line-height: @am-header-height;
   padding: 0 10px;
 
-  h2 {
+  h1 {
     margin-top: 0;
     margin-bottom: 0;
-    font-size: 1.6rem;
   }
 
-  font-size: 100%;
+  .am-header-title {
+    margin: 0 30%;
+    font-size: 2rem;
+    font-weight: normal;
+    text-align: center;
+    .text-overflow();
+  }
+
+  .am-header-nav {
+    position: absolute;
+    top: 0;
+  }
+
+  .am-header-left {
+    left: 10px;
+  }
+
+  .am-header-right {
+    right: 10px;
+  }
 
   .hook-am-header;
 }
-.hook-am-header() {};
+.hook-am-header() {}

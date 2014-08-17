@@ -1,38 +1,61 @@
 {{#this}}
-  <div data-am-widget="header" class="am-header{{#if theme}} am-header-{{theme}}{{else}} am-header-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"{{#if id}} id="{{id}}"{{/if}}>
+  <header data-am-widget="header"
+          class="am-header{{#if theme}} am-header-{{theme}}{{else}} am-header-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"{{#if id}}
+          id="{{id}}"{{/if}}>
     {{#if content.left}}
-    <div class="am-header-left">
-      {{#each content.left}}
-        <a href="{{link}}">
-          {{# if icon}}
-            <span class="am-icon-sm {{icon}} "></span>
-              {{else}}
-                <img src="{{img}}"/>
+      <div class="am-header-left am-header-nav">
+        {{#each content.left}}
+          <a href="{{link}}" class="{{className}}">
+            {{#if title}}
+              <span class="am-header-nav-title">
+                {{title}}
+              </span>
+            {{/if}}
+
+            {{# if customIcon}}
+              <img class="am-header-icon-custom" src="{{customIcon}}" alt=""/>
+            {{else}}
+              {{#if icon}}
+                <i class="am-header-icon am-icon-{{icon}}"></i>
               {{/if}}
-        </a>
-      {{/each}}
-    </div>
+            {{/if}}
+          </a>
+        {{/each}}
+      </div>
     {{/if}}
 
     {{#if content.title}}
-      <h2 class="am-header-title">
-        {{{content.title}}}
-      </h2>
+      <h1 class="am-header-title">
+        {{#if content.link}}
+          <a href="{{content.link}}">
+            {{{content.title}}}
+          </a>
+        {{else}}
+          {{{content.title}}}
+        {{/if}}
+      </h1>
     {{/if}}
 
     {{#if content.right}}
-    <div class="am-header-right">
-      {{#each content.right}}
-        <a href="{{link}}">
-          {{# if icon}}
-            <span class="am-icon-sm {{icon}} "></span>
-          {{else}}
-            <img src="{{img}}"/>
-          {{/if}}
-        </a>
-      {{/each}}
-    </div>
-    {{/if}}
+      <div class="am-header-right am-header-nav">
+        {{#each content.right}}
+          <a href="{{link}}" class="{{className}}">
+            {{#if title}}
+              <span class="am-header-nav-title">
+                {{title}}
+              </span>
+            {{/if}}
 
-  </div>
+            {{# if customIcon}}
+              <img class="am-header-icon-custom" src="{{customIcon}}" alt=""/>
+            {{else}}
+              {{#if icon}}
+                <i class="am-header-icon am-icon-{{icon}}"></i>
+              {{/if}}
+            {{/if}}
+          </a>
+        {{/each}}
+      </div>
+    {{/if}}
+  </header>
 {{/this}}

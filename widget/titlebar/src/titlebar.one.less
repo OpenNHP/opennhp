@@ -1,81 +1,80 @@
 /**
   * Titlebar Theme: one
-  * Theme ID: one
   */
 
 .am-titlebar-one {
-  @global-primary: #15afef;
-  @global-dark-gray: #888;
+  @one-primary: #15afef;
 
-  @titlebar-text-color: @global-primary;
-  @titlebar-title-color: @global-primary;
-  @titlebar-left-a-color: @black;
-  @titlebar-bg-color: @white;
-  @titlebar-title-before: @global-primary;
-  @titlebar-right-a-color: @global-dark-gray;
+  @titlebar-bg: @white;
+  @titlebar-text-color: @one-primary;
+  @titlebar-title-color: @one-primary;
+  @titlebar-title-link-color: @gray-darker;
+  @titlebar-border-color: @one-primary;
+  @titlebar-nav-link-color: @gray-light;
 
-  margin: 0 10px!important;
-  padding: 0!important;
-  height: 39px!important;
-  line-height: 40px!important;
-  background: @titlebar-bg-color;
+  display: -webkit-box;
+
+  margin-left: 10px;
+  margin-right: 10px;
+  height: 45px;
+  line-height: 44px;
+  background: @titlebar-bg;
   overflow: hidden;
-  border-bottom: 1px solid @titlebar-title-before;
+  border-bottom: 1px solid @titlebar-border-color;
 
-  .am-titlebar-left {
-    float: left;
-    padding-left: 5px;
+  .am-titlebar-title {
+    padding-left: 12px;
     position: relative;
-    color: @titlebar-left-a-color;
-    text-indent: 10px;
-    width: 80%;
+    color: @titlebar-title-link-color;
     .text-overflow();
 
-    &::before{
-      content: '';
-      width: 4px;
-      height: 30px;
+    &:before {
+      content: "";
       position: absolute;
-      left: 5px;
-      top: 5px;
-      background: @titlebar-title-before;
-
+      left: 2px;
+      top: 8px;
+      bottom: 8px;
+      border-left: 3px solid @titlebar-text-color;
     }
-    img{
+
+    img {
       max-height: 30px;
       vertical-align: top;
       margin-top: 4px;
     }
-    a{
-      color: @titlebar-left-a-color;
+
+    a {
+      color: @titlebar-title-link-color;
     }
 
-    h1,h2,h3,h4,h5,h6,strong,em{
+    h1, h2, h3, h4, h5, h6, strong, em {
       font-style: normal;
       font-weight: normal;
       margin-bottom: 0;
     }
 
-    ul,li{
+    ul, li {
       list-style: none;
       padding-left: 0;
     }
 
-
   }
 
-  .am-titlebar-right {
-    float: right;
+  .am-titlebar-nav {
+    -webkit-box-flex: 1;
+    text-align: right;
+
     padding-right: 5px;
-    color: @titlebar-right-a-color;
+    color: @titlebar-nav-link-color;
     font-size: 1.4rem;
 
-    a{
-      color: @titlebar-right-a-color;
+    a {
+      color: @titlebar-nav-link-color;
     }
   }
 
   .hook-am-titlebar-one;
 }
 
-.hook-am-titlebar-one() {}
+.hook-am-titlebar-one() {
+}

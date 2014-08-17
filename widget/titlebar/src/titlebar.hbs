@@ -1,19 +1,21 @@
 {{#this}}
 <div data-am-widget="titlebar" class="am-titlebar {{#if theme}}am-titlebar-{{theme}}{{else}}am-titlebar-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}" {{#if id}}id="{{id}}"{{/if}}>
-  {{#if content.left}}
-    <div class="am-titlebar-left">
-      {{{content.left}}}
-    </div>
-  {{/if}}
   {{#if content.title}}
     <h2 class="am-titlebar-title">
-      {{{content.title}}}
+      {{#if content.link}}
+        <a href="{{content.link}}">{{{content.title}}}</a>
+      {{else}}
+        {{{content.title}}}
+      {{/if}}
     </h2>
   {{/if}}
-  {{#if content.right}}
-    <div class="am-titlebar-right">
-      {{{content.right}}}
-    </div>
+
+  {{#if content.nav}}
+    <nav class="am-titlebar-nav">
+      {{#each content.nav}}
+        <a href="{{link}}" class="{{className}}">{{{title}}}</a>
+      {{/each}}
+    </nav>
   {{/if}}
 </div>
 {{/this}}

@@ -1,6 +1,7 @@
 # Header
 ---
-用于自动转码项目页头部分
+
+页头组件，为移动页面顶部的导航条设计。
 
 ## 使用方法
 
@@ -21,19 +22,25 @@
 ```javascript
 var data = {
 
-  "left": "[{
-    "link": "",         //url : http://xxx.xxx.xxx。
-    "icon": "",         //class : 使用 Amaze UI 字体图标 http://www.amazeui.org/css/icon，优先使用字体图标。
-    "img": ""           //img : 图片
-  }]",                  //left、right 可以写多个
+  "left": [
+      {
+        "link": "",         // url : http://xxx.xxx.xxx
+        "title": "",        // 链接标题
+        "icon": "",         // 字体图标名称: 使用 Amaze UI 字体图标 http://www.amazeui.org/css/icon
+        "customIcon": ""    // 自定义图标 URL，设置此项后当前链接不再显示 icon
+      }
+  ],
 
-  "title": "",			//可写 html 标签（可选）
+  "title": "",			//可写 html 标签
 
-  "right": "[{
-      "link": "",
-      "icon": "",
-      "img": ""
-    }]"
+  "right": [ // 右侧字段含义同左侧
+      {
+        "link": "",
+        "title": "",
+        "icon": "",
+        "customIcon": ""
+      }
+  ]
 };
 
 return data;
@@ -49,22 +56,25 @@ return data;
 
   "theme": "",
 
-  "options": {
-  },
+  "options": null,
 
   "content": {
     "left": [{
         "link": "",
+        "title": "",
         "icon": "",
-        "img": ""
+        "customIcon": "",
+        "className": ""
     }],
 
     "title": "",
 
     "right": [{
         "link": "",
+        "title": "",
         "icon": "",
-        "img": ""
+        "customIcon": "",
+        "className": ""
     }]
   }
 }

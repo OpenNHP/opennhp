@@ -17,7 +17,7 @@
 
     "poweredBy": "AllMobilize",
 
-    "description": "自动转码项目页头",
+    "description": "页面顶部",
 
     "styleBase": [
         "variables.less",
@@ -38,7 +38,104 @@
 
     "themes": [
         {
-            "id": "one",
+            "name": "default",
+            "desc": "深色背景",
+            "options": {},
+            "hook": "hook-am-header-one",
+            "demos": [
+                {
+                    "desc": "图标",
+                    "data": {
+                        "content": {
+                            "left": [{
+                                "link": "#left-link",
+                                "icon": "home"
+                            }],
+                            "title": "Amaze UI",
+                            "link": "#title-link",
+                            "right": [{
+                                "link": "#right-link",
+                                "icon": "bars"
+                            }]
+                        }
+                    }
+                },
+                {
+                    "desc": "图标+文字",
+                    "data": {
+                        "content": {
+                            "left": [{
+                                "link": "#left-link",
+                                "title": "首页",
+                                "icon": "home"
+                            }],
+                            "title": "Amaze UI",
+                            "right": [{
+                                "link": "#right-link",
+                                "icon": "bars",
+                                "title": "菜单"
+                            }]
+                        }
+                    }
+                },
+                {
+                    "desc": "多图标",
+                    "data": {
+                        "content": {
+                            "left": [
+                                {
+                                "link": "#left-link",
+                                "icon": "home"
+                                },
+                                {
+                                    "link": "#phone-link",
+                                    "icon": "phone"
+                                }
+                            ],
+                            "title": "Amaze UI",
+                            "right": [
+                                {
+                                "link": "#user-link",
+                                "icon": "user"
+                                },
+                                {
+                                    "link": "#cart-link",
+                                    "icon": "shopping-cart"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "desc": "结合按钮",
+                    "data": {
+                        "content": {
+                            "left": [
+                                {
+                                    "link": "#left-link",
+                                    "icon": "home",
+                                    "title": "返回",
+                                    "className": "am-btn am-btn-default"
+                                }
+                            ],
+                            "title": "Amaze UI",
+                            "right": [
+                                {
+                                    "link": "#user-link",
+                                    "icon": "user"
+                                },
+                                {
+                                    "link": "#cart-link",
+                                    "className": "am-btn am-btn-secondary",
+                                    "icon": "shopping-cart"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
             "name": "one",
             "desc": "简约风格",
             "options": {},
@@ -87,18 +184,15 @@
                     "data": {
                         "content": {
                             "left": [{
-                                "link": "/",
-                                "icon": "am-icon-home",
-                                "img": ""
+                                "link": "#left-link",
+                                "icon": "home"
                             }],
-                            "title": "云适配AMUI",
+                            "title": "Amaze UI",
                             "right": [{
-                                "link": "/",
-                                "icon": "am-icon-bars",
-                                "img": ""
+                                "link": "#right-link",
+                                "icon": "bars"
                             }]
                         }
-
                     }
                 }
             ]
@@ -181,5 +275,5 @@
 
     "example": "",
 
-    "hidden": true
+    "hidden": false
 }

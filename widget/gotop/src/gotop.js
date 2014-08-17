@@ -17,3 +17,5 @@ define(function(require, exports, module) {
 
     exports.init = goTopInit;
 });
+
+// TODO: 增加根据滚动条自动悬浮功能。

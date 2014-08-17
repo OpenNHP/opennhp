@@ -8867,14 +8867,8 @@ tbody.am-collapse.am-in {
   display: inline-block;
   text-decoration: none;
 }
-.am-gotop-layout-fixed {
-  position: fixed;
-  right: 10px;
-  bottom: 10px;
-}
 /**
   * Gotop Theme: default
-  * Theme ID: default
   */
 .am-gotop-default {
   text-align: center;
@@ -8883,112 +8877,72 @@ tbody.am-collapse.am-in {
 .am-gotop-default a {
   background-color: #15afef;
   padding: .5em 1.5em;
-  border-radius: 3px;
+  border-radius: 2px;
   color: #ffffff;
 }
 .am-gotop-default a img {
   display: none;
 }
 /**
-  * Gotop Theme: mini
-  * Theme ID: t1
+  * Gotop Theme: fixed
   */
-.am-gotop-mini {
-  width: 25px;
-  height: 25px;
-  background-color: #15afef;
-  border-radius: 3px;
-  border: 1px solid #15afef;
-  margin: 10px 10px 10px auto;
-  float: right;
+.am-gotop-fixed {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  z-index: 1010;
+  opacity: .9;
+  width: 32px;
+  min-height: 32px;
+  overflow: hidden;
+  border-radius: 2px;
+  text-align: center;
 }
-.am-gotop-mini a {
+.am-gotop-fixed:hover {
+  opacity: 1;
+}
+.am-gotop-fixed a {
   display: block;
-  position: relative;
-  height: 100%;
 }
-.am-gotop-mini a:after {
-  position: absolute;
-  width: 0;
-  height: 0;
-  top: 2px;
-  left: 6px;
-  border: 6px rgba(0, 0, 0, 0) solid;
-  content: "";
-  z-index: 99;
-  border-bottom-color: #ffffff;
-}
-.am-gotop-mini a img,
-.am-gotop-mini a span {
+.am-gotop-fixed .am-gotop-title {
   display: none;
 }
-/**
-  * Gotop Theme: icon
-  * Theme ID: t2
-  */
-.am-gotop-icon {
-  margin: 10px 10px 10px auto;
-  float: right;
+.am-gotop-fixed .am-gotop-icon-custom {
+  display: inline-block;
+  max-width: 30px;
+  vertical-align: middle;
 }
-.am-gotop-icon a {
-  display: block;
+.am-gotop-fixed .am-gotop-icon {
+  width: 100%;
+  line-height: 32px;
+  background: #555555;
+  vertical-align: middle;
+  color: #ddd;
 }
-.am-gotop-icon a span {
-  display: none;
-}
-.am-gotop-icon img {
-  display: block;
-  margin: 0 auto;
-  width: 30px;
+.am-gotop-fixed .am-gotop-icon:hover {
+  color: #fff;
 }
 /**
   * Gotop Theme: one
-  * Theme ID: one
   */
 .am-gotop-one {
-  width: 30px;
-  height: 30px;
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  z-index: 1005;
+  width: 32px;
+  height: 32px;
   background-color: #ffffff;
-  border-radius: 3px;
+  border-radius: 2px;
   border: 1px solid #15afef;
-  margin: 10px 10px 10px auto;
-  float: right;
+  text-align: center;
 }
-.am-gotop-one a {
-  display: block;
-  position: relative;
-  height: 100%;
-}
-.am-gotop-one a:after {
-  /* 1 */
-  /* 2 */
-  /* 2 */
-  /* 3 */
-  /* 4 */
-  /* 5 */
-  display: inline-block;
-  /* 1 */
-  font-family: "FontAwesome";
-  font-weight: normal;
-  /* 2 */
-  font-style: normal;
-  /* 2 */
-  vertical-align: baseline;
-  /* 3 */
-  line-height: 1;
-  /* 4 */
-  -webkit-font-smoothing: antialiased;
-  /* 5 */
-  -moz-osx-font-smoothing: grayscale;
-  content: "\f077";
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  color: #15afef;
-}
-.am-gotop-one a img,
-.am-gotop-one a span {
+.am-gotop-one .am-gotop-title {
   display: none;
+}
+.am-gotop-one .am-gotop-icon {
+  vertical-align: middle;
+  display: inline-block;
 }
 /**
   * Intro Theme: default

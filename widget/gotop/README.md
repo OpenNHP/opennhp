@@ -19,6 +19,20 @@
 - 将组件拖入编辑界面；
 - 点击右侧面板里的【数据采集】按钮，按以下格式采集数据。
 
+#### Amaze UI 1.0
+
+```javascript
+var data = {
+  "title":      "回到顶部"	  // 显示文字（某些主题不显示）
+  "icon":       "arrow-up"	// 图标名称，使用内置的 Icon Font
+  "customIcon": ""          // 自定义图标 URL
+};
+
+return data;
+```
+
+#### Amaze UI 0.9
+
 ```javascript
 var data = {
   "img": "",		// 不建议使用，可设置成背景
@@ -27,6 +41,7 @@ var data = {
 
 return data;
 ```
+
 
 ## 数据接口
 
@@ -38,13 +53,10 @@ return data;
 
   "theme": "default",
 
-  "options": {
-    "layout": "fixed"
-  },
-
   "content": {
-    "img": "",     // 一般情况下，不直接传图片，建议把图标放背景里
-    "hint": "回到顶部"
+    "title":      "回到顶部"	  // 显示文字（某些主题不显示）
+    "icon":       "arrow-up"	// 图标名称，使用内置的 Icon Font
+    "customIcon": ""          // 自定义图标 URL
   }
 }
 ```

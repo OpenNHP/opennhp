@@ -1,7 +1,7 @@
 {
     "name": "gotop",
 
-    "version": "2.0.0",
+    "version": "3.0.0",
 
     "localName": {
         "en": "Gotop",
@@ -42,7 +42,7 @@
             "hook": "hook-am-gotop-default",
             "variables": [
                 {
-                    "variable": "gotop-a-bg-color",
+                    "variable": "gotop-link-bg",
                     "name": "背景颜色",
                     "default": "#428bca",
                     "used": [
@@ -53,7 +53,7 @@
                     ]
                 },
                 {
-                    "variable": "gotop-a-text-color",
+                    "variable": "gotop-link-color",
                     "name": "文字颜色",
                     "default": "#fff",
                     "used": [
@@ -69,69 +69,37 @@
                     "desc": "",
                     "data": {
                         "content": {
-                            "hint": "回到顶部"
+                            "title": "回到顶部"
                         }
                     }
                 }
             ]
         },
         {
-            "name": "mini",
-            "desc": "右侧小图标",
-            "hook": "hook-am-gotop-mini",
-            "variables": [
-                {
-                    "variable": "gotop-bg-color",
-                    "name": "背景颜色",
-                    "default": "#123456",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "gotop-a-color",
-                    "name": "图标颜色",
-                    "default": "#FFFFFF",
-                    "used": [
-                        {
-                            "selector": "a:after",
-                            "property": "border-bottom-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "gotop-border-color",
-                    "name": "边框颜色",
-                    "default": "#3B3B3B",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "border-color"
-                        }
-                    ]
-                }
-            ],
+            "name": "fixed",
+            "desc": "右侧悬浮",
             "demos": [
                 {
-                    "desc": "",
-                    "data": {
-                        "theme": "mini"
-                    }
-                }
-            ]
-        },
-        {
-            "name": "icon",
-            "desc": "右侧图片型",
-            "demos": [
-                {
-                    "desc": "",
+                    "desc": "默认图标",
                     "data": {
                         "content": {
-                            "img": "/i/gotop/goTop.gif"
+                            "title": "回到顶部"
+                        }
+                    }
+                },
+                {
+                    "desc": "Icon Font",
+                    "data": {
+                        "content": {
+                            "icon": "hand-o-up"
+                        }
+                    }
+                },
+                {
+                    "desc": "自定义图标",
+                    "data": {
+                        "content": {
+                            "customIcon": "/i/gotop/goTop.gif"
                         }
                     }
                 }

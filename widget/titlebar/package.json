@@ -31,14 +31,17 @@
 
     "template": "titlebar.hbs",
 
-    "styleDependencies": ["button.less", "icon.less"],
+    "styleDependencies": [
+        "button.less",
+        "icon.less"
+    ],
 
     "style": "titlebar.less",
 
     "themes": [
         {
             "name": "default",
-            "desc": "蓝色背景",
+            "desc": "左边框",
             "hook": "hook-am-titlebar-default",
             "variables": [
                 {
@@ -79,16 +82,100 @@
                 {
                     "data": {
                         "content": {
-                            "title": "栏目标题"
+                            "title": "栏目标题",
+                            "nav": [
+                                {
+                                    "title": "more &raquo;",
+                                    "link": "#more"
+                                }
+                            ]
                         }
                     }
                 }
             ]
         },
         {
-            "name": "column2",
+            "name": "multi",
+            "desc": "左边框",
+            "hook": "hook-am-titlebar-multi",
+            "variables": [
+                {
+                    "variable": "titlebar-bg-color",
+                    "name": "背景颜色",
+                    "default": "#428bca",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-text-color",
+                    "name": "文本颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-a-color",
+                    "name": "链接颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-title a",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "desc": "更多链接",
+                    "data": {
+                        "content": {
+                            "title": "栏目标题",
+                            "nav": [
+                                {
+                                    "title": "more &raquo;",
+                                    "link": "#more"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "desc": "多链接",
+                    "data": {
+                        "content": {
+                            "title": "科技频道",
+                            "nav": [
+                                {
+                                    "title": "手机",
+                                    "link": "#more-1"
+                                },
+                                {
+                                    "title": "数码",
+                                    "link": "#more-2"
+                                },
+                                {
+                                    "title": "影音",
+                                    "link": "#more-3"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "cols",
             "desc": "灰底蓝下边框",
-            "hook": "hook-am-titlebar-column2",
+            "hook": "hook-am-titlebar-cols",
             "variables": [
                 {
                     "variable": "titlebar-bg-color",
@@ -143,119 +230,22 @@
                 {
                     "data": {
                         "content": {
-                            "left": "栏目标题",
-                            "right": "频道 | 频道 | 频道"
-                        }
-                    }
-                }
-            ]
-        },
-        {
-            "name": "column3",
-            "desc": "下边框多链接",
-            "hook": "hook-am-titlebar-column3",
-            "variables": [
-                {
-                    "variable": "titlebar-bg-color",
-                    "name": "背景颜色",
-                    "default": "#dfe2ea",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "titlebar-text-color",
-                    "name": "文本颜色",
-                    "default": "#1a356a",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "titlebar-a-color",
-                    "name": "链接颜色",
-                    "default": "#1a356a",
-                    "used": [
-                        {
-                            "selector": ".am-titlebar-title li a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "titlebar-bd-color",
-                    "name": "下划线颜色",
-                    "default": "#1a356a",
-                    "used": [
-                        {
-                            "selector": ".am-titlebar-title li a.column-active",
-                            "property": "border-bottom-color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "data": {
-                        "content": {
-                            "title": "<ul><li><a href=\"#\" class=\"column-active\">频道</a></li><li><a href=\"#\">频道</a></li><li><a href=\"#\">频道</a></li><li><a href=\"#\">频道</a></li><li><a href=\"#\">频道</a></li></ul>"
-                        }
-                    }
-                }
-            ]
-        },
-        {
-            "name": "button",
-            "desc": "蓝底白色按钮",
-            "hook": "hook-am-titlebar-button",
-            "variables": [
-                {
-                    "variable": "titlebar-bg-color",
-                    "name": "背景颜色",
-                    "default": "#00599d",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "titlebar-text-color",
-                    "name": "文本颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "titlebar-a-color",
-                    "name": "链接颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "a",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "data": {
-                        "content": {
-                            "left": "<button class=\"am-btn am-btn-default am-fr am-btn-sm\">返回</button>",
-                            "title": "<a href=\"/\">标题</a>",
-                            "right": "<button class=\"am-btn am-btn-default am-fr am-btn-sm\">主页</button>"
+                            "title": "栏目标题",
+                            "link": "#wtf",
+                            "nav": [
+                                {
+                                    "link": "#c1",
+                                    "title": "子栏目"
+                                },
+                                {
+                                    "link": "#c2",
+                                    "title": "子栏目"
+                                },
+                                {
+                                    "link": "#c3",
+                                    "title": "子栏目"
+                                }
+                            ]
                         }
                     }
                 }
@@ -312,9 +302,14 @@
                 {
                     "data": {
                         "content": {
-                            "left": "<a href=#>栏目</a>",
-                            "title": "",
-                            "right": "<a href=#>MORE</a>"
+                            "title": "栏目标题",
+                            "link": "#c",
+                            "nav": [
+                                {
+                                    "title": "more &raquo;",
+                                    "link": "#more"
+                                }
+                            ]
                         }
 
                     }

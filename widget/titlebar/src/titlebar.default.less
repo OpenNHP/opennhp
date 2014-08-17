@@ -1,25 +1,54 @@
 /**
   * Titlebar Theme: default
-  * Theme ID: default
   */
 
 .am-titlebar-default {
 
-  @titlebar-bg-color: @global-primary;
-  @titlebar-text-color: @white;
-  @titlebar-border-color: @global-primary;
-  @titlebar-a-color: @white;
+  @titlebar-bg: #f5f5f5;
+  @titlebar-text-color: @global-primary;
+  @titlebar-border-color: #dedede;
+  @titlebar-link-color: @titlebar-text-color;
 
-  background-color: @titlebar-bg-color;
+  border-bottom: 1px solid @titlebar-border-color;
+  display: -webkit-box;
+  
+  margin-left: 10px;
+  margin-right: 10px;
+  line-height: 44px;
 
   .am-titlebar-title {
+    position: relative;
+    padding-left: 12px;
     color: @titlebar-text-color;
     font-size: 1.8rem;
-    text-align:center;
-    font-weight:normal;
+    text-align: left;
+    font-weight: bold;
+
+    &:before {
+      content: "";
+      position: absolute;
+      left: 2px;
+      top: 8px;
+      bottom: 8px;
+      border-left: 3px solid @titlebar-text-color;
+    }
 
     a {
-      color: @titlebar-a-color;
+      color: @titlebar-link-color;
+    }
+  }
+
+  .am-titlebar-nav {
+    -webkit-box-flex: 1;
+    text-align: right;
+
+    a {
+
+      margin-right: 10px;
+
+      &:last-child {
+        margin-right: 5px;
+      }
     }
   }
 

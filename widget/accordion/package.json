@@ -333,9 +333,9 @@
                     ]
                 },
                 {
-                    "variable": "accordion-content-color",
+                    "variable": "accordion-title-active-bd-color",
                     "name": "激活边框颜色",
-                    "default": "rgba(21,175,239,0.4)",
+                    "default": "#15afef",
                     "used": [
                         {
                             "selector": ".am-active",

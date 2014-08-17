@@ -1,20 +1,19 @@
 define(function(require, exports, module) {
     require('ui.offcanvas');
-    require('ui.collapse');
+    var IScroll = require('ui.iscroll');
 
     var $ = window.Zepto;
 
     var UI = $.AMUI;
 
     var menuInit = function() {
-
         var $menus = $('[data-am-widget="menu"]');
 
         $menus.find('.am-menu-nav .am-parent > a').on('click', function(e) {
             e.preventDefault();
             var $clicked = $(this),
-                $parent= $clicked.parent(),
-                $subMenu= $clicked.next('.am-menu-sub');
+                $parent = $clicked.parent(),
+                $subMenu = $clicked.next('.am-menu-sub');
             $parent.toggleClass('am-open');
             $subMenu.collapse('toggle');
             $parent.siblings('.am-parent').removeClass('am-open')
@@ -43,152 +42,75 @@ define(function(require, exports, module) {
             $nav.offCanvas('open');
         });
 
+        // one theme
+        $menus.filter('.am-menu-one').each(function() {
+            var $this = $(this),
+                $wrap = $('<div class="am-menu-nav-sub-wrap"></div>'),
+                allWidth = 0,
+                prevIndex,
+                $nav = $this.find('.am-menu-nav'),
+                $navTopItem = $nav.children('li');
 
-        // has one class
-        if ($('.am-menu').hasClass('am-menu-one')) {
-            var $this, $next, $width, iNow, aNum, $menuLv2, $menuLv3;
-
-
-            $this = $('.am-menu-one');
-            $next = $('<a>').attr({class: 'am-menu-next', href: 'javascript:;'});
-            $width = 0;
-            iNow = -1;
-            aNum = [];
-            $menuLv2 = $('.am-menu-lv2');
-            $menuLv3 = $('.am-menu-lv3');
-
-            $this.children('li').find('a').eq(0).attr('href', 'javascript:;').addClass('am-menu-prev am-menu-disabled');
-            $this.find('li').eq(0).append($next);
-            $this.find('.am-menu-lv2').wrap('<div class=\'am-menu-wrap\'></div>');
-
-            $menuLv2.children('li').children('a').each(function() {
-                $(this).parent().width($(this).width());
-                $width += $(this).width();
-                aNum.push($width);
+            $navTopItem.filter('.am-parent').each(function(index) {
+                $(this).attr('data-rel', '#am-menu-sub-' + index);
+                $(this).find('.am-menu-sub').attr('id', 'am-menu-sub-' + index).appendTo($wrap);
             });
 
-            $menuLv2.find('.am-parent').each(function() {
-                var $firstA = $(this).find('a'),
-                    $li = $('<li class=\'am-menu-item-more\'><a class=\'am-menu-item-close\' href=\'javascript:;\'>×</a><a class=\'am-menu-item-into\' href=' + $firstA.attr('href') + '>进入' + $firstA.html() + '</a></li>');
+            $this.append($wrap);
 
-                $firstA.attr('href', 'javascript:;');
-                $(this).find('.am-menu-lv3').append($li);
+            $nav.wrap('<div class="am-menu-nav-wrap" id="am-menu">');
+
+            $navTopItem.eq(0).addClass('am-active');
+
+            // 计算出所有 li 宽度
+            $navTopItem.each(function(i) {
+                allWidth += parseInt($(this).width());
             });
-            $menuLv2.width($width);
-            $menuLv3.width($('.am-menu-lv1').width() - 20);// 减去Menu 左右padding
-            // FIXME: ide border
-            //$menuLv3.width($('.am-menu-lv1').width() - 22);// 减去Menu 左右padding
 
-            $('.am-menu-wrap .am-parent').children('a').on('click', function() {
-                if ($(this).hasClass('active')) {
-                    $(this).removeClass('active');
-                    $(this).siblings('.am-menu-lv3').animate({opacity: 0}, 'fast', 'linear', function() {
-                        $(this).css('display', 'none');
-                    });
+            $nav.width(allWidth);
+
+            var menuScroll = new IScroll('#am-menu', {
+                scrollX: true,
+                scrollY: false
+            });
+
+            $navTopItem.on('click', function() {
+                var $clicked = $(this);
+                $clicked.addClass('am-active').siblings().removeClass('am-active');
+
+                $wrap.find('.am-menu-sub.am-in').collapse('close');
+
+                if ($clicked.is('.am-parent')) {
+                    !$clicked.hasClass('.am-open') && $wrap.find($clicked.attr('data-rel')).collapse('open');
                 } else {
-                    offAll();
-                    $(this).addClass('active');
-                    $(this).siblings('.am-menu-lv3').css('display', 'block').animate({
-                        left: -$(this).offset().left + 10,
-                        opacity: 1
-                    }, 'fast', 'linear');
-                    // FIXME: ide offset不一致，多加17px
-                    //$(this).siblings('.am-menu-lv3').css('display', 'block').animate({left: -$(this).offset().left + 27, opacity: 1}, 'fast', 'linear');
+                    $clicked.siblings().removeClass('am-open');
                 }
-            });
 
-            $('.am-menu-next').on('click', function() {
-                offAll();
-                if (-aNum[iNow] + parseInt($menuLv2.css('left')) < (-$menuLv2.width() + $menuLv2.parent().width() - $next.width() * 2)) {
-                    $menuLv2.animate({left: -$menuLv2.width() + $menuLv2.parent().width() - $next.width() * 2}, 'fast', 'linear');
-                    $(this).addClass('am-menu-disabled');
-                } else {
-                    iNow++;
-                    $menuLv2.animate({left: -aNum[iNow]}, 'fast', 'linear');
-                    $('.am-menu-prev').removeClass('am-menu-disabled');
+                // 第一次调用，没有prevIndex
+                if (prevIndex === undefined) {
+                    prevIndex = $(this).index() ? 0 : 1;
                 }
-            });
 
-            $('.am-menu-item-close').on('click', function() {
-                offAll();
-            });
+                // 判断方向
+                var dir = $(this).index() > prevIndex;
+                var target = $(this)[dir ? 'next' : 'prev']();
 
-            $('.am-menu-prev').on('click', function() {
-                offAll();
-                if (iNow <= -1) {
-                    $menuLv2.animate({left: 0}, 'fast', 'linear');
-                    $(this).addClass('am-menu-disabled');
-                } else {
-                    iNow--;
-                    $menuLv2.animate({left: -aNum[iNow]}, 'fast', 'linear');
-                    $('.am-menu-next').removeClass('am-menu-disabled');
+                // 点击的按钮，显示一半
+                var offset = target.offset() || $(this).offset();
+                var within = $nav.offset();
+
+                if (dir ? offset.left + offset.width > $(document).width() : offset.left < 10) {
+                    menuScroll.scrollTo(dir ? within.left - offset.width - 10 : within.left - offset.left, 0, 400);
                 }
-            });
 
-            drag($menuLv2);
-        }
-
-        /*
-         *  offAll menu children active
-         */
-        function offAll() {
-            $('.am-menu-wrap .am-parent')
-                .children('a')
-                .removeClass('active')
-                .siblings('.am-menu-lv3')
-                .animate({opacity: 0}, 'fast', 'linear')
-                .css('display', 'none');
-        }
-
-        /*
-         *  drag menu children
-         *  @obj Zepto object
-         */
-        function drag(obj) {
-            var disX,
-                downX,
-                nOffsetLeft = 0;
-            obj.on('touchstart MSPointerDown pointerdown', function(ev) {
-                offAll();
-                ev.preventDefault();
-                var oTarget = ev.targetTouches[0];
-                disX = oTarget.clientX - $(this).offset().left;
-                downX = oTarget.clientX;
-
-                $(document).on('touchmove MSPointerMove pointermove', fnMove);
-                $(document).on('touchend MSPointerUp pointerup', fnUp);
+                prevIndex = $(this).index();
 
             });
 
-            function fnUp(ev) {
-                $.each(aNum, function(index, item) {
-                    nOffsetLeft += -aNum[index];
-                    if (parseInt(obj.css('left')) >= nOffsetLeft) {
-                        iNow = index;
-                        return false;
-                    }
-                });
-
-                nOffsetLeft = 0;
-                $(document).off('touchend MSPointerUp pointerup', fnUp);
-                $(document).off('touchmove MSPointerMove pointermove', fnMove);
-            }
-
-            function fnMove(ev) {
-                ev.preventDefault();
-                var oTarget = ev.targetTouches[0];
-                var nLeft = oTarget.clientX - disX;
-                // ->
-                if (nLeft > 0) {
-                    nLeft = 0;
-                }
-                // <-
-                if (nLeft < -obj.width() + obj.parent().width() - $next.width() * 2) {
-                    nLeft = -obj.width() + obj.parent().width() - $next.width() * 2;
-                }
-                obj.css('left', nLeft);
-            }
-        }
+            $this.on('touchmove', function(event) {
+                event.preventDefault();
+            });
+        });
     };
 
     $(function() {

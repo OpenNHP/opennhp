@@ -1,0 +1,185 @@
+{
+    "name": "header",
+
+    "version": "1.0.0",
+
+    "localName": {
+        "en": "Header",
+        "zh-cn": "页头"
+    },
+
+    "icon": "header.png",
+
+    "author": {
+        "name": "hzp",
+        "email": "hzp@yunshipei.com"
+    },
+
+    "poweredBy": "AllMobilize",
+
+    "description": "自动转码项目页头",
+
+    "styleBase": [
+        "variables.less",
+        "mixins.less",
+        "base.less",
+        "grid.less",
+        "block-grid.less",
+        "utility.less"
+    ],
+
+    "template": "header.hbs",
+
+    "styleDependencies": [
+        "icon.less"
+    ],
+
+    "style": "header.less",
+
+    "themes": [
+        {
+            "id": "one",
+            "name": "one",
+            "desc": "简约风格",
+            "options": {},
+            "hook": "hook-am-header-one",
+            "variables": [
+                {
+                    "variable": "header-bg-color",
+                    "name": "背景颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "header-text-color",
+                    "name": "文本颜色",
+                    "default": "#1c1c1c",
+                    "used": [
+                        {
+                            "selector": ".am-header-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "header-icon-color",
+                    "name": "图标颜色",
+                    "default": "#15afef",
+                    "used": [
+                        {
+                            "selector": ".am-header-left span:before",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-header-right span:before",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
+            "demos": [
+                {
+                    "data": {
+                        "content": {
+                            "left": [{
+                                "link": "/",
+                                "icon": "am-icon-home",
+                                "img": ""
+                            }],
+                            "title": "云适配AMUI",
+                            "right": [{
+                                "link": "/",
+                                "icon": "am-icon-bars",
+                                "img": ""
+                            }]
+                        }
+
+                    }
+                }
+            ]
+        }
+    ],
+
+    "jsBase": [
+        "core.js"
+    ],
+
+    "jsDependencies": [],
+
+    "script": "header.js",
+
+    "api": {
+        "id": {
+            "name": "ID",
+            "desc": "模块自定义ID，遵循CSS ID命名规范",
+            "type": "text",
+            "default": "",
+            "required": false
+        },
+
+        "className": {
+            "name": "Class",
+            "desc": "用户自定义模块class，遵循 CSS class 命名规范",
+            "type": "text",
+            "default": "",
+            "required": false
+        },
+
+        "theme": {
+            "name": "主题",
+            "desc": "模块主题",
+            "type": "select",
+            "default": "default",
+            "required": true,
+            "dataList": ""
+        },
+
+        "options": {
+            "homeIcon": {
+                "name": "首页图标",
+                "desc": "home 图标修改",
+                "type": "text",
+                "placeholder": "图标 class",
+                "default": "",
+                "required": false
+            },
+            "menuIcon": {
+                "name": "菜单图标",
+                "desc": "menu 图标修改",
+                "type": "text",
+                "placeholder": "图标 class",
+                "default": "",
+                "required": false
+            },
+            "menuLink": {
+                "name": "菜单链接",
+                "desc": "菜单链接地址",
+                "type": "text",
+                "placeholder": "菜单链接地址",
+                "default": "",
+                "required": false
+            }
+        },
+
+        "content": {
+            "type": "Object",
+            "item": {
+                "title": {
+                    "type": "html",
+                    "desc": "中间内容（可选，按需设置）"
+                }
+            }
+        }
+    },
+
+    "readme": "http://amazeui.org/widgets/header/readme",
+
+    "example": "",
+
+    "hidden": true
+}

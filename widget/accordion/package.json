@@ -246,9 +246,9 @@
                     ]
                 },
                 {
-                    "variable": "accordion-title-active-bg-color",
-                    "name": "标题激活背景颜色",
-                    "default": "rgba(0, 0, 0, 0.1)",
+                    "variable": "accordion-title-active-bg",
+                    "name": "标题激活背景色",
+                    "default": "#f5f5f5",
                     "used": [
                         {
                             "selector": ".am-active .am-accordion-title",
@@ -313,7 +313,7 @@
                 {
                     "variable": "accordion-title-color",
                     "name": "标题颜色",
-                    "default": "rgba(0,0,0,0.6)",
+                    "default": "#555",
                     "used": [
                         {
                             "selector": ".am-accordion-title",
@@ -333,20 +333,9 @@
                     ]
                 },
                 {
-                    "variable": "accordion-title-active-bd-color",
-                    "name": "激活边框颜色",
-                    "default": "#15afef",
-                    "used": [
-                        {
-                            "selector": ".am-active",
-                            "property": "border-color"
-                        }
-                    ]
-                },
-                {
                     "variable": "accordion-title-active-color",
-                    "name": "激活标题文本颜色",
-                    "default": "rgba(21,175,239,0.4)",
+                    "name": "标题激活颜色",
+                    "default": "#15afef",
                     "used": [
                         {
                             "selector": ".am-active .am-accordion-title",
@@ -355,9 +344,9 @@
                     ]
                 },
                 {
-                    "variable": "accordion-title-active-bg-color",
-                    "name": "激活标题背景颜色",
-                    "default": "rgba(21,175,239,0.4)",
+                    "variable": "accordion-title-active-color",
+                    "name": "标题激活背景色",
+                    "default": "#f8f8f8",
                     "used": [
                         {
                             "selector": ".am-active .am-accordion-title",

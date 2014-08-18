@@ -11,7 +11,7 @@ define(function(require, exports, module) {
         footerInit = function() {
             // modal mode
             $('.am-footer-ysp').on('click', function() {
-                $('#am-switch-mode').modal();
+                $('#am-footer-mode').modal();
             });
 
             // switch mode

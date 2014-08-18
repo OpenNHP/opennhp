@@ -6,10 +6,9 @@
   @one-primary: #15afef;
 
   @header-bg: @white;
-  @header-link-color: @one-primary;
+  @header-nav-color: @one-primary;
   @header-title-color: @gray-dark;
 
-  position: relative;
   background: @header-bg;
 
   .am-header-title {
@@ -25,6 +24,12 @@
       width: auto;
       margin-top: 8px;
       vertical-align: top;
+    }
+  }
+  
+  .am-header-nav {
+    a {
+      color: @header-nav-color;
     }
   }
 

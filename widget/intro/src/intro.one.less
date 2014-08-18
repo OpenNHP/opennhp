@@ -5,61 +5,57 @@
 .am-intro-one {
   @one-primary: #15afef;
 
-  @intro-bg-color: @white;
-  @intro-text-color: #222;
-  @intro-right-text-color: #222;
-  @intro-a-color: @one-primary;
-  @intro-border-color: #333;
-  @intro-top-after-bg-color: @one-primary;
+  @intro-bg: @white;
+  @intro-title-color: @gray-dark;
+  @intro-content-color: @gray;
+  @intro-link-color: @one-primary;
+  @intro-hd-border-color: @one-primary;
 
-  position: relative;
   padding-bottom: 10px;
+  background-color: @intro-bg;
 
-  .am-intro-top {
-    line-height: 40px;
-    background-color: @intro-bg-color;
-    color: @intro-text-color;
-    font-size: 18px;
-    padding:0 10px;
-    position: relative;
-    margin-bottom: 4px;
+  a {
+    color: @intro-link-color
+  }
 
-    &:before{
+  .am-intro-hd {
+    border-bottom: 1px solid @intro-hd-border-color;
+    margin-left: 10px;
+    margin-right: 10px;
+    line-height: 44px;
+  }
+
+  .am-intro-title {
+    color: @intro-title-color;
+    padding-left: 10px;
+
+    &:before {
+      position: absolute;
+      left: 1px;
+      top: 10px;
+      bottom: 10px;
       content: '';
-      width: 4px;
-      height: 14px;
-      background: @intro-a-color;
-      display: inline-block;
-      vertical-align: top;
-      margin-top: 12px;
-      line-height: 40px;
-    }
-    a {
-      color: @intro-a-color;
+      width: 3px;
+      background-color: @intro-hd-border-color;
+      display: block;
     }
   }
 
-  .am-intro-more-top {
-    position: absolute;
-    right: 10px;
-    top: 0;
-    a {
-      font-size: 1.4rem;
-    }
+  .am-intro-bd {
+    color: @intro-content-color;
   }
 
-  .am-intro-left{
+  .am-intro-left {
     float: left;
     display: inline;
   }
 
-  .am-intro-right{
+  .am-intro-right {
     display: inline;
     padding-left: 0;
     font-size: 1.4rem;
-    color: @intro-right-text-color;
 
-    p{
+    p {
       display: inline;
       margin: 0;
       padding: 0;
@@ -69,4 +65,5 @@
   .hook-am-intro-one;
 }
 
-.hook-am-intro-one() {}
+.hook-am-intro-one() {
+}

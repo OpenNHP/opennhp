@@ -1,4 +1,4 @@
-define(function (require, exports, module) {
+define(function(require, exports, module) {
     require('core');
 
     var $ = window.Zepto,
@@ -31,8 +31,8 @@ define(function (require, exports, module) {
             var qrImg = ($('[data-am-navbar-qrcode]').attr('data-am-navbar-qrcode'));
             var url = window.location.href;
             var qrData = $('<div class="am-modal am-modal-no-btn" id=\'am-navbar-boxqrcode\'>' +
-                    '<div class=\'am-modal-dialog\' id=\'am-navbar-qrcode-data\'></div>' +
-                '</div>');
+            '<div class=\'am-modal-dialog\' id=\'am-navbar-qrcode-data\'></div>' +
+            '</div>');
 
             $body.append(qrData);
 
@@ -60,7 +60,17 @@ define(function (require, exports, module) {
 
         if ($share.length) {
             //share start
-            window._bd_share_config = {"common": {"bdSnsKey": {}, "bdText": "", "bdMini": "2", "bdMiniList": false, "bdPic": "", "bdStyle": "1", "bdSize": "16"}, "share": {"bdSize": 24}};
+            window._bd_share_config = {
+                "common": {
+                    "bdSnsKey": {},
+                    "bdText": "",
+                    "bdMini": "2",
+                    "bdMiniList": false,
+                    "bdPic": "",
+                    "bdStyle": "1",
+                    "bdSize": "16"
+                }, "share": {"bdSize": 24}
+            };
 
             $body.append($('<script />', {
                 src: 'http://bdimg.share.baidu.com/static/api/js/share.js?v=89343201.js?cdnversion=' + ~(-new Date() / 36e5)
@@ -70,20 +80,20 @@ define(function (require, exports, module) {
 
                 '<div class="am-modal-actions am-modal-out" id="am-navbar-share">' +
 
-                    '<div class="am-modal-actions-group">' +
-                        '<ul class="am-list">' +
-                            '<li class="am-modal-actions-header" data-cmd="more">分享到</li>' +
-                            '<li><a href="#" class="am-icon-qq" data-cmd="qzone" title="分享到QQ空间">QQ空间</a></li>' +
-                            '<li><a href="#" class="am-icon-weibo" data-cmd="tsina" title="分享到新浪微博">新浪微博</a></li>' +
-                            '<li><a href="#" class="am-icon-tencent-weibo" data-cmd="tqq" title="分享到腾讯微博">腾讯微博</a></li>' +
-                            '<li><a href="#" class="am-icon-renren" data-cmd="renren" title="分享到人人网">人人网</a></li>' +
-                            '<li><a href="#" class="am-icon-wechat" data-cmd="weixin" title="分享到微信">微信</a></li>' +
-                        '</ul>' +
-                    '</div>' +
-                    '<div class="am-modal-actions-group"><button type="button" class="am-btn am-btn-secondary am-btn-block" data-am-modal-close>取消</button></div>' +
+                '<div class="am-modal-actions-group">' +
+                '<ul class="am-list">' +
+                '<li class="am-modal-actions-header" data-cmd="more">分享到</li>' +
+                '<li><a href="#" class="am-icon-qq" data-cmd="qzone" title="分享到QQ空间">QQ空间</a></li>' +
+                '<li><a href="#" class="am-icon-weibo" data-cmd="tsina" title="分享到新浪微博">新浪微博</a></li>' +
+                '<li><a href="#" class="am-icon-tencent-weibo" data-cmd="tqq" title="分享到腾讯微博">腾讯微博</a></li>' +
+                '<li><a href="#" class="am-icon-renren" data-cmd="renren" title="分享到人人网">人人网</a></li>' +
+                '<li><a href="#" class="am-icon-wechat" data-cmd="weixin" title="分享到微信">微信</a></li>' +
+                '</ul>' +
+                '</div>' +
+                '<div class="am-modal-actions-group"><button type="button" class="am-btn am-btn-secondary am-btn-block" data-am-modal-close>取消</button></div>' +
                 '</div>' +
 
-            '</div>';
+                '</div>';
 
             $body.append(shareData);
 
@@ -105,7 +115,7 @@ define(function (require, exports, module) {
 
         //qrcode end
         if (_parent.length) {
-            $body.append($('<ul class="am-navbar-moreList"></ul>'));
+            $body.append($('<ul class="am-navbar-actions"></ul>'));
         }
         if (_parent.find('li').length * _parent.find('li').width() > $(window).width()) { //如果li没有完全展示
             //替换父级的class
@@ -121,48 +131,10 @@ define(function (require, exports, module) {
             }
         }
 
-        //有问题的代码：
-        /*$(window).on("resize",function(){
-
-         if(_parent.find("li").length * _parent.find("li").width() > $(window).width()){ //如果li没有完全展示
-
-         //替换父级的class
-         displaceClass(_parent.find("li").length,parentUl);
-         var nowWidth = _parent.find("li").width();
-
-         //现在的宽度小于最小宽度
-         if(nowWidth < minWidth){
-
-         if(onOffCreat){
-         addMore();
-         onOffCreat = false;
-         }
-         displaceClass(liLength(),parentUl);
-         addMoreLi(liLength());
-         }else{
-
-         addParentLi(liLength());
-
-         if($(".am-navbar-moreList").children().length){
-         removeMore();
-         onOffCreat = true;
-         }
-
-         displaceClass(liLength(),parentUl);
-         }
-         }else{
-         displaceClass(_parent.find("li").length,parentUl);
-         if(_parent.find("li").width < minWidth){
-         console.log("小于")
-         }
-         }
-
-         })*/
-
         _more = $('.am-navbar-more');
-        _moreList = $('.am-navbar-moreList');
+        _moreList = $('.am-navbar-actions');
 
-        _parent.on('click', '.am-navbar-more', function () {
+        _parent.on('click', '.am-navbar-more', function() {
             if (onOff) {
                 _moreList.css({
                     bottom: _moreList.height(),
@@ -171,7 +143,7 @@ define(function (require, exports, module) {
                     bottom: 49
                 }, {
                     duration: 'fast',
-                    complete: function () {
+                    complete: function() {
                         _more.addClass('am-navbar-more-active');
                     }
                 });
@@ -180,7 +152,7 @@ define(function (require, exports, module) {
                 _moreList.animate({
                     bottom: -_moreList.height()
                 }, {
-                    complete: function () {
+                    complete: function() {
                         $(this).css('display', 'none');
                         _more.removeClass('am-navbar-more-active');
                     }
@@ -207,16 +179,16 @@ define(function (require, exports, module) {
 
         //移出parent下的li,并添加到moreList里面
         function addMoreLi(len) {
-            subLi.not('.am-navbar-more').each(function (index) {
+            subLi.not('.am-navbar-more').each(function(index) {
                 if (index > len - 2) {
-                    $(this).appendTo($('.am-navbar-moreList'))
+                    $(this).appendTo($('.am-navbar-actions'))
                 }
             })
         }
 
         //移出moreList里面的li,并添加到parent下面
         function addParentLi(len) {
-            $('.am-navbar-moreList').children().first().appendTo(parentUl)
+            $('.am-navbar-actions').children().first().appendTo(parentUl)
         }
 
         //替换class
@@ -227,7 +199,7 @@ define(function (require, exports, module) {
     };
 
     // DOMContentLoaded
-    $(function () {
+    $(function() {
         navbarInit();
     });
 

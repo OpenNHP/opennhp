@@ -47,8 +47,8 @@
             "hook": "hook-am-pagination-default",
             "variables": [
                 {
-                    "variable": "pagination-a-bg-color",
-                    "name": "页码背景颜色",
+                    "variable": "pagination-link-bg",
+                    "name": "页码背景色",
                     "default": "#eee",
                     "used": [
                         {
@@ -58,8 +58,8 @@
                     ]
                 },
                 {
-                    "variable": "pagination-a-text-color",
-                    "name": "页码文本颜色",
+                    "variable": "pagination-link-color",
+                    "name": "页码颜色",
                     "default": "#222",
                     "used": [
                         {
@@ -69,31 +69,27 @@
                     ]
                 },
                 {
-                    "variable": "pagination-active-bg-color",
-                    "name": "活动链接背景颜色",
-                    "default": "#428bca",
+                    "variable": "pagination-active-bg",
+                    "name": "激活链接背景色",
+                    "default": "#0e90d2",
                     "used": [
                         {
-                            "selector": "li.active a",
+                            "selector": ">.am-active>a, >.am-active>span, >.am-active>a:hover, >.am-active>span:hover, >.am-active>a:focus, >.am-active>span:focus",
                             "property": "background-color"
                         },
                         {
-                            "selector": "li:hover a",
-                            "property": "background-color"
+                            "selector": ">.am-active>a, >.am-active>span, >.am-active>a:hover, >.am-active>span:hover, >.am-active>a:focus, >.am-active>span:focus",
+                            "property": "border-color"
                         }
                     ]
                 },
                 {
-                    "variable": "pagination-active-text-color",
+                    "variable": "pagination-active-color",
                     "name": "活动链接文本颜色",
-                    "default": "#ffffff",
+                    "default": "#fff",
                     "used": [
                         {
-                            "selector": "li.active a",
-                            "property": "color"
-                        },
-                        {
-                            "selector": "li:hover a",
+                            "selector": ">.am-active>a, >.am-active>span, >.am-active>a:hover, >.am-active>span:hover, >.am-active>a:focus, >.am-active>span:focus",
                             "property": "color"
                         }
                     ]
@@ -148,12 +144,12 @@
             "hook": "hook-am-pagination-select",
             "variables": [
                 {
-                    "variable": "pagination-a-bg-color",
-                    "name": "页码背景颜色",
-                    "default": "#DFE2EA",
+                    "variable": "pagination-link-bg",
+                    "name": "页码背景色",
+                    "default": "#eee",
                     "used": [
                         {
-                            "selector": "li a",
+                            "selector": ">li>a",
                             "property": "background-color"
                         },
                         {
@@ -163,12 +159,12 @@
                     ]
                 },
                 {
-                    "variable": "pagination-a-text-color",
-                    "name": "页码文本颜色",
-                    "default": "#656F7E",
+                    "variable": "pagination-link-color",
+                    "name": "页码颜色",
+                    "default": "#555",
                     "used": [
                         {
-                            "selector": "li a",
+                            "selector": "> li > a",
                             "property": "color"
                         },
                         {
@@ -215,32 +211,43 @@
             "hook": "hook-am-pagination-one",
             "variables": [
                 {
-                    "variable": "pagination-a-bg-color",
-                    "name": "页码背景颜色",
-                    "default": "#fff",
+                    "variable": "pagination-link-bg",
+                    "name": "页码背景色",
+                    "default": "#eee",
                     "used": [
                         {
-                            "selector": "li.am-pagination-prev a",
+                            "selector": ">li>a",
                             "property": "background-color"
                         },
                         {
-                            "selector": "li.am-pagination-next a",
+                            "selector": ".am-pagination-select select",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "pagination-a-text-color",
-                    "name": "页码文本颜色",
-                    "default": "#666",
+                    "variable": "pagination-link-color",
+                    "name": "页码颜色",
+                    "default": "#555",
                     "used": [
                         {
-                            "selector": "li.am-pagination-prev a",
+                            "selector": "> li > a",
                             "property": "color"
                         },
                         {
-                            "selector": "li.am-pagination-next a",
+                            "selector": ".am-pagination-select select",
                             "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "pagination-link-border",
+                    "name": "边框颜色",
+                    "default": "#dfdfdf",
+                    "used": [
+                        {
+                            "selector": ".am-pagination-select select",
+                            "property": "border-color"
                         }
                     ]
                 }

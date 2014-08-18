@@ -4,9 +4,10 @@
 
 .am-gotop-one {
   @one-primary: #15afef;
-  @gotop-bg-color: @white;
+
+  @gotop-bg: @white;
   @gotop-border-color: @one-primary;
-  @gotop-after-color: @one-primary;
+  @gotop-icon-color: @one-primary;
 
   position: fixed;
   right: 10px;
@@ -15,7 +16,7 @@
 
   width: 32px;
   height: 32px;
-  background-color: @gotop-bg-color;
+  background-color: @gotop-bg;
   border-radius: @global-border-radius;
   border: 1px solid @gotop-border-color;
   text-align: center;
@@ -27,6 +28,7 @@
   .am-gotop-icon {
     vertical-align: middle;
     display: inline-block;
+    color: @gotop-icon-color;
   }
 
   .hook-am-gotop-one;

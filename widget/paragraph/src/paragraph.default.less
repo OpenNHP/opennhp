@@ -3,15 +3,14 @@
   */
 
 .am-paragraph-default {
-
-  @paragraph-a-color: @global-primary;
-  @paragraph-img-color: @gray-lighter;
   @paragraph-color: @gray-dark;
+  @paragraph-link-color: @global-primary;
+  @paragraph-img-border-color: @gray-lighter;
 
   margin: 0 10px;
   color: @paragraph-color;
 
-  p{
+  p {
     font-size: 1.4rem;
   }
 
@@ -19,27 +18,16 @@
     max-width: 98%;
     display: block;
     margin: 5px auto;
-    border: 1px solid @paragraph-img-color;
+    border: 1px solid @paragraph-img-border-color;
     padding: 2px;
-
-    &.paragraph-default-img-left {
-      float: left;
-      margin-right: 10px;
-      margin-top: 5px;
-      max-width: 75%;
-    }
-    &.paragraph-default-img-right {
-      float: right;
-      margin-left: 10px;
-      margin-top: 5px;
-      max-width: 75%;
-    }
   }
 
   a {
-    color: @paragraph-a-color;
+    color: @paragraph-link-color;
   }
 
   .hook-am-paragraph-default;
 }
-.hook-am-paragraph-default() {};
+
+.hook-am-paragraph-default() {
+}

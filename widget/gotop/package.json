@@ -78,9 +78,45 @@
         {
             "name": "fixed",
             "desc": "右侧悬浮",
+            "hook": "hook-am-gotop-fixed",
+            "variables": [
+                {
+                    "variable": "gotop-icon-bg",
+                    "name": "图标背景色",
+                    "default": "#555",
+                    "used": [
+                        {
+                            "selector": ".am-gotop-icon",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "gotop-icon-color",
+                    "name": "图标颜色",
+                    "default": "#ddd",
+                    "used": [
+                        {
+                            "selector": ".am-gotop-icon",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "gotop-icon-hover-color",
+                    "name": "图标 Hover 颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-gotop-icon:hover",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
             "demos": [
                 {
-                    "desc": "默认图标",
+                    "desc": "默认 Icon",
                     "data": {
                         "content": {
                             "title": "回到顶部"
@@ -88,7 +124,7 @@
                     }
                 },
                 {
-                    "desc": "Icon Font",
+                    "desc": "设置 Icon",
                     "data": {
                         "content": {
                             "icon": "hand-o-up"
@@ -96,7 +132,7 @@
                     }
                 },
                 {
-                    "desc": "自定义图标",
+                    "desc": "自定义图片",
                     "data": {
                         "content": {
                             "customIcon": "/i/gotop/goTop.gif"
@@ -111,24 +147,13 @@
             "hook": "hook-am-gotop-one",
             "variables": [
                 {
-                    "variable": "gotop-bg-color",
+                    "variable": "gotop-bg",
                     "name": "背景颜色",
                     "default": "#fff",
                     "used": [
                         {
                             "selector": "",
                             "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "gotop-after-color",
-                    "name": "图标颜色",
-                    "default": "#15afef",
-                    "used": [
-                        {
-                            "selector": "a::after",
-                            "property": "color"
                         }
                     ]
                 },
@@ -140,6 +165,17 @@
                         {
                             "selector": "",
                             "property": "border-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "gotop-icon-color",
+                    "name": "图标",
+                    "default": "#15afef",
+                    "used": [
+                        {
+                            "selector": ".am-gotop-icon",
+                            "property": "color"
                         }
                     ]
                 }

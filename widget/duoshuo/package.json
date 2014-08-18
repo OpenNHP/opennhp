@@ -31,7 +31,6 @@
     "template": "duoshuo.hbs",
 
     "styleDependencies": [
-        "icon.less"
     ],
 
     "style": "duoshuo.less",
@@ -96,8 +95,8 @@
 
         "options": {
             "shortName": {
-                "name": "网站代码",
-                "desc": "",
+                "name": "多说域名",
+                "desc": "xxx.duoshuo.com 中的 xxx",
                 "type": "text",
                 "default": "",
                 "required": true

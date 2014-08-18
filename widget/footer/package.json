@@ -53,7 +53,7 @@
             "hook": "hook-am-footer-default",
             "variables": [
                 {
-                    "variable": "footer-bg-color",
+                    "variable": "footer-bg",
                     "name": "背景颜色",
                     "default": "#fff",
                     "used": [
@@ -66,21 +66,10 @@
                 {
                     "variable": "footer-ysp-color",
                     "name": "云适配版文字颜色",
-                    "default": "#999",
-                    "used": [
-                        {
-                            "selector": ".am-footer-ysp",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "footer-a-color",
-                    "name": "链接颜色",
                     "default": "#555",
                     "used": [
                         {
-                            "selector": "a",
+                            "selector": ".am-footer-ysp",
                             "property": "color"
                         }
                     ]
@@ -97,12 +86,35 @@
                     ]
                 },
                 {
-                    "variable": "footer-text-color",
-                    "name": "版权信息颜色",
-                    "default": "#eee",
+                    "variable": "footer-desktop-color",
+                    "name": "电脑版颜色",
+                    "default": "#ccc",
                     "used": [
                         {
-                            "selector": ".am-footer-text",
+                            "selector": ".am-footer-desktop",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "footer-link-color",
+                    "name": "链接颜色",
+                    "default": "#555",
+                    "used": [
+                        {
+                            "selector": "a",
+                            "property": "color"
+                        }
+                    ]
+                },
+
+                {
+                    "variable": "footer-miscs-color",
+                    "name": "版权信息颜色",
+                    "default": "#999",
+                    "used": [
+                        {
+                            "selector": ".am-footer-miscs",
                             "property": "color"
                         }
                     ]
@@ -119,14 +131,13 @@
                         },
                         "content": {
                             "owner": "云适配",
-                            "companyInfo": [
-                                {
+                            "companyInfo": [{
                                     "detail": "CopyRight©2013  AllMobilize Inc."
                                 },
                                 {
                                     "detail": "京ICP备13033158"
                                 }
-                            ]
+]
                         }
                     }
                 }
@@ -143,9 +154,20 @@
             "hook": "hook-am-footer-one",
             "variables": [
                 {
+                    "variable": "footer-bg",
+                    "name": "背景颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
                     "variable": "footer-ysp-color",
                     "name": "云适配版文字颜色",
-                    "default": "#15afef",
+                    "default": "#555",
                     "used": [
                         {
                             "selector": ".am-footer-ysp",
@@ -154,20 +176,9 @@
                     ]
                 },
                 {
-                    "variable": "footer-a-color",
-                    "name": "链接颜色",
-                    "default": "#15afef",
-                    "used": [
-                        {
-                            "selector": "a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
                     "variable": "footer-divider-color",
                     "name": "分隔线颜色",
-                    "default": "#666",
+                    "default": "#ccc",
                     "used": [
                         {
                             "selector": ".am-footer-divider",
@@ -176,23 +187,45 @@
                     ]
                 },
                 {
-                    "variable": "am-footer-text-a",
-                    "name": "版权信息颜色",
-                    "default": "#000",
+                    "variable": "footer-desktop-color",
+                    "name": "电脑版颜色",
+                    "default": "#ccc",
                     "used": [
                         {
-                            "selector": ".am-footer-text > a",
+                            "selector": ".am-footer-desktop",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "footer-text-color",
-                    "name": "文本颜色",
-                    "default": "#747474",
+                    "variable": "footer-link-color",
+                    "name": "链接颜色",
+                    "default": "#555",
                     "used": [
                         {
-                            "selector": ".am-footer-text",
+                            "selector": "a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "footer-miscs-color",
+                    "name": "版权信息颜色",
+                    "default": "#999",
+                    "used": [
+                        {
+                            "selector": ".am-footer-miscs",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "footer-miscs-link-color",
+                    "name": "版权信息链接颜色",
+                    "default": "#555",
+                    "used": [
+                        {
+                            "selector": ".am-footer-miscs a",
                             "property": "color"
                         }
                     ]
@@ -208,12 +241,11 @@
                             "techSupportSite": "http://www.yunshipei.com/"
                         },
                         "content": {
-                            "owner"     : "云适配",
-                            "companyInfo": [{
-                                "detail" : ""
-                            },{
-                                "detail" : ""
-                            }]
+                            "owner": "云适配",
+                            "companyInfo": [
+                                {
+                                    "detail": "Copyleft xxx"
+                                }]
                         }
                     }
                 }

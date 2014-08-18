@@ -5,9 +5,11 @@
 
 .am-menu-default {
   @menu-nav-link-color: @global-primary;
-  @menu-nav-link-height: 44px;
+  @menu-nav-link-height: 36px;
 
   .am-menu-nav {
+    padding-top: 6px;
+    padding-bottom: 6px;
     & > li {
       height: @menu-nav-link-height;
       line-height: @menu-nav-link-height;
@@ -41,3 +43,5 @@
 
 .hook-am-menu-default() {
 }
+
+// TODO: 增加二级菜单支持

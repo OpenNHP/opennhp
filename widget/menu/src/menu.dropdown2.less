@@ -13,7 +13,7 @@
   @menu-nav-sub-link-color: @gray;
   @menu-nav-sub-link-bg: #fff;
 
-  @menu-nav-top-link-height: 44px;
+  @menu-nav-top-link-height: 38px;
   @menu-nav-sub-link-height: 35px;
 
   .am-menu-toggle {
@@ -31,6 +31,8 @@
     background-color: @menu-nav-top-link-bg;
     box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
     z-index: @z-index-dropdown;
+    padding-top: 8px;
+    padding-bottom: 8px;
 
     a {
       height: @menu-nav-top-link-height;
@@ -89,6 +91,7 @@
     border-radius: 2px;
     box-shadow: 0 0 3px rgba(0, 0, 0, 0.15);
     background-color: @menu-nav-sub-link-bg;
+    z-index: @z-index-dropdown + 5;
 
     a {
       padding: 0;

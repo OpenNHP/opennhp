@@ -1,31 +1,41 @@
 {{#this}}
-  <footer data-am-widget="footer" class="am-footer {{#if theme}}am-footer-{{theme}}{{else}}am-footer-default {{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}" {{#if id}}id="{{id}}"{{/if}}>
-    <span class="{{#if options.modal}}am-footer-ysp{{/if}}" data-rel="mobile" data-am-modal="{target: '#am-switch-mode'}">
+  <footer data-am-widget="footer"
+          class="am-footer {{#if theme}}am-footer-{{theme}}{{else}}am-footer-default {{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"
+          {{#if id}}id="{{id}}"{{/if}}>
+    <div class="am-footer-switch">
+    <span class="{{#if options.modal}}am-footer-ysp{{/if}}" data-rel="mobile"
+          data-am-modal="{target: '#am-switch-mode'}">
       {{#unless content.switchName}}
         {{#ifCond content.lang '==' 'en'}}
           Mobile
         {{else}}
           云适配版
-        {{/ifCond}} 
+        {{/ifCond}}
       {{else}}
         {{content.switchName}}
       {{/unless}}
     </span>
-    <span class="am-footer-divider"> | </span>
-    <a id="godesktop" data-rel="desktop" class="am-footer-desktop" href="#">
-      {{#ifCond content.lang '==' 'en'}}
-        Desktop
-      {{else}}
-        电脑版
-      {{/ifCond}}  
-    </a>
-    <div class="am-footer-text {{#if options.textPosition}}am-footer-text-left{{/if}}">
+      <span class="am-footer-divider"> | </span>
+      <a id="godesktop" data-rel="desktop" class="am-footer-desktop" href="#">
+        {{#ifCond content.lang '==' 'en'}}
+          Desktop
+        {{else}}
+          电脑版
+        {{/ifCond}}
+      </a>
+    </div>
+    <div class="am-footer-miscs {{#if options.textPosition}}am-text-left{{/if}}">
 
       {{#if options.techSupportCo}}
         {{#ifCond content.lang '==' 'en'}}
-          <p>Supported by {{#if options.techSupportSite}}<a href="{{options.techSupportSite}}" title="{{options.techSupportCo}}" target="_blank">{{{options.techSupportCo}}}</a>{{else}}{{{options.techSupportCo}}}{{/if}}.</p>
+          <p>Supported by {{#if options.techSupportSite}}<a href="{{options.techSupportSite}}"
+                                                            title="{{options.techSupportCo}}"
+                                                            target="_blank">{{{options.techSupportCo}}}</a>{{else}}{{{options.techSupportCo}}}{{/if}}
+            .</p>
         {{else}}
-          <p>由{{#if options.techSupportSite}}<a href="{{options.techSupportSite}}" title="{{options.techSupportCo}}" target="_blank">{{{options.techSupportCo}}}</a>{{else}}{{{options.techSupportCo}}}{{/if}}提供技术支持</p>
+          <p>由 {{#if options.techSupportSite}}<a href="{{options.techSupportSite}}" title="{{options.techSupportCo}}"
+                                                target="_blank">{{{options.techSupportCo}}}</a>{{else}}{{{options.techSupportCo}}}{{/if}}
+            提供技术支持</p>
         {{/ifCond}}
 
       {{/if}}
@@ -39,20 +49,21 @@
           <p>云适配驱动</p>
         {{/ifCond}}
       {{/if}}
-      {{#each content.companyInfo }}     
-          <p>{{{ detail }}}</p>
+      {{#each content.companyInfo}}
+        <p>{{{detail}}}</p>
       {{/each}}
     </div>
   </footer>
 
-  <div id="am-switch-mode" class="am-modal am-modal-no-btn am-switch-mode-m {{#if theme}}am-switch-mode-m-{{theme}}{{/if}}">
+  <div id="am-footer-mode"
+       class="am-modal am-modal-no-btn am-switch-mode-m {{#if theme}}am-switch-mode-m-{{theme}}{{/if}}">
     <div class="am-modal-dialog">
       <div class="am-modal-hd am-modal-footer-hd">
         <a href="javascript:void(0)" data-dismiss="modal" class="am-close am-close-spin" data-am-modal-close>&times;</a>
       </div>
       <div class="am-modal-bd">
         {{#ifCond content.lang '==' 'en'}}
-          You are visiting 
+          You are visiting
         {{else}}
           您正在浏览的是
         {{/ifCond}}
@@ -70,7 +81,7 @@
             {{{content.slogan}}}
           {{else}}
             {{#ifCond content.lang '==' 'en'}}
-              mobilized version for your device. 
+              mobilized version for your device.
             {{else}}
               为您当前手机订制的移动网站。
             {{/ifCond}}

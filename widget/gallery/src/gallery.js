@@ -1,15 +1,20 @@
-define(function (require, exports, module) {
+define(function(require, exports, module) {
 
     var touchGallery = require('zepto.touchgallery');
 
-    var $ = window.Zepto;
+    var $ = window.Zepto,
+        UI = $.AMUI;
 
     var galleryInit = function() {
-        var $themeOne = $('.am-gallery-one');
+        var $gallery = $('[data-am-widget="gallery"]'),
+            $galleryOne = $gallery.filter('.am-gallery-one');
 
-        $('[data-am-gallery] a').touchTouch();
+        $gallery.each(function() {
+            var options = UI.utils.parseOptions($(this).attr('data-am-gallery'));
+            options.lightbox && $(this).find('a').touchTouch();
+        });
 
-        $themeOne.each(function() {
+        $galleryOne.each(function() {
             galleryMore($(this));
         });
     };
@@ -19,7 +24,7 @@ define(function (require, exports, module) {
 
         if (object.children().length > 6) {
 
-            object.children().each(function (index) {
+            object.children().each(function(index) {
                 if (index > 5) {
                     $(this).hide();
                 }
@@ -35,10 +40,9 @@ define(function (require, exports, module) {
         });
     }
 
-    $(function () {
+    $(function() {
         galleryInit();
     });
 
     exports.init = galleryInit;
-
 });

@@ -1,7 +1,7 @@
 {
     "name": "intro",
 
-    "version": "2.0.0",
+    "version": "3.0.0",
 
     "localName": {
         "en": "Intro",
@@ -49,53 +49,42 @@
             "hook": "hook-am-intro-default",
             "variables": [
                 {
-                    "variable": "intro-bg-color",
-                    "name": "背景颜色",
-                    "default": "#428bca",
+                    "variable": "intro-hd-bg",
+                    "name": "标题背景色",
+                    "default": "#0e90d2",
                     "used": [
                         {
-                            "selector": "",
+                            "selector": ".am-intro-hd",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "intro-text-color",
-                    "name": "文本颜色",
-                    "default": "#ffffff",
+                    "variable": "intro-hd-color",
+                    "name": "标题文本颜色",
+                    "default": "#fff",
                     "used": [
                         {
-                            "selector": "",
+                            "selector": ".am-intro-title",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "intro-a-color",
+                    "variable": "intro-hd-link-color",
                     "name": "More链接颜色",
-                    "default": "#ffffff",
+                    "default": "#eee",
                     "used": [
                         {
-                            "selector": ".am-intro-top a",
+                            "selector": ".am-intro-hd a",
                             "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "intro-border-color",
-                    "name": "More边框颜色",
-                    "default": "#cccccc",
-                    "used": [
-                        {
-                            "selector": ".am-intro-more-bottom a",
-                            "property": "border-color"
                         }
                     ]
                 }
             ],
             "demos": [
                 {
-                    "desc": "",
+                    "desc": "More 在上",
                     "data": {
                         "options": {
                             "leftCols": 5,
@@ -103,8 +92,30 @@
                             "position": "top"
                         },
                         "content": {
-                            "top": "栏目标题",
-                            "more": "<a href=\"#\">More »</a>",
+                            "title": "栏目标题",
+                            "more": {
+                                "link": "#more",
+                                "title": "More »"
+                            },
+                            "left": "<img src=\"http://upload.wikimedia.org/wikipedia/zh/0/0c/GraceHopper.jpg\" alt=\"Grace\" />",
+                            "right": "<p>葛丽丝·穆雷·霍普，生于美国纽约州纽约市，美国海军准将及计算机科学家，世界最早一批的程式设计师之一，也是最早的女性程式设计师之一。</p>"
+                        }
+                    }
+                },
+                {
+                    "desc": "More 在下",
+                    "data": {
+                        "options": {
+                            "leftCols": 5,
+                            "rightCols": 7,
+                            "position": "bottom"
+                        },
+                        "content": {
+                            "title": "栏目标题",
+                            "more": {
+                                "link": "#more",
+                                "title": "More »"
+                            },
                             "left": "<img src=\"http://upload.wikimedia.org/wikipedia/zh/0/0c/GraceHopper.jpg\" alt=\"Grace\" />",
                             "right": "<p>葛丽丝·穆雷·霍普，生于美国纽约州纽约市，美国海军准将及计算机科学家，世界最早一批的程式设计师之一，也是最早的女性程式设计师之一。</p>"
                         }
@@ -123,34 +134,49 @@
             "hook": "hook-am-intro-one",
             "variables": [
                 {
-                    "variable": "intro-text-color",
+                    "variable": "intro-title-color",
                     "name": "标题颜色",
-                    "default": "#222",
+                    "default": "#333",
                     "used": [
                         {
-                            "selector": ".am-intro-top",
+                            "selector": ".am-intro-title",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "intro-right-text-color",
-                    "name": "文本颜色",
-                    "default": "#222",
+                    "variable": "intro-link-color",
+                    "name": "链接颜色",
+                    "default": "#15afef",
                     "used": [
                         {
-                            "selector": ".am-intro-right",
+                            "selector": "a",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "intro-a-color",
-                    "name": "MORE链接颜色",
-                    "default": "#fff",
+                    "variable": "intro-hd-border-color",
+                    "name": "边框颜色",
+                    "default": "#15afef",
                     "used": [
                         {
-                            "selector": ".am-intro-more > a",
+                            "selector": ".am-intro-hd",
+                            "property": "border-bottom-color"
+                        },
+                        {
+                            "selector": ".am-intro-title:before",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "intro-content-color",
+                    "name": "内容颜色",
+                    "default": "#555",
+                    "used": [
+                        {
+                            "selector": ".am-intro-bd",
                             "property": "color"
                         }
                     ]
@@ -163,11 +189,14 @@
                         "options": {
                             "leftCols": 5,
                             "rightCols": 7,
-                            "position": "bottom"
+                            "position": "top"
                         },
                         "content": {
-                            "top" : "栏目标题",
-                            "more" : "<a href=\"#\">查看详情</a>",
+                            "title" : "栏目标题",
+                            "more": {
+                                "link": "#more",
+                                "title": "查看详情"
+                            },
                             "left": "<img src=\"http://upload.wikimedia.org/wikipedia/zh/0/0c/GraceHopper.jpg\" alt=\"Grace\" />",
                             "right": "<p>葛丽丝·穆雷·霍普，生于美国纽约州纽约市，美国海军准将及计算机科学家，世界最早一批的程式设计师之一，也是最早的女性程式设计师之一。</p>"
                         }

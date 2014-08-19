@@ -51,9 +51,9 @@
             "hook": "hook-am-navbar-default",
             "variables": [
                 {
-                    "variable": "navbar-bg-color",
+                    "variable": "navbar-bg",
                     "name": "背景颜色",
-                    "default": "#428bca",
+                    "default": "#0e90d2",
                     "used": [
                         {
                             "selector": "",
@@ -66,7 +66,7 @@
                     ]
                 },
                 {
-                    "variable": "navbar-a-color",
+                    "variable": "navbar-link-color",
                     "name": "链接颜色",
                     "default": "#fff",
                     "used": [
@@ -325,5 +325,5 @@
 
     "example": "/*\n 此模块的使用方法：应用amui中现成的图标数据填写在以下数据中，直接形成想要的按钮。\n \n 常用用途：显示在手机下方固定的位置，有一键拨号、二维码等功能按钮。\n \n 了解AMUI模块详情，请访问http://ide.yunshipei.com/doc/amui/#icon。\n\n         示例代码：\n        \n         var data = [\n             {\n                 \"title\": \"拨号\", \n        \n                 \"link\": \"tel:0101245678\", \n        \n                 \"customIcon\": \"xxx.png\", \n        \n                 \"icon\": \"\",\n        \n                 \"dataApi\": \"\"\n             }，\n             {\n                 \"title\": \"分享\", \n        \n                 \"link\": \"\", \n        \n                 \"customIcon\": \"xxx.png\", \n        \n                 \"icon\": \"share\",\n        \n                 \"dataApi\": \"data-am-navbar-share\"\n             }\n         ];\n         return data;\n*/\n\nvar data = [\n    {\n        \"title\": \"\",        // title 值：要显示的文本\n\n        \"link\": \"\",         // link 值 ：如果是电话则写\"tel:0101245678\"\n\n        \"customIcon\": \"\",   // customIcon与下边的icon选用其中之一，customIcon用于上传自定义的小图标，写法：\"customIcon\": context.__root + \"xxx.png\"\n\n        \"icon\": \"\",         //icon 值,例如：分享的图标在AMUI中是am-icon-share ，则此时的icon写法为： \"icon\": \"share\" \n\n        \"dataApi\": \"\"       //dataApi 值可以填写\"data-am-navbar-share\"（用于分享模块） 或者\"data-am-navbar-qrcode\"(用于二维码模块)。若要使用自己上传的二维码 'data-am-navbar-qrcode = 二维码地址' 即可\n    }\n];\nreturn data;\n",
 
-    "hidden": false
+    "hidden": true
 }

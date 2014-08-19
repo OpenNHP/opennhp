@@ -20,6 +20,23 @@
 - 将组件拖入编辑界面；
 - 点击右侧面板里的【数据采集】按钮，按以下格式采集数据。
 
+### Amaze UI 1.0
+
+```javascript
+var data = {
+  "title": "",  // 标题
+  "more": { // 更多链接
+    "title": "",
+    "link": ""
+  },
+  "left": "", //左边的内容
+  "right": "" //右边的内容
+};
+return data;
+```
+
+### Amaze UI 0.9
+
 ```javascript
 var data = {
   "top": "",  // 标题
@@ -47,8 +64,11 @@ return data;
 	},
 
 	"content": {
-		"top": "",
-		"more": "",
+		"title": "",
+		"more": {
+      "link": "",
+      "title": ""
+    },
 		"left": "",
 		"right": ""
 	}

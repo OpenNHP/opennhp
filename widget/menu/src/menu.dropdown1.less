@@ -33,6 +33,7 @@
 
   a {
     .transition(all 0.4s);
+    .text-overflow();
   }
 
   .am-menu-nav {
@@ -46,6 +47,8 @@
     }
 
     > li {
+      width: 100%; // disable block-grid
+
       &.am-parent {
         > a {
           position: relative;

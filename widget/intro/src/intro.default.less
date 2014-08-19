@@ -3,57 +3,21 @@
   */
 
 .am-intro-default {
-  @intro-bg-color: @global-primary;
-  @intro-text-color: @white;
-  @intro-a-color: @white;
-  @intro-border-color: @gray-light;
+  @intro-hd-bg: @global-primary;
+  @intro-hd-color: @white;
+  @intro-hd-link-color: #eee;
 
-  position: relative;
-  padding-bottom: 10px;
-
-  .am-intro-top {
-    line-height: 40px;
-    background-color: @intro-bg-color;
-    color: @intro-text-color;
-    font-size: 18px;
+  .am-intro-hd {
+    background-color: @intro-hd-bg;
+    color: @intro-hd-color;
     padding:0 10px;
-    position: relative;
     a {
-      color: @intro-a-color;
+      color: @intro-hd-link-color;
     }
-  }
-
-  .am-intro-more-top {
-    position: absolute;
-    right: 10px;
-    top: 0;
-    a {
-      font-size: 1.4rem;
-    }
-  }
-
-  .am-intro-left {
-    padding-top: 10px;
   }
 
   .am-intro-right {
-    padding-top: 12px;
     padding-left: 0;
-    font-size: 1.4rem;
-  }
-
-  .am-intro-more-bottom {
-    clear: both;
-    text-align: center;
-    padding-top: 10px;
-    a {
-      display: inline-block;
-      width: 100px;
-      border: 1px solid @intro-border-color;
-      border-radius: 3px;
-      line-height: 30px;
-      font-size: 1.4rem;
-    }
   }
 
   .hook-am-intro-default;

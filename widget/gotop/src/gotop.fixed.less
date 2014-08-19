@@ -4,6 +4,9 @@
 
 .am-gotop-fixed {
   @gotop-border-radius: @global-border-radius;
+  @gotop-icon-bg: @gray;
+  @gotop-icon-color: #ddd;
+  @gotop-icon-hover-color: #fff;
 
   position: fixed;
   right: 10px;
@@ -38,12 +41,12 @@
   .am-gotop-icon {
     width: 100%;
     line-height: 32px;
-    background: @gray;
+    background-color: @gotop-icon-bg;
     vertical-align: middle;
-    color: #ddd;
+    color: @gotop-icon-color;
 
     &:hover {
-      color: #fff;
+      color: @gotop-icon-hover-color;
     }
   }
 

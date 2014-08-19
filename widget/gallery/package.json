@@ -164,7 +164,7 @@
                     ]
                 },
                 {
-                    "variable": "gallery-title-bg-color",
+                    "variable": "gallery-title-bg",
                     "name": "标题背景颜色",
                     "default": "rgba(0,0,0,0.5)",
                     "used": [
@@ -357,12 +357,12 @@
             "hook": "hook-am-gallery-one",
             "variables": [
                 {
-                    "variable": "gallery-bg-color",
+                    "variable": "gallery-bg",
                     "name": "背景颜色",
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": ".am-gallery-item",
+                            "selector": "",
                             "property": "background-color"
                         }
                     ]
@@ -370,7 +370,7 @@
                 {
                     "variable": "gallery-title-color",
                     "name": "标题颜色",
-                    "default": "#666",
+                    "default": "#555",
                     "used": [
                         {
                             "selector": ".am-gallery-title",
@@ -385,6 +385,28 @@
                     "used": [
                         {
                             "selector": ".am-gallery-desc",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "gallery-more-bg",
+                    "name": "更多背景",
+                    "default": "#dfdfdf",
+                    "used": [
+                        {
+                            "selector": ".am-gallery-more a",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "gallery-more-link-color",
+                    "name": "更多文字颜色",
+                    "default": "#555",
+                    "used": [
+                        {
+                            "selector": ".am-gallery-more a",
                             "property": "color"
                         }
                     ]

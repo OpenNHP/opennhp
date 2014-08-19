@@ -3,35 +3,42 @@
   */
 
 .am-titlebar-cols {
-
   @titlebar-bg: #f5f5f5;
-  @titlebar-text-color: @gray;
-  @titlebar-border-color: darken(@titlebar-bg, 5%);
+  @titlebar-color: @gray;
+  @titlebar-border-color: darken(@titlebar-bg, 8%);
   @titlebar-link-color: @gray;
   @titlebar-link-active-color: @global-primary;
 
   position: relative;
-  display: -webkit-box;
+  .flexbox();
+
   padding-left: 10px;
   background-color: @titlebar-bg;
-  color: @titlebar-link-color;
+  color: @titlebar-color;
   font-size: 18px;
   border-top: 2px solid @titlebar-border-color;
   line-height: 41px;
+
+  a {
+    color: @titlebar-link-color;
+  }
 
   .am-titlebar-title {
     color: @titlebar-link-active-color;
     margin-right: 15px;
     border-bottom: 2px solid @titlebar-link-active-color;
     font-weight: bold;
+
+    a {
+      color: @titlebar-link-active-color;
+    }
   }
 
   .am-titlebar-nav {
-    -webkit-box-flex: 1;
+    .flex();
 
     a {
       display: inline-block;
-      color: @titlebar-link-color;
       margin-right: 15px;
       line-height: 41px;
       border-bottom: 2px solid transparent;

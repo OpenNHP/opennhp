@@ -376,5 +376,5 @@
 
     "example": "/*\n 此模块的使用方法：采集原PC网站上的tab切换数据，在手机页面上生成tab切换效果。\n \n 常用用途：通常用来采集一组tab切换标题以及文字等信息。\n \n 了解AMUI的模块详情，请访问http://ide.yunshipei.com/doc/amui/#tabs。\n\n         示例代码：\n        \n         var data = [];\n         $(\".listpart\").eq(1).find(\"li\").each(function(){\n             data.push({\n                 \"header\": $(this).find(\".news-pic\").find(\"img\").src(),  \n                 \"substance\": $(this).find(\".news-pic\").find(\"a\")html(), \n                 \"class\": \"\"\n             });\n         });\n         return data;\n*/\n\nvar data = [\n    {\n        \"header\" : \"\",      //每一个选项的标题\n        \"substance\" : \"\",   //内容部分\n        \"class\" : \"\"        //显示当前默认被选中的选项卡标题以及其内容，值是\"active\"，如果有多个选项，只允许一个tab被激活\n    }\n];\nreturn data;\n\n",
 
-    "hidden": false
+    "hidden": true
 }

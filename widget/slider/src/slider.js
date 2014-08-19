@@ -1,16 +1,14 @@
-define(function (require, exports, module) {
-    var $ = window.Zepto;
+define(function(require, exports, module) {
+    var $ = window.Zepto,
+        UI = $.AMUI;
 
     require("zepto.flexslider");
 
     var sliderInit = function() {
-        $('.am-slider').not(".am-slider-manual").each(function (i, item) {
-            var options = $(item).attr('data-slider-config');
-            if (options) {
-                $(item).flexslider($.parseJSON(options));
-            } else {
-                $(item).flexslider();
-            }
+        var $sliders = $('[data-am-widget="slider"]');
+        $sliders.not(".am-slider-manual").each(function(i, item) {
+            var options = UI.utils.parseOptions($(item).attr('data-am-slider'));
+            $(item).flexslider(options);
         });
     };
 

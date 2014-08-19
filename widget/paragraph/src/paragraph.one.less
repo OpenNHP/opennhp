@@ -1,38 +1,37 @@
 /**
   * Paragraph Theme: one
-  * Theme ID: one
   */
 
 .am-paragraph-one {
-  @global-primary: #15afef;
+  @one-primary: #15afef;
   @global-light-gray: #dfdfdf;
   @global-dark-gray: #888;
 
-  @paragraph-bg-color: @white;
-  @paragraph-a-color: @black;
-  @paragraph-text-color: @gray-darker;
-  @paragraph-h3-color: @black;
-  @paragraph-h3-icon-color: @global-primary;
-  @paragraph-hr-color: @global-light-gray;
+  @paragraph-bg: @white;
+  @paragraph-color: @gray;
+  @paragraph-link-color: @gray-dark;
+  @paragraph-heading-color: @gray-dark;
+  @paragraph-heading-icon-color: @one-primary;
+  @paragraph-hr-color: #dfdfdf;
 
-  color: @paragraph-text-color;
-  background: @paragraph-bg-color;
+  color: @paragraph-color;
+  background: @paragraph-bg;
   margin: 0 10px;
   padding: 4px;
 
-  h1,h2,h3,h4,h5,h6{
-    color: @paragraph-h3-color;
+  h1, h2, h3, h4, h5, h6 {
+    color: @paragraph-heading-color;
     font-weight: normal;
     margin-top: 0;
   }
   h1 {
     font-size: 2rem;
   }
-  h2,h3 {
+  h2, h3 {
     font-size: 1.8rem;
   }
 
-  h4,h5 {
+  h4, h5 {
     font-size: 1.6rem;
   }
 
@@ -40,12 +39,13 @@
     font-size: 1.4rem;
   }
 
-  hr{
+  hr {
     background: @paragraph-hr-color;
     height: 1px;
     border: 0;
     overflow: hidden;
   }
+
   img {
     max-width: 100%;
     display: block;
@@ -53,15 +53,15 @@
   }
 
   a {
-    color: @paragraph-a-color;
+    color: @paragraph-link-color;
   }
 
-  p,div,table{
+  p, div, table {
     font-size: 1.4rem;
     margin: 0 0 10px 0;
   }
 
-  ul,ol {
+  ul, ol {
     padding-left: 0;
   }
 
@@ -72,4 +72,6 @@
 
   .hook-am-paragraph-one;
 }
-.hook-am-paragraph-one() {};
+
+.hook-am-paragraph-one() {
+}

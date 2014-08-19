@@ -4,24 +4,22 @@
   */
 
 .am-accordion-one {
-  @global-primary: #15afef;
-  @global-darker-gray: #666;
-  @global-light-gray: #dfdfdf;
+  @one-primary: #15afef;
 
-  @accordion-item-border-color: @global-light-gray;
-  @accordion-title-color: rgba(0, 0, 0, 0.6);
-  @accordion-title-active-color: rgba(0, 0, 0, 0.8);
-  @accordion-title-active-bg-color: rgba(0, 0, 0, 0.1);
-  @accordion-title-active-bd-color: @global-primary;
-  @accordion-content-color: @global-darker-gray;
-  @accordion-bg-color: @white;
+  @accordion-bg: @white;
+
+  @accordion-item-border-color: #dfdfdf;
+  @accordion-title-color: @gray;
+  @accordion-title-active-color: @one-primary;
+  @accordion-title-active-bg: #f8f8f8;
+  @accordion-content-color: #666;
 
   margin: 0 10px 0 10px;
 
   .am-accordion-item {
     border: 1px solid @accordion-item-border-color;
     margin: .5rem 0;
-    background: @accordion-bg-color;
+    background: @accordion-bg;
   }
 
   .am-accordion-title {
@@ -53,9 +51,8 @@
 
   // active
   .am-active {
-    border: 1px solid @accordion-title-active-bd-color;
     .am-accordion-title {
-      background-color: @accordion-title-active-bg-color;
+      background-color: @accordion-title-active-bg;
       color: @accordion-title-active-color;
       &::after {
         .rotate(90deg)

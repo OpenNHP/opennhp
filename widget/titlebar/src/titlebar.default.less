@@ -3,23 +3,28 @@
   */
 
 .am-titlebar-default {
-
-  @titlebar-bg: #f5f5f5;
-  @titlebar-text-color: @global-primary;
+  @titlebar-bg: transparent;
+  @titlebar-color: @global-primary;
+  @titlebar-link-color: @titlebar-color;
   @titlebar-border-color: #dedede;
-  @titlebar-link-color: @titlebar-text-color;
+  @titlebar-border-left-color: @titlebar-color;
 
-  border-bottom: 1px solid @titlebar-border-color;
-  display: -webkit-box;
-  
+  .flexbox();
   margin-left: 10px;
   margin-right: 10px;
+
+  background-color: @titlebar-bg;
+  border-bottom: 1px solid @titlebar-border-color;
   line-height: 44px;
+
+  a {
+    color: @titlebar-link-color;
+  }
 
   .am-titlebar-title {
     position: relative;
     padding-left: 12px;
-    color: @titlebar-text-color;
+    color: @titlebar-color;
     font-size: 1.8rem;
     text-align: left;
     font-weight: bold;
@@ -30,20 +35,15 @@
       left: 2px;
       top: 8px;
       bottom: 8px;
-      border-left: 3px solid @titlebar-text-color;
-    }
-
-    a {
-      color: @titlebar-link-color;
+      border-left: 3px solid @titlebar-color;
     }
   }
 
   .am-titlebar-nav {
-    -webkit-box-flex: 1;
+    .flex();
     text-align: right;
 
     a {
-
       margin-right: 10px;
 
       &:last-child {

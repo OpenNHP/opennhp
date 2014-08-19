@@ -1,7 +1,9 @@
-define(function (require, exports, module) {
+define(function(require, exports, module) {
     require('core');
 
-    var $ = window.Zepto;
+    var $ = window.Zepto,
+        UI = $.AMUI;
+
     // PinchZoom Plugin
     var PinchZoom = require('zepto.pinchzoom');
 
@@ -18,15 +20,15 @@ define(function (require, exports, module) {
         $warpHead = $('.am-paragraph-wrap header');
         $pinch = $zoomWrap.find('.pinch-zoom');
 
-        this.each(function () {
-            $(this).on('click', function () {
+        this.each(function() {
+            $(this).on('click', function() {
                 if (onOff && $('.am-paragraph').length) {
                     $('body').append($wrapDom);
                     $zoomWrap = $('.am-paragraph-wrap');
                     $pinch = $zoomWrap.find('.pinch-zoom');
                     $warpHead = $zoomWrap.find('header');
 
-                    $pinch.each(function () {
+                    $pinch.each(function() {
                         new PinchZoom($(this), {});
                     });
 
@@ -46,7 +48,7 @@ define(function (require, exports, module) {
         })
     };
 
-    $.fn.paragraphTable = function (objWidth) {
+    $.fn.paragraphTable = function(objWidth) {
         var This = $(this),
             distX = 0,
             disX = 0,
@@ -63,7 +65,7 @@ define(function (require, exports, module) {
             $parent.height(This.height());
             $parent.parent().height(This.height() + 20);
 
-            $parent.on('touchstart MSPointerDown pointerdown', function (ev) {
+            $parent.on('touchstart MSPointerDown pointerdown', function(ev) {
                 var oTarget = ev.targetTouches[0];
                 distX = oTarget.clientX - $(this).offset().left;
                 downX = oTarget.clientX;
@@ -119,29 +121,34 @@ define(function (require, exports, module) {
 
     paragraphInit = function() {
         var $body = $('body'),
-            $paragraph = $('.am-paragraph'),
+            $paragraph = $('[data-am-widget="paragraph"]'),
             $tableWidth;
 
-        if ($paragraph.length && $paragraph.attr('data-am-imgParagraph')) {
+        $paragraph.each(function() {
+            var $this = $(this),
+                options = UI.utils.parseOptions($this.attr('data-am-paragraph'));
 
-            $paragraph.find('img').paragraphZoomToggle();
+            if (options.imgLightbox) {
+                $this.find('img').paragraphZoomToggle();
 
-            $body.on('click', '.am-paragraph-wrap', function (e) {
-                e.preventDefault();
-                var target = e.target;
-                // Img is using pinch zoom
-                if (!$(target).is('img')) {
-                    $(this).toggleClass('am-active');
-                }
-            });
-        }
+                $body.on('click', '.am-paragraph-wrap', function(e) {
+                    e.preventDefault();
+                    var target = e.target;
+                    // Img is using pinch zoom
+                    if (!$(target).is('img')) {
+                        $(this).toggleClass('am-active');
+                    }
+                });
+            }
 
-        if ($paragraph.length && $paragraph.attr('data-am-tableParagraph')) {
-            $paragraph.find('table').each(function () {
-                $tableWidth = $(this).width();
-                $(this).paragraphTable($tableWidth);
-            })
-        }
+            if (options.tableScrollable) {
+                $this.find('table').each(function() {
+                    $tableWidth = $(this).width();
+                    $(this).paragraphTable($tableWidth);
+                });
+            }
+        });
+
     };
 
     $(window).on('load', function() {

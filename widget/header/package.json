@@ -41,7 +41,42 @@
             "name": "default",
             "desc": "深色背景",
             "options": {},
-            "hook": "hook-am-header-one",
+            "hook": "hook-am-header-default",
+            "variables": [
+                {
+                    "variable": "header-bg",
+                    "name": "背景颜色",
+                    "default": "#0e90d2",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "header-title-color",
+                    "name": "标题颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-header-title,.am-header-title a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "header-nav-color",
+                    "name": "两侧图标文字颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-header-nav a",
+                            "property": "color"
+                        }
+                    ]
+                }
+            ],
             "demos": [
                 {
                     "desc": "图标",
@@ -56,6 +91,23 @@
                             "right": [{
                                 "link": "#right-link",
                                 "icon": "bars"
+                            }]
+                        }
+                    }
+                },
+                {
+                    "desc": "图片图标",
+                    "data": {
+                        "content": {
+                            "left": [{
+                                "link": "#left-link",
+                                "icon": "home",
+                                "customIcon": "data:image/svg+xml;charset=utf-8,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 12 20\"><path d=\"M10,0l2,2l-8,8l8,8l-2,2L0,10L10,0z\" fill=\"%23fff\"/></svg>"
+                            }],
+                            "title": "<img src=\"http://i.static.amazeui.org/assets/i/brand/amazeui-cw.png\" />",
+                            "right": [{
+                                "link": "#right-link",
+                                "customIcon": "data:image/svg+xml;charset=utf-8,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 42 26\" fill=\"%23fff\"><rect width=\"4\" height=\"4\"/><rect x=\"8\" y=\"1\" width=\"34\" height=\"2\"/><rect y=\"11\" width=\"4\" height=\"4\"/><rect x=\"8\" y=\"12\" width=\"34\" height=\"2\"/><rect y=\"22\" width=\"4\" height=\"4\"/><rect x=\"8\" y=\"23\" width=\"34\" height=\"2\"/></svg>"
                             }]
                         }
                     }
@@ -142,7 +194,7 @@
             "hook": "hook-am-header-one",
             "variables": [
                 {
-                    "variable": "header-bg-color",
+                    "variable": "header-bg",
                     "name": "背景颜色",
                     "default": "#fff",
                     "used": [
@@ -153,12 +205,12 @@
                     ]
                 },
                 {
-                    "variable": "header-text-color",
-                    "name": "文本颜色",
+                    "variable": "header-title-color",
+                    "name": "标题颜色",
                     "default": "#1c1c1c",
                     "used": [
                         {
-                            "selector": ".am-header-title",
+                            "selector": ".am-header-title, .am-header-title a",
                             "property": "color"
                         }
                     ]
@@ -169,11 +221,7 @@
                     "default": "#15afef",
                     "used": [
                         {
-                            "selector": ".am-header-left span:before",
-                            "property": "color"
-                        },
-                        {
-                            "selector": ".am-header-right span:before",
+                            "selector": ".am-header-nav a",
                             "property": "color"
                         }
                     ]

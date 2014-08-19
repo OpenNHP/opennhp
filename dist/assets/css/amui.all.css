@@ -12781,6 +12781,9 @@ tbody.am-collapse.am-in {
   */
 .am-titlebar-default {
   display: -webkit-box;
+  display: -ms-flexbox;
+  display: -webkit-flex;
+  display: flex;
   margin-left: 10px;
   margin-right: 10px;
   background-color: transparent;
@@ -12807,7 +12810,9 @@ tbody.am-collapse.am-in {
   border-left: 3px solid #0e90d2;
 }
 .am-titlebar-default .am-titlebar-nav {
-  -webkit-box-flex: 1;
+  -ms-flex: 1;
+  -webkit-flex: 1;
+  flex: 1;
   text-align: right;
 }
 .am-titlebar-default .am-titlebar-nav a {
@@ -12821,6 +12826,9 @@ tbody.am-collapse.am-in {
   */
 .am-titlebar-multi {
   display: -webkit-box;
+  display: -ms-flexbox;
+  display: -webkit-flex;
+  display: flex;
   background-color: #f5f5f5;
   border-top: 2px solid #3bb4f2;
   border-bottom: 1px solid #e8e8e8;
@@ -12837,7 +12845,9 @@ tbody.am-collapse.am-in {
   line-height: 42px;
 }
 .am-titlebar-multi .am-titlebar-nav {
-  -webkit-box-flex: 1;
+  -ms-flex: 1;
+  -webkit-flex: 1;
+  flex: 1;
   text-align: right;
   line-height: 42px;
 }
@@ -12850,6 +12860,9 @@ tbody.am-collapse.am-in {
 .am-titlebar-cols {
   position: relative;
   display: -webkit-box;
+  display: -ms-flexbox;
+  display: -webkit-flex;
+  display: flex;
   padding-left: 10px;
   background-color: #f5f5f5;
   color: #555555;
@@ -12870,7 +12883,9 @@ tbody.am-collapse.am-in {
   color: #0e90d2;
 }
 .am-titlebar-cols .am-titlebar-nav {
-  -webkit-box-flex: 1;
+  -ms-flex: 1;
+  -webkit-flex: 1;
+  flex: 1;
 }
 .am-titlebar-cols .am-titlebar-nav a {
   display: inline-block;
@@ -12890,6 +12905,9 @@ tbody.am-collapse.am-in {
   */
 .am-titlebar-one {
   display: -webkit-box;
+  display: -ms-flexbox;
+  display: -webkit-flex;
+  display: flex;
   margin-left: 10px;
   margin-right: 10px;
   height: 45px;
@@ -12943,7 +12961,9 @@ tbody.am-collapse.am-in {
   padding-left: 0;
 }
 .am-titlebar-one .am-titlebar-nav {
-  -webkit-box-flex: 1;
+  -ms-flex: 1;
+  -webkit-flex: 1;
+  flex: 1;
   text-align: right;
   padding-right: 5px;
   color: #999999;

@@ -69,6 +69,10 @@ __感谢大家对 Amaze UI 的关注和支持！__
 
 ## jQuery or Zepto?
 
+<div class="am-alert am-alert-danger">
+  这个问题已有结论：ver 1.0 继续使用 Zepto，偏重处理移动端和桌面现代浏览器，<code>ver 2.0</code> 会改用 jQuery，完善桌面端支持。谢谢大家！
+</div>
+
 > 我承认，我是猴子派来捣乱的！
 
 移动端首选 Zepto，桌面端选 jQuery，这应该是大多数开发者的共识。那对于跨平台的响应式网站呢？

@@ -38,8 +38,8 @@ return data;
   "theme": "default",
 
   "options": {
-    "tableParagraph": false, // 图片缩放功能
-    "imgParagraph": false // 表格横向滚动功能
+    "imgLightbox": false, // 图片查看器
+    "tableScrollable": false // 表格横向滚动功能
   },
 
   "content": {

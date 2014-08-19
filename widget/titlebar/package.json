@@ -45,9 +45,9 @@
             "hook": "hook-am-titlebar-default",
             "variables": [
                 {
-                    "variable": "titlebar-bg-color",
+                    "variable": "titlebar-bg",
                     "name": "背景颜色",
-                    "default": "#428bca",
+                    "default": "transparent",
                     "used": [
                         {
                             "selector": "",
@@ -56,9 +56,9 @@
                     ]
                 },
                 {
-                    "variable": "titlebar-text-color",
+                    "variable": "titlebar-color",
                     "name": "文本颜色",
-                    "default": "#fff",
+                    "default": "#0e90d2",
                     "used": [
                         {
                             "selector": ".am-titlebar-title",
@@ -67,22 +67,59 @@
                     ]
                 },
                 {
-                    "variable": "titlebar-a-color",
+                    "variable": "titlebar-link-color",
                     "name": "链接颜色",
-                    "default": "#fff",
+                    "default": "#0e90d2",
                     "used": [
                         {
-                            "selector": ".am-titlebar-title a",
+                            "selector": "a",
                             "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-border-color",
+                    "name": "下边框颜色",
+                    "default": "#dedede",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "border-bottom-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-border-left-color",
+                    "name": "左边框颜色",
+                    "default": "#0e90d2",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-title:before",
+                            "property": "border-left-color"
                         }
                     ]
                 }
             ],
             "demos": [
                 {
+                    "desc": "文字标题",
                     "data": {
                         "content": {
                             "title": "栏目标题",
+                            "nav": [
+                                {
+                                    "title": "more &raquo;",
+                                    "link": "#more"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "desc": "图片标题",
+                    "data": {
+                        "content": {
+                            "title": "<img src=\"http://i.static.amazeui.org/assets/i/brand/amazeui-b.png\"/>",
                             "nav": [
                                 {
                                     "title": "more &raquo;",
@@ -96,13 +133,13 @@
         },
         {
             "name": "multi",
-            "desc": "左边框",
+            "desc": "浅背景上边框",
             "hook": "hook-am-titlebar-multi",
             "variables": [
                 {
-                    "variable": "titlebar-bg-color",
+                    "variable": "titlebar-bg",
                     "name": "背景颜色",
-                    "default": "#428bca",
+                    "default": "#f5f5f5",
                     "used": [
                         {
                             "selector": "",
@@ -111,9 +148,9 @@
                     ]
                 },
                 {
-                    "variable": "titlebar-text-color",
+                    "variable": "titlebar-color",
                     "name": "文本颜色",
-                    "default": "#fff",
+                    "default": "#0e90d2",
                     "used": [
                         {
                             "selector": ".am-titlebar-title",
@@ -122,20 +159,42 @@
                     ]
                 },
                 {
-                    "variable": "titlebar-a-color",
+                    "variable": "titlebar-link-color",
                     "name": "链接颜色",
-                    "default": "#fff",
+                    "default": "#0e90d2",
                     "used": [
                         {
-                            "selector": ".am-titlebar-title a",
+                            "selector": "a",
                             "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-border-top-color",
+                    "name": "上边框颜色",
+                    "default": "#3bb4f2",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "border-top-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-border-bottom-color",
+                    "name": "下边框颜色",
+                    "default": "#e8e8e8",
+                    "used": [
+                        {
+                            "selector": "",
+                            "property": "border-bottom-color"
                         }
                     ]
                 }
             ],
             "demos": [
                 {
-                    "desc": "更多链接",
+                    "desc": "单个链接",
                     "data": {
                         "content": {
                             "title": "栏目标题",
@@ -174,13 +233,13 @@
         },
         {
             "name": "cols",
-            "desc": "灰底蓝下边框",
+            "desc": "浅背景多链接",
             "hook": "hook-am-titlebar-cols",
             "variables": [
                 {
-                    "variable": "titlebar-bg-color",
+                    "variable": "titlebar-bg",
                     "name": "背景颜色",
-                    "default": "#dfe2ea",
+                    "default": "#f5f5f5",
                     "used": [
                         {
                             "selector": "",
@@ -189,9 +248,9 @@
                     ]
                 },
                 {
-                    "variable": "titlebar-text-color",
+                    "variable": "titlebar-color",
                     "name": "文本颜色",
-                    "default": "#1a356a",
+                    "default": "#555",
                     "used": [
                         {
                             "selector": "",
@@ -200,27 +259,38 @@
                     ]
                 },
                 {
-                    "variable": "titlebar-a-color",
+                    "variable": "titlebar-link-color",
                     "name": "链接颜色",
                     "default": "#a2a985",
                     "used": [
                         {
-                            "selector": ".am-titlebar-left a",
-                            "property": "color"
-                        },
-                        {
-                            "selector": ".am-titlebar-right a",
+                            "selector": "a",
                             "property": "color"
                         }
                     ]
                 },
                 {
                     "variable": "titlebar-border-color",
-                    "name": "下边框颜色",
-                    "default": "#1a356a",
+                    "name": "上边框颜色",
+                    "default": "#e1e1e1",
                     "used": [
                         {
                             "selector": "",
+                            "property": "border-top-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-link-active-color",
+                    "name": "激活链接颜色",
+                    "default": "#0e90d2",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-title, .am-titlebar-title a",
+                            "property": "color"
+                        },
+                        {
+                            "selector": ".am-titlebar-title",
                             "property": "border-bottom-color"
                         }
                     ]
@@ -257,7 +327,7 @@
             "hook": "hook-am-titlebar-one",
             "variables": [
                 {
-                    "variable": "titlebar-bg-color",
+                    "variable": "titlebar-bg",
                     "name": "背景颜色",
                     "default": "#fff",
                     "used": [
@@ -268,32 +338,50 @@
                     ]
                 },
                 {
-                    "variable": "titlebar-left-a-color",
-                    "name": "文本颜色",
-                    "default": "#000",
-                    "used": [
-                        {
-                            "selector": ".am-titlebar-left",
-                            "property": "color"
-                        },
-                        {
-                            "selector": ".am-titlebar-left a",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "titlebar-title-before",
+                    "variable": "titlebar-border-color",
                     "name": "边框颜色",
                     "default": "#15afef",
                     "used": [
                         {
                             "selector": "",
-                            "property": "border-color"
+                            "property": "border-bottom-color"
                         },
                         {
-                            "selector": ".am-titlebar-left::before",
-                            "property": "background-color"
+                            "selector": ".am-titlebar-title:before",
+                            "property": "border-left-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-title-color",
+                    "name": "标题颜色",
+                    "default": "#222",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-title",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-title-link-color",
+                    "name": "标题链接颜色",
+                    "default": "#222",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-title a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "titlebar-nav-link-color",
+                    "name": "更多链接颜色",
+                    "default": "#999",
+                    "used": [
+                        {
+                            "selector": ".am-titlebar-nav, .am-titlebar-nav a",
+                            "property": "color"
                         }
                     ]
                 }

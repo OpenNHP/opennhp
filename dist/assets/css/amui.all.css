@@ -8833,7 +8833,7 @@ tbody.am-collapse.am-in {
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
-  color: #666666;
+  color: #555555;
 }
 .am-gallery-one .am-gallery-desc {
   color: #999999;
@@ -8844,7 +8844,7 @@ tbody.am-collapse.am-in {
 }
 .am-gallery-one .am-gallery-more a {
   background-color: #dfdfdf;
-  color: #666666;
+  color: #555555;
   height: 35px;
   line-height: 35px;
   font-size: 1.4rem;
@@ -10821,6 +10821,7 @@ tbody.am-collapse.am-in {
 .am-paragraph-default {
   margin: 0 10px;
   color: #333333;
+  background-color: transparent;
 }
 .am-paragraph-default p {
   font-size: 1.4rem;
@@ -12771,15 +12772,23 @@ tbody.am-collapse.am-in {
   margin-bottom: 0;
   font-size: 1.6rem;
 }
+.am-titlebar .am-titlebar-title img {
+  height: 24px;
+  width: auto;
+}
 /**
   * Titlebar Theme: default
   */
 .am-titlebar-default {
-  border-bottom: 1px solid #dedede;
   display: -webkit-box;
   margin-left: 10px;
   margin-right: 10px;
+  background-color: transparent;
+  border-bottom: 1px solid #dedede;
   line-height: 44px;
+}
+.am-titlebar-default a {
+  color: #0e90d2;
 }
 .am-titlebar-default .am-titlebar-title {
   position: relative;
@@ -12797,9 +12806,6 @@ tbody.am-collapse.am-in {
   bottom: 8px;
   border-left: 3px solid #0e90d2;
 }
-.am-titlebar-default .am-titlebar-title a {
-  color: #0e90d2;
-}
 .am-titlebar-default .am-titlebar-nav {
   -webkit-box-flex: 1;
   text-align: right;
@@ -12814,10 +12820,13 @@ tbody.am-collapse.am-in {
   * Titlebar Theme: multi
   */
 .am-titlebar-multi {
+  display: -webkit-box;
   background-color: #f5f5f5;
   border-top: 2px solid #3bb4f2;
   border-bottom: 1px solid #e8e8e8;
-  display: -webkit-box;
+}
+.am-titlebar-multi a {
+  color: #0e90d2;
 }
 .am-titlebar-multi .am-titlebar-title {
   padding-left: 10px;
@@ -12826,9 +12835,6 @@ tbody.am-collapse.am-in {
   text-align: left;
   font-weight: bold;
   line-height: 42px;
-}
-.am-titlebar-multi .am-titlebar-title a {
-  color: #ffffff;
 }
 .am-titlebar-multi .am-titlebar-nav {
   -webkit-box-flex: 1;
@@ -12848,8 +12854,11 @@ tbody.am-collapse.am-in {
   background-color: #f5f5f5;
   color: #555555;
   font-size: 18px;
-  border-top: 2px solid #e8e8e8;
+  border-top: 2px solid #e1e1e1;
   line-height: 41px;
+}
+.am-titlebar-cols a {
+  color: #555555;
 }
 .am-titlebar-cols .am-titlebar-title {
   color: #0e90d2;
@@ -12857,12 +12866,14 @@ tbody.am-collapse.am-in {
   border-bottom: 2px solid #0e90d2;
   font-weight: bold;
 }
+.am-titlebar-cols .am-titlebar-title a {
+  color: #0e90d2;
+}
 .am-titlebar-cols .am-titlebar-nav {
   -webkit-box-flex: 1;
 }
 .am-titlebar-cols .am-titlebar-nav a {
   display: inline-block;
-  color: #555555;
   margin-right: 15px;
   line-height: 41px;
   border-bottom: 2px solid transparent;
@@ -12883,14 +12894,14 @@ tbody.am-collapse.am-in {
   margin-right: 10px;
   height: 45px;
   line-height: 44px;
-  background: #ffffff;
+  background-color: #ffffff;
   overflow: hidden;
   border-bottom: 1px solid #15afef;
 }
 .am-titlebar-one .am-titlebar-title {
   padding-left: 12px;
   position: relative;
-  color: #222222;
+  color: #15afef;
   display: block;
   word-wrap: normal;
   /* for IE */
@@ -12906,13 +12917,13 @@ tbody.am-collapse.am-in {
   bottom: 8px;
   border-left: 3px solid #15afef;
 }
-.am-titlebar-one .am-titlebar-title img {
-  max-height: 30px;
-  vertical-align: top;
-  margin-top: 4px;
-}
 .am-titlebar-one .am-titlebar-title a {
   color: #222222;
+}
+.am-titlebar-one .am-titlebar-title img {
+  height: 24px;
+  vertical-align: top;
+  margin-top: 10px;
 }
 .am-titlebar-one .am-titlebar-title h1,
 .am-titlebar-one .am-titlebar-title h2,

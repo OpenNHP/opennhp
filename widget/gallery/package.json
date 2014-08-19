@@ -164,7 +164,7 @@
                     ]
                 },
                 {
-                    "variable": "gallery-title-bg-color",
+                    "variable": "gallery-title-bg",
                     "name": "标题背景颜色",
                     "default": "rgba(0,0,0,0.5)",
                     "used": [

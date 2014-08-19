@@ -1,6 +1,6 @@
 # [Amaze UI](http://amazeui.org/)
 
-<img width="200" src="http://i.static.amazeui.org/assets/i/brand/amazeui-b.png" alt="Amaze UI Logo"/>
+<img width="200" src="https://raw.githubusercontent.com/allmobilize/amazeui/master/vendor/amazeui/amazeui-b.png" alt="Amaze UI Logo"/>
 
 Amaze UI 是基于社区开源项目构建的一个跨屏前端框架。
 

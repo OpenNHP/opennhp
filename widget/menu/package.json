@@ -1877,21 +1877,30 @@
                 "desc": "仅对侧滑主题有效",
                 "type": "select",
                 "default": "",
-                "required": false,
-                "dataList": [
-                    {
-                        "value": false,
-                        "title": "左侧",
-                        "selected": true
-                    },
-                    {
-                        "value": true,
-                        "title": "右侧"
-                    }
-                ]
+                "required": false
+            },
+            "toggleTitle": {
+                "name": "触发按钮文字",
+                "desc": "仅对使用使用触发按钮的主题有用",
+                "type": "text",
+                "default": "",
+                "required": false
+            },
+            "toggleIcon": {
+                "name": "触发按钮图标",
+                "desc": "Font Icon名称，如 am-icon-xxx 中的 xxx",
+                "type": "text",
+                "default": "",
+                "required": false
+            },
+            "toggleCustomIcon": {
+                "name": "触发按钮自定图标",
+                "desc": "自定义的图片地址，设置此项后 Font Icon 将不显示",
+                "type": "text",
+                "default": "",
+                "required": false
             }
         },
-
         "content": {
             "type": "Array",
             "item": {

@@ -42,6 +42,13 @@ define(function(require, exports, module) {
             $nav.offCanvas('open');
         });
 
+        // Close offCanvas when link clicked
+        var autoCloseOffCanvas = '.am-offcanvas[data-dismiss-on="click"]',
+            $autoCloseOffCanvas = $(autoCloseOffCanvas);
+        $autoCloseOffCanvas.find('a').not('.am-parent>a').on('click', function(e) {
+            $(this).parents(autoCloseOffCanvas).offCanvas('close');
+        });
+
         // one theme
         $menus.filter('.am-menu-one').each(function() {
             var $this = $(this),

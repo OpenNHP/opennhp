@@ -1,6 +1,6 @@
 define(function(require, exports, module) {
     require('ui.offcanvas');
-    var IScroll = require('ui.iscroll');
+    var IScroll = require('ui.iscroll-lite');
 
     var $ = window.Zepto;
 
@@ -70,8 +70,10 @@ define(function(require, exports, module) {
             $nav.width(allWidth);
 
             var menuScroll = new IScroll('#am-menu-' + index, {
+                eventPassthrough: true,
                 scrollX: true,
-                scrollY: false
+                scrollY: false,
+                preventDefault: false
             });
 
             $navTopItem.on('click', function() {

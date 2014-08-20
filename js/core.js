@@ -155,6 +155,16 @@ define(function(require, exports, module) {
         return options;
     };
 
+    UI.utils.generateGUID =  function(namespace) {
+        var uid = namespace || 'am-';
+
+        do {
+            uid += Math.random().toString(36).substring(2, 7);
+        } while (document.getElementById(uid));
+
+        return uid;
+    };
+
     UI.utils.event = {};
     UI.utils.event.click = UI.support.touch ? 'tap' : 'click';
 

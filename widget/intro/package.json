@@ -37,6 +37,16 @@
 
     "style": "intro.less",
 
+    "demoContent": {
+        "title": "你好小娜",
+        "more": {
+            "link": "#more",
+            "title": "更多细节"
+        },
+        "left": "<img src=\"http://i.static.amazeui.org/assets/i/cpts/intro/WP_Cortana_China.png\" alt=\"小娜\" />",
+        "right": "<p>Cortana 恐怕是用户急于更新到 WP8.1 Update 开发者预览版的原因之一</p><p>Cortana 中国版特有的新图标（面团，带眼睛，可在 Cortana 设置中切换回圆圈），使用的是中文语言，也同样支持 Cortana 笔记本。</p>"
+    },
+
     "themes": [
         {
             "name": "default",
@@ -90,15 +100,6 @@
                             "leftCols": 5,
                             "rightCols": 7,
                             "position": "top"
-                        },
-                        "content": {
-                            "title": "栏目标题",
-                            "more": {
-                                "link": "#more",
-                                "title": "More »"
-                            },
-                            "left": "<img src=\"http://upload.wikimedia.org/wikipedia/zh/0/0c/GraceHopper.jpg\" alt=\"Grace\" />",
-                            "right": "<p>葛丽丝·穆雷·霍普，生于美国纽约州纽约市，美国海军准将及计算机科学家，世界最早一批的程式设计师之一，也是最早的女性程式设计师之一。</p>"
                         }
                     }
                 },
@@ -109,15 +110,6 @@
                             "leftCols": 5,
                             "rightCols": 7,
                             "position": "bottom"
-                        },
-                        "content": {
-                            "title": "栏目标题",
-                            "more": {
-                                "link": "#more",
-                                "title": "More »"
-                            },
-                            "left": "<img src=\"http://upload.wikimedia.org/wikipedia/zh/0/0c/GraceHopper.jpg\" alt=\"Grace\" />",
-                            "right": "<p>葛丽丝·穆雷·霍普，生于美国纽约州纽约市，美国海军准将及计算机科学家，世界最早一批的程式设计师之一，也是最早的女性程式设计师之一。</p>"
                         }
                     }
                 }
@@ -190,15 +182,6 @@
                             "leftCols": 5,
                             "rightCols": 7,
                             "position": "top"
-                        },
-                        "content": {
-                            "title" : "栏目标题",
-                            "more": {
-                                "link": "#more",
-                                "title": "查看详情"
-                            },
-                            "left": "<img src=\"http://upload.wikimedia.org/wikipedia/zh/0/0c/GraceHopper.jpg\" alt=\"Grace\" />",
-                            "right": "<p>葛丽丝·穆雷·霍普，生于美国纽约州纽约市，美国海军准将及计算机科学家，世界最早一批的程式设计师之一，也是最早的女性程式设计师之一。</p>"
                         }
                     }
                 }

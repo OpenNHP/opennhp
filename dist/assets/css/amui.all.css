@@ -7346,8 +7346,13 @@ ul.am-dropdown-content > .am-disabled > a:focus {
   right: 0;
   bottom: 0;
   left: 0;
+<<<<<<< HEAD
   z-index: 1030;
   background: rgba(0, 0, 0, 0.1);
+=======
+  z-index: 1010;
+  background: rgba(0, 0, 0, 0.15);
+>>>>>>> codename-h
 }
 .am-offcanvas.am-active {
   display: block;
@@ -7399,8 +7404,7 @@ ul.am-dropdown-content > .am-disabled > a:focus {
   bottom: 0;
   right: 0;
   width: 1px;
-  background: rgba(0, 0, 0, 0.6);
-  box-shadow: 0 0 5px 2px rgba(0, 0, 0, 0.6);
+  background: #262626;
 }
 /* .am-offcanvas-bar-flip */
 .am-offcanvas-bar-flip {
@@ -7413,9 +7417,6 @@ ul.am-dropdown-content > .am-disabled > a:focus {
 .am-offcanvas-bar-flip:after {
   right: auto;
   left: 0;
-  width: 1px;
-  background: rgba(0, 0, 0, 0.6);
-  box-shadow: 0 0 5px 2px rgba(0, 0, 0, 0.6);
 }
 .am-offcanvas-content {
   padding: 15px;
@@ -8221,7 +8222,7 @@ tbody.am-collapse.am-in {
   color: #333333;
   -webkit-transition: background-color 0.2s ease-out;
   transition: background-color 0.2s ease-out;
-  padding: 0.8rem 1rem;
+  padding: .8rem 0 .3rem;
 }
 .am-accordion-basic .am-accordion-title::before {
   content: "\f0da";
@@ -8260,13 +8261,13 @@ tbody.am-collapse.am-in {
 .am-accordion-basic .am-active .am-accordion-title {
   color: #0e90d2;
 }
-.am-accordion-basic .am-active .am-accordion-title::before {
+.am-accordion-basic .am-active .am-accordion-title:before {
   -webkit-transform: rotate(90deg);
   -ms-transform: rotate(90deg);
   transform: rotate(90deg);
 }
 .am-accordion-basic .am-active .am-accordion-content {
-  padding: 0.5rem 1rem 1.5rem;
+  padding: 0 1rem 1rem;
 }
 /**
   * Accordion Theme: gapped
@@ -9069,10 +9070,12 @@ tbody.am-collapse.am-in {
   padding-bottom: 15px;
   font-size: 1.4rem;
 }
+.am-intro .am-intro-bd p:last-child {
+  margin-bottom: 0;
+}
 .am-intro .am-intro-more-bottom {
   clear: both;
   text-align: center;
-  padding-top: 15px;
 }
 .am-intro .am-intro-more-bottom .am-btn {
   font-size: 14px;
@@ -9624,15 +9627,13 @@ tbody.am-collapse.am-in {
   * Author: Minwe (minwe@yunshipei.com)
   */
 .am-menu-default .am-menu-nav {
-  padding-top: 6px;
-  padding-bottom: 6px;
-}
-.am-menu-default .am-menu-nav > li {
-  height: 36px;
-  line-height: 36px;
+  padding-top: 8px;
+  padding-bottom: 8px;
 }
 .am-menu-default .am-menu-nav a {
   text-align: center;
+  height: 36px;
+  line-height: 36px;
   display: block;
   word-wrap: normal;
   /* for IE */
@@ -9642,15 +9643,62 @@ tbody.am-collapse.am-in {
   padding: 0;
   color: #0e90d2;
 }
+.am-menu-default .am-menu-nav > .am-parent > a {
+  position: relative;
+  -webkit-transition: 0.15s;
+  transition: 0.15s;
+}
+.am-menu-default .am-menu-nav > .am-parent > a:after {
+  content: "\f107";
+  margin-left: 5px;
+  -webkit-transition: 0.15s;
+  transition: 0.15s;
+}
+.am-menu-default .am-menu-nav > .am-parent > a:before {
+  position: absolute;
+  top: 100%;
+  margin-top: -16px;
+  left: 50%;
+  margin-left: -12px;
+  content: "\f0d8";
+  display: none;
+  color: #f1f1f1;
+  font-size: 24px;
+}
+.am-menu-default .am-menu-nav > .am-parent.am-open > a {
+  color: #095f8a;
+}
+.am-menu-default .am-menu-nav > .am-parent.am-open > a:before {
+  display: block;
+}
+.am-menu-default .am-menu-nav > .am-parent.am-open > a:after {
+  -webkit-transform: rotateX(-180deg);
+  -ms-transform: rotateX(-180deg);
+  transform: rotateX(-180deg);
+}
+.am-menu-default .am-menu-sub {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  background-color: #f1f1f1;
+  z-index: 1000;
+  border-radius: 2px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.am-menu-default .am-menu-sub > li > a {
+  color: #555555;
+}
 @media only screen and (min-width:641px) {
   .am-menu-default .am-menu-nav li {
     width: auto;
-    float: none;
-    display: inline-block;
+    float: left;
+    clear: none;
+    display: inline;
   }
   .am-menu-default .am-menu-nav a {
     padding-left: 1.5rem;
-    padding-right: 1.5rem;
+    padding-right: .5rem;
   }
 }
 /**
@@ -9942,8 +9990,51 @@ tbody.am-collapse.am-in {
   white-space: nowrap;
   overflow: hidden;
 }
-.am-menu-slide1 .am-menu-sub {
+.am-menu-slide1 .am-menu-nav > .am-parent > a {
   position: relative;
+  -webkit-transition: 0.15s;
+  transition: 0.15s;
+}
+.am-menu-slide1 .am-menu-nav > .am-parent > a:after {
+  content: "\f107";
+  margin-left: 5px;
+  -webkit-transition: 0.15s;
+  transition: 0.15s;
+}
+.am-menu-slide1 .am-menu-nav > .am-parent > a:before {
+  position: absolute;
+  top: 100%;
+  margin-top: -16px;
+  left: 50%;
+  margin-left: -12px;
+  content: "\f0d8";
+  display: none;
+  color: #0e90d2;
+  font-size: 24px;
+}
+.am-menu-slide1 .am-menu-nav > .am-parent.am-open > a {
+  color: #0e90d2;
+}
+.am-menu-slide1 .am-menu-nav > .am-parent.am-open > a:before {
+  display: block;
+}
+.am-menu-slide1 .am-menu-nav > .am-parent.am-open > a:after {
+  -webkit-transform: rotateX(-180deg);
+  -ms-transform: rotateX(-180deg);
+  transform: rotateX(-180deg);
+}
+.am-menu-slide1 .am-menu-sub {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  background-color: #0e90d2;
+  z-index: 1000;
+  border-radius: 2px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.am-menu-slide1 .am-menu-sub > li > a {
+  color: #ffffff;
 }
 @media only screen and (min-width:641px) {
   .am-menu-slide1 .am-menu-toggle {
@@ -9994,7 +10085,7 @@ tbody.am-collapse.am-in {
 .am-menu-offcanvas1 .am-menu-nav > .am-open > a,
 .am-menu-offcanvas1 .am-menu-nav > li > a:hover,
 .am-menu-offcanvas1 .am-menu-nav > li > a:focus {
-  background-color: #404040;
+  background-color: #474747;
   color: #ffffff;
   outline: none;
 }

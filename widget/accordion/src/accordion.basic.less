@@ -13,7 +13,7 @@
   .am-accordion-title {
     color: @accordion-title-color;
     .transition(background-color 0.2s ease-out);
-    padding: 0.8rem 1rem;
+    padding: .8rem 0 .3rem;
 
     &::before {
       content: @fa-var-caret-right;
@@ -34,12 +34,12 @@
   .am-active {
     .am-accordion-title {
       color: @accordion-title-active-color;
-      &::before {
+      &:before {
         .rotate(90deg)
       }
     }
     .am-accordion-content {
-      padding: 0.5rem 1rem 1.5rem;
+      padding: 0 1rem 1rem;
     }
   }
 

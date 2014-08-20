@@ -23,7 +23,7 @@
     {{!-- offCanvas menu Wrap --}}
     {{!-- 问题：方便用户，但是与主题名称（类名）耦合过深 --}}
     {{#ifCond theme '==' 'offcanvas1'}}
-    <div class="am-offcanvas">
+    <div class="am-offcanvas" {{#if options.closeOffCanvasOnclick}}data-dismiss-on="click"{{/if}}>
       <div class="am-offcanvas-bar{{#if options.offCanvasFlip}} am-offcanvas-bar-flip{{/if}}">
     {{/ifCond}}
     {{#ifCond theme '==' 'offcanvas2'}}

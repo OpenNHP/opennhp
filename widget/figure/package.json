@@ -36,6 +36,11 @@
 
     "style": "figure.less",
 
+    "demoContent": {
+        "img": "http://i.static.amazeui.org/assets/i/cpts/figure/WindMillLights_1366x768.jpg",
+        "figcaption": "加州风力发电场的圣诞灯饰"
+    },
+
     "themes": [
         {
             "name": "default",
@@ -76,10 +81,6 @@
                         "options": {
                             "figcaptionPosition": "bottom",
                             "zoomble": false
-                        },
-                        "content": {
-                            "img": "http://s.cn.bing.net/az/hprichbg/rb/WindMillLights_ZH-CN10720233846_1366x768.jpg",
-                            "figcaption": "加州风力发电场的圣诞灯饰"
                         }
                     }
                 }
@@ -136,10 +137,6 @@
                         "options": {
                             "figcaptionPosition": "bottom",
                             "zoomble": false
-                        },
-                        "content": {
-                            "img": "http://s.cn.bing.net/az/hprichbg/rb/WindMillLights_ZH-CN10720233846_1366x768.jpg",
-                            "figcaption": "加州风力发电场的圣诞灯饰"
                         }
                     }
                 }

@@ -1,6 +1,6 @@
 define(function(require, exports, module) {
     require('ui.offcanvas');
-    var IScroll = require('ui.iscroll');
+    var IScroll = require('ui.iscroll-lite');
 
     var $ = window.Zepto;
 
@@ -43,7 +43,7 @@ define(function(require, exports, module) {
         });
 
         // one theme
-        $menus.filter('.am-menu-one').each(function() {
+        $menus.filter('.am-menu-one').each(function(index) {
             var $this = $(this),
                 $wrap = $('<div class="am-menu-nav-sub-wrap"></div>'),
                 allWidth = 0,
@@ -58,7 +58,7 @@ define(function(require, exports, module) {
 
             $this.append($wrap);
 
-            $nav.wrap('<div class="am-menu-nav-wrap" id="am-menu">');
+            $nav.wrap('<div class="am-menu-nav-wrap" id="am-menu-' + index + '">');
 
             $navTopItem.eq(0).addClass('am-active');
 
@@ -69,9 +69,11 @@ define(function(require, exports, module) {
 
             $nav.width(allWidth);
 
-            var menuScroll = new IScroll('#am-menu', {
+            var menuScroll = new IScroll('#am-menu-' + index, {
+                eventPassthrough: true,
                 scrollX: true,
-                scrollY: false
+                scrollY: false,
+                preventDefault: false
             });
 
             $navTopItem.on('click', function() {
@@ -97,10 +99,16 @@ define(function(require, exports, module) {
 
                 // 点击的按钮，显示一半
                 var offset = target.offset() || $(this).offset();
-                var within = $nav.offset();
+                var within = $this.offset();
 
-                if (dir ? offset.left + offset.width > $(document).width() : offset.left < 10) {
-                    menuScroll.scrollTo(dir ? within.left - offset.width - 10 : within.left - offset.left, 0, 400);
+                // 父类左边距
+
+                var listOffset,
+                    parentLeft = parseInt($this.css('padding-left'));
+
+                if (dir ? offset.left + offset.width > within.left + within.width : offset.left < within.left) {
+                    listOffset = $nav.offset();
+                    menuScroll.scrollTo(dir ? within.width - offset.left + listOffset.left - offset.width - parentLeft : listOffset.left - offset.left, 0, 400);
                 }
 
                 prevIndex = $(this).index();

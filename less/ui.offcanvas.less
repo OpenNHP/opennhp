@@ -18,6 +18,8 @@
  ========================================================================== */
 
 
+@offcanvas-bar-border-color: darken(@offcanvas-bar-background, 5%);
+
 /* Off-canvas overlay and bar container */
 
 .am-offcanvas {
@@ -83,8 +85,8 @@
     bottom: 0;
     right: 0;
     width: 1px;
-    background: rgba(0, 0, 0, 0.6);
-    box-shadow: 0 0 5px 2px rgba(0, 0, 0, 0.6);
+    background: @offcanvas-bar-border-color;
+    // box-shadow: 0 0 5px 2px rgba(0, 0, 0, 0.6);
   }
 
   .hook-offcanvas-bar;
@@ -100,9 +102,6 @@
   &:after {
     right: auto;
     left: 0;
-    width: 1px;
-    background: rgba(0, 0, 0, 0.6);
-    box-shadow: 0 0 5px 2px rgba(0, 0, 0, 0.6);
   }
 }
 

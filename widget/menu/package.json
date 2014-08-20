@@ -206,6 +206,43 @@
                             "property": "color"
                         }
                     ]
+                },
+                {
+                    "variable": "menu-nav-top-active-color",
+                    "name": "一级菜单激活颜色",
+                    "default": "#095f8a",
+                    "used": [
+                        {
+                            "selector": ".am-menu-nav > .am-parent.am-open > a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "menu-nav-sub-bg",
+                    "name": "二级菜单背景色",
+                    "default": "#f1f1f1",
+                    "used": [
+                        {
+                            "selector": ".am-menu-sub",
+                            "property": "background-color"
+                        },
+                        {
+                            "selector": ".am-menu-nav > .am-parent > a:before",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "menu-nav-sub-link-color",
+                    "name": "二级菜单链接颜色",
+                    "default": "#555",
+                    "used": [
+                        {
+                            "selector": ".am-menu-sub >li > a",
+                            "property": "color"
+                        }
+                    ]
                 }
             ],
             "demos": [
@@ -493,6 +530,32 @@
                     "used": [
                         {
                             "selector": ".am-menu-nav>li>a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "menu-nav-sub-bg",
+                    "name": "二级菜单背景色",
+                    "default": "#f1f1f1",
+                    "used": [
+                        {
+                            "selector": ".am-menu-sub",
+                            "property": "background-color"
+                        },
+                        {
+                            "selector": ".am-menu-nav > .am-parent > a:before",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "menu-nav-sub-link-color",
+                    "name": "二级菜单链接颜色",
+                    "default": "#555",
+                    "used": [
+                        {
+                            "selector": ".am-menu-sub >li > a",
                             "property": "color"
                         }
                     ]

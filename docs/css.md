@@ -7,7 +7,7 @@
   似乎有些人看着 <code>.am</code> 有些不顺眼，在这里专门做一下说明。
 </div>
 
-可能有些人不知道命名空间是什么东西，Amaze UI 里的 `am` 就是命名空间，和 [YUI](https://github.com/yui/yui3/blob/master/build/app-transitions-css/app-transitions-css.css) 中的 `yui`、[Pure](http://purecss.io/) 中的 `pure` 一样。
+可能有人不知道命名空间是什么东西，和 [YUI](https://github.com/yui/yui3/blob/master/build/app-transitions-css/app-transitions-css.css) 中的 `yui`、[Pure](http://purecss.io/) 中的 `pure` 一样，Amaze UI 里的 `am` 就是命名空间。
 
 命名空间使类名变得冗长，可为什么还要加呢？
 

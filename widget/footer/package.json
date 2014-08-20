@@ -41,6 +41,17 @@
 
     "style": "footer.less",
 
+    "demoContent": {
+        "owner": "云适配",
+        "companyInfo": [{
+            "detail": "CopyRight©2014  AllMobilize Inc."
+        },
+            {
+                "detail": "京ICP备13033158"
+            }
+        ]
+    },
+
     "themes": [
         {
             "name": "default",
@@ -128,16 +139,6 @@
                             "modal": true,
                             "techSupportCo": "诺亚方舟",
                             "techSupportSite": "http://www.yunshipei.com/"
-                        },
-                        "content": {
-                            "owner": "云适配",
-                            "companyInfo": [{
-                                    "detail": "CopyRight©2013  AllMobilize Inc."
-                                },
-                                {
-                                    "detail": "京ICP备13033158"
-                                }
-]
                         }
                     }
                 }
@@ -239,13 +240,6 @@
                             "modal": true,
                             "techSupportCo": "云适配",
                             "techSupportSite": "http://www.yunshipei.com/"
-                        },
-                        "content": {
-                            "owner": "云适配",
-                            "companyInfo": [
-                                {
-                                    "detail": "Copyleft xxx"
-                                }]
                         }
                     }
                 }

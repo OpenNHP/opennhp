@@ -7346,13 +7346,8 @@ ul.am-dropdown-content > .am-disabled > a:focus {
   right: 0;
   bottom: 0;
   left: 0;
-<<<<<<< HEAD
   z-index: 1030;
-  background: rgba(0, 0, 0, 0.1);
-=======
-  z-index: 1010;
   background: rgba(0, 0, 0, 0.15);
->>>>>>> codename-h
 }
 .am-offcanvas.am-active {
   display: block;

@@ -1,8 +1,6 @@
 define(function(require, exports, module) {
-    require('core');
     require('ui.offcanvas');
     require('ui.collapse');
-
     var IScroll = require('ui.iscroll-lite');
 
     var $ = window.Zepto;
@@ -18,7 +16,7 @@ define(function(require, exports, module) {
                 $parent = $clicked.parent(),
                 $subMenu = $clicked.next('.am-menu-sub');
             $parent.toggleClass('am-open');
-            $subMenu.length && $subMenu.collapse('toggle');
+            $subMenu.collapse('toggle');
             $parent.siblings('.am-parent').removeClass('am-open')
                 .children('.am-menu-sub.am-in').collapse('close');
         });
@@ -70,7 +68,7 @@ define(function(require, exports, module) {
 
             $nav.wrap('<div class="am-menu-nav-wrap" id="am-menu-' + index + '">');
 
-            $navTopItem.eq(0).addClass('am-active');
+            // $navTopItem.eq(0).addClass('am-active');
 
             // 计算出所有 li 宽度
             $navTopItem.each(function(i) {

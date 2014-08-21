@@ -169,7 +169,7 @@ Amaze UI 以移动优先的理念开发，需要在 `meta` 中设置相关 `view
 
 这行代码可以指定网页使用 `webkit` 引擎渲染，当然，只对 [360 浏览器 6.5+ 有效](http://se.360.cn/v6/help/meta.html)。就这点而言，我希望所有所有的小白都去用 360 浏览器，那该有多好...
 
-### 防（Zhen）狼（Cao）术（Dai）
+### 防（zhēn）狼（cāo）术（dài）
 
 如果你的网站不想被剥去外衣、往赤裸的身体上贴广告，就加上[下面的代码](http://m.baidu.com/pub/help.php?pn=22&ssid=0&from=844b&bd_page_type=1)。
 

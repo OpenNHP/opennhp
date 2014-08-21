@@ -1,7 +1,7 @@
 {
     "name": "menu",
 
-    "version": "3.0.0",
+    "version": "3.0.1",
 
     "localName": {
         "en": "Menu",
@@ -1172,7 +1172,7 @@
     "jsDependencies": [
         "ui.offcanvas.js",
         "ui.collapse.js",
-        "ui.iscroll.js"
+        "ui.iscroll-lite.js"
     ],
 
     "script": "menu.js",

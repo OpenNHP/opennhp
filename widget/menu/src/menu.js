@@ -1,5 +1,7 @@
 define(function(require, exports, module) {
     require('ui.offcanvas');
+    require('ui.collapse');
+
     var IScroll = require('ui.iscroll-lite');
 
     var $ = window.Zepto;

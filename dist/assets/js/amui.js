@@ -606,8 +606,9 @@ define("mechat", [], function(require, exports, module) {
     $(window).on("load", mechatInit);
     exports.init = mechatInit;
 });
-define("menu", [ "ui.offcanvas", "ui.iscroll-lite" ], function(require, exports, module) {
+define("menu", [ "ui.offcanvas", "ui.collapse", "ui.iscroll-lite" ], function(require, exports, module) {
     require("ui.offcanvas");
+    require("ui.collapse");
     var IScroll = require("ui.iscroll-lite");
     var $ = window.Zepto;
     var UI = $.AMUI;

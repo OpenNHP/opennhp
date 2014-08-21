@@ -15,7 +15,7 @@ define(function(require, exports, module) {
                 $parent = $clicked.parent(),
                 $subMenu = $clicked.next('.am-menu-sub');
             $parent.toggleClass('am-open');
-            $subMenu.collapse('toggle');
+            $subMenu.length && $subMenu.collapse('toggle');
             $parent.siblings('.am-parent').removeClass('am-open')
                 .children('.am-menu-sub.am-in').collapse('close');
         });

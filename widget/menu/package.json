@@ -1172,7 +1172,7 @@
     "jsDependencies": [
         "ui.offcanvas.js",
         "ui.collapse.js",
-        "ui.iscroll.js"
+        "ui.iscroll-lite.js"
     ],
 
     "script": "menu.js",

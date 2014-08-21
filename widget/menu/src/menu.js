@@ -1,5 +1,6 @@
 define(function(require, exports, module) {
     require('ui.offcanvas');
+    require('ui.collapse');
     var IScroll = require('ui.iscroll-lite');
 
     var $ = window.Zepto;
@@ -67,7 +68,7 @@ define(function(require, exports, module) {
 
             $nav.wrap('<div class="am-menu-nav-wrap" id="am-menu-' + index + '">');
 
-            $navTopItem.eq(0).addClass('am-active');
+            // $navTopItem.eq(0).addClass('am-active');
 
             // 计算出所有 li 宽度
             $navTopItem.each(function(i) {

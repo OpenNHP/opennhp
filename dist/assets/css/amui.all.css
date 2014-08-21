@@ -9021,6 +9021,7 @@ tbody.am-collapse.am-in {
   background: #ffffff;
 }
 .am-header-one .am-header-title {
+  margin: 0 15%;
   color: #333333;
   display: block;
   word-wrap: normal;

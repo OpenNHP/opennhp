@@ -1,8 +1,9 @@
 define(function(require, exports, module) {
+    require('core');
+    require('zepto.flexslider');
+
     var $ = window.Zepto,
         UI = $.AMUI;
-
-    require("zepto.flexslider");
 
     var sliderInit = function() {
         var $sliders = $('[data-am-widget="slider"]');

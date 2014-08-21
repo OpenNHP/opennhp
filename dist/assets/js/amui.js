@@ -301,7 +301,8 @@ define("core", [ "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector"
     });
     module.exports = UI;
 });
-define("accordion", [ "ui.collapse" ], function(require, exports, module) {
+define("accordion", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "ui.collapse" ], function(require, exports, module) {
+    require("core");
     require("ui.collapse");
     var $ = window.Zepto, UI = $.AMUI, accordionInit = function() {
         var $accordion = $('[data-am-widget="accordion"]'), selector = {
@@ -352,7 +353,8 @@ define("duoshuo", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.exten
     $(window).on("load", duoshuoInit);
     exports.init = duoshuoInit;
 });
-define("figure", [ "zepto.pinchzoom" ], function(require, exports, module) {
+define("figure", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "zepto.pinchzoom" ], function(require, exports, module) {
+    require("core");
     var $ = window.Zepto;
     // PinchZoom Plugin
     var PinchZoom = require("zepto.pinchzoom");
@@ -435,7 +437,8 @@ define("footer", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend
     });
     exports.init = footerInit;
 });
-define("gallery", [ "zepto.touchgallery" ], function(require, exports, module) {
+define("gallery", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "zepto.touchgallery" ], function(require, exports, module) {
+    require("core");
     var touchGallery = require("zepto.touchgallery");
     var $ = window.Zepto, UI = $.AMUI;
     var galleryInit = function() {
@@ -469,8 +472,9 @@ define("gallery", [ "zepto.touchgallery" ], function(require, exports, module) {
     });
     exports.init = galleryInit;
 });
-define("gotop", [ "./ui.smooth-scroll", "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
-    require("./ui.smooth-scroll");
+define("gotop", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "ui.smooth-scroll" ], function(require, exports, module) {
+    require("core");
+    require("ui.smooth-scroll");
     var $ = window.Zepto;
     var UI = $.AMUI;
     var goTopInit = function() {
@@ -606,7 +610,8 @@ define("mechat", [], function(require, exports, module) {
     $(window).on("load", mechatInit);
     exports.init = mechatInit;
 });
-define("menu", [ "ui.offcanvas", "ui.collapse", "ui.iscroll-lite" ], function(require, exports, module) {
+define("menu", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "ui.offcanvas", "ui.collapse", "ui.iscroll-lite" ], function(require, exports, module) {
+    require("core");
     require("ui.offcanvas");
     require("ui.collapse");
     var IScroll = require("ui.iscroll-lite");
@@ -965,9 +970,10 @@ define("paragraph", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.ext
     });
     exports.init = paragraphInit;
 });
-define("slider", [ "zepto.flexslider" ], function(require, exports, module) {
-    var $ = window.Zepto, UI = $.AMUI;
+define("slider", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "zepto.flexslider" ], function(require, exports, module) {
+    require("core");
     require("zepto.flexslider");
+    var $ = window.Zepto, UI = $.AMUI;
     var sliderInit = function() {
         var $sliders = $('[data-am-widget="slider"]');
         $sliders.not(".am-slider-manual").each(function(i, item) {

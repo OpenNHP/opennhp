@@ -1,4 +1,5 @@
 define(function(require, exports, module) {
+    require('core');
     require('ui.offcanvas');
     require('ui.collapse');
 

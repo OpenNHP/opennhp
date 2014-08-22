@@ -6,7 +6,7 @@
 ```css
 * {
     margin: 0;
-    pandding: 0;
+    padding: 0;
     border:0;
 }
 ```

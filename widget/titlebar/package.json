@@ -460,7 +460,7 @@
 
     "readme": "http://docs.yunshipei.com/amui/#titlebar",
 
-    "example": "/*\n 此模块的使用方法： 将原PC网页的数据提取放在这里，最后显示在模块界面上。\n\n 常用用途：通常用来采放logo图片或者title文字。\n\n    示例代码：\n     var data = {\n         \"left\": $(\"#logopart\").html(),\n         \"title\": \"\",\n         \"right\": \"\"\n     };\n     return data;\n\n\n    或者：\n     var data = {\n         \"left\": \"\",\n         \"title\": \"<img src='\"+context.__root+\"logo.png'>\",\n         \"right\": \"\"\n     };\n     return data;\n\n */\n\nvar data = {\n    // 以下三项，可任意组合\n    \"left\": \"\",\t\t\t\t// Titlebar 左侧，可写 html 标签（可选）\n    \"title\": \"\",\t\t\t// Titlebar 中部，可写 html 标签（可选）\n    \"right\": \"\"\t\t\t\t// Titlebar 右侧，可写 html 标签（可选）\n};\nreturn data;\n",
+    "example": "/*\n titlebar 1.0\n 此模块的使用方法： 将原PC网页的数据提取放在这里，最后显示在模块界面上。\n\n 常用用途：通常用来采放logo图片或者title文字。\n\n  示例代码：\n    var data = {\n    \"title\": $(\"#logopart\").html(),\n    \"nav\": [\n        {\n          \"link\": $(\"#logopart\").find(\"a\").attr(\"href\"),\n          \"title\": \"more >\",\n          \"className\": \"\"\n        }\n      ]\n    };\n    return data;\n\n    或者：\n    var data = {\n        \"title\": \"<img src='\"+context.__root+\"logo.png'>\",\n        \"link\": \"http://www.yunshipei.com\",\n        \"nav\": [\n          {\n          \"link\": \"http://amazeui.org\",\n          \"title\": \"更多 >>\",\n          \"className\": \"\"\n        }\n      ]\n    };\n    return data;\n\n */\n\n\n\nvar data = {\n  \"title\": \"\",      // 主标题\n  \"link\": \"\",       // 主标题链接，可选\n  \"nav\": [          // 右侧附加链接，可以为多个\n    {\n      \"link\": \"\",\n      \"title\": \"\",\n      \"className\": \"\"\n    }\n  ]\n};\nreturn data;\n",
 
     "hidden": false
 }

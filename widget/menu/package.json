@@ -1245,7 +1245,18 @@
                 "desc": "仅对侧滑主题有效",
                 "type": "select",
                 "default": "",
-                "required": false
+                "required": false,
+                "dataList": [
+                    {
+                        "value": false,
+                        "title": "左侧",
+                        "selected": true
+                    },
+                    {
+                        "value": true,
+                        "title": "右侧"
+                    }
+                ]
             },
             "toggleTitle": {
                 "name": "触发按钮文字",

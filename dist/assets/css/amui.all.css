@@ -8739,6 +8739,9 @@ tbody.am-collapse.am-in {
   white-space: nowrap;
   overflow: hidden;
 }
+.am-gallery-overlay .am-gallery-desc {
+  display: none;
+}
 /**
   * Accordion Theme: bordered
   * Author: Minwe (minwe@yunshipei.com)

@@ -1,7 +1,7 @@
 {
     "name": "menu",
 
-    "version": "3.0.0",
+    "version": "3.0.1",
 
     "localName": {
         "en": "Menu",
@@ -1044,120 +1044,7 @@
                     "data": {
                         "options": {
                             "cols": "1"
-                        },
-                        "content": [
-                            {
-                                "subCols": 3,
-                                "link": "##",
-                                "title": "公司",
-                                "channelLink": "进入栏目 &raquo;",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "趋势"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "投融资"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            },
-                            {
-                                "subCols": 3,
-                                "link": "##",
-                                "title": "人物",
-                                "channelLink": "进入栏目 &raquo;",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "趋势"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "投融资"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            },
-                            {
-                                "subCols": 3,
-                                "link": "##",
-                                "title": "趋势",
-                                "channelLink": "进入栏目 &raquo;",
-                                "subMenu": [
-                                    {
-                                        "link": "##",
-                                        "title": "公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "人物"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "趋势"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "投融资"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业公司"
-                                    },
-                                    {
-                                        "link": "##",
-                                        "title": "创业人物"
-                                    }
-                                ]
-                            },
-                            {
-                                "subCols": 3,
-                                "link": "##",
-                                "title": "投融资"
-                            },
-                            {
-                                "subCols": 3,
-                                "link": "##",
-                                "title": "创业公司"
-                            },
-                            {
-                                "subCols": 3,
-                                "link": "##",
-                                "title": "创业人物"
-                            }
-                        ]
+                        }
                     }
                 }
             ]
@@ -1172,7 +1059,7 @@
     "jsDependencies": [
         "ui.offcanvas.js",
         "ui.collapse.js",
-        "ui.iscroll.js"
+        "ui.iscroll-lite.js"
     ],
 
     "script": "menu.js",

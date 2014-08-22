@@ -2,6 +2,7 @@ var path = require('path');
 var fs = require('fs-extra');
 var _ = require('lodash');
 var format = require('util').format;
+var exec = require('child_process').exec;
 
 var gulp = require('gulp');
 var gutil = require('gulp-util');
@@ -194,6 +195,13 @@ gulp.task('hbsHelper', function() {
 
 gulp.task('widgetsFile', getWidgetFiles);
 
+gulp.task('appServer', function() {
+    exec('npm start', function (err, stdout, stderr) {
+        console.log(stdout);
+        console.log(stderr);
+    });
+});
+
 // Rerun the task when a file changes
 
 gulp.task('watch', function() {
@@ -223,3 +231,5 @@ gulp.task('buildJs', ['copyWidgetJs', 'copyUIJs', 'transport', 'concat', 'clean'
 // gulp.task('init', ['bower', 'buildJs', 'hbsHelper', 'buildLess', 'watch']);
 
 gulp.task('default', ['widgetsFile', 'buildJs', 'buildLess', 'hbsHelper', 'watch']);
+
+gulp.task('preview', ['widgetsFile', 'buildJs', 'buildLess', 'hbsHelper', 'watch', 'appServer']);

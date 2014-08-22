@@ -1,5 +1,7 @@
 define(function(require, exports, module) {
-    require('./ui.smooth-scroll');
+    require('core');
+
+    require('ui.smooth-scroll');
     var $ = window.Zepto;
 
     var UI = $.AMUI;

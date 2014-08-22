@@ -43,7 +43,7 @@ return data;
 
 ## 数据接口
 
-### v3.0
+### Amaze UI 1.0
 
 ```javascript
 {
@@ -77,7 +77,7 @@ return data;
 }
 ```
 
-### LT v3.0
+### Amaze UI 0.9
 
 ```javascript
 {
@@ -117,7 +117,7 @@ return data;
 }
 ```
 
-### v3.0 以前版本侧滑菜单使用
+### Amaze UI 0.9 侧滑菜单使用
 
 使用侧滑时，需要 **手动添加触发器**，可以通过空白模块或者使用脚本在其他元素上添加属性实现。
 

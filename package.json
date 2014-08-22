@@ -1,41 +1,50 @@
 {
-  "name": "AmazeUI",
-  "description": "Sleek, intuitive, and powerful front-end framework for faster and easier web development.",
-  "version": "1.0.0",
-  "keywords": [
-    "AMUI, Amaze UI, AllMobile"
-  ],
-  "homepage": "http://amui.yunshipei.com",
-  "author": "Allmobilize, Inc.",
-  "scripts": {
-    "test": "grunt test",
-    "start": "node amui_server.js"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/allmobilize/amui"
-  },
-  "bugs": {
-    "url": "https://github.com/amui/issues"
-  },
-  "devDependencies": {
-    "fs-extra": "^0.10.0",
-    "gulp": "^3.8.1",
-    "gulp-bower": "^0.0.6",
-    "gulp-changed": "latest",
-    "gulp-clean": "^0.3.0",
-    "gulp-cmd-transport": "^0.1.1",
-    "gulp-concat": "latest",
-    "gulp-header": "^1.0.2",
-    "gulp-less": "^1.2.3",
-    "gulp-minify-css": "^0.3.0",
-    "gulp-rename": "^1.2.0",
-    "gulp-uglify": "latest",
-    "gulp-util": "^2.2.14",
-    "gulp-watch": "latest",
-    "gulp-zip": "^0.4.0",
-    "lodash": "^2.4.1",
-    "underscore": "~1.6.0"
-  },
-  "license": "MIT"
+    "name": "AmazeUI",
+    "description": "Sleek, intuitive, and powerful front-end framework for faster and easier web development.",
+    "version": "1.0.0",
+    "keywords": [
+        "AMUI, Amaze UI, AllMobile"
+    ],
+    "homepage": "http://amui.yunshipei.com",
+    "author": "Allmobilize, Inc.",
+    "scripts": {
+        "start": "nodemon tools/app/app.js"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/allmobilize/amui"
+    },
+    "bugs": {
+        "url": "https://github.com/amui/issues"
+    },
+    "dependencies": {
+        "body-parser": "~1.0.0",
+        "cookie-parser": "~1.0.1",
+        "debug": "1.0.x",
+        "express": "4.x",
+        "hbs": "~2.7.0",
+        "less-middleware": "1.0.x",
+        "morgan": "~1.0.0",
+        "errorhandler": "^1.1.1"
+    },
+    "devDependencies": {
+        "fs-extra": "^0.10.0",
+        "gulp": "^3.8.1",
+        "gulp-bower": "^0.0.6",
+        "gulp-changed": "latest",
+        "gulp-clean": "^0.3.0",
+        "gulp-cmd-transport": "^0.1.1",
+        "gulp-concat": "latest",
+        "gulp-header": "^1.0.2",
+        "gulp-less": "^1.2.3",
+        "gulp-minify-css": "^0.3.0",
+        "gulp-rename": "^1.2.0",
+        "gulp-uglify": "latest",
+        "gulp-util": "^2.2.14",
+        "gulp-watch": "latest",
+        "gulp-zip": "^0.4.0",
+        "lodash": "^2.4.1",
+        "underscore": "~1.6.0"
+    },
+    "license": "MIT"
 }

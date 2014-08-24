@@ -9,9 +9,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="renderer" content="webkit">
   <meta http-equiv="Cache-Control" content="no-siteapp" />
-  <link rel="icon" type="image/png" href="assets/i/favicon.png">
-  <link rel="stylesheet" href="assets/css/amui.all.min.css">
-  <link rel="stylesheet" href="assets/css/app.css">
+  <link rel="icon" type="image/png" href="{{assets}}i/favicon.png">
+  <link rel="stylesheet" href="{{assets}}css/amui.all.min.css">
+  <link rel="stylesheet" href="{{assets}}css/app.css">
 </head>
 <body>
 <!--[if lte IE 9]>
@@ -20,7 +20,7 @@
 <![endif]-->
 
 <script type="text/x-handlebars-template" id="amz-tpl">
-  {{>titlebar header}}
+  {{>header header}}
 
   {{>menu menu}}
 
@@ -38,11 +38,11 @@
 </script>
 
 <script src="http://libs.baidu.com/zepto/1.1.3/zepto.min.js"></script>
-<script>window.Zepto || document.write('<script src="assets/js/zepto.min.js?1.1.3"><\/script>')</script>
-<script src="assets/js/amui.js"></script>
-<script src="http://cdn.staticfile.org/handlebars.js/1.3.0/handlebars.min.js
+<script>window.Zepto || document.write('<script src="{{assets}}js/zepto.min.js?ver=1.1.3"><\/script>')</script>
+<script src="{{assets}}js/amui.js"></script>
+<script src="{{assets}}js/handlebars.min.js
 "></script>
-<script src="assets/js/amui.widget.helper.js"></script>
+<script src="{{assets}}js/amui.widget.helper.js"></script>
 <script>
   $(function() {
     var $tpl = $('#amz-tpl'),
@@ -56,42 +56,146 @@
           },
 
           menu: {
-            "theme": "dropdown9",
-
             "options": {
               "cols": "1"
             },
             "content": [
               {
-                "className": "",
-                "subCols": 1,
                 "link": "##",
-                "title": "导航",
-                "subMenuClassName": "",
+                "title": "公司",
+                "subCols": 2,
+                "channelLink": "进入栏目 »",
                 "subMenu": [
                   {
-                    "className": "",
-                    "link": "##",
-                    "title": "创业人物"
-                  },
-                  {
-                    "className": "",
                     "link": "##",
                     "title": "公司"
                   },
                   {
-                    "className": "",
+                    "link": "##",
+                    "title": "人物"
+                  },
+                  {
+                    "link": "##",
+                    "title": "趋势"
+                  },
+                  {
+                    "link": "##",
+                    "title": "投融资"
+                  },
+                  {
                     "link": "##",
                     "title": "创业公司"
                   },
                   {
-                    "className": "",
                     "link": "##",
                     "title": "创业人物"
                   }
                 ]
+              },
+              {
+                "link": "##",
+                "title": "人物",
+                "subCols": 3,
+                "subMenu": [
+                  {
+                    "link": "##",
+                    "title": "公司"
+                  },
+                  {
+                    "link": "##",
+                    "title": "人物"
+                  },
+                  {
+                    "link": "##",
+                    "title": "趋势"
+                  },
+                  {
+                    "link": "##",
+                    "title": "投融资"
+                  },
+                  {
+                    "link": "##",
+                    "title": "创业公司"
+                  },
+                  {
+                    "link": "##",
+                    "title": "创业人物"
+                  }
+                ]
+              },
+              {
+                "link": "#c3",
+                "title": "趋势",
+                "subCols": 4,
+                "channelLink": "泥煤 »",
+                "subMenu": [
+                  {
+                    "link": "##",
+                    "title": "公司"
+                  },
+                  {
+                    "link": "##",
+                    "title": "人物"
+                  },
+                  {
+                    "link": "##",
+                    "title": "趋势"
+                  },
+                  {
+                    "link": "##",
+                    "title": "投融资"
+                  },
+                  {
+                    "link": "##",
+                    "title": "创业公司"
+                  },
+                  {
+                    "link": "##",
+                    "title": "创业人物"
+                  }
+                ]
+              },
+              {
+                "link": "##",
+                "title": "投融资",
+                "subCols": 3,
+                "subMenu": [
+                  {
+                    "link": "##",
+                    "title": "公司"
+                  },
+                  {
+                    "link": "##",
+                    "title": "人物"
+                  },
+                  {
+                    "link": "##",
+                    "title": "趋势"
+                  },
+                  {
+                    "link": "##",
+                    "title": "投融资"
+                  },
+                  {
+                    "link": "##",
+                    "title": "创业公司"
+                  },
+                  {
+                    "link": "##",
+                    "title": "创业人物"
+                  }
+                ]
+              },
+              {
+                "link": "##",
+                "title": "创业公司"
+              },
+              {
+                "link": "##",
+                "title": "创业人物"
               }
-            ]
+            ],
+            "theme": "offcanvas1"
           },
 
           slider: {

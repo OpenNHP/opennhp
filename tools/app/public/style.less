@@ -35,9 +35,9 @@ body {
   }
 }
 
-
 .cpt-list {
   margin: 0;
+
   li {
     position: relative;
   }
@@ -50,9 +50,11 @@ body {
 
   a {
     .transition(all 0.15s);
+
     &:hover {
       background: #F5F5F5;
     }
+
     &::after {
       .am-icon-font;
       content: @fa-var-chevron-right;
@@ -66,7 +68,7 @@ body {
 }
 
 #app-index {
-  .translate3d(0%, 0%, 0%);
+  .translate3d(0, 0, 0);
   .transition(all 0.3s ease-in-out);
 }
 
@@ -76,17 +78,18 @@ body {
   left: 0;
   background-color: #FFF;
   .transition(all 0.3s ease-in-out);
-  .translate3d(100%, 0%, 0%);
+  .translate3d(100%, 0, 0);
 }
 
 .demo-list-active {
   height: 100%;
+
   #app-index {
-    .translate(-100%, 0%)
+    .translate3d(-100%, 0, 0)
   }
 
   #app-cpt {
     display: block;
-    .translate(0%, 0%);
+    .translate3d(0, 0, 0);
   }
 }

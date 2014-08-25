@@ -18,6 +18,7 @@ var transport = require('gulp-cmd-transport');
 var header = require('gulp-header');
 var clean = require('gulp-clean');
 var zip = require('gulp-zip');
+var replace = require('gulp-replace');
 
 
 var pkg = require('./package.json');
@@ -213,15 +214,12 @@ gulp.task('watch', function() {
     gulp.watch(jsPaths.hbsHelper, ['hbsHelper']);
 });
 
-
 gulp.task('zip', function() {
-    return gulp.src(['./docs/boilerplate/**', './dist/**', '!dist/demo/**/*', '!dist/test/**/*', '!dist/docs/**/*', '!dist/*.zip',
-        'docs/examples/blog.html',
-        'docs/examples/landing.html',
-        'docs/examples/login.html',
-        'docs/examples/sidebar.html'
+    return gulp.src(['./dist/**', '!dist/demo/**/*', '!dist/test/**/*', '!dist/docs/**/*', '!dist/*.zip',
+        'docs/examples/**/*'
     ])
-        .pipe(zip('AmazeUI-1.0.0-beta1.zip', {comment: 'Created on ' + gutil.date(now, 'yyyy-mm-dd HH:mm:ss')}))
+        .pipe(replace(/\{\{assets\}\}/g, 'assets/', {skipBinary: true}))
+        .pipe(zip(format('AmazeUI-1.0.0-beta1-%s.zip', gutil.date(now, 'yyyymmdd')), {comment: 'Created on ' + gutil.date(now, 'yyyy-mm-dd HH:mm:ss')}))
         .pipe(gulp.dest('dist'));
 });
 

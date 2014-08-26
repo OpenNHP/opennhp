@@ -1,5 +1,5 @@
 // Name:            Dropdown
-// Description:     Defines styles for a toggleable dropdown
+// Description:     Define style for dropdown
 //
 // Component:       `am-dropdown`
 //
@@ -18,9 +18,6 @@
 //                  `am-disabled`
 //
 // Uses:            Animation
-//                  Grid: `uk-width-*`
-//                  Panel: `uk-panel`
-//                  Nav: `uk-nav`
 
 /**  Dropdown
 // ------------------------- */
@@ -184,43 +181,3 @@ ul.am-dropdown-content {
 // TODO: 1. 分隔线上下间距调整
 //       2. 位置设置
 //       3. 与 navbar 混合
-
-/*// Allow for dropdowns to go bottom up (aka, dropup-menu)
-//
-// Just add .dropup after the standard .dropdown class and you're set, bro.
-// TODO: abstract this so that the navbar fixed styles are not placed here?
-
-.dropup,
-.navbar-fixed-bottom .dropdown {
-  // Reverse the caret
-  .caret {
-    border-top: 0;
-    border-bottom: @caret-width-base solid;
-    content: "";
-  }
-  // Different positioning for bottom up menu
-  .dropdown-menu {
-    top: auto;
-    bottom: 100%;
-    margin-bottom: 1px;
-  }
-}
-
-
-// Component alignment
-//
-// Reiterate per navbar.less and the modified component alignment there.
-
-@media (min-width: @grid-float-breakpoint) {
-  .navbar-right {
-    .dropdown-menu {
-      .dropdown-menu-right();
-    }
-    // Necessary for overrides of the default right aligned menu.
-    // Will remove come v4 in all likelihood.
-    .dropdown-menu-left {
-      .dropdown-menu-left();
-    }
-  }
-}*/
-

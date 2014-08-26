@@ -363,7 +363,7 @@ define(function(require, exports, module) {
     if (UI.support.touch) {
         require.async(['util.fastclick'], function(FastClick) {
             $(function() {
-                FastClick && FastClick.attach(document.body);
+                // FastClick && FastClick.attach(document.body);
                 $html.addClass('am-touch');
             });
         });

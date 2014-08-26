@@ -1,0 +1,62 @@
+// Name:            Tabs
+// Description:     Define style for Tabs Plugin
+//
+// Component:       `am-tabs`
+//
+// Sub-objects:     `am-tabs-nav`
+//                  `am-tabs-bd`
+//                  `am-tab-panel`
+//
+// States:          `am-active`
+//
+// Uses:            Nav
+//                  Animation
+//
+// ========================================================================
+
+
+.am-tabs {
+  .hook-tabs();
+}
+
+.am-tabs-bd {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #ddd;
+  border-top: none;
+  z-index: 1001;
+  .transition(height 0.3s);
+  .hook-tabs-bd();
+
+  .am-tab-panel {
+    position: absolute;
+    top: 0;
+    z-index: 999;
+    float: left;
+    width: 100%;
+    padding: 15px;
+    visibility: hidden;
+    .transition(all 0.3s);
+    .translate(-100%);
+    .hook-tab-panel();
+
+    &.am-active {
+      position: relative;
+      z-index: 1000;
+      visibility: visible;
+      .translate();
+
+      & ~ .am-tab-panel {
+        .translate(100%);
+      }
+    }
+  }
+}
+
+
+// HOOKS
+// ========================================================================
+
+.hook-tabs() {}
+.hook-tabs-bd() {}
+.hook-tab-panel() {}

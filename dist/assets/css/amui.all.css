@@ -3306,6 +3306,14 @@ fieldset[disabled] .am-checkbox-inline {
   -webkit-animation: am-spin 2s infinite linear;
   animation: am-spin 2s infinite linear;
 }
+.am-animation-left-spring {
+  -webkit-animation: am-left-spring 0.3s ease-in-out;
+  animation: am-left-spring 0.3s ease-in-out;
+}
+.am-animation-right-spring {
+  -webkit-animation: am-right-spring 0.3s ease-in-out;
+  animation: am-right-spring 0.3s ease-in-out;
+}
 .am-animation-reverse {
   -webkit-animation-direction: reverse;
   animation-direction: reverse;
@@ -3579,6 +3587,75 @@ fieldset[disabled] .am-checkbox-inline {
   }
   100% {
     transform: rotate(359deg);
+  }
+}
+/* Spring */
+@-webkit-keyframes am-right-spring {
+  0% {
+    -webkit-transform: translate(0, 0);
+    -ms-transform: translate(0, 0);
+    transform: translate(0, 0);
+  }
+  50% {
+    -webkit-transform: translate(-20%, 0);
+    -ms-transform: translate(-20%, 0);
+    transform: translate(-20%, 0);
+  }
+  100% {
+    -webkit-transform: translate(0, 0);
+    -ms-transform: translate(0, 0);
+    transform: translate(0, 0);
+  }
+}
+@keyframes am-right-spring {
+  0% {
+    -webkit-transform: translate(0, 0);
+    -ms-transform: translate(0, 0);
+    transform: translate(0, 0);
+  }
+  50% {
+    -webkit-transform: translate(-20%, 0);
+    -ms-transform: translate(-20%, 0);
+    transform: translate(-20%, 0);
+  }
+  100% {
+    -webkit-transform: translate(0, 0);
+    -ms-transform: translate(0, 0);
+    transform: translate(0, 0);
+  }
+}
+@-webkit-keyframes am-left-spring {
+  0% {
+    -webkit-transform: translate(0, 0);
+    -ms-transform: translate(0, 0);
+    transform: translate(0, 0);
+  }
+  50% {
+    -webkit-transform: translate(20%, 0);
+    -ms-transform: translate(20%, 0);
+    transform: translate(20%, 0);
+  }
+  100% {
+    -webkit-transform: translate(0, 0);
+    -ms-transform: translate(0, 0);
+    transform: translate(0, 0);
+  }
+}
+@keyframes am-left-spring {
+  0% {
+    -webkit-transform: translate(0, 0);
+    -ms-transform: translate(0, 0);
+    transform: translate(0, 0);
+  }
+  50% {
+    -webkit-transform: translate(20%, 0);
+    -ms-transform: translate(20%, 0);
+    transform: translate(20%, 0);
+  }
+  100% {
+    -webkit-transform: translate(0, 0);
+    -ms-transform: translate(0, 0);
+    transform: translate(0, 0);
   }
 }
 /* ========================================================================
@@ -6967,44 +7044,6 @@ ul.am-dropdown-content > .am-disabled > a:focus {
   right: 10px;
   left: auto;
 }
-/*// Allow for dropdowns to go bottom up (aka, dropup-menu)
-//
-// Just add .dropup after the standard .dropdown class and you're set, bro.
-// TODO: abstract this so that the navbar fixed styles are not placed here?
-
-.dropup,
-.navbar-fixed-bottom .dropdown {
-  // Reverse the caret
-  .caret {
-    border-top: 0;
-    border-bottom: @caret-width-base solid;
-    content: "";
-  }
-  // Different positioning for bottom up menu
-  .dropdown-menu {
-    top: auto;
-    bottom: 100%;
-    margin-bottom: 1px;
-  }
-}
-
-
-// Component alignment
-//
-// Reiterate per navbar.less and the modified component alignment there.
-
-@media (min-width: @grid-float-breakpoint) {
-  .navbar-right {
-    .dropdown-menu {
-      .dropdown-menu-right();
-    }
-    // Necessary for overrides of the default right aligned menu.
-    // Will remove come v4 in all likelihood.
-    .dropdown-menu-left {
-      .dropdown-menu-left();
-    }
-  }
-}*/
 /* ========================================================================
    Component: JavaScript Modals
  ========================================================================== */
@@ -7555,6 +7594,42 @@ ul.am-dropdown-content > .am-disabled > a:focus {
   100% {
     transform: rotate(360deg);
   }
+}
+.am-tabs-bd {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #ddd;
+  border-top: none;
+  z-index: 1001;
+  -webkit-transition: height 0.3s;
+  transition: height 0.3s;
+}
+.am-tabs-bd .am-tab-panel {
+  position: absolute;
+  top: 0;
+  z-index: 999;
+  float: left;
+  width: 100%;
+  padding: 15px;
+  visibility: hidden;
+  -webkit-transition: all 0.3s;
+  transition: all 0.3s;
+  -webkit-transform: translate(-100%, 0);
+  -ms-transform: translate(-100%, 0);
+  transform: translate(-100%, 0);
+}
+.am-tabs-bd .am-tab-panel.am-active {
+  position: relative;
+  z-index: 1000;
+  visibility: visible;
+  -webkit-transform: translate(0, 0);
+  -ms-transform: translate(0, 0);
+  transform: translate(0, 0);
+}
+.am-tabs-bd .am-tab-panel.am-active ~ .am-tab-panel {
+  -webkit-transform: translate(100%, 0);
+  -ms-transform: translate(100%, 0);
+  transform: translate(100%, 0);
 }
 .am-fade {
   opacity: 0;

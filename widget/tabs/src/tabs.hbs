@@ -1,16 +1,20 @@
 {{#this }}
-  <div data-am-widget="tabs" class="am-tabs{{#if theme}} am-tabs-{{theme}}{{else}} am-tabs-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}" {{#if id}}id="{{id}}"{{/if}}>
-    <ul class="am-tabs-hd am-cf {{#if options.cols}}sm-block-grid-{{options.cols}}{{/if}}">
-      {{#each content}}
-        <li class="{{#if class}}am-tabs-hd-active{{/if}}">{{{header}}}</li>
-      {{/each}}
-    </ul>
-    <div class="am-tabs-bd">
-        <div class="am-tabs-bd-content">
-          {{#each content}}
-            <div class="{{#if class}}am-tabs-bd-active{{/if}}">{{{substance}}}</div>
-          {{/each}}
-        </div>
-    </div>
+  <div data-am-widget="tabs"
+       class="am-tabs{{#if theme}} am-tabs-{{theme}}{{else}} am-tabs-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"
+       {{#if id}}id="{{id}}"{{/if}}>
+    {{#if content}}
+      <ul class="am-tabs-nav am-cf">
+        {{#each content}}
+          <li class="{{#if active}}am-active{{/if}}"><a href="[data-tab-panel-{{@index}}]">{{{title}}}</a></li>
+        {{/each}}
+      </ul>
+      <div class="am-tabs-bd">
+        {{#each content}}
+          <div data-tab-panel-{{@index}} class="am-tab-panel {{#if active}}am-active{{/if}}">
+            {{{content}}}
+          </div>
+        {{/each}}
+      </div>
+    {{/if}}
   </div>
 {{/this }}

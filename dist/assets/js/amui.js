@@ -999,67 +999,14 @@ define("sohucs", [], function(require, exports, module) {
     $(window).on("load", sohuCSInit);
     exports.init = sohuCSInit;
 });
-define("tabs", [ "zepto.extend.touch", "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
+define("tabs", [ "zepto.extend.touch", "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "ui.tabs" ], function(require, exports, module) {
     require("zepto.extend.touch");
     require("core");
+    require("ui.tabs");
     var $ = window.Zepto;
     var tabsInit = function() {
-        $(".am-tabs").each(function() {
-            amTabs($(this));
-        });
+        $('[data-am-widget="tabs"]').tabs();
     };
-    function amTabs(parent) {
-        var $tabsContent = parent.find(".am-tabs-bd-content"), $tabsDiv = $tabsContent.children(), oneWidth, iNow = 0, disX, disY, downY, downX, $tabLi = parent.find(".am-tabs-hd").children();
-        //设置tabsdiv宽度
-        $tabsContent.width($tabsContent.parent().width() * $tabsDiv.length);
-        $tabsDiv.width($tabsContent.parent().width());
-        oneWidth = $tabsDiv.width();
-        $(window).on("resize", function() {
-            $tabsContent.width($tabsContent.parent().width() * $tabsDiv.length);
-            $tabsDiv.width($tabsContent.parent().width());
-            oneWidth = $tabsDiv.width();
-        });
-        /*$tabsContent.on("touchstart MSPointerDown pointerdown", function(ev){
-         ev.preventDefault();
-         var oTarget = ev.targetTouches[0];
-         disX = oTarget.clientX - $tabsContent.offset().left;
-         disY = oTarget.clientY - $tabsContent.offset().top;
-         downX = oTarget.clientX;
-         downY = oTarget.clientY;
-         $( $tabsContent ).on("touchmove MSPointerMove pointermove", fnMove);
-         $( $tabsContent ).on("touchend MSPointerUp pointerup", fnUp);
-         });*/
-        $tabsContent.swipeRight(function() {
-            iNow--;
-            if (iNow < 0) {
-                iNow = 0;
-            }
-            $tabsContent.animate({
-                left: -iNow * oneWidth
-            });
-            $tabLi.removeClass("am-tabs-hd-active");
-            $tabLi.eq(iNow).addClass("am-tabs-hd-active");
-        });
-        $tabsContent.swipeLeft(function() {
-            iNow++;
-            if (iNow > $tabsDiv.length - 1) {
-                iNow = $tabsDiv.length - 1;
-            }
-            $tabsContent.animate({
-                left: -iNow * oneWidth
-            });
-            $tabLi.removeClass("am-tabs-hd-active");
-            $tabLi.eq(iNow).addClass("am-tabs-hd-active");
-        });
-        $tabLi.on("click", function() {
-            iNow = $(this).index();
-            $tabLi.removeClass("am-tabs-hd-active");
-            $tabLi.eq(iNow).addClass("am-tabs-hd-active");
-            $tabsContent.animate({
-                left: -iNow * oneWidth
-            });
-        });
-    }
     $(function() {
         tabsInit();
     });
@@ -3405,7 +3352,7 @@ define("ui.sticky", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.ext
     });
     module.exports = Sticky;
 });
-define("ui.tab", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
+define("ui.tabs", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
     "use strict";
     require("core");
     var $ = window.Zepto, UI = $.AMUI, supportTransition = UI.support.transition, animation = UI.support.animation;
@@ -3449,13 +3396,12 @@ define("ui.tab", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend
     };
     Tabs.prototype.open = function($nav) {
         if (!$nav || this.transitioning || $nav.parent("li").hasClass("am-active")) return;
-        var $tabNav = this.$tabNav, $navs = this.$navs, $tabContent = this.$content, href = $nav.attr("href"), regexHash = /#.*$/, targetPanel = regexHash.test(href) && href || this.$tabPanels.eq($navs.index($nav));
+        var $tabNav = this.$tabNav, $navs = this.$navs, $tabContent = this.$content, href = $nav.attr("href"), regexHash = /^#.+$/, $target = regexHash.test(href) && this.find(href) || this.$tabPanels.eq($navs.index($nav));
         var previous = $tabNav.find(".am-active a")[0], e = $.Event("open:tabs:amui", {
             relatedTarget: previous
         });
         $nav.trigger(e);
         if (e.isDefaultPrevented()) return;
-        var $target = $(targetPanel);
         // activate Tab nav
         this.activate($nav.closest("li"), $tabNav);
         // activate Tab content
@@ -3521,6 +3467,7 @@ define("ui.tab", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend
     $(document).on("ready", function(e) {
         $("[data-am-tabs]").tabs();
     });
+    module.exports = Tabs;
 });
 define("util.cookie", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
     "use strict";
@@ -8248,4 +8195,4 @@ define("zepto.touchgallery", [ "./zepto.extend.touch", "zepto.pinchzoom" ], func
         }
     };
 });
-seajs.use(["accordion","core","divider","duoshuo","figure","footer","gallery","gotop","header","intro","list_news","map","mechat","menu","navbar","pagination","paragraph","slider","sohucs","tabs","titlebar","ui.add2home","ui.alert","ui.button","ui.collapse","ui.dimmer","ui.dropdown","ui.iscroll-lite","ui.modal","ui.offcanvas","ui.popover","ui.progress","ui.scrollspy","ui.scrollspynav","ui.smooth-scroll","ui.sticky","ui.tab","util.cookie","util.fastclick","util.fullscreen","util.qrcode","zepto.extend.data","zepto.extend.fx","zepto.extend.selector","zepto.extend.touch","zepto.flexslider","zepto.outerdemension","zepto.pinchzoom","zepto.touchgallery"]);
+seajs.use(["accordion","core","divider","duoshuo","figure","footer","gallery","gotop","header","intro","list_news","map","mechat","menu","navbar","pagination","paragraph","slider","sohucs","tabs","titlebar","ui.add2home","ui.alert","ui.button","ui.collapse","ui.dimmer","ui.dropdown","ui.iscroll-lite","ui.modal","ui.offcanvas","ui.popover","ui.progress","ui.scrollspy","ui.scrollspynav","ui.smooth-scroll","ui.sticky","ui.tabs","util.cookie","util.fastclick","util.fullscreen","util.qrcode","zepto.extend.data","zepto.extend.fx","zepto.extend.selector","zepto.extend.touch","zepto.flexslider","zepto.outerdemension","zepto.pinchzoom","zepto.touchgallery"]);

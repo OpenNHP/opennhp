@@ -3,44 +3,28 @@
   */
 
 .am-tabs-default {
+  @tabs-nav-height: 42px;
+  @tabs-nav-bg: @gray-lighter;
+  @tabs-nav-color: @gray-darker;
+  @tabs-nav-active-bg: @global-primary;
+  @tabs-nav-active-color: @white;
 
-  @tabs-bg-color: @gray-lighter;
-  @tabs-active-bg-color: @global-primary;
-  @tabs-text-color: @gray-darker;
-  @tabs-active-text-color: @white;
-
-  .am-tabs-hd {
-    padding: 0;
-    margin: 0;
+  .am-tabs-nav {
     line-height: 40px;
-    background-color: @tabs-bg-color;
-    color: @tabs-text-color;
-    > li {
-      list-style: none;
-      text-align: center;
+    background-color: @tabs-nav-bg;
+
+    a {
+      color: @tabs-nav-color;
+      line-height: @tabs-nav-height;
     }
-    > li.am-tabs-hd-active {
-      background-color: @tabs-active-bg-color;
-      color: @tabs-active-text-color;
-    }
-  }
-  .am-tabs-bd {
-    padding: 10px 0 0 0;
-    overflow: hidden;
 
-    .am-tabs-bd-content{
-      width: 3000px;
-      overflow: hidden;
-      position: relative;
-      left: 0;
-
-      > div {
-        //position: relative;
-        float: left;
-      }
-
+    > .am-active a {
+      background-color: @tabs-nav-active-bg;
+      color: @tabs-nav-active-color;
     }
   }
+
   .hook-am-tabs-default;
 }
-.hook-am-tabs-default() {};
+
+.hook-am-tabs-default() {}

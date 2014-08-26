@@ -53,7 +53,6 @@ define(function(require, exports, module) {
 
         this.$content.on('swipeRight.tabs.amui', $.proxy(function(e) {
             var $nav = this.getPrevNav($(e.target));
-
             $nav && this.open($nav);
         }, this));
     };
@@ -65,9 +64,9 @@ define(function(require, exports, module) {
             $navs = this.$navs,
             $tabContent = this.$content,
             href = $nav.attr('href'),
-            regexHash = /#.*$/,
-            targetPanel = regexHash.test(href) && href || this.$tabPanels.eq($navs.index($nav));
-
+            regexHash = /^#.+$/,
+            $target = regexHash.test(href) && this.find(href) || this.$tabPanels.eq($navs.index($nav));
+        
         var previous = $tabNav.find('.am-active a')[0],
             e = $.Event('open:tabs:amui', {
                 relatedTarget: previous
@@ -76,8 +75,6 @@ define(function(require, exports, module) {
         $nav.trigger(e);
 
         if (e.isDefaultPrevented()) return;
-
-        var $target = $(targetPanel);
 
         // activate Tab nav
         this.activate($nav.closest('li'), $tabNav);
@@ -162,6 +159,8 @@ define(function(require, exports, module) {
     $(document).on('ready', function(e) {
         $('[data-am-tabs]').tabs();
     });
+
+    module.exports = Tabs;
 });
 
 // TODO: 1. Ajax 支持

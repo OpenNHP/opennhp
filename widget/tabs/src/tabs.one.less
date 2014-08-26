@@ -3,114 +3,56 @@
   */
 
 .am-tabs-one {
-  @global-primary: #15afef;
-  @global-dark-gray: #888;
+  @one-primary: #15afef;
 
-  @tabs-bg-color: @white;
-  @tabs-li-text-color: @white;
-  @tabs-active-bg-color: @global-primary;
-  @tabs-text-color: @global-primary;
-  @tabs-a-color: @gray-dark;
-  @tabs-a-hover-color: @global-primary;
-  @tabs-db-color: @global-primary;
-  @tabs-more-color: @global-dark-gray;
+  @tabs-bg: @white;
+  @tabs-nav-color: @one-primary;
+  @tabs-nav-active-color: @white;
+  @tabs-nav-active-bg: @one-primary;
 
-  padding: 10px 5px 0 5px;
-  margin: 0 10px;
-  background: @tabs-bg-color;
-  .am-tabs-hd {
-    padding: 0;
-    margin: 0;
-    line-height: 30px;
-    color: @tabs-text-color;
-    background-color: @tabs-bg-color;
-    border-left:1px solid @tabs-db-color;
-    border-top:1px solid @tabs-db-color;
-    border-bottom:1px solid @tabs-db-color;
-    border-radius: 5px;
+  @tabs-border-color: @one-primary;
+
+  @tabs-border-radius: @global-border-radius;
+
+  background: @tabs-bg;
+
+  .am-tabs-nav {
+    height: 36px;
+    background-color: @tabs-bg;
+    border: 1px solid @tabs-border-color;
     font-size: 14px;
+    border-radius: @tabs-border-radius;
 
-    > li {
-      list-style: none;
-      text-align: center;
-      border-right: 1px solid @tabs-db-color;
-      .text-overflow();
+
+    a {
+      line-height: 34px;
+      color: @tabs-nav-color;
     }
 
-    > li:first-child {
-      border-top-left-radius: 4px;
-      border-bottom-left-radius: 4px;
-    }
-    > li:last-child {
-      border-top-right-radius: 4px;
-      border-bottom-right-radius: 4px;
-    }
-    > li.am-tabs-hd-active {
-      background-color: @tabs-active-bg-color;
-      color: @tabs-li-text-color;
-    }
-  }
-  .am-tabs-bd {
-    padding: 10px 0;
-    overflow: hidden;
-
-    .am-tabs-bd-content{
-      width: 3000px;
-      overflow: hidden;
-      left: 0;
-      position: relative;
-
-      & > div {
-        float: left;
-        ul{
-          list-style: none;
-          padding: 0 0 10px 0;
-          margin: 0 0 10px 0;
-          border-bottom: 1px solid @tabs-db-color;
-
-          li{
-            height: 30px;
-            line-height: 30px;
-            position: relative;
-            a{
-              color: @tabs-a-color;
-              .text-overflow();
-              padding-right: 60px;
-            }
-
-            span{
-              position: absolute;
-              right: 0;
-              top: 0;
-              color: @tabs-a-color;
-            }
-
-          }
-          li:hover{
-            a, span{color: @tabs-a-hover-color;}
-          }
-
-          li:active{
-            a, span{color: @tabs-a-hover-color;}
-          }
-        }
-
-        & > a{
-          color: @tabs-more-color;
-        }
-
-        & > a:hover{
-          color: @tabs-a-hover-color;
-        }
-
-        & > a:active{
-          color: @tabs-a-hover-color;
-        }
-
+    li {
+      + li {
+        border-left: 1px solid @tabs-border-color;
       }
+    }
 
+    .am-active {
+      a {
+        background-color: @tabs-nav-active-bg;
+        color: @tabs-nav-active-color;
+      }
     }
   }
+
+  .am-tabs-bd {
+    border: none;
+  }
+
+  .am-tab-panel {
+    padding: 15px 5px 20px;
+  }
+
   .hook-am-tabs-one;
 }
-.hook-am-tabs-one() {};
+
+.hook-am-tabs-one() {
+}

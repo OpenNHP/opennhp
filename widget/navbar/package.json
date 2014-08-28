@@ -1,7 +1,7 @@
 {
     "name": "navbar",
 
-    "version": "1.1.0",
+    "version": "1.2.0",
 
     "localName": {
         "en": "Navbar",
@@ -34,19 +34,52 @@
     "styleDependencies": [
         "ui.modal.less",
         "ui.component.less",
-        "list.less",
-        "button.less"
+        "ui.share.less"
     ],
 
     "style": "navbar.less",
+
+    "demoContent": [
+        {
+            "title": "呼叫",
+            "link": "tel:123456789",
+            "icon": "phone"
+        },
+        {
+            "title": "分享",
+            "link": "###",
+            "icon": "share-square-o",
+            "dataApi": "data-am-navbar-share"
+        },
+        {
+            "title": "二维码",
+            "link": "###",
+            "icon": "qrcode",
+            "dataApi": "data-am-navbar-qrcode"
+        },
+        {
+            "title": "GitHub",
+            "link": "https://github.com/allmobilize/amazeui",
+            "icon": "github"
+        },
+        {
+            "title": "下载使用",
+            "link": "http://amazeui.org/getting-started",
+            "icon": "download"
+        },
+        {
+            "title": "Bug 反馈",
+            "link": "https://github.com/allmobilize/amazeui/issues",
+            "icon": "location-arrow"
+        }
+    ],
 
     "themes": [
         {
             "name": "default",
             "desc": "默认",
             "options": {
-                "cols": 4,
-                "iconpos": "top"
+                "cols": 4
             },
             "hook": "hook-am-navbar-default",
             "variables": [
@@ -79,48 +112,41 @@
             ],
             "demos": [
                 {
-                    "desc": "",
+                    "desc": "字体图标",
                     "data": {
                         "options": {
-                            "cols": "4",
-                            "iconpos": "top"
+                            "cols": "4"
+                        }
+                    }
+                },
+                {
+                    "desc": "自定义图标",
+                    "data": {
+                        "options": {
+                            "cols": "4"
                         },
                         "content": [
                             {
-                                "title": "一键拨号",
-                                "link": "tel:123456789",
-                                "icon": "phone",
-                                "dataApi": ""
+                                "link": "sms:18601860186?body=约吗？",
+                                "title": "消息",
+                                "customIcon": "http://i.static.amazeui.org/assets/i/cpts/navbar/Information.png"
                             },
                             {
-                                "title": "一键分享",
+                                "link": "tel:18601860186",
+                                "title": "呼叫",
+                                "customIcon": "http://i.static.amazeui.org/assets/i/cpts/navbar/phone.png"
+
+                            },
+                            {
                                 "link": "###",
-                                "icon": "share-square-o",
+                                "title": "分享",
+                                "customIcon": "http://i.static.amazeui.org/assets/i/cpts/navbar/share.png",
                                 "dataApi": "data-am-navbar-share"
                             },
                             {
-                                "title": "二维码",
-                                "link": "###",
-                                "icon": "qrcode",
-                                "dataApi": "data-am-navbar-qrcode"
-                            },
-                            {
-                                "title": "关于我们",
                                 "link": "http://yunshipei.com",
-                                "icon": "user-md",
-                                "dataApi": ""
-                            },
-                            {
-                                "title": "下载说明",
-                                "link": "http://yunshipei.com",
-                                "icon": "download",
-                                "dataApi": ""
-                            },
-                            {
-                                "title": "联系我们",
-                                "link": "http://yunshipei.com",
-                                "icon": "location-arrow",
-                                "dataApi": ""
+                                "title": "地图",
+                                "customIcon": "http://i.static.amazeui.org/assets/i/cpts/navbar/map.png"
                             }
                         ]
                     }
@@ -131,8 +157,7 @@
             "name": "one",
             "desc": "简约风格",
             "options": {
-                "cols": 4,
-                "iconpos": "top"
+                "cols": 4
             },
             "hook": "hook-am-navbar-one",
             "variables": [
@@ -164,41 +189,8 @@
                     "desc": "",
                     "data": {
                         "options": {
-                            "cols": "4",
-                            "iconpos": "top"
-                        },
-                        "content": [
-                            {
-                                "title": "电话",
-                                "link": "tel:123456789",
-                                "customIcon": "/i/navbar/phone.png",
-                                "dataApi": ""
-                            },
-                            {
-                                "title": "信息",
-                                "link": "###",
-                                "customIcon": "/i/navbar/Information.png",
-                                "dataApi": ""
-                            },
-                            {
-                                "title": "地图",
-                                "link": "###",
-                                "customIcon": "/i/navbar/map.png",
-                                "dataApi": ""
-                            },
-                            {
-                                "title": "分享",
-                                "link": "###",
-                                "customIcon": "/i/navbar/share.png",
-                                "dataApi": "data-am-navbar-share"
-                            },
-                            {
-                                "title": "收藏",
-                                "link": "###",
-                                "icon": "star",
-                                "dataApi": ""
-                            }
-                        ]
+                            "cols": "4"
+                        }
                     }
                 }
             ]
@@ -212,7 +204,7 @@
 
     "jsDependencies": [
         "ui.modal.js",
-        "ui.dimmer.js",
+        "ui.share.js",
         "util.qrcode.js"
     ],
 
@@ -248,7 +240,7 @@
         "options": {
             "cols": {
                 "name": "列数",
-                "desc": "分栏书面（建议1-4）",
+                "desc": "分栏数量（建议2-4）",
                 "type": "select",
                 "required": false,
                 "default": 2,
@@ -271,19 +263,19 @@
                     }
                 ]
             },
-            "iconpos": {
+            "iconPosition": {
                 "name": "图标位置",
-                "desc": "图标默认在左，可设置在上方",
+                "desc": "图标默认在上方，可设置在左侧",
                 "type": "select",
                 "required": false,
                 "default": "",
                 "dataList": [
                     {
-                        "value": "",
-                        "title": "左边"
+                        "value": "inline",
+                        "title": "左侧"
                     },
                     {
-                        "value": "top",
+                        "value": "",
                         "title": "上方"
                     }
                 ]
@@ -325,5 +317,5 @@
 
     "example": "/*\n 此模块的使用方法：应用amui中现成的图标数据填写在以下数据中，直接形成想要的按钮。\n \n 常用用途：显示在手机下方固定的位置，有一键拨号、二维码等功能按钮。\n \n 了解AMUI模块详情，请访问http://ide.yunshipei.com/doc/amui/#icon。\n\n         示例代码：\n        \n         var data = [\n             {\n                 \"title\": \"拨号\", \n        \n                 \"link\": \"tel:0101245678\", \n        \n                 \"customIcon\": \"xxx.png\", \n        \n                 \"icon\": \"\",\n        \n                 \"dataApi\": \"\"\n             }，\n             {\n                 \"title\": \"分享\", \n        \n                 \"link\": \"\", \n        \n                 \"customIcon\": \"xxx.png\", \n        \n                 \"icon\": \"share\",\n        \n                 \"dataApi\": \"data-am-navbar-share\"\n             }\n         ];\n         return data;\n*/\n\nvar data = [\n    {\n        \"title\": \"\",        // title 值：要显示的文本\n\n        \"link\": \"\",         // link 值 ：如果是电话则写\"tel:0101245678\"\n\n        \"customIcon\": \"\",   // customIcon与下边的icon选用其中之一，customIcon用于上传自定义的小图标，写法：\"customIcon\": context.__root + \"xxx.png\"\n\n        \"icon\": \"\",         //icon 值,例如：分享的图标在AMUI中是am-icon-share ，则此时的icon写法为： \"icon\": \"share\" \n\n        \"dataApi\": \"\"       //dataApi 值可以填写\"data-am-navbar-share\"（用于分享模块） 或者\"data-am-navbar-qrcode\"(用于二维码模块)。若要使用自己上传的二维码 'data-am-navbar-qrcode = 二维码地址' 即可\n    }\n];\nreturn data;\n",
 
-    "hidden": true
+    "hidden": false
 }

@@ -3,6 +3,13 @@
 
 ## 2014.08 W4
 
+__Navbar 组件__：
+
+- `IMPROVED` 重写交互；
+- `IMPROVED` 使用 Amaze UI Share 插件，移除百度分享；
+- `CHANGED` 删除图标位置选项，只提供图标在上方的样式；
+- `IMPROVED` 主题细节调整。
+
 __JS Tabs 插件__：
 
 - `NEW` 新增 Tabs 插件，使用 CSS3 实现平滑滚动及回弹效果。

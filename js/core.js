@@ -156,7 +156,7 @@ define(function(require, exports, module) {
     };
 
     UI.utils.generateGUID =  function(namespace) {
-        var uid = namespace || 'am-';
+        var uid = namespace + '-' || 'am-';
 
         do {
             uid += Math.random().toString(36).substring(2, 7);

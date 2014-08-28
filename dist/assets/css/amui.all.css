@@ -7631,6 +7631,111 @@ ul.am-dropdown-content > .am-disabled > a:focus {
   -ms-transform: translate(100%, 0);
   transform: translate(100%, 0);
 }
+.am-share {
+  font-size: 14px;
+}
+.am-share-title {
+  padding: 10px 0 0;
+  margin: 0 10px;
+  font-weight: normal;
+  text-align: center;
+  color: #555555;
+  background-color: #f8f8f8;
+  border-top-right-radius: 2px;
+  border-top-left-radius: 2px;
+  border-bottom: 1px solid #fff;
+}
+.am-share-title:after {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 1px;
+  margin-top: 10px;
+  background-color: #dfdfdf;
+}
+.am-share-sns {
+  margin: 0 10px;
+  padding-top: 15px;
+  background-color: #f8f8f8;
+  border-bottom-right-radius: 2px;
+  border-bottom-left-radius: 2px;
+}
+.am-share-sns li {
+  margin-bottom: 15px;
+}
+.am-share-sns a {
+  display: block;
+  color: #555555;
+}
+.am-share-sns span {
+  display: block;
+}
+.am-share-sns [class*='am-icon'] {
+  background-color: #3bb4f2;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  line-height: 36px;
+  color: #fff;
+  margin-bottom: 5px;
+  font-size: 18px;
+}
+.am-share-sns .am-icon-weibo {
+  background-color: #ea1328;
+}
+.am-share-sns .am-icon-qq {
+  background-color: #009cda;
+}
+.am-share-sns .am-icon-star {
+  background-color: #ffc028;
+}
+.am-share-sns .am-icon-tencent-weibo {
+  background-color: #23ccfe;
+}
+.am-share-sns .am-icon-wechat,
+.am-share-sns .am-icon-weixin {
+  background-color: #44b549;
+}
+.am-share-sns .am-icon-renren {
+  background-color: #105ba3;
+}
+.am-share-sns .am-icon-comment {
+  background-color: #5eb95e;
+}
+.am-share-footer {
+  margin: 10px;
+}
+.am-share-footer .am-btn {
+  color: #555555;
+}
+.am-share-wechat-qr {
+  font-size: 14px;
+  color: #777;
+}
+.am-share-wechat-qr .am-modal-dialog {
+  background-color: #fff;
+  border: 1px solid #dedede;
+  -webkit-box-shadow: 0 0 5px #dddddd;
+  box-shadow: 0 0 5px #dddddd;
+}
+.am-share-wechat-qr .am-modal-hd {
+  padding-top: 10px;
+  text-align: left;
+  margin-bottom: 10px;
+}
+.am-share-wechat-qr .am-share-wx-qr {
+  margin-bottom: 10px;
+}
+.am-share-wechat-qr .am-share-wechat-tip {
+  text-align: left;
+}
+.am-share-wechat-qr .am-share-wechat-tip em {
+  color: #dd514c;
+  font-weight: bold;
+  font-style: normal;
+  margin-left: 3px;
+  margin-right: 3px;
+}
 .am-fade {
   opacity: 0;
   -webkit-transition: opacity 0.2s linear;

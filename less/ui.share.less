@@ -1,0 +1,147 @@
+// Name:            Share
+// Description:     Define style for Share Plugin
+//
+// Component:       `am-share`
+//
+// Sub-objects:     `am-share-title`
+//                  `am-share-sns`
+//                  `am-share-footer`
+//
+// Uses:            Block Grid
+//                  Icon
+//                  Modal
+//                  Button
+//
+// ========================================================================
+
+
+@share-bg: #f8f8f8;
+
+
+.am-share {
+  font-size: 14px;
+}
+
+.am-share-title {
+  padding: 10px 0 0;
+  margin: 0 10px;
+  font-weight: normal;
+  text-align: center;
+  color: @gray;
+  background-color: @share-bg;
+  .border-top-radius(2px);
+
+  border-bottom: 1px solid #fff;
+
+  &:after {
+    content: "";
+    display: block;
+    width: 100%;
+    height: 1px;
+    margin-top: 10px;
+    background-color: #dfdfdf;
+  }
+}
+
+.am-share-sns {
+  margin: 0 10px;
+  padding-top: 15px;
+  background-color: @share-bg;
+  .border-bottom-radius(2px);
+
+  li {
+    margin-bottom: 15px;
+  }
+
+  a {
+    display: block;
+    color: @gray;
+  }
+
+  // SNS name
+  span {
+    display: block;
+  }
+
+  [class*='am-icon'] {
+    background-color: @global-secondary;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    line-height: 36px;
+    color: #fff;
+    margin-bottom: 5px;
+    font-size: 18px;
+  }
+  
+  .am-icon-weibo {
+    background-color: #ea1328;
+  }
+
+  .am-icon-qq {
+    background-color: #009cda;
+  }
+  
+  .am-icon-star {
+    background-color: #ffc028;
+  }
+
+  .am-icon-tencent-weibo {
+    background-color: #23ccfe;
+  }
+  
+  .am-icon-wechat,
+  .am-icon-weixin {
+    background-color: #44b549;
+  }
+  
+  .am-icon-renren {
+    background-color: #105ba3;
+  }
+  
+  .am-icon-comment {
+    background-color: @global-success;
+  }
+}
+
+.am-share-footer {
+  margin: 10px;
+
+  .am-btn {
+    color: @gray;
+  }
+}
+
+// wechat QRCode
+.am-share-wechat-qr {
+  font-size: 14px;
+  color: #777;
+
+  .am-modal-dialog {
+    background-color: #fff;
+    border: 1px solid #dedede;
+    .box-shadow(0 0 5px #ddd);
+  }
+
+  .am-modal-hd {
+    padding-top: 10px;
+    text-align: left;
+    margin-bottom: 10px;
+  }
+
+  .am-share-wx-qr {
+    margin-bottom: 10px;
+  }
+
+  .am-share-wechat-tip {
+    text-align: left;
+    em {
+      color: @global-danger;
+      font-weight: bold;
+      font-style: normal;
+      margin-left: 3px;
+      margin-right: 3px;
+    }
+  }
+}
+

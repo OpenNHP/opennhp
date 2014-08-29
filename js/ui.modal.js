@@ -94,7 +94,7 @@ define(function(require, exports, module) {
         this.transitioning = 1;
 
         var complete = function() {
-            $element.trigger('closed.amui.modal');
+            $element.trigger('closed:amui:modal');
             isPopup && $element.removeClass('am-modal-out');
             $element.hide();
             this.transitioning = 0;

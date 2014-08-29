@@ -1,0 +1,95 @@
+@import "../../../less/variables";
+@import "../../../less/mixins";
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  width: 100%;
+  position: relative;
+}
+
+.am-page {
+  height: 100%;
+  width: 100%;
+  overflow-y: scroll;
+  -webkit-overflow-scrolling: touch;
+  overflow-x: hidden;
+  .am-list>li>a {
+    margin-bottom: 0;
+    padding-left: 10px;
+  }
+  > .am-header {
+    & + .am-header {
+      margin-top: 15px;
+    }
+    
+    &:first-child {
+      .am-header-title {
+        margin: 0 10%;
+      }
+    }
+  }
+}
+
+.cpt-list {
+  margin: 0;
+
+  li {
+    position: relative;
+  }
+
+  img {
+    width: 36px;
+    height: 36px;
+    margin-right: 10px;
+  }
+
+  a {
+    .transition(all 0.15s);
+
+    &:hover {
+      background: #F5F5F5;
+    }
+
+    &::after {
+      .am-icon-font;
+      content: @fa-var-chevron-right;
+      position: absolute;
+      right: 10px;
+      color: #ccc;
+      top: 50%;
+      margin-top: -8px;
+    }
+  }
+}
+
+#app-index {
+  .translate3d(0, 0, 0);
+  .transition(all 0.3s ease-in-out);
+}
+
+#app-cpt {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-color: #FFF;
+  .transition(all 0.3s ease-in-out);
+  .translate3d(100%, 0, 0);
+}
+
+.demo-list-active {
+  height: 100%;
+
+  #app-index {
+    .translate3d(-100%, 0, 0)
+  }
+
+  #app-cpt {
+    display: block;
+    .translate3d(0, 0, 0);
+  }
+}

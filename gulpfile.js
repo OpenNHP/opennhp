@@ -2,6 +2,7 @@ var path = require('path');
 var fs = require('fs-extra');
 var _ = require('lodash');
 var format = require('util').format;
+var exec = require('child_process').exec;
 
 var gulp = require('gulp');
 var gutil = require('gulp-util');
@@ -17,6 +18,7 @@ var transport = require('gulp-cmd-transport');
 var header = require('gulp-header');
 var clean = require('gulp-clean');
 var zip = require('gulp-zip');
+var replace = require('gulp-replace');
 
 
 var pkg = require('./package.json');
@@ -194,6 +196,13 @@ gulp.task('hbsHelper', function() {
 
 gulp.task('widgetsFile', getWidgetFiles);
 
+gulp.task('appServer', function() {
+    exec('npm start', function (err, stdout, stderr) {
+        console.log(stdout);
+        console.log(stderr);
+    });
+});
+
 // Rerun the task when a file changes
 
 gulp.task('watch', function() {
@@ -205,15 +214,12 @@ gulp.task('watch', function() {
     gulp.watch(jsPaths.hbsHelper, ['hbsHelper']);
 });
 
-
 gulp.task('zip', function() {
-    return gulp.src(['./docs/boilerplate/**', './dist/**', '!dist/demo/**/*', '!dist/test/**/*', '!dist/docs/**/*', '!dist/*.zip',
-        'docs/examples/blog.html',
-        'docs/examples/landing.html',
-        'docs/examples/login.html',
-        'docs/examples/sidebar.html'
+    return gulp.src(['./dist/**', '!dist/demo/**/*', '!dist/test/**/*', '!dist/docs/**/*', '!dist/*.zip',
+        'docs/examples/**/*'
     ])
-        .pipe(zip('AmazeUI-1.0.0-beta1.zip', {comment: 'Created on ' + gutil.date(now, 'yyyy-mm-dd HH:mm:ss')}))
+        .pipe(replace(/\{\{assets\}\}/g, 'assets/', {skipBinary: true}))
+        .pipe(zip(format('AmazeUI-1.0.0-beta1-%s.zip', gutil.date(now, 'yyyymmdd')), {comment: 'Created on ' + gutil.date(now, 'yyyy-mm-dd HH:mm:ss')}))
         .pipe(gulp.dest('dist'));
 });
 
@@ -223,3 +229,5 @@ gulp.task('buildJs', ['copyWidgetJs', 'copyUIJs', 'transport', 'concat', 'clean'
 // gulp.task('init', ['bower', 'buildJs', 'hbsHelper', 'buildLess', 'watch']);
 
 gulp.task('default', ['widgetsFile', 'buildJs', 'buildLess', 'hbsHelper', 'watch']);
+
+gulp.task('preview', ['widgetsFile', 'buildJs', 'buildLess', 'hbsHelper', 'watch', 'appServer']);

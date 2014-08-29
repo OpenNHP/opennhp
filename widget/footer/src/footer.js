@@ -1,5 +1,4 @@
 define(function(require, exports, module) {
-
     require('core');
 
     // add2home

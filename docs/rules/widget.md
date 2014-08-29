@@ -106,9 +106,6 @@ Web 组件核心描述文件，`json` 格式，下面的注释仅为方便解释
     // 组件主题（没有主题时将值设置为 null）
     "themes": [
         {
-            // 主题简略编号
-            "id": "default",
-
             // 主题名称 sample.{xxx}.less 中的 {xxx}，尽量语义化描述主题
             "name": "default",
             // 主题描述，简要描述主题
@@ -408,6 +405,29 @@ npm install -g slush-amuiwidget
 slush amuiwidget
 ```
 
-## 调试
+## 调试预览
 
-按照规范开发完 Web 组件以后， ~~可以使用[调试工具](/widgets/debugger)预览调整~~，调试工具暂时没有添加 JS 的入口，我们会尽快完善。
+按照规范开发完 Web 组件以后，可以在本地调试预览组件。
+
+在 Amaze UI 项目根目录下执行以下命令，安装依赖：
+
+```
+npm install
+```
+
+全局安装 `nodemon`：
+
+```
+npm install nodemon -g
+```
+
+安装完成以后执行：
+
+```
+gulp preview
+```
+
+然后在浏览器里打开 `http://localhost:3008/#{component}` 查看组件的效果，`{component}` 替换为组件名称。
+
+有样式、脚本、配置文件修改时，修改完成以后刷新浏览器即可，`nodemon` 会自动重启 Node 服务。
+

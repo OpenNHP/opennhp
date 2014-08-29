@@ -32,7 +32,7 @@ define(function(require, exports, module) {
             $target = $this.hasClass('am-alert') ? $this : $this.parent('.am-alert');
 
         $target.trigger('close:alert:amui');
-
+        
         $target.removeClass('am-in');
 
         function processAlert() {
@@ -53,9 +53,9 @@ define(function(require, exports, module) {
             var $this = $(this),
                 data = $this.data('amui.alert'),
                 options = typeof option == 'object' && option;
-
+            
             if (!data) {
-                $this.data('amui.alert', (data = new Alert(this, options)));
+                $this.data('amui.alert', (data = new Alert(this, options || {})));
             }
 
             if (typeof option == 'string') {
@@ -69,9 +69,9 @@ define(function(require, exports, module) {
     $(document).on('click.alert.amui', '[data-am-alert]', function(e){
         var $target = $(e.target);
         $(this).addClass('am-fade am-in');
-        $target.is('.am-close') && $(this).alert('close');
+        // $target.is('.am-close') && 
+        $(this).alert('close');
     });
-
 
     module.exports = Alert;
 });

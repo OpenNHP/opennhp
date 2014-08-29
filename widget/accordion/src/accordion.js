@@ -1,4 +1,5 @@
 define(function(require, exports, module) {
+    require('core');
     require('ui.collapse');
 
     var $ = window.Zepto,

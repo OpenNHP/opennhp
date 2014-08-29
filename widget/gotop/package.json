@@ -135,7 +135,7 @@
                     "desc": "自定义图片",
                     "data": {
                         "content": {
-                            "customIcon": "/i/gotop/goTop.gif"
+                            "customIcon": "http://i.static.amazeui.org/assets/i/cpts/gotop/goTop.gif"
                         }
                     }
                 }

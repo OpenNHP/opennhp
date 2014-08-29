@@ -9,12 +9,12 @@
 
 `````html
 <div class="am-alert">
-  云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。
+  没什么可给你，但求凭这阙歌。谢谢你风雨里，都不退愿陪着我。
 </div>
 `````
 ```html
 <div class="am-alert">
-  云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。
+  没什么可给你，但求凭这阙歌。谢谢你风雨里，都不退愿陪着我。
 </div>
 ```
 
@@ -23,13 +23,13 @@
 `````html
 <div class="am-alert" data-am-alert>
   <button type="button" class="am-close">&times;</button>
-  <p>云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。</p>
+  <p>没什么可给你，但求凭这阙歌。谢谢你风雨里，都不退愿陪着我。</p>
 </div>
 `````
 ```html
-<div class="am-alert">
+<div class="am-alert" data-am-alert>
   <button type="button" class="am-close">&times;</button>
-  <p>云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。</p>
+  <p>没什么可给你，但求凭这阙歌。谢谢你风雨里，都不退愿陪着我。</p>
 </div>
 ```
 
@@ -38,36 +38,36 @@
 `````html
 <div class="am-alert am-alert-success" data-am-alert>
   <button type="button" class="am-close">&times;</button>
-  <p>云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。</p>
+  <p>没什么可给你，但求凭这阙歌。谢谢你风雨里，都不退愿陪着我。</p>
 </div>
 <div class="am-alert am-alert-warning" data-am-alert>
   <button type="button" class="am-close">&times;</button>
-  <p>云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。</p>
+  <p>没什么可给你，但求凭这阙歌。谢谢你风雨里，都不退愿陪着我。</p>
 </div>
 <div class="am-alert am-alert-danger" data-am-alert>
   <button type="button" class="am-close">&times;</button>
-  <p>云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。</p>
+  <p>没什么可给你，但求凭这阙歌。谢谢你风雨里，都不退愿陪着我。</p>
 </div>
 <div class="am-alert am-alert-secondary" data-am-alert>
-  <button type="button" class="am-close" data-alert->&times;</button>
-  <p>云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。</p>
+  <button type="button" class="am-close">&times;</button>
+  <p>没什么可给你，但求凭这阙歌。谢谢你风雨里，都不退愿陪着我。</p>
 </div>
 `````
 ```html
-<div class="am-alert am-alert-success">
+<div class="am-alert am-alert-success" data-am-alert>
   <button type="button" class="am-close">&times;</button>
-  <p>云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。</p>
+  <p>没什么可给你，但求凭这阙歌。谢谢你风雨里，都不退愿陪着我。</p>
 </div>
 
-<div class="am-alert am-alert-warning">
+<div class="am-alert am-alert-warning" data-am-alert>
   ...
 </div>
 
-<div class="am-alert am-alert-danger">
+<div class="am-alert am-alert-danger" data-am-alert>
   ...
 </div>
 
-<div class="am-alert am-alert-secondary">
+<div class="am-alert am-alert-secondary" data-am-alert>
   ...
 </div>
 ```
@@ -77,14 +77,15 @@
 `````html
 <div class="am-alert" data-am-alert>
   <button type="button" class="am-close">&times;</button>
-  <h3>云适配相对其他手机适配服务有哪些优点</h3>
-  <p>云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。</p>
+  <h3>共同渡过</h3>
+  <p>《共同渡过》是张国荣1987年发行的专辑《Summer Romance》中的一首歌。</p>
   <ul>
-  	<li>1. 一行代码，简单快捷;</li>
-  	<li>2. 网址不变且唯一</li>
-  	<li>3. 内容实时同步更新</li>
-  	<li>4. 云端跨平台适配</li>
-  	<li>5. 专属的一键拨叫 在线咨询 地图导航 二维码 一键分享实用功能。</li>
+    <li>若我可再活多一次都盼</li>
+    <li>再可以在路途重逢着你</li>
+    <li>共去写一生的句子</li>
+    <li>若我可再活多一次千次</li>
+    <li>我都盼面前仍是你</li>
+    <li>我要他生都有今生的暖意</li>
   </ul>
 </div>
 <script>
@@ -92,16 +93,17 @@
 </script>
 `````
 ```html
-<div class="am-alert">
+<div class="am-alert" data-am-alert>
   <button type="button" class="am-close">&times;</button>
-  <h3>云适配相对其他手机适配服务有哪些优点</h3>
-  <p>云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。</p>
+  <h3>共同渡过</h3>
+  <p>《共同渡过》是张国荣1987年发行的专辑《Summer Romance》中的一首歌。</p>
   <ul>
-  	<li>1. 一行代码，简单快捷;</li>
-  	<li>2. 网址不变且唯一</li>
-  	<li>3. 内容实时同步更新</li>
-  	<li>4. 云端跨平台适配</li>
-  	<li>5. 专属的一键拨叫 在线咨询 地图导航 二维码 一键分享实用功能。</li>
+    <li>若我可再活多一次都盼</li>
+    <li>再可以在路途重逢着你</li>
+    <li>共去写一生的句子</li>
+    <li>若我可再活多一次千次</li>
+    <li>我都盼面前仍是你</li>
+    <li>我要他生都有今生的暖意</li>
   </ul>
 </div>
 ```
@@ -115,7 +117,7 @@
 `````html
 <div class="am-alert" id="my-alert" data-am-alert>
   <button type="button" class="am-close">&times;</button>
-  <p>云适配使用的是微软Azure云平台，它最大的优势就是可靠，微软能够确保平台以及服务的可靠性和安全性。</p>
+  <p>没什么可给你，但求凭这阙歌。谢谢你风雨里，都不退愿陪着我。</p>
 </div>
 <script>
 (function($){
@@ -133,7 +135,6 @@
 ```
 
 ### 通过 JS
-
 
 开启关闭按钮交互功能：
 

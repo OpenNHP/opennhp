@@ -8,8 +8,7 @@
   "homepage": "http://amui.yunshipei.com",
   "author": "Allmobilize, Inc.",
   "scripts": {
-    "test": "grunt test",
-    "start": "node amui_server.js"
+    "start": "nodemon tools/app/app.js"
   },
   "repository": {
     "type": "git",
@@ -17,6 +16,16 @@
   },
   "bugs": {
     "url": "https://github.com/amui/issues"
+  },
+  "dependencies": {
+    "body-parser": "~1.0.0",
+    "cookie-parser": "~1.0.1",
+    "debug": "1.0.x",
+    "express": "4.x",
+    "hbs": "~2.7.0",
+    "less-middleware": "1.0.x",
+    "morgan": "~1.0.0",
+    "errorhandler": "^1.1.1"
   },
   "devDependencies": {
     "fs-extra": "^0.10.0",
@@ -30,6 +39,7 @@
     "gulp-less": "^1.2.3",
     "gulp-minify-css": "^0.3.0",
     "gulp-rename": "^1.2.0",
+    "gulp-replace": "https://github.com/Minwe/gulp-replace/archive/v0.4.1.tar.gz",
     "gulp-uglify": "latest",
     "gulp-util": "^2.2.14",
     "gulp-watch": "latest",

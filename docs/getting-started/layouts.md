@@ -24,7 +24,7 @@ Amaze UI 目前提供几个常见的布局示例，供开发者参考，后续�
     </div>
     <div class="col-md-3 col-sm-6">
         <a class="am-thumbnail" href="/examples/sidebar.html">
-            <img class="am-img-thumbnail" src="http://amazeui.org/i/examples/sidebarPage.png" alt="alt="sidebarPage""/>
+            <img class="am-img-thumbnail" src="http://amazeui.org/i/examples/sidebarPage.png" alt="sidebarPage"/>
             <figcaption class="am-thumbnail-caption">侧边栏页面</figcaption>
         </a>
     </div>
@@ -44,7 +44,11 @@ Amaze UI 目前提供几个常见的布局示例，供开发者参考，后续�
 使用组件说明：
 
 <ul>
-    <li>CSS 部分：<a class="am-badge am-badge-success" href="/css/grid">网格</a> <a class="am-badge am-badge-success" href="/css/icon">图标</a> <a class="am-badge am-badge-success" href="/css/button">按钮</a> <a class="am-badge am-badge-success" href="/css/button-group">按钮组</a> <a class="am-badge am-badge-success" href="/css/form">表单</a></li>
+  <li>CSS 部分：<a class="am-badge am-badge-success" href="/css/grid">网格</a>
+    <a class="am-badge am-badge-success" href="/css/icon">图标</a>
+    <a class="am-badge am-badge-success" href="/css/button">按钮</a>
+    <a class="am-badge am-badge-success" href="/css/button-group">按钮组</a>
+    <a class="am-badge am-badge-success" href="/css/form">表单</a></li>
 </ul>
 
 ## 博客页面

@@ -301,7 +301,8 @@ define("core", [ "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector"
     });
     module.exports = UI;
 });
-define("accordion", [ "ui.collapse" ], function(require, exports, module) {
+define("accordion", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "ui.collapse" ], function(require, exports, module) {
+    require("core");
     require("ui.collapse");
     var $ = window.Zepto, UI = $.AMUI, accordionInit = function() {
         var $accordion = $('[data-am-widget="accordion"]'), selector = {
@@ -352,7 +353,8 @@ define("duoshuo", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.exten
     $(window).on("load", duoshuoInit);
     exports.init = duoshuoInit;
 });
-define("figure", [ "zepto.pinchzoom" ], function(require, exports, module) {
+define("figure", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "zepto.pinchzoom" ], function(require, exports, module) {
+    require("core");
     var $ = window.Zepto;
     // PinchZoom Plugin
     var PinchZoom = require("zepto.pinchzoom");
@@ -435,7 +437,8 @@ define("footer", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend
     });
     exports.init = footerInit;
 });
-define("gallery", [ "zepto.touchgallery" ], function(require, exports, module) {
+define("gallery", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "zepto.touchgallery" ], function(require, exports, module) {
+    require("core");
     var touchGallery = require("zepto.touchgallery");
     var $ = window.Zepto, UI = $.AMUI;
     var galleryInit = function() {
@@ -469,8 +472,9 @@ define("gallery", [ "zepto.touchgallery" ], function(require, exports, module) {
     });
     exports.init = galleryInit;
 });
-define("gotop", [ "./ui.smooth-scroll", "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector" ], function(require, exports, module) {
-    require("./ui.smooth-scroll");
+define("gotop", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "ui.smooth-scroll" ], function(require, exports, module) {
+    require("core");
+    require("ui.smooth-scroll");
     var $ = window.Zepto;
     var UI = $.AMUI;
     var goTopInit = function() {
@@ -606,7 +610,8 @@ define("mechat", [], function(require, exports, module) {
     $(window).on("load", mechatInit);
     exports.init = mechatInit;
 });
-define("menu", [ "ui.offcanvas", "ui.collapse", "ui.iscroll-lite" ], function(require, exports, module) {
+define("menu", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "ui.offcanvas", "ui.collapse", "ui.iscroll-lite" ], function(require, exports, module) {
+    require("core");
     require("ui.offcanvas");
     require("ui.collapse");
     var IScroll = require("ui.iscroll-lite");
@@ -853,9 +858,11 @@ define("navbar", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend
 define("pagination", [], function(require, exports, module) {
     var $ = window.Zepto;
 });
-define("paragraph", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "zepto.pinchzoom" ], function(require, exports, module) {
+define("paragraph", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "ui.iscroll-lite", "zepto.pinchzoom" ], function(require, exports, module) {
     require("core");
     var $ = window.Zepto, UI = $.AMUI;
+    // Iscroll-lite Plugin
+    var IScroll = require("ui.iscroll-lite");
     // PinchZoom Plugin
     var PinchZoom = require("zepto.pinchzoom");
     var paragraphInit;
@@ -887,60 +894,26 @@ define("paragraph", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.ext
             });
         });
     };
-    $.fn.paragraphTable = function(objWidth) {
-        var This = $(this), distX = 0, disX = 0, disY = 0, downX, downY, $parent, scrollY;
-        if (objWidth > $("body").width()) {
-            This.wrap("<div class='am-paragraph-table-container'><div class='am-paragraph-table-scroller'></div></div>");
-            $parent = This.parent();
-            $parent.width(objWidth);
-            $parent.height(This.height());
-            $parent.parent().height(This.height() + 20);
-            $parent.on("touchstart MSPointerDown pointerdown", function(ev) {
-                var oTarget = ev.targetTouches[0];
-                distX = oTarget.clientX - $(this).offset().left;
-                downX = oTarget.clientX;
-                downY = oTarget.clientY;
-                scrollY = undefined;
-                $(document).on("touchmove MSPointerMove pointermove", fnMove);
-                $(document).on("touchend MSPointerUp pointerup", fnUp);
-            });
-        }
-        function fnUp(ev) {
-            ev.preventDefault();
-            var oTarget = ev.changedTouches[0];
-            var L = $parent.offset().left;
-            // ->
-            if (L > 10) {
-                $parent.animate({
-                    left: 10
-                }, 500, "ease-out");
-            }
-            //<-
-            if (L < -$parent.width() + $(window).width() - 10) {
-                $parent.animate({
-                    left: -$parent.width() + $(window).width() - 10
-                }, 500, "ease-out");
-            }
-            $(document).off("touchend MSPointerUp pointerup", fnUp);
-            $(document).off("touchmove MSPointerMove pointermove", fnMove);
-        }
-        function fnMove(ev) {
-            var oTarget = ev.targetTouches[0];
-            disX = oTarget.clientX - downX;
-            disY = oTarget.clientY - downY;
-            if (typeof scrollY == "undefined") {
-                scrollY = !!(scrollY || Math.abs(disX) < Math.abs(disY));
-            }
-            if (!scrollY) {
-                ev.preventDefault();
-                This.parent().css("left", oTarget.clientX - distX);
-            }
-        }
+    /*
+    * index : ID 标识，多个 paragraph 里面多个 table
+    */
+    $.fn.scrollTable = function(index) {
+        var This = $(this), $parent;
+        This.wrap("<div class='am-paragraph-table-container' id='am-paragraph-table-" + index + "'><div class='am-paragraph-table-scroller'></div></div>");
+        $parent = This.parent();
+        $parent.width(This.width());
+        $parent.height(This.height());
+        var tableScroll = new IScroll("#am-paragraph-table-" + index, {
+            eventPassthrough: true,
+            scrollX: true,
+            scrollY: false,
+            preventDefault: false
+        });
     };
     paragraphInit = function() {
-        var $body = $("body"), $paragraph = $('[data-am-widget="paragraph"]'), $tableWidth;
-        $paragraph.each(function() {
-            var $this = $(this), options = UI.utils.parseOptions($this.attr("data-am-paragraph"));
+        var $body = $("body"), $paragraph = $('[data-am-widget="paragraph"]');
+        $paragraph.each(function(index) {
+            var $this = $(this), options = UI.utils.parseOptions($this.attr("data-am-paragraph")), $index = index;
             if (options.imgLightbox) {
                 $this.find("img").paragraphZoomToggle();
                 $body.on("click", ".am-paragraph-wrap", function(e) {
@@ -953,9 +926,10 @@ define("paragraph", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.ext
                 });
             }
             if (options.tableScrollable) {
-                $this.find("table").each(function() {
-                    $tableWidth = $(this).width();
-                    $(this).paragraphTable($tableWidth);
+                $this.find("table").each(function(index) {
+                    if ($(this).width() > $(window).width()) {
+                        $(this).scrollTable($index + "-" + index);
+                    }
                 });
             }
         });
@@ -965,9 +939,10 @@ define("paragraph", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.ext
     });
     exports.init = paragraphInit;
 });
-define("slider", [ "zepto.flexslider" ], function(require, exports, module) {
-    var $ = window.Zepto, UI = $.AMUI;
+define("slider", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.extend.selector", "zepto.flexslider" ], function(require, exports, module) {
+    require("core");
     require("zepto.flexslider");
+    var $ = window.Zepto, UI = $.AMUI;
     var sliderInit = function() {
         var $sliders = $('[data-am-widget="slider"]');
         $sliders.not(".am-slider-manual").each(function(i, item) {
@@ -1349,7 +1324,7 @@ define("ui.alert", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.exte
         return this.each(function() {
             var $this = $(this), data = $this.data("amui.alert"), options = typeof option == "object" && option;
             if (!data) {
-                $this.data("amui.alert", data = new Alert(this, options));
+                $this.data("amui.alert", data = new Alert(this, options || {}));
             }
             if (typeof option == "string") {
                 data[option].call($this);
@@ -1360,7 +1335,8 @@ define("ui.alert", [ "core", "zepto.extend.fx", "zepto.extend.data", "zepto.exte
     $(document).on("click.alert.amui", "[data-am-alert]", function(e) {
         var $target = $(e.target);
         $(this).addClass("am-fade am-in");
-        $target.is(".am-close") && $(this).alert("close");
+        // $target.is('.am-close') && 
+        $(this).alert("close");
     });
     module.exports = Alert;
 });

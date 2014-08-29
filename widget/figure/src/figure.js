@@ -1,4 +1,6 @@
 define(function(require, exports, module) {
+    require('core');
+
     var $ = window.Zepto;
 
     // PinchZoom Plugin

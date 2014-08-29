@@ -1,0 +1,108 @@
+<!doctype html>
+<html class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>{{title}}</title>
+  <meta name="description" content="">
+  <meta name="keywords" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="renderer" content="webkit">
+  <meta http-equiv="Cache-Control" content="no-siteapp"/>
+  <link rel="icon" type="image/png" href="/assets/i/favicon.png">
+  <link rel="stylesheet" href="/assets/css/amui.all.min.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+{{#unless demoDetail}}
+<section class="am-page" id="app-index">
+  {{>header header}}
+
+  {{#if components}}
+    <ul class="am-list cpt-list">
+      {{#each components}}
+        <li><a href="#{{@key}}">
+          <img src="/{{@key}}/src/{{@key}}.png" alt=""/>
+          {{localName.en}}</a></li>
+      {{/each}}
+    </ul>
+  {{/if}}
+</section>
+
+<section class="am-page" id="app-cpt">
+</section>
+
+<script type="text/x-handlebars-template" id="tpl-demo-list">
+  \{{>header header}}
+  <ul class="am-list widget-list cpt-list">\{{#each demos}}
+    <li><a href="\{{url}}">\{{title}}</a></li>\{{/each}}
+  </ul>
+</script>
+{{/unless}}
+
+<section class="am-page">
+  {{! demo detail}}
+  {{>header header}}
+
+  {{{content}}}
+</section>
+
+
+<script src="/handlebars/handlebars.min.js"></script>
+<script src="/amazeui.hbs.helper.js"></script>
+<script src="/amazeui.hbs.partials.js"></script>
+<script src="/zepto/zepto.min.js?ver=1.1.4"></script>
+<script src="/assets/js/amui.js"></script>
+
+{{#unless demoDetail}}
+<script>
+  Zepto(function($) {
+    var $body = $('body'),
+        $demoPage = $('#app-cpt'),
+        demoListTpl = $('#tpl-demo-list').html(),
+        listCompiler = Handlebars.compile(demoListTpl),
+        componentsData = {{{componentsData}}};
+
+    $('.cpt-list a').on('click', function(e) {
+      e.preventDefault();
+      var cmptName = $(this).attr('href').replace('#', '');
+
+      window.location.hash = cmptName;
+    });
+
+    $(window).on('hashchange', function(e) {
+      updateDemoList();
+    });
+
+    // back btn
+    $(document).on('click', '[href="#back"]', function(e) {
+      e.preventDefault();
+      window.location.hash = '';
+      $body.removeClass('demo-list-active');
+    });
+
+    updateDemoList();
+
+    function updateDemoList() {
+      var cptName = window.location.hash.replace('#', '');
+
+      if (cptName && componentsData[cptName] && componentsData[cptName].demos) {
+        componentsData[cptName].header = {
+          content: {
+            left: [{
+              link: '#back',
+              icon: 'chevron-left'
+            }],
+            title: componentsData[cptName].localName.en || '组件演示'
+          }
+        };
+
+        $demoPage.empty().html(listCompiler(componentsData[cptName]));
+        $body.addClass('demo-list-active');
+      }
+    }
+  });
+</script>
+{{/unless}}
+</body>
+</html>

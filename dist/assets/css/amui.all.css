@@ -8739,6 +8739,9 @@ tbody.am-collapse.am-in {
   white-space: nowrap;
   overflow: hidden;
 }
+.am-gallery-overlay .am-gallery-desc {
+  display: none;
+}
 /**
   * Accordion Theme: bordered
   * Author: Minwe (minwe@yunshipei.com)
@@ -9021,6 +9024,7 @@ tbody.am-collapse.am-in {
   background: #ffffff;
 }
 .am-header-one .am-header-title {
+  margin: 0 15%;
   color: #333333;
   display: block;
   word-wrap: normal;
@@ -10756,39 +10760,30 @@ tbody.am-collapse.am-in {
 }
 .am-paragraph .am-paragraph-table-container {
   overflow: hidden;
-  position: relative;
   background: #eeeeee;
-  margin: 0 -10px;
   max-width: none;
 }
-.am-paragraph .am-paragraph-table-container .am-paragraph-table-scroller {
-  width: 1000px;
-  max-width: none;
-  position: absolute;
-  left: 10px;
-  top: 10px;
-}
-.am-paragraph .am-paragraph-table-container .am-paragraph-table-scroller table {
+.am-paragraph .am-paragraph-table-container table {
   width: 100%;
   max-width: none;
 }
-.am-paragraph .am-paragraph-table-container .am-paragraph-table-scroller table th {
+.am-paragraph .am-paragraph-table-container table th {
   background: #bce5fb;
   height: 40px;
   border: 1px solid #999999;
   text-align: center;
 }
-.am-paragraph .am-paragraph-table-container .am-paragraph-table-scroller table td {
+.am-paragraph .am-paragraph-table-container table td {
   border: 1px solid #999999;
   text-align: center;
   vertical-align: middle;
   background: #ffffff;
 }
-.am-paragraph .am-paragraph-table-container .am-paragraph-table-scroller table td p {
+.am-paragraph .am-paragraph-table-container table td p {
   text-indent: 0;
   font-size: 1.4rem;
 }
-.am-paragraph .am-paragraph-table-container .am-paragraph-table-scroller table td a {
+.am-paragraph .am-paragraph-table-container table td a {
   font-size: 1.4rem;
 }
 .am-paragraph-wrap {

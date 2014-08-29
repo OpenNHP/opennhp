@@ -1,0 +1,20 @@
+{
+    "ignore": [
+        ".git",
+        "node_modules/**/node_modules"
+    ],
+
+    "verbose": true,
+
+    "watch": [
+        "tools/app/*",
+        "app.js",
+        "widget/**/*"
+    ],
+
+    "env": {
+        "NODE_ENV": "development"
+    },
+
+    "ext": "js json hbs"
+}

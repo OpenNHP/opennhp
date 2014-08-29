@@ -1,7 +1,7 @@
 define(function (require, exports, module) {
-
     require('zepto.extend.touch');
     require('core');
+
     var $ = window.Zepto;
     var tabsInit = function () {
         $('.am-tabs').each(function () {

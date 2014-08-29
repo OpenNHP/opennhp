@@ -74,6 +74,8 @@
       .text-overflow(block);
     }
   }
+
+  .hook-am-navbar-nav;
 }
 
 .am-navbar-more {
@@ -106,13 +108,13 @@
 
   li {
     line-height: 42px;
-    box-shadow: inset 0 1px rgba(220, 220, 220, 0.25);
     position: relative;
 
     a {
-      display: inline-block;
+      display: block;
       width: 100%;
       height: 40px;
+      box-shadow: inset 0 1px rgba(220, 220, 220, 0.25);
       padding-left: 20px;
       padding-right: 36px;
 
@@ -133,6 +135,24 @@
       }
     }
   }
+
+  .hook-am-navbar-actions;
+}
+
+#am-navbar-qrcode {
+  width: 220px;
+  height: 220px;
+  margin-left: -100px;
+
+  .am-modal-bd {
+    padding: 10px;
+  }
+
+  canvas {
+    display: inline-block;
+    width: 200px;
+    height: 200px;
+  }
 }
 
 // 给body 增加的className
@@ -140,8 +160,9 @@
   padding-bottom: @navbar-height;
 }
 
-.hook-am-navbar() {
-}
+.hook-am-navbar() {}
+.hook-am-navbar-nav() {}
+.hook-am-navbar-actions() {}
 
 // TODO: 1. 使用 Flexbox
-//       2. 单图标 和 图标+文字 混排的时候垂直居中对齐问题
+//       2. 单图标的情形

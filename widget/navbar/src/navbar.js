@@ -15,7 +15,7 @@ define(function(require, exports, module) {
             $navItems = $navBar.find('li'),
             navItemsCounter = $navItems.length;
             configItems = parseInt($navBarNav.attr('class').match(/sm-block-grid-(\d)/)[1]) || 3,
-            navMinWidth = 75, //每个li最小宽度
+            navMinWidth = 60, //每个li最小宽度
             offsetWidth = 16,
             $share = $navItems.filter('[data-am-navbar-share]'),
             $qrcode = $navItems.filter('[data-am-navbar-qrcode]'),
@@ -52,8 +52,8 @@ define(function(require, exports, module) {
                         render: 'canvas',
                         correctLevel: 0,
                         text: window.location,
-                        width: 240,
-                        height: 240,
+                        width: 200,
+                        height: 200,
                         background: '#fff',
                         foreground: '#000'
                     });
@@ -63,8 +63,8 @@ define(function(require, exports, module) {
                 $body.append($qrModal);
             }
 
-            $qrcode.on('click', function(event) {
-                event.preventDefault();
+            $qrcode.on('click', function(e) {
+                e.preventDefault();
                 $qrModal.modal();
             });
         }
@@ -113,10 +113,10 @@ define(function(require, exports, module) {
          * @returns {number}
          */
         function calcSuiteItems() {
-            return Math.floor(($win.width() - 16) / 75);
+            return Math.floor(($win.width() - offsetWidth) / navMinWidth);
         }
         
-        $navBar.on('click', '.am-navbar-more', function(e) {
+        $navBar.on('click.navbar.amui', '.am-navbar-more', function(e) {
             e.preventDefault();
 
             $moreLink[$moreActions.hasClass(activeStatus) ? 'removeClass' : 'addClass'](activeStatus);
@@ -125,12 +125,13 @@ define(function(require, exports, module) {
         });
 
         if ($share.length) {
-            $share.on('click', function() {
+            $share.on('click.navbar.amui', function(e) {
+                e.preventDefault();
                 share.toggle();
             });
         }
 
-        $win.on('resize.navbar.amui', UI.utils.debounce(checkNavBarItems, 150));
+        $win.on('resize.navbar.amui orientationchange.navbar.amui', UI.utils.debounce(checkNavBarItems, 150));
     };
 
 

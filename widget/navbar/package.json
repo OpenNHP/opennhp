@@ -89,11 +89,7 @@
                     "default": "#0e90d2",
                     "used": [
                         {
-                            "selector": "",
-                            "property": "background-color"
-                        },
-                        {
-                            "selector": ".am-navbar-moreList",
+                            "selector": ".am-navbar-nav",
                             "property": "background-color"
                         }
                     ]
@@ -104,8 +100,30 @@
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": ".am-navbar-item a",
+                            "selector": "a",
                             "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "navbar-actions-bg",
+                    "name": "更多列表背景",
+                    "default": "#0d86c4",
+                    "used": [
+                        {
+                            "selector": ".am-navbar-actions",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "navbar-actions-border-bottom",
+                    "name": "更多列表下边框颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-navbar-actions a",
+                            "property": "border-color"
                         }
                     ]
                 }
@@ -162,24 +180,46 @@
             "hook": "hook-am-navbar-one",
             "variables": [
                 {
-                    "variable": "navbar-bg-color",
+                    "variable": "navbar-bg",
                     "name": "背景颜色",
-                    "default": "#15afef",
+                    "default": "#0e90d2",
                     "used": [
                         {
-                            "selector": "",
+                            "selector": ".am-navbar-nav",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "navbar-a-color",
+                    "variable": "navbar-link-color",
                     "name": "链接颜色",
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": ".am-navbar-item a",
+                            "selector": "a",
                             "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "navbar-actions-bg",
+                    "name": "更多列表背景",
+                    "default": "#0d86c4",
+                    "used": [
+                        {
+                            "selector": ".am-navbar-actions",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "navbar-actions-border-bottom",
+                    "name": "更多列表下边框颜色",
+                    "default": "#fff",
+                    "used": [
+                        {
+                            "selector": ".am-navbar-actions a",
+                            "property": "border-color"
                         }
                     ]
                 }
@@ -243,7 +283,7 @@
                 "desc": "分栏数量（建议2-4）",
                 "type": "select",
                 "required": false,
-                "default": 2,
+                "default": 4,
                 "dataList": [
                     {
                         "value": 1,

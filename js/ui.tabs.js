@@ -66,9 +66,7 @@ define(function(require, exports, module) {
             href = $nav.attr('href'),
             regexHash = /^#.+$/,
             $target = regexHash.test(href) && this.$content.find(href) || this.$tabPanels.eq($navs.index($nav));
-        
-        console.log($target);
-        
+
         var previous = $tabNav.find('.am-active a')[0],
             e = $.Event('open:tabs:amui', {
                 relatedTarget: previous

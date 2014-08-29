@@ -8,13 +8,16 @@ define(function(require, exports, module) {
         share = require('ui.share');
 
     var navbarInit = function() {
+        var $navBar = $('[data-am-widget="navbar"]');
+
+        if (!$navBar.length) return;
+
         var $win = $(window),
             $body = $('body'),
-            $navBar = $('[data-am-widget="navbar"]'),
             $navBarNav = $navBar.find('.am-navbar-nav'),
             $navItems = $navBar.find('li'),
             navItemsCounter = $navItems.length;
-            configItems = parseInt($navBarNav.attr('class').match(/sm-block-grid-(\d)/)[1]) || 3,
+            configItems = $navBarNav.attr('class') && parseInt($navBarNav.attr('class').match(/sm-block-grid-(\d)/)[1]) || 3,
             navMinWidth = 60, //每个li最小宽度
             offsetWidth = 16,
             $share = $navItems.filter('[data-am-navbar-share]'),
@@ -29,7 +32,6 @@ define(function(require, exports, module) {
         if ($navBar.css('position') == 'fixed') {
             $body.addClass('with-fixed-navbar');
         }
-
 
         if ($qrcode.length) {
             var qrId = 'am-navbar-qrcode';

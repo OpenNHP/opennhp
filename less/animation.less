@@ -102,6 +102,13 @@
   .animation(am-spin 2s infinite linear);
 }
 
+.am-animation-left-spring {
+  .animation(am-left-spring .3s ease-in-out);
+}
+
+.am-animation-right-spring {
+  .animation(am-right-spring .3s ease-in-out);
+}
 
 // Modifiers
 // ========================================================================
@@ -385,3 +392,53 @@
   100% { transform: rotate(359deg); }
 }
 
+
+/* Spring */
+
+@-webkit-keyframes am-right-spring {
+  0% {
+    .translate();
+  }
+  50% {
+    .translate(-20%)
+  }
+  100% {
+    .translate();
+  }
+}
+
+@keyframes am-right-spring {
+  0% {
+    .translate();
+  }
+  50% {
+    .translate(-20%)
+  }
+  100% {
+    .translate();
+  }
+}
+
+@-webkit-keyframes am-left-spring {
+  0% {
+    .translate();
+  }
+  50% {
+    .translate(20%);
+  }
+  100% {
+    .translate();
+  }
+}
+
+@keyframes am-left-spring {
+  0% {
+    .translate();
+  }
+  50% {
+    .translate(20%);
+  }
+  100% {
+    .translate();
+  }
+}

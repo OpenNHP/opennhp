@@ -49,7 +49,6 @@ return data;
 
   "options": {
       "cols": "", //cols 值 ：列数，若数据列数较多，会自动添加一个列表
-      "iconpos": "" //iconpos 值 ：left top 默认为left
   },
 
   "content": [

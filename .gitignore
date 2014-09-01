@@ -25,6 +25,6 @@ node_modules/
 /dist/docs/*
 /app/public/*
 #/dist/amui*
-#/dist/assets/
+dist/assets
 .build
 tools/app/public/style.css

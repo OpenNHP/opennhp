@@ -1,7 +1,7 @@
 {
     "name": "tabs",
 
-    "version": "2.0.0",
+    "version": "3.0.0",
 
     "author": {
         "name": "Shengli",
@@ -31,75 +31,79 @@
 
     "template": "tabs.hbs",
 
-    "styleDependencies": [],
+    "styleDependencies": [
+        "ui.component.less",
+        "ui.tabs.less",
+        "animation.less"
+    ],
 
     "style": "tabs.less",
 
     "demoContent": [
         {
-            "header": "栏目一",
-            "substance": "栏目一的内容：<br>一行独家JS代码替代传统繁琐的编程开发和数据迁移工作，省去购买域名、服务器和人力开发运维成本，只需几个工作日适配成功，降低传统建站95%以上经济成本和相应时间成本。",
-            "class": "active"
+            "title": "青春",
+            "content": "【青春】那时候有多好，任雨打湿裙角。忍不住哼起，心爱的旋律。绿油油的树叶，自由地在说笑。燕子忙归巢，风铃在舞蹈。经过青春的草地，彩虹忽然升起。即使视线渐渐模糊，它也在我心里。就像爱过的旋律，没人能抹去。因为生命存在失望，歌唱，所以才要歌唱。",
+            "active": 1
         },
         {
-            "header": "栏目二",
-            "substance": "栏目二的内容：<br>移动网址和PC网址始终一致，无需进行二次推广，有助提升网站在移动搜索引擎上的排名；也利于高值客户和深度客户记忆；同时利于聚合和统计移动流量，分析用户行为，形成大数据库。"
+            "title": "彩虹",
+            "content": "【彩虹】那时候有多好，任雨打湿裙角。忍不住哼起，心爱的旋律。绿油油的树叶，自由地在说笑。燕子忙归巢，风铃在舞蹈。经过青春的草地，彩虹忽然升起。即使视线渐渐模糊，它也在我心里。就像爱过的旋律，没人能抹去。因为生命存在失望，歌唱，所以才要歌唱。"
         },
         {
-            "header": "栏目三",
-            "substance": "栏目三的内容：<br>基于微软云计算平台Windows Azure,一次性打包解决手机和其他移动终端屏幕尺寸碎片化、屏幕分辨率不统一、浏览器分化三大移动终端适配难题，自动识别适配不同终端、系统，适配于全球超过5000种移动设备。"
+            "title": "歌唱",
+            "content": "【歌唱】那时候有多好，任雨打湿裙角。忍不住哼起，心爱的旋律。绿油油的树叶，自由地在说笑。燕子忙归巢，风铃在舞蹈。经过青春的草地，彩虹忽然升起。即使视线渐渐模糊，它也在我心里。就像爱过的旋律，没人能抹去。因为生命存在失望，歌唱，所以才要歌唱。"
         }
     ],
 
     "themes": [
         {
             "name": "default",
-            "desc": "浅蓝色选项卡",
+            "desc": "蓝色选项卡",
             "options": {
                 "cols": 3
             },
             "hook": "hook-am-tabs-default",
             "variables": [
                 {
-                    "variable": "tabs-bg-color",
-                    "name": "背景颜色",
+                    "variable": "tabs-nav-bg",
+                    "name": "标签背景色",
                     "default": "#eee",
                     "used": [
                         {
-                            "selector": ".am-tabs-hd",
+                            "selector": ".am-tabs-nav",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "tabs-text-color",
-                    "name": "文本颜色",
-                    "default": "#000",
+                    "variable": "tabs-nav-color",
+                    "name": "标签颜色",
+                    "default": "#333",
                     "used": [
                         {
-                            "selector": ".am-tabs-hd",
+                            "selector": ".am-tabs-nav a",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "tabs-active-bg-color",
-                    "name": "活动项背景色",
-                    "default": "#428bca",
+                    "variable": "tabs-nav-active-bg",
+                    "name": "激活标签背景色",
+                    "default": "#0e90d2",
                     "used": [
                         {
-                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "selector": ".am-tabs-nav > .am-active a",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "tabs-active-text-color",
-                    "name": "活动项文本颜色",
+                    "variable": "tabs-nav-active-color",
+                    "name": "激活标签颜色",
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "selector": ".am-tabs-nav > .am-active a",
                             "property": "color"
                         }
                     ]
@@ -124,53 +128,53 @@
             "hook": "hook-am-tabs-d2",
             "variables": [
                 {
-                    "variable": "tabs-bg-color",
-                    "name": "背景颜色",
+                    "variable": "tabs-nav-bg",
+                    "name": "标签背景色",
                     "default": "#eee",
                     "used": [
                         {
-                            "selector": ".am-tabs-hd",
+                            "selector": ".am-tabs-nav",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "tabs-text-color",
-                    "name": "文本颜色",
-                    "default": "#000",
+                    "variable": "tabs-nav-color",
+                    "name": "标签颜色",
+                    "default": "#333",
                     "used": [
                         {
-                            "selector": ".am-tabs-hd",
+                            "selector": ".am-tabs-nav a",
                             "property": "color"
                         }
                     ]
                 },
                 {
-                    "variable": "tabs-active-bg-color",
-                    "name": "活动选背景色",
-                    "default": "#FAFAFA",
+                    "variable": "tabs-nav-active-bg",
+                    "name": "激活标签背景色",
+                    "default": "#0e90d2",
                     "used": [
                         {
-                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "selector": ".am-tabs-nav > .am-active a",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "tabs-a-color",
-                    "name": "活动选文本颜色",
-                    "default": "#2F4DAC",
+                    "variable": "tabs-nav-active-color",
+                    "name": "激活标签颜色",
+                    "default": "#fff",
                     "used": [
                         {
-                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "selector": ".am-tabs-nav > .am-active a",
                             "property": "color"
                         },
                         {
-                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "selector": ".am-tabs-nav > .am-active",
                             "property": "border-bottom-color"
                         },
                         {
-                            "selector": ".am-tabs-hd li.am-tabs-hd-active:after",
+                            "selector": ".am-tabs-nav > .am-active:after",
                             "property": "border-bottom-color"
                         }
                     ]
@@ -195,49 +199,56 @@
             "hook": "hook-am-tabs-one",
             "variables": [
                 {
-                    "variable": "tabs-bg-color",
-                    "name": "背景颜色",
+                    "variable": "tabs-color",
+                    "name": "标签背景色",
                     "default": "#fff",
                     "used": [
                         {
-                            "selector": ".am-tabs-hd",
+                            "selector": ".am-tabs-nav",
                             "property": "background-color"
                         }
                     ]
                 },
                 {
-                    "variable": "tabs-text-color",
-                    "name": "文本颜色",
+                    "variable": "tabs-border-color",
+                    "name": "标签边框颜色",
                     "default": "#15afef",
                     "used": [
                         {
-                            "selector": ".am-tabs-hd",
-                            "property": "color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "tabs-active-bg-color",
-                    "name": "活动背景色",
-                    "default": "#15afef",
-                    "used": [
-                        {
-                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
-                            "property": "background-color"
-                        },
-                        {
-                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "selector": ".am-tabs-nav, .am-tabs-nav > li + li",
                             "property": "border-color"
                         }
                     ]
                 },
                 {
-                    "variable": "tabs-li-text-color",
-                    "name": "活动文本颜色",
-                    "default": "#fff",
+                    "variable": "tabs-nav-color",
+                    "name": "标签颜色",
+                    "default": "#15afef",
                     "used": [
                         {
-                            "selector": ".am-tabs-hd li.am-tabs-hd-active",
+                            "selector": ".am-tabs-nav a",
+                            "property": "color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "tabs-nav-active-bg",
+                    "name": "激活标签背景色",
+                    "default": "#15afef",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-nav > .am-active a",
+                            "property": "background-color"
+                        }
+                    ]
+                },
+                {
+                    "variable": "tabs-nav-active-color",
+                    "name": "激活标签颜色",
+                    "default": "#15afef",
+                    "used": [
+                        {
+                            "selector": ".am-tabs-nav > .am-active a",
                             "property": "color"
                         }
                     ]
@@ -260,7 +271,9 @@
         "util.fastclick.js"
     ],
 
-    "jsDependencies": [],
+    "jsDependencies": [
+        "ui.tab.js"
+    ],
 
     "script": "tabs.js",
 
@@ -291,50 +304,20 @@
             "dataList": "<%= pkg.themes %>"
         },
 
-        "options": {
-            "cols": {
-                "name": "列数",
-                "desc": "多少个栏目之间切换（建议2-6）",
-                "type": "select",
-                "required": false,
-                "default": 3,
-                "dataList": [
-                    {
-                        "value": 2,
-                        "title": "2"
-                    },
-                    {
-                        "value": 3,
-                        "title": "3"
-                    },
-                    {
-                        "value": 4,
-                        "title": "4"
-                    },
-                    {
-                        "value": 5,
-                        "title": "5"
-                    },
-                    {
-                        "value": 6,
-                        "title": "6"
-                    }
-                ]
-            }
-        },
+        "options": null,
 
         "content": {
             "type": "Array",
             "item": {
-                "header": {
+                "title": {
                     "type": "text",
                     "desc": "Tab 标题"
                 },
-                "substance": {
+                "content": {
                     "type": "html",
                     "desc": "Tab 内容"
                 },
-                "class": {
+                "active": {
                     "type": "text",
                     "desc": "激活状态（不激活则留空）",
                     "hidden": true
@@ -345,7 +328,7 @@
 
     "readme": "http://docs.yunshipei.com/amui/#tabs",
 
-    "example": "/*\n 此模块的使用方法：采集原PC网站上的tab切换数据，在手机页面上生成tab切换效果。\n \n 常用用途：通常用来采集一组tab切换标题以及文字等信息。\n \n 了解AMUI的模块详情，请访问http://ide.yunshipei.com/doc/amui/#tabs。\n\n         示例代码：\n        \n         var data = [];\n         $(\".listpart\").eq(1).find(\"li\").each(function(){\n             data.push({\n                 \"header\": $(this).find(\".news-pic\").find(\"img\").src(),  \n                 \"substance\": $(this).find(\".news-pic\").find(\"a\")html(), \n                 \"class\": \"\"\n             });\n         });\n         return data;\n*/\n\nvar data = [\n    {\n        \"header\" : \"\",      //每一个选项的标题\n        \"substance\" : \"\",   //内容部分\n        \"class\" : \"\"        //显示当前默认被选中的选项卡标题以及其内容，值是\"active\"，如果有多个选项，只允许一个tab被激活\n    }\n];\nreturn data;\n\n",
+    "example": "/*\n 此模块的使用方法：采集原PC网站上的tab切换数据，在手机页面上生成tab切换效果。\n \n 常用用途：通常用来采集一组tab切换标题以及文字等信息。\n \n 了解AMUI的模块详情，请访问http://ide.yunshipei.com/doc/amui/#tabs。\n\n         示例代码：\n        \n         var data = [];\n         $(\".listpart\").eq(1).find(\"li\").each(function(){\n             data.push({\n                 \"title\": $(this).find(\".news-pic\").find(\"img\").src(),  \n                 \"content\": $(this).find(\".news-pic\").find(\"a\")html(), \n                 \"active\": \"\"\n             });\n         });\n         return data;\n*/\n\nvar data = [\n    {\n        \"title\" : \"\",      //每一个选项的标题\n        \"content\" : \"\",   //内容部分\n        \"active\" : \"\"        //显示当前默认被选中的选项卡标题以及其内容，值是\"active\"，如果有多个选项，只允许一个tab被激活\n    }\n];\nreturn data;\n\n",
 
-    "hidden": true
+    "hidden": false
 }

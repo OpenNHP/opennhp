@@ -17,6 +17,16 @@ img {
 }
 ```
 
+## 宽度自适应
+
+如上面的代码所示， `base` 里已经设置了 `max-width: 100%`，图片会自动适应到容器的宽度（但不会超过图片原始宽度），不需要添加额外的 class（[演示](http://jsbin.com/ciduf/1)）。如果要让图片始终和容器一样宽，需要设置 `width: 100%`。
+
+`````html
+<img src="http://amui.qiniudn.com/bw-2014-06-19.jpg" alt=""/>
+`````
+```html
+<img src="http://amui.qiniudn.com/bw-2014-06-19.jpg" alt=""/>
+```
 
 ## 增强样式
 

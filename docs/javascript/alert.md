@@ -88,9 +88,6 @@
     <li>我要他生都有今生的暖意</li>
   </ul>
 </div>
-<script>
-  seajs.use(['ui.alert']);
-</script>
 `````
 ```html
 <div class="am-alert" data-am-alert>
@@ -120,11 +117,11 @@
   <p>没什么可给你，但求凭这阙歌。谢谢你风雨里，都不退愿陪着我。</p>
 </div>
 <script>
-(function($){
+$(function() {
   $(document).on('closed:alert:amui', function() {
     console.log('警告窗口已经关闭');
   });
-})(window.Zepto);
+});
 </script>
 `````
 ```html

@@ -53,7 +53,7 @@ define(function(require, exports, module) {
                     var qrnode = new QRCode({
                         render: 'canvas',
                         correctLevel: 0,
-                        text: window.location,
+                        text: window.location.href,
                         width: 200,
                         height: 200,
                         background: '#fff',

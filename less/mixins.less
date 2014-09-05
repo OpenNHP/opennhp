@@ -394,12 +394,16 @@
 // Flexbox LESS mixins
 // The spec: http://www.w3.org/TR/css3-flexbox
 // via: https://gist.github.com/jayj/4012969
+//      https://github.com/mastastealth/sass-flex-mixin/blob/master/flex.scss
+//      http://codepen.io/adamjohnson/pen/savzI
+// http://css-tricks.com/old-flexbox-and-new-flexbox/
 // NOTE: NEED CODE REVIEW
 // ------------------------------------------------------------------------
 
 // Flexbox display
 // flex or inline-flex
 .flexbox(@display: flex) {
+  display: -webkit-box; // Old syntax
   display: ~"-webkit-@{display}";
   display: ~"-moz-@{display}";
   display: ~"-ms-@{display}box"; // IE10 uses -ms-flexbox
@@ -411,6 +415,7 @@
 // - applies to: flex items
 // <positive-number>, initial, auto, or none
 .flex(@columns: 1) {
+  -webkit-box-flex: @columns; // Old syntax
   -webkit-flex: @columns;
   -moz-flex: @columns;
   -ms-flex: @columns;

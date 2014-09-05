@@ -1,6 +1,18 @@
 # Amaze UI Change Log
 ---
 
+## 2014.09 W1
+
+__JS 插件__：
+
+- `NEW` 新增移动端图片浏览插件（还在优化完善）。
+
+__Navbar 组件__：
+
+- `IMPROVED` 使用 Flexbox 实现工具栏平均分布；
+- `FIXED` 修复二维码 URL。
+
+
 ## 2014.08 W4
 
 __Navbar 组件__：

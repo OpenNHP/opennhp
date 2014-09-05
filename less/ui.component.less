@@ -44,7 +44,11 @@
 
 // hide scroll bar when dimmer active
 .am-dimmer-active {
-  overflow: hidden;
+  &,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
 }
 
 .am-dimmer {
@@ -70,4 +74,10 @@
 
 [data-am-collapse] {
   cursor: pointer;
+}
+
+// NOTE:
+// REMOVE THIS LINE WHEN PureView USED in every component
+.pinch-zoom {
+  width: 100%;
 }

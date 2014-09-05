@@ -20,6 +20,10 @@ __Tabs 组件__：
 - `CHANGED` 调整数据接口，删除标签宽度选项；
 - `IMPROVED` 调整主题。
 
+__Paragraph 组件__：
+
+- `IMPROVED` 使用 `iScroll-lite.js` 提高组件中 `table` 拖拽的体验。
+
 __布局示例__：
 
 - 调整路径，下载包中 Amaze UI 相关的资源使用本地文件。

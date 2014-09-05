@@ -1029,7 +1029,7 @@
                 {
                     "variable": "menu-nav-sub-link-color",
                     "name": "二级菜单颜色",
-                    "default": "#fff",
+                    "default": "#555",
                     "used": [
                         {
                             "selector": ".am-menu-sub a",

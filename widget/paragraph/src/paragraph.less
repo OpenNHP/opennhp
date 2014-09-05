@@ -29,43 +29,32 @@
 
   .am-paragraph-table-container {
     overflow: hidden;
-    position: relative;
     background: @paragraph-table-container-bg-color;
-    margin: 0 -10px;
     max-width: none;
 
-    .am-paragraph-table-scroller {
-      width: 1000px;
+    table {
+      width: 100%;
       max-width: none;
-      position: absolute;
-      left: 10px;
-      top: 10px;
+      th {
+        background: @paragraph-table-th-bg-color;
+        height: 40px;
+        border: 1px solid @paragraph-table-bd-color;
+        text-align: center;
+      }
+      td {
+        border: 1px solid @paragraph-table-bd-color;
+        text-align: center;
+        vertical-align: middle;
+        background: @paragraph-table-td-bg-color;
 
-      table {
-        width: 100%;
-        max-width: none;
-        th {
-          background: @paragraph-table-th-bg-color;
-          height: 40px;
-          border: 1px solid @paragraph-table-bd-color;
-          text-align: center;
+        p {
+          text-indent: 0;
+          font-size: 1.4rem;
         }
-        td {
-          border: 1px solid @paragraph-table-bd-color;
-          text-align: center;
-          vertical-align: middle;
-          background: @paragraph-table-td-bg-color;
-
-          p {
-            text-indent: 0;
-            font-size: 1.4rem;
-          }
-          a {
-            font-size: 1.4rem;
-          }
+        a {
+          font-size: 1.4rem;
         }
       }
-
     }
   }
 

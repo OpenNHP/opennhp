@@ -4,6 +4,9 @@ define(function(require, exports, module) {
     var $ = window.Zepto,
         UI = $.AMUI;
 
+    // Iscroll-lite Plugin
+    var IScroll = require('ui.iscroll-lite');
+
     // PinchZoom Plugin
     var PinchZoom = require('zepto.pinchzoom');
 
@@ -48,85 +51,36 @@ define(function(require, exports, module) {
         })
     };
 
-    $.fn.paragraphTable = function(objWidth) {
+    /*
+    * index : ID 标识，多个 paragraph 里面多个 table
+    */
+
+    $.fn.scrollTable = function(index) {
         var This = $(this),
-            distX = 0,
-            disX = 0,
-            disY = 0,
-            downX,
-            downY,
-            $parent,
-            scrollY;
+            $parent;
 
-        if (objWidth > $('body').width()) {
-            This.wrap('<div class=\'am-paragraph-table-container\'><div class=\'am-paragraph-table-scroller\'></div></div>');
-            $parent = This.parent();
-            $parent.width(objWidth);
-            $parent.height(This.height());
-            $parent.parent().height(This.height() + 20);
+        This.wrap('<div class=\'am-paragraph-table-container\' id=\'am-paragraph-table-'+ index + '\'><div class=\'am-paragraph-table-scroller\'></div></div>');
 
-            $parent.on('touchstart MSPointerDown pointerdown', function(ev) {
-                var oTarget = ev.targetTouches[0];
-                distX = oTarget.clientX - $(this).offset().left;
-                downX = oTarget.clientX;
-                downY = oTarget.clientY;
-                scrollY = undefined;
+        $parent = This.parent();
+        $parent.width(This.width());
+        $parent.height(This.height());
 
-                $(document).on('touchmove MSPointerMove pointermove', fnMove);
-                $(document).on('touchend MSPointerUp pointerup', fnUp);
-
-            })
-
-        }
-
-        function fnUp(ev) {
-            ev.preventDefault();
-            var oTarget = ev.changedTouches[0];
-            var L = $parent.offset().left;
-            // ->
-            if (L > 10) {
-                $parent.animate({
-                    left: 10
-                }, 500, 'ease-out')
-            }
-            //<-
-            if (L < -$parent.width() + $(window).width() - 10) {
-                $parent.animate({
-                    left: -$parent.width() + $(window).width() - 10
-                }, 500, 'ease-out')
-            }
-
-            $(document).off('touchend MSPointerUp pointerup', fnUp);
-            $(document).off('touchmove MSPointerMove pointermove', fnMove);
-
-        }
-
-        function fnMove(ev) {
-            var oTarget = ev.targetTouches[0];
-            disX = oTarget.clientX - downX;
-            disY = oTarget.clientY - downY;
-
-            if (typeof scrollY == 'undefined') {
-                scrollY = !!( scrollY || Math.abs(disX) < Math.abs(disY) );
-            }
-
-            if (!scrollY) {
-                ev.preventDefault();
-                This.parent().css('left', oTarget.clientX - distX);
-            }
-
-        }
-
+        var tableScroll = new IScroll('#am-paragraph-table-' + index, {
+            eventPassthrough: true,
+            scrollX: true,
+            scrollY: false,
+            preventDefault: false
+        });
     };
 
     paragraphInit = function() {
         var $body = $('body'),
-            $paragraph = $('[data-am-widget="paragraph"]'),
-            $tableWidth;
+            $paragraph = $('[data-am-widget="paragraph"]');
 
-        $paragraph.each(function() {
+        $paragraph.each(function(index) {
             var $this = $(this),
-                options = UI.utils.parseOptions($this.attr('data-am-paragraph'));
+                options = UI.utils.parseOptions($this.attr('data-am-paragraph')),
+                $index = index;
 
             if (options.imgLightbox) {
                 $this.find('img').paragraphZoomToggle();
@@ -142,9 +96,10 @@ define(function(require, exports, module) {
             }
 
             if (options.tableScrollable) {
-                $this.find('table').each(function() {
-                    $tableWidth = $(this).width();
-                    $(this).paragraphTable($tableWidth);
+                $this.find('table').each(function(index) {
+                    if ($(this).width() > $(window).width()) {
+                        $(this).scrollTable($index + '-' + index);
+                    }
                 });
             }
         });

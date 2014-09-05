@@ -73,7 +73,7 @@ define(function(require, exports, module) {
 
             // 计算出所有 li 宽度
             $navTopItem.each(function(i) {
-                allWidth += parseInt($(this).width());
+                allWidth += parseFloat($(this).css('width'));
             });
 
             $nav.width(allWidth);

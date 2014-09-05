@@ -194,7 +194,8 @@
 
     "jsBase": [
         "core.js",
-        "util.fastclick.js"
+        "util.fastclick.js",
+        "ui.iscroll-lite.js"
     ],
 
     "script": "paragraph.js",

@@ -196,10 +196,8 @@
 
 `````html
 <script>
-  seajs.use(['ui.scrollspynav', 'ui.smooth-scroll'], function() {
-    $(function() {
+$(function() {
 
-    });
-  });
+});
 </script>
 `````

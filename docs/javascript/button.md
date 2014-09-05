@@ -11,15 +11,15 @@ Button 及 Button group 与 JS 交互。
 <button type="button" class="am-btn am-btn-primary btn-loading-example">Submit - Button</button> &nbsp;
 <input type="button" class="am-btn am-btn-primary btn-loading-example" value="Submit - Input" />
 <script>
-  seajs.use(['ui.button'], function(){
-    $('.btn-loading-example').click(function () {
-      var $btn = $(this);
-      $btn.button('loading');
-      setTimeout(function(){
-        $btn.button('reset');
-      }, 3000);
-    });
+$(function() {
+  $('.btn-loading-example').click(function() {
+    var $btn = $(this);
+    $btn.button('loading');
+    setTimeout(function() {
+      $btn.button('reset');
+    }, 3000);
   });
+});
 </script>
 `````
 
@@ -60,11 +60,6 @@ $('.btn-loading-example').click(function () {
     <input type="checkbox"> Option 3
   </label>
 </div>
-<script>
-  Zepto(function($) {
-
-  });
-</script>
 `````
 ```html
 <div class="am-btn-group" data-am-button>

@@ -122,33 +122,32 @@ $('#demo-full-img').on('click', function () {
 `````html
     <p>打开控制台，点击上面的演示看看</p>
 <script>
-  seajs.use(['util.fullscreen'], function() {
-    var fullscreen = $.AMUI.fullscreen;
-    $(function() {
-      // demo1
-      $('#demo-full-page').on('click', function () {
-        if (fullscreen.enabled) {
-          fullscreen.request();
-        } else {
-          // Ignore or do something else
-        }
-      });
+$(function() {
+  var fullscreen = $.AMUI.fullscreen;
 
-      // demo2
-      $('#demo-full-img').on('click', function () {
-        if (fullscreen.enabled) {
-          fullscreen.request(this);
-        }
-      });
-
-      // demo3
-      if (fullscreen.enabled) {
-        $(document).on(fullscreen.raw.fullscreenchange, function () {
-          console.log('Am I fullscreen? ' + (fullscreen.isFullscreen ? 'Yes' : 'No'));
-        });
-      }
-    });
+  // demo1
+  $('#demo-full-page').on('click', function () {
+    if (fullscreen.enabled) {
+      fullscreen.request();
+    } else {
+      // Ignore or do something else
+    }
   });
+
+  // demo2
+  $('#demo-full-img').on('click', function () {
+    if (fullscreen.enabled) {
+      fullscreen.request(this);
+    }
+  });
+
+  // demo3
+  if (fullscreen.enabled) {
+    $(document).on(fullscreen.raw.fullscreenchange, function () {
+      console.log('Am I fullscreen? ' + (fullscreen.isFullscreen ? 'Yes' : 'No'));
+    });
+  }
+});
 </script>
 `````
 

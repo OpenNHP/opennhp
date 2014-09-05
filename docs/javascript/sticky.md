@@ -40,13 +40,11 @@
   <button class="am-btn am-btn-danger">Stick via JavaScript & 150px below the top</button>
 </div>
 <script>
-  seajs.use(['ui.sticky'], function() {
-    $(function() {
-      $('#my-sticky').sticky({
-        top: 150
-      })
-    });
-  });
+$(function() {
+  $('#my-sticky').sticky({
+    top: 150
+  })
+});
 </script>
 `````
 ```html

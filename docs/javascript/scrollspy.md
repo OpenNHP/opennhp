@@ -173,14 +173,12 @@
   </div>
 </div>
 <script>
-  seajs.use(['ui.scrollspy'], function() {
-    $(function() {
-      $('#my-scrollspy').scrollspy({
-        animation: 'slide-left',
-        delay: 500
-      })
-    });
-  });
+$(function() {
+  $('#my-scrollspy').scrollspy({
+    animation: 'slide-left',
+    delay: 500
+  })
+});
 </script>
 `````
 ```html

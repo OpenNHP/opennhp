@@ -46,13 +46,11 @@ Tooltip 效果。
 `````html
 <button class="am-btn am-btn-danger" id="my-popover">Popover via JS</button>
 <script>
-  seajs.use(['ui.popover'], function(Popover){
-    $(function() {
-      $('#my-popover').popover({
-        content: 'Popover via JavaScript'
-      })
-    })
-  });
+$(function() {
+  $('#my-popover').popover({
+    content: 'Popover via JavaScript'
+  })
+})
 </script>
 `````
 ```html

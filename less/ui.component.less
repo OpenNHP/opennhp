@@ -44,7 +44,11 @@
 
 // hide scroll bar when dimmer active
 .am-dimmer-active {
-  overflow: hidden;
+  &,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
 }
 
 .am-dimmer {

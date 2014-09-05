@@ -168,34 +168,33 @@ $.AMUI.progress.configure({ parent: '#container' });
 
 
 <script>
-  seajs.use(['ui.progress'], function(progress) {
-    var Progress = progress;
-    $(function(){
-      $('#np-s').on('click', function() {
-        Progress.start();
-      });
+$(function(){
+  var Progress = $.AMUI.progress;
 
-      $('#np-d').on('click', function() {
-        Progress.done();
-      });
-
-      $('#np-set').on('click', function() {
-        Progress.set(0.4);
-      });
-
-      $('#np-inc').on('click', function() {
-        Progress.inc();
-      });
-
-      $('#np-fd').on('click', function() {
-        Progress.done(true);
-      });
-
-      $('#np-status').on('click', function() {
-        $(this).text('Status: ' + Progress.status);
-      });
-    });
+  $('#np-s').on('click', function() {
+    Progress.start();
   });
+
+  $('#np-d').on('click', function() {
+    Progress.done();
+  });
+
+  $('#np-set').on('click', function() {
+    Progress.set(0.4);
+  });
+
+  $('#np-inc').on('click', function() {
+    Progress.inc();
+  });
+
+  $('#np-fd').on('click', function() {
+    Progress.done(true);
+  });
+
+  $('#np-status').on('click', function() {
+    $(this).text('Status: ' + Progress.status);
+  });
+});
 </script>
 
 

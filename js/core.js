@@ -14,28 +14,6 @@ define(function(require, exports, module) {
         doc = window.document,
         $html = $('html');
 
-    if (UI.fn) {
-        return UI;
-    }
-
-    UI.fn = function(command, options) {
-        var args = arguments,
-            cmd = command.match(/^([a-z\-]+)(?:\.([a-z]+))?/i),
-            component = cmd[1],
-            method = cmd[2];
-
-        if (!UI[component]) {
-            log.error('Amaze UI component [" + component + "] does not exist.');
-            return this;
-        }
-
-        return this.each(function() {
-            var $this = $(this), data = $this.data(component);
-            if (!data) $this.data(component, (data = UI[component](this, method ? undefined : options)));
-            if (method) data[method].apply(data, Array.prototype.slice.call(args, 1));
-        });
-    };
-
     UI.support = {};
     UI.support.transition = (function() {
 
@@ -165,14 +143,7 @@ define(function(require, exports, module) {
         return uid;
     };
 
-    UI.utils.event = {};
-    UI.utils.event.click = UI.support.touch ? 'tap' : 'click';
-
     $.AMUI = UI;
-    $.fn.amui = UI.fn;
-
-    $.AMUI.langdirection = $('html').attr('dir') == 'rtl' ? 'right' : 'left';
-
 
     // http://blog.alexmaccaw.com/css-transitions
     $.fn.emulateTransitionEnd = function(duration) {

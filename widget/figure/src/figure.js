@@ -24,8 +24,6 @@ define(function(require, exports, module) {
     var figureInit = function() {
         $('.am-figure').each(function(i, item) {
             var options = UI.utils.parseOptions($(item).attr('data-am-figure'));
-            
-            console.log(options);
 
             if (options.pureview) {
                 $(item).pureview();

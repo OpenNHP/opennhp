@@ -154,6 +154,7 @@
     ],
 
     "jsDependencies": [
+        "zepto.pinchzoom.js",
         "ui.pureview.js",
         "ui.share.js",
         "ui.modal.js"

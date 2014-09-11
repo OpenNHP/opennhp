@@ -1,5 +1,4 @@
 define(function (require, exports, module) {
-    require('zepto.extend.touch');
     require('core');
     require('ui.tabs');
 

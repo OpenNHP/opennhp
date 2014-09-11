@@ -272,7 +272,8 @@
     ],
 
     "jsDependencies": [
-        "ui.tab.js"
+        "ui.tabs.js",
+        "util.hammer.js"
     ],
 
     "script": "tabs.js",

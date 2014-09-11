@@ -32,7 +32,9 @@
     "template": "gallery.hbs",
 
     "styleDependencies": [
-        "zepto.touchgallery.less"
+        "button.less",
+        "ui.modal.less",
+        "ui.pureview.less"
     ],
 
     "style": "gallery.less",
@@ -334,7 +336,9 @@
 
     "jsDependencies": [
         "zepto.pinchzoom.js",
-        "zepto.touchgallery.js"
+        "ui.pureview.js",
+        "ui.share.js",
+        "ui.modal.js"
     ],
 
     "script": "gallery.js",

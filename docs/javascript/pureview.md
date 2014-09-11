@@ -1,7 +1,7 @@
 # PureView
 ---
 
-> Box like a P...
+> P.ure...
 > ~ some one like u
     
     

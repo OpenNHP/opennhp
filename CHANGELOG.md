@@ -1,6 +1,21 @@
 # Amaze UI Change Log
 ---
 
+## 2014.09 W2
+
+__JS 插件__：
+
+- `IMPROVED` 使用 [hammer.js](https://github.com/hammerjs/hammer.js)，移除 Zepto.js touch 扩展；
+- `IMPROVED` Tabs、PureView 使用 hammer.js；
+- `IMPROVED` AddToHomeScreen 升级至 `3.0.7`；
+- `CHANGED` 删除 TouchGallery 插件。
+
+__Web 组件__：
+
+- `IMPROVED` Gallery 使用 PureView 插件；
+- `IMPROVED` Figure 使用 PureView 插件；
+- `IMPROVED` Paragraph 使用 PureView 插件。
+
 ## 2014.09 W1
 
 __JS 插件__：

@@ -2,7 +2,7 @@
   <article data-am-widget="paragraph"
            class="am-paragraph {{#if theme}}am-paragraph-{{theme}}{{else}}am-paragraph-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"
            {{#if id}}id="{{id}}"{{/if}}
-           data-am-paragraph="{ {{#if options.tableScrollable}}tableScrollable: true,{{/if}} {{#if options.imgLightbox}}imgLightbox: true{{/if}} }">
+           data-am-paragraph="{ {{#if options.tableScrollable}}tableScrollable: true,{{/if}} {{#if options.imgLightbox}}pureview: true{{/if}} }">
 
     {{#if content}}
       {{{ content.content }}}

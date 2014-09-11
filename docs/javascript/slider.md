@@ -15,12 +15,9 @@
   </ul>
 </div>
 <script>
-seajs.use(['zepto.flexslider'], function() {
-  Zepto(function($) {
-    $('.am-slider').flexslider();
-  });
+$(function() {
+  $('.am-slider').flexslider();
 });
-
 </script>
 `````
 
@@ -49,7 +46,7 @@ Zepto(function($) {
 在初始化函数中传入所需参数即可。
 
 ```javascript
-Zepto(function($) {
+$(function() {
   $('.am-slider').flexslider({
     // options
   });

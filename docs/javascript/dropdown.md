@@ -48,13 +48,11 @@
   </div>
 </div>
 <script>
-  seajs.use(['ui.dropdown'], function() {
-    $(function() {
-      $('[data-am-dropdown]').on('open:dropdown:amui', function () {
-        console.log('open event triggered');
-      });
-    });
+$(function() {
+  $('[data-am-dropdown]').on('open:dropdown:amui', function () {
+    console.log('open event triggered');
   });
+});
 </script>
 `````
 ```html

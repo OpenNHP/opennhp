@@ -1,31 +1,45 @@
 define(function(require, exports, module) {
 
     /**
-     * @via http://rtp-ch.github.io/pinchzoom/
-     * @license GNU General Public License,
+     * @via https://github.com/manuelstofer/pinchzoom/blob/master/src/pinchzoom.js
+     * @license the MIT License.
      */
 
-    var definePinchZoom = function(d) {
-        var PinchZoom = function(h, g) {
-                this.el = d(h);
+    var definePinchZoom = function ($) {
+
+        /**
+         * Pinch zoom using jQuery
+         * @version 0.0.2
+         * @author Manuel Stofer <mst@rtp.ch>
+         * @param el
+         * @param options
+         * @constructor
+         */
+        var PinchZoom = function (el, options) {
+                this.el = $(el);
                 this.zoomFactor = 1;
                 this.lastScale = 1;
                 this.offset = {
                     x: 0,
                     y: 0
                 };
-                this.options = d.extend({}, this.defaults, g);
+                this.options = $.extend({}, this.defaults, options);
                 this.setupMarkup();
                 this.bindEvents();
-                this.update()
+                this.update();
+                // default enable.
+                this.enable();
+
             },
-            b = function(h, g) {
-                return h + g
+            sum = function (a, b) {
+                return a + b;
             },
-            e = function(h, g) {
-                return h > g - 0.01 && h < g + 0.01
+            isCloseTo = function (value, expected) {
+                return value > expected - 0.01 && value < expected + 0.01;
             };
+
         PinchZoom.prototype = {
+
             defaults: {
                 tapZoomFactor: 2,
                 zoomOutFactor: 1.3,
@@ -33,462 +47,697 @@ define(function(require, exports, module) {
                 animationInterval: 5,
                 maxZoom: 4,
                 minZoom: 0.5,
-                use2d: true
+                lockDragAxis: false,
+                use2d: false,
+                zoomStartEventName: 'pz_zoomstart',
+                zoomEndEventName: 'pz_zoomend',
+                dragStartEventName: 'pz_dragstart',
+                dragEndEventName: 'pz_dragend',
+                doubleTapEventName: 'pz_doubletap'
             },
-            handleDragStart: function(g) {
+
+            /**
+             * Event handler for 'dragstart'
+             * @param event
+             */
+            handleDragStart: function (event) {
+                this.el.trigger(this.options.dragStartEventName);
                 this.stopAnimation();
                 this.lastDragPosition = false;
                 this.hasInteraction = true;
-                this.handleDrag(g)
+                this.handleDrag(event);
             },
-            handleDrag: function(g) {
-                if (this.zoomFactor > 1) {
-                    var h = this.getTouches(g)[0];
-                    this.drag(h, this.lastDragPosition);
+
+            /**
+             * Event handler for 'drag'
+             * @param event
+             */
+            handleDrag: function (event) {
+
+                if (this.zoomFactor > 1.0) {
+                    var touch = this.getTouches(event)[0];
+                    this.drag(touch, this.lastDragPosition);
                     this.offset = this.sanitizeOffset(this.offset);
-                    this.lastDragPosition = h
+                    this.lastDragPosition = touch;
                 }
             },
-            handleDragEnd: function() {
-                this.end()
+
+            handleDragEnd: function () {
+                this.el.trigger(this.options.dragEndEventName);
+                this.end();
             },
-            handleZoomStart: function(g) {
+
+            /**
+             * Event handler for 'zoomstart'
+             * @param event
+             */
+            handleZoomStart: function (event) {
+                this.el.trigger(this.options.zoomStartEventName);
                 this.stopAnimation();
                 this.lastScale = 1;
                 this.nthZoom = 0;
                 this.lastZoomCenter = false;
-                this.hasInteraction = true
+                this.hasInteraction = true;
             },
-            handleZoom: function(h, j) {
-                var g = this.getTouchCenter(this.getTouches(h)),
-                    i = j / this.lastScale;
-                this.lastScale = j;
+
+            /**
+             * Event handler for 'zoom'
+             * @param event
+             */
+            handleZoom: function (event, newScale) {
+
+                // a relative scale factor is used
+                var touchCenter = this.getTouchCenter(this.getTouches(event)),
+                    scale = newScale / this.lastScale;
+                this.lastScale = newScale;
+
+                // the first touch events are thrown away since they are not precise
                 this.nthZoom += 1;
                 if (this.nthZoom > 3) {
-                    this.scale(i, g);
-                    this.drag(g, this.lastZoomCenter)
+
+                    this.scale(scale, touchCenter);
+                    this.drag(touchCenter, this.lastZoomCenter);
                 }
-                this.lastZoomCenter = g
+                this.lastZoomCenter = touchCenter;
             },
-            handleZoomEnd: function() {
-                this.end()
+
+            handleZoomEnd: function () {
+                this.el.trigger(this.options.zoomEndEventName);
+                this.end();
             },
-            handleDoubleTap: function(i) {
-                var g = this.getTouches(i)[0],
-                    h = this.zoomFactor > 1 ? 1 : this.options.tapZoomFactor,
-                    j = this.zoomFactor,
-                    k = (function(l) {
-                        this.scaleTo(j + l * (h - j), g)
+
+            /**
+             * Event handler for 'doubletap'
+             * @param event
+             */
+            handleDoubleTap: function (event) {
+                var center = this.getTouches(event)[0],
+                    zoomFactor = this.zoomFactor > 1 ? 1 : this.options.tapZoomFactor,
+                    startZoomFactor = this.zoomFactor,
+                    updateProgress = (function (progress) {
+                        this.scaleTo(startZoomFactor + progress * (zoomFactor - startZoomFactor), center);
                     }).bind(this);
+
                 if (this.hasInteraction) {
-                    return
+                    return;
                 }
-                if (j > h) {
-                    g = this.getCurrentZoomCenter()
+                if (startZoomFactor > zoomFactor) {
+                    center = this.getCurrentZoomCenter();
                 }
-                if (h > 1) {
-                    this.options.doubleTapOutCallback && this.options.doubleTapOutCallback()
-                } else {
-                    this.options.doubleTapInCallback && this.options.doubleTapInCallback()
-                }
-                this.animate(this.options.animationDuration, this.options.animationInterval, k, this.swing)
+
+                this.animate(this.options.animationDuration, this.options.animationInterval, updateProgress, this.swing);
+                this.el.trigger(this.options.doubleTapEventName);
             },
-            sanitizeOffset: function(m) {
-                var l = (this.zoomFactor - 1) * this.getContainerX(),
-                    k = (this.zoomFactor - 1) * this.getContainerY(),
-                    j = Math.max(l, 0),
-                    i = Math.max(k, 0),
-                    h = Math.min(l, 0),
-                    g = Math.min(k, 0);
+
+            /**
+             * Max / min values for the offset
+             * @param offset
+             * @return {Object} the sanitized offset
+             */
+            sanitizeOffset: function (offset) {
+                var maxX = (this.zoomFactor - 1) * this.getContainerX(),
+                    maxY = (this.zoomFactor - 1) * this.getContainerY(),
+                    maxOffsetX = Math.max(maxX, 0),
+                    maxOffsetY = Math.max(maxY, 0),
+                    minOffsetX = Math.min(maxX, 0),
+                    minOffsetY = Math.min(maxY, 0);
+
                 return {
-                    x: Math.min(Math.max(m.x, h), j),
-                    y: Math.min(Math.max(m.y, g), i)
-                }
+                    x: Math.min(Math.max(offset.x, minOffsetX), maxOffsetX),
+                    y: Math.min(Math.max(offset.y, minOffsetY), maxOffsetY)
+                };
             },
-            scaleTo: function(h, g) {
-                this.scale(h / this.zoomFactor, g)
+
+            /**
+             * Scale to a specific zoom factor (not relative)
+             * @param zoomFactor
+             * @param center
+             */
+            scaleTo: function (zoomFactor, center) {
+                this.scale(zoomFactor / this.zoomFactor, center);
             },
-            scale: function(h, g) {
-                h = this.scaleZoomFactor(h);
+
+            /**
+             * Scales the element from specified center
+             * @param scale
+             * @param center
+             */
+            scale: function (scale, center) {
+                scale = this.scaleZoomFactor(scale);
                 this.addOffset({
-                    x: (h - 1) * (g.x + this.offset.x),
-                    y: (h - 1) * (g.y + this.offset.y)
-                })
+                    x: (scale - 1) * (center.x + this.offset.x),
+                    y: (scale - 1) * (center.y + this.offset.y)
+                });
             },
-            scaleZoomFactor: function(g) {
-                var h = this.zoomFactor;
-                this.zoomFactor *= g;
+
+            /**
+             * Scales the zoom factor relative to current state
+             * @param scale
+             * @return the actual scale (can differ because of max min zoom factor)
+             */
+            scaleZoomFactor: function (scale) {
+                var originalZoomFactor = this.zoomFactor;
+                this.zoomFactor *= scale;
                 this.zoomFactor = Math.min(this.options.maxZoom, Math.max(this.zoomFactor, this.options.minZoom));
-                return this.zoomFactor / h
+                return this.zoomFactor / originalZoomFactor;
             },
-            drag: function(g, h) {
-                if (h) {
-                    this.addOffset({
-                        x: -(g.x - h.x),
-                        y: -(g.y - h.y)
-                    })
-                }
-            },
-            getTouchCenter: function(g) {
-                return this.getVectorAvg(g)
-            },
-            getVectorAvg: function(g) {
-                return {
-                    x: g.map(function(h) {
-                        return h.x
-                    }).reduce(b) / g.length,
-                    y: g.map(function(h) {
-                        return h.y
-                    }).reduce(b) / g.length
-                }
-            },
-            addOffset: function(g) {
-                this.offset = {
-                    x: this.offset.x + g.x,
-                    y: this.offset.y + g.y
-                }
-            },
-            sanitize: function() {
-                if (this.zoomFactor < this.options.zoomOutFactor) {
-                    this.zoomOutAnimation()
-                } else {
-                    if (this.isInsaneOffset(this.offset)) {
-                        this.sanitizeOffsetAnimation()
+
+            /**
+             * Drags the element
+             * @param center
+             * @param lastCenter
+             */
+            drag: function (center, lastCenter) {
+                if (lastCenter) {
+                    if(this.options.lockDragAxis) {
+                        // lock scroll to position that was changed the most
+                        if(Math.abs(center.x - lastCenter.x) > Math.abs(center.y - lastCenter.y)) {
+                            this.addOffset({
+                                x: -(center.x - lastCenter.x),
+                                y: 0
+                            });
+                        }
+                        else {
+                            this.addOffset({
+                                y: -(center.y - lastCenter.y),
+                                x: 0
+                            });
+                        }
+                    }
+                    else {
+                        this.addOffset({
+                            y: -(center.y - lastCenter.y),
+                            x: -(center.x - lastCenter.x)
+                        });
                     }
                 }
             },
-            isInsaneOffset: function(h) {
-                var g = this.sanitizeOffset(h);
-                return g.x !== h.x || g.y !== h.y
+
+            /**
+             * Calculates the touch center of multiple touches
+             * @param touches
+             * @return {Object}
+             */
+            getTouchCenter: function (touches) {
+                return this.getVectorAvg(touches);
             },
-            sanitizeOffsetAnimation: function() {
-                var h = this.sanitizeOffset(this.offset),
-                    g = {
+
+            /**
+             * Calculates the average of multiple vectors (x, y values)
+             */
+            getVectorAvg: function (vectors) {
+                return {
+                    x: vectors.map(function (v) { return v.x; }).reduce(sum) / vectors.length,
+                    y: vectors.map(function (v) { return v.y; }).reduce(sum) / vectors.length
+                };
+            },
+
+            /**
+             * Adds an offset
+             * @param offset the offset to add
+             * @return return true when the offset change was accepted
+             */
+            addOffset: function (offset) {
+                this.offset = {
+                    x: this.offset.x + offset.x,
+                    y: this.offset.y + offset.y
+                };
+            },
+
+            sanitize: function () {
+                if (this.zoomFactor < this.options.zoomOutFactor) {
+                    this.zoomOutAnimation();
+                } else if (this.isInsaneOffset(this.offset)) {
+                    this.sanitizeOffsetAnimation();
+                }
+            },
+
+            /**
+             * Checks if the offset is ok with the current zoom factor
+             * @param offset
+             * @return {Boolean}
+             */
+            isInsaneOffset: function (offset) {
+                var sanitizedOffset = this.sanitizeOffset(offset);
+                return sanitizedOffset.x !== offset.x ||
+                sanitizedOffset.y !== offset.y;
+            },
+
+            /**
+             * Creates an animation moving to a sane offset
+             */
+            sanitizeOffsetAnimation: function () {
+                var targetOffset = this.sanitizeOffset(this.offset),
+                    startOffset = {
                         x: this.offset.x,
                         y: this.offset.y
                     },
-                    i = (function(j) {
-                        this.offset.x = g.x + j * (h.x - g.x);
-                        this.offset.y = g.y + j * (h.y - g.y);
-                        this.update()
+                    updateProgress = (function (progress) {
+                        this.offset.x = startOffset.x + progress * (targetOffset.x - startOffset.x);
+                        this.offset.y = startOffset.y + progress * (targetOffset.y - startOffset.y);
+                        this.update();
                     }).bind(this);
-                this.animate(this.options.animationDuration, this.options.animationInterval, i, this.swing)
+
+                this.animate(
+                    this.options.animationDuration,
+                    this.options.animationInterval,
+                    updateProgress,
+                    this.swing
+                );
             },
-            zoomOutAnimation: function() {
-                var i = this.zoomFactor,
-                    h = 1,
-                    g = this.getCurrentZoomCenter(),
-                    j = (function(k) {
-                        this.scaleTo(i + k * (h - i), g)
+
+            /**
+             * Zooms back to the original position,
+             * (no offset and zoom factor 1)
+             */
+            zoomOutAnimation: function () {
+                var startZoomFactor = this.zoomFactor,
+                    zoomFactor = 1,
+                    center = this.getCurrentZoomCenter(),
+                    updateProgress = (function (progress) {
+                        this.scaleTo(startZoomFactor + progress * (zoomFactor - startZoomFactor), center);
                     }).bind(this);
-                this.animate(this.options.animationDuration, this.options.animationInterval, j, this.swing)
+
+                this.animate(
+                    this.options.animationDuration,
+                    this.options.animationInterval,
+                    updateProgress,
+                    this.swing
+                );
             },
-            updateAspectRatio: function() {
-                this.setContainerY(window.innerHeight)
+
+            /**
+             * Updates the aspect ratio
+             */
+            updateAspectRatio: function () {
+                // this.setContainerY(this.getContainerX() / this.getAspectRatio());
+                // @modified
+                this.setContainerY()
             },
-            getInitialZoomFactor: function() {
-                return 1
+
+            /**
+             * Calculates the initial zoom factor (for the element to fit into the container)
+             * @return the initial zoom factor
+             */
+            getInitialZoomFactor: function () {
+                // use .offsetWidth instead of width()
+                // because jQuery-width() return the original width but Zepto-width() will calculate width with transform.
+                // the same as .height()
+                return this.container[0].offsetWidth / this.el[0].offsetWidth;
             },
-            getAspectRatio: function() {
-                return this.el.width() / this.el.height()
+
+            /**
+             * Calculates the aspect ratio of the element
+             * @return the aspect ratio
+             */
+            getAspectRatio: function () {
+                return this.el[0].offsetWidth / this.el[0].offsetHeight;
             },
-            getCurrentZoomCenter: function() {
-                var o = this.getContainerX(),
-                    h = o * this.zoomFactor,
-                    i = this.offset.x,
-                    l = h - i - o,
-                    q = i / l,
-                    n = q * o / (q + 1),
-                    m = this.getContainerY(),
-                    r = m * this.zoomFactor,
-                    g = this.offset.y,
-                    j = r - g - m,
-                    p = g / j,
-                    k = p * m / (p + 1);
-                if (l === 0) {
-                    n = o
-                }
-                if (j === 0) {
-                    k = m
-                }
+
+            /**
+             * Calculates the virtual zoom center for the current offset and zoom factor
+             * (used for reverse zoom)
+             * @return {Object} the current zoom center
+             */
+            getCurrentZoomCenter: function () {
+
+                // uses following formula to calculate the zoom center x value
+                // offset_left / offset_right = zoomcenter_x / (container_x - zoomcenter_x)
+                var length = this.container[0].offsetWidth * this.zoomFactor,
+                    offsetLeft  = this.offset.x,
+                    offsetRight = length - offsetLeft -this.container[0].offsetWidth,
+                    widthOffsetRatio = offsetLeft / offsetRight,
+                    centerX = widthOffsetRatio * this.container[0].offsetWidth / (widthOffsetRatio + 1),
+
+                // the same for the zoomcenter y
+                    height = this.container[0].offsetHeight * this.zoomFactor,
+                    offsetTop  = this.offset.y,
+                    offsetBottom = height - offsetTop - this.container[0].offsetHeight,
+                    heightOffsetRatio = offsetTop / offsetBottom,
+                    centerY = heightOffsetRatio * this.container[0].offsetHeight / (heightOffsetRatio + 1);
+
+                // prevents division by zero
+                if (offsetRight === 0) { centerX = this.container[0].offsetWidth; }
+                if (offsetBottom === 0) { centerY = this.container[0].offsetHeight; }
+
                 return {
-                    x: n,
-                    y: k
-                }
+                    x: centerX,
+                    y: centerY
+                };
             },
-            canDrag: function() {
-                return !e(this.zoomFactor, 1)
+
+            canDrag: function () {
+                return !isCloseTo(this.zoomFactor, 1);
             },
-            getTouches: function(h) {
-                var g = this.container.offset();
-                return Array.prototype.slice.call(h.touches).map(function(i) {
+
+            /**
+             * Returns the touches of an event relative to the container offset
+             * @param event
+             * @return array touches
+             */
+            getTouches: function (event) {
+                var position = this.container.offset();
+                return Array.prototype.slice.call(event.touches).map(function (touch) {
                     return {
-                        x: i.pageX - g.left,
-                        y: i.pageY - g.top
-                    }
-                })
+                        x: touch.pageX - position.left,
+                        y: touch.pageY - position.top
+                    };
+                });
             },
-            animate: function(i, g, m, l, k) {
-                var h = new Date().getTime(),
-                    j = (function() {
-                        if (!this.inAnimation) {
-                            return
-                        }
-                        var o = new Date().getTime() - h,
-                            n = o / i;
-                        if (o >= i) {
-                            m(1);
-                            if (k) {
-                                k()
+
+            /**
+             * Animation loop
+             * does not support simultaneous animations
+             * @param duration
+             * @param interval
+             * @param framefn
+             * @param timefn
+             * @param callback
+             */
+            animate: function (duration, interval, framefn, timefn, callback) {
+                var startTime = new Date().getTime(),
+                    renderFrame = (function () {
+                        if (!this.inAnimation) { return; }
+                        var frameTime = new Date().getTime() - startTime,
+                            progress = frameTime / duration;
+                        if (frameTime >= duration) {
+                            framefn(1);
+                            if (callback) {
+                                callback();
                             }
                             this.update();
                             this.stopAnimation();
-                            this.update()
-                        } else {
-                            if (l) {
-                                n = l(n)
-                            }
-                            m(n);
                             this.update();
-                            setTimeout(j, g)
+                        } else {
+                            if (timefn) {
+                                progress = timefn(progress);
+                            }
+                            framefn(progress);
+                            this.update();
+                            setTimeout(renderFrame, interval);
                         }
                     }).bind(this);
                 this.inAnimation = true;
-                j()
+                renderFrame();
             },
-            stopAnimation: function() {
-                this.inAnimation = false
+
+            /**
+             * Stops the animation
+             */
+            stopAnimation: function () {
+                this.inAnimation = false;
             },
-            swing: function(g) {
-                return -Math.cos(g * Math.PI) / 2 + 0.5
+
+            /**
+             * Swing timing function for animations
+             * @param p
+             * @return {Number}
+             */
+            swing: function (p) {
+                return -Math.cos(p * Math.PI) / 2  + 0.5;
             },
-            getContainerX: function() {
+
+            getContainerX: function () {
+                // return this.container[0].offsetWidth;
+                // @modified
                 return window.innerWidth
             },
-            getContainerY: function() {
+
+            getContainerY: function () {
+                // return this.container[0].offsetHeight;
+                // @modified
                 return window.innerHeight
             },
-            setContainerY: function(g) {
-                this.el.width(window.innerWidth);
-                this.el.height(window.innerHeight);
-                return this.container.height(g)
+
+            setContainerY: function (y) {
+                // return this.container.height(y);
+                // @modified
+                var t = window.innerHeight;
+                return this.el.css({height: t}), this.container.height(t);
             },
-            setupMarkup: function() {
-                this.container = d('<div class="pinch-zoom-container"></div>');
+
+            /**
+             * Creates the expected html structure
+             */
+            setupMarkup: function () {
+                this.container = $('<div class="pinch-zoom-container"></div>');
                 this.el.before(this.container);
                 this.container.append(this.el);
+
                 this.container.css({
-                    overflow: "hidden",
-                    position: "relative"
+                    'overflow': 'hidden',
+                    'position': 'relative'
                 });
+
+                // Zepto doesn't recognize `webkitTransform..` style
                 this.el.css({
-                    "-webkit-transform-origin": "0% 0%",
-                    transformOrigin: "0% 0%",
-                    position: "absolute"
-                })
+                    '-webkit-transform-origin': '0% 0%',
+                    '-moz-transform-origin': '0% 0%',
+                    '-ms-transform-origin': '0% 0%',
+                    '-o-transform-origin': '0% 0%',
+                    'transform-origin': '0% 0%',
+                    'position': 'absolute'
+                });
             },
-            end: function() {
+
+            end: function () {
                 this.hasInteraction = false;
                 this.sanitize();
-                this.update()
+                this.update();
             },
-            bindEvents: function() {
-                c(this.container.get(0), this);
-                d(window).bind("ortchange", this.ortHandle.bind(this))
+
+            /**
+             * Binds all required event listeners
+             */
+            bindEvents: function () {
+                detectGestures(this.container.get(0), this);
+                // Zepto and jQuery both know about `on`
+                $(window).on('resize', this.update.bind(this));
+                $(this.el).find('img').on('load', this.update.bind(this));
             },
-            isCached: function(h) {
-                var g = document.createElement("img");
-                g.src = h;
-                var i = g.complete || g.width + g.height > 0;
-                g = null;
-                return i
-            },
-            ortHandle: function() {
-                this.zoomFactor = 1;
-                this.offset = {
-                    x: 0,
-                    y: 0
-                };
-                this.update()
-            },
-            update: function() {
+
+            /**
+             * Updates the css values according to the current zoom factor and offset
+             */
+            update: function () {
+
                 if (this.updatePlaned) {
-                    return
+                    return;
                 }
                 this.updatePlaned = true;
-                setTimeout((function() {
+
+                setTimeout((function () {
                     this.updatePlaned = false;
                     this.updateAspectRatio();
-                    var k = this.getInitialZoomFactor() * this.zoomFactor,
-                        h = parseFloat(-this.offset.x / k).toFixed(4),
-                        m = parseFloat(-this.offset.y / k).toFixed(4),
-                        j = "scale3d(" + k + ", " + k + ",1) translate3d(" + h + "px," + m + "px,0px)",
-                        g = "scale(" + k + ", " + k + ") translate(" + h + "px," + m + "px)",
-                        i = (function() {
+
+                    var zoomFactor = this.getInitialZoomFactor() * this.zoomFactor,
+                        offsetX = -this.offset.x / zoomFactor,
+                        offsetY = -this.offset.y / zoomFactor,
+                        transform3d =   'scale3d('     + zoomFactor + ', '  + zoomFactor + ',1) ' +
+                            'translate3d(' + offsetX    + 'px,' + offsetY    + 'px,0px)',
+                        transform2d =   'scale('       + zoomFactor + ', '  + zoomFactor + ') ' +
+                            'translate('   + offsetX    + 'px,' + offsetY    + 'px)',
+                        removeClone = (function () {
                             if (this.clone) {
                                 this.clone.remove();
-                                delete this.clone
+                                delete this.clone;
                             }
                         }).bind(this);
+
+                    // Scale 3d and translate3d are faster (at least on ios)
+                    // but they also reduce the quality.
+                    // PinchZoom uses the 3d transformations during interactions
+                    // after interactions it falls back to 2d transformations
                     if (!this.options.use2d || this.hasInteraction || this.inAnimation) {
                         this.is3d = true;
-                        i();
+                        removeClone();
                         this.el.css({
-                            "-webkit-transform": j,
-                            background: "rgba(0,0,0,0.9)",
-                            transform: j
-                        }).addClass("zooming")
+                            '-webkit-transform':  transform3d,
+                            '-o-transform':       transform2d,
+                            '-ms-transform':      transform2d,
+                            '-moz-transform':     transform2d,
+                            'transform':        transform3d
+                        });
                     } else {
+
+                        // When changing from 3d to 2d transform webkit has some glitches.
+                        // To avoid this, a copy of the 3d transformed element is displayed in the
+                        // foreground while the element is converted from 3d to 2d transform
                         if (this.is3d) {
-                            var l = this.el.find("img").attr("src");
-                            if (this.isCached(l)) {
-                                this.clone = this.el.clone();
-                                this.clone.css({
-                                    "pointer-events": "none"
-                                });
-                                this.clone.appendTo(this.container);
-                                setTimeout(i, 200)
-                            }
+                            this.clone = this.el.clone();
+                            this.clone.css('pointer-events', 'none');
+                            this.clone.appendTo(this.container);
+                            setTimeout(removeClone, 200);
                         }
                         this.el.css({
-                            "-webkit-transform": g,
-                            transform: g
-                        }).removeClass("zooming");
-                        this.is3d = false
+                            '-webkit-transform':  transform2d,
+                            '-o-transform':       transform2d,
+                            '-ms-transform':      transform2d,
+                            '-moz-transform':     transform2d,
+                            'transform':        transform2d
+                        });
+                        this.is3d = false;
                     }
-                }).bind(this), 0)
+                }).bind(this), 0);
+            },
+
+            /**
+             * Enables event handling for gestures
+             */
+            enable: function() {
+                this.enabled = true;
+            },
+
+            /**
+             * Disables event handling for gestures
+             */
+            disable: function() {
+                this.enabled = false;
             }
         };
-        var c = function(h, q) {
-            var s = null,
-                l = 0,
-                j = null,
-                u = null,
-                i = 1,
-                o = function(v, w) {
-                    if (s !== v) {
-                        if (s && !v) {
-                            switch (s) {
+
+        var detectGestures = function (el, target) {
+            var interaction = null,
+                fingers = 0,
+                lastTouchStart = null,
+                startTouches = null,
+
+                setInteraction = function (newInteraction, event) {
+                    if (interaction !== newInteraction) {
+
+                        if (interaction && !newInteraction) {
+                            switch (interaction) {
                                 case "zoom":
-                                    q.handleZoomEnd(w);
+                                    target.handleZoomEnd(event);
                                     break;
-                                case "drag":
-                                    q.handleDragEnd(w);
-                                    break
+                                case 'drag':
+                                    target.handleDragEnd(event);
+                                    break;
                             }
                         }
-                        switch (v) {
-                            case "zoom":
-                                q.handleZoomStart(w);
+
+                        switch (newInteraction) {
+                            case 'zoom':
+                                target.handleZoomStart(event);
                                 break;
-                            case "drag":
-                                q.handleDragStart(w);
-                                break
+                            case 'drag':
+                                target.handleDragStart(event);
+                                break;
                         }
                     }
-                    s = v
+                    interaction = newInteraction;
                 },
-                n = function(v) {
-                    if (l === 2) {
-                        o("zoom")
+
+                updateInteraction = function (event) {
+                    if (fingers === 2) {
+                        setInteraction('zoom');
+                    } else if (fingers === 1 && target.canDrag()) {
+                        setInteraction('drag', event);
                     } else {
-                        if (l === 1 && q.canDrag()) {
-                            o("drag", v)
-                        } else {
-                            o(null, v)
-                        }
+                        setInteraction(null, event);
                     }
                 },
-                r = function(v) {
-                    return Array.prototype.slice.call(v).map(function(w) {
+
+                targetTouches = function (touches) {
+                    return Array.prototype.slice.call(touches).map(function (touch) {
                         return {
-                            x: w.pageX,
-                            y: w.pageY
-                        }
-                    })
+                            x: touch.pageX,
+                            y: touch.pageY
+                        };
+                    });
                 },
-                m = function(z, w) {
-                    var v, A;
-                    v = z.x - w.x;
-                    A = z.y - w.y;
-                    return Math.sqrt(v * v + A * A)
+
+                getDistance = function (a, b) {
+                    var x, y;
+                    x = a.x - b.x;
+                    y = a.y - b.y;
+                    return Math.sqrt(x * x + y * y);
                 },
-                k = function(y, x) {
-                    var v = m(y[0], y[1]),
-                        w = m(x[0], x[1]);
-                    return w / v
+
+                calculateScale = function (startTouches, endTouches) {
+                    var startDistance = getDistance(startTouches[0], startTouches[1]),
+                        endDistance = getDistance(endTouches[0], endTouches[1]);
+                    return endDistance / startDistance;
                 },
-                p = function(v) {
-                    v.stopPropagation();
-                    v.preventDefault()
+
+                cancelEvent = function (event) {
+                    event.stopPropagation();
+                    event.preventDefault();
                 },
-                t = function(v) {
-                    var w = (new Date()).getTime();
-                    if (l > 1) {
-                        j = null
+
+                detectDoubleTap = function (event) {
+                    var time = (new Date()).getTime();
+
+                    if (fingers > 1) {
+                        lastTouchStart = null;
                     }
-                    if (w - j < 400) {
-                        p(v);
-                        q.handleDoubleTap(v);
-                        switch (s) {
+
+                    if (time - lastTouchStart < 300) {
+                        cancelEvent(event);
+
+                        target.handleDoubleTap(event);
+                        switch (interaction) {
                             case "zoom":
-                                q.handleZoomEnd(v);
+                                target.handleZoomEnd(event);
                                 break;
-                            case "drag":
-                                q.handleDragEnd(v);
-                                break
+                            case 'drag':
+                                target.handleDragEnd(event);
+                                break;
                         }
                     }
-                    if (l === 1) {
-                        j = w
+
+                    if (fingers === 1) {
+                        lastTouchStart = time;
                     }
                 },
-                g = true;
-            h.addEventListener("touchstart", function(v) {
-                g = true;
-                i = q.zoomFactor, l = v.touches.length;
-                t(v)
-            });
-            h.addEventListener("touchmove", function(v) {
-                if (g) {
-                    n(v);
-                    if (s) {
-                        p(v)
-                    }
-                    u = r(v.touches)
-                } else {
-                    switch (s) {
-                        case "zoom":
-                            q.handleZoom(v, k(u, r(v.touches)));
-                            break;
-                        case "drag":
-                            q.handleDrag(v);
-                            break
-                    }
-                    if (s) {
-                        p(v);
-                        q.update()
-                    }
+                firstMove = true;
+
+            el.addEventListener('touchstart', function (event) {
+                if(target.enabled) {
+                    firstMove = true;
+                    fingers = event.touches.length;
+                    detectDoubleTap(event);
                 }
-                g = false
             });
-            h.addEventListener("touchend", function(v) {
-                if (s) {
-                    p(v)
-                }
-                if (s == "zoom") {
-                    if (q.zoomFactor >= i) {
-                        q.options.zoomOutCallback && q.options.zoomOutCallback()
+
+            el.addEventListener('touchmove', function (event) {
+                if(target.enabled) {
+                    if (firstMove) {
+                        updateInteraction(event);
+                        if (interaction) {
+                            cancelEvent(event);
+                        }
+                        startTouches = targetTouches(event.touches);
                     } else {
-                        q.options.zoomInCallback && q.options.zoomInCallback()
+                        switch (interaction) {
+                            case 'zoom':
+                                target.handleZoom(event, calculateScale(startTouches, targetTouches(event.touches)));
+                                break;
+                            case 'drag':
+                                target.handleDrag(event);
+                                break;
+                        }
+                        if (interaction) {
+                            cancelEvent(event);
+                            target.update();
+                        }
                     }
+
+                    firstMove = false;
                 }
-                l = v.touches.length;
-                n(v)
-            })
+            });
+
+            el.addEventListener('touchend', function (event) {
+                if(target.enabled) {
+                    fingers = event.touches.length;
+                    updateInteraction(event);
+                }
+            });
         };
-        return PinchZoom
+
+        return PinchZoom;
     };
+
 
     module.exports = definePinchZoom(window.Zepto);
 });

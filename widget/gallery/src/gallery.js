@@ -1,7 +1,7 @@
 define(function(require, exports, module) {
     require('core');
 
-    var touchGallery = require('zepto.touchgallery');
+    var PureView = require('ui.pureview');
 
     var $ = window.Zepto,
         UI = $.AMUI;
@@ -12,7 +12,7 @@ define(function(require, exports, module) {
 
         $gallery.each(function() {
             var options = UI.utils.parseOptions($(this).attr('data-am-gallery'));
-            options.lightbox && $(this).find('a').touchTouch();
+            options.pureview && $(this).pureview();
         });
 
         $galleryOne.each(function() {

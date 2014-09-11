@@ -1,5 +1,7 @@
 # Amaze UI 相关
 ---
+
+<div class="am-alert am-alert-warning">域名备案中，CDN 暂时无法使用！如有需要可直接从 <a href="https://github.com/allmobilize/amazeui/tree/master/vendor/amazeui" target="_blank">GitHub 下载</a>。</div>
     
 ## Logo
 

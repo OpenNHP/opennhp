@@ -335,7 +335,7 @@ define(function(require, exports, module) {
             var qrNode = new QRCode({
                 render: 'canvas',
                 correctLevel: 0,
-                text: doc.location,
+                text: doc.location.href,
                 width: 180,
                 height: 180,
                 background: '#fff',

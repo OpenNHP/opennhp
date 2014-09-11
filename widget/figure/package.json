@@ -32,13 +32,17 @@
     "template": "figure.hbs",
 
     "styleDependencies": [
+        "button.less",
+        "ui.share.less",
+        "ui.modal.less",
+        "ui.pureview.less"
     ],
 
     "style": "figure.less",
 
     "demoContent": {
-        "img": "http://i.static.amazeui.org/assets/i/cpts/figure/WindMillLights_1366x768.jpg",
-        "figcaption": "加州风力发电场的圣诞灯饰"
+        "img": "http://s.cn.bing.net/az/hprichbg/rb/FloatingMarket_ZH-CN9326364399_1366x768.jpg",
+        "figcaption": "曼谷水上集市"
     },
 
     "themes": [
@@ -80,7 +84,7 @@
                     "data": {
                         "options": {
                             "figcaptionPosition": "bottom",
-                            "zoomble": false
+                            "autoZoom": 1
                         }
                     }
                 }
@@ -136,7 +140,7 @@
                     "data": {
                         "options": {
                             "figcaptionPosition": "bottom",
-                            "zoomble": false
+                            "autoZoom": 1
                         }
                     }
                 }
@@ -150,7 +154,12 @@
         "util.fastclick.js"
     ],
 
-    "jsDependencies": [],
+    "jsDependencies": [
+        "zepto.pinchzoom.js",
+        "ui.pureview.js",
+        "ui.share.js",
+        "ui.modal.js"
+    ],
 
     "script": "figure.js",
 
@@ -196,6 +205,24 @@
                     {
                         "value": "top",
                         "title": "图片上方"
+                    }
+                ]
+            },
+            "zoomAble": {
+                "name": "图片缩放",
+                "desc": "图片触控缩放功能",
+                "type": "select",
+                "default": true,
+                "required": true,
+                "dataList": [
+                    {
+                        "value": true,
+                        "title": "启用",
+                        "selected": true
+                    },
+                    {
+                        "value": false,
+                        "title": "禁用"
                     }
                 ]
             }

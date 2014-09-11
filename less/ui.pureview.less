@@ -30,9 +30,11 @@
     .translate3d(0, 0, 0);
   }
 
-  ul {
+  ul,
+  ol {
     list-style: none;
     padding: 0;
+    margin: 0;
     width: 100%;
   }
 }
@@ -57,13 +59,13 @@
 
     &.am-pureview-slide-prev {
       .translate3d(-100%);
-      visibility: visible;
+      // visibility: visible;
       z-index: 109;
     }
 
     &.am-pureview-slide-next {
       .translate3d(100%);
-      visibility: visible;
+      // visibility: visible;
       z-index: 109;
     }
 
@@ -103,7 +105,8 @@
   margin-top: -18px;
   z-index: @am-pureview-z-index + 2;
 
-  .am-touch & {
+  .am-touch &,
+  .am-pureview-only & {
     display: none;
   }
 
@@ -204,7 +207,38 @@
   .transition(0.15s);
   z-index: @am-pureview-z-index + 10;
 
-  &.am-active {
+  .am-pureview-bar-active & {
     opacity: 1;
+  }
+}
+
+.am-pureview-nav {
+  position: absolute;
+  bottom: 15px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  z-index: @am-pureview-z-index + 11;
+
+  .am-pureview-bar-active & {
+    display: none;
+  }
+
+  li {
+    display: inline-block;
+    background: #ccc;
+    background: rgba(255, 255, 255, 0.5);
+    width: 8px;
+    height: 8px;
+    margin: 0 3px;
+    border-radius: 50%;
+    text-indent: -9999px;
+    overflow: hidden;
+    cursor: pointer;
+  }
+
+  .am-active {
+    background: #fff;
+    background: rgba(255, 255, 255, 0.9);
   }
 }

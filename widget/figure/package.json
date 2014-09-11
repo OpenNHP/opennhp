@@ -32,6 +32,9 @@
     "template": "figure.hbs",
 
     "styleDependencies": [
+        "button.less",
+        "ui.modal.less",
+        "ui.pureview.less"
     ],
 
     "style": "figure.less",
@@ -80,7 +83,7 @@
                     "data": {
                         "options": {
                             "figcaptionPosition": "bottom",
-                            "zoomble": false
+                            "autoZoom": 1
                         }
                     }
                 }
@@ -136,7 +139,7 @@
                     "data": {
                         "options": {
                             "figcaptionPosition": "bottom",
-                            "zoomble": false
+                            "autoZoom": 1
                         }
                     }
                 }
@@ -150,7 +153,11 @@
         "util.fastclick.js"
     ],
 
-    "jsDependencies": [],
+    "jsDependencies": [
+        "ui.pureview.js",
+        "ui.share.js",
+        "ui.modal.js"
+    ],
 
     "script": "figure.js",
 
@@ -196,6 +203,24 @@
                     {
                         "value": "top",
                         "title": "图片上方"
+                    }
+                ]
+            },
+            "zoomAble": {
+                "name": "图片缩放",
+                "desc": "图片触控缩放功能",
+                "type": "select",
+                "default": true,
+                "required": true,
+                "dataList": [
+                    {
+                        "value": true,
+                        "title": "启用",
+                        "selected": true
+                    },
+                    {
+                        "value": false,
+                        "title": "禁用"
                     }
                 ]
             }

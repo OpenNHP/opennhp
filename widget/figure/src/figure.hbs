@@ -1,6 +1,6 @@
 {{#this}}
-  <figure data-am-widget="figure" class="am am-figure {{#if theme}}am-figure-{{theme}}{{else}}am-figure-default{{/if}}{{#if options.zoomble}} am-figure-zoomable{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"{{#if id}}
-      id="{{id}}"{{/if}}>
+  <figure data-am-widget="figure" class="am am-figure {{#if theme}}am-figure-{{theme}}{{else}}am-figure-default{{/if}} {{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}" {{#if id}}
+      id="{{id}}"{{/if}}  data-am-figure="{ {{#if options.zoomAble}} pureview: 1,{{/if}} {{#if options.autoZoom}}autoZoom: 1{{/if}} }">
     {{#if options.figcaptionPosition}}
       {{#ifCond options.figcaptionPosition '==' 'top'}}
         {{#if content.figcaption}}

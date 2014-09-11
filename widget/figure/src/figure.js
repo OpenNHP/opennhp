@@ -1,66 +1,39 @@
 define(function(require, exports, module) {
     require('core');
+    require('ui.pureview');
 
-    var $ = window.Zepto;
+    var $ = window.Zepto,
+        UI = $.AMUI;
 
-    // PinchZoom Plugin
-    var PinchZoom = require('zepto.pinchzoom');
     /**
      * Is Images zoomable
      * @return {Boolean}
      */
-    $.isImgZoomAble = function(imgElement) {
+    $.isImgZoomAble = function(element) {
         var t = new Image();
-        t.src = imgElement.src;
+        t.src = element.src;
 
-        var zoomAble = ($(imgElement).width() < t.width);
+        var zoomAble = ($(element).width() < t.width);
 
         if (zoomAble) {
-            $(imgElement).parent('.am-figure').addClass('am-figure-zoomable');
+            $(element).parent('.am-figure').addClass('am-figure-zoomable');
         }
         return zoomAble;
     };
 
-    $.fn.imgZoomToggle = function() {
-        return this.each(function() {
-            var zoomAble = $.isImgZoomAble(this),
-                $wrapDom = $('<div class="am-figure-wrap"><div class="pinch-zoom"></div></div>');
-                $zoomWrap = $('.am-figure-wrap');
+    var figureInit = function() {
+        $('.am-figure').each(function(i, item) {
+            var options = UI.utils.parseOptions($(item).attr('data-am-figure'));
+            
+            console.log(options);
 
-            if ($zoomWrap.length == 0) {
-                $('body').append($wrapDom);
-                $zoomWrap = $('.am-figure-wrap');
-                $pinch = $zoomWrap.find('.pinch-zoom');
-
-                $pinch.each(function() {
-                    new PinchZoom($(this), {});
-                });
-
-            }
-
-            if (zoomAble) {
-                //$zoomWrap.empty().html(this.outerHTML);
-                $pinch.empty().html(this.outerHTML);
-
-                $zoomWrap.find('img').width($(window).width());
-                $(this).parent('.am-figure').on('click', function() {
-                    $zoomWrap.toggleClass('am-active');
-                });
-
-                $zoomWrap.on('click', function(e) {
-                    e.preventDefault();
-                    var target = e.target;
-                    // Img is using pinch zoom
-                    if (!$(target).is('img')) {
-                        $(this).toggleClass('am-active');
-                    }
-                });
+            if (options.pureview) {
+                $(item).pureview();
+            } else if (options.autoZoom) {
+                var zoomAble = $.isImgZoomAble($(item).find('img')[0]);
+                 zoomAble && $(item).pureview();
             }
         });
-    };
-
-    var figureInit = function() {
-        $('.am-figure img').imgZoomToggle();
     };
 
     $(window).on('load', function() {

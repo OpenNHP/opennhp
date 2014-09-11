@@ -33,6 +33,7 @@
 
     "styleDependencies": [
         "button.less",
+        "ui.share.less",
         "ui.modal.less",
         "ui.pureview.less"
     ],

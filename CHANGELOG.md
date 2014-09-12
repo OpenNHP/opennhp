@@ -6,8 +6,7 @@
 __CSS__：
 
 - `IMPROVED` Close 增加使用 Icon Font 的样式；
-- `IMPROVED` Close 增加使用 Icon Font 的样式；
-- `IMPROVED` Comment 样式调整：采纳网友意见，增加内容左右对齐；更多高亮颜色；
+- `IMPROVED` Comment 样式调整：采纳网友建议（感谢 [@麦田一根葱](http://www.yuxiaoxi.com/)、[@老黄](http://amazeui.org/css/comment)），增加内容左右对齐；更多高亮颜色；
 - `NEW` Utility 增加 `.am-angle` 尖角样式。
 
 __JS 插件__：

@@ -643,3 +643,119 @@
 .am-text-bottom {
   vertical-align: bottom !important;
 }
+
+
+// angle
+// ========================================================================
+
+.am-angle {
+  position: absolute;
+
+  &:before,
+  &:after {
+    position: absolute;
+    display: block;
+    content: "";
+    width: 0;
+    height: 0;
+    border: 8px dashed transparent;
+    z-index: 1;
+  }
+}
+
+.angle-up-variant(@border-color: #ddd; @bg-color: #fff; @border-width: 8px) {
+  top: 0;
+
+  &:before,
+  &:after {
+    border-bottom-style: solid;
+    border-width: 0 @border-width @border-width;
+  }
+
+  &:before {
+    border-bottom-color: @border-color;
+    bottom: 0;
+  }
+
+  &:after {
+    border-bottom-color: @bg-color;
+    bottom: -1px;
+  }
+}
+
+.am-angle-up {
+  .angle-up-variant();
+}
+
+.angle-down-variant(@border-color: #ddd; @bg-color: #fff; @border-width: 8px) {
+  bottom: -(@border-width + 1);
+
+  &:before,
+  &:after {
+    border-top-style: solid;
+    border-width: @border-width @border-width 0;
+  }
+
+  &:before {
+    border-top-color: @border-color;
+    bottom: 0;
+  }
+
+  &:after {
+    border-top-color: @bg-color;
+    bottom: 1px;
+  }
+}
+
+.am-angle-down {
+  .angle-down-variant();
+}
+
+.angle-left-variant(@border-color: #ddd; @bg-color: #fff; @border-width: 8px) {
+  left: -(@border-width + 1);
+
+  &:before,
+  &:after {
+    border-right-style: solid;
+    border-width: @border-width @border-width @border-width 0;
+  }
+
+  &:before {
+    border-right-color: @border-color;
+    left: 0;
+  }
+
+  &:after {
+    border-right-color: @bg-color;
+    left: 1px;
+  }
+}
+
+.am-angle-left {
+  .angle-left-variant();
+}
+
+.angle-right-variant(@border-color: #ddd; @bg-color: #fff; @border-width: 8px) {
+  right: 0;
+
+  &:before,
+  &:after {
+    border-left-style: solid;
+    border-width: @border-width 0 @border-width @border-width;
+  }
+
+  &:before {
+    border-left-color: @border-color;
+    left: 0;
+  }
+
+  &:after {
+    border-left-color: @bg-color;
+    left: -1px;
+  }
+}
+
+
+.am-angle-right {
+  .angle-right-variant();
+}

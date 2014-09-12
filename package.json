@@ -47,5 +47,8 @@
     "lodash": "^2.4.1",
     "underscore": "~1.6.0"
   },
-  "license": "MIT"
+    "license": {
+        "type": "MIT",
+        "url": "https://github.com/allmobilize/amazeui/blob/master/LICENSE.md"
+    }
 }

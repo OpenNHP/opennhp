@@ -128,17 +128,19 @@ define(function(require, exports, module) {
         });
 
         $slider.hammer().on('press.pureview.amui', function(e) {
+            e.preventDefault();
             me.toggleToolBar();
         }).on('swipeleft.pureview.amui', function(e) {
+            e.preventDefault();
             me.nextSlide();
         }).on('swiperight.pureview.amui', function(e) {
+            e.preventDefault();
             me.prevSlide();
         });
 
         $slider.data('hammer').get('swipe').set({
             direction: Hammer.DIRECTION_HORIZONTAL,
-            threshold: 50,
-            velocity: 0.45
+            velocity: 0.35
         });
 
         $(document).on('keydown.pureview.amui', $.proxy(function(e) {

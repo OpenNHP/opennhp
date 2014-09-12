@@ -31,13 +31,14 @@ var jsPaths = {
     hbsHelper: ['vendor/amazeui.hbs.helper.js', 'vendor/amazeui.hbs.partials.js']
 };
 
-var now = new Date();
+var dateFormat = 'UTC:yyyy-mm-dd"T"HH:mm:ss Z';
 
 var banner = [
-    '/*! <%= pkg.name %> - v<%= pkg.version %>',
-    '(c) ' + gutil.date(now, 'yyyy') + ' AllMobilize, Inc.',
-    '@license <%= pkg.license %>',
-    gutil.date(now, 'yyyy-mm-dd HH:mm:ss') + ' */ \r'
+    '/*! <%= pkg.name %> - <%= pkg.version %>',
+    'by Amaze UI Team',
+    '(c) ' + gutil.date(Date.now(), 'UTC:yyyy') + ' AllMobilize, Inc.',
+    'Licensed under <%= pkg.license.type %>',
+    gutil.date(Date.now(), dateFormat) + ' */ \n\n'
 ].join(' | ');
 
 // write widgets style and tpl
@@ -89,6 +90,7 @@ var getWidgetFiles = function() {
 // build to dist dir
 gulp.task('buildLess', function() {
     gulp.src(['./less/amui.all.less'])
+        .pipe(header(banner, {pkg: pkg}))
         .pipe(less({
             paths: [path.join(__dirname, 'less'), path.join(__dirname, 'widget/*/src')]
         }))
@@ -219,7 +221,7 @@ gulp.task('zip', function() {
         'docs/examples/**/*'
     ])
         .pipe(replace(/\{\{assets\}\}/g, 'assets/', {skipBinary: true}))
-        .pipe(zip(format('AmazeUI-1.0.0-beta1-%s.zip', gutil.date(now, 'yyyymmdd')), {comment: 'Created on ' + gutil.date(now, 'yyyy-mm-dd HH:mm:ss')}))
+        .pipe(zip(format('AmazeUI-1.0.0-beta1-%s.zip', gutil.date(Date.now(), 'UTC:yyyymmdd')), {comment: 'Created on ' + gutil.date(Date.now(), dateFormat)}))
         .pipe(gulp.dest('dist'));
 });
 

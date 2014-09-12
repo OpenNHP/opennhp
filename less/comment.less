@@ -134,22 +134,22 @@
   }
 }
 
-.am-comment-highlight {
+.comment-highlight-variant(@border-color: @global-primary) {
   .am-comment-avatar {
-    border-color: @comment-hl-border-color;
+    border-color: @border-color;
   }
 
   .am-comment-main {
-    border-color: @comment-hl-border-color;
+    border-color: @border-color;
     &:before {
-      border-right-color: @comment-hl-border-color;
+      border-right-color: @border-color;
     }
   }
 
   // Highlight and flip
   &.am-comment-flip .am-comment-main {
     &:before {
-      border-left-color: @comment-hl-border-color;
+      border-left-color: @border-color;
       border-right-color: transparent;
     }
 
@@ -157,6 +157,27 @@
       border-left-color: @comment-hd-bg-color;
     }
   }
+}
+
+.am-comment-primary {
+  .comment-highlight-variant(@global-primary);
+}
+
+.am-comment-secondary,
+.am-comment-highlight {
+  .comment-highlight-variant(@comment-hl-border-color);
+}
+
+.am-comment-success {
+  .comment-highlight-variant(@global-success);
+}
+
+.am-comment-warning {
+  .comment-highlight-variant(@global-warning);
+}
+
+.am-comment-danger {
+  .comment-highlight-variant(@global-danger);
 }
 
 
@@ -171,4 +192,16 @@
 .am-comments-list .am-comment {
   margin: @comment-list-margin-top 0 0 0;
   list-style: none;
+}
+
+
+@media @medium-up {
+  .am-comments-list-flip {
+    .am-comment-main {
+      margin-right: 64px;
+    }
+    .am-comment-flip .am-comment-main {
+      margin-left: 64px;
+    }
+  }
 }

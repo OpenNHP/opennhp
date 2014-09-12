@@ -24,7 +24,7 @@ define(function(require, exports, module) {
         this.$tabPanels = this.$content.find(Tabs.DEFAULTS.selector.panel);
 
         this.transitioning = null;
-        
+
         this.init();
     };
 
@@ -42,22 +42,31 @@ define(function(require, exports, module) {
     Tabs.prototype.init = function() {
         var me = this;
 
-        this.$navs.on('click.tabs.amui', $.proxy(function(e) {
+        // Activate the first Tab when no active Tab or multiple active Tabs
+        if (this.$tabNav.find('> .am-active').length !== 1) {
+            var $tabNav = this.$tabNav;
+            this.activate($tabNav.children('li').first(), $tabNav);
+            this.activate(this.$tabPanels.first(), this.$content);
+        }
+
+        this.$navs.on('click.tabs.amui', function(e) {
             e.preventDefault();
-            this.open($(e.target));
-        }, this));
-        
+            me.open($(this));
+        });
+
         var hammer = new Hammer(this.$content[0]);
 
         hammer.get('pan').set({direction: Hammer.DIRECTION_HORIZONTAL, threshold: 30});
 
         hammer.on('panleft', UI.utils.debounce(function(e) {
-                $(e.target).focus();
-                var $nav = me.getNextNav($(e.target));
-                $nav && me.open($nav);
-            }, 100));
+            e.preventDefault();
+            $(e.target).focus();
+            var $nav = me.getNextNav($(e.target));
+            $nav && me.open($nav);
+        }, 100));
 
         hammer.on('panright', UI.utils.debounce(function(e) {
+            e.preventDefault();
             var $nav = me.getPrevNav($(e.target));
             $nav && me.open($nav);
         }, 100));
@@ -65,7 +74,7 @@ define(function(require, exports, module) {
 
     Tabs.prototype.open = function($nav) {
         if (!$nav || this.transitioning || $nav.parent('li').hasClass('am-active')) return;
-
+        
         var $tabNav = this.$tabNav,
             $navs = this.$navs,
             $tabContent = this.$content,
@@ -112,11 +121,12 @@ define(function(require, exports, module) {
         }
 
         function complete() {
-            callback();
+            callback && callback();
             this.transitioning = false;
         }
 
-        transition ? $active.one(supportTransition.end, $.proxy(complete, this)) : $.proxy(complete, this);
+        transition ? $active.one(supportTransition.end, $.proxy(complete, this)) : $.proxy(complete, this)();
+
     };
 
     Tabs.prototype.getNextNav = function($panel) {

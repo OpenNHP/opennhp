@@ -1,7 +1,7 @@
 {{#this}}
   <ul data-am-widget="gallery" class="am-gallery{{#if options.cols}} sm-block-grid-{{options.cols}}{{else}} sm-block-grid-2{{/if}}
   md-block-grid-3 lg-block-grid-4 {{#if
-  theme}}am-gallery-{{theme}}{{else}}am-gallery-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}" data-am-gallery="{ {{#if options.gallery}}lightbox: true{{/if}} }" {{#if id}}id="{{id}}"{{/if}}>
+  theme}}am-gallery-{{theme}}{{else}}am-gallery-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}" data-am-gallery="{ {{#if options.gallery}}pureview: true{{/if}} }" {{#if id}}id="{{id}}"{{/if}}>
     {{#each content}}
       <li>
         <div class="am-gallery-item">

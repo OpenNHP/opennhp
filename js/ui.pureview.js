@@ -3,6 +3,7 @@ define(function(require, exports, module) {
     require('core');
 
     var PinchZoom = require('zepto.pinchzoom'),
+        Hammer = require('util.hammer'),
         $ = window.Zepto,
         UI = $.AMUI,
         animation = UI.support.animation,
@@ -23,9 +24,10 @@ define(function(require, exports, module) {
     };
 
     PureView.DEFAULTS = {
-        tpl: '<div class="am-pureview">' +
+        tpl: '<div class="am-pureview am-pureview-bar-active">' +
         '<ul class="am-pureview-slider"></ul>' +
         '<ul class="am-pureview-direction"><li class="am-pureview-prev"><a href=""></a></li><li class="am-pureview-next"><a href=""></a></li></ul>' +
+        '<ol class="am-pureview-nav"></ol>' +
         '<div class="am-pureview-bar am-active"><span class="am-pureview-current"></span> / <span class="am-pureview-total"></span><span class="am-pureview-title"></span></div>' +
         '<div class="am-pureview-actions am-active"><a href="javascript: void(0)" class="am-icon-chevron-left" data-am-close="pureview"></a><a href="javascript: void(0)" class="am-icon-share-square-o" data-am-toggle="share"></a></div>' +
         '</div>',
@@ -33,7 +35,9 @@ define(function(require, exports, module) {
         className: {
             prevSlide: 'am-pureview-slide-prev',
             nextSlide: 'am-pureview-slide-next',
-            active: 'am-active'
+            active: 'am-active',
+            barActive: 'am-pureview-bar-active',
+            onlyOne: 'am-pureview-only'
         },
 
         selector: {
@@ -44,7 +48,8 @@ define(function(require, exports, module) {
             title: '.am-pureview-title',
             actions: '.am-pureview-actions',
             bar: '.am-pureview-bar',
-            pinchZoom: '.am-pinch-zoom'
+            pinchZoom: '.am-pinch-zoom',
+            nav: '.am-pureview-nav'
         }
     };
 
@@ -55,18 +60,26 @@ define(function(require, exports, module) {
             $images = $element.find('img'),
             $pureview = me.$pureview,
             $slider = $pureview.find(options.selector.slider),
-            slides = [],
-            total = $images.length;
+            $nav = $pureview.find(options.selector.nav),
+            $slides = $([]),
+            total = $images.length,
+            $navItems = $([]);
 
         if (!total) return;
 
+        if (total === 1) {
+            $pureview.addClass(options.className.onlyOne);
+        }
+
         $images.each(function(i, img) {
-            var alt = $(img).attr('alt') || '',
-                slide = '<li><div class="am-pinch-zoom"><img src="' + img.src +'" alt="' + alt + '"/></div></li>';
-            slides.push(slide);
+            var alt = $(img).attr('alt') || '';
+
+            $slides = $slides.add($('<li><div class="am-pinch-zoom"><img src="' + img.src + '" alt="' + alt + '"/></div></li>'));
+            $navItems = $navItems.add($('<li>' + (i + 1) + '</li>'));
         });
 
-        $slider.html(slides.join('\n'));
+        $slider.append($slides);
+        $nav.append($navItems);
 
         $('body').append($pureview);
 
@@ -76,14 +89,17 @@ define(function(require, exports, module) {
         this.$current = $pureview.find(options.selector.current);
         this.$bar = $pureview.find(options.selector.bar);
         this.$actions = $pureview.find(options.selector.actions);
-
+        this.$navItems = $nav.find('li');
         this.$slides = $slider.find('li');
 
         $slider.find(options.selector.pinchZoom).each(function() {
             $(this).data('amui.pinchzoom', new PinchZoom($(this), {}));
+            $(this).on('pz_doubletap', function(e) {
+                //
+            });
         });
 
-        $images.on('click', function(e) {
+        $images.on('click.pureview.amui', function(e) {
             e.preventDefault();
             me.open($images.index(this));
         });
@@ -99,18 +115,30 @@ define(function(require, exports, module) {
             }
         });
 
+        // Nav Contorl
+        this.$navItems.on('click.pureview.amui', function() {
+            var index = me.$navItems.index($(this));
+            me.activate(me.$slides.eq(index));
+        });
+
         // Close Icon
         $pureview.find(options.selector.close).on('click.pureview.amui', function(e) {
             e.preventDefault();
             me.close();
         });
 
-        $slider.on('singleTap', function(e) {
+        $slider.hammer().on('press.pureview.amui', function(e) {
             me.toggleToolBar();
-        }).on('swipeLeft', function(e) {
-            me.nextSlide()
-        }).on('swipeRight', function(e) {
+        }).on('swipeleft.pureview.amui', function(e) {
+            me.nextSlide();
+        }).on('swiperight.pureview.amui', function(e) {
             me.prevSlide();
+        });
+
+        $slider.data('hammer').get('swipe').set({
+            direction: Hammer.DIRECTION_HORIZONTAL,
+            threshold: 50,
+            velocity: 0.45
         });
 
         $(document).on('keydown.pureview.amui', $.proxy(function(e) {
@@ -140,10 +168,12 @@ define(function(require, exports, module) {
 
         alt && this.$title.text(alt);
         this.$current.text(activeIndex + 1);
-        $slides.removeAttr('class');
+        $slides.removeClass();
         $slide.addClass(active);
         $slides.eq(activeIndex - 1).addClass(options.className.prevSlide);
         $slides.eq(activeIndex + 1).addClass(options.className.nextSlide);
+
+        this.$navItems.removeClass().eq(activeIndex).addClass('am-active');
 
         if (transition) {
             $slide.one(transition.end, $.proxy(function() {
@@ -185,9 +215,7 @@ define(function(require, exports, module) {
     };
 
     PureView.prototype.toggleToolBar = function() {
-        var active = this.options.className.active;
-        this.$bar.toggleClass(active);
-        this.$actions.toggleClass(active);
+        this.$pureview.toggleClass(this.options.className.barActive);
     };
 
     PureView.prototype.open = function(index) {
@@ -199,7 +227,15 @@ define(function(require, exports, module) {
 
     PureView.prototype.close = function() {
         this.$pureview.removeClass('am-active');
-        $html.removeClass('am-dimmer-active')
+        this.$slides.removeClass();
+        
+        if (transition) {
+            this.$pureview.one(transition.end, function() {
+                $html.removeClass('am-dimmer-active');
+            });
+        } else {
+            $html.removeClass('am-dimmer-active');
+        } 
     };
 
     UI.pureview = PureView;
@@ -209,8 +245,6 @@ define(function(require, exports, module) {
             var $this = $(this),
                 data = $this.data('am.pureview'),
                 options = $.extend({}, UI.utils.parseOptions($this.attr('data-am-pureview')), typeof option == 'object' && option);
-            
-            console.log(data);
 
             if (!data) {
                 $this.data('am.pureview', (data = new PureView(this, options)));
@@ -224,7 +258,6 @@ define(function(require, exports, module) {
 
     $.fn.pureview = Plugin;
 
-
     // Init code
     $(function() {
         $('[data-am-pureview]').pureview();
@@ -233,5 +266,7 @@ define(function(require, exports, module) {
     module.exports = PureView;
 });
 
-// TODO: 1. 动画优化
-//       2. 替换触控动画库
+// TODO: 1. 动画改进
+//       2. 改变图片的时候恢复 Zoom
+//       3. 选项
+//       4. 关闭以后滚动条位置处理

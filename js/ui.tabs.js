@@ -1,8 +1,7 @@
 define(function(require, exports, module) {
 
-    'use strict';
-
     require('core');
+    var Hammer = require('util.hammer');
 
     var $ = window.Zepto,
         UI = $.AMUI,
@@ -35,26 +34,33 @@ define(function(require, exports, module) {
             content: '.am-tabs-bd',
             panel: '.am-tab-panel'
         },
-        status: {
+        className: {
             active: 'am-active'
         }
     };
 
     Tabs.prototype.init = function() {
+        var me = this;
+
         this.$navs.on('click.tabs.amui', $.proxy(function(e) {
             e.preventDefault();
             this.open($(e.target));
         }, this));
+        
+        var hammer = new Hammer(this.$content[0]);
 
-        this.$content.on('swipeLeft.tabs.amui', $.proxy(function(e) {
-            var $nav = this.getNextNav($(e.target));
-            $nav && this.open($nav);
-        }, this));
+        hammer.get('pan').set({direction: Hammer.DIRECTION_HORIZONTAL, threshold: 30});
 
-        this.$content.on('swipeRight.tabs.amui', $.proxy(function(e) {
-            var $nav = this.getPrevNav($(e.target));
-            $nav && this.open($nav);
-        }, this));
+        hammer.on('panleft', UI.utils.debounce(function(e) {
+                $(e.target).focus();
+                var $nav = me.getNextNav($(e.target));
+                $nav && me.open($nav);
+            }, 100));
+
+        hammer.on('panright', UI.utils.debounce(function(e) {
+            var $nav = me.getPrevNav($(e.target));
+            $nav && me.open($nav);
+        }, 100));
     };
 
     Tabs.prototype.open = function($nav) {
@@ -94,7 +100,7 @@ define(function(require, exports, module) {
         var $active = $container.find('> .am-active'),
             transition = callback && supportTransition && !!$active.length;
 
-        $active.removeClass('am-active am-in').blur();
+        $active.removeClass('am-active am-in');
 
         $element.addClass('am-active');
 

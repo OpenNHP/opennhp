@@ -31,7 +31,12 @@
 
     "template": "paragraph.hbs",
 
-    "styleDependencies": [],
+    "styleDependencies": [
+        "button.less",
+        "ui.share.less",
+        "ui.modal.less",
+        "ui.pureview.less"
+    ],
 
     "style": "paragraph.less",
 
@@ -194,8 +199,15 @@
 
     "jsBase": [
         "core.js",
-        "util.fastclick.js",
-        "ui.iscroll-lite.js"
+        "util.fastclick.js"
+    ],
+
+    "jsDependencies": [
+        "ui.iscroll-lite.js",
+        "zepto.pinchzoom.js",
+        "ui.pureview.js",
+        "ui.share.js",
+        "ui.modal.js"
     ],
 
     "script": "paragraph.js",

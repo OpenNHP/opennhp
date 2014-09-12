@@ -147,24 +147,24 @@
                             {
                                 "link": "sms:18601860186?body=约吗？",
                                 "title": "消息",
-                                "customIcon": "http://i.static.amazeui.org/assets/i/cpts/navbar/Information.png"
+                                "customIcon": "http://amazeui.b0.upaiyun.com/assets/i/cpts/navbar/Information.png"
                             },
                             {
                                 "link": "tel:18601860186",
                                 "title": "呼叫",
-                                "customIcon": "http://i.static.amazeui.org/assets/i/cpts/navbar/phone.png"
+                                "customIcon": "http://amazeui.b0.upaiyun.com/assets/i/cpts/navbar/phone.png"
 
                             },
                             {
                                 "link": "###",
                                 "title": "分享",
-                                "customIcon": "http://i.static.amazeui.org/assets/i/cpts/navbar/share.png",
+                                "customIcon": "http://amazeui.b0.upaiyun.com/assets/i/cpts/navbar/share.png",
                                 "dataApi": "data-am-navbar-share"
                             },
                             {
                                 "link": "http://yunshipei.com",
                                 "title": "地图",
-                                "customIcon": "http://i.static.amazeui.org/assets/i/cpts/navbar/map.png"
+                                "customIcon": "http://amazeui.b0.upaiyun.com/assets/i/cpts/navbar/map.png"
                             }
                         ]
                     }
@@ -300,23 +300,6 @@
                     {
                         "value": 4,
                         "title": "4"
-                    }
-                ]
-            },
-            "iconPosition": {
-                "name": "图标位置",
-                "desc": "图标默认在上方，可设置在左侧",
-                "type": "select",
-                "required": false,
-                "default": "",
-                "dataList": [
-                    {
-                        "value": "inline",
-                        "title": "左侧"
-                    },
-                    {
-                        "value": "",
-                        "title": "上方"
                     }
                 ]
             }

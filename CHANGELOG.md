@@ -3,18 +3,28 @@
 
 ## 2014.09 W2
 
+__CSS__：
+
+- `IMPROVED` Close 增加使用 Icon Font 的样式；
+- `IMPROVED` Close 增加使用 Icon Font 的样式；
+- `IMPROVED` Comment 样式调整：采纳网友意见，增加内容左右对齐；更多高亮颜色；
+- `NEW` Utility 增加 `.am-angle` 尖角样式。
+
 __JS 插件__：
 
 - `IMPROVED` 使用 [hammer.js](https://github.com/hammerjs/hammer.js)，移除 Zepto.js touch 扩展；
 - `IMPROVED` Tabs、PureView 使用 hammer.js；
 - `IMPROVED` AddToHomeScreen 升级至 `3.0.7`；
-- `CHANGED` 删除 TouchGallery 插件。
+- `CHANGED` 删除 TouchGallery 插件；
+- `FIXED` Tabs 修复标签里包含其他元素点击失效问题；
+- `IMPROVED` Tabs 没有设置或者多个标签设置了激活状态时默认激活第一个。
 
 __Web 组件__：
 
 - `IMPROVED` Gallery 使用 PureView 插件；
 - `IMPROVED` Figure 使用 PureView 插件；
-- `IMPROVED` Paragraph 使用 PureView 插件。
+- `IMPROVED` Paragraph 使用 PureView 插件；
+- `CHANGED` 移除 Navbar `package.json` 中图标位置设置选项；
 
 ## 2014.09 W1
 

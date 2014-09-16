@@ -18,7 +18,7 @@ define(function(require, exports, module) {
     UI.support.transition = (function() {
 
         var transitionEnd = (function() {
-
+            // https://developer.mozilla.org/en-US/docs/Web/Events/transitionend#Browser_compatibility
             var element = doc.body || doc.documentElement,
                 transEndEventNames = {
                     WebkitTransition: 'webkitTransitionEnd',

@@ -1,6 +1,28 @@
 # Amaze UI Change Log
 ---
 
+## 2014.09 W3
+
+### JS 插件
+
+__Sticky__：
+
+- `IMPROVED` 动态获取元素的宽高，支持响应式；
+- `IMPROVED` 解决 #55 中的问题；
+- `NEW` 使用占位符包裹元素，避免窗口抖动问题；
+- `NEW` 增加 `media` 选项，可以设置 Media Query；
+- `NEW` 增加 `bottom` 选项。
+
+__Popover__：
+
+- `IMPROVED` 每次打开时重新计算弹出层的位置，减少位置偏移问题；
+- `IMPROVED` 样式调整。
+
+__Progress__：
+
+- `CHANGED` 样式主色调整为绿色。
+
+
 ## 2014.09 W2
 
 __CSS__：

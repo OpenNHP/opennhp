@@ -1,7 +1,7 @@
 # FastClick
 ---
 
-处理移动端 `click` 事件 300 毫秒延迟， 由 [FT Labs](http://labs.ft.com/) 开发，Github 项目地址：https://github.com/ftlabs/fastclick。
+处理移动端 `click` 事件 300 毫秒延迟， 由 [FT Labs](http://labs.ft.com/) 开发，Github 项目地址：https://github.com/ftlabs/fastclick 。
 
 ## 为什么存在延迟？
 

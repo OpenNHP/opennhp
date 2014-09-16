@@ -33,16 +33,25 @@
   .transition(height .35s ease);
 }
 
-// Sticky plugin
 
+// Sticky plugin
+// ------------------------------------------------------------------------
 .am-sticky {
-  position: fixed;
+  position: fixed !important;
   z-index: @z-index-sticky;
   .transform-origin(0 0); // Needed for scale animation
 }
 
+[data-am-sticky][class*='am-animation-'] {
+  -webkit-animation-duration: .2s;
+  animation-duration: .2s;
+}
+
+.am-sticky-bottom {}
+
 
 // hide scroll bar when dimmer active
+// ------------------------------------------------------------------------
 .am-dimmer-active {
   &,
   body {

@@ -31,7 +31,8 @@ define(function(require, exports, module) {
     };
 
     Popover.prototype.init = function() {
-        var $element = this.$element,
+        var me = this,
+            $element = this.$element,
             $popover;
 
         if(!this.options.target) {
@@ -43,94 +44,103 @@ define(function(require, exports, module) {
 
         $popover.appendTo($('body'));
 
+        this.sizePopover();
+
         function sizePopover() {
-            var popSize = $popover.getSize(),
-                popWidth = $popover.width() || popSize.width,
-                popHeight = $popover.height() || popSize.height,
-                $popCaret = $popover.find('.am-popover-caret'),
-                popCaretSize = ($popCaret.width() / 2) || 10,
-                popTotalHeight = popHeight + popCaretSize;
-
-            var triggerWidth = $element.outerWidth(),
-                triggerHeight = $element.outerHeight(),
-                triggerOffset = $element.offset(),
-                triggerRect = $element[0].getBoundingClientRect();
-
-            var winHeight = $w.height(),
-                winWidth = $w.width();
-
-            var popTop = 0,
-                popLeft = 0,
-                diff = 0,
-                spacing = 3,
-                popPosition = 'top';
-
-            $popover.css({left: '', top: ''})
-                .removeClass('am-popover-left am-popover-right am-popover-top am-popover-bottom');
-
-            $popCaret.css({left: '', top: ''});
-
-            if (popTotalHeight - spacing < triggerRect.top + spacing) { // on Top
-                popTop = triggerOffset.top - popTotalHeight - spacing;
-            } else if (popTotalHeight < winHeight - triggerRect.top - triggerRect.height) {
-                // On bottom
-                popPosition = 'bottom';
-                popTop = triggerOffset.top + triggerHeight + popCaretSize + spacing;
-            } else { // On middle
-                popPosition = 'middle';
-                popTop = triggerHeight / 2 + triggerOffset.top - popHeight / 2;
-            }
-
-
-            // Horizontal Position
-
-            if (popPosition === 'top' || popPosition === 'bottom') {
-                popLeft = triggerWidth / 2 + triggerOffset.left - popWidth / 2;
-
-                diff = popLeft;
-
-                if (popLeft < 5) popLeft = 5;
-                if (popLeft + popWidth > winWidth) {
-                    popLeft = (winWidth - popWidth - 20);
-                    // console.log('戳到边边了 left %d, win %d, popw %d', popLeft, winWidth, popWidth);
-                }
-                if (popPosition === 'top') $popover.addClass('am-popover-bottom');
-                if (popPosition === 'bottom') $popover.addClass('am-popover-top');
-                diff = diff - popLeft;
-                $popCaret.css({left: (popWidth / 2 - popCaretSize + diff) + 'px'});
-
-            } else if (popPosition === 'middle') {
-                popLeft = triggerOffset.left - popWidth - popCaretSize;
-                $popover.addClass('am-popover-left');
-                if (popLeft < 5) {
-                    popLeft = triggerOffset.left + triggerWidth + popCaretSize;
-                    $popover.removeClass('am-popover-left').addClass('am-popover-right');
-                }
-
-                if (popLeft + popWidth > winWidth) {
-                    popLeft = winWidth - popWidth - 5;
-                    $popover.removeClass('am-popover-left').addClass('am-popover-right');
-                }
-                $popCaret.css({top: (popHeight / 2 - popCaretSize/2) + 'px'});
-            }
-
-            // Apply position style
-            $popover.css({top: popTop + 'px', left: popLeft + 'px'});
+            me.sizePopover();
         }
 
-        sizePopover();
-
-        $(window).on('resize', UI.utils.debounce(sizePopover, 50));
+        $(window).on('resize:popover:amui', UI.utils.debounce(sizePopover, 50));
 
         $element.on('open:popover:amui', function() {
-            $(window).on('resize', UI.utils.debounce(sizePopover, 50));
+            $(window).on('resize:popover:amui', UI.utils.debounce(sizePopover, 50));
         });
 
         $element.on('close:popover:amui', function() {
-            $(window).off('resize', sizePopover);
+            $(window).off('resize:popover:amui', sizePopover);
         });
 
         this.options.open && this.open();
+    };
+
+    Popover.prototype.sizePopover = function sizePopover() {
+        var $element = this.$element,
+            $popover = this.$popover;
+
+        if (!$popover || !$popover.length) return;
+
+        var popSize = $popover.getSize(),
+            popWidth = $popover.width() || popSize.width,
+            popHeight = $popover.height() || popSize.height,
+            $popCaret = $popover.find('.am-popover-caret'),
+            popCaretSize = ($popCaret.width() / 2) || 10,
+            popTotalHeight = popHeight + popCaretSize;
+
+        var triggerWidth = $element.outerWidth(),
+            triggerHeight = $element.outerHeight(),
+            triggerOffset = $element.offset(),
+            triggerRect = $element[0].getBoundingClientRect();
+
+        var winHeight = $w.height(),
+            winWidth = $w.width();
+
+        var popTop = 0,
+            popLeft = 0,
+            diff = 0,
+            spacing = 3,
+            popPosition = 'top';
+
+        $popover.css({left: '', top: ''})
+            .removeClass('am-popover-left am-popover-right am-popover-top am-popover-bottom');
+
+        $popCaret.css({left: '', top: ''});
+
+        if (popTotalHeight - spacing < triggerRect.top + spacing) { // on Top
+            popTop = triggerOffset.top - popTotalHeight - spacing;
+        } else if (popTotalHeight < winHeight - triggerRect.top - triggerRect.height) {
+            // On bottom
+            popPosition = 'bottom';
+            popTop = triggerOffset.top + triggerHeight + popCaretSize + spacing;
+        } else { // On middle
+            popPosition = 'middle';
+            popTop = triggerHeight / 2 + triggerOffset.top - popHeight / 2;
+        }
+
+
+        // Horizontal Position
+
+        if (popPosition === 'top' || popPosition === 'bottom') {
+            popLeft = triggerWidth / 2 + triggerOffset.left - popWidth / 2;
+
+            diff = popLeft;
+
+            if (popLeft < 5) popLeft = 5;
+            if (popLeft + popWidth > winWidth) {
+                popLeft = (winWidth - popWidth - 20);
+                // console.log('戳到边边了 left %d, win %d, popw %d', popLeft, winWidth, popWidth);
+            }
+            if (popPosition === 'top') $popover.addClass('am-popover-bottom');
+            if (popPosition === 'bottom') $popover.addClass('am-popover-top');
+            diff = diff - popLeft;
+            $popCaret.css({left: (popWidth / 2 - popCaretSize + diff) + 'px'});
+
+        } else if (popPosition === 'middle') {
+            popLeft = triggerOffset.left - popWidth - popCaretSize;
+            $popover.addClass('am-popover-left');
+            if (popLeft < 5) {
+                popLeft = triggerOffset.left + triggerWidth + popCaretSize;
+                $popover.removeClass('am-popover-left').addClass('am-popover-right');
+            }
+
+            if (popLeft + popWidth > winWidth) {
+                popLeft = winWidth - popWidth - 5;
+                $popover.removeClass('am-popover-left').addClass('am-popover-right');
+            }
+            $popCaret.css({top: (popHeight / 2 - popCaretSize/2) + 'px'});
+        }
+
+        // Apply position style
+        $popover.css({top: popTop + 'px', left: popLeft + 'px'});
     };
 
     Popover.prototype.toggle = function() {
@@ -140,6 +150,7 @@ define(function(require, exports, module) {
     Popover.prototype.open = function() {
         var $popover = this.$popover;
         this.$element.trigger('open:popover:amui');
+        this.sizePopover();
         $popover.show().addClass('am-active');
         this.active = true;
     };
@@ -156,18 +167,8 @@ define(function(require, exports, module) {
         this.active = false;
     };
 
-    Popover.prototype.getUID = function () {
-        var ns = 'am-popover-';
-
-        do {
-            ns += parseInt(Math.random() * 1000000);
-        } while (document.getElementById(ns));
-
-        return ns;
-    };
-
     Popover.prototype.getPopover = function () {
-        var uid = this.getUID();
+        var uid = UI.utils.generateGUID('am-popover');
         return $(this.options.tpl, {
             id: uid
         });

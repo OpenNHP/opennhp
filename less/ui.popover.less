@@ -1,9 +1,27 @@
-// ========================================================================
-// Modals - Popover
+// Name:            Popover
+// Description:     Define style for Popover Plugin
+//
+// Component:       `am-popover`
+//
+// Sub-objects:     `am-popover-inner`
+//                  `am-popover-caret`
+//                  `am-tab-panel`
+//
+// Modifiers:       `am-popover-top`
+//                  `am-popover-bottom`
+//                  `am-popover-left`
+//                  `am-popover-right`
+//
+// States:          `am-active`
+//
+// Uses:            Nav
+//                  Animation
+//
 // ========================================================================
 
-@popover-bg: #fff;
-@popover-border: #ddd;
+@popover-bg: @gray-dark;
+@popover-border: @popover-bg;
+@popover-color: @white;
 @popover-border-radius: @global-border-radius;
 @popover-duration: 300ms;
 
@@ -12,17 +30,18 @@
   //width: 240px;
   margin: 0;
   top: 0;
-  opacity: 0;
   left: 0;
   border-radius: @popover-border-radius;
   background: @popover-bg;
+  color: @popover-color;
   border: 1px solid @popover-border;
   display: none;
   z-index: 1900;
-  .box-shadow(0 0 3px rgba(0, 0, 0, 0.15));
+  opacity: 0;
   .transform(none);
   .transition(@popover-duration);
   .transition-property(opacity);
+
   &.am-active {
     display: block !important;
     opacity: 1;
@@ -42,29 +61,29 @@
   left: 5px;
   top: 0;
   z-index: 100;
-  .caret-up(10px, @popover-border);
+  .caret-up(8px, @popover-bg);
   overflow: hidden;
 
   .am-popover-top & {
-    top: -10px;
+    top: -8px;
   }
 
   .am-popover-bottom & {
     top: auto;
-    bottom: -11px;
+    bottom: -8px;
     .rotate(180deg);
   }
 
   .am-popover-left & {
     top: auto;
     left: auto;
-    right: -13px;
+    right: -12px;
     .rotate(90deg);
   }
 
   .am-popover-right & {
     right: auto;
-    left: -13px;
+    left: -12px;
     .rotate(-90deg);
   }
 }

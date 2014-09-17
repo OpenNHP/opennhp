@@ -16,6 +16,7 @@ __Sticky__：
 __Popover__：
 
 - `IMPROVED` 每次打开时重新计算弹出层的位置，减少位置偏移问题；
+- `IMPROVED` 增加 `focus` 触发；
 - `IMPROVED` 样式调整。
 
 __Progress__：

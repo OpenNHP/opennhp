@@ -37,9 +37,9 @@
 <a class="am-badge am-badge-danger">Danger</a>
 ```
 
-## 小圆角
+## 圆角样式
 
-添加 `.am-radius` class。
+在默认样式的基础上添加 `.am-radius` class。
 
 `````html
 <span class="am-badge am-radius">1</span>
@@ -73,7 +73,9 @@
 <a class="am-badge am-badge-danger am-radius">Danger</a>
 ```
 
-## 直角
+## 直角样式
+
+在默认样式的基础上添加 `.am-square` class。
 
 `````html
 <span class="am-badge am-square">1</span>

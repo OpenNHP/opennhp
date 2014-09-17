@@ -42,6 +42,14 @@
       cursor: pointer;
     }
   }
+
+  &.am-radius {
+    border-radius: 2px;
+  }
+
+  &.am-square {
+    border-radius: 0;
+  }
 }
 
 
@@ -52,6 +60,11 @@
 .am-badge-primary {
   background-color: @badge-primary-bg;
   .hook-badge-primary;
+}
+
+.am-badge-secondary {
+  background-color: @badge-secondary-bg;
+  .hook-badge-secondary;
 }
 
 .am-badge-success {
@@ -68,12 +81,6 @@
   background-color: @badge-danger-bg;
   .hook-badge-danger;
 }
-
-.am-badge-secondary {
-  background-color: @badge-secondary-bg;
-  .hook-badge-secondary;
-}
-
 
 
 // Hooks

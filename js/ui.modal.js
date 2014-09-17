@@ -66,7 +66,7 @@ define(function(require, exports, module) {
         $element.show();
 
         !isPopup && $element.redraw()
-            .css({marginTop: -$element.height() / 2 + 'px'})
+            .css({marginTop: -$element.height() / 2 + 'px'});
 
         $element.removeClass('am-modal-out').addClass('am-modal-active');
 
@@ -104,7 +104,9 @@ define(function(require, exports, module) {
 
         if (!supportTransition) return complete.call(this);
 
-        $element.one(supportTransition.end, $.proxy(complete, this));
+        $element
+            .one(supportTransition.end, $.proxy(complete, this))
+            .emulateTransitionEnd(300);
 
         // hide dimmer when all modal is closed
         if (!$body.find(Modal.DEFAULTS.selector.active).length) {

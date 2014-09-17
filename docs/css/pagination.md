@@ -47,6 +47,64 @@
 </ul>
 ```
 
+## 对齐方式
+
+默认为左对齐。
+
+### 居中对齐
+
+在默认样式的基础上添加 `.am-pagination-centered` class。
+
+`````html
+<ul class="am-pagination am-pagination-centered">
+  <li class="am-disabled"><a href="#">&laquo;</a></li>
+  <li class="am-active"><a href="#">1</a></li>
+  <li><a href="#">2</a></li>
+  <li><a href="#">3</a></li>
+  <li><a href="#">4</a></li>
+  <li><a href="#">5</a></li>
+  <li><a href="#">&raquo;</a></li>
+</ul>
+`````
+```html
+<ul class="am-pagination am-pagination-centered">
+  <li class="am-disabled"><a href="#">&laquo;</a></li>
+  <li class="am-active"><a href="#">1</a></li>
+  <li><a href="#">2</a></li>
+  <li><a href="#">3</a></li>
+  <li><a href="#">4</a></li>
+  <li><a href="#">5</a></li>
+  <li><a href="#">&raquo;</a></li>
+</ul>
+```
+
+### 右对齐
+
+在默认样式的基础上添加 `.am-pagination-right` class。
+
+`````html
+<ul class="am-pagination am-pagination-right">
+  <li class="am-disabled"><a href="#">&laquo;</a></li>
+  <li class="am-active"><a href="#">1</a></li>
+  <li><a href="#">2</a></li>
+  <li><a href="#">3</a></li>
+  <li><a href="#">4</a></li>
+  <li><a href="#">5</a></li>
+  <li><a href="#">&raquo;</a></li>
+</ul>
+`````
+```html
+<ul class="am-pagination am-pagination-left">
+  <li class="am-disabled"><a href="#">&laquo;</a></li>
+  <li class="am-active"><a href="#">1</a></li>
+  <li><a href="#">2</a></li>
+  <li><a href="#">3</a></li>
+  <li><a href="#">4</a></li>
+  <li><a href="#">5</a></li>
+  <li><a href="#">&raquo;</a></li>
+</ul>
+```
+
 ## 左右分布
 
 添加 `.am-pagination-prev` 及 `.am-pagination-next` 到 `<li>`，创建一个仅包含 `上一页` 和 `下一页` 的分页组件。

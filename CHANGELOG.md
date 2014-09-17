@@ -3,7 +3,23 @@
 
 ## 2014.09 W3
 
+### CSS
+
+__Badge__：
+
+- `NEW` 增加圆角和直角样式。
+
+__Pagination__：
+
+- `NEW` 增加居中、右对齐样式。
+
 ### JS 插件
+
+__Smooth Scroll__:
+
+- `IMPROVED` #35 兼容性增强；
+- `NEW` 增加 `speed` 选项。
+
 
 __Sticky__：
 
@@ -22,6 +38,17 @@ __Popover__：
 __Progress__：
 
 - `CHANGED` 样式主色调整为绿色。
+
+### Web 组件
+
+__Gotop__：
+
+- `IMPROVED` #6 兼容 Firefox；
+- `NEW` `fixed` 主题根据滚动条位置自动显隐。
+
+__Tabs__：
+
+- `IMPROVED` #72 使用 `flexbox` 实现均分，提高微信 webview 兼容性。
 
 
 ## 2014.09 W2

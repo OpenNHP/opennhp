@@ -107,6 +107,12 @@ gulp
 
 欢迎大家加入捉虫队伍，同时大家也可以分享自己的开发的 Web 组件。Fork 本项目，然后提交 Pull Request 即可。
 
+如果你没有相关经验，建议先阅读下面的文章：
+
+- [Contributing to Open Source on GitHub](https://guides.github.com/activities/contributing-to-open-source/)
+- [The Beginner’s Guide to Contributing to Open Source Projects](http://blog.newrelic.com/2014/05/05/open-source_gettingstarted/)
+- [How to Start Contributing to Open Source](http://www.developer.com/open/how-to-start-contributing-to-open-source.html)
+
 __开发文档__
 
 开发文档存放在 `docs/rules` 目录下，也可以通过 [Amaze UI 官网](http://amazeui.org/)查看：

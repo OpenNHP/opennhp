@@ -183,7 +183,7 @@ define(function(require, exports, module) {
             triggers = this.options.trigger.split(' ');
 
         for (var i = triggers.length; i--;) {
-            var trigger = triggers[i]
+            var trigger = triggers[i];
 
             if (trigger === 'click') {
                 this.$element.on('click.' + eventNS, $.proxy(this.toggle, this))

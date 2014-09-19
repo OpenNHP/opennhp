@@ -1,11 +1,10 @@
 define(function(require, exports, module) {
 
-    'use strict';
-
     require('core');
 
     var $ = window.Zepto,
-        UI = $.AMUI;
+        UI = $.AMUI,
+        animation = UI.support.animation;
 
     /**
      * @via https://github.com/Minwe/bootstrap/blob/master/js/dropdown.js
@@ -16,89 +15,163 @@ define(function(require, exports, module) {
     var toggle = '[data-am-dropdown] > .am-dropdown-toggle';
 
     var Dropdown = function(element, options) {
-        $(element).on('click.dropdown.amui', this.toggle);
+        this.options = $.extend({}, Dropdown.DEFAULTS, options);
+
+        options = this.options;
+
+        this.$element = $(element);
+        this.$toggle = this.$element.find(options.selector.toggle);
+        this.$dropdown = this.$element.find(options.selector.dropdown);
+        this.$boundary = (options.boundary === window) ? $(window) : this.$element.closest(options.boundary);
+        this.$justify = (options.justify && $(options.justify).length && $(options.justify)) || undefined;
+
+        !this.$boundary.length && (this.$boundary = $(window));
+
+        this.active = this.$element.hasClass('am-active') ? true : false;
+        this.animating = null;
+
+        this.events();
     };
 
-    Dropdown.prototype.toggle = function(e) {
-        var $this = $(this);
+    Dropdown.DEFAULTS = {
+        animation: 'am-animation-slide-top-fixed',
+        boundary: window,
+        justify: undefined,
+        selector: {
+            dropdown: '.am-dropdown-content',
+            toggle: '.am-dropdown-toggle'
+        },
+        trigger: 'click'
+    };
 
-        if ($this.is('.am-disabled, :disabled')) {
-            return;
-        }
+    Dropdown.prototype.toggle = function() {
+        this.clear();
 
-        var $parent = $this.parent(),
-            isActive = $parent.hasClass('am-active');
+        if (this.animating) return;
 
-        clearDropdowns();
+        this[this.active ? 'close' : 'open']();
+    };
 
-        if (!isActive) {
+    Dropdown.prototype.open = function(e) {
+        console.log('open.....');
+        var $toggle = this.$toggle,
+            $element = this.$element,
+            $dropdown = this.$dropdown;
 
-            var relatedTarget = {
-                relatedTarget: this
-            };
+        if ($toggle.is('.am-disabled, :disabled')) return;
 
-            $parent.trigger(e = $.Event('open:dropdown:amui', relatedTarget));
+        if (this.active) return;
 
-            if (e.isDefaultPrevented()) {
-                return;
-            }
+        $element.trigger('open:dropdown:amui').addClass('am-active');
 
-            $this.trigger('focus');
+        $toggle.trigger('focus');
 
-            $parent
-                .toggleClass('am-active')
-                .trigger(e = $.Event('opened:dropdown:amui', relatedTarget));
+        this.checkDimensions();
+
+        var complete = $.proxy(function() {
+            $element.trigger('opened:dropdown:amui');
+            this.active = true;
+            this.animating = 0;
+        }, this);
+
+        if (animation) {
+            this.animating = 1;
+            $dropdown.addClass(this.options.animation).on(animation.end + '.open.dropdown.amui', $.proxy(function() {
+                complete();
+                $dropdown.removeClass(this.options.animation);
+            }, this));
         } else {
-            $this.blur();
-        }
-
-        return false
-    };
-
-    Dropdown.prototype.keydown = function(e) {
-
-        if (!/(38|40|27)/.test(e.keyCode)) return;
-
-        var $this = $(this);
-
-        e.preventDefault();
-        e.stopPropagation();
-
-        if ($this.is('.am-disabled, :disabled')) {
-            return;
-        }
-
-        var $parent = $this.parent(),
-            isActive = $parent.hasClass('am-active');
-
-        if (!isActive || (isActive && e.keyCode == 27)) {
-            if (e.which == 27) {
-                $parent.find(toggle).trigger('focus');
-            }
-            return $this.trigger('click')
+            complete();
         }
     };
 
-    function clearDropdowns(e) {
-        if (e && e.which === 3) return;
-        $(toggle).each(function() {
-            var $parent = $(this).parent(),
-                relatedTarget = {
-                    relatedTarget: this
-                };
+    Dropdown.prototype.close = function() {
+        if (!this.active) return;
 
-            if (!$parent.hasClass('am-active')) {
-                return;
-            }
+        var animationName = this.options.animation + ' am-animation-reverse',
+            $element = this.$element,
+            $dropdown = this.$dropdown;
 
-            $parent.trigger(e = $.Event('close:dropdown:amui', relatedTarget));
+        $element.trigger('close:dropdown:amui');
 
-            if (e.isDefaultPrevented()) return;
+        var complete = $.proxy(function complete() {
+            $element.removeClass('am-active').trigger('closed:dropdown:amui');
+            this.active = false;
+            this.animating = 0;
+            this.$toggle.blur();
+        }, this);
 
-            $parent.removeClass('am-active')
-                .trigger(e = $.Event('closed:dropdown:amui', relatedTarget));
+        if (animation) {
+            $dropdown.addClass(animationName);
+            this.animating = 1;
+            // animation
+            $dropdown.one(animation.end + '.close.dropdown.amui', function() {
+                complete();
+                $dropdown.removeClass(animationName);
+            });
+        } else {
+            complete();
+        }
+    };
+
+    Dropdown.prototype.checkDimensions = function() {
+        if (!this.$dropdown.length) return;
+
+        var $dropdown = this.$dropdown,
+            offset = $dropdown.offset(),
+            width = $dropdown.outerWidth(),
+            boundaryWidth = this.$boundary.width(),
+            boundaryOffset = $.isWindow(this.boundary) && this.$boundary.offset() ? this.$boundary.offset().left : 0;
+
+        if (this.$justify) {
+            $dropdown.css({'min-width': this.$justify.width()});
+        }
+
+        if ((width + (offset.left - boundaryOffset)) > boundaryWidth) {
+            this.$element.addClass('am-dropdown-flip');
+        }
+    };
+
+    Dropdown.prototype.clear = function() {
+        $('[data-am-dropdown]').not(this.$element).each(function() {
+            var data = $(this).data('amui.dropdown');
+            data && data['close']();
         });
-    }
+    };
+
+    Dropdown.prototype.events = function() {
+        var eventNS = 'dropdown.amui',
+            triggers = this.options.trigger.split(' '),
+            $toggle = this.$toggle;
+
+        $toggle.on('click.' + eventNS, $.proxy(this.toggle, this))
+
+        /*for (var i = triggers.length; i--;) {
+            var trigger = triggers[i];
+
+            if (trigger === 'click') {
+                $toggle.on('click.' + eventNS, $.proxy(this.toggle, this))
+            }
+
+            if (trigger === 'focus' || trigger === 'hover') {
+                var eventIn  = trigger == 'hover' ? 'mouseenter' : 'focusin';
+                var eventOut = trigger == 'hover' ? 'mouseleave' : 'focusout';
+
+                this.$element.on(eventIn + '.' + eventNS, $.proxy(this.open, this))
+                    .on(eventOut + '.' + eventNS, $.proxy(this.close, this));
+            }
+        }*/
+
+        $(document).on('keydown.dropdown.amui', $.proxy(function(e) {
+            e.keyCode === 27 && this.active && this.close();
+        }, this)).on('click.outer.dropdown.amui', $.proxy(function(e) {
+            var $target = $(e.target);
+
+            if (this.active && (this.$element[0] === e.target || !this.$element.find(e.target).length)) {
+                this.close();
+            }
+        }, this));
+    };
 
 
     UI.dropdown = Dropdown;
@@ -106,15 +179,16 @@ define(function(require, exports, module) {
     // Dropdown Plugin
     function Plugin(option) {
         return this.each(function() {
-            var $this = $(this);
-            var data = $this.data('amui.dropdown');
+            var $this = $(this),
+                data = $this.data('amui.dropdown'),
+                options = $.extend({}, UI.utils.parseOptions($this.attr('data-am-dropdown')), typeof option == 'object' && option);
 
             if (!data) {
-                $this.data('amui.dropdown', (data = new Dropdown(this)));
+                $this.data('amui.dropdown', (data = new Dropdown(this, options)));
             }
 
             if (typeof option == 'string') {
-                data[option].call($this);
+                data[option]();
             }
         });
     }
@@ -125,13 +199,15 @@ define(function(require, exports, module) {
 
     // Init code
 
-    $(document)
-        .on('click.dropdown.amui', '.am-dropdown form', function(e) {
+    $(function() {
+        $('[data-am-dropdown]').dropdown();
+    });
+
+    $(document).on('click.dropdown.amui', '.am-dropdown form', function(e) {
             e.stopPropagation()
-        })
-        .on('click.dropdown.amui', toggle, Dropdown.prototype.toggle)
-        .on('keydown.dropdown.amui', toggle, Dropdown.prototype.keydown);
+        });
 });
 
 // TODO: 1. 处理链接 focus
 //       2. 增加 mouseenter / mouseleave 选项
+//       3. 宽度适应

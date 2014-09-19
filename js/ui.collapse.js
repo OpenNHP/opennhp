@@ -72,7 +72,7 @@ define(function(require, exports, module) {
 
         this.$element
             .one(UI.support.transition.end, $.proxy(complete, this))
-            .emulateTransitionEnd(350).height(this.$element[0].scrollHeight);
+            .emulateTransitionEnd(300).height(this.$element[0].scrollHeight);
     };
 
     Collapse.prototype.close = function () {

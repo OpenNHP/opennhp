@@ -648,9 +648,7 @@
 // angle
 // ========================================================================
 
-.am-angle {
-  position: absolute;
-
+.angle-base() {
   &:before,
   &:after {
     position: absolute;
@@ -663,9 +661,12 @@
   }
 }
 
-.angle-up-variant(@border-color: #ddd; @bg-color: #fff; @border-width: 8px) {
-  top: 0;
+.am-angle {
+  position: absolute;
+  .angle-base;
+}
 
+.angle-up-variant(@border-color: #ddd; @bg-color: #fff; @border-width: 8px) {
   &:before,
   &:after {
     border-bottom-style: solid;
@@ -684,6 +685,7 @@
 }
 
 .am-angle-up {
+  top: 0;
   .angle-up-variant();
 }
 

@@ -251,6 +251,11 @@ Amaze UI CSS class 命名遵循关注分离、松耦合的原则，同时注重�
 
 - [Decoupling HTML From CSS](http://coding.smashingmagazine.com/2012/04/20/decoupling-html-from-css/)
 
+### “多类症”（Classitis）
+
+当 HTML 源代码满眼望去都是 class 时，是不是很抓狂？
+
+不过为了实现代码复用，减少重复冗余，难免要把代码拆分在不同的 class 下面。我们只能寻找一个平衡点，避免过细的拆分，较少不必要的 class。
 
 ### 选择符书写
 
@@ -267,7 +272,6 @@ Amaze UI CSS class 命名遵循关注分离、松耦合的原则，同时注重�
 看看上面来自 [Semantic UI](http://semantic-ui.com/) 的选择符，威武霸气吧，整行都是选择符，class 加 class，n 层嵌套，我只想呵呵...
 
 __选择符嵌套在必要的情况下一般不超过三层；选择符叠加一般不多于两个__。
-
 
 ## 一点禁忌
 

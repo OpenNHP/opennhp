@@ -134,7 +134,7 @@
 
 // Controls
 // @global-height:									  30px;
-// @global-mini-height:							20px;
+// @global-mini-height:							  20px;
 // @global-small-height:							25px;
 // @global-large-height:							40px;
 
@@ -233,7 +233,7 @@
 
 @z-index-dimmer:            @global-z-index + 20;
 
-
+@z-index-topbar-fixed:      @global-z-index + 1000;
 
 // ========================================================================
 // Component Common
@@ -1123,22 +1123,22 @@
 
 @topbar-spacing-vertical:          8px;
 
-@topbar-default-color:             #666;
-@topbar-default-bg:                #f8f8f8;
-@topbar-default-border:            #ddd;
+@topbar-color:             #666;
+@topbar-bg:                #f8f8f8;
+@topbar-border:            #ddd;
 
 // default links
-@topbar-default-link-color:                #666;
-@topbar-default-link-hover-color:          #333;
-@topbar-default-link-active-color:         @global-primary;
-@topbar-default-link-active-bg:            transparent;
-@topbar-default-link-disabled-color:       #ccc;
-@topbar-default-link-disabled-bg:          transparent;
+@topbar-link-color:                #666;
+@topbar-link-hover-color:          #333;
+@topbar-link-active-color:         @global-primary;
+@topbar-link-active-bg:            transparent;
+@topbar-link-disabled-color:       #ccc;
+@topbar-link-disabled-bg:          transparent;
 
 // brand label
-@topbar-default-brand-color:               @topbar-default-link-color;
-@topbar-default-brand-hover-color:         darken(@topbar-default-brand-color, 10%);
-@topbar-default-brand-hover-bg:            transparent;
+@topbar-brand-color:               @topbar-link-color;
+@topbar-brand-hover-color:         darken(@topbar-brand-color, 10%);
+@topbar-brand-hover-bg:            transparent;
 
 
 // Inverted Topbar
@@ -1160,6 +1160,9 @@
 @topbar-inverse-brand-color:               @white;
 @topbar-inverse-brand-hover-color:         @white;
 @topbar-inverse-brand-hover-bg:            transparent;
+
+// fixed z-index
+@topbar-z-index: @global-z-index + 10000;
 
 
 

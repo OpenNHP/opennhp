@@ -341,12 +341,18 @@ define(function(require, exports, module) {
     }
 
     $(function() {
+        var $body = $('body');
+
         // trigger domready event
         $(document).trigger('domready:amui');
 
         $html.removeClass('no-js').addClass('js');
 
         UI.support.animation && $html.addClass('cssanimations');
+
+        $('.am-topbar-fixed-top').length && $body.addClass('am-with-topbar-fixed-top');
+
+        $('.am-topbar-fixed-bottom').length && $body.addClass('am-with-topbar-fixed-bottom');
 
         // Remove responsive classes in .am-layout
         var $layout = $('.am-layout');

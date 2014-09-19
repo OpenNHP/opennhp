@@ -20,7 +20,7 @@ define(function(require, exports, module) {
         this.options = $.extend({}, Alert.DEFAULTS, options);
         this.$element = $(element);
 
-        this.$element.addClass('am-fade am-in').on('click', '.am-close', $.proxy(this.close, this));
+        this.$element.addClass('am-fade am-in').on('click.alert.amui', '.am-close', $.proxy(this.close, this));
     };
 
     Alert.DEFAULTS = {
@@ -69,8 +69,7 @@ define(function(require, exports, module) {
     $(document).on('click.alert.amui', '[data-am-alert]', function(e){
         var $target = $(e.target);
         $(this).addClass('am-fade am-in');
-        // $target.is('.am-close') && 
-        $(this).alert('close');
+        $target.is('.am-close') && $(this).alert('close');
     });
 
     module.exports = Alert;

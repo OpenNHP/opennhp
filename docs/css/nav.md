@@ -10,15 +10,15 @@
 `````html
 <ul class="am-nav">
   <li class="am-active"><a href="#">首页</a></li>
-  <li><a href="#">云适配</a></li>
-  <li><a href="#">适配案例</a></li>
+  <li><a href="#">开始使用</a></li>
+  <li><a href="#">按需定制</a></li>
 </ul>
 `````
 ```html
 <ul class="am-nav">
   <li class="am-active"><a href="#">首页</a></li>
-  <li><a href="#">云适配</a></li>
-  <li><a href="#">适配案例</a></li>
+  <li><a href="#">开始使用</a></li>
+  <li><a href="#">按需定制</a></li>
 </ul>
 ```
 
@@ -29,15 +29,15 @@
 `````html
 <ul class="am-nav am-nav-pills">
   <li class="am-active"><a href="#">首页</a></li>
-  <li><a href="#">云适配</a></li>
-  <li><a href="#">适配案例</a></li>
+  <li><a href="#">开始使用</a></li>
+  <li><a href="#">按需定制</a></li>
 </ul>
 `````
 ```html
 <ul class="am-nav am-nav-pills">
   <li class="am-active"><a href="#">首页</a></li>
-  <li><a href="#">云适配</a></li>
-  <li><a href="#">适配案例</a></li>
+  <li><a href="#">开始使用</a></li>
+  <li><a href="#">按需定制</a></li>
 </ul>
 ```
 
@@ -48,15 +48,15 @@
 `````html
 <ul class="am-nav am-nav-tabs">
   <li class="am-active"><a href="#">首页</a></li>
-  <li><a href="#">云适配</a></li>
-  <li><a href="#">适配案例</a></li>
+  <li><a href="#">开始使用</a></li>
+  <li><a href="#">按需定制</a></li>
 </ul>
 `````
 ```html
 <ul class="am-nav am-nav-tabs">
   <li class="am-active"><a href="#">首页</a></li>
-  <li><a href="#">云适配</a></li>
-  <li><a href="#">适配案例</a></li>
+  <li><a href="#">开始使用</a></li>
+  <li><a href="#">按需定制</a></li>
 </ul>
 ```
 
@@ -69,14 +69,14 @@
 `````html
 <ul class="am-nav am-nav-pills am-nav-justify">
     <li class="am-active"><a href="#">首页</a></li>
-    <li><a href="#">云适配</a></li>
-    <li><a href="#">适配案例</a></li>
+    <li><a href="#">开始使用</a></li>
+    <li><a href="#">按需定制</a></li>
     <li><a href="#">加入我们</a></li>
 </ul>
 
 <ul class="am-nav am-nav-tabs am-nav-justify">
     <li class="am-active"><a href="#">首页</a></li>
-    <li><a href="#">云适配</a></li>
+    <li><a href="#">开始使用</a></li>
     <li><a href="#">加入我们</a></li>
 </ul>
 `````
@@ -84,14 +84,14 @@
 ```html
 <ul class="am-nav am-nav-pills am-nav-justify">
   <li class="am-active"><a href="#">首页</a></li>
-  <li><a href="#">云适配</a></li>
-  <li><a href="#">适配案例</a></li>
+  <li><a href="#">开始使用</a></li>
+  <li><a href="#">按需定制</a></li>
   <li><a href="#">加入我们</a></li>
 </ul>
 
 <ul class="am-nav am-nav-tabs am-nav-justify">
   <li class="am-active"><a href="#">首页</a></li>
-  <li><a href="#">云适配</a></li>
+  <li><a href="#">开始使用</a></li>
   <li><a href="#">加入我们</a></li>
 </ul>
 ```
@@ -130,24 +130,24 @@
 `````html
 <ul class="am-nav">
   <li><a href="#"><span class="am-icon-home"></span>首页</a></li>
-  <li class="am-nav-header">云适配</li>
+  <li class="am-nav-header">开始使用</li>
   <li><a href="#">关于我们</a></li>
   <li><a href="#">联系我们</a></li>
   <li class="am-nav-divider"></li>
-  <li><a href="#">网站适配</a></li>
-  <li><a href="#">图片压缩</a></li>
+  <li><a href="#">响应式</a></li>
+  <li><a href="#">移动优先</a></li>
 </ul>
 `````
 
 ```html
 <ul class="am-nav">
   <li><a href="#">首页</a></li>
-  <li class="am-nav-header">云适配</li>
+  <li class="am-nav-header">开始使用</li>
   <li><a href="#">关于我们</a></li>
   <li><a href="#">联系我们</a></li>
   <li class="am-nav-divider"></li>
-  <li><a href="#">网站适配</a></li>
-  <li><a href="#">图片压缩</a></li>
+  <li><a href="#">响应式</a></li>
+  <li><a href="#">移动优先</a></li>
 </ul>
 ```
 

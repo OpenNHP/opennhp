@@ -193,17 +193,25 @@
   $(function() {
     var $dropdown = $('#doc-dropdown-js'),
         data = $dropdown.data('amui.dropdown');
+
+    function scrollToDropdown() {
+      $(window).smoothScroll({position: $dropdown.offset().top});
+    }
+
     $('#doc-dropdown-toggle').on('click', function(e) {
+      scrollToDropdown();
       $dropdown.dropdown('toggle');
       return false;
     });
 
     $('#doc-dropdown-open').on('click', function(e) {
+      scrollToDropdown();
       data.active ? alert('已经打开了，施主又何必再纠缠呢！') : $dropdown.dropdown('open');
       return false;
     });
 
     $('#doc-dropdown-close').on('click', function(e) {
+      scrollToDropdown();
       data.active ? $dropdown.dropdown('close') : alert('没有开哪有关，没有失哪有得！');
       return false;
     });

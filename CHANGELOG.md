@@ -38,6 +38,10 @@ __Sticky__：
 - `NEW` 增加 `media` 选项，可以设置 Media Query；
 - `NEW` 增加 `bottom` 选项。
 
+__ScrollSpyNav__:
+
+- `FIXED` 链接点击失效问题。
+
 __Popover__：
 
 - `IMPROVED` 每次打开时重新计算弹出层的位置，减少位置偏移问题；

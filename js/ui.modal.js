@@ -189,4 +189,5 @@ define(function(require, exports, module) {
     module.exports = Modal;
 });
 
-// TODO: parse tpl?
+// TODO: 1. parse tpl?
+//       2. firefox transitionend 关闭时没有动效 参考： http://getuikit.com/docs/modal.html

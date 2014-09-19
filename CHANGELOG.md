@@ -13,13 +13,22 @@ __Pagination__：
 
 - `NEW` 增加居中、右对齐样式。
 
+__Topbar__：
+
+- `NEW` 增加顶部/底部固定样式。
+
 ### JS 插件
+
+__Dropdown__:
+
+- `IMPROVED` #78 增加上拉效果，调整尖角样式；
+- `NEW` #77 增加 `boundary` 选项，判断边界；
+- `NEW` 增加 `justify` 选项，可以设置下拉内容宽度参照对象。
 
 __Smooth Scroll__:
 
 - `IMPROVED` #35 兼容性增强；
 - `NEW` 增加 `speed` 选项。
-
 
 __Sticky__：
 
@@ -45,6 +54,10 @@ __Gotop__：
 
 - `IMPROVED` #6 兼容 Firefox；
 - `NEW` `fixed` 主题根据滚动条位置自动显隐。
+
+__Menu__：
+
+- `IMPROVED` #73 调整触发按钮高度。
 
 __Tabs__：
 

@@ -53,7 +53,6 @@ define(function(require, exports, module) {
     };
 
     Dropdown.prototype.open = function(e) {
-        console.log('open.....');
         var $toggle = this.$toggle,
             $element = this.$element,
             $dropdown = this.$dropdown;

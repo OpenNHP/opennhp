@@ -32,15 +32,17 @@
   //padding: 0 10px;
   min-height: @topbar-height;
   margin-bottom: @topbar-margin-bottom;
-  background: @topbar-default-bg;
-  border-bottom: 1px solid @topbar-default-border;
+  background: @topbar-bg;
+  border-width: 0 0 1px;
+  border-style: solid;
+  border-color: @topbar-border;
 
   .clearfix();
 
-  color: @topbar-default-color;
+  color: @topbar-color;
 
   a {
-    color: @topbar-default-link-color;
+    color: @topbar-link-color;
   }
 }
 
@@ -53,7 +55,7 @@
 
   a {
     &:hover {
-      color: @topbar-default-brand-hover-color;
+      color: @topbar-brand-hover-color;
     }
   }
 }
@@ -148,11 +150,11 @@
           margin-left: -6px;
           bottom: 0;
           content: "";
-          .caret-up(6px, @topbar-default-bg);
+          .caret-up(6px, @topbar-bg);
         }
 
         &:hover:after {
-          border-bottom-color: @topbar-default-color;
+          border-bottom-color: @topbar-color;
         }
       }
 
@@ -170,12 +172,12 @@
           &:hover,
           &:focus {
             border-radius: 0;
-            color: @topbar-default-link-active-color;
+            color: @topbar-link-active-color;
             background: none;
           }
 
           &:after {
-            border-bottom-color: @topbar-default-link-active-color;
+            border-bottom-color: @topbar-link-active-color;
           }
         }
       }
@@ -191,11 +193,8 @@
    @media @small-only {
      .am-dropdown-content {
        float: none;
-       position: static;
+       position: relative;
        width: 100%;
-       &:before {
-         display: none;
-       }
      }
 
      .am-icon-caret-down {
@@ -261,7 +260,7 @@
 
 .am-topbar-inverse {
   background-color: @topbar-inverse-bg;
-  border-bottom-color: @topbar-inverse-border;
+  border-color: @topbar-inverse-border;
   color: @topbar-inverse-color;
 
   a {
@@ -320,6 +319,61 @@
           color: @topbar-inverse-link-disabled-color;
           background-color: @topbar-inverse-link-disabled-bg;
         }
+      }
+    }
+  }
+}
+
+
+// Fixed modifier
+// ------------------------------------------------------------------------
+
+.am-topbar-fixed-top,
+.am-topbar-fixed-bottom {
+  position: fixed;
+  right: 0;
+  left: 0;
+  z-index: @z-index-topbar-fixed;
+  .translate3d(0, 0, 0);
+}
+
+.am-topbar-fixed-top {
+  top: 0;
+}
+
+.am-topbar-fixed-bottom {
+  bottom: 0;
+  margin-bottom: 0;
+  border-width: 1px 0 0;
+}
+
+.am-with-topbar-fixed-top {
+  padding-top: @topbar-height + 1;
+}
+
+.am-with-topbar-fixed-bottom {
+  padding-bottom: @topbar-height + 1;
+}
+
+@media @small-only {
+  .am-topbar-fixed-bottom {
+    .am-topbar-collapse {
+      position: absolute;
+      bottom: 100%;
+      margin-bottom: 1px;
+      background-color: @topbar-bg;
+
+      .am-dropdown-content {
+        &:before,
+        &:after {
+          display: none;
+        }
+      }
+    }
+
+    &.am-topbar-inverse {
+      .am-topbar-collapse {
+        background-color: @topbar-inverse-bg;
       }
     }
   }

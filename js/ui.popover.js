@@ -35,7 +35,7 @@ define(function(require, exports, module) {
             $element = this.$element,
             $popover;
 
-        if(!this.options.target) {
+        if (!this.options.target) {
             this.$popover = this.getPopover();
             this.setContent();
         }
@@ -136,7 +136,7 @@ define(function(require, exports, module) {
                 popLeft = winWidth - popWidth - 5;
                 $popover.removeClass('am-popover-left').addClass('am-popover-right');
             }
-            $popCaret.css({top: (popHeight / 2 - popCaretSize/2) + 'px'});
+            $popCaret.css({top: (popHeight / 2 - popCaretSize / 2) + 'px'});
         }
 
         // Apply position style
@@ -167,7 +167,7 @@ define(function(require, exports, module) {
         this.active = false;
     };
 
-    Popover.prototype.getPopover = function () {
+    Popover.prototype.getPopover = function() {
         var uid = UI.utils.generateGUID('am-popover');
         return $(this.options.tpl, {
             id: uid
@@ -179,42 +179,52 @@ define(function(require, exports, module) {
     };
 
     Popover.prototype.events = function() {
-        var trigger = this.options.trigger,
-            eventNS = 'popover.amui';
+        var eventNS = 'popover.amui',
+            triggers = this.options.trigger.split(' ');
 
-        if (trigger === 'click') {
-            this.$element.on('click.' + eventNS, $.proxy(this.toggle, this))
-        } else if (trigger === 'hover') {
-            this.$element.on('mouseenter.' + eventNS, $.proxy(this.open, this));
-            this.$element.on('mouseleave.' + eventNS, $.proxy(this.close, this));
+        for (var i = triggers.length; i--;) {
+            var trigger = triggers[i]
+
+            if (trigger === 'click') {
+                this.$element.on('click.' + eventNS, $.proxy(this.toggle, this))
+            } else { // hover or focus
+                var eventIn  = trigger == 'hover' ? 'mouseenter' : 'focusin';
+                var eventOut = trigger == 'hover' ? 'mouseleave' : 'focusout';
+
+                this.$element.on(eventIn + '.' + eventNS, $.proxy(this.open, this));
+                this.$element.on(eventOut + '.' + eventNS, $.proxy(this.close, this));
+            }
         }
     };
 
-    UI.popover = Popover;
 
-    function Plugin(option) {
-        return this.each(function() {
-            var $this = $(this),
-                data = $this.data('am.popover'),
-                options = $.extend({}, UI.utils.parseOptions($this.attr('data-am-popover')), typeof option == 'object' && option);
+        UI.popover = Popover;
 
-            if (!data) {
-                $this.data('am.popover', (data = new Popover(this, options)));
-            }
+        function Plugin(option) {
+            return this.each(function() {
+                var $this = $(this),
+                    data = $this.data('am.popover'),
+                    options = $.extend({}, UI.utils.parseOptions($this.attr('data-am-popover')), typeof option == 'object' && option);
 
-            if (typeof option == 'string') {
-                data[option]();
-            }
+                if (!data) {
+                    $this.data('am.popover', (data = new Popover(this, options)));
+                }
+
+                if (typeof option == 'string') {
+                    data[option]();
+                }
+            });
+        }
+
+        $.fn.popover = Plugin;
+
+
+        // Init code
+        $(function() {
+            $('[data-am-popover]').popover();
         });
+
+        module.exports = Popover;
     }
-
-    $.fn.popover = Plugin;
-
-
-    // Init code
-    $(function() {
-        $('[data-am-popover]').popover();
-    });
-
-    module.exports = Popover;
-});
+    )
+    ;

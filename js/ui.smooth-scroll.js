@@ -10,22 +10,24 @@ define(function(require, exports, module) {
      * @via http://mir.aculo.us/2014/01/19/scrolling-dom-elements-to-the-top-a-zepto-plugin/
      */
 
-    // Usage: $(element).smoothScroll([position])
+    // Usage: $(window).smoothScroll([options])
 
     // only allow one scroll to top operation to be in progress at a time,
     // which is probably what you want
     var smoothScrollInProgress = false;
 
-    $.fn.smoothScroll = function(position) {
+    $.fn.smoothScroll = function(options) {
+        options = options || {};
+
         var $this = this,
-            targetY = position || 0,
+            targetY = parseInt(options.position) || 0,
             initialY = $this.scrollTop(),
             lastY = initialY,
             delta = targetY - initialY,
         // duration in ms, make it a bit shorter for short distances
         // this is not scientific and you might want to adjust this for
         // your preferences
-            speed = Math.min(750, Math.min(1500, Math.abs(initialY - targetY))),
+            speed = options.speed || Math.min(750, Math.min(1500, Math.abs(initialY - targetY))),
         // temp variables (t will be a position between 0 and 1, y is the calculated scrollTop)
             start, t, y,
             cancelScroll = function() {
@@ -83,9 +85,8 @@ define(function(require, exports, module) {
 
     $(document).on('click.smoothScroll.amui', '[data-am-smooth-scroll]', function(e) {
         e.preventDefault();
-        var $this = $(this),
-            ssTo = Number($this.attr('data-am-smooth-scroll'));
+        var options = UI.utils.parseOptions($(this).attr('data-am-smooth-scroll'));
 
-        $(window).smoothScroll(isNaN(ssTo) ? 0 : ssTo);
+        $(window).smoothScroll(options);
     });
 });

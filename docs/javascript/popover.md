@@ -3,9 +3,11 @@
 
 气泡式弹出层组件，本组件无需创建 HTML 结构。
 
+插件根据元素在窗口中的位置自动判断弹出层显示位置，目前没有设置位置的选项。
+
 ## 使用演示
 
-### 点击弹出
+### 点击显示
 
 `````html
   <button class="am-btn am-btn-primary" data-am-popover="{content: '鄙是点击显示的 Popover'}">点击显示 Popover</button>
@@ -14,16 +16,16 @@
 <button class="am-btn am-btn-primary" data-am-popover="{content: '鄙是点击显示的 Popover'}">点击显示 Popover</button>
 ```
 
-### Hover 显示
+### Hover/Focus 显示
 
 Tooltip 效果。
 
 `````html
-<button class="am-btn am-btn-success" data-am-popover="{content: '鄙是点击 Hover 显示的 Popover', trigger: 'hover'}">Hover 显示 Popover</button>
+<button class="am-btn am-btn-success" data-am-popover="{content: '鄙是 Hover/Focus 显示的 Popover', trigger: 'hover focus'}">Hover/Focus 显示 Popover</button>
 `````
 ```html
 <button class="am-btn am-btn-success"
-        data-am-popover="{content: '鄙是点击 Hover 显示的 Popover', trigger: 'hover'}">
+        data-am-popover="{content: '鄙是点击 Hover 显示的 Popover', trigger: 'hover focus'}">
   Hover 显示 Popover
 </button>
 ```
@@ -83,7 +85,7 @@ $(function() {
   <tr>
     <td><code>trigger</code></td>
     <td><code>string</code></td>
-    <td>交互方式，<code>click|hover</code>，默认为 <code>click</code></td>
+    <td>交互方式，<code>click|hover|focus</code>，默认为 <code>click</code></td>
   </tr>
   </tbody>
 </table>

@@ -1,8 +1,7 @@
 define(function(require, exports, module) {
 
-    'use strict';
-
     require('core');
+    require('ui.smooth-scroll');
 
     var $ = window.Zepto,
         UI = $.AMUI;
@@ -33,7 +32,7 @@ define(function(require, exports, module) {
         this.$window = $(window).on('scroll.scrollspynav.amui', processRAF)
             .on('resize.scrollspynav.amui orientationchange.scrollspynav.amui', UI.utils.debounce(processRAF, 50));
 
-       processRAF();
+        processRAF();
         this.scrollProcess();
     };
 
@@ -91,18 +90,15 @@ define(function(require, exports, module) {
         // smoothScroll
 
         if (this.options.smooth) {
-            require.async(['ui.smooth-scroll'], function() {
-                $links.on('click', function(e) {
-                    e.preventDefault();
+            $links.on('click', function(e) {
+                e.preventDefault();
 
-                    var $this = $(this),
-                        target = $this.attr('href'),
-                        position = $this.data('am.smoothScroll');
+                var $this = $(this),
+                    $target = $($this.attr('href'));
 
-                    !position && $this.data('am.smoothScroll', (position = $(target).offset().top));
+                if (!$target) return;
 
-                    $(window).smoothScroll(position);
-                });
+                $(window).smoothScroll({position: $target.offset().top});
             });
         }
     };

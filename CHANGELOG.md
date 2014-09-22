@@ -3,7 +3,32 @@
 
 ## 2014.09 W3
 
+### CSS
+
+__Badge__：
+
+- `NEW` 增加圆角和直角样式。
+
+__Pagination__：
+
+- `NEW` 增加居中、右对齐样式。
+
+__Topbar__：
+
+- `NEW` 增加顶部/底部固定样式。
+
 ### JS 插件
+
+__Dropdown__:
+
+- `IMPROVED` #78 增加上拉效果，调整尖角样式；
+- `NEW` #77 增加 `boundary` 选项，判断边界；
+- `NEW` 增加 `justify` 选项，可以设置下拉内容宽度参照对象。
+
+__Smooth Scroll__:
+
+- `IMPROVED` #35 兼容性增强；
+- `NEW` 增加 `speed` 选项。
 
 __Sticky__：
 
@@ -12,6 +37,10 @@ __Sticky__：
 - `NEW` 使用占位符包裹元素，避免窗口抖动问题；
 - `NEW` 增加 `media` 选项，可以设置 Media Query；
 - `NEW` 增加 `bottom` 选项。
+
+__ScrollSpyNav__:
+
+- `FIXED` 链接点击失效问题。
 
 __Popover__：
 
@@ -22,6 +51,21 @@ __Popover__：
 __Progress__：
 
 - `CHANGED` 样式主色调整为绿色。
+
+### Web 组件
+
+__Gotop__：
+
+- `IMPROVED` #6 兼容 Firefox；
+- `NEW` `fixed` 主题根据滚动条位置自动显隐。
+
+__Menu__：
+
+- `IMPROVED` #73 调整触发按钮高度。
+
+__Tabs__：
+
+- `IMPROVED` #72 使用 `flexbox` 实现均分，提高微信 webview 兼容性。
 
 
 ## 2014.09 W2

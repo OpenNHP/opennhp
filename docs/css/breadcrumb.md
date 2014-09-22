@@ -3,6 +3,8 @@
 
 `.am-breadcrumb` 面包屑导航。
 
+## 基本形式
+
 `````html
 <ol class="am-breadcrumb">
   <li><a href="#">首页</a></li>
@@ -21,7 +23,7 @@
 
 ## 结合 Icon
 
-添加图标响应 class 即可。
+添加图标相应 class 即可。
 
 `````html
 <ol class="am-breadcrumb">

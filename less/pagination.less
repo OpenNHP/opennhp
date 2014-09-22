@@ -6,7 +6,7 @@
 // Sub-objects:              `am-pagination-prev`
 //                           `am-pagination-next`
 //
-// Modifiers:                `am-pagination-left`
+// Modifiers:                `am-pagination-centered`
 //                           `am-pagination-right`
 //
 // States:                   `am-active`
@@ -24,18 +24,19 @@
   margin: @pagination-margin 0;
   list-style: none;
   color: @pagination-color;
+  text-align: left;
   .clearfix();
   .hook-pagination();
 
   > li {
-    display: inline;
+    display: inline-block;
     .hook-pagination-item();
 
     > a,
     > span {
       position: relative;
-      float: left; // Collapse white-space
-      // display: block;
+      // float: left; // Collapse white-space
+      display: block;
       padding: @pagination-padding;
       text-decoration: none;
       line-height: @pagination-line-height;
@@ -44,16 +45,8 @@
       border-radius: @global-border-radius;
       margin-bottom: 5px;
       margin-right: 5px;
-      // margin-left: -1px;
     }
 
-    /*&:first-child {
-      > a,
-      > span {
-        margin-left: 0;
-        .border-left-radius(@global-border-radius);
-      }
-    }*/
 
     &:last-child {
       > a,
@@ -115,6 +108,17 @@
   }
 }
 
+
+// Modifier
+// ========================================================================
+
+.am-pagination-centered {
+  text-align: center;
+}
+
+.am-pagination-right {
+  text-align: right;
+}
 
 
 // Hooks

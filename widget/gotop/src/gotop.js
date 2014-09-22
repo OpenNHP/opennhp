@@ -17,7 +17,6 @@ define(function(require, exports, module) {
         });
 
         function checkPosition() {
-            console.log('cjk');
             $fixed[($win.scrollTop() > 50 ? 'add' : 'remove') + 'Class']('am-active');
         }
 

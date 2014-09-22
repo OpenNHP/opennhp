@@ -47,6 +47,7 @@
 
 .am-dropdown {
   position: relative;
+  display: inline-block;
 }
 
 .am-dropdown-toggle:focus {
@@ -62,29 +63,67 @@
   float: left;
   min-width: 160px;
   padding: 15px;
-  margin: 8px 0 0;
+  margin: 9px 0 0;
   text-align: left;
   background-color: @dropdown-bg;
   border: 1px solid @dropdown-border-color;
   border-radius: @global-border-radius;
   background-clip: padding-box;
+  -webkit-animation-duration: .15s;
+  animation-duration: .15s;
 
-  &:before {
-    content: "";
-    position: absolute;
-    top: -8px;
+  .angle-base;
+  .angle-up-variant(@dropdown-border-color, @dropdown-bg, 8px);
+
+  &:before,
+  &:after {
     left: 10px;
-    .caret-up(8px, @dropdown-caret-color);
+    top: -8px;
+    pointer-events: pointer-events;
+  }
 
+  &:after {
+    top: -7px;
   }
 
   .am-active > & {
     display: block;
-    .animation(@dropdown-animation 0.3s ease-in-out);
+    // .animation(@dropdown-animation 0.3s ease-in-out);
   }
 
   :first-child {
     margin-top: 0;
+  }
+}
+
+// drop up
+.am-dropdown-up .am-dropdown-content {
+  top: auto;
+  bottom: 100%;
+  margin: 0 0 9px;
+
+  &:before,
+  &:after {
+    border-bottom: none;
+    border-top: 8px solid @dropdown-border;
+    top: auto;
+    bottom: -8px;
+  }
+
+  &:after {
+    bottom: -7px;
+    border-top-color: @dropdown-bg;
+  }
+}
+
+.am-dropdown-flip .am-dropdown-content {
+  left: auto;
+  right: 0;
+
+  &:before,
+  &:after {
+    left: auto;
+    right: 10px;
   }
 }
 

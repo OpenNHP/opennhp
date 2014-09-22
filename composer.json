@@ -1,6 +1,5 @@
 {
-    "name": "amazeui",
-    "version": "1.0.0-beta2-dev",
+    "name": "allmobilize/amazeui",
     "description": "The first crossing screen front-end framework in China, for developing mobile first, responsive web projects.",
     "keywords": [
         "css",
@@ -14,22 +13,6 @@
         "web-components"
     ],
     "homepage": "http://amazeui.org",
-    "main": [
-        "less/amui.less",
-        "dist/assets/css/amui.all.css",
-        "dist/assets/js/amui.js"
-    ],
-    "ignore": [
-        "/.*",
-        "composer.json",
-        "CONTRIBUTING.md",
-        "docs",
-        "vendor/amazeui",
-        "vendor/seajs",
-        "vendor/json.format.js",
-        "tools",
-        "node_modules"
-    ],
     "authors": [
         {
             "name": "Minwe",
@@ -41,13 +24,8 @@
             "email": "hzp@yunshipei.com"
         }
     ],
-    "repository": {
-        "type": "git",
-        "url": "git://github.com/allmobilize/amazeui.git"
-    },
-    "dependencies": {
-        "zepto": "latest",
-        "handlebars": "latest"
+    "support": {
+        "issues": "https://github.com/allmobilize/amazeui/issues"
     },
     "license": "MIT"
 }

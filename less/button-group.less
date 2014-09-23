@@ -176,15 +176,17 @@
 // ========================================================================
 
 .am-btn-group-justify {
-  display: table;
+  // display: table;
+  // table-layout: fixed;
+  // border-collapse: separate;
   width: 100%;
-  table-layout: fixed;
-  border-collapse: separate;
+  .flexbox();
   > .am-btn,
   > .am-btn-group {
     float: none;
-    display: table-cell;
-    width: 1%;
+    // display: table-cell;
+    // width: 1%;
+    .flex(1);
   }
   > .am-btn-group .am-btn {
     width: 100%;

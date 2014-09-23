@@ -3,7 +3,7 @@
 
 折叠效果组件，用于制作下滑菜单或手风琴效果。
 
-## 使用示例
+## 使用演示
 
 ### 折叠面板
 
@@ -165,9 +165,17 @@
 </nav>
 ```
 
+## 调用方式
 
-## 通过 JS 调用
+### 通过 Data API
 
+在元素上添加 `data-am-collapse` 并设置 `target` 的值为折叠元素 ID：
+
+```html
+<button data-am-collapse="{target: '#my-collapse'}"></button>
+```
+
+### 通过 JS
 
 使用方法：
 
@@ -175,7 +183,21 @@
 $('#myCollapse').collapse()
 ```
 
-### 选项
+#### 方法
+
+- `$().collapse(options)` - 绑定元素展开/折叠操作
+
+```javascript
+$('#myCollapse').collapse({
+  toggle: false
+})
+```
+
+- `$().collapse('toggle')` - 切换面板状态
+- `$().collapse('open')` - 展开面板
+- `$().collapse('hide')` - 关闭面板
+
+#### 选项
 
 <table class="am-table am-table-bd am-table-striped">
   <thead>
@@ -202,24 +224,8 @@ $('#myCollapse').collapse()
   </tbody>
 </table>
 
-### 方法
 
-- `.collapse(options)` - 绑定元素展开/折叠操作
-
-```javascript
-$('#myCollapse').collapse({
-  toggle: false
-})
-```
-
-- `.collapse('toggle')` - 切换面板状态
-
-- `.collapse('open')` - 展开面板
-
-- `.collapse('hide')` - 关闭面板
-
-
-### 自定义事件
+#### 自定义事件
 
 <table class="am-table am-table-bd am-table-striped">
   <thead>

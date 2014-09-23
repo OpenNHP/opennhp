@@ -1,4 +1,5 @@
 define(function(require, exports, module) {
+    "use strict";
 
     require('core');
     require('ui.smooth-scroll');
@@ -14,7 +15,6 @@ define(function(require, exports, module) {
     // ScrollSpyNav Class
 
     var ScrollSpyNav = function(element, options) {
-
         this.options = $.extend({}, ScrollSpyNav.DEFAULTS, options);
         this.$element = $(element);
         this.anchors = [];
@@ -37,15 +37,14 @@ define(function(require, exports, module) {
     };
 
     ScrollSpyNav.DEFAULTS = {
-        cls: 'am-active',
-        topOffset: 0,
-        leftOffset: 0,
+        className: {
+            active: 'am-active'
+        },
         closest: false,
         smooth: true
     };
 
     ScrollSpyNav.prototype.process = function() {
-
         var scrollTop = this.$window.scrollTop(),
             options = this.options,
             inViews = [],
@@ -75,10 +74,10 @@ define(function(require, exports, module) {
             if (!$target) return;
 
             if (options.closest) {
-                $links.closest(options.closest).removeClass(options.cls);
-                $links.filter('a[href="#' + $target.attr('id') + '"]').closest(options.closest).addClass(options.cls);
+                $links.closest(options.closest).removeClass(options.className.active);
+                $links.filter('a[href="#' + $target.attr('id') + '"]').closest(options.closest).addClass(options.className.active);
             } else {
-                $links.removeClass(options.cls).filter('a[href="#' + $target.attr('id') + '"]').addClass(options.cls);
+                $links.removeClass(options.className.active).filter('a[href="#' + $target.attr('id') + '"]').addClass(options.className.active);
             }
         }
     };
@@ -88,7 +87,6 @@ define(function(require, exports, module) {
         var $links = this.$links;
 
         // smoothScroll
-
         if (this.options.smooth) {
             $links.on('click', function(e) {
                 e.preventDefault();

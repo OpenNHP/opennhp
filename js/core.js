@@ -33,7 +33,7 @@ define(function(require, exports, module) {
             }
         })();
 
-        return transitionEnd && { end: transitionEnd };
+        return transitionEnd && {end: transitionEnd};
 
     })();
 
@@ -54,7 +54,7 @@ define(function(require, exports, module) {
             }
         })();
 
-        return animationEnd && { end: animationEnd };
+        return animationEnd && {end: animationEnd};
     })();
 
     UI.support.requestAnimationFrame = window.requestAnimationFrame || window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame || window.msRequestAnimationFrame || window.oRequestAnimationFrame || function(callback) {
@@ -62,11 +62,11 @@ define(function(require, exports, module) {
     };
 
     UI.support.touch = (
-        ('ontouchstart' in window && navigator.userAgent.toLowerCase().match(/mobile|tablet/)) ||
-        (window.DocumentTouch && document instanceof window.DocumentTouch) ||
-        (window.navigator['msPointerEnabled'] && window.navigator['msMaxTouchPoints'] > 0) || //IE 10
-        (window.navigator['pointerEnabled'] && window.navigator['maxTouchPoints'] > 0) || //IE >=11
-        false);
+    ('ontouchstart' in window && navigator.userAgent.toLowerCase().match(/mobile|tablet/)) ||
+    (window.DocumentTouch && document instanceof window.DocumentTouch) ||
+    (window.navigator['msPointerEnabled'] && window.navigator['msMaxTouchPoints'] > 0) || //IE 10
+    (window.navigator['pointerEnabled'] && window.navigator['maxTouchPoints'] > 0) || //IE >=11
+    false);
 
     // https://developer.mozilla.org/zh-CN/docs/DOM/MutationObserver
     UI.support.mutationobserver = (window.MutationObserver || window.WebKitMutationObserver || window.MozMutationObserver || null);
@@ -114,7 +114,7 @@ define(function(require, exports, module) {
         options = $.extend({topOffset: 0, leftOffset: 0}, options);
 
         return (top + $element.height() >= window_top && top - options.topOffset <= window_top + $win.height() &&
-            left + $element.width() >= window_left && left - options.leftOffset <= window_left + $win.width());
+        left + $element.width() >= window_left && left - options.leftOffset <= window_left + $win.width());
     };
 
     UI.utils.parseOptions = UI.utils.options = function(string) {
@@ -133,7 +133,7 @@ define(function(require, exports, module) {
         return options;
     };
 
-    UI.utils.generateGUID =  function(namespace) {
+    UI.utils.generateGUID = function(namespace) {
         var uid = namespace + '-' || 'am-';
 
         do {
@@ -160,8 +160,8 @@ define(function(require, exports, module) {
         return this;
     };
 
-    $.fn.redraw = function(){
-        $(this).each(function(){
+    $.fn.redraw = function() {
+        $(this).each(function() {
             var redraw = this.offsetHeight;
         });
         return this;
@@ -208,11 +208,11 @@ define(function(require, exports, module) {
         }
 
         var classPattern = new RegExp('\\s' +
-            removals.
-                replace(/\*/g, '[A-Za-z0-9-_]+').
-                split(' ').
-                join('\\s|\\s') +
-            '\\s', 'g');
+        removals.
+            replace(/\*/g, '[A-Za-z0-9-_]+').
+            split(' ').
+            join('\\s|\\s') +
+        '\\s', 'g');
 
         self.each(function(i, it) {
             var cn = ' ' + it.className + ' ';
@@ -259,7 +259,7 @@ define(function(require, exports, module) {
                 visibility: $el.css('visibility'),
                 display: $el.css('display')
             },
-            tmpStyle = { display: 'block', position: 'absolute', visibility: 'hidden' };
+            tmpStyle = {display: 'block', position: 'absolute', visibility: 'hidden'};
 
         $el.css(tmpStyle);
         var width = $el.width(),
@@ -310,24 +310,24 @@ define(function(require, exports, module) {
     // https://github.com/gnarf/jquery-requestAnimationFrame
     UI.utils.rAF = (function() {
         return window.requestAnimationFrame ||
-            window.webkitRequestAnimationFrame ||
-            window.mozRequestAnimationFrame ||
+        window.webkitRequestAnimationFrame ||
+        window.mozRequestAnimationFrame ||
             //window.oRequestAnimationFrame ||
             // if all else fails, use setTimeout
-            function(callback) {
-                return window.setTimeout(callback, 1000 / 60); // shoot for 60 fps
-            };
+        function(callback) {
+            return window.setTimeout(callback, 1000 / 60); // shoot for 60 fps
+        };
     })();
 
     // handle multiple browsers for cancelAnimationFrame()
     UI.utils.cancelAF = (function() {
         return window.cancelAnimationFrame ||
-            window.webkitCancelAnimationFrame ||
-            window.mozCancelAnimationFrame ||
+        window.webkitCancelAnimationFrame ||
+        window.mozCancelAnimationFrame ||
             //window.oCancelAnimationFrame ||
-            function(id) {
-                window.clearTimeout(id);
-            };
+        function(id) {
+            window.clearTimeout(id);
+        };
     })();
 
     // Require fastclick.js on touch devices
@@ -339,6 +339,19 @@ define(function(require, exports, module) {
             });
         });
     }
+
+    // via http://davidwalsh.name/detect-scrollbar-width
+    UI.utils.getScrollBarWidth = function() {
+        var $measure = $('<div style="width: 100px;height: 100px;overflow: scroll;position: absolute;top: -9999px;"></div>');
+
+        $('body').append($measure);
+
+        var scrollBarWidth = $measure[0].offsetWidth - $measure[0].clientWidth;
+
+        $measure.remove();
+
+        return scrollBarWidth;
+    };
 
     $(function() {
         var $body = $('body');

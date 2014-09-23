@@ -722,8 +722,8 @@
   &.am-active,
   .am-active .am-dropdown-toggle& {
     color: @color;
-    background-color: darken(@background, 8%);
-    border-color: darken(@background, 15%);
+    background-color: darken(@background, 12%);
+    border-color: darken(@border, 12%);
   }
   &:active,
   &.am-btn-active,
@@ -827,13 +827,13 @@
 // Form element focus state
 
 .form-field-focus(@color: @input-border-focus) {
-  @color-rgba: rgba(red(@color), green(@color), blue(@color), .6);
+  @color-rgba: rgba(red(@color), green(@color), blue(@color), .3);
   &:focus {
     //background-color: rgba(red(@color), green(@color), blue(@color), .05);
-    background: @input-focus-bg;
+    background-color: @input-focus-bg;
     border-color: @color;
     outline: 0;
-    .box-shadow(~"inset 0 1px 1px rgba(0,0,0,.075), 0 0 8px @{color-rgba}");
+    .box-shadow(~"inset 0 1px 1px rgba(0,0,0,.075), 0 0 5px @{color-rgba}");
   }
 }
 

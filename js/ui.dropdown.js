@@ -8,8 +8,8 @@ define(function(require, exports, module) {
 
     /**
      * @via https://github.com/Minwe/bootstrap/blob/master/js/dropdown.js
-     * @copyright Copyright 2013 Twitter, Inc.
-     * @license Apache 2.0
+     * @copyright (c) 2011-2014 Twitter, Inc
+     * @license The MIT License
      */
 
     var toggle = '[data-am-dropdown] > .am-dropdown-toggle';

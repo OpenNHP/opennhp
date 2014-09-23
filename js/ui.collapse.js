@@ -9,8 +9,8 @@ define(function(require, exports, module) {
 
     /**
      * @via https://github.com/twbs/bootstrap/blob/master/js/collapse.js
-     * @copyright Copyright 2013 Twitter, Inc.
-     * @license Apache 2.0
+     * @copyright (c) 2011-2014 Twitter, Inc
+     * @license The MIT License
      */
 
     var Collapse = function (element, options) {

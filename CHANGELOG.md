@@ -9,6 +9,18 @@ __Button__：
 
 - `NEW` 增加圆角和直角样式。
 
+__Button Group__：
+
+- `CHANGED` 使用 `flexbox` 实现按钮等分。
+
+### JS 插件
+
+__Button__:
+
+- `NEW` 增加 loading 文字设置接口；
+- `NEW` 增加 reset 文字设置接口；
+- `NEW` 增加 spinner 设置接口。
+
 ## 2014.09 W3
 
 ### CSS

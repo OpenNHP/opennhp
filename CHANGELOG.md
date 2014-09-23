@@ -1,6 +1,14 @@
 # Amaze UI Change Log
 ---
 
+## 2014.09 W4
+
+### CSS
+
+__Button__：
+
+- `NEW` 增加圆角和直角样式。
+
 ## 2014.09 W3
 
 ### CSS

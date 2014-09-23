@@ -13,6 +13,16 @@ __Button Group__：
 
 - `CHANGED` 使用 `flexbox` 实现按钮等分。
 
+__Form__：
+
+- `CHANGED` 调整 `select` 样式。
+
+__Input Group__：
+
+- `NEW` 增加不同颜色样式；
+- `IMPROVED` 处理不同尺寸垂直对齐问题。
+
+
 ### JS 插件
 
 __Button__:

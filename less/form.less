@@ -1,10 +1,13 @@
 // Name:                       Forms
 // Description:                Define style for form elements
 //
-// Modifiers:                  `.pre-scrollable`
+// Modifiers:                  `.`
 //
 // ==========================================================================
 
+/* ========================================================================
+   Component: Form
+ ========================================================================== */
 
 /* Normalize non-controls */
 
@@ -57,7 +60,6 @@ input[type="file"] {
   display: block;
 }
 
-
 // Make multiple select elements height not fixed
 
 select[multiple],
@@ -95,6 +97,7 @@ input[type="number"] {
   }
 }
 
+
 // Adjust output element
 
 output {
@@ -105,7 +108,6 @@ output {
   color: @input-color;
   vertical-align: middle;
 }
-
 
 
 // Common form controls
@@ -138,8 +140,7 @@ output {
   background-image: none;
   border: 1px solid @input-border;
   border-radius: @input-border-radius;
-  //.box-shadow(inset 0 1px 1px rgba(0,0,0,.075));
-  .transition(~"border-color ease-in-out .15s, box-shadow ease-in-out .15s");
+  .transition(~"border-color .15s ease-in-out, box-shadow .15s ease-in-out");
 
   // `:focus` state
   &:focus {
@@ -158,39 +159,23 @@ output {
   }
 }
 
+
 .am-form {
   // Reset height for block field
   textarea,
   select[multiple],
-  select[size]  {
+  select[size] {
     height: auto;
   }
-}
 
-.am-form-select {
-  position: relative;
+  select { // via Foundation
+    -webkit-appearance: none !important;
+    -webkit-border-radius: @global-border-radius;
+    background: #fff url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMTJweCIgeT0iMHB4IiB3aWR0aD0iMjRweCIgaGVpZ2h0PSIzcHgiIHZpZXdCb3g9IjAgMCA2IDMiIGVuYWJsZS1iYWNrZ3JvdW5kPSJuZXcgMCAwIDYgMyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+PHBvbHlnb24gcG9pbnRzPSI1Ljk5MiwwIDIuOTkyLDMgLTAuMDA4LDAgIi8+PC9zdmc+') no-repeat 100% center;
 
-  select {
-    // height: @form-select-height;
-    -webkit-appearance: none;
-
-    &.am-input-lg {
-      //height: @form-select-height-lg;
+    &[multiple="multiple"] {
+      background-image: none;
     }
-    &.am-input-sm {
-      //height: @form-select-height-sm;
-    }
-  }
-
-  //&:not(*:root)
-
-  &:after {
-    // only for webkit browsers
-    position: absolute;
-    right: 5px;
-    margin-top: -24px;
-    content: '';
-    .caret-down(6px, @gray-light);
   }
 }
 
@@ -240,11 +225,11 @@ output {
   margin-left: -20px;
   outline: none;
 }
+
 .am-radio + .am-radio,
 .am-checkbox + .am-checkbox {
   margin-top: -5px; // Move up sibling radios or checkboxes for tighter spacing
 }
-
 
 // Radios and checkboxes inline
 
@@ -264,7 +249,6 @@ output {
   margin-left: 10px; // space out consecutive inline controls
 }
 
-
 // Apply same disabled cursor tweak as for inputs
 //
 // Note: Neither radios nor checkboxes can be readonly.
@@ -281,22 +265,22 @@ input[type="checkbox"],
 }
 
 
-
 /* Form field feedback states */
 
 // Warning
 .am-form-warning {
   .form-field-validation(@state-warning-text; @state-warning-text);
 }
+
 // Error
 .am-form-error {
   .form-field-validation(@state-danger-text; @state-danger-text);
 }
+
 // Success
 .am-form-success {
   .form-field-validation(@state-success-text; @state-success-text);
 }
-
 
 
 /* Horizontal forms */
@@ -324,11 +308,9 @@ input[type="checkbox"],
 }
 
 
-
 // Inline form elements
 
 .am-form-inline {
-
   @media @medium-up {
     .am-form-group {
       display: inline-block;
@@ -365,7 +347,6 @@ input[type="checkbox"],
 
     // Remove default margin on radios/checkboxes that were used for stacking, and
     // then undo the floating of radios and checkboxes to match (which also avoids
-
     .am-radio,
     .am-checkbox {
       display: inline-block;
@@ -374,6 +355,7 @@ input[type="checkbox"],
       padding-left: 0;
       vertical-align: middle;
     }
+
     .am-radio input[type="radio"],
     .am-checkbox input[type="checkbox"] {
       float: none;
@@ -381,13 +363,11 @@ input[type="checkbox"],
     }
 
     // Validation states
-
     .am-form-feedback .am-form-field-feedback {
       top: 0;
     }
   }
 }
-
 
 
 /* Form field size */
@@ -399,7 +379,6 @@ input[type="checkbox"],
 .am-input-lg {
   font-size: @form-font-size-lg !important;
 }
-
 
 
 /* Form field feedback states */
@@ -414,7 +393,7 @@ input[type="checkbox"],
   [class*='am-icon-'] {
     position: absolute;
     left: @input-padding;
-    top:  50%;
+    top: 50%;
     display: block;
     margin-top: -(@input-padding + 0.15);
     z-index: 2;

@@ -148,7 +148,7 @@ Block Grid 默认没有边距，需自行设置。
 <div class="am-g">
   <div class="col-sm-6">
     <div class="am-thumbnail">
-      <img src="/i/ui/maze.jpg" alt=""/>
+      <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView2/0/w/600" alt=""/>
       <div class="am-thumbnail-caption">
         <h3>百年孤独选</h3>
         <p>无论走到哪里，都应该记住，过去都是假的，回忆是一条没有尽头的路，一切以往的春天都不复存在，就连那最坚韧而又狂乱的爱情归根结底也不过是一种转瞬即逝的现实。</p>
@@ -162,7 +162,7 @@ Block Grid 默认没有边距，需自行设置。
 
   <div class="col-sm-6">
     <div class="am-thumbnail">
-      <img src="/i/ui/maze.jpg" alt=""/>
+      <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView2/0/w/600" alt=""/>
       <div class="am-thumbnail-caption">
         <h3>百年孤独选</h3>
         <p>无论走到哪里，都应该记住，过去都是假的，回忆是一条没有尽头的路，一切以往的春天都不复存在，就连那最坚韧而又狂乱的爱情归根结底也不过是一种转瞬即逝的现实。</p>

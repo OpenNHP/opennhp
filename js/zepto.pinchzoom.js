@@ -45,7 +45,7 @@ define(function(require, exports, module) {
                 zoomOutFactor: 1.3,
                 animationDuration: 300,
                 animationInterval: 5,
-                maxZoom: 4,
+                maxZoom: 5,
                 minZoom: 0.5,
                 lockDragAxis: false,
                 use2d: false,

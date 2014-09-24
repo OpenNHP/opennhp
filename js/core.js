@@ -341,16 +341,18 @@ define(function(require, exports, module) {
     }
 
     // via http://davidwalsh.name/detect-scrollbar-width
-    UI.utils.getScrollBarWidth = function() {
+    UI.utils.measureScrollbar = function() {
+        if (document.body.clientWidth >= window.innerWidth) return 0;
+
         var $measure = $('<div style="width: 100px;height: 100px;overflow: scroll;position: absolute;top: -9999px;"></div>');
 
-        $('body').append($measure);
+        $(document.body).append($measure);
 
-        var scrollBarWidth = $measure[0].offsetWidth - $measure[0].clientWidth;
+        var scrollbarWidth = $measure[0].offsetWidth - $measure[0].clientWidth;
 
         $measure.remove();
 
-        return scrollBarWidth;
+        return scrollbarWidth;
     };
 
     $(function() {

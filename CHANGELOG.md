@@ -25,11 +25,19 @@ __Input Group__：
 
 ### JS 插件
 
-__Button__:
+__Button__：
 
 - `NEW` 增加 loading 文字设置接口；
 - `NEW` 增加 reset 文字设置接口；
 - `NEW` 增加 spinner 设置接口。
+
+__PureView__：
+
+- `NEW` 增加获取大图选项，可以通过 `a` 的 `href` 或者 `img` 的 `data-rel` 获取大图地址；
+- `NEW` 是否显示分享按钮选项；
+- `NEW` 增加在微信中打开时调用微信图片查看器选项；
+- `IMPROVED` 解决打开/关闭窗口抖动问题；
+- `IMPROVED` 解决图片变形问题。
 
 ## 2014.09 W3
 

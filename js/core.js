@@ -344,6 +344,9 @@ define(function(require, exports, module) {
     UI.utils.measureScrollbar = function() {
         if (document.body.clientWidth >= window.innerWidth) return 0;
 
+        // if ($html.width() >= window.innerWidth) return;
+        // var scrollbarWidth = window.innerWidth - $html.width();
+
         var $measure = $('<div style="width: 100px;height: 100px;overflow: scroll;position: absolute;top: -9999px;"></div>');
 
         $(document.body).append($measure);

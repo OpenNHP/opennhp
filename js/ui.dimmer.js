@@ -5,71 +5,104 @@ define(function(require, exports, module) {
     var $ = window.Zepto,
         UI = $.AMUI;
 
-    var $dimmer = $('<div class="am-dimmer" data-am-dimmer></div>'),
-        $doc = $(document),
-        $html = $('html');
+    var $doc = $(document),
+        $html = $('html'),
+        transition = UI.support.transition;
+
+    /**
+     * 通用遮罩层
+     * @constructor
+     */
 
     var Dimmer = function() {
-        this.hasDimmer = $('[data-am-dimmer]').length ? true : false;
+        this.id = UI.utils.generateGUID('am-dimmer');
+        this.$element = $(Dimmer.DEFAULTS.tpl, {
+            id: this.id
+        });
 
-        this.$element = $dimmer;
-
+        this.inited = false;
         this.scrollbarWidth = 0;
+        this.used = $([]);
+    };
 
-        $(document).on('ready', $.proxy(this.init, this));
+    Dimmer.DEFAULTS = {
+        tpl: '<div class="am-dimmer" data-am-dimmer></div>'
     };
 
     Dimmer.prototype.init = function() {
-        if (!this.hasDimmer) {
-            $dimmer.appendTo($('body'));
-            this.events();
-            this.hasDimmer = true;
+        if (!this.inited) {
+            $(document.body).append(this.$element);
+            this.inited = true;
+            $doc.trigger('init:dimmer:amui');
         }
-        $doc.trigger('init:dimmer:amui');
+
         return this;
     };
 
     Dimmer.prototype.open = function(relatedElement) {
+        if (!this.inited) this.init();
 
-        this.measureScrollbar();
+        var $element = this.$element;
 
-        $html.css('margin-left', -this.scrollbarWidth)
-             .addClass('am-dimmer-active');
+        // 用于多重调用
+        if (relatedElement) {
+            this.used = this.used.add($(relatedElement));
+        }
 
-        $dimmer.addClass('am-active');
-        $(relatedElement).length && $(relatedElement).show();
-        $doc.trigger('open:dimmer:amui');
+        this.checkScrollbar().setScrollbar();
+
+        $element.show().trigger('open:dimmer:amui');;
+
+        setTimeout(function() {
+            $element.addClass('am-active')
+        }, 0);
+
         return this;
     };
 
-    Dimmer.prototype.close = function(relatedElement) {
+    Dimmer.prototype.close = function(relatedElement, force) {
+        this.used = this.used.not($(relatedElement));
 
-        $html.css('margin-left', '')
-             .removeClass('am-dimmer-active');
+        if (!force && this.used.length) return this;
 
-        $dimmer.removeClass('am-active');
+        var $element = this.$element;
 
-        $(relatedElement).length && $(relatedElement).hide();
-        $doc.trigger('close:dimmer:amui');
+        $element.removeClass('am-active').trigger('close:dimmer:amui');
+
+        function complete() {
+            this.resetScrollbar();
+            $element.hide();
+        }
+
+        transition ? $element.one(transition.end, $.proxy(complete, this)) :
+            complete.call(this);
+
         return this;
     };
 
-    Dimmer.prototype.events = function() {
-        var that = this;
-        $dimmer.on('click.dimmer.amui', function() {
-            //that.hide();
-        })
+    Dimmer.prototype.checkScrollbar = function () {
+        this.scrollbarWidth = UI.utils.measureScrollbar();
+
+        return this;
     };
 
-    Dimmer.prototype.measureScrollbar = function() {
+    Dimmer.prototype.setScrollbar = function () {
+        var $body = $(document.body),
+            bodyPaddingRight = parseInt(($body.css('padding-right') || 0), 10);
 
-        if ($html.width() >= window.innerWidth) return;
+        if (this.scrollbarWidth) $body.css('padding-right', bodyPaddingRight + this.scrollbarWidth);
 
-        var scrollbarWidth = window.innerWidth - $html.width();
+        $body.addClass('am-dimmer-active');
 
-        this.scrollbarWidth = this.scrollbarWidth || scrollbarWidth;
-
+        return this;
     };
+
+    Dimmer.prototype.resetScrollbar = function () {
+        $(document.body).css('padding-right', '').removeClass('am-dimmer-active');
+
+        return this;
+    };
+
     var dimmer = new Dimmer();
 
     UI.dimmer = dimmer;

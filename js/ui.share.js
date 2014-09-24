@@ -62,8 +62,10 @@ define(function(require, exports, module) {
         this.$element = null;
         this.$wechatQr = null;
         this.pics = null;
+        this.inited = false;
+        this.active = false;
 
-        this.init();
+        // this.init();
     };
 
     Share.DEFAULTS = {
@@ -224,6 +226,7 @@ define(function(require, exports, module) {
     };
 
     Share.prototype.init = function() {
+        if (this.inited) return;
         var me = this,
             shareItem = '[data-am-share-to]';
 
@@ -248,21 +251,25 @@ define(function(require, exports, module) {
 
             this.close();
         }, this));
+
+        this.inited = true;
     };
 
-
     Share.prototype.open = function() {
+        !this.inited && this.init();
         this.$element && this.$element.modal('open');
         this.$element.trigger('open:share:amui');
+        this.active = true;
     };
 
     Share.prototype.close = function() {
         this.$element && this.$element.modal('close');
         this.$element.trigger('close:share:amui');
+        this.active = false;
     };
 
     Share.prototype.toggle = function() {
-        this.$element.is('.am-modal-active') ? this.close() : this.open();
+        this.active ? this.close() : this.open();
     };
 
     Share.prototype.setData = function(sns) {

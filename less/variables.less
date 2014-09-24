@@ -1317,29 +1317,19 @@
 // Modal
 // ========================================================================
 
-//** Padding applied to the modal body
-@modal-inner-padding:         20px;
+@modal-bg-color: #f8f8f8;
+@modal-btn-color : @global-primary;
+@modal-btn-bg: @modal-bg-color;
+@modal-btn-active-bg: #d4d4d4;
+@modal-duration: 300ms;
+@modal-border-color: #dedede;
+@modal-border-radius: @global-border-radius;
 
-//** Padding applied to the modal title
-@modal-title-padding:         15px;
-//** Modal title line-height
-@modal-title-line-height:     @line-height-base;
+@modal-actions-duration: @modal-duration;
+@modal-actions-btn-bg: rgba(243, 243, 243, 0.95);
+@modal-actions-active-btn-bg: #dcdcdc;
 
-//** Background color of modal content area
-@modal-content-bg:                             #fff;
-//** Modal content border color
-@modal-content-border-color:                   rgba(0,0,0,.2);
-//** Modal content border color **for IE8**
-@modal-content-fallback-border-color:          #999;
-
-//** Modal backdrop background color
-@modal-backdrop-bg:           #000;
-//** Modal backdrop opacity
-@modal-backdrop-opacity:      .5;
-//** Modal header border color
-@modal-header-border-color:   #e5e5e5;
-//** Modal footer border color
-@modal-footer-border-color:   @modal-header-border-color;
+@modal-popup-duration: @modal-duration;
 
 @modal-lg:                    900px;
 @modal-md:                    600px;

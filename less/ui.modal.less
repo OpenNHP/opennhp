@@ -12,19 +12,6 @@
    Component: JavaScript Modals
  ========================================================================== */
 
-@modal-bg-color: #f8f8f8;
-@modal-btn-color : @global-primary;
-@modal-btn-bg: @modal-bg-color;
-@modal-btn-active-bg: #d4d4d4;
-@modal-duration: 400ms;
-@modal-actions-duration: 300ms;
-@modal-actions-btn-bg: rgba(243, 243, 243, 0.95);
-@modal-actions-active-btn-bg: #dcdcdc;
-@modal-border-color: #dedede;
-@modal-border-radius: @global-border-radius;
-
-@modal-popup-duration: 300ms;
-
 .am-modal {
   width: 270px;
   position: fixed;
@@ -39,10 +26,12 @@
   opacity: 0;
   .transform(translate3d(0, 0, 0) scale(1.185));
   -webkit-transition-property: -webkit-transform, opacity;
+  -moz-transition-property: -moz-transform, opacity;
+  -ms-transition-property: -ms-transform, opacity;
   transition-property: transform, opacity;
 
   &:focus {
-    outline: none;
+    outline: 0;
   }
 
   &.am-modal-active {

@@ -31,6 +31,11 @@ __Button__：
 - `NEW` 增加 reset 文字设置接口；
 - `NEW` 增加 spinner 设置接口。
 
+__Modal__：
+
+- `IMPROVED` #2 解决打开/关闭时窗口抖动问题；
+- `FIXED` #1 解决 Firefox transitionend 事件处理问题（Firefox bug，参见 http://codepen.io/harryfino/full/jphis ）。
+
 __PureView__：
 
 - `NEW` 增加获取大图选项，可以通过 `a` 的 `href` 或者 `img` 的 `data-rel` 获取大图地址；

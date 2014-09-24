@@ -52,13 +52,9 @@
 
 // hide scroll bar when dimmer active
 // ------------------------------------------------------------------------
+
 .am-dimmer-active {
-  &,
-  body {
-    // https://github.com/allmobilize/amazeui/issues/69
-    /*height: 100%;*/
-    overflow: hidden;
-  }
+ overflow: hidden;
 }
 
 .am-dimmer {
@@ -67,20 +63,22 @@
   right: 0;
   bottom: 0;
   left: 0;
+  display: none;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, .6);
   z-index: @z-index-dimmer;
-  visibility: hidden;
   opacity: 0;
-  .transition(all .4s);
+  .transition(opacity .15s);
+
   &.am-active {
-    visibility: visible;
     opacity: 1;
   }
 }
 
+
 // Style for collapse plugin
+// ------------------------------------------------------------------------
 
 [data-am-collapse] {
   cursor: pointer;

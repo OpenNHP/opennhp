@@ -34,7 +34,8 @@
     "styleDependencies": [
         "ui.modal.less",
         "ui.component.less",
-        "ui.share.less"
+        "ui.share.less",
+        "button.less"
     ],
 
     "style": "navbar.less",

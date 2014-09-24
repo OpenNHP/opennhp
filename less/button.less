@@ -45,8 +45,9 @@
   border-radius: @global-border-radius;
   line-height: @btn-line-height;
   font-size: @btn-font-size;
+  outline: 0;
   .user-select(none);
-  .transition(width 0.15s);
+  .transition(e("background-color 300ms ease-out, border-color 300ms ease-out"));
 
   &:focus {
     .tab-focus();
@@ -54,15 +55,15 @@
 
   &:hover,
   &:focus {
+    outline: 0;
     color: @btn-default-color;
     text-decoration: none;
   }
 
   &:active,
   &.am-active {
-    outline: 0;
     background-image: none;
-    .box-shadow(inset 0 1px 5px rgba(0,0,0,.125));
+    .box-shadow(inset 0 1px 8px rgba(0, 0, 0, .125));
   }
 
   &.am-disabled,
@@ -76,10 +77,18 @@
     .box-shadow(none);
   }
 
+  &.am-round {
+    border-radius: @global-rounded;
+  }
+
+  &.am-square {
+    border-radius: @global-square;
+  }
 }
 
 
-/* Modifiers */
+// Modifiers
+// ========================================================================
 
 .am-btn-default {
   .button-variant(@btn-default-color; @btn-default-bg; @btn-default-border);

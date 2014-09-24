@@ -17,6 +17,7 @@
 
 html,
 body {
+  height: 100%;
   max-height: 100%;
 }
 
@@ -27,15 +28,13 @@ body {
  * 1. Prevent iOS text size adjust after orientation change, without disabling
  *    user zoom.
  *    https://developer.mozilla.org/en-US/docs/Web/CSS/text-size-adjust
- * 2. Force a vertical scrollbar - http://cbrac.co/163MspB
- * 3. http://maxvoltar.com/archive/-webkit-font-smoothing
+ * 2. http://maxvoltar.com/archive/-webkit-font-smoothing
  */
 
 html {
   -ms-text-size-adjust: 100%;   /* 1 */
   -webkit-text-size-adjust: 100%;   /* 1 */
-  /*overflow-y: scroll;  *//* 2 */
-  -webkit-font-smoothing: antialiased; /* 3 */
+  -webkit-font-smoothing: antialiased; /* 2 */
 }
 
 

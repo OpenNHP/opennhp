@@ -149,8 +149,15 @@
 // ------------------------------------------------------------------------
 
 @global-border-radius:           2px;
+@global-radius:                  @global-border-radius;
 @border-radius-large:            5px;
 @border-radius-small:            1px;
+
+
+//
+
+@global-rounded:         1000px;
+@global-square:           0;
 
 
 
@@ -304,29 +311,29 @@
 @btn-line-height:                1.2;
 @btn-font-size:                  @global-font-size;
 
-@btn-default-color:              @gray-dark;
+@btn-default-color:              #444;
 @btn-default-bg:                 #e6e6e6;
-@btn-default-border:             transparent;
+@btn-default-border:             @btn-default-bg;
 
 @btn-primary-color:              #fff;
 @btn-primary-bg:                 @global-primary;
-@btn-primary-border:             darken(@btn-primary-bg, 5%);
+@btn-primary-border:             @btn-primary-bg;
 
 @btn-secondary-color:            #fff;
 @btn-secondary-bg:               @global-secondary;
-@btn-secondary-border:           darken(@btn-secondary-bg, 5%);
+@btn-secondary-border:           @global-secondary;
 
 @btn-success-color:              #fff;
 @btn-success-bg:                 @global-success;
-@btn-success-border:             darken(@btn-success-bg, 5%);
+@btn-success-border:             @global-success;
 
 @btn-warning-color:              #fff;
 @btn-warning-bg:                 @global-warning;
-@btn-warning-border:             darken(@btn-warning-bg, 5%);
+@btn-warning-border:             @btn-warning-bg;
 
 @btn-danger-color:               #fff;
 @btn-danger-bg:                  @global-danger;
-@btn-danger-border:              darken(@btn-danger-bg, 5%);
+@btn-danger-border:              @btn-danger-bg;
 
 @btn-link-disabled-color:        @gray-light;
 
@@ -370,7 +377,7 @@
 @input-color:                    @gray;
 @input-border:                   #ccc;
 @input-border-radius: @global-border-radius;
-@input-border-focus:             @global-primary;
+@input-border-focus:             @global-secondary;
 
 @input-color-placeholder:        @gray-light;
 
@@ -1279,6 +1286,10 @@
 // ========================================================================
 
 
+// Alert
+// ========================================================================
+
+
 // Dropdown
 // ========================================================================
 
@@ -1303,19 +1314,8 @@
 @caret-width-base: 6px;
 
 
-
-// Off-canvas
+// Modal
 // ========================================================================
-
-@offcanvas-z-index:                   (@global-z-index + 30);
-@offcanvas-dimmer-background:         rgba(0,0,0,0.15);
-@offcanvas-bar-width:                 270px;
-@offcanvas-bar-background:            #333;
-
-
-
-// plugin - modal
-// =======================================================================
 
 //** Padding applied to the modal body
 @modal-inner-padding:         20px;
@@ -1344,3 +1344,36 @@
 @modal-lg:                    900px;
 @modal-md:                    600px;
 @modal-sm:                    300px;
+
+
+// Off-canvas
+// ========================================================================
+
+@offcanvas-z-index:                   (@global-z-index + 30);
+@offcanvas-dimmer-background:         rgba(0,0,0,0.15);
+@offcanvas-bar-width:                 270px;
+@offcanvas-bar-background:            #333;
+
+
+// Popover
+// =======================================================================
+
+
+// Progress
+// ========================================================================
+
+
+// PureView
+// ========================================================================
+
+
+// Share
+// ========================================================================
+
+
+// Tabs
+// ========================================================================
+
+
+// ui.component.less
+// ========================================================================

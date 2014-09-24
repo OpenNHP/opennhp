@@ -3,14 +3,26 @@
 
 `<form>` 元素样式。
 
-## 基本演示
+## 基本使用
+
+
+### 单选、复选框
+
+`checkbox`、`radio` 类型的 `<input>` 与其他元素稍有区别：
+
+- 块级显示时在容器上添加 `.am-checkbox`、`.am-radio` class；
+- 行内显示时在容器上添加 `.am-checkbox-inline`、`.am-radio-inline` class。
+
+### 下拉选框
+
+**`<select>` 是一个比较奇葩的元素，长得丑还不让人给它打扮**。
+
+单使用 CSS， 很难给 `select` 定义跨浏览器兼容的样式，保留浏览器默认样式可能是它最好的归宿（[Pure CSS 就是这么干的](http://purecss.io/forms/#stacked-form))。Amaze UI 中针对 Webkit 浏览器写了一点样式替换了默认的下上三角形。
+
+### 演示
 
 在容器上添加 `.am-form` class，容器里的子元素才会应用 Amaze UI 定义的样式。
 
-- `checkbox`、`radio` 类型的 `<input>` 与其他元素稍有区别：
-    - 块级显示时在容器上添加 `.am-checkbox`、`.am-radio` class；
-    - 行内显示时在容器上添加 `.am-checkbox-inline`、`.am-radio-inline` class。
-- `<select>` 是一个比较奇葩的元素，很难定义跨浏览器兼容的样式，保留浏览器默认样式可能是它最好的归宿（[Pure CSS 就是这么干的](http://purecss.io/forms/#stacked-form))。Amaze UI 中针对 Webkit 浏览器写了一点样式替换了默认的下上三角形，需要以 `.am-form-select` 作为容器，效果并不太好。
 
 `````html
 <form class="am-form">

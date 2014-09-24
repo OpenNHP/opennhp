@@ -14,6 +14,8 @@ define(function(require, exports, module) {
 
         this.$element = $dimmer;
 
+        this.scrollbarWidth = 0;
+
         $(document).on('ready', $.proxy(this.init, this));
     };
 
@@ -28,7 +30,12 @@ define(function(require, exports, module) {
     };
 
     Dimmer.prototype.open = function(relatedElement) {
-        $html.addClass('am-dimmer-active');
+
+        this.measureScrollbar();
+
+        $html.css('margin-left', -this.scrollbarWidth)
+             .addClass('am-dimmer-active');
+
         $dimmer.addClass('am-active');
         $(relatedElement).length && $(relatedElement).show();
         $doc.trigger('open:dimmer:amui');
@@ -36,8 +43,12 @@ define(function(require, exports, module) {
     };
 
     Dimmer.prototype.close = function(relatedElement) {
+
+        $html.css('margin-left', '')
+             .removeClass('am-dimmer-active');
+
         $dimmer.removeClass('am-active');
-        $html.removeClass('am-dimmer-active');
+
         $(relatedElement).length && $(relatedElement).hide();
         $doc.trigger('close:dimmer:amui');
         return this;
@@ -50,7 +61,15 @@ define(function(require, exports, module) {
         })
     };
 
+    Dimmer.prototype.measureScrollbar = function() {
 
+        if ($html.width() >= window.innerWidth) return;
+
+        var scrollbarWidth = window.innerWidth - $html.width();
+
+        this.scrollbarWidth = this.scrollbarWidth || scrollbarWidth;
+
+    };
     var dimmer = new Dimmer();
 
     UI.dimmer = dimmer;

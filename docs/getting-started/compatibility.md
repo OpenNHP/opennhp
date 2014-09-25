@@ -26,6 +26,10 @@ Amaze UI 由移动端发展而来，由于 Zepto 的原因，目前只支持 IE1
 
 Amaze UI 对浏览器做了一个粗略分级，这个列表会进一步细化、完善。
 
+<div class="am-alert am-alert-warning">
+  由于 Amaze UI 1.x 中使用了 <a href="http://zeptojs.com/#browsers">Zepto.js</a>，只能提供 A 级浏览器支持，B 级浏览器支持将在 2.x 中提供。
+</div>
+
 <table class="am-table am-table-bd am-table-striped">
   <thead>
   <tr>

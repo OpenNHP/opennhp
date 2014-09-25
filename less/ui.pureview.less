@@ -5,7 +5,6 @@
 //
 // ========================================================================
 
-@am-pureview-z-index: 1100;
 
 .am-pureview {
   position: fixed;
@@ -15,7 +14,7 @@
   right: 0;
   width: 100%;
   height: 100%;
-  z-index: @am-pureview-z-index;
+  z-index: @z-index-pureview;
   background: rgba(0, 0, 0, 0.95);
   //display: none;
   overflow: hidden;
@@ -79,7 +78,7 @@
 
   .pinch-zoom-container {
     width: 100%;
-    z-index: @am-pureview-z-index + 1;
+    z-index: @z-index-pureview + 1;
   }
 
   .am-pinch-zoom {
@@ -104,7 +103,7 @@
   top: 50%;
   width: 100%;
   margin-top: -18px;
-  z-index: @am-pureview-z-index + 2;
+  z-index: @z-index-pureview + 2;
 
   .am-touch &,
   .am-pureview-only & {
@@ -126,7 +125,7 @@
     cursor: pointer;
     text-align: center;
 
-    z-index: 1010;
+    z-index: @z-index-pureview + 5;
 
     &:before {
       .am-icon-font;
@@ -180,12 +179,13 @@
 
 .am-pureview-actions {
   position: absolute;
-  z-index: @am-pureview-z-index + 10;
+  z-index: @z-index-pureview + 10;
   left: 0;
   right: 0;
   top: 0;
   height: 45px;
   background-color: rgba(0, 0, 0, 0.35);
+
   a {
     position: absolute;
     left: 10px;
@@ -193,7 +193,7 @@
     display: block;
     width: 45px;
     line-height: 45px;
-    text-align: center;
+    text-align: left;
     font-size: 16px;
 
     &:hover {
@@ -211,7 +211,7 @@
 .am-pureview-actions {
   opacity: 0;
   .transition(0.15s);
-  z-index: @am-pureview-z-index + 10;
+  z-index: @z-index-pureview + 10;
 
   .am-pureview-bar-active & {
     opacity: 1;
@@ -224,7 +224,7 @@
   left: 0;
   right: 0;
   text-align: center;
-  z-index: @am-pureview-z-index + 11;
+  z-index: @z-index-pureview + 11;
 
   .am-pureview-bar-active & {
     display: none;

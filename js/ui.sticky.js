@@ -21,12 +21,13 @@ define(function(require, exports, module) {
         this.$holder = undefined;
 
         this.$window = $(window).
-            on('scroll.sticky.amui', UI.utils.debounce($.proxy(this.checkPosition, this), 100)).
+            on('scroll.sticky.amui', UI.utils.debounce($.proxy(this.checkPosition, this), 10)).
             on('resize.sticky.amui orientationchange.sticky.amui', UI.utils.debounce(function() {
                 me.reset(true, function() {
                     me.checkPosition();
                 });
-            }, 100));
+            }, 100)).
+            on('load.sticky.amui', $.proxy(this.checkPosition, this));
 
         this.offset = this.$element.offset();
 
@@ -152,6 +153,7 @@ define(function(require, exports, module) {
 
             this.$holder.height(this.offset.height);
 
+            /*
             if (offsetBottom) {
                 // （底部边距 + 元素高度 > 窗口高度） 时定位到底部
                 if ((offsetBottom + this.offset.height > $(window).height()) &&
@@ -161,6 +163,7 @@ define(function(require, exports, module) {
                     $element.removeClass(options.className.stickyBtm).css({top: offsetTop});
                 }
             }
+            */
         }
 
         this.sticked = checkResult;

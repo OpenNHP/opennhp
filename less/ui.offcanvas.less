@@ -29,7 +29,7 @@
   right: 0;
   bottom: 0;
   left: 0;
-  z-index: @offcanvas-z-index;
+  z-index: @z-index-offcanvas;
   background: @offcanvas-dimmer-background;
 
   .hook-offcanvas;
@@ -66,7 +66,7 @@
   bottom: 0;
   left: 0;
   .translate3d(-@offcanvas-bar-width, 0, 0);
-  z-index: @offcanvas-z-index + 1;
+  z-index: @z-index-offcanvas + 1;
   width: @offcanvas-bar-width;
   max-width: 100%;
   background: @offcanvas-bar-background;

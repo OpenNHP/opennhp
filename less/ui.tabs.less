@@ -24,14 +24,14 @@
   overflow: hidden;
   border: 1px solid #ddd;
   border-top: none;
-  z-index: 1001;
+  z-index: 100;
   .transition(height 0.3s);
   .hook-tabs-bd();
 
   .am-tab-panel {
     position: absolute;
     top: 0;
-    z-index: 999;
+    z-index: 99;
     float: left;
     width: 100%;
     padding: 10px 10px 15px;
@@ -42,7 +42,7 @@
 
     &.am-active {
       position: relative;
-      z-index: 1000;
+      z-index: 100;
       visibility: visible;
       .translate();
 

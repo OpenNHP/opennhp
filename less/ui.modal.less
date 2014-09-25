@@ -16,7 +16,7 @@
   width: 270px;
   position: fixed;
   display: none;
-  z-index: 1100;
+  z-index: @z-index-modal;
   left: 50%;
   margin-left: -135px;
   margin-top: 0;
@@ -42,7 +42,7 @@
 
   &.am-modal-out {
     opacity: 0;
-    z-index: 1100 - 1;
+    z-index: @z-index-modal - 1;
     .transition-duration(@modal-duration);
     .transform(translate3d(0, 0, 0) scale(0.815));
   }
@@ -184,7 +184,7 @@
   position: fixed;
   left: 0;
   bottom: 0;
-  z-index: 1100;
+  z-index: @z-index-modal;
   width: 100%;
   text-align: center;
   border-radius: @modal-border-radius;
@@ -194,7 +194,7 @@
     .translate3d(0, 0, 0);
   }
   &.am-modal-out {
-    z-index: 1100 - 1;
+    z-index: @z-index-modal - 1;
     .transition(all @modal-actions-duration);
     .transform(translate3d(0, 100%, 0));
   }
@@ -251,7 +251,7 @@
   top: 0;
   width: 100%;
   height: 100%;
-  z-index: 11000;
+  z-index: @z-index-modal;
   background: #fff;
   display: none;
   overflow: hidden;

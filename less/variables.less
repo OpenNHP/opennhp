@@ -231,22 +231,20 @@
 
 @global-z-index:		        1000;
 
-@z-index-navbar:            @global-z-index + 20; // THIS IS WIDGET
+@z-index-topbar-fixed:      @global-z-index;
+@z-index-sticky:            @global-z-index + 10;
+@z-index-dropdown:          @global-z-index + 20;
+@z-index-popover:           @global-z-index + 30;
+@z-index-offcanvas:         @global-z-index + 90;
+@z-index-dimmer:            @global-z-index + 100;
+@z-index-modal:             @global-z-index + 110;
+@z-index-pureview:          @global-z-index + 120;
+@z-index-nprogress:         @global-z-index + 1000;
 
-@z-index-dropdown:          @global-z-index;
-@z-index-popover:           @global-z-index + 10;
-@z-index-tooltip:           @global-z-index + 30; // 干掉
-@z-index-navbar-fixed:      @global-z-index + 30;
-@z-index-modal-background:  @global-z-index + 40;
-@z-index-modal:             @global-z-index + 50;
-@z-index-paragraph:         @global-z-index + 60;  // THIS IS WIDGET
-@z-index-figure:            @global-z-index + 60;
-@z-index-sticky:            @global-z-index + 19;
-@z-index-mainnav:           @global-z-index + 30; // 干掉
+@z-index-navbar:            @global-z-index + 10; // THIS IS WIDGET
+@z-index-gotop-fixed:       @global-z-index + 40; // THIS IS WIDGET
+@z-index-menu:              @global-z-index + 50; // THIS IS WIDGET
 
-@z-index-dimmer:            @global-z-index + 20;
-
-@z-index-topbar-fixed:      @global-z-index + 1000;
 
 // ========================================================================
 // Component Common
@@ -1174,8 +1172,6 @@
 @topbar-inverse-brand-hover-color:         @white;
 @topbar-inverse-brand-hover-bg:            transparent;
 
-// fixed z-index
-@topbar-z-index: @global-z-index + 10000;
 
 
 
@@ -1339,7 +1335,6 @@
 // Off-canvas
 // ========================================================================
 
-@offcanvas-z-index:                   (@global-z-index + 30);
 @offcanvas-dimmer-background:         rgba(0,0,0,0.15);
 @offcanvas-bar-width:                 270px;
 @offcanvas-bar-background:            #333;

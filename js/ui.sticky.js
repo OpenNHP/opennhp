@@ -26,7 +26,7 @@ define(function(require, exports, module) {
                 me.reset(true, function() {
                     me.checkPosition();
                 });
-            }, 100)).
+            }, 50)).
             on('load.sticky.amui', $.proxy(this.checkPosition, this));
 
         this.offset = this.$element.offset();
@@ -144,15 +144,15 @@ define(function(require, exports, module) {
             this.reset();
         }
 
+        this.$holder.height($element.height());
+
         if (checkResult) {
             $element.css({
                 top: offsetTop,
                 left: this.$holder.offset().left,
                 width: this.offset.width
             });
-
-            this.$holder.height(this.offset.height);
-
+            
             /*
             if (offsetBottom) {
                 // （底部边距 + 元素高度 > 窗口高度） 时定位到底部

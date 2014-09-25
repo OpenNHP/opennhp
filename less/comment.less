@@ -41,27 +41,27 @@
   &:after {
     position: absolute;
     top: 11px;
-    left: -16px;
+    left: -8px;
     right: 100%;
     width: 0;
     height: 0;
     display: block;
     content: " ";
     border-color: transparent;
-    border-style: solid solid outset;
+    border-style: solid solid dotted;
+    border-width: 8px 8px 8px 0;
     pointer-events: none;
   }
 
   &:before {
     border-right-color: @comment-border-color;
-    border-width: 8px;
+    z-index: 1;
   }
 
   &:after {
-    border-width: 7px;
     border-right-color: @comment-hd-bg-color;
-    margin-top: 1px;
-    margin-left: 2px;
+    margin-left: 1px;
+    z-index: 2;
   }
 }
 
@@ -115,20 +115,18 @@
 
     &:before,
     &:after {
-      position: absolute;
-      left: 100%;
-      right: -16px;
+      left: auto;
+      right: -8px;
+      border-width: 8px 0 8px 8px;
     }
 
     &:before {
       border-left-color: @comment-border-color;
-      border-right-color: transparent;
     }
 
     &:after {
       border-left-color: @comment-hd-bg-color;
-      border-right-color: transparent;
-      margin-right: 2px;
+      margin-right: 1px;
       margin-left: auto;
     }
   }

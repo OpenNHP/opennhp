@@ -243,7 +243,7 @@ Input group 基于 Form 组件和 Button 组件扩展，依赖这两个组件。
 
 `````html
 <div class="am-g">
-  <div class="am-col col-lg-6">
+  <div class="col-lg-6">
     <div class="am-input-group am-input-group-danger">
       <span class="am-input-group-label">
         <input type="checkbox">
@@ -251,7 +251,7 @@ Input group 基于 Form 组件和 Button 组件扩展，依赖这两个组件。
       <input type="text" class="am-form-field">
     </div>
   </div>
-  <div class="am-col col-lg-6">
+  <div class="col-lg-6">
     <div class="am-input-group am-input-group-primary">
       <span class="am-input-group-btn">
         <button class="am-btn am-btn-primary" type="button"><span class="am-icon-search"></span></button>
@@ -262,3 +262,23 @@ Input group 基于 Form 组件和 Button 组件扩展，依赖这两个组件。
 </div>
 `````
 
+```html
+<div class="am-g">
+  <div class="col-lg-6">
+    <div class="am-input-group am-input-group-danger">
+      <span class="am-input-group-label">
+        <input type="checkbox">
+      </span>
+      <input type="text" class="am-form-field">
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="am-input-group am-input-group-primary">
+      <span class="am-input-group-btn">
+        <button class="am-btn am-btn-primary" type="button"><span class="am-icon-search"></span></button>
+      </span>
+      <input type="text" class="am-form-field">
+    </div>
+  </div>
+</div>
+```

@@ -41,8 +41,9 @@
     "style": "figure.less",
 
     "demoContent": {
-        "img": "http://s.cn.bing.net/az/hprichbg/rb/FloatingMarket_ZH-CN9326364399_1366x768.jpg",
-        "figcaption": "曼谷水上集市"
+        "img": "http://amui.qiniudn.com/pure-1.jpg?imageView2/0/w/640",
+        "rel": "http://amui.qiniudn.com/pure-1.jpg",
+        "figcaption": "春天的花开秋天的风以及冬天的落阳"
     },
 
     "themes": [

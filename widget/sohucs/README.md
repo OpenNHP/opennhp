@@ -31,7 +31,7 @@
 
 填写邮箱和密码，点击 `注册` 按钮，出现如下界面：
 
-![填写站点信息](http://i.static.amazeui.org/assets/i/cpts/sohucs/sohucs-help-1.png)
+![填写站点信息](http://amazeui.b0.upaiyun.com/assets/i/cpts/sohucs/sohucs-help-1.png)
 
 输入网站名称、网址、QQ，点击 `提交并获取代码`。
 
@@ -39,7 +39,7 @@
 
 完成上述操作后，进入以下界面，获取 API Key (AppID、Conf)。
 
-![获取代码界面](http://i.static.amazeui.org/assets/i/cpts/sohucs/sohucs-help-2.png)
+![获取代码界面](http://amazeui.b0.upaiyun.com/assets/i/cpts/sohucs/sohucs-help-2.png)
 
 如上图所示，复制 AppID 及 Conf（**红框部分，不包含单引号**），填入云适配 IDE 参数设置里完成配置。
 

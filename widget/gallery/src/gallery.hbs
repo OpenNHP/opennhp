@@ -7,7 +7,7 @@
         <div class="am-gallery-item">
           {{#if link}}
             <a href="{{link}}">
-              {{#if img}}<img src="{{img}}" alt="{{title}}"/>{{/if}}
+              {{#if img}}<img src="{{img}}" {{#if rel}}data-rel="{{rel}}"{{/if}} alt="{{title}}"/>{{/if}}
               {{#if title}}
                 <h3 class="am-gallery-title">{{{title}}}</h3>
               {{/if}}
@@ -16,7 +16,7 @@
               {{/if}}
             </a>
           {{else}}
-            {{#if img}}<img src="{{img}}" alt="{{title}}"/>{{/if}}
+            {{#if img}}<img src="{{img}}" {{#if rel}}data-rel="{{rel}}"{{/if}} alt="{{title}}"/>{{/if}}
             {{#if title}}
               <h3 class="am-gallery-title">{{{title}}}</h3>
             {{/if}}

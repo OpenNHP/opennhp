@@ -12,7 +12,10 @@ define(function(require, exports, module) {
 
         $gallery.each(function() {
             var options = UI.utils.parseOptions($(this).attr('data-am-gallery'));
-            options.pureview && $(this).pureview();
+            
+            if (options.pureview) {
+                (typeof options.pureview === 'object') ? $(this).pureview(options.pureview) : $(this).pureview();
+            }
         });
 
         $galleryOne.each(function() {

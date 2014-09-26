@@ -31,6 +31,8 @@ return data;
 
 ## 数据接口
 
+如果觉得图片体积太大耗费流量，可以 `img` 里传缩略图， `rel` 里传大图地址。
+
 ```javascript
 {
   "id": "",
@@ -42,7 +44,8 @@ return data;
   },
   "content": [
     {
-      "img": "", // 图片路径
+      "img": "", // 图片（缩略图）路径
+      "rel": "", // 大图路径
       "imgAlt": "", // 图片alt描述，如果为空则读取 figcaption
       "figcaption": "" // 图片标题
     }

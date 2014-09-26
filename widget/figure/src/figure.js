@@ -18,6 +18,7 @@ define(function(require, exports, module) {
         if (zoomAble) {
             $(element).parent('.am-figure').addClass('am-figure-zoomable');
         }
+
         return zoomAble;
     };
 
@@ -26,7 +27,7 @@ define(function(require, exports, module) {
             var options = UI.utils.parseOptions($(item).attr('data-am-figure'));
 
             if (options.pureview) {
-                $(item).pureview();
+                $(item).addClass('am-figure-zoomable').pureview();
             } else if (options.autoZoom) {
                 var zoomAble = $.isImgZoomAble($(item).find('img')[0]);
                  zoomAble && $(item).pureview();

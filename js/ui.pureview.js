@@ -209,6 +209,10 @@ define(function(require, exports, module) {
             activeIndex = $slides.index($slide),
             alt = $slide.find('img').attr('alt') || '',
             active = options.className.active;
+        
+        UI.utils.imageLoader($slide.find('img'), function(image) {
+            $(image).addClass('am-img-loaded');
+        });
 
         if ($slides.find('.' + active).is($slide)) return;
 
@@ -343,5 +347,4 @@ define(function(require, exports, module) {
 // TODO: 1. 动画改进
 //       2. 改变图片的时候恢复 Zoom
 //       3. 选项
-//       4. 关闭以后滚动条位置处理
-//       5. 增加图片加载动画
+//       4. 图片高度问题：由于 PinchZoom 的原因，过高的图片如果设置看了滚动，则放大以后显示不全

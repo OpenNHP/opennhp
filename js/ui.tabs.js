@@ -14,14 +14,15 @@ define(function(require, exports, module) {
      * @license MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)
      */
 
-    var Tabs = function(element) {
+    var Tabs = function(element, options) {
         this.$element = $(element);
+        this.options = $.extend({}, Tabs.DEFAULTS, options || {});
 
-        this.$tabNav = this.$element.find(Tabs.DEFAULTS.selector.nav);
+        this.$tabNav = this.$element.find(this.options.selector.nav);
         this.$navs = this.$tabNav.find('a');
 
-        this.$content = this.$element.find(Tabs.DEFAULTS.selector.content);
-        this.$tabPanels = this.$content.find(Tabs.DEFAULTS.selector.panel);
+        this.$content = this.$element.find(this.options.selector.content);
+        this.$tabPanels = this.$content.find(this.options.selector.panel);
 
         this.transitioning = null;
 
@@ -40,7 +41,8 @@ define(function(require, exports, module) {
     };
 
     Tabs.prototype.init = function() {
-        var me = this;
+        var me = this,
+            options = this.options;
 
         // Activate the first Tab when no active Tab or multiple active Tabs
         if (this.$tabNav.find('> .am-active').length !== 1) {
@@ -60,14 +62,29 @@ define(function(require, exports, module) {
 
         hammer.on('panleft', UI.utils.debounce(function(e) {
             e.preventDefault();
-            $(e.target).focus();
-            var $nav = me.getNextNav($(e.target));
+            var $target = $(e.target);
+
+            if (!$target.is(options.selector.panel)) {
+                $target = $target.closest(options.selector.panel);
+            }
+
+            $target.focus();
+
+            var $nav = me.getNextNav($target);
             $nav && me.open($nav);
         }, 100));
 
         hammer.on('panright', UI.utils.debounce(function(e) {
             e.preventDefault();
-            var $nav = me.getPrevNav($(e.target));
+
+            var $target = $(e.target);
+
+            if (!$target.is(options.selector.panel)) {
+                $target = $target.closest(options.selector.panel);
+            }
+
+            var $nav = me.getPrevNav($target);
+
             $nav && me.open($nav);
         }, 100));
     };
@@ -180,3 +197,4 @@ define(function(require, exports, module) {
 });
 
 // TODO: 1. Ajax 支持
+//       2. touch 事件处理逻辑优化

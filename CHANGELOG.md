@@ -3,15 +3,26 @@
 
 ## 2014.09 W4
 
+### 官网
+
+- 优化左侧菜单固定效果，菜单高度超过窗口高度时增加滚动条。
+
 ### CSS
+
+- 重新样式梳理 `z-index`；
 
 __Button__：
 
-- `NEW` 增加圆角和直角样式。
+- `NEW` 增加圆角和直角样式；
+- `IMPROVED` 按钮样式细节调整。
 
 __Button Group__：
 
 - `CHANGED` 使用 `flexbox` 实现按钮等分。
+
+__Comment__：
+
+- 尖角样式细节调整。
 
 __Form__：
 
@@ -41,8 +52,31 @@ __PureView__：
 - `NEW` 增加获取大图选项，可以通过 `a` 的 `href` 或者 `img` 的 `data-rel` 获取大图地址；
 - `NEW` 是否显示分享按钮选项；
 - `NEW` 增加在微信中打开时调用微信图片查看器选项；
+- `NEW` 增加图片 Loading 图标；
 - `IMPROVED` 解决打开/关闭窗口抖动问题；
-- `IMPROVED` 解决图片变形问题。
+- `IMPROVED` 解决图片比例失调问题。
+
+__Sticky__：
+
+- `CHANGED` #90 底部边距计算逻辑有问题，暂时取消。
+
+### Web 组件
+
+- 重新样式梳理 `z-index`；
+
+__Figure、Paragraph__：
+
+- 移除遗留的无用的样式。
+
+__Figure__：
+
+- `NEW` `data-rel` 接口，可以设置大图路径；
+
+__Gallery__：
+
+- `NEW` `data-rel` 接口，可以设置大图路径；
+- `IMPROVED` PureView 调用逻辑增强，判断是否设置了 PureView 的选项。
+
 
 ## 2014.09 W3
 

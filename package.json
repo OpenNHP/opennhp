@@ -17,7 +17,7 @@
     "web",
     "web-components"
   ],
-  "homepage": "http://amui.yunshipei.com",
+  "homepage": "http://amazeui.org",
   "author": "Allmobilize, Inc.",
   "scripts": {
     "start": "nodemon tools/app/app.js",
@@ -26,12 +26,17 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/allmobilize/amui"
+    "url": "https://github.com/allmobilize/amazeui.git"
   },
   "bugs": {
-    "url": "https://github.com/amui/issues"
+    "url": "https://github.com/allmobilize/amazeui/issues"
   },
   "dependencies": {
+    "seajs": "latest",
+    "zepto": "latest",
+    "handlebars": "latest"
+  },
+  "devDependencies": {
     "body-parser": "~1.0.0",
     "cookie-parser": "~1.0.1",
     "debug": "1.0.x",
@@ -39,9 +44,7 @@
     "hbs": "~2.7.0",
     "less-middleware": "1.0.x",
     "morgan": "~1.0.0",
-    "errorhandler": "^1.1.1"
-  },
-  "devDependencies": {
+    "errorhandler": "^1.1.1",
     "fs-extra": "^0.10.0",
     "gulp": "^3.8.1",
     "gulp-bower": "^0.0.6",

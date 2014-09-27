@@ -17,7 +17,7 @@
     "web",
     "web-components"
   ],
-  "homepage": "http://amui.yunshipei.com",
+  "homepage": "http://amazeui.org",
   "author": "Allmobilize, Inc.",
   "scripts": {
     "start": "nodemon tools/app/app.js",

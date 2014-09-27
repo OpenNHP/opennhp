@@ -5,16 +5,53 @@ Amaze UI 是一个轻量级、 [**Mobile first**](http://cbrac.co/113eY5h) 的�
 基于开源社区流行前端框架编写（[使用、参考的项目列表](https://github.com/allmobilize/amazeui#%E5%8F%82%E8%80%83%E4%BD%BF%E7%94%A8%E7%9A%84%E5%BC%80%E6%BA%90%E9%A1%B9%E7%9B%AE)）。
 
 
-## 下载
+## 下载文件
 
 __注意：__ 目前提供下载的为测试版本，部分细节还在调整、改进，欢迎大家提出意见、建议。
 
 <div class="am-g">
-  <div class="col-md-6 col-md-centered">
+  <div class="col-md-8 col-md-centered">
     <a href="/download" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
 ">下载 Amaze UI v1.0.0 beta</a>
   </div>
 </div>
+
+### 使用 CDN
+
+#### Staticfile.org
+
+下面的链接由 [Staticfile.org](http://staticfile.org) 提供 CDN 服务。
+
+```html
+http://cdn.staticfile.org/amazeui/1.0.0-beta2/css/amazeui.basic.css
+http://cdn.staticfile.org/amazeui/1.0.0-beta2/css/amazeui.basic.min.css
+http://cdn.staticfile.org/amazeui/1.0.0-beta2/css/amazeui.css
+http://cdn.staticfile.org/amazeui/1.0.0-beta2/css/amazeui.min.css
+http://cdn.staticfile.org/amazeui/1.0.0-beta2/css/amazeui.widgets.css
+http://cdn.staticfile.org/amazeui/1.0.0-beta2/css/amazeui.widgets.min.css
+http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.basic.js
+http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.basic.min.js
+http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.js
+http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.min.js
+http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.widgets.helper.js
+http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.widgets.helper.min.js
+http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.widgets.js
+http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.widgets.min.js
+```
+
+### 使用 Bower
+
+```html
+bower install amazeui
+```
+
+### 获取源码
+
+你可以从 GitHub 项目主页获取源代码。
+
+<iframe src="http://ghbtns.com/github-btn.html?user=allmobilize&repo=amazeui&type=watch&count=true&size=large" allowtransparency="true" frameborder="0" scrolling="0" width="156px" height="30px"></iframe>
+
+<iframe src="http://ghbtns.com/github-btn.html?user=allmobilize&repo=amazeui&type=fork&count=true&size=large" allowtransparency="true" frameborder="0" scrolling="0" width="156px" height="30px"></iframe>
 
 ## 版本说明
 
@@ -27,6 +64,23 @@ Amaze UI 遵循 [Semantic Versioning](http://semver.org/lang/zh-CN/) 规范，�
 
 ## 目录结构
 
+### 文件说明
+
+- `amazeui.css` / `amazeui.js`：包含 Amaze UI 所有的样式和脚本；
+- `amazeui.basic.css` / `amazeui.basic.js`：包含 Amaze UI CSS 部分、JS 插件部分的样式和脚本，供不使用 Web 组件的用户选择；
+- ``amazeui.widgets.css` / `amazeui.widgets.js`：包含 Web 组件及其依赖的基础插件的样式和脚本，供只使用 Web 组件的用户选择。
+
+以上每个文件都有对应的 minified 文件。
+
+```
+{basic} = [CSS] + [JS插件]
+```
+```
+{widgets} = [Web组件] + [Web 组件依赖的 CSS] + [Web组件依赖的JS插件]
+```
+
+### 示例 HTML
+
 - `index.html` - 空白 HTML 模板；
 - `blog.html` - 博客页面模板（[预览](/examples/blog.html)）；
 - `landing.html` - Landing Page 模板（[预览](/examples/landing.html)）；
@@ -38,27 +92,37 @@ Amaze UI 遵循 [Semantic Versioning](http://semver.org/lang/zh-CN/) 规范，�
 
 ```
 AmazeUI
-├── assets
-│   ├── css
-│   │   ├── amui.all.css
-│   │   ├── amui.all.min.css
-│   │   └── app.css
-│   ├── i
-│   │   ├── app-icon72x72@2x.png
-│   │   └── favicon.png
-│   └── js
-│       ├── amui.js
-│       ├── amui.min.js
-│       ├── amui.widget.helper.js
-│       ├── amui.widget.helper.min.js
-│       ├── app.js
-│       └── zepto.min.js
-├── blog.html
-├── index.html
-├── landing.html
-├── login.html
-├── sidebar.html
-└── widget.html
+|-- assets
+|   |-- css
+|   |   |-- amazeui.basic.css       // Amaze UI CSS/JS插件样式
+|   |   |-- amazeui.basic.min.css
+|   |   |-- amazeui.css             // Amaze UI 所有样式文件
+|   |   |-- amazeui.min.css
+|   |   |-- amazeui.widgets.css     // Web 组件主题及依赖的样式
+|   |   |-- amazeui.widgets.min.css
+|   |   `-- app.css
+|   |-- i
+|   |   |-- app-icon72x72@2x.png
+|   |   |-- favicon.png
+|   |   `-- startup-640x1096.png
+|   `-- js
+|       |-- amazeui.basic.js
+|       |-- amazeui.basic.min.js
+|       |-- amazeui.js
+|       |-- amazeui.min.js
+|       |-- amazeui.widgets.helper.js
+|       |-- amazeui.widgets.helper.min.js
+|       |-- amazeui.widgets.js
+|       |-- amazeui.widgets.min.js
+|       |-- app.js
+|       |-- handlebars.min.js
+|       `-- zepto.min.js
+|-- blog.html
+|-- index.html
+|-- landing.html
+|-- login.html
+|-- sidebar.html
+`-- widget.html
 ```
 
 ## 参与讨论

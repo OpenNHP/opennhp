@@ -19,11 +19,6 @@ Amaze UI
 |-- less        # LESS 文件
 |-- tools       # 相关工具
 |-- vendor      # 第三方文件
-|   |-- amazeui.partials.js
-|   |-- handlebars
-|   |-- json.format.js
-|   |-- seajs
-|   `-- zepto
 `-- widget      # Web 组件
 ```
 
@@ -38,8 +33,9 @@ Amaze UI
 
 ```
 less
-|-- amui.all.less
-|-- amui.less
+|-- amazeui.less          // 引入了 Amaze UI 所有样式文件
+|-- amazeui.widgets.less  // gulp 自动生成，Web 组件及依赖的样式
+|-- amui.less             // CSS 部分的样式
 |-- animation.less
 |-- article.less
 |-- badge.less
@@ -50,7 +46,6 @@ less
 |-- button.less
 |-- close.less
 |-- code.less
-|-- color-schemes
 |-- comment.less
 |-- form.less
 |-- grid.less
@@ -65,10 +60,9 @@ less
 |-- print.less
 |-- progress.less
 |-- table.less
-|-- themes
+|-- themes        // 主题目录，1.x 暂未用到
 |-- thumbnail.less
 |-- topbar.less
-|-- ui.accordion.less
 |-- ui.add2home.less
 |-- ui.alert.less
 |-- ui.component.less
@@ -77,9 +71,11 @@ less
 |-- ui.offcanvas.less
 |-- ui.popover.less
 |-- ui.progress.less
+|-- ui.pureview.less
+|-- ui.share.less
+|-- ui.tabs.less
 |-- utility.less
-|-- variables.less
-`-- zepto.touchgallery.less
+`-- variables.less
 ```
 
 ## JavaScript
@@ -87,38 +83,39 @@ less
 JS 文件分三类：
 
 - `ui.` 开头的为 [JS 插件](/javascript)中的【UI 增强】部分；
-- `util.` 开头的为 [JS 插件](/javascript)中的 【使用工具】部分；
-- `zepto.` 开头的为 Zepto 的一些扩展及插件（可能会被替换为 jQuery）。
+- `util.` 开头的为 [JS 插件](/javascript)中的 【实用工具】部分；
+- `zepto.` 开头的为 Zepto 的一些扩展及插件。
 
 ```
 js
-|-- core.js         # 一些基础方法
-|-- nav.js          # 遗留组件，将会被重构
-|-- ui.accordion.js # 遗留组件，将会被移除
-|-- ui.add2home.js  # iOS 添加到桌面
+|-- core.js
+|-- ui.add2home.js
 |-- ui.alert.js
 |-- ui.button.js
 |-- ui.collapse.js
 |-- ui.dimmer.js
 |-- ui.dropdown.js
+|-- ui.iscroll-lite.js
 |-- ui.modal.js
 |-- ui.offcanvas.js
 |-- ui.popover.js
 |-- ui.progress.js
+|-- ui.pureview.js
 |-- ui.scrollspy.js
 |-- ui.scrollspynav.js
+|-- ui.share.js
 |-- ui.smooth-scroll.js
 |-- ui.sticky.js
+|-- ui.tabs.js
 |-- util.cookie.js
 |-- util.fastclick.js
 |-- util.fullscreen.js
+|-- util.hammer.js
 |-- util.qrcode.js
 |-- zepto.extend.data.js
 |-- zepto.extend.fx.js
 |-- zepto.extend.selector.js
-|-- zepto.extend.touch.js
 |-- zepto.flexslider.js
 |-- zepto.outerdemension.js
-|-- zepto.pinchzoom.js
-`-- zepto.touchgallery.js
+`-- zepto.pinchzoom.js
 ```

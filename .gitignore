@@ -28,3 +28,8 @@ node_modules/
 dist/assets
 .build
 tools/app/public/style.css
+
+less/amazeui.widgets.less
+
+docs/examples/assets/css/amazeui*.css
+docs/examples/assets/js/amazeui*.js

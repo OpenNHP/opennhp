@@ -1,14 +1,28 @@
 {
-  "name": "AmazeUI",
+  "name": "amazeui",
+  "title": "Amaze UI",
   "description": "Sleek, intuitive, and powerful front-end framework for faster and easier web development.",
-  "version": "1.0.0",
+  "version": "1.0.0-beta2",
   "keywords": [
-    "AMUI, Amaze UI, AllMobile"
+    "AMUI",
+    "Amaze UI",
+    "AllMobile",
+    "css",
+    "js",
+    "less",
+    "mobile-first",
+    "responsive",
+    "front-end",
+    "framework",
+    "web",
+    "web-components"
   ],
   "homepage": "http://amui.yunshipei.com",
   "author": "Allmobilize, Inc.",
   "scripts": {
-    "start": "nodemon tools/app/app.js"
+    "start": "nodemon tools/app/app.js",
+    "build": "gulp install && gulp",
+    "preview": "gulp preview"
   },
   "repository": {
     "type": "git",
@@ -47,8 +61,8 @@
     "lodash": "^2.4.1",
     "underscore": "~1.6.0"
   },
-    "license": {
-        "type": "MIT",
-        "url": "https://github.com/allmobilize/amazeui/blob/master/LICENSE.md"
-    }
+  "license": {
+    "type": "MIT",
+    "url": "https://github.com/allmobilize/amazeui/blob/master/LICENSE.md"
+  }
 }

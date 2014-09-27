@@ -1,0 +1,15 @@
+/tools
+/vendor
+/docs
+/fonts
+
+.bower-cache
+.bower-registry
+.bower-tmp
+.idea
+.node_modules
+.bowerrc
+
+nodemon.json
+composer.json
+bower.json

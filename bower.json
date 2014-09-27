@@ -1,6 +1,6 @@
 {
     "name": "amazeui",
-    "version": "1.0.0-beta2-dev",
+    "version": "1.0.0-beta2",
     "description": "The first crossing screen front-end framework in China, for developing mobile first, responsive web projects.",
     "keywords": [
         "css",
@@ -15,9 +15,11 @@
     ],
     "homepage": "http://amazeui.org",
     "main": [
-        "less/amui.less",
-        "dist/assets/css/amui.all.css",
-        "dist/assets/js/amui.js"
+        "less/amazeui.less",
+        "dist/css/amazeui.css",
+        "dist/css/amazeui.min.css",
+        "dist/js/amazeui.js",
+        "dist/js/amazeui.min.js"
     ],
     "ignore": [
         "/.*",

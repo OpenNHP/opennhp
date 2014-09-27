@@ -57,9 +57,19 @@ define(function(require, exports, module) {
             options = this.options,
             isPopup = this.isPopup;
 
-        if (this.transitioning || this.active) return;
+        if (this.active) return;
 
         if (!this.$element.length)  return;
+
+        var hasAnimation = this.transitioning;
+
+        // 判断如果还在动画，就先触发之前的closed事件
+        if (hasAnimation) {
+            clearTimeout($element.transitionHandle);
+            $element.transitionHandle = null;
+            $element.trigger(supportTransition.end);
+            $element.off(supportTransition.end);
+        }
 
         isPopup && this.$element.show();
 
@@ -88,12 +98,22 @@ define(function(require, exports, module) {
     };
 
     Modal.prototype.close = function(relatedElement) {
-        if (this.transitioning || !this.active) return;
+        if (!this.active) return;
+
+        var hasAnimation = this.transitioning;
 
         var $element = this.$element,
             options = this.options,
             isPopup = this.isPopup,
             that = this;
+
+        // 判断如果还在动画，就先触发之前的opened事件
+        if (hasAnimation) {
+            clearTimeout($element.transitionHandle);
+            $element.transitionHandle = null;
+            $element.trigger(supportTransition.end);
+            $element.off(supportTransition.end);
+        }
 
         this.$element.trigger($.Event('close:modal:amui', {relatedElement: relatedElement}));
 

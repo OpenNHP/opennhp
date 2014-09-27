@@ -26,11 +26,10 @@
         "composer.json",
         "CONTRIBUTING.md",
         "docs",
-        "vendor/amazeui",
-        "vendor/seajs",
-        "vendor/json.format.js",
+        "vendor",
         "tools",
-        "node_modules"
+        "node_modules",
+        "nodemon.json"
     ],
     "authors": [
         {

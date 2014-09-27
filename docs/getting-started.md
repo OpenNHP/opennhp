@@ -12,7 +12,7 @@ __注意：__ 目前提供下载的为测试版本，部分细节还在调整、
 <div class="am-g">
   <div class="col-md-8 col-md-centered">
     <a href="/download" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
-">下载 Amaze UI v1.0.0 beta</a>
+">下载 Amaze UI v1.0.0-beta2</a>
   </div>
 </div>
 
@@ -134,7 +134,7 @@ __感谢大家对 Amaze UI 的关注和支持！__
 ## jQuery or Zepto?
 
 <div class="am-alert am-alert-danger">
-  这个问题已有结论：ver 1.0 继续使用 Zepto，偏重处理移动端和桌面现代浏览器，<code>ver 2.0</code> 会改用 jQuery，完善桌面端支持。谢谢大家！
+  这个问题已有结论：v1.x 继续使用 Zepto，偏重处理移动端和桌面现代浏览器，<code>v2.x</code> 会改用 jQuery，完善桌面端支持。谢谢大家！
 </div>
 
 > 我承认，我是猴子派来捣乱的！

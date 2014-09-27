@@ -342,7 +342,7 @@
     ],
 
     "jsDependencies": [
-        "amui.accordion.js"
+        "ui.collapse.js"
     ],
 
     "script": "accordion.js",

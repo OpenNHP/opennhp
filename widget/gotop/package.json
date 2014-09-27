@@ -196,6 +196,10 @@
         "util.fastclick.js"
     ],
 
+    "jsDependencies": [
+      "ui.smooth-scroll.js"
+    ],
+
     "script": "gotop.js",
 
     "api": {

@@ -30,7 +30,7 @@ define(function(require, exports, module) {
 
         // 如果有 Fix 的工具栏则设置 body 的 padding-bottom
         if ($navBar.css('position') == 'fixed') {
-            $body.addClass('with-fixed-navbar');
+            $body.addClass('am-with-fixed-navbar');
         }
 
         if ($qrcode.length) {

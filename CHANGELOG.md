@@ -7,7 +7,7 @@
 
 - 文件名与项目名称统一；
 - 增加 `basic`、`widgets` 两个版本供用户选择；
-- 上传到 http://staticfile.org/，搜索 amazeui 即可使用 CDN。
+- 上传到 [http://staticfile.org/](http://staticfile.org/)，搜索 amazeui 查看相关文件链接。
 
 ### 官网
 

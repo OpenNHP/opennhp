@@ -48,6 +48,8 @@ var jsBase = [
 
 var seajs = path.join(__dirname, 'vendor/seajs/sea.js');
 var seaUse = path.join(__dirname, '/.build/seaUse.js');
+var seaUseBasic = path.join(__dirname, '/.build/seaUseBasic.js');
+var seaUseWidgets = path.join(__dirname, '/.build/seaUseWidgets.js');
 var jsWidgets = [];
 var plugins;
 var allPlugins;
@@ -62,11 +64,11 @@ var jsWidgetsSorted;
 var dateFormat = 'UTC:yyyy-mm-dd"T"HH:mm:ss Z';
 
 var banner = [
-    '/*! <%= pkg.title %> v<%= pkg.version %>',
+    '/*! <%= pkg.title %> v<%= pkg.version %><%=ver%>',
     'by Amaze UI Team',
     '(c) ' + gutil.date(Date.now(), 'UTC:yyyy') + ' AllMobilize, Inc.',
     'Licensed under <%= pkg.license.type %>',
-    gutil.date(Date.now(), dateFormat) + ' */ \n\n'
+    gutil.date(Date.now(), dateFormat) + ' */ \n'
 ].join(' | ');
 
 // write widgets style and tpl
@@ -83,6 +85,8 @@ var preparingData = function() {
     });
 
     var modules = [];
+    var modulesBasic = [];
+    var modulesWidgets = [];
 
     allPlugins = fs.readdirSync('./js');
     plugins = fs.readdirSync('./js');
@@ -151,16 +155,28 @@ var preparingData = function() {
 
     // seajs.use[''...]
     jsAll.forEach(function(js) {
-        modules.push(path.basename(js, '.js'));
+        var basename = path.basename(js, '.js');
+        modules.push(basename);
+
+        if (jsWidgets.indexOf(js) > -1) {
+            modulesWidgets.push(basename)
+        }
+
+        if (jsBasic.indexOf(js) > -1) {
+            modulesBasic.push(basename)
+        }
     });
+
     fs.outputFileSync(seaUse, 'seajs.use(' + JSON.stringify(modules) + ');');
+    fs.outputFileSync(seaUseBasic, 'seajs.use(' + JSON.stringify(modulesBasic) + ');');
+    fs.outputFileSync(seaUseWidgets, 'seajs.use(' + JSON.stringify(modulesWidgets) + ');');
 
     // sort for concat
-    jsWidgetsSorted = _.union([seajs], jsWidgets, [seaUse]);
+    jsWidgetsSorted = _.union([seajs], jsWidgets, [seaUseWidgets]);
 
     jsAllSorted = _.union([seajs], jsAll, [seaUse]);
 
-    jsBasicSorted = _.union([seajs], jsBasic, [seaUse]);
+    jsBasicSorted = _.union([seajs], jsBasic, [seaUseBasic]);
 
 
     partials += '  }; \n\n';
@@ -178,7 +194,7 @@ var preparingData = function() {
 // build to dist dir
 gulp.task('buildLess', function() {
     gulp.src(['./less/amui.less', './less/amazeui.widgets.less', './less/amazeui.less'])
-        .pipe(header(banner, {pkg: pkg}))
+        .pipe(header(banner, {pkg: pkg, ver: ''}))
         .pipe(less({
             paths: [path.join(__dirname, 'less'), path.join(__dirname, 'widget/*/src')]
         }))
@@ -237,14 +253,14 @@ gulp.task('transport', ['copyUIJs'], function() {
 gulp.task('concatAll', ['transport'], function() {
     return gulp.src(jsAllSorted, {cwd: transportDir})
         .pipe(concat(pkg.name + '.js'))
-        .pipe(header(banner, {pkg: pkg}))
+        .pipe(header(banner, {pkg: pkg, ver: ''}))
         .pipe(gulp.dest(dist.js))
         .pipe(uglify({
             mangle: {
                 except: ['require']
-            },
-            preserveComments: 'some'
+            }
         }))
+        .pipe(header(banner, {pkg: pkg, ver: ''}))
         .pipe(rename({
             suffix: '.min',
             extname: ".js"
@@ -256,14 +272,14 @@ gulp.task('concatAll', ['transport'], function() {
 gulp.task('concatBasic', ['concatAll'], function() {
     return gulp.src(jsBasicSorted, {cwd: transportDir})
         .pipe(concat(pkg.name + '.basic.js'))
-        .pipe(header(banner, {pkg: pkg}))
+        .pipe(header(banner, {pkg: pkg, ver: ' ~ basic'}))
         .pipe(gulp.dest(dist.js))
         .pipe(uglify({
             mangle: {
                 except: ['require']
-            },
-            preserveComments: 'some'
+            }
         }))
+        .pipe(header(banner, {pkg: pkg, ver: ' ~ basic'}))
         .pipe(rename({
             suffix: '.min',
             extname: ".js"
@@ -275,14 +291,14 @@ gulp.task('concatBasic', ['concatAll'], function() {
 gulp.task('concatWidgets', ['concatBasic'], function() {
     return gulp.src(jsWidgetsSorted, {cwd: transportDir})
         .pipe(concat(pkg.name + '.widgets.js'))
-        .pipe(header(banner, {pkg: pkg}))
+        .pipe(header(banner, {pkg: pkg, ver: ' ~ widgets'}))
         .pipe(gulp.dest(dist.js))
         .pipe(uglify({
             mangle: {
                 except: ['require']
-            },
-            preserveComments: 'some'
+            }
         }))
+        .pipe(header(banner, {pkg: pkg, ver: ' ~ widgets'}))
         .pipe(rename({
             suffix: '.min',
             extname: ".js"
@@ -302,13 +318,14 @@ gulp.task('clean', ['concatWidgets'], function() {
 gulp.task('hbsHelper', function() {
     gulp.src(jsPaths.hbsHelper)
         .pipe(concat(pkg.name + '.widgets.helper.js'))
+        .pipe(header(banner, {pkg: pkg, ver: ' ~ helper'}))
         .pipe(gulp.dest(dist.js))
         .pipe(uglify({
             mangle: {
                 except: ['require']
-            },
-            preserveComments: 'some'
+            }
         }))
+        .pipe(header(banner, {pkg: pkg, ver: ' ~ helper'}))
         .pipe(rename({
             suffix: '.min',
             extname: ".js"

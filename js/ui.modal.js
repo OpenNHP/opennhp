@@ -1,15 +1,10 @@
 define(function(require, exports, module) {
     require('core');
 
-    var dimmer = require('ui.dimmer');
-
-    var $ = window.Zepto;
-
-    var UI = $.AMUI;
-
-    var $win = $(window),
+    var dimmer = require('ui.dimmer'),
+        $ = window.Zepto,
+        UI = $.AMUI,
         $doc = $(document),
-        $body = $('body'),
         supportTransition = UI.support.transition;
 
     /**
@@ -45,7 +40,8 @@ define(function(require, exports, module) {
         },
         onCancel: function() {
         },
-        duration: 300 // must equal the CSS transition duration
+        duration: 300, // must equal the CSS transition duration
+        transitionEnd: supportTransition.end && supportTransition.end + '.modal.amui'
     };
 
     Modal.prototype.toggle = function(relatedElement) {
@@ -61,14 +57,11 @@ define(function(require, exports, module) {
 
         if (!this.$element.length)  return;
 
-        var hasAnimation = this.transitioning;
-
         // 判断如果还在动画，就先触发之前的closed事件
-        if (hasAnimation) {
-            clearTimeout($element.transitionHandle);
-            $element.transitionHandle = null;
-            $element.trigger(supportTransition.end);
-            $element.off(supportTransition.end);
+        if (this.transitioning) {
+            clearTimeout($element.transitionEndTimmer);
+            $element.transitionEndTimmer = null;
+            $element.trigger(options.transitionEnd).off(options.transitionEnd);
         }
 
         isPopup && this.$element.show();
@@ -81,7 +74,7 @@ define(function(require, exports, module) {
 
         $element.show().redraw();
 
-        !isPopup && $element.css({marginTop: - parseInt($element.height() / 2, 10) + 'px'});
+        !isPopup && $element.css({marginTop: -parseInt($element.height() / 2, 10) + 'px'});
 
         $element.removeClass(options.className.out).addClass(options.className.active);
 
@@ -94,13 +87,11 @@ define(function(require, exports, module) {
 
         if (!supportTransition) return complete.call(this);
 
-        $element.one(supportTransition.end, $.proxy(complete, this)).emulateTransitionEnd(options.duration);
+        $element.one(options.transitionEnd, $.proxy(complete, this)).emulateTransitionEnd(options.duration);
     };
 
     Modal.prototype.close = function(relatedElement) {
         if (!this.active) return;
-
-        var hasAnimation = this.transitioning;
 
         var $element = this.$element,
             options = this.options,
@@ -108,11 +99,10 @@ define(function(require, exports, module) {
             that = this;
 
         // 判断如果还在动画，就先触发之前的opened事件
-        if (hasAnimation) {
-            clearTimeout($element.transitionHandle);
-            $element.transitionHandle = null;
-            $element.trigger(supportTransition.end);
-            $element.off(supportTransition.end);
+        if (this.transitioning) {
+            clearTimeout($element.transitionEndTimmer);
+            $element.transitionEndTimmer = null;
+            $element.trigger(options.transitionEnd).off(options.transitionEnd);
         }
 
         this.$element.trigger($.Event('close:modal:amui', {relatedElement: relatedElement}));
@@ -131,7 +121,7 @@ define(function(require, exports, module) {
         if (!supportTransition) return complete.call(this);
 
         $element
-            .one(supportTransition.end, $.proxy(complete, this))
+            .one(options.transitionEnd, $.proxy(complete, this))
             .emulateTransitionEnd(options.duration);
 
         dimmer.close($element);

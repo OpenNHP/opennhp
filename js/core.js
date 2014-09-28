@@ -397,6 +397,11 @@ define(function(require, exports, module) {
 
         UI.support.animation && $html.addClass('cssanimations');
 
+        // iOS standalone mode
+        if (window.navigator.standalone) {
+            $html.addClass('am-standalone');
+        }
+
         $('.am-topbar-fixed-top').length && $body.addClass('am-with-topbar-fixed-top');
 
         $('.am-topbar-fixed-bottom').length && $body.addClass('am-with-topbar-fixed-bottom');

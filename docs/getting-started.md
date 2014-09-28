@@ -95,11 +95,11 @@ AmazeUI
 |-- assets
 |   |-- css
 |   |   |-- amazeui.basic.css       // Amaze UI CSS/JS插件样式
-|   |   |-- amazeui.basic.min.css
+|   |   |-- amazeui.basic.min.css     // 29.9 kB gzipped
 |   |   |-- amazeui.css             // Amaze UI 所有样式文件
-|   |   |-- amazeui.min.css
+|   |   |-- amazeui.min.css           // 38.9 kB gzipped
 |   |   |-- amazeui.widgets.css     // Web 组件主题及依赖的样式
-|   |   |-- amazeui.widgets.min.css
+|   |   |-- amazeui.widgets.min.css   // 30.4 kB gzipped
 |   |   `-- app.css
 |   |-- i
 |   |   |-- app-icon72x72@2x.png
@@ -107,13 +107,13 @@ AmazeUI
 |   |   `-- startup-640x1096.png
 |   `-- js
 |       |-- amazeui.basic.js
-|       |-- amazeui.basic.min.js
+|       |-- amazeui.basic.min.js          // 49 kB gzipped
 |       |-- amazeui.js
-|       |-- amazeui.min.js
+|       |-- amazeui.min.js                // 52.4 kb gzipped
 |       |-- amazeui.widgets.helper.js
 |       |-- amazeui.widgets.helper.min.js
 |       |-- amazeui.widgets.js
-|       |-- amazeui.widgets.min.js
+|       |-- amazeui.widgets.min.js        // 47 kB gzipped
 |       |-- app.js
 |       |-- handlebars.min.js
 |       `-- zepto.min.js

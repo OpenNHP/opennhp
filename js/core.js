@@ -155,8 +155,9 @@ define(function(require, exports, module) {
             if (!called) {
                 $($el).trigger(UI.support.transition.end);
             }
+            $el.transitionHandle = undefined;
         };
-        setTimeout(callback, duration);
+        this.transitionHandle = setTimeout(callback, duration);
         return this;
     };
 

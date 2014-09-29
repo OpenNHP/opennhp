@@ -1,19 +1,29 @@
 # Amaze UI Change Log
 ---
 
-## 2014.09 W4
 
-### Build 文件
+### 2014.09 W5
+
+- `NEW` 文档标题添加链接按钮；
+- `FIXED` #103 #17 Modal 关闭打开/关闭时间间隔过短操作失效问题；
+- `NEW` FastClick 升级到 `1.0.3`；
+- `IMPROVED` 调整 FastClick 加载模式，解决在 Chrome 模拟器中链接不能点击的问题；
+
+## Amaze UI v1.0.0-beta2
+
+### 2014.09 W4
+
+#### Build 文件
 
 - 文件名与项目名称统一；
 - 增加 `basic`、`widgets` 两个版本供用户选择；
 - 上传到 [http://staticfile.org/](http://staticfile.org/)，搜索 amazeui 查看相关文件链接。
 
-### 官网
+#### 官网
 
 - 优化左侧菜单固定效果，菜单高度超过窗口高度时增加滚动条。
 
-### CSS
+#### CSS
 
 - 重新样式梳理 `z-index`；
 
@@ -40,7 +50,7 @@ __Input Group__：
 - `IMPROVED` 处理不同尺寸垂直对齐问题。
 
 
-### JS 插件
+#### JS 插件
 
 __Button__：
 
@@ -71,7 +81,7 @@ __Tabs__：
 - `IMPROVED` #96 改进触控事件处理逻辑，避免标签中有 DOM 元素时触控失效问题。
 
 
-### Web 组件
+#### Web 组件
 
 - 重新样式梳理 `z-index`；
 
@@ -89,9 +99,9 @@ __Gallery__：
 - `IMPROVED` PureView 调用逻辑增强，判断是否设置了 PureView 的选项。
 
 
-## 2014.09 W3
+### 2014.09 W3
 
-### CSS
+#### CSS
 
 __Badge__：
 
@@ -105,7 +115,7 @@ __Topbar__：
 
 - `NEW` 增加顶部/底部固定样式。
 
-### JS 插件
+#### JS 插件
 
 __Dropdown__:
 
@@ -140,7 +150,7 @@ __Progress__：
 
 - `CHANGED` 样式主色调整为绿色。
 
-### Web 组件
+#### Web 组件
 
 __Gotop__：
 
@@ -156,7 +166,7 @@ __Tabs__：
 - `IMPROVED` #72 使用 `flexbox` 实现均分，提高微信 webview 兼容性。
 
 
-## 2014.09 W2
+### 2014.09 W2
 
 __CSS__：
 
@@ -180,7 +190,7 @@ __Web 组件__：
 - `IMPROVED` Paragraph 使用 PureView 插件；
 - `CHANGED` 移除 Navbar `package.json` 中图标位置设置选项；
 
-## 2014.09 W1
+### 2014.09 W1
 
 __JS 插件__：
 
@@ -192,7 +202,7 @@ __Navbar 组件__：
 - `FIXED` 修复二维码 URL。
 
 
-## 2014.08 W4
+### 2014.08 W4
 
 __Navbar 组件__：
 
@@ -219,23 +229,23 @@ __布局示例__：
 
 - 调整路径，下载包中 Amaze UI 相关的资源使用本地文件。
 
-## 2014.08 W3
+### 2014.08 W3
 
-### 官网
+#### 官网
 
 - 首页增加更新订阅；
 - 文档增加目录。
 
-### Web 组件
+#### Web 组件
 
 - 增加 Web 组件本地预览服务器；
 - 公用的 Demo 数据提取到 `package.json` 的 `demoContent` 下面；
 - 组件细节调整。
 
 
-## 2014.08 W2
+### 2014.08 W2
 
-### Web 组件
+#### Web 组件
 
 __Titlebar__:
 

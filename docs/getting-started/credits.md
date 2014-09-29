@@ -15,7 +15,7 @@ Amaze UI 的诞生，依托于 GitHub 及其他技术社区上一些优秀的资
 <!--
 ### RC1
 
-[@John.Wall](http://t.qq.com/wangzj141)
+[@John.Wall](http://t.qq.com/wangzj141)、@ayhome、
 -->
 
 ### Beta2

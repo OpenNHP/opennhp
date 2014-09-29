@@ -19,6 +19,7 @@ node_modules/
 .idea
 /vendor/codemirror-emmet
 /vendor/less.js
+/vendor/seaUse*.js
 /.bower-cache/
 /.bower-registry/
 /dist/test/*

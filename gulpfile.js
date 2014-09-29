@@ -16,6 +16,7 @@ var rename = require('gulp-rename');
 var bower = require('gulp-bower');
 var transport = require('gulp-cmd-transport');
 var header = require('gulp-header');
+var footer = require('gulp-footer');
 var clean = require('gulp-clean');
 var zip = require('gulp-zip');
 var replace = require('gulp-replace');
@@ -47,9 +48,9 @@ var jsBase = [
 ];
 
 var seajs = path.join(__dirname, 'vendor/seajs/sea.js');
-var seaUse = path.join(__dirname, '/.build/seaUse.js');
-var seaUseBasic = path.join(__dirname, '/.build/seaUseBasic.js');
-var seaUseWidgets = path.join(__dirname, '/.build/seaUseWidgets.js');
+var seaUse = '';
+var seaUseBasic = '';
+var seaUseWidgets = '';
 var jsWidgets = [];
 var plugins;
 var allPlugins;
@@ -167,14 +168,14 @@ var preparingData = function() {
         }
     });
 
-    fs.outputFileSync(seaUse, 'seajs.use(' + JSON.stringify(modules) + ');');
-    fs.outputFileSync(seaUseBasic, 'seajs.use(' + JSON.stringify(modulesBasic) + ');');
-    fs.outputFileSync(seaUseWidgets, 'seajs.use(' + JSON.stringify(modulesWidgets) + ');');
+    seaUse = 'seajs.use(' + JSON.stringify(modules) + ');';
+    seaUseBasic = 'seajs.use(' + JSON.stringify(modulesBasic) + ');';
+    seaUseWidgets = 'seajs.use(' + JSON.stringify(modulesWidgets) + ');';
 
     // sort for concat
     jsWidgetsSorted = _.union([seajs], jsWidgets, [seaUseWidgets]);
 
-    jsAllSorted = _.union([seajs], jsAll, [seaUse]);
+    jsAllSorted = _.union([seajs], jsAll);
 
     jsBasicSorted = _.union([seajs], jsBasic, [seaUseBasic]);
 
@@ -254,6 +255,7 @@ gulp.task('concatAll', ['transport'], function() {
     return gulp.src(jsAllSorted, {cwd: transportDir})
         .pipe(concat(pkg.name + '.js'))
         .pipe(header(banner, {pkg: pkg, ver: ''}))
+        .pipe(footer('\n<%=use%>', {use: seaUse}))
         .pipe(gulp.dest(dist.js))
         .pipe(uglify({
             mangle: {
@@ -273,6 +275,7 @@ gulp.task('concatBasic', ['concatAll'], function() {
     return gulp.src(jsBasicSorted, {cwd: transportDir})
         .pipe(concat(pkg.name + '.basic.js'))
         .pipe(header(banner, {pkg: pkg, ver: ' ~ basic'}))
+        .pipe(footer('\n<%=use%>', {use: seaUseBasic}))
         .pipe(gulp.dest(dist.js))
         .pipe(uglify({
             mangle: {
@@ -292,6 +295,7 @@ gulp.task('concatWidgets', ['concatBasic'], function() {
     return gulp.src(jsWidgetsSorted, {cwd: transportDir})
         .pipe(concat(pkg.name + '.widgets.js'))
         .pipe(header(banner, {pkg: pkg, ver: ' ~ widgets'}))
+        .pipe(footer('\n<%=use%>', {use: seaUseWidgets}))
         .pipe(gulp.dest(dist.js))
         .pipe(uglify({
             mangle: {
@@ -359,16 +363,25 @@ gulp.task('zipCopyCSS', function() {
 });
 
 gulp.task('zipCopyJs', ['zipCopyCSS'], function() {
-    return gulp.src('./dist/js/*.js')
+    return gulp.src(['./dist/js/*.js', './vendor/handlebars/handlebars.min.js', './vendor/zepto/zepto.min.js'])
         .pipe(gulp.dest('./docs/examples/assets/js'));
 });
 
-gulp.task('zip', ['zipCopyJs'], function() {
+gulp.task('zipAdd', ['zipCopyJs'], function() {
     return gulp.src(['docs/examples/**/*'])
         .pipe(replace(/\{\{assets\}\}/g, 'assets/', {skipBinary: true}))
         .pipe(zip(format('AmazeUI-%s-%s.zip', pkg.version, gutil.date(Date.now(), 'UTC:yyyymmdd')), {comment: 'Created on ' + gutil.date(Date.now(), dateFormat)}))
         .pipe(gulp.dest('dist'));
 });
+
+gulp.task('zipClean', ['zipAdd'], function() { // zipClean
+    return gulp.src(['docs/examples/assets/*/amazeui.*',
+        './docs/examples/assets/js/handlebars.min.js',
+        './docs/examples/assets/js/zepto.min.js'], {read: false})
+        .pipe(clean({force: true}));
+});
+
+gulp.task('zip', ['zipClean']);
 
 
 gulp.task('buildJs', ['copyWidgetJs', 'copyUIJs', 'transport', 'concat', 'clean']);

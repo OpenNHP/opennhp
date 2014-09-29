@@ -155,9 +155,9 @@ define(function(require, exports, module) {
             if (!called) {
                 $($el).trigger(UI.support.transition.end);
             }
-            $el.transitionHandle = undefined;
+            $el.transitionEndTimmer = undefined;
         };
-        this.transitionHandle = setTimeout(callback, duration);
+        this.transitionEndTimmer = setTimeout(callback, duration);
         return this;
     };
 
@@ -396,6 +396,11 @@ define(function(require, exports, module) {
         $html.removeClass('no-js').addClass('js');
 
         UI.support.animation && $html.addClass('cssanimations');
+
+        // iOS standalone mode
+        if (window.navigator.standalone) {
+            $html.addClass('am-standalone');
+        }
 
         $('.am-topbar-fixed-top').length && $body.addClass('am-with-topbar-fixed-top');
 

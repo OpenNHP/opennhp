@@ -15,7 +15,7 @@ Modal 交互窗口，可以用来模拟浏览器的 `alert`、`confirm`、`promp
 <div class="am-modal am-modal-no-btn" tabindex="-1" id="doc-modal-1">
   <div class="am-modal-dialog">
     <div class="am-modal-hd">Modal 标题
-      <a href="" class="am-close am-close-spin" data-am-modal-close>&times;</a>
+      <a href="javascript: void(0)" class="am-close am-close-spin" data-am-modal-close>&times;</a>
     </div>
     <div class="am-modal-bd">
       Modal 内容。
@@ -30,7 +30,7 @@ Modal 交互窗口，可以用来模拟浏览器的 `alert`、`confirm`、`promp
 <div class="am-modal am-modal-no-btn" tabindex="-1" id="doc-modal-1">
   <div class="am-modal-dialog">
     <div class="am-modal-hd">Modal 标题
-      <a href="" class="am-close am-close-spin" data-am-modal-close>&times;</a>
+      <a href="javascript: void(0)" class="am-close am-close-spin" data-am-modal-close>&times;</a>
     </div>
     <div class="am-modal-bd">
       Modal 内容。

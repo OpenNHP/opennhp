@@ -95,6 +95,7 @@
       content: @fa-var-spinner;
       .am-icon-spin;
       font-size: 24px;
+      line-height: 24px;
       color: #eee;
       position: absolute;
       top: 50%;
@@ -114,8 +115,7 @@
     z-index: 2;
     -webkit-user-drag: none;
     user-drag: none;
-
-    .transition(opacity .15s ease-in);
+    .transition(opacity .15s linear);
 
     &.am-img-loaded {
       opacity: 1;
@@ -127,7 +127,7 @@
   position: absolute;
   top: 50%;
   width: 100%;
-  margin-top: -18px;
+  margin-top: -18px !important;
   z-index: @z-index-pureview + 2;
 
   .am-touch &,

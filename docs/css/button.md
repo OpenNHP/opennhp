@@ -22,8 +22,8 @@
 <button type="button" class="am-btn am-btn-success">绿色按钮</button>
 <button type="button" class="am-btn am-btn-warning">橙色按钮</button>
 <button type="button" class="am-btn am-btn-danger">红色按钮</button>
-<button type="button" class="am-btn am-btn-link">链接</button>
-<button type="button" class="am-btn am-btn-default">应用按钮样式的链接</button>
+<a class="am-btn am-btn-link">链接</a>
+<a class="am-btn am-btn-default">应用按钮样式的链接</a>
 `````
 
 ```html
@@ -33,8 +33,8 @@
 <button type="button" class="am-btn am-btn-success">绿色按钮</button>
 <button type="button" class="am-btn am-btn-warning">橙色按钮</button>
 <button type="button" class="am-btn am-btn-danger">红色按钮</button>
-<button type="button" class="am-btn am-btn-link">链接</button>
-<button type="button" class="am-btn am-btn-default">应用按钮样式的链接</button>
+<a class="am-btn am-btn-link">链接</a>
+<a class="am-btn am-btn-default">应用按钮样式的链接</a>
 ```
 
 ### 方形按钮

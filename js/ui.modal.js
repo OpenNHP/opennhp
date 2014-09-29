@@ -103,7 +103,6 @@ define(function(require, exports, module) {
             clearTimeout($element.transitionEndTimmer);
             $element.transitionEndTimmer = null;
             $element.trigger(options.transitionEnd).off(options.transitionEnd);
-            dimmer.close($element, true);
         }
 
         this.$element.trigger($.Event('close:modal:amui', {relatedElement: relatedElement}));
@@ -125,7 +124,7 @@ define(function(require, exports, module) {
             .one(options.transitionEnd, $.proxy(complete, this))
             .emulateTransitionEnd(options.duration);
 
-        dimmer.close($element);
+        dimmer.close($element, true);
 
         this.active = false;
     };

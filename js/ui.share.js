@@ -1,61 +1,14 @@
 define(function(require, exports, module) {
+    'use strict';
 
     require('core');
     require('ui.modal');
-    var QRCode = require('util.qrcode');
-
-    var $ = window.Zepto,
+    var QRCode = require('util.qrcode'),
+        $ = window.Zepto,
         UI = $.AMUI,
         doc = document,
         $doc = $(doc),
         transition = UI.support.transition;
-
-    /**
-     * https://github.com/cho45/micro-template.js
-     * (c) cho45 http://cho45.github.com/mit-license
-     */
-
-    function template(id, data) {
-        var me = arguments.callee;
-        if (!me.cache[id]) me.cache[id] = (function() {
-            var name = id, string = /^[\w\-]+$/.test(id) ? me.get(id) : (name = 'template(string)', id); // no warnings
-            var line = 1, body = (
-            "try { " +
-            (me.variable ? "var " + me.variable + " = this.stash;" : "with (this.stash) { ") +
-            "this.ret += '" +
-            string.
-                replace(/<%/g, '\x11').replace(/%>/g, '\x13'). // if you want other tag, just edit this line
-                replace(/'(?![^\x11\x13]+?\x13)/g, '\\x27').
-                replace(/^\s*|\s*$/g, '').
-                replace(/\n/g, function() {
-                    return "';\nthis.line = " + (++line) + "; this.ret += '\\n"
-                }).
-                replace(/\x11=raw(.+?)\x13/g, "' + ($1) + '").
-                replace(/\x11=(.+?)\x13/g, "' + this.escapeHTML($1) + '").
-                replace(/\x11(.+?)\x13/g, "'; $1; this.ret += '") +
-            "'; " + (me.variable ? "" : "}") + "return this.ret;" +
-            "} catch (e) { throw 'TemplateError: ' + e + ' (on " + name + "' + ' line ' + this.line + ')'; } " +
-            "//@ sourceURL=" + name + "\n" // source map
-            ).replace(/this\.ret \+= '';/g, '');
-            var func = new Function(body);
-            var map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '\x22': '&#x22;', '\x27': '&#x27;'};
-            var escapeHTML = function(string) {
-                return ('' + string).replace(/[&<>\'\"]/g, function(_) {
-                    return map[_]
-                })
-            };
-            return function(stash) {
-                return func.call(me.context = {escapeHTML: escapeHTML, line: 1, ret: '', stash: stash})
-            };
-        })();
-        return data ? me.cache[id](data) : me.cache[id];
-    }
-
-    template.cache = {};
-
-    template.get = function(id) {
-        return Share.DEFAULTS.tpl;
-    };
 
     var Share = function(options) {
         this.options = $.extend({}, Share.DEFAULTS, options || {});
@@ -64,7 +17,6 @@ define(function(require, exports, module) {
         this.pics = null;
         this.inited = false;
         this.active = false;
-
         // this.init();
     };
 
@@ -77,12 +29,12 @@ define(function(require, exports, module) {
         desc: 'Hi，孤夜观天象，发现一个不错的西西，分享一下下 ;-)',
         via: 'Amaze UI',
         tpl: '<div class="am-share am-modal-actions" id="<%= id %>">' +
-        '<h3 class="am-share-title"><%= title %></h3>' +
-        '<ul class="am-share-sns sm-block-grid-3"><% for(var i = 0; i < sns.length; i++) {%>' +
-        '<li><a href="<%= sns[i].shareUrl %>" data-am-share-to="<%= sns[i].id %>" ><i class="am-icon-<%= sns[i].icon %>"></i><span><%= sns[i].title %></span></a></li>' +
-        '<% } %></ul>' +
-        '<div class="am-share-footer"><button class="am-btn am-btn-default am-btn-block" data-am-share-close><%= cancel %></button></div>' +
-        '</div>'
+                '<h3 class="am-share-title"><%= title %></h3>' +
+                '<ul class="am-share-sns sm-block-grid-3"><% for(var i = 0; i < sns.length; i++) {%>' +
+                    '<li><a href="<%= sns[i].shareUrl %>" data-am-share-to="<%= sns[i].id %>" ><i class="am-icon-<%= sns[i].icon %>"></i><span><%= sns[i].title %></span></a></li>' +
+                '<% } %></ul>' +
+                '<div class="am-share-footer"><button class="am-btn am-btn-default am-btn-block" data-am-share-close><%= cancel %></button></div>' +
+            '</div>'
     };
 
     Share.SNS = {
@@ -222,7 +174,7 @@ define(function(require, exports, module) {
             }
         });
 
-        return template('share', $.extend({}, options, {sns: snsData}));
+        return UI.template(options.tpl, $.extend({}, options, {sns: snsData}));
     };
 
     Share.prototype.init = function() {
@@ -333,6 +285,8 @@ define(function(require, exports, module) {
     };
 
     Share.prototype.wechatQr = function() {
+        if (window.WeixinJSBridge) {}
+
         if (!this.$wechatQr) {
             var qrId = UI.utils.generateGUID('am-share-wechat'),
                 $qr = $('<div class="am-modal am-modal-no-btn am-share-wechat-qr"><div class="am-modal-dialog"><div class="am-modal-hd">分享到微信 <a href="" class="am-close am-close-spin" data-am-modal-close>&times;</a> </div><div class="am-modal-bd"><div class="am-share-wx-qr"></div><div class="am-share-wechat-tip">打开微信，点击底部的<em>发现</em>，<br/> 使用<em>扫一扫</em>将网页分享至朋友圈</div></div></div></div>', {
@@ -370,5 +324,3 @@ define(function(require, exports, module) {
 
     module.exports = share;
 });
-
-// TODO: 模板函数公有化

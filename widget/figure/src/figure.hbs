@@ -1,7 +1,8 @@
 {{#this}}
   <figure data-am-widget="figure" class="am am-figure {{#if theme}}am-figure-{{theme}}{{else}}am-figure-default{{/if}} {{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}" {{#if id}}
-      id="{{id}}"{{/if}}  data-am-figure="{ {{#if options.zoomAble}} pureview: 1,{{/if}} {{#if options.autoZoom}}autoZoom: 1{{/if}} }">
-    {{#if content.link}}<a href="{{link}}"></a>{{/if}}
+      id="{{id}}"{{/if}}  data-am-figure="{ {{#if options.zoomAble}} pureview: 1,
+      {{/if}} {{#unless options.zoomAble}}autoZoom: 1{{/unless}} }">
+    {{#if content.link}}<a href="{{content.link}}" title="{{content.figcaption}}">{{/if}}
 
     {{#if options.figcaptionPosition}}
       {{#ifCond options.figcaptionPosition '==' 'top'}}

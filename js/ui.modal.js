@@ -124,7 +124,7 @@ define(function(require, exports, module) {
             .one(options.transitionEnd, $.proxy(complete, this))
             .emulateTransitionEnd(options.duration);
 
-        dimmer.close($element);
+        dimmer.close($element, true);
 
         this.active = false;
     };

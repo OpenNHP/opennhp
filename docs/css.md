@@ -302,3 +302,29 @@ __不要单独使用、直接在里面编写样式__！！！
 
 /* 当然，如果你想给自己找点乐，那就随便了 */
 ```
+
+## 禁用响应式
+
+不喜欢响应式？可以尝试禁用：
+
+- 删除 `head` 里的视口设置 `meta` 标签；
+
+```html
+<!--<meta name="viewport"
+    content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">-->
+```
+
+- 固定容器 `.am-container` 宽度（可以自己添加一个 class，不一定要使用内置的）：
+
+```css
+.am-container {
+  width: 980px !important;
+  max-width: none;
+}
+```
+
+- 使用网格系统时，只添加 `.col-sm-*` class，移除其他断点的 class。
+
+至此，布局层的响应式被禁用了（[参考示例](/examples/non-responsive.html)）。
+
+不过，这仅仅是个开始，一些组件的样式细节可能还需要调整，只能陪你到这了……

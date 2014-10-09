@@ -24,18 +24,14 @@ body {
 
 
 /**
- * NOTE: Use `text-rendering` with caution - http://cbrac.co/SJt8p1
- * NOTE: Avoid the webkit anti-aliasing trap - http://cbrac.co/TAdhbH
  * 1. Prevent iOS text size adjust after orientation change, without disabling
  *    user zoom.
  *    https://developer.mozilla.org/en-US/docs/Web/CSS/text-size-adjust
- * 2. http://maxvoltar.com/archive/-webkit-font-smoothing
  */
 
 html {
   -ms-text-size-adjust: 100%;   /* 1 */
   -webkit-text-size-adjust: 100%;   /* 1 */
-  -webkit-font-smoothing: antialiased; /* 2 */
 }
 
 
@@ -509,6 +505,27 @@ body {
   .hook-base-body;
 }
 
+
+/**
+ * 1. http://usabilitypost.com/2012/11/15/w-optimizelegibility-on-mobile-devices/
+ * 2. http://maxvoltar.com/archive/-webkit-font-smoothing
+ * NOTE: http://usabilitypost.com/2012/11/05/stop-fixing-font-smoothing/
+ * 3. http://maximilianhoffmann.com/posts/better-font-rendering-on-osx
+ *    http://jaydenseric.com/blog/css-font-smoothing-for-firefox-mac
+ */
+
+body,
+input,
+textarea,
+select,
+button {
+  text-rendering: optimizeLegibility;  /* 1 */
+  -webkit-font-smoothing: antialiased; /* 2 */
+  -moz-osx-font-smoothing: grayscale;  /* 3 Default: auto */
+  -moz-font-feature-settings: "liga", "kern"
+}
+
+
 // Responsive font-size
 
 @media @medium-up {
@@ -656,9 +673,12 @@ figure {
 /* Headings
    ========================================================================== */
 
-// TODO: set headings default margin and style
-
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   //margin: 0;
   margin: 0 0 @base-margin-vertical 0;
   font-weight: @base-heading-font-weight;

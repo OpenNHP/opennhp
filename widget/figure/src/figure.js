@@ -16,7 +16,7 @@ define(function(require, exports, module) {
         var zoomAble = ($(element).width() < t.width);
 
         if (zoomAble) {
-            $(element).parent('.am-figure').addClass('am-figure-zoomable');
+            $(element).closest('.am-figure').addClass('am-figure-zoomable');
         }
 
         return zoomAble;
@@ -28,7 +28,7 @@ define(function(require, exports, module) {
 
             if (options.pureview) {
                 $(item).addClass('am-figure-zoomable').pureview();
-            } else if (options.autoZoom) {
+            } else if (!!options.autoZoom) {
                 var zoomAble = $.isImgZoomAble($(item).find('img')[0]);
                  zoomAble && $(item).pureview();
             }

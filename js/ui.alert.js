@@ -5,7 +5,7 @@ define(function(require, exports, module) {
     require('core');
 
     var $ = window.Zepto,
-        UI = $.AMUI;
+        UI = $.AMUI=Zepto.AMUI;
 
     /**
      * @via https://github.com/Minwe/bootstrap/blob/master/js/alert.js

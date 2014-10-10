@@ -50,6 +50,12 @@
     .flexbox();
     .justify-content(center);
     .align-items(center);
+
+    // fuck legacy browsers
+    // https://github.com/allmobilize/amazeui/issues/120
+    -webkit-box-align: center;
+    -webkit-box-pack: center;
+
     vertical-align: middle;
     .transition(all .3s linear);
     // .translate3d(-100%);
@@ -90,6 +96,11 @@
     .justify-content(center);
     .align-items(center);
 
+    // fuck legacy browsers
+    // https://github.com/allmobilize/amazeui/issues/120
+    -webkit-box-align: center;
+    -webkit-box-pack: center;
+
     &:after {
       .am-icon-font();
       content: @fa-var-spinner;
@@ -107,10 +118,12 @@
   }
 
   img {
+    position: relative;
     display: block;
-    // width: 100%;
     max-width: 100%;
     max-height: 100%;
+    //max-width:100%;
+    //height:auto;
     opacity: 0;
     z-index: 2;
     -webkit-user-drag: none;

@@ -1,4 +1,6 @@
 define(function(require, exports, module) {
+    'use strict';
+
     require('zepto.outerdemension');
     require('zepto.extend.data');
     require('core');
@@ -21,18 +23,19 @@ define(function(require, exports, module) {
     };
 
     OffCanvas.DEFAULTS = {
+        duration: 300,
         effect: 'overlay' // {push|overlay}, push is too expensive
     };
 
     OffCanvas.prototype.open = function(relatedElement) {
         var _self = this,
-            $element = this.$element,
-            openEvent = $.Event('open:offcanvas:amui');
+            $element = this.$element;
         
         if (!$element.length || $element.hasClass('am-active')) return;
 
         var effect = this.options.effect,
             $html = $('html'),
+            $body = $('body'),
             $bar = $element.find('.am-offcanvas-bar').first(),
             dir = $bar.hasClass('am-offcanvas-bar-flip') ? -1 : 1;
 
@@ -42,23 +45,23 @@ define(function(require, exports, module) {
 
         $element.addClass('am-active');
 
-        $html.css({'width': '100%', 'height': $win.height()}).addClass('am-offcanvas-page');
-
+        $body.css({width: window.innerWidth, height: $win.height()}).addClass('am-offcanvas-page');
+        
         if (!(effect === 'overlay')) {
-            $html.css({'margin-left': $bar.outerWidth() * dir}).width(); // .width() - force redraw
+            $body.css({'margin-left': $bar.outerWidth() * dir}).width(); // force redraw
         }
 
         $html.css('margin-top', scrollPos.y * -1);
 
-        UI.utils.debounce(function() {
+        setTimeout(function(){
             $bar.addClass('am-offcanvas-bar-active').width();
-        }, 0)();
+        }, 0);
 
-        $doc.trigger(openEvent);
+        $doc.trigger('open:offcanvas:amui');
 
-        $element.off('.offcanvas.amui').on('click.offcanvas.amui swipeRight.offcanvas.amui swipeLeft.offcanvas.amui', function(e) {
+        $element.off('.offcanvas.amui').on('click.offcanvas.amui swipe.offcanvas.amui', $.proxy(function(e) {
             var $target = $(e.target);
-
+            
             if (!e.type.match(/swipe/)) {
                 if ($target.hasClass('am-offcanvas-bar')) return;
                 if ($target.parents('.am-offcanvas-bar').first().length) return;
@@ -67,48 +70,55 @@ define(function(require, exports, module) {
             // https://developer.mozilla.org/zh-CN/docs/DOM/event.stopImmediatePropagation
             e.stopImmediatePropagation();
 
-            _self.close();
-        });
+            this.close();
+        }, this));
 
-        $doc.on('keydown.offcanvas.amui', function(e) {
+        $html.on('keydown.offcanvas.amui', $.proxy(function(e) {
             if (e.keyCode === 27) { // ESC
-                _self.close();
+                this.close();
             }
-        });
+        }, this));
     };
 
     OffCanvas.prototype.close = function(relatedElement) {
         var $html = $('html'),
+            $body = $('body'),
             $element = this.$element,
             $bar = $element.find('.am-offcanvas-bar').first();
 
         if (!$element.length || !$element.hasClass('am-active')) return;
 
-        $element.trigger('close:offcanvas:amui');
+        $doc.trigger('close:offcanvas:amui');
 
-        if (UI.support.transition) {
-            $html.one(UI.support.transition.end, function() {
-                $html.removeClass('am-offcanvas-page').css({'width': '', 'height': '', 'margin-top': ''});
-                $element.removeClass('am-active');
-                window.scrollTo(scrollPos.x, scrollPos.y);
-            }).css('margin-left', '');
-
-            UI.utils.debounce(function() {
-                $bar.removeClass('am-offcanvas-bar-active');
-            }, 0)();
-        } else {
-            $html.removeClass('am-offcanvas-page').attr('style', '');
+        function complete() {
+            $body.removeClass('am-offcanvas-page').css({width: '', height: '', 'margin-left': '', 'margin-right': ''});
             $element.removeClass('am-active');
             $bar.removeClass('am-offcanvas-bar-active');
+            $html.css('margin-top', '');
             window.scrollTo(scrollPos.x, scrollPos.y);
+            $doc.trigger('closed:offcanvas:amui');
+        }
+
+        if (UI.support.transition) {
+            setTimeout(function(){
+                $bar.removeClass('am-offcanvas-bar-active');
+            }, 0);
+
+            $body.css('margin-left', '').one(UI.support.transition.end, function() {
+                complete();
+            }).emulateTransitionEnd(this.options.duration);
+        } else {
+            complete()
         }
 
         $element.off('.offcanvas.amui');
+        $html.off('.offcanvas.amui');
     };
 
     OffCanvas.prototype.events = function() {
         $doc.on('click.offcanvas.amui', '[data-am-dismiss="offcanvas"]',
             $.proxy(function(e) {
+                console.log('evbvvvv');
                 e.preventDefault();
                 this.close();
             }, this));
@@ -141,8 +151,8 @@ define(function(require, exports, module) {
     $doc.on('click.offcanvas.amui', '[data-am-offcanvas]', function(e) {
         e.preventDefault();
         var $this = $(this),
-            options = UI.utils.parseOptions($this.attr('data-am-offcanvas')),
-            $target = $(options.target || (this.href && this.href.replace(/.*(?=#[^\s]+$)/, '')));
+            options = UI.utils.parseOptions($this.data('amOffcanvas')),
+            $target = $(options.target || (this.href && this.href.replace(/.*(?=#[^\s]+$)/, ''))),
             option = $target.data('am.offcanvas') ? 'open' : options;
 
         Plugin.call($target, option, this);

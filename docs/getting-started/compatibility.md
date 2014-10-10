@@ -46,7 +46,7 @@ Amaze UI 对浏览器做了一个粗略分级，这个列表会进一步细化�
     <td>Chrome†</td>
   </tr>
   <tr>
-    <td>Firefox†</td>
+    <td>Firefox†（桌面版）</td>
   </tr>
   <tr>
     <td>Opera Next †</td>
@@ -85,6 +85,10 @@ Amaze UI 对浏览器做了一个粗略分级，这个列表会进一步细化�
   <tr>
     <td>C 级</td>
     <td>Internet Explorer lte 7</td>
+  </tr>
+  <tr>
+    <td>X 级</td>
+    <td>Firefox 手机版</td>
   </tr>
   </tbody>
 </table>

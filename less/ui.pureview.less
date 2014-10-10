@@ -50,6 +50,12 @@
     .flexbox();
     .justify-content(center);
     .align-items(center);
+
+    // fuck legacy browsers
+    // https://github.com/allmobilize/amazeui/issues/120
+    -webkit-box-align: center;
+    -webkit-box-pack: center;
+
     vertical-align: middle;
     .transition(all .3s linear);
     // .translate3d(-100%);
@@ -89,6 +95,11 @@
     .flexbox();
     .justify-content(center);
     .align-items(center);
+
+    // fuck legacy browsers
+    // https://github.com/allmobilize/amazeui/issues/120
+    -webkit-box-align: center;
+    -webkit-box-pack: center;
 
     &:after {
       .am-icon-font();

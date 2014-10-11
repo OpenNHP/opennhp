@@ -13,12 +13,12 @@
  ========================================================================== */
 
 .am-modal {
-  width: 270px;
+  width: @modal-sm;
   position: fixed;
   display: none;
   z-index: @z-index-modal;
   left: 50%;
-  margin-left: -135px;
+  margin-left: -@modal-sm/2;
   margin-top: 0;
   top: 50%;
   text-align: center;
@@ -46,6 +46,16 @@
     .transition-duration(@modal-duration);
     .transform(translate3d(0, 0, 0) scale(0.815));
   }
+
+  @media @medium-up {
+    width: @modal-md;
+    margin-left: -@modal-md/2;
+  }
+
+  /*@media @large-up {
+    width: @modal-lg;
+    margin-left: -@modal-lg/2;
+  }*/
 }
 
 .am-modal-dialog {

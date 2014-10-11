@@ -1,6 +1,6 @@
-.am-header {
-  @am-header-height: 49px;
+@am-header-height: 49px;
 
+.am-header {
   position: relative;
   width: 100%;
   height: @am-header-height;
@@ -46,4 +46,20 @@
 
   .hook-am-header;
 }
+
+.am-header-fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: @z-index-header-fixed;
+  .hook-am-header-fixed;
+}
+
+.am-with-fixed-header {
+  padding-top: @am-header-height;
+}
+
 .hook-am-header() {}
+.hook-am-header-fixed() {}

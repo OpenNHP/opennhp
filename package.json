@@ -52,6 +52,7 @@
     "gulp-footer": "^1.0.5",
     "gulp-header": "^1.0.2",
     "gulp-less": "^1.2.3",
+    "gulp-load-plugins": "^0.7.0",
     "gulp-minify-css": "^0.3.0",
     "gulp-rename": "^1.2.0",
     "gulp-replace": "https://github.com/Minwe/gulp-replace/archive/v0.4.1.tar.gz",

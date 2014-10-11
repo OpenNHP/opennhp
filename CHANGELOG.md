@@ -2,6 +2,25 @@
 ---
 
 
+### 2014.10.10 W1
+
+__CSS__：
+
+- 增加 OSX 平台 Firefox(25+) 字体平滑样式；
+
+__JS插件__：
+
+- `NEW` Modal 增加宽度响应，视口大于 640 时，modal 的窗口的宽度显示为 540px；
+- `IMPROVED` #79 OffCanvas 调整；
+- `IMPROVED` #119 PureView loading 图标 z-index 调整，兼容渣浏览器；
+- `IMPROVED` #120 PureView 图片容器 flexbox 样式调整，兼容渣浏览器。
+
+__Web 组件__：
+
+- `NEW` Header 增加固定顶部样式。
+- `FIXED` 修复 Figure、Gallery、Paragraph 图片查看变形， via #120 #119
+
+
 ### 2014.09 W5
 
 - `NEW` 文档标题添加链接按钮；

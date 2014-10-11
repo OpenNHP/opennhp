@@ -3,6 +3,50 @@
 
 页头组件，为移动页面顶部的导航条设计。
 
+## 顶部固定
+
+在默认样式的基础上添加 `.am-header-fixed`。
+
+__默认样式：__
+
+```css
+.am-header-fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 1010;
+}
+```
+
+```html
+<header data-am-widget="header" class="am-header am-header-default am-header-fixed">
+  <div class="am-header-left am-header-nav">
+    <a href="#left-link" class="">
+      <i class="am-header-icon am-icon-home"></i>
+    </a>
+  </div>
+  <h1 class="am-header-title">
+    <a href="#title-link">Amaze UI</a>
+  </h1>
+  <div class="am-header-right am-header-nav">
+    <a href="#right-link" class="">
+      <i class="am-header-icon am-icon-bars"></i>
+    </a>
+  </div>
+</header>
+```
+
+如果页面中有固定顶部的 Header，JS 会在 `<body>` 上添加 `.am-with-fixed-header`，这个 class 下面默认设置了 `padding-top: 49px`，可以根据具体情况做调整。
+
+```css
+.am-with-fixed-header {
+  padding-top: @am-header-height;
+}
+```
+
+
 ## 使用方法
 
 ### 直接使用
@@ -56,7 +100,9 @@ return data;
 
   "theme": "",
 
-  "options": null,
+  "options": {
+    "fixed": false
+  },
 
   "content": {
     "left": [{

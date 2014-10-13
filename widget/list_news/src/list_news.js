@@ -10,7 +10,7 @@ define(function (require, exports, module) {
     function amListNewsMore(object) {
         var $amList = object.find(".am-list");
 
-        var $listMore = "<a class='am-list-news-more am-btn am-btn-default' href='###'>更多 &gt;&gt;</a>";
+        var $listMore = "<a class='am-list-news-more am-btn am-btn-default' href='javascript:;'>更多 &gt;&gt;</a>";
 
         if ($amList.children().length > 6) {
 

@@ -17,7 +17,7 @@ define(function(require, exports, module) {
             $navBarNav = $navBar.find('.am-navbar-nav'),
             $navItems = $navBar.find('li'),
             navItemsCounter = $navItems.length;
-            configItems = $navBarNav.attr('class') && parseInt($navBarNav.attr('class').match(/sm-block-grid-(\d)/)[1]) || 3,
+            configItems = $navBarNav.attr('class') && parseInt($navBarNav.attr('class').match(/sm-block-grid-(\d+)/)[1]) || 3,
             navMinWidth = 60, //每个li最小宽度
             offsetWidth = 16,
             $share = $navItems.filter('[data-am-navbar-share]'),
@@ -71,10 +71,11 @@ define(function(require, exports, module) {
             });
         }
 
-
         if (navItemsCounter > configItems && navItemsCounter > calcSuiteItems()) {
             initActions();
         }
+
+        // console.log('NavItems: %d, config: %d, best: %d', navItemsCounter, configItems, calcSuiteItems());
 
         function initActions() {
             $navBarNav.append($moreLink);
@@ -86,8 +87,6 @@ define(function(require, exports, module) {
         }
 
         function checkNavBarItems() {
-            // console.log('best: %d', calcSuiteItems());
-
             if (calcSuiteItems() >= navItemsCounter) {
                 // 显示所有链接，隐藏 more
                 $moreLink.hide();

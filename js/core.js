@@ -387,7 +387,7 @@ define(function(require, exports, module) {
      */
 
     UI.template = function(id, data) {
-        var me = arguments.callee;
+        var me = UI.template;
 
         if (!me.cache[id]) me.cache[id] = (function () {
             var name = id,

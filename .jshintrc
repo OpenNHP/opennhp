@@ -1,0 +1,15 @@
+{
+  "browser": true,
+  "bitwise": true,
+  "camelcase": true,
+  "curly": true,
+  "immed": true,
+  "indent": 4,
+  "maxlen": 80,
+  "newcap": true,
+  "noarg": true,
+  "quotmark": "single",
+  "undef": true,
+  "unused": "vars",
+  "strict": true
+}

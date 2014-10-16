@@ -3,10 +3,33 @@
 
 ## 基本编码规范
 
-需要通过 JSHint 验证，更多细节：
-
 * [AllMobilize JavaScript Style Guide](/getting-started/javascript-guide)
 * [CMD 模块定义规范](https://github.com/seajs/seajs/issues/242)
+
+## 代码质量控制工具
+
+Amaze UI 使用 [JSHint](http://jshint.com/) 和 [JSCS](https://github.com/jscs-dev/node-jscs) 控制代码质量。
+
+详细设置参见 [.jshintrc](https://github.com/allmobilize/amazeui/blob/master/.jshintrc)、[.jscsrc](https://github.com/allmobilize/amazeui/blob/master/.jscsrc)。
+
+（部分直接使用第三方库的代码未通过质量控制工具检测。）
+
+## jQuery / Zepto.js 使用规范
+
+为提高代码执行效率，为二者兼容提供可能，在使用 jQuery / Zepto.js 时做以下约定：
+
+- 存放 jQuery / Zepto 对象的变量以 `$` 开头；
+- 禁止使用 `slideUp/Down()` `fadeIn/fadeOut()` 等方法；
+- 尽量不使用 `animate()` 方法；
+- 使用和 Zepto.js 兼容的基本选择符，不使用效率较低且与 Zepto.js 不兼容的选择符。
+
+
+__问题：__
+
+- **自定义事件命名空间：** Zepto.js 不支持 `.` 语法，只能使用 `:` 语法。
+- http://zeptojs.com/#event
+- http://api.jquery.com/event.namespace/
+
 
 ## 命名规范
 

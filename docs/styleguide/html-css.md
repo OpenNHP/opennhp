@@ -3,7 +3,7 @@
 
 ## 基本规范
 
--[AllMobilize HTML/CSS Style Guide](/getting-started/html-css-guide)
+- [AllMobilize HTML/CSS Style Guide](/getting-started/html-css-guide)
 
 ## HTML/CSS 编写注意事项
 

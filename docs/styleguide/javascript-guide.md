@@ -253,7 +253,7 @@ var name = 'My Name',
 
 #### 缩进
 
-缩进 **4 个空格**，如果使用 Tab，需要把 Tab 设置成 4 个空格。
+缩进 **2 个空格**，如果使用 Tab，需要把 Tab 设置成 2 个空格。
 
 #### 花括号
 
@@ -586,7 +586,8 @@ var obj = {
 - [Google JavaScript Style Guide](https://google-styleguide.googlecode.com/svn/trunk/javascriptguide.xml)
 - [JSDoc Tag Reference](https://code.google.com/p/jsdoc-toolkit/wiki/TagReference)
 - [Code Conventions for the JavaScript Programming Language](http://javascript.crockford.com/code.html)
-- []()
+- [JavaScript Code Style checker](https://github.com/jscs-dev/node-jscs)
+- [JSHint Options](http://jshint.com/docs/options/)
 
 
 *Revision: 2014.10.15*

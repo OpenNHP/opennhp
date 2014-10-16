@@ -295,3 +295,7 @@
 	</tbody>
 </table>
 ```
+
+## 参考资源
+
+- [表格排序 jQuery Table Sort] (https://github.com/kylefox/jquery-tablesort)

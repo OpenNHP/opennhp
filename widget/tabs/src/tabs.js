@@ -1,16 +1,18 @@
-define(function (require, exports, module) {
-    require('core');
-    require('ui.tabs');
+define(function(require, exports, module) {
+  'use strict';
 
-    var $ = window.Zepto;
+  require('core');
+  require('ui.tabs');
 
-    var tabsInit = function () {
-        $('[data-am-widget="tabs"]').tabs();
-    };
+  var $ = window.Zepto;
 
-    $(function () {
-        tabsInit();
-    });
+  function tabsInit() {
+    $('[data-am-widget="tabs"]').tabs();
+  }
 
-    exports.init = tabsInit;
+  $(function() {
+    tabsInit();
+  });
+
+  exports.init = tabsInit;
 });

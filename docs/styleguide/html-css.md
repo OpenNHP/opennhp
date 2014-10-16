@@ -1,11 +1,11 @@
-# Amaze UI HTML/CSS 编写规范
+# Amaze UI HTML/CSS 规范
 ---
 
 ## 基本规范
 
-___待添加___
+- [AllMobilize HTML/CSS Style Guide](/getting-started/html-css-guide)
 
-## Amaze UI HTML/CSS 编写注意事项
+## HTML/CSS 编写注意事项
 
 ### 基本原则
 
@@ -105,6 +105,33 @@ ___待添加___
 ```
 
 * __统一命名风格__（使用相同名词命名不同组件的子元素）：如 am-tab-hd, am-modal-hd，便于理解。
+
+
+### CSS 编写注意事项
+
+Amaze UI 中有两个表示状态的 class：
+
+- `.am-active` - 激活
+- `.am-disabled` - 禁用
+
+**不要单独使用、直接在里面编写样式！！！**
+
+```css
+/* 可以嵌套用 */
+.am-nav .am-active {
+  ...
+}
+
+/* 可以堆叠用 */
+.am-btn.am-active {
+  ...
+}
+
+/* 绝不要单独用！！！ */
+.am-active {
+  color: red;
+}
+```
 
 
 ## 参考链接

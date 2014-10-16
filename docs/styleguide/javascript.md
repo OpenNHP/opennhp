@@ -1,12 +1,35 @@
-# Amaze UI JavaScript 编写规范
+# Amaze UI JavaScript 规范
 ---
 
 ## 基本编码规范
 
-需要通过 JSLint 验证，查看具体：
-
-* 云适配 JS 编码规范（待添加）
+* [AllMobilize JavaScript Style Guide](/getting-started/javascript-guide)
 * [CMD 模块定义规范](https://github.com/seajs/seajs/issues/242)
+
+## 代码质量控制工具
+
+Amaze UI 使用 [JSHint](http://jshint.com/) 和 [JSCS](https://github.com/jscs-dev/node-jscs) 控制代码质量。
+
+详细设置参见 [.jshintrc](https://github.com/allmobilize/amazeui/blob/master/.jshintrc)、[.jscsrc](https://github.com/allmobilize/amazeui/blob/master/.jscsrc)。
+
+（部分直接使用第三方库的代码未通过质量控制工具检测。）
+
+## jQuery / Zepto.js 使用规范
+
+为提高代码执行效率，为二者兼容提供可能，在使用 jQuery / Zepto.js 时做以下约定：
+
+- 存放 jQuery / Zepto 对象的变量以 `$` 开头；
+- 禁止使用 `slideUp/Down()` `fadeIn/fadeOut()` 等方法；
+- 尽量不使用 `animate()` 方法；
+- 使用和 Zepto.js 兼容的基本选择符，不使用效率较低且与 Zepto.js 不兼容的选择符。
+
+
+__问题：__
+
+- **自定义事件命名空间：** Zepto.js 不支持 `.` 语法，只能使用 `:` 语法。
+- http://zeptojs.com/#event
+- http://api.jquery.com/event.namespace/
+
 
 ## 命名规范
 
@@ -14,8 +37,8 @@
 
 1. 文件和目录名只能包含 `[a-z\d\-]`，并以英文字母开头
 2. 首选合适的英文单词 
-3. data api 命名为小写并用连字符，如 `data-trigger-type`
-4. 事件名小写字母，包含模块名及 `amui` 命名空间名，使用 `:` 连接（Zepto 不支持使用 `.` 链接的自定义事件），如 `.trigger('open:modal:amui')`
+3. Data API 命名使用小写、用连字符连接、添加 `am` 命名空间，如 `data-am-trigger`
+4. 事件名使用小写字母，包含模块名及 `amui` 命名空间名，使用 `:` 连接（Zepto 不支持使用 `.` 链接的自定义事件），如 `.trigger('open:modal:amui')`
 5. 符合规范
    - 常量全大写 `UPPERCASE_WORD`
    - 变量驼峰 `camelName`
@@ -40,9 +63,9 @@
 
 __规则：__
 
-* **可读性强，见名知义。**
+* **可读性强，见名晓义。**
 * 尽量不与 jQuery 社区已有的习惯冲突。
-* 尽量写全。不用缩写，除非是下面列表中约定的。（变量以表达清楚为目标，uglify 会完成较小体积的工作）
+* 尽量写全。不用缩写，除非是下面列表中约定的。（变量以表达清楚为目标，uglify 会完成压缩体积工作）
 
 <table class="am-table am-table-bd am-table-striped">
   <thead>
@@ -211,7 +234,6 @@ function ready() {
 
 - 文件最后空一行，可以保证在 combo 合并后，源码的层次清晰。
 
-
 ###  注释书写规范
 
 1. 源码中的注释，推荐用英文。
@@ -241,11 +263,9 @@ function ready() {
 ## API
 
 需要提供 API 说明，属性、方法、事件等。
+
+## 使用示例
 ```
-
-### docs
-
-如果组件需要写的东西比较多，可以划分好放到 `docs` 下。
 
 ### HISTORY.md
 
@@ -254,7 +274,7 @@ function ready() {
 
 ## 参考链接
 
-Amaze UI 的编码规范参考了社区里一些先行者的做法，再次感谢！
+Amaze UI 的编码规范参考了社区里一些先行者的做法，在此致谢！
 
 -  [注释规范](https://github.com/aralejs/aralejs.org/wiki/JavaScript-%E6%B3%A8%E9%87%8A%E8%A7%84%E8%8C%83)
 -  [编码风格](https://github.com/aralejs/aralejs.org/wiki/JavaScript-%E7%BC%96%E7%A0%81%E9%A3%8E%E6%A0%BC)

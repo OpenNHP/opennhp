@@ -15,7 +15,8 @@ Amaze UI 的诞生，依托于 GitHub 及其他技术社区上一些优秀的资
 <!--
 ### RC1
 
-[@John.Wall](http://t.qq.com/wangzj141)、@ayhome、[@啸沧海](http://t.qq.com/seecool)、[@成都高校联盟](http://www.cdunu.com/)、@Henry、[@Kimi](http://weibo.com/2536228053)、@nswish
+[@John.Wall](http://t.qq.com/wangzj141)、@ayhome、[@啸沧海](http://t.qq.com/seecool)、[@成都高校联盟](http://www.cdunu.com/)、@Henry、[@Kimi](http://weibo.com/2536228053)、@nswish、
+[@maogang](http://t.qq.com/mg_pdd)、[@张柯南](http://t.qq.com/kenan_zhang)、@范生
 -->
 
 ### Beta2

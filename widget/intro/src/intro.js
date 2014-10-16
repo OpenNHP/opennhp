@@ -1,5 +1,4 @@
-define(function (require, exports, module) {
-    var $ = window.Zepto;
+define(function(require, exports, module) {
+  'use strict';
 
-    // hello world.
 });

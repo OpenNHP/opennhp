@@ -1,111 +1,111 @@
 define(function(require, exports, module) {
+  'use strict';
 
-    require('core');
+  require('core');
 
-    var $ = window.Zepto,
-        UI = $.AMUI;
+  var $ = window.Zepto,
+      UI = $.AMUI,
+      $doc = $(document),
+      transition = UI.support.transition;
 
-    var $doc = $(document),
-        $html = $('html'),
-        transition = UI.support.transition;
+  var Dimmer = function() {
+    this.id = UI.utils.generateGUID('am-dimmer');
+    this.$element = $(Dimmer.DEFAULTS.tpl, {
+      id: this.id
+    });
 
-    /**
-     * 通用遮罩层
-     * @constructor
-     */
+    this.inited = false;
+    this.scrollbarWidth = 0;
+    this.used = $([]);
+  };
 
-    var Dimmer = function() {
-        this.id = UI.utils.generateGUID('am-dimmer');
-        this.$element = $(Dimmer.DEFAULTS.tpl, {
-            id: this.id
-        });
+  Dimmer.DEFAULTS = {
+    tpl: '<div class="am-dimmer" data-am-dimmer></div>'
+  };
 
-        this.inited = false;
-        this.scrollbarWidth = 0;
-        this.used = $([]);
-    };
+  Dimmer.prototype.init = function() {
+    if (!this.inited) {
+      $(document.body).append(this.$element);
+      this.inited = true;
+      $doc.trigger('init:dimmer:amui');
+    }
 
-    Dimmer.DEFAULTS = {
-        tpl: '<div class="am-dimmer" data-am-dimmer></div>'
-    };
+    return this;
+  };
 
-    Dimmer.prototype.init = function() {
-        if (!this.inited) {
-            $(document.body).append(this.$element);
-            this.inited = true;
-            $doc.trigger('init:dimmer:amui');
-        }
+  Dimmer.prototype.open = function(relatedElement) {
+    if (!this.inited) {
+      this.init();
+    }
 
-        return this;
-    };
+    var $element = this.$element;
 
-    Dimmer.prototype.open = function(relatedElement) {
-        if (!this.inited) this.init();
+    // 用于多重调用
+    if (relatedElement) {
+      this.used = this.used.add($(relatedElement));
+    }
 
-        var $element = this.$element;
+    this.checkScrollbar().setScrollbar();
 
-        // 用于多重调用
-        if (relatedElement) {
-            this.used = this.used.add($(relatedElement));
-        }
+    $element.show().trigger('open:dimmer:amui');
 
-        this.checkScrollbar().setScrollbar();
+    setTimeout(function() {
+      $element.addClass('am-active');
+    }, 0);
 
-        $element.show().trigger('open:dimmer:amui');;
+    return this;
+  };
 
-        setTimeout(function() {
-            $element.addClass('am-active')
-        }, 0);
+  Dimmer.prototype.close = function(relatedElement, force) {
+    this.used = this.used.not($(relatedElement));
 
-        return this;
-    };
+    if (!force && this.used.length) {
+      return this;
+    }
 
-    Dimmer.prototype.close = function(relatedElement, force) {
-        this.used = this.used.not($(relatedElement));
+    var $element = this.$element;
 
-        if (!force && this.used.length) return this;
+    $element.removeClass('am-active').trigger('close:dimmer:amui');
 
-        var $element = this.$element;
+    function complete() {
+      this.resetScrollbar();
+      $element.hide();
+    }
 
-        $element.removeClass('am-active').trigger('close:dimmer:amui');
+    transition ? $element.one(transition.end, $.proxy(complete, this)) :
+        complete.call(this);
 
-        function complete() {
-            this.resetScrollbar();
-            $element.hide();
-        }
+    return this;
+  };
 
-        transition ? $element.one(transition.end, $.proxy(complete, this)) :
-            complete.call(this);
+  Dimmer.prototype.checkScrollbar = function() {
+    this.scrollbarWidth = UI.utils.measureScrollbar();
 
-        return this;
-    };
+    return this;
+  };
 
-    Dimmer.prototype.checkScrollbar = function () {
-        this.scrollbarWidth = UI.utils.measureScrollbar();
+  Dimmer.prototype.setScrollbar = function() {
+    var $body = $(document.body),
+        bodyPaddingRight = parseInt(($body.css('padding-right') || 0), 10);
 
-        return this;
-    };
+    if (this.scrollbarWidth) {
+      $body.css('padding-right', bodyPaddingRight + this.scrollbarWidth);
+    }
 
-    Dimmer.prototype.setScrollbar = function () {
-        var $body = $(document.body),
-            bodyPaddingRight = parseInt(($body.css('padding-right') || 0), 10);
+    $body.addClass('am-dimmer-active');
 
-        if (this.scrollbarWidth) $body.css('padding-right', bodyPaddingRight + this.scrollbarWidth);
+    return this;
+  };
 
-        $body.addClass('am-dimmer-active');
+  Dimmer.prototype.resetScrollbar = function() {
+    $(document.body).css('padding-right', '').removeClass('am-dimmer-active');
 
-        return this;
-    };
+    return this;
+  };
 
-    Dimmer.prototype.resetScrollbar = function () {
-        $(document.body).css('padding-right', '').removeClass('am-dimmer-active');
+  var dimmer = new Dimmer();
 
-        return this;
-    };
+  UI.dimmer = dimmer;
 
-    var dimmer = new Dimmer();
-
-    UI.dimmer = dimmer;
-
-    module.exports = dimmer;
+  module.exports = dimmer;
 });

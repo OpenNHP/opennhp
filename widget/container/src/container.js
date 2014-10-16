@@ -1,4 +1,4 @@
 define(function(require, exports, module) {
-    var $ = window.Zepto;
+  var $ = window.Zepto;
 
 });

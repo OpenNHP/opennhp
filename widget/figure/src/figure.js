@@ -1,43 +1,45 @@
 define(function(require, exports, module) {
-    require('core');
-    require('ui.pureview');
+  'use strict';
 
-    var $ = window.Zepto,
-        UI = $.AMUI;
+  require('core');
+  require('ui.pureview');
 
-    /**
-     * Is Images zoomable
-     * @return {Boolean}
-     */
-    $.isImgZoomAble = function(element) {
-        var t = new Image();
-        t.src = element.src;
+  var $ = window.Zepto,
+      UI = $.AMUI;
 
-        var zoomAble = ($(element).width() < t.width);
+  /**
+   * Is Images zoomable
+   * @return {Boolean}
+   */
+  $.isImgZoomAble = function(element) {
+    var t = new Image();
+    t.src = element.src;
 
-        if (zoomAble) {
-            $(element).closest('.am-figure').addClass('am-figure-zoomable');
-        }
+    var zoomAble = ($(element).width() < t.width);
 
-        return zoomAble;
-    };
+    if (zoomAble) {
+      $(element).closest('.am-figure').addClass('am-figure-zoomable');
+    }
 
-    var figureInit = function() {
-        $('.am-figure').each(function(i, item) {
-            var options = UI.utils.parseOptions($(item).attr('data-am-figure'));
+    return zoomAble;
+  };
 
-            if (options.pureview) {
-                $(item).addClass('am-figure-zoomable').pureview();
-            } else if (!!options.autoZoom) {
-                var zoomAble = $.isImgZoomAble($(item).find('img')[0]);
-                 zoomAble && $(item).pureview();
-            }
-        });
-    };
+  var figureInit = function() {
+    $('.am-figure').each(function(i, item) {
+      var options = UI.utils.parseOptions($(item).attr('data-am-figure'));
 
-    $(window).on('load', function() {
-        figureInit();
+      if (options.pureview) {
+        $(item).addClass('am-figure-zoomable').pureview();
+      } else if (!!options.autoZoom) {
+        var zoomAble = $.isImgZoomAble($(item).find('img')[0]);
+        zoomAble && $(item).pureview();
+      }
     });
+  };
 
-    exports.init = figureInit;
+  $(window).on('load', function() {
+    figureInit();
+  });
+
+  exports.init = figureInit;
 });

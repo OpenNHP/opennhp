@@ -1,22 +1,25 @@
 define(function(require, exports, module) {
-    var $ = window.Zepto;
+  'use strict';
 
-    var mechatInit = function() {
+  var $ = window.Zepto,
+      mechatInit = function() {
 
-        if (!$('#mechat').length) return;
+    if (!$('#mechat').length) {
+      return;
+    }
 
-        var $mechat = $('[data-am-widget="mechat"]'),
-            unitid = $mechat.data('am-mechat-unitid'),
-            $mechatData = $('<script>', {
-                charset: 'utf-8',
-                src: 'http://mechatim.com/js/unit/button.js?id=' + unitid
-            });
+    var $mechat = $('[data-am-widget="mechat"]'),
+        unitid = $mechat.data('am-mechat-unitid'),
+        $mechatData = $('<script>', {
+          charset: 'utf-8',
+          src: 'http://mechatim.com/js/unit/button.js?id=' + unitid
+        });
 
-        $('body').append($mechatData);
-    };
+    $('body').append($mechatData);
+  };
 
-    // Lazy load
-    $(window).on('load', mechatInit);
+  // Lazy load
+  $(window).on('load', mechatInit);
 
-    exports.init = mechatInit;
+  exports.init = mechatInit;
 });

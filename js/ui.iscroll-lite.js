@@ -1,7 +1,14 @@
 define(function(require, exports, module) {
   'use strict';
 
-  /*! iScroll v5.1.2 ~ (c) 2008-2014 Matteo Spinelli ~ http://cubiq.org/license */
+  /* jshint unused: false */
+  /* jshint -W101, -W116, -W109 */
+
+  /*! iScroll v5.1.3
+   * (c) 2008-2014 Matteo Spinelli
+   * http://cubiq.org/license
+   */
+
   (function(window, document, Math) {
     var rAF = window.requestAnimationFrame ||
         window.webkitRequestAnimationFrame ||
@@ -331,7 +338,7 @@ define(function(require, exports, module) {
     }
 
     IScroll.prototype = {
-      version: '5.1.2',
+      version: '5.1.3',
 
       _init: function() {
         this._initEvents();
@@ -953,4 +960,7 @@ define(function(require, exports, module) {
     }
 
   })(window, document, Math);
+
+  /* jshint unused: true */
+  /* jshint +W101, +W116, +W109 */
 });

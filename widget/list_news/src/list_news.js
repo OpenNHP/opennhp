@@ -12,7 +12,7 @@ define(function(require, exports, module) {
     var $amList = object.find('.am-list');
 
     var $listMore = '<a class="am-list-news-more am-btn am-btn-default" ' +
-        'href="###">更多 &gt;&gt;</a>';
+        'href="javascript:;">更多 &gt;&gt;</a>';
 
     if ($amList.children().length > 6) {
 

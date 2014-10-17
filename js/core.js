@@ -10,26 +10,28 @@ define(function(require, exports, module) {
   // Zeptzo selector extend
   require('zepto.extend.selector');
 
-  var $ = window.Zepto,
-      UI = $.AMUI || {},
-      $win = $(window),
-      doc = window.document,
-      FastClick = require('util.fastclick'),
-      $html = $('html');
+  /* jshint -W040 */
+
+  var $ = window.Zepto;
+  var UI = $.AMUI || {};
+  var $win = $(window);
+  var doc = window.document;
+  var FastClick = require('util.fastclick');
+  var $html = $('html');
 
   UI.support = {};
-  UI.support.transition = (function() {
 
+  UI.support.transition = (function() {
     var transitionEnd = (function() {
       // https://developer.mozilla.org/en-US/docs/Web/Events/transitionend#Browser_compatibility
-      var element = doc.body || doc.documentElement,
-          transEndEventNames = {
-            WebkitTransition: 'webkitTransitionEnd',
-            MozTransition: 'transitionend',
-            OTransition: 'oTransitionEnd otransitionend',
-            transition: 'transitionend'
-          },
-          name;
+      var element = doc.body || doc.documentElement;
+      var transEndEventNames = {
+        WebkitTransition: 'webkitTransitionEnd',
+        MozTransition: 'transitionend',
+        OTransition: 'oTransitionEnd otransitionend',
+        transition: 'transitionend'
+      };
+      var name;
 
       for (name in transEndEventNames) {
         if (element.style[name] !== undefined) {
@@ -39,20 +41,18 @@ define(function(require, exports, module) {
     })();
 
     return transitionEnd && {end: transitionEnd};
-
   })();
 
   UI.support.animation = (function() {
-
     var animationEnd = (function() {
-
-      var element = doc.body || doc.documentElement,
-          animEndEventNames = {
-            WebkitAnimation: 'webkitAnimationEnd',
-            MozAnimation: 'animationend',
-            OAnimation: 'oAnimationEnd oanimationend',
-            animation: 'animationend'
-          }, name;
+      var element = doc.body || doc.documentElement;
+      var animEndEventNames = {
+        WebkitAnimation: 'webkitAnimationEnd',
+        MozAnimation: 'animationend',
+        OAnimation: 'oAnimationEnd oanimationend',
+        animation: 'animationend'
+      };
+      var name;
 
       for (name in animEndEventNames) {
         if (element.style[name] !== undefined) {
@@ -73,6 +73,7 @@ define(function(require, exports, module) {
         window.setTimeout(callback, 1000 / 60);
       };
 
+  /* jshint -W069 */
   UI.support.touch = (
       ('ontouchstart' in window &&
           navigator.userAgent.toLowerCase().match(/mobile|tablet/)) ||
@@ -102,15 +103,14 @@ define(function(require, exports, module) {
   UI.utils.debounce = function(func, wait, immediate) {
     var timeout;
     return function() {
-      var context = this,
-          args = arguments,
-          later = function() {
-            timeout = null;
-            if (!immediate) {
-              func.apply(context, args);
-            }
-          };
-
+      var context = this;
+      var args = arguments;
+      var later = function() {
+        timeout = null;
+        if (!immediate) {
+          func.apply(context, args);
+        }
+      };
       var callNow = immediate && !timeout;
 
       clearTimeout(timeout);
@@ -123,19 +123,19 @@ define(function(require, exports, module) {
   };
 
   UI.utils.isInView = function(element, options) {
-    var $element = $(element),
-        visible = !!($element.width() || $element.height()) &&
+    var $element = $(element);
+    var visible = !!($element.width() || $element.height()) &&
             $element.css('display') !== 'none';
 
     if (!visible) {
       return false;
     }
 
-    var windowLeft = $win.scrollLeft(),
-        windowTop = $win.scrollTop(),
-        offset = $element.offset(),
-        left = offset.left,
-        top = offset.top;
+    var windowLeft = $win.scrollLeft();
+    var windowTop = $win.scrollTop();
+    var offset = $element.offset();
+    var left = offset.left;
+    var top = offset.top;
 
     options = $.extend({topOffset: 0, leftOffset: 0}, options);
 
@@ -145,13 +145,14 @@ define(function(require, exports, module) {
         left - options.leftOffset <= windowLeft + $win.width());
   };
 
+  /* jshint -W054 */
   UI.utils.parseOptions = UI.utils.options = function(string) {
     if ($.isPlainObject(string)) {
       return string;
     }
 
-    var start = (string ? string.indexOf('{') : -1),
-        options = {};
+    var start = (string ? string.indexOf('{') : -1);
+    var options = {};
 
     if (start != -1) {
       try {
@@ -165,6 +166,8 @@ define(function(require, exports, module) {
     return options;
   };
 
+  /* jshint +W054 */
+
   UI.utils.generateGUID = function(namespace) {
     var uid = namespace + '-' || 'am-';
 
@@ -177,10 +180,13 @@ define(function(require, exports, module) {
 
   // http://blog.alexmaccaw.com/css-transitions
   $.fn.emulateTransitionEnd = function(duration) {
-    var called = false, $el = this;
+    var called = false;
+    var $el = this;
+
     $(this).one(UI.support.transition.end, function() {
       called = true;
     });
+
     var callback = function() {
       if (!called) {
         $($el).trigger(UI.support.transition.end);
@@ -193,14 +199,17 @@ define(function(require, exports, module) {
 
   $.fn.redraw = function() {
     $(this).each(function() {
+      /* jshint unused:false */
       var redraw = this.offsetHeight;
     });
     return this;
   };
 
+  /* jshint unused:true */
+
   $.fn.transitionEnd = function(callback) {
-    var endEvent = UI.support.transition.end,
-        dom = this;
+    var endEvent = UI.support.transition.end;
+    var dom = this;
 
     function fireCallBack(e) {
       callback.call(this, e);
@@ -264,7 +273,8 @@ define(function(require, exports, module) {
   };
 
   $.fn.getHeight = function() {
-    var $ele = $(this), height = 'auto';
+    var $ele = $(this);
+    var height = 'auto';
 
     if ($ele.is(':visible')) {
       height = $ele.height();
@@ -298,17 +308,17 @@ define(function(require, exports, module) {
     }
 
     var old = {
-          position: $el.css('position'),
-          visibility: $el.css('visibility'),
-          display: $el.css('display')
-        },
-        tmpStyle = {
-          display: 'block',
-          position: 'absolute',
-          visibility: 'hidden'
-        },
-        width,
-        height;
+      position: $el.css('position'),
+      visibility: $el.css('visibility'),
+      display: $el.css('display')
+    };
+    var tmpStyle = {
+      display: 'block',
+      position: 'absolute',
+      visibility: 'hidden'
+    };
+    var width;
+    var height;
 
     $el.css(tmpStyle);
 
@@ -325,8 +335,8 @@ define(function(require, exports, module) {
 
   // adding :visible and :hidden to zepto
   // https://github.com/jquery/jquery/blob/73e120116ce13b992d5229b3e10fcc19f9505a15/src/css/hiddenVisibleSelectors.js
-  var _is = $.fn.is,
-      _filter = $.fn.filter;
+  var _is = $.fn.is;
+  var _filter = $.fn.filter;
 
   function visible(elem) {
     elem = $(elem);
@@ -434,17 +444,18 @@ define(function(require, exports, module) {
    * https://github.com/cho45/micro-template.js
    * (c) cho45 http://cho45.github.com/mit-license
    */
+  /* jshint -W109 */
   UI.template = function(id, data) {
     var me = UI.template;
 
     if (!me.cache[id]) {
       me.cache[id] = (function() {
-        var name = id,
-            string = /^[\w\-]+$/.test(id) ?
+        var name = id;
+        var string = /^[\w\-]+$/.test(id) ?
                 me.get(id) : (name = 'template(string)', id); // no warnings
 
-        var line = 1,
-            body = ('try { ' + (me.variable ?
+        var line = 1;
+        var body = ('try { ' + (me.variable ?
                 'var ' + me.variable + ' = this.stash;' : 'with (this.stash) { ') +
             "this.ret += '" +
             string.
@@ -452,29 +463,30 @@ define(function(require, exports, module) {
                 replace(/'(?![^\x11\x13]+?\x13)/g, '\\x27').
                 replace(/^\s*|\s*$/g, '').
                 replace(/\n/g, function() {
-                  return "';\nthis.line = " + (++line) + "; this.ret += '\\n"
+                  return "';\nthis.line = " + (++line) + "; this.ret += '\\n";
                 }).
                 replace(/\x11-(.+?)\x13/g, "' + ($1) + '").
                 replace(/\x11=(.+?)\x13/g, "' + this.escapeHTML($1) + '").
                 replace(/\x11(.+?)\x13/g, "'; $1; this.ret += '") +
             "'; " + (me.variable ? "" : "}") + "return this.ret;" +
-            "} catch (e) { throw 'TemplateError: ' + e + ' (on " + name + "' + ' line ' + this.line + ')'; } " +
+            "} catch (e) { throw 'TemplateError: ' + e + ' (on " + name +
+                "' + ' line ' + this.line + ')'; } " +
             "//@ sourceURL=" + name + "\n" // source map
             ).replace(/this\.ret \+= '';/g, '');
-
-        var func = new Function(body),
-            map = {
-              '&': '&amp;',
-              '<': '&lt;',
-              '>': '&gt;',
-              '\x22': '&#x22;',
-              '\x27': '&#x27;'
-            },
-            escapeHTML = function(string) {
-              return ('' + string).replace(/[&<>\'\"]/g, function(_) {
-                return map[_];
-              });
-            };
+        /* jshint -W054 */
+        var func = new Function(body);
+        var map = {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '\x22': '&#x22;',
+          '\x27': '&#x27;'
+        };
+        var escapeHTML = function(string) {
+          return ('' + string).replace(/[&<>\'\"]/g, function(_) {
+            return map[_];
+          });
+        };
 
         return function(stash) {
           return func.call(me.context = {
@@ -489,6 +501,8 @@ define(function(require, exports, module) {
 
     return data ? me.cache[id](data) : me.cache[id];
   };
+  /* jshint +W109 */
+  /* jshint +W054 */
 
   UI.template.cache = {};
 

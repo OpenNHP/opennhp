@@ -3,8 +3,8 @@ define(function(require, exports, module) {
 
   require('core');
 
-  var $ = window.Zepto,
-      UI = $.AMUI;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
 
   /**
    * @via https://github.com/uikit/uikit/blob/master/src/js/addons/sticky.js
@@ -56,12 +56,12 @@ define(function(require, exports, module) {
       return false;
     }
 
-    var $element = this.$element,
-        $holder = $('<div class="am-sticky-placeholder"></div>').css({
-          'height': $element.css('position') != 'absolute' ?
+    var $element = this.$element;
+    var $holder = $('<div class="am-sticky-placeholder"></div>').css({
+          height: $element.css('position') != 'absolute' ?
               $element.outerHeight() : '',
-          'float': $element.css('float') != 'none' ? $element.css('float') : '',
-          'margin': $element.css('margin')
+          float: $element.css('float') != 'none' ? $element.css('float') : '',
+          margin: $element.css('margin')
         });
 
     this.$holder = $element.css('margin', 0).wrap($holder).parent();
@@ -72,11 +72,11 @@ define(function(require, exports, module) {
   };
 
   Sticky.prototype.reset = function(force, cb) {
-    var options = this.options,
-        $element = this.$element,
-        animation = (options.animation) ?
-            ' am-animation-' + options.animation : '',
-        complete = function() {
+    var options = this.options;
+    var $element = this.$element;
+    var animation = (options.animation) ?
+            ' am-animation-' + options.animation : '';
+    var complete = function() {
           $element.css({position: '', top: '', width: '', left: '', margin: 0});
           $element.removeClass([
             animation,
@@ -141,14 +141,14 @@ define(function(require, exports, module) {
       }
     }
 
-    var options = this.options,
-        scrollTop = this.$window.scrollTop(),
-        offsetTop = options.top,
-        offsetBottom = options.bottom,
-        $element = this.$element,
-        animation = (options.animation) ?
-            ' am-animation-' + options.animation : '',
-        className = [options.className.sticky, animation].join(' ');
+    var options = this.options;
+    var scrollTop = this.$window.scrollTop();
+    var offsetTop = options.top;
+    var offsetBottom = options.bottom;
+    var $element = this.$element;
+    var animation = (options.animation) ?
+            ' am-animation-' + options.animation : '';
+    var className = [options.className.sticky, animation].join(' ');
 
     if (typeof offsetBottom == 'function') {
       offsetBottom = offsetBottom(this.$element);
@@ -191,9 +191,9 @@ define(function(require, exports, module) {
   // Sticky Plugin
   function Plugin(option) {
     return this.each(function() {
-      var $this = $(this),
-          data = $this.data('am.sticky'),
-          options = typeof option == 'object' && option;
+      var $this = $(this);
+      var data = $this.data('am.sticky');
+      var options = typeof option == 'object' && option;
 
       if (!data) {
         $this.data('am.sticky', (data = new Sticky(this, options)));
@@ -210,8 +210,8 @@ define(function(require, exports, module) {
   // Init code
   $(window).on('load', function() {
     $('[data-am-sticky]').each(function() {
-      var $this = $(this),
-          options = UI.utils.options($this.attr('data-am-sticky'));
+      var $this = $(this);
+      var options = UI.utils.options($this.attr('data-am-sticky'));
 
       Plugin.call($this, options);
     });

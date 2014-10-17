@@ -3,12 +3,12 @@ define(function(require, exports, module) {
 
   require('core');
 
-  var PinchZoom = require('zepto.pinchzoom'),
-      Hammer = require('util.hammer'),
-      $ = window.Zepto,
-      UI = $.AMUI,
-      animation = UI.support.animation,
-      transition = UI.support.transition;
+  var PinchZoom = require('zepto.pinchzoom');
+  var Hammer = require('util.hammer');
+  var $ = window.Zepto;
+  var UI = $.AMUI;
+  var animation = UI.support.animation;
+  var transition = UI.support.transition;
 
   /**
    * PureView
@@ -81,17 +81,17 @@ define(function(require, exports, module) {
   };
 
   PureView.prototype.init = function() {
-    var me = this,
-        options = this.options,
-        $element = this.$element,
-        $pureview = this.$pureview,
-        $slider = $pureview.find(options.selector.slider),
-        $nav = $pureview.find(options.selector.nav),
-        $slides = $([]),
-        $navItems = $([]),
-        $images = $element.find(options.target),
-        total = $images.length,
-        imgUrls = [];
+    var me = this;
+    var options = this.options;
+    var $element = this.$element;
+    var $pureview = this.$pureview;
+    var $slider = $pureview.find(options.selector.slider);
+    var $nav = $pureview.find(options.selector.nav);
+    var $slides = $([]);
+    var $navItems = $([]);
+    var $images = $element.find(options.target);
+    var total = $images.length;
+    var imgUrls = [];
 
     if (!total) {
       return;
@@ -102,8 +102,8 @@ define(function(require, exports, module) {
     }
 
     $images.each(function(i, item) {
-      var src,
-          title;
+      var src;
+      var title;
 
       if (options.target == 'a') {
         src = item.href; // to absolute path
@@ -218,11 +218,11 @@ define(function(require, exports, module) {
   };
 
   PureView.prototype.activate = function($slide) {
-    var options = this.options,
-        $slides = this.$slides,
-        activeIndex = $slides.index($slide),
-        alt = $slide.find('img').attr('alt') || '',
-        active = options.className.active;
+    var options = this.options;
+    var $slides = this.$slides;
+    var activeIndex = $slides.index($slide);
+    var alt = $slide.find('img').attr('alt') || '';
+    var active = options.className.active;
 
     UI.utils.imageLoader($slide.find('img'), function(image) {
       $(image).addClass('am-img-loaded');
@@ -262,10 +262,10 @@ define(function(require, exports, module) {
       return;
     }
 
-    var $slides = this.$slides,
-        $active = $slides.filter('.am-active'),
-        activeIndex = $slides.index($active),
-        rightSpring = 'am-animation-right-spring';
+    var $slides = this.$slides;
+    var $active = $slides.filter('.am-active');
+    var activeIndex = $slides.index($active);
+    var rightSpring = 'am-animation-right-spring';
 
     if (activeIndex + 1 >= $slides.length) { // last one
       animation && $active.addClass(rightSpring).on(animation.end, function() {
@@ -281,10 +281,10 @@ define(function(require, exports, module) {
       return;
     }
 
-    var $slides = this.$slides,
-        $active = $slides.filter('.am-active'),
-        activeIndex = this.$slides.index(($active)),
-        leftSpring = 'am-animation-left-spring';
+    var $slides = this.$slides;
+    var $active = $slides.filter('.am-active');
+    var activeIndex = this.$slides.index(($active));
+    var leftSpring = 'am-animation-left-spring';
 
     if (activeIndex === 0) { // first one
       animation && $active.addClass(leftSpring).on(animation.end, function() {
@@ -343,9 +343,9 @@ define(function(require, exports, module) {
 
   function Plugin(option) {
     return this.each(function() {
-      var $this = $(this),
-          data = $this.data('am.pureview'),
-          options = $.extend({},
+      var $this = $(this);
+      var data = $this.data('am.pureview');
+      var options = $.extend({},
               UI.utils.parseOptions($this.data('amPureview')),
                   typeof option == 'object' && option);
 

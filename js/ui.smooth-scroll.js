@@ -1,9 +1,9 @@
 define(function(require, exports, module) {
   'use strict';
 
-  var UI = require('core'),
-      rAF = UI.utils.rAF,
-      $ = window.Zepto;
+  var UI = require('core');
+  var rAF = UI.utils.rAF;
+  var $ = window.Zepto;
 
   /**
    * Smooth Scroll

@@ -3,11 +3,11 @@ define(function(require, exports, module) {
 
   require('core');
 
-  var dimmer = require('ui.dimmer'),
-      $ = window.Zepto,
-      UI = $.AMUI,
-      $doc = $(document),
-      supportTransition = UI.support.transition;
+  var dimmer = require('ui.dimmer');
+  var $ = window.Zepto;
+  var UI = $.AMUI;
+  var $doc = $(document);
+  var supportTransition = UI.support.transition;
 
   /**
    * @reference https://github.com/nolimits4web/Framework7/blob/master/src/js/modals.js
@@ -52,9 +52,9 @@ define(function(require, exports, module) {
   };
 
   Modal.prototype.open = function(relatedElement) {
-    var $element = this.$element,
-        options = this.options,
-        isPopup = this.isPopup;
+    var $element = this.$element;
+    var options = this.options;
+    var isPopup = this.isPopup;
 
     if (this.active) {
       return;
@@ -112,9 +112,9 @@ define(function(require, exports, module) {
       return;
     }
 
-    var $element = this.$element,
-        options = this.options,
-        isPopup = this.isPopup;
+    var $element = this.$element;
+    var options = this.options;
+    var isPopup = this.isPopup;
 
     // 判断如果还在动画，就先触发之前的opened事件
     if (this.transitioning) {
@@ -193,9 +193,9 @@ define(function(require, exports, module) {
 
   function Plugin(option, relatedElement) {
     return this.each(function() {
-      var $this = $(this),
-          data = $this.data('am.modal'),
-          options = $.extend({},
+      var $this = $(this);
+      var data = $this.data('am.modal');
+      var options = $.extend({},
               Modal.DEFAULTS, typeof option == 'object' && option);
 
       if (!data) {
@@ -213,11 +213,11 @@ define(function(require, exports, module) {
   $.fn.modal = Plugin;
 
   $doc.on('click', '[data-am-modal]', function() {
-    var $this = $(this),
-        options = UI.utils.parseOptions($this.attr('data-am-modal')),
-        $target = $(options.target ||
-            (this.href && this.href.replace(/.*(?=#[^\s]+$)/, ''))),
-        option = $target.data('am.modal') ? 'toggle' : options;
+    var $this = $(this);
+    var options = UI.utils.parseOptions($this.attr('data-am-modal'));
+    var $target = $(options.target ||
+            (this.href && this.href.replace(/.*(?=#[^\s]+$)/, '')));
+    var option = $target.data('am.modal') ? 'toggle' : options;
 
     Plugin.call($target, option, this);
   });

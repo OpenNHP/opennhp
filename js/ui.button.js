@@ -3,8 +3,8 @@ define(function(require, exports, module) {
 
   require('core');
 
-  var $ = window.Zepto,
-      UI = $.AMUI;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
 
   /**
    * @via https://github.com/twbs/bootstrap/blob/master/js/button.js
@@ -29,12 +29,12 @@ define(function(require, exports, module) {
   };
 
   Button.prototype.setState = function(state) {
-    var disabled = 'disabled',
-        $element = this.$element,
-        options = this.options,
-        val = $element.is('input') ? 'val' : 'html',
-        loadingClassName = options.className.disabled +
-            ' ' + options.className.loading;
+    var disabled = 'disabled';
+    var $element = this.$element;
+    var options = this.options;
+    var val = $element.is('input') ? 'val' : 'html';
+    var loadingClassName = options.className.disabled + ' ' +
+        options.className.loading;
 
     state = state + 'Text';
 
@@ -67,9 +67,9 @@ define(function(require, exports, module) {
   };
 
   Button.prototype.toggle = function() {
-    var changed = true,
-        $element = this.$element,
-        $parent = this.$element.parent('.am-btn-group');
+    var changed = true;
+    var $element = this.$element;
+    var $parent = this.$element.parent('.am-btn-group');
 
     if ($parent.length) {
       var $input = this.$element.find('input');

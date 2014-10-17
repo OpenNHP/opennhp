@@ -3,15 +3,15 @@ define(function(require, exports, module) {
 
   require('core');
 
-  var $ = window.Zepto,
-      UI = $.AMUI;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
 
   var cookie = {
     get: function(name) {
-      var cookieName = encodeURIComponent(name) + '=',
-          cookieStart = document.cookie.indexOf(cookieName),
-          cookieValue = null,
-          cookieEnd;
+      var cookieName = encodeURIComponent(name) + '=';
+      var cookieStart = document.cookie.indexOf(cookieName);
+      var cookieValue = null;
+      var cookieEnd;
 
       if (cookieStart > -1) {
         cookieEnd = document.cookie.indexOf(';', cookieStart);

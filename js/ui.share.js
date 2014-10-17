@@ -3,11 +3,11 @@ define(function(require, exports, module) {
 
   require('core');
   require('ui.modal');
-  var QRCode = require('util.qrcode'),
-      $ = window.Zepto,
-      UI = $.AMUI,
-      doc = document,
-      $doc = $(doc);
+  var QRCode = require('util.qrcode');
+  var $ = window.Zepto;
+  var UI = $.AMUI;
+  var doc = document;
+  var $doc = $(doc);
 
   var Share = function(options) {
     this.options = $.extend({}, Share.DEFAULTS, options || {});
@@ -159,16 +159,16 @@ define(function(require, exports, module) {
   };
 
   Share.prototype.render = function() {
-    var options = this.options,
-        snsData = [],
-        title = encodeURIComponent(doc.title),
-        link = encodeURIComponent(doc.location),
-        msgBody = '?body=' + title + link;
+    var options = this.options;
+    var snsData = [];
+    var title = encodeURIComponent(doc.title);
+    var link = encodeURIComponent(doc.location);
+    var msgBody = '?body=' + title + link;
 
     options.sns.forEach(function(item, i) {
       if (Share.SNS[item]) {
-        var tmp = Share.SNS[item],
-            shareUrl;
+        var tmp = Share.SNS[item];
+        var shareUrl;
 
         tmp.id = item;
 
@@ -194,8 +194,8 @@ define(function(require, exports, module) {
       return;
     }
 
-    var me = this,
-        shareItem = '[data-am-share-to]';
+    var me = this;
+    var shareItem = '[data-am-share-to]';
 
     $doc.ready($.proxy(function() {
       $('body').append(this.render()); // append share DOM to body
@@ -208,10 +208,10 @@ define(function(require, exports, module) {
     }, this));
 
     $doc.on('click.share.amui', shareItem, $.proxy(function(e) {
-      var $clicked = $(e.target),
-          $target = $clicked.is(shareItem) && $clicked ||
-              $clicked.parent(shareItem),
-          sns = $target.attr('data-am-share-to');
+      var $clicked = $(e.target);
+      var $target = $clicked.is(shareItem) && $clicked ||
+              $clicked.parent(shareItem);
+      var sns = $target.attr('data-am-share-to');
 
       if (!(sns === 'mail' || sns === 'sms')) {
         e.preventDefault();
@@ -249,10 +249,10 @@ define(function(require, exports, module) {
     var shareData = {
           url: doc.location,
           title: doc.title
-        },
-        desc = this.options.desc,
-        imgSrc = this.pics || [],
-        qqReg = /^(qzone|qq|tqq)$/;
+        };
+    var desc = this.options.desc;
+    var imgSrc = this.pics || [];
+    var qqReg = /^(qzone|qq|tqq)$/;
 
     if (qqReg.test(sns) && !imgSrc.length) {
       var allImages = doc.images;
@@ -261,7 +261,7 @@ define(function(require, exports, module) {
         !!allImages[i].src && imgSrc.push(encodeURIComponent(allImages[i].src));
       }
 
-      this.pics = imgSrc; // 保存图片
+      this.pics = imgSrc; // 缓存图片
     }
 
     switch (sns) {
@@ -311,8 +311,8 @@ define(function(require, exports, module) {
 
   Share.prototype.wechatQr = function() {
     if (!this.$wechatQr) {
-      var qrId = UI.utils.generateGUID('am-share-wechat'),
-          $qr = $('<div class="am-modal am-modal-no-btn am-share-wechat-qr">' +
+      var qrId = UI.utils.generateGUID('am-share-wechat');
+      var $qr = $('<div class="am-modal am-modal-no-btn am-share-wechat-qr">' +
               '<div class="am-modal-dialog"><div class="am-modal-hd">分享到微信 ' +
               '<a href="" class="am-close am-close-spin" ' +
               'data-am-modal-close>&times;</a> </div>' +

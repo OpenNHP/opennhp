@@ -3,9 +3,9 @@ define(function(require, exports, module) {
 
   require('core');
 
-  var $ = window.Zepto,
-      UI = $.AMUI,
-      $w = $(window);
+  var $ = window.Zepto;
+  var UI = $.AMUI;
+  var $w = $(window);
 
   /**
    * @reference https://github.com/nolimits4web/Framework7/blob/master/src/js/modals.js
@@ -33,9 +33,9 @@ define(function(require, exports, module) {
   };
 
   Popover.prototype.init = function() {
-    var me = this,
-        $element = this.$element,
-        $popover;
+    var me = this;
+    var $element = this.$element;
+    var $popover;
 
     if (!this.options.target) {
       this.$popover = this.getPopover();
@@ -66,32 +66,32 @@ define(function(require, exports, module) {
   };
 
   Popover.prototype.sizePopover = function sizePopover() {
-    var $element = this.$element,
-        $popover = this.$popover;
+    var $element = this.$element;
+    var $popover = this.$popover;
 
     if (!$popover || !$popover.length) {
       return;
     }
 
-    var popSize = $popover.getSize(),
-        popWidth = $popover.width() || popSize.width,
-        popHeight = $popover.height() || popSize.height,
-        $popCaret = $popover.find('.am-popover-caret'),
-        popCaretSize = ($popCaret.width() / 2) || 10,
-        popTotalHeight = popHeight + popCaretSize;
+    var popSize = $popover.getSize();
+    var popWidth = $popover.width() || popSize.width;
+    var popHeight = $popover.height() || popSize.height;
+    var $popCaret = $popover.find('.am-popover-caret');
+    var popCaretSize = ($popCaret.width() / 2) || 10;
+    var popTotalHeight = popHeight + popCaretSize;
 
-    var triggerWidth = $element.outerWidth(),
-        triggerHeight = $element.outerHeight(),
-        triggerOffset = $element.offset(),
-        triggerRect = $element[0].getBoundingClientRect();
+    var triggerWidth = $element.outerWidth();
+    var triggerHeight = $element.outerHeight();
+    var triggerOffset = $element.offset();
+    var triggerRect = $element[0].getBoundingClientRect();
 
-    var winHeight = $w.height(),
-        winWidth = $w.width(),
-        popTop = 0,
-        popLeft = 0,
-        diff = 0,
-        spacing = 3,
-        popPosition = 'top';
+    var winHeight = $w.height();
+    var winWidth = $w.width();
+    var popTop = 0;
+    var popLeft = 0;
+    var diff = 0;
+    var spacing = 3;
+    var popPosition = 'top';
 
     $popover.css({left: '', top: ''})
         .removeClass('am-popover-left am-popover-right am-popover-top am-popover-bottom');
@@ -161,6 +161,7 @@ define(function(require, exports, module) {
 
   Popover.prototype.open = function() {
     var $popover = this.$popover;
+
     this.$element.trigger('open:popover:amui');
     this.sizePopover();
     $popover.show().addClass('am-active');
@@ -193,8 +194,8 @@ define(function(require, exports, module) {
   };
 
   Popover.prototype.events = function() {
-    var eventNS = 'popover.amui',
-        triggers = this.options.trigger.split(' ');
+    var eventNS = 'popover.amui';
+    var triggers = this.options.trigger.split(' ');
 
     for (var i = triggers.length; i--;) {
       var trigger = triggers[i];
@@ -213,9 +214,11 @@ define(function(require, exports, module) {
 
   function Plugin(option) {
     return this.each(function() {
-      var $this = $(this),
-          data = $this.data('am.popover'),
-          options = $.extend({}, UI.utils.parseOptions($this.attr('data-am-popover')), typeof option == 'object' && option);
+      var $this = $(this);
+      var data = $this.data('am.popover');
+      var options = $.extend({},
+            UI.utils.parseOptions($this.attr('data-am-popover')),
+              typeof option == 'object' && option);
 
       if (!data) {
         $this.data('am.popover', (data = new Popover(this, options)));

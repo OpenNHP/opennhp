@@ -3,8 +3,8 @@ define(function(require, exports, module) {
 
   require('core');
 
-  var $ = window.Zepto,
-      UI = $.AMUI;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
 
   /**
    * @via https://github.com/Minwe/bootstrap/blob/master/js/alert.js
@@ -28,8 +28,8 @@ define(function(require, exports, module) {
   };
 
   Alert.prototype.close = function() {
-    var $this = $(this),
-        $target = $this.hasClass('am-alert') ?
+    var $this = $(this);
+    var $target = $this.hasClass('am-alert') ?
             $this :
             $this.parent('.am-alert');
 
@@ -50,9 +50,9 @@ define(function(require, exports, module) {
   // Alert Plugin
   $.fn.alert = function(option) {
     return this.each(function() {
-      var $this = $(this),
-          data = $this.data('amui.alert'),
-          options = typeof option == 'object' && option;
+      var $this = $(this);
+      var data = $this.data('amui.alert');
+      var options = typeof option == 'object' && option;
 
       if (!data) {
         $this.data('amui.alert', (data = new Alert(this, options || {})));

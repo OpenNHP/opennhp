@@ -4,42 +4,42 @@ define(function(require, exports, module) {
   require('core');
   require('ui.collapse');
 
-  var $ = window.Zepto,
-      UI = $.AMUI,
-      accordionInit = function() {
-        var $accordion = $('[data-am-widget="accordion"]'),
-            selector = {
-              item: '.am-accordion-item',
-              title: '.am-accordion-title',
-              content: '.am-accordion-content'
-            };
+  var $ = window.Zepto;
+  var UI = $.AMUI;
 
-        $accordion.each(function(i, item) {
-          var options = UI.utils.parseOptions($(item).
-                  attr('data-am-accordion')),
-              $title = $accordion.find(selector.title);
+  function accordionInit() {
+    var $accordion = $('[data-am-widget="accordion"]');
+    var selector = {
+      item: '.am-accordion-item',
+      title: '.am-accordion-title',
+      content: '.am-accordion-content'
+    };
 
-          $title.on('click', function() {
-            var $content = $(this).next(selector.content),
-                $parent = $(this).parent(selector.item),
-                data = $content.data('amui.collapse');
+    $accordion.each(function(i, item) {
+      var options = UI.utils.parseOptions($(item).attr('data-am-accordion'));
+      var $title = $accordion.find(selector.title);
 
-            $parent.toggleClass('am-active');
+      $title.on('click', function() {
+        var $content = $(this).next(selector.content);
+        var $parent = $(this).parent(selector.item);
+        var data = $content.data('amui.collapse');
 
-            if (!data) {
-              $content.collapse();
-            } else {
-              $content.collapse('toggle');
-            }
+        $parent.toggleClass('am-active');
 
-            !options.multiple &&
-            $(item).children('.am-active').
-                not($parent).removeClass('am-active').
-                find('.am-accordion-content.am-in').collapse('close');
+        if (!data) {
+          $content.collapse();
+        } else {
+          $content.collapse('toggle');
+        }
 
-          });
-        });
-      };
+        !options.multiple &&
+        $(item).children('.am-active').
+            not($parent).removeClass('am-active').
+            find('.am-accordion-content.am-in').collapse('close');
+
+      });
+    });
+  }
 
   // Init on DOM ready
   $(function() {

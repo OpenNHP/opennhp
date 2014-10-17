@@ -5,31 +5,32 @@ define(function(require, exports, module) {
   require('ui.offcanvas');
   require('ui.collapse');
 
-  var IScroll = require('ui.iscroll-lite'),
-      $ = window.Zepto;
+  var IScroll = require('ui.iscroll-lite');
+  var $ = window.Zepto;
 
   var menuInit = function() {
     var $menus = $('[data-am-widget="menu"]');
 
     $menus.find('.am-menu-nav .am-parent > a').on('click', function(e) {
       e.preventDefault();
-      var $clicked = $(this),
-          $parent = $clicked.parent(),
-          $subMenu = $clicked.next('.am-menu-sub');
+      var $clicked = $(this);
+      var $parent = $clicked.parent();
+      var $subMenu = $clicked.next('.am-menu-sub');
+
       $parent.toggleClass('am-open');
       $subMenu.collapse('toggle');
       $parent.siblings('.am-parent').removeClass('am-open')
           .children('.am-menu-sub.am-in').collapse('close');
     });
 
-    // Dropdown/slidedown menu
+    // Dropdown/slideDown menu
     $menus.
         filter('[data-am-menu-collapse]').
         find('> .am-menu-toggle').
         on('click', function(e) {
           e.preventDefault();
-          var $this = $(this),
-              $nav = $this.next('.am-menu-nav');
+          var $this = $(this);
+          var $nav = $this.next('.am-menu-nav');
 
           $this.toggleClass('am-active');
 
@@ -42,8 +43,8 @@ define(function(require, exports, module) {
         find('> .am-menu-toggle').
         on('click', function(e) {
           e.preventDefault();
-          var $this = $(this),
-              $nav = $this.next('.am-offcanvas');
+          var $this = $(this);
+          var $nav = $this.next('.am-offcanvas');
 
           $this.toggleClass('am-active');
 
@@ -51,20 +52,21 @@ define(function(require, exports, module) {
         });
 
     // Close offCanvas when link clicked
-    var autoCloseOffCanvas = '.am-offcanvas[data-dismiss-on="click"]',
-        $autoCloseOffCanvas = $(autoCloseOffCanvas);
+    var autoCloseOffCanvas = '.am-offcanvas[data-dismiss-on="click"]';
+    var $autoCloseOffCanvas = $(autoCloseOffCanvas);
+
     $autoCloseOffCanvas.find('a').not('.am-parent>a').on('click', function(e) {
       $(this).parents(autoCloseOffCanvas).offCanvas('close');
     });
 
     // one theme
     $menus.filter('.am-menu-one').each(function(index) {
-      var $this = $(this),
-          $wrap = $('<div class="am-menu-nav-sub-wrap"></div>'),
-          allWidth = 0,
-          prevIndex,
-          $nav = $this.find('.am-menu-nav'),
-          $navTopItem = $nav.children('li');
+      var $this = $(this);
+      var $wrap = $('<div class="am-menu-nav-sub-wrap"></div>');
+      var allWidth = 0;
+      var $nav = $this.find('.am-menu-nav');
+      var $navTopItem = $nav.children('li');
+      var prevIndex;
 
       $navTopItem.filter('.am-parent').each(function(index) {
         $(this).attr('data-rel', '#am-menu-sub-' + index);
@@ -121,9 +123,8 @@ define(function(require, exports, module) {
         var within = $this.offset();
 
         // 父类左边距
-
-        var listOffset,
-            parentLeft = parseInt($this.css('padding-left'));
+        var listOffset;
+        var parentLeft = parseInt($this.css('padding-left'));
 
         if (dir ? offset.left + offset.width > within.left + within.width :
             offset.left < within.left) {

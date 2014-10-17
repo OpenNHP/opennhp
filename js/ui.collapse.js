@@ -3,8 +3,8 @@ define(function(require, exports, module) {
 
   require('core');
 
-  var $ = window.Zepto,
-      UI = $.AMUI;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
 
   /**
    * @via https://github.com/twbs/bootstrap/blob/master/js/collapse.js
@@ -126,11 +126,11 @@ define(function(require, exports, module) {
   // Collapse Plugin
   function Plugin(option) {
     return this.each(function() {
-      var $this = $(this),
-          data = $this.data('amui.collapse'),
-          options = $.extend({}, Collapse.DEFAULTS,
-              UI.utils.options($this.attr('data-am-collapse')),
-                  typeof option == 'object' && option);
+      var $this = $(this);
+      var data = $this.data('amui.collapse');
+      var options = $.extend({}, Collapse.DEFAULTS,
+          UI.utils.options($this.attr('data-am-collapse')),
+              typeof option == 'object' && option);
 
       if (!data && options.toggle && option == 'open') {
         option = !option;
@@ -148,14 +148,13 @@ define(function(require, exports, module) {
 
   // Init code
   $(document).on('click.collapse.amui', '[data-am-collapse]', function(e) {
-    var href,
-        $this = $(this),
-        options = UI.utils.options($this.attr('data-am-collapse')),
-        target = options.target ||
-            e.preventDefault() ||
-            (href = $this.attr('href')) &&
-            href.replace(/.*(?=#[^\s]+$)/, '');
-
+    var href;
+    var $this = $(this);
+    var options = UI.utils.options($this.attr('data-am-collapse'));
+    var target = options.target ||
+        e.preventDefault() ||
+        (href = $this.attr('href')) &&
+        href.replace(/.*(?=#[^\s]+$)/, '');
     var $target = $(target);
     var data = $target.data('amui.collapse');
     var option = data ? 'toggle' : options;

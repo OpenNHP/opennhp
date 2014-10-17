@@ -3,13 +3,10 @@ define(function(require, exports, module) {
 
   var $ = window.Zepto;
 
-  /**
-   * Add to Homescreen v3.0.7
-   * @copyright (c) 2014 Matteo Spinelli
-   * @license: http://cubiq.org/license
-   */
+  /* jshint -W101, -W106 */
+  /* Add to Homescreen v3.0.8 ~ (c) 2014 Matteo Spinelli ~ @license: http://cubiq.org/license */
 
-// Check if document is loaded, needed by autostart
+  // Check if document is loaded, needed by autostart
   var _DOMReady = false;
   if (document.readyState === 'complete') {
     _DOMReady = true;
@@ -39,17 +36,17 @@ define(function(require, exports, module) {
   ath.intl = {
     en_us: {
       message: 'To add this web app to the home screen: tap %icon and then <strong>%action</strong>.',
-      action: {ios: 'Add to Home Screen', android: 'Add to homescreen', windows: 'pin to start'}
+      action: { ios: 'Add to Home Screen', android: 'Add to homescreen', windows: 'pin to start' }
     },
 
     zh_cn: {
       message: '如要把应用程式加至主屏幕,请点击%icon, 然后<strong>%action</strong>',
-      action: {ios: '加至主屏幕', android: '加至主屏幕', windows: '按住启动'}
+      action: { ios: '加至主屏幕', android: '加至主屏幕', windows: '按住启动' }
     },
 
     zh_tw: {
       message: '如要把應用程式加至主屏幕, 請點擊%icon, 然後<strong>%action</strong>.',
-      action: {ios: '加至主屏幕', android: '加至主屏幕', windows: '按住啟動'}
+      action: { ios: '加至主屏幕', android: '加至主屏幕', windows: '按住啟動' }
     }
   };
 
@@ -84,6 +81,7 @@ define(function(require, exports, module) {
 
 // browser info and capability
   var _ua = window.navigator.userAgent;
+
   var _nav = window.navigator;
   _extend(ath, {
     hasToken: document.location.hash == '#ath' || _reSmartURL.test(document.location.href) || _reQueryString.test(document.location.search),
@@ -141,14 +139,15 @@ define(function(require, exports, module) {
     if (this.options.debug) {
       ath.isCompatible = true;
       ath.OS = typeof this.options.debug == 'string' ? this.options.debug : ath.OS == 'unsupported' ? 'android' : ath.OS;
-      ath.OSVersion = ath.OS == 'ios' ? '7' : '4';
+      ath.OSVersion = ath.OS == 'ios' ? '8' : '4';
     }
 
     // the element the message will be appended to
     this.container = document.documentElement;
 
     // load session
-    this.session = JSON.parse(localStorage.getItem(this.options.appID));
+    this.session = localStorage.getItem(this.options.appID);
+    this.session = this.session ? JSON.parse(this.session) : undefined;
 
     // user most likely came from a direct link containing our token, we don't need it and we remove it
     if (ath.hasToken && ( !ath.isCompatible || !this.session )) {
@@ -540,7 +539,7 @@ define(function(require, exports, module) {
     }
   };
 
-  // utility
+// utility
   function _extend(target, obj) {
     for (var i in obj) {
       target[i] = obj[i];
@@ -562,6 +561,8 @@ define(function(require, exports, module) {
       history.replaceState('', window.document.title, document.location.href.replace(_reQueryString, '$2'));
     }
   }
+
+  /* jshint +W101, +W106 */
 
   $.AMUI.addToHomescreen = ath;
 

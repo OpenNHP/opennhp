@@ -1,16 +1,27 @@
-/**
- * Grid system
- * - 12列网格，基于浮动布局；相对定位实现 push / pull
- * - Mobile first
- * - Breakpoint:
- *        sm:    <= 640px
- *        md:   641px <= 1024px
- *        lg:    >1024px
- */
+// Name:            Grid
+//
+// Description:     12 列网格系统，基于浮动布局；相对定位实现 push / pull
+//                  Mobile first
+//                  Breakpoint:
+//                    sm: <= 640px
+//                    md: 641px <= 1024px
+//                    lg: >1024px
+//
+//
+// Component:       `.am-g`
+//
+// Sub-objects:     `.col-*-*`
+//
+// =============================================================================
+
+
+/* ==========================================================================
+   Component: Grid
+ ============================================================================ */
 
 
 // Mixins
-// ========================================================================
+// =============================================================================
 
 .col-reset-order() {
   margin-left: 0;
@@ -25,6 +36,7 @@
   margin: 0 auto;
   width: 100%;
   .clearfix();
+
   &.am-g-collapse {
     .am-col, [class*='col-'] {
       padding-left: 0;
@@ -37,6 +49,7 @@
     margin-left: -@grid-gutter-width;
     margin-right: -@grid-gutter-width;
     width: auto;
+
     &.am-g-collapse {
       margin-left: 0;
       margin-right: 0;
@@ -60,6 +73,7 @@
   position: relative;
 }
 
+
 /* Increasing gutter for medium and large screen */
 
 @media @medium-up {
@@ -73,6 +87,9 @@
     padding-right: @grid-gutter-md-width;
   }
 }
+
+
+/* Basic grid */
 
 @media @screen {
   .col-sm-1 {
@@ -796,5 +813,12 @@
     }
   }
 }
+
+
+// Hooks
+// =============================================================================
+
+// No hooks
+
 
 // TODO: mixin

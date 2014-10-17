@@ -1,18 +1,44 @@
 // Name:                     Panel
-// Description:              Defines styles for panel
 //
-// Component:                `am-panel`
+// Description:              Define style for panel
 //
-// Sub-objects:              `am-thumbnail-caption`
+// Component:                `.am-panel`
+//
+// Sub-objects:              `.am-thumbnail-caption`
 //
 // Modifiers:                ``
 //
-// ========================================================================
+// =============================================================================
 
 
-/* ========================================================================
+// Panel mixin
+// =============================================================================
+
+.panel-variant(@border; @hd-text-color; @hd-bg-color; @hd-border) {
+  border-color: @border;
+
+  & > .am-panel-hd {
+    color: @hd-text-color;
+    background-color: @hd-bg-color;
+    border-color: @hd-border;
+
+    + .am-panel-collapse > .am-panel-bd {
+      border-top-color: @border;
+    }
+  }
+
+  & > .am-panel-footer {
+    + .am-panel-collapse > .am-panel-bd {
+      border-bottom-color: @border;
+    }
+  }
+}
+
+
+/* ==========================================================================
+   Component:
    Component: Panel
- ========================================================================== */
+ ============================================================================ */
 
 .am-panel {
   margin-bottom: 20px;
@@ -42,7 +68,6 @@
 }
 
 // Panel hds(h1 - h6)
-
 .am-panel-title {
   margin: 0;
   font-size: 100%;
@@ -65,9 +90,8 @@
 }
 
 
-
 // Modifiers
-// ========================================================================
+// =============================================================================
 
 .am-panel-default {
   .panel-variant(@panel-default-bd; @panel-default-text; @panel-default-hd-bg; @panel-default-bd);
@@ -100,9 +124,9 @@
 }
 
 
-
 // Table in panel
 // A non-bordered `.am-table` in a panel
+// =============================================================================
 
 .am-panel {
   > .am-table {
@@ -120,6 +144,7 @@
         th:first-child {
           border-top-left-radius: (@panel-border-radius);
         }
+
         td:last-child,
         th:last-child {
           border-top-right-radius: (@panel-border-radius);
@@ -139,6 +164,7 @@
         th:first-child {
           border-bottom-left-radius: (@panel-border-radius);
         }
+
         td:last-child,
         th:last-child {
           border-bottom-right-radius: (@panel-border-radius);
@@ -166,12 +192,14 @@
         > td:first-child {
           border-left: 0;
         }
+
         > th:last-child,
         > td:last-child {
           border-right: 0;
         }
       }
     }
+
     > thead,
     > tbody {
       > tr:first-child {
@@ -181,6 +209,7 @@
         }
       }
     }
+
     > tbody,
     > tfoot {
       > tr:last-child {
@@ -192,7 +221,6 @@
     }
   }
 }
-
 
 
 /* Wrap list */
@@ -242,9 +270,8 @@
 }
 
 
-
 // Hooks
-// ========================================================================
+// =============================================================================
 
 .hook-panel() {}
 .hook-panel-hd() {}
@@ -256,4 +283,3 @@
 .hook-panel-success() {}
 .hook-panel-warning() {}
 .hook-panel-danger() {}
-

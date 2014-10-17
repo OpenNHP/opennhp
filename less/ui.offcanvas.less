@@ -2,23 +2,29 @@
 //
 // Description:  Define style for off-canvas sidebar
 //
-// Component:    `am-offcanvas`
+// Component:    `.am-offcanvas`
 //
-// Sub-objects:  `am-offcanvas-page`
-//               `am-offcanvas-bar`
+// Sub-objects:  `.am-offcanvas-page`
+//               `.am-offcanvas-bar`
 //
-// Modifiers:     `am-offcanvas-bar-flip`
+// Modifiers:    `.am-offcanvas-bar-flip`
 //
-// States:        `am-active`
+// States:       `.am-active`
 //
-// ========================================================================
-
-/* ========================================================================
-   Component: JS OffCanvas
- ========================================================================== */
+// =============================================================================
 
 
+// Variables
+// =============================================================================
+@offcanvas-dimmer-background:         rgba(0,0,0,0.15);
+@offcanvas-bar-width:                 270px;
+@offcanvas-bar-background:            #333;
 @offcanvas-bar-border-color: darken(@offcanvas-bar-background, 5%);
+
+
+/* ==========================================================================
+   Component: OffCanvas Plugin
+ ============================================================================ */
 
 /* Off-canvas overlay and bar container */
 

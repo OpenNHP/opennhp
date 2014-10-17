@@ -6,10 +6,10 @@ define(function(require, exports, module) {
 
   var $ = window.Zepto;
 
-  var goTopInit = function() {
-    var $goTop = $('[data-am-widget="gotop"]'),
-        $fixed = $goTop.filter('.am-gotop-fixed'),
-        $win = $(window);
+  function goTopInit() {
+    var $goTop = $('[data-am-widget="gotop"]');
+    var $fixed = $goTop.filter('.am-gotop-fixed');
+    var $win = $(window);
 
     $goTop.find('a').on('click', function(e) {
       e.preventDefault();
@@ -23,7 +23,7 @@ define(function(require, exports, module) {
     checkPosition();
 
     $win.on('scroll.gotop.amui', $.AMUI.utils.debounce(checkPosition, 100));
-  };
+  }
 
   $(function() {
     goTopInit();

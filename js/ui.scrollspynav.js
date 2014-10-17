@@ -4,8 +4,8 @@ define(function(require, exports, module) {
   require('core');
   require('ui.smooth-scroll');
 
-  var $ = window.Zepto,
-      UI = $.AMUI;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
 
   /**
    * @via https://github.com/uikit/uikit/
@@ -45,10 +45,10 @@ define(function(require, exports, module) {
   };
 
   ScrollSpyNav.prototype.process = function() {
-    var scrollTop = this.$window.scrollTop(),
-        options = this.options,
-        inViews = [],
-        $links = this.$links;
+    var scrollTop = this.$window.scrollTop();
+    var options = this.options;
+    var inViews = [];
+    var $links = this.$links;
 
     var $targets = this.$targets;
 
@@ -94,8 +94,8 @@ define(function(require, exports, module) {
       $links.on('click', function(e) {
         e.preventDefault();
 
-        var $this = $(this),
-            $target = $($this.attr('href'));
+        var $this = $(this);
+        var $target = $($this.attr('href'));
 
         if (!$target) {
           return;
@@ -109,9 +109,9 @@ define(function(require, exports, module) {
   // ScrollSpyNav Plugin
   function Plugin(option) {
     return this.each(function() {
-      var $this = $(this),
-          data = $this.data('am.scrollspynav'),
-          options = typeof option == 'object' && option;
+      var $this = $(this);
+      var data = $this.data('am.scrollspynav');
+      var options = typeof option == 'object' && option;
 
       if (!data) {
         $this.data('am.scrollspynav', (data = new ScrollSpyNav(this, options)));
@@ -128,8 +128,8 @@ define(function(require, exports, module) {
   // Init code
   $(function() {
     $('[data-am-scrollspy-nav]').each(function() {
-      var $this = $(this),
-          options = UI.utils.options($this.attr('data-am-scrollspy-nav'));
+      var $this = $(this);
+      var options = UI.utils.options($this.attr('data-am-scrollspy-nav'));
 
       Plugin.call($this, options);
     });

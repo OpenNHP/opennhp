@@ -4,35 +4,35 @@ define(function(require, exports, module) {
   require('core');
   require('ui.modal');
 
-  var $ = window.Zepto,
-      UI = $.AMUI,
-      QRCode = require('util.qrcode'),
-      share = require('ui.share');
+  var $ = window.Zepto;
+  var UI = $.AMUI;
+  var QRCode = require('util.qrcode');
+  var share = require('ui.share');
 
-  var navbarInit = function() {
+  function navbarInit() {
     var $navBar = $('[data-am-widget="navbar"]');
 
     if (!$navBar.length) {
       return;
     }
 
-    var $win = $(window),
-        $body = $('body'),
-        $navBarNav = $navBar.find('.am-navbar-nav'),
-        $navItems = $navBar.find('li'),
-        navItemsCounter = $navItems.length,
-        configItems = $navBarNav.attr('class') &&
+    var $win = $(window);
+    var $body = $('body');
+    var $navBarNav = $navBar.find('.am-navbar-nav');
+    var $navItems = $navBar.find('li');
+    var navItemsCounter = $navItems.length;
+    var configItems = $navBarNav.attr('class') &&
             parseInt($navBarNav.attr('class').
-                match(/sm-block-grid-(\d+)/)[1]) || 3,
-        navMinWidth = 60, //每个li最小宽度
-        offsetWidth = 16,
-        $share = $navItems.filter('[data-am-navbar-share]'),
-        $qrcode = $navItems.filter('[data-am-navbar-qrcode]'),
-        activeStatus = 'am-active',
-        $moreActions = $('<ul class="am-navbar-actions"></ul>', {
+                match(/sm-block-grid-(\d+)/)[1]) || 3;
+    var navMinWidth = 60; // 每个 li 最小宽度
+    var offsetWidth = 16;
+    var $share = $navItems.filter('[data-am-navbar-share]');
+    var $qrcode = $navItems.filter('[data-am-navbar-qrcode]');
+    var activeStatus = 'am-active';
+    var $moreActions = $('<ul class="am-navbar-actions"></ul>', {
           id: UI.utils.generateGUID('am-navbar-actions')
-        }),
-        $moreLink = $('<li class="am-navbar-labels am-navbar-more">' +
+        });
+    var $moreLink = $('<li class="am-navbar-labels am-navbar-more">' +
             '<a href="javascript: void(0);">' +
             '<span class="am-icon-angle-up"></span>' +
             '<span class="am-navbar-label">更多</span></a></li>');
@@ -47,14 +47,14 @@ define(function(require, exports, module) {
       $qrModal = $('#' + qrId);
 
       if (!$qrModal.length) {
-        var qrImg = $qrcode.attr('data-am-navbar-qrcode'),
-            $qrModal = $('<div class="am-modal am-modal-no-btn" id="">' +
+        var qrImg = $qrcode.attr('data-am-navbar-qrcode');
+        var $qrModal = $('<div class="am-modal am-modal-no-btn" id="">' +
                 '<div class="am-modal-dialog">' +
                 '<div class="am-modal-bd"></div></div>' +
                 '</div>', {
               id: qrId
-            }),
-            $qrContainer = $qrModal.find('.am-modal-bd');
+            });
+        var $qrContainer = $qrModal.find('.am-modal-bd');
 
         // 判断上传自定义的二维码没有，否则生成二维码
         if (qrImg) {
@@ -154,7 +154,7 @@ define(function(require, exports, module) {
 
     $win.on('resize.navbar.amui orientationchange.navbar.amui',
         UI.utils.debounce(checkNavBarItems, 150));
-  };
+  }
 
   // DOMContent ready
   $(function() {

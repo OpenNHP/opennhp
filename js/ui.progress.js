@@ -3,18 +3,17 @@ define(function(require, exports, module) {
 
   require('core');
 
-  var $ = window.Zepto,
-      UI = $.AMUI;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
 
   var Progress = (function() {
-
     /**
      * NProgress (c) 2013, Rico Sta. Cruz
      * @via http://ricostacruz.com/nprogress
      */
 
-    var NProgress = {},
-        $html = $('html');
+    var NProgress = {};
+    var $html = $('html');
 
     NProgress.version = '0.1.6';
 

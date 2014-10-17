@@ -3,18 +3,17 @@ define(function(require, exports, module) {
 
   require('core');
 
-  var $ = window.Zepto,
-      UI = $.AMUI,
-      IScroll = require('ui.iscroll-lite'),
-      paragraphInit;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
+  var IScroll = require('ui.iscroll-lite');
 
   /**
    * 表格滚动
    * @param index ID 标识，多个 paragraph 里面多个 table
    */
   $.fn.scrollTable = function(index) {
-    var $this = $(this),
-        $parent;
+    var $this = $(this);
+    var $parent;
 
     $this.wrap('<div class="am-paragraph-table-container" ' +
         'id="am-paragraph-table-' + index + '">' +
@@ -32,13 +31,13 @@ define(function(require, exports, module) {
     });
   };
 
-  paragraphInit = function() {
+  function paragraphInit() {
     var $paragraph = $('[data-am-widget="paragraph"]');
 
     $paragraph.each(function(index) {
-      var $this = $(this),
-          options = UI.utils.parseOptions($this.attr('data-am-paragraph')),
-          $index = index;
+      var $this = $(this);
+      var options = UI.utils.parseOptions($this.attr('data-am-paragraph'));
+      var $index = index;
 
       if (options.pureview) {
         $this.pureview();
@@ -52,8 +51,7 @@ define(function(require, exports, module) {
         });
       }
     });
-
-  };
+  }
 
   $(window).on('load', function() {
     paragraphInit();

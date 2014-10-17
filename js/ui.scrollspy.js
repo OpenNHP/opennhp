@@ -3,8 +3,8 @@ define(function(require, exports, module) {
 
   require('core');
 
-  var $ = window.Zepto,
-      UI = $.AMUI;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
 
   /**
    * @via https://github.com/uikit/uikit/blob/master/src/js/scrollspy.js
@@ -45,10 +45,10 @@ define(function(require, exports, module) {
   };
 
   ScrollSpy.prototype.checkView = function() {
-    var $element = this.$element,
-        options = this.options,
-        inView = UI.utils.isInView($element, options),
-        animation = (options.animation) ?
+    var $element = this.$element;
+    var options = this.options;
+    var inView = UI.utils.isInView($element, options);
+    var animation = options.animation ?
             ' am-animation-' + options.animation : '';
 
     if (inView && !this.inViewState) {
@@ -90,9 +90,9 @@ define(function(require, exports, module) {
   // Sticky Plugin
   function Plugin(option) {
     return this.each(function() {
-      var $this = $(this),
-          data = $this.data('am.scrollspy'),
-          options = typeof option == 'object' && option;
+      var $this = $(this);
+      var data = $this.data('am.scrollspy');
+      var options = typeof option == 'object' && option;
 
       if (!data) {
         $this.data('am.scrollspy', (data = new ScrollSpy(this, options)));

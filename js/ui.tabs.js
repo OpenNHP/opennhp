@@ -2,11 +2,12 @@ define(function(require, exports, module) {
   'use strict';
 
   require('core');
-  var Hammer = require('util.hammer'),
-      $ = window.Zepto,
-      UI = $.AMUI,
-      supportTransition = UI.support.transition,
-      animation = UI.support.animation;
+
+  var Hammer = require('util.hammer');
+  var $ = window.Zepto;
+  var UI = $.AMUI;
+  var supportTransition = UI.support.transition;
+  var animation = UI.support.animation;
 
   /**
    * @via https://github.com/twbs/bootstrap/blob/master/js/tab.js
@@ -41,8 +42,8 @@ define(function(require, exports, module) {
   };
 
   Tabs.prototype.init = function() {
-    var me = this,
-        options = this.options;
+    var me = this;
+    var options = this.options;
 
     // Activate the first Tab when no active Tab or multiple active Tabs
     if (this.$tabNav.find('> .am-active').length !== 1) {
@@ -96,15 +97,15 @@ define(function(require, exports, module) {
       return;
     }
 
-    var $tabNav = this.$tabNav,
-        $navs = this.$navs,
-        $tabContent = this.$content,
-        href = $nav.attr('href'),
-        regexHash = /^#.+$/,
-        $target = regexHash.test(href) && this.$content.find(href) ||
-            this.$tabPanels.eq($navs.index($nav)),
-        previous = $tabNav.find('.am-active a')[0],
-        e = $.Event('open:tabs:amui', {
+    var $tabNav = this.$tabNav;
+    var $navs = this.$navs;
+    var $tabContent = this.$content;
+    var href = $nav.attr('href');
+    var regexHash = /^#.+$/;
+    var $target = regexHash.test(href) && this.$content.find(href) ||
+            this.$tabPanels.eq($navs.index($nav));
+    var previous = $tabNav.find('.am-active a')[0];
+    var e = $.Event('open:tabs:amui', {
           relatedTarget: previous
         });
 
@@ -129,8 +130,8 @@ define(function(require, exports, module) {
   Tabs.prototype.activate = function($element, $container, callback) {
     this.transitioning = true;
 
-    var $active = $container.find('> .am-active'),
-        transition = callback && supportTransition && !!$active.length;
+    var $active = $container.find('> .am-active');
+    var transition = callback && supportTransition && !!$active.length;
 
     $active.removeClass('am-active am-in');
 
@@ -155,8 +156,8 @@ define(function(require, exports, module) {
   };
 
   Tabs.prototype.getNextNav = function($panel) {
-    var navIndex = this.$tabPanels.index(($panel)),
-        rightSpring = 'am-animation-right-spring';
+    var navIndex = this.$tabPanels.index($panel);
+    var rightSpring = 'am-animation-right-spring';
 
     if (navIndex + 1 >= this.$navs.length) { // last one
       animation && $panel.addClass(rightSpring).on(animation.end, function() {
@@ -169,8 +170,8 @@ define(function(require, exports, module) {
   };
 
   Tabs.prototype.getPrevNav = function($panel) {
-    var navIndex = this.$tabPanels.index(($panel)),
-        leftSpring = 'am-animation-left-spring';
+    var navIndex = this.$tabPanels.index($panel);
+    var leftSpring = 'am-animation-left-spring';
 
     if (navIndex === 0) { // first one
       animation && $panel.addClass(leftSpring).on(animation.end, function() {
@@ -185,9 +186,9 @@ define(function(require, exports, module) {
   // Plugin
   function Plugin(option) {
     return this.each(function() {
-      var $this = $(this),
-          $tabs = $this.is('.am-tabs') && $this || $this.closest('.am-tabs'),
-          data = $tabs.data('amui.tabs');
+      var $this = $(this);
+      var $tabs = $this.is('.am-tabs') && $this || $this.closest('.am-tabs');
+      var data = $tabs.data('amui.tabs');
 
       if (!data) {
         $tabs.data('amui.tabs', (data = new Tabs($tabs[0])));

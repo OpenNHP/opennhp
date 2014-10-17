@@ -4,8 +4,8 @@ define(function(require, exports, module) {
   require('core');
   require('ui.pureview');
 
-  var $ = window.Zepto,
-      UI = $.AMUI;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
 
   /**
    * Is Images zoomable
@@ -24,7 +24,7 @@ define(function(require, exports, module) {
     return zoomAble;
   };
 
-  var figureInit = function() {
+  function figureInit() {
     $('.am-figure').each(function(i, item) {
       var options = UI.utils.parseOptions($(item).attr('data-am-figure'));
 
@@ -35,7 +35,7 @@ define(function(require, exports, module) {
         zoomAble && $(item).pureview();
       }
     });
-  };
+  }
 
   $(window).on('load', function() {
     figureInit();

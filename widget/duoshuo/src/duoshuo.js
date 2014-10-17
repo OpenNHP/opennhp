@@ -6,10 +6,10 @@ define(function(require, exports, module) {
   var $ = window.Zepto;
 
   function duoshuoInit() {
-    var $dsThread = $('.ds-thread'),
-        dsShortName = $dsThread.parent('[data-am-widget="duoshuo"]').
-            attr('data-ds-short-name'),
-        dsSrc = (document.location.protocol == 'https:' ? 'https:' : 'http:') +
+    var $dsThread = $('.ds-thread');
+    var dsShortName = $dsThread.parent('[data-am-widget="duoshuo"]').
+            attr('data-ds-short-name');
+    var dsSrc = (document.location.protocol == 'https:' ? 'https:' : 'http:') +
             '//static.duoshuo.com/embed.js';
 
     if (!$dsThread.length || !dsShortName) {

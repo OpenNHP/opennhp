@@ -3,9 +3,9 @@ define(function(require, exports, module) {
 
   require('core');
 
-  var $ = window.Zepto,
-      UI = $.AMUI,
-      animation = UI.support.animation;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
+  var animation = UI.support.animation;
 
   /**
    * @via https://github.com/Minwe/bootstrap/blob/master/js/dropdown.js
@@ -58,9 +58,9 @@ define(function(require, exports, module) {
   };
 
   Dropdown.prototype.open = function(e) {
-    var $toggle = this.$toggle,
-        $element = this.$element,
-        $dropdown = this.$dropdown;
+    var $toggle = this.$toggle;
+    var $element = this.$element;
+    var $dropdown = this.$dropdown;
 
     if ($toggle.is('.am-disabled, :disabled')) {
       return;
@@ -99,9 +99,9 @@ define(function(require, exports, module) {
       return;
     }
 
-    var animationName = this.options.animation + ' am-animation-reverse',
-        $element = this.$element,
-        $dropdown = this.$dropdown;
+    var animationName = this.options.animation + ' am-animation-reverse';
+    var $element = this.$element;
+    var $dropdown = this.$dropdown;
 
     $element.trigger('close:dropdown:amui');
 
@@ -132,11 +132,11 @@ define(function(require, exports, module) {
       return;
     }
 
-    var $dropdown = this.$dropdown,
-        offset = $dropdown.offset(),
-        width = $dropdown.outerWidth(),
-        boundaryWidth = this.$boundary.width(),
-        boundaryOffset = $.isWindow(this.boundary) && this.$boundary.offset() ?
+    var $dropdown = this.$dropdown;
+    var offset = $dropdown.offset();
+    var width = $dropdown.outerWidth();
+    var boundaryWidth = this.$boundary.width();
+    var boundaryOffset = $.isWindow(this.boundary) && this.$boundary.offset() ?
             this.$boundary.offset().left : 0;
 
     if (this.$justify) {
@@ -156,11 +156,11 @@ define(function(require, exports, module) {
   };
 
   Dropdown.prototype.events = function() {
-    var eventNS = 'dropdown.amui',
+    var eventNS = 'dropdown.amui';
     // triggers = this.options.trigger.split(' '),
-        $toggle = this.$toggle;
+    var $toggle = this.$toggle;
 
-    $toggle.on('click.' + eventNS, $.proxy(this.toggle, this))
+    $toggle.on('click.' + eventNS, $.proxy(this.toggle, this));
 
     /*for (var i = triggers.length; i--;) {
      var trigger = triggers[i];
@@ -183,8 +183,9 @@ define(function(require, exports, module) {
     }, this)).on('click.outer.dropdown.amui', $.proxy(function(e) {
       // var $target = $(e.target);
 
-      if (this.active && (this.$element[0] === e.target ||
-          !this.$element.find(e.target).length)) {
+      if (this.active &&
+          (this.$element[0] === e.target ||
+              !this.$element.find(e.target).length)) {
         this.close();
       }
     }, this));
@@ -193,11 +194,11 @@ define(function(require, exports, module) {
   // Dropdown Plugin
   function Plugin(option) {
     return this.each(function() {
-      var $this = $(this),
-          data = $this.data('amui.dropdown'),
-          options = $.extend({},
-              UI.utils.parseOptions($this.attr('data-am-dropdown')),
-                  typeof option == 'object' && option);
+      var $this = $(this);
+      var data = $this.data('amui.dropdown');
+      var options = $.extend({},
+          UI.utils.parseOptions($this.attr('data-am-dropdown')),
+              typeof option == 'object' && option);
 
       if (!data) {
         $this.data('amui.dropdown', (data = new Dropdown(this, options)));

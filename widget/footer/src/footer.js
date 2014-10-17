@@ -4,31 +4,32 @@ define(function(require, exports, module) {
   require('core');
   require('ui.modal');
 
-  var addToHS = require('ui.add2home'),
-      cookie = require('util.cookie'),
-      $ = window.Zepto,
-      footerInit = function() {
-        // modal mode
-        $('.am-footer-ysp').on('click', function() {
-          $('#am-footer-mode').modal();
-        });
+  var addToHS = require('ui.add2home');
+  var cookie = require('util.cookie');
+  var $ = window.Zepto;
 
-        addToHS();
+  function footerInit() {
+    // modal mode
+    $('.am-footer-ysp').on('click', function() {
+      $('#am-footer-mode').modal();
+    });
 
-        // switch mode
-        // switch to desktop
-        $('[data-rel="desktop"]').on('click', function(e) {
-          e.preventDefault();
-          if (window.AMPlatform) { // front end
-            window.AMPlatform.util.goDesktop();
-          } else { // back end
-            cookie.set('allmobilize', 'desktop', '', '/');
-            window.location = window.location;
-          }
-        });
-      };
+    addToHS();
 
-  $(window).on('load', function() {
+    // switch mode
+    // switch to desktop
+    $('[data-rel="desktop"]').on('click', function(e) {
+      e.preventDefault();
+      if (window.AMPlatform) { // front end
+        window.AMPlatform.util.goDesktop();
+      } else { // back end
+        cookie.set('allmobilize', 'desktop', '', '/');
+        window.location = window.location;
+      }
+    });
+  }
+
+  $(window).on('load', function() { // make sure `window.AMPlatform` is usable
     footerInit();
   });
 

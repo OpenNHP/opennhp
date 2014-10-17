@@ -4,12 +4,12 @@ define(function(require, exports, module) {
   require('core');
   require('ui.pureview');
 
-  var $ = window.Zepto,
-      UI = $.AMUI;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
 
-  var galleryInit = function() {
-    var $gallery = $('[data-am-widget="gallery"]'),
-        $galleryOne = $gallery.filter('.am-gallery-one');
+  function galleryInit() {
+    var $gallery = $('[data-am-widget="gallery"]');
+    var $galleryOne = $gallery.filter('.am-gallery-one');
 
     $gallery.each(function() {
       var options = UI.utils.parseOptions($(this).attr('data-am-gallery'));
@@ -23,7 +23,7 @@ define(function(require, exports, module) {
     $galleryOne.each(function() {
       galleryMore($(this));
     });
-  };
+  }
 
   function galleryMore($elements) {
     var moreData = $('<li class=\'am-gallery-more\'>' +

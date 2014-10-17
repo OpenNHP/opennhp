@@ -5,11 +5,11 @@ define(function(require, exports, module) {
   require('zepto.extend.data');
   require('core');
 
-  var $ = window.Zepto,
-      UI = $.AMUI,
-      $win = $(window),
-      $doc = $(document),
-      scrollPos;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
+  var $win = $(window);
+  var $doc = $(document);
+  var scrollPos;
 
   /**
    * @via https://github.com/uikit/uikit/blob/master/src/js/offcanvas.js
@@ -92,10 +92,10 @@ define(function(require, exports, module) {
   };
 
   OffCanvas.prototype.close = function(relatedElement) {
-    var $html = $('html'),
-        $body = $('body'),
-        $element = this.$element,
-        $bar = $element.find('.am-offcanvas-bar').first();
+    var $html = $('html');
+    var $body = $('body');
+    var $element = this.$element;
+    var $bar = $element.find('.am-offcanvas-bar').first();
 
     if (!$element.length || !$element.hasClass('am-active')) {
       return;
@@ -141,9 +141,9 @@ define(function(require, exports, module) {
 
   function Plugin(option, relatedElement) {
     return this.each(function() {
-      var $this = $(this),
-          data = $this.data('am.offcanvas'),
-          options = $.extend({}, OffCanvas.DEFAULTS,
+      var $this = $(this);
+      var data = $this.data('am.offcanvas');
+      var options = $.extend({}, OffCanvas.DEFAULTS,
                   typeof option == 'object' && option);
 
       if (!data) {
@@ -162,11 +162,11 @@ define(function(require, exports, module) {
   // Init code
   $doc.on('click.offcanvas.amui', '[data-am-offcanvas]', function(e) {
     e.preventDefault();
-    var $this = $(this),
-        options = UI.utils.parseOptions($this.data('amOffcanvas')),
-        $target = $(options.target ||
-            (this.href && this.href.replace(/.*(?=#[^\s]+$)/, ''))),
-        option = $target.data('am.offcanvas') ? 'open' : options;
+    var $this = $(this);
+    var options = UI.utils.parseOptions($this.data('amOffcanvas'));
+    var $target = $(options.target ||
+            (this.href && this.href.replace(/.*(?=#[^\s]+$)/, '')));
+    var option = $target.data('am.offcanvas') ? 'open' : options;
 
     Plugin.call($target, option, this);
   });

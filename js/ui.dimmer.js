@@ -3,10 +3,10 @@ define(function(require, exports, module) {
 
   require('core');
 
-  var $ = window.Zepto,
-      UI = $.AMUI,
-      $doc = $(document),
-      transition = UI.support.transition;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
+  var $doc = $(document);
+  var transition = UI.support.transition;
 
   var Dimmer = function() {
     this.id = UI.utils.generateGUID('am-dimmer');
@@ -85,8 +85,8 @@ define(function(require, exports, module) {
   };
 
   Dimmer.prototype.setScrollbar = function() {
-    var $body = $(document.body),
-        bodyPaddingRight = parseInt(($body.css('padding-right') || 0), 10);
+    var $body = $(document.body);
+    var bodyPaddingRight = parseInt(($body.css('padding-right') || 0), 10);
 
     if (this.scrollbarWidth) {
       $body.css('padding-right', bodyPaddingRight + this.scrollbarWidth);

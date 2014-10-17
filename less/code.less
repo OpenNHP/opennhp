@@ -1,10 +1,15 @@
 // Name:                       Code
-// Description:                Defines styles for code
+//
+// Description:                Define style for code elements
 //
 // Modifiers:                  `.pre-scrollable`
 //
-// ==========================================================================
+// =============================================================================
 
+
+/* ==========================================================================
+   Component: Code
+ ============================================================================ */
 
 /* Inline and block code styles */
 
@@ -14,6 +19,7 @@ pre,
 samp {
   font-family: @font-family-monospace;
 }
+
 
 /* Inline code */
 
@@ -59,10 +65,12 @@ pre {
 .am-pre-scrollable {
   max-height: @pre-scrollable-max-height;
   overflow-y: scroll;
-  .am-pre-scrollable;
+
+  .am-pre-scrollable();
 }
 
 
 // Hooks
+// =============================================================================
 
 .am-pre-scrollable() {}

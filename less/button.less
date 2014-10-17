@@ -1,5 +1,6 @@
 // Name:            Button
-// Description:     Defines styles for buttons
+//
+// Description:     Define style for buttons
 //
 // Component:       `.am-btn`
 //
@@ -18,16 +19,15 @@
 //                  `.am-btn-xs`
 //                  `.am-btn-block`
 //
-// States:          `am-active`
-//                  `am-disabled`
+// States:          `.am-active`
+//                  `.am-disabled`
 //
-// ========================================================================
+// =============================================================================
 
 
-/* ========================================================================
+/* ==========================================================================
    Component: Button
- ========================================================================== */
-
+ ============================================================================ */
 
 // Core styles
 
@@ -84,11 +84,13 @@
   &.am-square {
     border-radius: @global-square;
   }
+
+  .hook-btn();
 }
 
 
 // Modifiers
-// ========================================================================
+// =============================================================================
 
 .am-btn-default {
   .button-variant(@btn-default-color; @btn-default-bg; @btn-default-border);
@@ -130,18 +132,21 @@
     background-color: transparent;
     .box-shadow(none);
   }
+
   &,
   &:hover,
   &:focus,
   &:active {
     border-color: transparent;
   }
+
   &:hover,
   &:focus {
     color: @link-hover-color;
     text-decoration: underline;
     background-color: transparent;
   }
+
   &[disabled],
   fieldset[disabled] & {
     &:hover,
@@ -158,9 +163,11 @@
 .am-btn-lg {
   .button-size(@btn-lg-font-size);
 }
+
 .am-btn-sm {
   .button-size(@btn-sm-font-size);
 }
+
 .am-btn-xs {
   .button-size(@btn-xs-font-size);
 }
@@ -201,3 +208,9 @@ input[type="button"] {
     margin-right: 5px;
   }
 }
+
+
+// Hooks
+// =============================================================================
+
+.hook-btn() {}

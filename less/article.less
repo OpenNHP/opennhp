@@ -1,18 +1,20 @@
 // Name:            Article
+//
 // Description:     Define style for article
 //
-// Component:       `am-article`
+// Component:       `.am-article`
 //
-// Sub-objects:     `am-article-title`
-//                  `am-article-meta`
-//                  `am-article-lead`
-//                  `am-article-divider`
+// Sub-objects:     `.am-article-title`
+//                  `.am-article-meta`
+//                  `.am-article-lead`
+//                  `.am-article-divider`
 //
-// ========================================================================
+// =============================================================================
 
-/* ========================================================================
+
+/* ==========================================================================
    Component: Article
- ========================================================================== */
+ ============================================================================ */
 
 .am-article {
   .clearfix();
@@ -27,8 +29,7 @@
 }
 
 
-
-/* Sub-object `am-article-title` */
+/* Sub-object `.am-article-title` */
 
 .am-article-title {
   font-size: @article-title-font-size;
@@ -44,7 +45,7 @@
 }
 
 
-/* Sub-object `am-article-meta` */
+/* Sub-object `.am-article-meta` */
 
 .am-article-meta {
   font-size: @article-meta-font-size;
@@ -54,7 +55,7 @@
 }
 
 
-/* Sub-object `am-article-lead` */
+/* Sub-object `.am-article-lead` */
 
 .am-article-lead {
   color: @article-lead-color;
@@ -68,7 +69,7 @@
 }
 
 
-/* Sub-object `am-article-divider` */
+/* Sub-object `.am-article-divider` */
 
 .am-article-divider {
   margin-bottom: @article-divider-margin;
@@ -80,15 +81,17 @@
 }
 
 
+/* Sub-object `.am-article-bd` */
+
 .am-article-bd {
   blockquote {
     font-family: @font-family-kai;
   }
-
 }
 
 
 // Hooks
+// =============================================================================
 
 .hook-article-title() {}
 .hook-article-meta() {}

@@ -30,6 +30,28 @@ __问题：__
 - http://zeptojs.com/#event
 - http://api.jquery.com/event.namespace/
 
+## 代码格式
+
+- **缩进 2 个空格**；
+- **使用多 `var` 模式声明变量**：更容易维护，比如要删除第一个变量或者最后一个变量时，多 `var` 模式直接删除即可，单 `var`
+还要去修改别的行（**`for` 循环例外**）；
+
+***Valid***
+
+```javascript
+var x = 1;
+var y = 2;
+
+for (var i = 0, j = arr.length; i < j; i++) {
+}
+```
+
+***Invalid***
+
+```javascript
+var x = 1,
+    y = 2;
+```
 
 ## 命名规范
 

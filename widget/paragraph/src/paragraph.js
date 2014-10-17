@@ -2,6 +2,7 @@ define(function(require, exports, module) {
   'use strict';
 
   require('core');
+  require('ui.pureview');
 
   var $ = window.Zepto;
   var UI = $.AMUI;

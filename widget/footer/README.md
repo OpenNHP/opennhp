@@ -54,6 +54,11 @@ __数据说明：__
 - [Add to Homescreen - Google Chrome Mobile -- Google Developers](https://developers.google.com/chrome/mobile/docs/installtohomescreen)
 - [Everything you always wanted to know about touch icons](http://mathiasbynens.be/notes/touch-icons)
 
+添加到桌面图标功能默认开启，可以通过设置以下代码禁用：
+
+```javascript
+window.AMUI_NO_ADD2HS = true;
+```
 
 ## 数据接口
 

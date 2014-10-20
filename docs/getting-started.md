@@ -11,8 +11,8 @@ __注意：__ 目前提供下载的为测试版本，部分细节还在调整、
 
 <div class="am-g">
   <div class="col-md-8 col-md-centered">
-    <a href="/download" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
-">下载 Amaze UI v1.0.0-beta2</a>
+    <a href="/download?ver=v1.0.0-rc1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
+">下载 Amaze UI v1.0.0-rc1</a>
   </div>
 </div>
 

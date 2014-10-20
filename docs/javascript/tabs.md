@@ -200,7 +200,27 @@ $('#doc-my-tabs').find('a').on('opened:tabs:amui', function(e) {
 
 打开控制台操作[上面的选项卡](#doc-my-tabs)查看事件监听输出的文字。
 
+## FAQ
 
+### Tab 内容不能选择，如何处理？
+
+这个问题由 [Hammer.js](http://hammerjs.github.io/tips/) 引起。
+
+> Hammer is setting a property to improve the UX of the panning on desktop.
+
+可以使用下面的样式覆盖掉 Hammer.js 的样式：
+
+```css
+.am-tabs-bd {
+  -moz-user-select: text !important;
+  -webkit-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+```
+
+<!--
 ## TODO
 
 - Ajax 载入选项卡内容支持
+-->

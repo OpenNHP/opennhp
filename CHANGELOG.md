@@ -1,6 +1,19 @@
 # Amaze UI Change Log
 ---
 
+## Amaze UI v1.0.0-rc1
+
+### 2014.10 W3
+
+__JS插件__：
+
+- `IMPROVED` #131 window `resize` 时关闭 OffCanvas；
+- `NEW` Tabs 增加 tab 文字无法选择的说明。
+
+__Web 组件__：
+
+- `NEW` #144 Footer 增加关闭添加到桌面图标接口。
+
 ### 2014.10 W2
 
 - 重新梳理代码规范，根据代码规范整理代码；

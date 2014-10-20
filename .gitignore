@@ -7,7 +7,6 @@ lib-cov
 *.pid
 *.gz
 *.iml
-
 pids
 logs
 results
@@ -16,22 +15,27 @@ node_modules/
 .DS_Store
 .nodemonignore
 .sass-cache/
+
+# Editor
 .idea
+
+# bower
+/.bower-cache/
+/.bower-registry/
+
+# vendor
 /vendor/codemirror-emmet
 /vendor/less.js
 /vendor/seaUse*.js
-/.bower-cache/
-/.bower-registry/
-/dist/test/*
-/dist/demo/*
-/dist/docs/*
-/app/public/*
-dist/css
-dist/js
-.build
+
 tools/app/public/style.css
 
 less/amazeui.widgets.less
 
 docs/examples/assets/css/amazeui*.css
 docs/examples/assets/js/amazeui*.js
+
+# build
+.build
+# dist/css
+# dist/js

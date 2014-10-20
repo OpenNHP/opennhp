@@ -37,5 +37,5 @@ docs/examples/assets/js/amazeui*.js
 
 # build
 .build
-# dist/css
-# dist/js
+dist/css
+dist/js

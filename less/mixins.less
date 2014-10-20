@@ -1,15 +1,16 @@
 // Name:                     Mixins
+//
 // Description:              Less mixins for Amaze UI
 //
-// ========================================================================
+// =============================================================================
 
 
+// =============================================================================
 // Utilities
-// ========================================================================
+// =============================================================================
 
 // Micro clear fix
 // via: http://nicolasgallagher.com/micro-clearfix-hack/
-
 .clearfix() {
   &:before,
   &:after {
@@ -25,9 +26,7 @@
   // *zoom: 1;
 }
 
-
 // WebKit-style focus
-
 .tab-focus() {
   // Default
   outline: thin dotted #333;
@@ -36,9 +35,7 @@
   outline-offset: -2px;
 }
 
-
 // Center-align a block level element
-
 .center-block() {
   display: block;
   margin-left: auto;
@@ -47,12 +44,12 @@
 
 
 // Sizing shortcuts
+// -----------------------------------------------------------------------------
 
 .size(@width; @height) {
   width: @width;
   height: @height;
 }
-
 
 .square(@size) {
   .size(@size; @size);
@@ -60,6 +57,7 @@
 
 
 // Placeholder text
+// -----------------------------------------------------------------------------
 
 .placeholder(@color: @input-color-placeholder) {
   &:-moz-placeholder            { color: @color; } // Firefox 4-18
@@ -71,6 +69,7 @@
 
 // Text overflow
 // Requires inline-block or block for proper styling
+// -----------------------------------------------------------------------------
 
 .text-overflow(@display: block;){
   display: @display;
@@ -83,6 +82,7 @@
 
 // CSS image replacement
 // via: https://github.com/h5bp/html5-boilerplate/commit/aa0396eae757
+// -----------------------------------------------------------------------------
 
 .text-hide() {
   font: ~"0/0" a;
@@ -95,6 +95,7 @@
 
 // Line clamp
 // http://dropshado.ws/post/1015351370/webkit-line-clamp
+// -----------------------------------------------------------------------------
 
 .am-line-clamp(@lines, @line-height: 1.3em) {
   text-overflow: ellipsis;
@@ -107,51 +108,66 @@
 }
 
 
-
+// =============================================================================
 // CSS3 PROPERTIES
-// --------------------------------------------------
+// =============================================================================
 
 // Single side border-radius
+// -----------------------------------------------------------------------------
+
 .border-top-radius(@radius) {
   border-top-right-radius: @radius;
   border-top-left-radius: @radius;
 }
+
 .border-right-radius(@radius) {
   border-bottom-right-radius: @radius;
   border-top-right-radius: @radius;
 }
+
 .border-bottom-radius(@radius) {
   border-bottom-right-radius: @radius;
   border-bottom-left-radius: @radius;
 }
+
 .border-left-radius(@radius) {
   border-bottom-left-radius: @radius;
   border-top-left-radius: @radius;
 }
 
+
 // Drop shadows
+// -----------------------------------------------------------------------------
+
 .box-shadow(@shadow) {
   -webkit-box-shadow: @shadow; // iOS <4.3 & Android <4.1 & bb7.0
   box-shadow: @shadow;
 }
 
+
 // Transitions
+// -----------------------------------------------------------------------------
+
 .transition(@transition) {
   -webkit-transition: @transition;
   transition: @transition;
 }
+
 .transition-property(@transition-property) {
   -webkit-transition-property: @transition-property;
   transition-property: @transition-property;
 }
+
 .transition-delay(@transition-delay) {
   -webkit-transition-delay: @transition-delay;
   transition-delay: @transition-delay;
 }
+
 .transition-duration(@transition-duration) {
   -webkit-transition-duration: @transition-duration;
   transition-duration: @transition-duration;
 }
+
 .transition-transform(@transition) {
   -webkit-transition: -webkit-transform @transition;
   -moz-transition: -moz-transform @transition;
@@ -161,7 +177,7 @@
 
 
 // Transformations
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 .rotate(@degrees) {
   -webkit-transform: rotate(@degrees);
@@ -210,6 +226,7 @@
   -moz-perspective: @perspective;
   perspective: @perspective;
 }
+
 .perspective-origin(@perspective) {
   -webkit-perspective-origin: @perspective;
   -moz-perspective-origin: @perspective;
@@ -230,7 +247,7 @@
 
 
 // Animations
-// ========================================================================
+// -----------------------------------------------------------------------------
 
 .animation(@animation) {
   -webkit-animation: @animation;
@@ -241,6 +258,7 @@
 // Backface visibility
 // Prevent browsers from flickering when using CSS 3D transforms.
 // Default value is `visible`, but can be changed to `hidden`
+// -----------------------------------------------------------------------------
 
 .backface-visibility(@visibility){
   -webkit-backface-visibility: @visibility;
@@ -250,6 +268,8 @@
 
 
 // Box sizing
+// -----------------------------------------------------------------------------
+
 .box-sizing(@boxmodel) {
   -webkit-box-sizing: @boxmodel;
   -moz-box-sizing: @boxmodel;
@@ -260,6 +280,7 @@
 // User select
 // For selecting text on the page
 // Formal syntax: none | text | all | element
+// -----------------------------------------------------------------------------
 
 .user-select(@select) {
   -webkit-user-select: @select;
@@ -271,6 +292,7 @@
 
 
 // Resize anything
+// -----------------------------------------------------------------------------
 
 .resizable(@direction) {
   resize: @direction; // Options: horizontal, vertical, both
@@ -279,6 +301,7 @@
 
 
 // CSS3 Content Columns
+// -----------------------------------------------------------------------------
 
 .content-columns(@column-count; @column-gap: @grid-gutter-width) {
   -webkit-column-count: @column-count;
@@ -291,6 +314,7 @@
 
 
 // Optional hyphenation
+// -----------------------------------------------------------------------------
 
 .hyphens(@mode: auto) {
   word-wrap: break-word;
@@ -303,15 +327,15 @@
 
 
 // Opacity
+// -----------------------------------------------------------------------------
 
 .opacity(@opacity) {
   opacity: @opacity;
 }
 
 
-
 // GRADIENTS
-// ========================================================================
+// -----------------------------------------------------------------------------
 
 #gradient {
   // Horizontal gradient, from left to right
@@ -355,6 +379,7 @@
     background-repeat: no-repeat;
     filter: e(%("progid:DXImageTransform.Microsoft.gradient(startColorstr='%d', endColorstr='%d', GradientType=1)",argb(@start-color),argb(@end-color))); // IE9 and down, gets no color-stop at all for proper fallback
   }
+
   .vertical-3c(@start-color: #00b3ee; @mid-color: #7a43b6; @color-stop: 50%; @end-color: #c3325f) {
     background-image: -webkit-gradient(linear, 0 0, 0 100%, from(@start-color), color-stop(@color-stop, @mid-color), to(@end-color));
     background-image: -webkit-linear-gradient(@start-color, @mid-color @color-stop, @end-color);
@@ -363,6 +388,7 @@
     background-repeat: no-repeat;
     filter: e(%("progid:DXImageTransform.Microsoft.gradient(startColorstr='%d', endColorstr='%d', GradientType=0)",argb(@start-color),argb(@end-color))); // IE9 and down, gets no color-stop at all for proper fallback
   }
+
   //放射状
   .radial(@inner-color: #555; @outer-color: #333) {
     background-image: -webkit-gradient(radial, center center, 0, center center, 460, from(@inner-color), to(@outer-color));
@@ -383,25 +409,31 @@
 
 // Reset filters for IE
 //
-// When you need to remove a gradient background, do not forget to use this to reset
-// the IE filter for IE9 and below.
+// When you need to remove a gradient background, do not forget to use this to
+// reset the IE filter for IE9 and below.
+// -----------------------------------------------------------------------------
+
 .reset-filter() {
   filter: e(%("progid:DXImageTransform.Microsoft.gradient(enabled = false)"));
 }
 
 
-// ========================================================================
+// =============================================================================
 // Flexbox LESS mixins
+// =============================================================================
+
 // The spec: http://www.w3.org/TR/css3-flexbox
 // via: https://gist.github.com/jayj/4012969
 //      https://github.com/mastastealth/sass-flex-mixin/blob/master/flex.scss
 //      http://codepen.io/adamjohnson/pen/savzI
-// http://css-tricks.com/old-flexbox-and-new-flexbox/
+//      http://css-tricks.com/old-flexbox-and-new-flexbox/
+//
 // NOTE: NEED CODE REVIEW
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 // Flexbox display
 // flex or inline-flex
+
 .flexbox(@display: flex) {
   display: -webkit-box; // Old syntax
   display: ~"-webkit-@{display}";
@@ -535,10 +567,11 @@
 
 
 // Retina images
-//
+// =============================================================================
+
 // Short retina mixin for setting background-image and -size
 
-.img-retina(@file-1x; @file-2x; @width-1x; @height-1x) {
+.retina-bg-img(@file-1x; @file-2x; @width-1x; @height-1x) {
   background-image: url("@{file-1x}");
 
   @media
@@ -554,6 +587,9 @@
 }
 
 
+// Scrollable
+// -----------------------------------------------------------------------------
+// TODO: add scrollableX & scrollableY
 
 .scrollable() {
   overflow: auto;
@@ -561,10 +597,9 @@
 }
 
 
-
 // Responsive image
-//
 // Keep images from scaling beyond the width of their parents.
+// -----------------------------------------------------------------------------
 
 .img-responsive(@display: block;) {
   display: @display;
@@ -573,13 +608,13 @@
 }
 
 
-// ========================================================================
+// =============================================================================
 // Caret
 // NOTE: If using ::before or ::after, `content: ""` is required
-// ========================================================================
+// =============================================================================
 
 // Caret - down
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 .caret-down(@size: 6px; @color:#222) {
   display: inline-block;
@@ -595,7 +630,7 @@
 
 
 // Caret - up
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 .caret-up(@size:6px; @color:#222) {
   display: inline-block;
@@ -611,7 +646,7 @@
 
 
 // Caret - down
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 .caret-left(@size:6px; @color:#222) {
   display: inline-block;
@@ -625,8 +660,9 @@
   .rotate(360deg);
 }
 
+
 // Caret - down
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 .caret-right(@size:6px; @color:#222) {
   display: inline-block;
@@ -641,8 +677,8 @@
 }
 
 
-
 // CSS Arrow Mixin
+// -----------------------------------------------------------------------------
 //
 // @param:  45deg (default) - right
 //          135deg - down
@@ -660,56 +696,13 @@
 }
 
 
-
+// =============================================================================
 // COMPONENT MIXINS
-// --------------------------------------------------
-
-// Horizontal dividers
-// -------------------------
-// Dividers (basically an hr) within dropdowns and nav lists
-.nav-divider(@color: #e5e5e5) {
-  height: 1px;
-  margin: ((@line-height-computed / 2) - 1) 0;
-  overflow: hidden;
-  background-color: @color;
-}
-
-
-
-// Tables
-// -------------------------
-.table-row-variant(@state; @background; @border) {
-  // Exact selectors below required to override `.table-striped` and prevent
-  // inheritance to nested tables.
-  .table > thead > tr,
-  .table > tbody > tr,
-  .table > tfoot > tr {
-    > td.@{state},
-    > th.@{state},
-    &.@{state} > td,
-    &.@{state} > th {
-      background-color: @background;
-      border-color: @border;
-    }
-  }
-
-  // Hover states for `.table-hover`
-  // Note: this is not available for cells or rows within `thead` or `tfoot`.
-  .table-hover > tbody > tr {
-    > td.@{state}:hover,
-    > th.@{state}:hover,
-    &.@{state}:hover > td,
-    &.@{state}:hover > th {
-      background-color: darken(@background, 5%);
-      border-color: darken(@border, 5%);
-    }
-  }
-}
-
+// =============================================================================
 
 
 // Button variants
-// -------------------------
+// =============================================================================
 
 .button-variant(@color; @background; @border) {
   color: @color;
@@ -725,11 +718,13 @@
     background-color: darken(@background, 12%);
     border-color: darken(@border, 12%);
   }
+
   &:active,
   &.am-btn-active,
   .am-active .am-dropdown-toggle& {
     background-image: none;
   }
+
   &.am-disabled,
   &[disabled],
   fieldset[disabled] & {
@@ -752,7 +747,7 @@
 
 
 // Button size
-// ========================================================================
+// -----------------------------------------------------------------------------
 
 .button-size(@font-size) {
   font-size: @font-size;
@@ -761,38 +756,11 @@
 }
 
 
-
-// Pagination
-// ========================================================================
-
-.pagination-size(@padding-vertical; @padding-horizontal; @font-size; @border-radius) {
-  > li {
-    > a,
-    > span {
-      padding: @padding-vertical @padding-horizontal;
-      font-size: @font-size;
-    }
-    &:first-child {
-      > a,
-      > span {
-        .border-left-radius(@border-radius);
-      }
-    }
-    &:last-child {
-      > a,
-      > span {
-        .border-right-radius(@border-radius);
-      }
-    }
-  }
-}
-
-
-
 // Form
-// ========================================================================
+// =============================================================================
 
 // Form validation states
+// -----------------------------------------------------------------------------
 
 .form-field-validation(@text-color: #555; @border-color: #ccc) {
   // the label and help text color
@@ -825,6 +793,7 @@
 
 
 // Form element focus state
+// -----------------------------------------------------------------------------
 
 .form-field-focus(@color: @input-border-focus) {
   @color-rgba: rgba(red(@color), green(@color), blue(@color), .3);
@@ -838,64 +807,16 @@
 }
 
 
-
-// Retina image background
-// ========================================================================
-
-.retina-bgi(@file-1x; @file-2x; @width-1x; @height-1x) {
-  background-image: url("@{file-1x}");
-
-  @media
-  only screen and (-webkit-min-device-pixel-ratio: 2),
-  only screen and (   min--moz-device-pixel-ratio: 2),
-  only screen and (     -o-min-device-pixel-ratio: 2/1),
-  only screen and (        min-device-pixel-ratio: 2),
-  only screen and (                min-resolution: 192dpi),
-  only screen and (                min-resolution: 2dppx) {
-    background-image: url("@{file-2x}");
-    background-size: @width-1x @height-1x;
-  }
-}
-
-
-
-// Panel mixin
-// ========================================================================
-
-.panel-variant(@border; @hd-text-color; @hd-bg-color; @hd-border) {
-  border-color: @border;
-
-  & > .am-panel-hd {
-    color: @hd-text-color;
-    background-color: @hd-bg-color;
-    border-color: @hd-border;
-
-    + .am-panel-collapse > .am-panel-bd {
-      border-top-color: @border;
-    }
-  }
-  & > .am-panel-footer {
-    + .am-panel-collapse > .am-panel-bd {
-      border-bottom-color: @border;
-    }
-  }
-}
-
-
-
-// Progress bar
-// ========================================================================
-
-.progress-bar-variant(@color) {
-  background-color: @color;
-  .am-progress-striped & {
-    #gradient > .striped();
-  }
-}
-
-
 // Font ICON
-// ========================================================================
+// =============================================================================
+
+/**
+  * 1. Allow margin
+  * 2. Prevent inherit font style
+  * 3. Align vertical to text
+  * 4. Correct line-height
+  * 5. Better font rendering in Webkit
+  */
 
 .am-icon-font() {
   display: inline-block; /* 1 */

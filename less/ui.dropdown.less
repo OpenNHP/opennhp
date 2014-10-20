@@ -1,26 +1,30 @@
 // Name:            Dropdown
+//
 // Description:     Define style for dropdown
 //
-// Component:       `am-dropdown`
+// Component:       `.am-dropdown`
 //
-// Sub-objects:     `am-dropdown-toggle`
-//                  `am-dropdown-content`
-//                  `am-dropdown-header`
+// Sub-objects:     `.am-dropdown-toggle`
+//                  `.am-dropdown-content`
+//                  `.am-dropdown-header`
 //
-// Modifiers:       `am-dropdown-flip`
-//                  `am-dropdown-center`
-//                  `am-dropdown-justify`
-//                  `am-dropdown-up`
-//                  `am-dropdown-stack`
-//                  `am-dropdown-navbar`
+// Modifiers:       `.am-dropdown-flip`
+//                  `.am-dropdown-center`
+//                  `.am-dropdown-justify`
+//                  `.am-dropdown-up`
+//                  `.am-dropdown-stack`
+//                  `.am-dropdown-navbar`
 //
-// States:          `am-active`
-//                  `am-disabled`
+// States:          `.am-active`
+//                  `.am-disabled`
 //
-// Uses:            Animation
+// Uses:             Animation
+//
+// =============================================================================
 
-/**  Dropdown
-// ------------------------- */
+
+// Variables
+// =============================================================================
 
 @dropdown-bg:                    #fff;
 @dropdown-border-color:          #ddd;
@@ -29,21 +33,27 @@
 @dropdown-link-color:            @gray-dark;
 @dropdown-link-hover-color:      darken(@gray-dark, 5%);
 @dropdown-link-hover-bg:         #f5f5f5;
-
 @dropdown-link-active-color:     @component-active-color;
 @dropdown-link-active-bg:        @component-active-bg;
-
 @dropdown-link-disabled-color:   @gray-light;
 
 @dropdown-header-color:          @gray-light;
-
 @dropdown-caret-color:           darken(@dropdown-border-color, 5%);
 
-@caret-width-base: 6px;
+@caret-width-base:               6px;
+@dropdown-animation:             am-slide-top-fixed;
 
-@dropdown-animation: am-slide-top-fixed;
 
-// The dropdown wrapper
+// Dropdown mixin
+// =============================================================================
+// Dividers (basically an hr) within dropdowns and nav lists
+.nav-divider(@color: #e5e5e5) {
+  height: 1px;
+  margin: ((@line-height-computed / 2) - 1) 0;
+  overflow: hidden;
+  background-color: @color;
+}
+
 
 .am-dropdown {
   position: relative;
@@ -96,7 +106,10 @@
   }
 }
 
-// drop up
+
+// Dropdown Up
+// =============================================================================
+
 .am-dropdown-up .am-dropdown-content {
   top: auto;
   bottom: 100%;
@@ -105,7 +118,7 @@
   &:before,
   &:after {
     border-bottom: none;
-    border-top: 8px solid @dropdown-border;
+    border-top: 8px solid @dropdown-border-color;
     top: auto;
     bottom: -8px;
   }
@@ -127,7 +140,10 @@
   }
 }
 
+
 // dropdown menu (ul)
+// =============================================================================
+
 ul.am-dropdown-content {
   list-style: none;
   padding: 5px 0;
@@ -162,7 +178,6 @@ ul.am-dropdown-content {
     }
   }
 
-
   // Active state
   > .am-active > a {
     &,
@@ -196,7 +211,6 @@ ul.am-dropdown-content {
   }
 }
 
-
 // Dropdown section headers
 .am-dropdown-header {
   display: block;
@@ -207,6 +221,8 @@ ul.am-dropdown-content {
 
 
 // Right aligned dropdown
+// =============================================================================
+
 .am-fr > .am-dropdown-content {
   right: 0;
   left: auto;
@@ -216,6 +232,10 @@ ul.am-dropdown-content {
     left: auto;
   }
 }
+
+
+// Hooks
+// =============================================================================
 
 // TODO: 1. 分隔线上下间距调整
 //       2. 位置设置

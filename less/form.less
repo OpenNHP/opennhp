@@ -1,15 +1,20 @@
 // Name:                       Forms
+//
 // Description:                Define style for form elements
 //
-// Modifiers:                  `.`
+// Component:                 `.am-form`
 //
-// ==========================================================================
+// Modifiers:                  ``
+//
+// =============================================================================
 
-/* ========================================================================
+
+/* ==========================================================================
    Component: Form
- ========================================================================== */
+ ============================================================================ */
 
-/* Normalize non-controls */
+
+/* Normalize */
 
 // Restyle and baseline non-control form elements.
 
@@ -43,9 +48,7 @@ input[type="search"] {
   .box-sizing(border-box);
 }
 
-
 // Position radios and checkboxes better
-
 input[type="radio"],
 input[type="checkbox"] {
   margin: 4px 0 0;
@@ -53,23 +56,18 @@ input[type="checkbox"] {
   line-height: normal;
 }
 
-
 // Set the height of select and file controls to match text inputs
-
 input[type="file"] {
   display: block;
 }
 
 // Make multiple select elements height not fixed
-
 select[multiple],
 select[size] {
   height: auto;
 }
 
-
 // Fix optgroup Firefox bug per https://github.com/twbs/bootstrap/issues/7611
-
 select optgroup {
   font-size: inherit;
   font-style: inherit;
@@ -97,9 +95,7 @@ input[type="number"] {
   }
 }
 
-
 // Adjust output element
-
 output {
   display: block;
   padding-top: @global-spacing;
@@ -110,7 +106,7 @@ output {
 }
 
 
-// Common form controls
+/* Common form controls */
 
 .am-form select,
 .am-form textarea,
@@ -159,7 +155,6 @@ output {
   }
 }
 
-
 .am-form {
   // Reset height for block field
   textarea,
@@ -180,7 +175,7 @@ output {
 }
 
 
-// help text
+/* help text */
 
 .am-form-help {
   display: block;
@@ -191,15 +186,17 @@ output {
 }
 
 
-// form group
+/* form group */
 
 .am-form-group {
   margin-bottom: 1.5rem;
 }
 
 
-// Checkboxes and radios
-// Indent the labels to position radios/checkboxes as hanging controls.
+/**
+ * Checkboxes and radios
+ * Indent the labels to position radios/checkboxes as hanging controls.
+*/
 
 .am-radio,
 .am-checkbox {
@@ -231,7 +228,8 @@ output {
   margin-top: -5px; // Move up sibling radios or checkboxes for tighter spacing
 }
 
-// Radios and checkboxes inline
+
+/* Radios and checkboxes inline */
 
 .am-radio-inline,
 .am-checkbox-inline {
@@ -308,7 +306,7 @@ input[type="checkbox"],
 }
 
 
-// Inline form elements
+/* Inline form elements */
 
 .am-form-inline {
   @media @medium-up {
@@ -442,3 +440,7 @@ input[type="checkbox"],
     }
   }
 }
+
+
+// Hooks
+// =============================================================================

@@ -14,7 +14,7 @@ define(function(require, exports, module) {
       $('#am-footer-mode').modal();
     });
 
-    addToHS();
+    !window.AMUI_NO_ADD2HS && addToHS();
 
     // switch mode
     // switch to desktop

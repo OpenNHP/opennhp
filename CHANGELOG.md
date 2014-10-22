@@ -1,6 +1,13 @@
 # Amaze UI Change Log
 ---
 
+### 2014.10 W3
+
+__Web 组件__：
+
+- `FIXED` #155 修复 Accordion 一个页面中多个共存问题。
+
+
 ## Amaze UI v1.0.0-rc1
 
 ### 2014.10 W3

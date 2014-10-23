@@ -448,19 +448,23 @@ div.error {}
 
 ```css
 /* Recommended */
-border-top: 0;
-font: 100%/1.6 palatino, georgia, serif;
-padding: 0 1em 2em;
+.el {
+  border-top: 0;
+  font: 100%/1.6 palatino, georgia, serif;
+  padding: 0 1em 2em;
+}
 
 /* Not recommended */
-border-top-style: none;
-font-family: palatino, georgia, serif;
-font-size: 100%;
-line-height: 1.6;
-padding-bottom: 2em;
-padding-left: 1em;
-padding-right: 1em;
-padding-top: 0;
+.el {
+  border-top-style: none;
+  font-family: palatino, georgia, serif;
+  font-size: 100%;
+  line-height: 1.6;
+  padding-bottom: 2em;
+  padding-left: 1em;
+  padding-right: 1em;
+  padding-top: 0;
+}
 ```
 
 #### 属性值为 `0` 时省略单位

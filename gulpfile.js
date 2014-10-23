@@ -9,36 +9,51 @@ var _ = require('lodash');
 var format = require('util').format;
 var exec = require('child_process').exec;
 
+// Temporary solution until gulp 4
+// https://github.com/gulpjs/gulp/issues/355
+var runSequence = require('run-sequence');
+
 var gulp = require('gulp');
 var $ = require('gulp-load-plugins')();
 
 var pkg = require('./package.json');
-var transportDir = '.build/ts/';
-var buildTmpDir = '.build/tmp/';
-var jsPaths = {
-  widgets: [
-    '*/src/*.js',
-    '!{powered_by,switch_mode,toolbar,tech_support,layout*,blank,container}' +
-    '/src/*.js'],
-  hbsHelper: [
-    'vendor/amazeui.hbs.helper.js',
-    'vendor/amazeui.hbs.partials.js']
-};
 
-var dist = {
-  js: './dist/js',
-  css: './dist/css'
+var config = {
+  path: {
+    less: [
+      './less/amui.less',
+      './less/amazeui.widgets.less',
+      './less/amazeui.less'
+    ],
+    widgets: [
+      '*/src/*.js',
+      '!{powered_by,switch_mode,toolbar,tech_support,layout*,blank,container}' +
+      '/src/*.js'],
+    hbsHelper: [
+      'vendor/amazeui.hbs.helper.js',
+      'vendor/amazeui.hbs.partials.js']
+  },
+  dir: {
+    transport: '.build/ts/',
+    buildTmp: '.build/tmp/'
+  },
+  dist: {
+    js: './dist/js',
+    css: './dist/css'
+  },
+  js: {
+    base: [
+      'core.js',
+      'util.fastclick.js',
+      'util.hammer.js',
+      'zepto.outerdemension.js',
+      'zepto.extend.data.js',
+      'zepto.extend.fx.js',
+      'zepto.extend.selector.js'
+    ],
+    seajs: path.join(__dirname, 'vendor/seajs/sea.js')
+  }
 };
-
-var jsBase = [
-  'core.js',
-  'util.fastclick.js',
-  'util.hammer.js',
-  'zepto.outerdemension.js',
-  'zepto.extend.data.js',
-  'zepto.extend.fx.js',
-  'zepto.extend.selector.js'
-];
 
 var dateFormat = 'UTC:yyyy-mm-dd"T"HH:mm:ss Z';
 
@@ -50,7 +65,6 @@ var banner = [
   $.util.date(Date.now(), dateFormat) + ' */ \n'
 ].join(' | ');
 
-var seajs = path.join(__dirname, 'vendor/seajs/sea.js');
 var seaUse = '';
 var seaUseBasic = '';
 var seaUseWidgets = '';
@@ -65,7 +79,7 @@ var jsBasic;
 var jsBasicSorted;
 var jsWidgetsSorted;
 
-// write widgets style and tpl
+// Write widgets style and tpl
 var preparingData = function() {
   var fsOptions = {encoding: 'utf8'};
   var uiBase = fs.readFileSync('./less/amui.less', fsOptions);
@@ -136,12 +150,12 @@ var preparingData = function() {
    */
 
     // for amazeui.basic.js
-  jsBasic = _.union(jsBase, allPlugins);
+  jsBasic = _.union(config.js.base, allPlugins);
 
   // for amazeui.js
   jsAll = _.union(jsBasic, jsWidgets);
 
-  jsWidgets = _.union(jsBase, jsWidgets);
+  jsWidgets = _.union(config.js.base, jsWidgets);
 
   pluginsNotUsed = _.difference(plugins, jsWidgets);
 
@@ -149,7 +163,7 @@ var preparingData = function() {
     return pluginsNotUsed.indexOf(plugin) == -1;
   });
 
-  jsWidgets = _.union(jsBase, pluginsUsed, jsWidgets);
+  jsWidgets = _.union(config.js.base, pluginsUsed, jsWidgets);
 
   // seajs.use[''...]
   jsAll.forEach(function(js) {
@@ -170,11 +184,11 @@ var preparingData = function() {
   seaUseWidgets = 'seajs.use(' + JSON.stringify(modulesWidgets) + ');';
 
   // sort for concat
-  jsWidgetsSorted = _.union([seajs], jsWidgets, [seaUseWidgets]);
+  jsWidgetsSorted = _.union([config.js.seajs], jsWidgets, [seaUseWidgets]);
 
-  jsAllSorted = _.union([seajs], jsAll);
+  jsAllSorted = _.union([config.js.seajs], jsAll);
 
-  jsBasicSorted = _.union([seajs], jsBasic, [seaUseBasic]);
+  jsBasicSorted = _.union([config.js.seajs], jsBasic, [seaUseBasic]);
 
   partials += '  };\n\n';
   partials += '  if (typeof module !== \'undefined\' && module.exports) {\n';
@@ -187,72 +201,70 @@ var preparingData = function() {
   fs.writeFileSync(path.join('./vendor/amazeui.hbs.partials.js'), partials);
 };
 
-// build to dist dir
-gulp.task('buildLess', function() {
-  gulp.src(
-      [
-        './less/amui.less',
-        './less/amazeui.widgets.less',
-        './less/amazeui.less'
-      ]).pipe($.header(banner, {pkg: pkg, ver: ''}))
-      .pipe($.less({
-        paths: [
-          path.join(__dirname, 'less'),
-          path.join(__dirname, 'widget/*/src')]
-      }))
-      .pipe($.rename(function(path) {
-        if (path.basename === 'amui') {
-          path.basename = pkg.name + '.basic';
-        }
-      }))
-      .pipe(gulp.dest(dist.css))
-    // Disable advanced optimizations - selector & property merging, etc.
-    // for Issue #19 https://github.com/allmobilize/amazeui/issues/19
-      .pipe($.minifyCss({noAdvanced: true}))
-      .pipe($.rename({
-        suffix: '.min',
-        extname: '.css'
-      }))
-      .pipe(gulp.dest(dist.css));
-});
+gulp.task('build:preparing', preparingData);
 
 gulp.task('bower', function() {
   $.bower().
-      pipe(gulp.dest('vendor/'));
+    pipe(gulp.dest('vendor/'));
 });
 
-// copy ui js files to build dir
-gulp.task('copyWidgetJs', function() {
+// Build to dist dir.
+gulp.task('build:less', function() {
+  gulp.src(config.path.less)
+    .pipe($.header(banner, {pkg: pkg, ver: ''}))
+    .pipe($.less({
+      paths: [
+        path.join(__dirname, 'less'),
+        path.join(__dirname, 'widget/*/src')]
+    }))
+    .pipe($.rename(function(path) {
+      if (path.basename === 'amui') {
+        path.basename = pkg.name + '.basic';
+      }
+    }))
+    .pipe(gulp.dest(config.dist.css))
+    // Disable advanced optimizations - selector & property merging, etc.
+    // for Issue #19 https://github.com/allmobilize/amazeui/issues/19
+    .pipe($.minifyCss({noAdvanced: true}))
+    .pipe($.rename({
+      suffix: '.min',
+      extname: '.css'
+    }))
+    .pipe(gulp.dest(config.dist.css));
+});
+
+// Copy ui js files to build dir.
+gulp.task('build:js:copy:widgets', function() {
   $.util.log($.util.colors.yellow('Start copy UI js files to build dir....'));
-  return gulp.src(jsPaths.widgets, {cwd: './widget'})
+  return gulp.src(config.path.widgets, {cwd: './widget'})
       .pipe($.rename(function(path) {
         path.dirname = ''; // remove widget dir
       }))
-      .pipe(gulp.dest(buildTmpDir));
+      .pipe(gulp.dest(config.dir.buildTmp));
 });
 
-// copy widgets js files to build dir
-gulp.task('copyUIJs', ['copyWidgetJs'], function() {
-  return gulp.src(['*.js', '!./js/zepto.calendar.js'], {
+// Copy core js files to build dir.
+gulp.task('build:js:copy:core', function() {
+  return gulp.src('*.js', {
     cwd: './js'
   })
-      .pipe(gulp.dest(buildTmpDir));
+    .pipe(gulp.dest(config.dir.buildTmp));
 });
 
-// gulp cmd transport
-gulp.task('transport', ['copyUIJs'], function() {
-  return gulp.src(['*.js'], {cwd: buildTmpDir})
-      .pipe($.cmdTransport({paths: [buildTmpDir]}))
-      .pipe(gulp.dest(transportDir));
+// Transport CDM modules
+gulp.task('build:js:transport', function() {
+  return gulp.src(['*.js'], {cwd: config.dir.buildTmp})
+      .pipe($.cmdTransport({paths: [config.dir.buildTmp]}))
+      .pipe(gulp.dest(config.dir.transport));
 });
 
-// concat amazeui.js
-gulp.task('concatAll', ['transport'], function() {
-  return gulp.src(jsAllSorted, {cwd: transportDir})
+// Concat amazeui.js
+gulp.task('build:js:concat:all', function() {
+  return gulp.src(jsAllSorted, {cwd: config.dir.transport})
       .pipe($.concat(pkg.name + '.js'))
       .pipe($.header(banner, {pkg: pkg, ver: ''}))
       .pipe($.footer('\n<%=use%>', {use: seaUse}))
-      .pipe(gulp.dest(dist.js))
+      .pipe(gulp.dest(config.dist.js))
       .pipe($.uglify({
         mangle: {
           except: ['require']
@@ -263,16 +275,16 @@ gulp.task('concatAll', ['transport'], function() {
         suffix: '.min',
         extname: '.js'
       }))
-      .pipe(gulp.dest(dist.js));
+      .pipe(gulp.dest(config.dist.js));
 });
 
-// concat amazeui.basic.js
-gulp.task('concatBasic', ['concatAll'], function() {
-  return gulp.src(jsBasicSorted, {cwd: transportDir})
+// Concat amazeui.basic.js
+gulp.task('build:js:concat:basic', function() {
+  return gulp.src(jsBasicSorted, {cwd: config.dir.transport})
       .pipe($.concat(pkg.name + '.basic.js'))
       .pipe($.header(banner, {pkg: pkg, ver: ' ~ basic'}))
       .pipe($.footer('\n<%=use%>', {use: seaUseBasic}))
-      .pipe(gulp.dest(dist.js))
+      .pipe(gulp.dest(config.dist.js))
       .pipe($.uglify({
         mangle: {
           except: ['require']
@@ -283,16 +295,16 @@ gulp.task('concatBasic', ['concatAll'], function() {
         suffix: '.min',
         extname: '.js'
       }))
-      .pipe(gulp.dest(dist.js));
+      .pipe(gulp.dest(config.dist.js));
 });
 
-// concat amazeui.widgets.js
-gulp.task('concatWidgets', ['concatBasic'], function() {
-  return gulp.src(jsWidgetsSorted, {cwd: transportDir})
+// Concat amazeui.widgets.js
+gulp.task('build:js:concat:widgets', function() {
+  return gulp.src(jsWidgetsSorted, {cwd: config.dir.transport})
       .pipe($.concat(pkg.name + '.widgets.js'))
       .pipe($.header(banner, {pkg: pkg, ver: ' ~ widgets'}))
       .pipe($.footer('\n<%=use%>', {use: seaUseWidgets}))
-      .pipe(gulp.dest(dist.js))
+      .pipe(gulp.dest(config.dist.js))
       .pipe($.uglify({
         mangle: {
           except: ['require']
@@ -303,22 +315,20 @@ gulp.task('concatWidgets', ['concatBasic'], function() {
         suffix: '.min',
         extname: '.js'
       }))
-      .pipe(gulp.dest(dist.js));
+      .pipe(gulp.dest(config.dist.js));
 });
 
-gulp.task('concat', ['concatAll', 'concatBasic', 'concatWidgets']);
-
-gulp.task('clean', ['concatWidgets'], function() {
-  $.util.log($.util.colors.green('Finished build js, cleaning...'));
+gulp.task('build:js:clean', function() {
+  $.util.log($.util.colors.green('Finished concat js, cleaning...'));
   gulp.src('./.build', {read: false})
       .pipe($.clean({force: true}));
 });
 
-gulp.task('hbsHelper', function() {
-  gulp.src(jsPaths.hbsHelper)
+gulp.task('build:js:helper', function() {
+  gulp.src(config.path.hbsHelper)
       .pipe($.concat(pkg.name + '.widgets.helper.js'))
       .pipe($.header(banner, {pkg: pkg, ver: ' ~ helper'}))
-      .pipe(gulp.dest(dist.js))
+      .pipe(gulp.dest(config.dist.js))
       .pipe($.uglify({
         mangle: {
           except: ['require']
@@ -329,34 +339,46 @@ gulp.task('hbsHelper', function() {
         suffix: '.min',
         extname: '.js'
       }))
-      .pipe(gulp.dest(dist.js));
+      .pipe(gulp.dest(config.dist.js));
 });
 
-gulp.task('preparing', preparingData);
+gulp.task('build:js', function(cb) {
+  runSequence(
+    ['build:js:copy:widgets', 'build:js:copy:core'],
+    'build:js:transport',
+    ['build:js:concat:all', 'build:js:concat:basic', 'build:js:concat:widgets'],
+    ['build:js:clean', 'build:js:helper'],
+    cb
+  );
+});
 
-gulp.task('appServer', function() {
-  exec('npm start', function(err, stdout, stderr) {
-    console.log(stdout);
-    console.log(stderr);
-  });
+gulp.task('build', function(cb) {
+  runSequence('build:preparing', ['build:less', 'build:js'], cb);
 });
 
 // Rerun the task when a file changes
 gulp.task('watch', function() {
-  gulp.watch(['js/*.js', 'widget/*/src/*.js'], ['buildJs']);
-  gulp.watch(['less/**/*.less', 'widget/*/src/*.less'], ['buildLess']);
-  gulp.watch(['dist/amui*js'], ['copyFiles']);
-  gulp.watch(['docs/assets/js/main.js'], ['amazeMain']);
-  gulp.watch(['widget/**/*.json', 'widget/**/*.hbs'], ['preparing']);
-  gulp.watch(jsPaths.hbsHelper, ['hbsHelper']);
+  gulp.watch(['js/*.js', 'widget/*/src/*.js'], ['build:js']);
+  gulp.watch(['less/**/*.less', 'widget/*/src/*.less'], ['build:less']);
+  gulp.watch(['widget/**/*.json', 'widget/**/*.hbs'], ['build:preparing']);
+  gulp.watch(config.path.hbsHelper, ['build:js:helper']);
 });
 
-gulp.task('zipCopyCSS', function() {
+// Task: Make archive
+gulp.task('archive', function(cb) {
+  runSequence(['build',
+      'archive:copy:css', 'archive:copy:js'],
+      'archive:zip',
+      'archive:clean',
+    cb);
+});
+
+gulp.task('archive:copy:css', function() {
   return gulp.src('./dist/css/*.css')
       .pipe(gulp.dest('./docs/examples/assets/css'));
 });
 
-gulp.task('zipCopyJs', ['zipCopyCSS'], function() {
+gulp.task('archive:copy:js', function() {
   return gulp.src([
     './dist/js/*.js',
     './vendor/handlebars/handlebars.min.js',
@@ -364,7 +386,7 @@ gulp.task('zipCopyJs', ['zipCopyCSS'], function() {
       .pipe(gulp.dest('./docs/examples/assets/js'));
 });
 
-gulp.task('zipAdd', ['zipCopyJs'], function() {
+gulp.task('archive:zip', function() {
   return gulp.src(['docs/examples/**/*'])
       .pipe($.replace(/\{\{assets\}\}/g, 'assets/', {skipBinary: true}))
       .pipe($.zip(format('AmazeUI-%s-%s.zip',
@@ -373,40 +395,23 @@ gulp.task('zipAdd', ['zipCopyJs'], function() {
       .pipe(gulp.dest('dist'));
 });
 
-gulp.task('zipClean', ['zipAdd'], function() { // zipClean
+gulp.task('archive:clean', function() {
   return gulp.src(['docs/examples/assets/*/amazeui.*',
     './docs/examples/assets/js/handlebars.min.js',
     './docs/examples/assets/js/zepto.min.js'], {read: false})
       .pipe($.clean({force: true}));
 });
 
-gulp.task('zip', ['zipClean']);
+// Preview server.
+gulp.task('appServer', function() {
+  exec('npm start', function(err, stdout, stderr) {
+    console.log(stdout);
+    console.log(stderr);
+  });
+});
 
-gulp.task('buildJs',
-    [
-      'copyWidgetJs',
-      'copyUIJs',
-      'transport',
-      'concat',
-      'clean'
-    ]);
+// gulp.task('init', ['bower', 'build', 'watch']);
 
-// gulp.task('init', ['bower', 'buildJs', 'hbsHelper', 'buildLess', 'watch']);
+gulp.task('default', ['build', 'watch']);
 
-gulp.task('default',
-    [
-      'preparing',
-      'buildJs',
-      'buildLess',
-      'hbsHelper',
-      'watch'
-    ]);
-
-gulp.task('preview',
-    ['preparing',
-      'buildJs',
-      'buildLess',
-      'hbsHelper',
-      'watch',
-      'appServer'
-    ]);
+gulp.task('preview', ['build', 'watch', 'appServer']);

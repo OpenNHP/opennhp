@@ -59,7 +59,10 @@ define(function(require, exports, module) {
 
     var hammer = new Hammer(this.$content[0]);
 
-    hammer.get('pan').set({direction: Hammer.DIRECTION_HORIZONTAL, threshold: 30});
+    hammer.get('pan').set({
+      direction: Hammer.DIRECTION_HORIZONTAL,
+      threshold: 60
+    });
 
     hammer.on('panleft', UI.utils.debounce(function(e) {
       e.preventDefault();

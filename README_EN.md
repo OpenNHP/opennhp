@@ -139,7 +139,7 @@ License](https://github.com/sindresorhus/screenfull.js/blob/gh-pages/license))
 
 There might be some missing and we will keep updating.
 
-## Developed with [WebStorm](http://www.jetbrains.com/webstorm/) Open Source Licensed version
+### Developed with Open Source Licensed [WebStorm](http://www.jetbrains.com/webstorm/)
 
 <a href="http://www.jetbrains.com/webstorm/" target="_blank">
 <img src="http://ww1.sinaimg.cn/large/005yyi5Jjw1elpp6svs2eg30k004i3ye.gif" width="240" />

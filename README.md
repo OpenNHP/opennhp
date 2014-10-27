@@ -135,7 +135,7 @@ gulp
 - [Amaze UI JavaScript 编写规范](http://amazeui.org/getting-started/javascript)
 - [Amaze UI Web 组件开发规范](http://amazeui.org/getting-started/widget)
 
-## 参考、使用的开源项目
+## 参考、使用的项目
 
 * [Zepto.js](https://github.com/madrobby/zepto) ([MIT
 License](https://github.com/madrobby/zepto/blob/master/MIT-LICENSE))
@@ -166,7 +166,7 @@ License](https://github.com/sindresorhus/screenfull.js/blob/gh-pages/license))
 
 可能会有部分项目遗漏，我们会不断整理更新。
 
-## Developed with [WebStorm](http://www.jetbrains.com/webstorm/) Open Source Licensed version
+### Developed with Open Source Licensed [WebStorm](http://www.jetbrains.com/webstorm/)
 
 <a href="http://www.jetbrains.com/webstorm/" target="_blank">
 <img src="http://ww1.sinaimg.cn/large/005yyi5Jjw1elpp6svs2eg30k004i3ye.gif" width="240" />

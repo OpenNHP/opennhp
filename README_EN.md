@@ -138,3 +138,9 @@ License](https://github.com/sindresorhus/screenfull.js/blob/gh-pages/license))
 * [FlexSlider](https://github.com/woothemes/FlexSlider) ([GPL 2.0](http://www.gnu.org/licenses/gpl-2.0.html))
 
 There might be some missing and we will keep updating.
+
+## Developed with [WebStorm](http://www.jetbrains.com/webstorm/) Open Source Licensed version
+
+<a href="http://www.jetbrains.com/webstorm/" target="_blank">
+<img src="http://ww1.sinaimg.cn/large/005yyi5Jjw1elpp6svs2eg30k004i3ye.gif" width="240" />
+</a>

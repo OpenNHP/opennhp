@@ -83,12 +83,9 @@ You are welcome to [submit bug report](https://github.com/allmobilize/amazeui/is
 
 To explain your problems clearly, we suggest you provide demonstration when you give us feedbacks.
 
-The following links are pages we have built with online debugging tools, using Amaze UI layouts and scripts. You can fork the tool you like and give us feedbacks with attachment of those pages that have problems.
+The following links are pages we have built with online debugging tools, using Amaze UI layouts and scripts. You can fork and give us feedbacks with attachment of those pages that have problems.
 
-
-- [JSBin](http://jsbin.com/kijiqu/1/edit?html,output)
-- [JSFiddle](http://jsfiddle.net/hegfirose/W22fV/)
-- [CodePen](http://codepen.io/minwe/pen/AEeup)
+- [Debug Amaze UI 1.0 in JSBin](http://jsbin.com/qasoxibuje/1/edit?html,output)
 
 ### Submit Request
 

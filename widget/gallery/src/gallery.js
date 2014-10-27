@@ -27,7 +27,7 @@ define(function(require, exports, module) {
 
   function galleryMore($elements) {
     var moreData = $('<li class=\'am-gallery-more\'>' +
-        '<a href=\'javascript:;\'>更多 &gt;&gt;</a></li>');
+        '<a href="javascript:;">更多 &gt;&gt;</a></li>');
 
     if ($elements.children().length > 6) {
       $elements.children().each(function(index) {

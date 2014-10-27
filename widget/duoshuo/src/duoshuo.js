@@ -16,7 +16,9 @@ define(function(require, exports, module) {
       return;
     }
 
-    window.duoshuoQuery = {short_name: dsShortName};
+    window.duoshuoQuery = {
+      short_name: dsShortName
+    };
 
     // 已经有多说脚本
     if ($('script[src="' + dsSrc + '"]').length) {

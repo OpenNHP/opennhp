@@ -3,6 +3,10 @@
 
 ### 2014.10 W3
 
+__CSS__：
+
+- `IMPROVED` 分页组件添加 `.am-disabled` 后移除所有事件（`pointer-events: none;`）；
+
 __Web 组件__：
 
 - `FIXED` #155 修复 Accordion 一个页面中多个共存问题。

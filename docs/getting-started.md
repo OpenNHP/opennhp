@@ -9,8 +9,8 @@ Amaze UI 是一个轻量级、 [**Mobile first**](http://cbrac.co/113eY5h) 的�
 
 <div class="am-g">
   <div class="col-md-8 col-md-centered">
-    <a href="/download?ver=v1.0.0-rc1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
-">下载 Amaze UI v1.0.0-rc1</a>
+    <a href="/download?ver=v1.0.0" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
+">下载 Amaze UI v1.0.0</a>
   </div>
 </div>
 
@@ -21,20 +21,20 @@ Amaze UI 是一个轻量级、 [**Mobile first**](http://cbrac.co/113eY5h) 的�
 下面的链接由 [Staticfile.org](http://staticfile.org) 提供 CDN 服务。
 
 ```html
-http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.basic.css
-http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.basic.min.css
-http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.css
-http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.min.css
-http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.widgets.css
-http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.widgets.min.css
-http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.basic.js
-http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.basic.min.js
-http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.js
-http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.min.js
-http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.widgets.helper.js
-http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.widgets.helper.min.js
-http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.widgets.js
-http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.widgets.min.js
+http://cdn.staticfile.org/amazeui/1.0.0/css/amazeui.basic.css
+http://cdn.staticfile.org/amazeui/1.0.0/css/amazeui.basic.min.css
+http://cdn.staticfile.org/amazeui/1.0.0/css/amazeui.css
+http://cdn.staticfile.org/amazeui/1.0.0/css/amazeui.min.css
+http://cdn.staticfile.org/amazeui/1.0.0/css/amazeui.widgets.css
+http://cdn.staticfile.org/amazeui/1.0.0/css/amazeui.widgets.min.css
+http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.basic.js
+http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.basic.min.js
+http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.js
+http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.min.js
+http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.widgets.helper.js
+http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.widgets.helper.min.js
+http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.widgets.js
+http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.widgets.min.js
 ```
 
 ### 使用 Bower
@@ -139,12 +139,12 @@ __感谢大家对 Amaze UI 的关注和支持！__
 
 移动端首选 Zepto，桌面端选 jQuery，这应该是大多数开发者的共识。那对于跨平台的响应式网站呢？
 
-- Zepto 体积小，下载快，但 __除了小，还有别的吗？__ Wifi 普及，4G 降临，那几十 KB 的还那么重要吗？优化一张图片好几个 jQuery 就出来了。
+- Zepto 体积小，下载快，但__除了小，还有别的吗？__ Wifi 普及，4G 降临，那几十 KB 的还那么重要吗？优化一张图片好几个 jQuery 就出来了。
 - jQuery 体积稍大，这是缺点。但是背后 jQuery 很多细节处理得很到位；成熟的生态圈，很多 jQuery 插件；庞大的社区，使用 jQuery 遇到问题时，可以很快从社区获得解决方案。jQuery 的这些特点有助于有效的提高开发效率。这些都是 Zepto 所缺乏的。
 - 性能考量：体积小不等于执行效率高；而且通过数十万次计算得出一个百分之几的差距，实际是放大了性能差异，实际使用中很少有那么大的计算量。
 
 虽然我们现在使用 Zepto，是从专门针对移动开发时代沿袭过来的。现在增加桌面端支持，Zepto 可能[不是一个好的选择](http://zurb.com/article/1293/why-we-dropped-zepto)。
 
-我个人倾向 jQuery，你呢？ __欢迎大家投票，并在[评论](#ds-thread)中分享你的想法__。
+我个人倾向 jQuery，你呢？__欢迎大家投票，并在[评论](#ds-thread)中分享你的想法__。
 
 <iframe seamless="seamless" style="border: none; overflow: hidden;" height="450" width="100%" scrolling="no" src="http://assets-polarb-com.a.ssl.fastly.net/api/v4/publishers/hegfirose/embedded_polls/iframe?poll_id=192386"></iframe>

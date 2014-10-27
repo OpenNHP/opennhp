@@ -1,6 +1,8 @@
 # Amaze UI Change Log
 ---
 
+## Amaze UI v1.0.0 （2014.10.28）
+
 ### 2014.10 W4
 
 __JS插件__：

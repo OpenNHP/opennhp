@@ -1,6 +1,13 @@
 # Amaze UI Change Log
 ---
 
+### 2014.10 W4
+
+__JS插件__：
+
+- `FIXED` #164 Alert 插件 closed:alert:amui 自定义事件未触发；
+- `FIXED` #163 Pureview 插件在 Firefox 桌面版异常。
+
 ### 2014.10 W3
 
 __CSS__：

@@ -33,8 +33,9 @@ Amaze UI 目前提供几个常见的布局示例，供开发者参考，后续�
 <div class="am-g">
     <div class="col-md-3 col-sm-6">
         <a class="am-thumbnail" href="/examples/admin-index.html">
-            <img class="am-img-thumbnail" src="http://amazeui.org/i/examples/adminPage.png" alt="adminPage"/>
-            <figcaption class="am-thumbnail-caption">管理员后台系统模板</figcaption>
+            <img class="am-img-thumbnail" src="http://ww1.sinaimg.cn/large/005yyi5Jjw1elpr8svtoyj30j70demxe.jpg
+" alt="adminPage"/>
+            <figcaption class="am-thumbnail-caption">管理后台模板</figcaption>
         </a>
     </div>
 </div>
@@ -78,7 +79,7 @@ Amaze UI 目前提供几个常见的布局示例，供开发者参考，后续�
     <li>JS 插件部分：<a class="am-badge am-badge-primary" href="/javascript/offcanvas">侧边栏组件</a></li>
 </ul>
 
-## 管理员后台系统模板
+## 管理后台模板
 
 - [index 页面](/examples/admin-index.html)
 - [user 页面](/examples/admin-user.html)

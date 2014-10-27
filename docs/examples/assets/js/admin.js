@@ -1,7 +1,7 @@
-(function() {
+(function($) {
   // Write your code below.
   $('#admin-fullscreen').on('click', function() {
-    $.AMUI.fullscreen.toggle()
+    $.AMUI.fullscreen.toggle();
   });
 
 })(window.Zepto);

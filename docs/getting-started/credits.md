@@ -22,6 +22,8 @@ Amaze UI 使用 [WebStorm](http://www.jetbrains.com/webstorm/) 开发，感谢 [
 
 ### v1.0.0
 
+ [@穷穷云](http://www.baidu.com/p/%E7%A9%B7%E7%A9%B7%E4%BA%91)、[@吴亚东](http://t.qq.com/wuyadong2)、[我怀念的是那时的我们](http://t.qq.com/a13572713967)
+
 #### RC1
 
 [@John.Wall](http://t.qq.com/wangzj141)、@ayhome、[@啸沧海](http://t.qq.com/seecool)、[@成都高校联盟](http://www.cdunu.com/)、@Henry、[@Kimi](http://weibo.com/2536228053)、@nswish、

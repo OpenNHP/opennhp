@@ -17,9 +17,9 @@ define(function(require, exports, module) {
 
     $accordion.each(function(i, item) {
       var options = UI.utils.parseOptions($(item).attr('data-am-accordion'));
-      var $title = $accordion.find(selector.title);
+      var $title = $(item).find(selector.title);
 
-      $title.on('click', function() {
+      $title.on('click.accordion.amui', function() {
         var $content = $(this).next(selector.content);
         var $parent = $(this).parent(selector.item);
         var data = $content.data('amui.collapse');
@@ -36,7 +36,6 @@ define(function(require, exports, module) {
         $(item).children('.am-active').
             not($parent).removeClass('am-active').
             find('.am-accordion-content.am-in').collapse('close');
-
       });
     });
   }

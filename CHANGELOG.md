@@ -1,6 +1,24 @@
 # Amaze UI Change Log
 ---
 
+### 2014.10 W4
+
+__JS插件__：
+
+- `FIXED` #164 Alert 插件 closed:alert:amui 自定义事件未触发；
+- `FIXED` #163 Pureview 插件在 Firefox 桌面版异常。
+
+### 2014.10 W3
+
+__CSS__：
+
+- `IMPROVED` 分页组件添加 `.am-disabled` 后移除所有事件（`pointer-events: none;`）；
+
+__Web 组件__：
+
+- `FIXED` #155 修复 Accordion 一个页面中多个共存问题。
+
+
 ## Amaze UI v1.0.0-rc1
 
 ### 2014.10 W3

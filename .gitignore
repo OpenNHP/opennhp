@@ -1,37 +1,30 @@
-lib-cov
-*.seed
-*.log
-*.csv
-*.dat
-*.out
-*.pid
-*.gz
-*.iml
+# system
+.DS_Store
 
-pids
-logs
-results
+# editor
+.idea
+
+# node.js
 npm-debug.log
 node_modules/
-.DS_Store
-.nodemonignore
-.sass-cache/
-.idea
-/vendor/codemirror-emmet
-/vendor/less.js
-/vendor/seaUse*.js
-/.bower-cache/
-/.bower-registry/
-/dist/test/*
-/dist/demo/*
-/dist/docs/*
-/app/public/*
-dist/css
-dist/js
-.build
+
+# bower
+.bower-cache
+.bower-registry
+
+# vendor
+vendor/codemirror-emmet
+vendor/less.js/
+
+# tools
 tools/app/public/style.css
 
+# build
+.build
+dist/css
+dist/js
 less/amazeui.widgets.less
 
+# zip tmp files
 docs/examples/assets/css/amazeui*.css
 docs/examples/assets/js/amazeui*.js

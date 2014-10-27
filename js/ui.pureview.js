@@ -251,7 +251,7 @@ define(function(require, exports, module) {
     if (transition) {
       $slide.one(transition.end, $.proxy(function() {
         this.transitioning = 0;
-      }, this));
+      }, this)).emulateTransitionEnd(300);
     } else {
       this.transitioning = 0;
     }

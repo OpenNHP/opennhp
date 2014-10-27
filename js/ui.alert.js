@@ -38,7 +38,7 @@ define(function(require, exports, module) {
     $target.removeClass('am-in');
 
     function processAlert() {
-      $target.off().trigger('closed:alert:amui').remove();
+      $target.trigger('closed:alert:amui').remove();
     }
 
     UI.support.transition && $target.hasClass('am-fade') ?

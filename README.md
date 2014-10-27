@@ -92,7 +92,7 @@ gulp
 
 ### Bug 反馈
 
-欢迎给 Amaze UI [提交 Bug](https://github.com/allmobilize/amazeui/issues)。
+欢迎给 Amaze UI [提交 Bug](https://github.com/allmobilize/amazeui/issues/new?title=Bug%3A%20&body=**%E9%97%AE%E9%A2%98%E6%8F%8F%E8%BF%B0**%0A%0A%EF%BC%88%E6%8F%8F%E8%BF%B0%E4%B8%80%E4%B8%8B%E9%97%AE%E9%A2%98%EF%BC%89%0A%0A**%E4%BA%A7%E7%94%9F%E7%8E%AF%E5%A2%83**%0A%0A-%20%E8%AE%BE%E5%A4%87%EF%BC%9A%EF%BC%88%E6%89%8B%E6%9C%BA%E3%80%81%E5%B9%B3%E6%9D%BF%E7%AD%89%E7%A7%BB%E5%8A%A8%E8%AE%BE%E5%A4%87%E6%97%B6%E5%A1%AB%E5%86%99%E6%AD%A4%E9%A1%B9%EF%BC%89%0A-%20%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F%E5%8F%8A%E7%89%88%E6%9C%AC%EF%BC%9A%0A-%20%E6%B5%8F%E8%A7%88%E5%99%A8%E5%8F%8A%E7%89%88%E6%9C%AC%EF%BC%9A%0A-%20%E6%BC%94%E7%A4%BA%E5%9C%B0%E5%9D%80%EF%BC%9A%0A%0A**%E5%A4%8D%E7%8E%B0%E6%AD%A5%E5%A5%8F**%0A%0A1.%20%0A2.%20%0A...)。
 
 为了能最准确的传达所描述的问题， 建议你在反馈时附上演示，方便我们理解。
 
@@ -117,15 +117,25 @@ gulp
 - [The Beginner’s Guide to Contributing to Open Source Projects](http://blog.newrelic.com/2014/05/05/open-source_gettingstarted/)
 - [How to Start Contributing to Open Source](http://www.developer.com/open/how-to-start-contributing-to-open-source.html)
 
-__开发文档__
+### 我们希望用户参与的项目
 
-开发文档存放在 `docs/rules` 目录下，也可以通过 [Amaze UI 官网](http://amazeui.org/)查看：
+- 把使用 Amaze UI 的项目提交给我们，能获得一定的展示量，同时能给其他用户提供参考；
+- SCSS 等其他 CSS 扩展语言的支持：通过编写自动转换脚本实现，人工迁移同步更新成本太高；
+- 使用 Amaze UI 开发制作模板；
+- Angular.js、Ember.js、Meteor 等框架的支持；
+- 基于 Amaze UI 样式开发 JavaScript 插件，可以把 Bootstrap 的插件移植到 Amaze UI；
+- 兼容性测试，我们的测试只能覆盖有限，需要更多用户参与，包括浏览器、WebView 等不同的用户代理；
+- ...
+
+### 开发文档
+
+开发文档存放在 `docs/styleguide` 目录下，也可以通过 [Amaze UI 官网](http://amazeui.org/)查看：
 
 - [Amaze UI HTML/CSS 编写规范](http://amazeui.org/getting-started/html-css)
 - [Amaze UI JavaScript 编写规范](http://amazeui.org/getting-started/javascript)
 - [Amaze UI Web 组件开发规范](http://amazeui.org/getting-started/widget)
 
-## 参考、使用的开源项目
+## 参考、使用的项目
 
 * [Zepto.js](https://github.com/madrobby/zepto) ([MIT
 License](https://github.com/madrobby/zepto/blob/master/MIT-LICENSE))
@@ -155,3 +165,9 @@ License](https://github.com/sindresorhus/screenfull.js/blob/gh-pages/license))
 * [FlexSlider](https://github.com/woothemes/FlexSlider) ([GPL 2.0](http://www.gnu.org/licenses/gpl-2.0.html))
 
 可能会有部分项目遗漏，我们会不断整理更新。
+
+### Developed with Open Source Licensed [WebStorm](http://www.jetbrains.com/webstorm/)
+
+<a href="http://www.jetbrains.com/webstorm/" target="_blank">
+<img src="http://ww1.sinaimg.cn/large/005yyi5Jjw1elpp6svs2eg30k004i3ye.gif" width="240" />
+</a>

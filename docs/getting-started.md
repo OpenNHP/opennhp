@@ -7,12 +7,10 @@ Amaze UI 是一个轻量级、 [**Mobile first**](http://cbrac.co/113eY5h) 的�
 
 ## 下载文件
 
-__注意：__ 目前提供下载的为测试版本，部分细节还在调整、改进，欢迎大家提出意见、建议。
-
 <div class="am-g">
   <div class="col-md-8 col-md-centered">
-    <a href="/download" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
-">下载 Amaze UI v1.0.0-beta2</a>
+    <a href="/download?ver=v1.0.0-rc1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
+">下载 Amaze UI v1.0.0-rc1</a>
   </div>
 </div>
 
@@ -23,20 +21,20 @@ __注意：__ 目前提供下载的为测试版本，部分细节还在调整、
 下面的链接由 [Staticfile.org](http://staticfile.org) 提供 CDN 服务。
 
 ```html
-http://cdn.staticfile.org/amazeui/1.0.0-beta2/css/amazeui.basic.css
-http://cdn.staticfile.org/amazeui/1.0.0-beta2/css/amazeui.basic.min.css
-http://cdn.staticfile.org/amazeui/1.0.0-beta2/css/amazeui.css
-http://cdn.staticfile.org/amazeui/1.0.0-beta2/css/amazeui.min.css
-http://cdn.staticfile.org/amazeui/1.0.0-beta2/css/amazeui.widgets.css
-http://cdn.staticfile.org/amazeui/1.0.0-beta2/css/amazeui.widgets.min.css
-http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.basic.js
-http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.basic.min.js
-http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.js
-http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.min.js
-http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.widgets.helper.js
-http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.widgets.helper.min.js
-http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.widgets.js
-http://cdn.staticfile.org/amazeui/1.0.0-beta2/js/amazeui.widgets.min.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.basic.css
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.basic.min.css
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.css
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.min.css
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.widgets.css
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.widgets.min.css
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.basic.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.basic.min.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.min.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.widgets.helper.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.widgets.helper.min.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.widgets.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.widgets.min.js
 ```
 
 ### 使用 Bower

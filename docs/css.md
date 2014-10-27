@@ -113,10 +113,10 @@ Amaze UI CSS 大致分为四部分。
   </tbody>
 </table>
 
-目前 Amaze UI 对大于 1025px 的屏幕并没有做划分，虽然现在大屏显示器越来越多，但是设计一个过宽的网页对用户来说并不友好，用户眼睛左右移动的区间太大，浏览起来比较累。当然，一些特殊类型（购物、视频等）的网站例外。    
-    
+目前 Amaze UI 对大于 1025px 的屏幕并没有做划分，虽然现在大屏显示器越来越多，但是设计一个过宽的网页对用户来说并不友好，用户眼睛左右移动的区间太大，浏览起来比较累。当然，一些特殊类型（购物、视频等）的网站例外。
+
 LESS 变量中定义了一些 Media Query 变量，使用 LESS 的用户可以引入该文件，直接使用这些变量。
-    
+
 ```css
 @screen:        ~"only screen";
 
@@ -132,18 +132,66 @@ LESS 变量中定义了一些 Media Query 变量，使用 LESS 的用户可以�
 @large-up:      ~"@{screen} and (min-width:@{breakpoint-large-min})";
 @large-only:    ~"@{screen} and (min-width:@{breakpoint-large-min}) and (max-width:@{breakpoint-large-max})";
 ```
-    
+
 
 ## 使用 HTML5
 
-Amaze UI 在 HTML5 下开发，没有测试其他 DOCTYPE，使用之前确保你的 HTML 第一行是 `<!DOCTYPE html>`。
+Amaze UI 在 HTML5 下开发，没有测试其他 DOCTYPE，使用之前确保你的 HTML 第一行是 `<!doctype html>`。
+
+建议使用的 HTML head:
 
 ```html
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="description" content="">
+  <meta name="keywords" content="">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Amaze UI Examples</title>
+
+  <!-- Set render engine for 360 browser -->
+  <meta name="renderer" content="webkit">
+
+  <!-- No Baidu Siteapp-->
+  <meta http-equiv="Cache-Control" content="no-siteapp"/>
+
+  <link rel="icon" type="image/png" href="{{assets}}i/favicon.png">
+
+  <!-- Add to homescreen for Chrome on Android -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="icon" sizes="192x192" href="{{assets}}i/app-icon72x72@2x.png">
+
+  <!-- Add to homescreen for Safari on iOS -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Amaze UI"/>
+  <link rel="apple-touch-icon-precomposed" href="{{assets}}i/app-icon72x72@2x.png">
+
+  <!-- Tile icon for Win8 (144x144 + tile color) -->
+  <meta name="msapplication-TileImage" content="{{assets}}i/app-icon72x72@2x.png">
+  <meta name="msapplication-TileColor" content="#0e90d2">
+
+  <!-- SEO: If your mobile URL is different from the desktop URL, add a canonical link to the desktop page https://developers.google.com/webmasters/smartphone-sites/feature-phones -->
+  <!--
+  <link rel="canonical" href="http://www.example.com/">
+  -->
+
+  <link rel="stylesheet" href="{{assets}}css/amazeui.min.css">
+  <link rel="stylesheet" href="{{assets}}css/app.css">
+</head>
+<body>
 ...
+</body>
 </html>
 ```
+
+**参考链接**：
+
+- [HTML5 Boilerplate](https://github.com/h5bp/html5-boilerplate)
+- [Google Web Starter Kit](https://developers.google.com/web/starter-kit/)
 
 ## 移动优先
 

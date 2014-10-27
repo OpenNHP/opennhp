@@ -709,21 +709,21 @@ h2 {
 
 #### 引号使用
 
-`url()` 不添加引号。属性选择符、属性值使用单引号。
+`url()` 不添加引号。属性选择符、属性值使用**双引号**。
 
 ```css
 /* Recommended */
 @import url(//www.google.com/css/maia.css);
 
 html {
-  font-family: 'open sans', arial, sans-serif;
+  font-family: "open sans", arial, sans-serif;
 }
 
 /* Not recommended */
 @import url("//www.google.com/css/maia.css");
 
 html {
-  font-family: "open sans", arial, sans-serif;
+  font-family: 'open sans', arial, sans-serif;
 }
 ```
 

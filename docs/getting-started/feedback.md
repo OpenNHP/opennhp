@@ -52,11 +52,9 @@ Amaze UI：什么问题？操作系统及版本、浏览器及版本？
 用户甲：巴拉巴拉
 ```
 
-下面的几个链接是我们在几个在线调试工具上建的页面，__已经引入了 Amaze UI 样式和脚本__，你可以选择你喜欢的工具<span class="am-text-danger">【Fork】</span>一份， 把要有问题的场景粘在里面，反馈给我们。
+下面的几个链接是我们在几个在线调试工具上建的页面，__已经引入了 Amaze UI 样式和脚本__，你可以<span class="am-text-danger">【Fork】</span>一份，把要有问题的场景粘在里面，反馈给我们。
 
-- [JSBin](http://jsbin.com/kijiqu/1/edit?html,output)
-- [JSFiddle](http://jsfiddle.net/hegfirose/W22fV/)
-- [CodePen](http://codepen.io/minwe/pen/AEeup)
+- [Debug Amaze UI 1.0 in JSBin](http://jsbin.com/qasoxibuje/1/edit?html,output)
 
 __反馈处理__:
 

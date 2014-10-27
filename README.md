@@ -96,11 +96,9 @@ gulp
 
 为了能最准确的传达所描述的问题， 建议你在反馈时附上演示，方便我们理解。
 
-下面的几个链接是我们在几个在线调试工具上建的页面， 已经引入了 Amaze UI 样式和脚本，你可以选择你喜欢的工具【Fork】一份， 把要有问题的场景粘在里面，反馈给我们。
+下面的几个链接是我们在几个在线调试工具上建的页面， 已经引入了 Amaze UI 样式和脚本，你可以【Fork】一份，把要有问题的场景粘在里面，反馈给我们。
 
-- [JSBin](http://jsbin.com/kijiqu/1/edit?html,output)
-- [JSFiddle](http://jsfiddle.net/hegfirose/W22fV/)
-- [CodePen](http://codepen.io/minwe/pen/AEeup)
+- [Debug Amaze UI 1.0 in JSBin](http://jsbin.com/qasoxibuje/1/edit?html,output)
 
 ### 需求提交
 

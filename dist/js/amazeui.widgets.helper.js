@@ -1,4 +1,4 @@
-/*! Amaze UI v1.0.0 ~ helper | by Amaze UI Team | (c) 2014 AllMobilize, Inc. | Licensed under MIT | 2014-10-27T07:10:12 UTC */ 
+/*! Amaze UI v1.0.0 ~ helper | by Amaze UI Team | (c) 2014 AllMobilize, Inc. | Licensed under MIT | 2014-10-27T10:10:34 UTC */ 
 (function(undefined) {
   'use strict';
 

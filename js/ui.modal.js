@@ -121,6 +121,7 @@ define(function(require, exports, module) {
       clearTimeout($element.transitionEndTimmer);
       $element.transitionEndTimmer = null;
       $element.trigger(options.transitionEnd).off(options.transitionEnd);
+      dimmer.close($element, true);
     }
 
     this.$element.trigger($.Event('close:modal:amui',
@@ -147,7 +148,8 @@ define(function(require, exports, module) {
         .one(options.transitionEnd, $.proxy(complete, this))
         .emulateTransitionEnd(options.duration);
 
-    dimmer.close($element, true);
+    // 不强制关闭 Dimmer，以便多个 Modal 可以共享 Dimmer
+    dimmer.close($element, false);
 
     this.active = false;
   };

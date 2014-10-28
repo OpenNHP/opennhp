@@ -21,20 +21,20 @@ Amaze UI 是一个轻量级、 [**Mobile first**](http://cbrac.co/113eY5h) 的�
 下面的链接由 [Staticfile.org](http://staticfile.org) 提供 CDN 服务。
 
 ```html
-http://cdn.staticfile.org/amazeui/1.0.0/css/amazeui.basic.css
-http://cdn.staticfile.org/amazeui/1.0.0/css/amazeui.basic.min.css
-http://cdn.staticfile.org/amazeui/1.0.0/css/amazeui.css
-http://cdn.staticfile.org/amazeui/1.0.0/css/amazeui.min.css
-http://cdn.staticfile.org/amazeui/1.0.0/css/amazeui.widgets.css
-http://cdn.staticfile.org/amazeui/1.0.0/css/amazeui.widgets.min.css
-http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.basic.js
-http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.basic.min.js
-http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.js
-http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.min.js
-http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.widgets.helper.js
-http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.widgets.helper.min.js
-http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.widgets.js
-http://cdn.staticfile.org/amazeui/1.0.0/js/amazeui.widgets.min.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.basic.css
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.basic.min.css
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.css
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.min.css
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.widgets.css
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/css/amazeui.widgets.min.css
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.basic.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.basic.min.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.min.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.widgets.helper.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.widgets.helper.min.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.widgets.js
+http://cdn.staticfile.org/amazeui/1.0.0-rc1/js/amazeui.widgets.min.js
 ```
 
 ### 使用 Bower

@@ -366,7 +366,7 @@ gulp.task('watch', function() {
 
 // Task: Make archive
 gulp.task('archive', function(cb) {
-  runSequence(['build',
+  runSequence([
       'archive:copy:css', 'archive:copy:js'],
       'archive:zip',
       'archive:clean',

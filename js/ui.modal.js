@@ -129,7 +129,7 @@ define(function(require, exports, module) {
     this.transitioning = 1;
 
     var complete = function() {
-      $element.trigger('closed:amui:modal');
+      $element.trigger('closed:modal:amui');
       isPopup && $element.removeClass(options.className.out);
       $element.hide();
       this.transitioning = 0;
@@ -153,9 +153,9 @@ define(function(require, exports, module) {
   };
 
   Modal.prototype.events = function() {
-    var that = this,
-        $element = this.$element,
-        $ipt = $element.find('.am-modal-prompt-input');
+    var that = this;
+    var $element = this.$element;
+    var $ipt = $element.find('.am-modal-prompt-input');
 
     if (this.options.cancelable) {
       $element.on('keyup.modal.amui',
@@ -180,7 +180,6 @@ define(function(require, exports, module) {
     $element.find('.am-modal-btn').on('click.modal.amui', function(e) {
       that.close();
     });
-
 
     $element.find('[data-am-modal-confirm]').on('click.modal.amui', function() {
       that.options.onConfirm($ipt.val());

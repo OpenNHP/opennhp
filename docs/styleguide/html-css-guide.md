@@ -862,11 +862,11 @@ h2 {
 
 #### 引号使用
 
-`url()` 不添加引号。属性选择符、属性值使用**双引号**。
+`url()` 添加双引号。属性选择符、属性值使用**双引号**。
 
 ```css
 /* Recommended */
-@import url(//www.google.com/css/maia.css);
+@import url("//www.google.com/css/maia.css");
 
 html {
   font-family: "open sans", arial, sans-serif;
@@ -877,12 +877,16 @@ html {
 }
 
 /* Not recommended */
-@import url("//www.google.com/css/maia.css");
+@import url(//www.google.com/css/maia.css);
 
 html {
   font-family: 'open sans', arial, sans-serif;
 }
 ```
+
+**参考链接**
+
+- [Is quoting the value of url() really necessary?](http://stackoverflow.com/questions/2168855/is-quoting-the-value-of-url-really-necessary)
 
 #### 字体名称
 

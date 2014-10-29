@@ -935,44 +935,43 @@ content: @fa-var-copy;
   </ul>
 </section>
 
-<script src="/lib/zc/ZeroClipboard.min.js"></script>
 <script>
-  Zepto(function($) {
-    $('.doc-icon-list li').each(function(index, item) {
-      $(item).find('a').on('click', function(e) {
-        e.preventDefault();
-      });
-
-      $(item).on('mouseenter', function() {
-        $(item).addClass('copy-active');
-      }).on('mouseleave', function() {
-        setTimeout(function() {
-          $(item).removeClass('copy-active');
-        }, 3000);
-      });
-      var iconClass = $(this).find('i').attr('class'),
-          iconName = iconClass.replace('am-icon-', '');
-
-      var style = '{ \n';
-      style += '  .am-icon-font; \n';
-      style += '  content: @fa-var-' + iconName + ';\n';
-      style += '}';
-
-      var iconAction = '<span class="demo-icon-actions"><i class="am-badge am-badge-primary demo-copy-icon" data-clipboard-text="' + iconClass + '" title="复制 Icon Class">class</i><i class="am-badge am-badge-success demo-copy-icon" data-clipboard-text="' + style + '" title="复制 Icon Style">style</i>';
-      $(this).append($(iconAction));
+$(function() {
+  $('.doc-icon-list li').each(function(index, item) {
+    $(item).find('a').on('click', function(e) {
+      e.preventDefault();
     });
 
-    ZeroClipboard.config({
-      moviePath: '/lib/zc/ZeroClipboard.swf',
-      hoverClass: 'doc-clip-btn-hover',
-      debug: false
+    $(item).on('mouseenter', function() {
+      $(item).addClass('copy-active');
+    }).on('mouseleave', function() {
+      setTimeout(function() {
+        $(item).removeClass('copy-active');
+      }, 3000);
     });
+    var iconClass = $(this).find('i').attr('class'),
+        iconName = iconClass.replace('am-icon-', '');
 
-    var clip = new ZeroClipboard($('.demo-copy-icon'));
+    var style = '{ \n';
+    style += '  .am-icon-font; \n';
+    style += '  content: @fa-var-' + iconName + ';\n';
+    style += '}';
 
-    clip.on('complete', function(client, args) {
-      console && console.log("Copied text to clipboard: " + args.text);
-    });
+    var iconAction = '<span class="demo-icon-actions"><i class="am-badge am-badge-primary demo-copy-icon" data-clipboard-text="' + iconClass + '" title="复制 Icon Class">class</i><i class="am-badge am-badge-success demo-copy-icon" data-clipboard-text="' + style + '" title="复制 Icon Style">style</i>';
+    $(this).append($(iconAction));
   });
+
+  ZeroClipboard.config({
+    moviePath: '/lib/zc/ZeroClipboard.swf',
+    hoverClass: 'doc-clip-btn-hover',
+    debug: false
+  });
+
+  var clip = new ZeroClipboard($('.demo-copy-icon'));
+
+  clip.on('complete', function(client, args) {
+    console && console.log("Copied text to clipboard: " + args.text);
+  });
+});
 </script>
 `````

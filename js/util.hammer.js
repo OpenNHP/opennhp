@@ -3,8 +3,8 @@ define(function(require, exports, module) {
 
   require('core');
 
-  var $ = window.Zepto,
-      UI = $.AMUI;
+  var $ = window.Zepto;
+  var UI = $.AMUI;
 
   /**
    * Hammer.js
@@ -2388,8 +2388,8 @@ define(function(require, exports, module) {
     prefixed: prefixed
   });
 
+  UI.hammer = Hammer;
   module.exports = Hammer;
-
 
   function hammerify(el, options) {
     var $el = $(el);
@@ -2409,7 +2409,6 @@ define(function(require, exports, module) {
       });
     };
   })(Hammer.Manager.prototype.emit);
-
 
   $.fn.hammer = function(options) {
     return this.each(function() {

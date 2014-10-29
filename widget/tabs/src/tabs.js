@@ -7,7 +7,10 @@ define(function(require, exports, module) {
   var $ = window.Zepto;
 
   function tabsInit() {
-    $('[data-am-widget="tabs"]').tabs();
+    $('[data-am-widget="tabs"]').each(function() {
+      var options = $(this).data('amTabsNoswipe') ? {noSwipe: 1} : {};
+      $(this).tabs(options);
+    });
   }
 
   $(function() {

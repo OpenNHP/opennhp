@@ -415,3 +415,9 @@ gulp.task('appServer', function() {
 gulp.task('default', ['build', 'watch']);
 
 gulp.task('preview', ['build', 'watch', 'appServer']);
+
+gulp.task('pack', function() {
+  return gulp.src('js/core.js')
+    .pipe($.webpack())
+    .pipe(gulp.dest('dist/'));
+});

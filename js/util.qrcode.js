@@ -185,6 +185,8 @@ define(function(require, exports, module) {
 
   module.exports = qrcode;
 
+  $.AMUI.qrcode = qrcode;
+
   /**
    * 获取单个字符的utf8编码
    * unicode BMP平面约65535个字符

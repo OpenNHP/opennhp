@@ -8,6 +8,8 @@ var fs = require('fs-extra');
 var _ = require('lodash');
 var format = require('util').format;
 var exec = require('child_process').exec;
+var browserify = require('browserify');
+var source = require('vinyl-source-stream');
 
 // Temporary solution until gulp 4
 // https://github.com/gulpjs/gulp/issues/355
@@ -420,4 +422,13 @@ gulp.task('pack', function() {
   return gulp.src('js/core.js')
     .pipe($.webpack())
     .pipe(gulp.dest('dist/'));
+});
+
+gulp.task('test', function() {
+  return browserify('./js/core.js')
+    .bundle()
+    // Pass desired output filename to vinyl-source-stream
+    .pipe(source('core.js'))
+    // Start piping stream to tasks!
+    .pipe(gulp.dest('./dist'));
 });

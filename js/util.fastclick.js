@@ -1,6 +1,6 @@
 'use strict';
 
-var $ = window.jQuery;
+var $ = require('jquery');
 
 /**
  * @preserve FastClick: polyfill to remove click delays on browsers with touch UIs.
@@ -791,6 +791,6 @@ FastClick.attach = function(layer, options) {
   return new FastClick(layer, options);
 };
 
-$.AMUI ? $.AMUI.FastClick = FastClick : $.AMUI = {FastClick: FastClick};
+$ && ($.AMUI ? $.AMUI.FastClick = FastClick : $.AMUI = {FastClick: FastClick});
 
 module.exports = FastClick;

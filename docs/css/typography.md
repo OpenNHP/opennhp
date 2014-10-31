@@ -121,7 +121,7 @@ body {
 <br/>
 <div style="-webkit-font-smoothing: subpixel-antialiased; -moz-osx-font-smoothing: auto">
   <h3>-webkit-font-smoothing: subpixel-antialiased;</h3>
-  <p >
+  <p>
     The quick brown fox jumps over the lazy dog. <br/>
     千万不要因为走的太久，而忘记了我们为什么出发。 <br/>
     千萬不要因為走得太久，而忘記了我們為什麼出發。
@@ -329,7 +329,7 @@ __有序列表（`<ol>`）：__
 
 ### 表格 `<table>`
 
-这里只是 nomalize 以后的样式，更多样式查看 [Table 组件](/css/table)。
+这里只是 normalize 以后的样式，更多样式查看 [Table 组件](/css/table)。
 
 `````html
 <table>

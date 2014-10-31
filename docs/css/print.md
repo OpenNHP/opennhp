@@ -39,4 +39,4 @@
 
 ## 参考链接
 
-- [html5-boilerplate main.css](https://github.com/h5bp/html5-boilerplate/blob/master/css/main.css)
+- [html5-boilerplate main.css](https://github.com/h5bp/html5-boilerplate/blob/master/src/css/main.css)

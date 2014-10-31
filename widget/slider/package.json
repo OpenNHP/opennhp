@@ -1,7 +1,7 @@
 {
     "name": "slider",
 
-    "version": "2.1.0",
+    "version": "3.0.0",
 
     "localName": {
         "en": "Slider",
@@ -15,7 +15,7 @@
         "email": "minwe@yunshipei.com"
     },
 
-    "description": "基于Flexslider的响应式slider，支持触控操作。",
+    "description": "基于 Flexslider 的响应式 slider ，支持触控操作。",
 
     "poweredBy": "AllMobilize",
 

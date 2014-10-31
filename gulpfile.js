@@ -418,17 +418,34 @@ gulp.task('default', ['build', 'watch']);
 
 gulp.task('preview', ['build', 'watch', 'appServer']);
 
-gulp.task('pack', function() {
-  return gulp.src('js/core.js')
-    .pipe($.webpack())
-    .pipe(gulp.dest('dist/'));
-});
+var glob = require('glob');
 
 gulp.task('test', function() {
-  return browserify('./js/core.js')
+  var bundler = browserify({
+    basedir: path.join(__dirname, 'js')
+  });
+
+  var footer = '';
+
+  glob.sync('*.js', {cwd: './js'}).forEach(function(file) {
+    var moduleName = './' + file.substring(0, file.lastIndexOf('.js'));
+    footer += 'require(\'' + moduleName + '\');\n';
+    bundler.require(moduleName);
+  });
+
+  bundler
     .bundle()
-    // Pass desired output filename to vinyl-source-stream
-    .pipe(source('core.js'))
-    // Start piping stream to tasks!
+    .pipe(source('app.js'))
+    .pipe($.streamify($.jsbeautifier({config: '.jsbeautifyrc'})))
+    .pipe($.streamify($.footer(footer, {})))
+    .pipe(gulp.dest('dist'));
+});
+
+gulp.task('amd', function() {
+  gulp.src('./js/ui.smooth-scroll.js')
+    .pipe($.amdBundler({
+      baseDir: './js'
+    }))
+    .pipe($.concat('amd.js'))
     .pipe(gulp.dest('./dist'));
 });

@@ -6,7 +6,7 @@ var $ = require('jquery');
  * @license Copyright 2012 WooThemes GPLv2
  */
 
-//FlexSlider: Object Instance
+// FlexSlider: Object Instance
 $.flexslider = function(el, options) {
   var slider = $(el);
 

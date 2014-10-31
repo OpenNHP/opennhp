@@ -1,20 +1,21 @@
-define(function(require, exports, module) {
-  'use strict';
+'use strict';
 
-  var $ = window.Zepto;
+var $ = require('jquery');
 
-  function headerInit() {
-    $('[data-am-widget="header"]').each(function() {
-      if ($(this).hasClass('am-header-fixed')) {
-        $('body').addClass('am-with-fixed-header');
-        return false;
-      }
-    });
-  }
-
-  $(function() {
-    headerInit();
+function headerInit() {
+  $('[data-am-widget="header"]').each(function() {
+    if ($(this).hasClass('am-header-fixed')) {
+      $('body').addClass('am-with-fixed-header');
+      return false;
+    }
   });
+}
 
-  exports.init = headerInit;
+$(function() {
+  headerInit();
 });
+
+module.exports = $.AMUI.header = {
+  VERSION: '2.0.0',
+  init: headerInit
+};

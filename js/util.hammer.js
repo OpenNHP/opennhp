@@ -7,7 +7,7 @@
 'use strict';
 
 var $ = require('jquery');
-var UI = require('core');
+var UI = require('./core');
 
 var VENDOR_PREFIXES = ['', 'webkit', 'moz', 'MS', 'ms', 'o'];
 var TEST_ELEMENT = document.createElement('div');
@@ -2456,6 +2456,39 @@ extend(Hammer, {
   bindFn: bindFn,
   prefixed: prefixed
 });
+
+// jquery.hammer.js
+// This jQuery plugin is just a small wrapper around the Hammer() class.
+// It also extends the Manager.emit method by triggering jQuery events.
+// $(element).hammer(options).bind("pan", myPanHandler);
+// The Hammer instance is stored at $element.data("hammer").
+// https://github.com/hammerjs/jquery.hammer.js
+
+(function($, Hammer) {
+  function hammerify(el, options) {
+    var $el = $(el);
+    if (!$el.data('hammer')) {
+      $el.data('hammer', new Hammer($el[0], options));
+    }
+  }
+
+  $.fn.hammer = function(options) {
+    return this.each(function() {
+      hammerify(this, options);
+    });
+  };
+
+  // extend the emit method to also trigger jQuery events
+  Hammer.Manager.prototype.emit = (function(originalEmit) {
+    return function(type, data) {
+      originalEmit.call(this, type, data);
+      $(this.element).trigger({
+        type: type,
+        gesture: data
+      });
+    };
+  })(Hammer.Manager.prototype.emit);
+})($, Hammer);
 
 $.AMUI.Hammer = Hammer;
 

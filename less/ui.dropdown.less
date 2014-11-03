@@ -58,6 +58,7 @@
 .am-dropdown {
   position: relative;
   display: inline-block;
+  .hook-dropdown;
 }
 
 .am-dropdown-toggle:focus {
@@ -82,6 +83,7 @@
   -webkit-animation-duration: .15s;
   animation-duration: .15s;
 
+  .hook-dropdown-content;
   .angle-base;
   .angle-up-variant(@dropdown-border-color, @dropdown-bg, 8px);
 
@@ -114,6 +116,7 @@
   top: auto;
   bottom: 100%;
   margin: 0 0 9px;
+  .hook-dropdown-up;
 
   &:before,
   &:after {
@@ -147,8 +150,7 @@
 ul.am-dropdown-content {
   list-style: none;
   padding: 5px 0;
-
-  list-style: none;
+  .hook-dropdown-ul-content;
 
   // Aligns the dropdown menu to right
   &.am-fr {
@@ -159,6 +161,7 @@ ul.am-dropdown-content {
   // Dividers (basically an hr) within the dropdown
   .am-divider {
     .nav-divider(@dropdown-divider-bg);
+    .hook-dropdown-ul-content-divdier;
   }
 
   // Links within the dropdown menu
@@ -175,6 +178,7 @@ ul.am-dropdown-content {
       text-decoration: none;
       color: @dropdown-link-hover-color;
       background-color: @dropdown-link-hover-bg;
+      .hook-dropdown-ul-content-hover;
     }
   }
 
@@ -187,6 +191,7 @@ ul.am-dropdown-content {
       text-decoration: none;
       outline: 0;
       background-color: @dropdown-link-active-bg;
+      .hook-dropdown-ul-content-active;
     }
   }
 
@@ -196,6 +201,7 @@ ul.am-dropdown-content {
     &:hover,
     &:focus {
       color: @dropdown-link-disabled-color;
+      .hook-dropdown-ul-content-disabled;
     }
   }
 
@@ -207,6 +213,7 @@ ul.am-dropdown-content {
       background-image: none; // Remove CSS gradient
       .reset-filter();
       cursor: not-allowed;
+      .hook-dropdown-ul-content-disabled;
     }
   }
 }
@@ -217,6 +224,7 @@ ul.am-dropdown-content {
   padding: 6px 20px;
   font-size: @font-size-xs;
   color: @dropdown-header-color;
+  .hook-dropdown-header;
 }
 
 
@@ -236,6 +244,18 @@ ul.am-dropdown-content {
 
 // Hooks
 // =============================================================================
+
+.hook-dropdown() {}
+.hook-dropdown-content() {}
+.hook-dropdown-ul-content() {}
+.hook-dropdown-ul-content-active() {}
+.hook-dropdown-ul-content-hover() {}
+.hook-dropdown-ul-content-disabled() {}
+.hook-dropdown-ul-content-divdier() {}
+.hook-dropdown-up() {}
+
+.hook-dropdown-header() {}
+
 
 // TODO: 1. 分隔线上下间距调整
 //       2. 位置设置

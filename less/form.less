@@ -138,6 +138,8 @@ output {
   border-radius: @input-border-radius;
   .transition(~"border-color .15s ease-in-out, box-shadow .15s ease-in-out");
 
+  .hook-form;
+
   // `:focus` state
   &:focus {
     outline: 0;
@@ -152,6 +154,8 @@ output {
   fieldset[disabled] & {
     cursor: not-allowed;
     background-color: @input-bg-disabled;
+
+    .hook-form-disabled;
   }
 }
 
@@ -259,6 +263,7 @@ input[type="checkbox"],
   &[disabled],
   fieldset[disabled] & {
     cursor: not-allowed;
+    .hook-form-disabled;
   }
 }
 
@@ -268,16 +273,19 @@ input[type="checkbox"],
 // Warning
 .am-form-warning {
   .form-field-validation(@state-warning-text; @state-warning-text);
+  .hook-form-warning;
 }
 
 // Error
 .am-form-error {
   .form-field-validation(@state-danger-text; @state-danger-text);
+  .hook-form-error;
 }
 
 // Success
 .am-form-success {
   .form-field-validation(@state-success-text; @state-success-text);
+  .hook-form-success;
 }
 
 
@@ -303,6 +311,8 @@ input[type="checkbox"],
       text-align: right;
     }
   }
+
+  .hook-form-horizontal;
 }
 
 
@@ -365,6 +375,7 @@ input[type="checkbox"],
       top: 0;
     }
   }
+  .hook-form-inline;
 }
 
 
@@ -396,6 +407,7 @@ input[type="checkbox"],
     margin-top: -(@input-padding + 0.15);
     z-index: 2;
   }
+  .hook-form-icon;
 }
 
 
@@ -413,6 +425,7 @@ input[type="checkbox"],
     right: @input-padding;
     left: auto;
   }
+  .hook-form-feedback;
 }
 
 
@@ -439,8 +452,21 @@ input[type="checkbox"],
       .border-bottom-radius(@input-border-radius) !important;
     }
   }
+  .hook-form-set;
 }
 
 
 // Hooks
 // =============================================================================
+
+.hook-form() {}
+.hook-form-disabled() {}
+.hook-form-horizontal() {}
+.hook-form-inline() {}
+.hook-form-icon() {}
+.hook-form-feedback() {}
+.hook-form-set() {}
+
+.hook-form-error() {}
+.hook-form-warning() {}
+.hook-form-success() {}

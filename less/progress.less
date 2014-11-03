@@ -50,7 +50,7 @@
   border-radius: @global-border-radius;
   .box-shadow(inset 0 1px 2px rgba(0, 0, 0, .1));
 
-  .hook-progress();
+  .hook-progress;
 }
 
 
@@ -68,12 +68,13 @@
   .box-shadow(inset 0 -1px 0 rgba(0,0,0,.15));
   .transition(width .6s ease);
 
-  .hook-progress-bar();
+  .hook-progress-bar;
 
   // Striped bar
   .am-progress-striped & {
     #gradient > .striped();
     background-size: 36px 36px;
+    .hook-progress-striped;
   }
 
   // Active animation
@@ -101,18 +102,22 @@
 
 .am-progress-bar-secondary {
   .progress-bar-variant(@progress-bar-secondary-bg);
+  .hook-progress-bar-secondary;
 }
 
 .am-progress-bar-success {
   .progress-bar-variant(@progress-bar-success-bg);
+  .hook-progress-bar-success;
 }
 
 .am-progress-bar-warning {
   .progress-bar-variant(@progress-bar-warning-bg);
+  .hook-progress-bar-warning;
 }
 
 .am-progress-bar-danger {
   .progress-bar-variant(@progress-bar-danger-bg);
+  .hook-progress-bar-danger;
 }
 
 
@@ -132,4 +137,9 @@
 // =============================================================================
 
 .hook-progress() {}
+.hook-progress-striped() {}
 .hook-progress-bar() {}
+.hook-progress-bar-secondary() {}
+.hook-progress-bar-success() {}
+.hook-progress-bar-warning() {}
+.hook-progress-bar-danger() {}

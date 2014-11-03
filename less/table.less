@@ -66,7 +66,7 @@ th {
 .am-table {
   width: 100%;
   margin-bottom: @global-margin;
-  .hook-table();
+  .hook-table;
 
   > thead,
   > tbody,
@@ -112,7 +112,7 @@ th {
 
 .am-table-bd {
   border: 1px solid @table-border-color;
-  .hook-table-bd();
+  .hook-table-bd;
 
   > thead,
   > tbody,
@@ -139,7 +139,7 @@ th {
   border: none;
   .box-shadow(0 0 1px @gray-light);
   border-radius: @global-border-radius;
-  .hook-table-bdrs();
+  .hook-table-bdrs;
 
   > thead {
     > tr:first-child {
@@ -196,7 +196,7 @@ th {
   > td,
   > th {
     background-color: @table-bg-striped;
-    .hook-table-striped();
+    .hook-table-striped;
   }
 }
 
@@ -207,7 +207,7 @@ th {
   > td,
   > th {
     background-color: @table-bg-hover;
-    .hook-table-hover();
+    .hook-table-hover;
   }
 }
 
@@ -222,7 +222,7 @@ th {
   &.am-active > td,
   &.am-active > th  {
     background-color: @table-bg-active;
-    .hook-table-active();
+    .hook-table-active;
   }
 }
 

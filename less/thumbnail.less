@@ -16,14 +16,15 @@
  ============================================================================ */
 
 .am-thumbnail {
-  display: inline-block;
+  //display: inline-block;
+  display: block;
   padding: @thumbnail-padding;
   margin-bottom: @line-height-computed;
   background-color: @thumbnail-bg;
   border: 1px solid @thumbnail-border;
   border-radius: @thumbnail-border-radius;
   .transition(all .2s ease-in-out);
-  .hook-thumbnail();
+  .hook-thumbnail;
 
   > img,
   a > img {
@@ -38,7 +39,7 @@
   a&.active {
     border-color: @thumbnail-hover-border;
     background-color: @thumbnail-hover-bg;
-    .hook-thumbnail-hover();
+    .hook-thumbnail-hover;
   }
 }
 
@@ -50,7 +51,7 @@
   padding: @thumbnail-caption-padding;
   color: @thumbnail-caption-color;
   font-weight: normal;
-  .hook-thumbnail-caption();
+  .hook-thumbnail-caption;
 
   *:last-child {
     margin-bottom: 0;

@@ -27,11 +27,11 @@
   color: @pagination-color;
   text-align: left;
   .clearfix();
-  .hook-pagination();
+  .hook-pagination;
 
   > li {
     display: inline-block;
-    .hook-pagination-item();
+    .hook-pagination-item;
 
     > a,
     > span {
@@ -75,7 +75,7 @@
       border-color: @pagination-active-bg;
       cursor: default;
     }
-    .hook-pagination-item-active();
+    .hook-pagination-item-active;
   }
 
   > .am-disabled {
@@ -89,8 +89,8 @@
       background-color: @pagination-bg;
       border-color: @pagination-border;
       cursor: not-allowed;
-      .hook-pagination-item-disabled();
       pointer-events: none;
+      .hook-pagination-item-disabled;
     }
   }
 

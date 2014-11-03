@@ -46,7 +46,7 @@
   border: 1px solid transparent;
   border-radius: @panel-border-radius;
   .box-shadow(0 1px 1px rgba(0, 0, 0, .05));
-  .hook-panel();
+  .hook-panel;
 }
 
 
@@ -56,7 +56,7 @@
   padding: @panel-hd-padding;
   border-bottom: 1px solid transparent;
   .border-top-radius(@panel-border-radius);
-  .hook-panel-hd();
+  .hook-panel-hd;
 }
 
 
@@ -64,7 +64,7 @@
 
 .am-panel-bd {
   padding: @panel-bd-padding;
-  .hook-panel-bd();
+  .hook-panel-bd;
 }
 
 // Panel hds(h1 - h6)
@@ -86,7 +86,7 @@
   background-color: @panel-footer-bg;
   border-top: 1px solid @panel-inner-border;
   .border-bottom-radius(@panel-border-radius);
-  .hook-panel-footer();
+  .hook-panel-footer;
 }
 
 
@@ -95,32 +95,32 @@
 
 .am-panel-default {
   .panel-variant(@panel-default-bd; @panel-default-text; @panel-default-hd-bg; @panel-default-bd);
-  .hook-panel-default();
+  .hook-panel-default;
 }
 
 .am-panel-primary {
   .panel-variant(@panel-primary-bd; @panel-primary-text; @panel-primary-hd-bg; @panel-primary-bd);
-  .hook-panel-primary();
+  .hook-panel-primary;
 }
 
 .am-panel-secondary {
   .panel-variant(@panel-secondary-bd; @panel-secondary-text; @panel-secondary-hd-bg; @panel-secondary-bd);
-  .hook-panel-secondary();
+  .hook-panel-secondary;
 }
 
 .am-panel-success {
   .panel-variant(@panel-success-bd; @panel-success-text; @panel-success-hd-bg; @panel-success-bd);
-  .hook-panel-success();
+  .hook-panel-success;
 }
 
 .am-panel-warning {
   .panel-variant(@panel-warning-bd; @panel-warning-text; @panel-warning-hd-bg; @panel-warning-bd);
-  .hook-panel-warning();
+  .hook-panel-warning;
 }
 
 .am-panel-danger {
   .panel-variant(@panel-danger-bd; @panel-danger-text; @panel-danger-hd-bg; @panel-danger-bd);
-  .hook-panel-danger();
+  .hook-panel-danger;
 }
 
 
@@ -267,6 +267,7 @@
       border-bottom: 1px solid @panel-inner-border;
     }
   }
+  .hook-panel-group;
 }
 
 
@@ -277,6 +278,7 @@
 .hook-panel-hd() {}
 .hook-panel-bd() {}
 .hook-panel-footer() {}
+.hook-panel-group() {}
 .hook-panel-default() {}
 .hook-panel-primary() {}
 .hook-panel-secondary() {}

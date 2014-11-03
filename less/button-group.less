@@ -52,6 +52,7 @@
   .am-btn-group + .am-btn-group {
     margin-left: -1px;
   }
+  .hook-btn-group;
 }
 
 
@@ -70,6 +71,7 @@
   > .am-input-group {
     margin-left: 5px;
   }
+  .hook-btn-group-toolbar;
 }
 
 .am-btn-group > .am-btn:not(:first-child):not(:last-child):not(.am-dropdown-toggle) {
@@ -114,16 +116,25 @@
 // Sizing
 // =============================================================================
 
-.am-btn-group-xs > .am-btn {
-  &:extend(.am-btn-xs);
+.am-btn-group-xs {
+  & > .am-btn {
+    &:extend(.am-btn-xs);
+  }
+  .hook-btn-group-xs;
 }
 
-.am-btn-group-sm > .am-btn {
-  &:extend(.am-btn-sm);
+.am-btn-group-sm {
+  & > .am-btn {
+    &:extend(.am-btn-sm);
+  }
+  .hook-btn-group-sm;
 }
 
-.am-btn-group-lg > .am-btn {
-  &:extend(.am-btn-lg);
+.am-btn-group-lg {
+  & > .am-btn {
+    &:extend(.am-btn-lg);
+  }
+  .hook-btn-group-lg;
 }
 
 
@@ -155,6 +166,7 @@
     margin-top: -1px;
     margin-left: 0;
   }
+  .hook-btn-group-stacked;
 }
 
 .am-btn-group-stacked > .am-btn {
@@ -204,6 +216,7 @@
   > .am-btn-group .am-btn {
     width: 100%;
   }
+  .hook-button-group-justify;
 }
 
 
@@ -249,3 +262,12 @@
 
 // Hooks
 // =============================================================================
+
+.hook-btn-group() {}
+.hook-btn-group-stacked() {}
+.hook-btn-group-toolbar() {}
+.hook-button-group-justify() {}
+
+.hook-btn-group-lg() {}
+.hook-btn-group-sm() {}
+.hook-btn-group-xs() {}

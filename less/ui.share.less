@@ -24,6 +24,7 @@
 
 .am-share {
   font-size: 14px;
+  .hook-share;
 }
 
 .am-share-title {
@@ -36,6 +37,7 @@
   .border-top-radius(2px);
 
   border-bottom: 1px solid #fff;
+  .hook-share-title;
 
   &:after {
     content: "";
@@ -52,6 +54,7 @@
   padding-top: 15px;
   background-color: @share-bg;
   .border-bottom-radius(2px);
+  .hook-share-sns;
 
   li {
     margin-bottom: 15px;
@@ -80,27 +83,33 @@
   
   .am-icon-weibo {
     background-color: #ea1328;
+    .hook-share-sns-weibo;
   }
 
   .am-icon-qq {
     background-color: #009cda;
+    .hook-share-sns-qq;
   }
   
   .am-icon-star {
     background-color: #ffc028;
+    .hook-share-sns-star;
   }
 
   .am-icon-tencent-weibo {
     background-color: #23ccfe;
+    .hook-share-sns-tencent-weibo;
   }
   
   .am-icon-wechat,
   .am-icon-weixin {
     background-color: #44b549;
+    .hook-share-sns-wechat;
   }
   
   .am-icon-renren {
     background-color: #105ba3;
+    .hook-share-sns-renren;
   }
   
   .am-icon-comment {
@@ -114,6 +123,7 @@
   .am-btn {
     color: @gray;
   }
+  .hook-share-footer;
 }
 
 // wechat QRCode
@@ -151,3 +161,14 @@
 
 // Hooks
 // =============================================================================
+
+.hook-share() {}
+.hook-share-title() {}
+.hook-share-footer() {}
+.hook-share-sns() {}
+.hook-share-sns-weibo() {}
+.hook-share-sns-qq() {}
+.hook-share-sns-star() {}
+.hook-share-sns-tencent-weibo() {}
+.hook-share-sns-wechat() {}
+.hook-share-sns-renren() {}

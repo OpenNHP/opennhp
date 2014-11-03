@@ -28,8 +28,7 @@
 
 .am-comment {
   .clearfix();
-
-  .hook-comment();
+  .hook-comment;
 }
 
 .am-comment-avatar {
@@ -38,6 +37,7 @@
   height: @comment-avatar-size;
   border-radius: 50%;
   border: 1px solid transparent;
+  .hook-comment-avatar;
 }
 
 .am-comment-main {
@@ -72,18 +72,21 @@
     margin-left: 1px;
     z-index: 2;
   }
+  .hook-comment-main;
 }
 
 .am-comment-hd {
   padding: 10px 15px;
   background: @comment-hd-bg-color;
   border-bottom: 1px solid #eee;
+  .hook-comment-hd;
 }
 
 .am-comment-title {
   margin: 0 0 @comment-title-margin-btm 0;
   font-size: @comment-title-font-size;
   line-height: @comment-title-line-height;
+  .hook-comment-title;
 }
 
 .am-comment-meta {
@@ -94,11 +97,13 @@
   a {
     color: @comment-meta-color;
   }
+  .hook-comment-meta;
 }
 
 .am-comment-author {
   font-weight: bold;
   color: @comment-meta-color;
+  .hook-comment-author;
 }
 
 .am-comment-bd {
@@ -107,6 +112,7 @@
   & > :last-child {
     margin-bottom: 0;
   }
+  .hook-comment-bd;
 }
 
 
@@ -172,23 +178,28 @@
 
 .am-comment-primary {
   .comment-highlight-variant(@global-primary);
+  .hook-comment-primary;
 }
 
 .am-comment-secondary,
 .am-comment-highlight {
   .comment-highlight-variant(@comment-hl-border-color);
+  .hook-comment-secondary;
 }
 
 .am-comment-success {
   .comment-highlight-variant(@global-success);
+  .hook-comment-success;
 }
 
 .am-comment-warning {
   .comment-highlight-variant(@global-warning);
+  .hook-comment-warning;
 }
 
 .am-comment-danger {
   .comment-highlight-variant(@global-danger);
+  .hook-comment-danger;
 }
 
 
@@ -222,3 +233,16 @@
 // =============================================================================
 
 .hook-comment() {}
+.hook-comment-avatar() {}
+.hook-comment-main() {}
+.hook-comment-hd() {}
+.hook-comment-title() {}
+.hook-comment-meta() {}
+.hook-comment-author() {}
+.hook-comment-bd() {}
+
+.hook-comment-primary() {}
+.hook-comment-secondary() {}
+.hook-comment-success() {}
+.hook-comment-warning() {}
+.hook-comment-danger() {}

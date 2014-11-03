@@ -46,6 +46,7 @@
     width: 100%;
     margin-bottom: 0;
   }
+  .hook-input-group;
 }
 
 
@@ -90,6 +91,7 @@
   input[type="checkbox"] {
     margin-top: 0;
   }
+  .hook-input-group-lable;
 }
 
 
@@ -165,6 +167,7 @@
       margin-left: -1px;
     }
   }
+  .hook-input-group-btn;
 }
 
 
@@ -198,22 +201,27 @@
 
 .am-input-group-primary {
   .input-group-color-variant();
+  .hook-input-group-primary;
 }
 
 .am-input-group-seconday {
   .input-group-color-variant(@btn-secondary-bg, @btn-secondary-color, @btn-secondary-border);
+  .hook-input-group-seconday;
 }
 
 .am-input-group-success {
   .input-group-color-variant(@btn-success-bg, @btn-success-color, @btn-success-border);
+  .hook-input-group-success;
 }
 
 .am-input-group-warning {
   .input-group-color-variant(@btn-warning-bg, @btn-warning-color, @btn-warning-border);
+  .hook-input-group-warning;
 }
 
 .am-input-group-danger {
   .input-group-color-variant(@btn-danger-bg, @btn-danger-color, @btn-danger-border);
+  .hook-input-group-danger;
 }
 
 .input-group-color-variant(@bg: @btn-primary-bg, @color: @btn-primary-color, @border: @btn-primary-border) {
@@ -232,5 +240,15 @@
 
 // Hooks
 // =============================================================================
+
+.hook-input-group() {}
+.hook-input-group-lable() {}
+.hook-input-group-btn() {}
+
+.hook-input-group-primary() {}
+.hook-input-group-seconday() {}
+.hook-input-group-success() {}
+.hook-input-group-warning() {}
+.hook-input-group-danger() {}
 
 // TODO: v2 中使用 flexbox

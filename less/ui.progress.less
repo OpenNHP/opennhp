@@ -25,6 +25,7 @@
 
     width: 100%;
     height: 2px;
+    .hook-nprogress-bar;
   }
 
   /* Fancy blur effect */
@@ -49,6 +50,7 @@
     z-index: @z-index-nprogress;
     top: 15px;
     right: 15px;
+    .hook-nprogress-spinner;
   }
 
   .nprogress-spinner-icon {
@@ -62,6 +64,7 @@
     border-radius: 50%;
 
     .animation(nprogress-spinner 400ms linear infinite);
+    .hook-nprogress-spinner-icon;
   }
 }
 
@@ -82,3 +85,10 @@
     transform: rotate(360deg);
   }
 }
+
+// Hooks
+// =============================================================================
+
+.hook-nprogress-bar() {}
+.hook-nprogress-spinner() {}
+.hook-nprogress-spinner-icon() {}

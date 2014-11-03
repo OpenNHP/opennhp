@@ -6,11 +6,11 @@
 //
 // Component:                `am-icon-*`
 //
-// Sub-objects:              `am-icon-button`
+// Sub-objects:              `am-icon-btn`
 //
-// Modifiers:                `am-icon-small`
-//                           `am-icon-medium`
-//                           `am-icon-large`
+// Modifiers:                `am-icon-sm`
+//                           `am-icon-md`
+//                           `am-icon-lg`
 //                           `am-icon-spin`
 //
 // Uses:                     Animation
@@ -115,8 +115,8 @@
   background: @icon-btn-background;
   color: @icon-btn-color;
   text-align: center;
-  .hook-icon-btn();
 
+  .hook-icon-btn;
   /**
    * Hover
    * 1. Apply hover style also to focus state
@@ -129,14 +129,14 @@
     color: @icon-btn-hover-color;
     text-decoration: none;
     outline: none; /* 2 */
-    .hook-icon-btn-hover();
+    .hook-icon-btn-hover;
   }
 
   /* Active */
   &:active {
     background-color: @icon-btn-active-background;
     color: @icon-btn-active-color;
-    .hook-icon-btn-active();
+    .hook-icon-btn-active;
   }
 }
 

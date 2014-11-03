@@ -65,12 +65,11 @@ pre {
 .am-pre-scrollable {
   max-height: @pre-scrollable-max-height;
   overflow-y: scroll;
-
-  .am-pre-scrollable();
+  .hook-pre-scrollable;
 }
 
 
 // Hooks
 // =============================================================================
 
-.am-pre-scrollable() {}
+.hook-pre-scrollable() {}

@@ -5,7 +5,7 @@
 var $ = require('jquery');
 
 if (typeof $ === 'undefined') {
-  throw new Error('Amaze UI requires jQuery :-( \n' +
+  throw new Error('Amaze UI requires jQuery :-(\n' +
     '\u7231\u4e0a\u4e00\u5339\u91ce\u9a6c\uff0c\u53ef\u4f60' +
   '\u7684\u5bb6\u91cc\u6ca1\u6709\u8349\u539f\u2026');
 }

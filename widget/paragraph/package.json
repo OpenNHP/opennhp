@@ -204,7 +204,7 @@
 
     "jsDependencies": [
         "ui.iscroll-lite.js",
-        "zepto.pinchzoom.js",
+        "ui.pinchzoom.js",
         "ui.pureview.js",
         "ui.share.js",
         "ui.modal.js"

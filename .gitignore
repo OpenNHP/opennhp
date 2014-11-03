@@ -24,6 +24,7 @@ tools/app/public/style.css
 dist/css
 dist/js
 less/amazeui.widgets.less
+js/amazeui.js
 
 # zip tmp files
 docs/examples/assets/css/amazeui*.css

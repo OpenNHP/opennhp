@@ -9,7 +9,8 @@ var _ = require('lodash');
 var format = require('util').format;
 var exec = require('child_process').exec;
 var browserify = require('browserify');
-var source = require('vinyl-source-stream');
+var transform = require('vinyl-transform');
+var del = require('del');
 
 // Temporary solution until gulp 4
 // https://github.com/gulpjs/gulp/issues/355
@@ -23,8 +24,8 @@ var pkg = require('./package.json');
 var config = {
   path: {
     less: [
-      './less/amui.less',
-      './less/amazeui.widgets.less',
+      // './less/amui.less',
+      // './less/amazeui.widgets.less',
       './less/amazeui.less'
     ],
     widgets: [
@@ -33,11 +34,8 @@ var config = {
       '/src/*.js'],
     hbsHelper: [
       'vendor/amazeui.hbs.helper.js',
-      'vendor/amazeui.hbs.partials.js']
-  },
-  dir: {
-    transport: '.build/ts/',
-    buildTmp: '.build/tmp/'
+      'vendor/amazeui.hbs.partials.js'],
+    buildTmp: '.build/temp/'
   },
   dist: {
     js: './dist/js',
@@ -47,13 +45,8 @@ var config = {
     base: [
       'core.js',
       'util.fastclick.js',
-      'util.hammer.js',
-      'zepto.outerdemension.js',
-      'zepto.extend.data.js',
-      'zepto.extend.fx.js',
-      'zepto.extend.selector.js'
-    ],
-    seajs: path.join(__dirname, 'vendor/seajs/sea.js')
+      'util.hammer.js'
+    ]
   }
 };
 
@@ -67,9 +60,9 @@ var banner = [
   $.util.date(Date.now(), dateFormat) + ' */ \n'
 ].join(' | ');
 
-var seaUse = '';
-var seaUseBasic = '';
-var seaUseWidgets = '';
+var initAll = '\'use strict\';\n\n' + 'var $ = require(\'jquery\');\n\n';
+var initBasic = '';
+var initWidgets = '';
 var jsWidgets = [];
 var plugins;
 var allPlugins;
@@ -172,6 +165,8 @@ var preparingData = function() {
     var basename = path.basename(js, '.js');
     modules.push(basename);
 
+    initAll += 'require(\'./' + basename + '\');\n';
+
     if (jsWidgets.indexOf(js) > -1) {
       modulesWidgets.push(basename);
     }
@@ -181,16 +176,18 @@ var preparingData = function() {
     }
   });
 
-  seaUse = 'seajs.use(' + JSON.stringify(modules) + ');';
-  seaUseBasic = 'seajs.use(' + JSON.stringify(modulesBasic) + ');';
-  seaUseWidgets = 'seajs.use(' + JSON.stringify(modulesWidgets) + ');';
+  initAll += '\nmodule.exports = $.AMUI;\n';
+
+  // initAll = 'require(' + JSON.stringify(modules) + ');';
+  initBasic = 'require(' + JSON.stringify(modulesBasic) + ');';
+  initWidgets = 'require(' + JSON.stringify(modulesWidgets) + ');';
 
   // sort for concat
-  jsWidgetsSorted = _.union([config.js.seajs], jsWidgets, [seaUseWidgets]);
+  jsWidgetsSorted = _.union(jsWidgets, [initWidgets]);
 
-  jsAllSorted = _.union([config.js.seajs], jsAll);
+  jsAllSorted = _.union(jsAll);
 
-  jsBasicSorted = _.union([config.js.seajs], jsBasic, [seaUseBasic]);
+  jsBasicSorted = _.union(jsBasic, [initBasic]);
 
   partials += '  };\n\n';
   partials += '  if (typeof module !== \'undefined\' && module.exports) {\n';
@@ -201,6 +198,7 @@ var preparingData = function() {
 
   // write partials
   fs.writeFileSync(path.join('./vendor/amazeui.hbs.partials.js'), partials);
+  fs.writeFileSync(path.join('./js/amazeui.js'), initAll);
 };
 
 gulp.task('build:preparing', preparingData);
@@ -237,12 +235,12 @@ gulp.task('build:less', function() {
 
 // Copy ui js files to build dir.
 gulp.task('build:js:copy:widgets', function() {
-  $.util.log($.util.colors.yellow('Start copy UI js files to build dir....'));
+  $.util.log($.util.colors.yellow('Start copy widgets js to build dir....'));
   return gulp.src(config.path.widgets, {cwd: './widget'})
       .pipe($.rename(function(path) {
         path.dirname = ''; // remove widget dir
       }))
-      .pipe(gulp.dest(config.dir.buildTmp));
+      .pipe(gulp.dest(config.path.buildTmp));
 });
 
 // Copy core js files to build dir.
@@ -250,80 +248,56 @@ gulp.task('build:js:copy:core', function() {
   return gulp.src('*.js', {
     cwd: './js'
   })
-    .pipe(gulp.dest(config.dir.buildTmp));
+    .pipe(gulp.dest(config.path.buildTmp));
 });
 
-// Transport CDM modules
-gulp.task('build:js:transport', function() {
-  return gulp.src(['*.js'], {cwd: config.dir.buildTmp})
-      .pipe($.cmdTransport({paths: [config.dir.buildTmp]}))
-      .pipe(gulp.dest(config.dir.transport));
+gulp.task('build:js:browserify', function() {
+  var bundler = transform(function(filename) {
+    var b = browserify({
+      entries: filename,
+      basedir: path.join(__dirname, config.path.buildTmp)
+    });
+    return b.bundle();
+  });
+
+  return gulp.src(pkg.name + '.js',
+    {cwd: path.join(__dirname, config.path.buildTmp)})
+    .pipe(bundler)
+    .pipe(gulp.dest(config.dist.js))
+    .pipe($.header(banner, {pkg: pkg, ver: ''}))
+    .pipe($.jsbeautifier({config: '.jsbeautifyrc'}))
+    .pipe(gulp.dest(config.dist.js))
+    .pipe($.uglify())
+    .pipe($.header(banner, {pkg: pkg, ver: ''}))
+    .pipe($.rename({
+      suffix: '.min',
+      extname: '.js'
+    }))
+    .pipe(gulp.dest(config.dist.js));
 });
 
-// Concat amazeui.js
-gulp.task('build:js:concat:all', function() {
-  return gulp.src(jsAllSorted, {cwd: config.dir.transport})
-      .pipe($.concat(pkg.name + '.js'))
-      .pipe($.header(banner, {pkg: pkg, ver: ''}))
-      .pipe($.footer('\n<%=use%>', {use: seaUse}))
-      .pipe(gulp.dest(config.dist.js))
-      .pipe($.uglify({
-        mangle: {
-          except: ['require']
-        }
-      }))
-      .pipe($.header(banner, {pkg: pkg, ver: ''}))
-      .pipe($.rename({
-        suffix: '.min',
-        extname: '.js'
-      }))
-      .pipe(gulp.dest(config.dist.js));
+// Concat AMD
+gulp.task('build:js:amd', function() {
+  return gulp.src('amazeui.js', {cwd: config.path.buildTmp})
+    .pipe($.amdBundler({
+      baseDir: config.path.buildTmp
+    }))
+    .pipe($.concat(pkg.name + '.amd.js'))
+    .pipe($.header(banner, {pkg: pkg, ver: ' ~ AMD'}))
+    .pipe($.jsbeautifier({config: '.jsbeautifyrc'}))
+    .pipe(gulp.dest(config.dist.js))
+    .pipe($.uglify())
+    .pipe($.header(banner, {pkg: pkg, ver: ' ~ AMD'}))
+    .pipe($.rename({
+      suffix: '.min',
+      extname: '.js'
+    }))
+    .pipe(gulp.dest(config.dist.js));
 });
 
-// Concat amazeui.basic.js
-gulp.task('build:js:concat:basic', function() {
-  return gulp.src(jsBasicSorted, {cwd: config.dir.transport})
-      .pipe($.concat(pkg.name + '.basic.js'))
-      .pipe($.header(banner, {pkg: pkg, ver: ' ~ basic'}))
-      .pipe($.footer('\n<%=use%>', {use: seaUseBasic}))
-      .pipe(gulp.dest(config.dist.js))
-      .pipe($.uglify({
-        mangle: {
-          except: ['require']
-        }
-      }))
-      .pipe($.header(banner, {pkg: pkg, ver: ' ~ basic'}))
-      .pipe($.rename({
-        suffix: '.min',
-        extname: '.js'
-      }))
-      .pipe(gulp.dest(config.dist.js));
-});
-
-// Concat amazeui.widgets.js
-gulp.task('build:js:concat:widgets', function() {
-  return gulp.src(jsWidgetsSorted, {cwd: config.dir.transport})
-      .pipe($.concat(pkg.name + '.widgets.js'))
-      .pipe($.header(banner, {pkg: pkg, ver: ' ~ widgets'}))
-      .pipe($.footer('\n<%=use%>', {use: seaUseWidgets}))
-      .pipe(gulp.dest(config.dist.js))
-      .pipe($.uglify({
-        mangle: {
-          except: ['require']
-        }
-      }))
-      .pipe($.header(banner, {pkg: pkg, ver: ' ~ widgets'}))
-      .pipe($.rename({
-        suffix: '.min',
-        extname: '.js'
-      }))
-      .pipe(gulp.dest(config.dist.js));
-});
-
-gulp.task('build:js:clean', function() {
+gulp.task('build:js:clean', function(cb) {
   $.util.log($.util.colors.green('Finished concat js, cleaning...'));
-  gulp.src('./.build', {read: false})
-      .pipe($.clean({force: true}));
+  del('./.build', cb);
 });
 
 gulp.task('build:js:helper', function() {
@@ -331,11 +305,7 @@ gulp.task('build:js:helper', function() {
       .pipe($.concat(pkg.name + '.widgets.helper.js'))
       .pipe($.header(banner, {pkg: pkg, ver: ' ~ helper'}))
       .pipe(gulp.dest(config.dist.js))
-      .pipe($.uglify({
-        mangle: {
-          except: ['require']
-        }
-      }))
+      .pipe($.uglify())
       .pipe($.header(banner, {pkg: pkg, ver: ' ~ helper'}))
       .pipe($.rename({
         suffix: '.min',
@@ -347,8 +317,8 @@ gulp.task('build:js:helper', function() {
 gulp.task('build:js', function(cb) {
   runSequence(
     ['build:js:copy:widgets', 'build:js:copy:core'],
-    'build:js:transport',
-    ['build:js:concat:all', 'build:js:concat:basic', 'build:js:concat:widgets'],
+    ['build:js:browserify'],
+    ['build:js:amd'],
     ['build:js:clean', 'build:js:helper'],
     cb
   );
@@ -360,9 +330,9 @@ gulp.task('build', function(cb) {
 
 // Rerun the task when a file changes
 gulp.task('watch', function() {
+  gulp.watch(['widget/**/*.json', 'widget/**/*.hbs'], ['build:preparing']);
   gulp.watch(['js/*.js', 'widget/*/src/*.js'], ['build:js']);
   gulp.watch(['less/**/*.less', 'widget/*/src/*.less'], ['build:less']);
-  gulp.watch(['widget/**/*.json', 'widget/**/*.hbs'], ['build:preparing']);
   gulp.watch(config.path.hbsHelper, ['build:js:helper']);
 });
 
@@ -397,11 +367,11 @@ gulp.task('archive:zip', function() {
       .pipe(gulp.dest('dist'));
 });
 
-gulp.task('archive:clean', function() {
-  return gulp.src(['docs/examples/assets/*/amazeui.*',
+gulp.task('archive:clean', function(cb) {
+  del(['docs/examples/assets/*/amazeui.*',
     './docs/examples/assets/js/handlebars.min.js',
-    './docs/examples/assets/js/zepto.min.js'], {read: false})
-      .pipe($.clean({force: true}));
+    './docs/examples/assets/js/zepto.min.js'
+  ], cb);
 });
 
 // Preview server.
@@ -417,35 +387,3 @@ gulp.task('appServer', function() {
 gulp.task('default', ['build', 'watch']);
 
 gulp.task('preview', ['build', 'watch', 'appServer']);
-
-var glob = require('glob');
-
-gulp.task('test', function() {
-  var bundler = browserify({
-    basedir: path.join(__dirname, 'js')
-  });
-
-  var footer = '';
-
-  glob.sync('*.js', {cwd: './js'}).forEach(function(file) {
-    var moduleName = './' + file.substring(0, file.lastIndexOf('.js'));
-    footer += 'require(\'' + moduleName + '\');\n';
-    bundler.require(moduleName);
-  });
-
-  bundler
-    .bundle()
-    .pipe(source('app.js'))
-    .pipe($.streamify($.jsbeautifier({config: '.jsbeautifyrc'})))
-    .pipe($.streamify($.footer(footer, {})))
-    .pipe(gulp.dest('dist'));
-});
-
-gulp.task('amd', function() {
-  gulp.src('./js/ui.smooth-scroll.js')
-    .pipe($.amdBundler({
-      baseDir: './js'
-    }))
-    .pipe($.concat('amd.js'))
-    .pipe(gulp.dest('./dist'));
-});

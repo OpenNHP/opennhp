@@ -103,4 +103,4 @@ $(document).on('click.smoothScroll.amui', '[data-am-smooth-scroll]',
     $(window).smoothScroll(options);
   });
 
-module.exports = 'aa';
+module.exports = {};

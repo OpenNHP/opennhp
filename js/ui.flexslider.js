@@ -1221,3 +1221,5 @@ $.fn.flexslider = function(options) {
     }
   }
 };
+
+module.exports = {};

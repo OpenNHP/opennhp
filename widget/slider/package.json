@@ -1323,7 +1323,7 @@
     ],
 
     "jsDependencies": [
-        "zepto.flexslider.js"
+        "ui.flexslider.js"
     ],
 
     "script": "slider.js",

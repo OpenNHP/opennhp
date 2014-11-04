@@ -8,6 +8,7 @@ var fs = require('fs-extra');
 var _ = require('lodash');
 var format = require('util').format;
 var exec = require('child_process').exec;
+var del = require('del');
 
 // Temporary solution until gulp 4
 // https://github.com/gulpjs/gulp/issues/355
@@ -318,10 +319,9 @@ gulp.task('build:js:concat:widgets', function() {
       .pipe(gulp.dest(config.dist.js));
 });
 
-gulp.task('build:js:clean', function() {
+gulp.task('build:js:clean', function(cb) {
   $.util.log($.util.colors.green('Finished concat js, cleaning...'));
-  gulp.src('./.build', {read: false})
-      .pipe($.clean({force: true}));
+  del(['./.build'], cb);
 });
 
 gulp.task('build:js:helper', function() {
@@ -395,11 +395,10 @@ gulp.task('archive:zip', function() {
       .pipe(gulp.dest('dist'));
 });
 
-gulp.task('archive:clean', function() {
-  return gulp.src(['docs/examples/assets/*/amazeui.*',
+gulp.task('archive:clean', function(cb) {
+  del(['docs/examples/assets/*/amazeui.*',
     './docs/examples/assets/js/handlebars.min.js',
-    './docs/examples/assets/js/zepto.min.js'], {read: false})
-      .pipe($.clean({force: true}));
+    './docs/examples/assets/js/zepto.min.js'], cb);
 });
 
 // Preview server.

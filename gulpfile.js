@@ -101,6 +101,14 @@ var preparingData = function() {
   allPlugins = fs.readdirSync('./js');
   plugins = fs.readdirSync('./js');
 
+  _.remove(allPlugins, function(file) {
+    return file == 'amazeui.js';
+  });
+
+  _.remove(plugins, function(file) {
+    return file == 'amazeui.js';
+  });
+
   var partials = '(function(undefined){\n';
   partials += '  \'use strict\';\n\n';
   partials += '  var registerAMUIPartials = function(hbs) {\n';
@@ -246,7 +254,7 @@ gulp.task('build:js:copy:widgets', function() {
 
 // Copy core js files to build dir.
 gulp.task('build:js:copy:core', function() {
-  return gulp.src('*.js', {
+  return gulp.src(['*.js', '!amazeui.js'], {
     cwd: './js'
   })
     .pipe(gulp.dest(config.dir.buildTmp));

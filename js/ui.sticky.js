@@ -29,6 +29,9 @@ var Sticky = function(element, options) {
     }, 50)).
     on('load.sticky.amui', $.proxy(this.checkPosition, this));
 
+  // the `.offset()` is diff between jQuery & Zepto.js
+  // jQuery: return `top` and `left`
+  // Zepto.js: return `top`, `left`, `width`, `height`
   this.offset = this.$element.offset();
 
   this.init();
@@ -159,13 +162,13 @@ Sticky.prototype.checkPosition = function() {
     this.reset();
   }
 
-  this.$holder.height($element.height());
+  this.$holder.height($element.is(':visible') ? $element.height() : 0);
 
   if (checkResult) {
     $element.css({
       top: offsetTop,
       left: this.$holder.offset().left,
-      width: this.offset.width
+      width: this.$holder.width()
     });
 
     /*

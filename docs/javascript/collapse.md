@@ -254,7 +254,3 @@ $('#myCollapse').collapse({
   </tr>
   </tbody>
 </table>
-<script>
-  seajs.use(['ui.collapse']);
-</script>
-

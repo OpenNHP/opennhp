@@ -69,7 +69,10 @@ Popover.prototype.sizePopover = function sizePopover() {
     return;
   }
 
-  var popSize = $popover.getSize();
+  var popSize = {
+    width: $popover.width(),
+    height: $popover.height()
+  };
   var popWidth = $popover.width() || popSize.width;
   var popHeight = $popover.height() || popSize.height;
   var $popCaret = $popover.find('.am-popover-caret');

@@ -271,67 +271,6 @@ $.fn.alterClass = function(removals, additions) {
   return !additions ? self : self.addClass(additions);
 };
 
-$.fn.getHeight = function() {
-  var $ele = $(this);
-  var height = 'auto';
-
-  if ($ele.is(':visible')) {
-    height = $ele.height();
-  } else {
-    var tmp = {
-      position: $ele.css('position'),
-      visibility: $ele.css('visibility'),
-      display: $ele.css('display')
-    };
-
-    height = $ele.css({
-      position: 'absolute',
-      visibility: 'hidden',
-      display: 'block'
-    }).height();
-
-    $ele.css(tmp); // reset element
-  }
-
-  return height;
-};
-
-$.fn.getSize = function() {
-  var $el = $(this);
-
-  if ($el.css('display') !== 'none') {
-    return {
-      width: $el.width(),
-      height: $el.height()
-    };
-  }
-
-  var old = {
-    position: $el.css('position'),
-    visibility: $el.css('visibility'),
-    display: $el.css('display')
-  };
-  var tmpStyle = {
-    display: 'block',
-    position: 'absolute',
-    visibility: 'hidden'
-  };
-  var width;
-  var height;
-
-  $el.css(tmpStyle);
-
-  width = $el.width();
-  height = $el.height();
-
-  $el.css(old);
-
-  return {
-    width: width,
-    height: height
-  };
-};
-
 // handle multiple browsers for requestAnimationFrame()
 // http://www.paulirish.com/2011/requestanimationframe-for-smart-animating/
 // https://github.com/gnarf/jquery-requestAnimationFrame

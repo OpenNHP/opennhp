@@ -35,33 +35,24 @@
 
 ## 使用方法
 
-__TODO: 修改使用接口__
+__Amaze UI 默认已经初始化 FastClick。__
+
+如有需要，用户可以通过 `$.AMUI.FastClick` 调用。
+
+jQuery / Zepto.js:
 
 ```js
-window.addEventListener('load', function() {
-  FastClick.attach(document.body);
-}, false);
-```
-
-Zepto.js:
-
-```js    
 $(function() {
-  FastClick.attach(document.body);
+  $.AMUI.FastClick.attach(document.body);
 });
 ```
+
+CommonJS:
 
 ```javascript
 var attachFastClick = require('fastclick');
 attachFastClick(document.body);
 ```
-
-<!--
-AMD
-var FastClick = require('fastclick');
-FastClick.attach(document.body);
--->
-    
 
 ## Licence
 

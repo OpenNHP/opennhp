@@ -96,7 +96,6 @@ function addBdMap() {
 }
 
 var mapInit = function() {
-  console.log('init....');
   $('.am-map').length && addMapApi(addBdMap);
 };
 

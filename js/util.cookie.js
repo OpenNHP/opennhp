@@ -1,59 +1,55 @@
-define(function(require, exports, module) {
-  'use strict';
+'use strict';
 
-  require('core');
+var $ = require('jquery');
+require('./core');
 
-  var $ = window.Zepto;
-  var UI = $.AMUI;
+var cookie = {
+  get: function(name) {
+    var cookieName = encodeURIComponent(name) + '=';
+    var cookieStart = document.cookie.indexOf(cookieName);
+    var cookieValue = null;
+    var cookieEnd;
 
-  var cookie = {
-    get: function(name) {
-      var cookieName = encodeURIComponent(name) + '=';
-      var cookieStart = document.cookie.indexOf(cookieName);
-      var cookieValue = null;
-      var cookieEnd;
-
-      if (cookieStart > -1) {
-        cookieEnd = document.cookie.indexOf(';', cookieStart);
-        if (cookieEnd == -1) {
-          cookieEnd = document.cookie.length;
-        }
-        cookieValue = decodeURIComponent(document.cookie.substring(cookieStart +
-            cookieName.length, cookieEnd));
+    if (cookieStart > -1) {
+      cookieEnd = document.cookie.indexOf(';', cookieStart);
+      if (cookieEnd == -1) {
+        cookieEnd = document.cookie.length;
       }
-
-      return cookieValue;
-    },
-
-    set: function(name, value, expires, path, domain, secure) {
-      var cookieText = encodeURIComponent(name) + '=' +
-          encodeURIComponent(value);
-
-      if (expires instanceof Date) {
-        cookieText += '; expires=' + expires.toGMTString();
-      }
-
-      if (path) {
-        cookieText += '; path=' + path;
-      }
-
-      if (domain) {
-        cookieText += '; domain=' + domain;
-      }
-
-      if (secure) {
-        cookieText += '; secure';
-      }
-
-      document.cookie = cookieText;
-    },
-
-    unset: function(name, path, domain, secure) {
-      this.set(name, '', new Date(0), path, domain, secure);
+      cookieValue = decodeURIComponent(document.cookie.substring(cookieStart +
+      cookieName.length, cookieEnd));
     }
-  };
 
-  UI.utils.cookie = cookie;
+    return cookieValue;
+  },
 
-  module.exports = cookie;
-});
+  set: function(name, value, expires, path, domain, secure) {
+    var cookieText = encodeURIComponent(name) + '=' +
+      encodeURIComponent(value);
+
+    if (expires instanceof Date) {
+      cookieText += '; expires=' + expires.toGMTString();
+    }
+
+    if (path) {
+      cookieText += '; path=' + path;
+    }
+
+    if (domain) {
+      cookieText += '; domain=' + domain;
+    }
+
+    if (secure) {
+      cookieText += '; secure';
+    }
+
+    document.cookie = cookieText;
+  },
+
+  unset: function(name, path, domain, secure) {
+    this.set(name, '', new Date(0), path, domain, secure);
+  }
+};
+
+$.AMUI.utils.cookie = cookie;
+
+module.exports = cookie;

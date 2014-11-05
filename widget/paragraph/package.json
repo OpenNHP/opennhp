@@ -1,7 +1,7 @@
 {
     "name": "paragraph",
 
-    "version": "1.0.0",
+    "version": "2.0.0",
 
     "localName": {
         "en": "Paragraph",
@@ -204,7 +204,7 @@
 
     "jsDependencies": [
         "ui.iscroll-lite.js",
-        "zepto.pinchzoom.js",
+        "ui.pinchzoom.js",
         "ui.pureview.js",
         "ui.share.js",
         "ui.modal.js"

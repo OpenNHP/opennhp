@@ -1,26 +1,26 @@
-define(function(require, exports, module) {
-  'use strict';
+'use strict';
 
-  var $ = window.Zepto;
+var $ = require('jquery');
 
-  function mechatInit() {
-
-    if (!$('#mechat').length) {
-      return;
-    }
-
-    var $mechat = $('[data-am-widget="mechat"]');
-    var unitid = $mechat.data('am-mechat-unitid');
-    var $mechatData = $('<script>', {
-      charset: 'utf-8',
-      src: 'http://mechatim.com/js/unit/button.js?id=' + unitid
-    });
-
-    $('body').append($mechatData);
+function mechatInit() {
+  if (!$('#mechat').length) {
+    return;
   }
 
-  // Lazy load
-  $(window).on('load', mechatInit);
+  var $mechat = $('[data-am-widget="mechat"]');
+  var unitid = $mechat.data('am-mechat-unitid');
+  var $mechatData = $('<script>', {
+    charset: 'utf-8',
+    src: 'http://mechatim.com/js/unit/button.js?id=' + unitid
+  });
 
-  exports.init = mechatInit;
-});
+  $('body').append($mechatData);
+}
+
+// Lazy load
+$(window).on('load', mechatInit);
+
+module.exports = $.AMUI.mechat = {
+  VERSION: '2.0.0',
+  init: mechatInit
+};

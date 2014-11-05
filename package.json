@@ -32,24 +32,25 @@
     "url": "https://github.com/allmobilize/amazeui/issues"
   },
   "dependencies": {
-    "seajs": "latest",
-    "zepto": "latest",
+    "jquery": "latest",
     "handlebars": "latest"
   },
   "devDependencies": {
     "body-parser": "~1.0.0",
+    "browserify": "^6.2.0",
+    "browserify-shim": "^3.8.0",
     "cookie-parser": "~1.0.1",
     "debug": "1.0.x",
+    "del": "^0.1.3",
     "errorhandler": "^1.1.1",
     "express": "4.x",
     "fs-extra": "^0.10.0",
     "gulp": "^3.8.9",
+    "gulp-amd-bundler": "0.0.20",
     "gulp-bower": "^0.0.6",
-    "gulp-clean": "^0.3.0",
-    "gulp-cmd-transport": "^0.1.1",
     "gulp-concat": "latest",
-    "gulp-footer": "^1.0.5",
     "gulp-header": "^1.0.2",
+    "gulp-jsbeautifier": "0.0.3",
     "gulp-less": "^1.2.3",
     "gulp-load-plugins": "^0.7.0",
     "gulp-minify-css": "^0.3.0",
@@ -63,7 +64,16 @@
     "lodash": "^2.4.1",
     "morgan": "~1.0.0",
     "run-sequence": "^1.0.1",
-    "underscore": "~1.6.0"
+    "underscore": "~1.6.0",
+    "vinyl-transform": "0.0.1"
+  },
+  "browserify": {
+    "transform": [
+      "browserify-shim"
+    ]
+  },
+  "browserify-shim": {
+    "jquery": "global:jQuery"
   },
   "license": {
     "type": "MIT",

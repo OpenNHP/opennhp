@@ -1,21 +1,21 @@
-define(function(require, exports, module) {
-  'use strict';
+'use strict';
 
-  require('core');
-  require('zepto.flexslider');
+var $ = require('jquery');
+require('./core');
+require('./ui.flexslider');
+var UI = $.AMUI;
 
-  var $ = window.Zepto;
-  var UI = $.AMUI;
+function sliderInit() {
+  var $sliders = $('[data-am-widget="slider"]');
+  $sliders.not('.am-slider-manual').each(function(i, item) {
+    var options = UI.utils.parseOptions($(item).attr('data-am-slider'));
+    $(item).flexslider(options);
+  });
+}
 
-  function sliderInit() {
-    var $sliders = $('[data-am-widget="slider"]');
-    $sliders.not('.am-slider-manual').each(function(i, item) {
-      var options = UI.utils.parseOptions($(item).attr('data-am-slider'));
-      $(item).flexslider(options);
-    });
-  }
+$(document).on('ready', sliderInit);
 
-  $(document).on('ready', sliderInit);
-
-  exports.init = sliderInit;
-});
+module.exports = $.AMUI.slider = {
+  VERSION: '3.0.0',
+  init: sliderInit
+};

@@ -16,22 +16,24 @@ var rAF = UI.utils.rAF;
 // which is probably what you want
 var smoothScrollInProgress = false;
 
-$.fn.smoothScroll = function(options) {
+var SmoothScroll = function(element, options) {
   options = options || {};
 
-  var $this = this,
-    targetY = parseInt(options.position) || 0,
-    initialY = $this.scrollTop(),
-    lastY = initialY,
-    delta = targetY - initialY,
+  var $this = $(element);
+  var targetY = parseInt(options.position) || SmoothScroll.DEFAULTS.position;
+  var initialY = $this.scrollTop();
+  var lastY = initialY;
+  var delta = targetY - initialY;
   // duration in ms, make it a bit shorter for short distances
   // this is not scientific and you might want to adjust this for
   // your preferences
-    speed = options.speed ||
-      Math.min(750, Math.min(1500, Math.abs(initialY - targetY))),
+  var speed = options.speed ||
+      Math.min(750, Math.min(1500, Math.abs(initialY - targetY)));
   // temp variables (t will be a position between 0 and 1, y is the calculated scrollTop)
-    start, t, y,
-    cancelScroll = function() {
+  var start;
+  var t;
+  var y;
+  var cancelScroll = function() {
       abort();
     };
 
@@ -79,10 +81,18 @@ $.fn.smoothScroll = function(options) {
     // calculate the new scrollTop position (don't forget to smooth)
     y = Math.round(initialY + delta * smooth(t));
     // bracket scrollTop so we're never over-scrolling
-    if (delta > 0 && y > targetY) y = targetY;
-    if (delta < 0 && y < targetY) y = targetY;
+    if (delta > 0 && y > targetY) {
+      y = targetY;
+    }
+    if (delta < 0 && y < targetY) {
+      y = targetY;
+    }
+
     // only actually set scrollTop if there was a change fromt he last frame
-    if (lastY != y) $this.scrollTop(y);
+    if (lastY != y) {
+      $this.scrollTop(y);
+    }
+
     lastY = y;
     // if we're not done yet, queue up an other frame to render,
     // or clean up
@@ -91,6 +101,16 @@ $.fn.smoothScroll = function(options) {
     } else {
       abort();
     }
+  });
+};
+
+SmoothScroll.DEFAULTS = {
+  position: 0
+};
+
+$.fn.smoothScroll = function(option) {
+  return this.each(function() {
+    new SmoothScroll(this, option);
   });
 };
 
@@ -103,4 +123,4 @@ $(document).on('click.smoothScroll.amui', '[data-am-smooth-scroll]',
     $(window).smoothScroll(options);
   });
 
-module.exports = {};
+module.exports = SmoothScroll;

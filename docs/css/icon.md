@@ -937,6 +937,8 @@ content: @fa-var-copy;
 
 <script>
 $(function() {
+  if (!window.ZeroClipboard) return;
+
   $('.doc-icon-list li').each(function(index, item) {
     $(item).find('a').on('click', function(e) {
       e.preventDefault();
@@ -961,16 +963,10 @@ $(function() {
     $(this).append($(iconAction));
   });
 
-  ZeroClipboard.config({
-    moviePath: '/lib/zc/ZeroClipboard.swf',
-    hoverClass: 'doc-clip-btn-hover',
-    debug: false
-  });
-
   var clip = new ZeroClipboard($('.demo-copy-icon'));
 
-  clip.on('complete', function(client, args) {
-    console && console.log("Copied text to clipboard: " + args.text);
+  clip.on('aftercopy', function(e) {
+    console && console.log("Copied to clipboard:\n" + e.data['text/plain']);
   });
 });
 </script>

@@ -72,8 +72,8 @@ define(function(require, exports, module) {
       $element.hide();
     }
 
-    transition ? $element.one(transition.end, $.proxy(complete, this)) :
-        complete.call(this);
+    transition ? $element.one(transition.end, $.proxy(complete, this)).
+      emulateTransitionEnd(150) : complete.call(this);
 
     return this;
   };

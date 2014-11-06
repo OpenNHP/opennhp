@@ -212,9 +212,11 @@ var preparingData = function() {
 
 gulp.task('build:preparing', preparingData);
 
-gulp.task('bower', function() {
-  $.bower().
-    pipe(gulp.dest('vendor/'));
+gulp.task('build:clean', function(cb) {
+  del([
+    config.dist.css,
+    config.dist.js
+  ], cb);
 });
 
 // Build to dist dir.
@@ -361,7 +363,7 @@ gulp.task('build:js', function(cb) {
 });
 
 gulp.task('build', function(cb) {
-  runSequence('build:preparing', ['build:less', 'build:js'], cb);
+  runSequence('build:preparing', 'build:clean', ['build:less', 'build:js'], cb);
 });
 
 // Rerun the task when a file changes

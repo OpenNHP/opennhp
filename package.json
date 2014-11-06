@@ -33,7 +33,6 @@
   },
   "dependencies": {
     "seajs": "latest",
-    "zepto": "latest",
     "handlebars": "latest"
   },
   "devDependencies": {
@@ -45,7 +44,6 @@
     "express": "4.x",
     "fs-extra": "^0.10.0",
     "gulp": "^3.8.9",
-    "gulp-bower": "^0.0.6",
     "gulp-cmd-transport": "^0.1.1",
     "gulp-concat": "latest",
     "gulp-footer": "^1.0.5",

@@ -9,7 +9,7 @@ Amaze UI 是一个轻量级、 [**Mobile first**](http://cbrac.co/113eY5h) 的�
 
 <div class="am-g">
   <div class="col-md-8 col-md-centered">
-    <a href="/download?ver=v1.0.1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
+    <a href="/download?ver=1.0.1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
 ">下载 Amaze UI v1.0.1</a>
   </div>
 </div>

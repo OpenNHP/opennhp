@@ -1,6 +1,17 @@
 # Amaze UI Change Log
 ---
 
+## Amaze UI v1.0.1 (2014.11.07)
+
+__CSS__：
+
+- `TBT` #193,#53 处理 Font ICON 字体被覆盖导致字体图标失效问题。
+
+__JS插件__：
+
+- `FIXED` #181 Modal `closed:modal:amui` 事件没有正确触发；
+- `FIXED` #183 多个 Modal 共享背景层问题。
+
 ## Amaze UI v1.0.0 （2014.10.28）
 
 ### 2014.10 W4

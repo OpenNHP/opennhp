@@ -53,9 +53,13 @@
 /* Component
 ============================================================================= */
 
-[class*='am-icon-'] {
+[class*="am-icon-"] {
   display: inline-block;
-  .am-icon-font;
+
+  &:before {
+    .am-icon-font;
+    font-family: "FontAwesome" !important;
+  }
 }
 
 

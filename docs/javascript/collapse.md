@@ -195,7 +195,7 @@ $('#myCollapse').collapse({
 
 - `$().collapse('toggle')` - 切换面板状态
 - `$().collapse('open')` - 展开面板
-- `$().collapse('hide')` - 关闭面板
+- `$().collapse('close')` - 关闭面板
 
 #### 选项
 
@@ -254,7 +254,3 @@ $('#myCollapse').collapse({
   </tr>
   </tbody>
 </table>
-<script>
-  seajs.use(['ui.collapse']);
-</script>
-

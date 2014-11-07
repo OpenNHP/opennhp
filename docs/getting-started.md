@@ -9,12 +9,33 @@ Amaze UI 是一个轻量级、 [**Mobile first**](http://cbrac.co/113eY5h) 的�
 
 <div class="am-g">
   <div class="col-md-8 col-md-centered">
-    <a href="/download?ver=v1.0.0" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
-">下载 Amaze UI v1.0.0</a>
+    <a href="/download?ver=v1.0.1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
+">下载 Amaze UI v1.0.1</a>
   </div>
 </div>
 
 ### 使用 CDN
+
+#### Amaze UI CDN
+
+域名解析服务由 DNSPod 提供，CDN 存储由又拍云提供。
+
+```html
+http://cdn.amazeui.org/amazeui/1.0.1/css/amazeui.basic.css
+http://cdn.amazeui.org/amazeui/1.0.1/css/amazeui.basic.min.css
+http://cdn.amazeui.org/amazeui/1.0.1/css/amazeui.css
+http://cdn.amazeui.org/amazeui/1.0.1/css/amazeui.min.css
+http://cdn.amazeui.org/amazeui/1.0.1/css/amazeui.widgets.css
+http://cdn.amazeui.org/amazeui/1.0.1/css/amazeui.widgets.min.css
+http://cdn.amazeui.org/amazeui/1.0.1/js/amazeui.basic.js
+http://cdn.amazeui.org/amazeui/1.0.1/js/amazeui.basic.min.js
+http://cdn.amazeui.org/amazeui/1.0.1/js/amazeui.js
+http://cdn.amazeui.org/amazeui/1.0.1/js/amazeui.min.js
+http://cdn.amazeui.org/amazeui/1.0.1/js/amazeui.widgets.helper.js
+http://cdn.amazeui.org/amazeui/1.0.1/js/amazeui.widgets.helper.min.js
+http://cdn.amazeui.org/amazeui/1.0.1/js/amazeui.widgets.js
+http://cdn.amazeui.org/amazeui/1.0.1/js/amazeui.widgets.min.js
+```
 
 #### Staticfile.org
 

@@ -45,7 +45,7 @@
 </div>
 `````
 ```html
-<div data-am-sticky>
+<div data-am-sticky="{animation: 'slide-top'}">
   <button class="am-btn am-btn-success am-btn-block">固定到顶部动画效果</button>
 </div>
 ```

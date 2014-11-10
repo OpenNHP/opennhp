@@ -431,7 +431,7 @@ $(function() {
   var $body = $('body');
 
   // trigger DOM ready event
-  $(document).trigger('domready:amui');
+  $(document).trigger('domready.amui');
 
   $html.removeClass('no-js').addClass('js');
 
@@ -443,7 +443,7 @@ $(function() {
   }
 
   $('.am-topbar-fixed-top').length &&
-  $body.addClass('am-with-topbar-fixed-top');
+    $body.addClass('am-with-topbar-fixed-top');
 
   $('.am-topbar-fixed-bottom').length &&
   $body.addClass('am-with-topbar-fixed-bottom');

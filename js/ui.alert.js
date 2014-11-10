@@ -30,12 +30,12 @@ Alert.prototype.close = function() {
     $this :
     $this.parent('.am-alert');
 
-  $target.trigger('close:alert:amui');
+  $target.trigger('close.alert.amui');
 
   $target.removeClass('am-in');
 
   function processAlert() {
-    $target.trigger('closed:alert:amui').remove();
+    $target.trigger('closed.alert.amui').remove();
   }
 
   UI.support.transition && $target.hasClass('am-fade') ?
@@ -62,7 +62,7 @@ $.fn.alert = function(option) {
 };
 
 // Init code
-$(document).on('click.alert.amui', '[data-am-alert]', function(e) {
+$(document).on('click.alert.amui.data-api', '[data-am-alert]', function(e) {
   var $target = $(e.target);
   $(this).addClass('am-fade am-in');
   $target.is('.am-close') && $(this).alert('close');

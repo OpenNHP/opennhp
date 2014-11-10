@@ -1,20 +1,38 @@
-// Name:                       Block Grid
+// Name:            AVG Grid
 //
-// Description:                Used to layout content with ul(ol)
+// Description:     Used to make average columns with ul(ol)
 //
 // =============================================================================
 
+// AVG Grid mixin
+// http://lesscss.org/features/#loops-feature
+.make-avg-grid(@point: sm, @counter: @grid-columns, @i: 1) when (@i =< @counter) {
+  .@{global-ns}avg-@{point}-@{i} > li {
+    width: (100% / @i);
+
+    &:nth-of-type(n) {
+      clear: none;
+    }
+
+    &:nth-of-type(@{i}n+1) {
+      clear: both;
+    }
+  }
+
+  .make-avg-grid(@point, @counter, (@i + 1));
+}
 
 /* ==========================================================================
-   Component: Block Grid
+   Component: AVG Grid
  ============================================================================ */
 
-[class*="block-grid-"] {
+[class*="@{global-ns}avg-"] {
   display: block;
   padding: 0;
   margin: 0;
   list-style: none;
-  .clearfix();
+  &:extend(.clearfix all);
+
   > li {
     display: block;
     height: auto;
@@ -22,440 +40,14 @@
   }
 }
 
-@media only screen {
-  .sm-block-grid-1 > li {
-    width: 100%;
-  }
-
-  .sm-block-grid-1 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .sm-block-grid-1 > li:nth-of-type(1n+1) {
-    clear: both;
-  }
-
-  .sm-block-grid-2 > li {
-    width: 50%;
-  }
-
-  .sm-block-grid-2 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .sm-block-grid-2 > li:nth-of-type(2n+1) {
-    clear: both;
-  }
-
-  .sm-block-grid-3 > li {
-    width: 33.33333%;
-  }
-
-  .sm-block-grid-3 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .sm-block-grid-3 > li:nth-of-type(3n+1) {
-    clear: both;
-  }
-
-  .sm-block-grid-4 > li {
-    width: 25%;
-  }
-
-  .sm-block-grid-4 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .sm-block-grid-4 > li:nth-of-type(4n+1) {
-    clear: both;
-  }
-
-  .sm-block-grid-5 > li {
-    width: 20%;
-  }
-
-  .sm-block-grid-5 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .sm-block-grid-5 > li:nth-of-type(5n+1) {
-    clear: both;
-  }
-
-  .sm-block-grid-6 > li {
-    width: 16.66667%;
-  }
-
-  .sm-block-grid-6 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .sm-block-grid-6 > li:nth-of-type(6n+1) {
-    clear: both;
-  }
-
-  .sm-block-grid-7 > li {
-    width: 14.28571%;
-  }
-
-  .sm-block-grid-7 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .sm-block-grid-7 > li:nth-of-type(7n+1) {
-    clear: both;
-  }
-
-  .sm-block-grid-8 > li {
-    width: 12.5%;
-  }
-
-  .sm-block-grid-8 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .sm-block-grid-8 > li:nth-of-type(8n+1) {
-    clear: both;
-  }
-
-  .sm-block-grid-9 > li {
-    width: 11.11111%;
-  }
-
-  .sm-block-grid-9 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .sm-block-grid-9 > li:nth-of-type(9n+1) {
-    clear: both;
-  }
-
-  .sm-block-grid-10 > li {
-    width: 10%;
-  }
-
-  .sm-block-grid-10 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .sm-block-grid-10 > li:nth-of-type(10n+1) {
-    clear: both;
-  }
-
-  .sm-block-grid-11 > li {
-    width: 9.09091%;
-  }
-
-  .sm-block-grid-11 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .sm-block-grid-11 > li:nth-of-type(11n+1) {
-    clear: both;
-  }
-
-  .sm-block-grid-12 > li {
-    width: 8.33333%;
-  }
-
-  .sm-block-grid-12 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .sm-block-grid-12 > li:nth-of-type(12n+1) {
-    clear: both;
-  }
+@media @screen {
+  .make-avg-grid(sm);
 }
 
 @media @medium-up {
-  .md-block-grid-1 > li {
-    width: 100%;
-  }
-
-  .md-block-grid-1 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .md-block-grid-1 > li:nth-of-type(1n+1) {
-    clear: both;
-  }
-
-  .md-block-grid-2 > li {
-    width: 50%;
-  }
-
-  .md-block-grid-2 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .md-block-grid-2 > li:nth-of-type(2n+1) {
-    clear: both;
-  }
-
-  .md-block-grid-3 > li {
-    width: 33.33333%;
-  }
-
-  .md-block-grid-3 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .md-block-grid-3 > li:nth-of-type(3n+1) {
-    clear: both;
-  }
-
-  .md-block-grid-4 > li {
-    width: 25%;
-  }
-
-  .md-block-grid-4 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .md-block-grid-4 > li:nth-of-type(4n+1) {
-    clear: both;
-  }
-
-  .md-block-grid-5 > li {
-    width: 20%;
-  }
-
-  .md-block-grid-5 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .md-block-grid-5 > li:nth-of-type(5n+1) {
-    clear: both;
-  }
-
-  .md-block-grid-6 > li {
-    width: 16.66667%;
-  }
-
-  .md-block-grid-6 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .md-block-grid-6 > li:nth-of-type(6n+1) {
-    clear: both;
-  }
-
-  .md-block-grid-7 > li {
-    width: 14.28571%;
-  }
-
-  .md-block-grid-7 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .md-block-grid-7 > li:nth-of-type(7n+1) {
-    clear: both;
-  }
-
-  .md-block-grid-8 > li {
-    width: 12.5%;
-  }
-
-  .md-block-grid-8 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .md-block-grid-8 > li:nth-of-type(8n+1) {
-    clear: both;
-  }
-
-  .md-block-grid-9 > li {
-    width: 11.11111%;
-  }
-
-  .md-block-grid-9 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .md-block-grid-9 > li:nth-of-type(9n+1) {
-    clear: both;
-  }
-
-  .md-block-grid-10 > li {
-    width: 10%;
-  }
-
-  .md-block-grid-10 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .md-block-grid-10 > li:nth-of-type(10n+1) {
-    clear: both;
-  }
-
-  .md-block-grid-11 > li {
-    width: 9.09091%;
-  }
-
-  .md-block-grid-11 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .md-block-grid-11 > li:nth-of-type(11n+1) {
-    clear: both;
-  }
-
-  .md-block-grid-12 > li {
-    width: 8.33333%;
-  }
-
-  .md-block-grid-12 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .md-block-grid-12 > li:nth-of-type(12n+1) {
-    clear: both;
-  }
+  .make-avg-grid(md);
 }
 
 @media @large-up {
-  .lg-block-grid-1 > li {
-    width: 100%;
-  }
-
-  .lg-block-grid-1 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .lg-block-grid-1 > li:nth-of-type(1n+1) {
-    clear: both;
-  }
-
-  .lg-block-grid-2 > li {
-    width: 50%;
-  }
-
-  .lg-block-grid-2 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .lg-block-grid-2 > li:nth-of-type(2n+1) {
-    clear: both;
-  }
-
-  .lg-block-grid-3 > li {
-    width: 33.33333%;
-  }
-
-  .lg-block-grid-3 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .lg-block-grid-3 > li:nth-of-type(3n+1) {
-    clear: both;
-  }
-
-  .lg-block-grid-4 > li {
-    width: 25%;
-  }
-
-  .lg-block-grid-4 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .lg-block-grid-4 > li:nth-of-type(4n+1) {
-    clear: both;
-  }
-
-  .lg-block-grid-5 > li {
-    width: 20%;
-  }
-
-  .lg-block-grid-5 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .lg-block-grid-5 > li:nth-of-type(5n+1) {
-    clear: both;
-  }
-
-  .lg-block-grid-6 > li {
-    width: 16.66667%;
-  }
-
-  .lg-block-grid-6 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .lg-block-grid-6 > li:nth-of-type(6n+1) {
-    clear: both;
-  }
-
-  .lg-block-grid-7 > li {
-    width: 14.28571%;
-  }
-
-  .lg-block-grid-7 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .lg-block-grid-7 > li:nth-of-type(7n+1) {
-    clear: both;
-  }
-
-  .lg-block-grid-8 > li {
-    width: 12.5%;
-  }
-
-  .lg-block-grid-8 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .lg-block-grid-8 > li:nth-of-type(8n+1) {
-    clear: both;
-  }
-
-  .lg-block-grid-9 > li {
-    width: 11.11111%;
-  }
-
-  .lg-block-grid-9 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .lg-block-grid-9 > li:nth-of-type(9n+1) {
-    clear: both;
-  }
-
-  .lg-block-grid-10 > li {
-    width: 10%;
-  }
-
-  .lg-block-grid-10 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .lg-block-grid-10 > li:nth-of-type(10n+1) {
-    clear: both;
-  }
-
-  .lg-block-grid-11 > li {
-    width: 9.09091%;
-  }
-
-  .lg-block-grid-11 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .lg-block-grid-11 > li:nth-of-type(11n+1) {
-    clear: both;
-  }
-
-  .lg-block-grid-12 > li {
-    width: 8.33333%;
-  }
-
-  .lg-block-grid-12 > li:nth-of-type(n) {
-    clear: none;
-  }
-
-  .lg-block-grid-12 > li:nth-of-type(12n+1) {
-    clear: both;
-  }
+  .make-avg-grid(lg);
 }

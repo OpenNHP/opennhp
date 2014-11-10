@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+### 2014.11 W2
+
+__CSS__：
+
+- `CHANGED` #112 重命名等分网格 class，`{break-point}-block-grid-{n}` -> `.am-avg-{break-point}-{n}`;
+
 ## Amaze UI v1.0.0 （2014.10.28）
 
 ### 2014.10 W4

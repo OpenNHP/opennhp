@@ -47,7 +47,6 @@
     "fs-extra": "^0.10.0",
     "gulp": "^3.8.9",
     "gulp-amd-bundler": "0.0.20",
-    "gulp-bower": "^0.0.6",
     "gulp-concat": "latest",
     "gulp-header": "^1.0.2",
     "gulp-jsbeautifier": "0.0.3",

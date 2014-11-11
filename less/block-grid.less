@@ -7,7 +7,7 @@
 // AVG Grid mixin
 // http://lesscss.org/features/#loops-feature
 .make-avg-grid(@point: sm, @counter: @grid-columns, @i: 1) when (@i =< @counter) {
-  .@{global-ns}avg-@{point}-@{i} > li {
+  .@{ns}avg-@{point}-@{i} > li {
     width: (100% / @i);
 
     &:nth-of-type(n) {
@@ -26,12 +26,12 @@
    Component: AVG Grid
  ============================================================================ */
 
-[class*="@{global-ns}avg-"] {
+[class*="@{ns}avg-"] {
   display: block;
   padding: 0;
   margin: 0;
   list-style: none;
-  &:extend(.clearfix all);
+  .clearfix();
 
   > li {
     display: block;

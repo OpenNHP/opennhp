@@ -65,7 +65,7 @@ Average Grid，均分网格（原 Block Grid），使用 `ul` / `ol` 创建等�
 `````
 
 ```html
-<ul class="am-avg-4">
+<ul class="am-avg-sm-4">
   <li><img src="http://cn.bing.com/az/hprichv/LondonTrainStation_GettyRR_139321755_ZH-CN742316019.jpg" /></li>
   <li><img src="http://s.cn.bing.net/az/hprichbg/rb/CardinalsBerries_ZH-CN10679090179_1366x768.jpg" /></li>
   <li><img src="http://s.cn.bing.net/az/hprichbg/rb/QingdaoJiaozhou_ZH-CN10690497202_1366x768.jpg" /></li>

@@ -807,24 +807,40 @@
 }
 
 
-// Font ICON
+// Grid
+// =============================================================================
+.grid-container(@gutter: @grid-gutter,
+  @gutter-md: @grid-gutter-md, @max-width: @grid-max-width) {
+  .box-sizing(border-box);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: @gutter;
+  padding-right: @gutter;
+  width: 100%;
+  max-width: @max-width;
+  &:extend(.@{ns}cf all);
+
+  @media @medium-up {
+    padding-left: @gutter-md;
+    padding-right: @gutter-md;
+  }
+}
+
+// Font ICON mixin
 // =============================================================================
 
-/**
-  * 1. Allow margin
-  * 2. Prevent inherit font style
-  * 3. Align vertical to text
-  * 4. Correct line-height
-  * 5. Better font rendering in Webkit
-  */
-
+// 1. Allow margin
+// 2. Prevent inherit font style
+// 3. Align vertical to text
+// 4. Correct line-height
+// 5. Better font rendering in Webkit
 .am-icon-font() {
-  display: inline-block; /* 1 */
+  display: inline-block; // 1
   font-family: "FontAwesome";
-  font-weight: normal; /* 2 */
-  font-style: normal; /* 2 */
-  vertical-align: baseline; /* 3 */
-  line-height: 1; /* 4 */
-  -webkit-font-smoothing: antialiased; /* 5 */
+  font-weight: normal; // 2
+  font-style: normal; // 2
+  vertical-align: baseline; // 3
+  line-height: 1; // 4
+  -webkit-font-smoothing: antialiased; // 5
   -moz-osx-font-smoothing: grayscale;
 }

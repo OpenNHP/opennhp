@@ -9,18 +9,9 @@
 
 #### 基本容器
 
-`.am-container`，盒模型为 `border-box`，水平居中对齐，清除浮动。
+~~`.am-container`，盒模型为 `border-box`，水平居中对齐，清除浮动。~~
 
-```css
-.am-container {
-  .box-sizing(border-box);
-  margin-left: auto;
-  margin-right: auto;
-  width: 100%;
-  max-width: 1000px;
-  .clearfix();
-}
-```
+`.am-container` 放到了[网格](/css/grid?_ver=2.x)里面。
 
 #### 水平滚动
 

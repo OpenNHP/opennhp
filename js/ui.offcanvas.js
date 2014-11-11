@@ -58,7 +58,7 @@ OffCanvas.prototype.open = function(relatedElement) {
     $bar.addClass('am-offcanvas-bar-active').width();
   }, 0);
 
-  $doc.trigger('open:offcanvas:amui');
+  $doc.trigger('open.offcanvas.amui');
 
   this.active = 1;
 

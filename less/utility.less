@@ -17,18 +17,6 @@
    Component: Utility
  ============================================================================ */
 
-/* Container */
-
-.am-container {
-  .box-sizing(border-box);
-  margin-left: auto;
-  margin-right: auto;
-  width: 100%;
-  max-width: @grid-max-width;
-  .clearfix();
-  //.hook-container;
-}
-
 .am-scrollable-horizontal {
   width: 100%;
   overflow-y: hidden;
@@ -47,7 +35,7 @@
 
 /* Float blocks*/
 
-.am-cf {
+.@{ns}cf {
   .clearfix();
 }
 

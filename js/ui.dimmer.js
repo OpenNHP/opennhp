@@ -24,7 +24,7 @@ Dimmer.prototype.init = function() {
   if (!this.inited) {
     $(document.body).append(this.$element);
     this.inited = true;
-    $doc.trigger('init:dimmer:amui');
+    $doc.trigger('init.dimmer.amui');
   }
 
   return this;
@@ -44,7 +44,7 @@ Dimmer.prototype.open = function(relatedElement) {
 
   this.checkScrollbar().setScrollbar();
 
-  $element.show().trigger('open:dimmer:amui');
+  $element.show().trigger('open.dimmer.amui');
 
   setTimeout(function() {
     $element.addClass('am-active');
@@ -62,7 +62,7 @@ Dimmer.prototype.close = function(relatedElement, force) {
 
   var $element = this.$element;
 
-  $element.removeClass('am-active').trigger('close:dimmer:amui');
+  $element.removeClass('am-active').trigger('close.dimmer.amui');
 
   function complete() {
     this.resetScrollbar();

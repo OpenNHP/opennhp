@@ -72,10 +72,10 @@ $(document).off('.modal.amui');
 
 多数组件都定义了一些自定义事件。
 
-自定义事件命名的方式为 `{事件名称}:{组件名称}:amui`，用户可以查看组件文档使用这些自定义事件。
+自定义事件命名的方式为 `{事件名称}.{组件名称}.amui`，用户可以查看组件文档使用这些自定义事件。
 
 ```javascript
-$('#myAlert').on('close:alert:amui', function() {
+$('#myAlert').on('close.alert.amui', function() {
   // do something
 });
 ```

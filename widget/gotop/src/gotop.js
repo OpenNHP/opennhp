@@ -28,5 +28,6 @@ $(function() {
 });
 
 module.exports = $.AMUI.gotop = {
+  VERSION: '4.0.0',
   init: goTopInit
 };

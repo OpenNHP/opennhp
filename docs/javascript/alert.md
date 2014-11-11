@@ -118,7 +118,7 @@
 </div>
 <script>
 $(function() {
-  $(document).on('closed:alert:amui', function() {
+  $(document).on('closed.alert.amui', function() {
     console.log('警告窗口已经关闭');
   });
 });
@@ -155,18 +155,18 @@ $('.am-alert').alert()
   </thead>
   <tbody>
     <tr>
-      <td><code>close:alert:amui</code></td>
+      <td><code>close.alert.amui</code></td>
       <td><code>close</code> 方法被调用时立即触发</td>
     </tr>
     <tr>
-      <td><code>closed:alert:amui</code></td>
+      <td><code>closed.alert.amui</code></td>
       <td>元素被关闭以后触发（CSS 动画执行完成）</td>
     </tr>
   </tbody>
 </table>
 
 ```js
-$('#my-alert').on('closed:alert:amui', function() {
+$('#my-alert').on('closed.alert.amui', function() {
   alert('警告窗口已经关闭');
 });
 ```

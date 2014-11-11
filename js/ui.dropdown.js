@@ -67,14 +67,14 @@ Dropdown.prototype.open = function(e) {
     return;
   }
 
-  $element.trigger('open:dropdown:amui').addClass('am-active');
+  $element.trigger('open.dropdown.amui').addClass('am-active');
 
   $toggle.trigger('focus');
 
   this.checkDimensions();
 
   var complete = $.proxy(function() {
-    $element.trigger('opened:dropdown:amui');
+    $element.trigger('opened.dropdown.amui');
     this.active = true;
     this.animating = 0;
   }, this);
@@ -100,12 +100,12 @@ Dropdown.prototype.close = function() {
   var $element = this.$element;
   var $dropdown = this.$dropdown;
 
-  $element.trigger('close:dropdown:amui');
+  $element.trigger('close.dropdown.amui');
 
   var complete = $.proxy(function complete() {
     $element.
       removeClass('am-active').
-      trigger('closed:dropdown:amui');
+      trigger('closed.dropdown.amui');
     this.active = false;
     this.animating = 0;
     this.$toggle.blur();
@@ -213,7 +213,7 @@ $(function() {
   $('[data-am-dropdown]').dropdown();
 });
 
-$(document).on('click.dropdown.amui', '.am-dropdown form', function(e) {
+$(document).on('click.dropdown.amui.data-api', '.am-dropdown form', function(e) {
   e.stopPropagation();
 });
 

@@ -214,11 +214,11 @@ $(function() {
   </thead>
   <tbody>
   <tr>
-    <td><code>inview:scrollspy:amui</code></td>
+    <td><code>inview.scrollspy.amui</code></td>
     <td>元素进入窗口可视区域时触发</td>
   </tr>
   <tr>
-    <td><code>outview:scrollspy:amui</code></td>
+    <td><code>outview.scrollspy.amui</code></td>
     <td>元素离开窗口可视区域时触发</td>
   </tr>
   </tbody>
@@ -226,9 +226,9 @@ $(function() {
 
 <script>
   $(function() {
-    $('#my-scrollspy').on('inview:scrollspy:amui', function() {
+    $('#my-scrollspy').on('inview.scrollspy.amui', function() {
       console.log('进入视口');
-    }).on('outview:scrollspy:amui', function() {
+    }).on('outview.scrollspy.amui', function() {
       console.log('离开视口');
     });
   });
@@ -236,9 +236,9 @@ $(function() {
 
 ```javascript
 $(function() {
-  $('#my-scrollspy').on('inview:scrollspy:amui', function() {
+  $('#my-scrollspy').on('inview.scrollspy.amui', function() {
     console.log('进入视口');
-  }).on('outview:scrollspy:amui', function() {
+  }).on('outview.scrollspy.amui', function() {
     console.log('离开视口');
   });
 });

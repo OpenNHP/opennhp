@@ -216,7 +216,7 @@
       return false;
     });
 
-    $dropdown.on('open:dropdown:amui', function (e) {
+    $dropdown.on('open.dropdown.amui', function (e) {
       console.log('open event triggered');
     });
   });
@@ -245,7 +245,7 @@
       return false;
     });
 
-    $dropdown.on('open:dropdown:amui', function (e) {
+    $dropdown.on('open.dropdown.amui', function (e) {
       console.log('open event triggered');
     });
   });
@@ -292,19 +292,19 @@
   </thead>
   <tbody>
   <tr>
-    <td><code>open:dropdown:amui</code></td>
+    <td><code>open.dropdown.amui</code></td>
     <td>调用显示下拉框方法时立即触发</td>
   </tr>
   <tr>
-    <td><code>opened:dropdown:amui</code></td>
+    <td><code>opened.dropdown.amui</code></td>
     <td>下拉框显示完成时触发</td>
   </tr>
   <tr>
-    <td><code>close:dropdown:amui</code></td>
+    <td><code>close.dropdown.amui</code></td>
     <td>调用隐藏方法时触发</td>
   </tr>
   <tr>
-    <td><code>closed:dropdown:amui</code></td>
+    <td><code>closed.dropdown.amui</code></td>
     <td>下拉框关闭完成时触发</td>
   </tr>
   </tbody>
@@ -312,7 +312,7 @@
 
 ```js
 $(function() {
-  $dropdown.on('open:dropdown:amui', function (e) {
+  $dropdown.on('open.dropdown.amui', function (e) {
     console.log('open event triggered');
   });
 });

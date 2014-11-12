@@ -29,23 +29,23 @@
    Component: Button
  ============================================================================ */
 
-// Core styles
-
-.am-btn {
+// Button base styles
+.@{ns}btn {
   display: inline-block;
   margin-bottom: 0; // for input.am-btn
-  font-weight: @btn-font-weight;
-  text-align: center;
+  padding: 0.625em 1em; // relative font size
   vertical-align: middle;
-  cursor: pointer;
+  font-size: @btn-font-size;
+  font-weight: @btn-font-weight;
+  line-height: @btn-line-height;
+  text-align: center;
+  white-space: nowrap;
   background-image: none;
   border: 1px solid transparent;
-  white-space: nowrap;
-  padding: 0.625em 1em; // relative font size
-  border-radius: @global-border-radius;
-  line-height: @btn-line-height;
-  font-size: @btn-font-size;
+  border-radius: @global-radius;
+  cursor: pointer;
   outline: 0;
+  -webkit-appearance: none;
   .user-select(none);
   .transition(e("background-color 300ms ease-out, border-color 300ms ease-out"));
   .hook-btn;
@@ -63,13 +63,13 @@
   }
 
   &:active,
-  &.am-active {
+  &.@{ns}active {
     background-image: none;
     .box-shadow(inset 0 1px 8px rgba(0, 0, 0, .125));
     .hook-btn-active;
   }
 
-  &.am-disabled,
+  &.@{ns}disabled,
   &[disabled],
   fieldset[disabled] & {
     // https://developer.mozilla.org/en-US/docs/Web/CSS/pointer-events
@@ -81,46 +81,45 @@
     .hook-btn-disable;
   }
 
-  &.am-round {
+  &.@{ns}round {
     border-radius: @global-rounded;
   }
 
-  &.am-square {
-    border-radius: @global-square;
+  &.@{ns}radius {
+    border-radius: @radius-normal;
   }
-
 }
 
 
 // Modifiers
 // =============================================================================
 
-.am-btn-default {
+.@{ns}btn-default {
   .button-variant(@btn-default-color; @btn-default-bg; @btn-default-border);
   .hook-btn-default;
 }
 
-.am-btn-primary {
+.@{ns}btn-primary {
   .button-variant(@btn-primary-color; @btn-primary-bg; @btn-primary-border);
   .hook-btn-primary;
 }
 
-.am-btn-warning {
+.@{ns}btn-warning {
   .button-variant(@btn-warning-color; @btn-warning-bg; @btn-warning-border);
   .hook-btn-warning;
 }
 
-.am-btn-danger {
+.@{ns}btn-danger {
   .button-variant(@btn-danger-color; @btn-danger-bg; @btn-danger-border);
   .hook-btn-danger;
 }
 
-.am-btn-success {
+.@{ns}btn-success {
   .button-variant(@btn-success-color; @btn-success-bg; @btn-success-border);
   .hook-btn-success;
 }
 
-.am-btn-secondary {
+.@{ns}btn-secondary {
   .button-variant(@btn-secondary-color; @btn-secondary-bg; @btn-secondary-border);
   .hook-btn-secondary;
 }
@@ -128,7 +127,7 @@
 
 /* Style links like a button */
 
-.am-btn-link {
+.@{ns}btn-link {
   color: @link-color;
   font-weight: normal;
   cursor: pointer;
@@ -169,25 +168,30 @@
 
 /* button size */
 
-.am-btn-lg {
-  .button-size(@btn-lg-font-size);
-  .hook-btn-lg;
+.@{ns}btn-xs {
+  .button-size(@btn-xs-font-size);
+  .hook-btn-xs;
 }
 
-.am-btn-sm {
+.@{ns}btn-sm {
   .button-size(@btn-sm-font-size);
   .hook-btn-sm;
 }
 
-.am-btn-xs {
-  .button-size(@btn-xs-font-size);
-  .hook-btn-xs;
+.@{ns}btn-lg {
+  .button-size(@btn-lg-font-size);
+  .hook-btn-lg;
+}
+
+.@{ns}btn-xl {
+  .button-size(@btn-xl-font-size);
+  .hook-btn-xl;
 }
 
 
 /* Block button  */
 
-.am-btn-block {
+.@{ns}btn-block {
   display: block;
   width: 100%;
   padding-left: 0;
@@ -197,7 +201,7 @@
 
 /* Multiple block buttons vertically space */
 
-.am-btn-block + .am-btn-block {
+.@{ns}btn-block + .@{ns}btn-block {
   margin-top: 5px;
 }
 
@@ -207,7 +211,7 @@
 input[type="submit"],
 input[type="reset"],
 input[type="button"] {
-  &.am-btn-block {
+  &.@{ns}btn-block {
     width: 100%;
   }
 }
@@ -215,8 +219,8 @@ input[type="button"] {
 
 /* Button with loading spinner */
 
-.am-btn.am-btn-loading {
-  .am-icon-spin {
+.@{ns}btn.@{ns}btn-loading {
+  .@{ns}icon-spin {
     margin-right: 5px;
   }
 }
@@ -224,7 +228,6 @@ input[type="button"] {
 
 // Hooks
 // =============================================================================
-
 
 .hook-btn() {}
 .hook-btn-hover() {}
@@ -238,6 +241,7 @@ input[type="button"] {
 .hook-btn-success() {}
 .hook-btn-secondary() {}
 
-.hook-btn-lg() {}
-.hook-btn-sm() {}
 .hook-btn-xs() {}
+.hook-btn-sm() {}
+.hook-btn-xl() {}
+.hook-btn-lg() {}

@@ -138,20 +138,20 @@ th {
 .am-table-bdrs {
   border: none;
   .box-shadow(0 0 1px @gray-light);
-  border-radius: @global-border-radius;
+  border-radius: @global-radius;
   .hook-table-bdrs;
 
   > thead {
     > tr:first-child {
       > th:first-child,
       > td:first-child {
-        border-top-left-radius: @global-border-radius;
+        border-top-left-radius: @global-radius;
         border-left: none;
       }
 
       > th:last-child,
       > td:last-child {
-        border-top-right-radius: @global-border-radius;
+        border-top-right-radius: @global-radius;
         border-right: none;
       }
     }
@@ -178,12 +178,12 @@ th {
 
       > th:first-child,
       > td:first-child {
-        border-bottom-left-radius: @global-border-radius;
+        border-bottom-left-radius: @global-radius;
       }
 
       > th:last-child,
       > td:last-child {
-        border-bottom-right-radius: @global-border-radius;
+        border-bottom-right-radius: @global-radius;
       }
     }
   }

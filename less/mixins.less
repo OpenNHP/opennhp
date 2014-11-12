@@ -692,35 +692,35 @@
   &:hover,
   &:focus,
   &:active,
-  &.am-active,
-  .am-active .am-dropdown-toggle& {
+  &.@{ns}active,
+  .@{ns}active .@{ns}dropdown-toggle& {
     color: @color;
     background-color: darken(@background, 12%);
     border-color: darken(@border, 12%);
   }
 
   &:active,
-  &.am-btn-active,
-  .am-active .am-dropdown-toggle& {
+  &.@{ns}btn-active,
+  .@{ns}active .@{ns}dropdown-toggle& {
     background-image: none;
   }
 
-  &.am-disabled,
+  &.@{ns}disabled,
   &[disabled],
   fieldset[disabled] & {
     &,
     &:hover,
     &:focus,
     &:active,
-    &.am-btn-active {
+    &.@{ns}btn-active {
       background-color: @background;
       border-color: @border;
     }
   }
 
-  // for `.am-btn-group`
-  .am-btn-group &,
-  .am-btn-group-stacked & {
+  // for `.@{ns}btn-group`
+  .@{ns}btn-group &,
+  .@{ns}btn-group-stacked & {
     border-color: darken(@background, 5%);
   }
 }
@@ -742,7 +742,7 @@
 
 .form-field-validation(@text-color: #555; @border-color: #ccc) {
   // the label and help text color
-  .am-form-help,
+  .@{ns}form-help,
   .am-form-label,
   .am-radio,
   .am-checkbox,

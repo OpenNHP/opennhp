@@ -32,7 +32,7 @@ Collapse.prototype.open = function() {
     return;
   }
 
-  var startEvent = $.Event('open:collapse:amui');
+  var startEvent = $.Event('open.collapse.amui');
   this.$element.trigger(startEvent);
 
   if (startEvent.isDefaultPrevented()) {
@@ -65,7 +65,7 @@ Collapse.prototype.open = function() {
       .addClass('am-collapse am-in').height('');
     this.transitioning = 0;
     this.$element
-      .trigger('opened:collapse:amui');
+      .trigger('opened.collapse.amui');
   };
 
   if (!UI.support.transition) {
@@ -82,7 +82,7 @@ Collapse.prototype.close = function() {
     return;
   }
 
-  var startEvent = $.Event('close:collapse:amui');
+  var startEvent = $.Event('close.collapse.amui');
   this.$element.trigger(startEvent);
 
   if (startEvent.isDefaultPrevented()) {
@@ -102,7 +102,7 @@ Collapse.prototype.close = function() {
   var complete = function() {
     this.transitioning = 0;
     this.$element
-      .trigger('closed:collapse:amui')
+      .trigger('closed.collapse.amui')
       .removeClass('am-collapsing')
       .addClass('am-collapse');
   };
@@ -144,7 +144,7 @@ function Plugin(option) {
 $.fn.collapse = Plugin;
 
 // Init code
-$(document).on('click.collapse.amui', '[data-am-collapse]', function(e) {
+$(document).on('click.collapse.amui.data-api', '[data-am-collapse]', function(e) {
   var href;
   var $this = $(this);
   var options = UI.utils.options($this.attr('data-am-collapse'));

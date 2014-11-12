@@ -236,20 +236,20 @@ $('#myCollapse').collapse({
   </thead>
   <tbody>
   <tr>
-    <td><code>open:collapse:amui</code></td>
+    <td><code>open.collapse.amui</code></td>
     <td><code>open</code> 方法被调用时立即触发</td>
   </tr>
   <tr>
-    <td><code>opened:collapse:amui</code></td>
+    <td><code>opened.collapse.amui</code></td>
     <td>元素完全展开后触发</td>
   </tr>
   <tr>
-    <td><code>close:collapse:amui</code></td>
+    <td><code>close.collapse.amui</code></td>
     <td><code>close</code> 方法被调用后立即触发
     </td>
   </tr>
   <tr>
-    <td><code>closed:collapse:amui</code></td>
+    <td><code>closed.collapse.amui</code></td>
     <td>元素折叠完成后触发</td>
   </tr>
   </tbody>

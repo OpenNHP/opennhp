@@ -182,7 +182,7 @@
 
     $myTabs.tabs();
 
-    $myTabs.find('a').on('opened:tabs:amui', function(e) {
+    $myTabs.find('a').on('opened.tabs.amui', function(e) {
       console.log('[%s] 选项卡打开了', $(this).text());
     })
   })
@@ -228,18 +228,18 @@ $('#someTabs').tabs({noSwipe: 1});
   </thead>
   <tbody>
   <tr>
-    <td><code>open:tabs:amui</code></td>
+    <td><code>open.tabs.amui</code></td>
     <td>打开一个选项卡时立即触发</td>
   </tr>
   <tr>
-    <td><code>opened:tabs:amui</code></td>
+    <td><code>opened.tabs.amui</code></td>
     <td>选项卡打开完成时触发（CSS 动画执行完成）</td>
   </tr>
   </tbody>
 </table>
 
 ```javascript
-$('#doc-my-tabs').find('a').on('opened:tabs:amui', function(e) {
+$('#doc-my-tabs').find('a').on('opened.tabs.amui', function(e) {
   console.log('[%s] 选项卡打开了', $(this).text());
 })
 ```

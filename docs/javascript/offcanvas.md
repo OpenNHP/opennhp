@@ -210,11 +210,11 @@ $('#my-offcanvas').offCanvas({effect: 'push'});
   </thead>
   <tbody>
   <tr>
-    <td><code>open:offcanvas:amui</code></td>
+    <td><code>open.offcanvas.amui</code></td>
     <td>打开边栏时立即触发</td>
   </tr>
   <tr>
-    <td><code>close:offcanvas:amui</code></td>
+    <td><code>close.offcanvas.amui</code></td>
     <td>关闭边栏时立即触发</td>
   </tr>
   </tbody>

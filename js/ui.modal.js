@@ -72,7 +72,7 @@ Modal.prototype.open = function(relatedElement) {
 
   this.active = true;
 
-  $element.trigger($.Event('open:modal:amui',
+  $element.trigger($.Event('open.modal.amui',
     {relatedElement: relatedElement}));
 
   dimmer.open($element);
@@ -90,7 +90,7 @@ Modal.prototype.open = function(relatedElement) {
   this.transitioning = 1;
 
   var complete = function() {
-    $element.trigger($.Event('opened:modal:amui',
+    $element.trigger($.Event('opened.modal.amui',
       {relatedElement: relatedElement}));
     this.transitioning = 0;
   };
@@ -121,13 +121,13 @@ Modal.prototype.close = function(relatedElement) {
     dimmer.close($element, true);
   }
 
-  this.$element.trigger($.Event('close:modal:amui',
+  this.$element.trigger($.Event('close.modal.amui',
     {relatedElement: relatedElement}));
 
   this.transitioning = 1;
 
   var complete = function() {
-    $element.trigger('closed:modal:amui');
+    $element.trigger('closed.modal.amui');
     isPopup && $element.removeClass(options.className.out);
     $element.hide();
     this.transitioning = 0;
@@ -210,7 +210,7 @@ function Plugin(option, relatedElement) {
 
 $.fn.modal = Plugin;
 
-$doc.on('click', '[data-am-modal]', function() {
+$doc.on('click.modal.amui.data-api', '[data-am-modal]', function() {
   var $this = $(this);
   var options = UI.utils.parseOptions($this.attr('data-am-modal'));
   var $target = $(options.target ||

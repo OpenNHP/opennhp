@@ -48,14 +48,14 @@ Popover.prototype.init = function() {
     me.sizePopover();
   }
 
-  $(window).on('resize:popover:amui', UI.utils.debounce(sizePopover, 50));
+  $(window).on('resize.popover.amui', UI.utils.debounce(sizePopover, 50));
 
-  $element.on('open:popover:amui', function() {
-    $(window).on('resize:popover:amui', UI.utils.debounce(sizePopover, 50));
+  $element.on('open.popover.amui', function() {
+    $(window).on('resize.popover.amui', UI.utils.debounce(sizePopover, 50));
   });
 
-  $element.on('close:popover:amui', function() {
-    $(window).off('resize:popover:amui', sizePopover);
+  $element.on('close.popover.amui', function() {
+    $(window).off('resize.popover.amui', sizePopover);
   });
 
   this.options.open && this.open();
@@ -161,7 +161,7 @@ Popover.prototype.toggle = function() {
 Popover.prototype.open = function() {
   var $popover = this.$popover;
 
-  this.$element.trigger('open:popover:amui');
+  this.$element.trigger('open.popover.amui');
   this.sizePopover();
   $popover.show().addClass('am-active');
   this.active = true;
@@ -170,11 +170,11 @@ Popover.prototype.open = function() {
 Popover.prototype.close = function() {
   var $popover = this.$popover;
 
-  this.$element.trigger('close:popover:amui');
+  this.$element.trigger('close.popover.amui');
 
   $popover
     .removeClass('am-active')
-    .trigger('closed:popover:amui')
+    .trigger('closed.popover.amui')
     .hide();
   this.active = false;
 };

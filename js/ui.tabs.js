@@ -107,7 +107,7 @@ Tabs.prototype.open = function($nav) {
   var $target = regexHash.test(href) && this.$content.find(href) ||
     this.$tabPanels.eq($navs.index($nav));
   var previous = $tabNav.find('.am-active a')[0];
-  var e = $.Event('open:tabs:amui', {
+  var e = $.Event('open.tabs.amui', {
     relatedTarget: previous
   });
 
@@ -123,7 +123,7 @@ Tabs.prototype.open = function($nav) {
   // activate Tab content
   this.activate($target, $tabContent, function() {
     $nav.trigger({
-      type: 'opened:tabs:amui',
+      type: 'opened.tabs.amui',
       relatedTarget: previous
     });
   });

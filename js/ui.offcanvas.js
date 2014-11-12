@@ -58,12 +58,12 @@ OffCanvas.prototype.open = function(relatedElement) {
     $bar.addClass('am-offcanvas-bar-active').width();
   }, 0);
 
-  $doc.trigger('open:offcanvas:amui');
+  $doc.trigger('open.offcanvas.amui');
 
   this.active = 1;
 
   $element.off('.offcanvas.amui').
-    on('click.offcanvas.amui swipe.offcanvas.amui', $.proxy(function(e) {
+    on('click.offcanvas.amui', $.proxy(function(e) {
       var $target = $(e.target);
 
       if (!e.type.match(/swipe/)) {
@@ -100,7 +100,7 @@ OffCanvas.prototype.close = function(relatedElement) {
     return;
   }
 
-  $doc.trigger('close:offcanvas:amui');
+  $doc.trigger('close.offcanvas.amui');
 
   function complete() {
     $body.removeClass('am-offcanvas-page').
@@ -109,7 +109,7 @@ OffCanvas.prototype.close = function(relatedElement) {
     $bar.removeClass('am-offcanvas-bar-active');
     $html.css('margin-top', '');
     window.scrollTo(scrollPos.x, scrollPos.y);
-    $doc.trigger('closed:offcanvas:amui');
+    $doc.trigger('closed.offcanvas.amui');
     me.active = 0;
   }
 
@@ -165,7 +165,7 @@ function Plugin(option, relatedElement) {
 $.fn.offCanvas = Plugin;
 
 // Init code
-$doc.on('click.offcanvas.amui', '[data-am-offcanvas]', function(e) {
+$doc.on('click.offcanvas.amui.data-api', '[data-am-offcanvas]', function(e) {
   e.preventDefault();
   var $this = $(this);
   var options = UI.utils.parseOptions($this.data('amOffcanvas'));

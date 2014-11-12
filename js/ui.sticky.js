@@ -147,7 +147,7 @@ Sticky.prototype.checkPosition = function() {
   var offsetBottom = options.bottom;
   var $element = this.$element;
   var animation = (options.animation) ?
-  ' am-animation-' + options.animation : '';
+        ' am-animation-' + options.animation : '';
   var className = [options.className.sticky, animation].join(' ');
 
   if (typeof offsetBottom == 'function') {

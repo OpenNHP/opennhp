@@ -165,7 +165,9 @@ var preparingData = function() {
     var basename = path.basename(js, '.js');
     modules.push(basename);
 
-    initAll += 'require(\'./' + basename + '\');\n';
+    if (basename !== 'amazeui') {
+      initAll += 'require(\'./' + basename + '\');\n';
+    }
 
     if (jsWidgets.indexOf(js) > -1) {
       modulesWidgets.push(basename);

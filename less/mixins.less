@@ -4,7 +4,6 @@
 //
 // =============================================================================
 
-
 // =============================================================================
 // Utilities
 // =============================================================================
@@ -42,7 +41,6 @@
   margin-right: auto;
 }
 
-
 // Sizing shortcuts
 // -----------------------------------------------------------------------------
 
@@ -55,30 +53,39 @@
   .size(@size; @size);
 }
 
-
 // Placeholder text
 // -----------------------------------------------------------------------------
 
 .placeholder(@color: @input-color-placeholder) {
-  &:-moz-placeholder            { color: @color; } // Firefox 4-18
-  &::-moz-placeholder           { color: @color; } // Firefox 19+
-  &:-ms-input-placeholder       { color: @color; } // Internet Explorer 10+
-  &::-webkit-input-placeholder  { color: @color; } // Safari and Chrome
+  &:-moz-placeholder {
+    color: @color;
+  }
+  // Firefox 4-18
+  &::-moz-placeholder {
+    color: @color;
+  }
+  // Firefox 19+
+  &:-ms-input-placeholder {
+    color: @color;
+  }
+  // Internet Explorer 10+
+  &::-webkit-input-placeholder {
+    color: @color;
+  }
+  // Safari and Chrome
 }
-
 
 // Text overflow
 // Requires inline-block or block for proper styling
 // -----------------------------------------------------------------------------
 
-.text-overflow(@display: block;){
+.text-overflow(@display: block;) {
   display: @display;
   word-wrap: normal; /* for IE */
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
 }
-
 
 // CSS image replacement
 // via: https://github.com/h5bp/html5-boilerplate/commit/aa0396eae757
@@ -91,7 +98,6 @@
   background-color: transparent;
   border: 0;
 }
-
 
 // Line clamp
 // http://dropshado.ws/post/1015351370/webkit-line-clamp
@@ -106,7 +112,6 @@
   line-height: @line-height;
   max-height: @line-height * @lines;
 }
-
 
 // =============================================================================
 // CSS3 PROPERTIES
@@ -135,7 +140,6 @@
   border-top-left-radius: @radius;
 }
 
-
 // Drop shadows
 // -----------------------------------------------------------------------------
 
@@ -143,7 +147,6 @@
   -webkit-box-shadow: @shadow; // iOS <4.3 & Android <4.1 & bb7.0
   box-shadow: @shadow;
 }
-
 
 // Transitions
 // -----------------------------------------------------------------------------
@@ -174,7 +177,6 @@
   -o-transition: -o-transform @transition;
   transition: transform @transition;
 }
-
 
 // Transformations
 // -----------------------------------------------------------------------------
@@ -245,7 +247,6 @@
   transform-origin: @origin;
 }
 
-
 // Animations
 // -----------------------------------------------------------------------------
 
@@ -254,18 +255,16 @@
   animation: @animation;
 }
 
-
 // Backface visibility
 // Prevent browsers from flickering when using CSS 3D transforms.
 // Default value is `visible`, but can be changed to `hidden`
 // -----------------------------------------------------------------------------
 
-.backface-visibility(@visibility){
+.backface-visibility(@visibility) {
   -webkit-backface-visibility: @visibility;
   -moz-backface-visibility: @visibility;
   backface-visibility: @visibility;
 }
-
 
 // Box sizing
 // -----------------------------------------------------------------------------
@@ -275,7 +274,6 @@
   -moz-box-sizing: @boxmodel;
   box-sizing: @boxmodel;
 }
-
 
 // User select
 // For selecting text on the page
@@ -290,7 +288,6 @@
   user-select: @select;
 }
 
-
 // Resize anything
 // -----------------------------------------------------------------------------
 
@@ -298,7 +295,6 @@
   resize: @direction; // Options: horizontal, vertical, both
   overflow: auto; // Safari fix
 }
-
 
 // CSS3 Content Columns
 // -----------------------------------------------------------------------------
@@ -312,7 +308,6 @@
   column-gap: @column-gap;
 }
 
-
 // Optional hyphenation
 // -----------------------------------------------------------------------------
 
@@ -325,14 +320,12 @@
   hyphens: @mode;
 }
 
-
 // Opacity
 // -----------------------------------------------------------------------------
 
 .opacity(@opacity) {
   opacity: @opacity;
 }
-
 
 // GRADIENTS
 // -----------------------------------------------------------------------------
@@ -346,9 +339,9 @@
     background-image: -webkit-gradient(linear, @start-percent top, @end-percent top, from(@start-color), to(@end-color)); // Safari 4+, Chrome 2+
     background-image: -webkit-linear-gradient(left, color-stop(@start-color @start-percent), color-stop(@end-color @end-percent)); // Safari 5.1+, Chrome 10+
     background-image: -moz-linear-gradient(left, @start-color @start-percent, @end-color @end-percent); // FF 3.6+
-    background-image:  linear-gradient(to right, @start-color @start-percent, @end-color @end-percent); // Standard, IE10
+    background-image: linear-gradient(to right, @start-color @start-percent, @end-color @end-percent); // Standard, IE10
     background-repeat: repeat-x;
-    filter: e(%("progid:DXImageTransform.Microsoft.gradient(startColorstr='%d', endColorstr='%d', GradientType=1)",argb(@start-color),argb(@end-color))); // IE9 and down
+    filter: e(%("progid:DXImageTransform.Microsoft.gradient(startColorstr='%d', endColorstr='%d', GradientType=1)",argb(@start-color), argb(@end-color))); // IE9 and down
   }
 
   // Vertical gradient, from top to bottom
@@ -358,10 +351,10 @@
   .vertical(@start-color: #555; @end-color: #333; @start-percent: 0%; @end-percent: 100%) {
     background-image: -webkit-gradient(linear, left @start-percent, left @end-percent, from(@start-color), to(@end-color)); // Safari 4+, Chrome 2+
     background-image: -webkit-linear-gradient(top, @start-color @start-percent, @end-color @end-percent); // Safari 5.1+, Chrome 10+
-    background-image:  -moz-linear-gradient(top, @start-color @start-percent, @end-color @end-percent); // FF 3.6+
+    background-image: -moz-linear-gradient(top, @start-color @start-percent, @end-color @end-percent); // FF 3.6+
     background-image: linear-gradient(to bottom, @start-color @start-percent, @end-color @end-percent); // Standard, IE10
     background-repeat: repeat-x;
-    filter: e(%("progid:DXImageTransform.Microsoft.gradient(startColorstr='%d', endColorstr='%d', GradientType=0)",argb(@start-color),argb(@end-color))); // IE9 and down
+    filter: e(%("progid:DXImageTransform.Microsoft.gradient(startColorstr='%d', endColorstr='%d', GradientType=0)",argb(@start-color), argb(@end-color))); // IE9 and down
   }
 
   .directional(@start-color: #555; @end-color: #333; @deg: 45deg) {
@@ -377,7 +370,7 @@
     background-image: -moz-linear-gradient(left, @start-color, @mid-color @color-stop, @end-color);
     background-image: linear-gradient(to right, @start-color, @mid-color @color-stop, @end-color);
     background-repeat: no-repeat;
-    filter: e(%("progid:DXImageTransform.Microsoft.gradient(startColorstr='%d', endColorstr='%d', GradientType=1)",argb(@start-color),argb(@end-color))); // IE9 and down, gets no color-stop at all for proper fallback
+    filter: e(%("progid:DXImageTransform.Microsoft.gradient(startColorstr='%d', endColorstr='%d', GradientType=1)",argb(@start-color), argb(@end-color))); // IE9 and down, gets no color-stop at all for proper fallback
   }
 
   .vertical-3c(@start-color: #00b3ee; @mid-color: #7a43b6; @color-stop: 50%; @end-color: #c3325f) {
@@ -386,7 +379,7 @@
     background-image: -moz-linear-gradient(top, @start-color, @mid-color @color-stop, @end-color);
     background-image: linear-gradient(@start-color, @mid-color @color-stop, @end-color);
     background-repeat: no-repeat;
-    filter: e(%("progid:DXImageTransform.Microsoft.gradient(startColorstr='%d', endColorstr='%d', GradientType=0)",argb(@start-color),argb(@end-color))); // IE9 and down, gets no color-stop at all for proper fallback
+    filter: e(%("progid:DXImageTransform.Microsoft.gradient(startColorstr='%d', endColorstr='%d', GradientType=0)",argb(@start-color), argb(@end-color))); // IE9 and down, gets no color-stop at all for proper fallback
   }
 
   //放射状
@@ -406,7 +399,6 @@
   }
 }
 
-
 // Reset filters for IE
 //
 // When you need to remove a gradient background, do not forget to use this to
@@ -417,7 +409,6 @@
   filter: e(%("progid:DXImageTransform.Microsoft.gradient(enabled = false)"));
 }
 
-
 // =============================================================================
 // Flexbox LESS mixins
 // =============================================================================
@@ -427,13 +418,13 @@
 //      https://github.com/mastastealth/sass-flex-mixin/blob/master/flex.scss
 //      http://codepen.io/adamjohnson/pen/savzI
 //      http://css-tricks.com/old-flexbox-and-new-flexbox/
+//      http://html5please.com/#flexbox
 //
 // NOTE: NEED CODE REVIEW
 // -----------------------------------------------------------------------------
 
 // Flexbox display
-// flex or inline-flex
-
+// flex | inline-flex
 .flexbox(@display: flex) {
   display: -webkit-box; // Old syntax
   display: ~"-webkit-@{display}";
@@ -444,6 +435,9 @@
 }
 
 // The 'flex' shorthand
+// This shorthand for `flex-grow`, `flex-shrink` and `flex-basis` combined.
+// The second and third parameters (flex-shrink and flex-basis) are optional.
+// Default is 0 1 auto.
 // - applies to: flex items
 // <positive-number>, initial, auto, or none
 .flex(@columns: 1) {
@@ -475,13 +469,44 @@
 }
 
 // Flex Direction and Wrap
+// The shorthand for `flex-direction` and `flex-wrap`
 // - applies to: flex containers
 // <flex-direction> || <flex-wrap>
-.flex-flow(@flow) {
+.flex-flow(@flow: ~"row nowrap") {
   -webkit-flex-flow: @flow;
   -moz-flex-flow: @flow;
   -ms-flex-flow: @flow;
   flex-flow: @flow;
+}
+
+// Axis Alignment
+// - applies to: flex containers
+// flex-start | flex-end | center | space-between | space-around
+.justify-content(@justify: flex-start) {
+  -webkit-justify-content: @justify;
+  -moz-justify-content: @justify;
+  -ms-justify-content: @justify;
+  justify-content: @justify;
+}
+
+// Packing Flex Lines
+// - applies to: multi-line flex containers
+// flex-start | flex-end | center | space-between | space-around | stretch
+.align-content(@align: stretch) {
+  -webkit-align-content: @align;
+  -moz-align-content: @align;
+  -ms-align-content: @align;
+  align-content: @align;
+}
+
+// Cross-axis Alignment
+// - applies to: flex containers
+// flex-start | flex-end | center | baseline | stretch
+.align-items(@align: stretch) {
+  -webkit-align-items: @align;
+  -moz-align-items: @align;
+  -ms-align-items: @align;
+  align-items: @align;
 }
 
 // Display Order
@@ -525,36 +550,6 @@
   flex-basis: @width;
 }
 
-// Axis Alignment
-// - applies to: flex containers
-// flex-start | flex-end | center | space-between | space-around
-.justify-content(@justify: flex-start) {
-  -webkit-justify-content: @justify;
-  -moz-justify-content: @justify;
-  -ms-justify-content: @justify;
-  justify-content: @justify;
-}
-
-// Packing Flex Lines
-// - applies to: multi-line flex containers
-// flex-start | flex-end | center | space-between | space-around | stretch
-.align-content(@align: stretch) {
-  -webkit-align-content: @align;
-  -moz-align-content: @align;
-  -ms-align-content: @align;
-  align-content: @align;
-}
-
-// Cross-axis Alignment
-// - applies to: flex containers
-// flex-start | flex-end | center | baseline | stretch
-.align-items(@align: stretch) {
-  -webkit-align-items: @align;
-  -moz-align-items: @align;
-  -ms-align-items: @align;
-  align-items: @align;
-}
-
 // Cross-axis Alignment
 // - applies to: flex items
 // auto | flex-start | flex-end | center | baseline | stretch
@@ -574,18 +569,11 @@
 .retina-bg-img(@file-1x; @file-2x; @width-1x; @height-1x) {
   background-image: url("@{file-1x}");
 
-  @media
-  only screen and (-webkit-min-device-pixel-ratio: 2),
-  only screen and (   min--moz-device-pixel-ratio: 2),
-  only screen and (     -o-min-device-pixel-ratio: 2/1),
-  only screen and (        min-device-pixel-ratio: 2),
-  only screen and (                min-resolution: 192dpi),
-  only screen and (                min-resolution: 2dppx) {
+  @media only screen and (-webkit-min-device-pixel-ratio: 2), only screen and (   min--moz-device-pixel-ratio: 2), only screen and (     -o-min-device-pixel-ratio: 2/1), only screen and (        min-device-pixel-ratio: 2), only screen and (                min-resolution: 192dpi), only screen and (                min-resolution: 2dppx) {
     background-image: url("@{file-2x}");
     background-size: @width-1x @height-1x;
   }
 }
-
 
 // Scrollable
 // -----------------------------------------------------------------------------
@@ -596,7 +584,6 @@
   -webkit-overflow-scrolling: touch;
 }
 
-
 // Responsive image
 // Keep images from scaling beyond the width of their parents.
 // -----------------------------------------------------------------------------
@@ -606,7 +593,6 @@
   max-width: 100%; // Part 1: Set a maximum relative to the parent
   height: auto; // Part 2: Scale the height according to the width, otherwise you get stretching
 }
-
 
 // =============================================================================
 // Caret
@@ -621,13 +607,12 @@
   width: 0;
   height: 0;
   vertical-align: middle;
-  border-top:   @size solid @color;
+  border-top: @size solid @color;
   border-right: @size solid transparent;
-  border-left:  @size solid transparent;
+  border-left: @size solid transparent;
   border-bottom: 0 dotted;
   .rotate(360deg);
 }
-
 
 // Caret - up
 // -----------------------------------------------------------------------------
@@ -639,11 +624,10 @@
   vertical-align: middle;
   border-bottom: @size solid @color;
   border-right: @size solid transparent;
-  border-left:  @size solid transparent;
+  border-left: @size solid transparent;
   border-top: 0 dotted;
   .rotate(360deg);
 }
-
 
 // Caret - down
 // -----------------------------------------------------------------------------
@@ -655,11 +639,10 @@
   vertical-align: middle;
   border-right: @size solid @color;
   border-top: @size solid transparent;
-  border-bottom:  @size solid transparent;
+  border-bottom: @size solid transparent;
   border-left: 0 dotted;
   .rotate(360deg);
 }
-
 
 // Caret - down
 // -----------------------------------------------------------------------------
@@ -671,11 +654,10 @@
   vertical-align: middle;
   border-left: @size solid @color;
   border-top: @size solid transparent;
-  border-bottom:  @size solid transparent;
+  border-bottom: @size solid transparent;
   border-right: 0 dotted;
   .rotate(360deg);
 }
-
 
 // CSS Arrow Mixin
 // -----------------------------------------------------------------------------
@@ -695,11 +677,9 @@
   .rotate(@deg);
 }
 
-
 // =============================================================================
 // COMPONENT MIXINS
 // =============================================================================
-
 
 // Button variants
 // =============================================================================
@@ -745,7 +725,6 @@
   }
 }
 
-
 // Button size
 // -----------------------------------------------------------------------------
 
@@ -754,7 +733,6 @@
   // line-height: ensure proper height of button next to small input
   // line-height: @line-height;
 }
-
 
 // Form
 // =============================================================================
@@ -769,18 +747,18 @@
   .am-radio,
   .am-checkbox,
   .am-radio-inline,
-  .am-checkbox-inline  {
+  .am-checkbox-inline {
     color: @text-color;
   }
 
-  .am-form-field  {
-    border-color: @border-color!important;
-    .box-shadow(inset 0 1px 1px rgba(0,0,0,.075));
+  .am-form-field {
+    border-color: @border-color !important;
+    .box-shadow(inset 0 1px 1px rgba(0, 0, 0, .075));
     &:focus {
       //background-color: rgba(red(@border-color), green(@border-color), blue(@border-color), .05) !important;
       background-color: @input-focus-bg;
       border-color: darken(@border-color, 10%);
-      @shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 5px lighten(@border-color, 20%) !important;
+      @shadow: inset 0 1px 1px rgba(0, 0, 0, .075), 0 0 5px lighten(@border-color, 20%) !important;
       .box-shadow(@shadow) !important;
     }
   }
@@ -790,7 +768,6 @@
     color: @text-color;
   }
 }
-
 
 // Form element focus state
 // -----------------------------------------------------------------------------
@@ -805,7 +782,6 @@
     .box-shadow(~"inset 0 1px 1px rgba(0,0,0,.075), 0 0 5px @{color-rgba}");
   }
 }
-
 
 // Grid
 // =============================================================================
@@ -843,4 +819,15 @@
   line-height: 1; // 4
   -webkit-font-smoothing: antialiased; // 5
   -moz-osx-font-smoothing: grayscale;
+}
+
+// Rem mixin
+// Not enough usable, may be we could consider SASS.
+// =============================================================================
+.x-rem(@property, @value) {
+  -: ~`(function () { return ';@{property}: @{@value/10}rem'; }())`;
+}
+
+.font-size(@size) {
+  font-size: ~"@{@size / 10}rem";
 }

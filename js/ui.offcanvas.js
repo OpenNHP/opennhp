@@ -58,11 +58,12 @@ OffCanvas.prototype.open = function(relatedElement) {
     $bar.addClass('am-offcanvas-bar-active').width();
   }, 0);
 
-  $doc.trigger('open.offcanvas.amui');
+  $element.trigger('open.offcanvas.amui');
 
   this.active = 1;
 
-  $element.off('.offcanvas.amui').
+  // Close OffCanvas when none content area clicked
+  $element.off('click.offcanvas.amui').
     on('click.offcanvas.amui', $.proxy(function(e) {
       var $target = $(e.target);
 
@@ -100,7 +101,7 @@ OffCanvas.prototype.close = function(relatedElement) {
     return;
   }
 
-  $doc.trigger('close.offcanvas.amui');
+  $element.trigger('close.offcanvas.amui');
 
   function complete() {
     $body.removeClass('am-offcanvas-page').
@@ -109,7 +110,7 @@ OffCanvas.prototype.close = function(relatedElement) {
     $bar.removeClass('am-offcanvas-bar-active');
     $html.css('margin-top', '');
     window.scrollTo(scrollPos.x, scrollPos.y);
-    $doc.trigger('closed.offcanvas.amui');
+    $element.trigger('closed.offcanvas.amui');
     me.active = 0;
   }
 
@@ -125,7 +126,7 @@ OffCanvas.prototype.close = function(relatedElement) {
     complete();
   }
 
-  $element.off('.offcanvas.amui');
+  $element.off('click.offcanvas.amui');
   $html.off('.offcanvas.amui');
 };
 
@@ -165,7 +166,7 @@ function Plugin(option, relatedElement) {
 $.fn.offCanvas = Plugin;
 
 // Init code
-$doc.on('click.offcanvas.amui.data-api', '[data-am-offcanvas]', function(e) {
+$doc.on('click.offcanvas.amui', '[data-am-offcanvas]', function(e) {
   e.preventDefault();
   var $this = $(this);
   var options = UI.utils.parseOptions($this.data('amOffcanvas'));

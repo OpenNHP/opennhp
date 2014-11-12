@@ -115,7 +115,7 @@ $.fn.smoothScroll = function(option) {
 };
 
 // Init code
-$(document).on('click.smoothScroll.amui', '[data-am-smooth-scroll]',
+$(document).on('click.smoothScroll.amui.data-api', '[data-am-smooth-scroll]',
   function(e) {
     e.preventDefault();
     var options = UI.utils.parseOptions($(this).attr('data-am-smooth-scroll'));

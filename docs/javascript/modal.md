@@ -365,7 +365,7 @@ $('#myModal').modal(options);
 自定义事件在弹窗上触发，可以监听弹窗元素来执行其他操作。
 
 ```javascript
-$('#doc-modal-1').on('open:modal:amui', function(){
+$('#doc-modal-1').on('open.modal.amui', function(){
   console.log('第一个演示弹窗打开了');
 });
 ```
@@ -381,19 +381,19 @@ $('#doc-modal-1').on('open:modal:amui', function(){
   </thead>
   <tbody>
   <tr>
-    <td><code>open:modal:amui</code></td>
+    <td><code>open.modal.amui</code></td>
     <td><code>open</code> 方法被调用是立即触发</td>
   </tr>
   <tr>
-    <td><code>opened:modal:amui</code></td>
+    <td><code>opened.modal.amui</code></td>
     <td>Modal 窗口被关闭以后触发（CSS 动画执行完成）</td>
   </tr>
   <tr>
-    <td><code>close:modal:amui</code></td>
+    <td><code>close.modal.amui</code></td>
     <td><code>close</code> 方法被调用是立即触发</td>
   </tr>
   <tr>
-    <td><code>closed:modal:amui</code></td>
+    <td><code>closed.modal.amui</code></td>
     <td>Modal 窗口被关闭以后触发（CSS 动画执行完成）</td>
   </tr>
   </tbody>

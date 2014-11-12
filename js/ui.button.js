@@ -115,7 +115,7 @@ function Plugin(option) {
 $.fn.button = Plugin;
 
 // Init code
-$(document).on('click.button.amui', '[data-am-button]', function(e) {
+$(document).on('click.button.amui.data-api', '[data-am-button]', function(e) {
   var $btn = $(e.target);
 
   if (!$btn.hasClass('am-btn')) {

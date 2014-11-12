@@ -24,9 +24,9 @@ $.AMUI.progress.done();
 如果使用 [Turbolinks] 1.3.0+ 或者类似的库，可以在自定义事件回调中调用 Progress。
 
 ~~~ js
-$(document).on('page:fetch',   function() { $.AMUI.progress.start(); });
-$(document).on('page:change',  function() { $.AMUI.progress.done(); });
-$(document).on('page:restore', function() { $.AMUI.progress.remove(); });
+$(document).on('page.fetch',   function() { $.AMUI.progress.start(); });
+$(document).on('page.change',  function() { $.AMUI.progress.done(); });
+$(document).on('page.restore', function() { $.AMUI.progress.remove(); });
 ~~~
 
 使用场景

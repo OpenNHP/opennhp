@@ -110,11 +110,11 @@ $(function() {
   </thead>
   <tbody>
   <tr>
-    <td><code>open:popover:amui</code></td>
+    <td><code>open.popover.amui</code></td>
     <td><code>open</code> 方法被调用是立即触发</td>
   </tr>
   <tr>
-    <td><code>close:popover:amui</code></td>
+    <td><code>close.popover.amui</code></td>
     <td><code>close</code> 方法被调用是立即触发</td>
   </tr>
   </tbody>

@@ -58,7 +58,7 @@ ScrollSpy.prototype.checkView = function() {
       this.offset = $element.offset();
       this.initInView = true;
 
-      $element.trigger('init:scrollspy:amui');
+      $element.trigger('init.scrollspy.amui');
     }
 
     this.timer = setTimeout(function() {
@@ -68,7 +68,7 @@ ScrollSpy.prototype.checkView = function() {
     }, options.delay);
 
     this.inViewState = true;
-    $element.trigger('inview:scrollspy:amui');
+    $element.trigger('inview.scrollspy.amui');
   }
 
   if (!inView && this.inViewState && options.repeat) {
@@ -76,7 +76,7 @@ ScrollSpy.prototype.checkView = function() {
 
     this.inViewState = false;
 
-    $element.trigger('outview:scrollspy:amui');
+    $element.trigger('outview.scrollspy.amui');
   }
 };
 

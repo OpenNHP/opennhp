@@ -225,13 +225,13 @@ Share.prototype.init = function() {
 Share.prototype.open = function() {
   !this.inited && this.init();
   this.$element && this.$element.modal('open');
-  this.$element.trigger('open:share:amui');
+  this.$element.trigger('open.share.amui');
   this.active = true;
 };
 
 Share.prototype.close = function() {
   this.$element && this.$element.modal('close');
-  this.$element.trigger('close:share:amui');
+  this.$element.trigger('close.share.amui');
   this.active = false;
 };
 
@@ -344,7 +344,7 @@ Share.prototype.wechatQr = function() {
 
 var share = new Share();
 
-$doc.on('click.share.amui', '[data-am-toggle="share"]', function(e) {
+$doc.on('click.share.amui.data-api', '[data-am-toggle="share"]', function(e) {
   e.preventDefault();
   share.toggle();
 });

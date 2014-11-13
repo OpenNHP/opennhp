@@ -24,8 +24,8 @@ Popover.DEFAULTS = {
   open: false,
   target: undefined,
   tpl: '<div class="am-popover">' +
-  '<div class="am-popover-inner"></div>' +
-  '<div class="am-popover-caret"></div></div>'
+    '<div class="am-popover-inner"></div>' +
+    '<div class="am-popover-caret"></div></div>'
 };
 
 Popover.prototype.init = function() {
@@ -48,7 +48,7 @@ Popover.prototype.init = function() {
     me.sizePopover();
   }
 
-  $(window).on('resize.popover.amui', UI.utils.debounce(sizePopover, 50));
+  // TODO: 监听页面内容变化，重新调整位置
 
   $element.on('open.popover.amui', function() {
     $(window).on('resize.popover.amui', UI.utils.debounce(sizePopover, 50));
@@ -69,15 +69,12 @@ Popover.prototype.sizePopover = function sizePopover() {
     return;
   }
 
-  var popSize = {
-    width: $popover.width(),
-    height: $popover.height()
-  };
-  var popWidth = $popover.width() || popSize.width;
-  var popHeight = $popover.height() || popSize.height;
+  var popWidth = $popover.outerWidth();
+  var popHeight = $popover.outerHeight();
   var $popCaret = $popover.find('.am-popover-caret');
-  var popCaretSize = ($popCaret.width() / 2) || 10;
-  var popTotalHeight = popHeight + popCaretSize;
+  var popCaretSize = ($popCaret.outerWidth() / 2) || 8;
+  // 取不到 $popCaret.outerHeight() 的值，所以直接加 8
+  var popTotalHeight = popHeight + 8; // $popCaret.outerHeight();
 
   var triggerWidth = $element.outerWidth();
   var triggerHeight = $element.outerHeight();
@@ -89,15 +86,16 @@ Popover.prototype.sizePopover = function sizePopover() {
   var popTop = 0;
   var popLeft = 0;
   var diff = 0;
-  var spacing = 3;
+  var spacing = 2;
   var popPosition = 'top';
 
-  $popover.css({left: '', top: ''})
-    .removeClass('am-popover-left am-popover-right am-popover-top am-popover-bottom');
+  $popover.css({left: '', top: ''}).removeClass('am-popover-left ' +
+  'am-popover-right am-popover-top am-popover-bottom');
 
   $popCaret.css({left: '', top: ''});
 
-  if (popTotalHeight - spacing < triggerRect.top + spacing) { // on Top
+  if (popTotalHeight - spacing < triggerRect.top + spacing) {
+    // Popover on the top of trigger
     popTop = triggerOffset.top - popTotalHeight - spacing;
   } else if (popTotalHeight <
     winHeight - triggerRect.top - triggerRect.height) {
@@ -172,23 +170,21 @@ Popover.prototype.close = function() {
 
   this.$element.trigger('close.popover.amui');
 
-  $popover
-    .removeClass('am-active')
-    .trigger('closed.popover.amui')
-    .hide();
+  $popover.
+    removeClass('am-active').
+    trigger('closed.popover.amui').
+    hide();
+
   this.active = false;
 };
 
 Popover.prototype.getPopover = function() {
   var uid = UI.utils.generateGUID('am-popover');
-  return $(this.options.tpl, {
-    id: uid
-  });
+  return $(this.options.tpl).attr('id', uid);
 };
 
 Popover.prototype.setContent = function() {
-  this.$popover &&
-  this.$popover.find('.am-popover-inner').empty().
+  this.$popover && this.$popover.find('.am-popover-inner').empty().
     html(this.options.content);
 };
 
@@ -200,7 +196,7 @@ Popover.prototype.events = function() {
     var trigger = triggers[i];
 
     if (trigger === 'click') {
-      this.$element.on('click.' + eventNS, $.proxy(this.toggle, this))
+      this.$element.on('click.' + eventNS, $.proxy(this.toggle, this));
     } else { // hover or focus
       var eventIn = trigger == 'hover' ? 'mouseenter' : 'focusin';
       var eventOut = trigger == 'hover' ? 'mouseleave' : 'focusout';

@@ -18,12 +18,12 @@
  ============================================================================ */
 
 
-.am-list {
+.@{ns}list {
   margin-bottom: @global-margin;
   padding-left: 0;
 
   > li {
-    .am-list-item();
+    .list-item();
   }
   .hook-list;
 }
@@ -31,12 +31,12 @@
 
 /* Pure text list */
 
-.am-list-static {
+.@{ns}list-static {
   > li {
     padding: .8rem .2rem;
   }
 
-  &.am-list-border {
+  &.@{ns}list-border {
     > li {
       padding: 1rem;
     }
@@ -47,25 +47,25 @@
 
 /* with border */
 
-.am-list-border {
+.@{ns}list-border {
   > li {
     border-width: 1px;
 
     &:first-child,
     &:first-child > a {
-      .border-top-radius(@am-list-border-radius);
+      .border-top-radius(@list-border-radius);
     }
     &:last-child,
     &:last-child > a {
       margin-bottom: 0;
-      .border-bottom-radius(@am-list-border-radius);
+      .border-bottom-radius(@list-border-radius);
     }
 
     > a {
       padding: 1rem;
       &:hover,
       &:focus {
-        background-color: @am-list-hover-bg;
+        background-color: @list-hover-bg;
       }
     }
   }
@@ -75,7 +75,7 @@
 
 /* Striped */
 
-.am-list-striped {
+.@{ns}list-striped {
   > li:nth-of-type(even) {
     background: #f5f5f5;
   }
@@ -86,51 +86,51 @@
 // Mixins
 // =============================================================================
 
-.am-list-item() {
+.list-item() {
   position: relative;
   display: block;
   margin-bottom: -1px;
-  background-color: @am-list-bg;
-  border: 1px solid @am-list-border;
+  background-color: @list-bg;
+  border: 1px solid @list-border;
   border-width: 1px 0;
 
   // linked
   > a {
-    .am-list-item-linked();
+    .list-item-linked();
   }
 
-  > .am-badge {
+  > .@{ns}badge {
     float: right;
   }
-  > .am-badge + .am-badge {
+  > .@{ns}badge + .@{ns}badge {
     margin-right: 5px;
   }
 }
 
-.am-list-item-linked() {
+.list-item-linked() {
   display: block;
   padding: 1rem 0;
-  //color: @am-list-link-color;
+  //color: @list-link-color;
 
   // Hover state
   &:hover,
   &:focus {
-    //background-color: @am-list-hover-bg;
+    //background-color: @list-hover-bg;
   }
 
-  &.am-active,
-  &.am-active:hover,
-  &.am-active:focus {
+  &.@{ns}active,
+  &.@{ns}active:hover,
+  &.@{ns}active:focus {
     z-index: 2;
-    color: @am-list-active-color;
-    background-color: @am-list-active-bg;
-    border-color: @am-list-active-border;
+    color: @list-active-color;
+    background-color: @list-active-bg;
+    border-color: @list-active-border;
 
-    .am-list-item-heading {
+    .@{ns}list-item-heading {
       color: inherit;
     }
-    .am-list-item-text {
-      color: lighten(@am-list-active-bg, 40%);
+    .@{ns}list-item-text {
+      color: lighten(@list-active-bg, 40%);
     }
   }
 }
@@ -139,11 +139,11 @@
 // Custom content
 // =============================================================================
 
-.am-list-item-hd {
+.@{ns}list-item-hd {
   margin-top: 0;
 }
 
-.am-list-item-text {
+.@{ns}list-item-text {
   //margin-top: 5px;
   //margin-bottom: 0;
   line-height: 1.4;

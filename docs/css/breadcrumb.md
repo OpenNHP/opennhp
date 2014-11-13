@@ -5,6 +5,8 @@
 
 ## 基本形式
 
+### 默认分隔符
+
 `````html
 <ol class="am-breadcrumb">
   <li><a href="#">首页</a></li>
@@ -12,12 +14,26 @@
   <li class="am-active">内容</li>
 </ol>
 `````
-
 ```html
 <ol class="am-breadcrumb">
   <li><a href="#">首页</a></li>
   <li><a href="#">分类</a></li>
   <li class="am-active">内容</li>
+</ol>
+```
+
+### 斜杆分隔符
+
+`````html
+<ol class="am-breadcrumb am-breadcrumb-slash">
+  <li><a href="#">首页</a></li>
+  <li><a href="#">分类</a></li>
+  <li class="am-active">内容</li>
+</ol>
+`````
+```html
+<ol class="am-breadcrumb am-breadcrumb-slash">
+  ...
 </ol>
 ```
 

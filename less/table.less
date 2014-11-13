@@ -4,8 +4,8 @@
 //
 // Component:                `.am-table`
 //
-// Modifiers:                `.am-table-bd`
-//                           `.am-table-bdrs`
+// Modifiers:                `.am-table-bordered`
+//                           `.am-table-radius`
 //                           `.am-table-striped`
 //                           `.am-table-hover`
 //
@@ -32,7 +32,7 @@
 
   // Hover states for `.table-hover`
   // Note: this is not available for cells or rows within `thead` or `tfoot`.
-  .table-hover > tbody > tr {
+  .@{ns}table-hover > tbody > tr {
     > td.@{state}:hover,
     > th.@{state}:hover,
     &.@{state}:hover > td,
@@ -40,6 +40,34 @@
       background-color: darken(@background, 5%);
       border-color: darken(@border, 5%);
     }
+  }
+}
+
+.table-state-variant(@state; @bg; @color) when (@color = '') {
+  > td.@{ns}@{state},
+  > th.@{ns}@{state},
+  &.@{ns}@{state} > td,
+  &.@{ns}@{state} > th {
+    background-color: @bg;
+  }
+}
+
+.table-state-variant(@state; @bg; @color) when (@bg = '') {
+  > td.@{ns}@{state},
+  > th.@{ns}@{state},
+  &.@{ns}@{state} > td,
+  &.@{ns}@{state} > th {
+    color: @color;
+  }
+}
+
+.table-state-variant(@state; @bg; @color) when not (@bg = '') and not (@color =  '') {
+  > td.@{ns}@{state},
+  > th.@{ns}@{state},
+  &.@{ns}@{state} > td,
+  &.@{ns}@{state} > th {
+    color: @color;
+    background-color: @bg;
   }
 }
 
@@ -63,7 +91,7 @@ th {
 }
 
 
-.am-table {
+.@{ns}table {
   width: 100%;
   margin-bottom: @global-margin;
   .hook-table;
@@ -110,9 +138,9 @@ th {
 
 /* Bordered version */
 
-.am-table-bd {
+.@{ns}table-bordered {
   border: 1px solid @table-border-color;
-  .hook-table-bd;
+  .hook-table-bordered;
 
   > thead,
   > tbody,
@@ -135,23 +163,23 @@ th {
 
 /* Border-radius version */
 
-.am-table-bdrs {
+.@{ns}table-radius {
   border: none;
   .box-shadow(0 0 1px @gray-light);
-  border-radius: @global-radius;
-  .hook-table-bdrs;
+  border-radius: @radius-normal;
+  .hook-table-radius;
 
   > thead {
     > tr:first-child {
       > th:first-child,
       > td:first-child {
-        border-top-left-radius: @global-radius;
+        border-top-left-radius: @radius-normal;
         border-left: none;
       }
 
       > th:last-child,
       > td:last-child {
-        border-top-right-radius: @global-radius;
+        border-top-right-radius: @radius-normal;
         border-right: none;
       }
     }
@@ -178,12 +206,12 @@ th {
 
       > th:first-child,
       > td:first-child {
-        border-bottom-left-radius: @global-radius;
+        border-bottom-left-radius: @radius-normal;
       }
 
       > th:last-child,
       > td:last-child {
-        border-bottom-right-radius: @global-radius;
+        border-bottom-right-radius: @radius-normal;
       }
     }
   }
@@ -192,7 +220,7 @@ th {
 
 /* Zebra-striping */
 
-.am-table-striped > tbody > tr:nth-child(odd) {
+.@{ns}table-striped > tbody > tr:nth-child(odd) {
   > td,
   > th {
     background-color: @table-bg-striped;
@@ -203,7 +231,7 @@ th {
 
 /* Hover effect */
 
-.am-table-hover > tbody > tr:hover {
+.@{ns}table-hover > tbody > tr:hover {
   > td,
   > th {
     background-color: @table-bg-hover;
@@ -212,18 +240,18 @@ th {
 }
 
 
-/* Active table backgrounds */
+// Modifiers: states
+// =============================================================================
 
-.am-table > thead > tr,
-.am-table > tbody > tr,
-.am-table > tfoot > tr {
-  > td.am-active,
-  > th.am-active,
-  &.am-active > td,
-  &.am-active > th  {
-    background-color: @table-bg-active;
-    .hook-table-active;
-  }
+.@{ns}table > thead > tr,
+.@{ns}table > tbody > tr,
+.@{ns}table > tfoot > tr {
+  .table-state-variant(active, @table-bg-active, '');
+  .table-state-variant(disabled; ''; @gray-light);
+  .table-state-variant(primary; @table-primary-bg; @table-primary-color);
+  .table-state-variant(success; @table-success-bg; @table-success-color);
+  .table-state-variant(warning; @table-warning-bg; @table-warning-color);
+  .table-state-variant(danger; @table-danger-bg; @table-danger-color);
 }
 
 
@@ -231,8 +259,7 @@ th {
 // =============================================================================
 
 .hook-table() {}
-.hook-table-bd() {}
-.hook-table-bdrs() {}
+.hook-table-bordered() {}
+.hook-table-radius() {}
 .hook-table-striped() {}
 .hook-table-hover() {}
-.hook-table-active() {}

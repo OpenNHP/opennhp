@@ -26,12 +26,12 @@
    Component: Comment
  ============================================================================ */
 
-.am-comment {
+.@{ns}comment {
   .clearfix();
   .hook-comment;
 }
 
-.am-comment-avatar {
+.@{ns}comment-avatar {
   float: left;
   width: @comment-avatar-size;
   height: @comment-avatar-size;
@@ -40,7 +40,7 @@
   .hook-comment-avatar;
 }
 
-.am-comment-main {
+.@{ns}comment-main {
   position: relative;
   margin-left: @comment-avatar-size + @comment-avatar-margin;
   border: 1px solid @comment-border-color;
@@ -75,21 +75,21 @@
   .hook-comment-main;
 }
 
-.am-comment-hd {
+.@{ns}comment-hd {
   padding: 10px 15px;
   background: @comment-hd-bg-color;
   border-bottom: 1px solid #eee;
   .hook-comment-hd;
 }
 
-.am-comment-title {
+.@{ns}comment-title {
   margin: 0 0 @comment-title-margin-btm 0;
   font-size: @comment-title-font-size;
   line-height: @comment-title-line-height;
   .hook-comment-title;
 }
 
-.am-comment-meta {
+.@{ns}comment-meta {
   font-size: @comment-meta-font-size;
   color: @comment-meta-color;
   line-height: @comment-meta-line-height;
@@ -100,13 +100,13 @@
   .hook-comment-meta;
 }
 
-.am-comment-author {
+.@{ns}comment-author {
   font-weight: bold;
   color: @comment-meta-color;
   .hook-comment-author;
 }
 
-.am-comment-bd {
+.@{ns}comment-bd {
   padding: @comment-bd-padding;
   overflow: hidden;
   & > :last-child {
@@ -119,12 +119,12 @@
 // Modifiers
 // ========================================================================
 
-.am-comment-flip {
-  .am-comment-avatar {
+.@{ns}comment-flip {
+  .@{ns}comment-avatar {
     float: right;
   }
 
-  .am-comment-main {
+  .@{ns}comment-main {
     margin-left: auto;
     margin-right: @comment-avatar-size + @comment-avatar-margin;
 
@@ -152,11 +152,11 @@
 // =============================================================================
 
 .comment-highlight-variant(@border-color: @global-primary) {
-  .am-comment-avatar {
+  .@{ns}comment-avatar {
     border-color: @border-color;
   }
 
-  .am-comment-main {
+  .@{ns}comment-main {
     border-color: @border-color;
     &:before {
       border-right-color: @border-color;
@@ -164,7 +164,7 @@
   }
 
   // Highlight and flip
-  &.am-comment-flip .am-comment-main {
+  &.@{ns}comment-flip .@{ns}comment-main {
     &:before {
       border-left-color: @border-color;
       border-right-color: transparent;
@@ -176,28 +176,28 @@
   }
 }
 
-.am-comment-primary {
+.@{ns}comment-primary {
   .comment-highlight-variant(@global-primary);
   .hook-comment-primary;
 }
 
-.am-comment-secondary,
-.am-comment-highlight {
+.@{ns}comment-secondary,
+.@{ns}comment-highlight {
   .comment-highlight-variant(@comment-hl-border-color);
   .hook-comment-secondary;
 }
 
-.am-comment-success {
+.@{ns}comment-success {
   .comment-highlight-variant(@global-success);
   .hook-comment-success;
 }
 
-.am-comment-warning {
+.@{ns}comment-warning {
   .comment-highlight-variant(@global-warning);
   .hook-comment-warning;
 }
 
-.am-comment-danger {
+.@{ns}comment-danger {
   .comment-highlight-variant(@global-danger);
   .hook-comment-danger;
 }
@@ -206,23 +206,23 @@
 // Comments list
 // =============================================================================
 
-.am-comments-list {
+.@{ns}comments-list {
   padding: 0;
   list-style: none;
 }
 
-.am-comments-list .am-comment {
+.@{ns}comments-list .@{ns}comment {
   margin: @comment-list-margin-top 0 0 0;
   list-style: none;
 }
 
 
 @media @medium-up {
-  .am-comments-list-flip {
-    .am-comment-main {
+  .@{ns}comments-list-flip {
+    .@{ns}comment-main {
       margin-right: 64px;
     }
-    .am-comment-flip .am-comment-main {
+    .@{ns}comment-flip .@{ns}comment-main {
       margin-left: 64px;
     }
   }

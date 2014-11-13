@@ -493,6 +493,8 @@
 // - applies to: multi-line flex containers
 // flex-start | flex-end | center | space-between | space-around | stretch
 .align-content(@align: stretch) {
+  // http://www.w3.org/TR/2012/WD-css3-flexbox-20120322/#flex-pack
+  -webkit-box-pack: @align; // Old syntax: start | end | center | justify | distribute
   -webkit-align-content: @align;
   -moz-align-content: @align;
   -ms-align-content: @align;
@@ -503,6 +505,8 @@
 // - applies to: flex containers
 // flex-start | flex-end | center | baseline | stretch
 .align-items(@align: stretch) {
+  // start | center | end | baseline | stretch
+  -webkit-box-align: @align;  // Old syntax
   -webkit-align-items: @align;
   -moz-align-items: @align;
   -ms-align-items: @align;
@@ -513,6 +517,7 @@
 // - applies to: flex items
 // <integer>
 .flex-order(@order: 0) {
+  -webkit-flex-order: @order; // Old syntax
   -webkit-order: @order;
   -moz-order: @order;
   -ms-order: @order;
@@ -812,7 +817,7 @@
 // 5. Better font rendering in Webkit
 .am-icon-font() {
   display: inline-block; // 1
-  font-family: "FontAwesome";
+  font-family: "FontAwesome"!important;
   font-weight: normal; // 2
   font-style: normal; // 2
   vertical-align: baseline; // 3

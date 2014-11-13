@@ -29,7 +29,7 @@
    Component: Topbar
  ============================================================================ */
 
-.am-topbar {
+.@{ns}topbar {
   position: relative;
   //padding: 0 10px;
   min-height: @topbar-height;
@@ -38,10 +38,8 @@
   border-width: 0 0 1px;
   border-style: solid;
   border-color: @topbar-border;
-
-  .clearfix();
-
   color: @topbar-color;
+  .clearfix();
 
   a {
     color: @topbar-link-color;
@@ -50,7 +48,7 @@
 }
 
 // brand
-.am-topbar-brand {
+.@{ns}topbar-brand {
   margin: 0;
   @media @medium-up {
     float: left;
@@ -64,7 +62,7 @@
   .hook-topbar-brand;
 }
 
-.am-topbar-collapse {
+.@{ns}topbar-collapse {
   width: 100%;
   overflow-x: visible;
   padding: @topbar-padding-horizontal;
@@ -73,7 +71,7 @@
   -webkit-overflow-scrolling: touch;
   // max-height: @topbar-collapse-max-height;
 
-  &.am-in {
+  &.@{ns}in {
     overflow-y: auto;
   }
 
@@ -83,14 +81,14 @@
     width: auto;
     clear: none;
 
-    &.am-collapse {
+    &.@{ns}collapse {
       display: block !important;
       height: auto !important;
       padding: 0;
       overflow: visible !important;
     }
 
-    &.am-in {
+    &.@{ns}in {
       overflow-y: visible;
     }
   }
@@ -98,7 +96,7 @@
 
 // Brand in topbar
 
-.am-topbar-brand {
+.@{ns}topbar-brand {
   padding: 0 @topbar-padding-horizontal;
   float: left;
   font-size: @font-size-lg;
@@ -109,7 +107,7 @@
 
 // Topbar toggle in samll device
 
-.am-topbar-toggle {
+.@{ns}topbar-toggle {
   position: relative;
   float: right;
   margin-right: @topbar-padding-horizontal;
@@ -120,9 +118,9 @@
 }
 
 
-// .am-nav within topbar
+// .@{ns}nav within topbar
 
-.am-topbar-nav {
+.@{ns}topbar-nav {
   @media @small-only {
     margin-bottom: @topbar-spacing-vertical;
     > li {
@@ -151,26 +149,29 @@
         &:after {
           position: absolute;
           left: 50%;
-          margin-left: -6px;
-          bottom: 0;
+          margin-left: -7px;
+          bottom: -1px;
           content: "";
-          .caret-up(6px, @topbar-bg);
+          .caret-up(7px, @topbar-bg);
+          opacity: 0;
+          .transition(opacity .1s);
         }
 
         &:hover:after {
+          opacity: 1;
           border-bottom-color: @topbar-color;
         }
       }
 
       // hide dropdown caret
-      &.am-dropdown {
+      &.@{ns}dropdown {
         > a:after {
           display: none;
         }
       }
 
       // nav active status
-      &.am-active {
+      &.@{ns}active {
         > a {
           &,
           &:hover,
@@ -181,6 +182,7 @@
           }
 
           &:after {
+            opacity: 1;
             border-bottom-color: @topbar-link-active-color;
           }
         }
@@ -192,16 +194,16 @@
 
 // dropdown in topbar
 
-.am-topbar-collapse {
- .am-dropdown.am-active {
+.@{ns}topbar-collapse {
+ .@{ns}dropdown.@{ns}active {
    @media @small-only {
-     .am-dropdown-content {
+     .@{ns}dropdown-content {
        float: none;
        position: relative;
        width: 100%;
      }
 
-     .am-icon-caret-down {
+     .@{ns}icon-caret-down {
      }
    }
  }
@@ -210,12 +212,12 @@
 // Component alignment
 
 @media @medium-up {
-  .am-topbar-left {
-    .am-fl();
+  .@{ns}topbar-left {
+    float: left;
   }
 
-  .am-topbar-right {
-    .am-fr();
+  .@{ns}topbar-right {
+    float: right;
     margin-right: @topbar-padding-horizontal;
   }
 }
@@ -223,8 +225,8 @@
 
 // form in topbar
 
-.am-topbar-form {
-  .am-form-group {
+.@{ns}topbar-form {
+  .@{ns}form-group {
     @media @small-only {
       margin-bottom: 5px;
     }
@@ -235,7 +237,7 @@
 
     margin-top: @topbar-spacing-vertical;
 
-    .am-form-group + .am-btn {
+    .@{ns}form-group + .@{ns}btn {
       margin-left: 5px;
     }
   }
@@ -244,13 +246,13 @@
 
 // Btn in topbar
 
-.am-topbar-btn {
+.@{ns}topbar-btn {
   margin-top: @topbar-spacing-vertical;
 }
 
-.am-topbar-collapse {
-  .am-topbar-btn,
-  .am-btn {
+.@{ns}topbar-collapse {
+  .@{ns}topbar-btn,
+  .@{ns}btn {
     @media @small-only {
       display: block;
       width: 100%;
@@ -262,7 +264,7 @@
 // Inverse topbar
 // =============================================================================
 
-.am-topbar-inverse {
+.@{ns}topbar-inverse {
   background-color: @topbar-inverse-bg;
   border-color: @topbar-inverse-border;
   color: @topbar-inverse-color;
@@ -271,7 +273,7 @@
     color: @topbar-inverse-link-color;
   }
 
-  .am-topbar-brand {
+  .@{ns}topbar-brand {
     a {
       color: @topbar-inverse-brand-color;
       &:hover,
@@ -282,7 +284,7 @@
     }
   }
 
-  .am-topbar-nav {
+  .@{ns}topbar-nav {
     > li {
       > a {
         color: @topbar-inverse-link-color;
@@ -303,7 +305,7 @@
         }
       }
 
-      &.am-active > a {
+      &.@{ns}active > a {
         &,
         &:hover,
         &:focus {
@@ -333,8 +335,8 @@
 // Fixed modifier
 // =============================================================================
 
-.am-topbar-fixed-top,
-.am-topbar-fixed-bottom {
+.@{ns}topbar-fixed-top,
+.@{ns}topbar-fixed-bottom {
   position: fixed;
   right: 0;
   left: 0;
@@ -342,33 +344,33 @@
   .translate3d(0, 0, 0);
 }
 
-.am-topbar-fixed-top {
+.@{ns}topbar-fixed-top {
   top: 0;
 }
 
-.am-topbar-fixed-bottom {
+.@{ns}topbar-fixed-bottom {
   bottom: 0;
   margin-bottom: 0;
   border-width: 1px 0 0;
 }
 
-.am-with-topbar-fixed-top {
+.@{ns}with-topbar-fixed-top {
   padding-top: @topbar-height + 1;
 }
 
-.am-with-topbar-fixed-bottom {
+.@{ns}with-topbar-fixed-bottom {
   padding-bottom: @topbar-height + 1;
 }
 
 @media @small-only {
-  .am-topbar-fixed-bottom {
-    .am-topbar-collapse {
+  .@{ns}topbar-fixed-bottom {
+    .@{ns}topbar-collapse {
       position: absolute;
       bottom: 100%;
       margin-bottom: 1px;
       background-color: @topbar-bg;
 
-      .am-dropdown-content {
+      .@{ns}dropdown-content {
         &:before,
         &:after {
           display: none;
@@ -376,8 +378,8 @@
       }
     }
 
-    &.am-topbar-inverse {
-      .am-topbar-collapse {
+    &.@{ns}topbar-inverse {
+      .@{ns}topbar-collapse {
         background-color: @topbar-inverse-bg;
       }
     }

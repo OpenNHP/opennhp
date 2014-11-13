@@ -20,7 +20,7 @@
    Component: Pagination
  ============================================================================ */
 
-.am-pagination {
+.@{ns}pagination {
   padding-left: 0;
   margin: @pagination-margin 0;
   list-style: none;
@@ -64,8 +64,8 @@
     }
   }
 
-  > .am-active > a,
-  > .am-active > span {
+  > .@{ns}active > a,
+  > .@{ns}active > span {
     &,
     &:hover,
     &:focus {
@@ -78,7 +78,7 @@
     .hook-pagination-item-active;
   }
 
-  > .am-disabled {
+  > .@{ns}disabled {
     > span,
     > span:hover,
     > span:focus,
@@ -94,14 +94,14 @@
     }
   }
 
-  .am-pagination-prev {
+  .@{ns}pagination-prev {
     float: left;
     a {
       border-radius: @global-radius;
     }
   }
 
-  .am-pagination-next {
+  .@{ns}pagination-next {
     float: right;
     a {
       border-radius: @global-radius;
@@ -113,11 +113,11 @@
 // Modifier
 // =============================================================================
 
-.am-pagination-centered {
+.@{ns}pagination-centered {
   text-align: center;
 }
 
-.am-pagination-right {
+.@{ns}pagination-right {
   text-align: right;
 }
 

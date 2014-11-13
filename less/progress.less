@@ -17,7 +17,7 @@
 
 .progress-bar-variant(@color) {
   background-color: @color;
-  .am-progress-striped & {
+  .@{ns}progress-striped & {
     #gradient > .striped();
   }
 }
@@ -42,7 +42,7 @@
 
 /*  Progress container */
 
-.am-progress {
+.@{ns}progress {
   overflow: hidden;
   height: @progress-height;
   margin-bottom: @line-height-computed;
@@ -56,7 +56,7 @@
 
 /* Progress bar */
 
-.am-progress-bar {
+.@{ns}progress-bar {
   float: left;
   width: 0;
   height: 100%;
@@ -71,14 +71,14 @@
   .hook-progress-bar;
 
   // Striped bar
-  .am-progress-striped & {
+  .@{ns}progress-striped & {
     #gradient > .striped();
     background-size: 36px 36px;
     .hook-progress-striped;
   }
 
   // Active animation
-  .am-progress.am-active & {
+  .@{ns}progress.@{ns}active & {
     .animation(progress-bar-stripes 2s linear infinite);
   }
 
@@ -100,22 +100,22 @@
 // Modifiers
 // =============================================================================
 
-.am-progress-bar-secondary {
+.@{ns}progress-bar-secondary {
   .progress-bar-variant(@progress-bar-secondary-bg);
   .hook-progress-bar-secondary;
 }
 
-.am-progress-bar-success {
+.@{ns}progress-bar-success {
   .progress-bar-variant(@progress-bar-success-bg);
   .hook-progress-bar-success;
 }
 
-.am-progress-bar-warning {
+.@{ns}progress-bar-warning {
   .progress-bar-variant(@progress-bar-warning-bg);
   .hook-progress-bar-warning;
 }
 
-.am-progress-bar-danger {
+.@{ns}progress-bar-danger {
   .progress-bar-variant(@progress-bar-danger-bg);
   .hook-progress-bar-danger;
 }
@@ -124,11 +124,11 @@
 // Size
 // =============================================================================
 
-.am-progress-xs {
+.@{ns}progress-xs {
   height: @progress-height-xs;
 }
 
-.am-progress-sm {
+.@{ns}progress-sm {
   height: @progress-height-sm;
 }
 

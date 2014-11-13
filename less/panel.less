@@ -17,18 +17,18 @@
 .panel-variant(@border; @hd-text-color; @hd-bg-color; @hd-border) {
   border-color: @border;
 
-  & > .am-panel-hd {
+  & > .@{ns}panel-hd {
     color: @hd-text-color;
     background-color: @hd-bg-color;
     border-color: @hd-border;
 
-    + .am-panel-collapse > .am-panel-bd {
+    + .@{ns}panel-collapse > .@{ns}panel-bd {
       border-top-color: @border;
     }
   }
 
-  & > .am-panel-footer {
-    + .am-panel-collapse > .am-panel-bd {
+  & > .@{ns}panel-footer {
+    + .@{ns}panel-collapse > .@{ns}panel-bd {
       border-bottom-color: @border;
     }
   }
@@ -36,11 +36,10 @@
 
 
 /* ==========================================================================
-   Component:
    Component: Panel
  ============================================================================ */
 
-.am-panel {
+.@{ns}panel {
   margin-bottom: 20px;
   background-color: @panel-bg;
   border: 1px solid transparent;
@@ -52,7 +51,7 @@
 
 /* Panel header */
 
-.am-panel-hd {
+.@{ns}panel-hd {
   padding: @panel-hd-padding;
   border-bottom: 1px solid transparent;
   .border-top-radius(@panel-border-radius);
@@ -62,13 +61,13 @@
 
 /* Panel content */
 
-.am-panel-bd {
+.@{ns}panel-bd {
   padding: @panel-bd-padding;
   .hook-panel-bd;
 }
 
 // Panel hds(h1 - h6)
-.am-panel-title {
+.@{ns}panel-title {
   margin: 0;
   font-size: 100%;
   color: inherit;
@@ -81,7 +80,7 @@
 
 /* Panel footer */
 
-.am-panel-footer {
+.@{ns}panel-footer {
   padding: @panel-footer-padding;
   background-color: @panel-footer-bg;
   border-top: 1px solid @panel-inner-border;
@@ -93,48 +92,48 @@
 // Modifiers
 // =============================================================================
 
-.am-panel-default {
+.@{ns}panel-default {
   .panel-variant(@panel-default-bd; @panel-default-text; @panel-default-hd-bg; @panel-default-bd);
   .hook-panel-default;
 }
 
-.am-panel-primary {
+.@{ns}panel-primary {
   .panel-variant(@panel-primary-bd; @panel-primary-text; @panel-primary-hd-bg; @panel-primary-bd);
   .hook-panel-primary;
 }
 
-.am-panel-secondary {
+.@{ns}panel-secondary {
   .panel-variant(@panel-secondary-bd; @panel-secondary-text; @panel-secondary-hd-bg; @panel-secondary-bd);
   .hook-panel-secondary;
 }
 
-.am-panel-success {
+.@{ns}panel-success {
   .panel-variant(@panel-success-bd; @panel-success-text; @panel-success-hd-bg; @panel-success-bd);
   .hook-panel-success;
 }
 
-.am-panel-warning {
+.@{ns}panel-warning {
   .panel-variant(@panel-warning-bd; @panel-warning-text; @panel-warning-hd-bg; @panel-warning-bd);
   .hook-panel-warning;
 }
 
-.am-panel-danger {
+.@{ns}panel-danger {
   .panel-variant(@panel-danger-bd; @panel-danger-text; @panel-danger-hd-bg; @panel-danger-bd);
   .hook-panel-danger;
 }
 
 
 // Table in panel
-// A non-bordered `.am-table` in a panel
+// A non-bordered `.@{ns}table` in a panel
 // =============================================================================
 
-.am-panel {
-  > .am-table {
+.@{ns}panel {
+  > .@{ns}table {
     margin-bottom: 0;
   }
 
   // Border top radius for first one
-  > .am-table:first-child {
+  > .@{ns}table:first-child {
     .border-top-radius(@panel-border-radius);
 
     > thead:first-child,
@@ -154,7 +153,7 @@
   }
 
   // Border bottom radius for last one
-  > .am-table:last-child {
+  > .@{ns}table:last-child {
     .border-bottom-radius(@panel-border-radius);
 
     > tbody:last-child,
@@ -173,16 +172,16 @@
     }
   }
 
-  > .am-panel-bd + .am-table {
+  > .@{ns}panel-bd + .@{ns}table {
     border-top: 1px solid @table-border-color;
   }
 
-  > .am-table > tbody:first-child > tr:first-child th,
-  > .am-table > tbody:first-child > tr:first-child td {
+  > .@{ns}table > tbody:first-child > tr:first-child th,
+  > .@{ns}table > tbody:first-child > tr:first-child td {
     border-top: 0;
   }
 
-  > .am-table-bd {
+  > .@{ns}table-bd {
     border: 0;
     > thead,
     > tbody,
@@ -225,8 +224,8 @@
 
 /* Wrap list */
 
-.am-panel {
-  > .am-list {
+.@{ns}panel {
+  > .@{ns}list {
     margin: 0;
     > li > a {
       padding-left: 1rem;
@@ -234,7 +233,7 @@
     }
   }
 
-  > .am-list-static li {
+  > .@{ns}list-static li {
     padding-left: 1rem;
     padding-right: 1rem;
   }
@@ -243,27 +242,27 @@
 
 /* Panel group */
 
-.am-panel-group {
+.@{ns}panel-group {
   margin-bottom: @line-height-computed;
 
-  .am-panel {
+  .@{ns}panel {
     margin-bottom: 0;
     border-radius: @panel-border-radius;
-    + .am-panel {
+    + .@{ns}panel {
       margin-top: 6px;
     }
   }
 
-  .am-panel-hd {
+  .@{ns}panel-hd {
     border-bottom: 0;
-    + .am-panel-collapse .am-panel-bd {
+    + .@{ns}panel-collapse .@{ns}panel-bd {
       border-top: 1px solid @panel-inner-border;
     }
   }
 
-  .am-panel-footer {
+  .@{ns}panel-footer {
     border-top: 0;
-    + .am-panel-collapse .am-panel-bd {
+    + .@{ns}panel-collapse .@{ns}panel-bd {
       border-bottom: 1px solid @panel-inner-border;
     }
   }

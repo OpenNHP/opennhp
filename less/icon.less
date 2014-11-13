@@ -23,7 +23,7 @@
 
 //@fa-font-path: "../fonts";
 @fa-font-path: 'http://cdn.staticfile.org/font-awesome/4.2.0/fonts';
-@fa-css-prefix: am-icon;
+@fa-css-prefix: ~"@{ns}icon";
 @fa-version: '4.2.0';
 @fa-border-color: #eee;
 @fa-inverse: #fff;
@@ -53,9 +53,11 @@
 /* Component
 ============================================================================= */
 
-[class*='am-icon-'] {
+[class*="@{ns}icon-"] {
   display: inline-block;
-  .am-icon-font;
+  &:before {
+    .am-icon-font;
+  }
 }
 
 
@@ -68,31 +70,35 @@
   border-radius: .1em;
 }
 
-[class*='am-icon-'] {
-  &.am-fl { margin-right: .3em; }
-  &.am-fr { margin-left: .3em; }
+[class*="@{ns}icon-"] {
+  &.@{ns}fl {
+    margin-right: .3em;
+  }
+  &.@{ns}fr {
+    margin-left: .3em;
+  }
 }
 
 
 // Size modifiers
 // =============================================================================
 
-.am-icon-sm:before {
+.@{ns}icon-sm:before {
   font-size: @icon-sm-font-size;
   vertical-align: @icon-sm-vertical-align;
 }
 
-.am-icon-md:before {
+.@{ns}icon-md:before {
   font-size: @icon-md-font-size;
   vertical-align: @icon-md-vertical-align;
 }
 
-.am-icon-lg:before {
+.@{ns}icon-lg:before {
   font-size: @icon-lg-font-size;
   vertical-align: @icon-lg-vertical-align;
 }
 
-.icon-btn-size(@width: 40px; @height: 40px; @font-size: 20px) {
+.icon-btn-size(@width: 40rem; @height: 40px; @font-size: 20px) {
   width: @width;
   height: @height;
   font-size: @font-size;
@@ -103,14 +109,12 @@
 /* Modifier: `.am-icon-btn`
 ============================================================================= */
 
-.am-icon-btn {
+.@{ns}icon-btn {
   .box-sizing(border-box);
   display: inline-block;
-  width: @icon-btn-width;
-  height: @icon-btn-height;
   .icon-btn-size(@icon-btn-width; @icon-btn-height; @icon-btn-font-size);
   border-radius: @icon-btn-border-radius;
-  background: @icon-btn-background;
+  background-color: @icon-btn-background;
   color: @icon-btn-color;
   text-align: center;
 
@@ -136,6 +140,42 @@
     color: @icon-btn-active-color;
     .hook-icon-btn-active;
   }
+
+  &.@{ns}primary,
+  &.@{ns}secondary,
+  &.@{ns}success,
+  &.@{ns}warning,
+  &.@{ns}danger {
+    color: @white;
+  }
+
+  &.@{ns}primary {
+    background-color: @global-primary;
+  }
+
+  &.@{ns}secondary {
+    background-color: @global-secondary;
+  }
+
+  &.@{ns}success {
+    background-color: @global-success;
+  }
+
+  &.@{ns}warning {
+    background-color: @global-warning;
+  }
+
+  &.@{ns}danger {
+    background-color: @global-danger;
+  }
+}
+
+.@{ns}icon-btn-sm {
+  .icon-btn-size(32px; 32px; 16px);
+}
+
+.@{ns}icon-btn-lg {
+  .icon-btn-size(64px; 64px; 28px);
 }
 
 

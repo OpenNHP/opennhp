@@ -14,7 +14,7 @@
 //                           `.am-animation-slide-shake`
 //                           `.am-animation-reverse`
 //
-// Used by:                  Dropdown
+// Used by:                   Dropdown
 //
 // =============================================================================
 
@@ -23,7 +23,7 @@
    Component: Aniamtion
  ============================================================================ */
 
-[class*='am-animation-'] {
+[class*="am-animation-"] {
   -webkit-animation-duration: 0.5s;
   animation-duration: 0.5s;
   -webkit-animation-timing-function: ease-out;
@@ -36,7 +36,7 @@
 /* Hide animated element if scrollspy is used */
 
 @media screen {
-  .cssanimations [data-am-scrollspy*='animation'] {
+  .cssanimations [data-am-scrollspy*="animation"] {
     opacity: 0;
   }
 }
@@ -44,7 +44,7 @@
 
 /* Fade */
 
-.am-animation-fade {
+.@{ns}animation-fade {
   -webkit-animation-name: am-fade;
   animation-name: am-fade;
   -webkit-animation-duration: 0.8s;
@@ -56,12 +56,12 @@
 
 /* Scale */
 
-.am-animation-scale-up {
+.@{ns}animation-scale-up {
   -webkit-animation-name: am-scale-up;
   animation-name: am-scale-up;
 }
 
-.am-animation-scale-down {
+.@{ns}animation-scale-down {
   -webkit-animation-name: am-scale-down;
   animation-name: am-scale-down;
 }
@@ -69,27 +69,27 @@
 
 /* Slide */
 
-.am-animation-slide-top {
+.@{ns}animation-slide-top {
   -webkit-animation-name: am-slide-top;
   animation-name: am-slide-top;
 }
 
-.am-animation-slide-bottom {
+.@{ns}animation-slide-bottom {
   -webkit-animation-name: am-slide-bottom;
   animation-name: am-slide-bottom;
 }
 
-.am-animation-slide-left {
+.@{ns}animation-slide-left {
   -webkit-animation-name: am-slide-left;
   animation-name: am-slide-left;
 }
 
-.am-animation-slide-right {
+.@{ns}animation-slide-right {
   -webkit-animation-name: am-slide-right;
   animation-name: am-slide-right;
 }
 
-.am-animation-slide-top-fixed {
+.@{ns}animation-slide-top-fixed {
   -webkit-animation-name: am-slide-top-fixed;
   animation-name: am-slide-top-fixed;
 }
@@ -97,22 +97,22 @@
 
 /* Shake */
 
-.am-animation-shake {
+.@{ns}animation-shake {
   -webkit-animation-name: am-shake;
   animation-name: am-shake;
 }
 
 
 /* Spin */
-.am-animation-spin {
+.@{ns}animation-spin {
   .animation(am-spin 2s infinite linear);
 }
 
-.am-animation-left-spring {
+.@{ns}animation-left-spring {
   .animation(am-left-spring .3s ease-in-out);
 }
 
-.am-animation-right-spring {
+.@{ns}animation-right-spring {
   .animation(am-right-spring .3s ease-in-out);
 }
 
@@ -120,12 +120,12 @@
 // Modifiers
 // =============================================================================
 
-.am-animation-reverse {
+.@{ns}animation-reverse {
   -webkit-animation-direction: reverse;
   animation-direction: reverse;
 }
 
-.am-animation-paused {
+.@{ns}animation-paused {
   -webkit-animation-play-state: paused !important;
   animation-play-state: paused !important;
 }

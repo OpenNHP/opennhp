@@ -17,10 +17,10 @@
    Component: Badge
  ============================================================================ */
 
-.am-badge {
+.@{ns}badge {
   display: inline-block;
   min-width: 10px;
-  padding: 3px 7px;
+  padding: 0.25em 0.625em;
   font-size: @font-size-xs;
   font-weight: @badge-font-weight;
   color: @badge-color;
@@ -44,13 +44,18 @@
     }
   }
 
-  &.am-radius {
-    border-radius: 2px;
+  &.@{ns}square {
+     border-radius: 0;
   }
 
-  &.am-square {
-    border-radius: 0;
+  &.@{ns}radius {
+    border-radius: @radius-normal;
   }
+
+  &.@{ns}round {
+    border-radius: @global-rounded;
+  }
+
   .hook-badge;
 }
 
@@ -58,27 +63,27 @@
 // Color modifier
 // =============================================================================
 
-.am-badge-primary {
+.@{ns}badge-primary {
   background-color: @badge-primary-bg;
   .hook-badge-primary;
 }
 
-.am-badge-secondary {
+.@{ns}badge-secondary {
   background-color: @badge-secondary-bg;
   .hook-badge-secondary;
 }
 
-.am-badge-success {
+.@{ns}badge-success {
   background-color: @badge-success-bg;
   .hook-badge-success;
 }
 
-.am-badge-warning {
+.@{ns}badge-warning {
   background-color: @badge-warning-bg;
   .hook-badge-warning;
 }
 
-.am-badge-danger {
+.@{ns}badge-danger {
   background-color: @badge-danger-bg;
   .hook-badge-danger;
 }

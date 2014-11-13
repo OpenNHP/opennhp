@@ -73,38 +73,57 @@
 <a class="am-badge am-badge-danger am-radius">Danger</a>
 ```
 
-## 直角样式
+## 椭圆样式
 
-在默认样式的基础上添加 `.am-square` class。
+在默认样式的基础上添加 `.am-round` class。
 
 `````html
-<span class="am-badge am-square">1</span>
-<span class="am-badge am-badge-primary am-square">2</span>
-<span class="am-badge am-badge-secondary am-square">3</span>
-<span class="am-badge am-badge-success am-square">4</span>
-<span class="am-badge am-badge-warning am-square">5</span>
-<span class="am-badge am-badge-danger am-square">6</span>
-<span class="am-badge am-badge-success am-square">Allmobilize</span>
+<span class="am-badge am-round">1</span>
+<span class="am-badge am-badge-primary am-round">2</span>
+<span class="am-badge am-badge-secondary am-round">3</span>
+<span class="am-badge am-badge-success am-round">4</span>
+<span class="am-badge am-badge-warning am-round">5</span>
+<span class="am-badge am-badge-danger am-round">6</span>
+<span class="am-badge am-badge-success am-round">Allmobilize</span>
 <br>
-<a class="am-badge am-badge-primary am-square">Free</a>
-<a class="am-badge am-badge-secondary am-square">Secondary</a>
-<a class="am-badge am-badge-success am-square">Success</a>
-<a class="am-badge am-badge-warning am-square">Warning</a>
-<a class="am-badge am-badge-danger am-square">Danger</a>
+<a class="am-badge am-badge-primary am-round">Free</a>
+<a class="am-badge am-badge-secondary am-round">Secondary</a>
+<a class="am-badge am-badge-success am-round">Success</a>
+<a class="am-badge am-badge-warning am-round">Warning</a>
+<a class="am-badge am-badge-danger am-round">Danger</a>
 `````
 
 ```html
-<span class="am-badge am-square">1</span>
-<span class="am-badge am-badge-primary am-square">2</span>
-<span class="am-badge am-badge-secondary am-square">3</span>
-<span class="am-badge am-badge-success am-square">4</span>
-<span class="am-badge am-badge-warning am-square">5</span>
-<span class="am-badge am-badge-danger am-square">6</span>
-<span class="am-badge am-badge-success am-square">Allmobilize</span>
+<span class="am-badge am-round">1</span>
+<span class="am-badge am-badge-primary am-round">2</span>
+<span class="am-badge am-badge-secondary am-round">3</span>
+<span class="am-badge am-badge-success am-round">4</span>
+<span class="am-badge am-badge-warning am-round">5</span>
+<span class="am-badge am-badge-danger am-round">6</span>
+<span class="am-badge am-badge-success am-round">Allmobilize</span>
 <br>
-<a class="am-badge am-badge-primary am-square">Free</a>
-<a class="am-badge am-badge-secondary am-square">Secondary</a>
-<a class="am-badge am-badge-success am-square">Success</a>
-<a class="am-badge am-badge-warning am-square">Warning</a>
-<a class="am-badge am-badge-danger am-square">Danger</a>
+<a class="am-badge am-badge-primary am-round">Free</a>
+<a class="am-badge am-badge-secondary am-round">Secondary</a>
+<a class="am-badge am-badge-success am-round">Success</a>
+<a class="am-badge am-badge-warning am-round">Warning</a>
+<a class="am-badge am-badge-danger am-round">Danger</a>
+```
+
+## 大小
+
+结合[辅助类](/css/utility?_ver=2.x)中的字号 class，改变徽章大小。
+
+`````html
+<span class="am-badge am-badge-primary">default</span>
+<span class="am-badge am-badge-secondary am-text-sm">small</span>
+<span class="am-badge am-badge-success am-text-default">normal</span>
+<span class="am-badge am-badge-warning am-text-lg">large</span>
+<span class="am-badge am-badge-danger am-text-xl">x large</span>
+`````
+```html
+<span class="am-badge am-badge-primary">default</span>
+<span class="am-badge am-badge-secondary am-text-sm">small</span>
+<span class="am-badge am-badge-success am-text-default">normal</span>
+<span class="am-badge am-badge-warning am-text-lg">large</span>
+<span class="am-badge am-badge-danger am-text-xl">x large</span>
 ```

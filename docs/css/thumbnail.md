@@ -10,16 +10,16 @@ Thumbnail 组件主要用于显示图片列表及图文混排列表。
 
 `````html
 <div class="am-g">
-  <div class="col-sm-4">
+  <div class="am-u-sm-4">
     <img class="am-thumbnail" src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg" alt=""/>
   </div>
 
-  <div class="col-sm-4">
+  <div class="am-u-sm-4">
     <a href="#" class="am-thumbnail">
       <img src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg" alt=""/>
     </a>
   </div>
-  <div class="col-sm-4">
+  <div class="am-u-sm-4">
     <figure class="am-thumbnail">
       <img src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg" alt=""/>
     </figure>
@@ -29,17 +29,17 @@ Thumbnail 组件主要用于显示图片列表及图文混排列表。
 
 ```html
 <div class="am-g">
-  <div class="col-sm-4">
+  <div class="am-u-sm-4">
     <img class="am-thumbnail" src="..." alt=""/>
   </div>
 
-  <div class="col-sm-4">
+  <div class="am-u-sm-4">
     <a href="#" class="am-thumbnail">
       <img src="..." alt=""/>
     </a>
   </div>
 
-  <div class="col-sm-4">
+  <div class="am-u-sm-4">
     <figure class="am-thumbnail">
       <img src="..." alt=""/>
     </figure>
@@ -47,12 +47,12 @@ Thumbnail 组件主要用于显示图片列表及图文混排列表。
 </div>
 ```
 
-### 结合 Block Grid 使用
+### 结合 AVG Grid 使用
 
-Block Grid 默认没有边距，需自行设置。
+AVG Grid 默认没有边距，需自行设置。
 
 `````html
-<ul class="sm-block-grid-3">
+<ul class="am-avg-sm-3">
   <li><img class="am-thumbnail" src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg"
            alt=""/></li>
 
@@ -69,7 +69,7 @@ Block Grid 默认没有边距，需自行设置。
 `````
 
 ```html
-<ul class="sm-block-grid-3">
+<ul class="am-avg-sm-3">
   <li>
     <img class="am-thumbnail" src="..." alt=""/>
   </li>
@@ -92,20 +92,20 @@ Block Grid 默认没有边距，需自行设置。
 
 `````html
 <div class="am-g">
-  <div class="col-sm-4">
+  <div class="am-u-sm-4">
     <div class="am-thumbnail">
       <img src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg" alt=""/>
       <h3 class="am-thumbnail-caption">图片标题 #1</h3>
     </div>
   </div>
 
-  <div class="col-sm-4">
+  <div class="am-u-sm-4">
     <a href="#" class="am-thumbnail">
       <img src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg" alt=""/>
       <figcaption class="am-thumbnail-caption">图片标题 #2</figcaption>
     </a>
   </div>
-  <div class="col-sm-4">
+  <div class="am-u-sm-4">
     <figure class="am-thumbnail">
       <img src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg" alt=""/>
       <figcaption class="am-thumbnail-caption">图片标题 #3</figcaption>
@@ -116,20 +116,20 @@ Block Grid 默认没有边距，需自行设置。
 
 ```html
 <div class="am-g">
-  <div class="col-sm-4">
+  <div class="am-u-sm-4">
     <div class="am-thumbnail">
       <img src="..." alt=""/>
       <h3 class="am-thumbnail-caption">图片标题 #1</h3>
     </div>
   </div>
 
-  <div class="col-sm-4">
+  <div class="am-u-sm-4">
     <a href="#" class="am-thumbnail">
       <img src="..." alt=""/>
       <figcaption class="am-thumbnail-caption">图片标题 #2</figcaption>
     </a>
   </div>
-  <div class="col-sm-4">
+  <div class="am-u-sm-4">
     <figure class="am-thumbnail">
       <img src="..." alt=""/>
       <figcaption class="am-thumbnail-caption">图片标题 #3</figcaption>
@@ -146,7 +146,7 @@ Block Grid 默认没有边距，需自行设置。
 
 `````html
 <div class="am-g">
-  <div class="col-sm-6">
+  <div class="am-u-sm-6">
     <div class="am-thumbnail">
       <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView2/0/w/600" alt=""/>
       <div class="am-thumbnail-caption">
@@ -160,7 +160,7 @@ Block Grid 默认没有边距，需自行设置。
     </div>
   </div>
 
-  <div class="col-sm-6">
+  <div class="am-u-sm-6">
     <div class="am-thumbnail">
       <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView2/0/w/600" alt=""/>
       <div class="am-thumbnail-caption">
@@ -178,7 +178,7 @@ Block Grid 默认没有边距，需自行设置。
 `````
 ```html
 <div class="am-g">
-  <div class="col-sm-6">
+  <div class="am-u-sm-6">
     <div class="am-thumbnail">
       <img src="..." alt=""/>
       <div class="am-thumbnail-caption">
@@ -192,7 +192,7 @@ Block Grid 默认没有边距，需自行设置。
     </div>
   </div>
 
-  <div class="col-sm-6">
+  <div class="am-u-sm-6">
     <div class="am-thumbnail">
       <img src="..." alt=""/>
       <div class="am-thumbnail-caption">

@@ -32,16 +32,16 @@
     {{/ifCond}}
 
     {{#if content}}
-      <ul class="am-menu-nav {{#if options.cols}}sm-block-grid-{{options
-      .cols}}{{else}}sm-block-grid-1{{/if}}{{#ifCond theme '==' 'dropdown1'}} am-collapse{{/ifCond}}{{#ifCond theme
+      <ul class="am-menu-nav {{#if options.cols}}am-avg-sm-{{options
+      .cols}}{{else}}am-avg-sm-1{{/if}}{{#ifCond theme '==' 'dropdown1'}} am-collapse{{/ifCond}}{{#ifCond theme
       '==' 'dropdown2'}} am-collapse{{/ifCond}}{{#ifCond theme
       '==' 'slide1'}} am-collapse{{/ifCond}}">
         {{#each content}}
           <li class="{{#if subMenu}}am-parent{{/if}}{{#if className}} {{className}}{{/if}}">
             <a href="{{link}}" {{#if target}}target="{{target}}" {{/if}}>{{{title}}}</a>
             {{#if subMenu}}
-              <ul class="am-menu-sub am-collapse {{#if subCols}} sm-block-grid-{{subCols}}{{else}}
-              sm-block-grid-1{{/if}} {{subMenuClassName}}">
+              <ul class="am-menu-sub am-collapse {{#if subCols}} am-avg-sm-{{subCols}}{{else}}
+              am-avg-sm-1{{/if}} {{subMenuClassName}}">
                 {{#each subMenu}}
                   <li class="{{#if subMenu}} am-parent{{/if}}{{#if className}} {{className}}{{/if}}">
                     <a href="{{link}}" {{#if target}}target="{{target}}" {{/if}}>{{{title}}}</a>

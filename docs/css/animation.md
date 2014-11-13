@@ -56,37 +56,37 @@ CSS3 动画封装，浏览器需支持 CSS3 动画。
 
 `````html
 <div class="am-g doc-animations">
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-primary am-btn-block" data-doc-animation="fade">Fade</button>
   </div>
 
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-secondary am-btn-block" data-doc-animation="scale-up">Scale Up</button>
   </div>
 
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-success am-btn-block" data-doc-animation="scale-down">Scale Down</button>
   </div>
 
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-warning am-btn-block" data-doc-animation="slide-top">Slide Top</button>
   </div>
 </div>
 
 <div class="am-g doc-animations">
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-primary am-btn-block" data-doc-animation="slide-bottom">Slide Bottom</button>
   </div>
 
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-secondary am-btn-block" data-doc-animation="slide-left">Slide Left</button>
   </div>
 
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-success am-btn-block" data-doc-animation="slide-right">Slide Right</button>
   </div>
 
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-warning am-btn-block" data-doc-animation="shake">Shake</button>
   </div>
 </div>
@@ -105,37 +105,37 @@ CSS3 动画封装，浏览器需支持 CSS3 动画。
 
 `````html
 <div class="am-g doc-animations">
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-primary am-btn-block am-animation-reverse" data-doc-animation="fade">Fade</button>
   </div>
 
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-secondary am-btn-block am-animation-reverse" data-doc-animation="scale-up">Scale Up</button>
   </div>
 
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-success am-btn-block am-animation-reverse" data-doc-animation="scale-down">Scale Down</button>
   </div>
 
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-warning am-btn-block am-animation-reverse" data-doc-animation="slide-top">Slide Top</button>
   </div>
 </div>
 
 <div class="am-g doc-animations">
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-primary am-btn-block am-animation-reverse" data-doc-animation="slide-bottom">Slide Bottom</button>
   </div>
 
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-secondary am-btn-block am-animation-reverse" data-doc-animation="slide-left">Slide Left</button>
   </div>
 
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-success am-btn-block am-animation-reverse" data-doc-animation="slide-right">Slide Right</button>
   </div>
 
-  <div class="col-sm-6 col-md-3">
+  <div class="am-u-sm-6 am-u-md-3">
     <button class="am-btn am-btn-warning am-btn-block am-animation-reverse" data-doc-animation="shake">Shake</button>
   </div>
 </div>

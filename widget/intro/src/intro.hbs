@@ -16,11 +16,11 @@
     <div class="am-g am-intro-bd">
       {{#if content.left}}
         <div
-            class="am-intro-left am-col {{#if options.leftCols}}col-sm-{{options.leftCols}}{{/if}}">{{{content.left}}}</div>
+            class="am-intro-left {{#if options.leftCols}}am-u-sm-{{options.leftCols}}{{/if}}">{{{content.left}}}</div>
       {{/if}}
       {{#if content.right}}
         <div
-            class="am-intro-right am-col {{#if options.rightCols}}col-sm-{{options.rightCols}}{{/if}}">{{{content.right}}}</div>
+            class="am-intro-right {{#if options.rightCols}}am-u-sm{{options.rightCols}}{{/if}}">{{{content.right}}}</div>
       {{/if}}
     </div>
     {{#ifCond options.position '==' 'bottom'}}

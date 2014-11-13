@@ -42,7 +42,7 @@
           <li><a href="#"><span class="am-icon-power-off"></span> 退出</a></li>
         </ul>
       </li>
-      <li><a href="javascript:;" id="admin-fullscreen"><span class="am-icon-arrows-alt"></span> 开启全屏</a></li>
+      <li><a href="javascript:;" id="admin-fullscreen"><span class="am-icon-arrows-alt"></span> <span class="admin-fullText">开启全屏</span></a></li>
     </ul>
   </div>
 </header>
@@ -91,7 +91,7 @@
     </div>
 
     <div class="am-g">
-      <div class="col-md-6 am-cf">
+      <div class="am-u-md-6 am-cf">
         <div class="am-fl am-cf">
           <div class="am-btn-toolbar am-fl">
             <div class="am-btn-group am-btn-group-xs">
@@ -115,7 +115,7 @@
           </div>
         </div>
       </div>
-      <div class="col-md-3 am-cf">
+      <div class="am-u-md-3 am-cf">
         <div class="am-fr">
           <div class="am-input-group am-input-group-sm">
             <input type="text" class="am-form-field">
@@ -128,7 +128,7 @@
     </div>
 
     <div class="am-g">
-      <div class="col-sm-12">
+      <div class="am-u-sm-12">
         <form class="am-form">
           <table class="am-table am-table-striped am-table-hover table-main">
             <thead>
@@ -423,7 +423,13 @@
   <p class="am-padding-left">© 2014 AllMobilize, Inc. Licensed under MIT license.</p>
 </footer>
 
-<script src="{{assets}}js/zepto.min.js"></script>
+<!--[if (gt IE 9)|!(IE)]><!-->
+<script src="{{assets}}js/jquery.min.js"></script>
+<!--<![endif]-->
+<!--[if lte IE 8 ]>
+<script src="http://cdn.staticfile.org/jquery/1.11.1/jquery.min.js
+"></script>
+<![endif]-->
 <script src="{{assets}}js/amazeui.min.js"></script>
 <script src="{{assets}}js/app.js"></script>
 </body>

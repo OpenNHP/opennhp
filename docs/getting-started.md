@@ -8,7 +8,7 @@ Amaze UI 是一个轻量级、 [**Mobile first**](http://cbrac.co/113eY5h) 的�
 ## 下载文件
 
 <div class="am-g">
-  <div class="col-md-8 col-md-centered">
+  <div class="am-u-md-8 am-u-md-centered">
     <a href="/download?ver=v1.0.0" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
 ">下载 Amaze UI v1.0.0</a>
   </div>
@@ -66,7 +66,7 @@ Amaze UI 遵循 [Semantic Versioning](http://semver.org/lang/zh-CN/) 规范，�
 
 - `amazeui.css` / `amazeui.js`：包含 Amaze UI 所有的样式和脚本；
 - `amazeui.basic.css` / `amazeui.basic.js`：包含 Amaze UI CSS 部分、JS 插件部分的样式和脚本，供不使用 Web 组件的用户选择；
-- ``amazeui.widgets.css` / `amazeui.widgets.js`：包含 Web 组件及其依赖的基础插件的样式和脚本，供只使用 Web 组件的用户选择。
+- `amazeui.widgets.css` / `amazeui.widgets.js`：包含 Web 组件及其依赖的基础插件的样式和脚本，供只使用 Web 组件的用户选择。
 
 以上每个文件都有对应的 minified 文件。
 

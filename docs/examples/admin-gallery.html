@@ -42,7 +42,7 @@
           <li><a href="#"><span class="am-icon-power-off"></span> 退出</a></li>
         </ul>
       </li>
-      <li><a href="javascript:;" id="admin-fullscreen"><span class="am-icon-arrows-alt"></span> 开启全屏</a></li>
+      <li><a href="javascript:;" id="admin-fullscreen"><span class="am-icon-arrows-alt"></span> <span class="admin-fullText">开启全屏</span></a></li>
     </ul>
   </div>
 </header>
@@ -90,7 +90,7 @@
       <div class="am-fl am-cf"><strong class="am-text-primary am-text-lg">相册</strong> / <small>Gallery</small></div>
     </div>
 
-    <ul class="sm-block-grid-2 md-block-grid-4 lg-block-grid-6 am-margin gallery-list">
+    <ul class="am-avg-sm-2 am-avg-md-4 am-avg-lg-6 am-margin gallery-list">
       <li>
         <a href="#">
           <img class="am-img-thumbnail am-img-bdrs" src="http://cn.bing.com/az/hprichv/LondonTrainStation_GettyRR_139321755_ZH-CN742316019.jpg" alt=""/>
@@ -208,7 +208,13 @@
   <p class="am-padding-left">© 2014 AllMobilize, Inc. Licensed under MIT license.</p>
 </footer>
 
-<script src="{{assets}}js/zepto.min.js"></script>
+<!--[if (gt IE 9)|!(IE)]><!-->
+<script src="{{assets}}js/jquery.min.js"></script>
+<!--<![endif]-->
+<!--[if lte IE 8 ]>
+<script src="http://cdn.staticfile.org/jquery/1.11.1/jquery.min.js
+"></script>
+<![endif]-->
 <script src="{{assets}}js/amazeui.min.js"></script>
 <script src="{{assets}}js/app.js"></script>
 </body>

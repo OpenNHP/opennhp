@@ -52,12 +52,6 @@ var data = {
 return data;
 ```
 
-### 设置说明（0.9）
-
-- `options` 内 `select` 选项：默认是 theme-1，更改此属性后，使用 theme-2 或 theme-3；
-- 设置总页数 `total` 值：显示形式为 `3/5`，否则为 `3` 形式；
-- 使用 `theme-2` 或 `theme-3` 时，页码改变调用函数为：pageChange()，需自行定义。
-
 ## 数据结构
 
 ```javascript

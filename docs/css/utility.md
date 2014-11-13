@@ -593,17 +593,17 @@
 
 `````html
 <div class="am-g">
-  <div class="col-md-4">
+  <div class="am-u-md-4">
     <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView/1/w/120/h/120" alt="" width="48" height="48"/>
     <span class="am-text-top">顶部对齐</span>
   </div>
 
-  <div class="col-md-4">
+  <div class="am-u-md-4">
     <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView/1/w/120/h/120" alt="" width="48" height="48"/>
     <span class="am-text-middle">居中对齐</span>
   </div>
 
-  <div class="col-md-4">
+  <div class="am-u-md-4">
     <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView/1/w/120/h/120" alt="" width="48" height="48"/>
     <span class="am-text-bottom">底部对齐</span>
   </div>

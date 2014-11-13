@@ -14,7 +14,9 @@
  ============================================================================ */
 
 @media print {
-  * {
+  *,
+  *:before,
+  *:after {
     background: transparent !important;
     color: #000 !important; /* Black prints faster: h5bp.com/s */
     box-shadow: none !important;
@@ -84,22 +86,22 @@
   }
 
   // components
-  .am-mainnav {
+  .@{ns}topbar {
     display: none;
   }
 
-  .am-table {
+  .@{ns}table {
     td,
     th {
       background-color: #fff !important;
     }
   }
 
-  .am-table {
+  .@{ns}table {
     border-collapse: collapse !important;
   }
 
-  .am-table-bordered {
+  .@{ns}table-bordered {
     th,
     td {
       border: 1px solid #ddd !important;
@@ -110,7 +112,7 @@
 
 /* print helper classes */
 
-.am-print-block {
+.@{ns}print-block {
   display: none !important;
 
   @media print {
@@ -118,7 +120,7 @@
   }
 }
 
-.am-print-inline {
+.@{ns}print-inline {
   display: none !important;
 
   @media print {
@@ -126,7 +128,7 @@
   }
 }
 
-.am-print-inline-block {
+.@{ns}print-inline-block {
   display: none !important;
 
   @media print {
@@ -134,7 +136,7 @@
   }
 }
 
-.am-print-hide {
+.@{ns}print-hide {
   @media print {
     display: none !important;
   }

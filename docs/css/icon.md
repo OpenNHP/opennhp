@@ -36,10 +36,10 @@ __LESS 用户__可以调用 mixin 编写样式：
 
 ```css
 .doc-icon-custom {
-&:before {
-.am-icon-font;
-content: @fa-var-weibo;
-}
+  &:before {
+    .am-icon-font;
+    content: @fa-var-weibo;
+  }
 }
 ```
 
@@ -111,8 +111,8 @@ content: @fa-var-weibo;
 
 ```css
 {
-.am-icon-font;
-content: @fa-var-copy;
+  .am-icon-font;
+  content: @fa-var-copy;
 }
 ```
 

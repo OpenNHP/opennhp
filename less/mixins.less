@@ -20,15 +20,12 @@
   &:after {
     clear: both;
   }
-
-  // old IE support
-  // *zoom: 1;
 }
 
 // WebKit-style focus
 .tab-focus() {
   // Default
-  outline: thin dotted #333;
+  outline: thin dotted;
   // WebKit
   outline: 5px auto -webkit-focus-ring-color;
   outline-offset: -2px;
@@ -53,27 +50,6 @@
   .size(@size; @size);
 }
 
-// Placeholder text
-// -----------------------------------------------------------------------------
-
-.placeholder(@color: @input-color-placeholder) {
-  &:-moz-placeholder {
-    color: @color;
-  }
-  // Firefox 4-18
-  &::-moz-placeholder {
-    color: @color;
-  }
-  // Firefox 19+
-  &:-ms-input-placeholder {
-    color: @color;
-  }
-  // Internet Explorer 10+
-  &::-webkit-input-placeholder {
-    color: @color;
-  }
-  // Safari and Chrome
-}
 
 // Text overflow
 // Requires inline-block or block for proper styling
@@ -113,21 +89,18 @@
   max-height: @line-height * @lines;
 }
 
-// =============================================================================
-// CSS3 PROPERTIES
-// =============================================================================
 
 // Single side border-radius
 // -----------------------------------------------------------------------------
 
 .border-top-radius(@radius) {
   border-top-right-radius: @radius;
-  border-top-left-radius: @radius;
+   border-top-left-radius: @radius;
 }
 
 .border-right-radius(@radius) {
   border-bottom-right-radius: @radius;
-  border-top-right-radius: @radius;
+     border-top-right-radius: @radius;
 }
 
 .border-bottom-radius(@radius) {
@@ -137,10 +110,82 @@
 
 .border-left-radius(@radius) {
   border-bottom-left-radius: @radius;
-  border-top-left-radius: @radius;
+     border-top-left-radius: @radius;
 }
 
-// Drop shadows
+
+// =============================================================================
+// CSS3 Vendor Prefixes
+// =============================================================================
+
+// Try to use Autoprefixer replace these mixins
+
+// - Animations
+// - Backface visibility
+// - Box shadow
+// - Box sizing
+// - Content columns
+// - Hyphens
+// - Placeholder text
+// - Transformations
+// - Transitions
+// - User Select
+
+
+// Animations
+// -----------------------------------------------------------------------------
+.animation(@animation) {
+  -webkit-animation: @animation;
+  animation: @animation;
+}
+.animation-name(@name) {
+  -webkit-animation-name: @name;
+  animation-name: @name;
+}
+
+.animation-duration(@duration) {
+  -webkit-animation-duration: @duration;
+  animation-duration: @duration;
+}
+
+.animation-timing-function(@timing-function) {
+  -webkit-animation-timing-function: @timing-function;
+  animation-timing-function: @timing-function;
+}
+
+.animation-delay(@delay) {
+  -webkit-animation-delay: @delay;
+  animation-delay: @delay;
+}
+
+.animation-iteration-count(@iteration-count) {
+  -webkit-animation-iteration-count: @iteration-count;
+  animation-iteration-count: @iteration-count;
+}
+
+.animation-direction(@direction) {
+  -webkit-animation-direction: @direction;
+  animation-direction: @direction;
+}
+
+.animation-fill-mode(@fill-mode) {
+  -webkit-animation-fill-mode: @fill-mode;
+  animation-fill-mode: @fill-mode;
+}
+
+
+// Backface visibility
+// Prevent browsers from flickering when using CSS 3D transforms.
+// Default value is `visible`, but can be changed to `hidden`
+// -----------------------------------------------------------------------------
+.backface-visibility(@visibility) {
+  -webkit-backface-visibility: @visibility;
+  -moz-backface-visibility: @visibility;
+  backface-visibility: @visibility;
+}
+
+
+// Box shadows
 // -----------------------------------------------------------------------------
 
 .box-shadow(@shadow) {
@@ -148,9 +193,153 @@
   box-shadow: @shadow;
 }
 
-// Transitions
+
+// Box sizing
+// -----------------------------------------------------------------------------
+.box-sizing(@boxmodel) {
+  -webkit-box-sizing: @boxmodel;
+  -moz-box-sizing: @boxmodel;
+  box-sizing: @boxmodel;
+}
+
+
+// Content Columns
+// -----------------------------------------------------------------------------
+.content-columns(@column-count; @column-gap: @grid-gutter-width) {
+  -webkit-column-count: @column-count;
+  -moz-column-count: @column-count;
+  column-count: @column-count;
+  -webkit-column-gap: @column-gap;
+  -moz-column-gap: @column-gap;
+  column-gap: @column-gap;
+}
+
+
+// Optional hyphenation
+// -----------------------------------------------------------------------------
+.hyphens(@mode: auto) {
+  word-wrap: break-word;
+  -webkit-hyphens: @mode;
+  -moz-hyphens: @mode;
+  -ms-hyphens: @mode; // IE10+
+  -o-hyphens: @mode;
+  hyphens: @mode;
+}
+
+
+// Placeholder text
+// -----------------------------------------------------------------------------
+.placeholder(@color: @input-color-placeholder) {
+  // Firefox
+  &::-moz-placeholder {
+    color: @color;
+    opacity: 1;
+  }
+
+  // Internet Explorer 10+
+  &:-ms-input-placeholder {
+    color: @color;
+  }
+
+  // Safari and Chrome
+  &::-webkit-input-placeholder {
+    color: @color;
+  }
+}
+
+
+// Transformations
 // -----------------------------------------------------------------------------
 
+.scale(@ratio) {
+  -webkit-transform: scale(@ratio);
+  -ms-transform: scale(@ratio); // IE9 only
+  -o-transform: scale(@ratio);
+  transform: scale(@ratio);
+}
+.scale(@ratioX; @ratioY) {
+  -webkit-transform: scale(@ratioX, @ratioY);
+  -ms-transform: scale(@ratioX, @ratioY); // IE9 only
+  -o-transform: scale(@ratioX, @ratioY);
+  transform: scale(@ratioX, @ratioY);
+}
+.scaleX(@ratio) {
+  -webkit-transform: scaleX(@ratio);
+  -ms-transform: scaleX(@ratio); // IE9 only
+  -o-transform: scaleX(@ratio);
+  transform: scaleX(@ratio);
+}
+.scaleY(@ratio) {
+  -webkit-transform: scaleY(@ratio);
+  -ms-transform: scaleY(@ratio); // IE9 only
+  -o-transform: scaleY(@ratio);
+  transform: scaleY(@ratio);
+}
+
+.skew(@x; @y) {
+  -webkit-transform: skew(@x, @y);
+  -ms-transform: skewX(@x) skewY(@y); // IE9+
+  transform: skew(@x, @y);
+}
+
+.translate(@x: 0; @y: 0) {
+  -webkit-transform: translate(@x, @y);
+  -ms-transform: translate(@x, @y); // IE9+
+  transform: translate(@x, @y);
+}
+
+.translate3d(@x:0; @y:0; @z:0) {
+  -webkit-transform: translate3d(@x,@y,@z);
+  -ms-transform: translate3d(@x,@y,@z);
+  transform: translate3d(@x,@y,@z);
+}
+
+.rotate(@degrees) {
+  -webkit-transform: rotate(@degrees);
+  -ms-transform: rotate(@degrees); // IE9+
+  transform: rotate(@degrees);
+}
+
+.rotateX(@degrees) {
+  -webkit-transform: rotateX(@degrees);
+  -ms-transform: rotateX(@degrees); // IE9+
+  transform: rotateX(@degrees);
+}
+
+.rotateY(@degrees) {
+  -webkit-transform: rotateY(@degrees);
+  -ms-transform: rotateY(@degrees); // IE9+
+  transform: rotateY(@degrees);
+}
+
+// TODO: Remove below
+/*.transform(@tramsform) {
+  -webkit-transform: @tramsform;
+  -ms-transform: @tramsform;
+  transform: @tramsform;
+}*/
+
+.perspective(@perspective) {
+  -webkit-perspective: @perspective;
+  -moz-perspective: @perspective;
+  perspective: @perspective;
+}
+
+.perspective-origin(@perspective) {
+  -webkit-perspective-origin: @perspective;
+  -moz-perspective-origin: @perspective;
+  perspective-origin: @perspective;
+}
+
+.transform-origin(@origin) {
+  -webkit-transform-origin: @origin;
+  -ms-transform-origin: @origin;
+  transform-origin: @origin;
+}
+
+
+// Transitions
+// -----------------------------------------------------------------------------
 .transition(@transition) {
   -webkit-transition: @transition;
   transition: @transition;
@@ -171,6 +360,11 @@
   transition-duration: @transition-duration;
 }
 
+.transition-timing-function(@timing-function) {
+  -webkit-transition-timing-function: @timing-function;
+  transition-timing-function: @timing-function;
+}
+
 .transition-transform(@transition) {
   -webkit-transition: -webkit-transform @transition;
   -moz-transition: -moz-transform @transition;
@@ -178,115 +372,18 @@
   transition: transform @transition;
 }
 
-// Transformations
-// -----------------------------------------------------------------------------
-
-.rotate(@degrees) {
-  -webkit-transform: rotate(@degrees);
-  -ms-transform: rotate(@degrees); // IE9+
-  transform: rotate(@degrees);
-}
-
-.scale(@ratio) {
-  -webkit-transform: scale(@ratio);
-  -ms-transform: scale(@ratio); // IE9+
-  transform: scale(@ratio);
-}
-
-.translate(@x: 0; @y: 0) {
-  -webkit-transform: translate(@x, @y);
-  -ms-transform: translate(@x, @y); // IE9+
-  transform: translate(@x, @y);
-}
-
-.skew(@x; @y) {
-  -webkit-transform: skew(@x, @y);
-  -ms-transform: skewX(@x) skewY(@y); // IE9+
-  transform: skew(@x, @y);
-}
-
-.translate3d(@x:0, @y:0, @z:0) {
-  -webkit-transform: translate3d(@x,@y,@z);
-  -ms-transform: translate3d(@x,@y,@z);
-  transform: translate3d(@x,@y,@z);
-}
-
-.rotateX(@degrees) {
-  -webkit-transform: rotateX(@degrees);
-  -ms-transform: rotateX(@degrees); // IE9+
-  transform: rotateX(@degrees);
-}
-
-.rotateY(@degrees) {
-  -webkit-transform: rotateY(@degrees);
-  -ms-transform: rotateY(@degrees); // IE9+
-  transform: rotateY(@degrees);
-}
-
-.perspective(@perspective) {
-  -webkit-perspective: @perspective;
-  -moz-perspective: @perspective;
-  perspective: @perspective;
-}
-
-.perspective-origin(@perspective) {
-  -webkit-perspective-origin: @perspective;
-  -moz-perspective-origin: @perspective;
-  perspective-origin: @perspective;
-}
-
-.transform(@tramsform) {
-  -webkit-transform: @tramsform;
-  -ms-transform: @tramsform;
-  transform: @tramsform;
-}
-
-.transform-origin(@origin) {
-  -webkit-transform-origin: @origin;
-  -ms-transform-origin: @origin;
-  transform-origin: @origin;
-}
-
-// Animations
-// -----------------------------------------------------------------------------
-
-.animation(@animation) {
-  -webkit-animation: @animation;
-  animation: @animation;
-}
-
-// Backface visibility
-// Prevent browsers from flickering when using CSS 3D transforms.
-// Default value is `visible`, but can be changed to `hidden`
-// -----------------------------------------------------------------------------
-
-.backface-visibility(@visibility) {
-  -webkit-backface-visibility: @visibility;
-  -moz-backface-visibility: @visibility;
-  backface-visibility: @visibility;
-}
-
-// Box sizing
-// -----------------------------------------------------------------------------
-
-.box-sizing(@boxmodel) {
-  -webkit-box-sizing: @boxmodel;
-  -moz-box-sizing: @boxmodel;
-  box-sizing: @boxmodel;
-}
 
 // User select
 // For selecting text on the page
 // Formal syntax: none | text | all | element
 // -----------------------------------------------------------------------------
-
 .user-select(@select) {
   -webkit-user-select: @select;
   -moz-user-select: @select;
   -ms-user-select: @select; // IE10+
-  -o-user-select: @select;
   user-select: @select;
 }
+
 
 // Resize anything
 // -----------------------------------------------------------------------------
@@ -294,30 +391,6 @@
 .resizable(@direction) {
   resize: @direction; // Options: horizontal, vertical, both
   overflow: auto; // Safari fix
-}
-
-// CSS3 Content Columns
-// -----------------------------------------------------------------------------
-
-.content-columns(@column-count; @column-gap: @grid-gutter-width) {
-  -webkit-column-count: @column-count;
-  -moz-column-count: @column-count;
-  column-count: @column-count;
-  -webkit-column-gap: @column-gap;
-  -moz-column-gap: @column-gap;
-  column-gap: @column-gap;
-}
-
-// Optional hyphenation
-// -----------------------------------------------------------------------------
-
-.hyphens(@mode: auto) {
-  word-wrap: break-word;
-  -webkit-hyphens: @mode;
-  -moz-hyphens: @mode;
-  -ms-hyphens: @mode; // IE10+
-  -o-hyphens: @mode;
-  hyphens: @mode;
 }
 
 // Opacity
@@ -817,7 +890,8 @@
 // 5. Better font rendering in Webkit
 .am-icon-font() {
   display: inline-block; // 1
-  font-family: "FontAwesome"!important;
+  // Fuck some rubbish browsers
+  font-family: "FontAwesome", sans-serif !important;
   font-weight: normal; // 2
   font-style: normal; // 2
   vertical-align: baseline; // 3
@@ -827,7 +901,7 @@
 }
 
 // Rem mixin
-// Not enough usable, may be we could consider SASS.
+// Not enough usable, maybe we should consider SASS.
 // =============================================================================
 .x-rem(@property, @value) {
   -: ~`(function () { return ';@{property}: @{@value/10}rem'; }())`;

@@ -215,7 +215,7 @@
     <h2 class="detail-h2">One Web 、Any Device，期待和你一起去实现!</h2>
 
     <div class="am-g">
-      <div class="col-sm-3 detail-mb">
+      <div class="am-u-sm-3 detail-mb">
 
         <h3 class="detail-h3">
           <i class="am-icon-mobile am-icon-sm"></i>
@@ -226,7 +226,7 @@
           Amaze UI 采用业内先进的 mobile first 理念，从小屏逐步扩展到大屏，最终实现所有屏幕适配，适应移动互联潮流。
         </p>
       </div>
-      <div class="col-sm-3 detail-mb">
+      <div class="am-u-sm-3 detail-mb">
         <h3 class="detail-h3">
           <i class="am-icon-cogs am-icon-sm"></i>
           组件丰富，模块化
@@ -236,7 +236,7 @@
           Amaze UI 含近 20 个 CSS 组件、10 个 JS 组件，更有 17 款包含近 60 个主题的 Widgets，可快速构建界面出色、体验优秀的跨屏页面，大幅度提升你的开发效率。
         </p>
       </div>
-      <div class="col-sm-3 detail-mb">
+      <div class="am-u-sm-3 detail-mb">
         <h3 class="detail-h3">
           <i class="am-icon-check-square-o am-icon-sm"></i>
           本地化支持
@@ -246,7 +246,7 @@
           相比国外的前端框架，Amaze UI 专注解决中文排版优化问题，根据操作系统调整字体，实现最佳中文排版效果；针对国内主流浏览器及 App 内置浏览器提供更好的兼容性支持，为你节省大量兼容性调试时间。
         </p>
       </div>
-      <div class="col-sm-3 detail-mb">
+      <div class="am-u-sm-3 detail-mb">
         <h3 class="detail-h3">
           <i class="am-icon-send-o am-icon-sm"></i>
           轻量级，高性能
@@ -262,11 +262,11 @@
 
 <div class="hope">
   <div class="am-g am-container">
-    <div class="col-sm-6 hope-img">
+    <div class="am-u-sm-6 hope-img">
       <img src="{{assets}}i/examples/landing.png" alt="" data-am-scrollspy="{animation:'slide-left', repeat: false}">
       <hr class="am-article-divider am-show-sm-only hope-hr">
     </div>
-    <div class="col-sm-6">
+    <div class="am-u-sm-6">
       <h2 class="hope-title">同我们一起打造你的前端框架</h2>
 
       <p>
@@ -281,7 +281,7 @@
     <h2 class="about-title about-color">Amaze UI 崇尚开放、自由，非常欢迎大家的参与</h2>
 
     <div class="am-g">
-      <div class="col-sm-4">
+      <div class="am-u-sm-4">
         <form class="am-form">
           <label for="name" class="about-color">你的姓名</label>
           <input id="name" type="text">
@@ -297,7 +297,7 @@
         <hr class="am-article-divider am-show-sm-only">
       </div>
 
-      <div class="col-sm-8">
+      <div class="am-u-sm-8">
         <h4 class="about-color">关于我们</h4>
 
         <p>AllMobilize Inc (美通云动科技有限公司)
@@ -316,7 +316,13 @@
         href="http://opensource.org/licenses/MIT" target="_blank">MIT license</a>. by the AmazeUI Team.</p>
   </div>
 </footer>
-<script src="{{assets}}js/zepto.min.js"></script>
+<!--[if (gt IE 9)|!(IE)]><!-->
+<script src="{{assets}}js/jquery.min.js"></script>
+<!--<![endif]-->
+<!--[if lte IE 8 ]>
+<script src="http://cdn.staticfile.org/jquery/1.11.1/jquery.min.js
+"></script>
+<![endif]-->
 <script src="{{assets}}js/amazeui.min.js"></script>
 </body>
 </html>

@@ -44,7 +44,7 @@ Amaze UI 内部在用，平台上的开发者也在用，命名空间能够有�
 Amaze UI CSS 大致分为四部分。
 
 <div class="am-g">
-  <div class="col-md-6">
+  <div class="am-u-md-6">
     <div class="am-panel am-panel-default">
       <div class="am-panel-hd">基础（默认）样式</div>
       <div class="am-panel-bd">
@@ -52,16 +52,16 @@ Amaze UI CSS 大致分为四部分。
       </div>
     </div>
   </div>
-  <div class="col-md-6">
+  <div class="am-u-md-6">
     <div class="am-panel am-panel-default">
       <div class="am-panel-hd">布局样式</div>
       <div class="am-panel-bd">
-        包含用于布局的 Grid、Block Grid，以及一些辅助 Class。
+        包含用于布局的 Grid、AVG Grid，以及一些辅助 Class。
       </div>
     </div>
   </div>
 
-  <div class="col-md-6">
+  <div class="am-u-md-6">
     <div class="am-panel am-panel-default">
       <div class="am-panel-hd">元素样式</div>
       <div class="am-panel-bd">
@@ -70,7 +70,7 @@ Amaze UI CSS 大致分为四部分。
     </div>
   </div>
 
-  <div class="col-md-6">
+  <div class="am-u-md-6">
     <div class="am-panel am-panel-default">
       <div class="am-panel-hd">页面组件</div>
       <div class="am-panel-bd">
@@ -371,7 +371,7 @@ __不要单独使用、直接在里面编写样式__！！！
 }
 ```
 
-- 使用网格系统时，只添加 `.col-sm-*` class，移除其他断点的 class。
+- 使用网格系统时，只添加 `.am-u-sm-*` class，移除其他断点的 class。
 
 至此，布局层的响应式被禁用了（[参考示例](/examples/non-responsive.html)）。
 

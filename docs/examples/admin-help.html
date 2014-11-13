@@ -42,7 +42,7 @@
           <li><a href="#"><span class="am-icon-power-off"></span> 退出</a></li>
         </ul>
       </li>
-      <li><a href="javascript:;" id="admin-fullscreen"><span class="am-icon-arrows-alt"></span> 开启全屏</a></li>
+      <li><a href="javascript:;" id="admin-fullscreen"><span class="am-icon-arrows-alt"></span> <span class="admin-fullText">开启全屏</span></a></li>
     </ul>
   </div>
 </header>
@@ -92,7 +92,7 @@
     <hr/>
 
     <div class="am-g">
-      <div class="col-sm-12 col-sm-centered">
+      <div class="am-u-sm-12 am-u-sm-centered">
         <h2>Amaze UI 1.0.0 Beta</h2>
         <p>对于 Amaze UI，我们不是创造者。</p>
         <p>Amaze UI 的诞生，依托于 GitHub 及其他技术社区上一些优秀的资源；Amaze UI 的成长，则离不开用户的支持。</p>
@@ -100,7 +100,7 @@
         <hr/>
       </div>
 
-      <div class="col-sm-12 col-md-8 col-md-pull-4">
+      <div class="am-u-sm-12 am-u-md-8 am-u-md-pull-4">
         <h3>Bug 反馈</h3>
         <p>感谢对 Amaze UI 的关注和支持，如遇到 Bug 或者使用问题，可以通过以下途径反馈给我们：</p>
         <ol>
@@ -127,7 +127,13 @@
   <p class="am-padding-left">© 2014 AllMobilize, Inc. Licensed under MIT license.</p>
 </footer>
 
-<script src="{{assets}}js/zepto.min.js"></script>
+<!--[if (gt IE 9)|!(IE)]><!-->
+<script src="{{assets}}js/jquery.min.js"></script>
+<!--<![endif]-->
+<!--[if lte IE 8 ]>
+<script src="http://cdn.staticfile.org/jquery/1.11.1/jquery.min.js
+"></script>
+<![endif]--><script src="{{assets}}js/zepto.min.js"></script>
 <script src="{{assets}}js/amazeui.min.js"></script>
 <script src="{{assets}}js/app.js"></script>
 </body>

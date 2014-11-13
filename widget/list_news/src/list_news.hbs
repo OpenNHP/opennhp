@@ -28,7 +28,7 @@
           am-list-item-thumbed - 带缩略图的
         --}}
         {{#if img}}
-        <div class="am-list-thumb am-col col-sm-12">
+        <div class="am-list-thumb am-u-sm-12">
           <a href="{{link}}">
             <img src="{{img}}" alt="{{title}}"/>
           </a>
@@ -38,7 +38,7 @@
         </div>
         {{/if}}
 
-        <div class="am-col{{#if img}}{{/if}} am-list-main">
+        <div class="{{#if img}}{{/if}} am-list-main">
           {{#if title}}
             <h3 class="am-list-item-hd"><a href="{{link}}">{{{title}}}</a></h3>
           {{/if}}
@@ -71,7 +71,7 @@
           <h3 class="am-list-item-hd"><a href="{{link}}">{{{title}}}</a></h3>
         {{/if}}
         {{#if img}}
-        <div class="am-col col-sm-4 am-list-thumb">
+        <div class="am-u-sm-4 am-list-thumb">
           <a href="{{link}}">
             <img src="{{img}}" alt="{{title}}"/>
           </a>
@@ -81,7 +81,7 @@
         </div>
         {{/if}}
 
-        <div class="am-col{{#if img}} col-sm-8{{/if}} am-list-main">
+        <div class="{{#if img}} am-u-sm-8 {{/if}} am-list-main">
           {{#if date}}
             <span class="am-list-date">{{date}}</span>
           {{/if}}
@@ -110,7 +110,7 @@
           <h3 class="am-list-item-hd"><a href="{{link}}">{{{title}}}</a></h3>
         {{/if}}
 
-        <div class="am-col{{#if img}} col-sm-8{{/if}} am-list-main">
+        <div class="{{#if img}} am-u-sm-8{{/if}} am-list-main">
           {{#if date}}
             <span class="am-list-date">{{date}}</span>
           {{/if}}
@@ -124,7 +124,7 @@
           {{/if}}
         </div>
         {{#if img}}
-        <div class="am-list-thumb am-col col-sm-4">
+        <div class="am-list-thumb am-u-sm-4">
           <a href="{{link}}">
             <img src="{{img}}" alt="{{title}}"/>
           </a>
@@ -146,7 +146,7 @@
           am-list-item-thumbed - 带缩略图的
         --}}
         {{#if img}}
-        <div class="am-col col-sm-4 am-list-thumb">
+        <div class="am-u-sm-4 am-list-thumb">
           <a href="{{link}}">
             <img src="{{img}}" alt="{{title}}"/>
           </a>
@@ -156,7 +156,7 @@
         </div>
         {{/if}}
 
-        <div class="am-col{{#if img}} col-sm-8{{/if}} am-list-main">
+        <div class="{{#if img}} am-u-sm-8{{/if}} am-list-main">
           {{#if title}}
             <h3 class="am-list-item-hd"><a href="{{link}}">{{{title}}}</a></h3>
           {{/if}}
@@ -184,7 +184,7 @@
           am-list-item-desced - 带描述
           am-list-item-thumbed - 带缩略图的
         --}}
-        <div class="am-col{{#if img}} col-sm-8{{/if}} am-list-main">
+        <div class="{{#if img}} am-u-sm-8{{/if}} am-list-main">
           {{#if title}}
             <h3 class="am-list-item-hd"><a href="{{link}}">{{{title}}}</a></h3>
           {{/if}}
@@ -202,7 +202,7 @@
           {{/if}}
         </div>
         {{#if img}}
-          <div class="am-col col-sm-4 am-list-thumb">
+          <div class="am-u-sm-4 am-list-thumb">
             <a href="{{link}}">
               <img src="{{img}}" alt="{{title}}"/>
             </a>

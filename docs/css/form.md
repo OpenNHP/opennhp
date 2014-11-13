@@ -323,21 +323,21 @@
 `````html
 <form class="am-form am-form-horizontal">
   <div class="am-form-group">
-    <label for="doc-ipt-3" class="col-sm-2 am-form-label">电子邮件</label>
-    <div class="col-sm-10">
+    <label for="doc-ipt-3" class="am-u-sm-2 am-form-label">电子邮件</label>
+    <div class="am-u-sm-10">
       <input type="email" id="doc-ipt-3" placeholder="输入你的电子邮件">
     </div>
   </div>
 
   <div class="am-form-group">
-    <label for="doc-ipt-pwd-2" class="col-sm-2 am-form-label">密码</label>
-    <div class="col-sm-10">
+    <label for="doc-ipt-pwd-2" class="am-u-sm-2 am-form-label">密码</label>
+    <div class="am-u-sm-10">
       <input type="password" id="doc-ipt-pwd-2" placeholder="设置一个密码吧">
     </div>
   </div>
 
   <div class="am-form-group">
-    <div class="col-sm-offset-2 col-sm-10">
+    <div class="am-u-sm-offset-2 am-u-sm-10">
       <div class="checkbox">
         <label>
           <input type="checkbox"> 记住十万年
@@ -347,7 +347,7 @@
   </div>
 
   <div class="am-form-group">
-    <div class="col-sm-offset-2 col-sm-10">
+    <div class="am-sm-offset-2 am-u-sm-10">
       <button type="submit" class="am-btn am-btn-default">提交登入</button>
     </div>
   </div>
@@ -357,21 +357,21 @@
 ```html
 <form class="am-form am-form-horizontal">
   <div class="am-form-group">
-    <label for="doc-ipt-3" class="col-sm-2 am-form-label">电子邮件</label>
-    <div class="col-sm-10">
+    <label for="doc-ipt-3" class="am-u-sm-2 am-form-label">电子邮件</label>
+    <div class="am-u-sm-10">
       <input type="email" id="doc-ipt-3" placeholder="输入你的电子邮件">
     </div>
   </div>
 
   <div class="am-form-group">
-    <label for="doc-ipt-pwd-2" class="col-sm-2 am-form-label">密码</label>
-    <div class="col-sm-10">
+    <label for="doc-ipt-pwd-2" class="am-u-sm-2 am-form-label">密码</label>
+    <div class="am-u-sm-10">
       <input type="password" id="doc-ipt-pwd-2" placeholder="设置一个密码吧">
     </div>
   </div>
 
   <div class="am-form-group">
-    <div class="col-sm-offset-2 col-sm-10">
+    <div class="am-u-sm-offset-2 am-u-sm-10">
       <div class="checkbox">
         <label>
           <input type="checkbox"> 记住十万年
@@ -381,7 +381,7 @@
   </div>
 
   <div class="am-form-group">
-    <div class="col-sm-offset-2 col-sm-10">
+    <div class="am-sm-offset-2 am-u-sm-10">
       <button type="submit" class="am-btn am-btn-default">提交登入</button>
     </div>
   </div>

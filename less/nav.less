@@ -25,7 +25,7 @@
    Component: Nav
  ============================================================================ */
 
-.am-nav {
+.@{ns}nav {
   margin-bottom: 0;
   padding: 0;
   list-style: none;
@@ -39,7 +39,7 @@
       margin-top: 5px; // Stacked
     }
 
-    + .am-nav-header {
+    + .@{ns}nav-header {
       margin-top: @nav-header-margin-top;
     }
 
@@ -56,7 +56,7 @@
       }
     }
 
-    &.am-active > a {
+    &.@{ns}active > a {
       &,
       &:hover,
       &:focus {
@@ -68,7 +68,7 @@
     }
 
     // Disabled state sets text to gray and nukes hover/tab effects
-    &.am-disabled > a {
+    &.@{ns}disabled > a {
       color: @nav-disabled-link-color;
 
       &:hover,
@@ -87,7 +87,7 @@
 }
 
 
-.am-nav-header {
+.@{ns}nav-header {
   padding: @nav-link-padding;
   text-transform: @nav-header-text-transform;
   font-weight: @nav-header-font-weight;
@@ -97,7 +97,7 @@
 }
 
 
-.am-nav-divider {
+.@{ns}nav-divider {
   margin: 15px 1em !important;
   border-top: 1px solid #ddd;
   .box-shadow(0 1px 0 #fff);
@@ -108,7 +108,7 @@
 // Horizontal
 // =============================================================================
 
-.am-nav-pills {
+.@{ns}nav-pills {
   > li {
     float: left;
 
@@ -125,7 +125,7 @@
 // Tabs nav
 // =============================================================================
 
-.am-nav-tabs {
+.@{ns}nav-tabs {
   border-bottom: 1px solid @nav-tabs-border-color;
   > li {
     float: left;
@@ -139,14 +139,14 @@
       margin-right: 5px;
       line-height: @line-height-base;
       border: 1px solid transparent;
-      border-radius: @global-border-radius @global-border-radius 0 0;
+      border-radius: @global-radius @global-radius 0 0;
       &:hover {
         border-color: @nav-tabs-link-hover-border-color @nav-tabs-link-hover-border-color @nav-tabs-border-color;
       }
     }
 
     // Active state
-    &.am-active > a {
+    &.@{ns}active > a {
       &,
       &:hover,
       &:focus {
@@ -159,8 +159,8 @@
     }
   }
 
-  &.am-nav-justify {
-    .am-nav-tabs-justify();
+  &.@{ns}nav-justify {
+    .nav-tabs-justify();
   }
 
   .hook-nav-tabs;
@@ -170,40 +170,34 @@
 // Justify links
 // =============================================================================
 
-.am-nav-justify {
+.@{ns}nav-justify {
   width: 100%;
+  .flexbox();
 
   > li {
     float: none;
+    .flex(1);
+    // display: table-cell;
+    // width: 1%;
     > a {
       text-align: center;
-      margin-bottom: 5px;
+      margin-bottom: 0;
     }
   }
 
-  @media @medium-up {
-    > li {
-      display: table-cell;
-      width: 1%;
-      > a {
-        margin-bottom: 0;
-      }
-    }
-  }
   .hook-nav-justify;
 }
 
 
-// Tabs justify style
-// Mixin to `.am-nav-tabs.am-nav-justify`, DO NOT need add this class
+// Tabs justify mixin
 // =============================================================================
 
-.am-nav-tabs-justify {
+.nav-tabs-justify() {
   border-bottom: 0;
 
-  > li > a {
+/*  > li > a {
     margin-right: 0;
-    border-radius: @global-border-radius;
+    border-radius: @global-radius;
   }
 
   > .am-active > a {
@@ -212,12 +206,13 @@
     &:focus {
       border: 1px solid @nav-tabs-justify-link-border-color;
     }
-  }
+  }*/
 
-  @media @medium-up {
+  // @media @medium-up {
     > li > a {
+      margin-right: 0;
       border-bottom: 1px solid @nav-tabs-justify-link-border-color;
-      border-radius: @global-border-radius @global-border-radius 0 0;
+      border-radius: @global-radius @global-radius 0 0;
     }
 
     > .am-active > a {
@@ -227,8 +222,7 @@
         border-bottom-color: @nav-tabs-justify-active-link-border-color;
       }
     }
-  }
-  .hook-nav-tabs-justify;
+  // }
 }
 
 
@@ -245,4 +239,3 @@
 .hook-nav-pills() {}
 .hook-nav-tabs() {}
 .hook-nav-justify() {}
-.hook-nav-tabs-justify() {}

@@ -4,25 +4,25 @@
 Amaze UI 目前提供几个常见的布局示例，供开发者参考，后续会增加更加示例。
 
 <div class="am-g">
-    <div class="col-md-3 col-sm-6">
+    <div class="am-u-sm-6 am-u-md-3">
         <a class="am-thumbnail" href="/examples/landing.html">
             <img class="am-img-thumbnail" src="http://amazeui.org/i/examples/landingPage.png" alt="landingPage"/>
             <figcaption class="am-thumbnail-caption">展示页面</figcaption>
         </a>
     </div>
-    <div class="col-md-3 col-sm-6">
+    <div class="am-u-sm-6 am-u-md-3">
         <a class="am-thumbnail" href="/examples/login.html">
             <img class="am-img-thumbnail" src="http://amazeui.org/i/examples/loginPage.png" alt="loginPage"/>
             <figcaption class="am-thumbnail-caption">登录注册页面</figcaption>
         </a>
     </div>
-    <div class="col-md-3 col-sm-6">
+    <div class="am-u-sm-6 am-u-md-3">
         <a class="am-thumbnail" href="/examples/blog.html">
             <img class="am-img-thumbnail" src="http://amazeui.org/i/examples/blogPage.png" alt="blogPage"/>
             <figcaption class="am-thumbnail-caption">博客页面</figcaption>
         </a>
     </div>
-    <div class="col-md-3 col-sm-6">
+    <div class="am-u-sm-6 am-u-md-3">
         <a class="am-thumbnail" href="/examples/sidebar.html">
             <img class="am-img-thumbnail" src="http://amazeui.org/i/examples/sidebarPage.png" alt="sidebarPage"/>
             <figcaption class="am-thumbnail-caption">侧边栏页面</figcaption>
@@ -31,7 +31,7 @@ Amaze UI 目前提供几个常见的布局示例，供开发者参考，后续�
 </div>
 
 <div class="am-g">
-    <div class="col-md-3 col-sm-6">
+    <div class="am-u-sm-6 am-u-md-3">
         <a class="am-thumbnail" href="/examples/admin-index.html">
             <img class="am-img-thumbnail" src="http://ww1.sinaimg.cn/large/005yyi5Jjw1elpr8svtoyj30j70demxe.jpg
 " alt="adminPage"/>

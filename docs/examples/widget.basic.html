@@ -80,7 +80,7 @@
         </li>
         <li class="am-parent">
           <a href="#c3">趋势</a>
-          <ul class="am-menu-sub am-collapse  sm-block-grid-4 ">
+          <ul class="am-menu-sub am-collapse am-avg-sm-4">
             <li class="">
               <a href="##">公司</a>
             </li>
@@ -106,7 +106,7 @@
         </li>
         <li class="am-parent">
           <a href="##">投融资</a>
-          <ul class="am-menu-sub am-collapse  sm-block-grid-3 ">
+          <ul class="am-menu-sub am-collapse am-avg-sm-3">
             <li class="">
               <a href="##">公司</a>
             </li>
@@ -170,13 +170,13 @@
     <ul class="am-list">
       <!--缩略图在标题左边-->
       <li class="am-g am-list-item-desced am-list-item-thumbed am-list-item-thumb-left">
-        <div class="am-col col-sm-4 am-list-thumb">
+        <div class="am-u-sm-4 am-list-thumb">
           <a href="http://www.douban.com/online/11614662/">
             <img src="http://img5.douban.com/lpic/o636459.jpg" alt="我很囧，你保重....晒晒旅行中的那些囧！"
               />
           </a>
         </div>
-        <div class="am-col col-sm-8 am-list-main">
+        <div class="am-u-sm-8 am-list-main">
           <h3 class="am-list-item-hd">
             <a href="http://www.douban.com/online/11614662/">我很囧，你保重....晒晒旅行中的那些囧！</a>
           </h3>
@@ -184,12 +184,12 @@
         </div>
       </li>
       <li class="am-g am-list-item-desced am-list-item-thumbed am-list-item-thumb-left">
-        <div class="am-col col-sm-4 am-list-thumb">
+        <div class="am-u-sm-4 am-list-thumb">
           <a href="http://www.douban.com/online/11624755/">
             <img src="http://img3.douban.com/lpic/o637240.jpg" alt="我最喜欢的一张画" />
           </a>
         </div>
-        <div class="am-col col-sm-8 am-list-main">
+        <div class="am-u-sm-8 am-list-main">
           <h3 class="am-list-item-hd">
             <a href="http://www.douban.com/online/11624755/">我最喜欢的一张画</a>
           </h3>
@@ -197,7 +197,7 @@
         </div>
       </li>
       <li class="am-g am-list-item-desced">
-        <div class="am-col am-list-main">
+        <div class="am-list-main">
           <h3 class="am-list-item-hd">
             <a href="http://www.douban.com/online/11645411/">“你的旅行，是什么颜色？” 晒照片，换北欧梦幻极光之旅！</a>
           </h3>
@@ -211,8 +211,8 @@
 
 
 <!-- Gallery -->
-<ul data-am-widget="gallery" class="am-gallery sm-block-grid-2
-  md-block-grid-3 lg-block-grid-4 am-gallery-default" data-am-gallery="{ pureview: true }">
+<ul data-am-widget="gallery" class="am-gallery am-avg-sm-2
+  am-avg-md-3 am-avg-lg-4 am-gallery-default" data-am-gallery="{ pureview: true }">
   <li>
     <div class="am-gallery-item">
       <a href="http://cn.bing.com/az/hprichv/LondonTrainStation_GettyRR_139321755_ZH-CN742316019.jpg">
@@ -315,7 +315,7 @@
 <!-- Navbar -->
 <div data-am-widget="navbar" class="am-navbar am-cf am-navbar-default "
      id="">
-  <ul class="am-navbar-nav am-cf sm-block-grid-4">
+  <ul class="am-navbar-nav am-cf am-avg-sm-4">
     <li>
       <a href="tel:123456789">
         <span class="am-icon-phone"></span>
@@ -355,7 +355,13 @@
   </ul>
 </div>
 
-<script src="{{assets}}js/zepto.min.js?ver=1.1.3"></script>
+<!--[if (gt IE 9)|!(IE)]><!-->
+<script src="{{assets}}js/jquery.min.js"></script>
+<!--<![endif]-->
+<!--[if lte IE 8 ]>
+<script src="http://cdn.staticfile.org/jquery/1.11.1/jquery.min.js
+"></script>
+<![endif]-->
 <script src="{{assets}}js/amazeui.js"></script>
 </body>
 </html>

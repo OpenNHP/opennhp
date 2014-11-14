@@ -29,7 +29,7 @@ code {
   color: @code-color;
   background-color: @code-bg;
   white-space: nowrap;
-  border-radius: @global-border-radius;
+  border-radius: @global-radius;
 }
 
 
@@ -46,7 +46,7 @@ pre {
   color: @pre-color;
   background-color: @pre-bg;
   border: @pre-border;
-  border-radius: @global-border-radius;
+  border-radius: @global-radius;
 
   // Account for some code outputs that place code tags in pre tags
   code {
@@ -62,7 +62,7 @@ pre {
 
 /* Enable scrollable blocks of code */
 
-.am-pre-scrollable {
+.@{ns}pre-scrollable {
   max-height: @pre-scrollable-max-height;
   overflow-y: scroll;
   .hook-pre-scrollable;

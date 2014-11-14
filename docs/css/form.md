@@ -19,7 +19,7 @@
 
 单使用 CSS， 很难给 `select` 定义跨浏览器兼容的样式，保留浏览器默认样式可能是它最好的归宿（[Pure CSS 就是这么干的](http://purecss.io/forms/#stacked-form))。Amaze UI 中针对 Webkit 浏览器写了一点样式替换了默认的下上三角形。
 
-### 演示
+### 基本演示
 
 在容器上添加 `.am-form` class，容器里的子元素才会应用 Amaze UI 定义的样式。
 
@@ -216,6 +216,17 @@
 </form>
 ```
 
+### 表单形状
+
+`````html
+<p><input type="text" class="am-form-field am-radius" placeholder="圆角表单域" /></p>
+<p><input type="text" class="am-form-field am-round" placeholder="椭圆表单域"/></p>
+`````
+```html
+<p><input type="text" class="am-form-field am-radius" placeholder="圆角表单域" /></p>
+<p><input type="text" class="am-form-field am-round" placeholder="椭圆表单域"/></p>
+```
+
 ## 表单域状态
 
 设置表单元素的不同状态。
@@ -312,21 +323,21 @@
 `````html
 <form class="am-form am-form-horizontal">
   <div class="am-form-group">
-    <label for="doc-ipt-3" class="col-sm-2 am-form-label">电子邮件</label>
-    <div class="col-sm-10">
+    <label for="doc-ipt-3" class="am-u-sm-2 am-form-label">电子邮件</label>
+    <div class="am-u-sm-10">
       <input type="email" id="doc-ipt-3" placeholder="输入你的电子邮件">
     </div>
   </div>
 
   <div class="am-form-group">
-    <label for="doc-ipt-pwd-2" class="col-sm-2 am-form-label">密码</label>
-    <div class="col-sm-10">
+    <label for="doc-ipt-pwd-2" class="am-u-sm-2 am-form-label">密码</label>
+    <div class="am-u-sm-10">
       <input type="password" id="doc-ipt-pwd-2" placeholder="设置一个密码吧">
     </div>
   </div>
 
   <div class="am-form-group">
-    <div class="col-sm-offset-2 col-sm-10">
+    <div class="am-u-sm-offset-2 am-u-sm-10">
       <div class="checkbox">
         <label>
           <input type="checkbox"> 记住十万年
@@ -336,7 +347,7 @@
   </div>
 
   <div class="am-form-group">
-    <div class="col-sm-offset-2 col-sm-10">
+    <div class="am-sm-offset-2 am-u-sm-10">
       <button type="submit" class="am-btn am-btn-default">提交登入</button>
     </div>
   </div>
@@ -346,21 +357,21 @@
 ```html
 <form class="am-form am-form-horizontal">
   <div class="am-form-group">
-    <label for="doc-ipt-3" class="col-sm-2 am-form-label">电子邮件</label>
-    <div class="col-sm-10">
+    <label for="doc-ipt-3" class="am-u-sm-2 am-form-label">电子邮件</label>
+    <div class="am-u-sm-10">
       <input type="email" id="doc-ipt-3" placeholder="输入你的电子邮件">
     </div>
   </div>
 
   <div class="am-form-group">
-    <label for="doc-ipt-pwd-2" class="col-sm-2 am-form-label">密码</label>
-    <div class="col-sm-10">
+    <label for="doc-ipt-pwd-2" class="am-u-sm-2 am-form-label">密码</label>
+    <div class="am-u-sm-10">
       <input type="password" id="doc-ipt-pwd-2" placeholder="设置一个密码吧">
     </div>
   </div>
 
   <div class="am-form-group">
-    <div class="col-sm-offset-2 col-sm-10">
+    <div class="am-u-sm-offset-2 am-u-sm-10">
       <div class="checkbox">
         <label>
           <input type="checkbox"> 记住十万年
@@ -370,7 +381,7 @@
   </div>
 
   <div class="am-form-group">
-    <div class="col-sm-offset-2 col-sm-10">
+    <div class="am-sm-offset-2 am-u-sm-10">
       <button type="submit" class="am-btn am-btn-default">提交登入</button>
     </div>
   </div>
@@ -606,7 +617,7 @@ ___注意：Icon 的样式针对 `.am-form-group` 单行排列编写，多行的
 
 `````html
 <div class="am-g">
-  <div class=" col-md-8 col-sm-centered">
+  <div class="am-u-md-8 am-u-sm-centered">
     <form class="am-form">
       <fieldset class="am-form-set">
         <input type="text" placeholder="取个名字">
@@ -621,7 +632,7 @@ ___注意：Icon 的样式针对 `.am-form-group` 单行排列编写，多行的
 
 ```html
 <div class="am-g">
-  <div class=" col-md-8 col-sm-centered">
+  <div class="am-u-md-8 am-u-sm-centered">
     <form class="am-form">
       <fieldset class="am-form-set">
         <input type="text" placeholder="取个名字">

@@ -27,7 +27,7 @@
    Component: Input group
  ============================================================================ */
 
-.am-input-group {
+.@{ns}input-group {
   position: relative;
   display: table;
   border-collapse: separate;
@@ -39,7 +39,7 @@
     padding-right: 0;
   }
 
-  .am-form-field {
+  .@{ns}form-field {
     position: relative;
     z-index: 2;
     float: left;
@@ -53,9 +53,9 @@
 // Display as table-cell
 // =============================================================================
 
-.am-input-group-label,
-.am-input-group-btn,
-.am-input-group .am-form-field {
+.@{ns}input-group-label,
+.@{ns}input-group-btn,
+.@{ns}input-group .@{ns}form-field {
   display: table-cell;
 
   &:not(:first-child):not(:last-child) {
@@ -64,8 +64,8 @@
 }
 
 // Input group text
-.am-input-group-label,
-.am-input-group-btn {
+.@{ns}input-group-label,
+.@{ns}input-group-btn {
   width: 1%;
   white-space: nowrap;
   vertical-align: middle; // Match the inputs
@@ -75,7 +75,7 @@
 // Text input groups
 // =============================================================================
 
-.am-input-group-label {
+.@{ns}input-group-label {
   padding: @input-padding 1em;
   font-size: @form-font-size;
   font-weight: normal;
@@ -84,7 +84,7 @@
   text-align: center;
   background-color: @input-group-label-bg;
   border: 1px solid @input-group-label-border-color;
-  border-radius: @global-border-radius;
+  border-radius: @global-radius;
 
   // Nuke default margins from checkboxes and radios to vertically center within.
   input[type="radio"],
@@ -98,31 +98,31 @@
 // Reset rounded corners
 // =============================================================================
 
-.am-input-group .am-form-field:first-child,
-.am-input-group-label:first-child,
-.am-input-group-btn:first-child > .am-btn,
-.am-input-group-btn:first-child > .am-btn-group > .am-btn,
-.am-input-group-btn:first-child > .am-dropdown-toggle,
-.am-input-group-btn:last-child > .am-btn:not(:last-child):not(.dropdown-toggle),
-.am-input-group-btn:last-child > .am-btn-group:not(:last-child) > .am-btn {
+.@{ns}input-group .@{ns}form-field:first-child,
+.@{ns}input-group-label:first-child,
+.@{ns}input-group-btn:first-child > .@{ns}btn,
+.@{ns}input-group-btn:first-child > .@{ns}btn-group > .@{ns}btn,
+.@{ns}input-group-btn:first-child > .@{ns}dropdown-toggle,
+.@{ns}input-group-btn:last-child > .@{ns}btn:not(:last-child):not(.dropdown-toggle),
+.@{ns}input-group-btn:last-child > .@{ns}btn-group:not(:last-child) > .@{ns}btn {
   .border-right-radius(0);
 }
 
-.am-input-group-label:first-child {
+.@{ns}input-group-label:first-child {
   border-right: 0;
 }
 
-.am-input-group .am-form-field:last-child,
-.am-input-group-label:last-child,
-.am-input-group-btn:last-child > .am-btn,
-.am-input-group-btn:last-child > .am-btn-group > .am-btn,
-.am-input-group-btn:last-child > .am-dropdown-toggle,
-.am-input-group-btn:first-child > .am-btn:not(:first-child),
-.am-input-group-btn:first-child > .am-btn-group:not(:first-child) > .am-btn {
+.@{ns}input-group .@{ns}form-field:last-child,
+.@{ns}input-group-label:last-child,
+.@{ns}input-group-btn:last-child > .@{ns}btn,
+.@{ns}input-group-btn:last-child > .@{ns}btn-group > .@{ns}btn,
+.@{ns}input-group-btn:last-child > .@{ns}dropdown-toggle,
+.@{ns}input-group-btn:first-child > .@{ns}btn:not(:first-child),
+.@{ns}input-group-btn:first-child > .@{ns}btn-group:not(:first-child) > .@{ns}btn {
   .border-left-radius(0);
 }
 
-.am-input-group-label:last-child {
+.@{ns}input-group-label:last-child {
   border-left: 0;
 }
 
@@ -130,7 +130,7 @@
 // Button input groups
 // =============================================================================
 
-.am-input-group-btn {
+.@{ns}input-group-btn {
   position: relative;
   // Jankily prevent input button groups from wrapping with `white-space` and
   // `font-size` in combination with `inline-block` on buttons.
@@ -139,10 +139,10 @@
 
   // Negative margin for spacing, position for bringing hovered/focused/actived
   // element above the siblings.
-  > .am-btn {
+  > .@{ns}btn {
     position: relative;
     border-color: @input-border;
-    + .am-btn {
+    + .@{ns}btn {
       margin-left: -1px;
     }
     // Bring the "active" button to the front
@@ -155,15 +155,15 @@
 
   // Negative margin to only have a 1px border between the two
   &:first-child {
-    > .am-btn,
-    > .am-btn-group {
+    > .@{ns}btn,
+    > .@{ns}btn-group {
       margin-right: -2px;
     }
   }
 
   &:last-child {
-    > .am-btn,
-    > .am-btn-group {
+    > .@{ns}btn,
+    > .@{ns}btn-group {
       margin-left: -1px;
     }
   }
@@ -174,65 +174,64 @@
 // Modifiers - sizing
 // =============================================================================
 
-.am-input-group-lg > .am-form-field,
-.am-input-group-lg > .am-input-group-label,
-.am-input-group-lg > .am-input-group-btn > .am-btn {
-  .am-input-lg();
+.@{ns}input-group-lg > .@{ns}form-field,
+.@{ns}input-group-lg > .@{ns}input-group-label,
+.@{ns}input-group-lg > .@{ns}input-group-btn > .@{ns}btn {
   @padding-v: unit(ceil(0.625 * 10 * @form-font-size-lg));
   @padding-h: unit(10 * @form-font-size-lg);
 
   padding: ~"@{padding-v}px" ~"@{padding-h}px"!important;
+  font-size: @form-font-size-lg !important;
 }
 
-.am-input-group-sm > .am-form-field,
-.am-input-group-sm > .am-input-group-label,
-.am-input-group-sm > .am-input-group-btn > .am-btn {
-  .am-input-sm();
-
+.@{ns}input-group-sm > .@{ns}form-field,
+.@{ns}input-group-sm > .@{ns}input-group-label,
+.@{ns}input-group-sm > .@{ns}input-group-btn > .@{ns}btn {
   @padding-v: unit(ceil(0.625 * 10 * @form-font-size-sm));
   @padding-h: unit(10 * @form-font-size-sm);
 
   padding: ~"@{padding-v}px" ~"@{padding-h}px"!important;
+  font-size: @form-font-size-sm !important;
 }
 
 
 // Modifiers - colors
 // =============================================================================
 
-.am-input-group-primary {
+.@{ns}input-group-primary {
   .input-group-color-variant();
   .hook-input-group-primary;
 }
 
-.am-input-group-seconday {
+.@{ns}input-group-seconday {
   .input-group-color-variant(@btn-secondary-bg, @btn-secondary-color, @btn-secondary-border);
   .hook-input-group-seconday;
 }
 
-.am-input-group-success {
+.@{ns}input-group-success {
   .input-group-color-variant(@btn-success-bg, @btn-success-color, @btn-success-border);
   .hook-input-group-success;
 }
 
-.am-input-group-warning {
+.@{ns}input-group-warning {
   .input-group-color-variant(@btn-warning-bg, @btn-warning-color, @btn-warning-border);
   .hook-input-group-warning;
 }
 
-.am-input-group-danger {
+.@{ns}input-group-danger {
   .input-group-color-variant(@btn-danger-bg, @btn-danger-color, @btn-danger-border);
   .hook-input-group-danger;
 }
 
 .input-group-color-variant(@bg: @btn-primary-bg, @color: @btn-primary-color, @border: @btn-primary-border) {
-  .am-input-group-label {
+  .@{ns}input-group-label {
     background: @bg;
     color: @color;
   }
 
-  .am-input-group-label,
-  .am-input-group-btn > .am-btn,
-  .am-form-field {
+  .@{ns}input-group-label,
+  .@{ns}input-group-btn > .@{ns}btn,
+  .@{ns}form-field {
     border-color: @border;
   }
 }

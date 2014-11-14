@@ -37,18 +37,21 @@
 <a class="am-btn am-btn-default">应用按钮样式的链接</a>
 ```
 
-### 方形按钮
+### 圆角按钮
 
-在默认样式的基础上添加 `.am-square` class.
+在默认样式的基础上添加 `.am-radius` class.
 
 `````html
-<button type="button" class="am-btn am-btn-default am-square">默认样式</button>
-<button type="button" class="am-btn am-btn-primary am-square">主色按钮</button>
-<button type="button" class="am-btn am-btn-secondary am-square">次色按钮</button>
-<button type="button" class="am-btn am-btn-success am-square">绿色按钮</button>
-<button type="button" class="am-btn am-btn-warning am-square">橙色按钮</button>
-<button type="button" class="am-btn am-btn-danger am-square">红色按钮</button>
+<button type="button" class="am-btn am-btn-default am-radius">默认样式</button>
+<button type="button" class="am-btn am-btn-primary am-radius">主色按钮</button>
+<button type="button" class="am-btn am-btn-secondary am-radius">次色按钮</button>
+<button type="button" class="am-btn am-btn-success am-radius">绿色按钮</button>
+<button type="button" class="am-btn am-btn-warning am-radius">橙色按钮</button>
+<button type="button" class="am-btn am-btn-danger am-radius">红色按钮</button>
 `````
+```html
+<button type="button" class="am-btn am-btn-default am-radius">默认样式</button>
+```
 
 ### 椭圆形按钮
 
@@ -62,7 +65,9 @@
 <button type="button" class="am-btn am-btn-warning am-round">橙色按钮</button>
 <button type="button" class="am-btn am-btn-danger am-round">红色按钮</button>
 `````
-
+```html
+<button type="button" class="am-btn am-btn-default am-round">默认样式</button>
+```
 
 ## 按钮状态
 
@@ -113,35 +118,39 @@
 
 ## 按钮尺寸
 
+- `.am-btn-xl`
 - `.am-btn-lg`
 - `.am-btn-default`
 - `.am-btn-sm`
 - `.am-btn-xs`
 
 `````html
-<button type="button" class="am-btn am-btn-default am-btn-lg">按钮 - lg</button>
-<button type="button" class="am-btn am-btn-default">按钮默认大小</button>
-<button type="button" class="am-btn am-btn-default am-btn-sm">按钮 - sm</button>
-<button type="button" class="am-btn am-btn-default am-btn-xs">按钮 - xs</button>
+<button class="am-btn am-btn-default am-btn-xl">按钮 - xl</button>
+<button class="am-btn am-btn-default am-btn-lg">按钮 - lg</button>
+<button class="am-btn am-btn-default">按钮默认大小</button>
+<button class="am-btn am-btn-default am-btn-sm">按钮 - sm</button>
+<button class="am-btn am-btn-default am-btn-xs">按钮 - xs</button>
 <br />
 <br />
-<button type="button" class="am-btn am-btn-primary am-btn-lg">按钮 - lg</button>
-<button type="button" class="am-btn am-btn-primary">按钮默认大小</button>
-<button type="button" class="am-btn am-btn-primary am-btn-sm">按钮 - sm</button>
-<button type="button" class="am-btn am-btn-primary am-btn-xs">按钮 - xs</button>
+<button class="am-btn am-btn-primary am-btn-xl">按钮 - xl</button>
+<button class="am-btn am-btn-primary am-btn-lg">按钮 - lg</button>
+<button class="am-btn am-btn-primary">按钮默认大小</button>
+<button class="am-btn am-btn-primary am-btn-sm">按钮 - sm</button>
+<button class="am-btn am-btn-primary am-btn-xs">按钮 - xs</button>
 `````
 ```html
-<button type="button" class="am-btn am-btn-default am-btn-lg">Large button</button>
-<button type="button" class="am-btn am-btn-default">默认样式 button</button>
-<button type="button" class="am-btn am-btn-default am-btn-sm">Small button</button>
-<button type="button" class="am-btn am-btn-default am-btn-xs">Extra small button</button>
+<button class="am-btn am-btn-default am-btn-xl">按钮 - xl</button>
+<button class="am-btn am-btn-default am-btn-lg">按钮 - lg</button>
+<button class="am-btn am-btn-default">按钮默认大小</button>
+<button class="am-btn am-btn-default am-btn-sm">按钮 - sm</button>
+<button class="am-btn am-btn-default am-btn-xs">按钮 - xs</button>
 
-<button type="button" class="am-btn am-btn-primary am-btn-lg">Large button</button>
-<button type="button" class="am-btn am-btn-primary">默认样式 button</button>
-<button type="button" class="am-btn am-btn-primary am-btn-sm">Small button</button>
-<button type="button" class="am-btn am-btn-primary am-btn-xs">Extra small button</button>
+<button class="am-btn am-btn-primary am-btn-xl">按钮 - xl</button>
+<button class="am-btn am-btn-primary am-btn-lg">按钮 - lg</button>
+<button class="am-btn am-btn-primary">按钮默认大小</button>
+<button class="am-btn am-btn-primary am-btn-sm">按钮 - sm</button>
+<button class="am-btn am-btn-primary am-btn-xs">按钮 - xs</button>
 ```
-
 
 ## 块级显示
 

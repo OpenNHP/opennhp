@@ -42,7 +42,7 @@
           <li><a href="#"><span class="am-icon-power-off"></span> 退出</a></li>
         </ul>
       </li>
-      <li><a href="javascript:;" id="admin-fullscreen"><span class="am-icon-arrows-alt"></span> 开启全屏</a></li>
+      <li><a href="javascript:;" id="admin-fullscreen"><span class="am-icon-arrows-alt"></span> <span class="admin-fullText">开启全屏</span></a></li>
     </ul>
   </div>
 </header>
@@ -92,7 +92,7 @@
     <hr/>
 
     <div class="am-g error-log">
-      <div class="col-sm-12 col-sm-centered">
+      <div class="am-u-sm-12 am-u-sm-centered">
         <pre class="am-pre-scrollable">
 <span class="am-text-success">[Tue Jan 11 17:32:52 2013]</span> <span class="am-text-danger">[error]</span> [google 123.124.2.2] client denied by server: /export/home/macadmin/testdoc
 <span class="am-text-success">[Tue Jan 11 17:32:52 2013]</span> <span class="am-text-danger">[error]</span> [google 123.124.2.2] client denied by server: /export/home/macadmin/testdoc - no such file
@@ -133,7 +133,13 @@
 </footer>
 
 
-<script src="{{assets}}js/zepto.min.js"></script>
+<!--[if (gt IE 9)|!(IE)]><!-->
+<script src="{{assets}}js/jquery.min.js"></script>
+<!--<![endif]-->
+<!--[if lte IE 8 ]>
+<script src="http://cdn.staticfile.org/jquery/1.11.1/jquery.min.js
+"></script>
+<![endif]-->
 <script src="{{assets}}js/amazeui.min.js"></script>
 <script src="{{assets}}js/app.js"></script>
 </body>

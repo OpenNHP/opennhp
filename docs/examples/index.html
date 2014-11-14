@@ -48,7 +48,7 @@
 
 <!-- 页面内容 开发时删除 -->
 <div class="am-g am-g-fixed am-margin-top">
-  <div class="col-sm-12">
+  <div class="am-u-sm-12">
     <h1>你好世界！小可 Amaze UI 模板。</h1>
 
     <p>这是一个基础的页面，引入 Amaze UI 的 css 、js
@@ -56,16 +56,16 @@
   </div>
 </div>
 <div class="am-g am-g-fixed am-margin-top">
-  <p class="col-sm-12">下载包里面有 4 个常见布局示例，供开发者参考。</p>
+  <p class="am-u-sm-12">下载包里面有 4 个常见布局示例，供开发者参考。</p>
 
-  <div class="col-sm-12">
+  <div class="am-u-sm-12">
     <div class="am-g">
-      <div class="col-sm-12 col-md-3">
+      <div class="am-u-sm-12 am-u-md-3">
         <a href="landing.html"><img class="am-img-thumbnail"
                                     src="{{assets}}i/examples/landingPage.png"
                                     alt="展示页面"/></a>
       </div>
-      <div class="col-sm-12 col-md-9">
+      <div class="am-u-sm-12 am-u-md-9">
         <h3>展示页面</h3>
 
         <p>
@@ -84,12 +84,12 @@
       </div>
     </div>
     <div class="am-g am-margin-top">
-      <div class="col-sm-12 col-md-3">
+      <div class="am-u-sm-12 am-u-md-3">
         <a href="login.html"><img class="am-img-thumbnail"
                                   src="{{assets}}i/examples/loginPage.png"
                                   alt="登录页面"/></a>
       </div>
-      <div class="col-sm-12 col-md-9">
+      <div class="am-u-sm-12 am-u-md-9">
         <h3>登录页面</h3>
 
         <p>
@@ -102,12 +102,12 @@
       </div>
     </div>
     <div class="am-g am-margin-top">
-      <div class="col-sm-12 col-md-3">
+      <div class="am-u-sm-12 am-u-md-3">
         <a href="blog.html"><img class="am-img-thumbnail"
                                  src="{{assets}}i/examples/blogPage.png"
                                  alt="博客页面"/></a>
       </div>
-      <div class="col-sm-12 col-md-9">
+      <div class="am-u-sm-12 am-u-md-9">
         <h3>博客页面</h3>
 
         <p>
@@ -124,12 +124,12 @@
       </div>
     </div>
     <div class="am-g am-margin-top">
-      <div class="col-sm-12 col-md-3">
+      <div class="am-u-sm-12 am-u-md-3">
         <a href="sidebar.html"><img class="am-img-thumbnail"
                                     src="{{assets}}i/examples/sidebarPage.png"
                                     alt="博客侧栏页面"/></a>
       </div>
-      <div class="col-sm-12 col-md-9">
+      <div class="am-u-sm-12 am-u-md-9">
         <h3>博客侧栏页面</h3>
 
         <p>
@@ -165,7 +165,13 @@
 </footer>
 <!-- 以上页面内容 开发时删除 -->
 
-<script src="{{assets}}js/zepto.min.js?1.1.4"></script>
+<!--[if (gt IE 9)|!(IE)]><!-->
+<script src="{{assets}}js/jquery.min.js"></script>
+<!--<![endif]-->
+<!--[if lte IE 8 ]>
+<script src="http://cdn.staticfile.org/jquery/1.11.1/jquery.min.js
+"></script>
+<![endif]-->
 <script src="{{assets}}js/amazeui.js"></script>
 <script src="{{assets}}js/app.js"></script>
 </body>

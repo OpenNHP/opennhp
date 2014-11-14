@@ -13,54 +13,53 @@
 // helpers
 // -----------------------------------------------------------------------------
 
-.am-fade {
+.@{ns}fade {
   opacity: 0;
   .transition(opacity .2s linear);
-  &.am-in {
+  &.@{ns}in {
     opacity: 1;
   }
 }
 
-.am-collapsed {
+.@{ns}collapsed {
 }
 
-.am-collapse {
+.@{ns}collapse {
   display: none;
 
-  &.am-in {
+  &.@{ns}in {
     display: block;
   }
-  tr&.am-in {
+  tr&.@{ns}in {
     display: table-row;
   }
-  tbody&.am-in {
+  tbody&.@{ns}in {
     display: table-row-group;
   }
 }
 
-.am-collapsing {
+.@{ns}collapsing {
   position: relative;
   height: 0;
   overflow: hidden;
   .transition(height .3s ease);
 }
 
+
 // -----------------------------------------------------------------------------
 // Sticky plugin
 // -----------------------------------------------------------------------------
 
-.am-sticky {
+.@{ns}sticky {
   position: fixed !important;
   z-index: @z-index-sticky;
   .transform-origin(0 0); // Needed for scale animation
 }
 
-[data-am-sticky][class*='am-animation-'] {
+[data-am-sticky][class*="@{ns}animation-"] {
   -webkit-animation-duration: .2s;
   animation-duration: .2s;
 }
-
-.am-sticky-bottom {}
 
 
 // -----------------------------------------------------------------------------
@@ -68,11 +67,11 @@
 // -----------------------------------------------------------------------------
 
 // hide scroll bar when dimmer active
-.am-dimmer-active {
+.@{ns}dimmer-active {
  overflow: hidden;
 }
 
-.am-dimmer {
+.@{ns}dimmer {
   position: fixed;
   top: 0;
   right: 0;
@@ -86,14 +85,14 @@
   opacity: 0;
   .transition(opacity .15s);
 
-  &.am-active {
+  &.@{ns}active {
     opacity: 1;
   }
 }
 
 
 // -----------------------------------------------------------------------------
-// Style for collapse plugin
+// Collapse plugin
 // -----------------------------------------------------------------------------
 
 [data-am-collapse] {

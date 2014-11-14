@@ -18,7 +18,7 @@
    Component: Close
  ============================================================================ */
 
-.am-close {
+.@{ns}close {
   display: inline-block;
   text-align: center;
   width: 24px;
@@ -29,7 +29,7 @@
   color: @close-color;
   text-shadow: @close-text-shadow;
   .opacity(.2);
-  .transition(0.3s);
+  .transition(.3s);
 
   &:hover,
   &:focus {
@@ -57,7 +57,7 @@
     cursor: pointer;
   }
 
-  &[class*="am-icon-"] {
+  &[class*="@{ns}icon-"] {
     font-size: 16px;
   }
 
@@ -68,11 +68,11 @@
 /* Modifiers
  ============================================================================ */
 
-.am-close-alt {
+.@{ns}close-alt {
   border-radius: 50%;
   background: @close-alt-background;
   opacity: 0.7;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 0 6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); // 0 0 6px rgba(0, 0, 0, 0.3);
   .hook-close-alt;
 
   /* Hover */
@@ -82,7 +82,7 @@
   }
 }
 
-.am-close-spin {
+.@{ns}close-spin {
   &:hover {
     .rotate(360deg);
   }

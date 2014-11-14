@@ -12,19 +12,18 @@
 //
 // =============================================================================
 
-
 /* ==========================================================================
    Component: Button Group
  ============================================================================ */
 
 // Make the div behave like a button
-.am-btn-group,
-.am-btn-group-stacked {
+.@{ns}btn-group,
+.@{ns}btn-group-stacked {
   position: relative;
   display: inline-block;
-  vertical-align: middle; // match .am-btn alignment given font-size hack above
+  vertical-align: middle; // match .@{ns}btn alignment given font-size hack above
 
-  > .am-btn {
+  > .@{ns}btn {
     position: relative;
     float: left;
     // Bring the "active" button to the front
@@ -41,110 +40,109 @@
   }
 }
 
-
 // Prevent double borders when buttons are next to each other
 // =============================================================================
 
-.am-btn-group {
-  .am-btn + .am-btn,
-  .am-btn + .am-btn-group,
-  .am-btn-group + .am-btn,
-  .am-btn-group + .am-btn-group {
+.@{ns}btn-group {
+  .@{ns}btn + .@{ns}btn,
+  .@{ns}btn + .@{ns}btn-group,
+  .@{ns}btn-group + .@{ns}btn,
+  .@{ns}btn-group + .@{ns}btn-group {
     margin-left: -1px;
   }
   .hook-btn-group;
 }
 
-
 // Optional: Group multiple button groups together for a toolbar
-.am-btn-toolbar {
+.@{ns}btn-toolbar {
   margin-left: -5px; // Offset the first child's margin
   .clearfix();
 
-  .am-btn-group,
-  .am-input-group {
+  .@{ns}btn-group,
+  .@{ns}input-group {
     float: left;
   }
 
-  > .am-btn,
-  > .am-btn-group,
-  > .am-input-group {
+  > .@{ns}btn,
+  > .@{ns}btn-group,
+  > .@{ns}input-group {
     margin-left: 5px;
   }
   .hook-btn-group-toolbar;
 }
 
-.am-btn-group > .am-btn:not(:first-child):not(:last-child):not(.am-dropdown-toggle) {
+.@{ns}btn-group > .@{ns}btn:not(:first-child):not(:last-child):not(.@{ns}dropdown-toggle) {
   border-radius: 0;
 }
 
 // Set corners individual because sometimes a single button can be in a .btn-group and we need :first-child and :last-child to both match
-.am-btn-group > .am-btn:first-child {
+.@{ns}btn-group > .@{ns}btn:first-child {
   margin-left: 0;
-  &:not(:last-child):not(.am-dropdown-toggle) {
+  &:not(:last-child):not(.@{ns}dropdown-toggle) {
     .border-right-radius(0);
   }
 }
 
 // Need .dropdown-toggle since :last-child doesn't apply given a .dropdown-menu immediately after it
-.am-btn-group > .am-btn:last-child:not(:first-child),
-.am-btn-group > .am-dropdown-toggle:not(:first-child) {
+.@{ns}btn-group > .@{ns}btn:last-child:not(:first-child),
+.@{ns}btn-group > .@{ns}dropdown-toggle:not(:first-child) {
   .border-left-radius(0);
 }
 
 // Custom edits for including btn-groups within btn-groups (useful for including dropdown buttons within a btn-group)
-.am-btn-group > .am-btn-group {
+.@{ns}btn-group > .@{ns}btn-group {
   float: left;
 }
 
-.am-btn-group > .am-btn-group:not(:first-child):not(:last-child) > .am-btn {
+.@{ns}btn-group > .@{ns}btn-group:not(:first-child):not(:last-child) > .@{ns}btn {
   border-radius: 0;
 }
 
-.am-btn-group > .am-btn-group:first-child {
-  > .am-btn:last-child,
-  > .am-dropdown-toggle {
+.@{ns}btn-group > .@{ns}btn-group:first-child {
+  > .@{ns}btn:last-child,
+  > .@{ns}dropdown-toggle {
     .border-right-radius(0);
   }
 }
 
-.am-btn-group > .am-btn-group:last-child > .am-btn:first-child {
+.@{ns}btn-group > .@{ns}btn-group:last-child > .@{ns}btn:first-child {
   .border-left-radius(0);
 }
-
 
 // Sizing
 // =============================================================================
 
-.am-btn-group-xs {
-  & > .am-btn {
-    &:extend(.am-btn-xs);
+.@{ns}btn-group-xs {
+  & > .@{ns}btn {
+    .button-size(@btn-xs-font-size);
   }
+
   .hook-btn-group-xs;
 }
 
-.am-btn-group-sm {
-  & > .am-btn {
-    &:extend(.am-btn-sm);
+.@{ns}btn-group-sm {
+  & > .@{ns}btn {
+    .button-size(@btn-sm-font-size);
   }
+
   .hook-btn-group-sm;
 }
 
-.am-btn-group-lg {
-  & > .am-btn {
-    &:extend(.am-btn-lg);
+.@{ns}btn-group-lg {
+  & > .@{ns}btn {
+    .button-size(@btn-lg-font-size);
   }
+
   .hook-btn-group-lg;
 }
-
 
 // Stacked button group
 // =============================================================================
 
-.am-btn-group-stacked {
-  > .am-btn,
-  > .am-btn-group,
-  > .am-btn-group > .am-btn {
+.@{ns}btn-group-stacked {
+  > .@{ns}btn,
+  > .@{ns}btn-group,
+  > .@{ns}btn-group > .@{ns}btn {
     display: block;
     float: none;
     width: 100%;
@@ -152,113 +150,111 @@
   }
 
   // Clear floats so dropdown menus can be properly placed
-  > .am-btn-group {
-    &:extend(.clearfix all);
-  > .am-btn {
-    float: none;
-  }
+  > .@{ns}btn-group {
+    .clearfix();
+    > .@{ns}btn {
+      float: none;
+    }
   }
 
-  > .am-btn + .am-btn,
-  > .am-btn + .am-btn-group,
-  > .am-btn-group + .am-btn,
-  > .am-btn-group + .am-btn-group {
+  > .@{ns}btn + .@{ns}btn,
+  > .@{ns}btn + .@{ns}btn-group,
+  > .@{ns}btn-group + .@{ns}btn,
+  > .@{ns}btn-group + .@{ns}btn-group {
     margin-top: -1px;
     margin-left: 0;
   }
   .hook-btn-group-stacked;
 }
 
-.am-btn-group-stacked > .am-btn {
+.@{ns}btn-group-stacked > .@{ns}btn {
   &:not(:first-child):not(:last-child) {
     border-radius: 0;
   }
   &:first-child:not(:last-child) {
-    border-top-right-radius: @global-border-radius;
+    border-top-right-radius: @global-radius;
     .border-bottom-radius(0);
   }
   &:last-child:not(:first-child) {
-    border-bottom-left-radius: @global-border-radius;
+    border-bottom-left-radius: @global-radius;
     .border-top-radius(0);
   }
 }
 
-.am-btn-group-stacked > .am-btn-group:not(:first-child):not(:last-child) > .am-btn {
+.@{ns}btn-group-stacked > .@{ns}btn-group:not(:first-child):not(:last-child) > .@{ns}btn {
   border-radius: 0;
 }
-.am-btn-group-stacked > .am-btn-group:first-child:not(:last-child) {
-  > .am-btn:last-child,
-  > .am-dropdown-toggle {
+
+.@{ns}btn-group-stacked > .@{ns}btn-group:first-child:not(:last-child) {
+  > .@{ns}btn:last-child,
+  > .@{ns}dropdown-toggle {
     .border-bottom-radius(0);
   }
 }
-.am-btn-group-stacked > .am-btn-group:last-child:not(:first-child) > .am-btn:first-child {
+
+.@{ns}btn-group-stacked > .@{ns}btn-group:last-child:not(:first-child) > .@{ns}btn:first-child {
   .border-top-radius(0);
 }
-
 
 // Justify button group
 // =============================================================================
 
-.am-btn-group-justify {
+.@{ns}btn-group-justify {
   // display: table;
   // table-layout: fixed;
   // border-collapse: separate;
   width: 100%;
   .flexbox();
-  > .am-btn,
-  > .am-btn-group {
+  > .@{ns}btn,
+  > .@{ns}btn-group {
     float: none;
     // display: table-cell;
     // width: 1%;
     .flex(1);
   }
-  > .am-btn-group .am-btn {
+  > .@{ns}btn-group .@{ns}btn {
     width: 100%;
   }
   .hook-button-group-justify;
 }
 
-
 // Dropdown button group
 // =============================================================================
 
-.am-btn-group {
-  .am-dropdown {
+.@{ns}btn-group {
+  .@{ns}dropdown {
     float: left;
     margin-left: -1px;
-    > .am-btn {
+    > .@{ns}btn {
       .border-left-radius(0);
     }
   }
 
-  .am-active .am-dropdown-toggle {
+  .@{ns}active .@{ns}dropdown-toggle {
     .box-shadow(inset 0 3px 5px rgba(0, 0, 0, .125));
 
     // Show no shadow for `.btn-link` since it has no other button styles.
-    &.am-btn-link {
+    &.@{ns}btn-link {
       .box-shadow(none);
     }
   }
 
-  .am-dropdown-toggle:active,
-  .am-active .am-dropdown-toggle {
+  .@{ns}dropdown-toggle:active,
+  .@{ns}active .@{ns}dropdown-toggle {
     outline: 0;
   }
 }
-
 
 // Checkbox and radio options
 // for JS Button plugin
 // =============================================================================
 
-[data-am-button] > .am-btn > input[type="radio"],
-[data-am-button] > .am-btn > input[type="checkbox"] {
+[data-am-button] > .@{ns}btn > input[type="radio"],
+[data-am-button] > .@{ns}btn > input[type="checkbox"] {
   position: absolute;
   z-index: -1;
   .opacity(0);
 }
-
 
 // Hooks
 // =============================================================================
@@ -267,7 +263,6 @@
 .hook-btn-group-stacked() {}
 .hook-btn-group-toolbar() {}
 .hook-button-group-justify() {}
-
 .hook-btn-group-lg() {}
 .hook-btn-group-sm() {}
 .hook-btn-group-xs() {}

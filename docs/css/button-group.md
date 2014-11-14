@@ -17,9 +17,9 @@
 &nbsp;
 
 <div class="am-btn-group">
-  <button type="button" class="am-btn am-btn-primary am-square">左手</button>
-  <button type="button" class="am-btn am-btn-primary am-square">猪手</button>
-  <button type="button" class="am-btn am-btn-primary am-square">右手</button>
+  <button type="button" class="am-btn am-btn-primary am-radius">左手</button>
+  <button type="button" class="am-btn am-btn-primary am-radius">猪手</button>
+  <button type="button" class="am-btn am-btn-primary am-radius">右手</button>
 </div>
 
 &nbsp;
@@ -38,7 +38,7 @@
 </div>
 
 <div class="am-btn-group">
-  <button type="button" class="am-btn am-btn-primary am-square">左手</button>
+  <button type="button" class="am-btn am-btn-primary am-radius">左手</button>
   ...
 </div>
 
@@ -183,7 +183,7 @@
 
 ## 结合下拉组件使用
 
-下面的演示需要结合 [Dropdown](/javascript/dropdown) 使用。
+下面的演示需要结合 [Dropdown](/javascript/dropdown?_ver=2.x) 使用。
 
 ### 按钮下拉菜单
 
@@ -211,7 +211,7 @@ $(function() {
 });
 </script>
 `````
-  
+
 ```html
 <div class="am-btn-group">
   <button class="am-btn am-btn-secondary">下拉按钮</button>

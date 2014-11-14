@@ -20,11 +20,11 @@
    Component: Tabs Plugin
  ============================================================================ */
 
-.am-tabs {
+.@{ns}tabs {
   .hook-tabs;
 }
 
-.am-tabs-bd {
+.@{ns}tabs-bd {
   position: relative;
   overflow: hidden;
   border: 1px solid #ddd;
@@ -33,7 +33,7 @@
   .transition(height 0.3s);
   .hook-tabs-bd;
 
-  .am-tab-panel {
+  .@{ns}tab-panel {
     position: absolute;
     top: 0;
     z-index: 99;
@@ -50,13 +50,13 @@
       user-drag: none;
     }
 
-    &.am-active {
+    &.@{ns}active {
       position: relative;
       z-index: 100;
       visibility: visible;
       .translate();
 
-      & ~ .am-tab-panel {
+      & ~ .@{ns}tab-panel {
         .translate(100%);
       }
     }
@@ -66,7 +66,6 @@
 
 // HOOKS
 // =============================================================================
-
 .hook-tabs() {}
 .hook-tabs-bd() {}
 .hook-tab-panel() {}

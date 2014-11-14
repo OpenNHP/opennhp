@@ -27,7 +27,7 @@ Share.DEFAULTS = {
   via: 'Amaze UI',
   tpl: '<div class="am-share am-modal-actions" id="<%= id %>">' +
   '<h3 class="am-share-title"><%= title %></h3>' +
-  '<ul class="am-share-sns sm-block-grid-3">' +
+  '<ul class="am-share-sns am-avg-sm-3">' +
   '<% for(var i = 0; i < sns.length; i++) {%>' +
   '<li>' +
   '<a href="<%= sns[i].shareUrl %>" ' +

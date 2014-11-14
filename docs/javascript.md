@@ -1,58 +1,25 @@
 # JavaScript
 ---
 
-## 关于前端 JS 模块化
+## 基本使用
 
-> 不好意思，我又来捣乱了。不过有些问题还是想和大家讨论一下。
+### 基于 jQuery
 
-由于一些历史原因，Amaze UI 目前使用 Sea.js 来组织 JS 模块，但用得并不是很顺，比如在依赖提取、文件合并等环节。当然这可能是因为项目结构、以及最终面向用户的原因。
-
-不过还是想看看大家对前端 JS 模块化的选择，也欢迎大家发表自己的看法。
-
-<script type="text/javascript" charset="utf-8" src="http://static.polldaddy.com/p/8231710.js"></script>
-<noscript><a href="http://polldaddy.com/poll/8231710/">浏览器端 JavaScript 模块化，你们的选择是？</a></noscript>
-
-个人倾向于兼容多个标准，把选择权交给用户，比如 FastClick 的写法：
-
-```javascript
-if (typeof define == 'function' && typeof define.amd == 'object' && define.amd) {
-	// AMD. Register as an anonymous module.
-	define(function() {
-		'use strict';
-		return FastClick;
-	});
-} else if (typeof module !== 'undefined' && module.exports) {
-	module.exports = FastClick.attach;
-	module.exports.FastClick = FastClick;
-} else {
-	window.FastClick = FastClick;
-}
-```
-
-__建议大家阅读的文章__
-
-* [前端模块化开发那点历史](https://github.com/seajs/seajs/issues/588)
-* [Writing Modular JavaScript With AMD, CommonJS & ES Harmony](http://addyosmani.com/writing-modular-js/)
-
-## 初级使用
-
-### 基于 Zepto.js
-
-Amaze UI JavaScript 组件基于 [Zepto.js](http://zeptojs.com/) 开发，使用时确保在 Amaze UI 的脚本之前引入了 Zepto.js（1.1.3）。Zepto.js 的更多细节请查看[官方文档](http://zeptojs.com/)。
-
-由于模块内部指定了 `$ = window.Zepto`，目前并不支持使用 jQuery 替换 Zepto.js，后续的工作中会增加 jQuery 支持。
+从 2.0 开始，Amaze UI JavaScript 组件转向基于 [jQuery](http://jquery.com/) 开发，使用时确保在 Amaze UI 的脚本之前引入了 jQuery 最新正式版。
 
 ### 组件调用
 
-组件的调用方式和 jQuery 类似，具体细节请查看各个组件的文档。
+组件的调用方式普通 jQuery 插件一样，具体细节请查看各个组件的文档。
+
+### jQuery 和 Zepto.js 的一些差异
+
+jQuery 和 Zepto.js 表面看起来差不多，其实一些细节上差异很大，同时支持 jQuery 和 Zepto.js 是一件吃力不讨好的事情，这应该也是 [Foundation 5 放弃支持 Zepto](http://zurb.com/article/1293/why-we-dropped-zepto) 的一个原因。
+
+___TODO: 添加二者差异供用户参考___
 
 ## 高级使用
 
-### 基于 Sea.js
-
-Amaze UI 目前使用 [Sea.js](http://seajs.org/) 组织、管理模块，使用 Sea.js 的用户可以通过源码查看相关接口。
-
-### 默认事件接口
+### 默认初始化事件接口
 
 Amaze UI 通过特定的 HTML 来绑定事件，多数 JS 组件通过 HTML 标记就可以实现调用。
 
@@ -79,3 +46,37 @@ $('#myAlert').on('close.alert.amui', function() {
   // do something
 });
 ```
+
+### 模块化开发
+
+关于前端模块化，Amaze UI 1.0 的时候曾做过一个[关于前端 JS 模块化的调查](/javascript?_ver=1.x)，截止 2014.11.13 共 1869 个投票：
+
+- CMD - Sea.js  23.86%  (446 votes)
+- AMD - RequireJS  24.51%  (458 votes)
+- CommonJS - Browserify  9.58%  (179 votes)
+- 其他加载工具（或者自行开发的）  8.19%  (153 votes)
+- 什么是 JS 模块化？可以吃吗？  34%  (633 votes)
+
+<div class="am-progress">
+  <div class="am-progress-bar" style="width: 23.8%" data-am-popover="{content: 'CMD - Sea.js  23.86%  (446 votes)', trigger: 'hover focus'}">CMD</div>
+  <div class="am-progress-bar am-progress-bar-secondary" data-am-popover="{content: 'AMD - RequireJS  24.51%  (458 votes)', trigger: 'hover focus'}" style="width: 24.5%" >AMD</div>
+  <div class="am-progress-bar am-progress-bar-success" style="width: 9.5%" data-am-popover="{content: 'CommonJS - Browserify  9.58%  (179 votes)', trigger: 'hover focus'}">CJS</div>
+  <div class="am-progress-bar am-progress-bar-warning" style="width: 8.2%" data-am-popover="{content: '其他加载工具（或者自行开发的）  8.19%  (153 votes)', trigger: 'hover focus'}">other</div>
+  <div class="am-progress-bar am-progress-bar-danger" style="width: 34%" data-am-popover="{content: '什么是 JS 模块化？可以吃吗？  34%  (633 votes)', trigger: 'hover focus'}">unknown</div>
+</div>
+
+显然，**模块化是必然趋势**，[ES6](http://wiki.ecmascript.org/doku.php?id=harmony:modules) 将原生支持模块化。
+
+Amaze UI 2.0 按照 [CommonJS](http://wiki.commonjs.org/wiki/CommonJS) 规范来组织模块（前端也像 Node.js 一样编写模块）。最终如何打包，用户可以自行选择。
+
+- [Browserify](http://browserify.org/)：结合 NPM，实现前端模块管理。很多前端模块都已经发布到 NPM，可以抛弃 Bower 这类功能很单一的工具了；
+- [Duo](http://duojs.org/)：除管理本地模块以外，还可以从 GitHub 上直接获取开源项目，支持 Javascript、HTML、CSS；
+- [gulp-amd-bundler](https://www.npmjs.org/package/gulp-amd-bundler)：把按照 CJS 编写的模块打包成 AMD 模块;
+- [Webpack](https://github.com/webpack/webpack)。
+
+[SPM](http://spmjs.io/) 貌似不支持直接通过源码提取依赖，使用 Sea.js 的用户可能需要自行修改打包工具。
+
+__建议阅读的文章：__
+
+* [前端模块化开发那点历史](https://github.com/seajs/seajs/issues/588)
+* [Writing Modular JavaScript With AMD, CommonJS & ES Harmony](http://addyosmani.com/writing-modular-js/)

@@ -26,12 +26,17 @@
 @popover-border-radius: @global-radius;
 @popover-duration: 300ms;
 
-.am-popover {
+
+/* ==========================================================================
+   Component: Popover Plugin
+ ============================================================================ */
+
+.@{ns}popover {
   position: absolute;
-  //width: 240px;
-  margin: 0;
   top: 0;
   left: 0;
+  //width: 240px;
+  margin: 0;
   border-radius: @popover-border-radius;
   background: @popover-bg;
   color: @popover-color;
@@ -44,13 +49,13 @@
   .transition-property(opacity);
   .hook-popover;
 
-  &.am-active {
+  &.@{ns}active {
     display: block !important;
     opacity: 1;
   }
 }
 
-.am-popover-inner {
+.@{ns}popover-inner {
   position: relative;
   background: @popover-bg;
   padding: 10px;
@@ -59,7 +64,7 @@
   .hook-popover-inner;
 }
 
-.am-popover-caret {
+.@{ns}popover-caret {
   position: absolute;
   left: 5px;
   top: 0;
@@ -68,24 +73,24 @@
   overflow: hidden;
   .hook-popover-caret;
 
-  .am-popover-top & {
+  .@{ns}popover-top & {
     top: -8px;
   }
 
-  .am-popover-bottom & {
+  .@{ns}popover-bottom & {
     top: auto;
     bottom: -8px;
     .rotate(180deg);
   }
 
-  .am-popover-left & {
+  .@{ns}popover-left & {
     top: auto;
     left: auto;
     right: -12px;
     .rotate(90deg);
   }
 
-  .am-popover-right & {
+  .@{ns}popover-right & {
     right: auto;
     left: -12px;
     .rotate(-90deg);
@@ -95,7 +100,6 @@
 
 // Hooks
 // =============================================================================
-
 .hook-popover() {}
 .hook-popover-inner() {}
 .hook-popover-caret() {}

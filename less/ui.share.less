@@ -22,21 +22,21 @@
 
 @share-bg: #f8f8f8;
 
-.am-share {
+.@{ns}share {
   font-size: 14px;
   .hook-share;
 }
 
-.am-share-title {
+.@{ns}share-title {
   padding: 10px 0 0;
   margin: 0 10px;
   font-weight: normal;
   text-align: center;
   color: @gray;
   background-color: @share-bg;
+  border-bottom: 1px solid #fff;
   .border-top-radius(2px);
 
-  border-bottom: 1px solid #fff;
   .hook-share-title;
 
   &:after {
@@ -49,7 +49,7 @@
   }
 }
 
-.am-share-sns {
+.@{ns}share-sns {
   margin: 0 10px;
   padding-top: 15px;
   background-color: @share-bg;
@@ -70,7 +70,7 @@
     display: block;
   }
 
-  [class*='am-icon'] {
+  [class*='@{ns}icon'] {
     background-color: @global-secondary;
     border-radius: 50%;
     width: 36px;
@@ -80,73 +80,73 @@
     margin-bottom: 5px;
     font-size: 18px;
   }
-  
-  .am-icon-weibo {
+
+  .@{ns}icon-weibo {
     background-color: #ea1328;
     .hook-share-sns-weibo;
   }
 
-  .am-icon-qq {
+  .@{ns}icon-qq {
     background-color: #009cda;
     .hook-share-sns-qq;
   }
-  
-  .am-icon-star {
+
+  .@{ns}icon-star {
     background-color: #ffc028;
     .hook-share-sns-star;
   }
 
-  .am-icon-tencent-weibo {
+  .@{ns}icon-tencent-weibo {
     background-color: #23ccfe;
     .hook-share-sns-tencent-weibo;
   }
-  
-  .am-icon-wechat,
-  .am-icon-weixin {
+
+  .@{ns}icon-wechat,
+  .@{ns}icon-weixin {
     background-color: #44b549;
     .hook-share-sns-wechat;
   }
-  
-  .am-icon-renren {
+
+  .@{ns}icon-renren {
     background-color: #105ba3;
     .hook-share-sns-renren;
   }
-  
-  .am-icon-comment {
+
+  .@{ns}icon-comment {
     background-color: @global-success;
   }
 }
 
-.am-share-footer {
+.@{ns}share-footer {
   margin: 10px;
 
-  .am-btn {
+  .@{ns}btn {
     color: @gray;
   }
   .hook-share-footer;
 }
 
 // wechat QRCode
-.am-share-wechat-qr {
+.@{ns}share-wechat-qr {
   font-size: 14px;
   color: #777;
 
-  .am-modal-dialog {
+  .@{ns}modal-dialog {
     background-color: #fff;
     border: 1px solid #dedede;
   }
 
-  .am-modal-hd {
+  .@{ns}modal-hd {
     padding-top: 10px;
     text-align: left;
     margin-bottom: 10px;
   }
 
-  .am-share-wx-qr {
+  .@{ns}share-wx-qr {
     margin-bottom: 10px;
   }
 
-  .am-share-wechat-tip {
+  .@{ns}share-wechat-tip {
     text-align: left;
     em {
       color: @global-danger;
@@ -161,7 +161,6 @@
 
 // Hooks
 // =============================================================================
-
 .hook-share() {}
 .hook-share-title() {}
 .hook-share-footer() {}

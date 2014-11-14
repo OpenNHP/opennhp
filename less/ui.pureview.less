@@ -11,7 +11,7 @@
    Component: PureView Plugin
  ============================================================================ */
 
-.am-pureview {
+.@{ns}pureview {
   position: fixed;
   left: 0;
   top: 0;
@@ -30,7 +30,7 @@
   .translate3d(0, 100%, 0);
   .transition-duration(0.4s);
 
-  &.am-active {
+  &.@{ns}active {
     .translate3d(0, 0, 0);
   }
 
@@ -43,7 +43,7 @@
   }
 }
 
-.am-pureview-slider {
+.@{ns}pureview-slider {
   overflow: hidden;
   height: 100%;
 
@@ -67,19 +67,19 @@
     z-index: 100;
     visibility: hidden;
 
-    &.am-pureview-slide-prev {
+    &.@{ns}pureview-slide-prev {
       .translate3d(-100%);
       // visibility: visible;
       z-index: 109;
     }
 
-    &.am-pureview-slide-next {
+    &.@{ns}pureview-slide-next {
       .translate3d(100%);
       // visibility: visible;
       z-index: 109;
     }
 
-    &.am-active {
+    &.@{ns}active {
       position: relative;
       z-index: 110;
       .translate3d();
@@ -92,7 +92,7 @@
     z-index: @z-index-pureview + 1;
   }
 
-  .am-pinch-zoom {
+  .@{ns}pinch-zoom {
     position: relative;
     width: 100%;
     // overflow-y: auto;  /* scrollable */
@@ -109,7 +109,7 @@
     &:after {
       .am-icon-font();
       content: @fa-var-spinner;
-      .am-icon-spin;
+      .animation(icon-spin 2s infinite linear);
       font-size: 24px;
       line-height: 24px;
       color: #eee;
@@ -135,21 +135,21 @@
     user-drag: none;
     .transition(opacity .15s linear);
 
-    &.am-img-loaded {
+    &.@{ns}img-loaded {
       opacity: 1;
     }
   }
 }
 
-.am-pureview-direction {
+.@{ns}pureview-direction {
   position: absolute;
   top: 50%;
   width: 100%;
   margin-top: -18px !important;
   z-index: @z-index-pureview + 2;
 
-  .am-touch &,
-  .am-pureview-only & {
+  .@{ns}touch &,
+  .@{ns}pureview-only & {
     display: none;
   }
 
@@ -182,11 +182,11 @@
     }
   }
 
-  .am-pureview-prev {
+  .@{ns}pureview-prev {
     left: 15px;
   }
 
-  .am-pureview-next {
+  .@{ns}pureview-next {
     right: 15px;
 
     a:before {
@@ -196,7 +196,7 @@
 
 }
 
-.am-pureview-bar {
+.@{ns}pureview-bar {
   position: absolute;
   bottom: 0;
   height: 45px;
@@ -208,19 +208,19 @@
   font-size: 14px;
   .flexbox();
 
-  .am-pureview-title {
+  .@{ns}pureview-title {
     .text-overflow(block);
     margin-left: 6px;
     .flex(1);
   }
 
-  .am-pureview-total {
+  .@{ns}pureview-total {
     font-size: 10px;
     line-height: 48px;
   }
 }
 
-.am-pureview-actions {
+.@{ns}pureview-actions {
   position: absolute;
   z-index: @z-index-pureview + 10;
   left: 0;
@@ -250,18 +250,18 @@
   }
 }
 
-.am-pureview-bar,
-.am-pureview-actions {
+.@{ns}pureview-bar,
+.@{ns}pureview-actions {
   opacity: 0;
   .transition(0.15s);
   z-index: @z-index-pureview + 10;
 
-  .am-pureview-bar-active & {
+  .@{ns}pureview-bar-active & {
     opacity: 1;
   }
 }
 
-.am-pureview-nav {
+.@{ns}pureview-nav {
   position: absolute;
   bottom: 15px;
   left: 0;
@@ -269,7 +269,7 @@
   text-align: center;
   z-index: @z-index-pureview + 11;
 
-  .am-pureview-bar-active & {
+  .@{ns}pureview-bar-active & {
     display: none;
   }
 
@@ -286,7 +286,7 @@
     cursor: pointer;
   }
 
-  .am-active {
+  .@{ns}active {
     background: #fff;
     background: rgba(255, 255, 255, 0.9);
   }
@@ -297,6 +297,6 @@
 }
 
 // body
-.am-pureview-active {
+.@{ns}pureview-active {
   overflow: hidden;
 }

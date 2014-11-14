@@ -35,7 +35,7 @@
    Component: Modal Plugin
  ============================================================================ */
 
-.am-modal {
+.@{ns}modal {
   width: @modal-sm;
   position: fixed;
   display: none;
@@ -52,21 +52,20 @@
   -moz-transition-property: -moz-transform, opacity;
   -ms-transition-property: -ms-transform, opacity;
   transition-property: transform, opacity;
+  .transition-duration(@modal-duration);
 
   &:focus {
     outline: 0;
   }
 
-  &.am-modal-active {
+  &.@{ns}modal-active {
     opacity: 1;
-    .transition-duration(@modal-duration);
     .transform(translate3d(0, 0, 0) scale(1));
   }
 
-  &.am-modal-out {
+  &.@{ns}modal-out {
     opacity: 0;
     z-index: @z-index-modal - 1;
-    .transition-duration(@modal-duration);
     .transform(translate3d(0, 0, 0) scale(0.815));
   }
 
@@ -82,20 +81,20 @@
   .hook-modal;
 }
 
-.am-modal-dialog {
+.@{ns}modal-dialog {
   border-radius: @modal-border-radius;
   background: @modal-bg-color;
   .hook-modal-dialog;
 }
 
-.am-modal-hd {
+.@{ns}modal-hd {
   padding: 15px 10px 5px 10px;
   font-size: 1.8rem;
   font-weight: 500;
-  + .am-modal-bd {
+  + .@{ns}modal-bd {
     padding-top: 0;
   }
-  .am-close {
+  .@{ns}close {
     position: absolute;
     top: 4px;
     right: 4px;
@@ -103,19 +102,19 @@
   .hook-modal-hd;
 }
 
-.am-modal-bd {
+.@{ns}modal-bd {
   padding: 15px 10px;
   text-align: center;
   border-bottom: 1px solid @modal-border-color;
   border-radius: 2px 2px 0 0;
-  + .am-modal-bd {
+  + .@{ns}modal-bd {
     margin-top: 5px;
   }
   .hook-modal-hd;
 }
 
 // Prompt input
-.am-modal-prompt-input {
+.@{ns}modal-prompt-input {
   display: block;
   margin: 5px auto 0 auto;
   border-radius: @modal-border-radius;
@@ -135,7 +134,7 @@
   .hook-modal-prompt-input;
 }
 
-.am-modal-footer {
+.@{ns}modal-footer {
   height: 44px;
   overflow: hidden;
   display: table;
@@ -144,7 +143,7 @@
   .hook-modal-footer;
 }
 
-.am-modal-btn {
+.@{ns}modal-btn {
   display: table-cell!important;
   padding: 0 5px;
   height: 44px;
@@ -166,14 +165,14 @@
   &:first-child:last-child {
     border-radius: 0 0 @modal-border-radius @modal-border-radius;
   }
-  &.am-modal-btn-bold {
+  &.@{ns}modal-btn-bold {
     font-weight: 500;
   }
   &:active {
     background: @modal-btn-active-bg;
   }
 
-  & + .am-modal-btn {
+  & + .@{ns}modal-btn {
     border-left: 1px solid @modal-border-color;
   }
   .hook-modal-btn;
@@ -183,17 +182,17 @@
 // without buttons
 // -----------------------------------------------------------------------------
 
-.am-modal-no-btn {
-  .am-modal-dialog {
+.@{ns}modal-no-btn {
+  .@{ns}modal-dialog {
     border-radius: @global-radius;
     border-bottom: none;
   }
 
-  .am-modal-bd {
+  .@{ns}modal-bd {
     border-bottom: none;
   }
 
-  .am-modal-footer {
+  .@{ns}modal-footer {
     display: none;
   }
   .hook-modal-no-btn;
@@ -203,17 +202,18 @@
 // Loading
 // =============================================================================
 
-.am-modal-loading {
-  .am-modal-bd {
+.@{ns}modal-loading {
+  width: @modal-sm !important;
+  .@{ns}modal-bd {
     border-bottom: none;
   }
 
-  .am-icon-spin {
+  .@{ns}icon-spin {
     display: inline-block;
     font-size: 2.4rem;
   }
 
-  .am-modal-footer {
+  .@{ns}modal-footer {
     display: none;
   }
   .hook-modal-loading;
@@ -223,7 +223,7 @@
 // Modal - Action
 // ========================================================================
 
-.am-modal-actions {
+.@{ns}modal-actions {
   position: fixed;
   left: 0;
   bottom: 0;
@@ -232,11 +232,11 @@
   text-align: center;
   border-radius: @modal-border-radius;
   .transform(translate3d(0, 100%, 0));
-  &.am-modal-active {
+  &.@{ns}modal-active {
     .transition(all @modal-actions-duration);
     .translate3d(0, 0, 0);
   }
-  &.am-modal-out {
+  &.@{ns}modal-out {
     z-index: @z-index-modal - 1;
     .transition(all @modal-actions-duration);
     .transform(translate3d(0, 100%, 0));
@@ -244,9 +244,9 @@
   .hook-modal-actions;
 }
 
-.am-modal-actions-group {
+.@{ns}modal-actions-group {
   margin: 10px;
-  .am-list {
+  .@{ns}list {
     margin: 0;
     border-radius: @modal-border-radius;
     & > li {
@@ -271,13 +271,13 @@
   }
 }
 
-.am-modal-actions-header {
+.@{ns}modal-actions-header {
   padding: 1rem;
   color: @gray-light;
   font-size: 1.4rem;
 }
 
-.am-modal-actions-danger {
+.@{ns}modal-actions-danger {
   color: @global-danger;
   a {
     color: inherit;
@@ -288,7 +288,7 @@
 // Modal Popup
 // ========================================================================
 
-.am-popup {
+.@{ns}popup {
   position: fixed;
   left: 0;
   top: 0;
@@ -305,16 +305,16 @@
   .translate3d(0, 100%, 0);
   .hook-popup;
 
-  &.am-modal-active,
-  &.am-modal-out {
+  &.@{ns}modal-active,
+  &.@{ns}modal-out {
     .transition-duration(@modal-popup-duration);
   }
 
-  &.am-modal-active {
+  &.@{ns}modal-active {
     .translate3d(0, 0, 0);
   }
 
-  &.am-modal-out {
+  &.@{ns}modal-out {
     .translate3d(0, 100%, 0);
   }
 
@@ -327,23 +327,23 @@
     margin-left: -315px;
     margin-top: -315px;
     .translate3d(0, 1024px, 0);
-    &.am-modal-active {
+    &.@{ns}modal-active {
       .translate3d(0, 0, 0);
     }
 
-    &.am-modal-out {
+    &.@{ns}modal-out {
       .translate3d(0, 1024px, 0);
     }
   }
 }
 
-.am-popup-inner {
+.@{ns}popup-inner {
   padding-top: 44px;
   height: 100%;
   .scrollable();
 }
 
-.am-popup-hd {
+.@{ns}popup-hd {
   position: fixed;
   top: 0;
   width: 100%;
@@ -351,7 +351,7 @@
   border-bottom: 1px solid @modal-border-color;
   background-color: #fff;
 
-  .am-popup-title {
+  .@{ns}popup-title {
     font-size: 1.8rem;
     font-weight: bold;
     line-height: 43px;
@@ -362,7 +362,7 @@
     .text-overflow();
   }
 
-  .am-close {
+  .@{ns}close {
     position: absolute;
     right: 10px;
     top: 8px;
@@ -376,7 +376,7 @@
   }
 }
 
-.am-popup-bd {
+.@{ns}popup-bd {
   padding: 15px;
   background: #f8f8f8;
   color: @gray;

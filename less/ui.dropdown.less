@@ -55,17 +55,17 @@
 }
 
 
-.am-dropdown {
+.@{ns}dropdown {
   position: relative;
   display: inline-block;
   .hook-dropdown;
 }
 
-.am-dropdown-toggle:focus {
+.@{ns}dropdown-toggle:focus {
   outline: 0;
 }
 
-.am-dropdown-content {
+.@{ns}dropdown-content {
   position: absolute;
   top: 100%;
   left: 0;
@@ -98,7 +98,7 @@
     top: -7px;
   }
 
-  .am-active > & {
+  .@{ns}active > & {
     display: block;
     // .animation(@dropdown-animation 0.3s ease-in-out);
   }
@@ -112,7 +112,7 @@
 // Dropdown Up
 // =============================================================================
 
-.am-dropdown-up .am-dropdown-content {
+.@{ns}dropdown-up .@{ns}dropdown-content {
   top: auto;
   bottom: 100%;
   margin: 0 0 9px;
@@ -132,7 +132,7 @@
   }
 }
 
-.am-dropdown-flip .am-dropdown-content {
+.@{ns}dropdown-flip .@{ns}dropdown-content {
   left: auto;
   right: 0;
 
@@ -147,19 +147,19 @@
 // dropdown menu (ul)
 // =============================================================================
 
-ul.am-dropdown-content {
+ul.@{ns}dropdown-content {
   list-style: none;
   padding: 5px 0;
   .hook-dropdown-ul-content;
 
   // Aligns the dropdown menu to right
-  &.am-fr {
+  &.@{ns}fr {
     right: 0;
     left: auto;
   }
 
   // Dividers (basically an hr) within the dropdown
-  .am-divider {
+  .@{ns}divider {
     .nav-divider(@dropdown-divider-bg);
     .hook-dropdown-ul-content-divdier;
   }
@@ -183,7 +183,7 @@ ul.am-dropdown-content {
   }
 
   // Active state
-  > .am-active > a {
+  > .@{ns}active > a {
     &,
     &:hover,
     &:focus {
@@ -196,7 +196,7 @@ ul.am-dropdown-content {
   }
 
   // Disabled state
-  > .am-disabled > a {
+  > .@{ns}disabled > a {
     &,
     &:hover,
     &:focus {
@@ -205,7 +205,7 @@ ul.am-dropdown-content {
     }
   }
 
-  > .am-disabled > a {
+  > .@{ns}disabled > a {
     &:hover,
     &:focus {
       text-decoration: none;
@@ -219,7 +219,7 @@ ul.am-dropdown-content {
 }
 
 // Dropdown section headers
-.am-dropdown-header {
+.@{ns}dropdown-header {
   display: block;
   padding: 6px 20px;
   font-size: @font-size-xs;
@@ -231,7 +231,7 @@ ul.am-dropdown-content {
 // Right aligned dropdown
 // =============================================================================
 
-.am-fr > .am-dropdown-content {
+.@{ns}fr > .@{ns}dropdown-content {
   right: 0;
   left: auto;
 
@@ -244,7 +244,6 @@ ul.am-dropdown-content {
 
 // Hooks
 // =============================================================================
-
 .hook-dropdown() {}
 .hook-dropdown-content() {}
 .hook-dropdown-ul-content() {}
@@ -259,4 +258,3 @@ ul.am-dropdown-content {
 
 // TODO: 1. 分隔线上下间距调整
 //       2. 位置设置
-//       3. 与 navbar 混合

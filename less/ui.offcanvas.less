@@ -28,7 +28,7 @@
 
 /* Off-canvas overlay and bar container */
 
-.am-offcanvas {
+.@{ns}offcanvas {
   display: none;
   position: fixed;
   top: 0;
@@ -40,21 +40,21 @@
 
   .hook-offcanvas;
 
-  &.am-active {
+  &.@{ns}active {
     display: block;
   }
 }
 
 
 /**
- * .am-offcanvas-page
+ * .@{ns}offcanvas-page
  *
  * Prepares the whole HTML page to slide-out
  * 1. Fix the main page and disallow scrolling
  * 2. Side-out transition
  */
 
-.am-offcanvas-page {
+.@{ns}offcanvas-page {
   position: fixed;   /* 1 */
   /* 2 */
   -webkit-transition: margin-left 0.3s ease-in-out;
@@ -62,9 +62,9 @@
 }
 
 
-/* Sub-object .am-offcanvas-bar */
+/* Sub-object .@{ns}offcanvas-bar */
 
-.am-offcanvas-bar {
+.@{ns}offcanvas-bar {
   position: fixed;
   top: 0;
   bottom: 0;
@@ -96,14 +96,13 @@
   .hook-offcanvas-bar;
 }
 
-.am-offcanvas.am-active .am-offcanvas-bar.am-offcanvas-bar-active {
+.@{ns}offcanvas.@{ns}active .@{ns}offcanvas-bar.@{ns}offcanvas-bar-active {
   .translate(0, 0);
 }
 
 
-/* .am-offcanvas-bar-flip */
-
-.am-offcanvas-bar-flip {
+/* .@{ns}offcanvas-bar-flip */
+.@{ns}offcanvas-bar-flip {
   left: auto;
   right: 0;
   .translate(100%, 0);
@@ -113,7 +112,7 @@
   }
 }
 
-.am-offcanvas-content {
+.@{ns}offcanvas-content {
   padding: 15px;
   color: #999;
   a {

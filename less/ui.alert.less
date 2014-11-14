@@ -51,7 +51,7 @@
    Component: Alert Plugin
  ============================================================================ */
 
-.am-alert {
+.@{ns}alert {
   margin-bottom: @alert-margin-vertical;
   padding: @alert-padding;
   background: @alert-background;
@@ -75,7 +75,7 @@
     color: inherit;
   }
 
-  .am-close {
+  .@{ns}close {
     opacity: .4;
 
     &:hover {
@@ -87,21 +87,21 @@
 
 /* Add margin if adjacent element */
 
-* + .am-alert {
+* + .@{ns}alert {
   margin-top: @alert-margin-vertical;
 }
 
 
 /* Remove margin from the last-child */
 
-.am-alert > :last-child {
+.@{ns}alert > :last-child {
   margin-bottom: 0;
 }
 
 
 /* Close in alert */
 
-.am-alert > .am-close:first-child {
+.@{ns}alert > .@{ns}close:first-child {
   float: right;
   height: auto;
   margin: -3px -5px auto auto;
@@ -110,7 +110,7 @@
 
 /* Remove margin from adjacent element */
 
-.am-alert > .am-close:first-child + * {
+.@{ns}alert > .@{ns}close:first-child + * {
   margin-top: 0;
 }
 
@@ -118,22 +118,22 @@
 // Modifiers
 // =============================================================================
 
-.am-alert-secondary {
+.@{ns}alert-secondary {
   .alert-variant(@alert-secondary-background, darken(@alert-secondary-background, 6%), @alert-secondary-color);
   .hook-alert-danger;
 }
 
-.am-alert-success {
+.@{ns}alert-success {
   .alert-variant(@alert-success-background, darken(@alert-success-background, 6%), @alert-success-color);
   .hook-alert-success;
 }
 
-.am-alert-warning {
+.@{ns}alert-warning {
   .alert-variant(@alert-warning-background, darken(@alert-warning-background, 6%), @alert-warning-color);
   .hook-alert-warning;
 }
 
-.am-alert-danger {
+.@{ns}alert-danger {
   .alert-variant(@alert-danger-background, darken(@alert-danger-background, 6%), @alert-danger-color);
   .hook-alert-danger;
 }
@@ -141,13 +141,11 @@
 
 // Misc
 // =============================================================================
-
 .hook-alert-misc();
 
 
 // Hooks
 // =============================================================================
-
 .hook-alert() {}
 .hook-alert-secondary() {}
 .hook-alert-success() {}

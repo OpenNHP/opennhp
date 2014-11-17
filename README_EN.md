@@ -21,7 +21,7 @@ Compared with existing front-end frameworks, Amaze UI focuses on optimizing page
 
 ### Light yet Powerful
 
-Based on the lightweight Zepto.Js, Amaze UI puts a lot of efforts on performance. Using CSS 3 for animation makes it more interactive, smooth, efficient and suitable for mobile devices, and allows your web app to load fast.
+Amaze UI puts a lot of efforts on performance. Using CSS 3 for animation makes it more interactive, smooth, efficient and suitable for mobile devices, and allows your web app to load fast.
 
 
 ## Download

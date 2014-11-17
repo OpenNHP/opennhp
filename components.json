@@ -1,0 +1,277 @@
+{
+  "style": {
+    "animation": {
+      "depStyle": []
+    },
+    "article": {
+      "depStyle": []
+    },
+    "badge": {
+      "depStyle": []
+    },
+    "base": {
+      "depStyle": []
+    },
+    "block-grid": {
+      "depStyle": []
+    },
+    "breadcrumb": {
+      "depStyle": []
+    },
+    "button-group": {
+      "depStyle": []
+    },
+    "button": {
+      "depStyle": []
+    },
+    "close": {
+      "depStyle": []
+    },
+    "code": {
+      "depStyle": []
+    },
+    "color-schemes": {
+      "depStyle": []
+    },
+    "comment": {
+      "depStyle": []
+    },
+    "form": {
+      "depStyle": []
+    },
+    "grid": {
+      "depStyle": []
+    },
+    "icon": {
+      "depStyle": []
+    },
+    "image": {
+      "depStyle": []
+    },
+    "input-group": {
+      "depStyle": []
+    },
+    "list": {
+      "depStyle": []
+    },
+    "mixins": {
+      "depStyle": []
+    },
+    "nav": {
+      "depStyle": []
+    },
+    "pagination": {
+      "depStyle": []
+    },
+    "panel": {
+      "depStyle": []
+    },
+    "print": {
+      "depStyle": []
+    },
+    "progress": {
+      "depStyle": []
+    },
+    "table": {
+      "depStyle": []
+    },
+    "themes": {
+      "depStyle": []
+    },
+    "thumbnail": {
+      "depStyle": []
+    },
+    "topbar": {
+      "depStyle": []
+    },
+    "ui.add2home": {
+      "depStyle": []
+    },
+    "ui.alert": {
+      "depStyle": []
+    },
+    "ui.component": {
+      "depStyle": []
+    },
+    "ui.dropdown": {
+      "depStyle": []
+    },
+    "ui.modal": {
+      "depStyle": []
+    },
+    "ui.offcanvas": {
+      "depStyle": []
+    },
+    "ui.popover": {
+      "depStyle": []
+    },
+    "ui.progress": {
+      "depStyle": []
+    },
+    "ui.pureview": {
+      "depStyle": []
+    },
+    "ui.share": {
+      "depStyle": []
+    },
+    "ui.tabs": {
+      "depStyle": []
+    },
+    "utility": {
+      "depStyle": []
+    },
+    "variables": {
+      "depStyle": []
+    }
+  },
+  "js": {
+    "core": {
+      "depStyle": [
+        "core"
+      ],
+      "depJs": []
+    },
+    "ui.add2home": {
+      "depStyle": [
+        "ui.add2home"
+      ],
+      "depJs": []
+    },
+    "ui.alert": {
+      "depStyle": [
+        "ui.alert"
+      ],
+      "depJs": []
+    },
+    "ui.button": {
+      "depStyle": [
+        "ui.button"
+      ],
+      "depJs": []
+    },
+    "ui.collapse": {
+      "depStyle": [
+        "ui.collapse"
+      ],
+      "depJs": []
+    },
+    "ui.dimmer": {
+      "depStyle": [
+        "ui.dimmer"
+      ],
+      "depJs": []
+    },
+    "ui.dropdown": {
+      "depStyle": [
+        "ui.dropdown"
+      ],
+      "depJs": []
+    },
+    "ui.flexslider": {
+      "depStyle": [
+        "ui.flexslider"
+      ],
+      "depJs": []
+    },
+    "ui.iscroll-lite": {
+      "depStyle": [
+        "ui.iscroll-lite"
+      ],
+      "depJs": []
+    },
+    "ui.modal": {
+      "depStyle": [
+        "ui.modal"
+      ],
+      "depJs": []
+    },
+    "ui.offcanvas": {
+      "depStyle": [
+        "ui.offcanvas"
+      ],
+      "depJs": []
+    },
+    "ui.pinchzoom": {
+      "depStyle": [
+        "ui.pinchzoom"
+      ],
+      "depJs": []
+    },
+    "ui.popover": {
+      "depStyle": [
+        "ui.popover"
+      ],
+      "depJs": []
+    },
+    "ui.progress": {
+      "depStyle": [
+        "ui.progress"
+      ],
+      "depJs": []
+    },
+    "ui.pureview": {
+      "depStyle": [
+        "ui.pureview"
+      ],
+      "depJs": []
+    },
+    "ui.scrollspy": {
+      "depStyle": [
+        "ui.scrollspy"
+      ],
+      "depJs": []
+    },
+    "ui.scrollspynav": {
+      "depStyle": [
+        "ui.scrollspynav"
+      ],
+      "depJs": []
+    },
+    "ui.share": {
+      "depStyle": [
+        "ui.share"
+      ],
+      "depJs": []
+    },
+    "ui.smooth-scroll": {
+      "depStyle": [
+        "ui.smooth-scroll"
+      ],
+      "depJs": []
+    },
+    "ui.sticky": {
+      "depStyle": [
+        "ui.sticky"
+      ],
+      "depJs": []
+    },
+    "ui.tabs": {
+      "depStyle": [
+        "ui.tabs"
+      ],
+      "depJs": []
+    },
+    "util.cookie": {
+      "depStyle": [
+        "util.cookie"
+      ],
+      "depJs": []
+    },
+    "util.fastclick": {
+      "depStyle": [],
+      "depJs": []
+    },
+    "util.fullscreen": {
+      "depStyle": [],
+      "depJs": []
+    },
+    "util.hammer": {
+      "depStyle": [],
+      "depJs": []
+    },
+    "util.qrcode": {
+      "depStyle": [],
+      "depJs": []
+    }
+  }
+}

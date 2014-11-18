@@ -1,12 +1,20 @@
 # Slider
 ---
 
-图片轮播模块，源自 [FlexSlider](https://github.com/woothemes/FlexSlider)。
+图片轮播模块，支持触控事件，源自 [FlexSlider](https://github.com/woothemes/FlexSlider)。
 
-## 基本使用
+本插件算不上轻量，但功能相对完善，基本能满足各种不同的需求。
+
+[Web 组件中的图片轮播](/widgets/slider?_ver=2.x) 调用此插件，只是样式上做了一些扩展。
+
+## 使用演示
+
+
+
+### 基本形式
 
 `````html
-<div class="am-slider am-slider-default">
+<div class="am-slider am-slider-default" data-am-flexslider>
   <ul class="am-slides">
     <li><img src="http://cn.bing.com/az/hprichv/LondonTrainStation_GettyRR_139321755_ZH-CN742316019.jpg" /></li>
     <li><img src="http://s.cn.bing.net/az/hprichbg/rb/CardinalsBerries_ZH-CN10679090179_1366x768.jpg"></li>
@@ -14,16 +22,82 @@
     <li><img src="http://s.cn.bing.net/az/hprichbg/rb/FennecFox_ZH-CN13720911949_1366x768.jpg"></li>
   </ul>
 </div>
-<script>
-$(function() {
-  $('.am-slider').flexslider();
-});
-</script>
 `````
+```html
+<div class="am-slider am-slider-default" data-am-flexslider>
+  <ul class="am-slides">
+    <li><img src="..." /></li>
+  </ul>
+</div>
+```
+
+### 缩略图模式
+
+`````html
+<div class="am-slider am-slider-default"
+     data-am-flexslider="{controlNav: 'thumbnails', directionNav: false}">
+  <ul class="am-slides">
+    <li data-thumb="http://amui.qiniudn.com/pure-1.jpg"><img
+      src="http://amui.qiniudn.com/pure-1.jpg?imageView2/0/w/640" /></li>
+    <li data-thumb="http://amui.qiniudn.com/pure-2.jpg"><img
+      src="http://amui.qiniudn.com/pure-2.jpg?imageView2/0/w/640" /></li>
+    <li data-thumb="http://amui.qiniudn.com/pure-3.jpg"><img
+      src="http://amui.qiniudn.com/pure-3.jpg?imageView2/0/w/640" /></li>
+    <li data-thumb="http://amui.qiniudn.com/pure-4.jpg"><img
+      src="http://amui.qiniudn.com/pure-4.jpg?imageView2/0/w/640" /></li>
+
+  </ul>
+</div>
+`````
+```html
+<div class="am-slider am-slider-default"
+     data-am-flexslider="{controlNav: 'thumbnails', directionNav: false}">
+  <ul class="am-slides">
+    <li><img src="..." /></li>
+  </ul>
+</div>
+```
+
+### 多图滚动
+
+设置 `itemWidth` 选项实现多图滚动。`itemMargin` 仅用作计算滚动宽度用，要设置 `<li>` 之间的距离仍然需要 CSS，
+  默认设置了 5px 的宽度，加上 `.am-slider-carousel` 后生效。
+
+```css
+.am-slider-carousel li {
+  margin-right: 5px;
+}
+```
+
+`````html
+<div class="am-slider am-slider-default am-slider-carousel"
+     data-am-flexslider="{itemWidth: 200, itemMargin: 5}">
+  <ul class="am-slides">
+    <li><img src="http://amui.qiniudn.com/pure-1.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://amui.qiniudn.com/pure-2.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://amui.qiniudn.com/pure-3.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://amui.qiniudn.com/pure-4.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://amui.qiniudn.com/pure-1.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://amui.qiniudn.com/pure-2.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://amui.qiniudn.com/pure-3.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://amui.qiniudn.com/pure-4.jpg?imageView2/0/w/640" /></li>
+  </ul>
+</div>
+`````
+```html
+<div class="am-slider am-slider-default am-slider-carousel"
+     data-am-flexslider="{itemWidth: 200, itemMargin: 5}">
+  <ul class="am-slides">
+    <li><img src="..." /></li>
+  </ul>
+</div>
+```
+
+## 使用方式
 
 ### HTML 结构
 
-以下结构 __必须__，`<li>` 中的内容可以自由组合。
+以下结构__必须__，`<li>` 中的内容可以自由组合。
 
 ```html
 <div class="am-slider am-slider-default">
@@ -33,15 +107,25 @@ $(function() {
 </div>
 ```
 
-### 初始化 JS
+### 通过 Data API 初始化
 
-```javascript
-Zepto(function($) {
-  $('.am-slider').flexslider();
-});
+在容器上添加 `.data-am-flexslider` 自动初始化。
+
+```html
+<div class="am-slider am-slider-default">
+  <ul class="am-slides">
+    <li>...</li>
+  </ul>
+</div>
 ```
 
-## 自定参数
+### 通过 JS 初始化
+
+```javascript
+$('.am-slider').flexslider();
+```
+
+#### 自定参数
 
 在初始化函数中传入所需参数即可。
 
@@ -53,65 +137,139 @@ $(function() {
 });
 ```
 
-## 所有参数
+#### 方法
+
+- `$('#slider').flexslider('play');` - 播放
+- `$('#slider').flexslider('pause');` - 暂停
+- `$('#slider').flexslider('stop');` - 停止
+- `$('#slider').flexslider('next');` - 上一个
+- `$('#slider').flexslider('prev');` - 下一个
+- `$('#slider').flexslider(3);` // - 切换到第 4 个 slide
+
+#### slider 实例
+
+通过 slider 实例可以调用更多方法。
+
+```js
+var slider = $('#slider').data('flexslider');
+
+slider.addSlide(obj, position); // 插入的元素（选择符或 jQuery 对象）以及位置
+slider.removeSlide(obj); 移除 slide
+```
+
+#### 暂停以后重新自动播放
+
+`pauseOnAction` 设置为 `true` 以后，用户操作 slider 就会暂停播放。
+
+有的开发者希望过一段时间以后恢复播放，可以通过在 Data API 中设置 `playAfterPaused` 参数来实现。
+
+`````html
+<div class="am-slider am-slider-default" data-am-flexslider="{playAfterPaused: 8000}">
+  <ul class="am-slides">
+    <li><img src="http://cn.bing.com/az/hprichv/LondonTrainStation_GettyRR_139321755_ZH-CN742316019.jpg" /></li>
+    <li><img src="http://s.cn.bing.net/az/hprichbg/rb/CardinalsBerries_ZH-CN10679090179_1366x768.jpg"></li>
+    <li><img src="http://s.cn.bing.net/az/hprichbg/rb/QingdaoJiaozhou_ZH-CN10690497202_1366x768.jpg"></li>
+    <li><img src="http://s.cn.bing.net/az/hprichbg/rb/FennecFox_ZH-CN13720911949_1366x768.jpg"></li>
+  </ul>
+</div>
+`````
+```html
+<div class="am-slider am-slider-default" data-am-flexslider="{playAfterPaused: 8000}">
+  <ul class="am-slides">
+    <li><img src="..." /></li>
+  </ul>
+</div>
+```
+
+**注意：这个参数只有通过 Data API 初始化的 Slider 才有效。** 使用 JS 初始化的请添加通过以下回调函数实现。
+
+```js
+$('#your-slider').flexslider({
+  playAfterPaused: 8000,
+  before: function(slider) {
+    if (slider._pausedTimer) {
+      window.clearTimeout(slider._pausedTimer);
+      slider._pausedTimer = null;
+    }
+  },
+  after: function(slider) {
+    var pauseTime = slider.vars.playAfterPaused;
+    if (pauseTime && !isNaN(pauseTime) && !slider.playing) {
+      if (!slider.manualPause && !slider.manualPlay && !slider.stopped) {
+        slider._pausedTimer = window.setTimeout(function() {
+          slider.play();
+        }, pauseTime);
+      }
+    }
+  }
+  // 设置其他参数
+});
+```
+
+### 默认参数及说明
 
 ```javascript
 {
-  namespace: "am-",               //{NEW} String: class的前缀字符串。
-  selector: ".am-slides > li",    //{NEW} Selector: Must match a simple pattern. '{container} > {slide}' -- Ignore pattern at your own peril
-  animation: "slide",             //String: "fade" or "slide", AmazeUI 默认使用"slide"滑动，可以选择 "fade": 淡入淡出。
-  easing: "swing",                //{NEW} String: Determines the easing method used in jQuery transitions. jQuery easing plugin is supported!
-  direction: "horizontal",        *//String: "horizontal" or "vertical" 选择slide滚动形式，"horizontal": 为水平滚动，"vertical": 上下滚动。
-  reverse: false,                 *//{NEW} Boolean: true or false 翻转slide子项运动方向，"false": 默认为正常运动方向, "true": 为相反方向。
-  animationLoop: true,            *官方bug//Boolean: true or false Should the animation loop? If false, directionNav will received "disable" classes at either end
-  smoothHeight: false,            *-//{NEW} Boolean: true or false 当slide图片比例不一样时，"true": 父类自动适应图片高度，"false": 不自动适应，父类高度为图片的最高高度，默认为false。
-  startAt: 0,                     //Integer: 开始显示的slide顺序，0为第一张slide。
-  slideshow: true,                //Boolean: true or false 是否自动播放，默认为true。
-  slideshowSpeed: 5000,           //Integer: 单位为 ms 自动播放的间隔时间。
-  animationSpeed: 600,            //Integer: 单位为 ms 动画运动时间，配合参数slideshowSpeed可以做出一直滚动效果。
-  initDelay: 0,                   //{NEW} Integer: 单位为 ms 首次执行动画的延迟时间，默认为0
-  randomize: false,               *官方bug//Boolean: true or false 是否随机slide顺序，默认为false。
+  animation: "slide",             // String: ["fade"|"slide"]，动画效果
+  easing: "swing",                // String: 滚动动画计时函数
+  direction: "horizontal",        // String: 滚动方向 ["horizontal"|"vertical"]
+  reverse: false,                 // Boolean: 翻转 slide 运动方向
+  animationLoop: true,            // Boolean: 是否循环播放
+  smoothHeight: false,            // Boolean: 当 slide 图片比例不一样时
+                                  // "true": 父类自动适应图片高度
+                                  // "false": 不自动适应，父类高度为图片的最高高度，默认为false
+
+  startAt: 0,                     // Integer: 开始播放的 slide，从 0 开始计数
+  slideshow: true,                // Boolean: 是否自动播放
+  slideshowSpeed: 5000,           // Integer: ms 滚动间隔时间
+  animationSpeed: 600,            // Integer: ms 动画滚动速度
+  initDelay: 0,                   // Integer: ms 首次执行动画的延迟
+  randomize: false,               // Boolean: 是否随机 slide 顺序
 
   // Usability features
-  pauseOnAction: true,            *//Boolean: true or false 作用于控制点暂停自动播放程序。
-  pauseOnHover: false,            //Boolean: true or false 悬停在slide上时，暂停自动播放程序。
-  useCSS: true,                   //{NEW} Boolean: true or false 开启使用css3移动。
-  touch: true,                    //{NEW} Boolean: true or false 允许触摸屏触摸滑动滑块。
-  video: false,                   //{NEW} Boolean: true or false 如果使用视频的滑块，可以防止CSS3的3D变换避免毛刺。
+  pauseOnAction: true,            // Boolean: 用户操作时停止自动播放
+  pauseOnHover: false,            // Boolean: 悬停时暂停自动播放
+  useCSS: true,                   // Boolean: 是否使用 css3 transition
+  touch: true,                    // Boolean: 允许触摸屏触摸滑动滑块
+  video: false,                   // Boolean: 使用视频的 slider，防止 CSS3 3D 变换毛刺
 
   // Primary Controls
-  controlNav: true,               //Boolean: true or false 是否创建控制点，方便控制滑块。
-  directionNav: true,             //Boolean: true or false 是否创建上一个和下一个控制点（previous/next）control。
-  prevText: "Previous",           //String: 设置上一个控制点文本，默认为"previous"
-  nextText: "Next",               //String: 设置下一个控制点文本，默认为"next"
+  controlNav: true,               // Boolean: 是否创建控制点
+  directionNav: true,             // Boolean: 是否创建上/下一个按钮（previous/next）
+  prevText: "Previous",           // String: 上一个按钮文字
+  nextText: "Next",               // String: 下一个按钮文字
 
   // Secondary Navigation
-  keyboard: true,                 //Boolean: true or false 允许开启键盘左（←）右（→）控制滑块滑动。
-  multipleKeyboard: false,        //{NEW} Boolean: true or false 允许键盘控制多个slide，默认为 false 不允许控制多个slide。
-  mousewheel: true,               //{UPDATED} Boolean: 是否开启鼠标滚轮控制 slide 滑动。
-  pausePlay: false,               //Boolean: true or false 是否创建暂停与开启自动播放的控件。
-  pauseText: 'Pause',             //String: 设置暂停控件的文本。默认为"pause"
-  playText: 'Play',               //String: 设置播放控件的文本。默认为"play"
+  keyboard: true,                 // Boolean: 是否开启键盘左（←）右（→）控制
+  multipleKeyboard: false,        // Boolean: 是否允许键盘控制多个 slide
+  mousewheel: true,               // Boolean: 是否开启鼠标滚轮控制
+  pausePlay: false,               // Boolean: 是否创建暂停与播放按钮
+  pauseText: 'Pause',             // String: 暂停按钮文字
+  playText: 'Play',               // String: 播放按钮文字
 
   // Special properties
-  controlsContainer: "",          //{UPDATED} Zepto Object/Selector 控制容器，声明的容器的导航元素比原容器大。默认的容器是flexslider元。如果给定的元素属性是不存在忽视。
-  manualControls: "",             //{UPDATED} Zepto Object/Selector 声明自定义导航控件。例如".flex-control-nav li" or "#tabs-nav li img"，使用自定义导航控件，需要把导航数量和滑块数量相等。
-  sync: "",                       //{NEW} Selector: 关联slide与slide之间的操作。
-  asNavFor: "",                   *//{NEW} Selector: Internal property exposed for turning the slider into a thumbnail navigation for another slider
+  controlsContainer: "",          // jQuery Object/Selector
+  manualControls: "",             // jQuery Object/Selector 自定义控制 slider 的元素，
+                                  // 如 "#tabs-nav li img"，导航数量和 slide 数量一样
+  sync: "",                       // Selector: 关联 slide 与 slide 之间的操作。
+  asNavFor: "",                   // Selector: Internal property exposed for turning the slider into a thumbnail navigation for another slider
 
   // Carousel Options
-  itemWidth: 0,                   //{NEW} Integer: 滑块的宽度，盒模型包含horizontal borders and padding
-  itemMargin: 0,                  *官方bug//{NEW} Integer: 两个滑块之间间隔距离。
-  minItems: 1,                    //{NEW} Integer: 最少显示滑块的可见数, 与参数itemWidth相关。
-  maxItems: 0,                    //{NEW} Integer: 最多显示滑块的可见数, 与参数itemWidth相关。
-  move: 0,                        *//{NEW} Integer: Number of carousel items that should move on animation. If 0, slider will move all visible items.
+  itemWidth: 0,                   // Integer: slide 宽度，多个同时滚动时设置
+  itemMargin: 0,                  // Integer: slide 间距
+  minItems: 1,                    // Integer: 最少显示 slide 数, 与 `itemWidth` 相关
+  maxItems: 0,                    // Integer: 最多显示 slide 数, 与 `itemWidth` 相关
+  move: 0,                        // Integer: 一次滚动移动的 slide 数量，0 - 滚动可见的 slide
 
   // Callback API
-  start: function(){},            //Callback: function(slider) - slide 初始化完成时的回调。
-  before: function(){},           //Callback: function(slider) - 每次动画完成前的回调。
-  after: function(){},            //Callback: function(slider) - 每次动画完成后的回调。
-  end: function(){},              //Callback: function(slider) - slide 动画执行到最后一个元素时的回调，与start相反。
-  added: function(){},            *//{NEW} Callback: function(slider) - Fires after a slide is added
-  removed: function(){}           *//{NEW} Callback: function(slider) - Fires after a slide is removed
+  start: function(){},            // Callback: function(slider) - 初始化完成的回调
+  before: function(){},           // Callback: function(slider) - 每次滚动开始前的回调
+  after: function(){},            // Callback: function(slider) - 每次滚动完成后的回调
+  end: function(){},              // Callback: function(slider) - 执行到最后一个 slide 的回调
+  added: function(){},            // Callback: function(slider) - slide 添加时触发
+  removed: function(){}           // Callback: function(slider) - slide 被移除时触发
+
+  // Amaze UI 扩展参数
+  playAfterPaused: null           // Integer: ms 用户停止操作多长时间以后重新开始自动播放
 }
 ```

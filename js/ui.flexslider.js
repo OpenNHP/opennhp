@@ -1,8 +1,11 @@
 var $ = require('jquery');
+var UI = require('./core');
 
 // MODIFIED:
 // - LINE 226: add `<i></i>`
 // - namespace
+// - Init code
+// TODO: start after x ms when pause on actions
 
 /*
  * jQuery FlexSlider v2.2.2
@@ -34,15 +37,17 @@ $.flexslider = function(el, options) {
     focused = true;
 
   // Store a reference to the slider object
-  $.data(el, "flexslider", slider);
+  $.data(el, 'flexslider', slider);
 
   // Private slider methods
   methods = {
     init: function() {
       slider.animating = false;
       // Get current slide and make sure it is a number
-      slider.currentSlide = parseInt(( slider.vars.startAt ? slider.vars.startAt : 0), 10);
-      if (isNaN(slider.currentSlide)) slider.currentSlide = 0;
+      slider.currentSlide = parseInt((slider.vars.startAt ? slider.vars.startAt : 0), 10);
+      if (isNaN(slider.currentSlide)) {
+        slider.currentSlide = 0;
+      }
       slider.animatingTo = slider.currentSlide;
       slider.atEnd = (slider.currentSlide === 0 || slider.currentSlide === slider.last);
       slider.containerSelector = slider.vars.selector.substr(0, slider.vars.selector.search(' '));
@@ -1188,7 +1193,7 @@ $.fn.flexslider = function(options) {
         selector = (options.selector) ? options.selector : ".am-slides > li",
         $slides = $this.find(selector);
 
-      if (( $slides.length === 1 && options.allowOneSlide === true ) || $slides.length === 0) {
+      if (($slides.length === 1 && options.allowOneSlide === true) || $slides.length === 0) {
         $slides.fadeIn(400);
         if (options.start) options.start($this);
       } else if ($this.data('flexslider') === undefined) {
@@ -1196,29 +1201,61 @@ $.fn.flexslider = function(options) {
       }
     });
   } else {
-    // Helper strings to quickly perform functions on the slider
+    // Helper strings to quickly pecdrform functions on the slider
     var $slider = $(this).data('flexslider');
     switch (options) {
-      case "play":
+      case 'play':
         $slider.play();
         break;
-      case "pause":
+      case 'pause':
         $slider.pause();
         break;
-      case "stop":
+      case 'stop':
         $slider.stop();
         break;
-      case "next":
-        $slider.flexAnimate($slider.getTarget("next"), true);
+      case 'next':
+        $slider.flexAnimate($slider.getTarget('next'), true);
         break;
-      case "prev":
-      case "previous":
-        $slider.flexAnimate($slider.getTarget("prev"), true);
+      case 'prev':
+      case 'previous':
+        $slider.flexAnimate($slider.getTarget('prev'), true);
         break;
       default:
-        if (typeof options === "number") $slider.flexAnimate(options, true);
+        if (typeof options === 'number') {
+          $slider.flexAnimate(options, true);
+        }
     }
   }
 };
+
+// Init code
+$(function() {
+  $('[data-am-flexslider]').each(function(i, item) {
+    var $slider = $(item);
+    var options = UI.utils.parseOptions($slider.data('amFlexslider'));
+
+    options.before = function(slider) {
+      if (slider._pausedTimer) {
+        window.clearTimeout(slider._pausedTimer);
+        slider._pausedTimer = null;
+      }
+    };
+
+    options.after = function(slider) {
+      var pauseTime = slider.vars.playAfterPaused;
+      if (pauseTime && !isNaN(pauseTime) && !slider.playing) {
+        if (!slider.manualPause && !slider.manualPlay && !slider.stopped) {
+          slider._pausedTimer = window.setTimeout(function() {
+            slider.play();
+          }, pauseTime);
+        }
+      }
+    };
+
+    $slider.flexslider(options);
+  });
+});
+
+// if (!slider.manualPause && !slider.manualPlay && !slider.stopped) slider.play();
 
 module.exports = $.flexslider;

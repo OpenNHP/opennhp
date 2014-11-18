@@ -19,7 +19,9 @@
       "depStyle": []
     },
     "button-group": {
-      "depStyle": []
+      "depStyle": [
+          "button"
+      ]
     },
     "button": {
       "depStyle": []
@@ -49,7 +51,10 @@
       "depStyle": []
     },
     "input-group": {
-      "depStyle": []
+      "depStyle": [
+        "form",
+        "button"
+      ]
     },
     "list": {
       "depStyle": []
@@ -97,7 +102,9 @@
       "depStyle": []
     },
     "ui.modal": {
-      "depStyle": []
+      "depStyle": [
+        "ui.component"
+      ]
     },
     "ui.offcanvas": {
       "depStyle": []
@@ -126,9 +133,7 @@
   },
   "js": {
     "core": {
-      "depStyle": [
-        "core"
-      ],
+      "depStyle": [],
       "depJs": []
     },
     "ui.add2home": {
@@ -139,25 +144,27 @@
     },
     "ui.alert": {
       "depStyle": [
-        "ui.alert"
+        "ui.alert",
+        "close"
       ],
       "depJs": []
     },
     "ui.button": {
       "depStyle": [
-        "ui.button"
+        "button",
+        "button-group"
       ],
       "depJs": []
     },
     "ui.collapse": {
       "depStyle": [
-        "ui.collapse"
+        "ui.component"
       ],
       "depJs": []
     },
     "ui.dimmer": {
       "depStyle": [
-        "ui.dimmer"
+        "ui.component"
       ],
       "depJs": []
     },
@@ -168,22 +175,21 @@
       "depJs": []
     },
     "ui.flexslider": {
-      "depStyle": [
-        "ui.flexslider"
-      ],
+      "depStyle": [],
       "depJs": []
     },
     "ui.iscroll-lite": {
-      "depStyle": [
-        "ui.iscroll-lite"
-      ],
+      "depStyle": [],
       "depJs": []
     },
     "ui.modal": {
       "depStyle": [
-        "ui.modal"
+        "ui.modal",
+        "ui.component"
       ],
-      "depJs": []
+      "depJs": [
+        "ui.dimmer"
+      ]
     },
     "ui.offcanvas": {
       "depStyle": [
@@ -192,9 +198,7 @@
       "depJs": []
     },
     "ui.pinchzoom": {
-      "depStyle": [
-        "ui.pinchzoom"
-      ],
+      "depStyle": [],
       "depJs": []
     },
     "ui.popover": {
@@ -213,35 +217,38 @@
       "depStyle": [
         "ui.pureview"
       ],
-      "depJs": []
+      "depJs": [
+        "ui.pinchzoom",
+        "util.hammer"
+      ]
     },
     "ui.scrollspy": {
       "depStyle": [
-        "ui.scrollspy"
+        "animation"
       ],
       "depJs": []
     },
     "ui.scrollspynav": {
-      "depStyle": [
-        "ui.scrollspynav"
-      ],
-      "depJs": []
+      "depStyle": [],
+      "depJs": [
+        "ui.smooth-scroll"
+      ]
     },
     "ui.share": {
       "depStyle": [
         "ui.share"
       ],
-      "depJs": []
+      "depJs": [
+        "util.qrcode"
+      ]
     },
     "ui.smooth-scroll": {
-      "depStyle": [
-        "ui.smooth-scroll"
-      ],
+      "depStyle": [],
       "depJs": []
     },
     "ui.sticky": {
       "depStyle": [
-        "ui.sticky"
+        "ui.component"
       ],
       "depJs": []
     },
@@ -252,9 +259,7 @@
       "depJs": []
     },
     "util.cookie": {
-      "depStyle": [
-        "util.cookie"
-      ],
+      "depStyle": [],
       "depJs": []
     },
     "util.fastclick": {

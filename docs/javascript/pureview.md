@@ -7,10 +7,11 @@
 ## 使用演示
 
 ### 从链接中获取图片
-    
+
 `````html
-<ul data-am-widget="gallery" class="am-gallery sm-block-grid-2
-  md-block-grid-3 lg-block-grid-4 am-gallery-default" data-am-pureview="{target: 'a'}">
+<ul data-am-widget="gallery" class="am-gallery am-avg-sm-2
+  am-avg-md-3 am-avg-lg-4 am-gallery-default"
+    data-am-pureview="{target: 'a'}">
   <li>
     <div class="am-gallery-item">
       <a href="http://amui.qiniudn.com/pure-1.jpg" title="远方 有一个地方 那里种有我们的梦想">

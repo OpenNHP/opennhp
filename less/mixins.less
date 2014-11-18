@@ -427,6 +427,18 @@
   transform: translate(@x, @y);
 }
 
+.translateX(@x: 0) {
+  -webkit-transform: translateX(@x);
+  -ms-transform: translateX(@x); // IE9+
+  transform: translateX(@x);
+}
+
+.translateY(@y: 0) {
+  -webkit-transform: translateY(@y);
+  -ms-transform: translateY(@y); // IE9+
+  transform: translateY(@y);
+}
+
 .translate3d(@x:0; @y:0; @z:0) {
   -webkit-transform: translate3d(@x,@y,@z);
   -ms-transform: translate3d(@x,@y,@z);
@@ -711,7 +723,7 @@
   border-right: @size solid transparent;
   border-left: @size solid transparent;
   border-top: 0 dotted;
-  .rotate(360deg);
+  transform: rotate(360deg);
 }
 
 // Caret - left
@@ -725,7 +737,7 @@
   border-top: @size solid transparent;
   border-bottom: @size solid transparent;
   border-left: 0 dotted;
-  .rotate(360deg);
+  transform: rotate(360deg);
 }
 
 // Caret - right
@@ -739,7 +751,7 @@
   border-top: @size solid transparent;
   border-bottom: @size solid transparent;
   border-right: 0 dotted;
-  .rotate(360deg);
+  transform: rotate(360deg);
 }
 
 
@@ -758,7 +770,7 @@
   height: @width;
   border: @color solid;
   border-width: @border-width @border-width 0 0;
-  .rotate(@deg);
+  transform: rotate(@deg);
 }
 
 
@@ -838,13 +850,13 @@
 
   .am-form-field {
     border-color: @border-color !important;
-    .box-shadow(inset 0 1px 1px rgba(0, 0, 0, .075));
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, .075);
     &:focus {
       //background-color: rgba(red(@border-color), green(@border-color), blue(@border-color), .05) !important;
       background-color: @input-focus-bg;
       border-color: darken(@border-color, 10%);
       @shadow: inset 0 1px 1px rgba(0, 0, 0, .075), 0 0 5px lighten(@border-color, 20%) !important;
-      .box-shadow(@shadow) !important;
+      box-shadow: @shadow !important;
     }
   }
 
@@ -863,7 +875,7 @@
     background-color: @input-focus-bg;
     border-color: @color;
     outline: 0;
-    .box-shadow(~"inset 0 1px 1px rgba(0,0,0,.075), 0 0 5px @{color-rgba}");
+    box-shadow: ~"inset 0 1px 1px rgba(0,0,0,.075), 0 0 5px @{color-rgba}";
   }
 }
 
@@ -871,14 +883,14 @@
 // =============================================================================
 .grid-container(@gutter: @grid-gutter,
   @gutter-md: @grid-gutter-md, @max-width: @grid-max-width) {
-  .box-sizing(border-box);
+  box-sizing: border-box;
   margin-left: auto;
   margin-right: auto;
   padding-left: @gutter;
   padding-right: @gutter;
   width: 100%;
   max-width: @max-width;
-  &:extend(.@{ns}cf all);
+  .clearfix();
 
   @media @medium-up {
     padding-left: @gutter-md;

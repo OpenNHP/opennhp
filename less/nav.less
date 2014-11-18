@@ -100,7 +100,7 @@
 .@{ns}nav-divider {
   margin: 15px 1em !important;
   border-top: 1px solid #ddd;
-  .box-shadow(0 1px 0 #fff);
+  box-shadow: 0 1px 0 #fff;
   .hook-nav-divider;
 }
 
@@ -172,11 +172,11 @@
 
 .@{ns}nav-justify {
   width: 100%;
-  .flexbox();
+  display: flex;
 
   > li {
     float: none;
-    .flex(1);
+    flex: 1;
     // display: table-cell;
     // width: 1%;
     > a {

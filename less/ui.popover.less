@@ -44,9 +44,8 @@
   display: none;
   z-index: @z-index-popover;
   opacity: 0;
-  .transform(none);
-  .transition(@popover-duration);
-  .transition-property(opacity);
+  transform: none;
+  transition: opacity @popover-duration;
   .hook-popover;
 
   &.@{ns}active {
@@ -80,26 +79,27 @@
   .@{ns}popover-bottom & {
     top: auto;
     bottom: -8px;
-    .rotate(180deg);
+    transform: rotate(180deg);
   }
 
   .@{ns}popover-left & {
     top: auto;
     left: auto;
     right: -12px;
-    .rotate(90deg);
+    transform: rotate(90deg);
   }
 
   .@{ns}popover-right & {
     right: auto;
     left: -12px;
-    .rotate(-90deg);
+    transform: rotate(-90deg);
   }
 }
 
 
 // Hooks
 // =============================================================================
+
 .hook-popover() {}
 .hook-popover-inner() {}
 .hook-popover-caret() {}

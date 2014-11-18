@@ -42,7 +42,7 @@
   position: relative;
   height: 0;
   overflow: hidden;
-  .transition(height .3s ease);
+  transition: height .3s ease;
 }
 
 
@@ -53,11 +53,10 @@
 .@{ns}sticky {
   position: fixed !important;
   z-index: @z-index-sticky;
-  .transform-origin(0 0); // Needed for scale animation
+  transform-origin: 0 0; // Needed for scale animation
 }
 
 [data-am-sticky][class*="@{ns}animation-"] {
-  -webkit-animation-duration: .2s;
   animation-duration: .2s;
 }
 
@@ -83,7 +82,7 @@
   background: rgba(0, 0, 0, .6);
   z-index: @z-index-dimmer;
   opacity: 0;
-  .transition(opacity .15s);
+  transition: opacity .15s;
 
   &.@{ns}active {
     opacity: 1;

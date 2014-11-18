@@ -34,9 +34,7 @@
     width: 100px;
     height: 100%;
     box-shadow: 0 0 10px @nprogress-bar-color, 0 0 5px @nprogress-bar-color;
-    opacity: 1.0;
-    -webkit-transform: rotate(3deg) translate(0px, -4px);
-    -ms-transform: rotate(3deg) translate(0px, -4px);
+    opacity: 1;
     transform: rotate(3deg) translate(0px, -4px);
   }
 
@@ -53,24 +51,15 @@
   .nprogress-spinner-icon {
     width: 18px;
     height: 18px;
-    .box-sizing(border-box);
+    box-sizing: border-box;
     border: solid 2px transparent;
     border-top-color: @nprogress-bar-color;
     border-left-color: @nprogress-bar-color;
     border-radius: 50%;
 
-    .animation(nprogress-spinner 400ms linear infinite);
+    animation: nprogress-spinner 400ms linear infinite;
 
     .hook-nprogress-spinner-icon;
-  }
-}
-
-@-webkit-keyframes nprogress-spinner {
-  0% {
-    -webkit-transform: rotate(0deg);
-  }
-  100% {
-    -webkit-transform: rotate(360deg);
   }
 }
 
@@ -83,8 +72,10 @@
   }
 }
 
+
 // Hooks
 // =============================================================================
+
 .hook-nprogress-bar() {}
 .hook-nprogress-spinner() {}
 .hook-nprogress-spinner-icon() {}

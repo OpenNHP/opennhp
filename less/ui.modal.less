@@ -47,12 +47,9 @@
   text-align: center;
   border-radius: @modal-border-radius;
   opacity: 0;
-  .transform(translate3d(0, 0, 0) scale(1.185));
-  -webkit-transition-property: -webkit-transform, opacity;
-  -moz-transition-property: -moz-transform, opacity;
-  -ms-transition-property: -ms-transform, opacity;
-  transition-property: transform, opacity;
-  .transition-duration(@modal-duration);
+  transform: translate3d(0, 0, 0) scale(1.185);
+  transition-property: transform;
+  transition-duration: @modal-duration;
 
   &:focus {
     outline: 0;
@@ -60,13 +57,13 @@
 
   &.@{ns}modal-active {
     opacity: 1;
-    .transform(translate3d(0, 0, 0) scale(1));
+    transform: translate3d(0, 0, 0) scale(1);
   }
 
   &.@{ns}modal-out {
     opacity: 0;
     z-index: @z-index-modal - 1;
-    .transform(translate3d(0, 0, 0) scale(0.815));
+    transform: translate3d(0, 0, 0) scale(0.815);
   }
 
   @media @medium-up {
@@ -147,7 +144,7 @@
   display: table-cell!important;
   padding: 0 5px;
   height: 44px;
-  .box-sizing(border-box)!important;
+  box-sizing: border-box !important;
   font-size: 1.6rem;
   line-height: 44px;
   text-align: center;
@@ -155,19 +152,24 @@
   .text-overflow(block);
   cursor: pointer;
   border-right: 1px solid @modal-border-color;
+
   &:first-child {
     border-radius: 0 0 0 @modal-border-radius;
   }
+
   &:last-child {
     border-right: none;
     border-radius: 0 0 @modal-border-radius 0;
   }
+
   &:first-child:last-child {
     border-radius: 0 0 @modal-border-radius @modal-border-radius;
   }
+
   &.@{ns}modal-btn-bold {
     font-weight: 500;
   }
+
   &:active {
     background: @modal-btn-active-bg;
   }
@@ -175,6 +177,7 @@
   & + .@{ns}modal-btn {
     border-left: 1px solid @modal-border-color;
   }
+
   .hook-modal-btn;
 }
 
@@ -195,6 +198,7 @@
   .@{ns}modal-footer {
     display: none;
   }
+
   .hook-modal-no-btn;
 }
 
@@ -216,6 +220,7 @@
   .@{ns}modal-footer {
     display: none;
   }
+
   .hook-modal-loading;
 }
 
@@ -231,15 +236,15 @@
   width: 100%;
   text-align: center;
   border-radius: @modal-border-radius;
-  .transform(translate3d(0, 100%, 0));
+  transform: translate3d(0, 100%, 0);
   &.@{ns}modal-active {
-    .transition(all @modal-actions-duration);
-    .translate3d(0, 0, 0);
+    transition: all @modal-actions-duration;
+    transform: translate3d(0, 0, 0);
   }
   &.@{ns}modal-out {
     z-index: @z-index-modal - 1;
-    .transition(all @modal-actions-duration);
-    .transform(translate3d(0, 100%, 0));
+    transition: all @modal-actions-duration;
+    transform: translate3d(0, 100%, 0);
   }
   .hook-modal-actions;
 }
@@ -253,7 +258,7 @@
       margin-bottom: 0;
       border-bottom: none;
       .text-overflow();
-      .box-shadow(inset 0 1px 0 rgba(0, 0, 0, 0.015));
+      box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.015);
       & > a {
         padding: 1rem;
         .text-overflow();
@@ -298,24 +303,21 @@
   background: #fff;
   display: none;
   overflow: hidden;
-  -webkit-transition-property: -webkit-transform;
-  -moz-transition-property: -moz-transform;
-  -o-transition-property: -o-transform;
   transition-property: transform;
-  .translate3d(0, 100%, 0);
+  transform: translate3d(0, 100%, 0);
   .hook-popup;
 
   &.@{ns}modal-active,
   &.@{ns}modal-out {
-    .transition-duration(@modal-popup-duration);
+    transition-duration: @modal-popup-duration;
   }
 
   &.@{ns}modal-active {
-    .translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
   }
 
   &.@{ns}modal-out {
-    .translate3d(0, 100%, 0);
+    transform: translate3d(0, 100%, 0);
   }
 
   // iPad Modal
@@ -326,13 +328,14 @@
     top: 50%;
     margin-left: -315px;
     margin-top: -315px;
-    .translate3d(0, 1024px, 0);
+    transform: translate3d(0, 1024px, 0);
+
     &.@{ns}modal-active {
-      .translate3d(0, 0, 0);
+      transform: translate3d(0, 0, 0);
     }
 
     &.@{ns}modal-out {
-      .translate3d(0, 1024px, 0);
+      transform: translate3d(0, 1024px, 0);
     }
   }
 }
@@ -367,10 +370,11 @@
     right: 10px;
     top: 8px;
     cursor: pointer;
-    .transition(all 0.3s);
+    transition: all 0.3s;
     color: @gray-light;
+
     &:hover {
-      .rotate(360deg);
+      transform: rotate(360deg);
       color: @gray;
     }
   }

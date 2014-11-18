@@ -3,27 +3,25 @@
 [![Bower version](https://badge.fury.io/bo/amazeui.svg)](http://badge.fury.io/bo/amazeui)
 [![NPM version](https://badge.fury.io/js/amazeui.svg)](http://badge.fury.io/js/amazeui)
 
-
-
 Amaze UI 是基于社区开源项目构建的一个跨屏前端框架。 __[README in English](https://github.com/allmobilize/amazeui/blob/master/README_EN.md)__
 
 ## 功能简介
 
-### 为移动而生
+### 移动优先
 
-Amaze UI 遵循 Mobile first 理念，从小屏逐步扩展到大屏，最终实现跨屏适配，适应移动互联潮流。
+以移动优先（Mobile first）为理念，从小屏逐步扩展到大屏，最终实现所有屏幕适配，适应移动互联潮流。
 
 ### 组件丰富，模块化
 
-Amaze UI 含近 20 个 CSS 组件、10 个 JS 组件，更有 17 款包含近 60 个主题的 Web 组件，可快速构建界面出色、体验优秀的跨屏页面，大幅度提升你的开发效率。
+Amaze UI 含近 20 个 CSS 组件、10 个 JS 组件，更有 17 款包含近 60 个主题的 Web 组件，可快速构建界面出色、体验优秀的跨屏页面，大幅提升开发效率。
 
 ### 本地化支持
 
-相比国外的前端框架，Amaze UI 专注解决中文排版优化问题，根据操作系统调整字体，实现最佳中文排版效果；针对国内主流浏览器及 App 内置浏览器提供更好的兼容性支持，为你节省大量兼容性调试时间。
+相比国外框架，Amaze UI 关注中文排版，根据用户代理调整字体，实现更好的中文排版效果；兼顾国内主流浏览器及 App 内置浏览器兼容支持。
 
 ### 轻量级，高性能
 
-Amaze UI 非常注重性能，基于轻量的 Zepto.js 开发，并使用 CSS3 来做动画交互，平滑、高效，更适合移动设备，让你的 Web 应用可以高速载入。
+Amaze UI 面向 HTML5 开发，使用 CSS3 来做动画交互，平滑、高效，更适合移动设备，让 Web 应用更快速载入。
 
 ## 下载及使用
 
@@ -44,19 +42,14 @@ amazeui
 |-- LICENSE
 |-- README.md
 |-- package.json
-|-- dist        # 部署目录
+|-- dist        # 构建目录
 |-- docs        # 文档
 |-- fonts       # Icon font，目前使用了 http://staticfile.org/
 |-- gulpfile.js # 构建配置文件
 |-- js          # JS 文件
 |-- less        # LESS 文件
 |-- tools       # 相关工具
-|-- vendor      # 第三方文件
-|   |-- amazeui.partials.js
-|   |-- handlebars
-|   |-- json.format.js
-|   |-- seajs
-|   `-- zepto
+|-- vendor
 `-- widget      # Web 组件
 ```
 
@@ -103,7 +96,6 @@ gulp
 ### 需求提交
 
 用户可以通过 Issue 系统或者官网留言提交需求，符合 Amaze UI 理念的需求我们都会考虑。
-
 
 ## 贡献代码
 

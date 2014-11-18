@@ -32,6 +32,7 @@
     "template": "slider.hbs",
 
     "styleDependencies": [
+      "ui.flexslider.less"
     ],
 
     "style": "slider.less",

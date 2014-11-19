@@ -204,13 +204,13 @@
   // table-layout: fixed;
   // border-collapse: separate;
   width: 100%;
-  .flexbox();
+  display: flex;
   > .@{ns}btn,
   > .@{ns}btn-group {
     float: none;
     // display: table-cell;
     // width: 1%;
-    .flex(1);
+    flex: 1;
   }
   > .@{ns}btn-group .@{ns}btn {
     width: 100%;
@@ -231,11 +231,11 @@
   }
 
   .@{ns}active .@{ns}dropdown-toggle {
-    .box-shadow(inset 0 3px 5px rgba(0, 0, 0, .125));
+    box-shadow: inset 0 3px 5px rgba(0, 0, 0, .125);
 
     // Show no shadow for `.btn-link` since it has no other button styles.
     &.@{ns}btn-link {
-      .box-shadow(none);
+      box-shadow: none;
     }
   }
 
@@ -253,7 +253,7 @@
 [data-am-button] > .@{ns}btn > input[type="checkbox"] {
   position: absolute;
   z-index: -1;
-  .opacity(0);
+  opacity: 0;
 }
 
 // Hooks

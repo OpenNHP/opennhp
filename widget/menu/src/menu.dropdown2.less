@@ -52,10 +52,11 @@
       &.am-parent {
         > a {
           position: relative;
+
           &:after {
             content: @fa-var-angle-down;
             margin-left: 5px;
-            .transition(0.2s);
+            transition: .2s;
           }
         }
 
@@ -63,10 +64,12 @@
         &.am-open {
           > a {
             position: relative;
+
             &:after {
               // content: @fa-var-angle-up;
               color: @menu-nav-top-link-active-color;
-              .rotateX(180deg);
+              transform: rotate(180deg);
+              // .rotateX(180deg);
             }
 
             &:before {
@@ -143,5 +146,4 @@
   }
 }
 
-.hook-am-menu-dropdown2() {
-}
+.hook-am-menu-dropdown2() {}

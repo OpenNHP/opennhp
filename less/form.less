@@ -136,7 +136,8 @@ output {
   background-image: none;
   border: 1px solid @input-border;
   border-radius: @input-border-radius;
-  .transition(~"border-color .15s ease-in-out, box-shadow .15s ease-in-out");
+  -webkit-appearance: none;
+  transition: border-color .15s ease-in-out, box-shadow .15s ease-in-out;
 
   .hook-form;
 
@@ -146,7 +147,13 @@ output {
   }
   .form-field-focus(@input-border-focus);
 
-  .placeholder();
+  &::placeholder {
+    color: @input-color-placeholder;
+  }
+
+  &::-moz-placeholder {
+    opacity: 1;
+  }
 
   // Disabled and read-only inputs
   &[disabled],

@@ -29,19 +29,20 @@
     // item with submenu
     > .am-parent {
       > a {
-        .transition(all 0.3s);
+        transition: all .3s;
+
         &:after {
           content: @fa-var-angle-right;
           position: absolute;
           right: 1.5rem;
           top: 1.3rem;
-          .transition(all 0.15s);
+          transition: all .15s;
         }
       }
       &.am-open {
         > a {
           &:after {
-            .rotate(90deg);
+            transform: rotate(90deg);
           }
         }
       }
@@ -100,7 +101,6 @@
   .hook-am-menu-stack;
 
   @media @medium-up {
-
     .am-menu-nav {
       background-color: @menu-nav-top-bg;
 
@@ -126,7 +126,7 @@
             a {
               border-bottom: none;
               &:after {
-                .rotateX(-180deg);
+                transform: rotateX(-180deg);
               }
             }
             .am-menu-sub {
@@ -153,5 +153,4 @@
   }
 }
 
-.hook-am-menu-stack() {
-}
+.hook-am-menu-stack() {}

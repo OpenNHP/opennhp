@@ -7,10 +7,11 @@
   @control-nav-hover-bg-color: rgba(0,0,0,0.7);
   @control-nav-active-bg-color: @global-primary;
 
-  .box-shadow(0 1px 4px rgba(0,0,0,.2));
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
   .am-viewport {
     max-height: 2000px;
-    .transition(all 1s ease);
+    transition: all 1s ease;
+
     .loading & {
       max-height: 300px;
     }
@@ -35,9 +36,11 @@
         background-color: @control-nav-bg-color;
         cursor: pointer;
         text-indent: -9999px;
+
         &:hover {
           background-color: @control-nav-hover-bg-color;
         }
+
         &.am-active {
           background-color: @control-nav-active-bg-color;
           cursor: default;

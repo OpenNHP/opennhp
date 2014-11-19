@@ -56,9 +56,7 @@
 
 .@{ns}offcanvas-page {
   position: fixed;   /* 1 */
-  /* 2 */
-  -webkit-transition: margin-left 0.3s ease-in-out;
-  transition: margin-left 0.3s ease-in-out;
+  transition: margin-left 0.3s ease-in-out; /* 2 */
 }
 
 
@@ -69,7 +67,7 @@
   top: 0;
   bottom: 0;
   left: 0;
-  .translate(-100%, 0);
+  transform: translate(-100% 0);
   z-index: @z-index-offcanvas + 1;
   width: @offcanvas-bar-width;
   max-width: 100%;
@@ -77,8 +75,6 @@
 
   overflow-y: auto;  /* scrollable */
   -webkit-overflow-scrolling: touch; /* scrollable */
-
-  -webkit-transition: -webkit-transform 0.3s ease-in-out;
   transition: transform 0.3s ease-in-out;
 
   &:after {
@@ -97,7 +93,7 @@
 }
 
 .@{ns}offcanvas.@{ns}active .@{ns}offcanvas-bar.@{ns}offcanvas-bar-active {
-  .translate(0, 0);
+  transform: translate(0, 0);
 }
 
 
@@ -105,7 +101,8 @@
 .@{ns}offcanvas-bar-flip {
   left: auto;
   right: 0;
-  .translate(100%, 0);
+  transform: translate(100%, 0);
+
   &:after {
     right: auto;
     left: 0;
@@ -115,6 +112,7 @@
 .@{ns}offcanvas-content {
   padding: 15px;
   color: #999;
+
   a {
     color: #ccc;
   }

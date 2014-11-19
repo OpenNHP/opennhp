@@ -4,20 +4,15 @@
   */
 
 .am-accordion-default {
-
   @accordion-item-border-color: rgba(0, 0, 0, 0.05);
-
   @accordion-title-color: rgba(0, 0, 0, 0.6);
   @accordion-title-active-color: @global-primary;
   @accordion-title-active-bg-color: @gray-lighter;
-
   @accordion-content-color: #666;
 
   margin: 1rem;
-
-  border-radius: 2px;
-
-  .box-shadow(0px 0px 0px 1px rgba(0, 0, 0, 0.1));
+  border-radius: @radius-normal;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
 
   .am-accordion-item {
     border-top: 1px solid @accordion-item-border-color;
@@ -28,14 +23,14 @@
 
   .am-accordion-title {
     color: @accordion-title-color;
-    .transition(background-color 0.2s ease-out);
+    transition: background-color 0.2s ease-out;
     padding: 0.8rem 1rem;
 
-    &::before {
+    &:before {
       content: @fa-var-caret-right;
       .am-icon-font;
-      .transition(all 0.2s linear);
-      .rotate(0deg);
+      transition: all 0.2s linear;
+      transform: rotate(0deg);
       margin-right: 5px;
     }
 
@@ -55,8 +50,8 @@
     .am-accordion-title {
       background-color: @accordion-title-active-bg-color;
       color: @accordion-title-active-color;
-      &::before {
-        .rotate(90deg)
+      &:before {
+        transform: rotate(90deg);
       }
     }
     .am-accordion-content {

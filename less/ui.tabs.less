@@ -30,7 +30,7 @@
   border: 1px solid #ddd;
   border-top: none;
   z-index: 100;
-  .transition(height 0.3s);
+  transition: height .3s;
   .hook-tabs-bd;
 
   .@{ns}tab-panel {
@@ -41,23 +41,22 @@
     width: 100%;
     padding: 10px 10px 15px;
     visibility: hidden;
-    .transition(all 0.3s);
-    .translate(-100%);
+    transition: transform 0.3s;
+    transform: translateX(-100%);
     .hook-tab-panel;
 
     * {
       -webkit-user-drag: none;
-      user-drag: none;
     }
 
     &.@{ns}active {
       position: relative;
       z-index: 100;
       visibility: visible;
-      .translate();
+      transform: translateX(0);
 
       & ~ .@{ns}tab-panel {
-        .translate(100%);
+        transform: translateX(100%);
       }
     }
   }
@@ -66,6 +65,7 @@
 
 // HOOKS
 // =============================================================================
+
 .hook-tabs() {}
 .hook-tabs-bd() {}
 .hook-tab-panel() {}

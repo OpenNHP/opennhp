@@ -62,12 +62,12 @@
     > .am-parent {
       > a {
         position: relative;
-        .transition(0.15s);
+        transition: .15s;
 
         &:after {
           content: @fa-var-angle-down;
           margin-left: 5px;
-          .transition(0.15s);
+          transition: .15s;
         }
 
         &:before {
@@ -92,7 +92,7 @@
           }
 
           &:after {
-            .rotateX(-180deg)
+            transform: rotate(-180deg);
           }
         }
       }
@@ -141,9 +141,6 @@
   }
 }
 
-.hook-am-menu-slide1() {
-}
+.hook-am-menu-slide1() {}
 
-// TODO:
-//    1. 增加二级菜单支持
-//    2. 全宽样式支持
+// TODO: 全宽样式支持

@@ -5,7 +5,6 @@
 
 .am-accordion-one {
   @accordion-bg: @white;
-
   @accordion-item-border-color: #dfdfdf;
   @accordion-title-color: @gray;
   @accordion-title-active-color: @one-primary;
@@ -22,18 +21,18 @@
 
   .am-accordion-title {
     color: @accordion-title-color;
-    .transition(background-color 0.2s ease-out);
+    transition: background-color 0.2s ease-out;
     padding: 0.8rem 2rem 0.8rem 1rem;
     position: relative;
 
-    &::after {
+    &:after {
       content: @fa-var-angle-right;
       .am-icon-font;
-      .transition(all 0.2s linear);
+      transition: all 0.2s linear;
       position: absolute;
       right: 8px;
       top: 50%;
-      margin-top: -0.8rem;
+      margin-top: -.8rem;
     }
 
     &:hover {
@@ -52,8 +51,9 @@
     .am-accordion-title {
       background-color: @accordion-title-active-bg;
       color: @accordion-title-active-color;
-      &::after {
-        .rotate(90deg)
+      &:after {
+        transform: rotate(90deg);
+        // .rotate(90deg)
       }
     }
     .am-accordion-content {

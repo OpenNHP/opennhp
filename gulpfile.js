@@ -47,7 +47,19 @@ var config = {
       'util.fastclick.js',
       'util.hammer.js'
     ]
-  }
+  },
+
+  AUTOPREFIXER_BROWSERS: [
+    'ie >= 8',
+    'ie_mob >= 10',
+    'ff >= 30',
+    'chrome >= 34',
+    'safari >= 7',
+    'opera >= 23',
+    'ios >= 7',
+    'android >= 2.3',
+    'bb >= 10'
+  ]
 };
 
 var dateFormat = 'UTC:yyyy-mm-dd"T"HH:mm:ss Z';
@@ -102,7 +114,7 @@ var preparingData = function() {
   allWidgets.forEach(function(widget, i) {
     // read widget package.json
     var pkg = fs.readJsonFileSync(path.
-        join(WIDGET_DIR, widget, 'package.json'));
+      join(WIDGET_DIR, widget, 'package.json'));
     var srcPath = '../widget/' + widget + '/src/';
 
     if (i === 0) {
@@ -120,15 +132,15 @@ var preparingData = function() {
     _.forEach(pkg.themes, function(item, index) {
       if (!item.hidden && item.name) {
         widgetsStyle += '@import "' + srcPath + widget + '.' +
-            item.name + '.less";' + '\r\n';
+        item.name + '.less";' + '\r\n';
       }
     });
 
     // read tpl
     var tpl = fs.readFileSync(path.
-        join(WIDGET_DIR, widget, 'src', widget + '.hbs'), fsOptions);
+      join(WIDGET_DIR, widget, 'src', widget + '.hbs'), fsOptions);
     partials += format('    hbs.registerPartial(\'%s\', %s);\n\n',
-        widget, JSON.stringify(tpl));
+      widget, JSON.stringify(tpl));
   });
 
   widgetsStyleDeps.forEach(function(dep) {
@@ -138,7 +150,7 @@ var preparingData = function() {
   fs.writeFileSync('./less/amazeui.less', uiBase + widgetsStyle);
 
   fs.writeFileSync('./less/amazeui.widgets.less',
-      widgetsStyleWithDeps + widgetsStyle);
+    widgetsStyleWithDeps + widgetsStyle);
 
   /**
    *  Prepare JavaScript Data
@@ -226,7 +238,9 @@ gulp.task('build:less', function() {
         path.basename = pkg.name + '.basic';
       }
     }))
+    .pipe($.autoprefixer({browsers: config.AUTOPREFIXER_BROWSERS}))
     .pipe(gulp.dest(config.dist.css))
+    .pipe($.size({showFiles: true, title: 'source'}))
     // Disable advanced optimizations - selector & property merging, etc.
     // for Issue #19 https://github.com/allmobilize/amazeui/issues/19
     .pipe($.minifyCss({noAdvanced: true}))
@@ -234,17 +248,19 @@ gulp.task('build:less', function() {
       suffix: '.min',
       extname: '.css'
     }))
-    .pipe(gulp.dest(config.dist.css));
+    .pipe(gulp.dest(config.dist.css))
+    .pipe($.size({showFiles: true, title: 'minified'}))
+    .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
 });
 
 // Copy ui js files to build dir.
 gulp.task('build:js:copy:widgets', function() {
   $.util.log($.util.colors.yellow('Start copy widgets js to build dir....'));
   return gulp.src(config.path.widgets, {cwd: './widget'})
-      .pipe($.rename(function(path) {
-        path.dirname = ''; // remove widget dir
-      }))
-      .pipe(gulp.dest(config.path.buildTmp));
+    .pipe($.rename(function(path) {
+      path.dirname = ''; // remove widget dir
+    }))
+    .pipe(gulp.dest(config.path.buildTmp));
 });
 
 // Copy core js files to build dir.
@@ -277,7 +293,9 @@ gulp.task('build:js:browserify', function() {
       suffix: '.min',
       extname: '.js'
     }))
-    .pipe(gulp.dest(config.dist.js));
+    .pipe(gulp.dest(config.dist.js))
+    .pipe($.size({showFiles: true, title: 'minified'}))
+    .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
 });
 
 // Concat AMD
@@ -296,7 +314,9 @@ gulp.task('build:js:amd', function() {
       suffix: '.min',
       extname: '.js'
     }))
-    .pipe(gulp.dest(config.dist.js));
+    .pipe(gulp.dest(config.dist.js))
+    .pipe($.size({showFiles: true, title: 'minified'}))
+    .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
 });
 
 gulp.task('build:js:clean', function(cb) {
@@ -306,16 +326,16 @@ gulp.task('build:js:clean', function(cb) {
 
 gulp.task('build:js:helper', function() {
   gulp.src(config.path.hbsHelper)
-      .pipe($.concat(pkg.name + '.widgets.helper.js'))
-      .pipe($.header(banner, {pkg: pkg, ver: ' ~ helper'}))
-      .pipe(gulp.dest(config.dist.js))
-      .pipe($.uglify())
-      .pipe($.header(banner, {pkg: pkg, ver: ' ~ helper'}))
-      .pipe($.rename({
-        suffix: '.min',
-        extname: '.js'
-      }))
-      .pipe(gulp.dest(config.dist.js));
+    .pipe($.concat(pkg.name + '.widgets.helper.js'))
+    .pipe($.header(banner, {pkg: pkg, ver: ' ~ helper'}))
+    .pipe(gulp.dest(config.dist.js))
+    .pipe($.uglify())
+    .pipe($.header(banner, {pkg: pkg, ver: ' ~ helper'}))
+    .pipe($.rename({
+      suffix: '.min',
+      extname: '.js'
+    }))
+    .pipe(gulp.dest(config.dist.js));
 });
 
 gulp.task('build:js', function(cb) {
@@ -344,14 +364,14 @@ gulp.task('watch', function() {
 gulp.task('archive', function(cb) {
   runSequence([
       'archive:copy:css', 'archive:copy:js'],
-      'archive:zip',
-      'archive:clean',
+    'archive:zip',
+    'archive:clean',
     cb);
 });
 
 gulp.task('archive:copy:css', function() {
   return gulp.src('./dist/css/*.css')
-      .pipe(gulp.dest('./docs/examples/assets/css'));
+    .pipe(gulp.dest('./docs/examples/assets/css'));
 });
 
 gulp.task('archive:copy:js', function() {
@@ -359,16 +379,16 @@ gulp.task('archive:copy:js', function() {
     './dist/js/*.js',
     './vendor/handlebars/handlebars.min.js',
     './vendor/zepto/zepto.min.js'])
-      .pipe(gulp.dest('./docs/examples/assets/js'));
+    .pipe(gulp.dest('./docs/examples/assets/js'));
 });
 
 gulp.task('archive:zip', function() {
   return gulp.src(['docs/examples/**/*'])
-      .pipe($.replace(/\{\{assets\}\}/g, 'assets/', {skipBinary: true}))
-      .pipe($.zip(format('AmazeUI-%s-%s.zip',
-          pkg.version, $.util.date(Date.now(),'UTC:yyyymmdd')),
-          {comment: 'Created on ' + $.util.date(Date.now(), dateFormat)}))
-      .pipe(gulp.dest('dist'));
+    .pipe($.replace(/\{\{assets\}\}/g, 'assets/', {skipBinary: true}))
+    .pipe($.zip(format('AmazeUI-%s-%s.zip',
+        pkg.version, $.util.date(Date.now(), 'UTC:yyyymmdd')),
+      {comment: 'Created on ' + $.util.date(Date.now(), dateFormat)}))
+    .pipe(gulp.dest('dist'));
 });
 
 gulp.task('archive:clean', function(cb) {

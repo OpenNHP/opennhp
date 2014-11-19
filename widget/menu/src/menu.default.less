@@ -5,10 +5,8 @@
 
 .am-menu-default {
   @menu-nav-link-height: 36px;
-
   @menu-nav-link-color: @global-primary;
   @menu-nav-top-active-color: darken(@global-primary, 15%);
-
   @menu-nav-sub-bg: #f1f1f1;
   @menu-nav-sub-border-radius: @global-radius;
   @menu-nav-sub-link-color: @gray;
@@ -29,12 +27,12 @@
     > .am-parent {
       > a {
         position: relative;
-        .transition(0.15s);
+        transition: .15s;
 
         &:after {
           content: @fa-var-angle-down;
           margin-left: 5px;
-          .transition(0.15s);
+          transition: .15s;
         }
 
         &:before {
@@ -59,7 +57,8 @@
           }
 
           &:after {
-            .rotateX(-180deg)
+            transform: rotate(-180deg);
+            // .rotateX(-180deg)
           }
         }
       }
@@ -100,5 +99,4 @@
   }
 }
 
-.hook-am-menu-default() {
-}
+.hook-am-menu-default() {}

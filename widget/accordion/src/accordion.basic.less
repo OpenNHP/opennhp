@@ -12,15 +12,15 @@
 
   .am-accordion-title {
     color: @accordion-title-color;
-    .transition(background-color 0.2s ease-out);
+    transition: background-color 0.2s ease-out;
     padding: .8rem 0 .3rem;
 
-    &::before {
-      content: @fa-var-caret-right;
+    &:before {
       .am-icon-font;
-      .transition(all 0.2s linear);
-      .rotate(0deg);
-      margin-right: 5px;
+      content: @fa-var-caret-right;
+      transition: all 0.2s linear;
+      transform: rotate(0deg);
+      margin-right: .5rem;
     }
   }
 
@@ -34,8 +34,9 @@
   .am-active {
     .am-accordion-title {
       color: @accordion-title-active-color;
+
       &:before {
-        .rotate(90deg)
+        transform: rotate(90deg);
       }
     }
     .am-accordion-content {

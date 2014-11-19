@@ -24,26 +24,3 @@
 }
 
 .hook-am-figure-default() {};
-
-.am-figure-zoomable {
-  @figure-icon-color: @gray-light;
-  @figure-icon-hover-color: @gray-lighter;
-
-  position: relative;
-  cursor: pointer;
-  &::after {
-    .am-icon-font;
-    content: @fa-var-search-plus;
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
-    color: @figure-icon-color;
-    font-size: 1.6rem;
-    .transition(all 0.2s);
-  }
-  &:hover {
-    &::after {
-      color: @figure-icon-hover-color;
-    }
-  }
-}

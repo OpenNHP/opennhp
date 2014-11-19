@@ -126,7 +126,7 @@
     overflow: hidden;
   }
 
-  @media only screen and  (max-width: 639px) {
+  @media @small-only {
     & {
       // 缩略图在左右时限定图片高度
       .am-list-item-thumb-left, .am-list-item-thumb-right {
@@ -150,5 +150,4 @@
   .hook-am-list-news-default;
 }
 
-.hook-am-list-news-default() {
-}
+.hook-am-list-news-default() {}

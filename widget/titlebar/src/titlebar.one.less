@@ -11,8 +11,7 @@
   @titlebar-border-color: @one-primary;
   @titlebar-nav-link-color: @gray-light;
 
-  .flexbox();
-
+  display: flex;
   margin-left: 10px;
   margin-right: 10px;
   height: 45px;
@@ -46,7 +45,14 @@
       margin-top: 10px;
     }
 
-    h1, h2, h3, h4, h5, h6, strong, em {
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    strong,
+    em {
       font-style: normal;
       font-weight: normal;
       margin-bottom: 0;
@@ -60,9 +66,8 @@
   }
 
   .am-titlebar-nav {
-    .flex();
+    flex: 1;
     text-align: right;
-
     padding-right: 5px;
     color: @titlebar-nav-link-color;
     font-size: 1.4rem;
@@ -75,5 +80,4 @@
   .hook-am-titlebar-one;
 }
 
-.hook-am-titlebar-one() {
-}
+.hook-am-titlebar-one() {}

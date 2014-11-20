@@ -13,21 +13,19 @@
   .am-accordion-title {
     color: @accordion-title-color;
     transition: background-color 0.2s ease-out;
-    padding: .8rem 0 .3rem;
+    padding: .8rem 0 0;
 
     &:before {
       .am-icon-font;
       content: @fa-var-caret-right;
-      transition: all 0.2s linear;
+      transition: transform .2s ease;
       transform: rotate(0deg);
       margin-right: .5rem;
     }
   }
 
   .am-accordion-content {
-    padding: 0 1rem;
     color: @accordion-content-color;
-    font-size: 1.4rem;
   }
 
   // active
@@ -38,9 +36,6 @@
       &:before {
         transform: rotate(90deg);
       }
-    }
-    .am-accordion-content {
-      padding: 0 1rem 1rem;
     }
   }
 

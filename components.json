@@ -20,7 +20,7 @@
     },
     "button-group": {
       "depStyle": [
-          "button"
+          "button.less"
       ]
     },
     "button": {
@@ -52,8 +52,8 @@
     },
     "input-group": {
       "depStyle": [
-        "form",
-        "button"
+        "form.less",
+        "button.less"
       ]
     },
     "list": {
@@ -89,41 +89,6 @@
     "topbar": {
       "depStyle": []
     },
-    "ui.add2home": {
-      "depStyle": []
-    },
-    "ui.alert": {
-      "depStyle": []
-    },
-    "ui.component": {
-      "depStyle": []
-    },
-    "ui.dropdown": {
-      "depStyle": []
-    },
-    "ui.modal": {
-      "depStyle": [
-        "ui.component"
-      ]
-    },
-    "ui.offcanvas": {
-      "depStyle": []
-    },
-    "ui.popover": {
-      "depStyle": []
-    },
-    "ui.progress": {
-      "depStyle": []
-    },
-    "ui.pureview": {
-      "depStyle": []
-    },
-    "ui.share": {
-      "depStyle": []
-    },
-    "ui.tabs": {
-      "depStyle": []
-    },
     "utility": {
       "depStyle": []
     },
@@ -138,39 +103,39 @@
     },
     "ui.add2home": {
       "depStyle": [
-        "ui.add2home"
+        "ui.add2home.less"
       ],
       "depJs": []
     },
     "ui.alert": {
       "depStyle": [
-        "ui.alert",
-        "close"
+        "ui.alert.less",
+        "close.less"
       ],
       "depJs": []
     },
     "ui.button": {
       "depStyle": [
-        "button",
-        "button-group"
+        "button.less",
+        "button-group.less"
       ],
       "depJs": []
     },
     "ui.collapse": {
       "depStyle": [
-        "ui.component"
+        "ui.component.less"
       ],
       "depJs": []
     },
     "ui.dimmer": {
       "depStyle": [
-        "ui.component"
+        "ui.component.less"
       ],
       "depJs": []
     },
     "ui.dropdown": {
       "depStyle": [
-        "ui.dropdown"
+        "ui.dropdown.less"
       ],
       "depJs": []
     },
@@ -184,16 +149,16 @@
     },
     "ui.modal": {
       "depStyle": [
-        "ui.modal",
-        "ui.component"
+        "ui.modal.less",
+        "ui.component.less"
       ],
       "depJs": [
-        "ui.dimmer"
+        "ui.dimmer.js"
       ]
     },
     "ui.offcanvas": {
       "depStyle": [
-        "ui.offcanvas"
+        "ui.offcanvas.less"
       ],
       "depJs": []
     },
@@ -203,43 +168,43 @@
     },
     "ui.popover": {
       "depStyle": [
-        "ui.popover"
+        "ui.popover.less"
       ],
       "depJs": []
     },
     "ui.progress": {
       "depStyle": [
-        "ui.progress"
+        "ui.progress.less"
       ],
       "depJs": []
     },
     "ui.pureview": {
       "depStyle": [
-        "ui.pureview"
+        "ui.pureview.less"
       ],
       "depJs": [
-        "ui.pinchzoom",
-        "util.hammer"
+        "ui.pinchzoom.js",
+        "util.hammer.js"
       ]
     },
     "ui.scrollspy": {
       "depStyle": [
-        "animation"
+        "animation.less"
       ],
       "depJs": []
     },
     "ui.scrollspynav": {
       "depStyle": [],
       "depJs": [
-        "ui.smooth-scroll"
+        "ui.smooth-scroll.less"
       ]
     },
     "ui.share": {
       "depStyle": [
-        "ui.share"
+        "ui.share.less"
       ],
       "depJs": [
-        "util.qrcode"
+        "util.qrcode.js"
       ]
     },
     "ui.smooth-scroll": {
@@ -248,13 +213,13 @@
     },
     "ui.sticky": {
       "depStyle": [
-        "ui.component"
+        "ui.component.less"
       ],
       "depJs": []
     },
     "ui.tabs": {
       "depStyle": [
-        "ui.tabs"
+        "ui.tabs.less"
       ],
       "depJs": []
     },

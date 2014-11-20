@@ -32,8 +32,11 @@
     "url": "https://github.com/allmobilize/amazeui/issues"
   },
   "dependencies": {
+    "end-of-stream": "^1.1.0",
+    "handlebars": "latest",
     "jquery": "latest",
-    "handlebars": "latest"
+    "sequencify": "0.0.7",
+    "stream-consume": "^0.1.0"
   },
   "devDependencies": {
     "body-parser": "~1.0.0",

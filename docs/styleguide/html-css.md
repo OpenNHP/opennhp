@@ -108,6 +108,18 @@
 
 ### CSS 编写注意事项
 
+#### 不要添加浏览器厂商前缀
+
+Amaze UI 2.x 开始使用 [Autoprefixer](https://github.com/postcss/autoprefixer) 自动添加浏览器厂商前缀，编写 CSS 时**不要添加浏览器前缀**，直接使用标准的 CSS 编写（也不要使用 mixins.less 里的前缀 mixin）。
+
+**特别说明**：
+
+- **一些浏览器的私有属性可以添加浏览器前缀：** `-moz-appearance`, `-webkit-appearance` 等
+
+更多使用问题参见 [Autoprefixer FAQ](https://github.com/postcss/autoprefixer#faq)。
+
+#### 需要特别注意的 Class
+
 Amaze UI 中有两个表示状态的 class：
 
 - `.am-active` - 激活

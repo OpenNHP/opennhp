@@ -26,6 +26,20 @@ jQuery [官方的说明](http://api.jquery.com/width/#width)：
 
 解决方式就是在 jQuery 中使用 `.css('width')`，而不是 `.width()`。
 
+**这点上 jQuery 的处理方式是值得商榷的**，比如下面的例子，`$('.box').css('height')` 仍然返回 `20px`，**这不是扯蛋么**：
+
+```html
+<style>
+  .box {
+    box-sizing: border-box;
+    padding: 10px;
+    height: 0;
+  }
+</style>
+
+<div class="box"></div>
+```
+
 ##### 边框三角形宽高的获取
 
 假设用下面的 HTML 和 CSS 画了一个小三角形：

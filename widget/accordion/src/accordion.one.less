@@ -26,13 +26,13 @@
     position: relative;
 
     &:after {
-      content: @fa-var-angle-right;
       .am-icon-font;
-      transition: all 0.2s linear;
+      content: @fa-var-angle-right;
+      transition: transform .2s linear;
       position: absolute;
-      right: 8px;
+      right: 10px;
       top: 50%;
-      margin-top: -.8rem;
+      margin-top: -0.8rem;
     }
 
     &:hover {
@@ -41,9 +41,7 @@
   }
 
   .am-accordion-content {
-    padding: 0 1rem;
     color: @accordion-content-color;
-    font-size: 1.4rem;
   }
 
   // active
@@ -51,13 +49,10 @@
     .am-accordion-title {
       background-color: @accordion-title-active-bg;
       color: @accordion-title-active-color;
+
       &:after {
         transform: rotate(90deg);
-        // .rotate(90deg)
       }
-    }
-    .am-accordion-content {
-      padding: 1rem 1rem 1.5rem;
     }
   }
 

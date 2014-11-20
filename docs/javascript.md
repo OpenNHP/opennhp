@@ -13,9 +13,80 @@
 
 ### jQuery 和 Zepto.js 的一些差异
 
-jQuery 和 Zepto.js 表面看起来差不多，其实一些细节上差异很大，同时支持 jQuery 和 Zepto.js 是一件吃力不讨好的事情，这应该也是 [Foundation 5 放弃支持 Zepto](http://zurb.com/article/1293/why-we-dropped-zepto) 的一个原因。
+jQuery 和 Zepto.js 表面看起来差不多，其实一些细节上差异很大，同时支持 jQuery 和 Zepto.js 是一件吃力不讨好的事情，这应该也是 [Foundation 5 放弃支持 Zepto](http://zurb.com/article/1293/why-we-dropped-zepto) 的一个原因。（[下面列举的差异 Demo](http://jsbin.com/noxuvi/1/edit?html,css,js,console)）
 
-___TODO: 添加二者差异供用户参考___
+#### `width()`/`height()`
+
+- Zepto.js: 由盒模型（`box-sizing`）决定
+- jQery: 忽略盒模型，始终返回内容区域的宽/高（不包含 `padding`、`border`）
+
+jQuery [官方的说明](http://api.jquery.com/width/#width)：
+
+> Note that `.width()` will always return the content width, regardless of the value of the CSS `box-sizing` property. As of jQuery 1.8, this may require retrieving the CSS width plus `box-sizing` property and then subtracting any potential border and padding on each element when the element has `box-sizing: border-box`. To avoid this penalty, use `.css("width")` rather than `.width()`.
+
+解决方式就是在 jQuery 中使用 `.css('width')`，而不是 `.width()`。
+
+##### 边框三角形宽高的获取
+
+假设用下面的 HTML 和 CSS 画了一个小三角形：
+
+```html
+<div class="caret"></div>
+```
+
+```css
+.caret {
+  width: 0;
+  height: 0;
+  border-width: 0 20px 20px;
+  border-color: transparent transparent blue;
+  border-style: none dotted solid;
+}
+```
+
+- jQuery 使用 `.width()` 和 `.css('width')` 都返回 `0`，高度也一样；
+- Zepto 使用 `.width()` 返回 `40`，使用 `.css('width')` 返回 `0px`。
+
+所以，这种场景，**jQuery 使用 `.outerWidth()`/`.outerHeight()`；Zepto 使用 `.width()`/`.height()`**。
+
+#### `offset()`
+
+- Zepto.js: 返回 `top`、`left`、`width`、`height`
+- jQuery: 返回 `width`、`height`
+
+#### `$(htmlString, attributes)`
+
+- [jQuery 文档](http://api.jquery.com/jQuery/#jQuery-html-attributes)
+- [Zepto 文档](http://zeptojs.com/#$())
+
+##### DOM 操作区别
+
+```js
+$(function() {
+  var $list = $('<ul><li>jQuery 插入</li></ul>', {
+    id: 'insert-by-jquery'
+  });
+  $list.appendTo($('body'));
+});
+```
+jQuery 操作 `ul` 上的 `id` 不会被添加；Zepto 可以在 `ul` 上添加 `id`。
+
+##### 事件触发区别
+
+```js
+$script = $('<script />', {
+  src: 'http://cdn.amazeui.org/amazeui/1.0.1/js/amazeui.min.js',
+  id: 'ui-jquery'
+});
+
+$script.appendTo($('body'));
+
+$script.on('load', function() {
+  console.log('jQ script loaded');
+});
+```
+
+使用 jQuery 时 `load` 事件的处理函数**不会**执行；使用 Zepto 时 `load` 事件的处理函数**会**执行。
 
 ## 高级使用
 

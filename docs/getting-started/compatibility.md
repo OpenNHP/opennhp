@@ -1,15 +1,7 @@
 # Compatibility
 ---
 
-> 尊敬的用户你好！我们很遗憾的通知你，你正在查看的 Amaze UI 目前只支持 IE10+ 及其他 H5 浏览器。古董浏览器支持时间请等候通知。
-
-在机场听到类似的广播时，有人习以为常，有人愤怒，有人沮丧……
-
-听到 Amaze UI 的浏览器支持情况时，你什么感受呢？至少应该兴奋一下：太好了，以后再也不用考虑那些蹩脚的古董浏览器了。当你嘴角带着微笑沉醉其中时，你项目经理跑过来跟你说：xx 页面在 xx 浏览器下有问题……
-
-原来是黄粱一梦，每个前端开发者都做过的梦。
-
-Amaze UI 由移动端发展而来，由于 Zepto 的原因，目前只支持 IE10+ 及其他 H5 浏览器，后续的版本中会考虑增加 `IE8-9` 的支持，Zepto 可能会被替换为 jQuery。
+Amaze UI 面向现代浏览器开发，对 IE 8/9 等浏览器只提供有限支持。
 
 ## 浏览器分级支持（<abbr title="Graded Browser Support">GBS</abbr>）
 
@@ -24,82 +16,230 @@ Amaze UI 由移动端发展而来，由于 Zepto 的原因，目前只支持 IE1
 
 ### Amaze UI GBS
 
-Amaze UI 对浏览器做了一个粗略分级，这个列表会进一步细化、完善。
+按照国际惯例，Amaze UI 提供对主流浏览器（系统）最近两个稳定版本的全面支持。结合国内实际情况，一些浏览器的支持缩减为最新正式版，IE 则对更老版本做了有限支持。
 
-<div class="am-alert am-alert-warning">
-  由于 Amaze UI 1.x 中使用了 <a href="http://zeptojs.com/#browsers">Zepto.js</a>，只能提供 A 级浏览器支持，B 级浏览器支持将在 2.x 中提供。
-</div>
+Amaze UI 对浏览器做了一个粗略分级。由于资源有限，无法列出所有的浏览器，**使用 `WebKit` 的浏览器只要不乱修改内核，理论上应该都支持**。
 
-<table class="am-table am-table-bd am-table-striped">
+关于浏览器功能支持的更多细节请参考 [Can I use](http://caniuse.com/)（UC 浏览器的数据已经被收录，不知是喜是忧）。
+
+<table class="am-table am-table-bordered am-table-striped">
   <thead>
-  <tr>
-    <th style="width: 64px">级别</th>
-    <th>浏览器</th>
-  </tr>
+    <tr>
+      <th scope="row">OS/Browser</th>
+      <th scope="row">Ver</th>
+      <th scope="row">Windows</th>
+      <th scope="row">iOS(7.1.2+)</th>
+      <th scope="row">OS X (10.9+)</th>
+      <th scope="row">Android (4.1+)</th>
+      <th scope="row">WinPhone(8+)</th>
+    </tr>
   </thead>
   <tbody>
   <tr>
-    <td rowspan="8">A 级</td>
-    <td>Internet Explorer 10+</td>
+    <th scope="row">Chrome</th>
+    <td>L2</td>
+    <td class="am-success">A</td>
+    <td class="am-success">A</td>
+    <td class="am-success">A</td>
+    <td class="am-success">A</td>
+    <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <td>Chrome†</td>
+    <th scope="row" rowspan="3">IE</th>
+    <td>10+</td>
+    <td class="am-success">A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-success">A-</td>
   </tr>
   <tr>
-    <td>Firefox†（桌面版）</td>
+    <td>8/9</td>
+    <td class="am-warning">B</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <td>Opera Next †</td>
+    <td>lte7</td>
+    <td class="am-danger">C</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <td>360 浏览器† 极速模式</td>
+    <th scope="row">Firefox</th>
+    <td>L2</td>
+    <td class="am-success">A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-success">A</td>
+    <td class="am-primary">X</td>
+    <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <td>搜狗浏览器† 极速模式</td>
+    <th scope="row">Safari</th>
+    <td>L2</td>
+    <td class="am-primary">X</td>
+    <td class="am-success">A</td>
+    <td class="am-success">A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <td><del>Safari: iOS 6.†,</del> iOS 7.†, iOS 8.†, Safari 6.1(OS X 10.8), Safari 7.†(OS X 10.9)
-    </td>
+    <th scope="row">Opera</th>
+    <td>L1</td>
+    <td class="am-primary">X</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-primary">X</td>
+    <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <td>Android 4.†: UC†, Chrome†, 自带浏览器</td>
+    <th scope="row">Opera Next</th>
+    <td class="`">L1</td>
+    <td class="am-success">A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-success">A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <td rowspan="5">B 级</td>
-    <td>Internet Explorer 9 (<strong>IE9 对 H5 的支持非常有限，归为 B 级</strong>) <br/>
-      Internet Explorer 8</td>
+    <th scope="row">Opera Coast</th>
+    <td>L1</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-success">A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <td>360 浏览器† IE8 内核</td>
+    <th scope="row">Opera Mini</th>
+    <td>L1</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-primary">X</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-primary">X</td>
+    <td class="am-primary">X</td>
   </tr>
   <tr>
-    <td>搜狗浏览器† IE8 内核</td>
+    <th scope="row">Android stock<sup>1</sup></th>
+    <td>L1</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">X</td>
+    <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <td>Safari: iOS 5.†
-    </td>
+    <th scope="row">UC 浏览器</th>
+    <td>L1</td>
+    <td class="am-primary">X</td>
+    <td class="am-success">A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-success">A</td>
+    <td class="am-success">A-</td>
   </tr>
   <tr>
-    <td>Android 2.3.†: 自带浏览器</td>
+    <th scope="row" rowspan="2">360浏览器</th>
+    <td>L1 - 极速</td>
+    <td class="am-success">A-</td>
+    <td class="am-primary">X</td>
+    <td class="am-success">N/A</td>
+    <td class="am-primary">X</td>
+    <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <td>C 级</td>
-    <td>Internet Explorer lte 7</td>
+    <td>L1 - IE8</td>
+    <td class="am-warning">B</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-primary">X</td>
+    <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <td>X 级</td>
-    <td>Firefox 手机版</td>
+    <th scope="row" rowspan="2">搜狗浏览器</th>
+    <td>L1 - 极速</td>
+    <td class="am-success">A-</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+  </tr>
+  <tr>
+    <td>L1 - IE8</td>
+    <td class="am-warning">B</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+  </tr>
+  <tr>
+    <th scope="row">FF Mobile</th>
+    <td>L1</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td>X</td>
+    <td class="am-disabled">N/A</td>
   </tr>
   </tbody>
 </table>
 
 __注释：__
 
-- `†` 表示最新正式版
+
+- `L` 代表 `last`，L2 - 最新的两个稳定版本；L1 - 最新稳定版本。
+- `1` 安卓系统自动浏览器，由于部分厂商对浏览器做了修改，列为 X 级。
 
 __参考链接__：
 
 - [iOS Version Stats](http://david-smith.org/iosversionstats/)
+
+### IE 8/9
+
+- IE 8/9 不支持 `transition`，基本看不到任何动画效果；
+- **Web 组件部分不提供 IE 8/9 官方支持**。
+
+<table class="am-table am-table-bordered am-table-striped">
+  <thead>
+  <tr>
+    <th scope="col" class="col-xs-4">功能</th>
+    <th scope="col" class="col-xs-4">IE 8</th>
+    <th scope="col" class="col-xs-4">IE 9</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+    <th scope="row"><code>border-radius</code></th>
+    <td class="am-danger"><span class="am-icon-close"></span>NO</td>
+    <td class="am-success"><span class="am-icon-check"></span>YES</td>
+  </tr>
+  <tr>
+    <th scope="row"><code>box-shadow</code></th>
+    <td class="am-danger"><span class="am-icon-remove"></span>NO</td>
+    <td class="am-success"><span class="am-icon-check"></span>YES</td>
+  </tr>
+  <tr>
+    <th scope="row"><code>transform</code></th>
+    <td class="am-danger"><span class="am-icon-remove"></span>NO</td>
+    <td class="am-success"><span class="am-icon-check"></span>YES（<code>-ms</code> 前缀）</td>
+  </tr>
+  <tr>
+    <th scope="row"><code>Flex Box</code></th>
+    <td colspan="2" class="am-danger"><span class="am-icon-remove"></span>NO</td>
+  </tr>
+  <tr>
+    <th scope="row"><code>transition</code></th>
+    <td colspan="2" class="am-danger"><span class="am-icon-remove"></span>NO</td>
+  </tr>
+  <tr>
+    <th scope="row"><code>placeholder</code></th>
+    <td colspan="2" class="am-danger"><span class="am-icon-remove"></span>NO</td>
+  </tr>
+  </tbody>
+</table>
 
 ## 关于 IE 6~7
 

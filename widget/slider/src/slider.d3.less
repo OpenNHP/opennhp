@@ -7,10 +7,12 @@
   @desc-bg-color: rgba(0, 0, 0, 0.7);
 
   margin-bottom: 10px;
-  .box-shadow(0 1px 4px rgba(0,0,0,.2));
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+
   .am-viewport {
     max-height: 2000px;
-    .transition(all 1s ease);
+    transition: all 1s ease;
+
     .loading & {
       max-height: 300px;
     }
@@ -24,17 +26,18 @@
     width: 100%;
     background-color: @desc-bg-color;
     padding: 8px 5px;
+
     p {
       margin: 0;
-      .text-overflow(block);
       font-size: 1.3rem;
+      .text-overflow(block);
     }
   }
 
   .am-slider-title {
     font-weight: normal;
-    .text-overflow(block);
     margin-bottom: 5px;
+    .text-overflow(block);
   }
 
 
@@ -42,33 +45,37 @@
   .am-control-thumbs {
     position: static;
     overflow: hidden;
-    display: table;
+    display: flex;
+
     li {
-      display: table-cell;
+      flex: 1;
       padding: 12px 4px 4px;
       position: relative;
     }
+
     img {
       width: 100%;
       display: block;
       opacity: .85;
       cursor: pointer;
+
       &:hover {
         opacity: 1;
       }
     }
+
     .am-active {
       opacity: 1;
       cursor: default;
+
       & + i {
-        content: "";
         position: absolute;
-        .caret-down(8px, @desc-bg-color);
-        position: absolute;
-        left: 50%;
-        margin-left: -4px;
         top: 0;
-        .transition(all 0.2s);
+        left: 50%;
+        content: "";
+        .caret-down(8px, @desc-bg-color);
+        margin-left: -4px;
+        transition: all 0.2s;
       }
     }
   }

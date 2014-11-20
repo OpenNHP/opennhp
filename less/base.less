@@ -18,7 +18,7 @@
 *,
 *:before,
 *:after {
-  .box-sizing(border-box);
+  box-sizing: border-box;
 }
 
 
@@ -436,7 +436,7 @@ input[type="number"]::-webkit-outer-spin-button {
 
 input[type="search"] {
   -webkit-appearance: textfield; /* 1 */
-  .box-sizing(content-box); /* 2 */
+  box-sizing: content-box; /* 2 */
 }
 
 
@@ -548,12 +548,11 @@ button {
 
 /*Only phones */
 
-@media (max-width: @breakpoint-small-max) {
+@media @small-only {
 
   /**
    * Break strings if their length exceeds the width of their container
    */
-
   body {
     word-wrap: break-word;
     -webkit-hyphens: auto;
@@ -586,7 +585,6 @@ a {
 // em { color: @base-em-color; }
 
 /* Insert */
-
 ins {
   background: @base-ins-background;
   color: @base-ins-color;
@@ -597,7 +595,6 @@ ins {
  * Mark
  * Note: Addresses styling not present in IE 8/9.
  */
-
 mark {
   background: @base-mark-background;
   color: @base-mark-color;
@@ -607,7 +604,6 @@ mark {
 /**
  * Selection highlight
  */
-
 ::-moz-selection {
   background: @base-selection-background;
   color: @base-selection-color;
@@ -627,7 +623,6 @@ mark {
 }
 
 /* Remove `background` on images when selected */
-
 img::selection {
   background: transparent;
 }
@@ -640,7 +635,6 @@ img::-moz-selection {
 /**
  * Abbreviation and definition
  */
-
 abbr[title],
 dfn[title] {
   cursor: help;
@@ -653,7 +647,6 @@ dfn[title] {
 
 
 /* Spacing for block elements */
-
 p,
 hr,
 ul,
@@ -684,7 +677,6 @@ figure {
 
 /* Headings
    ========================================================================== */
-
 h1,
 h2,
 h3,
@@ -715,20 +707,16 @@ h2 {
 }
 
 
-
 // List
 // ========================================================================
 
 /* Ordered and unordered lists */
-
 ul,
 ol {
   padding-left: 2em;
 }
 
-
 /* Reset margin for nested lists */
-
 ul > li > ul,
 ul > li > ol,
 ol > li > ol,
@@ -738,7 +726,6 @@ ol > li > ul {
 
 
 /* Description lists */
-
 dt {
   font-weight: bold;
   & + dd {
@@ -758,7 +745,6 @@ dd {
  * Horizontal rule
  * 1. Address differences between Firefox and other browsers.
  */
-
 hr {
   display: block;
   padding: 0;
@@ -771,14 +757,12 @@ hr {
 
 
 /* Address */
-
 address {
   font-style: normal;
 }
 
 
 /* Quotes */
-
 q,
 blockquote {
   //font-style: italic;
@@ -794,7 +778,6 @@ blockquote {
   //line-height: @base-blockquote-line-height;
 
   /* Small print for identifying the source */
-
   small {
     display: block;
     color: @base-blockquote-small-color;
@@ -803,7 +786,6 @@ blockquote {
   }
 
   /* Smaller margin if `small` follows */
-
   p:last-of-type {
     margin-bottom: 0;
   }
@@ -811,7 +793,6 @@ blockquote {
 
 
 /* iframe */
-
 iframe {
   border: 0;
 }
@@ -825,7 +806,6 @@ iframe {
   * Vertical alignment
   * Exclude `radio` and `checkbox` elements because the default `baseline` value aligns better with text
   */
-
 button,
 input:not([type="radio"]):not([type="checkbox"]),
 select {
@@ -850,9 +830,3 @@ select {
 // Base Hooks
 
 .hook-base-body() {}
-
-// NOTE:
-// REMOVE this line when PureView USED in every component
-.pinch-zoom {
-  width: 100%;
-}

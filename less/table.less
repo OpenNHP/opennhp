@@ -137,7 +137,6 @@ th {
 
 
 /* Bordered version */
-
 .@{ns}table-bordered {
   border: 1px solid @table-border-color;
   .hook-table-bordered;
@@ -165,7 +164,7 @@ th {
 
 .@{ns}table-radius {
   border: none;
-  .box-shadow(0 0 1px @gray-light);
+  box-shadow: 0 0 1px @gray-light;
   border-radius: @radius-normal;
   .hook-table-radius;
 

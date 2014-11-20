@@ -75,7 +75,7 @@
 }
 
 .am-viewport {
-  .transition(all 1s ease);
+  transition: all 1s ease;
 }
 
 .am-slider-carousel li {
@@ -148,7 +148,7 @@
   }
 
   img {
-    .transition(opacity .1s);
+    transition: opacity .1s;
 
     &:hover {
     }
@@ -176,11 +176,11 @@
   margin: 0 0 20px;
   background-color: #fff;
   border-radius: 2px;
-  .box-shadow(0 0 2px rgba(0,0,0,.15));
+  box-shadow: 0 0 2px rgba(0,0,0,.15);
 
   .am-viewport {
     max-height: 2000px;
-    .transition(all 1s ease);
+    transition: all 1s ease;
     .loading & {
       max-height: 300px;
     }
@@ -204,7 +204,7 @@
       opacity: 0.45;
       cursor: pointer;
       color: rgba(0, 0, 0, 0.65);
-      .transition(all .3s ease);
+      transition: all .3s ease;
 
       &:before {
         color: @direction-nav-color;
@@ -312,7 +312,8 @@
         text-indent: -9999px;
         -webkit-border-radius: 20px;
         border-radius: 20px;
-        .box-shadow(inset 0 0 3px rgba(0,0,0,0.3));
+        box-shadow: inset 0 0 3px rgba(0,0,0,0.3);
+
         &:hover {
           background-color: #333;
           background-color: @control-nav-hover-bg-color;

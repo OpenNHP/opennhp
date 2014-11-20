@@ -10,8 +10,7 @@
   @titlebar-link-active-color: @global-primary;
 
   position: relative;
-  .flexbox();
-
+  display: flex;
   padding-left: 10px;
   background-color: @titlebar-bg;
   color: @titlebar-color;
@@ -35,7 +34,7 @@
   }
 
   .am-titlebar-nav {
-    .flex();
+    flex: 1;
 
     a {
       display: inline-block;
@@ -57,5 +56,4 @@
   .hook-am-titlebar-cols;
 }
 
-.hook-am-titlebar-cols() {
-}
+.hook-am-titlebar-cols() {}

@@ -3,10 +3,8 @@
   */
 
 .am-paragraph-one {
-
   @global-light-gray: #dfdfdf;
   @global-dark-gray: #888;
-
   @paragraph-bg: @white;
   @paragraph-color: @gray;
   @paragraph-link-color: @gray-dark;
@@ -19,19 +17,28 @@
   margin: 0 10px;
   padding: 4px;
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     color: @paragraph-heading-color;
     font-weight: normal;
     margin-top: 0;
   }
+
   h1 {
     font-size: 2rem;
   }
-  h2, h3 {
+
+  h2,
+  h3 {
     font-size: 1.8rem;
   }
 
-  h4, h5 {
+  h4,
+  h5 {
     font-size: 1.6rem;
   }
 
@@ -56,12 +63,15 @@
     color: @paragraph-link-color;
   }
 
-  p, div, table {
+  p,
+  div,
+  table {
     font-size: 1.4rem;
-    margin: 0 0 10px 0;
+    margin: 0 0 1rem 0;
   }
 
-  ul, ol {
+  ul,
+  ol {
     padding-left: 0;
   }
 
@@ -73,5 +83,4 @@
   .hook-am-paragraph-one;
 }
 
-.hook-am-paragraph-one() {
-}
+.hook-am-paragraph-one() {}

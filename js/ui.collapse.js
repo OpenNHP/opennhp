@@ -60,21 +60,24 @@ Collapse.prototype.open = function() {
   this.transitioning = 1;
 
   var complete = function() {
-    this.$element
-      .removeClass('am-collapsing')
-      .addClass('am-collapse am-in').height('');
+    this.$element.
+      removeClass('am-collapsing').
+      addClass('am-collapse am-in').
+      height('');
     this.transitioning = 0;
-    this.$element
-      .trigger('opened.collapse.amui');
+    this.$element.trigger('opened.collapse.amui');
   };
 
   if (!UI.support.transition) {
     return complete.call(this);
   }
 
+  var scrollHeight = this.$element[0].scrollHeight;
+
   this.$element
     .one(UI.support.transition.end, $.proxy(complete, this))
-    .emulateTransitionEnd(300).height(this.$element[0].scrollHeight);
+    .emulateTransitionEnd(300).
+    css({height: scrollHeight}); // 当折叠的容器有 padding 时，如果用 height() 只能设置内容的宽度
 };
 
 Collapse.prototype.close = function() {
@@ -89,22 +92,19 @@ Collapse.prototype.close = function() {
     return;
   }
 
-  this.$element.height(this.$element.height());
-  this.$element[0].offsetHeight;
+  this.$element.height(this.$element.height()).redraw();
 
-  this.$element
-    .addClass('am-collapsing')
-    .removeClass('am-collapse')
-    .removeClass('am-in');
+  this.$element.addClass('am-collapsing').
+    removeClass('am-collapse am-in');
 
   this.transitioning = 1;
 
   var complete = function() {
     this.transitioning = 0;
-    this.$element
-      .trigger('closed.collapse.amui')
-      .removeClass('am-collapsing')
-      .addClass('am-collapse');
+    this.$element.trigger('closed.collapse.amui').
+      removeClass('am-collapsing').
+      addClass('am-collapse');
+      // css({height: '0'});
   };
 
   if (!UI.support.transition) {
@@ -113,7 +113,7 @@ Collapse.prototype.close = function() {
 
   this.$element.height(0)
     .one(UI.support.transition.end, $.proxy(complete, this))
-    .emulateTransitionEnd(350);
+    .emulateTransitionEnd(300);
 };
 
 Collapse.prototype.toggle = function() {
@@ -176,3 +176,5 @@ $.AMUI.collapse = Collapse;
 module.exports = Collapse;
 
 // TODO: 更好的 target 选择方式
+//       折叠的容器必须没有 border/padding 才能正常处理，否则动画会有一些小问题
+//       寻找更好的未知高度 transition 动画解决方案，max-height 之类的就算了

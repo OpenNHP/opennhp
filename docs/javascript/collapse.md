@@ -254,3 +254,9 @@ $('#myCollapse').collapse({
   </tr>
   </tbody>
 </table>
+
+## 注意事项
+
+**不要在折叠内容的容器上设置垂直的 `margin`/`padding`/`border` 样式。**
+
+jQuery 计算元素高度的方式有点奇葩，暂时只能通过上面的方式规避。

@@ -12,13 +12,15 @@
   }
 
   .am-gallery-item {
-    .box-shadow(0 0 3px rgba(0,0,0,0.35));
+    box-shadow: 0 0 3px rgba(0,0,0,0.35);
     padding: 5px;
+
     img {
       width: 100%;
       height: auto;
     }
   }
+
   .am-gallery-title {
     margin-top: 10px;
     font-weight: normal;
@@ -31,9 +33,8 @@
     color: @gallery-desc-color;
     font-size: 1.2rem;
   }
+
   .hook-am-gallery-bordered;
 }
 
 .hook-am-gallery-bordered() {}
-
-

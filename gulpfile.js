@@ -378,8 +378,8 @@ gulp.task('archive:copy:css', function() {
 gulp.task('archive:copy:js', function() {
   return gulp.src([
     './dist/js/*.js',
-    './vendor/handlebars/handlebars.min.js',
-    './vendor/zepto/zepto.min.js'])
+    './node_modules/handlebars/dist/handlebars.min.js',
+    './node_modules/jquery/dist/jquery.min.js'])
     .pipe(gulp.dest('./docs/examples/assets/js'));
 });
 

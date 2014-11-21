@@ -21,10 +21,9 @@ tools/app/public/style.css
 
 # build
 .build
-dist/css
-dist/js
+# dist/css
+# dist/js
 less/amazeui.widgets.less
-js/amazeui.js
 
 # zip tmp files
 docs/examples/assets/css/amazeui*.css

@@ -9,7 +9,7 @@ Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 90 kB 左右）、 [**M
 
 <div class="am-g">
   <div class="am-u-md-8 am-u-md-centered">
-    <a href="http://amazeui.org/download?ver=v2.0.0-dp1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
+    <a href="http://amazeui.org/download?ver=2.0.0-dp1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
 "><i class="am-icon-download"></i> Amaze UI v2.0.0-dp1</a>
   </div>
 </div>

@@ -19,10 +19,11 @@
   .am-menu-toggle {
     position: absolute;
     right: 5px;
-    top: -45px;
-    padding: 0 10px;
-    line-height: 40px;
+    top: -47px;
     display: block;
+    .square(44px);
+    line-height: 44px;
+    text-align: center;
     color: @menu-toggle-color;
   }
 
@@ -56,7 +57,7 @@
           &:after {
             content: @fa-var-angle-down;
             margin-left: 5px;
-            transition: .2s;
+            transition: transform .2s;
           }
         }
 
@@ -69,7 +70,6 @@
               // content: @fa-var-angle-up;
               color: @menu-nav-top-link-active-color;
               transform: rotate(180deg);
-              // .rotateX(180deg);
             }
 
             &:before {

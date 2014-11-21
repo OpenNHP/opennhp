@@ -19,7 +19,9 @@
       "depStyle": []
     },
     "button-group": {
-      "depStyle": []
+      "depStyle": [
+          "button.less"
+      ]
     },
     "button": {
       "depStyle": []
@@ -49,7 +51,10 @@
       "depStyle": []
     },
     "input-group": {
-      "depStyle": []
+      "depStyle": [
+        "form.less",
+        "button.less"
+      ]
     },
     "list": {
       "depStyle": []
@@ -84,39 +89,6 @@
     "topbar": {
       "depStyle": []
     },
-    "ui.add2home": {
-      "depStyle": []
-    },
-    "ui.alert": {
-      "depStyle": []
-    },
-    "ui.component": {
-      "depStyle": []
-    },
-    "ui.dropdown": {
-      "depStyle": []
-    },
-    "ui.modal": {
-      "depStyle": []
-    },
-    "ui.offcanvas": {
-      "depStyle": []
-    },
-    "ui.popover": {
-      "depStyle": []
-    },
-    "ui.progress": {
-      "depStyle": []
-    },
-    "ui.pureview": {
-      "depStyle": []
-    },
-    "ui.share": {
-      "depStyle": []
-    },
-    "ui.tabs": {
-      "depStyle": []
-    },
     "utility": {
       "depStyle": []
     },
@@ -126,135 +98,133 @@
   },
   "js": {
     "core": {
-      "depStyle": [
-        "core"
-      ],
+      "depStyle": [],
       "depJs": []
     },
     "ui.add2home": {
       "depStyle": [
-        "ui.add2home"
+        "ui.add2home.less"
       ],
       "depJs": []
     },
     "ui.alert": {
       "depStyle": [
-        "ui.alert"
+        "ui.alert.less",
+        "close.less"
       ],
       "depJs": []
     },
     "ui.button": {
       "depStyle": [
-        "ui.button"
+        "button.less",
+        "button-group.less"
       ],
       "depJs": []
     },
     "ui.collapse": {
       "depStyle": [
-        "ui.collapse"
+        "ui.component.less"
       ],
       "depJs": []
     },
     "ui.dimmer": {
       "depStyle": [
-        "ui.dimmer"
+        "ui.component.less"
       ],
       "depJs": []
     },
     "ui.dropdown": {
       "depStyle": [
-        "ui.dropdown"
+        "ui.dropdown.less"
       ],
       "depJs": []
     },
     "ui.flexslider": {
-      "depStyle": [
-        "ui.flexslider"
-      ],
+      "depStyle": [],
       "depJs": []
     },
     "ui.iscroll-lite": {
-      "depStyle": [
-        "ui.iscroll-lite"
-      ],
+      "depStyle": [],
       "depJs": []
     },
     "ui.modal": {
       "depStyle": [
-        "ui.modal"
+        "ui.modal.less",
+        "ui.component.less"
       ],
-      "depJs": []
+      "depJs": [
+        "ui.dimmer.js"
+      ]
     },
     "ui.offcanvas": {
       "depStyle": [
-        "ui.offcanvas"
+        "ui.offcanvas.less"
       ],
       "depJs": []
     },
     "ui.pinchzoom": {
-      "depStyle": [
-        "ui.pinchzoom"
-      ],
+      "depStyle": [],
       "depJs": []
     },
     "ui.popover": {
       "depStyle": [
-        "ui.popover"
+        "ui.popover.less"
       ],
       "depJs": []
     },
     "ui.progress": {
       "depStyle": [
-        "ui.progress"
+        "ui.progress.less"
       ],
       "depJs": []
     },
     "ui.pureview": {
       "depStyle": [
-        "ui.pureview"
+        "ui.pureview.less"
       ],
-      "depJs": []
+      "depJs": [
+        "ui.pinchzoom.js",
+        "util.hammer.js"
+      ]
     },
     "ui.scrollspy": {
       "depStyle": [
-        "ui.scrollspy"
+        "animation.less"
       ],
       "depJs": []
     },
     "ui.scrollspynav": {
-      "depStyle": [
-        "ui.scrollspynav"
-      ],
-      "depJs": []
+      "depStyle": [],
+      "depJs": [
+        "ui.smooth-scroll.less"
+      ]
     },
     "ui.share": {
       "depStyle": [
-        "ui.share"
+        "ui.share.less"
       ],
-      "depJs": []
+      "depJs": [
+        "util.qrcode.js"
+      ]
     },
     "ui.smooth-scroll": {
-      "depStyle": [
-        "ui.smooth-scroll"
-      ],
+      "depStyle": [],
       "depJs": []
     },
     "ui.sticky": {
       "depStyle": [
-        "ui.sticky"
+        "ui.component.less"
       ],
       "depJs": []
     },
     "ui.tabs": {
       "depStyle": [
-        "ui.tabs"
+        "ui.tabs.less"
       ],
       "depJs": []
     },
     "util.cookie": {
-      "depStyle": [
-        "util.cookie"
-      ],
+      "depStyle": [],
       "depJs": []
     },
     "util.fastclick": {

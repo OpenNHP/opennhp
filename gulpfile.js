@@ -26,7 +26,8 @@ var config = {
     less: [
       // './less/amui.less',
       // './less/amazeui.widgets.less',
-      './less/amazeui.less'
+      './less/amazeui.less',
+      './less/themes/flat/amazeui.flat.less'
     ],
     widgets: [
       '*/src/*.js',

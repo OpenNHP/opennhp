@@ -40,8 +40,7 @@ Modal.DEFAULTS = {
   onCancel: function() {
   },
   duration: 300, // must equal the CSS transition duration
-  transitionEnd: supportTransition.end &&
-  supportTransition.end + '.modal.amui'
+  transitionEnd: supportTransition && supportTransition.end + '.modal.amui'
 };
 
 Modal.prototype.toggle = function(relatedElement) {

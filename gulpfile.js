@@ -395,7 +395,7 @@ gulp.task('archive:zip', function() {
 gulp.task('archive:clean', function(cb) {
   del(['docs/examples/assets/*/amazeui.*',
     './docs/examples/assets/js/handlebars.min.js',
-    './docs/examples/assets/js/zepto.min.js'
+    './docs/examples/assets/js/jquery.min.js'
   ], cb);
 });
 

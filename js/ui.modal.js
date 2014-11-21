@@ -130,6 +130,9 @@ Modal.prototype.close = function(relatedElement) {
     isPopup && $element.removeClass(options.className.out);
     $element.hide();
     this.transitioning = 0;
+    // 不强制关闭 Dimmer，以便多个 Modal 可以共享 Dimmer
+    dimmer.close($element, false);
+    this.active = false;
   };
 
   $element.
@@ -140,14 +143,9 @@ Modal.prototype.close = function(relatedElement) {
     return complete.call(this);
   }
 
-  $element
-    .one(options.transitionEnd, $.proxy(complete, this))
-    .emulateTransitionEnd(options.duration);
-
-  // 不强制关闭 Dimmer，以便多个 Modal 可以共享 Dimmer
-  dimmer.close($element, false);
-
-  this.active = false;
+  $element.
+    one(options.transitionEnd, $.proxy(complete, this)).
+    emulateTransitionEnd(options.duration);
 };
 
 Modal.prototype.events = function() {

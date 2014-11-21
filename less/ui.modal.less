@@ -208,6 +208,8 @@
 
 .@{ns}modal-loading {
   width: @modal-sm !important;
+  margin-left: -@modal-sm/2 !important;
+
   .@{ns}modal-bd {
     border-bottom: none;
   }
@@ -236,16 +238,18 @@
   width: 100%;
   text-align: center;
   border-radius: @modal-border-radius;
-  transform: translate3d(0, 100%, 0);
+  transform: translateY(100%);
+  transition: transform @modal-actions-duration;
+
   &.@{ns}modal-active {
-    transition: all @modal-actions-duration;
-    transform: translate3d(0, 0, 0);
+    transform: translateY(0);
   }
+
   &.@{ns}modal-out {
     z-index: @z-index-modal - 1;
-    transition: all @modal-actions-duration;
-    transform: translate3d(0, 100%, 0);
+    transform: translateY(100%);
   }
+
   .hook-modal-actions;
 }
 
@@ -304,8 +308,7 @@
   display: none;
   overflow: hidden;
   transition-property: transform;
-  transform: translate3d(0, 100%, 0);
-  .hook-popup;
+  transform: translateY(100%);
 
   &.@{ns}modal-active,
   &.@{ns}modal-out {
@@ -313,11 +316,11 @@
   }
 
   &.@{ns}modal-active {
-    transform: translate3d(0, 0, 0);
+    transform: translateY(0);
   }
 
   &.@{ns}modal-out {
-    transform: translate3d(0, 100%, 0);
+    transform: translateY(100%);
   }
 
   // iPad Modal
@@ -328,22 +331,25 @@
     top: 50%;
     margin-left: -315px;
     margin-top: -315px;
-    transform: translate3d(0, 1024px, 0);
+    transform: translateY(1024px);
 
     &.@{ns}modal-active {
-      transform: translate3d(0, 0, 0);
+      transform: translateY(0);
     }
 
     &.@{ns}modal-out {
-      transform: translate3d(0, 1024px, 0);
+      transform: translateY(1024px);
     }
   }
+
+  .hook-popup;
 }
 
 .@{ns}popup-inner {
   padding-top: 44px;
   height: 100%;
   .scrollable();
+  .hook-popup-inner;
 }
 
 .@{ns}popup-hd {
@@ -378,12 +384,15 @@
       color: @gray;
     }
   }
+
+  .hook-popup-hd;
 }
 
 .@{ns}popup-bd {
   padding: 15px;
   background: #f8f8f8;
   color: @gray;
+  .hook-popup-bd;
 }
 
 
@@ -400,4 +409,8 @@
 .hook-modal-no-btn() {}
 .hook-modal-loading() {}
 .hook-modal-actions() {}
+
 .hook-popup() {}
+.hook-popup-inner() {}
+.hook-popup-hd() {}
+.hook-popup-bd() {}

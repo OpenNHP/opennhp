@@ -18,7 +18,7 @@ Amaze UI 面向现代浏览器开发，对 IE 8/9 等浏览器只提供有限支
 
 按照国际惯例，Amaze UI 提供对主流浏览器（系统）最近两个稳定版本的全面支持。结合国内实际情况，一些浏览器的支持缩减为最新正式版，IE 则对更老版本做了有限支持。
 
-Amaze UI 对浏览器做了一个粗略分级。由于资源有限，无法列出所有的浏览器，**使用 `WebKit` 的浏览器只要不乱修改内核，理论上应该都支持**。
+Amaze UI 对浏览器做了一个粗略分级，**优先支持 A 级浏览器**。由于资源有限，无法列出所有的浏览器，**使用 `WebKit` 的浏览器只要不乱修改内核，理论上应该都支持**。
 
 关于浏览器功能支持的更多细节请参考 [Can I use](http://caniuse.com/)（UC 浏览器的数据已经被收录，不知是喜是忧）。
 
@@ -45,7 +45,7 @@ Amaze UI 对浏览器做了一个粗略分级。由于资源有限，无法列�
     <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <th scope="row" rowspan="3">IE</th>
+    <th scope="row" rowspan="4">IE</th>
     <td>10+</td>
     <td class="am-success">A</td>
     <td class="am-disabled">N/A</td>
@@ -54,8 +54,16 @@ Amaze UI 对浏览器做了一个粗略分级。由于资源有限，无法列�
     <td class="am-success">A-</td>
   </tr>
   <tr>
-    <td>8/9</td>
+    <td>9</td>
     <td class="am-warning">B</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+    <td class="am-disabled">N/A</td>
+  </tr>
+  <tr>
+    <td>8</td>
+    <td class="am-danger">C+</td>
     <td class="am-disabled">N/A</td>
     <td class="am-disabled">N/A</td>
     <td class="am-disabled">N/A</td>
@@ -143,7 +151,7 @@ Amaze UI 对浏览器做了一个粗略分级。由于资源有限，无法列�
   </tr>
   <tr>
     <th scope="row" rowspan="2">360浏览器</th>
-    <td>L1 - 极速</td>
+    <td>L1-极速</td>
     <td class="am-success">A-</td>
     <td class="am-primary">X</td>
     <td class="am-success">N/A</td>
@@ -151,8 +159,8 @@ Amaze UI 对浏览器做了一个粗略分级。由于资源有限，无法列�
     <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <td>L1 - IE8</td>
-    <td class="am-warning">B</td>
+    <td>L1-IE8</td>
+    <td class="am-danger">C+</td>
     <td class="am-disabled">N/A</td>
     <td class="am-disabled">N/A</td>
     <td class="am-primary">X</td>
@@ -160,7 +168,7 @@ Amaze UI 对浏览器做了一个粗略分级。由于资源有限，无法列�
   </tr>
   <tr>
     <th scope="row" rowspan="2">搜狗浏览器</th>
-    <td>L1 - 极速</td>
+    <td class="am-text-nowrap">L1-极速</td>
     <td class="am-success">A-</td>
     <td class="am-disabled">N/A</td>
     <td class="am-disabled">N/A</td>
@@ -168,8 +176,8 @@ Amaze UI 对浏览器做了一个粗略分级。由于资源有限，无法列�
     <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <td>L1 - IE8</td>
-    <td class="am-warning">B</td>
+    <td>L1-IE8</td>
+    <td class="am-danger">C+</td>
     <td class="am-disabled">N/A</td>
     <td class="am-disabled">N/A</td>
     <td class="am-disabled">N/A</td>
@@ -198,6 +206,10 @@ __参考链接__：
 - [iOS Version Stats](http://david-smith.org/iosversionstats/)
 
 ### IE 8/9
+
+<!--<div class="am-alert am-alert-warning">
+  请注意，我们对 IE 8/9 的支持的极限为<strong>布局、JS 交互基本正常</strong>，不会提供更多的支持。
+</div>-->
 
 - IE 8/9 不支持 `transition`，基本看不到任何动画效果；
 - **Web 组件部分不提供 IE 8/9 官方支持**。
@@ -240,6 +252,28 @@ __参考链接__：
   </tr>
   </tbody>
 </table>
+
+### IE 8
+
+#### Media Query
+
+- [Respond.js](https://github.com/scottjehl/Respond)
+
+#### rem
+
+- [REM unit polyfill](https://github.com/chuckcarpenter/REM-unit-polyfill)
+
+#### `box-sizing`
+
+> IE 8 ignores `box-sizing: border-box` if min/max-width/height is used.
+
+#### 伪元素
+
+IE 8 只支持 CSS 2.1 规范中的单冒号语法（`:before`/`:after`），不支持 CSS3 的双冒号语法(`::before`/`::after`)。
+
+#### 字体图标
+
+参见 Bootstrap 中的 [issue 及里面提供的解决方法](https://github.com/twbs/bootstrap/issues/13863)。
 
 ## 关于 IE 6~7
 

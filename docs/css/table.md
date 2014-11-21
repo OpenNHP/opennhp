@@ -98,7 +98,7 @@
 			<th>创建时间</th>
 		</tr>
 	</thead>
-	<tdody>
+	<tbody>
 		<tr>
 			<td>Amaze UI</td>
 			<td>http://amazeui.org</td>
@@ -124,7 +124,7 @@
 			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
-	</tody>
+	</tbody>
 </table>
 `````
 

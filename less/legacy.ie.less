@@ -5,10 +5,8 @@
 // button-group.less
 // Justify button group
 // =============================================================================
-.old-ie {
-  color: red!important;
-}
 
+// Justify button group
 .hook-button-group-justify() {
   .old-ie & {
     display: table;
@@ -24,6 +22,7 @@
   }
 }
 
+// Justify nav
 .hook-nav-justify() {
   .old-ie & {
     & > li {
@@ -33,9 +32,9 @@
   }
 }
 
+// JS Progress
 .old-ie {
-  // JS Progress
-  // 不支持 CSS 动画，隐藏 spinner
+  // no CSS animation，hide spinner
   #nprogress {
     .nprogress-spinner {
       display: none !important;

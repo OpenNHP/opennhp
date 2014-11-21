@@ -3,6 +3,13 @@
 
 平滑滚动插件，源自 [Zepto 作者](https://gist.github.com/madrobby/8507960#file-scrolltotop-annotated-js)。
 
+<div class="am-alert am-alert-danger">本插件不支持 IE 9 及以下版本！如果有相关需求请找别的插件代替。</div>
+
+如果要支持旧版 IE，可以使用下面的代码实现：
+
+```js
+$('html, body').animate({scrollTop: 0}, '500');
+```
 
 ## 使用演示
 
@@ -51,15 +58,15 @@
 ## 使用方法
 
 ### 通过 Data API
-    
+
 在元素上添加 `data-am-smooth-scroll` 属性。
 
 ```html
 <button data-am-smooth-scroll class="am-btn am-btn-success">滚动到顶部</button>
 ```
-    
+
 如果要指定滚动的位置，可以给这个属性设一个值。
-    
+
 `````html
 <button data-am-smooth-scroll="{position: 189}" class="am-btn am-btn-secondary">滚动到滚动条距离顶部 189px 的位置</button>
 `````

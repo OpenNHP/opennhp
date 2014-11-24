@@ -21,7 +21,7 @@ function navbarInit() {
   var navItemsCounter = $navItems.length;
   var configItems = $navBarNav.attr('class') &&
     parseInt($navBarNav.attr('class').
-      match(/sm-block-grid-(\d+)/)[1]) || 3;
+      match(/am-avg-sm-(\d+)/)[1]) || 3;
   var navMinWidth = 60; // 每个 li 最小宽度
   var offsetWidth = 16;
   var $share = $navItems.filter('[data-am-navbar-share]');

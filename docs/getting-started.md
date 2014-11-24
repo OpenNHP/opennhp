@@ -1,7 +1,7 @@
 # 开始使用 Amaze UI
 ---
 
-Amaze UI 是一个轻量级、 [**Mobile first**](http://cbrac.co/113eY5h) 的前端框架，
+Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 90 kB 左右）、 [**Mobile first**](http://cbrac.co/113eY5h) 的前端框架，
 基于开源社区流行前端框架编写（[使用、参考的项目列表](https://github.com/allmobilize/amazeui#%E5%8F%82%E8%80%83%E4%BD%BF%E7%94%A8%E7%9A%84%E5%BC%80%E6%BA%90%E9%A1%B9%E7%9B%AE)）。
 
 
@@ -9,7 +9,7 @@ Amaze UI 是一个轻量级、 [**Mobile first**](http://cbrac.co/113eY5h) 的�
 
 <div class="am-g">
   <div class="am-u-md-8 am-u-md-centered">
-    <a href="http://amazeui.org/download?ver=v2.0.0-dp1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
+    <a href="http://amazeui.org/download?ver=2.0.0-dp1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
 "><i class="am-icon-download"></i> Amaze UI v2.0.0-dp1</a>
   </div>
 </div>

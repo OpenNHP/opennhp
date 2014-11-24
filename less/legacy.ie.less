@@ -8,7 +8,7 @@
 
 // Justify button group
 .hook-button-group-justify() {
-  .old-ie & {
+  .lte9 & {
     display: table;
     table-layout: fixed;
     border-collapse: separate;
@@ -24,7 +24,7 @@
 
 // Justify nav
 .hook-nav-justify() {
-  .old-ie & {
+  .lte9 & {
     & > li {
       display: table-cell;
       width: 1%;
@@ -33,11 +33,31 @@
 }
 
 // JS Progress
-.old-ie {
+.lte9 {
   // no CSS animation，hide spinner
   #nprogress {
     .nprogress-spinner {
       display: none !important;
     }
+  }
+}
+
+.lte8 {
+  .@{ns}dimmer {
+    background-color: #000;
+    filter: ~"alpha(opacity=60)";
+  }
+
+  .@{ns}modal-actions {
+    display: none;
+
+    &.@{ns}modal-active {
+      display: block;
+    }
+  }
+
+  // Plugin OffCanvas rgba() bg
+  .@{ns}﻿offcanvas.@{ns}active {
+    background: #000;
   }
 }

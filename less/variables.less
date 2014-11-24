@@ -83,13 +83,13 @@
 
 // apple.com: "Lucida Grande", "Lucida Sans Unicode", Helvetica, Arial, Verdana,
 
-@font-family-sans-serif: "Segoe UI", "Lucida Grande", Helvetica, Arial, "Microsoft YaHei", FreeSans, Arimo, "Droid Sans","wenquanyi micro hei","Hiragino Sans GB", "Hiragino Sans GB W3", sans-serif;
+@font-family-sans-serif: "Segoe UI", "Lucida Grande", Helvetica, Arial, "Microsoft YaHei", FreeSans, Arimo, "Droid Sans","wenquanyi micro hei","Hiragino Sans GB", "Hiragino Sans GB W3",  "FontAwesome", sans-serif;
 
-@font-family-serif: Georgia, "Times New Roman", Times, SimSun, serif; //FangSong, STFangSong
+@font-family-serif: Georgia, "Times New Roman", Times, SimSun,  "FontAwesome", serif; //FangSong, STFangSong
 
-@font-family-monospace: Monaco, Menlo, Consolas, "Courier New", monospace;
+@font-family-monospace: Monaco, Menlo, Consolas, "Courier New",  "FontAwesome", monospace;
 
-@font-family-kai: Georgia, "Times New Roman", Times, Kai, "Kaiti SC", KaiTi, BiauKai, serif;
+@font-family-kai: Georgia, "Times New Roman", Times, Kai, "Kaiti SC", KaiTi, BiauKai, "FontAwesome", serif;
 
 
 // Font  size
@@ -208,7 +208,9 @@
 @grid-columns:              12;
 
 @grid-gutter-width:         1rem;   // Columns padding
+@grid-gutter:               @grid-gutter-width;   // Columns padding
 @grid-gutter-md-width:      1.5rem; // 15px
+@grid-gutter-md:            @grid-gutter-md-width; // 15px
 
 @grid-max-width:            1000px;
 

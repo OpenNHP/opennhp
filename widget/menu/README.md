@@ -25,8 +25,6 @@ var data = [
     "title": "",            // 一级菜单标题
     "link": "",             // 一级菜单链接
     "className": "",
-    "target": "_blank",     // 一级菜单打开方式
-
     "subMenu": [
       {                   // 二级菜单
         "title": "",    // 二级菜单标题

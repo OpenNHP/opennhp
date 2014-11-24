@@ -57,6 +57,10 @@ return data;
 
   "theme": "",
 
+  "options": {
+    "noSwipe": false; // 是否禁用触控操作
+  },
+
   "content": [
     {
       "title": "",
@@ -65,4 +69,14 @@ return data;
     }
   ]
 }
+```
+
+## 常见问题
+
+### 如何禁用触控操作？
+
+在容器上添加 `data-am-tabs-noswipe="1"`。
+
+```html
+<div data-am-widget="tabs" class="am-tabs am-tabs-default" data-am-tabs-noswipe="1">
 ```

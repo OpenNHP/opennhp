@@ -267,7 +267,7 @@
                 {
                     "variable": "menu-toggle-color",
                     "name": "触发按钮颜色",
-                    "default": "#fff",
+                    "default": "#c7c7c7",
                     "used": [
                         {
                             "selector": ".am-menu-toggle",
@@ -410,7 +410,7 @@
                 {
                     "variable": "menu-toggle-color",
                     "name": "触发按钮颜色",
-                    "default": "#fff",
+                    "default": "#c7c7c7",
                     "used": [
                         {
                             "selector": ".am-menu-toggle",
@@ -500,7 +500,7 @@
                 {
                     "variable": "menu-toggle-color",
                     "name": "触发按钮颜色",
-                    "default": "#fff",
+                    "default": "#c7c7c7",
                     "used": [
                         {
                             "selector": ".am-menu-toggle",
@@ -582,7 +582,7 @@
                 {
                     "variable": "menu-toggle-color",
                     "name": "触发按钮颜色",
-                    "default": "#fff",
+                    "default": "#c7c7c7",
                     "used": [
                         {
                             "selector": ".am-menu-toggle",
@@ -689,7 +689,7 @@
                 {
                     "variable": "menu-toggle-color",
                     "name": "触发按钮颜色",
-                    "default": "#fff",
+                    "default": "#c7c7c7",
                     "used": [
                         {
                             "selector": ".am-menu-toggle",

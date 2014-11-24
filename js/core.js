@@ -10,7 +10,6 @@ if (typeof $ === 'undefined') {
   '\u7684\u5bb6\u91cc\u6ca1\u6709\u8349\u539f\u2026');
 }
 
-var FastClick = require('./util.fastclick');
 var UI = $.AMUI || {};
 var $win = $(window);
 var doc = window.document;
@@ -423,7 +422,8 @@ if (UI.support.touch) {
   $html.addClass('am-touch');
 
   $(function() {
-    FastClick.attach(document.body);
+    var FastClick = $.AMUI.FastClick;
+    FastClick && FastClick.attach(document.body);
   });
 }
 

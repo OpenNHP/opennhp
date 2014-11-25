@@ -392,10 +392,9 @@ gulp.task('watch', function() {
 // Task: Make archive
 gulp.task('archive', function(cb) {
   runSequence([
-      'archive:copy:css', 'archive:copy:js'],
+      'archive:copy:css', 'archive:copy:js', 'archive:copy:polyfill'],
     'archive:zip',
-    'archive:clean',
-    cb);
+    'archive:clean', cb);
 });
 
 gulp.task('archive:copy:css', function() {
@@ -409,6 +408,12 @@ gulp.task('archive:copy:js', function() {
     './node_modules/handlebars/dist/handlebars.min.js',
     './node_modules/jquery/dist/jquery.min.js'])
     .pipe(gulp.dest('./docs/examples/assets/js'));
+});
+
+gulp.task('archive:copy:polyfill', function() {
+  return gulp.src([
+    './vendor/polyfill/*.js'])
+    .pipe(gulp.dest('./docs/examples/assets/js/polyfill'));
 });
 
 gulp.task('archive:zip', function() {

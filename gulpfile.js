@@ -178,7 +178,7 @@ var preparingData = function() {
     var basename = path.basename(js, '.js');
     modules.push(basename);
 
-    if (basename !== 'amazeui') {
+    if (basename !== 'amazeui' || basename !== 'amazeui.legacy') {
       initAll += 'require(\'./' + basename + '\');\n';
     }
 
@@ -299,6 +299,33 @@ gulp.task('build:js:browserify', function() {
     .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
 });
 
+gulp.task('build:js:fuckie', function() {
+  var bundler = transform(function(filename) {
+    var b = browserify({
+      entries: filename,
+      basedir: path.join(__dirname, config.path.buildTmp)
+    });
+    return b.bundle();
+  });
+
+  return gulp.src('amazeui.legacy.js',
+    {cwd: path.join(__dirname, config.path.buildTmp)})
+    .pipe(bundler)
+    .pipe(gulp.dest(config.dist.js))
+    .pipe($.header(banner, {pkg: pkg, ver: ' ~ Old IE Fucker'}))
+    .pipe($.jsbeautifier({config: '.jsbeautifyrc'}))
+    .pipe(gulp.dest(config.dist.js))
+    .pipe($.uglify())
+    .pipe($.header(banner, {pkg: pkg, ver: ''}))
+    .pipe($.rename({
+      suffix: '.min',
+      extname: '.js'
+    }))
+    .pipe(gulp.dest(config.dist.js))
+    .pipe($.size({showFiles: true, title: 'minified'}))
+    .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
+});
+
 // Concat AMD
 gulp.task('build:js:amd', function() {
   return gulp.src('amazeui.js', {cwd: config.path.buildTmp})
@@ -343,7 +370,8 @@ gulp.task('build:js', function(cb) {
   runSequence(
     ['build:js:copy:widgets', 'build:js:copy:core'],
     ['build:js:browserify'],
-    ['build:js:amd'],
+    ['build:js:fuckie'],
+    // ['build:js:amd'],
     ['build:js:clean', 'build:js:helper'],
     cb
   );
@@ -364,10 +392,9 @@ gulp.task('watch', function() {
 // Task: Make archive
 gulp.task('archive', function(cb) {
   runSequence([
-      'archive:copy:css', 'archive:copy:js'],
+      'archive:copy:css', 'archive:copy:js', 'archive:copy:polyfill'],
     'archive:zip',
-    'archive:clean',
-    cb);
+    'archive:clean', cb);
 });
 
 gulp.task('archive:copy:css', function() {
@@ -381,6 +408,12 @@ gulp.task('archive:copy:js', function() {
     './node_modules/handlebars/dist/handlebars.min.js',
     './node_modules/jquery/dist/jquery.min.js'])
     .pipe(gulp.dest('./docs/examples/assets/js'));
+});
+
+gulp.task('archive:copy:polyfill', function() {
+  return gulp.src([
+    './vendor/polyfill/*.js'])
+    .pipe(gulp.dest('./docs/examples/assets/js/polyfill'));
 });
 
 gulp.task('archive:zip', function() {

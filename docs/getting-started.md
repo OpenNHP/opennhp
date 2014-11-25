@@ -9,8 +9,8 @@ Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 90 kB 左右）、 [**M
 
 <div class="am-g">
   <div class="am-u-md-8 am-u-md-centered">
-    <a href="http://amazeui.org/download?ver=2.0.0-dp1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
-"><i class="am-icon-download"></i> Amaze UI v2.0.0-dp1</a>
+    <a href="http://amazeui.org/download?ver=2.0.0-beta1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
+"><i class="am-icon-download"></i> Amaze UI v2.0.0-beta1</a>
   </div>
 </div>
 
@@ -19,14 +19,14 @@ Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 90 kB 左右）、 [**M
 Amaze UI CDN： 域名解析服务由 DNSPod 提供，CDN 存储由又拍云提供。
 
 ```html
-http://cdn.amazeui.org/amazeui/2.0.0-dp1/css/amazeui.css
-http://cdn.amazeui.org/amazeui/2.0.0-dp1/css/amazeui.min.css
-http://cdn.amazeui.org/amazeui/2.0.0-dp1/js/amazeui.js
-http://cdn.amazeui.org/amazeui/2.0.0-dp1/js/amazeui.min.js
-http://cdn.amazeui.org/amazeui/2.0.0-dp1/js/amazeui.amd.js
-http://cdn.amazeui.org/amazeui/2.0.0-dp1/js/amazeui.amd.min.js
-http://cdn.amazeui.org/amazeui/2.0.0-dp1/js/amazeui.widgets.helper.js
-http://cdn.amazeui.org/amazeui/2.0.0-dp1/js/amazeui.widgets.helper.min.js
+http://cdn.amazeui.org/amazeui/2.0.0-beta1/css/amazeui.css
+http://cdn.amazeui.org/amazeui/2.0.0-beta1/css/amazeui.min.css
+http://cdn.amazeui.org/amazeui/2.0.0-beta1/js/amazeui.js
+http://cdn.amazeui.org/amazeui/2.0.0-beta1/js/amazeui.min.js
+http://cdn.amazeui.org/amazeui/2.0.0-beta1/js/amazeui.legacy.js
+http://cdn.amazeui.org/amazeui/2.0.0-beta1/js/amazeui.legacy.min.js
+http://cdn.amazeui.org/amazeui/2.0.0-beta1/js/amazeui.widgets.helper.js
+http://cdn.amazeui.org/amazeui/2.0.0-beta1/js/amazeui.widgets.helper.min.js
 ```
 
 ### 使用 Bower
@@ -56,8 +56,9 @@ Amaze UI 遵循 [Semantic Versioning](http://semver.org/lang/zh-CN/) 规范，�
 
 ### 文件说明
 
-- `amazeui.css` / `amazeui.js`：包含 Amaze UI 所有的样式和脚本。
-- `amazeui.amd.js`：使用 AMD 规范打包的脚本。
+- `amazeui.css` / `amazeui.js`：包含 Amaze UI 所有的 CSS、JS。
+<!--- `amazeui.amd.js`：使用 AMD 规范打包的脚本。-->
+- `amazeui.legacy.js`：为 IE 8 打包的 JS。
 - `amazeui.widgets.helper.js`：Amaze UI 必须的 Handlebars helper 以及 Web 组件模板 partials，**仅供使用 Handlebars 的用户使用。
 
 以上每个文件都有对应的 minified 文件。
@@ -89,11 +90,8 @@ AmazeUI
 |       |-- amazeui.min.js                // 约 48 kB (gzipped)
 |       |-- amazeui.widgets.helper.js
 |       |-- amazeui.widgets.helper.min.js
-|       |-- amazeui.amd.js
-|       |-- amazeui.amd.min.js        // 48 kB (gzipped)
 |       |-- app.js
-|       |-- handlebars.min.js
-|       `-- zepto.min.js
+|       `-- handlebars.min.js
 |-- blog.html
 |-- index.html
 |-- landing.html

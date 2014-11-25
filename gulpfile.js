@@ -445,3 +445,7 @@ gulp.task('appServer', function() {
 gulp.task('default', ['build', 'watch']);
 
 gulp.task('preview', ['build', 'watch', 'appServer']);
+
+require('./tools/tasks/customizer');
+
+gulp.task('customize', ['customizer']);

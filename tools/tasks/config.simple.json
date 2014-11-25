@@ -1,0 +1,13 @@
+{
+  "style": [
+    "variables.less",
+    "mixins.less",
+    "grid.less",
+    "button.less",
+    "icon.less"
+  ],
+  "js": [
+    "core.js"
+  ],
+  "widgets": []
+}

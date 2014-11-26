@@ -58,6 +58,18 @@
   }
 }
 
+// Thumbnail list
+.@{ns}thumbnails {
+  margin-left: -.5rem;
+  margin-right: -.5rem;
+
+  > li {
+    padding: 0 .5rem 1rem .5rem;
+  }
+
+  .hook-thumbnails;
+}
+
 
 // Hooks
 // =============================================================================
@@ -65,3 +77,4 @@
 .hook-thumbnail() {}
 .hook-thumbnail-hover() {}
 .hook-thumbnail-caption() {}
+.hook-thumbnails() {}

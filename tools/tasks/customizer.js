@@ -104,8 +104,8 @@ gulp.task('customizer:less', function() {
   gulp.src(DEFAULTS.less)
     .pipe($.less({
       paths: [
-        path.join(__dirname, '../../less'),
-        path.join(__dirname, '../../widget/header/src')]
+        path.join(__dirname, '../../less')
+      ]
     }))
     .pipe($.autoprefixer({
       browsers: config.AUTOPREFIXER_BROWSERS ||

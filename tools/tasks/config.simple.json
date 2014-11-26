@@ -2,6 +2,7 @@
   "style": [
     "variables.less",
     "mixins.less",
+    "base.less",
     "grid.less",
     "button.less",
     "icon.less"
@@ -9,5 +10,10 @@
   "js": [
     "core.js"
   ],
-  "widgets": []
+  "widgets": [
+    {
+      "name": "header",
+      "theme": "header.default.less"
+    }
+  ]
 }

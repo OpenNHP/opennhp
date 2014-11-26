@@ -1,5 +1,6 @@
 # Thumbnail
 ---
+
 Thumbnail 组件主要用于显示图片列表及图文混排列表。
 
 ## 基本样式
@@ -49,10 +50,10 @@ Thumbnail 组件主要用于显示图片列表及图文混排列表。
 
 ### 结合 AVG Grid 使用
 
-AVG Grid 默认没有边距，需自行设置。
+添加 AVG Grid class 同时添加 `.am-thumbnails`。
 
 `````html
-<ul class="am-avg-sm-3">
+<ul class="am-avg-sm-3 am-thumbnails">
   <li><img class="am-thumbnail" src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg"
            alt=""/></li>
 
@@ -69,7 +70,7 @@ AVG Grid 默认没有边距，需自行设置。
 `````
 
 ```html
-<ul class="am-avg-sm-3">
+<ul class="am-avg-sm-3 am-thumbnails">
   <li>
     <img class="am-thumbnail" src="..." alt=""/>
   </li>

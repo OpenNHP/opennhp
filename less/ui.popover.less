@@ -70,16 +70,17 @@
   z-index: 100;
   .caret-up(8px, @popover-bg);
   overflow: hidden;
+
   .hook-popover-caret;
 
   .@{ns}popover-top & {
-    top: -8px;
-  }
-
-  .@{ns}popover-bottom & {
     top: auto;
     bottom: -8px;
     transform: rotate(180deg);
+  }
+
+  .@{ns}popover-bottom & {
+    top: -8px;
   }
 
   .@{ns}popover-left & {

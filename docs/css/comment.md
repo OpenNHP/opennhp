@@ -44,6 +44,10 @@
           <a href="#link-to-user" class="am-comment-author">某人</a>
         评论于 <time datetime="2013-07-27T04:54:29-07:00" title="2013年7月27日 下午7:54 格林尼治标准时间+0800">2014-7-12 15:30</time>
       </div>
+      <div class="am-comment-actions">
+        <a href=""><i class="am-icon-pencil"></i></a>
+        <a href=""><i class="am-icon-close"></i></a>
+      </div>
     </header>
 
     <div class="am-comment-bd">
@@ -54,6 +58,13 @@
         妈：我打算在下个月和樱子结婚。
       </blockquote>
     </div>
+    <footer class="am-comment-footer">
+      <div class="am-comment-actions">
+        <a href=""><i class="am-icon-thumbs-up"></i></a>
+        <a href=""><i class="am-icon-thumbs-down"></i></a>
+        <a href=""><i class="am-icon-reply"></i></a>
+      </div>
+    </footer>
   </div>
 </article>
 ```

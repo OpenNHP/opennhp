@@ -119,15 +119,17 @@ Popover.prototype.sizePopover = function sizePopover() {
 
     if (popLeft + popWidth > winWidth) {
       popLeft = (winWidth - popWidth - 20);
-      // console.log('戳到边边了 left %d, win %d, popw %d', popLeft, winWidth, popWidth);
+      // console.log('left %d, win %d, popw %d', popLeft, winWidth, popWidth);
     }
 
     if (popPosition === 'top') {
-      $popover.addClass('am-popover-bottom');
+      // This is the Popover position, NOT caret position
+      // Popover on the Top of trigger, caret on the bottom of Popover
+      $popover.addClass('am-popover-top');
     }
 
     if (popPosition === 'bottom') {
-      $popover.addClass('am-popover-top');
+      $popover.addClass('am-popover-bottom');
     }
 
     diff = diff - popLeft;

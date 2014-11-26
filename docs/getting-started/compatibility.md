@@ -39,7 +39,7 @@ Amaze UI 对浏览器做了一个粗略分级，**优先支持 A 级浏览器**�
       <th scope="row">iOS(7.1.2+)</th>
       <th scope="row">OS X (10.9+)</th>
       <th scope="row">Android (4.1+)</th>
-      <th scope="row">WinPhone(8+)</th>
+      <th scope="row">WP(8+)</th>
     </tr>
   </thead>
   <tbody>
@@ -113,15 +113,6 @@ Amaze UI 对浏览器做了一个粗略分级，**优先支持 A 级浏览器**�
     <td class="am-disabled">N/A</td>
   </tr>
   <tr>
-    <th scope="row">Opera Next</th>
-    <td class="`">L1</td>
-    <td class="am-success">A</td>
-    <td class="am-disabled">N/A</td>
-    <td class="am-success">A</td>
-    <td class="am-disabled">N/A</td>
-    <td class="am-disabled">N/A</td>
-  </tr>
-  <tr>
     <th scope="row">Opera Coast</th>
     <td>L1</td>
     <td class="am-disabled">N/A</td>
@@ -140,12 +131,12 @@ Amaze UI 对浏览器做了一个粗略分级，**优先支持 A 级浏览器**�
     <td class="am-primary">X</td>
   </tr>
   <tr>
-    <th scope="row">Android stock<sup>1</sup></th>
+    <th scope="row" class="am-text-nowrap">Stock<sup>1</sup></th>
     <td>L1</td>
     <td class="am-disabled">N/A</td>
     <td class="am-disabled">N/A</td>
     <td class="am-disabled">N/A</td>
-    <td class="am-disabled">X</td>
+    <td class="am-primary">X</td>
     <td class="am-disabled">N/A</td>
   </tr>
   <tr>

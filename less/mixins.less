@@ -197,6 +197,18 @@
   transform: translate(@x, @y);
 }
 
+.translateX(@x: 0) {
+  -webkit-transform: translateX(@x);
+  -ms-transform: translateX(@x); // IE9+
+  transform: translateX(@x);
+}
+
+.translateY(@y: 0) {
+  -webkit-transform: translateY(@y);
+  -ms-transform: translateY(@y); // IE9+
+  transform: translateY(@y);
+}
+
 .skew(@x; @y) {
   -webkit-transform: skew(@x, @y);
   -ms-transform: skewX(@x) skewY(@y); // IE9+

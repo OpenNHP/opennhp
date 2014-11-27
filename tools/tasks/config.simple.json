@@ -13,7 +13,7 @@
   "widgets": [
     {
       "name": "header",
-      "theme": "header.default.less"
+      "theme": ["header.default.less"]
     }
   ]
 }

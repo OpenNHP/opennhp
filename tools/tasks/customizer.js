@@ -43,7 +43,9 @@ var DEFAULTS = {
 var configFile = (path.join(__dirname, './config.json'));
 
 if (!fs.existsSync(configFile)) {
-  throw new Error('config.json is not exists.');
+  return gulp.task('customizer', function() {
+    throw new Error('config.json is not exists.');
+  });
 }
 
 var config = require(configFile);

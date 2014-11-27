@@ -1,6 +1,7 @@
 'use strict';
 
 var $ = require('jquery');
+require('./core');
 
 function headerInit() {
   $('[data-am-widget="header"]').each(function() {

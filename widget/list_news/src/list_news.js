@@ -1,6 +1,7 @@
 'use strict';
 
 var $ = require('jquery');
+require('./core');
 
 function listNewsInit() {
   $('.am-list-news-one').each(function() {

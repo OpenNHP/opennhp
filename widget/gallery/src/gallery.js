@@ -1,9 +1,9 @@
 'use strict';
 
 var $ = require('jquery');
-var UI = $.AMUI;
 require('./core');
 require('./ui.pureview');
+var UI = $.AMUI;
 
 function galleryInit() {
   var $gallery = $('[data-am-widget="gallery"]');

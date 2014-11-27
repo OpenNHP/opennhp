@@ -1,5 +1,38 @@
 {
   "style": {
+    "variables": {
+      "depStyle": []
+    },
+    "mixins": {
+      "depStyle": []
+    },
+    "base": {
+      "depStyle": []
+    },
+    "grid": {
+      "depStyle": []
+    },
+    "block-grid": {
+      "depStyle": []
+    },
+    "utility": {
+      "depStyle": []
+    },
+    "button": {
+      "depStyle": []
+    },
+    "code": {
+      "depStyle": []
+    },
+    "form": {
+      "depStyle": []
+    },
+    "image": {
+      "depStyle": []
+    },
+    "table": {
+      "depStyle": []
+    },
     "animation": {
       "depStyle": []
     },
@@ -7,12 +40,6 @@
       "depStyle": []
     },
     "badge": {
-      "depStyle": []
-    },
-    "base": {
-      "depStyle": []
-    },
-    "block-grid": {
       "depStyle": []
     },
     "breadcrumb": {
@@ -23,31 +50,13 @@
           "button.less"
       ]
     },
-    "button": {
-      "depStyle": []
-    },
     "close": {
-      "depStyle": []
-    },
-    "code": {
-      "depStyle": []
-    },
-    "color-schemes": {
       "depStyle": []
     },
     "comment": {
       "depStyle": []
     },
-    "form": {
-      "depStyle": []
-    },
-    "grid": {
-      "depStyle": []
-    },
     "icon": {
-      "depStyle": []
-    },
-    "image": {
       "depStyle": []
     },
     "input-group": {
@@ -59,9 +68,6 @@
     "list": {
       "depStyle": []
     },
-    "mixins": {
-      "depStyle": []
-    },
     "nav": {
       "depStyle": []
     },
@@ -71,16 +77,7 @@
     "panel": {
       "depStyle": []
     },
-    "print": {
-      "depStyle": []
-    },
     "progress": {
-      "depStyle": []
-    },
-    "table": {
-      "depStyle": []
-    },
-    "themes": {
       "depStyle": []
     },
     "thumbnail": {
@@ -89,10 +86,7 @@
     "topbar": {
       "depStyle": []
     },
-    "utility": {
-      "depStyle": []
-    },
-    "variables": {
+    "print": {
       "depStyle": []
     }
   },

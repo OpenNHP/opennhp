@@ -32,9 +32,6 @@
     "template": "paragraph.hbs",
 
     "styleDependencies": [
-        "button.less",
-        "ui.share.less",
-        "ui.modal.less",
         "ui.pureview.less"
     ],
 
@@ -205,9 +202,7 @@
     "jsDependencies": [
         "ui.iscroll-lite.js",
         "ui.pinchzoom.js",
-        "ui.pureview.js",
-        "ui.share.js",
-        "ui.modal.js"
+        "ui.pureview.js"
     ],
 
     "script": "paragraph.js",

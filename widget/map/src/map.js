@@ -1,9 +1,8 @@
 /* jshint strict: false, maxlen: 200 */
 /* global BMap */
 
-require('./core');
-
 var $ = require('jquery');
+require('./core');
 
 function addMapApi(callback) {
   var $mapApi0 = $('<script />', {

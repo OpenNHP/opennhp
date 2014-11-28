@@ -12,11 +12,11 @@
 
 #### 网格
 
-- `CHANGED` #112 重命名网格 class，{break-point}-col-{n} -> .am-u-{break-point}-{n};
+- `CHANGED` #112 重命名网格 class，`{break-point}-col-{n}` -> `.am-u-{break-point}-{n}`;
 
 #### 等分网格
 
-- `CHANGED` #112 重命名等分网格 class，{break-point}-block-grid-{n} -> .am-avg-{break-point}-{n};
+- `CHANGED` #112 重命名等分网格 class，`{break-point}-block-grid-{n}` -> `.am-avg-{break-point}-{n}`;
 
 #### 图片
 

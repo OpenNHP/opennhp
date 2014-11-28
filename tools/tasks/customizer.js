@@ -12,12 +12,13 @@ var runSequence = require('run-sequence');
 var gulp = require('gulp');
 var $ = require('gulp-load-plugins')();
 var file = require('../lib/file');
-var cstPath = path.join(__dirname, '../../dist/customized');
+var cstmzPath = path.join(__dirname, '../../dist/customized');
+var cstmzTmp = path.join(__dirname, '../../.cstmz-tmp');
 var DEFAULTS = {
-  dist: cstPath,
-  tmp: path.join(cstPath, '.tmp'),
-  js: path.join(cstPath, '.tmp/js/amazeui.custom.js'),
-  less: path.join(cstPath, '.tmp/less/amazeui.custom.less'),
+  dist: cstmzPath,
+  tmp: cstmzTmp,
+  js: path.join(cstmzTmp, 'js/amazeui.custom.js'),
+  less: path.join(cstmzTmp, 'less/amazeui.custom.less'),
   AUTOPREFIXER_BROWSERS: [
     'ie >= 8',
     'ie_mob >= 10',
@@ -76,7 +77,7 @@ if (config.widgets) {
 
   config.widgets.forEach(function(widget) {
     js.push(format('require("./%s");', widget.name));
-    less.push(format('@import "../../../../widget/%s/src/%s.less";',
+    less.push(format('@import "../../widget/%s/src/%s.less";',
       widget.name, widget.name));
     var pkg = require(path.join('../../widget', widget.name, 'package.json'));
 
@@ -86,7 +87,7 @@ if (config.widgets) {
 
     if (widget.theme) {
       widget.theme.forEach(function(theme) {
-        less.push(format('@import "../../../../widget/%s/src/%s";', widget.name,
+        less.push(format('@import "../../widget/%s/src/%s";', widget.name,
           theme));
       });
     }
@@ -113,14 +114,14 @@ gulp.task('customizer:less', function() {
       browsers: config.AUTOPREFIXER_BROWSERS ||
       DEFAULTS.AUTOPREFIXER_BROWSERS
     }))
-    .pipe(gulp.dest(cstPath))
+    .pipe(gulp.dest(cstmzPath))
     .pipe($.size({showFiles: true, title: 'source'}))
     .pipe($.minifyCss({noAdvanced: true}))
     .pipe($.rename({
       suffix: '.min',
       extname: '.css'
     }))
-    .pipe(gulp.dest(cstPath))
+    .pipe(gulp.dest(cstmzPath))
     .pipe($.size({showFiles: true, title: 'minified'}))
     .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
 });
@@ -168,13 +169,13 @@ gulp.task('customizer:js:browserify', function() {
   return gulp.src(DEFAULTS.js,
     {cwd: path.join(__dirname, DEFAULTS.tmp, 'js')})
     .pipe(bundler)
-    .pipe(gulp.dest(cstPath))
+    .pipe(gulp.dest(cstmzPath))
     .pipe($.uglify())
     .pipe($.rename({
       suffix: '.min',
       extname: '.js'
     }))
-    .pipe(gulp.dest(cstPath))
+    .pipe(gulp.dest(cstmzPath))
     .pipe($.size({showFiles: true, title: 'minified'}))
     .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
 });

@@ -21,14 +21,14 @@ tools/app/public/style.css
 
 # build
 .build
-# dist/css
-# dist/js
+dist/css
+dist/js
 /js/amazeui.js
 less/amazeui.widgets.less
 
 # zip tmp files
 docs/examples/assets/css/amazeui*.css
-docs/examples/assets/js/amazeui*.js
+docs/examlsples/assets/js/amazeui*.js
 
 #customize
 tools/tasks/config.json

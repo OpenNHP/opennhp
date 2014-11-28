@@ -21,8 +21,8 @@ tools/app/public/style.css
 
 # build
 .build
-dist/css
-dist/js
+# dist/css
+# dist/js
 /js/amazeui.js
 less/amazeui.widgets.less
 

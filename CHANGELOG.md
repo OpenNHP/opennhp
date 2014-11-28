@@ -1,6 +1,57 @@
 # Amaze UI Change Log
 ---
 
+## Amaze UI 2.0.0-beta1
+
+### CSS
+
+#### 基础变化
+
+- 移除所有标准属性的浏览器前缀，构建的时候通过 AutoPrefixer 添加；
+- 部分组件中开始使用 Flexbox，兼容 IE 9 的样式独立到 `legacy.ie.less`。
+
+#### 网格
+
+- `CHANGED` #112 重命名网格 class，{break-point}-col-{n} -> .am-u-{break-point}-{n};
+
+#### 等分网格
+
+- `CHANGED` #112 重命名等分网格 class，{break-point}-block-grid-{n} -> .am-avg-{break-point}-{n};
+
+#### 图片
+
+- `CHANGED` 移除 `.am-img-bdrs`，使用 `.am-radius` 替代；
+- `CHANGED` 移除 `.am-img-circle`，使用 `.am-circle` 替代。
+
+#### 表格 Table
+
+- `CHANGED` `.am-table-bd` 重命名为 `.am-table-bordered`；
+- `CHANGED` `.am-table-bdrs` 重命名为 `.am-table-radius`；
+- `NEW` 单元格状态更多颜色。
+
+#### 评论列表 Comment
+
+- `IMPOROVED` 头像大小调整为响应式，在小屏幕上头像变小；
+- `NEW` 增加评论操作（编辑、删除等）样式。
+
+#### 缩略图 Thumbnail
+
+- `NEW` 增加缩略图列表样式 `.am-thumbnails`。
+
+### JS
+
+- `CHANGED` 使用 jQuery 替代 Zepto.js；
+- `REMOVED` 不再使用 Sea.js；
+- `CHANGED` 所有模块接口通过 `$.AMUI` 暴露，部分插件添加到 `$.fn`；
+- `CHANGED` 自定义事件命名由 `:` 分隔符改为 `.` 分隔符；
+- `IMPROVED` 调整部分代码以兼容 jQuery 及 IE 9；
+- `NEW` #70 Slider 增加初始化接口及用户操作间隔一段时间以后恢复自动播放选项。
+
+### Web 组件
+
+- `IMPROVED` Menu、Header 按钮尺寸增大，更容易点击；
+- `REMOVED` 删除搜狐畅言组件。
+
 ### 2014.11 W2
 
 __CSS__：

@@ -21,6 +21,7 @@ tools/app/public/style.css
 
 # build
 .build
+.cstmz-tmp
 dist/css
 dist/js
 /js/amazeui.js

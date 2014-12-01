@@ -137,7 +137,7 @@ $(function() {
   });
 });
 ```
-    
+
 ### 模拟 Prompt
 
 `````html
@@ -399,3 +399,10 @@ $('#doc-modal-1').on('open.modal.amui', function(){
   </tbody>
 </table>
 
+<script>
+$(function() {
+  $(document).on('open.modal.amui opened.modal.amui close.modal.amui closed.modal.amui', function(e) {
+    console.log('#' + $(e.target).attr('id') + ' 触发了 ' + e.type + ' 事件');
+  });
+});
+</script>

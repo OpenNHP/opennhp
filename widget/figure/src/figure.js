@@ -29,10 +29,12 @@ define(function(require, exports, module) {
       var options = UI.utils.parseOptions($(item).attr('data-am-figure'));
 
       if (options.pureview) {
-        $(item).addClass('am-figure-zoomable').pureview();
-      } else if (!!options.autoZoom) {
-        var zoomAble = $.isImgZoomAble($(item).find('img')[0]);
-        zoomAble && $(item).pureview();
+        if (options.pureview === 'auto') {
+          var zoomAble = $.isImgZoomAble($(item).find('img')[0]);
+          zoomAble && $(item).pureview();
+        } else {
+          $(item).addClass('am-figure-zoomable').pureview();
+        }
       }
     });
   }

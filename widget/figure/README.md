@@ -40,13 +40,13 @@ return data;
   "theme": "",
   "options": {
     "figcaptionPosition": "bottom", // 图标标题位置 top - 图片上方， bottom - 图片下方
-    "zoomble": false // 是否启用图片缩放功能
+    "zoomble": false // 是否启用图片缩放功能 ['auto'|true|false]
   },
   "content": [
     {
       "img": "", // 图片（缩略图）路径
       "rel": "", // 大图路径
-      "imgAlt": "", // 图片alt描述，如果为空则读取 figcaption
+      "imgAlt": "", // 图片 alt 描述，如果为空则读取 figcaption
       "figcaption": "" // 图片标题
     }
   ]

@@ -240,13 +240,12 @@ ul.@{ns}dropdown-content {
   }
 }
 
-// dropdown animation
 
+// Dropdown out animation
 .@{ns}dropdown-animation {
-  animation-name: am-dropdown-animation;
+  animation: am-dropdown-animation .15s ease-out;
 }
 
-/* Slide top fixed */
 @keyframes am-dropdown-animation {
   0% {
     opacity: 1;
@@ -269,9 +268,6 @@ ul.@{ns}dropdown-content {
 .hook-dropdown-ul-content-disabled() {}
 .hook-dropdown-ul-content-divdier() {}
 .hook-dropdown-up() {}
-
 .hook-dropdown-header() {}
 
-
 // TODO: 1. 分隔线上下间距调整
-//       2. 位置设置

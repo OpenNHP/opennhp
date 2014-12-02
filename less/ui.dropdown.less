@@ -240,6 +240,24 @@ ul.@{ns}dropdown-content {
   }
 }
 
+// dropdown animation
+
+.@{ns}dropdown-animation {
+  animation-name: am-dropdown-animation;
+}
+
+/* Slide top fixed */
+@keyframes am-dropdown-animation {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
 
 // Hooks
 // =============================================================================

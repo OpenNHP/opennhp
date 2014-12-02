@@ -89,7 +89,7 @@
   &:after {
     left: 10px;
     top: -8px;
-    pointer-events: pointer-events;
+    pointer-events: none;
   }
 
   &:after {
@@ -237,19 +237,18 @@ ul.am-dropdown-content {
 // =============================================================================
 
 .am-dropdown-animation {
-  -webkit-animation-name: am-dropdown-animation;
-  animation-name: am-dropdown-animation;
+  .animation(am-dropdown-animation .15s ease-in-out);
 }
 
 @-webkit-keyframes am-dropdown-animation {
   0% {
     opacity: 1;
-    transform: translateY(0);
+    -webkit-transform: translateY(0);
   }
 
   100% {
     opacity: 0;
-    transform: translateY(-10px);
+    -webkit-transform: translateY(-10px);
   }
 }
 

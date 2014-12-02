@@ -27,10 +27,12 @@ function figureInit() {
     var options = UI.utils.parseOptions($(item).attr('data-am-figure'));
 
     if (options.pureview) {
-      $(item).addClass('am-figure-zoomable').pureview();
-    } else if (!!options.autoZoom) {
-      var zoomAble = $.isImgZoomAble($(item).find('img')[0]);
-      zoomAble && $(item).pureview();
+      if (options.pureview === 'auto') {
+        var zoomAble = $.isImgZoomAble($(item).find('img')[0]);
+        zoomAble && $(item).pureview();
+      } else {
+        $(item).addClass('am-figure-zoomable').pureview();
+      }
     }
   });
 }
@@ -40,6 +42,6 @@ $(window).on('load', function() {
 });
 
 module.exports = $.AMUI.figure = {
-  VERSION: '2.0.0',
+  VERSION: '2.0.1',
   init: figureInit
 };

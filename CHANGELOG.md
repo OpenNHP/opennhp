@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+### 2014.12 W1
+
+**CSS**:
+
+- `IMPROVED` #277 Icon Font HTTPS 支持；
+
 ## Amaze UI 2.0.0-beta1
 
 ### CSS

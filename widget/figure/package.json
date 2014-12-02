@@ -1,256 +1,237 @@
 {
-    "name": "figure",
-
-    "version": "1.2.0",
-
-    "localName": {
-        "en": "Figure",
-        "zh-cn": "单张图片"
-    },
-
-    "icon": "figure.png",
-
-    "author": {
-        "name": "Minwe",
-        "email": "minwe@yunshipei.com"
-    },
-
-    "description": "显示单张图片",
-
-    "poweredBy": "AllMobilize",
-
-    "styleBase": [
-        "variables.less",
-        "mixins.less",
-        "base.less",
-        "grid.less",
-        "block-grid.less",
-        "icon.less",
-        "utility.less"
-    ],
-
-    "template": "figure.hbs",
-
-    "styleDependencies": [
-        "button.less",
-        "ui.share.less",
-        "ui.modal.less",
-        "ui.pureview.less"
-    ],
-
-    "style": "figure.less",
-
-    "demoContent": {
-        "img": "http://amui.qiniudn.com/pure-1.jpg?imageView2/0/w/640",
-        "rel": "http://amui.qiniudn.com/pure-1.jpg",
-        "figcaption": "春天的花开秋天的风以及冬天的落阳"
-    },
-
-    "themes": [
+  "name": "figure",
+  "version": "1.2.1",
+  "localName": {
+    "en": "Figure",
+    "zh-cn": "单张图片"
+  },
+  "icon": "figure.png",
+  "author": {
+    "name": "Minwe",
+    "email": "minwe@yunshipei.com"
+  },
+  "description": "显示单张图片",
+  "poweredBy": "AllMobilize",
+  "styleBase": [
+    "variables.less",
+    "mixins.less",
+    "base.less",
+    "grid.less",
+    "block-grid.less",
+    "icon.less",
+    "utility.less"
+  ],
+  "template": "figure.hbs",
+  "styleDependencies": [
+    "button.less",
+    "ui.share.less",
+    "ui.modal.less",
+    "ui.pureview.less"
+  ],
+  "style": "figure.less",
+  "demoContent": {
+    "img": "http://amui.qiniudn.com/pure-1.jpg?imageView2/0/w/640",
+    "rel": "http://amui.qiniudn.com/pure-1.jpg",
+    "figcaption": "春天的花开秋天的风以及冬天的落阳"
+  },
+  "themes": [
+    {
+      "name": "default",
+      "desc": "灰色边框",
+      "options": {
+        "figcaptionPosition": "bottom",
+        "zoomble": false
+      },
+      "hook": "hook-am-figure-default",
+      "variables": [
         {
-            "name": "default",
-            "desc": "灰色边框",
-            "options": {
-                "figcaptionPosition": "bottom",
-                "zoomble": false
-            },
-            "hook": "hook-am-figure-default",
-            "variables": [
-                {
-                    "variable": "figure-img-border-color",
-                    "name": "图片边框颜色",
-                    "default": "#dedede",
-                    "used": [
-                        {
-                            "selector": "img",
-                            "property": "border-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "figure-color",
-                    "name": "文字颜色",
-                    "default": "#333",
-                    "used": [
-                        {
-                            "selector": "figcaption",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "desc": "",
-                    "data": {
-                        "options": {
-                            "figcaptionPosition": "bottom",
-                            "autoZoom": 1
-                        }
-                    }
-                }
-
-            ]
+          "variable": "figure-img-border-color",
+          "name": "图片边框颜色",
+          "default": "#dedede",
+          "used": [
+            {
+              "selector": "img",
+              "property": "border-color"
+            }
+          ]
         },
         {
-            "name": "one",
-            "desc": "简约风格",
+          "variable": "figure-color",
+          "name": "文字颜色",
+          "default": "#333",
+          "used": [
+            {
+              "selector": "figcaption",
+              "property": "color"
+            }
+          ]
+        }
+      ],
+      "demos": [
+        {
+          "desc": "",
+          "data": {
             "options": {
-                "figcaptionPosition": "bottom",
-                "zoomble": false
-            },
-            "hook": "hook-am-figure-one",
-            "variables": [
-                {
-                    "variable": "figure-img-border-color",
-                    "name": "图片边框颜色",
-                    "default": "#dfdfdf",
-                    "used": [
-                        {
-                            "selector": "img",
-                            "property": "border-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "figure-bg",
-                    "name": "背景颜色",
-                    "default": "#fff",
-                    "used": [
-                        {
-                            "selector": "",
-                            "property": "background-color"
-                        }
-                    ]
-                },
-                {
-                    "variable": "figure-color",
-                    "name": "文字颜色",
-                    "default": "#888",
-                    "used": [
-                        {
-                            "selector": "figcaption",
-                            "property": "color"
-                        }
-                    ]
-                }
-            ],
-            "demos": [
-                {
-                    "desc": "",
-                    "data": {
-                        "options": {
-                            "figcaptionPosition": "bottom",
-                            "autoZoom": 1
-                        }
-                    }
-                }
-
-            ]
-        }
-    ],
-
-    "jsBase": [
-        "core.js",
-        "util.fastclick.js"
-    ],
-
-    "jsDependencies": [
-        "zepto.pinchzoom.js",
-        "ui.pureview.js",
-        "ui.share.js",
-        "ui.modal.js"
-    ],
-
-    "script": "figure.js",
-
-    "api": {
-        "id": {
-            "name": "ID",
-            "desc": "模块自定义ID，遵循CSS ID命名规范",
-            "type": "text",
-            "default": "",
-            "required": false
-        },
-
-        "className": {
-            "name": "Class",
-            "desc": "用户自定义模块class，遵循 CSS class 命名规范",
-            "type": "text",
-            "placeholder": "css类名，多个用空格分隔",
-            "default": "",
-            "required": false
-        },
-
-        "theme": {
-            "name": "主题",
-            "desc": "模块主题",
-            "type": "select",
-            "default": "default",
-            "required": true,
-            "dataList": "<%= pkg.themes %>"
-        },
-        "options": {
-            "figcaptionPosition": {
-                "name": "标题位置",
-                "desc": "图片标题相对于图片的位置",
-                "type": "select",
-                "default": "bottom",
-                "required": true,
-                "dataList": [
-                    {
-                        "value": "bottom",
-                        "title": "图片下方",
-                        "selected": true
-                    },
-                    {
-                        "value": "top",
-                        "title": "图片上方"
-                    }
-                ]
-            },
-            "zoomAble": {
-                "name": "图片缩放",
-                "desc": "图片触控缩放功能",
-                "type": "select",
-                "default": true,
-                "required": true,
-                "dataList": [
-                    {
-                        "value": true,
-                        "title": "启用",
-                        "selected": true
-                    },
-                    {
-                        "value": false,
-                        "title": "禁用"
-                    }
-                ]
+              "figcaptionPosition": "bottom",
+              "zoomAble": "auto"
             }
+          }
         }
+      ]
     },
-
-    "content": {
-        "type": "Object",
-        "item": {
-            "img": {
-                "type": "image",
-                "desc": "图片路径"
-            },
-            "imgAlt": {
-                "type": "text",
-                "desc": "图片alt描述，如果alt为空则调用 figcaption"
-            },
-            "figcaption": {
-                "type": "text",
-                "desc": "图片标题"
+    {
+      "name": "one",
+      "desc": "简约风格",
+      "options": {
+        "figcaptionPosition": "bottom",
+        "zoomble": false
+      },
+      "hook": "hook-am-figure-one",
+      "variables": [
+        {
+          "variable": "figure-img-border-color",
+          "name": "图片边框颜色",
+          "default": "#dfdfdf",
+          "used": [
+            {
+              "selector": "img",
+              "property": "border-color"
             }
+          ]
+        },
+        {
+          "variable": "figure-bg",
+          "name": "背景颜色",
+          "default": "#fff",
+          "used": [
+            {
+              "selector": "",
+              "property": "background-color"
+            }
+          ]
+        },
+        {
+          "variable": "figure-color",
+          "name": "文字颜色",
+          "default": "#888",
+          "used": [
+            {
+              "selector": "figcaption",
+              "property": "color"
+            }
+          ]
         }
+      ],
+      "demos": [
+        {
+          "desc": "",
+          "data": {
+            "options": {
+              "figcaptionPosition": "bottom",
+              "zoomAble": "auto"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "jsBase": [
+    "core.js",
+    "util.fastclick.js"
+  ],
+  "jsDependencies": [
+    "zepto.pinchzoom.js",
+    "ui.pureview.js",
+    "ui.share.js",
+    "ui.modal.js"
+  ],
+  "script": "figure.js",
+  "api": {
+    "id": {
+      "name": "ID",
+      "desc": "模块自定义ID，遵循CSS ID命名规范",
+      "type": "text",
+      "default": "",
+      "required": false
     },
-
-    "readme": "http://docs.yunshipei.com/amui/#figure",
-
-    "example": "/*\n  figure: 1.0\n  此模块的使用方法：采集原PC网站目标元素的img路径以及一些简单文字。\n  常用用途：这个模块适合填写单张展示图片以及一些简单描述。\n  了解AMUI的模块详情，请访问http://ide.yunshipei.com/doc/amui/#figure。\n\n         var data = {\n            \"img\": $(\"#nav\").find(\"img\").src(),\n            \"rel\": \"\",\n            \"imgAlt\": \"\",\n            \"figcaption\": \"\"\n         };\n         return data;\n */\n\nvar data = {\n    \"img\": \"\", // 图片（缩略图）路径\n    \"rel\": \"\", // 大图路径\n    \"imgAlt\": \"\", // 图片alt描述，如果为空则读取 figcaption\n    \"figcaption\": \"\" // 图片标题\n};\n\nreturn data;\n",
-
-    "hidden": false
+    "className": {
+      "name": "Class",
+      "desc": "用户自定义模块class，遵循 CSS class 命名规范",
+      "type": "text",
+      "placeholder": "css类名，多个用空格分隔",
+      "default": "",
+      "required": false
+    },
+    "theme": {
+      "name": "主题",
+      "desc": "模块主题",
+      "type": "select",
+      "default": "default",
+      "required": true,
+      "dataList": "<%= pkg.themes %>"
+    },
+    "options": {
+      "figcaptionPosition": {
+        "name": "标题位置",
+        "desc": "图片标题相对于图片的位置",
+        "type": "select",
+        "default": "bottom",
+        "required": true,
+        "dataList": [
+          {
+            "value": "bottom",
+            "title": "图片下方",
+            "selected": true
+          },
+          {
+            "value": "top",
+            "title": "图片上方"
+          }
+        ]
+      },
+      "zoomAble": {
+        "name": "图片缩放",
+        "desc": "图片触控缩放功能",
+        "type": "select",
+        "default": "auto",
+        "required": true,
+        "dataList": [
+          {
+            "value": "auto",
+            "title": "自动判断",
+            "selected": true
+          },
+          {
+            "value": true,
+            "title": "强制启用",
+            "selected": true
+          },
+          {
+            "value": false,
+            "title": "禁用"
+          }
+        ]
+      }
+    }
+  },
+  "content": {
+    "type": "Object",
+    "item": {
+      "img": {
+        "type": "image",
+        "desc": "图片路径"
+      },
+      "imgAlt": {
+        "type": "text",
+        "desc": "图片alt描述，如果alt为空则调用 figcaption"
+      },
+      "figcaption": {
+        "type": "text",
+        "desc": "图片标题"
+      }
+    }
+  },
+  "readme": "http://docs.yunshipei.com/amui/#figure",
+  "example": "/*\n  figure: 1.0\n  此模块的使用方法：采集原PC网站目标元素的img路径以及一些简单文字。\n  常用用途：这个模块适合填写单张展示图片以及一些简单描述。\n  了解AMUI的模块详情，请访问http://ide.yunshipei.com/doc/amui/#figure。\n\n         var data = {\n            \"img\": $(\"#nav\").find(\"img\").src(),\n            \"rel\": \"\",\n            \"imgAlt\": \"\",\n            \"figcaption\": \"\"\n         };\n         return data;\n */\n\nvar data = {\n    \"img\": \"\", // 图片（缩略图）路径\n    \"rel\": \"\", // 大图路径\n    \"imgAlt\": \"\", // 图片alt描述，如果为空则读取 figcaption\n    \"figcaption\": \"\" // 图片标题\n};\n\nreturn data;\n",
+  "hidden": false
 }

@@ -233,6 +233,38 @@ ul.am-dropdown-content {
   }
 }
 
+// dropdown slide top fixed
+// =============================================================================
+
+.am-dropdown-animation {
+  -webkit-animation-name: am-dropdown-animation;
+  animation-name: am-dropdown-animation;
+}
+
+@-webkit-keyframes am-dropdown-animation {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes am-dropdown-animation {
+   0% {
+     opacity: 1;
+     transform: translateY(0);
+   }
+
+   100% {
+     opacity: 0;
+     transform: translateY(-10px);
+   }
+ }
+
 
 // Hooks
 // =============================================================================

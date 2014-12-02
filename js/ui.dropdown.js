@@ -99,7 +99,9 @@ define(function(require, exports, module) {
       return;
     }
 
-    var animationName = this.options.animation + ' am-animation-reverse';
+    // fix #165
+    // var animationName = this.options.animation + ' am-animation-reverse';
+    var animationName = 'am-dropdown-animation';
     var $element = this.$element;
     var $dropdown = this.$dropdown;
 
@@ -115,12 +117,13 @@ define(function(require, exports, module) {
     }, this);
 
     if (animation) {
+      $dropdown.removeClass(this.options.animation);
       $dropdown.addClass(animationName);
       this.animating = 1;
       // animation
       $dropdown.one(animation.end + '.close.dropdown.amui', function() {
-        complete();
         $dropdown.removeClass(animationName);
+        complete();
       });
     } else {
       complete();

@@ -40,7 +40,7 @@ return data;
   "theme": "",
   "options": {
     "figcaptionPosition": "bottom", // 图标标题位置 top - 图片上方， bottom - 图片下方
-    "zoomble": false // 是否启用图片缩放功能
+    "zoomble": false // 是否启用图片缩放功能 ['auto'|true|false]
   },
   "content": [
     {

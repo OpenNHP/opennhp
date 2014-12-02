@@ -20,6 +20,7 @@ tools/app/public/style.css
 
 # build
 .build
+.cstmz-tmp
 dist/css
 dist/js
 less/amazeui.widgets.less

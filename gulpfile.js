@@ -446,6 +446,7 @@ gulp.task('default', ['build', 'watch']);
 
 gulp.task('preview', ['build', 'watch', 'appServer']);
 
-require('./tools/tasks/customizer');
+// tasks
+require('./tools/tasks/');
 
 gulp.task('customize', ['customizer']);

@@ -72,7 +72,7 @@
 // Requires inline-block or block for proper styling
 // -----------------------------------------------------------------------------
 
-.text-overflow(@display: block;) {
+.text-overflow(@display: block) {
   display: @display;
   word-wrap: normal; /* for IE */
   text-overflow: ellipsis;
@@ -245,7 +245,7 @@
 // Responsive image
 // Keep images from scaling beyond the width of their parents.
 // -----------------------------------------------------------------------------
-.img-responsive(@display: block;) {
+.img-responsive(@display: block) {
   display: @display;
   max-width: 100%; // Part 1: Set a maximum relative to the parent
   height: auto; // Part 2: Scale the height according to the width, otherwise you get stretching
@@ -709,7 +709,7 @@
   border-right: @size solid transparent;
   border-left: @size solid transparent;
   border-bottom: 0 dotted;
-  .rotate(360deg);
+  transform: rotate(360deg);
 }
 
 // Caret - up
@@ -881,8 +881,7 @@
 
 // Grid
 // =============================================================================
-.grid-container(@gutter: @grid-gutter,
-  @gutter-md: @grid-gutter-md, @max-width: @grid-max-width) {
+.grid-container(@gutter: @grid-gutter, @gutter-md: @grid-gutter-md, @max-width: @grid-max-width) {
   box-sizing: border-box;
   margin-left: auto;
   margin-right: auto;
@@ -890,7 +889,7 @@
   padding-right: @gutter;
   width: 100%;
   max-width: @max-width;
-  .clearfix();
+  .clearfix;
 
   @media @medium-up {
     padding-left: @gutter-md;
@@ -914,17 +913,6 @@
   line-height: 1; // 4
   -webkit-font-smoothing: antialiased; // 5
   -moz-osx-font-smoothing: grayscale;
-}
-
-// Rem mixin
-// Not enough usable, maybe we should consider SASS.
-// =============================================================================
-.x-rem(@property, @value) {
-  -: ~`(function () { return ';@{property}: @{@value/10}rem'; }())`;
-}
-
-.font-size(@size) {
-  font-size: ~"@{@size / 10}rem";
 }
 
 

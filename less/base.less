@@ -604,39 +604,6 @@ mark {
 
 
 /**
- * Selection highlight
- */
-
-::-moz-selection {
-  background: @base-selection-background;
-  color: @base-selection-color;
-  text-shadow: none;
-}
-
-::selection {
-  background: @base-selection-background;
-  color: @base-selection-color;
-  text-shadow: none;
-}
-
-/*  Change `background` for text selections when browser is unfocused */
-
-::selection:window-inactive {
-  background: @gray-light;
-}
-
-/* Remove `background` on images when selected */
-
-img::selection {
-  background: transparent;
-}
-
-img::-moz-selection {
-  background: transparent;
-}
-
-
-/**
  * Abbreviation and definition
  */
 

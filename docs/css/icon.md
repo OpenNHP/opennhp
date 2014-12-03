@@ -43,6 +43,13 @@ __LESS 用户__可以调用 mixin 编写样式：
 }
 ```
 
+### 修改字体路径
+
+字体图标目前引了 [Staticfile CDN](http://staticfile.org/) 上的文件（支持 HTTPS），可以自行替换：
+
+- **使用 LESS**： 通过设置变量 `@fa-font-path` 覆盖默认的值，如 `@fa-font-path: "../fonts";`。这个变量定义在 `icon.less` 里。
+- **直接使用 CSS**： 查找替换 `//dn-staticfile.qbox.me/font-awesome/4.2.0/fonts/`。
+
 ## 图标大小
 
 - `.am-icon-sm`，放大 150%

@@ -1,5 +1,12 @@
-# Amaze UI Change Log
+# Amaze UI 1.x Change Log
 ---
+
+### 2014.12 W1
+
+**CSS**:
+
+- `IMPROVED` #277 Icon Font HTTPS 支持；
+- `CHANGED` #284 移除 `::selection` 样式，避免日文输入文字不显示问题。
 
 ## Amaze UI v1.0.1 (2014.11.07)
 

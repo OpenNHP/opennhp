@@ -8,6 +8,10 @@
 - `IMPROVED` #277 Icon Font HTTPS 支持；
 - `CHANGED` #284 移除 `::selection` 样式，避免日文输入文字不显示问题。
 
+**JS**:
+
+- `FIXED` #165 Dropdown 部分浏览器闪烁问题；
+
 ## Amaze UI v1.0.1 (2014.11.07)
 
 __CSS__：

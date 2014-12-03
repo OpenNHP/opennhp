@@ -6,6 +6,7 @@
 **CSS**:
 
 - `IMPROVED` #277 Icon Font HTTPS 支持；
+- `CHANGED` #284 移除 `::selection` 样式，避免日文输入文字不显示问题。
 
 ## Amaze UI 2.0.0-beta1
 

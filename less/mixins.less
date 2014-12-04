@@ -219,32 +219,32 @@
 
 // Legacy aliases
 #gradient {
-  .horizontal(@start-color; @end-color; @start-percent; @end-percent) {
+  .horizontal(@start-color: #555; @end-color: #333; @start-percent: 0%; @end-percent: 100%) {
     .gradient-horizontal(@start-color; @end-color; @start-percent; @end-percent);
   }
 
-  .vertical(@start-color; @end-color; @start-percent; @end-percent) {
+  .vertical(@start-color: #555; @end-color: #333; @start-percent: 0%; @end-percent: 100%) {
     .gradient-vertical(@start-color; @end-color; @start-percent; @end-percent);
   }
 
-  .directional(@start-color; @end-color; @deg) {
+  .directional(@start-color: #555; @end-color: #333; @deg: 45deg) {
     .gradient-directional(@start-color; @end-color; @deg);
   }
 
-  .horizontal-3c(@start-color; @mid-color; @color-stop; @end-color) {
+  .horizontal-3c(@start-color: #00b3ee; @mid-color: #7a43b6; @color-stop: 50%; @end-color: #c3325f) {
     .gradient-horizontal-3c(@start-color; @mid-color; @color-stop; @end-color)
   }
 
-  .vertical-3c(@start-color; @mid-color; @color-stop; @end-color) {
+  .vertical-3c(@start-color: #00b3ee; @mid-color: #7a43b6; @color-stop: 50%; @end-color: #c3325f) {
     .gradient-vertical-3c(@start-color; @mid-color; @color-stop; @end-color);
   }
 
   //放射状
-  .radial(@inner-color; @outer-color) {
+  .radial(@inner-color: #555; @outer-color: #333) {
     .gradient-radial(@inner-color; @outer-color);
   }
 
-  .striped(@color; @angle) {
+  .striped(@color: rgba(255,255,255,.15); @angle: 45deg) {
     .gradient-striped(@color; @angle);
   }
 }

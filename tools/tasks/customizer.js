@@ -59,48 +59,46 @@ var js = [
   'require("./core");'
 ];
 
-config.style.forEach(function(file) {
-  less.push(format('@import "%s";', file));
-});
+gulp.task('customizer:preparing', function(callback) {
+  config.style.forEach(function(file) {
+    less.push(format('@import "%s";', file));
+  });
 
-config.js.forEach(function(file) {
-  js.push(format('require("./%s");', file));
-});
+  config.js.forEach(function(file) {
+    js.push(format('require("./%s");', file));
+  });
 
-// widgets
-if (config.widgets) {
-  if (config.widgets.length) {
-    DEFAULTS.widgetBase.forEach(function(base) {
-      less.push(format('@import "%s";', base));
+  // widgets
+  if (config.widgets) {
+    if (config.widgets.length) {
+      DEFAULTS.widgetBase.forEach(function(base) {
+        less.push(format('@import "%s";', base));
+      });
+    }
+
+    config.widgets.forEach(function(widget) {
+      js.push(format('require("./%s");', widget.name));
+      less.push(format('@import "../../widget/%s/src/%s.less";',
+        widget.name, widget.name));
+      var pkg = require(path.join('../../widget', widget.name, 'package.json'));
+
+      pkg.styleDependencies.forEach(function(dep) {
+        less.push(format('@import "%s";', dep));
+      });
+
+      if (widget.theme) {
+        widget.theme.forEach(function(theme) {
+          less.push(format('@import "../../widget/%s/src/%s";', widget.name,
+            theme));
+        });
+      }
     });
   }
 
-  config.widgets.forEach(function(widget) {
-    js.push(format('require("./%s");', widget.name));
-    less.push(format('@import "../../widget/%s/src/%s.less";',
-      widget.name, widget.name));
-    var pkg = require(path.join('../../widget', widget.name, 'package.json'));
+  file.write(DEFAULTS.less, _.uniq(less).join('\n'));
+  file.write(DEFAULTS.js, _.uniq(js).join('\n'));
 
-    pkg.styleDependencies.forEach(function(dep) {
-      less.push(format('@import "%s";', dep));
-    });
-
-    if (widget.theme) {
-      widget.theme.forEach(function(theme) {
-        less.push(format('@import "../../widget/%s/src/%s";', widget.name,
-          theme));
-      });
-    }
-  });
-}
-
-file.write(DEFAULTS.less, _.uniq(less).join('\n'));
-file.write(DEFAULTS.js, _.uniq(js).join('\n'));
-
-gulp.task('customizer', function(cb) {
-  runSequence(['customizer:less', 'customizer:js'],
-    'customizer:clean',
-    cb);
+  callback();
 });
 
 gulp.task('customizer:less', function() {
@@ -182,4 +180,12 @@ gulp.task('customizer:js:browserify', function() {
 
 gulp.task('customizer:clean', function(cb) {
   del(DEFAULTS.tmp, cb);
+});
+
+gulp.task('customizer', function(cb) {
+  runSequence(
+    'customizer:preparing',
+    ['customizer:less', 'customizer:js'],
+    'customizer:clean',
+    cb);
 });

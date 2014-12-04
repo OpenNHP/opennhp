@@ -18,7 +18,7 @@
 .progress-bar-variant(@color) {
   background-color: @color;
   .@{ns}progress-striped & {
-    #gradient > .striped();
+    .gradient-striped();
   }
 }
 
@@ -29,8 +29,13 @@
 
 /* Progress bar animation */
 @keyframes progress-bar-stripes {
-  from  { background-position: 36px 0; }
-  to    { background-position: 0 0; }
+  from  {
+    background-position: 36px 0;
+  }
+
+  to    {
+    background-position: 0 0;
+  }
 }
 
 
@@ -65,7 +70,7 @@
 
   // Striped bar
   .@{ns}progress-striped & {
-    #gradient > .striped();
+    .gradient-striped();
     background-size: 36px 36px;
     .hook-progress-striped;
   }

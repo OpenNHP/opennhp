@@ -154,7 +154,7 @@
           content: "";
           .caret-up(7px, @topbar-bg);
           opacity: 0;
-          .transition(opacity .1s);
+          transition: opacity .1s;
         }
 
         &:hover:after {
@@ -341,7 +341,7 @@
   right: 0;
   left: 0;
   z-index: @z-index-topbar-fixed;
-  .translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
 }
 
 .@{ns}topbar-fixed-top {

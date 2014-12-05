@@ -35,15 +35,6 @@
     display: none;
   }
 
-  a& {
-    &:hover,
-    &:focus {
-      color: @badge-link-hover-color;
-      text-decoration: none;
-      cursor: pointer;
-    }
-  }
-
   &.@{ns}square {
      border-radius: 0;
   }
@@ -57,6 +48,16 @@
   }
 
   .hook-badge;
+}
+
+// link badge
+a.@{ns}badge {
+  &:hover,
+  &:focus {
+    color: @badge-link-hover-color;
+    text-decoration: none;
+    cursor: pointer;
+  }
 }
 
 

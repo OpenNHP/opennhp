@@ -110,7 +110,7 @@
 ============================================================================= */
 
 .@{ns}icon-btn {
-  .box-sizing(border-box);
+  box-sizing: border-box;
   display: inline-block;
   .icon-btn-size(@icon-btn-width; @icon-btn-height; @icon-btn-font-size);
   border-radius: @icon-btn-border-radius;
@@ -2172,17 +2172,18 @@
 /* Modifier: `am-icon-spin`
 ============================================================================= */
 
-@-webkit-keyframes icon-spin {
-  0% { -webkit-transform: rotate(0deg); }
-  100% { -webkit-transform: rotate(359deg); }
-}
 @keyframes icon-spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(359deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(359deg);
+  }
 }
 
 .am-icon-spin {
-  .animation(icon-spin 2s infinite linear);
+  animation: icon-spin 2s infinite linear;
 }
 
 

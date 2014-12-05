@@ -201,6 +201,19 @@
 // Modifiers - colors
 // =============================================================================
 
+.input-group-color-variant(@bg: @btn-primary-bg, @color: @btn-primary-color, @border: @btn-primary-border) {
+  .@{ns}input-group-label {
+    background: @bg;
+    color: @color;
+  }
+
+  .@{ns}input-group-label,
+  .@{ns}input-group-btn > .@{ns}btn,
+  .@{ns}form-field {
+    border-color: @border;
+  }
+}
+
 .@{ns}input-group-primary {
   .input-group-color-variant();
   .hook-input-group-primary;
@@ -224,19 +237,6 @@
 .@{ns}input-group-danger {
   .input-group-color-variant(@btn-danger-bg, @btn-danger-color, @btn-danger-border);
   .hook-input-group-danger;
-}
-
-.input-group-color-variant(@bg: @btn-primary-bg, @color: @btn-primary-color, @border: @btn-primary-border) {
-  .@{ns}input-group-label {
-    background: @bg;
-    color: @color;
-  }
-
-  .@{ns}input-group-label,
-  .@{ns}input-group-btn > .@{ns}btn,
-  .@{ns}form-field {
-    border-color: @border;
-  }
 }
 
 

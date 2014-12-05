@@ -232,7 +232,7 @@
   }
 
   .horizontal-3c(@start-color: #00b3ee; @mid-color: #7a43b6; @color-stop: 50%; @end-color: #c3325f) {
-    .gradient-horizontal-3c(@start-color; @mid-color; @color-stop; @end-color)
+    .gradient-horizontal-3c(@start-color; @mid-color; @color-stop; @end-color);
   }
 
   .vertical-3c(@start-color: #00b3ee; @mid-color: #7a43b6; @color-stop: 50%; @end-color: #c3325f) {
@@ -820,7 +820,7 @@
   &:focus,
   &:active,
   &.@{ns}active,
-  .@{ns}active .@{ns}dropdown-toggle& {
+  .@{ns}active &.@{ns}dropdown-toggle {
     color: @color;
     background-color: darken(@background, 12%);
     border-color: darken(@border, 12%);
@@ -828,7 +828,7 @@
 
   &:active,
   &.@{ns}btn-active,
-  .@{ns}active .@{ns}dropdown-toggle& {
+  .@{ns}active &.@{ns}dropdown-toggle {
     background-image: none;
   }
 

@@ -43,9 +43,8 @@ label {
 // Normalize form controls
 
 // Override content-box in Normalize
-
 input[type="search"] {
-  .box-sizing(border-box);
+  box-sizing: border-box;
 }
 
 // Position radios and checkboxes better
@@ -460,12 +459,12 @@ input[type="checkbox"],
 
     &:first-child {
       top: 1px;
-      .border-top-radius(@input-border-radius) !important;
+      .border-top-radius(~"@{input-border-radius} !important");
     }
 
     &:last-child {
       top: -2px;
-      .border-bottom-radius(@input-border-radius) !important;
+      .border-bottom-radius(~"@{input-border-radius} !important");
     }
   }
   .hook-form-set;

@@ -9,24 +9,26 @@ Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 90 kB 左右）、 [**M
 
 <div class="am-g">
   <div class="am-u-md-8 am-u-md-centered">
-    <a href="http://amazeui.org/download?ver=2.0.0-beta1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
-"><i class="am-icon-download"></i> Amaze UI v2.0.0-beta1</a>
+    <a href="http://amazeui.org/download?ver=2.0.0" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
+"><i class="am-icon-download"></i> Amaze UI v2.0.0 正式版</a>
   </div>
 </div>
+
+- [**1.x 到 2.x 变更记录暨升级指南**](https://github.com/allmobilize/amazeui/wiki/Migration-form-1.x-to-2.x)
 
 ### 使用 CDN
 
 Amaze UI CDN： 域名解析服务由 DNSPod 提供，CDN 存储由又拍云提供。
 
 ```html
-http://cdn.amazeui.org/amazeui/2.0.0-beta1/css/amazeui.css
-http://cdn.amazeui.org/amazeui/2.0.0-beta1/css/amazeui.min.css
-http://cdn.amazeui.org/amazeui/2.0.0-beta1/js/amazeui.js
-http://cdn.amazeui.org/amazeui/2.0.0-beta1/js/amazeui.min.js
-http://cdn.amazeui.org/amazeui/2.0.0-beta1/js/amazeui.legacy.js
-http://cdn.amazeui.org/amazeui/2.0.0-beta1/js/amazeui.legacy.min.js
-http://cdn.amazeui.org/amazeui/2.0.0-beta1/js/amazeui.widgets.helper.js
-http://cdn.amazeui.org/amazeui/2.0.0-beta1/js/amazeui.widgets.helper.min.js
+http://cdn.amazeui.org/amazeui/2.0.0/css/amazeui.css
+http://cdn.amazeui.org/amazeui/2.0.0/css/amazeui.min.css
+http://cdn.amazeui.org/amazeui/2.0.0/js/amazeui.js
+http://cdn.amazeui.org/amazeui/2.0.0/js/amazeui.min.js
+http://cdn.amazeui.org/amazeui/2.0.0/js/amazeui.legacy.js
+http://cdn.amazeui.org/amazeui/2.0.0/js/amazeui.legacy.min.js
+http://cdn.amazeui.org/amazeui/2.0.0/js/amazeui.widgets.helper.js
+http://cdn.amazeui.org/amazeui/2.0.0/js/amazeui.widgets.helper.min.js
 ```
 
 ### 使用 Bower

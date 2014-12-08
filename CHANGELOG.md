@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+### 2014.12 W2
+
+**Web 组件：**
+
+- `CHANGED` Footer 移除`云适配驱动`；
+
 ## Amaze UI 2.0.0
 
 ### 2014.12 W1
@@ -12,7 +18,7 @@
 
 **JS**:
 
-- `FIXED` #165 部分浏览器中 Dropdown 收回去时闪烁问题。 
+- `FIXED` #165 部分浏览器中 Dropdown 收回去时闪烁问题。
 
 
 

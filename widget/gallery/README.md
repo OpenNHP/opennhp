@@ -40,7 +40,7 @@ return data;
 将大图放在 `<img>` 的 `data-rel` 属性上。
 
 `````html
-<ul data-am-widget="gallery" class="am-gallery sm-block-grid-2 am-gallery-imgbordered" data-am-gallery="{pureview: 1}">
+<ul data-am-widget="gallery" class="am-gallery am-avg-sm-2 am-gallery-imgbordered" data-am-gallery="{pureview: 1}">
   <li>
     <div class="am-gallery-item">
       <img src="https://farm4.staticflickr.com/3835/15329524682_2642280b33_z.jpg"
@@ -60,7 +60,7 @@ return data;
 </ul>
 `````
 ```html
-<ul data-am-widget="gallery" class="am-gallery sm-block-grid-2 am-gallery-imgbordered" data-am-gallery="{pureview: 1}">
+<ul data-am-widget="gallery" class="am-gallery am-avg-sm-2 am-gallery-imgbordered" data-am-gallery="{pureview: 1}">
   <li>
     <div class="am-gallery-item">
       <img src="https://farm4.staticflickr.com/3835/15329524682_2642280b33_z.jpg"
@@ -87,7 +87,7 @@ return data;
 从可访性的角度而言，这种方式更好一些：用户再禁用 JavaScript 以后仍然可以打开链接查看大图。
 
 `````html
-<ul data-am-widget="gallery" class="am-gallery sm-block-grid-2 am-gallery-imgbordered" data-am-gallery="{pureview:{target: 'a'}}">
+<ul data-am-widget="gallery" class="am-gallery am-avg-sm-2 am-gallery-imgbordered" data-am-gallery="{pureview:{target: 'a'}}">
   <li>
     <div class="am-gallery-item">
       <a href="https://farm4.staticflickr.com/3835/15329524682_554d4c0886_k.jpg" title="远方 有一个地方 那里种有我们的梦想"><img src="https://farm4.staticflickr.com/3835/15329524682_2642280b33_z.jpg"
@@ -107,7 +107,7 @@ return data;
 </ul>
 `````
 ```html
-<ul data-am-widget="gallery" class="am-gallery sm-block-grid-2 am-gallery-imgbordered" data-am-gallery="{pureview:{target: 'a'}}">
+<ul data-am-widget="gallery" class="am-gallery am-avg-sm-2 am-gallery-imgbordered" data-am-gallery="{pureview:{target: 'a'}}">
   <li>
     <div class="am-gallery-item">
       <a href="https://farm4.staticflickr.com/3835/15329524682_554d4c0886_k.jpg" title="远方 有一个地方 那里种有我们的梦想"><img src="https://farm4.staticflickr.com/3835/15329524682_2642280b33_z.jpg" alt="远方 有一个地方 那里种有我们的梦想"/>

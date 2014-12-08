@@ -243,7 +243,7 @@ sub {
   */
 
 img {
-  .box-sizing(border-box); /* 1 */
+  box-sizing: border-box; /* 1 */
   max-width: 100%; /* 2 */
   height: auto; /* 2 */
   vertical-align: middle; /* 3 */
@@ -598,37 +598,6 @@ ins {
 mark {
   background: @base-mark-background;
   color: @base-mark-color;
-}
-
-
-/**
- * Selection highlight
- */
-::-moz-selection {
-  background: @base-selection-background;
-  color: @base-selection-color;
-  text-shadow: none;
-}
-
-::selection {
-  background: @base-selection-background;
-  color: @base-selection-color;
-  text-shadow: none;
-}
-
-/*  Change `background` for text selections when browser is unfocused */
-
-::selection:window-inactive {
-  background: @gray-light;
-}
-
-/* Remove `background` on images when selected */
-img::selection {
-  background: transparent;
-}
-
-img::-moz-selection {
-  background: transparent;
 }
 
 

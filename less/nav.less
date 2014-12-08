@@ -21,6 +21,42 @@
 // =============================================================================
 
 
+// Tabs justify mixin
+// =============================================================================
+
+.nav-tabs-justify() {
+  border-bottom: 0;
+
+  /*  > li > a {
+      margin-right: 0;
+      border-radius: @global-radius;
+    }
+
+    > .am-active > a {
+      &,
+      &:hover,
+      &:focus {
+        border: 1px solid @nav-tabs-justify-link-border-color;
+      }
+    }*/
+
+  // @media @medium-up {
+  > li > a {
+    margin-right: 0;
+    border-bottom: 1px solid @nav-tabs-justify-link-border-color;
+    border-radius: @global-radius @global-radius 0 0;
+  }
+
+  > .am-active > a {
+    &,
+    &:hover,
+    &:focus {
+      border-bottom-color: @nav-tabs-justify-active-link-border-color;
+    }
+  }
+  // }
+}
+
 /* ==========================================================================
    Component: Nav
  ============================================================================ */
@@ -187,43 +223,6 @@
   }
 
   .hook-nav-justify;
-}
-
-
-// Tabs justify mixin
-// =============================================================================
-
-.nav-tabs-justify() {
-  border-bottom: 0;
-
-/*  > li > a {
-    margin-right: 0;
-    border-radius: @global-radius;
-  }
-
-  > .am-active > a {
-    &,
-    &:hover,
-    &:focus {
-      border: 1px solid @nav-tabs-justify-link-border-color;
-    }
-  }*/
-
-  // @media @medium-up {
-    > li > a {
-      margin-right: 0;
-      border-bottom: 1px solid @nav-tabs-justify-link-border-color;
-      border-radius: @global-radius @global-radius 0 0;
-    }
-
-    > .am-active > a {
-      &,
-      &:hover,
-      &:focus {
-        border-bottom-color: @nav-tabs-justify-active-link-border-color;
-      }
-    }
-  // }
 }
 
 

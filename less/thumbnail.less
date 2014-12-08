@@ -34,9 +34,9 @@
   }
 
   // Add a hover state for linked versions only
-  a&:hover,
-  a&:focus,
-  a&.active {
+  a.@{ns}thumbnail:hover,
+  a.@{ns}thumbnail:focus,
+  a.@{ns}thumbnail.active {
     border-color: @thumbnail-hover-border;
     background-color: @thumbnail-hover-bg;
     .hook-thumbnail-hover;

@@ -1,4 +1,5 @@
 <h1><a href="http://amazeui.org/" title="Amaze UI 官网"><img style="float: left" width="240" src="https://raw.githubusercontent.com/allmobilize/amazeui/master/vendor/amazeui/amazeui-b.png" alt="Amaze UI Logo"/></a></h1>
+([Homepage in English](http://translate.google.com/translate?hl=en&sl=zh-CN&u=http://amazeui.org/&prev=search) translated by Google)
 
 Amaze UI is an open-sourced responsive front-end framework.
 
@@ -16,7 +17,7 @@ Amaze UI contains almost 20 CSS components, 10 JS components and 17 other web co
 
 ### Localization
 
-Compared with existing front-end frameworks, Amaze UI focuses on optimizing page layout in Chinese by adjusting font to different operating systems automatically. Amaze UI provides better compatibility for main trend browsers and browsers built in Apps, saving you a lot of time for compatibility debugging.
+Compared with existing front-end frameworks, Amaze UI focuses on optimizing page layout in Chinese by adjusting font to different operating systems automatically. Amaze UI provides better compatibility for currently popular browsers and browsers built in Apps, saving you a lot of time for compatibility debugging.
 
 
 ### Light yet Powerful
@@ -75,15 +76,15 @@ npm install
 gulp
 ```
 
-## Bug feedbacks & Request
+## Bug feedback & Requests
 
 ### Bug feedback
 
-You are welcome to [submit bug report](https://github.com/allmobilize/amazeui/issues) to Amaze UI team.
+You are welcome to [submit bug report](https://github.com/allmobilize/amazeui/issues) to the Amaze UI team.
 
-To explain your problems clearly, we suggest you provide demonstration when you give us feedbacks.
+To explain your problems clearly, we suggest that you provide a demonstration when you give us feedback.
 
-The following links are pages we have built with online debugging tools, using Amaze UI layouts and scripts. You can fork and give us feedbacks with attachment of those pages that have problems.
+The following links are pages we have built with online debugging tools, using Amaze UI layouts and scripts. You can fork and send a bug report, linking to example pages.
 
 - [Debug Amaze UI 1.0 in JSBin](http://jsbin.com/qasoxibuje/1/edit?html,output)
 
@@ -94,7 +95,7 @@ User can submit your requests through Issue system or leave us message on our of
 
 ## Code Contribution
 
-You are welcome to join our debugging team ! You are also very welcome to share the Web components you explored by “Fork” this item and submit request afterwards.
+You are welcome to join our debugging team! You are also very welcome to share the Web components you explored by “Fork” this item and submit request afterwards.
 
 
 __Development Document__

@@ -37,17 +37,6 @@
                                                 target="_blank">{{{options.techSupportCo}}}</a>{{else}}{{{options.techSupportCo}}}{{/if}}
             提供技术支持</p>
         {{/ifCond}}
-
-      {{/if}}
-
-      {{#if content.poweredBy }}
-        {{ content.poweredBy }}
-      {{else}}
-        {{#ifCond content.lang '==' 'en'}}
-          <p>Powered by AllMobilize.</p>
-        {{else}}
-          <p>云适配驱动</p>
-        {{/ifCond}}
       {{/if}}
       {{#each content.companyInfo}}
         <p>{{{detail}}}</p>
@@ -55,7 +44,7 @@
     </div>
   </footer>
 
-  <div id="am-footer-mode"
+  <div id="am-footer-modal"
        class="am-modal am-modal-no-btn am-switch-mode-m {{#if theme}}am-switch-mode-m-{{theme}}{{/if}}">
     <div class="am-modal-dialog">
       <div class="am-modal-hd am-modal-footer-hd">

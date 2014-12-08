@@ -1,6 +1,10 @@
 # Footer 更细记录
 ---
 
+## v3.1.0 (2014.12.08)
+
+- `CHANGED` Remove powered by。
+
 ## v3.0.0 (2014.10.30)
 
 - `NEW` 使用 jQuery。

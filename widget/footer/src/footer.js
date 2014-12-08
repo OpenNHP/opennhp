@@ -9,7 +9,7 @@ var cookie = require('./util.cookie');
 function footerInit() {
   // modal mode
   $('.am-footer-ysp').on('click', function() {
-    $('#am-footer-mode').modal();
+    $('#am-footer-modal').modal();
   });
 
   !window.AMUI_NO_ADD2HS && addToHS();
@@ -32,6 +32,6 @@ $(window).on('load', function() { // make sure `window.AMPlatform` is usable
 });
 
 module.exports = $.AMUI.footer = {
-  VERSION: '3.0.0',
+  VERSION: '3.1.0',
   init: footerInit
 };

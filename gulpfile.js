@@ -208,7 +208,7 @@ var preparingData = function() {
   partials += '  if (typeof module !== \'undefined\' && module.exports) {\n';
   partials += '    module.exports = registerAMUIPartials;\n' +
   '  }\n\n';
-  partials += '  this.Handlebars && registerAMUIPartials(Handlebars);\n';
+  partials += '  this.Handlebars && registerAMUIPartials(this.Handlebars);\n';
   partials += '}).call(this);\n';
 
   // write partials

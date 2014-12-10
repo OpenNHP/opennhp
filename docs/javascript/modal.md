@@ -76,14 +76,40 @@ Modal 交互窗口，可以用来模拟浏览器的 `alert`、`confirm`、`promp
 
 ### 模拟 Confirm
 
+点击列表右边的 `x` 查看效果。
+
 `````html
 <button class="am-btn am-btn-warning" id="doc-confirm-toggle">Confirm</button>
+
+<style>
+  .confirm-list i {
+    position: absolute;
+    right: 0;
+    top: 12px;
+    color: #888;
+    width: 32px;
+    text-align: center;
+    cursor: pointer;
+  }
+
+  .confirm-list i:hover {
+    color: #555;
+  }
+</style>
+
+<ul class="am-list confirm-list" id="doc-modal-list">
+  <li><a data-id="1" href="#">每个人都有一个死角， 自己走不出来，别人也闯不进去。</a><i class="am-icon-close"></i></li>
+  <li><a data-id="2" href="#">我把最深沉的秘密放在那里。</a><i class="am-icon-close"></i></li>
+  <li><a data-id="3" href="#">你不懂我，我不怪你。</a><i class="am-icon-close"></i></li>
+  <li><a data-id="4" href="#">每个人都有一道伤口， 或深或浅，盖上布，以为不存在。</a><i class="am-icon-close"></i></li>
+</ul>
+
 
 <div class="am-modal am-modal-confirm" tabindex="-1" id="my-confirm">
   <div class="am-modal-dialog">
     <div class="am-modal-hd">Amaze UI</div>
     <div class="am-modal-bd">
-      你是猴子派来的逗比吗?
+      你，确定要删除这条记录吗？
     </div>
     <div class="am-modal-footer">
       <span class="am-modal-btn" data-am-modal-cancel>取消</span>
@@ -94,28 +120,39 @@ Modal 交互窗口，可以用来模拟浏览器的 `alert`、`confirm`、`promp
 
 <script>
 $(function() {
-  $('#doc-confirm-toggle').on('click', function() {
-    $('#my-confirm').modal({
-      relatedElement: this,
-      onConfirm: function() {
-        alert('你是猴子派来的逗比!')
-      },
-      onCancel: function() {
-        alert('你不确定是不是猴子派来的逗比!')
-      }
+  $('#doc-modal-list').find('.am-icon-close').add('#doc-confirm-toggle').
+    on('click', function() {
+      $('#my-confirm').modal({
+        relatedTarget: this,
+        onConfirm: function(options) {
+          var $link = $(this.relatedTarget).prev('a');
+          var msg = $link.length ? '你要删除的链接 ID 为 ' + $link.data('id') :
+            '确定了，但不知道要整哪样';
+          alert(msg);
+        },
+        onCancel: function() {
+          alert('算求，不弄了');
+        }
+      });
     });
-  });
 });
 </script>
 `````
 ```html
 <button class="am-btn am-btn-warning" id="doc-confirm-toggle">Confirm</button>
 
+<ul class="am-list confirm-list" id="doc-modal-list">
+  <li><a data-id="1" href="#">每个人都有一个死角， 自己走不出来，别人也闯不进去。</a><i class="am-icon-close"></i></li>
+  <li><a data-id="2" href="#">我把最深沉的秘密放在那里。</a><i class="am-icon-close"></i></li>
+  <li><a data-id="3" href="#">你不懂我，我不怪你。</a><i class="am-icon-close"></i></li>
+  <li><a data-id="4" href="#">每个人都有一道伤口， 或深或浅，盖上布，以为不存在。</a><i class="am-icon-close"></i></li>
+</ul>
+
 <div class="am-modal am-modal-confirm" tabindex="-1" id="my-confirm">
   <div class="am-modal-dialog">
     <div class="am-modal-hd">Amaze UI</div>
     <div class="am-modal-bd">
-      你是猴子派来的逗比吗?
+      你，确定要删除这条记录吗？
     </div>
     <div class="am-modal-footer">
       <span class="am-modal-btn" data-am-modal-cancel>取消</span>
@@ -126,21 +163,65 @@ $(function() {
 ```
 ```javascript
 $(function() {
-  $('#doc-confirm-toggle').on('click', function() {
-    $('#my-confirm').modal({
-      relatedElement: this,
-      onConfirm: function() {
-        alert('你是猴子派来的逗比!')
-      },
-      onCancel: function() {
-        alert('你不确定是不是猴子派来的逗比!')
-      }
+  $('#doc-modal-list').find('.am-icon-close').add('#doc-confirm-toggle').
+    on('click', function() {
+      $('#my-confirm').modal({
+        relatedTarget: this,
+        onConfirm: function(options) {
+          var $link = $(this.relatedTarget).prev('a');
+          var msg = $link.length ? '你要删除的链接 ID 为 ' + $link.data('id') :
+            '确定了，但不知道要整哪样';
+          alert(msg);
+        },
+        onCancel: function() {
+          alert('算求，不弄了');
+        }
+      });
     });
+});
+```
+
+**存在问题：**
+
+出于性能考虑，每个 Modal 实例都存储在对应元素的 `$('.am-modal').data('am.modal')` 属性中，`onConfirm`/`onCancel` 会保存第一次运行 Modal 时候的数据，导致在某些场景不能按照预期工作（[#274](https://github.com/allmobilize/amazeui/issues/274#issuecomment-65182344)）。`2.1` 中做了一些处理，但并不是很如意，大家有更好的方案可以提供给我们。
+
+可以选择的处理方式：
+
+- **法一**：通过 `relatedTarget` 这个钩子获取数据，如上面的演示，以该元素为桥梁获取想要的数据（**2.1 开始支持**）；
+- 法二：按照[**这种方式**](http://jsbin.com/fahawe/1/edit?html,output) 每次都重新给这两个参数赋值；
+- 法三：Confirm 关闭后移除暂存的实例，再次调用时重新初始化；
+
+```javascript
+$('#your-confirm').on('closed.modal.amui', function() {
+  $(this).removeData('am.modal');
+});
+```
+
+- 法四： 重写 `cancel`/`confirm` 按钮的事件处理函数。
+
+```javascript
+$(function() {
+  var $confirm = $('#your-confirm');
+  var $confirmBtn = $confirm.find('[data-am-modal-confirm]');
+  var $cancelBtn = $confirm.find('[data-am-modal-cancel]');
+  $confirmBtn.off('click.confirm.modal.amui').on('click', function() {
+    // do something
+  });
+
+  $cancelBtn.off('click.cancel.modal.amui').on('click', function() {
+    // do something
   });
 });
 ```
 
+法二、三以牺牲性能为代价，**不推荐**；如果要使用法四，可以不添加两个按钮的 `data-am-modal-xx` 属性，免去解绑默认事件的步奏。
+
 ### 模拟 Prompt
+
+Prompt 从 `2.1` 开始支持多个输入框，输入框的值通过参数 `options.data` 获取：
+
+- 只有一个输入框时，`options.data` 为字符串；
+- 多个输入框时，`options.data` 为数组。
 
 `````html
 <button class="am-btn am-btn-success" id="doc-prompt-toggle">Prompt</button>
@@ -162,11 +243,11 @@ $(function() {
 $(function() {
   $('#doc-prompt-toggle').on('click', function() {
     $('#my-prompt').modal({
-      relatedElement: this,
-      onConfirm: function(data) {
-        alert('你输入的是：' + data)
+      relatedTarget: this,
+      onConfirm: function(options) {
+        alert('你输入的是：' + options.data)
       },
-      onCancel: function() {
+      onCancel: function(options) {
         alert('不想说!');
       }
     });
@@ -195,11 +276,11 @@ $(function() {
 $(function() {
   $('#doc-prompt-toggle').on('click', function() {
     $('#my-prompt').modal({
-      relatedElement: this,
-      onConfirm: function(data) {
-        alert('你输入的是：' + data)
+      relatedTarget: this,
+      onConfirm: function(options) {
+        alert('你输入的是：' + options.data)
       },
-      onCancel: function() {
+      onCancel: function(options) {
         alert('不想说!');
       }
     });
@@ -370,7 +451,11 @@ $('#myModal').modal(options);
   </tbody>
 </table>
 
-**如无必要，请不要设置 `width`、`height`，以免破坏响应式样式。**
+**注意：**
+
+- **如无必要，请不要设置 `width`、`height`，以免破坏响应式样式。**
+- `onConfirm`/`onCanel` 函数中 `this` 指向 Modal 实例，可以通过 `this.` 访问实例的方法和属性。
+
 
 #### 方法
 

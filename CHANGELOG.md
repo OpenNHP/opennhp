@@ -5,7 +5,13 @@
 
 **JS:**
 
-- `IMPROVED` 注册 Handlebars helper 和 partials 时添加 `this`, via #311 (THX to @msdlisper)
+- `IMPROVED` 注册 Handlebars helper 和 partials 时添加 `this`, via #311 (THX to @msdlisper)；
+- `NEW` #4 Modal 插件增加点击遮罩层是否关闭选项；
+- `NEW` #24 Modal 插件增加宽高设置选项；
+- `IMPROVED` Modal 插件 Prompt 支持多个输入框；
+- `CHANGED` Modal 插件 `onConfirm`/`onCancel` 参数变为对象；
+- `CHANGED` #274 Modal 插件 `onConfirm`/`onCancel` 提供参数钩子；
+- `CHANGED` Modal 插件 `relatedElement` 参数变为 `relatedTarget`；
 
 **Web 组件：**
 

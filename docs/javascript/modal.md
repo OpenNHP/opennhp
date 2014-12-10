@@ -10,7 +10,7 @@ Modal 交互窗口，可以用来模拟浏览器的 `alert`、`confirm`、`promp
 ### 基本形式
 
 `````html
-<button class="am-btn am-btn-primary" data-am-modal="{target: '#doc-modal-1'}">Modal</button>
+<button class="am-btn am-btn-primary" data-am-modal="{target: '#doc-modal-1', closeViaDimmer: 0}">Modal</button>
 
 <div class="am-modal am-modal-no-btn" tabindex="-1" id="doc-modal-1">
   <div class="am-modal-dialog">
@@ -18,14 +18,14 @@ Modal 交互窗口，可以用来模拟浏览器的 `alert`、`confirm`、`promp
       <a href="javascript: void(0)" class="am-close am-close-spin" data-am-modal-close>&times;</a>
     </div>
     <div class="am-modal-bd">
-      Modal 内容。
+      Modal 内容。本 Modal 无法通过遮罩层关闭。
     </div>
   </div>
 </div>
 `````
 
 ```html
-<button class="am-btn am-btn-primary" data-am-modal="{target: '#doc-modal-1'}">Modal</button>
+<button class="am-btn am-btn-primary" data-am-modal="{target: '#doc-modal-1', closeViaDimmer: 0}">Modal</button>
 
 <div class="am-modal am-modal-no-btn" tabindex="-1" id="doc-modal-1">
   <div class="am-modal-dialog">
@@ -33,7 +33,7 @@ Modal 交互窗口，可以用来模拟浏览器的 `alert`、`confirm`、`promp
       <a href="javascript: void(0)" class="am-close am-close-spin" data-am-modal-close>&times;</a>
     </div>
     <div class="am-modal-bd">
-      Modal 内容。
+      Modal 内容。本 Modal 无法通过遮罩层关闭。
     </div>
   </div>
 </div>
@@ -349,6 +349,11 @@ $('#myModal').modal(options);
     <td><code>onCancel</code></td>
     <td><code>function</code></td>
     <td>具有 <code>data-am-modal-cancel</code> 属性的按钮关闭时触发的函数</td>
+  </tr>
+  <tr>
+    <td><code>closeViaDimmer</code></td>
+    <td><code>boolean</code></td>
+    <td>点击遮罩层时关闭 Modal，默认为 <code>true</code></td>
   </tr>
   </tbody>
 </table>

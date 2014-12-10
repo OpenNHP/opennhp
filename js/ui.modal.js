@@ -34,6 +34,7 @@ Modal.DEFAULTS = {
     modal: '.am-modal',
     active: '.am-modal-active'
   },
+  closeViaDimmer: true,
   cancelable: true,
   onConfirm: function() {
   },
@@ -158,8 +159,11 @@ Modal.prototype.events = function() {
           this.close();
         }
       }, that));
+  }
 
-    dimmer.$element.on('click', function(e) {
+  // Close Modal when dimmer clicked
+  if (this.options.closeViaDimmer) {
+    dimmer.$element.on('click.dimmer.modal.amui', function(e) {
       that.close();
     });
   }
@@ -174,11 +178,13 @@ Modal.prototype.events = function() {
     that.close();
   });
 
-  $element.find('[data-am-modal-confirm]').on('click.modal.amui', function() {
+  $element.find('[data-am-modal-confirm]').on('click.confirm.modal.amui',
+    function() {
     that.options.onConfirm($ipt.val());
   });
 
-  $element.find('[data-am-modal-cancel]').on('click.modal.amui', function() {
+  $element.find('[data-am-modal-cancel]').on('click.cancel.modal.amui',
+    function() {
     that.options.onCancel($ipt.val());
   });
 };

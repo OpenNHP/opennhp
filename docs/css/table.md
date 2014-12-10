@@ -32,17 +32,19 @@
 			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
-		<tr>
-			<td>Amaze UI</td>
-			<td>http://amazeui.org</td>
-			<td>2012-10-01</td>
-		</tr>
-		<tr>
-			<td>Amaze UI</td>
-			<td>http://amazeui.org</td>
-			<td>2012-10-01</td>
-		</tr>
+    <tr>
+      <td>Amaze UI</td>
+      <td>http://amazeui.org</td>
+      <td>2012-10-01</td>
+    </tr>
 	</tbody>
+  <tbody>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  </tbody>
 </table>
 `````
 
@@ -195,7 +197,7 @@
 - `.am-danger` 红色高亮。
 
 `````html
-<table class="am-table">
+<table class="am-table am-table-bordered am-table-radius">
   <thead>
   <tr>
     <th>Class</th>
@@ -383,3 +385,5 @@
 ## 参考资源
 
 - [表格排序 jQuery Table Sort] (https://github.com/kylefox/jquery-tablesort)
+- [Tablesaw - A set of jQuery plugins for responsive tables](https://github.com/filamentgroup/tablesaw)
+- [FooTable - jQuery plugin to make HTML tables responsive](http://fooplugins.com/plugins/footable-jquery/)

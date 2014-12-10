@@ -60,7 +60,7 @@ Amaze UI 遵循 [Semantic Versioning](http://semver.org/lang/zh-CN/) 规范，�
 
 - `amazeui.css` / `amazeui.js`：包含 Amaze UI 所有的 CSS、JS。
 - `amazeui.legacy.js`：为 IE 8 打包的 JS。
-- `amazeui.widgets.helper.js`：Amaze UI 必须的 Handlebars helper 以及 Web 组件模板 partials，**仅供使用 Handlebars 的用户使用。
+- `amazeui.widgets.helper.js`： Web 组件必须的 Handlebars helper 及 Web 组件模板 partials，**仅供 Handlebars 用户使用**。
 
 以上每个文件都有对应的 minified 文件。
 

@@ -94,6 +94,8 @@ th {
 .@{ns}table {
   width: 100%;
   margin-bottom: @global-margin;
+  border-spacing: 0;
+  border-collapse: separate;
   .hook-table;
 
   > thead,
@@ -113,7 +115,7 @@ th {
   // Bottom align for headings
   > thead > tr > th {
     vertical-align: bottom;
-    border-bottom: 2px solid @table-border-color;
+    border-bottom: 1px solid @table-border-color;
   }
 
   // Remove top border from thead
@@ -130,7 +132,11 @@ th {
 
   // multiple tbody
   > tbody + tbody {
-    border-top: 2px solid @table-border-color;
+    tr:first-child {
+      td {
+        border-top: 2px solid @table-border-color;
+      }
+    }
   }
 
 }
@@ -147,14 +153,12 @@ th {
     > tr {
       > th,
       > td {
-        border: 1px solid @table-border-color;
+        border-left: 1px solid @table-border-color;
+
+        &:first-child {
+          border-left: none;
+        }
       }
-    }
-  }
-  > thead > tr {
-    > th,
-    > td {
-      border-bottom-width: 2px;
     }
   }
 }
@@ -163,8 +167,8 @@ th {
 /* Border-radius version */
 
 .@{ns}table-radius {
-  border: none;
-  box-shadow: 0 0 1px @gray-light;
+  border: 1px solid @table-border-color;
+  // box-shadow: 0 0 1px @gray-light;
   border-radius: @radius-normal;
   .hook-table-radius;
 

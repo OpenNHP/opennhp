@@ -3,6 +3,10 @@
 
 ### 2014.12 W2
 
+**CSS:**
+
+- `IMPROVED` #310 调整 Table 圆角边框实现方式，解决在 IE 下显示问题（THX to [@bug](http://t.qq.com/sky14way), @infinnie）
+
 **JS:**
 
 - `IMPROVED` 注册 Handlebars helper 和 partials 时添加 `this`, via #311 (THX to @msdlisper)；

@@ -46,5 +46,5 @@
     module.exports = registerAMUIPartials;
   }
 
-  this.Handlebars && registerAMUIPartials(Handlebars);
+  this.Handlebars && registerAMUIPartials(this.Handlebars);
 }).call(this);

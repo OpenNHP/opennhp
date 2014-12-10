@@ -3,6 +3,10 @@
 
 ### 2014.12 W2
 
+**JS:**
+
+- `IMPROVED` 注册 Handlebars helper 和 partials 时添加 `this`, via #311 (THX to @msdlisper)
+
 **Web 组件：**
 
 - `CHANGED` Footer 移除`云适配驱动`；

@@ -14,12 +14,14 @@ var supportTransition = UI.support.transition;
 var Modal = function(element, options) {
   this.options = $.extend({}, Modal.DEFAULTS, options || {});
   this.$element = $(element);
+  this.$dialog =   this.$element.find('.am-modal-dialog');
 
   if (!this.$element.attr('id')) {
     this.$element.attr('id', UI.utils.generateGUID('am-modal'));
   }
 
   this.isPopup = this.$element.hasClass('am-popup');
+  this.isActions = this.$element.hasClass('am-modal-actions');
   this.active = this.transitioning = null;
 
   this.events();
@@ -40,6 +42,8 @@ Modal.DEFAULTS = {
   },
   onCancel: function() {
   },
+  height: undefined,
+  width: undefined,
   duration: 300, // must equal the CSS transition duration
   transitionEnd: supportTransition && supportTransition.end + '.modal.amui'
 };
@@ -52,6 +56,9 @@ Modal.prototype.open = function(relatedElement) {
   var $element = this.$element;
   var options = this.options;
   var isPopup = this.isPopup;
+  var width = options.width;
+  var height = options.height;
+  var style = {};
 
   if (this.active) {
     return;
@@ -78,9 +85,28 @@ Modal.prototype.open = function(relatedElement) {
 
   $element.show().redraw();
 
-  !isPopup && $element.css({
-    marginTop: -parseInt($element.height() / 2, 10) + 'px'
-  });
+  // apply Modal width/height if set
+  if (!isPopup && !this.isActions) {
+    if (width) {
+      width = parseInt(width, 10);
+      style.width =  width + 'px';
+      style.marginLeft =  -parseInt(width / 2) + 'px';
+    }
+
+    if (height) {
+      height = parseInt(height, 10);
+      // style.height = height + 'px';
+      style.marginTop = -parseInt(height / 2) + 'px';
+
+      // the background color is styled to $dialog
+      // so the height should set to $dialog
+      this.$dialog.css({height: height + 'px'});
+    } else {
+      style.marginTop = -parseInt($element.height() / 2, 10) + 'px';
+    }
+
+    $element.css(style);
+  }
 
   $element.
     removeClass(options.className.out).

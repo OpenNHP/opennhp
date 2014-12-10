@@ -9,8 +9,10 @@ Modal 交互窗口，可以用来模拟浏览器的 `alert`、`confirm`、`promp
 
 ### 基本形式
 
+此 Demo 设置了 `closeViaDimmer`、`width`、`height` 参数。
+
 `````html
-<button class="am-btn am-btn-primary" data-am-modal="{target: '#doc-modal-1', closeViaDimmer: 0}">Modal</button>
+<button class="am-btn am-btn-primary" data-am-modal="{target: '#doc-modal-1', closeViaDimmer: 0, width: 400, height: 225}">Modal</button>
 
 <div class="am-modal am-modal-no-btn" tabindex="-1" id="doc-modal-1">
   <div class="am-modal-dialog">
@@ -25,7 +27,7 @@ Modal 交互窗口，可以用来模拟浏览器的 `alert`、`confirm`、`promp
 `````
 
 ```html
-<button class="am-btn am-btn-primary" data-am-modal="{target: '#doc-modal-1', closeViaDimmer: 0}">Modal</button>
+<button class="am-btn am-btn-primary" data-am-modal="{target: '#doc-modal-1', closeViaDimmer: 0, width: 400, height: 225}">Modal</button>
 
 <div class="am-modal am-modal-no-btn" tabindex="-1" id="doc-modal-1">
   <div class="am-modal-dialog">
@@ -331,7 +333,7 @@ $('#myModal').modal(options);
 
 #### 参数说明
 
-<table class="am-table am-table-bd am-table-striped">
+<table class="am-table am-table-bordered am-table-striped">
   <thead>
   <tr>
     <th>参数</th>
@@ -355,8 +357,20 @@ $('#myModal').modal(options);
     <td><code>boolean</code></td>
     <td>点击遮罩层时关闭 Modal，默认为 <code>true</code></td>
   </tr>
+  <tr>
+    <td><code>width</code></td>
+    <td><code>number</code></td>
+    <td>Modal 宽度，对 Popup 和 Actions 无效</td>
+  </tr>
+  <tr>
+    <td><code>height</code></td>
+    <td><code>number</code></td>
+    <td>Modal 高度，对 Popup 和 Actions 无效</td>
+  </tr>
   </tbody>
 </table>
+
+**如无必要，请不要设置 `width`、`height`，以免破坏响应式样式。**
 
 #### 方法
 

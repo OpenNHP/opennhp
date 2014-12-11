@@ -1229,8 +1229,8 @@ $.fn.flexslider = function(options) {
 };
 
 // Init code
-$(function() {
-  $('[data-am-flexslider]').each(function(i, item) {
+UI.ready(function(context) {
+  $('[data-am-flexslider]', context).each(function(i, item) {
     var $slider = $(item);
     var options = UI.utils.parseOptions($slider.data('amFlexslider'));
 

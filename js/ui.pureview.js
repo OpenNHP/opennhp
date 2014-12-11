@@ -341,13 +341,13 @@ PureView.prototype.resetScrollbar = function() {
 function Plugin(option) {
   return this.each(function() {
     var $this = $(this);
-    var data = $this.data('am.pureview');
+    var data = $this.data('amui.pureview');
     var options = $.extend({},
       UI.utils.parseOptions($this.data('amPureview')),
       typeof option == 'object' && option);
 
     if (!data) {
-      $this.data('am.pureview', (data = new PureView(this, options)));
+      $this.data('amui.pureview', (data = new PureView(this, options)));
     }
 
     if (typeof option == 'string') {
@@ -359,8 +359,8 @@ function Plugin(option) {
 $.fn.pureview = Plugin;
 
 // Init code
-$(function() {
-  $('[data-am-pureview]').pureview();
+UI.ready(function(context) {
+  $('[data-am-pureview]', context).pureview();
 });
 
 $.AMUI.pureview = PureView;

@@ -230,12 +230,12 @@ Modal.prototype.events = function() {
 function Plugin(option, relatedTarget) {
   return this.each(function() {
     var $this = $(this);
-    var data = $this.data('am.modal');
+    var data = $this.data('amui.modal');
     var options = $.extend({},
       Modal.DEFAULTS, typeof option == 'object' && option);
 
     if (!data) {
-      $this.data('am.modal', (data = new Modal(this, options)));
+      $this.data('amui.modal', (data = new Modal(this, options)));
     }
 
     if (typeof option == 'string') {
@@ -254,7 +254,7 @@ $doc.on('click.modal.amui.data-api', '[data-am-modal]', function() {
   var options = UI.utils.parseOptions($this.attr('data-am-modal'));
   var $target = $(options.target ||
   (this.href && this.href.replace(/.*(?=#[^\s]+$)/, '')));
-  var option = $target.data('am.modal') ? 'toggle' : options;
+  var option = $target.data('amui.modal') ? 'toggle' : options;
 
   Plugin.call($target, option, this);
 });

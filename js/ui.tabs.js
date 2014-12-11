@@ -207,8 +207,8 @@ function Plugin(option) {
 $.fn.tabs = Plugin;
 
 // Init code
-$(document).on('ready', function(e) {
-  $('[data-am-tabs]').tabs();
+UI.ready(function(context) {
+  $('[data-am-tabs]', context).tabs();
 });
 
 $.AMUI.tabs = Tabs;

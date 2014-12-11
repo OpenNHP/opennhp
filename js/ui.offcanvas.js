@@ -148,12 +148,12 @@ OffCanvas.prototype.events = function() {
 function Plugin(option, relatedElement) {
   return this.each(function() {
     var $this = $(this);
-    var data = $this.data('am.offcanvas');
+    var data = $this.data('amui.offcanvas');
     var options = $.extend({}, OffCanvas.DEFAULTS,
       typeof option == 'object' && option);
 
     if (!data) {
-      $this.data('am.offcanvas', (data = new OffCanvas(this, options)));
+      $this.data('amui.offcanvas', (data = new OffCanvas(this, options)));
       data.open(relatedElement);
     }
 
@@ -172,7 +172,7 @@ $doc.on('click.offcanvas.amui', '[data-am-offcanvas]', function(e) {
   var options = UI.utils.parseOptions($this.data('amOffcanvas'));
   var $target = $(options.target ||
   (this.href && this.href.replace(/.*(?=#[^\s]+$)/, '')));
-  var option = $target.data('am.offcanvas') ? 'open' : options;
+  var option = $target.data('amui.offcanvas') ? 'open' : options;
 
   Plugin.call($target, option, this);
 });

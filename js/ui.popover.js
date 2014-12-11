@@ -212,13 +212,13 @@ Popover.prototype.events = function() {
 function Plugin(option) {
   return this.each(function() {
     var $this = $(this);
-    var data = $this.data('am.popover');
+    var data = $this.data('amui.popover');
     var options = $.extend({},
       UI.utils.parseOptions($this.attr('data-am-popover')),
       typeof option == 'object' && option);
 
     if (!data) {
-      $this.data('am.popover', (data = new Popover(this, options)));
+      $this.data('amui.popover', (data = new Popover(this, options)));
     }
 
     if (typeof option == 'string') {
@@ -230,8 +230,8 @@ function Plugin(option) {
 $.fn.popover = Plugin;
 
 // Init code
-$(function() {
-  $('[data-am-popover]').popover();
+UI.ready(function(context) {
+  $('[data-am-popover]', context).popover();
 });
 
 $.AMUI.popover = Popover;

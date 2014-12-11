@@ -104,11 +104,10 @@ function Plugin(option) {
 $.fn.scrollspy = Plugin;
 
 // Init code
-$(function() {
-  $('[data-am-scrollspy]').each(function() {
+UI.ready(function(context) {
+  $('[data-am-scrollspy]', context).each(function() {
     var $this = $(this);
     var options = UI.utils.options($this.data('amScrollspy'));
-
     $this.scrollspy(options);
   });
 });

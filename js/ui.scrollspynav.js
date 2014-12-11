@@ -107,11 +107,11 @@ ScrollSpyNav.prototype.scrollProcess = function() {
 function Plugin(option) {
   return this.each(function() {
     var $this = $(this);
-    var data = $this.data('am.scrollspynav');
+    var data = $this.data('amui.scrollspynav');
     var options = typeof option == 'object' && option;
 
     if (!data) {
-      $this.data('am.scrollspynav', (data = new ScrollSpyNav(this, options)));
+      $this.data('amui.scrollspynav', (data = new ScrollSpyNav(this, options)));
     }
 
     if (typeof option == 'string') {
@@ -123,8 +123,8 @@ function Plugin(option) {
 $.fn.scrollspynav = Plugin;
 
 // Init code
-$(function() {
-  $('[data-am-scrollspy-nav]').each(function() {
+UI.ready(function(context) {
+  $('[data-am-scrollspy-nav]', context).each(function() {
     var $this = $(this);
     var options = UI.utils.options($this.attr('data-am-scrollspy-nav'));
 

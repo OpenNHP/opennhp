@@ -104,7 +104,7 @@ Collapse.prototype.close = function() {
     this.$element.trigger('closed.collapse.amui').
       removeClass('am-collapsing').
       addClass('am-collapse');
-      // css({height: '0'});
+    // css({height: '0'});
   };
 
   if (!UI.support.transition) {
@@ -144,32 +144,33 @@ function Plugin(option) {
 $.fn.collapse = Plugin;
 
 // Init code
-$(document).on('click.collapse.amui.data-api', '[data-am-collapse]', function(e) {
-  var href;
-  var $this = $(this);
-  var options = UI.utils.options($this.attr('data-am-collapse'));
-  var target = options.target ||
-    e.preventDefault() ||
-    (href = $this.attr('href')) &&
-    href.replace(/.*(?=#[^\s]+$)/, '');
-  var $target = $(target);
-  var data = $target.data('amui.collapse');
-  var option = data ? 'toggle' : options;
-  var parent = options.parent;
-  var $parent = parent && $(parent);
+$(document).on('click.collapse.amui.data-api', '[data-am-collapse]',
+  function(e) {
+    var href;
+    var $this = $(this);
+    var options = UI.utils.options($this.attr('data-am-collapse'));
+    var target = options.target ||
+      e.preventDefault() ||
+      (href = $this.attr('href')) &&
+      href.replace(/.*(?=#[^\s]+$)/, '');
+    var $target = $(target);
+    var data = $target.data('amui.collapse');
+    var option = data ? 'toggle' : options;
+    var parent = options.parent;
+    var $parent = parent && $(parent);
 
-  if (!data || !data.transitioning) {
-    if ($parent) {
-      // '[data-am-collapse*="{parent: \'' + parent + '"]
-      $parent.find('[data-am-collapse]').not($this).addClass('am-collapsed');
+    if (!data || !data.transitioning) {
+      if ($parent) {
+        // '[data-am-collapse*="{parent: \'' + parent + '"]
+        $parent.find('[data-am-collapse]').not($this).addClass('am-collapsed');
+      }
+
+      $this[$target.hasClass('am-in') ? 'addClass' :
+        'removeClass']('am-collapsed');
     }
 
-    $this[$target.hasClass('am-in') ? 'addClass' :
-      'removeClass']('am-collapsed');
-  }
-
-  Plugin.call($target, option);
-});
+    Plugin.call($target, option);
+  });
 
 $.AMUI.collapse = Collapse;
 

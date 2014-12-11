@@ -145,7 +145,7 @@ Amaze UI 2.1 中实验性地引入了 `MutationObserver`，**请谨慎使用**�
 
 #### `$().DOMObserve(callback, config)`
 
-- `callback(mutations)`: DOM 发生变化时的处理函数，参数为存储 [MutationRecord](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver#MutationRecord) 对象的数组。
+- `callback(mutations, observer)`: DOM 发生变化时的处理函数，第一个参数为存储 [MutationRecord](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver#MutationRecord) 对象的数组，第二个参数为 MutationObserver 实例本身。
 - `config`: 监视的属性（[具体参见](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver#MutationObserverInit)），默认为
 
 ```javascript
@@ -168,12 +168,13 @@ Amaze UI 2.1 中实验性地引入了 `MutationObserver`，**请谨慎使用**�
 <script>
   $(function() {
     var $wrapper = $('#js-do-demo');
-    $wrapper.DOMObserve(function(mutations) {
-      console.log('#js-do-demo 的 DOM 发生变化鸟：' + mutations[0].type);
-    }, {
+    $wrapper.DOMObserve({
       childList: true,
       attributes: true,
       subtree: true
+    }, function(mutations, observer) {
+      console.log(observer.constructor === window.MutationObserver);
+      console.log('#js-do-demo 的 DOM 发生变化鸟：' + mutations[0].type);
     });
 
     $('#js-do-actions').find('button').on('click', function(e) {
@@ -201,12 +202,13 @@ Amaze UI 2.1 中实验性地引入了 `MutationObserver`，**请谨慎使用**�
 <script>
   $(function() {
     var $wrapper = $('#js-do-demo');
-    $wrapper.DOMObserve(function(mutations) {
-      console.log('#js-do-demo 的 DOM 发生变化鸟：' + mutations[0].type);
-    }, {
+    $wrapper.DOMObserve({
       childList: true,
       attributes: true,
       subtree: true
+    }, function(mutations, observer) {
+      console.log(observer.constructor === window.MutationObserver);
+      console.log('#js-do-demo 的 DOM 发生变化鸟：' + mutations[0].type);
     });
 
     $('#js-do-actions').find('button').on('click', function(e) {

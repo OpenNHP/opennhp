@@ -416,17 +416,17 @@ UI.ready = function(callback) {
   }
 };
 
-UI.DOMObserve = function(elements, callback, config) {
+UI.DOMObserve = function(elements, options, callback) {
   var Observer = UI.support.mutationobserver;
   if (!Observer) {
     return;
   }
 
-  callback = callback || function() {
-  };
+  options = $.isPlainObject(options) ?
+    options : {childList: true, subtree: true};
 
-  config = config && $.isPlainObject(config) ?
-    config : {childList: true, subtree: true};
+  callback = typeof callback === 'function' && callback || function() {
+  };
 
   $(elements).each(function() {
     var element = this;
@@ -437,13 +437,14 @@ UI.DOMObserve = function(elements, callback, config) {
     }
 
     try {
-      var observer = new Observer(UI.utils.debounce(function(mutations) {
-        callback.call(element, mutations);
+      var observer = new Observer(UI.utils.debounce(
+        function(mutations, instance) {
+        callback.call(element, mutations, instance);
         // trigger this event manually if MutationObserver not supported
         $element.trigger('changed.dom.amui');
       }, 50));
 
-      observer.observe(element, config);
+      observer.observe(element, options);
 
       $element.data('am.observer', observer);
     } catch (e) {

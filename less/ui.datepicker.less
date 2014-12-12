@@ -1,0 +1,183 @@
+// Name:            Datepicker
+//
+// Description:     Define style for Datepicker
+//
+// Component:       `.am-datepicker`
+//
+// Sub-objects:     ``
+//
+// Modifiers:       `.am-datepicker-flip`
+//
+// States:          `.am-active`
+//                  `.am-disabled`
+//
+// Uses:             Animation
+//
+// =============================================================================
+
+
+// Variables
+// =============================================================================
+
+@datepicker-primary: @global-secondary;
+@datepicker-bg: @white;
+@datepicker-td-height: 44px;
+@datepicker-thead-height: 60px;
+
+@datepicker-primary-light: fadeout(lighten(@datepicker-primary, 20%), 50%); // rgba(154, 217, 248, 0.5)
+@datepicker-primary-dark: darken(@datepicker-primary, 20%);
+@datepicker-td-active: darken(saturate(@datepicker-primary, 30%), 20%); // #0084c7
+@datepicker-td-disable: lighten(@datepicker-primary, 22%);
+
+@datepicker-width: @datepicker-td-height * 7;
+@datepicker-span-width: @datepicker-width / 6;
+
+@datepicker-td-hover: #F2F2F2;
+
+.@{ns}datepicker {
+  top: 0;
+  left: 0;
+  border-radius: 4px;
+  background: @datepicker-bg;
+  box-shadow: 0 0 10px #ccc;
+  padding-bottom: 10px;
+  width: @datepicker-width;
+  display: none;
+
+  &:before {
+    content: '';
+    display: inline-block;
+    border-left:   7px solid transparent;
+    border-right:  7px solid transparent;
+    border-bottom: 7px solid #ccc;
+    border-bottom-color: @datepicker-primary;
+    position: absolute;
+    top: -7px;
+    left: 6px;
+  }
+
+  >div {
+    display: none;
+  }
+  table {
+    width: 100%;
+  }
+
+  tr.@{ns}datepicker-header {
+    height: @datepicker-td-height;
+    font-size: 1.8rem;
+    color: @white;
+    background: @datepicker-primary;
+  }
+
+  td,
+  th {
+    text-align: center;
+    font-weight: normal;
+    cursor: pointer;
+  }
+
+  th {
+    height: @datepicker-thead-height;
+  }
+
+  td {
+    &.@{ns}datepicker-day:hover {
+      background: @datepicker-td-hover;
+    }
+    &.@{ns}datepicker-day.disabled {
+      color: @datepicker-td-disable;
+    }
+    &.@{ns}datepicker-old,
+    &.@{ns}datepicker-new {
+      color: @datepicker-td-disable;
+    }
+    &.@{ns}active,
+    &.@{ns}active:hover {
+      border-radius: 2px;
+      color: @datepicker-td-active;
+      text-decoration: underline;
+      background: @datepicker-td-hover;
+    }
+    span {
+      display: block;
+      width: @datepicker-span-width;
+      font-size: 1.4rem;
+      height: 50px;
+      line-height: 50px;
+      float: left;
+      cursor: pointer;
+      &:hover {
+        background: @datepicker-td-hover;
+      }
+      &.@{ns}active {
+        color: @datepicker-td-active;
+        text-decoration: underline;
+        background: @datepicker-td-hover;
+      }
+      &.@{ns}datepicker-old {
+        color: @datepicker-td-disable;
+      }
+    }
+  }
+
+}
+
+.@{ns}datepicker-dow {
+  color: @datepicker-primary-dark;
+}
+
+.@{ns}datepicker-select {
+  height: @datepicker-td-height;
+  line-height: @datepicker-td-height;
+  text-align: center;
+  transition: background-color 300ms ease-out;
+
+  &:hover {
+    background: @datepicker-primary-light;
+    color: @datepicker-primary-dark;
+  }
+}
+
+.@{ns}datepicker-prev,
+.@{ns}datepicker-next {
+  width: @datepicker-td-height;
+  height: @datepicker-td-height;
+}
+
+.@{ns}datepicker-prev-icon,
+.@{ns}datepicker-next-icon {
+  width: @datepicker-td-height;
+  height: @datepicker-td-height;
+  line-height: @datepicker-td-height;
+  display: inline-block;
+  transition: background-color 300ms ease-out;
+
+  &:hover {
+    background: @datepicker-primary-light;
+    color: @datepicker-primary-dark;
+  }
+}
+
+.@{ns}datepicker-prev-icon {
+  &:before {
+    .am-icon-font;
+    content: @fa-var-chevron-left;
+  }
+}
+
+.@{ns}datepicker-next-icon {
+  &:before {
+    .am-icon-font;
+    content: @fa-var-chevron-right;
+  }
+}
+
+.@{ns}datepicker-day {
+  height: @datepicker-td-height;
+}
+
+.@{ns}datepicker-dropdown {
+  position: absolute;
+  z-index: 1000;
+}

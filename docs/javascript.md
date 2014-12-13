@@ -143,17 +143,10 @@ Amaze UI 2.1 中实验性地引入了 `MutationObserver`，**请谨慎使用**�
 在元素上添加 `data-am-observe` 属性以后，动态插入该元素的 Amaze UI JS 插件会自动初始化（[演示](/javascript/scrollspy#mutationobserver?_ver=2.x)），
   支持的插件包括 Button、Dropdown、Slider、Popover、ScrollSpy、Tabs。
 
-#### `$().DOMObserve(callback, config)`
+#### `$().DOMObserve(options, callback)`
 
+- `options`: 监视的属性（[具体参见](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver#MutationObserverInit)），默认为 `{childList: true, subtree: true}`；
 - `callback(mutations, observer)`: DOM 发生变化时的处理函数，第一个参数为存储 [MutationRecord](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver#MutationRecord) 对象的数组，第二个参数为 MutationObserver 实例本身。
-- `config`: 监视的属性（[具体参见](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver#MutationObserverInit)），默认为
-
-```javascript
-{
-  childList: true,
-  subtree: true
-}
-```
 
 `````html
 <p id="js-do-actions">

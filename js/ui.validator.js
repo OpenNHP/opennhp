@@ -23,7 +23,7 @@ Validator.DEFAULTS = {
 
   // Elements to validate with allValid (only validating visible elements)
   // :input: selects all input, textarea, select and button elements.
-  fields: ':input:visible:not(:button, :disabled, .am-novalidate)',
+  allFields: ':input:visible:not(:button, :disabled, .am-novalidate)',
 
   // Custom events
   customEvents: 'validate',
@@ -120,8 +120,8 @@ Validator.prototype.init = function() {
     !$field.attr('pattern') && $field.attr('pattern', regexToPattern(value));
   });
 
-  $element.submit(function() {
-    return _this.checkForm();
+  $element.submit(function(e) {
+    return _this.validateForm();
   });
 
   function bindEvents(fields, eventFlags, debounce) {
@@ -172,7 +172,7 @@ Validator.prototype.validate = function(field) {
     filter(':checked').length : ($field.is('[type=radio]') ?
     ($radioGroup = this.$element.find('input[name="' + field.name + '"]')).
       filter(':checked').length > 0 : $field.val());
-  var required = ($field.attr('required') !== undefined) ||
+  var required = ($field.attr('required') !== undefined) &&
     ($field.attr('required') !== 'false');
   var maxLength = parseInt($field.attr('maxlength'), 10);
   var minLength = parseInt($field.attr('minlength'), 10);
@@ -262,11 +262,11 @@ Validator.prototype.validate = function(field) {
 };
 
 // check all fields in the form are valid
-Validator.prototype.allValid = function() {
+Validator.prototype.validateAll = function() {
   var _this = this;
   var $element = this.$element;
   var options = this.options;
-  var $allFields = $element.find(options.fields);
+  var $allFields = $element.find(options.allFields);
   var radioNames = [];
   var valid = true;
   var formValidity = [];
@@ -308,8 +308,8 @@ Validator.prototype.allValid = function() {
   return validity;
 };
 
-Validator.prototype.checkForm = function() {
-  var formValid = this.allValid();
+Validator.prototype.validateForm = function() {
+  var formValid = this.validateAll();
   if (!formValid.valid) {
     formValid.$invalidFields.first().focus();
     this.$element.trigger('invalid.validator.amui');

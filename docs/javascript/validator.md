@@ -188,7 +188,7 @@ $(function() {
 
 ```javascript
 {
-  // 是否使用 H5 原生标准验证，支持的浏览器使用 H5 验证，不支持的则使用 JS 验证
+  // 是否使用 H5 原生表单验证，不支持浏览器会自动退化到 JS 验证
   H5validation: false,
 
   // 内置规则的 H5 input type，这些 type 无需添加 pattern
@@ -212,7 +212,7 @@ $(function() {
   // 表单提交时验证的域
   // Elements to validate with allValid (only validating visible elements)
   // :input: selects all input, textarea, select and button elements.
-  fields: ':input:visible:not(:button, :disabled, .am-novalidate)',
+  allFields: ':input:visible:not(:button, :disabled, .am-novalidate)',
 
   // 调用 validate() 方法的自定义事件
   customEvents: 'validate',
@@ -268,12 +268,69 @@ $(function() {
 }
 ```
 
-## 注意事项
+#### 扩展正则库
 
-- `<input type="number">` 输入非数字字符时返回的值为 `""`
+在 DOM Ready 之前执行以下操作：
 
-**参考链接**：
+```javascript
+(function($) {
+  if ($.AMUI && $.AMUI.validator) {
+    // 增加多个正则
+    $.AMUI.validator.patterns = $.extend($.AMUI.validator.patterns, {
+      colorHex: /^#?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})$/
+    });
+    // 增加单个正则
+    $.AMUI.validator.patterns.yourpattern = /^your$/;
+  }
+})(window.jQuery);
+```
+
+`````html
+<form action="" class="am-form" data-am-validator>
+  <div class="am-form-group">
+    <label for="">输入一个颜色值</label>
+    <input type="text" class="js-pattern-colorHex" placeholder="如果填写，必须是 #xxx 或 #xxxxxx"/>
+  </div>
+  <div>
+    <button class="am-btn am-btn-secondary">提交</button>
+  </div>
+</form>
+<script>
+  (function($) {
+    if ($.AMUI && $.AMUI.validator) {
+      // 增加多个正则
+      $.AMUI.validator.patterns = $.extend($.AMUI.validator.patterns, {
+        colorHex: /^#?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})$/
+      });
+      // 增加单个正则
+      $.AMUI.validator.patterns.yourpattern = /^your$/;
+    }
+  })(window.jQuery);
+</script>
+`````
+```html
+<form action="" class="am-form" data-am-validator>
+  <div class="am-form-group">
+    <label for="">输入一个颜色值</label>
+    <input type="text" class="js-pattern-colorHex" placeholder="如果填写，必须是 #xxx 或 #xxxxxx"/>
+  </div>
+  <div>
+    <button class="am-btn am-btn-secondary">提交</button>
+  </div>
+</form>
+```
+
+## 参考资源
+
+### 常用正则表达式
+
+
+### 注意事项
+
+- `<input type="number">` 输入非数字字符时返回值为空字符串 `""`；
+
+### 参考链接
 
 - [Validity State](https://developer.mozilla.org/en-US/docs/Web/API/ValidityState)
-- http://dev.w3.org/html5/spec-preview/constraints.html#the-constraint-validation-api
+- [HTML5 Validation API](http://dev.w3.org/html5/spec-preview/constraints.html#the-constraint-validation-api)
 - https://github.com/wenzhixin/multiple-select/

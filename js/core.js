@@ -75,6 +75,10 @@ false);
 UI.support.mutationobserver = (window.MutationObserver ||
 window.WebKitMutationObserver || null);
 
+// https://github.com/Modernizr/Modernizr/blob/924c7611c170ef2dc502582e5079507aff61e388/feature-detects/forms/validation.js#L20
+UI.support.formValidation = (typeof document.createElement('form').
+  checkValidity === 'function');
+
 UI.utils = {};
 
 /**
@@ -412,6 +416,7 @@ UI.DOMReady = false;
 UI.ready = function(callback) {
   UI.DOMWatchers.push(callback);
   if (UI.DOMReady) {
+    console.log('ready call');
     callback(document);
   }
 };
@@ -468,12 +473,6 @@ if (UI.support.touch) {
   });
 }
 
-$(document).on('ready.dom.amui', function() {
-  $.each(UI.DOMWatchers, function(i, watcher) {
-    watcher(document);
-  });
-});
-
 $(document).on('changed.dom.amui', function(e) {
   var element = e.target;
 
@@ -490,9 +489,12 @@ $(document).on('changed.dom.amui', function(e) {
 $(function() {
   var $body = $('body');
 
-  // trigger DOM ready event
-  $(document).trigger('ready.dom.amui');
   UI.DOMReady = true;
+
+  // Run default init
+  $.each(UI.DOMWatchers, function(i, watcher) {
+    watcher(document);
+  });
 
   // watches DOM
   UI.DOMObserve('[data-am-observe]');

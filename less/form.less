@@ -8,11 +8,9 @@
 //
 // =============================================================================
 
-
 /* ==========================================================================
    Component: Form
  ============================================================================ */
-
 
 /* Normalize */
 
@@ -38,7 +36,6 @@ label {
   margin-bottom: 5px;
   font-weight: bold;
 }
-
 
 // Normalize form controls
 
@@ -73,7 +70,6 @@ select optgroup {
   font-family: inherit;
 }
 
-
 // Focus for select, file, radio, and checkbox
 
 input[type="file"]:focus,
@@ -81,7 +77,6 @@ input[type="radio"]:focus,
 input[type="checkbox"]:focus {
   .tab-focus();
 }
-
 
 // Fix for Chrome number input
 // Setting certain font-sizes causes the `I` bar to appear on hover of the bottom increment button.
@@ -103,7 +98,6 @@ output {
   color: @input-color;
   vertical-align: middle;
 }
-
 
 /* Common form controls */
 
@@ -181,7 +175,8 @@ output {
     height: auto;
   }
 
-  select { // via Foundation
+  select {
+    // via Foundation
     -webkit-appearance: none !important;
     -webkit-border-radius: @global-radius;
     background: #fff url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMTJweCIgeT0iMHB4IiB3aWR0aD0iMjRweCIgaGVpZ2h0PSIzcHgiIHZpZXdCb3g9IjAgMCA2IDMiIGVuYWJsZS1iYWNrZ3JvdW5kPSJuZXcgMCAwIDYgMyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+PHBvbHlnb24gcG9pbnRzPSI1Ljk5MiwwIDIuOTkyLDMgLTAuMDA4LDAgIi8+PC9zdmc+') no-repeat 100% center;
@@ -191,7 +186,6 @@ output {
     }
   }
 }
-
 
 /* help text */
 
@@ -203,13 +197,11 @@ output {
   font-size: 1.3rem;
 }
 
-
 /* form group */
 
 .@{ns}form-group {
   margin-bottom: 1.5rem;
 }
-
 
 /**
  * Checkboxes and radios
@@ -246,7 +238,6 @@ output {
   margin-top: -5px; // Move up sibling radios or checkboxes for tighter spacing
 }
 
-
 /* Radios and checkboxes inline */
 
 .@{ns}radio-inline,
@@ -281,12 +272,14 @@ input[type="checkbox"],
   }
 }
 
-
 /* Form field feedback states */
 
 // Warning
 .@{ns}form-warning {
   .form-field-validation(@state-warning-text; @state-warning-text);
+  .@{ns}form-field {
+    .form-field-validation-filed(@state-warning-text; @state-warning-text);
+  }
   .hook-form-warning;
 }
 
@@ -296,12 +289,21 @@ input[type="checkbox"],
   .hook-form-error;
 }
 
+.@{ns}form-error .@{ns}form-field,
+.@{ns}field-error {
+  .form-field-validation-filed(@state-danger-text; @state-danger-text);
+}
+
 // Success
 .@{ns}form-success {
   .form-field-validation(@state-success-text; @state-success-text);
   .hook-form-success;
 }
 
+.@{ns}form-success .@{ns}form-field,
+.@{ns}field-valid {
+  .form-field-validation-filed(@state-success-text; @state-success-text);
+}
 
 /* Horizontal forms */
 
@@ -328,7 +330,6 @@ input[type="checkbox"],
 
   .hook-form-horizontal;
 }
-
 
 /* Inline form elements */
 
@@ -392,7 +393,6 @@ input[type="checkbox"],
   .hook-form-inline;
 }
 
-
 /* Form field size */
 
 .@{ns}input-sm {
@@ -402,7 +402,6 @@ input[type="checkbox"],
 .@{ns}input-lg {
   font-size: @form-font-size-lg !important;
 }
-
 
 /* Form field feedback states */
 
@@ -425,7 +424,6 @@ input[type="checkbox"],
   .hook-form-icon;
 }
 
-
 /* Feedback Icon */
 
 .@{ns}form-feedback {
@@ -442,7 +440,6 @@ input[type="checkbox"],
   }
   .hook-form-feedback;
 }
-
 
 /* Form set */
 
@@ -470,7 +467,6 @@ input[type="checkbox"],
   .hook-form-set;
 }
 
-
 // Hooks
 // =============================================================================
 
@@ -481,7 +477,6 @@ input[type="checkbox"],
 .hook-form-icon() {}
 .hook-form-feedback() {}
 .hook-form-set() {}
-
 .hook-form-error() {}
 .hook-form-warning() {}
 .hook-form-success() {}

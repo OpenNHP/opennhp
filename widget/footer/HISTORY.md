@@ -1,6 +1,10 @@
 # Footer 更细记录
 ---
 
+## v3.1.1 (2014.12.16)
+
+- `CHANGED` add `addToHS` option, diable `addToHS` default
+
 ## v3.1.0 (2014.12.08)
 
 - `CHANGED` Remove powered by。

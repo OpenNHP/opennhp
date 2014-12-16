@@ -1,6 +1,14 @@
 # Amaze UI Change Log
 ---
 
+### 2014.12 W3
+
+**JS:**
+
+- `NEW` #283 添加表单验证插件；
+- `IMPROVED` Popover 增加大小、颜色样式；
+
+
 ### 2014.12 W2
 
 **CSS:**

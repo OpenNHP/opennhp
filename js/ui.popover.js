@@ -19,6 +19,7 @@ var Popover = function(element, options) {
 };
 
 Popover.DEFAULTS = {
+  theme: undefined,
   trigger: 'click',
   content: '',
   open: false,
@@ -182,12 +183,20 @@ Popover.prototype.close = function() {
 
 Popover.prototype.getPopover = function() {
   var uid = UI.utils.generateGUID('am-popover');
-  return $(this.options.tpl).attr('id', uid);
+  var theme = [];
+
+  if (this.options.theme) {
+    $.each(this.options.theme.split(','), function(i, item) {
+      theme.push('am-popover-' + $.trim(item));
+    });
+  }
+  return $(this.options.tpl).attr('id', uid).addClass(theme.join(' '));
 };
 
-Popover.prototype.setContent = function() {
+Popover.prototype.setContent = function(content) {
+  content = content || this.options.content;
   this.$popover && this.$popover.find('.am-popover-inner').empty().
-    html(this.options.content);
+    html(content);
 };
 
 Popover.prototype.events = function() {
@@ -222,7 +231,7 @@ function Plugin(option) {
     }
 
     if (typeof option == 'string') {
-      data[option]();
+      data[option] && data[option]();
     }
   });
 }

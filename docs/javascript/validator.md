@@ -15,7 +15,7 @@
     <legend>H5 原生表单验证</legend>
     <div class="am-form-group">
       <label for="doc-vld-name-1">用户名：</label>
-      <input type="text" id="doc-vld-name-1" minlength="3" placeholder="输入用户名" class="am-form-field" required/>
+      <input type="text" id="doc-vld-name-1" maxlength="3" pattern="^\d+$" placeholder="输入用户名" class="am-form-field" required/>
     </div>
 
     <div class="am-form-group">
@@ -30,7 +30,7 @@
 
     <div class="am-form-group">
       <label for="doc-vld-age-1">年龄：</label>
-      <input type="number" class=""  id="doc-vld-age-1" placeholder="输入年龄" required />
+      <input type="number" class=""  id="doc-vld-age-1" max="100" placeholder="输入年龄" required />
     </div>
 
     <div class="am-form-group">
@@ -69,7 +69,7 @@ JS 表单验证基于 HTML5 的各项验证属性进行：
 - `pattern`: 验证正则表达式，插件内置了 `email`、`url`、`number` 三种类型的正则表达式；
 - `minlenth`/`maxlength`: 字符限制；
 - `min`/`max`: 最小、最大值限制，仅适用于数值类型的域；
-- `minchecked`/`maxchecked`: 至少、至多选择数，适用于 `checkbox`、下拉多选框；
+- `minchecked`/`maxchecked`: 至少、至多选择数，适用于 `checkbox`、下拉多选框，`checkbox` 时将相关属性的设置在同组的第一个元素上；
 - `.js-pattern-xx`: 验证规则 class，正则库中存在的规则可以通过添加相应 class 实现规则添加。
 
 ```html
@@ -129,7 +129,7 @@ JS 表单验证基于 HTML5 的各项验证属性进行：
     <div class="am-form-group">
       <label>性别： </label>
       <label class="am-radio-inline">
-        <input type="radio"  value="" name="docVlGender"> 男
+        <input type="radio"  value="" name="docVlGender" required> 男
       </label>
       <label class="am-radio-inline">
         <input type="radio" name="docVlGender"> 女
@@ -169,6 +169,92 @@ JS 表单验证基于 HTML5 的各项验证属性进行：
   </fieldset>
 </form>
 `````
+```html
+<form action="" class="am-form" data-am-validator>
+  <fieldset>
+    <legend>JS 表单验证</legend>
+    <div class="am-form-group">
+      <label for="doc-vld-name-2">用户名：</label>
+      <input type="text" id="doc-vld-name-2" minlength="3" placeholder="输入用户名（至少 3 个字符）" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-email-2">邮箱：</label>
+      <input type="email" id="doc-vld-email-2" placeholder="输入邮箱" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-url-2">网址：</label>
+      <input type="url" id="doc-vld-url-2" placeholder="输入网址" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-age-2">年龄：</label>
+      <input type="number" class=""  id="doc-vld-age-2" placeholder="输入年龄  18-120" min="18" max="120" required />
+    </div>
+
+    <div class="am-form-group">
+      <label class="am-form-label">爱好：</label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="橘子" name="docVlCb" minchecked="2" maxchecked="4" required> 橘子
+      </label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="苹果" name="docVlCb"> 苹果
+      </label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="菠萝" name="docVlCb"> 菠萝
+      </label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="芒果" name="docVlCb"> 芒果
+      </label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="香蕉" name="docVlCb"> 香蕉
+      </label>
+    </div>
+
+    <div class="am-form-group">
+      <label>性别： </label>
+      <label class="am-radio-inline">
+        <input type="radio"  value="" name="docVlGender" required> 男
+      </label>
+      <label class="am-radio-inline">
+        <input type="radio" name="docVlGender"> 女
+      </label>
+      <label class="am-radio-inline">
+        <input type="radio" name="docVlGender"> 其他
+      </label>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-select-1">下拉单选框</label>
+      <select id="doc-select-1" required>
+        <option value="option1">选项一...</option>
+        <option value="option2">选项二.....</option>
+        <option value="option3">选项三........</option>
+      </select>
+      <span class="am-form-caret"></span>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-select-2">多选框</label>
+      <select multiple class="" id="doc-select-2" minchecked="2" maxchecked="4">
+        <option>1</option>
+        <option>2</option>
+        <option>3</option>
+        <option>4</option>
+        <option>5</option>
+      </select>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-ta-2">评论：</label>
+      <textarea id="doc-vld-ta-2" minlength="10" maxlength="100"></textarea>
+    </div>
+
+    <button class="am-btn am-btn-secondary" type="submit">提交</button>
+  </fieldset>
+</form>
+```
 
 ## 使用方式
 
@@ -208,6 +294,9 @@ $(function() {
 
   // 验证通过时添加到域上的 class
   validClass: 'am-field-valid',
+
+  // 表单提交的时候验证
+  validateOnSubmit: true,
 
   // 表单提交时验证的域
   // Elements to validate with allValid (only validating visible elements)
@@ -324,6 +413,10 @@ $(function() {
 
 ### 常用正则表达式
 
+- 带区号的电话号码：`/^(\d{3}-|\d{4}-)(\d{8}|\d{7})$/`
+- 匹配中文字符： `/[\u4e00-\u9fa5]/`
+- 国内邮政编码： `/^\d{6}$/`
+- 国内手机号码： `/^1((3|5|8){1}\d{1}|70)\d{8}$/` （匹配 13x/15x/18x/170 号段，如有遗漏请自行添加）
 
 ### 注意事项
 
@@ -332,5 +425,7 @@ $(function() {
 ### 参考链接
 
 - [Validity State](https://developer.mozilla.org/en-US/docs/Web/API/ValidityState)
-- [HTML5 Validation API](http://dev.w3.org/html5/spec-preview/constraints.html#the-constraint-validation-api)
+- [HTML5 Constraint Validation API](http://dev.w3.org/html5/spec-preview/constraints.html#the-constraint-validation-api)
+- [Constraint Validation: Native Client Side Validation for Web Forms](http://www.html5rocks.com/en/tutorials/forms/constraintvalidation/)
 - https://github.com/wenzhixin/multiple-select/
+- [HTML5 Placeholder jQuery Plugin](https://github.com/mathiasbynens/jquery-placeholder)

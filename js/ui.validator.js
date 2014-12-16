@@ -7,12 +7,15 @@ var Validator = function(element, options) {
   this.options = $.extend({}, Validator.DEFAULTS, options);
   this.options.patterns = $.extend({}, Validator.patterns,
     this.options.patterns);
+  var locales = this.options.locales;
+  !Validator.validationMessages[locales] && (this.options.locales = 'zh_CN');
   this.$element = $(element);
   this.init();
 };
 
 Validator.DEFAULTS = {
   debug: false,
+  locales: 'zh_CN',
   H5validation: false,
   H5inputType: ['email', 'url', 'number'],
   patterns: {},
@@ -21,6 +24,7 @@ Validator.DEFAULTS = {
   inValidClass: 'am-field-error',
   validClass: 'am-field-valid',
 
+  validateOnSubmit: true,
   // Elements to validate with allValid (only validating visible elements)
   // :input: selects all input, textarea, select and button elements.
   allFields: ':input:visible:not(:button, :disabled, .am-novalidate)',
@@ -51,7 +55,7 @@ Validator.DEFAULTS = {
   markValid: function(validity) {
     // this is Validator instance
     var options = this.options;
-    var $field  = $(validity.field);
+    var $field = $(validity.field);
     var $parent = $field.closest('.am-form-group');
     $field.addClass(options.validClass).
       removeClass(options.inValidClass);
@@ -62,7 +66,7 @@ Validator.DEFAULTS = {
   },
   markInValid: function(validity) {
     var options = this.options;
-    var $field  = $(validity.field);
+    var $field = $(validity.field);
     var $parent = $field.closest('.am-form-group');
     $field.addClass(options.inValidClass + ' ' + options.activeClass).
       removeClass(options.validClass);
@@ -86,8 +90,27 @@ Validator.patterns = {
 };
 /* jshint +W101 */
 
+Validator.validationMessages = {
+  zh_CN: {
+    valueMissing: '请填写此字段',
+    customError: {
+      tooShort: '至少填写 %s 个字符',
+      checkedOverflow: '至多选择 %s 项',
+      checkedUnderflow: '至少选择 %s 项'
+    },
+    patternMismatch: '请按照要求的格式填写',
+    rangeOverflow: '请填写小于等于 %s 的值',
+    rangeUnderflow: '请填写大于等于 %s 的值',
+    stepMismatch: '',
+    tooLong: '至多填写 %s 个字符',
+    typeMismatch: '请按照要求的类型填写'
+  }
+};
+
 // TODO: 考虑表单元素不是 form 子元素的情形
 // TODO: change/click/focusout 同时触发时处理重复
+// TODO: 显示提示信息
+
 Validator.prototype.init = function() {
   var _this = this;
   var $element = this.$element;
@@ -121,7 +144,8 @@ Validator.prototype.init = function() {
   });
 
   $element.submit(function(e) {
-    return _this.validateForm();
+    e.preventDefault();
+    return _this.isFormValid();
   });
 
   function bindEvents(fields, eventFlags, debounce) {
@@ -169,9 +193,9 @@ Validator.prototype.validate = function(field) {
   // if checkbox, return `:chcked` length
   var value = ($field.is('[type=checkbox]')) ?
     ($checkboxGroup = $element.find('input[name="' + field.name + '"]')).
-    filter(':checked').length : ($field.is('[type=radio]') ?
-    ($radioGroup = this.$element.find('input[name="' + field.name + '"]')).
-      filter(':checked').length > 0 : $field.val());
+      filter(':checked').length : ($field.is('[type=radio]') ?
+  ($radioGroup = this.$element.find('input[name="' + field.name + '"]')).
+    filter(':checked').length > 0 : $field.val());
   var required = ($field.attr('required') !== undefined) &&
     ($field.attr('required') !== 'false');
   var maxLength = parseInt($field.attr('maxlength'), 10);
@@ -195,7 +219,7 @@ Validator.prototype.validate = function(field) {
 
   if (!isNaN(minLength) && value.length < minLength) {
     validity.valid = false;
-    validity.tooShort = true;
+    validity.customError = 'tooShort';
   }
 
   // check minimum and maximum
@@ -215,11 +239,14 @@ Validator.prototype.validate = function(field) {
   if (required && !value) {
     validity.valid = false;
     validity.valueMissing = true;
-  } else if ($checkboxGroup || $field.is('select[multiple="multiple"]')) {
+  } else if (($checkboxGroup || $field.is('select[multiple="multiple"]')) &&
+    value) {
     // check checkboxes / multiple select with `minchecked`/`maxchecked` attr
     var $multipleField = $checkboxGroup ? $checkboxGroup.first() : $field;
+
     // if is select[multiple="multiple"], return selected length
-    value  = $checkboxGroup ? value : value.length;
+    value = $checkboxGroup ? value : value.length;
+
     // at least checked
     var minChecked = parseInt($multipleField.attr('minchecked'), 10);
     // at most checked
@@ -228,13 +255,13 @@ Validator.prototype.validate = function(field) {
     if (!isNaN(minChecked) && value < minChecked) {
       // console.log('At least [%d] items checked！', maxChecked);
       validity.valid = false;
-      validity.tooShort = true;
+      validity.customError = 'checkedUnderflow';
     }
 
     if (!isNaN(maxChecked) && value > maxChecked) {
       // console.log('At most [%d] items checked！', maxChecked);
       validity.valid = false;
-      validity.tooLong = true;
+      validity.customError = 'checkedOverflow';
     }
   } else if (pattern && !re.test(value) && value) { // check pattern
     validity.valid = false;
@@ -308,7 +335,7 @@ Validator.prototype.validateAll = function() {
   return validity;
 };
 
-Validator.prototype.validateForm = function() {
+Validator.prototype.isFormValid = function() {
   var formValid = this.validateAll();
   if (!formValid.valid) {
     formValid.$invalidFields.first().focus();
@@ -316,9 +343,13 @@ Validator.prototype.validateForm = function() {
     return false;
   }
   this.$element.trigger('valid.validator.amui');
-  return true;
+  return false;
 };
 
+// customErrors:
+//    1. tooShort
+//    2. checkedOverflow
+//    3. checkedUnderflow
 Validator.prototype.createValidity = function(validity) {
   return $.extend({
     customError: validity.customError || false,
@@ -331,8 +362,7 @@ Validator.prototype.createValidity = function(validity) {
     typeMismatch: validity.typeMismatch || false,
     valid: validity.valid || true,
     // Returns true if the element has no value but is a required field
-    valueMissing: validity.valueMissing || false,
-    tooShort: validity.tooShort || false // this is custom property
+    valueMissing: validity.valueMissing || false
   }, validity);
 };
 
@@ -341,7 +371,7 @@ function Plugin(option) {
     var $this = $(this);
     var data = $this.data('amui.validator');
     var options = $.extend({}, UI.utils.parseOptions($this.data('amValidator')),
-          typeof option === 'object' && option);
+      typeof option === 'object' && option);
 
     if (!data) {
       $this.data('amui.validator', (data = new Validator(this, options)));

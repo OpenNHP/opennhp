@@ -1,7 +1,7 @@
 'use strict';
 
 var $ = require('jquery');
-require('./core');
+var UI = require('./core');
 require('./ui.modal');
 var addToHS = require('./ui.add2home');
 var cookie = require('./util.cookie');
@@ -12,7 +12,8 @@ function footerInit() {
     $('#am-footer-modal').modal();
   });
 
-  !window.AMUI_NO_ADD2HS && addToHS();
+  var options = UI.utils.parseOptions($('.am-footer').data('amFooter'));
+  options.addToHS && addToHS();
 
   // switch mode
   // switch to desktop
@@ -27,11 +28,11 @@ function footerInit() {
   });
 }
 
-$(window).on('load', function() { // make sure `window.AMPlatform` is usable
+$(function() {
   footerInit();
 });
 
 module.exports = $.AMUI.footer = {
-  VERSION: '3.1.0',
+  VERSION: '3.1.1',
   init: footerInit
 };

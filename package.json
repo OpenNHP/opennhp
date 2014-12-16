@@ -36,6 +36,7 @@
     "handlebars": "latest"
   },
   "devDependencies": {
+    "bistre": "^1.0.1",
     "body-parser": "~1.0.0",
     "browserify": "^6.2.0",
     "browserify-shim": "^3.8.0",
@@ -54,6 +55,7 @@
     "gulp-less": "^1.2.3",
     "gulp-load-plugins": "^0.7.0",
     "gulp-minify-css": "^0.3.0",
+    "gulp-nodemon": "^1.0.4",
     "gulp-rename": "^1.2.0",
     "gulp-replace": "https://github.com/Minwe/gulp-replace/archive/v0.4.1.tar.gz",
     "gulp-size": "^1.1.0",

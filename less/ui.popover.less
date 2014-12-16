@@ -25,6 +25,9 @@
 @popover-color: @white;
 @popover-border-radius: @global-radius;
 @popover-duration: 300ms;
+@popover-font-size: @global-font-size;
+@popover-sm-font-size: @font-size-sm;
+@popover-lg-font-size: @font-size-lg;
 
 
 /* ==========================================================================
@@ -42,9 +45,9 @@
   color: @popover-color;
   border: 1px solid @popover-border;
   display: none;
+  font-size: @popover-font-size;
   z-index: @z-index-popover;
   opacity: 0;
-  transform: none;
   transition: opacity @popover-duration;
   .hook-popover;
 
@@ -57,7 +60,7 @@
 .@{ns}popover-inner {
   position: relative;
   background: @popover-bg;
-  padding: 10px;
+  padding: 8px;
   z-index: 110;
   .scrollable();
   .hook-popover-inner;
@@ -70,7 +73,6 @@
   z-index: 100;
   .caret-up(8px, @popover-bg);
   overflow: hidden;
-
   .hook-popover-caret;
 
   .@{ns}popover-top & {
@@ -95,6 +97,53 @@
     left: -12px;
     transform: rotate(-90deg);
   }
+}
+
+
+// Modifiers
+// =============================================================================
+
+.@{ns}popover-sm {
+  font-size: @popover-sm-font-size;
+
+  .@{ns}popover-inner {
+    padding: 5px;
+  }
+}
+
+.@{ns}popover-lg {
+  font-size: @popover-lg-font-size;
+}
+
+.popover-color-variant(@bg-color: @global-primary) {
+  border-color: @bg-color;
+  .@{ns}popover-inner {
+    background: @bg-color;
+  }
+
+  .@{ns}popover-caret {
+    border-bottom-color: @bg-color;
+  }
+};
+
+.@{ns}popover-secondary {
+  .popover-color-variant(@global-primary);
+}
+
+.@{ns}popover-secondary {
+  .popover-color-variant(@global-secondary);
+}
+
+.@{ns}popover-success {
+  .popover-color-variant(@global-success);
+}
+
+.@{ns}popover-warning {
+  .popover-color-variant(@global-warning);
+}
+
+.@{ns}popover-danger {
+  .popover-color-variant(@global-danger);
 }
 
 

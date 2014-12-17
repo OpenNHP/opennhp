@@ -3,6 +3,21 @@
 
 Amaze UI 目前提供几个常见的布局示例，供开发者参考，后续会增加更加示例。
 
+---
+**关于图标显示异常的说明：**
+
+~~为避免 `Mixed Content` 错误，Icon Font 的 URL 没有添加协议，直接使用磁盘路径 `file:///...` 打开时示例页面时无法正常显示图标，请放在 HTTP 服务中查看。~~
+
+**最新的下载包中已经将字体路径替换为本地路径！**
+
+- 使用 JetBrais 系（WebStorm 等）打开示例文件夹，然后在编辑器里点预览按钮；
+- `cd` 到示例目录，`python -m SimpleHTTPServer`；
+- 或者使用其他 HTTP 服务器。
+
+---
+
+## 示例说明
+
 <div class="am-g">
     <div class="am-u-sm-6 am-u-md-3">
         <a class="am-thumbnail" href="/examples/landing.html">
@@ -40,7 +55,7 @@ Amaze UI 目前提供几个常见的布局示例，供开发者参考，后续�
     </div>
 </div>
 
-## 展示页面
+### 展示页面
 
 使用组件说明：
 
@@ -49,7 +64,7 @@ Amaze UI 目前提供几个常见的布局示例，供开发者参考，后续�
     <li>JS 插件部分：<a class="am-badge am-badge-primary" href="/javascript/dropdown">下拉组件</a> <a class="am-badge am-badge-primary" href="/javascript/scrollspy">滚动侦测</a></li>
 </ul>
 
-## 登录页面
+### 登录页面
 
 使用组件说明：
 
@@ -61,7 +76,7 @@ Amaze UI 目前提供几个常见的布局示例，供开发者参考，后续�
     <a class="am-badge am-badge-success" href="/css/form">表单</a></li>
 </ul>
 
-## 博客页面
+### 博客页面
 
 使用组件说明：
 
@@ -70,7 +85,7 @@ Amaze UI 目前提供几个常见的布局示例，供开发者参考，后续�
     <li>JS 插件部分：<a class="am-badge am-badge-primary" href="/css/dropdown">下拉组件</a></li>
 </ul>
 
-## 博客侧栏页面
+### 博客侧栏页面
 
 使用组件说明：
 
@@ -79,7 +94,7 @@ Amaze UI 目前提供几个常见的布局示例，供开发者参考，后续�
     <li>JS 插件部分：<a class="am-badge am-badge-primary" href="/javascript/offcanvas">侧边栏组件</a></li>
 </ul>
 
-## 管理后台模板
+### 管理后台模板
 
 - [index 页面](/examples/admin-index.html)
 - [user 页面](/examples/admin-user.html)
@@ -110,7 +125,6 @@ Amaze UI 目前提供几个常见的布局示例，供开发者参考，后续�
 }
 ```
 
-- 使用网格系统时，只添加 `.col-sm-*` class，移除其他断点的 class。
+- 使用网格系统时，只添加 `.am-u-sm-*` class，移除其他断点的 class。
 
 至此，布局层的响应式被禁用了（[参考示例](/examples/non-responsive.html)）。
-

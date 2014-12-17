@@ -393,14 +393,24 @@ gulp.task('watch', function() {
 // Task: Make archive
 gulp.task('archive', function(cb) {
   runSequence([
-      'archive:copy:css', 'archive:copy:js', 'archive:copy:polyfill'],
+      'archive:copy:css',
+      'archive:copy:fonts',
+      'archive:copy:js',
+      'archive:copy:polyfill'
+    ],
     'archive:zip',
     'archive:clean', cb);
 });
 
 gulp.task('archive:copy:css', function() {
   return gulp.src('./dist/css/*.css')
+    .pipe($.replace('//dn-staticfile.qbox.me/font-awesome/4.2.0/', '../'))
     .pipe(gulp.dest('./docs/examples/assets/css'));
+});
+
+gulp.task('archive:copy:fonts', function() {
+  return gulp.src('./fonts/*')
+    .pipe(gulp.dest('./docs/examples/assets/fonts'));
 });
 
 gulp.task('archive:copy:js', function() {
@@ -434,6 +444,7 @@ gulp.task('archive:zip', function() {
 gulp.task('archive:clean', function(cb) {
   del(['docs/examples/assets/*/amazeui.*',
     'docs/examples/assets/js/*',
+    'docs/examples/assets/fonts',
     '!docs/examples/assets/js/app.js'
   ], cb);
 });

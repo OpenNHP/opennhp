@@ -644,3 +644,6 @@ ___注意：Icon 的样式针对 `.am-form-group` 单行排列编写，多行的
   </div>
 </div>
 ```
+## 参考链接
+
+- [Webkit 浏览器 Radio/Checkbox 纯 CSS 样式](http://jsbin.com/gitovovidu)

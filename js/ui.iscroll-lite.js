@@ -961,7 +961,7 @@ IScroll.prototype = {
 
 IScroll.utils = utils;
 
-$.AMUI.IScroll = IScroll;
+$.AMUI.iScroll = IScroll;
 
 module.exports = IScroll;
 

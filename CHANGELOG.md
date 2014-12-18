@@ -5,8 +5,10 @@
 
 **JS:**
 
+- `NEW` #26 添加 radio / checkbox 样式覆写插件；
 - `NEW` #283 添加表单验证插件；
 - `IMPROVED` Popover 增加大小、颜色样式；
+- `CHANGED` iScroll 接口由 `$.AMUI.IScroll` 改为 `$.AMUI.iScroll`；
 
 
 ### 2014.12 W2

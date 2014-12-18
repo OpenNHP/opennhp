@@ -409,7 +409,72 @@ $(function() {
 组织好 Modal HTML 以后，可以通过 Javascript 调用。
 
 ```javascript
-$('#myModal').modal(options);
+$('#your-modal').modal(options);
+```
+`````html
+<button class="am-btn am-btn-primary js-modal-open">打开 Modal</button>
+  <button class="am-btn am-btn-secondary js-modal-close">关闭 Modal</button>
+  <button class="am-btn am-btn-danger js-modal-toggle">Toggle Modal</button>
+
+<div class="am-modal am-modal-no-btn" tabindex="-1" id="your-modal">
+  <div class="am-modal-dialog">
+    <div class="am-modal-hd">Modal 标题
+      <a href="javascript: void(0)" class="am-close am-close-spin" data-am-modal-close>&times;</a>
+    </div>
+    <div class="am-modal-bd">
+      Modal 内容。
+    </div>
+  </div>
+</div>
+<script>
+$(function() {
+  var $modal = $('#your-modal');
+
+  $modal.siblings('.am-btn').on('click', function(e) {
+    var $target = $(e.target);
+    if (($target).hasClass('js-modal-open')) {
+      $modal.modal();
+    } else if (($target).hasClass('js-modal-close')) {
+      $modal.modal('close');
+    } else {
+      $modal.modal('toggle');
+    }
+  });
+});
+</script>
+`````
+
+```html
+<button class="am-btn am-btn-primary js-modal-open">打开 Modal</button>
+<button class="am-btn am-btn-secondary js-modal-close">关闭 Modal</button>
+<button class="am-btn am-btn-danger js-modal-toggle">Toggle Modal</button>
+
+<div class="am-modal am-modal-no-btn" tabindex="-1" id="your-modal">
+  <div class="am-modal-dialog">
+    <div class="am-modal-hd">Modal 标题
+      <a href="javascript: void(0)" class="am-close am-close-spin" data-am-modal-close>&times;</a>
+    </div>
+    <div class="am-modal-bd">
+      Modal 内容。
+    </div>
+  </div>
+</div>
+<script>
+  $(function() {
+    var $modal = $('#your-modal');
+
+    $modal.siblings('.am-btn').on('click', function(e) {
+      var $target = $(e.target);
+      if (($target).hasClass('js-modal-open')) {
+        $modal.modal();
+      } else if (($target).hasClass('js-modal-close')) {
+        $modal.modal('close');
+      } else {
+        $modal.modal('toggle');
+      }
+    });
+  });
+</script>
 ```
 
 #### 参数说明
@@ -490,7 +555,7 @@ $('#doc-modal-1').on('open.modal.amui', function(){
   </tr>
   <tr>
     <td><code>opened.modal.amui</code></td>
-    <td>Modal 窗口被关闭以后触发（CSS 动画执行完成）</td>
+    <td>Modal 窗口打开完成以后触发（CSS 动画执行完成）</td>
   </tr>
   <tr>
     <td><code>close.modal.amui</code></td>
@@ -498,7 +563,7 @@ $('#doc-modal-1').on('open.modal.amui', function(){
   </tr>
   <tr>
     <td><code>closed.modal.amui</code></td>
-    <td>Modal 窗口被关闭以后触发（CSS 动画执行完成）</td>
+    <td>Modal 窗口完全关闭以后触发（CSS 动画执行完成）</td>
   </tr>
   </tbody>
 </table>

@@ -2,6 +2,7 @@
 
 var $ = require('jquery');
 var UI = require('./core');
+var $doc = $(document);
 
 /**
  * bootstrap-datepicker.js
@@ -14,8 +15,9 @@ var UI = require('./core');
 var Datepicker = function(element, options) {
   this.element = $(element);
   this.format = DPGlobal.parseFormat(options.format);
-  this.language = options.language;
-
+  this.element.data('am-date', options.date);
+  this.language = this.browserLanguage();
+  this.theme = options.theme;
   this.picker = $(DPGlobal.template)
                   .appendTo('body')
                   .on({
@@ -24,8 +26,8 @@ var Datepicker = function(element, options) {
                   });
 
   this.isInput = this.element.is('input');
-  this.component = this.element.is('.am-datepicker-date') ? this.element.find('.am-datepicker-add-on') : false;
-
+  this.component = this.element.is('.am-datepicker-date') ?
+                     this.element.find('.am-datepicker-add-on') : false;
   if (this.isInput) {
     this.element.on({
       focus: $.proxy(this.show, this),
@@ -77,6 +79,7 @@ var Datepicker = function(element, options) {
   this.weekEnd = this.weekStart === 0 ? 6 : this.weekStart - 1;
   this.onRender = options.onRender;
 
+  this.addTheme();
   this.fillDow();
   this.fillMonths();
   this.update();
@@ -130,7 +133,7 @@ Datepicker.prototype = {
       if (this.component) {
         this.element.find('input').prop('value', formated);
       }
-      this.element.data('date', formated);
+      this.element.data('am-date', formated);
     } else {
       this.element.prop('value', formated);
     }
@@ -151,16 +154,43 @@ Datepicker.prototype = {
   },
 
   place: function() {
-    var offset = this.component ? this.component.offset() : this.element.offset();
+    var offset = this.component ?
+                 this.component.offset() : this.element.offset();
+    var $width = this.component ?
+        this.component.width() : this.element.width();
+    var top = offset.top + this.height;
+    var left = offset.left;
+    var right = $doc.width() - offset.left - $width;
+    var isOutView = this.isOutView();
+    this.picker.removeClass('am-datepicker-right');
+    this.picker.removeClass('am-datepicker-up');
+    if ($doc.width() > 640) {
+      if (isOutView.outRight) {
+        this.picker.addClass('am-datepicker-right');
+        this.picker.css({
+          top: top,
+          left: 'auto',
+          right: right
+        });
+        return
+      }
+      if (isOutView.outBottom) {
+        this.picker.addClass('am-datepicker-up');
+        top = offset.top - this.picker.outerHeight(true);
+      }
+    } else {
+      left = 0;
+    }
     this.picker.css({
-      top: offset.top + this.height + 10,
-      left: offset.left
+      top: top,
+      left: left
     });
   },
 
   update: function(newDate) {
     this.date = DPGlobal.parseDate(
-            typeof newDate === 'string' ? newDate : (this.isInput ? this.element.prop('value') : this.element.data('date')),
+            typeof newDate === 'string' ? newDate : (this.isInput ?
+                this.element.prop('value') : this.element.data('am-date')),
         this.format
     );
     this.viewDate = new Date(this.date.getFullYear(),
@@ -172,7 +202,7 @@ Datepicker.prototype = {
     var dowCnt = this.weekStart;
     var html = '<tr>';
     while (dowCnt < this.weekStart + 7) {
-      html += '<th class="am-datepicker-dow">' + dates[this.language].daysMin[(dowCnt++) % 7] + '</th>';
+      html += '<th class="am-datepicker-dow">' + Datepicker.locales[this.language].daysMin[(dowCnt++) % 7] + '</th>';
     }
     html += '</tr>';
     this.picker.find('.am-datepicker-days thead').append(html);
@@ -182,13 +212,12 @@ Datepicker.prototype = {
     var html = '';
     var i = 0;
     while (i < 12) {
-      html += '<span class="am-datepicker-month">' + dates[this.language].monthsShort[i++] + '</span>';
+      html += '<span class="am-datepicker-month">' + Datepicker.locales[this.language].monthsShort[i++] + '</span>';
     }
     this.picker.find('.am-datepicker-months td').append(html);
   },
 
   fill: function() {
-
     var d = new Date(this.viewDate);
     var year = d.getFullYear();
     var month = d.getMonth();
@@ -198,10 +227,10 @@ Datepicker.prototype = {
     var day = DPGlobal.getDaysInMonth(prevMonth.getFullYear(), prevMonth.getMonth());
     var daysSelect = this.picker.find('.am-datepicker-days .am-datepicker-select');
 
-    if (this.language === 'zh') {
-      daysSelect.text(year + dates[this.language].year[0] + ' ' + dates[this.language].months[month]);
+    if (this.language === 'zh_CN') {
+      daysSelect.text(year + Datepicker.locales[this.language].year[0] + ' ' + Datepicker.locales[this.language].months[month]);
     } else {
-      daysSelect.text(dates[this.language].months[month] + ' ' + year);
+      daysSelect.text(Datepicker.locales[this.language].months[month] + ' ' + year);
     }
 
     prevMonth.setDate(day);
@@ -263,7 +292,7 @@ Datepicker.prototype = {
 
     year -= 1;
     for (var i = -1; i < 11; i++) {
-      html += '<span class="year' + (i === -1 || i === 10 ? ' am-datepicker-old' : '') + (currentYear === year ? ' am-active' : '') + '">' + year + '</span>';
+      html += '<span class="' + (i === -1 || i === 10 ? ' am-datepicker-old' : '') + (currentYear === year ? ' am-active' : '') + '">' + year + '</span>';
       year += 1;
     }
     yearCont.html(html);
@@ -305,7 +334,7 @@ Datepicker.prototype = {
           if (this.viewMode !== 0) {
             this.date = new Date(this.viewDate);
             this.element.trigger({
-              type: 'changeDate',
+              type: 'changeDate.datepicker.amui',
               date: this.date,
               viewMode: DPGlobal.modes[this.viewMode].clsName
             });
@@ -329,7 +358,7 @@ Datepicker.prototype = {
             this.fill();
             this.set();
             this.element.trigger({
-              type: 'changeDate',
+              type: 'changeDate.datepicker.amui',
               date: this.date,
               viewMode: DPGlobal.modes[this.viewMode].clsName
             });
@@ -355,26 +384,65 @@ Datepicker.prototype = {
         .hide()
         .filter('.am-datepicker-' + DPGlobal.modes[this.viewMode].clsName)
         .show();
+  },
+
+  isOutView: function() {
+    var offset = this.component ?
+        this.component.offset() : this.element.offset();
+    var isOutView = {
+      outRight: false,
+      outBottom: false
+    };
+    var $picker = this.picker;
+    var width = offset.left + $picker.outerWidth(true);
+    var height = offset.top + $picker.outerHeight(true) + this.element.innerHeight();
+
+    if (width > $doc.width()) {
+      isOutView.outRight = true;
+    }
+    if (height > $doc.height()) {
+      isOutView.outBottom = true;
+    }
+    return isOutView;
+  },
+
+  browserLanguage: function() {
+    var language = navigator.language && navigator.language.split('-');
+    language[1] = language[1].toUpperCase();
+    language = language.join('_');
+    if (!Object.prototype.hasOwnProperty.call(Datepicker.locales, language)) {
+      language = 'en_US';
+    }
+    return language;
+  },
+
+  addTheme: function() {
+    if (this.theme) {
+      this.picker.addClass('am-datepicker-' + this.theme);
+    }
   }
 };
 
 Datepicker.DEFAULTS = {
   format: 'yyyy/mm/dd',
-  language: 'zh',
   weekStart: 0,
   viewMode: 0,
-  minViewMode: 0
+  minViewMode: 0,
+  date: '',
+  theme: ''
 };
 
-var dates = {
-  en: {
+// Datepicker locales
+
+Datepicker.locales = {
+  en_US: {
     days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
     daysMin: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'],
     months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
     monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   },
-  zh: {
+  zh_CN: {
     days: ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'],
     daysShort: ['周日', '周一', '周二', '周三', '周四', '周五', '周六', '周日'],
     daysMin: ['日', '一', '二', '三', '四', '五', '六', '日'],
@@ -489,7 +557,7 @@ var DPGlobal = {
   contTemplate: '<tbody><tr><td colspan="7"></td></tr></tbody>'
 };
 
-DPGlobal.template = '<div class="am-datepicker am-datepicker-dropdown">' +
+DPGlobal.template = '<div class="am-datepicker am-datepicker-dropdown"><div class="am-datepicker-caret"></div>' +
     '<div class="am-datepicker-days">' +
     '<table class="am-datepicker-table">' +
     DPGlobal.headTemplate +
@@ -547,5 +615,4 @@ $.AMUI.datepicker = Datepicker;
 module.exports = Datepicker;
 
 // TODO: 1. 载入动画
-//       2. 右边、下边超出屏幕处理
-//       2. 组件结合 Bug
+//       2. less 优化

@@ -140,7 +140,8 @@ Dropdown.prototype.checkDimensions = function() {
     this.$boundary.offset().left : 0;
 
   if (this.$justify) {
-    $dropdown.css({'min-width': this.$justify.width()});
+    // jQuery.fn.width() is really...
+    $dropdown.css({'min-width': this.$justify.css('width')});
   }
 
   if ((width + (offset.left - boundaryOffset)) > boundaryWidth) {

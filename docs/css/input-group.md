@@ -196,7 +196,7 @@ Input group 基于 Form 组件和 Button 组件扩展，依赖这两个组件。
   <input type="text" class="am-form-field" placeholder="你的大名">
 </div>
 
-<div class="am-input-group am-input-group-seconday">
+<div class="am-input-group am-input-group-secondary">
   <span class="am-input-group-label"><i class="am-icon-credit-card"></i></span>
   <input type="text" class="am-form-field" placeholder="你的银行卡号">
 </div>
@@ -222,7 +222,7 @@ Input group 基于 Form 组件和 Button 组件扩展，依赖这两个组件。
   <input type="text" class="am-form-field" placeholder="你的大名">
 </div>
 
-<div class="am-input-group am-input-group-seconday">
+<div class="am-input-group am-input-group-secondary">
   ...
 </div>
 

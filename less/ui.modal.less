@@ -48,8 +48,7 @@
   border-radius: @modal-border-radius;
   opacity: 0;
   transform: translate3d(0, 0, 0) scale(1.185);
-  transition-property: transform;
-  transition-duration: @modal-duration;
+  transition-property: transform, opacity;
 
   &:focus {
     outline: 0;
@@ -57,12 +56,14 @@
 
   &.@{ns}modal-active {
     opacity: 1;
+    transition-duration: @modal-duration;
     transform: translate3d(0, 0, 0) scale(1);
   }
 
   &.@{ns}modal-out {
     opacity: 0;
     z-index: @z-index-modal - 1;
+    transition-duration: @modal-duration;
     transform: translate3d(0, 0, 0) scale(0.815);
   }
 

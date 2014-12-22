@@ -6,30 +6,11 @@ Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 90 kB 左右）、 [**M
 
 ## 获取 Amaze UI
 
-**文件说明：**
-
-- `amazeui.css` / `amazeui.js`：包含 Amaze UI 所有的 CSS、JS。
-- `amazeui.flat.css`：圆角版 Amaze UI CSS，演示参见 `1.x`。
-- `amazeui.legacy.js`：为 IE 8 打包的 JS。
-- `amazeui.widgets.helper.js`： Web 组件必须的 Handlebars helper 及 Web 组件模板 partials，**仅供 Handlebars 用户使用**。
-
-以上每个文件都有对应的 minified 文件。
-
-**版本说明：**
-
-Amaze UI 遵循 [Semantic Versioning](http://semver.org/lang/zh-CN/) 规范，版本格式采用 `主版本号.次版本号.修订号` 的形式，版本号递增规则如下：
-
-- 主版本号：做了不兼容的API 修改，如整体风格变化、大规模重构等；
-- 次版本号：做了向下兼容的功能性新增；
-- 修订号：做了向下兼容的问题修正、细节调整等。
-
-- [**1.x 到 2.x 变更记录暨升级指南**](https://github.com/allmobilize/amazeui/wiki/Migration-form-1.x-to-2.x)
-
 ### 下载文件
 
 <div class="am-g">
   <div class="am-u-md-8 am-u-md-centered">
-    <a href="http://amazeui.org/download?ver=2.0.0" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
+    <a id="doc-dl-btn" href="http://amazeui.org/download?ver=2.0.0" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
 "><i class="am-icon-download"></i> Amaze UI v2.0.0 正式版</a>
   </div>
 </div>
@@ -63,6 +44,27 @@ bower install amazeui
 <iframe src="http://ghbtns.com/github-btn.html?user=allmobilize&repo=amazeui&type=watch&count=true&size=large" allowtransparency="true" frameborder="0" scrolling="0" width="156px" height="30px"></iframe>
 
 <iframe src="http://ghbtns.com/github-btn.html?user=allmobilize&repo=amazeui&type=fork&count=true&size=large" allowtransparency="true" frameborder="0" scrolling="0" width="156px" height="30px"></iframe>
+
+## 文件及版本说明
+
+### 文件说明
+
+- `amazeui.css` / `amazeui.js`：包含 Amaze UI 所有的 CSS、JS。
+- `amazeui.flat.css`：圆角版 Amaze UI CSS，演示参见 `1.x`。
+- `amazeui.legacy.js`：为 IE 8 打包的 JS。
+- `amazeui.widgets.helper.js`： Web 组件必须的 Handlebars helper 及 Web 组件模板 partials，**仅供 Handlebars 用户使用**。
+
+以上每个文件都有对应的 minified 文件。
+
+### 版本号说明
+
+Amaze UI 遵循 [Semantic Versioning](http://semver.org/lang/zh-CN/) 规范，版本格式采用 `主版本号.次版本号.修订号` 的形式，版本号递增规则如下：
+
+- 主版本号：做了不兼容的API 修改，如整体风格变化、大规模重构等；
+- 次版本号：做了向下兼容的功能性新增；
+- 修订号：做了向下兼容的问题修正、细节调整等。
+
+- [**1.x 到 2.x 变更记录暨升级指南**](https://github.com/allmobilize/amazeui/wiki/Migration-form-1.x-to-2.x)
 
 
 ## 下载包目录结构
@@ -170,3 +172,16 @@ AmazeUI
 有任何使用问题，请在评论中留言，也欢迎大家发表意见、建议。
 
 __感谢大家对 Amaze UI 的关注和支持！__
+
+<script>
+  function pyRegisterCvt(){
+    var w=window,d=document,e=encodeURIComponent;
+    var b=location.href,c=d.referrer,f,g=d.cookie,h=g.match(/(^|;)\s*ipycookie=([^;]*)/),i=g.match(/(^|;)\s*ipysession=([^;]*)/);
+    if (w.parent!=w){f=b;b=c;c=f;};u='//stats.ipinyou.com/cvt?a='+e('9J.H5.EtdEOxc6fV-EiorJDjFOTP')+'&c='+e(h?h[2]:'')+'&s='+e(i?i[2].match(/jump\%3D(\d+)/)[1]:'')+'&u='+e(b)+'&r='+e(c)+'&rd='+(new Date()).getTime()+'&e=';
+    (new Image()).src=u;
+  }
+
+  $(function() {
+    $('#doc-dl-btn').on('click', pyRegisterCvt);
+  })
+</script>

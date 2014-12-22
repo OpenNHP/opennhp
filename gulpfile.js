@@ -30,6 +30,7 @@ var config = {
       './less/amazeui.less',
       './less/themes/flat/amazeui.flat.less'
     ],
+    fonts: './fonts/*',
     widgets: [
       '*/src/*.js',
       '!{powered_by,switch_mode,toolbar,tech_support,layout*,blank,container}' +
@@ -41,7 +42,8 @@ var config = {
   },
   dist: {
     js: './dist/js',
-    css: './dist/css'
+    css: './dist/css',
+    fonts: './dist/fonts'
   },
   js: {
     base: [
@@ -241,6 +243,7 @@ gulp.task('build:less', function() {
       }
     }))
     .pipe($.autoprefixer({browsers: config.AUTOPREFIXER_BROWSERS}))
+    .pipe($.replace('//dn-staticfile.qbox.me/font-awesome/4.2.0/', '../'))
     .pipe(gulp.dest(config.dist.css))
     .pipe($.size({showFiles: true, title: 'source'}))
     // Disable advanced optimizations - selector & property merging, etc.
@@ -253,6 +256,11 @@ gulp.task('build:less', function() {
     .pipe(gulp.dest(config.dist.css))
     .pipe($.size({showFiles: true, title: 'minified'}))
     .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
+});
+
+gulp.task('build:fonts', function() {
+  gulp.src(config.path.fonts)
+    .pipe(gulp.dest(config.dist.fonts));
 });
 
 // Copy ui js files to build dir.
@@ -379,7 +387,11 @@ gulp.task('build:js', function(cb) {
 });
 
 gulp.task('build', function(cb) {
-  runSequence('build:preparing', 'build:clean', ['build:less', 'build:js'], cb);
+  runSequence(
+    'build:preparing',
+    'build:clean',
+    ['build:less', 'build:fonts', 'build:js'],
+    cb);
 });
 
 // Rerun the task when a file changes
@@ -466,10 +478,6 @@ gulp.task('appServer', function(callback) {
       .pipe(process.stderr);
   });
   callback();
-  exec('npm start', function(err, stdout, stderr) {
-    console.log(stdout);
-    console.log(stderr);
-  });
 });
 
 // gulp.task('init', ['bower', 'build', 'watch']);

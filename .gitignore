@@ -25,6 +25,7 @@ tools/app/public/style.css
 .cstmz-tmp
 dist/css
 dist/js
+dist/fonts
 dist/sass
 /js/amazeui.js
 less/amazeui.widgets.less

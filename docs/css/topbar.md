@@ -224,7 +224,7 @@
   margin-right: 10px;
   height: 50px;
   width: 125px;
-  background: url(/i/ui/logo.png) no-repeat left center;
+  background: url(http://a.static.amazeui.org/assets/i/ui/logo.pnggulpd) no-repeat left center;
   -webkit-background-size: 125px 24px;
   background-size: 125px 24px;
 }

@@ -34,5 +34,5 @@
     module.exports = registerIfCondHelper;
   }
 
-  this.Handlebars && registerIfCondHelper(Handlebars);
+  this.Handlebars && registerIfCondHelper(this.Handlebars);
 }).call(this);

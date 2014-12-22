@@ -11,6 +11,7 @@ var exec = require('child_process').exec;
 var browserify = require('browserify');
 var transform = require('vinyl-transform');
 var del = require('del');
+var bistre = require('bistre');
 
 // Temporary solution until gulp 4
 // https://github.com/gulpjs/gulp/issues/355
@@ -208,7 +209,7 @@ var preparingData = function() {
   partials += '  if (typeof module !== \'undefined\' && module.exports) {\n';
   partials += '    module.exports = registerAMUIPartials;\n' +
   '  }\n\n';
-  partials += '  this.Handlebars && registerAMUIPartials(Handlebars);\n';
+  partials += '  this.Handlebars && registerAMUIPartials(this.Handlebars);\n';
   partials += '}).call(this);\n';
 
   // write partials
@@ -392,21 +393,36 @@ gulp.task('watch', function() {
 // Task: Make archive
 gulp.task('archive', function(cb) {
   runSequence([
-      'archive:copy:css', 'archive:copy:js', 'archive:copy:polyfill'],
+      'archive:copy:css',
+      'archive:copy:fonts',
+      'archive:copy:js',
+      'archive:copy:polyfill'
+    ],
     'archive:zip',
     'archive:clean', cb);
 });
 
 gulp.task('archive:copy:css', function() {
   return gulp.src('./dist/css/*.css')
+    .pipe($.replace('//dn-staticfile.qbox.me/font-awesome/4.2.0/', '../'))
     .pipe(gulp.dest('./docs/examples/assets/css'));
+});
+
+gulp.task('archive:copy:fonts', function() {
+  return gulp.src('./fonts/*')
+    .pipe(gulp.dest('./docs/examples/assets/fonts'));
 });
 
 gulp.task('archive:copy:js', function() {
   return gulp.src([
     './dist/js/*.js',
     './node_modules/handlebars/dist/handlebars.min.js',
-    './node_modules/jquery/dist/jquery.min.js'])
+    './node_modules/jquery/dist/cdn/jquery-2.1.1.min.js'])
+    .pipe($.rename(function(file) {
+      if (file.basename.indexOf('jquery-') > -1) {
+        file.basename = 'jquery.min';
+      }
+    }))
     .pipe(gulp.dest('./docs/examples/assets/js'));
 });
 
@@ -428,12 +444,28 @@ gulp.task('archive:zip', function() {
 gulp.task('archive:clean', function(cb) {
   del(['docs/examples/assets/*/amazeui.*',
     'docs/examples/assets/js/*',
+    'docs/examples/assets/fonts',
     '!docs/examples/assets/js/app.js'
   ], cb);
 });
 
 // Preview server.
-gulp.task('appServer', function() {
+gulp.task('appServer', function(callback) {
+  $.nodemon({
+    script: 'tools/app/app.js',
+    env: {
+      NODE_ENV: 'development'
+    },
+    stdout: false
+  }).on('readable', function() {
+    this.stdout
+      .pipe(bistre({time: true}))
+      .pipe(process.stdout);
+    this.stderr
+      .pipe(bistre({time: true}))
+      .pipe(process.stderr);
+  });
+  callback();
   exec('npm start', function(err, stdout, stderr) {
     console.log(stdout);
     console.log(stderr);

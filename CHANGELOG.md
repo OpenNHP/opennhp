@@ -1,11 +1,36 @@
 # Amaze UI Change Log
 ---
 
+### 2014.12 W3
+
+**JS:**
+
+- `NEW` #26 添加 radio / checkbox 样式覆写插件；
+- `NEW` #283 添加表单验证插件；
+- `IMPROVED` Popover 增加大小、颜色样式；
+- `CHANGED` iScroll 接口由 `$.AMUI.IScroll` 改为 `$.AMUI.iScroll`；
+
+
 ### 2014.12 W2
+
+**CSS:**
+
+- `IMPROVED` #310 调整 Table 圆角边框实现方式，解决在 IE 下显示问题（THX to [@bug](http://t.qq.com/sky14way), @infinnie）
+
+**JS:**
+
+- `IMPROVED` 注册 Handlebars helper 和 partials 时添加 `this`, via #311 (THX to @msdlisper)；
+- `NEW` #4 Modal 插件增加点击遮罩层是否关闭选项；
+- `NEW` #24 Modal 插件增加宽高设置选项；
+- `IMPROVED` Modal 插件 Prompt 支持多个输入框；
+- `CHANGED` Modal 插件 `onConfirm`/`onCancel` 参数变为对象；
+- `CHANGED` #274 Modal 插件 `onConfirm`/`onCancel` 提供参数钩子；
+- `CHANGED` Modal 插件 `relatedElement` 参数变为 `relatedTarget`；
 
 **Web 组件：**
 
 - `CHANGED` Footer 移除`云适配驱动`；
+- `IMPROVED` 处理 Gotop `fixed` 样式与 Navbar 共存问题。
 
 ## Amaze UI 2.0.0
 

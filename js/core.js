@@ -6,7 +6,7 @@ var $ = require('jquery');
 
 if (typeof $ === 'undefined') {
   throw new Error('Amaze UI 2.x requires jQuery :-(\n' +
-    '\u7231\u4e0a\u4e00\u5339\u91ce\u9a6c\uff0c\u53ef\u4f60' +
+  '\u7231\u4e0a\u4e00\u5339\u91ce\u9a6c\uff0c\u53ef\u4f60' +
   '\u7684\u5bb6\u91cc\u6ca1\u6709\u8349\u539f\u2026');
 }
 
@@ -29,9 +29,8 @@ UI.support.transition = (function() {
       OTransition: 'oTransitionEnd otransitionend',
       transition: 'transitionend'
     };
-    var name;
 
-    for (name in transEndEventNames) {
+    for (var name in transEndEventNames) {
       if (element.style[name] !== undefined) {
         return transEndEventNames[name];
       }
@@ -50,9 +49,8 @@ UI.support.animation = (function() {
       OAnimation: 'oAnimationEnd oanimationend',
       animation: 'animationend'
     };
-    var name;
 
-    for (name in animEndEventNames) {
+    for (var name in animEndEventNames) {
       if (element.style[name] !== undefined) {
         return animEndEventNames[name];
       }
@@ -61,15 +59,6 @@ UI.support.animation = (function() {
 
   return animationEnd && {end: animationEnd};
 })();
-
-UI.support.requestAnimationFrame = window.requestAnimationFrame ||
-window.webkitRequestAnimationFrame ||
-window.mozRequestAnimationFrame ||
-window.msRequestAnimationFrame ||
-window.oRequestAnimationFrame ||
-function(callback) {
-  window.setTimeout(callback, 1000 / 60);
-};
 
 /* jshint -W069 */
 UI.support.touch = (
@@ -84,7 +73,11 @@ false);
 
 // https://developer.mozilla.org/zh-CN/docs/DOM/MutationObserver
 UI.support.mutationobserver = (window.MutationObserver ||
-window.WebKitMutationObserver || window.MozMutationObserver || null);
+window.WebKitMutationObserver || null);
+
+// https://github.com/Modernizr/Modernizr/blob/924c7611c170ef2dc502582e5079507aff61e388/feature-detects/forms/validation.js#L20
+UI.support.formValidation = (typeof document.createElement('form').
+  checkValidity === 'function');
 
 UI.utils = {};
 
@@ -324,8 +317,8 @@ UI.utils.imageLoader = function($image, callback) {
   function bindLoad() {
     this.one('load', loaded);
     if (/MSIE (\d+\.\d+);/.test(navigator.userAgent)) {
-      var src = this.attr('src'),
-        param = src.match(/\?/) ? '&' : '?';
+      var src = this.attr('src');
+      var param = src.match(/\?/) ? '&' : '?';
 
       param += 'random=' + (new Date()).getTime();
       this.attr('src', src + param);
@@ -417,6 +410,59 @@ UI.template.get = function(id) {
   }
 };
 
+// Dom mutation watchers
+UI.DOMWatchers = [];
+UI.DOMReady = false;
+UI.ready = function(callback) {
+  UI.DOMWatchers.push(callback);
+  if (UI.DOMReady) {
+    console.log('ready call');
+    callback(document);
+  }
+};
+
+UI.DOMObserve = function(elements, options, callback) {
+  var Observer = UI.support.mutationobserver;
+  if (!Observer) {
+    return;
+  }
+
+  options = $.isPlainObject(options) ?
+    options : {childList: true, subtree: true};
+
+  callback = typeof callback === 'function' && callback || function() {
+  };
+
+  $(elements).each(function() {
+    var element = this;
+    var $element = $(element);
+
+    if ($element.data('am.observer')) {
+      return;
+    }
+
+    try {
+      var observer = new Observer(UI.utils.debounce(
+        function(mutations, instance) {
+        callback.call(element, mutations, instance);
+        // trigger this event manually if MutationObserver not supported
+        $element.trigger('changed.dom.amui');
+      }, 50));
+
+      observer.observe(element, options);
+
+      $element.data('am.observer', observer);
+    } catch (e) {
+    }
+  });
+};
+
+$.fn.DOMObserve = function(options, callback) {
+  return this.each(function() {
+    UI.DOMObserve(this, options, callback);
+  });
+};
+
 // Attach FastClick on touch devices
 if (UI.support.touch) {
   $html.addClass('am-touch');
@@ -427,11 +473,31 @@ if (UI.support.touch) {
   });
 }
 
+$(document).on('changed.dom.amui', function(e) {
+  var element = e.target;
+
+  // TODO: just call changed element's watcher
+  //       every watcher callback should have a key
+  //       use like this: <div data-am-observe='key1, key2'>
+  //       get keys via $(element).data('amObserve')
+  //       call functions store with these keys
+  $.each(UI.DOMWatchers, function(i, watcher) {
+    watcher(element);
+  });
+});
+
 $(function() {
   var $body = $('body');
 
-  // trigger DOM ready event
-  $(document).trigger('domready.amui');
+  UI.DOMReady = true;
+
+  // Run default init
+  $.each(UI.DOMWatchers, function(i, watcher) {
+    watcher(document);
+  });
+
+  // watches DOM
+  UI.DOMObserve('[data-am-observe]');
 
   $html.removeClass('no-js').addClass('js');
 
@@ -443,7 +509,7 @@ $(function() {
   }
 
   $('.am-topbar-fixed-top').length &&
-    $body.addClass('am-with-topbar-fixed-top');
+  $body.addClass('am-with-topbar-fixed-top');
 
   $('.am-topbar-fixed-bottom').length &&
   $body.addClass('am-with-topbar-fixed-bottom');

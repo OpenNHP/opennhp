@@ -1,7 +1,7 @@
 {{#this}}
   <footer data-am-widget="footer"
           class="am-footer {{#if theme}}am-footer-{{theme}}{{else}}am-footer-default {{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"
-          {{#if id}}id="{{id}}"{{/if}}>
+          {{#if id}}id="{{id}}"{{/if}} data-am-footer="{ {{#if options.addToHS}}addToHS: 1{{/if}} }">
     <div class="am-footer-switch">
     <span class="{{#if options.modal}}am-footer-ysp{{/if}}" data-rel="mobile"
           data-am-modal="{target: '#am-switch-mode'}">

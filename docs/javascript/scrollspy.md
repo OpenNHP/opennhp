@@ -244,4 +244,54 @@ $(function() {
 });
 ```
 
+#### MutationObserver
+
+通过 [Mutation Observer](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver) 可以实现动态加载元素的动画效果。
+
+`````html
+<p><button class="am-btn am-btn-primary" id="doc-scrollspy-insert">插入</button></p>
+<div id="doc-scrollspy-wrapper" data-am-observe>
+<p>在下面插入一些元素试试：</p>
+</div>
+<script>
+  $(function() {
+    var i = 1;
+    var $wrapper = $('#doc-scrollspy-wrapper');
+    var appendPanel = function(index) {
+      var panel = '<div class="am-panel am-panel-primary" ' +
+        'data-am-scrollspy="{animation: \'scale-up\'}">' +
+        '<div class="am-panel-bd">我是第' + index + '个插入的元素。</div></div>';
+      $wrapper.append(panel);
+    };
+
+    $('#doc-scrollspy-insert').on('click', function() {
+      appendPanel(i);
+      i++;
+    });
+  });
+</script>
+`````
+```html
+<p><button class="am-btn am-btn-primary" id="doc-scrollspy-insert">插入</button></p>
+<div id="doc-scrollspy-wrapper" data-am-observe>
+  <p>在下面插入一些元素试试：</p>
+</div>
+```
+```javascript
+$(function() {
+  var i = 1;
+  var $wrapper = $('#doc-scrollspy-wrapper');
+  var appendPanel = function(index) {
+    var panel = '<div class="am-panel am-panel-primary" ' +
+      'data-am-scrollspy="{animation: \'scale-up\'}">' +
+      '<div class="am-panel-bd">我是第' + index + '个插入的元素。</div></div>';
+    $wrapper.append(panel);
+  };
+
+  $('#doc-scrollspy-insert').on('click', function() {
+    appendPanel(i);
+    i++;
+  });
+});
+```
 

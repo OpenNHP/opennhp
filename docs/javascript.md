@@ -132,6 +132,98 @@ $('#myAlert').on('close.alert.amui', function() {
 });
 ```
 
+### MutationObserver
+
+双向数据绑定很酷？[Mutation Observer](http://www.w3.org/TR/dom/#mutation-observers) 才是（或即将成为）幕后的英雄。
+
+Amaze UI 2.1 中实验性地引入了 `MutationObserver`，**请谨慎使用**。
+
+#### `data-am-observe`
+
+在元素上添加 `data-am-observe` 属性以后，动态插入该元素的 Amaze UI JS 插件会自动初始化（[演示](/javascript/scrollspy#mutationobserver?_ver=2.x)），
+  支持的插件包括 Button、Dropdown、Slider、Popover、ScrollSpy、Tabs。
+
+#### `$().DOMObserve(options, callback)`
+
+- `options`: 监视的属性（[具体参见](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver#MutationObserverInit)），默认为 `{childList: true, subtree: true}`；
+- `callback(mutations, observer)`: DOM 发生变化时的处理函数，第一个参数为存储 [MutationRecord](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver#MutationRecord) 对象的数组，第二个参数为 MutationObserver 实例本身。
+
+`````html
+<p id="js-do-actions">
+  <button class="am-btn am-btn-primary" data-insert>插入 p 元素</button>
+  <button class="am-btn am-btn-secondary" data-addClass>添加 Class</button>
+  <button class="am-btn am-btn-warning" data-remove>移除 p 元素</button>
+</p>
+<div id="js-do-demo">
+  <p>DOM 变化监视演示，打开控制台查看 log</p>
+
+</div>
+<script>
+  $(function() {
+    var $wrapper = $('#js-do-demo');
+    $wrapper.DOMObserve({
+      childList: true,
+      attributes: true,
+      subtree: true
+    }, function(mutations, observer) {
+      console.log(observer.constructor === window.MutationObserver);
+      console.log('#js-do-demo 的 DOM 发生变化鸟：' + mutations[0].type);
+    });
+
+    $('#js-do-actions').find('button').on('click', function(e) {
+      var $t = $(e.target);
+      if ($t.is('[data-insert]')) {
+        $wrapper.append('<p>插入了一个 p</p>');
+      } else if($t.is('[data-remove]')) {
+        $wrapper.find('p').last().remove();
+      } else {
+        $wrapper.addClass('am-text-danger');
+      }
+    });
+  })
+</script>
+`````
+```html
+<p id="js-do-actions">
+  <button class="am-btn am-btn-primary" data-insert>插入 p 元素</button>
+  <button class="am-btn am-btn-secondary" data-addClass>添加 Class</button>
+  <button class="am-btn am-btn-warning" data-remove>移除 p 元素</button>
+</p>
+<div id="js-do-demo">
+  <p>DOM 变化监视演示，打开控制台查看 log</p>
+</div>
+<script>
+  $(function() {
+    var $wrapper = $('#js-do-demo');
+    $wrapper.DOMObserve({
+      childList: true,
+      attributes: true,
+      subtree: true
+    }, function(mutations, observer) {
+      console.log(observer.constructor === window.MutationObserver);
+      console.log('#js-do-demo 的 DOM 发生变化鸟：' + mutations[0].type);
+    });
+
+    $('#js-do-actions').find('button').on('click', function(e) {
+      var $t = $(e.target);
+      if ($t.is('[data-insert]')) {
+        $wrapper.append('<p>插入了一个 p</p>');
+      } else if($t.is('[data-remove]')) {
+        $wrapper.find('p').last().remove();
+      } else {
+        $wrapper.addClass('am-text-danger');
+      }
+    });
+  })
+</script>
+```
+
+**参考链接：**
+
+- [MDN - MutationObserver](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver)；
+- [CIU - Mutation Observer 浏览器支持](http://caniuse.com/#feat=mutationobserver)
+- [Polyfill - MutationObserver.js](https://github.com/webcomponents/webcomponentsjs/blob/master/src/MutationObserver/MutationObserver.js)
+
 ### 模块化开发
 
 关于前端模块化，Amaze UI 1.0 的时候曾做过一个[关于前端 JS 模块化的调查](/javascript?_ver=1.x)，截止 2014.11.13 共 1869 个投票：

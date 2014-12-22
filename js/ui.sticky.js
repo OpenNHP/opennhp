@@ -192,11 +192,11 @@ Sticky.prototype.checkPosition = function() {
 function Plugin(option) {
   return this.each(function() {
     var $this = $(this);
-    var data = $this.data('am.sticky');
+    var data = $this.data('amui.sticky');
     var options = typeof option == 'object' && option;
 
     if (!data) {
-      $this.data('am.sticky', (data = new Sticky(this, options)));
+      $this.data('amui.sticky', (data = new Sticky(this, options)));
     }
 
     if (typeof option == 'string') {

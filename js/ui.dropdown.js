@@ -140,7 +140,8 @@ Dropdown.prototype.checkDimensions = function() {
     this.$boundary.offset().left : 0;
 
   if (this.$justify) {
-    $dropdown.css({'min-width': this.$justify.width()});
+    // jQuery.fn.width() is really...
+    $dropdown.css({'min-width': this.$justify.css('width')});
   }
 
   if ((width + (offset.left - boundaryOffset)) > boundaryWidth) {
@@ -151,7 +152,7 @@ Dropdown.prototype.checkDimensions = function() {
 Dropdown.prototype.clear = function() {
   $('[data-am-dropdown]').not(this.$element).each(function() {
     var data = $(this).data('amui.dropdown');
-    data && data['close']();
+    data && data.close();
   });
 };
 
@@ -212,13 +213,14 @@ function Plugin(option) {
 $.fn.dropdown = Plugin;
 
 // Init code
-$(function() {
-  $('[data-am-dropdown]').dropdown();
+UI.ready(function(context) {
+  $('[data-am-dropdown]', context).dropdown();
 });
 
-$(document).on('click.dropdown.amui.data-api', '.am-dropdown form', function(e) {
-  e.stopPropagation();
-});
+$(document).on('click.dropdown.amui.data-api', '.am-dropdown form',
+  function(e) {
+    e.stopPropagation();
+  });
 
 $.AMUI.dropdown = Dropdown;
 

@@ -873,11 +873,18 @@
   .am-radio,
   .am-checkbox,
   .am-radio-inline,
-  .am-checkbox-inline {
+  .am-checkbox-inline,
+  label {
     color: @text-color;
   }
 
-  .am-form-field {
+  // feedback icon
+  [class*="icon-"] {
+    color: @text-color;
+  }
+}
+
+.form-field-validation-filed(@text-color: #555; @border-color: #ccc) {
     border-color: @border-color !important;
     box-shadow: inset 0 1px 1px rgba(0, 0, 0, .075);
     &:focus {
@@ -887,13 +894,8 @@
       @shadow: inset 0 1px 1px rgba(0, 0, 0, .075), 0 0 5px lighten(@border-color, 20%) !important;
       box-shadow: @shadow !important;
     }
-  }
-
-  // feedback icon
-  [class*="icon-"] {
-    color: @text-color;
-  }
 }
+
 
 // Form element focus state
 // -----------------------------------------------------------------------------

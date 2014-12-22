@@ -126,8 +126,8 @@ $(document).on('click.button.amui.data-api', '[data-am-button]', function(e) {
   e.preventDefault();
 });
 
-$(function() {
-  $('[data-am-loading]').each(function() {
+UI.ready(function(context) {
+  $('[data-am-loading]', context).each(function() {
     $(this).button(UI.utils.parseOptions($(this).data('amLoading')));
   });
 });

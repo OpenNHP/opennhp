@@ -179,15 +179,24 @@ Modal.prototype.events = function() {
   var that = this;
   var $element = this.$element;
   var $ipt = $element.find('.am-modal-prompt-input');
+  var getData = function() {
+    var data = [];
+    $ipt.each(function() {
+      data.push($(this).val());
+    });
 
+    return (data.length === 0) ? undefined :
+      ((data.length === 1) ? data[0] : data);
+  };
+
+  // close via Esc key
   if (this.options.cancelable) {
-    $element.on('keyup.modal.amui',
-      $.proxy(function(e) {
-        if (this.active && e.which === 27) {
-          this.options.onCancel();
-          this.close();
+    $element.on('keyup.modal.amui', function(e) {
+        if (that.active && e.which === 27) {
+          $element.trigger('cancel.modal.amui');
+          that.close();
         }
-      }, that));
+      });
   }
 
   // Close Modal when dimmer clicked
@@ -197,33 +206,33 @@ Modal.prototype.events = function() {
     });
   }
 
-  // Close button
+  // Close Modal when button clicked
   $element.find('[data-am-modal-close], .am-modal-btn').
     on('click.close.modal.amui', function(e) {
     e.preventDefault();
     that.close();
   });
 
-  // get inputs data
-  function getData() {
-    var data = [];
-
-    $ipt.each(function() {
-      data.push($(this).val());
-    });
-
-    return (data.length === 0) ? undefined :
-      ((data.length === 1) ? data[0] : data);
-  }
-
   $element.find('[data-am-modal-confirm]').on('click.confirm.modal.amui',
     function() {
-      that.options.onConfirm.call(that, {data: getData()});
+      $element.trigger($.Event('confirm.modal.amui', {
+        trigger: this
+      }));
     });
 
-  $element.find('[data-am-modal-cancel]').on('click.cancel.modal.amui',
-    function() {
-    that.options.onCancel.call(that, {data: getData()});
+  $element.find('[data-am-modal-cancel]').
+    on('click.cancel.modal.amui', function() {
+      $element.trigger($.Event('cancel.modal.amui', {
+        trigger: this
+      }));
+    });
+
+  $element.on('confirm.modal.amui', function(e) {
+    e.data = getData();
+    that.options.onConfirm.call(that, e);
+  }).on('cancel.modal.amui', function(e) {
+    e.data = getData();
+    that.options.onCancel.call(that, e);
   });
 };
 
@@ -239,7 +248,7 @@ function Plugin(option, relatedTarget) {
     }
 
     if (typeof option == 'string') {
-      data[option](relatedTarget);
+      data[option] && data[option](relatedTarget);
     } else {
       data.toggle(option && option.relatedTarget || undefined);
     }

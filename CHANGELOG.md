@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+### 2014.12 W4
+
+**JS:**
+
+- `IMPROVED` 修复 Modal 退出时的动画效果；
+
 ### 2014.12 W3
 
 **JS:**

@@ -6,6 +6,7 @@
 **JS:**
 
 - `IMPROVED` 修复 Modal 退出时的动画效果；
+- `IMPROVED` #332 修复 Dropdown 嵌套在 Header 里时 `line-height`/`display` 问题；
 
 ### 2014.12 W3
 

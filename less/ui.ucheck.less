@@ -178,6 +178,15 @@ label {
   }
 }
 
+// form validate state
+.@{ns}field-error + .@{ns}ucheck-icons {
+  color: @global-danger;
+}
+
+.@{ns}field-valid + .@{ns}ucheck-icons {
+  color: @global-success;
+}
+
 // Group Addon
 .@{ns}input-group-label {
   .@{ns}radio,

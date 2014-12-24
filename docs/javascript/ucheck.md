@@ -264,6 +264,87 @@
 </form>
 -->
 
+### 结合表单验证插件
+
+`````html
+<form class="am-form" data-am-validator>
+  <div class="am-form-group">
+    <h3>装备<sup class="am-text-danger">*</sup> （至少 2 项，至多 4 项）</h3>
+    <label class="am-checkbox">
+      <input type="checkbox" name="cbx" value="ip" data-am-ucheck required minchecked="2" maxchecked="4"> iPhone
+    </label>
+    <label class="am-checkbox">
+      <input type="checkbox" name="cbx" value="im" data-am-ucheck> iMac
+    </label>
+    <label class="am-checkbox">
+      <input type="checkbox" name="cbx" value="mbp" data-am-ucheck> Macbook Pro
+    </label>
+    <label class="am-checkbox">
+      <input type="checkbox" name="cbx" value="sf" data-am-ucheck> 苏菲·麻索
+    </label>
+    <label class="am-checkbox">
+      <input type="checkbox" name="cbx" value="sur" data-am-ucheck> Surface
+    </label>
+    <label class="am-checkbox">
+      <input type="checkbox" name="cbx" value="rb" data-am-ucheck> Razer Blade
+    </label>
+  </div>
+
+  <div class="am-form-group">
+    <h3>性别 <sup class="am-text-danger">*</sup></h3>
+    <label class="am-radio">
+      <input type="radio" name="radio10" value="male" data-am-ucheck required> 男
+    </label>
+    <label class="am-radio">
+      <input type="radio" name="radio10" value="female" data-am-ucheck> 女
+    </label>
+    <label class="am-radio">
+      <input type="radio" name="radio10" value="pig" data-am-ucheck> 人妖
+    </label>
+    <div>
+      <div><button type="submit" class="am-btn am-btn-primary">提交</button></div>
+</form>
+`````
+```html
+<form class="am-form" data-am-validator>
+  <div class="am-form-group">
+    <h3>装备<sup class="am-text-danger">*</sup> （至少 2 项，至多 4 项）</h3>
+    <label class="am-checkbox">
+      <input type="checkbox" name="cbx" value="ip" data-am-ucheck required minchecked="2" maxchecked="4"> iPhone
+    </label>
+    <label class="am-checkbox">
+      <input type="checkbox" name="cbx" value="im" data-am-ucheck> iMac
+    </label>
+    <label class="am-checkbox">
+      <input type="checkbox" name="cbx" value="mbp" data-am-ucheck> Macbook Pro
+    </label>
+    <label class="am-checkbox">
+      <input type="checkbox" name="cbx" value="sf" data-am-ucheck> 苏菲·麻索
+    </label>
+    <label class="am-checkbox">
+      <input type="checkbox" name="cbx" value="sur" data-am-ucheck> Surface
+    </label>
+    <label class="am-checkbox">
+      <input type="checkbox" name="cbx" value="rb" data-am-ucheck> Razer Blade
+    </label>
+  </div>
+
+  <div class="am-form-group">
+    <h3>性别 <sup class="am-text-danger">*</sup></h3>
+    <label class="am-radio">
+      <input type="radio" name="radio10" value="male" data-am-ucheck required> 男
+    </label>
+    <label class="am-radio">
+      <input type="radio" name="radio10" value="female" data-am-ucheck> 女
+    </label>
+    <label class="am-radio">
+      <input type="radio" name="radio10" value="pig" data-am-ucheck> 人妖
+    </label>
+    <div>
+      <div><button type="submit" class="am-btn am-btn-primary">提交</button></div>
+</form>
+```
+
 ## 使用方式
 
 ### 通过 Data API

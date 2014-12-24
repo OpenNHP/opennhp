@@ -17,13 +17,13 @@
   top: 0;
   bottom: 0;
   right: 0;
+  z-index: @z-index-pureview;
   width: 100%;
   height: 100%;
-  z-index: @z-index-pureview;
   background: rgba(0, 0, 0, 0.95);
-  //display: none;
+  display: none;
   overflow: hidden;
-  transition: transform .4s;
+  transition: transform .3s;
   transform: translate(0, 100%);
 
   &.@{ns}active {
@@ -136,7 +136,7 @@
     opacity: 0;
     z-index: 200;
     -webkit-user-drag: none;
-    transition: opacity .15s linear;
+    transition: opacity .2s ease-in;
 
     &.@{ns}img-loaded {
       opacity: 1;

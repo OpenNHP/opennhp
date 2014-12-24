@@ -11,7 +11,7 @@
 `````html
 <ul data-am-widget="gallery" class="am-gallery am-avg-sm-2
   am-avg-md-3 am-avg-lg-4 am-gallery-default"
-    data-am-pureview="{target: 'a'}">
+    data-am-pureview="{target: 'a'}" id="doc-pv-gallery">
   <li>
     <div class="am-gallery-item">
       <a href="http://amui.qiniudn.com/pure-1.jpg" title="远方 有一个地方 那里种有我们的梦想">
@@ -54,6 +54,22 @@
   </li>
 </ul>
 `````
+`````html
+<button class="am-btn am-btn-primary" id="doc-pv-append">随机插入一个图片</button>
+`````
+
+<script>
+  $(function() {
+    var $gallery = $('#doc-pv-gallery');
+    var $items = $gallery.find('li');
+
+    $('#doc-pv-append').on('click', function() {
+      var random = Math.round(Math.random() * 3);
+      $items.eq(random).clone(false).find('a').
+        removeAttr('data-am-pureviewed').end().appendTo($gallery);
+    });
+  });
+</script>
 
 ### 从 `data-rel` 中获取图片
 

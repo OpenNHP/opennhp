@@ -7,7 +7,6 @@ var path = require('path');
 var fs = require('fs-extra');
 var _ = require('lodash');
 var format = require('util').format;
-var exec = require('child_process').exec;
 var browserify = require('browserify');
 var transform = require('vinyl-transform');
 var del = require('del');

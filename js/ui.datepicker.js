@@ -16,7 +16,7 @@ var Datepicker = function(element, options) {
   this.element = $(element);
   this.format = DPGlobal.parseFormat(options.format);
   this.element.data('am-date', options.date);
-  this.language = this.browserLanguage();
+  this.language = this.getLocale(options.locale);
   this.theme = options.theme;
   this.picker = $(DPGlobal.template)
                   .appendTo('body')
@@ -241,7 +241,7 @@ Datepicker.prototype = {
     nextMonth = nextMonth.valueOf();
     var html = [];
 
-    var clsName,
+    var className,
         prevY,
         prevM;
 
@@ -249,18 +249,18 @@ Datepicker.prototype = {
       if (prevMonth.getDay() === this.weekStart) {
         html.push('<tr>');
       }
-      clsName = this.onRender(prevMonth);
+      className = this.onRender(prevMonth);
       prevY = prevMonth.getFullYear();
       prevM = prevMonth.getMonth();
       if ((prevM < month &&  prevY === year) ||  prevY < year) {
-        clsName += ' am-datepicker-old';
+        className += ' am-datepicker-old';
       } else if ((prevM > month && prevY === year) || prevY > year) {
-        clsName += ' am-datepicker-new';
+        className += ' am-datepicker-new';
       }
       if (prevMonth.valueOf() === currentDate) {
-        clsName += ' am-active';
+        className += ' am-active';
       }
-      html.push('<td class="am-datepicker-day ' + clsName + '">' + prevMonth.getDate() + '</td>');
+      html.push('<td class="am-datepicker-day ' + className + '">' + prevMonth.getDate() + '</td>');
       if (prevMonth.getDay() === this.weekEnd) {
         html.push('</tr>');
       }
@@ -406,14 +406,17 @@ Datepicker.prototype = {
     return isOutView;
   },
 
-  browserLanguage: function() {
-    var language = navigator.language && navigator.language.split('-');
-    language[1] = language[1].toUpperCase();
-    language = language.join('_');
-    if (!Object.prototype.hasOwnProperty.call(Datepicker.locales, language)) {
-      language = 'en_US';
+  getLocale: function(locale) {
+    if (!locale) {
+      locale = navigator.language && navigator.language.split('-');
+      locale[1] = locale[1].toUpperCase();
+      locale = locale.join('_');
     }
-    return language;
+
+    if (!Datepicker.locales[locale]) {
+      locale = 'en_US';
+    }
+    return locale;
   },
 
   addTheme: function() {
@@ -424,7 +427,8 @@ Datepicker.prototype = {
 };
 
 Datepicker.DEFAULTS = {
-  format: 'yyyy/mm/dd',
+  locale: 'zh_CN',
+  format: 'yyyy-mm-dd',
   weekStart: 0,
   viewMode: 0,
   minViewMode: 0,

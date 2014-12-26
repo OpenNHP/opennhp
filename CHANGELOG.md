@@ -1,6 +1,14 @@
 # Amaze UI Change Log
 ---
 
+### 2014.12 W4
+
+**JS:**
+
+- `IMPROVED` #294 Pureview 插件优化：动态插入图片处理，用户查看时才加载大图，修复部分浏览器上未隐藏完整问题；
+- `IMPROVED` 修复 Modal 退出时的动画效果；
+- `IMPROVED` #332 修复 Dropdown 嵌套在 Header 里时 `line-height`/`display` 问题；
+
 ### 2014.12 W3
 
 **JS:**

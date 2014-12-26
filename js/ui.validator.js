@@ -144,7 +144,6 @@ Validator.prototype.init = function() {
   });
 
   $element.submit(function(e) {
-    e.preventDefault();
     return _this.isFormValid();
   });
 
@@ -196,6 +195,10 @@ Validator.prototype.validate = function(field) {
       filter(':checked').length : ($field.is('[type=radio]') ?
   ($radioGroup = this.$element.find('input[name="' + field.name + '"]')).
     filter(':checked').length > 0 : $field.val());
+
+  // if checkbox, valid the first input of checkbox group
+  $field = ($checkboxGroup && $checkboxGroup.length) ?
+    $checkboxGroup.first() : $field;
   var required = ($field.attr('required') !== undefined) &&
     ($field.attr('required') !== 'false');
   var maxLength = parseInt($field.attr('maxlength'), 10);
@@ -242,15 +245,15 @@ Validator.prototype.validate = function(field) {
   } else if (($checkboxGroup || $field.is('select[multiple="multiple"]')) &&
     value) {
     // check checkboxes / multiple select with `minchecked`/`maxchecked` attr
-    var $multipleField = $checkboxGroup ? $checkboxGroup.first() : $field;
+    // var $multipleField = $checkboxGroup ? $checkboxGroup.first() : $field;
 
     // if is select[multiple="multiple"], return selected length
     value = $checkboxGroup ? value : value.length;
 
     // at least checked
-    var minChecked = parseInt($multipleField.attr('minchecked'), 10);
+    var minChecked = parseInt($field.attr('minchecked'), 10);
     // at most checked
-    var maxChecked = parseInt($multipleField.attr('maxchecked'), 10);
+    var maxChecked = parseInt($field.attr('maxchecked'), 10);
 
     if (!isNaN(minChecked) && value < minChecked) {
       // console.log('At least [%d] items checked！', maxChecked);
@@ -343,7 +346,7 @@ Validator.prototype.isFormValid = function() {
     return false;
   }
   this.$element.trigger('valid.validator.amui');
-  return false;
+  return true;
 };
 
 // customErrors:

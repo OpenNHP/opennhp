@@ -56,7 +56,7 @@
 @datepicker-warning-color: @global-warning;
 @datepicker-danger-color: @global-danger;
 
-.datepicker-theme(@color) {
+.datepicker-color-variant(@color) {
   @theme-primary: @color;
   @theme-color-light: fadeout(lighten(@color, 20%), 50%);
   @theme-color-dark: darken(@color, 20%);
@@ -68,7 +68,7 @@
     background: @theme-primary;
   }
 
-  td{
+  td {
     &.@{ns}datepicker-day.@{ns}disabled {
       color: @theme-color-disable;
     }
@@ -107,7 +107,6 @@
       color: @theme-color-dark;
     }
   }
-
 }
 
 .@{ns}datepicker {
@@ -123,9 +122,10 @@
   display: none;
   .hook-datepicker;
 
-  >div {
+  > div {
     display: none;
   }
+
   table {
     width: 100%;
   }
@@ -162,16 +162,19 @@
       color: @datepicker-td-disable;
       background: @datepicker-td-disable-bg;
     }
+
     &.@{ns}datepicker-old,
     &.@{ns}datepicker-new {
       color: @datepicker-td-new-old;
     }
+
     &.@{ns}active,
     &.@{ns}active:hover {
       border-radius: 2px;
       color: @datepicker-td-active;
       background: @datepicker-td-hover;
     }
+
     span {
       display: block;
       width: @datepicker-span-width;
@@ -180,19 +183,21 @@
       line-height: 50px;
       float: left;
       cursor: pointer;
+
       &:hover {
         background: @datepicker-td-hover;
       }
+
       &.@{ns}active {
         color: @datepicker-td-active;
         background: @datepicker-td-hover;
       }
+
       &.@{ns}datepicker-old {
         color: @datepicker-td-new-old;
       }
     }
   }
-
 }
 
 .@{ns}datepicker-caret {
@@ -292,25 +297,25 @@
 }
 
 // Modifiers
-// ====================================================================================
+// =============================================================================
 
 .@{ns}datepicker-success {
-  .datepicker-theme(@datepicker-success-color);
+  .datepicker-color-variant(@datepicker-success-color);
   .hook-datepicker-success;
 }
 
 .@{ns}datepicker-danger {
-  .datepicker-theme(@datepicker-danger-color);
+  .datepicker-color-variant(@datepicker-danger-color);
   .hook-datepicker-danger;
 }
 
 .@{ns}datepicker-warning {
-  .datepicker-theme(@datepicker-warning-color);
+  .datepicker-color-variant(@datepicker-warning-color);
   .hook-datepicker-warning;
 }
 
 // Hooks
-// ====================================================================================
+// =============================================================================
 
 .hook-datepicker() {}
 .hook-datepicker-creat() {}

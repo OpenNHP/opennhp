@@ -132,7 +132,31 @@
   </div>
 </div>
 ```
+<!--
+### 与 Header 嵌套使用
 
+`````html
+<header data-am-widget="header" class="am-header am-header-default">
+  <h1 class="am-header-title">
+    <a>Title</a>
+  </h1>
+
+  <div class="am-header-right am-header-nav am-dropdown" data-am-dropdown>
+    <a class="am-dropdown-toggle" href="javascript: void(0)" data-am-dropdown-toggle>
+      <i class="am-header-icon am-icon-bars"></i>
+    </a>
+    <ul class="am-dropdown-content">
+      <li class="am-dropdown-header">标题</li>
+      <li><a href="#">快乐的方式不只一种</a></li>
+      <li class="am-active"><a href="#">最荣幸是</a></li>
+      <li><a href="#">谁都是造物者的光荣</a></li>
+      <li class="am-disabled"><a href="#">就站在光明的角落</a></li>
+      <li class="am-divider"></li>
+      <li><a href="#">天空海阔 要做最坚强的泡沫</a></li>
+    </ul>
+  </div>
+</header>
+`````-->
 
 ## 调用方式
 

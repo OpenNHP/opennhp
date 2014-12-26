@@ -124,13 +124,13 @@ $(function() {
     on('click', function() {
       $('#my-confirm').modal({
         relatedTarget: this,
-        onConfirm: function(options) {
+        onConfirm: function(e) {
           var $link = $(this.relatedTarget).prev('a');
           var msg = $link.length ? '你要删除的链接 ID 为 ' + $link.data('id') :
             '确定了，但不知道要整哪样';
           alert(msg);
         },
-        onCancel: function() {
+        onCancel: function(e) {
           alert('算求，不弄了');
         }
       });
@@ -244,10 +244,10 @@ $(function() {
   $('#doc-prompt-toggle').on('click', function() {
     $('#my-prompt').modal({
       relatedTarget: this,
-      onConfirm: function(options) {
-        alert('你输入的是：' + options.data)
+      onConfirm: function(e) {
+        alert('你输入的是：' + e.data || '');
       },
-      onCancel: function(options) {
+      onCancel: function(e) {
         alert('不想说!');
       }
     });
@@ -277,10 +277,10 @@ $(function() {
   $('#doc-prompt-toggle').on('click', function() {
     $('#my-prompt').modal({
       relatedTarget: this,
-      onConfirm: function(options) {
-        alert('你输入的是：' + options.data)
+      onConfirm: function(e) {
+        alert('你输入的是：' + e.data || '')
       },
-      onCancel: function(options) {
+      onCancel: function(e) {
         alert('不想说!');
       }
     });

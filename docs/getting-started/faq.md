@@ -12,7 +12,5 @@
 
 ### Amaze UI 目前没有 xx 组件，有没有推荐的？
 
-**日历组件**：
+参见[插件收集](/getting-started/collections?_ver=2.x)
 
-- [GMU 日历组件](http://gmu.baidu.com/demo/widget/calendar/calendar.html)
-- [Mobiscroll](https://github.com/acidb/mobiscroll)

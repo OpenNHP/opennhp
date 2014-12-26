@@ -2,6 +2,7 @@
 
 /* jshint node: true */
 
+var exec = require('child_process').exec;
 var path = require('path');
 var format = require('util').format;
 var del = require('del');
@@ -12,7 +13,8 @@ var replace = require('gulp-replace');
 var sassPath = './dist/sass';
 var paths = {
   scss: path.join(sassPath, 'scss'),
-  widget: path.join(sassPath, 'widget')
+  widget: path.join(sassPath, 'widget'),
+  sassRepo: '../amazeui-sass'
 };
 
 gulp.task('sass:clean', function(callback) {
@@ -71,9 +73,9 @@ gulp.task('sass:convert', function() {
         return format('@include %s(%s);', $1, $2.replace(/;/g, ','));
       }))
     // form.less
-    .pipe(replace(/\.(form-field-\w+)\((.*)\);/g,
-      function(match, $1, $2) {
-        return format('@include %s(%s);', $1, $2.replace(/;/g, ','));
+    .pipe(replace(/\.((form-field-|form-field-validation-)\w+)\((.*)\);/g,
+      function(match, $1, $2, $3) {
+        return format('@include %s(%s);', $1, $3.replace(/;/g, ','));
       }))
     // nav.less
     .pipe(replace(/\.nav-tabs-justify(\(\))?;/g, '@include nav-tabs-justify();'))
@@ -130,7 +132,7 @@ gulp.task('sass:convert', function() {
         return format('@include %s(%s);', $1, $2.replace(/;/g, ','));
       }))
     // widgets style
-    .pipe(replace(/\.(line-clamp-height|max-thumb-height)\((.*)\);/g,
+    .pipe(replace(/\.(line-clamp-height|max-thumb-height|popover-color-variant|ucheck-state-variant|datepicker-color-variant)\((.*)\);/g,
       function(match, $1, $2) {
         return format('@include %s(%s);', $1, $2.replace(/;/g, ','));
       }))
@@ -148,9 +150,12 @@ gulp.task('sass:convert', function() {
     .pipe(replace(/@mixin ([\w\-]*)\s*\((.*)\)\s*\{\s*\}/g, '// @mixin $1($2){}'))
     // hook calls
     .pipe(replace(/\.(hook[a-zA-Z\-\d]+)(\(\))?;/g, '// @include $1();'))
-    .pipe(replace(/\$(import|media|font-face|page|-ms-viewport|keyframes|-webkit-keyframes)/g, '@$1')) // replace valid '@' statements
-    .pipe(replace(/(\$[\w\-]*)\s*:(.*);\n/g, '$1: $2 !default;\n'))    // make variables optional
-    .pipe(replace(/\$\{/g, '#{$'))                                      // string literals: from: /~"(.*)"/g, to: '#{"$1"}'
+    // replace valid '@' statements
+    .pipe(replace(/\$(import|media|font-face|page|-ms-viewport|keyframes|-webkit-keyframes)/g, '@$1'))
+    // make variables optional
+    .pipe(replace(/(\$[\w\-]*)\s*:(.*);\n/g, '$1: $2 !default;\n'))
+    // string literals: from: /~"(.*)"/g, to: '#{"$1"}'
+    .pipe(replace(/\$\{/g, '#{$'))
     // string literals: for real
     .pipe(replace(/~("[^"]+")/g, 'unquote($1)'))
     .pipe(gulp.dest(function(file) {
@@ -161,19 +166,59 @@ gulp.task('sass:convert', function() {
     }));
 });
 
-gulp.task('sass:replace', function() {
-  return gulp.src(['amui.scss', 'amazeui.scss'], {cwd: paths.scss})
-    .pipe(replace('@import "grid.scss";', ''))
-    .pipe(replace('@import "block-grid.scss";', ''))
-    .pipe(replace('@import "table.scss";', ''))
+gulp.task('sass:copy:scss', function() {
+  return gulp.src('*.scss', {cwd: path.join(__dirname, 'scss')})
     .pipe(gulp.dest(paths.scss));
 });
 
-gulp.task('sass', function(callback) {
+gulp.task('sass:converter', function(callback) {
   runSequence(
     'sass:clean',
     ['sass:copy:less', 'sass:copy:components'],
     'sass:convert',
-    'sass:replace',
+    'sass:copy:scss',
     callback);
+});
+
+gulp.task('sass:deploy:dist', function() {
+  return gulp.src('**/*', {cwd: sassPath})
+    .pipe(gulp.dest(paths.sassRepo));
+});
+
+gulp.task('sass:deploy:js', function() {
+  return gulp.src('./js/*.js')
+    .pipe(gulp.dest(path.join(paths.sassRepo, 'js')));
+});
+
+gulp.task('sass:deploy:misc', function() {
+  return gulp.src([
+    '.editorconfig',
+    '.gitignore',
+    '.jscsrc',
+    '.jshintrc',
+    'LICENSE.md',
+    'package.json'
+  ], {cwd: './'})
+    .pipe($.replace('"name": "amazeui",', '"name": "amazeui-sass",'))
+    .pipe($.replace('github.com/allmobilize/amazeui.git',
+      'github.com/amazeui/amazeui-sass.git'))
+    .pipe(gulp.dest(path.join(paths.sassRepo)));
+});
+
+gulp.task('sass:test', function(callback) {
+  exec('sass ../amazeui-sass/scss/amazeui.scss', function(err, stdout, stderr) {
+    // console.log(stdout);
+    console.log(stderr);
+  });
+  callback();
+});
+
+gulp.task('sass', function(callback) {
+  runSequence(
+    ['sass:converter'],
+    ['sass:deploy:js', 'sass:deploy:misc', 'sass:deploy:dist'],
+    ['sass:test'],
+    'sass:clean',
+    callback
+  );
 });

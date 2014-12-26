@@ -58,7 +58,8 @@
                             "latitude": "",
                             "zoomControl": true,
                             "scaleControl": "",
-                            "setZoom": 17
+                            "setZoom": 17,
+                            "icon": "http://amuituku.qiniudn.com/mapicon.png"
                         }
                     }
                 }
@@ -171,6 +172,13 @@
                 "type": "text",
                 "default": 17,
                 "required": false
+            },
+            "icon": {
+              "name": "标注图标",
+              "desc": "自定义标注图标，填写图片网址",
+              "type": "text",
+              "default": "",
+              "required": false
             }
         },
 

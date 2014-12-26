@@ -45,7 +45,7 @@ function addBdMap() {
   var lng = content.getAttribute('data-longitude') || defaultLng;
   var lat = content.getAttribute('data-latitude') || defaultLat;
   var setZoom = content.getAttribute('data-setZoom') || 17;
-  // var icon = content.getAttribute('data-icon') || 'http://developer.baidu.com/map/jsdemo/img/fox.gif';
+  var icon = content.getAttribute('data-icon');
 
   var map = new BMap.Map('bd-map');
 
@@ -66,13 +66,10 @@ function addBdMap() {
   }
 
   // 创建标准与自定义 icon
-  // var mapIcon = new BMap.Icon(icon, new BMap.Size(50, 50));
   var marker = new BMap.Marker(point);
-  // if (icon) {
-    // marker.setIcon(icon);
-  // }
-  marker.setIcon(new BMap.Icon('http://developer.baidu.com/map/jsdemo/img/fox.gif', new BMap.Size(50, 50)));
-  console.log(marker.getIcon());
+  if (icon) {
+    marker.setIcon(new BMap.Icon(icon, new BMap.Size(40, 40)));
+  }
 
   var opts = {
     width: 200,     // 信息窗口宽度

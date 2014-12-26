@@ -55,7 +55,10 @@
                             "name":"云适配",
                             "address":"北京市海淀区海淀大街27号亿景大厦3层西区",
                             "longitude": "",
-                            "latitude": ""
+                            "latitude": "",
+                            "zoomControl": true,
+                            "scaleControl": "",
+                            "setZoom": 17
                         }
                     }
                 }
@@ -124,6 +127,49 @@
                 "desc": "",
                 "type": "text",
                 "default": "",
+                "required": false
+            },
+            "zoomControl": {
+                "name": "缩放控件",
+                "dese": "是否添加地图缩放控件",
+                "type": "select",
+                "default": true,
+                "required": false,
+                "dataList": [
+                    {
+                        "value": true,
+                        "title": "启用",
+                        "selected": true
+                    },
+                    {
+                        "value": false,
+                        "title": "不启用"
+                    }
+                ]
+            },
+            "scaleControl": {
+                "name": "比例尺控件",
+                "dese": "是否添加地图比例尺控件",
+                "type": "select",
+                "default": false,
+                "required": false,
+                "dataList": [
+                    {
+                      "value": false,
+                      "title": "不启用",
+                      "selected": true
+                    },
+                    {
+                      "value": true,
+                      "title": "启用"
+                    }
+                ]
+            },
+            "setZoom": {
+                "name": "地图缩放比例",
+                "desc": "地图展示的缩放比例，默认值：3-18",
+                "type": "text",
+                "default": 17,
                 "required": false
             }
         },

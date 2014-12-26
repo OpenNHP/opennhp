@@ -122,7 +122,7 @@
             startDate = new Date(event.date);
             $('#my-startDate').text($('#my-start').data('am-date'));
           }
-          $(this).datepicker('hide');
+          $(this).datepicker('close');
         })
         
     $('#my-end')
@@ -135,7 +135,7 @@
             endDate = new Date(event.date);
             $('#my-endDate').text($('#my-end').data('am-date'));
           }
-          $(this).datepicker('hide');
+          $(this).datepicker('close');
         })
      
   })
@@ -169,7 +169,7 @@
             startDate = new Date(event.date);
             $('#my-startDate').text($('#my-start').data('am-date'));
           }
-          $(this).datepicker('hide');
+          $(this).datepicker('close');
         })
         
     $('#my-end')
@@ -182,7 +182,7 @@
             endDate = new Date(event.date);
             $('#my-endDate').text($('#my-end').data('am-date'));
           }
-          $(this).datepicker('hide');
+          $(this).datepicker('close');
         })
      
   })
@@ -218,7 +218,7 @@
           newDate.setDate(newDate.getDate() + 1);
           checkout.setValue(newDate);
         }
-        checkin.hide();
+        checkin.close();
         $('#my-end-2')[0].focus();
     }).data('amui.datepicker');
     
@@ -227,7 +227,7 @@
         return date.valueOf() <= checkin.date.valueOf() ? 'am-disabled' : '';
       }
     }).on('changeDate.datepicker.amui', function(ev) {
-      checkout.hide();
+      checkout.close();
     }).data('amui.datepicker');
     
   })
@@ -261,7 +261,7 @@
           newDate.setDate(newDate.getDate() + 1);
           checkout.setValue(newDate);
         }
-        checkin.hide();
+        checkin.close();
         $('#my-end-2')[0].focus();
     }).data('amui.datepicker');
     
@@ -270,7 +270,7 @@
         return date.valueOf() <= checkin.date.valueOf() ? 'am-disabled' : '';
       }
     }).on('changeDate.datepicker.amui', function(ev) {
-      checkout.hide();
+      checkout.close();
     }).data('amui.datepicker');
     
   })
@@ -281,7 +281,7 @@
 
 ### 参数说明
 
-- format: 日期格式，默认为 `yyyy/mm/dd` ，符合中文日期选择，可以选择 `yy/mm/dd` 、`mm/dd` 或者英文日期格式 `dd/mm/yyyy`、`dd/mm/yy`、`dd/mm`等，中间分隔符可以使用 `/`、`-`、` `等。
+- format: 日期格式，默认为 `yyyy-mm-dd` ，符合中文日期选择，可以选择 `yy/mm/dd` 、`mm/dd` 或者英文日期格式 `dd/mm/yyyy`、`dd/mm/yy`、`dd/mm`等，中间分隔符可以使用 `/`、`-`、` `等。
 - viewMode: type `string`|`integer` 默认为 0 ，设置开始查看模式，接受 `days`、`months`、`years`或者传递 `0`、`1`、`2` 分别对应。
 - minViewMode: type `string`|`integer` 默认为 0 ，设置视图模式的限制，接受 `days`、`months`、`years`或者传递 `0`、`1`、`2` 分别对应。
 - onRender: 设置禁用日期的回调函数，判定是否禁用设置 className 为 `am-disabled`。 
@@ -316,11 +316,11 @@ $('#my-datepicker').datepicker({format: 'yyyy-mm'});
   </thead>
   <tbody>
   <tr>
-    <td><code>.datepicker('show')</code></td>
+    <td><code>.datepicker('open')</code></td>
     <td>显示日历</td>
   </tr>
   <tr>
-    <td><code>.datepicker('hide')</code></td>
+    <td><code>.datepicker('close')</code></td>
     <td>隐藏日历</td>
   </tr>
   <tr>

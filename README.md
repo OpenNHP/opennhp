@@ -2,7 +2,7 @@
 
 [![Bower version](https://badge.fury.io/bo/amazeui.svg)](http://badge.fury.io/bo/amazeui)
 [![NPM version](https://badge.fury.io/js/amazeui.svg)](http://badge.fury.io/js/amazeui)
-[![Build Status](https://travis-ci.org/HuangShaoyan/amazeui.svg?branch=master)](https://travis-ci.org/HuangShaoyan/amazeui)
+[![Build Status](https://travis-ci.org/allmobilize/amazeui.svg?branch=master)](https://travis-ci.org/allmobilize/amazeui)
 
 Amaze UI 是基于社区开源项目构建的一个跨屏前端框架。 __[README in English](https://github.com/allmobilize/amazeui/blob/master/README_EN.md)__
 

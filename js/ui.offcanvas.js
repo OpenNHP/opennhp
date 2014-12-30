@@ -2,6 +2,7 @@
 
 var $ = require('jquery');
 var UI = require('./core');
+var Hammer = require('./util.hammer');
 var $win = $(window);
 var $doc = $(document);
 var scrollPos;
@@ -13,9 +14,9 @@ var scrollPos;
 
 var OffCanvas = function(element, options) {
   this.$element = $(element);
-  this.options = options;
+  this.options = $.extend({}, OffCanvas.DEFAULTS, options);
   this.active = null;
-  this.events();
+  this.bindEvents();
 };
 
 OffCanvas.DEFAULTS = {
@@ -24,6 +25,7 @@ OffCanvas.DEFAULTS = {
 };
 
 OffCanvas.prototype.open = function(relatedElement) {
+  var _this = this;
   var $element = this.$element;
 
   if (!$element.length || $element.hasClass('am-active')) {
@@ -42,9 +44,10 @@ OffCanvas.prototype.open = function(relatedElement) {
 
   $element.addClass('am-active');
 
-  $body.
-    css({width: window.innerWidth, height: $win.height()}).
-    addClass('am-offcanvas-page');
+  $body.css({
+    width: window.innerWidth,
+    height: $win.height()
+  }).addClass('am-offcanvas-page');
 
   if (effect !== 'overlay') {
     $body.css({
@@ -63,35 +66,30 @@ OffCanvas.prototype.open = function(relatedElement) {
   this.active = 1;
 
   // Close OffCanvas when none content area clicked
-  $element.off('click.offcanvas.amui').
-    on('click.offcanvas.amui', $.proxy(function(e) {
-      var $target = $(e.target);
+  $element.on('click.offcanvas.amui', function(e) {
+    var $target = $(e.target);
 
-      if (!e.type.match(/swipe/)) {
-        if ($target.hasClass('am-offcanvas-bar')) {
-          return;
-        }
-
-        if ($target.parents('.am-offcanvas-bar').first().length) {
-          return;
-        }
-      }
-
-      // https://developer.mozilla.org/zh-CN/docs/DOM/event.stopImmediatePropagation
-      e.stopImmediatePropagation();
-
-      this.close();
-    }, this));
-
-  $html.on('keydown.offcanvas.amui', $.proxy(function(e) {
-    if (e.keyCode === 27) { // ESC
-      this.close();
+    if ($target.hasClass('am-offcanvas-bar')) {
+      return;
     }
-  }, this));
+
+    if ($target.parents('.am-offcanvas-bar').first().length) {
+      return;
+    }
+
+    // https://developer.mozilla.org/zh-CN/docs/DOM/event.stopImmediatePropagation
+    e.stopImmediatePropagation();
+
+    _this.close();
+  });
+
+  $html.on('keydown.offcanvas.amui', function(e) {
+    (e.keyCode === 27) && _this.close();
+  });
 };
 
 OffCanvas.prototype.close = function(relatedElement) {
-  var me = this;
+  var _this = this;
   var $html = $('html');
   var $body = $('body');
   var $element = this.$element;
@@ -111,7 +109,7 @@ OffCanvas.prototype.close = function(relatedElement) {
     $html.css('margin-top', '');
     window.scrollTo(scrollPos.x, scrollPos.y);
     $element.trigger('closed.offcanvas.amui');
-    me.active = 0;
+    _this.active = 0;
   }
 
   if (UI.support.transition) {
@@ -130,17 +128,22 @@ OffCanvas.prototype.close = function(relatedElement) {
   $html.off('.offcanvas.amui');
 };
 
-OffCanvas.prototype.events = function() {
-  $doc.on('click.offcanvas.amui', '[data-am-dismiss="offcanvas"]',
-    $.proxy(function(e) {
+OffCanvas.prototype.bindEvents = function() {
+  var _this = this;
+  $doc.on('click.offcanvas.amui', '[data-am-dismiss="offcanvas"]', function(e) {
       e.preventDefault();
-      this.close();
-    }, this));
+      _this.close();
+    });
 
   $win.on('resize.offcanvas.amui orientationchange.offcanvas.amui',
-    $.proxy(function(e) {
-      this.active && this.close();
-    }, this));
+    function() {
+      _this.active && _this.close();
+    });
+
+  this.$element.hammer().on('swipeleft swipeleft', function(e) {
+    e.preventDefault();
+    _this.close();
+  });
 
   return this;
 };
@@ -149,8 +152,7 @@ function Plugin(option, relatedElement) {
   return this.each(function() {
     var $this = $(this);
     var data = $this.data('amui.offcanvas');
-    var options = $.extend({}, OffCanvas.DEFAULTS,
-      typeof option == 'object' && option);
+    var options = $.extend({}, typeof option == 'object' && option);
 
     if (!data) {
       $this.data('amui.offcanvas', (data = new OffCanvas(this, options)));

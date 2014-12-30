@@ -34,7 +34,7 @@
 
 @datepicker-primary: @global-secondary;
 @datepicker-bg: @white;
-@datepicker-td-height: 36px;
+@datepicker-td-height: 34px;
 @datepicker-thead-height: 48px;
 
 @datepicker-primary-light: fadeout(lighten(@datepicker-primary, 20%), 50%);
@@ -162,6 +162,7 @@
     }
 
     &.@{ns}datepicker-day.@{ns}disabled {
+      cursor: no-drop;
       color: @datepicker-td-disable;
       background: @datepicker-td-disable-bg;
     }
@@ -200,6 +201,11 @@
       }
     }
   }
+
+  .@{ns}datepicker-dow {
+    height: 40px;
+    color: @datepicker-primary-dark;
+  }
 }
 
 .@{ns}datepicker-caret {
@@ -221,10 +227,6 @@
     bottom: -7px;
     .caret-down(7px, #fff);
   }
-}
-
-.@{ns}datepicker-dow {
-  color: @datepicker-primary-dark;
 }
 
 .@{ns}datepicker-select {
@@ -275,7 +277,7 @@
 
 .@{ns}datepicker-dropdown {
   position: absolute;
-  z-index: 1000;
+  z-index: @z-index-datepicker;
 }
 
 @media @small-only {

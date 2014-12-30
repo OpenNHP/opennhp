@@ -8,11 +8,11 @@
 在 `input` 标签上增加 `data-am-datepicker` 属性，调用日期插件。
 
 `````html
-<p><input type="text" class="am-form-field am-radius" placeholder="日历组件" data-am-datepicker /></p>
+<p><input type="text" class="am-form-field am-radius" placeholder="日历组件" data-am-datepicker readonly/></p>
 
 `````
 ```html
-<p><input type="text" class="am-form-field am-radius" placeholder="日历组件" data-am-datepicker /></p>
+<p><input type="text" class="am-form-field am-radius" placeholder="日历组件" data-am-datepicker readonly/></p>
 ```
 
 ### 组件结合
@@ -40,11 +40,11 @@
 ### 主题颜色
 
 `````html
-<p><input type="text" class="am-form-field am-radius" placeholder="日历组件" data-am-datepicker="{theme: 'success'}" /></p>
+<p><input type="text" class="am-form-field am-radius" placeholder="日历组件" data-am-datepicker="{theme: 'success'}" readonly/></p>
 
 `````
 ```html
-<p><input type="text" class="am-form-field am-radius" placeholder="日历组件" data-am-datepicker="{theme: 'success'}" /></p>
+<p><input type="text" class="am-form-field am-radius" placeholder="日历组件" data-am-datepicker="{theme: 'success'}" readonly/></p>
 ```
 
 ### 查看模式

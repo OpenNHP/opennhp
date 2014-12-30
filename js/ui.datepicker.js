@@ -33,15 +33,15 @@ var Datepicker = function(element, options) {
                      this.$element.find('.am-datepicker-add-on') : false;
   if (this.isInput) {
     this.$element.on({
-      focus: $.proxy(this.open, this),
+      'click.datepicker.amui': $.proxy(this.open, this),
       // blur: $.proxy(this.close, this),
-      keyup: $.proxy(this.update, this)
+      'keyup.datepicker.amui': $.proxy(this.update, this)
     });
   } else {
     if (this.component) {
-      this.component.on('click', $.proxy(this.open, this));
+      this.component.on('click.datepicker.amui', $.proxy(this.open, this));
     } else {
-      this.$element.on('click', $.proxy(this.open, this));
+      this.$element.on('click.datepicker.amui', $.proxy(this.open, this));
     }
   }
 
@@ -98,15 +98,13 @@ Datepicker.prototype = {
         this.component.outerHeight() : this.$element.outerHeight();
 
     this.place();
-    $(window).on('resize', $.proxy(this.place, this));
+    $(window).on('resize.datepicker.amui', $.proxy(this.place, this));
     if (e) {
       e.stopPropagation();
       e.preventDefault();
     }
-    /*if (!this.isInput) {
-     }*/
     var that = this;
-    $(document).on('mousedown', function(ev) {
+    $(document).on('click.datepicker.amui', function(ev) {
       if ($(ev.target).closest('.am-datepicker').length == 0) {
         that.close();
       }
@@ -119,11 +117,11 @@ Datepicker.prototype = {
 
   close: function() {
     this.$picker.hide();
-    $(window).off('resize', this.place);
+    $(window).off('resize.datepicker.amui', this.place);
     this.viewMode = this.startViewMode;
     this.showMode();
     if (!this.isInput) {
-      $(document).off('mousedown', this.close);
+      $(document).off('click.datepicker.amui', this.close);
     }
     // this.set();
     this.$element.trigger({

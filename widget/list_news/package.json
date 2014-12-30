@@ -581,7 +581,6 @@
                     }
                 ]
             },
-
             "thumbPosition": {
                 "name": "缩略图位置",
                 "desc": "缩略图相对于标题的位置",
@@ -608,23 +607,6 @@
                     {
                         "value": "right",
                         "title": "Right"
-                    }
-                ]
-            },
-            "morePosition": {
-                "name": "更多链接位置",
-                "desc": "更多相对于列表的位置",
-                "type": "select",
-                "required": false,
-                "default": "bottom",
-                "dataList": [
-                    {
-                        "value": "top",
-                        "title": "上方"
-                    },
-                    {
-                        "value": "bottom",
-                        "title": "下方"
                     }
                 ]
             }

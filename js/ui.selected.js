@@ -172,7 +172,7 @@ Selected.prototype.render = function(data) {
 
 Selected.prototype.getShadowOptions = function() {
   this.$shadowOptions = this.$selector.find('.am-selected-list li').
-    not('.am-selected-header');
+    not('.am-selected-list-header');
 };
 
 Selected.prototype.setChecked = function(item) {

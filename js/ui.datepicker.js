@@ -9,16 +9,12 @@ var $doc = $(document);
  * @via http://www.eyecon.ro/bootstrap-datepicker
  * @license http://www.apache.org/licenses/LICENSE-2.0
  */
-
-// Picker object
-
 var Datepicker = function(element, options) {
   this.$element = $(element);
-  this.options = $.extend({}, Datepicker.DEFAULTS,
-      $.fn.datepicker.defaults, options);
+  this.options = $.extend({}, Datepicker.DEFAULTS, options);
 
   this.format = DPGlobal.parseFormat(this.options.format);
-  this.$element.data('am-date', this.options.date);
+  this.$element.data('date', this.options.date);
   this.language = this.getLocale(this.options.locale);
   this.theme = this.options.theme;
   this.$picker = $(DPGlobal.template)
@@ -105,7 +101,7 @@ Datepicker.prototype = {
     }
     var that = this;
     $(document).on('click.datepicker.amui', function(ev) {
-      if ($(ev.target).closest('.am-datepicker').length == 0) {
+      if ($(ev.target).closest('.am-datepicker').length === 0) {
         that.close();
       }
     });
@@ -136,7 +132,7 @@ Datepicker.prototype = {
       if (this.component) {
         this.$element.find('input').prop('value', formated);
       }
-      this.$element.data('am-date', formated);
+      this.$element.data('date', formated);
     } else {
       this.$element.prop('value', formated);
     }
@@ -175,7 +171,7 @@ Datepicker.prototype = {
           left: 'auto',
           right: right
         });
-        return
+        return;
       }
       if (isOutView.outBottom) {
         this.$picker.addClass('am-datepicker-up');
@@ -193,7 +189,7 @@ Datepicker.prototype = {
   update: function(newDate) {
     this.date = DPGlobal.parseDate(
             typeof newDate === 'string' ? newDate : (this.isInput ?
-                this.$element.prop('value') : this.$element.data('am-date')),
+                this.$element.prop('value') : this.$element.data('date')),
         this.format
     );
     this.viewDate = new Date(this.date.getFullYear(),
@@ -456,7 +452,10 @@ Datepicker.DEFAULTS = {
   viewMode: 0,
   minViewMode: 0,
   date: '',
-  theme: ''
+  theme: '',
+  onRender: function(date) {
+    return '';
+  }
 };
 
 // Datepicker locales
@@ -508,7 +507,7 @@ var DPGlobal = {
     }
   ],
   isLeapYear: function(year) {
-    return (((year % 4 === 0) && (year % 100 !== 0)) || (year % 400 === 0))
+    return (((year % 4 === 0) && (year % 100 !== 0)) || (year % 400 === 0));
   },
   getDaysInMonth: function(year, month) {
     return [31, (DPGlobal.isLeapYear(year) ? 29 : 28),
@@ -623,24 +622,17 @@ $.fn.datepicker = function(option, val) {
     var $this = $(this);
     var data = $this.data('amui.datepicker');
 
-    var options = $.extend({}, Datepicker.DEFAULTS,
-        UI.utils.options($this.attr('data-am-datepicker')),
+    var options = $.extend({},
+      UI.utils.options($this.data('data-am-datepicker')),
             typeof option === 'object' && option);
 
     if (!data) {
-      $this.data('amui.datepicker', (data = new Datepicker(this,
-          $.extend({}, $.fn.datepicker.defaults, options))));
+      $this.data('amui.datepicker', (data = new Datepicker(this, options)));
     }
     if (typeof option === 'string') {
-      data[option](val);
+      data[option] && data[option](val);
     }
   });
-};
-
-$.fn.datepicker.defaults = {
-  onRender: function(date) {
-    return '';
-  }
 };
 
 $.fn.datepicker.Constructor = Datepicker;

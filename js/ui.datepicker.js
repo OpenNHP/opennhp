@@ -13,36 +13,39 @@ var $doc = $(document);
 // Picker object
 
 var Datepicker = function(element, options) {
-  this.element = $(element);
-  this.format = DPGlobal.parseFormat(options.format);
-  this.element.data('am-date', options.date);
-  this.language = this.getLocale(options.locale);
-  this.theme = options.theme;
-  this.picker = $(DPGlobal.template)
+  this.$element = $(element);
+  this.options = $.extend({}, Datepicker.DEFAULTS,
+      $.fn.datepicker.defaults, options);
+
+  this.format = DPGlobal.parseFormat(this.options.format);
+  this.$element.data('am-date', this.options.date);
+  this.language = this.getLocale(this.options.locale);
+  this.theme = this.options.theme;
+  this.$picker = $(DPGlobal.template)
                   .appendTo('body')
                   .on({
                     click: $.proxy(this.click, this)
                     // mousedown: $.proxy(this.mousedown, this)
                   });
 
-  this.isInput = this.element.is('input');
-  this.component = this.element.is('.am-datepicker-date') ?
-                     this.element.find('.am-datepicker-add-on') : false;
+  this.isInput = this.$element.is('input');
+  this.component = this.$element.is('.am-datepicker-date') ?
+                     this.$element.find('.am-datepicker-add-on') : false;
   if (this.isInput) {
-    this.element.on({
-      focus: $.proxy(this.show, this),
-      // blur: $.proxy(this.hide, this),
-      keyup: $.proxy(this.update, this)
+    this.$element.on({
+      'click.datepicker.amui': $.proxy(this.open, this),
+      // blur: $.proxy(this.close, this),
+      'keyup.datepicker.amui': $.proxy(this.update, this)
     });
   } else {
     if (this.component) {
-      this.component.on('click', $.proxy(this.show, this));
+      this.component.on('click.datepicker.amui', $.proxy(this.open, this));
     } else {
-      this.element.on('click', $.proxy(this.show, this));
+      this.$element.on('click.datepicker.amui', $.proxy(this.open, this));
     }
   }
 
-  this.minViewMode = options.minViewMode;
+  this.minViewMode = this.options.minViewMode;
 
   if (typeof this.minViewMode === 'string') {
     switch (this.minViewMode) {
@@ -58,7 +61,7 @@ var Datepicker = function(element, options) {
     }
   }
 
-  this.viewMode = options.viewMode;
+  this.viewMode = this.options.viewMode;
 
   if (typeof this.viewMode === 'string') {
     switch (this.viewMode) {
@@ -75,9 +78,9 @@ var Datepicker = function(element, options) {
   }
 
   this.startViewMode = this.viewMode;
-  this.weekStart = options.weekStart;
+  this.weekStart = this.options.weekStart;
   this.weekEnd = this.weekStart === 0 ? 6 : this.weekStart - 1;
-  this.onRender = options.onRender;
+  this.onRender = this.options.onRender;
 
   this.addTheme();
   this.fillDow();
@@ -89,40 +92,40 @@ var Datepicker = function(element, options) {
 Datepicker.prototype = {
   constructor: Datepicker,
 
-  show: function(e) {
-    this.picker.show();
-    this.height = this.component ? this.component.outerHeight() : this.element.outerHeight();
+  open: function(e) {
+    this.$picker.show();
+    this.height = this.component ?
+        this.component.outerHeight() : this.$element.outerHeight();
+
     this.place();
-    $(window).on('resize', $.proxy(this.place, this));
+    $(window).on('resize.datepicker.amui', $.proxy(this.place, this));
     if (e) {
       e.stopPropagation();
       e.preventDefault();
     }
-    /*if (!this.isInput) {
-     }*/
     var that = this;
-    $(document).on('mousedown', function(ev) {
+    $(document).on('click.datepicker.amui', function(ev) {
       if ($(ev.target).closest('.am-datepicker').length == 0) {
-        that.hide();
+        that.close();
       }
     });
-    this.element.trigger({
-      type: 'show',
+    this.$element.trigger({
+      type: 'open',
       date: this.date
     });
   },
 
-  hide: function() {
-    this.picker.hide();
-    $(window).off('resize', this.place);
+  close: function() {
+    this.$picker.hide();
+    $(window).off('resize.datepicker.amui', this.place);
     this.viewMode = this.startViewMode;
     this.showMode();
     if (!this.isInput) {
-      $(document).off('mousedown', this.hide);
+      $(document).off('click.datepicker.amui', this.close);
     }
     // this.set();
-    this.element.trigger({
-      type: 'hide',
+    this.$element.trigger({
+      type: 'close',
       date: this.date
     });
   },
@@ -131,11 +134,11 @@ Datepicker.prototype = {
     var formated = DPGlobal.formatDate(this.date, this.format);
     if (!this.isInput) {
       if (this.component) {
-        this.element.find('input').prop('value', formated);
+        this.$element.find('input').prop('value', formated);
       }
-      this.element.data('am-date', formated);
+      this.$element.data('am-date', formated);
     } else {
-      this.element.prop('value', formated);
+      this.$element.prop('value', formated);
     }
   },
 
@@ -155,19 +158,19 @@ Datepicker.prototype = {
 
   place: function() {
     var offset = this.component ?
-                 this.component.offset() : this.element.offset();
+                 this.component.offset() : this.$element.offset();
     var $width = this.component ?
-        this.component.width() : this.element.width();
+        this.component.width() : this.$element.width();
     var top = offset.top + this.height;
     var left = offset.left;
     var right = $doc.width() - offset.left - $width;
     var isOutView = this.isOutView();
-    this.picker.removeClass('am-datepicker-right');
-    this.picker.removeClass('am-datepicker-up');
+    this.$picker.removeClass('am-datepicker-right');
+    this.$picker.removeClass('am-datepicker-up');
     if ($doc.width() > 640) {
       if (isOutView.outRight) {
-        this.picker.addClass('am-datepicker-right');
-        this.picker.css({
+        this.$picker.addClass('am-datepicker-right');
+        this.$picker.css({
           top: top,
           left: 'auto',
           right: right
@@ -175,13 +178,13 @@ Datepicker.prototype = {
         return
       }
       if (isOutView.outBottom) {
-        this.picker.addClass('am-datepicker-up');
-        top = offset.top - this.picker.outerHeight(true);
+        this.$picker.addClass('am-datepicker-up');
+        top = offset.top - this.$picker.outerHeight(true);
       }
     } else {
       left = 0;
     }
-    this.picker.css({
+    this.$picker.css({
       top: top,
       left: left
     });
@@ -190,7 +193,7 @@ Datepicker.prototype = {
   update: function(newDate) {
     this.date = DPGlobal.parseDate(
             typeof newDate === 'string' ? newDate : (this.isInput ?
-                this.element.prop('value') : this.element.data('am-date')),
+                this.$element.prop('value') : this.$element.data('am-date')),
         this.format
     );
     this.viewDate = new Date(this.date.getFullYear(),
@@ -202,19 +205,22 @@ Datepicker.prototype = {
     var dowCnt = this.weekStart;
     var html = '<tr>';
     while (dowCnt < this.weekStart + 7) {
-      html += '<th class="am-datepicker-dow">' + Datepicker.locales[this.language].daysMin[(dowCnt++) % 7] + '</th>';
+      html += '<th class="am-datepicker-dow">' +
+          Datepicker.locales[this.language].daysMin[(dowCnt++) % 7] +
+          '</th>';
     }
     html += '</tr>';
-    this.picker.find('.am-datepicker-days thead').append(html);
+    this.$picker.find('.am-datepicker-days thead').append(html);
   },
 
   fillMonths: function() {
     var html = '';
     var i = 0;
     while (i < 12) {
-      html += '<span class="am-datepicker-month">' + Datepicker.locales[this.language].monthsShort[i++] + '</span>';
+      html += '<span class="am-datepicker-month">' +
+          Datepicker.locales[this.language].monthsShort[i++] + '</span>';
     }
-    this.picker.find('.am-datepicker-months td').append(html);
+    this.$picker.find('.am-datepicker-months td').append(html);
   },
 
   fill: function() {
@@ -224,13 +230,18 @@ Datepicker.prototype = {
     var currentDate = this.date.valueOf();
 
     var prevMonth = new Date(year, month - 1, 28, 0, 0, 0, 0);
-    var day = DPGlobal.getDaysInMonth(prevMonth.getFullYear(), prevMonth.getMonth());
-    var daysSelect = this.picker.find('.am-datepicker-days .am-datepicker-select');
+    var day = DPGlobal
+        .getDaysInMonth(prevMonth.getFullYear(), prevMonth.getMonth());
+
+    var daysSelect = this.$picker
+        .find('.am-datepicker-days .am-datepicker-select');
 
     if (this.language === 'zh_CN') {
-      daysSelect.text(year + Datepicker.locales[this.language].year[0] + ' ' + Datepicker.locales[this.language].months[month]);
+      daysSelect.text(year + Datepicker.locales[this.language].year[0] +
+          ' ' + Datepicker.locales[this.language].months[month]);
     } else {
-      daysSelect.text(Datepicker.locales[this.language].months[month] + ' ' + year);
+      daysSelect.text(Datepicker.locales[this.language].months[month] +
+          ' ' + year);
     }
 
     prevMonth.setDate(day);
@@ -241,9 +252,9 @@ Datepicker.prototype = {
     nextMonth = nextMonth.valueOf();
     var html = [];
 
-    var className,
-        prevY,
-        prevM;
+    var className;
+    var prevY;
+    var prevM;
 
     while (prevMonth.valueOf() < nextMonth) {
       if (prevMonth.getDay() === this.weekStart) {
@@ -260,7 +271,9 @@ Datepicker.prototype = {
       if (prevMonth.valueOf() === currentDate) {
         className += ' am-active';
       }
-      html.push('<td class="am-datepicker-day ' + className + '">' + prevMonth.getDate() + '</td>');
+      html.push('<td class="am-datepicker-day ' +
+          className + '">' + prevMonth.getDate() + '</td>');
+
       if (prevMonth.getDay() === this.weekEnd) {
         html.push('</tr>');
       }
@@ -268,10 +281,12 @@ Datepicker.prototype = {
 
     }
 
-    this.picker.find('.am-datepicker-days tbody').empty().append(html.join(''));
+    this.$picker.find('.am-datepicker-days tbody')
+        .empty().append(html.join(''));
+
     var currentYear = this.date.getFullYear();
 
-    var months = this.picker.find('.am-datepicker-months')
+    var months = this.$picker.find('.am-datepicker-months')
         .find('.am-datepicker-select')
         .text(year);
     months = months.end()
@@ -283,7 +298,7 @@ Datepicker.prototype = {
 
     html = '';
     year = parseInt(year / 10, 10) * 10;
-    var yearCont = this.picker
+    var yearCont = this.$picker
         .find('.am-datepicker-years')
         .find('.am-datepicker-select')
         .text(year + '-' + (year + 9))
@@ -292,7 +307,9 @@ Datepicker.prototype = {
 
     year -= 1;
     for (var i = -1; i < 11; i++) {
-      html += '<span class="' + (i === -1 || i === 10 ? ' am-datepicker-old' : '') + (currentYear === year ? ' am-active' : '') + '">' + year + '</span>';
+      html += '<span class="' +
+          (i === -1 || i === 10 ? ' am-datepicker-old' : '') +
+          (currentYear === year ? ' am-active' : '') + '">' + year + '</span>';
       year += 1;
     }
     yearCont.html(html);
@@ -302,6 +319,8 @@ Datepicker.prototype = {
   click: function(event) {
     event.stopPropagation();
     event.preventDefault();
+    var month;
+    var year;
 
     var target = $(event.target).closest('span, td, th');
     if (target.length === 1) {
@@ -315,8 +334,11 @@ Datepicker.prototype = {
             case 'am-datepicker-next':
               this.viewDate['set' + DPGlobal.modes[this.viewMode].navFnc].call(
                   this.viewDate,
-                      this.viewDate['get' + DPGlobal.modes[this.viewMode].navFnc].call(this.viewDate) +
-                      DPGlobal.modes[this.viewMode].navStep * (target[0].className === 'am-datepicker-prev' ? -1 : 1)
+                      this.viewDate
+                          ['get' + DPGlobal.modes[this.viewMode].navFnc]
+                          .call(this.viewDate) +
+                      DPGlobal.modes[this.viewMode].navStep *
+                      (target[0].className === 'am-datepicker-prev' ? -1 : 1)
               );
               this.fill();
               this.set();
@@ -325,15 +347,15 @@ Datepicker.prototype = {
           break;
         case 'span':
           if (target.is('.am-datepicker-month')) {
-            var month = target.parent().find('span').index(target);
+            month = target.parent().find('span').index(target);
             this.viewDate.setMonth(month);
           } else {
-            var year = parseInt(target.text(), 10) || 0;
+            year = parseInt(target.text(), 10) || 0;
             this.viewDate.setFullYear(year);
           }
           if (this.viewMode !== 0) {
             this.date = new Date(this.viewDate);
-            this.element.trigger({
+            this.$element.trigger({
               type: 'changeDate.datepicker.amui',
               date: this.date,
               viewMode: DPGlobal.modes[this.viewMode].clsName
@@ -346,18 +368,18 @@ Datepicker.prototype = {
         case 'td':
           if (target.is('.am-datepicker-day') && !target.is('.am-disabled')) {
             var day = parseInt(target.text(), 10) || 1;
-            var month = this.viewDate.getMonth();
+            month = this.viewDate.getMonth();
             if (target.is('.am-datepicker-old')) {
               month -= 1;
             } else if (target.is('.am-datepicker-new')) {
               month += 1;
             }
-            var year = this.viewDate.getFullYear();
+            year = this.viewDate.getFullYear();
             this.date = new Date(year, month, day, 0, 0, 0, 0);
             this.viewDate = new Date(year, month, Math.min(28, day), 0,0,0,0);
             this.fill();
             this.set();
-            this.element.trigger({
+            this.$element.trigger({
               type: 'changeDate.datepicker.amui',
               date: this.date,
               viewMode: DPGlobal.modes[this.viewMode].clsName
@@ -379,7 +401,7 @@ Datepicker.prototype = {
           Math.min(2, this.viewMode + dir));
     }
 
-    this.picker
+    this.$picker
         .find('>div')
         .hide()
         .filter('.am-datepicker-' + DPGlobal.modes[this.viewMode].clsName)
@@ -388,14 +410,15 @@ Datepicker.prototype = {
 
   isOutView: function() {
     var offset = this.component ?
-        this.component.offset() : this.element.offset();
+        this.component.offset() : this.$element.offset();
     var isOutView = {
       outRight: false,
       outBottom: false
     };
-    var $picker = this.picker;
+    var $picker = this.$picker;
     var width = offset.left + $picker.outerWidth(true);
-    var height = offset.top + $picker.outerHeight(true) + this.element.innerHeight();
+    var height = offset.top + $picker.outerHeight(true) +
+        this.$element.innerHeight();
 
     if (width > $doc.width()) {
       isOutView.outRight = true;
@@ -421,7 +444,7 @@ Datepicker.prototype = {
 
   addTheme: function() {
     if (this.theme) {
-      this.picker.addClass('am-datepicker-' + this.theme);
+      this.$picker.addClass('am-datepicker-' + this.theme);
     }
   }
 };
@@ -440,18 +463,28 @@ Datepicker.DEFAULTS = {
 
 Datepicker.locales = {
   en_US: {
-    days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-    daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    daysMin: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'],
-    months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
-    monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
+      'Thursday', 'Friday', 'Saturday'],
+
+    daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    daysMin: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'],
+
+    months: ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'],
+
+    monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   },
   zh_CN: {
-    days: ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'],
-    daysShort: ['周日', '周一', '周二', '周三', '周四', '周五', '周六', '周日'],
-    daysMin: ['日', '一', '二', '三', '四', '五', '六', '日'],
-    months: ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'],
-    monthsShort: ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'],
+    days: ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'],
+    daysShort: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'],
+    daysMin: ['日', '一', '二', '三', '四', '五', '六'],
+
+    months: ['一月', '二月', '三月', '四月', '五月', '六月', '七月',
+      '八月', '九月', '十月', '十一月', '十二月'],
+
+    monthsShort: ['一月', '二月', '三月', '四月', '五月', '六月',
+      '七月', '八月', '九月', '十月', '十一月', '十二月'],
     year: ['年']
   }
 };
@@ -478,7 +511,8 @@ var DPGlobal = {
     return (((year % 4 === 0) && (year % 100 !== 0)) || (year % 400 === 0))
   },
   getDaysInMonth: function(year, month) {
-    return [31, (DPGlobal.isLeapYear(year) ? 29 : 28), 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month]
+    return [31, (DPGlobal.isLeapYear(year) ? 29 : 28),
+      31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month];
   },
   parseFormat: function(format) {
     var separator = format.match(/[.\/\-\s].*?/);
@@ -494,8 +528,8 @@ var DPGlobal = {
   },
   parseDate: function(date, format) {
     var parts = date.split(format.separator);
-    var date = new Date();
     var val;
+    date = new Date();
 
     date.setHours(0);
     date.setMinutes(0);
@@ -541,27 +575,29 @@ var DPGlobal = {
       yy: date.getFullYear().toString().substring(2),
       yyyy: date.getFullYear()
     };
-    var date = [];
+    var dateArray = [];
 
     val.dd = (val.d < 10 ? '0' : '') + val.d;
     val.mm = (val.m < 10 ? '0' : '') + val.m;
 
     for (var i = 0, cnt = format.parts.length; i < cnt; i++) {
-      date.push(val[format.parts[i]]);
+      dateArray.push(val[format.parts[i]]);
     }
-    return date.join(format.separator);
+    return dateArray.join(format.separator);
   },
   headTemplate: '<thead>' +
       '<tr class="am-datepicker-header">' +
-      '<th class="am-datepicker-prev"><i class="am-datepicker-prev-icon"></i></th>' +
-      '<th colspan="5" class="am-datepicker-switch"><div class="am-datepicker-select"></div></th>' +
-      '<th class="am-datepicker-next"><i class="am-datepicker-next-icon"></i></th>' +
-      '</tr>' +
-      '</thead>',
+      '<th class="am-datepicker-prev">' +
+      '<i class="am-datepicker-prev-icon"></i></th>' +
+      '<th colspan="5" class="am-datepicker-switch">' +
+      '<div class="am-datepicker-select"></div></th>' +
+      '<th class="am-datepicker-next"><i class="am-datepicker-next-icon"></i>' +
+      '</th></tr></thead>',
   contTemplate: '<tbody><tr><td colspan="7"></td></tr></tbody>'
 };
 
-DPGlobal.template = '<div class="am-datepicker am-datepicker-dropdown"><div class="am-datepicker-caret"></div>' +
+DPGlobal.template = '<div class="am-datepicker am-datepicker-dropdown">' +
+    '<div class="am-datepicker-caret"></div>' +
     '<div class="am-datepicker-days">' +
     '<table class="am-datepicker-table">' +
     DPGlobal.headTemplate +

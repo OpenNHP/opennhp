@@ -44,6 +44,8 @@ function addBdMap() {
   var address = content.getAttribute('data-address');
   var lng = content.getAttribute('data-longitude') || defaultLng;
   var lat = content.getAttribute('data-latitude') || defaultLat;
+  var setZoom = content.getAttribute('data-setZoom') || 17;
+  var icon = content.getAttribute('data-icon');
 
   var map = new BMap.Map('bd-map');
 
@@ -51,10 +53,23 @@ function addBdMap() {
   var point = new BMap.Point(lng, lat);
 
   // 设初始化地图, options: 3-18
-  map.centerAndZoom(point, 18);
+  map.centerAndZoom(point, setZoom);
 
   // 添加地图缩放控件
-  map.addControl(new BMap.ZoomControl());
+  if (content.getAttribute('data-zoomControl')) {
+    map.addControl(new BMap.ZoomControl());
+  }
+
+  // 添加比例尺控件
+  if (content.getAttribute('data-scaleControl')) {
+    map.addControl(new BMap.ScaleControl());
+  }
+
+  // 创建标准与自定义 icon
+  var marker = new BMap.Marker(point);
+  if (icon) {
+    marker.setIcon(new BMap.Icon(icon, new BMap.Size(40, 40)));
+  }
 
   var opts = {
     width: 200,     // 信息窗口宽度
@@ -74,8 +89,9 @@ function addBdMap() {
     // 将地址解析结果显示在地图上,并调整地图视野
     myGeo.getPoint(address, function(point) {
       if (point) {
-        map.centerAndZoom(point, 17);
-        map.addOverlay(new BMap.Marker(point));
+        map.centerAndZoom(point, setZoom);
+        marker.setPosition(point);
+        map.addOverlay(marker);
         map.openInfoWindow(infoWindow, point); // 开启信息窗口
       }
     }, '');
@@ -83,8 +99,9 @@ function addBdMap() {
   } else {
     // 使用经纬度来设置地图
     myGeo.getLocation(point, function(result) {
-      map.centerAndZoom(point, 17);
-      map.addOverlay(new BMap.Marker(point));
+      map.centerAndZoom(point, setZoom);
+      marker.setPosition(point);
+      map.addOverlay(marker);
       if (address) {
         map.openInfoWindow(infoWindow, point); // 开启信息窗口
       } else {

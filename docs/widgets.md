@@ -30,11 +30,11 @@ __要点如下：__
 
 ```javascript
 $(function() {
-  var $tpl = $('#amz-tpl'),
-      source = $tpl.text(),
-      template = Handlebars.compile(source),
-      data = {},
-      html = template(data);
+  var $tpl = $('#amz-tpl');
+  var source = $tpl.text();
+  var template = Handlebars.compile(source);
+  var data = {};
+  var html = template(data);
 
   $tpl.before(html);
 });
@@ -84,41 +84,41 @@ __然后__， 在页面模板中调用 `partial`，其中 `data` 为组件对应
 
 ```javascript
 (function(hbs) {
-    hbs.registerHelper("ifCond", function(v1, operator, v2, options) {
-        switch (operator) {
-            case "==":
-                return (v1 == v2) ? options.fn(this) : options.inverse(this);
+  hbs.registerHelper("ifCond", function(v1, operator, v2, options) {
+    switch (operator) {
+      case "==":
+        return (v1 == v2) ? options.fn(this) : options.inverse(this);
 
-            case "!=":
-                return (v1 != v2) ? options.fn(this) : options.inverse(this);
+      case "!=":
+        return (v1 != v2) ? options.fn(this) : options.inverse(this);
 
-            case "===":
-                return (v1 === v2) ? options.fn(this) : options.inverse(this);
+      case "===":
+        return (v1 === v2) ? options.fn(this) : options.inverse(this);
 
-            case "!==":
-                return (v1 !== v2) ? options.fn(this) : options.inverse(this);
+      case "!==":
+        return (v1 !== v2) ? options.fn(this) : options.inverse(this);
 
-            case "&&":
-                return (v1 && v2) ? options.fn(this) : options.inverse(this);
+      case "&&":
+        return (v1 && v2) ? options.fn(this) : options.inverse(this);
 
-            case "||":
-                return (v1 || v2) ? options.fn(this) : options.inverse(this);
+      case "||":
+        return (v1 || v2) ? options.fn(this) : options.inverse(this);
 
-            case "<":
-                return (v1 < v2) ? options.fn(this) : options.inverse(this);
+      case "<":
+        return (v1 < v2) ? options.fn(this) : options.inverse(this);
 
-            case "<=":
-                return (v1 <= v2) ? options.fn(this) : options.inverse(this);
+      case "<=":
+        return (v1 <= v2) ? options.fn(this) : options.inverse(this);
 
-            case ">":
-                return (v1 > v2) ? options.fn(this) : options.inverse(this);
+      case ">":
+        return (v1 > v2) ? options.fn(this) : options.inverse(this);
 
-            case ">=":
-                return (v1 >= v2) ? options.fn(this) : options.inverse(this);
+      case ">=":
+        return (v1 >= v2) ? options.fn(this) : options.inverse(this);
 
-            default:
-                return eval("" + v1 + operator + v2) ? options.fn(this) : options.inverse(this);
-        }
+      default:
+        return eval("" + v1 + operator + v2) ? options.fn(this) : options.inverse(this);
+    }
 })(Handlebars);
 ```
 

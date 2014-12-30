@@ -109,39 +109,6 @@ function addBdMap() {
       }
     });
   }
-
-  // var pt = new BMap.Point(116.417, 39.909);
-  // var mapIcon = new BMap.Icon('http://ide0.yunshipei.com/static/ibs.nku.cn/ea772553ee77fccc47201503093ed2f7/ico1.gif', new BMap.Size(50, 50));
-  // var marker2 = new BMap.Marker(pt, {icon: mapIcon});
-  // map.addOverlay(marker2);
-  /*var addressStr = '北京市海淀区海淀大街27号亿景大厦3层西区;中关村广场购物中心;新东方大厦';
-  var arr = addressStr.split(';');
-  var addressObj = {};
-
-  *//*arr.forEach(function(value, index) {
-    new BMap.Geocoder().getPoint(value, function(point) {
-      addressObj[index] = point;
-    })
-  });*//*
-  new BMap.Geocoder().getPoint(addressStr, function(point) {
-    addressObj.point = point;
-    console.log(point);
-  });
-  console.log(addressObj);
-
-  // 添加地图折线
-  var polyline = new BMap.Polyline(
-    [
-      new BMap.Point(116.399, 39.910),
-      new BMap.Point(116.405, 39.920),
-      new BMap.Point(116.425, 39.900)
-    ], {
-      strokeColor: 'blue',
-      strokeWeight: 4,
-      strokeOpacity: 0.5
-    }
-  );
-  map.addOverlay(polyline);*/
 }
 
 var mapInit = function() {

@@ -92,7 +92,8 @@ gulp
 
 下面的几个链接是我们在几个在线调试工具上建的页面， 已经引入了 Amaze UI 样式和脚本，你可以【Fork】一份，把要有问题的场景粘在里面，反馈给我们。
 
-- [Debug Amaze UI 1.0 in JSBin](http://jsbin.com/qasoxibuje/1/edit?html,output)
+- [Debug Amaze UI 2.x in JSBin](http://jsbin.com/zoqaba/1/edit?html,output)
+- [Debug Amaze UI 1.x in JSBin](http://jsbin.com/qasoxibuje/1/edit?html,output)
 
 ### 需求提交
 

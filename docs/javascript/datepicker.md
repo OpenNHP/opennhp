@@ -47,9 +47,9 @@
 <p><input type="text" class="am-form-field am-radius" placeholder="日历组件" data-am-datepicker="{theme: 'success'}" readonly/></p>
 ```
 
-### 查看模式
+### 视图模式
 
-设置参数 `viewMode` 设置开始查看模式。
+设置参数 `viewMode` 设置视图的查看模式。
 
 `````html
 <div class="am-input-group am-datepicker-date" data-am-datepicker="{format: 'yyyy-mm-dd', viewMode: 'years'}">
@@ -69,7 +69,7 @@
 </div>
 ```
 
-### 视图模式
+### 视图限制
 
 设置参数 `minViewMode` 设置视图模式的限制。
 

@@ -12,8 +12,8 @@ var $doc = $(document);
 var Datepicker = function(element, options) {
   this.$element = $(element);
   this.options = $.extend({}, Datepicker.DEFAULTS, options);
-
   this.format = DPGlobal.parseFormat(this.options.format);
+
   this.$element.data('date', this.options.date);
   this.language = this.getLocale(this.options.locale);
   this.theme = this.options.theme;
@@ -623,9 +623,8 @@ $.fn.datepicker = function(option, val) {
     var data = $this.data('amui.datepicker');
 
     var options = $.extend({},
-      UI.utils.options($this.data('data-am-datepicker')),
+      UI.utils.options($this.data('am-datepicker')),
             typeof option === 'object' && option);
-
     if (!data) {
       $this.data('amui.datepicker', (data = new Datepicker(this, options)));
     }

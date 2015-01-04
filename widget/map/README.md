@@ -41,7 +41,11 @@ __经纬度获取：__打开[百度地图坐标拾取系统](http://api.map.baid
     "name": "", // 坐标名称
     "address": "", // 公司地址，地图定位的地址
     "longitude": "", // 经度
-    "latitude": "" // 纬度
+    "latitude": "" // 纬度    
+    "zoomControl": Boolean, // 是否开启地图缩放控件
+    "scaleControl": Boolean, // 是否开启地图比例尺控件
+    "setZoom": Number, // 设置地图缩放级别 3-18 
+    "icon": "" // 标注图标
   }
 }
 ```

@@ -1,7 +1,7 @@
 # 开始使用 Amaze UI
 ---
 
-Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 90 kB 左右）、 [**Mobile first**](http://cbrac.co/113eY5h) 的前端框架，
+Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 100 kB 左右）、 [**Mobile first**](http://cbrac.co/113eY5h) 的前端框架，
 基于开源社区流行前端框架编写（[使用、参考的项目列表](https://github.com/allmobilize/amazeui#%E5%8F%82%E8%80%83%E4%BD%BF%E7%94%A8%E7%9A%84%E5%BC%80%E6%BA%90%E9%A1%B9%E7%9B%AE)）。
 
 ## 获取 Amaze UI
@@ -10,8 +10,8 @@ Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 90 kB 左右）、 [**M
 
 <div class="am-g">
   <div class="am-u-md-8 am-u-md-centered">
-    <a id="doc-dl-btn" href="http://amazeui.org/download?ver=2.0.0" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
-"><i class="am-icon-download"></i> Amaze UI v2.0.0 正式版</a>
+    <a id="doc-dl-btn" href="http://amazeui.org/download?ver=2.1.0-b1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
+"><i class="am-icon-download"></i> Amaze UI v2.1.0-beta1</a>
   </div>
 </div>
 
@@ -21,14 +21,14 @@ Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 90 kB 左右）、 [**M
 Amaze UI CDN： 域名解析服务由 DNSPod 提供，CDN 存储由又拍云提供。
 
 ```html
-http://cdn.amazeui.org/amazeui/2.0.0/css/amazeui.css
-http://cdn.amazeui.org/amazeui/2.0.0/css/amazeui.min.css
-http://cdn.amazeui.org/amazeui/2.0.0/js/amazeui.js
-http://cdn.amazeui.org/amazeui/2.0.0/js/amazeui.min.js
-http://cdn.amazeui.org/amazeui/2.0.0/js/amazeui.legacy.js
-http://cdn.amazeui.org/amazeui/2.0.0/js/amazeui.legacy.min.js
-http://cdn.amazeui.org/amazeui/2.0.0/js/amazeui.widgets.helper.js
-http://cdn.amazeui.org/amazeui/2.0.0/js/amazeui.widgets.helper.min.js
+http://cdn.amazeui.org/amazeui/2.1.0-beta1/css/amazeui.css
+http://cdn.amazeui.org/amazeui/2.1.0-beta1/css/amazeui.min.css
+http://cdn.amazeui.org/amazeui/2.1.0-beta1/js/amazeui.js
+http://cdn.amazeui.org/amazeui/2.1.0-beta1/js/amazeui.min.js
+http://cdn.amazeui.org/amazeui/2.1.0-beta1/js/amazeui.legacy.js
+http://cdn.amazeui.org/amazeui/2.1.0-beta1/js/amazeui.legacy.min.js
+http://cdn.amazeui.org/amazeui/2.1.0-beta1/js/amazeui.widgets.helper.js
+http://cdn.amazeui.org/amazeui/2.1.0-beta1/js/amazeui.widgets.helper.min.js
 ```
 
 ### 使用 Bower
@@ -86,7 +86,7 @@ AmazeUI
 |-- assets
 |   |-- css
 |   |   |-- amazeui.css             // Amaze UI 所有样式文件
-|   |   |-- amazeui.min.css           // 约 40 kB (gzipped)
+|   |   |-- amazeui.min.css           // 约 42 kB (gzipped)
 |   |   `-- app.css
 |   |-- i
 |   |   |-- app-icon72x72@2x.png
@@ -94,7 +94,7 @@ AmazeUI
 |   |   `-- startup-640x1096.png
 |   `-- js
 |       |-- amazeui.js
-|       |-- amazeui.min.js                // 约 48 kB (gzipped)
+|       |-- amazeui.min.js                // 约 56 kB (gzipped)
 |       |-- amazeui.widgets.helper.js
 |       |-- amazeui.widgets.helper.min.js
 |       |-- app.js
@@ -183,5 +183,5 @@ __感谢大家对 Amaze UI 的关注和支持！__
 
   $(function() {
     $('#doc-dl-btn').on('click', pyRegisterCvt);
-  })
+  });
 </script>

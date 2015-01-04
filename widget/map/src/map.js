@@ -118,6 +118,6 @@ var mapInit = function() {
 $(document).on('ready', mapInit);
 
 module.exports = $.AMUI.map = {
-  VERSION: '2.0.0',
+  VERSION: '2.0.1',
   init: mapInit
 };

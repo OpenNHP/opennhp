@@ -92,7 +92,8 @@ gulp
 
 下面的几个链接是我们在几个在线调试工具上建的页面， 已经引入了 Amaze UI 样式和脚本，你可以【Fork】一份，把要有问题的场景粘在里面，反馈给我们。
 
-- [Debug Amaze UI 1.0 in JSBin](http://jsbin.com/qasoxibuje/1/edit?html,output)
+- [Debug Amaze UI 2.x in JSBin](http://jsbin.com/zoqaba/1/edit?html,output)
+- [Debug Amaze UI 1.x in JSBin](http://jsbin.com/qasoxibuje/1/edit?html,output)
 
 ### 需求提交
 
@@ -154,6 +155,11 @@ License](https://github.com/ftlabs/fastclick/blob/master/LICENSE))
 * [screenfull.js](https://github.com/sindresorhus/screenfull.js) ([MIT
 License](https://github.com/sindresorhus/screenfull.js/blob/gh-pages/license))
 * [FlexSlider](https://github.com/woothemes/FlexSlider) ([GPL 2.0](http://www.gnu.org/licenses/gpl-2.0.html))
+* [Hammer.js](https://github.com/hammerjs/hammer.js) ([MIT License](https://github.com/hammerjs/hammer.js/blob/master/LICENSE.md))
+* [Flat UI](https://github.com/designmodo/Flat-UI) ([CC BY 3.0 and MIT License](https://github.com/designmodo/Flat-UI#copyright-and-license))
+* [store.js](https://github.com/marcuswestin/store.js) ([MIT License](https://github.com/marcuswestin/store.js/blob/master/LICENSE))
+* [bootstrap-datepicker.js](http://www.eyecon.ro/bootstrap-datepicker/) ([Apache License 2.0](http://www.eyecon.ro/bootstrap-datepicker/js/bootstrap-datepicker.js))
+* [iScroll](http://iscrolljs.com/) ([MIT License](http://iscrolljs.com/#license))
 
 可能会有部分项目遗漏，我们会不断整理更新。
 

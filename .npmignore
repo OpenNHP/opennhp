@@ -1,7 +1,6 @@
 /tools
 /vendor
 /docs
-/fonts
 
 .bower-cache
 .bower-registry
@@ -9,6 +8,7 @@
 .idea
 .node_modules
 .bowerrc
+.sass-cache
 
 nodemon.json
 composer.json

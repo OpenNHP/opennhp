@@ -47,3 +47,8 @@ License](https://github.com/ftlabs/fastclick/blob/master/LICENSE))
 * [screenfull.js](https://github.com/sindresorhus/screenfull.js) ([MIT
 License](https://github.com/sindresorhus/screenfull.js/blob/gh-pages/license))
 * [FlexSlider](https://github.com/woothemes/FlexSlider) ([GPL 2.0](http://www.gnu.org/licenses/gpl-2.0.html))
+* [Hammer.js](https://github.com/hammerjs/hammer.js) ([MIT License](https://github.com/hammerjs/hammer.js/blob/master/LICENSE.md))
+* [Flat UI](https://github.com/designmodo/Flat-UI) ([CC BY 3.0 and MIT License](https://github.com/designmodo/Flat-UI#copyright-and-license))
+* [store.js](https://github.com/marcuswestin/store.js) ([MIT License](https://github.com/marcuswestin/store.js/blob/master/LICENSE))
+* [bootstrap-datepicker.js](http://www.eyecon.ro/bootstrap-datepicker/) ([Apache License 2.0](http://www.eyecon.ro/bootstrap-datepicker/js/bootstrap-datepicker.js))
+* [iScroll](http://iscrolljs.com/) ([MIT License](http://iscrolljs.com/#license))

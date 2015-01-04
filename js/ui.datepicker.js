@@ -625,7 +625,6 @@ $.fn.datepicker = function(option, val) {
     var options = $.extend({},
       UI.utils.options($this.data('am-datepicker')),
             typeof option === 'object' && option);
-    console.log(options);
     if (!data) {
       $this.data('amui.datepicker', (data = new Datepicker(this, options)));
     }

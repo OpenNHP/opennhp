@@ -179,7 +179,7 @@
 ### 选项验证提示
 
 `````html
-<select data-am-selected minchecked="2" maxchecked="3">
+<select multiple data-am-selected minchecked="2" maxchecked="3">
   <option value="a">Apple</option>
   <option value="b">Banana</option>
   <option value="o">Orange</option>
@@ -187,7 +187,7 @@
 </select>
 `````
 ```html
-<select data-am-selected minchecked="2" maxchecked="3">
+<select multiple data-am-selected minchecked="2" maxchecked="3">
   <option value="a">Apple</option>
   <option value="b">Banana</option>
   <option value="o">Orange</option>

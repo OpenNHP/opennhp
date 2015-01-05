@@ -102,6 +102,11 @@ $script.on('load', function() {
 
 使用 jQuery 时 `load` 事件的处理函数**不会**执行；使用 Zepto 时 `load` 事件的处理函数**会**执行。
 
+**其他参考链接：**
+
+- [jQuery 市场份额](http://w3techs.com/technologies/overview/javascript_library/all)
+- [jQuery vs Zepto 性能比较](http://jsperf.com/zepto-vs-jquery-2013/82)
+
 ## 高级使用
 
 ### 默认初始化事件接口

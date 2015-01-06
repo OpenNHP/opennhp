@@ -35,7 +35,7 @@
 
 - [Chart.js - Simple HTML5 Charts using Canvas](https://github.com/nnnick/Chart.js)
 - [百度 ECharts](https://github.com/ecomfe/echarts)
-- [Chartist.js]（https://github.com/gionkunz/chartist-js）
+- [Chartist.js](https://github.com/gionkunz/chartist-js)
 
 ## 页面交互
 

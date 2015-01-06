@@ -14,8 +14,8 @@
     data-am-pureview="{target: 'a'}" id="doc-pv-gallery">
   <li>
     <div class="am-gallery-item">
-      <a href="http://amui.qiniudn.com/pure-1.jpg" title="远方 有一个地方 那里种有我们的梦想">
-        <img src="http://amui.qiniudn.com/pure-1.jpg?imageView2/0/w/640"
+      <a href="http://7jpqbr.com1.z0.glb.clouddn.com/pure-1.jpg" title="远方 有一个地方 那里种有我们的梦想">
+        <img src="http://7jpqbr.com1.z0.glb.clouddn.com/pure-1.jpg?imageView2/0/w/640"
              alt="远方 有一个地方 那里种有我们的梦想" />
         <h3 class="am-gallery-title">远方 有一个地方 那里种有我们的梦想</h3>
         <div class="am-gallery-desc">2375-09-26</div>
@@ -24,8 +24,8 @@
   </li>
   <li>
     <div class="am-gallery-item">
-      <a href="http://amui.qiniudn.com/pure-2.jpg">
-        <img src="http://amui.qiniudn.com/pure-2.jpg?imageView2/0/w/640"
+      <a href="http://7jpqbr.com1.z0.glb.clouddn.com/pure-2.jpg">
+        <img src="http://7jpqbr.com1.z0.glb.clouddn.com/pure-2.jpg?imageView2/0/w/640"
              alt="某天 也许会相遇 相遇在这个好地方" />
         <h3 class="am-gallery-title">某天 也许会相遇 相遇在这个好地方</h3>
         <div class="am-gallery-desc">2375-09-26</div>
@@ -34,8 +34,8 @@
   </li>
   <li>
     <div class="am-gallery-item">
-      <a href="http://amui.qiniudn.com/pure-3.jpg">
-        <img src="http://amui.qiniudn.com/pure-3.jpg?imageView2/0/w/640"
+      <a href="http://7jpqbr.com1.z0.glb.clouddn.com/pure-3.jpg">
+        <img src="http://7jpqbr.com1.z0.glb.clouddn.com/pure-3.jpg?imageView2/0/w/640"
              alt="不要太担心 只因为我相信" />
         <h3 class="am-gallery-title">不要太担心 只因为我相信</h3>
         <div class="am-gallery-desc">2375-09-26</div>
@@ -44,8 +44,8 @@
   </li>
   <li>
     <div class="am-gallery-item">
-      <a href="http://amui.qiniudn.com/pure-4.jpg">
-        <img src="http://amui.qiniudn.com/pure-4.jpg?imageView2/0/w/640"
+      <a href="http://7jpqbr.com1.z0.glb.clouddn.com/pure-4.jpg">
+        <img src="http://7jpqbr.com1.z0.glb.clouddn.com/pure-4.jpg?imageView2/0/w/640"
              alt="终会走过这条遥远的道路" />
         <h3 class="am-gallery-title">终会走过这条遥远的道路</h3>
         <div class="am-gallery-desc">2375-09-26</div>
@@ -76,7 +76,7 @@
 #### BT 的图片
 
 <div data-am-pureview>
-  <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView2/0/w/120" data-rel="http://www.yi1000.com/uploadfile/image/20140519/20140519180561186118.jpg" alt="哇哇"/>
+  <img src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg?imageView2/0/w/120" data-rel="http://www.yi1000.com/uploadfile/image/20140519/20140519180561186118.jpg" alt="哇哇"/>
 </div>
 
 #### 图片速度比较慢的

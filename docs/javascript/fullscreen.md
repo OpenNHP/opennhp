@@ -97,28 +97,48 @@ $('#demo-full-page').on('click', function () {
 ### 全屏显示元素
 
 `````html
-  <div>
-    <img id="demo-full-img" src="http://s.cn.bing.net/az/hprichbg/rb/WorkingFarmer_ZH-CN9182210796_1366x768.jpg"
-         width="340"
-         height="142"
-         alt=""/>
-    <br/>
-    点击图片全屏显示
-  </div>
+<div>
+  <img id="demo-full-img" src="http://s.cn.bing.net/az/hprichbg/rb/WorkingFarmer_ZH-CN9182210796_1366x768.jpg"
+       width="340"
+       height="142"
+       alt=""/>
+  <br/>
+  点击图片全屏显示
+  <br/>
+  <span id="doc-fs-img"></span>
+</div>
 `````
+```html
+<div>
+  <img id="demo-full-img" src="http://s.cn.bing.net/az/hprichbg/rb/WorkingFarmer_ZH-CN9182210796_1366x768.jpg"
+       width="340"
+       height="142"
+       alt=""/>
+  <br/>
+  点击图片全屏显示
+  <br/>
+  <span id="doc-fs-img"></span>
+</div>
+```
 
 ```js
+var fullscreen = $.AMUI.fullscreen;
+
 $('#demo-full-img').on('click', function () {
-	if ($.AMUI.fullscreen.enabled) {
-    $.AMUI.fullscreen.request(this);
-	}
+  if (fullscreen.enabled) {
+    fullscreen.request(this);
+  }
+}).on(fullscreen.raw.fullscreenchange, function () {
+  // 监听图片全屏状态
+  var text = '图片状态：' + (fullscreen.isFullscreen ? '全屏' : '非全屏');
+  $('#doc-fs-img').html(text);
 });
 ```
 
 ### 监听全屏状态改变
 
 `````html
-    <p>打开控制台，点击上面的演示看看</p>
+<p>打开控制台，点击上面的演示看看</p>
 <script>
 $(function() {
   var fullscreen = $.AMUI.fullscreen;
@@ -137,6 +157,11 @@ $(function() {
     if (fullscreen.enabled) {
       fullscreen.request(this);
     }
+  }).on(fullscreen.raw.fullscreenchange, function () {
+    // 监听图片全屏状态
+    var text = '图片状态：<strong>' + (fullscreen.isFullscreen ? '全屏' : '非全屏')
+      + '</strong>';
+    $('#doc-fs-img').html(text);
   });
 
   // demo3

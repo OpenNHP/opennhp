@@ -601,3 +601,24 @@ Amaze UI 中内置了一些辅助响应式的 class，详见[辅助类-辅助 Cl
   <div class="am-u-md-4 am-u-md-pull-8 am-u-lg-reset-order">4 sidebar</div>
 </div>
 ```
+
+### 移除列内边距
+
+有同学提出列默认的内边距在某些场景太大，这时 `.am-g-collapse` 就派上用场了。
+
+**示例 10: 没有内边距的列**
+
+在行 `.am-g` 上添加 `.am-g-collapse`，移除列的内边距（`padding`）。
+
+`````html
+<div class="am-g am-g-collapse doc-am-g">
+  <div class="am-u-sm-6">.am-u-sm-6</div>
+  <div class="am-u-sm-6">.am-u-sm-6</div>
+</div>
+`````
+```html
+<div class="am-g am-g-collapse">
+  <div class="am-u-sm-6">.am-u-sm-6</div>
+  <div class="am-u-sm-6">.am-u-sm-6</div>
+</div>
+```

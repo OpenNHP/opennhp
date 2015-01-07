@@ -6,7 +6,7 @@ API 兼容性列表](http://caniuse.com/fullscreen)），免去苦逼写各种�
 
 ## 方法
 
-一下方法通过 `$.AMUI.fullscreen` 接口调用。
+以下方法通过 `$.AMUI.fullscreen` 接口调用。
 
 ### `.request()`
 
@@ -67,9 +67,7 @@ $(document).on($.AMUI.fullscreen.raw.fullscreenerror, function () {});
 
 ### `.raw`
 
-返回包含原始方法名称的对象，对象 `key` 包括： `requestFullscreen`, `exitFullscreen`, `fullscreenElement`, `fullscreenEnabled`, `
-    fullscreenchange`,
-    `fullscreenerror`
+返回包含原始方法名称的对象，对象 `key` 包括： `requestFullscreen`, `exitFullscreen`, `fullscreenElement`, `fullscreenEnabled`, `fullscreenchange`,`fullscreenerror`
 
 ```js
 $(document).on($.AMUI.fullscreen.raw.fullscreenchange, function () {

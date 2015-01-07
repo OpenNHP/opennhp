@@ -1,3 +1,11 @@
+---
+id: javaScript
+title: JS 插件
+titleEn: JavaScript
+permalink: javaScript.html
+next: javascript/alert.html
+---
+
 # JavaScript
 ---
 

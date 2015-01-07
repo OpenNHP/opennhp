@@ -1,3 +1,11 @@
+---
+id: css
+title: CSS
+titleEn: CSS
+permalink: css.html
+next: css/normalize.html
+---
+
 # CSS
 ---
 

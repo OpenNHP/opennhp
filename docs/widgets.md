@@ -1,3 +1,11 @@
+---
+id: widgets
+title: Web 组件
+titleEn: Web Components
+permalink: widgets.html
+next: widgets/accordion.html
+---
+
 # Web 组件
 ---
 

@@ -3,6 +3,9 @@
 
 ### 2015.01 W1
 
+**JS:**
+
+- `IMPROVED` #379 处理 Selected `$.fn.selected` 与 [jQuery Form](https://github.com/malsup/form) 冲突问题， Thx @Ahoo-Wang；
 - `IMPROVED` #367 尝试修复 Modal 遮罩层关闭回调函数被触发多次问题；
 
 ## Amaze UI 2.1.0-beta1

@@ -262,6 +262,7 @@ function Plugin(option) {
     var $this = $(this);
     var data = $this.data('amui.selected');
     var options = $.extend({}, UI.utils.parseOptions($this.data('amSelected')),
+      UI.utils.parseOptions($this.data('amSelectit')),
       typeof option === 'object' && option);
 
     if (!data && option === 'destroy') {
@@ -278,10 +279,13 @@ function Plugin(option) {
   });
 }
 
-$.fn.selected = Plugin;
+// Conflict with jQuery form
+// https://github.com/malsup/form/blob/6bf24a5f6d8be65f4e5491863180c09356d9dadd/jquery.form.js#L1240-L1258
+// https://github.com/allmobilize/amazeui/issues/379
+$.fn.selected = $.fn.selectIt = Plugin;
 
 UI.ready(function(context) {
-  $('[data-am-selected]', context).selected();
+  $('[data-am-selected]', context).selectIt();
 });
 
 $.AMUI.selected = Selected;

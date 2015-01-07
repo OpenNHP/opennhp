@@ -151,7 +151,7 @@
 
 ### 简易搜索
 
-基于 jQuery `：contains` 选择符实现的简易搜索。
+基于 jQuery `:contains` 选择符实现的简易搜索。
 
 `````html
 <select data-am-selected="{searchBox: 1}">
@@ -205,6 +205,8 @@
 
 通过 `$('select').selected(options)` 启用样式复写。
 
+**如果项目中同时使用了 [jQuery Form](https://github.com/malsup/form/)，`$.fn.selected` 有命名冲突，请使用 `$('select').selectIt(options)` 替代。**
+
 ```javascript
 $(function() {
   // 使用默认参数
@@ -226,3 +228,5 @@ $(function() {
 - `btnSize: null`: 按钮尺寸，可选值为 `xl|sm|lg|xl`
 - `btnStyle: 'default'`: 按钮样式，可选值为 `primary|secondary|success|warning|danger`
 - `maxHeight: null`: 列表最大高度
+
+    <script src="http://minwe.github.io/form/jquery.form.js"></script>

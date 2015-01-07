@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+### 2015.01 W1
+
+- `IMPROVED` #367 尝试修复 Modal 遮罩层关闭回调函数被触发多次问题；
+
+## Amaze UI 2.1.0-beta1
+
 ### 2014.12 W4
 
 **JS:**

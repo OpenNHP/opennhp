@@ -1,3 +1,11 @@
+---
+id: getting-started
+title: 开始使用
+titleEn: Getting Started
+permalink: getting-started.html
+next: getting-started/layouts.html
+---
+
 # 开始使用 Amaze UI
 ---
 

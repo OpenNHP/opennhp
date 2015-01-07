@@ -1,3 +1,11 @@
+---
+id: wantu
+title: 妹子招亲
+titleEn: Want U
+permalink: about/wantu.html
+next: about/contact.html
+---
+
 # 妹子招亲
 ---
 

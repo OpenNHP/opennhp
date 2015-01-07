@@ -1,3 +1,11 @@
+---
+id: contact
+title: 关于我们
+titleEn: Contact
+prev: about/about.html
+next: about/contact.html
+---
+
 # 联系我们
 ---
 

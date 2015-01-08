@@ -1,8 +1,8 @@
 # Fullscreen
 ---
 
-JavaScript [Fullscreen API](https://developer.mozilla.org/en/DOM/Using_full-screen_mode) 跨浏览器兼容封装（[点击查看 Fullscreen
-API 兼容性列表](http://caniuse.com/fullscreen)），免去苦逼写各种浏览器前缀的麻烦。
+JavaScript [Fullscreen API](https://developer.mozilla.org/en/DOM/Using_full-screen_mode) 跨浏览器兼容封装（[Fullscreen
+API 兼容性列表](http://caniuse.com/fullscreen)），免去苦逼写各种浏览器前缀的麻烦。源自 [screenfull.js](https://github.com/sindresorhus/screenfull.js)。
 
 ## 方法
 
@@ -29,26 +29,29 @@ API 兼容性列表](http://caniuse.com/fullscreen)），免去苦逼写各种�
 
 全屏模式切换。
 
-### `.onchange()`
+### 事件监听
 
-<del>全屏模式发生改变时获得通知。</del>
-
-建议使用下面的事件监听：
+#### 全屏状态变化
 
 ```js
-$(document).on($.AMUI.fullscreen.raw.fullscreenchange, function () {});
+var fullscreen = $.AMUI.fullscreen;
+if (fullscreen.enabled) {
+  document.addEventListener(fullscreen.raw.fullscreenchange, function() {
+    console.log('Am I fullscreen? ' + (fullscreen.isFullscreen ? 'Yes' : 'No'));
+  });
+}
 ```
 
-#### .onerror()
-
-<del>全屏模式发生错误时获得通知。</del>
-
-建议使用下面的事件监听：
+#### 监听全屏错误
 
 ```js
-$(document).on($.AMUI.fullscreen.raw.fullscreenerror, function () {});
+var fullscreen = $.AMUI.fullscreen;
+if (fullscreen.enabled) {
+  document.addEventListener(fullscreen.raw.fullscreenerror, function(e) {
+    console.error('Failed to enable fullscreen', e);
+  });
+}
 ```
-
 
 ## 属性
 
@@ -81,7 +84,9 @@ $(document).on($.AMUI.fullscreen.raw.fullscreenchange, function () {
 ### 全屏整个页面
 
 `````html
-<button class="am-btn am-btn-primary" id="demo-full-page">Fullscreen the page</button>
+<button class="am-btn am-btn-primary" id="doc-fs-request">全屏窗口</button>
+<button class="am-btn am-btn-secondary" id="doc-fs-exit">退出全屏</button>
+<button class="am-btn am-btn-warning" id="doc-fs-toggle">全屏交替</button>
 `````
 
 ```js
@@ -97,6 +102,13 @@ $('#demo-full-page').on('click', function () {
 ### 全屏显示元素
 
 `````html
+<style>
+  #demo-full-img:-webkit-full-screen {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+</style>
 <div>
   <img id="demo-full-img" src="http://s.cn.bing.net/az/hprichbg/rb/WorkingFarmer_ZH-CN9182210796_1366x768.jpg"
        width="340"
@@ -144,12 +156,16 @@ $(function() {
   var fullscreen = $.AMUI.fullscreen;
 
   // demo1
-  $('#demo-full-page').on('click', function () {
-    if (fullscreen.enabled) {
-      fullscreen.request();
-    } else {
-      // Ignore or do something else
-    }
+  $('#doc-fs-request').on('click', function () {
+    fullscreen.enabled && fullscreen.request();
+  });
+
+  $('#doc-fs-exit').on('click', function () {
+    fullscreen.enabled && fullscreen.exit();
+  });
+
+  $('#doc-fs-toggle').on('click', function () {
+    fullscreen.enabled && fullscreen.toggle();
   });
 
   // demo2

@@ -6,13 +6,13 @@ var UI = require('./core');
 /**
  * @via https://github.com/sindresorhus/screenfull.js
  * @license MIT © Sindre Sorhus
- * @version 1.2.1
+ * @version 2.0.0
  */
 
 var keyboardAllowed = typeof Element !== 'undefined' &&
   'ALLOW_KEYBOARD_INPUT' in Element;
 
-var fn = (function() {
+var fn = (function () {
   var val;
   var valLength;
 
@@ -80,8 +80,8 @@ var fn = (function() {
   return false;
 })();
 
-var fullscreen = {
-  request: function(elem) {
+var screenfull = {
+  request: function (elem) {
     var request = fn.requestFullscreen;
 
     elem = elem || document.documentElement;
@@ -96,19 +96,15 @@ var fullscreen = {
       elem[request](keyboardAllowed && Element.ALLOW_KEYBOARD_INPUT);
     }
   },
-  exit: function() {
+  exit: function () {
     document[fn.exitFullscreen]();
   },
-  toggle: function(elem) {
+  toggle: function (elem) {
     if (this.isFullscreen) {
       this.exit();
     } else {
       this.request(elem);
     }
-  },
-  onchange: function() {
-  },
-  onerror: function() {
   },
   raw: fn
 };
@@ -118,35 +114,29 @@ if (!fn) {
   return;
 }
 
-Object.defineProperties(fullscreen, {
+Object.defineProperties(screenfull, {
   isFullscreen: {
-    get: function() {
+    get: function () {
       return !!document[fn.fullscreenElement];
     }
   },
   element: {
     enumerable: true,
-    get: function() {
+    get: function () {
       return document[fn.fullscreenElement];
     }
   },
   enabled: {
     enumerable: true,
-    get: function() {
+    get: function () {
       // Coerce to boolean in case of old WebKit
       return !!document[fn.fullscreenEnabled];
     }
   }
 });
 
-document.addEventListener(fn.fullscreenchange, function(e) {
-  fullscreen.onchange.call(fullscreen, e);
-});
+screenfull.VERSION = '2.0.0';
 
-document.addEventListener(fn.fullscreenerror, function(e) {
-  fullscreen.onerror.call(fullscreen, e);
-});
+$.AMUI.fullscreen = screenfull;
 
-$.AMUI.fullscreen = fullscreen;
-
-module.exports = fullscreen;
+module.exports = screenfull;

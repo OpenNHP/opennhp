@@ -13,13 +13,20 @@
 
 - [detector](https://github.com/hotoo/detector)
 
-## 表单
+## 表单处理
 
 ### `<select>` 相关
 
 - [Chosen](https://github.com/harvesthq/chosen)
 - [Select2](https://github.com/ivaynberg/select2)
 - [bootstrap-select](https://github.com/silviomoreto/bootstrap-select)
+
+### 上传组件
+
+- [jQuery File Upload Plugin](https://github.com/blueimp/jQuery-File-Upload)
+- [百度 Web Uploader](http://fex-team.github.io/webuploader/)
+- [Uploadify](http://www.uploadify.com/)
+- [arale-upload - 轻量级 iframe and html5 file uploader](https://github.com/aralejs/upload)
 
 ### 日期选择
 
@@ -36,6 +43,10 @@
 - [Chart.js - Simple HTML5 Charts using Canvas](https://github.com/nnnick/Chart.js)
 - [百度 ECharts](https://github.com/ecomfe/echarts)
 - [Chartist.js](https://github.com/gionkunz/chartist-js)
+
+## 日期格式化
+
+- [Moment.js](http://momentjs.com/)
 
 ## 页面交互
 

@@ -37,7 +37,7 @@ Selected.DEFAULTS = {
   selectedClass: 'am-checked',
   searchBox: false,
   tpl: '<div class="am-selected am-dropdown" id="<%= id %>" data-am-dropdown>' +
-  '  <button class="am-selected-btn am-btn am-dropdown-toggle">' +
+  '  <button type="button" class="am-selected-btn am-btn am-dropdown-toggle">' +
   '    <span class="am-selected-status am-fl"></span>' +
   '    <i class="am-selected-icon am-icon-caret-down"></i>' +
   '  </button>' +

@@ -14,12 +14,14 @@
 ### 单选下拉框
 
 `````html
-<select data-am-selected>
-  <option value="a">Apple</option>
-  <option value="b">Banana</option>
-  <option value="o">Orange</option>
-  <option value="m">Mango</option>
-</select>
+<form action="">
+  <select name="test" data-am-selected>
+    <option value="a">Apple</option>
+    <option value="b">Banana</option>
+    <option value="o">Orange</option>
+    <option value="m">Mango</option>
+  </select>
+</form>
 `````
 ```html
 <select data-am-selected>
@@ -228,5 +230,3 @@ $(function() {
 - `btnSize: null`: 按钮尺寸，可选值为 `xl|sm|lg|xl`
 - `btnStyle: 'default'`: 按钮样式，可选值为 `primary|secondary|success|warning|danger`
 - `maxHeight: null`: 列表最大高度
-
-    <script src="http://minwe.github.io/form/jquery.form.js"></script>

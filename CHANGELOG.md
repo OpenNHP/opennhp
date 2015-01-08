@@ -5,6 +5,8 @@
 
 **JS:**
 
+- `IMPROVED` 阻止 Dropdown toggle 默认事件；
+- `FIXED` Selected 插件提交表单问题；
 - `FIXED` 修复 PureView 插件标题不显示问题；
 - `NEW` PureView 插件增加 `toggleToolbar` 选项 - 长按是否隐藏/显示工具栏，默认为 `true`；
 - `IMPROVED` #379 处理 Selected `$.fn.selected` 与 [jQuery Form](https://github.com/malsup/form) 冲突问题， Thx @Ahoo-Wang；

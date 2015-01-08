@@ -1,6 +1,12 @@
 # Datepicker
 ---
 
+日期选择插件。
+
+**注意：**
+
+在触控设备上， `<input>` 获得焦点时会激活键盘，部分浏览器添加 `readonly` 属性以后可禁止键盘激活。
+
 ## 使用演示
 
 ### 基本形式
@@ -8,11 +14,11 @@
 在 `<input>` 上增加 `.data-am-datepicker` 属性，调用日期插件。
 
 `````html
-<p><input type="text" class="am-form-field am-radius" placeholder="日历组件" data-am-datepicker readonly/></p>
+<p><input type="text" class="am-form-field" placeholder="日历组件" data-am-datepicker readonly/></p>
 
 `````
 ```html
-<p><input type="text" class="am-form-field am-radius" placeholder="日历组件" data-am-datepicker readonly/></p>
+<p><input type="text" class="am-form-field" placeholder="日历组件" data-am-datepicker readonly/></p>
 ```
 
 ### 结合组件使用
@@ -45,11 +51,13 @@
 - `danger`: 红色
 
 `````html
-<p><input type="text" class="am-form-field am-radius" placeholder="日历组件" data-am-datepicker="{theme: 'success'}" readonly/></p>
-
+<p>
+  <input type="text" class="am-form-field" placeholder="日历组件"
+         data-am-datepicker="{theme: 'success', weekStart: 6}" readonly/>
+</p>
 `````
 ```html
-<p><input type="text" class="am-form-field am-radius" placeholder="日历组件" data-am-datepicker="{theme: 'success'}" readonly/></p>
+<p><input type="text" class="am-form-field" placeholder="日历组件" data-am-datepicker="{theme: 'success'}" readonly/></p>
 ```
 
 ### 视图模式
@@ -200,11 +208,11 @@
 <div class="am-g">
   <div class="am-u-sm-6">
     设置禁用日期<br/>
-    <p><input type="text" class="am-form-field am-radius" placeholder="今天之前的日期被禁用" id="my-start-2"/></p>
+    <p><input type="text" class="am-form-field" placeholder="今天之前的日期被禁用" id="my-start-2"/></p>
   </div>
   <div class="am-u-sm-6">
     禁用日期<br/>
-    <p><input type="text" class="am-form-field am-radius" id="my-end-2" /></p>
+    <p><input type="text" class="am-form-field" id="my-end-2" /></p>
   </div>
 </div>
 <script>
@@ -243,11 +251,11 @@
 <div class="am-g">
   <div class="am-u-sm-6">
     设置禁用日期<br/>
-    <p><input type="text" class="am-form-field am-radius" placeholder="今天之前的日期被禁用" id="my-start-2"/></p>
+    <p><input type="text" class="am-form-field" placeholder="今天之前的日期被禁用" id="my-start-2"/></p>
   </div>
   <div class="am-u-sm-6">
     禁用日期<br/>
-    <p><input type="text" class="am-form-field am-radius" id="my-end-2" /></p>
+    <p><input type="text" class="am-form-field" id="my-end-2" /></p>
   </div>
 </div>
 <script>
@@ -334,8 +342,10 @@ $('#my-datepicker').datepicker({format: 'yyyy-mm'});
 - `format`: 日期格式，默认为 `yyyy-mm-dd`，可以选择 `yy/mm/dd` 、`mm/dd` 或者英文日期格式 `dd/mm/yyyy`、`dd/mm/yy`、`dd/mm`等，中间分隔符可以使用 `/`、`-`、` `。
 - `viewMode`: type `string`|`integer` 默认为 0 ，设置开始查看模式，传递 `days`、`months`、`years`或者分别对应的 `0`、`1`、`2`。
 - `minViewMode`: type `string`|`integer` 默认为 `0`，设置视图模式的限制，传递 `days`、`months`、`years`或者对应的 `0`、`1`、`2`。
-- onRender: 渲染日历时调用的函数，比如 `.am-disabled` 设置禁用日期。
-- theme: 设置日期颜色主题，接受 `success`、`danger`、`warning` 值，对应为绿色、红色、橙色，默认为蓝色。
+- `onRender`: 渲染日历时调用的函数，比如 `.am-disabled` 设置禁用日期。
+- `theme`: 设置日期颜色主题，可选值为 `success`、`danger`、`warning`，对应为绿色、红色、橙色，默认为蓝色。
+- `locale`: 语言设置, 可选值为 `zh_CN`、`en_US`，默认为中文。
+- `autoClose`: 日期选定以后是否自动关闭日期选择器, 默认为 `true` (仅在 `days` 视图有效)。
 
 设置 `viewMode` 和 `minViewMode` 需要注意日期格式 `format` 的设置。
 
@@ -344,7 +354,7 @@ $('#my-datepicker').datepicker({format: 'yyyy-mm'});
 选择日期时，通过查看控制台选择的日期。
 
 `````html
-<p><input type="text" class="am-form-field am-radius" placeholder="日历组件" id="doc-datepicker"/></p>
+<p><input type="text" class="am-form-field" placeholder="日历组件" id="doc-datepicker"/></p>
 <script>
 $(function() {
   $('#doc-datepicker').datepicker().
@@ -381,4 +391,60 @@ $(function() {
 
 ### 语言扩展
 
-内置英语和简体中文支持，默认为中文，要支持更多语言可以通过 `Datepicker.locales` 添加。
+内置英语和简体中文支持，默认为中文，要支持更多语言可以通过 `Datepicker.locales` 扩展。
+
+**设置语言：**
+
+`````html
+<p>
+  <input type="text" class="am-form-field" placeholder="YYYY-MM-DD"
+         data-am-datepicker="{locale: 'en_US'}" readonly/>
+</p>
+`````
+```html
+<p>
+  <input type="text" class="am-form-field" placeholder="YYYY-MM-DD"
+         data-am-datepicker="{locale: 'en_US'}" readonly/>
+</p>
+```
+
+**扩展语言：**
+
+<script>
+(function($) {
+  $.AMUI && $.AMUI.datepicker && ($.AMUI.datepicker.locales.fr = {
+    days: ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"],
+    daysShort: ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"],
+    daysMin: ["D", "L", "Ma", "Me", "J", "V", "S"],
+    months: ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"],
+    monthsShort: ["Jan", "Fev", "Mar", "Avr", "Mai", "Jui", "Jul", "Aou", "Sep", "Oct", "Nov", "Dec"],
+    weekStart: 1
+  });
+})(window.jQuery);
+</script>
+
+`````html
+<p>
+  <input type="text" class="am-form-field" placeholder="来一丢丢 French"
+         data-am-datepicker="{locale: 'fr', autoClose: 0}" readonly/>
+</p>
+`````
+```html
+<p>
+  <input type="text" class="am-form-field" placeholder="来一丢丢 French"
+         data-am-datepicker="{locale: 'fr', autoClose: 0}" readonly/>
+</p>
+
+<script>
+(function($) {
+  $.AMUI && $.AMUI.datepicker && ($.AMUI.datepicker.locales.fr = {
+    days: ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"],
+    daysShort: ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
+    daysMin: ["D", "L", "Ma", "Me", "J", "V", "S", "D"],
+    months: ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"],
+    monthsShort: ["Jan", "Fev", "Mar", "Avr", "Mai", "Jui", "Jul", "Aou", "Sep", "Oct", "Nov", "Dec"],
+    weekStart: 1
+  });
+})(window.jQuery);
+</script>
+```

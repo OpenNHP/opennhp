@@ -161,7 +161,10 @@ Dropdown.prototype.events = function() {
   // triggers = this.options.trigger.split(' '),
   var $toggle = this.$toggle;
 
-  $toggle.on('click.' + eventNS, $.proxy(this.toggle, this));
+  $toggle.on('click.' + eventNS, $.proxy(function(e) {
+    e.preventDefault();
+    this.toggle();
+  }, this));
 
   /*for (var i = triggers.length; i--;) {
    var trigger = triggers[i];

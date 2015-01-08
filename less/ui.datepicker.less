@@ -112,7 +112,7 @@
 .@{ns}datepicker {
   top: 0;
   left: 0;
-  border-radius: 4px;
+  border-radius: @global-radius;
   background: @datepicker-bg;
   box-shadow: 0 0 10px #ccc;
   padding-bottom: 10px;
@@ -174,7 +174,7 @@
 
     &.@{ns}active,
     &.@{ns}active:hover {
-      border-radius: 2px;
+      border-radius: @global-radius;
       color: @datepicker-td-active;
       background: @datepicker-td-hover;
     }
@@ -289,6 +289,7 @@
       }
     }
   }
+
   .@{ns}datepicker-caret {
     display: none!important;
   }

@@ -68,6 +68,9 @@ PureView.DEFAULTS = {
 
   shareBtn: false,
 
+  // press to toggle Toolbar
+  toggleToolbar: true,
+
   // 从何处获取图片，img 可以使用 data-rel 指定大图
   target: 'img',
 
@@ -137,15 +140,15 @@ PureView.prototype.init = function() {
       _this.close();
     });
 
-  this.$slider.hammer().on('press.pureview.amui', function(e) {
-    e.preventDefault();
-    _this.toggleToolBar();
-  }).on('swipeleft.pureview.amui', function(e) {
+  this.$slider.hammer().on('swipeleft.pureview.amui', function(e) {
     e.preventDefault();
     _this.nextSlide();
   }).on('swiperight.pureview.amui', function(e) {
     e.preventDefault();
     _this.prevSlide();
+  }).on('press.pureview.amui', function(e) {
+    e.preventDefault();
+    options.toggleToolbar && _this.toggleToolBar();
   });
 
   this.$slider.data('hammer').get('swipe').set({
@@ -165,7 +168,11 @@ PureView.prototype.init = function() {
   // NOTE:
   // trigger this event manually if MutationObserver not supported
   //   when new images appended, or call refreshSlides()
-  $element.on('changed.dom.amui', $.proxy(this.refreshSlides, _this));
+  // if (!UI.support.mutationobserver) $element.trigger('changed.dom.amui')
+  $element.on('changed.dom.amui', function(e) {
+    e.stopPropagation();
+    _this.refreshSlides();
+  });
 
   $(document).on('keydown.pureview.amui', $.proxy(function(e) {
     var keyCode = e.keyCode;
@@ -258,7 +265,7 @@ PureView.prototype.activate = function($slide) {
   var options = this.options;
   var $slides = this.$slides;
   var activeIndex = $slides.index($slide);
-  var alt = $slide.find('img').attr('alt') || '';
+  var title = $slide.data('title') || '';
   var active = options.className.active;
 
   if ($slides.find('.' + active).is($slide)) {
@@ -277,7 +284,7 @@ PureView.prototype.activate = function($slide) {
 
   this.transitioning = 1;
 
-  this.$title.text(alt);
+  this.$title.text(title);
   this.$current.text(activeIndex + 1);
   $slides.removeClass();
   $slide.addClass(active);

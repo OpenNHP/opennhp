@@ -339,9 +339,9 @@ $('#my-datepicker').datepicker({format: 'yyyy-mm'});
 
 #### 选项说明
 
-- `format`: 日期格式，默认为 `yyyy-mm-dd`，可以选择 `yy/mm/dd` 、`mm/dd` 或者英文日期格式 `dd/mm/yyyy`、`dd/mm/yy`、`dd/mm`等，中间分隔符可以使用 `/`、`-`、` `。
-- `viewMode`: type `string`|`integer` 默认为 0 ，设置开始查看模式，传递 `days`、`months`、`years`或者分别对应的 `0`、`1`、`2`。
-- `minViewMode`: type `string`|`integer` 默认为 `0`，设置视图模式的限制，传递 `days`、`months`、`years`或者对应的 `0`、`1`、`2`。
+- `format`: 日期格式，默认为 `yyyy-mm-dd`，可以选择 `yy/mm/dd` 、`mm/dd`、`dd/mm/yyyy`、`dd/mm/yy`、`dd/mm`等，中间分隔符可以使用 `/`、`-`、` `。
+- `viewMode`: 日期选择器初始视图模式，`string`|`integer`， 默认为 0，可选值 `days`、`months`、`years`或者对应的 `0`、`1`、`2`。
+- `minViewMode`: 日期选择器初始视图模式限制，`string`|`integer`， 默认为 `0`，可选值`days`、`months`、`years`或者对应的 `0`、`1`、`2`。
 - `onRender`: 渲染日历时调用的函数，比如 `.am-disabled` 设置禁用日期。
 - `theme`: 设置日期颜色主题，可选值为 `success`、`danger`、`warning`，对应为绿色、红色、橙色，默认为蓝色。
 - `locale`: 语言设置, 可选值为 `zh_CN`、`en_US`，默认为中文。

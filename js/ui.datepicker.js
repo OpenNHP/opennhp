@@ -117,7 +117,7 @@ Datepicker.prototype.open = function(e) {
     }
   });
   this.$element.trigger({
-    type: 'open',
+    type: 'open.datepicker.amui',
     date: this.date
   });
 };
@@ -132,7 +132,7 @@ Datepicker.prototype.close = function() {
   }
   // this.set();
   this.$element.trigger({
-    type: 'close',
+    type: 'close.datepicker.amui',
     date: this.date
   });
 };
@@ -414,11 +414,8 @@ Datepicker.prototype.showMode = function(dir) {
       Math.min(2, this.viewMode + dir));
   }
 
-  this.$picker
-    .find('>div')
-    .hide()
-    .filter('.am-datepicker-' + DPGlobal.modes[this.viewMode].clsName)
-    .show();
+  this.$picker.find('>div').hide().
+    filter('.am-datepicker-' + DPGlobal.modes[this.viewMode].clsName).show();
 };
 
 Datepicker.prototype.isOutView = function() {
@@ -505,13 +502,16 @@ var DPGlobal = {
       navStep: 10
     }
   ],
+
   isLeapYear: function(year) {
     return (((year % 4 === 0) && (year % 100 !== 0)) || (year % 400 === 0));
   },
+
   getDaysInMonth: function(year, month) {
     return [31, (DPGlobal.isLeapYear(year) ? 29 : 28),
       31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month];
   },
+
   parseFormat: function(format) {
     var separator = format.match(/[.\/\-\s].*?/);
     var parts = format.split(/\W+/);
@@ -519,11 +519,13 @@ var DPGlobal = {
     if (!separator || !parts || parts.length === 0) {
       throw new Error('Invalid date format.');
     }
+
     return {
       separator: separator,
       parts: parts
     };
   },
+
   parseDate: function(date, format) {
     var parts = date.split(format.separator);
     var val;
@@ -566,6 +568,7 @@ var DPGlobal = {
     }
     return date;
   },
+
   formatDate: function(date, format) {
     var val = {
       d: date.getDate(),
@@ -583,6 +586,7 @@ var DPGlobal = {
     }
     return dateArray.join(format.separator);
   },
+
   headTemplate: '<thead>' +
   '<tr class="am-datepicker-header">' +
   '<th class="am-datepicker-prev">' +
@@ -591,6 +595,7 @@ var DPGlobal = {
   '<div class="am-datepicker-select"></div></th>' +
   '<th class="am-datepicker-next"><i class="am-datepicker-next-icon"></i>' +
   '</th></tr></thead>',
+
   contTemplate: '<tbody><tr><td colspan="7"></td></tr></tbody>'
 };
 

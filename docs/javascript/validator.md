@@ -72,6 +72,10 @@ JS 表单验证基于 HTML5 的各项验证属性进行：
 - `minchecked`/`maxchecked`: 至少、至多选择数，适用于 `checkbox`、下拉多选框，`checkbox` 时将相关属性的设置在同组的第一个元素上；
 - `.js-pattern-xx`: 验证规则 class，正则库中存在的规则可以通过添加相应 class 实现规则添加。
 
+**注意：**
+
+HTML5 原生表单验证中 `pattern` 只验证值的合法性，也就是**可以不填，如果填写则必须符合规则**。如果是必填项，仍要添加 `required` 属性。该插件与 HTML5 的规则保持一致。
+
 ```html
 <!-- 下面三种写法等效 -->
 <!-- 只内置了 email url number 三种类型的正则，可自行扩展 -->
@@ -380,6 +384,10 @@ $(function() {
     <label for="">输入一个颜色值</label>
     <input type="text" class="js-pattern-colorHex" placeholder="如果填写，必须是 #xxx 或 #xxxxxx"/>
   </div>
+  <div class="am-form-group">
+    <label for="">your pattern</label>
+    <input type="text" class="js-pattern-yourpattern" placeholder="必填，且只能填 your" required/>
+  </div>
   <div>
     <button class="am-btn am-btn-secondary">提交</button>
   </div>
@@ -402,6 +410,10 @@ $(function() {
   <div class="am-form-group">
     <label for="">输入一个颜色值</label>
     <input type="text" class="js-pattern-colorHex" placeholder="如果填写，必须是 #xxx 或 #xxxxxx"/>
+  </div>
+  <div class="am-form-group">
+    <label for="">your pattern</label>
+    <input type="text" class="js-pattern-yourpattern" placeholder="必填，且只能填 your" required/>
   </div>
   <div>
     <button class="am-btn am-btn-secondary">提交</button>

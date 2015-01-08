@@ -26,7 +26,7 @@ jQuery 和 Zepto.js 表面看起来差不多，其实一些细节上差异很大
 #### `width()`/`height()`
 
 - Zepto.js: 由盒模型（`box-sizing`）决定
-- jQery: 忽略盒模型，始终返回内容区域的宽/高（不包含 `padding`、`border`）
+- jQuery: 忽略盒模型，始终返回内容区域的宽/高（不包含 `padding`、`border`）
 
 jQuery [官方的说明](http://api.jquery.com/width/#width)：
 

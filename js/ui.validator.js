@@ -57,22 +57,19 @@ Validator.DEFAULTS = {
     var options = this.options;
     var $field = $(validity.field);
     var $parent = $field.closest('.am-form-group');
-    $field.addClass(options.validClass).
-      removeClass(options.inValidClass);
 
+    $field.addClass(options.validClass).removeClass(options.inValidClass);
     $parent.addClass('am-form-success').removeClass('am-form-error');
-
     options.onValid.call(this, validity);
   },
   markInValid: function(validity) {
     var options = this.options;
     var $field = $(validity.field);
     var $parent = $field.closest('.am-form-group');
+
     $field.addClass(options.inValidClass + ' ' + options.activeClass).
       removeClass(options.validClass);
-
     $parent.addClass('am-form-error').removeClass('am-form-success');
-
     options.onInValid.call(this, validity);
   }
 };
@@ -185,6 +182,13 @@ Validator.prototype.validate = function(field) {
   var $element = this.$element;
   var options = this.options;
   var $field = $(field);
+
+  // Validate equal, e.g. confirm password
+  var equalTo = $field.data('equalTo');
+  if (equalTo) {
+    $field.attr('pattern', '^' + $element.find(equalTo).val() + '$');
+  }
+
   var pattern = $field.attr('pattern') || false;
   var re = new RegExp(pattern);
   var $radioGroup = null;
@@ -270,6 +274,8 @@ Validator.prototype.validate = function(field) {
     validity.valid = false;
     validity.patternMismatch = true;
   }
+
+  // Add custom validate here
 
   var markField = function(validity) {
     var flag = 'mark' + (validity.valid ? '' : 'In') + 'Valid';

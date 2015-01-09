@@ -1,6 +1,10 @@
 # Divider 更新记录
 ---
 
+## v2.0.0 (2015.01.09)
+
+- `CHANGE` 删除 ide 示例 example。
+
 ## v2.0.0 (2014.10.30)
 
 - `NEW` 使用 jQuery。

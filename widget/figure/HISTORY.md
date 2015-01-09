@@ -1,6 +1,10 @@
 # Figure 更新记录
 ---
 
+## v2.0.2 (2015.01.09)
+
+- `CHANGED` 删除 ide 示例接口字段 example。
+
 ## v2.0.1 (2014.12.02)
 
 - `CHANGED` 调整 Figure 图片缩放选项。

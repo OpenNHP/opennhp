@@ -1,6 +1,10 @@
 # Pagination 更细记录
 ---
 
+## v3.0.1 (2015.01.09)
+
+- `CHANGED` 删除 ide 示例接口字段 example。
+
 ## v3.0.0 (2014.08.17)
 
 - `NEW` 删除 `options.select` 选项，根据主题判断要生产的 HTML 结构；

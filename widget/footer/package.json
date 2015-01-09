@@ -363,6 +363,5 @@
     }
   },
   "readme": "http://docs.yunshipei.com/amui/#footer",
-  "example": "/*\n 此模块的使用方法：直接书写需要填写的公司字号，地址等内容。\n \n 常用用途：放在页面底部，书写公司的名称或者地址等信息。\n \n 了解AMUI模块详情，请访问http://ide.yunshipei.com/doc/amui/#footer。\n\n         示例代码：\n         var data = {\n             \"lang\"      : context.__lang, \n             \"owner\"     : \"xxx\",      \n             \"companyInfo\": [{       \n                  \"detail\": \"xxx\"   \n                 },{\n                 \"detail\": \"<a href = 'www.xxx.com' > xxx </a>\"  \n                 }]\n         };\n         return data;\n */\n\nvar data = {\n    \"lang\": context.__lang,     // 默认，无需改动。若改动赋值为“en”则为英文，否则为中文！\n    \"owner\": \"\",                // 网站名字 可以填写公司名称或者其他内容。\n    \"companyInfo\": [\n        {                       // 网站信息\n            \"detail\": \"\"        // 必要时可加 a 标签跳转到某个页面，网站的详细信息，在页面中的footer部分就可以看到这里的文字\n        },\n        {\n            \"detail\": \"\"        // 必要时可加 a 标签跳转到某个页面，网站的详细信息，在页面中的footer部分就可以看到这里的文字\n        }\n    ]\n};\nreturn data;\n",
   "hidden": false
 }

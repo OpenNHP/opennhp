@@ -286,7 +286,5 @@
 
     "readme": "http://docs.yunshipei.com/amui/#paragraph",
 
-    "example": "/*\n 此模块的使用方法： 将原PC网页的数据（dom结构）提取放在这里，最后显示在模块界面上。\n \n 常用用途：通常用来采放整个的dom内容（在有数据交互的页面中使用较多）。\n \n 了解AMUI段落的模块详情，请访问http://ide.yunshipei.com/doc/amui/#paragraph。\n\n         示例代码：\n        \n         var data = {\n            \"content\": $(\".xxx\").html()\n         };\n         return data;\n    \n*/\n\nvar data = {\n    \"content\": \"\"   //填写paragraph的内容\n};\nreturn data;\n",
-
     "hidden": false
 }

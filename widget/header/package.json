@@ -281,32 +281,7 @@
             "dataList": ""
         },
 
-        "options": {
-            "homeIcon": {
-                "name": "首页图标",
-                "desc": "home 图标修改",
-                "type": "text",
-                "placeholder": "图标 class",
-                "default": "",
-                "required": false
-            },
-            "menuIcon": {
-                "name": "菜单图标",
-                "desc": "menu 图标修改",
-                "type": "text",
-                "placeholder": "图标 class",
-                "default": "",
-                "required": false
-            },
-            "menuLink": {
-                "name": "菜单链接",
-                "desc": "菜单链接地址",
-                "type": "text",
-                "placeholder": "菜单链接地址",
-                "default": "",
-                "required": false
-            }
-        },
+        "options": null,
 
         "content": {
             "type": "Object",

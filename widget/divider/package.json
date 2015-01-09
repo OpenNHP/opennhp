@@ -129,7 +129,5 @@
 
     "readme": "http://docs.yunshipei.com/amui/#divider",
 
-    "example": "var data = {\n\t//无需填写数据\n};\nreturn data;",
-
     "hidden": false
 }

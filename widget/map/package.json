@@ -188,7 +188,5 @@
 
     "readme": "http://docs.yunshipei.com/amui/#map",
 
-    "example": "var data = {\n    // 地图选项\n    \"options\": {\n        \"name\": \"云适配\", //公司名称\n        \"address\": \"北京市海淀区海淀大街27号亿景大厦3层西区\" // 公司地址\n    }\n}\n\nreturn data;\n",
-
     "hidden": false
 }

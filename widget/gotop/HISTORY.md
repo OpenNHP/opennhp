@@ -1,6 +1,10 @@
 # GoTop 更新记录
 ---
 
+## v4.0.2 (2015.01.09)
+
+- `CHANGED` 删除 ide 示例接口字段 example。
+
 ## v4.0.1 (2014-12-09)
 
 - `IMPROVED` 处理 `fixed` 样式与 Navbar 共存问题。

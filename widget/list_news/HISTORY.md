@@ -1,6 +1,10 @@
 # list_news 更新记录
 ---
 
+## v3.0.2 (2015.01.09)
+
+- `CHANGED` 删除 ide 示例接口字段 example。
+
 ## v3.0.1 (2014.11.12)
 
 - `CHANGED` 网格、等分网格 Class 修改。

@@ -227,6 +227,6 @@
     }
   },
   "readme": "http://docs.yunshipei.com/amui/#figure",
-  "example": "/*\n  figure: 1.0\n  此模块的使用方法：采集原PC网站目标元素的img路径以及一些简单文字。\n  常用用途：这个模块适合填写单张展示图片以及一些简单描述。\n  了解AMUI的模块详情，请访问http://ide.yunshipei.com/doc/amui/#figure。\n\n         var data = {\n            \"img\": $(\"#nav\").find(\"img\").src(),\n            \"rel\": \"\",\n            \"imgAlt\": \"\",\n            \"figcaption\": \"\"\n         };\n         return data;\n */\n\nvar data = {\n    \"img\": \"\", // 图片（缩略图）路径\n    \"rel\": \"\", // 大图路径\n    \"imgAlt\": \"\", // 图片alt描述，如果为空则读取 figcaption\n    \"figcaption\": \"\" // 图片标题\n};\n\nreturn data;\n",
+
   "hidden": false
 }

@@ -72,6 +72,10 @@ JS 表单验证基于 HTML5 的各项验证属性进行：
 - `minchecked`/`maxchecked`: 至少、至多选择数，适用于 `checkbox`、下拉多选框，`checkbox` 时将相关属性的设置在同组的第一个元素上；
 - `.js-pattern-xx`: 验证规则 class，正则库中存在的规则可以通过添加相应 class 实现规则添加。
 
+**注意：**
+
+HTML5 原生表单验证中 `pattern` 只验证值的合法性，也就是**可以不填，如果填写则必须符合规则**。如果是必填项，仍要添加 `required` 属性。该插件与 HTML5 的规则保持一致。
+
 ```html
 <!-- 下面三种写法等效 -->
 <!-- 只内置了 email url number 三种类型的正则，可自行扩展 -->
@@ -256,6 +260,242 @@ JS 表单验证基于 HTML5 的各项验证属性进行：
 </form>
 ```
 
+### 等值验证
+
+通过 `data-equal-to` 指定要比较的域。
+
+`````html
+<form action="" class="am-form" data-am-validator>
+  <fieldset>
+    <legend>密码验证</legend>
+    <div class="am-form-group">
+      <label for="doc-vld-name-2">用户名：</label>
+      <input type="text" id="doc-vld-name-2" minlength="3"
+             placeholder="输入用户名（至少 3 个字符）" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-pwd-1">密码：</label>
+      <input type="password" id="doc-vld-pwd-1" placeholder="6 位数字的银行卡密码" pattern="^\d{6}$" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-pwd-2">确认密码：</label>
+      <input type="password" id="doc-vld-pwd-2" placeholder="请与上面输入的值一致" data-equal-to="#doc-vld-pwd-1" required/>
+    </div>
+
+    <button class="am-btn am-btn-secondary" type="submit">提交</button>
+  </fieldset>
+</form>
+`````
+```html
+<form action="" class="am-form" data-am-validator>
+  <fieldset>
+    <legend>密码验证</legend>
+    <div class="am-form-group">
+      <label for="doc-vld-name-2">用户名：</label>
+      <input type="text" id="doc-vld-name-2" minlength="3"
+             placeholder="输入用户名（至少 3 个字符）" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-pwd-1">密码：</label>
+      <input type="password" id="doc-vld-pwd-1" placeholder="6 位数字的银行卡密码" pattern="^\d{6}$" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-pwd-2">确认密码：</label>
+      <input type="password" id="doc-vld-pwd-2" placeholder="请与上面输入的值一致" data-equal-to="#doc-vld-pwd-1" required/>
+    </div>
+
+    <button class="am-btn am-btn-secondary" type="submit">提交</button>
+  </fieldset>
+</form>
+```
+
+### 自定义验证
+
+插件预置的功能不可能满足各异的需求，通过 `validate` 选项，可以自定义验证规则，如远程验证等。
+
+```javascript
+$('#your-form').validator({
+  validate: function(validity) {
+    // 在这里编写你的验证逻辑
+  }
+```
+
+参数 `validity` 是一个类似 [H5 ValidityState](https://developer.mozilla.org/en-US/docs/Web/API/ValidityState) 属性的对象。只要中主要用到的包括：
+
+- `validity.filed` - DOM 对象，当前验证的域，通过 `$(validity.filed)` 可转换为 jQuery 对象，一般用于获取值和判断是否为特定域，以编写验证逻辑；
+- `validity.valid` - 布尔值，验证是否通过，通过赋值 `true`，否则赋值 `false`。
+
+其它属性用来描述验证出错的细节，包括：
+
+```javascript
+{
+  customError: false,
+  patternMismatch: false,
+  rangeOverflow: false, // higher than maximum
+  rangeUnderflow: false, // lower than  minimum
+  stepMismatch: false,
+  tooLong: false,
+  // value is not in the correct syntax
+  typeMismatch: false,
+  // Returns true if the element has no value but is a required field
+  valueMissing: false
+}
+```
+
+H5 浏览器原生验证通过错误细节来显示提示信息，插件中暂未使用到这些属性，如果实在不想写，可以略过。
+
+**需要注意的注意细节：**
+
+- 通过 `validity.valid` 标记验证是否通过；
+- 如果是远程异步验证，**必须**返回 [Deferred 对象](http://api.jquery.com/category/deferred-object/)，且回调函数中要返回 `validity`。
+
+```javascript
+return $.ajax({
+    url: '...',
+    // cache: false, 实际使用中请禁用缓存
+    dataType: 'json'
+  }).then(function(data) {
+    // Ajax 请求成功，根据服务器返回的信息，设置 validity.valid = true or flase
+
+    // 返回 validity
+    return validity;
+  }, function() {
+    // Ajax 请求失败，根据需要决定验证是否通过，然后返回 validity
+    return validity;
+  });
+```
+
+`````html
+<form action="" class="am-form" id="doc-vld-ajax">
+  <fieldset>
+    <legend>自定义验证</legend>
+    <div class="am-form-group">
+      <label for="doc-vld-ajax-count">Ajax 服务器端验证：</label>
+      <input type="text" class="js-ajax-validate" id="doc-vld-ajax-count"
+             placeholder="只能填写数字 10" data-validate-async/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-sync">客户端验证：</label>
+      <input type="text" class="js-sync-validate" id="doc-vld-sync"
+             placeholder="只能填写数字 10"/>
+    </div>
+
+    <button class="am-btn am-btn-secondary" type="submit">提交</button>
+  </fieldset>
+</form>
+`````
+```html
+<form action="" class="am-form" id="doc-vld-ajax">
+  <fieldset>
+    <legend>自定义验证</legend>
+    <div class="am-form-group">
+      <label for="doc-vld-ajax-count">Ajax 服务器端验证：</label>
+      <input type="text" class="js-ajax-validate" id="doc-vld-ajax-count"
+             placeholder="只能填写数字 10" data-validate-async/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-sync">客户端验证：</label>
+      <input type="text" class="js-sync-validate" id="doc-vld-sync"
+             placeholder="只能填写数字 10"/>
+    </div>
+
+    <button class="am-btn am-btn-secondary" type="submit">提交</button>
+  </fieldset>
+</form>
+```
+<script>
+  $(function() {
+    $('#doc-vld-ajax').validator({
+      validate: function(validity) {
+        var v = $(validity.field).val();
+
+        var comparer = function(v1, v2) {
+          if (v1 != v2) {
+            validity.valid = false;
+          }
+
+          // 这些属性目前没什么用，如果不想写可以忽略
+          if (v2 < 10) {
+            validity.rangeUnderflow = true;
+          } else if(v2 > 10) {
+            validity.rangeOverflow = true;
+          }
+        };
+
+        // Ajax 验证
+        if ($(validity.field).is('.js-ajax-validate')) {
+          // 异步操作必须返回 Deferred 对象
+          return $.ajax({
+            url: 'http://7jpqbr.com1.z0.glb.clouddn.com/validate.json',
+            // cache: false, 实际使用中请禁用缓存
+            dataType: 'json'
+          }).then(function(data) {
+            comparer(data.count, v);
+            return validity;
+          }, function() {
+            return validity;
+          });
+        }
+
+        // 本地验证，同步操作，无需返回值
+        if ($(validity.field).is('.js-sync-validate')) {
+          comparer(10, v);
+        }
+      }
+    });
+  })
+</script>
+
+```javascript
+$(function() {
+  $('#doc-vld-ajax').validator({
+    validate: function(validity) {
+      var v = $(validity.field).val();
+
+      var comparer = function(v1, v2) {
+        if (v1 != v2) {
+          validity.valid = false;
+        }
+
+        // 这些属性目前没什么用，如果不想写可以忽略
+        if (v2 < 10) {
+          validity.rangeUnderflow = true;
+        } else if(v2 > 10) {
+          validity.rangeOverflow = true;
+        }
+      };
+
+      // Ajax 验证
+      if ($(validity.field).is('.js-ajax-validate')) {
+        // 异步操作必须返回 Deferred 对象
+        return $.ajax({
+          url: 'http://7jpqbr.com1.z0.glb.clouddn.com/validate.json',
+          // cache: false, 实际使用中请禁用缓存
+          dataType: 'json'
+        }).then(function(data) {
+          comparer(data.count, v);
+          return validity;
+        }, function() {
+          return validity;
+        });
+      }
+
+      // 本地验证，同步操作，无需返回值
+      if ($(validity.field).is('.js-sync-validate')) {
+        comparer(10, v);
+        // return validity;
+      }
+    }
+  });
+});
+```
+
 ## 使用方式
 
 ### 通过 Data API
@@ -353,7 +593,21 @@ $(function() {
     $parent.addClass('am-form-error').removeClass('am-form-success');
 
     options.onInValid.call(this, validity);
-  }
+  },
+
+  // 自定义验证程序接口，详见示例
+  validate: function(validity) {
+    // return validity;
+  },
+
+  // 定义表单提交处理程序
+  //   - 如果没有定义且 `validateOnSubmit` 为 `true` 时，提交时会验证整个表单
+  //   - 如果定义了表单提交处理程序，`validateOnSubmit` 将会失效
+  //        function(e) {
+  //          // 通过 this.isFormValid() 获取表单验证状态
+  //          // Do something...
+  //        }
+  submit: null
 }
 ```
 
@@ -380,6 +634,10 @@ $(function() {
     <label for="">输入一个颜色值</label>
     <input type="text" class="js-pattern-colorHex" placeholder="如果填写，必须是 #xxx 或 #xxxxxx"/>
   </div>
+  <div class="am-form-group">
+    <label for="">your pattern</label>
+    <input type="text" class="js-pattern-yourpattern" placeholder="必填，且只能填 your" required/>
+  </div>
   <div>
     <button class="am-btn am-btn-secondary">提交</button>
   </div>
@@ -402,6 +660,10 @@ $(function() {
   <div class="am-form-group">
     <label for="">输入一个颜色值</label>
     <input type="text" class="js-pattern-colorHex" placeholder="如果填写，必须是 #xxx 或 #xxxxxx"/>
+  </div>
+  <div class="am-form-group">
+    <label for="">your pattern</label>
+    <input type="text" class="js-pattern-yourpattern" placeholder="必填，且只能填 your" required/>
   </div>
   <div>
     <button class="am-btn am-btn-secondary">提交</button>

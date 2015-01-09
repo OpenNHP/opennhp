@@ -5,6 +5,7 @@
 
 **JS:**
 
+- `NEW` 表单验证插件增加等值验证、`validate` 选项供用户自定义验证程序（实现 Ajax 验证等）、`submit` 选项设置表单提交处理程序；
 - `NEW` Datepicker 增加选定日期后自动关闭选项 `autoClose`，样式细节调整；
 - `IMPROVED` 阻止 Dropdown toggle 默认事件；
 - `FIXED` Selected 插件点击选择时提交表单问题；

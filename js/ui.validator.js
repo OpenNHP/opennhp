@@ -62,6 +62,7 @@ Validator.DEFAULTS = {
     $parent.addClass('am-form-success').removeClass('am-form-error');
     options.onValid.call(this, validity);
   },
+
   markInValid: function(validity) {
     var options = this.options;
     var $field = $(validity.field);
@@ -71,7 +72,13 @@ Validator.DEFAULTS = {
       removeClass(options.validClass);
     $parent.addClass('am-form-error').removeClass('am-form-success');
     options.onInValid.call(this, validity);
-  }
+  },
+
+  validate: function(validity) {
+    // return validity;
+  },
+
+  submit: null
 };
 
 /* jshint -W101 */
@@ -141,7 +148,13 @@ Validator.prototype.init = function() {
   });
 
   $element.submit(function(e) {
-    return _this.isFormValid();
+    if (typeof options.submit === 'function') {
+      return options.submit.call(_this, e);
+    }
+
+    if (options.validateOnSubmit) {
+      return _this.isFormValid();
+    }
   });
 
   function bindEvents(fields, eventFlags, debounce) {
@@ -174,7 +187,7 @@ Validator.prototype.isValid = function(field) {
   if ($field.data('validity') === undefined) {
     this.validate(field);
   }
-  return $field.data('validity').valid;
+  return $field.data('validity') && $field.data('validity').valid;
 };
 
 Validator.prototype.validate = function(field) {
@@ -213,8 +226,8 @@ Validator.prototype.validate = function(field) {
 
   // Debug
   if (options.debug && window.console) {
-    console.log('Validate called on "' + value + '" with regex "' + re +
-    '". Required: ' + required);
+    console.log('Validate: value -> [' + value + ', regex -> [' + re +
+    '], required -> ' + required);
     console.log('Regex test: ' + re.test(value) + ', Pattern: ' + pattern);
   }
 
@@ -275,26 +288,40 @@ Validator.prototype.validate = function(field) {
     validity.patternMismatch = true;
   }
 
-  // Add custom validate here
+  var validateComplete = function(validity) {
+    this.markField(validity);
 
-  var markField = function(validity) {
-    var flag = 'mark' + (validity.valid ? '' : 'In') + 'Valid';
-    options[flag] && options[flag].call(_this, validity);
+    $field.trigger('validated.field.validator.amui', validity).
+      data('validity', validity);
+
+    // validate the radios/checkboxes with the same name
+    var $fields = $radioGroup || $checkboxGroup;
+    if ($fields) {
+      $fields.not($field).data('validity', validity).each(function() {
+        validity.field = this;
+        _this.markField(validity);
+      });
+    }
   };
 
-  markField(validity);
+  // Run custom validate
+  var customValidate;
+  (typeof options.validate === 'function') &&
+    (customValidate = options.validate.call(this, validity));
 
-  $field.trigger('validated.field.validator.amui', validity).
-    data('validity', validity);
-
-  // validate the radios/checkboxes with the same name
-  var $fields = $radioGroup || $checkboxGroup;
-  if ($fields) {
-    $fields.not($field).data('validity', validity).each(function() {
-      validity.field = this;
-      markField(validity);
+  if (customValidate) {
+    return $.when(customValidate).always(function(validity) {
+      validateComplete.call(_this, validity);
     });
   }
+
+  validateComplete.call(this, validity);
+};
+
+Validator.prototype.markField = function(validity) {
+  var options = this.options;
+  var flag = 'mark' + (validity.valid ? '' : 'In') + 'Valid';
+  options[flag] && options[flag].call(this, validity);
 };
 
 // check all fields in the form are valid

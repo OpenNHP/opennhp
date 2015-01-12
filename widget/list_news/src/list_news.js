@@ -38,6 +38,6 @@ $(function() {
 });
 
 module.exports = $.AMUI.listNews = {
-  VERSION: '3.0.0',
+  VERSION: '3.0.2',
   init: listNewsInit
 };

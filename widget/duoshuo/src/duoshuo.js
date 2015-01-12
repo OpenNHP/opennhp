@@ -36,6 +36,6 @@ function duoshuoInit() {
 $(window).on('load', duoshuoInit);
 
 module.exports = $.AMUI.duoshuo = {
-  VERSION: '2.0.0',
+  VERSION: '2.0.1',
   init: duoshuoInit
 };

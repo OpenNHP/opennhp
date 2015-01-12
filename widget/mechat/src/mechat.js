@@ -22,6 +22,6 @@ function mechatInit() {
 $(window).on('load', mechatInit);
 
 module.exports = $.AMUI.mechat = {
-  VERSION: '2.0.0',
+  VERSION: '2.0.1',
   init: mechatInit
 };

@@ -5,7 +5,7 @@
     {{#if content}}
       <ul class="am-tabs-nav am-cf">
         {{#each content}}
-          <li class="{{#if active}}am-active{{/if}}"><a href="[data-tab-panel-{{@index}}]">{{{title}}}</a></li>
+          <li class="{{#if active}}am-active{{/if}}"><a href="[data-tab-panel-{{@index}}]" class="{{className}}">{{{title}}}</a></li>
         {{/each}}
       </ul>
       <div class="am-tabs-bd">

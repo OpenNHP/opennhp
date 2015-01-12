@@ -4,7 +4,7 @@
   {{#if content.header.title}}
     <div class="am-list-news-hd am-cf">
       {{#if content.header.link}} <!--带更多链接-->
-        <a href="{{content.header.link}}">
+        <a href="{{content.header.link}}" class="{{className}}">
           <h2>{{{content.header.title}}}</h2>
           {{#ifCond content.header.morePosition '==' 'top'}}
             <span class="am-list-news-more am-fr">{{{content.header.moreText}}}</span>
@@ -29,7 +29,7 @@
         --}}
         {{#if img}}
         <div class="am-list-thumb am-u-sm-12">
-          <a href="{{link}}">
+          <a href="{{link}}" class="{{className}}">
             <img src="{{img}}" alt="{{title}}"/>
           </a>
           {{#if thumbAddition}}
@@ -40,7 +40,7 @@
 
         <div class="{{#if img}}{{/if}} am-list-main">
           {{#if title}}
-            <h3 class="am-list-item-hd"><a href="{{link}}">{{{title}}}</a></h3>
+            <h3 class="am-list-item-hd"><a href="{{link}}" class="{{className}}">{{{title}}}</a></h3>
           {{/if}}
 
           {{#if date}}
@@ -68,11 +68,11 @@
           am-list-item-thumbed - 带缩略图的
         --}}
         {{#if title}}
-          <h3 class="am-list-item-hd"><a href="{{link}}">{{{title}}}</a></h3>
+          <h3 class="am-list-item-hd"><a href="{{link}}" class="{{className}}">{{{title}}}</a></h3>
         {{/if}}
         {{#if img}}
         <div class="am-u-sm-4 am-list-thumb">
-          <a href="{{link}}">
+          <a href="{{link}}" class="{{className}}">
             <img src="{{img}}" alt="{{title}}"/>
           </a>
           {{#if thumbAddition}}
@@ -107,7 +107,7 @@
           am-list-item-thumbed - 带缩略图的
         --}}
         {{#if title}}
-          <h3 class="am-list-item-hd"><a href="{{link}}">{{{title}}}</a></h3>
+          <h3 class="am-list-item-hd"><a href="{{link}}" class="{{className}}">{{{title}}}</a></h3>
         {{/if}}
 
         <div class="{{#if img}} am-u-sm-8{{/if}} am-list-main">
@@ -125,7 +125,7 @@
         </div>
         {{#if img}}
         <div class="am-list-thumb am-u-sm-4">
-          <a href="{{link}}">
+          <a href="{{link}}" class="{{className}}">
             <img src="{{img}}" alt="{{title}}"/>
           </a>
           {{#if thumbAddition}}
@@ -147,7 +147,7 @@
         --}}
         {{#if img}}
         <div class="am-u-sm-4 am-list-thumb">
-          <a href="{{link}}">
+          <a href="{{link}}" class="{{className}}">
             <img src="{{img}}" alt="{{title}}"/>
           </a>
           {{#if thumbAddition}}
@@ -158,7 +158,7 @@
 
         <div class="{{#if img}} am-u-sm-8{{/if}} am-list-main">
           {{#if title}}
-            <h3 class="am-list-item-hd"><a href="{{link}}">{{{title}}}</a></h3>
+            <h3 class="am-list-item-hd"><a href="{{link}}" class="{{className}}">{{{title}}}</a></h3>
           {{/if}}
           {{#if date}}
             <span class="am-list-date">{{date}}</span>
@@ -186,7 +186,7 @@
         --}}
         <div class="{{#if img}} am-u-sm-8{{/if}} am-list-main">
           {{#if title}}
-            <h3 class="am-list-item-hd"><a href="{{link}}">{{{title}}}</a></h3>
+            <h3 class="am-list-item-hd"><a href="{{link}}" class="{{className}}">{{{title}}}</a></h3>
           {{/if}}
 
           {{#if date}}
@@ -203,7 +203,7 @@
         </div>
         {{#if img}}
           <div class="am-u-sm-4 am-list-thumb">
-            <a href="{{link}}">
+            <a href="{{link}}" class="{{className}}">
               <img src="{{img}}" alt="{{title}}"/>
             </a>
             {{#if thumbAddition}}
@@ -224,7 +224,7 @@
           am-list-item-thumbed - 带缩略图的
         --}}
         {{#if title}}
-          <a href="{{link}}" class="am-list-item-hd">{{{title}}}</a>
+          <a href="{{link}}" class="am-list-item-hd {{className}}">{{{title}}}</a>
         {{/if}}
 
         {{#if date}}
@@ -247,7 +247,7 @@
   {{#ifCond content.header.morePosition '==' 'bottom'}}<!--更多在底部-->
     {{#if content.header.link}}
       <div class="am-list-news-ft">
-        <a class="am-list-news-more am-btn am-btn-default" href="{{content.header.link}}">{{{content.header.moreText}}}</a>
+        <a class="am-list-news-more am-btn am-btn-default {{className}}" href="{{content.header.link}}">{{{content.header.moreText}}}</a>
       </div>
     {{/if}}
   {{/ifCond}}

@@ -151,6 +151,31 @@
 </select>
 ```
 
+### 上拉选择
+
+`````html
+<select data-am-selected="{dropUp: 1}">
+  <option value="a">Apple</option>
+  <option value="b">Banana</option>
+  <option value="o">Orange</option>
+  <option value="m">Mango</option>
+  <option value="phone">iPhone</option>
+  <option value="im">iMac</option>
+  <option value="mbp">Macbook Pro</option>
+</select>
+`````
+```html
+<select data-am-selected="{dropUp: 1}">
+  <option value="a">Apple</option>
+  <option value="b">Banana</option>
+  <option value="o">Orange</option>
+  <option value="m">Mango</option>
+  <option value="phone">iPhone</option>
+  <option value="im">iMac</option>
+  <option value="mbp">Macbook Pro</option>
+</select>
+```
+
 ### 简易搜索
 
 基于 jQuery `:contains` 选择符实现的简易搜索。
@@ -230,3 +255,4 @@ $(function() {
 - `btnSize: null`: 按钮尺寸，可选值为 `xl|sm|lg|xl`
 - `btnStyle: 'default'`: 按钮样式，可选值为 `primary|secondary|success|warning|danger`
 - `maxHeight: null`: 列表最大高度
+- `dropUp: 0`: 是否为上拉，默认为 `0` (`false`)

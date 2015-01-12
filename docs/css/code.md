@@ -21,7 +21,7 @@ window.addEventListener('load', function() {
 }, false);
 </pre>
 `````
-    
+
 ```html
 <pre>
 window.addEventListener('load', function() {
@@ -79,3 +79,11 @@ span.l-6 {-webkit-animation-delay: 0;animation-delay: 0;-ms-animation-delay: 0;-
   ...
 </pre>
 ```
+
+## 参考链接
+
+### 轻量级的代码高亮插件
+
+- [google-code-prettify](https://code.google.com/p/google-code-prettify/)
+- [highlight.js](https://highlightjs.org/)
+- [Rainbow](http://craig.is/making/rainbows)

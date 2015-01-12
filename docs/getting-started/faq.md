@@ -3,14 +3,20 @@
 
 ## 版本更新
 
-### 2.0 什么时候发布?
+### 下一阶段会做什么?
 
-请查看[开发路线图](https://github.com/allmobilize/amazeui/wiki/Roadmap)了解详情。
+与前端 MV* 框架整合，深挖 SPA。
 
 
-## 组件使用
+## 使用问题
+
+### 免费吗？
+
+MIT License，写得很清楚。至于看见广告什么的，都是浮云……
 
 ### Amaze UI 目前没有 xx 组件，有没有推荐的？
 
-参见[插件收集](/getting-started/collections?_ver=2.x)
+首先，**确保查看了每个栏目的下面的左侧菜单的每个链接**。如果你的窗口比较小， **左侧的菜单是可以向下滚动**，点小三角或者使用鼠标滚轮上下滚动。
+
+**真的没找到？**那真是没有，参见[插件收集](/getting-started/collections?_ver=2.x)
 

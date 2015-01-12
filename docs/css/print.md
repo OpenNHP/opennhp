@@ -32,7 +32,7 @@
 
 ```html
 <!-- 在打印预览中查看效果 -->
-<div class="am-print-hidden"><button type="button" class="am-btn am-btn-primary am-btn-block">浏览器可见，打印机不可见</button></div>
+<div class="am-print-hide"><button type="button" class="am-btn am-btn-primary am-btn-block">浏览器可见，打印机不可见</button></div>
 
 <div class="am-print-block"><button type="button" class="am-btn am-btn-primary am-btn-block">打印机可见，浏览器不可见</button></div>
 ```

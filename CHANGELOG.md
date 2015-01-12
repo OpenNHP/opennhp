@@ -3,6 +3,12 @@
 
 ### 2015.01 W2
 
+**CSS:**
+
+- `FIXED` 修复网格系统 `.am-u-xx-push-0` 误写成 `.am-u-xx-push-0`；
+
+**JS:**
+
 - `NEW` Selected 插件增加 `dropUp` 选项，实现上拉效果；
 
 ### 2015.01 W1

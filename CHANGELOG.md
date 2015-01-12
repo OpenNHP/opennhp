@@ -1,6 +1,10 @@
 # Amaze UI Change Log
 ---
 
+### 2015.01 W2
+
+- `NEW` Selected 插件增加 `dropUp` 选项，实现上拉效果；
+
 ### 2015.01 W1
 
 **JS:**
@@ -8,7 +12,7 @@
 - `NEW` 表单验证插件增加等值验证、`validate` 选项供用户自定义验证程序（实现 Ajax 验证等）、`submit` 选项设置表单提交处理程序；
 - `NEW` Datepicker 增加选定日期后自动关闭选项 `autoClose`，样式细节调整；
 - `IMPROVED` 阻止 Dropdown toggle 默认事件；
-- `FIXED` Selected 插件点击选择时提交表单问题；
+- `FIXED` 修复 Selected 插件点击选择时提交表单问题；
 - `FIXED` 修复 PureView 插件标题不显示问题；
 - `NEW` PureView 插件增加 `toggleToolbar` 选项 - 长按是否隐藏/显示工具栏，默认为 `true`；
 - `IMPROVED` #379 处理 Selected `$.fn.selected` 与 [jQuery Form](https://github.com/malsup/form) 冲突问题， Thx @Ahoo-Wang；

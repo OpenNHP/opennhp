@@ -32,17 +32,21 @@ Selected.DEFAULTS = {
   btnWidth: null,
   btnSize: null,
   btnStyle: 'default',
+  dropUp: 0,
   maxHeight: null,
   noSelectedText: '点击选择...',
   selectedClass: 'am-checked',
   searchBox: false,
-  tpl: '<div class="am-selected am-dropdown" id="<%= id %>" data-am-dropdown>' +
+  tpl: '<div class="am-selected am-dropdown ' +
+  '<%= dropUp ? \'am-dropdown-up\': \'\' %>" id="<%= id %>" data-am-dropdown>' +
   '  <button type="button" class="am-selected-btn am-btn am-dropdown-toggle">' +
   '    <span class="am-selected-status am-fl"></span>' +
-  '    <i class="am-selected-icon am-icon-caret-down"></i>' +
+  '    <i class="am-selected-icon am-icon-caret-' +
+  '<%= dropUp ? \'up\' : \'down\' %>"></i>' +
   '  </button>' +
   '  <div class="am-selected-content am-dropdown-content">' +
-  '    <h2 class="am-selected-header"><span class="am-icon-chevron-left">返回</span></h2>' +
+  '    <h2 class="am-selected-header">' +
+  '<span class="am-icon-chevron-left">返回</span></h2>' +
   '   <% if (searchBox) { %>' +
   '   <div class="am-selected-search">' +
   '     <input type="text" autocomplete="off" class="am-form-field" />' +
@@ -52,7 +56,7 @@ Selected.DEFAULTS = {
   '      <% for (var i = 0; i < options.length; i++) { %>' +
   '       <% var option = options[i] %>' +
   '       <% if (option.header) { %>' +
-  '       <li data-group="<%= option.group %>" class="am-selected-list-header">' +
+  '  <li data-group="<%= option.group %>" class="am-selected-list-header">' +
   '       <%= option.text %></li>' +
   '       <% } else { %>' +
   '       <li class=<%= option.active %> ' +
@@ -112,7 +116,8 @@ Selected.prototype.init = function() {
     id: UI.utils.generateGUID('am-selected'),
     multiple: $element.get(0).multiple,
     options: optionItems,
-    searchBox: options.searchBox
+    searchBox: options.searchBox,
+    dropUp: options.dropUp
   };
 
   this.$selector = $(this.render(data));

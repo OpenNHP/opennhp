@@ -57,6 +57,6 @@ $(window).on('load', function() {
 });
 
 module.exports = $.AMUI.paragraph = {
-  VERSION: '2.0.0',
+  VERSION: '2.0.1',
   init: paragraphInit
 };

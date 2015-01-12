@@ -49,6 +49,6 @@ $(function() {
 });
 
 module.exports = $.AMUI.gallery = {
-  VERSION: '2.0.0',
+  VERSION: '2.0.2',
   init: galleryInit
 };

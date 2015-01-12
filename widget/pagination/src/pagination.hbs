@@ -5,13 +5,13 @@
 
     {{#if content.firstTitle}}
       <li class="am-pagination-first {{content.firstClassName}}">
-        <a href="{{content.firstLink}}">{{{content.firstTitle}}}</a>
+        <a href="{{content.firstLink}}" class="{{className}}">{{{content.firstTitle}}}</a>
       </li>
     {{/if}}
 
     {{#if content.prevTitle}}
       <li class="am-pagination-prev {{content.prevClassName}}">
-        <a href="{{content.prevLink}}">{{{content.prevTitle}}}</a>
+        <a href="{{content.prevLink}}" class="{{className}}">{{{content.prevTitle}}}</a>
       </li>
     {{/if}}
 
@@ -44,7 +44,7 @@
         {{else}}
           {{#each content.page}}
             <li class="{{className}}">
-              <a href="{{link}}">{{{title}}}</a>
+              <a href="{{link}}" class="{{className}}">{{{title}}}</a>
             </li>
           {{/each}}
         {{/ifCond}}
@@ -54,13 +54,13 @@
 
     {{#if content.nextTitle}}
       <li class="am-pagination-next {{content.nextClassName}}">
-        <a href="{{content.nextLink}}">{{{content.nextTitle}}}</a>
+        <a href="{{content.nextLink}}" class="{{className}}">{{{content.nextTitle}}}</a>
       </li>
     {{/if}}
 
     {{#if content.lastTitle}}
       <li class="am-pagination-last {{content.lastClassName}}">
-        <a href="{{content.lastLink}}">{{{content.lastTitle}}}</a>
+        <a href="{{content.lastLink}}" class="{{className}}">{{{content.lastTitle}}}</a>
       </li>
     {{/if}}
   </ul>

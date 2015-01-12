@@ -148,6 +148,6 @@ $(function() {
 });
 
 module.exports = $.AMUI.menu = {
-  VERSION: '4.0.0',
+  VERSION: '4.0.2',
   init: menuInit
 };

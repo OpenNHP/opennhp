@@ -7,7 +7,7 @@
         <h2 class="am-intro-title">{{{content.title}}}</h2>
         {{#if content.more.link}}
           {{#ifCond options.position '==' 'top'}}
-            <a class="am-intro-more am-intro-more-top" href="{{content.more.link}}">{{content.more.title}}</a>
+            <a class="am-intro-more am-intro-more-top {{className}}" href="{{content.more.link}}">{{content.more.title}}</a>
           {{/ifCond}}
         {{/if}}
       </div>
@@ -25,7 +25,7 @@
     </div>
     {{#ifCond options.position '==' 'bottom'}}
       <div class="am-intro-more-bottom">
-        <a class="am-btn am-btn-default"
+        <a class="am-btn am-btn-default {{className}}"
            href="{{content.more.link}}">{{content.more.title}}</a>
       </div>
     {{/ifCond}}

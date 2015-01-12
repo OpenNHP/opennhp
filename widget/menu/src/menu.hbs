@@ -5,7 +5,7 @@
     {{#ifCond theme '==' 'slide1'}} data-am-menu-collapse{{/ifCond}}
     {{#ifCond theme '==' 'offcanvas1'}} data-am-menu-offcanvas{{/ifCond}}
     {{#ifCond theme '==' 'offcanvas2'}} data-am-menu-offcanvas{{/ifCond}}> {{!-- 与模板深耦合，与 JS 浅耦合 --}}
-    <a href="javascript: void(0)" class="am-menu-toggle">
+    <a href="javascript: void(0)" class="am-menu-toggle {{className}}">
       {{#if options.toggleTitle}}
         <span class="am-menu-toggle-title">{{options.toggleTitle}}</span>
       {{/if}}
@@ -38,18 +38,18 @@
       '==' 'slide1'}} am-collapse{{/ifCond}}">
         {{#each content}}
           <li class="{{#if subMenu}}am-parent{{/if}}{{#if className}} {{className}}{{/if}}">
-            <a href="{{link}}" {{#if target}}target="{{target}}" {{/if}}>{{{title}}}</a>
+            <a href="{{link}}" class="{{className}}" {{#if target}}target="{{target}}" {{/if}}>{{{title}}}</a>
             {{#if subMenu}}
               <ul class="am-menu-sub am-collapse {{#if subCols}} am-avg-sm-{{subCols}}{{else}}
               am-avg-sm-1{{/if}} {{subMenuClassName}}">
                 {{#each subMenu}}
                   <li class="{{#if subMenu}} am-parent{{/if}}{{#if className}} {{className}}{{/if}}">
-                    <a href="{{link}}" {{#if target}}target="{{target}}" {{/if}}>{{{title}}}</a>
+                    <a href="{{link}}" class="{{className}}" {{#if target}}target="{{target}}" {{/if}}>{{{title}}}</a>
                   </li>
                 {{/each}}
                 {{!-- 显示进入栏目链接 --}}
                 {{#if channelLink}}
-                  <li class="am-menu-nav-channel"><a href="{{link}}" title="{{title}}">{{{channelLink}}}</a></li>
+                  <li class="am-menu-nav-channel"><a href="{{link}}" class="{{className}}" title="{{title}}">{{{channelLink}}}</a></li>
                 {{/if}}
               </ul>
             {{/if}}

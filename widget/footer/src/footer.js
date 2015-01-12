@@ -33,6 +33,6 @@ $(function() {
 });
 
 module.exports = $.AMUI.footer = {
-  VERSION: '3.1.1',
+  VERSION: '3.1.2',
   init: footerInit
 };

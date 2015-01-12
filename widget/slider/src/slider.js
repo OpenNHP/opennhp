@@ -16,6 +16,6 @@ function sliderInit() {
 $(document).on('ready', sliderInit);
 
 module.exports = $.AMUI.slider = {
-  VERSION: '3.0.0',
+  VERSION: '3.0.1',
   init: sliderInit
 };

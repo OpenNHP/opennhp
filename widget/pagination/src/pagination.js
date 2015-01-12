@@ -4,5 +4,5 @@ var $ = require('jquery');
 require('./core');
 
 module.exports = $.AMUI.pagination = {
-  VERSION: '4.0.0'
+  VERSION: '3.0.1'
 };

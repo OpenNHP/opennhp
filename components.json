@@ -47,7 +47,7 @@
     },
     "button-group": {
       "depStyle": [
-          "button.less"
+        "button.less"
       ]
     },
     "close": {
@@ -104,14 +104,16 @@
     "ui.alert": {
       "depStyle": [
         "ui.alert.less",
-        "close.less"
+        "close.less",
+        "ui.component.less"
       ],
       "depJs": []
     },
     "ui.button": {
       "depStyle": [
         "button.less",
-        "button-group.less"
+        "button-group.less",
+        "icon.less"
       ],
       "depJs": []
     },
@@ -129,12 +131,16 @@
     },
     "ui.dropdown": {
       "depStyle": [
-        "ui.dropdown.less"
+        "ui.dropdown.less",
+        "animation.less"
       ],
       "depJs": []
     },
     "ui.flexslider": {
-      "depStyle": [],
+      "depStyle": [
+        "ui.flexslider.less",
+        "icon.less"
+      ],
       "depJs": []
     },
     "ui.iscroll-lite": {
@@ -144,7 +150,8 @@
     "ui.modal": {
       "depStyle": [
         "ui.modal.less",
-        "ui.component.less"
+        "ui.component.less",
+        "close.less"
       ],
       "depJs": [
         "ui.dimmer.js"
@@ -174,7 +181,8 @@
     },
     "ui.pureview": {
       "depStyle": [
-        "ui.pureview.less"
+        "ui.pureview.less",
+        "icon.less"
       ],
       "depJs": [
         "ui.pinchzoom.js",
@@ -195,10 +203,13 @@
     },
     "ui.share": {
       "depStyle": [
-        "ui.share.less"
+        "ui.share.less",
+        "icon.less",
+        "button.less"
       ],
       "depJs": [
-        "util.qrcode.js"
+        "util.qrcode.js",
+        "ui.modal.js"
       ]
     },
     "ui.smooth-scroll": {
@@ -207,13 +218,50 @@
     },
     "ui.sticky": {
       "depStyle": [
-        "ui.component.less"
+        "ui.component.less",
+        "animation.less"
       ],
       "depJs": []
     },
     "ui.tabs": {
       "depStyle": [
+        "nav.less",
         "ui.tabs.less"
+      ],
+      "depJs": [
+        "util.hammer.js"
+      ]
+    },
+    "ui.datepicker": {
+      "depStyle": [
+        "icon.less",
+        "ui.datepicker.less"
+      ],
+      "depJs": []
+    },
+    "ui.selected": {
+      "depStyle": [
+        "utility.less",
+        "button.less",
+        "icon.less",
+        "form.less",
+        "ui.dropdown.less",
+        "ui.selected.less"
+      ],
+      "depJs": [
+        "ui.dropdown.js"
+      ]
+    },
+    "ui.ucheck": {
+      "depStyle": [
+        "icon.less",
+        "ui.ucheck.less"
+      ],
+      "depJs": []
+    },
+    "ui.validator": {
+      "depStyle": [
+        "form.less"
       ],
       "depJs": []
     },
@@ -234,6 +282,10 @@
       "depJs": []
     },
     "util.qrcode": {
+      "depStyle": [],
+      "depJs": []
+    },
+    "util.store": {
       "depStyle": [],
       "depJs": []
     }

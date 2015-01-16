@@ -53,6 +53,7 @@ return content;
     {
       "img": "",
       "link": "", // 链接
+      "className": "",
       "thumb": "", // 缩略图
       "desc": "" // 附加信息，支持DOM，为高级定制提供DOM接口
     }

@@ -77,6 +77,7 @@ return data;
     "header": {
       "title": "最新文章", // 栏目标题
       "link": "###",
+      "className": "",
       "moreText": "更多 >", // 更多链接显示文字
       "morePosition": "bottom" // 【更多】链接位置，top、bottom，如果不设置则不显示更多链接
     },
@@ -84,6 +85,7 @@ return data;
       {
         "title": "", // 新闻标题
         "link": "",  // 新闻链接
+        "className": "",  // 自定 class
         "date": "",  // 日期
         "desc": "",  // 摘要信息，支持html
         "img": "", // 图片链接

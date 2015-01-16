@@ -50,6 +50,7 @@ return data;
   "content": {
     "title": "",
     "link": "",
+    "className": "",
     "nav": [
       {
         "link": "",

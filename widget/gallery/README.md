@@ -146,9 +146,10 @@ return data;
   //内容（*为必备项）
   "content": [
     {
-      "img": "",
+      "img": "", // *
       "link": "", // 链接
-      "title": "", // 图片标题
+      "title": "", // *图片标题
+      "className": "", // 仅在设置了 link 后有效
       "desc": "" // 附加信息，支持DOM，为高级定制提供DOM接口
     }
   ]

@@ -4,7 +4,7 @@
   {{#if content.header.title}}
     <div class="am-list-news-hd am-cf">
       {{#if content.header.link}} <!--带更多链接-->
-        <a href="{{content.header.link}}" class="{{className}}">
+        <a href="{{content.header.link}}" class="{{content.header.className}}">
           <h2>{{{content.header.title}}}</h2>
           {{#ifCond content.header.morePosition '==' 'top'}}
             <span class="am-list-news-more am-fr">{{{content.header.moreText}}}</span>
@@ -247,7 +247,7 @@
   {{#ifCond content.header.morePosition '==' 'bottom'}}<!--更多在底部-->
     {{#if content.header.link}}
       <div class="am-list-news-ft">
-        <a class="am-list-news-more am-btn am-btn-default {{className}}" href="{{content.header.link}}">{{{content.header.moreText}}}</a>
+        <a class="am-list-news-more am-btn am-btn-default {{content.header.className}}" href="{{content.header.link}}">{{{content.header.moreText}}}</a>
       </div>
     {{/if}}
   {{/ifCond}}

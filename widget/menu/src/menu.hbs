@@ -5,7 +5,7 @@
     {{#ifCond theme '==' 'slide1'}} data-am-menu-collapse{{/ifCond}}
     {{#ifCond theme '==' 'offcanvas1'}} data-am-menu-offcanvas{{/ifCond}}
     {{#ifCond theme '==' 'offcanvas2'}} data-am-menu-offcanvas{{/ifCond}}> {{!-- 与模板深耦合，与 JS 浅耦合 --}}
-    <a href="javascript: void(0)" class="am-menu-toggle {{className}}">
+    <a href="javascript: void(0)" class="am-menu-toggle">
       {{#if options.toggleTitle}}
         <span class="am-menu-toggle-title">{{options.toggleTitle}}</span>
       {{/if}}

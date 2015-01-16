@@ -53,7 +53,8 @@ return data;
 		"title": "",
 		"more": {
       "link": "",
-      "title": ""
+      "title": "",
+      "className": ""
     },
 		"left": "",
 		"right": ""

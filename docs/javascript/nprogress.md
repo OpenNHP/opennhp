@@ -1,3 +1,12 @@
+---
+id: nprogress
+title: 加载进度条
+titleEn: NProgress
+permalink: nprogress.html
+prev: popover.html
+next: slider.html
+---
+
 # Progress
 ---
 

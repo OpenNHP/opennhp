@@ -1,3 +1,12 @@
+---
+id: javascript
+title: JavaScript 规范
+titleEn: JavaScript Guide
+permalink: javascript.html
+prev: html-css.html
+next: widget.html
+---
+
 # Amaze UI JavaScript 规范
 ---
 
@@ -58,7 +67,7 @@ var x = 1,
 ### 基本原则
 
 1. 文件和目录名只能包含 `[a-z\d\-]`，并以英文字母开头
-2. 首选合适的英文单词 
+2. 首选合适的英文单词
 3. Data API 命名使用小写、用连字符连接、添加 `am` 命名空间，如 `data-am-trigger`
 4. 事件名使用小写字母，包含模块名及 `amui` 命名空间名，使用 `:` 连接（Zepto 不支持使用 `.` 链接的自定义事件），如 `.trigger('open:modal:amui')`
 5. 符合规范

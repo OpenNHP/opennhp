@@ -1,12 +1,13 @@
 /tools
 /vendor
 /docs
+node_modules
+/fonts
 
 .bower-cache
 .bower-registry
 .bower-tmp
 .idea
-.node_modules
 .bowerrc
 .sass-cache
 

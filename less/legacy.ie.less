@@ -1,0 +1,87 @@
+// Amaze UI for legacy browsers
+//
+// =============================================================================
+
+// button-group.less
+// Justify button group
+// =============================================================================
+
+// Justify button group
+.hook-button-group-justify() {
+  .lte9 & {
+    display: table;
+    table-layout: fixed;
+    border-collapse: separate;
+
+    > .@{ns}btn,
+    > .@{ns}btn-group {
+      float: none;
+      display: table-cell;
+      width: 1%;
+    }
+  }
+}
+
+// Justify nav
+.hook-nav-justify() {
+  .lte9 & {
+    & > li {
+      display: table-cell;
+      width: 1%;
+    }
+  }
+}
+
+// JS Progress
+.lte9 {
+  // no CSS animation，hide spinner
+  #nprogress {
+    .nprogress-spinner {
+      display: none !important;
+    }
+  }
+}
+
+.lte8 {
+  .@{ns}dimmer {
+    background-color: #000;
+    filter: ~"alpha(opacity=60)";
+  }
+
+  .@{ns}modal-actions {
+    display: none;
+
+    &.@{ns}modal-active {
+      display: block;
+    }
+  }
+
+  // Plugin OffCanvas rgba() bg
+  .@{ns}﻿offcanvas.@{ns}active {
+    background: #000;
+  }
+
+  // Plugin Popover: caret style
+  .@{ns}popover .@{ns}popover-caret {
+    border: 8px solid transparent;
+  }
+
+  .@{ns}popover-top .@{ns}popover-caret {
+    border-top: 8px solid @popover-bg;
+    border-bottom: none;
+  }
+
+  .@{ns}popover-left .@{ns}popover-caret {
+    right: -8px;
+    margin-top: -6px;
+    border-left: 8px solid @popover-bg;
+    border-right: none;
+  }
+
+  .@{ns}popover-right .@{ns}popover-caret {
+    left: -8px;
+    margin-top: -6px;
+    border-right: 8px solid @popover-bg;
+    border-left: none;
+  }
+}

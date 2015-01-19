@@ -153,3 +153,7 @@ return data;
   ]
 }
 ```
+
+## 注意事项
+
+- **不要在 `.am-accordion-bd` 上添加上下 `padding`/`margin`/`border` 样式**。

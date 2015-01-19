@@ -1,7 +1,7 @@
 {
     "name": "titlebar",
 
-    "version": "3.0.0",
+    "version": "4.0.1",
 
     "localName": {
         "en": "Titlebar",
@@ -119,7 +119,7 @@
                     "desc": "图片标题",
                     "data": {
                         "content": {
-                            "title": "<img src=\"http://i.static.amazeui.org/assets/i/brand/amazeui-b.png\"/>",
+                            "title": "<img src=\"http://amazeui.b0.upaiyun.com/assets/i/brand/amazeui-b.png\"/>",
                             "nav": [
                                 {
                                     "title": "more &raquo;",
@@ -459,8 +459,6 @@
     },
 
     "readme": "http://docs.yunshipei.com/amui/#titlebar",
-
-    "example": "/*\n titlebar 1.0\n 此模块的使用方法： 将原PC网页的数据提取放在这里，最后显示在模块界面上。\n\n 常用用途：通常用来采放logo图片或者title文字。\n\n  示例代码：\n    var data = {\n    \"title\": $(\"#logopart\").html(),\n    \"nav\": [\n        {\n          \"link\": $(\"#logopart\").find(\"a\").attr(\"href\"),\n          \"title\": \"more >\",\n          \"className\": \"\"\n        }\n      ]\n    };\n    return data;\n\n    或者：\n    var data = {\n        \"title\": \"<img src='\"+context.__root+\"logo.png'>\",\n        \"link\": \"http://www.yunshipei.com\",\n        \"nav\": [\n          {\n          \"link\": \"http://amazeui.org\",\n          \"title\": \"更多 >>\",\n          \"className\": \"\"\n        }\n      ]\n    };\n    return data;\n\n */\n\n\n\nvar data = {\n  \"title\": \"\",      // 主标题\n  \"link\": \"\",       // 主标题链接，可选\n  \"nav\": [          // 右侧附加链接，可以为多个\n    {\n      \"link\": \"\",\n      \"title\": \"\",\n      \"className\": \"\"\n    }\n  ]\n};\nreturn data;\n",
 
     "hidden": false
 }

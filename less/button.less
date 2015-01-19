@@ -1,5 +1,6 @@
 // Name:            Button
-// Description:     Defines styles for buttons
+//
+// Description:     Define style for buttons
 //
 // Component:       `.am-btn`
 //
@@ -18,35 +19,36 @@
 //                  `.am-btn-xs`
 //                  `.am-btn-block`
 //
-// States:          `am-active`
-//                  `am-disabled`
+// States:          `.am-active`
+//                  `.am-disabled`
 //
-// ========================================================================
+// =============================================================================
 
 
-/* ========================================================================
+/* ==========================================================================
    Component: Button
- ========================================================================== */
+ ============================================================================ */
 
-
-// Core styles
-
-.am-btn {
+// Button base styles
+.@{ns}btn {
   display: inline-block;
   margin-bottom: 0; // for input.am-btn
-  font-weight: @btn-font-weight;
-  text-align: center;
+  padding: 0.625em 1em; // relative font size
   vertical-align: middle;
-  cursor: pointer;
+  font-size: @btn-font-size;
+  font-weight: @btn-font-weight;
+  line-height: @btn-line-height;
+  text-align: center;
+  white-space: nowrap;
   background-image: none;
   border: 1px solid transparent;
-  white-space: nowrap;
-  padding: 0.625em 1em; // relative font size
-  border-radius: @global-border-radius;
-  line-height: @btn-line-height;
-  font-size: @btn-font-size;
-  .user-select(none);
-  .transition(width 0.15s);
+  border-radius: @global-radius;
+  cursor: pointer;
+  outline: 0;
+  -webkit-appearance: none;
+  user-select: none;
+  transition: background-color 300ms ease-out, border-color 300ms ease-out;
+  .hook-btn;
 
   &:focus {
     .tab-focus();
@@ -54,61 +56,77 @@
 
   &:hover,
   &:focus {
+    outline: 0;
     color: @btn-default-color;
     text-decoration: none;
+    .hook-btn-hover;
   }
 
   &:active,
-  &.am-active {
-    outline: 0;
+  &.@{ns}active {
     background-image: none;
-    .box-shadow(inset 0 1px 5px rgba(0,0,0,.125));
+    box-shadow: inset 0 1px 8px rgba(0, 0, 0, .125);
+    .hook-btn-active;
   }
 
-  &.am-disabled,
+  &.@{ns}disabled,
   &[disabled],
   fieldset[disabled] & {
     // https://developer.mozilla.org/en-US/docs/Web/CSS/pointer-events
     pointer-events: none; // Disable mouse events
     border-color: transparent;
     cursor: not-allowed; // may not styled because pointer-events: none;
-    .opacity(.45);
-    .box-shadow(none);
+    opacity: 0.45;
+    box-shadow: none;
+    .hook-btn-disable;
   }
 
+  &.@{ns}round {
+    border-radius: @global-rounded;
+  }
+
+  &.@{ns}radius {
+    border-radius: @radius-normal;
+  }
 }
 
 
-/* Modifiers */
+// Modifiers
+// =============================================================================
 
-.am-btn-default {
+.@{ns}btn-default {
   .button-variant(@btn-default-color; @btn-default-bg; @btn-default-border);
+  .hook-btn-default;
 }
 
-.am-btn-primary {
+.@{ns}btn-primary {
   .button-variant(@btn-primary-color; @btn-primary-bg; @btn-primary-border);
+  .hook-btn-primary;
 }
 
-.am-btn-warning {
+.@{ns}btn-warning {
   .button-variant(@btn-warning-color; @btn-warning-bg; @btn-warning-border);
+  .hook-btn-warning;
 }
 
-.am-btn-danger {
+.@{ns}btn-danger {
   .button-variant(@btn-danger-color; @btn-danger-bg; @btn-danger-border);
+  .hook-btn-danger;
 }
 
-.am-btn-success {
+.@{ns}btn-success {
   .button-variant(@btn-success-color; @btn-success-bg; @btn-success-border);
+  .hook-btn-success;
 }
 
-.am-btn-secondary {
+.@{ns}btn-secondary {
   .button-variant(@btn-secondary-color; @btn-secondary-bg; @btn-secondary-border);
+  .hook-btn-secondary;
 }
 
 
 /* Style links like a button */
-
-.am-btn-link {
+.@{ns}btn-link {
   color: @link-color;
   font-weight: normal;
   cursor: pointer;
@@ -119,20 +137,23 @@
   &[disabled],
   fieldset[disabled] & {
     background-color: transparent;
-    .box-shadow(none);
+    box-shadow: none;
   }
+
   &,
   &:hover,
   &:focus,
   &:active {
     border-color: transparent;
   }
+
   &:hover,
   &:focus {
     color: @link-hover-color;
     text-decoration: underline;
     background-color: transparent;
   }
+
   &[disabled],
   fieldset[disabled] & {
     &:hover,
@@ -145,21 +166,29 @@
 
 
 /* button size */
-
-.am-btn-lg {
-  .button-size(@btn-lg-font-size);
-}
-.am-btn-sm {
-  .button-size(@btn-sm-font-size);
-}
-.am-btn-xs {
+.@{ns}btn-xs {
   .button-size(@btn-xs-font-size);
+  .hook-btn-xs;
+}
+
+.@{ns}btn-sm {
+  .button-size(@btn-sm-font-size);
+  .hook-btn-sm;
+}
+
+.@{ns}btn-lg {
+  .button-size(@btn-lg-font-size);
+  .hook-btn-lg;
+}
+
+.@{ns}btn-xl {
+  .button-size(@btn-xl-font-size);
+  .hook-btn-xl;
 }
 
 
 /* Block button  */
-
-.am-btn-block {
+.@{ns}btn-block {
   display: block;
   width: 100%;
   padding-left: 0;
@@ -168,27 +197,45 @@
 
 
 /* Multiple block buttons vertically space */
-
-.am-btn-block + .am-btn-block {
+.@{ns}btn-block + .@{ns}btn-block {
   margin-top: 5px;
 }
 
 
 /* Specificity overrides */
-
 input[type="submit"],
 input[type="reset"],
 input[type="button"] {
-  &.am-btn-block {
+  &.@{ns}btn-block {
     width: 100%;
   }
 }
 
 
 /* Button with loading spinner */
-
-.am-btn.am-btn-loading {
-  .am-icon-spin {
+.@{ns}btn.@{ns}btn-loading {
+  .@{ns}icon-spin {
     margin-right: 5px;
   }
 }
+
+
+// Hooks
+// =============================================================================
+
+.hook-btn() {}
+.hook-btn-hover() {}
+.hook-btn-active() {}
+.hook-btn-disable() {}
+
+.hook-btn-default() {}
+.hook-btn-primary() {}
+.hook-btn-warning() {}
+.hook-btn-danger() {}
+.hook-btn-success() {}
+.hook-btn-secondary() {}
+
+.hook-btn-xs() {}
+.hook-btn-sm() {}
+.hook-btn-xl() {}
+.hook-btn-lg() {}

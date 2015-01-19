@@ -1,3 +1,5 @@
-define(function(require, exports, module) {
+'use strict';
 
-});
+module.exports = {
+  VERSION: '2.0.1'
+};

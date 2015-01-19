@@ -1,36 +1,37 @@
 // Name:            Article
+//
 // Description:     Define style for article
 //
-// Component:       `am-article`
+// Component:       `.am-article`
 //
-// Sub-objects:     `am-article-title`
-//                  `am-article-meta`
-//                  `am-article-lead`
-//                  `am-article-divider`
+// Sub-objects:     `.am-article-title`
+//                  `.am-article-meta`
+//                  `.am-article-lead`
+//                  `.am-article-divider`
 //
-// ========================================================================
+// =============================================================================
 
-/* ========================================================================
+
+/* ==========================================================================
    Component: Article
- ========================================================================== */
+ ============================================================================ */
 
-.am-article {
+.@{ns}article {
   .clearfix();
 
   & > :last-child {
     margin-bottom: 0; // Remove margin from last-child
   }
 
-  & + .am-article {
+  & + .@{ns}article {
     margin-top: @article-margin-top;
   }
 }
 
 
+/* Sub-object `.@{ns}article-title` */
 
-/* Sub-object `am-article-title` */
-
-.am-article-title {
+.@{ns}article-title {
   font-size: @article-title-font-size;
   line-height: @article-title-line-height;
   font-weight: @article-title-font-weight;
@@ -44,9 +45,9 @@
 }
 
 
-/* Sub-object `am-article-meta` */
+/* Sub-object `.@{ns}article-meta` */
 
-.am-article-meta {
+.@{ns}article-meta {
   font-size: @article-meta-font-size;
   line-height: @article-meta-line-height;
   color: @article-meta-color;
@@ -54,9 +55,9 @@
 }
 
 
-/* Sub-object `am-article-lead` */
+/* Sub-object `.@{ns}article-lead` */
 
-.am-article-lead {
+.@{ns}article-lead {
   color: @article-lead-color;
   font-size: @article-lead-font-size;
   line-height: @article-lead-line-height;
@@ -68,27 +69,30 @@
 }
 
 
-/* Sub-object `am-article-divider` */
+/* Sub-object `.@{ns}article-divider` */
 
-.am-article-divider {
+.@{ns}article-divider {
   margin-bottom: @article-divider-margin;
   border-color: @article-divider-border;
   .hook-article-divider;
+
   * + & {
     margin-top: @article-divider-margin;
   }
 }
 
 
-.am-article-bd {
+/* Sub-object `.@{ns}article-bd` */
+
+.@{ns}article-bd {
   blockquote {
     font-family: @font-family-kai;
   }
-
 }
 
 
 // Hooks
+// =============================================================================
 
 .hook-article-title() {}
 .hook-article-meta() {}

@@ -1,25 +1,28 @@
-<h1><a href="http://amazeui.org/" title="Amaze UI 官网"><img style="float: left" width="240" src="https://raw.githubusercontent.com/allmobilize/amazeui/master/vendor/amazeui/amazeui-b.png" alt="Amaze UI Logo"/></a></h1>   
+<h1><a href="http://amazeui.org/" title="Amaze UI 官网"><img style="float: left" width="240" src="https://raw.githubusercontent.com/allmobilize/amazeui/master/vendor/amazeui/amazeui-b.png" alt="Amaze UI Logo"/></a></h1>
 
+[![Bower version](https://badge.fury.io/bo/amazeui.svg)](http://badge.fury.io/bo/amazeui)
+[![NPM version](https://badge.fury.io/js/amazeui.svg)](http://badge.fury.io/js/amazeui)
+[![Build Status](https://travis-ci.org/allmobilize/amazeui.svg?branch=master)](https://travis-ci.org/allmobilize/amazeui)
 
-Amaze UI 是基于社区开源项目构建的一个跨屏前端框架。
+Amaze UI 是基于社区开源项目构建的一个跨屏前端框架。 __[README in English](https://github.com/allmobilize/amazeui/blob/master/README_EN.md)__
 
 ## 功能简介
 
-### 为移动而生
+### 移动优先
 
-Amaze UI 遵循 Mobile first 理念，从小屏逐步扩展到大屏，最终实现跨屏适配，适应移动互联潮流。
+以移动优先（Mobile first）为理念，从小屏逐步扩展到大屏，最终实现所有屏幕适配，适应移动互联潮流。
 
 ### 组件丰富，模块化
 
-Amaze UI 含近 20 个 CSS 组件、10 个 JS 组件，更有 17 款包含近 60 个主题的 Web 组件，可快速构建界面出色、体验优秀的跨屏页面，大幅度提升你的开发效率。
+Amaze UI 含近 20 个 CSS 组件、10 个 JS 组件，更有 17 款包含近 60 个主题的 Web 组件，可快速构建界面出色、体验优秀的跨屏页面，大幅提升开发效率。
 
 ### 本地化支持
 
-相比国外的前端框架，Amaze UI 专注解决中文排版优化问题，根据操作系统调整字体，实现最佳中文排版效果；针对国内主流浏览器及 App 内置浏览器提供更好的兼容性支持，为你节省大量兼容性调试时间。
+相比国外框架，Amaze UI 关注中文排版，根据用户代理调整字体，实现更好的中文排版效果；兼顾国内主流浏览器及 App 内置浏览器兼容支持。
 
 ### 轻量级，高性能
 
-Amaze UI 非常注重性能，基于轻量的 Zepto.js 开发，并使用 CSS3 来做动画交互，平滑、高效，更适合移动设备，让你的 Web 应用可以高速载入。
+Amaze UI 面向 HTML5 开发，使用 CSS3 来做动画交互，平滑、高效，更适合移动设备，让 Web 应用更快速载入。
 
 ## 下载及使用
 
@@ -40,19 +43,14 @@ amazeui
 |-- LICENSE
 |-- README.md
 |-- package.json
-|-- dist        # 部署目录
+|-- dist        # 构建目录
 |-- docs        # 文档
 |-- fonts       # Icon font，目前使用了 http://staticfile.org/
 |-- gulpfile.js # 构建配置文件
 |-- js          # JS 文件
 |-- less        # LESS 文件
 |-- tools       # 相关工具
-|-- vendor      # 第三方文件
-|   |-- amazeui.partials.js
-|   |-- handlebars
-|   |-- json.format.js
-|   |-- seajs
-|   `-- zepto
+|-- vendor
 `-- widget      # Web 组件
 ```
 
@@ -88,34 +86,48 @@ gulp
 
 ### Bug 反馈
 
-欢迎给 Amaze UI [提交 Bug](https://github.com/allmobilize/amazeui/issues)。
+欢迎给 Amaze UI [提交 Bug](https://github.com/allmobilize/amazeui/issues/new?title=Bug%3A%20&body=**%E9%97%AE%E9%A2%98%E6%8F%8F%E8%BF%B0**%0A%0A%EF%BC%88%E6%8F%8F%E8%BF%B0%E4%B8%80%E4%B8%8B%E9%97%AE%E9%A2%98%EF%BC%89%0A%0A**%E4%BA%A7%E7%94%9F%E7%8E%AF%E5%A2%83**%0A%0A-%20%E8%AE%BE%E5%A4%87%EF%BC%9A%EF%BC%88%E6%89%8B%E6%9C%BA%E3%80%81%E5%B9%B3%E6%9D%BF%E7%AD%89%E7%A7%BB%E5%8A%A8%E8%AE%BE%E5%A4%87%E6%97%B6%E5%A1%AB%E5%86%99%E6%AD%A4%E9%A1%B9%EF%BC%89%0A-%20%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F%E5%8F%8A%E7%89%88%E6%9C%AC%EF%BC%9A%0A-%20%E6%B5%8F%E8%A7%88%E5%99%A8%E5%8F%8A%E7%89%88%E6%9C%AC%EF%BC%9A%0A-%20%E6%BC%94%E7%A4%BA%E5%9C%B0%E5%9D%80%EF%BC%9A%0A%0A**%E5%A4%8D%E7%8E%B0%E6%AD%A5%E5%A5%8F**%0A%0A1.%20%0A2.%20%0A...)。
 
 为了能最准确的传达所描述的问题， 建议你在反馈时附上演示，方便我们理解。
 
-下面的几个链接是我们在几个在线调试工具上建的页面， 已经引入了 Amaze UI 样式和脚本，你可以选择你喜欢的工具【Fork】一份， 把要有问题的场景粘在里面，反馈给我们。
+下面的几个链接是我们在几个在线调试工具上建的页面， 已经引入了 Amaze UI 样式和脚本，你可以【Fork】一份，把要有问题的场景粘在里面，反馈给我们。
 
-- [JSBin](http://jsbin.com/kijiqu/1/edit?html,output)
-- [JSFiddle](http://jsfiddle.net/hegfirose/W22fV/)
-- [CodePen](http://codepen.io/minwe/pen/AEeup)
+- [Debug Amaze UI 2.x in JSBin](http://jsbin.com/zoqaba/1/edit?html,output)
+- [Debug Amaze UI 1.x in JSBin](http://jsbin.com/qasoxibuje/1/edit?html,output)
 
 ### 需求提交
 
 用户可以通过 Issue 系统或者官网留言提交需求，符合 Amaze UI 理念的需求我们都会考虑。
 
-
 ## 贡献代码
 
 欢迎大家加入捉虫队伍，同时大家也可以分享自己的开发的 Web 组件。Fork 本项目，然后提交 Pull Request 即可。
 
-__开发文档__
+如果你没有相关经验，建议先阅读下面的文章：
 
-开发文档存放在 `docs/rules` 目录下，也可以通过 [Amaze UI 官网](http://amazeui.org/)查看：
+- [Contributing to Open Source on GitHub](https://guides.github.com/activities/contributing-to-open-source/)
+- [The Beginner’s Guide to Contributing to Open Source Projects](http://blog.newrelic.com/2014/05/05/open-source_gettingstarted/)
+- [How to Start Contributing to Open Source](http://www.developer.com/open/how-to-start-contributing-to-open-source.html)
+
+### 我们希望用户参与的项目
+
+- 把使用 Amaze UI 的项目提交给我们，能获得一定的展示量，同时能给其他用户提供参考；
+- SCSS 等其他 CSS 扩展语言的支持：通过编写自动转换脚本实现，人工迁移同步更新成本太高；
+- 使用 Amaze UI 开发制作模板；
+- Angular.js、Ember.js、Meteor 等框架的支持；
+- 基于 Amaze UI 样式开发 JavaScript 插件，可以把 Bootstrap 的插件移植到 Amaze UI；
+- 兼容性测试，我们的测试只能覆盖有限，需要更多用户参与，包括浏览器、WebView 等不同的用户代理；
+- ...
+
+### 开发文档
+
+开发文档存放在 `docs/styleguide` 目录下，也可以通过 [Amaze UI 官网](http://amazeui.org/)查看：
 
 - [Amaze UI HTML/CSS 编写规范](http://amazeui.org/getting-started/html-css)
 - [Amaze UI JavaScript 编写规范](http://amazeui.org/getting-started/javascript)
 - [Amaze UI Web 组件开发规范](http://amazeui.org/getting-started/widget)
 
-## 参考、使用的开源项目
+## 参考、使用的项目
 
 * [Zepto.js](https://github.com/madrobby/zepto) ([MIT
 License](https://github.com/madrobby/zepto/blob/master/MIT-LICENSE))
@@ -143,5 +155,16 @@ License](https://github.com/ftlabs/fastclick/blob/master/LICENSE))
 * [screenfull.js](https://github.com/sindresorhus/screenfull.js) ([MIT
 License](https://github.com/sindresorhus/screenfull.js/blob/gh-pages/license))
 * [FlexSlider](https://github.com/woothemes/FlexSlider) ([GPL 2.0](http://www.gnu.org/licenses/gpl-2.0.html))
+* [Hammer.js](https://github.com/hammerjs/hammer.js) ([MIT License](https://github.com/hammerjs/hammer.js/blob/master/LICENSE.md))
+* [Flat UI](https://github.com/designmodo/Flat-UI) ([CC BY 3.0 and MIT License](https://github.com/designmodo/Flat-UI#copyright-and-license))
+* [store.js](https://github.com/marcuswestin/store.js) ([MIT License](https://github.com/marcuswestin/store.js/blob/master/LICENSE))
+* [bootstrap-datepicker.js](http://www.eyecon.ro/bootstrap-datepicker/) ([Apache License 2.0](http://www.eyecon.ro/bootstrap-datepicker/js/bootstrap-datepicker.js))
+* [iScroll](http://iscrolljs.com/) ([MIT License](http://iscrolljs.com/#license))
 
 可能会有部分项目遗漏，我们会不断整理更新。
+
+### Developed with Open Source Licensed [WebStorm](http://www.jetbrains.com/webstorm/)
+
+<a href="http://www.jetbrains.com/webstorm/" target="_blank">
+<img src="http://ww1.sinaimg.cn/large/005yyi5Jjw1elpp6svs2eg30k004i3ye.gif" width="240" />
+</a>

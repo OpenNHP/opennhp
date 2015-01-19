@@ -1,62 +1,46 @@
-// Name:                     Img
+// Name:                     Image
+//
 // Description:              Defines styles for img
 //
 // Component:                `.am-img`
 //
-// Modifiers:                `.am-img-bdrs`
-//                           `.am-img-thumbnail`
-//                           `.am-img-circle`
+// Modifiers:                `.am-img-thumbnail`
 //                           `.am-img-responsive`
 //
-// ==========================================================================
+// =============================================================================
 
 
-/* ========================================================================
+/* ==========================================================================
    Component: Image
- ========================================================================== */
-
-/* Rounded corners */
-
-.am-img-bdrs {
-  border-radius: @img-border-radius;
-  .hook-img-bdrs();
-}
-
+ ============================================================================ */
 
 /* Image thumbnails */
 
-.am-img-thumbnail {
+.@{ns}img-thumbnail {
+  // Keep them at most 100% wide
+  display: inline-block;
   padding: @img-thumbnail-padding;
   line-height: @line-height-base;
   background-color: @img-thumbnail-bg;
   border: 1px solid @img-thumbnail-bd-color;
   border-radius: @img-thumbnail-bd-radius;
-  .transition(all .2s ease-in-out);
+  transition: all .2s ease-in-out;
 
-  // Keep them at most 100% wide
-  display: inline-block;
+  &.@{ns}radius {
+    border-radius: @radius-normal;
+  }
 
-  .hook-img-thumbnail();
+  .hook-img-thumbnail;
 }
 
-
-.am-img-circle {
-  border-radius: 50%;
-  .hook-img-circle();
-}
-
-
-.am-img-responsive {
+.@{ns}img-responsive {
   display: block;
-  .hook-img-responsive();
+  .hook-img-responsive;
 }
-
 
 
 // Hooks
-// ========================================================================
+// =============================================================================
 
-.hook-img-bdrs() {}
 .hook-img-thumbnail() {}
-.hook-img-circle() {}
 .hook-img-responsive() {}

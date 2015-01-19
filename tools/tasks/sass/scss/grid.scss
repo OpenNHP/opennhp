@@ -1,0 +1,230 @@
+// Name:            Grid
+//
+// Description:     Mobile first 12 列网格系统，基于浮动布局；相对定位实现 push / pull
+//
+//                  Breakpoint:
+//                    sm: <= 640px
+//                    md: 641px <= 1024px
+//                    lg: >1024px
+//
+// Component:       `.am-g`
+//
+// Sub-objects:     `.am-u-{point}-{n}`
+//
+// =============================================================================
+
+/* ==========================================================================
+   Component: Grid
+ ============================================================================ */
+
+// Mixins
+// =============================================================================
+
+@mixin reset-order($point) {
+  .#{$ns}u-#{$point}-reset-order {
+    margin-left: 0;
+    margin-right: 0;
+    left: auto;
+    right: auto;
+    float: left;
+  }
+}
+
+@mixin col-basic() {
+  [class*="#{$ns}u-"] {
+    width: 100%;
+    padding-left: $grid-gutter;
+    padding-right: $grid-gutter;
+    float: left;
+    position: relative;
+
+    // Float the last col to right
+    & + &:last-child {
+      float: right;
+    }
+
+    // Not float the last col
+    & + &.#{$ns}u-end {
+      float: left;
+    }
+
+    @media #{$medium-up} {
+      & {
+        padding-left: $grid-gutter-md;
+        padding-right: $grid-gutter-md;
+      }
+    }
+  }
+
+  // [class*="#{$ns}u-pull-"],
+  // [class*="#{$ns}u-push-"] {
+  //  position: relative;
+  // }
+
+  [class*="#{$ns}u-pull-"] {
+    left: auto;
+  }
+
+  [class*="#{$ns}u-push-"] {
+    right: auto;
+  }
+}
+
+@mixin col-misc($point) {
+  [class*="#{$ns}u-"] {
+    // 居中的网格
+    &.#{$ns}u-#{$point}-centered {
+      margin-left: auto;
+      margin-right: auto;
+      float: none;
+
+      &:last-child {
+        float: none;
+      }
+    }
+
+    &.#{$ns}u-#{$point}-uncentered {
+      margin-left: 0;
+      margin-right: 0;
+      float: left;
+
+      &:last-child {
+        float: left;
+      }
+    }
+  }
+}
+
+// calc grid: width, push, pull, offset
+@mixin calc-grid-col ($point, $type, $n: $grid-columns, $i: 1) {
+  @if ($type == width) and ($i <= $n) {
+    .#{$ns}u-#{$point}-#{$i} {
+      width: ($i * 100% / $n);
+    }
+  }
+
+  @if ($type == push) and ($i == 1) {
+    .#{$ns}u-#{$point}-push-#{$i} {
+      left: 0;
+    }
+  }
+
+  @if($type == push) and ($i < $n) {
+    .#{$ns}u-#{$point}-push-#{$i} {
+      left: $i * (100% / $n);
+    }
+  }
+
+  @if ($type == pull) and ($i == 1) {
+    .#{$ns}u-#{$point}-pull-0 {
+      right: 0;
+    }
+  }
+
+  @if ($type == pull) and ($i < $n) {
+    .#{$ns}u-#{$point}-pull-#{$i} {
+      right: $i * (100% / $n);
+    }
+  }
+
+  @if ($type == offset) and ($i == 1) {
+    .#{$ns}u-#{$point}-offset-0 {
+      margin-left: 0;
+    }
+  }
+
+  @if ($type == offset) and ($i < $n) {
+    .#{$ns}u-#{$point}-offset-#{$i} {
+      margin-left: $i * (100% / $grid-columns);
+    }
+  }
+}
+
+@mixin loop-cols($point, $type, $n: $grid-columns) {
+  @for $i from 1 through $n {
+    @include calc-grid-col($point, $type, $n, $i)
+  }
+}
+
+@mixin make-cols($point) {
+  @include loop-cols($point, width);
+  @include loop-cols($point, pull);
+  @include loop-cols($point, push);
+  @include loop-cols($point, offset);
+  @include reset-order($point);
+  @include col-misc($point);
+}
+
+
+// Container
+.#{$ns}container {
+  @include grid-container();
+
+  > .#{$ns}g {
+    width: auto;
+    margin-left: -$grid-gutter;
+    margin-right: -$grid-gutter;
+
+    @media #{$medium-up} {
+      margin-left: -$grid-gutter-md;
+      margin-right: -$grid-gutter-md;
+    }
+  }
+}
+
+.#{$ns}g {
+  margin: 0 auto;
+  width: 100%;
+  @include clearfix;
+
+  // Nested grid
+  & & {
+    margin-left: -$grid-gutter;
+    margin-right: -$grid-gutter;
+    width: auto;
+
+    &.#{$ns}g-collapse {
+      margin-left: 0;
+      margin-right: 0;
+      width: auto;
+    }
+
+    // Increasing gutter for medium and large screen
+    @media #{$medium-up} {
+      margin-left: -$grid-gutter-md;
+      margin-right: -$grid-gutter-md;
+    }
+  }
+
+  &.#{$ns}g-collapse & {
+    margin-left: 0;
+    margin-right: 0;
+  }
+}
+
+// no padding
+.#{$ns}g-collapse {
+  [class*="#{$ns}u-"] {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+// Fixed width row
+.#{$ns}g-fixed {
+  max-width: $grid-max-width;
+}
+
+@include col-basic();
+
+@media #{$screen} {
+  @include make-cols(sm);
+}
+
+@media #{$medium-up} {
+  @include make-cols(md);
+}
+
+@media #{$large-up} {
+  @include make-cols(lg);
+}

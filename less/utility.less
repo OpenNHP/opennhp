@@ -1,29 +1,23 @@
-// Name:                        Utility
-// Description:                 Useful utility classes
+// Name:              Utility
+//
+// Description:       Useful classes
 //
 // Component:
-//                              `am-cf`
-//                              `am-f*`
-//                              `am-vertical-align`
-//                              `am-display-*`
-//                              `am-visible-*`
-//                              `am-hidden-*`
+//                    `.am-cf`
+//                    `.am-f*`
+//                    `.am-vertical-align`
+//                    `.am-display-*`
+//                    `.am-visible-*`
+//                    `.am-hidden-*`
 //
-// ==========================================================================
+// =============================================================================
 
-/* Container */
 
-.am-container {
-  .box-sizing(border-box);
-  margin-left: auto;
-  margin-right: auto;
-  width: 100%;
-  max-width: @grid-max-width;
-  .clearfix();
-  //.hook-container;
-}
+/* ==========================================================================
+   Component: Utility
+ ============================================================================ */
 
-.am-scrollable-horizontal {
+.@{ns}scrollable-horizontal {
   width: 100%;
   overflow-y: hidden;
   overflow-x: auto;
@@ -31,76 +25,95 @@
   -webkit-overflow-scrolling: touch;
 }
 
-.am-scrollable-vertical {
+.@{ns}scrollable-vertical {
   height: @utility-scrollable-height;
   overflow-y: scroll;
   -webkit-overflow-scrolling: touch;
   resize: vertical;
 }
 
-/* clearfix */
 
-.am-cf {
-  .clearfix();
+/* Border-radius*/
+
+.@{ns}square {
+  border-radius: 0;
 }
+
+.@{ns}radius {
+  border-radius: @radius-normal;
+}
+
+.@{ns}round {
+  border-radius: @global-rounded;
+}
+
+.@{ns}circle {
+  border-radius: 50%;
+}
+
 
 /* Float blocks*/
 
-.am-fl {
+.@{ns}cf {
+  .clearfix();
+}
+
+.@{ns}fl {
   float: left;
 }
 
-.am-fr {
+.@{ns}fr {
   float: right;
 }
 
-.am-nbfc {
+.@{ns}nbfc {
   overflow: hidden;
 }
 
-.am-center {
+
+.@{ns}center {
   display: block;
   margin-left: auto;
   margin-right: auto;
 }
 
+
 /* Display */
 
-.am-block {
+.@{ns}block {
   display: block !important;
 }
 
-.am-inline {
+.@{ns}inline {
   display: inline !important;
 }
 
-.am-inline-block {
+.@{ns}inline-block {
   display: inline-block !important;
 }
 
-.am-hide {
+.@{ns}hide {
   display: none !important;
   visibility: hidden !important;
 }
 
 
-
 // Vertical alignment
-// ========================================================================
+// =============================================================================
 
 /*
 * Remove whitespace between child elements when using `inline-block`
 */
 
-.am-vertical-align {
+.@{ns}vertical-align {
   font-size: 0.001px;
 }
 
 /*
-* The `am-vertical-align` container needs a specific height
+* The `@{ns}vertical-align` container needs a specific height
 */
 
-.am-vertical-align:before {
+.@{ns}vertical-align:before {
   content: '';
   display: inline-block;
   height: 100%;
@@ -112,101 +125,104 @@
 * 1. Reset whitespace hack
 */
 
-.am-vertical-align-middle,
-.am-vertical-align-bottom {
+.@{ns}vertical-align-middle,
+.@{ns}vertical-align-bottom {
   display: inline-block;
   font-size: @global-font-size; /* 1 */
   max-width: 100%;
 }
 
-.am-vertical-align-middle {
+.@{ns}vertical-align-middle {
   vertical-align: middle;
 }
 
-.am-vertical-align-bottom {
+.@{ns}vertical-align-bottom {
   vertical-align: bottom;
 }
 
 
+// Responsive width
+// =============================================================================
 
-.am-responsive-width {
-  .box-sizing(border-box);
+.@{ns}responsive-width {
+  box-sizing: border-box;
   max-width: 100%;
   height: auto;
 }
 
 
+// =============================================================================
 // Margin & Padding
-// ========================================================================
+// =============================================================================
 
 // margin mixin
 
 .spacing-variant(@type, @dimension) {
-  .am-@{type}@{dimension} {
+  .@{ns}@{type}@{dimension} {
     @{type}@{dimension}: @global-margin;
   }
 
-  .am-@{type}@{dimension}-xs {
+  .@{ns}@{type}@{dimension}-xs {
     @{type}@{dimension}: @global-margin-xs;
   }
 
-  .am-@{type}@{dimension}-sm {
+  .@{ns}@{type}@{dimension}-sm {
     @{type}@{dimension}: @global-margin-sm;
   }
 
-  .am-@{type}@{dimension}-lg {
+  .@{ns}@{type}@{dimension}-lg {
     @{type}@{dimension}: @global-margin-lg;
   }
 
-  .am-@{type}@{dimension}-xl {
+  .@{ns}@{type}@{dimension}-xl {
     @{type}@{dimension}: @global-margin-xl;
   }
 }
 
 .spacing-all-variant(@type) {
-  .am-@{type} {
+  .@{ns}@{type} {
     @{type}: @global-margin;
   }
 
-  .am-@{type}-xs {
+  .@{ns}@{type}-xs {
     @{type}: @global-margin-xs;
   }
 
-  .am-@{type}-sm {
+  .@{ns}@{type}-sm {
     @{type}: @global-margin-sm;
   }
 
-  .am-@{type}-lg {
+  .@{ns}@{type}-lg {
     @{type}: @global-margin-lg;
   }
 
-  .am-@{type}-xl {
+  .@{ns}@{type}-xl {
     @{type}: @global-margin-xl;
   }
 }
 
 .spacing-hv-variant (@type, @dimension, @dimension1, @dimension2) {
-  .am-@{type}@{dimension} {
+  .@{ns}@{type}@{dimension} {
     @{type}@{dimension1}: @global-margin;
     @{type}@{dimension2}: @global-margin;
   }
 
-  .am-@{type}@{dimension}-xs {
+  .@{ns}@{type}@{dimension}-xs {
     @{type}@{dimension1}: @global-margin-xs;
     @{type}@{dimension2}: @global-margin-xs;
   }
 
-  .am-@{type}@{dimension}-sm {
+  .@{ns}@{type}@{dimension}-sm {
     @{type}@{dimension1}: @global-margin-sm;
     @{type}@{dimension2}: @global-margin-sm;
   }
 
-  .am-@{type}@{dimension}-lg {
+  .@{ns}@{type}@{dimension}-lg {
     @{type}@{dimension1}: @global-margin-lg;
     @{type}@{dimension2}: @global-margin-lg;
   }
 
-  .am-@{type}@{dimension}-xl {
+  .@{ns}@{type}@{dimension}-xl {
     @{type}@{dimension1}: @global-margin-xl;
     @{type}@{dimension2}: @global-margin-xl;
   }
@@ -234,38 +250,40 @@
 .spacing-variant(padding, -right);
 
 
+// =============================================================================
 // Foundation Visibility HTML Classes
+// =============================================================================
 
 /* small displays */
 
 @media @screen {
-  .am-show-sm-only,
-  .am-show-sm-up,
-  .am-show-sm,
-  .am-show-sm-down,
-  .am-hide-md-only,
-  .am-hide-md-up,
-  .am-hide-md,
-  .am-show-md-down,
-  .am-hide-lg-only,
-  .am-hide-lg-up,
-  .am-hide-lg,
-  .am-show-lg-down {
+  .@{ns}show-sm-only,
+  .@{ns}show-sm-up,
+  .@{ns}show-sm,
+  .@{ns}show-sm-down,
+  .@{ns}hide-md-only,
+  .@{ns}hide-md-up,
+  .@{ns}hide-md,
+  .@{ns}show-md-down,
+  .@{ns}hide-lg-only,
+  .@{ns}hide-lg-up,
+  .@{ns}hide-lg,
+  .@{ns}show-lg-down {
     display: inherit !important;
   }
 
-  .am-hide-sm-only,
-  .am-hide-sm-up,
-  .am-hide-sm,
-  .am-hide-sm-down,
-  .am-show-md-only,
-  .am-show-md-up,
-  .am-show-md,
-  .am-hide-md-down,
-  .am-show-lg-only,
-  .am-show-lg-up,
-  .am-show-lg,
-  .am-hide-lg-down {
+  .@{ns}hide-sm-only,
+  .@{ns}hide-sm-up,
+  .@{ns}hide-sm,
+  .@{ns}hide-sm-down,
+  .@{ns}show-md-only,
+  .@{ns}show-md-up,
+  .@{ns}show-md,
+  .@{ns}hide-md-down,
+  .@{ns}show-lg-only,
+  .@{ns}show-lg-up,
+  .@{ns}show-lg,
+  .@{ns}hide-lg-down {
     display: none !important;
   }
 }
@@ -273,33 +291,33 @@
 /* medium displays */
 
 @media @medium-up {
-  .am-hide-sm-only,
-  .am-show-sm-up,
-  .am-hide-sm,
-  .am-hide-sm-down,
-  .am-show-md-only,
-  .am-show-md-up,
-  .am-show-md,
-  .am-show-md-down,
-  .am-hide-lg-only,
-  .am-hide-lg-up,
-  .am-hide-lg,
-  .am-show-lg-down {
+  .@{ns}hide-sm-only,
+  .@{ns}show-sm-up,
+  .@{ns}hide-sm,
+  .@{ns}hide-sm-down,
+  .@{ns}show-md-only,
+  .@{ns}show-md-up,
+  .@{ns}show-md,
+  .@{ns}show-md-down,
+  .@{ns}hide-lg-only,
+  .@{ns}hide-lg-up,
+  .@{ns}hide-lg,
+  .@{ns}show-lg-down {
     display: inherit !important;
   }
 
-  .am-show-sm-only,
-  .am-hide-sm-up,
-  .am-show-sm,
-  .am-show-sm-down,
-  .am-hide-md-only,
-  .am-hide-md-up,
-  .am-hide-md,
-  .am-hide-md-down,
-  .am-show-lg-only,
-  .am-show-lg-up,
-  .am-show-lg,
-  .am-hide-lg-down {
+  .@{ns}show-sm-only,
+  .@{ns}hide-sm-up,
+  .@{ns}show-sm,
+  .@{ns}show-sm-down,
+  .@{ns}hide-md-only,
+  .@{ns}hide-md-up,
+  .@{ns}hide-md,
+  .@{ns}hide-md-down,
+  .@{ns}show-lg-only,
+  .@{ns}show-lg-up,
+  .@{ns}show-lg,
+  .@{ns}hide-lg-down {
     display: none !important;
   }
 }
@@ -307,111 +325,110 @@
 /* large displays */
 
 @media @large-up {
-  .am-hide-sm-only,
-  .am-show-sm-up,
-  .am-hide-sm,
-  .am-hide-sm-down,
-  .am-hide-md-only,
-  .am-show-md-up,
-  .am-hide-md,
-  .am-hide-md-down,
-  .am-show-lg-only,
-  .am-show-lg-up,
-  .am-show-lg,
-  .am-show-lg-down {
+  .@{ns}hide-sm-only,
+  .@{ns}show-sm-up,
+  .@{ns}hide-sm,
+  .@{ns}hide-sm-down,
+  .@{ns}hide-md-only,
+  .@{ns}show-md-up,
+  .@{ns}hide-md,
+  .@{ns}hide-md-down,
+  .@{ns}show-lg-only,
+  .@{ns}show-lg-up,
+  .@{ns}show-lg,
+  .@{ns}show-lg-down {
     display: inherit !important;
   }
 
-  .am-show-sm-only,
-  .am-hide-sm-up,
-  .am-show-sm,
-  .am-show-sm-down,
-  .am-show-md-only,
-  .am-hide-md-up,
-  .am-show-md,
-  .am-show-md-down,
-  .am-hide-lg-only,
-  .am-hide-lg-up,
-  .am-hide-lg,
-  .am-hide-lg-down {
+  .@{ns}show-sm-only,
+  .@{ns}hide-sm-up,
+  .@{ns}show-sm,
+  .@{ns}show-sm-down,
+  .@{ns}show-md-only,
+  .@{ns}hide-md-up,
+  .@{ns}show-md,
+  .@{ns}show-md-down,
+  .@{ns}hide-lg-only,
+  .@{ns}hide-lg-up,
+  .@{ns}hide-lg,
+  .@{ns}hide-lg-down {
     display: none !important;
   }
 }
 
 @media @landscape {
-  .am-show-landscape,
-  .am-hide-portrait {
+  .@{ns}show-landscape,
+  .@{ns}hide-portrait {
     display: inherit !important;
   }
 
-  .am-hide-landscape,
-  .am-show-portrait {
+  .@{ns}hide-landscape,
+  .@{ns}show-portrait {
     display: none !important;
   }
 }
 
 @media @portrait {
-  .am-show-portrait,
-  .am-hide-landscape {
+  .@{ns}show-portrait,
+  .@{ns}hide-landscape {
     display: inherit !important;
   }
 
-  .am-hide-portrait,
-  .am-show-landscape {
+  .@{ns}hide-portrait,
+  .@{ns}show-landscape {
     display: none !important;
   }
 }
 
 
-// ========================================================================
+// =============================================================================
 // Text Utility
-// ========================================================================
+// =============================================================================
 
 // Font family
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
-.am-sans-serif {
+.@{ns}sans-serif {
   font-family: @font-family-sans-serif;
 }
 
-.am-serif {
+.@{ns}serif {
   font-family: @font-family-serif;
 }
 
-.am-kai {
+.@{ns}kai {
   font-family: @font-family-kai;
 }
 
-.am-monospace {
+.@{ns}monospace {
   font-family: @font-family-monospace;
 }
 
 
 // Text color
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
-.am-text-primary {
+.@{ns}text-primary {
   color: @global-primary;
 }
 
-.am-text-secondary {
+.@{ns}text-secondary {
   color: @global-secondary;
 }
 
-.am-text-success {
+.@{ns}text-success {
   color: @global-success;
 }
 
-.am-text-warning {
+.@{ns}text-warning {
   color: @global-warning;
 }
 
-.am-text-danger {
+.@{ns}text-danger {
   color: @global-danger;
 }
 
-
-.am-link-muted {
+.@{ns}link-muted {
   color: #666;
   a {
     color: #666;
@@ -424,57 +441,57 @@
 }
 
 
-/* Text size */
-.am-text-default {
+// Text size
+// -----------------------------------------------------------------------------
+
+.@{ns}text-default {
   font-size: @base-font-size;
 }
 
 /*
-.am-text-xxs {
+.@{ns}text-xxs {
   font-size: @font-size-xxs;
 }
 */
 
-.am-text-xs {
+.@{ns}text-xs {
   font-size: @font-size-xs;
 }
 
-.am-text-sm {
+.@{ns}text-sm {
   font-size: @font-size-sm;
 }
 
-.am-text-lg {
+.@{ns}text-lg {
   font-size: @font-size-lg;
 }
 
-.am-text-xl {
+.@{ns}text-xl {
   font-size: @font-size-xl;
 }
 
-.am-text-xxl {
+.@{ns}text-xxl {
   font-size: @font-size-xxl;
 }
 
-.am-text-xxxl {
-  font-size: @font-size-xxl;
+.@{ns}text-xxxl {
+  font-size: @font-size-xxxl;
 }
 
 
+// Text overflow
+// Requires inline-block or block for proper styling
+// =============================================================================
 
-/**
- * Text overflow
- * Requires inline-block or block for proper styling
- */
-
-.am-ellipsis,
-.am-text-truncate {
+.@{ns}ellipsis,
+.@{ns}text-truncate {
   word-wrap: normal; /* for IE */
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
 }
 
-.am-text-break {
+.@{ns}text-break {
   word-wrap: break-word;
   -webkit-hyphens: auto;
   -ms-hyphens: auto;
@@ -482,30 +499,31 @@
   hyphens: auto;
 }
 
-.am-text-nowrap {
+.@{ns}text-nowrap {
   white-space: nowrap;
 }
 
 
-[class*='am-align-'] {
+[class*='@{ns}align-'] {
   margin-bottom: 1rem;
 }
 
-.am-align-left {
+.@{ns}align-left {
   margin-right: 1rem;
   float: left;
 }
 
-.am-align-right {
+.@{ns}align-right {
   margin-left: 1rem;
   float: right;
 }
+
 
 /** Only display content to screen readers
  * See: http://a11yproject.com/posts/how-to-hide-content/
  */
 
-.am-sr-only {
+.@{ns}sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -519,128 +537,61 @@
 
 /* Text Image Replacement */
 
-.am-text-ir {
+.@{ns}text-ir {
   .text-hide();
 }
 
 
 /* Text align */
 
-.am-text-left {
-  text-align: left !important;
-}
-
-.am-text-right {
-  text-align: right !important;
-}
-
-.am-text-center {
-  text-align: center !important;
-}
-
-.am-text-justify {
-  text-align: justify !important;
-}
-
-@media @small-only {
-  .am-sm-only-text-left {
+// Text align mixin
+.text-align-variant(@point) {
+  .@{ns}@{point}text-left {
     text-align: left !important;
   }
 
-  .am-sm-only-text-right {
+  .@{ns}@{point}text-right {
     text-align: right !important;
   }
 
-  .am-sm-only-text-center {
+  .@{ns}@{point}text-center {
     text-align: center !important;
   }
 
-  .am-sm-only-text-justify {
+  .@{ns}@{point}text-justify {
     text-align: justify !important;
   }
 }
 
 @media @screen {
-  .am-sm-text-left {
-    text-align: left !important;
-  }
+  .text-align-variant(~"");
+}
 
-  .am-sm-text-right {
-    text-align: right !important;
-  }
-
-  .am-sm-text-center {
-    text-align: center !important;
-  }
-
-  .am-sm-text-justify {
-    text-align: justify !important;
-  }
+@media @small-only {
+  .text-align-variant(sm-only-);
 }
 
 @media @medium-only {
-  .am-md-only-text-left {
-    text-align: left !important;
-  }
-
-  .am-md-only-text-right {
-    text-align: right !important;
-  }
-
-  .am-md-only-text-center {
-    text-align: center !important;
-  }
-
-  .am-md-only-text-justify {
-    text-align: justify !important;
-  }
+  .text-align-variant(md-only-);
 }
 
 @media @medium-up {
-  .am-md-text-left {
-    text-align: left !important;
-  }
-
-  .am-md-text-right {
-    text-align: right !important;
-  }
-
-  .am-md-text-center {
-    text-align: center !important;
-  }
-
-  .am-md-text-justify {
-    text-align: justify !important;
-  }
+  .text-align-variant(md-);
 }
 
 @media @large-up {
-  .am-lg-text-left {
-    text-align: left !important;
-  }
-
-  .am-lg-text-right {
-    text-align: right !important;
-  }
-
-  .am-lg-text-center {
-    text-align: center !important;
-  }
-
-  .am-lg-text-justify {
-    text-align: justify !important;
-  }
+  .text-align-variant(lg-);
 }
 
-.am-text-top {
+.@{ns}text-top {
   vertical-align: top !important;
 }
 
-.am-text-middle {
+.@{ns}text-middle {
   vertical-align: middle !important;
 }
 
-.am-text-bottom {
+.@{ns}text-bottom {
   vertical-align: bottom !important;
 }
 
@@ -648,114 +599,24 @@
 // angle
 // ========================================================================
 
-.am-angle {
+.@{ns}angle {
   position: absolute;
-
-  &:before,
-  &:after {
-    position: absolute;
-    display: block;
-    content: "";
-    width: 0;
-    height: 0;
-    border: 8px dashed transparent;
-    z-index: 1;
-  }
+  .angle-base;
 }
 
-.angle-up-variant(@border-color: #ddd; @bg-color: #fff; @border-width: 8px) {
+.@{ns}angle-up {
   top: 0;
-
-  &:before,
-  &:after {
-    border-bottom-style: solid;
-    border-width: 0 @border-width @border-width;
-  }
-
-  &:before {
-    border-bottom-color: @border-color;
-    bottom: 0;
-  }
-
-  &:after {
-    border-bottom-color: @bg-color;
-    bottom: -1px;
-  }
-}
-
-.am-angle-up {
   .angle-up-variant();
 }
 
-.angle-down-variant(@border-color: #ddd; @bg-color: #fff; @border-width: 8px) {
-  bottom: -(@border-width + 1);
-
-  &:before,
-  &:after {
-    border-top-style: solid;
-    border-width: @border-width @border-width 0;
-  }
-
-  &:before {
-    border-top-color: @border-color;
-    bottom: 0;
-  }
-
-  &:after {
-    border-top-color: @bg-color;
-    bottom: 1px;
-  }
-}
-
-.am-angle-down {
+.@{ns}angle-down {
   .angle-down-variant();
 }
 
-.angle-left-variant(@border-color: #ddd; @bg-color: #fff; @border-width: 8px) {
-  left: -(@border-width + 1);
-
-  &:before,
-  &:after {
-    border-right-style: solid;
-    border-width: @border-width @border-width @border-width 0;
-  }
-
-  &:before {
-    border-right-color: @border-color;
-    left: 0;
-  }
-
-  &:after {
-    border-right-color: @bg-color;
-    left: 1px;
-  }
-}
-
-.am-angle-left {
+.@{ns}angle-left {
   .angle-left-variant();
 }
 
-.angle-right-variant(@border-color: #ddd; @bg-color: #fff; @border-width: 8px) {
-  right: 0;
-
-  &:before,
-  &:after {
-    border-left-style: solid;
-    border-width: @border-width 0 @border-width @border-width;
-  }
-
-  &:before {
-    border-left-color: @border-color;
-    left: 0;
-  }
-
-  &:after {
-    border-left-color: @bg-color;
-    left: -1px;
-  }
-}
-
-
-.am-angle-right {
+.@{ns}angle-right {
   .angle-right-variant();
 }

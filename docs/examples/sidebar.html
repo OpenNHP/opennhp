@@ -9,7 +9,7 @@
   <meta name="renderer" content="webkit">
   <meta http-equiv="Cache-Control" content="no-siteapp" />
   <link rel="alternate icon" type="image/png" href="{{assets}}i/favicon.png">
-  <link rel="stylesheet" href="{{assets}}css/amui.all.min.css"/>
+  <link rel="stylesheet" href="{{assets}}css/amazeui.min.css"/>
   <style>
     @media only screen and (min-width: 641px) {
       .am-offcanvas {
@@ -92,16 +92,16 @@
 </head>
 <body>
 <header class="am-g my-head">
-  <div class="col-sm-12 am-article">
+  <div class="am-u-sm-12 am-article">
     <h1 class="am-article-title">永远的蝴蝶</h1>
     <p class="am-article-meta">陈启佑（台湾）</p>
   </div>
 </header>
 <hr class="am-article-divider"/>
 <div class="am-g am-g-fixed">
-  <div class="col-md-9 col-md-push-3">
+  <div class="am-u-md-9 am-u-md-push-3">
     <div class="am-g">
-      <div class="col-sm-11 col-sm-centered">
+      <div class="am-u-sm-11 am-u-sm-centered">
         <div class="am-cf am-article">
           <div class="am-align-left">
             <img src="http://s.cn.bing.net/az/hprichbg/rb/DongBaSymbols_ZH-CN10223363633_1366x768.jpg" alt="" width="240">
@@ -163,7 +163,7 @@
       </div>
     </div>
   </div>
-  <div class="col-md-3 col-md-pull-9 my-sidebar">
+  <div class="am-u-md-3 am-u-md-pull-9 my-sidebar">
     <div class="am-offcanvas" id="sidebar">
       <div class="am-offcanvas-bar">
         <ul class="am-nav">
@@ -183,7 +183,18 @@
 <footer class="my-footer">
   <p>sidebar template<br><small>© Copyright XXX. by the AmazeUI Team.</small></p>
 </footer>
-<script src="{{assets}}js/zepto.min.js"></script>
-<script src="{{assets}}js/amui.min.js"></script>
+
+<!--[if lt IE 9]>
+<script src="http://libs.baidu.com/jquery/1.11.1/jquery.min.js"></script>
+<script src="http://cdn.staticfile.org/modernizr/2.8.3/modernizr.js"></script>
+<script src="{{assets}}js/polyfill/rem.min.js"></script>
+<script src="{{assets}}js/polyfill/respond.min.js"></script>
+<script src="{{assets}}js/amazeui.legacy.js"></script>
+<![endif]-->
+
+<!--[if (gte IE 9)|!(IE)]><!-->
+<script src="{{assets}}js/jquery.min.js"></script>
+<script src="{{assets}}js/amazeui.min.js"></script>
+<!--<![endif]-->
 </body>
 </html>

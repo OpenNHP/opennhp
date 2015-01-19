@@ -1,7 +1,7 @@
 {
     "name": "intro",
 
-    "version": "3.0.0",
+    "version": "4.0.2",
 
     "localName": {
         "en": "Intro",
@@ -380,8 +380,6 @@
     },
 
     "readme": "http://docs.yunshipei.com/amui/#intro",
-
-    "example": "/*\n\n 此模块的使用方法：采集原PC网站上的图片数据以及标题内容放到此模块。\n\n 常用用途：简介组件，常用于放置包含图片和文字的企业介绍信息等。\n\n 了解Amaze UI的模块详情，请访问http://amazeui.org/widgets/intro。\n\n 示例代码：\n\n         var data = {\n\n            \"title\": $(\".listpart\").find(\".headline\").text(),\n\n            \"more\": {\n              \"link\": \"#more\",\n              \"title\": \"更多细节\"\n            },\n\n            \"left\": $(\".listpart\").find(\".news-pic\").find(\"img\").src(),\n\n            \"right\": $(\".listpart\").find(\".headline\").find(\"img\").outerHTML()\n        };\n\n        return data;\n\n*/\n\n\nvar data = {\n  \"title\": \"\",  // 标题\n\n  \"more\": { // 更多链接\n    \"title\": \"\",\n    \"link\": \"\"\n  },\n\n  \"left\": \"\", //左边的内容, 可以写html\n\n  \"right\": \"\" //右边的内容, 可以写html\n\n};\n\nreturn data;\n",
 
     "hidden": false
 }

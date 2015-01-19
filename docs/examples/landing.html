@@ -10,21 +10,8 @@
   <meta name="renderer" content="webkit">
   <meta http-equiv="Cache-Control" content="no-siteapp"/>
   <link rel="alternate icon" type="image/png" href="{{assets}}i/favicon.png">
-  <link rel="stylesheet" href="{{assets}}css/amui.all.min.css"/>
+  <link rel="stylesheet" href="{{assets}}css/amazeui.min.css"/>
   <style>
-    .head-fixed {
-      padding-top: 50px;
-    }
-
-    .head {
-      margin-bottom: 0;
-      width: 100%;
-      position: fixed;
-      z-index: 1;
-      left: 0;
-      top: 0;
-    }
-
     .get {
       background: #1E5B94;
       color: #fff;
@@ -107,48 +94,49 @@
     }
   </style>
 </head>
-<body class="head-fixed">
+<body>
+<header class="am-topbar am-topbar-fixed-top">
+  <div class="am-container">
+    <h1 class="am-topbar-brand">
+      <a href="#">Amaze UI</a>
+    </h1>
 
-<header class="am-topbar head">
-  <h1 class="am-topbar-brand">
-    <a href="#">Amaze UI</a>
-  </h1>
+    <button class="am-topbar-btn am-topbar-toggle am-btn am-btn-sm am-btn-secondary am-show-sm-only"
+            data-am-collapse="{target: '#collapse-head'}"><span class="am-sr-only">导航切换</span> <span
+        class="am-icon-bars"></span></button>
 
-  <button class="am-topbar-btn am-topbar-toggle am-btn am-btn-sm am-btn-secondary am-show-sm-only"
-          data-am-collapse="{target: '#collapse-head'}"><span class="am-sr-only">导航切换</span> <span
-      class="am-icon-bars"></span></button>
+    <div class="am-collapse am-topbar-collapse" id="collapse-head">
+      <ul class="am-nav am-nav-pills am-topbar-nav">
+        <li class="am-active"><a href="#">首页</a></li>
+        <li><a href="#">项目</a></li>
+        <li class="am-dropdown" data-am-dropdown>
+          <a class="am-dropdown-toggle" data-am-dropdown-toggle href="javascript:;">
+            下拉菜单 <span class="am-icon-caret-down"></span>
+          </a>
+          <ul class="am-dropdown-content">
+            <li class="am-dropdown-header">标题</li>
+            <li><a href="#">1. 默认样式</a></li>
+            <li><a href="#">2. 基础设置</a></li>
+            <li><a href="#">3. 文字排版</a></li>
+            <li><a href="#">4. 网格系统</a></li>
+          </ul>
+        </li>
+      </ul>
 
-  <div class="am-collapse am-topbar-collapse" id="collapse-head">
-    <ul class="am-nav am-nav-pills am-topbar-nav">
-      <li class="am-active"><a href="#">首页</a></li>
-      <li><a href="#">项目</a></li>
-      <li class="am-dropdown" data-am-dropdown>
-        <a class="am-dropdown-toggle" data-am-dropdown-toggle href="javascript:;">
-          下拉菜单 <span class="am-icon-caret-down"></span>
-        </a>
-        <ul class="am-dropdown-content">
-          <li class="am-dropdown-header">标题</li>
-          <li><a href="#">1. 默认样式</a></li>
-          <li><a href="#">2. 基础设置</a></li>
-          <li><a href="#">3. 文字排版</a></li>
-          <li><a href="#">4. 网格系统</a></li>
-        </ul>
-      </li>
-    </ul>
+      <div class="am-topbar-right">
+        <button class="am-btn am-btn-secondary am-topbar-btn am-btn-sm"><span class="am-icon-pencil"></span> 注册</button>
+      </div>
 
-    <div class="am-topbar-right">
-      <button class="am-btn am-btn-secondary am-topbar-btn am-btn-sm"><span class="am-icon-pencil"></span> 注册</button>
-    </div>
-
-    <div class="am-topbar-right">
-      <button class="am-btn am-btn-primary am-topbar-btn am-btn-sm"><span class="am-icon-user"></span> 登录</button>
+      <div class="am-topbar-right">
+        <button class="am-btn am-btn-primary am-topbar-btn am-btn-sm"><span class="am-icon-user"></span> 登录</button>
+      </div>
     </div>
   </div>
 </header>
 
 <div class="get">
   <div class="am-g">
-    <div class="col-lg-12">
+    <div class="am-u-lg-12">
       <h1 class="get-title">Amaze UI - HTML5 跨屏前端框架</h1>
 
       <p>
@@ -164,11 +152,11 @@
 
 <div class="detail">
   <div class="am-g am-container">
-    <div class="col-lg-12">
+    <div class="am-u-lg-12">
       <h2 class="detail-h2">One Web 、Any Device，期待和你一起去实现!</h2>
 
       <div class="am-g">
-        <div class="col-lg-3 col-md-6 col-sm-12 detail-mb">
+        <div class="am-u-lg-3 am-u-md-6 am-u-sm-12 detail-mb">
 
           <h3 class="detail-h3">
             <i class="am-icon-mobile am-icon-sm"></i>
@@ -179,7 +167,7 @@
             Amaze UI 采用业内先进的 mobile first 理念，从小屏逐步扩展到大屏，最终实现所有屏幕适配，适应移动互联潮流。
           </p>
         </div>
-        <div class="col-lg-3 col-md-6 col-sm-12 detail-mb">
+        <div class="am-u-lg-3 am-u-md-6 am-u-sm-12 detail-mb">
           <h3 class="detail-h3">
             <i class="am-icon-cogs am-icon-sm"></i>
             组件丰富，模块化
@@ -189,7 +177,7 @@
             Amaze UI 含近 20 个 CSS 组件、10 个 JS 组件，更有 17 款包含近 60 个主题的 Widgets，可快速构建界面出色、体验优秀的跨屏页面，大幅度提升你的开发效率。
           </p>
         </div>
-        <div class="col-lg-3 col-md-6 col-sm-12 detail-mb">
+        <div class="am-u-lg-3 am-u-md-6 am-u-sm-12 detail-mb">
           <h3 class="detail-h3">
             <i class="am-icon-check-square-o am-icon-sm"></i>
             本地化支持
@@ -199,7 +187,7 @@
             相比国外的前端框架，Amaze UI 专注解决中文排版优化问题，根据操作系统调整字体，实现最佳中文排版效果；针对国内主流浏览器及 App 内置浏览器提供更好的兼容性支持，为你节省大量兼容性调试时间。
           </p>
         </div>
-        <div class="col-lg-3 col-md-6 col-sm-12 detail-mb">
+        <div class="am-u-lg-3 am-u-md-6 am-u-sm-12 detail-mb">
           <h3 class="detail-h3">
             <i class="am-icon-send-o am-icon-sm"></i>
             轻量级，高性能
@@ -216,11 +204,11 @@
 
 <div class="hope">
   <div class="am-g am-container">
-    <div class="col-lg-4 col-md-6 col-sm-12 hope-img">
+    <div class="am-u-lg-4 am-u-md-6 am-u-sm-12 hope-img">
       <img src="{{assets}}i/examples/landing.png" alt="" data-am-scrollspy="{animation:'slide-left', repeat: false}">
       <hr class="am-article-divider am-show-sm-only hope-hr">
     </div>
-    <div class="col-lg-8 col-md-6 col-sm-12">
+    <div class="am-u-lg-8 am-u-md-6 am-u-sm-12">
       <h2 class="hope-title">同我们一起打造你的前端框架</h2>
 
       <p>
@@ -232,11 +220,11 @@
 
 <div class="about">
   <div class="am-g am-container">
-    <div class="col-lg-12">
+    <div class="am-u-lg-12">
       <h2 class="about-title about-color">Amaze UI 崇尚开放、自由，非常欢迎大家的参与</h2>
 
       <div class="am-g">
-        <div class="col-lg-6 col-md-4 col-sm-12">
+        <div class="am-u-lg-6 am-u-md-4 am-u-sm-12">
           <form class="am-form">
             <label for="name" class="about-color">你的姓名</label>
             <input id="name" type="text">
@@ -252,7 +240,7 @@
           <hr class="am-article-divider am-show-sm-only">
         </div>
 
-        <div class="col-lg-6 col-md-8 col-sm-12">
+        <div class="am-u-lg-6 am-u-md-8 am-u-sm-12">
           <h4 class="about-color">关于我们</h4>
 
           <p>AllMobilize Inc (美通云动科技有限公司)
@@ -270,7 +258,18 @@
   <p>© 2014 <a href="http://www.yunshipei.com" target="_blank">AllMobilize, Inc.</a> Licensed under <a
       href="http://opensource.org/licenses/MIT" target="_blank">MIT license</a>. by the AmazeUI Team.</p>
 </footer>
-<script src="{{assets}}js/zepto.min.js"></script>
-<script src="{{assets}}js/amui.min.js"></script>
+
+<!--[if lt IE 9]>
+<script src="http://libs.baidu.com/jquery/1.11.1/jquery.min.js"></script>
+<script src="http://cdn.staticfile.org/modernizr/2.8.3/modernizr.js"></script>
+<script src="{{assets}}js/polyfill/rem.min.js"></script>
+<script src="{{assets}}js/polyfill/respond.min.js"></script>
+<script src="{{assets}}js/amazeui.legacy.js"></script>
+<![endif]-->
+
+<!--[if (gte IE 9)|!(IE)]><!-->
+<script src="{{assets}}js/jquery.min.js"></script>
+<script src="{{assets}}js/amazeui.min.js"></script>
+<!--<![endif]-->
 </body>
 </html>

@@ -1,7 +1,7 @@
 {
     "name": "slider",
 
-    "version": "2.1.0",
+    "version": "3.0.1",
 
     "localName": {
         "en": "Slider",
@@ -15,7 +15,7 @@
         "email": "minwe@yunshipei.com"
     },
 
-    "description": "基于Flexslider的响应式slider，支持触控操作。",
+    "description": "基于 Flexslider 的响应式 slider ，支持触控操作。",
 
     "poweredBy": "AllMobilize",
 
@@ -32,6 +32,7 @@
     "template": "slider.hbs",
 
     "styleDependencies": [
+      "ui.flexslider.less"
     ],
 
     "style": "slider.less",
@@ -1323,7 +1324,7 @@
     ],
 
     "jsDependencies": [
-        "zepto.flexslider.js"
+        "ui.flexslider.js"
     ],
 
     "script": "slider.js",
@@ -1433,8 +1434,6 @@
     },
 
     "readme": "http://docs.yunshipei.com/amui/#slider",
-
-    "example": "/*\n 此模块的使用方法：从原网站采集图片滚动的图片路径放到json里返回到手机页面。\n\n 常用用途：用来采放图片轮播的图片路径以及连接。\n\n 了解AMUI的模块详情，请访问http://ide.yunshipei.com/doc/amui/#slider。\n\n    示例代码：\n     var content = [];\n     $(\".slideimg\").find(\"ul\").children(\"li\").each(function(){\n         content.push({\n             \"img\": $(this).find(\"img\").src(),\n             \"link\": \"\" ,\n             \"thumb\": \"\",\n             \"desc\": \"\"\n         });\n     });\n     return content;\n */\n\nvar content = [\n    {\n        \"img\": \"\",      // 表示轮播图片的路径，如：xxx.src() ，必传\n        \"link\": \"\",     // 链接，可选\n        \"thumb\": \"\",    // 如果需要，添加缩略图，填写缩略图的地址\n        \"desc\": \"\"      // 当前图片的附加信息，支持DOM，为高级定制提供DOM接口\n    }\n];\n\nreturn content;\n",
 
     "hidden": false
 }

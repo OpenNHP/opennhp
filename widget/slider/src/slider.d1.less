@@ -9,10 +9,12 @@
 
   @direction-nav-color: rgba(255,255,255,0.9);
 
-  .box-shadow(0 1px 4px rgba(0,0,0,.2));
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+
   .am-viewport {
     max-height: 2000px;
-    .transition(all 1s ease);
+    transition: all 1s ease;
+
     .loading & {
       max-height: 300px;
     }
@@ -28,8 +30,10 @@
 
   .am-slider-title {
     font-weight: normal;
+    margin-bottom: 2px;
     .text-overflow(block);
   }
+
   .am-slider-more {
     color: @desc-more-color;
     font-size: 1.3rem;
@@ -39,7 +43,7 @@
   /* Direction Nav */
   .am-direction-nav {
     a {
-      .box-sizing(content-box);
+      box-sizing: content-box;
       display: block;
       width: 24px;
       height: 24px;
@@ -56,21 +60,23 @@
       border: 1px solid @direction-nav-color;
       color: @direction-nav-color;
       border-radius: 50%;
+      transition: all 03s ease;
 
-      .transition(all .3s ease);
-
-      &::before {
+      &:before {
         .am-icon-font;
         content: @fa-var-chevron-left;
         font-size: 16px;
         line-height: 24px;
       }
+
       &.am-prev {
         left: 5px;
       }
+
       &.am-next {
         right: 5px;
-        &::before {
+
+        &:before {
           content: @fa-var-chevron-right;
         }
       }

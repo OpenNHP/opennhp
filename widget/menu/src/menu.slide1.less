@@ -15,13 +15,16 @@
   @menu-nav-sub-bg: @global-primary;
   @menu-nav-sub-link-color: #fff;
 
-  @menu-nav-sub-border-radius: @global-border-radius;
+  @menu-nav-sub-border-radius: @global-radius;
 
   .am-menu-toggle {
     position: absolute;
-    right: 10px;
-    top: -35px;
+    right: 5px;
+    top: -47px;
     display: block;
+    .square(44px);
+    line-height: 44px;
+    text-align: center;
     color: @menu-toggle-color;
   }
 
@@ -60,12 +63,12 @@
     > .am-parent {
       > a {
         position: relative;
-        .transition(0.15s);
+        transition: .15s;
 
         &:after {
           content: @fa-var-angle-down;
           margin-left: 5px;
-          .transition(0.15s);
+          transition: .15s;
         }
 
         &:before {
@@ -90,7 +93,7 @@
           }
 
           &:after {
-            .rotateX(-180deg)
+            transform: rotate(-180deg);
           }
         }
       }
@@ -102,7 +105,6 @@
     left: 5px;
     right: 5px;
     background-color: @menu-nav-sub-bg;
-    z-index: @z-index-dropdown;
     border-radius: @menu-nav-sub-border-radius;
 
     padding-top: 8px;
@@ -140,9 +142,6 @@
   }
 }
 
-.hook-am-menu-slide1() {
-}
+.hook-am-menu-slide1() {}
 
-// TODO:
-//    1. 增加二级菜单支持
-//    2. 全宽样式支持
+// TODO: 全宽样式支持

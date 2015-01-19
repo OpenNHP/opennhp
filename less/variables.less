@@ -2,16 +2,16 @@
 //
 // Description:		Define all variables
 //
-// ========================================================================
+// =============================================================================
 
-
+@ns: ~"am-";
 
 // Global variables
-// ========================================================================
+// =============================================================================
 
 
 // Black - White - Gray
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 @black:           #000;
 @white:           #fff;
@@ -24,7 +24,7 @@
 
 
 // Brand Colors
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 @global-primary:	    #0e90d2; // #157EFB; //#428bca;
 @global-secondary:    lighten(@global-primary, 15%);
@@ -34,15 +34,21 @@
 @global-info:         @global-secondary;
 
 
+// One
+// -----------------------------------------------------------------------------
+
+@one-primary: #15afef;
+
+
 // body
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 @body-bg:               @white;
 @text-color:            @gray-dark;
 
 
 // Links
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 @link-color:              @global-primary;
 @link-hover-color:        darken(@link-color, 15%);
@@ -51,17 +57,17 @@
 
 
 // Backgrounds & Borders
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 @global-background:				@white;
 @global-border:					  #ddd;
 
 
 // Typography
-// ========================================================================
+// =============================================================================
 
 // Font family
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 // FreeSans: Ships with many Linux distros, including Ubuntu
 // Arimo: Ships with Chrome OS. Arimo has to be defined before Helvetica and
@@ -78,17 +84,17 @@
 
 // apple.com: "Lucida Grande", "Lucida Sans Unicode", Helvetica, Arial, Verdana,
 
-@font-family-sans-serif: "Segoe UI", "Lucida Grande", Helvetica, Arial, "Microsoft YaHei", FreeSans, Arimo, "Droid Sans","wenquanyi micro hei","Hiragino Sans GB", "Hiragino Sans GB W3", sans-serif;
+@font-family-sans-serif: "Segoe UI", "Lucida Grande", Helvetica, Arial, "Microsoft YaHei", FreeSans, Arimo, "Droid Sans","wenquanyi micro hei","Hiragino Sans GB", "Hiragino Sans GB W3", "FontAwesome", sans-serif;
 
-@font-family-serif: Georgia, "Times New Roman", Times, SimSun, serif; //FangSong, STFangSong
+@font-family-serif: Georgia, "Times New Roman", Times, SimSun, "FontAwesome", serif; //FangSong, STFangSong
 
-@font-family-monospace: Monaco, Menlo, Consolas, "Courier New", monospace;
+@font-family-monospace: Monaco, Menlo, Consolas, "Courier New", "FontAwesome", monospace;
 
-@font-family-kai: Georgia, 'Times New Roman', Times, Kai, 'Kaiti SC', KaiTi, BiauKai, serif;;
+@font-family-kai: Georgia, "Times New Roman", Times, Kai, "Kaiti SC", KaiTi, BiauKai, "FontAwesome", serif;
 
 
 // Font  size
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 @global-font-size:				1.6rem; //16px
 @global-line-height:			1.6;
@@ -108,9 +114,8 @@
 @font-size-xxxl:          @global-font-size * 2 + 1; // 42px
 
 
-
 // Global spacing
-// ========================================================================
+// =============================================================================
 
 @global-spacing:                1.6rem;
 
@@ -121,7 +126,7 @@
 
 
 // Margin
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 @global-margin:									  @global-spacing;
 
@@ -132,27 +137,24 @@
 @global-margin-xl:							  @global-spacing-xl;
 
 
-// Controls
-// @global-height:									  30px;
-// @global-mini-height:							20px;
-// @global-small-height:							25px;
-// @global-large-height:							40px;
-
-
 // Border radius
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
-@global-border-radius:           2px;
-@border-radius-large:            5px;
-@border-radius-small:            1px;
+@global-radius:         0;
+@radius-normal:         2px;
+@radius-lg:             5px;
+@radius-sm:             1px;
+
+@global-rounded:         1000px;
+@global-square:           0;
 
 
 
 // Responsive variables
-// ========================================================================
+// =============================================================================
 
 // Breakpoint
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 @breakpoint-small:            640px;  // 0 - 640px
 @breakpoint-medium:           1024px; // 641 - 1024px
@@ -178,7 +180,7 @@
 
 // Media Queries
 // NOTE '~' in the beginning - media query must be escaped
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 @screen:        ~"only screen";
 
@@ -202,54 +204,52 @@
 
 
 // Grid system
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 @grid-columns:              12;
-
-@grid-gutter-width:         1rem;   // Columns padding
-@grid-gutter-md-width:      1.5rem; // 15px
-
+@grid-gutter:               1rem;   // Columns padding
+@grid-gutter-md:            1.5rem; // 15px
 @grid-max-width:            1000px;
 
 
-
+// =============================================================================
 // Z-index
-// =======================================================================
+// =============================================================================
 
 @global-z-index:		        1000;
 
-@z-index-navbar:            @global-z-index + 20; // THIS IS WIDGET
+@z-index-topbar-fixed:      @global-z-index;
+@z-index-datepicker:        @global-z-index;
+@z-index-sticky:            @global-z-index + 10;
+@z-index-dropdown:          @global-z-index + 20;
+@z-index-popover:           @global-z-index + 30;
+@z-index-offcanvas:         @global-z-index + 90;
+@z-index-dimmer:            @global-z-index + 100;
+@z-index-modal:             @global-z-index + 110;
+@z-index-pureview:          @global-z-index + 120;
+@z-index-nprogress:         @global-z-index + 1000;
 
-@z-index-dropdown:          @global-z-index;
-@z-index-popover:           @global-z-index + 10;
-@z-index-tooltip:           @global-z-index + 30;
-@z-index-navbar-fixed:      @global-z-index + 30;
-@z-index-modal-background:  @global-z-index + 40;
-@z-index-modal:             @global-z-index + 50;
-@z-index-paragraph:         @global-z-index + 60;  // THIS IS WIDGET
-@z-index-figure:            @global-z-index + 60;
-@z-index-sticky:            @global-z-index + 19;
-@z-index-mainnav:           @global-z-index + 30;
-
-@z-index-dimmer:            @global-z-index + 20;
+// Widgets
+@z-index-navbar:            @global-z-index + 10;
+@z-index-header-fixed:      @global-z-index + 10;
+@z-index-gotop-fixed:       @global-z-index + 40;
+@z-index-menu:              @global-z-index + 50;
 
 
-
-// ========================================================================
+// =============================================================================
 // Component Common
-// ========================================================================
+// =============================================================================
 
 @component-active-color:         #fff;
 @component-active-bg:            @global-primary;
 
 
-
-// ========================================================================
+// =============================================================================
 // Components variables
-// ========================================================================
+// =============================================================================
 
 // Base
-// ========================================================================
+// =============================================================================
 
 @base-background:							@global-background;
 @base-font-family:					  @font-family-sans-serif;
@@ -289,50 +289,49 @@
 @base-blockquote-line-height:					1.5; // 22px
 
 
-
-// ========================================================================
+// =============================================================================
 // Buttons
-// ========================================================================
+// =============================================================================
 
 @btn-font-weight:                normal;
 @btn-line-height:                1.2;
 @btn-font-size:                  @global-font-size;
 
-@btn-default-color:              @gray-dark;
+@btn-default-color:              #444;
 @btn-default-bg:                 #e6e6e6;
-@btn-default-border:             transparent;
+@btn-default-border:             @btn-default-bg;
 
 @btn-primary-color:              #fff;
 @btn-primary-bg:                 @global-primary;
-@btn-primary-border:             darken(@btn-primary-bg, 5%);
+@btn-primary-border:             @btn-primary-bg;
 
 @btn-secondary-color:            #fff;
 @btn-secondary-bg:               @global-secondary;
-@btn-secondary-border:           darken(@btn-secondary-bg, 5%);
+@btn-secondary-border:           @global-secondary;
 
 @btn-success-color:              #fff;
 @btn-success-bg:                 @global-success;
-@btn-success-border:             darken(@btn-success-bg, 5%);
+@btn-success-border:             @global-success;
 
 @btn-warning-color:              #fff;
 @btn-warning-bg:                 @global-warning;
-@btn-warning-border:             darken(@btn-warning-bg, 5%);
+@btn-warning-border:             @btn-warning-bg;
 
 @btn-danger-color:               #fff;
 @btn-danger-bg:                  @global-danger;
-@btn-danger-border:              darken(@btn-danger-bg, 5%);
+@btn-danger-border:              @btn-danger-bg;
 
 @btn-link-disabled-color:        @gray-light;
 
-@btn-lg-font-size:      @font-size-lg;
-@btn-sm-font-size:      @font-size-sm;
 @btn-xs-font-size:      @font-size-xs;
+@btn-sm-font-size:      @font-size-sm;
+@btn-lg-font-size:      @font-size-lg;
+@btn-xl-font-size:      2rem;
 
 
-
-// ========================================================================
+// =============================================================================
 // Code variables
-// ========================================================================
+// =============================================================================
 
 @code-color:                  #c7254e;
 @code-bg:                     #f8f8f8;
@@ -344,10 +343,9 @@
 @pre-scrollable-max-height:   24rem;
 
 
-
-// ========================================================================
+// =============================================================================
 // Forms
-// ========================================================================
+// =============================================================================
 
 @form-font-size:    @global-font-size;
 @form-line-height:  1.2;
@@ -358,13 +356,13 @@
 @input-padding:                 0.625em;
 
 @input-bg:                       #fff;
-@input-focus-bg:                 #fafffe;
+@input-focus-bg:                 #fefffe;
 @input-bg-disabled:              @gray-lighter;
 
 @input-color:                    @gray;
 @input-border:                   #ccc;
-@input-border-radius: @global-border-radius;
-@input-border-focus:             @global-primary;
+@input-border-radius: @global-radius;
+@input-border-focus:             @global-secondary;
 
 @input-color-placeholder:        @gray-light;
 
@@ -377,7 +375,7 @@
 
 
 // Form states and alerts
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 @state-success-text:             @global-success;
 @state-success-border:           darken(@state-success-text, 5%);
@@ -389,46 +387,55 @@
 @state-danger-border:            darken(@state-danger-text, 5%);
 
 
-// ========================================================================
+// =============================================================================
 // Input-group variables
-// ========================================================================
+// =============================================================================
 
 @input-group-label-bg:            @gray-lighter;
 @input-group-label-border-color:  #ccc;
 
 
-
-// ========================================================================
+// =============================================================================
 // Image variables
-// ========================================================================
+// =============================================================================
 
-@img-border-radius: @global-border-radius;
+@img-border-radius: @global-radius;
 @img-thumbnail-padding:   2px;
 @img-thumbnail-bg:        @white;
 @img-thumbnail-bd-color:  @global-border;
-@img-thumbnail-bd-radius: @global-border-radius;
+@img-thumbnail-bd-radius: @global-radius;
 
 
-
-// ========================================================================
+// =============================================================================
 // Table variables
-// ========================================================================
+// =============================================================================
 
-@table-cell-padding:          .7rem;
-@table-line-height:           @global-line-height;
-@table-bg:                    transparent; // overall background-color
-@table-bg-striped:            #f9f9f9;
-@table-bg-hover:              #f5f5f5;
-@table-bg-active:             #ffd;
-@table-border-color:          #ddd; // table and cell border
+@table-cell-padding:       .7rem;
+@table-line-height:        @global-line-height;
+@table-bg:                 transparent; // overall background-color
+@table-bg-striped:         #f9f9f9;
+@table-bg-hover:           #e9e9e9;// #fbf6e9;
+@table-bg-active:          #ffd;
+@table-border-color:       #ddd; // table and cell border
+
+@table-primary-bg:         rgba(red(@global-primary), green(@global-primary), blue(@global-primary), .115);
+@table-primary-color:      darken(@global-primary, 8%);
+
+@table-success-bg:         rgba(red(@global-success), green(@global-success), blue(@global-success), .115);
+@table-success-color:          @global-success;
+
+@table-warning-bg:         rgba(red(@global-warning), green(@global-warning), blue(@global-warning), .115);
+@table-warning-color:          @global-warning;
+
+@table-danger-bg:          rgba(red(@global-danger), green(@global-danger), blue(@global-danger), .115);
+@table-danger-color:           @global-danger;
 
 
-
-// ========================================================================
+// =============================================================================
 // Article variables
-// ========================================================================
+// =============================================================================
 
-@article-margin-top:                            2.4rem;
+@article-margin-top:                     2.4rem;
 
 @article-title-font-size:                2.8rem;
 @article-title-line-height:              1.15;
@@ -448,10 +455,9 @@
 @article-divider-border:                 @gray-lighter;
 
 
-
-// ========================================================================
+// =============================================================================
 // Badge variables
-// ========================================================================
+// =============================================================================
 
 @badge-color:                 #fff;
 @badge-link-hover-color:      #fff;
@@ -462,7 +468,7 @@
 
 @badge-font-weight:           bold;
 @badge-line-height:           1;
-@badge-border-radius:         0.8rem;
+@badge-border-radius:         0;
 
 @badge-primary-bg:						@global-primary;
 @badge-secondary-bg:          @global-secondary;
@@ -471,21 +477,20 @@
 @badge-danger-bg:						  @global-danger;
 
 
-
-// ========================================================================
+// =============================================================================
 // Breadcrumb variables
-// ========================================================================
+// =============================================================================
 
 @breadcrumb-bg:               transparent;//#f5f5f5;
 @breadcrumb-font-size:        85%;
 @breadcrumb-divider-color:    #ccc;
 @breadcrumb-active-color:     @gray-light;
-@breadcrumb-separator:        "/";
+@breadcrumb-separator:        "»";
 
 
-// ========================================================================
+// =============================================================================
 // Close variables
-// ========================================================================
+// =============================================================================
 
 @close-font-weight:           bold;
 @close-color:                 #000;
@@ -493,16 +498,15 @@
 @close-alt-background:		    #eee;
 
 
-
-// ========================================================================
+// =============================================================================
 // Comment variables
-// ========================================================================
+// =============================================================================
 
 @comment-border-radius:         2px;
 @comment-border-color:          #dedede;
 
-@comment-avatar-size:           48px;
-@comment-avatar-margin:         16px;
+@comment-avatar-size:           32px;
+@comment-avatar-margin:         10px;
 
 @comment-hd-bg-color:           #f8f8f8;
 @comment-hd-padding-vertical:   10px;
@@ -515,6 +519,9 @@
 @comment-meta-font-size:        13px;
 @comment-meta-line-height:      1.2;
 
+@comment-main-margin: @comment-avatar-size + @comment-avatar-margin;
+@comment-main-margin-md-up: (@comment-avatar-size + @comment-avatar-margin) * 1.5;
+
 @comment-bd-padding: 15px;
 
 @comment-list-margin-top:       @global-spacing;
@@ -523,9 +530,9 @@
 @comment-hl-border-color:       @global-secondary;
 
 
-// ========================================================================
+// =============================================================================
 // Icon variables
-// ========================================================================
+// =============================================================================
 
 @icon-sm-font-size:              150%;
 @icon-md-font-size:              200%;
@@ -558,6 +565,7 @@
 @fa-var-ambulance: "\f0f9";
 @fa-var-anchor: "\f13d";
 @fa-var-android: "\f17b";
+@fa-var-angellist: "\f209";
 @fa-var-angle-double-down: "\f103";
 @fa-var-angle-double-left: "\f100";
 @fa-var-angle-double-right: "\f101";
@@ -568,6 +576,7 @@
 @fa-var-angle-up: "\f106";
 @fa-var-apple: "\f179";
 @fa-var-archive: "\f187";
+@fa-var-area-chart: "\f1fe";
 @fa-var-arrow-circle-down: "\f0ab";
 @fa-var-arrow-circle-left: "\f0a8";
 @fa-var-arrow-circle-o-down: "\f01a";
@@ -585,10 +594,12 @@
 @fa-var-arrows-h: "\f07e";
 @fa-var-arrows-v: "\f07d";
 @fa-var-asterisk: "\f069";
+@fa-var-at: "\f1fa";
 @fa-var-automobile: "\f1b9";
 @fa-var-backward: "\f04a";
 @fa-var-ban: "\f05e";
 @fa-var-bank: "\f19c";
+@fa-var-bar-chart: "\f080";
 @fa-var-bar-chart-o: "\f080";
 @fa-var-barcode: "\f02a";
 @fa-var-bars: "\f0c9";
@@ -597,6 +608,11 @@
 @fa-var-behance-square: "\f1b5";
 @fa-var-bell: "\f0f3";
 @fa-var-bell-o: "\f0a2";
+@fa-var-bell-slash: "\f1f6";
+@fa-var-bell-slash-o: "\f1f7";
+@fa-var-bicycle: "\f206";
+@fa-var-binoculars: "\f1e5";
+@fa-var-birthday-cake: "\f1fd";
 @fa-var-bitbucket: "\f171";
 @fa-var-bitbucket-square: "\f172";
 @fa-var-bitcoin: "\f15a";
@@ -613,7 +629,9 @@
 @fa-var-building-o: "\f0f7";
 @fa-var-bullhorn: "\f0a1";
 @fa-var-bullseye: "\f140";
+@fa-var-bus: "\f207";
 @fa-var-cab: "\f1ba";
+@fa-var-calculator: "\f1ec";
 @fa-var-calendar: "\f073";
 @fa-var-calendar-o: "\f133";
 @fa-var-camera: "\f030";
@@ -627,6 +645,13 @@
 @fa-var-caret-square-o-right: "\f152";
 @fa-var-caret-square-o-up: "\f151";
 @fa-var-caret-up: "\f0d8";
+@fa-var-cc: "\f20a";
+@fa-var-cc-amex: "\f1f3";
+@fa-var-cc-discover: "\f1f2";
+@fa-var-cc-mastercard: "\f1f1";
+@fa-var-cc-paypal: "\f1f4";
+@fa-var-cc-stripe: "\f1f5";
+@fa-var-cc-visa: "\f1f0";
 @fa-var-certificate: "\f0a3";
 @fa-var-chain: "\f0c1";
 @fa-var-chain-broken: "\f127";
@@ -650,6 +675,7 @@
 @fa-var-circle-thin: "\f1db";
 @fa-var-clipboard: "\f0ea";
 @fa-var-clock-o: "\f017";
+@fa-var-close: "\f00d";
 @fa-var-cloud: "\f0c2";
 @fa-var-cloud-download: "\f0ed";
 @fa-var-cloud-upload: "\f0ee";
@@ -668,6 +694,7 @@
 @fa-var-compass: "\f14e";
 @fa-var-compress: "\f066";
 @fa-var-copy: "\f0c5";
+@fa-var-copyright: "\f1f9";
 @fa-var-credit-card: "\f09d";
 @fa-var-crop: "\f125";
 @fa-var-crosshairs: "\f05b";
@@ -709,6 +736,7 @@
 @fa-var-external-link-square: "\f14c";
 @fa-var-eye: "\f06e";
 @fa-var-eye-slash: "\f070";
+@fa-var-eyedropper: "\f1fb";
 @fa-var-facebook: "\f09a";
 @fa-var-facebook-square: "\f082";
 @fa-var-fast-backward: "\f049";
@@ -754,6 +782,7 @@
 @fa-var-forward: "\f04e";
 @fa-var-foursquare: "\f180";
 @fa-var-frown-o: "\f119";
+@fa-var-futbol-o: "\f1e3";
 @fa-var-gamepad: "\f11b";
 @fa-var-gavel: "\f0e3";
 @fa-var-gbp: "\f154";
@@ -772,6 +801,7 @@
 @fa-var-google: "\f1a0";
 @fa-var-google-plus: "\f0d5";
 @fa-var-google-plus-square: "\f0d4";
+@fa-var-google-wallet: "\f1ee";
 @fa-var-graduation-cap: "\f19d";
 @fa-var-group: "\f0c0";
 @fa-var-h-square: "\f0fd";
@@ -789,6 +819,7 @@
 @fa-var-home: "\f015";
 @fa-var-hospital-o: "\f0f8";
 @fa-var-html5: "\f13b";
+@fa-var-ils: "\f20b";
 @fa-var-image: "\f03e";
 @fa-var-inbox: "\f01c";
 @fa-var-indent: "\f03c";
@@ -797,6 +828,7 @@
 @fa-var-inr: "\f156";
 @fa-var-instagram: "\f16d";
 @fa-var-institution: "\f19c";
+@fa-var-ioxhost: "\f208";
 @fa-var-italic: "\f033";
 @fa-var-joomla: "\f1aa";
 @fa-var-jpy: "\f157";
@@ -806,15 +838,19 @@
 @fa-var-krw: "\f159";
 @fa-var-language: "\f1ab";
 @fa-var-laptop: "\f109";
+@fa-var-lastfm: "\f202";
+@fa-var-lastfm-square: "\f203";
 @fa-var-leaf: "\f06c";
 @fa-var-legal: "\f0e3";
 @fa-var-lemon-o: "\f094";
 @fa-var-level-down: "\f149";
 @fa-var-level-up: "\f148";
 @fa-var-life-bouy: "\f1cd";
+@fa-var-life-buoy: "\f1cd";
 @fa-var-life-ring: "\f1cd";
 @fa-var-life-saver: "\f1cd";
 @fa-var-lightbulb-o: "\f0eb";
+@fa-var-line-chart: "\f201";
 @fa-var-link: "\f0c1";
 @fa-var-linkedin: "\f0e1";
 @fa-var-linkedin-square: "\f08c";
@@ -837,6 +873,7 @@
 @fa-var-male: "\f183";
 @fa-var-map-marker: "\f041";
 @fa-var-maxcdn: "\f136";
+@fa-var-meanpath: "\f20c";
 @fa-var-medkit: "\f0fa";
 @fa-var-meh-o: "\f11a";
 @fa-var-microphone: "\f130";
@@ -852,9 +889,11 @@
 @fa-var-mortar-board: "\f19d";
 @fa-var-music: "\f001";
 @fa-var-navicon: "\f0c9";
+@fa-var-newspaper-o: "\f1ea";
 @fa-var-openid: "\f19b";
 @fa-var-outdent: "\f03b";
 @fa-var-pagelines: "\f18c";
+@fa-var-paint-brush: "\f1fc";
 @fa-var-paper-plane: "\f1d8";
 @fa-var-paper-plane-o: "\f1d9";
 @fa-var-paperclip: "\f0c6";
@@ -862,6 +901,7 @@
 @fa-var-paste: "\f0ea";
 @fa-var-pause: "\f04c";
 @fa-var-paw: "\f1b0";
+@fa-var-paypal: "\f1ed";
 @fa-var-pencil: "\f040";
 @fa-var-pencil-square: "\f14b";
 @fa-var-pencil-square-o: "\f044";
@@ -869,15 +909,16 @@
 @fa-var-phone-square: "\f098";
 @fa-var-photo: "\f03e";
 @fa-var-picture-o: "\f03e";
+@fa-var-pie-chart: "\f200";
 @fa-var-pied-piper: "\f1a7";
 @fa-var-pied-piper-alt: "\f1a8";
-@fa-var-pied-piper-square: "\f1a7";
 @fa-var-pinterest: "\f0d2";
 @fa-var-pinterest-square: "\f0d3";
 @fa-var-plane: "\f072";
 @fa-var-play: "\f04b";
 @fa-var-play-circle: "\f144";
 @fa-var-play-circle-o: "\f01d";
+@fa-var-plug: "\f1e6";
 @fa-var-plus: "\f067";
 @fa-var-plus-circle: "\f055";
 @fa-var-plus-square: "\f0fe";
@@ -898,6 +939,7 @@
 @fa-var-reddit: "\f1a1";
 @fa-var-reddit-square: "\f1a2";
 @fa-var-refresh: "\f021";
+@fa-var-remove: "\f00d";
 @fa-var-renren: "\f18b";
 @fa-var-reorder: "\f0c9";
 @fa-var-repeat: "\f01e";
@@ -927,6 +969,8 @@
 @fa-var-share-alt-square: "\f1e1";
 @fa-var-share-square: "\f14d";
 @fa-var-share-square-o: "\f045";
+@fa-var-shekel: "\f20b";
+@fa-var-sheqel: "\f20b";
 @fa-var-shield: "\f132";
 @fa-var-shopping-cart: "\f07a";
 @fa-var-sign-in: "\f090";
@@ -936,7 +980,9 @@
 @fa-var-skype: "\f17e";
 @fa-var-slack: "\f198";
 @fa-var-sliders: "\f1de";
+@fa-var-slideshare: "\f1e7";
 @fa-var-smile-o: "\f118";
+@fa-var-soccer-ball-o: "\f1e3";
 @fa-var-sort: "\f0dc";
 @fa-var-sort-alpha-asc: "\f15d";
 @fa-var-sort-alpha-desc: "\f15e";
@@ -1003,17 +1049,22 @@
 @fa-var-tint: "\f043";
 @fa-var-toggle-down: "\f150";
 @fa-var-toggle-left: "\f191";
+@fa-var-toggle-off: "\f204";
+@fa-var-toggle-on: "\f205";
 @fa-var-toggle-right: "\f152";
 @fa-var-toggle-up: "\f151";
+@fa-var-trash: "\f1f8";
 @fa-var-trash-o: "\f014";
 @fa-var-tree: "\f1bb";
 @fa-var-trello: "\f181";
 @fa-var-trophy: "\f091";
 @fa-var-truck: "\f0d1";
 @fa-var-try: "\f195";
+@fa-var-tty: "\f1e4";
 @fa-var-tumblr: "\f173";
 @fa-var-tumblr-square: "\f174";
 @fa-var-turkish-lira: "\f195";
+@fa-var-twitch: "\f1e8";
 @fa-var-twitter: "\f099";
 @fa-var-twitter-square: "\f081";
 @fa-var-umbrella: "\f0e9";
@@ -1041,6 +1092,7 @@
 @fa-var-weibo: "\f18a";
 @fa-var-weixin: "\f1d7";
 @fa-var-wheelchair: "\f193";
+@fa-var-wifi: "\f1eb";
 @fa-var-windows: "\f17a";
 @fa-var-won: "\f159";
 @fa-var-wordpress: "\f19a";
@@ -1048,38 +1100,37 @@
 @fa-var-xing: "\f168";
 @fa-var-xing-square: "\f169";
 @fa-var-yahoo: "\f19e";
+@fa-var-yelp: "\f1e9";
 @fa-var-yen: "\f157";
 @fa-var-youtube: "\f167";
 @fa-var-youtube-play: "\f16a";
 @fa-var-youtube-square: "\f166";
 
 
-
-// ========================================================================
+// =============================================================================
 // List variables
-// ========================================================================
+// =============================================================================
 
-@am-list-bg:               #fff;
-@am-list-border:           #dedede;
-@am-list-border-radius: @global-border-radius;
+@list-bg:               #fff;
+@list-border:           #dedede;
+@list-border-radius: @global-radius;
 
-@am-list-hover-bg:         #f5f5f5;
-@am-list-active-color:     @component-active-color;
-@am-list-active-bg:        @component-active-bg;
-@am-list-active-border:    @am-list-active-bg;
+@list-hover-bg:         #f5f5f5;
+@list-active-color:     @component-active-color;
+@list-active-bg:        @component-active-bg;
+@list-active-border:    @list-active-bg;
 
 // @am-list-link-color:     @gray-dark;
 // @am-list-link-hd-color:  @gray-darker;
 
 
-
-// ========================================================================
+// =============================================================================
 // Nav variables
-// ========================================================================
+// =============================================================================
 
 @nav-link-padding:                          0.4em 1em;
 @nav-link-hover-bg:                         @gray-lighter;
-@nav-link-border-radius: @global-border-radius;
+@nav-link-border-radius: @global-radius;
 
 @nav-active-link-bg:                        @component-active-bg;
 @nav-active-link-color:                     @component-active-color;
@@ -1095,7 +1146,7 @@
 
 
 // Nav -> Tabs
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 @nav-tabs-border-color:                     #ddd;
 
@@ -1109,10 +1160,9 @@
 @nav-tabs-justify-active-link-border-color:     @body-bg;
 
 
-
-// ========================================================================
+// =============================================================================
 // Topbar variables
-// ========================================================================
+// =============================================================================
 
 @topbar-height:                    50px;
 @topbar-padding:                   0 10px;
@@ -1123,22 +1173,22 @@
 
 @topbar-spacing-vertical:          8px;
 
-@topbar-default-color:             #666;
-@topbar-default-bg:                #f8f8f8;
-@topbar-default-border:            #ddd;
+@topbar-color:             #666;
+@topbar-bg:                #f8f8f8;
+@topbar-border:            #ddd;
 
 // default links
-@topbar-default-link-color:                #666;
-@topbar-default-link-hover-color:          #333;
-@topbar-default-link-active-color:         @global-primary;
-@topbar-default-link-active-bg:            transparent;
-@topbar-default-link-disabled-color:       #ccc;
-@topbar-default-link-disabled-bg:          transparent;
+@topbar-link-color:                #666;
+@topbar-link-hover-color:          #333;
+@topbar-link-active-color:         @global-primary;
+@topbar-link-active-bg:            transparent;
+@topbar-link-disabled-color:       #ccc;
+@topbar-link-disabled-bg:          transparent;
 
 // brand label
-@topbar-default-brand-color:               @topbar-default-link-color;
-@topbar-default-brand-hover-color:         darken(@topbar-default-brand-color, 10%);
-@topbar-default-brand-hover-bg:            transparent;
+@topbar-brand-color:               @topbar-link-color;
+@topbar-brand-hover-color:         darken(@topbar-brand-color, 10%);
+@topbar-brand-hover-bg:            transparent;
 
 
 // Inverted Topbar
@@ -1162,10 +1212,9 @@
 @topbar-inverse-brand-hover-bg:            transparent;
 
 
-
-// ========================================================================
+// =============================================================================
 // Pagination variables
-// ========================================================================
+// =============================================================================
 
 @pagination-margin:                    1.5rem;
 @pagination-padding:                   0.5em 1em;
@@ -1182,13 +1231,12 @@
 @pagination-disabled-color:            @gray-light;
 
 
-
-// ========================================================================
+// =============================================================================
 // Panel variables
-// ========================================================================
+// =============================================================================
 
 @panel-bg:                    @white;
-@panel-border-radius: @global-border-radius;
+@panel-border-radius: @global-radius;
 @panel-hd-padding:            .6rem 1.25rem;
 @panel-bd-padding:            1.25rem;
 
@@ -1200,7 +1248,7 @@
 @panel-default-hd-bg:         #f5f5f5;
 @panel-default-text:          #444;
 
-@panel-primary-bd:            lighten(@global-primary, 5%);;
+@panel-primary-bd:            lighten(@global-primary, 5%);
 @panel-primary-hd-bg:         @global-primary;
 @panel-primary-text:          #fff;
 
@@ -1216,15 +1264,14 @@
 @panel-warning-hd-bg:         rgba(red(@global-warning), green(@global-warning), blue(@global-warning), .15);
 @panel-warning-text:          @global-warning;
 
-@panel-danger-bd:             lighten(@global-danger, 30%);;
-@panel-danger-hd-bg:          rgba(red(@global-danger), green(@global-danger), blue(@global-danger), .15);;
+@panel-danger-bd:             lighten(@global-danger, 30%);
+@panel-danger-hd-bg:          rgba(red(@global-danger), green(@global-danger), blue(@global-danger), .15);
 @panel-danger-text:           @global-danger;
 
 
-
-// ========================================================================
+// =============================================================================
 // Progress variables
-// ========================================================================
+// =============================================================================
 
 @progress-bg:               #f5f5f5;
 @progress-bar-color:        @white;
@@ -1240,15 +1287,14 @@
 @progress-height-sm:     1.2rem;
 
 
-
-// ========================================================================
+// =============================================================================
 // Thumbnail variables
-// ========================================================================
+// =============================================================================
 
 @thumbnail-padding:         2px;
 @thumbnail-bg:              @white;
 @thumbnail-border:          #ddd;
-@thumbnail-border-radius: @global-border-radius;
+@thumbnail-border-radius: @global-radius;
 @thumbnail-hover-border:    @link-color;
 @thumbnail-hover-bg: @white;
 
@@ -1256,82 +1302,8 @@
 @thumbnail-caption-color:   #333;
 
 
-
-// ========================================================================
+// =============================================================================
 // Utility variables
-// ========================================================================
+// =============================================================================
 
 @utility-scrollable-height: 240px;
-
-
-
-// ========================================================================
-// JavaScript Compent
-// ========================================================================
-
-
-// Dropdown
-// ========================================================================
-
-@dropdown-bg:                    #fff;
-@dropdown-border:                rgba(0,0,0,.15);
-@dropdown-fallback-border:       #ccc;
-@dropdown-divider-bg:            #e5e5e5;
-
-@dropdown-link-color:            @gray-dark;
-@dropdown-link-hover-color:      darken(@gray-dark, 5%);
-@dropdown-link-hover-bg:         #f5f5f5;
-
-@dropdown-link-active-color:     @component-active-color;
-@dropdown-link-active-bg:        @component-active-bg;
-
-@dropdown-link-disabled-color:   @gray-light;
-
-@dropdown-header-color:          @gray-light;
-
-@dropdown-caret-color:           #000;
-
-@caret-width-base: 6px;
-
-
-
-// Off-canvas
-// ========================================================================
-
-@offcanvas-z-index:                   (@global-z-index + 30);
-@offcanvas-dimmer-background:         rgba(0,0,0,0.15);
-@offcanvas-bar-width:                 270px;
-@offcanvas-bar-background:            #333;
-
-
-
-// plugin - modal
-// =======================================================================
-
-//** Padding applied to the modal body
-@modal-inner-padding:         20px;
-
-//** Padding applied to the modal title
-@modal-title-padding:         15px;
-//** Modal title line-height
-@modal-title-line-height:     @line-height-base;
-
-//** Background color of modal content area
-@modal-content-bg:                             #fff;
-//** Modal content border color
-@modal-content-border-color:                   rgba(0,0,0,.2);
-//** Modal content border color **for IE8**
-@modal-content-fallback-border-color:          #999;
-
-//** Modal backdrop background color
-@modal-backdrop-bg:           #000;
-//** Modal backdrop opacity
-@modal-backdrop-opacity:      .5;
-//** Modal header border color
-@modal-header-border-color:   #e5e5e5;
-//** Modal footer border color
-@modal-footer-border-color:   @modal-header-border-color;
-
-@modal-lg:                    900px;
-@modal-md:                    600px;
-@modal-sm:                    300px;

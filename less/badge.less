@@ -1,4 +1,5 @@
 // Name:                       Badge
+//
 // Description:                Define style for badges
 //
 // Component:                `.am-badge`
@@ -9,17 +10,17 @@
 //                           `.am-badge-warning`
 //                           `.am-badge-danger`
 //
-// ========================================================================
+// =============================================================================
 
 
-/* ========================================================================
+/* ==========================================================================
    Component: Badge
- ========================================================================== */
+ ============================================================================ */
 
-.am-badge {
+.@{ns}badge {
   display: inline-block;
   min-width: 10px;
-  padding: 3px 7px;
+  padding: 0.25em 0.625em;
   font-size: @font-size-xs;
   font-weight: @badge-font-weight;
   color: @badge-color;
@@ -34,50 +35,63 @@
     display: none;
   }
 
-  a& {
-    &:hover,
-    &:focus {
-      color: @badge-link-hover-color;
-      text-decoration: none;
-      cursor: pointer;
-    }
+  &.@{ns}square {
+     border-radius: 0;
+  }
+
+  &.@{ns}radius {
+    border-radius: @radius-normal;
+  }
+
+  &.@{ns}round {
+    border-radius: @global-rounded;
+  }
+
+  .hook-badge;
+}
+
+// link badge
+a.@{ns}badge {
+  &:hover,
+  &:focus {
+    color: @badge-link-hover-color;
+    text-decoration: none;
+    cursor: pointer;
   }
 }
 
 
-
 // Color modifier
-// ========================================================================
+// =============================================================================
 
-.am-badge-primary {
+.@{ns}badge-primary {
   background-color: @badge-primary-bg;
   .hook-badge-primary;
 }
 
-.am-badge-success {
-  background-color: @badge-success-bg;
-  .hook-badge-success;
-}
-
-.am-badge-warning {
-  background-color: @badge-warning-bg;
-  .hook-badge-warning;
-}
-
-.am-badge-danger {
-  background-color: @badge-danger-bg;
-  .hook-badge-danger;
-}
-
-.am-badge-secondary {
+.@{ns}badge-secondary {
   background-color: @badge-secondary-bg;
   .hook-badge-secondary;
 }
 
+.@{ns}badge-success {
+  background-color: @badge-success-bg;
+  .hook-badge-success;
+}
+
+.@{ns}badge-warning {
+  background-color: @badge-warning-bg;
+  .hook-badge-warning;
+}
+
+.@{ns}badge-danger {
+  background-color: @badge-danger-bg;
+  .hook-badge-danger;
+}
 
 
 // Hooks
-// ========================================================================
+// =============================================================================
 
 .hook-badge() {}
 .hook-badge-primary() {}

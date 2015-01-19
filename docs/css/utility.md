@@ -9,18 +9,9 @@
 
 #### 基本容器
 
-`.am-container`，盒模型为 `border-box`，水平居中对齐，清除浮动。
+~~`.am-container`，盒模型为 `border-box`，水平居中对齐，清除浮动。~~
 
-```css
-.am-container {
-  .box-sizing(border-box);
-  margin-left: auto;
-  margin-right: auto;
-  width: 100%;
-  max-width: 1000px;
-  .clearfix();
-}
-```
+`.am-container` 放到了[网格](/css/grid?_ver=2.x)里面。
 
 #### 水平滚动
 
@@ -602,17 +593,17 @@
 
 `````html
 <div class="am-g">
-  <div class="col-md-4">
+  <div class="am-u-md-4">
     <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView/1/w/120/h/120" alt="" width="48" height="48"/>
     <span class="am-text-top">顶部对齐</span>
   </div>
 
-  <div class="col-md-4">
+  <div class="am-u-md-4">
     <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView/1/w/120/h/120" alt="" width="48" height="48"/>
     <span class="am-text-middle">居中对齐</span>
   </div>
 
-  <div class="col-md-4">
+  <div class="am-u-md-4">
     <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView/1/w/120/h/120" alt="" width="48" height="48"/>
     <span class="am-text-bottom">底部对齐</span>
   </div>
@@ -674,7 +665,7 @@
 
 #### 多行文字截断
 
-在只针对 PC 端开发时代，我们可以通过后端控制输出文字的长度来实现固定行数的效果。
+在只针对 PC 端开发的年代，可以通过后端控制输出文字的长度来实现固定行数的效果。
 
 但在响应式页面，这可能不再适用，只能输出足够多的文字，然后通过前端截取需要的行数。
 
@@ -712,6 +703,7 @@ __参考链接__
 - [Line Clampin’ - Truncating Multiple Line Text](http://css-tricks.com/line-clampin/)
 - [CSS Ellipsis: How to Manage Multi-Line Ellipsis in Pure CSS](http://www.mobify.com/blog/multiline-ellipsis-in-pure-css/)
 - [Clamp.js](https://github.com/josephschmitt/Clamp.js)
+- [TextTailor.JS](https://github.com/jpntex/TextTailor.js)
 
 
 ### 图片替换

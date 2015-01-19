@@ -1,7 +1,7 @@
 {
     "name": "layout2",
 
-    "version": "1.0.0",
+    "version": "2.0.1",
 
     "localName": {
         "en": "2 Columns",
@@ -188,8 +188,6 @@
     },
 
     "readme": "http://docs.yunshipei.com/amui/#layout2",
-
-    "example": null,
 
     "hidden": false
 }

@@ -3,8 +3,6 @@
   */
 
 .am-tabs-one {
-  @one-primary: #15afef;
-
   @tabs-bg: @white;
   @tabs-nav-color: @one-primary;
   @tabs-nav-active-color: @white;
@@ -12,14 +10,13 @@
 
   @tabs-border-color: @one-primary;
 
-  @tabs-border-radius: @global-border-radius;
+  @tabs-border-radius: @global-radius;
 
   background: @tabs-bg;
 
   .am-tabs-nav {
     height: 36px;
     background-color: @tabs-bg;
-    border: 1px solid @tabs-border-color;
     font-size: 14px;
     border-radius: @tabs-border-radius;
 
@@ -30,8 +27,18 @@
     }
 
     li {
+      border: 1px solid @tabs-border-color;
+
+      &:first-child {
+        .border-left-radius(@tabs-border-radius)
+      }
+
+      &:last-child {
+        .border-right-radius(@tabs-border-radius)
+      }
+
       + li {
-        border-left: 1px solid @tabs-border-color;
+        border-left: none;
       }
     }
 
@@ -54,5 +61,4 @@
   .hook-am-tabs-one;
 }
 
-.hook-am-tabs-one() {
-}
+.hook-am-tabs-one() {}

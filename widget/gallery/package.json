@@ -1,7 +1,7 @@
 {
     "name": "gallery",
 
-    "version": "1.2.0",
+    "version": "2.0.2",
 
     "localName": {
         "en": "Gallery",
@@ -32,9 +32,6 @@
     "template": "gallery.hbs",
 
     "styleDependencies": [
-        "button.less",
-        "ui.share.less",
-        "ui.modal.less",
         "ui.pureview.less"
     ],
 
@@ -336,10 +333,8 @@
     ],
 
     "jsDependencies": [
-        "zepto.pinchzoom.js",
-        "ui.pureview.js",
-        "ui.share.js",
-        "ui.modal.js"
+        "ui.pinchzoom.js",
+        "ui.pureview.js"
     ],
 
     "script": "gallery.js",
@@ -444,8 +439,6 @@
     },
 
     "readme": "http://docs.yunshipei.com/amui/#gallery",
-
-    "example": "/*\n 此模块的使用方法：采集原PC网站上的图片数据以及标题内容放到此模块。\n \n 常用用途：通常用来采集一些有多张图片以及图片注释文字的PC内容。\n \n 了解AMUI的模块详情，请访问http://ide.yunshipei.com/doc/amui/#gallery。\n\n\n         示例代码：\n        \n         var data = [];\n         $(\".listpart\").eq(1).find(\"li\").each(function(){\n             data.push({\n                 \"img\": $(this).find(\".news-pic\").find(\"img\").src(),  \n                 \"link\": $(this).find(\".news-pic\").find(\"img\").src(), \n                 \"title\": $(this).find(\".headline\").find(\"a\").text()  \n             });\n         });\n         return data;\n*/\n\nvar data = [\n    {\n        \"img\": \"\",      // 图片地址\n        \"link\": \"\",     // 填写点击图片弹出放大时的图片路径\n        \"title\": \"\",    // 图片标题\n        \"desc\": \"\"      // 附加信息，支持DOM，为高级定制提供DOM接口\n    }\n];\nreturn data;\n",
 
     "hidden": false
 }

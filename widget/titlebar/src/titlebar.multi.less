@@ -9,7 +9,7 @@
   @titlebar-border-bottom-color: darken(@titlebar-bg, 5%);
   @titlebar-link-color: @global-primary;
 
-  .flexbox();
+  display: flex;
   background-color: @titlebar-bg;
   border-top: 2px solid @titlebar-border-top-color;
   border-bottom: 1px solid @titlebar-border-bottom-color;
@@ -28,10 +28,10 @@
   }
 
   .am-titlebar-nav {
-    .flex();
+    flex: 1;
     text-align: right;
     line-height: 42px;
-    
+
     a {
       margin-right: 10px;
     }

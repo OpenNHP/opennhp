@@ -3,7 +3,7 @@
   */
 
 .am-gotop-fixed {
-  @gotop-border-radius: @global-border-radius;
+  @gotop-border-radius: @global-radius;
   @gotop-icon-bg: @gray;
   @gotop-icon-color: #ddd;
   @gotop-icon-hover-color: #fff;
@@ -12,7 +12,7 @@
   right: 10px;
   bottom: 10px;
   z-index: @global-z-index + 10;
-  opacity: .9;
+  opacity: 0;
 
   width: 32px;
   min-height: 32px;
@@ -20,8 +20,12 @@
   border-radius: @gotop-border-radius;
   text-align: center;
 
-  &:hover {
-    opacity: 1;
+  &.am-active {
+    opacity: .9;
+
+    &:hover {
+      opacity: 1;
+    }
   }
 
   a {
@@ -48,6 +52,10 @@
     &:hover {
       color: @gotop-icon-hover-color;
     }
+  }
+
+  .am-with-fixed-navbar & {
+    bottom: 60px;
   }
 
   .hook-am-gotop-fixed;

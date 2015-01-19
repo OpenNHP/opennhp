@@ -18,9 +18,12 @@
 
   .am-menu-toggle {
     position: absolute;
-    right: 10px;
-    top: -35px;
+    right: 5px;
+    top: -47px;
     display: block;
+    .square(44px);
+    line-height: 44px;
+    text-align: center;
     color: @menu-toggle-color;
   }
 
@@ -30,7 +33,7 @@
     right: 0;
     background-color: @menu-nav-top-link-bg;
     box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
-    z-index: @z-index-dropdown;
+    z-index: @z-index-menu;
     padding-top: 8px;
     padding-bottom: 8px;
 
@@ -50,10 +53,11 @@
       &.am-parent {
         > a {
           position: relative;
+
           &:after {
             content: @fa-var-angle-down;
             margin-left: 5px;
-            .transition(0.2s);
+            transition: transform .2s;
           }
         }
 
@@ -61,10 +65,11 @@
         &.am-open {
           > a {
             position: relative;
+
             &:after {
               // content: @fa-var-angle-up;
               color: @menu-nav-top-link-active-color;
-              .rotateX(180deg);
+              transform: rotate(180deg);
             }
 
             &:before {
@@ -91,7 +96,7 @@
     border-radius: 2px;
     box-shadow: 0 0 3px rgba(0, 0, 0, 0.15);
     background-color: @menu-nav-sub-link-bg;
-    z-index: @z-index-dropdown + 5;
+    z-index: @z-index-menu + 5;
 
     a {
       padding: 0;
@@ -127,7 +132,7 @@
     .am-menu-sub {
       left: auto;
       right: auto;
-      z-index: @z-index-dropdown + 1;
+
       & > li {
         float: none;
         width: auto;
@@ -141,5 +146,4 @@
   }
 }
 
-.hook-am-menu-dropdown2() {
-}
+.hook-am-menu-dropdown2() {}

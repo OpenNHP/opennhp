@@ -1,19 +1,22 @@
 // Name:                       Print
+//
 // Description:                Optimize page for printing
 //
 // Modifiers:                  ``
 //
 // Source: https://github.com/h5bp/html5-boilerplate/blob/master/css/main.css
 //
-// ========================================================================
+// =============================================================================
 
-/* ========================================================================
+
+/* ==========================================================================
    Component: Print
- ========================================================================== */
+ ============================================================================ */
 
 @media print {
-
-  * {
+  *,
+  *:before,
+  *:after {
     background: transparent !important;
     color: #000 !important; /* Black prints faster: h5bp.com/s */
     box-shadow: none !important;
@@ -34,9 +37,9 @@
   }
 
   /**
-  * Don't show links that are fragment identifiers,
-  * or use the `javascript:` pseudo protocol
-  */
+   * Don't show links that are fragment identifiers,
+   * or use the `javascript:` pseudo protocol
+   */
   a[href^="javascript:"]:after,
   a[href^="#"]:after {
     content: "";
@@ -83,22 +86,22 @@
   }
 
   // components
-  .am-mainnav {
+  .@{ns}topbar {
     display: none;
   }
 
-  .am-table {
+  .@{ns}table {
     td,
     th {
       background-color: #fff !important;
     }
   }
 
-  .am-table {
+  .@{ns}table {
     border-collapse: collapse !important;
   }
 
-  .am-table-bordered {
+  .@{ns}table-bordered {
     th,
     td {
       border: 1px solid #ddd !important;
@@ -107,10 +110,9 @@
 }
 
 
+/* print helper classes */
 
-// helper classes
-
-.am-print-block {
+.@{ns}print-block {
   display: none !important;
 
   @media print {
@@ -118,7 +120,7 @@
   }
 }
 
-.am-print-inline {
+.@{ns}print-inline {
   display: none !important;
 
   @media print {
@@ -126,7 +128,7 @@
   }
 }
 
-.am-print-inline-block {
+.@{ns}print-inline-block {
   display: none !important;
 
   @media print {
@@ -134,7 +136,7 @@
   }
 }
 
-.am-print-hide {
+.@{ns}print-hide {
   @media print {
     display: none !important;
   }

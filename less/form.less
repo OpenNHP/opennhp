@@ -1,12 +1,18 @@
 // Name:                       Forms
+//
 // Description:                Define style for form elements
 //
-// Modifiers:                  `.pre-scrollable`
+// Component:                 `.am-form`
 //
-// ==========================================================================
+// Modifiers:                  ``
+//
+// =============================================================================
 
+/* ==========================================================================
+   Component: Form
+ ============================================================================ */
 
-/* Normalize non-controls */
+/* Normalize */
 
 // Restyle and baseline non-control form elements.
 
@@ -31,18 +37,14 @@ label {
   font-weight: bold;
 }
 
-
 // Normalize form controls
 
 // Override content-box in Normalize
-
 input[type="search"] {
-  .box-sizing(border-box);
+  box-sizing: border-box;
 }
 
-
 // Position radios and checkboxes better
-
 input[type="radio"],
 input[type="checkbox"] {
   margin: 4px 0 0;
@@ -50,30 +52,23 @@ input[type="checkbox"] {
   line-height: normal;
 }
 
-
 // Set the height of select and file controls to match text inputs
-
 input[type="file"] {
   display: block;
 }
 
-
 // Make multiple select elements height not fixed
-
 select[multiple],
 select[size] {
   height: auto;
 }
 
-
 // Fix optgroup Firefox bug per https://github.com/twbs/bootstrap/issues/7611
-
 select optgroup {
   font-size: inherit;
   font-style: inherit;
   font-family: inherit;
 }
-
 
 // Focus for select, file, radio, and checkbox
 
@@ -82,7 +77,6 @@ input[type="radio"]:focus,
 input[type="checkbox"]:focus {
   .tab-focus();
 }
-
 
 // Fix for Chrome number input
 // Setting certain font-sizes causes the `I` bar to appear on hover of the bottom increment button.
@@ -96,7 +90,6 @@ input[type="number"] {
 }
 
 // Adjust output element
-
 output {
   display: block;
   padding-top: @global-spacing;
@@ -106,27 +99,25 @@ output {
   vertical-align: middle;
 }
 
+/* Common form controls */
 
-
-// Common form controls
-
-.am-form select,
-.am-form textarea,
-.am-form input[type="text"],
-.am-form input[type="password"],
-.am-form input[type="datetime"],
-.am-form input[type="datetime-local"],
-.am-form input[type="date"],
-.am-form input[type="month"],
-.am-form input[type="time"],
-.am-form input[type="week"],
-.am-form input[type="number"],
-.am-form input[type="email"],
-.am-form input[type="url"],
-.am-form input[type="search"],
-.am-form input[type="tel"],
-.am-form input[type="color"],
-.am-form-field {
+.@{ns}form select,
+.@{ns}form textarea,
+.@{ns}form input[type="text"],
+.@{ns}form input[type="password"],
+.@{ns}form input[type="datetime"],
+.@{ns}form input[type="datetime-local"],
+.@{ns}form input[type="date"],
+.@{ns}form input[type="month"],
+.@{ns}form input[type="time"],
+.@{ns}form input[type="week"],
+.@{ns}form input[type="number"],
+.@{ns}form input[type="email"],
+.@{ns}form input[type="url"],
+.@{ns}form input[type="search"],
+.@{ns}form input[type="tel"],
+.@{ns}form input[type="color"],
+.@{ns}form-field {
   display: block;
   width: 100%;
   padding: @input-padding;
@@ -138,8 +129,10 @@ output {
   background-image: none;
   border: 1px solid @input-border;
   border-radius: @input-border-radius;
-  //.box-shadow(inset 0 1px 1px rgba(0,0,0,.075));
-  .transition(~"border-color ease-in-out .15s, box-shadow ease-in-out .15s");
+  -webkit-appearance: none;
+  transition: border-color .15s ease-in-out, box-shadow .15s ease-in-out;
+
+  .hook-form;
 
   // `:focus` state
   &:focus {
@@ -147,7 +140,13 @@ output {
   }
   .form-field-focus(@input-border-focus);
 
-  .placeholder();
+  &::placeholder {
+    color: @input-color-placeholder;
+  }
+
+  &::-moz-placeholder {
+    opacity: 1;
+  }
 
   // Disabled and read-only inputs
   &[disabled],
@@ -155,49 +154,42 @@ output {
   fieldset[disabled] & {
     cursor: not-allowed;
     background-color: @input-bg-disabled;
+
+    .hook-form-disabled;
+  }
+
+  &.@{ns}radius {
+    border-radius: @radius-normal;
+  }
+
+  &.@{ns}round {
+    border-radius: @global-rounded;
   }
 }
 
-.am-form {
+.@{ns}form {
   // Reset height for block field
   textarea,
   select[multiple],
-  select[size]  {
+  select[size] {
     height: auto;
   }
-}
-
-.am-form-select {
-  position: relative;
 
   select {
-    // height: @form-select-height;
-    -webkit-appearance: none;
+    // via Foundation
+    -webkit-appearance: none !important;
+    -webkit-border-radius: @global-radius;
+    background: #fff url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMTJweCIgeT0iMHB4IiB3aWR0aD0iMjRweCIgaGVpZ2h0PSIzcHgiIHZpZXdCb3g9IjAgMCA2IDMiIGVuYWJsZS1iYWNrZ3JvdW5kPSJuZXcgMCAwIDYgMyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+PHBvbHlnb24gcG9pbnRzPSI1Ljk5MiwwIDIuOTkyLDMgLTAuMDA4LDAgIi8+PC9zdmc+') no-repeat 100% center;
 
-    &.am-input-lg {
-      //height: @form-select-height-lg;
+    &[multiple="multiple"] {
+      background-image: none;
     }
-    &.am-input-sm {
-      //height: @form-select-height-sm;
-    }
-  }
-
-  //&:not(*:root)
-
-  &:after {
-    // only for webkit browsers
-    position: absolute;
-    right: 5px;
-    margin-top: -24px;
-    content: '';
-    .caret-down(6px, @gray-light);
   }
 }
 
+/* help text */
 
-// help text
-
-.am-form-help {
+.@{ns}form-help {
   display: block;
   margin-top: 5px;
   margin-bottom: 10px;
@@ -205,19 +197,19 @@ output {
   font-size: 1.3rem;
 }
 
+/* form group */
 
-// form group
-
-.am-form-group {
+.@{ns}form-group {
   margin-bottom: 1.5rem;
 }
 
+/**
+ * Checkboxes and radios
+ * Indent the labels to position radios/checkboxes as hanging controls.
+*/
 
-// Checkboxes and radios
-// Indent the labels to position radios/checkboxes as hanging controls.
-
-.am-radio,
-.am-checkbox {
+.@{ns}radio,
+.@{ns}checkbox {
   display: block;
   min-height: @form-font-size * @form-line-height;
   margin-top: 10px;
@@ -232,24 +224,24 @@ output {
   }
 }
 
-.am-radio input[type="radio"],
-.am-radio-inline input[type="radio"],
-.am-checkbox input[type="checkbox"],
-.am-checkbox-inline input[type="checkbox"] {
+.@{ns}radio input[type="radio"],
+.@{ns}radio-inline input[type="radio"],
+.@{ns}checkbox input[type="checkbox"],
+.@{ns}checkbox-inline input[type="checkbox"] {
   float: left;
   margin-left: -20px;
   outline: none;
 }
-.am-radio + .am-radio,
-.am-checkbox + .am-checkbox {
+
+.@{ns}radio + .@{ns}radio,
+.@{ns}checkbox + .@{ns}checkbox {
   margin-top: -5px; // Move up sibling radios or checkboxes for tighter spacing
 }
 
+/* Radios and checkboxes inline */
 
-// Radios and checkboxes inline
-
-.am-radio-inline,
-.am-checkbox-inline {
+.@{ns}radio-inline,
+.@{ns}checkbox-inline {
   display: inline-block;
   padding-left: 20px;
   margin-bottom: 0;
@@ -258,190 +250,200 @@ output {
   cursor: pointer;
 }
 
-.am-radio-inline + .am-radio-inline,
-.am-checkbox-inline + .am-checkbox-inline {
+.@{ns}radio-inline + .@{ns}radio-inline,
+.@{ns}checkbox-inline + .@{ns}checkbox-inline {
   margin-top: 0;
   margin-left: 10px; // space out consecutive inline controls
 }
-
 
 // Apply same disabled cursor tweak as for inputs
 //
 // Note: Neither radios nor checkboxes can be readonly.
 input[type="radio"],
 input[type="checkbox"],
-.am-radio,
-.am-radio-inline,
-.am-checkbox,
-.am-checkbox-inline {
+.@{ns}radio,
+.@{ns}radio-inline,
+.@{ns}checkbox,
+.@{ns}checkbox-inline {
   &[disabled],
   fieldset[disabled] & {
     cursor: not-allowed;
+    .hook-form-disabled;
   }
 }
-
-
 
 /* Form field feedback states */
 
 // Warning
-.am-form-warning {
+.@{ns}form-warning {
   .form-field-validation(@state-warning-text; @state-warning-text);
+  .@{ns}form-field {
+    .form-field-validation-filed(@state-warning-text; @state-warning-text);
+  }
+  .hook-form-warning;
 }
+
 // Error
-.am-form-error {
+.@{ns}form-error {
   .form-field-validation(@state-danger-text; @state-danger-text);
+  .hook-form-error;
 }
+
+.@{ns}form-error .@{ns}form-field,
+.@{ns}field-error {
+  .form-field-validation-filed(@state-danger-text; @state-danger-text);
+}
+
 // Success
-.am-form-success {
+.@{ns}form-success {
   .form-field-validation(@state-success-text; @state-success-text);
+  .hook-form-success;
 }
 
-
+.@{ns}form-success .@{ns}form-field,
+.@{ns}field-valid {
+  .form-field-validation-filed(@state-success-text; @state-success-text);
+}
 
 /* Horizontal forms */
 
-.am-form-horizontal {
-  .am-form-label,
-  .am-radio,
-  .am-checkbox,
-  .am-radio-inline,
-  .am-checkbox-inline {
+.@{ns}form-horizontal {
+  .@{ns}form-label,
+  .@{ns}radio,
+  .@{ns}checkbox,
+  .@{ns}radio-inline,
+  .@{ns}checkbox-inline {
     margin-top: 0;
     margin-bottom: 0;
     padding-top: 0.6em;
   }
 
-  .am-form-group {
+  .@{ns}form-group {
     .clearfix();
   }
 
   @media @medium-up {
-    .am-form-label {
+    .@{ns}form-label {
       text-align: right;
     }
   }
+
+  .hook-form-horizontal;
 }
 
+/* Inline form elements */
 
-
-// Inline form elements
-
-.am-form-inline {
-
+.@{ns}form-inline {
   @media @medium-up {
-    .am-form-group {
+    .@{ns}form-group {
       display: inline-block;
       margin-bottom: 0;
       vertical-align: middle;
     }
 
-    .am-form-field {
+    .@{ns}form-field {
       display: inline-block;
       width: auto;
       vertical-align: middle;
     }
 
-    .am-input-group {
+    .@{ns}input-group {
       display: inline-table;
       vertical-align: middle;
 
-      .am-input-group-addon,
-      .am-input-group-btn,
-      .am-form-control {
+      .@{ns}input-group-addon,
+      .@{ns}input-group-btn,
+      .@{ns}form-control {
         width: auto;
       }
     }
 
     // Input groups need that 100% width though
-    .am-input-group > .am-form-field {
+    .@{ns}input-group > .@{ns}form-field {
       width: 100%;
     }
 
-    .am-form-label {
+    .@{ns}form-label {
       margin-bottom: 0;
       vertical-align: middle;
     }
 
     // Remove default margin on radios/checkboxes that were used for stacking, and
     // then undo the floating of radios and checkboxes to match (which also avoids
-
-    .am-radio,
-    .am-checkbox {
+    .@{ns}radio,
+    .@{ns}checkbox {
       display: inline-block;
       margin-top: 0;
       margin-bottom: 0;
       padding-left: 0;
       vertical-align: middle;
     }
-    .am-radio input[type="radio"],
-    .am-checkbox input[type="checkbox"] {
+
+    .@{ns}radio input[type="radio"],
+    .@{ns}checkbox input[type="checkbox"] {
       float: none;
       margin-left: 0;
     }
 
     // Validation states
-
-    .am-form-feedback .am-form-field-feedback {
+    .@{ns}form-feedback .@{ns}form-field-feedback {
       top: 0;
     }
   }
+  .hook-form-inline;
 }
-
-
 
 /* Form field size */
 
-.am-input-sm {
+.@{ns}input-sm {
   font-size: @form-font-size-sm !important;
 }
 
-.am-input-lg {
+.@{ns}input-lg {
   font-size: @form-font-size-lg !important;
 }
 
-
-
 /* Form field feedback states */
 
-.am-form-icon {
+.@{ns}form-icon {
   position: relative;
 
-  .am-form-field {
+  .@{ns}form-field {
     padding-left: @input-padding + 1.25 !important;
   }
 
-  [class*='am-icon-'] {
+  [class*='@{ns}icon-'] {
     position: absolute;
     left: @input-padding;
-    top:  50%;
+    top: 50%;
     display: block;
-    margin-top: -(@input-padding + 0.15);
+    margin-top: -(@input-padding + 0.01);
+    line-height: 1;
     z-index: 2;
   }
+  .hook-form-icon;
 }
-
 
 /* Feedback Icon */
 
-.am-form-feedback {
+.@{ns}form-feedback {
   position: relative;
 
-  .am-form-field {
+  .@{ns}form-field {
     padding-left: @input-padding !important;
     padding-right: @input-padding + 1.25 !important;
   }
 
-  [class*='am-icon-'] {
+  [class*='@{ns}icon-'] {
     right: @input-padding;
     left: auto;
   }
+  .hook-form-feedback;
 }
-
 
 /* Form set */
 
-.am-form-set {
+.@{ns}form-set {
   margin-bottom: 1.5rem;
   padding: 0;
   > input {
@@ -454,12 +456,27 @@ input[type="checkbox"],
 
     &:first-child {
       top: 1px;
-      .border-top-radius(@input-border-radius) !important;
+      .border-top-radius(~"@{input-border-radius} !important");
     }
 
     &:last-child {
       top: -2px;
-      .border-bottom-radius(@input-border-radius) !important;
+      .border-bottom-radius(~"@{input-border-radius} !important");
     }
   }
+  .hook-form-set;
 }
+
+// Hooks
+// =============================================================================
+
+.hook-form() {}
+.hook-form-disabled() {}
+.hook-form-horizontal() {}
+.hook-form-inline() {}
+.hook-form-icon() {}
+.hook-form-feedback() {}
+.hook-form-set() {}
+.hook-form-error() {}
+.hook-form-warning() {}
+.hook-form-success() {}

@@ -1,5 +1,9 @@
-# Pagination 更新日志
+# Pagination 更细记录
 ---
+
+## v3.0.1 (2015.01.09)
+
+- `CHANGED` 删除 ide 示例接口字段 example。
 
 ## v3.0.0 (2014.08.17)
 

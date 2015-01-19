@@ -2,10 +2,10 @@
   <div data-am-widget="navbar" class="am-navbar am-cf {{#if theme}}am-navbar-{{theme}}{{else}}am-navbar-default{{/if}} {{#if options.iconPosition}}am-navbar-inline{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"
       id="{{id}}">
     {{#if content}}
-      <ul class="am-navbar-nav am-cf {{#if options.cols}}sm-block-grid-{{options.cols}}{{/if}}">
+      <ul class="am-navbar-nav am-cf {{#if options.cols}}am-avg-sm-{{options.cols}}{{/if}}">
         {{#each content}}
           <li {{#if dataApi}}{{dataApi}}{{/if}}>
-            <a href="{{link}}">
+            <a href="{{link}}" class="{{className}}">
               {{#if customIcon}}
                 <img src="{{customIcon}}" alt="{{title}}"/>
               {{else}}

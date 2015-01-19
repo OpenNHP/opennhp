@@ -1,39 +1,43 @@
-define(function (require, exports, module) {
-    var $ = window.Zepto,
+'use strict';
 
-        listNewsInit = function () {
-            $('.am-list-news-one').each(function() {
-                amListNewsMore($(this));
-            });
-        };
+var $ = require('jquery');
+require('./core');
 
-    function amListNewsMore(object) {
-        var $amList = object.find(".am-list");
+function listNewsInit() {
+  $('.am-list-news-one').each(function() {
+    amListNewsMore($(this));
+  });
+}
 
-        var $listMore = "<a class='am-list-news-more am-btn am-btn-default' href='###'>更多 &gt;&gt;</a>";
+function amListNewsMore($element) {
+  var $amList = $element.find('.am-list');
 
-        if ($amList.children().length > 6) {
+  var $listMore = '<a class="am-list-news-more am-btn am-btn-default" ' +
+    'href="javascript:;">更多 &gt;&gt;</a>';
 
-            $amList.children().each(function (index) {
-                if (index > 5) {
-                    $(this).hide();
-                }
-            });
+  if ($amList.children().length > 6) {
 
-            object.find('.am-list-news-more').remove();
-            object.append($listMore);
-        }
-
-        object.find(".am-list-news-more").on("click", function() {
-            $amList.children().show();
-            $(this).hide();
-        });
-    }
-
-
-    $(function () {
-        listNewsInit();
+    $amList.children().each(function(index) {
+      if (index > 5) {
+        $(this).hide();
+      }
     });
 
-    exports.init = listNewsInit;
+    $element.find('.am-list-news-more').remove();
+    $element.append($listMore);
+  }
+
+  $element.find('.am-list-news-more').on('click', function() {
+    $amList.children().show();
+    $(this).hide();
+  });
+}
+
+$(function() {
+  listNewsInit();
 });
+
+module.exports = $.AMUI.listNews = {
+  VERSION: '3.0.2',
+  init: listNewsInit
+};

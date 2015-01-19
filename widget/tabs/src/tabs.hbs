@@ -1,7 +1,7 @@
-{{#this }}
+{{#this}}
   <div data-am-widget="tabs"
        class="am-tabs{{#if theme}} am-tabs-{{theme}}{{else}} am-tabs-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"
-       {{#if id}}id="{{id}}"{{/if}}>
+       {{#if id}}id="{{id}}"{{/if}} {{#if options.noSwipe}}data-am-tabs-noswipe="1"{{/if}}>
     {{#if content}}
       <ul class="am-tabs-nav am-cf">
         {{#each content}}
@@ -17,4 +17,4 @@
       </div>
     {{/if}}
   </div>
-{{/this }}
+{{/this}}

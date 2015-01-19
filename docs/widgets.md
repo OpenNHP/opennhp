@@ -1,11 +1,21 @@
+---
+id: widgets
+title: Web 组件
+titleEn: Web Components
+permalink: widgets.html
+next: widgets/accordion.html
+---
+
 # Web 组件
 ---
 
 Amaze UI Web 组件把一些常见的网页组件拆分成不同的部分，进行类似 Web Components 的封装（[Web 组件简介](/getting-started/widget-dev)、[开发规范](/getting-started/widget)）。
 
+<div class="am-alert am-alert-danger"><strong>注意：</strong>Web 组件不考虑 IE 8/9 支持。</div>
+
 ## Web 组件演示
-    
-Amaze UI 目前封装了 10 余个主要面向移动端的 Web 组件。
+
+Amaze UI 目前封装了 10 余个主要面向移动端的 Web 组件（[独立窗口中浏览 Demo](/widgets/m)）。
 
 <iframe src="/widgets/m" frameborder="0" id="doc-widget-frame" frameborder="0"></iframe>
 
@@ -28,11 +38,11 @@ __要点如下：__
 
 ```javascript
 $(function() {
-  var $tpl = $('#amz-tpl'),
-      source = $tpl.text(),
-      template = Handlebars.compile(source),
-      data = {},
-      html = template(data);
+  var $tpl = $('#amz-tpl');
+  var source = $tpl.text();
+  var template = Handlebars.compile(source);
+  var data = {};
+  var html = template(data);
 
   $tpl.before(html);
 });
@@ -56,9 +66,9 @@ app.set('view engine', 'hbs');
 
 hbs.registerPartials(widgetDir + '/slider/src');
 ```
-    
+
 __然后__， 在页面模板中调用 `partial`，其中 `data` 为组件对应的数据。
-    
+
 ```javascript
 {{>slider data}}
 ```
@@ -75,48 +85,48 @@ __然后__， 在页面模板中调用 `partial`，其中 `data` 为组件对应
 
 - [Handlebars.java](https://github.com/jknack/handlebars.java)
 - [When Handlebars.js met Handlebars.java](http://jknack.github.io/handlebars.java/meeting.html)
-    
+
 #### 必须的 helper
-    
+
 无论你在上面那种环境中使用 Web 组件，都必须注册下面的 helper（我们提供的 `amui.widget.helper.js` 和 Node.js 模块中已经注册）:
-    
+
 ```javascript
 (function(hbs) {
-    hbs.registerHelper("ifCond", function(v1, operator, v2, options) {
-        switch (operator) {
-            case "==":
-                return (v1 == v2) ? options.fn(this) : options.inverse(this);
+  hbs.registerHelper("ifCond", function(v1, operator, v2, options) {
+    switch (operator) {
+      case "==":
+        return (v1 == v2) ? options.fn(this) : options.inverse(this);
 
-            case "!=":
-                return (v1 != v2) ? options.fn(this) : options.inverse(this);
+      case "!=":
+        return (v1 != v2) ? options.fn(this) : options.inverse(this);
 
-            case "===":
-                return (v1 === v2) ? options.fn(this) : options.inverse(this);
+      case "===":
+        return (v1 === v2) ? options.fn(this) : options.inverse(this);
 
-            case "!==":
-                return (v1 !== v2) ? options.fn(this) : options.inverse(this);
+      case "!==":
+        return (v1 !== v2) ? options.fn(this) : options.inverse(this);
 
-            case "&&":
-                return (v1 && v2) ? options.fn(this) : options.inverse(this);
+      case "&&":
+        return (v1 && v2) ? options.fn(this) : options.inverse(this);
 
-            case "||":
-                return (v1 || v2) ? options.fn(this) : options.inverse(this);
+      case "||":
+        return (v1 || v2) ? options.fn(this) : options.inverse(this);
 
-            case "<":
-                return (v1 < v2) ? options.fn(this) : options.inverse(this);
+      case "<":
+        return (v1 < v2) ? options.fn(this) : options.inverse(this);
 
-            case "<=":
-                return (v1 <= v2) ? options.fn(this) : options.inverse(this);
+      case "<=":
+        return (v1 <= v2) ? options.fn(this) : options.inverse(this);
 
-            case ">":
-                return (v1 > v2) ? options.fn(this) : options.inverse(this);
+      case ">":
+        return (v1 > v2) ? options.fn(this) : options.inverse(this);
 
-            case ">=":
-                return (v1 >= v2) ? options.fn(this) : options.inverse(this);
+      case ">=":
+        return (v1 >= v2) ? options.fn(this) : options.inverse(this);
 
-            default:
-                return eval("" + v1 + operator + v2) ? options.fn(this) : options.inverse(this);
-        }
+      default:
+        return eval("" + v1 + operator + v2) ? options.fn(this) : options.inverse(this);
+    }
 })(Handlebars);
 ```
 

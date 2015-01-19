@@ -1,20 +1,80 @@
-// Name:                       Table
+// Name:                      Table
 //
-// Description:                Defines styles for tables
+// Description:               Define style for table
 //
-// Component:                `am-table`
+// Component:                `.am-table`
 //
-// Modifiers:                `am-table-bd`
-//                           `am-table-bdrs`
-//                           `am-table-striped`
-//                           `am-table-hover`
+// Modifiers:                `.am-table-bordered`
+//                           `.am-table-radius`
+//                           `.am-table-striped`
+//                           `.am-table-hover`
 //
-// ========================================================================
+// =============================================================================
 
 
-/* ========================================================================
+// Table mixin
+// =============================================================================
+
+.table-row-variant(@state; @background; @border) {
+  // Exact selectors below required to override `.table-striped` and prevent
+  // inheritance to nested tables.
+  .table > thead > tr,
+  .table > tbody > tr,
+  .table > tfoot > tr {
+    > td.@{state},
+    > th.@{state},
+    &.@{state} > td,
+    &.@{state} > th {
+      background-color: @background;
+      border-color: @border;
+    }
+  }
+
+  // Hover states for `.table-hover`
+  // Note: this is not available for cells or rows within `thead` or `tfoot`.
+  .@{ns}table-hover > tbody > tr {
+    > td.@{state}:hover,
+    > th.@{state}:hover,
+    &.@{state}:hover > td,
+    &.@{state}:hover > th {
+      background-color: darken(@background, 5%);
+      border-color: darken(@border, 5%);
+    }
+  }
+}
+
+.table-state-variant(@state; @bg; @color) when (@color = '') {
+  > td.@{ns}@{state},
+  > th.@{ns}@{state},
+  &.@{ns}@{state} > td,
+  &.@{ns}@{state} > th {
+    background-color: @bg;
+  }
+}
+
+.table-state-variant(@state; @bg; @color) when (@bg = '') {
+  > td.@{ns}@{state},
+  > th.@{ns}@{state},
+  &.@{ns}@{state} > td,
+  &.@{ns}@{state} > th {
+    color: @color;
+  }
+}
+
+.table-state-variant(@state; @bg; @color) when not (@bg = '') and not (@color =  '') {
+  > td.@{ns}@{state},
+  > th.@{ns}@{state},
+  &.@{ns}@{state} > td,
+  &.@{ns}@{state} > th {
+    color: @color;
+    background-color: @bg;
+  }
+}
+
+
+/* ==========================================================================
    Component: Table
- ========================================================================== */
+ ============================================================================ */
 
 table {
   max-width: 100%;
@@ -31,10 +91,12 @@ th {
 }
 
 
-.am-table {
+.@{ns}table {
   width: 100%;
   margin-bottom: @global-margin;
-  .hook-table();
+  border-spacing: 0;
+  border-collapse: separate;
+  .hook-table;
 
   > thead,
   > tbody,
@@ -53,7 +115,7 @@ th {
   // Bottom align for headings
   > thead > tr > th {
     vertical-align: bottom;
-    border-bottom: 2px solid @table-border-color;
+    border-bottom: 1px solid @table-border-color;
   }
 
   // Remove top border from thead
@@ -70,17 +132,20 @@ th {
 
   // multiple tbody
   > tbody + tbody {
-    border-top: 2px solid @table-border-color;
+    tr:first-child {
+      td {
+        border-top: 2px solid @table-border-color;
+      }
+    }
   }
 
 }
 
 
 /* Bordered version */
-
-.am-table-bd {
+.@{ns}table-bordered {
   border: 1px solid @table-border-color;
-  .hook-table-bd();
+  .hook-table-bordered;
 
   > thead,
   > tbody,
@@ -88,14 +153,12 @@ th {
     > tr {
       > th,
       > td {
-        border: 1px solid @table-border-color;
+        border-left: 1px solid @table-border-color;
+
+        &:first-child {
+          border-left: none;
+        }
       }
-    }
-  }
-  > thead > tr {
-    > th,
-    > td {
-      border-bottom-width: 2px;
     }
   }
 }
@@ -103,23 +166,23 @@ th {
 
 /* Border-radius version */
 
-.am-table-bdrs {
-  border: none;
-  .box-shadow(0 0 1px @gray-light);
-  border-radius: @global-border-radius;
-  .hook-table-bdrs();
+.@{ns}table-radius {
+  border: 1px solid @table-border-color;
+  // box-shadow: 0 0 1px @gray-light;
+  border-radius: @radius-normal;
+  .hook-table-radius;
 
   > thead {
     > tr:first-child {
       > th:first-child,
       > td:first-child {
-        border-top-left-radius: @global-border-radius;
+        border-top-left-radius: @radius-normal;
         border-left: none;
       }
 
       > th:last-child,
       > td:last-child {
-        border-top-right-radius: @global-border-radius;
+        border-top-right-radius: @radius-normal;
         border-right: none;
       }
     }
@@ -146,12 +209,12 @@ th {
 
       > th:first-child,
       > td:first-child {
-        border-bottom-left-radius: @global-border-radius;
+        border-bottom-left-radius: @radius-normal;
       }
 
       > th:last-child,
       > td:last-child {
-        border-bottom-right-radius: @global-border-radius;
+        border-bottom-right-radius: @radius-normal;
       }
     }
   }
@@ -160,47 +223,46 @@ th {
 
 /* Zebra-striping */
 
-.am-table-striped > tbody > tr:nth-child(odd) {
+.@{ns}table-striped > tbody > tr:nth-child(odd) {
   > td,
   > th {
     background-color: @table-bg-striped;
-    .hook-table-striped();
+    .hook-table-striped;
   }
 }
 
 
 /* Hover effect */
 
-.am-table-hover > tbody > tr:hover {
+.@{ns}table-hover > tbody > tr:hover {
   > td,
   > th {
     background-color: @table-bg-hover;
-    .hook-table-hover();
+    .hook-table-hover;
   }
 }
 
 
-/* Active table backgrounds */
+// Modifiers: states
+// =============================================================================
 
-.am-table > thead > tr,
-.am-table > tbody > tr,
-.am-table > tfoot > tr {
-  > td.am-active,
-  > th.am-active,
-  &.am-active > td,
-  &.am-active > th  {
-    background-color: @table-bg-active;
-    .hook-table-active();
-  }
+.@{ns}table > thead > tr,
+.@{ns}table > tbody > tr,
+.@{ns}table > tfoot > tr {
+  .table-state-variant(active, @table-bg-active, '');
+  .table-state-variant(disabled; ''; @gray-light);
+  .table-state-variant(primary; @table-primary-bg; @table-primary-color);
+  .table-state-variant(success; @table-success-bg; @table-success-color);
+  .table-state-variant(warning; @table-warning-bg; @table-warning-color);
+  .table-state-variant(danger; @table-danger-bg; @table-danger-color);
 }
 
 
 // Hooks
-// ========================================================================
+// =============================================================================
 
 .hook-table() {}
-.hook-table-bd() {}
-.hook-table-bdrs() {}
+.hook-table-bordered() {}
+.hook-table-radius() {}
 .hook-table-striped() {}
 .hook-table-hover() {}
-.hook-table-active() {}

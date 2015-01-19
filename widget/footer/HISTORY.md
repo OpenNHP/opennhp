@@ -1,5 +1,25 @@
-# Footer 更细日志
+# Footer 更细记录
 ---
+
+## v3.1.2 (2015.01.09)
+
+- `CHANGED` 删除 ide 示例接口字段 example。
+
+## v3.1.1 (2014.12.16)
+
+- `CHANGED` add `addToHS` option, diable `addToHS` default
+
+## v3.1.0 (2014.12.08)
+
+- `CHANGED` Remove powered by。
+
+## v3.0.0 (2014.10.30)
+
+- `NEW` 使用 jQuery。
+
+## ver 2.2.0 (2014.10.20)
+
+- `NEW` 增加禁用【添加到桌面图标】接口。
 
 ## ver 2.1.1 (2014.04.11)
 

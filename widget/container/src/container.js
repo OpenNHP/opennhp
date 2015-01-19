@@ -1,4 +1,5 @@
-define(function(require, exports, module) {
-    var $ = window.Zepto;
+'use strict';
 
-});
+module.exports = {
+  VERSION: '2.0.1'
+};

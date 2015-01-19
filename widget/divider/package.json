@@ -1,7 +1,7 @@
 {
     "name": "divider",
 
-    "version": "1.0.0",
+    "version": "2.0.1",
 
     "localName": {
         "en": "Divider",
@@ -128,8 +128,6 @@
     },
 
     "readme": "http://docs.yunshipei.com/amui/#divider",
-
-    "example": "var data = {\n\t//无需填写数据\n};\nreturn data;",
 
     "hidden": false
 }

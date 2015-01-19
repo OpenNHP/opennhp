@@ -19,11 +19,9 @@
 - 将组件拖入编辑界面；
 - 点击右侧面板里的【数据采集】按钮，按以下格式采集数据。
 
-#### Amaze UI 1.0
-
 ```javascript
 var data = {
-  "title": "",			// 主标题
+  "title": "",		// 主标题
   "link": "",       // 主标题链接，可选
   "nav": [          // 右侧附加链接，可以为多个
     {
@@ -37,22 +35,7 @@ var data = {
 return data;
 ```
 
-#### Amaze UI 0.9
-
-```javascript
-var data = {
-  // 以下三项，可任意组合
-  "left": "",				// Titlebar 左侧，可写 html 标签（可选）
-  "title": "",			// Titlebar 中部，可写 html 标签（可选）
-  "right": ""				// Titlebar 右侧，可写 html 标签（可选）
-};
-
-return data;
-```
-
 ## 数据接口
-
-### Amaze UI 1.0
 
 ```javascript
 {
@@ -67,6 +50,7 @@ return data;
   "content": {
     "title": "",
     "link": "",
+    "className": "",
     "nav": [
       {
         "link": "",
@@ -74,26 +58,6 @@ return data;
         "className": ""
       }
     ]
-  }
-}
-```
-
-### Amaze UI 0.9
-
-```javascript
-{
-  "id": "",
-
-  "className": "",
-
-  "theme": "",
-
-  "options": null,
-
-  "content": {
-    "left": "",
-    "title": "",
-    "right": ""
   }
 }
 ```

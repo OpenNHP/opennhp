@@ -1,20 +1,17 @@
 /**
+/**
   * Menu Theme: dropdown1
   * Author: Minwe (minwe@yunshipei.com)
   */
 
 .am-menu-dropdown1 {
   @menu-toggle-color: #fff;
-
   @menu-nav-link-height: 49px;
-
   @menu-nav-top-link-color: #fff;
   @menu-nav-top-link-bg: @global-primary;
   @menu-nav-top-link-active-color: #fff;
   @menu-nav-top-link-active-bg: darken(@global-primary, 5%);
-
   @menu-nav-sub-link-height: 44px;
-
   @menu-nav-sub-link-color: #555;
   @menu-nav-sub-link-icon-color: #aaa;
   @menu-nav-sub-link-bg: #fff;
@@ -25,14 +22,17 @@
 
   .am-menu-toggle {
     position: absolute;
-    right: 10px;
-    top: -35px;
+    right: 5px;
+    top: -47px;
     display: block;
+    .square(44px);
+    line-height: 44px;
+    text-align: center;
     color: @menu-toggle-color;
   }
 
   a {
-    .transition(all 0.4s);
+    transition: all .4s;
     .text-overflow();
   }
 
@@ -40,7 +40,7 @@
     position: absolute;
     left: 0;
     right: 0;
-    z-index: @z-index-dropdown;
+    z-index: @z-index-menu;
 
     a {
       padding: 0.8rem;
@@ -66,9 +66,11 @@
             background-color: @menu-nav-top-link-active-bg;
             border-bottom: none;
             color: @menu-nav-top-link-active-color;
+
             &:before {
               content: @fa-var-minus;
             }
+
             &:after {
               content: "";
               .caret-down(8px, @menu-nav-top-link-active-bg);
@@ -110,7 +112,6 @@
         font-size: 16px;
         margin-right: 5px;
       }
-
     }
   }
 

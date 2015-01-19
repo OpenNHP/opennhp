@@ -1,0 +1,31 @@
+{
+  "name": "allmobilize/amazeui",
+  "description": "The first crossing screen front-end framework in China, for developing mobile first, responsive web projects.",
+  "keywords": [
+    "css",
+    "js",
+    "less",
+    "mobile-first",
+    "responsive",
+    "front-end",
+    "framework",
+    "web",
+    "web-components"
+  ],
+  "homepage": "http://amazeui.org",
+  "authors": [
+    {
+      "name": "Minwe",
+      "email": "minwe@yunshipei.com",
+      "homepage": "http://csspod.com"
+    },
+    {
+      "name": "HZP",
+      "email": "hzp@yunshipei.com"
+    }
+  ],
+  "support": {
+    "issues": "https://github.com/allmobilize/amazeui/issues"
+  },
+  "license": "MIT"
+}

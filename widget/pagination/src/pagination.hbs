@@ -5,20 +5,19 @@
 
     {{#if content.firstTitle}}
       <li class="am-pagination-first {{content.firstClassName}}">
-        <a href="{{content.firstLink}}">{{{content.firstTitle}}}</a>
+        <a href="{{content.firstLink}}" class="{{content.firstClassName}}">{{{content.firstTitle}}}</a>
       </li>
     {{/if}}
 
     {{#if content.prevTitle}}
       <li class="am-pagination-prev {{content.prevClassName}}">
-        <a href="{{content.prevLink}}">{{{content.prevTitle}}}</a>
+        <a href="{{content.prevLink}}" class="{{content.prevClassName}}">{{{content.prevTitle}}}</a>
       </li>
     {{/if}}
 
     {{! 移除 options.select，根据主题来判断结构，无奈 handlebars 逻辑处理...}}
 
     {{#if content.page}}
-
       {{#ifCond theme '==' 'select'}}
         <li class="am-pagination-select">
           <select>
@@ -44,7 +43,7 @@
         {{else}}
           {{#each content.page}}
             <li class="{{className}}">
-              <a href="{{link}}">{{{title}}}</a>
+              <a href="{{link}}" class="{{className}}">{{{title}}}</a>
             </li>
           {{/each}}
         {{/ifCond}}
@@ -54,13 +53,13 @@
 
     {{#if content.nextTitle}}
       <li class="am-pagination-next {{content.nextClassName}}">
-        <a href="{{content.nextLink}}">{{{content.nextTitle}}}</a>
+        <a href="{{content.nextLink}}" class="{{content.nextClassName}}">{{{content.nextTitle}}}</a>
       </li>
     {{/if}}
 
     {{#if content.lastTitle}}
       <li class="am-pagination-last {{content.lastClassName}}">
-        <a href="{{content.lastLink}}">{{{content.lastTitle}}}</a>
+        <a href="{{content.lastLink}}" class="{{content.lastClassName}}">{{{content.lastTitle}}}</a>
       </li>
     {{/if}}
   </ul>

@@ -1,59 +1,52 @@
 // Name:                      Pagination
+//
 // Description:               Defines style for navigation
 //
-// Component:                `am-pagination`
+// Component:                `.am-pagination`
 //
-// Sub-objects:              `am-pagination-prev`
-//                           `am-pagination-next`
+// Sub-objects:              `.am-pagination-prev`
+//                           `.am-pagination-next`
 //
-// Modifiers:                `am-pagination-left`
-//                           `am-pagination-right`
+// Modifiers:                `.am-pagination-centered`
+//                           `.am-pagination-right`
 //
-// States:                   `am-active`
-//                           `am-disabled`
+// States:                   `.am-active`
+//                           `.am-disabled`
 //
-// ========================================================================
+// =============================================================================
 
 
-/* ========================================================================
+/* ==========================================================================
    Component: Pagination
- ========================================================================== */
+ ============================================================================ */
 
-.am-pagination {
+.@{ns}pagination {
   padding-left: 0;
   margin: @pagination-margin 0;
   list-style: none;
   color: @pagination-color;
+  text-align: left;
   .clearfix();
-  .hook-pagination();
+  .hook-pagination;
 
   > li {
-    display: inline;
-    .hook-pagination-item();
+    display: inline-block;
+    .hook-pagination-item;
 
     > a,
     > span {
       position: relative;
-      float: left; // Collapse white-space
-      // display: block;
+      // float: left; // Collapse white-space
+      display: block;
       padding: @pagination-padding;
       text-decoration: none;
       line-height: @pagination-line-height;
       background-color: @pagination-bg;
       border: 1px solid @pagination-border;
-      border-radius: @global-border-radius;
+      border-radius: @global-radius;
       margin-bottom: 5px;
       margin-right: 5px;
-      // margin-left: -1px;
     }
-
-    /*&:first-child {
-      > a,
-      > span {
-        margin-left: 0;
-        .border-left-radius(@global-border-radius);
-      }
-    }*/
 
     &:last-child {
       > a,
@@ -71,8 +64,8 @@
     }
   }
 
-  > .am-active > a,
-  > .am-active > span {
+  > .@{ns}active > a,
+  > .@{ns}active > span {
     &,
     &:hover,
     &:focus {
@@ -82,10 +75,10 @@
       border-color: @pagination-active-bg;
       cursor: default;
     }
-    .hook-pagination-item-active();
+    .hook-pagination-item-active;
   }
 
-  > .am-disabled {
+  > .@{ns}disabled {
     > span,
     > span:hover,
     > span:focus,
@@ -96,29 +89,41 @@
       background-color: @pagination-bg;
       border-color: @pagination-border;
       cursor: not-allowed;
-      .hook-pagination-item-disabled();
+      pointer-events: none;
+      .hook-pagination-item-disabled;
     }
   }
 
-  .am-pagination-prev {
+  .@{ns}pagination-prev {
     float: left;
     a {
-      border-radius: @global-border-radius;
+      border-radius: @global-radius;
     }
   }
 
-  .am-pagination-next {
+  .@{ns}pagination-next {
     float: right;
     a {
-      border-radius: @global-border-radius;
+      border-radius: @global-radius;
     }
   }
 }
 
 
+// Modifier
+// =============================================================================
+
+.@{ns}pagination-centered {
+  text-align: center;
+}
+
+.@{ns}pagination-right {
+  text-align: right;
+}
+
 
 // Hooks
-// ========================================================================
+// =============================================================================
 
 .hook-pagination() {}
 .hook-pagination-item() {}

@@ -1,190 +1,273 @@
-define(function(require, exports, module) {
-    require('core');
+'use strict';
 
-    var dimmer = require('ui.dimmer');
+var $ = require('jquery');
+var UI = require('./core');
+var dimmer = require('./ui.dimmer');
+var $doc = $(document);
+var supportTransition = UI.support.transition;
 
-    var $ = window.Zepto;
+/**
+ * @reference https://github.com/nolimits4web/Framework7/blob/master/src/js/modals.js
+ * @license https://github.com/nolimits4web/Framework7/blob/master/LICENSE
+ */
 
-    var UI = $.AMUI;
+var Modal = function(element, options) {
+  this.options = $.extend({}, Modal.DEFAULTS, options || {});
+  this.$element = $(element);
+  this.$dialog =   this.$element.find('.am-modal-dialog');
 
-    var $win = $(window),
-        $doc = $(document),
-        $body = $('body'),
-        supportTransition = UI.support.transition;
+  if (!this.$element.attr('id')) {
+    this.$element.attr('id', UI.utils.generateGUID('am-modal'));
+  }
 
-    /**
-     * @reference https://github.com/nolimits4web/Framework7/blob/master/src/js/modals.js
-     * @license https://github.com/nolimits4web/Framework7/blob/master/LICENSE
-     */
+  this.isPopup = this.$element.hasClass('am-popup');
+  this.isActions = this.$element.hasClass('am-modal-actions');
+  this.active = this.transitioning = this.relatedTarget = null;
 
-    var Modal = function(element, options) {
-        this.options = $.extend({}, Modal.DEFAULTS, options || {});
-        this.$element = $(element);
-        this.isPopup = this.$element.hasClass('am-popup');
-        this.active = this.transitioning = null;
+  this.events();
+};
 
-        this.events();
-    };
+Modal.DEFAULTS = {
+  className: {
+    active: 'am-modal-active',
+    out: 'am-modal-out'
+  },
+  selector: {
+    modal: '.am-modal',
+    active: '.am-modal-active'
+  },
+  closeViaDimmer: true,
+  cancelable: true,
+  onConfirm: function() {
+  },
+  onCancel: function() {
+  },
+  height: undefined,
+  width: undefined,
+  duration: 300, // must equal the CSS transition duration
+  transitionEnd: supportTransition && supportTransition.end + '.modal.amui'
+};
 
+Modal.prototype.toggle = function(relatedTarget) {
+  return this.active ? this.close() : this.open(relatedTarget);
+};
 
-    // Set template tabindex to tigger onfocus on div
-    Modal.DEFAULTS = {
-        selector: {
-            modal: '.am-modal',
-            active: '.am-modal-active'
-        },
-        cancelable: true,
-        onConfirm: function() {
-        },
-        onCancel: function() {
-        }
-    };
+Modal.prototype.open = function(relatedTarget) {
+  var $element = this.$element;
+  var options = this.options;
+  var isPopup = this.isPopup;
+  var width = options.width;
+  var height = options.height;
+  var style = {};
 
-    Modal.prototype.toggle = function(relatedElement) {
-        return this.active ? this.close() : this.open(relatedElement)
-    };
+  if (this.active) {
+    return;
+  }
 
-    Modal.prototype.open = function(relatedElement) {
-        var $element = this.$element,
-            isPopup = this.isPopup;
+  if (!this.$element.length) {
+    return;
+  }
 
-        if (this.transitioning || this.active) return;
+  // callback hook
+  relatedTarget && (this.relatedTarget = relatedTarget);
 
-        if (!this.$element.length)  return;
+  // 判断如果还在动画，就先触发之前的closed事件
+  if (this.transitioning) {
+    clearTimeout($element.transitionEndTimmer);
+    $element.transitionEndTimmer = null;
+    $element.trigger(options.transitionEnd).off(options.transitionEnd);
+  }
 
-        isPopup && this.$element.show();
+  isPopup && this.$element.show();
 
-        this.active = true;
+  this.active = true;
 
-        $element.trigger($.Event('open:modal:amui', {relatedElement: relatedElement}));
+  $element.trigger($.Event('open.modal.amui', {relatedTarget: relatedTarget}));
 
-        // trigger reflow;
-        var clientLeft = $element[0].clientLeft;
+  dimmer.open($element);
 
-        dimmer.open();
+  $element.show().redraw();
 
-        $element.show();
-
-        !isPopup && $element.redraw()
-            .css({marginTop: -$element.height() / 2 + 'px'})
-
-        $element.removeClass('am-modal-out').addClass('am-modal-active');
-
-        this.transitioning = 1;
-
-        var complete = function() {
-            $element.trigger($.Event('opened:modal:amui', {relatedElement: relatedElement}));
-            this.transitioning = 0;
-        };
-
-        if (!supportTransition) return complete.call(this);
-
-        $element.one(supportTransition.end, $.proxy(complete, this));
-    };
-
-    Modal.prototype.close = function(relatedElement) {
-        if (this.transitioning || !this.active) return;
-
-        var $element = this.$element,
-            isPopup = this.isPopup,
-            that = this;
-
-        this.$element.trigger($.Event('close:modal:amui', {relatedElement: relatedElement}));
-
-        this.transitioning = 1;
-
-        var complete = function() {
-            $element.trigger('closed:amui:modal');
-            isPopup && $element.removeClass('am-modal-out');
-            $element.hide();
-            this.transitioning = 0;
-        };
-
-        $element.removeClass('am-modal-active').addClass('am-modal-out');
-
-        if (!supportTransition) return complete.call(this);
-
-        $element.one(supportTransition.end, $.proxy(complete, this));
-
-        // hide dimmer when all modal is closed
-        if (!$body.find(Modal.DEFAULTS.selector.active).length) {
-            dimmer.close();
-        }
-
-        this.active = false;
-    };
-
-    Modal.prototype.events = function() {
-        var that = this,
-            $element = this.$element,
-            $ipt = $element.find('.am-modal-prompt-input');
-
-        if (this.options.cancelable) {
-            $element.on('keyup.modal.amui',
-                $.proxy(function(e) {
-                    if (this.active && e.which === 27) {
-                        this.options.onCancel();
-                        this.close();
-                    }
-                }, that));
-
-            dimmer.$element.on('click', function(e) {
-                that.close();
-            });
-        }
-
-        // Close button
-        $element.find('[data-am-modal-close]').on('click.modal.amui', function(e) {
-            e.preventDefault();
-            that.close();
-        });
-
-        $element.find('.am-modal-btn').on('click.modal.amui', function(e) {
-            that.close();
-        });
-
-
-        $element.find('[data-am-modal-confirm]').on('click.modal.amui', function() {
-            that.options.onConfirm($ipt.val());
-        });
-
-        $element.find('[data-am-modal-cancel]').on('click.modal.amui', function() {
-            that.options.onCancel($ipt.val());
-        });
-    };
-
-
-    function Plugin(option, relatedElement) {
-        return this.each(function() {
-            var $this = $(this),
-                data = $this.data('am.modal'),
-                options = $.extend({}, Modal.DEFAULTS, typeof option == 'object' && option);
-
-            if (!data) {
-                $this.data('am.modal', (data = new Modal(this, options)));
-            }
-
-            if (typeof option == 'string') {
-                data[option](relatedElement);
-            } else {
-                data.toggle(option && option.relatedElement || undefined);
-            }
-        });
+  // apply Modal width/height if set
+  if (!isPopup && !this.isActions) {
+    if (width) {
+      width = parseInt(width, 10);
+      style.width =  width + 'px';
+      style.marginLeft =  -parseInt(width / 2) + 'px';
     }
 
+    if (height) {
+      height = parseInt(height, 10);
+      // style.height = height + 'px';
+      style.marginTop = -parseInt(height / 2) + 'px';
 
-    $.fn.modal = Plugin;
+      // the background color is styled to $dialog
+      // so the height should set to $dialog
+      this.$dialog.css({height: height + 'px'});
+    } else {
+      style.marginTop = -parseInt($element.height() / 2, 10) + 'px';
+    }
 
-    $doc.on('click', '[data-am-modal]', function() {
-        var $this = $(this),
-            options = UI.utils.parseOptions($this.attr('data-am-modal')),
-            $target = $(options.target || (this.href && this.href.replace(/.*(?=#[^\s]+$)/, ''))),
-            option = $target.data('am.modal') ? 'toggle' : options;
+    $element.css(style);
+  }
 
-        Plugin.call($target, option, this);
+  $element.
+    removeClass(options.className.out).
+    addClass(options.className.active);
+
+  this.transitioning = 1;
+
+  var complete = function() {
+    $element.trigger($.Event('opened.modal.amui',
+      {relatedTarget: relatedTarget}));
+    this.transitioning = 0;
+  };
+
+  if (!supportTransition) {
+    return complete.call(this);
+  }
+
+  $element.
+    one(options.transitionEnd, $.proxy(complete, this)).
+    emulateTransitionEnd(options.duration);
+};
+
+Modal.prototype.close = function(relatedTarget) {
+  if (!this.active) {
+    return;
+  }
+
+  var $element = this.$element;
+  var options = this.options;
+  var isPopup = this.isPopup;
+
+  // 判断如果还在动画，就先触发之前的opened事件
+  if (this.transitioning) {
+    clearTimeout($element.transitionEndTimmer);
+    $element.transitionEndTimmer = null;
+    $element.trigger(options.transitionEnd).off(options.transitionEnd);
+    dimmer.close($element, true);
+  }
+
+  this.$element.trigger($.Event('close.modal.amui',
+    {relatedTarget: relatedTarget}));
+
+  this.transitioning = 1;
+
+  var complete = function() {
+    $element.trigger('closed.modal.amui');
+    isPopup && $element.removeClass(options.className.out);
+    $element.hide();
+    this.transitioning = 0;
+    // 不强制关闭 Dimmer，以便多个 Modal 可以共享 Dimmer
+    dimmer.close($element, false);
+    this.active = false;
+  };
+
+  $element.removeClass(options.className.active).
+    addClass(options.className.out);
+
+  if (!supportTransition) {
+    return complete.call(this);
+  }
+
+  $element.one(options.transitionEnd, $.proxy(complete, this)).
+    emulateTransitionEnd(options.duration);
+};
+
+Modal.prototype.events = function() {
+  var that = this;
+  var $element = this.$element;
+  var $ipt = $element.find('.am-modal-prompt-input');
+  var getData = function() {
+    var data = [];
+    $ipt.each(function() {
+      data.push($(this).val());
     });
 
-    module.exports = Modal;
+    return (data.length === 0) ? undefined :
+      ((data.length === 1) ? data[0] : data);
+  };
+
+  // close via Esc key
+  if (this.options.cancelable) {
+    $element.on('keyup.modal.amui', function(e) {
+        if (that.active && e.which === 27) {
+          $element.trigger('cancel.modal.amui');
+          that.close();
+        }
+      });
+  }
+
+  // Close Modal when dimmer clicked
+  if (this.options.closeViaDimmer) {
+    dimmer.$element.on('click.dimmer.modal.amui', function(e) {
+      that.close();
+    });
+  }
+
+  // Close Modal when button clicked
+  $element.find('[data-am-modal-close], .am-modal-btn').
+    on('click.close.modal.amui', function(e) {
+    e.preventDefault();
+    that.close();
+  });
+
+  $element.find('[data-am-modal-confirm]').on('click.confirm.modal.amui',
+    function() {
+      $element.trigger($.Event('confirm.modal.amui', {
+        trigger: this
+      }));
+    });
+
+  $element.find('[data-am-modal-cancel]').
+    on('click.cancel.modal.amui', function() {
+      $element.trigger($.Event('cancel.modal.amui', {
+        trigger: this
+      }));
+    });
+
+  $element.on('confirm.modal.amui', function(e) {
+    e.data = getData();
+    that.options.onConfirm.call(that, e);
+  }).on('cancel.modal.amui', function(e) {
+    e.data = getData();
+    that.options.onCancel.call(that, e);
+  });
+};
+
+function Plugin(option, relatedTarget) {
+  return this.each(function() {
+    var $this = $(this);
+    var data = $this.data('amui.modal');
+    var options = $.extend({},
+      Modal.DEFAULTS, typeof option == 'object' && option);
+
+    if (!data) {
+      $this.data('amui.modal', (data = new Modal(this, options)));
+    }
+
+    if (typeof option == 'string') {
+      data[option] && data[option](relatedTarget);
+    } else {
+      data.toggle(option && option.relatedTarget || undefined);
+    }
+  });
+}
+
+$.fn.modal = Plugin;
+
+// Init
+$doc.on('click.modal.amui.data-api', '[data-am-modal]', function() {
+  var $this = $(this);
+  var options = UI.utils.parseOptions($this.attr('data-am-modal'));
+  var $target = $(options.target ||
+  (this.href && this.href.replace(/.*(?=#[^\s]+$)/, '')));
+  var option = $target.data('amui.modal') ? 'toggle' : options;
+
+  Plugin.call($target, option, this);
 });
 
-// TODO: parse tpl?
+$.AMUI.modal = Modal;
+
+module.exports = Modal;

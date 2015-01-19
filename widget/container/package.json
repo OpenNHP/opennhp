@@ -1,7 +1,7 @@
 {
     "name": "container",
 
-    "version": "1.0.0",
+    "version": "2.0.1",
 
     "type": "layout",
 
@@ -81,8 +81,6 @@
     },
 
     "readme": "http://docs.yunshipei.com/amui/#container",
-
-    "example": "",
 
     "hidden": 1
 }

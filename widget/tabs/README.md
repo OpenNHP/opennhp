@@ -19,28 +19,12 @@
 - 将组件拖入编辑界面；
 - 点击右侧面板里的【数据采集】按钮，按以下格式采集数据。
 
-#### Amaze UI 1.0
-
 ```javascript
 var data = [
   {
     "title":   "",   // 选项卡标题
     "content": "",   // 选项卡内容
     "active":  false // 是否激活当前选项卡，true | false，只允许一个 Tab 标记为激活
-  }
-];
-
-return data;
-```
-
-#### Amaze UI 0.9
-
-```javascript
-var data = [
-  {
-    "header":    "",  // 选项卡标题
-    "substance": "",  // 选项卡内容
-    "class":     ""   // 显示当前默认被选中的选项卡标题以及其内容，值是"active"，如果有多个选项，只允许一个tab被激活
   }
 ];
 
@@ -57,6 +41,10 @@ return data;
 
   "theme": "",
 
+  "options": {
+    "noSwipe": false; // 是否禁用触控操作
+  }
+
   "content": [
     {
       "title": "",
@@ -65,4 +53,14 @@ return data;
     }
   ]
 }
+```
+
+## 常见问题
+
+### 如何禁用触控操作？
+
+在容器上添加 `data-am-tabs-noswipe="1"`。
+
+```html
+<div data-am-widget="tabs" class="am-tabs am-tabs-default" data-am-tabs-noswipe="1">
 ```

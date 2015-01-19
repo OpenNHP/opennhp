@@ -3,8 +3,6 @@
   */
 
 .am-gotop-one {
-  @one-primary: #15afef;
-
   @gotop-bg: @white;
   @gotop-border-color: @one-primary;
   @gotop-icon-color: @one-primary;
@@ -17,7 +15,7 @@
   width: 32px;
   height: 32px;
   background-color: @gotop-bg;
-  border-radius: @global-border-radius;
+  border-radius: @global-radius;
   border: 1px solid @gotop-border-color;
   text-align: center;
 
@@ -31,6 +29,11 @@
     color: @gotop-icon-color;
   }
 
+  .am-with-fixed-navbar & {
+    bottom: 60px;
+  }
+
   .hook-am-gotop-one;
 }
-.hook-am-gotop-one() {};
+
+.hook-am-gotop-one() {}

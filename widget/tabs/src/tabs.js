@@ -1,16 +1,21 @@
-define(function (require, exports, module) {
-    require('core');
-    require('ui.tabs');
+'use strict';
 
-    var $ = window.Zepto;
+var $ = require('jquery');
+require('./core');
+require('./ui.tabs');
 
-    var tabsInit = function () {
-        $('[data-am-widget="tabs"]').tabs();
-    };
+function tabsInit() {
+  $('[data-am-widget="tabs"]').each(function() {
+    var options = $(this).data('amTabsNoswipe') ? {noSwipe: 1} : {};
+    $(this).tabs(options);
+  });
+}
 
-    $(function () {
-        tabsInit();
-    });
-
-    exports.init = tabsInit;
+$(function() {
+  tabsInit();
 });
+
+module.exports = $.AMUI.tab = {
+  VERSION: '4.0.1',
+  init: tabsInit
+};

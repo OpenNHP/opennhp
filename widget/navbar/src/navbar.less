@@ -23,10 +23,10 @@
     padding-right: 8px;
     text-align: center;
     overflow: hidden;
-    .flexbox();
+    display: flex;
 
     li {
-      .flex();
+      flex: 1;
       // display: table-cell;
       // width: 1%;
       float: none;
@@ -54,7 +54,7 @@
       margin: 4px auto 0
     }
 
-    [class*='am-icon'] {
+    [class*="@{ns}icon"] {
       width: 24px;
       height: 24px;
       margin: 4px auto 0;
@@ -79,13 +79,13 @@
 }
 
 .am-navbar-more {
-  [class*='am-icon-'] {
-    .transition(0.15s);
+  [class*="@{ns}icon-"] {
+    transition: 0.15s;
   }
 
   &.am-active {
-    [class*='am-icon-'] {
-      .rotateX(-180deg);
+    [class*="@{ns}icon-"] {
+      transform: rotateX(-180deg);
     }
   }
 }
@@ -98,12 +98,12 @@
   left: 0;
   z-index: @z-index-navbar - 1;
   opacity: 0;
-  .transition(0.3s);
-  .translate(0, 100%);
+  transition: .3s;
+  transform: translate(0, 100%);
 
   &.am-active {
     opacity: 1;
-    .translate(0, 0);
+    transform: translate(0, 0);
   }
 
   li {
@@ -119,7 +119,7 @@
       padding-right: 36px;
 
       :after {
-        font-family: "FontAwesome";
+        font-family: "FontAwesome", sans-serif;
         content: @fa-var-angle-right;
         display: inline-block;
         position: absolute;
@@ -142,7 +142,7 @@
 #am-navbar-qrcode {
   width: 220px;
   height: 220px;
-  margin-left: -100px;
+  margin-left: -110px;
 
   .am-modal-bd {
     padding: 10px;
@@ -156,8 +156,8 @@
 }
 
 // 给body 增加的className
-.with-fixed-navbar {
-  padding-bottom: @navbar-height;
+.am-with-fixed-navbar {
+  padding-bottom: @navbar-height + 5;
 }
 
 .hook-am-navbar() {}

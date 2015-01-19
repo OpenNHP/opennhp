@@ -1,7 +1,7 @@
 {
     "name": "blank",
 
-    "version": "1.0.0",
+    "version": "2.0.0",
 
     "localName": {
         "en": "HTML",
@@ -79,8 +79,6 @@
     },
 
     "readme": "http://docs.yunshipei.com/amui/#blank",
-
-    "example": "",
 
     "hidden": false
 }

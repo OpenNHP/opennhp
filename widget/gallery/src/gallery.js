@@ -1,49 +1,54 @@
-define(function(require, exports, module) {
-    require('core');
+'use strict';
 
-    var PureView = require('ui.pureview');
+var $ = require('jquery');
+require('./core');
+require('./ui.pureview');
+var UI = $.AMUI;
 
-    var $ = window.Zepto,
-        UI = $.AMUI;
+function galleryInit() {
+  var $gallery = $('[data-am-widget="gallery"]');
+  var $galleryOne = $gallery.filter('.am-gallery-one');
 
-    var galleryInit = function() {
-        var $gallery = $('[data-am-widget="gallery"]'),
-            $galleryOne = $gallery.filter('.am-gallery-one');
+  $gallery.each(function() {
+    var options = UI.utils.parseOptions($(this).attr('data-am-gallery'));
 
-        $gallery.each(function() {
-            var options = UI.utils.parseOptions($(this).attr('data-am-gallery'));
-            options.pureview && $(this).pureview();
-        });
-
-        $galleryOne.each(function() {
-            galleryMore($(this));
-        });
-    };
-
-    function galleryMore(object) {
-        var moreData = $('<li class=\'am-gallery-more\'><a href=\'javascript:;\'>更多 &gt;&gt;</a></li>');
-
-        if (object.children().length > 6) {
-
-            object.children().each(function(index) {
-                if (index > 5) {
-                    $(this).hide();
-                }
-            });
-
-            object.find('.am-gallery-more').remove();
-            object.append(moreData);
-        }
-
-        object.find('.am-gallery-more').on('click', function() {
-            object.children().show();
-            $(this).hide();
-        });
+    if (options.pureview) {
+      (typeof options.pureview === 'object') ?
+        $(this).pureview(options.pureview) : $(this).pureview();
     }
+  });
 
-    $(function() {
-        galleryInit();
+  $galleryOne.each(function() {
+    galleryMore($(this));
+  });
+}
+
+function galleryMore($elements) {
+  var moreData = $('<li class=\'am-gallery-more\'>' +
+  '<a href="javascript:;">更多 &gt;&gt;</a></li>');
+
+  if ($elements.children().length > 6) {
+    $elements.children().each(function(index) {
+      if (index > 5) {
+        $(this).hide();
+      }
     });
 
-    exports.init = galleryInit;
+    $elements.find('.am-gallery-more').remove();
+    $elements.append(moreData);
+  }
+
+  $elements.find('.am-gallery-more').on('click', function() {
+    $elements.children().show();
+    $(this).hide();
+  });
+}
+
+$(function() {
+  galleryInit();
 });
+
+module.exports = $.AMUI.gallery = {
+  VERSION: '2.0.2',
+  init: galleryInit
+};

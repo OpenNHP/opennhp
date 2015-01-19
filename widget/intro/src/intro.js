@@ -1,5 +1,8 @@
-define(function (require, exports, module) {
-    var $ = window.Zepto;
+'use strict';
 
-    // hello world.
-});
+var $ = require('jquery');
+require('./core');
+
+module.exports = $.AMUI.intro = {
+  VERSION: '4.0.2'
+};

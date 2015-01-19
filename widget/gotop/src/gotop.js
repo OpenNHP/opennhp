@@ -1,23 +1,33 @@
-define(function(require, exports, module) {
-    require('core');
+'use strict';
 
-    require('ui.smooth-scroll');
-    var $ = window.Zepto;
+var $ = require('jquery');
+require('./core');
+require('./ui.smooth-scroll');
 
-    var UI = $.AMUI;
+function goTopInit() {
+  var $goTop = $('[data-am-widget="gotop"]');
+  var $fixed = $goTop.filter('.am-gotop-fixed');
+  var $win = $(window);
 
-    var goTopInit = function() {
-            $('.am-gotop').find('a').on('click', function(e) {
-                e.preventDefault();
-                $('body').smoothScroll(0);
-            });
-        };
+  $goTop.find('a').on('click', function(e) {
+    e.preventDefault();
+    $win.smoothScroll();
+  });
 
-    $(function() {
-        goTopInit();
-	});
+  function checkPosition() {
+    $fixed[($win.scrollTop() > 50 ? 'add' : 'remove') + 'Class']('am-active');
+  }
 
-    exports.init = goTopInit;
+  checkPosition();
+
+  $win.on('scroll.gotop.amui', $.AMUI.utils.debounce(checkPosition, 100));
+}
+
+$(function() {
+  goTopInit();
 });
 
-// TODO: 增加根据滚动条自动悬浮功能。
+module.exports = $.AMUI.gotop = {
+  VERSION: '4.0.2',
+  init: goTopInit
+};

@@ -1,0 +1,53 @@
+// Name:            AVG Grid
+//
+// Description:     Used to make average columns with ul(ol)
+//
+// =============================================================================
+
+// AVG Grid mixin
+// http://lesscss.org/features/#loops-feature
+@mixin make-avg-grid($point: sm, $counter: $grid-columns) {
+  @for $i from 1 through $counter {
+    .#{$ns}avg-#{$point}-#{$i} > li {
+      width: (100% / $i);
+
+      &:nth-of-type(n) {
+        clear: none;
+      }
+
+      &:nth-of-type(#{$i}n+1) {
+        clear: both;
+      }
+    }
+  }
+}
+
+/* ==========================================================================
+   Component: AVG Grid
+ ============================================================================ */
+
+[class*="#{$ns}avg-"] {
+  display: block;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  @include clearfix;
+
+  > li {
+    display: block;
+    height: auto;
+    float: left;
+  }
+}
+
+@media #{$screen} {
+  @include make-avg-grid(sm);
+}
+
+@media #{$medium-up} {
+  @include make-avg-grid(md);
+}
+
+@media #{$large-up} {
+  @include make-avg-grid(lg);
+}

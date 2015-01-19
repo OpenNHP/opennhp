@@ -1,9 +1,9 @@
 {{#this}}
 <div data-am-widget="titlebar" class="am-titlebar {{#if theme}}am-titlebar-{{theme}}{{else}}am-titlebar-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}" {{#if id}}id="{{id}}"{{/if}}>
   {{#if content.title}}
-    <h2 class="am-titlebar-title">
+    <h2 class="am-titlebar-title {{#unless content.link}}{{content.className}}{{/unless}}">
       {{#if content.link}}
-        <a href="{{content.link}}">{{{content.title}}}</a>
+        <a href="{{content.link}}" class="{{content.className}}">{{{content.title}}}</a>
       {{else}}
         {{{content.title}}}
       {{/if}}

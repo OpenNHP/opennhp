@@ -1,155 +1,187 @@
-define(function(require, exports, module) {
-    require('zepto.outerdemension');
-    require('zepto.extend.data');
-    require('core');
+'use strict';
 
-    var $ = window.Zepto,
-        UI = $.AMUI,
-        $win = $(window),
-        $doc = $(document),
-        scrollPos;
+var $ = require('jquery');
+var UI = require('./core');
+var Hammer = require('./util.hammer');
+var $win = $(window);
+var $doc = $(document);
+var scrollPos;
 
-    /**
-     * @via https://github.com/uikit/uikit/blob/master/src/js/offcanvas.js
-     * @license https://github.com/uikit/uikit/blob/master/LICENSE.md
-     */
+/**
+ * @via https://github.com/uikit/uikit/blob/master/src/js/offcanvas.js
+ * @license https://github.com/uikit/uikit/blob/master/LICENSE.md
+ */
 
-    var OffCanvas = function(element, options) {
-        this.$element = $(element);
-        this.options = options;
-        this.events();
-    };
+var OffCanvas = function(element, options) {
+  this.$element = $(element);
+  this.options = $.extend({}, OffCanvas.DEFAULTS, options);
+  this.active = null;
+  this.bindEvents();
+};
 
-    OffCanvas.DEFAULTS = {
-        effect: 'overlay' // {push|overlay}, push is too expensive
-    };
+OffCanvas.DEFAULTS = {
+  duration: 300,
+  effect: 'overlay' // {push|overlay}, push is too expensive
+};
 
-    OffCanvas.prototype.open = function(relatedElement) {
-        var _self = this,
-            $element = this.$element,
-            openEvent = $.Event('open:offcanvas:amui');
-        
-        if (!$element.length || $element.hasClass('am-active')) return;
+OffCanvas.prototype.open = function(relatedElement) {
+  var _this = this;
+  var $element = this.$element;
 
-        var effect = this.options.effect,
-            $html = $('html'),
-            $bar = $element.find('.am-offcanvas-bar').first(),
-            dir = $bar.hasClass('am-offcanvas-bar-flip') ? -1 : 1;
+  if (!$element.length || $element.hasClass('am-active')) {
+    return;
+  }
 
-        $bar.addClass('am-offcanvas-bar-' + effect);
+  var effect = this.options.effect;
+  var $html = $('html');
+  var $body = $('body');
+  var $bar = $element.find('.am-offcanvas-bar').first();
+  var dir = $bar.hasClass('am-offcanvas-bar-flip') ? -1 : 1;
 
-        scrollPos = {x: window.scrollX, y: window.scrollY};
+  $bar.addClass('am-offcanvas-bar-' + effect);
 
-        $element.addClass('am-active');
+  scrollPos = {x: window.scrollX, y: window.scrollY};
 
-        $html.css({'width': '100%', 'height': $win.height()}).addClass('am-offcanvas-page');
+  $element.addClass('am-active');
 
-        if (!(effect === 'overlay')) {
-            $html.css({'margin-left': $bar.outerWidth() * dir}).width(); // .width() - force redraw
-        }
+  $body.css({
+    width: window.innerWidth,
+    height: $win.height()
+  }).addClass('am-offcanvas-page');
 
-        $html.css('margin-top', scrollPos.y * -1);
+  if (effect !== 'overlay') {
+    $body.css({
+      'margin-left': $bar.outerWidth() * dir
+    }).width(); // force redraw
+  }
 
-        UI.utils.debounce(function() {
-            $bar.addClass('am-offcanvas-bar-active').width();
-        }, 0)();
+  $html.css('margin-top', scrollPos.y * -1);
 
-        $doc.trigger(openEvent);
+  setTimeout(function() {
+    $bar.addClass('am-offcanvas-bar-active').width();
+  }, 0);
 
-        $element.off('.offcanvas.amui').on('click.offcanvas.amui swipeRight.offcanvas.amui swipeLeft.offcanvas.amui', function(e) {
-            var $target = $(e.target);
+  $element.trigger('open.offcanvas.amui');
 
-            if (!e.type.match(/swipe/)) {
-                if ($target.hasClass('am-offcanvas-bar')) return;
-                if ($target.parents('.am-offcanvas-bar').first().length) return;
-            }
+  this.active = 1;
 
-            // https://developer.mozilla.org/zh-CN/docs/DOM/event.stopImmediatePropagation
-            e.stopImmediatePropagation();
+  // Close OffCanvas when none content area clicked
+  $element.on('click.offcanvas.amui', function(e) {
+    var $target = $(e.target);
 
-            _self.close();
-        });
-
-        $doc.on('keydown.offcanvas.amui', function(e) {
-            if (e.keyCode === 27) { // ESC
-                _self.close();
-            }
-        });
-    };
-
-    OffCanvas.prototype.close = function(relatedElement) {
-        var $html = $('html'),
-            $element = this.$element,
-            $bar = $element.find('.am-offcanvas-bar').first();
-
-        if (!$element.length || !$element.hasClass('am-active')) return;
-
-        $element.trigger('close:offcanvas:amui');
-
-        if (UI.support.transition) {
-            $html.one(UI.support.transition.end, function() {
-                $html.removeClass('am-offcanvas-page').css({'width': '', 'height': '', 'margin-top': ''});
-                $element.removeClass('am-active');
-                window.scrollTo(scrollPos.x, scrollPos.y);
-            }).css('margin-left', '');
-
-            UI.utils.debounce(function() {
-                $bar.removeClass('am-offcanvas-bar-active');
-            }, 0)();
-        } else {
-            $html.removeClass('am-offcanvas-page').attr('style', '');
-            $element.removeClass('am-active');
-            $bar.removeClass('am-offcanvas-bar-active');
-            window.scrollTo(scrollPos.x, scrollPos.y);
-        }
-
-        $element.off('.offcanvas.amui');
-    };
-
-    OffCanvas.prototype.events = function() {
-        $doc.on('click.offcanvas.amui', '[data-am-dismiss="offcanvas"]',
-            $.proxy(function(e) {
-                e.preventDefault();
-                this.close();
-            }, this));
-
-        return this;
-    };
-
-    UI.offcanvas = OffCanvas;
-
-    function Plugin(option, relatedElement) {
-        return this.each(function() {
-            var $this = $(this),
-                data = $this.data('am.offcanvas'),
-                options = $.extend({}, OffCanvas.DEFAULTS, typeof option == 'object' && option);
-
-            if (!data) {
-                $this.data('am.offcanvas', (data = new OffCanvas(this, options)));
-                data.open(relatedElement);
-            }
-
-            if (typeof option == 'string') {
-                data[option] && data[option](relatedElement);
-            }
-        });
+    if ($target.hasClass('am-offcanvas-bar')) {
+      return;
     }
 
-    $.fn.offCanvas = Plugin;
+    if ($target.parents('.am-offcanvas-bar').first().length) {
+      return;
+    }
 
-    // Init code
-    $doc.on('click.offcanvas.amui', '[data-am-offcanvas]', function(e) {
-        e.preventDefault();
-        var $this = $(this),
-            options = UI.utils.parseOptions($this.attr('data-am-offcanvas')),
-            $target = $(options.target || (this.href && this.href.replace(/.*(?=#[^\s]+$)/, '')));
-            option = $target.data('am.offcanvas') ? 'open' : options;
+    // https://developer.mozilla.org/zh-CN/docs/DOM/event.stopImmediatePropagation
+    e.stopImmediatePropagation();
 
-        Plugin.call($target, option, this);
+    _this.close();
+  });
+
+  $html.on('keydown.offcanvas.amui', function(e) {
+    (e.keyCode === 27) && _this.close();
+  });
+};
+
+OffCanvas.prototype.close = function(relatedElement) {
+  var _this = this;
+  var $html = $('html');
+  var $body = $('body');
+  var $element = this.$element;
+  var $bar = $element.find('.am-offcanvas-bar').first();
+
+  if (!$element.length || !$element.hasClass('am-active')) {
+    return;
+  }
+
+  $element.trigger('close.offcanvas.amui');
+
+  function complete() {
+    $body.removeClass('am-offcanvas-page').
+      css({width: '', height: '', 'margin-left': '', 'margin-right': ''});
+    $element.removeClass('am-active');
+    $bar.removeClass('am-offcanvas-bar-active');
+    $html.css('margin-top', '');
+    window.scrollTo(scrollPos.x, scrollPos.y);
+    $element.trigger('closed.offcanvas.amui');
+    _this.active = 0;
+  }
+
+  if (UI.support.transition) {
+    setTimeout(function() {
+      $bar.removeClass('am-offcanvas-bar-active');
+    }, 0);
+
+    $body.css('margin-left', '').one(UI.support.transition.end, function() {
+      complete();
+    }).emulateTransitionEnd(this.options.duration);
+  } else {
+    complete();
+  }
+
+  $element.off('click.offcanvas.amui');
+  $html.off('.offcanvas.amui');
+};
+
+OffCanvas.prototype.bindEvents = function() {
+  var _this = this;
+  $doc.on('click.offcanvas.amui', '[data-am-dismiss="offcanvas"]', function(e) {
+      e.preventDefault();
+      _this.close();
     });
 
-    module.exports = OffCanvas;
+  $win.on('resize.offcanvas.amui orientationchange.offcanvas.amui',
+    function() {
+      _this.active && _this.close();
+    });
+
+  this.$element.hammer().on('swipeleft swipeleft', function(e) {
+    e.preventDefault();
+    _this.close();
+  });
+
+  return this;
+};
+
+function Plugin(option, relatedElement) {
+  return this.each(function() {
+    var $this = $(this);
+    var data = $this.data('amui.offcanvas');
+    var options = $.extend({}, typeof option == 'object' && option);
+
+    if (!data) {
+      $this.data('amui.offcanvas', (data = new OffCanvas(this, options)));
+      data.open(relatedElement);
+    }
+
+    if (typeof option == 'string') {
+      data[option] && data[option](relatedElement);
+    }
+  });
+}
+
+$.fn.offCanvas = Plugin;
+
+// Init code
+$doc.on('click.offcanvas.amui', '[data-am-offcanvas]', function(e) {
+  e.preventDefault();
+  var $this = $(this);
+  var options = UI.utils.parseOptions($this.data('amOffcanvas'));
+  var $target = $(options.target ||
+  (this.href && this.href.replace(/.*(?=#[^\s]+$)/, '')));
+  var option = $target.data('amui.offcanvas') ? 'open' : options;
+
+  Plugin.call($target, option, this);
 });
+
+$.AMUI.offcanvas = OffCanvas;
+
+module.exports = OffCanvas;
 
 // TODO: 优化动画效果
 // http://dbushell.github.io/Responsive-Off-Canvas-Menu/step4.html

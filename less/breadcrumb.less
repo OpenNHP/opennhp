@@ -1,29 +1,30 @@
 // Name:                       Breadcrumb
+//
 // Description:                Define style for breadcrumb
 //
 // Component:                 `.am-breadcrumb`
 //
 // States:                    `.am-active`
 //
-// ========================================================================
+// =============================================================================
 
 
-/* ========================================================================
+/* ==========================================================================
    Component: Breadcrumb
- ========================================================================== */
+ ============================================================================ */
 
-.am-breadcrumb {
+.@{ns}breadcrumb {
   padding: .7em .5em;
   margin-bottom: @line-height-computed;
   list-style: none;
   background-color: @breadcrumb-bg;
-  border-radius: @global-border-radius;
+  border-radius: @global-radius;
   font-size: @breadcrumb-font-size;
 
   > li {
     display: inline-block;
 
-    [class*="am-icon-"] {
+    [class*="@{ns}icon-"] {
       &:before {
         color: @breadcrumb-active-color;
         margin-right: 5px;
@@ -37,15 +38,20 @@
     }
   }
 
-  > .am-active {
+  > .@{ns}active {
     color: @breadcrumb-active-color;
   }
+  .hook-breadcrumb;
+}
 
-  .hook-breadcrumb();
+.@{ns}breadcrumb-slash {
+  > li + li:before {
+    content: "/\00a0";
+  }
 }
 
 
 // Hooks
-// ========================================================================
+// =============================================================================
 
 .hook-breadcrumb() {}

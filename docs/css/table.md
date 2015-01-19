@@ -18,31 +18,33 @@
 	</thead>
 	<tbody>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr class="am-active">
-			<td>云适配(Active)</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI(Active)</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
-		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
-			<td>2012-10-01</td>
-		</tr>
-		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
-			<td>2012-10-01</td>
-		</tr>
+    <tr>
+      <td>Amaze UI</td>
+      <td>http://amazeui.org</td>
+      <td>2012-10-01</td>
+    </tr>
 	</tbody>
+  <tbody>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  </tbody>
 </table>
 `````
 
@@ -57,28 +59,28 @@
 	</thead>
 	<tbody>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr class="am-active">
-			<td>云适配(Active)</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI(Active)</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 	</tbody>
@@ -87,59 +89,10 @@
 
 ## 基本边框
 
-添加 `.am-table-bd` 类。
+添加 `.am-table-bordered` 类。
 
 `````html
-<table class="am-table am-table-bd">
-	<thead>
-		<tr>
-			<th>网站名称</th>
-			<th>网址</th>
-			<th>创建时间</th>
-		</tr>
-	</thead>
-	<tdody>
-		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
-			<td>2012-10-01</td>
-		</tr>
-		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
-			<td>2012-10-01</td>
-		</tr>
-		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
-			<td>2012-10-01</td>
-		</tr>
-		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
-			<td>2012-10-01</td>
-		</tr>
-		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
-			<td>2012-10-01</td>
-		</tr>
-	</tody>
-</table>
-`````
-
-```html
-<table class="am-table am-table-bd">
-	...
-</table>
-```
-
-## 圆角边框
-
-同时添加 `.am-table-bd` 、 `.am-table-bdrs`，外层圆角边框通过 `box-shadow` 实现。
-
-`````html
-<table class="am-table am-table-bd am-table-bdrs am-table-striped">
+<table class="am-table am-table-bordered">
 	<thead>
 		<tr>
 			<th>网站名称</th>
@@ -149,28 +102,28 @@
 	</thead>
 	<tbody>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 	</tbody>
@@ -178,16 +131,149 @@
 `````
 
 ```html
-<table class="am-table am-table-bd am-table-bdrs am-table-striped">
+<table class="am-table am-table-bordered">
 	...
 </table>
 ```
+
+## 圆角边框
+
+同时添加 `.am-table-bordered` 、 `.am-table-radius`，外层圆角边框通过 `box-shadow` 实现。
+
+`````html
+<table class="am-table am-table-bordered am-table-radius am-table-striped">
+	<thead>
+		<tr>
+			<th>网站名称</th>
+			<th>网址</th>
+			<th>创建时间</th>
+		</tr>
+	</thead>
+	<tbody>
+		<tr>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
+			<td>2012-10-01</td>
+		</tr>
+		<tr>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
+			<td>2012-10-01</td>
+		</tr>
+		<tr>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
+			<td>2012-10-01</td>
+		</tr>
+		<tr>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
+			<td>2012-10-01</td>
+		</tr>
+		<tr>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
+			<td>2012-10-01</td>
+		</tr>
+	</tbody>
+</table>
+`````
+
+```html
+<table class="am-table am-table-bordered am-table-radius am-table-striped">
+	...
+</table>
+```
+
+## 单元格状态
+
+表示表格状态的 class 添加到 `tr` 整行整行，添加到 `td` 高亮单元格。
+
+- `.am-active` 激活；
+- `.am-disabled` 禁用；
+- `.am-primary` 蓝色高亮；
+- `.am-success` 绿色高亮；
+- `.am-warning` 橙色高亮；
+- `.am-danger` 红色高亮。
+
+`````html
+<table class="am-table am-table-bordered am-table-radius">
+  <thead>
+  <tr>
+    <th>Class</th>
+    <th>状态描述</th>
+    <th>目标元素</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+    <td>.am-active</td>
+    <td class="am-active">激活</td>
+    <td>td</td>
+  </tr>
+  <tr class="am-active">
+    <td>.am-active</td>
+    <td>激活</td>
+    <td>tr</td>
+  </tr>
+  <tr>
+    <td>.am-disabled</td>
+    <td class="am-disabled">禁用</td>
+    <td>td</td>
+  </tr>
+  <tr class="am-disabled">
+    <td>.am-disabled</td>
+    <td>禁用</td>
+    <td>tr</td>
+  </tr>
+  <tr>
+    <td class="am-primary">.am-primary</td>
+    <td>蓝色高亮</td>
+    <td>td</td>
+  </tr>
+  <tr class="am-primary">
+    <td>.am-primary</td>
+    <td>蓝色高亮</td>
+    <td>tr</td>
+  </tr>
+  <tr>
+    <td class="am-success">.am-success</td>
+    <td>绿色高亮</td>
+    <td>td</td>
+  </tr>
+  <tr class="am-success">
+    <td>.am-success</td>
+    <td>绿色高亮</td>
+    <td>tr</td>
+  </tr>
+  <tr>
+    <td class="am-warning">.am-warning</td>
+    <td>橙色高亮</td>
+    <td>td</td>
+  </tr>
+  <tr class="am-warning">
+    <td>.am-warning</td>
+    <td>橙色高亮</td>
+    <td>tr</td>
+  </tr>
+  <tr>
+    <td class="am-danger">.am-danger</td>
+    <td>橙色高亮</td>
+    <td>td</td>
+  </tr>
+  <tr class="am-danger">
+    <td>.am-danger</td>
+    <td>橙色高亮</td>
+    <td>tr</td>
+  </tr>
+  </tbody>
+</table>
+`````
 
 ## 其他效果
 
 - `.am-table-striped` 斑马纹效果
 - `.am-table-hover` hover 状态
-- `.am-active` 添加到 `tr`，激活状态
 
 `````html
 <table class="am-table am-table-striped am-table-hover">
@@ -200,28 +286,28 @@
 	</thead>
 	<tbody>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 	</tbody>
@@ -237,7 +323,7 @@
 ## 所有样式叠加
 
 `````html
-<table class="am-table am-table-bd am-table-striped am-table-hover">
+<table class="am-table am-table-bordered am-table-striped am-table-hover">
 	<thead>
 		<tr>
 			<th>网站名称</th>
@@ -247,28 +333,28 @@
 	</thead>
 	<tbody>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr class="am-active">
-			<td>云适配(Active)</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI(Active)</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		<tr>
-			<td>云适配</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 	</tbody>
@@ -276,7 +362,7 @@
 `````
 
 ```html
-<table class="am-table am-table-bd am-table-striped am-table-hover">
+<table class="am-table am-table-bordered am-table-striped am-table-hover">
 	<thead>
 		<tr>
 			<th>网站名称</th>
@@ -287,11 +373,17 @@
 	<tbody>
 		...
 		<tr class="am-active">
-			<td>云适配(Active)</td>
-			<td>www.yunshipei.com</td>
+			<td>Amaze UI(Active)</td>
+			<td>http://amazeui.org</td>
 			<td>2012-10-01</td>
 		</tr>
 		...
 	</tbody>
 </table>
 ```
+
+## 参考资源
+
+- [表格排序 jQuery Table Sort] (https://github.com/kylefox/jquery-tablesort)
+- [Tablesaw - A set of jQuery plugins for responsive tables](https://github.com/filamentgroup/tablesaw)
+- [FooTable - jQuery plugin to make HTML tables responsive](http://fooplugins.com/plugins/footable-jquery/)

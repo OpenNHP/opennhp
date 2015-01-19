@@ -1,42 +1,47 @@
-define(function(require, exports, module) {
-    require('core');
-    require('ui.pureview');
+'use strict';
 
-    var $ = window.Zepto,
-        UI = $.AMUI;
+require('./core');
+require('./ui.pureview');
+var $ = require('jquery');
+var UI = $.AMUI;
 
-    /**
-     * Is Images zoomable
-     * @return {Boolean}
-     */
-    $.isImgZoomAble = function(element) {
-        var t = new Image();
-        t.src = element.src;
+/**
+ * Is Images zoomable
+ * @return {Boolean}
+ */
+$.isImgZoomAble = function(element) {
+  var t = new Image();
+  t.src = element.src;
 
-        var zoomAble = ($(element).width() < t.width);
+  var zoomAble = ($(element).width() < t.width);
 
-        if (zoomAble) {
-            $(element).parent('.am-figure').addClass('am-figure-zoomable');
-        }
-        return zoomAble;
-    };
+  if (zoomAble) {
+    $(element).closest('.am-figure').addClass('am-figure-zoomable');
+  }
 
-    var figureInit = function() {
-        $('.am-figure').each(function(i, item) {
-            var options = UI.utils.parseOptions($(item).attr('data-am-figure'));
+  return zoomAble;
+};
 
-            if (options.pureview) {
-                $(item).pureview();
-            } else if (options.autoZoom) {
-                var zoomAble = $.isImgZoomAble($(item).find('img')[0]);
-                 zoomAble && $(item).pureview();
-            }
-        });
-    };
+function figureInit() {
+  $('.am-figure').each(function(i, item) {
+    var options = UI.utils.parseOptions($(item).attr('data-am-figure'));
 
-    $(window).on('load', function() {
-        figureInit();
-    });
+    if (options.pureview) {
+      if (options.pureview === 'auto') {
+        var zoomAble = $.isImgZoomAble($(item).find('img')[0]);
+        zoomAble && $(item).pureview();
+      } else {
+        $(item).addClass('am-figure-zoomable').pureview();
+      }
+    }
+  });
+}
 
-    exports.init = figureInit;
+$(window).on('load', function() {
+  figureInit();
 });
+
+module.exports = $.AMUI.figure = {
+  VERSION: '2.0.2',
+  init: figureInit
+};

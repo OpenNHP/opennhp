@@ -1,6 +1,6 @@
 {{#this}}
   <header data-am-widget="header"
-          class="am-header{{#if theme}} am-header-{{theme}}{{else}} am-header-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"{{#if id}}
+          class="am-header{{#if theme}} am-header-{{theme}}{{else}} am-header-default{{/if}}{{#if options.fixed}} am-header-fixed{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"{{#if id}}
           id="{{id}}"{{/if}}>
     {{#if content.left}}
       <div class="am-header-left am-header-nav">
@@ -27,7 +27,7 @@
     {{#if content.title}}
       <h1 class="am-header-title">
         {{#if content.link}}
-          <a href="{{content.link}}">
+          <a href="{{content.link}}" class="{{content.className}}">
             {{{content.title}}}
           </a>
         {{else}}

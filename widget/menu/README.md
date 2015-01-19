@@ -25,8 +25,6 @@ var data = [
     "title": "",            // 一级菜单标题
     "link": "",             // 一级菜单链接
     "className": "",
-    "target": "_blank",     // 一级菜单打开方式
-
     "subMenu": [
       {                   // 二级菜单
         "title": "",    // 二级菜单标题
@@ -42,8 +40,6 @@ return data;
 ```
 
 ## 数据接口
-
-### Amaze UI 1.0
 
 ```javascript
 {
@@ -76,63 +72,3 @@ return data;
   ]
 }
 ```
-
-### Amaze UI 0.9
-
-```javascript
-{
-  "id": "",
-
-  "className": "",
-
-  "theme": "",
-
-  "options": {
-    "cols": 5, // 一级菜单列数 [1-12]
-
-    "offCanvas": false, // 是否启用侧滑菜单
-
-    "offCanvasId": "", // 侧滑菜单容器 ID，侧滑菜单触发器设置 data-am-offcanvas = "{target:'#offCanvasId'}"
-                       // 一个页面只使用一次侧滑菜单时无需设置
-
-    "offCanvasFlip": false, // 侧滑菜单默认在左侧，如果要在右侧显示，请传递 true
-
-    "dataset": "" // 数据接口
-  },
-
-  // 菜单数据
-  "content": [
-    {
-      "title": "", // 一级菜单标题
-      "link": "", // 一级菜单链接
-      "className": "", // 菜单 li 上的自定义 Class
-      "subCols": "", // 子菜单(第二级)列数
-      "subMenu": [{
-        "title": "", // 二级菜单标题
-        "link": "", // 二级菜单链接
-        "className": "", // 菜单上的 Class
-      }]
-    }
-  ]
-}
-```
-
-### Amaze UI 0.9 侧滑菜单使用
-
-使用侧滑时，需要 **手动添加触发器**，可以通过空白模块或者使用脚本在其他元素上添加属性实现。
-
-下面的代码中：`offcanvasId` 为 【侧滑菜单容器 ID】 中设置的值。
-
-- `<a>`元素作为触发器：
-
-```html
-<a href="#offcanvasId" data-am-offcanvas>菜单</a>
-```
-
-- 其他元素作为触发器：
-
-```html
-<button class="uk-button" data-am-offcanvas="{target:'#offcanvasId'}">菜单</button>
-```
-
-`data-am-offcanvas` 属性是必须的。`<a>` 作为触发元素时，target 读取 `href` 属性；使用其他元素则需要指明目标菜单。

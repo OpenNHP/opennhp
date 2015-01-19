@@ -1,4 +1,8 @@
-define(function(require, exports, module) {
-    var $ = window.Zepto;
+'use strict';
 
-});
+var $ = require('jquery');
+require('./core');
+
+module.exports = $.AMUI.titlebar = {
+  VERSION: '4.0.1'
+};

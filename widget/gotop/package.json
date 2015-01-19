@@ -1,7 +1,7 @@
 {
     "name": "gotop",
 
-    "version": "3.0.0",
+    "version": "4.0.2",
 
     "localName": {
         "en": "Gotop",
@@ -135,7 +135,7 @@
                     "desc": "自定义图片",
                     "data": {
                         "content": {
-                            "customIcon": "http://i.static.amazeui.org/assets/i/cpts/gotop/goTop.gif"
+                            "customIcon": "http://amazeui.b0.upaiyun.com/assets/i/cpts/gotop/goTop.gif"
                         }
                     }
                 }
@@ -196,6 +196,10 @@
         "util.fastclick.js"
     ],
 
+    "jsDependencies": [
+      "ui.smooth-scroll.js"
+    ],
+
     "script": "gotop.js",
 
     "api": {
@@ -243,8 +247,6 @@
     },
 
     "readme": "http://docs.yunshipei.com/amui/#gotop",
-
-    "example": "/*\n\n 此模块的使用方法：采集原PC网站上的图片数据以及标题内容放到此模块。\n\n 常用用途：回到顶部组件。\n\n 了解Amaze UI的模块详情，请访问http://amazeui.org/widgets/gotop。\n\n*/\n\nvar data = {\n  \"title\":      \"回到顶部\"    // 显示文字（某些主题不显示）\n  \"icon\":       \"arrow-up\"  // 图标名称，使用内置的 Icon Font\n  \"customIcon\": \"\"          // 自定义图标 URL\n};\n\nreturn data;\n",
 
     "hidden": false
 }

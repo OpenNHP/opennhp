@@ -40,7 +40,6 @@ __数据说明：__
 - `switchName`：可写：手机版等，默认 `云适配版`；
 - `owner`：网站名字；
 - `slogan`：弹出层广告语；
-- `poweredBy`：默认 `本手机网站由云适配服务`；
 - `companyInfo`：填写公司相关信息，此为一对象数组，每一条信息通过对detail赋值来实现！
 
 ### Add to Homescreen
@@ -54,6 +53,11 @@ __数据说明：__
 - [Add to Homescreen - Google Chrome Mobile -- Google Developers](https://developers.google.com/chrome/mobile/docs/installtohomescreen)
 - [Everything you always wanted to know about touch icons](http://mathiasbynens.be/notes/touch-icons)
 
+添加到桌面图标功能默认开启，可以通过设置以下代码禁用：
+
+```javascript
+window.AMUI_NO_ADD2HS = true;
+```
 
 ## 数据接口
 
@@ -77,7 +81,6 @@ __数据说明：__
     "switchName": "",
     "owner": "",
     "slogan": "",
-    "poweredBy": "",
     "companyInfo": [
       {
         "detail": ""

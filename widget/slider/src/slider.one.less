@@ -3,8 +3,6 @@
   */
 
 .am-slider-one {
-  @global-primary: #15afef;
-
   @control-nav-bg-color: fadeout(@white, 10%);
   @control-nav-hover-bg-color: fadeout(@white, 30%);
   @control-nav-active-bg-color: @global-primary;
@@ -14,34 +12,36 @@
   @control-nav-bg-color: rgba(0,0,0,0.5);
   @control-nav-hover-bg-color: rgba(0,0,0,0.7);
 
-  .box-shadow(0 1px 4px @control-nav-bg-color);
+  box-shadow: 0 1px 4px @control-nav-bg-color;
+
   margin:0 10px;
 
   .am-viewport {
     max-height: 2000px;
-    .transition(all 1s ease);
+    transition: all 1s ease;
+
     .loading & {
       max-height: 300px;
     }
+
     .am-slider-desc{
-      height: 26px;
-      line-height: 26px;
-      width: 100%;
       position: absolute;
       left: 0;
       bottom: 0;
-
+      height: 26px;
+      width: 100%;
+      line-height: 26px;
       background: @slider-dese-bg;
       color: @slider-dese-color;
-      .am-slider-title{
+
+      .am-slider-title {
         font-weight: normal;
         font-size: 12px;
         text-indent: 4px;
-        .text-overflow();
         padding-right: 80px;
+        .text-overflow();
       }
     }
-
   }
 
   /* Control Nav */
@@ -51,29 +51,29 @@
 
   .am-direction-nav {
     a {
+      position: absolute;
+      top: 50%;
+      z-index: 10;
       display: block;
       width: 24px;
       height: 24px;
       margin: -12px 0 0;
-      position: absolute;
-      top: 50%;
-      z-index: 10;
       overflow: hidden;
       opacity: 0.45;
       cursor: pointer;
       color: rgba(0, 0, 0, 0.8);
       text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.3);
+      transition: all .3s ease;
 
-      .transition(all .3s ease);
-
-      &::before {
-        color: @control-nav-hover-bg-color;
+      &:before {
         .am-icon-font;
+        color: @control-nav-hover-bg-color;
         content: @fa-var-chevron-left;
         font-size: 24px;
       }
+
       &.am-next {
-        &::before {
+        &:before {
           content: @fa-var-chevron-right;
         }
       }
@@ -82,6 +82,7 @@
     .am-prev {
       left: 10px;
     }
+
     .am-next {
       right: 10px;
       text-align: right;
@@ -101,6 +102,7 @@
         opacity: 1;
       }
     }
+
     .am-next {
       opacity: 0.7;
       right: 10px;
@@ -113,10 +115,10 @@
   .am-pauseplay {
     display: none;
   }
-  .am-slider-desc{
 
-  }
+  .am-slider-desc {}
 
   .hook-am-slider-one;
 }
+
 .hook-am-slider-one() {}

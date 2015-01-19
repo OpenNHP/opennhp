@@ -3,7 +3,7 @@
 
 折叠效果组件，用于制作下滑菜单或手风琴效果。
 
-## 使用示例
+## 使用演示
 
 ### 折叠面板
 
@@ -165,9 +165,17 @@
 </nav>
 ```
 
+## 调用方式
 
-## 通过 JS 调用
+### 通过 Data API
 
+在元素上添加 `data-am-collapse` 并设置 `target` 的值为折叠元素 ID：
+
+```html
+<button data-am-collapse="{target: '#my-collapse'}"></button>
+```
+
+### 通过 JS
 
 使用方法：
 
@@ -175,7 +183,21 @@
 $('#myCollapse').collapse()
 ```
 
-### 选项
+#### 方法
+
+- `$().collapse(options)` - 绑定元素展开/折叠操作
+
+```javascript
+$('#myCollapse').collapse({
+  toggle: false
+})
+```
+
+- `$().collapse('toggle')` - 切换面板状态
+- `$().collapse('open')` - 展开面板
+- `$().collapse('close')` - 关闭面板
+
+#### 选项
 
 <table class="am-table am-table-bd am-table-striped">
   <thead>
@@ -202,24 +224,8 @@ $('#myCollapse').collapse()
   </tbody>
 </table>
 
-### 方法
 
-- `.collapse(options)` - 绑定元素展开/折叠操作
-
-```javascript
-$('#myCollapse').collapse({
-  toggle: false
-})
-```
-
-- `.collapse('toggle')` - 切换面板状态
-
-- `.collapse('open')` - 展开面板
-
-- `.collapse('hide')` - 关闭面板
-
-
-### 自定义事件
+#### 自定义事件
 
 <table class="am-table am-table-bd am-table-striped">
   <thead>
@@ -230,25 +236,27 @@ $('#myCollapse').collapse({
   </thead>
   <tbody>
   <tr>
-    <td><code>open:collapse:amui</code></td>
+    <td><code>open.collapse.amui</code></td>
     <td><code>open</code> 方法被调用时立即触发</td>
   </tr>
   <tr>
-    <td><code>opened:collapse:amui</code></td>
+    <td><code>opened.collapse.amui</code></td>
     <td>元素完全展开后触发</td>
   </tr>
   <tr>
-    <td><code>close:collapse:amui</code></td>
+    <td><code>close.collapse.amui</code></td>
     <td><code>close</code> 方法被调用后立即触发
     </td>
   </tr>
   <tr>
-    <td><code>closed:collapse:amui</code></td>
+    <td><code>closed.collapse.amui</code></td>
     <td>元素折叠完成后触发</td>
   </tr>
   </tbody>
 </table>
-<script>
-  seajs.use(['ui.collapse']);
-</script>
 
+## 注意事项
+
+**不要在折叠内容的容器上设置垂直的 `margin`/`padding`/`border` 样式。**
+
+jQuery 计算元素高度的方式有点奇葩，暂时只能通过上面的方式规避。

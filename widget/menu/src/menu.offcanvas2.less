@@ -18,9 +18,12 @@
 
   .am-menu-toggle {
     position: absolute;
-    right: 10px;
-    top: -35px;
+    right: 5px;
+    top: -47px;
     display: block;
+    .square(44px);
+    line-height: 44px;
+    text-align: center;
     color: @menu-toggle-color;
   }
 
@@ -29,7 +32,7 @@
     > li {
       padding: 5px;
       > a {
-        .transition(all 0.3s);
+        transition: all 0.3s;
         background-color: @menu-nav-link-bg;
         color: @menu-nav-link-color;
         .text-overflow(block);
@@ -61,5 +64,4 @@
   .hook-am-menu-offcanvas2;
 }
 
-.hook-am-menu-offcanvas2() {
-}
+.hook-am-menu-offcanvas2() {}

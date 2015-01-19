@@ -74,17 +74,21 @@ body {
 
 另外，在 Webkit 浏览器下还设置了反锯齿平滑渲染，渲染出来要纤细一些，其他内核的浏览器上看着稍粗一些。
 
+__2014.10.10 update:__ OSX 平台的 Firefox 从 v25 增加了 `-moz-osx-font-smoothing`，实现类似 Webkit 的字体渲染效果。
+
 ```css
-html {
+body {
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 ```
 
 如果你不喜欢，可以重置成浏览器的默认平滑字体。
 
 ```css
-html {
+body {
   -webkit-font-smoothing: subpixel-antialiased;
+  -moz-osx-font-smoothing: auto;
 }
 ```
 
@@ -96,7 +100,7 @@ html {
   千萬不要因為走得太久，而忘記了我們為什麼出發。
 </p>
 <br/>
-<div style="-webkit-font-smoothing: subpixel-antialiased;">
+<div style="-webkit-font-smoothing: subpixel-antialiased;-moz-osx-font-smoothing: auto">
   <h3>未开启反锯齿 <code>-webkit-font-smoothing: subpixel-antialiased;</code></h3>
 
   <p>
@@ -115,9 +119,9 @@ html {
   千萬不要因為走得太久，而忘記了我們為什麼出發。
 </p>
 <br/>
-<div style="-webkit-font-smoothing: subpixel-antialiased;">
+<div style="-webkit-font-smoothing: subpixel-antialiased; -moz-osx-font-smoothing: auto">
   <h3>-webkit-font-smoothing: subpixel-antialiased;</h3>
-  <p >
+  <p>
     The quick brown fox jumps over the lazy dog. <br/>
     千万不要因为走的太久，而忘记了我们为什么出发。 <br/>
     千萬不要因為走得太久，而忘記了我們為什麼出發。
@@ -128,6 +132,7 @@ html {
 参考链接：
 
 - [-webkit-font-smoothing](http://ued.ctrip.com/blog/wp-content/webkitcss/prop/font-smoothing.html)
+- [Better font-rendering on OSX](http://maximilianhoffmann.com/posts/better-font-rendering-on-osx)
 
 ### 字体相关链接
 
@@ -324,7 +329,7 @@ __有序列表（`<ol>`）：__
 
 ### 表格 `<table>`
 
-这里只是 nomalize 以后的样式，更多样式查看 [Table 组件](/css/table)。
+这里只是 normalize 以后的样式，更多样式查看 [Table 组件](/css/table)。
 
 `````html
 <table>

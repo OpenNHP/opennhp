@@ -1,36 +1,38 @@
-define(function(require, exports, module) {
-    require('core');
+'use strict';
 
-    // add2home
-    var addToHS = require('ui.add2home');
+var $ = require('jquery');
+var UI = require('./core');
+require('./ui.modal');
+var addToHS = require('./ui.add2home');
+var cookie = require('./util.cookie');
 
-    var cookie = require('util.cookie'),
-        modal = require('ui.modal'),
-        $ = window.Zepto,
-        footerInit = function() {
-            // modal mode
-            $('.am-footer-ysp').on('click', function() {
-                $('#am-footer-mode').modal();
-            });
+function footerInit() {
+  // modal mode
+  $('.am-footer-ysp').on('click', function() {
+    $('#am-footer-modal').modal();
+  });
 
-            addToHS();
+  var options = UI.utils.parseOptions($('.am-footer').data('amFooter'));
+  options.addToHS && addToHS();
 
-            // switch mode
-            // switch to desktop
-            $('[data-rel="desktop"]').on('click', function(e) {
-                e.preventDefault();
-                if (window.AMPlatform) { // front end
-                    AMPlatform.util.goDesktop();
-                } else { // back end
-                    cookie.set('allmobilize', 'desktop', '', '/');
-                    window.location = window.location;
-                }
-            });
-        };
+  // switch mode
+  // switch to desktop
+  $('[data-rel="desktop"]').on('click', function(e) {
+    e.preventDefault();
+    if (window.AMPlatform) { // front end
+      window.AMPlatform.util.goDesktop();
+    } else { // back end
+      cookie.set('allmobilize', 'desktop', '', '/');
+      window.location = window.location;
+    }
+  });
+}
 
-    $(window).on('load', function() {
-        footerInit();
-    });
-
-    exports.init = footerInit;
+$(function() {
+  footerInit();
 });
+
+module.exports = $.AMUI.footer = {
+  VERSION: '3.1.2',
+  init: footerInit
+};

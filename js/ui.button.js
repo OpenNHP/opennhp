@@ -1,125 +1,137 @@
-define(function(require, exports, module) {
+'use strict';
 
-    'use strict';
+var $ = require('jquery');
+var UI = require('./core');
 
-    require('core');
+/**
+ * @via https://github.com/twbs/bootstrap/blob/master/js/button.js
+ * @copyright (c) 2011-2014 Twitter, Inc
+ * @license The MIT License
+ */
 
-    var $ = window.Zepto,
-        UI = $.AMUI;
+var Button = function(element, options) {
+  this.$element = $(element);
+  this.options = $.extend({}, Button.DEFAULTS, options);
+  this.isLoading = false;
+  this.hasSpinner = false;
+};
 
-    /**
-     * @via https://github.com/twbs/bootstrap/blob/master/js/button.js
-     * @copyright Copyright 2013 Twitter, Inc.
-     * @license Apache 2.0
-     */
+Button.DEFAULTS = {
+  loadingText: 'loading...',
+  className: {
+    loading: 'am-btn-loading',
+    disabled: 'am-disabled'
+  },
+  spinner: undefined
+};
 
-    var Button = function(element, options) {
-        this.$element = $(element);
-        this.options = $.extend({}, Button.DEFAULTS, options);
-        this.isLoading = false;
-        this.hasSpinner = false;
-    };
+Button.prototype.setState = function(state) {
+  var disabled = 'disabled';
+  var $element = this.$element;
+  var options = this.options;
+  var val = $element.is('input') ? 'val' : 'html';
+  var loadingClassName = options.className.disabled + ' ' +
+    options.className.loading;
 
-    Button.DEFAULTS = {
-        loadingText: 'loading...',
-        loadingClass: 'am-btn-loading',
-        loadingWithSpinner: '<span class="am-icon-refresh am-icon-spin"></span> loading...'
-    };
+  state = state + 'Text';
 
-    Button.prototype.setState = function(state) {
-        var d = 'disabled',
-            $el = this.$element,
-            val = $el.is('input') ? 'val' : 'html',
-            data = $el.data();
+  if (!options.resetText) {
+    options.resetText = $element[val]();
+  }
 
-        state = state + 'Text';
+  // add spinner for element with html()
+  if (UI.support.animation && options.spinner &&
+    val === 'html' && !this.hasSpinner) {
+    options.loadingText = '<span class="am-icon-' +
+    options.spinner +
+    ' am-icon-spin"></span>' + options.loadingText;
 
-        if (data.resetText == null) {
-            $el.data('resetText', $el[val]());
-        }
+    this.hasSpinner = true;
+  }
 
-        // add spinner for element with html()
-        if (UI.support.animation && !this.hasSpinner && val === 'html') {
-            this.options.loadingText = this.options.loadingWithSpinner;
-            this.hasSpinner = true;
-        }
+  $element[val](options[state]);
 
-        $el[val](data[state] == null ? this.options[state] : data[state]);
+  // push to event loop to allow forms to submit
+  setTimeout($.proxy(function() {
+    if (state == 'loadingText') {
+      $element.addClass(loadingClassName).attr(disabled, disabled);
+      this.isLoading = true;
+    } else if (this.isLoading) {
+      $element.removeClass(loadingClassName).removeAttr(disabled);
+      this.isLoading = false;
+    }
+  }, this), 0);
+};
 
-        // push to event loop to allow forms to submit
-        setTimeout($.proxy(function() {
-            if (state == 'loadingText') {
-                this.isLoading = true;
-                $el.addClass(d + ' ' + this.options.loadingClass).attr(d, d);
-            } else if (this.isLoading) {
-                this.isLoading = false;
-                $el.removeClass(d + ' ' + this.options.loadingClass).removeAttr(d);
-            }
-        }, this), 0);
-    };
+Button.prototype.toggle = function() {
+  var changed = true;
+  var $element = this.$element;
+  var $parent = this.$element.parent('.am-btn-group');
 
-    Button.prototype.toggle = function() {
-        var changed = true,
-            $parent = this.$element.parent('.am-btn-group');
+  if ($parent.length) {
+    var $input = this.$element.find('input');
 
-        if ($parent.length) {
-            var $input = this.$element.find('input');
-
-            if ($input.prop('type') == 'radio') {
-                if ($input.prop('checked') && this.$element.hasClass('am-active')) {
-                    changed = false;
-                } else {
-                    $parent.find('.am-active').removeClass('am-active')
-                }
-            }
-
-            if (changed) {
-                $input.prop('checked', !this.$element.hasClass('am-active')).trigger('change')
-            }
-        }
-
-        if (changed) {
-            this.$element.toggleClass('am-active')
-        }
-    };
-
-
-    // Button plugin
-
-    function Plugin(option) {
-        return this.each(function() {
-            var $this = $(this);
-            var data = $this.data('amui.button');
-            var options = typeof option == 'object' && option;
-
-            if (!data) {
-                $this.data('amui.button', (data = new Button(this, options)));
-            }
-
-            if (option == 'toggle') {
-                data.toggle();
-            } else if (option) {
-                data.setState(option)
-            }
-        });
+    if ($input.prop('type') == 'radio') {
+      if ($input.prop('checked') && $element.hasClass('am-active')) {
+        changed = false;
+      } else {
+        $parent.find('.am-active').removeClass('am-active');
+      }
     }
 
-    $.fn.button = Plugin;
+    if (changed) {
+      $input.prop('checked',
+        !$element.hasClass('am-active')).trigger('change');
+    }
+  }
 
+  if (changed) {
+    $element.toggleClass('am-active');
+    if (!$element.hasClass('am-active')) {
+      $element.blur();
+    }
+  }
+};
 
-    // Init code
+// Button plugin
+function Plugin(option) {
+  return this.each(function() {
+    var $this = $(this);
+    var data = $this.data('amui.button');
+    var options = typeof option == 'object' && option || {};
 
-    $(document).on('click.button.amui', '[data-am-button]', function(e) {
-        var $btn = $(e.target);
+    if (!data) {
+      $this.data('amui.button', (data = new Button(this, options)));
+    }
 
-        if (!$btn.hasClass('am-btn')) {
-            $btn = $btn.closest('.am-btn');
-        }
+    if (option == 'toggle') {
+      data.toggle();
+    } else if (typeof option == 'string') {
+      data.setState(option);
+    }
+  });
+}
 
-        Plugin.call($btn, 'toggle');
-        e.preventDefault();
-    });
+$.fn.button = Plugin;
 
-    module.exports = Button;
-    // TODO: 样式复查
+// Init code
+$(document).on('click.button.amui.data-api', '[data-am-button]', function(e) {
+  var $btn = $(e.target);
+
+  if (!$btn.hasClass('am-btn')) {
+    $btn = $btn.closest('.am-btn');
+  }
+
+  Plugin.call($btn, 'toggle');
+  e.preventDefault();
 });
+
+UI.ready(function(context) {
+  $('[data-am-loading]', context).each(function() {
+    $(this).button(UI.utils.parseOptions($(this).data('amLoading')));
+  });
+});
+
+$.AMUI.button = Button;
+
+module.exports = Button;

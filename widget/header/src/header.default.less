@@ -17,7 +17,7 @@
       color: @header-title-link-color;
     }
   }
-  
+
   .am-header-icon {
     font-size: 20px;
   }
@@ -25,11 +25,14 @@
   .am-header-nav {
     color: @header-nav-color;
 
-    a {
+    > a {
+      display: inline-block;
+      min-width: 36px;
+      text-align: center;
       color: @header-nav-color;
 
       & + a {
-        margin-left: 12px;
+        margin-left: 5px;
       }
     }
 
@@ -40,7 +43,7 @@
       line-height: 30px;
       font-size: 14px;
       vertical-align: top;
-      
+
       .am-header-icon {
         font-size: inherit;
       }
@@ -50,7 +53,7 @@
       color: @gray-light;
     }
   }
-  
+
   .am-header-nav-title,
   .am-header-nav-title + .am-header-icon {
     font-size: 14px;
@@ -59,8 +62,6 @@
   .hook-am-header-default;
 }
 
-.hook-am-header-default() {
-}
-
+.hook-am-header-default() {}
 
 // TODO: 使用 flex 布局，让中间部分宽度自适应

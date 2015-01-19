@@ -1,7 +1,7 @@
 {
     "name": "accordion",
 
-    "version": "1.2.0",
+    "version": "2.0.1",
 
     "localName": {
         "en": "Accordion",
@@ -342,7 +342,7 @@
     ],
 
     "jsDependencies": [
-        "amui.accordion.js"
+        "ui.collapse.js"
     ],
 
     "script": "accordion.js",
@@ -408,8 +408,6 @@
     },
 
     "readme": "http://docs.yunshipei.com/amui/#accordion",
-
-    "example": "/*\n 此模块的使用方法：采集原PC网站上的标题以及内容的数据放到此模块的数据里。\n \n 常用用途：通常用来采集一些纯内容列表的页面。\n \n 了解AMUI折叠面板的模块详情，请访问http://ide.yunshipei.com/doc/amui/#accordion。\n\n         示例代码：\n         var data = [];\n         $(\".xx\").find(\"xx\").each(function(){\n             data.push({\n                 \"title\": $(this).find(\"xx\").text(), \n                 \"content\": $(this).find(\"xx\").html() \n             });\n         });\n*/\nvar data = [\n    {\n        \"title\": \"\",    // 面板标题 填写大标题\n        \"content\": \"\"   // 面板内容 填写下拉菜单中的内容\n    }\n];\n\nreturn data;\n",
 
     "hidden": false
 }

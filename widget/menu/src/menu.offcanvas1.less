@@ -25,9 +25,12 @@
 
   .am-menu-toggle {
     position: absolute;
-    right: 10px;
-    top: -35px;
+    right: 5px;
+    top: -47px;
     display: block;
+    .square(44px);
+    line-height: 44px;
+    text-align: center;
     color: @menu-toggle-color;
   }
 
@@ -64,7 +67,7 @@
 
     > .am-parent {
       > a {
-        .transition(all 0.3s);
+        transition: all .3s;
         &:after {
           content: @fa-var-angle-left;
           position: absolute;
@@ -106,5 +109,4 @@
   .hook-am-menu-offcanvas1;
 }
 
-.hook-am-menu-offcanvas1() {
-}
+.hook-am-menu-offcanvas1() {}

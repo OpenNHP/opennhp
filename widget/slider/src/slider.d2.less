@@ -14,10 +14,12 @@
   @more-bg-color: @global-primary;
 
   margin-bottom: 20px;
-  .box-shadow(0 1px 4px rgba(0,0,0,.2));
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+
   .am-viewport {
     max-height: 2000px;
-    .transition(all 1s ease);
+    transition: all 1s ease;
+
     .loading & {
       max-height: 300px;
     }
@@ -31,22 +33,23 @@
     right: 50px;
     color: @desc-color;
   }
-  
+
   .am-slider-content {
     background-color: @content-bg-color;
     padding: 10px 6px;
+    margin-bottom: 10px;
+
     p {
       margin: 0;
       .text-overflow(block);
       font-size: 1.4rem;
     }
-    margin-bottom: 10px;
   }
-  
+
   .am-slider-title {
     font-weight: normal;
-    .text-overflow(block);
     margin-bottom: 5px;
+    .text-overflow(block);
   }
 
   .am-slider-more {
@@ -67,6 +70,7 @@
     li {
       margin: 0 6px;
       display: inline-block;
+
       a {
         width: 8px;
         height: 8px;
@@ -74,14 +78,15 @@
         background-color: @control-nav-bg-color;
         cursor: pointer;
         text-indent: -9999px;
-        -webkit-border-radius: 20px;
-        border-radius: 20px;
+        border-radius: 50%;
         font-size: 0;
         line-height: 0;
-        .box-shadow(inset 0 0 3px rgba(0,0,0,0.3));
+        box-shadow: inset 0 0 3px rgba(0,0,0,0.3);
+
         &:hover {
           background: darken(@control-nav-bg-color, 8%);
         }
+
         &.am-active {
           background: @control-nav-active-bg-color;
           cursor: default; }

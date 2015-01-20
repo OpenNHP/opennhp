@@ -1,3 +1,10 @@
+---
+title: Selected 插件
+next: ucheck
+source: js/ui.selected.js
+doc: docs/javascript/selected.md
+---
+
 # Selected
 ---
 
@@ -5,6 +12,7 @@
 
 本插件只提供样式重写及基本的功能，如果需要更高级的功能，请参考：
 
+- [Amaze UI Styled Chosen](https://github.com/amazeui/chosen)
 - [Chosen](https://github.com/harvesthq/chosen)
 - [Select2](https://github.com/ivaynberg/select2)
 - [bootstrap-select](https://github.com/silviomoreto/bootstrap-select)

@@ -140,7 +140,7 @@
 
 ### 折叠菜单
 
-使用时注意目标元素外面应该有一个容器，以便动画执行时计算高端。
+使用时注意目标元素外面应该有一个容器，以便动画执行时计算高度。
 
 `````html
 <button class="am-btn am-btn-primary" data-am-collapse="{target: '#collapse-nav'}">Menu <i class="am-icon-bars"></i></button>

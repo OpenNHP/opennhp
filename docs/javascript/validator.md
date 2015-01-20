@@ -67,7 +67,7 @@ JS 表单验证基于 HTML5 的各项验证属性进行：
 
 - `required`: 必填；
 - `pattern`: 验证正则表达式，插件内置了 `email`、`url`、`number` 三种类型的正则表达式；
-- `minlenth`/`maxlength`: 字符限制；
+- `minlength`/`maxlength`: 字符限制；
 - `min`/`max`: 最小、最大值限制，仅适用于数值类型的域；
 - `minchecked`/`maxchecked`: 至少、至多选择数，适用于 `checkbox`、下拉多选框，`checkbox` 时将相关属性的设置在同组的第一个元素上；
 - `.js-pattern-xx`: 验证规则 class，正则库中存在的规则可以通过添加相应 class 实现规则添加。

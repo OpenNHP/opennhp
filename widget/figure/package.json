@@ -70,7 +70,7 @@
           "data": {
             "options": {
               "figcaptionPosition": "bottom",
-              "zoomAble": "auto"
+              "zoomAble": true
             }
           }
         }

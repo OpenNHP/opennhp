@@ -1,0 +1,7 @@
+{{#this}}
+  <div data-am-widget="wechatpay" class="am-wechatpay{{#if theme}} am-wechatpay-{{theme}}{{else}} am-wechatpay-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"{{#if id}} id="{{id}}"{{/if}}>
+    <div class="am-wechatpay-btn" data-wechat-pay="{ {{#each content.pay}}{{@key}}: '{{this}}',{{/each}} }">
+      <button class="am-btn am-btn-primary am-btn-block">{{content.btn}}</button>
+    </div>
+  </div>
+{{/this}}

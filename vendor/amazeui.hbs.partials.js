@@ -40,6 +40,8 @@
 
     hbs.registerPartial('titlebar', "{{#this}}\n<div data-am-widget=\"titlebar\" class=\"am-titlebar {{#if theme}}am-titlebar-{{theme}}{{else}}am-titlebar-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}\" {{#if id}}id=\"{{id}}\"{{/if}}>\n  {{#if content.title}}\n    <h2 class=\"am-titlebar-title\">\n      {{#if content.link}}\n        <a href=\"{{content.link}}\" class=\"{{className}}\">{{{content.title}}}</a>\n      {{else}}\n        {{{content.title}}}\n      {{/if}}\n    </h2>\n  {{/if}}\n\n  {{#if content.nav}}\n    <nav class=\"am-titlebar-nav\">\n      {{#each content.nav}}\n        <a href=\"{{link}}\" class=\"{{className}}\">{{{title}}}</a>\n      {{/each}}\n    </nav>\n  {{/if}}\n</div>\n{{/this}}");
 
+    hbs.registerPartial('wechatpay', "{{#this}}\n  <div data-am-widget=\"wechatpay\" class=\"am-wechatpay{{#if theme}} am-wechatpay-{{theme}}{{else}} am-wechatpay-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}\"{{#if id}} id=\"{{id}}\"{{/if}}>\n    <div class=\"am-wechatpay-btn\" data-wechat-pay=\"{ {{#each content.pay}}{{@key}}: '{{this}}',{{/each}} }\">\n      <button class=\"am-btn am-btn-primary am-btn-block\">{{content.btn}}</button>\n    </div>\n  </div>\n{{/this}}");
+
   };
 
   if (typeof module !== 'undefined' && module.exports) {

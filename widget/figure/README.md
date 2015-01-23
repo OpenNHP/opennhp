@@ -41,6 +41,9 @@ return data;
   "options": {
     "figcaptionPosition": "bottom", // 图标标题位置 top - 图片上方， bottom - 图片下方
     "zoomble": false // 是否启用图片缩放功能 ['auto'|true|false]
+                      // 'auto' - 根据图片宽度自动判断，图大宽度大于窗口宽度时开启，否则不开启
+                      // false 不开启；其他转型后非 false 的值，开启
+                     // 此选项会作为 pureview 选项值 data-am-figure="{pureview: {{zoomable}} }"
   },
   "content": [
     {

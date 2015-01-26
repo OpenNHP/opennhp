@@ -12,14 +12,14 @@
   "theme": "",
   "options": {},
   "content": {
-    "pay": {
+    "order": {
       "timestamp": "", // 支付签名时间戳
       "nonceStr": "", // 支付签名随机串
       "package": "", // 统一支付接口返回的 prepay_id 参数值
       "signType": "", // 加密类型
       "paySign": "" // 支付签名
     },
-    "btn": "" // 按钮内容
+    "title": "" // 按钮文字
   }
 }
 ```

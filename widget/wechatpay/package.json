@@ -4,7 +4,7 @@
     "version": "1.0.0",
 
     "localName": {
-        "en": "wechatpay",
+        "en": "WeChat Pay",
         "zh-cn": "微信支付"
     },
 
@@ -61,14 +61,14 @@
                   "desc": "",
                   "data": {
                     "content": {
-                      "pay": {
+                      "order": {
                         "timestamp": "1421914022",
                         "nonceStr": "8W93zPDk9fNRxRbpqv5yqwCkNRWZspyW",
                         "package": "prepay_id=wx20150122160705ac42dc60170063851392",
                         "signType": "MD5",
                         "paySign": "5AF3E6B975D35BA23B63277CB45C8830"
                       },
-                      "btn": "速速下单购买！"
+                      "title": "速速下单购买！"
                     }
                   }
                 }

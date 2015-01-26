@@ -942,8 +942,10 @@
   font-style: normal; // 2
   vertical-align: baseline; // 3
   line-height: 1; // 4
+  font-size: inherit;
   -webkit-font-smoothing: antialiased; // 5
   -moz-osx-font-smoothing: grayscale;
+  transform: translate(0, 0); // ensures no half-pixel rendering in firefox
 }
 
 

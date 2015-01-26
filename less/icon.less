@@ -23,9 +23,9 @@
 
 //@fa-font-path: "../fonts";
 // https://github.com/staticfile/static/issues/11
-@fa-font-path: '//dn-staticfile.qbox.me/font-awesome/4.2.0/fonts';
+@fa-font-path: '//dn-staticfile.qbox.me/font-awesome/4.3.0/fonts';
 @fa-css-prefix: ~"@{ns}icon";
-@fa-version: '4.2.0';
+@fa-version: '4.3.0';
 @fa-border-color: #eee;
 @fa-inverse: #fff;
 @fa-li-width: (30em / 14);
@@ -40,11 +40,12 @@
 
 @font-face {
   font-family: 'FontAwesome';
-  src: ~"url('@{fa-font-path}/fontawesome-webfont.eot?v=@{fa-version}')";
-  src: ~"url('@{fa-font-path}/fontawesome-webfont.eot?#iefix&v=@{fa-version}') format('embedded-opentype')",
-  ~"url('@{fa-font-path}/fontawesome-webfont.woff?v=@{fa-version}') format('woff')",
-  ~"url('@{fa-font-path}/fontawesome-webfont.ttf?v=@{fa-version}') format('truetype')",
-  ~"url('@{fa-font-path}/fontawesome-webfont.svg?v=@{fa-version}#fontawesomeregular') format('svg')";
+  src: url('@{fa-font-path}/fontawesome-webfont.eot?v=@{fa-version}');
+  src: url('@{fa-font-path}/fontawesome-webfont.eot?#iefix&v=@{fa-version}') format('embedded-opentype'),
+  url('@{fa-font-path}/fontawesome-webfont.woff2?v=@{fa-version}') format('woff2'),
+  url('@{fa-font-path}/fontawesome-webfont.woff?v=@{fa-version}') format('woff'),
+  url('@{fa-font-path}/fontawesome-webfont.ttf?v=@{fa-version}') format('truetype'),
+  url('@{fa-font-path}/fontawesome-webfont.svg?v=@{fa-version}#fontawesomeregular') format('svg');
   //  src: url('@{fa-font-path}/FontAwesome.otf') format('opentype'); // used when developing fonts
   font-weight: normal;
   font-style: normal;
@@ -774,6 +775,7 @@
   content: @fa-var-twitter;
 }
 
+.@{fa-css-prefix}-facebook-f:before,
 .@{fa-css-prefix}-facebook:before {
   content: @fa-var-facebook;
 }
@@ -1628,8 +1630,9 @@
   content: @fa-var-male;
 }
 
-.@{fa-css-prefix}-gittip:before {
-  content: @fa-var-gittip;
+.@{fa-css-prefix}-gittip:before,
+.@{fa-css-prefix}-gratipay:before {
+  content: @fa-var-gratipay;
 }
 
 .@{fa-css-prefix}-sun-o:before {
@@ -1977,6 +1980,7 @@
   content: @fa-var-history;
 }
 
+.@{fa-css-prefix}-genderless:before,
 .@{fa-css-prefix}-circle-thin:before {
   content: @fa-var-circle-thin;
 }
@@ -2168,6 +2172,166 @@
   content: @fa-var-meanpath;
 }
 
+.@{fa-css-prefix}-buysellads:before {
+  content: @fa-var-buysellads;
+}
+
+.@{fa-css-prefix}-connectdevelop:before {
+  content: @fa-var-connectdevelop;
+}
+
+.@{fa-css-prefix}-dashcube:before {
+  content: @fa-var-dashcube;
+}
+
+.@{fa-css-prefix}-forumbee:before {
+  content: @fa-var-forumbee;
+}
+
+.@{fa-css-prefix}-leanpub:before {
+  content: @fa-var-leanpub;
+}
+
+.@{fa-css-prefix}-sellsy:before {
+  content: @fa-var-sellsy;
+}
+
+.@{fa-css-prefix}-shirtsinbulk:before {
+  content: @fa-var-shirtsinbulk;
+}
+
+.@{fa-css-prefix}-simplybuilt:before {
+  content: @fa-var-simplybuilt;
+}
+
+.@{fa-css-prefix}-skyatlas:before {
+  content: @fa-var-skyatlas;
+}
+
+.@{fa-css-prefix}-cart-plus:before {
+  content: @fa-var-cart-plus;
+}
+
+.@{fa-css-prefix}-cart-arrow-down:before {
+  content: @fa-var-cart-arrow-down;
+}
+
+.@{fa-css-prefix}-diamond:before {
+  content: @fa-var-diamond;
+}
+
+.@{fa-css-prefix}-ship:before {
+  content: @fa-var-ship;
+}
+
+.@{fa-css-prefix}-user-secret:before {
+  content: @fa-var-user-secret;
+}
+
+.@{fa-css-prefix}-motorcycle:before {
+  content: @fa-var-motorcycle;
+}
+
+.@{fa-css-prefix}-street-view:before {
+  content: @fa-var-street-view;
+}
+
+.@{fa-css-prefix}-heartbeat:before {
+  content: @fa-var-heartbeat;
+}
+
+.@{fa-css-prefix}-venus:before {
+  content: @fa-var-venus;
+}
+
+.@{fa-css-prefix}-mars:before {
+  content: @fa-var-mars;
+}
+
+.@{fa-css-prefix}-mercury:before {
+  content: @fa-var-mercury;
+}
+
+.@{fa-css-prefix}-transgender:before {
+  content: @fa-var-transgender;
+}
+
+.@{fa-css-prefix}-transgender-alt:before {
+  content: @fa-var-transgender-alt;
+}
+
+.@{fa-css-prefix}-venus-double:before {
+  content: @fa-var-venus-double;
+}
+
+.@{fa-css-prefix}-mars-double:before {
+  content: @fa-var-mars-double;
+}
+
+.@{fa-css-prefix}-venus-mars:before {
+  content: @fa-var-venus-mars;
+}
+
+.@{fa-css-prefix}-mars-stroke:before {
+  content: @fa-var-mars-stroke;
+}
+
+.@{fa-css-prefix}-mars-stroke-v:before {
+  content: @fa-var-mars-stroke-v;
+}
+
+.@{fa-css-prefix}-mars-stroke-h:before {
+  content: @fa-var-mars-stroke-h;
+}
+
+.@{fa-css-prefix}-neuter:before {
+  content: @fa-var-neuter;
+}
+
+.@{fa-css-prefix}-facebook-official:before {
+  content: @fa-var-facebook-official;
+}
+
+.@{fa-css-prefix}-pinterest-p:before {
+  content: @fa-var-pinterest-p;
+}
+
+.@{fa-css-prefix}-whatsapp:before {
+  content: @fa-var-whatsapp;
+}
+
+.@{fa-css-prefix}-server:before {
+  content: @fa-var-server;
+}
+
+.@{fa-css-prefix}-user-plus:before {
+  content: @fa-var-user-plus;
+}
+
+.@{fa-css-prefix}-user-times:before {
+  content: @fa-var-user-times;
+}
+
+.@{fa-css-prefix}-hotel:before,
+.@{fa-css-prefix}-bed:before {
+  content: @fa-var-bed;
+}
+
+.@{fa-css-prefix}-viacoin:before {
+  content: @fa-var-viacoin;
+}
+
+.@{fa-css-prefix}-train:before {
+  content: @fa-var-train;
+}
+
+.@{fa-css-prefix}-subway:before {
+  content: @fa-var-subway;
+}
+
+.@{fa-css-prefix}-medium:before {
+  content: @fa-var-medium;
+}
 
 /* Modifier: `am-icon-spin`
 ============================================================================= */

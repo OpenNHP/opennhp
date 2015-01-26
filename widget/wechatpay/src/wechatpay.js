@@ -1,7 +1,9 @@
 'use strict';
 
 var $ = require('jquery');
-require('./core');
+var UI = require('./core');
+
+var isWeChat = window.navigator.userAgent.indexOf('MicroMessenger') > -1;
 
 function appendWeChatSDK(callback) {
   var $weChatSDK = $('<script/>', {
@@ -16,37 +18,40 @@ function appendWeChatSDK(callback) {
 }
 
 function payHandler() {
-  if (!window.wx) {
-    return;
+  var $paymentBtn = $('[data-am-widget="wechatpay"]');
+
+  if (!isWeChat) {
+    $paymentBtn.hide();
+    return false;
   }
 
-  var $pay = $('[data-am-widget="wechatpay"]');
-  var $payBtn = $pay.find('.am-wechatpay-btn');
-  var options = $.AMUI.utils.parseOptions($payBtn.data('wechatPay'));
-  console.log(options);
+  $paymentBtn.on('click', '.am-wechatpay-btn', function(e) {
+    e.preventDefault();
+    var options = UI.utils.parseOptions($(this).parent().data('wechatPay'));
+    // console.log(options);
+    // alert('pay button clicked');
+    if (!window.wx) {
+      alert('没有微信 JS SDK');
+      return;
+    }
 
-  $payBtn.on('click', function() {
     wx.checkJsApi({
       jsApiList: ['chooseWXPay'],
       success: function(res) {
-        wx.chooseWXPay({
-          timestamp: options.timestamp,  // 支付签名时间戳
-          nonceStr: options.nonceStr,  // 支付签名随机串
-          package: options.package,  // 统一支付接口返回的prepay_id参数值
-          signType: options.signType, // 加密类型
-          paySign: options.paySign // 支付签名
-        });
+        if (res.checkResult.chooseWXPay) {
+          wx.chooseWXPay(options);
+        } else {
+          alert('微信版本不支持支付接口或没有开启！');
+        }
       },
       fail: function() {
-        alert('你微信当前版本不支持支付功能!');
+        alert('调用 checkJsApi 接口时发生错误!');
       }
     });
   });
 }
 
-var payInit = function() {
-  $('.am-wechatpay').length && payHandler();
-};
+var payInit = payHandler;
 
 $(document).on('ready', payInit);
 

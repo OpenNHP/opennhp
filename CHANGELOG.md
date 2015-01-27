@@ -1,10 +1,14 @@
 # Amaze UI Change Log
 ---
 
-**CSS：**
+**CSS:**
 
 - `NEW` 更新 Font Awesome 至 `4.3`，新增 40 个图标以及 `woff2` 格式字体；
-- `NEW` 增加表格元素隐藏/显示辅助 class，参考 #414
+- `NEW` 增加表格元素隐藏/显示辅助 class，参考 #414。
+
+**JS:**
+
+- `NEW` 增加 Geolocation 封装。
 
 ## Amaze UI 2.1.0
 

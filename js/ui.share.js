@@ -318,9 +318,9 @@ Share.prototype.wechatQr = function() {
     '<div class="am-share-wx-qr"></div>' +
     '<div class="am-share-wechat-tip">' +
     '打开微信，点击底部的<em>发现</em>，<br/> ' +
-    '使用<em>扫一扫</em>将网页分享至朋友圈</div></div></div></div>', {
-      id: qrId
-    });
+    '使用<em>扫一扫</em>将网页分享至朋友圈</div></div></div></div>');
+
+    $qr.attr('id', qrId);
 
     var qrNode = new QRCode({
       render: 'canvas',

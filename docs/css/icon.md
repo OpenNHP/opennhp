@@ -1,7 +1,7 @@
 # Icon
 ---
 
-Amaze UI Icon 组件目前使用了 [Font Awesome](http://fontawesome.io/icons/)（4.2.0），涵盖除部分国内社交网站图标以外的其他常见图标。
+Amaze UI Icon 组件目前使用了 [Font Awesome](http://fontawesome.io/icons/)（Amaze UI 2.2.0 中升级至 4.3.0），涵盖除部分国内社交网站图标以外的其他常见图标。
 
 ## 使用方法
 

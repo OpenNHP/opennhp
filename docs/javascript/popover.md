@@ -1,3 +1,13 @@
+---
+id: popover
+title: 弹出框
+titleEn: Popover
+prev: javascript/modal.html
+next: javascript/nprogress.html
+source: js/ui.popover.js
+doc: docs/javascript/popover.md
+---
+
 # Popover
 ---
 

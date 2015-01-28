@@ -1,3 +1,13 @@
+---
+id: sticky
+title: 固定元素
+titleEn: Sticky
+prev: javascript/smooth-scroll.html
+next: javascript/tabs.html
+source: js/ui.sticky.js
+doc: docs/javascript/sticky.md
+---
+
 # Sticky
 ---
 

@@ -1,6 +1,9 @@
 ---
-title: Selected 插件
-next: ucheck
+id: selected
+title: 下拉选框样式增强
+titleEn: Slected
+prev: javascript/datepicker.html
+next: javascript/ucheck.html
 source: js/ui.selected.js
 doc: docs/javascript/selected.md
 ---

@@ -1,3 +1,13 @@
+---
+id: offcanvas
+title: 侧边栏
+titleEn: OffCanvas
+prev: javascript/slider.html
+next: javascript/scrollspy.html
+source: js/ui.offcanvas.js
+doc: docs/javascript/offcanvas.md
+---
+
 # OffCanvas
 ---
 
@@ -219,3 +229,81 @@ $('#my-offcanvas').offCanvas({effect: 'push'});
   </tr>
   </tbody>
 </table>
+
+#### JS 控制示例
+
+下面的示例演示了使用 JS 打开/关闭侧边栏。侧边栏打开以后，关闭按钮无法点击到，可以在控制台输入以下代码模拟点击事件：
+
+```js
+$('[data-rel="close"]').click();
+```
+
+`````html
+<!-- 侧边栏内容 -->
+<div id="my-offcanvas" class="am-offcanvas">
+  <div class="am-offcanvas-bar">
+    <div class="am-offcanvas-content">
+      <p>
+        你那张略带着 <br/>
+        一点点颓废的脸孔 <br/>
+        轻薄的嘴唇 <br/>
+        含着一千个谎言
+      </p>
+    </div>
+  </div>
+</div>
+
+<button class="am-btn am-btn-primary doc-oc-js" data-rel="open">打开侧边栏</button>
+<button class="am-btn am-btn-primary doc-oc-js" data-rel="close">关闭侧边栏</button>
+
+<script>
+  $(function() {
+    var id = '#my-offcanvas';
+    var $myOc = $(id);
+    $('.doc-oc-js').on('click', function() {
+      $myOc.offCanvas($(this).data('rel'));
+    });
+
+    $myOc.on('open.offcanvas.amui', function() {
+      console.log(id + ' 打开了。');
+    }).on('close.offcanvas.amui', function() {
+      console.log(id + ' 关闭了。');
+    });
+  });
+</script>
+`````
+
+```html
+<!-- 侧边栏内容 -->
+<div id="my-offcanvas" class="am-offcanvas">
+  <div class="am-offcanvas-bar">
+    <div class="am-offcanvas-content">
+      <p>
+        你那张略带着 <br/>
+        一点点颓废的脸孔 <br/>
+        轻薄的嘴唇 <br/>
+        含着一千个谎言
+      </p>
+    </div>
+  </div>
+</div>
+
+<button class="am-btn am-btn-primary doc-oc-js" data-rel="open">打开侧边栏</button>
+<button class="am-btn am-btn-primary doc-oc-js" data-rel="close">关闭侧边栏</button>
+
+<script>
+  $(function() {
+    var id = '#my-offcanvas';
+    var $myOc = $(id);
+    $('.doc-oc-js').on('click', function() {
+      $myOc.offCanvas($(this).data('rel'));
+    });
+
+    $myOc.on('open.offcanvas.amui', function() {
+      console.log(id + ' 打开了。');
+    }).on('close.offcanvas.amui', function() {
+      console.log(id + ' 关闭了。');
+    });
+  });
+</script>
+```

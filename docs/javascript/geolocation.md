@@ -132,10 +132,13 @@ Geolocation 实例有三个方法：
 
 ## 使用示例
 
+**使用 Mac 的用户请使用 Safari 浏览器查看**，其他浏览器可能由于安全性和隐私设置无法使用定位服务。
+
 ### 获取当前位置并在百度地图上显示
 
 `````html
-<div id="doc-geo-demo" style="width: 100%; height: 400px;"></div>
+<div id="doc-geo-demo" style="width: 100%; height: 400px;">
+</div>
 `````
 
 ```html
@@ -147,7 +150,9 @@ Geolocation 实例有三个方法：
 ```js
 $(function() {
   var geolocation = new $.AMUI.Geolocation();
-  geolocation.get({timeout: 3000}).then(function(position){
+  var $demoArea = $('#doc-geo-demo');
+
+  geolocation.get({timeout: 7000}).then(function(position){
     // console.log(position.coords);
     var contentString = '你的位置：\n\t纬度 ' + position.coords.latitude +
       '，\n\t经度 ' + position.coords.longitude + '，\n\t精确度 ' +
@@ -166,6 +171,7 @@ $(function() {
       alert(contentString); // 点击点弹出信息
     });
   }, function(err) {
+    $demoArea.html('获取地理位置时发生错误，错误信息：<br>' + err);
     console.log(err);
   });
 });
@@ -176,7 +182,8 @@ $(function() {
 <script>
 $(function() {
   var geolocation = new $.AMUI.Geolocation();
-  geolocation.get({timeout: 3000}).then(function(position){
+  var $demoArea = $('#doc-geo-demo');
+  geolocation.get({timeout: 7000}).then(function(position){
     // console.log(position.coords);
     var contentString = '你的位置：\n\t纬度 ' + position.coords.latitude +
       '，\n\t经度 ' + position.coords.longitude + '，\n\t精确度 ' +
@@ -195,6 +202,7 @@ $(function() {
       alert(contentString); // 点击点弹出信息
     });
   }, function(err) {
+    $demoArea.html('获取地理位置时发生错误，错误信息：<br>' + err);
     console.log(err);
   });
 

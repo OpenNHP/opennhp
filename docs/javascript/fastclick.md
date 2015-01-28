@@ -1,3 +1,13 @@
+---
+id: fastclick
+title: 移动端 300 毫秒延迟处理
+titleEn: FastClick
+prev: javascript/cookie.html
+next: javascript/fullscreen.html
+source: js/util.fastclick.js
+doc: docs/javascript/fastclick.md
+---
+
 # FastClick
 ---
 

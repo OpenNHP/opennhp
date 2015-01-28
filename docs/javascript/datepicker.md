@@ -1,7 +1,17 @@
+---
+id: datepicker
+title: 日期选择
+titleEn: Datepicker
+prev: javascript/tabs.html
+next: javascript/selected.html
+source: js/ui.datepicker.js
+doc: docs/javascript/datepicker.md
+---
+
 # Datepicker
 ---
 
-日期选择插件。
+日期选择插件。**需要时间选择的参见**：[DateTimePicker - 日期时间选择插件](https://github.com/amazeui/datetimepicker)。
 
 **注意：**
 

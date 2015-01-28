@@ -12,12 +12,15 @@ var UI = require('./core');
 // Alert Class
 // NOTE: removeElement option is unavailable now
 var Alert = function(element, options) {
+  var _this = this;
   this.options = $.extend({}, Alert.DEFAULTS, options);
   this.$element = $(element);
 
   this.$element.
     addClass('am-fade am-in').
-    on('click.alert.amui', '.am-close', $.proxy(this.close, this));
+    on('click.alert.amui', '.am-close', function() {
+      _this.close.call(this);
+    });
 };
 
 Alert.DEFAULTS = {

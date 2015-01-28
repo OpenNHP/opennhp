@@ -38,7 +38,8 @@ ScrollSpyNav.DEFAULTS = {
     active: 'am-active'
   },
   closest: false,
-  smooth: true
+  smooth: true,
+  offsetTop: 0
 };
 
 ScrollSpyNav.prototype.process = function() {
@@ -85,9 +86,10 @@ ScrollSpyNav.prototype.process = function() {
 
 ScrollSpyNav.prototype.scrollProcess = function() {
   var $links = this.$links;
+  var options = this.options;
 
   // smoothScroll
-  if (this.options.smooth) {
+  if (options.smooth) {
     $links.on('click', function(e) {
       e.preventDefault();
 
@@ -98,7 +100,10 @@ ScrollSpyNav.prototype.scrollProcess = function() {
         return;
       }
 
-      $(window).smoothScroll({position: $target.offset().top});
+      var offsetTop = options.offsetTop &&
+        !isNaN(parseInt(options.offsetTop)) && parseInt(options.offsetTop) || 0;
+
+      $(window).smoothScroll({position: $target.offset().top - offsetTop});
     });
   }
 };
@@ -126,7 +131,7 @@ $.fn.scrollspynav = Plugin;
 UI.ready(function(context) {
   $('[data-am-scrollspy-nav]', context).each(function() {
     var $this = $(this);
-    var options = UI.utils.options($this.attr('data-am-scrollspy-nav'));
+    var options = UI.utils.options($this.data('amScrollspyNav'));
 
     Plugin.call($this, options);
   });

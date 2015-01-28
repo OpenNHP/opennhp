@@ -1,3 +1,13 @@
+---
+id: modal
+title: 模态窗口
+titleEn: Modal
+prev: javascript/dropdown.html
+next: javascript/popover.html
+source: js/ui.modal.js
+doc: docs/javascript/modal.md
+---
+
 # Modal
 ---
 

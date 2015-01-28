@@ -1,3 +1,13 @@
+---
+id: iscroll-lite
+title: iScroll 元素滚动
+titleEn: iScroll
+prev: javascript/hammer.html
+next: javascript/store.html
+source: js/util.iscroll-lite.js
+doc: docs/javascript/iscroll-lite.md
+---
+
 # iScroll Lite
 ---
 

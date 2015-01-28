@@ -1,3 +1,13 @@
+---
+id: scrollspynav
+title: 滚动侦测导航
+titleEn: ScrollSpyNav
+prev: javascript/scrollspy.html
+next: javascript/smooth-scroll.html
+source: js/ui.scrollspynav.js
+doc: docs/javascript/scrollspynav.md
+---
+
 # ScrollSpyNav
 ---
 
@@ -35,13 +45,13 @@
     color: #fff;
     font-weight: bold;
   }
-  
+
   .am-panel {
     margin-top: 20px;
   }
 
 </style>
-<nav class="scrollspy-nav" data-am-scrollspy-nav data-am-sticky>
+<nav class="scrollspy-nav" data-am-scrollspy-nav="{offsetTop: 45}" data-am-sticky>
   <ul>
     <li><a href="#about">关于棉花糖</a></li>
     <li><a href="#team">成员介绍</a></li>
@@ -118,7 +128,7 @@
 
 `````
 ```html
-<nav class="scrollspy-nav" data-am-scrollspy-nav data-am-sticky>
+<nav class="scrollspy-nav" data-am-scrollspy-nav="{offsetTop: 45}" data-am-sticky>
   <ul>
     <li><a href="#about">关于棉花糖</a></li>
     <li><a href="#team">成员介绍</a></li>

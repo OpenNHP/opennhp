@@ -1,3 +1,13 @@
+---
+id: cookie
+title: Cookie
+titleEn: Cookie
+prev: javascript/validator.html
+next: javascript/fastclick.html
+source: js/util.cookie.js
+doc: docs/javascript/cookie.md
+---
+
 # Cookie
 ---
 

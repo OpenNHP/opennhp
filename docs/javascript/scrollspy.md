@@ -1,3 +1,13 @@
+---
+id: scrollspy
+title: 滚动侦测
+titleEn: ScrollSpy
+prev: javascript/offcanvas.html
+next: javascript/scrollspynav.html
+source: js/ui.scrollspy.js
+doc: docs/javascript/scrollspy.md
+---
+
 # ScrollSpy
 ---
 

@@ -1,3 +1,12 @@
+---
+title: 警示信息插件
+titleEn: Alert
+prev: javascript.html
+next: javascript/button.html
+source: js/ui.alert.js
+doc: docs/javascript/alert.md
+---
+
 # Alert
 ---
 
@@ -170,3 +179,93 @@ $('#my-alert').on('closed.alert.amui', function() {
   alert('警告窗口已经关闭');
 });
 ```
+
+#### JS 控制示例
+
+**示例1：**激活 Alert 元素关闭按钮的交互功能
+
+`````html
+<div class="am-alert" id="your-alert">
+  <button type="button" class="am-close">&times;</button>
+  <p>在应用 JS 激活之前这个警告框是无法关闭的。不信点右边的 x 试试。</p>
+</div>
+
+<button type="button" class="am-btn am-btn-danger" id="doc-alert-btn-bind">点击激活上面 Alert 的关闭功能</button>
+<script>
+  $(function() {
+    $('#doc-alert-btn-bind').one('click', function() {
+      $('#your-alert').alert();
+      alert('已激活，点击上的 X 试试！');
+    });
+  });
+</script>
+`````
+```html
+<div class="am-alert" id="your-alert">
+  <button type="button" class="am-close">&times;</button>
+  <p>在应用 JS 激活之前这个警告框是无法关闭的。不信点右边的 x 试试。</p>
+</div>
+<button type="button" class="am-btn am-btn-danger" id="doc-alert-btn-bind">点击激活上面 Alert 的关闭功能</button>
+<script>
+  $(function() {
+    $('#doc-alert-btn-bind').one('click', function() {
+      $('#your-alert').alert();
+      alert('已激活，点击上的 X 试试！');
+    });
+  });
+</script>
+```
+
+**示例2**：使用 JS 关闭警告框及监听自定义事件
+
+`````html
+<div class="am-alert" id="your-alert-1">
+  <button type="button" class="am-close">&times;</button>
+  <p>这是一个警告框！</p>
+</div>
+
+<button type="button" class="am-btn am-btn-warning" id="doc-alert-btn-close">点击关闭上面的 Alert</button>
+<script>
+  $(function() {
+    $('#doc-alert-btn-close').one('click', function() {
+      $('#your-alert-1').alert('close');
+    });
+
+    $(document).on('close.alert.amui', '#your-alert-1', function(e) {
+      alert('警告框开始关闭！');
+    });
+
+    $(document).on('closed.alert.amui', '#your-alert-1', function(e) {
+      alert('警告框关闭完成！');
+    });
+  });
+</script>
+`````
+
+```html
+`````html
+<div class="am-alert" id="your-alert-1">
+  <button type="button" class="am-close">&times;</button>
+  <p>这是一个警告框！</p>
+</div>
+
+<button type="button" class="am-btn am-btn-warning" id="doc-alert-btn-close">点击关闭上面的 Alert</button>
+<script>
+  $(function() {
+    $('#doc-alert-btn-close').one('click', function() {
+      $('#your-alert-1').alert('close');
+    });
+
+    $(document).on('close.alert.amui', '#your-alert-1', function(e) {
+      alert('警告框开始关闭！');
+    });
+
+    $(document).on('closed.alert.amui', '#your-alert-1', function(e) {
+      alert('警告框关闭完成！');
+    });
+  });
+</script>
+`````
+```
+
+

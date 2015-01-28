@@ -1,3 +1,13 @@
+---
+id: fullscreen
+title: 全屏切换
+titleEn: Fullscreen
+prev: javascript/cookie.html
+next: javascript/hammer.html
+source: js/util.fullscreen.js
+doc: docs/javascript/fullscreen.md
+---
+
 # Fullscreen
 ---
 

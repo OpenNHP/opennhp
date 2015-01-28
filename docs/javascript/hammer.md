@@ -1,3 +1,13 @@
+---
+id: hammer
+title: 触控事件
+titleEn: Hammer
+prev: javascript/fullscreen.html
+next: javascript/iscroll-lite.html
+source: js/util.hammer.js
+doc: docs/javascript/hammer.md
+---
+
 # Hammer.js
 ---
 

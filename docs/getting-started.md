@@ -18,25 +18,49 @@ Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 100 kB 左右）、 [**
 
 <div class="am-g">
   <div class="am-u-md-8 am-u-md-centered">
-    <a id="doc-dl-btn" href="http://amazeui.org/download?ver=2.1.0" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
-"><i class="am-icon-download"></i> Amaze UI v2.1.0</a>
+    <a id="doc-dl-btn" href="http://amazeui.org/download?ver=2.2.0" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
+"><i class="am-icon-download"></i> Amaze UI v2.2.0</a>
   </div>
 </div>
 
+**离线文档：**
+
+<div class="am-g">
+  <div class="am-u-sm-6"><a href="http://amazeui.org/download?ver=docs" class="am-btn am-btn-block am-btn-primary">HTML 版离线文档</a></div>
+  <div class="am-u-sm-6"><a href="http://amazeui.org/download?ver=dash" class="am-btn am-btn-block am-btn-warning">Dash Docsets</a></div>
+</div>
+
+项目地址：
+
+- [Amaze UI Docs](https://github.com/amazeui/docs)
+- [Amaze UI Dash Docsets Generator](https://github.com/amazeui/docs-generator)
+
+**代码片段：**
+
+<div class="am-g">
+  <div class="am-u-sm-6"><a href="http://amazeui.org/download?ver=jetbrains" class="am-btn am-btn-block am-btn-secondary">JetBrains 系列编辑器</a></div>
+  <div class="am-u-sm-6"><a href="http://amazeui.org/download?ver=sublime" class="am-btn am-btn-block am-btn-danger">Sublime</a></div>
+</div>
+
+详见 [Amaze UI Snippets](https://github.com/amazeui/snippets)。
+
+**Starter Kit：**
+
+Gulp、NPM 构建的前端开发工作流，点击[访问项目主页](https://github.com/amazeui/starter-kit)。
 
 ### 使用 CDN
 
 Amaze UI CDN： 域名解析服务由 DNSPod 提供，CDN 存储由又拍云提供。
 
 ```html
-http://cdn.amazeui.org/amazeui/2.1.0/css/amazeui.css
-http://cdn.amazeui.org/amazeui/2.1.0/css/amazeui.min.css
-http://cdn.amazeui.org/amazeui/2.1.0/js/amazeui.js
-http://cdn.amazeui.org/amazeui/2.1.0/js/amazeui.min.js
-http://cdn.amazeui.org/amazeui/2.1.0/js/amazeui.legacy.js
-http://cdn.amazeui.org/amazeui/2.1.0/js/amazeui.legacy.min.js
-http://cdn.amazeui.org/amazeui/2.1.0/js/amazeui.widgets.helper.js
-http://cdn.amazeui.org/amazeui/2.1.0/js/amazeui.widgets.helper.min.js
+http://cdn.amazeui.org/amazeui/2.2.0/css/amazeui.css
+http://cdn.amazeui.org/amazeui/2.2.0/css/amazeui.min.css
+http://cdn.amazeui.org/amazeui/2.2.0/js/amazeui.js
+http://cdn.amazeui.org/amazeui/2.2.0/js/amazeui.min.js
+http://cdn.amazeui.org/amazeui/2.2.0/js/amazeui.legacy.js
+http://cdn.amazeui.org/amazeui/2.2.0/js/amazeui.legacy.min.js
+http://cdn.amazeui.org/amazeui/2.2.0/js/amazeui.widgets.helper.js
+http://cdn.amazeui.org/amazeui/2.2.0/js/amazeui.widgets.helper.min.js
 ```
 
 ### 使用 Bower
@@ -44,6 +68,14 @@ http://cdn.amazeui.org/amazeui/2.1.0/js/amazeui.widgets.helper.min.js
 ```html
 bower install amazeui
 ```
+
+### 移植的插件（使用示例）
+
+- [DateTimePicker - 日期时间选择](https://github.com/amazeui/datetimepicker)
+- [Echo.js - 图片懒加载](https://github.com/amazeui/echo)
+- [Lazyload - 图片懒加载](https://github.com/amazeui/lazyload)
+- [Chosen - 下拉选框增强](https://github.com/amazeui/chosen)
+- [Masonry - 瀑布流](https://github.com/amazeui/chosen)
 
 ### 获取源码
 

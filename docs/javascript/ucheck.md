@@ -1,3 +1,13 @@
+---
+id: ucheck
+title: 选项卡
+titleEn: uCheck
+prev: javascript/datepicker.html
+next: javascript/validator.html
+source: js/ui.ucheck.js
+doc: docs/javascript/ucheck.md
+---
+
 # uCheck
 ---
 

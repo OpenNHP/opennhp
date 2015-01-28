@@ -95,7 +95,7 @@ OffCanvas.prototype.close = function(relatedElement) {
   var $element = this.$element;
   var $bar = $element.find('.am-offcanvas-bar').first();
 
-  if (!$element.length || !$element.hasClass('am-active')) {
+  if (!$element.length || !this.active || !$element.hasClass('am-active')) {
     return;
   }
 
@@ -156,7 +156,7 @@ function Plugin(option, relatedElement) {
 
     if (!data) {
       $this.data('amui.offcanvas', (data = new OffCanvas(this, options)));
-      data.open(relatedElement);
+      (!option || typeof option == 'object') && data.open(relatedElement);
     }
 
     if (typeof option == 'string') {

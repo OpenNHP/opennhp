@@ -1,3 +1,13 @@
+---
+id: slider
+title: 图片轮播
+titleEn: Slider
+prev: javascript/nprogress.html
+next: javascript/offcanvas.html
+source: js/ui.slider.js
+doc: docs/javascript/slider.md
+---
+
 # Slider
 ---
 

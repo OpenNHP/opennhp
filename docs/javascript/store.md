@@ -1,3 +1,13 @@
+---
+id: store
+title: 本地存储
+titleEn: Store
+prev: javascript/iscroll-lite.html
+next: javascript/geolocation.html
+source: js/util.store.js
+doc: docs/javascript/store.md
+---
+
 # Store
 ---
 

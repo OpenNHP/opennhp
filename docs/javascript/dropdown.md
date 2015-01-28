@@ -1,3 +1,13 @@
+---
+id: dropdown
+title: 下拉组件
+titleEn: Dropdown
+prev: javascript/collapse.html
+next: javascript/modal.html
+source: js/ui.dropdown.js
+doc: docs/javascript/dropdown.md
+---
+
 # Dropdown
 ---
 

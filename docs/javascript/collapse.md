@@ -1,3 +1,13 @@
+---
+id: collapse
+title: 折叠面板
+titleEn: Collapse
+prev: javascript/button.html
+next: javascript/dropdown.html
+source: js/ui.collapse.js
+doc: docs/javascript/collapse.md
+---
+
 # Collapse
 ---
 

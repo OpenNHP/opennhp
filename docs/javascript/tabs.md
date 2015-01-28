@@ -1,3 +1,13 @@
+---
+id: tabs
+title: 选项卡
+titleEn: Tabs
+prev: javascript/sticky.html
+next: javascript/datepicker.html
+source: js/ui.tabs.js
+doc: docs/javascript/tabs.md
+---
+
 # Tabs
 ---
 
@@ -5,7 +15,7 @@
 
 ## 使用演示
 
-### 等高内容
+### 内容高度一样
 
 `````html
 <div class="am-tabs" data-am-tabs>

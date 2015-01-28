@@ -1,3 +1,13 @@
+---
+id: smooth-scroll
+title: 平滑滚动
+titleEn: Smooth Scroll
+prev: javascript/scrollspynav.html
+next: javascript/sticky.html
+source: js/ui.smooth-scroll.js
+doc: docs/javascript/smooth-scroll.md
+---
+
 # Smooth Scroll
 ---
 

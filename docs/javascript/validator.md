@@ -1,3 +1,13 @@
+---
+id: validator
+title: 表单验证
+titleEn: Validator
+prev: javascript/ucheck.html
+next: javascript/cookie.html
+source: js/ui.validator.js
+doc: docs/javascript/validator.md
+---
+
 # Form Validator
 ---
 

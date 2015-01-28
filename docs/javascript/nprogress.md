@@ -2,9 +2,10 @@
 id: nprogress
 title: 加载进度条
 titleEn: NProgress
-permalink: nprogress.html
-prev: popover.html
-next: slider.html
+prev: javascript/popover.html
+next: javascript/slider.html
+source: js/ui.progress.js
+doc: docs/javascript/nprogress.md
 ---
 
 # Progress
@@ -28,6 +29,19 @@ $.AMUI.progress.done();
 ```html
 <button id="np-s" class="am-btn am-btn-primary">$.AMUI.progress.start();</button>
 <button id="np-d" class="am-btn am-btn-success">$.AMUI.progress.done();</button>
+```
+```js
+$(function(){
+  var progress = $.AMUI.progress;
+
+  $('#np-s').on('click', function() {
+    progress.start();
+  });
+
+  $('#np-d').on('click', function() {
+    progress.done();
+  });
+});
 ```
 
 如果使用 [Turbolinks] 1.3.0+ 或者类似的库，可以在自定义事件回调中调用 Progress。
@@ -86,7 +100,33 @@ $.AMUI.progress.done(true);
 <button id="np-fd" class="am-btn am-btn-success">$.AMUI.progress.done(true);</button>
 <button id="np-status" class="am-btn am-btn-danger">$.AMUI.progress.status;</button>
 `````
+```html
+<button id="np-set" class="am-btn am-btn-primary">$.AMUI.progress.set(0.4);</button>
+<button id="np-inc" class="am-btn am-btn-warning">$.AMUI.progress.inc();</button>
+<button id="np-fd" class="am-btn am-btn-success">$.AMUI.progress.done(true);</button>
+<button id="np-status" class="am-btn am-btn-danger">$.AMUI.progress.status;</button>
+```
+```js
+$(function(){
+  var progress = $.AMUI.progress;
 
+  $('#np-set').on('click', function() {
+    progress.set(0.4);
+  });
+
+  $('#np-inc').on('click', function() {
+    progress.inc();
+  });
+
+  $('#np-fd').on('click', function() {
+    progress.done(true);
+  });
+
+  $('#np-status').on('click', function() {
+    $(this).text('Status: ' + progress.status);
+  });
+});
+```
 
 参数设置
 -------
@@ -178,30 +218,30 @@ $.AMUI.progress.configure({ parent: '#container' });
 
 <script>
 $(function(){
-  var Progress = $.AMUI.progress;
+  var progress = $.AMUI.progress;
 
   $('#np-s').on('click', function() {
-    Progress.start();
+    progress.start();
   });
 
   $('#np-d').on('click', function() {
-    Progress.done();
+    progress.done();
   });
 
   $('#np-set').on('click', function() {
-    Progress.set(0.4);
+    progress.set(0.4);
   });
 
   $('#np-inc').on('click', function() {
-    Progress.inc();
+    progress.inc();
   });
 
   $('#np-fd').on('click', function() {
-    Progress.done(true);
+    progress.done(true);
   });
 
   $('#np-status').on('click', function() {
-    $(this).text('Status: ' + Progress.status);
+    $(this).text('Status: ' + progress.status);
   });
 });
 </script>

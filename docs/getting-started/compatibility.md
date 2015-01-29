@@ -11,7 +11,7 @@ Amaze UI 面向现代浏览器开发，对 IE 8/9 等浏览器只提供有限的
 
 ## 分级浏览器支持（<abbr title="Graded Browser Support">GBS</abbr>）
 
-[<abbr title="Graded Browser Support">GBS</abbr>](https://yuilibrary.com/yui/docs/tutorials/gbs/) 是 YUI 团队提出的应对日益增长的浏览器兼容问题的思路，详情可以查看 [YUI 相关页面](https://yuilibrary.com/yui/docs/tutorials/gbs/)。
+[<abbr title="Graded Browser Support">GBS</abbr>](https://github.com/yui/yui3/wiki/Graded-Browser-Support) 是 YUI 团队提出的应对日益增长的浏览器兼容问题的思路，详情可以查看 [YUI 相关页面](https://github.com/yui/yui3/wiki/Graded-Browser-Support)。
 
 ### Amaze UI GBS 描述
 

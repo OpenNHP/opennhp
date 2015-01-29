@@ -75,7 +75,7 @@ bower install amazeui
 - [Echo.js - 图片懒加载](https://github.com/amazeui/echo)
 - [Lazyload - 图片懒加载](https://github.com/amazeui/lazyload)
 - [Chosen - 下拉选框增强](https://github.com/amazeui/chosen)
-- [Masonry - 瀑布流](https://github.com/amazeui/chosen)
+- [Masonry - 瀑布流](https://github.com/amazeui/masonry)
 
 ### 获取源码
 

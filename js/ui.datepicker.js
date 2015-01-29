@@ -641,7 +641,7 @@ $.fn.datepicker = function(option, val) {
 $.fn.datepicker.Constructor = Datepicker;
 
 // Init code
-$(document).on('ready', function(e) {
+UI.ready(function(context) {
   $('[data-am-datepicker]').datepicker();
 });
 

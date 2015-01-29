@@ -208,7 +208,7 @@ function Plugin(option) {
 $.fn.sticky = Plugin;
 
 // Init code
-$(window).on('load', function() {
+UI.ready(function(context) {
   $('[data-am-sticky]').each(function() {
     var $this = $(this);
     var options = UI.utils.options($this.attr('data-am-sticky'));

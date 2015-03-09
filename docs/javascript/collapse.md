@@ -209,7 +209,7 @@ $('#myCollapse').collapse({
 
 #### 选项
 
-<table class="am-table am-table-bd am-table-striped">
+<table class="am-table am-table-bordered am-table-striped">
   <thead>
   <tr>
     <th style="width: 60px;">参数</th>
@@ -237,7 +237,27 @@ $('#myCollapse').collapse({
 
 #### 自定义事件
 
-<table class="am-table am-table-bd am-table-striped">
+自定义事件在**折叠的元素**上触发，以上面的折叠菜单为例，`#collapse-nav` 触发自定义事件：
+
+<script>
+$(function() {
+  $('#collapse-nav').on('open.collapse.amui', function() {
+    console.log('折叠菜单打开了！');
+  }).on('close.collapse.amui', function() {
+    console.log('折叠菜单关闭鸟！');
+  });
+});
+</script>
+
+```js
+$('#collapse-nav').on('open.collapse.amui', function() {
+  console.log('折叠菜单打开了！');
+}).on('close.collapse.amui', function() {
+  console.log('折叠菜单关闭鸟！');
+});
+```
+
+<table class="am-table am-table-bordered am-table-striped">
   <thead>
   <tr>
     <th>事件</th>

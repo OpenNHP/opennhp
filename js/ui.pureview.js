@@ -198,8 +198,9 @@ PureView.prototype.refreshSlides = function() {
   var total = $images.length;
   this.$slider = $pureview.find(options.selector.slider);
   this.$nav = $pureview.find(options.selector.nav);
-  this.imgUrls = []; // for WeChat Image Preview
   var viewedFlag = 'data-am-pureviewed';
+  // for WeChat Image Preview
+  this.imgUrls = this.imgUrls || [];
 
   if (!total) {
     return;
@@ -218,6 +219,8 @@ PureView.prototype.refreshSlides = function() {
       src = item.href; // to absolute path
       title = item.title || '';
     } else {
+      // NOTE: `data-rel` should be a full URL, otherwise,
+      //        WeChat images preview will not work
       src = $(item).data('rel') || item.src; // <img src='' data-rel='' />
       title = $(item).attr('alt') || '';
     }

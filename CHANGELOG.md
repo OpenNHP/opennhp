@@ -1,6 +1,17 @@
 # Amaze UI Change Log
 ---
 
+### 2015.03 W2
+
+**JS:**
+
+- `FIXED` #457 修复 PureView 插件动态增加图片以后，调用微图片查看器时数量错误问题，Thx to @woxinqidai；
+
+## Amaze UI 2.2.1
+
+- 修复文件错误！
+
+
 ## Amaze UI 2.2.0
 
 **CSS:**

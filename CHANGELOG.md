@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+### 2015.03 W3
+
+**JS:**
+
+- `IMPROVED` 确认 `contenteditable` 在触摸屏上失效由 FastClick 导致，解决方法为在需要编辑的元素上添加 `.needsclick` class。
+
 ### 2015.03 W2
 
 **JS:**

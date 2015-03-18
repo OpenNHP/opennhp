@@ -64,6 +64,35 @@ var attachFastClick = require('fastclick');
 attachFastClick(document.body);
 ```
 
+## 常见问题
+
+### 使用 FastClick 以后 `contenteditable` 在触摸屏上失效，如何处理？
+
+在需要启动编辑功能的元素上添加 `.needsclick` class 即可（[在线演示](http://jsbin.com/wahilo/3/)）。
+
+
+`````html
+<div contenteditable class="needsclick">
+  <p>请使用触屏访问，然后尝试编辑下面的内容</p>
+  <p>编我改我写我……</p>
+</div>
+<hr>
+<div contenteditable>
+  没有加 <code>needsclick</code> class，触摸屏加载 FastClick 以后注定无法编辑。
+</div>
+`````
+
+```html
+<div contenteditable class="needsclick">
+  <p>请使用触屏访问，然后尝试编辑下面的内容</p>
+  <p>编我改我写我……</p>
+</div>
+<hr>
+<div contenteditable>
+  没有加 <code>needsclick</code> class，触摸屏加载 FastClick 以后注定无法编辑。
+</div>
+```
+
 ## Licence
 
 * @copyright The Financial Times Limited [All Rights Reserved]

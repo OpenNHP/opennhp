@@ -469,7 +469,12 @@ if (UI.support.touch) {
 
   $(function() {
     var FastClick = UI.FastClick;
-    FastClick && FastClick.attach(document.body);
+    if (FastClick) {
+      // Fixes contenteditable elements don't editable on touch devices
+      $('[contenteditable]').addClass('needsclick');
+
+      FastClick.attach(document.body);
+    }
   });
 }
 

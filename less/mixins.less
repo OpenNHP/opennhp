@@ -937,12 +937,13 @@
 // 5. Better font rendering in Webkit
 .am-icon-font() {
   display: inline-block; // 1
-  font-family: "FontAwesome", sans-serif;
-  font-weight: normal; // 2
+  font: normal normal normal @global-font-size/1 "FontAwesome", sans-serif; // shortening font declaration
+  /*font-weight: normal; // 2
   font-style: normal; // 2
   vertical-align: baseline; // 3
-  line-height: 1; // 4
-  font-size: inherit;
+  line-height: 1; // 4*/
+  font-size: inherit; // can't have font-size inherit on line above, so need to override
+  text-rendering: auto; // optimizelegibility throws things off #1094
   -webkit-font-smoothing: antialiased; // 5
   -moz-osx-font-smoothing: grayscale;
   transform: translate(0, 0); // ensures no half-pixel rendering in firefox

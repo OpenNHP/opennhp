@@ -1,6 +1,13 @@
 # Amaze UI Change Log
 ---
 
+### 2015.03 W4
+
+**CSS:**
+
+- `NEW` Icon 添加图标固定宽度 class `.am-icon-fw` 以及新动画 `.am-icon-pulse`；
+- `IMPROVED` 根据网友反馈调整 Icon 字号相关属性设置，以期解决部分设备图标不显示问题（有待进一步手机用户反馈）。
+
 ### 2015.03 W3
 
 **JS:**

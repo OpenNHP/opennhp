@@ -18,9 +18,9 @@ var Datepicker = function(element, options) {
   this.language = this.getLocale(this.options.locale);
   this.theme = this.options.theme;
   this.$picker = $(DPGlobal.template).appendTo('body').on({
-      click: $.proxy(this.click, this)
-      // mousedown: $.proxy(this.mousedown, this)
-    });
+    click: $.proxy(this.click, this)
+    // mousedown: $.proxy(this.mousedown, this)
+  });
 
   this.isInput = this.$element.is('input');
   this.component = this.$element.is('.am-datepicker-date') ?
@@ -74,7 +74,7 @@ var Datepicker = function(element, options) {
 
   this.startViewMode = this.viewMode;
   this.weekStart = ((this.options.weekStart ||
-    Datepicker.locales[this.language].weekStart || 0) % 7);
+  Datepicker.locales[this.language].weekStart || 0) % 7);
   this.weekEnd = ((this.weekStart + 6) % 7);
   this.onRender = this.options.onRender;
 
@@ -111,7 +111,7 @@ Datepicker.prototype.open = function(e) {
     e.preventDefault();
   }
   var that = this;
-  $(document).on('click.datepicker.amui', function(ev) {
+  $doc.on('mousedown.datapicker.amui touchstart.datepicker.amui', function(ev) {
     if ($(ev.target).closest('.am-datepicker').length === 0) {
       that.close();
     }
@@ -128,7 +128,7 @@ Datepicker.prototype.close = function() {
   this.viewMode = this.startViewMode;
   this.showMode();
   if (!this.isInput) {
-    $(document).off('click.datepicker.amui', this.close);
+    $(document).off('mousedown.datapicker.amui touchstart.datepicker.amui', this.close);
   }
   // this.set();
   this.$element.trigger({
@@ -215,7 +215,7 @@ Datepicker.prototype.fillDow = function() {
   while (dowCount < this.weekStart + 7) {
     // NOTE: do % then add 1
     html += '<th class="am-datepicker-dow">' +
-      Datepicker.locales[this.language].daysMin[(dowCount++) % 7] +
+    Datepicker.locales[this.language].daysMin[(dowCount++) % 7] +
     '</th>';
   }
   html += '</tr>';

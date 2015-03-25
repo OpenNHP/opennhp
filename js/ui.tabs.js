@@ -29,9 +29,9 @@ var Tabs = function(element, options) {
 
 Tabs.DEFAULTS = {
   selector: {
-    nav: '.am-tabs-nav',
-    content: '.am-tabs-bd',
-    panel: '.am-tab-panel'
+    nav: '> .am-tabs-nav',
+    content: '> .am-tabs-bd',
+    panel: '> .am-tab-panel'
   },
   className: {
     active: 'am-active'
@@ -39,7 +39,7 @@ Tabs.DEFAULTS = {
 };
 
 Tabs.prototype.init = function() {
-  var me = this;
+  var _this = this;
   var options = this.options;
 
   // Activate the first Tab when no active Tab or multiple active Tabs
@@ -51,9 +51,10 @@ Tabs.prototype.init = function() {
 
   this.$navs.on('click.tabs.amui', function(e) {
     e.preventDefault();
-    me.open($(this));
+    _this.open($(this));
   });
 
+  // TODO: nested Tabs touch events
   if (!options.noSwipe) {
     var hammer = new Hammer(this.$content[0]);
 
@@ -72,8 +73,8 @@ Tabs.prototype.init = function() {
 
       $target.focus();
 
-      var $nav = me.getNextNav($target);
-      $nav && me.open($nav);
+      var $nav = _this.getNextNav($target);
+      $nav && _this.open($nav);
     }, 100));
 
     hammer.on('panright', UI.utils.debounce(function(e) {
@@ -85,9 +86,9 @@ Tabs.prototype.init = function() {
         $target = $target.closest(options.selector.panel);
       }
 
-      var $nav = me.getPrevNav($target);
+      var $nav = _this.getPrevNav($target);
 
-      $nav && me.open($nav);
+      $nav && _this.open($nav);
     }, 100));
   }
 };
@@ -217,3 +218,4 @@ module.exports = Tabs;
 
 // TODO: 1. Ajax 支持
 //       2. touch 事件处理逻辑优化
+//       3. 暴露方法 API

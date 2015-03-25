@@ -393,6 +393,7 @@ input[type="checkbox"],
   .hook-form-inline;
 }
 
+
 /* Form field size */
 
 .@{ns}input-sm {
@@ -401,6 +402,29 @@ input[type="checkbox"],
 
 .@{ns}input-lg {
   font-size: @form-font-size-lg !important;
+}
+
+.@{ns}form-group-sm {
+  .@{ns}checkbox,
+  .@{ns}radio,
+  .@{ns}form-label,
+  .@{ns}form-field {
+    font-size: @form-font-size-sm !important;
+  }
+}
+
+.@{ns}form-group-lg {
+  .@{ns}checkbox,
+  .@{ns}radio,
+  .@{ns}form-label,
+  .@{ns}form-field {
+    font-size: @form-font-size-lg !important;
+  }
+
+  input[type="radio"],
+  input[type="checkbox"] {
+    margin-top: 7px;
+  }
 }
 
 /* Form field feedback states */
@@ -424,6 +448,7 @@ input[type="checkbox"],
   .hook-form-icon;
 }
 
+
 /* Feedback Icon */
 
 .@{ns}form-feedback {
@@ -440,6 +465,7 @@ input[type="checkbox"],
   }
   .hook-form-feedback;
 }
+
 
 /* Form set */
 
@@ -466,6 +492,7 @@ input[type="checkbox"],
   }
   .hook-form-set;
 }
+
 
 // Hooks
 // =============================================================================

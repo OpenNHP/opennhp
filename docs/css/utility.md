@@ -758,7 +758,7 @@ CSS Image Replacement 是一个历史悠久的技术，也随着前端技术的�
 `````html
 <div class="am-cf">
   <p class="am-align-left">
-    <img src="http://s.cn.bing.net/az/hprichbg/rb/DongBaSymbols_ZH-CN10223363633_1366x768.jpg" alt="" width="240"/>
+    <img src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" alt="" width="240"/>
   </p>
   <p style="margin-top: 0">那时候刚好下着雨，柏油路面湿冷冷的，还闪烁着青、黄、红颜色的灯火。我们就在骑楼下躲雨，看绿色的邮筒孤独地站在街的对面。我白色风衣的大口袋里有一封要寄给南部的母亲的信。樱子说她可以撑伞过去帮我寄信。我默默点头。</p>
 
@@ -769,7 +769,7 @@ CSS Image Replacement 是一个历史悠久的技术，也随着前端技术的�
   <p>虽然是春天，好像已是秋深了。</p>
 
   <div class="am-align-right">
-    <img src="http://s.cn.bing.net/az/hprichbg/rb/DongBaSymbols_ZH-CN10223363633_1366x768.jpg" alt="" width="240"/>
+    <img src="http://global.bing.com/az/hprichbg/rb/DumbartonOaksGardens_EN-US12360736195_1920x1080.jpg" alt="" width="240"/>
   </div>
 
   <p>
@@ -802,6 +802,19 @@ CSS Image Replacement 是一个历史悠久的技术，也随着前端技术的�
 ### 视口大小
 
 `.am-[show|hide]-[sm|md|lg][-up|-down|-only]`，调整浏览器窗口大小查看元素的显隐。
+
+class 释义：
+
+- `show` 显示，`hide` 隐藏，这应该不难理解；
+- `sm`、`md`、`lg` 是划分屏幕大小区间的缩写，对应 small、medium、large，网格里面做了说明；
+- `down` 指小于区间，`up` 指大于区间， `only` 指仅在这个区间。
+
+按照上面的翻译一下下面的 class:
+
+- `.am-show-sm-only`: 只在 `sm` 区间显示
+- `.am-show-sm-up`: 大于 `sm` 区间时显示
+- `.am-show-sm`: 在 `sm` 区间显示，如果没有设置 `md`、`lg` 区间的显隐，则元素在所有区间都显示
+- `.am-show-md-down`: 小于 `md` 区间时显示
 
 <table class="am-table am-table-bd am-table-striped">
   <thead>

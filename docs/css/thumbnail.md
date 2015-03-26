@@ -12,17 +12,17 @@ Thumbnail 组件主要用于显示图片列表及图文混排列表。
 `````html
 <div class="am-g">
   <div class="am-u-sm-4">
-    <img class="am-thumbnail" src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg" alt=""/>
+    <img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" alt=""/>
   </div>
 
   <div class="am-u-sm-4">
     <a href="#" class="am-thumbnail">
-      <img src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg" alt=""/>
+      <img src="http://s.cn.bing.net/az/hprichbg/rb/MovingWalkway_ZH-CN9842297711_1920x1080.jpg" alt=""/>
     </a>
   </div>
   <div class="am-u-sm-4">
     <figure class="am-thumbnail">
-      <img src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg" alt=""/>
+      <img src="http://global.bing.com/az/hprichbg/rb/UchisarCastle_EN-US10838608428_1920x1080.jpg" alt=""/>
     </figure>
   </div>
 </div>
@@ -54,16 +54,16 @@ Thumbnail 组件主要用于显示图片列表及图文混排列表。
 
 `````html
 <ul class="am-avg-sm-3 am-thumbnails">
-  <li><img class="am-thumbnail" src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg"
+  <li><img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg"
            alt=""/></li>
 
   <li><a href="#" class="am-thumbnail">
-    <img src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg" alt=""/>
+    <img src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" alt=""/>
   </a></li>
 
   <li>
     <figure class="am-thumbnail">
-      <img src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg" alt=""/>
+      <img src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" alt=""/>
     </figure>
   </li>
 </ul>
@@ -95,20 +95,20 @@ Thumbnail 组件主要用于显示图片列表及图文混排列表。
 <div class="am-g">
   <div class="am-u-sm-4">
     <div class="am-thumbnail">
-      <img src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg" alt=""/>
+      <img src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" alt=""/>
       <h3 class="am-thumbnail-caption">图片标题 #1</h3>
     </div>
   </div>
 
   <div class="am-u-sm-4">
     <a href="#" class="am-thumbnail">
-      <img src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg" alt=""/>
+      <img src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" alt=""/>
       <figcaption class="am-thumbnail-caption">图片标题 #2</figcaption>
     </a>
   </div>
   <div class="am-u-sm-4">
     <figure class="am-thumbnail">
-      <img src="http://www.bing.com/az/hprichbg/rb/AdelaideFrog_EN-US12171255358_1366x768.jpg" alt=""/>
+      <img src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" alt=""/>
       <figcaption class="am-thumbnail-caption">图片标题 #3</figcaption>
     </figure>
   </div>

@@ -99,21 +99,39 @@ $('.btn-loading-example').click(function () {
 </script>
 `````
 ```html
-<button type="button" class="am-btn am-btn-primary" data-am-button>切换状态</button>
+<button id="doc-single-toggle" type="button" class="am-btn am-btn-primary" data-am-button>切换状态</button>
+
+<p>按钮状态：<span id="doc-single-toggle-status" class="am-text-danger">未激活</span></p>
+
+<script>
+  $(function() {
+    var $toggleButton = $('#doc-single-toggle');
+    $toggleButton.on('click', function() {
+      setButtonStatus();
+    });
+
+    function setButtonStatus() {
+      var status = $toggleButton.hasClass('am-active') ? '未激活' : '激活';
+      $('#doc-single-toggle-status').text(status);
+    }
+  })
+</script>
 ```
 
 ## 复选框
 
+**注意**：由于 FastClick 的原因，触屏设备上使用时需要在 `input` 上添加 `.needsclick`，否则无法获取复选框的值。
+
 `````html
 <div class="am-btn-group" data-am-button>
   <label class="am-btn am-btn-primary">
-    <input type="checkbox" name="doc-js-btn" value="苹果"> 苹果
+    <input type="checkbox" class="needsclick" name="doc-js-btn" value="苹果"> 苹果
   </label>
   <label class="am-btn am-btn-primary">
-    <input type="checkbox" name="doc-js-btn" value="橘子"> 橘子
+    <input type="checkbox" class="needsclick" name="doc-js-btn" value="橘子"> 橘子
   </label>
   <label class="am-btn am-btn-primary">
-    <input type="checkbox" name="doc-js-btn" value="香蕉"> 香蕉
+    <input type="checkbox" class="needsclick" name="doc-js-btn" value="香蕉"> 香蕉
   </label>
 </div>
 <script>
@@ -170,6 +188,9 @@ $('.btn-loading-example').click(function () {
   <label class="am-btn am-btn-primary">
     <input type="radio" name="options" value="选项 3" id="option3"> 选项 3
   </label>
+  <label class="am-btn am-btn-primary am-disabled">
+    <input type="radio" name="options" value="选项 4" id="option4"> 选项 4
+  </label>
 </div>
 <script>
   // 获取选中的值
@@ -192,6 +213,9 @@ $('.btn-loading-example').click(function () {
   </label>
   <label class="am-btn am-btn-primary">
     <input type="radio" name="options" value="选项 3" id="option3"> 选项 3
+  </label>
+  <label class="am-btn am-btn-primary am-disabled">
+    <input type="radio" name="options" value="选项 4" id="option4"> 选项 4
   </label>
 </div>
 <script>

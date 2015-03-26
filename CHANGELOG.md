@@ -5,6 +5,7 @@
 
 **CSS:**
 
+- `IMPROVED` 调整 Button `:focus`、`:active` 样式，对二者加以区分；
 - `NEW` Icon 添加图标固定宽度 class `.am-icon-fw` 以及新动画 `.am-icon-pulse`；
 - `IMPROVED` 根据网友反馈调整 Icon 字号相关属性设置，以期解决部分设备图标不显示问题（有待进一步手机用户反馈）；
 - `IMPROVED` #471 Form 增加 `.am-form-group-sm`、`.am-form-group-lg` class，解决表单组调整大小后对齐问题；
@@ -13,6 +14,7 @@
 **JS:**
 
 - `FIXED` #473 Sticky 外边距计算问题修复；
+- `FIXED` #457 Button JS 交互复选框在触控设备中无法正确获取值由 FastClick 引起，需在 `input` 上添加 `.needsclick`；
 - `IMPROVED` #445 日期选择插件调整为一个页面只能同时打开一个日期选择面板；
 - `IMPROVED` #446 Tabs 支持嵌套使用（需禁用触控功能）。
 

@@ -320,6 +320,88 @@
 </table>
 ```
 
+## 紧凑型
+
+添加 `.am-table-compact` class，调整 `padding` 显示更紧凑的单元格。
+
+`````html
+<table class="am-table am-table-bordered am-table-striped am-table-compact">
+  <thead>
+  <tr>
+    <th>网站名称</th>
+    <th>网址</th>
+    <th>创建时间</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr class="am-active">
+    <td>Amaze UI(Active)</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  </tbody>
+</table>
+`````
+
+```html
+<table class="am-table am-table-bordered am-table-striped am-table-compact">
+  <thead>
+  <tr>
+    <th>网站名称</th>
+    <th>网址</th>
+    <th>创建时间</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr class="am-active">
+    <td>Amaze UI(Active)</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  </tbody>
+</table>
+```
+
 ## 所有样式叠加
 
 `````html

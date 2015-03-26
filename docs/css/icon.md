@@ -73,6 +73,14 @@ __LESS 用户__可以调用 mixin 编写样式：
 
 在 Icon 上添加 `.am-btn-icon` class。
 
+如果需要设置 Icon Button 的颜色，可以添加以下 class：
+
+- `.am-primary`
+- `.am-secondary`
+- `.am-success`
+- `.am-warning`
+- `.am-danger`
+
 `````html
 <a href="" class="am-icon-btn am-icon-twitter"></a>
 <a href="" class="am-icon-btn am-icon-facebook"></a>
@@ -87,6 +95,11 @@ __LESS 用户__可以调用 mixin 编写样式：
 <a href="" class="am-icon-btn am-icon-twitter"></a>
 <a href="" class="am-icon-btn am-icon-facebook"></a>
 <a href="" class="am-icon-btn am-icon-github"></a>
+<a href="" class="am-icon-btn am-primary am-icon-qq"></a>
+<a href="" class="am-icon-btn am-secondary am-icon-drupal"></a>
+<a href="" class="am-icon-btn am-success am-icon-shield"></a>
+<a href="" class="am-icon-btn am-warning am-icon-warning"></a>
+<a href="" class="am-icon-btn am-danger am-icon-youtube"></a>
 ```
 
 ## 旋转动画

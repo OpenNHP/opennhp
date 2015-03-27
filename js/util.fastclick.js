@@ -5,10 +5,10 @@ var $ = require('jquery');
 /**
  * @preserve FastClick: polyfill to remove click delays on browsers with touch UIs.
  *
- * @version 1.0.3
  * @codingstandard ftlabs-jsv2
  * @copyright The Financial Times Limited [All Rights Reserved]
  * @license MIT License (see LICENSE.txt)
+ * @version 1.0.6
  */
 
 /*jslint browser:true, node:true*/
@@ -20,7 +20,7 @@ var $ = require('jquery');
  *
  * @constructor
  * @param {Element} layer The layer to listen on
- * @param {Object} options The options to override the defaults
+ * @param {Object} [options={}] The options to override the defaults
  */
 function FastClick(layer, options) {
   var oldOnClick;
@@ -97,15 +97,20 @@ function FastClick(layer, options) {
    */
   this.tapDelay = options.tapDelay || 200;
 
+  /**
+   * The maximum time for a tap
+   *
+   * @type number
+   */
+  this.tapTimeout = options.tapTimeout || 700;
+
   if (FastClick.notNeeded(layer)) {
     return;
   }
 
   // Some old versions of Android don't have Function.prototype.bind
   function bind(method, context) {
-    return function() {
-      return method.apply(context, arguments);
-    };
+    return function() { return method.apply(context, arguments); };
   }
 
 
@@ -170,13 +175,19 @@ function FastClick(layer, options) {
   }
 }
 
+/**
+ * Windows Phone 8.1 fakes user agent string to look like Android and iPhone.
+ *
+ * @type boolean
+ */
+var deviceIsWindowsPhone = navigator.userAgent.indexOf("Windows Phone") >= 0;
 
 /**
  * Android requires exceptions.
  *
  * @type boolean
  */
-var deviceIsAndroid = navigator.userAgent.indexOf('Android') > 0;
+var deviceIsAndroid = navigator.userAgent.indexOf('Android') > 0 && !deviceIsWindowsPhone;
 
 
 /**
@@ -184,7 +195,7 @@ var deviceIsAndroid = navigator.userAgent.indexOf('Android') > 0;
  *
  * @type boolean
  */
-var deviceIsIOS = /iP(ad|hone|od)/.test(navigator.userAgent);
+var deviceIsIOS = /iP(ad|hone|od)/.test(navigator.userAgent) && !deviceIsWindowsPhone;
 
 
 /**
@@ -196,11 +207,11 @@ var deviceIsIOS4 = deviceIsIOS && (/OS 4_\d(_\d)?/).test(navigator.userAgent);
 
 
 /**
- * iOS 6.0(+?) requires the target element to be manually derived
+ * iOS 6.0-7.* requires the target element to be manually derived
  *
  * @type boolean
  */
-var deviceIsIOSWithBadTarget = deviceIsIOS && (/OS ([6-9]|\d{2})_\d/).test(navigator.userAgent);
+var deviceIsIOSWithBadTarget = deviceIsIOS && (/OS [6-7]_\d/).test(navigator.userAgent);
 
 /**
  * BlackBerry requires exceptions.
@@ -236,6 +247,7 @@ FastClick.prototype.needsClick = function(target) {
 
       break;
     case 'label':
+    case 'iframe': // iOS8 homescreen apps can prevent events bubbling into frames
     case 'video':
       return true;
   }
@@ -315,8 +327,8 @@ FastClick.prototype.determineEventType = function(targetElement) {
 FastClick.prototype.focus = function(targetElement) {
   var length;
 
-  // Issue #160: on iOS 7, some input elements (e.g. date datetime) throw a vague TypeError on setSelectionRange. These elements don't have an integer value for the selectionStart and selectionEnd properties, but unfortunately that can't be used for detection because accessing the properties also throws a TypeError. Just check the type instead. Filed as Apple bug #15122724.
-  if (deviceIsIOS && targetElement.setSelectionRange && targetElement.type.indexOf('date') !== 0 && targetElement.type !== 'time') {
+  // Issue #160: on iOS 7, some input elements (e.g. date datetime month) throw a vague TypeError on setSelectionRange. These elements don't have an integer value for the selectionStart and selectionEnd properties, but unfortunately that can't be used for detection because accessing the properties also throws a TypeError. Just check the type instead. Filed as Apple bug #15122724.
+  if (deviceIsIOS && targetElement.setSelectionRange && targetElement.type.indexOf('date') !== 0 && targetElement.type !== 'time' && targetElement.type !== 'month') {
     length = targetElement.value.length;
     targetElement.setSelectionRange(length, length);
   } else {
@@ -521,6 +533,10 @@ FastClick.prototype.onTouchEnd = function(event) {
     return true;
   }
 
+  if ((event.timeStamp - this.trackingClickStart) > this.tapTimeout) {
+    return true;
+  }
+
   // Reset to prevent wrong click cancel on input (issue #156).
   this.cancelNextClick = false;
 
@@ -721,6 +737,7 @@ FastClick.notNeeded = function(layer) {
   var metaViewport;
   var chromeVersion;
   var blackberryVersion;
+  var firefoxVersion;
 
   // Devices that don't support touch don't need FastClick
   if (typeof window.ontouchstart === 'undefined') {
@@ -728,7 +745,7 @@ FastClick.notNeeded = function(layer) {
   }
 
   // Chrome version - zero for other browsers
-  chromeVersion = +(/Chrome\/([0-9]+)/.exec(navigator.userAgent) || [, 0])[1];
+  chromeVersion = +(/Chrome\/([0-9]+)/.exec(navigator.userAgent) || [,0])[1];
 
   if (chromeVersion) {
 
@@ -773,23 +790,44 @@ FastClick.notNeeded = function(layer) {
     }
   }
 
-  // IE10 with -ms-touch-action: none, which disables double-tap-to-zoom (issue #97)
-  if (layer.style.msTouchAction === 'none') {
+  // IE10 with -ms-touch-action: none or manipulation, which disables double-tap-to-zoom (issue #97)
+  if (layer.style.msTouchAction === 'none' || layer.style.touchAction === 'manipulation') {
+    return true;
+  }
+
+  // Firefox version - zero for other browsers
+  firefoxVersion = +(/Firefox\/([0-9]+)/.exec(navigator.userAgent) || [,0])[1];
+
+  if (firefoxVersion >= 27) {
+    // Firefox 27+ does not have tap delay if the content is not zoomable - https://bugzilla.mozilla.org/show_bug.cgi?id=922896
+
+    metaViewport = document.querySelector('meta[name=viewport]');
+    if (metaViewport && (metaViewport.content.indexOf('user-scalable=no') !== -1 || document.documentElement.scrollWidth <= window.outerWidth)) {
+      return true;
+    }
+  }
+
+  // IE11: prefixed -ms-touch-action is no longer supported and it's recomended to use non-prefixed version
+  // http://msdn.microsoft.com/en-us/library/windows/apps/Hh767313.aspx
+  if (layer.style.touchAction === 'none' || layer.style.touchAction === 'manipulation') {
     return true;
   }
 
   return false;
 };
 
+
 /**
  * Factory method for creating a FastClick object
  *
  * @param {Element} layer The layer to listen on
- * @param {Object} options The options to override the defaults
+ * @param {Object} [options={}] The options to override the defaults
  */
 FastClick.attach = function(layer, options) {
   return new FastClick(layer, options);
 };
+
+FastClick.VERSION = '1.0.6';
 
 $ && ($.AMUI ? $.AMUI.FastClick = FastClick : $.AMUI = {FastClick: FastClick});
 

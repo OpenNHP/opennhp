@@ -27,6 +27,7 @@
 - [百度 Web Uploader](http://fex-team.github.io/webuploader/)
 - [Uploadify](http://www.uploadify.com/)
 - [arale-upload - 轻量级 iframe and html5 file uploader](https://github.com/aralejs/upload)
+- [Fine Uploader](https://github.com/FineUploader/fine-uploader)
 
 ### 日期选择
 

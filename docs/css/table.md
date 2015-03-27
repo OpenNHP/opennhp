@@ -402,6 +402,71 @@
 </table>
 ```
 
+## 响应式表格
+
+- `.am-text-nowrap`: 禁止文字换行；
+- `.am-scrollable-horizontal`: 内容超出容器宽度时显示水平滚动条。
+
+以上两个 class 在「**辅助类**」中定义。
+
+`````html
+<div class="am-scrollable-horizontal">
+  <table class="am-table am-table-bordered am-table-striped am-text-nowrap">
+    <thead>
+    <tr>
+      <th>-= 表格标题 =-</th>
+      <th>-= 表格标题 =-</th>
+      <th>-= 表格标题 =-</th>
+      <th>-= 表格标题 =-</th>
+      <th>-= 表格标题 =-</th>
+      <th>-= 表格标题 =-</th>
+      <th>-= 表格标题 =-</th>
+      <th>-= 表格标题 =-</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+    </tr>
+    <tr>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+    </tr>
+    <tr>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+    </tr>
+    </tbody>
+  </table>
+</div>
+`````
+```html
+<div class="am-scrollable-horizontal">
+  <table class="am-table am-table-bordered am-table-striped am-text-nowrap">
+    ...
+  </table>
+</div>
+```
+
 ## 所有样式叠加
 
 `````html

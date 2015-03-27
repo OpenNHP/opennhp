@@ -203,6 +203,24 @@ output {
   margin-bottom: 1.5rem;
 }
 
+/* file field */
+
+.@{ns}form-file {
+  position: relative;
+  overflow: hidden;
+
+  input[type="file"] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 1;
+    width: 100%;
+    opacity: 0;
+    cursor: pointer;
+    font-size: 50rem;
+  }
+}
+
 /**
  * Checkboxes and radios
  * Indent the labels to position radios/checkboxes as hanging controls.

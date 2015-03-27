@@ -50,9 +50,12 @@ CSS3 动画封装，浏览器需支持 CSS3 动画。
   </tbody>
 </table>
 
+
+## 使用演示
+
 点击按钮查看动画效果。
 
-## 基本效果
+### 默认效果
 
 `````html
 <div class="am-g doc-animations">
@@ -99,7 +102,7 @@ CSS3 动画封装，浏览器需支持 CSS3 动画。
 <span class="am-icon-cog am-animation-spin"></span>
 ```
 
-## 反向动画
+### 反向动画
 
 添加 `.am-animation-reverse` class，让动画反向运行（通过把 [`animation-direction`](https://developer.mozilla.org/zh-CN/docs/Web/CSS/animation-direction) 设置为 `reverse` 实现）。
 
@@ -170,6 +173,125 @@ $(function() {
 
 <span class="am-icon-cog am-animation-spin am-animation-reverse"></span>
 ```
+
+### 动画延迟执行
+
+添加以下 class 可以使动画延迟 `1-6s` 执行。
+
+- `.am-animation-delay-1`
+- `.am-animation-delay-2`
+- `.am-animation-delay-3`
+- `.am-animation-delay-4`
+- `.am-animation-delay-5`
+- `.am-animation-delay-6`
+
+自定义延时：
+
+```css
+.my-animation-delay {
+  -webkit-animation-delay: 15s;
+  animation-delay: 15s;
+}
+```
+
+`````html
+<button id="animation-start" type="button" class="am-btn am-btn-danger">点击开始执行动画</button>
+
+<hr/>
+
+<div id="animation-group">
+<p><button type="button" class="am-btn am-btn-primary">没延迟的动画</button></p>
+
+<p><button type="button" class="am-btn am-btn-primary am-animation-delay-1">延迟 1s 执行</button></p>
+<p><button type="button" class="am-btn am-btn-secondary am-animation-delay-2">延迟 2s 执行</button></p>
+<p><button type="button" class="am-btn am-btn-success am-animation-delay-3">延迟 3s 执行</button></p>
+<p><button type="button" class="am-btn am-btn-warning am-animation-delay-4">延迟 4s 执行</button></p>
+<p><button type="button" class="am-btn am-btn-danger am-animation-delay-5">延迟 5s 执行</button></p>
+<p><button type="button" class="am-btn am-btn-primary am-animation-delay-6">延迟 6s 执行</button></p>
+</div>
+
+<script>
+  $(function() {
+    var $btns = $('#animation-group').find('.am-btn');
+    var dfds = [];
+    var animating = false;
+    var animation = 'am-animation-scale-up';
+
+    $('#animation-start').on('click', function() {
+      if (!animating) {
+        animating = true;
+        $btns.each(function() {
+          var dfd = new $.Deferred();
+          dfds.push(dfd);
+          var $this = $(this);
+          if ($.AMUI.support.animation) {
+            $this.addClass(animation).one($.AMUI.support.animation.end, function() {
+              $this.removeClass(animation);
+              dfd.resolve();
+            });
+          }
+        });
+
+        $.when.apply(null, dfds).done(function() {
+          animating = false;
+          console.log('[AMUI] - 所有动画执行完成');
+          dfds = [];
+        });
+      }
+    });
+  });
+</script>
+`````
+
+```html
+<button id="animation-start" type="button" class="am-btn am-btn-danger">点击开始执行动画</button>
+
+<hr/>
+
+<div id="animation-group">
+<p><button type="button" class="am-btn am-btn-primary">没延迟的动画</button></p>
+
+<p><button type="button" class="am-btn am-btn-primary am-animation-delay-1">延迟 1s 执行</button></p>
+<p><button type="button" class="am-btn am-btn-secondary am-animation-delay-2">延迟 2s 执行</button></p>
+<p><button type="button" class="am-btn am-btn-success am-animation-delay-3">延迟 3s 执行</button></p>
+<p><button type="button" class="am-btn am-btn-warning am-animation-delay-4">延迟 4s 执行</button></p>
+<p><button type="button" class="am-btn am-btn-danger am-animation-delay-5">延迟 5s 执行</button></p>
+<p><button type="button" class="am-btn am-btn-primary am-animation-delay-6">延迟 6s 执行</button></p>
+</div>
+
+<script>
+  $(function() {
+    var $btns = $('#animation-group').find('.am-btn');
+    var dfds = [];
+    var animating = false;
+    var animation = 'am-animation-scale-up';
+
+    $('#animation-start').on('click', function() {
+      if (!animating) {
+        animating = true;
+        $btns.each(function() {
+          var dfd = new $.Deferred();
+          dfds.push(dfd);
+          var $this = $(this);
+          if ($.AMUI.support.animation) {
+            $this.addClass(animation).one($.AMUI.support.animation.end, function() {
+              $this.removeClass(animation);
+              dfd.resolve();
+            });
+          }
+        });
+
+        $.when.apply(null, dfds).done(function() {
+          animating = false;
+          console.log('[AMUI] - 所有动画执行完成');
+          dfds = [];
+        });
+      }
+    });
+  });
+</script>
+```
+
 
 ## 参考资源
 

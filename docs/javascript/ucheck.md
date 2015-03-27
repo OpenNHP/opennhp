@@ -256,23 +256,64 @@ doc: docs/javascript/ucheck.md
   </div>
 </div>
 `````
-
-### Inline Form
-
-<form class="am-form-inline">
-  <div class="am-form-group">
-    <input type="email" class="am-form-field" placeholder="电子邮件">
-  </div>
-
-  <div class="am-form-group">
-    <input type="password" class="am-form-field" placeholder="密码">
-  </div>
-
-  <label class="am-checkbox">
-    <input type="checkbox"  value="" data-am-ucheck> 记住我
-  </label>
-</form>
 -->
+
+### 行内排列
+
+`````html
+<div class="am-form-group">
+  <h3>装备</h3>
+  <label class="am-checkbox-inline">
+    <input type="checkbox"  value="" data-am-ucheck> iPhone
+  </label>
+  <label class="am-checkbox-inline">
+    <input type="checkbox"  value="" data-am-ucheck> iMac
+  </label>
+  <label class="am-checkbox-inline">
+    <input type="checkbox"  value="" data-am-ucheck> Macbook
+  </label>
+</div>
+
+<div class="am-form-group">
+  <h3>性别</h3>
+  <label class="am-radio-inline">
+    <input type="radio" name="radio10" value="male" data-am-ucheck> 男
+  </label>
+  <label class="am-radio-inline">
+    <input type="radio" name="radio10" value="female" data-am-ucheck> 女
+  </label>
+  <label class="am-radio-inline">
+    <input type="radio" name="radio10" value="pig" data-am-ucheck> 人妖
+  </label>
+</div>
+`````
+```html
+<div class="am-form-group">
+  <h3>装备</h3>
+  <label class="am-checkbox-inline">
+    <input type="checkbox"  value="" data-am-ucheck> iPhone
+  </label>
+  <label class="am-checkbox-inline">
+    <input type="checkbox"  value="" data-am-ucheck> iMac
+  </label>
+  <label class="am-checkbox-inline">
+    <input type="checkbox"  value="" data-am-ucheck> Macbook
+  </label>
+</div>
+
+<div class="am-form-group">
+  <h3>性别</h3>
+  <label class="am-radio-inline">
+    <input type="radio" name="radio10" value="male" data-am-ucheck> 男
+  </label>
+  <label class="am-radio-inline">
+    <input type="radio" name="radio10" value="female" data-am-ucheck> 女
+  </label>
+  <label class="am-radio-inline">
+    <input type="radio" name="radio10" value="pig" data-am-ucheck> 人妖
+  </label>
+</div>
+```
 
 ### 结合表单验证插件
 

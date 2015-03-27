@@ -18,7 +18,8 @@
 - `FIXED` #473 Sticky 外边距计算问题修复；
 - `FIXED` #457 Button JS 交互复选框在触控设备中无法正确获取值由 FastClick 引起，需在 `input` 上添加 `.needsclick`；
 - `IMPROVED` #445 日期选择插件调整为一个页面只能同时打开一个日期选择面板；
-- `IMPROVED` #446 Tabs 支持嵌套使用（需禁用触控功能）。
+- `IMPROVED` #446 Tabs 支持嵌套使用（需禁用触控功能）；
+- `IMPROVED` Modal Prompt 打开时自动聚焦输入框，Loading 禁用通过遮罩层关闭。
 
 ### 2015.03 W3
 

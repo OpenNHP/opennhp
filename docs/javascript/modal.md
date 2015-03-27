@@ -203,7 +203,7 @@ $(function() {
 
 ```javascript
 $('#your-confirm').on('closed.modal.amui', function() {
-  $(this).removeData('am.modal');
+  $(this).removeData('amui.modal');
 });
 ```
 
@@ -299,6 +299,8 @@ $(function() {
 ```
 
 ### Modal Loading
+
+采纳
 
 `````html
 <button class="am-btn am-btn-success" data-am-modal="{target: '#my-modal-loading'}">Modal Loading</button>

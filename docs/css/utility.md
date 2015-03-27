@@ -19,7 +19,7 @@
 
 `````html
 <div class="am-scrollable-horizontal">
-  <table class="am-table am-table-bd am-table-striped am-text-nowrap">
+  <table class="am-table am-table-bordered am-table-striped am-text-nowrap">
     <thead>
     <tr>
       <th>-= 表格标题 =-</th>
@@ -69,7 +69,7 @@
 `````
 ```html
 <div class="am-scrollable-horizontal">
-  <table class="am-table am-table-bd am-table-striped am-text-nowrap">
+  <table class="am-table am-table-bordered am-table-striped am-text-nowrap">
     ...
   </table>
 </div>

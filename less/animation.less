@@ -13,6 +13,7 @@
 //                           `.am-animation-slide-right`
 //                           `.am-animation-slide-shake`
 //                           `.am-animation-reverse`
+//                           `.am-animation-delay-*`
 //
 // Used by:                   Dropdown
 //
@@ -101,6 +102,19 @@
 .@{ns}animation-paused {
   animation-play-state: paused !important;
 }
+
+.variant-animation-delay(@delay: 5) {
+  .@{ns}animation-delay-@{delay} {
+    animation-delay: ~"@{delay}s";
+  }
+}
+
+.variant-animation-delay(1);
+.variant-animation-delay(2);
+.variant-animation-delay(3);
+.variant-animation-delay(4);
+.variant-animation-delay(5);
+.variant-animation-delay(6);
 
 
 /* Keyframes

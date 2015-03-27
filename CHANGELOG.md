@@ -10,6 +10,7 @@
 - `IMPROVED` 根据网友反馈调整 Icon 字号相关属性设置，以期解决部分设备图标不显示问题（有待进一步手机用户反馈）；
 - `IMPROVED` #471 Form 增加 `.am-form-group-sm`、`.am-form-group-lg` class，解决表单组调整大小后对齐问题；
 - `NEW` Table 添加 `.am-table-compact` 紧凑样式。
+- `NEW` Animation 添加 `.am-animation-delay-{1,6}` 动画延迟 class。
 
 **JS:**
 

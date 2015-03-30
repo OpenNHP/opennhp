@@ -156,6 +156,7 @@ HTML5 原生表单验证中 `pattern` 只验证值的合法性，也就是**可�
     <div class="am-form-group">
       <label for="doc-select-1">下拉单选框</label>
       <select id="doc-select-1" required>
+        <option value="">-=请选择一项=-</option>
         <option value="option1">选项一...</option>
         <option value="option2">选项二.....</option>
         <option value="option3">选项三........</option>
@@ -242,6 +243,7 @@ HTML5 原生表单验证中 `pattern` 只验证值的合法性，也就是**可�
     <div class="am-form-group">
       <label for="doc-select-1">下拉单选框</label>
       <select id="doc-select-1" required>
+        <option value="">-=请选择一项=-</option>
         <option value="option1">选项一...</option>
         <option value="option2">选项二.....</option>
         <option value="option3">选项三........</option>
@@ -336,7 +338,7 @@ $('#your-form').validator({
 
 参数 `validity` 是一个类似 [H5 ValidityState](https://developer.mozilla.org/en-US/docs/Web/API/ValidityState) 属性的对象。只要中主要用到的包括：
 
-- `validity.filed` - DOM 对象，当前验证的域，通过 `$(validity.filed)` 可转换为 jQuery 对象，一般用于获取值和判断是否为特定域，以编写验证逻辑；
+- `validity.field` - DOM 对象，当前验证的域，通过 `$(validity.field)` 可转换为 jQuery 对象，一般用于获取值和判断是否为特定域，以编写验证逻辑；
 - `validity.valid` - 布尔值，验证是否通过，通过赋值 `true`，否则赋值 `false`。
 
 其它属性用来描述验证出错的细节，包括：
@@ -692,7 +694,22 @@ $(function() {
 
 ### 注意事项
 
+- `checkbox`/`radio` **务必添加 `name` 属性，否则无法正常工作**；
 - `<input type="number">` 输入非数字字符时返回值为空字符串 `""`；
+- 浏览器默认选中下拉单选框的第一项，使用时需将第一项的值设置为空 `value=""`。
+
+```html
+<div class="am-form-group">
+  <label for="doc-select-1">下拉单选框</label>
+  <select id="doc-select-1" required>
+    <option value="">-=请选择一项=-</option>
+    <option value="option1">选项一...</option>
+    <option value="option2">选项二.....</option>
+    <option value="option3">选项三........</option>
+  </select>
+  <span class="am-form-caret"></span>
+</div>
+```
 
 ### 参考链接
 

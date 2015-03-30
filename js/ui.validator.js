@@ -27,13 +27,13 @@ Validator.DEFAULTS = {
   validateOnSubmit: true,
   // Elements to validate with allValid (only validating visible elements)
   // :input: selects all input, textarea, select and button elements.
-  allFields: ':input:visible:not(:button, :disabled, .am-novalidate)',
+  allFields: ':input:visible:not(:submit, :button, :disabled, .am-novalidate)',
 
   // Custom events
   customEvents: 'validate',
 
   // Keyboard events
-  keyboardFields: ':input:not(:button, :disabled,.am-novalidate)',
+  keyboardFields: ':input:not(:submit, :button, :disabled, .am-novalidate)',
   keyboardEvents: 'focusout, change', // keyup, focusin
 
   activeKeyup: true,
@@ -207,6 +207,7 @@ Validator.prototype.validate = function(field) {
   var $radioGroup = null;
   var $checkboxGroup = null;
   // if checkbox, return `:chcked` length
+  // NOTE: checkbox and radio should have name attribute
   var value = ($field.is('[type=checkbox]')) ?
     ($checkboxGroup = $element.find('input[name="' + field.name + '"]')).
       filter(':checked').length : ($field.is('[type=radio]') ?
@@ -216,6 +217,7 @@ Validator.prototype.validate = function(field) {
   // if checkbox, valid the first input of checkbox group
   $field = ($checkboxGroup && $checkboxGroup.length) ?
     $checkboxGroup.first() : $field;
+
   var required = ($field.attr('required') !== undefined) &&
     ($field.attr('required') !== 'false');
   var maxLength = parseInt($field.attr('maxlength'), 10);

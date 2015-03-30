@@ -1,6 +1,13 @@
 # Amaze UI Change Log
 ---
 
+### 2015.03 W5
+
+**JS:**
+
+- `FIXED` #470 表单验证插件验证 `<input type="submit">` 问题；使用 `checkbox`/`radio` 时必须设置 `name` 属性。
+
+
 ### 2015.03 W4
 
 **CSS:**

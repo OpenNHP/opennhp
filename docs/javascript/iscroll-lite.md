@@ -42,3 +42,15 @@ iScroll 主要用来实现平滑的垂直、水平的拖动操作及控制。
 - [iPhone Scrollbars with iScroll (适用于 iScroll 4)](http://davidwalsh.name/iphone-scrollbars)
 
 更多例子请参见[项目主页](https://github.com/cubiq/iscroll/tree/master/demos)，**请注意，Amaze UI 打包的是 `lite` 版，有些 Demo 并不适用。**
+
+## 常见问题
+
+### 使用 iScroll 以后链接无法点击？
+
+初始化 iScroll 的时候加上 `click: true` 参数即可(感谢[FB总司令](http://weibo.com/songzibin))。
+
+```js
+var myScroll = new IScroll('#wrapper', {
+  click: true
+});
+```

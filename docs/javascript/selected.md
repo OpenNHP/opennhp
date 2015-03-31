@@ -237,6 +237,8 @@ doc: docs/javascript/selected.md
 
 ### JS 操作 select
 
+<span class="am-badge am-badge-danger">v2.3 新增！</span>
+
 使用 JS 操作 `<select>`（如添加选项、禁用选项、选中选项等），需要重新渲染下拉菜单。
 
 - 支持 [MutationObserver](http://caniuse.com/#search=MutationObserver) 的浏览器会自动触发重新渲染；

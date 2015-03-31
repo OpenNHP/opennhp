@@ -154,7 +154,9 @@ Selected.prototype.init = function() {
   this.$status = this.$selector.find('.am-selected-status');
 
   // #try to fixes #476
-  setTimeout(this.syncData, 0);
+  setTimeout(function() {
+    _this.syncData();
+  }, 0);
 
   this.bindEvents();
 };

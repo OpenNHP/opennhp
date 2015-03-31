@@ -6,6 +6,11 @@
 .am-accordion-title {
   font-weight: normal;
   cursor: pointer;
+
+  .am-accordion-item.am-disabled & {
+    cursor: default;
+    pointer-events: none;
+  }
 }
 
 // 规避 Collapase 处理不当的问题

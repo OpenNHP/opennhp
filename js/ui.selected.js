@@ -36,6 +36,7 @@ Selected.DEFAULTS = {
   maxHeight: null,
   noSelectedText: '点击选择...',
   selectedClass: 'am-checked',
+  disabledClass: 'am-disabled',
   searchBox: false,
   tpl: '<div class="am-selected am-dropdown ' +
   '<%= dropUp ? \'am-dropdown-up\': \'\' %>" id="<%= id %>" data-am-dropdown>' +
@@ -59,7 +60,7 @@ Selected.DEFAULTS = {
   '  <li data-group="<%= option.group %>" class="am-selected-list-header">' +
   '       <%= option.text %></li>' +
   '       <% } else { %>' +
-  '       <li class=<%= option.active %> ' +
+  '       <li class="<%= option.classNames%>" ' +
   '         data-index="<%= option.index %>" ' +
   '         data-group="<%= option.group || 0 %>" ' +
   '         data-value="<%= option.value %>" >' +
@@ -70,57 +71,40 @@ Selected.DEFAULTS = {
   '    </ul>' +
   '    <div class="am-selected-hint"></div>' +
   '  </div>' +
-  '</div>'
+  '</div>',
+  listTpl:   '<% for (var i = 0; i < options.length; i++) { %>' +
+  '       <% var option = options[i] %>' +
+  '       <% if (option.header) { %>' +
+  '  <li data-group="<%= option.group %>" class="am-selected-list-header">' +
+  '       <%= option.text %></li>' +
+  '       <% } else { %>' +
+  '       <li class="<%= option.classNames %>" ' +
+  '         data-index="<%= option.index %>" ' +
+  '         data-group="<%= option.group || 0 %>" ' +
+  '         data-value="<%= option.value %>" >' +
+  '         <span class="am-selected-text"><%= option.text %></span>' +
+  '         <i class="am-icon-check"></i></li>' +
+  '      <% } %>' +
+  '      <% } %>'
 };
 
 Selected.prototype.init = function() {
+  var _this = this;
   var $element = this.$element;
   var options = this.options;
-  var optionItems = [];
-  var $optgroup = $element.find('optgroup');
 
   $element.hide();
 
-  function pushOption(index, item, group) {
-    optionItems.push({
-      group: group,
-      index: index,
-      active: item.selected ? options.selectedClass : '',
-      text: item.text,
-      value: item.value
-    });
-  }
-
-  // select with option groups
-  if ($optgroup.length) {
-    $optgroup.each(function(i) {
-      // push group name
-      optionItems.push({
-        header: true,
-        group: i + 1,
-        text: this.label
-      });
-
-      $optgroup.eq(i).find('option').each(function(index, item) {
-        pushOption(index, item, i);
-      });
-    });
-  } else {
-    // without option groups
-    $element.find('option').each(function(index, item) {
-      pushOption(index, item, null);
-    });
-  }
-
   var data = {
     id: UI.utils.generateGUID('am-selected'),
-    multiple: $element.get(0).multiple,
-    options: optionItems,
+    multiple: this.multiple,
+    options: [],
     searchBox: options.searchBox,
     dropUp: options.dropUp
   };
 
-  this.$selector = $(this.render(data));
+  this.$selector = $(UI.template(this.options.tpl, data));
+  this.$list = this.$selector.find('.am-selected-list');
   this.$searchField = this.$selector.find('.am-selected-search input');
   this.$hint = this.$selector.find('.am-selected-hint');
 
@@ -161,22 +145,70 @@ Selected.prototype.init = function() {
 
   this.$hint.text(hint.join('，'));
 
+  // render dropdown list
+  this.renderOptions();
+
   // append $selector after <select>
   this.$element.after(this.$selector);
   this.dropdown = this.$selector.data('amui.dropdown');
   this.$status = this.$selector.find('.am-selected-status');
 
-  this.getShadowOptions();
-  this.syncData();
+  // #try to fixes #476
+  setTimeout(this.syncData, 0);
+
   this.bindEvents();
 };
 
-Selected.prototype.render = function(data) {
-  return UI.template(this.options.tpl, data);
-};
+Selected.prototype.renderOptions = function() {
+  var $element = this.$element;
+  var options = this.options;
+  var optionItems = [];
+  var $optgroup = $element.find('optgroup');
+  this.$originalOptions = this.$element.find('option');
 
-Selected.prototype.getShadowOptions = function() {
-  this.$shadowOptions = this.$selector.find('.am-selected-list li').
+  // 单选框使用 JS 禁用已经选择的 option 以后，
+  // 浏览器会重新选定第一个 option，但有一定延迟，致使 JS 获取 value 时返回 null
+  if (!this.multiple && ($element.val() === null)) {
+    this.$originalOptions.get(0).selected = true;
+  }
+
+  function pushOption(index, item, group) {
+    var classNames = '';
+    item.disabled && (classNames += options.disabledClass);
+    !item.disabled && item.selected && (classNames += options.selectedClass);
+
+    optionItems.push({
+      group: group,
+      index: index,
+      classNames: classNames,
+      text: item.text,
+      value: item.value
+    });
+  }
+
+  // select with option groups
+  if ($optgroup.length) {
+    $optgroup.each(function(i) {
+      // push group name
+      optionItems.push({
+        header: true,
+        group: i + 1,
+        text: this.label
+      });
+
+      $optgroup.eq(i).find('option').each(function(index, item) {
+        pushOption(index, item, i);
+      });
+    });
+  } else {
+    // without option groups
+    this.$originalOptions.each(function(index, item) {
+      pushOption(index, item, null);
+    });
+  }
+
+  this.$list.html(UI.template(options.listTpl, {options: optionItems}));
+  this.$shadowOptions = this.$list.find('> li').
     not('.am-selected-list-header');
 };
 
@@ -229,7 +261,7 @@ Selected.prototype.syncData = function(item) {
 
   // nothing selected
   if (!this.$element.val()) {
-    status.push(options.noSelectedText);
+    status = [options.noSelectedText];
   }
 
   this.$status.text(status.join(', '));
@@ -238,13 +270,16 @@ Selected.prototype.syncData = function(item) {
 
 Selected.prototype.bindEvents = function() {
   var _this = this;
+  var header = 'am-selected-list-header';
   var handleKeyup = UI.utils.debounce(function(e) {
-    _this.$shadowOptions.not('.am-selcted-list-header').hide().
+    _this.$shadowOptions.not('.' + header).hide().
      filter(':containsNC("' + e.target.value + '")').show();
   }, 100);
 
-  this.$shadowOptions.on('click', function(e) {
-    _this.setChecked(this);
+  this.$list.on('click', '> li', function(e) {
+    var $this = $(this);
+    !$this.hasClass(_this.options.disabledClass) &&
+      !$this.hasClass(header) && _this.setChecked(this);
   });
 
   // simple search with jQuery :contains
@@ -254,6 +289,26 @@ Selected.prototype.bindEvents = function() {
   this.$selector.on('closed.dropdown.amui', function() {
     _this.$searchField.val('');
     _this.$shadowOptions.css({display: ''});
+  });
+
+  // observe DOM
+  if (UI.support.mutationobserver) {
+    this.observer = new UI.support.mutationobserver(function() {
+      _this.$element.trigger('changed.selected.amui');
+    });
+
+    this.observer.observe(this.$element[0], {
+      childList: true,
+      attributes: true,
+      subtree: true,
+      characterData: true
+    });
+  }
+
+  // custom event
+  this.$element.on('changed.selected.amui', function() {
+    _this.renderOptions();
+    _this.syncData();
   });
 };
 

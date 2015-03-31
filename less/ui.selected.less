@@ -86,6 +86,13 @@
         color: @global-primary;
       }
     }
+
+    // disabled item
+    &.@{ns}disabled {
+      opacity: .5;
+      pointer-events: none;
+      cursor: not-allowed;
+    }
   }
 
   .@{ns}selected-list-header {

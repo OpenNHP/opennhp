@@ -5,8 +5,10 @@
 
 **JS:**
 
-- `FIXED` #470 表单验证插件验证 `<input type="submit">` 问题；使用 `checkbox`/`radio` 时必须设置 `name` 属性。
-
+- `FIXED` #470 表单验证插件验证 `<input type="submit">` 问题；使用 `checkbox`/`radio` 时必须设置 `name` 属性；
+- `IMPROVED` #476 尝试修复下拉选框选中状态设置问题；
+- `IMPROVED` Selected 增加对 JS 动态操作 `<select>` 支持（插入选项、选中选项、禁用选项等）；
+- `IMPROVED` Selected 增加 `disabled` 选项支持；
 
 ### 2015.03 W4
 

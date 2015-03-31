@@ -10,7 +10,8 @@ function accordionInit() {
   var selector = {
     item: '.am-accordion-item',
     title: '.am-accordion-title',
-    body: '.am-accordion-bd'
+    body: '.am-accordion-bd',
+    disabled: '.am-disabled'
   };
 
   $accordion.each(function(i, item) {
@@ -22,6 +23,10 @@ function accordionInit() {
       var $parent = $(this).parent(selector.item);
       var data = $collapse.data('amui.collapse');
 
+      if ($parent.is(selector.disabled)) {
+        return;
+      }
+
       $parent.toggleClass('am-active');
 
       if (!data) {
@@ -32,7 +37,7 @@ function accordionInit() {
 
       !options.multiple &&
       $(item).children('.am-active').
-        not($parent).removeClass('am-active').
+        not($parent).not(selector.disabled).removeClass('am-active').
         find(selector.body + '.am-in').collapse('close');
     });
   });

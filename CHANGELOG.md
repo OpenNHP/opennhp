@@ -10,6 +10,10 @@
 - `IMPROVED` Selected 增加对 JS 动态操作 `<select>` 支持（插入选项、选中选项、禁用选项等）；
 - `IMPROVED` Selected 增加 `disabled` 选项支持；
 
+**Web 组件：**
+
+- `NEW` Accordion 增加始终显示（禁用）某些面板选项。
+
 ### 2015.03 W4
 
 **CSS:**

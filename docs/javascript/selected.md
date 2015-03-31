@@ -28,9 +28,10 @@ doc: docs/javascript/selected.md
 <form action="">
   <select name="test" data-am-selected>
     <option value="a">Apple</option>
-    <option value="b">Banana</option>
+    <option value="b" selected>Banana</option>
     <option value="o">Orange</option>
     <option value="m">Mango</option>
+    <option value="d" disabled>禁用鸟</option>
   </select>
 </form>
 `````
@@ -40,6 +41,7 @@ doc: docs/javascript/selected.md
   <option value="b">Banana</option>
   <option value="o">Orange</option>
   <option value="m">Mango</option>
+  <option value="d" disabled>禁用鸟</option>
 </select>
 ```
 
@@ -231,6 +233,142 @@ doc: docs/javascript/selected.md
   <option value="o">Orange</option>
   <option value="m">Mango</option>
 </select>
+```
+
+### JS 操作 select
+
+使用 JS 操作 `<select>`（如添加选项、禁用选项、选中选项等），需要重新渲染下拉菜单。
+
+- 支持 [MutationObserver](http://caniuse.com/#search=MutationObserver) 的浏览器会自动触发重新渲染；
+- 其他浏览器需要手动触发 `changed.selected.amui` 事件。
+
+**需要注意的是**：
+
+```js
+// 使用 `attr()` 可以被 MutationObserver 观察到
+$('select').find('option').eq(1).attr('selected', true);
+
+// 以下操作不会被 MutationObserver 观察到
+$('select').val('aa');
+$('select').find('option').eq(1).prop('selected', true);
+$('select').find('option')(1).selected = true;
+```
+
+`````html
+<select id="js-selected" data-am-selected>
+  <option value="a">Apple</option>
+  <option value="b" selected>Banana</option>
+  <option value="o">Orange</option>
+  <option value="m">Mango</option>
+</select>
+
+<hr/>
+
+<button type="button" data-selected="add" class="am-btn am-btn-primary">添加选项</button>
+<button type="button" data-selected="toggle" class="am-btn am-btn-secondary">交替 Orange 选中状态</button>
+<button type="button" data-selected="disable" class="am-btn am-btn-danger">交替 Mango 禁用状态</button>
+
+<hr/>
+<div id="js-selected-info"></div>
+<script>
+  $(function() {
+    var $selected = $('#js-selected');
+    var $o = $selected.find('option[value="o"]');
+    var $m = $selected.find('option[value="m"]');
+    var i = 0;
+
+    $('[data-selected]').on('click', function() {
+      var action = $(this).data('selected');
+
+      if (action === 'add') {
+        $selected.append('<option value="o' + i +'">动态插入的选项 ' + i + '</option>');
+        i++;
+      }
+
+      if (action === 'toggle') {
+        $o.attr('selected', !$o.get(0).selected);
+      }
+
+      if (action === 'disable') {
+        $m[0].disabled = !$m[0].disabled;
+      }
+
+      // 不支持 MutationObserver 的浏览器使用 JS 操作 select 以后需要手动触发 `changed.selected.amui` 事件
+      if (!$.AMUI.support.mutationobserver) {
+        $selected.trigger('changed.selected.amui');
+      }
+    });
+
+    $selected.on('change', function() {
+      $('#js-selected-info').html([
+        '选中项：<strong class="am-text-danger">',
+        [$(this).find('option').eq(this.selectedIndex).text()],
+        '</strong> 值：<strong class="am-text-warning">',
+        $(this).val(),
+        '</strong>'
+      ].join(''));
+    });
+  });
+</script>
+`````
+
+```html
+<select id="js-selected" data-am-selected>
+  <option value="a">Apple</option>
+  <option value="b" selected>Banana</option>
+  <option value="o">Orange</option>
+  <option value="m">Mango</option>
+</select>
+
+<hr/>
+
+<button type="button" data-selected="add" class="am-btn am-btn-primary">添加选项</button>
+<button type="button" data-selected="toggle" class="am-btn am-btn-secondary">交替 Orange 选中状态</button>
+<button type="button" data-selected="disable" class="am-btn am-btn-danger">交替 Mango 禁用状态</button>
+
+<hr/>
+<div id="js-selected-info"></div>
+```
+
+```js
+$(function() {
+  var $selected = $('#js-selected');
+  var $o = $selected.find('option[value="o"]');
+  var $m = $selected.find('option[value="m"]');
+  var i = 0;
+
+  $('[data-selected]').on('click', function() {
+    var action = $(this).data('selected');
+
+    if (action === 'add') {
+      $selected.append('<option value="o' + i +'">动态插入的选项 ' + i + '</option>');
+      i++;
+    }
+
+    if (action === 'toggle') {
+      $o.attr('selected', !$o.get(0).selected);
+    }
+
+    if (action === 'disable') {
+      $m[0].disabled = !$m[0].disabled;
+    }
+
+    // 不支持 MutationObserver 的浏览器使用 JS 操作 select 以后需要手动触发 `changed.selected.amui` 事件
+    if (!$.AMUI.support.mutationobserver) {
+      $selected.trigger('changed.selected.amui');
+    }
+  });
+
+  $selected.on('change', function() {
+    $('#js-selected-info').html([
+      '选中项：<strong class="am-text-danger">',
+      [$(this).find('option').eq(this.selectedIndex).text()],
+      '</strong> 值：<strong class="am-text-warning">',
+      $(this).val(),
+      '</strong>'
+    ].join(''));
+  });
+});
 ```
 
 ## 调用方式

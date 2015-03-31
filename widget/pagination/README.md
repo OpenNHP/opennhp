@@ -14,7 +14,7 @@ ___本组件样式有待改善!___
 
 ### 使用 Handlebars
 
-本组件 Handlebars partial 名称为 `figure`，使用细节参照[折叠面板组件](/widgets/accordion)。
+本组件 Handlebars partial 名称为 `pagination`，使用细节参照[折叠面板组件](/widgets/accordion)。
 
 ### 云适配 WebIDE
 

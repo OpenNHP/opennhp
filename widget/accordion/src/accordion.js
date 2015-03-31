@@ -49,6 +49,6 @@ $(function() {
 });
 
 module.exports = $.AMUI.accordion = {
-  VERSION: '2.0.1',
+  VERSION: '2.1.0',
   init: accordionInit
 };

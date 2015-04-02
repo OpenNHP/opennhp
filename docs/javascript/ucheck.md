@@ -29,10 +29,10 @@ doc: docs/javascript/ucheck.md
 <div class="am-g">
   <div class="am-u-sm-6">
     <h3>复选框</h3>
-    <label class="am-checkbox">
+    <label class="am-checkbox needsclick">
       <input type="checkbox" value="" data-am-ucheck> 没有选中
     </label>
-    <label class="am-checkbox">
+    <label class="am-checkbox needsclick">
       <input type="checkbox" checked="checked" value="" data-am-ucheck checked>
       已选中
     </label>
@@ -49,11 +49,11 @@ doc: docs/javascript/ucheck.md
 
   <div class="am-u-sm-6">
     <h3>单选框</h3>
-    <label class="am-radio">
+    <label class="am-radio needsclick">
       <input type="radio" name="radio1" value="" data-am-ucheck>
       未选中
     </label>
-    <label class="am-radio">
+    <label class="am-radio needsclick">
       <input type="radio" name="radio1" value="" data-am-ucheck checked>
       已选中
     </label>

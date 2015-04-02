@@ -81,6 +81,8 @@ Validator.DEFAULTS = {
   submit: null
 };
 
+Validator.VERSION = '2.0.0';
+
 /* jshint -W101 */
 Validator.patterns = {
   email: /^((([a-zA-Z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+(\.([a-zA-Z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+)*)|((\x22)((((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(([\x01-\x08\x0b\x0c\x0e-\x1f\x7f]|\x21|[\x23-\x5b]|[\x5d-\x7e]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(\\([\x01-\x09\x0b\x0c\x0d-\x7f]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF]))))*(((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(\x22)))@((([a-zA-Z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-zA-Z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-zA-Z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-zA-Z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.)+(([a-zA-Z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-zA-Z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-zA-Z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-zA-Z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.?$/,
@@ -148,12 +150,32 @@ Validator.prototype.init = function() {
   });
 
   $element.submit(function(e) {
+    // user custom submit handler
     if (typeof options.submit === 'function') {
       return options.submit.call(_this, e);
     }
 
     if (options.validateOnSubmit) {
-      return _this.isFormValid();
+      var formValidity = _this.isFormValid();
+
+      // sync validate, return result
+      if ($.type(formValidity) === 'boolean') {
+        return formValidity;
+      }
+
+      if ($element.data('amui.checked')) {
+        return true;
+      } else {
+        $.when(formValidity).then(function() {
+          // done, submit form
+          $element.data('amui.checked', true).submit();
+        }, function() {
+          // fail
+          $element.data('amui.checked', false).
+            find('.' + options.inValidClass).eq(0).focus();
+        });
+        return false;
+      }
     }
   });
 
@@ -307,12 +329,17 @@ Validator.prototype.validate = function(field) {
   };
 
   // Run custom validate
+  // NOTE: async custom validate should return Deferred project
   var customValidate;
   (typeof options.validate === 'function') &&
     (customValidate = options.validate.call(this, validity));
 
+  // Deferred
   if (customValidate) {
+    var dfd = new $.Deferred();
+    $field.data('amui.dfdValidity', dfd.promise());
     return $.when(customValidate).always(function(validity) {
+      dfd[validity.valid ? 'resolve' : 'reject'](validity);
       validateComplete.call(_this, validity);
     });
   }
@@ -327,7 +354,7 @@ Validator.prototype.markField = function(validity) {
 };
 
 // check all fields in the form are valid
-Validator.prototype.validateAll = function() {
+Validator.prototype.validateForm = function() {
   var _this = this;
   var $element = this.$element;
   var options = this.options;
@@ -336,11 +363,14 @@ Validator.prototype.validateAll = function() {
   var valid = true;
   var formValidity = [];
   var $inValidFields = $([]);
+  var promises = [];
+  // for async validate
+  var async = false;
 
   $element.trigger('validate.form.validator.amui');
 
   // Filter radio with the same name and keep only one,
-  // since they will be checked as a group by isValid()
+  //   since they will be checked as a group by validate()
   var $filteredFields = $allFields.filter(function(index) {
     var name;
     if (this.tagName === 'INPUT' && this.type === 'radio') {
@@ -354,18 +384,38 @@ Validator.prototype.validateAll = function() {
   });
 
   $filteredFields.each(function() {
+    var $this = $(this);
     var fieldValid = _this.isValid(this);
+    var fieldValidity = $this.data('validity');
+
     valid = !!fieldValid && valid;
-    formValidity.push($(this).data('validity'));
+    formValidity.push(fieldValidity);
+
     if (!fieldValid) {
       $inValidFields = $inValidFields.add($(this), $element);
     }
+
+    // async validity
+    var promise = $this.data('amui.dfdValidity');
+
+    if (promise) {
+      promises.push(promise);
+      async = true;
+    } else {
+      // convert sync validity to Promise
+      var dfd = new $.Deferred();
+      promises.push(dfd.promise());
+      dfd[fieldValid ? 'resolve' : 'reject'](fieldValidity);
+    }
   });
 
+  // NOTE: If there are async validity, the valid may be not exact result.
   var validity = {
     valid: valid,
     $invalidFields: $inValidFields,
-    validity: formValidity
+    validity: formValidity,
+    promises: promises,
+    async: async
   };
 
   $element.trigger('validated.form.validator.amui', validity);
@@ -374,14 +424,34 @@ Validator.prototype.validateAll = function() {
 };
 
 Validator.prototype.isFormValid = function() {
-  var formValid = this.validateAll();
-  if (!formValid.valid) {
-    formValid.$invalidFields.first().focus();
-    this.$element.trigger('invalid.validator.amui');
-    return false;
+  var _this = this;
+  var formValidity = this.validateForm();
+  var triggerValid = function(type) {
+    _this.$element.trigger(type + '.validator.amui');
+  };
+
+  if (formValidity.async) {
+    var masterDfd = new $.Deferred();
+
+    $.when.apply(null, formValidity.promises).then(function() {
+      masterDfd.resolve();
+      triggerValid('valid');
+    }, function() {
+      masterDfd.reject();
+      triggerValid('invalid');
+    });
+
+    return masterDfd.promise();
+  } else {
+    if (!formValidity.valid) {
+      formValidity.$invalidFields.first().focus();
+      triggerValid('invalid');
+      return false;
+    }
+
+    triggerValid('valid');
+    return true;
   }
-  this.$element.trigger('valid.validator.amui');
-  return true;
 };
 
 // customErrors:

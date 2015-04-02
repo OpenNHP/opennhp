@@ -617,6 +617,7 @@ $(function() {
   //   - 如果定义了表单提交处理程序，`validateOnSubmit` 将会失效
   //        function(e) {
   //          // 通过 this.isFormValid() 获取表单验证状态
+  //          // 注意： 如果自定义验证程序而且自定义验证程序中包含异步验证的话 this.isFormValid() 返回的是 Promise，不是布尔值
   //          // Do something...
   //        }
   submit: null
@@ -632,7 +633,7 @@ $(function() {
   if ($.AMUI && $.AMUI.validator) {
     // 增加多个正则
     $.AMUI.validator.patterns = $.extend($.AMUI.validator.patterns, {
-      colorHex: /^#?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})$/
+      colorHex: /^(#([a-fA-F0-9]{6}|[a-fA-F0-9]{3}))?$/
     });
     // 增加单个正则
     $.AMUI.validator.patterns.yourpattern = /^your$/;
@@ -659,7 +660,7 @@ $(function() {
     if ($.AMUI && $.AMUI.validator) {
       // 增加多个正则
       $.AMUI.validator.patterns = $.extend($.AMUI.validator.patterns, {
-        colorHex: /^#?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})$/
+        colorHex: /^(#([a-fA-F0-9]{6}|[a-fA-F0-9]{3}))?$/
       });
       // 增加单个正则
       $.AMUI.validator.patterns.yourpattern = /^your$/;

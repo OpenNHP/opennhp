@@ -9,6 +9,7 @@
 - `IMPROVED` #476 尝试修复下拉选框选中状态设置问题；
 - `IMPROVED` Selected 增加对 JS 动态操作 `<select>` 支持（插入选项、选中选项、禁用选项等）；
 - `IMPROVED` Selected 增加 `disabled` 选项支持；
+- `FIXED` #500 修复 Validator 包含异步验证程序时表单提交问题；Validator 包含异步验证时 `.isFormValid()` 返回 Promise，避免返回布尔值不准确的问题。
 
 **Web 组件：**
 

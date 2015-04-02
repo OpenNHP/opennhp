@@ -272,6 +272,392 @@ HTML5 原生表单验证中 `pattern` 只验证值的合法性，也就是**可�
 </form>
 ```
 
+### 显示提示信息
+
+通过插件的 `.onValid` 和 `onInValid` 回调接口，可以根据需要定提示信息显示。
+
+使用时可以自行定义提示信息，也可以使用插件的内置的提示信息，详见后面的示例代码。
+
+**注意：** `.getValidationMessage(validity)` 是 `v2.3` 中新增的方法，以前的版本只能使用自定义信息。
+
+#### 底部显示提示信息
+
+`````html
+<form action="" class="am-form" id="doc-vld-msg">
+  <fieldset>
+    <legend>JS 表单验证</legend>
+    <div class="am-form-group">
+      <label for="doc-vld-name-2-1">用户名：</label>
+      <input type="text" id="doc-vld-name-2-1" minlength="3" placeholder="输入用户名（至少 3 个字符）" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-email-2-1">邮箱：</label>
+      <input type="email" id="doc-vld-email-2-1" data-validation-message="自定义提示信息：输入地球上的电子邮箱撒" placeholder="输入邮箱" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-url-2-1">网址：</label>
+      <input type="url" id="doc-vld-url-2-1" placeholder="输入网址" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-age-2-1">年龄：</label>
+      <input type="number" class=""  id="doc-vld-age-2-1" placeholder="输入年龄  18-120" min="18" max="120" required />
+    </div>
+
+    <div class="am-form-group">
+      <label class="am-form-label">爱好：</label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="橘子" name="docVlCb" minchecked="2" maxchecked="4" required> 橘子
+      </label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="苹果" name="docVlCb"> 苹果
+      </label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="菠萝" name="docVlCb"> 菠萝
+      </label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="芒果" name="docVlCb"> 芒果
+      </label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="香蕉" name="docVlCb"> 香蕉
+      </label>
+    </div>
+
+    <div class="am-form-group">
+      <label>性别： </label>
+      <label class="am-radio-inline">
+        <input type="radio"  value="" name="docVlGender" required> 男
+      </label>
+      <label class="am-radio-inline">
+        <input type="radio" name="docVlGender"> 女
+      </label>
+      <label class="am-radio-inline">
+        <input type="radio" name="docVlGender"> 其他
+      </label>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-select-1-1">下拉单选框</label>
+      <select id="doc-select-1-1" required>
+        <option value="">-=请选择一项=-</option>
+        <option value="option1">选项一...</option>
+        <option value="option2">选项二.....</option>
+        <option value="option3">选项三........</option>
+      </select>
+      <span class="am-form-caret"></span>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-select-2-1">多选框</label>
+      <select multiple class="" id="doc-select-2-1" minchecked="2" maxchecked="4">
+        <option>1</option>
+        <option>2</option>
+        <option>3</option>
+        <option>4</option>
+        <option>5</option>
+      </select>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-ta-2-1">评论：</label>
+      <textarea id="doc-vld-ta-2-1" minlength="10" maxlength="100"></textarea>
+    </div>
+
+    <button class="am-btn am-btn-secondary" type="submit">提交</button>
+  </fieldset>
+</form>
+
+<script>
+  $(function() {
+    $('#doc-vld-msg').validator({
+      onValid: function(validity) {
+        $(validity.field).closest('.am-form-group').find('.am-alert').hide();
+      },
+
+      onInValid: function(validity) {
+        var $field = $(validity.field);
+        var $group = $field.closest('.am-form-group');
+        var $alert = $group.find('.am-alert');
+        // 使用自定义的提示信息 或 插件内置的提示信息
+        var msg = $field.data('validationMessage') || this.getValidationMessage(validity);
+
+        if (!$alert.length) {
+          $alert = $('<div class="am-alert am-alert-danger"></div>').hide().
+            appendTo($group);
+        }
+
+        $alert.html(msg).show();
+      }
+    });
+  });
+</script>
+`````
+
+```html
+<form action="" class="am-form" id="doc-vld-msg">
+  <fieldset>
+    <legend>显示验证提示信息</legend>
+    <div class="am-form-group">
+      <label for="doc-vld-name-2-1">用户名：</label>
+      <input type="text" id="doc-vld-name-2-1" minlength="3" placeholder="输入用户名（至少 3 个字符）" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-email-2-1">邮箱：</label>
+      <input type="email" id="doc-vld-email-2-1" data-validation-message="自定义提示信息：输入地球上的电子邮箱撒" placeholder="输入邮箱" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-url-2-1">网址：</label>
+      <input type="url" id="doc-vld-url-2-1" placeholder="输入网址" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-age-2-1">年龄：</label>
+      <input type="number" class=""  id="doc-vld-age-2-1" placeholder="输入年龄  18-120" min="18" max="120" required />
+    </div>
+
+    <div class="am-form-group">
+      <label class="am-form-label">爱好：</label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="橘子" name="docVlCb" minchecked="2" maxchecked="4" required> 橘子
+      </label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="苹果" name="docVlCb"> 苹果
+      </label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="菠萝" name="docVlCb"> 菠萝
+      </label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="芒果" name="docVlCb"> 芒果
+      </label>
+      <label class="am-checkbox-inline">
+        <input type="checkbox" value="香蕉" name="docVlCb"> 香蕉
+      </label>
+    </div>
+
+    <div class="am-form-group">
+      <label>性别： </label>
+      <label class="am-radio-inline">
+        <input type="radio"  value="" name="docVlGender" required> 男
+      </label>
+      <label class="am-radio-inline">
+        <input type="radio" name="docVlGender"> 女
+      </label>
+      <label class="am-radio-inline">
+        <input type="radio" name="docVlGender"> 其他
+      </label>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-select-1-1">下拉单选框</label>
+      <select id="doc-select-1-1" required>
+        <option value="">-=请选择一项=-</option>
+        <option value="option1">选项一...</option>
+        <option value="option2">选项二.....</option>
+        <option value="option3">选项三........</option>
+      </select>
+      <span class="am-form-caret"></span>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-select-2-1">多选框</label>
+      <select multiple class="" id="doc-select-2-1" minchecked="2" maxchecked="4">
+        <option>1</option>
+        <option>2</option>
+        <option>3</option>
+        <option>4</option>
+        <option>5</option>
+      </select>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-ta-2-1">评论：</label>
+      <textarea id="doc-vld-ta-2-1" minlength="10" maxlength="100"></textarea>
+    </div>
+
+    <button class="am-btn am-btn-secondary" type="submit">提交</button>
+  </fieldset>
+</form>
+```
+
+```js
+$(function() {
+  $('#doc-vld-msg').validator({
+    onValid: function(validity) {
+      $(validity.field).closest('.am-form-group').find('.am-alert').hide();
+    },
+
+    onInValid: function(validity) {
+      var $field = $(validity.field);
+      var $group = $field.closest('.am-form-group');
+      var $alert = $group.find('.am-alert');
+      // 使用自定义的提示信息 或 插件内置的提示信息
+      var msg = $field.data('validationMessage') || this.getValidationMessage(validity);
+
+      if (!$alert.length) {
+        $alert = $('<div class="am-alert am-alert-danger"></div>').hide().
+          appendTo($group);
+      }
+
+      $alert.html(msg).show();
+    }
+  });
+});
+```
+
+#### Tooltip
+
+`````html
+<form action="" class="am-form" id="form-with-tooltip">
+  <fieldset>
+    <legend>定义 Tooltip</legend>
+    <div class="am-form-group">
+      <label for="doc-vld-name-2-0">用户名：</label>
+      <input type="text" id="doc-vld-name-2-0" minlength="3"
+             placeholder="输入用户名（至少 3 个字符）" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-pwd-1-0">密码：</label>
+      <input type="password" id="doc-vld-pwd-1-0" placeholder="6 位数字的银行卡密码" pattern="^\d{6}$" required data-foolish-msg="把 IQ 卡密码交出来！"/>
+    </div>
+
+    <button class="am-btn am-btn-secondary" type="submit">提交</button>
+  </fieldset>
+</form>
+
+<style>
+  #vld-tooltip {
+    position: absolute;
+    z-index: 1000;
+    padding: 5px 10px;
+    background: #F37B1D;
+    min-width: 150px;
+    color: #fff;
+    transition: all 0.15s;
+    box-shadow: 0 0 5px rgba(0,0,0,.15);
+    display: none;
+  }
+
+  #vld-tooltip:before {
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    width: 0;
+    height: 0;
+    margin-left: -8px;
+    content: "";
+    border-width: 0 8px 8px;
+    border-color: transparent transparent #F37B1D;
+    border-style: none inset solid;
+  }
+</style>
+
+<script>
+$(function() {
+  var $form = $('#form-with-tooltip');
+  var $tooltip = $('<div id="vld-tooltip">提示信息！</div>');
+  $tooltip.appendTo(document.body);
+
+  $form.validator();
+
+  var validator = $form.data('amui.validator');
+
+  $form.on('focusin focusout', '.am-form-error input', function(e) {
+    if (e.type === 'focusin') {
+      var $this = $(this);
+      var offset = $this.offset();
+      var msg = $this.data('foolishMsg') || validator.getValidationMessage($this.data('validity'));
+
+      $tooltip.text(msg).show().css({
+        left: offset.left + 10,
+        top: offset.top + $(this).outerHeight() + 10
+      });
+    } else {
+      $tooltip.hide();
+    }
+  });
+});
+</script>
+`````
+
+```html
+<form action="" class="am-form" id="form-with-tooltip">
+  <fieldset>
+    <legend>定义 Tooltip</legend>
+    <div class="am-form-group">
+      <label for="doc-vld-name-2-0">用户名：</label>
+      <input type="text" id="doc-vld-name-2-0" minlength="3"
+             placeholder="输入用户名（至少 3 个字符）" required/>
+    </div>
+
+    <div class="am-form-group">
+      <label for="doc-vld-pwd-1-0">密码：</label>
+      <input type="password" id="doc-vld-pwd-1-0" placeholder="6 位数字的银行卡密码" pattern="^\d{6}$" required data-foolish-msg="把 IQ 卡密码交出来！"/>
+    </div>
+
+    <button class="am-btn am-btn-secondary" type="submit">提交</button>
+  </fieldset>
+</form>
+
+<style>
+  #vld-tooltip {
+    position: absolute;
+    z-index: 1000;
+    padding: 5px 10px;
+    background: #F37B1D;
+    min-width: 150px;
+    color: #fff;
+    transition: all 0.15s;
+    box-shadow: 0 0 5px rgba(0,0,0,.15);
+    display: none;
+  }
+
+  #vld-tooltip:before {
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    width: 0;
+    height: 0;
+    margin-left: -8px;
+    content: "";
+    border-width: 0 8px 8px;
+    border-color: transparent transparent #F37B1D;
+    border-style: none inset solid;
+  }
+</style>
+```
+```js
+$(function() {
+  var $form = $('#form-with-tooltip');
+  var $tooltip = $('<div id="vld-tooltip">提示信息！</div>');
+  $tooltip.appendTo(document.body);
+
+  $form.validator();
+
+  var validator = $form.data('amui.validator');
+
+  $form.on('focusin focusout', '.am-form-error input', function(e) {
+    if (e.type === 'focusin') {
+      var $this = $(this);
+      var offset = $this.offset();
+      var msg = $this.data('foolishMsg') || validator.getValidationMessage($this.data('validity'));
+
+      $tooltip.text(msg).show().css({
+        left: offset.left + 10,
+        top: offset.top + $(this).outerHeight() + 10
+      });
+    } else {
+      $tooltip.hide();
+    }
+  });
+});
+```
+
+
 ### 等值验证
 
 通过 `data-equal-to` 指定要比较的域。
@@ -358,7 +744,14 @@ $('#your-form').validator({
 }
 ```
 
-H5 浏览器原生验证通过错误细节来显示提示信息，插件中暂未使用到这些属性，如果实在不想写，可以略过。
+插件扩展的三种验证属性，对应的自定义错误名称为：
+
+- `minlength` -> `tooShort`
+- `minchecked` -> `checkedUnderflow`
+- `maxchecked` -> `checkedOverflow`
+
+H5 浏览器原生验证通过错误细节来显示提示信息，~~插件中暂未使用到这些属性，如果实在不想写，可以略过，~~
+`v2.3` 开始这些信息用于生成错误提示信息。
 
 **需要注意的注意细节：**
 
@@ -475,7 +868,8 @@ $(function() {
           validity.valid = false;
         }
 
-        // 这些属性目前没什么用，如果不想写可以忽略
+        // 这些属性目前 v2.3 以前没什么用，如果不想写可以忽略
+        // 从 v2.3 开始，这些属性被 getValidationMessage() 用于生成错误提示信息
         if (v2 < 10) {
           validity.rangeUnderflow = true;
         } else if(v2 > 10) {

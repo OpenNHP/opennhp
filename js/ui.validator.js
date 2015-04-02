@@ -98,7 +98,7 @@ Validator.patterns = {
 
 Validator.validationMessages = {
   zh_CN: {
-    valueMissing: '请填写此字段',
+    valueMissing: '请填写（选择）此字段',
     customError: {
       tooShort: '至少填写 %s 个字符',
       checkedOverflow: '至多选择 %s 项',
@@ -111,6 +111,15 @@ Validator.validationMessages = {
     tooLong: '至多填写 %s 个字符',
     typeMismatch: '请按照要求的类型填写'
   }
+};
+
+Validator.ERROR_MAP = {
+  tooShort: 'minlength',
+  checkedOverflow: 'maxchecked',
+  checkedUnderflow: 'minchecked',
+  rangeOverflow: 'max',
+  rangeUnderflow: 'min',
+  tooLong: 'maxlength'
 };
 
 // TODO: 考虑表单元素不是 form 子元素的情形
@@ -201,6 +210,15 @@ Validator.prototype.init = function() {
   // active filed
   bindEvents('.am-active', 'keyup', 50);
   bindEvents('textarea[maxlength]', 'keyup', 50);
+
+  /*if (options.errorMessage === 'tooltip') {
+    this.$tooltip = $('<div></div>', {
+      'class': 'am-validator-message',
+      id: UI.utils.generateGUID('am-validator-message')
+    });
+
+    $(document.body).append(this.$tooltip);
+  }*/
 };
 
 Validator.prototype.isValid = function(field) {
@@ -472,6 +490,48 @@ Validator.prototype.createValidity = function(validity) {
     // Returns true if the element has no value but is a required field
     valueMissing: validity.valueMissing || false
   }, validity);
+};
+
+Validator.prototype.getValidationMessage = function(validity) {
+  var messages = Validator.validationMessages[this.options.locales];
+  var error;
+  var message;
+  var placeholder = '%s';
+  var $field = $(validity.field);
+
+  if ($field.is('[type="checkbox"]') || $field.is('[type="radio"]')) {
+    $field = this.$element.find('[name=' + $field.attr('name') + ']').first();
+  }
+
+  // get error name
+  $.each(validity, function(key, val) {
+    // skip `field` and `valid`
+    if (key === 'field' || key === 'valid') {
+      return key;
+    }
+
+    // Amaze UI custom error type
+    if (key === 'customError' && val) {
+      error = val;
+      messages = messages.customError;
+      return false;
+    }
+
+    // W3C specs error type
+    if (val === true) {
+      error = key;
+      return false;
+    }
+  });
+
+  message = messages[error] || undefined;
+
+  if (message && Validator.ERROR_MAP[error]) {
+    message = message.replace(placeholder,
+      $field.attr(Validator.ERROR_MAP[error]) || '规定的');
+  }
+
+  return message;
 };
 
 function Plugin(option) {

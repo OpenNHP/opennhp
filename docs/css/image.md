@@ -10,22 +10,25 @@
 ```css
 img {
   box-sizing: border-box;
-  max-width: 100%;
-  height: auto;
+  /* v2.3 开始移除以下代码，详见 #502 */
+  /* max-width: 100%;
+  height: auto;*/
   vertical-align: middle;
   border: 0;
 }
 ```
 
-## 宽度自适应
+## 响应式图片
 
-如上面的代码所示， `base` 里已经设置了 `max-width: 100%`，图片会自动适应到容器的宽度（但不会超过图片原始宽度），不需要添加额外的 class（[演示](http://jsbin.com/ciduf/1)）。如果要让图片始终和容器一样宽，需要设置 `width: 100%`。
+~~如上面的代码所示， `base` 里已经设置了 `max-width: 100%`，图片会自动适应到容器的宽度（但不会超过图片原始宽度），不需要添加额外的 class（[演示](http://jsbin.com/ciduf/1)）。如果要让图片始终和容器一样宽，需要设置 `width: 100%`。~~
+
+`v2.3` 为解决 [#502](https://github.com/allmobilize/amazeui/issues/502)，基础样式中取消了图片最大宽度设置，新增了 `.am-img-responsive` class。
 
 `````html
-<img src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg" alt=""/>
+<img src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg" class="am-img-responsive" alt=""/>
 `````
 ```html
-<img src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg" alt=""/>
+<img src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg" class="am-img-responsive" alt=""/>
 ```
 
 ## 增强样式

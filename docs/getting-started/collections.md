@@ -27,6 +27,7 @@
 - [百度 Web Uploader](http://fex-team.github.io/webuploader/)
 - [Uploadify](http://www.uploadify.com/)
 - [arale-upload - 轻量级 iframe and html5 file uploader](https://github.com/aralejs/upload)
+- [Fine Uploader](https://github.com/FineUploader/fine-uploader)
 
 ### 日期选择
 
@@ -50,9 +51,14 @@
 
 ## 页面交互
 
+### 表格处理
+
+- [DataTables](https://datatables.net/)
+
 ### Slider
 
 - [slick - the last carousel you'll ever need](https://github.com/kenwheeler/slick/)
+- [Swiper](http://www.idangero.us/swiper/)
 - [Swipe - the most accurate touch slider](https://github.com/thebird/Swipe)
 
 ### 瀑布流

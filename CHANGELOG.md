@@ -1,6 +1,47 @@
 # Amaze UI Change Log
 ---
 
+### 2015.03 W5
+
+**CSS:**
+
+- `FIXED` #502 修复 `img` 样式 `max-width: 100%` 导致部分地图不显示的问题，新增 `.am-img-responsive`。
+
+**JS:**
+
+- `FIXED` #470 表单验证插件验证 `<input type="submit">` 问题；使用 `checkbox`/`radio` 时必须设置 `name` 属性；
+- `IMPROVED` #476 尝试修复下拉选框选中状态设置问题；
+- `IMPROVED` Selected 增加对 JS 动态操作 `<select>` 支持（插入选项、选中选项、禁用选项等）；
+- `IMPROVED` Selected 增加 `disabled` 选项支持；
+- `FIXED` #500 修复 Validator 包含异步验证程序时表单提交问题；Validator 包含异步验证时 `.isFormValid()` 返回 Promise，避免返回布尔值不准确的问题；
+- `NEW` #500 Validator 增加返回错误提示信息接口；
+- `FIXED` #486 修复 DatePicker 禁用日期后仍能通过月份、年份选择问题（Thx to @meowl）。
+
+**Web 组件：**
+
+- `NEW` Accordion 增加始终显示（禁用）某些面板选项。
+
+### 2015.03 W4
+
+**CSS:**
+
+- `IMPROVED` 调整 Button `:focus`、`:active` 样式，对二者加以区分；
+- `NEW` Icon 添加图标固定宽度 class `.am-icon-fw` 以及新动画 `.am-icon-pulse`；
+- `IMPROVED` 根据网友反馈调整 Icon 字号相关属性设置，以期解决部分设备图标不显示问题（有待进一步手机用户反馈）；
+- `IMPROVED` #471 Form 增加 `.am-form-group-sm`、`.am-form-group-lg` class，解决表单组调整大小后对齐问题；
+- `NEW` Form 增加 `.am-form-file`，用于设置 `<input type="file">` 的样式；
+- `NEW` Table 添加 `.am-table-compact` 紧凑样式。
+- `NEW` Animation 添加 `.am-animation-delay-{1,6}` 动画延迟 class。
+
+**JS:**
+
+- `FIXED` #473 Sticky 外边距计算问题修复；
+- `FIXED` #457 Button JS 交互复选框在触控设备中无法正确获取值由 FastClick 引起，需在 `input` 上添加 `.needsclick`；
+- `IMPROVED` #445 日期选择插件调整为一个页面只能同时打开一个日期选择面板；
+- `IMPROVED` #446 Tabs 支持嵌套使用（需禁用触控功能）；
+- `IMPROVED` Modal Prompt 打开时自动聚焦输入框，Loading 禁用通过遮罩层关闭；
+- `IMPROVED` uCheck 对 `.am-checkbox-inline`/`.am-radio-inline` 支持。
+
 ### 2015.03 W3
 
 **JS:**

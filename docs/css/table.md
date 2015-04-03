@@ -320,6 +320,153 @@
 </table>
 ```
 
+## 紧凑型
+
+添加 `.am-table-compact` class，调整 `padding` 显示更紧凑的单元格。
+
+`````html
+<table class="am-table am-table-bordered am-table-striped am-table-compact">
+  <thead>
+  <tr>
+    <th>网站名称</th>
+    <th>网址</th>
+    <th>创建时间</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr class="am-active">
+    <td>Amaze UI(Active)</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  </tbody>
+</table>
+`````
+
+```html
+<table class="am-table am-table-bordered am-table-striped am-table-compact">
+  <thead>
+  <tr>
+    <th>网站名称</th>
+    <th>网址</th>
+    <th>创建时间</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr class="am-active">
+    <td>Amaze UI(Active)</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  <tr>
+    <td>Amaze UI</td>
+    <td>http://amazeui.org</td>
+    <td>2012-10-01</td>
+  </tr>
+  </tbody>
+</table>
+```
+
+## 响应式表格
+
+- `.am-text-nowrap`: 禁止文字换行；
+- `.am-scrollable-horizontal`: 内容超出容器宽度时显示水平滚动条。
+
+以上两个 class 在「**辅助类**」中定义。
+
+`````html
+<div class="am-scrollable-horizontal">
+  <table class="am-table am-table-bordered am-table-striped am-text-nowrap">
+    <thead>
+    <tr>
+      <th>-= 表格标题 =-</th>
+      <th>-= 表格标题 =-</th>
+      <th>-= 表格标题 =-</th>
+      <th>-= 表格标题 =-</th>
+      <th>-= 表格标题 =-</th>
+      <th>-= 表格标题 =-</th>
+      <th>-= 表格标题 =-</th>
+      <th>-= 表格标题 =-</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+    </tr>
+    <tr>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+    </tr>
+    <tr>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+      <td>表格数据</td>
+    </tr>
+    </tbody>
+  </table>
+</div>
+`````
+```html
+<div class="am-scrollable-horizontal">
+  <table class="am-table am-table-bordered am-table-striped am-text-nowrap">
+    ...
+  </table>
+</div>
+```
+
 ## 所有样式叠加
 
 `````html

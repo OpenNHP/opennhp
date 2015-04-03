@@ -15,10 +15,10 @@ doc: docs/javascript/tabs.md
 
 ## 使用演示
 
-### 内容高度一样
+### 内容高度一致
 
 `````html
-<div class="am-tabs" data-am-tabs>
+<div class="am-tabs" data-am-tabs="{noSwipe: 1}">
   <ul class="am-tabs-nav am-nav am-nav-tabs">
     <li class="am-active"><a href="javascript: void(0)">流浪</a></li>
     <li><a href="javascript: void(0)">流浪</a></li>
@@ -61,7 +61,7 @@ doc: docs/javascript/tabs.md
 </div>
 ```
 
-### 高度适应
+### 自适应内容高度
 
 `````html
 <div class="am-tabs" data-am-tabs>

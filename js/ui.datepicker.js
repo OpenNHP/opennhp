@@ -18,9 +18,9 @@ var Datepicker = function(element, options) {
   this.language = this.getLocale(this.options.locale);
   this.theme = this.options.theme;
   this.$picker = $(DPGlobal.template).appendTo('body').on({
-      click: $.proxy(this.click, this)
-      // mousedown: $.proxy(this.mousedown, this)
-    });
+    click: $.proxy(this.click, this)
+    // mousedown: $.proxy(this.mousedown, this)
+  });
 
   this.isInput = this.$element.is('input');
   this.component = this.$element.is('.am-datepicker-date') ?
@@ -74,7 +74,7 @@ var Datepicker = function(element, options) {
 
   this.startViewMode = this.viewMode;
   this.weekStart = ((this.options.weekStart ||
-    Datepicker.locales[this.language].weekStart || 0) % 7);
+  Datepicker.locales[this.language].weekStart || 0) % 7);
   this.weekEnd = ((this.weekStart + 6) % 7);
   this.onRender = this.options.onRender;
 
@@ -111,7 +111,7 @@ Datepicker.prototype.open = function(e) {
     e.preventDefault();
   }
   var that = this;
-  $(document).on('click.datepicker.amui', function(ev) {
+  $doc.on('mousedown.datapicker.amui touchstart.datepicker.amui', function(ev) {
     if ($(ev.target).closest('.am-datepicker').length === 0) {
       that.close();
     }
@@ -128,7 +128,7 @@ Datepicker.prototype.close = function() {
   this.viewMode = this.startViewMode;
   this.showMode();
   if (!this.isInput) {
-    $(document).off('click.datepicker.amui', this.close);
+    $(document).off('mousedown.datapicker.amui touchstart.datepicker.amui', this.close);
   }
   // this.set();
   this.$element.trigger({
@@ -215,7 +215,7 @@ Datepicker.prototype.fillDow = function() {
   while (dowCount < this.weekStart + 7) {
     // NOTE: do % then add 1
     html += '<th class="am-datepicker-dow">' +
-      Datepicker.locales[this.language].daysMin[(dowCount++) % 7] +
+    Datepicker.locales[this.language].daysMin[(dowCount++) % 7] +
     '</th>';
   }
   html += '</tr>';
@@ -288,22 +288,31 @@ Datepicker.prototype.fill = function() {
       html.push('</tr>');
     }
     prevMonth.setDate(prevMonth.getDate() + 1);
-
   }
 
   this.$picker.find('.am-datepicker-days tbody')
     .empty().append(html.join(''));
 
   var currentYear = this.date.getFullYear();
-
   var months = this.$picker.find('.am-datepicker-months')
     .find('.am-datepicker-select')
     .text(year);
   months = months.end()
-    .find('span').removeClass('am-active');
+    .find('span').removeClass('am-active').removeClass('am-disabled');
+
+  var monthLen = 0;
+
+  while(monthLen < 12) {
+    if (this.onRender(d.setFullYear(year, monthLen))) {
+      months.eq(monthLen).addClass('am-disabled');
+    }
+    monthLen++;
+  }
 
   if (currentYear === year) {
-    months.eq(this.date.getMonth()).addClass('am-active');
+    months.eq(this.date.getMonth())
+        .removeClass('am-disabled')
+        .addClass('am-active');
   }
 
   html = '';
@@ -315,9 +324,11 @@ Datepicker.prototype.fill = function() {
     .end()
     .find('td');
 
+  var yearClassName;
   year -= 1;
   for (var i = -1; i < 11; i++) {
-    html += '<span class="' +
+    yearClassName = this.onRender(d.setFullYear(year));
+    html += '<span class="'+ yearClassName +'' +
     (i === -1 || i === 10 ? ' am-datepicker-old' : '') +
     (currentYear === year ? ' am-active' : '') + '">' + year + '</span>';
     year += 1;
@@ -330,6 +341,9 @@ Datepicker.prototype.click = function(event) {
   event.preventDefault();
   var month;
   var year;
+  var $dayActive = this.$picker.find('.am-datepicker-days').find('.am-active');
+  var $months = this.$picker.find('.am-datepicker-months');
+  var $monthIndex = $months.find('.am-active').index();
 
   var $target = $(event.target).closest('span, td, th');
   if ($target.length === 1) {
@@ -355,12 +369,27 @@ Datepicker.prototype.click = function(event) {
         }
         break;
       case 'span':
+        if ($target.is('.am-disabled')) {
+          return
+        }
+
         if ($target.is('.am-datepicker-month')) {
           month = $target.parent().find('span').index($target);
-          this.viewDate.setMonth(month);
+
+          if ($target.is('.am-active')) {
+            this.viewDate.setMonth(month, $dayActive.text());
+          } else {
+            this.viewDate.setMonth(month);
+          }
+
         } else {
           year = parseInt($target.text(), 10) || 0;
-          this.viewDate.setFullYear(year);
+          if ($target.is('.am-active')) {
+            this.viewDate.setFullYear(year, $monthIndex, $dayActive.text());
+          } else {
+            this.viewDate.setFullYear(year);
+          }
+
         }
 
         if (this.viewMode !== 0) {

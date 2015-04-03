@@ -203,6 +203,24 @@ output {
   margin-bottom: 1.5rem;
 }
 
+/* file field */
+
+.@{ns}form-file {
+  position: relative;
+  overflow: hidden;
+
+  input[type="file"] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 1;
+    width: 100%;
+    opacity: 0;
+    cursor: pointer;
+    font-size: 50rem;
+  }
+}
+
 /**
  * Checkboxes and radios
  * Indent the labels to position radios/checkboxes as hanging controls.
@@ -393,6 +411,7 @@ input[type="checkbox"],
   .hook-form-inline;
 }
 
+
 /* Form field size */
 
 .@{ns}input-sm {
@@ -401,6 +420,29 @@ input[type="checkbox"],
 
 .@{ns}input-lg {
   font-size: @form-font-size-lg !important;
+}
+
+.@{ns}form-group-sm {
+  .@{ns}checkbox,
+  .@{ns}radio,
+  .@{ns}form-label,
+  .@{ns}form-field {
+    font-size: @form-font-size-sm !important;
+  }
+}
+
+.@{ns}form-group-lg {
+  .@{ns}checkbox,
+  .@{ns}radio,
+  .@{ns}form-label,
+  .@{ns}form-field {
+    font-size: @form-font-size-lg !important;
+  }
+
+  input[type="radio"],
+  input[type="checkbox"] {
+    margin-top: 7px;
+  }
 }
 
 /* Form field feedback states */
@@ -424,6 +466,7 @@ input[type="checkbox"],
   .hook-form-icon;
 }
 
+
 /* Feedback Icon */
 
 .@{ns}form-feedback {
@@ -440,6 +483,7 @@ input[type="checkbox"],
   }
   .hook-form-feedback;
 }
+
 
 /* Form set */
 
@@ -466,6 +510,7 @@ input[type="checkbox"],
   }
   .hook-form-set;
 }
+
 
 // Hooks
 // =============================================================================

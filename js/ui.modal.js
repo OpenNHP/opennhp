@@ -22,6 +22,8 @@ var Modal = function(element, options) {
 
   this.isPopup = this.$element.hasClass('am-popup');
   this.isActions = this.$element.hasClass('am-modal-actions');
+  this.isPrompt = this.$element.hasClass('am-modal-prompt');
+  this.isLoading = this.$element.hasClass('am-modal-loading');
   this.active = this.transitioning = this.relatedTarget = null;
 
   this.events();
@@ -121,6 +123,11 @@ Modal.prototype.open = function(relatedTarget) {
     $element.trigger($.Event('opened.modal.amui',
       {relatedTarget: relatedTarget}));
     this.transitioning = 0;
+
+    // Prompt auto focus
+    if (this.isPrompt) {
+      this.$dialog.find('input').eq(0).focus();
+    }
   };
 
   if (!supportTransition) {
@@ -200,7 +207,7 @@ Modal.prototype.events = function() {
   }
 
   // Close Modal when dimmer clicked
-  if (this.options.closeViaDimmer) {
+  if (this.options.closeViaDimmer && !this.isLoading) {
     dimmer.$element.on('click.dimmer.modal.amui', function(e) {
       that.close();
     });

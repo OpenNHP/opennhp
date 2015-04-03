@@ -23,9 +23,11 @@
 @ucheck-disabled-color: mix(@gray-light, white, 38%);
 
 .@{ns}checkbox,
-.@{ns}radio {
-  margin-bottom: 12px;
-  padding-left: 25px;
+.@{ns}radio,
+.@{ns}checkbox-inline,
+.@{ns}radio-inline {
+  // margin-bottom: 12px;
+  padding-left: 22px;
   position: relative;
   transition: color .25s linear;
   font-size: 14px;
@@ -54,7 +56,9 @@ label {
 }
 
 .@{ns}checkbox,
-.@{ns}radio {
+.@{ns}radio,
+.@{ns}checkbox-inline,
+.@{ns}radio-inline {
   .@{ns}icon-checked,
   .@{ns}icon-unchecked {
     position: absolute;
@@ -76,7 +80,8 @@ label {
   }
 }
 
-.@{ns}checkbox {
+.@{ns}checkbox,
+.@{ns}checkbox-inline {
   .@{ns}icon-checked:before {
     content: @fa-var-check-square-o;
   }
@@ -86,7 +91,8 @@ label {
   }
 }
 
-.@{ns}radio {
+.@{ns}radio,
+.@{ns}radio-inline {
   .@{ns}icon-checked:before {
     content: @fa-var-dot-circle-o;
   }
@@ -160,7 +166,9 @@ label {
 
 // color modifiers
 .@{ns}checkbox,
-.@{ns}radio {
+.@{ns}radio,
+.@{ns}checkbox-inline,
+.@{ns}radio-inline {
   &.@{ns}secondary {
     .ucheck-state-variant(@global-secondary);
   }
@@ -187,6 +195,7 @@ label {
   color: @global-success;
 }
 
+/*
 // Group Addon
 .@{ns}input-group-label {
   .@{ns}radio,
@@ -201,3 +210,4 @@ label {
 .@{ns}form-inline .@{ns}radio {
   padding-left: 24px;
 }
+*/

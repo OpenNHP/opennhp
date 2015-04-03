@@ -125,6 +125,42 @@ return data;
 </ul>
 ```
 
+## 不使用微信图片查看器
+
+如果在微信中打开时不想调用微信的图片查看器，可以通过以下选项关闭：
+
+```html
+<ul data-am-widget="gallery" class="am-gallery am-avg-sm-2 am-gallery-imgbordered" data-am-gallery="{pureview:{weChatImagePreview: false}}">
+```
+
+`````html
+<ul data-am-widget="gallery" class="am-gallery am-avg-sm-2 am-gallery-imgbordered" data-am-gallery="{pureview:{weChatImagePreview: false}}">
+  <li>
+    <div class="am-gallery-item">
+      <a href="https://farm4.staticflickr.com/3835/15329524682_554d4c0886_k.jpg" title="远方 有一个地方 那里种有我们的梦想"><img src="https://farm4.staticflickr.com/3835/15329524682_2642280b33_z.jpg"
+                                                                                                                 alt="远方 有一个地方 那里种有我们的梦想"/>
+        <h3 class="am-gallery-title">远方 有一个地方 那里种有我们的梦想</h3>
+        <div class="am-gallery-desc">2375-09-26</div></a>
+    </div>
+  </li>
+  <li>
+    <div class="am-gallery-item">
+      <a href="https://farm3.staticflickr.com/2941/15346557971_d8f3d52978_k.jpg" title="某天 也许会相遇 相遇在这个好地方"><img src="https://farm3.staticflickr.com/2941/15346557971_dec5c9ac36_z.jpg"
+                                                                                                                alt="某天 也许会相遇 相遇在这个好地方"/>
+        <h3 class="am-gallery-title">某天 也许会相遇 相遇在这个好地方</h3>
+        <div class="am-gallery-desc">2375-09-26</div></a>
+    </div>
+  </li>
+</ul>
+`````
+```html
+<ul data-am-widget="gallery" class="am-gallery am-avg-sm-2 am-gallery-imgbordered" data-am-gallery="{pureview:{weChatImagePreview: false}}">
+  <li>
+    ...
+  </li>
+</ul>
+```
+
 ## 数据接口
 
 ```javascript

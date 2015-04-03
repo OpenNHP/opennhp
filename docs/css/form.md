@@ -19,6 +19,81 @@
 
 单使用 CSS， 很难给 `select` 定义跨浏览器兼容的样式，保留浏览器默认样式可能是它最好的归宿（[Pure CSS 就是这么干的](http://purecss.io/forms/#stacked-form))。Amaze UI 中针对 Webkit 浏览器写了一点样式替换了默认的下上三角形。
 
+### 文件选择域
+
+`<input type="file">` 也是 CSS 啃不动的一块骨头，如果实在看不惯原生的样式，一般的做法是把文件选择域设为透明那个，覆盖在其他元素。
+
+`````html
+<div class="am-form-group am-form-file">
+  <button type="button" class="am-btn am-btn-default am-btn-sm">
+    <i class="am-icon-cloud-upload"></i> 选择要上传的文件</button>
+  <input type="file" multiple>
+</div>
+
+<hr/>
+
+<div class="am-form-group am-form-file">
+  <i class="am-icon-cloud-upload"></i> 选择要上传的文件
+  <input type="file" multiple>
+</div>
+`````
+
+```html
+<div class="am-form-group am-form-file">
+  <button type="button" class="am-btn am-btn-default am-btn-sm">
+    <i class="am-icon-cloud-upload"></i> 选择要上传的文件</button>
+  <input type="file" multiple>
+</div>
+
+<hr/>
+
+<div class="am-form-group am-form-file">
+  <i class="am-icon-cloud-upload"></i> 选择要上传的文件
+  <input type="file" multiple>
+</div>
+```
+
+存在的问题是不会显示已经选择的文件，对用户不够友好，需要[配合 JS](https://developer.mozilla.org/en-US/docs/Web/API/FileList) 使用：
+
+`````html
+<div class="am-form-group am-form-file">
+  <button type="button" class="am-btn am-btn-danger am-btn-sm">
+    <i class="am-icon-cloud-upload"></i> 选择要上传的文件</button>
+  <input id="doc-form-file" type="file" multiple>
+</div>
+<div id="file-list"></div>
+<script>
+  $(function() {
+    $('#doc-form-file').on('change', function() {
+      var fileNames = '';
+      $.each(this.files, function() {
+        fileNames += '<span class="am-badge">' + this.name + '</span> ';
+      });
+      $('#file-list').html(fileNames);
+    });
+  });
+</script>
+`````
+```html
+<div class="am-form-group am-form-file">
+  <button type="button" class="am-btn am-btn-danger am-btn-sm">
+    <i class="am-icon-cloud-upload"></i> 选择要上传的文件</button>
+  <input id="doc-form-file" type="file" multiple>
+</div>
+<div id="file-list"></div>
+<script>
+  $(function() {
+    $('#doc-form-file').on('change', function() {
+      var fileNames = '';
+      $.each(this.files, function() {
+        fileNames += '<span class="am-badge">' + this.name + '</span> ';
+      });
+      $('#file-list').html(fileNames);
+    });
+  });
+</script>
+```
+
 ### 基本演示
 
 在容器上添加 `.am-form` class，容器里的子元素才会应用 Amaze UI 定义的样式。
@@ -40,10 +115,21 @@
     </div>
 
     <div class="am-form-group">
-      <label for="doc-ipt-file-1">文件上传域</label>
+      <label for="doc-ipt-file-1">原生文件上传域</label>
       <input type="file" id="doc-ipt-file-1">
       <p class="am-form-help">请选择要上传的文件...</p>
     </div>
+
+    <div class="am-form-group am-form-file">
+      <label for="doc-ipt-file-2">Amaze UI 文件上传域</label>
+      <div>
+        <button type="button" class="am-btn am-btn-default am-btn-sm">
+          <i class="am-icon-cloud-upload"></i> 选择要上传的文件</button>
+      </div>
+      <input type="file" id="doc-ipt-file-2">
+    </div>
+
+    <hr/>
 
     <div class="am-checkbox">
       <label>
@@ -136,9 +222,18 @@
     </div>
 
     <div class="am-form-group">
-      <label for="doc-ipt-file-1">文件上传域</label>
+      <label for="doc-ipt-file-1">原生文件上传域</label>
       <input type="file" id="doc-ipt-file-1">
       <p class="am-form-help">请选择要上传的文件...</p>
+    </div>
+
+    <div class="am-form-group am-form-file">
+      <label for="doc-ipt-file-2">Amaze UI 文件上传域</label>
+      <div>
+        <button type="button" class="am-btn am-btn-default am-btn-sm">
+          <i class="am-icon-cloud-upload"></i> 选择要上传的文件</button>
+      </div>
+      <input type="file" id="doc-ipt-file-2">
     </div>
 
     <div class="am-checkbox">
@@ -548,10 +643,14 @@ ___注意：Icon 的样式针对 `.am-form-group` 单行排列编写，多行的
 
 ## 表单域大小
 
+### 单个域的大小
+
 在表单元素上添加以下类名：
 
 - `am-input-lg`
 - `am-input-sm`
+
+适用于没有 `<label>` 的表单，如果表单包含 `<label>` 且需要调整大小的，请往后看。
 
 `````html
 <form class="am-form">
@@ -607,6 +706,85 @@ ___注意：Icon 的样式针对 `.am-form-group` 单行排列编写，多行的
     <select class=" am-input-sm">
       <option value="">添加了 .am-input-sm</option>
     </select>
+  </div>
+</form>
+```
+
+### 组大小
+
+在 `.am-form-group` 的基础上添加以下 class，也可以实现对表单大小的设置：
+
+- `.am-form-group-sm`
+- `.am-form-group-lg`
+
+注意**可输入类型的 `input` 元素上需要添加 `.am-form-field`**，不需要再添加 `.am-input-sm` 此类的 class。
+
+`````html
+<form class="am-form am-form-horizontal">
+  <div class="am-form-group am-form-group-sm">
+    <label for="doc-ipt-3-1" class="am-u-sm-2 am-form-label">电邮</label>
+    <div class="am-u-sm-10">
+      <input type="email" id="doc-ipt-3-1" class="am-form-field" placeholder="输入你的电子邮件">
+    </div>
+  </div>
+
+  <div class="am-form-group am-form-group-lg">
+    <label for="doc-ipt-pwd-21" class="am-u-sm-2 am-form-label">密码</label>
+    <div class="am-u-sm-10">
+      <input type="password" id="doc-ipt-pwd-21" class="am-form-field" placeholder="设置一个密码吧">
+    </div>
+  </div>
+
+  <div class="am-form-group am-form-group-sm">
+    <div class="am-u-sm-offset-2 am-u-sm-10">
+      <div class="am-checkbox">
+        <label>
+          <input type="checkbox"> 记住十万年
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="am-form-group">
+    <div class="am-u-sm-10 am-u-sm-offset-2">
+      <button type="submit" class="am-btn am-btn-default">提交登入</button>
+    </div>
+  </div>
+</form>
+`````
+
+```html
+<form class="am-form am-form-horizontal">
+  <!-- am-form-group 的基础上添加了 am-form-group-sm -->
+  <div class="am-form-group am-form-group-sm">
+    <label for="doc-ipt-3-1" class="am-u-sm-2 am-form-label">电邮</label>
+    <div class="am-u-sm-10">
+      <input type="email" id="doc-ipt-3-1" class="am-form-field" placeholder="输入你的电子邮件">
+    </div>
+  </div>
+
+  <!-- am-form-group 的基础上添加了 am-form-group-lg -->
+  <div class="am-form-group am-form-group-lg">
+    <label for="doc-ipt-pwd-21" class="am-u-sm-2 am-form-label">密码</label>
+    <div class="am-u-sm-10">
+      <input type="password" id="doc-ipt-pwd-21" class="am-form-field" placeholder="设置一个密码吧">
+    </div>
+  </div>
+
+  <div class="am-form-group am-form-group-sm">
+    <div class="am-u-sm-offset-2 am-u-sm-10">
+      <div class="am-checkbox">
+        <label>
+          <input type="checkbox"> 记住十万年
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="am-form-group">
+    <div class="am-u-sm-10 am-u-sm-offset-2">
+      <button type="submit" class="am-btn am-btn-default">提交登入</button>
+    </div>
   </div>
 </form>
 ```

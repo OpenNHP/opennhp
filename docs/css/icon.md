@@ -73,6 +73,14 @@ __LESS 用户__可以调用 mixin 编写样式：
 
 在 Icon 上添加 `.am-btn-icon` class。
 
+如果需要设置 Icon Button 的颜色，可以添加以下 class：
+
+- `.am-primary`
+- `.am-secondary`
+- `.am-success`
+- `.am-warning`
+- `.am-danger`
+
 `````html
 <a href="" class="am-icon-btn am-icon-twitter"></a>
 <a href="" class="am-icon-btn am-icon-facebook"></a>
@@ -87,6 +95,11 @@ __LESS 用户__可以调用 mixin 编写样式：
 <a href="" class="am-icon-btn am-icon-twitter"></a>
 <a href="" class="am-icon-btn am-icon-facebook"></a>
 <a href="" class="am-icon-btn am-icon-github"></a>
+<a href="" class="am-icon-btn am-primary am-icon-qq"></a>
+<a href="" class="am-icon-btn am-secondary am-icon-drupal"></a>
+<a href="" class="am-icon-btn am-success am-icon-shield"></a>
+<a href="" class="am-icon-btn am-warning am-icon-warning"></a>
+<a href="" class="am-icon-btn am-danger am-icon-youtube"></a>
 ```
 
 ## 旋转动画
@@ -108,6 +121,29 @@ __LESS 用户__可以调用 mixin 编写样式：
 <i class="am-icon-cog am-icon-spin"></i>
 <i class="am-icon-gear am-icon-spin"></i>
 ```
+
+**v2.3** 新增动画：
+
+`````html
+<i class="am-icon-spinner am-icon-pulse"></i>
+`````
+```html
+<i class="am-icon-spinner am-icon-pulse"></i>
+```
+
+## 固定宽度
+
+FontAwesome 在绘制图标的时候不同图标宽度有差异， 添加 `.am-icon-fw` 将图标设置为固定的宽度，解决宽度不一致问题（**v2.3 新增**）。
+
+`````html
+<ul>
+  <li><i class="am-icon-qq am-icon-fw"></i> QQ</li>
+  <li><i class="am-icon-skype am-icon-fw"></i> Skype</li>
+  <li><i class="am-icon-github am-icon-fw"></i> GitHub</li>
+  <li><i class="am-icon-cc-amex am-icon-fw"></i> Amex</li>
+</ul>
+`````
+
 
 ## 复制图标
 
@@ -144,6 +180,22 @@ __LESS 用户__可以调用 mixin 编写样式：
 Amaze UI 的定位是面向现代浏览器，虽然对 IE 8/9 这些浏览器提供了有限支持，但这都是在不改变基础架构、不耗费过多精力的前提下。安卓碎片化严重，更恶心的是一些厂商还随意修改浏览器内核，Amaze UI 不可能做到全部兼容，也不可能为极个别的用户代理调整架构、耗费过多精力。
 
 云适配内部有数千个网站在使用 Amaze UI，截止目前还没有接到过图标不显示的反馈。**显然，遇到这些问题的用户需要权衡处理这个问题的成本与收益。**
+
+**v2.3 update**:
+
+有用户在评论中说以下写法可以解决图标不显示的问题，`v2.3` 中已经调整为以下写法，遇到过问题的用户可以测试一下。
+
+```css
+/* 安卓手机端Icon不能正确显示的处理办法：*/
+[class*='am-icon-']:before {
+  display: inline-block;
+  font: normal normal normal 14px/1 FontAwesome;
+  font-size: inherit;
+  text-rendering: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}　
+```
 
 ## 所有图标列表
 

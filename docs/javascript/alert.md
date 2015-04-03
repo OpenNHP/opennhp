@@ -243,7 +243,6 @@ $('#my-alert').on('closed.alert.amui', function() {
 `````
 
 ```html
-`````html
 <div class="am-alert" id="your-alert-1">
   <button type="button" class="am-close">&times;</button>
   <p>这是一个警告框！</p>
@@ -265,7 +264,4 @@ $('#my-alert').on('closed.alert.amui', function() {
     });
   });
 </script>
-`````
 ```
-
-

@@ -11,6 +11,7 @@
 
   position: relative;
   cursor: pointer;
+
   &:after {
     .am-icon-font;
     content: @fa-var-search-plus;
@@ -20,7 +21,9 @@
     color: @figure-icon-color;
     font-size: 1.6rem;
     transition: all 0.2s;
+    pointer-events: none;
   }
+
   &:hover {
     &:after {
       color: @figure-icon-hover-color;

@@ -19,8 +19,8 @@
 // Variables
 // =============================================================================
 
-@alert-margin-vertical: 15px;
-@alert-padding: 10px;
+@alert-margin-vertical: 1em;
+@alert-padding: 0.625em;
 @alert-background: @global-primary;
 @alert-color: #fff;
 
@@ -98,6 +98,14 @@
   margin-bottom: 0;
 }
 
+
+/* within am-form-group */
+
+.@{ns}form-group .@{ns}alert {
+  margin: 5px 0 0;
+  padding: 0.25em 0.625em;
+  font-size: 1.3rem;
+}
 
 /* Close in alert */
 

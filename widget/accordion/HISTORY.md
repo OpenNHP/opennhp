@@ -1,6 +1,10 @@
 # Accordion 更新记录
 ---
 
+## v2.1.0 (2015.03.31)
+
+- `NEW` 增加 `disabled` 选项。
+
 ## v2.0.1 (2015.01.09)
 
 - `CHANGED` 删除 ide 示例接口字段 example。

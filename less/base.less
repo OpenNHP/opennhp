@@ -240,12 +240,13 @@ sub {
   * 2. Responsiveness: Sets a maxium width relative to the parent and auto scales the height
   * 3. Remove the gap between images and the bottom of their containers
   * 4. Remove border when inside `a` element in IE 8/9.
+  * remove 2. for Issue #502
   */
 
 img {
   box-sizing: border-box; /* 1 */
-  max-width: 100%; /* 2 */
-  height: auto; /* 2 */
+  // max-width: 100%; /* 2 */
+  // height: auto; /* 2 */
   vertical-align: middle; /* 3 */
   border: 0; /* 4 */
 }

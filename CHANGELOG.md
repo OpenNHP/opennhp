@@ -3,6 +3,10 @@
 
 ### 2015.03 W5
 
+**CSS:**
+
+- `FIXED` #502 修复 `img` 样式 `max-width: 100%` 导致部分地图不显示的问题，新增 `.am-img-responsive`。
+
 **JS:**
 
 - `FIXED` #470 表单验证插件验证 `<input type="submit">` 问题；使用 `checkbox`/`radio` 时必须设置 `name` 属性；

@@ -1,6 +1,8 @@
 # Credits 鸣谢
 ---
 
+**本页面转移至[Wiki](https://github.com/allmobilize/amazeui/wiki/Credits)，不再更新！**
+
 对于 Amaze UI，我们不是创造者。
 
 Amaze UI 的诞生，依托于 GitHub 及其他技术社区上一些优秀的资源；Amaze UI 的成长，则离不开用户的支持。

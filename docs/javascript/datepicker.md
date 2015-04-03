@@ -118,6 +118,22 @@ doc: docs/javascript/datepicker.md
 </div>
 ```
 
+**只能选择年份：**
+
+注意 `format: 'yyyy '` 里面 `yyyy ` 后面多加一个空格。
+
+`````html
+<div>
+  <input type="text" class="am-form-field" data-am-datepicker="{format: 'yyyy ', viewMode: 'years', minViewMode: 'years'}" placeholder="日历组件" data-am-datepicker readonly/>
+</div>
+````
+```html
+<div>
+  <input type="text" class="am-form-field" data-am-datepicker="{format: 'yyyy ', viewMode: 'years', minViewMode: 'years'}" placeholder="日历组件" data-am-datepicker readonly/>
+</div>
+```
+
+
 ### 自定义事件
 
 通过监听自定义事件 `changeDate`，可以在回调函数中进行验证等操作。通过 `$().data('date')` 获取改变后的日期。

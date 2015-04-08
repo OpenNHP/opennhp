@@ -18,8 +18,8 @@ Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 100 kB 左右）、 [**
 
 <div class="am-g">
   <div class="am-u-md-8 am-u-md-centered">
-    <a id="doc-dl-btn" href="http://amazeui.org/download?ver=2.2.1" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
-"><i class="am-icon-download"></i> Amaze UI v2.2.1</a>
+    <a id="doc-dl-btn" href="http://amazeui.org/download?ver=2.3.0" class="am-btn am-btn-block am-btn-success am-btn-lg" onclick="window.ga && ga('send', 'pageview', '/download/AmazeUI.zip');
+"><i class="am-icon-download"></i> Amaze UI v2.3.0</a>
   </div>
 </div>
 
@@ -53,14 +53,14 @@ Gulp、NPM 构建的前端开发工作流，点击[访问项目主页](https://g
 Amaze UI CDN： 域名解析服务由 DNSPod 提供，CDN 存储由又拍云提供。
 
 ```html
-http://cdn.amazeui.org/amazeui/2.2.1/css/amazeui.css
-http://cdn.amazeui.org/amazeui/2.2.1/css/amazeui.min.css
-http://cdn.amazeui.org/amazeui/2.2.1/js/amazeui.js
-http://cdn.amazeui.org/amazeui/2.2.1/js/amazeui.min.js
-http://cdn.amazeui.org/amazeui/2.2.1/js/amazeui.legacy.js
-http://cdn.amazeui.org/amazeui/2.2.1/js/amazeui.legacy.min.js
-http://cdn.amazeui.org/amazeui/2.2.1/js/amazeui.widgets.helper.js
-http://cdn.amazeui.org/amazeui/2.2.1/js/amazeui.widgets.helper.min.js
+http://cdn.amazeui.org/amazeui/2.3.0/css/amazeui.css
+http://cdn.amazeui.org/amazeui/2.3.0/css/amazeui.min.css
+http://cdn.amazeui.org/amazeui/2.3.0/js/amazeui.js
+http://cdn.amazeui.org/amazeui/2.3.0/js/amazeui.min.js
+http://cdn.amazeui.org/amazeui/2.3.0/js/amazeui.legacy.js
+http://cdn.amazeui.org/amazeui/2.3.0/js/amazeui.legacy.min.js
+http://cdn.amazeui.org/amazeui/2.3.0/js/amazeui.widgets.helper.js
+http://cdn.amazeui.org/amazeui/2.3.0/js/amazeui.widgets.helper.min.js
 ```
 
 ### 使用 Bower
@@ -76,6 +76,9 @@ bower install amazeui
 - [Lazyload - 图片懒加载](https://github.com/amazeui/lazyload)
 - [Chosen - 下拉选框增强](https://github.com/amazeui/chosen)
 - [Masonry - 瀑布流](https://github.com/amazeui/masonry)
+- [Switch - 开关切换插件](https://github.com/amazeui/switch)
+- [Tags Input - 标签输入框](https://github.com/amazeui/tagsinput)
+- [Video.js Amaze UI 皮肤](https://github.com/amazeui/videojs)
 
 ### 获取源码
 

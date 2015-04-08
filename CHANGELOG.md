@@ -1,6 +1,8 @@
 # Amaze UI Change Log
 ---
 
+## Amaze UI 2.3.0 (2015.04.08)
+
 ### 2015.03 W5
 
 **CSS:**

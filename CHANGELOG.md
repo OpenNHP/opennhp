@@ -1,6 +1,17 @@
 # Amaze UI Change Log
 ---
 
+### 2015.04 W1
+
+**CSS:**
+
+- `FIXED` `.am-thumbnail` 添加 #502 中移除的样式，限制图片最大宽度。
+
+**JS:**
+
+- `IMPROVED` Tabs 初始化 Hammer 增加判断，避免 DOM 结构不符报错问题（#513）。
+
+
 ## Amaze UI 2.3.0 (2015.04.08)
 
 ### 2015.03 W5

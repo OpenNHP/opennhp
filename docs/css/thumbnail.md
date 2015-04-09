@@ -9,13 +9,6 @@ Thumbnail 组件主要用于显示图片列表及图文混排列表。
 
 ### 结合网格使用
 
-<style>
-  .am-thumbnail {
-    max-width: 100%;
-    height: auto;
-  }
-</style>
-
 `````html
 <div class="am-g">
   <div class="am-u-sm-4">

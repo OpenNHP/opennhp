@@ -18,8 +18,6 @@
 .@{ns}thumbnail {
   //display: inline-block;
   display: block;
-  max-width: 100%;
-  height: auto;
   padding: @thumbnail-padding;
   margin-bottom: @line-height-computed;
   background-color: @thumbnail-bg;
@@ -42,6 +40,16 @@
     border-color: @thumbnail-hover-border;
     background-color: @thumbnail-hover-bg;
     .hook-thumbnail-hover;
+  }
+}
+
+// Image width
+.@{ns}thumbnail {
+  img&,
+  > img,
+  a > img {
+    max-width: 100%;
+    height: auto;
   }
 }
 

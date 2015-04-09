@@ -56,6 +56,10 @@ Tabs.prototype.init = function() {
 
   // TODO: nested Tabs touch events
   if (!options.noSwipe) {
+    if (!this.$content.length) {
+      return this;
+    }
+
     var hammer = new Hammer(this.$content[0]);
 
     hammer.get('pan').set({

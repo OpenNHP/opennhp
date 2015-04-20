@@ -52,7 +52,7 @@
     "gulp-concat": "latest",
     "gulp-header": "^1.0.2",
     "gulp-jsbeautifier": "0.0.3",
-    "gulp-less": "^1.2.3",
+    "gulp-less": "^3.0.2",
     "gulp-load-plugins": "^0.7.0",
     "gulp-minify-css": "^0.3.0",
     "gulp-nodemon": "^1.0.4",

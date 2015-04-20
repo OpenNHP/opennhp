@@ -447,8 +447,7 @@ gulp.task('archive:zip', function() {
   return gulp.src(['docs/examples/**/*'])
     .pipe($.replace(/\{\{assets\}\}/g, 'assets/', {skipBinary: true}))
     .pipe($.zip(format('AmazeUI-%s-%s.zip',
-        pkg.version, $.util.date(Date.now(), 'UTC:yyyymmdd')),
-      {comment: 'Created on ' + $.util.date(Date.now(), dateFormat)}))
+        pkg.version, $.util.date(Date.now(), 'UTC:yyyymmdd'))))
     .pipe(gulp.dest('dist'));
 });
 

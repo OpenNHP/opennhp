@@ -1078,6 +1078,47 @@ $(function() {
 </form>
 ```
 
+## Issue 测试
+
+### [#528](https://github.com/allmobilize/amazeui/issues/528)
+
+`````html
+<form action="" class="am-form" data-am-validator>
+  <fieldset>
+    <legend>Issue 528</legend>
+    <div class="am-form-group">
+      <label for="doc-vld-528">手机号：</label>
+      <input type="text" id="doc-vld-528" class="js-pattern-mobile"
+             placeholder="输入手机号" required/>
+    </div>
+    <button class="am-btn am-btn-secondary" type="submit">提交</button>
+  </fieldset>
+</form>
+<script>
+  if ($.AMUI && $.AMUI.validator) {
+    $.AMUI.validator.patterns.mobile = /^\s*1\d{10}\s*$/;
+  }
+</script>
+`````
+```html
+<form action="" class="am-form" data-am-validator>
+  <fieldset>
+    <legend>Issue 528</legend>
+    <div class="am-form-group">
+      <label for="doc-vld-528">手机号：</label>
+      <input type="text" id="doc-vld-528" class="js-pattern-mobile"
+             placeholder="输入手机号" required/>
+    </div>
+    <button class="am-btn am-btn-secondary" type="submit">提交</button>
+  </fieldset>
+</form>
+<script>
+  if ($.AMUI && $.AMUI.validator) {
+    $.AMUI.validator.patterns.mobile = /^\s*1\d{10}\s*$/;
+  }
+</script>
+```
+
 ## 参考资源
 
 ### 常用正则表达式

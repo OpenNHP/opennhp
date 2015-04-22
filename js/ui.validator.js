@@ -147,7 +147,8 @@ Validator.prototype.init = function() {
   // add pattern to H5 input type
   $.each(options.H5inputType, function(i, type) {
     var $field = $element.find('input[type=' + type + ']');
-    if (!$field.attr('pattern')) {
+    if (!$field.attr('pattern') &&
+      !$field.is('[class*=' + options.patternClassPrefix + ']')) {
       $field.attr('pattern', regexToPattern(options.patterns[type]));
     }
   });

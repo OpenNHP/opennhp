@@ -1,6 +1,10 @@
 # Amaze UI Change Log
 ---
 
+### 2015.04 W3
+
+- `IMPROVED` #528 `H5inputType` 优先使用用户定义的验证规则。
+
 ### 2015.04 W1
 
 **CSS:**

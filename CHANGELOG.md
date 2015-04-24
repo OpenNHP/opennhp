@@ -10,7 +10,8 @@
 
 **JS:**
 
-- `IMPROVED` #528 Validator `H5inputType` 优先使用用户定义的验证规则。
+- `IMPROVED` #528 Validator `H5inputType` 优先使用用户定义的验证规则；
+- `IMPROVED` #520 添加设置触发验证程序事件选项 `activeKeyup`、`textareaMaxlenthKeyup`。
 
 ### 2015.04 W1
 

@@ -36,7 +36,9 @@ Validator.DEFAULTS = {
   keyboardFields: ':input:not(:submit, :button, :disabled, .am-novalidate)',
   keyboardEvents: 'focusout, change', // keyup, focusin
 
-  activeKeyup: true,
+  // bind `keyup` event to active field
+  activeKeyup: false,
+  textareaMaxlenthKeyup: true,
 
   // Mouse events
   pointerFields: 'input[type="range"]:not(:disabled, .am-novalidate), ' +
@@ -208,9 +210,14 @@ Validator.prototype.init = function() {
   bindEvents(':input', options.customEvents);
   bindEvents(options.keyboardFields, options.keyboardEvents);
   bindEvents(options.pointerFields, options.pointerEvents);
-  // active filed
-  bindEvents('.am-active', 'keyup', 50);
-  bindEvents('textarea[maxlength]', 'keyup', 50);
+
+  if (options.textareaMaxlenthKeyup) {
+    bindEvents('textarea[maxlength]', 'keyup', 50);
+  }
+
+  if (options.activeKeyup) {
+    bindEvents('.am-active', 'keyup', 50);
+  }
 
   /*if (options.errorMessage === 'tooltip') {
     this.$tooltip = $('<div></div>', {

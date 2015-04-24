@@ -98,7 +98,6 @@
 
 在容器上添加 `.am-form` class，容器里的子元素才会应用 Amaze UI 定义的样式。
 
-
 `````html
 <form class="am-form">
   <fieldset>
@@ -567,11 +566,13 @@
 ## 验证状态
 
 ### 演示
+
 `````html
 <form action="" class="am-form">
-  <div class="am-form-group am-form-success">
+  <div class="am-form-group am-form-success am-form-icon am-form-feedback">
     <label class="am-form-label" for="doc-ipt-success">验证成功</label>
     <input type="text" id="doc-ipt-success" class="am-form-field">
+    <span class="am-icon-check"></span>
   </div>
   <div class="am-form-group am-form-warning">
     <label class="am-form-label" for="doc-ipt-warning">验证警告</label>
@@ -586,9 +587,10 @@
 
 ```html
 <form action="" class="am-form">
-  <div class="am-form-group am-form-success">
+  <div class="am-form-group am-form-success am-form-icon am-form-feedback">
     <label class="am-form-label" for="doc-ipt-success">验证成功</label>
     <input type="text" id="doc-ipt-success" class="am-form-field">
+    <span class="am-icon-check"></span>
   </div>
   <div class="am-form-group am-form-warning">
     <label class="am-form-label" for="doc-ipt-warning">验证警告</label>
@@ -602,9 +604,11 @@
 ```
 ### 带图标的验证
 
-添加 `.am-form-icon` 和 `am-form-feedback`。
+添加 `.am-form-icon` 和 `.am-form-feedback`。
 
-___注意：Icon 的样式针对 `.am-form-group` 单行排列编写，多行的时候会出现位置不对的情况。___
+~~注意：Icon 的样式针对 `.am-form-group` 单行排列编写，多行的时候会出现位置不对的情况。~~
+
+`v2.3.1` 中调整样式，支持带有 `label` 的情形。
 
 `````html
 <form class="am-form">
@@ -639,6 +643,33 @@ ___注意：Icon 的样式针对 `.am-form-group` 单行排列编写，多行的
   </div>
 </form>
 ```
+
+**水平排列：**
+
+`````html
+<form class="am-form am-form-horizontal">
+  <div class="am-form-group am-form-success am-form-icon am-form-feedback">
+    <label for="doc-ipt-3-a" class="am-u-sm-2 am-form-label">电子邮件</label>
+    <div class="am-u-sm-10">
+      <input type="email" id="doc-ipt-3-a" class="am-form-field" placeholder="输入你的电子邮件">
+      <span class="am-icon-warning"></span>
+    </div>
+  </div>
+</form>
+`````
+
+```html
+<form class="am-form am-form-horizontal">
+  <div class="am-form-group am-form-success am-form-icon am-form-feedback">
+    <label for="doc-ipt-3-a" class="am-u-sm-2 am-form-label">电子邮件</label>
+    <div class="am-u-sm-10">
+      <input type="email" id="doc-ipt-3-a" class="am-form-field" placeholder="输入你的电子邮件">
+      <span class="am-icon-warning"></span>
+    </div>
+  </div>
+</form>
+```
+
 
 
 ## 表单域大小

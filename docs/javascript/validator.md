@@ -956,7 +956,11 @@ $(function() {
   keyboardFields: ':input:not(:button, :disabled,.am-novalidate)',
   keyboardEvents: 'focusout, change', // keyup, focusin
 
-  activeKeyup: true,
+  // 标记为 `.am-active` (发生错误以后添加此 class)的元素 keyup 时验证
+  activeKeyup: false,
+
+  // textarea[maxlength] 的元素 keyup 时验证
+  textareaMaxlenthKeyup: true,
 
   // 鼠标点击下列元素时会调用验证程序
   pointerFields: 'input[type="range"]:not(:disabled, .am-novalidate), ' +

@@ -209,7 +209,7 @@
 
   .@{ns}input-group-label,
   .@{ns}input-group-btn > .@{ns}btn,
-  .@{ns}form-field {
+  &.@{ns}input-group .@{ns}form-field { // dirty way to fix border-color doesn't work within `.am-form`: add &.@{ns}input-group
     border-color: @border;
   }
 }

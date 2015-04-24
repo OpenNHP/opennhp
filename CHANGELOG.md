@@ -6,6 +6,7 @@
 **CSS:**
 
 - `FIXED` 修复 Input-group 设置颜色后在 `.am-form` 中无效问题；
+- `INPROVED` Form 表单验证状态图标支持带有 `label` 的 from group；
 
 **JS:**
 

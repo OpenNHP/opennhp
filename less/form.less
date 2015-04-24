@@ -369,9 +369,9 @@ input[type="checkbox"],
       display: inline-table;
       vertical-align: middle;
 
-      .@{ns}input-group-addon,
+      .@{ns}input-group-label,
       .@{ns}input-group-btn,
-      .@{ns}form-control {
+      .@{ns}form-label {
         width: auto;
       }
     }
@@ -402,12 +402,8 @@ input[type="checkbox"],
       float: none;
       margin-left: 0;
     }
-
-    // Validation states
-    .@{ns}form-feedback .@{ns}form-field-feedback {
-      top: 0;
-    }
   }
+
   .hook-form-inline;
 }
 
@@ -454,15 +450,22 @@ input[type="checkbox"],
     padding-left: @input-padding + 1.25 !important;
   }
 
+  // form-group without label
   [class*='@{ns}icon-'] {
     position: absolute;
     left: @input-padding;
     top: 50%;
     display: block;
-    margin-top: -(@input-padding + 0.01);
+    margin-top: -@input-padding;
     line-height: 1;
     z-index: 2;
   }
+
+  // form-group with label
+  label ~ [class*='@{ns}icon-'] {
+    top: 70%;
+  }
+
   .hook-form-icon;
 }
 
@@ -480,7 +483,13 @@ input[type="checkbox"],
   [class*='@{ns}icon-'] {
     right: @input-padding;
     left: auto;
+
+    // with label & horizontal mode
+    .@{ns}form-horizontal & {
+      right: @input-padding + 1.1;
+    }
   }
+
   .hook-form-feedback;
 }
 

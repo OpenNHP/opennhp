@@ -3,7 +3,13 @@
 
 ### 2015.04 W3
 
-- `IMPROVED` #528 `H5inputType` 优先使用用户定义的验证规则。
+**CSS:**
+
+- `FIXED` 修复 Input-group 设置颜色后在 `.am-form` 中无效问题；
+
+**JS:**
+
+- `IMPROVED` #528 Validator `H5inputType` 优先使用用户定义的验证规则。
 
 ### 2015.04 W1
 

@@ -1,12 +1,18 @@
 # Amaze UI Change Log
 ---
 
+### 2015.04 W4
+
+**Example**:
+
+- `IMPROVED` #540 iScroll 示例添加 `click: true` 选项，解决 Android 浏览器上链接不可点击问题。
+
 ### 2015.04 W3
 
 **CSS:**
 
 - `FIXED` 修复 Input-group 设置颜色后在 `.am-form` 中无效问题；
-- `INPROVED` Form 表单验证状态图标支持带有 `label` 的 from group；
+- `IMPROVED` Form 表单验证状态图标支持带有 `label` 的 from group；
 
 **JS:**
 

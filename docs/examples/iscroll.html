@@ -164,7 +164,9 @@
       };
 
       this.init = function() {
-        var myScroll = this.iScroll = new $.AMUI.iScroll('#wrapper', {});
+        var myScroll = this.iScroll = new $.AMUI.iScroll('#wrapper', {
+          click: true
+        });
         // myScroll.scrollTo(0, topOffset);
         var _this = this;
         var pullFormTop = false;

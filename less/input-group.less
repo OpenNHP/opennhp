@@ -22,6 +22,7 @@
 //
 // =============================================================================
 
+@input-group-height: unit(ceil(unit(@form-font-size * (1.2 + 0.5*2) + 0.2) * 10), px);
 
 /* ==========================================================================
    Component: Input group
@@ -31,13 +32,6 @@
   position: relative;
   display: table;
   border-collapse: separate;
-
-  // reset padding and float for grid
-  &[class*="col-"] {
-    float: none;
-    padding-left: 0;
-    padding-right: 0;
-  }
 
   .@{ns}form-field {
     position: relative;
@@ -77,10 +71,11 @@
 // =============================================================================
 
 .@{ns}input-group-label {
-  padding: @input-padding 1em;
+  height: @input-group-height;
+  padding: 0 1em;
   font-size: @form-font-size;
   font-weight: normal;
-  line-height: 1.2;
+  line-height: @input-group-height - 2;
   color: @input-color;
   text-align: center;
   background-color: @input-group-label-bg;
@@ -144,6 +139,7 @@
   > .@{ns}btn {
     position: relative;
     border-color: @input-border;
+
     + .@{ns}btn {
       margin-left: -1px;
     }
@@ -174,27 +170,42 @@
 }
 
 
+// equal height
+// =============================================================================
+
+.@{ns}input-group .@{ns}form-field,
+.@{ns}input-group-btn > .@{ns}btn {
+  height: @input-group-height;
+  padding-bottom: auto;
+}
+
+
 // Modifiers - sizing
 // =============================================================================
+
+@lg-height: unit(ceil(unit(@form-font-size-lg * 1.2 + 0.5*2*@form-font-size-lg + 0.2) * 10), px);
+@sm-height: unit(ceil(unit(@form-font-size-sm * 1.2 + 0.5*2*@form-font-size-sm + 0.2) * 10), px);
 
 .@{ns}input-group-lg > .@{ns}form-field,
 .@{ns}input-group-lg > .@{ns}input-group-label,
 .@{ns}input-group-lg > .@{ns}input-group-btn > .@{ns}btn {
-  @padding-v: unit(ceil(0.625 * 10 * @form-font-size-lg));
-  @padding-h: unit(10 * @form-font-size-lg);
-
-  padding: ~"@{padding-v}px" ~"@{padding-h}px"!important;
+  height: @lg-height;
   font-size: @form-font-size-lg !important;
+}
+
+.@{ns}input-group-lg > .@{ns}input-group-label {
+  line-height: @lg-height - 2;
 }
 
 .@{ns}input-group-sm > .@{ns}form-field,
 .@{ns}input-group-sm > .@{ns}input-group-label,
 .@{ns}input-group-sm > .@{ns}input-group-btn > .@{ns}btn {
-  @padding-v: unit(ceil(0.625 * 10 * @form-font-size-sm));
-  @padding-h: unit(10 * @form-font-size-sm);
-
-  padding: ~"@{padding-v}px" ~"@{padding-h}px"!important;
+  height: @sm-height;
   font-size: @form-font-size-sm !important;
+}
+
+.@{ns}input-group-sm > .@{ns}input-group-label {
+  line-height: @sm-height - 2;
 }
 
 

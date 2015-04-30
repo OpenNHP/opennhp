@@ -3,6 +3,12 @@
 
 ### 2015.04 W4
 
+**CSS:**
+
+- `FIXED` `:root` 基准字号由 `62.5%` 调整为 `10px`，解决某些浏览器的默认字号不是 `16px`；
+- `CHANGED` Button/input 垂直 `padding` 由 `0.625em` 调整为 `0.5em`；
+- `FIXED` #392 解决输入框组文本框与按钮在部分浏览器上的对齐问题。
+
 **Example**:
 
 - `IMPROVED` #540 iScroll 示例添加 `click: true` 选项，解决 Android 浏览器上链接不可点击问题。

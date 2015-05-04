@@ -53,7 +53,8 @@ function payHandler() {
 
 var payInit = payHandler;
 
-$(document).on('ready', payInit);
+// Init on DOM ready
+$(payInit);
 
 module.exports = $.AMUI.pay = {
   VERSION: '1.0.0',

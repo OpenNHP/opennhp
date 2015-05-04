@@ -11,9 +11,7 @@ function tabsInit() {
   });
 }
 
-$(function() {
-  tabsInit();
-});
+$(tabsInit);
 
 module.exports = $.AMUI.tab = {
   VERSION: '4.0.1',

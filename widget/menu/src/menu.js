@@ -143,9 +143,7 @@ var menuInit = function() {
   });
 };
 
-$(function() {
-  menuInit();
-});
+$(menuInit);
 
 module.exports = $.AMUI.menu = {
   VERSION: '4.0.3',

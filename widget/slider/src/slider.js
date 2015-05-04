@@ -13,7 +13,7 @@ function sliderInit() {
   });
 }
 
-$(document).on('ready', sliderInit);
+$(sliderInit);
 
 module.exports = $.AMUI.slider = {
   VERSION: '3.0.1',

@@ -44,9 +44,7 @@ function accordionInit() {
 }
 
 // Init on DOM ready
-$(function() {
-  accordionInit();
-});
+$(accordionInit);
 
 module.exports = $.AMUI.accordion = {
   VERSION: '2.1.0',

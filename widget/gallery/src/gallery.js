@@ -18,9 +18,7 @@ function galleryInit() {
   });
 }
 
-$(function() {
-  galleryInit();
-});
+$(galleryInit);
 
 module.exports = $.AMUI.gallery = {
   VERSION: '3.0.0',

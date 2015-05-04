@@ -12,9 +12,7 @@ function headerInit() {
   });
 }
 
-$(function() {
-  headerInit();
-});
+$(headerInit);
 
 module.exports = $.AMUI.header = {
   VERSION: '2.0.0',

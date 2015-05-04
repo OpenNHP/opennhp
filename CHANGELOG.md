@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+### 2015.05 W1
+
+**Web 组件：**
+
+- `IMPROVED` 替换废弃的 `.on('ready')` 语法。
+
 ### 2015.04 W4
 
 **CSS:**

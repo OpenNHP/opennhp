@@ -155,9 +155,7 @@ function navbarInit() {
 }
 
 // DOMContent ready
-$(function() {
-  navbarInit();
-});
+$(navbarInit);
 
 module.exports = $.AMUI.navbar = {
   VERSION: '2.0.2',

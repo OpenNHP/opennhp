@@ -9,6 +9,10 @@ function goTopInit() {
   var $fixed = $goTop.filter('.am-gotop-fixed');
   var $win = $(window);
 
+  if ($goTop.data('init')) {
+    return;
+  }
+
   $goTop.find('a').on('click', function(e) {
     e.preventDefault();
     $win.smoothScroll();
@@ -21,11 +25,11 @@ function goTopInit() {
   checkPosition();
 
   $win.on('scroll.gotop.amui', $.AMUI.utils.debounce(checkPosition, 100));
+
+  $goTop.data('init', true);
 }
 
-$(function() {
-  goTopInit();
-});
+$(goTopInit);
 
 module.exports = $.AMUI.gotop = {
   VERSION: '4.0.2',

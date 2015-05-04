@@ -47,9 +47,7 @@ function figureInit() {
   });
 }
 
-$(window).on('load', function() {
-  figureInit();
-});
+$(window).on('load', figureInit);
 
 module.exports = $.AMUI.figure = {
   VERSION: '2.0.3',

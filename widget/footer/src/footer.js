@@ -28,9 +28,7 @@ function footerInit() {
   });
 }
 
-$(function() {
-  footerInit();
-});
+$(footerInit);
 
 module.exports = $.AMUI.footer = {
   VERSION: '3.1.2',

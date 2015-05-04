@@ -52,9 +52,7 @@ function paragraphInit() {
   });
 }
 
-$(window).on('load', function() {
-  paragraphInit();
-});
+$(window).on('load', paragraphInit);
 
 module.exports = $.AMUI.paragraph = {
   VERSION: '2.0.1',

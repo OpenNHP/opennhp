@@ -115,7 +115,7 @@ var mapInit = function() {
   $('.am-map').length && addMapApi(addBdMap);
 };
 
-$(document).on('ready', mapInit);
+$(mapInit);
 
 module.exports = $.AMUI.map = {
   VERSION: '2.0.2',

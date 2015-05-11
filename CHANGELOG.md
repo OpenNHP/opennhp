@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+### 2015.05 W2
+
+**CSS:**
+
+- `IMPROVED` #556 调整 `select` 在 Firefox 下的样式（Thx to @photino）。
+
 ### 2015.05 W1
 
 **Web 组件：**

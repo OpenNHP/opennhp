@@ -7,6 +7,10 @@
 
 - `IMPROVED` #556 调整 `select` 在 Firefox 下的样式（Thx to @photino）。
 
+**JS:**
+
+- `CHANGED` 使用 CSS 定位 Popover 箭头。
+
 ### 2015.05 W1
 
 **Web 组件：**

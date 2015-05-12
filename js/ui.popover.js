@@ -93,7 +93,7 @@ Popover.prototype.sizePopover = function sizePopover() {
   $popover.css({left: '', top: ''}).removeClass('am-popover-left ' +
   'am-popover-right am-popover-top am-popover-bottom');
 
-  $popCaret.css({left: '', top: ''});
+  // $popCaret.css({left: '', top: ''});
 
   if (popTotalHeight - spacing < triggerRect.top + spacing) {
     // Popover on the top of trigger
@@ -134,7 +134,7 @@ Popover.prototype.sizePopover = function sizePopover() {
     }
 
     diff = diff - popLeft;
-    $popCaret.css({left: (popWidth / 2 - popCaretSize + diff) + 'px'});
+    // $popCaret.css({left: (popWidth / 2 - popCaretSize + diff) + 'px'});
 
   } else if (popPosition === 'middle') {
     popLeft = triggerOffset.left - popWidth - popCaretSize;
@@ -148,7 +148,7 @@ Popover.prototype.sizePopover = function sizePopover() {
       popLeft = winWidth - popWidth - 5;
       $popover.removeClass('am-popover-left').addClass('am-popover-right');
     }
-    $popCaret.css({top: (popHeight / 2 - popCaretSize / 2) + 'px'});
+    // $popCaret.css({top: (popHeight / 2 - popCaretSize / 2) + 'px'});
   }
 
   // Apply position style

@@ -62,13 +62,12 @@
   background: @popover-bg;
   padding: 8px;
   z-index: 110;
-  .scrollable();
+  // .scrollable();
   .hook-popover-inner;
 }
 
 .@{ns}popover-caret {
   position: absolute;
-  left: 5px;
   top: 0;
   z-index: 100;
   .caret-up(8px, @popover-bg);
@@ -85,6 +84,12 @@
     top: -8px;
   }
 
+  .@{ns}popover-top &,
+  .@{ns}popover-bottom & {
+    left: 50%;
+    margin-left: -8px;
+  }
+
   .@{ns}popover-left & {
     top: auto;
     left: auto;
@@ -96,6 +101,12 @@
     right: auto;
     left: -12px;
     transform: rotate(-90deg);
+  }
+
+  .@{ns}popover-left &,
+  .@{ns}popover-right & {
+    top: 50%;
+    margin-top: -4px;
   }
 }
 

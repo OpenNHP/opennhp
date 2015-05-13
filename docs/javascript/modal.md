@@ -300,7 +300,7 @@ $(function() {
 
 ### Modal Loading
 
-采纳
+采纳网友意见，Loading 窗口只能通过 JS 关闭。
 
 `````html
 <button class="am-btn am-btn-success" data-am-modal="{target: '#my-modal-loading'}">Modal Loading</button>

@@ -235,8 +235,7 @@
     }
   ],
   "jsBase": [
-    "core.js",
-    "util.fastclick.js"
+    "core.js"
   ],
   "jsDependencies": [
     "ui.dimmer.js",

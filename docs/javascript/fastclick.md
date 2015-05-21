@@ -11,6 +11,10 @@ doc: docs/javascript/fastclick.md
 # FastClick
 ---
 
+**`v2.4` 重要变更：**
+
+**由于引入 FastClick 以后会产生一些问题，从 `v2.4` 开始移除，需要的用户请直接从 [FastClick 官方项目](https://github.com/ftlabs/fastclick)获取。**
+
 处理移动端 `click` 事件 300 毫秒延迟， 由 [FT Labs](http://labs.ft.com/) 开发（[项目地址](https://github.com/ftlabs/fastclick)）。
 
 ## 为什么存在延迟？

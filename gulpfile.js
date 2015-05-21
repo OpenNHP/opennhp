@@ -47,7 +47,6 @@ var config = {
   js: {
     base: [
       'core.js',
-      'util.fastclick.js',
       'util.hammer.js'
     ]
   },

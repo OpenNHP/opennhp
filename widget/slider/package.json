@@ -1333,8 +1333,7 @@
     }
   ],
   "jsBase": [
-    "core.js",
-    "util.fastclick.js"
+    "core.js"
   ],
   "jsDependencies": [
     "ui.flexslider.js"

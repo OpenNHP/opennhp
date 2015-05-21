@@ -133,8 +133,7 @@
     }
   ],
   "jsBase": [
-    "core.js",
-    "util.fastclick.js"
+    "core.js"
   ],
   "jsDependencies": [
     "ui.pinchzoom.js",

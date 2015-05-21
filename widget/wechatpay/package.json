@@ -65,8 +65,7 @@
     }
   ],
   "jsBase": [
-    "core.js",
-    "util.fastclick.js"
+    "core.js"
   ],
   "jsDependencies": [],
   "script": "wechatpay.js",

@@ -88,3 +88,18 @@
 .am-list-news-ft {
   text-align: center;
 }
+
+// 在 list_news 中使用 titlebar
+.@{ns}list-news {
+  .@{ns}titlebar {
+    margin-left: 0;
+    margin-right: 0;
+
+    // remove first li's top border
+    & ~ .@{ns}list-news-bd {
+      .@{ns}list > li:first-child {
+        border-top: none;
+      }
+    }
+  }
+}

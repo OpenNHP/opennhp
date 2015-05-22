@@ -1,14 +1,14 @@
 'use strict';
 
 var $ = require('jquery');
-require('./core');
-require('./ui.pureview');
-var IScroll = require('./ui.iscroll-lite');
+require('../../../js/core');
+require('../../../js/ui.pureview');
+var IScroll = require('../../../js/ui.iscroll-lite');
 var UI = $.AMUI;
 
 /**
  * 表格滚动
- * @param index ID 标识，多个 paragraph 里面多个 table
+ * @param {number} index ID 标识，多个 paragraph 里面多个 table
  */
 $.fn.scrollTable = function(index) {
   var $this = $(this);

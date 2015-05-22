@@ -1,8 +1,8 @@
 'use strict';
 
 var $ = require('jquery');
-require('./core');
-require('./ui.smooth-scroll');
+require('../../../js/core');
+require('../../../js/ui.smooth-scroll');
 
 function goTopInit() {
   var $goTop = $('[data-am-widget="gotop"]');

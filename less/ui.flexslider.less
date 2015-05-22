@@ -15,16 +15,16 @@
 
 // Browser Resets
 // =============================================================================
-.am-slider{
+.@{ns}slider {
   a:hover,
   a:focus{
     outline: none;
   }
 }
 
-.am-slides,
-.am-control-nav,
-.am-direction-nav {
+.@{ns}slides,
+.@{ns}control-nav,
+.@{ns}direction-nav {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -33,11 +33,11 @@
 
 // FlexSlider Necessary Styles
 // =============================================================================
-.am-slider {
+.@{ns}slider {
   margin: 0;
   padding: 0;
 
-  .am-slides {
+  .@{ns}slides {
     .clearfix(); // Clearfix for the .slides element
 
     & > li {
@@ -61,7 +61,7 @@
   }
 }
 
-.am-pauseplay span {
+.@{ns}pauseplay span {
   text-transform: capitalize;
 }
 
@@ -70,20 +70,20 @@
 // FlexSlider Theme Core
 // =============================================================================
 
-.am-slider {
+.@{ns}slider {
   position: relative;
 }
 
-.am-viewport {
+.@{ns}viewport {
   transition: all 1s ease;
 }
 
-.am-slider-carousel li {
+.@{ns}slider-carousel li {
   margin-right: 5px;
 }
 
 /* Direction Nav */
-.am-direction-nav {
+.@{ns}direction-nav {
   a {
     &::before {
     }
@@ -93,19 +93,19 @@
     }
   }
 
-  .am-prev {
+  .@{ns}prev {
   }
 
-  .am-next {
+  .@{ns}next {
   }
 
-  .am-disabled {
+  .@{ns}disabled {
   }
 }
 
 
 /* Pause/Play */
-.am-pauseplay {
+.@{ns}pauseplay {
   a {
     &::before {
     }
@@ -113,7 +113,7 @@
     &:hover {
     }
 
-    &.am-play {
+    &.@{ns}play {
       &::before {
       }
     }
@@ -121,12 +121,12 @@
 }
 
 // 描述信息
-.am-caption {
+.@{ns}caption {
 
 }
 
 // Control Nav
-.am-control-nav {
+.@{ns}control-nav {
   position: absolute;
   li {
     display: inline-block;
@@ -134,13 +134,13 @@
       &:hover {
       }
 
-      &.am-active {
+      &.@{ns}active {
       }
     }
   }
 }
 
-.am-control-thumbs {
+.@{ns}control-thumbs {
   position: static;
   overflow: hidden;
 
@@ -153,16 +153,86 @@
     &:hover {
     }
   }
-  .am-active {
+  .@{ns}active {
   }
 }
 
+// Style for Amaze UI React
+.@{ns}slider-slide {
+  .@{ns}slides {
+    > li {
+      display: none;
+      position: relative;
+
+      // WebKit CSS3 transforms for supported devices
+      @media all and (transform-3d), (-webkit-transform-3d) {
+        transition: transform 0.6s ease-in-out;
+        backface-visibility: hidden;
+        perspective: 1000px;
+
+        &.next,
+        &.active.right {
+          transform: translate3d(100%, 0, 0);
+          left: 0;
+        }
+
+        &.prev,
+        &.active.left {
+          transform: translate3d(-100%, 0, 0);
+          left: 0;
+        }
+
+        &.next.left,
+        &.prev.right,
+        &.active {
+          transform: translate3d(0, 0, 0);
+          left: 0;
+        }
+      }
+    }
+
+    > .active,
+    > .next,
+    > .prev {
+      display: block;
+    }
+
+    > .active {
+      left: 0;
+    }
+
+    > .next,
+    > .prev {
+      position: absolute;
+      top: 0;
+      width: 100%;
+    }
+
+    > .next {
+      left: 100%;
+    }
+    > .prev {
+      left: -100%;
+    }
+    > .next.left,
+    > .prev.right {
+      left: 0;
+    }
+
+    > .active.left {
+      left: -100%;
+    }
+    > .active.right {
+      left: 100%;
+    }
+  }
+}
 
 /**
   * Slider Theme: Default
   */
 
-.am-slider-default {
+.@{ns}slider-default {
   @direction-nav-color: @gray-dark;
   @pauseplay-color: #000;
 

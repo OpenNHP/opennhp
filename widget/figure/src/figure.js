@@ -1,7 +1,7 @@
 'use strict';
 
-require('./core');
-require('./ui.pureview');
+require('core');
+require('ui.pureview');
 var $ = require('jquery');
 var UI = $.AMUI;
 

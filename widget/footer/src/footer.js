@@ -1,10 +1,10 @@
 'use strict';
 
 var $ = require('jquery');
-var UI = require('./core');
-require('./ui.modal');
-var addToHS = require('./ui.add2home');
-var cookie = require('./util.cookie');
+var UI = require('../../../js/core');
+require('../../../js/ui.modal');
+var addToHS = require('../../../js/ui.add2home');
+var cookie = require('../../../js/util.cookie');
 
 function footerInit() {
   // modal mode

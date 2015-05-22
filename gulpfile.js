@@ -8,9 +8,12 @@ var fs = require('fs-extra');
 var _ = require('lodash');
 var format = require('util').format;
 var browserify = require('browserify');
-var transform = require('vinyl-transform');
+var watchify = require('watchify');
+var collapser = require('bundle-collapser/plugin');
 var del = require('del');
 var bistre = require('bistre');
+var source = require('vinyl-source-stream');
+var buffer = require('vinyl-buffer');
 
 // Temporary solution until gulp 4
 // https://github.com/gulpjs/gulp/issues/355
@@ -24,15 +27,13 @@ var pkg = require('./package.json');
 var config = {
   path: {
     less: [
-      // './less/amui.less',
-      // './less/amazeui.widgets.less',
       './less/amazeui.less',
       './less/themes/flat/amazeui.flat.less'
     ],
     fonts: './fonts/*',
     widgets: [
       '*/src/*.js',
-      '!{powered_by,switch_mode,toolbar,tech_support,layout*,blank,container}' +
+      '!{layout*,blank,container}' +
       '/src/*.js'],
     hbsHelper: [
       'vendor/amazeui.hbs.helper.js',
@@ -61,10 +62,15 @@ var config = {
     'ios >= 7',
     'android >= 2.3',
     'bb >= 10'
-  ]
+  ],
+  uglify: {
+    output: {
+      ascii_only: true
+    }
+  }
 };
 
-var dateFormat = 'UTC:yyyy-mm-dd"T"HH:mm:ss Z';
+var dateFormat = 'isoDateTime';
 
 var banner = [
   '/*! <%= pkg.title %> v<%= pkg.version %><%=ver%>',
@@ -74,136 +80,68 @@ var banner = [
   $.util.date(Date.now(), dateFormat) + ' */ \n'
 ].join(' | ');
 
-var initAll = '\'use strict\';\n\n' + 'var $ = require(\'jquery\');\n\n';
-var initBasic = '';
-var initWidgets = '';
-var jsWidgets = [];
+var jsEntry = '\'use strict\';\n\n' + 'var $ = require(\'jquery\');\n\n';
 var plugins;
-var allPlugins;
-var pluginsUsed;
-var pluginsNotUsed;
-var jsAll;
-var jsAllSorted;
-var jsBasic;
-var jsBasicSorted;
-var jsWidgetsSorted;
+var WIDGET_DIR = './widget/';
 
 // Write widgets style and tpl
 var preparingData = function() {
   var fsOptions = {encoding: 'utf8'};
+
+  // less
   var uiBase = fs.readFileSync('./less/amui.less', fsOptions);
-  var widgetsStyleDeps = [];
   var widgetsStyle = '';
-  var widgetsStyleWithDeps = '';
-  var WIDGET_DIR = './widget';
+
   var rejectWidgets = ['.DS_Store', 'blank', 'layout2', 'layout3', 'layout4',
-    'container', 'powered_by', 'tech_support', 'toolbar', 'switch_mode'];
+    'container'];
   var allWidgets = _.reject(fs.readdirSync(WIDGET_DIR), function(widget) {
     return rejectWidgets.indexOf(widget) > -1;
   });
 
-  var modules = [];
-  var modulesBasic = [];
-  var modulesWidgets = [];
+  plugins = _.union(config.js.base, fs.readdirSync('./js'));
 
-  allPlugins = fs.readdirSync('./js');
-  plugins = fs.readdirSync('./js');
+  plugins.forEach(function(plugin, i) {
+    var basename = path.basename(plugin, '.js');
 
+    if (basename !== 'amazeui' && basename !== 'amazeui.legacy') {
+      jsEntry += 'require("./' + basename + '");\n';
+    }
+  });
+
+  // widgets partial
   var partials = '(function(undefined){\n';
   partials += '  \'use strict\';\n\n';
   partials += '  var registerAMUIPartials = function(hbs) {\n';
 
+  // get widgets dependencies
   allWidgets.forEach(function(widget, i) {
     // read widget package.json
     var pkg = fs.readJsonFileSync(path.
       join(WIDGET_DIR, widget, 'package.json'));
-    var srcPath = '../widget/' + widget + '/src/';
-
-    if (i === 0) {
-      widgetsStyleDeps = _.union(widgetsStyleDeps, pkg.styleBase);
-    }
-
-    widgetsStyleDeps = _.union(widgetsStyleDeps, pkg.styleDependencies);
-    jsWidgets.push(pkg.script);
-
-    jsWidgets = _.union(jsWidgets, pkg.jsDependencies);
+    // ./widget/header/src/header
+    var srcPath = WIDGET_DIR + widget + '/src/' + widget;
 
     widgetsStyle += '\r\n// ' + widget + '\r\n';
-
-    widgetsStyle += '@import "' + srcPath + pkg.style + '";' + '\r\n';
-    _.forEach(pkg.themes, function(item, index) {
+    widgetsStyle += '@import ".' + srcPath + '.less";' + '\r\n';
+    pkg.themes.forEach(function(item, index) {
       if (!item.hidden && item.name) {
-        widgetsStyle += '@import "' + srcPath + widget + '.' +
-        item.name + '.less";' + '\r\n';
+        widgetsStyle += '@import ".' + srcPath + '.' + item.name +
+          '.less";' + '\r\n';
       }
     });
 
+    // add to entry
+    jsEntry += 'require(".' + srcPath + '.js");\n';
+
     // read tpl
-    var tpl = fs.readFileSync(path.
-      join(WIDGET_DIR, widget, 'src', widget + '.hbs'), fsOptions);
+    var hbs = fs.readFileSync(path.join(srcPath + '.hbs'), fsOptions);
     partials += format('    hbs.registerPartial(\'%s\', %s);\n\n',
-      widget, JSON.stringify(tpl));
+      widget, JSON.stringify(hbs));
   });
 
-  widgetsStyleDeps.forEach(function(dep) {
-    widgetsStyleWithDeps += format('@import "%s";\n', dep);
-  });
-
-  fs.writeFileSync('./less/amazeui.less', uiBase + widgetsStyle);
-
-  fs.writeFileSync('./less/amazeui.widgets.less',
-    widgetsStyleWithDeps + widgetsStyle);
-
-  /**
-   *  Prepare JavaScript Data
-   */
-
-    // for amazeui.basic.js
-  jsBasic = _.union(config.js.base, allPlugins);
-
-  // for amazeui.js
-  jsAll = _.union(jsBasic, jsWidgets);
-
-  jsWidgets = _.union(config.js.base, jsWidgets);
-
-  pluginsNotUsed = _.difference(plugins, jsWidgets);
-
-  pluginsUsed = _.remove(plugins, function(plugin) {
-    return pluginsNotUsed.indexOf(plugin) == -1;
-  });
-
-  jsWidgets = _.union(config.js.base, pluginsUsed, jsWidgets);
-
-  // seajs.use[''...]
-  jsAll.forEach(function(js) {
-    var basename = path.basename(js, '.js');
-    modules.push(basename);
-
-    if (basename !== 'amazeui' || basename !== 'amazeui.legacy') {
-      initAll += 'require(\'./' + basename + '\');\n';
-    }
-
-    if (jsWidgets.indexOf(js) > -1) {
-      modulesWidgets.push(basename);
-    }
-
-    if (jsBasic.indexOf(js) > -1) {
-      modulesBasic.push(basename);
-    }
-  });
-
-  initAll += '\nmodule.exports = $.AMUI;\n';
-
-  // initAll = 'require(' + JSON.stringify(modules) + ');';
-  initBasic = 'require(' + JSON.stringify(modulesBasic) + ');';
-  initWidgets = 'require(' + JSON.stringify(modulesWidgets) + ');';
-
-  // sort for concat
-  jsWidgetsSorted = _.union(jsWidgets, [initWidgets]);
-
-  jsAllSorted = _.union(jsAll);
-
-  jsBasicSorted = _.union(jsBasic, [initBasic]);
+  // end jsEntry
+  jsEntry += '\nmodule.exports = $.AMUI;\n';
+  fs.writeFileSync(path.join('./js/amazeui.js'), jsEntry);
 
   partials += '  };\n\n';
   partials += '  if (typeof module !== \'undefined\' && module.exports) {\n';
@@ -214,7 +152,9 @@ var preparingData = function() {
 
   // write partials
   fs.writeFileSync(path.join('./vendor/amazeui.hbs.partials.js'), partials);
-  fs.writeFileSync(path.join('./js/amazeui.js'), initAll);
+
+  // write less
+  fs.writeFileSync('./less/amazeui.less', uiBase + widgetsStyle);
 };
 
 gulp.task('build:preparing', preparingData);
@@ -261,41 +201,25 @@ gulp.task('build:fonts', function() {
     .pipe(gulp.dest(config.dist.fonts));
 });
 
-// Copy ui js files to build dir.
-gulp.task('build:js:copy:widgets', function() {
-  $.util.log($.util.colors.yellow('Start copy widgets js to build dir....'));
-  return gulp.src(config.path.widgets, {cwd: './widget'})
-    .pipe($.rename(function(path) {
-      path.dirname = ''; // remove widget dir
-    }))
-    .pipe(gulp.dest(config.path.buildTmp));
-});
+var b = watchify(browserify(_.assign({}, watchify.args, {
+  entries: './js/amazeui.js',
+  basedir: __dirname,
+  standalone: 'AMUI',
+  paths: ['./js']
+})));
 
-// Copy core js files to build dir.
-gulp.task('build:js:copy:core', function() {
-  return gulp.src('*.js', {
-    cwd: './js'
-  })
-    .pipe(gulp.dest(config.path.buildTmp));
-});
+b.plugin(collapser);
+b.plugin('browserify-derequire');
 
-gulp.task('build:js:browserify', function() {
-  var bundler = transform(function(filename) {
-    var b = browserify({
-      entries: filename,
-      basedir: path.join(__dirname, config.path.buildTmp)
-    });
-    return b.bundle();
-  });
-
-  return gulp.src(pkg.name + '.js',
-    {cwd: path.join(__dirname, config.path.buildTmp)})
-    .pipe(bundler)
-    .pipe(gulp.dest(config.dist.js))
+var bundle = function() {
+  return b.bundle()
+    .on('error', $.util.log.bind($.util, 'Browserify Error'))
+    .pipe(source('amazeui.js'))
+    .pipe(buffer())
+    .pipe($.replace('{{VERSION}}', pkg.version))
     .pipe($.header(banner, {pkg: pkg, ver: ''}))
-    .pipe($.jsbeautifier({config: '.jsbeautifyrc'}))
     .pipe(gulp.dest(config.dist.js))
-    .pipe($.uglify())
+    .pipe($.uglify(config.uglify))
     .pipe($.header(banner, {pkg: pkg, ver: ''}))
     .pipe($.rename({
       suffix: '.min',
@@ -304,26 +228,23 @@ gulp.task('build:js:browserify', function() {
     .pipe(gulp.dest(config.dist.js))
     .pipe($.size({showFiles: true, title: 'minified'}))
     .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
-});
+};
+
+gulp.task('build:js:browserify', bundle);
+b.on('update', bundle);
+b.on('log', $.util.log);
 
 gulp.task('build:js:fuckie', function() {
-  var bundler = transform(function(filename) {
-    var b = browserify({
-      entries: filename,
-      basedir: path.join(__dirname, config.path.buildTmp)
-    });
-    return b.bundle();
-  });
-
-  return gulp.src('amazeui.legacy.js',
-    {cwd: path.join(__dirname, config.path.buildTmp)})
-    .pipe(bundler)
-    .pipe(gulp.dest(config.dist.js))
+  return browserify({
+    entries: './js/amazeui.legacy.js'
+  }).bundle()
+    .pipe(source('amazeui.legacy.js'))
+    .pipe(buffer())
+    .pipe($.replace('{{VERSION}}', pkg.version))
     .pipe($.header(banner, {pkg: pkg, ver: ' ~ Old IE Fucker'}))
-    .pipe($.jsbeautifier({config: '.jsbeautifyrc'}))
     .pipe(gulp.dest(config.dist.js))
-    .pipe($.uglify())
-    .pipe($.header(banner, {pkg: pkg, ver: ''}))
+    .pipe($.uglify(config.uglify))
+    .pipe($.header(banner, {pkg: pkg, ver: ' ~ Old IE Fucker'}))
     .pipe($.rename({
       suffix: '.min',
       extname: '.js'
@@ -331,32 +252,6 @@ gulp.task('build:js:fuckie', function() {
     .pipe(gulp.dest(config.dist.js))
     .pipe($.size({showFiles: true, title: 'minified'}))
     .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
-});
-
-// Concat AMD
-gulp.task('build:js:amd', function() {
-  return gulp.src('amazeui.js', {cwd: config.path.buildTmp})
-    .pipe($.amdBundler({
-      baseDir: config.path.buildTmp
-    }))
-    .pipe($.concat(pkg.name + '.amd.js'))
-    .pipe($.header(banner, {pkg: pkg, ver: ' ~ AMD'}))
-    .pipe($.jsbeautifier({config: '.jsbeautifyrc'}))
-    .pipe(gulp.dest(config.dist.js))
-    .pipe($.uglify())
-    .pipe($.header(banner, {pkg: pkg, ver: ' ~ AMD'}))
-    .pipe($.rename({
-      suffix: '.min',
-      extname: '.js'
-    }))
-    .pipe(gulp.dest(config.dist.js))
-    .pipe($.size({showFiles: true, title: 'minified'}))
-    .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
-});
-
-gulp.task('build:js:clean', function(cb) {
-  $.util.log($.util.colors.green('Finished concat js, cleaning...'));
-  del('./.build', cb);
 });
 
 gulp.task('build:js:helper', function() {
@@ -375,13 +270,9 @@ gulp.task('build:js:helper', function() {
 
 gulp.task('build:js', function(cb) {
   runSequence(
-    ['build:js:copy:widgets', 'build:js:copy:core'],
-    ['build:js:browserify'],
-    ['build:js:fuckie'],
-    // ['build:js:amd'],
-    ['build:js:clean', 'build:js:helper'],
-    cb
-  );
+    ['build:js:browserify', 'build:js:fuckie'],
+    ['build:js:helper'],
+    cb);
 });
 
 gulp.task('build', function(cb) {
@@ -427,12 +318,8 @@ gulp.task('archive:copy:js', function() {
   return gulp.src([
     './dist/js/*.js',
     './node_modules/handlebars/dist/handlebars.min.js',
-    './node_modules/jquery/dist/cdn/jquery-2.1.1.min.js'])
-    .pipe($.rename(function(file) {
-      if (file.basename.indexOf('jquery-') > -1) {
-        file.basename = 'jquery.min';
-      }
-    }))
+    './node_modules/jquery/dist/jquery.min.js'])
+    .pipe($.replace('\n//# sourceMappingURL=jquery.min.map', ''))
     .pipe(gulp.dest('./docs/examples/assets/js'));
 });
 
@@ -445,8 +332,7 @@ gulp.task('archive:copy:polyfill', function() {
 gulp.task('archive:zip', function() {
   return gulp.src(['docs/examples/**/*'])
     .pipe($.replace(/\{\{assets\}\}/g, 'assets/', {skipBinary: true}))
-    .pipe($.zip(format('AmazeUI-%s-%s.zip',
-        pkg.version, $.util.date(Date.now(), 'UTC:yyyymmdd'))))
+    .pipe($.zip(format('AmazeUI-%s.zip', pkg.version)))
     .pipe(gulp.dest('dist'));
 });
 

@@ -1,8 +1,8 @@
 'use strict';
 
 var $ = require('jquery');
-require('./core');
-require('./ui.pureview');
+require('../../../js/core');
+require('../../../js/ui.pureview');
 var UI = $.AMUI;
 
 function galleryInit() {

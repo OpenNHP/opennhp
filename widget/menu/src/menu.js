@@ -1,10 +1,10 @@
 'use strict';
 
 var $ = require('jquery');
-require('./core');
-require('./ui.offcanvas');
-require('./ui.collapse');
-var IScroll = require('./ui.iscroll-lite');
+require('../../../js/core');
+require('../../../js/ui.offcanvas');
+require('../../../js/ui.collapse');
+var IScroll = require('../../../js/ui.iscroll-lite');
 
 var menuInit = function() {
   var $menus = $('[data-am-widget="menu"]');

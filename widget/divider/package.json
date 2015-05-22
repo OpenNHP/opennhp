@@ -51,6 +51,30 @@
       ]
     },
     {
+      "name": "dotted",
+      "desc": "点分割线",
+      "hook": "hook-am-divider-default",
+      "demos": [
+        {
+          "desc": "",
+          "data": {
+          }
+        }
+      ]
+    },
+    {
+      "name": "dashed",
+      "desc": "虚线分割线",
+      "hook": "hook-am-divider-default",
+      "demos": [
+        {
+          "desc": "",
+          "data": {
+          }
+        }
+      ]
+    },
+    {
       "name": "one",
       "desc": "简约风格",
       "hook": "hook-am-divider-one",

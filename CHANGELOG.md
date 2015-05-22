@@ -14,6 +14,10 @@
 - `Improved` 处理 Slider 在部分浏览器中上下翻页箭头文字没有隐藏问题；
 - `Improved` 优化 JS 构建流程，加快构建速度，输出 UMD 格式文件。
 
+**Web 组件：**
+
+- `Changed` Divider 增加点线和虚线样式。
+
 ### 2015.05 W2
 
 **CSS:**

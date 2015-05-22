@@ -47,14 +47,14 @@ doc: docs/javascript/slider.md
 <div class="am-slider am-slider-default"
      data-am-flexslider="{controlNav: 'thumbnails', directionNav: false}">
   <ul class="am-slides">
-    <li data-thumb="http://amui.qiniudn.com/pure-1.jpg"><img
-      src="http://amui.qiniudn.com/pure-1.jpg?imageView2/0/w/640" /></li>
-    <li data-thumb="http://amui.qiniudn.com/pure-2.jpg"><img
-      src="http://amui.qiniudn.com/pure-2.jpg?imageView2/0/w/640" /></li>
-    <li data-thumb="http://amui.qiniudn.com/pure-3.jpg"><img
-      src="http://amui.qiniudn.com/pure-3.jpg?imageView2/0/w/640" /></li>
-    <li data-thumb="http://amui.qiniudn.com/pure-4.jpg"><img
-      src="http://amui.qiniudn.com/pure-4.jpg?imageView2/0/w/640" /></li>
+    <li data-thumb="http://amui.qiniudn.com/pure-1.jpg?imageView2/0/w/360"><img
+      src="http://amui.qiniudn.com/pure-1.jpg" /></li>
+    <li data-thumb="http://amui.qiniudn.com/pure-2.jpg?imageView2/0/w/360"><img
+      src="http://amui.qiniudn.com/pure-2.jpg" /></li>
+    <li data-thumb="http://amui.qiniudn.com/pure-3.jpg?imageView2/0/w/360"><img
+      src="http://amui.qiniudn.com/pure-3.jpg" /></li>
+    <li data-thumb="http://amui.qiniudn.com/pure-4.jpg?imageView2/0/w/360"><img
+      src="http://amui.qiniudn.com/pure-4.jpg" /></li>
 
   </ul>
 </div>

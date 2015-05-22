@@ -6,6 +6,7 @@
 **JS:**
 
 - `Changed` #567 引入 FastClick 后遇到了许多问题，权衡之后，做移除处理（Thx to @zhongjq）；
+- `Improved` 处理 Slider 在部分浏览器中上下翻页箭头文字没有隐藏问题；
 - `Improved` 优化 JS 构建流程，加快构建速度，输出 UMD 格式文件。
 
 ### 2015.05 W2

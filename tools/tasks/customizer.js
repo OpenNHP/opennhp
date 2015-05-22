@@ -139,10 +139,7 @@ gulp.task('customizer:js', function() {
         ascii_only: true
       }
     }))
-    .pipe($.rename({
-      suffix: '.min',
-      extname: '.js'
-    }))
+    .pipe($.rename({suffix: '.min'}))
     .pipe(gulp.dest(cstmzPath))
     .pipe($.size({showFiles: true, title: 'minified'}))
     .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));

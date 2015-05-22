@@ -162,6 +162,10 @@
     @{type}@{dimension}: @global-margin;
   }
 
+  .@{ns}@{type}@{dimension}-0 {
+    @{type}@{dimension}: 0!important;
+  }
+
   .@{ns}@{type}@{dimension}-xs {
     @{type}@{dimension}: @global-margin-xs;
   }
@@ -182,6 +186,10 @@
 .spacing-all-variant(@type) {
   .@{ns}@{type} {
     @{type}: @global-margin;
+  }
+
+  .@{ns}@{type}-0 {
+    @{type}: 0!important;
   }
 
   .@{ns}@{type}-xs {
@@ -205,6 +213,11 @@
   .@{ns}@{type}@{dimension} {
     @{type}@{dimension1}: @global-margin;
     @{type}@{dimension2}: @global-margin;
+  }
+
+  .@{ns}@{type}@{dimension}-0 {
+    @{type}@{dimension1}: 0!important;
+    @{type}@{dimension2}: 0!important;
   }
 
   .@{ns}@{type}@{dimension}-xs {

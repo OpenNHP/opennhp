@@ -5,7 +5,8 @@
 
 **CSS:**
 
-- `Improved` #566 处理没有 `thead` 的 `table` 上边框重复问题（Thx to @Tobyee）。
+- `Improved` #566 处理没有 `thead` 的 `table` 上边框重复问题（Thx to @Tobyee）；
+- `Improved` #565 添加 `margin/padding` 为 `0` 的辅助类（Thx to @Tobyee）。
 
 **JS:**
 

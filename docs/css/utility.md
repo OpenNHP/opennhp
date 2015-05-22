@@ -249,7 +249,9 @@
 
 #### class 列表
 
-不加尺寸为默认大小（16px），`{size}` 可以为 `xs, sm, lg, xl` 中之一。
+不加尺寸为默认大小（16px），`{size}` 可以为 `0, xs, sm, lg, xl` 中之一。
+
+- **v2.4:** 增加 `0` 值的内外边距辅助类。
 
 <table class="am-table am-table-bd am-table-striped">
   <thead>

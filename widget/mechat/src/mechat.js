@@ -1,7 +1,7 @@
 'use strict';
 
 var $ = require('jquery');
-require('./core');
+require('../../../js/core');
 
 function mechatInit() {
   if (!$('#mechat').length) {

@@ -1,10 +1,10 @@
 'use strict';
 
 var $ = require('jquery');
-require('./core');
-require('./ui.modal');
-var share = require('./ui.share');
-var QRCode = require('./util.qrcode');
+require('../../../js/core');
+require('../../../js/ui.modal');
+var share = require('../../../js/ui.share');
+var QRCode = require('../../../js/util.qrcode');
 var UI = $.AMUI;
 
 function navbarInit() {

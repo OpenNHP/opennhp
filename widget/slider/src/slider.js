@@ -1,8 +1,8 @@
 'use strict';
 
 var $ = require('jquery');
-require('./core');
-require('./ui.flexslider');
+require('../../../js/core');
+require('../../../js/ui.flexslider');
 var UI = $.AMUI;
 
 function sliderInit() {

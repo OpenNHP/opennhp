@@ -1,7 +1,7 @@
 'use strict';
 
-require('./core');
-require('./ui.collapse');
+require('../../../js/core');
+require('../../../js/ui.collapse');
 var $ = require('jquery');
 var UI = $.AMUI;
 

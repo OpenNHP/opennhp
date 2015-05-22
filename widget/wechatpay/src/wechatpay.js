@@ -1,7 +1,7 @@
 'use strict';
 
 var $ = require('jquery');
-var UI = require('./core');
+var UI = require('../../../js/core');
 
 var isWeChat = window.navigator.userAgent.indexOf('MicroMessenger') > -1;
 

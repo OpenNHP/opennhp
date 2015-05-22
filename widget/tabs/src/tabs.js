@@ -1,8 +1,8 @@
 'use strict';
 
 var $ = require('jquery');
-require('./core');
-require('./ui.tabs');
+require('../../../js/core');
+require('../../../js/ui.tabs');
 
 function tabsInit() {
   $('[data-am-widget="tabs"]').each(function() {

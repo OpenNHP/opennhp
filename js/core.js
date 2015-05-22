@@ -15,7 +15,7 @@ var $win = $(window);
 var doc = window.document;
 var $html = $('html');
 
-UI.VERSION = '2.3.0';
+UI.VERSION = '{{VERSION}}';
 
 UI.support = {};
 

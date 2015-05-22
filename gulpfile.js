@@ -80,12 +80,13 @@ var banner = [
   $.util.date(Date.now(), dateFormat) + ' */ \n'
 ].join(' | ');
 
-var jsEntry = '\'use strict\';\n\n' + 'var $ = require(\'jquery\');\n\n';
+var jsEntry;
 var plugins;
 var WIDGET_DIR = './widget/';
 
 // Write widgets style and tpl
 var preparingData = function() {
+  jsEntry = ''; // empty string
   var fsOptions = {encoding: 'utf8'};
 
   // less
@@ -99,6 +100,8 @@ var preparingData = function() {
   });
 
   plugins = _.union(config.js.base, fs.readdirSync('./js'));
+
+  jsEntry += '\'use strict\';\n\n' + 'var $ = require(\'jquery\');\n\n';
 
   plugins.forEach(function(plugin, i) {
     var basename = path.basename(plugin, '.js');

@@ -1022,6 +1022,24 @@ $(function() {
 }
 ```
 
+**包含异步验证的表单提交处理**
+
+包含异步验证时，`isFormValid()` 返回 Promise，可以使用 [`jQuery.when()`](http://api.jquery.com/jQuery.when/) 来处理结果。
+
+```js
+$('#xx').validator({
+  submit: function() {
+    var formValidity = this.isFormValid();
+
+    $.when(formValidity).then(function() {
+      // 验证成功的逻辑
+    }, function() {
+      // 验证失败的逻辑
+    });
+  }
+});
+```
+
 #### 扩展正则库
 
 在 DOM Ready 之前执行以下操作：

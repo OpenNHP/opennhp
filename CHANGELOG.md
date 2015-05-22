@@ -3,6 +3,10 @@
 
 ### 2015.05 W3
 
+**CSS:**
+
+- `Improved` #566 处理没有 `thead` 的 `table` 上边框重复问题（Thx to @Tobyee）。
+
 **JS:**
 
 - `Changed` #567 引入 FastClick 后遇到了许多问题，权衡之后，做移除处理（Thx to @zhongjq）；

@@ -138,7 +138,6 @@ th {
       }
     }
   }
-
 }
 
 
@@ -157,6 +156,25 @@ th {
 
         &:first-child {
           border-left: none;
+        }
+      }
+    }
+  }
+
+  // fixes #566
+  > tbody > tr:first-child {
+    > th,
+    > td {
+      border-top: none;
+    }
+  }
+
+  > thead {
+    & + tbody {
+      > tr:first-child {
+        > th,
+        > td {
+          border-top: 1px solid @table-border-color;
         }
       }
     }

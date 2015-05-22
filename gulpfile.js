@@ -286,7 +286,7 @@ gulp.task('build', function(cb) {
 // Rerun the task when a file changes
 gulp.task('watch', function() {
   gulp.watch(['widget/**/*.json', 'widget/**/*.hbs'], ['build:preparing']);
-  gulp.watch(['js/*.js', 'widget/*/src/*.js'], ['build:js']);
+  // gulp.watch(['js/*.js', 'widget/*/src/*.js'], ['build:js']);
   gulp.watch(['less/**/*.less', 'widget/*/src/*.less'], ['build:less']);
   gulp.watch(config.path.hbsHelper, ['build:js:helper']);
 });

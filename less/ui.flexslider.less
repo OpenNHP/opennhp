@@ -82,61 +82,11 @@
   margin-right: 5px;
 }
 
-/* Direction Nav */
-.@{ns}direction-nav {
-  a {
-    &::before {
-    }
-    &.flex-next {
-      &::before {
-      }
-    }
-  }
-
-  .@{ns}prev {
-  }
-
-  .@{ns}next {
-  }
-
-  .@{ns}disabled {
-  }
-}
-
-
-/* Pause/Play */
-.@{ns}pauseplay {
-  a {
-    &::before {
-    }
-
-    &:hover {
-    }
-
-    &.@{ns}play {
-      &::before {
-      }
-    }
-  }
-}
-
-// 描述信息
-.@{ns}caption {
-
-}
-
 // Control Nav
 .@{ns}control-nav {
   position: absolute;
   li {
     display: inline-block;
-    a {
-      &:hover {
-      }
-
-      &.@{ns}active {
-      }
-    }
   }
 }
 
@@ -144,16 +94,8 @@
   position: static;
   overflow: hidden;
 
-  li {
-  }
-
   img {
-    transition: opacity .1s;
-
-    &:hover {
-    }
-  }
-  .@{ns}active {
+    transition: all 1s ease;
   }
 }
 
@@ -268,8 +210,8 @@
       z-index: 10;
       display: block;
       width: 36px;
-      height: 24px;
-      margin: -12px 0 0;
+      height: 36px;
+      margin: -18px 0 0;
       overflow: hidden;
       opacity: 0.45;
       cursor: pointer;
@@ -277,10 +219,13 @@
       transition: all .3s ease;
 
       &:before {
+        width: 100%;
         color: @direction-nav-color;
         .am-icon-font;
         content: @fa-var-chevron-circle-left;
         font-size: 24px;
+        text-align: center;
+        line-height: 36px;
       }
       &.am-next {
         &:before {
@@ -380,7 +325,6 @@
         font-size: 0;
         cursor: pointer;
         text-indent: -9999px;
-        -webkit-border-radius: 20px;
         border-radius: 20px;
         box-shadow: inset 0 0 3px rgba(0,0,0,0.3);
 
@@ -405,18 +349,26 @@
       float: left;
       margin: 0;
     }
+
     img {
       width: 100%;
+      height: auto;
       display: block;
       opacity: .7;
       cursor: pointer;
+
       &:hover {
         opacity: 1;
       }
     }
+
     .am-active {
       opacity: 1;
       cursor: default;
+    }
+
+    i {
+      position: absolute;
     }
   }
 

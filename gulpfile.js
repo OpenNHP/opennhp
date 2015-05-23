@@ -204,17 +204,28 @@ gulp.task('build:fonts', function() {
     .pipe(gulp.dest(config.dist.fonts));
 });
 
-var b = watchify(browserify(_.assign({}, watchify.args, {
-  entries: './js/amazeui.js',
-  basedir: __dirname,
-  standalone: 'AMUI',
-  paths: ['./js']
-})));
+var bundleInit = function() {
+  var b = browserify(_.assign({}, watchify.args, {
+    entries: './js/amazeui.js',
+    basedir: __dirname,
+    standalone: 'AMUI',
+    paths: ['./js']
+  }));
 
-b.plugin(collapser);
-b.plugin('browserify-derequire');
+  if (process.env.NODE_ENV !== 'travisci') {
+    b = watchify(b);
+    b.on('update', function() {
+      bundle(b);
+    });
+  }
 
-var bundle = function() {
+  b.plugin(collapser);
+  b.plugin('browserify-derequire');
+  b.on('log', $.util.log);
+  bundle(b);
+};
+
+var bundle = function(b) {
   return b.bundle()
     .on('error', $.util.log.bind($.util, 'Browserify Error'))
     .pipe(source('amazeui.js'))
@@ -224,18 +235,13 @@ var bundle = function() {
     .pipe(gulp.dest(config.dist.js))
     .pipe($.uglify(config.uglify))
     .pipe($.header(banner, {pkg: pkg, ver: ''}))
-    .pipe($.rename({
-      suffix: '.min',
-      extname: '.js'
-    }))
+    .pipe($.rename({suffix: '.min'}))
     .pipe(gulp.dest(config.dist.js))
     .pipe($.size({showFiles: true, title: 'minified'}))
     .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
 };
 
-gulp.task('build:js:browserify', bundle);
-b.on('update', bundle);
-b.on('log', $.util.log);
+gulp.task('build:js:browserify', bundleInit);
 
 gulp.task('build:js:fuckie', function() {
   return browserify({
@@ -248,10 +254,7 @@ gulp.task('build:js:fuckie', function() {
     .pipe(gulp.dest(config.dist.js))
     .pipe($.uglify(config.uglify))
     .pipe($.header(banner, {pkg: pkg, ver: ' ~ Old IE Fucker'}))
-    .pipe($.rename({
-      suffix: '.min',
-      extname: '.js'
-    }))
+    .pipe($.rename({suffix: '.min'}))
     .pipe(gulp.dest(config.dist.js))
     .pipe($.size({showFiles: true, title: 'minified'}))
     .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
@@ -264,10 +267,7 @@ gulp.task('build:js:helper', function() {
     .pipe(gulp.dest(config.dist.js))
     .pipe($.uglify())
     .pipe($.header(banner, {pkg: pkg, ver: ' ~ helper'}))
-    .pipe($.rename({
-      suffix: '.min',
-      extname: '.js'
-    }))
+    .pipe($.rename({suffix: '.min'}))
     .pipe(gulp.dest(config.dist.js));
 });
 

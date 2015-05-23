@@ -7,9 +7,8 @@ env:
   global:
     - NODE_ENV=travisci
 
-before_script:
+before_install:
   - npm install -g gulp
-  - npm install
 
 script: gulp build
 

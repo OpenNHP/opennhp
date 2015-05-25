@@ -319,3 +319,33 @@ gallery.html css
   width: 200px;
   margin: 0 auto;
 }
+
+
+/*
+ fixed-layout 固定头部和边栏布局
+*/
+
+.fixed-layout,
+.fixed-layout body {
+  height: 100%;
+  overflow: hidden;
+}
+
+.fixed-layout .admin-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
+.fixed-layout .admin-main {
+  height: 100%;
+  padding-top: 51px;
+}
+
+.fixed-layout .admin-content,
+.fixed-layout .admin-sidebar {
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: scroll;
+}

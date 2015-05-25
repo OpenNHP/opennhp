@@ -1,7 +1,11 @@
+sudo: false
+
 language: node_js
 
 node_js:
+  - "0.12"
   - "0.10"
+  - "iojs"
 
 env:
   global:
@@ -11,5 +15,3 @@ before_install:
   - npm install -g gulp
 
 script: gulp build
-
-sudo: false

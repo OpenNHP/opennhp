@@ -24,6 +24,9 @@
     "build": "gulp install && gulp",
     "preview": "gulp preview"
   },
+  "style": "dist/css/amazeui.css",
+  "less": "less/amazeui.less",
+  "main": "./dist/js/amazeui",
   "repository": {
     "type": "git",
     "url": "https://github.com/allmobilize/amazeui.git"
@@ -61,6 +64,7 @@
     "gulp-uglify": "latest",
     "gulp-util": "^3.0.4",
     "gulp-zip": "^3.0.2",
+    "handlebars": "^3.0.3",
     "hbs": "~2.7.0",
     "less-middleware": "1.0.x",
     "lodash": "^2.4.1",

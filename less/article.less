@@ -32,6 +32,7 @@
 /* Sub-object `.@{ns}article-title` */
 
 .@{ns}article-title {
+  overflow-x: hidden;
   font-size: @article-title-font-size;
   line-height: @article-title-line-height;
   font-weight: @article-title-font-weight;
@@ -87,6 +88,11 @@
 .@{ns}article-bd {
   blockquote {
     font-family: @font-family-kai;
+  }
+
+  img {
+    display: block;
+    max-width: 100%;
   }
 }
 

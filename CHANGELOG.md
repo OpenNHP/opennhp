@@ -1,6 +1,17 @@
 # Amaze UI Change Log
 ---
 
+### 2015.05 W4
+
+**CSS:**
+
+- `Improved` Article 增加图片最大宽度限制样式。
+
+**模板**
+
+- `New` 新增 `admin-index-fixed.html`：固定顶部和边栏的后台模板。
+
+
 ### 2015.05 W3
 
 **CSS:**

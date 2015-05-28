@@ -23,7 +23,7 @@
 <button type="button" class="am-btn am-btn-warning">橙色按钮</button>
 <button type="button" class="am-btn am-btn-danger">红色按钮</button>
 <a class="am-btn am-btn-link">链接</a>
-<a class="am-btn am-btn-default">应用按钮样式的链接</a>
+<a class="am-btn am-btn-danger" href="http://www.bing.com" target="_blank">应用按钮样式的链接</a>
 `````
 
 ```html
@@ -34,7 +34,7 @@
 <button type="button" class="am-btn am-btn-warning">橙色按钮</button>
 <button type="button" class="am-btn am-btn-danger">红色按钮</button>
 <a class="am-btn am-btn-link">链接</a>
-<a class="am-btn am-btn-default">应用按钮样式的链接</a>
+<a class="am-btn am-btn-danger" href="http://www.bing.com" target="_blank">应用按钮样式的链接</a>
 ```
 
 ### 圆角按钮

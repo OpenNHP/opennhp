@@ -90,10 +90,7 @@ gulp
 
 为了能最准确的传达所描述的问题， 建议你在反馈时附上演示，方便我们理解。
 
-下面的几个链接是我们在几个在线调试工具上建的页面， 已经引入了 Amaze UI 样式和脚本，你可以【Fork】一份，把要有问题的场景粘在里面，反馈给我们。
-
-- [Debug Amaze UI 2.x in JSBin](http://jsbin.com/zoqaba/1/edit?html,output)
-- [Debug Amaze UI 1.x in JSBin](http://jsbin.com/qasoxibuje/1/edit?html,output)
+为了方便演示，我们使用 **[JSBin 搭建了在线一个调试工具](http://bin.amazeui.org)**，你可以把有问题的场景粘在里面，反馈给我们。
 
 ### 需求提交
 

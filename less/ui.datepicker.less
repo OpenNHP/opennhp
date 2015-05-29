@@ -325,6 +325,62 @@
   .hook-datepicker-warning;
 }
 
+
+// for React version
+// =============================================================================
+
+@datepicker-time-span-width: @datepicker-width / 4;
+
+.@{ns}datepicker > div {
+  display: block;
+
+  span.@{ns}datepicker-hour {
+    width: @datepicker-time-span-width;
+  }
+}
+
+.@{ns}datepicker-date {
+  display: block;
+}
+
+.@{ns}datepicker-time-box {
+  padding: 30px 0 30px 0;
+
+  strong {
+    font-size: 5.2rem;
+    display: inline-block;
+    height: 70px;
+    width: 70px;
+    line-height: 70px;
+    font-weight: normal;
+
+    &:hover {
+      border-radius: 4px;
+      background: #ECECEC;
+    }
+  }
+
+  em {
+    display: inline-block;
+    height: 70px;
+    width: 20px;
+    line-height: 70px;
+    font-size: 5.2rem;
+    font-style: normal;
+  }
+}
+
+.@{ns}datepicker-toggle {
+  text-align: center;
+  cursor: pointer;
+  padding: 10px 0;
+
+  &:hover {
+    background: #f0f0f0;
+  }
+}
+
+
 // Hooks
 // =============================================================================
 

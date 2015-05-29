@@ -27,7 +27,7 @@ var cookie = {
       encodeURIComponent(value);
 
     if (expires instanceof Date) {
-      cookieText += '; expires=' + expires.toGMTString();
+      cookieText += '; expires=' + expires.toUTCString();
     }
 
     if (path) {

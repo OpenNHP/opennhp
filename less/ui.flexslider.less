@@ -219,13 +219,14 @@
       transition: all .3s ease;
 
       &:before {
+        .am-icon-font;
         width: 100%;
         color: @direction-nav-color;
-        .am-icon-font;
         content: @fa-var-chevron-circle-left;
-        font-size: 24px;
+        font-size: 24px!important;
         text-align: center;
-        line-height: 36px;
+        line-height: 36px!important;
+        height: 36px;
       }
       &.am-next {
         &:before {

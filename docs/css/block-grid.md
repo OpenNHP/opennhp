@@ -53,25 +53,27 @@ Average Grid，均分网格（原 Block Grid），使用 `ul` / `ol` 创建等�
 }
 ```
 
+**演示图标版权归[微软 Bing](http://www.bing.com) 所有。**
+
 ## 基本使用
 
 只添加 `.am-avg-sm-*`，应用于所有屏幕尺寸。
 
 `````html
 <ul class="am-avg-sm-4 am-thumbnails">
-  <li><img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/MovingWalkway_ZH-CN9842297711_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://global.bing.com/az/hprichbg/rb/UchisarCastle_EN-US10838608428_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://global.bing.com/az/hprichbg/rb/DumbartonOaksGardens_EN-US12360736195_1920x1080.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg" /></li>
 </ul>
 `````
 
 ```html
 <ul class="am-avg-sm-4 am-thumbnails">
-  <li><img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/MovingWalkway_ZH-CN9842297711_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://global.bing.com/az/hprichbg/rb/UchisarCastle_EN-US10838608428_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://global.bing.com/az/hprichbg/rb/DumbartonOaksGardens_EN-US12360736195_1920x1080.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg" /></li>
 </ul>
 ```
 
@@ -81,27 +83,27 @@ Average Grid，均分网格（原 Block Grid），使用 `ul` / `ol` 创建等�
 
 `````html
 <ul class="am-avg-sm-2 am-avg-md-3 am-avg-lg-4 am-thumbnails">
-  <li><img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/MovingWalkway_ZH-CN9842297711_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://global.bing.com/az/hprichbg/rb/UchisarCastle_EN-US10838608428_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://global.bing.com/az/hprichbg/rb/DumbartonOaksGardens_EN-US12360736195_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/MovingWalkway_ZH-CN9842297711_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://global.bing.com/az/hprichbg/rb/UchisarCastle_EN-US10838608428_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://global.bing.com/az/hprichbg/rb/DumbartonOaksGardens_EN-US12360736195_1920x1080.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg" /></li>
 </ul>
 `````
 
 ```html
 <ul class="am-avg-sm-2 am-avg-md-3 am-avg-lg-4 am-thumbnails">
-  <li><img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/MovingWalkway_ZH-CN9842297711_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://global.bing.com/az/hprichbg/rb/UchisarCastle_EN-US10838608428_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://global.bing.com/az/hprichbg/rb/DumbartonOaksGardens_EN-US12360736195_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/MovingWalkway_ZH-CN9842297711_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://global.bing.com/az/hprichbg/rb/UchisarCastle_EN-US10838608428_1920x1080.jpg" /></li>
-  <li><img class="am-thumbnail" src="http://global.bing.com/az/hprichbg/rb/DumbartonOaksGardens_EN-US12360736195_1920x1080.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg" /></li>
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg" /></li>
 </ul>
 ```
 

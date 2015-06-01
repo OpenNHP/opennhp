@@ -388,11 +388,12 @@ __有序列表（`<ol>`）：__
 更多样式查看 [Image 组件](/css/image)。
 
 `````html
-<img src="http://global.bing.com/az/hprichbg/rb/UchisarCastle_EN-US10838608428_1920x1080.jpg" alt=""/>
+<img class="am-img-responsive" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" alt=""/>
 `````
 
 ```html
-<img src="http://global.bing.com/az/hprichbg/rb/UchisarCastle_EN-US10838608428_1920x1080.jpg" alt=""/>
+<img class="am-img-responsive" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" alt=""/>
+
 ```
 
 ### 其他元素

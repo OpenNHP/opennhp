@@ -1,4 +1,4 @@
-/*! Amaze UI v2.4.0 ~ Old IE Fucker | by Amaze UI Team | (c) 2015 AllMobilize, Inc. | Licensed under MIT | 2015-05-29T11:14:40+0800 */ 
+/*! Amaze UI v2.4.0 ~ Old IE Fucker | by Amaze UI Team | (c) 2015 AllMobilize, Inc. | Licensed under MIT | 2015-06-01T09:54:08+0800 */ 
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 (function (global){
 // Amaze UI JavaScript for IE8
@@ -4268,7 +4268,7 @@ var cookie = {
       encodeURIComponent(value);
 
     if (expires instanceof Date) {
-      cookieText += '; expires=' + expires.toGMTString();
+      cookieText += '; expires=' + expires.toUTCString();
     }
 
     if (path) {

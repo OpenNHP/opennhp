@@ -7,6 +7,10 @@
 
 - `Improved` Article 增加图片最大宽度限制样式。
 
+**JS:**
+
+- `Fixed` #587 修复 cookie 设置 `expires` 无效问题（Thx to @Stephenzxb）。
+
 **模板**
 
 - `New` 新增 `admin-index-fixed.html`：固定顶部和边栏的后台模板。

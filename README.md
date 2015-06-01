@@ -1,8 +1,10 @@
 <h1><a href="http://amazeui.org/" title="Amaze UI 官网"><img style="float: left" width="240" src="https://raw.githubusercontent.com/allmobilize/amazeui/master/vendor/amazeui/amazeui-b.png" alt="Amaze UI Logo"/></a></h1>
 
-[![Bower version](https://badge.fury.io/bo/amazeui.svg)](http://badge.fury.io/bo/amazeui)
-[![NPM version](https://badge.fury.io/js/amazeui.svg)](http://badge.fury.io/js/amazeui)
-[![Build Status](https://travis-ci.org/allmobilize/amazeui.svg?branch=master)](https://travis-ci.org/allmobilize/amazeui)
+[![Bower version](https://img.shields.io/bower/v/amazeui.svg?style=flat-square)](https://github.com/allmobilize/amazeui)
+[![NPM version](https://img.shields.io/npm/v/amazeui.svg?style=flat-square)](https://www.npmjs.com/package/amazeui)
+[![Build Status](https://img.shields.io/travis/allmobilize/amazeui.svg?style=flat-square)](https://travis-ci.org/allmobilize/amazeui)
+[![Dependency Status](https://img.shields.io/david/allmobilize/amazeui.svg?style=flat-square)](https://david-dm.org/allmobilize/amazeui)
+[![devDependency Status](https://img.shields.io/david/dev/allmobilize/amazeui.svg?style=flat-square)](https://david-dm.org/allmobilize/amazeui#info=devDependencies)
 
 Amaze UI 是基于社区开源项目构建的一个跨屏前端框架。 __[README in English](https://github.com/allmobilize/amazeui/blob/master/README_EN.md)__
 

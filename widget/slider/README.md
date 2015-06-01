@@ -3,6 +3,8 @@
 
 图片轮播模块，更多细节[参见 JS 插件中的介绍](/javascript/slider?_ver=2.x)。
 
+**演示图标版权归[微软 Bing](http://www.bing.com) 所有。**
+
 ## 使用方法
 
 ### 直接使用

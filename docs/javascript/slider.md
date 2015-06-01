@@ -17,6 +17,8 @@ doc: docs/javascript/slider.md
 
 [Web 组件中的图片轮播](/widgets/slider?_ver=2.x) 调用此插件，只是样式上做了一些扩展。
 
+**演示图标版权归[微软 Bing](http://www.bing.com) 所有。**
+
 ## 使用演示
 
 
@@ -26,10 +28,10 @@ doc: docs/javascript/slider.md
 `````html
 <div class="am-slider am-slider-default" data-am-flexslider>
   <ul class="am-slides">
-    <li><img src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" /></li>
-    <li><img src="http://s.cn.bing.net/az/hprichbg/rb/MovingWalkway_ZH-CN9842297711_1920x1080.jpg" /></li>
-    <li><img src="http://global.bing.com/az/hprichbg/rb/UchisarCastle_EN-US10838608428_1920x1080.jpg" /></li>
-    <li><img src="http://global.bing.com/az/hprichbg/rb/DumbartonOaksGardens_EN-US12360736195_1920x1080.jpg" /></li>
+    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" /></li>
+    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg" /></li>
+    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg" /></li>
+    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg" /></li>
   </ul>
 </div>
 `````
@@ -176,10 +178,10 @@ slider.removeSlide(obj); 移除 slide
 `````html
 <div class="am-slider am-slider-default" data-am-flexslider="{playAfterPaused: 8000}">
   <ul class="am-slides">
-    <li><img src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" /></li>
-    <li><img src="http://s.cn.bing.net/az/hprichbg/rb/MovingWalkway_ZH-CN9842297711_1920x1080.jpg" /></li>
-    <li><img src="http://global.bing.com/az/hprichbg/rb/UchisarCastle_EN-US10838608428_1920x1080.jpg" /></li>
-    <li><img src="http://global.bing.com/az/hprichbg/rb/DumbartonOaksGardens_EN-US12360736195_1920x1080.jpg" /></li>
+    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" /></li>
+    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg" /></li>
+    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg" /></li>
+    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg" /></li>
   </ul>
 </div>
 `````

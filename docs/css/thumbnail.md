@@ -3,6 +3,8 @@
 
 Thumbnail 组件主要用于显示图片列表及图文混排列表。
 
+**演示图标版权归[微软 Bing](http://www.bing.com) 所有。**
+
 ## 基本样式
 
 在 `<img>` 添加 `.am-thumbnail` 类；也可以在 `<img>` 外面添加一个容器，如 `<div>`、`<figure>`、`<a>` 等，再将 class 添加到容器上。
@@ -12,17 +14,17 @@ Thumbnail 组件主要用于显示图片列表及图文混排列表。
 `````html
 <div class="am-g">
   <div class="am-u-sm-4">
-    <img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" alt=""/>
+    <img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" alt=""/>
   </div>
 
   <div class="am-u-sm-4">
     <a href="#" class="am-thumbnail">
-      <img src="http://s.cn.bing.net/az/hprichbg/rb/MovingWalkway_ZH-CN9842297711_1920x1080.jpg" alt=""/>
+      <img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg" alt=""/>
     </a>
   </div>
   <div class="am-u-sm-4">
     <figure class="am-thumbnail">
-      <img src="http://global.bing.com/az/hprichbg/rb/UchisarCastle_EN-US10838608428_1920x1080.jpg" alt=""/>
+      <img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg" alt=""/>
     </figure>
   </div>
 </div>
@@ -54,16 +56,16 @@ Thumbnail 组件主要用于显示图片列表及图文混排列表。
 
 `````html
 <ul class="am-avg-sm-3 am-thumbnails">
-  <li><img class="am-thumbnail" src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg"
+  <li><img class="am-thumbnail" src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg"
            alt=""/></li>
 
   <li><a href="#" class="am-thumbnail">
-    <img src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" alt=""/>
+    <img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" alt=""/>
   </a></li>
 
   <li>
     <figure class="am-thumbnail">
-      <img src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" alt=""/>
+      <img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" alt=""/>
     </figure>
   </li>
 </ul>
@@ -95,20 +97,20 @@ Thumbnail 组件主要用于显示图片列表及图文混排列表。
 <div class="am-g">
   <div class="am-u-sm-4">
     <div class="am-thumbnail">
-      <img src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" alt=""/>
+      <img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" alt=""/>
       <h3 class="am-thumbnail-caption">图片标题 #1</h3>
     </div>
   </div>
 
   <div class="am-u-sm-4">
     <a href="#" class="am-thumbnail">
-      <img src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" alt=""/>
+      <img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" alt=""/>
       <figcaption class="am-thumbnail-caption">图片标题 #2</figcaption>
     </a>
   </div>
   <div class="am-u-sm-4">
     <figure class="am-thumbnail">
-      <img src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" alt=""/>
+      <img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" alt=""/>
       <figcaption class="am-thumbnail-caption">图片标题 #3</figcaption>
     </figure>
   </div>

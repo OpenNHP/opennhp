@@ -44,6 +44,8 @@ Modal.DEFAULTS = {
   },
   onCancel: function() {
   },
+  closeOnCancel: true,
+  closeOnConfirm: true,
   height: undefined,
   width: undefined,
   duration: 300, // must equal the CSS transition duration
@@ -183,9 +185,12 @@ Modal.prototype.close = function(relatedTarget) {
 };
 
 Modal.prototype.events = function() {
-  var that = this;
+  var options = this.options;
+  var _this = this;
   var $element = this.$element;
   var $ipt = $element.find('.am-modal-prompt-input');
+  var $confirm = $element.find('[data-am-modal-confirm]');
+  var $cancel = $element.find('[data-am-modal-cancel]');
   var getData = function() {
     var data = [];
     $ipt.each(function() {
@@ -199,9 +204,9 @@ Modal.prototype.events = function() {
   // close via Esc key
   if (this.options.cancelable) {
     $element.on('keyup.modal.amui', function(e) {
-        if (that.active && e.which === 27) {
+        if (_this.active && e.which === 27) {
           $element.trigger('cancel.modal.amui');
-          that.close();
+          _this.close();
         }
       });
   }
@@ -209,26 +214,34 @@ Modal.prototype.events = function() {
   // Close Modal when dimmer clicked
   if (this.options.closeViaDimmer && !this.isLoading) {
     dimmer.$element.on('click.dimmer.modal.amui', function(e) {
-      that.close();
+      _this.close();
     });
   }
 
   // Close Modal when button clicked
   $element.find('[data-am-modal-close], .am-modal-btn').
     on('click.close.modal.amui', function(e) {
-    e.preventDefault();
-    that.close();
-  });
+      e.preventDefault();
+      var $this = $(this);
 
-  $element.find('[data-am-modal-confirm]').on('click.confirm.modal.amui',
+      if ($this.is($confirm)) {
+        console.log('sdafdf');
+        options.closeOnConfirm && _this.close();
+      } else if ($this.is($cancel)) {
+        options.closeOnCancel && _this.close();
+      } else {
+        _this.close();
+      }
+    });
+
+  $confirm.on('click.confirm.modal.amui',
     function() {
       $element.trigger($.Event('confirm.modal.amui', {
         trigger: this
       }));
     });
 
-  $element.find('[data-am-modal-cancel]').
-    on('click.cancel.modal.amui', function() {
+  $cancel.on('click.cancel.modal.amui', function() {
       $element.trigger($.Event('cancel.modal.amui', {
         trigger: this
       }));
@@ -236,10 +249,10 @@ Modal.prototype.events = function() {
 
   $element.on('confirm.modal.amui', function(e) {
     e.data = getData();
-    that.options.onConfirm.call(that, e);
+    _this.options.onConfirm.call(_this, e);
   }).on('cancel.modal.amui', function(e) {
     e.data = getData();
-    that.options.onCancel.call(that, e);
+    _this.options.onCancel.call(_this, e);
   });
 };
 

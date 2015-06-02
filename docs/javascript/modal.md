@@ -183,6 +183,7 @@ $(function() {
             '确定了，但不知道要整哪样';
           alert(msg);
         },
+        // closeOnConfirm: false,
         onCancel: function() {
           alert('算求，不弄了');
         }
@@ -506,9 +507,23 @@ $(function() {
     <td>具有 <code>data-am-modal-confirm</code> 属性的按钮关闭时触发的函数</td>
   </tr>
   <tr>
+    <td><code>closeOnConfirm</code></td>
+    <td><code>bool</code></td>
+    <td>具有 <code>data-am-modal-confirm</code> 属性的按钮点击时是否关闭 Modal，默认为 <code>true</code>
+    （<strong>v2.4.1 新增</strong>）
+    </td>
+  </tr>
+  <tr>
     <td><code>onCancel</code></td>
     <td><code>function</code></td>
     <td>具有 <code>data-am-modal-cancel</code> 属性的按钮关闭时触发的函数</td>
+  </tr>
+  <tr>
+    <td><code>closeOnCancel</code></td>
+    <td><code>bool</code></td>
+    <td>具有 <code>data-am-modal-cancel</code> 属性的按钮点击时是否关闭 Modal，默认为 <code>true</code>
+      （<strong>v2.4.1 新增</strong>）
+    </td>
   </tr>
   <tr>
     <td><code>closeViaDimmer</code></td>

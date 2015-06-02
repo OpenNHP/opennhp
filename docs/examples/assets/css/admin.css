@@ -25,6 +25,7 @@ ul {
 
 .admin-menu {
   position: fixed;
+  z-index: 10;
   bottom: 30px;
   right: 20px;
 }
@@ -336,12 +337,11 @@ gallery.html css
   top: 0;
   left: 0;
   right: 0;
-  z-index: 10000;
+  z-index: 1500;
 }
 
 .fixed-layout .admin-main {
   position: relative;
-  z-index: 1;
   height: 100%;
   padding-top: 51px;
 }
@@ -351,4 +351,8 @@ gallery.html css
   height: 100%;
   overflow-x: hidden;
   overflow-y: scroll;
+}
+
+.fixed-layout .admin-sidebar.am-active {
+  z-index: 1600;
 }

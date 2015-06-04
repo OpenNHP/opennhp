@@ -8,7 +8,7 @@
 
 Amaze UI 是基于社区开源项目构建的一个跨屏前端框架。 __[README in English](https://github.com/allmobilize/amazeui/blob/master/README_EN.md)__
 
-### [React 版](https://github.com/amazeui/amazeui-react)
+### [React 版](https://github.com/amazeui/amazeui-react) | [独立插件](https://github.com/amazeui)
 
 ## 功能简介
 

@@ -79,6 +79,7 @@ bower install amazeui
 - [Switch - 开关切换插件](https://github.com/amazeui/switch)
 - [Tags Input - 标签输入框](https://github.com/amazeui/tagsinput)
 - [Video.js Amaze UI 皮肤](https://github.com/amazeui/videojs)
+- [jQuery DataTables - 表格分页、排序等](https://github.com/amazeui/datatables)
 
 ### 获取源码
 
@@ -112,7 +113,7 @@ Amaze UI 遵循 [Semantic Versioning](http://semver.org/lang/zh-CN/) 规范，�
 
 ## 下载包目录结构
 
-下载包种包含 Amaze UI 的 CSS、JS 文件，以及示例文件：
+下载包中包含 Amaze UI 的 CSS、JS 文件，以及示例文件：
 
 - `index.html` - 空白 HTML 模板；
 - `blog.html` - 博客页面模板（[预览](/examples/blog.html)）；

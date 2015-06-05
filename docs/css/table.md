@@ -3,6 +3,9 @@
 
 使用时注意 `<table>` HTML 结构的完整性。
 
+**表格相关 JS 插件：**
+- [jQuery DataTables](https://github.com/amazeui/datatables)
+
 ## 基本样式
 
 添加 `.am-table`。

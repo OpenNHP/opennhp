@@ -760,7 +760,7 @@ CSS Image Replacement 是一个历史悠久的技术，也随着前端技术的�
 `````html
 <div class="am-cf">
   <p class="am-align-left">
-    <img src="http://s.cn.bing.net/az/hprichbg/rb/TheLuxorHotel_ZH-CN12121725266_1920x1080.jpg" alt="" width="240"/>
+    <img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" alt="" width="240"/>
   </p>
   <p style="margin-top: 0">那时候刚好下着雨，柏油路面湿冷冷的，还闪烁着青、黄、红颜色的灯火。我们就在骑楼下躲雨，看绿色的邮筒孤独地站在街的对面。我白色风衣的大口袋里有一封要寄给南部的母亲的信。樱子说她可以撑伞过去帮我寄信。我默默点头。</p>
 
@@ -771,7 +771,7 @@ CSS Image Replacement 是一个历史悠久的技术，也随着前端技术的�
   <p>虽然是春天，好像已是秋深了。</p>
 
   <div class="am-align-right">
-    <img src="http://global.bing.com/az/hprichbg/rb/DumbartonOaksGardens_EN-US12360736195_1920x1080.jpg" alt="" width="240"/>
+    <img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg" alt="" width="240"/>
   </div>
 
   <p>

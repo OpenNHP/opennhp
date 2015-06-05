@@ -171,7 +171,8 @@ Selected.prototype.renderOptions = function() {
   // 单选框使用 JS 禁用已经选择的 option 以后，
   // 浏览器会重新选定第一个 option，但有一定延迟，致使 JS 获取 value 时返回 null
   if (!this.multiple && ($element.val() === null)) {
-    this.$originalOptions.get(0).selected = true;
+    this.$originalOptions.length &&
+    (this.$originalOptions.get(0).selected = true);
   }
 
   function pushOption(index, item, group) {

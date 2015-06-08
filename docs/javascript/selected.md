@@ -123,7 +123,7 @@ doc: docs/javascript/selected.md
 - `btnStyle`: 按钮风格，`[primary|secondary|success|warning|danger]`
 
 `````html
-<select data-am-selected="{btnWidth: 300, btnSize: 'sm', btnStyle: 'secondary'}">
+<select data-am-selected="{btnWidth: '40%', btnSize: 'sm', btnStyle: 'secondary'}">
   <option value="a">Apple</option>
   <option value="b">Banana</option>
   <option value="o">Orange</option>
@@ -131,7 +131,7 @@ doc: docs/javascript/selected.md
 </select>
 `````
 ```html
-<select data-am-selected="{btnWidth: 300, btnSize: 'sm', btnStyle: 'secondary'}">
+<select data-am-selected="{btnWidth: '40%', btnSize: 'sm', btnStyle: 'secondary'}">
   <option value="a">Apple</option>
   <option value="b">Banana</option>
   <option value="o">Orange</option>
@@ -407,3 +407,18 @@ $(function() {
 - `btnStyle: 'default'`: 按钮样式，可选值为 `primary|secondary|success|warning|danger`
 - `maxHeight: null`: 列表最大高度
 - `dropUp: 0`: 是否为上拉，默认为 `0` (`false`)
+
+`````html
+      <form data-am-validator>
+        <select id="city" data-am-selected="{btnWidth: '200px', btnSize: 'lg', btnStyle: ''}">
+          <option value="a">Apple</option>
+          <option value="b">Banana</option>
+          <option value="o">Orange</option>
+          <option value="m">Mango</option>
+          <option value="phone">iPhone</option>
+          <option value="im">iMac</option>
+          <option value="mbp">Macbook Pro</option>
+        </select>
+
+      </form>
+`````

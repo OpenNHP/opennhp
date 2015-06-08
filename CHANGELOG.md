@@ -1,12 +1,19 @@
 # Amaze UI Change Log
 ---
 
+### 2015.06 W2
+
+**JS:**
+
+- `Fixed` #579 Selected 初始化时触发 `change` 事件问题；
+- `Fixed` Selected 设置 `btnWidth` 使用百分比无效问题。
+
 ### 2015.06 W1
 
 **JS:**
 
 - `New` #589 Modal 增加「确定」、「取消」时是否关闭的选项；
-- `Fixed` 修复使用 `<select> 选项为空时 Selected 报错问题。
+- `Fixed` 修复使用 `<select>` 选项为空时 Selected 报错问题。
 
 ## Amaze UI 2.4.0 (2015.06.01)
 

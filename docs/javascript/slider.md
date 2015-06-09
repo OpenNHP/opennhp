@@ -28,10 +28,10 @@ doc: docs/javascript/slider.md
 `````html
 <div class="am-slider am-slider-default" data-am-flexslider>
   <ul class="am-slides">
-    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" /></li>
-    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg" /></li>
-    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg" /></li>
-    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/bing-1.jpg" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/bing-2.jpg" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/bing-3.jpg" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/bing-4.jpg" /></li>
   </ul>
 </div>
 `````
@@ -178,10 +178,10 @@ slider.removeSlide(obj); 移除 slide
 `````html
 <div class="am-slider am-slider-default" data-am-flexslider="{playAfterPaused: 8000}">
   <ul class="am-slides">
-    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg" /></li>
-    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg" /></li>
-    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg" /></li>
-    <li><img src="http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/bing-1.jpg" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/bing-2.jpg" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/bing-3.jpg" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/bing-4.jpg" /></li>
   </ul>
 </div>
 `````

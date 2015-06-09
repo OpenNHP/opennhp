@@ -25,10 +25,10 @@ img {
 `v2.3` 为解决 [#502](https://github.com/allmobilize/amazeui/issues/502)，基础样式中取消了图片最大宽度设置，新增了 `.am-img-responsive` class。
 
 `````html
-<img src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg" class="am-img-responsive" alt=""/>
+<img src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg" class="am-img-responsive" alt=""/>
 `````
 ```html
-<img src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg" class="am-img-responsive" alt=""/>
+<img src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg" class="am-img-responsive" alt=""/>
 ```
 
 ## 增强样式
@@ -42,17 +42,17 @@ img {
 - `.am-circle`     圆形，一般用于正方形的图片(你要觉得椭圆好看，用在长方形上也可以)
 
 `````html
-<p><img class="am-radius" alt="140*140" src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80" width="140" height="140" />
-<img class="am-round" alt="140*140" src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg?imageView/1/w/1000/h/600/q/80" width="200" height="120"/>
-<img class="am-circle" src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80" width="140" height="140"/></p>
+<p><img class="am-radius" alt="140*140" src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80" width="140" height="140" />
+<img class="am-round" alt="140*140" src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/600/q/80" width="200" height="120"/>
+<img class="am-circle" src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80" width="140" height="140"/></p>
 `````
 ```html
 <p>
-  <img class="am-radius" alt="140*140" src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80" width="140" height="140" />
+  <img class="am-radius" alt="140*140" src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80" width="140" height="140" />
 
-  <img class="am-round" alt="140*140" src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg?imageView/1/w/1000/h/600/q/80" width="200" height="120"/>
+  <img class="am-round" alt="140*140" src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/600/q/80" width="200" height="120"/>
 
-  <img class="am-circle" src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80" width="140" height="140"/>
+  <img class="am-circle" src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80" width="140" height="140"/>
 </p>
 ```
 
@@ -62,11 +62,11 @@ img {
 - `.am-img-thumbnail`   边框
 
 `````html
-<img class="am-img-thumbnail" alt="140*140" src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80" width="140" height="140" />
+<img class="am-img-thumbnail" alt="140*140" src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80" width="140" height="140" />
 
-<img class="am-img-thumbnail am-radius" alt="140*140" src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80" width="140" height="140" />
+<img class="am-img-thumbnail am-radius" alt="140*140" src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80" width="140" height="140" />
 
-<img class="am-img-thumbnail am-circle" alt="140*140" src="http://7jpqbr.com1.z0.glb.clouddn.com/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80" width="140" height="140" />
+<img class="am-img-thumbnail am-circle" alt="140*140" src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80" width="140" height="140" />
 `````
 
 ```html

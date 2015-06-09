@@ -108,7 +108,7 @@
           "desc": "图片标题",
           "data": {
             "content": {
-              "title": "<img src=\"http://amazeui.b0.upaiyun.com/assets/i/brand/amazeui-b.png\"/>",
+              "title": "<img src=\"http://s.amazeui.org/media/i/brand/amazeui-b.png\"/>",
               "nav": [
                 {
                   "title": "more &raquo;",

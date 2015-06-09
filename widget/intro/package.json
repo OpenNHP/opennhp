@@ -32,7 +32,7 @@
       "link": "#more",
       "title": "更多细节"
     },
-    "left": "<img src=\"http://i.static.amazeui.org/assets/i/cpts/intro/WP_Cortana_China.png\" alt=\"小娜\" />",
+    "left": "<img src=\"http://s.amazeui.org/assets/2.x/i/cpts/intro/WP_Cortana_China.png\" alt=\"小娜\" />",
     "right": "<p>Cortana 恐怕是用户急于更新到 WP8.1 Update 开发者预览版的原因之一</p><p>Cortana 中国版特有的新图标（面团，带眼睛，可在 Cortana 设置中切换回圆圈），使用的是中文语言，也同样支持 Cortana 笔记本。</p>"
   },
   "themes": [

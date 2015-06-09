@@ -837,7 +837,7 @@ return $.ajax({
         if ($(validity.field).is('.js-ajax-validate')) {
           // 异步操作必须返回 Deferred 对象
           return $.ajax({
-            url: 'http://7jpqbr.com1.z0.glb.clouddn.com/validate.json',
+            url: 'http://s.amazeui.org/media/i/demos/validate.json',
             // cache: false, 实际使用中请禁用缓存
             dataType: 'json'
           }).then(function(data) {
@@ -881,7 +881,7 @@ $(function() {
       if ($(validity.field).is('.js-ajax-validate')) {
         // 异步操作必须返回 Deferred 对象
         return $.ajax({
-          url: 'http://7jpqbr.com1.z0.glb.clouddn.com/validate.json',
+          url: 'http://s.amazeui.org/media/i/demos/validate.json',
           // cache: false, 实际使用中请禁用缓存
           dataType: 'json'
         }).then(function(data) {

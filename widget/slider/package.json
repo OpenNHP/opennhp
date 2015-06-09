@@ -28,16 +28,16 @@
   "style": "slider.less",
   "demoContent": [
     {
-      "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg"
+      "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg"
     },
     {
-      "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg"
+      "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg"
     },
     {
-      "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg"
+      "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg"
     },
     {
-      "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg"
+      "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg"
     }
   ],
   "themes": [
@@ -142,19 +142,19 @@
             "sliderConfig": "{\"animation\":\"slide\",\"slideshow\":false}",
             "content": [
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg",
                 "desc": "这是标题标题标题标题标题标题标题0"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg",
                 "desc": "这是标题标题标题标题标题标题标题1"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg",
                 "desc": "这是标题标题标题标题标题标题标题2"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg",
                 "desc": "这是标题标题标题标题标题标题标题3"
               }
             ]
@@ -166,29 +166,29 @@
             "sliderConfig": "{\"animation\":\"slide\",\"animationLoop\":false,\"itemWidth\":200,\"itemMargin\":5}",
             "content": [
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg"
               },
               {
-                "thumb": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg",
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg"
+                "thumb": "http://s.amazeui.org/media/i/demos/bing-2.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg"
               }
             ]
           }
@@ -199,20 +199,20 @@
             "sliderConfig": "{\"animation\":\"slide\",\"controlNav\":\"thumbnails\"}",
             "content": [
               {
-                "thumb": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg",
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg"
+                "thumb": "http://s.amazeui.org/media/i/demos/bing-1.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg"
               },
               {
-                "thumb": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg",
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg"
+                "thumb": "http://s.amazeui.org/media/i/demos/bing-2.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg"
               },
               {
-                "thumb": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg",
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg"
+                "thumb": "http://s.amazeui.org/media/i/demos/bing-3.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg"
               },
               {
-                "thumb": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg",
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg"
+                "thumb": "http://s.amazeui.org/media/i/demos/bing-4.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg"
               }
             ]
           }
@@ -601,28 +601,28 @@
             "sliderConfig": "{\"controlNav\":false}",
             "content": [
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg"
+                "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg"
               }
             ]
           }
@@ -731,19 +731,19 @@
             "sliderConfig": "{\"directionNav\":false}",
             "content": [
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg",
                 "desc": "远方 有一个地方 那里种有我们的梦想"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg",
                 "desc": "某天 也许会相遇 相遇在这个好地方"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg",
                 "desc": "不要太担心 只因为我相信 终会走过这条遥远的道路"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg",
                 "desc": "OH PARA PARADISE 是否那么重要 你是否那么地遥远"
               }
             ]
@@ -812,19 +812,19 @@
             "sliderConfig": "{\"directionNav\":false}",
             "content": [
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg",
                 "desc": "远方 有一个地方 那里种有我们的梦想"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg",
                 "desc": "某天 也许会相遇 相遇在这个好地方"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg",
                 "desc": "不要太担心 只因为我相信 终会走过这条遥远的道路"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg",
                 "desc": "OH PARA PARADISE 是否那么重要 你是否那么地遥远"
               }
             ]
@@ -926,19 +926,19 @@
             "sliderConfig": "{\"controlNav\":false}",
             "content": [
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg",
                 "desc": "<div class=\"am-slider-counter\"><span class=\"am-active\">1</span>/4</div>远方 有一个地方 那里种有我们的梦想"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg",
                 "desc": "<div class=\"am-slider-counter\"><span class=\"am-active\">2</span>/4</div>某天 也许会相遇 相遇在这个好地方"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg",
                 "desc": "<div class=\"am-slider-counter\"><span class=\"am-active\">3</span>/4</div>不要太担心 只因为我相信 终会走过这条遥远的道路"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg",
                 "desc": "<div class=\"am-slider-counter\"><span class=\"am-active\">4</span>/4</div>OH PARA PARADISE 是否那么重要 你是否那么地遥远"
               }
             ]
@@ -996,19 +996,19 @@
             "sliderConfig": "{\"controlNav\":false}",
             "content": [
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg",
                 "desc": "远方 有一个地方 那里种有我们的梦想"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg",
                 "desc": "某天 也许会相遇 相遇在这个好地方"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg",
                 "desc": "不要太担心 只因为我相信 终会走过这条遥远的道路"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg",
                 "desc": "OH PARA PARADISE 是否那么重要 你是否那么地遥远"
               }
             ]
@@ -1081,19 +1081,19 @@
             "sliderConfig": "{\"controlNav\":false}",
             "content": [
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg",
                 "desc": "<h2 class=\"am-slider-title\">远方 有一个地方 那里种有我们的梦想</h2><a class=\"am-slider-more\">了解更多</a>"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg",
                 "desc": "<h2 class=\"am-slider-title\">某天 也许会相遇 相遇在这个好地方</h2><a class=\"am-slider-more\">了解更多</a>"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg",
                 "desc": "<h2 class=\"am-slider-title\">不要太担心 只因为我相信 终会走过这条遥远的道路</h2><a class=\"am-slider-more\">了解更多</a>"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg",
                 "desc": "<h2 class=\"am-slider-title\">OH PARA PARADISE 是否那么重要 你是否那么地遥远</h2><a class=\"am-slider-more\">了解更多</a>"
               }
             ]
@@ -1184,19 +1184,19 @@
             "sliderConfig": "{\"directionNav\":false}",
             "content": [
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg",
                 "desc": "<div class=\"am-slider-content\"><h2 class=\"am-slider-title\">远方 有一个地方 那里种有我们的梦想</h2><p>内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内</p></div><a class=\"am-slider-more\">了解更多</a>"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg",
                 "desc": "<div class=\"am-slider-content\"><h2 class=\"am-slider-title\">某天 也许会相遇 相遇在这个好地方</h2><p>内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内</p></div><a class=\"am-slider-more\">了解更多</a>"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg",
                 "desc": "<div class=\"am-slider-content\"><h2 class=\"am-slider-title\">不要太担心 只因为我相信 终会走过这条遥远的道路</h2><p>内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内</p></div><a class=\"am-slider-more\">了解更多</a>"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg",
                 "desc": "<div class=\"am-slider-content\"><h2 class=\"am-slider-title\">OH PARA PARADISE 是否那么重要 你是否那么地遥远</h2><p>内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内</p></div><a class=\"am-slider-more\">了解更多</a>"
               }
             ]
@@ -1247,23 +1247,23 @@
             "sliderConfig": "{\"controlNav\":\"thumbnails\",\"directionNav\":false}",
             "content": [
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg",
-                "thumb": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg",
+                "thumb": "http://s.amazeui.org/media/i/demos/bing-1.jpg",
                 "desc": "<h2 class=\"am-slider-title\">远方 有一个地方 那里种有我们的梦想</h2><p>内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内</p>"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg",
-                "thumb": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg",
+                "thumb": "http://s.amazeui.org/media/i/demos/bing-2.jpg",
                 "desc": "<h2 class=\"am-slider-title\">某天 也许会相遇 相遇在这个好地方</h2><p>内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内</p>"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg",
-                "thumb": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg",
+                "thumb": "http://s.amazeui.org/media/i/demos/bing-3.jpg",
                 "desc": "<h2 class=\"am-slider-title\">不要太担心 只因为我相信 终会走过这条遥远的道路</h2><p>内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内</p>"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg",
-                "thumb": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg",
+                "thumb": "http://s.amazeui.org/media/i/demos/bing-4.jpg",
                 "desc": "<h2 class=\"am-slider-title\">OH PARA PARADISE 是否那么重要 你是否那么地遥远</h2><p>内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内容内</p>"
               }
             ]
@@ -1311,19 +1311,19 @@
             "sliderConfig": "{\"directionNav\":false}",
             "content": [
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-1.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-1.jpg",
                 "desc": "<h2 class=\"am-slider-title\">远方 有一个地方 那里种有我们的梦想</h2>"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-2.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-2.jpg",
                 "desc": "<h2 class=\"am-slider-title\">某天 也许会相遇 相遇在这个好地方</h2>"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-3.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-3.jpg",
                 "desc": "<h2 class=\"am-slider-title\">不要太担心 只因为我相信 终会走过这条遥远的道路</h2>"
               },
               {
-                "img": "http://7jpqbr.com1.z0.glb.clouddn.com/bing-4.jpg",
+                "img": "http://s.amazeui.org/media/i/demos/bing-4.jpg",
                 "desc": "<h2 class=\"am-slider-title\">OH PARA PARADISE 是否那么重要 你是否那么地遥远</h2>"
               }
             ]

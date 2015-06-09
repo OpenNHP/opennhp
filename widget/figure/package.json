@@ -27,8 +27,8 @@
   ],
   "style": "figure.less",
   "demoContent": {
-    "img": "http://amui.qiniudn.com/pure-1.jpg?imageView2/0/w/640",
-    "rel": "http://amui.qiniudn.com/pure-1.jpg",
+    "img": "http://s.amazeui.org/media/i/demos/pure-1.jpg?imageView2/0/w/640",
+    "rel": "http://s.amazeui.org/media/i/demos/pure-1.jpg",
     "figcaption": "春天的花开秋天的风以及冬天的落阳"
   },
   "themes": [

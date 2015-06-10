@@ -10,6 +10,7 @@ var format = require('util').format;
 var browserify = require('browserify');
 var watchify = require('watchify');
 var collapser = require('bundle-collapser/plugin');
+var derequire = require('derequire/plugin');
 var del = require('del');
 var bistre = require('bistre');
 var source = require('vinyl-source-stream');
@@ -219,8 +220,8 @@ var bundleInit = function() {
     });
   }
 
-  b.plugin(collapser);
-  b.plugin('browserify-derequire');
+  // b.plugin(collapser);
+  b.plugin(derequire);
   b.on('log', $.util.log);
   bundle(b);
 };

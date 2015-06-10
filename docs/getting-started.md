@@ -50,7 +50,7 @@ Gulp、NPM 构建的前端开发工作流，点击[访问项目主页](https://g
 
 ### 使用 CDN
 
-Amaze UI CDN： 域名解析服务由 DNSPod 提供，CDN 存储由又拍云提供。
+Amaze UI CDN： 域名解析服务由 DNSPod 提供，CDN 存储由~~又拍云~~七牛提供。
 
 ```html
 http://cdn.amazeui.org/amazeui/__VERSION__/css/amazeui.css

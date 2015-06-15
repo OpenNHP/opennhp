@@ -1,6 +1,13 @@
 # Amaze UI Change Log
 ---
 
+### 2015.06 W3
+
+**CSS:**
+
+- `New` Table 所有单元格居中对齐样式 `.am-table-centered`；
+- `Improved` Table 全边框样式包含 `rowspan` 时后面几行第一列不显示边框问题。
+
 ### 2015.06 W2
 
 **JS:**

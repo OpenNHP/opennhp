@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+### 2015.06 W4
+
+**JS:**
+
+- [Fixed] #628 修复 Sticky 获取元素高度不准确问题。
+
 ### 2015.06 W3
 
 **CSS:**

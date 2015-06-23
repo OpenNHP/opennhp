@@ -169,7 +169,10 @@ Sticky.prototype.checkPosition = function() {
     this.reset();
   }
 
-  this.$holder.height($element.is(':visible') ? $element.height() : 0);
+  this.$holder.css({
+    height: $element.css('position') !== 'absolute' ?
+      $element.outerHeight() : ''
+  });
 
   if (checkResult) {
     $element.css({

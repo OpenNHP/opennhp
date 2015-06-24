@@ -1100,6 +1100,20 @@ $('#xx').validator({
 </form>
 ```
 
+### 方法
+
+- `.validator(options)` - 初始化表单验证
+- `.validator('isFormValid')` - 返回表单验证状态，如果包含异步验证则返回 Promise（使用 `jQuery.when` 处理），否则返回布尔值
+
+  ```js
+  // 处理异步验证结果
+  $.when($('myForm').validator('isFormValid')).then(function() {
+    // 验证成功的逻辑
+  }, function() {
+    // 验证失败的逻辑
+  });
+  ```
+
 ## Issue 测试
 
 ### [#528](https://github.com/allmobilize/amazeui/issues/528)

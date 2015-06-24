@@ -169,6 +169,46 @@ UI.utils.generateGUID = function(namespace) {
   return uid;
 };
 
+/**
+ * plugin AMUI Component to jQuery
+ * @param {string} name
+ * @param {function} Component
+ */
+UI.plugin = function(name, Component) {
+  var old = $.fn[name];
+
+  $.fn[name] = function(option) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    var propReturn;
+    var $set = this.each(function() {
+      var $this = $(this);
+      var dataName = 'amui.' + name;
+      var data = $this.data(dataName);
+      var options = typeof option === 'object' && option || {};
+
+      if (!data) {
+        $this.data(dataName, (data = new Component(this, options)));
+      }
+
+      if (typeof option === 'string') {
+        propReturn = data[option].apply(data, args);
+      }
+    });
+
+    return (propReturn === undefined) ? $set : propReturn;
+  };
+
+  $.fn[name].Constructor = Component;
+
+  // no conflict
+  $.fn[name].noConflict = function() {
+    $.fn[name] = old;
+    return this;
+  };
+
+  UI[name] = Component;
+};
+
 // http://blog.alexmaccaw.com/css-transitions
 $.fn.emulateTransitionEnd = function(duration) {
   var called = false;

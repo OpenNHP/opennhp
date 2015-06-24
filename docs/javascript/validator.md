@@ -562,15 +562,17 @@ $(function() {
   var $tooltip = $('<div id="vld-tooltip">提示信息！</div>');
   $tooltip.appendTo(document.body);
 
-  $form.validator();
-
-  var validator = $form.data('amui.validator');
+  $form.validator({
+    onValid: function() {
+      $tooltip.hide();
+    }
+  });
 
   $form.on('focusin focusout', '.am-form-error input', function(e) {
     if (e.type === 'focusin') {
       var $this = $(this);
       var offset = $this.offset();
-      var msg = $this.data('foolishMsg') || validator.getValidationMessage($this.data('validity'));
+      var msg = $this.data('foolishMsg') || $form.validator('getValidationMessage', $this.data('validity'));
 
       $tooltip.text(msg).show().css({
         left: offset.left + 10,
@@ -1099,6 +1101,20 @@ $('#xx').validator({
   </div>
 </form>
 ```
+
+### 方法
+
+- `.validator(options)` - 初始化表单验证
+- `.validator('isFormValid')` - 返回表单验证状态，如果包含异步验证则返回 Promise（使用 `jQuery.when` 处理），否则返回布尔值
+
+  ```js
+  // 处理异步验证结果
+  $.when($('myForm').validator('isFormValid')).then(function() {
+    // 验证成功的逻辑
+  }, function() {
+    // 验证失败的逻辑
+  });
+  ```
 
 ## Issue 测试
 

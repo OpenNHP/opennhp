@@ -545,6 +545,12 @@ Validator.prototype.getValidationMessage = function(validity) {
   return message;
 };
 
+// remove valid mark
+Validator.prototype.removeMark = function() {
+  this.$element.find('.am-form-success, .am-form-error, .am-field-error')
+    .removeClass('am-form-success am-form-error am-field-error');
+};
+
 UI.plugin('validator', Validator);
 
 // init code

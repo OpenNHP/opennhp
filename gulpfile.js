@@ -77,7 +77,7 @@ var banner = [
   '/*! <%= pkg.title %> v<%= pkg.version %><%=ver%>',
   'by Amaze UI Team',
   '(c) ' + $.util.date(Date.now(), 'UTC:yyyy') + ' AllMobilize, Inc.',
-  'Licensed under <%= pkg.license.type %>',
+  'Licensed under <%= pkg.license %>',
   $.util.date(Date.now(), dateFormat) + ' */ \n'
 ].join(' | ');
 
@@ -220,8 +220,8 @@ var bundleInit = function() {
     });
   }
 
-  // b.plugin(collapser);
   b.plugin(derequire);
+  b.plugin(collapser);
   b.on('log', $.util.log);
   bundle(b);
 };

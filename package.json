@@ -83,8 +83,5 @@
   "browserify-shim": {
     "jquery": "global:jQuery"
   },
-  "license": {
-    "type": "MIT",
-    "url": "https://github.com/allmobilize/amazeui/blob/master/LICENSE.md"
-  }
+  "license": "MIT"
 }

@@ -183,8 +183,11 @@ UI.plugin = function(name, Component) {
     var $set = this.each(function() {
       var $this = $(this);
       var dataName = 'amui.' + name;
+      var dataOptionsName = 'data-am-' + name;
       var data = $this.data(dataName);
-      var options = typeof option === 'object' && option || {};
+      var options = $.extend({},
+        UI.utils.parseOptions($this.attr(dataOptionsName)),
+        typeof option === 'object' && option);
 
       if (!data) {
         $this.data(dataName, (data = new Component(this, options)));

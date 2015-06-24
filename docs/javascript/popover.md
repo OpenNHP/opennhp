@@ -78,7 +78,7 @@ $(function() {
 
 #### 参数说明
 
-<table class="am-table am-table-bd am-table-striped">
+<table class="am-table am-table-bordered am-table-striped">
   <thead>
   <tr>
     <th>参数</th>
@@ -106,12 +106,13 @@ $(function() {
 - `.popover('toggle')` - 交替 Popover 状态
 - `.popover('open')` - 显示 Popover
 - `.popover('close')` - 关闭 Popover
+- `.popover('setContent', content)` - 设置弹出层内容 <span class="am-badge am-badge-danger">v2.4.1+</span>
 
 #### 自定义事件
 
 事件定义在触发 Popover 交互的元素上。
 
-<table class="am-table am-table-bd am-table-striped">
+<table class="am-table am-table-bordered am-table-striped">
   <thead>
   <tr>
     <th>事件名称</th>

@@ -1,4 +1,5 @@
 'use strict';
+
 var $ = require('jquery');
 var UI = require('./core');
 var $w = $(window);
@@ -9,13 +10,13 @@ var $w = $(window);
  */
 
 var Popover = function(element, options) {
-  this.options = $.extend({}, Popover.DEFAULTS, options || {});
+  this.options = $.extend({}, Popover.DEFAULTS, options);
   this.$element = $(element);
   this.active = null;
   this.$popover = (this.options.target && $(this.options.target)) || null;
 
   this.init();
-  this.events();
+  this._bindEvents();
 };
 
 Popover.DEFAULTS = {
@@ -30,7 +31,7 @@ Popover.DEFAULTS = {
 };
 
 Popover.prototype.init = function() {
-  var me = this;
+  var _this = this;
   var $element = this.$element;
   var $popover;
 
@@ -46,7 +47,7 @@ Popover.prototype.init = function() {
   this.sizePopover();
 
   function sizePopover() {
-    me.sizePopover();
+    _this.sizePopover();
   }
 
   // TODO: 监听页面内容变化，重新调整位置
@@ -173,10 +174,10 @@ Popover.prototype.close = function() {
 
   this.$element.trigger('close.popover.amui');
 
-  $popover.
-    removeClass('am-active').
-    trigger('closed.popover.amui').
-    hide();
+  $popover
+    .removeClass('am-active')
+    .trigger('closed.popover.amui')
+    .hide();
 
   this.active = false;
 };
@@ -190,16 +191,17 @@ Popover.prototype.getPopover = function() {
       theme.push('am-popover-' + $.trim(item));
     });
   }
+
   return $(this.options.tpl).attr('id', uid).addClass(theme.join(' '));
 };
 
 Popover.prototype.setContent = function(content) {
   content = content || this.options.content;
-  this.$popover && this.$popover.find('.am-popover-inner').empty().
-    html(content);
+  this.$popover && this.$popover.find('.am-popover-inner')
+    .empty().html(content);
 };
 
-Popover.prototype.events = function() {
+Popover.prototype._bindEvents = function() {
   var eventNS = 'popover.amui';
   var triggers = this.options.trigger.split(' ');
 
@@ -218,31 +220,11 @@ Popover.prototype.events = function() {
   }
 };
 
-function Plugin(option) {
-  return this.each(function() {
-    var $this = $(this);
-    var data = $this.data('amui.popover');
-    var options = $.extend({},
-      UI.utils.parseOptions($this.attr('data-am-popover')),
-      typeof option == 'object' && option);
-
-    if (!data) {
-      $this.data('amui.popover', (data = new Popover(this, options)));
-    }
-
-    if (typeof option == 'string') {
-      data[option] && data[option]();
-    }
-  });
-}
-
-$.fn.popover = Plugin;
+UI.plugin('popover', Popover);
 
 // Init code
 UI.ready(function(context) {
   $('[data-am-popover]', context).popover();
 });
-
-$.AMUI.popover = Popover;
 
 module.exports = Popover;

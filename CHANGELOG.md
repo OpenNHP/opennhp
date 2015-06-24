@@ -5,6 +5,7 @@
 
 **JS:**
 
+- [New] Popover 可以通过 `.popover('setContent', content)` 方法设置内容；
 - [Fixed] #628 修复 Sticky 获取元素高度不准确问题。
 
 ### 2015.06 W3

@@ -171,9 +171,10 @@ UI.utils.generateGUID = function(namespace) {
 
 /**
  * plugin AMUI Component to jQuery
- * @param {string} name
- * @param {function} Component
- * @param {function} internal
+ * @param {String} name - plugin name
+ * @param {Function} Component - plugin constructor
+ * @param {Function} [internal]
+ * @since v2.4.1
  */
 UI.plugin = function UIPlugin(name, Component, internal) {
   var old = $.fn[name];
@@ -573,7 +574,5 @@ $(function() {
     }
   });
 });
-
-$.AMUI = UI;
 
 module.exports = UI;

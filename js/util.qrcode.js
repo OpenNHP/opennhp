@@ -11,8 +11,9 @@ var qrcodeAlgObjCache = [];
 
 /**
  * 二维码构造函数，主要用于绘制
- * @param  {参数列表} opt 传递参数
- * @return {}
+ * @param  {Object} opt 传递参数
+ * @return {String} qrcode
+ * @constructor
  */
 var QRCode = function(opt) {
   if (typeof opt === 'string') { // 只编码ASCII字符串
@@ -2447,7 +2448,7 @@ QRCodeAlg.prototype.getRightType = function() {
   for (var typeNumber = 1; typeNumber < 41; typeNumber++) {
     var rsBlock = RS_BLOCK_TABLE[(typeNumber - 1) * 4 + this.errorCorrectLevel];
     if (rsBlock == undefined) {
-      throw new Error("bad rs block @ typeNumber:" + typeNumber + "/errorCorrectLevel:" + this.errorCorrectLevel);
+      throw new Error('bad rs block @ typeNumber:' + typeNumber + '/errorCorrectLevel:' + this.errorCorrectLevel);
     }
     var length = rsBlock.length / 3;
     var totalDataCount = 0;
@@ -2467,9 +2468,9 @@ QRCodeAlg.prototype.getRightType = function() {
   }
 };
 
-//---------------------------------------------------------------------
+// ---------------------------------------------------------------------
 // QRBitBuffer
-//---------------------------------------------------------------------
+// ---------------------------------------------------------------------
 
 function QRBitBuffer() {
   this.buffer = new Array();
@@ -2477,7 +2478,6 @@ function QRBitBuffer() {
 }
 
 QRBitBuffer.prototype = {
-
   get: function(index) {
     var bufIndex = Math.floor(index / 8);
     return ((this.buffer[bufIndex] >>> (7 - index % 8)) & 1);

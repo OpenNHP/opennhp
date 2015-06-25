@@ -102,7 +102,7 @@ var preparingData = function() {
 
   plugins = _.union(config.js.base, fs.readdirSync('./js'));
 
-  jsEntry += '\'use strict\';\n\n' + 'var $ = require(\'jquery\');\n\n';
+  jsEntry += '\'use strict\';\n\n' + 'var $ = require(\'jquery\');\n';
 
   plugins.forEach(function(plugin, i) {
     var basename = path.basename(plugin, '.js');
@@ -145,7 +145,7 @@ var preparingData = function() {
   });
 
   // end jsEntry
-  jsEntry += '\n$.AMUI = module.exports = UI;\n';
+  jsEntry += '\nmodule.exports = $.AMUI = UI;\n';
   fs.writeFileSync(path.join('./js/amazeui.js'), jsEntry);
 
   partials += '  };\n\n';

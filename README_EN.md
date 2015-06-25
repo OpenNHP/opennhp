@@ -1,5 +1,6 @@
 <h1><a href="http://amazeui.org/" title="Amaze UI 官网"><img style="float: left" width="240" src="https://raw.githubusercontent.com/allmobilize/amazeui/master/vendor/amazeui/amazeui-b.png" alt="Amaze UI Logo"/></a></h1>
-([Homepage in English](http://translate.google.com/translate?hl=en&sl=zh-CN&u=http://amazeui.org/&prev=search) translated by Google)
+- [Homepage in English](http://translate.google.com/translate?hl=en&sl=zh-CN&u=http://amazeui.org/&prev=search) translated by Google
+- [Homepage in English](http://www.microsofttranslator.com/bv.aspx?from=zh-CHS&to=en&a=http%3A%2F%2Famazeui.org%2F) translated by Bing
 
 Amaze UI is an open-sourced responsive front-end framework.
 

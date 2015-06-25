@@ -1,8 +1,7 @@
 'use strict';
 
-var $ = require('jquery');
-require('../../../js/core');
+var UI = require('../../../js/core');
 
-module.exports = $.AMUI.pagination = {
+module.exports = UI.pagination = {
   VERSION: '3.0.1'
 };

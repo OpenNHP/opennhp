@@ -30,7 +30,7 @@ function footerInit() {
 
 $(footerInit);
 
-module.exports = $.AMUI.footer = {
+module.exports = UI.footer = {
   VERSION: '3.1.2',
   init: footerInit
 };

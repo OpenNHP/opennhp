@@ -108,7 +108,8 @@ var preparingData = function() {
     var basename = path.basename(plugin, '.js');
 
     if (basename !== 'amazeui' && basename !== 'amazeui.legacy') {
-      jsEntry += 'require("./' + basename + '");\n';
+      jsEntry += (basename === 'core' ? 'var UI = ' : '') +
+        'require("./' + basename + '");\n';
     }
   });
 
@@ -144,7 +145,7 @@ var preparingData = function() {
   });
 
   // end jsEntry
-  jsEntry += '\nmodule.exports = $.AMUI;\n';
+  jsEntry += '\n$.AMUI = module.exports = UI;\n';
   fs.writeFileSync(path.join('./js/amazeui.js'), jsEntry);
 
   partials += '  };\n\n';

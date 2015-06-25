@@ -2490,6 +2490,4 @@ extend(Hammer, {
   })(Hammer.Manager.prototype.emit);
 })($, Hammer);
 
-$.AMUI.Hammer = Hammer;
-
-module.exports = Hammer;
+module.exports = UI.Hammer = Hammer;

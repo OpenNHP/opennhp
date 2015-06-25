@@ -89,7 +89,7 @@ ScrollSpyNav.prototype.scrollProcess = function() {
   var options = this.options;
 
   // smoothScroll
-  if (options.smooth) {
+  if (options.smooth && $.fn.smoothScroll) {
     $links.on('click', function(e) {
       e.preventDefault();
 
@@ -109,35 +109,12 @@ ScrollSpyNav.prototype.scrollProcess = function() {
 };
 
 // ScrollSpyNav Plugin
-function Plugin(option) {
-  return this.each(function() {
-    var $this = $(this);
-    var data = $this.data('amui.scrollspynav');
-    var options = typeof option == 'object' && option;
-
-    if (!data) {
-      $this.data('amui.scrollspynav', (data = new ScrollSpyNav(this, options)));
-    }
-
-    if (typeof option == 'string') {
-      data[option]();
-    }
-  });
-}
-
-$.fn.scrollspynav = Plugin;
+UI.plugin('scrollspynav', ScrollSpyNav);
 
 // Init code
 UI.ready(function(context) {
-  $('[data-am-scrollspy-nav]', context).each(function() {
-    var $this = $(this);
-    var options = UI.utils.options($this.data('amScrollspyNav'));
-
-    Plugin.call($this, options);
-  });
+  $('[data-am-scrollspy-nav]', context).scrollspynav();
 });
-
-$.AMUI.scrollspynav = ScrollSpyNav;
 
 module.exports = ScrollSpyNav;
 

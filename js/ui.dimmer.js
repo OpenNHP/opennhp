@@ -100,8 +100,4 @@ Dimmer.prototype.resetScrollbar = function() {
   return this;
 };
 
-var dimmer = new Dimmer();
-
-$.AMUI.dimmer = dimmer;
-
-module.exports = dimmer;
+module.exports = UI.dimmer = new Dimmer();

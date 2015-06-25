@@ -961,9 +961,7 @@ IScroll.prototype = {
 
 IScroll.utils = utils;
 
-$.AMUI.iScroll = IScroll;
-
-module.exports = IScroll;
+module.exports = UI.iScroll = IScroll;
 
 /* jshint unused: true */
 /* jshint +W101, +W116, +W109 */

@@ -173,8 +173,9 @@ UI.utils.generateGUID = function(namespace) {
  * plugin AMUI Component to jQuery
  * @param {string} name
  * @param {function} Component
+ * @param {function} internal
  */
-UI.plugin = function(name, Component) {
+UI.plugin = function UIPlugin(name, Component, internal) {
   var old = $.fn[name];
 
   $.fn[name] = function(option) {
@@ -189,6 +190,10 @@ UI.plugin = function(name, Component) {
         UI.utils.parseOptions($this.attr(dataOptionsName)),
         typeof option === 'object' && option);
 
+      if (!data && option === 'destroy') {
+        return;
+      }
+
       if (!data) {
         $this.data(dataName, (data = new Component(this, options)));
       }
@@ -196,6 +201,8 @@ UI.plugin = function(name, Component) {
       if (typeof option === 'string') {
         propReturn = data[option].apply(data, args);
       }
+
+      internal && internal.call($this);
     });
 
     return (propReturn === undefined) ? $set : propReturn;
@@ -206,6 +213,7 @@ UI.plugin = function(name, Component) {
   // no conflict
   $.fn[name].noConflict = function() {
     $.fn[name] = old;
+    console.log(this);
     return this;
   };
 

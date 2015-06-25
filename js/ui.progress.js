@@ -387,6 +387,4 @@ var Progress = (function() {
   return NProgress;
 })();
 
-$.AMUI.progress = Progress;
-
-module.exports = Progress;
+module.exports = UI.progress = Progress;

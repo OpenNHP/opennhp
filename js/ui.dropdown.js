@@ -195,25 +195,7 @@ Dropdown.prototype.events = function() {
 };
 
 // Dropdown Plugin
-function Plugin(option) {
-  return this.each(function() {
-    var $this = $(this);
-    var data = $this.data('amui.dropdown');
-    var options = $.extend({},
-      UI.utils.parseOptions($this.attr('data-am-dropdown')),
-      typeof option == 'object' && option);
-
-    if (!data) {
-      $this.data('amui.dropdown', (data = new Dropdown(this, options)));
-    }
-
-    if (typeof option == 'string') {
-      data[option]();
-    }
-  });
-}
-
-$.fn.dropdown = Plugin;
+UI.plugin('dropdown', Dropdown);
 
 // Init code
 UI.ready(function(context) {
@@ -225,9 +207,7 @@ $(document).on('click.dropdown.amui.data-api', '.am-dropdown form',
     e.stopPropagation();
   });
 
-$.AMUI.dropdown = Dropdown;
-
-module.exports = Dropdown;
+module.exports = UI.dropdown = Dropdown;
 
 // TODO: 1. 处理链接 focus
 //       2. 增加 mouseenter / mouseleave 选项

@@ -1,9 +1,8 @@
 'use strict';
 
 var $ = require('jquery');
-require('../../../js/core');
+var UI = require('../../../js/core');
 require('../../../js/ui.pureview');
-var UI = $.AMUI;
 
 function galleryInit() {
   var $gallery = $('[data-am-widget="gallery"]');
@@ -20,7 +19,7 @@ function galleryInit() {
 
 $(galleryInit);
 
-module.exports = $.AMUI.gallery = {
+module.exports = UI.gallery = {
   VERSION: '3.0.0',
   init: galleryInit
 };

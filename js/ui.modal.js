@@ -288,6 +288,4 @@ $doc.on('click.modal.amui.data-api', '[data-am-modal]', function() {
   Plugin.call($target, option, this);
 });
 
-$.AMUI.modal = Modal;
-
-module.exports = Modal;
+module.exports = UI.modal = Modal;

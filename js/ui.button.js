@@ -132,6 +132,4 @@ UI.ready(function(context) {
   });
 });
 
-$.AMUI.button = Button;
-
-module.exports = Button;
+module.exports = UI.button = Button;

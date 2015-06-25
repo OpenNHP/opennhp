@@ -750,6 +750,4 @@ var definePinchZoom = function($) {
   return PinchZoom;
 };
 
-$.AMUI.pichzoom = definePinchZoom($);
-
-module.exports = definePinchZoom($);
+module.exports = UI.pichzoom = definePinchZoom($);

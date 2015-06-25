@@ -349,6 +349,4 @@ $doc.on('click.share.amui.data-api', '[data-am-toggle="share"]', function(e) {
   share.toggle();
 });
 
-$.AMUI.share = share;
-
-module.exports = share;
+module.exports = UI.share = share;

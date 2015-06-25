@@ -650,33 +650,15 @@ DPGlobal.contTemplate +
 '</div>' +
 '</div>';
 
-$.fn.datepicker = function(option, val) {
-  return this.each(function() {
-    var $this = $(this);
-    var data = $this.data('amui.datepicker');
-
-    var options = $.extend({},
-      UI.utils.options($this.data('amDatepicker')),
-      typeof option === 'object' && option);
-    if (!data) {
-      $this.data('amui.datepicker', (data = new Datepicker(this, options)));
-    }
-    if (typeof option === 'string') {
-      data[option] && data[option](val);
-    }
-  });
-};
-
-$.fn.datepicker.Constructor = Datepicker;
+// jQuery plugin
+UI.plugin('datepicker', Datepicker);
 
 // Init code
 UI.ready(function(context) {
   $('[data-am-datepicker]').datepicker();
 });
 
-$.AMUI.datepicker = Datepicker;
-
-module.exports = Datepicker;
+module.exports = UI.datepicker = Datepicker;
 
 // TODO: 1. 载入动画
 //       2. less 优化

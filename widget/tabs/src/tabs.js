@@ -1,7 +1,7 @@
 'use strict';
 
 var $ = require('jquery');
-require('../../../js/core');
+var UI = require('../../../js/core');
 require('../../../js/ui.tabs');
 
 function tabsInit() {
@@ -13,7 +13,7 @@ function tabsInit() {
 
 $(tabsInit);
 
-module.exports = $.AMUI.tab = {
+module.exports = UI.tab = {
   VERSION: '4.0.1',
   init: tabsInit
 };

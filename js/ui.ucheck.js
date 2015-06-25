@@ -7,8 +7,8 @@ var UI = require('./core');
  * UCheck
  * @via https://github.com/designmodo/Flat-UI/blob/8ef98df23ba7f5033e596a9bd05b53b535a9fe99/js/radiocheck.js
  * @license CC BY 3.0 & MIT
- * @param element
- * @param options
+ * @param {HTMLElement} element
+ * @param {object} options
  * @constructor
  */
 
@@ -73,43 +73,20 @@ UCheck.prototype.destroy = function() {
     end().trigger('destroyed.ucheck.amui');
 };
 
-function Plugin(option) {
-  return this.each(function() {
-    var $this = $(this);
-    var data = $this.data('amui.ucheck');
-    var options = $.extend({}, UI.utils.parseOptions($this.data('amUcheck')),
-      typeof option === 'object' && option);
-
-    if (!data && option === 'destroy') {
-      return;
-    }
-
-    if (!data) {
-      $this.data('amui.ucheck', (data = new UCheck(this, options)));
-    }
-
-    if (typeof option == 'string') {
-      data[option] && data[option]();
-    }
-
-    // Adding 'am-nohover' class for touch devices
-    if (UI.support.touch) {
-      $this.parent().hover(function() {
-        $this.addClass('am-nohover');
-      }, function() {
-        $this.removeClass('am-nohover');
-      });
-    }
-  });
-}
-
-$.fn.uCheck = Plugin;
+UI.plugin('uCheck', UCheck, function() {
+  // Adding 'am-nohover' class for touch devices
+  if (UI.support.touch) {
+    this.parent().hover(function() {
+      this.addClass('am-nohover');
+    }, function() {
+      this.removeClass('am-nohover');
+    });
+  }
+});
 
 UI.ready(function(context) {
   $('[data-am-ucheck]', context).uCheck();
 });
-
-$.AMUI.uCheck = UCheck;
 
 module.exports = UCheck;
 

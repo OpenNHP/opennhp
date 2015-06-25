@@ -1,9 +1,8 @@
 'use strict';
 
-require('../../../js/core');
-require('../../../js/ui.collapse');
 var $ = require('jquery');
-var UI = $.AMUI;
+var UI = require('../../../js/core');
+require('../../../js/ui.collapse');
 
 function accordionInit() {
   var $accordion = $('[data-am-widget="accordion"]');
@@ -46,7 +45,7 @@ function accordionInit() {
 // Init on DOM ready
 $(accordionInit);
 
-module.exports = $.AMUI.accordion = {
+module.exports = UI.accordion = {
   VERSION: '2.1.0',
   init: accordionInit
 };

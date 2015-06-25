@@ -199,34 +199,11 @@ Sticky.prototype.checkPosition = function() {
 };
 
 // Sticky Plugin
-function Plugin(option) {
-  return this.each(function() {
-    var $this = $(this);
-    var data = $this.data('amui.sticky');
-    var options = typeof option == 'object' && option;
-
-    if (!data) {
-      $this.data('amui.sticky', (data = new Sticky(this, options)));
-    }
-
-    if (typeof option == 'string') {
-      data[option]();
-    }
-  });
-}
-
-$.fn.sticky = Plugin;
+UI.plugin('sticky', Sticky);
 
 // Init code
 $(window).on('load', function() {
-  $('[data-am-sticky]').each(function() {
-    var $this = $(this);
-    var options = UI.utils.options($this.attr('data-am-sticky'));
-
-    Plugin.call($this, options);
-  });
+  $('[data-am-sticky]').sticky();
 });
-
-$.AMUI.sticky = Sticky;
 
 module.exports = Sticky;

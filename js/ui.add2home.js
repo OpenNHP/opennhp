@@ -1,7 +1,6 @@
 'use strict';
 
-var $ = require('jquery');
-require('./core');
+var UI = require('./core');
 
 /* jshint -W101, -W106 */
 /* Add to Homescreen v3.0.8 ~ (c) 2014 Matteo Spinelli ~ @license: http://cubiq.org/license */
@@ -568,6 +567,6 @@ function _removeToken() {
 
 /* jshint +W101, +W106 */
 
-$.AMUI.addToHomescreen = ath;
+UI.addToHomescreen = ath;
 
 module.exports = ath;

@@ -70,6 +70,4 @@ Geolocation.prototype.clearWatch = function() {
   this.watchID = null;
 };
 
-$.AMUI.Geolocation = Geolocation;
-
-module.exports = Geolocation;
+module.exports = UI.Geolocation = Geolocation;

@@ -3,8 +3,8 @@
 'use strict';
 
 var $ = require('jquery');
+var UI = require('./core');
 
-require('./core');
 require('./ui.alert');
 require('./ui.button');
 require('./ui.collapse');
@@ -19,4 +19,4 @@ require('./ui.scrollspynav');
 require('./ui.sticky');
 require('./util.cookie');
 
-module.exports = $.AMUI;
+module.exports = $.AMUI = UI;

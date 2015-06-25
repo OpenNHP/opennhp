@@ -1,9 +1,8 @@
 'use strict';
 
-require('core');
-require('ui.pureview');
 var $ = require('jquery');
-var UI = $.AMUI;
+var UI = require('../../../js/core');
+require('ui.pureview');
 
 /**
  * Is Images zoomable
@@ -49,7 +48,7 @@ function figureInit() {
 
 $(window).on('load', figureInit);
 
-module.exports = $.AMUI.figure = {
+module.exports = UI.figure = {
   VERSION: '2.0.3',
   init: figureInit
 };

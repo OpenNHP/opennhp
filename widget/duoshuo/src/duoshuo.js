@@ -1,7 +1,7 @@
 'use strict';
 
 var $ = require('jquery');
-require('../../../js/core');
+var UI = require('../../../js/core');
 
 function duoshuoInit() {
   var $dsThread = $('.ds-thread');
@@ -35,7 +35,7 @@ function duoshuoInit() {
 
 $(window).on('load', duoshuoInit);
 
-module.exports = $.AMUI.duoshuo = {
+module.exports = UI.duoshuo = {
   VERSION: '2.0.1',
   init: duoshuoInit
 };

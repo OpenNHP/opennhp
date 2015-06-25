@@ -179,9 +179,7 @@ $doc.on('click.offcanvas.amui', '[data-am-offcanvas]', function(e) {
   Plugin.call($target, option, this);
 });
 
-$.AMUI.offcanvas = OffCanvas;
-
-module.exports = OffCanvas;
+module.exports = UI.offcanvas = OffCanvas;
 
 // TODO: 优化动画效果
 // http://dbushell.github.io/Responsive-Off-Canvas-Menu/step4.html

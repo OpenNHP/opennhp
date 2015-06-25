@@ -56,7 +56,7 @@ var payInit = payHandler;
 // Init on DOM ready
 $(payInit);
 
-module.exports = $.AMUI.pay = {
+module.exports = UI.pay = {
   VERSION: '1.0.0',
   init: payInit
 };

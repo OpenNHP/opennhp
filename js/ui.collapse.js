@@ -60,12 +60,12 @@ Collapse.prototype.open = function() {
   this.transitioning = 1;
 
   var complete = function() {
-    this.$element.
-      removeClass('am-collapsing').
-      addClass('am-collapse am-in').
-      height('');
+    this.$element
+      .removeClass('am-collapsing')
+      .addClass('am-collapse am-in')
+      .height('')
+      .trigger('opened.collapse.amui');
     this.transitioning = 0;
-    this.$element.trigger('opened.collapse.amui');
   };
 
   if (!UI.support.transition) {
@@ -76,8 +76,8 @@ Collapse.prototype.open = function() {
 
   this.$element
     .one(UI.support.transition.end, $.proxy(complete, this))
-    .emulateTransitionEnd(300).
-    css({height: scrollHeight}); // 当折叠的容器有 padding 时，如果用 height() 只能设置内容的宽度
+    .emulateTransitionEnd(300)
+    .css({height: scrollHeight}); // 当折叠的容器有 padding 时，如果用 height() 只能设置内容的宽度
 };
 
 Collapse.prototype.close = function() {
@@ -101,9 +101,10 @@ Collapse.prototype.close = function() {
 
   var complete = function() {
     this.transitioning = 0;
-    this.$element.trigger('closed.collapse.amui').
-      removeClass('am-collapsing').
-      addClass('am-collapse');
+    this.$element
+      .trigger('closed.collapse.amui')
+      .removeClass('am-collapsing')
+      .addClass('am-collapse');
     // css({height: '0'});
   };
 
@@ -132,9 +133,11 @@ function Plugin(option) {
     if (!data && options.toggle && option == 'open') {
       option = !option;
     }
+
     if (!data) {
       $this.data('amui.collapse', (data = new Collapse(this, options)));
     }
+
     if (typeof option == 'string') {
       data[option]();
     }
@@ -172,9 +175,7 @@ $(document).on('click.collapse.amui.data-api', '[data-am-collapse]',
     Plugin.call($target, option);
   });
 
-$.AMUI.collapse = Collapse;
-
-module.exports = Collapse;
+module.exports = UI.collapse = Collapse;
 
 // TODO: 更好的 target 选择方式
 //       折叠的容器必须没有 border/padding 才能正常处理，否则动画会有一些小问题

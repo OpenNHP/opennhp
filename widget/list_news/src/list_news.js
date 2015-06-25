@@ -1,9 +1,8 @@
 'use strict';
 
-var $ = require('jquery');
-require('../../../js/core');
+var UI = require('../../../js/core');
 
-module.exports = $.AMUI.listNews = {
+module.exports = UI.listNews = {
   VERSION: '4.0.0',
   init: function() {}
 };

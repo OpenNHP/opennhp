@@ -1,7 +1,6 @@
 'use strict';
 
-var $ = require('jquery');
-require('./core');
+var UI = require('./core');
 
 /**
  * store.js
@@ -135,8 +134,6 @@ try {
 
 store.enabled = !store.disabled;
 
-$.AMUI = $.AMUI || {};
-
-$.AMUI.store = store;
+UI.store = store;
 
 module.exports = store;

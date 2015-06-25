@@ -1,10 +1,10 @@
 'use strict';
 
 var $ = require('jquery');
-require('../../../js/core');
+var UI = require('../../../js/core');
+var IScroll = require('../../../js/ui.iscroll-lite');
 require('../../../js/ui.offcanvas');
 require('../../../js/ui.collapse');
-var IScroll = require('../../../js/ui.iscroll-lite');
 
 var menuInit = function() {
   var $menus = $('[data-am-widget="menu"]');
@@ -145,7 +145,7 @@ var menuInit = function() {
 
 $(menuInit);
 
-module.exports = $.AMUI.menu = {
+module.exports = UI.menu = {
   VERSION: '4.0.3',
   init: menuInit
 };

@@ -126,7 +126,7 @@ doc: docs/javascript/datepicker.md
 <div>
   <input type="text" class="am-form-field" data-am-datepicker="{format: 'yyyy ', viewMode: 'years', minViewMode: 'years'}" placeholder="日历组件" data-am-datepicker readonly/>
 </div>
-````
+`````
 ```html
 <div>
   <input type="text" class="am-form-field" data-am-datepicker="{format: 'yyyy ', viewMode: 'years', minViewMode: 'years'}" placeholder="日历组件" data-am-datepicker readonly/>

@@ -85,33 +85,11 @@ ScrollSpy.prototype.check = function() {
 };
 
 // Sticky Plugin
-function Plugin(option) {
-  return this.each(function() {
-    var $this = $(this);
-    var data = $this.data('am.scrollspy');
-    var options = typeof option == 'object' && option;
-
-    if (!data) {
-      $this.data('am.scrollspy', (data = new ScrollSpy(this, options)));
-    }
-
-    if (typeof option == 'string') {
-      data[option]();
-    }
-  });
-}
-
-$.fn.scrollspy = Plugin;
+UI.plugin('scrollspy', ScrollSpy);
 
 // Init code
 UI.ready(function(context) {
-  $('[data-am-scrollspy]', context).each(function() {
-    var $this = $(this);
-    var options = UI.utils.options($this.data('amScrollspy'));
-    $this.scrollspy(options);
-  });
+  $('[data-am-scrollspy]', context).scrollspy();
 });
-
-$.AMUI.scrollspy = ScrollSpy;
 
 module.exports = ScrollSpy;

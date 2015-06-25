@@ -1,10 +1,9 @@
 'use strict';
 
 var $ = require('jquery');
-require('../../../js/core');
-require('../../../js/ui.pureview');
+var UI = require('../../../js/core');
 var IScroll = require('../../../js/ui.iscroll-lite');
-var UI = $.AMUI;
+require('../../../js/ui.pureview');
 
 /**
  * 表格滚动
@@ -54,7 +53,7 @@ function paragraphInit() {
 
 $(window).on('load', paragraphInit);
 
-module.exports = $.AMUI.paragraph = {
+module.exports = UI.paragraph = {
   VERSION: '2.0.1',
   init: paragraphInit
 };

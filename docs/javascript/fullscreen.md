@@ -120,7 +120,7 @@ $('#demo-full-page').on('click', function () {
   }
 </style>
 <div>
-  <img id="demo-full-img" src="http://s.cn.bing.net/az/hprichbg/rb/FortBourtange_ZH-CN9788197909_1920x1080.jpg"
+  <img id="demo-full-img" src="http://s.amazeui.org/media/i/demos/bing-2.jpg"
        width="340"
        height="142"
        alt=""/>
@@ -132,7 +132,7 @@ $('#demo-full-page').on('click', function () {
 `````
 ```html
 <div>
-  <img id="demo-full-img" src="http://s.cn.bing.net/az/hprichbg/rb/WorkingFarmer_ZH-CN9182210796_1366x768.jpg"
+  <img id="demo-full-img" src="http://s.amazeui.org/media/i/demos/bing-2.jpg"
        width="340"
        height="142"
        alt=""/>

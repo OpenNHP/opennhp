@@ -12,7 +12,7 @@ var UI = require('./core');
 var keyboardAllowed = typeof Element !== 'undefined' &&
   'ALLOW_KEYBOARD_INPUT' in Element;
 
-var fn = (function () {
+var fn = (function() {
   var val;
   var valLength;
 
@@ -81,7 +81,7 @@ var fn = (function () {
 })();
 
 var screenfull = {
-  request: function (elem) {
+  request: function(elem) {
     var request = fn.requestFullscreen;
 
     elem = elem || document.documentElement;
@@ -96,10 +96,10 @@ var screenfull = {
       elem[request](keyboardAllowed && Element.ALLOW_KEYBOARD_INPUT);
     }
   },
-  exit: function () {
+  exit: function() {
     document[fn.exitFullscreen]();
   },
-  toggle: function (elem) {
+  toggle: function(elem) {
     if (this.isFullscreen) {
       this.exit();
     } else {
@@ -109,26 +109,21 @@ var screenfull = {
   raw: fn
 };
 
-if (!fn) {
-  module.exports = false;
-  return;
-}
-
 Object.defineProperties(screenfull, {
   isFullscreen: {
-    get: function () {
+    get: function() {
       return !!document[fn.fullscreenElement];
     }
   },
   element: {
     enumerable: true,
-    get: function () {
+    get: function() {
       return document[fn.fullscreenElement];
     }
   },
   enabled: {
     enumerable: true,
-    get: function () {
+    get: function() {
       // Coerce to boolean in case of old WebKit
       return !!document[fn.fullscreenEnabled];
     }
@@ -137,6 +132,4 @@ Object.defineProperties(screenfull, {
 
 screenfull.VERSION = '2.0.0';
 
-$.AMUI.fullscreen = screenfull;
-
-module.exports = screenfull;
+module.exports = UI.fullscreen = screenfull;

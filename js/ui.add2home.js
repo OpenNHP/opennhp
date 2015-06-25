@@ -3,13 +3,20 @@
 var UI = require('./core');
 
 /* jshint -W101, -W106 */
-/* Add to Homescreen v3.0.8 ~ (c) 2014 Matteo Spinelli ~ @license: http://cubiq.org/license */
+/**
+ * Add to Homescreen v3.2.2
+ * (c) 2015 Matteo Spinelli
+ * @license: http://cubiq.org/license
+ */
+
+// Check for addEventListener browser support (prevent errors in IE<9)
+var _eventListener = 'addEventListener' in window;
 
 // Check if document is loaded, needed by autostart
 var _DOMReady = false;
 if (document.readyState === 'complete') {
   _DOMReady = true;
-} else {
+} else if (_eventListener) {
   window.addEventListener('load', loaded, false);
 }
 
@@ -24,7 +31,6 @@ var _reQueryString = /([\?&]ath=[^&]*$|&ath=[^&]*(&))/;
 
 // singleton
 var _instance;
-
 function ath(options) {
   _instance = _instance || new ath.Class(options);
 
@@ -34,22 +40,18 @@ function ath(options) {
 // message in all supported languages
 ath.intl = {
   en_us: {
-    message: 'To add this web app to the home screen: tap %icon and then <strong>%action</strong>.',
-    action: {
-      ios: 'Add to Home Screen',
-      android: 'Add to homescreen',
-      windows: 'pin to start'
-    }
+    ios: 'To add this web app to the home screen: tap %icon and then <strong>Add to Home Screen</strong>.',
+    android: 'To add this web app to the home screen open the browser option menu and tap on <strong>Add to homescreen</strong>. <small>The menu can be accessed by pressing the menu hardware button if your device has one, or by tapping the top right menu icon <span class="ath-action-icon">icon</span>.</small>'
   },
 
   zh_cn: {
-    message: '如要把应用程式加至主屏幕,请点击%icon, 然后<strong>%action</strong>',
-    action: {ios: '加至主屏幕', android: '加至主屏幕', windows: '按住启动'}
+    ios: '如要把应用程式加至主屏幕,请点击%icon, 然后<strong>加至主屏幕</strong>',
+    android: 'To add this web app to the home screen open the browser option menu and tap on <strong>Add to homescreen</strong>. <small>The menu can be accessed by pressing the menu hardware button if your device has one, or by tapping the top right menu icon <span class="ath-action-icon">icon</span>.</small>'
   },
 
   zh_tw: {
-    message: '如要把應用程式加至主屏幕, 請點擊%icon, 然後<strong>%action</strong>.',
-    action: {ios: '加至主屏幕', android: '加至主屏幕', windows: '按住啟動'}
+    ios: '如要把應用程式加至主屏幕, 請點擊%icon, 然後<strong>加至主屏幕</strong>.',
+    android: 'To add this web app to the home screen open the browser option menu and tap on <strong>Add to homescreen</strong>. <small>The menu can be accessed by pressing the menu hardware button if your device has one, or by tapping the top right menu icon <span class="ath-action-icon">icon</span>.</small>'
   }
 };
 
@@ -63,6 +65,7 @@ ath.defaults = {
   appID: 'org.cubiq.addtohome',		// local storage name (no need to change)
   fontSize: 15,				// base font size, used to properly resize the popup based on viewport scale factor
   debug: false,				// override browser checks
+  logging: false,				// log reasons for showing or not showing to js console; defaults to true when debug is true
   modal: false,				// prevent further actions until the message is closed
   mandatory: false,			// you can't proceed if you don't add the app to the homescreen
   autostart: true,			// show the message automatically
@@ -79,6 +82,7 @@ ath.defaults = {
   onRemove: null,				// executed when the message is removed
   onAdd: null,				// when the application is launched the first time from the homescreen (guesstimate)
   onPrivate: null,			// executed if user is in private mode
+  privateModeOverride: false,	// show the message even in private mode (very rude)
   detectHomescreen: false		// try to detect if the site has been added to the homescreen (false | true | 'hash' | 'queryString' | 'smartURL')
 };
 
@@ -90,7 +94,7 @@ _extend(ath, {
   hasToken: document.location.hash == '#ath' || _reSmartURL.test(document.location.href) || _reQueryString.test(document.location.search),
   isRetina: window.devicePixelRatio && window.devicePixelRatio > 1,
   isIDevice: (/iphone|ipod|ipad/i).test(_ua),
-  isMobileChrome: _ua.indexOf('Android') > -1 && (/Chrome\/[.0-9]*/).test(_ua),
+  isMobileChrome: _ua.indexOf('Android') > -1 && (/Chrome\/[.0-9]*/).test(_ua) && _ua.indexOf("Version") == -1,
   isMobileIE: _ua.indexOf('Windows Phone') > -1,
   language: _nav.language && _nav.language.toLowerCase().replace('-', '_') || ''
 });
@@ -104,7 +108,7 @@ ath.OS = ath.isIDevice ? 'ios' : ath.isMobileChrome ? 'android' : ath.isMobileIE
 ath.OSVersion = _ua.match(/(OS|Android) (\d+[_\.]\d+)/);
 ath.OSVersion = ath.OSVersion && ath.OSVersion[2] ? +ath.OSVersion[2].replace('_', '.') : 0;
 
-ath.isStandalone = window.navigator.standalone || ( ath.isMobileChrome && ( screen.height - document.documentElement.clientHeight < 40 ) );	// TODO: check the lame polyfill
+ath.isStandalone = 'standalone' in window.navigator && window.navigator.standalone;
 ath.isTablet = (ath.isMobileSafari && _ua.indexOf('iPad') > -1) || (ath.isMobileChrome && _ua.indexOf('Mobile') < 0);
 
 ath.isCompatible = (ath.isMobileSafari && ath.OSVersion >= 6) || ath.isMobileChrome;	// TODO: add winphone
@@ -119,16 +123,38 @@ var _defaultSession = {
 
 ath.removeSession = function(appID) {
   try {
+    if (!localStorage) {
+      throw new Error('localStorage is not defined');
+    }
+
     localStorage.removeItem(appID || ath.defaults.appID);
   } catch (e) {
     // we are most likely in private mode
   }
 };
 
+ath.doLog = function(logStr) {
+  if (this.options.logging) {
+    console.log(logStr);
+  }
+};
+
 ath.Class = function(options) {
+  // class methods
+  this.doLog = ath.doLog;
+
   // merge default options with user config
   this.options = _extend({}, ath.defaults);
   _extend(this.options, options);
+  // override defaults that are dependent on each other
+  if (options.debug && (typeof options.logging === "undefined")) {
+    this.options.logging = true;
+  }
+
+  // IE<9 so exit (I hate you, really)
+  if (!_eventListener) {
+    return;
+  }
 
   // normalize some options
   this.options.mandatory = this.options.mandatory && ( 'standalone' in window.navigator || this.options.debug );
@@ -149,7 +175,7 @@ ath.Class = function(options) {
   this.container = document.documentElement;
 
   // load session
-  this.session = localStorage.getItem(this.options.appID);
+  this.session = this.getItem(this.options.appID);
   this.session = this.session ? JSON.parse(this.session) : undefined;
 
   // user most likely came from a direct link containing our token, we don't need it and we remove it
@@ -160,6 +186,7 @@ ath.Class = function(options) {
 
   // the device is not supported
   if (!ath.isCompatible) {
+    this.doLog("Add to homescreen: not displaying callout because device not supported");
     return;
   }
 
@@ -167,6 +194,10 @@ ath.Class = function(options) {
 
   // check if we can use the local storage
   try {
+    if (!localStorage) {
+      throw new Error('localStorage is not defined');
+    }
+
     localStorage.setItem(this.options.appID, JSON.stringify(this.session));
     ath.hasLocalStorage = true;
   } catch (e) {
@@ -188,13 +219,21 @@ ath.Class = function(options) {
   }
 
   // check compatibility with old versions of add to homescreen. Opt-out if an old session is found
-  if (localStorage.getItem('addToHome')) {
+  if (this.getItem('addToHome')) {
     this.optOut();
   }
 
   // critical errors:
-  // user opted out, already added to the homescreen, not a valid location
-  if (this.session.optedout || this.session.added || !isValidLocation) {
+  if (this.session.optedout) {
+    this.doLog("Add to homescreen: not displaying callout because user opted out");
+    return;
+  }
+  if (this.session.added) {
+    this.doLog("Add to homescreen: not displaying callout because already added to the homescreen");
+    return;
+  }
+  if (!isValidLocation) {
+    this.doLog("Add to homescreen: not displaying callout because not a valid location");
     return;
   }
 
@@ -210,6 +249,7 @@ ath.Class = function(options) {
       }
     }
 
+    this.doLog("Add to homescreen: not displaying callout because in standalone mode");
     return;
   }
 
@@ -229,6 +269,7 @@ ath.Class = function(options) {
         }
       }
 
+      this.doLog("Add to homescreen: not displaying callout because URL has token, so we are likely coming from homescreen");
       return;
     }
 
@@ -249,12 +290,14 @@ ath.Class = function(options) {
 
     // we do not show the message if this is your first visit
     if (this.options.skipFirstVisit) {
+      this.doLog("Add to homescreen: not displaying callout because skipping first visit");
       return;
     }
   }
 
   // we do no show the message in private mode
-  if (!ath.hasLocalStorage) {
+  if (!this.options.privateModeOverride && !ath.hasLocalStorage) {
+    this.doLog("Add to homescreen: not displaying callout because browser is in private mode");
     return;
   }
 
@@ -266,6 +309,7 @@ ath.Class = function(options) {
   }
 
   if (this.options.autostart) {
+    this.doLog("Add to homescreen: autostart displaying callout");
     this.show();
   }
 };
@@ -296,11 +340,14 @@ ath.Class.prototype = {
     // in autostart mode wait for the document to be ready
     if (this.options.autostart && !_DOMReady) {
       setTimeout(this.show.bind(this), 50);
+      // we are not displaying callout because DOM not ready, but don't log that because
+      // it would log too frequently
       return;
     }
 
     // message already on screen
     if (this.shown) {
+      this.doLog("Add to homescreen: not displaying callout because already shown on screen");
       return;
     }
 
@@ -310,16 +357,19 @@ ath.Class.prototype = {
     if (force !== true) {
       // this is needed if autostart is disabled and you programmatically call the show() method
       if (!this.ready) {
+        this.doLog("Add to homescreen: not displaying callout because not ready");
         return;
       }
 
       // we obey the display pace (prevent the message to popup too often)
       if (now - lastDisplayTime < this.options.displayPace * 60000) {
+        this.doLog("Add to homescreen: not displaying callout because displayed recently");
         return;
       }
 
       // obey the maximum number of display count
       if (this.options.maxDisplayCount && this.session.displayCount >= this.options.maxDisplayCount) {
+        this.doLog("Add to homescreen: not displaying callout because displayed too many times already");
         return;
       }
     }
@@ -342,12 +392,16 @@ ath.Class.prototype = {
 
     var message = '';
 
-    if (this.options.message in ath.intl) {		// you can force the locale
-      message = ath.intl[this.options.message].message.replace('%action', ath.intl[this.options.message].action[ath.OS]);
-    } else if (this.options.message !== '') {		// or use a custom message
+    if (typeof this.options.message == 'object' && ath.language in this.options.message) {		// use custom language message
+      message = this.options.message[ath.language][ath.OS];
+    } else if (typeof this.options.message == 'object' && ath.OS in this.options.message) {		// use custom os message
+      message = this.options.message[ath.OS];
+    } else if (this.options.message in ath.intl) {				// you can force the locale
+      message = ath.intl[this.options.message][ath.OS];
+    } else if (this.options.message !== '') {						// use a custom message
       message = this.options.message;
-    } else {										// otherwise we use our message
-      message = ath.intl[ath.language].message.replace('%action', ath.intl[ath.language].action[ath.OS]);
+    } else if (ath.OS in ath.intl[ath.language]) {				// otherwise we use our message
+      message = ath.intl[ath.language][ath.OS];
     }
 
     // add the action icon
@@ -367,9 +421,9 @@ ath.Class.prototype = {
     // create the actual message element
     this.element = document.createElement('div');
     this.element.className = 'ath-container ath-' + ath.OS + ' ath-' + ath.OS + (ath.OSVersion + '').substr(0, 1) + ' ath-' + (ath.isTablet ? 'tablet' : 'phone');
-    this.element.style.cssText = '-webkit-transition-property:-webkit-transform,opacity;-webkit-transition-duration:0;-webkit-transform:translate3d(0,0,0);transition-property:transform,opacity;transition-duration:0;transform:translate3d(0,0,0);-webkit-transition-timing-function:ease-out';
+    this.element.style.cssText = '-webkit-transition-property:-webkit-transform,opacity;-webkit-transition-duration:0s;-webkit-transition-timing-function:ease-out;transition-property:transform,opacity;transition-duration:0s;transition-timing-function:ease-out;';
     this.element.style.webkitTransform = 'translate3d(0,-' + window.innerHeight + 'px,0)';
-    this.element.style.webkitTransitionDuration = '0s';
+    this.element.style.transform = 'translate3d(0,-' + window.innerHeight + 'px,0)';
 
     // add the application icon
     if (this.options.icon && this.applicationIcon) {
@@ -393,7 +447,9 @@ ath.Class.prototype = {
     this.container.appendChild(this.viewport);
 
     // if we don't have to wait for an image to load, show the message right away
-    if (!this.img) {
+    if (this.img) {
+      this.doLog("Add to homescreen: not displaying callout because waiting for img to load");
+    } else {
       this._delayedShow();
     }
   },
@@ -427,8 +483,10 @@ ath.Class.prototype = {
 
     // kick the animation
     setTimeout(function() {
-      that.element.style.webkitTransform = 'translate3d(0,0,0)';
       that.element.style.webkitTransitionDuration = '1.2s';
+      that.element.style.transitionDuration = '1.2s';
+      that.element.style.webkitTransform = 'translate3d(0,0,0)';
+      that.element.style.transform = 'translate3d(0,0,0)';
     }, 0);
 
     // set the destroy timer
@@ -513,12 +571,27 @@ ath.Class.prototype = {
       return;
     }
 
-    localStorage.setItem(this.options.appID, JSON.stringify(this.session));
+    if (localStorage) {
+      localStorage.setItem(this.options.appID, JSON.stringify(this.session));
+    }
   },
 
   clearSession: function() {
     this.session = _defaultSession;
     this.updateSession();
+  },
+
+  getItem: function(item) {
+    try {
+      if (!localStorage) {
+        throw new Error('localStorage is not defined');
+      }
+
+      return localStorage.getItem(item);
+    } catch (e) {
+      // Preventing exception for some browsers when fetching localStorage key
+      ath.hasLocalStorage = false;
+    }
   },
 
   optOut: function() {
@@ -567,6 +640,6 @@ function _removeToken() {
 
 /* jshint +W101, +W106 */
 
-UI.addToHomescreen = ath;
+ath.VERSION = '3.2.2';
 
-module.exports = ath;
+module.exports = UI.addToHomescreen = ath;

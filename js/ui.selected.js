@@ -338,6 +338,4 @@ UI.ready(function(context) {
   $('[data-am-selected]', context).selected();
 });
 
-$.AMUI.selected = Selected;
-
 module.exports = Selected;

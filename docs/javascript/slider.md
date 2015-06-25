@@ -49,14 +49,14 @@ doc: docs/javascript/slider.md
 <div class="am-slider am-slider-default"
      data-am-flexslider="{controlNav: 'thumbnails', directionNav: false}">
   <ul class="am-slides">
-    <li data-thumb="http://amui.qiniudn.com/pure-1.jpg?imageView2/0/w/360"><img
-      src="http://amui.qiniudn.com/pure-1.jpg" /></li>
-    <li data-thumb="http://amui.qiniudn.com/pure-2.jpg?imageView2/0/w/360"><img
-      src="http://amui.qiniudn.com/pure-2.jpg" /></li>
-    <li data-thumb="http://amui.qiniudn.com/pure-3.jpg?imageView2/0/w/360"><img
-      src="http://amui.qiniudn.com/pure-3.jpg" /></li>
-    <li data-thumb="http://amui.qiniudn.com/pure-4.jpg?imageView2/0/w/360"><img
-      src="http://amui.qiniudn.com/pure-4.jpg" /></li>
+    <li data-thumb="http://s.amazeui.org/media/i/demos/pure-1.jpg?imageView2/0/w/360"><img
+      src="http://s.amazeui.org/media/i/demos/pure-1.jpg" /></li>
+    <li data-thumb="http://s.amazeui.org/media/i/demos/pure-2.jpg?imageView2/0/w/360"><img
+      src="http://s.amazeui.org/media/i/demos/pure-2.jpg" /></li>
+    <li data-thumb="http://s.amazeui.org/media/i/demos/pure-3.jpg?imageView2/0/w/360"><img
+      src="http://s.amazeui.org/media/i/demos/pure-3.jpg" /></li>
+    <li data-thumb="http://s.amazeui.org/media/i/demos/pure-4.jpg?imageView2/0/w/360"><img
+      src="http://s.amazeui.org/media/i/demos/pure-4.jpg" /></li>
 
   </ul>
 </div>
@@ -85,14 +85,14 @@ doc: docs/javascript/slider.md
 <div class="am-slider am-slider-default am-slider-carousel"
      data-am-flexslider="{itemWidth: 200, itemMargin: 5}">
   <ul class="am-slides">
-    <li><img src="http://amui.qiniudn.com/pure-1.jpg?imageView2/0/w/640" /></li>
-    <li><img src="http://amui.qiniudn.com/pure-2.jpg?imageView2/0/w/640" /></li>
-    <li><img src="http://amui.qiniudn.com/pure-3.jpg?imageView2/0/w/640" /></li>
-    <li><img src="http://amui.qiniudn.com/pure-4.jpg?imageView2/0/w/640" /></li>
-    <li><img src="http://amui.qiniudn.com/pure-1.jpg?imageView2/0/w/640" /></li>
-    <li><img src="http://amui.qiniudn.com/pure-2.jpg?imageView2/0/w/640" /></li>
-    <li><img src="http://amui.qiniudn.com/pure-3.jpg?imageView2/0/w/640" /></li>
-    <li><img src="http://amui.qiniudn.com/pure-4.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/pure-1.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/pure-2.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/pure-3.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/pure-4.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/pure-1.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/pure-2.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/pure-3.jpg?imageView2/0/w/640" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/pure-4.jpg?imageView2/0/w/640" /></li>
   </ul>
 </div>
 `````

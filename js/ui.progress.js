@@ -10,9 +10,8 @@ var Progress = (function() {
    */
 
   var NProgress = {};
-  var $html = $('html');
 
-  NProgress.version = '0.1.6';
+  NProgress.version = '0.2.0';
 
   var Settings = NProgress.settings = {
     minimum: 0.08,
@@ -69,12 +68,11 @@ var Progress = (function() {
     NProgress.status = (n === 1 ? null : n);
 
     var progress = NProgress.render(!started),
-      bar = progress.querySelector(Settings.barSelector),
-      speed = Settings.speed,
-      ease = Settings.easing;
+      bar      = progress.querySelector(Settings.barSelector),
+      speed    = Settings.speed,
+      ease     = Settings.easing;
 
-    progress.offsetWidth;
-    /* Repaint */
+    progress.offsetWidth; /* Repaint */
 
     queue(function(next) {
       // Set positionUsing if it hasn't already been set
@@ -89,8 +87,7 @@ var Progress = (function() {
           transition: 'none',
           opacity: 1
         });
-        progress.offsetWidth;
-        /* Repaint */
+        progress.offsetWidth; /* Repaint */
 
         setTimeout(function() {
           css(progress, {
@@ -178,6 +175,41 @@ var Progress = (function() {
     return NProgress.inc(Math.random() * Settings.trickleRate);
   };
 
+  /**
+   * Waits for all supplied jQuery promises and
+   * increases the progress as the promises resolve.
+   *
+   * @param $promise jQUery Promise
+   */
+  (function() {
+    var initial = 0, current = 0;
+
+    NProgress.promise = function($promise) {
+      if (!$promise || $promise.state() === "resolved") {
+        return this;
+      }
+
+      if (current === 0) {
+        NProgress.start();
+      }
+
+      initial++;
+      current++;
+
+      $promise.always(function() {
+        current--;
+        if (current === 0) {
+          initial = 0;
+          NProgress.done();
+        } else {
+          NProgress.set((initial - current) / initial);
+        }
+      });
+
+      return this;
+    };
+
+  })();
 
   /**
    * (Internal) renders the progress bar markup based on the `template`
@@ -187,15 +219,15 @@ var Progress = (function() {
   NProgress.render = function(fromStart) {
     if (NProgress.isRendered()) return document.getElementById('nprogress');
 
-    $html.addClass('nprogress-busy');
+    addClass(document.documentElement, 'nprogress-busy');
 
     var progress = document.createElement('div');
     progress.id = 'nprogress';
     progress.innerHTML = Settings.template;
 
-    var bar = progress.querySelector(Settings.barSelector),
-      perc = fromStart ? '-100' : toBarPerc(NProgress.status || 0),
-      parent = document.querySelector(Settings.parent),
+    var bar      = progress.querySelector(Settings.barSelector),
+      perc     = fromStart ? '-100' : toBarPerc(NProgress.status || 0),
+      parent   = document.querySelector(Settings.parent),
       spinner;
 
     css(bar, {
@@ -205,11 +237,11 @@ var Progress = (function() {
 
     if (!Settings.showSpinner) {
       spinner = progress.querySelector(Settings.spinnerSelector);
-      spinner && $(spinner).remove();
+      spinner && removeElement(spinner);
     }
 
     if (parent != document.body) {
-      $(parent).addClass('nprogress-custom-parent');
+      addClass(parent, 'nprogress-custom-parent');
     }
 
     parent.appendChild(progress);
@@ -221,11 +253,10 @@ var Progress = (function() {
    */
 
   NProgress.remove = function() {
-    $html.removeClass('nprogress-busy');
-    $(Settings.parent).removeClass('nprogress-custom-parent');
-
+    removeClass(document.documentElement, 'nprogress-busy');
+    removeClass(document.querySelector(Settings.parent), 'nprogress-custom-parent');
     var progress = document.getElementById('nprogress');
-    progress && $(progress).remove();
+    progress && removeElement(progress);
   };
 
   /**
@@ -291,18 +322,17 @@ var Progress = (function() {
     var barCSS;
 
     if (Settings.positionUsing === 'translate3d') {
-      barCSS = {transform: 'translate3d(' + toBarPerc(n) + '%,0,0)'};
+      barCSS = { transform: 'translate3d('+toBarPerc(n)+'%,0,0)' };
     } else if (Settings.positionUsing === 'translate') {
-      barCSS = {transform: 'translate(' + toBarPerc(n) + '%,0)'};
+      barCSS = { transform: 'translate('+toBarPerc(n)+'%,0)' };
     } else {
-      barCSS = {'margin-left': toBarPerc(n) + '%'};
+      barCSS = { 'margin-left': toBarPerc(n)+'%' };
     }
 
-    barCSS.transition = 'all ' + speed + 'ms ' + ease;
+    barCSS.transition = 'all '+speed+'ms '+ease;
 
     return barCSS;
   }
-
 
   /**
    * (Internal) Queues a function to be executed.
@@ -324,7 +354,6 @@ var Progress = (function() {
     };
   })();
 
-
   /**
    * (Internal) Applies css properties to an element, similar to the jQuery
    * css method.
@@ -334,8 +363,8 @@ var Progress = (function() {
    */
 
   var css = (function() {
-    var cssPrefixes = ['Webkit', 'O', 'Moz', 'ms'],
-      cssProps = {};
+    var cssPrefixes = [ 'Webkit', 'O', 'Moz', 'ms' ],
+      cssProps    = {};
 
     function camelCase(string) {
       return string.replace(/^-ms-/, 'ms-').replace(/-([\da-z])/gi, function(match, letter) {
@@ -383,6 +412,64 @@ var Progress = (function() {
       }
     }
   })();
+
+  /**
+   * (Internal) Determines if an element or space separated list of class names contains a class name.
+   */
+
+  function hasClass(element, name) {
+    var list = typeof element == 'string' ? element : classList(element);
+    return list.indexOf(' ' + name + ' ') >= 0;
+  }
+
+  /**
+   * (Internal) Adds a class to an element.
+   */
+
+  function addClass(element, name) {
+    var oldList = classList(element),
+      newList = oldList + name;
+
+    if (hasClass(oldList, name)) return;
+
+    // Trim the opening space.
+    element.className = newList.substring(1);
+  }
+
+  /**
+   * (Internal) Removes a class from an element.
+   */
+
+  function removeClass(element, name) {
+    var oldList = classList(element),
+      newList;
+
+    if (!hasClass(element, name)) return;
+
+    // Replace the class name.
+    newList = oldList.replace(' ' + name + ' ', ' ');
+
+    // Trim the opening and closing spaces.
+    element.className = newList.substring(1, newList.length - 1);
+  }
+
+  /**
+   * (Internal) Gets a space separated list of the class names on the element.
+   * The list is wrapped with a single space on each end to facilitate finding
+   * matches within the list.
+   */
+
+  function classList(element) {
+    return (' ' + (element.className || '') + ' ').replace(/\s+/gi, ' ');
+  }
+
+  /**
+   * (Internal) Removes an element from the DOM.
+   */
+
+  function removeElement(element) {
+    element && element.parentNode && element.parentNode.removeChild(element);
+  }
 
   return NProgress;
 })();

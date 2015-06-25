@@ -216,9 +216,7 @@ UI.ready(function(context) {
   $('[data-am-tabs]', context).tabs();
 });
 
-$.AMUI.tabs = Tabs;
-
-module.exports = Tabs;
+module.exports = UI.tabs = Tabs;
 
 // TODO: 1. Ajax 支持
 //       2. touch 事件处理逻辑优化

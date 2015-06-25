@@ -134,6 +134,4 @@ try {
 
 store.enabled = !store.disabled;
 
-UI.store = store;
-
-module.exports = store;
+module.exports = UI.store = store;

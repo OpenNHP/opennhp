@@ -11,9 +11,12 @@ doc: docs/javascript/slider.md
 # Slider
 ---
 
-图片轮播模块，支持触控事件，源自 [FlexSlider](https://github.com/woothemes/FlexSlider)。
+图片轮播模块，支持触控事件，源自 [FlexSlider](https://github.com/woothemes/FlexSlider)。本插件算不上轻量，但功能相对完善，基本能满足各种不同的需求。
 
-本插件算不上轻量，但功能相对完善，基本能满足各种不同的需求。
+**类似插件**：
+
+- [Swiper](https://github.com/amazeui/swiper)
+- [Slick](https://github.com/amazeui/slick)
 
 [Web 组件中的图片轮播](/widgets/slider?_ver=2.x) 调用此插件，只是样式上做了一些扩展。
 
@@ -21,12 +24,10 @@ doc: docs/javascript/slider.md
 
 ## 使用演示
 
-
-
 ### 基本形式
 
 `````html
-<div class="am-slider am-slider-default" data-am-flexslider>
+<div class="am-slider am-slider-default" data-am-flexslider id="demo-slider-0">
   <ul class="am-slides">
     <li><img src="http://s.amazeui.org/media/i/demos/bing-1.jpg" /></li>
     <li><img src="http://s.amazeui.org/media/i/demos/bing-2.jpg" /></li>
@@ -34,20 +35,81 @@ doc: docs/javascript/slider.md
     <li><img src="http://s.amazeui.org/media/i/demos/bing-4.jpg" /></li>
   </ul>
 </div>
+
+<hr />
+<div class="am-btn-toolbar">
+  <button type="button" class="am-btn am-btn-primary js-demo-slider-btn" data-action="add">添加 slide</button>
+  <button type="button" class="am-btn am-btn-danger js-demo-slider-btn" data-action="remove">移除 slide</button>
+</div>
+<script>
+  $(function() {
+    var $slider = $('#demo-slider-0');
+    var counter = 0;
+    var getSlide = function() {
+      counter++;
+      return '<li><img src="http://s.amazeui.org/media/i/demos/bing-' +
+        (Math.floor(Math.random() * 4) + 1) + '.jpg" />' +
+        '<div class="am-slider-desc">动态插入的 slide ' + counter + '</div></li>';
+    };
+
+    $('.js-demo-slider-btn').on('click', function() {
+      var action = this.getAttribute('data-action');
+      if (action === 'add') {
+        $slider.flexslider('addSlide', getSlide());
+      } else {
+        var count = $slider.flexslider('count');
+        count > 1 && $slider.flexslider('removeSlide', $slider.flexslider('count') - 1);
+      }
+    });
+
+  });
+</script>
 `````
 ```html
-<div class="am-slider am-slider-default" data-am-flexslider>
+<div class="am-slider am-slider-default" data-am-flexslider id="demo-slider-0">
   <ul class="am-slides">
-    <li><img src="..." /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/bing-1.jpg" /></li>
+    <li><img src="http://s.amazeui.org/media/i/demos/bing-2.jpg" /></li>
   </ul>
 </div>
+
+<div class="am-btn-toolbar">
+  <button type="button" class="am-btn am-btn-primary js-demo-slider-btn" data-action="add">添加 slide</button>
+  <button type="button" class="am-btn am-btn-danger js-demo-slider-btn" data-action="remove">移除 slide</button>
+</div>
+<script>
+  $(function() {
+    var $slider = $('#demo-slider-0');
+    var counter = 0;
+    var getSlide = function() {
+      counter++;
+      return '<li><img src="http://s.amazeui.org/media/i/demos/bing-' +
+        (Math.floor(Math.random() * 4) + 1) + '.jpg" />' +
+        '<div class="am-slider-desc">动态插入的 slide ' + counter + '</div></li>';
+    };
+
+    $('.js-demo-slider-btn').on('click', function() {
+      var action = this.getAttribute('data-action');
+      if (action === 'add') {
+        $slider.flexslider('addSlide', getSlide());
+      } else {
+        var count = $slider.flexslider('count');
+        count > 1 && $slider.flexslider('removeSlide', $slider.flexslider('count') - 1);
+      }
+    });
+
+  });
+</script>
 ```
 
 ### 缩略图模式
 
+使用该模式时需要在 `li` 上使用 `data-thumb` 指定缩略图地址。
+
 `````html
-<div class="am-slider am-slider-default"
-     data-am-flexslider="{controlNav: 'thumbnails', directionNav: false}">
+<div
+  class="am-slider am-slider-default"
+  data-am-flexslider="{controlNav: 'thumbnails', directionNav: false, slideshow: false}">
   <ul class="am-slides">
     <li data-thumb="http://s.amazeui.org/media/i/demos/pure-1.jpg?imageView2/0/w/360"><img
       src="http://s.amazeui.org/media/i/demos/pure-1.jpg" /></li>
@@ -57,17 +119,26 @@ doc: docs/javascript/slider.md
       src="http://s.amazeui.org/media/i/demos/pure-3.jpg" /></li>
     <li data-thumb="http://s.amazeui.org/media/i/demos/pure-4.jpg?imageView2/0/w/360"><img
       src="http://s.amazeui.org/media/i/demos/pure-4.jpg" /></li>
-
   </ul>
 </div>
 `````
 ```html
-<div class="am-slider am-slider-default"
-     data-am-flexslider="{controlNav: 'thumbnails', directionNav: false}">
+<div
+  class="am-slider am-slider-default"
+  data-am-flexslider="{controlNav: 'thumbnails', directionNav: false, slideshow: false}">
   <ul class="am-slides">
-    <li><img src="..." /></li>
+    <li data-thumb="http://s.amazeui.org/media/i/demos/pure-4.jpg?imageView2/0/w/360">
+      <img src="http://s.amazeui.org/media/i/demos/pure-4.jpg" /></li>
   </ul>
 </div>
+```
+
+轮播图数量不等于 `4` 时需要手动设定缩略图的宽度
+
+```css
+.am-control-thumbs li {
+  width: 100%/n; /* n 为轮播图数量 */
+}
 ```
 
 ### 多图滚动
@@ -82,8 +153,9 @@ doc: docs/javascript/slider.md
 ```
 
 `````html
-<div class="am-slider am-slider-default am-slider-carousel"
-     data-am-flexslider="{itemWidth: 200, itemMargin: 5}">
+<div
+  class="am-slider am-slider-default am-slider-carousel"
+  data-am-flexslider="{itemWidth: 200, itemMargin: 5, slideshow: false}">
   <ul class="am-slides">
     <li><img src="http://s.amazeui.org/media/i/demos/pure-1.jpg?imageView2/0/w/640" /></li>
     <li><img src="http://s.amazeui.org/media/i/demos/pure-2.jpg?imageView2/0/w/640" /></li>
@@ -97,8 +169,9 @@ doc: docs/javascript/slider.md
 </div>
 `````
 ```html
-<div class="am-slider am-slider-default am-slider-carousel"
-     data-am-flexslider="{itemWidth: 200, itemMargin: 5}">
+<div
+  class="am-slider am-slider-default am-slider-carousel"
+  data-am-flexslider="{itemWidth: 200, itemMargin: 5, slideshow: false}">
   <ul class="am-slides">
     <li><img src="..." /></li>
   </ul>
@@ -121,10 +194,10 @@ doc: docs/javascript/slider.md
 
 ### 通过 Data API 初始化
 
-在容器上添加 `.data-am-flexslider` 自动初始化。
+在容器上添加 `data-am-flexslider` 自动初始化。
 
 ```html
-<div class="am-slider am-slider-default">
+<div class="am-slider am-slider-default" data-am-flexslider>
   <ul class="am-slides">
     <li>...</li>
   </ul>
@@ -156,17 +229,24 @@ $(function() {
 - `$('#slider').flexslider('stop');` - 停止
 - `$('#slider').flexslider('next');` - 上一个
 - `$('#slider').flexslider('prev');` - 下一个
-- `$('#slider').flexslider(3);` // - 切换到第 4 个 slide
+- `$('#slider').flexslider(3);` - 切换到第 4 个 slide
+
+**`v2.4.1` 新增方法：**
+
+- `$('#slider').flexslider('addSlide', obj[, position]);` - 添加幻灯片，`obj` 为 jQuery 对象或者 HTML，`position` 为插入的位置（可选）；
+- `$('#slider').flexslider('removeSlide', obj);` - 移除指定幻灯片，`obj` 可以是数字或 jQuery 对象或 DOM 对象或选择符。
+
+**注意**: `addSlide` 方法在缩略图模式下无法正常工作。
 
 #### slider 实例
 
-通过 slider 实例可以调用更多方法。
+通过 slider 实例可以调用更多方法。**`v2.4.1` 开始，可以直接通过 jQuery 方式调用以下方法。**
 
 ```js
 var slider = $('#slider').data('flexslider');
 
 slider.addSlide(obj, position); // 插入的元素（选择符或 jQuery 对象）以及位置
-slider.removeSlide(obj); 移除 slide
+slider.removeSlide(obj); // 移除 slide
 ```
 
 #### 暂停以后重新自动播放

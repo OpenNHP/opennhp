@@ -170,40 +170,58 @@ UI.utils.generateGUID = function(namespace) {
 };
 
 /**
- * plugin AMUI Component to jQuery
+ * Plugin AMUI Component to jQuery
+ *
  * @param {String} name - plugin name
  * @param {Function} Component - plugin constructor
- * @param {Function} [internal]
+ * @param {Object} [pluginOption]
+ * @param {String} pluginOption.dataOptions
+ * @param {Function} pluginOption.methodCall - custom method call
+ * @param {Function} pluginOption.before
+ * @param {Function} pluginOption.after
  * @since v2.4.1
  */
-UI.plugin = function UIPlugin(name, Component, internal) {
+UI.plugin = function UIPlugin(name, Component, pluginOption) {
   var old = $.fn[name];
+  pluginOption = pluginOption || {};
 
   $.fn[name] = function(option) {
-    var args = Array.prototype.slice.call(arguments, 1);
+    var allArgs = Array.prototype.slice.call(arguments, 0);
+    var args = allArgs.slice(1);
     var propReturn;
     var $set = this.each(function() {
       var $this = $(this);
       var dataName = 'amui.' + name;
-      var dataOptionsName = 'data-am-' + name;
-      var data = $this.data(dataName);
+      var dataOptionsName = pluginOption.dataOptions || ('data-am-' + name);
+      var instance = $this.data(dataName);
       var options = $.extend({},
         UI.utils.parseOptions($this.attr(dataOptionsName)),
         typeof option === 'object' && option);
 
-      if (!data && option === 'destroy') {
+      if (!instance && option === 'destroy') {
         return;
       }
 
-      if (!data) {
-        $this.data(dataName, (data = new Component(this, options)));
+      if (!instance) {
+        $this.data(dataName, (instance = new Component(this, options)));
       }
 
-      if (typeof option === 'string') {
-        propReturn = data[option].apply(data, args);
-      }
+      // custom method call
+      if (pluginOption.methodCall) {
+        pluginOption.methodCall.call($this, allArgs, instance);
+      } else {
+        // before method call
+        pluginOption.before &&
+        pluginOption.before.call($this, allArgs, instance);
 
-      internal && internal.call($this);
+        if (typeof option === 'string') {
+          propReturn = typeof instance[option] === 'function' ?
+            instance[option].apply(instance, args) : instance[option];
+        }
+
+        // after method call
+        pluginOption.after && pluginOption.after.call($this, allArgs, instance);
+      }
     });
 
     return (propReturn === undefined) ? $set : propReturn;
@@ -241,11 +259,10 @@ $.fn.emulateTransitionEnd = function(duration) {
 };
 
 $.fn.redraw = function() {
-  $(this).each(function() {
+  return this.each(function() {
     /* jshint unused:false */
     var redraw = this.offsetHeight;
   });
-  return this;
 };
 
 /* jshint unused:true */

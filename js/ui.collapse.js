@@ -130,7 +130,7 @@ function Plugin(option) {
       UI.utils.options($this.attr('data-am-collapse')),
       typeof option == 'object' && option);
 
-    if (!data && options.toggle && option == 'open') {
+    if (!data && options.toggle && option === 'open') {
       option = !option;
     }
 
@@ -168,8 +168,8 @@ $(document).on('click.collapse.amui.data-api', '[data-am-collapse]',
         $parent.find('[data-am-collapse]').not($this).addClass('am-collapsed');
       }
 
-      $this[$target.hasClass('am-in') ? 'addClass' :
-        'removeClass']('am-collapsed');
+      $this[$target.hasClass('am-in') ?
+        'addClass' : 'removeClass']('am-collapsed');
     }
 
     Plugin.call($target, option);

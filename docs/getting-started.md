@@ -57,8 +57,8 @@ http://cdn.amazeui.org/amazeui/__VERSION__/css/amazeui.css
 http://cdn.amazeui.org/amazeui/__VERSION__/css/amazeui.min.css
 http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.js
 http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.min.js
-http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.legacy.js
-http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.legacy.min.js
+http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.ie8polyfill.js
+http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.ie8polyfill.min.js
 http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.widgets.helper.js
 http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.widgets.helper.min.js
 ```
@@ -205,8 +205,9 @@ AmazeUI
 <script src="assets/js/jquery.min.js"></script>
 <!--<![endif]-->
 <!--[if lte IE 8 ]>
-<script src="http://libs.baidu.com/jquery/1.11.1/jquery.min.js"></script>
+<script src="http://libs.baidu.com/jquery/1.11.3/jquery.min.js"></script>
 <![endif]-->
+<script src="assets/js/amazeui.min.js"></script>
 </body>
 </html>
 ```

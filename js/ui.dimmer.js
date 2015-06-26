@@ -44,7 +44,9 @@ Dimmer.prototype.open = function(relatedElement) {
 
   this.checkScrollbar().setScrollbar();
 
-  $element.off(transition.end).show().trigger('open.dimmer.amui');
+  $element.show().trigger('open.dimmer.amui');
+
+  transition && $element.off(transition.end);
 
   setTimeout(function() {
     $element.addClass('am-active');

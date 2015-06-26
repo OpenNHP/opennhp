@@ -50,15 +50,15 @@ Gulp、NPM 构建的前端开发工作流，点击[访问项目主页](https://g
 
 ### 使用 CDN
 
-Amaze UI CDN： 域名解析服务由 DNSPod 提供，CDN 存储由~~又拍云~~七牛提供。
+Amaze UI CDN： 域名解析服务由 DNSPod 提供，CDN 存储由七牛提供。
 
 ```html
 http://cdn.amazeui.org/amazeui/__VERSION__/css/amazeui.css
 http://cdn.amazeui.org/amazeui/__VERSION__/css/amazeui.min.css
 http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.js
 http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.min.js
-http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.legacy.js
-http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.legacy.min.js
+http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.ie8polyfill.js
+http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.ie8polyfill.min.js
 http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.widgets.helper.js
 http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.widgets.helper.min.js
 ```
@@ -205,8 +205,9 @@ AmazeUI
 <script src="assets/js/jquery.min.js"></script>
 <!--<![endif]-->
 <!--[if lte IE 8 ]>
-<script src="http://libs.baidu.com/jquery/1.11.1/jquery.min.js"></script>
+<script src="http://libs.baidu.com/jquery/1.11.3/jquery.min.js"></script>
 <![endif]-->
+<script src="assets/js/amazeui.min.js"></script>
 </body>
 </html>
 ```

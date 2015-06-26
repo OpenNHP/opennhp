@@ -246,16 +246,12 @@ var bundle = function(b) {
 gulp.task('build:js:browserify', bundleInit);
 
 gulp.task('build:js:fuckie', function() {
-  return browserify({
-    entries: './js/amazeui.legacy.js'
-  }).bundle()
-    .pipe(source('amazeui.legacy.js'))
-    .pipe(buffer())
-    .pipe($.replace('{{VERSION}}', pkg.version))
-    .pipe($.header(banner, {pkg: pkg, ver: ' ~ Old IE Fucker'}))
+  return gulp.src('vendor/polyfill/*.js')
+    .pipe($.concat('amazeui.ie8polyfill.js'))
+    .pipe($.header(banner, {pkg: pkg, ver: ' ~ IE8 Fucker'}))
     .pipe(gulp.dest(config.dist.js))
     .pipe($.uglify(config.uglify))
-    .pipe($.header(banner, {pkg: pkg, ver: ' ~ Old IE Fucker'}))
+    .pipe($.header(banner, {pkg: pkg, ver: ' ~ IE8 Fucker'}))
     .pipe($.rename({suffix: '.min'}))
     .pipe(gulp.dest(config.dist.js))
     .pipe($.size({showFiles: true, title: 'minified'}))
@@ -265,10 +261,10 @@ gulp.task('build:js:fuckie', function() {
 gulp.task('build:js:helper', function() {
   gulp.src(config.path.hbsHelper)
     .pipe($.concat(pkg.name + '.widgets.helper.js'))
-    .pipe($.header(banner, {pkg: pkg, ver: ' ~ helper'}))
+    .pipe($.header(banner, {pkg: pkg, ver: ' ~ Handlebars helper'}))
     .pipe(gulp.dest(config.dist.js))
     .pipe($.uglify())
-    .pipe($.header(banner, {pkg: pkg, ver: ' ~ helper'}))
+    .pipe($.header(banner, {pkg: pkg, ver: ' ~ Handlebars helper'}))
     .pipe($.rename({suffix: '.min'}))
     .pipe(gulp.dest(config.dist.js));
 });
@@ -301,8 +297,7 @@ gulp.task('archive', function(cb) {
   runSequence([
       'archive:copy:css',
       'archive:copy:fonts',
-      'archive:copy:js',
-      'archive:copy:polyfill'
+      'archive:copy:js'
     ],
     'archive:zip',
     'archive:clean', cb);
@@ -326,12 +321,6 @@ gulp.task('archive:copy:js', function() {
     './node_modules/jquery/dist/jquery.min.js'])
     .pipe($.replace('\n//# sourceMappingURL=jquery.min.map', ''))
     .pipe(gulp.dest('./docs/examples/assets/js'));
-});
-
-gulp.task('archive:copy:polyfill', function() {
-  return gulp.src([
-    './vendor/polyfill/*.js'])
-    .pipe(gulp.dest('./docs/examples/assets/js/polyfill'));
 });
 
 gulp.task('archive:zip', function() {

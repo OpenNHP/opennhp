@@ -221,7 +221,7 @@ __参考链接__：
 - 侧边栏（OffCanvas）；
 - 滚动侦测（ScrollSpyNav）；
 - 固定元素（Sticky）；
-- 选项卡（Tabs） - **仅 IE 9**；
+- 选项卡（Tabs）；
 
 <table class="am-table am-table-bordered am-table-striped">
   <thead>
@@ -268,22 +268,29 @@ __参考链接__：
   请注意，我们对 IE 8 的支持的仅限为<strong>布局、部分 JS 插件交互基本正常</strong>，IE 8 相关 Issue 将列为 `P4`(最低优先级，可能不会处理)。
 </div>
 
-需要**支持 IE 8 的用户请使用条件注释引入 `amazeui.legacy.js`**，并引入相关的 polyfill。
+需要**支持 IE 8 的用户请使用条件注释引入~~`amazeui.legacy.js`~~** `amazeui.ie8polyfill.min.js`。
 
 ```html
 ﻿<!--[if (gte IE 9)|!(IE)]><!-->
-<script src="http://libs.baidu.com/jquery/2.1.1/jquery.min.js"></script>
-<script src="assets/js/amazeui.js"></script>
+<script src="http://libs.baidu.com/jquery/2.1.4/jquery.min.js"></script>
 <!--<![endif]-->
 
 <!--[if lt IE 9]>
-<script src="http://libs.baidu.com/jquery/1.11.1/jquery.min.js"></script>
+<script src="http://libs.baidu.com/jquery/1.11.3/jquery.min.js"></script>
 <script src="http://cdn.staticfile.org/modernizr/2.8.3/modernizr.js"></script>
-<script src="assets/js/polyfill/rem.min.js"></script>
-<script src="assets/js/polyfill/respond.min.js"></script>
-<script src="assets/js/amazeui.legacy.min.js"></script>
+<script src="assets/js/amazeui.ie8polyfill.min.js"></script>
 <![endif]-->
+<script src="assets/js/amazeui.js"></script>
 ```
+
+`amazeui.ie8polyfill.js` 中包含以下 polyfill：
+
+- [Console-polyfill](https://github.com/paulmillr/console-polyfill)
+- [es5-shim](https://github.com/es-shims/es5-shim)
+- [es5-sham](https://github.com/es-shims/es5-shim)
+- [EventListener Polyfill](https://gist.github.com/jonathantneal/3748027)
+- [REM-unit-polyfill](https://github.com/chuckcarpenter/REM-unit-polyfill)
+- [Respond.js](https://github.com/scottjehl/Respond)
 
 #### HTML5 新元素
 

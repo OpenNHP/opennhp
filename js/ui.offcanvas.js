@@ -2,7 +2,8 @@
 
 var $ = require('jquery');
 var UI = require('./core');
-var Hammer = require('./util.hammer');
+require('./util.hammer');
+
 var $win = $(window);
 var $doc = $(document);
 var scrollPos;

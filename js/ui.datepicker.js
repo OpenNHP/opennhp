@@ -128,7 +128,8 @@ Datepicker.prototype.close = function() {
   this.viewMode = this.startViewMode;
   this.showMode();
   if (!this.isInput) {
-    $(document).off('mousedown.datapicker.amui touchstart.datepicker.amui', this.close);
+    $(document).off('mousedown.datapicker.amui touchstart.datepicker.amui',
+      this.close);
   }
   // this.set();
   this.$element.trigger({
@@ -302,7 +303,7 @@ Datepicker.prototype.fill = function() {
 
   var monthLen = 0;
 
-  while(monthLen < 12) {
+  while (monthLen < 12) {
     if (this.onRender(d.setFullYear(year, monthLen))) {
       months.eq(monthLen).addClass('am-disabled');
     }
@@ -328,7 +329,7 @@ Datepicker.prototype.fill = function() {
   year -= 1;
   for (var i = -1; i < 11; i++) {
     yearClassName = this.onRender(d.setFullYear(year));
-    html += '<span class="'+ yearClassName +'' +
+    html += '<span class="' + yearClassName + '' +
     (i === -1 || i === 10 ? ' am-datepicker-old' : '') +
     (currentYear === year ? ' am-active' : '') + '">' + year + '</span>';
     year += 1;
@@ -370,7 +371,7 @@ Datepicker.prototype.click = function(event) {
         break;
       case 'span':
         if ($target.is('.am-disabled')) {
-          return
+          return;
         }
 
         if ($target.is('.am-datepicker-month')) {

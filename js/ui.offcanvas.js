@@ -102,8 +102,14 @@ OffCanvas.prototype.close = function(relatedElement) {
   $element.trigger('close.offcanvas.amui');
 
   function complete() {
-    $body.removeClass('am-offcanvas-page').
-      css({width: '', height: '', 'margin-left': '', 'margin-right': ''});
+    $body
+      .removeClass('am-offcanvas-page')
+      .css({
+        width: '',
+        height: '',
+        'margin-left': '',
+        'margin-right': ''
+      });
     $element.removeClass('am-active');
     $bar.removeClass('am-offcanvas-bar-active');
     $html.css('margin-top', '');
@@ -149,6 +155,8 @@ OffCanvas.prototype.bindEvents = function() {
 };
 
 function Plugin(option, relatedElement) {
+  var args = Array.prototype.slice.call(arguments, 1);
+
   return this.each(function() {
     var $this = $(this);
     var data = $this.data('amui.offcanvas');
@@ -160,7 +168,7 @@ function Plugin(option, relatedElement) {
     }
 
     if (typeof option == 'string') {
-      data[option] && data[option](relatedElement);
+      data[option] && data[option].apply(data, args);
     }
   });
 }

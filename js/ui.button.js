@@ -18,22 +18,19 @@ var Button = function(element, options) {
 
 Button.DEFAULTS = {
   loadingText: 'loading...',
-  className: {
-    loading: 'am-btn-loading',
-    disabled: 'am-disabled'
-  },
+  disabledClassName: 'am-disabled',
   spinner: undefined
 };
 
-Button.prototype.setState = function(state) {
-  var disabled = 'disabled';
+Button.prototype.setState = function(state, stateText) {
   var $element = this.$element;
+  var disabled = 'disabled';
+  var data = $element.data();
   var options = this.options;
   var val = $element.is('input') ? 'val' : 'html';
-  var loadingClassName = options.className.disabled + ' ' +
-    options.className.loading;
+  var stateClassName = 'am-btn-' + state + ' ' + options.disabledClassName;
 
-  state = state + 'Text';
+  state += 'Text';
 
   if (!options.resetText) {
     options.resetText = $element[val]();
@@ -42,22 +39,25 @@ Button.prototype.setState = function(state) {
   // add spinner for element with html()
   if (UI.support.animation && options.spinner &&
     val === 'html' && !this.hasSpinner) {
-    options.loadingText = '<span class="am-icon-' +
-    options.spinner +
-    ' am-icon-spin"></span>' + options.loadingText;
+    options.loadingText = '<span class="am-icon-' + options.spinner +
+      ' am-icon-spin"></span>' + options.loadingText;
 
     this.hasSpinner = true;
   }
 
-  $element[val](options[state]);
+  stateText = stateText ||
+    (data[state] === undefined ? options[state] : data[state]);
+
+  $element[val](stateText);
 
   // push to event loop to allow forms to submit
   setTimeout($.proxy(function() {
-    if (state == 'loadingText') {
-      $element.addClass(loadingClassName).attr(disabled, disabled);
+    // TODO: add stateClass for other states
+    if (state === 'loadingText') {
+      $element.addClass(stateClassName).attr(disabled, disabled);
       this.isLoading = true;
     } else if (this.isLoading) {
-      $element.removeClass(loadingClassName).removeAttr(disabled);
+      $element.removeClass(stateClassName).removeAttr(disabled);
       this.isLoading = false;
     }
   }, this), 0);
@@ -93,26 +93,16 @@ Button.prototype.toggle = function() {
   }
 };
 
-// Button plugin
-function Plugin(option) {
-  return this.each(function() {
-    var $this = $(this);
-    var data = $this.data('amui.button');
-    var options = typeof option == 'object' && option || {};
-
-    if (!data) {
-      $this.data('amui.button', (data = new Button(this, options)));
+UI.plugin('button', Button, {
+  dataOptions: 'data-am-loading',
+  methodCall: function(args, instance) {
+    if (args[0] === 'toggle') {
+      instance.toggle();
+    } else if (typeof args[0] === 'string') {
+      instance.setState.apply(instance, args);
     }
-
-    if (option == 'toggle') {
-      data.toggle();
-    } else if (typeof option == 'string') {
-      data.setState(option);
-    }
-  });
-}
-
-$.fn.button = Plugin;
+  }
+});
 
 // Init code
 $(document).on('click.button.amui.data-api', '[data-am-button]', function(e) {
@@ -122,14 +112,12 @@ $(document).on('click.button.amui.data-api', '[data-am-button]', function(e) {
     $btn = $btn.closest('.am-btn');
   }
 
-  Plugin.call($btn, 'toggle');
+  $btn.button('toggle');
   e.preventDefault();
 });
 
 UI.ready(function(context) {
-  $('[data-am-loading]', context).each(function() {
-    $(this).button(UI.utils.parseOptions($(this).data('amLoading')));
-  });
+  $('[data-am-loading]', context).button();
 });
 
 module.exports = UI.button = Button;

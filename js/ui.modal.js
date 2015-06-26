@@ -260,8 +260,7 @@ function Plugin(option, relatedTarget) {
   return this.each(function() {
     var $this = $(this);
     var data = $this.data('amui.modal');
-    var options = $.extend({},
-      Modal.DEFAULTS, typeof option == 'object' && option);
+    var options = typeof option == 'object' && option;
 
     if (!data) {
       $this.data('amui.modal', (data = new Modal(this, options)));

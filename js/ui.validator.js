@@ -25,6 +25,7 @@ Validator.DEFAULTS = {
   validClass: 'am-field-valid',
 
   validateOnSubmit: true,
+  alwaysRevalidate: false,
   // Elements to validate with allValid (only validating visible elements)
   // :input: selects all input, textarea, select and button elements.
   allFields: ':input:visible:not(:submit, :button, :disabled, .am-novalidate)',
@@ -231,8 +232,9 @@ Validator.prototype.init = function() {
 
 Validator.prototype.isValid = function(field) {
   var $field = $(field);
+  var options = this.options;
   // valid field not has been validated
-  if ($field.data('validity') === undefined) {
+  if ($field.data('validity') === undefined || options.alwaysRevalidate) {
     this.validate(field);
   }
 

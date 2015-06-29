@@ -157,10 +157,10 @@ Amaze UI 在 HTML5 下开发，没有测试其他 DOCTYPE，使用之前确保�
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Amaze UI"/>
-  <link rel="apple-touch-icon-precomposed" href="{{assets}}i/app-icon72x72@2x.png">
+  <link rel="apple-touch-icon-precomposed" href="assets/i/app-icon72x72@2x.png">
 
   <!-- Tile icon for Win8 (144x144 + tile color) -->
-  <meta name="msapplication-TileImage" content="{{assets}}i/app-icon72x72@2x.png">
+  <meta name="msapplication-TileImage" content="assets/i/app-icon72x72@2x.png">
   <meta name="msapplication-TileColor" content="#0e90d2">
 
   <!-- SEO: If your mobile URL is different from the desktop URL, add a canonical link to the desktop page https://developers.google.com/webmasters/smartphone-sites/feature-phones -->
@@ -168,18 +168,21 @@ Amaze UI 在 HTML5 下开发，没有测试其他 DOCTYPE，使用之前确保�
   <link rel="canonical" href="http://www.example.com/">
   -->
 
-  <link rel="stylesheet" href="{{assets}}css/amazeui.min.css">
-  <link rel="stylesheet" href="{{assets}}css/app.css">
+  <link rel="stylesheet" href="assets/css/amazeui.min.css">
+  <link rel="stylesheet" href="assets/css/app.css">
 </head>
 <body>
 ...
 
 <!--[if (gte IE 9)|!(IE)]><!-->
-<script src="{{assets}}js/jquery.min.js"></script>
+<script src="assets/js/jquery.min.js"></script>
 <!--<![endif]-->
 <!--[if lte IE 8 ]>
-<script src="http://libs.baidu.com/jquery/1.11.1/jquery.min.js"></script>
+<script src="http://libs.baidu.com/jquery/1.11.3/jquery.min.js"></script>
+<script src="http://cdn.staticfile.org/modernizr/2.8.3/modernizr.js"></script>
+<script src="assets/js/amazeui.ie8polyfill.min.js"></script>
 <![endif]-->
+<script src="assets/js/amazeui.min.js"></script>
 </body>
 </html>
 ```

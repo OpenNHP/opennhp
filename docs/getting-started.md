@@ -95,7 +95,7 @@ bower install amazeui
 
 - `amazeui.css` / `amazeui.js`：包含 Amaze UI 所有的 CSS、JS。
 - `amazeui.flat.css`：圆角版 Amaze UI CSS，演示参见 `1.x`。
-- `amazeui.legacy.js`：为 IE 8 打包的 JS。
+- `amazeui.ie8polyfill.js`：IE8 polyfill。
 - `amazeui.widgets.helper.js`： **供使用 Handlebars 的用户使用，其他用户请忽略**，内含 Web 组件必须的 Handlebars helper 及 Web 组件模板 partials。
 
 以上每个文件都有对应的 minified 文件。
@@ -206,6 +206,8 @@ AmazeUI
 <!--<![endif]-->
 <!--[if lte IE 8 ]>
 <script src="http://libs.baidu.com/jquery/1.11.3/jquery.min.js"></script>
+<script src="http://cdn.staticfile.org/modernizr/2.8.3/modernizr.js"></script>
+<script src="assets/js/amazeui.ie8polyfill.min.js"></script>
 <![endif]-->
 <script src="assets/js/amazeui.min.js"></script>
 </body>

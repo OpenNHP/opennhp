@@ -12,18 +12,18 @@ var animation = UI.support.animation;
  * @license MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)
  */
 
+/**
+ * Tabs
+ * @param {HTMLElement} element
+ * @param {Object} options
+ * @constructor
+ */
 var Tabs = function(element, options) {
   this.$element = $(element);
   this.options = $.extend({}, Tabs.DEFAULTS, options || {});
-
-  this.$tabNav = this.$element.find(this.options.selector.nav);
-  this.$navs = this.$tabNav.find('a');
-
-  this.$content = this.$element.find(this.options.selector.content);
-  this.$tabPanels = this.$content.find(this.options.selector.panel);
-
   this.transitioning = null;
 
+  this.refresh();
   this.init();
 };
 
@@ -33,8 +33,23 @@ Tabs.DEFAULTS = {
     content: '> .am-tabs-bd',
     panel: '> .am-tab-panel'
   },
-  className: {
-    active: 'am-active'
+  activeClass: 'am-active'
+};
+
+Tabs.prototype.refresh = function() {
+  var selector = this.options.selector;
+
+  this.$tabNav = this.$element.find(selector.nav);
+  this.$navs = this.$tabNav.find('a');
+
+  this.$content = this.$element.find(selector.content);
+  this.$tabPanels = this.$content.find(selector.panel);
+
+  // Activate the first Tab when no active Tab or multiple active Tabs
+  if (this.$tabNav.find('> .' + this.options.activeClass).length !== 1) {
+    var $tabNav = this.$tabNav;
+    this.activate($tabNav.children('li').first(), $tabNav);
+    this.activate(this.$tabPanels.first(), this.$content);
   }
 };
 
@@ -42,14 +57,7 @@ Tabs.prototype.init = function() {
   var _this = this;
   var options = this.options;
 
-  // Activate the first Tab when no active Tab or multiple active Tabs
-  if (this.$tabNav.find('> .am-active').length !== 1) {
-    var $tabNav = this.$tabNav;
-    this.activate($tabNav.children('li').first(), $tabNav);
-    this.activate(this.$tabPanels.first(), this.$content);
-  }
-
-  this.$navs.on('click.tabs.amui', function(e) {
+  this.$element.on('click.tabs.amui', options.selector.nav + ' a', function(e) {
     e.preventDefault();
     _this.open($(this));
   });
@@ -97,21 +105,27 @@ Tabs.prototype.init = function() {
   }
 };
 
+/**
+ * Open $nav tab
+ * @param {jQuery|HTMLElement|Number} $nav
+ * @returns {Tabs}
+ */
 Tabs.prototype.open = function($nav) {
+  var activeClass = this.options.activeClass;
+  $nav = typeof $nav === 'number' ? this.$navs.eq($nav) : $($nav);
+
   if (!$nav ||
     this.transitioning ||
-    $nav.parent('li').hasClass('am-active')) {
+    $nav.parent('li').hasClass(activeClass)) {
     return;
   }
 
   var $tabNav = this.$tabNav;
-  var $navs = this.$navs;
-  var $tabContent = this.$content;
   var href = $nav.attr('href');
   var regexHash = /^#.+$/;
   var $target = regexHash.test(href) && this.$content.find(href) ||
-    this.$tabPanels.eq($navs.index($nav));
-  var previous = $tabNav.find('.am-active a')[0];
+    this.$tabPanels.eq(this.$navs.index($nav));
+  var previous = $tabNav.find('.' + activeClass + ' a')[0];
   var e = $.Event('open.tabs.amui', {
     relatedTarget: previous
   });
@@ -126,7 +140,7 @@ Tabs.prototype.open = function($nav) {
   this.activate($nav.closest('li'), $tabNav);
 
   // activate Tab content
-  this.activate($target, $tabContent, function() {
+  this.activate($target, this.$content, function() {
     $nav.trigger({
       type: 'opened.tabs.amui',
       relatedTarget: previous
@@ -137,12 +151,13 @@ Tabs.prototype.open = function($nav) {
 Tabs.prototype.activate = function($element, $container, callback) {
   this.transitioning = true;
 
-  var $active = $container.find('> .am-active');
+  var activeClass = this.options.activeClass;
+  var $active = $container.find('> .' + activeClass);
   var transition = callback && supportTransition && !!$active.length;
 
-  $active.removeClass('am-active am-in');
+  $active.removeClass(activeClass + ' am-in');
 
-  $element.addClass('am-active');
+  $element.addClass(activeClass);
 
   if (transition) {
     $element.redraw(); // reflow for transition
@@ -151,15 +166,12 @@ Tabs.prototype.activate = function($element, $container, callback) {
     $element.removeClass('am-fade');
   }
 
-  function complete() {
+  var complete = $.proxy(function complete() {
     callback && callback();
     this.transitioning = false;
-  }
+  }, this);
 
-  transition ?
-    $active.one(supportTransition.end, $.proxy(complete, this)) :
-    $.proxy(complete, this)();
-
+  transition ? $active.one(supportTransition.end, complete) : complete();
 };
 
 Tabs.prototype.getNextNav = function($panel) {
@@ -190,34 +202,57 @@ Tabs.prototype.getPrevNav = function($panel) {
   }
 };
 
+Tabs.prototype.destroy = function() {
+  this.$element.off('.tabs.amui');
+  Hammer.off(this.$content[0], 'panleft panright');
+  $.removeData(this.$element, 'amui.tabs');
+};
+
 // Plugin
 function Plugin(option) {
-  return this.each(function() {
+  var args = Array.prototype.slice.call(arguments, 1);
+  var methodReturn;
+
+  this.each(function() {
     var $this = $(this);
     var $tabs = $this.is('.am-tabs') && $this || $this.closest('.am-tabs');
     var data = $tabs.data('amui.tabs');
-    var options = $.extend({}, $.isPlainObject(option) ? option : {},
-      UI.utils.parseOptions($this.data('amTabs')));
+    var options = $.extend({}, UI.utils.parseOptions($this.data('amTabs')),
+      $.isPlainObject(option) && option);
 
     if (!data) {
       $tabs.data('amui.tabs', (data = new Tabs($tabs[0], options)));
     }
 
-    if (typeof option == 'string' && $this.is('.am-tabs-nav a')) {
-      data[option]($this);
+    if (typeof option === 'string') {
+      if (option === 'open' && $this.is('.am-tabs-nav a')) {
+        data.open($this);
+      } else {
+        methodReturn = typeof data[option] === 'function' ?
+          data[option].apply(data, args) : data[option];
+      }
     }
   });
+
+  return methodReturn === undefined ? this : methodReturn;
 }
 
 $.fn.tabs = Plugin;
 
+/*
 // Init code
 UI.ready(function(context) {
   $('[data-am-tabs]', context).tabs();
+});
+*/
+
+$(document).on('click.tabs.amui.data-api', '[data-am-tabs] .am-tabs-nav a',
+  function(e) {
+  e.preventDefault();
+  Plugin.call($(this), 'open');
 });
 
 module.exports = UI.tabs = Tabs;
 
 // TODO: 1. Ajax 支持
 //       2. touch 事件处理逻辑优化
-//       3. 暴露方法 API

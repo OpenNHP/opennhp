@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+### 2015.06 W5
+
+**JS:**
+
+- `Improved` Tabs 增加标签切换及选项卡刷新、销毁 API。
+
 ### 2015.06 W4
 
 **JS:**

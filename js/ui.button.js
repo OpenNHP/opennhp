@@ -66,7 +66,7 @@ Button.prototype.setState = function(state, stateText) {
 Button.prototype.toggle = function() {
   var changed = true;
   var $element = this.$element;
-  var $parent = this.$element.parent('.am-btn-group');
+  var $parent = this.$element.parent('[class*="am-btn-group"]');
 
   if ($parent.length) {
     var $input = this.$element.find('input');

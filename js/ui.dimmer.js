@@ -25,6 +25,9 @@ Dimmer.prototype.init = function() {
     $(document.body).append(this.$element);
     this.inited = true;
     $doc.trigger('init.dimmer.amui');
+    this.$element.on('touchmove.dimmer.amui', function(e) {
+      e.preventDefault();
+    });
   }
 
   return this;

@@ -106,6 +106,7 @@ UI.plugin('button', Button, {
 
 // Init code
 $(document).on('click.button.amui.data-api', '[data-am-button]', function(e) {
+  e.preventDefault();
   var $btn = $(e.target);
 
   if (!$btn.hasClass('am-btn')) {
@@ -113,7 +114,6 @@ $(document).on('click.button.amui.data-api', '[data-am-button]', function(e) {
   }
 
   $btn.button('toggle');
-  e.preventDefault();
 });
 
 UI.ready(function(context) {

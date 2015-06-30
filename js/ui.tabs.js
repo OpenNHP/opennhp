@@ -21,7 +21,7 @@ var animation = UI.support.animation;
 var Tabs = function(element, options) {
   this.$element = $(element);
   this.options = $.extend({}, Tabs.DEFAULTS, options || {});
-  this.transitioning = null;
+  this.transitioning = this.activeIndex = null;
 
   this.refresh();
   this.init();
@@ -45,11 +45,13 @@ Tabs.prototype.refresh = function() {
   this.$content = this.$element.find(selector.content);
   this.$tabPanels = this.$content.find(selector.panel);
 
+  var $active = this.$tabNav.find('> .' + this.options.activeClass);
+
   // Activate the first Tab when no active Tab or multiple active Tabs
-  if (this.$tabNav.find('> .' + this.options.activeClass).length !== 1) {
-    var $tabNav = this.$tabNav;
-    this.activate($tabNav.children('li').first(), $tabNav);
-    this.activate(this.$tabPanels.first(), this.$content);
+  if ($active.length !== 1) {
+    this.open(0);
+  } else {
+    this.activeIndex = this.$navs.index($active.children('a'));
   }
 };
 
@@ -68,40 +70,25 @@ Tabs.prototype.init = function() {
       return this;
     }
 
-    var hammer = new Hammer(this.$content[0]);
-
-    hammer.get('pan').set({
-      direction: Hammer.DIRECTION_HORIZONTAL,
-      threshold: 120
+    var hammer = new Hammer.Manager(this.$content[0]);
+    var swipe = new Hammer.Swipe({
+      direction: Hammer.DIRECTION_HORIZONTAL
+      // threshold: 40
     });
 
-    hammer.on('panleft', UI.utils.debounce(function(e) {
+    hammer.add(swipe);
+
+    hammer.on('swipeleft', UI.utils.debounce(function(e) {
       e.preventDefault();
-      var $target = $(e.target);
-
-      if (!$target.is(options.selector.panel)) {
-        $target = $target.closest(options.selector.panel);
-      }
-
-      $target.focus();
-
-      var $nav = _this.getNextNav($target);
-      $nav && _this.open($nav);
+      _this.goTo('next');
     }, 100));
 
-    hammer.on('panright', UI.utils.debounce(function(e) {
+    hammer.on('swiperight', UI.utils.debounce(function(e) {
       e.preventDefault();
-
-      var $target = $(e.target);
-
-      if (!$target.is(options.selector.panel)) {
-        $target = $target.closest(options.selector.panel);
-      }
-
-      var $nav = _this.getPrevNav($target);
-
-      $nav && _this.open($nav);
+      _this.goTo('prev');
     }, 100));
+
+    this._hammer = hammer;
   }
 };
 
@@ -112,9 +99,12 @@ Tabs.prototype.init = function() {
  */
 Tabs.prototype.open = function($nav) {
   var activeClass = this.options.activeClass;
-  $nav = typeof $nav === 'number' ? this.$navs.eq($nav) : $($nav);
+  var activeIndex = typeof $nav === 'number' ? $nav : this.$navs.index($($nav));
+
+  $nav = typeof $nav === 'number' ? this.$navs.eq(activeIndex) : $($nav);
 
   if (!$nav ||
+    !$nav.length ||
     this.transitioning ||
     $nav.parent('li').hasClass(activeClass)) {
     return;
@@ -124,7 +114,7 @@ Tabs.prototype.open = function($nav) {
   var href = $nav.attr('href');
   var regexHash = /^#.+$/;
   var $target = regexHash.test(href) && this.$content.find(href) ||
-    this.$tabPanels.eq(this.$navs.index($nav));
+    this.$tabPanels.eq(activeIndex);
   var previous = $tabNav.find('.' + activeClass + ' a')[0];
   var e = $.Event('open.tabs.amui', {
     relatedTarget: previous
@@ -146,6 +136,8 @@ Tabs.prototype.open = function($nav) {
       relatedTarget: previous
     });
   });
+
+  this.activeIndex = activeIndex;
 };
 
 Tabs.prototype.activate = function($element, $container, callback) {
@@ -174,37 +166,32 @@ Tabs.prototype.activate = function($element, $container, callback) {
   transition ? $active.one(supportTransition.end, complete) : complete();
 };
 
-Tabs.prototype.getNextNav = function($panel) {
-  var navIndex = this.$tabPanels.index($panel);
-  var rightSpring = 'am-animation-right-spring';
+/**
+ * Go to `next` or `prev` tab
+ * @param {String} direction - `next` or `prev`
+ */
+Tabs.prototype.goTo = function(direction) {
+  var navIndex = this.activeIndex;
+  var isNext = direction === 'next';
+  var spring = isNext ? 'am-animation-right-spring' :
+    'am-animation-left-spring';
 
-  if (navIndex + 1 >= this.$navs.length) { // last one
-    animation && $panel.addClass(rightSpring).on(animation.end, function() {
-      $panel.removeClass(rightSpring);
+  if ((isNext && navIndex + 1 >= this.$navs.length) || // last one
+    (!isNext && navIndex === 0)) { // first one
+    var $panel = this.$tabPanels.eq(navIndex);
+
+    animation && $panel.addClass(spring).on(animation.end, function() {
+      $panel.removeClass(spring);
     });
-    return null;
   } else {
-    return this.$navs.eq(navIndex + 1);
-  }
-};
-
-Tabs.prototype.getPrevNav = function($panel) {
-  var navIndex = this.$tabPanels.index($panel);
-  var leftSpring = 'am-animation-left-spring';
-
-  if (navIndex === 0) { // first one
-    animation && $panel.addClass(leftSpring).on(animation.end, function() {
-      $panel.removeClass(leftSpring);
-    });
-    return null;
-  } else {
-    return this.$navs.eq(navIndex - 1);
+    this.open(isNext ? navIndex + 1 : navIndex - 1);
   }
 };
 
 Tabs.prototype.destroy = function() {
   this.$element.off('.tabs.amui');
-  Hammer.off(this.$content[0], 'panleft panright');
+  Hammer.off(this.$content[0], 'swipeleft swiperight');
+  this._hammer && this._hammer.destroy();
   $.removeData(this.$element, 'amui.tabs');
 };
 
@@ -239,12 +226,10 @@ function Plugin(option) {
 
 $.fn.tabs = Plugin;
 
-/*
 // Init code
 UI.ready(function(context) {
   $('[data-am-tabs]', context).tabs();
 });
-*/
 
 $(document).on('click.tabs.amui.data-api', '[data-am-tabs] .am-tabs-nav a',
   function(e) {

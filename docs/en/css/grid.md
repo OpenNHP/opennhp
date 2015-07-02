@@ -102,13 +102,13 @@ CSS in source codes of Amaze UI:
 Please view this example in a window with width larger than `1000px`.
 
 ```html
-<h2>Grid Without Max Width</h2>
+<h2>Grid without Max Width</h2>
 <div class="am-g">
   <div class="am-u-sm-4">4</div>
   <div class="am-u-sm-8">8</div>
 </div>
 
-<h2>Grid With Max Width</h2>
+<h2>Grid with Max Width</h2>
 <div class="am-g am-g-fixed">
   <div class="am-u-sm-4">4</div>
   <div class="am-u-sm-8">8</div>
@@ -605,7 +605,7 @@ Adjust the browser to check effect.
 
 Some users told us that the padding is too large for them, so we made the `.am-g-collapse` class to remove the padding in the columns.
 
-**Example 10: Columns Without Padding**
+**Example 10: Columns without Padding**
 
 Add the `.am-g-collapse` class to `.am-g` to remove `padding`.
 

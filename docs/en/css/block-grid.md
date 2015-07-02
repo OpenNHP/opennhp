@@ -34,7 +34,7 @@ Considering generality (for menus, pictures etc), `padding` is not set for `<li>
 
 Attention: AVG Grid __can be only apply to `<ul>` / `<ol>` stucture__.
 
-~~The following examples use styles below: ~~
+~~The following examples use styles below:~~
 
 These codes have been integrated into [thumbnail](/css/thumbnail?_ver=2.x).
 
@@ -53,7 +53,7 @@ These codes have been integrated into [thumbnail](/css/thumbnail?_ver=2.x).
 }
 ```
 
-**All the right of pictures used in following samples belowns to [Microsoft Bing](http://www.bing.com).**
+**All rights of pictures used in following samples belongs to [Microsoft Bing](http://www.bing.com).**
 
 ## Usage
 

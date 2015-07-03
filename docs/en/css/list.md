@@ -124,7 +124,7 @@ Add the `.am-list-striped` class.
 
 <!--### Activated -->
 
-## Use With Other Components
+## Using with Other Components
 
 ### With Badge
 

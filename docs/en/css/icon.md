@@ -7,7 +7,7 @@ Amaze UI Icon is using [Font Awesome](http://fontawesome.io/icons/)(Upgraded to 
 
 ### Adding Class
 
-Add `am-icon-{图标名称}` class to HTML elements.
+Add `am-icon-{icon-name}` class to HTML elements.
 
 `````html
 <span class="am-icon-qq"> QQ</span>

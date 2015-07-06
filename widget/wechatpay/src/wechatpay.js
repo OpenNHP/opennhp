@@ -5,6 +5,8 @@ var UI = require('../../../js/core');
 
 var isWeChat = window.navigator.userAgent.indexOf('MicroMessenger') > -1;
 
+/* global wx,alert */
+
 function appendWeChatSDK(callback) {
   var $weChatSDK = $('<script/>', {
     id: 'wechat-sdk'

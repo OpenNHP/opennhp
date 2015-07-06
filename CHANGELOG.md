@@ -1,6 +1,8 @@
 # Amaze UI Change Log
 ---
 
+## Amaze UI 2.4.2 (2015.07.06)
+
 ### 2015.07 W2
 
 **Web 组件：**

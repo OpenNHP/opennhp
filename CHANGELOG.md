@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+### 2015.07 W2
+
+**Web 组件：**
+
+- `Fixed` #659 Gotop 修复 ` $.AMUI is undefined` 错误。
+
 ## Amaze UI 2.4.1 (2015.06.30)
 
 ### 2015.06 W5

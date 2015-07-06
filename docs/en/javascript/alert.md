@@ -12,7 +12,7 @@ doc: docs/javascript/alert.md
 
 Show a closable alert in page .
 
-## Styles
+## Example
 
 ### Default Style
 
@@ -153,7 +153,7 @@ $('.am-alert').alert()
 - `$().alert()`: Enable the close button in alert element.
 - `$().alert('close')`: Close the alert.
 
-#### Customized Events
+#### Events
 
 <table class="am-table am-table-bd am-table-striped">
   <thead>

@@ -40,6 +40,55 @@ Tooltip 效果。
 </button>
 ```
 
+### 颜色/尺寸
+
+通过 `theme` 选项可以设置 Popover 的颜色和尺寸。
+
+`````html
+<!--蓝色的 Popover-->
+<button
+  class="am-btn am-btn-primary"
+  data-am-popover="{theme: 'primary', content: '点击显示的 Primary'}">
+  Primary
+</button>
+
+<!--红色、sm Popover-->
+<button
+  class="am-btn am-btn-secondary"
+  data-am-popover="{theme: 'danger sm', content: '点击显示的 Danger & Small'}">
+  Danger
+</button>
+
+<!--警示、lg Popover-->
+<button
+  class="am-btn am-btn-warning"
+  data-am-popover="{theme: 'warning lg', content: '点击显示的 Danger & Small'}">
+  Warning
+</button>
+`````
+```html
+<!--蓝色的 Popover-->
+<button
+  class="am-btn am-btn-primary"
+  data-am-popover="{theme: 'primary', content: '点击显示的 Primary'}">
+  Primary
+</button>
+
+<!--红色、sm Popover-->
+<button
+  class="am-btn am-btn-secondary"
+  data-am-popover="{theme: 'danger sm', content: '点击显示的 Danger & Small'}">
+  Danger
+</button>
+
+<!--警示、lg Popover-->
+<button
+  class="am-btn am-btn-warning"
+  data-am-popover="{theme: 'warning lg', content: '点击显示的 Danger & Small'}">
+  Warning
+</button>
+```
+
 ## 使用方式
 
 ### 通过 Data API
@@ -78,27 +127,13 @@ $(function() {
 
 #### 参数说明
 
-<table class="am-table am-table-bordered am-table-striped">
-  <thead>
-  <tr>
-    <th>参数</th>
-    <th>类型</th>
-    <th>描述</th>
-  </tr>
-  </thead>
-  <tbody>
-  <tr>
-    <td><code>content</code></td>
-    <td><code>string</code></td>
-    <td>Popover 显示的内容</td>
-  </tr>
-  <tr>
-    <td><code>trigger</code></td>
-    <td><code>string</code></td>
-    <td>交互方式，<code>click|hover|focus</code>，默认为 <code>click</code></td>
-  </tr>
-  </tbody>
-</table>
+| 参数 | 类型 | 描述 |
+| --- |  --- | --- |
+| `content` | `string` | Popover 显示的内容
+| `trigger` | `string` | 交互方式，`click` / `hover` / `focus`，默认为 `click`|
+|`theme`|`string`| Popover 样式，颜色：`primary` / `secondary` / `success` / `warning` / `danger`；尺寸： `sm` / `lg`。同时设置颜色和尺寸使用一个半角空格 ` ` 分隔。|
+
+
 
 #### 方法
 

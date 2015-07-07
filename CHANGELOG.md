@@ -1,6 +1,13 @@
 # Amaze UI Change Log
 ---
 
+### 2015.07 W2
+
+**JS:**
+
+- `New` Popover 增加 `theme` 选项，用于设置颜色和尺寸；
+- `New` Popover 增加 `destroy` 方法，用于销毁实例。
+
 ## Amaze UI 2.4.2 (2015.07.06)
 
 ### 2015.07 W2

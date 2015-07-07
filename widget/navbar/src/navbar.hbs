@@ -4,7 +4,7 @@
     {{#if content}}
       <ul class="am-navbar-nav am-cf {{#if options.cols}}am-avg-sm-{{options.cols}}{{/if}}">
         {{#each content}}
-          <li {{#if dataApi}}{{dataApi}}{{/if}}>
+          <li {{{dataApi}}}>
             <a href="{{link}}" class="{{className}}">
               {{#if customIcon}}
                 <img src="{{customIcon}}" alt="{{title}}"/>

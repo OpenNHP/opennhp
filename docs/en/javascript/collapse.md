@@ -13,7 +13,7 @@ doc: docs/javascript/collapse.md
 
 The collapse component can be used to make dropdown and accordion.
 
-## Example
+## Examples
 
 ### Accordion
 

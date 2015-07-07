@@ -17,7 +17,7 @@ A plugin used to select date. If you need timepicker, see [DateTimePicker](https
 
 On touch screen devices, `<input>` will activate keyboard when it is focused. Keyboard activation can be disabled by adding `readonly` in some browsers. 
 
-## Example
+## Examples
 
 ### Basic
 
@@ -379,7 +379,7 @@ $('#my-datepicker').datepicker({format: 'yyyy-mm'});
 
 设置 `viewMode` 和 `minViewMode` 需要注意日期格式 `format` 的设置。
 
-#### Event
+#### Events
 
 Print log in console when selecting date.
 

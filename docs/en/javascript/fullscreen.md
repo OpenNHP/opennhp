@@ -14,7 +14,7 @@ doc: docs/javascript/fullscreen.md
 JavaScript [Fullscreen API](https://developer.mozilla.org/en/DOM/Using_full-screen_mode) is supported by most of the popular browsers ([List of Browsers Support Fullscreen
 API](http://caniuse.com/fullscreen)). Source: [screenfull.js](https://github.com/sindresorhus/screenfull.js)。
 
-## Method
+## Methods
 
 Called using `$.AMUI.fullscreen`.
 
@@ -38,7 +38,7 @@ Exit from the full screen mode.
 
 Swich between the normal mode and full screen mode.
 
-### Event
+### Events
 
 #### Full screen status
 
@@ -62,7 +62,7 @@ if (fullscreen.enabled) {
 }
 ```
 
-## Attribute
+## Options
 
 ### `.isFullscreen`
 

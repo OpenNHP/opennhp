@@ -75,12 +75,12 @@ $(function() {
 });
 ```
 
-#### Attribute
+#### Options
 
 <table class="am-table am-table-bordered am-table-striped">
   <thead>
   <tr>
-    <th>Attribute</th>
+    <th>Option</th>
     <th>Type</th>
     <th>Description</th>
   </tr>

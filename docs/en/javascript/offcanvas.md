@@ -13,7 +13,7 @@ doc: docs/javascript/offcanvas.md
 
 Create a smooth off-canvas sidebar that slides in and out of the page. See more details in menu widget([Example 1](/widgets/menu/offcanvas1/0), [Example 2](/widgets/menu/offcanvas1/1)).
 
-## Example
+## Examples
 
 The Off-canvas component consists of an overlay and an off-canvas bar. Add `data-am-offcanvas` attribute to the overlay, and use specified HTML stucture for off-canvas bar.
 
@@ -193,7 +193,7 @@ $('#my-offcanvas').offCanvas(options);
 
 __Attension:__ The `#my-offcanvas` here points directly to the offcanvas instead of the overlay.
 
-#### Attribute
+#### Options
 
 - `options.effect`. Optional values include `overlay | push`. Default value is `overlay`.
 
@@ -203,13 +203,13 @@ $('#my-offcanvas').offCanvas({effect: 'push'});
 
 Set through `$().offCanvas(options)`.
 
-#### Method
+#### Methods
 
 - `$().offCanvas(options)` - Set the offcanvas attribute and show it.
 - `$().offCanvas('open')` - Show the offcanvas.
 - `$().offCanvas('close')` - Hide the offcanvas.
 
-#### Event
+#### Events
 
 <table class="am-table am-table-bd am-table-striped">
   <thead>

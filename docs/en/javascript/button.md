@@ -38,7 +38,7 @@ $('.btn-loading-example').click(function () {
 });
 ```
 
-### Customized
+### Customize
 
 Use the `data-am-loading` class to set the options.
 

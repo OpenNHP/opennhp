@@ -12,7 +12,7 @@ doc: docs/javascript/alert.md
 
 Show a closable alert in page .
 
-## Example
+## Examples
 
 ### Default Style
 
@@ -180,7 +180,7 @@ $('#my-alert').on('closed.alert.amui', function() {
 });
 ```
 
-#### JS Example
+#### JS Examples
 
 **Example 1:** Activate the close button of alert element
 

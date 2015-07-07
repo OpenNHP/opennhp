@@ -20,11 +20,11 @@ var Popover = function(element, options) {
 };
 
 Popover.DEFAULTS = {
-  theme: undefined,
+  theme: null,
   trigger: 'click',
   content: '',
   open: false,
-  target: undefined,
+  target: null,
   tpl: '<div class="am-popover">' +
     '<div class="am-popover-inner"></div>' +
     '<div class="am-popover-caret"></div></div>'
@@ -187,7 +187,7 @@ Popover.prototype.getPopover = function() {
   var theme = [];
 
   if (this.options.theme) {
-    $.each(this.options.theme.split(','), function(i, item) {
+    $.each(this.options.theme.split(' '), function(i, item) {
       theme.push('am-popover-' + $.trim(item));
     });
   }
@@ -220,6 +220,11 @@ Popover.prototype._bindEvents = function() {
   }
 };
 
+Popover.prototype.destroy = function() {
+  this.$element.off('.popover.amui').removeData('amui.popover');
+  this.$popover.remove();
+};
+
 UI.plugin('popover', Popover);
 
 // Init code
@@ -228,3 +233,5 @@ UI.ready(function(context) {
 });
 
 module.exports = Popover;
+
+// TODO: 允许用户定义位置

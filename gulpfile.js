@@ -185,7 +185,7 @@ gulp.task('build:less', function() {
       }
     }))
     .pipe($.autoprefixer({browsers: config.AUTOPREFIXER_BROWSERS}))
-    .pipe($.replace('//dn-staticfile.qbox.me/font-awesome/4.3.0/', '../'))
+    .pipe($.replace('//dn-amui.qbox.me/font-awesome/4.3.0/', '../'))
     .pipe(gulp.dest(config.dist.css))
     .pipe($.size({showFiles: true, title: 'source'}))
     // Disable advanced optimizations - selector & property merging, etc.
@@ -306,7 +306,6 @@ gulp.task('archive', function(cb) {
 
 gulp.task('archive:copy:css', function() {
   return gulp.src('./dist/css/*.css')
-    .pipe($.replace('//dn-staticfile.qbox.me/font-awesome/4.2.0/', '../'))
     .pipe(gulp.dest('./docs/examples/assets/css'));
 });
 

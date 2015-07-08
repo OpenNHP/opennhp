@@ -13,16 +13,16 @@ Amaze UI
 |-- package.json
 |-- dist        # 部署目录
 |-- docs        # 文档
-|-- fonts       # Icon font，目前使用了 http://staticfile.org/
+|-- fonts       # Icon font，使用 Font Awesome
 |-- gulpfile.js # 构建配置文件
 |-- js          # JS 文件
-|-- less        # LESS 文件
+|-- less        # Less 文件
 |-- tools       # 相关工具
 |-- vendor      # 第三方文件
 `-- widget      # Web 组件
 ```
 
-## LESS
+## Less
 
 `less` 文件中存放了所有 LESS 源文件，其中以 `ui.` 开头的为 JS 插件相关的样式。
 
@@ -33,9 +33,10 @@ Amaze UI
 
 ```
 less
-|-- amazeui.less          // 引入了 Amaze UI 所有样式文件
-|-- amazeui.widgets.less  // gulp 自动生成，Web 组件及依赖的样式
-|-- amui.less             // CSS 部分的样式
+|-- amazeui.less          // Amaze UI 所有样式文件
+|-- amui.less             // CSS、JavaScript 样式，不包含 Web 组件
+├── amazeui.less
+├── amui.less
 ├── animation.less
 ├── article.less
 ├── badge.less
@@ -61,12 +62,12 @@ less
 ├── print.less
 ├── progress.less
 ├── table.less
-├── themes       // 主题，暂未用到
 ├── thumbnail.less
 ├── topbar.less
 ├── ui.add2home.less
 ├── ui.alert.less
 ├── ui.component.less
+├── ui.datepicker.less
 ├── ui.dropdown.less
 ├── ui.flexslider.less
 ├── ui.modal.less
@@ -74,8 +75,10 @@ less
 ├── ui.popover.less
 ├── ui.progress.less
 ├── ui.pureview.less
+├── ui.selected.less
 ├── ui.share.less
 ├── ui.tabs.less
+├── ui.ucheck.less
 ├── utility.less
 └── variables.less
 
@@ -90,12 +93,12 @@ JS 文件分三类：
 
 ```
 js
-├── amazeui.legacy.js // 针对 IE 8 打包的 JS
 ├── core.js
 ├── ui.add2home.js
 ├── ui.alert.js
 ├── ui.button.js
 ├── ui.collapse.js
+├── ui.datepicker.js
 ├── ui.dimmer.js
 ├── ui.dropdown.js
 ├── ui.flexslider.js
@@ -108,13 +111,17 @@ js
 ├── ui.pureview.js
 ├── ui.scrollspy.js
 ├── ui.scrollspynav.js
+├── ui.selected.js
 ├── ui.share.js
 ├── ui.smooth-scroll.js
 ├── ui.sticky.js
 ├── ui.tabs.js
+├── ui.ucheck.js
+├── ui.validator.js
 ├── util.cookie.js
-├── util.fastclick.js
 ├── util.fullscreen.js
+├── util.geolocation.js
 ├── util.hammer.js
-└── util.qrcode.js
+├── util.qrcode.js
+└── util.store.js
 ```

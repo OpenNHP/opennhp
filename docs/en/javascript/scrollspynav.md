@@ -13,7 +13,7 @@ doc: docs/javascript/scrollspynav.md
 
 ScrollSpyNav can be used to achieve in-page navigation. When scrolling, the link with corresponding archor will be given a highlight style (`.am-active` by default).
 
-## Example
+## Examples
 
 `````html
 <style>
@@ -151,7 +151,7 @@ Add `data-am-scrollspy-nav` attribute.
 Initialize through `$().scrollspynav(options)`.
 
 
-### Option
+### Options
 
 <table class="am-table am-table-bd am-table-striped">
   <thead>

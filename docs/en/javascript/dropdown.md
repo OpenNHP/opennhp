@@ -233,7 +233,7 @@ Create an dropdown without `data-am-dropdown` attribute, and then modify it usin
 </script>
 ```
 
-#### Method
+#### Methods
 
 - `$(element).dropdown(options)` Activate dropdown;
 - `$(element).dropdown('toggle')` Switch between show and hide;
@@ -310,7 +310,7 @@ Create an dropdown without `data-am-dropdown` attribute, and then modify it usin
 </script>
 ```
 
-#### Parameter
+#### Options
 
 <table class="am-table am-table-bd am-table-striped">
   <thead>
@@ -337,7 +337,7 @@ Create an dropdown without `data-am-dropdown` attribute, and then modify it usin
   </tbody>
 </table>
 
-#### Event
+#### Events
 
 The events of dropdown is triggered on element with `.am-dropdown` class.
 

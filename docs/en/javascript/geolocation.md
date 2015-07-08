@@ -129,7 +129,7 @@ There are three methods in Geolocation instance：
 
 - `.clearWatch()`: Clear the `watchID` of this instance.
 
-## Example
+## Examples
 
 **Please use Safari if you are mac user.** Geolocation may not function in other browser because of the security and privacy problem.
 
@@ -211,14 +211,14 @@ $(function() {
   var $clear = $('#doc-geo-clear');
 
   $watch.on('click', function() {
-    alert('开始监控，请打开控制台查看。');
+    alert('Start watching. Please open the console');
     geolocation.watch({
       done: function(position) {
         // console.log(position.coords);
         // console.log(position.timestamp);
         console.log('watchID: ' + geolocation.watchID);
-        console.log('你的位置：\n\t纬度 ' + position.coords.latitude +
-        '，\n\t经度 ' + position.coords.longitude);
+        console.log('Your location：\n\t Latitude ' + position.coords.latitude +
+        '，\n\t Longtitude ' + position.coords.longitude);
       },
       fail: function(error) {
         console.log(error);
@@ -233,7 +233,7 @@ $(function() {
 });
 </script>
 
-### 监视位置变化
+### Watching Geolocation
 
 `````html
 <button type="button" class="am-btn am-btn-primary" id="doc-geo-watch">Start Watching</button>

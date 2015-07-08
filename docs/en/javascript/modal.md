@@ -13,7 +13,7 @@ doc: docs/javascript/modal.md
 
 Modal can be used to simulate the `alert`, `confirm` and `prompt`  window in browser.
 
-## Example
+## Examples
 
 ### Default Style
 
@@ -507,12 +507,12 @@ $(function() {
 </script>
 ```
 
-#### Attributes
+#### Options
 
 <table class="am-table am-table-bordered am-table-striped">
   <thead>
   <tr>
-    <th>Attributes</th>
+    <th>Option</th>
     <th>Type</th>
     <th>Description</th>
   </tr>
@@ -566,14 +566,14 @@ $(function() {
 - The this pointer in `onConfirm`/`onCanel` points to the Modal instance. The methods and attributes of instance can be accessed through `this.`.
 
 
-#### Method
+#### Methods
 
 - `.modal(options)` - Activate the Modal window on element. `options` is an object.
 - `.modal('toggle')` - Switch between show and hide.
 - `.modal('open')` - Show the Modal window.
 - `.modal('close')` - Hide the Modal window.
 
-#### Event
+#### Events
 
 Event will be emitted from the popup window.
 

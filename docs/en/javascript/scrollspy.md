@@ -13,7 +13,7 @@ doc: docs/javascript/scrollspy.md
 
 Add animations to elements when scrolling. (require support to CSS3 animation).
 
-## Example
+## Examples
 
 The following example contains different animations.
 
@@ -213,7 +213,7 @@ $(function() {
 });
 </script>
 ```
-#### Event
+#### Events
 
 <table class="am-table am-table-bd am-table-striped">
   <thead>

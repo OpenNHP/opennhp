@@ -94,7 +94,7 @@ $(function() {
   <tr>
     <td><code>trigger</code></td>
     <td><code>string</code></td>
-    <td>Trigger type. Optional values include <code>click|hover|focus</code>, Default to be <code>click</code></td>
+    <td>Trigger type. Available options include <code>click|hover|focus</code>, Default to be <code>click</code></td>
   </tr>
   </tbody>
 </table>

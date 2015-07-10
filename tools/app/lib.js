@@ -1,9 +1,10 @@
+'use strict';
+
 var path = require('path');
 var format = require('util').format;
 var hbs = require('hbs');
 require('../../vendor/amazeui.hbs.helper')(hbs);
-var fs = require('fs-extra');
-var _ = require('lodash');
+var fs = require('fs');
 var rootDir = path.join(__dirname, '../../');
 var widgetDir = path.join(rootDir, 'widget');
 var lessDir = path.join(rootDir, 'less');
@@ -16,16 +17,17 @@ var config = {
 
 var components = {};
 
-var rejectWidgets = ['.DS_Store', 'blank', 'layout2', 'layout3', 'layout4', 'container'];
-var allWidgets = _.reject(fs.readdirSync(widgetDir), function(widget) {
-  return rejectWidgets.indexOf(widget) > -1;
+var rejectWidgets = ['.DS_Store', 'blank', 'layout2', 'layout3', 'layout4',
+  'container'];
+var allWidgets = fs.readdirSync(widgetDir).filter(function(widget) {
+  return rejectWidgets.indexOf(widget) === -1;
 });
 
-_.forEach(allWidgets, function(widget) {
+allWidgets.forEach(function(widget) {
   if (widget !== '.DS_Store') {
 
     // read widget package.json
-    var pkg = fs.readJsonSync(path.join(widgetDir, widget, 'package.json'));
+    var pkg = require(path.join(widgetDir, widget, 'package.json'));
 
     var srcDir = path.join(widgetDir, widget, 'src');
 
@@ -37,16 +39,17 @@ _.forEach(allWidgets, function(widget) {
       var demos = [];
       var tpl = fs.readFileSync(path.join(srcDir, widget + '.hbs'), 'utf-8');
 
-      _.forEach(pkg.themes, function(theme, index) {
+      pkg.themes.forEach(function(theme, index) {
         if (theme.demos.length) {
-          _.forEach(theme.demos, function(data, i) {
+          theme.demos.forEach(function(data, i) {
             demos.push({
               title: format('%s（%s）', theme.name, data.desc || theme.desc),
               url: format('%s/%s/%d', widget, theme.name, i),
               data: {
                 theme: theme.name,
                 options: data.data.options || {},
-                content: data.data.content || (pkg.demoContent && pkg.demoContent)
+                content: data.data.content ||
+                (pkg.demoContent && pkg.demoContent)
               }
             });
           });

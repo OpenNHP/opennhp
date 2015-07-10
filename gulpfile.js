@@ -4,9 +4,9 @@
 'use strict';
 
 var path = require('path');
-var fs = require('fs-extra');
-var _ = require('lodash');
+var fs = require('fs');
 var format = require('util').format;
+var _ = require('lodash');
 var browserify = require('browserify');
 var watchify = require('watchify');
 var collapser = require('bundle-collapser/plugin');
@@ -96,8 +96,8 @@ var preparingData = function() {
 
   var rejectWidgets = ['.DS_Store', 'blank', 'layout2', 'layout3', 'layout4',
     'container'];
-  var allWidgets = _.reject(fs.readdirSync(WIDGET_DIR), function(widget) {
-    return rejectWidgets.indexOf(widget) > -1;
+  var allWidgets = fs.readdirSync(WIDGET_DIR).filter(function(widget) {
+    return rejectWidgets.indexOf(widget) === -1;
   });
 
   plugins = _.union(config.js.base, fs.readdirSync('./js'));
@@ -121,8 +121,7 @@ var preparingData = function() {
   // get widgets dependencies
   allWidgets.forEach(function(widget, i) {
     // read widget package.json
-    var pkg = fs.readJsonFileSync(path.
-      join(WIDGET_DIR, widget, 'package.json'));
+    var pkg = require(path.join(__dirname, WIDGET_DIR, widget, 'package.json'));
     // ./widget/header/src/header
     var srcPath = WIDGET_DIR + widget + '/src/' + widget;
 
@@ -186,7 +185,7 @@ gulp.task('build:less', function() {
       }
     }))
     .pipe($.autoprefixer({browsers: config.AUTOPREFIXER_BROWSERS}))
-    .pipe($.replace('//dn-staticfile.qbox.me/font-awesome/4.3.0/', '../'))
+    .pipe($.replace('//dn-amui.qbox.me/font-awesome/4.3.0/', '../'))
     .pipe(gulp.dest(config.dist.css))
     .pipe($.size({showFiles: true, title: 'source'}))
     // Disable advanced optimizations - selector & property merging, etc.
@@ -207,12 +206,14 @@ gulp.task('build:fonts', function() {
 });
 
 var bundleInit = function() {
-  var b = browserify(_.assign({}, watchify.args, {
+  var b = browserify({
     entries: './js/amazeui.js',
     basedir: __dirname,
     standalone: 'AMUI',
-    paths: ['./js']
-  }));
+    paths: ['./js'],
+    cache: {},
+    packageCache: {}
+  });
 
   if (process.env.NODE_ENV !== 'travisci') {
     b = watchify(b);
@@ -305,7 +306,6 @@ gulp.task('archive', function(cb) {
 
 gulp.task('archive:copy:css', function() {
   return gulp.src('./dist/css/*.css')
-    .pipe($.replace('//dn-staticfile.qbox.me/font-awesome/4.2.0/', '../'))
     .pipe(gulp.dest('./docs/examples/assets/css'));
 });
 

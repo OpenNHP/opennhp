@@ -34,7 +34,7 @@
 `````html
 <article class="am-comment">
   <a href="#link-to-user-home">
-    <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView/1/w/96/h/96" alt="" class="am-comment-avatar" width="48" height="48"/>
+    <img src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/96/h/96" alt="" class="am-comment-avatar" width="48" height="48"/>
   </a>
 
   <div class="am-comment-main">
@@ -67,7 +67,7 @@
     </footer>
   </div>
 </article>
-```
+`````
 
 ```html
 <article class="am-comment">
@@ -102,7 +102,7 @@
 <ul class="am-comments-list am-comments-list-flip">
   <li class="am-comment">
     <a href="#link-to-user-home">
-      <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView/1/w/96/h/96" alt="" class="am-comment-avatar" width="48" height="48"/>
+      <img src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/96/h/96" alt="" class="am-comment-avatar" width="48" height="48"/>
     </a>
 
     <div class="am-comment-main">
@@ -171,7 +171,7 @@
 
   <li class="am-comment am-comment-flip am-comment-secondary">
     <a href="#link-to-user-home">
-      <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView/1/w/96/h/96" alt="" class="am-comment-avatar" width="48" height="48"/>
+      <img src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/96/h/96" alt="" class="am-comment-avatar" width="48" height="48"/>
     </a>
 
     <div class="am-comment-main">
@@ -211,7 +211,7 @@
 
   <li class="am-comment am-comment-flip am-comment-danger">
     <a href="#link-to-user-home">
-      <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView/1/w/96/h/96" alt="" class="am-comment-avatar" width="48" height="48"/>
+      <img src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/96/h/96" alt="" class="am-comment-avatar" width="48" height="48"/>
     </a>
 
     <div class="am-comment-main">
@@ -250,7 +250,7 @@
 
   <li class="am-comment am-comment-flip am-comment-success">
     <a href="#link-to-user-home">
-      <img src="http://amui.qiniudn.com/bw-2014-06-19.jpg?imageView/1/w/96/h/96" alt="" class="am-comment-avatar" width="48" height="48"/>
+      <img src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/96/h/96" alt="" class="am-comment-avatar" width="48" height="48"/>
     </a>
 
     <div class="am-comment-main">

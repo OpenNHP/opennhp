@@ -23,6 +23,8 @@ Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 100 kB 左右）、 [**
   </div>
 </div>
 
+- [**更新日志**](https://github.com/allmobilize/amazeui/blob/master/CHANGELOG.md)
+
 **离线文档：**
 
 <div class="am-g">
@@ -80,6 +82,9 @@ bower install amazeui
 - [Tags Input - 标签输入框](https://github.com/amazeui/tagsinput)
 - [Video.js Amaze UI 皮肤](https://github.com/amazeui/videojs)
 - [jQuery DataTables - 表格分页、排序等](https://github.com/amazeui/datatables)
+- [Tree - 树形菜单插件](https://github.com/amazeui/tree)
+- [Swiper - 图片轮播插件](https://github.com/amazeui/swiper)
+- [Slick - 图片轮播插件](https://github.com/amazeui/slick)
 
 ### 获取源码
 

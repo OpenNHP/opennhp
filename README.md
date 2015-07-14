@@ -6,7 +6,7 @@
 [![Dependency Status](https://img.shields.io/david/allmobilize/amazeui.svg?style=flat-square)](https://david-dm.org/allmobilize/amazeui)
 [![devDependency Status](https://img.shields.io/david/dev/allmobilize/amazeui.svg?style=flat-square)](https://david-dm.org/allmobilize/amazeui#info=devDependencies)
 
-Amaze UI 是基于社区开源项目构建的一个跨屏前端框架。 __[README in English](https://github.com/allmobilize/amazeui/blob/master/README_EN.md)__
+Amaze UI 是基于社区开源项目构建的一个跨屏前端框架。 __[README in English](README.en.md)__
 
 ### [React 版](https://github.com/amazeui/amazeui-react) | [独立插件](https://github.com/amazeui)
 
@@ -18,7 +18,7 @@ Amaze UI 是基于社区开源项目构建的一个跨屏前端框架。 __[READ
 
 ### 组件丰富，模块化
 
-Amaze UI 含近 20 个 CSS 组件、10 个 JS 组件，更有 17 款包含近 60 个主题的 Web 组件，可快速构建界面出色、体验优秀的跨屏页面，大幅提升开发效率。
+Amaze UI 含近 20 个 CSS 组件、20 余 JS 组件，更有多个包含不同主题的 Web 组件，可快速构建界面出色、体验优秀的跨屏页面，大幅提升开发效率。
 
 ### 本地化支持
 
@@ -62,13 +62,13 @@ amazeui
 
 Amaze UI 使用 [gulp.js](http://gulpjs.com/) 构建项目。
 
-首先全局安装 Gulp：
+首先全局安装 gulp：
 
 ```
 npm install -g gulp
 ```
 
-Clone 项目文件:
+克隆项目文件:
 
 ```
 git clone https://github.com/allmobilize/amazeui.git
@@ -86,47 +86,7 @@ npm install
 gulp
 ```
 
-## Bug 反馈及需求提交
-
-### Bug 反馈
-
-欢迎给 Amaze UI [提交 Bug](https://github.com/allmobilize/amazeui/issues/new?title=Bug%3A%20&body=**%E9%97%AE%E9%A2%98%E6%8F%8F%E8%BF%B0**%0A%0A%EF%BC%88%E6%8F%8F%E8%BF%B0%E4%B8%80%E4%B8%8B%E9%97%AE%E9%A2%98%EF%BC%89%0A%0A**%E4%BA%A7%E7%94%9F%E7%8E%AF%E5%A2%83**%0A%0A-%20%E8%AE%BE%E5%A4%87%EF%BC%9A%EF%BC%88%E6%89%8B%E6%9C%BA%E3%80%81%E5%B9%B3%E6%9D%BF%E7%AD%89%E7%A7%BB%E5%8A%A8%E8%AE%BE%E5%A4%87%E6%97%B6%E5%A1%AB%E5%86%99%E6%AD%A4%E9%A1%B9%EF%BC%89%0A-%20%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F%E5%8F%8A%E7%89%88%E6%9C%AC%EF%BC%9A%0A-%20%E6%B5%8F%E8%A7%88%E5%99%A8%E5%8F%8A%E7%89%88%E6%9C%AC%EF%BC%9A%0A-%20%E6%BC%94%E7%A4%BA%E5%9C%B0%E5%9D%80%EF%BC%9A%0A%0A**%E5%A4%8D%E7%8E%B0%E6%AD%A5%E5%A5%8F**%0A%0A1.%20%0A2.%20%0A...)。
-
-为了能最准确的传达所描述的问题， 建议你在反馈时附上演示，方便我们理解。
-
-为了方便演示，我们使用 **[JSBin 搭建了在线一个调试工具](http://bin.amazeui.org)**，你可以把有问题的场景粘在里面，反馈给我们。
-
-### 需求提交
-
-用户可以通过 Issue 系统或者官网留言提交需求，符合 Amaze UI 理念的需求我们都会考虑。
-
-## 贡献代码
-
-欢迎大家加入捉虫队伍，同时大家也可以分享自己的开发的 Web 组件。Fork 本项目，然后提交 Pull Request 即可。
-
-如果你没有相关经验，建议先阅读下面的文章：
-
-- [Contributing to Open Source on GitHub](https://guides.github.com/activities/contributing-to-open-source/)
-- [The Beginner’s Guide to Contributing to Open Source Projects](http://blog.newrelic.com/2014/05/05/open-source_gettingstarted/)
-- [How to Start Contributing to Open Source](http://www.developer.com/open/how-to-start-contributing-to-open-source.html)
-
-### 我们希望用户参与的项目
-
-- 把使用 Amaze UI 的项目提交给我们，能获得一定的展示量，同时能给其他用户提供参考；
-- SCSS 等其他 CSS 扩展语言的支持：通过编写自动转换脚本实现，人工迁移同步更新成本太高；
-- 使用 Amaze UI 开发制作模板；
-- Angular.js、Ember.js、Meteor 等框架的支持；
-- 基于 Amaze UI 样式开发 JavaScript 插件，可以把 Bootstrap 的插件移植到 Amaze UI；
-- 兼容性测试，我们的测试只能覆盖有限，需要更多用户参与，包括浏览器、WebView 等不同的用户代理；
-- ...
-
-### 开发文档
-
-开发文档存放在 `docs/styleguide` 目录下，也可以通过 [Amaze UI 官网](http://amazeui.org/)查看：
-
-- [Amaze UI HTML/CSS 编写规范](http://amazeui.org/getting-started/html-css)
-- [Amaze UI JavaScript 编写规范](http://amazeui.org/getting-started/javascript)
-- [Amaze UI Web 组件开发规范](http://amazeui.org/getting-started/widget)
+## [Bug 反馈及需求提交](CONTRIBUTING.md)
 
 ## 参考、使用的项目
 

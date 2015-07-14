@@ -53,7 +53,7 @@ These codes have been integrated into [thumbnail](/css/thumbnail?_ver=2.x).
 }
 ```
 
-**All rights of pictures used in following samples belongs to [Microsoft Bing](http://www.bing.com).**
+**All rights of pictures used in following samples belong to [Microsoft Bing](http://www.bing.com).**
 
 ## Usage
 

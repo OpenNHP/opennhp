@@ -3,7 +3,7 @@
 
 Thumbnail is usually used in list of images and list of combination of images and text.
 
-**All rights of pictures used in following samples belongs to [Microsoft Bing](http://www.bing.com).**
+**All rights of pictures used in following samples belong to [Microsoft Bing](http://www.bing.com).**
 
 ## Default Style
 

@@ -178,7 +178,8 @@ Add `data-am-offcanvas` attribute to the overlay element:
   </tr>
   <tr>
     <td><code>{effect: 'push'}</code></td>
-    <td>Offcanvas animation. Optional values include <code>overlay | push</code>. Default value is <code>overlay</code></td>
+    <td>Offcanvas animation. 
+     include <code>overlay | push</code>. Default value is <code>overlay</code></td>
   </tr>
   </tbody>
 </table>
@@ -195,7 +196,7 @@ __Attension:__ The `#my-offcanvas` here points directly to the offcanvas instead
 
 #### Options
 
-- `options.effect`. Optional values include `overlay | push`. Default value is `overlay`.
+- `options.effect`. Available options include `overlay | push`. Default value is `overlay`.
 
 ```javascript
 $('#my-offcanvas').offCanvas({effect: 'push'});

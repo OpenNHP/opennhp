@@ -17,7 +17,7 @@ This plugin can hardly be counted as a light-weight plugin, but it's fully funct
 
 [Slider in Web Widget](/widgets/slider?_ver=2.x) uses this plugin, and adds some style extensions to it.
 
-**All rights of pictures used in following samples belongs to [Microsoft Bing](http://www.bing.com).**
+**All rights of pictures used in following samples belong to [Microsoft Bing](http://www.bing.com).**
 
 ## Examples
 

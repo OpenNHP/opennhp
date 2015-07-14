@@ -403,8 +403,8 @@ $(function() {
 #### Options
 
 - `btnWidth: null`: Button width. Default value is `200px`
-- `btnSize: null`: Button size. Optional values include `xl|sm|lg|xl`
-- `btnStyle: 'default'`: Button style. Optional values include `primary|secondary|success|warning|danger`
+- `btnSize: null`: Button size. Available options include `xl|sm|lg|xl`
+- `btnStyle: 'default'`: Button style. Available options include `primary|secondary|success|warning|danger`
 - `maxHeight: null`: The maximum height.
 - `dropUp: 0`: Dropup if true. Default value is `0` (`false`)
 

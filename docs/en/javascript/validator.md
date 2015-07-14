@@ -1138,7 +1138,7 @@ The following operations are done before DOM get ready:
 
 - `checkbox`/`radio` **These two element can't work correctly without `name` attribute**;
 - `<input type="number">` returns an empty string `""` when input is not an number；
-- Some browser select the first option in dropdown by default. Set the first option to be empty by using `value=""`.
+- Some browser select the first option in dropdo wn by default. Set the first option to be empty by using `value=""`.
 
 ```html
 <div class="am-form-group">

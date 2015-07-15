@@ -1,11 +1,11 @@
 # WechatPay
 ---
 
-微信 JS SDK 应用示例。**微信支付 99% 是后端的工作，如果项目中需要微信支付，请把重心放在后端。**
+WeChat JS SDK Example. **99% of a WechatPay project is on backend. If you want to use WechatPay in your project, please pay more attention to the backend.**
 
-**微信 JS SDK 脚本及权限验证配置请从后端返回**。相关支持请联系微信官方或参考[官方文档](http://mp.weixin.qq.com/wiki/7/aaa137b55fb2e0456bf8dd9148dd613f.html)。
+**Please return the WeChat JS SDK and the authentication configuration from the backend**. See[WeChat official Docs](http://mp.weixin.qq.com/wiki/7/aaa137b55fb2e0456bf8dd9148dd613f.html) for more imformation.
 
-通过 JS SDK 发起微信支付请求只能在微信中才能执行，请扫描二维码在微信内查看效果。
+The WechayPay requrest making through JS SDK is only avaliable in WeChat. Please scan the QR code in Wechat to see the example.
 
 <div id="doc-wechat-pay-qr"></div>
 
@@ -20,57 +20,55 @@
   "theme": "",
   "options": {},
   "content": {
-    // 订单信息及支付签名
+    // Order imformation and signature
     "order": {
-      "timestamp": "", // 支付签名时间戳
-      "nonceStr": "", // 支付签名随机串
-      "package": "", // 统一支付接口返回的 prepay_id 参数值
-      "signType": "", // 加密类型
-      "paySign": "" // 支付签名
+      "timestamp": "", // Signature timestamp.
+      "nonceStr": "", // Signature random string.
+      "package": "", // The prepay_id returned by the unified order API
+      "signType": "", // Encryption method
+      "paySign": "" // Signature
     },
-    "title": "" // 按钮文字
+    "title": "" // Texts on button
   }
 }
 ```
 
-## 微信 JS SDK 调用支付接口要点
+## Something Important
 
-### JS SDK 权限验证
+### JS SDK Authentication
 
-所有需要使用JS-SDK的页面必须先注入配置信息，否则将无法调用（同一个url仅需调用一次，对于变化 URL 的 SPA 的 Web App 可在每次 URL 变化时进行调用），具体文档在[微信支付 API](http://mp.weixin.qq.com/wiki/7/aaa137b55fb2e0456bf8dd9148dd613f.html) ，签名和其他配置参数在服务端实现逻辑。
-
-详细步骤见[微信官网文档](http://mp.weixin.qq.com/wiki/7/aaa137b55fb2e0456bf8dd9148dd613f.html#JSSDK.E4.BD.BF.E7.94.A8.E6.AD.A5.E9.AA.A4)。
+All the pages need JS-SDK should have configuration injected. Otherwise, JS-SDK will not be avaliable. See more details in [WechatPay API](http://mp.weixin.qq.com/wiki/7/aaa137b55fb2e0456bf8dd9148dd613f.html). Signature and other configurations can be made in server-side, and the details can be found in [Wechat Offical Docs](http://mp.weixin.qq.com/wiki/7/aaa137b55fb2e0456bf8dd9148dd613f.html#JSSDK.E4.BD.BF.E7.94.A8.E6.AD.A5.E9.AA.A4).
 
 ```javascript
   wx.config({
     debug: true,
-    appId: '', // 必填，公众号的唯一标识
-    timestamp: '', // 必填，生成签名的时间戳
-    nonceStr: '', // 必填，生成签名的随机串
-    signature: '', // 必填，微信签名
+    appId: '', // Required. ID of offical account.
+    timestamp: '', // Signature timestamp.
+    nonceStr: '', // Signature random train.
+    signature: '' // Signature
     jsApiList: [
       'chooseWXPay'
-    ] // 必填，需要使用的JS接口列表
+    ] // Required. The required JS API list.
   });
 ```
 
-### 使用微信支付统一下单接口生成订单信息
+### Create order with WechatPay Unified Order API
 
-详见[微信支付统一下单接口文档](http://pay.weixin.qq.com/wiki/doc/api/index.php?chapter=9_1)
+See more details in [Official Docs](http://pay.weixin.qq.com/wiki/doc/api/index.php?chapter=9_1)
 
-### 生成支付签名
+### Generate Signature
 
-详见[微信支付签名算法](http://pay.weixin.qq.com/wiki/doc/api/index.php?chapter=4_3)
+See more details in [Wechat signature algorithm](http://pay.weixin.qq.com/wiki/doc/api/index.php?chapter=4_3)
 
-### 发起支付请求
+### Send pay request
 
 ```
 wx.chooseWXPay({
-  timestamp: 0, // 支付签名时间戳，注意微信jssdk中的所有使用timestamp字段均为小写。但最新版的支付后台生成签名使用的timeStamp字段名需大写其中的S字符
-  nonceStr: '', // 支付签名随机串，不长于 32 位
-  package: '', // 统一支付接口返回的prepay_id参数值，提交格式如：prepay_id=***）
-  signType: 'MD5', // 签名方式，默认为'SHA1'，使用新版支付需传入'MD5'
-  paySign: '', // 支付签名
+  timestamp: 0, // Time stamp. Though "timestamp" in jssdk are all in lowercase, the "S" in the "timeStamp" used to create signature is capitalized.
+  nonceStr: '', // The random string. At most 32 bits.
+  package: '', // The prepay_id returned by the unified order API.
+  signType: 'MD5', // Encryption method. Default method is 'SHA1'. The latest version require to use 'MD5'.
+  paySign: '', // Signature.
 });
 ```
 

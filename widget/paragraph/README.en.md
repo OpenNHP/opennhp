@@ -1,11 +1,12 @@
-# Paragraph 段落
+# Paragraph
 ---
 
+This is a paragraph widget that can help organize texts, images, links and etc.
 文本段落组件，可用于放置文本、图片、链接等。
 
-**演示图标版权归[微软 Bing](http://www.bing.com) 所有。**
+**All rights of pictures used in following samples belong to [Microsoft Bing](http://www.bing.com).**
 
-## 使用方法
+## Usage
 
 ### Copy and Paste
 
@@ -23,7 +24,7 @@ The Handlebars partial of this widget is `paragraph`. See [Accordion](/widgets/a
 
 ```javascript
 var data = {
-  "content": ""   // 填写 paragraph 的内容
+  "content": ""   // Content of paragraph
 };
 
 return data;
@@ -40,8 +41,8 @@ return data;
   "theme": "default",
 
   "options": {
-    "imgLightbox": false, // 图片查看器
-    "tableScrollable": false // 表格横向滚动功能
+    "imgLightbox": false, // Whether enable light box.
+    "tableScrollable": false // Whether allow vertical scroll.
   },
 
   "content": {

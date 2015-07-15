@@ -1,9 +1,9 @@
-# Titlebar 标题栏
+# Titlebar
 ---
 
-标题栏组件，常用作页头、标题等。
+This widget can be used as header or title.
 
-## 使用方法
+## Usage
 
 ### Copy and Paste
 
@@ -21,9 +21,9 @@ The Handlebars partial of this widget is `titlebar`. See [Accordion](/widgets/ac
 
 ```javascript
 var data = {
-  "title": "",		// 主标题
-  "link": "",       // 主标题链接，可选
-  "nav": [          // 右侧附加链接，可以为多个
+  "title": "",		// Title
+  "link": "",       // Title link. Optional
+  "nav": [          // Additional links.
     {
       "link": "",
       "title": "",
@@ -35,7 +35,7 @@ var data = {
 return data;
 ```
 
-## 数据接口
+## Data Binding
 
 ```javascript
 {

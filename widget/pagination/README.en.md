@@ -1,11 +1,9 @@
-# Pagination 分页
+# Pagination
 ---
 
-___本组件样式有待改善!___
+___This widget need to be improved in future version!__
 
-分页组件。
-
-## 使用方法
+## Usage
 
 ### Copy and Paste
 
@@ -23,24 +21,24 @@ The Handlebars partial of this widget is `pagination`. See [Accordion](/widgets/
 
 ```javascript
 var data = {
-  "prevTitle": "上一页",  //（可选）内容可以填写成其它的内容
-  "prevLink": "#",        //（可选）直接填写原网站中a链接的href地址
+  "prevTitle": "Prev",  //(Optional) The texts shown in prev button
+  "prevLink": "#",        //(Optional) Href of prev link
 
-  "nextTitle": "下一页",  //（可选）内容可以填写成其它的内容
-  "nextLink": "#",        //（可选）直接填写原网站中a链接的href地址
+  "nextTitle": "Next",  //(Optional) The texts shown in next button
+  "nextLink": "#",        //(Optional) Href of next link
 
-  "firstTitle": "第一页", //（可选）内容可以填写成其它的内容
-  "firstLink": "#",       //（可选）直接填写原网站中a链接的href地址
+  "firstTitle": "First", //(Optional) The texts shown in first page button
+  "firstLink": "#",       //(Optional) Href of first link
 
-  "lastTitle": "最末页",  //（可选）内容可以填写成其它的内容
-  "lastLink": "#",        //（可选）直接填写原网站中a链接的href地址
+  "lastTitle": "Last",  //(Optional) The texts shown in last page button
+  "lastLink": "#",        //(Optional) Href of last link
 
-  "total": "",            // （可选，赋值是“3/5”样式，否则是“3”样式）显示总的页数
+  "total": "",            // (Optional) Show the total page number. Only available in "select" theme. Only show current page number if assign an empty string to total.
 
   "page": [
     {
       "title": "1",
-      "link": "#"     //直接填写原网站中a链接的href地址，这里也可以用一个循环将原页面中的123456...页的链接地址添加进来。
+      "link": "#"     //Link to first page.
     },
     {
       "title": "2",
@@ -58,10 +56,10 @@ return data;
 {
   "id": "",
 
-  // 自定义class
+  // Customized Class
   "className": "",
 
-  // 主题
+  // Theme
   "theme": "default",
 
   "options": {
@@ -69,23 +67,23 @@ return data;
   },
 
   "content": {
-    // 上一页
+    // Previous Page
     "prevTitle": "上一页",
     "prevLink": "#",
 
-    // 第一页
+    // First Page
     "firstTitle": "第一页",
     "firstLink": "#",
 
-    // 可选
+    // Optional
     "nextTitle": "下一页",
     "nextLink": "#",
 
-    // 可选
+    // Optional
     "lastTitle": "最末页",
     "lastLink": "#",
 
-    "total": "", // 总页数
+    "total": "", // Total page number
 
     "page": [
       {

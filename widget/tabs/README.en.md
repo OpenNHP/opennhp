@@ -1,9 +1,7 @@
-# Tabs 选项卡
+# Tabs
 ---
 
-选项卡组件。
-
-## 使用方法
+## Usage
 
 ### Copy and Paste
 
@@ -22,9 +20,9 @@ The Handlebars partial of this widget is `tabs`. See [Accordion](/widgets/accord
 ```javascript
 var data = [
   {
-    "title":   "",   // 选项卡标题
-    "content": "",   // 选项卡内容
-    "active":  false // 是否激活当前选项卡，true | false，只允许一个 Tab 标记为激活
+    "title":   "",   // Title of this tab
+    "content": "",   // Content of this tab
+    "active":  false // Whether activate this tab. true | false. Only allow one tab to be active.
   }
 ];
 
@@ -42,7 +40,7 @@ return data;
   "theme": "",
 
   "options": {
-    "noSwipe": false; // 是否禁用触控操作
+    "noSwipe": false; // Whether enable touch events.
   }
 
   "content": [
@@ -55,11 +53,11 @@ return data;
 }
 ```
 
-## 常见问题
+## FAQ
 
-### 如何禁用触控操作？
+### How to disable touch events?
 
-在容器上添加 `data-am-tabs-noswipe="1"`。
+Add the `data-am-tabs-noswipe="1"` class.
 
 ```html
 <div data-am-widget="tabs" class="am-tabs am-tabs-default" data-am-tabs-noswipe="1">

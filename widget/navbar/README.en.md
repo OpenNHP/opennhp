@@ -1,9 +1,9 @@
 # Navbar 工具栏
 ---
 
-底部工具栏组件。
+This widget helps create navbars at the bottom of the viewport.
 
-## 使用方法
+## Usage
 
 ### Copy and Paste
 
@@ -22,22 +22,22 @@ The Handlebars partial of this widget is `navbar`. See [Accordion](/widgets/acco
 ```javascript
 var data = [
   {
-    "title": "",        // title 值：要显示的文本
+    "title": "",        // title: text that shown in the navbar
 
-    "link": "",         // link 值 ：如果是电话则写"tel:0101245678"
+    "link": "",         // link: Link of icon. Use "tel: ***-****-***" for phone number.
 
-    "customIcon": "",   // customIcon与下边的icon选用其中之一，customIcon用于上传自定义的小图标，写法："customIcon": context.__root + "xxx.png"
+    "customIcon": "",   // Only one of customIcon and icon will be applied, so please don't use them at the same time. CustomIcon is used to upload icons. Usage: "customIcon": context.__root + "xxx.png"
 
-    "icon": "",         //icon 值,例如：分享的图标在AMUI中是am-icon-share ，则此时的icon写法为： "icon": "share"
+    "icon": "",         //icon. For example: The share icon is am-icon-share in amaze UI, so use "icon": "share" here to use share icon.
 
-    "dataApi": ""       //dataApi 值可以填写"data-am-navbar-share"（用于分享模块） 或者"data-am-navbar-qrcode"(用于二维码模块)。若要使用自己上传的二维码 'data-am-navbar-qrcode = 二维码地址' 即可
+    "dataApi": ""       //dataApi can be "data-am-navbar-share"( For share module) or "data-am-navbar-qrcode"( For qrcode module). Use 'data-am-navbar-qrcode = YourQRCodeURL' for your own qrcode.
   }
 ];
 
 return data;
 ```
 
-## 数据接口
+## Data Binding
 
 ```javascript
 {
@@ -48,18 +48,17 @@ return data;
   "theme": "default",
 
   "options": {
-      "cols": "", //cols 值 ：列数，若数据列数较多，会自动添加一个列表
+      "cols": "", //cols: The number of columns. If the actual columns is more than this value, a list will be added autometically.
   },
 
   "content": [
     {
-      "title": "", // title 值：要显示的文本
-      "link": "", // link 值 ：链接地址，电话则写"tel:0101245678"
-      "className": "",
-      "customIcon": "", // customIcon与icon选用其中之一，customIcon用于上传的小图标/ 写法： "customIcon": "xxx.png"
-      "icon": "",//icon 值：使用icon font 例如：分享的图标 am-icon-share ，icon写法： "icon": "share" ,更多的查看amui icon 目录下
-      "dataApi": ""//dataApi 值为 data-am-navbar-share（用于分享模块） 或者 data-am-navbar-qrcode(用于二维码模块) 若使用自己上传的二维码 'data-am-navbar-qrcode = 二维码地址' 即可
-      }
+      "title": "",        // title: text that shown in the navbar
+      "link": "",         // link: Link of icon. Use "tel: ***-****-***" for phone number.
+      "customIcon": "",   // Only one of customIcon and icon will be applied, so please don't use them at the same time. CustomIcon is used to upload icons. Usage: "customIcon": context.__root + "xxx.png"
+      "icon": "",         //icon. For example: The share icon is am-icon-share in amaze UI, so use "icon": "share" here to use share icon.
+      "dataApi": ""       //dataApi can be "data-am-navbar-share"( For share module) or "data-am-navbar-qrcode"( For qrcode module). Use 'data-am-navbar-qrcode = YourQRCodeURL' for your own qrcode.
+    }
   ]
 }
 ```

@@ -174,6 +174,16 @@ gulp.task('build:clean', function(cb) {
 gulp.task('build:less', function() {
   gulp.src(config.path.less)
     .pipe($.header(banner, {pkg: pkg, ver: ''}))
+    .pipe($.plumber({errorHandler: function (err) {
+      // 处理编译less错误提示  防止错误之后gulp任务直接中断
+      // $.notify.onError({
+      //           title:    "编译错误",
+      //           message:  "错误信息: <%= error.message %>",
+      //           sound:    "Bottle"
+      //       })(err);
+      console.log(err);
+      this.emit('end');
+    }}))
     .pipe($.less({
       paths: [
         path.join(__dirname, 'less'),

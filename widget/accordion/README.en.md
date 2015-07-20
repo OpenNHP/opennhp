@@ -1,4 +1,4 @@
-# Accordion 
+# Accordion
 ---
 
 This widget help building a beautiful accordion panel.
@@ -148,7 +148,7 @@ return data;
     {
       "title": "", // Title. Support using html
       "content": "", // Content. Support using html
-      "active": false // Whether activate current panel. 
+      "active": false // Whether activate current panel.
       // New in Amaze UI 2.3
       "disabled": null // Whether diable current panel.
     }
@@ -158,4 +158,4 @@ return data;
 
 ## Attention:
 
-- **Don't use `padding`/`margin`/`border` for `.am-accordion-bd`.
+- **Don't use `padding`/`margin`/`border` for `.am-accordion-bd`.**

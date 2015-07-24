@@ -232,7 +232,6 @@ UI.plugin = function UIPlugin(name, Component, pluginOption) {
   // no conflict
   $.fn[name].noConflict = function() {
     $.fn[name] = old;
-    console.log(this);
     return this;
   };
 

@@ -225,7 +225,6 @@ Modal.prototype.events = function() {
       var $this = $(this);
 
       if ($this.is($confirm)) {
-        console.log('sdafdf');
         options.closeOnConfirm && _this.close();
       } else if ($this.is($cancel)) {
         options.closeOnCancel && _this.close();

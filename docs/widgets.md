@@ -17,9 +17,9 @@ Amaze UI Web 组件把一些常见的网页组件拆分成不同的部分，进�
 
 ## Web 组件演示
 
-Amaze UI 目前封装了 10 余个主要面向移动端的 Web 组件（[独立窗口中浏览 Demo](/widgets/m)）。
+Amaze UI 目前封装了 10 余个主要面向移动端的 Web 组件（[独立窗口中浏览 Demo](__M_PAGE__/widgets/m)）。
 
-<iframe src="/widgets/m" frameborder="0" id="doc-widget-frame" frameborder="0"></iframe>
+<iframe src="__M_PAGE__/widgets/m" frameborder="0" id="doc-widget-frame" frameborder="0"></iframe>
 
 ## 使用场景
 

@@ -17,9 +17,9 @@ We packed some frequently used web components into Amaze UI Web Widgets. ([Intro
 
 ## Demo
 
-Amaze UI has over 10 web widgets for mobile website development ([View demos in new window](/widgets/m)).
+Amaze UI has over 10 web widgets for mobile website development ([View demos in new window](__M_PAGE__/widgets/m)).
 
-<iframe src="/widgets/m" frameborder="0" id="doc-widget-frame" frameborder="0"></iframe>
+<iframe src="__M_PAGE__/widgets/m" frameborder="0" id="doc-widget-frame" frameborder="0"></iframe>
 
 ## Usage
 

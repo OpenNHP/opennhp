@@ -40,7 +40,7 @@
   "devDependencies": {
     "bistre": "^1.0.1",
     "body-parser": "^1.13.1",
-    "browserify": "^10.2.4",
+    "browserify": "^11.0.0",
     "browserify-derequire": "^0.9.4",
     "browserify-shim": "^3.8.6",
     "bundle-collapser": "^1.2.0",

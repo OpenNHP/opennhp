@@ -64,6 +64,7 @@
     "gulp-size": "^1.2.1",
     "gulp-uglify": "latest",
     "gulp-util": "^3.0.4",
+    "gulp-webpack": "^1.5.0",
     "gulp-zip": "^3.0.2",
     "handlebars": "^3.0.3",
     "hbs": "^3.0.1",

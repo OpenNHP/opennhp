@@ -2,7 +2,7 @@
 
 var $ = require('jquery');
 var UI = require('../../../js/core');
-require('ui.pureview');
+require('../../../js/ui.pureview');
 
 /**
  * Is Images zoomable

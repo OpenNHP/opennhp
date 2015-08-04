@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+### 2015.07 W4
+
+**CSS:**
+
+- `Fixed` Icon 图标使用 `<i>` 元素时在 IE9 中渲染为斜体问题。
+
 ### 2015.07 W2
 
 **JS:**

@@ -65,6 +65,9 @@ var config = {
     'bb >= 10'
   ],
   uglify: {
+    compress: {
+      warnings: false
+    },
     output: {
       ascii_only: true
     }
@@ -280,9 +283,40 @@ gulp.task('build:js:helper', function() {
     .pipe(gulp.dest(config.dist.js));
 });
 
+gulp.task('build:js:pack', function() {
+  return gulp.src('js/amazeui.js')
+    .pipe($.webpack({
+      watch: process.env.NODE_ENV !== 'travisci',
+      output: {
+        filename: 'amazeui.js',
+        library: 'AMUI',
+        libraryTarget: 'umd'
+      },
+      externals: [
+        {
+          jquery: {
+            root: 'jQuery',
+            commonjs2: 'jquery',
+            commonjs: 'jquery',
+            amd: 'jquery'
+          }
+        }
+      ]
+    }))
+    .pipe($.replace('{{VERSION}}', pkg.version))
+    .pipe($.header(banner, {pkg: pkg, ver: ''}))
+    .pipe(gulp.dest(config.dist.js))
+    .pipe($.uglify(config.uglify))
+    .pipe($.header(banner, {pkg: pkg, ver: ''}))
+    .pipe($.rename({suffix: '.min'}))
+    .pipe(gulp.dest(config.dist.js))
+    .pipe($.size({showFiles: true, title: 'minified'}))
+    .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
+});
+
 gulp.task('build:js', function(cb) {
   runSequence(
-    ['build:js:browserify', 'build:js:fuckie'],
+    ['build:js:pack', 'build:js:fuckie'],
     ['build:js:helper'],
     cb);
 });

@@ -10,7 +10,6 @@ dialog.alert = function(opt){
     opt.title = opt.title || '提示';
     opt.content = opt.content || '提示内容';
     opt.onConfirm = opt.onConfirm || function(){};
-
     var html = [];
     html.push('<div class="am-modal am-modal-alert " tabindex="-1" id="my-alert">');
     html.push('<div class="am-modal-dialog radius">');

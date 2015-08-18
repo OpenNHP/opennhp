@@ -5,7 +5,8 @@
 
 **JS:**
 
-- `Fixed` #712 修复 Modal 在 Edge 中偏移、字体发虚的问题（包括 IE11 #387）。
+- `Fixed` #712 修复 Modal 在 Edge 中偏移、字体发虚的问题（包括 IE11 #387）；
+- `Fixed` #419 修复 Modal popup 在 IE 中标题栏偏移问题。
 
 ### 2015.08 W1
 

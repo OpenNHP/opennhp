@@ -234,7 +234,9 @@
     },
     "ui.datepicker": {
       "depStyle": [
+        "form.less",
         "icon.less",
+        "input-group.less",
         "ui.datepicker.less"
       ],
       "depJs": []
@@ -254,9 +256,7 @@
     },
     "ui.ucheck": {
       "depStyle": [
-        "form.less",
         "icon.less",
-        "input-group.less",
         "ui.ucheck.less"
       ],
       "depJs": []

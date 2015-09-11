@@ -198,7 +198,7 @@
     "ui.scrollspynav": {
       "depStyle": [],
       "depJs": [
-        "ui.smooth-scroll.less"
+        "ui.smooth-scroll.js"
       ]
     },
     "ui.share": {
@@ -254,7 +254,9 @@
     },
     "ui.ucheck": {
       "depStyle": [
+        "form.less",
         "icon.less",
+        "input-group.less",
         "ui.ucheck.less"
       ],
       "depJs": []
@@ -270,6 +272,10 @@
       "depJs": []
     },
     "util.fullscreen": {
+      "depStyle": [],
+      "depJs": []
+    },
+    "util.geolocation": {
       "depStyle": [],
       "depJs": []
     },

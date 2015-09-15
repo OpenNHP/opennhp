@@ -223,6 +223,9 @@ Selected.prototype.setChecked = function(item) {
   var options = this.options;
   var $item = $(item);
   var isChecked = $item.hasClass(options.selectedClass);
+  var  isCheckedLenth ;
+  var _this = this;
+
   if (!this.multiple) {
     if (!isChecked) {
       this.dropdown.close();
@@ -232,9 +235,19 @@ Selected.prototype.setChecked = function(item) {
     }
   }
 
+  //多选的情况
   $item.toggleClass(options.selectedClass);
+  setTimeout(function() {
+    isCheckedLenth = _this.$list.find('.am-checked');
+    if( isCheckedLenth.length > max  && !isChecked ){
+      alert('最多选'+ max +'个');
+      $item.toggleClass(options.selectedClass);
+    }else{
+      _this.syncData(item);
 
-  this.syncData(item);
+    }
+  },0);
+
 };
 
 /**

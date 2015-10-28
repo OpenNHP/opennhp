@@ -88,6 +88,39 @@ var jsEntry;
 var plugins;
 var WIDGET_DIR = './widget/';
 
+//重新构建amazeui，如下，不加入构建版本
+
+var baseNameMap = [
+    // 'amazeui',
+    // 'amazeui.legacy',
+    // 'util.cookie',
+    // 'util.store',
+    // 'util.qrcode',
+    // 'util.fullscreen',
+    // 'util.hammer',
+    // 'ui.share',
+    // 'ui.alert',
+    // 'ui.pureview',
+    // 'ui.add2home'
+];
+
+var widgetMap = [
+    // WIDGET_DIR + 'duoshuo/src/duoshuo', //多说评论
+    // WIDGET_DIR + 'map/src/map', //百度地图
+    // WIDGET_DIR + 'mechat/src/mechat', //美洽客服
+    // WIDGET_DIR + 'wechatpay/src/wechatpay', //微信支付
+    // WIDGET_DIR + 'footer/src/footer', //页脚
+    // WIDGET_DIR + 'header/src/header', //页头
+    // WIDGET_DIR + 'pagination/src/pagination', // 分页
+    // WIDGET_DIR + 'titlebar/src/titlebar', //标题栏
+    // WIDGET_DIR + 'navbar/src/navbar', //工具栏
+    // WIDGET_DIR + 'figure/src/figure', //单张图片
+    // WIDGET_DIR + 'gallery/src/gallery', //图片画廊
+    // WIDGET_DIR + 'paragraph/src/paragraph', //段落
+    // WIDGET_DIR + 'divider/src/divider', //分割线
+    // WIDGET_DIR + 'intro/src/intro' //简介
+];
+
 // Write widgets style and tpl
 var preparingData = function() {
   jsEntry = ''; // empty string
@@ -109,10 +142,9 @@ var preparingData = function() {
 
   plugins.forEach(function(plugin, i) {
     var basename = path.basename(plugin, '.js');
-
-    if (basename !== 'amazeui' && basename !== 'amazeui.legacy') {
-      jsEntry += (basename === 'core' ? 'var UI = ' : '') +
-        'require("./' + basename + '");\n';
+    if (!(baseNameMap.indexOf(basename) > -1)) {
+        jsEntry += (basename === 'core' ? 'var UI = ' : '') +
+            'require("./' + basename + '");\n';
     }
   });
 
@@ -128,22 +160,24 @@ var preparingData = function() {
     // ./widget/header/src/header
     var srcPath = WIDGET_DIR + widget + '/src/' + widget;
 
-    widgetsStyle += '\r\n// ' + widget + '\r\n';
-    widgetsStyle += '@import ".' + srcPath + '.less";' + '\r\n';
-    pkg.themes.forEach(function(item, index) {
-      if (!item.hidden && item.name) {
-        widgetsStyle += '@import ".' + srcPath + '.' + item.name +
-          '.less";' + '\r\n';
-      }
-    });
+    if (!(widgetMap.indexOf(srcPath) > -1)) {
+        widgetsStyle += '\r\n// ' + widget + '\r\n';
+        widgetsStyle += '@import ".' + srcPath + '.less";' + '\r\n';
+        pkg.themes.forEach(function(item, index) {
+            if (!item.hidden && item.name) {
+                widgetsStyle += '@import ".' + srcPath + '.' + item.name +
+                    '.less";' + '\r\n';
+            }
+        });
 
-    // add to entry
-    jsEntry += 'require(".' + srcPath + '.js");\n';
+        // add to entry
+        jsEntry += 'require(".' + srcPath + '.js");\n';
 
-    // read tpl
-    var hbs = fs.readFileSync(path.join(srcPath + '.hbs'), fsOptions);
-    partials += format('    hbs.registerPartial(\'%s\', %s);\n\n',
-      widget, JSON.stringify(hbs));
+        // read tpl
+        var hbs = fs.readFileSync(path.join(srcPath + '.hbs'), fsOptions);
+        partials += format('    hbs.registerPartial(\'%s\', %s);\n\n',
+            widget, JSON.stringify(hbs));
+    }
   });
 
   // end jsEntry

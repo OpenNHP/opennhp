@@ -88,6 +88,44 @@ var jsEntry;
 var plugins;
 var WIDGET_DIR = './widget/';
 
+/**
+ *  // JavaScript Plugins
+ *  @import "ui.alert.less";
+ *  @import "ui.dropdown.less";
+ *  @import "ui.flexslider.less";
+ *  @import "ui.modal.less";
+ *  @import "ui.offcanvas.less";
+ *  @import "ui.popover.less";
+ *  @import "ui.progress.less";
+ *  @import "ui.tabs.less";
+ *  @import "ui.share.less";
+ *  @import "ui.pureview.less";
+ *  @import "ui.add2home.less";
+ *  @import "ui.ucheck.less";
+ *  @import "ui.selected.less";
+ *  @import "ui.component.less";
+ *  @import "ui.datepicker.less";
+ */
+
+//确定css与ui.xxx.js的构建关系
+var baseStyleNameMap = [
+    'ui.alert.less',
+    'ui.dropdown.less',
+    'ui.flexslider.less',
+    'ui.modal.less',
+    'ui.offcanvas.less',
+    'ui.popover.less',
+    'ui.progress.less',
+    'ui.tabs.less',
+    'ui.share.less',
+    'ui.pureview.less',
+    'ui.add2home.less',
+    'ui.ucheck.less',
+    'ui.selected.less',
+    'ui.component.less',
+    'ui.datepicker.less'
+];
+
 //重新构建amazeui，如下，不加入构建版本
 
 var baseNameMap = [
@@ -140,11 +178,16 @@ var preparingData = function() {
 
   jsEntry += '\'use strict\';\n\n' + 'var $ = require(\'jquery\');\n';
 
+  widgetsStyle += '\r\n\r\n// JavaScript Plugins\r\n';
+
   plugins.forEach(function(plugin, i) {
     var basename = path.basename(plugin, '.js');
     if (!(baseNameMap.indexOf(basename) > -1)) {
         jsEntry += (basename === 'core' ? 'var UI = ' : '') +
             'require("./' + basename + '");\n';
+        if (baseStyleNameMap.indexOf(basename+'.less') > -1) {
+            widgetsStyle += '@import "'+basename+'.less";\r\n';
+        };
     }
   });
 
@@ -153,6 +196,10 @@ var preparingData = function() {
   partials += '  \'use strict\';\n\n';
   partials += '  var registerAMUIPartials = function(hbs) {\n';
 
+  widgetsStyle += '\r\n// Print\r\n';
+  widgetsStyle += '@import "print.less";';
+  widgetsStyle += '\r\n// Legacy\r\n';
+  widgetsStyle += '@import "legacy.ie.less"; \r\n';
   // get widgets dependencies
   allWidgets.forEach(function(widget, i) {
     // read widget package.json

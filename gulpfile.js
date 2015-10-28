@@ -122,7 +122,6 @@ var baseStyleNameMap = [
     'ui.add2home.less',
     'ui.ucheck.less',
     'ui.selected.less',
-    'ui.component.less',
     'ui.datepicker.less'
 ];
 
@@ -159,6 +158,8 @@ var widgetMap = [
     // WIDGET_DIR + 'intro/src/intro' //简介
 ];
 
+var uiComponent = true;
+
 // Write widgets style and tpl
 var preparingData = function() {
   jsEntry = ''; // empty string
@@ -186,6 +187,10 @@ var preparingData = function() {
         jsEntry += (basename === 'core' ? 'var UI = ' : '') +
             'require("./' + basename + '");\n';
         if (baseStyleNameMap.indexOf(basename+'.less') > -1) {
+            if (uiComponent) {
+              uiComponent = false;
+              widgetsStyle += '@import "ui.component.less"; \r\n'
+            };
             widgetsStyle += '@import "'+basename+'.less";\r\n';
         };
     }

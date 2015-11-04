@@ -1,13 +1,6 @@
 # 常见问题
 ---
 
-## 版本更新
-
-### 下一阶段会做什么?
-
-与前端 MV* 框架整合，深挖 SPA。
-
-
 ## 使用问题
 
 ### 使用时遇到问题如何准确定位？
@@ -45,4 +38,32 @@ Amaze UI 2.x 依赖 jQuery，请在 Amaze UI 的 JS 文件之前引入 jQuery（
 ```
 
 - 如果已经引入，请查看 Amaze UI CSS、JS 文件顶部的版本信息，确保引入的版本和示例要求的版本匹配。
+
+### JS 动态插入的 DOM 事件失效？
+
+很多用户遇到[各种「事件失效」问题](https://github.com/allmobilize/amazeui/issues?utf8=%E2%9C%93&q=label%3Aevent-binding+)，在这里做一个统一回答。
+
+> Amaze UI 一般在 jQuery [ready](https://api.jquery.com/ready/) 事件里面初始化默认接口，动态插入的 DOM 已经是在 `ready` 事件之后，自然不会绑定相应事件。
+
+> 一些插件通过**事件委托**可以解决动态插入 DOM 的事件绑定问题，但并不是所有插件都可以这样，有的用户操作没有定位到要绑定事件的 DOM 上，比如窗口滚动。
+
+Amaze UI jQuery 安装传统 website 的思路开发，也就是假定 JS 执行之前 DOM 已经渲染完成。如果是通过 Ajax 或者其他方式动态插入的 DOM，就需要手动调用相关接口初始化插件。
+
+- **JS 插件**
+
+  假设动态插入了一个图片轮播，可以在插入完成以后执行下面的代码初始化：
+
+  ```js
+  $('#my-slider').flexslider();
+  ```
+- **Web 组件**
+
+  有交互行为的 Web 组件提供了初始化的接口，假如动态插入了一个 Figure 组件，可以执行以下代码进行初始化：
+
+  ```js
+  AMUI.figure.init();
+  ```
+
+更多用户遇到并提出的实际问题，请[点此查看](https://github.com/allmobilize/amazeui/issues?utf8=%E2%9C%93&q=label%3Aevent-binding+)。
+
 

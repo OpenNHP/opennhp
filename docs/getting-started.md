@@ -52,7 +52,9 @@ Gulp、NPM 构建的前端开发工作流，点击[访问项目主页](https://g
 
 ### 使用 CDN
 
-Amaze UI CDN： 域名解析服务由 DNSPod 提供，CDN 存储由七牛提供。
+#### 官方 CDN
+
+域名解析服务由 DNSPod 提供，CDN 存储由七牛提供。
 
 ```html
 http://cdn.amazeui.org/amazeui/__VERSION__/css/amazeui.css
@@ -64,6 +66,12 @@ http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.ie8polyfill.min.js
 http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.widgets.helper.js
 http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.widgets.helper.min.js
 ```
+
+#### cdnjs
+
+面向国外的用户可以使用 cdnjs 提供的 CDN 服务（支持 HTTPS）。
+
+- https://cdnjs.com/libraries/amazeui
 
 ### 使用 Bower
 

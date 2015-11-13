@@ -1,6 +1,13 @@
 # Amaze UI Change Log
 ---
 
+### 2015.11 W2
+
+**CSS:**
+
+- `Update` 升级 Font Awesome 至 4.4.0。
+
+
 ### 2015.11 W1
 
 **文档：**

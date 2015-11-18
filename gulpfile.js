@@ -88,6 +88,78 @@ var jsEntry;
 var plugins;
 var WIDGET_DIR = './widget/';
 
+/**
+ *  // JavaScript Plugins
+ *  @import "ui.alert.less";
+ *  @import "ui.dropdown.less";
+ *  @import "ui.flexslider.less";
+ *  @import "ui.modal.less";
+ *  @import "ui.offcanvas.less";
+ *  @import "ui.popover.less";
+ *  @import "ui.progress.less";
+ *  @import "ui.tabs.less";
+ *  @import "ui.share.less";
+ *  @import "ui.pureview.less";
+ *  @import "ui.add2home.less";
+ *  @import "ui.ucheck.less";
+ *  @import "ui.selected.less";
+ *  @import "ui.component.less";
+ *  @import "ui.datepicker.less";
+ */
+
+//确定css与ui.xxx.js的构建关系
+var baseStyleNameMap = [
+    'ui.alert.less',
+    'ui.dropdown.less',
+    'ui.flexslider.less',
+    'ui.modal.less',
+    'ui.offcanvas.less',
+    'ui.popover.less',
+    'ui.progress.less',
+    'ui.tabs.less',
+    'ui.share.less',
+    'ui.pureview.less',
+    'ui.add2home.less',
+    'ui.ucheck.less',
+    'ui.selected.less',
+    'ui.datepicker.less'
+];
+
+//重新构建amazeui，如下，不加入构建版本
+
+var baseNameMap = [
+    // 'amazeui',
+    // 'amazeui.legacy',
+    // 'util.cookie',
+    // 'util.store',
+    // 'util.qrcode',
+    // 'util.fullscreen',
+    // 'util.hammer',
+    // 'ui.share',
+    // 'ui.alert',
+    // 'ui.pureview',
+    // 'ui.add2home'
+];
+
+var widgetMap = [
+    // WIDGET_DIR + 'duoshuo/src/duoshuo', //多说评论
+    // WIDGET_DIR + 'map/src/map', //百度地图
+    // WIDGET_DIR + 'mechat/src/mechat', //美洽客服
+    // WIDGET_DIR + 'wechatpay/src/wechatpay', //微信支付
+    // WIDGET_DIR + 'footer/src/footer', //页脚
+    // WIDGET_DIR + 'header/src/header', //页头
+    // WIDGET_DIR + 'pagination/src/pagination', // 分页
+    // WIDGET_DIR + 'titlebar/src/titlebar', //标题栏
+    // WIDGET_DIR + 'navbar/src/navbar', //工具栏
+    // WIDGET_DIR + 'figure/src/figure', //单张图片
+    // WIDGET_DIR + 'gallery/src/gallery', //图片画廊
+    // WIDGET_DIR + 'paragraph/src/paragraph', //段落
+    // WIDGET_DIR + 'divider/src/divider', //分割线
+    // WIDGET_DIR + 'intro/src/intro' //简介
+];
+
+var uiComponent = true;
+
 // Write widgets style and tpl
 var preparingData = function() {
   jsEntry = ''; // empty string
@@ -107,12 +179,20 @@ var preparingData = function() {
 
   jsEntry += '\'use strict\';\n\n' + 'var $ = require(\'jquery\');\n';
 
+  widgetsStyle += '\r\n\r\n// JavaScript Plugins\r\n';
+
   plugins.forEach(function(plugin, i) {
     var basename = path.basename(plugin, '.js');
-
-    if (basename !== 'amazeui' && basename !== 'amazeui.legacy') {
-      jsEntry += (basename === 'core' ? 'var UI = ' : '') +
-        'require("./' + basename + '");\n';
+    if (!(baseNameMap.indexOf(basename) > -1)) {
+        jsEntry += (basename === 'core' ? 'var UI = ' : '') +
+            'require("./' + basename + '");\n';
+        if (baseStyleNameMap.indexOf(basename+'.less') > -1) {
+            if (uiComponent) {
+              uiComponent = false;
+              widgetsStyle += '@import "ui.component.less"; \r\n'
+            };
+            widgetsStyle += '@import "'+basename+'.less";\r\n';
+        };
     }
   });
 
@@ -121,6 +201,10 @@ var preparingData = function() {
   partials += '  \'use strict\';\n\n';
   partials += '  var registerAMUIPartials = function(hbs) {\n';
 
+  widgetsStyle += '\r\n// Print\r\n';
+  widgetsStyle += '@import "print.less";';
+  widgetsStyle += '\r\n// Legacy\r\n';
+  widgetsStyle += '@import "legacy.ie.less"; \r\n';
   // get widgets dependencies
   allWidgets.forEach(function(widget, i) {
     // read widget package.json
@@ -128,22 +212,24 @@ var preparingData = function() {
     // ./widget/header/src/header
     var srcPath = WIDGET_DIR + widget + '/src/' + widget;
 
-    widgetsStyle += '\r\n// ' + widget + '\r\n';
-    widgetsStyle += '@import ".' + srcPath + '.less";' + '\r\n';
-    pkg.themes.forEach(function(item, index) {
-      if (!item.hidden && item.name) {
-        widgetsStyle += '@import ".' + srcPath + '.' + item.name +
-          '.less";' + '\r\n';
-      }
-    });
+    if (!(widgetMap.indexOf(srcPath) > -1)) {
+        widgetsStyle += '\r\n// ' + widget + '\r\n';
+        widgetsStyle += '@import ".' + srcPath + '.less";' + '\r\n';
+        pkg.themes.forEach(function(item, index) {
+            if (!item.hidden && item.name) {
+                widgetsStyle += '@import ".' + srcPath + '.' + item.name +
+                    '.less";' + '\r\n';
+            }
+        });
 
-    // add to entry
-    jsEntry += 'require(".' + srcPath + '.js");\n';
+        // add to entry
+        jsEntry += 'require(".' + srcPath + '.js");\n';
 
-    // read tpl
-    var hbs = fs.readFileSync(path.join(srcPath + '.hbs'), fsOptions);
-    partials += format('    hbs.registerPartial(\'%s\', %s);\n\n',
-      widget, JSON.stringify(hbs));
+        // read tpl
+        var hbs = fs.readFileSync(path.join(srcPath + '.hbs'), fsOptions);
+        partials += format('    hbs.registerPartial(\'%s\', %s);\n\n',
+            widget, JSON.stringify(hbs));
+    }
   });
 
   // end jsEntry

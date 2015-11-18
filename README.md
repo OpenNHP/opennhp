@@ -6,9 +6,13 @@
 [![Dependency Status](https://img.shields.io/david/allmobilize/amazeui.svg?style=flat-square)](https://david-dm.org/allmobilize/amazeui)
 [![devDependency Status](https://img.shields.io/david/dev/allmobilize/amazeui.svg?style=flat-square)](https://david-dm.org/allmobilize/amazeui#info=devDependencies)
 
-Amaze UI 是基于社区开源项目构建的一个跨屏前端框架。 __[README in English](README.en.md)__
+Amaze UI 是基于社区开源项目构建的一个跨屏前端框架。
 
-### [React 版](https://github.com/amazeui/amazeui-react) | [独立插件](https://github.com/amazeui)
+### [Docs in English](http://amazeui.github.io/docs/en/)
+
+__[README in English](README.en.md)__
+
+### [React 版](https://github.com/amazeui/amazeui-react) | [独立插件](https://github.com/amazeui) | [Amaze UI Touch](https://github.com/amazeui/amazeui-touch)
 
 ## 功能简介
 

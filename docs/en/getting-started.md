@@ -85,9 +85,9 @@ bower install amazeui
 
 You can get the source codes from our repo on github.
 
-<iframe src="http://ghbtns.com/github-btn.html?user=allmobilize&repo=amazeui&type=watch&count=true&size=large" allowtransparency="true" frameborder="0" scrolling="0" width="156px" height="30px"></iframe>
+<iframe src="http://ghbtns.com/github-btn.html?user=amazeui&repo=amazeui&type=watch&count=true&size=large" allowtransparency="true" frameborder="0" scrolling="0" width="156px" height="30px"></iframe>
 
-<iframe src="http://ghbtns.com/github-btn.html?user=allmobilize&repo=amazeui&type=fork&count=true&size=large" allowtransparency="true" frameborder="0" scrolling="0" width="156px" height="30px"></iframe>
+<iframe src="http://ghbtns.com/github-btn.html?user=amazeui&repo=amazeui&type=fork&count=true&size=large" allowtransparency="true" frameborder="0" scrolling="0" width="156px" height="30px"></iframe>
 
 ## Files and Versions
 
@@ -96,7 +96,7 @@ You can get the source codes from our repo on github.
 - `amazeui.css` / `amazeui.js`：Include all CSS and JS files of Amaze UI.
 - `amazeui.flat.css`：Flat version of Amaze UI CSS. Check `1.x` for more information.
 - `amazeui.legacy.js`：JS for IE 8.
-- `amazeui.widgets.helper.js`： **For developers using Handlebars. If you are not using Handlebars, please dismiss this file.** Includes Handlebars helper and template partials for Web widgets. 
+- `amazeui.widgets.helper.js`： **For developers using Handlebars. If you are not using Handlebars, please dismiss this file.** Includes Handlebars helper and template partials for Web widgets.
 
 Every file above has a related minified file.
 
@@ -129,7 +129,7 @@ Within the package downloaded you'll find the following directories and files, i
 AmazeUI
 |-- assets
 |   |-- css
-|   |   |-- amazeui.css             // All Styles for Amaze UI 
+|   |   |-- amazeui.css             // All Styles for Amaze UI
 |   |   |-- amazeui.min.css           // Around 42 kB (gzipped)
 |   |   `-- app.css
 |   |-- i

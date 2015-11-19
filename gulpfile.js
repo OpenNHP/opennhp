@@ -24,6 +24,8 @@ var gulp = require('gulp');
 var $ = require('gulp-load-plugins')();
 
 var pkg = require('./package.json');
+var excluded = require('./tools/excluded');
+var components = require('./components.json');
 
 var config = {
   path: {
@@ -97,11 +99,27 @@ var preparingData = function() {
   var uiBase = fs.readFileSync('./less/amui.less', fsOptions);
   var widgetsStyle = '';
 
-  var rejectWidgets = ['.DS_Store', 'blank', 'layout2', 'layout3', 'layout4',
-    'container'];
+  var excludedWidgets = ['.DS_Store', 'blank', 'layout2', 'layout3', 'layout4',
+    'container'].concat(excluded.widgets);
   var allWidgets = fs.readdirSync(WIDGET_DIR).filter(function(widget) {
-    return rejectWidgets.indexOf(widget) === -1;
+    return excludedWidgets.indexOf(widget) === -1;
   });
+
+  // 剔除排除配置中不打包的样式
+  var excludedStyleDep = [];
+  var includedStyleDep = [];
+  var getStyleDep = function(type, plugin) {
+    var basename = path.basename(plugin, '.js');
+
+    if (components.js[basename]) {
+      components.js[basename].depStyle.forEach(function(dep) {
+        if (dep.indexOf('ui.') > -1) {
+          type === 'excluded' ?
+            excludedStyleDep.push(dep) : includedStyleDep.push(dep);
+        }
+      });
+    }
+  };
 
   plugins = _.union(config.js.base, fs.readdirSync('./js'));
 
@@ -110,10 +128,16 @@ var preparingData = function() {
   plugins.forEach(function(plugin, i) {
     var basename = path.basename(plugin, '.js');
 
-    if (basename !== 'amazeui' && basename !== 'amazeui.legacy') {
+    if (basename !== 'amazeui' && basename !== 'amazeui.legacy' &&
+      (excluded.plugins.indexOf(basename) === -1)) {
       jsEntry += (basename === 'core' ? 'var UI = ' : '') +
         'require("./' + basename + '");\n';
+
+      getStyleDep('included', plugin);
     }
+  });
+  excluded.plugins.forEach(function(plugin) {
+    getStyleDep('excluded', plugin);
   });
 
   // widgets partial
@@ -131,9 +155,16 @@ var preparingData = function() {
     widgetsStyle += '\r\n// ' + widget + '\r\n';
     widgetsStyle += '@import ".' + srcPath + '.less";' + '\r\n';
     pkg.themes.forEach(function(item, index) {
-      if (!item.hidden && item.name) {
+      if (!item.hidden && item.name && item.name !== 'one') {
         widgetsStyle += '@import ".' + srcPath + '.' + item.name +
           '.less";' + '\r\n';
+      }
+    });
+
+    // 将 widget 依赖的样式推入数组
+    pkg.styleDependencies.forEach(function(file) {
+      if (file.indexOf('ui.') > -1) {
+        includedStyleDep.push(file);
       }
     });
 
@@ -159,6 +190,21 @@ var preparingData = function() {
 
   // write partials
   fs.writeFileSync(path.join('./vendor/amazeui.hbs.partials.js'), partials);
+
+  // replace excluded style
+  includedStyleDep = _.uniq(includedStyleDep);
+  excludedStyleDep = _.uniq(excludedStyleDep);
+
+  var intersectionDep = _.intersection(includedStyleDep, excludedStyleDep);
+  excludedStyleDep = _.xor(excludedStyleDep, intersectionDep);
+
+  // console.log(includedStyleDep);
+  // console.log(excludedStyleDep);
+
+  excludedStyleDep.forEach(function(dep) {
+    var regExp = new RegExp('(@import "' + dep + '";)');
+    uiBase = uiBase.replace(regExp, '// $1');
+  });
 
   // write less
   fs.writeFileSync('./less/amazeui.less', uiBase + widgetsStyle);

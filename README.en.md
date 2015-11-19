@@ -4,6 +4,8 @@
 
 Amaze UI is an open-sourced responsive front-end framework.
 
+### [Docs in English](http://amazeui.github.io/docs/en/)
+
 ## The Product
 
 ### Mobile First

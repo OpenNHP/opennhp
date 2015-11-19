@@ -3,6 +3,14 @@
 
 ### 2015.11 W2
 
+**构建:**
+
+- `New` #759 添加排除文件列表（`tools/excluded.js`），方便用户自行构建时排除不需要的组件（Thx @icepy；
+- `Changed` CSS 构建时不再包含内部的使用的 `one` 系列样式。
+
+
+### 2015.11 W2
+
 **CSS:**
 
 - `Update` 升级 Font Awesome 至 4.4.0。

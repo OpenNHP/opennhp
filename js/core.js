@@ -169,6 +169,7 @@ UI.utils.generateGUID = function(namespace) {
   return uid;
 };
 
+// @see https://davidwalsh.name/get-absolute-url
 UI.utils.getAbsoluteUrl = (function() {
   var a;
 

@@ -75,7 +75,7 @@ var config = {
     }
   }
 };
-
+var NODE_ENV = process.env.NODE_ENV;
 var dateFormat = 'isoDateTime';
 
 var banner = [
@@ -274,7 +274,7 @@ var bundleInit = function() {
     packageCache: {}
   });
 
-  if (process.env.NODE_ENV !== 'travisci') {
+  if (NODE_ENV !== 'travisci') {
     b = watchify(b);
     b.on('update', function() {
       bundle(b);
@@ -332,7 +332,7 @@ gulp.task('build:js:helper', function() {
 gulp.task('build:js:pack', function() {
   return gulp.src('js/amazeui.js')
     .pipe($.webpack({
-      watch: process.env.NODE_ENV !== 'travisci',
+      watch: !(NODE_ENV === 'travisci' || NODE_ENV === 'production'),
       output: {
         filename: 'amazeui.js',
         library: 'AMUI',

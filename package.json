@@ -21,7 +21,7 @@
   "author": "Allmobilize, Inc.",
   "scripts": {
     "start": "nodemon tools/app/app.js",
-    "build": "gulp install && gulp",
+    "build": "env NODE_ENV=production gulp build",
     "preview": "gulp preview"
   },
   "style": "dist/css/amazeui.css",

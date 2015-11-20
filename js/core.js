@@ -169,6 +169,21 @@ UI.utils.generateGUID = function(namespace) {
   return uid;
 };
 
+// @see https://davidwalsh.name/get-absolute-url
+UI.utils.getAbsoluteUrl = (function() {
+  var a;
+
+  return function(url) {
+    if (!a) {
+      a = document.createElement('a');
+    }
+
+    a.href = url;
+
+    return a.href;
+  };
+})();
+
 /**
  * Plugin AMUI Component to jQuery
  *

@@ -332,7 +332,10 @@ UI.plugin('selected', Selected);
 // Conflict with jQuery form
 // https://github.com/malsup/form/blob/6bf24a5f6d8be65f4e5491863180c09356d9dadd/jquery.form.js#L1240-L1258
 // https://github.com/allmobilize/amazeui/issues/379
-// $.fn.selected = $.fn.selectIt = Plugin;
+// @deprecated: $.fn.selected = $.fn.selectIt = Plugin;
+
+// New way to resolve conflict:
+// @see https://github.com/amazeui/amazeui/issues/781#issuecomment-158873541
 
 UI.ready(function(context) {
   $('[data-am-selected]', context).selected();

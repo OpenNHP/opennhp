@@ -415,7 +415,7 @@ $(function() {
 - `2.4.1` 以前的版本：请使用 `$('select').selectIt(options)` 替代；
 - `2.4.1` 及以后版本：
 
-  在 `amazeui.js` 后面引入 `jquery.form.js`，否则 jQuery Form 可能无法正常工作，然后执行以下代码（[在线演示](http://bin.amazeui.org/weputu/edit?html,output)）：
+  在 `amazeui.js` **之后**引入 `jquery.form.js`，否则 jQuery Form 可能无法正常工作，然后执行以下代码（[在线演示](http://bin.amazeui.org/weputu/edit?html,output)）：
 
   ```js
   // 重新注册一个 jQuery 插件
@@ -423,4 +423,17 @@ $(function() {
 
   // 初始化插件
   $('#my-select').mySelected();
+  ```
+
+  **或者：**
+
+  在 `amazeui.js` **之前**引入 `jquery.form.js`，然后按照以下方式调用（[演示](http://jsbin.com/doyupuhala/edit?html,output)）：
+
+  ```js
+  // 恢复 jQuery Form 插件的 $.fn.selected，
+  // 并把 Amaze UI selected 重新赋值给 $.fn.amSelected
+  $.fn.amSelected = $.fn.selected.noConflict();
+
+  // 使用 Amaze UI 的 selected
+  $('[data-am-selected]').amSelected();
   ```

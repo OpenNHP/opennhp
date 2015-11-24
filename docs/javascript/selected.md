@@ -218,21 +218,33 @@ doc: docs/javascript/selected.md
 
 ### 选项验证提示
 
+**`v2.5` 新增**：设置 `maxchecked` 属性以后，超出设定值时会触发 `checkedOverflow.selected.amui` 事件，可以监听该事件提示用户。
+
 `````html
-<select multiple data-am-selected minchecked="2" maxchecked="3">
+<select multiple data-am-selected minchecked="2" maxchecked="3" id="demo-maxchecked">
   <option value="a">Apple</option>
   <option value="b">Banana</option>
   <option value="o">Orange</option>
   <option value="m">Mango</option>
 </select>
+<script>
+$('#demo-maxchecked').on('checkedOverflow.selected.amui', function() {
+  alert('最多选择' + this.getAttribute('maxchecked') + '项');
+});
+</script>
 `````
 ```html
-<select multiple data-am-selected minchecked="2" maxchecked="3">
+<select multiple data-am-selected minchecked="2" maxchecked="3" id="demo-maxchecked">
   <option value="a">Apple</option>
   <option value="b">Banana</option>
   <option value="o">Orange</option>
   <option value="m">Mango</option>
 </select>
+<script>
+$('#demo-maxchecked').on('checkedOverflow.selected.amui', function() {
+  alert('最多选择' + this.getAttribute('maxchecked') + '项');
+});
+</script>
 ```
 
 ### JS 操作 select
@@ -405,6 +417,12 @@ $(function() {
 - `btnStyle: 'default'`: 按钮样式，可选值为 `primary|secondary|success|warning|danger`
 - `maxHeight: null`: 列表最大高度
 - `dropUp: 0`: 是否为上拉，默认为 `0` (`false`)
+
+#### 事件
+
+| 事件名称 | 描述 |
+| ------ | ---- |
+| `checkedOverflow.selected.amui` | 超出设定的最多可选值时触发（`v2.5` 新增） |
 
 ## 常见问题
 

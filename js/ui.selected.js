@@ -35,6 +35,7 @@ Selected.DEFAULTS = {
   btnStyle: 'default',
   dropUp: 0,
   maxHeight: null,
+  maxChecked: null,
   placeholder: '点击选择...',
   selectedClass: 'am-checked',
   disabledClass: 'am-disabled',
@@ -135,7 +136,9 @@ Selected.prototype.init = function() {
   // set hint text
   var hint = [];
   var min = $element.attr('minchecked');
-  var max = $element.attr('maxchecked');
+  var max = $element.attr('maxchecked') || options.maxChecked;
+
+  this.maxChecked = max || Infinity;
 
   if ($element[0].required) {
     hint.push('必选');
@@ -220,20 +223,32 @@ Selected.prototype.renderOptions = function() {
 };
 
 Selected.prototype.setChecked = function(item) {
+  var _this = this;
   var options = this.options;
   var $item = $(item);
   var isChecked = $item.hasClass(options.selectedClass);
-  if (!this.multiple) {
-    if (!isChecked) {
-      this.dropdown.close();
-      this.$shadowOptions.not($item).removeClass(options.selectedClass);
-    } else {
-      return;
+
+  if (this.multiple) {
+    // multiple
+    var checkedLength = this.$list.find('.' + options.selectedClass).length;
+
+    if (!isChecked && this.maxChecked <= checkedLength) {
+      this.$element.trigger('checkedOverflow.selected.amui', {
+        selected: this
+      });
+
+      return false;
     }
+  } else {
+    if (isChecked) {
+      return false;
+    }
+
+    this.dropdown.close();
+    this.$shadowOptions.not($item).removeClass(options.selectedClass);
   }
 
   $item.toggleClass(options.selectedClass);
-
   this.syncData(item);
 };
 

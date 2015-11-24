@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+### 2015.11 W3
+
+**JS:**
+
+- `Improved` #733 Selected 增加超过最多可选值时提示接口。
+
 ### 2015.11 W2
 
 **构建:**
@@ -39,7 +45,7 @@
 
 **JS:**
 
-- 处理 Browserify 输出 UMD 文件时没有添加 AMD 和 CommonJS 依赖的问题。
+- `Fixed` #783 处理 Browserify 输出 UMD 文件时没有添加 AMD 和 CommonJS 依赖的问题。
 
 ### 2015.07 W4
 

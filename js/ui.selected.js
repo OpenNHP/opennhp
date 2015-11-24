@@ -21,7 +21,10 @@ $.expr[':'].containsNC = function(elem, i, match, array) {
 
 var Selected = function(element, options) {
   this.$element = $(element);
-  this.options = $.extend({}, Selected.DEFAULTS, options);
+  this.options = $.extend({}, Selected.DEFAULTS, {
+    placeholder: element.getAttribute('placeholder') ||
+    Selected.DEFAULTS.placeholder
+  }, options);
   this.$originalOptions = this.$element.find('option');
   this.multiple = element.multiple;
   this.$selector = null;
@@ -183,6 +186,12 @@ Selected.prototype.renderOptions = function() {
   }
 
   function pushOption(index, item, group) {
+    if (item.value === '') {
+      // skip to next iteration
+      // @see http://stackoverflow.com/questions/481601/how-to-skip-to-next-iteration-in-jquery-each-util
+      return true;
+    }
+
     var classNames = '';
     item.disabled && (classNames += options.disabledClass);
     !item.disabled && item.selected && (classNames += options.selectedClass);
@@ -223,7 +232,6 @@ Selected.prototype.renderOptions = function() {
 };
 
 Selected.prototype.setChecked = function(item) {
-  var _this = this;
   var options = this.options;
   var $item = $(item);
   var isChecked = $item.hasClass(options.selectedClass);

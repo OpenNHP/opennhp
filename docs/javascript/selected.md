@@ -417,6 +417,7 @@ $(function() {
 - `btnStyle: 'default'`: 按钮样式，可选值为 `primary|secondary|success|warning|danger`
 - `maxHeight: null`: 列表最大高度
 - `dropUp: 0`: 是否为上拉，默认为 `0` (`false`)
+- `placeholder`: 占位符，默认读取 `<select>` 的 `placeholder` 属性，如果没有则为 `点击选择...`
 
 #### 事件
 
@@ -455,3 +456,32 @@ $(function() {
   // 使用 Amaze UI 的 selected
   $('[data-am-selected]').amSelected();
   ```
+
+### `<select>` （单选）默认选择第一项的问题
+
+缺省选中第一个 `<option>` 是 HTML 规范中 `<select>` 元素（单选）的默认行为。Selected 遵循了一致的行为，和规范保持一致。
+
+有用户提出[默认不选中第一项的需求](https://github.com/amazeui/amazeui/issues/749)，`v2.5` 增加了这个功能，只需将第一项设置为空的 `<option>` 即可。
+
+`````html
+<form>
+<select data-am-selected placeholder="选一个撒" id="demo-default-selected">
+  <option selected value=""></option>
+  <option label="01 - Proprietary" value="01">01 - Proprietary</option>
+  <option label="02 - ISBN-10" value="02">02 - ISBN-10</option>
+  <option label="03 - GTIN-13" value="03">03 - GTIN-13</option>
+  <option label="04 - UPC" value="04">04 - UPC</option>
+  <option label="05 - ISMN-10" value="05">05 - ISMN-10</option>
+</select>
+</form>
+`````
+```html
+<select data-am-selected placeholder="选一个撒" id="demo-default-selected">
+  <option selected value=""></option>
+  <option label="01 - Proprietary" value="01">01 - Proprietary</option>
+  <option label="02 - ISBN-10" value="02">02 - ISBN-10</option>
+  <option label="03 - GTIN-13" value="03">03 - GTIN-13</option>
+  <option label="04 - UPC" value="04">04 - UPC</option>
+  <option label="05 - ISMN-10" value="05">05 - ISMN-10</option>
+</select>
+```

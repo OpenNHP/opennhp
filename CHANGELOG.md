@@ -5,6 +5,7 @@
 
 **JS:**
 
+- `NEW` #734 Dropdown、Selected 新增 `enable`、`disable` 方法；
 - `Improved` #733 Selected 增加超过最多可选值时提示接口；
 - `Improved` #749 Selected 允许添加一个空的 `<option>` 实现不自动选择第一项。
 

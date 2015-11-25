@@ -2,6 +2,7 @@
 
 var $ = require('jquery');
 var UI = require('./core');
+// require('./ui.dropdown');
 
 // Make jQuery :contains Case-Insensitive
 $.expr[':'].containsNC = function(elem, i, match, array) {
@@ -112,6 +113,10 @@ Selected.prototype.init = function() {
   this.$selector = $(UI.template(this.options.tpl, data));
   // set select button styles
   this.$selector.css({width: this.options.btnWidth});
+
+  if (this.$element[0].disabled) {
+    this.$selector.addClass(options.disabledClass);
+  }
 
   this.$list = this.$selector.find('.am-selected-list');
   this.$searchField = this.$selector.find('.am-selected-search input');
@@ -344,6 +349,16 @@ Selected.prototype.bindEvents = function() {
     _this.syncData();
   });
 };
+
+Selected.prototype.enable = function() {
+  this.$element.prop('disable', false);
+  this.$selector.dropdown('enable');
+},
+
+Selected.prototype.disable = function() {
+  this.$element.prop('disable', true);
+  this.$selector.dropdown('disable');
+},
 
 Selected.prototype.destroy = function() {
   this.$element.removeData('amui.selected').show();

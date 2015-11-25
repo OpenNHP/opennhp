@@ -127,6 +127,14 @@ Dropdown.prototype.close = function() {
   }
 };
 
+Dropdown.prototype.enable = function() {
+  this.$toggle.prop('disabled', false);
+},
+
+Dropdown.prototype.disable = function() {
+  this.$toggle.prop('disabled', true);
+},
+
 Dropdown.prototype.checkDimensions = function() {
   if (!this.$dropdown.length) {
     return;

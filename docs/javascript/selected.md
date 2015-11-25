@@ -419,6 +419,12 @@ $(function() {
 - `dropUp: 0`: 是否为上拉，默认为 `0` (`false`)
 - `placeholder`: 占位符，默认读取 `<select>` 的 `placeholder` 属性，如果没有则为 `点击选择...`
 
+#### 方法
+
+- `$().selected('disable')`: 禁用选框（`v2.5`）
+- `$().selected('enable')`: 启用选框（`v2.5`）
+- `$().selected('destroy')`: 销毁实例
+
 #### 事件
 
 | 事件名称 | 描述 |

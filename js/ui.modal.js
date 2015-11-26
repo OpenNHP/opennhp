@@ -25,6 +25,10 @@ var Modal = function(element, options) {
   this.isPrompt = this.$element.hasClass('am-modal-prompt');
   this.isLoading = this.$element.hasClass('am-modal-loading');
   this.active = this.transitioning = this.relatedTarget = null;
+  this.dimmer = this.options.dimmer ? dimmer : {
+    open: function() {},
+    close: function() {}
+  };
 
   this.events();
 };
@@ -46,6 +50,7 @@ Modal.DEFAULTS = {
   },
   closeOnCancel: true,
   closeOnConfirm: true,
+  dimmer: true,
   height: undefined,
   width: undefined,
   duration: 300, // must equal the CSS transition duration
@@ -88,7 +93,7 @@ Modal.prototype.open = function(relatedTarget) {
 
   $element.trigger($.Event('open.modal.amui', {relatedTarget: relatedTarget}));
 
-  dimmer.open($element);
+  this.dimmer.open($element);
 
   $element.show().redraw();
 
@@ -155,7 +160,7 @@ Modal.prototype.close = function(relatedTarget) {
     clearTimeout($element.transitionEndTimmer);
     $element.transitionEndTimmer = null;
     $element.trigger(options.transitionEnd).off(options.transitionEnd);
-    dimmer.close($element, true);
+    this.dimmer.close($element, true);
   }
 
   this.$element.trigger($.Event('close.modal.amui',
@@ -169,7 +174,7 @@ Modal.prototype.close = function(relatedTarget) {
     $element.hide();
     this.transitioning = 0;
     // 不强制关闭 Dimmer，以便多个 Modal 可以共享 Dimmer
-    dimmer.close($element, false);
+    this.dimmer.close($element, false);
     this.active = false;
   };
 
@@ -212,8 +217,8 @@ Modal.prototype.events = function() {
   }
 
   // Close Modal when dimmer clicked
-  if (this.options.closeViaDimmer && !this.isLoading) {
-    dimmer.$element.on('click.dimmer.modal.amui', function(e) {
+  if (this.options.dimmer && this.options.closeViaDimmer && !this.isLoading) {
+    this.dimmer.$element.on('click.dimmer.modal.amui', function(e) {
       _this.close();
     });
   }

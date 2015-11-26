@@ -5,6 +5,7 @@
 
 **JS:**
 
+- `NEW` #689 Modal 新增 `dimmer` 选项，允许用户关闭 dimmer；
 - `NEW` #719 Validator 新增 `destroy` 方法；
 - `NEW` #734 Dropdown、Selected 新增 `enable`、`disable` 方法；
 - `Improved` #733 Selected 增加超过最多可选值时提示接口；

@@ -1115,6 +1115,7 @@ $('#xx').validator({
     // 验证失败的逻辑
   });
   ```
+- `.validator('destroy')` - 销毁表单验证
 
 ## Issue 测试
 

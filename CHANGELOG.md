@@ -1,15 +1,16 @@
 # Amaze UI Change Log
 ---
 
-### 2015.11 W3
+### 2015.11 W4
 
 **JS:**
 
+- `NEW` #719 Validator 新增 `destroy` 方法；
 - `NEW` #734 Dropdown、Selected 新增 `enable`、`disable` 方法；
 - `Improved` #733 Selected 增加超过最多可选值时提示接口；
 - `Improved` #749 Selected 允许添加一个空的 `<option>` 实现不自动选择第一项。
 
-### 2015.11 W2
+### 2015.11 W3
 
 **构建:**
 

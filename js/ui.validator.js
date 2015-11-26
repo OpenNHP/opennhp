@@ -84,7 +84,7 @@ Validator.DEFAULTS = {
   submit: null
 };
 
-Validator.VERSION = '2.4.1';
+Validator.VERSION = '{{VERSION}}';
 
 /* jshint -W101 */
 Validator.patterns = {
@@ -162,7 +162,7 @@ Validator.prototype.init = function() {
     !$field.attr('pattern') && $field.attr('pattern', regexToPattern(value));
   });
 
-  $element.submit(function(e) {
+  $element.on('submit.validator.amui', function(e) {
     // user custom submit handler
     if (typeof options.submit === 'function') {
       return options.submit.call(_this, e);
@@ -549,8 +549,27 @@ Validator.prototype.getValidationMessage = function(validity) {
 
 // remove valid mark
 Validator.prototype.removeMark = function() {
-  this.$element.find('.am-form-success, .am-form-error, .am-field-error')
-    .removeClass('am-form-success am-form-error am-field-error');
+  this.$element
+    .find('.am-form-success, .am-form-error, .' + this.options.inValidClass +
+      ', .' + this.options.validClass)
+    .removeClass([
+      'am-form-success',
+      'am-form-error',
+      this.options.inValidClass,
+      this.options.validClass
+    ].join(' '));
+};
+
+Validator.prototype.destroy = function() {
+  this.removeMark();
+
+  // Remove data
+  // - Validator.prototype.init -> $element.data('amui.checked')
+  // - Validator.prototype.validateForm
+  // - Validator.prototype.isValid
+  this.$element.removeData('amui.validator amui.checked')
+    .off('.validator.amui')
+    .find(this.options.allFields).removeData('validity amui.dfdValidity');
 };
 
 UI.plugin('validator', Validator);

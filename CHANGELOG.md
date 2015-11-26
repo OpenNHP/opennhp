@@ -10,6 +10,10 @@
 - `Improved` #733 Selected 增加超过最多可选值时提示接口；
 - `Improved` #749 Selected 允许添加一个空的 `<option>` 实现不自动选择第一项。
 
+**构建:**
+
+- `Changed` 使用 webpack 替换 browserify：更好的 UMD 输出、减少开发依赖。
+
 ### 2015.11 W3
 
 **构建:**

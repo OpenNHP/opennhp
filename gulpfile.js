@@ -7,14 +7,9 @@ var path = require('path');
 var fs = require('fs');
 var format = require('util').format;
 var _ = require('lodash');
-var browserify = require('browserify');
-var watchify = require('watchify');
-var collapser = require('bundle-collapser/plugin');
-var derequire = require('derequire/plugin');
+var webpack = require('webpack-stream');
 var del = require('del');
 var bistre = require('bistre');
-var source = require('vinyl-source-stream');
-var buffer = require('vinyl-buffer');
 
 // Temporary solution until gulp 4
 // https://github.com/gulpjs/gulp/issues/355
@@ -212,18 +207,18 @@ var preparingData = function() {
 
 gulp.task('build:preparing', preparingData);
 
-gulp.task('build:clean', function(cb) {
-  del([
+gulp.task('build:clean', function() {
+  return del([
     config.dist.css,
     config.dist.js
-  ], cb);
+  ]);
 });
 
 // Build to dist dir.
 gulp.task('build:less', function() {
   gulp.src(config.path.less)
     .pipe($.header(banner, {pkg: pkg, ver: ''}))
-    .pipe($.plumber({errorHandler: function (err) {
+    .pipe($.plumber({errorHandler: function(err) {
       // 处理编译less错误提示  防止错误之后gulp任务直接中断
       // $.notify.onError({
       //           title:    "编译错误",
@@ -264,47 +259,6 @@ gulp.task('build:fonts', function() {
     .pipe(gulp.dest(config.dist.fonts));
 });
 
-var bundleInit = function() {
-  var b = browserify({
-    entries: './js/amazeui.js',
-    basedir: __dirname,
-    standalone: 'AMUI',
-    paths: ['./js'],
-    cache: {},
-    packageCache: {}
-  });
-
-  if (NODE_ENV !== 'travisci') {
-    b = watchify(b);
-    b.on('update', function() {
-      bundle(b);
-    });
-  }
-
-  b.plugin(derequire);
-  b.plugin(collapser);
-  b.on('log', $.util.log);
-  bundle(b);
-};
-
-var bundle = function(b) {
-  return b.bundle()
-    .on('error', $.util.log.bind($.util, 'Browserify Error'))
-    .pipe(source('amazeui.js'))
-    .pipe(buffer())
-    .pipe($.replace('{{VERSION}}', pkg.version))
-    .pipe($.header(banner, {pkg: pkg, ver: ''}))
-    .pipe(gulp.dest(config.dist.js))
-    .pipe($.uglify(config.uglify))
-    .pipe($.header(banner, {pkg: pkg, ver: ''}))
-    .pipe($.rename({suffix: '.min'}))
-    .pipe(gulp.dest(config.dist.js))
-    .pipe($.size({showFiles: true, title: 'minified'}))
-    .pipe($.size({showFiles: true, gzip: true, title: 'gzipped'}));
-};
-
-gulp.task('build:js:browserify', bundleInit);
-
 gulp.task('build:js:fuckie', function() {
   return gulp.src('vendor/polyfill/*.js')
     .pipe($.concat('amazeui.ie8polyfill.js'))
@@ -331,7 +285,7 @@ gulp.task('build:js:helper', function() {
 
 gulp.task('build:js:pack', function() {
   return gulp.src('js/amazeui.js')
-    .pipe($.webpack({
+    .pipe(webpack({
       watch: !(NODE_ENV === 'travisci' || NODE_ENV === 'production'),
       output: {
         filename: 'amazeui.js',

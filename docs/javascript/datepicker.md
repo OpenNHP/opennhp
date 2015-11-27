@@ -239,6 +239,14 @@ doc: docs/javascript/datepicker.md
 
 初始化的时候通过 `onRender` 选项设置禁用日期。
 
+**`v2.5`**：`onRender` 方法增加了 `viewMode` 参数，以便更准确的处理不同视图渲染。
+
+`viewMode` 内部调用时使用了以下值：
+
+- `0`: 天视图
+- `1`: 月视图
+- `2`: 年视图
+
 `````html
 <div class="am-g">
   <div class="am-u-sm-6">
@@ -253,12 +261,28 @@ doc: docs/javascript/datepicker.md
 <script>
   $(function() {
     var nowTemp = new Date();
-    var now = new Date(nowTemp.getFullYear(), nowTemp.getMonth(), nowTemp.getDate(), 0, 0, 0, 0);
+    var nowDay = new Date(nowTemp.getFullYear(), nowTemp.getMonth(), nowTemp.getDate(), 0, 0, 0, 0).valueOf();
+    var nowMoth = new Date(nowTemp.getFullYear(), nowTemp.getMonth(), 1, 0, 0, 0, 0).valueOf();
+    var nowYear = new Date(nowTemp.getFullYear(), 0, 1, 0, 0, 0, 0).valueOf();
     var $myStart2 = $('#my-start-2');
 
     var checkin = $myStart2.datepicker({
-      onRender: function(date) {
-        return date.valueOf() < now.valueOf() ? 'am-disabled' : '';
+      onRender: function(date, viewMode) {
+        // 默认 days 视图，与当前日期比较
+        var viewDate = nowDay;
+
+        switch (viewMode) {
+          // moths 视图，与当前月份比较
+          case 1:
+            viewDate = nowMoth;
+            break;
+          // years 视图，与当前年份比较
+          case 2:
+            viewDate = nowYear;
+            break;
+        }
+
+        return date.valueOf() < viewDate ? 'am-disabled' : '';
       }
     }).on('changeDate.datepicker.amui', function(ev) {
         if (ev.date.valueOf() > checkout.date.valueOf()) {
@@ -271,17 +295,34 @@ doc: docs/javascript/datepicker.md
     }).data('amui.datepicker');
 
     var checkout = $('#my-end-2').datepicker({
-      onRender: function(date) {
-        return date.valueOf() <= checkin.date.valueOf() ? 'am-disabled' : '';
+      onRender: function(date, viewMode) {
+        var inTime = checkin.date;
+        var inDay = inTime.valueOf();
+        var inMoth = new Date(inTime.getFullYear(), inTime.getMonth(), 1, 0, 0, 0, 0).valueOf();
+        var inYear = new Date(inTime.getFullYear(), 0, 1, 0, 0, 0, 0).valueOf();
+
+        // 默认 days 视图，与当前日期比较
+        var viewDate = inDay;
+
+        switch (viewMode) {
+          // moths 视图，与当前月份比较
+          case 1:
+            viewDate = inMoth;
+            break;
+          // years 视图，与当前年份比较
+          case 2:
+            viewDate = inYear;
+            break;
+        }
+
+        return date.valueOf() <= viewDate ? 'am-disabled' : '';
       }
     }).on('changeDate.datepicker.amui', function(ev) {
       checkout.close();
     }).data('amui.datepicker');
-
-  })
+  });
 </script>
 `````
-
 ```html
 <div class="am-g">
   <div class="am-u-sm-6">
@@ -296,12 +337,28 @@ doc: docs/javascript/datepicker.md
 <script>
   $(function() {
     var nowTemp = new Date();
-    var now = new Date(nowTemp.getFullYear(), nowTemp.getMonth(), nowTemp.getDate(), 0, 0, 0, 0);
+    var nowDay = new Date(nowTemp.getFullYear(), nowTemp.getMonth(), nowTemp.getDate(), 0, 0, 0, 0).valueOf();
+    var nowMoth = new Date(nowTemp.getFullYear(), nowTemp.getMonth(), 1, 0, 0, 0, 0).valueOf();
+    var nowYear = new Date(nowTemp.getFullYear(), 0, 1, 0, 0, 0, 0).valueOf();
     var $myStart2 = $('#my-start-2');
 
     var checkin = $myStart2.datepicker({
-      onRender: function(date) {
-        return date.valueOf() < now.valueOf() ? 'am-disabled' : '';
+      onRender: function(date, viewMode) {
+        // 默认 days 视图，与当前日期比较
+        var viewDate = nowDay;
+
+        switch (viewMode) {
+          // moths 视图，与当前月份比较
+          case 1:
+            viewDate = nowMoth;
+            break;
+          // years 视图，与当前年份比较
+          case 2:
+            viewDate = nowYear;
+            break;
+        }
+
+        return date.valueOf() < viewDate ? 'am-disabled' : '';
       }
     }).on('changeDate.datepicker.amui', function(ev) {
         if (ev.date.valueOf() > checkout.date.valueOf()) {
@@ -314,14 +371,32 @@ doc: docs/javascript/datepicker.md
     }).data('amui.datepicker');
 
     var checkout = $('#my-end-2').datepicker({
-      onRender: function(date) {
-        return date.valueOf() <= checkin.date.valueOf() ? 'am-disabled' : '';
+      onRender: function(date, viewMode) {
+        var inTime = checkin.date;
+        var inDay = inTime.valueOf();
+        var inMoth = new Date(inTime.getFullYear(), inTime.getMonth(), 1, 0, 0, 0, 0).valueOf();
+        var inYear = new Date(inTime.getFullYear(), 0, 1, 0, 0, 0, 0).valueOf();
+
+        // 默认 days 视图，与当前日期比较
+        var viewDate = inDay;
+
+        switch (viewMode) {
+          // moths 视图，与当前月份比较
+          case 1:
+            viewDate = inMoth;
+            break;
+          // years 视图，与当前年份比较
+          case 2:
+            viewDate = inYear;
+            break;
+        }
+
+        return date.valueOf() <= viewDate ? 'am-disabled' : '';
       }
     }).on('changeDate.datepicker.amui', function(ev) {
       checkout.close();
     }).data('amui.datepicker');
-
-  })
+  });
 </script>
 ```
 

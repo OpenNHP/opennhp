@@ -5,6 +5,7 @@
 
 **JS:**
 
+- `Fixed` #770 Datepicker onRender 禁用日期时候，年份视图当前年份会被禁用（thx @kermit-china）；
 - `Fixed` #711 Datepicker 与 Validator 结合使用时没有触发验证问题；
 - `NEW` #689 Modal 新增 `dimmer` 选项，允许用户关闭 dimmer；
 - `NEW` #719 Validator 新增 `destroy` 方法；

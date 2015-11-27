@@ -333,11 +333,13 @@ Datepicker.prototype.fill = function() {
     .text(year + '-' + (year + 9))
     .end()
     .find('td');
-
   var yearClassName;
+  var viewDate = new Date(this.viewDate);
+
   year -= 1;
+
   for (var i = -1; i < 11; i++) {
-    yearClassName = this.onRender(d.setFullYear(year));
+    yearClassName = this.onRender(viewDate.setFullYear(year));
     html += '<span class="' + yearClassName + '' +
     (i === -1 || i === 10 ? ' am-datepicker-old' : '') +
     (currentYear === year ? ' am-active' : '') + '">' + year + '</span>';

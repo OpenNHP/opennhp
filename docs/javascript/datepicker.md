@@ -24,11 +24,20 @@ doc: docs/javascript/datepicker.md
 在 `<input>` 上增加 `.data-am-datepicker` 属性，调用日期插件。
 
 `````html
-<p><input type="text" class="am-form-field" placeholder="日历组件" data-am-datepicker readonly/></p>
-
+<form action="" class="am-form" data-am-validator>
+  <p>
+  <input type="text" class="am-form-field" placeholder="日历组件" data-am-datepicker readonly required />
+  </p>
+  <p><button class="am-btn am-btn-primary">提交</button></p>
+</form>
 `````
 ```html
-<p><input type="text" class="am-form-field" placeholder="日历组件" data-am-datepicker readonly/></p>
+<form action="" class="am-form" data-am-validator>
+  <p>
+  <input type="text" class="am-form-field" placeholder="日历组件" data-am-datepicker readonly required />
+  </p>
+  <p><button class="am-btn am-btn-primary">提交</button></p>
+</form>
 ```
 
 ### 结合组件使用

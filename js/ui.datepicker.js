@@ -139,15 +139,21 @@ Datepicker.prototype.close = function() {
 };
 
 Datepicker.prototype.set = function() {
-  var formated = DPGlobal.formatDate(this.date, this.format);
+  var formatted = DPGlobal.formatDate(this.date, this.format);
+  var $input;
+
   if (!this.isInput) {
     if (this.component) {
-      this.$element.find('input').prop('value', formated);
+      $input = this.$element.find('input').attr('value', formatted);
     }
-    this.$element.data('date', formated);
+
+    this.$element.data('date', formatted);
   } else {
-    this.$element.prop('value', formated);
+    $input = this.$element.attr('value', formatted);
   }
+
+  // fixes https://github.com/amazeui/amazeui/issues/711
+  $input.trigger('change');
 };
 
 Datepicker.prototype.setValue = function(newDate) {
@@ -173,8 +179,10 @@ Datepicker.prototype.place = function() {
   var left = offset.left;
   var right = $doc.width() - offset.left - $width;
   var isOutView = this.isOutView();
+
   this.$picker.removeClass('am-datepicker-right');
   this.$picker.removeClass('am-datepicker-up');
+
   if ($doc.width() > 640) {
     if (isOutView.outRight) {
       this.$picker.addClass('am-datepicker-right');
@@ -192,6 +200,7 @@ Datepicker.prototype.place = function() {
   } else {
     left = 0;
   }
+
   this.$picker.css({
     top: top,
     left: left

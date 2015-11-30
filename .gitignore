@@ -23,9 +23,10 @@ tools/app/public/style.css
 .sass-cache
 .build
 .cstmz-tmp
-dist/css
-dist/js
-dist/fonts
+dist/*.zip
+#dist/css
+#dist/js
+#dist/fonts
 dist/sass
 /js/amazeui.js
 less/amazeui.widgets.less

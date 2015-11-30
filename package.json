@@ -2,7 +2,7 @@
   "name": "amazeui",
   "title": "Amaze UI",
   "description": "Sleek, intuitive, and powerful front-end framework for faster and easier web development.",
-  "version": "2.4.2",
+  "version": "2.5.0",
   "keywords": [
     "AMUI",
     "Amaze UI",
@@ -21,7 +21,7 @@
   "author": "Allmobilize, Inc.",
   "scripts": {
     "start": "nodemon tools/app/app.js",
-    "build": "env NODE_ENV=production gulp build",
+    "build": "env NODE_ENV=production gulp build && gulp archive",
     "preview": "gulp preview"
   },
   "style": "dist/css/amazeui.css",

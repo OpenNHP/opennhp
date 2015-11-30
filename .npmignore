@@ -12,6 +12,7 @@ node_modules
 .sass-cache
 
 dist/.gitkeep
+dist/*.zip
 
 nodemon.json
 composer.json

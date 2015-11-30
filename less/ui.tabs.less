@@ -26,11 +26,11 @@
 
 .@{ns}tabs-bd {
   position: relative;
-  overflow: hidden;
   border: 1px solid #ddd;
   border-top: none;
   z-index: 100;
   transition: height .3s;
+  .clearfix();
   .hook-tabs-bd;
 
   .@{ns}tab-panel {
@@ -65,6 +65,11 @@
   .@{ns}tabs-bd {
     border: none;
   }
+}
+
+// #699
+@{ns}tabs-bd-ofv {
+  overflow: visible;
 }
 
 // fade animation in React version

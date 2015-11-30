@@ -385,6 +385,37 @@ $(function() {
 });
 ```
 
+### 与 Validator 插件结合使用
+
+`````html
+<form action="" data-am-validator>
+  <select name="test" data-am-selected required>
+    <option value=""></option>
+    <option value="a">Apple</option>
+    <option value="b">Banana</option>
+    <option value="o">Orange</option>
+  </select>
+
+  <p>
+    <button class="am-btn am-btn-primary">提交</button>
+  </p>
+</form>
+`````
+```html
+<form action="" data-am-validator>
+  <select name="test" data-am-selected required>
+    <option value=""></option>
+    <option value="a">Apple</option>
+    <option value="b">Banana</option>
+    <option value="o">Orange</option>
+  </select>
+
+  <p>
+    <button class="am-btn am-btn-primary">提交</button>
+  </p>
+</form>
+```
+
 ## 调用方式
 
 ### 通过 Data API

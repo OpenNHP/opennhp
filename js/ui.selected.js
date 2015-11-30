@@ -330,6 +330,17 @@ Selected.prototype.bindEvents = function() {
     _this.$shadowOptions.css({display: ''});
   });
 
+  // work with Validator
+  // @since 2.5
+  this.$element.on('validated.field.validator.amui', function(e) {
+    if (e.validity) {
+      var valid = e.validity.valid;
+      var errorClassName = 'am-invalid';
+
+      _this.$selector[(!valid ? 'add' : 'remove') + 'Class'](errorClassName);
+    }
+  });
+
   // observe DOM
   if (UI.support.mutationobserver) {
     this.observer = new UI.support.mutationobserver(function() {

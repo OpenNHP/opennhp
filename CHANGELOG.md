@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+### 2015.11 W5
+
+**JS:**
+
+- `Improved` #756 Validator 支持 selected 验证。
+
 ### 2015.11 W4
 
 **JS:**

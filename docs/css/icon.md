@@ -208,10 +208,75 @@ Amaze UI 的定位是面向现代浏览器，虽然对 IE 8/9 这些浏览器提
 ## 所有图标列表
 
 `````html
+<section id="new-4-5">
+  <h2 class="doc-icon-hd">Font Awesome 4.5 新增字体（Amaze UI 2.5 中搭载） </h2>
+  <ul class="doc-icon-list am-avg-sm-2 am-avg-md-3 am-avg-lg-4">
+    <li><a href=" http://font-awesome.io/icon/bluetooth"><i
+      class="am-icon-bluetooth"></i> bluetooth</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/bluetooth-b"><i
+      class="am-icon-bluetooth-b"></i> bluetooth-b</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/codiepie"><i
+      class="am-icon-codiepie"></i> codiepie</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/credit-card-alt"><i
+      class="am-icon-credit-card-alt"></i> credit-card-alt</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/edge"><i
+      class="am-icon-edge"></i> edge</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/fort-awesome"><i
+      class="am-icon-fort-awesome"></i> fort-awesome</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/hashtag"><i
+      class="am-icon-hashtag"></i> hashtag</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/mixcloud"><i
+      class="am-icon-mixcloud"></i> mixcloud</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/modx"><i
+      class="am-icon-modx"></i> modx</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/pause-circle"><i
+      class="am-icon-pause-circle"></i> pause-circle</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/pause-circle-o"><i
+      class="am-icon-pause-circle-o"></i> pause-circle-o</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/percent"><i
+      class="am-icon-percent"></i> percent</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/product-hunt"><i
+      class="am-icon-product-hunt"></i> product-hunt</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/reddit-alien"><i
+      class="am-icon-reddit-alien"></i> reddit-alien</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/scribd"><i
+      class="am-icon-scribd"></i> scribd</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/shopping-bag"><i
+      class="am-icon-shopping-bag"></i> shopping-bag</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/shopping-basket"><i
+      class="am-icon-shopping-basket"></i> shopping-basket</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/stop-circle"><i
+      class="am-icon-stop-circle"></i> stop-circle</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/stop-circle-o"><i
+      class="am-icon-stop-circle-o"></i> stop-circle-o</a></li>
+
+    <li><a href=" http://font-awesome.io/icon/usb"><i
+      class="am-icon-usb"></i> usb</a></li>
+  </ul>
+</section>
+
 <section id="new-4-4">
   <h2 class="doc-icon-hd">Font Awesome 4.4 新增字体（Amaze UI 2.5 中搭载） </h2>
   <ul class="doc-icon-list am-avg-sm-2 am-avg-md-3 am-avg-lg-4">
-    <li><a href="http://font-awesome.io"/icon/500px"><i class="am-icon-500px"></i> 500px</a></li>
+    <li><a href="http://font-awesome.io/icon/500px"><i class="am-icon-500px"></i> 500px</a></li>
     <li><a href="http://font-awesome.io/icon/amazon"><i class="am-icon-amazon"></i> amazon</a></li>
     <li><a href="http://font-awesome.io/icon/balance-scale"><i class="am-icon-balance-scale"></i> balance-scale</a></li>
     <li><a href="http://font-awesome.io/icon/battery-empty"><i class="am-icon-battery-0"></i> battery-0 <span class="text-muted">(alias)</span></a></li>

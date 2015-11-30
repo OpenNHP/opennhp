@@ -3,6 +3,10 @@
 
 ### 2015.11 W5
 
+**CSS:**
+
+- `Update` 升级 Font Awesome 至 4.5.0。
+
 **JS:**
 
 - `Improved` #756 Validator 支持 selected 验证。

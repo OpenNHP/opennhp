@@ -281,16 +281,17 @@ Selected.prototype.syncData = function(item) {
     status.push($this.find('.am-selected-text').text());
 
     if (!item) {
-      $checked = $checked.add(_this.$originalOptions.
-        filter('[value="' + $this.data('value') + '"]').
-        prop('selected', true));
+      $checked = $checked.add(_this.$originalOptions
+        .filter('[value="' + $this.data('value') + '"]')
+        .prop('selected', true));
     }
   });
 
   if (item) {
     var $item = $(item);
-    this.$originalOptions.filter('[value="' + $item.data('value') + '"]').
-      prop('selected', $item.hasClass(options.selectedClass));
+    this.$originalOptions
+      .filter('[value="' + $item.data('value') + '"]')
+      .prop('selected', $item.hasClass(options.selectedClass));
   } else {
     this.$originalOptions.not($checked).prop('selected', false);
   }
@@ -350,11 +351,28 @@ Selected.prototype.bindEvents = function() {
   });
 };
 
+// @from: 2.5
+Selected.prototype.select = function(item) {
+  var $item;
+
+  if (typeof item === 'number') {
+    $item = this.$list.find('> li').not('.am-selected-list-header').eq(item);
+  } else if (typeof item === 'string') {
+    $item = this.$list.find(item);
+  } else {
+    $item = $(item);
+  }
+
+  $item.trigger('click');
+},
+
+// @from: 2.5
 Selected.prototype.enable = function() {
   this.$element.prop('disable', false);
   this.$selector.dropdown('enable');
 },
 
+// @from: 2.5
 Selected.prototype.disable = function() {
   this.$element.prop('disable', true);
   this.$selector.dropdown('disable');

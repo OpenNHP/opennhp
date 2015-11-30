@@ -351,7 +351,7 @@ Selected.prototype.bindEvents = function() {
   });
 };
 
-// @from: 2.5
+// @since: 2.5
 Selected.prototype.select = function(item) {
   var $item;
 
@@ -366,13 +366,13 @@ Selected.prototype.select = function(item) {
   $item.trigger('click');
 },
 
-// @from: 2.5
+// @since: 2.5
 Selected.prototype.enable = function() {
   this.$element.prop('disable', false);
   this.$selector.dropdown('enable');
 },
 
-// @from: 2.5
+// @since: 2.5
 Selected.prototype.disable = function() {
   this.$element.prop('disable', true);
   this.$selector.dropdown('disable');

@@ -224,8 +224,7 @@ Modal.prototype.events = function() {
   }
 
   // Close Modal when button clicked
-  $element.find('[data-am-modal-close], .am-modal-btn').
-    on('click.close.modal.amui', function(e) {
+  $element.on('click.close.modal.amui', '[data-am-modal-close], .am-modal-btn', function(e) {
       e.preventDefault();
       var $this = $(this);
 

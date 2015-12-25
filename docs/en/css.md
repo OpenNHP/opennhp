@@ -102,7 +102,7 @@ Current browser support setting of AutoPrefixer is:
   </tbody>
 </table>
 
-We currently don't consider screens larger than 1025px. Although screens are getting larger and larger, it could be tiring for users to look around if web page is too wide. 
+We currently don't consider screens larger than 1025px. Although screens are getting larger and larger, it could be tiring for users to look around if web page is too wide.
 
 We have already defined some Media Query variables in "variables.less". If you are using LESS, you may directly use these variables.
 
@@ -139,7 +139,7 @@ HTML head sample:
   <meta name="description" content="">
   <meta name="keywords" content="">
   <meta name="viewport"
-        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+        content="width=device-width, initial-scale=1">
   <title>Amaze UI Examples</title>
 
   <!-- Set render engine for 360 browser -->

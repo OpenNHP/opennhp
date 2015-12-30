@@ -1,7 +1,7 @@
 # Map
 ---
 
-**This widget calls baidu map(speedy version) API, and only works on touch devices.**
+**This widget calls Baidu map(speedy version) API, and only works on touch devices.**
 
 If the address positioning is not precise enough, you may use longitude/latitude positioning instead. The address will be dismissed if longitude and latitude is provided.
 

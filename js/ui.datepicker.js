@@ -139,15 +139,21 @@ Datepicker.prototype.close = function() {
 };
 
 Datepicker.prototype.set = function() {
-  var formated = DPGlobal.formatDate(this.date, this.format);
+  var formatted = DPGlobal.formatDate(this.date, this.format);
+  var $input;
+
   if (!this.isInput) {
     if (this.component) {
-      this.$element.find('input').prop('value', formated);
+      $input = this.$element.find('input').attr('value', formatted);
     }
-    this.$element.data('date', formated);
+
+    this.$element.data('date', formatted);
   } else {
-    this.$element.prop('value', formated);
+    $input = this.$element.attr('value', formatted);
   }
+
+  // fixes https://github.com/amazeui/amazeui/issues/711
+  $input.trigger('change');
 };
 
 Datepicker.prototype.setValue = function(newDate) {
@@ -173,8 +179,10 @@ Datepicker.prototype.place = function() {
   var left = offset.left;
   var right = $doc.width() - offset.left - $width;
   var isOutView = this.isOutView();
+
   this.$picker.removeClass('am-datepicker-right');
   this.$picker.removeClass('am-datepicker-up');
+
   if ($doc.width() > 640) {
     if (isOutView.outRight) {
       this.$picker.addClass('am-datepicker-right');
@@ -192,6 +200,7 @@ Datepicker.prototype.place = function() {
   } else {
     left = 0;
   }
+
   this.$picker.css({
     top: top,
     left: left
@@ -271,14 +280,17 @@ Datepicker.prototype.fill = function() {
     if (prevMonth.getDay() === this.weekStart) {
       html.push('<tr>');
     }
-    className = this.onRender(prevMonth);
+
+    className = this.onRender(prevMonth, 0);
     prevY = prevMonth.getFullYear();
     prevM = prevMonth.getMonth();
+
     if ((prevM < month && prevY === year) || prevY < year) {
       className += ' am-datepicker-old';
     } else if ((prevM > month && prevY === year) || prevY > year) {
       className += ' am-datepicker-new';
     }
+
     if (prevMonth.valueOf() === currentDate) {
       className += ' am-active';
     }
@@ -288,6 +300,7 @@ Datepicker.prototype.fill = function() {
     if (prevMonth.getDay() === this.weekEnd) {
       html.push('</tr>');
     }
+
     prevMonth.setDate(prevMonth.getDate() + 1);
   }
 
@@ -304,7 +317,7 @@ Datepicker.prototype.fill = function() {
   var monthLen = 0;
 
   while (monthLen < 12) {
-    if (this.onRender(d.setFullYear(year, monthLen))) {
+    if (this.onRender(d.setFullYear(year, monthLen), 1)) {
       months.eq(monthLen).addClass('am-disabled');
     }
     monthLen++;
@@ -324,11 +337,15 @@ Datepicker.prototype.fill = function() {
     .text(year + '-' + (year + 9))
     .end()
     .find('td');
-
   var yearClassName;
+  // fixes https://github.com/amazeui/amazeui/issues/770
+  // maybe not need now
+  var viewDate = new Date(this.viewDate);
+
   year -= 1;
+
   for (var i = -1; i < 11; i++) {
-    yearClassName = this.onRender(d.setFullYear(year));
+    yearClassName = this.onRender(viewDate.setFullYear(year), 2);
     html += '<span class="' + yearClassName + '' +
     (i === -1 || i === 10 ? ' am-datepicker-old' : '') +
     (currentYear === year ? ' am-active' : '') + '">' + year + '</span>';

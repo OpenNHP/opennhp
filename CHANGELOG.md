@@ -1,6 +1,81 @@
 # Amaze UI Change Log
 ---
 
+## Amaze UI 2.5.0 (2015.11.30)
+
+### 2015.11 W5
+
+**CSS:**
+
+- `Update` 升级 Font Awesome 至 4.5.0。
+
+**JS:**
+
+- `Improved` #756 Validator 支持 selected 验证。
+
+### 2015.11 W4
+
+**JS:**
+
+- `Changed` #716 Datepicker onRender 增加视图参数，以处理不同的日历视图渲染；
+- `Fixed` #770 Datepicker onRender 禁用日期时候，年份视图当前年份会被禁用（thx @kermit-china）；
+- `Fixed` #711 Datepicker 与 Validator 结合使用时没有触发验证问题；
+- `NEW` #689 Modal 新增 `dimmer` 选项，允许用户关闭 dimmer；
+- `NEW` #719 Validator 新增 `destroy` 方法；
+- `NEW` #734 Dropdown、Selected 新增 `enable`、`disable` 方法；
+- `Improved` #733 Selected 增加超过最多可选值时提示接口；
+- `Improved` #749 Selected 允许添加一个空的 `<option>` 实现不自动选择第一项。
+
+**构建:**
+
+- `Changed` 使用 webpack 替换 browserify：更好的 UMD 输出、减少开发依赖。
+
+### 2015.11 W3
+
+**构建:**
+
+- `New` #759 添加排除文件列表（`tools/excluded.js`），方便用户自行构建时排除不需要的组件（Thx @icepy；
+- `Changed` CSS 构建时不再包含内部的使用的 `one` 系列样式。
+
+
+### 2015.11 W2
+
+**CSS:**
+
+- `Update` 升级 Font Awesome 至 4.4.0。
+
+
+### 2015.11 W1
+
+**文档：**
+
+- `New` #761 Collapse 文档增加折叠列表的例子。
+
+### 2015.09 W3
+
+**Web 组件：**
+
+- `Fixed` #737 修复组件调试 JS 报错。
+
+### 2015.08 W3
+
+**JS:**
+
+- `Fixed` #712 修复 Modal 在 Edge 中偏移、字体发虚的问题（包括 IE11 #387）；
+- `Fixed` #419 修复 Modal popup 在 IE 中标题栏偏移问题。
+
+### 2015.08 W1
+
+**JS:**
+
+- `Fixed` #783 处理 Browserify 输出 UMD 文件时没有添加 AMD 和 CommonJS 依赖的问题。
+
+### 2015.07 W4
+
+**CSS:**
+
+- `Fixed` Icon 图标使用 `<i>` 元素时在 IE9 中渲染为斜体问题。
+
 ### 2015.07 W2
 
 **JS:**

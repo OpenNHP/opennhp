@@ -23,6 +23,7 @@ tools/app/public/style.css
 .sass-cache
 .build
 .cstmz-tmp
+dist/*.zip
 dist/css
 dist/js
 dist/fonts

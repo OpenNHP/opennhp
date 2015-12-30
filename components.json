@@ -198,7 +198,7 @@
     "ui.scrollspynav": {
       "depStyle": [],
       "depJs": [
-        "ui.smooth-scroll.less"
+        "ui.smooth-scroll.js"
       ]
     },
     "ui.share": {
@@ -234,7 +234,9 @@
     },
     "ui.datepicker": {
       "depStyle": [
+        "form.less",
         "icon.less",
+        "input-group.less",
         "ui.datepicker.less"
       ],
       "depJs": []
@@ -270,6 +272,10 @@
       "depJs": []
     },
     "util.fullscreen": {
+      "depStyle": [],
+      "depJs": []
+    },
+    "util.geolocation": {
       "depStyle": [],
       "depJs": []
     },

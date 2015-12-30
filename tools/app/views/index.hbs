@@ -48,9 +48,7 @@
   {{{content}}}
 </section>
 
-
 <script src="/handlebars/dist/handlebars.js"></script>
-<script src="/js/amazeui.widgets.helper.js"></script>
 <!--[if (gte IE 9)|!(IE)]><!-->
 <script src="/jquery/dist/jquery.min.js"></script>
 <!--<![endif]-->
@@ -63,11 +61,13 @@
   <script>
     (function($) {
       $(function() {
-        var $body = $('body'),
-            $demoPage = $('#app-cpt'),
-            demoListTpl = $('#tpl-demo-list').html(),
-            listCompiler = Handlebars.compile(demoListTpl),
-            componentsData = {{{componentsData}}};
+        var $body = $('body');
+        var $demoPage = $('#app-cpt');
+        var demoListTpl = $('#tpl-demo-list').html();
+        var listCompiler = Handlebars.compile(demoListTpl);
+        var componentsData = {{{componentsData}}};
+
+        Handlebars.registerPartial('header', componentsData.header.tpl);
 
         $('.cpt-list a').on('click', function(e) {
           e.preventDefault();

@@ -47,8 +47,12 @@
   text-align: center;
   border-radius: @modal-border-radius;
   opacity: 0;
-  transform: translate3d(0, 0, 0) scale(1.185);
+  // @see https://github.com/allmobilize/amazeui/issues/712
+  // transform: translate3d(0, 0, 0) scale(1.185);
+  transform: scale(1.185);
   transition-property: transform, opacity;
+  backface-visibility: hidden;
+  perspective: 1000px;
 
   &:focus {
     outline: 0;
@@ -57,14 +61,16 @@
   &.@{ns}modal-active {
     opacity: 1;
     transition-duration: @modal-duration;
-    transform: translate3d(0, 0, 0) scale(1);
+    // transform: translate3d(0, 0, 0) scale(1);
+    transform: scale(1);
   }
 
   &.@{ns}modal-out {
     opacity: 0;
     z-index: @z-index-modal - 1;
     transition-duration: @modal-duration;
-    transform: translate3d(0, 0, 0) scale(0.815);
+    // transform: translate3d(0, 0, 0) scale(0.815);
+    transform: scale(0.815);
   }
 
   @media @medium-up {
@@ -357,7 +363,7 @@
 }
 
 .@{ns}popup-hd {
-  position: fixed;
+  position: absolute;
   top: 0;
   width: 100%;
   height: 43px;

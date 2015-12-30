@@ -2,6 +2,7 @@
 
 var $ = require('jquery');
 var UI = require('./core');
+// require('./ui.dropdown');
 
 // Make jQuery :contains Case-Insensitive
 $.expr[':'].containsNC = function(elem, i, match, array) {
@@ -21,7 +22,10 @@ $.expr[':'].containsNC = function(elem, i, match, array) {
 
 var Selected = function(element, options) {
   this.$element = $(element);
-  this.options = $.extend({}, Selected.DEFAULTS, options);
+  this.options = $.extend({}, Selected.DEFAULTS, {
+    placeholder: element.getAttribute('placeholder') ||
+    Selected.DEFAULTS.placeholder
+  }, options);
   this.$originalOptions = this.$element.find('option');
   this.multiple = element.multiple;
   this.$selector = null;
@@ -35,6 +39,7 @@ Selected.DEFAULTS = {
   btnStyle: 'default',
   dropUp: 0,
   maxHeight: null,
+  maxChecked: null,
   placeholder: '点击选择...',
   selectedClass: 'am-checked',
   disabledClass: 'am-disabled',
@@ -109,6 +114,10 @@ Selected.prototype.init = function() {
   // set select button styles
   this.$selector.css({width: this.options.btnWidth});
 
+  if (this.$element[0].disabled) {
+    this.$selector.addClass(options.disabledClass);
+  }
+
   this.$list = this.$selector.find('.am-selected-list');
   this.$searchField = this.$selector.find('.am-selected-search input');
   this.$hint = this.$selector.find('.am-selected-hint');
@@ -135,7 +144,9 @@ Selected.prototype.init = function() {
   // set hint text
   var hint = [];
   var min = $element.attr('minchecked');
-  var max = $element.attr('maxchecked');
+  var max = $element.attr('maxchecked') || options.maxChecked;
+
+  this.maxChecked = max || Infinity;
 
   if ($element[0].required) {
     hint.push('必选');
@@ -180,6 +191,12 @@ Selected.prototype.renderOptions = function() {
   }
 
   function pushOption(index, item, group) {
+    if (item.value === '') {
+      // skip to next iteration
+      // @see http://stackoverflow.com/questions/481601/how-to-skip-to-next-iteration-in-jquery-each-util
+      return true;
+    }
+
     var classNames = '';
     item.disabled && (classNames += options.disabledClass);
     !item.disabled && item.selected && (classNames += options.selectedClass);
@@ -223,17 +240,28 @@ Selected.prototype.setChecked = function(item) {
   var options = this.options;
   var $item = $(item);
   var isChecked = $item.hasClass(options.selectedClass);
-  if (!this.multiple) {
-    if (!isChecked) {
-      this.dropdown.close();
-      this.$shadowOptions.not($item).removeClass(options.selectedClass);
-    } else {
-      return;
+
+  if (this.multiple) {
+    // multiple
+    var checkedLength = this.$list.find('.' + options.selectedClass).length;
+
+    if (!isChecked && this.maxChecked <= checkedLength) {
+      this.$element.trigger('checkedOverflow.selected.amui', {
+        selected: this
+      });
+
+      return false;
     }
+  } else {
+    if (isChecked) {
+      return false;
+    }
+
+    this.dropdown.close();
+    this.$shadowOptions.not($item).removeClass(options.selectedClass);
   }
 
   $item.toggleClass(options.selectedClass);
-
   this.syncData(item);
 };
 
@@ -253,16 +281,17 @@ Selected.prototype.syncData = function(item) {
     status.push($this.find('.am-selected-text').text());
 
     if (!item) {
-      $checked = $checked.add(_this.$originalOptions.
-        filter('[value="' + $this.data('value') + '"]').
-        prop('selected', true));
+      $checked = $checked.add(_this.$originalOptions
+        .filter('[value="' + $this.data('value') + '"]')
+        .prop('selected', true));
     }
   });
 
   if (item) {
     var $item = $(item);
-    this.$originalOptions.filter('[value="' + $item.data('value') + '"]').
-      prop('selected', $item.hasClass(options.selectedClass));
+    this.$originalOptions
+      .filter('[value="' + $item.data('value') + '"]')
+      .prop('selected', $item.hasClass(options.selectedClass));
   } else {
     this.$originalOptions.not($checked).prop('selected', false);
   }
@@ -301,6 +330,17 @@ Selected.prototype.bindEvents = function() {
     _this.$shadowOptions.css({display: ''});
   });
 
+  // work with Validator
+  // @since 2.5
+  this.$element.on('validated.field.validator.amui', function(e) {
+    if (e.validity) {
+      var valid = e.validity.valid;
+      var errorClassName = 'am-invalid';
+
+      _this.$selector[(!valid ? 'add' : 'remove') + 'Class'](errorClassName);
+    }
+  });
+
   // observe DOM
   if (UI.support.mutationobserver) {
     this.observer = new UI.support.mutationobserver(function() {
@@ -322,6 +362,33 @@ Selected.prototype.bindEvents = function() {
   });
 };
 
+// @since: 2.5
+Selected.prototype.select = function(item) {
+  var $item;
+
+  if (typeof item === 'number') {
+    $item = this.$list.find('> li').not('.am-selected-list-header').eq(item);
+  } else if (typeof item === 'string') {
+    $item = this.$list.find(item);
+  } else {
+    $item = $(item);
+  }
+
+  $item.trigger('click');
+},
+
+// @since: 2.5
+Selected.prototype.enable = function() {
+  this.$element.prop('disable', false);
+  this.$selector.dropdown('enable');
+},
+
+// @since: 2.5
+Selected.prototype.disable = function() {
+  this.$element.prop('disable', true);
+  this.$selector.dropdown('disable');
+},
+
 Selected.prototype.destroy = function() {
   this.$element.removeData('amui.selected').show();
   this.$selector.remove();
@@ -332,7 +399,10 @@ UI.plugin('selected', Selected);
 // Conflict with jQuery form
 // https://github.com/malsup/form/blob/6bf24a5f6d8be65f4e5491863180c09356d9dadd/jquery.form.js#L1240-L1258
 // https://github.com/allmobilize/amazeui/issues/379
-// $.fn.selected = $.fn.selectIt = Plugin;
+// @deprecated: $.fn.selected = $.fn.selectIt = Plugin;
+
+// New way to resolve conflict:
+// @see https://github.com/amazeui/amazeui/issues/781#issuecomment-158873541
 
 UI.ready(function(context) {
   $('[data-am-selected]', context).selected();

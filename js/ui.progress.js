@@ -1,6 +1,5 @@
 'use strict';
 
-var $ = require('jquery');
 var UI = require('./core');
 
 var Progress = (function() {

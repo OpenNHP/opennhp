@@ -10,7 +10,7 @@ next: getting-started/layouts.html
 ---
 
 Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 100 kB 左右）、 [**Mobile first**](http://cbrac.co/113eY5h) 的前端框架，
-基于开源社区流行前端框架编写（[使用、参考的项目列表](https://github.com/allmobilize/amazeui#%E5%8F%82%E8%80%83%E4%BD%BF%E7%94%A8%E7%9A%84%E5%BC%80%E6%BA%90%E9%A1%B9%E7%9B%AE)）。
+基于开源社区流行前端框架编写（[使用、参考的项目列表](https://github.com/amazeui/amazeui#参考使用的项目)）。
 
 ## 获取 Amaze UI
 
@@ -23,7 +23,7 @@ Amaze UI 是一个轻量级（所有 CSS 和 JS gzip 后 100 kB 左右）、 [**
   </div>
 </div>
 
-- [**更新日志**](https://github.com/allmobilize/amazeui/blob/master/CHANGELOG.md)
+- [**更新日志**](https://github.com/amazeui/amazeui/blob/master/CHANGELOG.md)
 
 **离线文档：**
 
@@ -52,7 +52,9 @@ Gulp、NPM 构建的前端开发工作流，点击[访问项目主页](https://g
 
 ### 使用 CDN
 
-Amaze UI CDN： 域名解析服务由 DNSPod 提供，CDN 存储由七牛提供。
+#### 官方 CDN
+
+域名解析服务由 DNSPod 提供，CDN 存储由七牛提供。
 
 ```html
 http://cdn.amazeui.org/amazeui/__VERSION__/css/amazeui.css
@@ -64,6 +66,12 @@ http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.ie8polyfill.min.js
 http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.widgets.helper.js
 http://cdn.amazeui.org/amazeui/__VERSION__/js/amazeui.widgets.helper.min.js
 ```
+
+#### cdnjs
+
+面向国外的用户可以使用 cdnjs 提供的 CDN 服务（支持 HTTPS）。
+
+- https://cdnjs.com/libraries/amazeui
 
 ### 使用 Bower
 
@@ -90,9 +98,9 @@ bower install amazeui
 
 你可以从 GitHub 项目主页获取源代码。
 
-<iframe src="http://ghbtns.com/github-btn.html?user=allmobilize&repo=amazeui&type=watch&count=true&size=large" allowtransparency="true" frameborder="0" scrolling="0" width="156px" height="30px"></iframe>
+<iframe src="http://ghbtns.com/github-btn.html?user=amazeui&repo=amazeui&type=watch&count=true&size=large" allowtransparency="true" frameborder="0" scrolling="0" width="156px" height="30px"></iframe>
 
-<iframe src="http://ghbtns.com/github-btn.html?user=allmobilize&repo=amazeui&type=fork&count=true&size=large" allowtransparency="true" frameborder="0" scrolling="0" width="156px" height="30px"></iframe>
+<iframe src="http://ghbtns.com/github-btn.html?user=amazeui&repo=amazeui&type=fork&count=true&size=large" allowtransparency="true" frameborder="0" scrolling="0" width="156px" height="30px"></iframe>
 
 ## 文件及版本说明
 
@@ -113,7 +121,7 @@ Amaze UI 遵循 [Semantic Versioning](http://semver.org/lang/zh-CN/) 规范，�
 - 次版本号：做了向下兼容的功能性新增；
 - 修订号：做了向下兼容的问题修正、细节调整等。
 
-- [**1.x 到 2.x 变更记录暨升级指南**](https://github.com/allmobilize/amazeui/wiki/Migration-form-1.x-to-2.x)
+- [**1.x 到 2.x 变更记录暨升级指南**](https://github.com/amazeui/amazeui/wiki/Migration-form-1.x-to-2.x)
 
 
 ## 下载包目录结构
@@ -171,7 +179,7 @@ AmazeUI
   <meta name="description" content="">
   <meta name="keywords" content="">
   <meta name="viewport"
-        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+        content="width=device-width, initial-scale=1">
   <title>Hello Amaze UI</title>
 
   <!-- Set render engine for 360 browser -->

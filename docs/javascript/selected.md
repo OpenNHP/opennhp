@@ -38,7 +38,7 @@ doc: docs/javascript/selected.md
 ```html
 <select data-am-selected>
   <option value="a">Apple</option>
-  <option value="b">Banana</option>
+  <option value="b" selected>Banana</option>
   <option value="o">Orange</option>
   <option value="m">Mango</option>
   <option value="d" disabled>禁用鸟</option>
@@ -218,21 +218,33 @@ doc: docs/javascript/selected.md
 
 ### 选项验证提示
 
+**`v2.5` 新增**：设置 `maxchecked` 属性以后，超出设定值时会触发 `checkedOverflow.selected.amui` 事件，可以监听该事件提示用户。
+
 `````html
-<select multiple data-am-selected minchecked="2" maxchecked="3">
+<select multiple data-am-selected minchecked="2" maxchecked="3" id="demo-maxchecked">
   <option value="a">Apple</option>
   <option value="b">Banana</option>
   <option value="o">Orange</option>
   <option value="m">Mango</option>
 </select>
+<script>
+$('#demo-maxchecked').on('checkedOverflow.selected.amui', function() {
+  alert('最多选择' + this.getAttribute('maxchecked') + '项');
+});
+</script>
 `````
 ```html
-<select multiple data-am-selected minchecked="2" maxchecked="3">
+<select multiple data-am-selected minchecked="2" maxchecked="3" id="demo-maxchecked">
   <option value="a">Apple</option>
   <option value="b">Banana</option>
   <option value="o">Orange</option>
   <option value="m">Mango</option>
 </select>
+<script>
+$('#demo-maxchecked').on('checkedOverflow.selected.amui', function() {
+  alert('最多选择' + this.getAttribute('maxchecked') + '项');
+});
+</script>
 ```
 
 ### JS 操作 select
@@ -373,6 +385,37 @@ $(function() {
 });
 ```
 
+### 与 Validator 插件结合使用
+
+`````html
+<form action="" data-am-validator>
+  <select name="test" data-am-selected required>
+    <option value=""></option>
+    <option value="a">Apple</option>
+    <option value="b">Banana</option>
+    <option value="o">Orange</option>
+  </select>
+
+  <p>
+    <button class="am-btn am-btn-primary">提交</button>
+  </p>
+</form>
+`````
+```html
+<form action="" data-am-validator>
+  <select name="test" data-am-selected required>
+    <option value=""></option>
+    <option value="a">Apple</option>
+    <option value="b">Banana</option>
+    <option value="o">Orange</option>
+  </select>
+
+  <p>
+    <button class="am-btn am-btn-primary">提交</button>
+  </p>
+</form>
+```
+
 ## 调用方式
 
 ### 通过 Data API
@@ -382,8 +425,6 @@ $(function() {
 ### 通过 JS
 
 通过 `$('select').selected(options)` 启用样式复写。
-
-**如果项目中同时使用了 [jQuery Form](https://github.com/malsup/form/)，`$.fn.selected` 有命名冲突，请使用 `$('select').selectIt(options)` 替代。**
 
 ```javascript
 $(function() {
@@ -407,3 +448,77 @@ $(function() {
 - `btnStyle: 'default'`: 按钮样式，可选值为 `primary|secondary|success|warning|danger`
 - `maxHeight: null`: 列表最大高度
 - `dropUp: 0`: 是否为上拉，默认为 `0` (`false`)
+- `placeholder`: 占位符，默认读取 `<select>` 的 `placeholder` 属性，如果没有则为 `点击选择...`
+
+#### 方法
+
+- `$().selected('disable')`: 禁用选框（`v2.5`）
+- `$().selected('enable')`: 启用选框（`v2.5`）
+- `$().selected('destroy')`: 销毁实例
+
+#### 事件
+
+| 事件名称 | 描述 |
+| ------ | ---- |
+| `checkedOverflow.selected.amui` | 超出设定的最多可选值时触发（`v2.5` 新增） |
+
+## 常见问题
+
+### 与 jQuery Form 冲突？
+
+如果项目中同时使用了 [jQuery Form](https://github.com/malsup/form/)，`$.fn.selected` **有命名冲突**：
+
+- `2.4.1` 以前的版本：请使用 `$('select').selectIt(options)` 替代；
+- `2.4.1` 及以后版本：
+
+  在 `amazeui.js` **之后**引入 `jquery.form.js`，否则 jQuery Form 可能无法正常工作，然后执行以下代码（[在线演示](http://bin.amazeui.org/weputu/edit?html,output)）：
+
+  ```js
+  // 重新注册一个 jQuery 插件
+  AMUI.plugin('mySelected', AMUI.selected);
+
+  // 初始化插件
+  $('#my-select').mySelected();
+  ```
+
+  **或者：**
+
+  在 `amazeui.js` **之前**引入 `jquery.form.js`，然后按照以下方式调用（[演示](http://jsbin.com/doyupuhala/edit?html,output)）：
+
+  ```js
+  // 恢复 jQuery Form 插件的 $.fn.selected，
+  // 并把 Amaze UI selected 重新赋值给 $.fn.amSelected
+  $.fn.amSelected = $.fn.selected.noConflict();
+
+  // 使用 Amaze UI 的 selected
+  $('[data-am-selected]').amSelected();
+  ```
+
+### `<select>` （单选）默认选择第一项的问题
+
+缺省选中第一个 `<option>` 是 HTML 规范中 `<select>` 元素（单选）的默认行为。Selected 遵循了一致的行为，和规范保持一致。
+
+有用户提出[默认不选中第一项的需求](https://github.com/amazeui/amazeui/issues/749)，`v2.5` 增加了这个功能，只需将第一项设置为空的 `<option>` 即可。
+
+`````html
+<form>
+<select data-am-selected placeholder="选一个撒" id="demo-default-selected">
+  <option selected value=""></option>
+  <option label="01 - Proprietary" value="01">01 - Proprietary</option>
+  <option label="02 - ISBN-10" value="02">02 - ISBN-10</option>
+  <option label="03 - GTIN-13" value="03">03 - GTIN-13</option>
+  <option label="04 - UPC" value="04">04 - UPC</option>
+  <option label="05 - ISMN-10" value="05">05 - ISMN-10</option>
+</select>
+</form>
+`````
+```html
+<select data-am-selected placeholder="选一个撒" id="demo-default-selected">
+  <option selected value=""></option>
+  <option label="01 - Proprietary" value="01">01 - Proprietary</option>
+  <option label="02 - ISBN-10" value="02">02 - ISBN-10</option>
+  <option label="03 - GTIN-13" value="03">03 - GTIN-13</option>
+  <option label="04 - UPC" value="04">04 - UPC</option>
+  <option label="05 - ISMN-10" value="05">05 - ISMN-10</option>
+</select>
+```

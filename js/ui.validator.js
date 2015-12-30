@@ -28,7 +28,12 @@ Validator.DEFAULTS = {
   alwaysRevalidate: false,
   // Elements to validate with allValid (only validating visible elements)
   // :input: selects all input, textarea, select and button elements.
-  allFields: ':input:visible:not(:submit, :button, :disabled, .am-novalidate)',
+  // @since 2.5: move `:visible` to `ignore` option (became to `:hidden`)
+  allFields: ':input:not(:submit, :button, :disabled, .am-novalidate)',
+
+  // ignored elements
+  // @since 2.5
+  ignore: ':hidden:not([data-am-selected], .am-validate)',
 
   // Custom events
   customEvents: 'validate',
@@ -84,7 +89,7 @@ Validator.DEFAULTS = {
   submit: null
 };
 
-Validator.VERSION = '2.4.1';
+Validator.VERSION = '{{VERSION}}';
 
 /* jshint -W101 */
 Validator.patterns = {
@@ -162,7 +167,7 @@ Validator.prototype.init = function() {
     !$field.attr('pattern') && $field.attr('pattern', regexToPattern(value));
   });
 
-  $element.submit(function(e) {
+  $element.on('submit.validator.amui', function(e) {
     // user custom submit handler
     if (typeof options.submit === 'function') {
       return options.submit.call(_this, e);
@@ -344,8 +349,10 @@ Validator.prototype.validate = function(field) {
   var validateComplete = function(validity) {
     this.markField(validity);
 
-    $field.trigger('validated.field.validator.amui', validity).
-      data('validity', validity);
+    var event = $.Event('validated.field.validator.amui');
+    event.validity = validity;
+
+    $field.trigger(event).data('validity', validity);
 
     // validate the radios/checkboxes with the same name
     var $fields = $radioGroup || $checkboxGroup;
@@ -389,7 +396,7 @@ Validator.prototype.validateForm = function() {
   var _this = this;
   var $element = this.$element;
   var options = this.options;
-  var $allFields = $element.find(options.allFields);
+  var $allFields = $element.find(options.allFields).not(options.ignore);
   var radioNames = [];
   var valid = true;
   var formValidity = [];
@@ -475,7 +482,15 @@ Validator.prototype.isFormValid = function() {
     return masterDfd.promise();
   } else {
     if (!formValidity.valid) {
-      formValidity.$invalidFields.first().focus();
+      var $first = formValidity.$invalidFields.first();
+
+      // Selected plugin support
+      // @since 2.5
+      if ($first.is('[data-am-selected]')) {
+        $first = $first.next('.am-selected').find('.am-selected-btn');
+      }
+
+      $first.focus();
       triggerValid('invalid');
       return false;
     }
@@ -549,8 +564,28 @@ Validator.prototype.getValidationMessage = function(validity) {
 
 // remove valid mark
 Validator.prototype.removeMark = function() {
-  this.$element.find('.am-form-success, .am-form-error, .am-field-error')
-    .removeClass('am-form-success am-form-error am-field-error');
+  this.$element
+    .find('.am-form-success, .am-form-error, .' + this.options.inValidClass +
+      ', .' + this.options.validClass)
+    .removeClass([
+      'am-form-success',
+      'am-form-error',
+      this.options.inValidClass,
+      this.options.validClass
+    ].join(' '));
+};
+
+// @since 2.5
+Validator.prototype.destroy = function() {
+  this.removeMark();
+
+  // Remove data
+  // - Validator.prototype.init -> $element.data('amui.checked')
+  // - Validator.prototype.validateForm
+  // - Validator.prototype.isValid
+  this.$element.removeData('amui.validator amui.checked')
+    .off('.validator.amui')
+    .find(this.options.allFields).removeData('validity amui.dfdValidity');
 };
 
 UI.plugin('validator', Validator);

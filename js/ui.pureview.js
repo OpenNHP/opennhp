@@ -222,6 +222,7 @@ PureView.prototype.refreshSlides = function() {
       // NOTE: `data-rel` should be a full URL, otherwise,
       //        WeChat images preview will not work
       src = $(item).data('rel') || item.src; // <img src='' data-rel='' />
+      src = UI.utils.getAbsoluteUrl(src);
       title = $(item).attr('alt') || '';
     }
 

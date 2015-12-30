@@ -949,7 +949,13 @@ $(function() {
   // 表单提交时验证的域
   // Elements to validate with allValid (only validating visible elements)
   // :input: selects all input, textarea, select and button elements.
-  allFields: ':input:visible:not(:button, :disabled, .am-novalidate)',
+  // @since 2.5: move `:visible` to `ignore` option, became to `:hidden`
+  allFields: ':input:not(:button, :disabled, .am-novalidate)',
+
+  // 表单提交时验证的忽略的域
+  // ignored elements
+  // @since 2.5
+  ignore: ':hidden:not([data-am-selected], .am-validate)',
 
   // 调用 validate() 方法的自定义事件
   customEvents: 'validate',
@@ -1115,6 +1121,7 @@ $('#xx').validator({
     // 验证失败的逻辑
   });
   ```
+- `.validator('destroy')` - 销毁表单验证
 
 ## Issue 测试
 

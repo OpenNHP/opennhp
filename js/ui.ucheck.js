@@ -92,9 +92,9 @@ UI.plugin('uCheck', UCheck, {
     // Adding 'am-nohover' class for touch devices
     if (UI.support.touch) {
       this.parent().hover(function() {
-        this.addClass('am-nohover');
+        $(this).addClass('am-nohover');
       }, function() {
-        this.removeClass('am-nohover');
+        $(this).removeClass('am-nohover');
       });
     }
   }

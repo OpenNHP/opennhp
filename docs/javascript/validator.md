@@ -904,6 +904,117 @@ $(function() {
 });
 ```
 
+### 验证 UEditor
+
+Validator 可以和 [UEditor](http://ueditor.baidu.com/) 富文本编辑器结合使用。
+
+`````html
+<form action="" class="am-form" id="ue-form">
+  <fieldset>
+    <legend>JS 表单验证</legend>
+    <div class="am-form-group">
+      <label for="doc-vld-name-2">用户名：</label>
+      <input type="text" id="doc-vld-name-2" minlength="3" placeholder="输入用户名（至少 3 个字符）" required/>
+    </div>
+    <div class="am-form-group">
+      <label for="doc-vld-ta-2">评论：</label>
+      <textarea class="am-validate" name="myue" id="myue" minlength="10" maxlength="100" required></textarea>
+    </div>
+
+    <button class="am-btn am-btn-secondary" type="submit">提交</button>
+  </fieldset>
+</form>
+<script src="http://ueditor.baidu.com/ueditor/ueditor.config.js"></script>
+<script src="http://ueditor.baidu.com/ueditor/ueditor.all.js"></script>
+<script>
+  $(function() {
+    var $textArea = $('[name=myue');
+    var editor = UE.getEditor('myue');
+    var $form = $('#ue-form');
+
+    $form.validator({
+      submit: function() {
+        // 同步编辑器数据
+        editor.sync();
+
+        var formValidity = this.isFormValid();
+
+        // 表单验证未成功，而且未成功的第一个元素为 UEEditor 时，focus 编辑器
+        if (!formValidity && $form.find('.' + this.options.inValidClass).eq(0).is($textArea)) {
+          editor.focus();
+        }
+
+        console.warn('验证状态：', formValidity ? '通过' : '未通过');
+
+        return false;
+      }
+    });
+
+    // 编辑器内容变化时同步到 textarea
+    editor.addListener('contentChange', function() {
+      editor.sync();
+
+      // 触发验证
+      $('[name=myue]').trigger('change');
+    });
+  });
+</script>
+`````
+
+```html
+<form action="" class="am-form" id="ue-form">
+  <fieldset>
+    <legend>JS 表单验证</legend>
+    <div class="am-form-group">
+      <label for="doc-vld-name-2">用户名：</label>
+      <input type="text" id="doc-vld-name-2" minlength="3" placeholder="输入用户名（至少 3 个字符）" required/>
+    </div>
+    <div class="am-form-group">
+      <label for="doc-vld-ta-2">评论：</label>
+      <textarea class="am-validate" name="myue" id="myue" required></textarea>
+    </div>
+
+    <button class="am-btn am-btn-secondary" type="submit">提交</button>
+  </fieldset>
+</form>
+<script src="http://ueditor.baidu.com/ueditor/ueditor.config.js"></script>
+<script src="http://ueditor.baidu.com/ueditor/ueditor.all.js"></script>
+```
+
+```javascript
+$(function() {
+  var $textArea = $('[name=myue');
+  var editor = UE.getEditor('myue');
+  var $form = $('#ue-form');
+
+  $form.validator({
+    submit: function() {
+      // 同步编辑器数据
+      editor.sync();
+
+      var formValidity = this.isFormValid();
+
+      // 表单验证未成功，而且未成功的第一个元素为 UEEditor 时，focus 编辑器
+      if (!formValidity && $form.find('.' + this.options.inValidClass).eq(0).is($textArea)) {
+        editor.focus();
+      }
+
+      console.warn('验证状态：', formValidity ? '通过' : '未通过');
+
+      return false;
+    }
+  });
+
+  // 编辑器内容变化时同步到 textarea
+  editor.addListener('contentChange', function() {
+    editor.sync();
+
+    // 触发验证
+    $('[name=myue]').trigger('change');
+  });
+});
+```
+
 ## 使用方式
 
 ### 通过 Data API

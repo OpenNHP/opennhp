@@ -1,6 +1,12 @@
 # Amaze UI Change Log
 ---
 
+## Amaze UI 2.5.2 (2016.01.26)
+
+**JS:**
+
+- `Fixed` #825 Datepicker `trigger` 报错问题。
+
 ## Amaze UI 2.5.1 (2016.01.19)
 
 **JS:**

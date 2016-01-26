@@ -1,4 +1,4 @@
-/*! Amaze UI v2.5.1 ~ IE8 Fucker | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-01-19T14:45:42+0800 */ 
+/*! Amaze UI v2.5.2 ~ IE8 Fucker | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-01-26T11:06:52+0800 */ 
 // Console-polyfill. MIT license.
 // https://github.com/paulmillr/console-polyfill
 // Make it safe to do console.log() always.

@@ -21,7 +21,7 @@ doc: docs/javascript/datepicker.md
 
 ### 基本形式
 
-在 `<input>` 上增加 `.data-am-datepicker` 属性，调用日期插件。
+在 `<input>` 上增加 `data-am-datepicker` 属性，调用日期插件。
 
 `````html
 <form action="" class="am-form" data-am-validator>

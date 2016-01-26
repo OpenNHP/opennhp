@@ -1,4 +1,4 @@
-/*! Amaze UI v2.5.1 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-01-19T14:45:42+0800 */ 
+/*! Amaze UI v2.5.2 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-01-26T11:06:52+0800 */ 
 (function webpackUniversalModuleDefinition(root, factory) {
 	if(typeof exports === 'object' && typeof module === 'object')
 		module.exports = factory(require("jquery"));
@@ -140,7 +140,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	var doc = window.document;
 	var $html = $('html');
 
-	UI.VERSION = '2.5.1';
+	UI.VERSION = '2.5.2';
 
 	UI.support = {};
 
@@ -4421,7 +4421,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }
 
 	  // fixes https://github.com/amazeui/amazeui/issues/711
-	  $input.trigger('change');
+	  $input && $input.trigger('change');
 	};
 
 	Datepicker.prototype.setValue = function(newDate) {
@@ -14463,7 +14463,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  submit: null
 	};
 
-	Validator.VERSION = '2.5.1';
+	Validator.VERSION = '2.5.2';
 
 	/* jshint -W101 */
 	Validator.patterns = {

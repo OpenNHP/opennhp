@@ -153,7 +153,7 @@ Datepicker.prototype.set = function() {
   }
 
   // fixes https://github.com/amazeui/amazeui/issues/711
-  $input.trigger('change');
+  $input && $input.trigger('change');
 };
 
 Datepicker.prototype.setValue = function(newDate) {

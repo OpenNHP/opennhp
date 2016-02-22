@@ -194,7 +194,7 @@ HTML head sample:
 
 Amaze UI is developed based on the idea of Mobile First, so you should first set `viewport` attribute  in `meta`.
 
-`width=device-width, initial-scale=1` is necessery，and we believe a good design will never require users to scale the view manuelly, so we add `maximum-scale=1, user-scalable=no` to fix the scale.
+`width=device-width, initial-scale=1` is necessary，and we believe a good design will never require users to scale the view manually, so we add `maximum-scale=1, user-scalable=no` to fix the scale.
 
 ```html
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
@@ -224,9 +224,9 @@ If you don't want to find extra advertisements to be sticked on your web pages, 
 
 ## Class Naming
 
-### Seperation of Concerns
+### Separation of Concerns
 
-The naming of Amaze UI CSS classes follows the concepts of seperation of concerns, loose coupling and easily understandable. After consulting [BEM](http://bem.info/method/definitions/), we developed an elegant naming convention.
+The naming of Amaze UI CSS classes follows the concepts of separation of concerns, loose coupling and easily understandable. After consulting [BEM](http://bem.info/method/definitions/), we developed an elegant naming convention.
 
 The following codes directly show the naming convention of Amaze UI CSS classes.
 
@@ -239,7 +239,7 @@ The following codes directly show the naming convention of Amaze UI CSS classes.
 .am-post-title-highlight {}  /* Element Modifier */
 ```
 
-#### Example of Seperation of Concerns
+#### Example of Separation of Concerns
 
 ```html
 <article class="am-post">
@@ -275,7 +275,7 @@ It seems to have no problem, and the two selectors won't affect elements in `<ma
 </article>
 ```
 
-#### anti-patterns of Seperation of Concerns
+#### anti-patterns of Separation of Concerns
 
 ```html
 <ul class="am-nav">
@@ -285,9 +285,9 @@ It seems to have no problem, and the two selectors won't affect elements in `<ma
 </ul>
 ```
 
-This is a snippet of a navigation. We add `.am-nav-item` to every `<li>`. This looks like following Seperation of Concerns, while actually it is an anti-pattern, because there must be `<ul>` in `<li>`, and it will be unnecessery to give it an class if there is no other more complicated elements.
+This is a snippet of a navigation. We add `.am-nav-item` to every `<li>`. This looks like following Separation of Concerns, while actually it is an anti-pattern, because there must be `<ul>` in `<li>`, and it will be unnecessery to give it an class if there is no other more complicated elements.
 
-Therefore, __Seperation of Concerns is not simply give classes to elements__, we will also need to consider the different situation.
+Therefore, __Separation of Concerns is not simply give classes to elements__, we will also need to consider the different situation.
 
 
 Further Reading：
@@ -298,7 +298,7 @@ Further Reading：
 
 Reading HTML source code full of classes always make developers crazy.
 
-However, divide codes into different classes is always necessery in order to reuse codes and reduce redundant. We can only try to find a balance, and avoid writing unnecessary classes.
+However, divide codes into different classes is always necessary in order to reuse codes and reduce redundant. We can only try to find a balance, and avoid writing unnecessary classes.
 
 ### Selectors
 
@@ -315,7 +315,7 @@ At the mean time, we also believe using too much qualifying selectors is not a g
 
 Look at this code snippet from [Semantic UI](http://semantic-ui.com/). A whole line of selectors is so BADASS, but just imagine reading the whole CSS file, just imagine...
 
-__DON'T use more than three levels of nesting and more than two qualifying selectors selectors when you don't have to__.
+__DON'T use more than three levels of nesting and more than two qualifying selectors when you don't have to__.
 
 ## WARNING
 
@@ -323,7 +323,7 @@ Everyone is free to use Amaze UI, but there are still something you can't do.
 
 There are two classes represent the state:
 
-- `.am-active` - activited
+- `.am-active` - activated
 - `.am-disabled` - disabled
 
 __Don't use them alone or write styles for them__!!!
@@ -376,7 +376,7 @@ But this is just a start, you may need to do some more adjustment on some compon
 ## About Namespace
 
 <div class="am-alert am-alert-danger">
-  It seems like someone is unconfortable with <code>.am</code>, we will have some explanation here.
+  It seems like someone is uncomfortable with <code>.am</code>, we will have some explanation here.
 </div>
 
 Probably you still don't know what is namespace. Just like `yui` in [YUI](https://github.com/yui/yui3/blob/master/build/app-transitions-css/app-transitions-css.css), `pure` in [Pure](http://purecss.io/), `am` is the namespace of Amaze UI.
@@ -390,8 +390,8 @@ Most of CSS styles is based on Classes, we don't want:
 - When __Multiple Framework Works together__, HTMLs designed to use our CSS finally use styles from other framework;
 - __HTMLs from third parties__ have same classes with us and apply styles from Amaze UI by mistake;
 - __When coding their own styles, developers accidentally overwrite styles in Amaze UI;__
-- When__multiple developers coorperate together__, styles influence each other because of conflicting naming;__
-- __Third party services__(such as share buttens, comment components) can insert styles to pages, which will possibly use structures we provid;
+- When__multiple developers cooperate together__, styles influence each other because of conflicting naming;__
+- __Third party services__(such as share buttons, comment components) can insert styles to pages, which will possibly use structures we provide;
 - ......
 
 Amaze UI is used in our company as well as by other developers, and namespace can help us solving these problems effectively. It has nothing to do with advertising our brand.

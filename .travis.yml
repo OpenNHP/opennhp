@@ -9,6 +9,7 @@ node_js:
 env:
   global:
     - NODE_ENV=travisci
+    - NPM_CONFIG_PROGRESS="false"
 
 before_install:
   - npm install -g gulp

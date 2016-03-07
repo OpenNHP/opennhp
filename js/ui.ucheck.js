@@ -52,7 +52,9 @@ UCheck.prototype.check = function() {
 UCheck.prototype.uncheck = function() {
   this.$element
     .prop('checked', false)
-    .trigger('change.ucheck.amui')
+    // trigger `change` event for form validation, etc.
+    // @see https://forum.jquery.com/topic/should-chk-prop-checked-true-trigger-change-event
+    .trigger('change')
     .trigger('unchecked.ucheck.amui');
 },
 

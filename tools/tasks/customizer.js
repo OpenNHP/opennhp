@@ -55,7 +55,7 @@ var less = [
   '@import "base.less";'
 ];
 var js = [
-  'require("core");'
+  'require("../../js/core");'
 ];
 
 gulp.task('customizer:preparing', function(callback) {
@@ -64,7 +64,7 @@ gulp.task('customizer:preparing', function(callback) {
   });
 
   config.js.forEach(function(file) {
-    js.push(format('require("%s");', file));
+    js.push(format('require("../../js/%s");', file));
   });
 
   // widgets
@@ -76,7 +76,7 @@ gulp.task('customizer:preparing', function(callback) {
     }
 
     config.widgets.forEach(function(widget) {
-      js.push(format('require("%s/src/%s");', widget.name, widget.name));
+      js.push(format('require("../../widget/%s/src/%s");', widget.name, widget.name));
       less.push(format('@import "../../widget/%s/src/%s.less";',
         widget.name, widget.name));
       var pkg = require(path.join('../../widget', widget.name, 'package.json'));
@@ -101,7 +101,7 @@ gulp.task('customizer:preparing', function(callback) {
 });
 
 gulp.task('customizer:less', function() {
-  gulp.src(DEFAULTS.less)
+  return gulp.src(DEFAULTS.less)
     .pipe($.less({
       paths: [
         path.join(__dirname, '../../less')
@@ -140,13 +140,7 @@ gulp.task('customizer:js', function() {
             amd: 'jquery'
           }
         }
-      ],
-      resolve: {
-        modulesDirectories: [
-          path.join(__dirname, '../../js'),
-          path.join(__dirname, '../../widget')
-        ]
-      }
+      ]
     }))
     .pipe(gulp.dest(cstmzPath))
     .pipe($.uglify({

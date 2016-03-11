@@ -1,6 +1,17 @@
 # Amaze UI Change Log
 ---
 
+### 2016.03 W2
+
+**JS:**
+
+- `Fixed` #843 修复 uCheck `toggle` 方法没有正确触发 `change` 事件问题。
+
+**构建:**
+
+- `Fixed` 修复定制工具打包 JS 任务出错问题；
+- `Fixed` 调整 IE polyfill 合并顺序，修复在 IE8 脚本运行报错问题。
+
 ## Amaze UI 2.5.2 (2016.01.26)
 
 **JS:**

@@ -2,6 +2,17 @@
  * admin.css
  */
 
+
+/*
+ fixed-layout 固定头部和边栏布局
+*/
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 ul {
   margin-top: 0;
 }
@@ -11,6 +22,11 @@ ul {
 }
 
 .admin-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1500;
   font-size: 1.4rem;
   margin-bottom: 0;
 }
@@ -20,6 +36,9 @@ ul {
 }
 
 .admin-main {
+  position: relative;
+  height: 100%;
+  padding-top: 51px;
   background: #f3f3f3;
 }
 
@@ -35,6 +54,10 @@ ul {
   min-height: 100%;
   float: left;
   border-right: 1px solid #cecece;
+}
+
+.admin-sidebar.am-active {
+  z-index: 1600;
 }
 
 .admin-sidebar-list {
@@ -67,10 +90,35 @@ ul {
 }
 
 .admin-content {
-  width: auto;
-  overflow: hidden;
-  height: 100%;
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-box-orient: vertical;
+  -webkit-box-direction: normal;
+  -webkit-flex-direction: column;
+  -ms-flex-direction: column;
+  flex-direction: column;
   background: #fff;
+}
+
+.admin-content,
+.admin-sidebar {
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: scroll;
+}
+
+.admin-content-body {
+  -webkit-box-flex: 1;
+  -webkit-flex: 1 0 auto;
+  -ms-flex: 1 0 auto;
+  flex: 1 0 auto;
+}
+
+.admin-content-footer {
+  font-size: 85%;
+  color: #777;
 }
 
 .admin-content-list {
@@ -319,40 +367,4 @@ gallery.html css
   border: none;
   width: 200px;
   margin: 0 auto;
-}
-
-
-/*
- fixed-layout 固定头部和边栏布局
-*/
-
-.fixed-layout,
-.fixed-layout body {
-  height: 100%;
-  overflow: hidden;
-}
-
-.fixed-layout .admin-header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1500;
-}
-
-.fixed-layout .admin-main {
-  position: relative;
-  height: 100%;
-  padding-top: 51px;
-}
-
-.fixed-layout .admin-content,
-.fixed-layout .admin-sidebar {
-  height: 100%;
-  overflow-x: hidden;
-  overflow-y: scroll;
-}
-
-.fixed-layout .admin-sidebar.am-active {
-  z-index: 1600;
 }

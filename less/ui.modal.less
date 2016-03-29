@@ -47,7 +47,7 @@
   text-align: center;
   border-radius: @modal-border-radius;
   opacity: 0;
-  // @see https://github.com/allmobilize/amazeui/issues/712
+  // @see https://github.com/amazeui/amazeui/issues/712
   // transform: translate3d(0, 0, 0) scale(1.185);
   transform: scale(1.185);
   transition-property: transform, opacity;
@@ -246,6 +246,9 @@
   bottom: 0;
   z-index: @z-index-modal;
   width: 100%;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
   text-align: center;
   border-radius: @modal-border-radius;
   transform: translateY(100%);

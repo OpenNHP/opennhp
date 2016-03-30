@@ -9,13 +9,12 @@ var UI = require('./core');
  */
 
 var store = {};
-var win = window;
+var win = (typeof window != 'undefined' ? window : global);
 var localStorageName = 'localStorage';
 var storage;
 
 store.disabled = false;
-
-store.version = '1.3.17';
+store.version = '1.3.20';
 
 store.set = function(key, value) {
 };
@@ -38,7 +37,6 @@ store.transact = function(key, defaultVal, transactionFn) {
     transactionFn = defaultVal;
     defaultVal = null;
   }
-
   if (defaultVal == null) {
     defaultVal = {};
   }
@@ -76,14 +74,14 @@ store.deserialize = function(value) {
 function isLocalStorageNameSupported() {
   try {
     return (localStorageName in win && win[localStorageName]);
-  }
-  catch (err) {
+  } catch (err) {
     return false;
   }
 }
 
 if (isLocalStorageNameSupported()) {
   storage = win[localStorageName];
+
   store.set = function(key, val) {
     if (val === undefined) {
       return store.remove(key);
@@ -122,7 +120,7 @@ if (isLocalStorageNameSupported()) {
 }
 
 try {
-  var testKey = '__storeJs__';
+  var testKey = '__storejs__';
   store.set(testKey, testKey);
   if (store.get(testKey) != testKey) {
     store.disabled = true;

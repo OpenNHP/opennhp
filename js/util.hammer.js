@@ -1,7 +1,7 @@
-/*! Hammer.JS - v2.0.4 - 2014-09-28
+/*! Hammer.JS - v2.0.6 - 2015-12-23
  * http://hammerjs.github.io/
  *
- * Copyright (c) 2014 Jorik Tangelder;
+ * Copyright (c) 2015 Jorik Tangelder;
  * Licensed under the MIT license */
 
 'use strict';
@@ -9,7 +9,7 @@
 var $ = require('jquery');
 var UI = require('./core');
 
-var VENDOR_PREFIXES = ['', 'webkit', 'moz', 'MS', 'ms', 'o'];
+var VENDOR_PREFIXES = ['', 'webkit', 'Moz', 'MS', 'ms', 'o'];
 var TEST_ELEMENT = document.createElement('div');
 
 var TYPE_FUNCTION = 'function';
@@ -75,14 +75,68 @@ function each(obj, iterator, context) {
 }
 
 /**
+ * wrap a method with a deprecation warning and stack trace
+ * @param {Function} method
+ * @param {String} name
+ * @param {String} message
+ * @returns {Function} A new function wrapping the supplied method.
+ */
+function deprecate(method, name, message) {
+  var deprecationMessage = 'DEPRECATED METHOD: ' + name + '\n' + message + ' AT \n';
+  return function() {
+    var e = new Error('get-stack-trace');
+    var stack = e && e.stack ? e.stack.replace(/^[^\(]+?[\n$]/gm, '')
+      .replace(/^\s+at\s+/gm, '')
+      .replace(/^Object.<anonymous>\s*\(/gm, '{anonymous}()@') : 'Unknown Stack Trace';
+
+    var log = window.console && (window.console.warn || window.console.log);
+    if (log) {
+      log.call(window.console, deprecationMessage, stack);
+    }
+    return method.apply(this, arguments);
+  };
+}
+
+/**
+ * extend object.
+ * means that properties in dest will be overwritten by the ones in src.
+ * @param {Object} target
+ * @param {...Object} objects_to_assign
+ * @returns {Object} target
+ */
+var assign;
+if (typeof Object.assign !== 'function') {
+  assign = function assign(target) {
+    if (target === undefined || target === null) {
+      throw new TypeError('Cannot convert undefined or null to object');
+    }
+
+    var output = Object(target);
+    for (var index = 1; index < arguments.length; index++) {
+      var source = arguments[index];
+      if (source !== undefined && source !== null) {
+        for (var nextKey in source) {
+          if (source.hasOwnProperty(nextKey)) {
+            output[nextKey] = source[nextKey];
+          }
+        }
+      }
+    }
+    return output;
+  };
+} else {
+  assign = Object.assign;
+}
+
+/**
  * extend object.
  * means that properties in dest will be overwritten by the ones in src.
  * @param {Object} dest
  * @param {Object} src
- * @param {Boolean} [merge]
+ * @param {Boolean=false} [merge]
  * @returns {Object} dest
  */
-function extend(dest, src, merge) {
+var extend = deprecate(function extend(dest, src, merge) {
   var keys = Object.keys(src);
   var i = 0;
   while (i < keys.length) {
@@ -92,7 +146,7 @@ function extend(dest, src, merge) {
     i++;
   }
   return dest;
-}
+}, 'extend', 'Use `assign`.');
 
 /**
  * merge the values from src in the dest.
@@ -101,9 +155,9 @@ function extend(dest, src, merge) {
  * @param {Object} src
  * @returns {Object} dest
  */
-function merge(dest, src) {
+var merge = deprecate(function merge(dest, src) {
   return extend(dest, src, true);
-}
+}, 'merge', 'Use `assign`.');
 
 /**
  * simple class inheritance
@@ -120,7 +174,7 @@ function inherit(child, base, properties) {
   childP._super = baseP;
 
   if (properties) {
-    extend(childP, properties);
+    assign(childP, properties);
   }
 }
 
@@ -323,8 +377,8 @@ function uniqueId() {
  * @returns {DocumentView|Window}
  */
 function getWindowForElement(element) {
-  var doc = element.ownerDocument;
-  return (doc.defaultView || doc.parentWindow);
+  var doc = element.ownerDocument || element;
+  return (doc.defaultView || doc.parentWindow || window);
 }
 
 var MOBILE_REGEX = /mobile|tablet|ip(ad|hone|od)|android/i;
@@ -389,8 +443,7 @@ Input.prototype = {
    * should handle the inputEvent data and trigger the callback
    * @virtual
    */
-  handler: function() {
-  },
+  handler: function() { },
 
   /**
    * bind the events
@@ -504,8 +557,16 @@ function computeInputData(manager, input) {
   computeDeltaXY(session, input);
   input.offsetDirection = getDirection(input.deltaX, input.deltaY);
 
+  var overallVelocity = getVelocity(input.deltaTime, input.deltaX, input.deltaY);
+  input.overallVelocityX = overallVelocity.x;
+  input.overallVelocityY = overallVelocity.y;
+  input.overallVelocity = (abs(overallVelocity.x) > abs(overallVelocity.y)) ? overallVelocity.x : overallVelocity.y;
+
   input.scale = firstMultiple ? getScale(firstMultiple.pointers, pointers) : 1;
   input.rotation = firstMultiple ? getRotation(firstMultiple.pointers, pointers) : 0;
+
+  input.maxPointers = !session.prevInput ? input.pointers.length : ((input.pointers.length >
+  session.prevInput.maxPointers) ? input.pointers.length : session.prevInput.maxPointers);
 
   computeIntervalInputData(session, input);
 
@@ -550,8 +611,8 @@ function computeIntervalInputData(session, input) {
     velocity, velocityX, velocityY, direction;
 
   if (input.eventType != INPUT_CANCEL && (deltaTime > COMPUTE_INTERVAL || last.velocity === undefined)) {
-    var deltaX = last.deltaX - input.deltaX;
-    var deltaY = last.deltaY - input.deltaY;
+    var deltaX = input.deltaX - last.deltaX;
+    var deltaY = input.deltaY - last.deltaY;
 
     var v = getVelocity(deltaTime, deltaX, deltaY);
     velocityX = v.x;
@@ -656,9 +717,9 @@ function getDirection(x, y) {
   }
 
   if (abs(x) >= abs(y)) {
-    return x > 0 ? DIRECTION_LEFT : DIRECTION_RIGHT;
+    return x < 0 ? DIRECTION_LEFT : DIRECTION_RIGHT;
   }
-  return y > 0 ? DIRECTION_UP : DIRECTION_DOWN;
+  return y < 0 ? DIRECTION_UP : DIRECTION_DOWN;
 }
 
 /**
@@ -701,7 +762,7 @@ function getAngle(p1, p2, props) {
  * @return {Number} rotation
  */
 function getRotation(start, end) {
-  return getAngle(end[1], end[0], PROPS_CLIENT_XY) - getAngle(start[1], start[0], PROPS_CLIENT_XY);
+  return getAngle(end[1], end[0], PROPS_CLIENT_XY) + getAngle(start[1], start[0], PROPS_CLIENT_XY);
 }
 
 /**
@@ -794,7 +855,7 @@ var POINTER_ELEMENT_EVENTS = 'pointerdown';
 var POINTER_WINDOW_EVENTS = 'pointermove pointerup pointercancel';
 
 // IE10 has prefixed support, and case-sensitive
-if (window.MSPointerEvent) {
+if (window.MSPointerEvent && !window.PointerEvent) {
   POINTER_ELEMENT_EVENTS = 'MSPointerDown';
   POINTER_WINDOW_EVENTS = 'MSPointerMove MSPointerUp MSPointerCancel';
 }
@@ -1118,7 +1179,7 @@ TouchAction.prototype = {
       value = this.compute();
     }
 
-    if (NATIVE_TOUCH_ACTION) {
+    if (NATIVE_TOUCH_ACTION && this.manager.element.style) {
       this.manager.element.style[PREFIXED_TOUCH_ACTION] = value;
     }
     this.actions = value.toLowerCase().trim();
@@ -1169,6 +1230,23 @@ TouchAction.prototype = {
     var hasPanY = inStr(actions, TOUCH_ACTION_PAN_Y);
     var hasPanX = inStr(actions, TOUCH_ACTION_PAN_X);
 
+    if (hasNone) {
+      //do not prevent defaults if this is a tap gesture
+
+      var isTapPointer = input.pointers.length === 1;
+      var isTapMovement = input.distance < 2;
+      var isTapTouchTime = input.deltaTime < 250;
+
+      if (isTapPointer && isTapMovement && isTapTouchTime) {
+        return;
+      }
+    }
+
+    if (hasPanX && hasPanY) {
+      // `pan-x pan-y` means browser handles all scrolling/panning, do not prevent
+      return;
+    }
+
     if (hasNone ||
       (hasPanY && direction & DIRECTION_HORIZONTAL) ||
       (hasPanX && direction & DIRECTION_VERTICAL)) {
@@ -1200,9 +1278,12 @@ function cleanTouchActions(actions) {
   var hasPanX = inStr(actions, TOUCH_ACTION_PAN_X);
   var hasPanY = inStr(actions, TOUCH_ACTION_PAN_Y);
 
-  // pan-x and pan-y can be combined
+  // if both pan-x and pan-y are set (different recognizers
+  // for different directions, e.g. horizontal pan but vertical swipe?)
+  // we need none (as otherwise with pan-x pan-y combined none of these
+  // recognizers will work, since the browser would handle all panning
   if (hasPanX && hasPanY) {
-    return TOUCH_ACTION_PAN_X + ' ' + TOUCH_ACTION_PAN_Y;
+    return TOUCH_ACTION_NONE;
   }
 
   // pan-x OR pan-y
@@ -1260,10 +1341,11 @@ var STATE_FAILED = 32;
  * @param {Object} options
  */
 function Recognizer(options) {
+  this.options = assign({}, this.defaults, options || {});
+
   this.id = uniqueId();
 
   this.manager = null;
-  this.options = merge(options || {}, this.defaults);
 
   // default is enable true
   this.options.enable = ifUndefined(this.options.enable, true);
@@ -1287,7 +1369,7 @@ Recognizer.prototype = {
    * @return {Recognizer}
    */
   set: function(options) {
-    extend(this.options, options);
+    assign(this.options, options);
 
     // also update the touchAction, in case something changed about the directions/enabled state
     this.manager && this.manager.touchAction.update();
@@ -1391,20 +1473,24 @@ Recognizer.prototype = {
     var self = this;
     var state = this.state;
 
-    function emit(withState) {
-      self.manager.emit(self.options.event + (withState ? stateStr(state) : ''), input);
+    function emit(event) {
+      self.manager.emit(event, input);
     }
 
     // 'panstart' and 'panmove'
     if (state < STATE_ENDED) {
-      emit(true);
+      emit(self.options.event + stateStr(state));
     }
 
-    emit(); // simple 'eventName' events
+    emit(self.options.event); // simple 'eventName' events
+
+    if (input.additionalEvent) { // additional event(panleft, panright, pinchin, pinchout...)
+      emit(input.additionalEvent);
+    }
 
     // panend and pancancel
     if (state >= STATE_ENDED) {
-      emit(true);
+      emit(self.options.event + stateStr(state));
     }
   },
 
@@ -1444,7 +1530,7 @@ Recognizer.prototype = {
   recognize: function(inputData) {
     // make a new copy of the inputData
     // so we can change the inputData without messing up the other recognizers
-    var inputDataClone = extend({}, inputData);
+    var inputDataClone = assign({}, inputData);
 
     // is is enabled and allow recognizing?
     if (!boolOrFn(this.options.enable, [this, inputDataClone])) {
@@ -1474,24 +1560,21 @@ Recognizer.prototype = {
    * @param {Object} inputData
    * @returns {Const} STATE
    */
-  process: function(inputData) {
-  }, // jshint ignore:line
+  process: function(inputData) { }, // jshint ignore:line
 
   /**
    * return the preferred touch-action
    * @virtual
    * @returns {Array}
    */
-  getTouchAction: function() {
-  },
+  getTouchAction: function() { },
 
   /**
    * called when the gesture isn't allowed to recognize
    * like when another is being recognized or it is disabled
    * @virtual
    */
-  reset: function() {
-  }
+  reset: function() { }
 };
 
 /**
@@ -1672,14 +1755,15 @@ inherit(PanRecognizer, AttrRecognizer, {
   },
 
   emit: function(input) {
+
     this.pX = input.deltaX;
     this.pY = input.deltaY;
 
     var direction = directionStr(input.direction);
-    if (direction) {
-      this.manager.emit(this.options.event + direction, input);
-    }
 
+    if (direction) {
+      input.additionalEvent = this.options.event + direction;
+    }
     this._super.emit.call(this, input);
   }
 });
@@ -1715,11 +1799,11 @@ inherit(PinchRecognizer, AttrRecognizer, {
   },
 
   emit: function(input) {
-    this._super.emit.call(this, input);
     if (input.scale !== 1) {
       var inOut = input.scale < 1 ? 'in' : 'out';
-      this.manager.emit(this.options.event + inOut, input);
+      input.additionalEvent = this.options.event + inOut;
     }
+    this._super.emit.call(this, input);
   }
 });
 
@@ -1744,8 +1828,8 @@ inherit(PressRecognizer, Recognizer, {
   defaults: {
     event: 'press',
     pointers: 1,
-    time: 500, // minimal time of the pointer to be pressed
-    threshold: 5 // a minimal movement is ok, but keep it low
+    time: 251, // minimal time of the pointer to be pressed
+    threshold: 9 // a minimal movement is ok, but keep it low
   },
 
   getTouchAction: function() {
@@ -1843,7 +1927,7 @@ inherit(SwipeRecognizer, AttrRecognizer, {
   defaults: {
     event: 'swipe',
     threshold: 10,
-    velocity: 0.65,
+    velocity: 0.3,
     direction: DIRECTION_HORIZONTAL | DIRECTION_VERTICAL,
     pointers: 1
   },
@@ -1857,21 +1941,22 @@ inherit(SwipeRecognizer, AttrRecognizer, {
     var velocity;
 
     if (direction & (DIRECTION_HORIZONTAL | DIRECTION_VERTICAL)) {
-      velocity = input.velocity;
+      velocity = input.overallVelocity;
     } else if (direction & DIRECTION_HORIZONTAL) {
-      velocity = input.velocityX;
+      velocity = input.overallVelocityX;
     } else if (direction & DIRECTION_VERTICAL) {
-      velocity = input.velocityY;
+      velocity = input.overallVelocityY;
     }
 
     return this._super.attrTest.call(this, input) &&
-      direction & input.direction &&
+      direction & input.offsetDirection &&
       input.distance > this.options.threshold &&
+      input.maxPointers == this.options.pointers &&
       abs(velocity) > this.options.velocity && input.eventType & INPUT_END;
   },
 
   emit: function(input) {
-    var direction = directionStr(input.direction);
+    var direction = directionStr(input.offsetDirection);
     if (direction) {
       this.manager.emit(this.options.event + direction, input);
     }
@@ -1914,7 +1999,7 @@ inherit(TapRecognizer, Recognizer, {
     taps: 1,
     interval: 300, // max time between the multi-tap taps
     time: 250, // max time of the pointer to be down (like finger on the screen)
-    threshold: 2, // a minimal movement is ok, but keep it low
+    threshold: 9, // a minimal movement is ok, but keep it low
     posThreshold: 10 // a multi-tap can be a bit off the initial position
   },
 
@@ -1996,7 +2081,7 @@ inherit(TapRecognizer, Recognizer, {
 });
 
 /**
- * Simple way to create an manager with a default set of recognizers.
+ * Simple way to create a manager with a default set of recognizers.
  * @param {HTMLElement} element
  * @param {Object} [options]
  * @constructor
@@ -2010,7 +2095,7 @@ function Hammer(element, options) {
 /**
  * @const {string}
  */
-Hammer.VERSION = '2.0.4';
+Hammer.VERSION = '2.0.6';
 
 /**
  * default settings
@@ -2134,9 +2219,8 @@ var FORCED_STOP = 2;
  * @constructor
  */
 function Manager(element, options) {
-  options = options || {};
+  this.options = assign({}, Hammer.defaults, options || {});
 
-  this.options = merge(options, Hammer.defaults);
   this.options.inputTarget = this.options.inputTarget || element;
 
   this.handlers = {};
@@ -2149,7 +2233,7 @@ function Manager(element, options) {
 
   toggleCssProps(this, true);
 
-  each(options.recognizers, function(item) {
+  each(this.options.recognizers, function(item) {
     var recognizer = this.add(new (item[0])(item[1]));
     item[2] && recognizer.recognizeWith(item[2]);
     item[3] && recognizer.requireFailure(item[3]);
@@ -2163,7 +2247,7 @@ Manager.prototype = {
    * @returns {Manager}
    */
   set: function(options) {
-    extend(this.options, options);
+    assign(this.options, options);
 
     // Options that need a little more setup
     if (options.touchAction) {
@@ -2297,11 +2381,19 @@ Manager.prototype = {
       return this;
     }
 
-    var recognizers = this.recognizers;
     recognizer = this.get(recognizer);
-    recognizers.splice(inArray(recognizers, recognizer), 1);
 
-    this.touchAction.update();
+    // let's make sure this recognizer exists
+    if (recognizer) {
+      var recognizers = this.recognizers;
+      var index = inArray(recognizers, recognizer);
+
+      if (index !== -1) {
+        recognizers.splice(index, 1);
+        this.touchAction.update();
+      }
+    }
+
     return this;
   },
 
@@ -2332,7 +2424,7 @@ Manager.prototype = {
       if (!handler) {
         delete handlers[event];
       } else {
-        handlers[event].splice(inArray(handlers[event], handler), 1);
+        handlers[event] && handlers[event].splice(inArray(handlers[event], handler), 1);
       }
     });
     return this;
@@ -2388,6 +2480,9 @@ Manager.prototype = {
  */
 function toggleCssProps(manager, add) {
   var element = manager.element;
+  if (!element.style) {
+    return;
+  }
   each(manager.options.cssProps, function(value, name) {
     element.style[prefixed(element.style, name)] = add ? value : '';
   });
@@ -2405,7 +2500,7 @@ function triggerDomEvent(event, data) {
   data.target.dispatchEvent(gestureEvent);
 }
 
-extend(Hammer, {
+assign(Hammer, {
   INPUT_START: INPUT_START,
   INPUT_MOVE: INPUT_MOVE,
   INPUT_END: INPUT_END,
@@ -2452,6 +2547,7 @@ extend(Hammer, {
   each: each,
   merge: merge,
   extend: extend,
+  assign: assign,
   inherit: inherit,
   bindFn: bindFn,
   prefixed: prefixed

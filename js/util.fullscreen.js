@@ -1,5 +1,10 @@
 'use strict';
 
+/**
+ * @via https://github.com/sindresorhus/screenfull.js
+ * @license MIT © Sindre Sorhus
+ */
+
 var UI = require('./core');
 var screenfull = (function() {
   var keyboardAllowed = typeof Element !== 'undefined' &&
@@ -127,7 +132,7 @@ var screenfull = (function() {
     }
   });
 
-  screenfull.VERSION = '2.0.0';
+  screenfull.VERSION = '3.0.0';
 
   return screenfull;
 })();

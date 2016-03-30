@@ -10,7 +10,7 @@
 ;
 
 // UMD (Universal Module Definition)
-// see https://github.com/umdjs/umd/blob/master/returnExports.js
+// see https://github.com/umdjs/umd/blob/master/templates/returnExports.js
 (function (root, factory) {
     'use strict';
 
@@ -29,9 +29,11 @@
   }
 }(this, function () {
 
-var call = Function.prototype.call;
+var call = Function.call;
 var prototypeOfObject = Object.prototype;
 var owns = call.bind(prototypeOfObject.hasOwnProperty);
+var isEnumerable = call.bind(prototypeOfObject.propertyIsEnumerable);
+var toStr = call.bind(prototypeOfObject.toString);
 
 // If JS engine supports accessors creating shortcuts.
 var defineGetter;
@@ -64,10 +66,16 @@ if (!Object.getPrototypeOf) {
         /* eslint-enable no-proto */
         if (proto || proto === null) {
             return proto;
-        } else if (object.constructor) {
+        } else if (toStr(object.constructor) === '[object Function]') {
             return object.constructor.prototype;
+        } else if (object instanceof Object) {
+          return prototypeOfObject;
         } else {
-            return prototypeOfObject;
+          // Correctly return null for Objects created with `Object.create(null)`
+          // (shammed or native) or `{ __proto__: null}`.  Also returns null for
+          // cross-realm objects on browsers that lack `__proto__` support (like
+          // IE <11), but that's the best we can do.
+          return null;
         }
     };
 }
@@ -120,9 +128,12 @@ if (!Object.getOwnPropertyDescriptor || getOwnPropertyDescriptorFallback) {
             return descriptor;
         }
 
-        // If object has a property then it's for sure both `enumerable` and
-        // `configurable`.
-        descriptor = { enumerable: true, configurable: true };
+        // If object has a property then it's for sure `configurable`, and
+        // probably `enumerable`. Detect enumerability though.
+        descriptor = {
+            enumerable: isEnumerable(object, property),
+            configurable: true
+        };
 
         // If JS engine supports accessor properties then property may be a
         // getter or setter.
@@ -270,9 +281,6 @@ if (!Object.create) {
             delete empty.toLocaleString;
             delete empty.toString;
             delete empty.valueOf;
-            /* eslint-disable no-proto */
-            empty.__proto__ = null;
-            /* eslint-enable no-proto */
 
             var Empty = function Empty() {};
             Empty.prototype = empty;
@@ -409,7 +417,7 @@ if (!Object.defineProperty || definePropertyFallback) {
                 object[property] = descriptor.value;
             }
         } else {
-            if (!supportsAccessors) {
+            if (!supportsAccessors && (('get' in descriptor) || ('set' in descriptor))) {
                 throw new TypeError(ERR_ACCESSORS_NOT_SUPPORTED);
             }
             // If we got that far then getters and setters can be defined !!

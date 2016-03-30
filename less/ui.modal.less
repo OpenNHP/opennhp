@@ -2,10 +2,6 @@
 //
 // Description:   Define style for Modal Plugin
 //
-// TODO: 1. 宽度自适应的情况
-//       2. 最大高度限制
-//       3. 不同屏幕宽度下设置不同大小
-//
 // =============================================================================
 
 
@@ -30,23 +26,27 @@
 @modal-md:                    540px;
 @modal-sm:                    270px;
 
+/*
+TODO:
+  1. 动画应该放在 dialog 上，不再是整个 modal，涉及 JS 逻辑，需要统筹修改
+  2. modal 滚动条处理，是否需要添加一个滚动条宽度的水平 padding？
+*/
 
 /* ==========================================================================
    Component: Modal Plugin
  ============================================================================ */
 
 .@{ns}modal {
-  width: @modal-sm;
   position: fixed;
-  display: none;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: @z-index-modal;
-  left: 50%;
-  margin-left: -@modal-sm/2;
-  margin-top: 0;
-  top: 50%;
-  text-align: center;
-  border-radius: @modal-border-radius;
+  display: none;
   opacity: 0;
+  outline: 0;
+  text-align: center;
   // @see https://github.com/amazeui/amazeui/issues/712
   // transform: translate3d(0, 0, 0) scale(1.185);
   transform: scale(1.185);
@@ -63,6 +63,8 @@
     transition-duration: @modal-duration;
     // transform: translate3d(0, 0, 0) scale(1);
     transform: scale(1);
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   &.@{ns}modal-out {
@@ -73,21 +75,38 @@
     transform: scale(0.815);
   }
 
+  // vertical centering hack
+  &:before {
+    // @see http://www.fileformat.info/info/unicode/char/200b/index.htm
+    content: "\200B";
+    display: inline-block;
+    height: 100%;
+    vertical-align: middle;
+  }
+
+  .hook-modal;
+}
+
+.@{ns}modal-dialog {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: auto;
+  margin-right: auto;
+  width: @modal-sm;
+  max-width: 100%;
+  border-radius: @modal-border-radius;
+  background: @modal-bg-color;
+
   @media @medium-up {
     width: @modal-md;
-    margin-left: -@modal-md/2;
   }
 
   /*@media @large-up {
     width: @modal-lg;
     margin-left: -@modal-lg/2;
   }*/
-  .hook-modal;
-}
 
-.@{ns}modal-dialog {
-  border-radius: @modal-border-radius;
-  background: @modal-bg-color;
   .hook-modal-dialog;
 }
 
@@ -217,9 +236,6 @@
 // =============================================================================
 
 .@{ns}modal-loading {
-  // width: @modal-sm !important;
-  // margin-left: -@modal-sm/2 !important;
-
   .@{ns}modal-bd {
     border-bottom: none;
   }

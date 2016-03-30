@@ -84,7 +84,8 @@ Modal.prototype.open = function(relatedTarget) {
   if (this.transitioning) {
     clearTimeout($element.transitionEndTimmer);
     $element.transitionEndTimmer = null;
-    $element.trigger(options.transitionEnd).off(options.transitionEnd);
+    $element.trigger(options.transitionEnd)
+      .off(options.transitionEnd);
   }
 
   isPopup && this.$element.show();
@@ -100,35 +101,26 @@ Modal.prototype.open = function(relatedTarget) {
   // apply Modal width/height if set
   if (!isPopup && !this.isActions) {
     if (width) {
-      width = parseInt(width, 10);
-      style.width =  width + 'px';
-      style.marginLeft =  -parseInt(width / 2) + 'px';
+      style.width =  parseInt(width, 10) + 'px';
     }
 
     if (height) {
-      height = parseInt(height, 10);
-      // style.height = height + 'px';
-      style.marginTop = -parseInt(height / 2) + 'px';
-
-      // the background color is styled to $dialog
-      // so the height should set to $dialog
-      this.$dialog.css({height: height + 'px'});
-    } else {
-      style.marginTop = -parseInt($element.height() / 2, 10) + 'px';
+      style.height = parseInt(height, 10) + 'px';
     }
 
-    $element.css(style);
+    this.$dialog.css(style);
   }
 
-  $element.
-    removeClass(options.className.out).
-    addClass(options.className.active);
+  $element
+    .removeClass(options.className.out)
+    .addClass(options.className.active);
 
   this.transitioning = 1;
 
   var complete = function() {
-    $element.trigger($.Event('opened.modal.amui',
-      {relatedTarget: relatedTarget}));
+    $element.trigger(
+      $.Event('opened.modal.amui', {relatedTarget: relatedTarget})
+    );
     this.transitioning = 0;
 
     // Prompt auto focus
@@ -141,9 +133,9 @@ Modal.prototype.open = function(relatedTarget) {
     return complete.call(this);
   }
 
-  $element.
-    one(options.transitionEnd, $.proxy(complete, this)).
-    emulateTransitionEnd(options.duration);
+  $element
+    .one(options.transitionEnd, $.proxy(complete, this))
+    .emulateTransitionEnd(options.duration);
 };
 
 Modal.prototype.close = function(relatedTarget) {
@@ -185,8 +177,8 @@ Modal.prototype.close = function(relatedTarget) {
     return complete.call(this);
   }
 
-  $element.one(options.transitionEnd, $.proxy(complete, this)).
-    emulateTransitionEnd(options.duration);
+  $element.one(options.transitionEnd, $.proxy(complete, this))
+    .emulateTransitionEnd(options.duration);
 };
 
 Modal.prototype.events = function() {

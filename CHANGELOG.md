@@ -1,6 +1,23 @@
 # Amaze UI Change Log
 ---
 
+## Amaze UI 2.6.0 (2016.03.31)
+
+### 2016.03 W5
+
+**CSS：**
+
+- `Improved` 处理部分组件等分列效果在安卓微信等 UA 中无效的问题（flexbox 兼容性所致）。
+
+**JS:**
+
+- `Improved` #821, amazeui/amazeui-react#56 调整 Modal，内容超出窗口高度时显示滚动条；
+- `Update` 更新 store.js `1.3.20`，hammer.js `2.0.6`。
+
+**示例：**
+
+- 后台模板示例调整为固定边栏和页头的形式。
+
 ### 2016.03 W2
 
 **JS:**

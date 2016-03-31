@@ -1,4 +1,4 @@
-/*! Amaze UI v2.5.2 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-01-26T11:06:52+0800 */ 
+/*! Amaze UI v2.6.0 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-03-31T14:28:54+0800 */ 
 (function webpackUniversalModuleDefinition(root, factory) {
 	if(typeof exports === 'object' && typeof module === 'object')
 		module.exports = factory(require("jquery"));
@@ -140,7 +140,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	var doc = window.document;
 	var $html = $('html');
 
-	UI.VERSION = '2.5.2';
+	UI.VERSION = '2.6.0';
 
 	UI.support = {};
 
@@ -738,10 +738,10 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 3 */
 /***/ function(module, exports, __webpack_require__) {
 
-	/*! Hammer.JS - v2.0.4 - 2014-09-28
+	/*! Hammer.JS - v2.0.6 - 2015-12-23
 	 * http://hammerjs.github.io/
 	 *
-	 * Copyright (c) 2014 Jorik Tangelder;
+	 * Copyright (c) 2015 Jorik Tangelder;
 	 * Licensed under the MIT license */
 
 	'use strict';
@@ -749,7 +749,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	var $ = __webpack_require__(1);
 	var UI = __webpack_require__(2);
 
-	var VENDOR_PREFIXES = ['', 'webkit', 'moz', 'MS', 'ms', 'o'];
+	var VENDOR_PREFIXES = ['', 'webkit', 'Moz', 'MS', 'ms', 'o'];
 	var TEST_ELEMENT = document.createElement('div');
 
 	var TYPE_FUNCTION = 'function';
@@ -815,14 +815,68 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 
 	/**
+	 * wrap a method with a deprecation warning and stack trace
+	 * @param {Function} method
+	 * @param {String} name
+	 * @param {String} message
+	 * @returns {Function} A new function wrapping the supplied method.
+	 */
+	function deprecate(method, name, message) {
+	  var deprecationMessage = 'DEPRECATED METHOD: ' + name + '\n' + message + ' AT \n';
+	  return function() {
+	    var e = new Error('get-stack-trace');
+	    var stack = e && e.stack ? e.stack.replace(/^[^\(]+?[\n$]/gm, '')
+	      .replace(/^\s+at\s+/gm, '')
+	      .replace(/^Object.<anonymous>\s*\(/gm, '{anonymous}()@') : 'Unknown Stack Trace';
+
+	    var log = window.console && (window.console.warn || window.console.log);
+	    if (log) {
+	      log.call(window.console, deprecationMessage, stack);
+	    }
+	    return method.apply(this, arguments);
+	  };
+	}
+
+	/**
+	 * extend object.
+	 * means that properties in dest will be overwritten by the ones in src.
+	 * @param {Object} target
+	 * @param {...Object} objects_to_assign
+	 * @returns {Object} target
+	 */
+	var assign;
+	if (typeof Object.assign !== 'function') {
+	  assign = function assign(target) {
+	    if (target === undefined || target === null) {
+	      throw new TypeError('Cannot convert undefined or null to object');
+	    }
+
+	    var output = Object(target);
+	    for (var index = 1; index < arguments.length; index++) {
+	      var source = arguments[index];
+	      if (source !== undefined && source !== null) {
+	        for (var nextKey in source) {
+	          if (source.hasOwnProperty(nextKey)) {
+	            output[nextKey] = source[nextKey];
+	          }
+	        }
+	      }
+	    }
+	    return output;
+	  };
+	} else {
+	  assign = Object.assign;
+	}
+
+	/**
 	 * extend object.
 	 * means that properties in dest will be overwritten by the ones in src.
 	 * @param {Object} dest
 	 * @param {Object} src
-	 * @param {Boolean} [merge]
+	 * @param {Boolean=false} [merge]
 	 * @returns {Object} dest
 	 */
-	function extend(dest, src, merge) {
+	var extend = deprecate(function extend(dest, src, merge) {
 	  var keys = Object.keys(src);
 	  var i = 0;
 	  while (i < keys.length) {
@@ -832,7 +886,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    i++;
 	  }
 	  return dest;
-	}
+	}, 'extend', 'Use `assign`.');
 
 	/**
 	 * merge the values from src in the dest.
@@ -841,9 +895,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * @param {Object} src
 	 * @returns {Object} dest
 	 */
-	function merge(dest, src) {
+	var merge = deprecate(function merge(dest, src) {
 	  return extend(dest, src, true);
-	}
+	}, 'merge', 'Use `assign`.');
 
 	/**
 	 * simple class inheritance
@@ -860,7 +914,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  childP._super = baseP;
 
 	  if (properties) {
-	    extend(childP, properties);
+	    assign(childP, properties);
 	  }
 	}
 
@@ -1063,8 +1117,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * @returns {DocumentView|Window}
 	 */
 	function getWindowForElement(element) {
-	  var doc = element.ownerDocument;
-	  return (doc.defaultView || doc.parentWindow);
+	  var doc = element.ownerDocument || element;
+	  return (doc.defaultView || doc.parentWindow || window);
 	}
 
 	var MOBILE_REGEX = /mobile|tablet|ip(ad|hone|od)|android/i;
@@ -1129,8 +1183,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	   * should handle the inputEvent data and trigger the callback
 	   * @virtual
 	   */
-	  handler: function() {
-	  },
+	  handler: function() { },
 
 	  /**
 	   * bind the events
@@ -1244,8 +1297,16 @@ return /******/ (function(modules) { // webpackBootstrap
 	  computeDeltaXY(session, input);
 	  input.offsetDirection = getDirection(input.deltaX, input.deltaY);
 
+	  var overallVelocity = getVelocity(input.deltaTime, input.deltaX, input.deltaY);
+	  input.overallVelocityX = overallVelocity.x;
+	  input.overallVelocityY = overallVelocity.y;
+	  input.overallVelocity = (abs(overallVelocity.x) > abs(overallVelocity.y)) ? overallVelocity.x : overallVelocity.y;
+
 	  input.scale = firstMultiple ? getScale(firstMultiple.pointers, pointers) : 1;
 	  input.rotation = firstMultiple ? getRotation(firstMultiple.pointers, pointers) : 0;
+
+	  input.maxPointers = !session.prevInput ? input.pointers.length : ((input.pointers.length >
+	  session.prevInput.maxPointers) ? input.pointers.length : session.prevInput.maxPointers);
 
 	  computeIntervalInputData(session, input);
 
@@ -1290,8 +1351,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	    velocity, velocityX, velocityY, direction;
 
 	  if (input.eventType != INPUT_CANCEL && (deltaTime > COMPUTE_INTERVAL || last.velocity === undefined)) {
-	    var deltaX = last.deltaX - input.deltaX;
-	    var deltaY = last.deltaY - input.deltaY;
+	    var deltaX = input.deltaX - last.deltaX;
+	    var deltaY = input.deltaY - last.deltaY;
 
 	    var v = getVelocity(deltaTime, deltaX, deltaY);
 	    velocityX = v.x;
@@ -1396,9 +1457,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }
 
 	  if (abs(x) >= abs(y)) {
-	    return x > 0 ? DIRECTION_LEFT : DIRECTION_RIGHT;
+	    return x < 0 ? DIRECTION_LEFT : DIRECTION_RIGHT;
 	  }
-	  return y > 0 ? DIRECTION_UP : DIRECTION_DOWN;
+	  return y < 0 ? DIRECTION_UP : DIRECTION_DOWN;
 	}
 
 	/**
@@ -1441,7 +1502,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * @return {Number} rotation
 	 */
 	function getRotation(start, end) {
-	  return getAngle(end[1], end[0], PROPS_CLIENT_XY) - getAngle(start[1], start[0], PROPS_CLIENT_XY);
+	  return getAngle(end[1], end[0], PROPS_CLIENT_XY) + getAngle(start[1], start[0], PROPS_CLIENT_XY);
 	}
 
 	/**
@@ -1534,7 +1595,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	var POINTER_WINDOW_EVENTS = 'pointermove pointerup pointercancel';
 
 	// IE10 has prefixed support, and case-sensitive
-	if (window.MSPointerEvent) {
+	if (window.MSPointerEvent && !window.PointerEvent) {
 	  POINTER_ELEMENT_EVENTS = 'MSPointerDown';
 	  POINTER_WINDOW_EVENTS = 'MSPointerMove MSPointerUp MSPointerCancel';
 	}
@@ -1858,7 +1919,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	      value = this.compute();
 	    }
 
-	    if (NATIVE_TOUCH_ACTION) {
+	    if (NATIVE_TOUCH_ACTION && this.manager.element.style) {
 	      this.manager.element.style[PREFIXED_TOUCH_ACTION] = value;
 	    }
 	    this.actions = value.toLowerCase().trim();
@@ -1909,6 +1970,23 @@ return /******/ (function(modules) { // webpackBootstrap
 	    var hasPanY = inStr(actions, TOUCH_ACTION_PAN_Y);
 	    var hasPanX = inStr(actions, TOUCH_ACTION_PAN_X);
 
+	    if (hasNone) {
+	      //do not prevent defaults if this is a tap gesture
+
+	      var isTapPointer = input.pointers.length === 1;
+	      var isTapMovement = input.distance < 2;
+	      var isTapTouchTime = input.deltaTime < 250;
+
+	      if (isTapPointer && isTapMovement && isTapTouchTime) {
+	        return;
+	      }
+	    }
+
+	    if (hasPanX && hasPanY) {
+	      // `pan-x pan-y` means browser handles all scrolling/panning, do not prevent
+	      return;
+	    }
+
 	    if (hasNone ||
 	      (hasPanY && direction & DIRECTION_HORIZONTAL) ||
 	      (hasPanX && direction & DIRECTION_VERTICAL)) {
@@ -1940,9 +2018,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	  var hasPanX = inStr(actions, TOUCH_ACTION_PAN_X);
 	  var hasPanY = inStr(actions, TOUCH_ACTION_PAN_Y);
 
-	  // pan-x and pan-y can be combined
+	  // if both pan-x and pan-y are set (different recognizers
+	  // for different directions, e.g. horizontal pan but vertical swipe?)
+	  // we need none (as otherwise with pan-x pan-y combined none of these
+	  // recognizers will work, since the browser would handle all panning
 	  if (hasPanX && hasPanY) {
-	    return TOUCH_ACTION_PAN_X + ' ' + TOUCH_ACTION_PAN_Y;
+	    return TOUCH_ACTION_NONE;
 	  }
 
 	  // pan-x OR pan-y
@@ -2000,10 +2081,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * @param {Object} options
 	 */
 	function Recognizer(options) {
+	  this.options = assign({}, this.defaults, options || {});
+
 	  this.id = uniqueId();
 
 	  this.manager = null;
-	  this.options = merge(options || {}, this.defaults);
 
 	  // default is enable true
 	  this.options.enable = ifUndefined(this.options.enable, true);
@@ -2027,7 +2109,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	   * @return {Recognizer}
 	   */
 	  set: function(options) {
-	    extend(this.options, options);
+	    assign(this.options, options);
 
 	    // also update the touchAction, in case something changed about the directions/enabled state
 	    this.manager && this.manager.touchAction.update();
@@ -2131,20 +2213,24 @@ return /******/ (function(modules) { // webpackBootstrap
 	    var self = this;
 	    var state = this.state;
 
-	    function emit(withState) {
-	      self.manager.emit(self.options.event + (withState ? stateStr(state) : ''), input);
+	    function emit(event) {
+	      self.manager.emit(event, input);
 	    }
 
 	    // 'panstart' and 'panmove'
 	    if (state < STATE_ENDED) {
-	      emit(true);
+	      emit(self.options.event + stateStr(state));
 	    }
 
-	    emit(); // simple 'eventName' events
+	    emit(self.options.event); // simple 'eventName' events
+
+	    if (input.additionalEvent) { // additional event(panleft, panright, pinchin, pinchout...)
+	      emit(input.additionalEvent);
+	    }
 
 	    // panend and pancancel
 	    if (state >= STATE_ENDED) {
-	      emit(true);
+	      emit(self.options.event + stateStr(state));
 	    }
 	  },
 
@@ -2184,7 +2270,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  recognize: function(inputData) {
 	    // make a new copy of the inputData
 	    // so we can change the inputData without messing up the other recognizers
-	    var inputDataClone = extend({}, inputData);
+	    var inputDataClone = assign({}, inputData);
 
 	    // is is enabled and allow recognizing?
 	    if (!boolOrFn(this.options.enable, [this, inputDataClone])) {
@@ -2214,24 +2300,21 @@ return /******/ (function(modules) { // webpackBootstrap
 	   * @param {Object} inputData
 	   * @returns {Const} STATE
 	   */
-	  process: function(inputData) {
-	  }, // jshint ignore:line
+	  process: function(inputData) { }, // jshint ignore:line
 
 	  /**
 	   * return the preferred touch-action
 	   * @virtual
 	   * @returns {Array}
 	   */
-	  getTouchAction: function() {
-	  },
+	  getTouchAction: function() { },
 
 	  /**
 	   * called when the gesture isn't allowed to recognize
 	   * like when another is being recognized or it is disabled
 	   * @virtual
 	   */
-	  reset: function() {
-	  }
+	  reset: function() { }
 	};
 
 	/**
@@ -2412,14 +2495,15 @@ return /******/ (function(modules) { // webpackBootstrap
 	  },
 
 	  emit: function(input) {
+
 	    this.pX = input.deltaX;
 	    this.pY = input.deltaY;
 
 	    var direction = directionStr(input.direction);
-	    if (direction) {
-	      this.manager.emit(this.options.event + direction, input);
-	    }
 
+	    if (direction) {
+	      input.additionalEvent = this.options.event + direction;
+	    }
 	    this._super.emit.call(this, input);
 	  }
 	});
@@ -2455,11 +2539,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	  },
 
 	  emit: function(input) {
-	    this._super.emit.call(this, input);
 	    if (input.scale !== 1) {
 	      var inOut = input.scale < 1 ? 'in' : 'out';
-	      this.manager.emit(this.options.event + inOut, input);
+	      input.additionalEvent = this.options.event + inOut;
 	    }
+	    this._super.emit.call(this, input);
 	  }
 	});
 
@@ -2484,8 +2568,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	  defaults: {
 	    event: 'press',
 	    pointers: 1,
-	    time: 500, // minimal time of the pointer to be pressed
-	    threshold: 5 // a minimal movement is ok, but keep it low
+	    time: 251, // minimal time of the pointer to be pressed
+	    threshold: 9 // a minimal movement is ok, but keep it low
 	  },
 
 	  getTouchAction: function() {
@@ -2583,7 +2667,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  defaults: {
 	    event: 'swipe',
 	    threshold: 10,
-	    velocity: 0.65,
+	    velocity: 0.3,
 	    direction: DIRECTION_HORIZONTAL | DIRECTION_VERTICAL,
 	    pointers: 1
 	  },
@@ -2597,21 +2681,22 @@ return /******/ (function(modules) { // webpackBootstrap
 	    var velocity;
 
 	    if (direction & (DIRECTION_HORIZONTAL | DIRECTION_VERTICAL)) {
-	      velocity = input.velocity;
+	      velocity = input.overallVelocity;
 	    } else if (direction & DIRECTION_HORIZONTAL) {
-	      velocity = input.velocityX;
+	      velocity = input.overallVelocityX;
 	    } else if (direction & DIRECTION_VERTICAL) {
-	      velocity = input.velocityY;
+	      velocity = input.overallVelocityY;
 	    }
 
 	    return this._super.attrTest.call(this, input) &&
-	      direction & input.direction &&
+	      direction & input.offsetDirection &&
 	      input.distance > this.options.threshold &&
+	      input.maxPointers == this.options.pointers &&
 	      abs(velocity) > this.options.velocity && input.eventType & INPUT_END;
 	  },
 
 	  emit: function(input) {
-	    var direction = directionStr(input.direction);
+	    var direction = directionStr(input.offsetDirection);
 	    if (direction) {
 	      this.manager.emit(this.options.event + direction, input);
 	    }
@@ -2654,7 +2739,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    taps: 1,
 	    interval: 300, // max time between the multi-tap taps
 	    time: 250, // max time of the pointer to be down (like finger on the screen)
-	    threshold: 2, // a minimal movement is ok, but keep it low
+	    threshold: 9, // a minimal movement is ok, but keep it low
 	    posThreshold: 10 // a multi-tap can be a bit off the initial position
 	  },
 
@@ -2736,7 +2821,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 	/**
-	 * Simple way to create an manager with a default set of recognizers.
+	 * Simple way to create a manager with a default set of recognizers.
 	 * @param {HTMLElement} element
 	 * @param {Object} [options]
 	 * @constructor
@@ -2750,7 +2835,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	/**
 	 * @const {string}
 	 */
-	Hammer.VERSION = '2.0.4';
+	Hammer.VERSION = '2.0.6';
 
 	/**
 	 * default settings
@@ -2874,9 +2959,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * @constructor
 	 */
 	function Manager(element, options) {
-	  options = options || {};
+	  this.options = assign({}, Hammer.defaults, options || {});
 
-	  this.options = merge(options, Hammer.defaults);
 	  this.options.inputTarget = this.options.inputTarget || element;
 
 	  this.handlers = {};
@@ -2889,7 +2973,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	  toggleCssProps(this, true);
 
-	  each(options.recognizers, function(item) {
+	  each(this.options.recognizers, function(item) {
 	    var recognizer = this.add(new (item[0])(item[1]));
 	    item[2] && recognizer.recognizeWith(item[2]);
 	    item[3] && recognizer.requireFailure(item[3]);
@@ -2903,7 +2987,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	   * @returns {Manager}
 	   */
 	  set: function(options) {
-	    extend(this.options, options);
+	    assign(this.options, options);
 
 	    // Options that need a little more setup
 	    if (options.touchAction) {
@@ -3037,11 +3121,19 @@ return /******/ (function(modules) { // webpackBootstrap
 	      return this;
 	    }
 
-	    var recognizers = this.recognizers;
 	    recognizer = this.get(recognizer);
-	    recognizers.splice(inArray(recognizers, recognizer), 1);
 
-	    this.touchAction.update();
+	    // let's make sure this recognizer exists
+	    if (recognizer) {
+	      var recognizers = this.recognizers;
+	      var index = inArray(recognizers, recognizer);
+
+	      if (index !== -1) {
+	        recognizers.splice(index, 1);
+	        this.touchAction.update();
+	      }
+	    }
+
 	    return this;
 	  },
 
@@ -3072,7 +3164,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	      if (!handler) {
 	        delete handlers[event];
 	      } else {
-	        handlers[event].splice(inArray(handlers[event], handler), 1);
+	        handlers[event] && handlers[event].splice(inArray(handlers[event], handler), 1);
 	      }
 	    });
 	    return this;
@@ -3128,6 +3220,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	 */
 	function toggleCssProps(manager, add) {
 	  var element = manager.element;
+	  if (!element.style) {
+	    return;
+	  }
 	  each(manager.options.cssProps, function(value, name) {
 	    element.style[prefixed(element.style, name)] = add ? value : '';
 	  });
@@ -3145,7 +3240,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  data.target.dispatchEvent(gestureEvent);
 	}
 
-	extend(Hammer, {
+	assign(Hammer, {
 	  INPUT_START: INPUT_START,
 	  INPUT_MOVE: INPUT_MOVE,
 	  INPUT_END: INPUT_END,
@@ -3192,6 +3287,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  each: each,
 	  merge: merge,
 	  extend: extend,
+	  assign: assign,
 	  inherit: inherit,
 	  bindFn: bindFn,
 	  prefixed: prefixed
@@ -5300,16 +5396,18 @@ return /******/ (function(modules) { // webpackBootstrap
 	var UI = __webpack_require__(2);
 
 	// MODIFIED:
-	// - LINE 226: add `<i></i>`
+	// - LINE 252: add `<i></i>`
 	// - namespace
 	// - Init code
 	// TODO: start after x ms when pause on actions
 
 	/*
-	 * jQuery FlexSlider v2.4.0
+	 * jQuery FlexSlider v2.6.0
 	 * Copyright 2012 WooThemes
 	 * Contributing Author: Tyler Smith
 	 */
+
+	var focused = true;
 
 	// FlexSlider: Object Instance
 	$.flexslider = function(el, options) {
@@ -5322,7 +5420,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	    msGesture = window.navigator && window.navigator.msPointerEnabled && window.MSGesture,
 	    touch = (( "ontouchstart" in window ) || msGesture || window.DocumentTouch && document instanceof DocumentTouch) && slider.vars.touch,
 	  // depricating this idea, as devices are being released with both of these events
-	  //eventType = (touch) ? "touchend" : "click",
 	    eventType = "click touchend MSPointerUp keyup",
 	    watchedEvent = "",
 	    watchedEventClearTimer,
@@ -5331,8 +5428,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    carousel = (slider.vars.itemWidth > 0),
 	    fade = slider.vars.animation === "fade",
 	    asNav = slider.vars.asNavFor !== "",
-	    methods = {},
-	    focused = true;
+	    methods = {};
 
 	  // Store a reference to the slider object
 	  $.data(el, 'flexslider', slider);
@@ -5384,6 +5480,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	      if (slider.vars.controlsContainer !== "") slider.controlsContainer = $(slider.vars.controlsContainer).length > 0 && $(slider.vars.controlsContainer);
 	      // MANUAL:
 	      if (slider.vars.manualControls !== "") slider.manualControls = $(slider.vars.manualControls).length > 0 && $(slider.vars.manualControls);
+
+	      // CUSTOM DIRECTION NAV:
+	      if (slider.vars.customDirectionNav !== "") slider.customDirectionNav = $(slider.vars.customDirectionNav).length === 2 && $(slider.vars.customDirectionNav);
 
 	      // RANDOMIZE:
 	      if (slider.vars.randomize) {
@@ -5533,10 +5632,14 @@ return /******/ (function(modules) { // webpackBootstrap
 	        if (slider.pagingCount > 1) {
 	          for (var i = 0; i < slider.pagingCount; i++) {
 	            slide = slider.slides.eq(i);
-	            item = (slider.vars.controlNav === "thumbnails") ? '<img src="' + slide.attr('data-thumb') + '"/>' : '<a>' + j + '</a>';
+	            if (undefined === slide.attr('data-thumb-alt')) {
+	              slide.attr('data-thumb-alt', '');
+	            }
+	            altText = ( '' !== slide.attr('data-thumb-alt') ) ? altText = ' alt="' + slide.attr('data-thumb-alt') + '"' : '';
+	            item = (slider.vars.controlNav === "thumbnails") ? '<img src="' + slide.attr( 'data-thumb' ) + '"' + altText + '/>' : '<a href="#">' + j + '</a>';
 	            if ('thumbnails' === slider.vars.controlNav && true === slider.vars.thumbCaptions) {
 	              var captn = slide.attr('data-thumbcaption');
-	              if ('' != captn && undefined != captn) {item += '<span class="' + namespace + 'caption">' + captn + '</span>'};
+	              if ('' !== captn && undefined !== captn) {item += '<span class="' + namespace + 'caption">' + captn + '</span>';}
 	            }
 	            // slider.controlNavScaffold.append('<li>' + item + '</li>');
 	            slider.controlNavScaffold.append('<li>' + item + '<i></i></li>');
@@ -5604,7 +5707,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	      },
 	      update: function(action, pos) {
 	        if (slider.pagingCount > 1 && action === "add") {
-	          slider.controlNavScaffold.append($('<li><a>' + slider.count + '</a></li>'));
+	          slider.controlNavScaffold.append($('<li><a href="#">' + slider.count + '</a></li>'));
 	        } else if (slider.pagingCount === 1) {
 	          slider.controlNavScaffold.find('li').remove();
 	        } else {
@@ -5618,8 +5721,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	      setup: function() {
 	        var directionNavScaffold = $('<ul class="' + namespace + 'direction-nav"><li class="' + namespace + 'nav-prev"><a class="' + namespace + 'prev" href="#">' + slider.vars.prevText + '</a></li><li class="' + namespace + 'nav-next"><a class="' + namespace + 'next" href="#">' + slider.vars.nextText + '</a></li></ul>');
 
-	        // CONTROLSCONTAINER:
-	        if (slider.controlsContainer) {
+	        // CUSTOM DIRECTION NAV:
+	        if (slider.customDirectionNav) {
+	          slider.directionNav = slider.customDirectionNav;
+	        } else if (slider.controlsContainer) { // CONTROLSCONTAINER:
 	          $(slider.controlsContainer).append(directionNavScaffold);
 	          slider.directionNav = $('.' + namespace + 'direction-nav li a', slider.controlsContainer);
 	        } else {
@@ -5664,7 +5769,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    },
 	    pausePlay: {
 	      setup: function() {
-	        var pausePlayScaffold = $('<div class="' + namespace + 'pauseplay"><a></a></div>');
+	        var pausePlayScaffold = $('<div class="' + namespace + 'pauseplay"><a href="#"></a></div>');
 
 	        // CONTROLSCONTAINER:
 	        if (slider.controlsContainer) {
@@ -5710,15 +5815,16 @@ return /******/ (function(modules) { // webpackBootstrap
 	        cwidth,
 	        dx,
 	        startT,
+	        onTouchStart,
+	        onTouchMove,
+	        onTouchEnd,
 	        scrolling = false,
 	        localX = 0,
 	        localY = 0,
 	        accDx = 0;
 
 	      if (!msGesture) {
-	        el.addEventListener('touchstart', onTouchStart, false);
-
-	        function onTouchStart(e) {
+	        onTouchStart = function(e) {
 	          if (slider.animating) {
 	            e.preventDefault();
 	          } else if (( window.navigator.msPointerEnabled ) || e.touches.length === 1) {
@@ -5743,9 +5849,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	            el.addEventListener('touchmove', onTouchMove, false);
 	            el.addEventListener('touchend', onTouchEnd, false);
 	          }
-	        }
+	        };
 
-	        function onTouchMove(e) {
+	        onTouchMove = function(e) {
 	          // Local vars for X and Y points.
 
 	          localX = e.touches[0].pageX;
@@ -5765,9 +5871,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	              slider.setProps(offset + dx, "setTouch");
 	            }
 	          }
-	        }
+	        };
 
-	        function onTouchEnd(e) {
+	        onTouchEnd = function(e) {
 	          // finish the touch by undoing the touch session
 	          el.removeEventListener('touchmove', onTouchMove, false);
 
@@ -5787,7 +5893,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	          startY = null;
 	          dx = null;
 	          offset = null;
-	        }
+	        };
+
+	        el.addEventListener('touchstart', onTouchStart, false);
 	      } else {
 	        el.style.msTouchAction = "none";
 	        el._gesture = new MSGesture();
@@ -6266,11 +6374,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	        slider.setProps(sliderOffset * slider.computedW, "init");
 	        setTimeout(function() {
 	          slider.doMath();
-	          slider.newSlides.css({
-	            "width": slider.computedW,
-	            "float": "left",
-	            "display": "block"
-	          });
+	          slider.newSlides.css({"width": slider.computedW, "marginRight" : slider.computedM, "float": "left", "display": "block"});
+
 	          // SMOOTH HEIGHT:
 	          if (slider.vars.smoothHeight) {methods.smoothHeight();}
 	        }, (type === "init") ? 100 : 0);
@@ -6318,6 +6423,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    // CAROUSEL:
 	    if (carousel) {
 	      slider.itemT = slider.vars.itemWidth + slideMargin;
+	      slider.itemM = slideMargin;
 	      slider.minW = (minItems) ? minItems * slider.itemT : slider.w;
 	      slider.maxW = (maxItems) ? (maxItems * slider.itemT) - slideMargin : slider.w;
 	      slider.itemW = (slider.minW > slider.w) ? (slider.w - (slideMargin * (minItems - 1))) / minItems :
@@ -6332,10 +6438,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	        (slider.vars.itemWidth > slider.w) ? (slider.itemW * (slider.count - 1)) + (slideMargin * (slider.count - 1)) : ((slider.itemW + slideMargin) * slider.count) - slider.w - slideMargin;
 	    } else {
 	      slider.itemW = slider.w;
+	      slider.itemM = slideMargin;
 	      slider.pagingCount = slider.count;
 	      slider.last = slider.count - 1;
 	    }
 	    slider.computedW = slider.itemW - slider.boxPadding;
+	    slider.computedM = slider.itemM;
 	  };
 
 	  slider.update = function(pos, action) {
@@ -6474,6 +6582,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  //  Special properties
 	  controlsContainer: '',          // {UPDATED} jQuery Object/Selector: Declare which container the navigation elements should be appended too. Default container is the FlexSlider element. Example use would be $('.flexslider-container'). Property is ignored if given element is not found.
 	  manualControls: '',             // {UPDATED} jQuery Object/Selector: Declare custom control navigation. Examples would be $(".flex-control-nav li") or "#tabs-nav li img", etc. The number of elements in your controlNav should match the number of slides/tabs.
+	  customDirectionNav: '',         // {NEW} jQuery Object/Selector: Custom prev / next button. Must be two jQuery elements. In order to make the events work they have to have the classes "prev" and "next" (plus namespace)
 	  sync: '',                       // {NEW} Selector: Mirror the actions performed on this slider with another slider. Use with care.
 	  asNavFor: '',                   // {NEW} Selector: Internal property exposed for turning the slider into a thumbnail navigation for another slider
 
@@ -7818,7 +7927,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	  if (this.transitioning) {
 	    clearTimeout($element.transitionEndTimmer);
 	    $element.transitionEndTimmer = null;
-	    $element.trigger(options.transitionEnd).off(options.transitionEnd);
+	    $element.trigger(options.transitionEnd)
+	      .off(options.transitionEnd);
 	  }
 
 	  isPopup && this.$element.show();
@@ -7834,35 +7944,26 @@ return /******/ (function(modules) { // webpackBootstrap
 	  // apply Modal width/height if set
 	  if (!isPopup && !this.isActions) {
 	    if (width) {
-	      width = parseInt(width, 10);
-	      style.width =  width + 'px';
-	      style.marginLeft =  -parseInt(width / 2) + 'px';
+	      style.width =  parseInt(width, 10) + 'px';
 	    }
 
 	    if (height) {
-	      height = parseInt(height, 10);
-	      // style.height = height + 'px';
-	      style.marginTop = -parseInt(height / 2) + 'px';
-
-	      // the background color is styled to $dialog
-	      // so the height should set to $dialog
-	      this.$dialog.css({height: height + 'px'});
-	    } else {
-	      style.marginTop = -parseInt($element.height() / 2, 10) + 'px';
+	      style.height = parseInt(height, 10) + 'px';
 	    }
 
-	    $element.css(style);
+	    this.$dialog.css(style);
 	  }
 
-	  $element.
-	    removeClass(options.className.out).
-	    addClass(options.className.active);
+	  $element
+	    .removeClass(options.className.out)
+	    .addClass(options.className.active);
 
 	  this.transitioning = 1;
 
 	  var complete = function() {
-	    $element.trigger($.Event('opened.modal.amui',
-	      {relatedTarget: relatedTarget}));
+	    $element.trigger(
+	      $.Event('opened.modal.amui', {relatedTarget: relatedTarget})
+	    );
 	    this.transitioning = 0;
 
 	    // Prompt auto focus
@@ -7875,9 +7976,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	    return complete.call(this);
 	  }
 
-	  $element.
-	    one(options.transitionEnd, $.proxy(complete, this)).
-	    emulateTransitionEnd(options.duration);
+	  $element
+	    .one(options.transitionEnd, $.proxy(complete, this))
+	    .emulateTransitionEnd(options.duration);
 	};
 
 	Modal.prototype.close = function(relatedTarget) {
@@ -7919,8 +8020,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	    return complete.call(this);
 	  }
 
-	  $element.one(options.transitionEnd, $.proxy(complete, this)).
-	    emulateTransitionEnd(options.duration);
+	  $element.one(options.transitionEnd, $.proxy(complete, this))
+	    .emulateTransitionEnd(options.duration);
 	};
 
 	Modal.prototype.events = function() {
@@ -14311,7 +14412,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	UCheck.prototype.uncheck = function() {
 	  this.$element
 	    .prop('checked', false)
-	    .trigger('change.ucheck.amui')
+	    // trigger `change` event for form validation, etc.
+	    // @see https://forum.jquery.com/topic/should-chk-prop-checked-true-trigger-change-event
+	    .trigger('change')
 	    .trigger('unchecked.ucheck.amui');
 	},
 
@@ -14463,7 +14566,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  submit: null
 	};
 
-	Validator.VERSION = '2.5.2';
+	Validator.VERSION = '2.6.0';
 
 	/* jshint -W101 */
 	Validator.patterns = {
@@ -15038,6 +15141,11 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	'use strict';
 
+	/**
+	 * @via https://github.com/sindresorhus/screenfull.js
+	 * @license MIT © Sindre Sorhus
+	 */
+
 	var UI = __webpack_require__(2);
 	var screenfull = (function() {
 	  var keyboardAllowed = typeof Element !== 'undefined' &&
@@ -15165,7 +15273,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	    }
 	  });
 
-	  screenfull.VERSION = '2.0.0';
+	  screenfull.VERSION = '3.0.0';
 
 	  return screenfull;
 	})();
@@ -15256,7 +15364,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /* 34 */
 /***/ function(module, exports, __webpack_require__) {
 
-	'use strict';
+	/* WEBPACK VAR INJECTION */(function(global) {'use strict';
 
 	var UI = __webpack_require__(2);
 
@@ -15267,13 +15375,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	 */
 
 	var store = {};
-	var win = window;
+	var win = (typeof window != 'undefined' ? window : global);
 	var localStorageName = 'localStorage';
 	var storage;
 
 	store.disabled = false;
-
-	store.version = '1.3.17';
+	store.version = '1.3.20';
 
 	store.set = function(key, value) {
 	};
@@ -15296,7 +15403,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	    transactionFn = defaultVal;
 	    defaultVal = null;
 	  }
-
 	  if (defaultVal == null) {
 	    defaultVal = {};
 	  }
@@ -15334,14 +15440,14 @@ return /******/ (function(modules) { // webpackBootstrap
 	function isLocalStorageNameSupported() {
 	  try {
 	    return (localStorageName in win && win[localStorageName]);
-	  }
-	  catch (err) {
+	  } catch (err) {
 	    return false;
 	  }
 	}
 
 	if (isLocalStorageNameSupported()) {
 	  storage = win[localStorageName];
+
 	  store.set = function(key, val) {
 	    if (val === undefined) {
 	      return store.remove(key);
@@ -15380,7 +15486,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 
 	try {
-	  var testKey = '__storeJs__';
+	  var testKey = '__storejs__';
 	  store.set(testKey, testKey);
 	  if (store.get(testKey) != testKey) {
 	    store.disabled = true;
@@ -15394,6 +15500,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	module.exports = UI.store = store;
 
+	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }())))
 
 /***/ },
 /* 35 */

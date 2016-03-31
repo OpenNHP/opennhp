@@ -1,4 +1,4 @@
-/*! Amaze UI v2.5.2 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-01-26T11:06:52+0800 */
+/*! Amaze UI v2.6.0 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-03-31T14:28:54+0800 */
 /* ==========================================================================
    Component: Base
  ============================================================================ */
@@ -3082,17 +3082,12 @@ fieldset[disabled] .am-checkbox-inline {
 }
 .am-nav-justify {
   width: 100%;
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
-  display: flex;
+  display: table;
 }
 .am-nav-justify > li {
   float: none;
-  -webkit-box-flex: 1;
-  -webkit-flex: 1;
-      -ms-flex: 1;
-          flex: 1;
+  display: table-cell;
+  width: 1%;
 }
 .am-nav-justify > li > a {
   text-align: center;
@@ -4488,19 +4483,16 @@ a.am-badge:focus {
   border-top-left-radius: 0;
 }
 .am-btn-group-justify {
+  display: table;
+  table-layout: fixed;
+  border-collapse: separate;
   width: 100%;
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
-  display: flex;
 }
 .am-btn-group-justify > .am-btn,
 .am-btn-group-justify > .am-btn-group {
   float: none;
-  -webkit-box-flex: 1;
-  -webkit-flex: 1;
-      -ms-flex: 1;
-          flex: 1;
+  display: table-cell;
+  width: 1%;
 }
 .am-btn-group-justify > .am-btn-group .am-btn {
   width: 100%;
@@ -8914,21 +8906,25 @@ ul.am-dropdown-content > .am-disabled > a:focus {
 .am-slider-default .am-control-thumbs i {
   position: absolute;
 }
+/*
+TODO:
+  1. 动画应该放在 dialog 上，不再是整个 modal，涉及 JS 逻辑，需要统筹修改
+  2. modal 滚动条处理，是否需要添加一个滚动条宽度的水平 padding？
+*/
 /* ==========================================================================
    Component: Modal Plugin
  ============================================================================ */
 .am-modal {
-  width: 270px;
   position: fixed;
-  display: none;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 1110;
-  left: 50%;
-  margin-left: -135px;
-  margin-top: 0;
-  top: 50%;
-  text-align: center;
-  border-radius: 2px;
+  display: none;
   opacity: 0;
+  outline: 0;
+  text-align: center;
   -webkit-transform: scale(1.185);
       -ms-transform: scale(1.185);
           transform: scale(1.185);
@@ -8940,10 +8936,6 @@ ul.am-dropdown-content > .am-disabled > a:focus {
           backface-visibility: hidden;
   -webkit-perspective: 1000px;
           perspective: 1000px;
-  /*@media @large-up {
-    width: @modal-lg;
-    margin-left: -@modal-lg/2;
-  }*/
 }
 .am-modal:focus {
   outline: 0;
@@ -8955,6 +8947,8 @@ ul.am-dropdown-content > .am-disabled > a:focus {
   -webkit-transform: scale(1);
       -ms-transform: scale(1);
           transform: scale(1);
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 .am-modal.am-modal-out {
   opacity: 0;
@@ -8965,15 +8959,31 @@ ul.am-dropdown-content > .am-disabled > a:focus {
       -ms-transform: scale(0.815);
           transform: scale(0.815);
 }
-@media only screen and (min-width:641px) {
-  .am-modal {
-    width: 540px;
-    margin-left: -270px;
-  }
+.am-modal:before {
+  content: "\200B";
+  display: inline-block;
+  height: 100%;
+  vertical-align: middle;
 }
 .am-modal-dialog {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: auto;
+  margin-right: auto;
+  width: 270px;
+  max-width: 100%;
   border-radius: 2px;
   background: #f8f8f8;
+  /*@media @large-up {
+    width: @modal-lg;
+    margin-left: -@modal-lg/2;
+  }*/
+}
+@media only screen and (min-width:641px) {
+  .am-modal-dialog {
+    width: 540px;
+  }
 }
 .am-modal-hd {
   padding: 15px 10px 5px 10px;
@@ -9085,6 +9095,9 @@ ul.am-dropdown-content > .am-disabled > a:focus {
   bottom: 0;
   z-index: 1110;
   width: 100%;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
   text-align: center;
   border-radius: 2px;
   -webkit-transform: translateY(100%);
@@ -12736,16 +12749,11 @@ tbody.am-collapse.am-in {
   padding-right: 8px;
   text-align: center;
   overflow: hidden;
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
-  display: flex;
+  display: table;
 }
 .am-navbar .am-navbar-nav li {
-  -webkit-box-flex: 1;
-  -webkit-flex: 1;
-      -ms-flex: 1;
-          flex: 1;
+  display: table-cell;
+  width: 1%;
   float: none;
 }
 .am-navbar-nav {
@@ -13607,10 +13615,7 @@ tbody.am-collapse.am-in {
 .am-slider-c1 .am-control-nav {
   position: absolute;
   bottom: 0;
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
-  display: flex;
+  display: table;
   width: 100%;
   height: 6px;
   font-size: 0;
@@ -13618,10 +13623,8 @@ tbody.am-collapse.am-in {
   text-align: center;
 }
 .am-slider-c1 .am-control-nav li {
-  -webkit-box-flex: 1;
-  -webkit-flex: 1;
-      -ms-flex: 1;
-          flex: 1;
+  display: table-cell;
+  width: 1%;
 }
 .am-slider-c1 .am-control-nav li a {
   width: 100%;
@@ -14180,16 +14183,8 @@ tbody.am-collapse.am-in {
 .am-slider-d3 .am-control-thumbs {
   position: static;
   overflow: hidden;
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
-  display: flex;
 }
 .am-slider-d3 .am-control-thumbs li {
-  -webkit-box-flex: 1;
-  -webkit-flex: 1;
-      -ms-flex: 1;
-          flex: 1;
   padding: 12px 4px 4px;
   position: relative;
 }
@@ -14229,6 +14224,13 @@ tbody.am-collapse.am-in {
 .am-slider-d3 .am-direction-nav,
 .am-slider-d3 .am-pauseplay {
   display: none;
+}
+.am-slider-d3 .am-control-thumbs {
+  display: table;
+}
+.am-slider-d3 .am-control-thumbs li {
+  display: table-cell;
+  width: 1%;
 }
 [data-am-widget='tabs'] {
   margin: 10px;

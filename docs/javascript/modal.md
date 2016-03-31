@@ -35,6 +35,7 @@ Modal 交互窗口，可以用来模拟浏览器的 `alert`、`confirm`、`promp
       <a href="javascript: void(0)" class="am-close am-close-spin" data-am-modal-close>&times;</a>
     </div>
     <div class="am-modal-bd">
+      <button class="am-btn am-btn-primary am-fr am-margin-left" data-am-popover="{content: '谁愿压抑心中怒愤冲动，咒骂这虚与伪与假'}">点击显示 Popover</button>
       Modal 内容。本 Modal 无法通过遮罩层关闭。
     </div>
   </div>

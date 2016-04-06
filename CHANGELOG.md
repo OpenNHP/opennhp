@@ -1,6 +1,11 @@
 # Amaze UI Change Log
 ---
 
+## Amaze UI 2.6.1 (2016.04.06)
+
+- `Fixed` #398，修复在 Modal 中使用 Popover `z-index` 过低问题；
+- `Fixed` 修复 Navbar 宽度样式。
+
 ## Amaze UI 2.6.0 (2016.03.31)
 
 ### 2016.03 W5

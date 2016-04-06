@@ -1,4 +1,4 @@
-/*! Amaze UI v2.6.0 ~ Handlebars helper | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-03-31T14:28:54+0800 */ 
+/*! Amaze UI v2.6.1 ~ Handlebars helper | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-04-06T09:34:39+0800 */ 
 (function(undefined) {
   'use strict';
 

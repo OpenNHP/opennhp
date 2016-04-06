@@ -1,4 +1,4 @@
-/*! Amaze UI v2.6.0 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-03-31T14:28:54+0800 */
+/*! Amaze UI v2.6.1 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-04-06T09:34:39+0800 */
 /* ==========================================================================
    Component: Base
  ============================================================================ */
@@ -9374,7 +9374,7 @@ TODO:
   border: 1px solid #333333;
   display: none;
   font-size: 1.6rem;
-  z-index: 1030;
+  z-index: 1150;
   opacity: 0;
   -webkit-transition: opacity 300ms;
   transition: opacity 300ms;
@@ -12749,7 +12749,6 @@ tbody.am-collapse.am-in {
   padding-right: 8px;
   text-align: center;
   overflow: hidden;
-  display: table;
 }
 .am-navbar .am-navbar-nav li {
   display: table-cell;

@@ -2,7 +2,7 @@
   "name": "amazeui",
   "title": "Amaze UI",
   "description": "Sleek, intuitive, and powerful front-end framework for faster and easier web development.",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "keywords": [
     "AMUI",
     "Amaze UI",
@@ -36,7 +36,7 @@
     "url": "https://github.com/allmobilize/amazeui/issues"
   },
   "dependencies": {
-    "jquery": "^2.2.2"
+    "jquery": "^2.2.3"
   },
   "devDependencies": {
     "bistre": "^1.0.1",
@@ -64,7 +64,7 @@
     "handlebars": "^4.0.5",
     "hbs": "^4.0.0",
     "less-middleware": "^2.0.1",
-    "lodash": "^4.0.0",
+    "lodash": "^4.8.2",
     "morgan": "^1.6.1",
     "run-sequence": "^1.1.5",
     "webpack-stream": "^3.1.0"

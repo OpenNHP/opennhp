@@ -253,11 +253,14 @@ Selected.prototype.setChecked = function(item) {
       return false;
     }
   } else {
+    // close dropdown whether item is checked or not
+    // @see #860
+    this.dropdown.close();
+
     if (isChecked) {
       return false;
     }
 
-    this.dropdown.close();
     this.$shadowOptions.not($item).removeClass(options.selectedClass);
   }
 
@@ -267,7 +270,8 @@ Selected.prototype.setChecked = function(item) {
 
 /**
  * syncData
- * @desc if `item` set, only sync `item` related option
+ *
+ * @description if `item` set, only sync `item` related option
  * @param {Object} item
  */
 Selected.prototype.syncData = function(item) {

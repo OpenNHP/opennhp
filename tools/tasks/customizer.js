@@ -1,4 +1,3 @@
-/* jshint node: true */
 'use strict';
 
 var path = require('path');
@@ -76,7 +75,11 @@ gulp.task('customizer:preparing', function(callback) {
     }
 
     config.widgets.forEach(function(widget) {
-      js.push(format('require("../../widget/%s/src/%s");', widget.name, widget.name));
+      js.push(format(
+        'require("../../widget/%s/src/%s");',
+        widget.name,
+        widget.name)
+      );
       less.push(format('@import "../../widget/%s/src/%s.less";',
         widget.name, widget.name));
       var pkg = require(path.join('../../widget', widget.name, 'package.json'));

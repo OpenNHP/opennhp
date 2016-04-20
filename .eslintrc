@@ -1,0 +1,43 @@
+{
+  "env": {
+    "browser": true,
+    "node": true
+  },
+  "rules": {
+    "no-bitwise": 2,
+    "camelcase": 2,
+    "curly": 2,
+    "no-unused-expressions": 2,
+    "wrap-iife": [
+      2,
+      "any"
+    ],
+    "indent": [
+      2,
+      2,
+      {
+        "SwitchCase": 1
+      }
+    ],
+    "max-len": [
+      2,
+      80,
+      2,
+      {
+        "ignoreUrls": true
+      }
+    ],
+    "new-cap": 2,
+    "no-caller": 2,
+    "quotes": [
+      2,
+      "single"
+    ],
+    "no-undef": 2,
+    "no-unused-vars": 2,
+    "strict": [
+      2,
+      "safe"
+    ]
+  }
+}

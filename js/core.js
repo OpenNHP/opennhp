@@ -1,7 +1,5 @@
 'use strict';
 
-/* jshint -W040 */
-
 var $ = require('jquery');
 
 if (typeof $ === 'undefined') {
@@ -60,7 +58,6 @@ UI.support.animation = (function() {
   return animationEnd && {end: animationEnd};
 })();
 
-/* jshint -W069 */
 UI.support.touch = (
 ('ontouchstart' in window &&
 navigator.userAgent.toLowerCase().match(/mobile|tablet/)) ||
@@ -83,13 +80,14 @@ UI.utils = {};
 
 /**
  * Debounce function
+ *
  * @param {function} func  Function to be debounced
  * @param {number} wait Function execution threshold in milliseconds
  * @param {bool} immediate  Whether the function should be called at
  *                          the beginning of the delay instead of the
  *                          end. Default is false.
- * @desc Executes a function when it stops being invoked for n seconds
- * @via  _.debounce() http://underscorejs.org
+ * @description Executes a function when it stops being invoked for n seconds
+ * @see  _.debounce() http://underscorejs.org
  */
 UI.utils.debounce = function(func, wait, immediate) {
   var timeout;
@@ -136,7 +134,6 @@ UI.utils.isInView = function(element, options) {
   left - options.leftOffset <= windowLeft + $win.width());
 };
 
-/* jshint -W054 */
 UI.utils.parseOptions = UI.utils.options = function(string) {
   if ($.isPlainObject(string)) {
     return string;
@@ -156,8 +153,6 @@ UI.utils.parseOptions = UI.utils.options = function(string) {
 
   return options;
 };
-
-/* jshint +W054 */
 
 UI.utils.generateGUID = function(namespace) {
   var uid = namespace + '-' || 'am-';
@@ -274,12 +269,11 @@ $.fn.emulateTransitionEnd = function(duration) {
 
 $.fn.redraw = function() {
   return this.each(function() {
-    /* jshint unused:false */
+    /* eslint-disable */
     var redraw = this.offsetHeight;
+    /* eslint-enable */
   });
 };
-
-/* jshint unused:true */
 
 $.fn.transitionEnd = function(callback) {
   var endEvent = UI.support.transition.end;
@@ -421,10 +415,9 @@ UI.utils.imageLoader = function($image, callback) {
 };
 
 /**
- * https://github.com/cho45/micro-template.js
+ * @see https://github.com/cho45/micro-template.js
  * (c) cho45 http://cho45.github.com/mit-license
  */
-/* jshint -W109 */
 UI.template = function(id, data) {
   var me = UI.template;
 
@@ -453,7 +446,6 @@ UI.template = function(id, data) {
       "' + ' line ' + this.line + ')'; } " +
       "//@ sourceURL=" + name + "\n" // source map
       ).replace(/this\.ret \+= '';/g, '');
-      /* jshint -W054 */
       var func = new Function(body);
       var map = {
         '&': '&amp;',
@@ -481,8 +473,6 @@ UI.template = function(id, data) {
 
   return data ? me.cache[id](data) : me.cache[id];
 };
-/* jshint +W109 */
-/* jshint +W054 */
 
 UI.template.cache = {};
 

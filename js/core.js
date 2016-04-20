@@ -58,15 +58,17 @@ UI.support.animation = (function() {
   return animationEnd && {end: animationEnd};
 })();
 
+/* eslint-disable dot-notation */
 UI.support.touch = (
 ('ontouchstart' in window &&
 navigator.userAgent.toLowerCase().match(/mobile|tablet/)) ||
 (window.DocumentTouch && document instanceof window.DocumentTouch) ||
 (window.navigator['msPointerEnabled'] &&
-window.navigator['msMaxTouchPoints'] > 0) || //IE 10
+window.navigator['msMaxTouchPoints'] > 0) || // IE 10
 (window.navigator['pointerEnabled'] &&
-window.navigator['maxTouchPoints'] > 0) || //IE >=11
+window.navigator['maxTouchPoints'] > 0) || // IE >=11
 false);
+/* eslint-enable dot-notation */
 
 // https://developer.mozilla.org/zh-CN/docs/DOM/MutationObserver
 UI.support.mutationobserver = (window.MutationObserver ||
@@ -428,6 +430,7 @@ UI.template = function(id, data) {
         me.get(id) : (name = 'template(string)', id); // no warnings
 
       var line = 1;
+      /* eslint-disable max-len, quotes */
       var body = ('try { ' + (me.variable ?
       'var ' + me.variable + ' = this.stash;' : 'with (this.stash) { ') +
       "this.ret += '" +
@@ -446,6 +449,7 @@ UI.template = function(id, data) {
       "' + ' line ' + this.line + ')'; } " +
       "//@ sourceURL=" + name + "\n" // source map
       ).replace(/this\.ret \+= '';/g, '');
+      /* eslint-enable max-len, quotes */
       var func = new Function(body);
       var map = {
         '&': '&amp;',
@@ -517,10 +521,10 @@ UI.DOMObserve = function(elements, options, callback) {
     try {
       var observer = new Observer(UI.utils.debounce(
         function(mutations, instance) {
-        callback.call(element, mutations, instance);
-        // trigger this event manually if MutationObserver not supported
-        $element.trigger('changed.dom.amui');
-      }, 50));
+          callback.call(element, mutations, instance);
+          // trigger this event manually if MutationObserver not supported
+          $element.trigger('changed.dom.amui');
+        }, 50));
 
       observer.observe(element, options);
 
@@ -532,7 +536,9 @@ UI.DOMObserve = function(elements, options, callback) {
 
 $.fn.DOMObserve = function(options, callback) {
   return this.each(function() {
+    /* eslint-disable new-cap */
     UI.DOMObserve(this, options, callback);
+    /* eslint-enable new-cap */
   });
 };
 
@@ -564,7 +570,9 @@ $(function() {
   });
 
   // watches DOM
+  /* eslint-disable new-cap */
   UI.DOMObserve('[data-am-observe]');
+  /* eslint-enable */
 
   $html.removeClass('no-js').addClass('js');
 

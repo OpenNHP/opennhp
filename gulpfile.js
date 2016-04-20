@@ -63,7 +63,9 @@ var config = {
       warnings: false
     },
     output: {
+      /* eslint-disable camelcase */
       ascii_only: true
+      /* eslint-enable camelcase */
     }
   }
 };

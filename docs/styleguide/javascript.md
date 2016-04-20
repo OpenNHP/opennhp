@@ -17,9 +17,11 @@ next: widget.html
 
 ## 代码质量控制工具
 
-Amaze UI 使用 [JSHint](http://jshint.com/) 和 [JSCS](https://github.com/jscs-dev/node-jscs) 控制代码质量。
+Amaze UI 使用 ~~[JSHint](http://jshint.com/) 和 [JSCS](https://github.com/jscs-dev/node-jscs)~~[ESLint](http://eslint.org/)控制代码质量。
 
-详细设置参见 [.jshintrc](https://github.com/allmobilize/amazeui/blob/master/.jshintrc)、[.jscsrc](https://github.com/allmobilize/amazeui/blob/master/.jscsrc)。
+详细设置参见 ~~[.jshintrc](https://github.com/amazeui/amazeui/blob/master/.jshintrc)、[.jscsrc](https://github.com/amazeui/amazeui/blob/master/.jscsrc)~~[.eslintrc](https://github.com/amazeui/amazeui/blob/master/.eslintrc)。
+
+> 2016.04.20 替换为 ESLint，参见 [Welcoming JSCS to ESLint](http://eslint.org/blog/2016/04/welcoming-jscs-to-eslint)
 
 （部分直接使用第三方库的代码未通过质量控制工具检测。）
 

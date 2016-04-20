@@ -4,13 +4,53 @@
     "node": true
   },
   "rules": {
-    "no-bitwise": 2,
-    "camelcase": 2,
+    // Strict Mode
+    // @see http://eslint.org/docs/rules/strict
+    "strict": [
+      2,
+      "safe"
+    ],
+
+    // Variables
+    // @see http://eslint.org/docs/rules/#variables
+    "no-undef": 2,
+    "no-unused-vars": 2,
+
+    // Possible Errors
+    // @see http://eslint.org/docs/rules/#possible-errors
+    "comma-dangle": [2, "never"],
+    "no-empty": [2, {"allowEmptyCatch": true}],
+
+    // Best Practices
+    // @see http://eslint.org/docs/rules/#best-practices
     "curly": 2,
-    "no-unused-expressions": 2,
+    "dot-notation": 2,
+    "no-caller": 2,
+    "no-multi-str": 2,
+    "no-unused-expressions": [2, {
+      "allowShortCircuit": true,
+      "allowTernary": true
+    }],
+    "no-with": 2,
     "wrap-iife": [
       2,
       "any"
+    ],
+
+    // Stylistic Issues
+    // @see http://eslint.org/docs/rules/#stylistic-issues
+    "array-bracket-spacing": [2, "never"],
+    "camelcase": [2, {
+      "properties": "always"
+    }],
+    "comma-style": [2, "last"],
+    "eol-last": 2,
+    "keyword-spacing": [
+      2,
+      {
+        "before": true,
+        "after": true,
+        "overrides": {}}
     ],
     "indent": [
       2,
@@ -19,6 +59,7 @@
         "SwitchCase": 1
       }
     ],
+    "linebreak-style": [2, "unix"],
     "max-len": [
       2,
       80,
@@ -28,16 +69,31 @@
       }
     ],
     "new-cap": 2,
-    "no-caller": 2,
+    "no-bitwise": 2,
+    "no-mixed-spaces-and-tabs": 2,
+    "no-trailing-spaces": [2, {"skipBlankLines": true }],
+    "one-var": [2, "never"],
     "quotes": [
       2,
-      "single"
+      "single",
+      {"avoidEscape": true, "allowTemplateLiterals": true}
     ],
-    "no-undef": 2,
-    "no-unused-vars": 2,
-    "strict": [
-      2,
-      "safe"
-    ]
+    "quote-props": [2, "as-needed"],
+    "semi": ["error", "always"],
+    "spaced-comment": ["error", "always"],
+    "space-before-function-paren": [2, {
+      "anonymous": "never",
+      "named": "never"
+    }],
+    "space-in-parens": [2, "never"],
+    "space-infix-ops": [2, {"int32Hint": true}],
+    "space-unary-ops": [
+      2, {
+        // `words` applies to unary word operators,
+        // such as: new, delete, typeof, void, yield
+        "words": true,
+        // nonwords - applies to unary operators such as: -, +, --, ++, !, !!
+        "nonwords": false
+      }]
   }
 }

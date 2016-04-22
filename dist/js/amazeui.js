@@ -1,4 +1,4 @@
-/*! Amaze UI v2.6.1 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-04-06T09:34:39+0800 */ 
+/*! Amaze UI v2.6.2 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-04-22T15:38:46+0800 */ 
 (function webpackUniversalModuleDefinition(root, factory) {
 	if(typeof exports === 'object' && typeof module === 'object')
 		module.exports = factory(require("jquery"));
@@ -125,8 +125,6 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	'use strict';
 
-	/* jshint -W040 */
-
 	var $ = __webpack_require__(1);
 
 	if (typeof $ === 'undefined') {
@@ -140,7 +138,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	var doc = window.document;
 	var $html = $('html');
 
-	UI.VERSION = '2.6.1';
+	UI.VERSION = '2.6.2';
 
 	UI.support = {};
 
@@ -185,16 +183,17 @@ return /******/ (function(modules) { // webpackBootstrap
 	  return animationEnd && {end: animationEnd};
 	})();
 
-	/* jshint -W069 */
+	/* eslint-disable dot-notation */
 	UI.support.touch = (
 	('ontouchstart' in window &&
 	navigator.userAgent.toLowerCase().match(/mobile|tablet/)) ||
 	(window.DocumentTouch && document instanceof window.DocumentTouch) ||
 	(window.navigator['msPointerEnabled'] &&
-	window.navigator['msMaxTouchPoints'] > 0) || //IE 10
+	window.navigator['msMaxTouchPoints'] > 0) || // IE 10
 	(window.navigator['pointerEnabled'] &&
-	window.navigator['maxTouchPoints'] > 0) || //IE >=11
+	window.navigator['maxTouchPoints'] > 0) || // IE >=11
 	false);
+	/* eslint-enable dot-notation */
 
 	// https://developer.mozilla.org/zh-CN/docs/DOM/MutationObserver
 	UI.support.mutationobserver = (window.MutationObserver ||
@@ -208,13 +207,14 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/**
 	 * Debounce function
+	 *
 	 * @param {function} func  Function to be debounced
 	 * @param {number} wait Function execution threshold in milliseconds
 	 * @param {bool} immediate  Whether the function should be called at
 	 *                          the beginning of the delay instead of the
 	 *                          end. Default is false.
-	 * @desc Executes a function when it stops being invoked for n seconds
-	 * @via  _.debounce() http://underscorejs.org
+	 * @description Executes a function when it stops being invoked for n seconds
+	 * @see  _.debounce() http://underscorejs.org
 	 */
 	UI.utils.debounce = function(func, wait, immediate) {
 	  var timeout;
@@ -261,7 +261,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	  left - options.leftOffset <= windowLeft + $win.width());
 	};
 
-	/* jshint -W054 */
 	UI.utils.parseOptions = UI.utils.options = function(string) {
 	  if ($.isPlainObject(string)) {
 	    return string;
@@ -281,8 +280,6 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	  return options;
 	};
-
-	/* jshint +W054 */
 
 	UI.utils.generateGUID = function(namespace) {
 	  var uid = namespace + '-' || 'am-';
@@ -399,12 +396,11 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	$.fn.redraw = function() {
 	  return this.each(function() {
-	    /* jshint unused:false */
+	    /* eslint-disable */
 	    var redraw = this.offsetHeight;
+	    /* eslint-enable */
 	  });
 	};
-
-	/* jshint unused:true */
 
 	$.fn.transitionEnd = function(callback) {
 	  var endEvent = UI.support.transition.end;
@@ -546,10 +542,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 	/**
-	 * https://github.com/cho45/micro-template.js
+	 * @see https://github.com/cho45/micro-template.js
 	 * (c) cho45 http://cho45.github.com/mit-license
 	 */
-	/* jshint -W109 */
 	UI.template = function(id, data) {
 	  var me = UI.template;
 
@@ -560,6 +555,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        me.get(id) : (name = 'template(string)', id); // no warnings
 
 	      var line = 1;
+	      /* eslint-disable max-len, quotes */
 	      var body = ('try { ' + (me.variable ?
 	      'var ' + me.variable + ' = this.stash;' : 'with (this.stash) { ') +
 	      "this.ret += '" +
@@ -578,7 +574,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	      "' + ' line ' + this.line + ')'; } " +
 	      "//@ sourceURL=" + name + "\n" // source map
 	      ).replace(/this\.ret \+= '';/g, '');
-	      /* jshint -W054 */
+	      /* eslint-enable max-len, quotes */
 	      var func = new Function(body);
 	      var map = {
 	        '&': '&amp;',
@@ -606,8 +602,6 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	  return data ? me.cache[id](data) : me.cache[id];
 	};
-	/* jshint +W109 */
-	/* jshint +W054 */
 
 	UI.template.cache = {};
 
@@ -652,10 +646,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	    try {
 	      var observer = new Observer(UI.utils.debounce(
 	        function(mutations, instance) {
-	        callback.call(element, mutations, instance);
-	        // trigger this event manually if MutationObserver not supported
-	        $element.trigger('changed.dom.amui');
-	      }, 50));
+	          callback.call(element, mutations, instance);
+	          // trigger this event manually if MutationObserver not supported
+	          $element.trigger('changed.dom.amui');
+	        }, 50));
 
 	      observer.observe(element, options);
 
@@ -667,7 +661,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	$.fn.DOMObserve = function(options, callback) {
 	  return this.each(function() {
+	    /* eslint-disable new-cap */
 	    UI.DOMObserve(this, options, callback);
+	    /* eslint-enable new-cap */
 	  });
 	};
 
@@ -699,7 +695,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	  });
 
 	  // watches DOM
+	  /* eslint-disable new-cap */
 	  UI.DOMObserve('[data-am-observe]');
+	  /* eslint-enable */
 
 	  $html.removeClass('no-js').addClass('js');
 
@@ -10855,11 +10853,14 @@ return /******/ (function(modules) { // webpackBootstrap
 	      return false;
 	    }
 	  } else {
+	    // close dropdown whether item is checked or not
+	    // @see #860
+	    this.dropdown.close();
+
 	    if (isChecked) {
 	      return false;
 	    }
 
-	    this.dropdown.close();
 	    this.$shadowOptions.not($item).removeClass(options.selectedClass);
 	  }
 
@@ -10869,7 +10870,8 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/**
 	 * syncData
-	 * @desc if `item` set, only sync `item` related option
+	 *
+	 * @description if `item` set, only sync `item` related option
 	 * @param {Object} item
 	 */
 	Selected.prototype.syncData = function(item) {
@@ -14566,7 +14568,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  submit: null
 	};
 
-	Validator.VERSION = '2.6.1';
+	Validator.VERSION = '2.6.2';
 
 	/* jshint -W101 */
 	Validator.patterns = {

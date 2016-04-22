@@ -1,6 +1,14 @@
 # Amaze UI Change Log
 ---
 
+## Amaze UI 2.6.2 (2016.04.22)
+
+- `Fixed` #860，Selected 单选点击已选中的项时关闭下拉框（和 `<select>` 保持一致）；
+- `Fixed` 修复 Nav `justify` 宽度样式；
+- `Fixed` #858，调整 Button 颜色 modifier 定义顺序，遵循 primary - secondary - success - warning -danger；
+- `Fixed` 示例后台模板中 `<input>` 类型修正（@karlew）；
+- `Changed` JS 代码质量控制工具由 JSHint + JSCS 迁移到 ESLint.
+
 ## Amaze UI 2.6.1 (2016.04.06)
 
 - `Fixed` #398，修复在 Modal 中使用 Popover `z-index` 过低问题；

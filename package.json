@@ -2,7 +2,7 @@
   "name": "amazeui",
   "title": "Amaze UI",
   "description": "Sleek, intuitive, and powerful front-end framework for faster and easier web development.",
-  "version": "2.6.1",
+  "version": "2.6.2",
   "keywords": [
     "AMUI",
     "Amaze UI",
@@ -67,7 +67,7 @@
     "lodash": "^4.11.1",
     "morgan": "^1.6.1",
     "run-sequence": "^1.1.5",
-    "webpack-stream": "^3.1.0"
+    "webpack-stream": "^3.2.0"
   },
   "license": "MIT"
 }

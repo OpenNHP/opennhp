@@ -1,4 +1,4 @@
-/*! Amaze UI v2.6.1 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-04-06T09:34:39+0800 */
+/*! Amaze UI v2.6.2 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-04-22T15:38:46+0800 */
 /* ==========================================================================
    Component: Base
  ============================================================================ */
@@ -1779,6 +1779,54 @@ fieldset[disabled] .am-btn-primary.am-active {
 .am-btn-group-stacked .am-btn-primary {
   border-color: #0c80ba;
 }
+.am-btn-secondary {
+  color: #fff;
+  background-color: #3bb4f2;
+  border-color: #3bb4f2;
+}
+a.am-btn-secondary:visited {
+  color: #fff;
+}
+.am-btn-secondary:hover,
+.am-btn-secondary:focus,
+.am-btn-secondary:active,
+.am-btn-secondary.am-active,
+.am-active .am-btn-secondary.am-dropdown-toggle {
+  color: #fff;
+  border-color: #0f9ae0;
+}
+.am-btn-secondary:hover,
+.am-btn-secondary:focus {
+  background-color: #19a7f0;
+}
+.am-btn-secondary:active,
+.am-btn-secondary.am-active,
+.am-active .am-btn-secondary.am-dropdown-toggle {
+  background-image: none;
+  background-color: #0e93d7;
+}
+.am-btn-secondary.am-disabled,
+.am-btn-secondary[disabled],
+fieldset[disabled] .am-btn-secondary,
+.am-btn-secondary.am-disabled:hover,
+.am-btn-secondary[disabled]:hover,
+fieldset[disabled] .am-btn-secondary:hover,
+.am-btn-secondary.am-disabled:focus,
+.am-btn-secondary[disabled]:focus,
+fieldset[disabled] .am-btn-secondary:focus,
+.am-btn-secondary.am-disabled:active,
+.am-btn-secondary[disabled]:active,
+fieldset[disabled] .am-btn-secondary:active,
+.am-btn-secondary.am-disabled.am-active,
+.am-btn-secondary[disabled].am-active,
+fieldset[disabled] .am-btn-secondary.am-active {
+  background-color: #3bb4f2;
+  border-color: #3bb4f2;
+}
+.am-btn-group .am-btn-secondary,
+.am-btn-group-stacked .am-btn-secondary {
+  border-color: #23abf0;
+}
 .am-btn-warning {
   color: #fff;
   background-color: #F37B1D;
@@ -1922,54 +1970,6 @@ fieldset[disabled] .am-btn-success.am-active {
 .am-btn-group .am-btn-success,
 .am-btn-group-stacked .am-btn-success {
   border-color: #4db14d;
-}
-.am-btn-secondary {
-  color: #fff;
-  background-color: #3bb4f2;
-  border-color: #3bb4f2;
-}
-a.am-btn-secondary:visited {
-  color: #fff;
-}
-.am-btn-secondary:hover,
-.am-btn-secondary:focus,
-.am-btn-secondary:active,
-.am-btn-secondary.am-active,
-.am-active .am-btn-secondary.am-dropdown-toggle {
-  color: #fff;
-  border-color: #0f9ae0;
-}
-.am-btn-secondary:hover,
-.am-btn-secondary:focus {
-  background-color: #19a7f0;
-}
-.am-btn-secondary:active,
-.am-btn-secondary.am-active,
-.am-active .am-btn-secondary.am-dropdown-toggle {
-  background-image: none;
-  background-color: #0e93d7;
-}
-.am-btn-secondary.am-disabled,
-.am-btn-secondary[disabled],
-fieldset[disabled] .am-btn-secondary,
-.am-btn-secondary.am-disabled:hover,
-.am-btn-secondary[disabled]:hover,
-fieldset[disabled] .am-btn-secondary:hover,
-.am-btn-secondary.am-disabled:focus,
-.am-btn-secondary[disabled]:focus,
-fieldset[disabled] .am-btn-secondary:focus,
-.am-btn-secondary.am-disabled:active,
-.am-btn-secondary[disabled]:active,
-fieldset[disabled] .am-btn-secondary:active,
-.am-btn-secondary.am-disabled.am-active,
-.am-btn-secondary[disabled].am-active,
-fieldset[disabled] .am-btn-secondary.am-active {
-  background-color: #3bb4f2;
-  border-color: #3bb4f2;
-}
-.am-btn-group .am-btn-secondary,
-.am-btn-group-stacked .am-btn-secondary {
-  border-color: #23abf0;
 }
 /* Style links like a button */
 .am-btn-link {
@@ -3060,7 +3060,6 @@ fieldset[disabled] .am-checkbox-inline {
 }
 .am-nav-justify {
   width: 100%;
-  display: table;
 }
 .am-nav-justify > li {
   float: none;

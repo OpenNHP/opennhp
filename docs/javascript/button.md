@@ -228,3 +228,38 @@ $('.btn-loading-example').click(function () {
   });
 </script>
 ```
+
+## 设置默认选中状态
+
+设置默认选中状态涉及两处：
+
+- `<label>` 上添加 `am-active` 类名（`2.6.2+` 无需添加此类名）；
+- `<input>` 上添加 `checked` 属性。
+
+`````html
+<div class="am-btn-group" data-am-button>
+  <label class="am-btn am-btn-primary">
+    <input type="checkbox" class="needsclick" name="doc-js-btn" value="苹果" checked> 苹果
+  </label>
+  <label class="am-btn am-btn-primary">
+    <input type="checkbox" class="needsclick" name="doc-js-btn" value="橘子"> 橘子
+  </label>
+  <label class="am-btn am-btn-primary">
+    <input type="checkbox" class="needsclick" name="doc-js-btn" value="香蕉"> 香蕉
+  </label>
+</div>
+`````
+```html
+<div class="am-btn-group" data-am-button>
+  <!--默认选中状态设置-->
+  <label class="am-btn am-btn-primary am-active">
+    <input type="checkbox" class="needsclick" name="doc-js-btn" value="苹果" checked> 苹果
+  </label>
+  <label class="am-btn am-btn-primary">
+    <input type="checkbox" class="needsclick" name="doc-js-btn" value="橘子"> 橘子
+  </label>
+  <label class="am-btn am-btn-primary">
+    <input type="checkbox" class="needsclick" name="doc-js-btn" value="香蕉"> 香蕉
+  </label>
+</div>
+```

@@ -116,7 +116,10 @@ gulp.task('customizer:less', function() {
     }))
     .pipe(gulp.dest(cstmzPath))
     .pipe($.size({showFiles: true, title: 'source'}))
-    .pipe($.minifyCss({noAdvanced: true}))
+    .pipe($.cleanCss({
+      advanced: false,
+      compatibility: 'ie8'
+    }))
     .pipe($.rename({
       suffix: '.min',
       extname: '.css'

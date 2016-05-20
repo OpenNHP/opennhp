@@ -243,7 +243,11 @@ gulp.task('build:less', function() {
     .pipe($.size({showFiles: true, title: 'source'}))
     // Disable advanced optimizations - selector & property merging, etc.
     // for Issue #19 https://github.com/allmobilize/amazeui/issues/19
-    .pipe($.minifyCss({noAdvanced: true}))
+    .pipe($.cleanCss({
+      advanced: false,
+      // @see https://github.com/jakubpawlowicz/clean-css#how-to-set-a-compatibility-mode
+      compatibility: 'ie8'
+    }))
     .pipe($.rename({
       suffix: '.min',
       extname: '.css'

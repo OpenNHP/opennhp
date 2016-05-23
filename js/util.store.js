@@ -4,7 +4,7 @@ var UI = require('./core');
 
 /**
  * store.js
- * @via https://github.com/marcuswestin/store.js
+ * @see https://github.com/marcuswestin/store.js
  * @license https://github.com/marcuswestin/store.js/blob/master/LICENSE
  */
 

@@ -2,7 +2,6 @@
 
 var UI = require('./core');
 
-/* jshint -W101, -W106 */
 /**
  * Add to Homescreen v3.2.2
  * (c) 2015 Matteo Spinelli

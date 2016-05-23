@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * @via https://github.com/sindresorhus/screenfull.js
+ * @see https://github.com/sindresorhus/screenfull.js
  * @license MIT © Sindre Sorhus
  */
 

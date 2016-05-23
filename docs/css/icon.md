@@ -208,67 +208,188 @@ Amaze UI 的定位是面向现代浏览器，虽然对 IE 8/9 这些浏览器提
 ## 所有图标列表
 
 `````html
+<section id="new-4-6">
+  <h2 class="page-header">Font Awesome 4.6 新增字体（Amaze UI 2.7 中搭载）</h2>
+  <ul class="doc-icon-list am-avg-sm-2 am-avg-md-3 am-avg-lg-4">
+    <li>
+      <a href="http://fontawesome.io/icon/american-sign-language-interpreting">
+        <i class="am-icon-american-sign-language-interpreting"></i>american-sign-language-interpreting</a>
+    </li>
+
+    <li><a
+      href="http://fontawesome.io/icon/american-sign-language-interpreting"><i
+      class="am-icon-asl-interpreting"></i>asl-interpreting <span class="text-muted">(alias)</span></a>
+    </li>
+
+    <li><a href="http://fontawesome.io/icon/assistive-listening-systems"><i
+      class="am-icon-assistive-listening-systems"></i>assistive-listening-systems</a>
+    </li>
+
+    <li><a href="http://fontawesome.io/icon/audio-description"><i
+      class="am-icon-audio-description"></i>audio-description</a></li>
+
+    <li><a href="http://fontawesome.io/icon/blind"><i class="am-icon-blind"></i>blind</a>
+    </li>
+
+    <li><a href="http://fontawesome.io/icon/braille"><i class="am-icon-braille"></i>braille</a>
+    </li>
+
+    <li><a href="http://fontawesome.io/icon/deaf"><i
+      class="am-icon-deaf"></i>deaf</a></li>
+
+    <li><a href="http://fontawesome.io/icon/deaf"><i class="am-icon-deafness"></i>deafness
+      <span class="text-muted">(alias)</span></a></li>
+
+    <li><a href="http://fontawesome.io/icon/envira"><i class="am-icon-envira"></i>envira</a>
+    </li>
+
+    <li><a href="http://fontawesome.io/icon/font-awesome"><i class="am-icon-fa"></i>fa
+      <span class="text-muted">(alias)</span></a></li>
+
+    <li><a href="http://fontawesome.io/icon/first-order"><i
+      class="am-icon-first-order"></i>first-order</a></li>
+
+    <li><a href="http://fontawesome.io/icon/font-awesome"><i
+      class="am-icon-font-awesome"></i>font-awesome</a></li>
+
+    <li><a href="http://fontawesome.io/icon/gitlab"><i class="am-icon-gitlab"></i>gitlab</a>
+    </li>
+
+    <li><a href="http://fontawesome.io/icon/glide"><i class="am-icon-glide"></i>glide</a>
+    </li>
+
+    <li><a href="http://fontawesome.io/icon/glide-g"><i class="am-icon-glide-g"></i>glide-g</a>
+    </li>
+
+    <li><a href="http://fontawesome.io/icon/google-plus-official"><i
+      class="am-icon-google-plus-circle"></i>google-plus-circle <span
+      class="text-muted">(alias)</span></a></li>
+
+    <li><a href="http://fontawesome.io/icon/google-plus-official"><i
+      class="am-icon-google-plus-official"></i>google-plus-official</a></li>
+
+    <li><a href="http://fontawesome.io/icon/deaf"><i
+      class="am-icon-hard-of-hearing"></i>hard-of-hearing <span class="text-muted">(alias)</span></a>
+    </li>
+
+    <li><a href="http://fontawesome.io/icon/instagram"><i
+      class="am-icon-instagram"></i>instagram</a></li>
+
+    <li><a href="http://fontawesome.io/icon/low-vision"><i
+      class="am-icon-low-vision"></i>low-vision</a></li>
+
+    <li><a href="http://fontawesome.io/icon/pied-piper"><i
+      class="am-icon-pied-piper"></i>pied-piper</a></li>
+
+    <li><a href="http://fontawesome.io/icon/question-circle-o"><i
+      class="am-icon-question-circle-o"></i>question-circle-o</a></li>
+
+    <li><a href="http://fontawesome.io/icon/sign-language"><i
+      class="am-icon-sign-language"></i>sign-language</a></li>
+
+    <li><a href="http://fontawesome.io/icon/sign-language"><i
+      class="am-icon-signing"></i>signing <span class="text-muted">(alias)</span></a>
+    </li>
+
+    <li><a href="http://fontawesome.io/icon/snapchat"><i
+      class="am-icon-snapchat"></i>snapchat</a></li>
+
+    <li><a href="http://fontawesome.io/icon/snapchat-ghost"><i
+      class="am-icon-snapchat-ghost"></i>snapchat-ghost</a></li>
+
+    <li><a href="http://fontawesome.io/icon/snapchat-square"><i
+      class="am-icon-snapchat-square"></i>snapchat-square</a></li>
+
+    <li><a href="http://fontawesome.io/icon/themeisle"><i
+      class="am-icon-themeisle"></i>themeisle</a></li>
+
+    <li><a href="http://fontawesome.io/icon/universal-access"><i
+      class="am-icon-universal-access"></i>universal-access</a></li>
+
+    <li><a href="http://fontawesome.io/icon/viadeo"><i class="am-icon-viadeo"></i>viadeo</a>
+    </li>
+
+    <li><a href="http://fontawesome.io/icon/viadeo-square"><i
+      class="am-icon-viadeo-square"></i>viadeo-square</a></li>
+
+    <li><a href="http://fontawesome.io/icon/volume-control-phone"><i
+      class="am-icon-volume-control-phone"></i>volume-control-phone</a></li>
+
+    <li><a href="http://fontawesome.io/icon/wheelchair-alt"><i
+      class="am-icon-wheelchair-alt"></i>wheelchair-alt</a></li>
+
+    <li><a href="http://fontawesome.io/icon/wpbeginner"><i
+      class="am-icon-wpbeginner"></i>wpbeginner</a></li>
+
+    <li><a href="http://fontawesome.io/icon/wpforms"><i class="am-icon-wpforms"></i>wpforms</a>
+    </li>
+
+    <li><a href="http://fontawesome.io/icon/yoast"><i class="am-icon-yoast"></i>yoast</a>
+    </li>
+  </ul>
+</section>
+
 <section id="new-4-5">
   <h2 class="doc-icon-hd">Font Awesome 4.5 新增字体（Amaze UI 2.5 中搭载） </h2>
   <ul class="doc-icon-list am-avg-sm-2 am-avg-md-3 am-avg-lg-4">
-    <li><a href=" http://font-awesome.io/icon/bluetooth"><i
+    <li><a href="http://fontawesome.io/icon/bluetooth"><i
       class="am-icon-bluetooth"></i> bluetooth</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/bluetooth-b"><i
+    <li><a href=" http://fontawesome.io/icon/bluetooth-b"><i
       class="am-icon-bluetooth-b"></i> bluetooth-b</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/codiepie"><i
+    <li><a href=" http://fontawesome.io/icon/codiepie"><i
       class="am-icon-codiepie"></i> codiepie</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/credit-card-alt"><i
+    <li><a href=" http://fontawesome.io/icon/credit-card-alt"><i
       class="am-icon-credit-card-alt"></i> credit-card-alt</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/edge"><i
+    <li><a href=" http://fontawesome.io/icon/edge"><i
       class="am-icon-edge"></i> edge</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/fort-awesome"><i
+    <li><a href=" http://fontawesome.io/icon/fort-awesome"><i
       class="am-icon-fort-awesome"></i> fort-awesome</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/hashtag"><i
+    <li><a href=" http://fontawesome.io/icon/hashtag"><i
       class="am-icon-hashtag"></i> hashtag</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/mixcloud"><i
+    <li><a href=" http://fontawesome.io/icon/mixcloud"><i
       class="am-icon-mixcloud"></i> mixcloud</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/modx"><i
+    <li><a href=" http://fontawesome.io/icon/modx"><i
       class="am-icon-modx"></i> modx</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/pause-circle"><i
+    <li><a href=" http://fontawesome.io/icon/pause-circle"><i
       class="am-icon-pause-circle"></i> pause-circle</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/pause-circle-o"><i
+    <li><a href=" http://fontawesome.io/icon/pause-circle-o"><i
       class="am-icon-pause-circle-o"></i> pause-circle-o</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/percent"><i
+    <li><a href=" http://fontawesome.io/icon/percent"><i
       class="am-icon-percent"></i> percent</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/product-hunt"><i
+    <li><a href=" http://fontawesome.io/icon/product-hunt"><i
       class="am-icon-product-hunt"></i> product-hunt</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/reddit-alien"><i
+    <li><a href=" http://fontawesome.io/icon/reddit-alien"><i
       class="am-icon-reddit-alien"></i> reddit-alien</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/scribd"><i
+    <li><a href=" http://fontawesome.io/icon/scribd"><i
       class="am-icon-scribd"></i> scribd</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/shopping-bag"><i
+    <li><a href=" http://fontawesome.io/icon/shopping-bag"><i
       class="am-icon-shopping-bag"></i> shopping-bag</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/shopping-basket"><i
+    <li><a href=" http://fontawesome.io/icon/shopping-basket"><i
       class="am-icon-shopping-basket"></i> shopping-basket</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/stop-circle"><i
+    <li><a href=" http://fontawesome.io/icon/stop-circle"><i
       class="am-icon-stop-circle"></i> stop-circle</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/stop-circle-o"><i
+    <li><a href=" http://fontawesome.io/icon/stop-circle-o"><i
       class="am-icon-stop-circle-o"></i> stop-circle-o</a></li>
 
-    <li><a href=" http://font-awesome.io/icon/usb"><i
+    <li><a href=" http://fontawesome.io/icon/usb"><i
       class="am-icon-usb"></i> usb</a></li>
   </ul>
 </section>
@@ -276,84 +397,84 @@ Amaze UI 的定位是面向现代浏览器，虽然对 IE 8/9 这些浏览器提
 <section id="new-4-4">
   <h2 class="doc-icon-hd">Font Awesome 4.4 新增字体（Amaze UI 2.5 中搭载） </h2>
   <ul class="doc-icon-list am-avg-sm-2 am-avg-md-3 am-avg-lg-4">
-    <li><a href="http://font-awesome.io/icon/500px"><i class="am-icon-500px"></i> 500px</a></li>
-    <li><a href="http://font-awesome.io/icon/amazon"><i class="am-icon-amazon"></i> amazon</a></li>
-    <li><a href="http://font-awesome.io/icon/balance-scale"><i class="am-icon-balance-scale"></i> balance-scale</a></li>
-    <li><a href="http://font-awesome.io/icon/battery-empty"><i class="am-icon-battery-0"></i> battery-0 <span class="text-muted">(alias)</span></a></li>
-    <li><a href="http://font-awesome.io/icon/battery-quarter"><i class="am-icon-battery-1"></i> battery-1 <span class="text-muted">(alias)</span></a></li>
-    <li><a href="http://font-awesome.io/icon/battery-half"><i class="am-icon-battery-2"></i> battery-2 <span class="text-muted">(alias)</span></a></li>
-    <li><a href="http://font-awesome.io/icon/battery-three-quarters"><i class="am-icon-battery-3"></i> battery-3 <span class="text-muted">(alias)</span></a></li>
-    <li><a href="http://font-awesome.io/icon/battery-full"><i class="am-icon-battery-4"></i> battery-4 <span class="text-muted">(alias)</span></a></li>
-    <li><a href="http://font-awesome.io/icon/battery-empty"><i class="am-icon-battery-empty"></i> battery-empty</a></li>
-    <li><a href="http://font-awesome.io/icon/battery-full"><i class="am-icon-battery-full"></i> battery-full</a></li>
-    <li><a href="http://font-awesome.io/icon/battery-half"><i class="am-icon-battery-half"></i> battery-half</a></li>
-    <li><a href="http://font-awesome.io/icon/battery-quarter"><i class="am-icon-battery-quarter"></i> battery-quarter</a></li>
-    <li><a href="http://font-awesome.io/icon/battery-three-quarters"><i class="am-icon-battery-three-quarters"></i> battery-three-quarters</a></li>
-    <li><a href="http://font-awesome.io/icon/black-tie"><i class="am-icon-black-tie"></i> black-tie</a></li>
-    <li><a href="http://font-awesome.io/icon/calendar-check-o"><i class="am-icon-calendar-check-o"></i> calendar-check-o</a></li>
-    <li><a href="http://font-awesome.io/icon/calendar-minus-o"><i class="am-icon-calendar-minus-o"></i> calendar-minus-o</a></li>
-    <li><a href="http://font-awesome.io/icon/calendar-plus-o"><i class="am-icon-calendar-plus-o"></i> calendar-plus-o</a></li>
-    <li><a href="http://font-awesome.io/icon/calendar-times-o"><i class="am-icon-calendar-times-o"></i> calendar-times-o</a></li>
-    <li><a href="http://font-awesome.io/icon/cc-diners-club"><i class="am-icon-cc-diners-club"></i> cc-diners-club</a></li>
-    <li><a href="http://font-awesome.io/icon/cc-jcb"><i class="am-icon-cc-jcb"></i> cc-jcb</a></li>
-    <li><a href="http://font-awesome.io/icon/chrome"><i class="am-icon-chrome"></i> chrome</a></li>
-    <li><a href="http://font-awesome.io/icon/clone"><i class="am-icon-clone"></i> clone</a></li>
-    <li><a href="http://font-awesome.io/icon/commenting"><i class="am-icon-commenting"></i> commenting</a></li>
-    <li><a href="http://font-awesome.io/icon/commenting-o"><i class="am-icon-commenting-o"></i> commenting-o</a></li>
-    <li><a href="http://font-awesome.io/icon/contao"><i class="am-icon-contao"></i> contao</a></li>
-    <li><a href="http://font-awesome.io/icon/creative-commons"><i class="am-icon-creative-commons"></i> creative-commons</a></li>
-    <li><a href="http://font-awesome.io/icon/expeditedssl"><i class="am-icon-expeditedssl"></i> expeditedssl</a></li>
-    <li><a href="http://font-awesome.io/icon/firefox"><i class="am-icon-firefox"></i> firefox</a></li>
-    <li><a href="http://font-awesome.io/icon/fonticons"><i class="am-icon-fonticons"></i> fonticons</a></li>
-    <li><a href="http://font-awesome.io/icon/genderless"><i class="am-icon-genderless"></i> genderless</a></li>
-    <li><a href="http://font-awesome.io/icon/get-pocket"><i class="am-icon-get-pocket"></i> get-pocket</a></li>
-    <li><a href="http://font-awesome.io/icon/gg"><i class="am-icon-gg"></i> gg</a></li>
-    <li><a href="http://font-awesome.io/icon/gg-circle"><i class="am-icon-gg-circle"></i> gg-circle</a></li>
-    <li><a href="http://font-awesome.io/icon/hand-rock-o"><i class="am-icon-hand-grab-o"></i> hand-grab-o <span class="text-muted">(alias)</span></a></li>
-    <li><a href="http://font-awesome.io/icon/hand-lizard-o"><i class="am-icon-hand-lizard-o"></i> hand-lizard-o</a></li>
-    <li><a href="http://font-awesome.io/icon/hand-paper-o"><i class="am-icon-hand-paper-o"></i> hand-paper-o</a></li>
-    <li><a href="http://font-awesome.io/icon/hand-peace-o"><i class="am-icon-hand-peace-o"></i> hand-peace-o</a></li>
-    <li><a href="http://font-awesome.io/icon/hand-pointer-o"><i class="am-icon-hand-pointer-o"></i> hand-pointer-o</a></li>
-    <li><a href="http://font-awesome.io/icon/hand-rock-o"><i class="am-icon-hand-rock-o"></i> hand-rock-o</a></li>
-    <li><a href="http://font-awesome.io/icon/hand-scissors-o"><i class="am-icon-hand-scissors-o"></i> hand-scissors-o</a></li>
-    <li><a href="http://font-awesome.io/icon/hand-spock-o"><i class="am-icon-hand-spock-o"></i> hand-spock-o</a></li>
-    <li><a href="http://font-awesome.io/icon/hand-paper-o"><i class="am-icon-hand-stop-o"></i> hand-stop-o <span class="text-muted">(alias)</span></a></li>
-    <li><a href="http://font-awesome.io/icon/hourglass"><i class="am-icon-hourglass"></i> hourglass</a></li>
-    <li><a href="http://font-awesome.io/icon/hourglass-start"><i class="am-icon-hourglass-1"></i> hourglass-1 <span class="text-muted">(alias)</span></a></li>
-    <li><a href="http://font-awesome.io/icon/hourglass-half"><i class="am-icon-hourglass-2"></i> hourglass-2 <span class="text-muted">(alias)</span></a></li>
-    <li><a href="http://font-awesome.io/icon/hourglass-end"><i class="am-icon-hourglass-3"></i> hourglass-3 <span class="text-muted">(alias)</span></a></li>
-    <li><a href="http://font-awesome.io/icon/hourglass-end"><i class="am-icon-hourglass-end"></i> hourglass-end</a></li>
-    <li><a href="http://font-awesome.io/icon/hourglass-half"><i class="am-icon-hourglass-half"></i> hourglass-half</a></li>
-    <li><a href="http://font-awesome.io/icon/hourglass-o"><i class="am-icon-hourglass-o"></i> hourglass-o</a></li>
-    <li><a href="http://font-awesome.io/icon/hourglass-start"><i class="am-icon-hourglass-start"></i> hourglass-start</a></li>
-    <li><a href="http://font-awesome.io/icon/houzz"><i class="am-icon-houzz"></i> houzz</a></li>
-    <li><a href="http://font-awesome.io/icon/i-cursor"><i class="am-icon-i-cursor"></i> i-cursor</a></li>
-    <li><a href="http://font-awesome.io/icon/industry"><i class="am-icon-industry"></i> industry</a></li>
-    <li><a href="http://font-awesome.io/icon/internet-explorer"><i class="am-icon-internet-explorer"></i> internet-explorer</a></li>
-    <li><a href="http://font-awesome.io/icon/map"><i class="am-icon-map"></i> map</a></li>
-    <li><a href="http://font-awesome.io/icon/map-o"><i class="am-icon-map-o"></i> map-o</a></li>
-    <li><a href="http://font-awesome.io/icon/map-pin"><i class="am-icon-map-pin"></i> map-pin</a></li>
-    <li><a href="http://font-awesome.io/icon/map-signs"><i class="am-icon-map-signs"></i> map-signs</a></li>
-    <li><a href="http://font-awesome.io/icon/mouse-pointer"><i class="am-icon-mouse-pointer"></i> mouse-pointer</a></li>
-    <li><a href="http://font-awesome.io/icon/object-group"><i class="am-icon-object-group"></i> object-group</a></li>
-    <li><a href="http://font-awesome.io/icon/object-ungroup"><i class="am-icon-object-ungroup"></i> object-ungroup</a></li>
-    <li><a href="http://font-awesome.io/icon/odnoklassniki"><i class="am-icon-odnoklassniki"></i> odnoklassniki</a></li>
-    <li><a href="http://font-awesome.io/icon/odnoklassniki-square"><i class="am-icon-odnoklassniki-square"></i> odnoklassniki-square</a></li>
-    <li><a href="http://font-awesome.io/icon/opencart"><i class="am-icon-opencart"></i> opencart</a></li>
-    <li><a href="http://font-awesome.io/icon/opera"><i class="am-icon-opera"></i> opera</a></li>
-    <li><a href="http://font-awesome.io/icon/optin-monster"><i class="am-icon-optin-monster"></i> optin-monster</a></li>
-    <li><a href="http://font-awesome.io/icon/registered"><i class="am-icon-registered"></i> registered</a></li>
-    <li><a href="http://font-awesome.io/icon/safari"><i class="am-icon-safari"></i> safari</a></li>
-    <li><a href="http://font-awesome.io/icon/sticky-note"><i class="am-icon-sticky-note"></i> sticky-note</a></li>
-    <li><a href="http://font-awesome.io/icon/sticky-note-o"><i class="am-icon-sticky-note-o"></i> sticky-note-o</a></li>
-    <li><a href="http://font-awesome.io/icon/television"><i class="am-icon-television"></i> television</a></li>
-    <li><a href="http://font-awesome.io/icon/trademark"><i class="am-icon-trademark"></i> trademark</a></li>
-    <li><a href="http://font-awesome.io/icon/tripadvisor"><i class="am-icon-tripadvisor"></i> tripadvisor</a></li>
-    <li><a href="http://font-awesome.io/icon/television"><i class="am-icon-tv"></i> tv <span class="text-muted">(alias)</span></a></li>
-    <li><a href="http://font-awesome.io/icon/vimeo"><i class="am-icon-vimeo"></i> vimeo</a></li>
-    <li><a href="http://font-awesome.io/icon/wikipedia-w"><i class="am-icon-wikipedia-w"></i> wikipedia-w</a></li>
-    <li><a href="http://font-awesome.io/icon/y-combinator"><i class="am-icon-y-combinator"></i> y-combinator</a></li>
-    <li><a href="http://font-awesome.io/icon/y-combinator"><i class="am-icon-yc"></i> yc <span class="text-muted">(alias)</span></a></li>
+    <li><a href="http://fontawesome.io/icon/500px"><i class="am-icon-500px"></i> 500px</a></li>
+    <li><a href="http://fontawesome.io/icon/amazon"><i class="am-icon-amazon"></i> amazon</a></li>
+    <li><a href="http://fontawesome.io/icon/balance-scale"><i class="am-icon-balance-scale"></i> balance-scale</a></li>
+    <li><a href="http://fontawesome.io/icon/battery-empty"><i class="am-icon-battery-0"></i> battery-0 <span class="text-muted">(alias)</span></a></li>
+    <li><a href="http://fontawesome.io/icon/battery-quarter"><i class="am-icon-battery-1"></i> battery-1 <span class="text-muted">(alias)</span></a></li>
+    <li><a href="http://fontawesome.io/icon/battery-half"><i class="am-icon-battery-2"></i> battery-2 <span class="text-muted">(alias)</span></a></li>
+    <li><a href="http://fontawesome.io/icon/battery-three-quarters"><i class="am-icon-battery-3"></i> battery-3 <span class="text-muted">(alias)</span></a></li>
+    <li><a href="http://fontawesome.io/icon/battery-full"><i class="am-icon-battery-4"></i> battery-4 <span class="text-muted">(alias)</span></a></li>
+    <li><a href="http://fontawesome.io/icon/battery-empty"><i class="am-icon-battery-empty"></i> battery-empty</a></li>
+    <li><a href="http://fontawesome.io/icon/battery-full"><i class="am-icon-battery-full"></i> battery-full</a></li>
+    <li><a href="http://fontawesome.io/icon/battery-half"><i class="am-icon-battery-half"></i> battery-half</a></li>
+    <li><a href="http://fontawesome.io/icon/battery-quarter"><i class="am-icon-battery-quarter"></i> battery-quarter</a></li>
+    <li><a href="http://fontawesome.io/icon/battery-three-quarters"><i class="am-icon-battery-three-quarters"></i> battery-three-quarters</a></li>
+    <li><a href="http://fontawesome.io/icon/black-tie"><i class="am-icon-black-tie"></i> black-tie</a></li>
+    <li><a href="http://fontawesome.io/icon/calendar-check-o"><i class="am-icon-calendar-check-o"></i> calendar-check-o</a></li>
+    <li><a href="http://fontawesome.io/icon/calendar-minus-o"><i class="am-icon-calendar-minus-o"></i> calendar-minus-o</a></li>
+    <li><a href="http://fontawesome.io/icon/calendar-plus-o"><i class="am-icon-calendar-plus-o"></i> calendar-plus-o</a></li>
+    <li><a href="http://fontawesome.io/icon/calendar-times-o"><i class="am-icon-calendar-times-o"></i> calendar-times-o</a></li>
+    <li><a href="http://fontawesome.io/icon/cc-diners-club"><i class="am-icon-cc-diners-club"></i> cc-diners-club</a></li>
+    <li><a href="http://fontawesome.io/icon/cc-jcb"><i class="am-icon-cc-jcb"></i> cc-jcb</a></li>
+    <li><a href="http://fontawesome.io/icon/chrome"><i class="am-icon-chrome"></i> chrome</a></li>
+    <li><a href="http://fontawesome.io/icon/clone"><i class="am-icon-clone"></i> clone</a></li>
+    <li><a href="http://fontawesome.io/icon/commenting"><i class="am-icon-commenting"></i> commenting</a></li>
+    <li><a href="http://fontawesome.io/icon/commenting-o"><i class="am-icon-commenting-o"></i> commenting-o</a></li>
+    <li><a href="http://fontawesome.io/icon/contao"><i class="am-icon-contao"></i> contao</a></li>
+    <li><a href="http://fontawesome.io/icon/creative-commons"><i class="am-icon-creative-commons"></i> creative-commons</a></li>
+    <li><a href="http://fontawesome.io/icon/expeditedssl"><i class="am-icon-expeditedssl"></i> expeditedssl</a></li>
+    <li><a href="http://fontawesome.io/icon/firefox"><i class="am-icon-firefox"></i> firefox</a></li>
+    <li><a href="http://fontawesome.io/icon/fonticons"><i class="am-icon-fonticons"></i> fonticons</a></li>
+    <li><a href="http://fontawesome.io/icon/genderless"><i class="am-icon-genderless"></i> genderless</a></li>
+    <li><a href="http://fontawesome.io/icon/get-pocket"><i class="am-icon-get-pocket"></i> get-pocket</a></li>
+    <li><a href="http://fontawesome.io/icon/gg"><i class="am-icon-gg"></i> gg</a></li>
+    <li><a href="http://fontawesome.io/icon/gg-circle"><i class="am-icon-gg-circle"></i> gg-circle</a></li>
+    <li><a href="http://fontawesome.io/icon/hand-rock-o"><i class="am-icon-hand-grab-o"></i> hand-grab-o <span class="text-muted">(alias)</span></a></li>
+    <li><a href="http://fontawesome.io/icon/hand-lizard-o"><i class="am-icon-hand-lizard-o"></i> hand-lizard-o</a></li>
+    <li><a href="http://fontawesome.io/icon/hand-paper-o"><i class="am-icon-hand-paper-o"></i> hand-paper-o</a></li>
+    <li><a href="http://fontawesome.io/icon/hand-peace-o"><i class="am-icon-hand-peace-o"></i> hand-peace-o</a></li>
+    <li><a href="http://fontawesome.io/icon/hand-pointer-o"><i class="am-icon-hand-pointer-o"></i> hand-pointer-o</a></li>
+    <li><a href="http://fontawesome.io/icon/hand-rock-o"><i class="am-icon-hand-rock-o"></i> hand-rock-o</a></li>
+    <li><a href="http://fontawesome.io/icon/hand-scissors-o"><i class="am-icon-hand-scissors-o"></i> hand-scissors-o</a></li>
+    <li><a href="http://fontawesome.io/icon/hand-spock-o"><i class="am-icon-hand-spock-o"></i> hand-spock-o</a></li>
+    <li><a href="http://fontawesome.io/icon/hand-paper-o"><i class="am-icon-hand-stop-o"></i> hand-stop-o <span class="text-muted">(alias)</span></a></li>
+    <li><a href="http://fontawesome.io/icon/hourglass"><i class="am-icon-hourglass"></i> hourglass</a></li>
+    <li><a href="http://fontawesome.io/icon/hourglass-start"><i class="am-icon-hourglass-1"></i> hourglass-1 <span class="text-muted">(alias)</span></a></li>
+    <li><a href="http://fontawesome.io/icon/hourglass-half"><i class="am-icon-hourglass-2"></i> hourglass-2 <span class="text-muted">(alias)</span></a></li>
+    <li><a href="http://fontawesome.io/icon/hourglass-end"><i class="am-icon-hourglass-3"></i> hourglass-3 <span class="text-muted">(alias)</span></a></li>
+    <li><a href="http://fontawesome.io/icon/hourglass-end"><i class="am-icon-hourglass-end"></i> hourglass-end</a></li>
+    <li><a href="http://fontawesome.io/icon/hourglass-half"><i class="am-icon-hourglass-half"></i> hourglass-half</a></li>
+    <li><a href="http://fontawesome.io/icon/hourglass-o"><i class="am-icon-hourglass-o"></i> hourglass-o</a></li>
+    <li><a href="http://fontawesome.io/icon/hourglass-start"><i class="am-icon-hourglass-start"></i> hourglass-start</a></li>
+    <li><a href="http://fontawesome.io/icon/houzz"><i class="am-icon-houzz"></i> houzz</a></li>
+    <li><a href="http://fontawesome.io/icon/i-cursor"><i class="am-icon-i-cursor"></i> i-cursor</a></li>
+    <li><a href="http://fontawesome.io/icon/industry"><i class="am-icon-industry"></i> industry</a></li>
+    <li><a href="http://fontawesome.io/icon/internet-explorer"><i class="am-icon-internet-explorer"></i> internet-explorer</a></li>
+    <li><a href="http://fontawesome.io/icon/map"><i class="am-icon-map"></i> map</a></li>
+    <li><a href="http://fontawesome.io/icon/map-o"><i class="am-icon-map-o"></i> map-o</a></li>
+    <li><a href="http://fontawesome.io/icon/map-pin"><i class="am-icon-map-pin"></i> map-pin</a></li>
+    <li><a href="http://fontawesome.io/icon/map-signs"><i class="am-icon-map-signs"></i> map-signs</a></li>
+    <li><a href="http://fontawesome.io/icon/mouse-pointer"><i class="am-icon-mouse-pointer"></i> mouse-pointer</a></li>
+    <li><a href="http://fontawesome.io/icon/object-group"><i class="am-icon-object-group"></i> object-group</a></li>
+    <li><a href="http://fontawesome.io/icon/object-ungroup"><i class="am-icon-object-ungroup"></i> object-ungroup</a></li>
+    <li><a href="http://fontawesome.io/icon/odnoklassniki"><i class="am-icon-odnoklassniki"></i> odnoklassniki</a></li>
+    <li><a href="http://fontawesome.io/icon/odnoklassniki-square"><i class="am-icon-odnoklassniki-square"></i> odnoklassniki-square</a></li>
+    <li><a href="http://fontawesome.io/icon/opencart"><i class="am-icon-opencart"></i> opencart</a></li>
+    <li><a href="http://fontawesome.io/icon/opera"><i class="am-icon-opera"></i> opera</a></li>
+    <li><a href="http://fontawesome.io/icon/optin-monster"><i class="am-icon-optin-monster"></i> optin-monster</a></li>
+    <li><a href="http://fontawesome.io/icon/registered"><i class="am-icon-registered"></i> registered</a></li>
+    <li><a href="http://fontawesome.io/icon/safari"><i class="am-icon-safari"></i> safari</a></li>
+    <li><a href="http://fontawesome.io/icon/sticky-note"><i class="am-icon-sticky-note"></i> sticky-note</a></li>
+    <li><a href="http://fontawesome.io/icon/sticky-note-o"><i class="am-icon-sticky-note-o"></i> sticky-note-o</a></li>
+    <li><a href="http://fontawesome.io/icon/television"><i class="am-icon-television"></i> television</a></li>
+    <li><a href="http://fontawesome.io/icon/trademark"><i class="am-icon-trademark"></i> trademark</a></li>
+    <li><a href="http://fontawesome.io/icon/tripadvisor"><i class="am-icon-tripadvisor"></i> tripadvisor</a></li>
+    <li><a href="http://fontawesome.io/icon/television"><i class="am-icon-tv"></i> tv <span class="text-muted">(alias)</span></a></li>
+    <li><a href="http://fontawesome.io/icon/vimeo"><i class="am-icon-vimeo"></i> vimeo</a></li>
+    <li><a href="http://fontawesome.io/icon/wikipedia-w"><i class="am-icon-wikipedia-w"></i> wikipedia-w</a></li>
+    <li><a href="http://fontawesome.io/icon/y-combinator"><i class="am-icon-y-combinator"></i> y-combinator</a></li>
+    <li><a href="http://fontawesome.io/icon/y-combinator"><i class="am-icon-yc"></i> yc <span class="text-muted">(alias)</span></a></li>
   </ul>
 </section>
 

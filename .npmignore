@@ -2,7 +2,9 @@
 /vendor
 /docs
 node_modules
-/fonts
+
+# fixes #874
+# /fonts
 
 .bower-cache
 .bower-registry

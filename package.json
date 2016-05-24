@@ -2,7 +2,7 @@
   "name": "amazeui",
   "title": "Amaze UI",
   "description": "Sleek, intuitive, and powerful front-end framework for faster and easier web development.",
-  "version": "2.6.2",
+  "version": "2.7.0",
   "keywords": [
     "AMUI",
     "Amaze UI",
@@ -35,7 +35,7 @@
   "bugs": {
     "url": "https://github.com/allmobilize/amazeui/issues"
   },
-  "dependencies": {
+  "peerDependencies": {
     "jquery": "^2.2.3"
   },
   "devDependencies": {

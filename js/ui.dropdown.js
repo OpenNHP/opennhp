@@ -141,9 +141,12 @@ Dropdown.prototype.checkDimensions = function(e) {
   }
 
   var $dropdown = this.$dropdown;
-  if(e && e.offset) {
-    $dropdown.offset(e.offset); 
+  
+  // @see #873
+  if (e && e.offset) {
+    $dropdown.offset(e.offset);
   }
+
   var offset = $dropdown.offset();
   var width = $dropdown.outerWidth();
   var boundaryWidth = this.$boundary.width();

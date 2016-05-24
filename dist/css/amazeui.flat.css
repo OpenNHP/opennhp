@@ -1,4 +1,4 @@
-/*! Amaze UI v2.6.2 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-04-22T15:38:46+0800 */
+/*! Amaze UI v2.7.0 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-05-24T10:02:50+0800 */
 /* ==========================================================================
    Component: Base
  ============================================================================ */
@@ -1698,7 +1698,7 @@ a.am-btn-default:visited {
 .am-btn-default:focus,
 .am-btn-default:active,
 .am-btn-default.am-active,
-.am-active .am-btn-default.am-dropdown-toggle {
+.am-dropdown.am-active .am-btn-default.am-dropdown-toggle {
   color: #444;
   border-color: #c7c7c7;
 }
@@ -1708,7 +1708,7 @@ a.am-btn-default:visited {
 }
 .am-btn-default:active,
 .am-btn-default.am-active,
-.am-active .am-btn-default.am-dropdown-toggle {
+.am-dropdown.am-active .am-btn-default.am-dropdown-toggle {
   background-image: none;
   background-color: #c2c2c2;
 }
@@ -1746,7 +1746,7 @@ a.am-btn-primary:visited {
 .am-btn-primary:focus,
 .am-btn-primary:active,
 .am-btn-primary.am-active,
-.am-active .am-btn-primary.am-dropdown-toggle {
+.am-dropdown.am-active .am-btn-primary.am-dropdown-toggle {
   color: #fff;
   border-color: #0a6999;
 }
@@ -1756,7 +1756,7 @@ a.am-btn-primary:visited {
 }
 .am-btn-primary:active,
 .am-btn-primary.am-active,
-.am-active .am-btn-primary.am-dropdown-toggle {
+.am-dropdown.am-active .am-btn-primary.am-dropdown-toggle {
   background-image: none;
   background-color: #0a628f;
 }
@@ -1794,7 +1794,7 @@ a.am-btn-secondary:visited {
 .am-btn-secondary:focus,
 .am-btn-secondary:active,
 .am-btn-secondary.am-active,
-.am-active .am-btn-secondary.am-dropdown-toggle {
+.am-dropdown.am-active .am-btn-secondary.am-dropdown-toggle {
   color: #fff;
   border-color: #0f9ae0;
 }
@@ -1804,7 +1804,7 @@ a.am-btn-secondary:visited {
 }
 .am-btn-secondary:active,
 .am-btn-secondary.am-active,
-.am-active .am-btn-secondary.am-dropdown-toggle {
+.am-dropdown.am-active .am-btn-secondary.am-dropdown-toggle {
   background-image: none;
   background-color: #0e93d7;
 }
@@ -1842,7 +1842,7 @@ a.am-btn-warning:visited {
 .am-btn-warning:focus,
 .am-btn-warning:active,
 .am-btn-warning.am-active,
-.am-active .am-btn-warning.am-dropdown-toggle {
+.am-dropdown.am-active .am-btn-warning.am-dropdown-toggle {
   color: #fff;
   border-color: #c85e0b;
 }
@@ -1852,7 +1852,7 @@ a.am-btn-warning:visited {
 }
 .am-btn-warning:active,
 .am-btn-warning.am-active,
-.am-active .am-btn-warning.am-dropdown-toggle {
+.am-dropdown.am-active .am-btn-warning.am-dropdown-toggle {
   background-image: none;
   background-color: #be590a;
 }
@@ -1890,7 +1890,7 @@ a.am-btn-danger:visited {
 .am-btn-danger:focus,
 .am-btn-danger:active,
 .am-btn-danger.am-active,
-.am-active .am-btn-danger.am-dropdown-toggle {
+.am-dropdown.am-active .am-btn-danger.am-dropdown-toggle {
   color: #fff;
   border-color: #c62b26;
 }
@@ -1900,7 +1900,7 @@ a.am-btn-danger:visited {
 }
 .am-btn-danger:active,
 .am-btn-danger.am-active,
-.am-active .am-btn-danger.am-dropdown-toggle {
+.am-dropdown.am-active .am-btn-danger.am-dropdown-toggle {
   background-image: none;
   background-color: #be2924;
 }
@@ -1938,7 +1938,7 @@ a.am-btn-success:visited {
 .am-btn-success:focus,
 .am-btn-success:active,
 .am-btn-success.am-active,
-.am-active .am-btn-success.am-dropdown-toggle {
+.am-dropdown.am-active .am-btn-success.am-dropdown-toggle {
   color: #fff;
   border-color: #429842;
 }
@@ -1948,7 +1948,7 @@ a.am-btn-success:visited {
 }
 .am-btn-success:active,
 .am-btn-success.am-active,
-.am-active .am-btn-success.am-dropdown-toggle {
+.am-dropdown.am-active .am-btn-success.am-dropdown-toggle {
   background-image: none;
   background-color: #3f913f;
 }
@@ -4601,8 +4601,8 @@ a.am-close:hover {
 ============================================================================= */
 @font-face {
   font-family: 'FontAwesome';
-  src: url('../fonts/fontawesome-webfont.eot?v=4.5.0');
-  src: url('../fonts/fontawesome-webfont.eot?#iefix&v=4.5.0') format('embedded-opentype'), url('../fonts/fontawesome-webfont.woff2?v=4.5.0') format('woff2'), url('../fonts/fontawesome-webfont.woff?v=4.5.0') format('woff'), url('../fonts/fontawesome-webfont.ttf?v=4.5.0') format('truetype'), url('../fonts/fontawesome-webfont.svg?v=4.5.0#fontawesomeregular') format('svg');
+  src: url('../fonts/fontawesome-webfont.eot?v=4.6.3');
+  src: url('../fonts/fontawesome-webfont.eot?#iefix&v=4.6.3') format('embedded-opentype'), url('../fonts/fontawesome-webfont.woff2?v=4.6.3') format('woff2'), url('../fonts/fontawesome-webfont.woff?v=4.6.3') format('woff'), url('../fonts/fontawesome-webfont.ttf?v=4.6.3') format('truetype'), url('../fonts/fontawesome-webfont.svg?v=4.6.3#fontawesomeregular') format('svg');
   font-weight: normal;
   font-style: normal;
 }
@@ -5929,7 +5929,7 @@ a.am-close:hover {
 .am-icon-digg:before {
   content: "\f1a6";
 }
-.am-icon-pied-piper:before {
+.am-icon-pied-piper-pp:before {
   content: "\f1a7";
 }
 .am-icon-pied-piper-alt:before {
@@ -6055,6 +6055,7 @@ a.am-close:hover {
   content: "\f1ce";
 }
 .am-icon-ra:before,
+.am-icon-resistance:before,
 .am-icon-rebel:before {
   content: "\f1d0";
 }
@@ -6629,6 +6630,99 @@ a.am-close:hover {
 }
 .am-icon-percent:before {
   content: "\f295";
+}
+.am-icon-gitlab:before {
+  content: "\f296";
+}
+.am-icon-wpbeginner:before {
+  content: "\f297";
+}
+.am-icon-wpforms:before {
+  content: "\f298";
+}
+.am-icon-envira:before {
+  content: "\f299";
+}
+.am-icon-universal-access:before {
+  content: "\f29a";
+}
+.am-icon-wheelchair-alt:before {
+  content: "\f29b";
+}
+.am-icon-question-circle-o:before {
+  content: "\f29c";
+}
+.am-icon-blind:before {
+  content: "\f29d";
+}
+.am-icon-audio-description:before {
+  content: "\f29e";
+}
+.am-icon-volume-control-phone:before {
+  content: "\f2a0";
+}
+.am-icon-braille:before {
+  content: "\f2a1";
+}
+.am-icon-assistive-listening-systems:before {
+  content: "\f2a2";
+}
+.am-icon-asl-interpreting:before,
+.am-icon-american-sign-language-interpreting:before {
+  content: "\f2a3";
+}
+.am-icon-deafness:before,
+.am-icon-hard-of-hearing:before,
+.am-icon-deaf:before {
+  content: "\f2a4";
+}
+.am-icon-glide:before {
+  content: "\f2a5";
+}
+.am-icon-glide-g:before {
+  content: "\f2a6";
+}
+.am-icon-signing:before,
+.am-icon-sign-language:before {
+  content: "\f2a7";
+}
+.am-icon-low-vision:before {
+  content: "\f2a8";
+}
+.am-icon-viadeo:before {
+  content: "\f2a9";
+}
+.am-icon-viadeo-square:before {
+  content: "\f2aa";
+}
+.am-icon-snapchat:before {
+  content: "\f2ab";
+}
+.am-icon-snapchat-ghost:before {
+  content: "\f2ac";
+}
+.am-icon-snapchat-square:before {
+  content: "\f2ad";
+}
+.am-icon-pied-piper:before {
+  content: "\f2ae";
+}
+.am-icon-first-order:before {
+  content: "\f2b0";
+}
+.am-icon-yoast:before {
+  content: "\f2b1";
+}
+.am-icon-themeisle:before {
+  content: "\f2b2";
+}
+.am-icon-google-plus-circle:before,
+.am-icon-google-plus-official:before {
+  content: "\f2b3";
+}
+.am-icon-fa:before,
+.am-icon-font-awesome:before {
+  content: "\f2b4";
 }
 /* Modifier: `am-icon-spin`
 ============================================================================= */

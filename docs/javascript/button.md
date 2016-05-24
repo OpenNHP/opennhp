@@ -233,7 +233,7 @@ $('.btn-loading-example').click(function () {
 
 设置默认选中状态涉及两处：
 
-- `<label>` 上添加 `am-active` 类名（`2.6.2+` 无需添加此类名）；
+- `<label>` 上添加 `am-active` 类名（`2.7.0+` 无需添加此类名）；
 - `<input>` 上添加 `checked` 属性。
 
 `````html

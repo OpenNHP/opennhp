@@ -1,6 +1,30 @@
 # Amaze UI Change Log
 ---
 
+## Amaze UI 2.7.0 (2016.05.24)
+
+**CSS**:
+
+- `Update` 升级 FontAwesome 至 `4.6.3`。
+
+**JS**:
+
+- `Update` JS 插件更新
+  - Hammer.js 2.0.8
+  - iScroll-lite 5.2.0
+  - FlexSlider 2.6.1
+  - PinchZoom: 使用 `requestAnimationFrame` 替换 `setInterval`
+- `Fixed` #872 修复 Dropdown 嵌套在包含 `.am-active` 状态的元素中的样式问题；
+- `Improved` #866 简化 radio/checkbox 按钮组默认选中状态设置（只需在 `input` 上添加 `checked` 属性）。
+
+**NPM**:
+
+- `Improved` #874 NPM 包根目录下添加 `fonts` 文件夹，解决 Webpack 引用 Less 源文件报错问题。
+
+**示例：**
+
+- `Improved` #863 后台模板容器内滚动条 iOS 上卡顿问题。
+
 ## Amaze UI 2.6.2 (2016.04.22)
 
 - `Fixed` #860，Selected 单选点击已选中的项时关闭下拉框（和 `<select>` 保持一致）；

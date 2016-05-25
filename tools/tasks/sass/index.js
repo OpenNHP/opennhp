@@ -1,7 +1,5 @@
 'use strict';
 
-/* jshint node: true */
-
 var exec = require('child_process').exec;
 var path = require('path');
 var format = require('util').format;
@@ -17,8 +15,8 @@ var paths = {
   sassRepo: '../amazeui-sass'
 };
 
-gulp.task('sass:clean', function(callback) {
-  del(sassPath, callback);
+gulp.task('sass:clean', function() {
+  return del(sassPath);
 });
 
 gulp.task('sass:copy:less', function() {
@@ -44,7 +42,7 @@ gulp.task('sass:convert', function() {
     paths.scss + '/*.scss',
     paths.widget + '/*/src/*.scss'
   ])
-    // change less/ dir to scss/ on imports
+  // change less/ dir to scss/ on imports
     .pipe(replace(/\/less\//g, '/scss/'))
     // gradient filter
     .pipe(replace(/filter:\s*e\(\%\("progid:DXImageTransform\.Microsoft\.gradient\(startColorstr='\%d',\s*endColorstr='\%d',\s*GradientType=(\d)\)",\s*argb\((@.+)*\),\s*argb\((@.*)\)\)\)/g, function(all, $1, $2, $3) {
@@ -67,6 +65,10 @@ gulp.task('sass:convert', function() {
       function(match, $1, $2) {
         return format('@include %s(%s);', $1, $2.replace(/;/g, ','));
       }))
+    // button-variant mixin
+    .pipe(replace('a&:visited {', '$selector: &;\na#{$selector}:visited {'))
+    // thumbnail.less
+    .pipe(replace('img&,', '$selector: &;\nimg#{$selector},'))
     // button.less
     .pipe(replace(/\.(button-\w+)\((.*)\);/g,
       function(match, $1, $2) {
@@ -90,6 +92,11 @@ gulp.task('sass:convert', function() {
     .pipe(replace(/\.square\((.*)\);/g, '@include square($1);'))
     // .border-*-radius();
     .pipe(replace(/\.(border-\w+-radius)\((.*)\)/g, '@include $1($2)'))
+    // animation.less
+    .pipe(replace(/\.(variant-animation-delay)\((.*)\);/g,
+      function(match, $1, $2) {
+        return format('@include %s(%s);', $1, $2.replace(/;/g, ','));
+      }))
     // comment.less
     .pipe(replace(/\.(comment-highlight-variant)\((.*)\);/g,
       function(match, $1, $2) {
@@ -206,10 +213,11 @@ gulp.task('sass:deploy:misc', function() {
 });
 
 gulp.task('sass:test', function(callback) {
-  exec('sass ../amazeui-sass/scss/amazeui.scss', function(err, stdout, stderr) {
-    // console.log(stdout);
-    console.log(stderr);
-  });
+  exec('node-sass ../amazeui-sass/scss/amazeui.scss',
+    function(err, stdout, stderr) {
+      // console.log(stdout);
+      console.log(stderr);
+    });
   callback();
 });
 

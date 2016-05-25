@@ -147,6 +147,7 @@ th {
 /* Bordered version */
 .#{$ns}table-bordered {
   border: 1px solid $table-border-color;
+  border-left: none;
   // @include hook-table-bordered();
 
   > thead,
@@ -157,9 +158,10 @@ th {
       > td {
         border-left: 1px solid $table-border-color;
 
-        &:first-child {
+        // 避免有 rowspan 的时候后面的行没有左边框
+        /*&:first-child {
           border-left: none;
-        }
+        }*/
       }
     }
   }
@@ -241,6 +243,40 @@ th {
   > th {
     background-color: $table-bg-hover;
     // @include hook-table-hover();
+  }
+}
+
+
+// Modifiers: compact
+// =============================================================================
+
+.#{$ns}table-compact {
+  > thead,
+  > tbody,
+  > tfoot {
+    > tr {
+      > th,
+      > td {
+        padding: $table-cell-padding-compact;
+      }
+    }
+  }
+}
+
+
+// Modifiers: centered
+// =============================================================================
+
+.#{$ns}table-centered {
+  > thead,
+  > tbody,
+  > tfoot {
+    > tr {
+      > th,
+      > td {
+        text-align: center;
+      }
+    }
   }
 }
 

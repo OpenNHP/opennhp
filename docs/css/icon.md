@@ -71,7 +71,7 @@ __LESS 用户__可以调用 mixin 编写样式：
 
 ## Icon button
 
-在 Icon 上添加 `.am-btn-icon` class。
+在 Icon 上添加 `.am-icon-btn` class。
 
 如果需要设置 Icon Button 的颜色，可以添加以下 class：
 

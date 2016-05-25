@@ -225,7 +225,7 @@ $(function() {
 
 **存在问题：**
 
-出于性能考虑，每个 Modal 实例都存储在对应元素的 `$('.am-modal').data('am.modal')` 属性中，`onConfirm`/`onCancel` 会保存第一次运行 Modal 时候的数据，导致在某些场景不能按照预期工作（[#274](https://github.com/allmobilize/amazeui/issues/274#issuecomment-65182344)）。`2.1` 中做了一些处理，但并不是很如意，大家有更好的方案可以提供给我们。
+出于性能考虑，每个 Modal 实例都存储在对应元素的 `$('.am-modal').data('amui.modal')` 属性中，`onConfirm`/`onCancel` 会保存第一次运行 Modal 时候的数据，导致在某些场景不能按照预期工作（[#274](https://github.com/allmobilize/amazeui/issues/274#issuecomment-65182344)）。`2.1` 中做了一些处理，但并不是很如意，大家有更好的方案可以提供给我们。
 
 可以选择的处理方式：
 

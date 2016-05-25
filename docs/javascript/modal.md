@@ -230,7 +230,7 @@ $(function() {
 可以选择的处理方式：
 
 - **法一**：通过 `relatedTarget` 这个钩子获取数据，如上面的演示，以该元素为桥梁获取想要的数据（**2.1 开始支持**）；
-- 法二：按照[**这种方式**](http://jsbin.com/fahawe/1/edit?html,output) 每次都重新给这两个参数赋值；
+- 法二：按照[**这种方式**](http://jsbin.com/fahawe/edit?html,output) 每次都重新给这两个参数赋值；
 - 法三：Confirm 关闭后移除暂存的实例，再次调用时重新初始化；
 
 ```javascript

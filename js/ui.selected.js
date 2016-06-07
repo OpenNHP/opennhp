@@ -272,7 +272,7 @@ Selected.prototype.setChecked = function(item) {
  * syncData
  *
  * @description if `item` set, only sync `item` related option
- * @param {Object} item
+ * @param {Object} [item]
  */
 Selected.prototype.syncData = function(item) {
   var _this = this;
@@ -353,7 +353,6 @@ Selected.prototype.bindEvents = function() {
 
     this.observer.observe(this.$element[0], {
       childList: true,
-      attributes: true,
       subtree: true,
       characterData: true
     });

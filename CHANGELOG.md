@@ -1,6 +1,19 @@
 # Amaze UI Change Log
 ---
 
+
+### 2016.06 W2
+
+**JS**:
+
+- `Fixed` #880 Selected `change` 事件在支持 MutationObserver 的浏览器上无限触发问题。
+
+### 2016.06 W1
+
+**CSS**:
+
+- `Improved` #878 面包屑导航分隔符乱码问题。
+
 ## Amaze UI 2.7.0 (2016.05.24)
 
 **CSS**:

@@ -4,6 +4,10 @@
 
 ### 2016.06 W2
 
+**CSS**:
+
+- `Improved` #868 处理 `date`/`datetime-local` 类型的 `input` 在较旧版本 Safari 等浏览器上高度与其他类型的输入框不一致问题。
+
 **JS**:
 
 - `Fixed` #880 Selected `change` 事件在支持 MutationObserver 的浏览器上无限触发问题。

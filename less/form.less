@@ -105,6 +105,8 @@ output {
 .@{ns}form textarea,
 .@{ns}form input[type="text"],
 .@{ns}form input[type="password"],
+// `datetime` has been removed from WHATWG HTML
+// https://github.com/whatwg/html/issues/336
 .@{ns}form input[type="datetime"],
 .@{ns}form input[type="datetime-local"],
 .@{ns}form input[type="date"],
@@ -187,6 +189,31 @@ output {
     }
   }
 }
+
+// #868
+// fixes datetime input height on old webkit browsers
+// @see http://stackoverflow.com/questions/18967852/input-type-date-in-ios-7
+input[type="datetime-local"],
+input[type="date"] {
+  .datetime-height(@font-size) {
+    @rem-height: @font-size * (unit(@input-padding) * 2 + @form-line-height);
+    height: floor(unit(@rem-height) * 10 + 2) * 1px;
+  }
+
+  .@{ns}form &,
+  &.@{ns}form-field {
+    .datetime-height(@form-font-size);
+
+    &.@{ns}input-sm {
+      .datetime-height(@form-font-size-sm);
+    }
+
+    .@{ns}input-lg {
+      .datetime-height(@form-font-size-lg);
+    }
+  }
+}
+
 
 /* help text */
 

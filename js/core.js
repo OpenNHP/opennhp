@@ -560,7 +560,7 @@ $(document).on('changed.dom.amui', function(e) {
 });
 
 $(function() {
-  var $body = $('body');
+  var $body = $(document.body);
 
   UI.DOMReady = true;
 

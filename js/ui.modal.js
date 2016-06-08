@@ -14,7 +14,7 @@ var supportTransition = UI.support.transition;
 var Modal = function(element, options) {
   this.options = $.extend({}, Modal.DEFAULTS, options || {});
   this.$element = $(element);
-  this.$dialog =   this.$element.find('.am-modal-dialog');
+  this.$dialog = this.$element.find('.am-modal-dialog');
 
   if (!this.$element.attr('id')) {
     this.$element.attr('id', UI.utils.generateGUID('am-modal'));
@@ -26,8 +26,10 @@ var Modal = function(element, options) {
   this.isLoading = this.$element.hasClass('am-modal-loading');
   this.active = this.transitioning = this.relatedTarget = null;
   this.dimmer = this.options.dimmer ? dimmer : {
-    open: function() {},
-    close: function() {}
+    open: function() {
+    },
+    close: function() {
+    }
   };
 
   this.events();
@@ -101,7 +103,7 @@ Modal.prototype.open = function(relatedTarget) {
   // apply Modal width/height if set
   if (!isPopup && !this.isActions) {
     if (width) {
-      style.width =  parseInt(width, 10) + 'px';
+      style.width = parseInt(width, 10) + 'px';
     }
 
     if (height) {
@@ -118,9 +120,9 @@ Modal.prototype.open = function(relatedTarget) {
   this.transitioning = 1;
 
   var complete = function() {
-    $element.trigger(
-      $.Event('opened.modal.amui', {relatedTarget: relatedTarget})
-    );
+    $element.trigger($.Event('opened.modal.amui', {
+      relatedTarget: relatedTarget
+    }));
     this.transitioning = 0;
 
     // Prompt auto focus
@@ -155,8 +157,9 @@ Modal.prototype.close = function(relatedTarget) {
     this.dimmer.close($element, true);
   }
 
-  this.$element.trigger($.Event('close.modal.amui',
-    {relatedTarget: relatedTarget}));
+  this.$element.trigger($.Event('close.modal.amui', {
+    relatedTarget: relatedTarget
+  }));
 
   this.transitioning = 1;
 
@@ -170,8 +173,8 @@ Modal.prototype.close = function(relatedTarget) {
     this.active = false;
   };
 
-  $element.removeClass(options.className.active).
-    addClass(options.className.out);
+  $element.removeClass(options.className.active)
+    .addClass(options.className.out);
 
   if (!supportTransition) {
     return complete.call(this);
@@ -182,9 +185,10 @@ Modal.prototype.close = function(relatedTarget) {
 };
 
 Modal.prototype.events = function() {
-  var options = this.options;
   var _this = this;
+  var options = this.options;
   var $element = this.$element;
+  var $dimmer = this.dimmer.$element;
   var $ipt = $element.find('.am-modal-prompt-input');
   var $confirm = $element.find('[data-am-modal-confirm]');
   var $cancel = $element.find('[data-am-modal-cancel]');
@@ -201,22 +205,25 @@ Modal.prototype.events = function() {
   // close via Esc key
   if (this.options.cancelable) {
     $element.on('keyup.modal.amui', function(e) {
-        if (_this.active && e.which === 27) {
-          $element.trigger('cancel.modal.amui');
-          _this.close();
-        }
-      });
+      if (_this.active && e.which === 27) {
+        $element.trigger('cancel.modal.amui');
+        _this.close();
+      }
+    });
   }
 
   // Close Modal when dimmer clicked
   if (this.options.dimmer && this.options.closeViaDimmer && !this.isLoading) {
-    this.dimmer.$element.on('click.dimmer.modal.amui', function(e) {
+    $dimmer.on('click.dimmer.modal.amui', function() {
       _this.close();
     });
   }
 
   // Close Modal when button clicked
-  $element.on('click.close.modal.amui', '[data-am-modal-close], .am-modal-btn', function(e) {
+  $element.on(
+    'click.close.modal.amui',
+    '[data-am-modal-close], .am-modal-btn',
+    function(e) {
       e.preventDefault();
       var $this = $(this);
 
@@ -227,6 +234,13 @@ Modal.prototype.events = function() {
       } else {
         _this.close();
       }
+    }
+  )
+    // trigger dimmer click event if non-dialog area clicked
+    // fixes #882 caused by https://github.com/amazeui/amazeui/commit/b6be7719681193f1c4cb04af89cb9fd9f4422163
+    .on('click', function(e) {
+      e.stopPropagation();
+      $(e.target).is($element) && $dimmer.trigger('click.dimmer.modal.amui');
     });
 
   $confirm.on('click.confirm.modal.amui',
@@ -237,10 +251,10 @@ Modal.prototype.events = function() {
     });
 
   $cancel.on('click.cancel.modal.amui', function() {
-      $element.trigger($.Event('cancel.modal.amui', {
-        trigger: this
-      }));
-    });
+    $element.trigger($.Event('cancel.modal.amui', {
+      trigger: this
+    }));
+  });
 
   $element.on('confirm.modal.amui', function(e) {
     e.data = getData();
@@ -276,7 +290,7 @@ $doc.on('click.modal.amui.data-api', '[data-am-modal]', function() {
   var $this = $(this);
   var options = UI.utils.parseOptions($this.attr('data-am-modal'));
   var $target = $(options.target ||
-  (this.href && this.href.replace(/.*(?=#[^\s]+$)/, '')));
+    (this.href && this.href.replace(/.*(?=#[^\s]+$)/, '')));
   var option = $target.data('amui.modal') ? 'toggle' : options;
 
   Plugin.call($target, option, this);

@@ -8,10 +8,8 @@
 
 **JS**:
 
+- `Fixed` 修复 ScrollSpyNav 自动初始化 API 和参数 API 不一致问题，统一为 `data-am-scrollspynav`;
 - `Fixed` Selected 初始化时，没有正确处理 `<select>` 元素的 `disabled`  属性。
-
-
-
 
 
 ### 2016.06 W2

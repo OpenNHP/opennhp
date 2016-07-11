@@ -171,12 +171,19 @@ FontAwesome 在绘制图标的时候不同图标宽度有差异， 添加 `.am-i
 
 ### 关于部分奇葩用户代理不显示字体图标
 
+**2016.07.11 update:**
+
+经[网友测试研究](https://github.com/amazeui/amazeui/issues/193#issuecomment-231581983)，某些安卓手机（如酷派某些型号）不显示字体图标，原因出在 **`@font-face` 中引入了 `svg` 格式的字体，这些机型解析时出错，即便包含其他格式的字体，也无法正确显示**。
+
+解决方法是**删除 `svg` 格式字体的引用**，`svg` 格式提供给 [iOS Safari `4.1-` 使用](https://css-tricks.com/snippets/css/using-font-face/#article-header-id-9)，删除并无负面影响。Amaze UI `2.7.1` 中已经[做删除处理](https://github.com/amazeui/amazeui/commit/f8567569296fc24a660275e190ea10647ba5f564)。
+
+
 以酷派为代表的部分安卓手机自带浏览器、微信/QQ WebView 等用户代理无法正常显示 Icon Font，原因可能是这些用户代理无法正确处理伪元素 `content` 的五位数的 Icon Font 十六进制编码，详情参考 [Iconfont 在移动端遇到问题的探讨](http://www.cnblogs.com/ljack/p/3751678.html)，可以通过[这个页面](http://www.w3cmark.com/demo/iconfont.html)进行测试。
 
-解决方式有两种：
+~~解决方式有两种：~~
 
 - ~~**将 Icon Font 编码限制在 4 位**：Amaze UI 直接使用 Font Awesome，不可能去调整近 500 个图标的编码。~~
-- **将 Icon Font 的编码直接以内容的形式写进 HTML**。
+- ~~**将 Icon Font 的编码直接以内容的形式写进 HTML**。~~
 
 `````html
 <span>&#xf09b; What a fuck.</span>

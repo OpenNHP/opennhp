@@ -1,4 +1,4 @@
-/*! Amaze UI v2.7.0 ~ IE8 Fucker | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-05-24T10:02:50+0800 */ 
+/*! Amaze UI v2.7.1 ~ IE8 Fucker | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-07-11T11:22:42+0800 */ 
 /*!
  * https://github.com/es-shims/es5-shim
  * @license es5-shim Copyright 2009-2015 by contributors, MIT License

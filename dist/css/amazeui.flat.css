@@ -1,4 +1,4 @@
-/*! Amaze UI v2.7.0 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-05-24T10:02:50+0800 */
+/*! Amaze UI v2.7.1 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-07-11T11:22:42+0800 */
 /* ==========================================================================
    Component: Base
  ============================================================================ */
@@ -2622,6 +2622,24 @@ fieldset[disabled] .am-form-field {
 .am-form select[multiple="multiple"] {
   background-image: none;
 }
+.am-form input[type="datetime-local"],
+.am-form input[type="date"],
+input[type="datetime-local"].am-form-field,
+input[type="date"].am-form-field {
+  height: 37px;
+}
+.am-form input[type="datetime-local"].am-input-sm,
+.am-form input[type="date"].am-input-sm,
+input[type="datetime-local"].am-form-field.am-input-sm,
+input[type="date"].am-form-field.am-input-sm {
+  height: 32px;
+}
+.am-form input[type="datetime-local"] .am-input-lg,
+.am-form input[type="date"] .am-input-lg,
+input[type="datetime-local"].am-form-field .am-input-lg,
+input[type="date"].am-form-field .am-input-lg {
+  height: 41px;
+}
 /* help text */
 .am-form-help {
   display: block;
@@ -3391,7 +3409,7 @@ fieldset[disabled] .am-checkbox-inline {
   margin-right: 5px;
 }
 .am-breadcrumb > li + li:before {
-  content: "»\00a0";
+  content: "\00bb\00a0";
   padding: 0 8px;
   color: #ccc;
 }
@@ -4602,7 +4620,7 @@ a.am-close:hover {
 @font-face {
   font-family: 'FontAwesome';
   src: url('../fonts/fontawesome-webfont.eot?v=4.6.3');
-  src: url('../fonts/fontawesome-webfont.eot?#iefix&v=4.6.3') format('embedded-opentype'), url('../fonts/fontawesome-webfont.woff2?v=4.6.3') format('woff2'), url('../fonts/fontawesome-webfont.woff?v=4.6.3') format('woff'), url('../fonts/fontawesome-webfont.ttf?v=4.6.3') format('truetype'), url('../fonts/fontawesome-webfont.svg?v=4.6.3#fontawesomeregular') format('svg');
+  src: url('../fonts/fontawesome-webfont.eot?#iefix&v=4.6.3') format('embedded-opentype'), url('../fonts/fontawesome-webfont.woff2?v=4.6.3') format('woff2'), url('../fonts/fontawesome-webfont.woff?v=4.6.3') format('woff'), url('../fonts/fontawesome-webfont.ttf?v=4.6.3') format('truetype');
   font-weight: normal;
   font-style: normal;
 }

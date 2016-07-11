@@ -1,4 +1,4 @@
-/*! Amaze UI v2.7.0 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-05-24T10:02:50+0800 */ 
+/*! Amaze UI v2.7.1 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-07-11T11:22:42+0800 */ 
 (function webpackUniversalModuleDefinition(root, factory) {
 	if(typeof exports === 'object' && typeof module === 'object')
 		module.exports = factory(require("jquery"));
@@ -138,7 +138,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	var doc = window.document;
 	var $html = $('html');
 
-	UI.VERSION = '2.7.0';
+	UI.VERSION = '2.7.1';
 
 	UI.support = {};
 
@@ -685,7 +685,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 	$(function() {
-	  var $body = $('body');
+	  var $body = $(document.body);
 
 	  UI.DOMReady = true;
 
@@ -8004,7 +8004,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	var Modal = function(element, options) {
 	  this.options = $.extend({}, Modal.DEFAULTS, options || {});
 	  this.$element = $(element);
-	  this.$dialog =   this.$element.find('.am-modal-dialog');
+	  this.$dialog = this.$element.find('.am-modal-dialog');
 
 	  if (!this.$element.attr('id')) {
 	    this.$element.attr('id', UI.utils.generateGUID('am-modal'));
@@ -8016,8 +8016,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	  this.isLoading = this.$element.hasClass('am-modal-loading');
 	  this.active = this.transitioning = this.relatedTarget = null;
 	  this.dimmer = this.options.dimmer ? dimmer : {
-	    open: function() {},
-	    close: function() {}
+	    open: function() {
+	    },
+	    close: function() {
+	    }
 	  };
 
 	  this.events();
@@ -8091,7 +8093,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  // apply Modal width/height if set
 	  if (!isPopup && !this.isActions) {
 	    if (width) {
-	      style.width =  parseInt(width, 10) + 'px';
+	      style.width = parseInt(width, 10) + 'px';
 	    }
 
 	    if (height) {
@@ -8108,9 +8110,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	  this.transitioning = 1;
 
 	  var complete = function() {
-	    $element.trigger(
-	      $.Event('opened.modal.amui', {relatedTarget: relatedTarget})
-	    );
+	    $element.trigger($.Event('opened.modal.amui', {
+	      relatedTarget: relatedTarget
+	    }));
 	    this.transitioning = 0;
 
 	    // Prompt auto focus
@@ -8145,8 +8147,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	    this.dimmer.close($element, true);
 	  }
 
-	  this.$element.trigger($.Event('close.modal.amui',
-	    {relatedTarget: relatedTarget}));
+	  this.$element.trigger($.Event('close.modal.amui', {
+	    relatedTarget: relatedTarget
+	  }));
 
 	  this.transitioning = 1;
 
@@ -8160,8 +8163,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	    this.active = false;
 	  };
 
-	  $element.removeClass(options.className.active).
-	    addClass(options.className.out);
+	  $element.removeClass(options.className.active)
+	    .addClass(options.className.out);
 
 	  if (!supportTransition) {
 	    return complete.call(this);
@@ -8172,9 +8175,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 	Modal.prototype.events = function() {
-	  var options = this.options;
 	  var _this = this;
+	  var options = this.options;
 	  var $element = this.$element;
+	  var $dimmer = this.dimmer.$element;
 	  var $ipt = $element.find('.am-modal-prompt-input');
 	  var $confirm = $element.find('[data-am-modal-confirm]');
 	  var $cancel = $element.find('[data-am-modal-cancel]');
@@ -8191,22 +8195,25 @@ return /******/ (function(modules) { // webpackBootstrap
 	  // close via Esc key
 	  if (this.options.cancelable) {
 	    $element.on('keyup.modal.amui', function(e) {
-	        if (_this.active && e.which === 27) {
-	          $element.trigger('cancel.modal.amui');
-	          _this.close();
-	        }
-	      });
+	      if (_this.active && e.which === 27) {
+	        $element.trigger('cancel.modal.amui');
+	        _this.close();
+	      }
+	    });
 	  }
 
 	  // Close Modal when dimmer clicked
 	  if (this.options.dimmer && this.options.closeViaDimmer && !this.isLoading) {
-	    this.dimmer.$element.on('click.dimmer.modal.amui', function(e) {
+	    $dimmer.on('click.dimmer.modal.amui', function() {
 	      _this.close();
 	    });
 	  }
 
 	  // Close Modal when button clicked
-	  $element.on('click.close.modal.amui', '[data-am-modal-close], .am-modal-btn', function(e) {
+	  $element.on(
+	    'click.close.modal.amui',
+	    '[data-am-modal-close], .am-modal-btn',
+	    function(e) {
 	      e.preventDefault();
 	      var $this = $(this);
 
@@ -8217,6 +8224,13 @@ return /******/ (function(modules) { // webpackBootstrap
 	      } else {
 	        _this.close();
 	      }
+	    }
+	  )
+	    // trigger dimmer click event if non-dialog area clicked
+	    // fixes #882 caused by https://github.com/amazeui/amazeui/commit/b6be7719681193f1c4cb04af89cb9fd9f4422163
+	    .on('click', function(e) {
+	      e.stopPropagation();
+	      $(e.target).is($element) && $dimmer.trigger('click.dimmer.modal.amui');
 	    });
 
 	  $confirm.on('click.confirm.modal.amui',
@@ -8227,10 +8241,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	    });
 
 	  $cancel.on('click.cancel.modal.amui', function() {
-	      $element.trigger($.Event('cancel.modal.amui', {
-	        trigger: this
-	      }));
-	    });
+	    $element.trigger($.Event('cancel.modal.amui', {
+	      trigger: this
+	    }));
+	  });
 
 	  $element.on('confirm.modal.amui', function(e) {
 	    e.data = getData();
@@ -8266,7 +8280,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  var $this = $(this);
 	  var options = UI.utils.parseOptions($this.attr('data-am-modal'));
 	  var $target = $(options.target ||
-	  (this.href && this.href.replace(/.*(?=#[^\s]+$)/, '')));
+	    (this.href && this.href.replace(/.*(?=#[^\s]+$)/, '')));
 	  var option = $target.data('amui.modal') ? 'toggle' : options;
 
 	  Plugin.call($target, option, this);
@@ -10585,7 +10599,7 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	// Init code
 	UI.ready(function(context) {
-	  $('[data-am-scrollspy-nav]', context).scrollspynav();
+	  $('[data-am-scrollspynav]', context).scrollspynav();
 	});
 
 	module.exports = ScrollSpyNav;
@@ -10852,10 +10866,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	  // set select button styles
 	  this.$selector.css({width: this.options.btnWidth});
 
-	  if (this.$element[0].disabled) {
-	    this.$selector.addClass(options.disabledClass);
-	  }
-
 	  this.$list = this.$selector.find('.am-selected-list');
 	  this.$searchField = this.$selector.find('.am-selected-search input');
 	  this.$hint = this.$selector.find('.am-selected-hint');
@@ -10870,6 +10880,12 @@ return /******/ (function(modules) { // webpackBootstrap
 	  this.$selector.dropdown({
 	    justify: $selectorBtn
 	  });
+
+	  // disable Selected instance if <selected> is disabled
+	  // should call .disable() after Dropdown initialed
+	  if ($element[0].disabled) {
+	    this.disable();
+	  }
 
 	  // set list height
 	  if (options.maxHeight) {
@@ -11010,7 +11026,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * syncData
 	 *
 	 * @description if `item` set, only sync `item` related option
-	 * @param {Object} item
+	 * @param {Object} [item]
 	 */
 	Selected.prototype.syncData = function(item) {
 	  var _this = this;
@@ -11091,7 +11107,6 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	    this.observer.observe(this.$element[0], {
 	      childList: true,
-	      attributes: true,
 	      subtree: true,
 	      characterData: true
 	    });
@@ -11117,19 +11132,19 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }
 
 	  $item.trigger('click');
-	},
+	};
 
 	// @since: 2.5
 	Selected.prototype.enable = function() {
 	  this.$element.prop('disable', false);
 	  this.$selector.dropdown('enable');
-	},
+	};
 
 	// @since: 2.5
 	Selected.prototype.disable = function() {
 	  this.$element.prop('disable', true);
 	  this.$selector.dropdown('disable');
-	},
+	};
 
 	Selected.prototype.destroy = function() {
 	  this.$element.removeData('amui.selected').show();
@@ -14706,7 +14721,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  submit: null
 	};
 
-	Validator.VERSION = '2.7.0';
+	Validator.VERSION = '2.7.1';
 
 	/* jshint -W101 */
 	Validator.patterns = {

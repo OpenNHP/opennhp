@@ -239,7 +239,8 @@ Modal.prototype.events = function() {
     // trigger dimmer click event if non-dialog area clicked
     // fixes #882 caused by https://github.com/amazeui/amazeui/commit/b6be7719681193f1c4cb04af89cb9fd9f4422163
     .on('click', function(e) {
-      e.stopPropagation();
+      // fixes #900
+      // e.stopPropagation();
       $(e.target).is($element) && $dimmer.trigger('click.dimmer.modal.amui');
     });
 

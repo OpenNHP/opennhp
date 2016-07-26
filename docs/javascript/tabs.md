@@ -269,6 +269,77 @@ doc: docs/javascript/tabs.md
 </div>
 ```
 
+### Tab 内容溢出容器问题
+
+为了实现动画效果，标签内容容器 `.am-tabs-bd` 上添加了 `overflow: hidden`，在某些场景会有一些问题（[#833](https://github.com/amazeui/amazeui/issues/833)、[#901](https://github.com/amazeui/amazeui/issues/901)），目前的处理方式是在 `.am-tabs-bd` 上添加 `.am-tabs-bd-ofv`（动画效果会被取消）。
+
+`````html
+<div class="am-tabs" data-am-tabs>
+  <ul class="am-tabs-nav am-nav am-nav-tabs">
+    <li class="am-active"><a href="#tab-4-1">恣意</a></li>
+    <li><a href="#tab-4-2">等候</a></li>
+    <li><a href="#tab-4-3">流浪</a></li>
+  </ul>
+  <div class="am-tabs-bd am-tabs-bd-ofv">
+    <div class="am-tab-panel am-active" id="tab-4-1">
+       置身人群中<br>你只需要被淹没 享受 沉默<br>退到人群后<br>你只需给予双手 微笑 等候
+       <br />
+        <div class="am-dropdown" data-am-dropdown>
+          <button class="am-btn am-btn-primary am-dropdown-toggle" data-am-dropdown-toggle>下拉列表 <span class="am-icon-caret-down"></span></button>
+          <ul class="am-dropdown-content">
+            <li class="am-dropdown-header">标题</li>
+            <li><a href="#">快乐的方式不只一种</a></li>
+            <li class="am-active"><a href="#">最荣幸是</a></li>
+            <li><a href="#">谁都是造物者的光荣</a></li>
+            <li class="am-disabled"><a href="#">就站在光明的角落</a></li>
+            <li class="am-divider"></li>
+            <li><a href="#">天空海阔 要做最坚强的泡沫</a></li>
+          </ul>
+        </div>
+    </div>
+    <div class="am-tab-panel" id="tab-4-2">
+      走在忠孝东路<br>徘徊在茫然中<br>在我的人生旅途<br>选择了多少错误<br>我在睡梦中惊醒<br>感叹悔言无尽<br>恨我不能说服自己<br>接受一切教训<br>让生命去等候<br>等候下一个漂流<br>让生命去等候<br>等候下一个伤口
+    </div>
+    <div class="am-tab-panel" id="tab-4-3">
+      我就这样告别山下的家，我实在不愿轻易让眼泪留下。我以为我并不差不会害怕，我就这样自己照顾自己长大。我不想因为现实把头低下，我以为我并不差能学会虚假。怎样才能够看穿面具里的谎话？别让我的真心散的像沙。如果有一天我变得更复杂，还能不能唱出歌声里的那幅画？
+    </div>
+  </div>
+</div>
+`````
+```html
+<div class="am-tabs" data-am-tabs>
+  <ul class="am-tabs-nav am-nav am-nav-tabs">
+    <li class="am-active"><a href="#tab-4-1">恣意</a></li>
+    <li><a href="#tab-4-2">等候</a></li>
+    <li><a href="#tab-4-3">流浪</a></li>
+  </ul>
+  <div class="am-tabs-bd am-tabs-bd-ofv">
+    <div class="am-tab-panel am-active" id="tab-4-1">
+       置身人群中<br>你只需要被淹没 享受 沉默<br>退到人群后<br>你只需给予双手 微笑 等候
+       <br />
+         <div class="am-dropdown" data-am-dropdown>
+           <button class="am-btn am-btn-primary am-dropdown-toggle" data-am-dropdown-toggle>下拉列表 <span class="am-icon-caret-down"></span></button>
+           <ul class="am-dropdown-content">
+             <li class="am-dropdown-header">标题</li>
+             <li><a href="#">快乐的方式不只一种</a></li>
+             <li class="am-active"><a href="#">最荣幸是</a></li>
+             <li><a href="#">谁都是造物者的光荣</a></li>
+             <li class="am-disabled"><a href="#">就站在光明的角落</a></li>
+             <li class="am-divider"></li>
+             <li><a href="#">天空海阔 要做最坚强的泡沫</a></li>
+           </ul>
+         </div>
+    </div>
+    <div class="am-tab-panel" id="tab-4-2">
+      走在忠孝东路<br>徘徊在茫然中<br>在我的人生旅途<br>选择了多少错误<br>我在睡梦中惊醒<br>感叹悔言无尽<br>恨我不能说服自己<br>接受一切教训<br>让生命去等候<br>等候下一个漂流<br>让生命去等候<br>等候下一个伤口
+    </div>
+    <div class="am-tab-panel" id="tab-4-3">
+      我就这样告别山下的家，我实在不愿轻易让眼泪留下。我以为我并不差不会害怕，我就这样自己照顾自己长大。我不想因为现实把头低下，我以为我并不差能学会虚假。怎样才能够看穿面具里的谎话？别让我的真心散的像沙。如果有一天我变得更复杂，还能不能唱出歌声里的那幅画？
+    </div>
+  </div>
+</div>
+```
+
 ## 调用方式
 
 ### 通过 Data API

@@ -163,7 +163,10 @@ Tabs.prototype.activate = function($element, $container, callback) {
     this.transitioning = false;
   }, this);
 
-  transition ? $active.one(supportTransition.end, complete) : complete();
+
+
+  transition && !this.$content.is('.am-tabs-bd-ofv') ?
+    $active.one(supportTransition.end, complete) : complete();
 };
 
 /**

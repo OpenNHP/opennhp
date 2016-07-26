@@ -72,6 +72,14 @@
 // @since 2.5
 .@{ns}tabs-bd-ofv {
   overflow: visible;
+
+  > .@{ns}tab-panel {
+    display: none;
+
+    &.@{ns}active {
+      display: block;
+    }
+  }
 }
 
 // fade animation in React version

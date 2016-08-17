@@ -1,6 +1,13 @@
 # Amaze UI Change Log
 ---
 
+## Amaze UI 2.7.2 (2016.08.17)
+
+**JS**:
+
+- `Improved` #900 处理 Modal 元素停止冒泡引发的使用不变问题；
+- `Improved` #901 调整 Tabs 样式，适应元素超出 tab 内容的使用场景。
+
 ## Amaze UI 2.7.1 (2016.07.11)
 
 ### 2016.07 W2

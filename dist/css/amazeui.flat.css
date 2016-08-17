@@ -1,4 +1,4 @@
-/*! Amaze UI v2.7.1 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-07-11T11:22:42+0800 */
+/*! Amaze UI v2.7.2 | by Amaze UI Team | (c) 2016 AllMobilize, Inc. | Licensed under MIT | 2016-08-17T16:17:24+0800 */
 /* ==========================================================================
    Component: Base
  ============================================================================ */
@@ -9732,6 +9732,12 @@ TODO:
 }
 .am-tabs-bd-ofv {
   overflow: visible;
+}
+.am-tabs-bd-ofv > .am-tab-panel {
+  display: none;
+}
+.am-tabs-bd-ofv > .am-tab-panel.am-active {
+  display: block;
 }
 .am-tabs-fade .am-tab-panel {
   opacity: 0;

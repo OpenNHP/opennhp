@@ -6,7 +6,7 @@
 [![Dependency Status](https://img.shields.io/david/amazeui/amazeui.svg?style=flat-square)](https://david-dm.org/amazeui/amazeui)
 [![devDependency Status](https://img.shields.io/david/dev/amazeui/amazeui.svg?style=flat-square)](https://david-dm.org/amazeui/amazeui#info=devDependencies)
 
-Amaze UI 是基于社区开源项目构建的一个跨屏前端框架。
+Amaze UI 是基于社区开源项目构建的一个跨屏前端框架。Yes
 
 ### [Docs in English](http://amazeui.github.io/docs/en/)
 

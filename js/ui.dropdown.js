@@ -82,7 +82,7 @@ Dropdown.prototype.open = function(e) {
   if (animation) {
     this.animating = 1;
     $dropdown.addClass(this.options.animation).
-      on(animation.end + '.open.dropdown.amui', $.proxy(function() {
+      one(animation.end + '.open.dropdown.amui', $.proxy(function() {
         complete();
         $dropdown.removeClass(this.options.animation);
       }, this));
@@ -141,7 +141,7 @@ Dropdown.prototype.checkDimensions = function(e) {
   }
 
   var $dropdown = this.$dropdown;
-  
+
   // @see #873
   if (e && e.offset) {
     $dropdown.offset(e.offset);

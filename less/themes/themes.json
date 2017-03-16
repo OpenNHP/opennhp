@@ -8,4 +8,10 @@
         "id": "one",
         "main": "clear/theme.one.less"
     }
+    ,
+
+    {
+        "id": "sou",
+        "main": "clear/theme.sou.less"
+    }
 ]

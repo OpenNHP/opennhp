@@ -1,0 +1,68 @@
+// Amaze UI SOU Style
+// 上海开放大学样式
+// =============================================================================
+
+// Brand Colors
+// -----------------------------------------------------------------------------
+
+@global-primary:        #77b723; // 
+@global-secondary:      lighten(@global-primary, 15%);
+@global-secondary-dark: #36367a; // 
+@global-success:        #77b723; // 
+@global-warning:        #f37b1d; // 
+@global-danger:         #dd514c; // 
+@global-info:           @global-secondary;
+
+// Font  size
+// -----------------------------------------------------------------------------
+
+@global-font-size:        1.4rem; //14px
+@global-line-height:      1.6;
+@font-size-base:          @global-font-size;
+
+@line-height-base:        @global-line-height;
+@line-height-computed:    floor(@font-size-base * @line-height-base); // 2
+
+@font-size-xxs:           @global-font-size - 0.6; // 8px - 1rem
+@font-size-xs:            @global-font-size - 0.4; // 10px
+@font-size-sm:            @global-font-size - 0.2; // 12px
+//@font-size-default:     @global-font-size;       // 14px
+@font-size-lg:            @global-font-size + 0.2; // 16px
+@font-size-xl:            @global-font-size + 0.8; // 22px
+@font-size-xxl:           @global-font-size * 2;   // 28px
+@font-size-xxxl:          @global-font-size * 2 + 1; // 32px
+
+// Base
+// =============================================================================
+
+@base-background:                   @global-background;
+@base-font-family:                  @font-family-sans-serif;
+@base-font-weight:                  normal;
+@base-font-size:                    @global-font-size;
+@base-line-height:                  @global-line-height;
+@base-text-color:                   @gray-dark;
+
+// =============================================================================
+// Buttons
+// =============================================================================
+
+@btn-font-weight:                normal;
+@btn-line-height:                1.4;
+@btn-font-size:                  @global-font-size;
+
+// Border radius
+// -----------------------------------------------------------------------------
+
+@global-radius:         0;
+@radius-normal:         2px;
+@radius-lg:             5px;
+@radius-sm:             1px;
+
+@global-rounded:         1000px;
+@global-square:           0;
+
+// Inverted Topbar
+// Reset inverted basics
+@topbar-inverse-color:                      @gray-lighter;
+@topbar-inverse-bg:                         @global-secondary-dark;
+@topbar-inverse-border:                     darken(@topbar-inverse-bg, 10%);

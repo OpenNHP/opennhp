@@ -36,7 +36,7 @@ Amaze UI 面向 HTML5 开发，使用 CSS3 来做动画交互，平滑、高效�
 
 用户可以从 [Amaze UI 官网](http://amazeui.org/getting-started) 下载打包好的模板。
 
-所有文档存放在 `docs/` 目录下，为方便查看演示效果，建议通过 [Amaze UI 官网](http://amazeui.org/)查看文档。
+所有文档存放在 `docs/` 目录下，为方便查看演示效果，建议通过 [Amaze UI 官网](http://amazeui.org/) 查看文档。
 
 
 ## 开发及构建

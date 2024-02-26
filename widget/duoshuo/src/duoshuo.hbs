@@ -1,6 +1,0 @@
-{{#this}}
-  <div data-am-widget="duoshuo" class="am-duoshuo{{#if theme}} am-duoshuo-{{theme}}{{else}} am-duoshuo-default{{/if}}{{#if widgetId}} {{widgetId}}{{/if}}{{#if className}} {{className}}{{/if}}"{{#if id}} id="{{id}}"{{/if}} {{#if options.shortName}}data-ds-short-name="{{options.shortName}}"{{/if}}>
-    <div class="ds-thread" {{#if content}}{{#each content}}{{#ifCond @key '==' 'threadKey'}}  data-thread-key="{{this}}"{{else}} data-{{@key}}="{{this}}"{{/ifCond}}{{/each}}{{/if}}>
-    </div>
-  </div>
-{{/this}}

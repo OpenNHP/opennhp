@@ -1,13 +1,13 @@
 [![en](https://img.shields.io/badge/lang-en-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.md)
 [![zh-cn](https://img.shields.io/badge/lang-zh--cn-green.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.zh-cn.md)
 
-# OpenNHP: Zero Trust Network Hiding Protocol
+# OpenNHP: Zero Trust Network-infrastructure Hiding Protocol
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![Version](https://img.shields.io/badge/version-0.0.1-blue)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 
-![OpenNHP Logo](path_to_logo.png)
+![OpenNHP Logo](docs/logo1.png)
 
 OpenNHP is an open-source implementation of the Network-infrastructure Hiding Protocol (NHP), a next-generation zero trust security protocol designed to secure network connections and hide infrastructure.
 

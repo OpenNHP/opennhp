@@ -1,15 +1,12 @@
-![OpenNHP Logo](docs/logo1.png)
-
 [![en](https://img.shields.io/badge/lang-en-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.md)
 [![zh-cn](https://img.shields.io/badge/lang-zh--cn-green.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.zh-cn.md)
 
+![OpenNHP Logo](docs/logo1.png)
 # OpenNHP: Zero Trust Network-infrastructure Hiding Protocol
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
-
-[toc]
 
 ---
 
@@ -19,15 +16,11 @@ The rapid advancement of AI technologies, especially large language models (LLMs
 
 AI-enabled tools continuously scan the digital environment, quickly identifying and leveraging weaknesses. As a result, the internet evolves into a **"Dark Forest,"** where visibility equates to vulnerability. Organizations and individuals are compelled to exercise continuous vigilance and embrace secrecy, employing robust security measures and minimizing their online footprint to elude these autonomous threats. This shifting paradigm necessitates a reevaluation of traditional cybersecurity methods, emphasizing proactive defenses, rapid response mechanisms, and possibly the adoption of network hiding technologies to protect critical infrastructure.
 
----
-
 ## Technology: NHP
 
 NHP, or **"Network-infrastructure Hiding Protocol,"** is a Zero Trust communication protocol that operates at the [OSI network  session layer](https://en.wikipedia.org/wiki/OSI_model). Its primary goal is to keep protected resources hidden from unauthorized entities while allowing access exclusively to verified, authorized subjects through continuous verification. NHP draws inspiration from the *Single Packet Authorization (SPA)* protocol featured in the [Software Defined Perimeter (SDP) specification](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2) published by the [Cloud Security Alliance (CSA)](https://cloudsecurityalliance.org). Beyond the capabilities of SPA, NHP enhances security, reliability, scalability, and extensibility.
 
 **OpenNHP** is the open-source implementation of the NHP protocol, developed in *Golang*. OpenNHP is designed with security-first principles, implementing a true zero-trust architecture.
-
----
 
 ## Key Features
 
@@ -57,10 +50,7 @@ OpenNHP addresses key security challenges:
 - **IAM integration**: Works with your existing Identity and Access Management systems.
 - **Flexible deployment**: Supports various models including client-to-gateway, client-to-server, and more.
 - **Strong cryptography**: Utilizes modern algorithms like ECC, Noise Protocol, and IBC for robust security.
-
 </details>
-
----
 
 ## Comparison between SPA and NHP
 
@@ -76,7 +66,6 @@ NHP is a zero-trust-based connection management protocol that operates at the 5t
 | **Interoperability** | Not available | Customizable| NHP can seamlessly integrate with existing protocols (e.g., DNS, FIDO, etc.) |
 | **Open Source Implementation** | [fwknop](https://github.com/mrash/fwknop) written in C++ | [OpenNHP](https://github.com/OpenNHP/opennhp) written in Go | Memory safety programming langauge, as highlighted in the [US Government report](https://www.whitehouse.gov/wp-content/uploads/2024/02/Final-ONCD-Technical-Report.pdf) |
 
----
 
 ## Quick Start
 

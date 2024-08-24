@@ -1,59 +1,42 @@
+![OpenNHP Logo](docs/logo1.png)
+
 [![en](https://img.shields.io/badge/lang-en-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.md)
 [![zh-cn](https://img.shields.io/badge/lang-zh--cn-green.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.zh-cn.md)
 
 # OpenNHP: Zero Trust Network-infrastructure Hiding Protocol
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
-![Version](https://img.shields.io/badge/version-0.0.1-blue)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 
-![OpenNHP Logo](docs/logo1.png)
-
-OpenNHP is an open-source implementation of the Network-infrastructure Hiding Protocol (NHP), a next-generation zero trust security protocol designed to secure network connections and hide infrastructure.
+[toc]
 
 ---
 
-## Table of Contents
+## Vision: The Internet as a "Dark Forest" Through AI
 
-- [Introduction](#introduction)
-- [Key Features](#key-features)
-- [Quick Start](#quick-start)
-- [Installation](#installation)
-- [Usage Example](#usage-example)
-- [Dependencies](#dependencies)
-- [Architecture](#architecture)
-- [Components](#components)
-- [Workflow](#workflow)
-- [Deployment Models](#deployment-models)
-- [Security Benefits](#security-benefits)
-- [Cryptographic Foundations](#cryptographic-foundations)
-- [Comparison to SPA](#comparison-to-spa)
-- [Compatibility](#compatibility)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [Acknowledgments](#acknowledgments)
-- [License](#license)
-- [Contact](#contact)
+The rapid advancement of AI technologies, especially large language models (LLMs), is profoundly altering the cybersecurity landscape. The emergence of **Autonomous Vulnerability Exploitation (AVE)** marks a significant escalation in the AI era, streamlining the process of exploiting vulnerabilities, as discussed in [this research paper](https://arxiv.org/abs/2404.08144). This development places any exposed network services at heightened risk, resonating with the [Dark Forest Hypothesis](https://en.wikipedia.org/wiki/Dark_forest_hypothesis) of the internet.
+
+AI-enabled tools continuously scan the digital environment, quickly identifying and leveraging weaknesses. As a result, the internet evolves into a **"Dark Forest,"** where visibility equates to vulnerability. Organizations and individuals are compelled to exercise continuous vigilance and embrace secrecy, employing robust security measures and minimizing their online footprint to elude these autonomous threats. This shifting paradigm necessitates a reevaluation of traditional cybersecurity methods, emphasizing proactive defenses, rapid response mechanisms, and possibly the adoption of network hiding technologies to protect critical infrastructure.
 
 ---
 
-## Introduction
+## Technology: NHP
 
-OpenNHP implements the Network-infrastructure Hiding Protocol (NHP), which operates at the session layer (layer 5) of the OSI model to enforce zero trust principles. NHP addresses key security challenges:
+NHP, or **"Network-infrastructure Hiding Protocol,"** is a Zero Trust communication protocol that operates at the [OSI network  session layer](https://en.wikipedia.org/wiki/OSI_model). Its primary goal is to keep protected resources hidden from unauthorized entities while allowing access exclusively to verified, authorized subjects through continuous verification. NHP draws inspiration from the *Single Packet Authorization (SPA)* protocol featured in the [Software Defined Perimeter (SDP) specification](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2) published by the [Cloud Security Alliance (CSA)](https://cloudsecurityalliance.org). Beyond the capabilities of SPA, NHP enhances security, reliability, scalability, and extensibility.
 
-- Mitigates vulnerability exploitation by enforcing "deny-all" rules by default
-- Prevents phishing attacks through encrypted DNS resolution
-- Protects against DDoS attacks by hiding infrastructure
-- Enables attack attribution through identity-based connections
-
-NHP enhances security, reliability, and scalability compared to previous approaches like Single Packet Authorization (SPA).
-
-> 🔐 OpenNHP is designed with security-first principles, implementing a true zero-trust architecture.
+**OpenNHP** is the open-source implementation of the NHP protocol, developed in *Golang*. OpenNHP is designed with security-first principles, implementing a true zero-trust architecture.
 
 ---
 
 ## Key Features
 
+OpenNHP addresses key security challenges:
+
+- Mitigates vulnerability exploitation by enforcing "deny-all" rules by default
+- Prevents phishing attacks through encrypted DNS resolution
+- Protects against DDoS attacks by hiding infrastructure
+- Enables attack attribution through identity-based connections
 - Default-deny access control for all protected resources
 - Identity and device-based authentication before network access
 - Encrypted DNS resolution to prevent DNS hijacking
@@ -76,6 +59,22 @@ NHP enhances security, reliability, and scalability compared to previous approac
 - **Strong cryptography**: Utilizes modern algorithms like ECC, Noise Protocol, and IBC for robust security.
 
 </details>
+
+---
+
+## Comparison between SPA and NHP
+
+NHP is a zero-trust-based connection management protocol that operates at the 5th layer of the OSI network model (also known as the session layer). It leverages modern cryptographic algorithms and programming language to ensure security and high performance, effectively addressing the limitations of SPA. 
+
+| - | SPA |NHP | NHP Advantages  |
+|:---|:---|:---|:---|
+| **Architecture** | The SPA packet decryption and user/device authentication component is coupled with the network access control component in the SPA server. | NHP-Server (the packet decryption and user/device authentication component) and NHP-AC( the access control component) are decoupled. NHP-Server can be deployed in separate hosts and supports horizontal scaling. | <ul><li> Performance: the resource-consuming component NHP-server is separated from the protected server. </li><li>Scalability: NHP-server can be deployed in distributed or clustered mode.</li><li>Security: the IP address of the protected server is not visible to the client unless the authentication succeeded. </li></ul>|
+| **Communication** | Single direction | Bi-direction | Better reliability with the status notification of access control |
+| **Cryptographic framework** | PKI | IBC + Noise Framework |<ul><li>Security: proven secure key exchange mechanism to mitigate the MITM threats</li><li>Low cost: efficient key distribution for zero trust model</li><li>Performance: high performance encryption/decryption</li></ul>|
+| **Capability of Hiding network infrastructure** | Only server ports | Domain, IP, and ports | More powerful against various attacks(e.g., vulnerabilities, DNS hijack, and DDoS attacks) |
+| **Extensibility** | None, only for SDP | All-purpose | Support any scenario that needs service darkening |
+| **Interoperability** | Not available | Customizable| NHP can seamlessly integrate with existing protocols (e.g., DNS, FIDO, etc.) |
+| **Open Source Implementation** | [fwknop](https://github.com/mrash/fwknop) written in C++ | [OpenNHP](https://github.com/OpenNHP/opennhp) written in Go | Memory safety programming langauge, as highlighted in the [US Government report](https://www.whitehouse.gov/wp-content/uploads/2024/02/Final-ONCD-Technical-Report.pdf) |
 
 ---
 
@@ -242,18 +241,7 @@ OpenNHP leverages state-of-the-art cryptographic algorithms:
 - Noise Protocol Framework: For secure key exchange and identity verification
 - Identity-Based Cryptography (IBC): For simplified key management at scale
 
----
 
-## Comparison to SPA
-
-NHP offers several advantages over Single Packet Authorization (SPA):
-
-- Decoupled architecture improves scalability
-- Bidirectional communication increases reliability
-- Modern cryptographic primitives enhance security
-- More comprehensive infrastructure hiding capabilities
-- Extensible design supports various use cases
-- Interoperable with existing protocols and systems
 
 ---
 

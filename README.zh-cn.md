@@ -7,6 +7,8 @@
 
 ![OpenNHP Logo](docs/Vul_Risks.png)
 
+这种模式的转变要求我们重新评估传统的网络安全方法，强调主动防御、快速反应机制，并在可能的情况下采用网络隐藏技术来保护关键基础设施。
+
 ## 解决方案：零信任网络隐身协议
 NHP，或者 **网络隐身协议** 是一种零信任通信协议，在 OSI网络模型的会话层运行，是网络可见性和连接管理的最佳场所。它的主要目标是使受保护的资源不被未经授权的实体发现，同时通过持续验证只允许经过验证的授权主体访问。NHP 从云安全联盟（CSA）发布的软件定义边界（SDP）规范中的单包授权（SPA）协议中汲取灵感。除了 SPA 的功能外，NHP 还增强了安全性、可靠性、可扩展性和可扩展性。这里列出了 NHP 和 SPA 的详细比较。
 
@@ -47,3 +49,113 @@ NHP，或者 **网络隐身协议** 是一种零信任通信协议，在 OSI网�
 OpenNHP 架构受 NIST 零信任架构标准的启发。它采用模块化设计，核心组件如下：
 
 ![OpenNHP architecture](docs/OpenNHP_Arch.png)
+
+### OpenNHP核心组件：
+#### NHP-Agent 
+NHP-Agent是一个客户端组件，用于启动通信和请求访问受保护的资源。它可以通过以下方式实现：
+- 独立的客户端应用程序 
+- 集成到现有应用程序中的SDK 
+- 浏览器插件 
+- 移动应用程序 
+
+NHP-Agent负责:
+- 生成并向NHP服务器发送敲击请求 
+- 维护安全通信渠道 
+- 处理身份验证流程 
+
+#### NHP服务器 
+NHP服务器是中央控制器，功能:
+ - 处理和验证来自代理的验证请求 
+ - 与授权服务提供商互动，做出政策决定 
+ - 管理NHP-AC组件，允许/拒绝访问 
+ - 处理密钥管理和加密操作 
+
+ NHP服务器可以部署在分布式或集群配置中，以实现高可用性和可扩展性。 
+
+#### NHP-AC
+
+NHP-AC （访问控制）组件执行受保护资源的访问策略，主要功能 ：
+- 执行默认的全部拒绝规则 
+- 根据NHP服务器指令打开/关闭访问权限 
+- 确保受保护资源的网络隐蔽性 
+- 记录访问尝试
+
+### 与OpenNHP交互的组件： 
+- **受保护资源：** 资源提供者负责保护这些资源，如API接口、应用服务器、网关、路由器、网络设备等。在SDP 方案中，受保护资源是 SDP 网关和控制器。 
+- **授权服务提供商（ASP）：** 该提供商负责验证访问策略，并提供受保护资源的实际访问地址。在 SDP 方案中，ASP 可以是SDP控制器。 
+
+### 工作流程
+1.'NHP-Agent' 向 'NHP-Server' 发送敲击请求 
+2.'NHP-Server'验证请求并检索代理信息 
+3.'NHP-Server'查询授权服务提供商 
+4.如果获得授权，'NHP-Server'指示'NHP-AC'允许访问 
+5.'NHP-AC' 打开连接并通知 'NHP-Server'
+6.'NHP-Server'向'NHP-Agent'提供资源访问详情 
+7.'NHP-Agent'现在可以访问受保护的资源 
+8. 访问记录作为日记存储，用于审计
+
+## 快速开始 
+在几分钟内启动并运行 OpenNHP：
+```bash
+git clone https://github.com/opennhp/opennhp.git
+cd opennhp
+make
+./nhp-server run
+```
+
+## 安装步骤：
+1.去github clone到本地:
+```bash
+git clone https://github.com/opennhp/nhp.git
+```
+2.进入文件夹
+```
+cd nhp
+```
+3.build工程:
+```bash
+make
+```
+4.安装(optional):
+```bash
+sudo make install
+```
+注意：运行 `sudo make install` 需要root权限。运行此命令前，请确保您信任源代码。
+
+## 部署模式 
+
+OpenNHP 支持多种部署模式，以适应不同的使用情况： 
+
+- 客户端到网关：确保访问网关后面的多个服务器 
+- 客户端到服务器：直接保护单个服务器/应用程序的安全 
+- 服务器到服务器：确保后端服务之间的通信安全 
+- 网关到网关：确保站点到站点连接的安全 
+
+## 加密基础 
+OpenNHP 采用最先进的加密算法： 
+- 椭圆曲线加密算法（ECC）：用于高效的公钥操作 
+- 噪声协议框架：用于安全密钥交换和身份验证 
+- 基于身份的加密算法（IBC）：大规模简化密钥管理
+
+## SPA与NHP的比较(todo)
+NHP 利用现代加密算法和编程语言确保安全性和高性能，有效解决了 SPA 的局限性。
+
+
+## 贡献 
+我们欢迎为 OpenNHP 投稿！有关如何参与的详细信息，请参阅我们的贡献指南。 
+
+## 许可证 
+OpenNHP 根据 Apache 2.0 许可发布。 
+
+## 联系我们 
+- 项目网站: https://github.com/OpenNHP/opennhp 
+- Slack频道：加入我们的Slack
+
+如需更详细的文档，请访问我们的官方文档。(https://docs.opennhp.org)
+
+
+## 引用
+
+- Software-Defined Perimeter (SDP) Specification v2.0. Jason Garbis, Juanita Koilpillai, Junaid lslam, Bob Flores, Daniel Bailey, Benfeng Chen, Eitan Bremler, Michael Roza, Ahmed Refaey Hussein. Cloud Security Alliance(CSA). Mar 2022.
+- AHAC: Advanced Network-Hiding Access Control Framework. Mudi Xu, Benfeng Chen, Zhizhong Tan, Shan Chen, Lei Wang, Yan Liu, Tai Io San, Sou Wang Fong, Wenyong Wang, and Jing Feng. Applied Sciences Journal. June 2024.
+- Vulnerability Management Framework project. https://phoenix.security/web-vuln-management/

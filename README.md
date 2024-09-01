@@ -26,10 +26,11 @@ NHP builds upon earlier research in network hiding technology, utilizing modern 
 
 | Network Hiding Protocol | 1st Gen | 2nd Gen | 3rd Gen |
 |:---|:---|:---|:---|
-| **Core Technology** | [Port Knocking](https://en.wikipedia.org/wiki/Port_knocking) | [Single Packet Authorization (SPA)](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2) | Network-infrastructure Hiding Protocol(NHP) |
+| **Core Technology** | [Port Knocking](https://en.wikipedia.org/wiki/Port_knocking) | [Single Packet Authorization (SPA)](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2) | Network-infrastructure Hiding Protocol (NHP) |
 | **Authentication** | Port sequences | Shared Credential | Modern Crypto Framework |
 | **Architecture** | No Control Plane | No Control Plane | Scalable Control Plane |
 | **Capability** | Hide Ports | Hide Ports | Hide Ports, IPs and Domains |
+| **Access Control** | IP Level | Port Level | Application Level |
 
 The detailed comparison between SPA and NHP can be found in [below section](#comparison-between-spa-and-nhp).
 

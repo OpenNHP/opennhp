@@ -24,7 +24,7 @@ NHP, or the **"Network-infrastructure Hiding Protocol"**, is a Zero Trust commun
 
 NHP builds upon earlier research in network hiding technology, utilizing modern cryptographic framework and architecture to ensure security and high performance, thereby overcoming the limitations of previous technologies.
 
-| Network Hiding Protocol | 1^st^ Gen | 2^nd^ Gen | 3^rd^ Gen |
+| Network Hiding Protocol | 1st Gen | 2nd Gen | 3rd Gen |
 |:---|:---|:---|:---|
 | **Core Technology** | [Port Knocking](https://en.wikipedia.org/wiki/Port_knocking) | [Single Packet Authorization (SPA)](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2) | Network-infrastructure Hiding Protocol(NHP) |
 | **Authentication** | Port sequences | Shared Credential | Modern Crypto Framework |

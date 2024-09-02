@@ -12,11 +12,11 @@
 
 ## Challenge: AI transforms the Internet as a "Dark Forest" 
 
-The rapid advancement of **AI** technologies, especially large language models (LLMs), is profoundly altering the cybersecurity landscape. The emergence of **Autonomous Vulnerability Exploitation (AVE)** marks a significant escalation in the AI era, streamlining the process of exploiting vulnerabilities, as discussed in [this research paper](https://arxiv.org/abs/2404.08144). This development places any exposed network services at heightened risk, resonating with the [Dark Forest Hypothesis](https://en.wikipedia.org/wiki/Dark_forest_hypothesis) of the Internet. AI-enabled tools continuously scan the digital environment, quickly identifying and leveraging weaknesses. As a result, the internet evolves into a **"Dark Forest,"** where **visibility equates to vulnerability**. 
+The rapid advancement of **AI** technologies, particularly large language models (LLMs), is significantly reshaping the cybersecurity landscape. The rise of **Autonomous Vulnerability Exploitation (AVE)** represents a major leap in the AI era, streamlining the exploitation of vulnerabilities, as highlighted in [this research paper](https://arxiv.org/abs/2404.08144). This development dramatically increases the risk for any exposed network services, echoing the [Dark Forest Hypothesis](https://en.wikipedia.org/wiki/Dark_forest_hypothesis) of the Internet. AI-powered tools are continuously scanning the digital environment, swiftly identifying and exploiting weaknesses. Consequently, the Internet is evolving into a **"Dark Forest,"** where **visibility equates to vulnerability**.
 
 ![OpenNHP Logo](docs/Vul_Risks.png)
 
-This shifting paradigm necessitates a reevaluation of traditional cybersecurity methods, emphasizing proactive defenses, rapid response mechanisms, and possibly the adoption of network hiding technologies to protect critical infrastructure.
+Gartner research predicts a [rapid increase in AI-driven cyberattacks](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025). This shifting paradigm calls for a reevaluation of traditional cybersecurity strategies, with a focus on proactive defenses, rapid response mechanisms, and the adoption of network hiding technologies to safeguard critical infrastructure.
 
 ## Solution: Zero Trust Network-infrastructure Hiding Protocol
 

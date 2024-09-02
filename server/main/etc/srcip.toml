@@ -1,0 +1,10 @@
+# list additional source addresses to be passed along with the agent address
+
+# syntax [["{SrcIp}"]]
+# SrcIp: specify the agent source ip. Each source ip can have multiple side source ips.
+# Ip: specify a side source ip address to be also passed after successful knock.
+[["192.168.2.27"]]
+Ip = "192.168.2.26"
+
+[["192.168.2.27"]]
+Ip = "192.168.2.28"

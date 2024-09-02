@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- v2.0 2024.02.22 -->
+  <meta charset="UTF-8">
+  <title>{{ .title }}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
+  <style type="text/css">
+    .login-div {
+      height: 400px;
+      text-align: center;
+      margin-top: 20px;
+    }
+    .login-title {
+      font-size: 24px;
+    }
+    .login-msg {
+      line-height: 150%;
+    }
+    .center {
+      margin-left: auto;
+      margin-right: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-div">
+    <h1 class="login-title">
+      {{ .title }}
+    </h1>
+    <div id="login_container" onsubmit="return nhpValidate()">
+        <form action="#" class="pure-form pure-form-aligned">
+          <fieldset>
+            <div class="pure-control-group">
+              <label for="username">Username:</label>
+              <input type="text" id="username" name="username" value="user"><br />
+            </div>
+            <div class="pure-control-group">
+              <label for="password">Password:</label>
+              <input type="password" id="password" name="password" value="password"><br><br>
+            </div>
+            <div class="pure-controls">
+              <button type="submit" class="pure-button pure-button-primary">Sign in</button>
+            </div>
+          </fieldset>
+        </form> 
+    </div>
+    <div class="login-msg">
+      <p>
+        <span style="font-weight: bold;">Note:</span> Target Server is <a href="https://apidemo.opennhp.org" target="_blank">https://apidemo.opennhp.org</a>
+      </p>
+      <table class="pure-table pure-table-horizontal center">
+        <tbody>
+          <tr>
+            <td>Before Login:</td>
+            <td>Connetion to Target Server should be <span style="color:red">TIMEOUT. &#x274C;</span></td>              
+          <tr>
+            <td>After Login:</td>
+            <td>Connetion to Target Server should be <span style="color:green">SUCCESSFUL. &#x2714;</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <script>
+    function nhpValidate() {
+      const user = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+      const nhpValidUrl = "https://{{ .nhpServer }}/plugins/{{ .aspId }}?resid={{ .resId }}&action=valid" + 
+        "&username=" + encodeURIComponent(user) + 
+        "&password=" + encodeURIComponent(password);
+      console.log(nhpValidUrl);
+      
+      fetch(nhpValidUrl)
+      .then(function(response) {
+          return response.json();
+      }).then(function(result) {
+          console.log(result);
+          if (result && result.redirectUrl) {
+            window.location.replace(result.redirectUrl);
+          } else {
+            if (result.errMsg) {
+              alert(result.errMsg);
+            } else {
+              alert("Invalid username or password");
+            }
+          }
+      }).catch(function(error) {
+          alert(error.message);
+      });
+      return false;
+    }
+  </script>
+</body>
+</html>

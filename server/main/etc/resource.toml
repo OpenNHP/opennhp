@@ -1,0 +1,7 @@
+# List resources and their sub-fields here
+
+# syntax ["{AuthServiceId}"]
+# AuthServiceId: id of the authentication and authorization service provider.
+# PluginPath: path of plugin to implement auth logic.
+["example"]
+PluginPath = "example/example.so"

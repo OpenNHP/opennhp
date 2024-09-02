@@ -1,0 +1,18 @@
+# NHP-AC base config
+# field with (-) does not support dynamic update
+
+# ACId (-): specify the id of this AC.
+# PrivateKeyBase64 (-): AC private key in base64 format.
+# IpPassMode:
+#  0: (default) immediately pass traffic with the agent source ip,
+#  1: process pre-access to determine actual agent source ip then pass.
+# LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.
+# AuthServiceId (-): id for authentication and authorization service provider this AC belongs to.
+# ResourceIds (-): resource group ids that this AC protects.
+ACId = "testAC-1"
+DefaultIp = ""
+PrivateKeyBase64 = "+B0RLGbe+nknJBZ0Fjt7kCBWfSTUttbUqkGteLfIp30="
+IpPassMode = 0
+LogLevel = 4
+AuthServiceId = "example"
+ResourceIds = ["demo"]

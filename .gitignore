@@ -15,3 +15,7 @@
 go.sum
 
 release/
+
+# jekyll 
+Gemfile
+Gemfile.lock

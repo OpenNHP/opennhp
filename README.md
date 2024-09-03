@@ -1,7 +1,7 @@
 [![en](https://img.shields.io/badge/lang-en-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.md)
 [![zh-cn](https://img.shields.io/badge/lang-zh--cn-green.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.zh-cn.md)
 
-![OpenNHP Logo](docs/logo1.png)
+![OpenNHP Logo](docs/images/logo1.png)
 # OpenNHP: Zero Trust Network-infrastructure Hiding Protocol
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
@@ -14,7 +14,7 @@
 
 The rapid advancement of **AI** technologies, particularly large language models (LLMs), is significantly reshaping the cybersecurity landscape. The rise of **Autonomous Vulnerability Exploitation (AVE)** represents a major leap in the AI era, streamlining the exploitation of vulnerabilities, as highlighted in [this research paper](https://arxiv.org/abs/2404.08144). This development dramatically increases the risk for any exposed network services, echoing the [Dark Forest Hypothesis](https://en.wikipedia.org/wiki/Dark_forest_hypothesis) of the Internet. AI-powered tools are continuously scanning the digital environment, swiftly identifying and exploiting weaknesses. Consequently, the Internet is evolving into a **"Dark Forest,"** where **visibility equates to vulnerability**.
 
-![OpenNHP Logo](docs/Vul_Risks.png)
+![OpenNHP Logo](docs/images/Vul_Risks.png)
 
 Gartner research predicts a [rapid increase in AI-driven cyberattacks](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025). This shifting paradigm calls for a reevaluation of traditional cybersecurity strategies, with a focus on proactive defenses, rapid response mechanisms, and the adoption of network hiding technologies to safeguard critical infrastructure.
 
@@ -36,7 +36,7 @@ The detailed comparison between SPA and NHP can be found in [below section](#com
 
 **OpenNHP** is the open-source implementation of the NHP protocol, developed in *Golang*. It is designed with security-first principles, implementing a true zero-trust architecture at the session layer (the 5th layer) protocol in the OSI network model. 
 
-![OpenNHP as the OSI 5th layer](docs/OSI_OpenNHP.png)
+![OpenNHP as the OSI 5th layer](docs/images/OSI_OpenNHP.png)
 
 Since the session layer is responsible for connection establishment and dialogue control, implementing zero trust at the session layer offers significant benefits:
 - **Mitigate vulnerability risk:** The openness of TCP/IP protocols leads to a "trust by default" connection model, allowing anyone to establish a connection to a server port that provides services. Attackers exploit this openness to target server vulnerabilities. The NHP protocol implements the zero trust principle "never trust, always verify" by enforcing "deny-all" rules by default on the server side, only allowing authorized hosts to establish connections. This effectively mitigates vulnerability exploitation, particularly zero-day exploits.
@@ -86,7 +86,7 @@ Since the session layer is responsible for connection establishment and dialogue
 
 The OpenNHP architecture is inspired by the NIST Zero Trust Architecture standard. It follows a modular design with the following core components: 
 
-![OpenNHP architecture](docs/OpenNHP_Arch.png)
+![OpenNHP architecture](docs/images/OpenNHP_Arch.png)
 
 ### OpenNHP Core Components:
 #### NHP-Agent

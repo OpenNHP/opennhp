@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/OpenNHP/opennhp/ac"
-	"github.com/OpenNHP/opennhp/nhp"
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/version"
 	"github.com/urfave/cli/v2"
 )
@@ -16,12 +16,12 @@ import (
 func main() {
 	app := cli.NewApp()
 	app.Name = "nhp-ac"
-	app.Usage = "door entity for NHP protocol"
+	app.Usage = "ac entity for NHP protocol"
 	app.Version = version.Version
 
 	runCmd := &cli.Command{
 		Name:  "run",
-		Usage: "create and run door process for NHP protocol",
+		Usage: "create and run ac process for NHP protocol",
 		Action: func(c *cli.Context) error {
 			return runApp()
 		},
@@ -35,11 +35,11 @@ func main() {
 			&cli.BoolFlag{Name: "sm2", Value: false, DisableDefaultText: true, Usage: "generate sm2 keys"},
 		},
 		Action: func(c *cli.Context) error {
-			var e nhp.Ecdh
+			var e core.Ecdh
 			if c.Bool("sm2") {
-				e = nhp.NewECDH(nhp.ECC_SM2)
+				e = core.NewECDH(core.ECC_SM2)
 			} else {
-				e = nhp.NewECDH(nhp.ECC_CURVE25519)
+				e = core.NewECDH(core.ECC_CURVE25519)
 			}
 			pub := e.PublicKeyBase64()
 			priv := e.PrivateKeyBase64()
@@ -66,7 +66,7 @@ func runApp() error {
 	}
 	exeDirPath := filepath.Dir(exeFilePath)
 
-	d := &ac.UdpDoor{}
+	d := &ac.UdpAC{}
 	err = d.Start(exeDirPath, 4)
 	if err != nil {
 		return err

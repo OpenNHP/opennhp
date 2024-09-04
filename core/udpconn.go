@@ -1,4 +1,4 @@
-package nhp
+package core
 
 import (
 	"net"
@@ -24,8 +24,8 @@ type ConnectionData struct {
 	RemoteAddr       *net.UDPAddr
 	CookieStore      *CookieStore
 	TimeoutMs        int
-	SendQueue        chan *UdpPacket
-	RecvQueue        chan *UdpPacket
+	SendQueue        chan *Packet
+	RecvQueue        chan *Packet
 	BlockSignal      chan struct{}
 	SetTimeoutSignal chan struct{}
 	StopSignal       chan struct{}
@@ -66,9 +66,9 @@ flush:
 	for {
 		select {
 		case pkt := <-c.SendQueue:
-			c.Device.ReleaseUdpPacket(pkt)
+			c.Device.ReleasePoolPacket(pkt)
 		case pkt := <-c.RecvQueue:
-			c.Device.ReleaseUdpPacket(pkt)
+			c.Device.ReleasePoolPacket(pkt)
 		case <-c.BlockSignal:
 		default:
 			break flush
@@ -91,10 +91,10 @@ func (c *ConnectionData) IsClosed() bool {
 	return c.closed.Load()
 }
 
-func (c *ConnectionData) ForwardOutboundPacket(pkt *UdpPacket) {
+func (c *ConnectionData) ForwardOutboundPacket(pkt *Packet) {
 	if c.IsClosed() {
 		log.Warning("connection %s is closed, discard packet", c.RemoteAddr.String())
-		c.Device.ReleaseUdpPacket(pkt)
+		c.Device.ReleasePoolPacket(pkt)
 		return
 	}
 
@@ -103,14 +103,14 @@ func (c *ConnectionData) ForwardOutboundPacket(pkt *UdpPacket) {
 		// fully encrypted packet will be forwarded to higher level entity for physical sending
 	default:
 		log.Critical("connection send channel is full, discard packet")
-		c.Device.ReleaseUdpPacket(pkt)
+		c.Device.ReleasePoolPacket(pkt)
 	}
 }
 
-func (c *ConnectionData) ForwardInboundPacket(pkt *UdpPacket) {
+func (c *ConnectionData) ForwardInboundPacket(pkt *Packet) {
 	if c.IsClosed() {
 		log.Warning("connection %s is closed, discard packet", c.RemoteAddr.String())
-		c.Device.ReleaseUdpPacket(pkt)
+		c.Device.ReleasePoolPacket(pkt)
 		return
 	}
 
@@ -120,7 +120,7 @@ func (c *ConnectionData) ForwardInboundPacket(pkt *UdpPacket) {
 	default:
 		// non-blocking, just discard
 		log.Critical("connection recv channel is full, discard packet")
-		c.Device.ReleaseUdpPacket(pkt)
+		c.Device.ReleasePoolPacket(pkt)
 	}
 }
 

@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/log"
-	"github.com/OpenNHP/opennhp/nhp"
 	"github.com/OpenNHP/opennhp/utils"
 
 	toml "github.com/pelletier/go-toml/v2"
@@ -21,21 +21,21 @@ var (
 )
 
 type Config struct {
-	PrivateKeyBase64 string         `json:"privateKey"`
-	ACId             string         `json:"acId"`
-	DefaultIp        string         `json:"defaultIp"`
-	AuthServiceId    string         `json:"aspId"`
-	ResourceIds      []string       `json:"resIds"`
-	Servers          []*nhp.UdpPeer `json:"servers"`
-	IpPassMode       int            `json:"ipPassMode"` // 0: pass the knock source IP, 1: use pre-access mode and release the access source IP
-	LogLevel         int            `json:"logLevel"`
+	PrivateKeyBase64 string          `json:"privateKey"`
+	ACId             string          `json:"acId"`
+	DefaultIp        string          `json:"defaultIp"`
+	AuthServiceId    string          `json:"aspId"`
+	ResourceIds      []string        `json:"resIds"`
+	Servers          []*core.UdpPeer `json:"servers"`
+	IpPassMode       int             `json:"ipPassMode"` // 0: pass the knock source IP, 1: use pre-access mode and release the access source IP
+	LogLevel         int             `json:"logLevel"`
 }
 
 type Peers struct {
-	Servers []*nhp.UdpPeer
+	Servers []*core.UdpPeer
 }
 
-func (d *UdpDoor) loadBaseConfig() error {
+func (d *UdpAC) loadBaseConfig() error {
 	// config.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
 	if err := d.updateBaseConfig(fileName); err != nil {
@@ -50,7 +50,7 @@ func (d *UdpDoor) loadBaseConfig() error {
 	return nil
 }
 
-func (d *UdpDoor) loadPeers() error {
+func (d *UdpAC) loadPeers() error {
 	// server.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "server.toml")
 	if err := d.updateServerPeers(fileName); err != nil {
@@ -66,7 +66,7 @@ func (d *UdpDoor) loadPeers() error {
 	return nil
 }
 
-func (d *UdpDoor) updateBaseConfig(file string) (err error) {
+func (d *UdpAC) updateBaseConfig(file string) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
@@ -107,7 +107,7 @@ func (d *UdpDoor) updateBaseConfig(file string) (err error) {
 	return err
 }
 
-func (d *UdpDoor) updateServerPeers(file string) (err error) {
+func (d *UdpAC) updateServerPeers(file string) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
@@ -119,12 +119,12 @@ func (d *UdpDoor) updateServerPeers(file string) (err error) {
 
 	// update
 	var peers Peers
-	serverPeerMap := make(map[string]*nhp.UdpPeer)
+	serverPeerMap := make(map[string]*core.UdpPeer)
 	if err := toml.Unmarshal(content, &peers); err != nil {
 		log.Error("failed to unmarshal server peer config: %v", err)
 	}
 	for _, p := range peers.Servers {
-		p.Type = nhp.NHP_SERVER
+		p.Type = core.NHP_SERVER
 		d.device.AddPeer(p)
 		serverPeerMap[p.PublicKeyBase64()] = p
 	}
@@ -142,11 +142,11 @@ func (d *UdpDoor) updateServerPeers(file string) (err error) {
 	return err
 }
 
-func (d *UdpDoor) IpPassMode() int {
+func (d *UdpAC) IpPassMode() int {
 	return d.config.IpPassMode
 }
 
-func (d *UdpDoor) StopConfigWatch() {
+func (d *UdpAC) StopConfigWatch() {
 	if baseConfigWatch != nil {
 		baseConfigWatch.Close()
 	}

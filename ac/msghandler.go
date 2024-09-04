@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/OpenNHP/opennhp/common"
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/log"
-	"github.com/OpenNHP/opennhp/nhp"
 	"github.com/OpenNHP/opennhp/utils"
 )
 
@@ -21,20 +21,20 @@ const (
 	PASS_PRE_ACCESS_IP
 )
 
-func (d *UdpDoor) HandleACOperations(ppd *nhp.PacketParserData) (err error) {
+func (d *UdpAC) HandleACOperations(ppd *core.PacketParserData) (err error) {
 	defer d.wg.Done()
 	d.wg.Add(1)
 
 	acId := d.config.ACId
 	dopMsg := &common.ServerACOpsMsg{}
 	artMsg := &common.ACOpsResultMsg{}
-	transactionId := ppd.SenderId
+	transactionId := ppd.SenderTrxId
 
 	// process ac operation
 	func() {
 		err = json.Unmarshal(ppd.BodyMessage, dopMsg)
 		if err != nil {
-			log.Error("ac(%s#%d)[HandleACOperations] failed to parse %s message: %v", acId, transactionId, nhp.HeaderTypeToString(ppd.HeaderType), err)
+			log.Error("ac(%s#%d)[HandleACOperations] failed to parse %s message: %v", acId, transactionId, core.HeaderTypeToString(ppd.HeaderType), err)
 			artMsg.ErrCode = common.ErrJsonParseFailed.ErrorCode()
 			artMsg.ErrMsg = err.Error()
 			return
@@ -173,7 +173,7 @@ func (d *UdpDoor) HandleACOperations(ppd *nhp.PacketParserData) (err error) {
 		case PASS_PRE_ACCESS_IP:
 			fallthrough
 		default:
-			// door open a temporary tcp or udp port for access
+			// ac open a temporary tcp or udp port for access
 			dstIp := net.ParseIP(dstAddrs[0].Ip)
 			if dstIp == nil {
 				log.Error("ac(%s#%d)[HandleACOperations] destination IP %s is invalid", acId, transactionId, dstAddrs[0].Ip)
@@ -326,8 +326,8 @@ func (d *UdpDoor) HandleACOperations(ppd *nhp.PacketParserData) (err error) {
 	// send ac result
 	artBytes, _ := json.Marshal(artMsg)
 
-	md := &nhp.MsgData{
-		HeaderType:     nhp.NHP_ART,
+	md := &core.MsgData{
+		HeaderType:     core.NHP_ART,
 		TransactionId:  transactionId,
 		Compress:       true,
 		PrevParserData: ppd,
@@ -347,7 +347,7 @@ func (d *UdpDoor) HandleACOperations(ppd *nhp.PacketParserData) (err error) {
 	return nil
 }
 
-func (d *UdpDoor) tcpTempAccessHandler(transactionId uint64, listener *net.TCPListener, au *AgentUser, timeoutSec int, dopMsg *common.ServerACOpsMsg) {
+func (d *UdpAC) tcpTempAccessHandler(transactionId uint64, listener *net.TCPListener, au *AgentUser, timeoutSec int, dopMsg *common.ServerACOpsMsg) {
 	defer d.wg.Done()
 	defer d.DeleteAccessToken(au)
 	defer listener.Close()
@@ -376,8 +376,8 @@ func (d *UdpDoor) tcpTempAccessHandler(transactionId uint64, listener *net.TCPLi
 	}
 
 	remoteAddrStr := conn.RemoteAddr().String()
-	pkt := d.device.AllocateUdpPacket()
-	defer d.device.ReleaseUdpPacket(pkt)
+	pkt := d.device.AllocatePoolPacket()
+	defer d.device.ReleasePoolPacket(pkt)
 
 	// monitor stop signals and quit connection earlier
 	ctx, ctxCancel := context.WithDeadline(context.Background(), deadlineTime)
@@ -385,26 +385,26 @@ func (d *UdpDoor) tcpTempAccessHandler(transactionId uint64, listener *net.TCPLi
 	go d.tempConnTerminator(conn, ctx)
 
 	// tcp recv common header first
-	n, err := conn.Read(pkt.Buf[:nhp.HeaderCommonSize])
-	if err != nil || n < nhp.HeaderCommonSize {
+	n, err := conn.Read(pkt.Buf[:core.HeaderCommonSize])
+	if err != nil || n < core.HeaderCommonSize {
 		log.Error("ac(%s#%d)[HandleACOperations] failed to receive tcp packet header from remote address %s (%v)", acId, transactionId, remoteAddrStr, err)
 		return
 	}
 
-	pkt.Packet = pkt.Buf[:n]
+	pkt.Content = pkt.Buf[:n]
 	// check type and payload size
 	msgType, msgSize := pkt.HeaderTypeAndSize()
-	if msgType != nhp.NHP_ACC {
-		log.Error("ac(%s#%d)[HandleACOperations] message type is not %s, close connection", acId, transactionId, nhp.HeaderTypeToString(nhp.NHP_ACC))
+	if msgType != core.NHP_ACC {
+		log.Error("ac(%s#%d)[HandleACOperations] message type is not %s, close connection", acId, transactionId, core.HeaderTypeToString(core.NHP_ACC))
 		return
 	}
 
 	var packetSize int
 	flag := pkt.Flag()
-	if flag&nhp.NHP_FLAG_EXTENDEDLENGTH == 0 {
-		packetSize = nhp.HeaderSize + msgSize
+	if flag&core.NHP_FLAG_EXTENDEDLENGTH == 0 {
+		packetSize = core.HeaderSize + msgSize
 	} else {
-		packetSize = nhp.HeaderSizeEx + msgSize
+		packetSize = core.HeaderSizeEx + msgSize
 	}
 	remainingSize := packetSize - n
 	n, err = conn.Read(pkt.Buf[n:packetSize])
@@ -413,16 +413,15 @@ func (d *UdpDoor) tcpTempAccessHandler(transactionId uint64, listener *net.TCPLi
 		return
 	}
 
-	pkt.Packet = pkt.Buf[:packetSize]
-	log.Trace("receive tcp access packet (%s -> %s): %+v", remoteAddrStr, localAddrStr, pkt.Packet)
+	pkt.Content = pkt.Buf[:packetSize]
+	log.Trace("receive tcp access packet (%s -> %s): %+v", remoteAddrStr, localAddrStr, pkt.Content)
 	log.Info("ac(%s#%d)[HandleACOperations] receive tcp access message (%s -> %s)", acId, transactionId, remoteAddrStr, localAddrStr)
 
-	pd := &nhp.PacketData{
+	pd := &core.PacketData{
 		BasePacket:     pkt,
-		ConnData:       &nhp.ConnectionData{},
+		ConnData:       &core.ConnectionData{},
 		InitTime:       time.Now().UnixNano(),
-		HeaderType:     msgType,
-		DecryptedMsgCh: make(chan *nhp.PacketParserData),
+		DecryptedMsgCh: make(chan *core.PacketParserData),
 	}
 
 	if !d.IsRunning() {
@@ -445,7 +444,7 @@ func (d *UdpDoor) tcpTempAccessHandler(transactionId uint64, listener *net.TCPLi
 	accMsg := &common.AgentAccessMsg{}
 	err = json.Unmarshal(accPpd.BodyMessage, accMsg)
 	if err != nil {
-		log.Error("ac(%s#%d)[HandleACOperations] failed to parse %s message: %v", acId, transactionId, nhp.HeaderTypeToString(accPpd.HeaderType), err)
+		log.Error("ac(%s#%d)[HandleACOperations] failed to parse %s message: %v", acId, transactionId, core.HeaderTypeToString(accPpd.HeaderType), err)
 		return
 	}
 
@@ -482,7 +481,7 @@ func (d *UdpDoor) tcpTempAccessHandler(transactionId uint64, listener *net.TCPLi
 	}
 }
 
-func (d *UdpDoor) udpTempAccessHandler(transactionId uint64, conn *net.UDPConn, au *AgentUser, timeoutSec int, dopMsg *common.ServerACOpsMsg) {
+func (d *UdpAC) udpTempAccessHandler(transactionId uint64, conn *net.UDPConn, au *AgentUser, timeoutSec int, dopMsg *common.ServerACOpsMsg) {
 	defer d.wg.Done()
 	defer d.DeleteAccessToken(au)
 	defer conn.Close()
@@ -498,8 +497,8 @@ func (d *UdpDoor) udpTempAccessHandler(transactionId uint64, conn *net.UDPConn, 
 		return
 	}
 
-	pkt := d.device.AllocateUdpPacket()
-	defer d.device.ReleaseUdpPacket(pkt)
+	pkt := d.device.AllocatePoolPacket()
+	defer d.device.ReleasePoolPacket(pkt)
 
 	// monitor stop signals and quit connection earlier
 	ctx, ctxCancel := context.WithDeadline(context.Background(), deadlineTime)
@@ -508,27 +507,27 @@ func (d *UdpDoor) udpTempAccessHandler(transactionId uint64, conn *net.UDPConn, 
 
 	// udp recv, blocking until packet arrives or deadline reaches
 	n, remoteAddr, err := conn.ReadFromUDP(pkt.Buf[:])
-	if err != nil || n < nhp.HeaderCommonSize {
+	if err != nil || n < core.HeaderCommonSize {
 		log.Error("ac(%s#%d)[HandleACOperations] failed to receive udp packet (%v)", acId, transactionId, err)
 		return
 	}
 
 	remoteAddrStr := remoteAddr.String()
-	pkt.Packet = pkt.Buf[:n]
+	pkt.Content = pkt.Buf[:n]
 
 	// check type and payload size
 	msgType, msgSize := pkt.HeaderTypeAndSize()
-	if msgType != nhp.NHP_ACC {
-		log.Error("ac(%s#%d)[HandleACOperations] message type is not %s, close connection", acId, transactionId, nhp.HeaderTypeToString(nhp.NHP_ACC))
+	if msgType != core.NHP_ACC {
+		log.Error("ac(%s#%d)[HandleACOperations] message type is not %s, close connection", acId, transactionId, core.HeaderTypeToString(core.NHP_ACC))
 		return
 	}
 
 	var packetSize int
 	flag := pkt.Flag()
-	if flag&nhp.NHP_FLAG_EXTENDEDLENGTH == 0 {
-		packetSize = nhp.HeaderSize + msgSize
+	if flag&core.NHP_FLAG_EXTENDEDLENGTH == 0 {
+		packetSize = core.HeaderSize + msgSize
 	} else {
-		packetSize = nhp.HeaderSizeEx + msgSize
+		packetSize = core.HeaderSizeEx + msgSize
 	}
 
 	if n != packetSize {
@@ -536,15 +535,14 @@ func (d *UdpDoor) udpTempAccessHandler(transactionId uint64, conn *net.UDPConn, 
 		return
 	}
 
-	log.Trace("receive udp access packet (%s -> %s): %+v", remoteAddrStr, localAddrStr, pkt.Packet)
+	log.Trace("receive udp access packet (%s -> %s): %+v", remoteAddrStr, localAddrStr, pkt.Content)
 	log.Info("ac(%s#%d)[HandleACOperations] receive udp access message (%s -> %s)", acId, transactionId, remoteAddrStr, localAddrStr)
 
-	pd := &nhp.PacketData{
+	pd := &core.PacketData{
 		BasePacket:     pkt,
-		ConnData:       &nhp.ConnectionData{},
+		ConnData:       &core.ConnectionData{},
 		InitTime:       time.Now().UnixNano(),
-		HeaderType:     msgType,
-		DecryptedMsgCh: make(chan *nhp.PacketParserData),
+		DecryptedMsgCh: make(chan *core.PacketParserData),
 	}
 
 	if !d.IsRunning() {
@@ -567,7 +565,7 @@ func (d *UdpDoor) udpTempAccessHandler(transactionId uint64, conn *net.UDPConn, 
 	accMsg := &common.AgentAccessMsg{}
 	err = json.Unmarshal(accPpd.BodyMessage, accMsg)
 	if err != nil {
-		log.Error("ac(%s#%d)[HandleACOperations] failed to parse %s message: %v", acId, transactionId, nhp.HeaderTypeToString(accPpd.HeaderType), err)
+		log.Error("ac(%s#%d)[HandleACOperations] failed to parse %s message: %v", acId, transactionId, core.HeaderTypeToString(accPpd.HeaderType), err)
 		return
 	}
 
@@ -611,7 +609,7 @@ func (d *UdpDoor) udpTempAccessHandler(transactionId uint64, conn *net.UDPConn, 
 	}
 }
 
-func (d *UdpDoor) tempConnTerminator(conn net.Conn, ctx context.Context) {
+func (d *UdpAC) tempConnTerminator(conn net.Conn, ctx context.Context) {
 	select {
 	case <-d.signals.stop:
 		conn.Close()

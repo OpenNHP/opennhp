@@ -1,4 +1,4 @@
-package nhp
+package core
 
 import (
 	"time"
@@ -11,7 +11,7 @@ type LocalTransaction struct {
 	transactionId uint64
 	connData      *ConnectionData
 	mad           *MsgAssemblerData
-	NextPacketCh  chan *UdpPacket        // higher level entities should redirect packet to this channel
+	NextPacketCh  chan *Packet           // higher level entities should redirect packet to this channel
 	ExternalMsgCh chan *PacketParserData // a channel to receive an external msg to complete the transaction
 	timeout       int
 }

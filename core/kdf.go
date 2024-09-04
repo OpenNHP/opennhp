@@ -1,4 +1,4 @@
-package nhp
+package core
 
 import (
 	"crypto/hmac"

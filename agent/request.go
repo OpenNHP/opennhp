@@ -5,8 +5,8 @@ import (
 	"net"
 
 	"github.com/OpenNHP/opennhp/common"
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/log"
-	"github.com/OpenNHP/opennhp/nhp"
 )
 
 // note: code in request.go is for nhp-agent to send request to nhp-server.
@@ -35,9 +35,9 @@ func (a *UdpAgent) RequestOtp(target *KnockTarget) error {
 		return common.ErrKnockServerNotFound
 	}
 
-	otpMd := &nhp.MsgData{
+	otpMd := &core.MsgData{
 		RemoteAddr:    sendAddr.(*net.UDPAddr),
-		HeaderType:    nhp.NHP_OTP,
+		HeaderType:    core.NHP_OTP,
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       otpBytes,
@@ -82,14 +82,14 @@ func (a *UdpAgent) RegisterPublicKey(otp string, target *KnockTarget) (rakMsg *c
 	}
 	addrStr := sendAddr.String()
 
-	regMd := &nhp.MsgData{
+	regMd := &core.MsgData{
 		RemoteAddr:    sendAddr.(*net.UDPAddr),
-		HeaderType:    nhp.NHP_REG,
+		HeaderType:    core.NHP_REG,
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       regBytes,
 		PeerPk:        server.PublicKey(),
-		ResponseMsgCh: make(chan *nhp.PacketParserData),
+		ResponseMsgCh: make(chan *core.PacketParserData),
 	}
 
 	if !a.IsRunning() {
@@ -110,8 +110,8 @@ func (a *UdpAgent) RegisterPublicKey(otp string, target *KnockTarget) (rakMsg *c
 		return nil, err
 	}
 
-	if serverPpd.HeaderType != nhp.NHP_RAK {
-		log.Error("agent(%s#%d)[RegisterPublicKey] response has wrong type: %s", regMsg.UserId, regMd.TransactionId, nhp.HeaderTypeToString(serverPpd.HeaderType))
+	if serverPpd.HeaderType != core.NHP_RAK {
+		log.Error("agent(%s#%d)[RegisterPublicKey] response has wrong type: %s", regMsg.UserId, regMd.TransactionId, core.HeaderTypeToString(serverPpd.HeaderType))
 		err = common.ErrTransactionRepliedWithWrongType
 		return nil, err
 	}
@@ -119,7 +119,7 @@ func (a *UdpAgent) RegisterPublicKey(otp string, target *KnockTarget) (rakMsg *c
 	rakMsg = &common.ServerRegisterAckMsg{}
 	err = json.Unmarshal(serverPpd.BodyMessage, rakMsg)
 	if err != nil {
-		log.Error("agent(%s#%d)[RegisterPublicKey] failed to parse %s message: %v", regMsg.UserId, regMd.TransactionId, nhp.HeaderTypeToString(serverPpd.HeaderType), err)
+		log.Error("agent(%s#%d)[RegisterPublicKey] failed to parse %s message: %v", regMsg.UserId, regMd.TransactionId, core.HeaderTypeToString(serverPpd.HeaderType), err)
 		return nil, err
 	}
 
@@ -158,14 +158,14 @@ func (a *UdpAgent) ListResource(target *KnockTarget) (lrtMsg *common.ServerListR
 	}
 	addrStr := sendAddr.String()
 
-	lstMd := &nhp.MsgData{
+	lstMd := &core.MsgData{
 		RemoteAddr:    sendAddr.(*net.UDPAddr),
-		HeaderType:    nhp.NHP_LST,
+		HeaderType:    core.NHP_LST,
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       lstBytes,
 		PeerPk:        server.PublicKey(),
-		ResponseMsgCh: make(chan *nhp.PacketParserData),
+		ResponseMsgCh: make(chan *core.PacketParserData),
 	}
 
 	if !a.IsRunning() {
@@ -186,8 +186,8 @@ func (a *UdpAgent) ListResource(target *KnockTarget) (lrtMsg *common.ServerListR
 		return nil, err
 	}
 
-	if serverPpd.HeaderType != nhp.NHP_LRT {
-		log.Error("agent(%s#%d)[ListResource] response has wrong type: %s", lstMsg.UserId, lstMd.TransactionId, nhp.HeaderTypeToString(serverPpd.HeaderType))
+	if serverPpd.HeaderType != core.NHP_LRT {
+		log.Error("agent(%s#%d)[ListResource] response has wrong type: %s", lstMsg.UserId, lstMd.TransactionId, core.HeaderTypeToString(serverPpd.HeaderType))
 		err = common.ErrTransactionRepliedWithWrongType
 		return nil, err
 	}
@@ -195,7 +195,7 @@ func (a *UdpAgent) ListResource(target *KnockTarget) (lrtMsg *common.ServerListR
 	lrtMsg = &common.ServerListResultMsg{}
 	err = json.Unmarshal(serverPpd.BodyMessage, lrtMsg)
 	if err != nil {
-		log.Error("agent(%s#%d)[ListResource] failed to parse %s message: %v", lstMsg.UserId, lstMd.TransactionId, nhp.HeaderTypeToString(serverPpd.HeaderType), err)
+		log.Error("agent(%s#%d)[ListResource] failed to parse %s message: %v", lstMsg.UserId, lstMd.TransactionId, core.HeaderTypeToString(serverPpd.HeaderType), err)
 		return nil, err
 	}
 

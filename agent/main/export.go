@@ -14,7 +14,7 @@ import (
 
 	"github.com/OpenNHP/opennhp/agent"
 	"github.com/OpenNHP/opennhp/common"
-	"github.com/OpenNHP/opennhp/nhp"
+	"github.com/OpenNHP/opennhp/core"
 )
 
 var gAgentInstance *agent.UdpAgent
@@ -149,8 +149,8 @@ func nhp_agent_add_server(pubkey *C.char, ip *C.char, host *C.char, port C.int, 
 		serverPort = 62206 // use default server listening port
 	}
 
-	serverPeer := &nhp.UdpPeer{
-		Type:         nhp.NHP_SERVER,
+	serverPeer := &core.UdpPeer{
+		Type:         core.NHP_SERVER,
 		PubKeyBase64: deepCopyCString(pubkey),
 		Ip:           deepCopyCString(ip),
 		Port:         serverPort,
@@ -345,14 +345,14 @@ func nhp_agent_exit_resource(aspId *C.char, resId *C.char, serverAddr *C.char) b
 //
 //export nhp_generate_keys
 func nhp_generate_keys(cipherType C.int) *C.char {
-	var e nhp.Ecdh
-	switch nhp.EccTypeEnum(cipherType) {
-	case nhp.ECC_SM2:
-		e = nhp.NewECDH(nhp.ECC_SM2)
-	case nhp.ECC_CURVE25519:
+	var e core.Ecdh
+	switch core.EccTypeEnum(cipherType) {
+	case core.ECC_SM2:
+		e = core.NewECDH(core.ECC_SM2)
+	case core.ECC_CURVE25519:
 		fallthrough
 	default:
-		e = nhp.NewECDH(nhp.ECC_CURVE25519)
+		e = core.NewECDH(core.ECC_CURVE25519)
 	}
 	pub := e.PublicKeyBase64()
 	priv := e.PrivateKeyBase64()
@@ -376,7 +376,7 @@ func nhp_privkey_to_pubkey(cipherType C.int, privateBase64 *C.char) *C.char {
 		return nil
 	}
 
-	e := nhp.ECDHFromKey(nhp.EccTypeEnum(cipherType), privKeyBytes)
+	e := core.ECDHFromKey(core.EccTypeEnum(cipherType), privKeyBytes)
 	if e == nil {
 		return nil
 	}

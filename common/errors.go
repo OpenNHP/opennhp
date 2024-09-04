@@ -1,6 +1,9 @@
 package common
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 var errorMap map[string]*Error = make(map[string]*Error)
 
@@ -12,7 +15,7 @@ type Error struct {
 	msgCH string
 }
 
-// implment error interface
+// implment NhpError interface
 func (e *Error) Error() string {
 	switch strings.ToUpper(ErrorMsgLanguageLocale) {
 	case "EN", "EN-US", "EN-GB":
@@ -25,6 +28,11 @@ func (e *Error) Error() string {
 
 func (e *Error) ErrorCode() string {
 	return e.code
+}
+
+func (e *Error) ErrorNumber() int {
+	n, _ := strconv.Atoi(e.code)
+	return n
 }
 
 func newError(code string, enStr string, chStr string) *Error {
@@ -61,6 +69,7 @@ func ErrorCodeToError(code string) *Error {
 	return nil // should not happen
 }
 
+// application errors
 var (
 	// generic
 	ErrSuccess                             = newError("0", "", "")

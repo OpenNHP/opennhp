@@ -229,7 +229,7 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 		return nil, fmt.Errorf("user or password is incorrect")
 	}
 
-	// interact with udp server for door operation
+	// interact with udp server for ac operation
 	ackMsg, err := helper.AuthWithHttpCallbackFunc(req, res)
 	if ackMsg == nil || ackMsg.ErrCode != common.ErrSuccess.ErrorCode() {
 		log.Error("knock failed. ackMsg is nil")

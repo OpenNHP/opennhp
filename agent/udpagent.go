@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/OpenNHP/opennhp/common"
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/log"
-	"github.com/OpenNHP/opennhp/nhp"
 	"github.com/OpenNHP/opennhp/version"
 )
 
@@ -38,7 +38,7 @@ func (res *KnockResource) Id() string {
 type KnockTarget struct {
 	sync.Mutex
 	KnockResource
-	ServerPeer           *nhp.UdpPeer
+	ServerPeer           *core.UdpPeer
 	LastKnockSuccessTime time.Time
 }
 
@@ -49,14 +49,14 @@ func (kt *KnockTarget) SetResource(res *KnockResource) {
 	kt.KnockResource = *res
 }
 
-func (kt *KnockTarget) SetServer(peer *nhp.UdpPeer) {
+func (kt *KnockTarget) SetServer(peer *core.UdpPeer) {
 	kt.Lock()
 	defer kt.Unlock()
 
 	kt.ServerPeer = peer
 }
 
-func (kt *KnockTarget) Server() *nhp.UdpPeer {
+func (kt *KnockTarget) Server() *core.UdpPeer {
 	kt.Lock()
 	defer kt.Unlock()
 
@@ -79,9 +79,9 @@ type UdpAgent struct {
 	knockTargetMap      map[string]*KnockTarget // indexed by aspId + resId
 
 	serverPeerMutex sync.Mutex
-	serverPeerMap   map[string]*nhp.UdpPeer // indexed by server's public key
+	serverPeerMap   map[string]*core.UdpPeer // indexed by server's public key
 
-	device  *nhp.Device
+	device  *core.Device
 	wg      sync.WaitGroup
 	running atomic.Bool
 
@@ -91,8 +91,8 @@ type UdpAgent struct {
 		knockTargetMapUpdated chan struct{}
 	}
 
-	recvMsgCh <-chan *nhp.PacketParserData
-	sendMsgCh chan *nhp.MsgData
+	recvMsgCh <-chan *core.PacketParserData
+	sendMsgCh chan *core.MsgData
 
 	// one agent should serve only one specific user at a time
 	knockUserMutex sync.RWMutex
@@ -102,7 +102,7 @@ type UdpAgent struct {
 }
 
 type UdpConn struct {
-	ConnData *nhp.ConnectionData
+	ConnData *core.ConnectionData
 	netConn  *net.UDPConn
 }
 
@@ -139,7 +139,7 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 		return fmt.Errorf("private key parse error %v", err)
 	}
 
-	a.device = nhp.NewDevice(nhp.NHP_AGENT, prk, nil)
+	a.device = core.NewDevice(core.NHP_AGENT, prk, nil)
 	if a.device == nil {
 		log.Critical("failed to create device %v\n", err)
 		return fmt.Errorf("failed to create device %v", err)
@@ -161,7 +161,7 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	a.loadResources()
 
 	a.recvMsgCh = a.device.DecryptedMsgQueue
-	a.sendMsgCh = make(chan *nhp.MsgData, nhp.SendQueueSize)
+	a.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
 
 	// start agent routines
 	a.wg.Add(2)
@@ -247,15 +247,15 @@ func (a *UdpAgent) newConnection(addr *net.UDPAddr) (conn *UdpConn) {
 
 	log.Info("Dial up new UDP connection from %s to %s", localAddr.String(), addr.String())
 
-	conn.ConnData = &nhp.ConnectionData{
+	conn.ConnData = &core.ConnectionData{
 		Device:               a.device,
-		CookieStore:          &nhp.CookieStore{},
-		RemoteTransactionMap: make(map[uint64]*nhp.RemoteTransaction),
+		CookieStore:          &core.CookieStore{},
+		RemoteTransactionMap: make(map[uint64]*core.RemoteTransaction),
 		LocalAddr:            localAddr,
 		RemoteAddr:           addr,
 		TimeoutMs:            DefaultConnectionTimeoutMs,
-		SendQueue:            make(chan *nhp.UdpPacket, PacketQueueSizePerConnection),
-		RecvQueue:            make(chan *nhp.UdpPacket, PacketQueueSizePerConnection),
+		SendQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),
+		RecvQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),
 		BlockSignal:          make(chan struct{}),
 		SetTimeoutSignal:     make(chan struct{}),
 		StopSignal:           make(chan struct{}),
@@ -319,21 +319,21 @@ func (a *UdpAgent) sendMessageRoutine() {
 
 }
 
-func (a *UdpAgent) SendPacket(pkt *nhp.UdpPacket, conn *UdpConn) (n int, err error) {
+func (a *UdpAgent) SendPacket(pkt *core.Packet, conn *UdpConn) (n int, err error) {
 	defer func() {
 		atomic.AddUint64(&a.stats.totalSendBytes, uint64(n))
 		atomic.StoreInt64(&conn.ConnData.LastLocalSendTime, time.Now().UnixNano())
 
 		if !pkt.KeepAfterSend {
-			a.device.ReleaseUdpPacket(pkt)
+			a.device.ReleasePoolPacket(pkt)
 		}
 	}()
 
-	pktType := nhp.HeaderTypeToString(pkt.HeaderType)
-	//log.Debug("Send [%s] packet (%s -> %s): %+v", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), pkt.Packet)
-	log.Info("Send [%s] packet (%s -> %s), %d bytes", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Packet))
-	log.Evaluate("Send [%s] packet (%s -> %s), %d bytes", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Packet))
-	return conn.netConn.Write(pkt.Packet)
+	pktType := core.HeaderTypeToString(pkt.HeaderType)
+	//log.Debug("Send [%s] packet (%s -> %s): %+v", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), pkt.Content)
+	log.Info("Send [%s] packet (%s -> %s), %d bytes", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
+	log.Evaluate("Send [%s] packet (%s -> %s), %d bytes", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
+	return conn.netConn.Write(pkt.Content)
 }
 
 func (a *UdpAgent) recvPacketRoutine(conn *UdpConn) {
@@ -353,10 +353,10 @@ func (a *UdpAgent) recvPacketRoutine(conn *UdpConn) {
 		}
 
 		// udp recv, blocking until packet arrives or netConn.Close()
-		pkt := a.device.AllocateUdpPacket()
+		pkt := a.device.AllocatePoolPacket()
 		n, err := conn.netConn.Read(pkt.Buf[:])
 		if err != nil {
-			a.device.ReleaseUdpPacket(pkt)
+			a.device.ReleasePoolPacket(pkt)
 			if n == 0 {
 				// udp connection closed, it is not an error
 				return
@@ -369,21 +369,21 @@ func (a *UdpAgent) recvPacketRoutine(conn *UdpConn) {
 		atomic.AddUint64(&a.stats.totalRecvBytes, uint64(n))
 
 		// check minimal length
-		if n < nhp.HeaderSize {
-			a.device.ReleaseUdpPacket(pkt)
+		if n < core.HeaderSize {
+			a.device.ReleasePoolPacket(pkt)
 			log.Error("Received UDP packet from %s is too short, discard", addrStr)
 			continue
 		}
 
-		pkt.Packet = pkt.Buf[:n]
-		//log.Trace("receive udp packet (%s -> %s): %+v", conn.ConnData.RemoteAddr.String(), conn.ConnData.LocalAddr.String(), pkt.Packet)
+		pkt.Content = pkt.Buf[:n]
+		//log.Trace("receive udp packet (%s -> %s): %+v", conn.ConnData.RemoteAddr.String(), conn.ConnData.LocalAddr.String(), pkt.Content)
 
 		typ, _, err := a.device.RecvPrecheck(pkt)
-		msgType := nhp.HeaderTypeToString(typ)
+		msgType := core.HeaderTypeToString(typ)
 		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, conn.ConnData.LocalAddr.String(), n)
 		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, conn.ConnData.LocalAddr.String(), n)
 		if err != nil {
-			a.device.ReleaseUdpPacket(pkt)
+			a.device.ReleasePoolPacket(pkt)
 			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			continue
@@ -444,11 +444,11 @@ func (a *UdpAgent) connectionRoutine(conn *UdpConn) {
 			if pkt == nil {
 				continue
 			}
-			log.Debug("Received udp packet len [%d] from addr: %s\n", len(pkt.Packet), addrStr)
+			log.Debug("Received udp packet len [%d] from addr: %s\n", len(pkt.Content), addrStr)
 
 			// process keepalive packet
-			if pkt.HeaderType == nhp.NHP_KPL {
-				a.device.ReleaseUdpPacket(pkt)
+			if pkt.HeaderType == core.NHP_KPL {
+				a.device.ReleasePoolPacket(pkt)
 				log.Info("Receive [NHP_KPL] message (%s -> %s)", addrStr, conn.ConnData.LocalAddr.String())
 				continue
 			}
@@ -463,7 +463,7 @@ func (a *UdpAgent) connectionRoutine(conn *UdpConn) {
 				}
 			}
 
-			pd := &nhp.PacketData{
+			pd := &core.PacketData{
 				BasePacket: pkt,
 				ConnData:   conn.ConnData,
 				InitTime:   atomic.LoadInt64(&conn.ConnData.LastLocalRecvTime),
@@ -498,7 +498,7 @@ func (a *UdpAgent) recvMessageRoutine() {
 			}
 
 			switch ppd.HeaderType {
-			case nhp.NHP_COK:
+			case core.NHP_COK:
 				// synchronously block and deal with cookie message to ensure future messages will be correctly processed. note cookie is not handled as a transaction, so it arrives in here
 				a.HandleCookieMessage(ppd)
 
@@ -581,8 +581,8 @@ func (a *UdpAgent) knockResourceRoutine() {
 	}
 }
 
-func (a *UdpAgent) AddServer(server *nhp.UdpPeer) {
-	if server.DeviceType() == nhp.NHP_SERVER {
+func (a *UdpAgent) AddServer(server *core.UdpPeer) {
+	if server.DeviceType() == core.NHP_SERVER {
 		a.device.AddPeer(server)
 		a.serverPeerMutex.Lock()
 		a.serverPeerMap[server.PublicKeyBase64()] = server
@@ -647,7 +647,7 @@ func (a *UdpAgent) RemoveResource(aspId string, resId string) {
 	}
 }
 
-func (a *UdpAgent) FindServerPeerFromResource(res *KnockResource) *nhp.UdpPeer {
+func (a *UdpAgent) FindServerPeerFromResource(res *KnockResource) *core.UdpPeer {
 	a.serverPeerMutex.Lock()
 	defer a.serverPeerMutex.Unlock()
 	for _, peer := range a.serverPeerMap {
@@ -660,7 +660,7 @@ func (a *UdpAgent) FindServerPeerFromResource(res *KnockResource) *nhp.UdpPeer {
 }
 
 // if the server uses hostname as destination, find the correct peer with the actual IP address
-func (a *UdpAgent) ResolvePeer(peer *nhp.UdpPeer) (*nhp.UdpPeer, net.Addr) {
+func (a *UdpAgent) ResolvePeer(peer *core.UdpPeer) (*core.UdpPeer, net.Addr) {
 	addr := peer.SendAddr()
 	if addr == nil {
 		return peer, nil

@@ -27,17 +27,17 @@ IP放行模式分为两种：
 `etc/config.toml`
 
 ```toml
-[Door]
-  # (optional) assign an unique id for this door
-  DoorId = "abc_group_door_001"
+[AC]
+  # (optional) assign an unique id for this ac
+  ACId = "abc_group_ac_001"
   # (mandatory) specify the private key in base64 format
-  DoorPrivateKey = "+B0RLGbe+nknJBZ0Fjt7kCBWfSTUttbUqkGteLfIp30="
+  ACPrivateKey = "+B0RLGbe+nknJBZ0Fjt7kCBWfSTUttbUqkGteLfIp30="
   # 0: default, passing the knock source IP
   # 1: use pre-access procedure to determine the passing source IP
   IpPassMode = 0
-  # (optional) ID of authorization service provider this door belongs to
+  # (optional) ID of authorization service provider this ac belongs to
   AuthServiceId = "abc_group" 
-  # (optional) ID of resources controlled by this door
+  # (optional) ID of resources controlled by this ac
   ResourceIds = ["abc_group_web_server", "abc_group_api_server"]
   # (optional) ID of organization
   OrganizationId = "5f3e36149fa95c0414408ad4"

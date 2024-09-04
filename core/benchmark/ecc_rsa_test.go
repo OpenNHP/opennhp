@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/OpenNHP/opennhp/nhp"
+	"github.com/OpenNHP/opennhp/core"
 )
 
 var aeadCount uint64 = 0
@@ -47,8 +47,8 @@ func TestECCSharedKey(t *testing.T) {
 		" and install a pre-built Qt for Windows, follow the instructions on the Getting Started with Qt page."
 
 	for i := 0; i < 10; i++ {
-		ecdh := nhp.NewECDH(nhp.ECC_CURVE25519)
-		ecdhr := nhp.NewECDH(nhp.ECC_CURVE25519)
+		ecdh := core.NewECDH(core.ECC_CURVE25519)
+		ecdhr := core.NewECDH(core.ECC_CURVE25519)
 
 		ssc := ecdh.SharedSecret(ecdhr.PublicKey())
 		sss := ecdhr.SharedSecret(ecdh.PublicKey())
@@ -58,18 +58,27 @@ func TestECCSharedKey(t *testing.T) {
 		//	return
 		//}
 
-		hash := sha256.New()
-		hash.Write(ssc[:])
-		hashed := hash.Sum(nil)
-		aeadc := nhp.AeadFromKey(nhp.GCM_AES256, ssc)
-		aeads := nhp.AeadFromKey(nhp.GCM_AES256, sss)
+		var sscKey, sssKey [core.SymmetricKeySize]byte
+		copy(sscKey[:], ssc[:])
+		copy(sssKey[:], sss[:])
+
+		hashc := sha256.New()
+		hashc.Write(ssc[:])
+		hashedc := hashc.Sum(nil)
+
+		hashs := sha256.New()
+		hashs.Write(ssc[:])
+		hasheds := hashs.Sum(nil)
+
+		aeadc := core.AeadFromKey(core.GCM_AES256, &sscKey)
+		aeads := core.AeadFromKey(core.GCM_AES256, &sssKey)
 
 		var nonceBytes [12]byte
 		aeadCount++
 		binary.BigEndian.PutUint64(nonceBytes[:], aeadCount)
 
-		encrypted := aeadc.Seal(nil, nonceBytes[:], []byte(msg), hashed)
-		decrypted, err := aeads.Open(nil, nonceBytes[:], encrypted, hashed)
+		encrypted := aeadc.Seal(nil, nonceBytes[:], []byte(msg), hashedc)
+		decrypted, err := aeads.Open(nil, nonceBytes[:], encrypted, hasheds)
 		_ = decrypted
 		if err != nil {
 			fmt.Printf("aead decrypt error: %v", err)
@@ -90,8 +99,8 @@ func TestGMSharedKey(t *testing.T) {
 		" and install a pre-built Qt for Windows, follow the instructions on the Getting Started with Qt page."
 
 	for i := 0; i < 10; i++ {
-		ecdh := nhp.NewECDH(nhp.ECC_SM2)
-		ecdhr := nhp.NewECDH(nhp.ECC_SM2)
+		ecdh := core.NewECDH(core.ECC_SM2)
+		ecdhr := core.NewECDH(core.ECC_SM2)
 
 		ssc := ecdh.SharedSecret(ecdhr.PublicKey())
 		sss := ecdhr.SharedSecret(ecdh.PublicKey())
@@ -101,18 +110,27 @@ func TestGMSharedKey(t *testing.T) {
 		//	return
 		//}
 
-		hash := sha256.New()
-		hash.Write(ssc[:])
-		hashed := hash.Sum(nil)
-		aeadc := nhp.AeadFromKey(nhp.GCM_SM4, ssc)
-		aeads := nhp.AeadFromKey(nhp.GCM_SM4, sss)
+		var sscKey, sssKey [core.SymmetricKeySize]byte
+		copy(sscKey[:], ssc[:])
+		copy(sssKey[:], sss[:])
+
+		hashc := sha256.New()
+		hashc.Write(ssc[:])
+		hashedc := hashc.Sum(nil)
+
+		hashs := sha256.New()
+		hashs.Write(ssc[:])
+		hasheds := hashs.Sum(nil)
+
+		aeadc := core.AeadFromKey(core.GCM_SM4, &sscKey)
+		aeads := core.AeadFromKey(core.GCM_SM4, &sssKey)
 
 		var nonceBytes [12]byte
 		aeadCount++
 		binary.BigEndian.PutUint64(nonceBytes[:], aeadCount)
 
-		encrypted := aeadc.Seal(nil, nonceBytes[:], []byte(msg), hashed)
-		decrypted, err := aeads.Open(nil, nonceBytes[:], encrypted, hashed)
+		encrypted := aeadc.Seal(nil, nonceBytes[:], []byte(msg), hashedc)
+		decrypted, err := aeads.Open(nil, nonceBytes[:], encrypted, hasheds)
 		_ = decrypted
 		if err != nil {
 			fmt.Printf("aead decrypt error: %v", err)

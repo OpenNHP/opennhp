@@ -5,23 +5,23 @@ import (
 	"encoding/json"
 
 	"github.com/OpenNHP/opennhp/common"
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/log"
-	"github.com/OpenNHP/opennhp/nhp"
 )
 
 // HandleOTPRequest
 // Server will not respond to agent's otp request
-func (s *UdpServer) HandleOTPRequest(ppd *nhp.PacketParserData) (err error) {
+func (s *UdpServer) HandleOTPRequest(ppd *core.PacketParserData) (err error) {
 	defer s.wg.Done()
 	s.wg.Add(1)
 
-	transactionId := ppd.SenderId
+	transactionId := ppd.SenderTrxId
 	addrStr := ppd.ConnData.RemoteAddr.String()
 
 	otpMsg := &common.AgentOTPMsg{}
 	err = json.Unmarshal(ppd.BodyMessage, otpMsg)
 	if err != nil {
-		log.Error("server-agent(#%d@%s)[HandleOTPRequest] failed to parse %s message: %v", transactionId, addrStr, nhp.HeaderTypeToString(ppd.HeaderType), err)
+		log.Error("server-agent(#%d@%s)[HandleOTPRequest] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
 		return err
 	}
 
@@ -50,11 +50,11 @@ func (s *UdpServer) HandleOTPRequest(ppd *nhp.PacketParserData) (err error) {
 
 // HandleRegisterRequest
 // Server will respond with success or error with NHP_RAK message
-func (s *UdpServer) HandleRegisterRequest(ppd *nhp.PacketParserData) (err error) {
+func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error) {
 	defer s.wg.Done()
 	s.wg.Add(1)
 
-	transactionId := ppd.SenderId
+	transactionId := ppd.SenderTrxId
 	addrStr := ppd.ConnData.RemoteAddr.String()
 	regMsg := &common.AgentRegisterMsg{}
 	rakMsg := &common.ServerRegisterAckMsg{}
@@ -62,7 +62,7 @@ func (s *UdpServer) HandleRegisterRequest(ppd *nhp.PacketParserData) (err error)
 	func() {
 		err = json.Unmarshal(ppd.BodyMessage, regMsg)
 		if err != nil {
-			log.Error("server-agent(#%d@%s)[HandleRegisterRequest] failed to parse %s message: %v", transactionId, addrStr, nhp.HeaderTypeToString(ppd.HeaderType), err)
+			log.Error("server-agent(#%d@%s)[HandleRegisterRequest] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
 			rakMsg.ErrCode = common.ErrJsonParseFailed.ErrorCode()
 			rakMsg.ErrMsg = err.Error()
 			return
@@ -99,8 +99,8 @@ func (s *UdpServer) HandleRegisterRequest(ppd *nhp.PacketParserData) (err error)
 
 	// send NHP_RAK message
 	rakBytes, _ := json.Marshal(rakMsg)
-	rakMd := &nhp.MsgData{
-		HeaderType:     nhp.NHP_RAK,
+	rakMd := &core.MsgData{
+		HeaderType:     core.NHP_RAK,
 		TransactionId:  transactionId,
 		Compress:       true,
 		PrevParserData: ppd,
@@ -122,11 +122,11 @@ func (s *UdpServer) HandleRegisterRequest(ppd *nhp.PacketParserData) (err error)
 
 // HandleListRequest
 // Server will respond with success or error with NHP_LRT message
-func (s *UdpServer) HandleListRequest(ppd *nhp.PacketParserData) (err error) {
+func (s *UdpServer) HandleListRequest(ppd *core.PacketParserData) (err error) {
 	defer s.wg.Done()
 	s.wg.Add(1)
 
-	transactionId := ppd.SenderId
+	transactionId := ppd.SenderTrxId
 	addrStr := ppd.ConnData.RemoteAddr.String()
 	lstMsg := &common.AgentListMsg{}
 	lrtMsg := &common.ServerListResultMsg{}
@@ -134,7 +134,7 @@ func (s *UdpServer) HandleListRequest(ppd *nhp.PacketParserData) (err error) {
 	func() {
 		err = json.Unmarshal(ppd.BodyMessage, lstMsg)
 		if err != nil {
-			log.Error("server-agent(#%d@%s)[HandleListRequest] failed to parse %s message: %v", transactionId, addrStr, nhp.HeaderTypeToString(ppd.HeaderType), err)
+			log.Error("server-agent(#%d@%s)[HandleListRequest] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
 			lrtMsg.ErrCode = common.ErrJsonParseFailed.ErrorCode()
 			lrtMsg.ErrMsg = err.Error()
 			return
@@ -169,8 +169,8 @@ func (s *UdpServer) HandleListRequest(ppd *nhp.PacketParserData) (err error) {
 	}()
 
 	lrtBytes, _ := json.Marshal(lrtMsg)
-	ackMd := &nhp.MsgData{
-		HeaderType:     nhp.NHP_LRT,
+	ackMd := &core.MsgData{
+		HeaderType:     core.NHP_LRT,
 		TransactionId:  transactionId,
 		Compress:       true,
 		PrevParserData: ppd,
@@ -190,24 +190,24 @@ func (s *UdpServer) HandleListRequest(ppd *nhp.PacketParserData) (err error) {
 	return err
 }
 
-func (s *UdpServer) HandleACOnline(ppd *nhp.PacketParserData) (err error) {
+func (s *UdpServer) HandleACOnline(ppd *core.PacketParserData) (err error) {
 	defer s.wg.Done()
 	s.wg.Add(1)
 
-	transactionId := ppd.SenderId
+	transactionId := ppd.SenderTrxId
 	addrStr := ppd.ConnData.RemoteAddr.String()
 	aolMsg := &common.ACOnlineMsg{}
 
 	err = json.Unmarshal(ppd.BodyMessage, aolMsg)
 	if err != nil {
-		log.Error("server-ac(#%d@%s)[HandleACOnline] failed to parse %s message: %v", transactionId, addrStr, nhp.HeaderTypeToString(ppd.HeaderType), err)
+		log.Error("server-ac(#%d@%s)[HandleACOnline] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
 		return err
 	}
 
 	acId := aolMsg.ACId
 	acPubkeyBase64 := base64.StdEncoding.EncodeToString(ppd.RemotePubKey)
 	s.acPeerMapMutex.Lock()
-	acPeer := s.acPeerMap[acPubkeyBase64] // door peer's recvAddr has already been updated by nhp packet parser
+	acPeer := s.acPeerMap[acPubkeyBase64] // ac peer's recvAddr has already been updated by nhp packet parser
 	s.acPeerMapMutex.Unlock()
 
 	acConn := &ACConn{
@@ -228,8 +228,8 @@ func (s *UdpServer) HandleACOnline(ppd *nhp.PacketParserData) (err error) {
 	}
 	aakBytes, _ := json.Marshal(aakMsg)
 
-	aakMd := &nhp.MsgData{
-		HeaderType:     nhp.NHP_AAK,
+	aakMd := &core.MsgData{
+		HeaderType:     core.NHP_AAK,
 		TransactionId:  transactionId,
 		Compress:       true,
 		PrevParserData: ppd,

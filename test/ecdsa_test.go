@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/OpenNHP/opennhp/nhp"
+	"github.com/OpenNHP/opennhp/core"
+	"github.com/OpenNHP/opennhp/core/scheme/gmsm"
 	"github.com/emmansun/gmsm/sm2"
 )
 
@@ -70,7 +71,7 @@ func TestSM2ECDSAKeysSerializeAndDeserialize(t *testing.T) {
 	fmt.Printf("Private key: %s\n", hex.EncodeToString(privKey[:]))
 
 	plainText := "This is a test for sm2 ecdsa keys serialization"
-	hash := nhp.NewHash(nhp.HASH_SHA256)
+	hash := core.NewHash(core.HASH_SHA256)
 	hash.Write([]byte(plainText))
 	hashedBytes := hash.Sum(nil)
 	fmt.Printf("hashed hex: %s, length: %d\n", hex.EncodeToString(hashedBytes), len(hashedBytes))
@@ -100,7 +101,7 @@ func TestSM2ECDSAKeysSerializeAndDeserialize(t *testing.T) {
 	}
 	fmt.Printf("Decypted plaintext: %s\n", decrypted)
 
-	privKey1, err := nhp.Base64DecodeSM2ECDSAPrivateKey(pubStr, privStr)
+	privKey1, err := gmsm.Base64DecodeSM2ECDSAPrivateKey(pubStr, privStr)
 	if err != nil {
 		fmt.Printf("decode priv key error: %v\n", err)
 		return
@@ -113,7 +114,7 @@ func TestSM2ECDSAKeysSerializeAndDeserialize(t *testing.T) {
 	}
 	fmt.Printf("Decypted plaintext1: %s\n", decrypted1)
 
-	pubKey1, err := nhp.Base64DecodeSM2ECDSAPublicKey(pubStr)
+	pubKey1, err := gmsm.Base64DecodeSM2ECDSAPublicKey(pubStr)
 	if err != nil {
 		fmt.Printf("decode pub key error: %v\n", err)
 		return
@@ -129,7 +130,7 @@ func TestKeyDeserialization(t *testing.T) {
 	pubBytes, _ := hex.DecodeString(pubHexStr)
 	privBytes, _ := hex.DecodeString(privHexStr)
 
-	privKey, err := nhp.Base64DecodeSM2ECDSAPrivateKey(base64.StdEncoding.EncodeToString(pubBytes), base64.StdEncoding.EncodeToString(privBytes))
+	privKey, err := gmsm.Base64DecodeSM2ECDSAPrivateKey(base64.StdEncoding.EncodeToString(pubBytes), base64.StdEncoding.EncodeToString(privBytes))
 	if err != nil {
 		fmt.Printf("decode failed %v\n", err)
 		return
@@ -150,11 +151,11 @@ func TestKeyDeserialization(t *testing.T) {
 }
 
 func TestECDHForECDSA(t *testing.T) {
-	pubStr, privStr := nhp.GenerateSM2ECDHKeypair()
+	pubStr, privStr := gmsm.GenerateSM2ECDHKeypair()
 	fmt.Printf("Public key: %s\n", pubStr)
 	fmt.Printf("Private key: %s\n", privStr)
 
-	sm2PrivKey, err := nhp.Base64DecodeSM2ECDSAPrivateKey(pubStr, privStr)
+	sm2PrivKey, err := gmsm.Base64DecodeSM2ECDSAPrivateKey(pubStr, privStr)
 	if err != nil {
 		fmt.Printf("decode error: %v\n", err)
 		return

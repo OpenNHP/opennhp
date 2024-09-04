@@ -5,17 +5,17 @@ import (
 	"encoding/json"
 
 	"github.com/OpenNHP/opennhp/common"
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/log"
-	"github.com/OpenNHP/opennhp/nhp"
 )
 
 // HandleKnockRequest
 // Server will respond with success or error with NHP_ACK message
-func (s *UdpServer) HandleKnockRequest(ppd *nhp.PacketParserData) (err error) {
+func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 	defer s.wg.Done()
 	s.wg.Add(1)
 
-	transactionId := ppd.SenderId
+	transactionId := ppd.SenderTrxId
 	addrStr := ppd.ConnData.RemoteAddr.String()
 	knkMsg := &common.AgentKnockMsg{}
 	ackMsg := &common.ServerKnockAckMsg{
@@ -26,7 +26,7 @@ func (s *UdpServer) HandleKnockRequest(ppd *nhp.PacketParserData) (err error) {
 		// parse knockMsg
 		err = json.Unmarshal(ppd.BodyMessage, knkMsg)
 		if err != nil {
-			log.Error("server-agent(#%d@%s)[HandleKnockRequest] failed to parse %s message: %v", transactionId, addrStr, nhp.HeaderTypeToString(ppd.HeaderType), err)
+			log.Error("server-agent(#%d@%s)[HandleKnockRequest] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
 			ackMsg.ErrCode = common.ErrJsonParseFailed.ErrorCode()
 			ackMsg.ErrMsg = err.Error()
 			return
@@ -76,8 +76,8 @@ func (s *UdpServer) HandleKnockRequest(ppd *nhp.PacketParserData) (err error) {
 	// send back knock ack response
 	ackBytes, _ := json.Marshal(ackMsg)
 
-	ackMd := &nhp.MsgData{
-		HeaderType:     nhp.NHP_ACK,
+	ackMd := &core.MsgData{
+		HeaderType:     core.NHP_ACK,
 		TransactionId:  transactionId, // transactionId of the original knock request
 		Compress:       true,
 		PrevParserData: ppd,

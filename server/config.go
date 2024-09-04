@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/OpenNHP/opennhp/common"
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/log"
-	"github.com/OpenNHP/opennhp/nhp"
 	"github.com/OpenNHP/opennhp/plugins"
 	"github.com/OpenNHP/opennhp/utils"
 
@@ -44,8 +44,8 @@ type HttpConfig struct {
 }
 
 type Peers struct {
-	ACs    []*nhp.UdpPeer
-	Agents []*nhp.UdpPeer
+	ACs    []*core.UdpPeer
+	Agents []*core.UdpPeer
 }
 
 func (s *UdpServer) loadBaseConfig() error {
@@ -165,7 +165,7 @@ func (s *UdpServer) updateBaseConfig(file string) (err error) {
 
 	if s.config.DisableAgentValidation != conf.DisableAgentValidation {
 		if s.device != nil {
-			s.device.SetOption(nhp.DeviceOptions{
+			s.device.SetOption(core.DeviceOptions{
 				DisableAgentPeerValidation: conf.DisableAgentValidation,
 			})
 		}
@@ -229,12 +229,12 @@ func (s *UdpServer) updateACPeers(file string) (err error) {
 
 	// update
 	var peers Peers
-	acPeerMap := make(map[string]*nhp.UdpPeer)
+	acPeerMap := make(map[string]*core.UdpPeer)
 	if err := toml.Unmarshal(content, &peers); err != nil {
 		log.Error("failed to unmarshal ac peer config: %v", err)
 	}
 	for _, p := range peers.ACs {
-		p.Type = nhp.NHP_AC
+		p.Type = core.NHP_AC
 		s.device.AddPeer(p)
 		acPeerMap[p.PublicKeyBase64()] = p
 	}
@@ -263,12 +263,12 @@ func (s *UdpServer) updateAgentPeers(file string) (err error) {
 	}
 
 	var peers Peers
-	agentPeerMap := make(map[string]*nhp.UdpPeer)
+	agentPeerMap := make(map[string]*core.UdpPeer)
 	if err := toml.Unmarshal(content, &peers); err != nil {
 		log.Error("failed to unmarshal agent peer config: %v", err)
 	}
 	for _, p := range peers.Agents {
-		p.Type = nhp.NHP_AGENT
+		p.Type = core.NHP_AGENT
 		s.device.AddPeer(p)
 		agentPeerMap[p.PublicKeyBase64()] = p
 	}

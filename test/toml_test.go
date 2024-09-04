@@ -7,7 +7,7 @@ import (
 
 	"github.com/OpenNHP/opennhp/ac"
 	"github.com/OpenNHP/opennhp/common"
-	"github.com/OpenNHP/opennhp/nhp"
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/fsnotify/fsnotify"
 	toml "github.com/pelletier/go-toml/v2"
 	"github.com/spf13/viper"
@@ -18,10 +18,10 @@ func TestTomlUnmarshal(t *testing.T) {
   a = "abc"
   B = "aBc"
   C = "abC"
-  ACId = "test.clouddeep.cn-door"
+  ACId = "test.clouddeep.cn-ac"
   PrivateKey = "+B0RLGbe+nknJBZ0Fjt7kCBWfSTUttbUqkGteLfIp30="
   IpPassMode = 0
-  AuthServiceId = "nhp.clouddeep.cn"
+  AuthServiceId = "core.clouddeep.cn"
   ResourceIds = ["test.clouddeep.cn"]
   OrganizationId = "5f3e36149fa95c0414408ad4"
 
@@ -53,7 +53,7 @@ func TestTomlUnmarshal(t *testing.T) {
 		AuthServiceId  string
 		ResourceIds    []string
 		OrganizationId string
-		Servers        []*nhp.UdpPeer
+		Servers        []*core.UdpPeer
 		Data           map[string]any
 	}
 	var Obj obj
@@ -170,7 +170,7 @@ func TestUdpServerTomlViperHandling(t *testing.T) {
 	}
 
 	type acPeers struct {
-		ACs []*nhp.UdpPeer
+		ACs []*core.UdpPeer
 	}
 
 	var peers acPeers

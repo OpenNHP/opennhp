@@ -21,8 +21,8 @@
 title: OpenNHP Documentation
 description: Zero Trust Network-infrastructure Hiding Protocol
 baseurl: "" # the subpath of your site, e.g. /blog
-remote_theme: just-the-docs
-#theme: just-the-docs
+#remote_theme: just-the-docs
+theme: just-the-docs
 
 url: "https://opennhp.org"
 logo: "/images/logo1.png"

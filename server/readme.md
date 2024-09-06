@@ -2,10 +2,9 @@
 
 ## 架构设计
 
-**注：** 由于历史原因，此处的Door为NHP-AC的另一种表述，与NHP-AC意义相同。
 
-1. Server启动时监听特定端口，等待Agent和Door进行连接。并由Agent或Door主动触发向Server的通信。不存在Server向Agent或Door主动建立连接的情况，通常情况下这种连接会跨防火墙或NAT导致不能建立。
-   - 特殊情况：Server在收到Agent发起的敲门处理时，鉴权后需要主动向Door发起开门请求，并等待回应。
+1. Server启动时监听特定端口，等待Agent和AC进行连接。并由Agent或AC主动触发向Server的通信。不存在Server向Agent或AC主动建立连接的情况，通常情况下这种连接会跨防火墙或NAT导致不能建立。
+   - 特殊情况：Server在收到Agent发起的敲门处理时，鉴权后需要主动向AC发起开门请求，并等待回应。
 
 2. 发送消息时，向**sendMsgCh**发送创建好的**MsgAssembler**（必须从已有连接中指定**ConnData**）。**MsgAssembler**经过加密后会从此连接发出
 
@@ -23,8 +22,8 @@
   "listenPort": 62206,
   // whether to validate peer's public key when receiving NHP packet from agent. If true, server must have a pre-recorded public key pool (in "agents" field) of all allowed agents. If false, server skip public key validation, so it reduces secure level.
   "disableAgentValidation": false,
-  // list of preset allowed AC peers. only public key and expire time are needed. It has the same effect as AddDoorPeer()
-  "doors": [
+  // list of preset allowed AC peers. only public key and expire time are needed. It has the same effect as AddACPeer()
+  "acs": [
     {
       // type: NHP-AC
       "type": 3,

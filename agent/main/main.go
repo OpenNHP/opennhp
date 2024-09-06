@@ -9,7 +9,7 @@ import (
 	"syscall"
 
 	"github.com/OpenNHP/opennhp/agent"
-	"github.com/OpenNHP/opennhp/nhp"
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/version"
 	"github.com/urfave/cli/v2"
 )
@@ -36,11 +36,11 @@ func main() {
 			&cli.BoolFlag{Name: "sm2", Value: false, DisableDefaultText: true, Usage: "generate sm2 keys"},
 		},
 		Action: func(c *cli.Context) error {
-			var e nhp.Ecdh
+			var e core.Ecdh
 			if c.Bool("sm2") {
-				e = nhp.NewECDH(nhp.ECC_SM2)
+				e = core.NewECDH(core.ECC_SM2)
 			} else {
-				e = nhp.NewECDH(nhp.ECC_CURVE25519)
+				e = core.NewECDH(core.ECC_CURVE25519)
 			}
 			pub := e.PublicKeyBase64()
 			priv := e.PrivateKeyBase64()
@@ -62,11 +62,11 @@ func main() {
 			if err != nil {
 				return err
 			}
-			cipherType := nhp.ECC_CURVE25519
+			cipherType := core.ECC_CURVE25519
 			if c.Bool("sm2") {
-				cipherType = nhp.ECC_SM2
+				cipherType = core.ECC_SM2
 			}
-			e := nhp.ECDHFromKey(cipherType, privKey)
+			e := core.ECDHFromKey(cipherType, privKey)
 			if e == nil {
 				return fmt.Errorf("invalid input key")
 			}

@@ -1,4 +1,4 @@
-package nhp
+package core
 
 import (
 	"bytes"
@@ -15,39 +15,51 @@ import (
 	"unsafe"
 
 	"github.com/OpenNHP/opennhp/common"
+	"github.com/OpenNHP/opennhp/core/scheme/curve"
+	"github.com/OpenNHP/opennhp/core/scheme/gmsm"
 	"github.com/OpenNHP/opennhp/log"
 )
 
+type ResponderScheme interface {
+	CreatePacketParserData(d *Device, pd *PacketData) (ppd *PacketParserData, err error)
+	DerivePacketParserDataFromPrevAssemblerData(mad *MsgAssemblerData, pkt *Packet, initTime int64) (ppd *PacketParserData)
+	validatePeer(d *Device, ppd *PacketParserData) (err error)
+	decryptBody(d *Device, ppd *PacketParserData) (err error)
+}
+
 type CookieStore struct {
-	Cookie         [CookieSize]byte
+	CurrCookie     [CookieSize]byte
 	PrevCookie     [CookieSize]byte
 	LastCookieTime int64
 }
 
-func (cs *CookieStore) Set() {
-	SetZero(cs.Cookie[:])
-	SetZero(cs.PrevCookie[:])
+func (cs *CookieStore) Set(cookie []byte) {
+	copy(cs.PrevCookie[:], cs.CurrCookie[:])
+	copy(cs.CurrCookie[:], cookie)
 }
 
 func (cs *CookieStore) Clear() {
-	SetZero(cs.Cookie[:])
+	SetZero(cs.CurrCookie[:])
 	SetZero(cs.PrevCookie[:])
 }
 
 type PacketData struct {
-	BasePacket        *UdpPacket
-	ConnData          *ConnectionData
-	PrevAssemblerData *MsgAssemblerData
-	InitTime          int64
-	HeaderType        int
-	DecryptedMsgCh    chan *PacketParserData
+	BasePacket             *Packet
+	ConnData               *ConnectionData
+	PrevAssemblerData      *MsgAssemblerData
+	ConnLastRemoteSendTime *int64
+	ConnCookieStore        *CookieStore
+	ConnPeerPublicKey      *[PublicKeySizeEx]byte
+	InitTime               int64
+	DecryptedMsgCh         chan *PacketParserData
 }
 
 type PacketParserData struct {
-	device     *Device
-	basePacket *UdpPacket
-	ConnData   *ConnectionData
-	Ciphers    *CipherSuite
+	device       *Device
+	basePacket   *Packet
+	ConnData     *ConnectionData
+	CipherScheme int
+	Ciphers      *CipherSuite
 
 	deviceEcdh Ecdh
 	header     Header
@@ -57,7 +69,7 @@ type PacketParserData struct {
 	chainKey   [SymmetricKeySize]byte
 
 	LocalInitTime int64
-	SenderId      uint64
+	SenderTrxId   uint64
 
 	noise        NoiseFactory // int
 	HeaderType   int
@@ -66,8 +78,13 @@ type PacketParserData struct {
 	BodyCompress bool
 	Overload     bool
 
-	RemotePubKey []byte
-	BodyMessage  []byte
+	SenderIdentity         []byte
+	SenderMidPublicKey     []byte
+	ConnLastRemoteSendTime *int64
+	ConnCookieStore        *CookieStore
+	ConnPeerPublicKey      *[PublicKeySizeEx]byte
+	RemotePubKey           []byte
+	BodyMessage            []byte
 
 	decryptedMsgCh chan<- *PacketParserData
 	feedbackMsgCh  chan<- *PacketParserData
@@ -82,19 +99,30 @@ func (d *Device) createPacketParserData(pd *PacketData) (ppd *PacketParserData, 
 		ppd.device = d
 		ppd.basePacket = pd.BasePacket
 		ppd.ConnData = pd.ConnData
+		ppd.ConnCookieStore = pd.ConnCookieStore
 		ppd.LocalInitTime = pd.InitTime
+		ppd.ConnLastRemoteSendTime = pd.ConnLastRemoteSendTime
+		ppd.ConnPeerPublicKey = pd.ConnPeerPublicKey
 		ppd.decryptedMsgCh = pd.DecryptedMsgCh
 
 		// init header and init device ecdh
-		ppd.HeaderFlag = binary.BigEndian.Uint16(ppd.basePacket.Packet[10:12])
+		ppd.HeaderFlag = binary.BigEndian.Uint16(ppd.basePacket.Content[10:12])
 		if ppd.HeaderFlag&NHP_FLAG_EXTENDEDLENGTH == 0 {
-			ppd.header = (*NHPHeader)(unsafe.Pointer(&ppd.basePacket.Packet[0]))
-			ppd.Ciphers = NewCipherSuite(false)
-			ppd.deviceEcdh = d.staticEcdh
+			ppd.CipherScheme = CIPHER_SCHEME_CURVE
+			ppd.header = (*curve.HeaderCurve)(unsafe.Pointer(&ppd.basePacket.Content[0]))
+			ppd.Ciphers = NewCipherSuite(CIPHER_SCHEME_CURVE)
+			ppd.deviceEcdh = d.staticEcdhCurve
 		} else {
-			ppd.header = (*NHPHeaderEx)(unsafe.Pointer(&ppd.basePacket.Packet[0]))
-			ppd.Ciphers = NewCipherSuite(true)
-			ppd.deviceEcdh = d.staticEcdhEx
+			// check cipher scheme
+			switch ppd.HeaderFlag & (0xF << 12) {
+			case NHP_FLAG_SCHEME_GMSM:
+				fallthrough
+			default:
+				ppd.CipherScheme = CIPHER_SCHEME_GMSM
+				ppd.header = (*gmsm.HeaderGmsm)(unsafe.Pointer(&ppd.basePacket.Content[0]))
+				ppd.Ciphers = NewCipherSuite(CIPHER_SCHEME_GMSM)
+				ppd.deviceEcdh = d.staticEcdhGmsm
+			}
 		}
 
 		// init chain hash -> ChainHash0
@@ -124,28 +152,29 @@ func (d *Device) createPacketParserData(pd *PacketData) (ppd *PacketParserData, 
 			ppd.Overload = true
 			if !ppd.IsAllowedAtOverload() {
 				log.Critical("discard packet type %d due to overload", ppd.HeaderType)
-				err = fmt.Errorf("server overloaded, packet rejected")
+				err = ErrServerOverload
 				return
 			}
 		}
 
+		// for RKN, check HMAC with cookie. For remaining allowed key messages, check HMAC without cookie.
 		sumCookie := overload && ppd.HeaderType == NHP_RKN
 		if !ppd.checkHMAC(sumCookie) {
 			log.Error("HMAC validation failed on server side. sumCookie: %v", sumCookie)
-			err = fmt.Errorf("server hmac validation failed")
+			err = ErrServerHMACCheckFailed
 			return
 		}
 
 	} else {
 		if !ppd.checkHMAC(false) {
 			log.Error("HMAC validation failed.")
-			err = fmt.Errorf("hmac validation failed")
+			err = ErrHMACCheckFailed
 			return
 		}
 	}
 
 	// get sender id
-	ppd.SenderId = ppd.header.Counter()
+	ppd.SenderTrxId = ppd.header.Counter()
 
 	// init body message
 	ppd.BodyCompress = ppd.HeaderFlag&NHP_FLAG_COMPRESS != 0
@@ -159,27 +188,31 @@ func (ppd *PacketParserData) deriveMsgAssemblerData(t int, compress bool, messag
 	mad.device = ppd.device
 	mad.connData = ppd.ConnData
 	mad.HeaderType = t
+	mad.ciphers = ppd.Ciphers
+	mad.CipherScheme = ppd.CipherScheme
 	mad.RemotePubKey = ppd.RemotePubKey
 	mad.BodyCompress = compress
 	mad.bodyMessage = message
 
 	// init packet buffer
-	mad.BasePacket = mad.device.AllocateUdpPacket()
+	mad.BasePacket = mad.device.AllocatePoolPacket()
 	mad.BasePacket.HeaderType = t
 
 	// create header and init device ecdh
-	mad.ciphers = ppd.Ciphers
-	if mad.ciphers.IsUseGm() {
-		mad.HeaderFlag |= NHP_FLAG_EXTENDEDLENGTH
-		mad.header = (*NHPHeaderEx)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
-		mad.deviceEcdh = mad.device.staticEcdhEx
-	} else {
-		mad.header = (*NHPHeader)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
-		mad.deviceEcdh = mad.device.staticEcdh
+	switch mad.CipherScheme {
+	case CIPHER_SCHEME_CURVE:
+		mad.header = (*curve.HeaderCurve)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
+		mad.deviceEcdh = mad.device.staticEcdhCurve
+	case CIPHER_SCHEME_GMSM:
+		fallthrough
+	default:
+		mad.header = (*gmsm.HeaderGmsm)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
+		mad.deviceEcdh = mad.device.staticEcdhGmsm
+
 	}
 
 	// continue with the sender's counter
-	mad.header.SetCounter(ppd.SenderId)
+	mad.header.SetCounter(ppd.SenderTrxId)
 
 	// init chain hash -> ChainHash0
 	mad.chainHash = NewHash(mad.ciphers.HashType)
@@ -212,26 +245,35 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// get ephermeral shared key
 	ess := ppd.deviceEcdh.SharedSecret(ppd.header.EphermeralBytes())
 	if ess == nil {
-		log.Error("ephermal ECDH failed with peer")
-		err = fmt.Errorf("ephermal ECDH failed with peer")
+		log.Error("device ECDH failed with ephermal")
+		err = ErrDeviceECDHEphermalFailed
 		return err
 	}
 
 	// prepare key for aead
 	var key [SymmetricKeySize]byte
+	var aead cipher.AEAD
 
 	// generate gcm key and decrypt device pubkey ChainKey1 -> ChainKey2 (ChainKey5 -> ChainKey6)
 	ppd.noise.KeyGen2(&ppd.chainKey, &key, ppd.chainKey[:], ess[:])
 	SetZero(ess[:])
+
 	peerPk := make([]byte, PublicKeySizeEx)
-	aead := AeadFromKey(ppd.Ciphers.GcmType, &key)
-	_, err = aead.Open(peerPk[:0], ppd.header.NonceBytes(), ppd.header.StaticBytes(), ppd.chainHash.Sum(nil))
-	if err != nil {
-		log.Error("failed to decrypt peer pubkey")
-		return err
+	switch ppd.CipherScheme {
+	case CIPHER_SCHEME_CURVE:
+		fallthrough
+	case CIPHER_SCHEME_GMSM:
+		fallthrough
+	default:
+		aead = AeadFromKey(ppd.Ciphers.GcmType, &key)
+		_, err = aead.Open(peerPk[:0], ppd.header.NonceBytes(), ppd.header.StaticBytes(), ppd.chainHash.Sum(nil))
+		if err != nil {
+			log.Error("failed to decrypt peer pubkey")
+			return err
+		}
 	}
 
-	if ppd.HeaderFlag&NHP_FLAG_EXTENDEDLENGTH == 0 {
+	if ppd.CipherScheme == CIPHER_SCHEME_CURVE {
 		peerPk = peerPk[:PublicKeySize]
 	}
 
@@ -241,11 +283,13 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// ac does not validate nor store agent public key. Related msgtype: NHP_ACC.
 	var peer Peer
 	var toValidate bool
+	var peerDeviceType int
+
 	ppd.device.optionMutex.Lock()
 	option := ppd.device.option
 	ppd.device.optionMutex.Unlock()
 
-	peerDeviceType := HeaderTypeToDeviceType(ppd.HeaderType)
+	peerDeviceType = HeaderTypeToDeviceType(ppd.HeaderType)
 	switch peerDeviceType {
 	case NHP_AGENT:
 		toValidate = !option.DisableAgentPeerValidation
@@ -258,7 +302,6 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 
 	case NHP_RELAY:
 		toValidate = !option.DisableRelayPeerValidation
-
 	}
 
 	if toValidate {
@@ -284,6 +327,9 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	}
 
 	ppd.RemotePubKey = peerPk
+	if ppd.ConnPeerPublicKey != nil {
+		copy((*ppd.ConnPeerPublicKey)[:], peerPk)
+	}
 
 	// evolve chainhash ChainHash1 -> ChainHash2
 	ppd.chainHash.Write(ppd.header.StaticBytes())
@@ -291,23 +337,32 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// init shared key
 	ss := ppd.deviceEcdh.SharedSecret(peerPk)
 	if ss == nil {
-		log.Error("device ECDH failed with peer")
-		err = fmt.Errorf("device ECDH failed with peer")
+		log.Error("device ECDH failed with obtained peer")
+		err = ErrDeviceECDHObtainedPeerFailed
 		return err
 	}
 
 	// generate gcm key and decrypt timestamp ChainKey2 -> ChainKey3 (ChainKey6 -> ChainKey7)
 	ppd.noise.KeyGen2(&ppd.chainKey, &key, ppd.chainKey[:], ss[:])
 	SetZero(ss[:])
+
 	var tsBytes [TimestampSize]byte
-	aead = AeadFromKey(ppd.Ciphers.GcmType, &key)
-	_, err = aead.Open(tsBytes[:0], ppd.header.NonceBytes(), ppd.header.TimestampBytes(), ppd.chainHash.Sum(nil))
-	if err != nil {
-		log.Error("failed to decrypt timestamp")
-		return err
+	switch ppd.CipherScheme {
+	case CIPHER_SCHEME_CURVE:
+		fallthrough
+	case CIPHER_SCHEME_GMSM:
+		fallthrough
+	default:
+		aead = AeadFromKey(ppd.Ciphers.GcmType, &key)
+		_, err = aead.Open(tsBytes[:0], ppd.header.NonceBytes(), ppd.header.TimestampBytes(), ppd.chainHash.Sum(nil))
+		if err != nil {
+			log.Error("failed to decrypt timestamp")
+			return err
+		}
 	}
 
 	remoteSendTime := int64(binary.BigEndian.Uint64(tsBytes[:]))
+
 	if shouldCheckRecvAttack(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
 		// block remote if threat level is reached
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime {
@@ -362,9 +417,17 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 
 	// handle knock packet at overload before going into body decryption
 	if ppd.device.deviceType == NHP_SERVER && ppd.Overload && ppd.HeaderType == NHP_KNK {
-		ppd.generateCookie()
-		ppd.sendCookie()
-		err = fmt.Errorf("server overloaded, sending back cookie")
+		switch ppd.CipherScheme {
+		case CIPHER_SCHEME_CURVE:
+			fallthrough
+		case CIPHER_SCHEME_GMSM:
+			fallthrough
+		default:
+			ppd.generateCookie()
+			ppd.sendCookie()
+			err = ErrServerRejectWithCookie
+		}
+
 		return err
 	}
 
@@ -380,19 +443,23 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 
 func (ppd *PacketParserData) decryptBody() (err error) {
 	defer func() {
+		// clear secrets
 		ppd.chainHash.Reset()
 		ppd.chainHash = nil
+		SetZero(ppd.chainKey[:])
 	}()
 
 	// message body is empty, skip decryption
-	if len(ppd.basePacket.Packet) == ppd.header.Size() {
+	if len(ppd.basePacket.Content) == ppd.header.Size() {
 		return nil
 	}
 
-	// decrypt body and reuse ppd.BasePacket.Buf space
-	body, err := ppd.bodyAead.Open(ppd.basePacket.Buf[ppd.header.Size():ppd.header.Size()], ppd.header.NonceBytes(), ppd.basePacket.Packet[ppd.header.Size():], ppd.chainHash.Sum(nil))
+	// decrypt body and reuse ppd.BasePacket.Content space
+	body, err := ppd.bodyAead.Open(ppd.basePacket.Content[ppd.header.Size():ppd.header.Size()], ppd.header.NonceBytes(), ppd.basePacket.Content[ppd.header.Size():], ppd.chainHash.Sum(nil))
 	if err != nil {
 		log.Critical("decrypt body failed: %v", err)
+		ErrAEADDecryptionFailed.SetExtraError(err)
+		err = ErrAEADDecryptionFailed
 		return err
 	}
 
@@ -407,12 +474,30 @@ func (ppd *PacketParserData) decryptBody() (err error) {
 		_, err = io.Copy(&buf, r)
 		if err != nil {
 			log.Critical("message decompression failed: %v", err)
+			ErrDataDecompressionFailed.SetExtraError(err)
+			err = ErrDataDecompressionFailed
 			return err
 		}
 
 		ppd.BodyMessage = buf.Bytes()
 	} else {
 		ppd.BodyMessage = append(ppd.BodyMessage, body...)
+	}
+
+	return nil
+}
+
+func (ppd *PacketParserData) makeCookieStore(cookieStore *CookieStore) *CookieStore {
+	if cookieStore != nil {
+		var tsBytes [TimestampSize]byte
+		currTime := time.Now().UnixNano()
+		if (currTime - cookieStore.LastCookieTime) > CookieRegenerateTime*int64(time.Second) {
+			copy(cookieStore.PrevCookie[:], cookieStore.CurrCookie[:])
+			binary.BigEndian.PutUint64(tsBytes[:], uint64(currTime))
+			ppd.noise.KeyGen1(&cookieStore.CurrCookie, ppd.header.EphermeralBytes(), tsBytes[:])
+			cookieStore.LastCookieTime = currTime
+		}
+		return cookieStore
 	}
 
 	return nil
@@ -426,17 +511,17 @@ func (ppd *PacketParserData) generateCookie() {
 	defer ppd.ConnData.Unlock()
 
 	if (currTime - ppd.ConnData.CookieStore.LastCookieTime) > CookieRegenerateTime*int64(time.Second) {
-		copy(ppd.ConnData.CookieStore.PrevCookie[:], ppd.ConnData.CookieStore.Cookie[:])
+		copy(ppd.ConnData.CookieStore.PrevCookie[:], ppd.ConnData.CookieStore.CurrCookie[:])
 		binary.BigEndian.PutUint64(tsBytes[:], uint64(currTime))
-		ppd.noise.KeyGen1(&ppd.ConnData.CookieStore.Cookie, ppd.header.EphermeralBytes(), tsBytes[:])
+		ppd.noise.KeyGen1(&ppd.ConnData.CookieStore.CurrCookie, ppd.header.EphermeralBytes(), tsBytes[:])
 		ppd.ConnData.CookieStore.LastCookieTime = currTime
 	}
 }
 
 func (ppd *PacketParserData) sendCookie() {
-	cokStr := base64.StdEncoding.EncodeToString(ppd.ConnData.CookieStore.Cookie[:])
+	cokStr := base64.StdEncoding.EncodeToString(ppd.ConnData.CookieStore.CurrCookie[:])
 	cokMsg := &common.ServerCookieMsg{
-		TransactionId: ppd.SenderId,
+		TransactionId: ppd.SenderTrxId,
 		Cookie:        cokStr,
 	}
 	cokBytes, _ := json.Marshal(cokMsg)
@@ -464,19 +549,26 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 	ppd.hmacHash.Write(ppd.header.Bytes()[0:len])
 
 	if sumCookie {
-		ppd.ConnData.Lock()
-		defer ppd.ConnData.Unlock()
+		switch ppd.CipherScheme {
+		case CIPHER_SCHEME_CURVE:
+			fallthrough
+		case CIPHER_SCHEME_GMSM:
+			fallthrough
+		default:
+			ppd.ConnData.Lock()
+			defer ppd.ConnData.Unlock()
 
-		if ppd.LocalInitTime < ppd.ConnData.CookieStore.LastCookieTime+CookieRoundTripTimeMs*int64(time.Millisecond) {
-			// cookie has already or nearly been updated, use previous cookie
-			ppd.hmacHash.Write(ppd.ConnData.CookieStore.PrevCookie[:])
-			prevCookieHmac := ppd.hmacHash.Sum(nil)
-			return bytes.Equal(prevCookieHmac, ppd.header.HMACBytes())
-		} else {
-			// use current cookie
-			ppd.hmacHash.Write(ppd.ConnData.CookieStore.Cookie[:])
-			cookieHmac := ppd.hmacHash.Sum(nil)
-			return bytes.Equal(cookieHmac, ppd.header.HMACBytes())
+			if ppd.LocalInitTime < ppd.ConnData.CookieStore.LastCookieTime+CookieRoundTripTimeMs*int64(time.Millisecond) {
+				// cookie has already or nearly been updated, use previous cookie
+				ppd.hmacHash.Write(ppd.ConnData.CookieStore.PrevCookie[:])
+				prevCookieHmac := ppd.hmacHash.Sum(nil)
+				return bytes.Equal(prevCookieHmac, ppd.header.HMACBytes())
+			} else {
+				// use current cookie
+				ppd.hmacHash.Write(ppd.ConnData.CookieStore.CurrCookie[:])
+				cookieHmac := ppd.hmacHash.Sum(nil)
+				return bytes.Equal(cookieHmac, ppd.header.HMACBytes())
+			}
 		}
 	} else {
 		calculatedHmac := ppd.hmacHash.Sum(nil)
@@ -485,7 +577,7 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 }
 
 func (ppd *PacketParserData) Destroy() {
-	ppd.device.ReleaseUdpPacket(ppd.basePacket)
+	ppd.device.ReleasePoolPacket(ppd.basePacket)
 	if ppd.hmacHash != nil {
 		ppd.hmacHash.Reset()
 		ppd.hmacHash = nil
@@ -494,7 +586,6 @@ func (ppd *PacketParserData) Destroy() {
 		ppd.chainHash.Reset()
 		ppd.chainHash = nil
 	}
-	SetZero(ppd.chainKey[:])
 }
 
 func (ppd *PacketParserData) IsAllowedAtOverload() bool {

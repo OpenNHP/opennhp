@@ -1,10 +1,13 @@
-package nhp
+package core
 
 import (
 	"encoding/base64"
+	"fmt"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/OpenNHP/opennhp/log"
 )
@@ -26,6 +29,12 @@ type DeviceOptions struct {
 	DisableRelayPeerValidation  bool
 }
 
+type NhpError interface {
+	Error() string
+	ErrorCode() string
+	ErrorNumber() int
+}
+
 func defaultDeviceOptions(t int) (option DeviceOptions) {
 	switch t {
 	case NHP_AGENT:
@@ -43,10 +52,10 @@ type Device struct {
 	optionMutex sync.Mutex
 	option      DeviceOptions
 
-	counterIndex uint64
-	deviceType   int
-	staticEcdh   Ecdh
-	staticEcdhEx Ecdh
+	counterIndex    uint64
+	deviceType      int
+	staticEcdhCurve Ecdh // for cipherscheme curve
+	staticEcdhGmsm  Ecdh // for cipherscheme gmsm
 
 	peerMapMutex sync.Mutex
 	peerMap      map[string]Peer
@@ -78,13 +87,13 @@ func NewDevice(t int, prk []byte, option *DeviceOptions) *Device {
 		d.option = defaultDeviceOptions(t)
 	}
 
-	d.staticEcdh = ECDHFromKey(ECC_CURVE25519, prk)
-	if d.staticEcdh == nil {
+	d.staticEcdhCurve = ECDHFromKey(ECC_CURVE25519, prk)
+	if d.staticEcdhCurve == nil {
 		log.Critical("Failed to set private key")
 		return nil
 	}
-	d.staticEcdhEx = ECDHFromKey(ECC_SM2, prk)
-	if d.staticEcdhEx == nil {
+	d.staticEcdhGmsm = ECDHFromKey(ECC_SM2, prk)
+	if d.staticEcdhGmsm == nil {
 		log.Critical("Failed to set private key ex")
 		return nil
 	}
@@ -128,17 +137,18 @@ func (d *Device) Stop() {
 }
 
 func (d *Device) PublicKeyBase64() string {
-	return d.staticEcdh.PublicKeyBase64()
+	return d.staticEcdhCurve.PublicKeyBase64()
 }
 
 func (d *Device) PublicKeyExBase64() string {
-	return d.staticEcdhEx.PublicKeyBase64()
+	return d.staticEcdhGmsm.PublicKeyBase64()
 }
 
 func (d *Device) NextCounterIndex() uint64 {
 	return atomic.AddUint64(&d.counterIndex, 1)
 }
 
+// 异步多通道处理
 func (d *Device) msgToPacketRoutine(id int) {
 	defer d.wg.Done()
 	defer log.Info("msgToPacketRoutine %d: quit", id)
@@ -234,7 +244,7 @@ func (d *Device) msgToPacketRoutine(id int) {
 						transactionId: mad.header.Counter(),
 						connData:      mad.connData,
 						mad:           mad,
-						NextPacketCh:  make(chan *UdpPacket),
+						NextPacketCh:  make(chan *Packet),
 						timeout:       d.LocalTransactionTimeout(),
 					}
 					d.AddLocalTransaction(t)
@@ -247,6 +257,53 @@ func (d *Device) msgToPacketRoutine(id int) {
 	}
 }
 
+// 同步线性处理
+func (d *Device) MsgToPacket(md *MsgData) (mad *MsgAssemblerData, err error) {
+	defer func() {
+		if x := recover(); x != nil {
+			mad = nil
+			err = fmt.Errorf("!!!recovered from panic: %v\n%s", x, string(debug.Stack()))
+			ErrRuntimePanic.SetExtraError(err)
+			err = ErrRuntimePanic
+		}
+	}()
+
+	var buf [PacketBufferSize]byte
+	md.ExternalPacket = &Packet{
+		Buf:        &buf,
+		Content:    buf[:],
+		HeaderType: md.HeaderType,
+	}
+	//md.Compress = len(md.Message) > 64 // no gain for compression if size is small
+	// use new transaction id if not specified
+	if md.TransactionId == 0 {
+		md.TransactionId = d.NextCounterIndex()
+	}
+
+	// process keepalive separately
+	if md.HeaderType == NHP_KPL {
+		mad, _ = d.createKeepalivePacket(md)
+		return mad, nil
+	}
+
+	mad, err = d.createMsgAssemblerData(md)
+	defer mad.Destroy()
+	if err != nil {
+		return nil, err
+	}
+	err = mad.setPeerPublicKey(nil)
+	if err != nil {
+		return nil, err
+	}
+	err = mad.encryptBody()
+	if err != nil {
+		return nil, err
+	}
+
+	return mad, nil
+}
+
+// 异步多通道处理
 func (d *Device) packetToMsgRoutine(id int) {
 	defer d.wg.Done()
 	defer log.Info("packetToMsgRoutine %d: quit", id)
@@ -335,7 +392,7 @@ func (d *Device) packetToMsgRoutine(id int) {
 				// start and save responder transaction
 				if d.IsTransactionRequest(ppd.HeaderType) {
 					t := &RemoteTransaction{
-						transactionId: ppd.SenderId,
+						transactionId: ppd.SenderTrxId,
 						connData:      ppd.ConnData,
 						parserData:    ppd, // ppd is owned and to be destroyed by transaction
 						NextMsgCh:     make(chan *MsgData),
@@ -357,6 +414,45 @@ func (d *Device) packetToMsgRoutine(id int) {
 			}()
 		}
 	}
+}
+
+// 同步线性处理
+func (d *Device) PacketToMsg(pd *PacketData) (ppd *PacketParserData, err error) {
+	defer func() {
+		if x := recover(); x != nil {
+			ppd = nil
+			err = fmt.Errorf("!!!recovered from panic: %v\n%s", x, string(debug.Stack()))
+			ErrRuntimePanic.SetExtraError(err)
+			err = ErrRuntimePanic
+		}
+	}()
+
+	var packetType int
+	packetType, _, err = d.RecvPrecheck(pd.BasePacket)
+	if err != nil {
+		return nil, err
+	}
+	// skip processing keepalive packet
+	if packetType == NHP_KPL {
+		return &PacketParserData{HeaderType: NHP_KPL}, nil
+	}
+
+	pd.InitTime = time.Now().UnixNano()
+	ppd, err = d.createPacketParserData(pd)
+	defer ppd.Destroy()
+	if err != nil {
+		return nil, err
+	}
+	err = ppd.validatePeer()
+	if err != nil {
+		return nil, err
+	}
+	err = ppd.decryptBody()
+	if err != nil {
+		return nil, err
+	}
+
+	return ppd, nil
 }
 
 func (d *Device) SendMsgToPacket(md *MsgData) {
@@ -411,35 +507,6 @@ func (d *Device) LookupPeer(pk []byte) Peer {
 		return peer
 	}
 	return nil
-}
-
-func (d *Device) CheckRecvHeaderType(t int) bool {
-	// NHP_KPL is handled elsewhere
-	switch d.deviceType {
-	case NHP_AGENT:
-		switch t {
-		case NHP_ACK, NHP_LRT, NHP_COK, NHP_RAK:
-			return true
-		}
-	case NHP_SERVER:
-		switch t {
-		case NHP_REG, NHP_KNK, NHP_LST, NHP_RKN, NHP_EXT, NHP_ART, NHP_RLY, NHP_AOL, NHP_OTP:
-			return true
-		}
-	case NHP_AC:
-		switch t {
-		case NHP_AOP, NHP_LRT, NHP_AAK:
-			return true
-		}
-	case NHP_RELAY:
-		switch t {
-		case NHP_REG, NHP_KNK, NHP_ACK, NHP_LST, NHP_LRT, NHP_COK, NHP_RKN, NHP_EXT:
-			return true
-		}
-	}
-
-	log.Info("Device type: %d, recv header type %d not allowed", d.deviceType, t)
-	return false
 }
 
 func (d *Device) IsOverload() bool {

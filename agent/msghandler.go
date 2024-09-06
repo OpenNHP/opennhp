@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 
 	"github.com/OpenNHP/opennhp/common"
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/log"
-	"github.com/OpenNHP/opennhp/nhp"
 )
 
-func (a *UdpAgent) HandleCookieMessage(ppd *nhp.PacketParserData) bool {
+func (a *UdpAgent) HandleCookieMessage(ppd *core.PacketParserData) bool {
 	defer a.wg.Done()
 	a.wg.Add(1)
 
@@ -18,13 +18,13 @@ func (a *UdpAgent) HandleCookieMessage(ppd *nhp.PacketParserData) bool {
 	err := json.Unmarshal(ppd.BodyMessage, cokMsg)
 
 	if err != nil {
-		log.Error("agent[HandleCookieMessage] failed to parse %s message: %v", nhp.HeaderTypeToString(ppd.HeaderType), err)
+		log.Error("agent[HandleCookieMessage] failed to parse %s message: %v", core.HeaderTypeToString(ppd.HeaderType), err)
 		return false
 	}
 
 	// update cookie
 	cokBytes, _ := base64.StdEncoding.DecodeString(cokMsg.Cookie)
-	copy(ppd.ConnData.CookieStore.Cookie[:], cokBytes)
+	copy(ppd.ConnData.CookieStore.CurrCookie[:], cokBytes)
 
 	transactionId := cokMsg.TransactionId // note this transaction id is in message structure, not the one in packet
 	transaction := a.device.FindLocalTransaction(transactionId)

@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/OpenNHP/opennhp/common"
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/log"
-	"github.com/OpenNHP/opennhp/nhp"
 	"github.com/OpenNHP/opennhp/utils"
 	"github.com/OpenNHP/opennhp/version"
 )
@@ -31,7 +31,7 @@ type AgentUser struct {
 }
 
 func (au *AgentUser) Hash() string {
-	au.hash = nhp.NewHash(nhp.HASH_SM3)
+	au.hash = core.NewHash(core.HASH_SM3)
 	au.hash.Write([]byte(au.UserId))
 	au.hash.Write([]byte(au.DeviceId))
 	au.hash.Write([]byte(au.OrganizationId))
@@ -42,7 +42,7 @@ func (au *AgentUser) Hash() string {
 
 type AgentUserCodeMap = map[string]*map[string]string // agent hash string first letter > agent hash string > token
 
-type UdpDoor struct {
+type UdpAC struct {
 	config   *Config
 	iptables *utils.IPTables
 	ipset    *utils.IPSet
@@ -58,12 +58,12 @@ type UdpDoor struct {
 	remoteConnectionMap   map[string]*UdpConn // indexed by remote UDP address
 
 	serverPeerMutex sync.Mutex
-	serverPeerMap   map[string]*nhp.UdpPeer // indexed by server's public key
+	serverPeerMap   map[string]*core.UdpPeer // indexed by server's public key
 
 	AgentUserTokenMutex sync.Mutex
 	agentUserCodeMap    AgentUserCodeMap
 
-	device  *nhp.Device
+	device  *core.Device
 	wg      sync.WaitGroup
 	running atomic.Bool
 
@@ -72,12 +72,12 @@ type UdpDoor struct {
 		serverMapUpdated chan struct{}
 	}
 
-	recvMsgCh <-chan *nhp.PacketParserData
-	sendMsgCh chan *nhp.MsgData
+	recvMsgCh <-chan *core.PacketParserData
+	sendMsgCh chan *core.MsgData
 }
 
 type UdpConn struct {
-	ConnData     *nhp.ConnectionData
+	ConnData     *core.ConnectionData
 	netConn      *net.UDPConn
 	connected    atomic.Bool
 	externalAddr string
@@ -92,7 +92,7 @@ func (c *UdpConn) Close() {
 dirPath: the path of app or shared library entry point
 logLevel: 0: silent, 1: error, 2: info, 3: debug, 4: verbose
 */
-func (d *UdpDoor) Start(dirPath string, logLevel int) (err error) {
+func (d *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	common.ExeDirPath = dirPath
 	ExeDirPath = dirPath
 	// init logger
@@ -129,14 +129,14 @@ func (d *UdpDoor) Start(dirPath string, logLevel int) (err error) {
 		return fmt.Errorf("private key parse error %v", err)
 	}
 
-	d.device = nhp.NewDevice(nhp.NHP_AC, prk, nil)
+	d.device = core.NewDevice(core.NHP_AC, prk, nil)
 	if d.device == nil {
 		log.Critical("failed to create device %v\n", err)
 		return fmt.Errorf("failed to create device %v", err)
 	}
 
 	d.remoteConnectionMap = make(map[string]*UdpConn)
-	d.serverPeerMap = make(map[string]*nhp.UdpPeer)
+	d.serverPeerMap = make(map[string]*core.UdpPeer)
 	d.agentUserCodeMap = make(AgentUserCodeMap)
 
 	// load peers
@@ -146,12 +146,12 @@ func (d *UdpDoor) Start(dirPath string, logLevel int) (err error) {
 	d.signals.serverMapUpdated = make(chan struct{}, 1)
 
 	d.recvMsgCh = d.device.DecryptedMsgQueue
-	d.sendMsgCh = make(chan *nhp.MsgData, nhp.SendQueueSize)
+	d.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
 
 	// start device routines
 	d.device.Start()
 
-	// start door routines
+	// start ac routines
 	d.wg.Add(3)
 	go d.sendMessageRoutine()
 	go d.recvMessageRoutine()
@@ -161,7 +161,7 @@ func (d *UdpDoor) Start(dirPath string, logLevel int) (err error) {
 	return nil
 }
 
-func (d *UdpDoor) Stop() {
+func (d *UdpAC) Stop() {
 	d.running.Store(false)
 	close(d.signals.stop)
 
@@ -177,11 +177,11 @@ func (d *UdpDoor) Stop() {
 	d.log.Close()
 }
 
-func (d *UdpDoor) IsRunning() bool {
+func (d *UdpAC) IsRunning() bool {
 	return d.running.Load()
 }
 
-func (d *UdpDoor) newConnection(addr *net.UDPAddr) (conn *UdpConn) {
+func (d *UdpAC) newConnection(addr *net.UDPAddr) (conn *UdpConn) {
 	conn = &UdpConn{}
 	var err error
 	// unlike tcp, udp dial is fast (just socket bind), so no need to run in a thread
@@ -201,15 +201,15 @@ func (d *UdpDoor) newConnection(addr *net.UDPAddr) (conn *UdpConn) {
 
 	log.Info("Dial up new UDP connection from %s to %s", localAddr.String(), addr.String())
 
-	conn.ConnData = &nhp.ConnectionData{
+	conn.ConnData = &core.ConnectionData{
 		Device:               d.device,
-		CookieStore:          &nhp.CookieStore{},
-		RemoteTransactionMap: make(map[uint64]*nhp.RemoteTransaction),
+		CookieStore:          &core.CookieStore{},
+		RemoteTransactionMap: make(map[uint64]*core.RemoteTransaction),
 		LocalAddr:            localAddr,
 		RemoteAddr:           addr,
 		TimeoutMs:            DefaultConnectionTimeoutMs,
-		SendQueue:            make(chan *nhp.UdpPacket, PacketQueueSizePerConnection),
-		RecvQueue:            make(chan *nhp.UdpPacket, PacketQueueSizePerConnection),
+		SendQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),
+		RecvQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),
 		BlockSignal:          make(chan struct{}),
 		SetTimeoutSignal:     make(chan struct{}),
 		StopSignal:           make(chan struct{}),
@@ -222,7 +222,7 @@ func (d *UdpDoor) newConnection(addr *net.UDPAddr) (conn *UdpConn) {
 	return conn
 }
 
-func (d *UdpDoor) sendMessageRoutine() {
+func (d *UdpAC) sendMessageRoutine() {
 	defer d.wg.Done()
 	defer log.Info("sendMessageRoutine stopped")
 
@@ -273,24 +273,24 @@ func (d *UdpDoor) sendMessageRoutine() {
 	}
 }
 
-func (d *UdpDoor) SendPacket(pkt *nhp.UdpPacket, conn *UdpConn) (n int, err error) {
+func (d *UdpAC) SendPacket(pkt *core.Packet, conn *UdpConn) (n int, err error) {
 	defer func() {
 		atomic.AddUint64(&d.stats.totalSendBytes, uint64(n))
 		atomic.StoreInt64(&conn.ConnData.LastLocalSendTime, time.Now().UnixNano())
 
 		if !pkt.KeepAfterSend {
-			d.device.ReleaseUdpPacket(pkt)
+			d.device.ReleasePoolPacket(pkt)
 		}
 	}()
 
-	pktType := nhp.HeaderTypeToString(pkt.HeaderType)
-	//log.Debug("Send [%s] packet (%s -> %s): %+v", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), pkt.Packet)
-	log.Info("Send [%s] packet (%s -> %s), %d bytes", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Packet))
-	log.Evaluate("Send [%s] packet (%s -> %s, %d bytes)", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Packet))
-	return conn.netConn.Write(pkt.Packet)
+	pktType := core.HeaderTypeToString(pkt.HeaderType)
+	//log.Debug("Send [%s] packet (%s -> %s): %+v", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), pkt.Content)
+	log.Info("Send [%s] packet (%s -> %s), %d bytes", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
+	log.Evaluate("Send [%s] packet (%s -> %s, %d bytes)", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
+	return conn.netConn.Write(pkt.Content)
 }
 
-func (d *UdpDoor) recvPacketRoutine(conn *UdpConn) {
+func (d *UdpAC) recvPacketRoutine(conn *UdpConn) {
 	addrStr := conn.ConnData.RemoteAddr.String()
 
 	defer conn.ConnData.Done()
@@ -307,10 +307,10 @@ func (d *UdpDoor) recvPacketRoutine(conn *UdpConn) {
 		}
 
 		// udp recv, blocking until packet arrives or netConn.Close()
-		pkt := d.device.AllocateUdpPacket()
+		pkt := d.device.AllocatePoolPacket()
 		n, err := conn.netConn.Read(pkt.Buf[:])
 		if err != nil {
-			d.device.ReleaseUdpPacket(pkt)
+			d.device.ReleasePoolPacket(pkt)
 			if n == 0 {
 				// udp connection closed, it is not an error
 				return
@@ -323,21 +323,21 @@ func (d *UdpDoor) recvPacketRoutine(conn *UdpConn) {
 		atomic.AddUint64(&d.stats.totalRecvBytes, uint64(n))
 
 		// check minimal length
-		if n < nhp.HeaderSize {
-			d.device.ReleaseUdpPacket(pkt)
+		if n < core.HeaderSize {
+			d.device.ReleasePoolPacket(pkt)
 			log.Error("Received UDP packet from %s is too short, discard", addrStr)
 			continue
 		}
 
-		pkt.Packet = pkt.Buf[:n]
-		//log.Trace("receive udp packet (%s -> %s): %+v", conn.ConnData.RemoteAddr.String(), conn.ConnData.LocalAddr.String(), pkt.Packet)
+		pkt.Content = pkt.Buf[:n]
+		//log.Trace("receive udp packet (%s -> %s): %+v", conn.ConnData.RemoteAddr.String(), conn.ConnData.LocalAddr.String(), pkt.Content)
 
 		typ, _, err := d.device.RecvPrecheck(pkt)
-		msgType := nhp.HeaderTypeToString(typ)
+		msgType := core.HeaderTypeToString(typ)
 		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, conn.ConnData.LocalAddr.String(), n)
 		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, conn.ConnData.LocalAddr.String(), n)
 		if err != nil {
-			d.device.ReleaseUdpPacket(pkt)
+			d.device.ReleasePoolPacket(pkt)
 			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			continue
@@ -349,7 +349,7 @@ func (d *UdpDoor) recvPacketRoutine(conn *UdpConn) {
 	}
 }
 
-func (d *UdpDoor) connectionRoutine(conn *UdpConn) {
+func (d *UdpAC) connectionRoutine(conn *UdpConn) {
 	addrStr := conn.ConnData.RemoteAddr.String()
 
 	defer d.wg.Done()
@@ -398,10 +398,10 @@ func (d *UdpDoor) connectionRoutine(conn *UdpConn) {
 			if pkt == nil {
 				continue
 			}
-			log.Debug("Received udp packet len [%d] from addr: %s\n", len(pkt.Packet), addrStr)
+			log.Debug("Received udp packet len [%d] from addr: %s\n", len(pkt.Content), addrStr)
 
-			if pkt.HeaderType == nhp.NHP_KPL {
-				d.device.ReleaseUdpPacket(pkt)
+			if pkt.HeaderType == core.NHP_KPL {
+				d.device.ReleasePoolPacket(pkt)
 				log.Info("Receive [NHP_KPL] message (%s -> %s)", addrStr, conn.ConnData.LocalAddr.String())
 				continue
 			}
@@ -416,7 +416,7 @@ func (d *UdpDoor) connectionRoutine(conn *UdpConn) {
 				}
 			}
 
-			pd := &nhp.PacketData{
+			pd := &core.PacketData{
 				BasePacket: pkt,
 				ConnData:   conn.ConnData,
 				InitTime:   atomic.LoadInt64(&conn.ConnData.LastLocalRecvTime),
@@ -431,7 +431,7 @@ func (d *UdpDoor) connectionRoutine(conn *UdpConn) {
 	}
 }
 
-func (d *UdpDoor) recvMessageRoutine() {
+func (d *UdpAC) recvMessageRoutine() {
 	defer d.wg.Done()
 	defer log.Info("recvMessageRoutine stopped")
 
@@ -451,7 +451,7 @@ func (d *UdpDoor) recvMessageRoutine() {
 			}
 
 			switch ppd.HeaderType {
-			case nhp.NHP_AOP:
+			case core.NHP_AOP:
 				// deal with NHP_AOP message
 				go d.HandleACOperations(ppd)
 			}
@@ -460,7 +460,7 @@ func (d *UdpDoor) recvMessageRoutine() {
 }
 
 // keep interaction between ac and server in certain time interval to keep outwards ip path active
-func (d *UdpDoor) maintainServerConnectionRoutine() {
+func (d *UdpAC) maintainServerConnectionRoutine() {
 	defer d.wg.Done()
 	defer log.Info("maintainServerConnectionRoutine stopped")
 
@@ -536,7 +536,7 @@ func (d *UdpDoor) maintainServerConnectionRoutine() {
 	}
 }
 
-func (d *UdpDoor) serverDiscovery(server *nhp.UdpPeer, discoveryRoutineWg *sync.WaitGroup, serverFailCount *int32, quit <-chan struct{}) {
+func (d *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.WaitGroup, serverFailCount *int32, quit <-chan struct{}) {
 	defer discoveryRoutineWg.Done()
 
 	acId := d.config.ACId
@@ -590,14 +590,14 @@ func (d *UdpDoor) serverDiscovery(server *nhp.UdpPeer, discoveryRoutineWg *sync.
 			}
 			aolBytes, _ := json.Marshal(aolMsg)
 
-			aolMd := &nhp.MsgData{
+			aolMd := &core.MsgData{
 				RemoteAddr:    sendAddr.(*net.UDPAddr),
-				HeaderType:    nhp.NHP_AOL,
+				HeaderType:    core.NHP_AOL,
 				TransactionId: d.device.NextCounterIndex(),
 				Compress:      true,
 				PeerPk:        peerPbk,
 				Message:       aolBytes,
-				ResponseMsgCh: make(chan *nhp.PacketParserData),
+				ResponseMsgCh: make(chan *core.PacketParserData),
 			}
 
 			if !d.IsRunning() {
@@ -644,8 +644,8 @@ func (d *UdpDoor) serverDiscovery(server *nhp.UdpPeer, discoveryRoutineWg *sync.
 					return
 				}
 
-				if ppd.HeaderType != nhp.NHP_AAK {
-					log.Error("ac(%s#%d)[ACOnline] response from server %s has wrong type: %s", acId, aolMd.TransactionId, addrStr, nhp.HeaderTypeToString(ppd.HeaderType))
+				if ppd.HeaderType != core.NHP_AAK {
+					log.Error("ac(%s#%d)[ACOnline] response from server %s has wrong type: %s", acId, aolMd.TransactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType))
 					err = common.ErrTransactionRepliedWithWrongType
 					return
 				}
@@ -653,7 +653,7 @@ func (d *UdpDoor) serverDiscovery(server *nhp.UdpPeer, discoveryRoutineWg *sync.
 				aakMsg := &common.ServerACAckMsg{}
 				err = json.Unmarshal(ppd.BodyMessage, aakMsg)
 				if err != nil {
-					log.Error("ac(%s#%d)[HandleACAck] failed to parse %s message: %v", acId, ppd.SenderId, nhp.HeaderTypeToString(ppd.HeaderType), err)
+					log.Error("ac(%s#%d)[HandleACAck] failed to parse %s message: %v", acId, ppd.SenderTrxId, core.HeaderTypeToString(ppd.HeaderType), err)
 					return
 				}
 
@@ -671,9 +671,9 @@ func (d *UdpDoor) serverDiscovery(server *nhp.UdpPeer, discoveryRoutineWg *sync.
 		} else if connected {
 			if (currTime - lastSendTime) > int64(ServerKeepaliveInterval*time.Second) {
 				// send NHP_KPL to server if no send happens within ServerKeepaliveInterval
-				md := &nhp.MsgData{
+				md := &core.MsgData{
 					RemoteAddr: sendAddr.(*net.UDPAddr),
-					HeaderType: nhp.NHP_KPL,
+					HeaderType: core.NHP_KPL,
 					//PeerPk:        peerPbk, // pubkey not needed
 					TransactionId: d.device.NextCounterIndex(),
 				}
@@ -694,8 +694,8 @@ func (d *UdpDoor) serverDiscovery(server *nhp.UdpPeer, discoveryRoutineWg *sync.
 	}
 }
 
-func (d *UdpDoor) AddServerPeer(server *nhp.UdpPeer) {
-	if server.DeviceType() == nhp.NHP_SERVER {
+func (d *UdpAC) AddServerPeer(server *core.UdpPeer) {
+	if server.DeviceType() == core.NHP_SERVER {
 		d.device.AddPeer(server)
 
 		d.serverPeerMutex.Lock()
@@ -709,7 +709,7 @@ func (d *UdpDoor) AddServerPeer(server *nhp.UdpPeer) {
 	}
 }
 
-func (d *UdpDoor) RemoveServerPeer(serverKey string) {
+func (d *UdpAC) RemoveServerPeer(serverKey string) {
 	d.serverPeerMutex.Lock()
 	beforeSize := len(d.serverPeerMap)
 	delete(d.serverPeerMap, serverKey)
@@ -724,7 +724,7 @@ func (d *UdpDoor) RemoveServerPeer(serverKey string) {
 	}
 }
 
-func (d *UdpDoor) GenerateAccessToken(au *AgentUser) string {
+func (d *UdpAC) GenerateAccessToken(au *AgentUser) string {
 	hashStr := au.Hash()
 	timeStr := strconv.FormatInt(time.Now().UnixNano(), 10)
 	au.hash.Write([]byte(timeStr))
@@ -747,7 +747,7 @@ func (d *UdpDoor) GenerateAccessToken(au *AgentUser) string {
 	return token
 }
 
-func (d *UdpDoor) VerifyAccessToken(au *AgentUser, token string) bool {
+func (d *UdpAC) VerifyAccessToken(au *AgentUser, token string) bool {
 	hashStr := au.Hash()
 
 	d.AgentUserTokenMutex.Lock()
@@ -769,7 +769,7 @@ func (d *UdpDoor) VerifyAccessToken(au *AgentUser, token string) bool {
 	return false
 }
 
-func (d *UdpDoor) DeleteAccessToken(au *AgentUser) {
+func (d *UdpAC) DeleteAccessToken(au *AgentUser) {
 	hashStr := au.Hash()
 
 	d.AgentUserTokenMutex.Lock()
@@ -785,7 +785,7 @@ func (d *UdpDoor) DeleteAccessToken(au *AgentUser) {
 }
 
 // if the server uses hostname as destination, find the correct peer with the actual IP address
-func (d *UdpDoor) ResolvePeer(peer *nhp.UdpPeer) (*nhp.UdpPeer, net.Addr) {
+func (d *UdpAC) ResolvePeer(peer *core.UdpPeer) (*core.UdpPeer, net.Addr) {
 	addr := peer.SendAddr()
 	if addr == nil {
 		return peer, nil

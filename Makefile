@@ -41,6 +41,7 @@ generate-version-and-build:
 	@$(MAKE) acd
 	@$(MAKE) serverd
 	@$(MAKE) agentsdk
+	@$(MAKE) devicesdk
 	@$(MAKE) plugins
 	@$(MAKE) archive
 	@echo "$(COLOUR_GREEN)[OpenNHP] Build for platform ${OS_NAME} successfully done!$(END_COLOUR)"
@@ -68,6 +69,12 @@ ifeq ($(OS_NAME), linux)
 	gcc ./agent/sdkdemo/nhp-agent-demo.c -I ./release/nhp-agent -l:nhp-agent.so -L./release/nhp-agent -Wl,-rpath=. -o ./release/nhp-agent/nhp-agent-demo
 endif
 
+devicesdk:
+ifeq ($(OS_NAME), linux)
+	go build -a -trimpath -buildmode=c-shared -ldflags ${LD_FLAGS} -v -o ./release/nhp-device/nhpdevice.so ./core/main/main.go ./core/main/nhpdevice.go
+#	gcc ./core/sdkdemo/nhp-device-demo.c -I ./release/nhp-device -I ./core/main -l:nhpdevice.so -L./release/nhp-device -Wl,-rpath=. -o ./release/nhp-device/nhp-device-demo
+endif
+
 plugins:
 	@if test -d $(NHP_PLUGINS); then $(MAKE) -C $(NHP_PLUGINS); fi
 
@@ -76,4 +83,4 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-server
 	@echo "$(COLOUR_GREEN)[opennhp] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init agentsdk plugins archive
+.PHONY: all generate-version-and-build init agentsdk devicesdk plugins archive

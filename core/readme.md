@@ -2,7 +2,7 @@
 
 1. Device负责NHP报文与消息的转换。Device初始化时需要指定类型和私钥。Device视自身类型只对相应的包进行处理。
 
-2. 用于承载发送和接收报文的buffer比较大，所以由Device的内存Pool统一发放并回收（如果依赖于Go后台垃圾回收，高并发时会造成大量内存开销）。所以在开发时一定要注意buffer的分配**Device.AllocateUdpPacket\(\)** 和回收**Device.ReleaseUdpPacket\(\)**。
+2. 用于承载发送和接收报文的buffer比较大，所以由Device的内存Pool统一发放并回收（如果依赖于Go后台垃圾回收，高并发时会造成大量内存开销）。所以在开发时一定要注意buffer的分配**Device.AllocatePoolPacket\(\)** 和回收**Device.ReleasePoolPacket\(\)**。
 
    - 报文buffer回收点位于
      - 发送报文被发送后（本地transaction除外）
@@ -21,7 +21,7 @@
 
 7. 在建立发送请求时，需要创建**MsgAssembler**结构体。
 
-   - Agent和Door必须填写消息类型**HeaderType**、对端**RemoteAddr**、对端公钥**PeerPk**和消息明文**Message**（如无特殊情况都采用消息压缩）。将填写好的**MsgAssembler**发给各自的**sendMessageRoutine\(\)** 即可进行新连接的建立或寻找已存在连接并进行转换后报文的发送。
+   - Agent和AC必须填写消息类型**HeaderType**、对端**RemoteAddr**、对端公钥**PeerPk**和消息明文**Message**（如无特殊情况都采用消息压缩）。将填写好的**MsgAssembler**发给各自的**sendMessageRoutine\(\)** 即可进行新连接的建立或寻找已存在连接并进行转换后报文的发送。
 
    - Server必须填写消息类型**HeaderType**、连接上下文**ConnData**、对端公钥**PeerPk**和消息明文**Message**（如无特殊情况都采用消息压缩）。将填写好的**MsgAssembler**发给**Device.SendMsgToPacket\(\)** 即可进行转换后报文的发送。
 

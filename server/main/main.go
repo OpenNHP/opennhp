@@ -8,7 +8,7 @@ import (
 	"runtime/pprof"
 	"syscall"
 
-	"github.com/OpenNHP/opennhp/nhp"
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/server"
 	"github.com/OpenNHP/opennhp/version"
 	"github.com/urfave/cli/v2"
@@ -39,11 +39,11 @@ func main() {
 			&cli.BoolFlag{Name: "sm2", Value: false, DisableDefaultText: true, Usage: "generate sm2 keys"},
 		},
 		Action: func(c *cli.Context) error {
-			var e nhp.Ecdh
+			var e core.Ecdh
 			if c.Bool("sm2") {
-				e = nhp.NewECDH(nhp.ECC_SM2)
+				e = core.NewECDH(core.ECC_SM2)
 			} else {
-				e = nhp.NewECDH(nhp.ECC_CURVE25519)
+				e = core.NewECDH(core.ECC_CURVE25519)
 			}
 			pub := e.PublicKeyBase64()
 			priv := e.PrivateKeyBase64()

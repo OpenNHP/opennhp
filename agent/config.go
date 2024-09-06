@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/log"
-	"github.com/OpenNHP/opennhp/nhp"
 	"github.com/OpenNHP/opennhp/utils"
 
 	toml "github.com/pelletier/go-toml/v2"
@@ -28,7 +28,7 @@ type Config struct {
 }
 
 type Peers struct {
-	Servers []*nhp.UdpPeer
+	Servers []*core.UdpPeer
 }
 
 type Resources struct {
@@ -133,12 +133,12 @@ func (a *UdpAgent) updateServerPeers(file string) (err error) {
 
 	// update
 	var peers Peers
-	serverPeerMap := make(map[string]*nhp.UdpPeer)
+	serverPeerMap := make(map[string]*core.UdpPeer)
 	if err := toml.Unmarshal(content, &peers); err != nil {
 		log.Error("failed to unmarshal server config: %v", err)
 	}
 	for _, p := range peers.Servers {
-		p.Type = nhp.NHP_SERVER
+		p.Type = core.NHP_SERVER
 		a.device.AddPeer(p)
 		serverPeerMap[p.PublicKeyBase64()] = p
 	}

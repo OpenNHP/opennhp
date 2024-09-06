@@ -1,4 +1,4 @@
-package nhp
+package core
 
 import (
 	"bytes"
@@ -11,23 +11,35 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/OpenNHP/opennhp/core/scheme/curve"
+	"github.com/OpenNHP/opennhp/core/scheme/gmsm"
 	"github.com/OpenNHP/opennhp/log"
 )
 
+type InitiatorScheme interface {
+	CreateMsgAssemblerData(d *Device, md *MsgData) (mad *MsgAssemblerData, err error)
+	DeriveMsgAssemblerDataFromPrevParserData(ppd *PacketParserData, t int, message []byte) (mad *MsgAssemblerData)
+	SetPeerPublicKey(d *Device, mad *MsgAssemblerData, peerPk []byte) (err error)
+	EncryptBody(d *Device, mad *MsgAssemblerData) (err error)
+}
+
 type MsgData struct {
-	RemoteAddr     *net.UDPAddr      // used by agent and door create a new connection or pick an existing connection for msg sending
+	RemoteAddr     *net.UDPAddr      // used by agent and ac create a new connection or pick an existing connection for msg sending
 	ConnData       *ConnectionData   // used by server to pick an existing connection for msg sending
 	PrevParserData *PacketParserData // when PrevParserData is set, RemoteAddr, ConnData, TransactionId and PeerPk will be overridden
-	HeaderType     int
+	CipherScheme   int               // 0: curve25519/chacha20/blake2s, 1: sm2/sm4/sm3
 	TransactionId  uint64
+	HeaderType     int
 	Compress       bool
+	ExternalPacket *Packet
+	ExternalCookie *[CookieSize]byte
 	Message        []byte
 	PeerPk         []byte
 	EncryptedPktCh chan *MsgAssemblerData
 	ResponseMsgCh  chan *PacketParserData
 }
 
-func (d *Device) ValidateMsgData(md *MsgData) (err error) {
+func (d *Device) validateMsgData(md *MsgData) (err error) {
 	if md.PrevParserData == nil {
 		if d.deviceType == NHP_SERVER && md.ConnData == nil {
 			err = fmt.Errorf("missing connection data for server")
@@ -45,7 +57,7 @@ func (d *Device) ValidateMsgData(md *MsgData) (err error) {
 
 type MsgAssemblerData struct {
 	device     *Device
-	BasePacket *UdpPacket
+	BasePacket *Packet
 	connData   *ConnectionData
 	ciphers    *CipherSuite
 
@@ -58,14 +70,17 @@ type MsgAssemblerData struct {
 	chainKey       [SymmetricKeySize]byte
 
 	LocalInitTime int64
+	TransactionId uint64
 	noise         NoiseFactory // int
+	CipherScheme  int
 	HeaderType    int
 	BodySize      int
 	HeaderFlag    uint16
 	BodyCompress  bool
 
-	RemotePubKey []byte
-	bodyMessage  []byte
+	ExternalCookie *[CookieSize]byte
+	RemotePubKey   []byte
+	bodyMessage    []byte
 
 	encryptedPktCh chan<- *MsgAssemblerData
 	ResponseMsgCh  chan<- *PacketParserData
@@ -79,34 +94,48 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 	} else {
 		mad = &MsgAssemblerData{}
 		mad.device = d
+		mad.CipherScheme = md.CipherScheme
 		mad.HeaderType = md.HeaderType
 		mad.RemotePubKey = md.PeerPk
 		mad.BodyCompress = md.Compress
-		mad.bodyMessage = []byte(md.Message)
+		mad.bodyMessage = md.Message
+		mad.TransactionId = md.TransactionId
 		mad.connData = md.ConnData
 		mad.encryptedPktCh = md.EncryptedPktCh
 
 		// init packet buffer
-		mad.BasePacket = d.AllocateUdpPacket()
+		if md.ExternalPacket != nil {
+			mad.BasePacket = md.ExternalPacket
+		} else {
+			mad.BasePacket = d.AllocatePoolPacket()
+		}
 		mad.BasePacket.HeaderType = mad.HeaderType
 
+		// init cookie if specified
+		if md.ExternalCookie != nil {
+			mad.ExternalCookie = md.ExternalCookie
+		}
+
 		// create header and init device ecdh
-		useGm := len(mad.RemotePubKey) == PublicKeySizeEx
-		mad.ciphers = NewCipherSuite(useGm)
-		if useGm {
-			mad.HeaderFlag |= NHP_FLAG_EXTENDEDLENGTH
-			mad.header = (*NHPHeaderEx)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
-			mad.deviceEcdh = d.staticEcdhEx
-		} else {
-			mad.header = (*NHPHeader)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
-			mad.deviceEcdh = d.staticEcdh
+		switch mad.CipherScheme {
+		case CIPHER_SCHEME_CURVE:
+			mad.header = (*curve.HeaderCurve)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
+			mad.ciphers = NewCipherSuite(CIPHER_SCHEME_CURVE)
+			mad.deviceEcdh = d.staticEcdhCurve
+
+		case CIPHER_SCHEME_GMSM:
+			fallthrough
+		default:
+			mad.header = (*gmsm.HeaderGmsm)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
+			mad.ciphers = NewCipherSuite(CIPHER_SCHEME_GMSM)
+			mad.deviceEcdh = d.staticEcdhGmsm
 		}
 
 		// init version
 		mad.header.SetVersion(ProtocolVersionMajor, ProtocolVersionMinor)
 
 		// init header counter
-		mad.header.SetCounter(md.TransactionId)
+		mad.header.SetCounter(mad.TransactionId)
 
 		// init chain hash -> ChainHash0
 		mad.chainHash = NewHash(mad.ciphers.HashType)
@@ -128,30 +157,35 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 	mad.hmacHash.Write([]byte(InitialHashString))
 
 	// create ephermeral key
-	mad.ephermeralEcdh = NewECDH(mad.ciphers.EccType)
+	ephermalEccType := mad.ciphers.EccType
+	mad.ephermeralEcdh = NewECDH(ephermalEccType)
 	copy(mad.header.EphermeralBytes(), mad.ephermeralEcdh.PublicKey())
 
 	return mad, nil
 }
 
-func (mad *MsgAssemblerData) derivePacketParserData(pkt *UdpPacket, initTime int64) (ppd *PacketParserData) {
+func (mad *MsgAssemblerData) derivePacketParserData(pkt *Packet, initTime int64) (ppd *PacketParserData) {
 	ppd = &PacketParserData{}
 	ppd.device = mad.device
 	ppd.basePacket = pkt
+	ppd.CipherScheme = mad.CipherScheme
 	ppd.ConnData = mad.connData
 	ppd.LocalInitTime = initTime
 	ppd.feedbackMsgCh = mad.ResponseMsgCh
 
 	// init header and init device ecdh
-	ppd.HeaderFlag = binary.BigEndian.Uint16(ppd.basePacket.Packet[10:12])
-	if ppd.HeaderFlag&NHP_FLAG_EXTENDEDLENGTH == 0 {
-		ppd.header = (*NHPHeader)(unsafe.Pointer(&ppd.basePacket.Packet[0]))
-		ppd.Ciphers = NewCipherSuite(false)
-		ppd.deviceEcdh = ppd.device.staticEcdh
-	} else {
-		ppd.header = (*NHPHeaderEx)(unsafe.Pointer(&ppd.basePacket.Packet[0]))
-		ppd.Ciphers = NewCipherSuite(true)
-		ppd.deviceEcdh = ppd.device.staticEcdhEx
+	ppd.HeaderFlag = binary.BigEndian.Uint16(ppd.basePacket.Content[10:12])
+	switch mad.CipherScheme {
+	case CIPHER_SCHEME_CURVE:
+		ppd.header = (*curve.HeaderCurve)(unsafe.Pointer(&ppd.basePacket.Content[0]))
+		ppd.Ciphers = NewCipherSuite(CIPHER_SCHEME_CURVE)
+		ppd.deviceEcdh = ppd.device.staticEcdhCurve
+	case CIPHER_SCHEME_GMSM:
+		fallthrough
+	default:
+		ppd.header = (*gmsm.HeaderGmsm)(unsafe.Pointer(&ppd.basePacket.Content[0]))
+		ppd.Ciphers = NewCipherSuite(CIPHER_SCHEME_GMSM)
+		ppd.deviceEcdh = ppd.device.staticEcdhGmsm
 	}
 
 	// init chain hash -> ChainHash0
@@ -169,24 +203,26 @@ func (d *Device) createKeepalivePacket(md *MsgData) (mad *MsgAssemblerData, err 
 	mad = &MsgAssemblerData{}
 	mad.device = d
 	mad.HeaderType = NHP_KPL
+	mad.TransactionId = md.TransactionId
 	mad.connData = md.ConnData
 
 	// init packet buffer
-	mad.BasePacket = d.AllocateUdpPacket()
+	if md.ExternalPacket != nil {
+		mad.BasePacket = md.ExternalPacket
+	} else {
+		mad.BasePacket = d.AllocatePoolPacket()
+	}
 	mad.BasePacket.HeaderType = NHP_KPL
-	mad.BasePacket.Packet = mad.BasePacket.Buf[:HeaderSize]
+	mad.BasePacket.Content = mad.BasePacket.Buf[:HeaderSize]
 
 	// create header
-	mad.header = (*NHPHeader)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
+	mad.header = (*curve.HeaderCurve)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
 
 	// init version
 	mad.header.SetVersion(ProtocolVersionMajor, ProtocolVersionMinor)
 
 	// init header counter
-	mad.header.SetCounter(md.TransactionId)
-
-	// set header flag
-	mad.header.SetFlag(mad.HeaderFlag)
+	mad.header.SetCounter(mad.TransactionId)
 
 	// set header type and payload size
 	mad.header.SetTypeAndPayloadSize(mad.HeaderType, 0)
@@ -202,7 +238,7 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 
 	if mad.RemotePubKey == nil {
 		log.Error("remote peer public key is not set")
-		err = fmt.Errorf("remote peer public key is not set")
+		err = ErrEmptyPeerPublicKey
 		return err
 	}
 
@@ -220,7 +256,7 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 	ess := mad.ephermeralEcdh.SharedSecret(mad.RemotePubKey)
 	if ess == nil {
 		log.Error("ephermal ECDH failed with peer")
-		err = fmt.Errorf("ephermal ECDH failed with peer")
+		err = ErrEphermalECDHPeerFailed
 		return err
 	}
 
@@ -230,8 +266,19 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 	// generate gcm key and encrypt device pubkey ChainKey1 -> ChainKey2 (ChainKey5 -> ChainKey6)
 	mad.noise.KeyGen2(&mad.chainKey, &key, mad.chainKey[:], ess[:])
 	SetZero(ess[:])
-	aead := AeadFromKey(mad.ciphers.GcmType, &key)
-	static := aead.Seal(mad.header.StaticBytes()[:0], mad.header.NonceBytes(), mad.deviceEcdh.PublicKey(), mad.chainHash.Sum(nil))
+
+	var aead cipher.AEAD
+	var static []byte
+	// encrypt initiator's public key and evolve chainhash with the ciphertext
+	switch mad.CipherScheme {
+	case CIPHER_SCHEME_CURVE:
+		fallthrough
+	case CIPHER_SCHEME_GMSM:
+		fallthrough
+	default:
+		aead = AeadFromKey(mad.ciphers.GcmType, &key)
+		static = aead.Seal(mad.header.StaticBytes()[:0], mad.header.NonceBytes(), mad.deviceEcdh.PublicKey(), mad.chainHash.Sum(nil))
+	}
 
 	// evolve chainhash ChainHash1 -> ChainHash2
 	mad.chainHash.Write(static)
@@ -240,17 +287,27 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 	ss := mad.deviceEcdh.SharedSecret(mad.RemotePubKey)
 	if ss == nil {
 		log.Error("device ECDH failed with peer")
-		err = fmt.Errorf("device ECDH failed with peer")
+		err = ErrDeviceECDHPeerFailed
 		return err
 	}
 
 	// generate gcm key and encrypt timestamp ChainKey2 -> ChainKey3 (ChainKey6 -> ChainKey7)
 	mad.noise.KeyGen2(&mad.chainKey, &key, mad.chainKey[:], ss[:])
 	SetZero(ss[:])
+
 	var tsBytes [TimestampSize]byte
+	var ts []byte
 	binary.BigEndian.PutUint64(tsBytes[:], uint64(mad.LocalInitTime))
-	aead = AeadFromKey(mad.ciphers.GcmType, &key)
-	ts := aead.Seal(mad.header.TimestampBytes()[:0], mad.header.NonceBytes(), tsBytes[:], mad.chainHash.Sum(nil))
+
+	switch mad.CipherScheme {
+	case CIPHER_SCHEME_CURVE:
+		fallthrough
+	case CIPHER_SCHEME_GMSM:
+		fallthrough
+	default:
+		aead = AeadFromKey(mad.ciphers.GcmType, &key)
+		ts = aead.Seal(mad.header.TimestampBytes()[:0], mad.header.NonceBytes(), tsBytes[:], mad.chainHash.Sum(nil))
+	}
 
 	// evolve chainhash ChainHash2 -> ChainHash3
 	mad.chainHash.Write(ts)
@@ -264,8 +321,10 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 
 func (mad *MsgAssemblerData) encryptBody() (err error) {
 	defer func() {
+		// clear secrets
 		mad.chainHash.Reset()
 		mad.chainHash = nil
+		SetZero(mad.chainKey[:])
 	}()
 
 	// message body is empty, skip encryption. Set header and calculate HMAC
@@ -274,7 +333,7 @@ func (mad *MsgAssemblerData) encryptBody() (err error) {
 		mad.header.SetTypeAndPayloadSize(mad.HeaderType, 0)
 		// set HMAC
 		mad.addHMAC(mad.HeaderType == NHP_RKN)
-		mad.BasePacket.Packet = mad.BasePacket.Buf[:mad.header.Size()]
+		mad.BasePacket.Content = mad.BasePacket.Buf[:mad.header.Size()]
 		return nil
 	}
 
@@ -289,10 +348,12 @@ func (mad *MsgAssemblerData) encryptBody() (err error) {
 		w.Close()
 		if err != nil {
 			log.Critical("message compression failed: %v", err)
+			ErrDataCompressionFailed.SetExtraError(err)
+			err = ErrDataCompressionFailed
 			return err
 		}
 		body = buf.Bytes()
-		mad.BodySize = len(body)
+		mad.BodySize = len(body) + GCMTagSize
 
 		// set header flag
 		mad.HeaderFlag |= NHP_FLAG_COMPRESS
@@ -300,12 +361,12 @@ func (mad *MsgAssemblerData) encryptBody() (err error) {
 	} else {
 		// no compress
 		body = mad.bodyMessage
-		mad.BodySize = len(mad.bodyMessage)
+		mad.BodySize = len(mad.bodyMessage) + GCMTagSize
 	}
 
-	if mad.BodySize > PacketBufferSize-GCMTagSize-mad.header.Size() {
+	if mad.BodySize > PacketBufferSize-mad.header.Size() {
 		log.Critical("message too long, send buffer exceeded")
-		err = fmt.Errorf("message longer than send buffer")
+		err = ErrPacketSizeExceedsBuffer
 		return err
 	}
 
@@ -313,10 +374,10 @@ func (mad *MsgAssemblerData) encryptBody() (err error) {
 	mad.header.SetFlag(mad.HeaderFlag)
 
 	// calculate total data length
-	packetLen := mad.header.Size() + mad.BodySize + GCMTagSize
+	packetLen := mad.header.Size() + mad.BodySize
 
 	// set header type and payload size
-	mad.header.SetTypeAndPayloadSize(mad.HeaderType, mad.BodySize+GCMTagSize)
+	mad.header.SetTypeAndPayloadSize(mad.HeaderType, mad.BodySize)
 
 	// set HMAC
 	mad.addHMAC(mad.HeaderType == NHP_RKN)
@@ -325,7 +386,7 @@ func (mad *MsgAssemblerData) encryptBody() (err error) {
 	mad.bodyAead.Seal(mad.BasePacket.Buf[mad.header.Size():mad.header.Size()], mad.header.NonceBytes(), body, mad.chainHash.Sum(nil))
 
 	// set valid packet
-	mad.BasePacket.Packet = mad.BasePacket.Buf[:packetLen]
+	mad.BasePacket.Content = mad.BasePacket.Buf[:packetLen]
 
 	return nil
 }
@@ -341,15 +402,20 @@ func (mad *MsgAssemblerData) addHMAC(sumCookie bool) {
 	mad.hmacHash.Write(mad.header.Bytes()[0:len])
 
 	if sumCookie {
-		mad.connData.Lock()
-		mad.hmacHash.Write(mad.connData.CookieStore.Cookie[:])
-		mad.connData.Unlock()
+		// use specified cookie, otherwise use connection's cookie
+		if mad.ExternalCookie != nil {
+			mad.hmacHash.Write((*mad.ExternalCookie)[:])
+		} else {
+			mad.connData.Lock()
+			mad.hmacHash.Write(mad.connData.CookieStore.CurrCookie[:])
+			mad.connData.Unlock()
+		}
 	}
 	mad.hmacHash.Sum(mad.header.HMACBytes()[:0])
 }
 
 func (mad *MsgAssemblerData) Destroy() {
-	mad.device.ReleaseUdpPacket(mad.BasePacket)
+	mad.device.ReleasePoolPacket(mad.BasePacket)
 	if mad.hmacHash != nil {
 		mad.hmacHash.Reset()
 		mad.hmacHash = nil
@@ -358,5 +424,4 @@ func (mad *MsgAssemblerData) Destroy() {
 		mad.chainHash.Reset()
 		mad.chainHash = nil
 	}
-	SetZero(mad.chainKey[:])
 }

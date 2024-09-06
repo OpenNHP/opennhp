@@ -8,15 +8,15 @@ import (
 	"time"
 
 	"github.com/OpenNHP/opennhp/common"
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/log"
-	"github.com/OpenNHP/opennhp/nhp"
 )
 
 func (a *UdpAgent) Knock(res *KnockTarget) (ackMsg *common.ServerKnockAckMsg, err error) {
 	defer a.wg.Done()
 	a.wg.Add(1)
 
-	errWaitTime := (nhp.AgentLocalTransactionResponseTimeoutMs - 100) * time.Millisecond
+	errWaitTime := (core.AgentLocalTransactionResponseTimeoutMs - 100) * time.Millisecond
 	startTime := time.Now()
 
 	ackMsg, err = a.knockRequest(res, false)
@@ -39,7 +39,7 @@ func (a *UdpAgent) Knock(res *KnockTarget) (ackMsg *common.ServerKnockAckMsg, er
 		return ackMsg, err
 	}
 
-	// deal with door PASS_ACCESS_IP mode
+	// deal with ac PASS_ACCESS_IP mode
 	if len(ackMsg.PreAccessActions) > 0 {
 		a.preAccessRequest(ackMsg)
 	}
@@ -76,17 +76,17 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 	a.knockUserMutex.RUnlock()
 
 	knkBytes, _ := json.Marshal(knkMsg)
-	knkMd := &nhp.MsgData{
+	knkMd := &core.MsgData{
 		RemoteAddr:    sendAddr.(*net.UDPAddr),
-		HeaderType:    nhp.NHP_KNK,
+		HeaderType:    core.NHP_KNK,
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       knkBytes,
 		PeerPk:        server.PublicKey(),
-		ResponseMsgCh: make(chan *nhp.PacketParserData),
+		ResponseMsgCh: make(chan *core.PacketParserData),
 	}
 	if useCookie {
-		knkMd.HeaderType = nhp.NHP_RKN
+		knkMd.HeaderType = core.NHP_RKN
 	}
 
 	ackMsg = &common.ServerKnockAckMsg{}
@@ -113,7 +113,7 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 		return ackMsg, err
 	}
 
-	if serverPpd.HeaderType == nhp.NHP_COK {
+	if serverPpd.HeaderType == core.NHP_COK {
 		log.Error("agent(%s#%d)[KnockRequest] terminated by server's cookie message", knkMsg.UserId, knkMd.TransactionId)
 		err = common.ErrKnockTerminatedByCookie
 		ackMsg.ErrCode = common.ErrKnockTerminatedByCookie.ErrorCode()
@@ -121,8 +121,8 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 		return ackMsg, err
 	}
 
-	if serverPpd.HeaderType != nhp.NHP_ACK {
-		log.Error("agent(%s#%d)[KnockRequest] response has wrong type: %s", knkMsg.UserId, knkMd.TransactionId, nhp.HeaderTypeToString(serverPpd.HeaderType))
+	if serverPpd.HeaderType != core.NHP_ACK {
+		log.Error("agent(%s#%d)[KnockRequest] response has wrong type: %s", knkMsg.UserId, knkMd.TransactionId, core.HeaderTypeToString(serverPpd.HeaderType))
 		err = common.ErrTransactionRepliedWithWrongType
 		ackMsg.ErrCode = common.ErrTransactionRepliedWithWrongType.ErrorCode()
 		ackMsg.ErrMsg = err.Error()
@@ -131,7 +131,7 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 
 	err = json.Unmarshal(serverPpd.BodyMessage, ackMsg)
 	if err != nil {
-		log.Error("agent(%s#%d)[KnockRequest] failed to parse %s message: %v", knkMsg.UserId, knkMd.TransactionId, nhp.HeaderTypeToString(serverPpd.HeaderType), err)
+		log.Error("agent(%s#%d)[KnockRequest] failed to parse %s message: %v", knkMsg.UserId, knkMd.TransactionId, core.HeaderTypeToString(serverPpd.HeaderType), err)
 		ackMsg.ErrCode = common.ErrJsonParseFailed.ErrorCode()
 		ackMsg.ErrMsg = err.Error()
 		return ackMsg, err
@@ -174,14 +174,14 @@ func (a *UdpAgent) ExitKnockRequest(res *KnockTarget) (ackMsg *common.ServerKnoc
 	a.knockUserMutex.RUnlock()
 
 	knkBytes, _ := json.Marshal(knkMsg)
-	knkMd := &nhp.MsgData{
+	knkMd := &core.MsgData{
 		RemoteAddr:    sendAddr.(*net.UDPAddr),
-		HeaderType:    nhp.NHP_EXT,
+		HeaderType:    core.NHP_EXT,
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       knkBytes,
 		PeerPk:        server.PublicKey(),
-		ResponseMsgCh: make(chan *nhp.PacketParserData),
+		ResponseMsgCh: make(chan *core.PacketParserData),
 	}
 
 	ackMsg = &common.ServerKnockAckMsg{}
@@ -208,7 +208,7 @@ func (a *UdpAgent) ExitKnockRequest(res *KnockTarget) (ackMsg *common.ServerKnoc
 		return ackMsg, err
 	}
 
-	if serverPpd.HeaderType == nhp.NHP_COK {
+	if serverPpd.HeaderType == core.NHP_COK {
 		log.Error("agent(%s#%d)[ExitKnockRequest] terminated by server's cookie message", knkMsg.UserId, knkMd.TransactionId)
 		err = common.ErrKnockTerminatedByCookie
 		ackMsg.ErrCode = common.ErrKnockTerminatedByCookie.ErrorCode()
@@ -216,8 +216,8 @@ func (a *UdpAgent) ExitKnockRequest(res *KnockTarget) (ackMsg *common.ServerKnoc
 		return ackMsg, err
 	}
 
-	if serverPpd.HeaderType != nhp.NHP_ACK {
-		log.Error("agent(%s#%d)[ExitKnockRequest] response has wrong type: %s", knkMsg.UserId, knkMd.TransactionId, nhp.HeaderTypeToString(serverPpd.HeaderType))
+	if serverPpd.HeaderType != core.NHP_ACK {
+		log.Error("agent(%s#%d)[ExitKnockRequest] response has wrong type: %s", knkMsg.UserId, knkMd.TransactionId, core.HeaderTypeToString(serverPpd.HeaderType))
 		err = common.ErrTransactionRepliedWithWrongType
 		ackMsg.ErrCode = common.ErrTransactionRepliedWithWrongType.ErrorCode()
 		ackMsg.ErrMsg = err.Error()
@@ -226,7 +226,7 @@ func (a *UdpAgent) ExitKnockRequest(res *KnockTarget) (ackMsg *common.ServerKnoc
 
 	err = json.Unmarshal(serverPpd.BodyMessage, ackMsg)
 	if err != nil {
-		log.Error("agent(%s#%d)[ExitKnockRequest] failed to parse %s message: %v", knkMsg.UserId, knkMd.TransactionId, nhp.HeaderTypeToString(serverPpd.HeaderType), err)
+		log.Error("agent(%s#%d)[ExitKnockRequest] failed to parse %s message: %v", knkMsg.UserId, knkMd.TransactionId, core.HeaderTypeToString(serverPpd.HeaderType), err)
 		ackMsg.ErrCode = common.ErrJsonParseFailed.ErrorCode()
 		ackMsg.ErrMsg = err.Error()
 		return ackMsg, err
@@ -284,7 +284,7 @@ func (a *UdpAgent) processPreAccessAction(info *common.PreAccessInfo) error {
 		IP:   acIp,
 		Port: acPort,
 	}
-	acPeer := &nhp.UdpPeer{
+	acPeer := &core.UdpPeer{
 		PubKeyBase64: info.ACPubKey,
 		Ip:           info.AccessIp,
 		Port:         acPort,
@@ -303,14 +303,14 @@ func (a *UdpAgent) processPreAccessAction(info *common.PreAccessInfo) error {
 	a.knockUserMutex.RUnlock()
 	accBytes, _ := json.Marshal(accMsg)
 
-	accMd := &nhp.MsgData{
+	accMd := &core.MsgData{
 		RemoteAddr:     udpACAddr,
-		HeaderType:     nhp.NHP_ACC,
+		HeaderType:     core.NHP_ACC,
 		TransactionId:  a.device.NextCounterIndex(),
 		Compress:       true,
 		Message:        accBytes,
 		PeerPk:         acPk,
-		EncryptedPktCh: make(chan *nhp.MsgAssemblerData),
+		EncryptedPktCh: make(chan *core.MsgAssemblerData),
 	}
 
 	if !a.IsRunning() {
@@ -331,11 +331,11 @@ func (a *UdpAgent) processPreAccessAction(info *common.PreAccessInfo) error {
 	}
 
 	// copy the packet for GC recycling and release the original packet buffer
-	packetBytes := make([]byte, len(accMad.BasePacket.Packet))
-	copy(packetBytes, accMad.BasePacket.Packet)
+	packetBytes := make([]byte, len(accMad.BasePacket.Content))
+	copy(packetBytes, accMad.BasePacket.Content)
 	accMad.Destroy()
 
-	// open new routine(s) to send access packet to door's temporary port
+	// open new routine(s) to send access packet to ac's temporary port
 	go func(packet []byte, tcpAddr *net.TCPAddr) {
 		// dial tcp connection and send accMad packet
 		conn, err := net.DialTCP("tcp", nil, tcpAddr)

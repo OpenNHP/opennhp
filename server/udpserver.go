@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/OpenNHP/opennhp/common"
+	"github.com/OpenNHP/opennhp/core"
 	"github.com/OpenNHP/opennhp/log"
-	"github.com/OpenNHP/opennhp/nhp"
 	"github.com/OpenNHP/opennhp/plugins"
 	"github.com/OpenNHP/opennhp/utils"
 	"github.com/OpenNHP/opennhp/version"
@@ -36,7 +36,7 @@ type UdpServer struct {
 	localIp    string
 	localMac   string
 
-	device     *nhp.Device
+	device     *core.Device
 	httpServer *HttpServer
 	wg         sync.WaitGroup
 	running    atomic.Bool
@@ -47,13 +47,13 @@ type UdpServer struct {
 	remoteConnectionMap      map[string]*UdpConn // indexed by remote UDP address
 
 	agentPeerMapMutex sync.Mutex
-	agentPeerMap      map[string]*nhp.UdpPeer // indexed by peer's public key base64 string
+	agentPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
 	acConnectionMapMutex sync.Mutex
 	acConnectionMap      map[string]*ACConn // ac connection is indexed by remote IP address
 
 	acPeerMapMutex sync.Mutex
-	acPeerMap      map[string]*nhp.UdpPeer // indexed by peer's public key base64 string
+	acPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
 	// block address management
 	blockAddrMapMutex sync.Mutex
@@ -76,8 +76,8 @@ type UdpServer struct {
 		stop chan struct{}
 	}
 
-	recvMsgCh <-chan *nhp.PacketParserData
-	sendMsgCh chan *nhp.MsgData
+	recvMsgCh <-chan *core.PacketParserData
+	sendMsgCh chan *core.MsgData
 }
 
 type BlockAddr struct {
@@ -86,13 +86,13 @@ type BlockAddr struct {
 }
 
 type UdpConn struct {
-	ConnData       *nhp.ConnectionData
+	ConnData       *core.ConnectionData
 	isACConnection bool // Immutable. Don't change it after creation. Conn object is also stored in acConnectionMap which is indexed by ACId
 }
 
 type ACConn struct {
-	ConnData  *nhp.ConnectionData
-	ACPeer    *nhp.UdpPeer
+	ConnData  *core.ConnectionData
+	ACPeer    *core.UdpPeer
 	ACId      string
 	ServiceId string
 	Apps      []string
@@ -161,10 +161,10 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		return fmt.Errorf("private key parse error %v", err)
 	}
 
-	option := &nhp.DeviceOptions{
+	option := &core.DeviceOptions{
 		DisableAgentPeerValidation: s.config.DisableAgentValidation,
 	}
-	s.device = nhp.NewDevice(nhp.NHP_SERVER, prk, option)
+	s.device = core.NewDevice(core.NHP_SERVER, prk, option)
 	if s.device == nil {
 		log.Critical("failed to create device %v\n", err)
 		return fmt.Errorf("failed to create device %v", err)
@@ -193,7 +193,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.signals.stop = make(chan struct{})
 
 	s.recvMsgCh = s.device.DecryptedMsgQueue
-	s.sendMsgCh = make(chan *nhp.MsgData, nhp.SendQueueSize)
+	s.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
 
 	// start device routines
 	s.device.Start()
@@ -237,21 +237,21 @@ func (s *UdpServer) IsRunning() bool {
 	return s.running.Load()
 }
 
-func (s *UdpServer) SendPacket(pkt *nhp.UdpPacket, conn *UdpConn) (n int, err error) {
+func (s *UdpServer) SendPacket(pkt *core.Packet, conn *UdpConn) (n int, err error) {
 	defer func() {
 		atomic.AddUint64(&s.stats.totalSendBytes, uint64(n))
 		atomic.StoreInt64(&conn.ConnData.LastLocalSendTime, time.Now().UnixNano())
 
 		if !pkt.KeepAfterSend {
-			s.device.ReleaseUdpPacket(pkt)
+			s.device.ReleasePoolPacket(pkt)
 		}
 	}()
 
-	pktType := nhp.HeaderTypeToString(pkt.HeaderType)
-	//log.Debug("Send [%s] packet (%s -> %s)", pktType, s.localAddr.String(), conn.ConnData.RemoteAddr.String(), pkt.Packet)
-	log.Info("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Packet))
-	log.Evaluate("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Packet))
-	return s.listenConn.WriteToUDP(pkt.Packet, conn.ConnData.RemoteAddr)
+	pktType := core.HeaderTypeToString(pkt.HeaderType)
+	//log.Debug("Send [%s] packet (%s -> %s)", pktType, s.localAddr.String(), conn.ConnData.RemoteAddr.String(), pkt.Content)
+	log.Info("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
+	log.Evaluate("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
+	return s.listenConn.WriteToUDP(pkt.Content, conn.ConnData.RemoteAddr)
 }
 
 func (s *UdpServer) recvPacketRoutine() {
@@ -271,12 +271,12 @@ func (s *UdpServer) recvPacketRoutine() {
 		}
 
 		// allocate a new packet buffer for every read
-		pkt := s.device.AllocateUdpPacket()
+		pkt := s.device.AllocatePoolPacket()
 
 		// udp recv, blocking until packet arrives or conn.Close()
 		n, remoteAddr, err := s.listenConn.ReadFromUDP(pkt.Buf[:])
 		if err != nil {
-			s.device.ReleaseUdpPacket(pkt)
+			s.device.ReleasePoolPacket(pkt)
 			log.Error("Read from UDP error: %v\n", err)
 			if n == 0 {
 				// listenConn closed
@@ -290,25 +290,25 @@ func (s *UdpServer) recvPacketRoutine() {
 		atomic.AddUint64(&s.stats.totalRecvBytes, uint64(n))
 
 		// check minimal length
-		if n < nhp.HeaderSize {
-			s.device.ReleaseUdpPacket(pkt)
+		if n < core.HeaderSize {
+			s.device.ReleasePoolPacket(pkt)
 			log.Error("Received UDP packet from %s is too short, discard", addrStr)
 			continue
 		}
 
 		// check if it is from blocked address
 		if s.IsBlockAddr(remoteAddr) {
-			s.device.ReleaseUdpPacket(pkt)
+			s.device.ReleasePoolPacket(pkt)
 			log.Critical("Remote address %s is being blocked at the moment, discard.", addrStr)
 			continue
 		}
 
 		recvTime := time.Now().UnixNano()
-		pkt.Packet = pkt.Buf[:n]
-		//log.Trace("receive udp packet (%s -> %s): %+v", addrStr, s.listenAddr.String(), pkt.Packet)
+		pkt.Content = pkt.Buf[:n]
+		//log.Trace("receive udp packet (%s -> %s): %+v", addrStr, s.listenAddr.String(), pkt.Content)
 
 		typ, _, err := s.device.RecvPrecheck(pkt) // this check also records packet header type
-		msgType := nhp.HeaderTypeToString(typ)
+		msgType := core.HeaderTypeToString(typ)
 		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
 		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
 		if err != nil {
@@ -317,7 +317,7 @@ func (s *UdpServer) recvPacketRoutine() {
 			if preCheckThreats[addrStr] > PreCheckThreatCountBeforeBlock {
 				s.AddBlockAddr(remoteAddr)
 			}
-			s.device.ReleaseUdpPacket(pkt)
+			s.device.ReleasePoolPacket(pkt)
 			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, s.listenAddr.String(), err)
 			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, s.listenAddr.String(), err)
 			continue
@@ -342,27 +342,27 @@ func (s *UdpServer) recvPacketRoutine() {
 			} else if len(s.remoteConnectionMap) >= MaxConcurrentConnection {
 				s.remoteConnectionMapMutex.Unlock()
 				log.Critical("Reached maximum concurrent connection. Discard new packet from addr: %s\n", addrStr)
-				s.device.ReleaseUdpPacket(pkt)
+				s.device.ReleasePoolPacket(pkt)
 				continue
 			}
 			s.remoteConnectionMapMutex.Unlock()
 
-			isACConn := pkt.HeaderType == nhp.NHP_AOL
+			isACConn := pkt.HeaderType == core.NHP_AOL
 			conn = &UdpConn{
 				isACConnection: isACConn,
 			}
 			// setup new routine for connection
-			conn.ConnData = &nhp.ConnectionData{
+			conn.ConnData = &core.ConnectionData{
 				InitTime:             recvTime,
 				LastLocalRecvTime:    recvTime, // not in multithreaded yet, directly assign value
 				Device:               s.device,
 				LocalAddr:            s.listenAddr,
 				RemoteAddr:           remoteAddr,
-				CookieStore:          &nhp.CookieStore{},
-				RemoteTransactionMap: make(map[uint64]*nhp.RemoteTransaction),
+				CookieStore:          &core.CookieStore{},
+				RemoteTransactionMap: make(map[uint64]*core.RemoteTransaction),
 				TimeoutMs:            DefaultAgentConnectionTimeoutMs,
-				SendQueue:            make(chan *nhp.UdpPacket, PacketQueueSizePerConnection),
-				RecvQueue:            make(chan *nhp.UdpPacket, PacketQueueSizePerConnection),
+				SendQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),
+				RecvQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),
 				BlockSignal:          make(chan struct{}),
 				SetTimeoutSignal:     make(chan struct{}),
 				StopSignal:           make(chan struct{}),
@@ -452,11 +452,11 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			if pkt == nil {
 				continue
 			}
-			log.Debug("Received udp packet len [%d] from addr: %s\n", len(pkt.Packet), addrStr)
+			log.Debug("Received udp packet len [%d] from addr: %s\n", len(pkt.Content), addrStr)
 
 			// process keepalive packet
-			if pkt.HeaderType == nhp.NHP_KPL {
-				s.device.ReleaseUdpPacket(pkt)
+			if pkt.HeaderType == core.NHP_KPL {
+				s.device.ReleasePoolPacket(pkt)
 				log.Info("Receive [NHP_KPL] message (%s -> %s)", addrStr, s.listenAddr.String())
 				continue
 			}
@@ -471,7 +471,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 				}
 			}
 
-			pd := &nhp.PacketData{
+			pd := &core.PacketData{
 				BasePacket: pkt,
 				ConnData:   conn.ConnData,
 				InitTime:   atomic.LoadInt64(&conn.ConnData.LastLocalRecvTime),
@@ -559,7 +559,7 @@ func (s *UdpServer) sendMessageRoutine() {
 			}
 			if md.PrevParserData != nil && s.device.IsTransactionResponse(md.HeaderType) {
 				// forward to a specific transaction
-				transaction := md.ConnData.FindRemoteTransaction(md.PrevParserData.SenderId)
+				transaction := md.ConnData.FindRemoteTransaction(md.PrevParserData.SenderTrxId)
 				if transaction != nil {
 					transaction.NextMsgCh <- md
 					continue
@@ -593,29 +593,29 @@ func (s *UdpServer) recvMessageRoutine() {
 			}
 
 			switch ppd.HeaderType {
-			case nhp.NHP_KNK, nhp.NHP_RKN, nhp.NHP_EXT:
+			case core.NHP_KNK, core.NHP_RKN, core.NHP_EXT:
 				// aynchronously process knock messages with ack response
 				go s.HandleKnockRequest(ppd)
 
-			case nhp.NHP_AOL:
+			case core.NHP_AOL:
 				// synchronously block and deal with NHP_DOL to ensure future ac messages will be correctly processed. Don't use go routine
 				s.HandleACOnline(ppd)
 
-			case nhp.NHP_OTP:
+			case core.NHP_OTP:
 				go s.HandleOTPRequest(ppd)
 
-			case nhp.NHP_REG:
+			case core.NHP_REG:
 				go s.HandleRegisterRequest(ppd)
 
-			case nhp.NHP_LST:
+			case core.NHP_LST:
 				go s.HandleListRequest(ppd)
 			}
 		}
 	}
 }
 
-func (s *UdpServer) AddAgentPeer(agent *nhp.UdpPeer) {
-	if agent.DeviceType() == nhp.NHP_AGENT {
+func (s *UdpServer) AddAgentPeer(agent *core.UdpPeer) {
+	if agent.DeviceType() == core.NHP_AGENT {
 		s.device.AddPeer(agent)
 		s.agentPeerMapMutex.Lock()
 		s.agentPeerMap[agent.PublicKeyBase64()] = agent
@@ -623,8 +623,8 @@ func (s *UdpServer) AddAgentPeer(agent *nhp.UdpPeer) {
 	}
 }
 
-func (s *UdpServer) AddACPeer(acPeer *nhp.UdpPeer) {
-	if acPeer.DeviceType() == nhp.NHP_AC {
+func (s *UdpServer) AddACPeer(acPeer *core.UdpPeer) {
+	if acPeer.DeviceType() == core.NHP_AC {
 		s.device.AddPeer(acPeer)
 		s.acPeerMapMutex.Lock()
 		s.acPeerMap[acPeer.PublicKeyBase64()] = acPeer
@@ -790,14 +790,14 @@ func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACCon
 	}
 	aopBytes, _ := json.Marshal(aopMsg)
 
-	aopMd := &nhp.MsgData{
+	aopMd := &core.MsgData{
 		ConnData:      conn.ConnData,
-		HeaderType:    nhp.NHP_AOP,
+		HeaderType:    core.NHP_AOP,
 		TransactionId: s.device.NextCounterIndex(),
 		Compress:      true,
 		PeerPk:        conn.ACPeer.PublicKey(),
 		Message:       aopBytes,
-		ResponseMsgCh: make(chan *nhp.PacketParserData),
+		ResponseMsgCh: make(chan *core.PacketParserData),
 	}
 
 	if !s.IsRunning() {
@@ -823,8 +823,8 @@ func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACCon
 		return
 	}
 
-	if acPpd.HeaderType != nhp.NHP_ART {
-		log.Error("server-agent(%s@%s)-ac(%s#%d@%s)[processACOperation] response has wrong type: %s", knkMsg.UserId, srcAddr.String(), conn.ACId, aopMd.TransactionId, acAddrStr, nhp.HeaderTypeToString(acPpd.HeaderType))
+	if acPpd.HeaderType != core.NHP_ART {
+		log.Error("server-agent(%s@%s)-ac(%s#%d@%s)[processACOperation] response has wrong type: %s", knkMsg.UserId, srcAddr.String(), conn.ACId, aopMd.TransactionId, acAddrStr, core.HeaderTypeToString(acPpd.HeaderType))
 		err = common.ErrTransactionRepliedWithWrongType
 		artMsg.ErrCode = common.ErrTransactionRepliedWithWrongType.ErrorCode()
 		artMsg.ErrMsg = err.Error()
@@ -833,7 +833,7 @@ func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACCon
 
 	err = json.Unmarshal(acPpd.BodyMessage, artMsg)
 	if err != nil {
-		log.Error("server-agent(%s@%s)-ac(%s#%d@%s)[processACOperation] failed to parse %s message: %v", knkMsg.UserId, srcAddr.String(), conn.ACId, aopMd.TransactionId, acAddrStr, nhp.HeaderTypeToString(acPpd.HeaderType), err)
+		log.Error("server-agent(%s@%s)-ac(%s#%d@%s)[processACOperation] failed to parse %s message: %v", knkMsg.UserId, srcAddr.String(), conn.ACId, aopMd.TransactionId, acAddrStr, core.HeaderTypeToString(acPpd.HeaderType), err)
 		artMsg.ErrCode = common.ErrJsonParseFailed.ErrorCode()
 		artMsg.ErrMsg = err.Error()
 		return
@@ -887,7 +887,7 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 			defer acWg.Done()
 
 			openTime := res.OpenTime
-			if knkMsg.HeaderType == nhp.NHP_EXT {
+			if knkMsg.HeaderType == core.NHP_EXT {
 				openTime = 1 // timeout in 1 second
 			}
 			artMsg, _ := s.processACOperation(knkMsg, acConn, srcAddr, addrs, openTime)
@@ -926,7 +926,7 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 	return ackMsg, nil
 }
 
-func (us *UdpServer) NewNhpServerHelper(ppd *nhp.PacketParserData) *plugins.NhpServerPluginHelper {
+func (us *UdpServer) NewNhpServerHelper(ppd *core.PacketParserData) *plugins.NhpServerPluginHelper {
 	h := &plugins.NhpServerPluginHelper{}
 	h.StopSignal = ppd.ConnData.StopSignal
 

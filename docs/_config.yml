@@ -21,9 +21,8 @@
 title: OpenNHP Documentation
 description: Zero Trust Network-infrastructure Hiding Protocol
 baseurl: "" # the subpath of your site, e.g. /blog
-remote_theme: just-the-docs/just-the-docs
-# local debug
-# theme: "just-the-docs"
+remote_theme: just-the-docs
+#theme: just-the-docs
 
 url: "https://opennhp.org"
 logo: "/images/logo1.png"
@@ -33,12 +32,12 @@ repository: OpenNHP/opennhp # for github-metadata
 permalink: pretty
 
 defaults:
-  -
-    scope:
+  - scope:
       path: "docs" # an empty string here means all files in the project
       type: "pages"
     values:
       layout: "default"
+
 
 
 # Enable or disable the site search

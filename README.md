@@ -1,5 +1,9 @@
-[![en](https://img.shields.io/badge/lang-en-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.md)
+[![en](https://img.shields.io/badge/lang-en-green.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.md)
 [![zh-cn](https://img.shields.io/badge/lang-zh--cn-green.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.zh-cn.md)
+[![de](https://img.shields.io/badge/lang-de-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.de.md)
+[![ja](https://img.shields.io/badge/lang-ja-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.ja.md)
+[![fr](https://img.shields.io/badge/lang-fr-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.fr.md)
+[![es](https://img.shields.io/badge/lang-es-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.es.md)
 
 ![OpenNHP Logo](docs/images/logo1.png)
 # OpenNHP: Zero Trust Network-infrastructure Hiding Protocol

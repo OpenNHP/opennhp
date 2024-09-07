@@ -1,9 +1,9 @@
 ---
 layout: page
 title: 编译源代码
-parent: OpenNHP中文版
+parent: 中文版
 nav_order: 2
-permalink: /build/
+permalink: /zh-cn/build/
 ---
 
 # 编译OpenNHP

@@ -1,7 +1,7 @@
 ---
 layout: page
 title: 代码解读
-parent: OpenNHP中文版
+parent: 中文版
 nav_order: 4
 permalink: /zh-cn/code/
 ---

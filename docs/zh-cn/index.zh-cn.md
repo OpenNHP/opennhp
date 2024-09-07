@@ -1,5 +1,5 @@
 ---
-title: Chinese
+title: 中文版
 nav_order: 10
 layout: page
 has_children: true

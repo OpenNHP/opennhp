@@ -2,6 +2,7 @@
 title: Chinese
 nav_order: 10
 layout: page
+has_children: true
 has_toc: true
 permalink: /zh-cn/
 ---

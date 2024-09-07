@@ -1,5 +1,5 @@
 ---
-title: Home
+title: Overview
 layout: home
 nav_order: 1
 description: "OpenNHP: Zero Trust Network-infrastructure Hiding Protocol"
@@ -12,6 +12,7 @@ permalink: /
  OpenNHP implements the Zero Trust communication protocol NHP.
 {: .fs-6 .fw-300 }
 
-[中文版](./zh-cn/){: .label .fs-3 }
+[中文版](./zh-cn/){: .label .fs-4 }
 
 ---
+

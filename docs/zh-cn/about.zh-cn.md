@@ -1,7 +1,7 @@
 ---
 layout: page
 title: 关于我们
-parent: 中文版
+parent: Chinese
 nav_order: 6
 permalink: /zh-cn/about/
 ---

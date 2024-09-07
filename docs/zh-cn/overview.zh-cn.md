@@ -1,7 +1,7 @@
 ---
 layout: page
 title: OpenNHP简介
-parent: 中文版
+parent: Chinese
 nav_order: 1
 description: "OpenNHP: 零信任网络隐身协议"
 permalink: /zh-cn/overview/

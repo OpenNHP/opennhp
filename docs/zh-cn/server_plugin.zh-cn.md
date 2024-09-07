@@ -1,7 +1,7 @@
 ---
 layout: page
 title: 服务器插件开发
-parent: 中文版
+parent: Chinese
 nav_order: 5
 permalink: /zh-cn/server_plugin/
 ---

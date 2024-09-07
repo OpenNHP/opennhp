@@ -1,3 +1,11 @@
+---
+layout: page
+title: 服务器插件开发
+parent: OpenNHP中文版
+nav_order: 5
+permalink: /zh-cn/server_plugin/
+---
+
 # NHP服务器 插件开发文档
 
 ## 简介

@@ -18,17 +18,27 @@
 
 The rapid advancement of **AI** technologies, particularly large language models (LLMs), is significantly reshaping the cybersecurity landscape. The rise of **Autonomous Vulnerability Exploitation (AVE)** represents a major leap in the AI era, streamlining the exploitation of vulnerabilities, as highlighted in [this research paper](https://arxiv.org/abs/2404.08144). This development dramatically increases the risk for any exposed network services, echoing the [Dark Forest Hypothesis](https://en.wikipedia.org/wiki/Dark_forest_hypothesis) of the Internet. AI-powered tools are continuously scanning the digital environment, swiftly identifying and exploiting weaknesses. Consequently, the Internet is evolving into a **"Dark Forest,"** where **visibility equates to vulnerability**.
 
-![OpenNHP Logo](docs/images/Vul_Risks.png)
+![Vulnerability Risks](docs/images/Vul_Risks.png)
 
 Gartner research predicts a [rapid increase in AI-driven cyberattacks](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025). This shifting paradigm calls for a reevaluation of traditional cybersecurity strategies, with a focus on proactive defenses, rapid response mechanisms, and the adoption of network hiding technologies to safeguard critical infrastructure.
 
-## Solution: Zero Trust Network-infrastructure Hiding Protocol
+## Vision: Making the Internet Trustworthy
 
-NHP, or the **"Network-infrastructure Hiding Protocol"**, is a Zero Trust communication protocol that functions at the [Session layer of the OSI network model](https://en.wikipedia.org/wiki/OSI_model), which is ideal for managing network visibility and connections. Its main objective is to conceal protected resources from unauthorized entities while granting access solely to verified, authorized users through continuous verification.
+The openness of TCP/IP protocols has driven the explosive growth of internet applications but also exposed vulnerabilities, allowing malicious actors to gain unauthorized access and exploit any exposed IP address. Although the [OSI network model](https://en.wikipedia.org/wiki/OSI_model) defines the *5th layer (Session Layer)* for managing connections, few effective solutions have been implemented to address this.
 
-NHP builds upon earlier research in network hiding technology, utilizing modern cryptographic framework and architecture to ensure security and high performance, thereby overcoming the limitations of previous technologies.
+**NHP**, or the **"Network-infrastructure Hiding Protocol"**, is a Zero Trust communication protocol designed to function at the *OSI Session Layer*, which is optimal for managing network visibility and connections. NHP's key objective is to conceal protected resources from unauthorized entities, granting access only to verified, authorized users through continuous verification, contributing to a more trustworthy Internet.
 
-| Network Hiding Protocol | 1st Gen | 2nd Gen | 3rd Gen |
+![Trustworthy Internet](docs/images/TrustworthyCyberspace.png)
+
+## Solution: OpenNHP Fixes the Network Visibility Control
+
+**OpenNHP** is the open-source implementation of the NHP protocol, developed in memory-safe *Golang*. It is designed with security-first principles, implementing a true zero-trust architecture at the *OSI Session Layer*. 
+
+![OpenNHP as the OSI 5th layer](docs/images/OSI_OpenNHP.png)
+
+OpenNHP builds upon earlier research in network hiding technology, utilizing modern cryptographic framework and architecture to ensure security and high performance, thereby overcoming the limitations of previous technologies.
+
+| Network Hiding Protocol | 1st Generation | 2nd Generation | 3rd Generation |
 |:---|:---|:---|:---|
 | **Core Technology** | [Port Knocking](https://en.wikipedia.org/wiki/Port_knocking) | [Single Packet Authorization (SPA)](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2) | Network-infrastructure Hiding Protocol (NHP) |
 | **Authentication** | Port sequences | Shared Credential | Modern Crypto Framework |
@@ -36,20 +46,17 @@ NHP builds upon earlier research in network hiding technology, utilizing modern 
 | **Capability** | Hide Ports | Hide Ports | Hide Ports, IPs and Domains |
 | **Access Control** | IP Level | Port Level | Application Level |
 
-The detailed comparison between SPA and NHP can be found in [below section](#comparison-between-spa-and-nhp).
+The detailed comparison between **SPA and NHP** can be found in [below section](#comparison-between-spa-and-nhp).
 
-**OpenNHP** is the open-source implementation of the NHP protocol, developed in *Golang*. It is designed with security-first principles, implementing a true zero-trust architecture at the session layer (the 5th layer) protocol in the OSI network model. 
 
-![OpenNHP as the OSI 5th layer](docs/images/OSI_OpenNHP.png)
+## Security Benefits
 
 Since the session layer is responsible for connection establishment and dialogue control, implementing zero trust at the session layer offers significant benefits:
+
 - **Mitigate vulnerability risk:** The openness of TCP/IP protocols leads to a "trust by default" connection model, allowing anyone to establish a connection to a server port that provides services. Attackers exploit this openness to target server vulnerabilities. The NHP protocol implements the zero trust principle "never trust, always verify" by enforcing "deny-all" rules by default on the server side, only allowing authorized hosts to establish connections. This effectively mitigates vulnerability exploitation, particularly zero-day exploits.
 - **Mitigate phishing attacks:** DNS hijacking is a serious threat to internet security and is used for malicious purposes such as phishing, stealing sensitive information, or spreading malware. The NHP protocol can function as an encrypted DNS resolution service to mitigate this problem. When the NHP-Agent on the client side sends a knock request to the controller component NHP-Server with the identifier (e.g., the domain name) of the protected resource, the NHP-Server will return the IP address and port number of the protected resource if the NHP-Agent is successfully authenticated. Since NHP communication is encrypted and mutually verified, the risk of DNS hijacking is effectively mitigated.
 - **Mitigate DDoS attacks:** As mentioned above, a client cannot obtain the IP address and port number of protected resources without authentication. If the protected resources are distributed across multiple locations, the NHP server may return different IP addresses to different clients, making DDoS attacks significantly more difficult and expensive to execute.
 - **Attack attribution:** The connection model of TCP/IP protocols is IP-based. With NHP, the connection model becomes identity (ID)-based. The connection initiator's identity must be authenticated before establishing the connection, making attacks much more identifiable and traceable. 
-
-## Security Benefits
-
 - Reduces attack surface by hiding infrastructure
 - Prevents unauthorized network reconnaissance
 - Mitigates vulnerability exploitation
@@ -143,6 +150,14 @@ NHP-AC (Access Control) components enforce access policies on protected resource
 7. `NHP-Agent` can now access the protected resource
 8. Access is logged for auditing purposes
 
+## Cryptographic Framework
+
+OpenNHP leverages state-of-the-art cryptographic algorithms:
+
+- [Elliptic Curve Cryptography (ECC)](https://en.wikipedia.org/wiki/Elliptic-curve_cryptography): For efficient public key operations
+- [Noise Protocol Framework](https://noiseprotocol.org/): For secure key exchange and identity verification
+- [Identity-Based Cryptography (IBC)](https://en.wikipedia.org/wiki/Identity-based_cryptography): For simplified key management at scale
+
 ## Quick Start
 
 Get OpenNHP up and running in minutes:
@@ -186,14 +201,6 @@ OpenNHP supports multiple deployment models to suit different use cases:
 - Client-to-Server: Directly secures individual servers/applications
 - Server-to-Server: Secures communication between backend services
 - Gateway-to-Gateway: Secures site-to-site connections
-
-## Cryptographic Framework
-
-OpenNHP leverages state-of-the-art cryptographic algorithms:
-
-- [Elliptic Curve Cryptography (ECC)](https://en.wikipedia.org/wiki/Elliptic-curve_cryptography): For efficient public key operations
-- [Noise Protocol Framework](https://noiseprotocol.org/): For secure key exchange and identity verification
-- [Identity-Based Cryptography (IBC)](https://en.wikipedia.org/wiki/Identity-based_cryptography): For simplified key management at scale
 
 ## Comparison between SPA and NHP
 The Single Packet Authorization (SPA) protocol is included in the [Software Defined Perimeter (SDP) specification](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2) released by the [Cloud Security Alliance (CSA)](https://cloudsecurityalliance.org/). NHP improves security, reliability, scalability, and extensibility through a modern cryptographic framework and architecture, as demonstrated in the [AHAC research paper](https://www.mdpi.com/2076-3417/14/13/5593).

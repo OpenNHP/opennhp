@@ -1,7 +1,7 @@
 ---
 layout: page
 title: 编译源代码
-parent: Chinese
+parent: 中文版
 nav_order: 2
 permalink: /zh-cn/build/
 ---

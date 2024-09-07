@@ -17,7 +17,7 @@ permalink: /zh-cn/overview/
 
 关于OpenNHP的代码结构与技术详解，请阅读：
 
-- [《OpenNHP代码解读文档》](./code.zh-cn.md)
+- [《OpenNHP代码解读文档》](../code/)
 
 ## 第二章：OpenNHP的兼容性
 

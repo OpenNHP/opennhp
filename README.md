@@ -32,7 +32,7 @@ The openness of TCP/IP protocols has driven the explosive growth of internet app
 
 ## Solution: OpenNHP Fixes the Network Visibility Control
 
-**OpenNHP** is the open-source implementation of the NHP protocol, developed in memory-safe *Golang*. It is designed with security-first principles, implementing a true zero-trust architecture at the *OSI Session Layer*. 
+**OpenNHP** is the open-source implementation of the NHP protocol. It is designed with security-first principles, implementing a true zero-trust architecture at the *OSI Session Layer*. 
 
 ![OpenNHP as the OSI 5th layer](docs/images/OSI_OpenNHP.png)
 
@@ -45,8 +45,9 @@ OpenNHP builds upon earlier research in network hiding technology, utilizing mod
 | **Architecture** | No Control Plane | No Control Plane | Scalable Control Plane |
 | **Capability** | Hide Ports | Hide Ports | Hide Ports, IPs and Domains |
 | **Access Control** | IP Level | Port Level | Application Level |
+| **Open Source Projects** | [knock](https://github.com/jvinet/knock) *(C)* | [fwknop](https://github.com/mrash/fwknop) *(C++)* | [OpenNHP](https://github.com/OpenNHP/opennhp) *(Go)* |
 
-The detailed comparison between **SPA and NHP** can be found in [below section](#comparison-between-spa-and-nhp).
+It is crucial to choose a **memory-safe** language like *Go* for OpenNHP development, as emphasized in the [US Government technical report](https://www.whitehouse.gov/wp-content/uploads/2024/02/Final-ONCD-Technical-Report.pdf). For a detailed comparison between **SPA and NHP**, refer to the [section below](#comparison-between-spa-and-nhp).
 
 
 ## Security Benefits
@@ -207,7 +208,6 @@ The Single Packet Authorization (SPA) protocol is included in the [Software Defi
 
 | - | SPA |NHP | NHP Advantages  |
 |:---|:---|:---|:---|
-| **Open Source Implementation** | [fwknop](https://github.com/mrash/fwknop) written in C++ | [OpenNHP](https://github.com/OpenNHP/opennhp) written in Go | <ul><li>Memory safety programming langauge, as highlighted in the [US Government report](https://www.whitehouse.gov/wp-content/uploads/2024/02/Final-ONCD-Technical-Report.pdf) </li><li>Better integration with cloud-native infrastructure</li></ul> |
 | **Architecture** | The SPA packet decryption and user/device authentication component is coupled with the network access control component in the SPA server. | NHP-Server (the packet decryption and user/device authentication component) and NHP-AC( the access control component) are decoupled. NHP-Server can be deployed in separate hosts and supports horizontal scaling. | <ul><li> Performance: the resource-consuming component NHP-server is separated from the protected server. </li><li>Scalability: NHP-server can be deployed in distributed or clustered mode.</li><li>Security: the IP address of the protected server is not visible to the client unless the authentication succeeded. </li></ul>|
 | **Communication** | Single direction | Bi-direction | Better reliability with the status notification of access control |
 | **Cryptographic framework** | PKI | IBC + Noise Framework |<ul><li>Security: proven secure key exchange mechanism to mitigate the MITM threats</li><li>Low cost: efficient key distribution for zero trust model</li><li>Performance: high performance encryption/decryption</li></ul>|

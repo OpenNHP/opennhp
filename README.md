@@ -41,7 +41,7 @@ OpenNHP builds upon earlier research in network hiding technology, utilizing mod
 | Network Hiding Protocol | 1st Generation | 2nd Generation | 3rd Generation |
 |:---|:---|:---|:---|
 | **Core Technology** | [Port Knocking](https://en.wikipedia.org/wiki/Port_knocking) | [Single Packet Authorization (SPA)](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2) | Network-infrastructure Hiding Protocol (NHP) |
-| **Authentication** | Port sequences | Shared Credential | Modern Crypto Framework |
+| **Authentication** | Port sequences | Shared Secrets | Modern Crypto Framework |
 | **Architecture** | No Control Plane | No Control Plane | Scalable Control Plane |
 | **Capability** | Hide Ports | Hide Ports | Hide Ports, IPs and Domains |
 | **Access Control** | IP Level | Port Level | Application Level |
@@ -49,15 +49,10 @@ OpenNHP builds upon earlier research in network hiding technology, utilizing mod
 
 It is crucial to choose a **memory-safe** language like *Go* for OpenNHP development, as emphasized in the [US Government technical report](https://www.whitehouse.gov/wp-content/uploads/2024/02/Final-ONCD-Technical-Report.pdf). For a detailed comparison between **SPA and NHP**, refer to the [section below](#comparison-between-spa-and-nhp).
 
-
 ## Security Benefits
 
-Since the session layer is responsible for connection establishment and dialogue control, implementing zero trust at the session layer offers significant benefits:
+Since OpenNHP implements Zero Trust principles at the *OSI Session Layer*, it offers significant benefits:
 
-- **Mitigate vulnerability risk:** The openness of TCP/IP protocols leads to a "trust by default" connection model, allowing anyone to establish a connection to a server port that provides services. Attackers exploit this openness to target server vulnerabilities. The NHP protocol implements the zero trust principle "never trust, always verify" by enforcing "deny-all" rules by default on the server side, only allowing authorized hosts to establish connections. This effectively mitigates vulnerability exploitation, particularly zero-day exploits.
-- **Mitigate phishing attacks:** DNS hijacking is a serious threat to internet security and is used for malicious purposes such as phishing, stealing sensitive information, or spreading malware. The NHP protocol can function as an encrypted DNS resolution service to mitigate this problem. When the NHP-Agent on the client side sends a knock request to the controller component NHP-Server with the identifier (e.g., the domain name) of the protected resource, the NHP-Server will return the IP address and port number of the protected resource if the NHP-Agent is successfully authenticated. Since NHP communication is encrypted and mutually verified, the risk of DNS hijacking is effectively mitigated.
-- **Mitigate DDoS attacks:** As mentioned above, a client cannot obtain the IP address and port number of protected resources without authentication. If the protected resources are distributed across multiple locations, the NHP server may return different IP addresses to different clients, making DDoS attacks significantly more difficult and expensive to execute.
-- **Attack attribution:** The connection model of TCP/IP protocols is IP-based. With NHP, the connection model becomes identity (ID)-based. The connection initiator's identity must be authenticated before establishing the connection, making attacks much more identifiable and traceable. 
 - Reduces attack surface by hiding infrastructure
 - Prevents unauthorized network reconnaissance
 - Mitigates vulnerability exploitation
@@ -65,6 +60,39 @@ Since the session layer is responsible for connection establishment and dialogue
 - Protects against DDoS attacks
 - Enables fine-grained access control
 - Provides identity-based connection tracking
+- Attack attribution
+
+## Architecture
+
+The OpenNHP architecture is inspired by the [NIST Zero Trust Architecture standard](https://www.nist.gov/publications/zero-trust-architecture). It follows a modular design with the 3 core components: **NHP-Server**, **NHP-AC** and **NHP-Agent**, as illustrated in the below diagram.
+
+![OpenNHP architecture](docs/images/OpenNHP_Arch.png)
+
+Please refer to the [OpenNHP Documentation](https://opennhp.org/) for more details.
+
+## Cryptographic Algorithms
+
+Cryptography is at the heart of OpenNHP, providing robust security, excellent performance, and scalability by utilizing cutting-edge cryptographic algorithms. Below are the key cryptographic algorithms and frameworks employed by OpenNHP:
+
+- **[Elliptic Curve Cryptography (ECC)](https://en.wikipedia.org/wiki/Elliptic-curve_cryptography):** Used for efficient public key cryptography.
+
+Compared to RSA, ECC offers superior efficiency with stronger encryption at shorter key lengths, improving both network transmission and computational performance. The table below highlights the differences in security strength, key lengths, and the key length ratio between RSA and ECC, along with their respective validity periods.
+
+| Security Strength (bits) | DSA/RSA Key Length (bits) | ECC Key Length (bits) | Ratio: ECC vs. DSA/RSA | Validity |
+|:------------------------:|:-------------------------:|:---------------------:|:----------------------:|:--------:|
+| 80                       | 1024                      | 160-223               | 1:6                    | Until 2010 |
+| 112                      | 2048                      | 224-255               | 1:9                    | Until 2030 |
+| 128                      | 3072                      | 256-383               | 1:12                   | After 2031 |
+| 192                      | 7680                      | 384-511               | 1:20                   | |
+| 256                      | 15360                     | 512+                  | 1:30                   | |
+
+- **[Noise Protocol Framework](https://noiseprotocol.org/):** Enables secure key exchange, message encryption/decryption, and mutual authentication.
+
+The Noise Protocol is built around the [Diffie-Hellman key agreement](https://en.wikipedia.org/wiki/Diffie%E2%80%93Hellman_key_exchange) and provides modern cryptographic solutions like mutual and optional authentication, identity hiding, forward secrecy, and zero round-trip encryption. Proven for its security and performance, it is already used by popular applications like *WhatsApp* and *WireGuard*.
+
+- **[Identity-Based Cryptography (IBC)](https://en.wikipedia.org/wiki/Identity-based_cryptography):** Simplifies key distribution at scale.
+
+Efficient key distribution is essential for implementing Zero Trust. OpenNHP supports both PKI and IBC. While PKI has been widely used for decades, it depends on centralized Certificate Authorities (CA) for identity verification and key management, which can be time-consuming and costly. In contrast, IBC allows for a decentralized and self-governing approach to identity verification and key management, making it more cost-effective for OpenNHP's Zero Trust environment, where billions of devices or servers may need protection and onboarding in real-time.
 
 ## Key Features
 
@@ -93,71 +121,6 @@ Since the session layer is responsible for connection establishment and dialogue
 - **Flexible deployment**: Supports various models including client-to-gateway, client-to-server, and more.
 - **Strong cryptography**: Utilizes modern algorithms like ECC, Noise Protocol, and IBC for robust security.
 </details>
-
-## Architecture and Workflow
-
-The OpenNHP architecture is inspired by the NIST Zero Trust Architecture standard. It follows a modular design with the following core components: 
-
-![OpenNHP architecture](docs/images/OpenNHP_Arch.png)
-
-### OpenNHP Core Components:
-#### NHP-Agent
-
-The NHP-Agent is a client-side component that initiates communication and requests access to protected resources. It can be implemented as:
-
-- A standalone client application
-- An SDK integrated into existing applications
-- A browser plugin
-- A mobile app
-
-The agent is responsible for:
-
-- Generating and sending knock requests to the NHP-Server
-- Maintaining secure communication channels
-- Handling authentication flows
-
-#### NHP-Server
-
-The NHP-Server is the central controller that:
-
-- Processes and validates knock requests from agents
-- Interacts with the Authorization Service Provider for policy decisions
-- Manages NHP-AC components to allow/deny access
-- Handles key management and cryptographic operations
-
-It can be deployed in a distributed or clustered configuration for high availability and scalability.
-
-#### NHP-AC
-
-NHP-AC (Access Control) components enforce access policies on protected resources. Key functions:
-
-- Implement default deny-all rules
-- Open/close access based on NHP-Server instructions
-- Ensure network invisibility of protected resources
-- Log access attempts
-
-### Components that interact with OpenNHP: 
-- **Protected Resources:** The resource provider is responsible for protecting these resources, such as API interfaces, application servers, gateways, routers, network devices, etc. In the SDP scenario, the Protected Resources are the SDP Gateway and Controller. 
-- **Authorization Service Provider (ASP):** This provider validates access policies and provides the actual access addresses of Protected Resources. In the SDP Scenario, the ASP may be the SDP Controller. 
-
-### Workflow
-
-1. `NHP-Agent` sends knock request to `NHP-Server`
-2. `NHP-Server` validates request and retrieves agent info
-3. `NHP-Server` queries Authorization Service Provider
-4. If authorized, `NHP-Server` instructs `NHP-AC` to allow access
-5. `NHP-AC` opens connection and notifies `NHP-Server`
-6. `NHP-Server` provides resource access details to `NHP-Agent`
-7. `NHP-Agent` can now access the protected resource
-8. Access is logged for auditing purposes
-
-## Cryptographic Framework
-
-OpenNHP leverages state-of-the-art cryptographic algorithms:
-
-- [Elliptic Curve Cryptography (ECC)](https://en.wikipedia.org/wiki/Elliptic-curve_cryptography): For efficient public key operations
-- [Noise Protocol Framework](https://noiseprotocol.org/): For secure key exchange and identity verification
-- [Identity-Based Cryptography (IBC)](https://en.wikipedia.org/wiki/Identity-based_cryptography): For simplified key management at scale
 
 ## Quick Start
 
@@ -210,7 +173,7 @@ The Single Packet Authorization (SPA) protocol is included in the [Software Defi
 |:---|:---|:---|:---|
 | **Architecture** | The SPA packet decryption and user/device authentication component is coupled with the network access control component in the SPA server. | NHP-Server (the packet decryption and user/device authentication component) and NHP-AC( the access control component) are decoupled. NHP-Server can be deployed in separate hosts and supports horizontal scaling. | <ul><li> Performance: the resource-consuming component NHP-server is separated from the protected server. </li><li>Scalability: NHP-server can be deployed in distributed or clustered mode.</li><li>Security: the IP address of the protected server is not visible to the client unless the authentication succeeded. </li></ul>|
 | **Communication** | Single direction | Bi-direction | Better reliability with the status notification of access control |
-| **Cryptographic framework** | PKI | IBC + Noise Framework |<ul><li>Security: proven secure key exchange mechanism to mitigate the MITM threats</li><li>Low cost: efficient key distribution for zero trust model</li><li>Performance: high performance encryption/decryption</li></ul>|
+| **Cryptographic framework** | Shared Secretes | PKI or IBC, Noise Framework |<ul><li>Security: proven secure key exchange mechanism to mitigate the MITM threats</li><li>Low cost: efficient key distribution for zero trust model</li><li>Performance: high performance encryption/decryption</li></ul>|
 | **Capability of Hiding network infrastructure** | Only server ports | Domain, IP, and ports | More powerful against various attacks(e.g., vulnerabilities, DNS hijack, and DDoS attacks) |
 | **Extensibility** | None, only for SDP | All-purpose | Support any scenario that needs service darkening |
 | **Interoperability** | Not available | Customizable| NHP can seamlessly integrate with existing protocols (e.g., DNS, FIDO, etc.) |

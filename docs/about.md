@@ -1,9 +1,9 @@
 ---
 layout: page
 title: About
-nav_order: 6
+nav_order: 7
 permalink: /about/
 ---
 
-# About OpenNHP
+# About OpenNHP Project
 

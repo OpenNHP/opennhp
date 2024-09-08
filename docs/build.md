@@ -6,3 +6,9 @@ permalink: /build/
 ---
 
 # Build OpenNHP Source Code
+{: .fs-9 }
+
+[中文版](./zh-cn/build/){: .label .fs-4 }
+
+---
+

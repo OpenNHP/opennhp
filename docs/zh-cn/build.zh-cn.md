@@ -13,7 +13,7 @@ permalink: /zh-cn/build/
 **提示：** Windows 10/11下可以通过`WSL`子系统来运行Linux，详细请见WSL官方文档：<https://learn.microsoft.com/zh-cn/windows/wsl/install>
 
 - **【开启WSL功能】** 在Win10上，需要首先开启WSL才能使用WSL安装Linux，设置界面请见下图。
-   ![Win10上WSL设置](../images/win10wsl.png)
+   ![Win10上WSL设置](/images/win10wsl.png)
 - **【WSL上安装Linux】** 推荐在WSL上安装Ubuntu Linux，通过PowerShell运行以下命令安装：
 
    ```bat
@@ -61,7 +61,7 @@ permalink: /zh-cn/build/
     - 安装GCC： `sudo apt install build-essential`
   - **Windows**:
     1. 第一步：**安装mingw64**。mingw64可以通过msys2的包管理工具进行下载。安装msys2系统要求、下载与安装教程见：<https://www.msys2.org/>。
-    ![install_msys2](../images/install_msys2.png)
+    ![install_msys2](/images/install_msys2.png)
 
     2. 第二步：**安装GCC**。在msys2的控制台输入命令：
 

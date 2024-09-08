@@ -12,7 +12,7 @@ permalink: /
  OpenNHP implements the Zero Trust communication protocol NHP.
 {: .fs-6 .fw-300 }
 
-[中文版](./zh-cn/){: .label .fs-4 }
+[中文版](/zh-cn/){: .label .fs-4 }
 
 ---
 

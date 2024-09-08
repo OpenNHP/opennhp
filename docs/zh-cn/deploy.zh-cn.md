@@ -22,10 +22,10 @@ permalink: /zh-cn/deploy/
 
 假设开发主机为Windows或者macOS，可通过安装虚拟机环境（如VirualBox）并创建两台Linux虚拟机来搭建简单的OpenNHP测试环境。在创建虚拟机时，请将网卡选项设置为`"Host-only Adapter"`（如下图），可使虚拟机的IP与开发主机IP在同一个网段。
 
- ![VirualBox Network](../images/vbnetwork.png)
+ ![VirualBox Network](/images/vbnetwork.png)
 
  **提示：** 如需该虚拟机同时具备访问互联网能力，可以另外增加一个`"NAT"`网卡：
- ![VirualBox Network](../images/vbnetwork2.png)
+ ![VirualBox Network](/images/vbnetwork2.png)
 
 至此，NHP三大组件的环境搭建如下：
 
@@ -35,7 +35,7 @@ permalink: /zh-cn/deploy/
 
 ### 2.2 开发测试环境的网络拓扑与基础信息
 
- ![OpenNHP-Dev-WSL](../images/dev_wsl.png)
+ ![OpenNHP-Dev-WSL](/images/dev_wsl.png)
 
 | 服务器名称 | IP地址 | 基础配置信息  |
 |:--:|:--:|:--:|

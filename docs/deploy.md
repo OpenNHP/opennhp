@@ -8,6 +8,6 @@ permalink: /deploy/
 # Deploy OpenNHP Binaries
 {: .fs-9 }
 
-[中文版](./zh-cn/deploy/){: .label .fs-4 }
+[中文版](/zh-cn/deploy/){: .label .fs-4 }
 
 ---

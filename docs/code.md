@@ -9,6 +9,6 @@ permalink: /code/
 {: .fs-9 }
 
 
-[中文版](./zh-cn/code/){: .label .fs-4 }
+[中文版](/zh-cn/code/){: .label .fs-4 }
 
 ---

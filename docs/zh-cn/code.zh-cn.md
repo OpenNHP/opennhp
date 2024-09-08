@@ -1,6 +1,6 @@
 ---
 layout: page
-title: 代码解读
+title: 源代码解读
 parent: 中文版
 nav_order: 6
 permalink: /zh-cn/code/

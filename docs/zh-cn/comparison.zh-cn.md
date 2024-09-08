@@ -1,6 +1,6 @@
 ---
 layout: page
-title: 对比
+title: 对比NHP与SPA
 parent: 中文版
 nav_order: 3
 permalink: /zh-cn/comparison/

@@ -32,7 +32,7 @@ The openness of TCP/IP protocols has driven the explosive growth of internet app
 
 ## Solution: OpenNHP Fixes the Network Visibility Control
 
-**OpenNHP** is the open-source implementation of the NHP protocol. It is designed with security-first principles, implementing a true zero-trust architecture at the *OSI Session Layer*. 
+**OpenNHP** is the open-source implementation of the NHP protocol. It is cryptography-driven and designed with security-first principles, implementing a true zero-trust architecture at the *OSI Session Layer*. 
 
 ![OpenNHP as the OSI 5th layer](docs/images/OSI_OpenNHP.png)
 

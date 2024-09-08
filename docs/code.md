@@ -5,7 +5,7 @@ nav_order: 6
 permalink: /code/
 ---
 
-# Understand the OpenNHP Source Code
+# Understand the Source Code
 {: .fs-9 }
 
 

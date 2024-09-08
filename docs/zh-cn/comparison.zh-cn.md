@@ -7,4 +7,7 @@ permalink: /zh-cn/comparison/
 ---
 
 # NHP与SPA的对比
+{: .fs-9 }
+
+---
 

@@ -7,24 +7,27 @@ permalink: /zh-cn/code/
 ---
 
 # OpeNHP代码解读
+{: .fs-9 }
+
+---
 
 ## 1. 层级架构
 
-1.上层逻辑组件层负责UDP的连接建立、维护与断开
-2.Device层负责：1.将上层的消息明文转为NHP报文并发送到连接；2.将从连接收到的NHP报文转化为消息明文并提供上层处理
-3.上层逻辑组件提供
-![avatar](./images/provide.png)
+1. 上层逻辑组件层负责UDP的连接建立、维护与断开
+2. Device层负责：1.将上层的消息明文转为NHP报文并发送到连接；2.将从连接收到的NHP报文转化为消息明文并提供上层处理
+3. 上层逻辑组件提供
+![avatar](/images/provide.png)
 
 ## 2. 连接管理
 
-1.上层逻辑组件可以建立并维护多个连接UdpConn，根据实际需求创建所需对象成员。每一个UdpConn起一个线程进行收发包操作。
-2.每一个UdpConn需要建立一个Device层的ConnData，并向Device ConnData传递实际连接中的远端地址，报文收发通道，cookie等。
-3.每一个UdpConn允许进行多次双向的transaction或单向发包。（agent除外，原则上agent每次请求都创建一个新的连接）
-4.每一个transaction都建立一个自身的线程和通道用于维持交互操作，超时后自行销毁。Local transaction（本地创建的交互）由device统一管理，Remote transaction（远端创建的交互）由远端连接管理，transaction的回应在收发包时需要找出相应的transaction线程进行后续操作。
+1. 上层逻辑组件可以建立并维护多个连接UdpConn，根据实际需求创建所需对象成员。每一个UdpConn起一个线程进行收发包操作。
+2. 每一个UdpConn需要建立一个Device层的ConnData，并向Device ConnData传递实际连接中的远端地址，报文收发通道，cookie等。
+3. 每一个UdpConn允许进行多次双向的transaction或单向发包。（agent除外，原则上agent每次请求都创建一个新的连接）
+4. 每一个transaction都建立一个自身的线程和通道用于维持交互操作，超时后自行销毁。Local transaction（本地创建的交互）由device统一管理，Remote transaction（远端创建的交互）由远端连接管理，transaction的回应在收发包时需要找出相应的transaction线程进行后续操作。
 
 ## 3. 对象命名
 
-1.上层逻辑组件在收发方向上可能具有多重身份，Device层中使用initiator和responder表示发起方和接收方。
+1. 上层逻辑组件在收发方向上可能具有多重身份，Device层中使用initiator和responder表示发起方和接收方。
 
 ## 4. 报文缓冲区的创建与销毁（回收）
 

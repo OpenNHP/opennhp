@@ -7,6 +7,9 @@ permalink: /zh-cn/deploy/
 ---
 
 # 部署OpenNHP
+{: .fs-9 }
+
+---
 
 ## 1. OpenNHP组件说明
 

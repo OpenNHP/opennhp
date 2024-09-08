@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Understand the Code
-nav_order: 5
+nav_order: 6
 permalink: /code/
 ---
 

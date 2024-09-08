@@ -2,16 +2,18 @@
 layout: page
 title: 编译源代码
 parent: 中文版
-nav_order: 4
+nav_order: 5
 permalink: /zh-cn/build/
 ---
 
 # 编译OpenNHP
 
+## 1. WSL环境准备
+
 **提示：** Windows 10/11下可以通过`WSL`子系统来运行Linux，详细请见WSL官方文档：<https://learn.microsoft.com/zh-cn/windows/wsl/install>
 
 - **【开启WSL功能】** 在Win10上，需要首先开启WSL才能使用WSL安装Linux，设置界面请见下图。
-   ![Win10上WSL设置](./docs/images/win10wsl.png)
+   ![Win10上WSL设置](../images/win10wsl.png)
 - **【WSL上安装Linux】** 推荐在WSL上安装Ubuntu Linux，通过PowerShell运行以下命令安装：
 
    ```bat
@@ -32,9 +34,9 @@ permalink: /zh-cn/build/
    | WSL中Linux主机 | `hostname -I \| awk '{print $1}'` |  
    | WSL宿主Windows主机 | `ip route show \| grep -i default \| awk '{ print $3}'` |  
 
-## 系统需求
+## 2. 系统需求
 
-- 3.1.1 `Go语言`环境：**Go 1.18** 或以上。安装包下载地址: <https://go.dev/dl/>
+- 2.1 `Go语言`环境：**Go 1.18** 或以上。安装包下载地址: <https://go.dev/dl/>
   - **Windows与macOS**环境下，通过下载的安装程序来安装Go。
   - **Linux**环境下可以直接通过管理工具安装： ：`sudo apt install golang ` 
   - 安装成功后，运行命令`go version` 来查看Go版本号。
@@ -53,13 +55,13 @@ permalink: /zh-cn/build/
    ```
 
   - 安装成功后，运行命令`go version` 来查看Go版本号。
-- `GCC`环境：
+- 2.2 `GCC`环境：
   - **Linux与macOS**：**GCC 8.0**或以上。
     - 查看GCC版本的命令：`gcc -v`
     - 安装GCC： `sudo apt install build-essential`
   - **Windows**:
     1. 第一步：**安装mingw64**。mingw64可以通过msys2的包管理工具进行下载。安装msys2系统要求、下载与安装教程见：<https://www.msys2.org/>。
-    ![install_msys2](./docs/images/install_msys2.png)
+    ![install_msys2](../images/install_msys2.png)
 
     2. 第二步：**安装GCC**。在msys2的控制台输入命令：
 
@@ -82,7 +84,8 @@ permalink: /zh-cn/build/
       ```bat
       wsl --install --distribution Ubuntu-22.04
       ```
-## 构建
+      
+## 3. 编译
 
 1. 拉取代码仓库
 
@@ -102,3 +105,13 @@ permalink: /zh-cn/build/
    - **Windows**：运行代码根目录下*BAT*文件
    `build.bat`
 
+## 4. 结果
+
+编译出来的二进制文件都在代码目录下的`release`子目录下。
+
+- **NHP-Server**的可执行文件和配置文件： `release\nhp-server` 子目录下
+- **NHP-AC**的可执行文件和配置文件： `release\nhp-ac` 子目录下
+- **NHP-Agent**的可执行文件和配置文件： `release\nhp-agent` 子目录下
+- 所有二进制文件打包成一个`tar`文件:  `release\archive` 子目录下
+
+--- 

@@ -30,6 +30,7 @@ The openness of TCP/IP protocols has driven the explosive growth of internet app
 
 ![Trustworthy Internet](docs/images/TrustworthyCyberspace.png)
 
+
 ## Solution: OpenNHP Fixes the Network Visibility Control
 
 **OpenNHP** is the open-source implementation of the NHP protocol. It is cryptography-driven and designed with security-first principles, implementing a true zero-trust architecture at the *OSI Session Layer*. 
@@ -47,7 +48,7 @@ OpenNHP builds upon earlier research in network hiding technology, utilizing mod
 | **Access Control** | IP Level | Port Level | Application Level |
 | **Open Source Projects** | [knock](https://github.com/jvinet/knock) *(C)* | [fwknop](https://github.com/mrash/fwknop) *(C++)* | [OpenNHP](https://github.com/OpenNHP/opennhp) *(Go)* |
 
-It is crucial to choose a **memory-safe** language like *Go* for OpenNHP development, as emphasized in the [US Government technical report](https://www.whitehouse.gov/wp-content/uploads/2024/02/Final-ONCD-Technical-Report.pdf). For a detailed comparison between **SPA and NHP**, refer to the [section below](#comparison-between-spa-and-nhp).
+> It is crucial to choose a **memory-safe** language like *Go* for OpenNHP development, as emphasized in the [US Government technical report](https://www.whitehouse.gov/wp-content/uploads/2024/02/Final-ONCD-Technical-Report.pdf). For a detailed comparison between **SPA and NHP**, refer to the [section below](#comparison-between-spa-and-nhp).
 
 ## Security Benefits
 
@@ -68,7 +69,7 @@ The OpenNHP architecture is inspired by the [NIST Zero Trust Architecture standa
 
 ![OpenNHP architecture](docs/images/OpenNHP_Arch.png)
 
-Please refer to the [OpenNHP Documentation](https://opennhp.org/) for more details.
+> Please refer to the [OpenNHP Documentation](https://opennhp.org/) for detailed information about architecture and workflow.
 
 ## Cryptographic Algorithms
 
@@ -133,31 +134,7 @@ make
 ./nhp-server run
 ```
 
-## Installation
-
-Detailed installation instructions:
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/opennhp/nhp.git
-   ```
-2. Navigate to the project directory:
-   ```bash
-   cd nhp
-   ```
-3. Build the project:
-   ```bash
-   make
-   ```
-4. Install (optional):
-   ```bash
-   sudo make install
-   ```
-
-> ⚠️ Note: Running `sudo make install` requires root privileges. Make sure you trust the source before running this command.
-
-
-## Deployment Models
+## Deployment
 
 OpenNHP supports multiple deployment models to suit different use cases:
 
@@ -165,6 +142,8 @@ OpenNHP supports multiple deployment models to suit different use cases:
 - Client-to-Server: Directly secures individual servers/applications
 - Server-to-Server: Secures communication between backend services
 - Gateway-to-Gateway: Secures site-to-site connections
+
+> Please refer to the [OpenNHP Documentation](https://opennhp.org/deploy/) for detailed deployment instructions.
 
 ## Comparison between SPA and NHP
 The Single Packet Authorization (SPA) protocol is included in the [Software Defined Perimeter (SDP) specification](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2) released by the [Cloud Security Alliance (CSA)](https://cloudsecurityalliance.org/). NHP improves security, reliability, scalability, and extensibility through a modern cryptographic framework and architecture, as demonstrated in the [AHAC research paper](https://www.mdpi.com/2076-3417/14/13/5593).

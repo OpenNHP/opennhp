@@ -41,9 +41,9 @@ gcc agent\sdkdemo\nhp-agent-demo.c -I release\nhp-agent -l:nhp-agent.dll -Lrelea
 IF %ERRORLEVEL% NEQ 0 exit /b 1
 
 :devicesdk
-go build -trimpath -buildmode=c-shared -ldflags %LD_FLAGS% -v -o release\nhp-device\nhpdevice.dll nhp\main\main.go nhp\main\nhpdevice.go
+go build -trimpath -buildmode=c-shared -ldflags %LD_FLAGS% -v -o release\nhp-device\nhpdevice.dll core\main\main.go core\main\nhpdevice.go
 IF %ERRORLEVEL% NEQ 0 exit /b 1
-gcc nhp\sdkdemo\nhp-device-demo.c -I nhp\main -I release\nhp-device -l:nhpdevice.dll -Lrelease\nhp-device -Wl,-rpath=. -o release\nhp-device\nhp-device-demo.exe
+REM gcc nhp\sdkdemo\nhp-device-demo.c -I nhp\main -I release\nhp-device -l:nhpdevice.dll -Lrelease\nhp-device -Wl,-rpath=. -o release\nhp-device\nhp-device-demo.exe
 IF %ERRORLEVEL% NEQ 0 exit /b 1
 cd release\nhp-device
 call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat" x64

@@ -32,10 +32,11 @@ permalink: /zh-cn/build/
    ```
 
 - **【WSL环境的IP地址】** 在WSL的Linux环境中，运行以下命令获取IP地址：
-   | 主机 | 查看IP地址的命令  |
-   |:--:|:--:|
-   | WSL中Linux主机 | `hostname -I \| awk '{print $1}'` |  
-   | WSL宿主Windows主机 | `ip route show \| grep -i default \| awk '{ print $3}'` |  
+
+| 主机 | 查看IP地址的命令  |
+|:--:|:--:|
+| WSL中Linux主机 | `hostname -I \| awk '{print $1}'` |  
+| WSL宿主Windows主机 | `ip route show \| grep -i default \| awk '{ print $3}'` |  
 
 ## 2. 系统需求
 

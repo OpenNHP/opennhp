@@ -89,7 +89,7 @@ Compared to RSA, ECC offers superior efficiency with stronger encryption at shor
 
 - **[Noise Protocol Framework](https://noiseprotocol.org/):** Enables secure key exchange, message encryption/decryption, and mutual authentication.
 
-The Noise Protocol is built around the [Diffie-Hellman key agreement](https://en.wikipedia.org/wiki/Diffie%E2%80%93Hellman_key_exchange) and provides modern cryptographic solutions like mutual and optional authentication, identity hiding, forward secrecy, and zero round-trip encryption. Proven for its security and performance, it is already used by popular applications like *WhatsApp* and *WireGuard*.
+The Noise Protocol is built around the [Diffie-Hellman key agreement](https://en.wikipedia.org/wiki/Diffie%E2%80%93Hellman_key_exchange) and provides modern cryptographic solutions like mutual and optional authentication, identity hiding, forward secrecy, and zero round-trip encryption. Proven for its security and performance, it is already used by popular applications like [WhatsApp](https://www.whatsapp.com/security/WhatsApp-Security-Whitepaper.pdf), [Slack](https://github.com/slackhq/nebula) and [WireGuard](https://www.wireguard.com/).
 
 - **[Identity-Based Cryptography (IBC)](https://en.wikipedia.org/wiki/Identity-based_cryptography):** Simplifies key distribution at scale.
 
@@ -128,16 +128,29 @@ CL-PKC is a scheme that enhances security by avoiding key escrow and addressing 
 - **Strong cryptography**: Utilizes modern algorithms like ECC, Noise Protocol, and IBC for robust security.
 </details>
 
-## Quick Start
+## Quick Demo
 
-Get OpenNHP up and running in minutes:
+This section provides a brief demonstration of how OpenNHP functions. The server protected by OpenNHP is https://acdemo.opennhp.org. Normally, port 443 would be open for HTTPS services, but with the *NHP-AC* component installed, all ports are closed by default, enforcing a Zero Trust "deny-all" policy.
 
-```bash
-git clone https://github.com/opennhp/opennhp.git
-cd opennhp
-make
-./nhp-server run
-```
+### 1) The Protected Server is "Invisible" to Unauthenticated Users
+
+By default, any attempt to connect to the protected server will result in a TIME OUT error, as all ports are closed, making the server appear offline and effectively *"invisible."*
+
+![OpenNHP Demo](docs/images/OpenNHP_ACDemo0.png)
+
+Port scanning the server will also return a TIME OUT error.
+
+![OpenNHP Demo](docs/images/OpenNHP_ScanDemo.png)
+
+### 2) After Authentication, the Protected Server Becomes Accessible
+
+OpenNHP supports a variety of authentication methods, such as OAuth, SAML, QR codes, and more. For simplicity, this demo uses a basic username/password authentication service at https://demologin.opennhp.org to demonstrate the process.
+
+![OpenNHP Demo](docs/images/OpenNHP_DemoLogin.png)
+
+Once you click the "Login" button, authentication is completed successfully, and you are redirected to the protected server. At this point, the server becomes *"visible"* and accessible on your device.
+
+![OpenNHP Demo](docs/images/OpenNHP_ACDemo1.png)
 
 ## Deployment
 

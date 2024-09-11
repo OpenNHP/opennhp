@@ -6,6 +6,8 @@ nav_order: 3
 permalink: /zh-cn/comparison/
 ---
 
+- {: .fs-9 }
+
 <small>*&nbsp; &nbsp; &nbsp; &nbsp;( 注:以下内容摘自《Applied Sciences》杂志2024年第14卷第13期的期刊论文《AHAC: Advanced Network-Hiding Access Control Framework》论文，值得特别指出的是，AHAC框架是NHP（OpenNHP）技术体系中的一个关键组成部分。本文详细介绍和比较 NHP（Next-Generation Host Protocol）与 SPA（Secure Protocol Architecture）在不同方面的表现。)*</small>
 
 # NHP与SPA的对比
@@ -17,7 +19,6 @@ permalink: /zh-cn/comparison/
   - [2. 性能对比](#2-性能对比)
     - [2.1 加密算法开销](#21-加密算法开销)
     - [2.2 性能开销](#22-性能开销)
-  - [](#)
   - [3. 高可用性对比](#3-高可用性对比)
   - [4. 扩展性对比](#4-扩展性对比)
     - [4.1 与DNS集成](#41-与dns集成)
@@ -165,7 +166,7 @@ permalink: /zh-cn/comparison/
 
 ![兼容性对比](/docs/images/Compatibility_comparison.png)
 
-[英文版](/docs/comparison.md)
+- [英文版](/docs/comparison.md){: .label .fs-4 }
 
 ---
 

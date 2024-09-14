@@ -75,14 +75,14 @@ permalink: /zh-cn/comparison/
 
 &nbsp; &nbsp; &nbsp; &nbsp;为了全面评估 NHP 的性能表现，我们搭建了一个下图所示的实验环境，针对 NHP 和 SPA 进行了负载性能测试。该环境由两个主要区域组成：Agent 部署区域和网络隐身部署区域。
 
-![部署图](../images/Deployment_diagram.png)
+![部署图](/images/Deploment_diagram.png)
 
 
 &nbsp; &nbsp; &nbsp; &nbsp;在网络隐身部署区域，我们集成了网络隐身服务器和应用服务器作为关键组件。为了确保测试环境的稳定性和一致性，我们选用了三台配置相同的机器，每台配备 4 核 CPU 和 8G 内存。在 agent 部署区域，我们启动了 n 个 agent 服务，这些服务以每秒发送一次敲门请求的频率与网络隐身服务器通信。同时，在网络隐身服务器上部署了 JMeter 组件，用于模拟和监控其性能表现。应用服务器端同样部署了 JMeter 服务，实时跟踪网络隐身服务器的性能资源消耗情况。通过这种设置，我们能够全面监控和比较 NHP 与 SPA 的性能表现。
 
 &nbsp; &nbsp; &nbsp; &nbsp;在保持实验环境一致性的前提下，我们按照部署方案分别选取了1、10、20、30、40、50个agent，对NHP和SPA进行了性能测试。测试结果如表4所示，其中横轴表示参与实验的agent数量，纵轴则显示测试期间的CPU占用率变化。通过这种设置，我们能够直观地观察到随着agent数量的增加，NHP和SPA在CPU资源消耗方面的不同表现。
 
-![CPU对比](../images/CPU_comparison.png)
+![CPU对比](/images/CPU_compare.png)
 
 &nbsp; &nbsp; &nbsp; &nbsp;实验结果显示，随着 Agent 数量的增加，NHP 和 SPA 的 CPU 负载均呈现上升趋势。然而，随着 Agent 数量的进一步增加，NHP 的性能优势逐渐凸显，其 CPU 负载大约维持在 SPA 的一半左右，展现出显著的效率提升。<br>
 <small>*&nbsp; &nbsp; &nbsp; &nbsp;( 注:尽管理论上 NHP 的性能应较 SPA 提升约 1000 倍，但实际测试中仅提升约 1 倍。分析原因，主要因素包括网络开销对性能的显著影响、垃圾回收机制导致的性能损失，以及硬件环境差异。此外，尽管出于代码安全性和加密算法实现的考虑，我们选择了内存安全的 Go 语言开发，但其垃圾回收机制也对性能产生了一定影响。)*</small>
@@ -92,11 +92,11 @@ permalink: /zh-cn/comparison/
 
 &nbsp; &nbsp; &nbsp; &nbsp;NHP 通过分布式架构实现零信任服务的高可用性，确保敲门模块和门禁模块在不同主机上部署，以避免资源占用和提升弹性扩展。即使发生故障，也能无缝切换服务，维持系统功能和响应速度。这种设计增强了系统的稳健性和稳定性，降低了服务故障对整体系统的影响，如下图所示。
 
-![高可用架构](../images/High-availability.png)
+![高可用架构](/images/High-availability.png)
 
 &nbsp; &nbsp; &nbsp; &nbsp;NHP 支持敲门验证服务的横向弹性扩展，能够根据实时负载动态调整服务实例数。这一功能提供了极高的弹性和可扩展性，确保在高负载下服务依然快速响应且稳定。每个服务实例均能处理敲门请求并维持业务会话，这种设计不仅提升了处理能力，还增强了容错性，保证了业务连续性和稳定性。从测试结果来看，NHP 在高可用性方面相较于 SPA 显著提升
 
-![负载图](../images/Load_diagram.png)
+![负载图](/images/Load_diagram.png)
 
 
 
@@ -116,7 +116,7 @@ permalink: /zh-cn/comparison/
 
 &nbsp; &nbsp; &nbsp; &nbsp;DNS作为互联网基础服务在网站运行中至关重要，但其安全性长期未被重视，且因使用不可靠的UDP协议，存在诸多安全漏洞，如DNS劫持和拒绝服务攻击。因此，加强DNS安全至关重要。通过集成网络隐身技术，DNS解析通过双向加密通道进行，确保了保密性和防篡改能力，同时只有经过身份认证的用户才能解析，从而有效防御DDoS攻击和劫持。具体实现方案如下图所示，我们的方法能够显著提升了DNS的安全性，为用户提供了更可靠的DNS服务。
 
-![DNS集成方案](../images/DNS_integration.png)
+![DNS集成方案](/images/DNS_integration.png)
 
 - 步骤1：网络隐身代理（如客户端、浏览器等）通过域名与网络隐身服务器发起请求。
 
@@ -136,7 +136,7 @@ permalink: /zh-cn/comparison/
 
 &nbsp; &nbsp; &nbsp; &nbsp;尽管FIDO在Web身份认证方面表现出色，但服务器的潜在漏洞仍可能被黑客利用，从而绕过FIDO的认证，直接入侵服务器进行数据盗窃或破坏。将FIDO与NHP集成，可以有效弥补FIDO在漏洞防护方面的不足，为互联网暴露面提供更全面的防御方案。具体实现方案如下图所示，详细实现步骤如下。
 
-![FIDO集成方案](../images/FIDO_integration.png)
+![FIDO集成方案](/images/FIDO_integration.png)
 
 - (1) 用户代理（即代理）向网络隐身服务器（即服务器）发送一个端口敲门数据包，旨在尝试访问会话中已认证但保证水平相对较低的敏感资源。
 
@@ -166,7 +166,7 @@ permalink: /zh-cn/comparison/
 
 &nbsp; &nbsp; &nbsp; &nbsp;与SPA协议相比，NHP的一个关键目标是对信创环境以及国内零信任标准体系的良好兼容性。在加密算法方面，NHP支持国际密码算法（如RSA、SHA256、AES）和国密算法（如SM2、SM3、SM4），并能根据数据包头的长度调整加密时间。在软硬件兼容性方面，NHP适配了国内外主流的CPU硬件和操作系统，包括鲲鹏、x86、龙芯、申威等。此外，NHP符合即将颁布的国家标准《信息安全技术零信任参考体系架构》的规范要求，确保了与该标准的兼容性，如下图所示。
 
-![兼容性对比](../images/Compatibility_comparison.png)
+![兼容性对比](/images/Compatibility_comparison.png)
 
 - [英文版](/docs/comparison.md){: .label .fs-4 }
 

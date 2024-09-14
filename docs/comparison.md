@@ -29,6 +29,7 @@ permalink: /comparison/
 
 &nbsp; &nbsp; &nbsp; &nbsp;NHP combines the Noise protocol, key pairs, and ECDH algorithm to provide a robust bidirectional authentication mechanism. Compared to traditional methods, NHP offers significant advantages in terms of performance, scalability, and security. It supports multiple programming languages (such as C/C++, Python, Java, and Go) and provides a highly scalable architecture that enhances device authentication, defends against replay attacks, and fully addresses IP amplification issues. NHP is particularly well-suited for scenarios requiring strong authentication and encryption, such as enterprise IAM systems and secure resource access. It optimizes performance and enhances high availability, ensuring seamless compatibility and high security in complex environments. In contrast, while SPA has certain strengths, it still cannot match NHP in security, performance, and scalability.
 
+
 |                           | SPA                                           | NHP                                           |
 | ------------------------- | --------------------------------------------- | --------------------------------------------- |
 | Development Language      | C, C++                                        | C/C++, Python, Java, Go                       |
@@ -59,6 +60,7 @@ permalink: /comparison/
 | 256                      | 15360                                  | 512+                                   | 1:30                          |                 |
 
 &nbsp; &nbsp; &nbsp; &nbsp;We measured the encryption and decryption times of RSA and ECC through experiments, with the detailed results shown in the table below. The experiments increased the number of encryption and decryption cycles to test the performance of both algorithms under different conditions. The results show that although the encryption and decryption times for both RSA and ECC increased with the number of cycles, the time overhead for ECC remained consistently much lower than that of RSA. Especially as the number of cycles increased, the advantage of ECC became more pronounced, with RSA's time overhead reaching up to 800 times that of ECC. This significant gap demonstrates that NHP is vastly superior to SPA in terms of encryption and decryption efficiency, providing strong support for selecting a more efficient encryption algorithm in practical applications.
+
 
 | Cycle Times | SPA      | NHP    |
 | ----------- | -------- | ------ |

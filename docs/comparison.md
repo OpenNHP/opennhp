@@ -74,13 +74,13 @@ permalink: /comparison/
 
 &nbsp; &nbsp; &nbsp; &nbsp;To comprehensively evaluate the performance of NHP, we set up the experimental environment shown in the figure below and conducted load performance tests for both NHP and SPA. The environment consists of two main areas: the Agent deployment area and the network stealth deployment area.
 
-![Deployment diagram](/docs/images/Deployment_diagram.png)
+![Deployment diagram](/images/Deployment_diagram.png)
 
 &nbsp; &nbsp; &nbsp; &nbsp;In the network stealth deployment area, we integrated a network stealth server and an application server as key components. To ensure the stability and consistency of the test environment, we selected three machines with identical configurations, each equipped with a 4-core CPU and 8GB of memory. In the agent deployment area, we launched `n` agent services that communicated with the network stealth server at a frequency of sending a port knocking request per second. At the same time, JMeter components were deployed on the network stealth server to simulate and monitor its performance. On the application server side, JMeter services were also deployed to track the performance resource consumption of the network stealth server in real time. With this setup, we were able to comprehensively monitor and compare the performance of NHP and SPA.
 
 While maintaining the consistency of the experimental environment, we selected 1, 10, 20, 30, 40, and 50 agents according to the deployment plan and conducted performance tests for NHP and SPA. The test results are shown in Table 4, where the horizontal axis represents the number of agents involved in the experiment, and the vertical axis displays the variation in CPU utilization during the test period. With this setup, we can visually observe the different performance of NHP and SPA in terms of CPU resource consumption as the number of agents increases.
 
-![CPU comparison](/docs/images/CPU_comparison.png)
+![CPU comparison](/images/CPU_comparison.png)
 
 &nbsp; &nbsp; &nbsp; &nbsp;The experimental results show that as the number of agents increases, the CPU load for both NHP and SPA rises. However, with further increases in the number of agents, the performance advantage of NHP becomes more pronounced, with its CPU load remaining approximately half that of SPA, demonstrating a significant improvement in efficiency.<br>
 <small>*&nbsp; &nbsp; &nbsp; &nbsp;(Note: Although theoretically NHP performance should be approximately 1000 times better than SPA, actual tests showed only about a 1-fold improvement. The primary factors contributing to this discrepancy include the significant impact of network overhead on performance, performance losses due to the garbage collection mechanism, and differences in hardware environments. Additionally, despite choosing the memory-safe Go language for code security and encryption algorithm implementation, its garbage collection mechanism also had a certain impact on performance.)*</small>
@@ -89,11 +89,11 @@ While maintaining the consistency of the experimental environment, we selected 1
 
 &nbsp; &nbsp; &nbsp; &nbsp;NHP achieves high availability for zero trust services through a distributed architecture, ensuring that the port knocking module and the access control module are deployed on different hosts to avoid resource contention and enhance elastic scaling. Even in the event of a failure, seamless service switching can maintain system functionality and response speed. This design enhances the robustness and stability of the system, reducing the impact of service failures on the overall system, as shown in the figure below.
 
-![High availability architecture](/docs/images/High-availability.png)
+![High availability architecture](/images/High-availability.png)
 
 &nbsp; &nbsp; &nbsp; &nbsp;NHP supports horizontal elastic scaling for port knocking verification services, allowing the number of service instances to be dynamically adjusted based on real-time load. This feature provides high flexibility and scalability, ensuring that services remain responsive and stable even under high load. Each service instance can handle port knocking requests and maintain business sessions, which not only enhances processing capacity but also improves fault tolerance, ensuring business continuity and stability. According to the test results, NHP significantly outperforms SPA in terms of high availability.
 
-![Load diagram](/docs/images/Load_diagram.png)
+![Load diagram](/images/Load_diagram.png)
 
 ## 4. Scalability Comparison
 
@@ -111,7 +111,7 @@ While maintaining the consistency of the experimental environment, we selected 1
 
 &nbsp; &nbsp; &nbsp; &nbsp;DNS is a crucial foundational service for internet operations, but its security has long been overlooked. Due to the use of the unreliable UDP protocol, there are numerous security vulnerabilities, such as DNS hijacking and denial-of-service attacks. Therefore, strengthening DNS security is essential. By integrating network stealth technology, DNS resolution is conducted through a bidirectional encrypted channel, ensuring confidentiality and tamper-resistance. Additionally, only authenticated users are allowed to perform resolution, effectively defending against DDoS attacks and hijacking. The specific implementation is shown in the figure below, and our approach significantly enhances DNS security, providing users with a more reliable DNS service.
 
-![DNS integration Scheme](/docs/images/DNS_integration.png)
+![DNS integration Scheme](/images/DNS_integration.png)
 
 - (1) The Agent (such as a client, browser, etc.) initiates a request to the Network-Hiding
 Server (i.e., Server) using a domain name.
@@ -148,7 +148,7 @@ and secure resource interaction.
 
 &nbsp; &nbsp; &nbsp; &nbsp;Although FIDO performs exceptionally well in web authentication, potential vulnerabilities in servers can still be exploited by hackers to bypass FIDO authentication and directly invade servers for data theft or damage. Integrating FIDO with NHP can effectively address the shortcomings of FIDO in vulnerability protection, providing a more comprehensive defense solution for internet exposure. The specific implementation is shown in the figure below, with detailed implementation steps as follows.
 
-![FIDO integration solution](/docs/images/FIDO_integration.png)
+![FIDO integration solution](/images/FIDO_integration.png)
 
 - (1) The User Agent (i.e., Agent) sends a Port Knocking packet to the Network-Hiding
 Server (i.e., Server) aiming to attempt access to sensitive resources within sessions
@@ -162,9 +162,9 @@ redirecting the Port Knocking message to a trusted authentication authority to r
 a higher assurance FIDO-based authentication.
 
 - (4) After receiving the Application Provider’s response, the Server passes the redirection indicator to the Agent.
-- 
+  
 - (5) Upon receiving the redirection message, the Agent directly opens the FIDO authentication page.
-- 
+  
 - (6) The Server, upon receiving the Agent’s FIDO authentication page, promptly initiates
 a FIDO authentication request to the authentication authority.
 
@@ -186,7 +186,7 @@ FIDO-based authentication response to the Server.
 
   &nbsp; &nbsp; &nbsp; &nbsp;Compared to the SPA protocol, a key goal of NHP is to ensure good compatibility with both the domestic zero trust standards and the innovation-driven environment. In terms of encryption algorithms, NHP supports international cryptographic algorithms (such as RSA, SHA256, AES) as well as national cryptographic algorithms (such as SM2, SM3, SM4), and can adjust encryption time based on the length of the packet header. Regarding hardware and software compatibility, NHP is adapted to major domestic and international CPU hardware and operating systems, including Kunpeng, x86, Loongson, and Shenwei. Additionally, NHP complies with the forthcoming national standard "Information Security Technology - Zero Trust Reference Architecture," ensuring compatibility with this standard, as shown in the figure below.
 
-  ![Compatibility comparison](/docs/images/Compatibility_comparison.png)
+  ![Compatibility comparison](/images/Compatibility_comparison.png)
 
 - [中文版](/docs/zh-cn/comparison.zh-cn.md){: .label .fs-4 }
 

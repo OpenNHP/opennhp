@@ -148,7 +148,7 @@ func (d *Device) NextCounterIndex() uint64 {
 	return atomic.AddUint64(&d.counterIndex, 1)
 }
 
-// 异步多通道处理
+// Asynchronous multi-channel processing.
 func (d *Device) msgToPacketRoutine(id int) {
 	defer d.wg.Done()
 	defer log.Info("msgToPacketRoutine %d: quit", id)
@@ -257,7 +257,7 @@ func (d *Device) msgToPacketRoutine(id int) {
 	}
 }
 
-// 同步线性处理
+// Synchronous linear processing.
 func (d *Device) MsgToPacket(md *MsgData) (mad *MsgAssemblerData, err error) {
 	defer func() {
 		if x := recover(); x != nil {
@@ -303,7 +303,7 @@ func (d *Device) MsgToPacket(md *MsgData) (mad *MsgAssemblerData, err error) {
 	return mad, nil
 }
 
-// 异步多通道处理
+// Asynchronous multi-channel processing.
 func (d *Device) packetToMsgRoutine(id int) {
 	defer d.wg.Done()
 	defer log.Info("packetToMsgRoutine %d: quit", id)
@@ -416,7 +416,7 @@ func (d *Device) packetToMsgRoutine(id int) {
 	}
 }
 
-// 同步线性处理
+// Synchronous linear processing.
 func (d *Device) PacketToMsg(pd *PacketData) (ppd *PacketParserData, err error) {
 	defer func() {
 		if x := recover(); x != nil {

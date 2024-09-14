@@ -43,26 +43,36 @@ typedef enum _NhpMsgType {
 } NhpMsgType;
 
 typedef struct _NhpResult {
-    size_t handle; // 初始化后返回的nhp device句柄
-    int errCode; // 错误代码：无错误则为0，其它非0值表示错误
-    char *errMsg; // 错误描述：为空则无错误，有值表示错误描述语句
+   size_t handle; // The handle of the nhp device returned after initialization
+   int errCode;   // Error code: 0 for no error, non-zero values indicate errors
+   char *errMsg;  // Error message: NULL for no error, a value indicates an error description
 } NhpResult;
 
 typedef struct _NhpEncryptParams {
-    unsigned char cipherScheme; // 指定消息采用的加密方案 0: curve25519/chacha20poly1305/blake2s, 1: sm2/sm4/sm3
-    unsigned char compress; // true: 使用zlib压缩明文消息
+    // Specifies the encryption scheme used for the message:
+    // 0: curve25519/chacha20poly1305/blake2s
+    // 1: sm2/sm4/sm3
+    unsigned char cipherScheme;
+    // true: Use zlib to compress the plaintext message
+    unsigned char compress;
+    // reserved
     unsigned char reserved0;
+    // reserved
     unsigned char reserved1;
-    unsigned long long assignTransactionId; // 如果要响应之前接收的NHP包，则需要指定使用发送方上次的流水号， 值为0则不指定，由本地生成新的流水号
-    unsigned char cookie[NHP_COOKIE_SIZE]; // 对端peer要求重新敲门所指定的cookie值，注：device在每个peer连接下具有不同的cookie
+    // If responding to a previously received NHP packet, this specifies the last transaction ID of the sender.
+    // if set to 0, a new transaction ID is generated locally
+    unsigned long long assignTransactionId;
+    // The cookie value specified by the remote peer for re-knocking.
+    // note: the device has a different cookie for each peer connection
+    unsigned char cookie[NHP_COOKIE_SIZE]; 
 } NhpEncryptParams;
 
 typedef struct _NhpEncryptResult {
-    int errCode; // 错误代码
-    int packetLen; // 报文长度
-    unsigned long long transactionId; // 本地交易流水号
-    char *errMsg; // 错误描述
-    unsigned char *packet; // 报文数据
+    int errCode;                        // Error code
+    int packetLen;                      // Packet length
+    unsigned long long transactionId;   // Local transaction ID
+    char *errMsg;                       // Error message
+    unsigned char *packet;              // Packet data
 } NhpEncryptResult;
 
 typedef struct _NhpPubicKey {
@@ -82,14 +92,14 @@ typedef struct _NhpConnContext {
 } NhpConnContext;
 
 typedef struct _NhpDecryptResult {
-    int errCode; // 错误代码
-    int msgType; // 消息类型
-    int msgIdLen; // 发送方标识长度
-    int dataLen; // 载荷长度
-    unsigned long long msgTransactionId; // 消息发送方交易流水号
-    char *errMsg; // 错误描述
-    unsigned char *msgId; // 消息发送方标识
-    unsigned char *data; // 载荷数据
+    int errCode;                            // Error code
+    int msgType;                            // Message type
+    int msgIdLen;                           // Sender identification length
+    int dataLen;                            // Payload length
+    unsigned long long msgTransactionId;    // Message sender transaction ID
+    char *errMsg;                           // Error description
+    unsigned char *msgId;                   // Message sender identification
+    unsigned char *data;                    // Payload data
 } NhpDecryptResult;
 
 typedef enum _NhpError {

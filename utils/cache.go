@@ -11,7 +11,7 @@ const (
 	EXPIRE_GRPC_DNS          = 60 * 60 * 2
 	EXPIRE_GRPC_SMARTSENCE   = 60 * 60 * 2
 	EXPIRE_LINKER_LEASE      = 60 * 5
-	EXPIRE_LOG_TIMEGAP       = 5 // 日志打印时间间隔，单位秒
+	EXPIRE_LOG_TIMEGAP       = 5 // Interval for logging output, using seconds as the unit.
 	EXPIRE_LINKER_PEER       = 60
 	EXPIRE_PEER_POLICY_IP    = 10
 	EXPIRE_USER_FORBIDDEN_IP = 10

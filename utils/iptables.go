@@ -215,7 +215,7 @@ func (ipset *IPSet) GetIpsetName(ipType IPTYPE, t int) string {
 			return DefaultSetV6
 		}
 		return DefaultSet
-	case 2: // 黑、白名单
+	case 2: // Blacklist and Whitelist
 	case 3:
 		return ipset.GetDefaultName(ipType, t)
 	case 4:
@@ -232,14 +232,14 @@ func (ipset *IPSet) GetIpsetName(ipType IPTYPE, t int) string {
 func (ipset *IPSet) GetDefaultName(ipType IPTYPE, t int) string {
 	var name string
 	switch t {
-	case 2: // 白名单
+	case 2: // Whitelist
 		if ipType == IPV4 {
 			name = WhitelistSet
 		} else if ipType == IPV6 {
 			name = WhitelistSetV6
 		}
 		name = WhitelistSet
-	case 3: // 黑名单
+	case 3: // Blacklist
 		if ipType == IPV4 {
 			name = BlacklistSet
 		} else if ipType == IPV6 {

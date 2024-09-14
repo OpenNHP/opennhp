@@ -105,7 +105,7 @@ func NewECDH() *SM2ECDH {
 	return &s
 }
 
-// 生成用于ECDH的SM2公私钥对
+// Generate SM2 public and private key pairs for ECDH.
 func GenerateSM2ECDHKeypair() (string, string) {
 	var err error
 	var pubKey [64]byte
@@ -115,8 +115,8 @@ func GenerateSM2ECDHKeypair() (string, string) {
 	if err != nil {
 		return "", ""
 	}
-	copy(privKey[:32], pKey.Bytes()[:32])             // 私钥32 bytes
-	copy(pubKey[:64], pKey.PublicKey().Bytes()[1:65]) // 公钥64 bytes
+	copy(privKey[:32], pKey.Bytes()[:32])             // Private Key 32 bytes
+	copy(pubKey[:64], pKey.PublicKey().Bytes()[1:65]) // Public Key 64 bytes
 
 	return base64.StdEncoding.EncodeToString(pubKey[:]),
 		base64.StdEncoding.EncodeToString(privKey[:])
@@ -156,7 +156,7 @@ func Base64DecodeSM2ECDHPublicKey(pubStr string) (*ecdh.PublicKey, error) {
 	return pubKey, nil
 }
 
-// 生成用于ECDSA的SM2公私钥对
+// Generate SM2 public and private key pairs for ECDSA.
 func GenerateSM2ECDSAKeypair() (*sm2.PrivateKey, string, string) {
 	var err error
 	var pubKeyBytes [64]byte

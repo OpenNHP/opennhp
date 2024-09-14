@@ -40,15 +40,15 @@ func AesEncrypt(str string) (string, error) {
 
 func pkcs5Padding(ciphertext []byte, blockSize int) []byte {
 	padding := blockSize - len(ciphertext)%blockSize
-	//填充
+	// padding
 	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
 
 	return append(ciphertext, padtext...)
 }
 
-// AesDecrypt aes解密
+// AesDecrypt
 func AesDecrypt(str string) (string, error) {
-	//先解密base64
+	// Decrypt the base64 first.
 	strBytes, err := base64.StdEncoding.DecodeString(str)
 	if err != nil {
 		return "", err
@@ -97,7 +97,7 @@ func Base64(value []byte) string {
 }
 
 func GenerateRsaKey(bits int) (string, string) {
-	// 生成私钥
+	// Generate private key.
 	privateKey, err := rsa.GenerateKey(rand.Reader, bits)
 	if err != nil {
 		return "", ""

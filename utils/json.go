@@ -4,7 +4,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 )
 
-// 定义JSON操作
+// Define JSON operations.
 var (
 	json             = jsoniter.ConfigCompatibleWithStandardLibrary
 	Marshal          = json.Marshal
@@ -15,7 +15,7 @@ var (
 	NewEncoder       = json.NewEncoder
 )
 
-// MarshalToString JSON编码为字符串
+// MarshalToString: JSON encoding as a string.
 func MarshalToString(v any) string {
 	s, err := MarshalToStringX(v)
 	if err != nil {

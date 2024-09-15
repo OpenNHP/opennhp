@@ -1,0 +1,82 @@
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to NHP Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            background-color: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #4a4a4a; /* Changed to a darker gray */
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        p {
+            color: #0066cc; /* Changed to a brighter blue */
+            font-size: 1.8rem; /* Slightly larger */
+            margin-top: 1rem;
+            font-weight: bold; /* Made bold for emphasis */
+        }
+        #message {
+            margin-top: 1rem;
+            color: green;
+            font-size: 1.5rem;
+            display: none; /* Initially hidden */
+        }
+    </style>
+    <script type="module">
+        import nhp from 'https://nhp.opennhp.cn/sdk/nhpfs.js';
+
+        const NHP_INTERVAL = 20 * 1000; // Interval for NHP
+        const NHP_SERVER = "nhp.opennhp.cn";
+        const ASP_ID = "feishu";
+        const RES_ID = "cli_a578478f0b79500d";
+
+        // Initialize NHP
+        const nhpTimer = nhp.open(
+            NHP_INTERVAL,
+            NHP_SERVER,
+            ASP_ID,
+            RES_ID,
+            function(nhpJson) {
+                console.log(nhpJson);
+                if (nhpJson.errCode === nhp.ERR_CODE.success) {
+                    // Success: show the message
+                    const API_SERVER = nhpJson.resHost.apiServer;
+                    const messageElement = document.getElementById('message');
+                    messageElement.innerHTML = `Authentication Succeeded! You can now access <a href="${API_SERVER}">${API_SERVER}</a>`;
+                    messageElement.style.display = 'block';
+                } else if (nhpJson.errCode === nhp.ERR_CODE.exit) {
+                    nhp.close(nhpTimer);
+                } else {
+                    console.log(nhpJson.errMsg);
+                }
+            }
+        ); // nhp.open
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to the Demo NHP-AC Server</h1>
+        <p>acdemo.opennhp.org</p>
+        <div><a href="https://dnschecker.org/port-scanner.php?query=acdemo.opennhp.org" target="_blank">Scan Its Ports &gt;&gt;</a></div>
+        <div id="message"></div> <!-- Area to display success message -->
+    </div>
+</body>
+</html>
+

@@ -9,8 +9,9 @@
 ["demo"]
 SkipAuth = true
 OpenTime = 120
-RedirectUrl = "https://apidemo.opennhp.org"
+RedirectUrl = "https://acdemo.opennhp.cn"
 RedirectWithParams = false
+CookieDomain = "opennhp.cn"
 
 # syntax ["{ResourceId}".Resources."{ResourceName}"]
 # ResourceName: name of resource inside a resource group. Each ResourceId can have multiple ResourceNames.
@@ -22,7 +23,7 @@ RedirectWithParams = false
 # PortSuffix: true: fill ack field "resHost" with "{Hostname}:{Port}", false: fill ack field "resHost" with just "{Hostname}"
 ["demo".Resources."demoServer"]
 ACId = "testAC-1"
-Hostname = "apidemo.opennhp.org"
+Hostname = "acdemo.opennhp.cn"
 Addr.Ip = "220.191.216.236"
 Addr.Port = 443 # empty or 0 for all ports
 Addr.Protocol = "" # "tcp/udp/any", empty for "any"

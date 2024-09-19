@@ -23,6 +23,7 @@ type ResourceData struct {
 	RedirectUrl        string         `json:"redirectUrl,omitempty"`
 	RedirectWithParams bool           `json:"redirectWithParams,omitempty"`
 	SkipAuth           bool           `json:"skipAuth,omitempty"`
+	CookieDomain       string         `json:"cookieDomain,omitempty"`
 }
 
 type ResourceGroupMap map[string]*ResourceData

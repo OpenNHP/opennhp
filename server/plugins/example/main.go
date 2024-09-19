@@ -244,6 +244,15 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 			log.Error("RedirectUrl is not provided.")
 		} else {
 			ackMsg.RedirectUrl = res.RedirectUrl
+			ctx.SetCookie(
+				"nhp-token", 					// Name
+				"example-nhp-token-GUBdoVXpxt", // Value
+				-1,								// MaxAge
+				"/",							// Path
+				res.CookieDomain,				// Domain
+				true,							// Secure
+				true)							// HttpOnly
+			log.Info("ctx.SetCookie.")
 		}
 	}
 	ctx.JSON(http.StatusOK, ackMsg)

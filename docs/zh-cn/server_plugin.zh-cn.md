@@ -67,7 +67,7 @@ OpenNHP插件可以通过定制化服务来对接不同的政务平台，根据�
 
 整个插件的执行流程涵盖了从用户发起请求、服务器解析插件、插件执行逻辑再到最终反馈给用户的完整过程。每一步都起着关键作用，确保了NHP服务器能够通过插件来满足不同场景下的请求处理需求，特别是在身份验证和敲门包机制上。
 
-![插件工作原理架构图](/images/plugin_image2) 
+![插件工作原理架构图](/images/plugin_image2.png) 
 
 ***图一 插件工作原理架构图***
 
@@ -120,7 +120,7 @@ NHP服务器接收到来自浏览器的HTTP请求后，会根据请求的URL路�
 
 首先在server/plugins目录下创建新的插件项目，例如现在我需要创建一个名为”example”的插件项目。
 
-![example插件上级目录](/images/plugin_image3) 
+![example插件上级目录](/images/plugin_image3.png) 
 
 ***图二 example插件上级目录***
 
@@ -135,7 +135,7 @@ NHP 服务器中的每个插件通常都结构化为一个单独的 Go 包。例
 - 辅助函数
 - 主插件函数
 
-![example插件目录结构示例](/images/plugin_image4) 
+![example插件目录结构示例](/images/plugin_image4.png) 
 
 ***图三 example插件目录结构示例***
 
@@ -172,7 +172,7 @@ NHP 服务器中的每个插件通常都结构化为一个单独的 Go 包。例
 
 整个功能流程时序图如下：
 
-![插件功能时序图示例](/images/plugin_image5) 
+![插件功能时序图示例](/images/plugin_image5.png) 
 
 ***图四 插件功能时序图示例***
 
@@ -190,15 +190,15 @@ NHP 服务器中的每个插件通常都结构化为一个单独的 Go 包。例
 
 参照插件功能设计进行代码开发，以“example”插件为例，AuthWithHttp函数接收HTTP请求，authRegular函数处理URL参数信息，并且需要设计验证ticket函数（ValidateTicket）、验证token有效性函数（ValidateToken）、构造带有token的POST请求函数（fetchToken）以及生成签名方案函数（signDemo）等辅助函数来实现功能。按照具体功能要求可进行拓展开发。
 
-![example插件核心代码以及辅助代码函数示例](/images/plugin_image6) 
+![example插件核心代码以及辅助代码函数示例](/images/plugin_image6.png) 
 
-![example插件核心代码以及辅助代码函数示例](/images/plugin_image7) 
+![example插件核心代码以及辅助代码函数示例](/images/plugin_image7.png) 
 
-![example插件核心代码以及辅助代码函数示例](/images/plugin_image8) 
+![example插件核心代码以及辅助代码函数示例](/images/plugin_image8.png) 
 
-![example插件核心代码以及辅助代码函数示例](/images/plugin_image9) 
+![example插件核心代码以及辅助代码函数示例](/images/plugin_image9.png) 
 
-![example插件核心代码以及辅助代码函数示例](/images/plugin_image10) 
+![example插件核心代码以及辅助代码函数示例](/images/plugin_image10.png) 
 
 ***图五、六、七、八、九 example插件核心代码以及辅助代码函数示例***
 
@@ -212,13 +212,13 @@ NHP 服务器中的每个插件通常都结构化为一个单独的 Go 包。例
 
 **(1)定义插件目录**: 在 Makefile 的顶部，我们可以看到一行定义插件目录的代码,如下图所示：
 
-![定义插件目录](/images/plugin_image11) 
+![定义插件目录](/images/plugin_image11.png) 
 
 ***图十 定义插件目录***
 
 这行代码指定了插件的存放位置，即 server/plugins 目录。所有插件的源码和配置文件将会放在这个目录下，在启动NHP服务时，要确保插件能够正常加载，需要在NHP-Server的etc/resource.toml配置文件中配置插件文件路径。
 
-![插件文件路径配置](/images/plugin_image12) 
+![插件文件路径配置](/images/plugin_image12.png) 
 
 ***图十一 插件文件路径配置***
 
@@ -226,7 +226,7 @@ NHP 服务器中的每个插件通常都结构化为一个单独的 Go 包。例
 
 **(3)插件的编译逻辑**: 在 Makefile 中的 plugins: 任务负责执行插件的编译，如下图：
 
-![插件编译任务plugins](/images/plugin_image13) 
+![插件编译任务plugins](/images/plugin_image13.png) 
 
 ***图十二 插件编译任务plugins***
 

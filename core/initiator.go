@@ -119,6 +119,7 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 		// create header and init device ecdh
 		switch mad.CipherScheme {
 		case CIPHER_SCHEME_CURVE:
+			log.Info("start encryption using CIPHER_SCHEME_CURVE")
 			mad.header = (*curve.HeaderCurve)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
 			mad.ciphers = NewCipherSuite(CIPHER_SCHEME_CURVE)
 			mad.deviceEcdh = d.staticEcdhCurve
@@ -126,6 +127,7 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 		case CIPHER_SCHEME_GMSM:
 			fallthrough
 		default:
+			log.Info("start encryption using CIPHER_SCHEME_GMSM")
 			mad.header = (*gmsm.HeaderGmsm)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
 			mad.ciphers = NewCipherSuite(CIPHER_SCHEME_GMSM)
 			mad.deviceEcdh = d.staticEcdhGmsm
@@ -280,6 +282,8 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 		static = aead.Seal(mad.header.StaticBytes()[:0], mad.header.NonceBytes(), mad.deviceEcdh.PublicKey(), mad.chainHash.Sum(nil))
 	}
 
+	//log.Debug("encrypted pubkey: %v, output: %v", mad.deviceEcdh.PublicKey(), static)
+
 	// evolve chainhash ChainHash1 -> ChainHash2
 	mad.chainHash.Write(static)
 
@@ -353,6 +357,7 @@ func (mad *MsgAssemblerData) encryptBody() (err error) {
 			return err
 		}
 		body = buf.Bytes()
+		//log.Debug("message compressed: %v -> %v", mad.bodyMessage, body)
 		mad.BodySize = len(body) + GCMTagSize
 
 		// set header flag
@@ -383,7 +388,9 @@ func (mad *MsgAssemblerData) encryptBody() (err error) {
 	mad.addHMAC(mad.HeaderType == NHP_RKN)
 
 	// encrypt body and write into mad.BasePacket.Buf space
-	mad.bodyAead.Seal(mad.BasePacket.Buf[mad.header.Size():mad.header.Size()], mad.header.NonceBytes(), body, mad.chainHash.Sum(nil))
+	ciphertext := mad.bodyAead.Seal(mad.BasePacket.Buf[mad.header.Size():mad.header.Size()], mad.header.NonceBytes(), body, mad.chainHash.Sum(nil))
+	_ = ciphertext
+	//log.Debug("encrypted body: %v, output: %v", body, ciphertext)
 
 	// set valid packet
 	mad.BasePacket.Content = mad.BasePacket.Buf[:packetLen]

@@ -110,7 +110,6 @@ permalink: /build/
      call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
      ```
 
-
      - Change the installation path to your own visual studio directory. For example:
      ```bat
      call "F:\develop\visualstu\VC\Auxiliary\Build\vcvarsall.bat" x64

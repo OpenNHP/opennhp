@@ -111,7 +111,6 @@ permalink: /zh-cn/build/
      call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
      ```
 
-
      - 修改为你自己的 visual studio目录下安装路径。比如：
      ```bat
      call "F:\develop\visualstu\VC\Auxiliary\Build\vcvarsall.bat" x64

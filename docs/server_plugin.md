@@ -210,7 +210,7 @@ Testing and deployment of the plugin are crucial steps to ensure the completenes
 
 The compilation process ensures that the plugin's code is consistent with the main project, while the task dependencies in the Makefile ensure that the plugin's build process is closely integrated with the main system's compilation, achieving an integrated build and release process. The specific steps are as follows:
 
-**Define Plugin Directory**: At the top of the Makefile, we can see a line of code defining the plugin directory, as shown in the image below:
+***Define Plugin Directory***: At the top of the Makefile, we can see a line of code defining the plugin directory, as shown in the image below:
 
 ![Define Plugin Directory](/images/plugin_image11.png) 
 
@@ -222,9 +222,9 @@ This line of code specifies the storage location of the plugin, which is the ser
 
 ***Figure 11 Plugin File Path Configuration***
 
-**Generate Version Information and Start Build**: The generate-version-and-build task includes a series of steps to generate version numbers, commit IDs, build times, and other information. This information is helpful for tracking the version and build status of the plugin.
+***Generate Version Information and Start Build***: The generate-version-and-build task includes a series of steps to generate version numbers, commit IDs, build times, and other information. This information is helpful for tracking the version and build status of the plugin.
 
-**Plugin Compilation Logic**: In the Makefile, the plugins: task is responsible for executing the plugin compilation, as shown in the image below:
+***Plugin Compilation Logic***: In the Makefile, the plugins: task is responsible for executing the plugin compilation, as shown in the image below:
 
 ![Plugin Compilation Task plugins](/images/plugin_image13.png) 
 
@@ -234,7 +234,7 @@ Plugin Directory Check: test -d $(NHP_PLUGINS) checks if the defined plugin dire
 
 Execute Compilation: If the plugin directory exists, $(MAKE) -C $(NHP_PLUGINS) enters that directory and executes the Makefile within it, performing the compilation operation for the plugin.
 
-**Overall Compilation Process**: During the overall project build process (Linux and macOS: run the script make in the root directory; Windows: run the BAT file build.bat in the root directory), the plugins task in the Makefile will be called. If the plugin directory exists and is valid, the plugin's Makefile will be executed to complete the plugin's build. During compilation, plugin binary files or other forms of output files may be generated for use by the NHP server.
+***Overall Compilation Process***: During the overall project build process (Linux and macOS: run the script make in the root directory; Windows: run the BAT file build.bat in the root directory), the plugins task in the Makefile will be called. If the plugin directory exists and is valid, the plugin's Makefile will be executed to complete the plugin's build. During compilation, plugin binary files or other forms of output files may be generated for use by the NHP server.
 
 **2. Local Environment Function Testing**
 
@@ -258,13 +258,13 @@ After local environment testing passes, developers need to confirm and optimize 
 
 Once local testing and optimization are complete, the plugin can proceed to the deployment phase in actual application scenarios. To deploy your plugin, simply build and run the main application. Your plugin will be included in the build and will be available when the server runs. During plugin deployment, it is usually necessary to configure according to the specific needs of the application scenario. The specific steps are as follows:
 
-**Deployment Environment Preparation**: Ensure that the server configuration in the production environment is consistent or close to that of the local testing environment, including the operating system, network configuration, dependency libraries, etc.
+***Deployment Environment Preparation***: Ensure that the server configuration in the production environment is consistent or close to that of the local testing environment, including the operating system, network configuration, dependency libraries, etc.
 
-**Plugin Installation and Configuration**: Deploy the tested plugin code to the production server, configuring it according to the requirements of the actual application scenario, including plugin paths, interface addresses, access control server addresses, authentication mechanisms, etc.
+***Plugin Installation and Configuration***: Deploy the tested plugin code to the production server, configuring it according to the requirements of the actual application scenario, including plugin paths, interface addresses, access control server addresses, authentication mechanisms, etc.
 
-**Logging and Monitoring Setup**: After deployment, improve log level configuration to facilitate timely detection and resolution of issues during actual application.
+***Logging and Monitoring Setup***: After deployment, improve log level configuration to facilitate timely detection and resolution of issues during actual application.
 
-**Start NHP Service to Check Plugin Loading Status**: Start the NHP service according to the NHP service startup process, check the plugin loading status based on the log files in the log directory, and verify whether the plugin functions normally according to the local plugin testing process.
+***Start NHP Service to Check Plugin Loading Status***: Start the NHP service according to the NHP service startup process, check the plugin loading status based on the log files in the log directory, and verify whether the plugin functions normally according to the local plugin testing process.
 
 **5. Production Environment Validation and Maintenance**
 

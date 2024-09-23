@@ -5,7 +5,6 @@ nav_order: 7
 permalink: /server_plugin/
 ---
 
-# Develop NHP-Server Plugins
 {: .fs-9 }
 
 # OpenNHP Plugin Development Guide

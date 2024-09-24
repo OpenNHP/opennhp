@@ -25,7 +25,7 @@ baseurl: "" # the subpath of your site, e.g. /blog
 theme: just-the-docs
 
 url: "https://opennhp.org"
-logo: "/images/logo_doc.png"
+logo: "/images/logo12.png"
 favicon_ico: "/favicon.ico"
 repository: OpenNHP/opennhp # for github-metadata
 

@@ -5,7 +5,7 @@
 [![fr](https://img.shields.io/badge/lang-fr-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.fr.md)
 [![es](https://img.shields.io/badge/lang-es-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.es.md)
 
-![OpenNHP Logo](docs/images/logo1.png)
+![OpenNHP Logo](docs/images/logo11.png)
 # OpenNHP: Zero Trust Network-infrastructure Hiding Protocol
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)

@@ -22,6 +22,34 @@ The rapid advancement of **AI** technologies, particularly large language models
 
 Gartner research predicts a [rapid increase in AI-driven cyberattacks](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025). This shifting paradigm calls for a reevaluation of traditional cybersecurity strategies, with a focus on proactive defenses, rapid response mechanisms, and the adoption of network hiding technologies to safeguard critical infrastructure.
 
+---
+
+## Quick Demo: See OpenNHP in Action
+
+Before diving into the details of OpenNHP, let's start with a quick demonstration of how OpenNHP protects a server from unauthorized access. You can see it in action by accessing the protected server at https://acdemo.opennhp.org.
+
+### 1) The Protected Server is "Invisible" to Unauthenticated Users
+
+By default, any attempt to connect to the protected server will result in a TIME OUT error, as all ports are closed, making the server appear offline and effectively *"invisible."*
+
+![OpenNHP Demo](docs/images/OpenNHP_ACDemo0.png)
+
+Port scanning the server will also return a TIME OUT error.
+
+![OpenNHP Demo](docs/images/OpenNHP_ScanDemo.png)
+
+### 2) After Authentication, the Protected Server Becomes Accessible
+
+OpenNHP supports a variety of authentication methods, such as OAuth, SAML, QR codes, and more. For simplicity, this demo uses a basic username/password authentication service at https://demologin.opennhp.org to demonstrate the process.
+
+![OpenNHP Demo](docs/images/OpenNHP_DemoLogin.png)
+
+Once you click the "Login" button, authentication is completed successfully, and you are redirected to the protected server. At this point, the server becomes *"visible"* and accessible on your device.
+
+![OpenNHP Demo](docs/images/OpenNHP_ACDemo1.png)
+
+---
+
 ## Vision: Making the Internet Trustworthy
 
 The openness of TCP/IP protocols has driven the explosive growth of internet applications but also exposed vulnerabilities, allowing malicious actors to gain unauthorized access and exploit any exposed IP address. Although the [OSI network model](https://en.wikipedia.org/wiki/OSI_model) defines the *5th layer (Session Layer)* for managing connections, few effective solutions have been implemented to address this.
@@ -30,6 +58,7 @@ The openness of TCP/IP protocols has driven the explosive growth of internet app
 
 ![Trustworthy Internet](docs/images/TrustworthyCyberspace.png)
 
+---
 
 ## Solution: OpenNHP Fixes the Network Visibility Control
 
@@ -127,30 +156,6 @@ CL-PKC is a scheme that enhances security by avoiding key escrow and addressing 
 - **Flexible deployment**: Supports various models including client-to-gateway, client-to-server, and more.
 - **Strong cryptography**: Utilizes modern algorithms like ECC, Noise Protocol, and IBC for robust security.
 </details>
-
-## Quick Demo
-
-This section provides a brief demonstration of how OpenNHP functions. The server protected by OpenNHP is https://acdemo.opennhp.org. Normally, port 443 would be open for HTTPS services, but with the *NHP-AC* component installed, all ports are closed by default, enforcing a Zero Trust "deny-all" policy.
-
-### 1) The Protected Server is "Invisible" to Unauthenticated Users
-
-By default, any attempt to connect to the protected server will result in a TIME OUT error, as all ports are closed, making the server appear offline and effectively *"invisible."*
-
-![OpenNHP Demo](docs/images/OpenNHP_ACDemo0.png)
-
-Port scanning the server will also return a TIME OUT error.
-
-![OpenNHP Demo](docs/images/OpenNHP_ScanDemo.png)
-
-### 2) After Authentication, the Protected Server Becomes Accessible
-
-OpenNHP supports a variety of authentication methods, such as OAuth, SAML, QR codes, and more. For simplicity, this demo uses a basic username/password authentication service at https://demologin.opennhp.org to demonstrate the process.
-
-![OpenNHP Demo](docs/images/OpenNHP_DemoLogin.png)
-
-Once you click the "Login" button, authentication is completed successfully, and you are redirected to the protected server. At this point, the server becomes *"visible"* and accessible on your device.
-
-![OpenNHP Demo](docs/images/OpenNHP_ACDemo1.png)
 
 ## Deployment
 

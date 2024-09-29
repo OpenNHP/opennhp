@@ -1,0 +1,12 @@
+# http server config
+
+# EnableHttp: true: turn on http server, false: shutdown http server.
+# EnableTLS: whether to use TLS certificates for hosting https server.
+# TLSCertFile: certificate file path.
+# TLSKeyFile: key file path.
+# to update http changes, you need to restart the http server by changing "EnableHttp" to "false" and then switch it back to "true".
+EnableHttp = true
+EnableTLS = true
+HttpListenPort = 62206
+TLSCertFile = "cert/cert.pem"
+TLSKeyFile = "cert/cert.key"

@@ -4,10 +4,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"hash"
 	"net"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,29 +21,11 @@ var (
 	ExeDirPath string
 )
 
-type AgentUser struct {
-	UserId         string
-	DeviceId       string
-	OrganizationId string
-	hash           hash.Hash
-}
-
-func (au *AgentUser) Hash() string {
-	au.hash = core.NewHash(core.HASH_SM3)
-	au.hash.Write([]byte(au.UserId))
-	au.hash.Write([]byte(au.DeviceId))
-	au.hash.Write([]byte(au.OrganizationId))
-	// do not include Agent's PublicKey in calculating hash, because it may vary between Curve25519 and SM2
-	sum := au.hash.Sum(nil)
-	return string(sum)
-}
-
-type AgentUserCodeMap = map[string]*map[string]string // agent hash string first letter > agent hash string > token
-
 type UdpAC struct {
-	config   *Config
-	iptables *utils.IPTables
-	ipset    *utils.IPSet
+	config     *Config
+	httpConfig *HttpConfig
+	iptables   *utils.IPTables
+	ipset      *utils.IPSet
 
 	stats struct {
 		totalRecvBytes uint64
@@ -60,12 +40,13 @@ type UdpAC struct {
 	serverPeerMutex sync.Mutex
 	serverPeerMap   map[string]*core.UdpPeer // indexed by server's public key
 
-	AgentUserTokenMutex sync.Mutex
-	agentUserCodeMap    AgentUserCodeMap
+	TokenStoreMutex sync.Mutex
+	tokenStore      TokenStore
 
-	device  *core.Device
-	wg      sync.WaitGroup
-	running atomic.Bool
+	device     *core.Device
+	httpServer *HttpAC
+	wg         sync.WaitGroup
+	running    atomic.Bool
 
 	signals struct {
 		stop             chan struct{}
@@ -92,12 +73,12 @@ func (c *UdpConn) Close() {
 dirPath: the path of app or shared library entry point
 logLevel: 0: silent, 1: error, 2: info, 3: debug, 4: verbose
 */
-func (d *UdpAC) Start(dirPath string, logLevel int) (err error) {
+func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	common.ExeDirPath = dirPath
 	ExeDirPath = dirPath
 	// init logger
-	d.log = log.NewLogger("NHP-AC", logLevel, filepath.Join(ExeDirPath, "logs"), "ac")
-	log.SetGlobalLogger(d.log)
+	a.log = log.NewLogger("NHP-AC", logLevel, filepath.Join(ExeDirPath, "logs"), "ac")
+	log.SetGlobalLogger(a.log)
 
 	log.Info("=========================================================")
 	log.Info("=== NHP-AC %s started                              ===", version.Version)
@@ -106,82 +87,86 @@ func (d *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	log.Info("=========================================================")
 
 	// init config
-	err = d.loadBaseConfig()
+	err = a.loadBaseConfig()
 	if err != nil {
 		return err
 	}
 
-	d.iptables, err = utils.NewIPTables()
+	// load http config and turn on http server if needed
+	a.loadHttpConfig()
+
+	a.iptables, err = utils.NewIPTables()
 	if err != nil {
 		log.Error("iptables command not found")
 		return
 	}
 
-	d.ipset, err = utils.NewIPSet(false)
+	a.ipset, err = utils.NewIPSet(false)
 	if err != nil {
 		log.Error("ipset command not found")
 		return
 	}
 
-	prk, err := base64.StdEncoding.DecodeString(d.config.PrivateKeyBase64)
+	prk, err := base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
 	if err != nil {
 		log.Error("private key parse error %v\n", err)
 		return fmt.Errorf("private key parse error %v", err)
 	}
 
-	d.device = core.NewDevice(core.NHP_AC, prk, nil)
-	if d.device == nil {
+	a.device = core.NewDevice(core.NHP_AC, prk, nil)
+	if a.device == nil {
 		log.Critical("failed to create device %v\n", err)
 		return fmt.Errorf("failed to create device %v", err)
 	}
 
-	d.remoteConnectionMap = make(map[string]*UdpConn)
-	d.serverPeerMap = make(map[string]*core.UdpPeer)
-	d.agentUserCodeMap = make(AgentUserCodeMap)
+	a.remoteConnectionMap = make(map[string]*UdpConn)
+	a.serverPeerMap = make(map[string]*core.UdpPeer)
+	a.tokenStore = make(TokenStore)
 
 	// load peers
-	d.loadPeers()
+	a.loadPeers()
 
-	d.signals.stop = make(chan struct{})
-	d.signals.serverMapUpdated = make(chan struct{}, 1)
+	a.signals.stop = make(chan struct{})
+	a.signals.serverMapUpdated = make(chan struct{}, 1)
 
-	d.recvMsgCh = d.device.DecryptedMsgQueue
-	d.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
+	a.recvMsgCh = a.device.DecryptedMsgQueue
+	a.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
 
 	// start device routines
-	d.device.Start()
+	a.device.Start()
 
 	// start ac routines
-	d.wg.Add(3)
-	go d.sendMessageRoutine()
-	go d.recvMessageRoutine()
-	go d.maintainServerConnectionRoutine()
+	a.wg.Add(4)
+	go a.tokenStoreRefreshRoutine()
+	go a.sendMessageRoutine()
+	go a.recvMessageRoutine()
+	go a.maintainServerConnectionRoutine()
 
-	d.running.Store(true)
+	a.running.Store(true)
 	return nil
 }
 
-func (d *UdpAC) Stop() {
-	d.running.Store(false)
-	close(d.signals.stop)
+func (ac *UdpAC) Stop() {
+	ac.running.Store(false)
+	close(ac.signals.stop)
 
-	d.device.Stop()
-	d.StopConfigWatch()
-	d.wg.Wait()
-	close(d.sendMsgCh)
-	close(d.signals.serverMapUpdated)
+	ac.device.Stop()
+	ac.StopConfigWatch()
+	ac.wg.Wait()
+	close(ac.sendMsgCh)
+	close(ac.signals.serverMapUpdated)
 
 	log.Info("==========================")
 	log.Info("=== NHP-AC stopped ===")
 	log.Info("==========================")
-	d.log.Close()
+	ac.log.Close()
 }
 
-func (d *UdpAC) IsRunning() bool {
-	return d.running.Load()
+func (a *UdpAC) IsRunning() bool {
+	return a.running.Load()
 }
 
-func (d *UdpAC) newConnection(addr *net.UDPAddr) (conn *UdpConn) {
+func (a *UdpAC) newConnection(addr *net.UDPAddr) (conn *UdpConn) {
 	conn = &UdpConn{}
 	var err error
 	// unlike tcp, udp dial is fast (just socket bind), so no need to run in a thread
@@ -202,7 +187,7 @@ func (d *UdpAC) newConnection(addr *net.UDPAddr) (conn *UdpConn) {
 	log.Info("Dial up new UDP connection from %s to %s", localAddr.String(), addr.String())
 
 	conn.ConnData = &core.ConnectionData{
-		Device:               d.device,
+		Device:               a.device,
 		CookieStore:          &core.CookieStore{},
 		RemoteTransactionMap: make(map[uint64]*core.RemoteTransaction),
 		LocalAddr:            localAddr,
@@ -217,23 +202,23 @@ func (d *UdpAC) newConnection(addr *net.UDPAddr) (conn *UdpConn) {
 
 	// start connection receive routine
 	conn.ConnData.Add(1)
-	go d.recvPacketRoutine(conn)
+	go a.recvPacketRoutine(conn)
 
 	return conn
 }
 
-func (d *UdpAC) sendMessageRoutine() {
-	defer d.wg.Done()
+func (a *UdpAC) sendMessageRoutine() {
+	defer a.wg.Done()
 	defer log.Info("sendMessageRoutine stopped")
 
 	log.Info("sendMessageRoutine started")
 
 	for {
 		select {
-		case <-d.signals.stop:
+		case <-a.signals.stop:
 			return
 
-		case md, ok := <-d.sendMsgCh:
+		case md, ok := <-a.sendMsgCh:
 			if !ok {
 				return
 			}
@@ -244,42 +229,42 @@ func (d *UdpAC) sendMessageRoutine() {
 
 			addrStr := md.RemoteAddr.String()
 
-			d.remoteConnectionMutex.Lock()
-			conn, found := d.remoteConnectionMap[addrStr]
-			d.remoteConnectionMutex.Unlock()
+			a.remoteConnectionMutex.Lock()
+			conn, found := a.remoteConnectionMap[addrStr]
+			a.remoteConnectionMutex.Unlock()
 
 			if found {
 				md.ConnData = conn.ConnData
 			} else {
-				conn = d.newConnection(md.RemoteAddr)
+				conn = a.newConnection(md.RemoteAddr)
 				if conn == nil {
 					log.Error("Failed to dial to remote address: %s", addrStr)
 					continue
 				}
 
-				d.remoteConnectionMutex.Lock()
-				d.remoteConnectionMap[addrStr] = conn
-				d.remoteConnectionMutex.Unlock()
+				a.remoteConnectionMutex.Lock()
+				a.remoteConnectionMap[addrStr] = conn
+				a.remoteConnectionMutex.Unlock()
 
 				md.ConnData = conn.ConnData
 
 				// launch connection routine
-				d.wg.Add(1)
-				go d.connectionRoutine(conn)
+				a.wg.Add(1)
+				go a.connectionRoutine(conn)
 			}
 
-			d.device.SendMsgToPacket(md)
+			a.device.SendMsgToPacket(md)
 		}
 	}
 }
 
-func (d *UdpAC) SendPacket(pkt *core.Packet, conn *UdpConn) (n int, err error) {
+func (a *UdpAC) SendPacket(pkt *core.Packet, conn *UdpConn) (n int, err error) {
 	defer func() {
-		atomic.AddUint64(&d.stats.totalSendBytes, uint64(n))
+		atomic.AddUint64(&a.stats.totalSendBytes, uint64(n))
 		atomic.StoreInt64(&conn.ConnData.LastLocalSendTime, time.Now().UnixNano())
 
 		if !pkt.KeepAfterSend {
-			d.device.ReleasePoolPacket(pkt)
+			a.device.ReleasePoolPacket(pkt)
 		}
 	}()
 
@@ -290,7 +275,7 @@ func (d *UdpAC) SendPacket(pkt *core.Packet, conn *UdpConn) (n int, err error) {
 	return conn.netConn.Write(pkt.Content)
 }
 
-func (d *UdpAC) recvPacketRoutine(conn *UdpConn) {
+func (a *UdpAC) recvPacketRoutine(conn *UdpConn) {
 	addrStr := conn.ConnData.RemoteAddr.String()
 
 	defer conn.ConnData.Done()
@@ -307,10 +292,10 @@ func (d *UdpAC) recvPacketRoutine(conn *UdpConn) {
 		}
 
 		// udp recv, blocking until packet arrives or netConn.Close()
-		pkt := d.device.AllocatePoolPacket()
+		pkt := a.device.AllocatePoolPacket()
 		n, err := conn.netConn.Read(pkt.Buf[:])
 		if err != nil {
-			d.device.ReleasePoolPacket(pkt)
+			a.device.ReleasePoolPacket(pkt)
 			if n == 0 {
 				// udp connection closed, it is not an error
 				return
@@ -320,11 +305,11 @@ func (d *UdpAC) recvPacketRoutine(conn *UdpConn) {
 		}
 
 		// add total recv bytes
-		atomic.AddUint64(&d.stats.totalRecvBytes, uint64(n))
+		atomic.AddUint64(&a.stats.totalRecvBytes, uint64(n))
 
 		// check minimal length
 		if n < core.HeaderSize {
-			d.device.ReleasePoolPacket(pkt)
+			a.device.ReleasePoolPacket(pkt)
 			log.Error("Received UDP packet from %s is too short, discard", addrStr)
 			continue
 		}
@@ -332,12 +317,12 @@ func (d *UdpAC) recvPacketRoutine(conn *UdpConn) {
 		pkt.Content = pkt.Buf[:n]
 		//log.Trace("receive udp packet (%s -> %s): %+v", conn.ConnData.RemoteAddr.String(), conn.ConnData.LocalAddr.String(), pkt.Content)
 
-		typ, _, err := d.device.RecvPrecheck(pkt)
+		typ, _, err := a.device.RecvPrecheck(pkt)
 		msgType := core.HeaderTypeToString(typ)
 		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, conn.ConnData.LocalAddr.String(), n)
 		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, conn.ConnData.LocalAddr.String(), n)
 		if err != nil {
-			d.device.ReleasePoolPacket(pkt)
+			a.device.ReleasePoolPacket(pkt)
 			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			continue
@@ -349,26 +334,26 @@ func (d *UdpAC) recvPacketRoutine(conn *UdpConn) {
 	}
 }
 
-func (d *UdpAC) connectionRoutine(conn *UdpConn) {
+func (a *UdpAC) connectionRoutine(conn *UdpConn) {
 	addrStr := conn.ConnData.RemoteAddr.String()
 
-	defer d.wg.Done()
+	defer a.wg.Done()
 	defer log.Debug("Connection routine: %s stopped", addrStr)
 
 	log.Debug("Connection routine: %s started", addrStr)
 
 	// stop receiving packets and clean up
 	defer func() {
-		d.remoteConnectionMutex.Lock()
-		delete(d.remoteConnectionMap, addrStr)
-		d.remoteConnectionMutex.Unlock()
+		a.remoteConnectionMutex.Lock()
+		delete(a.remoteConnectionMap, addrStr)
+		a.remoteConnectionMutex.Unlock()
 
 		conn.Close()
 	}()
 
 	for {
 		select {
-		case <-d.signals.stop:
+		case <-a.signals.stop:
 			return
 
 		case <-conn.ConnData.SetTimeoutSignal:
@@ -389,7 +374,7 @@ func (d *UdpAC) connectionRoutine(conn *UdpConn) {
 			if pkt == nil {
 				continue
 			}
-			d.SendPacket(pkt, conn)
+			a.SendPacket(pkt, conn)
 
 		case pkt, ok := <-conn.ConnData.RecvQueue:
 			if !ok {
@@ -401,15 +386,15 @@ func (d *UdpAC) connectionRoutine(conn *UdpConn) {
 			log.Debug("Received udp packet len [%d] from addr: %s\n", len(pkt.Content), addrStr)
 
 			if pkt.HeaderType == core.NHP_KPL {
-				d.device.ReleasePoolPacket(pkt)
+				a.device.ReleasePoolPacket(pkt)
 				log.Info("Receive [NHP_KPL] message (%s -> %s)", addrStr, conn.ConnData.LocalAddr.String())
 				continue
 			}
 
-			if d.device.IsTransactionResponse(pkt.HeaderType) {
+			if a.device.IsTransactionResponse(pkt.HeaderType) {
 				// forward to a specific transaction
 				transactionId := pkt.Counter()
-				transaction := d.device.FindLocalTransaction(transactionId)
+				transaction := a.device.FindLocalTransaction(transactionId)
 				if transaction != nil {
 					transaction.NextPacketCh <- pkt
 					continue
@@ -422,7 +407,7 @@ func (d *UdpAC) connectionRoutine(conn *UdpConn) {
 				InitTime:   atomic.LoadInt64(&conn.ConnData.LastLocalRecvTime),
 			}
 			// generic receive
-			d.device.RecvPacketToMsg(pd)
+			a.device.RecvPacketToMsg(pd)
 
 		case <-conn.ConnData.BlockSignal:
 			log.Critical("blocking address %s", addrStr)
@@ -431,18 +416,18 @@ func (d *UdpAC) connectionRoutine(conn *UdpConn) {
 	}
 }
 
-func (d *UdpAC) recvMessageRoutine() {
-	defer d.wg.Done()
+func (a *UdpAC) recvMessageRoutine() {
+	defer a.wg.Done()
 	defer log.Info("recvMessageRoutine stopped")
 
 	log.Info("recvMessageRoutine started")
 
 	for {
 		select {
-		case <-d.signals.stop:
+		case <-a.signals.stop:
 			return
 
-		case ppd, ok := <-d.recvMsgCh:
+		case ppd, ok := <-a.recvMsgCh:
 			if !ok {
 				return
 			}
@@ -453,33 +438,33 @@ func (d *UdpAC) recvMessageRoutine() {
 			switch ppd.HeaderType {
 			case core.NHP_AOP:
 				// deal with NHP_AOP message
-				go d.HandleACOperations(ppd)
+				go a.HandleUdpACOperations(ppd)
 			}
 		}
 	}
 }
 
 // keep interaction between ac and server in certain time interval to keep outwards ip path active
-func (d *UdpAC) maintainServerConnectionRoutine() {
-	defer d.wg.Done()
+func (a *UdpAC) maintainServerConnectionRoutine() {
+	defer a.wg.Done()
 	defer log.Info("maintainServerConnectionRoutine stopped")
 
 	log.Info("maintainServerConnectionRoutine started")
 
 	// reset iptables before exiting
-	defer d.iptables.ResetAllInput()
+	defer a.iptables.ResetAllInput()
 
 	var discoveryRoutineWg sync.WaitGroup
 	defer discoveryRoutineWg.Wait()
 
 	for {
 		// make a local copy of servers then iterate because next operations are time consuming (too long to use locked iteration)
-		d.serverPeerMutex.Lock()
-		var serverCount int32 = int32(len(d.serverPeerMap))
+		a.serverPeerMutex.Lock()
+		var serverCount int32 = int32(len(a.serverPeerMap))
 		discoveryQuitArr := make([]chan struct{}, 0, serverCount)
 		discoveryFailStatusArr := make([]*int32, 0, serverCount)
 
-		for _, server := range d.serverPeerMap {
+		for _, server := range a.serverPeerMap {
 			// launch discovery routine for each server
 			fail := new(int32)
 			discoveryFailStatusArr = append(discoveryFailStatusArr, fail)
@@ -487,9 +472,9 @@ func (d *UdpAC) maintainServerConnectionRoutine() {
 			discoveryQuitArr = append(discoveryQuitArr, quit)
 
 			discoveryRoutineWg.Add(1)
-			go d.serverDiscovery(server, &discoveryRoutineWg, fail, quit)
+			go a.serverDiscovery(server, &discoveryRoutineWg, fail, quit)
 		}
-		d.serverPeerMutex.Unlock()
+		a.serverPeerMutex.Unlock()
 
 		// check whether all server discovery failed.
 		// If so, open all blocked input
@@ -501,7 +486,7 @@ func (d *UdpAC) maintainServerConnectionRoutine() {
 
 			for {
 				select {
-				case <-d.signals.stop:
+				case <-a.signals.stop:
 					return
 				case <-quitCheck:
 					return
@@ -512,18 +497,18 @@ func (d *UdpAC) maintainServerConnectionRoutine() {
 					}
 
 					if totalFail < int32(len(discoveryFailStatusArr)) {
-						d.iptables.ResetAllInput()
+						a.iptables.ResetAllInput()
 					} else {
-						d.iptables.AcceptAllInput()
+						a.iptables.AcceptAllInput()
 					}
 				}
 			}
 		}()
 
 		select {
-		case <-d.signals.stop:
+		case <-a.signals.stop:
 			return
-		case _, ok := <-d.signals.serverMapUpdated:
+		case _, ok := <-a.signals.serverMapUpdated:
 			if !ok {
 				return
 			}
@@ -536,12 +521,12 @@ func (d *UdpAC) maintainServerConnectionRoutine() {
 	}
 }
 
-func (d *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.WaitGroup, serverFailCount *int32, quit <-chan struct{}) {
+func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.WaitGroup, serverFailCount *int32, quit <-chan struct{}) {
 	defer discoveryRoutineWg.Done()
 
-	acId := d.config.ACId
+	acId := a.config.ACId
 	serverAddr := server.HostOrAddr()
-	server, sendAddr := d.ResolvePeer(server)
+	server, sendAddr := a.ResolvePeer(server)
 	if sendAddr == nil {
 		log.Error("Cannot connect to nil server address")
 		return
@@ -560,9 +545,9 @@ func (d *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 		var connected bool
 
 		// find whether connection is already connected
-		d.remoteConnectionMutex.Lock()
-		conn, found := d.remoteConnectionMap[addrStr]
-		d.remoteConnectionMutex.Unlock()
+		a.remoteConnectionMutex.Lock()
+		conn, found := a.remoteConnectionMap[addrStr]
+		a.remoteConnectionMutex.Unlock()
 
 		if found {
 			// connection based timing
@@ -585,27 +570,27 @@ func (d *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 			// send NHP_AOL message to server
 			aolMsg := &common.ACOnlineMsg{
 				ACId:          acId,
-				AuthServiceId: d.config.AuthServiceId,
-				ResourceIds:   d.config.ResourceIds,
+				AuthServiceId: a.config.AuthServiceId,
+				ResourceIds:   a.config.ResourceIds,
 			}
 			aolBytes, _ := json.Marshal(aolMsg)
 
 			aolMd := &core.MsgData{
 				RemoteAddr:    sendAddr.(*net.UDPAddr),
 				HeaderType:    core.NHP_AOL,
-				TransactionId: d.device.NextCounterIndex(),
+				TransactionId: a.device.NextCounterIndex(),
 				Compress:      true,
 				PeerPk:        peerPbk,
 				Message:       aolBytes,
 				ResponseMsgCh: make(chan *core.PacketParserData),
 			}
 
-			if !d.IsRunning() {
+			if !a.IsRunning() {
 				log.Error("ac(%s#%d)[ACOnline] MsgData channel closed or being closed, skip sending", acId, aolMd.TransactionId)
 				return
 			}
 
-			d.sendMsgCh <- aolMd // create new connection
+			a.sendMsgCh <- aolMd // create new connection
 			server.UpdateSend(currTime)
 
 			// block until transaction completes or timeouts
@@ -624,13 +609,13 @@ func (d *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 						if failCount%ServerDiscoveryRetryBeforeFail == 0 {
 							atomic.StoreInt32(serverFailCount, 1)
 							// remove failed connection
-							d.remoteConnectionMutex.Lock()
-							conn = d.remoteConnectionMap[addrStr]
+							a.remoteConnectionMutex.Lock()
+							conn = a.remoteConnectionMap[addrStr]
 							if conn != nil {
 								log.Info("server discovery failed, close local connection: %s", conn.ConnData.LocalAddr.String())
-								delete(d.remoteConnectionMap, addrStr)
+								delete(a.remoteConnectionMap, addrStr)
 							}
-							d.remoteConnectionMutex.Unlock()
+							a.remoteConnectionMutex.Unlock()
 							conn.Close()
 						}
 						log.Error("ac(%s#%d)[ACOnline] reporting to server %s failed", acId, aolMd.TransactionId, addrStr)
@@ -660,11 +645,11 @@ func (d *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 				// server discovery succeeded
 				failCount = 0
 				atomic.StoreInt32(serverFailCount, 0)
-				d.remoteConnectionMutex.Lock()
-				conn = d.remoteConnectionMap[addrStr] // conn must be available at this point
+				a.remoteConnectionMutex.Lock()
+				conn = a.remoteConnectionMap[addrStr] // conn must be available at this point
 				conn.connected.Store(true)
 				conn.externalAddr = aakMsg.ACAddr
-				d.remoteConnectionMutex.Unlock()
+				a.remoteConnectionMutex.Unlock()
 				log.Info("ac(%s#%d)[ACOnline] succeed. ac external address is %s, replied by server %s", acId, aolMd.TransactionId, aakMsg.ACAddr, addrStr)
 			}()
 
@@ -675,16 +660,16 @@ func (d *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 					RemoteAddr: sendAddr.(*net.UDPAddr),
 					HeaderType: core.NHP_KPL,
 					//PeerPk:        peerPbk, // pubkey not needed
-					TransactionId: d.device.NextCounterIndex(),
+					TransactionId: a.device.NextCounterIndex(),
 				}
 
-				d.sendMsgCh <- md // send NHP_KPL to server via existing connection
+				a.sendMsgCh <- md // send NHP_KPL to server via existing connection
 				server.UpdateSend(currTime)
 			}
 		}
 
 		select {
-		case <-d.signals.stop:
+		case <-a.signals.stop:
 			return
 		case <-quit:
 			return
@@ -694,98 +679,38 @@ func (d *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 	}
 }
 
-func (d *UdpAC) AddServerPeer(server *core.UdpPeer) {
+func (a *UdpAC) AddServerPeer(server *core.UdpPeer) {
 	if server.DeviceType() == core.NHP_SERVER {
-		d.device.AddPeer(server)
+		a.device.AddPeer(server)
 
-		d.serverPeerMutex.Lock()
-		d.serverPeerMap[server.PublicKeyBase64()] = server
-		d.serverPeerMutex.Unlock()
+		a.serverPeerMutex.Lock()
+		a.serverPeerMap[server.PublicKeyBase64()] = server
+		a.serverPeerMutex.Unlock()
 
 		// renew server connection cycle
-		if len(d.signals.serverMapUpdated) == 0 {
-			d.signals.serverMapUpdated <- struct{}{}
+		if len(a.signals.serverMapUpdated) == 0 {
+			a.signals.serverMapUpdated <- struct{}{}
 		}
 	}
 }
 
-func (d *UdpAC) RemoveServerPeer(serverKey string) {
-	d.serverPeerMutex.Lock()
-	beforeSize := len(d.serverPeerMap)
-	delete(d.serverPeerMap, serverKey)
-	afterSize := len(d.serverPeerMap)
-	d.serverPeerMutex.Unlock()
+func (a *UdpAC) RemoveServerPeer(serverKey string) {
+	a.serverPeerMutex.Lock()
+	beforeSize := len(a.serverPeerMap)
+	delete(a.serverPeerMap, serverKey)
+	afterSize := len(a.serverPeerMap)
+	a.serverPeerMutex.Unlock()
 
 	if beforeSize != afterSize {
 		// renew server connection cycle
-		if len(d.signals.serverMapUpdated) == 0 {
-			d.signals.serverMapUpdated <- struct{}{}
-		}
-	}
-}
-
-func (d *UdpAC) GenerateAccessToken(au *AgentUser) string {
-	hashStr := au.Hash()
-	timeStr := strconv.FormatInt(time.Now().UnixNano(), 10)
-	au.hash.Write([]byte(timeStr))
-	token := base64.StdEncoding.EncodeToString(au.hash.Sum(nil))
-
-	d.AgentUserTokenMutex.Lock()
-	defer d.AgentUserTokenMutex.Unlock()
-
-	tokenMap, found := d.agentUserCodeMap[hashStr[0:1]]
-	if found {
-		(*tokenMap)[hashStr] = token
-	} else {
-		tokenMap = &map[string]string{hashStr: token}
-		d.agentUserCodeMap[hashStr[0:1]] = tokenMap
-	}
-
-	// log.Debug("user %+v, hash: %s", au, hashStr)
-	// log.Debug("agentUserCodeMap: %+v", d.agentUserCodeMap)
-	// log.Debug("tokenMap: %+v", d.agentUserCodeMap[hashStr[0:1]])
-	return token
-}
-
-func (d *UdpAC) VerifyAccessToken(au *AgentUser, token string) bool {
-	hashStr := au.Hash()
-
-	d.AgentUserTokenMutex.Lock()
-	defer d.AgentUserTokenMutex.Unlock()
-
-	// log.Debug("verify access token: %s", token)
-	// log.Debug("user %+v, hash: %s", au, hashStr)
-	// log.Debug("agentUserCodeMap: %+v", d.agentUserCodeMap)
-	// log.Debug("tokenMap: %+v", d.agentUserCodeMap[hashStr[0:1]])
-
-	tokenMap, found := d.agentUserCodeMap[hashStr[0:1]]
-	if found {
-		foundToken, found := (*tokenMap)[hashStr]
-		if found {
-			return token == foundToken
-		}
-	}
-
-	return false
-}
-
-func (d *UdpAC) DeleteAccessToken(au *AgentUser) {
-	hashStr := au.Hash()
-
-	d.AgentUserTokenMutex.Lock()
-	defer d.AgentUserTokenMutex.Unlock()
-
-	tokenMap, found := d.agentUserCodeMap[hashStr[0:1]]
-	if found {
-		delete(*tokenMap, hashStr)
-		if len(*tokenMap) == 0 {
-			delete(d.agentUserCodeMap, hashStr[0:1])
+		if len(a.signals.serverMapUpdated) == 0 {
+			a.signals.serverMapUpdated <- struct{}{}
 		}
 	}
 }
 
 // if the server uses hostname as destination, find the correct peer with the actual IP address
-func (d *UdpAC) ResolvePeer(peer *core.UdpPeer) (*core.UdpPeer, net.Addr) {
+func (a *UdpAC) ResolvePeer(peer *core.UdpPeer) (*core.UdpPeer, net.Addr) {
 	addr := peer.SendAddr()
 	if addr == nil {
 		return peer, nil
@@ -802,9 +727,9 @@ func (d *UdpAC) ResolvePeer(peer *core.UdpPeer) (*core.UdpPeer, net.Addr) {
 		return peer, addr
 	}
 
-	d.serverPeerMutex.Lock()
-	defer d.serverPeerMutex.Unlock()
-	for _, p := range d.serverPeerMap {
+	a.serverPeerMutex.Lock()
+	defer a.serverPeerMutex.Unlock()
+	for _, p := range a.serverPeerMap {
 		if p.Ip == actualIp {
 			p.CopyResolveStatus(peer)
 			return p, addr

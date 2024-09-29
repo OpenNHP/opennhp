@@ -76,3 +76,8 @@ type HttpKnockRequest struct {
 	SrcIp          string   `json:"-"`
 	SrcPort        int      `json:"-"`
 }
+
+type HttpRefreshRequest struct {
+	Token string `json:"token"`
+	SrcIp string `json:"srcIp"`
+}

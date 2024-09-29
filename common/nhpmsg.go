@@ -125,6 +125,7 @@ type ACOpsResultMsg struct {
 	ErrCode         string         `json:"errCode"`
 	ErrMsg          string         `json:"errMsg,omitempty"`
 	OpenTime        uint32         `json:"opnTime"`
+	ACToken         string         `json:"token"`
 	PreAccessAction *PreAccessInfo `json:"preAct"`
 }
 
@@ -132,6 +133,11 @@ type ACOnlineMsg struct {
 	AuthServiceId string   `json:"aspId"`
 	ResourceIds   []string `json:"resIds"`
 	ACId          string   `json:"acId,omitempty"`
+}
+
+type ACRefreshMsg struct {
+	NhpToken   string      `json:"nhpToken"`
+	SourceAddr *NetAddress `json:"srcAddr"`
 }
 
 type ServerACAckMsg struct {

@@ -182,12 +182,12 @@ func (s *UdpServer) updateHttpConfig(file string) (err error) {
 
 	content, err := os.ReadFile(file)
 	if err != nil {
-		log.Error("failed to read base config: %v", err)
+		log.Error("failed to read http config: %v", err)
 	}
 
 	var httpConf HttpConfig
 	if err := toml.Unmarshal(content, &httpConf); err != nil {
-		log.Error("failed to unmarshal base config: %v", err)
+		log.Error("failed to unmarshal http config: %v", err)
 	}
 
 	// update

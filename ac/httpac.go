@@ -134,9 +134,8 @@ func (hs *HttpAC) IsRunning() bool {
 func (ha *HttpAC) initRouter() {
 	g := ha.ginEngine
 
-	pluginGrp := g.Group("refresh")
-	// display login page with templates
-	pluginGrp.GET("/:token", func(ctx *gin.Context) {
+	refreshGrp := g.Group("refresh")
+	refreshGrp.GET("/:token", func(ctx *gin.Context) {
 		var err error
 		token := ctx.Param("token")
 		log.Info("get refresh request. aspId: %s, query: %v", token, ctx.Request.URL.RawQuery)
@@ -198,7 +197,7 @@ func (ha *HttpAC) HandleHttpRefreshOperations(c *gin.Context, req *common.HttpRe
 		entry.SrcAddrs = append(entry.SrcAddrs, newSrcAddr)
 	}
 
-	_, err = ha.ua.HandleAccessControl(entry.AgentUser, entry.SrcAddrs, entry.DstAddrs, entry.OpenTime, nil)
+	_, err = ha.ua.HandleAccessControl(entry.User, entry.SrcAddrs, entry.DstAddrs, entry.OpenTime, nil)
 	if err != nil {
 		c.String(http.StatusOK, "{\"errMsg\": \"%s\"}", err)
 		return

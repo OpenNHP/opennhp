@@ -244,14 +244,31 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 			log.Error("RedirectUrl is not provided.")
 		} else {
 			ackMsg.RedirectUrl = res.RedirectUrl
-			ctx.SetCookie(
-				"nhp-token", 					// Name
-				"example-nhp-token-GUBdoVXpxt", // Value
-				-1,								// MaxAge
-				"/",							// Path
-				res.CookieDomain,				// Domain
-				true,							// Secure
-				true)							// HttpOnly
+		}
+
+		// set cookies
+		singleHost := len(ackMsg.ACTokens) == 1
+		for resName, token := range ackMsg.ACTokens {
+			if singleHost {
+				ctx.SetCookie(
+					"nhp-token",      // Name
+					token,            // Value
+					-1,               // MaxAge
+					"/",              // Path
+					res.CookieDomain, // Domain
+					true,             // Secure
+					true)             // HttpOnly
+			} else {
+				domain := strings.Split(ackMsg.ResourceHost[resName], ":")[0]
+				ctx.SetCookie(
+					"nhp-token"+"/"+resName, // Name
+					token,                   // Value
+					-1,                      // MaxAge
+					"/",                     // Path
+					domain,                  // Domain
+					true,                    // Secure
+					true)                    // HttpOnly
+			}
 			log.Info("ctx.SetCookie.")
 		}
 	}

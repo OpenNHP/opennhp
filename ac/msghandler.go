@@ -41,7 +41,7 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 	srcAddrs := dopMsg.SourceAddrs
 	dstAddrs := dopMsg.DestinationAddrs
 	openTimeSec := int(dopMsg.OpenTime)
-	agentUser := &AgentUser{
+	agentUser := &common.AgentUser{
 		UserId:         dopMsg.UserId,
 		DeviceId:       dopMsg.DeviceId,
 		OrganizationId: dopMsg.OrganizationId,
@@ -54,10 +54,10 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 
 	// generate ac token and save user and access information
 	entry := &AccessEntry{
-		AgentUser: agentUser,
-		SrcAddrs:  srcAddrs,
-		DstAddrs:  dstAddrs,
-		OpenTime:  openTimeSec,
+		User:     agentUser,
+		SrcAddrs: srcAddrs,
+		DstAddrs: dstAddrs,
+		OpenTime: openTimeSec,
 	}
 	artMsg.ACToken = a.GenerateAccessToken(entry)
 
@@ -84,7 +84,7 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 	return err
 }
 
-func (a *UdpAC) HandleAccessControl(au *AgentUser, srcAddrs []*common.NetAddress, dstAddrs []*common.NetAddress, openTimeSec int, artMsgIn *common.ACOpsResultMsg) (artMsg *common.ACOpsResultMsg, err error) {
+func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.NetAddress, dstAddrs []*common.NetAddress, openTimeSec int, artMsgIn *common.ACOpsResultMsg) (artMsg *common.ACOpsResultMsg, err error) {
 	if artMsgIn == nil {
 		artMsg = &common.ACOpsResultMsg{}
 	} else {
@@ -345,10 +345,10 @@ func (a *UdpAC) HandleAccessControl(au *AgentUser, srcAddrs []*common.NetAddress
 		log.Info("[HandleAccessControl] open temporary udp port on %s", tladdr.String())
 
 		tempEntry := &AccessEntry{
-			AgentUser: au,
-			SrcAddrs:  srcAddrs,
-			DstAddrs:  dstAddrs,
-			OpenTime:  tempOpenTimeSec,
+			User:     au,
+			SrcAddrs: srcAddrs,
+			DstAddrs: dstAddrs,
+			OpenTime: tempOpenTimeSec,
 		}
 		artMsg.PreAccessAction = &common.PreAccessInfo{
 			AccessPort: strconv.Itoa(pickedPort),

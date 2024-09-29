@@ -40,7 +40,7 @@ type UdpAC struct {
 	serverPeerMutex sync.Mutex
 	serverPeerMap   map[string]*core.UdpPeer // indexed by server's public key
 
-	TokenStoreMutex sync.Mutex
+	tokenStoreMutex sync.Mutex
 	tokenStore      TokenStore
 
 	device     *core.Device

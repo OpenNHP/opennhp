@@ -70,14 +70,15 @@ type PreAccessInfo struct {
 }
 
 type ServerKnockAckMsg struct {
-	ErrCode           string            `json:"errCode"`
-	ErrMsg            string            `json:"errMsg,omitempty"`
-	ResourceHost      map[string]string `json:"resHost"`
-	OpenTime          uint32            `json:"opnTime"`
-	AuthProviderToken string            `json:"aspToken,omitempty"` // optional for ac backend validation
-	AgentAddr         string            `json:"agentAddr"`
-	PreAccessActions  []*PreAccessInfo  `json:"preActs,omitempty"` // optional for pre-access
-	RedirectUrl       string            `json:"redirectUrl,omitempty"`
+	ErrCode           string                    `json:"errCode"`
+	ErrMsg            string                    `json:"errMsg,omitempty"`
+	ResourceHost      map[string]string         `json:"resHost"`
+	OpenTime          uint32                    `json:"opnTime"`
+	AuthProviderToken string                    `json:"aspToken,omitempty"` // optional for ac backend validation
+	AgentAddr         string                    `json:"agentAddr"`
+	ACTokens          map[string]string         `json:"acTokens"`
+	PreAccessActions  map[string]*PreAccessInfo `json:"preActions,omitempty"` // optional for pre-access
+	RedirectUrl       string                    `json:"redirectUrl,omitempty"`
 }
 
 type AgentListMsg struct {

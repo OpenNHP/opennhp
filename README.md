@@ -100,7 +100,7 @@ The OpenNHP architecture is inspired by the [NIST Zero Trust Architecture standa
 
 > Please refer to the [OpenNHP Documentation](https://opennhp.org/) for detailed information about architecture and workflow.
 
-## Cryptographic Algorithms
+## Core: Cryptographic Algorithms
 
 Cryptography is at the heart of OpenNHP, providing robust security, excellent performance, and scalability by utilizing cutting-edge cryptographic algorithms. Below are the key cryptographic algorithms and frameworks employed by OpenNHP:
 

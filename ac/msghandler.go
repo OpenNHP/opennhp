@@ -22,7 +22,6 @@ const (
 )
 
 func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
-	a.wg.Add(1)
 	defer a.wg.Done()
 
 	acId := a.config.ACId
@@ -49,7 +48,7 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 	}
 	artMsg, err = a.HandleAccessControl(agentUser, srcAddrs, dstAddrs, openTimeSec, artMsg)
 	if err != nil {
-		log.Error("ac(%s#%d)[HandleUdpACOperations] HandleAccessControl failed, err: %v", acId, err)
+		log.Error("ac(%s#%d)[HandleUdpACOperations] HandleAccessControl failed, err: %v", acId, transactionId, err)
 	}
 
 	// generate ac token and save user and access information
@@ -60,6 +59,7 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 		OpenTime: openTimeSec,
 	}
 	artMsg.ACToken = a.GenerateAccessToken(entry)
+	//log.Info("generate knock token: %s", artMsg.ACToken)
 
 	// send ac result
 	artBytes, _ := json.Marshal(artMsg)
@@ -70,6 +70,7 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 		PrevParserData: ppd,
 		Message:        artBytes,
 	}
+	//log.Info("ART result: %s", string(artBytes))
 
 	// forward to a specific transaction
 	transaction := ppd.ConnData.FindRemoteTransaction(transactionId)

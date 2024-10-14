@@ -77,21 +77,23 @@ func (s *UdpServer) tokenStoreRefreshRoutine() {
 			return
 
 		case <-time.After(TokenStoreRefreshInterval * time.Second):
-			s.tokenStoreMutex.Lock()
-			defer s.tokenStoreMutex.Unlock()
+			func() {
+				s.tokenStoreMutex.Lock()
+				defer s.tokenStoreMutex.Unlock()
 
-			now := time.Now()
-			for head, tokenMap := range s.tokenStore {
-				for token, entry := range tokenMap {
-					if now.After(entry.ExpireTime) {
-						log.Info("[TokenStore] token %s expired, remove", token)
-						delete(tokenMap, token)
+				now := time.Now()
+				for head, tokenMap := range s.tokenStore {
+					for token, entry := range tokenMap {
+						if now.After(entry.ExpireTime) {
+							log.Info("[TokenStore] token %s expired, remove", token)
+							delete(tokenMap, token)
+						}
+					}
+					if len(tokenMap) == 0 {
+						delete(s.tokenStore, head)
 					}
 				}
-				if len(tokenMap) == 0 {
-					delete(s.tokenStore, head)
-				}
-			}
+			}()
 		}
 	}
 }

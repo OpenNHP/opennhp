@@ -65,8 +65,10 @@ type UdpConn struct {
 }
 
 func (c *UdpConn) Close() {
-	c.netConn.Close()
-	c.ConnData.Close()
+	if c.netConn != nil {
+		c.netConn.Close()
+		c.ConnData.Close()
+	}
 }
 
 /*
@@ -438,6 +440,7 @@ func (a *UdpAC) recvMessageRoutine() {
 			switch ppd.HeaderType {
 			case core.NHP_AOP:
 				// deal with NHP_AOP message
+				a.wg.Add(1)
 				go a.HandleUdpACOperations(ppd)
 			}
 		}

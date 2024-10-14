@@ -4,4 +4,4 @@
 # ExpireTime (epoch timestamp in seconds): peer key validation will fail when it expires.
 [[Agents]]
 PubKeyBase64 = "WnJAolo88/q0x2VdLQYdmZNtKjwG2ocBd1Ozj41AKlo="
-ExpireTime = 1716345064
+ExpireTime = 1924991999

@@ -7,6 +7,7 @@
 
 ![OpenNHP Logo](docs/images/logo11.png)
 # OpenNHP: Zero Trust Network-infrastructure Hiding Protocol
+A lightweight cryptography-driven zero trust networking protocol at the OSI 5th layer to hide your server and data from attackers. 
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
@@ -54,7 +55,7 @@ Once you click the "Login" button, authentication is completed successfully, and
 
 The openness of TCP/IP protocols has driven the explosive growth of internet applications but also exposed vulnerabilities, allowing malicious actors to gain unauthorized access and exploit any exposed IP address. Although the [OSI network model](https://en.wikipedia.org/wiki/OSI_model) defines the *5th layer (Session Layer)* for managing connections, few effective solutions have been implemented to address this.
 
-**NHP**, or the **"Network-infrastructure Hiding Protocol"**, is a Zero Trust communication protocol designed to function at the *OSI Session Layer*, which is optimal for managing network visibility and connections. NHP's key objective is to conceal protected resources from unauthorized entities, granting access only to verified, authorized users through continuous verification, contributing to a more trustworthy Internet.
+**NHP**, or the **"Network-infrastructure Hiding Protocol"**, is a lightweight cryptography-driven Zero Trust networking protocol designed to function at the *OSI Session Layer*, which is optimal for managing network visibility and connections. NHP's key objective is to conceal protected resources from unauthorized entities, granting access only to verified, authorized users through continuous verification, contributing to a more trustworthy Internet.
 
 ![Trustworthy Internet](docs/images/TrustworthyCyberspace.png)
 

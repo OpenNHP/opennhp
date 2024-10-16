@@ -8,9 +8,9 @@ permalink: /comparison/
 # Comparison between NHP and SPA
 {: .fs-9 }
 
-[中文版](/zh-cn/comparison/){: .label .fs-4 }
-
 Note: The following content is extracted from the journal paper "AHAC: Advanced Network-Hiding Access Control Framework" published in Volume 14, Issue 13 of the journal *Applied Sciences* in 2024. It is worth noting that the AHAC framework is a key component of the NHP (OpenNHP) technology system.
+
+[中文版](/zh-cn/comparison/){: .label .fs-4 }
 
 ---
 
@@ -191,6 +191,6 @@ FIDO-based authentication response to the Server.
 
   ![Compatibility comparison](/images/Compatibility_comparison.png)
 
-- [中文版](/docs/zh-cn/comparison.zh-cn.md){: .label .fs-4 }
+
 
 ---

@@ -9,7 +9,7 @@ permalink: /zh-cn/deploy/
 # 部署OpenNHP
 {: .fs-9 }
 
-[English Version](/deploy/){: .label .fs-4 }
+[English](/deploy/){: .label .fs-4 }
 
 ---
 

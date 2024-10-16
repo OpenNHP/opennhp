@@ -9,9 +9,9 @@ permalink: /zh-cn/comparison/
 # 对比NHP与SPA
 {: .fs-9 }
 
-[English Version](/comparison/){: .label .fs-4 }
-
 注: 以下内容摘自《Applied Sciences》杂志2024年第14卷第13期的期刊论文《AHAC: Advanced Network-Hiding Access Control Framework》论文，值得特别指出的是，AHAC框架是NHP（OpenNHP）技术体系中的一个关键组成部分。
+
+[English](/comparison/){: .label .fs-4 }
 
 ---
 

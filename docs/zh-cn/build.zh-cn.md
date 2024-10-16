@@ -9,7 +9,7 @@ permalink: /zh-cn/build/
 # 编译OpenNHP
 {: .fs-9 }
 
-[English Version](/build/){: .label .fs-4 }
+[English](/build/){: .label .fs-4 }
 
 ---
 

@@ -9,10 +9,10 @@ permalink: /zh-cn/cryptography/
 # 加密算法
 {: .fs-9 }
 
-[English Version](/cryptography/){: .label .fs-4 }
-
 加密是 OpenNHP 的核心，通过利用尖端的加密算法提供强大的安全性、卓越的性能和可扩展性。
 {: .fs-6 .fw-300 }
+
+[English](/cryptography/){: .label .fs-4 }
 
 ---
 

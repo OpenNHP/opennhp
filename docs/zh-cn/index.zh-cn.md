@@ -9,6 +9,7 @@ permalink: /zh-cn/
 
 # OpenNHP中文版文档
 {: .fs-9 }
-[English Version](/){: .label .fs-4 }
+
+[English](/){: .label .fs-4 }
 
 ---

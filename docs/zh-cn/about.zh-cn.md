@@ -9,9 +9,7 @@ permalink: /zh-cn/about/
 # 关于OpenNHP开源项目
 {: .fs-9 }
 
-[English Version](/about/){: .label .fs-4 }
-
-
+[English](/about/){: .label .fs-4 }
 ---
 
 

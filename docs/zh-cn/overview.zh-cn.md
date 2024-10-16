@@ -10,7 +10,7 @@ permalink: /zh-cn/overview/
 # OpenNHP：零信任网络隐身协议
 {: .fs-9 }
 
-[English Version](/){: .label .fs-4 }
+[English](/){: .label .fs-4 }
 
 ---
 

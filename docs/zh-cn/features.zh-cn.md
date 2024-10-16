@@ -9,6 +9,9 @@ permalink: /zh-cn/features/
 # OpenNHP功能列表
 {: .fs-9 }
 
+[English Version](/features/){: .label .fs-4 }
+
+
 ---
 
 

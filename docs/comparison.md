@@ -1,17 +1,18 @@
 ---
 layout: page
 title: Comparison
-nav_order: 3
+nav_order: 4
 permalink: /comparison/
 ---
 
-- {: .fs-9 }
-
-<small>*&nbsp; &nbsp; &nbsp; &nbsp;(Note: The following content is extracted from the journal paper "AHAC: Advanced Network-Hiding Access Control Framework" published in Volume 14, Issue 13 of the journal *Applied Sciences* in 2024. It is worth noting that the AHAC framework is a key component of the NHP (OpenNHP) technology system. This paper provides a detailed introduction and comparison of the performance of NHP (Next-Generation Host Protocol) and SPA (Secure Protocol Architecture) in various aspects.)*</small>
-
 # Comparison between NHP and SPA
+{: .fs-9 }
 
-# Table Of Content:
+[中文版](/zh-cn/comparison/){: .label .fs-4 }
+
+Note: The following content is extracted from the journal paper "AHAC: Advanced Network-Hiding Access Control Framework" published in Volume 14, Issue 13 of the journal *Applied Sciences* in 2024. It is worth noting that the AHAC framework is a key component of the NHP (OpenNHP) technology system.
+
+---
 
 - [Comparison between NHP and SPA](#comparison-between-nhp-and-spa)
 - [Table Of Content:](#table-of-content)

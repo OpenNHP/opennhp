@@ -1,22 +1,25 @@
 ---
 layout: page
 title: Cryptography
-nav_order: 4
+nav_order: 3
 permalink: /cryptography/
 ---
 
 # Cryptographic Algorithms in OpenNHP
 {: .fs-9 }
 
+Cryptography is at the heart of OpenNHP, providing robust security, excellent performance, and scalability by utilizing cutting-edge cryptographic algorithms.
+{: .fs-6 .fw-300 }
+
 [中文版](/zh-cn/cryptography/){: .label .fs-4 }
 
 ---
 
-Cryptography is at the heart of OpenNHP, providing robust security, excellent performance, and scalability by utilizing cutting-edge cryptographic algorithms. This article explains how OpenNHP takes advantages of modern cryptographic algorithms in several critical areas:
+This article explains how OpenNHP takes advantages of modern cryptographic algorithms in several critical areas:
 
-1. Public Key Cryptography
-2. Key Exchange, Data Encryption and Identity Verification
-3. Key Distribution and Management
+1. [Public Key Cryptography](#1-public-key-cryptography)
+2. [Key Exchange, Data Encryption and Identity Verification](#2-key-exchange-data-encryption-and-identity-verification)
+3. [Key Distribution and Management](#3-key-distribution-and-management)
 
 ## 1) Public Key Cryptography
 

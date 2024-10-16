@@ -9,6 +9,8 @@ permalink: /zh-cn/build/
 # 编译OpenNHP
 {: .fs-9 }
 
+[English Version](/build/){: .label .fs-4 }
+
 ---
 
 ## 1. WSL环境准备

@@ -9,6 +9,8 @@ permalink: /zh-cn/code/
 # OpeNHP代码解读
 {: .fs-9 }
 
+[English Version](/code/){: .label .fs-4 }
+
 ---
 
 ## 1. 层级架构

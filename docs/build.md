@@ -8,7 +8,8 @@ permalink: /build/
 # Build OpenNHP Source Code
 {: .fs-9 }
 
-This article explains how to build OpenNHP from source code. 
+This article explains how to build OpenNHP from source code.
+{: .fs-6 .fw-300 } 
 
 [中文版](/zh-cn/build/){: .label .fs-4 }
 ---

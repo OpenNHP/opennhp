@@ -18,9 +18,9 @@ permalink: /zh-cn/cryptography/
 
 本文解释了 OpenNHP 如何在多个关键领域中利用现代加密算法的优势：
 
-1. [公私钥加密算法](#1-public-key-cryptography)
-2. [密钥交换、数据加密和身份认证](#2-key-exchange-data-encryption-and-identity-verification)
-3. [密钥分发和管理](#3-key-distribution-and-management)
+1. [公私钥加密算法](#1-%E5%85%AC%E7%A7%81%E9%92%A5%E5%8A%A0%E5%AF%86%E7%AE%97%E6%B3%95)
+2. [密钥交换、数据加密和身份认证](#2%E5%AF%86%E9%92%A5%E4%BA%A4%E6%8D%A2%E6%95%B0%E6%8D%AE%E5%8A%A0%E5%AF%86%E5%92%8C%E8%BA%AB%E4%BB%BD%E8%AE%A4%E8%AF%81)
+3. [密钥分发和管理](#3-%E5%AF%86%E9%92%A5%E7%AE%A1%E7%90%86%E4%B8%8E%E5%88%86%E5%8F%91)
 
 
 ## 1) 公私钥加密算法

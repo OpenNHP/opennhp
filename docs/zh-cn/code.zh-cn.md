@@ -2,7 +2,7 @@
 layout: page
 title: 源代码解读
 parent: 中文版
-nav_order: 6
+nav_order: 7
 permalink: /zh-cn/code/
 ---
 

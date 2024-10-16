@@ -2,7 +2,7 @@
 layout: page
 title: 部署OpenNHP
 parent: 中文版
-nav_order: 4
+nav_order: 5
 permalink: /zh-cn/deploy/
 ---
 

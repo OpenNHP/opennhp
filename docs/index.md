@@ -9,7 +9,7 @@ permalink: /
 # OpenNHP Documentation
 {: .fs-9 }
 
- OpenNHP implements the Zero Trust communication protocol NHP.
+A lightweight cryptography-driven zero trust networking protocol at the OSI 5th layer to hide your server and data from attackers.
 {: .fs-6 .fw-300 }
 
 [中文版](/zh-cn/){: .label .fs-4 }

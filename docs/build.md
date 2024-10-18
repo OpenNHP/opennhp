@@ -1,12 +1,20 @@
 ---
 layout: page
 title: How to Build
-nav_order: 5
+nav_order: 6
 permalink: /build/
 ---
 
 # Build OpenNHP Source Code
 {: .fs-9 }
+
+This article explains how to build OpenNHP from source code.
+{: .fs-6 .fw-300 } 
+
+[中文版](/zh-cn/build/){: .label .fs-4 }
+
+---
+
 ## 1. WSL Environment Setup
 
 **Note：** You can run Linux through the WSL subsystem on Windows 10/11. For details, see the official WSL documentation: https://learn.microsoft.com/en-us/windows/wsl/install

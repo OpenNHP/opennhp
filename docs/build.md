@@ -21,7 +21,7 @@ This article explains how to build OpenNHP from source code.
 
 - **【Enable the WSL function】** On Win10, you need to enable WSL first to use it for installing Linux. See the settings interface in the image below.
   
-   ![Windows 10 on WSL Settings](/images/win10wsl.png)
+   ![Windows 10 on WSL Settings](/images/win10wsl_en.png)
 
 - **【Install Linux on WSL】** It is recommended to install Ubuntu Linux on WSL by running the following command through PowerShell:
 

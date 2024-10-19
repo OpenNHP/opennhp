@@ -42,7 +42,7 @@ permalink: /zh-cn/build/
 
 ## 2. 系统需求
 
-- 2.1 `Go语言`环境：**Go 1.18** 或以上。安装包下载地址: <https://go.dev/dl/>
+- 2.1 `Go语言`环境：**Go 1.21** 。安装包下载地址: <https://go.dev/dl/>
   - **Windows与macOS**环境下，通过下载的安装程序来安装Go。
   - **Linux**环境下可以直接通过管理工具安装： `sudo apt install golang ` 
   - 安装成功后，运行命令`go version` 来查看Go版本号。

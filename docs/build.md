@@ -46,7 +46,7 @@ This article explains how to build OpenNHP from source code.
 
 ## 2. System requirement
 
-- 2.1 'Go Language' environment: **Go 1.18** or above. Installation package download: <https://go.dev/dl/>
+- 2.1 'Go Language' environment: **Go 1.21** . Installation package download: <https://go.dev/dl/>
   - **Windows and macOS**Environment, install Go through the downloaded installer.
   - **Linux** environment can be installed directly through the management tool: `sudo apt install golang`
   - After the installation is successful, run the command `go version`to see the Go version number.

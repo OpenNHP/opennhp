@@ -287,8 +287,8 @@ func corsMiddleware() gin.HandlerFunc {
 		// HTTP headers for CORS
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")                   // allow cross-origin resource sharing
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS, POST") // methods
-		c.Writer.Header().Set("Access-Control-Expose-Headers", "Content-Type, Content-Length")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Authorization, X-NHP-Ver")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "Content-Type, Content-Length, Set-Cookie")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Authorization, X-NHP-Ver, Cookie")
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Max-Age", "300")
 		// NHP headers

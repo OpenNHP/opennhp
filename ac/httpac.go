@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -144,6 +145,13 @@ func (ha *HttpAC) initRouter() {
 			err = common.ErrUrlPathInvalid
 			log.Error("path error: %v", err)
 			ctx.String(http.StatusOK, "{\"errMsg\": \"path error: %v\"}", err)
+			return
+		}
+
+		if token, err = url.QueryUnescape(token); err != nil {
+			err = common.ErrUrlPathInvalid
+			log.Error("token error: %v", err)
+			ctx.String(http.StatusOK, "{\"errMsg\": \"token error: %v\"}", err)
 			return
 		}
 

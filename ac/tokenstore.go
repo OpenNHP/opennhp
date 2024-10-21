@@ -37,7 +37,7 @@ func (a *UdpAC) GenerateAccessToken(entry *AccessEntry) string {
 	a.tokenStoreMutex.Lock()
 	defer a.tokenStoreMutex.Unlock()
 
-	entry.ExpireTime = time.Now().Add(time.Duration(entry.OpenTime) * time.Second)
+	entry.ExpireTime = time.Now().Add(time.Duration(entry.OpenTime+5) * time.Second) // keep token for additional 5 seconds in case a request is received late
 	tokenMap, found := a.tokenStore[token[0:1]]
 	if found {
 		tokenMap[token] = entry

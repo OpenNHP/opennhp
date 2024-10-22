@@ -164,19 +164,13 @@ NHP 服务器中的每个插件通常都结构化为一个单独的 Go 包。例
 
 例如“example”插件所要实现的功能主体为：
 
-1. 在某省身份认证平台接收到用户所提交的包含用户民、密码的表单后，NHP-Server服务器接收来自某省认证平台跳转URL中所附带的ticket；
+1. 在H5页面提交包含用户民、密码的表单后；
 
-2. 调用某省身份认证平台验证ticket接口，接收响应报文，并提取报文信息中附带的Token信息；
+2. NHP-Server服务器接收表单进行验证，验证成功后向NHP-AC服务器发起敲门；
 
-3. NHP-Server服务器向某省身份认证平台发送POST请求，验证Token有效性，请求格式参照对接文档中的接口签名方案与参数信息；
+3. NHP-AC开门成功后返回应用服务器地址给客户端；
 
-4. Token验证成功后，NHP-Server服务器向NHP-AC门禁服务器发送开门请求，开门成功后302跳转到应用代理服务器。
-
-整个功能流程时序图如下：
-
-![插件功能时序图示例](/images/plugin_image5.png) 
-
-***图四 插件功能时序图示例***
+4. 访问应用服务器资源。
 
 ### 3.4 核心代码开发
 
@@ -190,7 +184,7 @@ NHP 服务器中的每个插件通常都结构化为一个单独的 Go 包。例
 
 4. 在主应用程序中导入您的插件。在主应用程序文件 (main.go) 中，导入您的插件包并根据需要调用您的插件函数。
 
-参照插件功能设计进行代码开发，以“example”插件为例，AuthWithHttp函数接收HTTP请求，authRegular函数处理URL参数信息，并且需要设计验证ticket函数（ValidateTicket）、验证token有效性函数（ValidateToken）、构造带有token的POST请求函数（fetchToken）以及生成签名方案函数（signDemo）等辅助函数来实现功能。按照具体功能要求可进行拓展开发。
+参照插件功能设计进行代码开发，以“example”插件为例，设计AuthWithHttp函数接收处理HTTP请求，authRegular函数验证用户名密码并进行敲门，authAndShowLogin函数加载登录页面资源等，并且需要设计验辅助函数来实现功能。按照具体功能要求可进行拓展开发。
 
 ![example插件核心代码以及辅助代码函数示例](/images/plugin_image6.png) 
 
@@ -198,11 +192,7 @@ NHP 服务器中的每个插件通常都结构化为一个单独的 Go 包。例
 
 ![example插件核心代码以及辅助代码函数示例](/images/plugin_image8.png) 
 
-![example插件核心代码以及辅助代码函数示例](/images/plugin_image9.png) 
-
-![example插件核心代码以及辅助代码函数示例](/images/plugin_image10.png) 
-
-***图五、六、七、八、九 example插件核心代码以及辅助代码函数示例***
+***图四、五、六 example插件核心代码以及辅助代码函数示例***
 
 ### 3.5 插件的编译测试与部署
 
@@ -216,13 +206,13 @@ NHP 服务器中的每个插件通常都结构化为一个单独的 Go 包。例
 
 ![定义插件目录](/images/plugin_image11.png) 
 
-***图十 定义插件目录***
+***图七 定义插件目录***
 
 这行代码指定了插件的存放位置，即 server/plugins 目录。所有插件的源码和配置文件将会放在这个目录下，在启动NHP服务时，要确保插件能够正常加载，需要在NHP-Server的etc/resource.toml配置文件中配置插件文件路径。
 
 ![插件文件路径配置](/images/plugin_image12.png) 
 
-***图十一 插件文件路径配置***
+***图八 插件文件路径配置***
 
 ***生成版本信息并开始构建***: 在 generate-version-and-build 任务中，包含了一系列步骤用于生成版本号、提交 ID、构建时间等信息。这些信息有助于跟踪插件的版本和构建状态。
 
@@ -230,7 +220,7 @@ NHP 服务器中的每个插件通常都结构化为一个单独的 Go 包。例
 
 ![插件编译任务plugins](/images/plugin_image13.png) 
 
-***图十二 插件编译任务plugins***
+***图九 插件编译任务plugins***
 
 插件目录检查: test -d $(NHP_PLUGINS) 用于检查是否存在定义好的插件目录 (server/plugins)。
 

@@ -162,19 +162,13 @@ In the plugin function design phase, the following core points need to be clarif
 
 For example, the main functionality to be implemented by the "example" plugin is as follows:
 
-1. When the identity authentication platform of a province receives a user-submitted form containing the user's ID and password, the NHP-Server receives the ticket attached to the redirect URL from the provincial authentication platform;
+1. After submitting a form containing the user's identity and password on the H5 page;
 
-2. Call the ticket verification interface of the provincial identity authentication platform, receive the response message, and extract the Token information included in the message;
+2. The NHP-Server server receives the form for verification. After the verification is successful, it initiates a knock on the NHP-AC server;
 
-3. The NHP-Server sends a POST request to the provincial identity authentication platform to verify the validity of the Token, with the request format referring to the interface signature scheme and parameter information in the integration document;
+3. After NHP-AC successfully opens the door, it returns the application server address to the client;
 
-4. After successful Token verification, the NHP-Server sends an open door request to the NHP-AC access control server, and after a successful opening, redirects to the application proxy server with a 302 response.
-
-The sequence diagram for the entire functionality process is as follows:
-
-![Plugin Function Sequence Diagram Example](/images/plugin_image5.png) 
-
-***Figure 4 Plugin Function Sequence Diagram Example***
+4. Access application server resources.
 
 ## 3.4 Core Code Development
 
@@ -188,7 +182,7 @@ The steps for developing the plugin for the NHP server are as follows:
 
 4. Import your plugin in the main application. In the main application file (main.go), import your plugin package and call your plugin functions as needed.
 
-Following the plugin function design, taking the "example" plugin as an example, the AuthWithHttp function receives HTTP requests, the authRegular function processes URL parameter information, and you need to design auxiliary functions such as ValidateTicket for ticket verification, ValidateToken for Token validity verification, fetchToken for constructing POST requests with Token, and signDemo for generating signature schemes to achieve functionality. Development can be extended according to specific functional requirements.
+Refer to the plug-in function design for code development. Taking the "example" plug-in as an example, the AuthWithHttp function is designed to receive and process HTTP requests, the authRegular function verifies the user name and password and knocks on the door, the authAndShowLogin function loads login page resources, etc., and verification auxiliary functions need to be designed to implement the functions. Expansion and development can be carried out according to specific functional requirements.
 
 ![Example Plugin Core Code and Auxiliary Code Function Example](/images/plugin_image6.png) 
 
@@ -196,11 +190,7 @@ Following the plugin function design, taking the "example" plugin as an example,
 
 ![Example Plugin Core Code and Auxiliary Code Function Example](/images/plugin_image8.png) 
 
-![Example Plugin Core Code and Auxiliary Code Function Example](/images/plugin_image9.png) 
-
-![Example Plugin Core Code and Auxiliary Code Function Example](/images/plugin_image10.png) 
-
-***Figures 5, 6, 7, 8, 9 Example Plugin Core Code and Auxiliary Code Function Example***
+***Figures 4, 5, 6 Example Plugin Core Code and Auxiliary Code Function Example***
 
 ## 3.5 Plugin Compilation Testing and Deployment
 
@@ -214,13 +204,13 @@ The compilation process ensures that the plugin's code is consistent with the ma
 
 ![Define Plugin Directory](/images/plugin_image11.png) 
 
-***Figure 10 Define Plugin Directory***
+***Figure 7 Define Plugin Directory***
 
 This line of code specifies the storage location of the plugin, which is the server/plugins directory. All plugin source codes and configuration files will be placed in this directory. When starting the NHP service, to ensure the plugin loads correctly, the plugin file path needs to be configured in the NHP-Server's etc/resource.toml configuration file.
 
 ![Plugin File Path Configuration](/images/plugin_image12.png) 
 
-***Figure 11 Plugin File Path Configuration***
+***Figure 8 Plugin File Path Configuration***
 
 ***Generate Version Information and Start Build***: The generate-version-and-build task includes a series of steps to generate version numbers, commit IDs, build times, and other information. This information is helpful for tracking the version and build status of the plugin.
 
@@ -228,7 +218,7 @@ This line of code specifies the storage location of the plugin, which is the ser
 
 ![Plugin Compilation Task plugins](/images/plugin_image13.png) 
 
-***Figure 12 Plugin Compilation Task plugins***
+***Figure 9 Plugin Compilation Task plugins***
 
 Plugin Directory Check: test -d $(NHP_PLUGINS) checks if the defined plugin directory (server/plugins) exists.
 

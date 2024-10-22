@@ -28,6 +28,8 @@ type HttpServer struct {
 	ginEngine  *gin.Engine
 	listenAddr *net.TCPAddr
 
+	accessControlAllowOrigin string
+
 	wg      sync.WaitGroup
 	running atomic.Bool
 
@@ -67,7 +69,7 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 
 	gin.SetMode(gin.ReleaseMode)
 	hs.ginEngine = gin.New()
-	hs.ginEngine.Use(corsMiddleware())
+	hs.ginEngine.Use(corsMiddleware(hc.AccessControlAllowOrigin))
 	hs.ginEngine.Use(gin.LoggerWithWriter(us.log.Writer()))
 	hs.ginEngine.Use(gin.Recovery())
 
@@ -282,10 +284,10 @@ func (hs *HttpServer) initRouter() {
 // corsMiddleware is a middleware function that adds CORS headers to the HTTP response.
 // It allows cross-origin resource sharing, specifies allowed methods, exposes headers, and sets maximum age.
 // If the request method is OPTIONS, PUT, or DELETE, it aborts the request with a 204 status code.
-func corsMiddleware() gin.HandlerFunc {
+func corsMiddleware(originResource string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// HTTP headers for CORS
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")                   // allow cross-origin resource sharing
+		c.Writer.Header().Set("Access-Control-Allow-Origin", originResource) // allow cross-origin resource sharing
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS, POST") // methods
 		c.Writer.Header().Set("Access-Control-Expose-Headers", "Content-Type, Content-Length, Set-Cookie")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Authorization, X-NHP-Ver, Cookie")

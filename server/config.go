@@ -41,6 +41,7 @@ type HttpConfig struct {
 	HttpListenIp string
 	TLSCertFile  string
 	TLSKeyFile   string
+	AccessControlAllowOrigin string
 }
 
 type Peers struct {

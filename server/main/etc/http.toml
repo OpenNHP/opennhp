@@ -4,9 +4,11 @@
 # EnableTLS: whether to use TLS certificates for hosting https server.
 # TLSCertFile: certificate file path.
 # TLSKeyFile: key file path.
+# AccessControlAllowOrigin: the response header indicates whether the response can be shared with requesting code from the given origin.
 # to update http changes, you need to restart the http server by changing "EnableHttp" to "false" and then switch it back to "true".
 EnableHttp = true
 EnableTLS = true
 HttpListenIp = "0.0.0.0"    # empty for ipv4 + ipv6, "0.0.0.0" for ipv4 only, "127.0.0.1" for local ipv4 access only
 TLSCertFile = "cert/cert.pem"
 TLSKeyFile = "cert/cert.key"
+AccessControlAllowOrigin = "https://demologin.opennhp.cn"

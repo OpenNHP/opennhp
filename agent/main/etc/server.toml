@@ -7,7 +7,7 @@
 # ExpireTime (epoch timestamp in seconds): peer key validation will fail when it expires.
 [[Servers]]
 Hostname = ""
-Ip = "192.168.56.101"
+Ip = "192.168.80.35"
 Port = 62206
 PubKeyBase64 = "WqJxe+Z4+wLen3VRgZx6YnbjvJFmptz99zkONCt/7gc="
-ExpireTime = 1716345064
+ExpireTime = 1924991999

@@ -10,7 +10,8 @@ const (
 	ServerKeepaliveInterval        = 20 // seconds
 	ServerDiscoveryRetryBeforeFail = 3
 
-	TempPortOpenTime = 30 //
+	TokenStoreRefreshInterval = 10
+	TempPortOpenTime          = 30 //
 
 	IPSET_DEFAULT_NAME      = "defaultset"
 	IPSET_DEFAULT_DOWN_NAME = "defaultset_down"

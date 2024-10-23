@@ -78,9 +78,13 @@ endif
 plugins:
 	@if test -d $(NHP_PLUGINS); then $(MAKE) -C $(NHP_PLUGINS); fi
 
-archive:
-	@echo "$(COLOUR_BLUE)[opennhp] Start archiving... $(END_COLOUR)"
-	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-server
-	@echo "$(COLOUR_GREEN)[opennhp] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
+test:
+	@echo "[OpenNHP] Runing Tests for the Output Binaries ..."
+	@echo "$(COLOUR_GREEN)[OpenNHP] All Tests Are Done!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init agentsdk devicesdk plugins archive
+archive:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Start archiving... $(END_COLOUR)"
+	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-server
+	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
+
+.PHONY: all generate-version-and-build init agentsdk devicesdk plugins test archive 

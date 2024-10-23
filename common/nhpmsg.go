@@ -70,14 +70,15 @@ type PreAccessInfo struct {
 }
 
 type ServerKnockAckMsg struct {
-	ErrCode           string            `json:"errCode"`
-	ErrMsg            string            `json:"errMsg,omitempty"`
-	ResourceHost      map[string]string `json:"resHost"`
-	OpenTime          uint32            `json:"opnTime"`
-	AuthProviderToken string            `json:"aspToken,omitempty"` // optional for ac backend validation
-	AgentAddr         string            `json:"agentAddr"`
-	PreAccessActions  []*PreAccessInfo  `json:"preActs,omitempty"` // optional for pre-access
-	RedirectUrl       string            `json:"redirectUrl,omitempty"`
+	ErrCode           string                    `json:"errCode"`
+	ErrMsg            string                    `json:"errMsg,omitempty"`
+	ResourceHost      map[string]string         `json:"resHost"`
+	OpenTime          uint32                    `json:"opnTime"`
+	AuthProviderToken string                    `json:"aspToken,omitempty"` // optional for ac backend validation
+	AgentAddr         string                    `json:"agentAddr"`
+	ACTokens          map[string]string         `json:"acTokens"`
+	PreAccessActions  map[string]*PreAccessInfo `json:"preActions,omitempty"` // optional for pre-access
+	RedirectUrl       string                    `json:"redirectUrl,omitempty"`
 }
 
 type AgentListMsg struct {
@@ -125,6 +126,7 @@ type ACOpsResultMsg struct {
 	ErrCode         string         `json:"errCode"`
 	ErrMsg          string         `json:"errMsg,omitempty"`
 	OpenTime        uint32         `json:"opnTime"`
+	ACToken         string         `json:"token"`
 	PreAccessAction *PreAccessInfo `json:"preAct"`
 }
 
@@ -132,6 +134,11 @@ type ACOnlineMsg struct {
 	AuthServiceId string   `json:"aspId"`
 	ResourceIds   []string `json:"resIds"`
 	ACId          string   `json:"acId,omitempty"`
+}
+
+type ACRefreshMsg struct {
+	NhpToken   string      `json:"nhpToken"`
+	SourceAddr *NetAddress `json:"srcAddr"`
 }
 
 type ServerACAckMsg struct {

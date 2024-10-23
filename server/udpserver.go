@@ -55,6 +55,9 @@ type UdpServer struct {
 	acPeerMapMutex sync.Mutex
 	acPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
+	tokenStoreMutex sync.Mutex
+	tokenStore      TokenStore
+
 	// block address management
 	blockAddrMapMutex sync.Mutex
 	blockAddrMap      map[string]*BlockAddr // indexed by remote UDP address, need lock for dynamic change
@@ -189,6 +192,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 
 	s.remoteConnectionMap = make(map[string]*UdpConn)
 	s.acConnectionMap = make(map[string]*ACConn)
+	s.tokenStore = make(TokenStore)
 	s.blockAddrMap = make(map[string]*BlockAddr)
 	s.signals.stop = make(chan struct{})
 
@@ -199,7 +203,8 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.device.Start()
 
 	// start server routines
-	s.wg.Add(4)
+	s.wg.Add(5)
+	go s.tokenStoreRefreshRoutine()
 	go s.BlockAddrRefreshRoutine()
 	go s.recvPacketRoutine()
 	go s.sendMessageRoutine()
@@ -855,13 +860,13 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 	ackMsg = req.Ack
 
 	acDstIpMap := make(map[string][]*common.NetAddress)
-	for _, info := range res.Resources {
-		addrs, exist := acDstIpMap[info.ACId]
+	for resName, info := range res.Resources {
+		addrs, exist := acDstIpMap[resName]
 		if exist {
 			addrs = append(addrs, info.Addr)
-			acDstIpMap[info.ACId] = addrs
+			acDstIpMap[resName] = addrs
 		} else {
-			acDstIpMap[info.ACId] = []*common.NetAddress{info.Addr}
+			acDstIpMap[resName] = []*common.NetAddress{info.Addr}
 		}
 	}
 
@@ -869,8 +874,11 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 	var acWg sync.WaitGroup
 	var artMsgsMutex sync.Mutex
 	artMsgs := make(map[string]*common.ACOpsResultMsg)
+	ackMsg.ACTokens = make(map[string]string)
+	ackMsg.PreAccessActions = make(map[string]*common.PreAccessInfo)
 
-	for acId, dstAddrs := range acDstIpMap {
+	for resName, dstAddrs := range acDstIpMap {
+		acId := res.Resources[resName].ACId
 		s.acConnectionMapMutex.Lock()
 		acConn, found := s.acConnectionMap[acId]
 		s.acConnectionMapMutex.Unlock()
@@ -883,7 +891,7 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 		}
 
 		acWg.Add(1)
-		go func(id string, addrs []*common.NetAddress) {
+		go func(name string, addrs []*common.NetAddress) {
 			defer acWg.Done()
 
 			openTime := res.OpenTime
@@ -892,9 +900,11 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 			}
 			artMsg, _ := s.processACOperation(knkMsg, acConn, srcAddr, addrs, openTime)
 			artMsgsMutex.Lock()
-			artMsgs[id] = artMsg
+			artMsgs[name] = artMsg
+			ackMsg.ACTokens[name] = artMsg.ACToken
+			ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
 			artMsgsMutex.Unlock()
-		}(acId, dstAddrs)
+		}(resName, dstAddrs)
 	}
 	acWg.Wait()
 
@@ -912,13 +922,6 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 		ackMsg.ErrCode = common.ErrServerACOpsFailed.ErrorCode()
 		ackMsg.ErrMsg = err.Error()
 		return
-	}
-
-	ackMsg.PreAccessActions = make([]*common.PreAccessInfo, 0, len(artMsgs))
-	for _, artMsg := range artMsgs {
-		if artMsg.PreAccessAction != nil {
-			ackMsg.PreAccessActions = append(ackMsg.PreAccessActions, artMsg.PreAccessAction)
-		}
 	}
 
 	ackMsg.ErrCode = common.ErrSuccess.ErrorCode()

@@ -18,6 +18,7 @@ const (
 
 // knock
 const (
-	DefaultIpOpenTime      = 120 // second, align with ipset default timeout
-	ACOpenCompensationTime = 5   // second
+	DefaultIpOpenTime         = 120 // second, align with ipset default timeout
+	ACOpenCompensationTime    = 5   // second
+	TokenStoreRefreshInterval = 10  // second
 )

@@ -108,6 +108,7 @@ func (d *Device) createPacketParserData(pd *PacketData) (ppd *PacketParserData, 
 		// init header and init device ecdh
 		ppd.HeaderFlag = binary.BigEndian.Uint16(ppd.basePacket.Content[10:12])
 		if ppd.HeaderFlag&NHP_FLAG_EXTENDEDLENGTH == 0 {
+			log.Info("start decryption using CIPHER_SCHEME_CURVE")
 			ppd.CipherScheme = CIPHER_SCHEME_CURVE
 			ppd.header = (*curve.HeaderCurve)(unsafe.Pointer(&ppd.basePacket.Content[0]))
 			ppd.Ciphers = NewCipherSuite(CIPHER_SCHEME_CURVE)
@@ -118,6 +119,7 @@ func (d *Device) createPacketParserData(pd *PacketData) (ppd *PacketParserData, 
 			case NHP_FLAG_SCHEME_GMSM:
 				fallthrough
 			default:
+				log.Info("start decryption using CIPHER_SCHEME_GMSM")
 				ppd.CipherScheme = CIPHER_SCHEME_GMSM
 				ppd.header = (*gmsm.HeaderGmsm)(unsafe.Pointer(&ppd.basePacket.Content[0]))
 				ppd.Ciphers = NewCipherSuite(CIPHER_SCHEME_GMSM)
@@ -276,6 +278,8 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	if ppd.CipherScheme == CIPHER_SCHEME_CURVE {
 		peerPk = peerPk[:PublicKeySize]
 	}
+
+	//log.Debug("decrypted pubkey: %v, input: %v", peerPk, ppd.header.StaticBytes())
 
 	// validate peer public key if they already exists in peer pool
 	// also validate peer address if it has been changed
@@ -463,6 +467,8 @@ func (ppd *PacketParserData) decryptBody() (err error) {
 		return err
 	}
 
+	//log.Debug("decrypted body: %v, input: %v", body, ppd.basePacket.Content[ppd.header.Size():])
+
 	// Note: ppd.BodyMessage must be a separate []byte slice because ppd.BasePacket.Buf will be released later
 	if ppd.BodyCompress {
 		// decompress
@@ -479,9 +485,10 @@ func (ppd *PacketParserData) decryptBody() (err error) {
 			return err
 		}
 
-		ppd.BodyMessage = buf.Bytes()
+		ppd.BodyMessage = buf.Bytes() // separately allocated memory
+		//log.Debug("message decompressed %v -> %v", body, ppd.BodyMessage)
 	} else {
-		ppd.BodyMessage = append(ppd.BodyMessage, body...)
+		ppd.BodyMessage = append(ppd.BodyMessage, body...) // deep copy
 	}
 
 	return nil

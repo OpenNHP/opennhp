@@ -14,8 +14,9 @@ import (
 )
 
 var (
-	baseConfigWatch   io.Closer
-	serverConfigWatch io.Closer
+	baseConfigWatch io.Closer
+	httpConfigWatch io.Closer
+	serverPeerWatch io.Closer
 
 	errLoadConfig = fmt.Errorf("config load error")
 )
@@ -31,42 +32,65 @@ type Config struct {
 	LogLevel         int             `json:"logLevel"`
 }
 
+type HttpConfig struct {
+	EnableHttp     bool
+	EnableTLS      bool
+	HttpListenPort int
+	TLSCertFile    string
+	TLSKeyFile     string
+}
+
 type Peers struct {
 	Servers []*core.UdpPeer
 }
 
-func (d *UdpAC) loadBaseConfig() error {
+func (a *UdpAC) loadBaseConfig() error {
 	// config.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
-	if err := d.updateBaseConfig(fileName); err != nil {
+	if err := a.updateBaseConfig(fileName); err != nil {
 		// report base config error
 		return err
 	}
 
 	baseConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("base config: %s has been updated", fileName)
-		d.updateBaseConfig(fileName)
+		a.updateBaseConfig(fileName)
 	})
 	return nil
 }
 
-func (d *UdpAC) loadPeers() error {
-	// server.toml
-	fileName := filepath.Join(ExeDirPath, "etc", "server.toml")
-	if err := d.updateServerPeers(fileName); err != nil {
+func (a *UdpAC) loadHttpConfig() error {
+	// http.toml
+	fileName := filepath.Join(ExeDirPath, "etc", "http.toml")
+	if err := a.updateHttpConfig(fileName); err != nil {
 		// ignore error
 		_ = err
 	}
 
-	serverConfigWatch = utils.WatchFile(fileName, func() {
+	httpConfigWatch = utils.WatchFile(fileName, func() {
+		log.Info("http config: %s has been updated", fileName)
+		a.updateHttpConfig(fileName)
+	})
+	return nil
+}
+
+func (a *UdpAC) loadPeers() error {
+	// server.toml
+	fileName := filepath.Join(ExeDirPath, "etc", "server.toml")
+	if err := a.updateServerPeers(fileName); err != nil {
+		// ignore error
+		_ = err
+	}
+
+	serverPeerWatch = utils.WatchFile(fileName, func() {
 		log.Info("server peer config: %s has been updated", fileName)
-		d.updateServerPeers(fileName)
+		a.updateServerPeers(fileName)
 	})
 
 	return nil
 }
 
-func (d *UdpAC) updateBaseConfig(file string) (err error) {
+func (a *UdpAC) updateBaseConfig(file string) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
@@ -81,33 +105,75 @@ func (d *UdpAC) updateBaseConfig(file string) (err error) {
 		log.Error("failed to unmarshal base config: %v", err)
 	}
 
-	if d.config == nil {
-		d.config = &conf
-		d.log.SetLogLevel(conf.LogLevel)
+	if a.config == nil {
+		a.config = &conf
+		a.log.SetLogLevel(conf.LogLevel)
 		return err
 	}
 
 	// update
-	if d.config.LogLevel != conf.LogLevel {
+	if a.config.LogLevel != conf.LogLevel {
 		log.Info("set base log level to %d", conf.LogLevel)
-		d.log.SetLogLevel(conf.LogLevel)
-		d.config.LogLevel = conf.LogLevel
+		a.log.SetLogLevel(conf.LogLevel)
+		a.config.LogLevel = conf.LogLevel
 	}
 
-	if d.config.DefaultIp != conf.DefaultIp {
+	if a.config.DefaultIp != conf.DefaultIp {
 		log.Info("set default ip mode to %s", conf.DefaultIp)
-		d.config.DefaultIp = conf.DefaultIp
+		a.config.DefaultIp = conf.DefaultIp
 	}
 
-	if d.config.IpPassMode != conf.IpPassMode {
+	if a.config.IpPassMode != conf.IpPassMode {
 		log.Info("set ip pass mode to %d", conf.IpPassMode)
-		d.config.IpPassMode = conf.IpPassMode
+		a.config.IpPassMode = conf.IpPassMode
 	}
 
 	return err
 }
 
-func (d *UdpAC) updateServerPeers(file string) (err error) {
+func (a *UdpAC) updateHttpConfig(file string) (err error) {
+	utils.CatchPanicThenRun(func() {
+		err = errLoadConfig
+	})
+
+	content, err := os.ReadFile(file)
+	if err != nil {
+		log.Error("failed to read http config: %v", err)
+	}
+
+	var httpConf HttpConfig
+	if err := toml.Unmarshal(content, &httpConf); err != nil {
+		log.Error("failed to unmarshal http config: %v", err)
+	}
+
+	// update
+	if httpConf.EnableHttp {
+		// start http server
+		if a.httpServer == nil || !a.httpServer.IsRunning() {
+			if a.httpServer != nil {
+				// stop old http server
+				go a.httpServer.Stop()
+			}
+			hs := &HttpAC{}
+			a.httpServer = hs
+			err = hs.Start(a, &httpConf)
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		// stop http server
+		if a.httpServer != nil && a.httpServer.IsRunning() {
+			go a.httpServer.Stop()
+			a.httpServer = nil
+		}
+	}
+
+	a.httpConfig = &httpConf
+	return err
+}
+
+func (a *UdpAC) updateServerPeers(file string) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
@@ -125,32 +191,35 @@ func (d *UdpAC) updateServerPeers(file string) (err error) {
 	}
 	for _, p := range peers.Servers {
 		p.Type = core.NHP_SERVER
-		d.device.AddPeer(p)
+		a.device.AddPeer(p)
 		serverPeerMap[p.PublicKeyBase64()] = p
 	}
 
 	// remove old peers from device
-	d.serverPeerMutex.Lock()
-	defer d.serverPeerMutex.Unlock()
-	for pubKey := range d.serverPeerMap {
+	a.serverPeerMutex.Lock()
+	defer a.serverPeerMutex.Unlock()
+	for pubKey := range a.serverPeerMap {
 		if _, found := serverPeerMap[pubKey]; !found {
-			d.device.RemovePeer(pubKey)
+			a.device.RemovePeer(pubKey)
 		}
 	}
-	d.serverPeerMap = serverPeerMap
+	a.serverPeerMap = serverPeerMap
 
 	return err
 }
 
-func (d *UdpAC) IpPassMode() int {
-	return d.config.IpPassMode
+func (a *UdpAC) IpPassMode() int {
+	return a.config.IpPassMode
 }
 
-func (d *UdpAC) StopConfigWatch() {
+func (a *UdpAC) StopConfigWatch() {
 	if baseConfigWatch != nil {
 		baseConfigWatch.Close()
 	}
-	if serverConfigWatch != nil {
-		serverConfigWatch.Close()
+	if httpConfigWatch != nil {
+		httpConfigWatch.Close()
+	}
+	if serverPeerWatch != nil {
+		serverPeerWatch.Close()
 	}
 }

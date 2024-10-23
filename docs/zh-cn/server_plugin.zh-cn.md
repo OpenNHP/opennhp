@@ -2,18 +2,16 @@
 layout: page
 title: 服务器插件开发
 parent: 中文版
-nav_order: 7
+nav_order: 8
 permalink: /zh-cn/server_plugin/
 ---
 
 # OpenNHP插件开发教程
 {: .fs-9 }
 
-[English version](/server_plugin/){: .label .fs-4 }
+[English](/server_plugin/){: .label .fs-4 }
 
 ---
-
-# 目录
 
 - [简介	](#简介 )
 

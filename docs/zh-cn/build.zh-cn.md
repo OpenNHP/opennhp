@@ -2,12 +2,14 @@
 layout: page
 title: 编译源代码
 parent: 中文版
-nav_order: 5
+nav_order: 6
 permalink: /zh-cn/build/
 ---
 
 # 编译OpenNHP
 {: .fs-9 }
+
+[English](/build/){: .label .fs-4 }
 
 ---
 
@@ -33,16 +35,16 @@ permalink: /zh-cn/build/
 
 - **【WSL环境的IP地址】** 在WSL的Linux环境中，运行以下命令获取IP地址：
 
-| 主机 | 查看IP地址的命令  |
-|:--:|:--:|
-| WSL中Linux主机 | `hostname -I \| awk '{print $1}'` |  
-| WSL宿主Windows主机 | `ip route show \| grep -i default \| awk '{ print $3}'` |  
+|        主机        |                    查看IP地址的命令                     |
+| :----------------: | :-----------------------------------------------------: |
+|   WSL中Linux主机   |            `hostname -I \| awk '{print $1}'`            |
+| WSL宿主Windows主机 | `ip route show \| grep -i default \| awk '{ print $3}'` |
 
 ## 2. 系统需求
 
-- 2.1 `Go语言`环境：**Go 1.18** 或以上。安装包下载地址: <https://go.dev/dl/>
+- 2.1 `Go语言`环境：**Go 1.21** 。安装包下载地址: <https://go.dev/dl/>
   - **Windows与macOS**环境下，通过下载的安装程序来安装Go。
-  - **Linux**环境下可以直接通过管理工具安装： ：`sudo apt install golang ` 
+  - **Linux**环境下可以直接通过管理工具安装： `sudo apt install golang ` 
   - 安装成功后，运行命令`go version` 来查看Go版本号。
   - **Windows与macOS**环境下，通过下载的安装程序来安装Go。
   - **Linux**环境下可以直接通过管理工具安装：`sudo apt install golang` 或者通过以下命令手动安装：
@@ -88,7 +90,34 @@ permalink: /zh-cn/build/
       ```bat
       wsl --install --distribution Ubuntu-22.04
       ```
-      
+
+<small>*注：如果 2.1 和 2.2 已完成，直接在项目目录下执行编译命令 `.\build.bat` 时，通常会遇到 `系统找不到指定的路径`或 ` 'lib' 不是内部或外部命令，也不是可运行的程序或批处理文件。` 的错误。2.3 提供了解决该问题的方法，供参考使用。*</small>
+
+- 2.3 `lib`环境：
+
+
+  - 在编译运行的命令中使用了 lib 工具，这是用于生成 .lib 文件的工具，通常用于链接静态库或导出符号表（在 Windows 中生成 .lib 文件以便与 .dll 文件配合使用）。遇到的错误提示 lib 不是内部或外部命令，表示系统找不到 lib 工具。
+  
+  - **解决（'lib' 不是内部或外部命令，也不是可运行的程序或批处理文件）问题 ：** 安装 Visual Studio 和 Visual Studio tools。
+
+    - lib 工具是微软的库管理工具，通常随 Visual Studio 的 Microsoft Build Tools 安装。确保你已安装 Visual Studio，并且选择了 C++ 生成工具（C++ Build Tools）组件，其中包括 lib.exe。
+
+    - 如果还没有安装 Visual Studio，可以从 Visual Studio 官方网站下载安装：https://visualstudiomicrosoft.com/zh-hans/ 安装时，选择“桌面开发(C++)”工作负载，它包含 lib.exe 及其他必要的工具。
+
+    - 安装 Visual Studio 后，确保使用 Visual Studio 开发者命令行（Developer Command Prompt） 来运行包含 lib 命令的 `build.bat `文件。这个命令行工具会自动加载构建工具的环境变量，如 lib.exe
+  
+   - **解决（系统找不到指定路径的错误）问题 ：** 更改`bulid.bat`文件中的路径
+
+     - 打开 `build.bat` 文件，找到
+     ```bat
+     call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
+     ```
+
+     - 修改为你自己的 visual studio目录下安装路径。比如：
+     ```bat
+     call "F:\develop\visualstu\VC\Auxiliary\Build\vcvarsall.bat" x64
+     ```
+
 ## 3. 编译
 
 1. 拉取代码仓库
@@ -107,7 +136,8 @@ permalink: /zh-cn/build/
    - **Linux与macOS**：运行代码根目录下脚本
    `make`
    - **Windows**：运行代码根目录下*BAT*文件
-   `build.bat`
+   `build.bat`<br>
+   <small>*（注：如果在windows下编译过程中出现错误，请尝试此编译方法：在Visual Studio的developer command prompt for VS命令窗口中，切换到项目目录，执行`./build.bat`命令）*</small>
 
 ## 4. 结果
 

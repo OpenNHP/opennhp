@@ -2,6 +2,14 @@ package common
 
 import "net/url"
 
+// an object contains represent knocking user information
+type AgentUser struct {
+	UserId         string
+	DeviceId       string
+	OrganizationId string
+	AuthServiceId  string
+}
+
 // authsvcprovider and resource
 type LoginPageContext struct {
 	Title              string `json:"title,omitempty"`
@@ -75,4 +83,9 @@ type HttpKnockRequest struct {
 	UserAgent      string   `json:"-"`
 	SrcIp          string   `json:"-"`
 	SrcPort        int      `json:"-"`
+}
+
+type HttpRefreshRequest struct {
+	Token string `json:"token"`
+	SrcIp string `json:"srcIp"`
 }

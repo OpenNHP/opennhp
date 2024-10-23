@@ -4,4 +4,4 @@
 # ExpireTime (epoch timestamp in seconds): peer key validation will fail when it expires.
 [[ACs]]
 PubKeyBase64 = "Fr5jzZDVpNh5m9AcBDMtHGmbCAczHyPegT8IxQ3XAzE="
-ExpireTime = 1716345064
+ExpireTime = 1924991999

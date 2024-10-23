@@ -244,14 +244,33 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 			log.Error("RedirectUrl is not provided.")
 		} else {
 			ackMsg.RedirectUrl = res.RedirectUrl
-			ctx.SetCookie(
-				"nhp-token", 					// Name
-				"example-nhp-token-GUBdoVXpxt", // Value
-				-1,								// MaxAge
-				"/",							// Path
-				res.CookieDomain,				// Domain
-				true,							// Secure
-				true)							// HttpOnly
+		}
+
+		// set cookies
+		// note that a dot in domain prefix used to make a difference, but now it doesn't (RFC6265).
+		// The cookie will be sent to any subdomain of the specified domain, with or without the leading dot.
+		singleHost := len(ackMsg.ACTokens) == 1
+		for resName, token := range ackMsg.ACTokens {
+			if singleHost {
+				ctx.SetCookie(
+					"nhp-token",            // Name
+					url.QueryEscape(token), // Value
+					int(res.OpenTime),      // MaxAge - use the knock interval time
+					"/",                    // Path
+					res.CookieDomain,       // Domain
+					true,                   // Secure - if true, this cookie will only be sent on https, not http
+					true)                   // HttpOnly - if true, this cookie will only be sent on http(s)
+			} else {
+				domain := strings.Split(ackMsg.ResourceHost[resName], ":")[0]
+				ctx.SetCookie(
+					"nhp-token"+"/"+resName, // Name
+					url.QueryEscape(token),  // Value
+					int(res.OpenTime),       // MaxAge - use the knock interval time
+					"/",                     // Path
+					domain,                  // Domain
+					true,                    // Secure - if true, this cookie will only be sent on https, not http
+					true)                    // HttpOnly - if true, this cookie will only be sent on http(s)
+			}
 			log.Info("ctx.SetCookie.")
 		}
 	}

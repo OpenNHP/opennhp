@@ -69,7 +69,7 @@ func (h *HeaderCurve) Flag() uint16 {
 
 func (h *HeaderCurve) SetFlag(flag uint16) {
 	flag &= ^uint16(NHP_FLAG_EXTENDEDLENGTH)
-	flag &= 0xF << 12
+	flag &= 0x0FFF
 	binary.BigEndian.PutUint16(h.HeaderCommon[10:12], flag)
 }
 

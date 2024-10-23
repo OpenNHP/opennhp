@@ -1,12 +1,13 @@
 [![en](https://img.shields.io/badge/lang-en-green.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.md)
 [![zh-cn](https://img.shields.io/badge/lang-zh--cn-green.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.zh-cn.md)
-[![de](https://img.shields.io/badge/lang-de-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.de.md)
-[![ja](https://img.shields.io/badge/lang-ja-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.ja.md)
-[![fr](https://img.shields.io/badge/lang-fr-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.fr.md)
-[![es](https://img.shields.io/badge/lang-es-red.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.es.md)
+[![de](https://img.shields.io/badge/lang-de-green.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.de.md)
+[![ja](https://img.shields.io/badge/lang-ja-green.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.ja.md)
+[![fr](https://img.shields.io/badge/lang-fr-green.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.fr.md)
+[![es](https://img.shields.io/badge/lang-es-green.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.es.md)
 
-![OpenNHP Logo](docs/images/logo1.png)
+![OpenNHP Logo](docs/images/logo11.png)
 # OpenNHP: Zero Trust Network-infrastructure Hiding Protocol
+A lightweight cryptography-driven zero trust networking protocol at the OSI 5th layer to hide your server and data from attackers. 
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
@@ -22,14 +23,43 @@ The rapid advancement of **AI** technologies, particularly large language models
 
 Gartner research predicts a [rapid increase in AI-driven cyberattacks](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025). This shifting paradigm calls for a reevaluation of traditional cybersecurity strategies, with a focus on proactive defenses, rapid response mechanisms, and the adoption of network hiding technologies to safeguard critical infrastructure.
 
+---
+
+## Quick Demo: See OpenNHP in Action
+
+Before diving into the details of OpenNHP, let's start with a quick demonstration of how OpenNHP protects a server from unauthorized access. You can see it in action by accessing the protected server at https://acdemo.opennhp.org.
+
+### 1) The Protected Server is "Invisible" to Unauthenticated Users
+
+By default, any attempt to connect to the protected server will result in a TIME OUT error, as all ports are closed, making the server appear offline and effectively *"invisible."*
+
+![OpenNHP Demo](docs/images/OpenNHP_ACDemo0.png)
+
+Port scanning the server will also return a TIME OUT error.
+
+![OpenNHP Demo](docs/images/OpenNHP_ScanDemo.png)
+
+### 2) After Authentication, the Protected Server Becomes Accessible
+
+OpenNHP supports a variety of authentication methods, such as OAuth, SAML, QR codes, and more. For simplicity, this demo uses a basic username/password authentication service at https://demologin.opennhp.org to demonstrate the process.
+
+![OpenNHP Demo](docs/images/OpenNHP_DemoLogin.png)
+
+Once you click the "Login" button, authentication is completed successfully, and you are redirected to the protected server. At this point, the server becomes *"visible"* and accessible on your device.
+
+![OpenNHP Demo](docs/images/OpenNHP_ACDemo1.png)
+
+---
+
 ## Vision: Making the Internet Trustworthy
 
 The openness of TCP/IP protocols has driven the explosive growth of internet applications but also exposed vulnerabilities, allowing malicious actors to gain unauthorized access and exploit any exposed IP address. Although the [OSI network model](https://en.wikipedia.org/wiki/OSI_model) defines the *5th layer (Session Layer)* for managing connections, few effective solutions have been implemented to address this.
 
-**NHP**, or the **"Network-infrastructure Hiding Protocol"**, is a Zero Trust communication protocol designed to function at the *OSI Session Layer*, which is optimal for managing network visibility and connections. NHP's key objective is to conceal protected resources from unauthorized entities, granting access only to verified, authorized users through continuous verification, contributing to a more trustworthy Internet.
+**NHP**, or the **"Network-infrastructure Hiding Protocol"**, is a lightweight cryptography-driven Zero Trust networking protocol designed to function at the *OSI Session Layer*, which is optimal for managing network visibility and connections. NHP's key objective is to conceal protected resources from unauthorized entities, granting access only to verified, authorized users through continuous verification, contributing to a more trustworthy Internet.
 
 ![Trustworthy Internet](docs/images/TrustworthyCyberspace.png)
 
+---
 
 ## Solution: OpenNHP Fixes the Network Visibility Control
 
@@ -71,13 +101,13 @@ The OpenNHP architecture is inspired by the [NIST Zero Trust Architecture standa
 
 > Please refer to the [OpenNHP Documentation](https://opennhp.org/) for detailed information about architecture and workflow.
 
-## Cryptographic Algorithms
+## Core: Cryptographic Algorithms
 
 Cryptography is at the heart of OpenNHP, providing robust security, excellent performance, and scalability by utilizing cutting-edge cryptographic algorithms. Below are the key cryptographic algorithms and frameworks employed by OpenNHP:
 
 - **[Elliptic Curve Cryptography (ECC)](https://en.wikipedia.org/wiki/Elliptic-curve_cryptography):** Used for efficient public key cryptography.
 
-Compared to RSA, ECC offers superior efficiency with stronger encryption at shorter key lengths, improving both network transmission and computational performance. The table below highlights the differences in security strength, key lengths, and the key length ratio between RSA and ECC, along with their respective validity periods.
+> Compared to RSA, ECC offers superior efficiency with stronger encryption at shorter key lengths, improving both network transmission and computational performance. The table below highlights the differences in security strength, key lengths, and the key length ratio between RSA and ECC, along with their respective validity periods.
 
 | Security Strength (bits) | DSA/RSA Key Length (bits) | ECC Key Length (bits) | Ratio: ECC vs. DSA/RSA | Validity |
 |:------------------------:|:-------------------------:|:---------------------:|:----------------------:|:--------:|
@@ -89,16 +119,19 @@ Compared to RSA, ECC offers superior efficiency with stronger encryption at shor
 
 - **[Noise Protocol Framework](https://noiseprotocol.org/):** Enables secure key exchange, message encryption/decryption, and mutual authentication.
 
-The Noise Protocol is built around the [Diffie-Hellman key agreement](https://en.wikipedia.org/wiki/Diffie%E2%80%93Hellman_key_exchange) and provides modern cryptographic solutions like mutual and optional authentication, identity hiding, forward secrecy, and zero round-trip encryption. Proven for its security and performance, it is already used by popular applications like [WhatsApp](https://www.whatsapp.com/security/WhatsApp-Security-Whitepaper.pdf), [Slack](https://github.com/slackhq/nebula) and [WireGuard](https://www.wireguard.com/).
+> The Noise Protocol is built around the [Diffie-Hellman key agreement](https://en.wikipedia.org/wiki/Diffie%E2%80%93Hellman_key_exchange) and provides modern cryptographic solutions like mutual and optional authentication, identity hiding, forward secrecy, and zero round-trip encryption. Proven for its security and performance, it is already used by popular applications like [WhatsApp](https://www.whatsapp.com/security/WhatsApp-Security-Whitepaper.pdf), [Slack](https://github.com/slackhq/nebula) and [WireGuard](https://www.wireguard.com/).
 
 - **[Identity-Based Cryptography (IBC)](https://en.wikipedia.org/wiki/Identity-based_cryptography):** Simplifies key distribution at scale.
 
-Efficient key distribution is essential for implementing Zero Trust. OpenNHP supports both PKI and IBC. While PKI has been widely used for decades, it depends on centralized Certificate Authorities (CA) for identity verification and key management, which can be time-consuming and costly. In contrast, IBC allows for a decentralized and self-governing approach to identity verification and key management, making it more cost-effective for OpenNHP's Zero Trust environment, where billions of devices or servers may need protection and onboarding in real-time.
+> Efficient key distribution is essential for implementing Zero Trust. OpenNHP supports both PKI and IBC. While PKI has been widely used for decades, it depends on centralized Certificate Authorities (CA) for identity verification and key management, which can be time-consuming and costly. In contrast, IBC allows for a decentralized and self-governing approach to identity verification and key management, making it more cost-effective for OpenNHP's Zero Trust environment, where billions of devices or servers may need protection and onboarding in real-time.
 
 - **[Certificateless Public Key Cryptography (CL-PKC)](https://en.wikipedia.org/wiki/Certificateless_cryptography):** Recommended IBC algorithm 
 
-CL-PKC is a scheme that enhances security by avoiding key escrow and addressing the limitations of Identity-Based Cryptography (IBC). In most IBC systems, a user's private key is generated by a Key Generation Center (KGC), which introduces significant risks. A compromised KGC can lead to the exposure of all users' private keys, requiring full trust in the KGC. CL-PKC mitigates this issue by splitting the key generation process, so the KGC only has knowledge of a partial private key. As a result, CL-PKC combines the strengths of both PKI and IBC, offering stronger security without the drawbacks of centralized key management.
+> CL-PKC is a scheme that enhances security by avoiding key escrow and addressing the limitations of Identity-Based Cryptography (IBC). In most IBC systems, a user's private key is generated by a Key Generation Center (KGC), which introduces significant risks. A compromised KGC can lead to the exposure of all users' private keys, requiring full trust in the KGC. CL-PKC mitigates this issue by splitting the key generation process, so the KGC only has knowledge of a partial private key. As a result, CL-PKC combines the strengths of both PKI and IBC, offering stronger security without the drawbacks of centralized key management.
 
+Further reading:
+
+> Please refer to the [OpenNHP Documentation](https://opennhp.org/cryptography/) for detailed explanation of cryptographic algorithms used in OpenNHP.
 
 ## Key Features
 
@@ -127,30 +160,6 @@ CL-PKC is a scheme that enhances security by avoiding key escrow and addressing 
 - **Flexible deployment**: Supports various models including client-to-gateway, client-to-server, and more.
 - **Strong cryptography**: Utilizes modern algorithms like ECC, Noise Protocol, and IBC for robust security.
 </details>
-
-## Quick Demo
-
-This section provides a brief demonstration of how OpenNHP functions. The server protected by OpenNHP is https://acdemo.opennhp.org. Normally, port 443 would be open for HTTPS services, but with the *NHP-AC* component installed, all ports are closed by default, enforcing a Zero Trust "deny-all" policy.
-
-### 1) The Protected Server is "Invisible" to Unauthenticated Users
-
-By default, any attempt to connect to the protected server will result in a TIME OUT error, as all ports are closed, making the server appear offline and effectively *"invisible."*
-
-![OpenNHP Demo](docs/images/OpenNHP_ACDemo0.png)
-
-Port scanning the server will also return a TIME OUT error.
-
-![OpenNHP Demo](docs/images/OpenNHP_ScanDemo.png)
-
-### 2) After Authentication, the Protected Server Becomes Accessible
-
-OpenNHP supports a variety of authentication methods, such as OAuth, SAML, QR codes, and more. For simplicity, this demo uses a basic username/password authentication service at https://demologin.opennhp.org to demonstrate the process.
-
-![OpenNHP Demo](docs/images/OpenNHP_DemoLogin.png)
-
-Once you click the "Login" button, authentication is completed successfully, and you are redirected to the protected server. At this point, the server becomes *"visible"* and accessible on your device.
-
-![OpenNHP Demo](docs/images/OpenNHP_ACDemo1.png)
 
 ## Deployment
 
@@ -189,6 +198,7 @@ OpenNHP is released under the [Apache 2.0 License](LICENSE).
 ## Contact
 
 - Project Website: [https://github.com/OpenNHP/opennhp](https://github.com/OpenNHP/opennhp)
+- Email: [opennhp@gmail.com](mailto:opennhp@gmail.com)
 - Slack Channel: [Join our Slack](https://slack.opennhp.org)
 
 For more detailed documentation, please visit our [Official Documentation](https://opennhp.org).

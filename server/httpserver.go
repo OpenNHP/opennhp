@@ -253,6 +253,30 @@ func (hs *HttpServer) initRouter() {
 		}
 		hs.legacyAuthWithAspPlugin(ctx, req)
 	})
+
+	/*
+		refreshGrp := g.Group("refresh")
+		refreshGrp.GET("/:token", func(ctx *gin.Context) {
+			var err error
+			token := ctx.Param("token")
+			log.Info("get refresh request. aspId: %s, query: %v", token, ctx.Request.URL.RawQuery)
+
+			if len(token) == 0 {
+				err = common.ErrUrlPathInvalid
+				log.Error("path error: %v", err)
+				ctx.String(http.StatusOK, "{\"errMsg\": \"path error: %v\"}", err)
+				return
+			}
+
+			req := &common.HttpRefreshRequest{
+				Token: token,
+				SrcIp: ctx.Query("srcip"),
+			}
+
+			hs.handleRefreshResource()
+		})
+	*/
+
 }
 
 // corsMiddleware is a middleware function that adds CORS headers to the HTTP response.
@@ -263,8 +287,8 @@ func corsMiddleware() gin.HandlerFunc {
 		// HTTP headers for CORS
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")                   // allow cross-origin resource sharing
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS, POST") // methods
-		c.Writer.Header().Set("Access-Control-Expose-Headers", "Content-Type, Content-Length")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Authorization, X-NHP-Ver")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "Content-Type, Content-Length, Set-Cookie")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Authorization, X-NHP-Ver, Cookie")
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Max-Age", "300")
 		// NHP headers
@@ -316,13 +340,13 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 	srcAddr := &common.NetAddress{Ip: srcIp}
 
 	acDstIpMap := make(map[string][]*common.NetAddress)
-	for _, info := range res.Resources {
-		addrs, exist := acDstIpMap[info.ACId]
+	for resName, info := range res.Resources {
+		addrs, exist := acDstIpMap[resName]
 		if exist {
 			addrs = append(addrs, info.Addr)
-			acDstIpMap[info.ACId] = addrs
+			acDstIpMap[resName] = addrs
 		} else {
-			acDstIpMap[info.ACId] = []*common.NetAddress{info.Addr}
+			acDstIpMap[resName] = []*common.NetAddress{info.Addr}
 		}
 	}
 
@@ -330,8 +354,11 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 	var acWg sync.WaitGroup
 	var artMsgsMutex sync.Mutex
 	artMsgs := make(map[string]*common.ACOpsResultMsg)
+	ackMsg.ACTokens = make(map[string]string)
+	ackMsg.PreAccessActions = make(map[string]*common.PreAccessInfo)
 
-	for acId, addrs := range acDstIpMap {
+	for resName, addrs := range acDstIpMap {
+		acId := res.Resources[resName].ACId
 		s.acConnectionMapMutex.Lock()
 		acConn, found := s.acConnectionMap[acId]
 		s.acConnectionMapMutex.Unlock()
@@ -344,14 +371,16 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 		}
 
 		acWg.Add(1)
-		go func(acip string, dstAddrs []*common.NetAddress) {
+		go func(name string, dstAddrs []*common.NetAddress) {
 			defer acWg.Done()
 
 			artMsg, _ := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, res.OpenTime)
 			artMsgsMutex.Lock()
-			artMsgs[acip] = artMsg
+			artMsgs[name] = artMsg
+			ackMsg.ACTokens[name] = artMsg.ACToken
+			ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
 			artMsgsMutex.Unlock()
-		}(acId, addrs)
+		}(resName, addrs)
 	}
 	acWg.Wait()
 
@@ -359,7 +388,7 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 	for _, artMsg := range artMsgs {
 		if artMsg.ErrCode != common.ErrSuccess.ErrorCode() {
 			errCount++
-			break
+			continue
 		}
 	}
 
@@ -392,4 +421,9 @@ func (hs *HttpServer) NewHttpServerHelper() *plugins.HttpServerPluginHelper {
 // It delegates the task to the underlying UDP server's FindPluginHandler method.
 func (hs *HttpServer) FindPluginHandler(aspId string) plugins.PluginHandler {
 	return hs.udpServer.FindPluginHandler(aspId)
+}
+
+func (hs *HttpServer) handleRefreshResource(token string) (err error) {
+	// to do
+	return nil
 }

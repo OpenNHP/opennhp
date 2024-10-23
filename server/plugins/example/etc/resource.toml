@@ -8,7 +8,7 @@
 # RedirectWithParams: whether or not to include queries in the original http request. (only applicable for http agent)
 ["demo"]
 SkipAuth = true
-OpenTime = 15
+OpenTime = 120
 RedirectUrl = "https://acdemo.opennhp.cn"
 RedirectWithParams = false
 CookieDomain = "opennhp.cn"

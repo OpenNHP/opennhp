@@ -1,13 +1,16 @@
 ---
 layout: page
 title: Server Plugins
-nav_order: 7
+nav_order: 11
 permalink: /server_plugin/
 ---
 
+# OpenNHP Plugin Development Guide
 {: .fs-9 }
 
-# OpenNHP Plugin Development Guide
+[中文版](/docs/zh-cn/server_plugin.zh-cn.md){: .label .fs-4 }
+
+---
 
 ## Table of Contents
 
@@ -114,7 +117,7 @@ Before developing OpenNHP plugins, ensure the following environment is properly 
 
 1. **Development Language**: Go language is used for development.
 2. **Development Tools**: IDEs like IntelliJ IDEA or VS Code are recommended.
-3. **NHP SDK**: Download and integrate the latest version of the OpenNHP code from GitHub into your development environment. Download URL: [https://github.com/OpenNHP/opennhp](https://github.com/OpenNHP/opennhp).
+3. **OpenNHP source code**: Download and integrate the latest version of the OpenNHP code from GitHub into your development environment. Download URL: [https://github.com/OpenNHP/opennhp](https://github.com/OpenNHP/opennhp).
 
 ### 3.2 Project Initialization
 
@@ -162,7 +165,7 @@ In the plugin function design phase, the following core points need to be clarif
 
 For example, the main functionality to be implemented by the "example" plugin is as follows:
 
-1. After submitting a form containing the user's identity and password on the H5 page;
+1. Submit a form containing user name and password on the H5 page;
 
 2. The NHP-Server server receives the form for verification. After the verification is successful, it initiates a knock on the NHP-AC server;
 
@@ -263,10 +266,6 @@ After the plugin deployment is complete, it is necessary to validate its functio
 ## Conclusion
 Developing plugins for the NHP server can extend the server's functionality in a modular and maintainable way. By following the steps outlined above, you can create your own plugins and contribute to the NHP server project.
 
-
-[Chinese version](/docs/zh-cn/server_plugin.zh-cn.md){: .label .fs-4 }
-
----
 
 
 

@@ -3,12 +3,15 @@ layout: page
 title: 服务器插件开发
 parent: 中文版
 nav_order: 7
-permalink: /zh-cn/server_plugin.zh-cn/
+permalink: /zh-cn/server_plugin/
 ---
 
-- {: .fs-9 }
-
 # OpenNHP插件开发教程
+{: .fs-9 }
+
+[English version](/docs/server_plugin.md){: .label .fs-4 }
+
+---
 
 # 目录
 
@@ -116,7 +119,7 @@ NHP服务器接收到来自浏览器的HTTP请求后，会根据请求的URL路�
 
 **2.开发工具**：推荐使用IDEA、VS Code等集成开发环境。
 
-**3.NHP SDK**：从GitHub下载最新版本的opennhp代码，并集成至开发环境。下载地址：https://github.com/OpenNHP/opennhp。
+**3.OpenNHP源码**：从GitHub下载最新版本的opennhp代码，并集成至开发环境。下载地址：https://github.com/OpenNHP/opennhp。
 
 ### 3.2 初始化项目
 
@@ -164,7 +167,7 @@ NHP 服务器中的每个插件通常都结构化为一个单独的 Go 包。例
 
 例如“example”插件所要实现的功能主体为：
 
-1. 在H5页面提交包含用户民、密码的表单后；
+1. 在H5页面提交包含用户名、密码的表单；
 
 2. NHP-Server服务器接收表单进行验证，验证成功后向NHP-AC服务器发起敲门；
 
@@ -264,7 +267,3 @@ NHP 服务器中的每个插件通常都结构化为一个单独的 Go 包。例
 
 # 结论
 为 NHP 服务器开发插件可以以一种模块化和可维护的方式扩展服务器的功能。通过遵循上述步骤，您可以创建自己的插件并为 NHP 服务器项目做出贡献。
- 
-[英文版](/docs/server_plugin.md){: .label .fs-4 }
-
- ---

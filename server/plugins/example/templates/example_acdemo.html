@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -32,6 +32,12 @@
             margin-top: 1rem;
             font-weight: bold;
         }
+        #countdown {
+            margin-top: 2rem;
+            color: red;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
         #message {
             margin-top: 1rem;
             color: green;
@@ -45,7 +51,35 @@
         <h1>Welcome to the Demo NHP-AC Server</h1>
         <p>acdemo.opennhp.org</p>
         <div><a href="https://dnschecker.org/port-scanner.php?query=acdemo.opennhp.org" target="_blank">Scan Its Ports &gt;&gt;</a></div>
-        <div id="message"></div>
+        <!-- 添加倒计时显示 -->
+        <div id="countdown">This Server Will be Hidden after <span id="timer">15</span> seconds ...</div>
+        <!-- 已隐藏信息的消息 -->
+        <div id="message">The Server Has been Hidden.</div>
     </div>
+
+    <script>
+        // 初始化倒计时秒数
+        let seconds = 15;
+
+        // 获取DOM元素
+        const timerElement = document.getElementById('timer');
+        const countdownElement = document.getElementById('countdown');
+        const messageElement = document.getElementById('message');
+
+        // 每秒更新倒计时
+        const countdownInterval = setInterval(() => {
+            seconds--;
+            timerElement.textContent = seconds;
+
+            if (seconds <= 0) {
+                clearInterval(countdownInterval);
+                // 隐藏倒计时
+                countdownElement.style.display = 'none';
+                // 显示隐藏消息
+                messageElement.style.display = 'block';
+            }
+        }, 1000);
+    </script>
 </body>
 </html>
+

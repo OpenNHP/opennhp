@@ -9,7 +9,7 @@ permalink: /zh-cn/server_plugin/
 # OpenNHP插件开发教程
 {: .fs-9 }
 
-[English version](/server_plugin){: .label .fs-4 }
+[English version](/server_plugin/){: .label .fs-4 }
 
 ---
 

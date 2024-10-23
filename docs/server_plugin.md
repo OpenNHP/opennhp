@@ -8,7 +8,7 @@ permalink: /server_plugin/
 # OpenNHP Plugin Development Guide
 {: .fs-9 }
 
-[中文版](/zh-cn/server_plugin){: .label .fs-4 }
+[中文版](/zh-cn/server_plugin/){: .label .fs-4 }
 
 ---
 

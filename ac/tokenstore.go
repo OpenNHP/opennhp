@@ -58,6 +58,7 @@ func (a *UdpAC) VerifyAccessToken(token string) *AccessEntry {
 	if found {
 		entry, found := tokenMap[token]
 		if found {
+			entry.ExpireTime = entry.ExpireTime.Add(time.Duration(entry.OpenTime) * time.Second)
 			return entry
 		}
 	}

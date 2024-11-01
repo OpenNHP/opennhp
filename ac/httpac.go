@@ -166,24 +166,28 @@ func (ha *HttpAC) initRouter() {
 
 func (ha *HttpAC) HandleHttpRefreshOperations(c *gin.Context, req *common.HttpRefreshRequest) {
 	if len(req.SrcIp) == 0 {
+		log.Error("empty source ip")
 		c.String(http.StatusOK, "{\"errMsg\": \"empty source ip\"}")
 		return
 	}
 
 	netIp := net.ParseIP(req.SrcIp)
 	if netIp == nil {
+		log.Error("invalid source ip")
 		c.String(http.StatusOK, "{\"errMsg\": \"invalid source ip\"}")
 		return
 	}
 
 	buf, err := base64.StdEncoding.DecodeString(req.Token)
 	if err != nil || len(buf) != 32 {
-		c.String(http.StatusOK, "{\"errMsg\": \"invalid token\"}")
+		log.Error("invalid token format")
+		c.String(http.StatusOK, "{\"errMsg\": \"invalid token format\"}")
 		return
 	}
 
 	entry := ha.ua.VerifyAccessToken(req.Token)
 	if entry == nil {
+		log.Error("token verification failed")
 		c.String(http.StatusOK, "{\"errMsg\": \"token verification failed\"}")
 		return
 	}
@@ -207,6 +211,7 @@ func (ha *HttpAC) HandleHttpRefreshOperations(c *gin.Context, req *common.HttpRe
 
 	_, err = ha.ua.HandleAccessControl(entry.User, entry.SrcAddrs, entry.DstAddrs, entry.OpenTime, nil)
 	if err != nil {
+		log.Error("HandleAccessControl failed: %v", err)
 		c.String(http.StatusOK, "{\"errMsg\": \"%s\"}", err)
 		return
 	}

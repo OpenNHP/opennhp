@@ -32,6 +32,7 @@ type ResourceData struct {
 	RedirectWithParams bool           `json:"redirectWithParams,omitempty"`
 	SkipAuth           bool           `json:"skipAuth,omitempty"`
 	CookieDomain       string         `json:"cookieDomain,omitempty"`
+	AccessControlAllowOrigin string	  `json:accessControlAllowOrigin",omitempty"`
 }
 
 type ResourceGroupMap map[string]*ResourceData

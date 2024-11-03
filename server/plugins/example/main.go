@@ -186,6 +186,8 @@ func AuthWithHttp(ctx *gin.Context, req *common.HttpKnockRequest, helper *plugin
 		return
 	}
 
+	corsMiddleware(ctx, res.AccessControlAllowOrigin)
+
 	switch {
 	case strings.EqualFold(action, "valid"):
 		ackMsg, err = authRegular(ctx, req, res, helper)
@@ -314,6 +316,13 @@ func AuthWithNHP(req *common.NhpAuthRequest, helper *plugins.NhpServerPluginHelp
 	ackMsg, err = helper.AuthWithNhpCallbackFunc(req, res)
 
 	return ackMsg, err
+}
+
+func corsMiddleware(ctx *gin.Context, originResource string) {
+		// HTTP headers for CORS
+		ctx.Writer.Header().Set("Access-Control-Allow-Origin", originResource) // allow cross-origin resource sharing
+
+		ctx.Next()
 }
 
 func main() {

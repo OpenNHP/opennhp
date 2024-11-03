@@ -289,7 +289,9 @@
             "&password=" + encodeURIComponent(password);
             console.log(nhpValidUrl);
 
-            fetch(nhpValidUrl)
+            fetch(nhpValidUrl,{
+                credentials: "include"
+            })
             .then(response => response.json())
             .then(result => {
                 console.log(result);

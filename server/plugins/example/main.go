@@ -186,6 +186,8 @@ func AuthWithHttp(ctx *gin.Context, req *common.HttpKnockRequest, helper *plugin
 		return
 	}
 
+	corsMiddleware(ctx, res.AccessControlAllowOrigin)
+
 	switch {
 	case strings.EqualFold(action, "valid"):
 		ackMsg, err = authRegular(ctx, req, res, helper)
@@ -314,6 +316,28 @@ func AuthWithNHP(req *common.NhpAuthRequest, helper *plugins.NhpServerPluginHelp
 	ackMsg, err = helper.AuthWithNhpCallbackFunc(req, res)
 
 	return ackMsg, err
+}
+
+func corsMiddleware(ctx *gin.Context, originResource string) {
+		// HTTP headers for CORS
+		ctx.Writer.Header().Set("Access-Control-Allow-Origin", originResource) // allow cross-origin resource sharing
+		ctx.Writer.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS, POST") // methods
+		ctx.Writer.Header().Set("Access-Control-Expose-Headers", "Content-Type, Content-Length, Set-Cookie")
+		ctx.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Authorization, X-NHP-Ver, Cookie")
+		ctx.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		ctx.Writer.Header().Set("Access-Control-Max-Age", "300")
+
+		if ctx.Request.Method == "OPTIONS" {
+			ctx.Status(http.StatusOK)
+			return
+		}
+
+		if ctx.Request.Method == "DELETE" || ctx.Request.Method == "PUT" {
+			ctx.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		ctx.Next()
 }
 
 func main() {

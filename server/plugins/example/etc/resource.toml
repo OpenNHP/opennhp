@@ -6,12 +6,14 @@
 # OpenTime: seconds for traffic passing duration after successful knock.
 # RedirectUrl: a customized url send back with the http response message as an option for redirection. (only applicable for http agent)
 # RedirectWithParams: whether or not to include queries in the original http request. (only applicable for http agent)
+# AccessControlAllowOrigin: the response header indicates whether the response can be shared with requesting code from the given origin.
 ["demo"]
 SkipAuth = true
 OpenTime = 15
 RedirectUrl = "https://acdemo.opennhp.org"
 RedirectWithParams = false
 CookieDomain = "opennhp.org"
+AccessControlAllowOrigin = "https://demologin.opennhp.org"
 
 # syntax ["{ResourceId}".Resources."{ResourceName}"]
 # ResourceName: name of resource inside a resource group. Each ResourceId can have multiple ResourceNames.

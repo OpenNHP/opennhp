@@ -15,13 +15,13 @@ A lightweight cryptography-driven zero trust networking protocol at the OSI 5th 
 
 ---
 
-## Challenge: AI transforms the Internet as a "Dark Forest" 
+## Challenge: AI transforms the Internet into a "Dark Forest" 
 
-The rapid advancement of **AI** technologies, particularly large language models (LLMs), is significantly reshaping the cybersecurity landscape. The rise of **Autonomous Vulnerability Exploitation (AVE)** represents a major leap in the AI era, streamlining the exploitation of vulnerabilities, as highlighted in [this research paper](https://arxiv.org/abs/2404.08144). This development dramatically increases the risk for any exposed network services, echoing the [Dark Forest Hypothesis](https://en.wikipedia.org/wiki/Dark_forest_hypothesis) of the Internet. AI-powered tools are continuously scanning the digital environment, swiftly identifying and exploiting weaknesses. Consequently, the Internet is evolving into a **"Dark Forest,"** where **visibility equates to vulnerability**.
+The rapid evolution of **AI** technologies, particularly large language models (LLMs), is significantly reshaping the cybersecurity landscape. The emergence of **Autonomous Vulnerability Exploitation (AVE)** represents a major leap in the AI era, streamlining the exploitation of vulnerabilities, as highlighted in recent research such as [[1]](https://googleprojectzero.blogspot.com/2024/10/from-naptime-to-big-sleep.html), [[2]](https://arxiv.org/abs/2404.08144), [[3]](https://github.com/protectai/vulnhuntr) and etc. This development dramatically increases the risk for any exposed network services, reflecting the [Dark Forest Hypothesis](https://en.wikipedia.org/wiki/Dark_forest_hypothesis) of the Internet. AI-powered tools are continuously scanning the digital realm, quickly finding and exploiting weaknesses. Consequently, the Internet is evolving into a **"Dark Forest,"** where **visibility equates to vulnerability**.
 
 ![Vulnerability Risks](docs/images/Vul_Risks.png)
 
-Gartner research predicts a [rapid increase in AI-driven cyberattacks](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025). This shifting paradigm calls for a reevaluation of traditional cybersecurity strategies, with a focus on proactive defenses, rapid response mechanisms, and the adoption of network hiding technologies to safeguard critical infrastructure.
+Gartner research anticipates a [sharp rise in AI-driven cyberattacks](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025). To address these threats, CISA recently issued an executive order mandating a [14-day deadline for vulnerability remediation](https://www.cisa.gov/sites/default/files/2024-10/Proposed-Security-Requirements-EO-14117-21Oct24508.pdf). This shift necessitates a reevaluation of traditional cybersecurity approaches, emphasizing proactive defense, rapid response strategies, and the deployment of network-hiding technologies to protect critical infrastructure.
 
 ---
 
@@ -206,10 +206,13 @@ For more detailed documentation, please visit our [Official Documentation](https
 
 ## References
 
-- [Software-Defined Perimeter (SDP) Specification v2.0](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2). Jason Garbis, Juanita Koilpillai, Junaid lslam, Bob Flores, Daniel Bailey, Benfeng Chen, Eitan Bremler, Michael Roza, Ahmed Refaey Hussein. [*Cloud Security Alliance(CSA)*](https://cloudsecurityalliance.org/). Mar 2022.
-- [AHAC: Advanced Network-Hiding Access Control Framework](https://www.mdpi.com/2076-3417/14/13/5593). Mudi Xu, Benfeng Chen, Zhizhong Tan, Shan Chen, Lei Wang, Yan Liu, Tai Io San, Sou Wang Fong, Wenyong Wang, and Jing Feng. *Applied Sciences Journal*. June 2024.
-- Noise Protocol Framework. https://noiseprotocol.org/
-- Vulnerability Management Framework project. https://phoenix.security/web-vuln-management/ 
+1. [From Naptime to Big Sleep: Using Large Language Models To Catch Vulnerabilities In Real-World Code](https://googleprojectzero.blogspot.com/2024/10/from-naptime-to-big-sleep.html), Google Big Sleep team. Google Project Zero. Oct 2024.
+2. [LLM Agents can Autonomously Exploit One-day Vulnerabilities](https://arxiv.org/abs/2404.08144). Richard Fang, Rohan Bindu, Akul Gupta, Daniel Kang. arxiv. April 2004.
+3. [VulnHuntr: Zero shot vulnerability discovery using LLMs](https://github.com/protectai/vulnhuntr). VulnHuntr Open Source Project: https://github.com/protectai/vulnhuntr. 
+4. [Software-Defined Perimeter (SDP) Specification v2.0](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2). Jason Garbis, Juanita Koilpillai, Junaid lslam, Bob Flores, Daniel Bailey, Benfeng Chen, Eitan Bremler, Michael Roza, Ahmed Refaey Hussein. [*Cloud Security Alliance(CSA)*](https://cloudsecurityalliance.org/). Mar 2022.
+5. [AHAC: Advanced Network-Hiding Access Control Framework](https://www.mdpi.com/2076-3417/14/13/5593). Mudi Xu, Benfeng Chen, Zhizhong Tan, Shan Chen, Lei Wang, Yan Liu, Tai Io San, Sou Wang Fong, Wenyong Wang, and Jing Feng. *Applied Sciences Journal*. June 2024.
+6. Noise Protocol Framework. https://noiseprotocol.org/
+7. Vulnerability Management Framework project. https://phoenix.security/web-vuln-management/ 
 
 ---
 

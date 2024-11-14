@@ -28,7 +28,7 @@ COLOUR_BLUE=\033[0;34m
 END_COLOUR=\033[0m
 
 # Plugins
-NHP_PLUGINS = server/plugins
+NHP_PLUGINS = server/plugins kgc
 
 generate-version-and-build:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Start building... $(END_COLOUR)"
@@ -42,6 +42,7 @@ generate-version-and-build:
 	@$(MAKE) serverd
 	@$(MAKE) agentsdk
 	@$(MAKE) devicesdk
+	@$(MAKE) kgc
 	@$(MAKE) plugins
 	@$(MAKE) archive
 	@echo "$(COLOUR_GREEN)[OpenNHP] Build for platform ${OS_NAME} successfully done!$(END_COLOUR)"
@@ -74,6 +75,13 @@ ifeq ($(OS_NAME), linux)
 	go build -a -trimpath -buildmode=c-shared -ldflags ${LD_FLAGS} -v -o ./release/nhp-device/nhpdevice.so ./core/main/main.go ./core/main/nhpdevice.go
 #	gcc ./core/sdkdemo/nhp-device-demo.c -I ./release/nhp-device -I ./core/main -l:nhpdevice.so -L./release/nhp-device -Wl,-rpath=. -o ./release/nhp-device/nhp-device-demo
 endif
+
+# kgc module build rules
+kgc:
+	@echo "$(COLOUR_BLUE)[KGC] Building KGC module... $(END_COLOUR)"
+	@cd kgc/main && go build -trimpath -ldflags ${LD_FLAGS} -v -o ../release/kgc/kgc ./main.go
+	@cp ./kgc/etc/*.toml ./release/kgc/etc/
+
 
 plugins:
 	@if test -d $(NHP_PLUGINS); then $(MAKE) -C $(NHP_PLUGINS); fi

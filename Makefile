@@ -40,6 +40,7 @@ generate-version-and-build:
 	@$(MAKE) agentd
 	@$(MAKE) acd
 	@$(MAKE) serverd
+	@$(MAKE) kgc
 	@$(MAKE) agentsdk
 	@$(MAKE) devicesdk
 	@$(MAKE) plugins
@@ -62,6 +63,14 @@ serverd:
 	go build -trimpath -ldflags ${LD_FLAGS} -v -o ./release/nhp-server/nhp-serverd ./server/main/main.go
 	mkdir -p ./release/nhp-server/etc
 	cp ./server/main/etc/*.toml ./release/nhp-server/etc/
+
+kgc:
+	@echo "$(COLOUR_BLUE)[KGC] Building KGC module... $(END_COLOUR)"
+	mkdir -p ./release/kgc/etc
+	@cd kgc/main && go build -trimpath -ldflags ${LD_FLAGS} -v -o ../../release/kgc/kgc ./main.go
+	cp ./kgc/main/etc/*.toml ./release/kgc/etc/ 2>/dev/null || true
+	@echo "$(COLOUR_GREEN)[KGC] Build completed!$(END_COLOUR)"
+
 
 agentsdk:
 ifeq ($(OS_NAME), linux)

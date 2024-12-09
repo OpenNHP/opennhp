@@ -6,12 +6,12 @@
 [![es](https://img.shields.io/badge/lang-es-green.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.es.md)
 
 ![OpenNHP Logo](docs/images/logo11.png)
-# OpenNHP: Zero Trust Network Resource Hiding Protocol
+# OpenNHP: Zero Trust Network-resource Hiding Protocol
 
 **NHP (Network-resource Hiding Protocol)** is a lightweight, cryptography-based Zero Trust protocol designed to safeguard servers and data from attackers by leveraging resource-hiding and encryption. It includes two core sub-protocols:
 
-- **Network Infrastructure Hiding Protocol (nHP):** Protects servers and applications by concealing domains, IP addresses, and ports.  
-- **Data Object Hiding Protocol (dHP):** Ensures data security and privacy (e.g., files, databases, APIs) through cryptographic key negotiation and encryption.
+- **Network-infrastructure Hiding Protocol (nHP):** Protects servers and applications by concealing domains, IP addresses, and ports.  
+- **Data-object Hiding Protocol (dHP):** Ensures data security and privacy (e.g., files, databases, APIs) through cryptographic key negotiation and encryption.
 
 **OpenNHP** is the open source implementation of NHP.
 

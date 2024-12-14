@@ -151,12 +151,13 @@ permalink: /zh-cn/deploy/
 
 ### 2.6 测试NHP网络隐身效果
 
-验证NHP网络隐身效果，可以通过nhp-agent主机 *（IP：192.168.56.1）*进行`ping` nhp-ac主机 *（IP：192.168.56.102）*来测试。
+验证NHP网络隐身效果，可以通过nhp-agent主机 *（IP：192.168.56.1）*进行`nmap扫描（以80端口为例）` nhp-ac主机 *（IP：192.168.56.102）*来测试。此外，可以在另外一台虚拟机（模拟黑客扫描攻击），扫描nhp-ac 主机查看效果。
 
 | 测试用例 | 测试命令 | 测试目的  | 预期结果  |
 |:--:|:--:|:--:|:--:|
-| nhp-agent未运行 |`ping 192.168.56.102` | 测试AC对Agent隐身 | ping 失败  |
-| nhp-agent已运行 |`ping 192.168.56.102` | 测试AC对Agent开放 | ping 成功  |
+| nhp-agent未运行 |`nmap -sS -p 80 192.168.56.102` | 测试AC对Agent隐身 | 80/tcp filtered  |
+| nhp-agent已运行 |`nmap -sS -p 80 192.168.56.102` | 测试AC对Agent开放 | 80/tcp open  |
+| nhp-agent已运行 |`nmap -sS -p 80 192.168.56.102` | 测试AC对黑客隐身 | 80/tcp filtered  |
 
 ## 3. 日志说明
 

@@ -139,7 +139,7 @@ func (ha *HttpAC) initRouter() {
 	refreshGrp.GET("/:token", func(ctx *gin.Context) {
 		var err error
 		token := ctx.Param("token")
-		log.Info("get refresh request. aspId: %s, query: %v", token, ctx.Request.URL.RawQuery)
+		log.Info("get refresh request. token: %s, query: %v", token, ctx.Request.URL.RawQuery)
 
 		if len(token) == 0 {
 			err = common.ErrUrlPathInvalid

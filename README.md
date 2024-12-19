@@ -11,7 +11,7 @@
 **NHP (Network-resource Hiding Protocol)** is a lightweight, cryptography-based Zero Trust protocol designed to safeguard servers and data from attackers by leveraging resource-hiding and encryption. It includes two core sub-protocols:
 
 - **Network-infrastructure Hiding Protocol (nHP):** Protects servers and applications by concealing domains, IP addresses, and ports.  
-- **Data-object Hiding Protocol (dHP):** Ensures data security and privacy (e.g., files, databases, APIs) through cryptographic key negotiation and encryption.
+- **Data-object Hiding Protocol (dHP):** Ensures data security and privacy by making data "usable but not visible" through cryptographic key negotiation and encryption.
 
 **OpenNHP** is the open source implementation of NHP.
 

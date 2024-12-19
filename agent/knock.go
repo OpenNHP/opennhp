@@ -256,8 +256,9 @@ func (a *UdpAgent) preAccessRequest(ackMsg *common.ServerKnockAckMsg) (err error
 		acWg.Add(1)
 		go func(info *common.PreAccessInfo) {
 			defer acWg.Done()
-
-			a.processPreAccessAction(info)
+			if info != nil {
+				a.processPreAccessAction(info)
+			}
 		}(action)
 	}
 	acWg.Wait()

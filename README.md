@@ -61,17 +61,17 @@ Once you click the "Login" button, authentication is completed successfully, and
 
 The openness of TCP/IP protocols has driven the explosive growth of internet applications but also exposed vulnerabilities, allowing malicious actors to gain unauthorized access and exploit any exposed IP address. Although the [OSI network model](https://en.wikipedia.org/wiki/OSI_model) defines the *5th layer (Session Layer)* for managing connections, few effective solutions have been implemented to address this.
 
-**NHP**, or the **"Network-resource Hiding Protocol"**, is a lightweight cryptography-driven Zero Trust networking protocol designed to function at the *OSI Session Layer*, which is optimal for managing network visibility and connections. NHP's key objective is to conceal protected resources from unauthorized entities, granting access only to verified, authorized users through continuous verification, contributing to a more trustworthy Internet.
+**NHP**, or the **"Network-resource Hiding Protocol"**, is a lightweight cryptography-driven Zero Trust  protocol designed to function at the *OSI 5th and 6th Layer*, which is optimal for managing network visibility and connections. NHP's key objective is to conceal protected resources from unauthorized entities, granting access only to verified, authorized users through continuous verification, contributing to a more trustworthy Internet.
 
 ![Trustworthy Internet](docs/images/TrustworthyCyberspace.png)
 
 ---
 
-## Solution: OpenNHP Fixes the Network Visibility Control
+## Solution: OpenNHP Fixes the Network/Data Visibility Control
 
-**OpenNHP** is the open-source implementation of the NHP protocol. It is cryptography-driven and designed with security-first principles, implementing a true zero-trust architecture at the *OSI Session Layer*. 
+**OpenNHP** is the open-source implementation of the NHP protocol. It is cryptography-driven and designed with security-first principles, implementing a true zero-trust architecture at the *OSI Session and Presentation Layer*. 
 
-![OpenNHP as the OSI 5th layer](docs/images/OSI_OpenNHP.png)
+![OpenNHP as the OSI 5th and 6th layer](docs/images/OSI_OpenNHP2.png)
 
 OpenNHP builds upon earlier research in network hiding technology, utilizing modern cryptographic framework and architecture to ensure security and high performance, thereby overcoming the limitations of previous technologies.
 

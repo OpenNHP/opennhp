@@ -18,6 +18,7 @@ import (
 // IP pass mode
 const (
 	PASS_KNOCK_IP = iota
+	PASS_KNOCKIP_WITH_RANGE
 	PASS_PRE_ACCESS_IP
 )
 
@@ -126,9 +127,14 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 		}
 	}
 
-	switch a.IpPassMode() {
+	ipPassMode := a.IpPassMode()
+	switch ipPassMode {
 	// pass the knock ip immediately
+	case PASS_KNOCKIP_WITH_RANGE:
+		fallthrough
 	case PASS_KNOCK_IP:
+		fallthrough
+	default:
 		for _, srcAddr := range srcAddrs {
 			var ipType utils.IPTYPE
 			var ipNet *net.IPNet
@@ -192,8 +198,8 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 					}
 				}
 
-				// add tempset
-				if ipNet != nil {
+				// add tempset for the adjacent 128 (25bit netmask ipv4, 121bit netmask ipv6) addresses derived from the target IP address
+				if ipPassMode == PASS_KNOCKIP_WITH_RANGE && ipNet != nil {
 					netStr := ipNet.String()
 					if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "tcp" || dstAddr.Protocol == "any" {
 						netHashStr := fmt.Sprintf("%s,%d", netStr, dstAddr.Port)
@@ -221,8 +227,6 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 
 		// return temporary listened port(s) and nhp access token, then pass the real ip when agent sends access message
 	case PASS_PRE_ACCESS_IP:
-		fallthrough
-	default:
 		// ac open a temporary tcp or udp port for access
 		dstIp := net.ParseIP(dstAddrs[0].Ip)
 		if dstIp == nil {

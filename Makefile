@@ -28,7 +28,7 @@ COLOUR_BLUE=\033[0;34m
 END_COLOUR=\033[0m
 
 # Plugins
-NHP_PLUGINS = server/plugins
+NHP_PLUGINS = server/plugins 
 
 generate-version-and-build:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Start building... $(END_COLOUR)"
@@ -40,9 +40,10 @@ generate-version-and-build:
 	@$(MAKE) agentd
 	@$(MAKE) acd
 	@$(MAKE) serverd
-	@$(MAKE) kgc
 	@$(MAKE) agentsdk
 	@$(MAKE) devicesdk
+	@$(MAKE) kgc
+	@$(MAKE) de
 	@$(MAKE) plugins
 	@$(MAKE) archive
 	@echo "$(COLOUR_GREEN)[OpenNHP] Build for platform ${OS_NAME} successfully done!$(END_COLOUR)"
@@ -64,14 +65,6 @@ serverd:
 	mkdir -p ./release/nhp-server/etc
 	cp ./server/main/etc/*.toml ./release/nhp-server/etc/
 
-kgc:
-	@echo "$(COLOUR_BLUE)[KGC] Building KGC module... $(END_COLOUR)"
-	mkdir -p ./release/kgc/etc
-	@cd kgc/main && go build -trimpath -ldflags ${LD_FLAGS} -v -o ../../release/kgc/kgc ./main.go
-	cp ./kgc/main/etc/*.toml ./release/kgc/etc/ 2>/dev/null || true
-	@echo "$(COLOUR_GREEN)[KGC] Build completed!$(END_COLOUR)"
-
-
 agentsdk:
 ifeq ($(OS_NAME), linux)
 	go build -a -trimpath -buildmode=c-shared -ldflags ${LD_FLAGS} -v -o ./release/nhp-agent/nhp-agent.so ./agent/main/main.go ./agent/main/export.go
@@ -83,6 +76,22 @@ ifeq ($(OS_NAME), linux)
 	go build -a -trimpath -buildmode=c-shared -ldflags ${LD_FLAGS} -v -o ./release/nhp-device/nhpdevice.so ./core/main/main.go ./core/main/nhpdevice.go
 #	gcc ./core/sdkdemo/nhp-device-demo.c -I ./release/nhp-device -I ./core/main -l:nhpdevice.so -L./release/nhp-device -Wl,-rpath=. -o ./release/nhp-device/nhp-device-demo
 endif
+
+# kgc module build rules
+kgc:
+	@echo "$(COLOUR_BLUE)[KGC] Building KGC module... $(END_COLOUR)"
+	mkdir -p ./release/kgc/etc
+	@cd kgc/main && go build -trimpath -ldflags ${LD_FLAGS} -v -o ../../release/kgc/kgc ./main.go
+	cp ./kgc/main/etc/*.toml ./release/kgc/etc/ 2>/dev/null || true
+	@echo "$(COLOUR_GREEN)[KGC] Build completed!$(END_COLOUR)"
+
+# de module build rules
+de:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Building DE module... $(END_COLOUR)"
+	mkdir -p ./release/de/etc
+	@cd de/main && go build -trimpath -ldflags ${LD_FLAGS} -v -o ../../release/de/de ./main.go
+	cp ./de/main/etc/*.json ./release/de/etc/ 2>/dev/null || true
+	@echo "$(COLOUR_GREEN)[OpenNHP] Build completed!$(END_COLOUR)"
 
 plugins:
 	@if test -d $(NHP_PLUGINS); then $(MAKE) -C $(NHP_PLUGINS); fi

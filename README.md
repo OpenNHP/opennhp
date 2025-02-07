@@ -9,7 +9,7 @@
 
 # OpenNHP: Open Source Toolkit for Zero Trust Security  
 
-**OpenNHP** is a lightweight, cryptography-driven, open-source toolkit designed to implement Zero Trust protocols for securing servers and data. By leveraging resource obfuscation and advanced encryption algorithms, OpenNHP minimizes attack surfaces and mitigates threats effectively. It features two core protocols:  
+**OpenNHP** is a lightweight, cryptography-driven, open-source toolkit designed to implement Zero Trust protocols for securing applications and data. By leveraging resource obfuscation and advanced encryption algorithms, OpenNHP minimizes attack surfaces and mitigates threats effectively. It features two core protocols:  
 
 - **Network-infrastructure Hiding Protocol (NHP):** Conceals server ports, IP addresses, and domain names to protect applications and infrastructure from unauthorized access.  
 - **Data-object Hiding Protocol (DHP):** Ensures data security and privacy by employing encryption algorithms and confidential computing to make data *"usable but not visible"*.

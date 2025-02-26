@@ -105,13 +105,13 @@ func (s *UdpServer) loadPeers() error {
 	})
 
 	//device.toml
-	fileNameDevice := filepath.Join(ExeDirPath, "etc", "device.toml")
+	fileNameDevice := filepath.Join(ExeDirPath, "etc", "de.toml")
 	if err := s.updateDePeers(fileNameDevice); err != nil {
 		// ignore error
 		_ = err
 	}
 	deConfigWatch = utils.WatchFile(fileNameDevice, func() {
-		log.Info("device peer config: %s has been updated", fileNameDevice)
+		log.Info("de peer config: %s has been updated", fileNameDevice)
 		s.updateDePeers(fileNameDevice)
 	})
 	return nil

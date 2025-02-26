@@ -23,11 +23,16 @@ func main() {
 	runCmd := &cli.Command{
 		Name:  "run",
 		Usage: "create and run agent process for NHP protocol",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "ztdo", Value: "", Usage: "需要解密的ztdo文件路径"},
+			&cli.StringFlag{Name: "output", Value: "", Usage: "加密码后.ztdo文件保存地址"},
+		},
 		Action: func(c *cli.Context) error {
-			return runApp()
+			ztdo := c.String("ztdo")
+			output := c.String("output")
+			return runApp(ztdo, output)
 		},
 	}
-
 	keygenCmd := &cli.Command{
 		Name:  "keygen",
 		Usage: "generate key pairs for NHP devices",
@@ -59,6 +64,7 @@ func main() {
 		},
 		Action: func(c *cli.Context) error {
 			privKey, err := base64.StdEncoding.DecodeString(c.Args().First())
+			fmt.Println("privKey:" + c.Args().First())
 			if err != nil {
 				return err
 			}
@@ -87,7 +93,8 @@ func main() {
 	}
 }
 
-func runApp() error {
+func runApp(ztdo string, output string) error {
+
 	exeFilePath, err := os.Executable()
 	if err != nil {
 		return err
@@ -95,11 +102,17 @@ func runApp() error {
 	exeDirPath := filepath.Dir(exeFilePath)
 
 	a := &agent.UdpAgent{}
+
 	err = a.Start(exeDirPath, 4)
 	if err != nil {
 		return err
 	}
-	a.StartKnockLoop()
+	if ztdo != "" {
+		//访问ztdo文件
+		a.StartDecodeZtdo(ztdo,output)
+	} else {
+		a.StartKnockLoop()
+	}
 
 	// react to terminate signals
 	termCh := make(chan os.Signal, 1)

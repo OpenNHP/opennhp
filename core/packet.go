@@ -26,6 +26,13 @@ const (
 	NHP_RAK        // server sends back ack when agent registers correctly
 	NHP_ACC        // agent sends to ac/resource for actual ip access
 	NHP_EXT        // agent requests immediate disconnection
+	//DHP扩展相关
+	NHP_DRG //NHP_DRG消息用于数据对象的拥有者将数据对象文件注册到NHP-Server服务器
+	NHP_DAK //NHP_DAK消息用于NHP-Server通知数据对象的拥有者关于NHP_DRG注册请求的结果
+	NHP_DAR //NHP_DAR消息用于让数据对象的使用者请求打开数据对象文件并且进行对应的操作
+	NHP_DAG //NHP_DAG消息用于NHP-Server通知数据对象的使用者关于数据对象的授权结果
+	NHP_DPC //NHP_DPC消息用于NHP服务器向NHP代理发送策略验证的挑战
+	NHP_DPV //NHP_DPV消息用于NHP代理向NHP服务器发送策略验证的证据
 )
 
 var nhpHeaderTypeStrings []string = []string{
@@ -46,6 +53,12 @@ var nhpHeaderTypeStrings []string = []string{
 	"NHP-RAK", // server sends back ack when agent registers correctly
 	"NHP-ACC", // agent sends to ac/resource for actual ip access
 	"NHP-EXT", // agent requests immediate disconnection
+	"NHP_DRG", //NHP_DRG消息用于数据对象的拥有者通过DHP数据封装器（NHP-DE）将数据对象文件注册到NHP服务器（NHP-Server）上
+	"NHP_DAK", //NHP_DAK消息用于NHP-Server通知数据对象的拥有者关于NHP_DRG注册请求的结果
+	"NHP_DAR", //NHP_DAR消息用于让数据对象的使用者请求打开数据对象文件并且进行对应的操作
+	"NHP_DAG", //NHP_DAG消息用于NHP-Server通知数据对象的使用者关于数据对象的授权结果
+	"NHP_DPC", //NHP_DPC消息用于NHP服务器向NHP代理发送策略验证的挑战
+	"NHP_DPV", //NHP_DPV消息用于NHP代理向NHP服务器发送策略验证的证据
 }
 
 func HeaderTypeToString(t int) string {
@@ -57,10 +70,9 @@ func HeaderTypeToString(t int) string {
 
 func HeaderTypeToDeviceType(t int) int {
 	switch t {
-	case NHP_KNK, NHP_LST, NHP_RKN, NHP_OTP, NHP_REG, NHP_ACC, NHP_EXT:
+	case NHP_KNK, NHP_LST, NHP_RKN, NHP_OTP, NHP_REG, NHP_ACC, NHP_EXT, NHP_DAR:
 		return NHP_AGENT
-
-	case NHP_ACK, NHP_AOP, NHP_LRT, NHP_COK, NHP_AAK, NHP_RAK:
+	case NHP_ACK, NHP_AOP, NHP_LRT, NHP_COK, NHP_AAK, NHP_RAK, NHP_DAK, NHP_DAG:
 		return NHP_SERVER
 
 	case NHP_AOL, NHP_ART:
@@ -68,6 +80,8 @@ func HeaderTypeToDeviceType(t int) int {
 
 	case NHP_RLY:
 		return NHP_RELAY
+	case NHP_DRG:
+		return NHP_DE
 	}
 
 	return NHP_NO_DEVICE
@@ -150,17 +164,19 @@ func (pkt *Packet) Counter() uint64 {
 	return binary.BigEndian.Uint64(pkt.Content[16:24])
 }
 
+// 检查数据接收端允许的消息类型
 func (d *Device) CheckRecvHeaderType(t int) bool {
 	// NHP_KPL is handled elsewhere
+	log.Warning("CheckRecvHeaderType Device type: %d, recv header type %d", d.deviceType, t)
 	switch d.deviceType {
 	case NHP_AGENT:
 		switch t {
-		case NHP_ACK, NHP_LRT, NHP_COK, NHP_RAK:
+		case NHP_ACK, NHP_LRT, NHP_COK, NHP_RAK, NHP_DAG:
 			return true
 		}
 	case NHP_SERVER:
 		switch t {
-		case NHP_REG, NHP_KNK, NHP_LST, NHP_RKN, NHP_EXT, NHP_ART, NHP_RLY, NHP_AOL, NHP_OTP:
+		case NHP_REG, NHP_KNK, NHP_LST, NHP_RKN, NHP_EXT, NHP_ART, NHP_RLY, NHP_AOL, NHP_OTP, NHP_DRG, NHP_DAR:
 			return true
 		}
 	case NHP_AC:
@@ -173,8 +189,13 @@ func (d *Device) CheckRecvHeaderType(t int) bool {
 		case NHP_REG, NHP_KNK, NHP_ACK, NHP_LST, NHP_LRT, NHP_COK, NHP_RKN, NHP_EXT:
 			return true
 		}
-	}
 
+	case NHP_DE:
+		switch t {
+		case NHP_DRG, NHP_DAG, NHP_DAK, NHP_DPC, NHP_DPV:
+			return true
+		}
+	}
 	log.Info("Device type: %d, recv header type %d not allowed", d.deviceType, t)
 	return false
 }
@@ -197,7 +218,6 @@ func (d *Device) RecvPrecheck(pkt *Packet) (int, int, error) {
 			return t, s, fmt.Errorf("keepalive packet size is incorrect")
 		}
 	}
-
 	if !d.CheckRecvHeaderType(t) {
 		return t, s, fmt.Errorf("packet header type does not match device")
 	}

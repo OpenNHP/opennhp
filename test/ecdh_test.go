@@ -47,9 +47,9 @@ func TestPublicKeys(t *testing.T) {
 
 func TestPeer(t *testing.T) {
 	server := &core.UdpPeer{
-		Ip:           "192.168.2.27",
+		Ip:           "192.168.50.39",
 		Port:         62206,
-		PubKeyBase64: "c0HALYy3433SqJmfN0JpRk1Q6H7xh84MAg89jYtRrQM=",
+		PubKeyBase64: "WqJxe+Z4+wLen3VRgZx6YnbjvJFmptz99zkONCt/7gc=",
 		ExpireTime:   1716345064,
 		Type:         core.NHP_SERVER,
 	}

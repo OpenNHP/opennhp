@@ -2,8 +2,10 @@ package agent
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -127,7 +129,6 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	log.Info("=== REVISION %s ===", version.CommitId)
 	log.Info("=== RELEASE %s                       ===", version.BuildTime)
 	log.Info("=========================================================")
-
 	err = a.loadBaseConfig()
 	if err != nil {
 		return err
@@ -687,4 +688,140 @@ func (a *UdpAgent) ResolvePeer(peer *core.UdpPeer) (*core.UdpPeer, net.Addr) {
 	}
 
 	return peer, addr
+}
+
+//ztdo文件还原请求，将ztdo文件解密成原始文件
+/**
+ztdo: ztdo加密文件
+output: 解密后的文件保存路径
+*/
+func (a *UdpAgent) StartDecodeZtdo(ztdo string, output string) {
+	ztdoFile, err := core.ReadZtdoFile(ztdo)
+	if err != nil {
+		log.Error("ReadZtdoFile error,msg:%v", err)
+	}
+	doId := ztdoFile.Objectid
+	//向NHP-Sever发送ztdo请求，获取解密参数
+	darMsg := common.DARMsg{
+		DoId: doId,
+	}
+	serverPeer := a.GetFirstServerPeer()
+	result := a.SendDARMsgToServer(serverPeer, darMsg, ztdo, output)
+	// if err != nil {
+	// 	log.Error("StartDecodeZtdo Error,msg:%v", err)
+	// 	fmt.Printf("ztdo文件解密 异常:%v \n", err)
+	// 	return
+	// }
+	if result {
+		fmt.Println("ztdo文件解密：成功")
+	} else {
+		fmt.Println("ztdo文件解密：失败")
+	}
+
+}
+
+// 获取第一个NHP服务器
+func (a *UdpAgent) GetFirstServerPeer() (serverPeer *core.UdpPeer) {
+	for key, value := range a.serverPeerMap {
+		fmt.Println("Key:", key, "Value:", value)
+		// 如果只需要第一个值，可以在找到后break
+		serverPeer = value
+		return serverPeer
+		// break
+	}
+	return nil
+}
+func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg, ztdo string, output string) bool {
+
+	result := false
+	server, sendAddr := a.ResolvePeer(server)
+	if sendAddr == nil {
+		log.Critical("device(%s)[SendDARMsgToServer] register server IP cannot be parsed", a)
+	}
+	drgMsg := msg
+	drgBytes, _ := json.Marshal(drgMsg)
+	drgMd := &core.MsgData{
+		RemoteAddr:    sendAddr.(*net.UDPAddr),
+		HeaderType:    core.NHP_DAR,
+		TransactionId: a.device.NextCounterIndex(),
+		Compress:      true,
+		Message:       drgBytes,
+		PeerPk:        server.PublicKey(),
+		ResponseMsgCh: make(chan *core.PacketParserData),
+	}
+	currTime := time.Now().UnixNano()
+	if !a.IsRunning() {
+		log.Error("server-agentMsgData channel closed or being closed, skip sending")
+		return result
+	}
+	// device will create or find existing connection and sends the MsgAssembler via that connection
+	a.sendMsgCh <- drgMd
+	server.UpdateSend(currTime)
+	// block until transaction completes
+	serverPpd := <-drgMd.ResponseMsgCh
+	close(drgMd.ResponseMsgCh)
+
+	//等待NHP-Sever 回复，并在下面func()函数中进行接收及处理
+	var err error
+
+	// result2, dagMsg := func() (bool, *common.DAGMsg) {
+	// 	dagMsg := &common.DAGMsg{} // 创建一个 DAGMsg 的实例
+	// 	// 在此处可以添加处理 dagMsg 的逻辑
+	// 	return true, dagMsg // 返回布尔值和 DAGMsg 指针
+	// }() //
+
+	result, dagMsg := func() (bool, *common.DAGMsg) {
+		dagMsg := &common.DAGMsg{}
+		if serverPpd.Error != nil {
+			log.Error("Agent(%s#%d)[SendDARMsgToServer] failed to receive response from server %s: %v", drgMsg.DoId, drgMd.TransactionId, server.Ip, serverPpd.Error)
+			err = serverPpd.Error
+			return false, dagMsg
+		}
+
+		if serverPpd.HeaderType != core.NHP_DAG {
+			log.Error("DE(%s#%d)[SendDARMsgToServer] response from server %s has wrong type: %s", drgMsg.DoId, drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
+			err = common.ErrTransactionRepliedWithWrongType
+			return false, dagMsg
+		}
+
+		//解析NHP-Sever回复的明文消息字节数据转化为消息对象DAKMsg
+		err = json.Unmarshal(serverPpd.BodyMessage, dagMsg)
+		if err != nil {
+			log.Error("Agent(%s#%d)[HandleDHPDAGMessage] failed to parse %s message: %v", drgMsg.DoId, serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
+			return false, dagMsg
+		}
+		dagMsgString, err := json.Marshal(dagMsg)
+		if err != nil {
+			log.Error("Agent(%s#%d)DAKMsg failed to parse %s message: %v", dagMsg.DoId, err)
+			return false, dagMsg
+		}
+		log.Info("SendDARMsgToServer 返回结果：%v", dagMsgString)
+		if dagMsg.ErrCode != 0 {
+			log.Error("SendDARMsgToServer send failed,error:", dagMsg.ErrMsg)
+			fmt.Println("SendDARMsgToServer send failed,error:" + dagMsg.ErrMsg)
+			return false, dagMsg
+		}
+		return true, dagMsg
+	}()
+	if !result {
+		log.Error("获取文件访问授权失败")
+	} else {
+		//TODO 开始解密文件内容
+		wrappedKey := dagMsg.WrappedKey //数据加密密钥，
+		dataDecodeKey, err := core.ECCDecrypt(a.config.SMPrivateKeyBase64, wrappedKey)
+
+		if err != nil {
+			log.Error("密钥解密失败:%v", err)
+		}
+
+		log.Info("密钥解密成功：%s", dataDecodeKey)
+		cmd := exec.Command(a.config.DHPExeCMD, "run", "--mode=decrypt", "--ztdo="+ztdo, "--output="+output, "--decodeKey="+dataDecodeKey)
+		cmdResult, err := cmd.CombinedOutput() // 获取命令输出
+		if err != nil {
+			log.Info("执行nhp-de.exe解密 异常%v", err)
+		}
+		log.Info("执行nhp-de.exe解密结果:%v", cmdResult)
+	}
+	log.Info("SendDARMsgToServer 发送成功，最后返回结果：%v", result)
+	return result
 }

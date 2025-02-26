@@ -3,11 +3,16 @@ package core
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"hash"
+	"log"
+	"os"
 
 	"github.com/emmansun/gmsm/padding"
+	"github.com/emmansun/gmsm/sm2"
 	"github.com/emmansun/gmsm/sm3"
 	"github.com/emmansun/gmsm/sm4"
 	"golang.org/x/crypto/blake2s"
@@ -239,4 +244,49 @@ func CBCDecryption(t GcmTypeEnum, key *[SymmetricKeySize]byte, ciphertext []byte
 	}
 
 	return plaintext, nil
+}
+
+// ECC公钥加密方法
+func ECCEncryption(pubKey string, message string) (string, error) {
+	//采用ASN.1格式
+	// real public key should be from cert or public key pem file
+	keypoints, _ := hex.DecodeString(pubKey)
+	pubKeyByte, err := sm2.NewPublicKey(keypoints)
+	if err != nil {
+		fmt.Println("fail to new public key %v", err)
+		return "", err
+	}
+	secretMessage := []byte(message)
+	// crypto/rand.Reader is a good source of entropy for randomizing the
+	// encryption function.
+	rng := rand.Reader
+
+	ciphertext, err := sm2.EncryptASN1(rng, pubKeyByte, secretMessage)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error from encryption: %s\n", err)
+		return "", err
+	}
+	// Since encryption is a randomized function, ciphertext will be
+	// different each time.
+	fmt.Printf("Ciphertext: %x\n", ciphertext)
+	return hex.EncodeToString(ciphertext), err
+}
+
+// ECC私钥解密方法
+func ECCDecrypt(privateKey string, message string) (string, error) {
+	//采用ASN.1格式
+	ciphertext, err := hex.DecodeString(message)
+	// real private key should be from secret storage
+	privKey, _ := hex.DecodeString(privateKey)
+	testkey, err := sm2.NewPrivateKey(privKey)
+	if err != nil {
+		log.Fatalf("fail to new private key %v", err)
+	}
+
+	sourceText, err := testkey.Decrypt(nil, ciphertext, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error from decryption: %s\n", err)
+		return "", err
+	}
+	return string(sourceText), err
 }

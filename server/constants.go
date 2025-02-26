@@ -1,8 +1,8 @@
 package server
 
 const (
-	MaxConcurrentConnection         = 20480
-	OverloadConnectionThreshold     = MaxConcurrentConnection * 4 / 5 // 80%
+	MaxConcurrentConnection         = 20480                           //服务允许的最大线程数
+	OverloadConnectionThreshold     = MaxConcurrentConnection * 4 / 5 // 80% //过载时的最大线程数
 	BlockAddrRefreshRate            = 20                              // 20 seconds
 	BlockAddrExpireTime             = 90                              // 90 seconds
 	PreCheckThreatCountBeforeBlock  = 5                               // block source address if packet precheck errors exceeds this count

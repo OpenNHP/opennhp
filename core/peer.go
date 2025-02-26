@@ -8,10 +8,11 @@ import (
 	"time"
 )
 
+// Peer 是对方
 type Peer interface {
 	DeviceType() int
 	Name() string
-	PublicKey() []byte
+	PublicKey() []byte //对方公钥
 	PublicKeyBase64() string
 
 	IsExpired() bool

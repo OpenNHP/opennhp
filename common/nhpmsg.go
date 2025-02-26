@@ -196,3 +196,67 @@ func (r *ResourceGroup) Hosts() map[string]string {
 
 	return hostMap
 }
+
+// DHP相关消息结构
+// 7.2.1.NHP_DRG (DHP Register)消息
+type DRGMsg struct {
+	DoType      string `json:"doType"`      //数据对象的格式类型，默认值为“ZTDO”，ZTDO的文件格式详细定义见第8章。除此之外，DHP协议还支持其他的自定义格式。
+	DoId        string `json:"doId"`        //数据对象标识，要求全局唯一，通常为UUID
+	AccessUrl   string `json:"accessUrl"`   //数据对象的访问URL，可以为空，表示通过线下方传输数据对象。
+	AccessByNHP bool   `json:"accessByNHP"` //访问accessUrl前是否要先通过NHP敲门。如果accessUrl为空，该字段可省略。
+	AspHost     string `json:"aspHost"`     //ASP授权服务提供商的地址，ASP提供密钥访问服务KAS以及策略验证服务PAS。
+	KasType     int    `json:"kasType"`     //密钥访问服务KAS的类型：	0：密钥访问服务设置在NHP-server上，默认值; 1：密钥访问服务在ASP服务器上;
+	KaoContent  string `json:"kaoContent"`  //当kasType为0本字段用来发送密钥访问对象(KAO)的JSON数据内容，KAO格式的详细定义见7.3章节; 	当kasType为其他值，本字段可以为空。
+	PasType     int    `json:"pasType"`     //策略验证服务KAS的类型：0：策略验证服务设置在NHP-Server上，默认值；1：策略验证服务PAS在ASP服务器上；
+	PaoContent  string `json:"paoContent"`  //当pasType为0本字段用来发送策略证明对象(PAO)的内容，策略类型为REGO，PAO格式的详细定义见7.4章节。当pasType为其他值，本字段可以为空。
+}
+
+// 7.2.2.NHP_DAK (DHP Register Ack)消息
+type DAKMsg struct {
+	DoId    string `json:"doId"`    //数据对象标识，此响应中标识为申请注册报文中数据对象标识
+	ErrCode int    `json:"errCode"` //注册结果错误码，0则表示成功。
+	ErrMsg  string `json:"errMsg"`  //错误提示信息，如果errCode为0则本字段为空。
+}
+
+// 7.2.3.NHP_DAR (DHP Access Request) 消息
+type DARMsg struct {
+	DoId string `json:"doId"` //请求访问的数据对象标识ID
+}
+
+// 7.2.4.NHP_DAG （DHP Access Granted）消息
+type DAGMsg struct {
+	DoId       string `json:"doId"`       //数据对象标识，此响应中标识为申请注册报文中数据对象标识
+	ErrCode    int    `json:"errCode"`    //授权结果错误码，0表示成功
+	ErrMsg     string `json:"errMsg"`     //错误提示信息，如果errCode为0则本字段为空。
+	WrappedKey string `json:"wrappedKey"` //payload数据加密的对称密钥经数据对象的使用者的公钥加密后的密文再Base64编码数据。如果errCode不是0，则本字段为空。
+}
+
+// 7.2.5.NHP_DPC（DHP Policy Challenge）消息
+type DPCMsg struct {
+	DoId             string `json:"doId"`             //数据对象标识ID
+	ChallengeId      string `json:"challengeId"`      //策略验证挑战的标识ID，必须和所回应的NHP_DPC消息中的challengeId一致。
+	ChallengeContent string `json:"challengeContent"` //策略验证挑战的内容
+	TTL              int    `json:"TTL"`              //策略验证证据的有效时间TTL（Time To Live），单位毫秒。
+}
+
+// 7.2.6.NHP_DPV（DHP Policy Verification）消息
+type DPVMsg struct {
+	DoId        string `json:"doId"`        //数据对象标识ID
+	ChallengeId string `json:"challengeId"` //策略验证挑战的标识ID，必须和所回应的NHP_DPC消息中的challengeId一致。
+	Evidence    string `json:"evidence"`    //策略验证的证据内容。
+	TTL         int    `json:"TTL"`         //策略验证证据的有效时间TTL（Time To Live），单位毫秒。
+}
+
+// 7.3.密钥访问对象KAO
+type DHPKao struct {
+	KeyWrapper    string `json:"keyWrapper"`    //kas: 数据对象密钥采用KAS公钥加密封装生成；consumer: 数据对象密钥采用数据对向使用者的公钥加密封装生成；
+	PolicyBinding string `json:"policyBinding"` //HMAC(HMAC(pao),key)的Base64编码，key采用payload数据加密对称密钥，HMAC(pao)是PAO对象的HMAC值
+	ConsumerId    string `json:"ConsumerId"`    //数据访问请求者的标识ID，比如电子邮件、电话号码等
+	WrappedKey    string `json:"wrappedKey"`    //payload数据加密的对称密钥经keyWrapper公钥加密后的密文再Base64编码数据。
+}
+
+// DHP 加密时Policy对象
+type DHPPolicy struct {
+	ConsumerPublicKey string `json:"publicKey"`  //数据访问者公钥
+	ConsumerId        string `json:"consumerId"` //数据访问者用户Id
+}

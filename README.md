@@ -6,13 +6,14 @@
 [![es](https://img.shields.io/badge/lang-es-green.svg)](https://github.com/OpenNHP/opennhp/blob/master/README.es.md)
 
 ![OpenNHP Logo](docs/images/logo11.png)
+# OpenNHP: Zero Trust Network-resource Hiding Protocol
 
-# OpenNHP: Open Source Zero Trust Security Toolkit for the AI Era
+**NHP (Network-resource Hiding Protocol)** is a lightweight, cryptography-based Zero Trust protocol designed to safeguard servers and data from attackers by leveraging resource-hiding and encryption. It includes two core sub-protocols:
 
-**OpenNHP** is a lightweight, cryptography-powered, open-source toolkit built to enforce Zero Trust security for infrastructure, applications, and data in the AI-driven world. By leveraging resource obfuscation and advanced encryption algorithms, OpenNHP effectively reduces attack surfaces and strengthens defense against cyber threats. It features two core protocols:  
+- **Network-infrastructure Hiding Protocol (nHP):** Protects servers and applications by concealing domains, IP addresses, and ports.  
+- **Data-object Hiding Protocol (dHP):** Ensures data security and privacy by making data "usable but not visible" through cryptographic key negotiation and encryption.
 
-- **Network-infrastructure Hiding Protocol (NHP):** Conceals server ports, IP addresses, and domain names to protect applications and infrastructure from unauthorized access.  
-- **Data-object Hiding Protocol (DHP):** Ensures data security and privacy by employing encryption algorithms and confidential computing to make data *"usable but not visible"*.
+**OpenNHP** is the open source implementation of NHP.
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
@@ -30,7 +31,7 @@ Gartner research anticipates a [sharp rise in AI-driven cyberattacks](https://ww
 
 ---
 
-## Quick Demo 1: Hiding Application Server Ports
+## Quick Demo: See OpenNHP in Action
 
 Before diving into the details of OpenNHP, let's start with a quick demonstration of how OpenNHP protects a server from unauthorized access. You can see it in action by accessing the protected server at https://acdemo.opennhp.org.
 

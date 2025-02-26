@@ -22,9 +22,11 @@ var (
 )
 
 type Config struct {
-	LogLevel         int
-	PrivateKeyBase64 string
-	KnockUser        `mapstructure:",squash"`
+	LogLevel           int
+	PrivateKeyBase64   string
+	KnockUser          `mapstructure:",squash"`
+	DHPExeCMD          string //DHP文件解密码工具路径
+	SMPrivateKeyBase64 string //sm2加密码算法的私钥,用于ztdo文件解密
 }
 
 type Peers struct {

@@ -43,3 +43,10 @@ func CatchPanicThenRun(catchFun func()) {
 		}
 	}
 }
+
+// 获取当前日期字符串，格式为yyyyMMdd,如20250210
+func GetCurrentDate() (date string) {
+	now := time.Now()
+	date = now.Format("20060102")
+	return date
+}

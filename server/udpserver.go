@@ -81,6 +81,10 @@ type UdpServer struct {
 
 	recvMsgCh <-chan *core.PacketParserData
 	sendMsgCh chan *core.MsgData
+
+	//NHP-DE
+	dePeerMapMutex sync.Mutex
+	dePeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 }
 
 type BlockAddr struct {
@@ -614,7 +618,12 @@ func (s *UdpServer) recvMessageRoutine() {
 
 			case core.NHP_LST:
 				go s.HandleListRequest(ppd)
+			case core.NHP_DAR:
+				go s.HandleDHPDARMessage(ppd)
+			case core.NHP_DRG:
+				go s.HandleDHPDRGMessage(ppd)
 			}
+
 		}
 	}
 }
@@ -949,4 +958,14 @@ func (us *UdpServer) FindPluginHandler(aspId string) plugins.PluginHandler {
 		return nil
 	}
 	return handler
+}
+
+// DHP
+func (s *UdpServer) AddDevicePeer(device *core.UdpPeer) {
+	if device.DeviceType() == core.NHP_DE {
+		s.device.AddPeer(device)
+		s.dePeerMapMutex.Lock()
+		s.agentPeerMap[device.PublicKeyBase64()] = device
+		s.dePeerMapMutex.Unlock()
+	}
 }

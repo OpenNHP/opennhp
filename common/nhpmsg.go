@@ -196,3 +196,67 @@ func (r *ResourceGroup) Hosts() map[string]string {
 
 	return hostMap
 }
+
+// // DHP Msg structs
+// 7.2.1.NHP_DRG (DHP Register)
+type DRGMsg struct {
+	DoType      string `json:"doType"`      // Data object format type, default "ZTDO" (ZTDO format details in Chapter 8). Custom formats allowed.
+	DoId        string `json:"doId"`        // Globally unique data object identifier (typically UUID)
+	AccessUrl   string `json:"accessUrl"`   // Data access URL (empty indicates offline transfer)
+	AccessByNHP bool   `json:"accessByNHP"` // Require NHP handshake before accessing URL (optional if accessUrl empty)
+	AspHost     string `json:"aspHost"`     // ASP authorization service provider address (KAS/PAS services)
+	KasType     int    `json:"kasType"`     // KAS type: 0=KAS on NHP-server (default), 1=KAS on ASP
+	KaoContent  string `json:"kaoContent"`  // KAO JSON data when kasType=0 (see 7.3). Empty otherwise.
+	PasType     int    `json:"pasType"`     // PAS type: 0=PAS on NHP-server (default), 1=PAS on ASP
+	PaoContent  string `json:"paoContent"`  // PAO content (REGO policy) when pasType=0 (see 7.4). Empty otherwise.
+}
+
+// 7.2.2.NHP_DAK (DHP Register Ack)
+type DAKMsg struct {
+	DoId    string `json:"doId"`    // Echoes registration request's DoId
+	ErrCode int    `json:"errCode"` // Registration error code (0=success)
+	ErrMsg  string `json:"errMsg"`  // Error message (empty if success)
+}
+
+// 7.2.3.NHP_DAR (DHP Access Request)
+type DARMsg struct {
+	DoId string `json:"doId"` // Requested data object identifier
+}
+
+// 7.2.4.NHP_DAG (DHP Access Granted)
+type DAGMsg struct {
+	DoId       string `json:"doId"`       // Echoes request's DoId
+	ErrCode    int    `json:"errCode"`    // Authorization error code (0=success)
+	ErrMsg     string `json:"errMsg"`     // Error message (empty if success)
+	WrappedKey string `json:"wrappedKey"` // Base64-encoded symmetric key encrypted with data consumer's public key (empty on error)
+}
+
+// 7.2.5.NHP_DPC (DHP Policy Challenge)
+type DPCMsg struct {
+	DoId             string `json:"doId"`             // Data object identifier
+	ChallengeId      string `json:"challengeId"`      // Challenge ID (must match corresponding NHP_DPC)
+	ChallengeContent string `json:"challengeContent"` // Policy challenge content
+	TTL              int    `json:"TTL"`              // Evidence validity period in milliseconds
+}
+
+// 7.2.6.NHP_DPV (DHP Policy Verification)
+type DPVMsg struct {
+	DoId        string `json:"doId"`        // Data object identifier
+	ChallengeId string `json:"challengeId"` // Matching challenge ID
+	Evidence    string `json:"evidence"`    // Policy verification evidence
+	TTL         int    `json:"TTL"`         // Evidence validity period in milliseconds
+}
+
+// 7.3.KAO (Key Access Object)
+type DHPKao struct {
+	KeyWrapper    string `json:"keyWrapper"`    // Key wrapping method: "kas"=KAS public key, "consumer"=data consumer's public key
+	PolicyBinding string `json:"policyBinding"` // Base64-encoded HMAC(HMAC(pao), key) using payload key
+	ConsumerId    string `json:"ConsumerId"`    // Data consumer identifier (email/phone/etc)
+	WrappedKey    string `json:"wrappedKey"`    // Base64-encoded payload key encrypted via keyWrapper
+}
+
+// DHP Policy
+type DHPPolicy struct {
+	ConsumerPublicKey string `json:"publicKey"`  // Data consumer's public key
+	ConsumerId        string `json:"consumerId"` // Data consumer ID
+}

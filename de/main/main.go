@@ -8,31 +8,44 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/OpenNHP/opennhp/agent"
 	"github.com/OpenNHP/opennhp/core"
+	"github.com/OpenNHP/opennhp/de"
 	"github.com/OpenNHP/opennhp/version"
 	"github.com/urfave/cli/v2"
 )
 
 func main() {
+	initApp()
+}
+func initApp() {
 	app := cli.NewApp()
-	app.Name = "nhp-agent"
-	app.Usage = "agent entity for NHP protocol"
+	app.Name = "nhp-device"
+	app.Usage = "device entity for NHP protocol"
 	app.Version = version.Version
 
 	runCmd := &cli.Command{
 		Name:  "run",
-		Usage: "create and run agent process for NHP protocol",
+		Usage: "create and run device process for NHP protocol",
 		Flags: []cli.Flag{
-			&cli.StringFlag{Name: "ztdo", Value: "", Usage: "Ztdo file path"},
-			&cli.StringFlag{Name: "output", Value: "", Usage: "Decrypted file output path"},
+			&cli.StringFlag{Name: "mode", Value: "none", Usage: "encrypt;decrypt"},
+			&cli.StringFlag{Name: "source", Value: "sample.txt", Usage: "source file"},
+			&cli.StringFlag{Name: "policy", Value: "policyinfo.json", Usage: "The policy file contains the public key information of the data accessor"},
+			&cli.StringFlag{Name: "output", Value: "output.txt", Usage: "Save path of the ztdo file"},
+			&cli.StringFlag{Name: "meta", Value: "meta.json", Usage: "meta.json"},
+			&cli.StringFlag{Name: "ztdo", Value: "", Usage: "path to the ztdo file"},
+			&cli.StringFlag{Name: "decodeKey", Value: "", Usage: "decrypt key"},
 		},
 		Action: func(c *cli.Context) error {
-			ztdo := c.String("ztdo")
+			mode := c.String("mode")
+			source := c.String("source")
+			policy := c.String("policy")
 			output := c.String("output")
-			return runApp(ztdo, output)
+			ztdo := c.String("ztdo")
+			decodeKey := c.String("decodeKey")
+			return runApp(mode, source, output, policy, ztdo, decodeKey)
 		},
 	}
+
 	keygenCmd := &cli.Command{
 		Name:  "keygen",
 		Usage: "generate key pairs for NHP devices",
@@ -64,7 +77,6 @@ func main() {
 		},
 		Action: func(c *cli.Context) error {
 			privKey, err := base64.StdEncoding.DecodeString(c.Args().First())
-			fmt.Println("privKey:" + c.Args().First())
 			if err != nil {
 				return err
 			}
@@ -93,31 +105,61 @@ func main() {
 	}
 }
 
-func runApp(ztdo string, output string) error {
+/*
+*
+decodeKey:Data Decryption Key
+decodeSavePath:Save Directory Path
+*/
+func runApp(mode string, source string, output string, policy string, ztdo string, decodeKey string) error {
+	fmt.Println("mode=" + mode)
 
 	exeFilePath, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	exeDirPath := filepath.Dir(exeFilePath)
-
-	a := &agent.UdpAgent{}
-
+	a := &de.UdpDevice{}
 	err = a.Start(exeDirPath, 4)
 	if err != nil {
 		return err
-	}
-	if ztdo != "" {
-		//request ztdo file
-		a.StartDecodeZtdo(ztdo, output)
-	} else {
-		a.StartKnockLoop()
 	}
 
 	// react to terminate signals
 	termCh := make(chan os.Signal, 1)
 	signal.Notify(termCh, syscall.SIGTERM, os.Interrupt, syscall.SIGABRT)
 
+	if mode == "encrypt" {
+		fmt.Println("policy=" + policy)
+		fmt.Println("source=" + source)
+		fmt.Println("output=" + output)
+		outputFilePath := output
+		policyFile := policy
+		dhpPolicy, err := de.ReadPolicyFile(policyFile)
+		if err != nil {
+			fmt.Printf("failed to read policy file:%s\n", err)
+			return err
+		}
+		zoId, encodedKey := de.EncodeToZtoFile(source, outputFilePath)
+		if zoId != "" {
+
+			fmt.Printf("Encryption Key for Data Content,key:%s\n", encodedKey)
+			eccKey, err := core.ECCEncryption(dhpPolicy.ConsumerPublicKey, encodedKey)
+			if err != nil {
+				fmt.Printf("Data encryption failed：%s\n", err)
+				return err
+			}
+			a.SendDHPRegister(zoId, dhpPolicy, eccKey)
+		} else {
+			fmt.Printf("failed to read source file")
+		}
+		os.Exit(0)
+	} else if mode == "decrypt" {
+		fmt.Println("ztdo=" + ztdo)
+		fmt.Println("decodeKey=" + decodeKey)
+		fmt.Println("output=" + output)
+		de.DecodeZtoFile(ztdo, decodeKey, output)
+		os.Exit(0)
+	}
 	// block until terminated
 	<-termCh
 	a.Stop()

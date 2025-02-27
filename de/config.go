@@ -1,4 +1,4 @@
-package agent
+package de
 
 import (
 	"fmt"
@@ -22,11 +22,8 @@ var (
 )
 
 type Config struct {
-	LogLevel           int
-	PrivateKeyBase64   string
-	KnockUser          `mapstructure:",squash"`
-	DHPExeCMD          string
-	SMPrivateKeyBase64 string
+	LogLevel         int
+	PrivateKeyBase64 string
 }
 
 type Peers struct {
@@ -37,7 +34,7 @@ type Resources struct {
 	Resources []*KnockResource
 }
 
-func (a *UdpAgent) loadBaseConfig() error {
+func (a *UdpDevice) loadBaseConfig() error {
 	// config.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
 	if err := a.updateBaseConfig(fileName); err != nil {
@@ -52,7 +49,7 @@ func (a *UdpAgent) loadBaseConfig() error {
 	return nil
 }
 
-func (a *UdpAgent) loadPeers() error {
+func (a *UdpDevice) loadPeers() error {
 	// server.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "server.toml")
 	if err := a.updateServerPeers(fileName); err != nil {
@@ -68,23 +65,23 @@ func (a *UdpAgent) loadPeers() error {
 	return nil
 }
 
-func (a *UdpAgent) loadResources() error {
-	// resource.toml
-	fileName := filepath.Join(ExeDirPath, "etc", "resource.toml")
-	if err := a.updateResources(fileName); err != nil {
-		// ignore error
-		_ = err
-	}
+// func (a *UdpDevice) loadResources() error {
+// 	// resource.toml
+// 	fileName := filepath.Join(ExeDirPath, "etc", "resource.toml")
+// 	if err := a.updateResources(fileName); err != nil {
+// 		// ignore error
+// 		_ = err
+// 	}
 
-	resourceConfigWatch = utils.WatchFile(fileName, func() {
-		log.Info("resource config: %s has been updated", fileName)
-		a.updateResources(fileName)
-	})
+// 	resourceConfigWatch = utils.WatchFile(fileName, func() {
+// 		log.Info("resource config: %s has been updated", fileName)
+// 		a.updateResources(fileName)
+// 	})
 
-	return nil
-}
+// 	return nil
+// }
 
-func (a *UdpAgent) updateBaseConfig(file string) (err error) {
+func (a *UdpDevice) updateBaseConfig(file string) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
@@ -98,21 +95,11 @@ func (a *UdpAgent) updateBaseConfig(file string) (err error) {
 	if err := toml.Unmarshal(content, &conf); err != nil {
 		log.Error("failed to unmarshal base config: %v", err)
 	}
-
-	a.knockUserMutex.Lock()
-	a.knockUser = &KnockUser{
-		UserId:         conf.UserId,
-		OrganizationId: conf.OrganizationId,
-		UserData:       conf.UserData,
-	}
-	a.knockUserMutex.Unlock()
-
 	if a.config == nil {
 		a.config = &conf
 		a.log.SetLogLevel(conf.LogLevel)
 		return err
 	}
-
 	// update
 	if a.config.LogLevel != conf.LogLevel {
 		log.Info("set base log level to %d", conf.LogLevel)
@@ -123,7 +110,7 @@ func (a *UdpAgent) updateBaseConfig(file string) (err error) {
 	return err
 }
 
-func (a *UdpAgent) updateServerPeers(file string) (err error) {
+func (a *UdpDevice) updateServerPeers(file string) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
@@ -140,7 +127,7 @@ func (a *UdpAgent) updateServerPeers(file string) (err error) {
 		log.Error("failed to unmarshal server config: %v", err)
 	}
 	for _, p := range peers.Servers {
-		p.Type = core.NHP_SERVER
+		p.Type = core.NHP_DE
 		a.device.AddPeer(p)
 		serverPeerMap[p.PublicKeyBase64()] = p
 	}
@@ -158,50 +145,50 @@ func (a *UdpAgent) updateServerPeers(file string) (err error) {
 	return err
 }
 
-func (a *UdpAgent) updateResources(file string) (err error) {
-	utils.CatchPanicThenRun(func() {
-		err = errLoadConfig
-	})
+// func (a *UdpDevice) updateResources(file string) (err error) {
+// 	utils.CatchPanicThenRun(func() {
+// 		err = errLoadConfig
+// 	})
 
-	content, err := os.ReadFile(file)
-	if err != nil {
-		log.Error("failed to read resource config: %v", err)
-	}
+// 	content, err := os.ReadFile(file)
+// 	if err != nil {
+// 		log.Error("failed to read resource config: %v", err)
+// 	}
 
-	var resources Resources
-	targetMap := make(map[string]*KnockTarget)
-	if err := toml.Unmarshal(content, &resources); err != nil {
-		log.Error("failed to unmarshal resource config: %v", err)
-	}
-	for _, res := range resources.Resources {
-		peer := a.FindServerPeerFromResource(res)
-		if peer != nil {
-			targetMap[res.Id()] = &KnockTarget{
-				KnockResource: *res,
-				ServerPeer:    peer,
-			}
-		}
-	}
+// 	var resources Resources
+// 	targetMap := make(map[string]*KnockTarget)
+// 	if err := toml.Unmarshal(content, &resources); err != nil {
+// 		log.Error("failed to unmarshal resource config: %v", err)
+// 	}
+// 	for _, res := range resources.Resources {
+// 		peer := a.FindServerPeerFromResource(res)
+// 		if peer != nil {
+// 			targetMap[res.Id()] = &KnockTarget{
+// 				KnockResource: *res,
+// 				ServerPeer:    peer,
+// 			}
+// 		}
+// 	}
 
-	if a.knockTargetMap == nil {
-		a.knockTargetMap = targetMap
-		return err
-	}
+// 	if a.knockTargetMap == nil {
+// 		a.knockTargetMap = targetMap
+// 		return err
+// 	}
 
-	// update
-	a.knockTargetMapMutex.Lock()
-	a.knockTargetMap = targetMap
-	a.knockTargetMapMutex.Unlock()
+// 	// update
+// 	a.knockTargetMapMutex.Lock()
+// 	a.knockTargetMap = targetMap
+// 	a.knockTargetMapMutex.Unlock()
 
-	// renew knock cycle
-	if len(a.signals.knockTargetMapUpdated) == 0 {
-		a.signals.knockTargetMapUpdated <- struct{}{}
-	}
+// 	// renew knock cycle
+// 	if len(a.signals.knockTargetMapUpdated) == 0 {
+// 		a.signals.knockTargetMapUpdated <- struct{}{}
+// 	}
 
-	return err
-}
+// 	return err
+// }
 
-func (a *UdpAgent) StopConfigWatch() {
+func (a *UdpDevice) StopConfigWatch() {
 	if baseConfigWatch != nil {
 		baseConfigWatch.Close()
 	}

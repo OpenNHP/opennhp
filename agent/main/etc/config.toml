@@ -9,7 +9,8 @@ PrivateKeyBase64 = "+Jnee2lP6Kn47qzSaqwSmWxORsBkkCV6YHsRqXCegVo="
 UserId = "agent-0"
 OrganizationId = "opennhp.cn"
 LogLevel = 4
-
+DHPExeCMD = "..\\..\\release\\nhp-de\\nhp-de.exe"
+SMPrivateKeyBase64 = "6c5a0a0b2eed3cbec3e4f1252bfe0e28c504a1c6bf1999eebb0af9ef0f8e6c85"
 # UserData: a customized user entry for flexibility.
 # Its key-value pairs will be send to server along with knock message.
 [UserData]

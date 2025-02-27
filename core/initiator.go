@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"crypto/cipher"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"hash"
@@ -102,7 +103,7 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 		mad.TransactionId = md.TransactionId
 		mad.connData = md.ConnData
 		mad.encryptedPktCh = md.EncryptedPktCh
-
+		log.Debug("createMsgAssemblerData mad.RemotePubKey:" + base64.StdEncoding.EncodeToString(mad.RemotePubKey))
 		// init packet buffer
 		if md.ExternalPacket != nil {
 			mad.BasePacket = md.ExternalPacket
@@ -282,8 +283,6 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 		static = aead.Seal(mad.header.StaticBytes()[:0], mad.header.NonceBytes(), mad.deviceEcdh.PublicKey(), mad.chainHash.Sum(nil))
 	}
 
-	//log.Debug("encrypted pubkey: %v, output: %v", mad.deviceEcdh.PublicKey(), static)
-
 	// evolve chainhash ChainHash1 -> ChainHash2
 	mad.chainHash.Write(static)
 
@@ -319,7 +318,6 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 	// generate gcm key for body encryption ChainKey3 -> ChainKey4 (ChainKey7 -> ChainKey8)
 	mad.noise.KeyGen2(&mad.chainKey, &key, mad.chainKey[:], ts[:])
 	mad.bodyAead = AeadFromKey(mad.ciphers.GcmType, &key)
-
 	return err
 }
 

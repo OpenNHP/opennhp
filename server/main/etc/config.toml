@@ -8,7 +8,7 @@
 # LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.
 # DisableAgentValidation: whether for the server to skip the agent's public key validation.
 PrivateKeyBase64 = "eHdyRHKJy/YZJsResCt5XTAZgtcwvLpSXAiZ8DBc0V4="
-ListenIp = ""    # empty for ipv4 + ipv6, "0.0.0.0" for ipv4 only
+ListenIp = "192.168.50.39"    # empty for ipv4 + ipv6, "0.0.0.0" for ipv4 only
 ListenPort = 62206
 Hostname = "localhost" # the hostname of NHP-Server
 LogLevel = 4

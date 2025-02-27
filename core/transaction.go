@@ -25,16 +25,18 @@ type RemoteTransaction struct {
 }
 
 func (d *Device) IsTransactionRequest(t int) bool {
+
 	// NHP_KPL is handled separately
+	log.Info("IsTransactionRequest: deviceType:%d", d.deviceType)
 	switch d.deviceType {
 	case NHP_AGENT:
 		switch t {
-		case NHP_REG, NHP_LST, NHP_KNK, NHP_RKN, NHP_EXT:
+		case NHP_REG, NHP_LST, NHP_KNK, NHP_RKN, NHP_EXT, NHP_DAR:
 			return true
 		}
 	case NHP_SERVER:
 		switch t {
-		case NHP_REG, NHP_LST, NHP_KNK, NHP_RKN, NHP_EXT, NHP_AOL, NHP_AOP:
+		case NHP_REG, NHP_LST, NHP_KNK, NHP_RKN, NHP_EXT, NHP_AOL, NHP_AOP, NHP_DAK, NHP_DAG, NHP_DAR, NHP_DRG:
 			return true
 		}
 	case NHP_AC:
@@ -42,7 +44,13 @@ func (d *Device) IsTransactionRequest(t int) bool {
 		case NHP_AOL, NHP_AOP:
 			return true
 		}
+	case NHP_DE:
+		switch t {
+		case NHP_DRG:
+			return true
+		}
 	case NHP_RELAY:
+
 		// no transaction request for relay
 	}
 
@@ -58,6 +66,8 @@ func (d *Device) LocalTransactionTimeout() int {
 		return ServerLocalTransactionResponseTimeoutMs
 	case NHP_AC:
 		return ACLocalTransactionResponseTimeoutMs
+	case NHP_DE:
+		return DeLocalTransactionResponseTimeoutMs
 	case NHP_RELAY:
 		// no transaction request for relay
 	}
@@ -74,19 +84,24 @@ func (d *Device) IsTransactionResponse(t int) bool {
 	switch d.deviceType {
 	case NHP_AGENT:
 		switch t {
-		case NHP_RAK, NHP_LRT, NHP_ACK:
+		case NHP_RAK, NHP_LRT, NHP_ACK, NHP_DAG:
 			// note NHP_COK is not handled as transaction for agent
 			return true
 		}
 	case NHP_SERVER:
 		switch t {
-		case NHP_RAK, NHP_LRT, NHP_ACK, NHP_AAK, NHP_ART:
+		case NHP_RAK, NHP_LRT, NHP_ACK, NHP_AAK, NHP_ART, NHP_DAK:
 			// note NHP_COK is not handled as transaction for server
 			return true
 		}
 	case NHP_AC:
 		switch t {
 		case NHP_AAK, NHP_ART:
+			return true
+		}
+	case NHP_DE:
+		switch t {
+		case NHP_DAK:
 			return true
 		}
 	case NHP_RELAY:

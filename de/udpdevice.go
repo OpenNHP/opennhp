@@ -1,11 +1,10 @@
-package agent
+package de
 
 import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -65,7 +64,7 @@ func (kt *KnockTarget) Server() *core.UdpPeer {
 	return kt.ServerPeer
 }
 
-type UdpAgent struct {
+type UdpDevice struct {
 	stats struct {
 		totalRecvBytes uint64
 		totalSendBytes uint64
@@ -77,9 +76,6 @@ type UdpAgent struct {
 	remoteConnectionMutex sync.Mutex
 	remoteConnectionMap   map[string]*UdpConn // indexed by remote UDP address
 
-	knockTargetMapMutex sync.Mutex
-	knockTargetMap      map[string]*KnockTarget // indexed by aspId + resId
-
 	serverPeerMutex sync.Mutex
 	serverPeerMap   map[string]*core.UdpPeer // indexed by server's public key
 
@@ -88,19 +84,14 @@ type UdpAgent struct {
 	running atomic.Bool
 
 	signals struct {
-		stop                  chan struct{}
-		knockTargetStop       chan struct{}
-		knockTargetMapUpdated chan struct{}
+		stop             chan struct{}
+		serverMapUpdated chan struct{}
 	}
 
 	recvMsgCh <-chan *core.PacketParserData
 	sendMsgCh chan *core.MsgData
-
-	// one agent should serve only one specific user at a time
-	knockUserMutex sync.RWMutex
-	knockUser      *KnockUser
-	deviceId       string
-	checkResults   map[string]any
+	// one device should serve only one specific user at a time
+	registerUserMutex sync.RWMutex
 }
 
 type UdpConn struct {
@@ -117,18 +108,19 @@ func (c *UdpConn) Close() {
 dirPath: the path of app or shared library entry point
 logLevel: 0: silent, 1: error, 2: info, 3: debug, 4: verbose
 */
-func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
+func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 	common.ExeDirPath = dirPath
 	ExeDirPath = dirPath
 	// init logger
-	a.log = log.NewLogger("NHP-Agent", logLevel, filepath.Join(ExeDirPath, "logs"), "agent")
+	a.log = log.NewLogger("NHP-DE", logLevel, filepath.Join(ExeDirPath, "logs"), "device")
 	log.SetGlobalLogger(a.log)
 
 	log.Info("=========================================================")
-	log.Info("=== NHP-Agent %s started                           ===", version.Version)
+	log.Info("=== NHP-DE %s started                           ===", version.Version)
 	log.Info("=== REVISION %s ===", version.CommitId)
 	log.Info("=== RELEASE %s                       ===", version.BuildTime)
 	log.Info("=========================================================")
+
 	err = a.loadBaseConfig()
 	if err != nil {
 		return err
@@ -140,95 +132,55 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 		return fmt.Errorf("private key parse error %v", err)
 	}
 
-	a.device = core.NewDevice(core.NHP_AGENT, prk, nil)
+	a.device = core.NewDevice(core.NHP_DE, prk, nil)
 	if a.device == nil {
 		log.Critical("failed to create device %v\n", err)
 		return fmt.Errorf("failed to create device %v", err)
 	}
 
-	// start device routines
-	a.device.Start()
+	a.remoteConnectionMap = make(map[string]*UdpConn)
+	a.serverPeerMap = make(map[string]*core.UdpPeer)
 
 	// load peers
 	a.loadPeers()
 
-	a.remoteConnectionMap = make(map[string]*UdpConn)
-
 	a.signals.stop = make(chan struct{})
-	a.signals.knockTargetStop = make(chan struct{})
-	a.signals.knockTargetMapUpdated = make(chan struct{}, 1)
-
-	// load knock resources
-	a.loadResources()
-
+	a.signals.serverMapUpdated = make(chan struct{}, 1)
 	a.recvMsgCh = a.device.DecryptedMsgQueue
 	a.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
 
-	// start agent routines
+	// start device routines
+	a.device.Start()
+
+	// start device routines
 	a.wg.Add(2)
+
 	go a.sendMessageRoutine()
 	go a.recvMessageRoutine()
-
 	a.running.Store(true)
-
-	time.Sleep(1000 * time.Millisecond)
-
+	// time.Sleep(1000 * time.Millisecond)
 	return nil
 }
 
-func (a *UdpAgent) StartKnockLoop() int {
-	a.knockTargetMapMutex.Lock()
-	size := len(a.knockTargetMap)
-	a.knockTargetMapMutex.Unlock()
-	// start knock preset resources
-	a.wg.Add(1)
-	go a.knockResourceRoutine()
-
-	return size
-}
-
-func (a *UdpAgent) StopKnockLoop() {
-	close(a.signals.knockTargetStop)
-}
-
-func (a *UdpAgent) SetKnockUser(usrId string, orgId string, userData map[string]any) {
-	a.knockUserMutex.Lock()
-	a.knockUser.UserId = usrId
-	a.knockUser.OrganizationId = orgId
-	a.knockUser.UserData = userData
-	a.knockUserMutex.Unlock()
-}
-
-func (a *UdpAgent) SetDeviceId(devId string) {
-	a.deviceId = devId
-}
-
-func (a *UdpAgent) SetCheckResults(results map[string]any) {
-	a.checkResults = results
-}
-
 // export Stop
-func (a *UdpAgent) Stop() {
+func (a *UdpDevice) Stop() {
 	a.running.Store(false)
-	close(a.signals.knockTargetStop)
 	close(a.signals.stop)
 	a.device.Stop()
 	a.StopConfigWatch()
 	a.wg.Wait()
 	close(a.sendMsgCh)
-	close(a.signals.knockTargetMapUpdated)
-
 	log.Info("=========================")
-	log.Info("=== NHP-Agent stopped ===")
+	log.Info("=== NHP-Device stopped ===")
 	log.Info("=========================")
 	a.log.Close()
 }
 
-func (a *UdpAgent) IsRunning() bool {
+func (a *UdpDevice) IsRunning() bool {
 	return a.running.Load()
 }
 
-func (a *UdpAgent) newConnection(addr *net.UDPAddr) (conn *UdpConn) {
+func (a *UdpDevice) newConnection(addr *net.UDPAddr) (conn *UdpConn) {
 	conn = &UdpConn{}
 	var err error
 	// unlike tcp, udp dial is fast (just socket bind), so no need to run in a thread
@@ -268,7 +220,7 @@ func (a *UdpAgent) newConnection(addr *net.UDPAddr) (conn *UdpConn) {
 	return conn
 }
 
-func (a *UdpAgent) sendMessageRoutine() {
+func (a *UdpDevice) sendMessageRoutine() {
 	defer a.wg.Done()
 	defer log.Info("sendMessageRoutine stopped")
 
@@ -320,7 +272,7 @@ func (a *UdpAgent) sendMessageRoutine() {
 
 }
 
-func (a *UdpAgent) SendPacket(pkt *core.Packet, conn *UdpConn) (n int, err error) {
+func (a *UdpDevice) SendPacket(pkt *core.Packet, conn *UdpConn) (n int, err error) {
 	defer func() {
 		atomic.AddUint64(&a.stats.totalSendBytes, uint64(n))
 		atomic.StoreInt64(&conn.ConnData.LastLocalSendTime, time.Now().UnixNano())
@@ -337,7 +289,7 @@ func (a *UdpAgent) SendPacket(pkt *core.Packet, conn *UdpConn) (n int, err error
 	return conn.netConn.Write(pkt.Content)
 }
 
-func (a *UdpAgent) recvPacketRoutine(conn *UdpConn) {
+func (a *UdpDevice) recvPacketRoutine(conn *UdpConn) {
 	addrStr := conn.ConnData.RemoteAddr.String()
 
 	defer conn.ConnData.Done()
@@ -396,7 +348,7 @@ func (a *UdpAgent) recvPacketRoutine(conn *UdpConn) {
 	}
 }
 
-func (a *UdpAgent) connectionRoutine(conn *UdpConn) {
+func (a *UdpDevice) connectionRoutine(conn *UdpConn) {
 	addrStr := conn.ConnData.RemoteAddr.String()
 
 	defer a.wg.Done()
@@ -446,14 +398,12 @@ func (a *UdpAgent) connectionRoutine(conn *UdpConn) {
 				continue
 			}
 			log.Debug("Received udp packet len [%d] from addr: %s\n", len(pkt.Content), addrStr)
-
 			// process keepalive packet
 			if pkt.HeaderType == core.NHP_KPL {
 				a.device.ReleasePoolPacket(pkt)
 				log.Info("Receive [NHP_KPL] message (%s -> %s)", addrStr, conn.ConnData.LocalAddr.String())
 				continue
 			}
-
 			if a.device.IsTransactionResponse(pkt.HeaderType) {
 				// forward to a specific transaction
 				transactionId := pkt.Counter()
@@ -479,7 +429,7 @@ func (a *UdpAgent) connectionRoutine(conn *UdpConn) {
 	}
 }
 
-func (a *UdpAgent) recvMessageRoutine() {
+func (a *UdpDevice) recvMessageRoutine() {
 	defer a.wg.Done()
 	defer log.Info("recvMessageRoutine stopped")
 
@@ -489,100 +439,19 @@ func (a *UdpAgent) recvMessageRoutine() {
 		select {
 		case <-a.signals.stop:
 			return
-
 		case ppd, ok := <-a.recvMsgCh:
+			log.Debug("recvMessageRoutine ppd.HeaderType:%d", ppd.HeaderType)
 			if !ok {
 				return
 			}
 			if ppd == nil {
 				continue
 			}
-
-			switch ppd.HeaderType {
-			case core.NHP_COK:
-				// synchronously block and deal with cookie message to ensure future messages will be correctly processed. note cookie is not handled as a transaction, so it arrives in here
-				a.HandleCookieMessage(ppd)
-
-			}
 		}
 	}
 }
 
-func (a *UdpAgent) knockResourceRoutine() {
-	defer a.wg.Done()
-	defer log.Info("knockResourceRoutine stopped")
-
-	log.Info("knockResourceRoutine started")
-
-	var knockRoutineWg sync.WaitGroup
-	defer knockRoutineWg.Wait()
-
-	for {
-		a.knockTargetMapMutex.Lock()
-		targetSize := len(a.knockTargetMap)
-		targetQuitArr := make([]chan struct{}, 0, targetSize)
-
-		for k, r := range a.knockTargetMap {
-			// launch knock routine for each knock target
-			q := make(chan struct{})
-			targetQuitArr = append(targetQuitArr, q)
-
-			knockRoutineWg.Add(1)
-			go func(knockStr string, res *KnockTarget, quit <-chan struct{}) {
-				defer knockRoutineWg.Done()
-				defer log.Info("knock %s sub-routine stopped", knockStr)
-				defer func() {
-					a.ExitKnockRequest(res)
-				}()
-
-				log.Info("knock %s sub-routine started", knockStr)
-
-				for {
-					select {
-					case <-a.signals.knockTargetStop:
-						return
-					case <-quit:
-						return
-					default:
-					}
-
-					ackMsg, err := a.Knock(res) // timeout in AgentLocalTransactionTimeoutMs
-					if err != nil {
-						// if error happens wait some time (total AgentLocalTransactionResponseTimeoutMs) to retry
-						log.Error("failed to knock %s, error: %v", knockStr, err)
-						continue // retry knock
-					}
-
-					log.Info("knock %s succeeded, next knock in %d seconds", knockStr, ackMsg.OpenTime)
-					select {
-					case <-a.signals.knockTargetStop:
-						return
-					case <-quit:
-						return
-					case <-time.After(time.Second * time.Duration(ackMsg.OpenTime)):
-						// continue knock
-					}
-				}
-			}(k, r, q)
-		}
-		a.knockTargetMapMutex.Unlock()
-
-		// block until knockTargetMap is updated
-		select {
-		case <-a.signals.knockTargetStop:
-			return
-		case <-a.signals.knockTargetMapUpdated:
-			// stop all current knock routines
-			for _, q := range targetQuitArr {
-				close(q)
-			}
-			log.Info("restart knock cycle with updated targets")
-			// continue and restart with new knock targets
-		}
-	}
-}
-
-func (a *UdpAgent) AddServer(server *core.UdpPeer) {
+func (a *UdpDevice) AddServer(server *core.UdpPeer) {
 	if server.DeviceType() == core.NHP_SERVER {
 		a.device.AddPeer(server)
 		a.serverPeerMutex.Lock()
@@ -591,77 +460,14 @@ func (a *UdpAgent) AddServer(server *core.UdpPeer) {
 	}
 }
 
-func (a *UdpAgent) RemoveServer(serverKey string) {
+func (a *UdpDevice) RemoveServer(serverKey string) {
 	a.serverPeerMutex.Lock()
 	delete(a.serverPeerMap, serverKey)
 	a.serverPeerMutex.Unlock()
 }
 
-func (a *UdpAgent) AddResource(res *KnockResource) error {
-	peer := a.FindServerPeerFromResource(res)
-	if peer == nil {
-		return common.ErrKnockServerNotFound
-	}
-
-	updated := false
-	a.knockTargetMapMutex.Lock()
-	target, found := a.knockTargetMap[res.Id()]
-	if found {
-		target.SetResource(res)
-		target.SetServer(peer)
-	} else {
-		a.knockTargetMap[res.Id()] = &KnockTarget{
-			KnockResource: *res,
-			ServerPeer:    peer,
-		}
-		updated = true
-	}
-	a.knockTargetMapMutex.Unlock()
-
-	if updated {
-		// renew knock cycle
-		if len(a.signals.knockTargetMapUpdated) == 0 {
-			a.signals.knockTargetMapUpdated <- struct{}{}
-		}
-	}
-
-	return nil
-}
-
-func (a *UdpAgent) RemoveResource(aspId string, resId string) {
-	res := &KnockResource{
-		AuthServiceId: aspId,
-		ResourceId:    resId,
-	}
-
-	a.knockTargetMapMutex.Lock()
-	beforeSize := len(a.knockTargetMap)
-	delete(a.knockTargetMap, res.Id())
-	afterSize := len(a.knockTargetMap)
-	a.knockTargetMapMutex.Unlock()
-
-	if beforeSize != afterSize {
-		// renew knock cycle
-		if len(a.signals.knockTargetMapUpdated) == 0 {
-			a.signals.knockTargetMapUpdated <- struct{}{}
-		}
-	}
-}
-
-func (a *UdpAgent) FindServerPeerFromResource(res *KnockResource) *core.UdpPeer {
-	a.serverPeerMutex.Lock()
-	defer a.serverPeerMutex.Unlock()
-	for _, peer := range a.serverPeerMap {
-		if peer.HostOrAddr() == res.ServerAddr {
-			return peer
-		}
-	}
-
-	return nil
-}
-
 // if the server uses hostname as destination, find the correct peer with the actual IP address
-func (a *UdpAgent) ResolvePeer(peer *core.UdpPeer) (*core.UdpPeer, net.Addr) {
+func (a *UdpDevice) ResolvePeer(peer *core.UdpPeer) (*core.UdpPeer, net.Addr) {
 	addr := peer.SendAddr()
 	if addr == nil {
 		return peer, nil
@@ -690,31 +496,8 @@ func (a *UdpAgent) ResolvePeer(peer *core.UdpPeer) (*core.UdpPeer, net.Addr) {
 	return peer, addr
 }
 
-//Convert ztdo file to Source file
-/**
-ztdo: Ztdo file path
-output: Decrypted file output path
-*/
-func (a *UdpAgent) StartDecodeZtdo(ztdo string, output string) {
-	ztdoFile, err := core.ReadZtdoFile(ztdo)
-	if err != nil {
-		log.Error("ReadZtdoFile error,msg:%v", err)
-	}
-	doId := ztdoFile.Objectid
-	darMsg := common.DARMsg{
-		DoId: doId,
-	}
-	serverPeer := a.GetFirstServerPeer()
-	result := a.SendDARMsgToServer(serverPeer, darMsg, ztdo, output)
-	if result {
-		fmt.Println("ZTDO File Decryption: Success")
-	} else {
-		fmt.Println(" ZTDO File Decryption: Failure")
-	}
-
-}
-
-func (a *UdpAgent) GetFirstServerPeer() (serverPeer *core.UdpPeer) {
+// get first server
+func (a *UdpDevice) GetServerPeer() (serverPeer *core.UdpPeer) {
 	for key, value := range a.serverPeerMap {
 		fmt.Println("Key:", key, "Value:", value)
 		serverPeer = value
@@ -722,18 +505,57 @@ func (a *UdpAgent) GetFirstServerPeer() (serverPeer *core.UdpPeer) {
 	}
 	return nil
 }
-func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg, ztdo string, output string) bool {
+func (a *UdpDevice) SendDHPRegister(doId string, policy common.DHPPolicy, dataKey string) {
+	log.Debug("DHP started")
+	serverPeer := a.GetServerPeer()
+	wrappedKey := dataKey
+	kaoContent := common.DHPKao{
+		KeyWrapper:    "consumer",
+		PolicyBinding: "",
+		ConsumerId:    policy.ConsumerId,
+		WrappedKey:    wrappedKey,
+	}
+
+	jsonkaoContent, err := json.Marshal(kaoContent)
+	if err != nil {
+		log.Error("json parse error:%v", err)
+		return
+	}
+	log.Debug("jsonkaoContent:%s \n", string(jsonkaoContent))
+	msg := common.DRGMsg{
+		DoType:      DoType_Default,
+		DoId:        doId,
+		AccessUrl:   "",
+		AccessByNHP: false,
+		AspHost:     "",
+		KasType:     0,
+		KaoContent:  string(jsonkaoContent),
+		PasType:     2,
+		PaoContent:  "",
+	}
+
+	log.Debug("serverPeer:%s \n", serverPeer)
+	result := a.SendNHPDRG(serverPeer, msg)
+	if result {
+		fmt.Println("File Encryption & Registration: Successful")
+	} else {
+		fmt.Println("File Encryption & Registration: Failed")
+	}
+}
+
+// send NHP_DRG to NHP-Server
+func (a *UdpDevice) SendNHPDRG(server *core.UdpPeer, msg common.DRGMsg) bool {
 
 	result := false
 	server, sendAddr := a.ResolvePeer(server)
 	if sendAddr == nil {
-		log.Critical("device(%s)[SendDARMsgToServer] register server IP cannot be parsed", a)
+		log.Critical("device(%s)[SendNHPDRG] register server IP cannot be parsed", a)
 	}
 	drgMsg := msg
 	drgBytes, _ := json.Marshal(drgMsg)
 	drgMd := &core.MsgData{
 		RemoteAddr:    sendAddr.(*net.UDPAddr),
-		HeaderType:    core.NHP_DAR,
+		HeaderType:    core.NHP_DRG,
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       drgBytes,
@@ -742,7 +564,7 @@ func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg, z
 	}
 	currTime := time.Now().UnixNano()
 	if !a.IsRunning() {
-		log.Error("server-agentMsgData channel closed or being closed, skip sending")
+		log.Error("server-deviceMsgData channel closed or being closed, skip sending")
 		return result
 	}
 	// device will create or find existing connection and sends the MsgAssembler via that connection
@@ -752,57 +574,42 @@ func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg, z
 	serverPpd := <-drgMd.ResponseMsgCh
 	close(drgMd.ResponseMsgCh)
 
-	//Wait for NHP-Server response and implement reception and processing within the func() function below.
+	//Awaiting response from NHP-Server and processing it in the `func()` function below
 	var err error
-	result, dagMsg := func() (bool, *common.DAGMsg) {
-		dagMsg := &common.DAGMsg{}
+	result = func() bool {
+
 		if serverPpd.Error != nil {
-			log.Error("Agent(%s#%d)[SendDARMsgToServer] failed to receive response from server %s: %v", drgMsg.DoId, drgMd.TransactionId, server.Ip, serverPpd.Error)
+			log.Error("DE(%s#%d)[SendNHPDRG] failed to receive response from server %s: %v", drgMsg.DoId, drgMd.TransactionId, server.Ip, serverPpd.Error)
 			err = serverPpd.Error
-			return false, dagMsg
+			return false
 		}
 
-		if serverPpd.HeaderType != core.NHP_DAG {
-			log.Error("DE(%s#%d)[SendDARMsgToServer] response from server %s has wrong type: %s", drgMsg.DoId, drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
+		if serverPpd.HeaderType != core.NHP_DAK {
+			log.Error("DE(%s#%d)[SendNHPDRG] response from server %s has wrong type: %s", drgMsg.DoId, drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
 			err = common.ErrTransactionRepliedWithWrongType
-			return false, dagMsg
+			return false
 		}
-		//message []byte to DAGMSg Object
-		err = json.Unmarshal(serverPpd.BodyMessage, dagMsg)
+
+		dakMsg := &common.DAKMsg{}
+		//json string to DAKMsg Object
+		err = json.Unmarshal(serverPpd.BodyMessage, dakMsg)
 		if err != nil {
-			log.Error("Agent(%s#%d)[HandleDHPDAGMessage] failed to parse %s message: %v", drgMsg.DoId, serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
-			return false, dagMsg
+			log.Error("DE(%s#%d)[HandleDHPDRGMessage] failed to parse %s message: %v", drgMsg.DoId, serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
+			return false
 		}
-		dagMsgString, err := json.Marshal(dagMsg)
+		dakMsgString, err := json.Marshal(dakMsg)
 		if err != nil {
-			log.Error("Agent(%s#%d)DAKMsg failed to parse %s message: %v", dagMsg.DoId, err)
-			return false, dagMsg
+			log.Error("DE(%s#%d)DAKMsg failed to parse %s message: %v", dakMsg.DoId, err)
+			return false
 		}
-		log.Info("SendDARMsgToServer response result：%v", dagMsgString)
-		if dagMsg.ErrCode != 0 {
-			log.Error("SendDARMsgToServer send failed,error:", dagMsg.ErrMsg)
-			fmt.Println("SendDARMsgToServer send failed,error:" + dagMsg.ErrMsg)
-			return false, dagMsg
+		log.Info("SendNHPDRG result：%v", string(dakMsgString))
+		if dakMsg.ErrCode != 0 {
+			log.Error("SendNHPDRG send failed,error:", dakMsg.ErrMsg)
+			fmt.Println("SendNHPDRG send failed,error:" + dakMsg.ErrMsg)
+			return false
 		}
-		return true, dagMsg
+		return true
 	}()
-	if !result {
-		log.Error("File access authorization failed")
-	} else {
-
-		wrappedKey := dagMsg.WrappedKey
-		dataDecodeKey, err := core.ECCDecrypt(a.config.SMPrivateKeyBase64, wrappedKey)
-
-		if err != nil {
-			log.Error("Key decryption failed:%v", err)
-		}
-
-		cmd := exec.Command(a.config.DHPExeCMD, "run", "--mode=decrypt", "--ztdo="+ztdo, "--output="+output, "--decodeKey="+dataDecodeKey)
-		cmdResult, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Info("Ztdo file decryption faile%v", err)
-		}
-		log.Info("Ztdo file decryption result:%v", cmdResult)
-	}
+	log.Info("SendNHPDRG sent successfully | Returned result:%v", result)
 	return result
 }

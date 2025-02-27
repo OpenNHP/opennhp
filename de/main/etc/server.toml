@@ -1,0 +1,13 @@
+# list the server peers for the device under [[Servers]] table
+
+# Hostname: the domain of the server peer. If specified, it overrides the "Ip" field with its first resolved address.
+# Ip: specify the ip address of the server peer
+# Port: specify the port number of this server peer is listening
+# PubKeyBase64: public key of the server peer in base64 format
+# ExpireTime (epoch timestamp in seconds): peer key validation will fail when it expires.
+[[Servers]]
+Hostname = ""
+Ip = "192.168.50.39"
+Port = 62206
+PubKeyBase64 = "WqJxe+Z4+wLen3VRgZx6YnbjvJFmptz99zkONCt/7gc="
+ExpireTime = 1924991999

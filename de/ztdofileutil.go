@@ -66,12 +66,12 @@ func WriteConfig(key string, objectId string) error {
 	return encoder.Encode(config)
 }
 
-// File
+// EncodeToZtoFile
 /**
 sourceFilePath:
-targetZtdoFilePath:加密的zdto文件路径
+targetZtdoFilePath:
 */
-func EncodeToZtoFile(sourceFilePath string, targetZtdoFilePath string) (zoId string, encryptionKey string) {
+func EncodeToZtoFile(sourceFilePath string, targetZtdoFilePath string, ztoMetaInfo core.ZtdoMetaInfo) (zoId string, encryptionKey string) {
 	// Generate Key
 	key, err := GenerateKey()
 	if err != nil {
@@ -114,6 +114,10 @@ func EncodeToZtoFile(sourceFilePath string, targetZtdoFilePath string) (zoId str
 	defer outputFile.Close()
 
 	// Write Ztdo data to a .ztdo file
+	ztdo.Header.MetaInfo.FileName = ztoMetaInfo.FileName
+	ztdo.Header.MetaInfo.Owner = ztoMetaInfo.Owner
+	ztdo.Header.MetaInfo.Keywords = ztoMetaInfo.Keywords
+	ztdo.Header.MetaInfo.Description = ztoMetaInfo.Description
 	if err := core.WriteZtdo(outputFile, ztdo); err != nil {
 		fmt.Printf("Error writing Ztdo Data: %v\n", err)
 		return "", ""
@@ -159,7 +163,7 @@ func DecodeZtoFile(ztdofileName string, decodeBase64Key string, newFileSaveDir s
 
 	//
 	writer := bufio.NewWriter(file)
-	fileContent, err := core.Decrypt(ztdoFile.FileContent, decodeKey)
+	fileContent, err := core.AESDecrypt(ztdoFile.FileContent, decodeKey)
 	// write bytes
 	_, err = writer.Write(fileContent)
 	if err != nil {
@@ -238,6 +242,29 @@ func ReadPolicyFile(filePath string) (common.DHPPolicy, error) {
 	err = json.Unmarshal(fileContentByte, &config)
 	if err != nil {
 		return common.DHPPolicy{}, fmt.Errorf("json parsing error: %s", err)
+	}
+	return config, nil
+}
+
+// read Meta file
+func ReadMetaFile(filePath string) (core.ZtdoMetaInfo, error) {
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return core.ZtdoMetaInfo{}, fmt.Errorf("could not open file: %v", err)
+	}
+	defer file.Close()
+
+	fileContentByte, err := io.ReadAll(file)
+	if err != nil {
+		return core.ZtdoMetaInfo{}, fmt.Errorf("error reading file: %v", err)
+	}
+
+	var config core.ZtdoMetaInfo
+
+	err = json.Unmarshal(fileContentByte, &config)
+	if err != nil {
+		return core.ZtdoMetaInfo{}, fmt.Errorf("json parsing error: %s", err)
 	}
 	return config, nil
 }

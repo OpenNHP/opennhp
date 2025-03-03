@@ -42,7 +42,8 @@ func initApp() {
 			output := c.String("output")
 			ztdo := c.String("ztdo")
 			decodeKey := c.String("decodeKey")
-			return runApp(mode, source, output, policy, ztdo, decodeKey)
+			meta := c.String("meta")
+			return runApp(mode, source, output, policy, ztdo, decodeKey, meta)
 		},
 	}
 
@@ -110,7 +111,7 @@ func initApp() {
 decodeKey:Data Decryption Key
 decodeSavePath:Save Directory Path
 */
-func runApp(mode string, source string, output string, policy string, ztdo string, decodeKey string) error {
+func runApp(mode string, source string, output string, policy string, ztdo string, decodeKey string, meta string) error {
 	fmt.Println("mode=" + mode)
 
 	exeFilePath, err := os.Executable()
@@ -139,7 +140,12 @@ func runApp(mode string, source string, output string, policy string, ztdo strin
 			fmt.Printf("failed to read policy file:%s\n", err)
 			return err
 		}
-		zoId, encodedKey := de.EncodeToZtoFile(source, outputFilePath)
+		ztdoMetainfo, err := de.ReadMetaFile((meta))
+		if err != nil {
+			fmt.Printf("failed to read meta file:%s\n", err)
+			return err
+		}
+		zoId, encodedKey := de.EncodeToZtoFile(source, outputFilePath, ztdoMetainfo)
 		if zoId != "" {
 
 			fmt.Printf("Encryption Key for Data Content,key:%s\n", encodedKey)

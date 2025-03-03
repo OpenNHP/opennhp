@@ -54,8 +54,11 @@ type ZtdoSignature struct {
 	Sig               []byte //Signature Data
 }
 type ZtdoMetaInfo struct {
-	FileName    string
-	FileExtName string
+	FileName    string `json:"fileName"`    //Source filename, e.g., test.txt
+	FileExtName string `json:"FileExtName"` //Source file extension, e.g., .txt
+	Owner       string `json:"owner"`
+	Keywords    string `json:"keywords"`
+	Description string `json:"description"`
 }
 
 type ZtdoFile struct {
@@ -64,10 +67,13 @@ type ZtdoFile struct {
 	FileExt     string `json:"fileExt"`     //Source file extension, e.g., .txt
 	FileContent []byte `json:"fileContent"` //Encrypted file content, e.g., U2FsdGVkX1...
 	CreateDate  string `json:"createDate"`  //Creation Date
+	Owner       string `json:"owner"`
+	Keywords    string `json:"keywords"`
+	Description string `json:"description"`
 }
 
-// Encryption Function
-func Encrypt(plainText []byte, key []byte) ([]byte, error) {
+// AESEncryption Function
+func AESEncrypt(plainText []byte, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -93,12 +99,11 @@ func pad(data []byte, blockSize int) []byte {
 	return append(data, padText...)
 }
 
-func Decrypt(cipherText []byte, key []byte) ([]byte, error) {
+func AESDecrypt(cipherText []byte, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
-
 	// IV，IV cipherText left 16
 	if len(cipherText) < aes.BlockSize {
 		return nil, fmt.Errorf("cipherText too short")
@@ -221,7 +226,7 @@ func WriteSourceFile(filename string, key []byte) (Ztdo, error) {
 	hasSignature := true
 	sigConfig := SetSigConfig(symAlgMode, curveParam, hasSignature)
 
-	ciphertxt, err := Encrypt(payloadData, key)
+	ciphertxt, err := AESEncrypt(payloadData, key)
 	if err != nil {
 		return Ztdo{}, fmt.Errorf("failed to encrypt data: %v", err)
 	}
@@ -278,6 +283,9 @@ func WriteZtdo(writer io.Writer, ztdo Ztdo) error {
 		FileExt:     ztdo.Header.MetaInfo.FileExtName,
 		FileContent: ztdo.Payload.Ciphertxt,
 		CreateDate:  date,
+		Description: ztdo.Header.MetaInfo.Description,
+		Owner:       ztdo.Header.MetaInfo.Owner,
+		Keywords:    ztdo.Header.MetaInfo.Keywords,
 	}
 
 	jsonData, err := json.Marshal(ztdoFile)

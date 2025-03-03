@@ -22,11 +22,11 @@ var (
 )
 
 type Config struct {
-	LogLevel           int
-	PrivateKeyBase64   string
-	KnockUser          `mapstructure:",squash"`
-	DHPExeCMD          string
-	SMPrivateKeyBase64 string
+	LogLevel            int
+	PrivateKeyBase64    string
+	KnockUser           `mapstructure:",squash"`
+	DHPExeCMD           string
+	DHPPrivateKeyBase64 string
 }
 
 type Peers struct {

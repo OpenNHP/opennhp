@@ -29,7 +29,7 @@ const (
 	ACLocalTransactionResponseTimeoutMs     = ServerLocalTransactionResponseTimeoutMs      // millisecond
 
 	RemoteTransactionProcessTimeoutMs   = 10 * 1000 // millisecond
-	DeLocalTransactionResponseTimeoutMs = 5 * 1000
+	DELocalTransactionResponseTimeoutMs = 5 * 1000
 )
 
 // peer

@@ -41,8 +41,8 @@ func defaultDeviceOptions(t int) (option DeviceOptions) {
 	switch t {
 	case NHP_AGENT:
 	case NHP_SERVER:
-	case NHP_AC:
 	case NHP_DE:
+	case NHP_AC:
 		// NHP_AC does not validate, nor store any agent peer. Related message: NHP-ACC (agent-ac pre-access)
 		option.DisableAgentPeerValidation = true
 	case NHP_RELAY:
@@ -240,7 +240,7 @@ func (d *Device) msgToPacketRoutine(id int) {
 				}
 
 				// create local transaction if needed
-				log.Info("msgToPacketRoutine IsTransactionRequest:deviceType:%d HeaderType:%d", d.deviceType, mad.HeaderType)
+				log.Debug("msgToPacketRoutine IsTransactionRequest:deviceType:%d HeaderType:%d", d.deviceType, mad.HeaderType)
 				if d.IsTransactionRequest(mad.HeaderType) {
 					// save initiator transaction
 					mad.BasePacket.KeepAfterSend = true // packet is kept after sending and deleted at transaction level
@@ -252,7 +252,7 @@ func (d *Device) msgToPacketRoutine(id int) {
 						timeout:       d.LocalTransactionTimeout(),
 					}
 					d.AddLocalTransaction(t)
-					log.Info("AddLocalTransaction:deviceType=%d,HeaderType=%d", d.deviceType, mad.HeaderType)
+					log.Debug("AddLocalTransaction:deviceType=%d,HeaderType=%d", d.deviceType, mad.HeaderType)
 				}
 
 				// send out fully encrypted packet
@@ -382,20 +382,20 @@ func (d *Device) packetToMsgRoutine(id int) {
 				log.Debug("packetToMsgRoutine: %d: complete decrypting [%s] message: %s", id, msgType, msgStr)
 				log.Evaluate("packetToMsgRoutine: %d: complete decrypting [%s] message: %s", id, msgType, msgStr)
 				log.Debug("packetToMsgRoutine: complete decrypting feedbackMsgCh:%d,headerType:%s", d.deviceType, HeaderTypeToString(ppd.HeaderType))
+				// deliver decrypted message to specific channel
 				if ppd.decryptedMsgCh != nil {
-					log.Debug("packetToMsgRoutine: complete decrypting decryptedMsgCh 不为nil")
+					log.Debug("packetToMsgRoutine: complete decrypting decryptedMsgCh is not nil")
 					ppd.Destroy()
 					ppd.decryptedMsgCh <- ppd
 					return
 				}
-				// deliver decrypted message to specific channel
+
 				if ppd.feedbackMsgCh != nil {
-					log.Debug("packetToMsgRoutine: complete decrypting feedbackMsgCh 不为nil")
+					log.Debug("packetToMsgRoutine: complete decrypting feedbackMsgCh  is not nil")
 					ppd.Destroy()
 					ppd.feedbackMsgCh <- ppd
 					return
 				}
-
 				log.Debug("packetToMsgRoutine: complete decrypting start IsTransactionRequest:deviceType:%d,headerType:%s", d.deviceType, HeaderTypeToString(ppd.HeaderType))
 				// start and save responder transaction
 				if d.IsTransactionRequest(ppd.HeaderType) {

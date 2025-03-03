@@ -67,7 +67,7 @@ func (d *Device) LocalTransactionTimeout() int {
 	case NHP_AC:
 		return ACLocalTransactionResponseTimeoutMs
 	case NHP_DE:
-		return DeLocalTransactionResponseTimeoutMs
+		return DELocalTransactionResponseTimeoutMs
 	case NHP_RELAY:
 		// no transaction request for relay
 	}

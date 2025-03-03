@@ -791,7 +791,7 @@ func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg, z
 	} else {
 
 		wrappedKey := dagMsg.WrappedKey
-		dataDecodeKey, err := core.ECCDecrypt(a.config.SMPrivateKeyBase64, wrappedKey)
+		dataDecodeKey, err := core.ECCDecrypt(a.config.DHPPrivateKeyBase64, wrappedKey)
 
 		if err != nil {
 			log.Error("Key decryption failed:%v", err)

@@ -961,7 +961,7 @@ func (us *UdpServer) FindPluginHandler(aspId string) plugins.PluginHandler {
 }
 
 // DHP
-func (s *UdpServer) AddDevicePeer(device *core.UdpPeer) {
+func (s *UdpServer) AddDEPeer(device *core.UdpPeer) {
 	if device.DeviceType() == core.NHP_DE {
 		s.device.AddPeer(device)
 		s.dePeerMapMutex.Lock()

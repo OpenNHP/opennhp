@@ -1,13 +1,13 @@
 package gmsm
 
 import (
-	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"math/big"
 
+	"github.com/emmansun/gmsm/ecdh"
 	"github.com/emmansun/gmsm/sm2"
 )
 

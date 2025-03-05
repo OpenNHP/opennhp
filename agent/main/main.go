@@ -27,7 +27,6 @@ func main() {
 			return runApp()
 		},
 	}
-
 	keygenCmd := &cli.Command{
 		Name:  "keygen",
 		Usage: "generate key pairs for NHP devices",
@@ -75,11 +74,25 @@ func main() {
 			return nil
 		},
 	}
+	dhpCmd := &cli.Command{
+		Name:  "dhp",
+		Usage: "create and dhp agent process for NHP protocol",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "ztdo", Value: "", Usage: "Ztdo file path"},
+			&cli.StringFlag{Name: "output", Value: "", Usage: "Decrypted file output path"},
+		},
+		Action: func(c *cli.Context) error {
+			ztdo := c.String("ztdo")
+			output := c.String("output")
+			return runDHPApp(ztdo, output)
+		},
+	}
 
 	app.Commands = []*cli.Command{
 		runCmd,
 		keygenCmd,
 		pubkeyCmd,
+		dhpCmd,
 	}
 
 	if err := app.Run(os.Args); err != nil {
@@ -95,11 +108,40 @@ func runApp() error {
 	exeDirPath := filepath.Dir(exeFilePath)
 
 	a := &agent.UdpAgent{}
+
 	err = a.Start(exeDirPath, 4)
 	if err != nil {
 		return err
 	}
 	a.StartKnockLoop()
+	// react to terminate signals
+	termCh := make(chan os.Signal, 1)
+	signal.Notify(termCh, syscall.SIGTERM, os.Interrupt, syscall.SIGABRT)
+
+	// block until terminated
+	<-termCh
+	a.Stop()
+	return nil
+}
+func runDHPApp(ztdo string, output string) error {
+	exeFilePath, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	exeDirPath := filepath.Dir(exeFilePath)
+
+	a := &agent.UdpAgent{}
+
+	err = a.Start(exeDirPath, 4)
+	if err != nil {
+		return err
+	}
+	if ztdo != "" {
+		//request ztdo file
+		a.StartDecodeZtdo(ztdo, output)
+	} else {
+		a.StartKnockLoop()
+	}
 
 	// react to terminate signals
 	termCh := make(chan os.Signal, 1)

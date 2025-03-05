@@ -3,11 +3,17 @@ package core
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"hash"
+	"log"
+	"os"
 
 	"github.com/emmansun/gmsm/padding"
+	"github.com/emmansun/gmsm/sm2"
 	"github.com/emmansun/gmsm/sm3"
 	"github.com/emmansun/gmsm/sm4"
 	"golang.org/x/crypto/blake2s"
@@ -239,4 +245,47 @@ func CBCDecryption(t GcmTypeEnum, key *[SymmetricKeySize]byte, ciphertext []byte
 	}
 
 	return plaintext, nil
+}
+
+func SM2Encrypt(pubKeyBase64 string, message string) (string, error) {
+	//ASN.1
+
+	// real public key should be from cert or public key pem file
+	sm2PublicKey, err := gmsm.Base64DecodeSM2ECDSAPublicKey(pubKeyBase64)
+
+	secretMessage := []byte(message)
+	// crypto/rand.Reader is a good source of entropy for randomizing the
+	// encryption function.
+	rng := rand.Reader
+
+	ciphertext, err := sm2.EncryptASN1(rng, sm2PublicKey, secretMessage)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error from encryption: %s\n", err)
+		return "", err
+	}
+	// Since encryption is a randomized function, ciphertext will be
+	// different each time.
+	fmt.Printf("Ciphertext: %x\n", ciphertext)
+	return hex.EncodeToString(ciphertext), err
+}
+func SM2Decrypt(privateKeyBase64 string, message string) (string, error) {
+	//ASN.1
+	ciphertext, err := hex.DecodeString(message)
+	privKeyBytes, err := base64.StdEncoding.DecodeString(privateKeyBase64)
+	if err != nil {
+		fmt.Errorf("size incorrect")
+		return "", err
+	}
+
+	testkey, err := sm2.NewPrivateKey(privKeyBytes)
+	if err != nil {
+		log.Fatalf("fail to new private key %v", err)
+	}
+
+	sourceText, err := testkey.Decrypt(nil, ciphertext, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error from decryption: %s\n", err)
+		return "", err
+	}
+	return string(sourceText), err
 }

@@ -22,8 +22,8 @@ var (
 	agentConfigWatch io.Closer
 	resConfigWatch   io.Closer
 	srcipConfigWatch io.Closer
-
-	errLoadConfig = fmt.Errorf("config load error")
+	deConfigWatch    io.Closer
+	errLoadConfig    = fmt.Errorf("config load error")
 )
 
 type Config struct {
@@ -46,6 +46,7 @@ type HttpConfig struct {
 type Peers struct {
 	ACs    []*core.UdpPeer
 	Agents []*core.UdpPeer
+	DEs    []*core.UdpPeer
 }
 
 func (s *UdpServer) loadBaseConfig() error {
@@ -101,6 +102,17 @@ func (s *UdpServer) loadPeers() error {
 	agentConfigWatch = utils.WatchFile(fileNameAgent, func() {
 		log.Info("agent peer config: %s has been updated", fileNameAgent)
 		s.updateAgentPeers(fileNameAgent)
+	})
+
+	//de.toml
+	fileNameDE := filepath.Join(ExeDirPath, "etc", "de.toml")
+	if err := s.updateDePeers(fileNameDE); err != nil {
+		// ignore error
+		_ = err
+	}
+	deConfigWatch = utils.WatchFile(fileNameDE, func() {
+		log.Info("device peer config: %s has been updated", fileNameDE)
+		s.updateDePeers(fileNameDE)
 	})
 	return nil
 }
@@ -367,4 +379,43 @@ func (s *UdpServer) StopConfigWatch() {
 	if srcipConfigWatch != nil {
 		srcipConfigWatch.Close()
 	}
+	//add deConfigWatch
+	if deConfigWatch != nil {
+		deConfigWatch.Close()
+	}
+
+}
+
+// updateDePeers
+func (s *UdpServer) updateDePeers(file string) (err error) {
+	utils.CatchPanicThenRun(func() {
+		err = errLoadConfig
+	})
+
+	content, err := os.ReadFile(file)
+	if err != nil {
+		log.Error("failed to read device peer config: %v", err)
+	}
+
+	var peers Peers
+	dePeerMap := make(map[string]*core.UdpPeer)
+	if err := toml.Unmarshal(content, &peers); err != nil {
+		log.Error("failed to unmarshal device peer config: %v", err)
+	}
+	for _, p := range peers.DEs {
+		p.Type = core.NHP_DE
+		s.device.AddPeer(p)
+		dePeerMap[p.PublicKeyBase64()] = p
+	}
+
+	// remove old peers from device
+	s.dePeerMapMutex.Lock()
+	defer s.dePeerMapMutex.Unlock()
+	for pubKey := range s.dePeerMap {
+		if _, found := dePeerMap[pubKey]; !found {
+			s.device.RemovePeer(pubKey)
+		}
+	}
+	s.dePeerMap = dePeerMap
+	return err
 }

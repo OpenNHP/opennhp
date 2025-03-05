@@ -86,7 +86,7 @@ type PacketParserData struct {
 	RemotePubKey           []byte
 	BodyMessage            []byte
 
-	decryptedMsgCh chan<- *PacketParserData
+	decryptedMsgCh chan<- *PacketParserData //Plaintext payload dispatched (Decryption cycle completed)
 	feedbackMsgCh  chan<- *PacketParserData
 	Error          error
 }
@@ -237,13 +237,15 @@ func shouldCheckRecvAttack(deviceType int, peerType int, msgType int) bool {
 }
 
 func (ppd *PacketParserData) validatePeer() (err error) {
+
+	log.Debug("headType:%s,validatePeer pubkey: %s,EphermeralBytes:%s", HeaderTypeToString(ppd.HeaderType), base64.StdEncoding.EncodeToString(ppd.deviceEcdh.PublicKey()),
+		base64.StdEncoding.EncodeToString(ppd.header.EphermeralBytes()))
 	// evolve chain hash ChainHash0 -> ChainHash1
 	ppd.chainHash.Write(ppd.deviceEcdh.PublicKey())
 	ppd.chainHash.Write(ppd.header.EphermeralBytes())
 
 	// evolve chain key ChainKey0 -> ChainKey1 (ChainKey4 -> ChainKey5)
 	ppd.noise.MixKey(&ppd.chainKey, ppd.chainKey[:], ppd.header.EphermeralBytes())
-
 	// get ephermeral shared key
 	ess := ppd.deviceEcdh.SharedSecret(ppd.header.EphermeralBytes())
 	if ess == nil {
@@ -259,7 +261,6 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// generate gcm key and decrypt device pubkey ChainKey1 -> ChainKey2 (ChainKey5 -> ChainKey6)
 	ppd.noise.KeyGen2(&ppd.chainKey, &key, ppd.chainKey[:], ess[:])
 	SetZero(ess[:])
-
 	peerPk := make([]byte, PublicKeySizeEx)
 	switch ppd.CipherScheme {
 	case CIPHER_SCHEME_CURVE:
@@ -267,6 +268,8 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	case CIPHER_SCHEME_GMSM:
 		fallthrough
 	default:
+		KeyByteSlice := key[:]
+		log.Debug("ppd.Ciphers.GcmType:%d,&key:%s,NonceBytes:%s,StaticBytes:%s", ppd.Ciphers.GcmType, base64.StdEncoding.EncodeToString(KeyByteSlice), base64.StdEncoding.EncodeToString(ppd.header.NonceBytes()), base64.StdEncoding.EncodeToString(ppd.header.StaticBytes()))
 		aead = AeadFromKey(ppd.Ciphers.GcmType, &key)
 		_, err = aead.Open(peerPk[:0], ppd.header.NonceBytes(), ppd.header.StaticBytes(), ppd.chainHash.Sum(nil))
 		if err != nil {
@@ -306,6 +309,8 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 
 	case NHP_RELAY:
 		toValidate = !option.DisableRelayPeerValidation
+	case NHP_DE:
+		toValidate = !option.DisableDePeerValidation
 	}
 
 	if toValidate {

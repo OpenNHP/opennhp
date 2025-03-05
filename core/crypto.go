@@ -1,13 +1,21 @@
 package core
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"hash"
+	"io"
+	"log"
+	"os"
 
 	"github.com/emmansun/gmsm/padding"
+	"github.com/emmansun/gmsm/sm2"
 	"github.com/emmansun/gmsm/sm3"
 	"github.com/emmansun/gmsm/sm4"
 	"golang.org/x/crypto/blake2s"
@@ -239,4 +247,105 @@ func CBCDecryption(t GcmTypeEnum, key *[SymmetricKeySize]byte, ciphertext []byte
 	}
 
 	return plaintext, nil
+}
+
+func SM2Encrypt(pubKeyBase64 string, message string) (string, error) {
+	//ASN.1
+
+	// real public key should be from cert or public key pem file
+	sm2PublicKey, err := gmsm.Base64DecodeSM2ECDSAPublicKey(pubKeyBase64)
+
+	secretMessage := []byte(message)
+	// crypto/rand.Reader is a good source of entropy for randomizing the
+	// encryption function.
+	rng := rand.Reader
+
+	ciphertext, err := sm2.EncryptASN1(rng, sm2PublicKey, secretMessage)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error from encryption: %s\n", err)
+		return "", err
+	}
+	// Since encryption is a randomized function, ciphertext will be
+	// different each time.
+	fmt.Printf("Ciphertext: %x\n", ciphertext)
+	return hex.EncodeToString(ciphertext), err
+}
+func SM2Decrypt(privateKeyBase64 string, message string) (string, error) {
+	//ASN.1
+	ciphertext, err := hex.DecodeString(message)
+	privKeyBytes, err := base64.StdEncoding.DecodeString(privateKeyBase64)
+	if err != nil {
+		fmt.Errorf("size incorrect")
+		return "", err
+	}
+
+	testkey, err := sm2.NewPrivateKey(privKeyBytes)
+	if err != nil {
+		log.Fatalf("fail to new private key %v", err)
+	}
+
+	sourceText, err := testkey.Decrypt(nil, ciphertext, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error from decryption: %s\n", err)
+		return "", err
+	}
+	return string(sourceText), err
+}
+
+// AESEncryption Function
+func AESEncrypt(plainText []byte, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	//Padding Plaintext
+	plainText = pad(plainText, aes.BlockSize)
+	cipherText := make([]byte, aes.BlockSize+len(plainText))
+	iv := cipherText[:aes.BlockSize]
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		return nil, err
+	}
+
+	mode := cipher.NewCBCEncrypter(block, iv)
+	mode.CryptBlocks(cipherText[aes.BlockSize:], plainText)
+	return cipherText, nil
+}
+
+// Filling function
+func pad(data []byte, blockSize int) []byte {
+	padding := blockSize - len(data)%blockSize
+	padText := bytes.Repeat([]byte{byte(padding)}, padding)
+	return append(data, padText...)
+}
+
+func AESDecrypt(cipherText []byte, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	// IV，IV cipherText left 16
+	if len(cipherText) < aes.BlockSize {
+		return nil, fmt.Errorf("cipherText too short")
+	}
+	iv := cipherText[:aes.BlockSize]
+	cipherText = cipherText[aes.BlockSize:]
+
+	// Decrypt
+	mode := cipher.NewCBCDecrypter(block, iv)
+	decrypted := make([]byte, len(cipherText))
+	mode.CryptBlocks(decrypted, cipherText)
+
+	// Remove padding
+	decrypted = unpad(decrypted, aes.BlockSize)
+
+	return decrypted, nil
+}
+func unpad(padded []byte, blockSize int) []byte {
+	length := len(padded)
+	unpadLen := int(padded[length-1])
+	if unpadLen > blockSize || unpadLen > length {
+		return nil
+	}
+	return padded[:length-unpadLen]
 }

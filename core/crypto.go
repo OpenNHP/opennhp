@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -9,6 +10,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"hash"
+	"io"
 	"log"
 	"os"
 
@@ -288,4 +290,62 @@ func SM2Decrypt(privateKeyBase64 string, message string) (string, error) {
 		return "", err
 	}
 	return string(sourceText), err
+}
+
+// AESEncryption Function
+func AESEncrypt(plainText []byte, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	//Padding Plaintext
+	plainText = pad(plainText, aes.BlockSize)
+	cipherText := make([]byte, aes.BlockSize+len(plainText))
+	iv := cipherText[:aes.BlockSize]
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		return nil, err
+	}
+
+	mode := cipher.NewCBCEncrypter(block, iv)
+	mode.CryptBlocks(cipherText[aes.BlockSize:], plainText)
+	return cipherText, nil
+}
+
+// Filling function
+func pad(data []byte, blockSize int) []byte {
+	padding := blockSize - len(data)%blockSize
+	padText := bytes.Repeat([]byte{byte(padding)}, padding)
+	return append(data, padText...)
+}
+
+func AESDecrypt(cipherText []byte, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	// IV，IV cipherText left 16
+	if len(cipherText) < aes.BlockSize {
+		return nil, fmt.Errorf("cipherText too short")
+	}
+	iv := cipherText[:aes.BlockSize]
+	cipherText = cipherText[aes.BlockSize:]
+
+	// Decrypt
+	mode := cipher.NewCBCDecrypter(block, iv)
+	decrypted := make([]byte, len(cipherText))
+	mode.CryptBlocks(decrypted, cipherText)
+
+	// Remove padding
+	decrypted = unpad(decrypted, aes.BlockSize)
+
+	return decrypted, nil
+}
+func unpad(padded []byte, blockSize int) []byte {
+	length := len(padded)
+	unpadLen := int(padded[length-1])
+	if unpadLen > blockSize || unpadLen > length {
+		return nil
+	}
+	return padded[:length-unpadLen]
 }

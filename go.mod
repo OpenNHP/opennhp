@@ -14,4 +14,6 @@ require (
 	golang.org/x/crypto v0.31.0
 	gorm.io/driver/mysql v1.5.2
 	gorm.io/gorm v1.25.5
+	github.com/BurntSushi/toml v1.4.0
+	github.com/google/uuid v1.6.0
 )

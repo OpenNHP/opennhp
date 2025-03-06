@@ -22,32 +22,41 @@ set CGO_ENABLED=1
 :agentd
 go build -trimpath -ldflags %LD_FLAGS% -v -o release\nhp-agent\nhp-agentd.exe agent\main\main.go
 IF %ERRORLEVEL% NEQ 0 exit /b 1
-copy /y agent\main\etc\*.* release\nhp-agent\etc
+if not exist release\nhp-agent\etc mkdir release\nhp-agent\etc
+copy agent\main\etc\*.* release\nhp-agent\etc
 
 :acd
 go build -trimpath -ldflags %LD_FLAGS% -v -o release\nhp-ac\nhp-acd.exe ac\main\main.go
 IF %ERRORLEVEL% NEQ 0 exit /b 1
-copy /y ac\main\etc\*.* release\nhp-ac\etc
+if not exist release\nhp-ac\etc mkdir release\nhp-ac\etc
+copy  ac\main\etc\*.* release\nhp-ac\etc
 
 :serverd
 go build -trimpath -ldflags %LD_FLAGS% -v -o release\nhp-server\nhp-serverd.exe server\main\main.go
 IF %ERRORLEVEL% NEQ 0 exit /b 1
-copy /y server\main\etc\*.* release\nhp-server\etc
+if not exist release\nhp-server\etc mkdir release\nhp-server\etc
+copy  server\main\etc\*.* release\nhp-server\etc
+
+:de
+go build -trimpath -ldflags %LD_FLAGS% -v -o release\nhp-de\nhp-de.exe de\main\main.go
+IF %ERRORLEVEL% NEQ 0 exit /b 1
+if not exist release\nhp-de\etc mkdir release\nhp-de\etc
+copy  de\main\etc\*.* release\nhp-de\etc
+
 
 :agentsdk
 go build -trimpath -buildmode=c-shared -ldflags %LD_FLAGS% -v -o release\nhp-agent\nhp-agent.dll agent\main\main.go agent\main\export.go
 IF %ERRORLEVEL% NEQ 0 exit /b 1
 gcc agent\sdkdemo\nhp-agent-demo.c -I release\nhp-agent -l:nhp-agent.dll -Lrelease\nhp-agent -Wl,-rpath=. -o release\nhp-agent\nhp-agent-demo.exe
 IF %ERRORLEVEL% NEQ 0 exit /b 1
-
-:devicesdk
-go build -trimpath -buildmode=c-shared -ldflags %LD_FLAGS% -v -o release\nhp-device\nhpdevice.dll core\main\main.go core\main\nhpdevice.go
-IF %ERRORLEVEL% NEQ 0 exit /b 1
-REM gcc nhp\sdkdemo\nhp-device-demo.c -I nhp\main -I release\nhp-device -l:nhpdevice.dll -Lrelease\nhp-device -Wl,-rpath=. -o release\nhp-device\nhp-device-demo.exe
-IF %ERRORLEVEL% NEQ 0 exit /b 1
-cd release\nhp-device
-call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
-lib /def:./nhpdevice.def /name:nhpdevice.dll /out:./nhpdevice.lib /MACHINE:X64
-cd ..\..
+@REM :devicesdk
+@REM go build -trimpath -buildmode=c-shared -ldflags %LD_FLAGS% -v -o release\nhp-device\nhpdevice.dll core\main\main.go core\main\nhpdevice.go
+@REM IF %ERRORLEVEL% NEQ 0 exit /b 1
+@REM REM gcc nhp\sdkdemo\nhp-device-demo.c -I nhp\main -I release\nhp-device -l:nhpdevice.dll -Lrelease\nhp-device -Wl,-rpath=. -o release\nhp-device\nhp-device-demo.exe
+@REM IF %ERRORLEVEL% NEQ 0 exit /b 1
+@REM cd release\nhp-device
+@REM call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
+@REM lib /def:./nhpdevice.def /name:nhpdevice.dll /out:./nhpdevice.lib /MACHINE:X64
+@REM cd ..\..
 
 echo [Done] OpenNHP v%VERSION% for platform %OS% built!

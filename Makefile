@@ -63,7 +63,10 @@ serverd:
 	go build -trimpath -ldflags ${LD_FLAGS} -v -o ./release/nhp-server/nhp-serverd ./server/main/main.go
 	mkdir -p ./release/nhp-server/etc
 	cp ./server/main/etc/*.toml ./release/nhp-server/etc/
-
+de:
+	go build -trimpath -ldflags ${LD_FLAGS} -v -o ./release/nhp-de/nhp-de ./de/main/main.go
+	mkdir -p ./release/nhp-de/etc
+	cp ./de/main/etc/*.toml ./release/nhp-de/etc/
 kgc:
 	@echo "$(COLOUR_BLUE)[KGC] Building KGC module... $(END_COLOUR)"
 	mkdir -p ./release/kgc/etc

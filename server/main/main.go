@@ -36,15 +36,15 @@ func main() {
 		Usage: "generate key pairs for NHP devices",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "curve", Value: false, DisableDefaultText: true, Usage: "generate curve25519 keys"},
-			&cli.BoolFlag{Name: "sm2", Value: false, DisableDefaultText: true, Usage: "generate sm2 keys"},
+			&cli.BoolFlag{Name: "sm2", Value: false, DisableDefaultText: true, Usage: "generate sm2 keys (default)"},
 		},
 		Action: func(c *cli.Context) error {
 			var e core.Ecdh
-			if c.Bool("sm2") {
-				e = core.NewECDH(core.ECC_SM2)
-			} else {
-				e = core.NewECDH(core.ECC_CURVE25519)
+			eccType := core.ECC_SM2
+			if c.Bool("curve") {
+				eccType = core.ECC_CURVE25519
 			}
+			e = core.NewECDH(eccType)
 			pub := e.PublicKeyBase64()
 			priv := e.PrivateKeyBase64()
 			fmt.Println("Private key: ", priv)

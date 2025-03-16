@@ -581,6 +581,7 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 			aolMd := &core.MsgData{
 				RemoteAddr:    sendAddr.(*net.UDPAddr),
 				HeaderType:    core.NHP_AOL,
+				CipherScheme:  a.config.DefaultCipherScheme,
 				TransactionId: a.device.NextCounterIndex(),
 				Compress:      true,
 				PeerPk:        peerPbk,
@@ -660,8 +661,9 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 			if (currTime - lastSendTime) > int64(ServerKeepaliveInterval*time.Second) {
 				// send NHP_KPL to server if no send happens within ServerKeepaliveInterval
 				md := &core.MsgData{
-					RemoteAddr: sendAddr.(*net.UDPAddr),
-					HeaderType: core.NHP_KPL,
+					RemoteAddr:   sendAddr.(*net.UDPAddr),
+					HeaderType:   core.NHP_KPL,
+					CipherScheme: a.config.DefaultCipherScheme,
 					//PeerPk:        peerPbk, // pubkey not needed
 					TransactionId: a.device.NextCounterIndex(),
 				}

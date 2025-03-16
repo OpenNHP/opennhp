@@ -215,11 +215,12 @@ func (s *UdpServer) HandleACOnline(ppd *core.PacketParserData) (err error) {
 	s.acPeerMapMutex.Unlock()
 
 	acConn := &ACConn{
-		ConnData:  ppd.ConnData,
-		ACPeer:    acPeer,
-		ACId:      acId,
-		ServiceId: aolMsg.AuthServiceId,
-		Apps:      aolMsg.ResourceIds,
+		ConnData:       ppd.ConnData,
+		ACPeer:         acPeer,
+		ACCipherScheme: ppd.CipherScheme,
+		ACId:           acId,
+		ServiceId:      aolMsg.AuthServiceId,
+		Apps:           aolMsg.ResourceIds,
 	}
 
 	s.acConnectionMapMutex.Lock()

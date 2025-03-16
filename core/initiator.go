@@ -26,7 +26,7 @@ type InitiatorScheme interface {
 type MsgData struct {
 	RemoteAddr     *net.UDPAddr      // used by agent and ac create a new connection or pick an existing connection for msg sending
 	ConnData       *ConnectionData   // used by server to pick an existing connection for msg sending
-	PrevParserData *PacketParserData // when PrevParserData is set, RemoteAddr, ConnData, TransactionId and PeerPk will be overridden
+	PrevParserData *PacketParserData // when PrevParserData is set, CipherScheme, RemoteAddr, ConnData, TransactionId and PeerPk will be overridden
 	CipherScheme   int               // 0: curve25519/chacha20/blake2s, 1: sm2/sm4/sm3
 	TransactionId  uint64
 	HeaderType     int
@@ -241,6 +241,29 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 	if mad.RemotePubKey == nil {
 		log.Error("remote peer public key is not set")
 		err = ErrEmptyPeerPublicKey
+		return err
+	}
+
+	lenMismatch := false
+	switch mad.CipherScheme {
+	case CIPHER_SCHEME_CURVE:
+		if len(mad.RemotePubKey) != PublicKeyBase64Size {
+			lenMismatch = true
+		}
+
+	case CIPHER_SCHEME_GMSM:
+		if len(mad.RemotePubKey) != PublicKeyBase64SizeEx {
+			lenMismatch = true
+		}
+	default:
+		log.Error("cipher scheme not implemented") // should never get here
+		err = ErrDeviceECDHPeerFailed
+		return err
+	}
+
+	if lenMismatch {
+		log.Error("remote peer public key length does not match cipher scheme")
+		err = ErrDeviceECDHPeerFailed
 		return err
 	}
 

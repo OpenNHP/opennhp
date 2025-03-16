@@ -79,6 +79,7 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 	knkMd := &core.MsgData{
 		RemoteAddr:    sendAddr.(*net.UDPAddr),
 		HeaderType:    core.NHP_KNK,
+		CipherScheme:  a.config.DefaultCipherScheme,
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       knkBytes,
@@ -177,6 +178,7 @@ func (a *UdpAgent) ExitKnockRequest(res *KnockTarget) (ackMsg *common.ServerKnoc
 	knkMd := &core.MsgData{
 		RemoteAddr:    sendAddr.(*net.UDPAddr),
 		HeaderType:    core.NHP_EXT,
+		CipherScheme:  a.config.DefaultCipherScheme,
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       knkBytes,
@@ -307,6 +309,7 @@ func (a *UdpAgent) processPreAccessAction(info *common.PreAccessInfo) error {
 	accMd := &core.MsgData{
 		RemoteAddr:     udpACAddr,
 		HeaderType:     core.NHP_ACC,
+		CipherScheme:   a.config.DefaultCipherScheme,
 		TransactionId:  a.device.NextCounterIndex(),
 		Compress:       true,
 		Message:        accBytes,

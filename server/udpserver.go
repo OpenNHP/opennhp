@@ -98,11 +98,12 @@ type UdpConn struct {
 }
 
 type ACConn struct {
-	ConnData  *core.ConnectionData
-	ACPeer    *core.UdpPeer
-	ACId      string
-	ServiceId string
-	Apps      []string
+	ConnData       *core.ConnectionData
+	ACPeer         *core.UdpPeer
+	ACCipherScheme int
+	ACId           string
+	ServiceId      string
+	Apps           []string
 }
 
 func (c *UdpConn) Close() {
@@ -807,6 +808,7 @@ func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACCon
 	aopMd := &core.MsgData{
 		ConnData:      conn.ConnData,
 		HeaderType:    core.NHP_AOP,
+		CipherScheme:  conn.ACCipherScheme,
 		TransactionId: s.device.NextCounterIndex(),
 		Compress:      true,
 		PeerPk:        conn.ACPeer.PublicKey(),

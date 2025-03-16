@@ -540,6 +540,7 @@ func (ppd *PacketParserData) sendCookie() {
 
 	md := &MsgData{
 		HeaderType:    NHP_COK,
+		CipherScheme:  ppd.CipherScheme,
 		TransactionId: ppd.device.NextCounterIndex(),
 		Compress:      true,
 		ConnData:      ppd.ConnData,

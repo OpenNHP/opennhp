@@ -22,14 +22,15 @@ var (
 )
 
 type Config struct {
-	PrivateKeyBase64 string          `json:"privateKey"`
-	ACId             string          `json:"acId"`
-	DefaultIp        string          `json:"defaultIp"`
-	AuthServiceId    string          `json:"aspId"`
-	ResourceIds      []string        `json:"resIds"`
-	Servers          []*core.UdpPeer `json:"servers"`
-	IpPassMode       int             `json:"ipPassMode"` // 0: pass the knock source IP, 1: use pre-access mode and release the access source IP
-	LogLevel         int             `json:"logLevel"`
+	PrivateKeyBase64    string          `json:"privateKey"`
+	ACId                string          `json:"acId"`
+	DefaultIp           string          `json:"defaultIp"`
+	AuthServiceId       string          `json:"aspId"`
+	ResourceIds         []string        `json:"resIds"`
+	Servers             []*core.UdpPeer `json:"servers"`
+	IpPassMode          int             `json:"ipPassMode"` // 0: pass the knock source IP, 1: use pre-access mode and release the access source IP
+	LogLevel            int             `json:"logLevel"`
+	DefaultCipherScheme int             `json:"defaultCipherScheme"`
 }
 
 type HttpConfig struct {
@@ -126,6 +127,11 @@ func (a *UdpAC) updateBaseConfig(file string) (err error) {
 	if a.config.IpPassMode != conf.IpPassMode {
 		log.Info("set ip pass mode to %d", conf.IpPassMode)
 		a.config.IpPassMode = conf.IpPassMode
+	}
+
+	if a.config.DefaultCipherScheme != conf.DefaultCipherScheme {
+		log.Info("set default cipher scheme to %d", conf.DefaultCipherScheme)
+		a.config.DefaultCipherScheme = conf.DefaultCipherScheme
 	}
 
 	return err

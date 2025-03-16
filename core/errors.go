@@ -87,6 +87,7 @@ var (
 	ErrRuntimePanic       = newError(C.ERR_NHP_SDK_RUNTIME_PANIC, "runtime panic encountered")
 
 	// initiator and encryption
+	ErrWrongCipherScheme       = newError(C.ERR_NHP_WRONG_CIPHER_SCHEME, "a wrong cipher scheme is used")
 	ErrEmptyPeerPublicKey      = newError(C.ERR_NHP_EMPTY_PEER_PUBLIC_KEY, "remote peer public key is not set")
 	ErrEphermalECDHPeerFailed  = newError(C.ERR_NHP_EPHERMAL_ECDH_PEER_FAILED, "ephermal ECDH failed with peer")
 	ErrDeviceECDHPeerFailed    = newError(C.ERR_NHP_DEVICE_ECDH_PEER_FAILED, "device ECDH failed with peer")

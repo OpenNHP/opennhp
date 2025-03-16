@@ -63,10 +63,11 @@ func (knkMsg *AgentKnockMsg) Id() string {
 }
 
 type PreAccessInfo struct {
-	AccessIp   string `json:"acIp"`
-	AccessPort string `json:"acPort"`
-	ACPubKey   string `json:"acPubKey"`
-	ACToken    string `json:"acToken"`
+	AccessIp       string `json:"acIp"`
+	AccessPort     string `json:"acPort"`
+	ACPubKey       string `json:"acPubKey"`
+	ACToken        string `json:"acToken"`
+	ACCipherScheme int    `json:"acCipherScheme"`
 }
 
 type ServerKnockAckMsg struct {

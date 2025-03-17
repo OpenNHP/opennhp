@@ -28,10 +28,11 @@ var (
 
 type Config struct {
 	PrivateKeyBase64       string `json:"privateKey"`
+	Hostname               string `json:"hostname"`
 	ListenIp               string `json:"listenIp"`
 	ListenPort             int    `json:"listenPort"`
 	LogLevel               int    `json:"logLevel"`
-	Hostname               string `json:"hostname"`
+	DefaultCipherScheme    int    `json:"defaultCipherScheme"`
 	DisableAgentValidation bool   `json:"disableAgentValidation"`
 }
 
@@ -182,6 +183,11 @@ func (s *UdpServer) updateBaseConfig(file string) (err error) {
 			})
 		}
 		s.config.DisableAgentValidation = conf.DisableAgentValidation
+	}
+
+	if s.config.DefaultCipherScheme != conf.DefaultCipherScheme {
+		log.Info("set default cipher scheme to %d", conf.DefaultCipherScheme)
+		s.config.DefaultCipherScheme = conf.DefaultCipherScheme
 	}
 
 	return err

@@ -38,6 +38,7 @@ func (a *UdpAgent) RequestOtp(target *KnockTarget) error {
 	otpMd := &core.MsgData{
 		RemoteAddr:    sendAddr.(*net.UDPAddr),
 		HeaderType:    core.NHP_OTP,
+		CipherScheme:  a.config.DefaultCipherScheme,
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       otpBytes,
@@ -85,6 +86,7 @@ func (a *UdpAgent) RegisterPublicKey(otp string, target *KnockTarget) (rakMsg *c
 	regMd := &core.MsgData{
 		RemoteAddr:    sendAddr.(*net.UDPAddr),
 		HeaderType:    core.NHP_REG,
+		CipherScheme:  a.config.DefaultCipherScheme,
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       regBytes,
@@ -161,6 +163,7 @@ func (a *UdpAgent) ListResource(target *KnockTarget) (lrtMsg *common.ServerListR
 	lstMd := &core.MsgData{
 		RemoteAddr:    sendAddr.(*net.UDPAddr),
 		HeaderType:    core.NHP_LST,
+		CipherScheme:  a.config.DefaultCipherScheme,
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       lstBytes,

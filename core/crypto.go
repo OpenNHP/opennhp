@@ -57,8 +57,8 @@ type CipherSuite struct {
 }
 
 const (
-	CIPHER_SCHEME_CURVE int = iota
-	CIPHER_SCHEME_GMSM
+	CIPHER_SCHEME_GMSM int = iota
+	CIPHER_SCHEME_CURVE
 )
 
 // init cipher suite

@@ -22,10 +22,11 @@ var (
 )
 
 type Config struct {
-	LogLevel         int
-	PrivateKeyBase64 string
-	KnockUser        `mapstructure:",squash"`
-	DHPExeCMD        string
+	LogLevel            int    `json:"logLevel"`
+	DefaultCipherScheme int    `json:"defaultCipherScheme"`
+	PrivateKeyBase64    string `json:"privateKey"`
+	KnockUser           `mapstructure:",squash"`
+	DHPExeCMD           string
 }
 
 type Peers struct {
@@ -117,6 +118,11 @@ func (a *UdpAgent) updateBaseConfig(file string) (err error) {
 		log.Info("set base log level to %d", conf.LogLevel)
 		a.log.SetLogLevel(conf.LogLevel)
 		a.config.LogLevel = conf.LogLevel
+	}
+
+	if a.config.DefaultCipherScheme != conf.DefaultCipherScheme {
+		log.Info("set default cipher scheme to %d", conf.DefaultCipherScheme)
+		a.config.DefaultCipherScheme = conf.DefaultCipherScheme
 	}
 
 	return err

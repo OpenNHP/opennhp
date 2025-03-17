@@ -356,9 +356,10 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 			OpenTime: tempOpenTimeSec,
 		}
 		artMsg.PreAccessAction = &common.PreAccessInfo{
-			AccessPort: strconv.Itoa(pickedPort),
-			ACPubKey:   a.device.PublicKeyExBase64(),
-			ACToken:    a.GenerateAccessToken(tempEntry),
+			AccessPort:     strconv.Itoa(pickedPort),
+			ACPubKey:       a.device.PublicKeyExBase64(),
+			ACToken:        a.GenerateAccessToken(tempEntry),
+			ACCipherScheme: a.config.DefaultCipherScheme,
 		}
 
 		if tcpListener != nil {

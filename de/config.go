@@ -22,8 +22,9 @@ var (
 )
 
 type Config struct {
-	LogLevel         int
-	PrivateKeyBase64 string
+	LogLevel            int
+	PrivateKeyBase64    string
+	DefaultCipherScheme int `json:"defaultCipherScheme"`
 }
 
 type Peers struct {
@@ -84,11 +85,17 @@ func (a *UdpDevice) updateBaseConfig(file string) (err error) {
 		a.log.SetLogLevel(conf.LogLevel)
 		return err
 	}
+
 	// update
 	if a.config.LogLevel != conf.LogLevel {
 		log.Info("set base log level to %d", conf.LogLevel)
 		a.log.SetLogLevel(conf.LogLevel)
 		a.config.LogLevel = conf.LogLevel
+	}
+
+	if a.config.DefaultCipherScheme != conf.DefaultCipherScheme {
+		log.Info("set default cipher scheme to %d", conf.DefaultCipherScheme)
+		a.config.DefaultCipherScheme = conf.DefaultCipherScheme
 	}
 
 	return err

@@ -56,11 +56,11 @@ func initApp() {
 		},
 		Action: func(c *cli.Context) error {
 			var e core.Ecdh
-			if c.Bool("sm2") {
-				e = core.NewECDH(core.ECC_SM2)
-			} else {
-				e = core.NewECDH(core.ECC_CURVE25519)
+			eccType := core.ECC_SM2
+			if c.Bool("curve") {
+				eccType = core.ECC_CURVE25519
 			}
+			e = core.NewECDH(eccType)
 			pub := e.PublicKeyBase64()
 			priv := e.PrivateKeyBase64()
 			fmt.Println("Private key: ", priv)

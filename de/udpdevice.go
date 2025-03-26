@@ -556,6 +556,7 @@ func (a *UdpDevice) SendNHPDRG(server *core.UdpPeer, msg common.DRGMsg) bool {
 	drgMd := &core.MsgData{
 		RemoteAddr:    sendAddr.(*net.UDPAddr),
 		HeaderType:    core.NHP_DRG,
+		CipherScheme:  a.config.DefaultCipherScheme,
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       drgBytes,

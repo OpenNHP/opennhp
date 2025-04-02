@@ -40,6 +40,7 @@ generate-version-and-build:
 	@$(MAKE) agentd
 	@$(MAKE) acd
 	@$(MAKE) serverd
+	@$(MAKE) ded
 	@$(MAKE) kgc
 	@$(MAKE) agentsdk
 	@$(MAKE) devicesdk
@@ -63,8 +64,8 @@ serverd:
 	go build -trimpath -ldflags ${LD_FLAGS} -v -o ./release/nhp-server/nhp-serverd ./server/main/main.go
 	mkdir -p ./release/nhp-server/etc
 	cp ./server/main/etc/*.toml ./release/nhp-server/etc/
-de:
-	go build -trimpath -ldflags ${LD_FLAGS} -v -o ./release/nhp-de/nhp-de ./de/main/main.go
+ded:
+	go build -trimpath -ldflags ${LD_FLAGS} -v -o ./release/nhp-de/nhp-ded ./de/main/main.go
 	mkdir -p ./release/nhp-de/etc
 	cp ./de/main/etc/*.toml ./release/nhp-de/etc/
 kgc:

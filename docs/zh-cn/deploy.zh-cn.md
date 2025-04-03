@@ -216,11 +216,13 @@ permalink: /zh-cn/deploy/
 
 - nhp-agent 敲门成功，但访问不通可能的原因。
 
-   ***可能原因是 nhp-server 下发到 nhp-ac 进行 ipset，所添加记录中的 resource 目标没和请求中对应的 resource 目标的 IP 对上***，这种情况可能出现在 resource 与 nhp-ac 在同一台服务器上的情况。可以先手动配置 ipset 规则：
+   问题原因：***可能原因是 nhp-server 下发到 nhp-ac 进行 ipset，所添加记录中的 resource 目标没和请求中对应的 resource 目标的 IP 对上***，这种情况可能出现在 resource 与 nhp-ac 在同一台服务器上的情况。可以先手动配置 ipset 规则：
    ``` shell
    sudo ipset add defaultset [SourceIP],tcp:80,[ResourceIP]
    ```
    ***SourceIP 来源IP，即 Agent 的公有 IP，可通过 tcpdump 或 ipset list 确认***
    ***ResourceIP 请求资源的 IP*** 该IP 对应 nhp-server 中 ./plugins/example/etc/resource.toml，<span style="color:red">如果与请求对应不上，则会出现敲门成功但无法请求问题。</span>
+
+   抓包调试：在 ac 侧 tcpdump -i any port 80 
 
    解决方案：将可用的 IP 配置在 nhp-server 的 ```./plugins/example/etc/resource.toml``` 配置中的 ```Addr.Ip = ""```

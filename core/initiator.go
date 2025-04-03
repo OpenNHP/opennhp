@@ -247,12 +247,12 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 	lenMismatch := false
 	switch mad.CipherScheme {
 	case CIPHER_SCHEME_CURVE:
-		if len(mad.RemotePubKey) != PublicKeyBase64Size {
+		if len(mad.RemotePubKey) != PublicKeySize {
 			lenMismatch = true
 		}
 
 	case CIPHER_SCHEME_GMSM:
-		if len(mad.RemotePubKey) != PublicKeyBase64SizeEx {
+		if len(mad.RemotePubKey) != PublicKeySizeEx {
 			lenMismatch = true
 		}
 	default:

@@ -40,6 +40,7 @@ generate-version-and-build:
 	@$(MAKE) agentd
 	@$(MAKE) acd
 	@$(MAKE) serverd
+	@$(MAKE) de
 	@$(MAKE) kgc
 	@$(MAKE) agentsdk
 	@$(MAKE) devicesdk
@@ -99,4 +100,4 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init agentsdk devicesdk plugins test archive 
+.PHONY: all generate-version-and-build init agentd acd serverd de kgc agentsdk devicesdk plugins test archive

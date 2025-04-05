@@ -2,6 +2,6 @@
 
 # PubKeyBase64: public key for the device in base64 format.
 # ExpireTime (epoch timestamp in seconds): peer key validation will fail when it expires.
-[[Devices]]
-PubKeyBase64 = "K91VhaosPOsCcRBbTMnIoTk/bw5ltxwpLs9jU4SFrDY="
+[[DEs]]
+PubKeyBase64 = "CtxNuy7lJ1mJgjqWplcwN8dZhXhSNPhECja1A0OWKa+2wtI7xuB3jPcamogGZGBBfQ4SqnoPGLA7zRQaAotoxg=="
 ExpireTime = 1924991999

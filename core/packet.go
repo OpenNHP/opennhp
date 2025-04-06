@@ -167,7 +167,6 @@ func (pkt *Packet) Counter() uint64 {
 // Data Receiver  allowed message types
 func (d *Device) CheckRecvHeaderType(t int) bool {
 	// NHP_KPL is handled elsewhere
-	log.Warning("CheckRecvHeaderType Device type: %d, recv header type %d", d.deviceType, t)
 	switch d.deviceType {
 	case NHP_AGENT:
 		switch t {

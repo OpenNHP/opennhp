@@ -15,6 +15,7 @@ END_COLOUR=\033[0m
 
 build:
 	@echo "$(COLOUR_BLUE)[Plugin-${PluginName}] Start building... $(END_COLOUR)"
+	go mod tidy
 	go build -buildmode=plugin -trimpath -ldflags ${LD_FLAGS} -v -o ${ServerDir}/plugins/${PluginName}/${TargetName} ./main.go
 	mkdir -p ${ServerDir}/plugins/${PluginName}/etc
 	cp ./etc/*.toml ${ServerDir}/plugins/${PluginName}/etc/

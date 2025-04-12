@@ -223,9 +223,9 @@ This line of code specifies the storage location of the plugin, which is the ser
 
 ***Figure 9 Plugin Compilation Task plugins***
 
-Plugin Directory Check: test -d $(NHP_PLUGINS) checks if the defined plugin directory (server/plugins) exists.
+Plugin Directory Check: test -d $(NHP_SERVER_PLUGINS) checks if the defined plugin directory (server/plugins) exists.
 
-Execute Compilation: If the plugin directory exists, $(MAKE) -C $(NHP_PLUGINS) enters that directory and executes the Makefile within it, performing the compilation operation for the plugin.
+Execute Compilation: If the plugin directory exists, $(MAKE) -C $(NHP_SERVER_PLUGINS) enters that directory and executes the Makefile within it, performing the compilation operation for the plugin.
 
 ***Overall Compilation Process***: During the overall project build process (Linux and macOS: run the script make in the root directory; Windows: run the BAT file build.bat in the root directory), the plugins task in the Makefile will be called. If the plugin directory exists and is valid, the plugin's Makefile will be executed to complete the plugin's build. During compilation, plugin binary files or other forms of output files may be generated for use by the NHP server.
 

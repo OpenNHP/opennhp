@@ -223,9 +223,9 @@ NHP 服务器中的每个插件通常都结构化为一个单独的 Go 包。例
 
 ***图九 插件编译任务plugins***
 
-插件目录检查: test -d $(NHP_PLUGINS) 用于检查是否存在定义好的插件目录 (server/plugins)。
+插件目录检查: test -d $(NHP_SERVER_PLUGINS) 用于检查是否存在定义好的插件目录 (server/plugins)。
 
-执行编译: 如果插件目录存在，$(MAKE) -C $(NHP_PLUGINS) 会进入该目录并执行其中的 Makefile，即在插件目录内执行插件的编译操作。
+执行编译: 如果插件目录存在，$(MAKE) -C $(NHP_SERVER_PLUGINS) 会进入该目录并执行其中的 Makefile，即在插件目录内执行插件的编译操作。
 
 ***整体编译过程***：在整体项目构建过程中（Linux与macOS：运行代码根目录下脚本 make; Windows：运行代码根目录下BAT文件 build.bat），Makefile 中的 plugins 任务会被调用。如果插件目录存在且有效，插件的 Makefile 会被执行以完成插件的构建。在编译的过程中，可能会生成插件的二进制文件或其他形式的输出文件，以供 NHP 服务器使用。
 

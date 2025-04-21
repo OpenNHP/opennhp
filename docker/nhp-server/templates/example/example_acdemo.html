@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to NHP Demo(Local docker)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            background-color: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #4a4a4a;
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        p {
+            color: #0066cc;
+            font-size: 1.8rem;
+            margin-top: 1rem;
+            font-weight: bold;
+        }
+        #countdown {
+            margin-top: 2rem;
+            color: red;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        #message {
+            margin-top: 1rem;
+            color: green;
+            font-size: 1.5rem;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to the Demo NHP-AC Server(Local)</h1>
+        <p>localhost</p>
+        <div><a href="https://dnschecker.org/port-scanner.php?query=acdemo.opennhp.org" target="_blank">Scan Its Ports &gt;&gt;</a></div>
+        <!-- Add countdown display -->
+        <div id="countdown">This Server Will be Hidden after <span id="timer">15</span> seconds ...</div>
+        <!-- Messages with hidden information -->
+        <div id="message">The Server Has been Hidden.</div>
+    </div>
+
+    <script>
+        // Initialize countdown seconds
+        let seconds = 15;
+
+        // Retrieve DOM elements
+        const timerElement = document.getElementById('timer');
+        const countdownElement = document.getElementById('countdown');
+        const messageElement = document.getElementById('message');
+
+        // Update countdown every second
+        const countdownInterval = setInterval(() => {
+            seconds--;
+            timerElement.textContent = seconds;
+
+            if (seconds <= 0) {
+                clearInterval(countdownInterval);
+                // Hide Countdown
+                countdownElement.style.display = 'none';
+                // Show hidden messages
+                messageElement.style.display = 'block';
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
+

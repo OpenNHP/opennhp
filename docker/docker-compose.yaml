@@ -1,0 +1,62 @@
+networks:
+  server:
+  ac:
+
+services:
+  # nhp-base:
+  #   image: opennhp-base
+  #   build: 
+  #     context: ..
+  #     dockerfile: ./docker/Dockerfile.base
+  #   container_name: nhp-base
+  #   restart: always
+
+  nhp-server:
+    image: opennhp-server
+    build: 
+      context: ../..
+      dockerfile: ./opennhp/docker/Dockerfile.server
+    container_name: nhp-server
+    restart: always
+    networks:
+      - ac
+    volumes:
+      - ./nhp-server/etc/:/nhp-server/etc/:rw
+      - ./nhp-server/templates/example/:/nhp-server/templates/example/:rw
+      - ./nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
+      - ./nhp-server/logs/:/nhp-server/logs/:rw
+    ports:
+      - "62206:62206/udp"
+      - "62206:62206/tcp"
+
+  nhp-ac:
+    image: opennhp-ac
+    container_name: nhp-ac
+    build: 
+      context: ..
+      dockerfile: ./docker/Dockerfile.ac
+    volumes:
+      - ./nhp-ac/etc/:/nhp-ac/etc/
+      - ./nhp-ac/logs/:/nhp-ac/logs/
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      - nhp-server
+    networks:
+      - server
+    ports:
+      - "80:80"
+
+  nhp-agent:
+    image: opennhp-agent
+    build: 
+      context: ..
+      dockerfile: ./docker/Dockerfile.agent
+    container_name: nhp-agent
+    restart: always
+    volumes:
+      - ./nhp-agent/etc/:/nhp-agent/etc/:rw
+      - ./nhp-agent/logs/:/nhp-agent/logs/:rw
+    networks:
+      - server

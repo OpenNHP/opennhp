@@ -1,0 +1,9 @@
+# List resources for the agent to knock automatically after launch
+
+# AuthServiceId: id of the authentication and authorization service provider the resource belongs to.
+# ResourceId: id of the resource group.
+# ServerAddr: the server address that manages this resource group.
+[[Resources]]
+AuthServiceId = "example"
+ResourceId = "demo"
+ServerAddr = "host.docker.internal"

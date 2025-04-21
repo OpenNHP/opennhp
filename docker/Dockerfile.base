@@ -1,0 +1,47 @@
+FROM ubuntu:20.04  AS builder
+
+# 更新软件包列表并安装基础工具
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    wget \
+    ca-certificates \
+    && apt-get install -y iptables \
+    && apt-get install -y tcpdump \
+    && apt-get install -y ipset \
+    git \
+    && rm -rf /var/lib/apt/lists/* 
+
+# 安装 Go (Golang)
+ENV GO_VERSION=1.24.2
+ENV GO_ARCH=linux-amd64
+
+RUN wget https://golang.org/dl/go1.24.2.linux-amd64.tar.gz -O /tmp/go.tar.gz && \
+    tar -C /usr/local -xzf /tmp/go.tar.gz && \
+    rm /tmp/go.tar.gz
+
+# 配置 Go 环境变量
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH=/go
+ENV PATH="${GOPATH}/bin:${PATH}"
+
+# 验证安装
+RUN go version && \
+    gcc --version && \
+    make --version && sleep 10
+
+# # 设置工作目录
+WORKDIR /nhp-server
+
+COPY ../opennhp/ .
+
+# ## 添加插件
+# COPY ../nhp-plugins-passcode /nhp-server/server/plugins/nhp-plugins-passcode/
+RUN cd /nhp-server && export GOARCH=arm64 && export CGO_ENABLED=1 && make
+
+#CMD ["./release/nhp-server/nhp-serverd", "run"]
+#CMD ["/bin/bash"]
+CMD ["tail", "-f", "/dev/null"]
+
+# cd /opennhp/docker
+# docker build -t opennhp-base:latest -f Dockerfile.base ../..

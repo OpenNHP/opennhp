@@ -1,0 +1,30 @@
+FROM opennhp-base:latest  AS builder
+
+# 设置工作目录
+WORKDIR /nhp-server
+
+COPY ../opennhp/ .
+
+## 添加插件
+COPY ../nhp-plugins-passcode /nhp-server/server/plugins/nhp-plugins-passcode/
+RUN cd /nhp-server && export GOARCH=arm64 && export CGO_ENABLED=1 && make
+
+FROM ubuntu:20.04  AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && \
+    apt-get install -y  wget \
+    ca-certificates \
+    nginx \
+    iptables \
+    tcpdump \
+    ipset \
+    git \
+    curl \
+    telnet \
+    && rm -rf /var/lib/apt/lists/* 
+
+COPY --from=builder /nhp-server/release/nhp-server /nhp-server 
+
+ENTRYPOINT ["/bin/sh", "-c"]
+CMD ["nginx & /nhp-server/nhp-serverd run"]

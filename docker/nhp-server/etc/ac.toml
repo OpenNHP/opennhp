@@ -1,0 +1,7 @@
+# list the AC peers for the server under [[ACs]] table
+
+# PubKeyBase64: public key for the AC in base64 format.
+# ExpireTime (epoch timestamp in seconds): peer key validation will fail when it expires.
+[[ACs]]
+PubKeyBase64 = "tovd99hsYLjjvRjig95bZa+PSh8CZQKzbbKHH74+oiIEOBEjslZ7WzjCOYzd4TJNgYO8TOZYc0w0sxhz0I9J5w=="
+ExpireTime = 1924991999

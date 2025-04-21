@@ -1,0 +1,22 @@
+FROM opennhp-base:latest AS builder
+
+FROM ubuntu:20.04  AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && \
+    apt-get install -y  wget \
+    ca-certificates \
+    nginx \
+    iptables \
+    tcpdump \
+    ipset \
+    git \
+    curl \
+    telnet \
+    && rm -rf /var/lib/apt/lists/* 
+
+COPY --from=builder /nhp-server/release/nhp-ac /nhp-ac 
+COPY --from=builder /nhp-server/docker/iptables_defaults_ubuntu.sh /iptables_defaults_ubuntu.sh
+RUN chmod +x /iptables_defaults_ubuntu.sh
+ENTRYPOINT ["/bin/sh", "-c"]
+CMD ["/iptables_defaults_ubuntu.sh && nginx & /nhp-ac/nhp-acd run"]
+#ENTRYPOINT ["/nhp-ac/nhp-acd", "run"]

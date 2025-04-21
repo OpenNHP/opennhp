@@ -3,23 +3,15 @@ networks:
   ac:
 
 services:
-  # nhp-base:
-  #   image: opennhp-base
-  #   build: 
-  #     context: ..
-  #     dockerfile: ./docker/Dockerfile.base
-  #   container_name: nhp-base
-  #   restart: always
-
   nhp-server:
     image: opennhp-server
     build: 
       context: ../..
-      dockerfile: ./opennhp/docker/Dockerfile.server
+      dockerfile: ./docker/Dockerfile.server
     container_name: nhp-server
     restart: always
     networks:
-      - ac
+      - server
     volumes:
       - ./nhp-server/etc/:/nhp-server/etc/:rw
       - ./nhp-server/templates/example/:/nhp-server/templates/example/:rw
@@ -33,10 +25,11 @@ services:
     image: opennhp-ac
     container_name: nhp-ac
     build: 
-      context: ..
-      dockerfile: ./docker/Dockerfile.ac
+      context: ../../..
+      dockerfile: ./fengyily/opennhp/docker/Dockerfile.ac
     volumes:
       - ./nhp-ac/etc/:/nhp-ac/etc/
+      - ./nhp-ac/traefik/etc/:/opt/traefik/etc/
       - ./nhp-ac/logs/:/nhp-ac/logs/
     restart: always
     cap_add:
@@ -44,7 +37,7 @@ services:
     depends_on:
       - nhp-server
     networks:
-      - server
+      - ac
     ports:
       - "80:80"
 
@@ -59,4 +52,21 @@ services:
       - ./nhp-agent/etc/:/nhp-agent/etc/:rw
       - ./nhp-agent/logs/:/nhp-agent/logs/:rw
     networks:
-      - server
+      - ac
+
+  nhp-app:
+    image: nginx:latest
+    container_name: nhp-app
+    restart: always
+    # ports:
+    #   - "8080:80"
+    networks:
+      - ac
+
+  # nhp-base:
+  #   image: opennhp-base
+  #   build: 
+  #     context: ..
+  #     dockerfile: ./docker/Dockerfile.base
+  #   container_name: nhp-base
+  #   restart: always

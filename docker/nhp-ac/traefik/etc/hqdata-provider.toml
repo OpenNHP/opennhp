@@ -1,0 +1,21 @@
+
+[http]
+  [http.routers]
+    #
+    # hqdata-opennhp-cn
+    #
+    [http.routers.router-hqdata-opennhp-cn]
+      entryPoints = ["web"]
+      #rule = "Host(`*`)"
+      rule = "PathPrefix(`/`)"
+      service = "service-hqdata"
+      #tls = "true"
+
+  [http.services]
+    # ./traefik --configFile=/opt/traefik/etc/hqdata-traefik.toml --log.level=TRACE
+    # ./traefik --log.level=TRACE
+    # hqdata-opennhp-cn
+    #
+    [http.services.service-hqdata.loadBalancer]
+      [[http.services.service-hqdata.loadBalancer.servers]]
+        url = "http://172.18.0.2"

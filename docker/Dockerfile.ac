@@ -5,7 +5,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get install -y  wget \
     ca-certificates \
-    nginx \
     iptables \
     tcpdump \
     ipset \
@@ -14,9 +13,31 @@ RUN apt-get update && \
     telnet \
     && rm -rf /var/lib/apt/lists/* 
 
+# 定义 Traefik 版本变量
+ARG TRAEFIK_VERSION=v2.10.4
+
+# # 下载并安装 Traefik
+# RUN curl -L -o traefik.tar.gz "https://github.com/traefik/traefik/releases/download/${TRAEFIK_VERSION}/traefik_${TRAEFIK_VERSION}_linux_amd64.tar.gz" && \
+#     tar -zxvf traefik.tar.gz && \
+#     mv traefik /traefik/ && \
+#     chmod +x /traefik/traefik && \
+#     rm -rf /tmp/*
+
+# 创建 Traefik 配置目录
+RUN mkdir -p /opt/traefik/etc
+
+# 复制 Traefik 
+COPY ./fengyily/opennhp/docker/traefik_v2.10.4_linux_amd64.tar.gz /traefik.tar.gz
+RUN tar -zxvf traefik.tar.gz && \
+    mv traefik /opt/traefik/ && \
+    chmod +x /opt/traefik/traefik && \
+    rm -rf /tmp/*
+
+COPY ../../../traefik-plugins/traefik-plugins-hqdata/* /opt/traefik/
+
 COPY --from=builder /nhp-server/release/nhp-ac /nhp-ac 
 COPY --from=builder /nhp-server/docker/iptables_defaults_ubuntu.sh /iptables_defaults_ubuntu.sh
 RUN chmod +x /iptables_defaults_ubuntu.sh
 ENTRYPOINT ["/bin/sh", "-c"]
-CMD ["/iptables_defaults_ubuntu.sh && nginx & /nhp-ac/nhp-acd run"]
+CMD ["/iptables_defaults_ubuntu.sh && nohup /opt/traefik/traefik --configFile=/opt/traefik/etc/hqdata-traefik.toml 2>&1 & -- & /nhp-ac/nhp-acd run"]
 #ENTRYPOINT ["/nhp-ac/nhp-acd", "run"]

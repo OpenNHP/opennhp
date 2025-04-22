@@ -8,8 +8,14 @@
       entryPoints = ["web"]
       #rule = "Host(`*`)"
       rule = "PathPrefix(`/`)"
+      middlewares = ["NHPMiddlewares"]
       service = "service-hqdata"
       #tls = "true"
+
+[http.middlewares.NHPMiddlewares]
+  [http.middlewares.NHPMiddlewares.plugin.acdevmiddleware]
+    flag = "true"
+    dev = "true"
 
   [http.services]
     # ./traefik --configFile=/opt/traefik/etc/hqdata-traefik.toml --log.level=TRACE
@@ -18,4 +24,4 @@
     #
     [http.services.service-hqdata.loadBalancer]
       [[http.services.service-hqdata.loadBalancer.servers]]
-        url = "http://172.18.0.2"
+        url = "http://nhp-app"

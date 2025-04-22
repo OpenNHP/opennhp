@@ -24,20 +24,21 @@ ARG TRAEFIK_VERSION=v2.10.4
 #     rm -rf /tmp/*
 
 # 创建 Traefik 配置目录
-RUN mkdir -p /opt/traefik/etc
+RUN mkdir -p /opt/traefik/
 
 # 复制 Traefik 
-COPY ./fengyily/opennhp/docker/traefik_v2.10.4_linux_amd64.tar.gz /traefik.tar.gz
+COPY ./fengyily/opennhp/docker/traefik_v3.4.0-rc2_linux_amd64.tar.gz /traefik.tar.gz
 RUN tar -zxvf traefik.tar.gz && \
     mv traefik /opt/traefik/ && \
     chmod +x /opt/traefik/traefik && \
     rm -rf /tmp/*
 
-COPY ../../../traefik-plugins/traefik-plugins-hqdata/* /opt/traefik/
+COPY ../../../traefik-plugins/ /opt/
+RUN cp -r /opt/traefik-plugins-hqdata/* /opt/traefik/
 
 COPY --from=builder /nhp-server/release/nhp-ac /nhp-ac 
 COPY --from=builder /nhp-server/docker/iptables_defaults_ubuntu.sh /iptables_defaults_ubuntu.sh
 RUN chmod +x /iptables_defaults_ubuntu.sh
 ENTRYPOINT ["/bin/sh", "-c"]
-CMD ["/iptables_defaults_ubuntu.sh && nohup /opt/traefik/traefik --configFile=/opt/traefik/etc/hqdata-traefik.toml 2>&1 & -- & /nhp-ac/nhp-acd run"]
+CMD ["/iptables_defaults_ubuntu.sh && cd /opt/traefik/ && nohup ./traefik --configFile=hqdata-traefik.toml 2>&1 & -- & /nhp-ac/nhp-acd run"]
 #ENTRYPOINT ["/nhp-ac/nhp-acd", "run"]

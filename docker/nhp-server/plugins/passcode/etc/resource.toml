@@ -1,0 +1,24 @@
+# List resources id and their sub-fields here
+["demo"]
+OpenTime = 15
+RedirectUrl = "http://localhost" #目标URL
+RedirectWithParams = false
+
+["demo".Resources."demoServer"]
+ACId = "testAC-1"
+Hostname = "localhost"
+Addr.Ip = "172.19.0.4"
+Addr.Port = 80 # empty or 0 for all ports
+Addr.Protocol = ""
+#PrivIp = "172.16.81.11"
+PortSuffix = false
+
+# hqdata_6KHKASH169#g1z@52q
+["demo".ExInfo]
+Title = "访问apidemo.opennhp.cn" #页面上的提示文字
+TokenExpire = 1440
+JWTSecret = "opennhp"
+AppSecret = [
+    "Qz_6LLBFSH169#g1z@52q",
+    "gfagadf",
+]

@@ -7,15 +7,16 @@ services:
     image: opennhp-server
     build: 
       context: ../..
-      dockerfile: ./docker/Dockerfile.server
+      dockerfile: ./opennhp/docker/Dockerfile.server
     container_name: nhp-server
     restart: always
     networks:
       - server
     volumes:
       - ./nhp-server/etc/:/nhp-server/etc/:rw
-      - ./nhp-server/templates/example/:/nhp-server/templates/example/:rw
+      - ./nhp-server/templates/:/nhp-server/templates/:rw
       - ./nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
+      - ./nhp-server/plugins/passcode/etc/:/nhp-server/plugins/passcode/etc/:rw
       - ./nhp-server/logs/:/nhp-server/logs/:rw
     ports:
       - "62206:62206/udp"
@@ -28,8 +29,10 @@ services:
       context: ../../..
       dockerfile: ./fengyily/opennhp/docker/Dockerfile.ac
     volumes:
+      - ../../../traefik-plugins/traefik-plugins-hqdata/plugins-local/:/opt/traefik/plugins-local/
       - ./nhp-ac/etc/:/nhp-ac/etc/
-      - ./nhp-ac/traefik/etc/:/opt/traefik/etc/
+      - ./nhp-ac/traefik/etc/hqdata-traefik.toml:/opt/traefik/hqdata-traefik.toml
+      - ./nhp-ac/traefik/etc/hqdata-provider.toml:/opt/traefik/hqdata-provider.toml
       - ./nhp-ac/logs/:/nhp-ac/logs/
     restart: always
     cap_add:

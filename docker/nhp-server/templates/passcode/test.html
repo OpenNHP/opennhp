@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token刷新示例</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            background: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            margin-right: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button.stop {
+            background: #f44336;
+        }
+        button.stop:hover {
+            background: #d32f2f;
+        }
+        .log {
+            background: #333;
+            color: #fff;
+            padding: 15px;
+            border-radius: 4px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .active {
+            background: #e7f6e7;
+            color: #2e7d32;
+        }
+        .inactive {
+            background: #ffebee;
+            color: #c62828;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Token自动刷新演示</h1>
+        
+        <div class="controls">
+            <button id="startBtn">启动刷新</button>
+            <button id="stopBtn" class="stop">停止刷新</button>
+            <button id="simulateBtn">模拟刷新</button>
+            <button id="clearBtn">清除日志</button>
+        </div>
+        
+        <div id="status" class="status inactive">状态: 未激活</div>
+        
+        <h3>操作日志:</h3>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        /**
+         * 支持跨域的Token刷新管理器
+         */
+        class CrossDomainTokenRefresher {
+            constructor(options = {}) {
+                this.refreshInterval = null;
+                this.refreshIntervalTime = options.interval || 100000; // 默认10s
+                this.tokenName = options.tokenName || 'nhp_token';
+                this.refreshTokenName = options.refreshTokenName || 'nhp_refresh_token';
+                this.apiEndpoint = options.apiEndpoint || '/plugins/{{ .aspId }}?resid={{ .resId }}&action=refresh';
+                this.withCredentials = options.withCredentials || true;
+                this.corsOptions = {
+                    mode: 'cors',
+                    credentials: this.withCredentials ? 'include' : 'same-origin'
+                };
+                this.logFunction = options.log || console.log;
+            }
+
+            log(message) {
+                const timestamp = new Date().toLocaleTimeString();
+                const logMessage = `[${timestamp}] ${message}`;
+                this.logFunction(logMessage);
+            }
+
+            getCookie(name) {
+                if (this.withCredentials) {
+                    const cookies = document.cookie.split(';');
+                    for (let i = 0; i < cookies.length; i++) {
+                        const cookie = cookies[i].trim();
+                        if (cookie.startsWith(name + '=')) {
+                            return decodeURIComponent(cookie.substring(name.length + 1));
+                        }
+                    }
+                }
+                return null;
+            }
+
+            async refreshToken() {
+                //const refreshToken = this.getCookie(this.refreshTokenName);
+                const refreshToken = "test";
+                if (!refreshToken) {
+                    this.log('刷新失败: 缺少refresh token');
+                    this.stop();
+                    return;
+                }
+
+                try {
+                    this.log('正在刷新Token...');
+                    const response = await fetch(this.apiEndpoint, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${this.getCookie(this.tokenName)}`
+                        },
+                        //body: JSON.stringify({ refresh_token: refreshToken }),
+                        ...this.corsOptions
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`请求失败: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    this.handleNewTokens(data.access_token, data.refresh_token);
+                    this.log('Token刷新成功'+data.access_token);
+                } catch (error) {
+                    this.log(`刷新失败: ${error.message}`);
+                    this.handleRefreshError(error);
+                }
+            }
+
+            handleNewTokens(accessToken, refreshToken) {
+                const setCookie = (name, value) => {
+                    document.cookie = `${name}=${encodeURIComponent(value)}; path=/; ${
+                        location.protocol === 'https:' ? 'secure; ' : ''
+                    }samesite=lax`;
+                };
+
+                setCookie(this.tokenName, accessToken);
+                if (refreshToken) {
+                    setCookie(this.refreshTokenName, refreshToken);
+                }
+            }
+
+            handleRefreshError(error) {
+                if (error.message.includes('401')) {
+                    this.stop();
+                    this.redirectToLogin();
+                } else if (error.message.includes('网络')) {
+                    setTimeout(() => this.refreshToken(), 30000);
+                }
+            }
+
+            redirectToLogin() {
+                this.log('Token无效，跳转到登录页');
+                window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname);
+            }
+
+            start() {
+                this.refreshToken();
+                this.refreshInterval = setInterval(
+                    () => this.refreshToken(),
+                    this.refreshIntervalTime
+                );
+                this.log(`Token刷新已启动，间隔: ${this.refreshIntervalTime/1000}秒`);
+                this.updateStatus(true);
+            }
+
+            stop() {
+                if (this.refreshInterval) {
+                    clearInterval(this.refreshInterval);
+                    this.refreshInterval = null;
+                }
+                this.log('Token刷新已停止');
+                this.updateStatus(false);
+            }
+
+            updateStatus(isActive) {
+                const statusEl = document.getElementById('status');
+                statusEl.textContent = `状态: ${isActive ? '运行中' : '已停止'}`;
+                statusEl.className = isActive ? 'status active' : 'status inactive';
+            }
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            // 创建日志显示函数
+            const logEl = document.getElementById('log');
+            const logToScreen = (message) => {
+                const p = document.createElement('p');
+                p.textContent = message;
+                logEl.appendChild(p);
+                logEl.scrollTop = logEl.scrollHeight;
+            };
+
+            // 初始化刷新器
+            const refresher = new CrossDomainTokenRefresher({
+                apiEndpoint: '',
+                withCredentials: true,
+                interval: 10000, // 10秒用于演示
+                log: logToScreen
+            });
+
+            // 绑定按钮事件
+            document.getElementById('startBtn').addEventListener('click', () => {
+                refresher.start();
+            });
+
+            document.getElementById('stopBtn').addEventListener('click', () => {
+                refresher.stop();
+            });
+
+            document.getElementById('simulateBtn').addEventListener('click', () => {
+                refresher.refreshToken();
+            });
+
+            document.getElementById('clearBtn').addEventListener('click', () => {
+                logEl.innerHTML = '';
+            });
+            
+            refresher.start();
+            // 初始日志
+            logToScreen('页面已加载，点击"启动刷新"开始');
+        });
+    </script>
+</body>
+</html>

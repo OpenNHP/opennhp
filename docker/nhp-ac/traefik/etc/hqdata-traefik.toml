@@ -3,7 +3,10 @@
     address = ":80"
 
 [providers.file]
-  filename = "/opt/traefik/etc/hqdata-provider.toml"
+  filename = "hqdata-provider.toml"
+
+[experimental.localPlugins.acdevmiddleware]
+  moduleName = "github.com/traefik/acdevmiddleware"
 
 [log]
   level = "TRACE"

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ .title }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        }
+        
+        body {
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 90vh;
+            padding: 20px;
+        }
+        
+        .container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 700px;
+            text-align: center;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 24px;
+            font-weight: 600;
+        }
+        
+        .description {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.5;
+            font-size: 15px;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+            text-align: left;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 15px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #4a90e2;
+            box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+        }
+        
+        button {
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 12px 20px;
+            width: 100%;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #3a7bc8;
+        }
+        
+        .message {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 6px;
+            display: none;
+        }
+        
+        .error {
+            background-color: #fee;
+            color: #d32f2f;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .success {
+            background-color: #e8f5e9;
+            color: #388e3c;
+            border: 1px solid #c3e6cb;
+        }
+
+
+        .status {
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 1rem;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .status-label {
+            font-weight: 600;
+            padding-right: 0.5rem;
+        }
+
+        .status-value {
+            font-weight: 300;
+        }
+
+
+
+        .note {
+            text-align: center;
+            margin-top: 1rem;
+            font-size: 1.1rem;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ .title }}</h1>
+        
+        <div class="status">
+            <p class="note">
+                <span id="protectedServer">受保护的服务器是</span> 
+                <a href="https://hqdata.opennhp.cn:1080" target="_blank">https://hqdata.opennhp.cn:1080</a>. 
+                (<a href="https://dnschecker.org/port-scanner.php?query=hqdata.opennhp.cn" target="_blank" id="scanPorts">端口扫描 &gt;&gt;</a>)
+            </p>
+            <br/>
+            <div class="status-item">
+                <span class="status-label" id="beforeLogin">授权前: </span>
+                <span class="status-value timeout" id="timeoutStatus">与受保护服务器的连接应为 <strong>超时. ❌</strong></span>
+            </div>
+            <div class="status-item">
+                <span class="status-label" id="afterLogin">授权后: </span>
+                <span class="status-value success" id="successStatus">与受保护服务器的连接应该 <strong>成功. ✅</strong></span>
+            </div>
+        </div>     
+        <p class="description">请输入NHP访问密钥以继续操作</p>
+        <form id="passcodeForm">
+            <div class="form-group">
+                <label for="passcode"></label>
+                <input type="text" id="passcode" name="passcode" placeholder="请输入NHP访问密钥" required>
+            </div>
+            
+            <button type="submit">提 交</button>
+        </form>
+        
+        <div id="message" class="message"></div>
+    </div>
+
+    <script>
+        document.getElementById('passcodeForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const passcode = document.getElementById('passcode').value;
+            const messageEl = document.getElementById('message');
+            
+            // 清除之前的状态
+            messageEl.style.display = 'none';
+            messageEl.className = 'message';
+            
+            try {
+                const passcode = document.getElementById("passcode").value;
+                const nhpValidUrl = "/plugins/{{ .aspId }}?resid={{ .resId }}&action=valid" + 
+                    "&passcode=" + encodeURIComponent(passcode);
+                //console.log(nhpValidUrl);
+                
+                fetch(nhpValidUrl)
+                .then(function(response) {
+                    return response.json();
+                }).then(function(result) {
+                    console.log(result);
+                    if (result && result.redirectUrl) {
+                        window.location.replace(result.redirectUrl);
+                    } else {
+                        if (result.errMsg) {
+                        alert(result.errMsg);
+                        } else {
+                            alert("失败：未知错误！");
+                        }
+                    }
+                }).catch(function(error) {
+                    alert(error.message);
+                });
+                return false;
+            } catch (error) {
+                messageEl.textContent = '网络错误，请稍后重试';
+                messageEl.classList.add('error');
+                messageEl.style.display = 'block';
+                console.error('Error:', error);
+            }
+        });
+    </script>
+</body>
+</html>

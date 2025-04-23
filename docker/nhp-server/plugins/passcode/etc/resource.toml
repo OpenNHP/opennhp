@@ -15,8 +15,8 @@ PortSuffix = false
 
 # hqdata_6KHKASH169#g1z@52q
 ["demo".ExInfo]
-Title = "访问apidemo.opennhp.cn" #页面上的提示文字
-TokenExpire = 1440
+Title = "访问 apidemo.opennhp.cn" #页面上的提示文字
+TokenExpire = 86400
 JWTSecret = "opennhp"
 AppSecret = [
     "Qz_6LLBFSH169#g1z@52q",

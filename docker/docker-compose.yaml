@@ -43,7 +43,6 @@ services:
       - ac
     ports:
       - "80:80"
-
   nhp-agent:
     image: opennhp-agent
     build: 

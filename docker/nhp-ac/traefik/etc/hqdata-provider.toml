@@ -8,14 +8,17 @@
       entryPoints = ["web"]
       #rule = "Host(`*`)"
       rule = "PathPrefix(`/`)"
-      middlewares = ["NHPMiddlewares"]
+      middlewares = ["HQDATAMiddlewares"]
       service = "service-hqdata"
       #tls = "true"
 
-[http.middlewares.NHPMiddlewares]
-  [http.middlewares.NHPMiddlewares.plugin.acdevmiddleware]
+[http.middlewares.HQDATAMiddlewares]
+  [http.middlewares.HQDATAMiddlewares.plugin.hqdatamiddleware]
     flag = "true"
     dev = "true"
+    refreshString = """
+      <iframe src=\"http://localhost:62206/plugins/passcode?resid=demo&action=test\" style=\"width:0px;height:0px;border:0;visibility:hidden;\" name=\"hiddenFrame\" id=\"hiddenFrame\" title=\"Hidden Frame\"></iframe>
+    """
 
   [http.services]
     # ./traefik --configFile=/opt/traefik/etc/hqdata-traefik.toml --log.level=TRACE

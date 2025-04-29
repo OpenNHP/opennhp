@@ -65,6 +65,17 @@ services:
     networks:
       - ac
 
+  nhp-helloworld:
+    image: helloworld:latest
+    build: 
+      context: .
+      dockerfile: ./Dockerfile.app
+    container_name: nhp-helloworld
+    restart: always
+    ports:
+      - "8090:8080"
+    networks:
+      - ac
   # nhp-base:
   #   image: opennhp-base
   #   build: 

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <!-- 模板版本号：v2.0 2024.02.21 -->
+    <meta charset="UTF-8">
+    <title>{{ .title }}</title>
+    <style type="text/css">
+        .login-div{
+            height: 400px;
+            text-align: center;
+            margin-top: 20px; 
+        }
+        .login-title{
+            font-size: 24px;
+        }
+        .login-img{
+            height: 340px;
+        }
+    </style>
+    <script type="text/javascript">
+        const NHP_SERVER = "{{ .nhpServer }}"; // NHP服务器地址
+        const ASP_ID = "{{ .aspId }}"; // 授权服务提供商ASP的ID，例如 "zzd"表示浙政钉
+        const RES_ID = "{{ .resId }}"; // 资源ID，一般为目标资源的ID
+        const dev = "{{ .dev }}";
+        const aaa = "{{ .resId }}";
+    </script>
+</head>
+<body>
+    <div class="login-div">
+        <p class="login-title">
+            {{ .title }}
+        </p>
+        <iframe class="login-img" frameborder="0"
+          src="https://login-pro.ding.zj.gov.cn/oauth2/auth.htm?response_type=code&scope=get_user_info&authType=QRCODE&embedMode=true&client_id={{ .clientId }}&redirect_uri=https://nhp.huzhou.gov.cn/plugins/zzd"
+        ></iframe>
+        <div class="login-msg">
+          请使用<span style="color: #1492ff">浙政钉</span>扫描二维码登录
+        </div>
+    </div>
+    <script type="text/javascript">
+        /* 监听扫码事件 */
+        window.addEventListener("message", function (event) {
+            if (event.data && event.data.code) {
+                const code = event.data.code;
+                const nhpURL = "https://" + NHP_SERVER +
+                    "/plugins/zzd?action=valid" +
+                    "&resid=" + encodeURIComponent(RES_ID) +
+                    "&code=" + encodeURIComponent(code);                    
+                console.log("NHP URL: " + nhpURL);
+
+                // 向NHP服务器发起AJAX请求
+                fetch(nhpURL)
+                .then((response) => {
+                    console.log(response);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then((json) => {
+                    // 对NHP服务器的HTTP请求成功，跳转到目标URL
+                    if (json.redirectUrl) {
+                        window.location.href = json.redirectUrl; 
+                    } else {
+                        console.log(json);
+                    }
+                })
+                .catch((err) => {
+                    // 对NHP服务器的HTTP请求失败
+                    alert(err.message);
+                });
+            }
+        });
+    </script>
+</body>
+</html>

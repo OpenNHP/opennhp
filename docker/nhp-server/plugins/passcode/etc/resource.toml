@@ -3,6 +3,7 @@
 OpenTime = 15
 RedirectUrl = "http://localhost" #目标URL
 RedirectWithParams = false
+CookieDomain = "localhost"
 
 ["demo".Resources."demoServer"]
 ACId = "testAC-1"

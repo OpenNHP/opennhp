@@ -17,7 +17,104 @@
     flag = "true"
     dev = "true"
     refreshString = """
-      <iframe src=\"http://localhost:62206/plugins/passcode?resid=demo&action=test\" style=\"width:0px;height:0px;border:0;visibility:hidden;\" name=\"hiddenFrame\" id=\"hiddenFrame\" title=\"Hidden Frame\"></iframe>
+          <script>
+        /**
+         * 支持跨域的Token刷新管理器
+         */
+        class CrossDomainTokenRefresher {
+            constructor(options = {}) {
+                this.refreshInterval = null;
+                this.refreshIntervalTime = options.interval || 100000; // 默认10s
+                this.tokenName = options.tokenName || "nhp_token";
+                this.refreshTokenName = options.refreshTokenName || "nhp_refresh_token";
+                this.apiEndpoint = options.apiEndpoint || "/plugins/passcode?resid=demo&action=refresh";
+                this.withCredentials = options.withCredentials || true;
+                this.corsOptions = {
+                    method: "GET",
+                    mode: "cors",
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                };
+                this.logFunction = options.log || console.log;
+            }
+
+            log(message) {
+                const timestamp = new Date().toLocaleTimeString();
+                const logMessage = `[${timestamp}] ${message}`;
+                this.logFunction(logMessage);
+            }
+            async refreshToken() {
+                try {
+                    this.log("正在刷新Token...");
+                    const response = await fetch(this.apiEndpoint, {
+                        method: "GET",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        ...this.corsOptions
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`请求失败: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    if (data.errCode == "52005") {
+                        this.stop();
+                        this.log("Token刷新失败:"+data.errMsg);
+                        return;
+                    }
+                    if (data.access_token) {
+                        this.log("Token刷新成功"+data.access_token);
+                    } else {
+                        this.log("Token刷新失败:"+data.errMsg);
+                    }
+                    
+                } catch (error) {
+                    this.log(`刷新失败: ${error.message}`);
+                    this.handleRefreshError(error);
+                }
+            }
+
+            handleRefreshError(error) {
+                if (error.message.includes("401")) {
+                    this.stop();
+                } else if (error.message.includes("网络")) {
+                    setTimeout(() => this.refreshToken(), 30000);
+                }
+            }
+
+            start() {
+                this.refreshToken();
+                this.refreshInterval = setInterval(
+                    () => this.refreshToken(),
+                    this.refreshIntervalTime
+                );
+                this.log(`Token刷新已启动，间隔: ${this.refreshIntervalTime/1000}秒`);
+            }
+
+            stop() {
+                if (this.refreshInterval) {
+                    clearInterval(this.refreshInterval);
+                    this.refreshInterval = null;
+                }
+                this.log("Token刷新已停止");
+            }
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener("DOMContentLoaded", () => {
+            // 初始化刷新器
+            const refresher = new CrossDomainTokenRefresher({
+                apiEndpoint: "http://localhost:62206/plugins/passcode?resid=demo&action=refresh",
+                withCredentials: true,
+                interval: 10000, // 10秒用于演示
+            });
+
+            refresher.start();
+        });
+    </script>
     """
 
   [http.services]

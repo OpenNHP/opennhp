@@ -31,3 +31,11 @@ http://localhost:62206/plugins/example?resid=demo&action=login
 ```
 docker exec -it nhp-ac ipset list
 ```
+
+
+### regen certs
+```
+openssl req -x509 -newkey rsa:4096 -sha256 -days 365 -nodes \
+  -keyout server.key -out server.crt -subj "/CN=opennhp.cn" \
+  -addext "subjectAltName=DNS:opennhp.cn,IP:127.0.0.1"
+```

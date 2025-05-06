@@ -43,6 +43,13 @@ type IPTables struct {
 	AcceptInputMode bool
 }
 
+type IPTablesRuleOperation int32
+
+const (
+	ADD_IPTABLES_RULE_OPERATION = 0
+	DEL_IPTABLES_RULE_OPERATION = 1
+)
+
 // Note: need root to run
 func NewIPTables() (*IPTables, error) {
 	path, err := exec.LookPath("iptables")
@@ -152,13 +159,71 @@ func (table *IPTables) changePolicy(inputPolicy, forwardPolicy, outputPolicy *in
 	}
 }
 
+func (table *IPTables) changeIptablesRule(inputPolicy, forwardPolicy, outputPolicy *int, operator IPTablesRuleOperation, dest string) {
+	operStr := "ACCEPT"
+	operation := "-I"
+	if operator == DEL_IPTABLES_RULE_OPERATION {
+		operation = "-D"
+	}
+
+	if inputPolicy != nil {
+		switch *inputPolicy {
+		case POLICY_ACCEPT:
+			operStr = "ACCEPT"
+		case POLICY_DROP:
+			operStr = "DROP"
+		case POLICY_REJECT:
+			operStr = "REJECT"
+		}
+		cmd := exec.Command(table.Binary, operation, "INPUT", "-d", dest, "-j", operStr)
+		err := cmd.Run()
+		if err != nil {
+			log.Debug("execute command %s, error: %v", cmd.String(), err)
+		}
+	}
+
+	if forwardPolicy != nil {
+		switch *forwardPolicy {
+		case POLICY_ACCEPT:
+			operStr = "ACCEPT"
+		case POLICY_DROP:
+			operStr = "DROP"
+		case POLICY_REJECT:
+			operStr = "REJECT"
+		}
+		cmd := exec.Command(table.Binary, operation, "FORWARD", "-d", dest, "-j", operStr)
+		err := cmd.Run()
+		if err != nil {
+			log.Debug("execute command %s, error: %v", cmd.String(), err)
+		}
+	}
+
+	if outputPolicy != nil {
+		switch *outputPolicy {
+		case POLICY_ACCEPT:
+			operStr = "ACCEPT"
+		case POLICY_DROP:
+			operStr = "DROP"
+		case POLICY_REJECT:
+			operStr = "REJECT"
+		}
+		cmd := exec.Command(table.Binary, operation, "OUTPUT", "-d", dest, "-j", operStr)
+		err := cmd.Run()
+		if err != nil {
+			log.Debug("execute command %s, error: %v", cmd.String(), err)
+		}
+	}
+}
+
 func (table *IPTables) ResetAllInput() {
 	if !table.AcceptInputMode {
 		return
 	}
 	log.Info("reset iptables input")
 	inputPolicy := table.InputPolicy
-	table.changePolicy(&inputPolicy, nil, nil)
+	forwardPolicy := table.ForwardPolicy
+	//table.changePolicy(&inputPolicy, nil, nil)
+	table.changeIptablesRule(&inputPolicy, &forwardPolicy, nil, DEL_IPTABLES_RULE_OPERATION, "0.0.0.0/0")
 	table.AcceptInputMode = false
 }
 
@@ -167,8 +232,10 @@ func (table *IPTables) AcceptAllInput() {
 		return
 	}
 	log.Info("accept iptables input ")
-	inputPolicy := POLICY_ACCEPT
-	table.changePolicy(&inputPolicy, nil, nil)
+	inputPolicy := table.InputPolicy
+	forwardPolicy := table.ForwardPolicy
+	//table.changePolicy(&inputPolicy, nil, nil)
+	table.changeIptablesRule(&inputPolicy, &forwardPolicy, nil, ADD_IPTABLES_RULE_OPERATION, "0.0.0.0/0")
 	table.AcceptInputMode = true
 }
 

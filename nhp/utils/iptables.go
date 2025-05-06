@@ -219,9 +219,9 @@ func (table *IPTables) ResetAllInput() {
 	if !table.AcceptInputMode {
 		return
 	}
-	log.Info("reset iptables input")
-	inputPolicy := table.InputPolicy
-	forwardPolicy := table.ForwardPolicy
+	log.Info("reset iptables input v2")
+	inputPolicy := POLICY_ACCEPT
+	forwardPolicy := POLICY_ACCEPT
 	//table.changePolicy(&inputPolicy, nil, nil)
 	table.changeIptablesRule(&inputPolicy, &forwardPolicy, nil, DEL_IPTABLES_RULE_OPERATION, "0.0.0.0/0")
 	table.AcceptInputMode = false
@@ -231,9 +231,9 @@ func (table *IPTables) AcceptAllInput() {
 	if table.AcceptInputMode {
 		return
 	}
-	log.Info("accept iptables input ")
-	inputPolicy := table.InputPolicy
-	forwardPolicy := table.ForwardPolicy
+	log.Info("accept iptables input v2")
+	inputPolicy := POLICY_ACCEPT
+	forwardPolicy := POLICY_ACCEPT
 	//table.changePolicy(&inputPolicy, nil, nil)
 	table.changeIptablesRule(&inputPolicy, &forwardPolicy, nil, ADD_IPTABLES_RULE_OPERATION, "0.0.0.0/0")
 	table.AcceptInputMode = true

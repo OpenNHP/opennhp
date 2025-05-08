@@ -13,5 +13,5 @@
 
 # Go workspace
 go.sum
-
+.DS_Store
 release/

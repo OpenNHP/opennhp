@@ -75,9 +75,9 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 	hs.httpServer = &http.Server{
 		Addr:         hs.listenAddr.String(),
 		Handler:      hs.ginEngine,
-		ReadTimeout:  4500 * time.Millisecond,
-		WriteTimeout: 4000 * time.Millisecond,
-		IdleTimeout:  5000 * time.Millisecond,
+		ReadTimeout:  time.Duration(hc.ReadTimeout) * time.Millisecond,
+		WriteTimeout: time.Duration(hc.WriteTimeout) * time.Millisecond,
+		IdleTimeout:  time.Duration(hc.IdleTimeout) * time.Millisecond,
 	}
 
 	hs.wg.Add(1)
@@ -362,31 +362,45 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 		acConn, found := s.acConnectionMap[acId]
 		s.acConnectionMapMutex.Unlock()
 		if !found {
-			log.Error("httpserver-agent(%s#%s@%s)-ac(@%s)[HandleHttpKnockRequest] no ac connection is available", knkMsg.UserId, knkMsg.DeviceId, srcIp, acId)
-			err = common.ErrACConnectionNotFound
-			ackMsg.ErrCode = common.ErrACConnectionNotFound.ErrorCode()
-			ackMsg.ErrMsg = err.Error()
-			return
+			log.Error("httpserver-agent(%s#%s@%s)-ac(@%s)[handleHttpOpenResource] no ac connection is available will remove res[%s] the resource host", knkMsg.UserId, knkMsg.DeviceId, srcIp, acId, resName)
+
+			// remove the resource host from ackMsg when ac connection is not found
+			artMsgsMutex.Lock()
+			delete(ackMsg.ResourceHost, resName)
+			artMsgsMutex.Unlock()
+			continue
 		}
 
 		acWg.Add(1)
 		go func(name string, dstAddrs []*common.NetAddress) {
 			defer acWg.Done()
 
-			artMsg, _ := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, res.OpenTime)
+			artMsg, err := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, res.OpenTime)
 			artMsgsMutex.Lock()
 			artMsgs[name] = artMsg
-			ackMsg.ACTokens[name] = artMsg.ACToken
-			ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
+			if err != nil {
+				log.Error("httpserver-agent(%s#%s@%s)-ac(@%s)[handleHttpOpenResource] failed to process ac operation: %v", knkMsg.UserId, knkMsg.DeviceId, srcIp, acId, err)
+			} else {
+				ackMsg.ACTokens[name] = artMsg.ACToken
+				ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
+			}
 			artMsgsMutex.Unlock()
+
 		}(resName, addrs)
 	}
 	acWg.Wait()
 
 	var errCount int
-	for _, artMsg := range artMsgs {
+	for resName, artMsg := range artMsgs {
 		if artMsg.ErrCode != common.ErrSuccess.ErrorCode() {
 			errCount++
+
+			// remove the resource host from ackMsg when ac operation failed
+			artMsgsMutex.Lock()
+			delete(ackMsg.ResourceHost, resName)
+			delete(ackMsg.ACTokens, resName)
+			delete(ackMsg.PreAccessActions, resName)
+			artMsgsMutex.Unlock()
 			continue
 		}
 	}
@@ -396,7 +410,7 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 		err = common.ErrServerACOpsFailed
 		ackMsg.ErrCode = common.ErrServerACOpsFailed.ErrorCode()
 		ackMsg.ErrMsg = err.Error()
-		return
+		return ackMsg, err
 	}
 
 	log.Info("httpserver-agent(%s#%s@%s)[handleHttpOpenResource] succeed", knkMsg.UserId, knkMsg.DeviceId, srcIp)

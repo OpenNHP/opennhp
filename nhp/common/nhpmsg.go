@@ -149,10 +149,11 @@ type ServerACAckMsg struct {
 }
 
 type ResourceInfo struct {
-	ACId       string
-	Hostname   string      `json:"host,omitempty"` // hostname, optional
-	Addr       *NetAddress `json:"addr"`           // dst ip + port + protocol
-	PortSuffix bool        `json:"portSuffix,omitempty"`
+	ACId             string
+	Hostname         string      `json:"host,omitempty"` // hostname, optional
+	Addr             *NetAddress `json:"addr"`           // dst ip + port + protocol
+	PortSuffix       bool        `json:"portSuffix,omitempty"`
+	RedirectResource bool        `json:"redirectResource,omitempty"`
 }
 
 func (r *ResourceInfo) DestHost() string {
@@ -192,7 +193,9 @@ func (r *ResourceGroup) Id() string {
 func (r *ResourceGroup) Hosts() map[string]string {
 	hostMap := make(map[string]string)
 	for name, info := range r.Resources {
-		hostMap[name] = info.DestHost()
+		if info.RedirectResource {
+			hostMap[name] = info.DestHost()
+		}
 	}
 
 	return hostMap

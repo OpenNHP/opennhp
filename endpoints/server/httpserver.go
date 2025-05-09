@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
+	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/plugins"
 	"github.com/OpenNHP/opennhp/nhp/version"
@@ -321,10 +322,13 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 		ResourceId:     res.ResourceId,
 	}
 
+	if req.Command == "exit" {
+		knkMsg.HeaderType = core.NHP_EXT
+	}
+
 	ackMsg := &common.ServerKnockAckMsg{
 		AuthProviderToken: req.Token,
 		AgentAddr:         srcIp,
-		ResourceHost:      res.Hosts(),
 		OpenTime:          res.OpenTime,
 	}
 
@@ -353,11 +357,16 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 	var acWg sync.WaitGroup
 	var artMsgsMutex sync.Mutex
 	artMsgs := make(map[string]*common.ACOpsResultMsg)
+	ackMsg.ResourceHost = make(map[string]string)
 	ackMsg.ACTokens = make(map[string]string)
 	ackMsg.PreAccessActions = make(map[string]*common.PreAccessInfo)
 
 	for resName, addrs := range acDstIpMap {
-		acId := res.Resources[resName].ACId
+		resInfo := res.Resources[resName]
+		if resInfo == nil {
+			continue
+		}
+		acId := resInfo.ACId
 		s.acConnectionMapMutex.Lock()
 		acConn, found := s.acConnectionMap[acId]
 		s.acConnectionMapMutex.Unlock()
@@ -367,22 +376,28 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 			err = common.ErrACConnectionNotFound
 			artMsg.ErrCode = common.ErrACConnectionNotFound.ErrorCode()
 			artMsg.ErrMsg = err.Error()
+			artMsgsMutex.Lock()
 			artMsgs[resName] = artMsg
-			delete(ackMsg.ResourceHost, resName)
+			artMsgsMutex.Unlock()
 			continue
 		}
 
 		acWg.Add(1)
-		go func(name string, dstAddrs []*common.NetAddress) {
+		go func(name string, info *common.ResourceInfo, dstAddrs []*common.NetAddress) {
 			defer acWg.Done()
 
-			artMsg, _ := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, res.OpenTime)
+			openTime := res.OpenTime
+			if knkMsg.HeaderType == core.NHP_EXT {
+				openTime = 1 // timeout in 1 second
+			}
+			artMsg, _ := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
 			artMsgsMutex.Lock()
 			artMsgs[name] = artMsg
+			ackMsg.ResourceHost[name] = info.DestHost()
 			ackMsg.ACTokens[name] = artMsg.ACToken
 			ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
 			artMsgsMutex.Unlock()
-		}(resName, addrs)
+		}(resName, resInfo, addrs)
 	}
 	acWg.Wait()
 

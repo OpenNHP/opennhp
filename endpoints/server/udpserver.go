@@ -891,11 +891,16 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 	var acWg sync.WaitGroup
 	var artMsgsMutex sync.Mutex
 	artMsgs := make(map[string]*common.ACOpsResultMsg)
+	ackMsg.ResourceHost = make(map[string]string)
 	ackMsg.ACTokens = make(map[string]string)
 	ackMsg.PreAccessActions = make(map[string]*common.PreAccessInfo)
 
-	for resName, dstAddrs := range acDstIpMap {
-		acId := res.Resources[resName].ACId
+	for resName, addrs := range acDstIpMap {
+		resInfo := res.Resources[resName]
+		if resInfo == nil {
+			continue
+		}
+		acId := resInfo.ACId
 		s.acConnectionMapMutex.Lock()
 		acConn, found := s.acConnectionMap[acId]
 		s.acConnectionMapMutex.Unlock()
@@ -905,25 +910,27 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 			err = common.ErrACConnectionNotFound
 			artMsg.ErrCode = common.ErrACConnectionNotFound.ErrorCode()
 			artMsg.ErrMsg = err.Error()
+			artMsgsMutex.Lock()
 			artMsgs[resName] = artMsg
+			artMsgsMutex.Unlock()
 			continue
 		}
 
 		acWg.Add(1)
-		go func(name string, addrs []*common.NetAddress) {
+		go func(name string, info *common.ResourceInfo, dstAddrs []*common.NetAddress) {
 			defer acWg.Done()
 
 			openTime := res.OpenTime
 			if knkMsg.HeaderType == core.NHP_EXT {
 				openTime = 1 // timeout in 1 second
 			}
-			artMsg, _ := s.processACOperation(knkMsg, acConn, srcAddr, addrs, openTime)
+			artMsg, _ := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
 			artMsgsMutex.Lock()
 			artMsgs[name] = artMsg
 			ackMsg.ACTokens[name] = artMsg.ACToken
 			ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
 			artMsgsMutex.Unlock()
-		}(resName, dstAddrs)
+		}(resName, resInfo, addrs)
 	}
 	acWg.Wait()
 

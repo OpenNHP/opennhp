@@ -402,9 +402,14 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 	acWg.Wait()
 
 	var successCount int
-	for _, artMsg := range artMsgs {
+	for resName, artMsg := range artMsgs {
 		if artMsg.ErrCode == common.ErrSuccess.ErrorCode() {
 			successCount++
+		} else {
+			log.Warning("httpserver-agent(%s#%s@%s)-ac[handleHttpOpenResource] resource[%s] unavailable", knkMsg.UserId, knkMsg.DeviceId, srcIp, resName)
+			delete(ackMsg.ResourceHost, resName)
+			delete(ackMsg.ACTokens, resName)
+			delete(ackMsg.PreAccessActions, resName)
 		}
 	}
 

@@ -390,12 +390,14 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 			if knkMsg.HeaderType == core.NHP_EXT {
 				openTime = 1 // timeout in 1 second
 			}
-			artMsg, _ := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
+			artMsg, err := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
 			artMsgsMutex.Lock()
 			artMsgs[name] = artMsg
-			ackMsg.ResourceHost[name] = info.DestHost()
-			ackMsg.ACTokens[name] = artMsg.ACToken
-			ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
+			if err == nil {
+				ackMsg.ResourceHost[name] = info.DestHost()
+				ackMsg.ACTokens[name] = artMsg.ACToken
+				ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
+			}
 			artMsgsMutex.Unlock()
 		}(resName, resInfo, addrs)
 	}

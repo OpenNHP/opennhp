@@ -773,6 +773,7 @@ func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACCon
 	// should not happen
 	if knkMsg == nil || conn == nil {
 		log.Critical("processACOperation with nil input argument")
+		err = common.ErrInvalidInput
 		return
 	}
 
@@ -924,11 +925,14 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 			if knkMsg.HeaderType == core.NHP_EXT {
 				openTime = 1 // timeout in 1 second
 			}
-			artMsg, _ := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
+			artMsg, err := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
 			artMsgsMutex.Lock()
 			artMsgs[name] = artMsg
-			ackMsg.ACTokens[name] = artMsg.ACToken
-			ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
+			if err == nil {
+				ackMsg.ResourceHost[name] = info.DestHost()
+				ackMsg.ACTokens[name] = artMsg.ACToken
+				ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
+			}
 			artMsgsMutex.Unlock()
 		}(resName, resInfo, addrs)
 	}

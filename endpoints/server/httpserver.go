@@ -75,9 +75,9 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 	hs.httpServer = &http.Server{
 		Addr:         hs.listenAddr.String(),
 		Handler:      hs.ginEngine,
-		ReadTimeout:  4500 * time.Millisecond,
-		WriteTimeout: 4000 * time.Millisecond,
-		IdleTimeout:  5000 * time.Millisecond,
+		ReadTimeout:  time.Duration(hc.ReadTimeoutMs) * time.Millisecond,
+		WriteTimeout: time.Duration(hc.WriteTimeoutMs) * time.Millisecond,
+		IdleTimeout:  time.Duration(hc.IdleTimeoutMs) * time.Millisecond,
 	}
 
 	hs.wg.Add(1)
@@ -362,11 +362,14 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 		acConn, found := s.acConnectionMap[acId]
 		s.acConnectionMapMutex.Unlock()
 		if !found {
-			log.Error("httpserver-agent(%s#%s@%s)-ac(@%s)[HandleHttpKnockRequest] no ac connection is available", knkMsg.UserId, knkMsg.DeviceId, srcIp, acId)
+			log.Warning("httpserver-agent(%s#%s@%s)-ac(@%s)[HandleHttpKnockRequest] no ac connection is available", knkMsg.UserId, knkMsg.DeviceId, srcIp, acId)
+			artMsg := &common.ACOpsResultMsg{}
 			err = common.ErrACConnectionNotFound
-			ackMsg.ErrCode = common.ErrACConnectionNotFound.ErrorCode()
-			ackMsg.ErrMsg = err.Error()
-			return
+			artMsg.ErrCode = common.ErrACConnectionNotFound.ErrorCode()
+			artMsg.ErrMsg = err.Error()
+			artMsgs[resName] = artMsg
+			delete(ackMsg.ResourceHost, resName)
+			continue
 		}
 
 		acWg.Add(1)
@@ -383,15 +386,14 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 	}
 	acWg.Wait()
 
-	var errCount int
+	var successCount int
 	for _, artMsg := range artMsgs {
-		if artMsg.ErrCode != common.ErrSuccess.ErrorCode() {
-			errCount++
-			continue
+		if artMsg.ErrCode == common.ErrSuccess.ErrorCode() {
+			successCount++
 		}
 	}
 
-	if errCount > 0 {
+	if successCount == 0 {
 		log.Info("httpserver-agent(%s#%s@%s)[handleHttpOpenResource] failed: %+v", knkMsg.UserId, knkMsg.DeviceId, srcIp, artMsgs)
 		err = common.ErrServerACOpsFailed
 		ackMsg.ErrCode = common.ErrServerACOpsFailed.ErrorCode()

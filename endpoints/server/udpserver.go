@@ -770,8 +770,14 @@ func (s *UdpServer) FindAuthSvcProvider(aspId string) *common.AuthServiceProvide
 }
 
 func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACConn, srcAddr *common.NetAddress, dstAddrs []*common.NetAddress, openTime uint32) (artMsg *common.ACOpsResultMsg, err error) {
+	// should not happen
+	if knkMsg == nil || conn == nil {
+		log.Critical("processACOperation with nil input argument")
+		return
+	}
+
 	artMsg = &common.ACOpsResultMsg{}
-	if knkMsg == nil || conn == nil || srcAddr == nil || len(dstAddrs) == 0 {
+	if srcAddr == nil || len(dstAddrs) == 0 {
 		log.Error("[processACOperation] no address specified")
 		err = common.ErrACEmptyPassAddress
 		artMsg.ErrCode = common.ErrACEmptyPassAddress.ErrorCode()
@@ -894,11 +900,13 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 		acConn, found := s.acConnectionMap[acId]
 		s.acConnectionMapMutex.Unlock()
 		if !found {
-			log.Error("server-agent(%s@%s)-ac(@%s)[handleNhpOpenResource] no ac connection is available", knkMsg.UserId, addrStr, acId)
+			log.Warning("server-agent(%s@%s)-ac(@%s)[handleNhpOpenResource] no ac connection is available", knkMsg.UserId, addrStr, acId)
+			artMsg := &common.ACOpsResultMsg{}
 			err = common.ErrACConnectionNotFound
-			ackMsg.ErrCode = common.ErrACConnectionNotFound.ErrorCode()
-			ackMsg.ErrMsg = err.Error()
-			return
+			artMsg.ErrCode = common.ErrACConnectionNotFound.ErrorCode()
+			artMsg.ErrMsg = err.Error()
+			artMsgs[resName] = artMsg
+			continue
 		}
 
 		acWg.Add(1)
@@ -919,15 +927,14 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 	}
 	acWg.Wait()
 
-	var errCount int
+	var successCount int
 	for _, artMsg := range artMsgs {
-		if artMsg.ErrCode != common.ErrSuccess.ErrorCode() {
-			errCount++
-			break
+		if artMsg.ErrCode == common.ErrSuccess.ErrorCode() {
+			successCount++
 		}
 	}
 
-	if errCount > 0 {
+	if successCount == 0 {
 		log.Info("server-agent(%s@%s)[handleNhpOpenResource] failed: %+v", knkMsg.UserId, addrStr, artMsgs)
 		err = common.ErrServerACOpsFailed
 		ackMsg.ErrCode = common.ErrServerACOpsFailed.ErrorCode()

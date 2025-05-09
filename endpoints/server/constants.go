@@ -13,7 +13,9 @@ const (
 
 // http APIs
 const (
-	HttpTransactionTimeout = 3 // second
+	DefaultHttpRequestReadTimeoutMs   = 4500 // millisecond
+	DefaultHttpResponseWriteTimeoutMs = 5500 // millisecond
+	DefaultHttpServerIdleTimeoutMs    = 6000 // millisecond
 )
 
 // knock

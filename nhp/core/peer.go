@@ -108,6 +108,9 @@ func (p *UdpPeer) Host() string {
 	if len(p.Hostname) > 0 {
 		hostAddr = p.Hostname
 	}
+	if p.Port == 0 {
+		return hostAddr
+	}
 	return fmt.Sprintf("%s:%d", hostAddr, p.Port)
 }
 

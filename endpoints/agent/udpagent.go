@@ -44,6 +44,9 @@ func (res *KnockResource) ServerHost() string {
 	if len(res.ServerHostname) > 0 {
 		hostAddr = res.ServerHostname
 	}
+	if res.ServerPort == 0 {
+		return hostAddr
+	}
 	return fmt.Sprintf("%s:%d", hostAddr, res.ServerPort)
 }
 

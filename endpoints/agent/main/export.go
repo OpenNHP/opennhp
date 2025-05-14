@@ -200,25 +200,29 @@ func nhp_agent_remove_server(pubkey *C.char) {
 // Input:
 // aspId: Authentication Service Provider Identifier
 // resId: Resource Identifier
-// serverAddr: NHP server IP address or domain name (the NHP server managing the resource)
+// serverIp: NHP server IP address or domain name (the NHP server managing the resource)
+// serverHostname: NHP server domain name (the NHP server managing the resource)
+// serverPort: NHP server port (the NHP server managing the resource)
 //
 // Return:
 // Whether the resource information has been added successfully
 //
 //export nhp_agent_add_resource
-func nhp_agent_add_resource(aspId *C.char, resId *C.char, serverAddr *C.char) bool {
+func nhp_agent_add_resource(aspId *C.char, resId *C.char, serverIp *C.char, serverHostname *C.char, serverPort C.int) bool {
 	if gAgentInstance == nil {
 		return false
 	}
 
-	if aspId == nil || resId == nil || serverAddr == nil {
+	if aspId == nil || resId == nil || (serverIp == nil && serverHostname == nil) {
 		return false
 	}
 
 	resource := &agent.KnockResource{
-		AuthServiceId: deepCopyCString(aspId),
-		ResourceId:    deepCopyCString(resId),
-		ServerAddr:    deepCopyCString(serverAddr),
+		AuthServiceId:  deepCopyCString(aspId),
+		ResourceId:     deepCopyCString(resId),
+		ServerIp:       deepCopyCString(serverIp),
+		ServerHostname: deepCopyCString(serverHostname),
+		ServerPort:     int(serverPort),
 	}
 	err := gAgentInstance.AddResource(resource)
 	return err == nil
@@ -248,7 +252,9 @@ func nhp_agent_remove_resource(aspId *C.char, resId *C.char) {
 // Input:
 // aspId: Authentication service provider identifier
 // resId: Resource identifier
-// serverAddr: NHP server IP address or domain (the NHP server managing the resource)
+// serverIp: NHP server IP address or domain name (the NHP server managing the resource)
+// serverHostname: NHP server domain name (the NHP server managing the resource)
+// serverPort: NHP server port (the NHP server managing the resource)
 //
 // Returns:
 // The server's response message (json format string buffer pointer):
@@ -266,7 +272,7 @@ func nhp_agent_remove_resource(aspId *C.char, resId *C.char) {
 // The caller is responsible for calling nhp_free_cstring to release the returned char* pointer
 //
 //export nhp_agent_knock_resource
-func nhp_agent_knock_resource(aspId *C.char, resId *C.char, serverAddr *C.char) *C.char {
+func nhp_agent_knock_resource(aspId *C.char, resId *C.char, serverIp *C.char, serverHostname *C.char, serverPort C.int) *C.char {
 	ackMsg := &common.ServerKnockAckMsg{}
 
 	func() {
@@ -276,16 +282,18 @@ func nhp_agent_knock_resource(aspId *C.char, resId *C.char, serverAddr *C.char) 
 			return
 		}
 
-		if aspId == nil || resId == nil || serverAddr == nil {
+		if aspId == nil || resId == nil || (serverIp == nil && serverHostname == nil) {
 			ackMsg.ErrCode = common.ErrInvalidInput.ErrorCode()
 			ackMsg.ErrMsg = common.ErrInvalidInput.Error()
 			return
 		}
 
 		resource := &agent.KnockResource{
-			AuthServiceId: deepCopyCString(aspId),
-			ResourceId:    deepCopyCString(resId),
-			ServerAddr:    deepCopyCString(serverAddr),
+			AuthServiceId:  deepCopyCString(aspId),
+			ResourceId:     deepCopyCString(resId),
+			ServerIp:       deepCopyCString(serverIp),
+			ServerHostname: deepCopyCString(serverHostname),
+			ServerPort:     int(serverPort),
 		}
 
 		peer := gAgentInstance.FindServerPeerFromResource(resource)
@@ -314,7 +322,9 @@ func nhp_agent_knock_resource(aspId *C.char, resId *C.char, serverAddr *C.char) 
 // Input:
 // aspId: Authentication Service Provider Identifier
 // resId: Resource Identifier
-// serverAddr: NHP server IP address or domain name (the NHP server managing the resource)
+// serverIp: NHP server IP address or domain name (the NHP server managing the resource)
+// serverHostname: NHP server domain name (the NHP server managing the resource)
+// serverPort: NHP server port (the NHP server managing the resource)
 //
 // Return:
 // Whether the exit was successful
@@ -322,7 +332,7 @@ func nhp_agent_knock_resource(aspId *C.char, resId *C.char, serverAddr *C.char) 
 // It is necessary to call nhp_agent_add_server before calling, to add the NHP server's public key, address, and other information to the agent.
 //
 //export nhp_agent_exit_resource
-func nhp_agent_exit_resource(aspId *C.char, resId *C.char, serverAddr *C.char) bool {
+func nhp_agent_exit_resource(aspId *C.char, resId *C.char, serverIp *C.char, serverHostname *C.char, serverPort C.int) bool {
 	var err error
 	ackMsg := &common.ServerKnockAckMsg{}
 
@@ -334,7 +344,7 @@ func nhp_agent_exit_resource(aspId *C.char, resId *C.char, serverAddr *C.char) b
 			return
 		}
 
-		if aspId == nil || resId == nil || serverAddr == nil {
+		if aspId == nil || resId == nil || (serverIp == nil && serverHostname == nil) {
 			ackMsg.ErrCode = common.ErrInvalidInput.ErrorCode()
 			ackMsg.ErrMsg = common.ErrInvalidInput.Error()
 			err = common.ErrInvalidInput
@@ -342,9 +352,11 @@ func nhp_agent_exit_resource(aspId *C.char, resId *C.char, serverAddr *C.char) b
 		}
 
 		resource := &agent.KnockResource{
-			AuthServiceId: deepCopyCString(aspId),
-			ResourceId:    deepCopyCString(resId),
-			ServerAddr:    deepCopyCString(serverAddr),
+			AuthServiceId:  deepCopyCString(aspId),
+			ResourceId:     deepCopyCString(resId),
+			ServerIp:       deepCopyCString(serverIp),
+			ServerHostname: deepCopyCString(serverHostname),
+			ServerPort:     int(serverPort),
 		}
 
 		peer := gAgentInstance.FindServerPeerFromResource(resource)

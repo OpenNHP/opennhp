@@ -32,7 +32,7 @@ type KnockResource struct {
 	ResourceId     string `json:"resId"`
 	ServerHostname string `json:"serverHostname"`
 	ServerIp       string `json:"serverIp"`
-	ServerPort     string `json:"serverPort"`
+	ServerPort     int    `json:"serverPort"`
 }
 
 func (res *KnockResource) Id() string {

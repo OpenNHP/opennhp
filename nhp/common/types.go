@@ -79,6 +79,7 @@ type HttpKnockRequest struct {
 	Token          string   `json:"token"`
 	Code           string   `json:"code"`
 	DstUrl         string   `json:"dstUrl"`
+	Command        string   `json:"command"`
 	Url            *url.URL `json:"-"`
 	UserAgent      string   `json:"-"`
 	SrcIp          string   `json:"-"`

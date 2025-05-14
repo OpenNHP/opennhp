@@ -770,8 +770,15 @@ func (s *UdpServer) FindAuthSvcProvider(aspId string) *common.AuthServiceProvide
 }
 
 func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACConn, srcAddr *common.NetAddress, dstAddrs []*common.NetAddress, openTime uint32) (artMsg *common.ACOpsResultMsg, err error) {
+	// should not happen
+	if knkMsg == nil || conn == nil {
+		log.Critical("processACOperation with nil input argument")
+		err = common.ErrInvalidInput
+		return
+	}
+
 	artMsg = &common.ACOpsResultMsg{}
-	if knkMsg == nil || conn == nil || srcAddr == nil || len(dstAddrs) == 0 {
+	if srcAddr == nil || len(dstAddrs) == 0 {
 		log.Error("[processACOperation] no address specified")
 		err = common.ErrACEmptyPassAddress
 		artMsg.ErrCode = common.ErrACEmptyPassAddress.ErrorCode()
@@ -885,49 +892,60 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 	var acWg sync.WaitGroup
 	var artMsgsMutex sync.Mutex
 	artMsgs := make(map[string]*common.ACOpsResultMsg)
+	ackMsg.ResourceHost = make(map[string]string)
 	ackMsg.ACTokens = make(map[string]string)
 	ackMsg.PreAccessActions = make(map[string]*common.PreAccessInfo)
 
-	for resName, dstAddrs := range acDstIpMap {
-		acId := res.Resources[resName].ACId
+	for resName, addrs := range acDstIpMap {
+		resInfo := res.Resources[resName]
+		if resInfo == nil {
+			continue
+		}
+		acId := resInfo.ACId
 		s.acConnectionMapMutex.Lock()
 		acConn, found := s.acConnectionMap[acId]
 		s.acConnectionMapMutex.Unlock()
 		if !found {
-			log.Error("server-agent(%s@%s)-ac(@%s)[handleNhpOpenResource] no ac connection is available", knkMsg.UserId, addrStr, acId)
+			log.Warning("server-agent(%s@%s)-ac(@%s)[handleNhpOpenResource] no ac connection is available", knkMsg.UserId, addrStr, acId)
+			artMsg := &common.ACOpsResultMsg{}
 			err = common.ErrACConnectionNotFound
-			ackMsg.ErrCode = common.ErrACConnectionNotFound.ErrorCode()
-			ackMsg.ErrMsg = err.Error()
-			return
+			artMsg.ErrCode = common.ErrACConnectionNotFound.ErrorCode()
+			artMsg.ErrMsg = err.Error()
+			artMsgsMutex.Lock()
+			artMsgs[resName] = artMsg
+			artMsgsMutex.Unlock()
+			continue
 		}
 
 		acWg.Add(1)
-		go func(name string, addrs []*common.NetAddress) {
+		go func(name string, info *common.ResourceInfo, dstAddrs []*common.NetAddress) {
 			defer acWg.Done()
 
 			openTime := res.OpenTime
 			if knkMsg.HeaderType == core.NHP_EXT {
 				openTime = 1 // timeout in 1 second
 			}
-			artMsg, _ := s.processACOperation(knkMsg, acConn, srcAddr, addrs, openTime)
+			artMsg, err := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
 			artMsgsMutex.Lock()
 			artMsgs[name] = artMsg
-			ackMsg.ACTokens[name] = artMsg.ACToken
-			ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
+			if err == nil {
+				ackMsg.ResourceHost[name] = info.DestHost()
+				ackMsg.ACTokens[name] = artMsg.ACToken
+				ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
+			}
 			artMsgsMutex.Unlock()
-		}(resName, dstAddrs)
+		}(resName, resInfo, addrs)
 	}
 	acWg.Wait()
 
-	var errCount int
+	var successCount int
 	for _, artMsg := range artMsgs {
-		if artMsg.ErrCode != common.ErrSuccess.ErrorCode() {
-			errCount++
-			break
+		if artMsg.ErrCode == common.ErrSuccess.ErrorCode() {
+			successCount++
 		}
 	}
 
-	if errCount > 0 {
+	if successCount == 0 {
 		log.Info("server-agent(%s@%s)[handleNhpOpenResource] failed: %+v", knkMsg.UserId, addrStr, artMsgs)
 		err = common.ErrServerACOpsFailed
 		ackMsg.ErrCode = common.ErrServerACOpsFailed.ErrorCode()

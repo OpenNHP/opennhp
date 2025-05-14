@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
+	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/plugins"
 	"github.com/OpenNHP/opennhp/nhp/version"
@@ -75,9 +76,9 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 	hs.httpServer = &http.Server{
 		Addr:         hs.listenAddr.String(),
 		Handler:      hs.ginEngine,
-		ReadTimeout:  4500 * time.Millisecond,
-		WriteTimeout: 4000 * time.Millisecond,
-		IdleTimeout:  5000 * time.Millisecond,
+		ReadTimeout:  time.Duration(hc.ReadTimeoutMs) * time.Millisecond,
+		WriteTimeout: time.Duration(hc.WriteTimeoutMs) * time.Millisecond,
+		IdleTimeout:  time.Duration(hc.IdleTimeoutMs) * time.Millisecond,
 	}
 
 	hs.wg.Add(1)
@@ -321,10 +322,13 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 		ResourceId:     res.ResourceId,
 	}
 
+	if req.Command == "exit" {
+		knkMsg.HeaderType = core.NHP_EXT
+	}
+
 	ackMsg := &common.ServerKnockAckMsg{
 		AuthProviderToken: req.Token,
 		AgentAddr:         srcIp,
-		ResourceHost:      res.Hosts(),
 		OpenTime:          res.OpenTime,
 	}
 
@@ -353,45 +357,60 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 	var acWg sync.WaitGroup
 	var artMsgsMutex sync.Mutex
 	artMsgs := make(map[string]*common.ACOpsResultMsg)
+	ackMsg.ResourceHost = make(map[string]string)
 	ackMsg.ACTokens = make(map[string]string)
 	ackMsg.PreAccessActions = make(map[string]*common.PreAccessInfo)
 
 	for resName, addrs := range acDstIpMap {
-		acId := res.Resources[resName].ACId
+		resInfo := res.Resources[resName]
+		if resInfo == nil {
+			continue
+		}
+		acId := resInfo.ACId
 		s.acConnectionMapMutex.Lock()
 		acConn, found := s.acConnectionMap[acId]
 		s.acConnectionMapMutex.Unlock()
 		if !found {
-			log.Error("httpserver-agent(%s#%s@%s)-ac(@%s)[HandleHttpKnockRequest] no ac connection is available", knkMsg.UserId, knkMsg.DeviceId, srcIp, acId)
+			log.Warning("httpserver-agent(%s#%s@%s)-ac(@%s)[HandleHttpKnockRequest] no ac connection is available", knkMsg.UserId, knkMsg.DeviceId, srcIp, acId)
+			artMsg := &common.ACOpsResultMsg{}
 			err = common.ErrACConnectionNotFound
-			ackMsg.ErrCode = common.ErrACConnectionNotFound.ErrorCode()
-			ackMsg.ErrMsg = err.Error()
-			return
+			artMsg.ErrCode = common.ErrACConnectionNotFound.ErrorCode()
+			artMsg.ErrMsg = err.Error()
+			artMsgsMutex.Lock()
+			artMsgs[resName] = artMsg
+			artMsgsMutex.Unlock()
+			continue
 		}
 
 		acWg.Add(1)
-		go func(name string, dstAddrs []*common.NetAddress) {
+		go func(name string, info *common.ResourceInfo, dstAddrs []*common.NetAddress) {
 			defer acWg.Done()
 
-			artMsg, _ := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, res.OpenTime)
+			openTime := res.OpenTime
+			if knkMsg.HeaderType == core.NHP_EXT {
+				openTime = 1 // timeout in 1 second
+			}
+			artMsg, err := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
 			artMsgsMutex.Lock()
 			artMsgs[name] = artMsg
-			ackMsg.ACTokens[name] = artMsg.ACToken
-			ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
+			if err == nil {
+				ackMsg.ResourceHost[name] = info.DestHost()
+				ackMsg.ACTokens[name] = artMsg.ACToken
+				ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
+			}
 			artMsgsMutex.Unlock()
-		}(resName, addrs)
+		}(resName, resInfo, addrs)
 	}
 	acWg.Wait()
 
-	var errCount int
+	var successCount int
 	for _, artMsg := range artMsgs {
-		if artMsg.ErrCode != common.ErrSuccess.ErrorCode() {
-			errCount++
-			continue
+		if artMsg.ErrCode == common.ErrSuccess.ErrorCode() {
+			successCount++
 		}
 	}
 
-	if errCount > 0 {
+	if successCount == 0 {
 		log.Info("httpserver-agent(%s#%s@%s)[handleHttpOpenResource] failed: %+v", knkMsg.UserId, knkMsg.DeviceId, srcIp, artMsgs)
 		err = common.ErrServerACOpsFailed
 		ackMsg.ErrCode = common.ErrServerACOpsFailed.ErrorCode()

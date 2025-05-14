@@ -135,49 +135,6 @@ func (a *UdpDevice) updateServerPeers(file string) (err error) {
 	return err
 }
 
-// func (a *UdpDevice) updateResources(file string) (err error) {
-// 	utils.CatchPanicThenRun(func() {
-// 		err = errLoadConfig
-// 	})
-
-// 	content, err := os.ReadFile(file)
-// 	if err != nil {
-// 		log.Error("failed to read resource config: %v", err)
-// 	}
-
-// 	var resources Resources
-// 	targetMap := make(map[string]*KnockTarget)
-// 	if err := toml.Unmarshal(content, &resources); err != nil {
-// 		log.Error("failed to unmarshal resource config: %v", err)
-// 	}
-// 	for _, res := range resources.Resources {
-// 		peer := a.FindServerPeerFromResource(res)
-// 		if peer != nil {
-// 			targetMap[res.Id()] = &KnockTarget{
-// 				KnockResource: *res,
-// 				ServerPeer:    peer,
-// 			}
-// 		}
-// 	}
-
-// 	if a.knockTargetMap == nil {
-// 		a.knockTargetMap = targetMap
-// 		return err
-// 	}
-
-// 	// update
-// 	a.knockTargetMapMutex.Lock()
-// 	a.knockTargetMap = targetMap
-// 	a.knockTargetMapMutex.Unlock()
-
-// 	// renew knock cycle
-// 	if len(a.signals.knockTargetMapUpdated) == 0 {
-// 		a.signals.knockTargetMapUpdated <- struct{}{}
-// 	}
-
-// 	return err
-// }
-
 func (a *UdpDevice) StopConfigWatch() {
 	if baseConfigWatch != nil {
 		baseConfigWatch.Close()

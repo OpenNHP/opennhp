@@ -179,11 +179,13 @@ func (a *UdpAgent) updateResources(file string) (err error) {
 	}
 	for _, res := range resources.Resources {
 		peer := a.FindServerPeerFromResource(res)
-		if peer != nil {
-			targetMap[res.Id()] = &KnockTarget{
-				KnockResource: *res,
-				ServerPeer:    peer,
-			}
+		if peer == nil {
+			log.Error("failed to find corresponding server peer for resource %s", res.Id())
+			continue
+		}
+		targetMap[res.Id()] = &KnockTarget{
+			KnockResource: *res,
+			ServerPeer:    peer,
 		}
 	}
 

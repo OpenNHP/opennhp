@@ -36,11 +36,14 @@ type Config struct {
 }
 
 type HttpConfig struct {
-	EnableHttp   bool
-	EnableTLS    bool
-	HttpListenIp string
-	TLSCertFile  string
-	TLSKeyFile   string
+	EnableHttp     bool
+	EnableTLS      bool
+	HttpListenIp   string
+	TLSCertFile    string
+	TLSKeyFile     string
+	ReadTimeoutMs  int
+	WriteTimeoutMs int
+	IdleTimeoutMs  int
 }
 
 type Peers struct {
@@ -205,6 +208,18 @@ func (s *UdpServer) updateHttpConfig(file string) (err error) {
 	var httpConf HttpConfig
 	if err := toml.Unmarshal(content, &httpConf); err != nil {
 		log.Error("failed to unmarshal http config: %v", err)
+	}
+
+	// set http default timeout values
+	// 4.5s for read timeout, 4s for write timeout, 5s for idle timeout
+	if httpConf.ReadTimeoutMs == 0 {
+		httpConf.ReadTimeoutMs = DefaultHttpRequestReadTimeoutMs
+	}
+	if httpConf.WriteTimeoutMs == 0 {
+		httpConf.WriteTimeoutMs = DefaultHttpResponseWriteTimeoutMs
+	}
+	if httpConf.IdleTimeoutMs == 0 {
+		httpConf.IdleTimeoutMs = DefaultHttpServerIdleTimeoutMs
 	}
 
 	// update

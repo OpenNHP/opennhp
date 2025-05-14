@@ -44,8 +44,8 @@ services:
     networks:
       - ac
       - nginx
-    # ports:
-    #   - "80:80"
+    ports:
+      - "80:80"
 
   nhp-agent:
     image: opennhp-agent
@@ -88,8 +88,8 @@ services:
     restart: always
     ports:
       - "443:443"
-      - "80:80"
     networks:
+      - nginx
     depends_on:
       - nhp-server
       - nhp-ac

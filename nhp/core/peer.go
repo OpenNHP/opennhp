@@ -16,7 +16,9 @@ type Peer interface {
 
 	IsExpired() bool
 
-	HostOrAddr() string
+	ResolveHost() string
+	ResolvedIps() []string
+	Host() string
 	SendAddr() net.Addr
 	LastSendTime() int64
 	UpdateSend(currTime int64)
@@ -30,10 +32,10 @@ type Peer interface {
 type UdpPeer struct {
 	sync.Mutex
 
-	// immutable fields. Don't change them after creation
+	// immutable fields. Don't change them after creation, so no lock is required
 	PubKeyBase64 string `json:"pubKeyBase64"`
 	Hostname     string `json:"host,omitempty"`
-	Ip           string `json:"ip"`
+	Ip           string `json:"ip"` // static ip, it may be different from primaryResolvedIp
 	Port         int    `json:"port"`
 	Type         int    `json:"type"`
 	ExpireTime   int64  `json:"expireTime"`
@@ -41,11 +43,12 @@ type UdpPeer struct {
 	pubKey       []byte
 
 	// mutable fields
-	lastSendTime     int64
-	lastRecvTime     int64
-	lastNSLookupTime int64
-	resolvedIp       string
-	recvAddr         *net.UDPAddr
+	lastSendTime      int64
+	lastRecvTime      int64
+	lastNSLookupTime  int64
+	resolvedIpArr     []string
+	primaryResolvedIp string
+	recvAddr          *net.UDPAddr
 }
 
 func (p *UdpPeer) DeviceType() DeviceTypeEnum {
@@ -76,66 +79,56 @@ func (p *UdpPeer) Name() string {
 	return p.name
 }
 
-func (p *UdpPeer) HostOrAddr() string {
-	if len(p.Hostname) > 0 {
-		return p.Hostname
+func (p *UdpPeer) ResolveHost() string {
+	if len(p.Hostname) == 0 {
+		return p.Ip
+	}
+
+	p.Lock()
+	defer p.Unlock()
+
+	currTime := time.Now().UnixNano()
+	if currTime-p.lastNSLookupTime > MinimalNSLookupInterval*int64(time.Second) {
+		addrs, err := net.LookupHost(p.Hostname)
+		if err == nil {
+			p.lastNSLookupTime = currTime
+			p.resolvedIpArr = addrs
+			p.primaryResolvedIp = addrs[0]
+		}
+	}
+
+	if len(p.primaryResolvedIp) > 0 {
+		return p.primaryResolvedIp
 	}
 	return p.Ip
 }
 
-func (p *UdpPeer) SendAddr() net.Addr {
-	if len(p.Ip) == 0 && len(p.Hostname) == 0 {
-		return nil
-	}
-
-	var ip net.IP
+func (p *UdpPeer) Host() string {
+	hostAddr := p.Ip
 	if len(p.Hostname) > 0 {
-		p.Lock()
-		defer p.Unlock()
-
-		currTime := time.Now().UnixNano()
-		if currTime-p.lastNSLookupTime > MinimalNSLookupTime*int64(time.Second) {
-			addrs, err := net.LookupHost(p.Hostname)
-			if err != nil {
-				return nil
-			}
-
-			p.lastNSLookupTime = currTime
-			p.resolvedIp = addrs[0]
-		}
-		ip = net.ParseIP(p.resolvedIp)
-	} else {
-		ip = net.ParseIP(p.Ip)
+		hostAddr = p.Hostname
 	}
+	return fmt.Sprintf("%s:%d", hostAddr, p.Port)
+}
+
+func (p *UdpPeer) SendAddr() net.Addr {
+	resolvedIp := p.ResolveHost() // happens only when MinimalNSLookupInterval has passed
+	ip := net.ParseIP(resolvedIp)
 
 	if ip == nil {
 		return nil
 	}
-
 	return &net.UDPAddr{
 		IP:   ip,
 		Port: p.Port,
 	}
 }
 
-func (p *UdpPeer) ResolvedIp() string {
+func (p *UdpPeer) ResolvedIps() []string {
 	p.Lock()
 	defer p.Unlock()
 
-	return p.resolvedIp
-}
-
-func (p *UdpPeer) CopyResolveStatus(other *UdpPeer) {
-	other.Lock()
-	ip := other.resolvedIp
-	lastTs := other.lastNSLookupTime
-	other.Unlock()
-
-	p.Lock()
-	defer p.Unlock()
-
-	p.resolvedIp = ip
-	p.lastNSLookupTime = lastTs
+	return p.resolvedIpArr
 }
 
 func (p *UdpPeer) IsExpired() bool {

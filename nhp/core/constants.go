@@ -39,7 +39,7 @@ const (
 
 // hostname resolve
 const (
-	MinimalNSLookupTime = 300 // second
+	MinimalNSLookupInterval = 300 // second
 )
 
 // packet

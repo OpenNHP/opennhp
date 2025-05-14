@@ -50,13 +50,13 @@ func (a *UdpAgent) Knock(res *KnockTarget) (ackMsg *common.ServerKnockAckMsg, er
 }
 
 func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *common.ServerKnockAckMsg, err error) {
-	server := res.Server()
-	if server == nil {
+	serverPeer := res.GetServerPeer()
+	if serverPeer == nil {
 		log.Critical("agent(%s)[KnockRequest] knock server is not assigned", a.knockUser.UserId)
 		return nil, common.ErrKnockServerNotFound
 	}
 
-	server, sendAddr := a.ResolvePeer(server)
+	sendAddr := serverPeer.SendAddr()
 	if sendAddr == nil {
 		log.Critical("agent(%s)[KnockRequest] knock server IP cannot be parsed", a.knockUser.UserId)
 		return nil, common.ErrKnockServerNotFound
@@ -83,7 +83,7 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       knkBytes,
-		PeerPk:        server.PublicKey(),
+		PeerPk:        serverPeer.PublicKey(),
 		ResponseMsgCh: make(chan *core.PacketParserData),
 	}
 	if useCookie {
@@ -149,13 +149,13 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 }
 
 func (a *UdpAgent) ExitKnockRequest(res *KnockTarget) (ackMsg *common.ServerKnockAckMsg, err error) {
-	server := res.Server()
-	if server == nil {
+	serverPeer := res.GetServerPeer()
+	if serverPeer == nil {
 		log.Critical("agent(%s)[ExitKnockRequest] knock server is not assigned", a.knockUser.UserId)
 		return nil, common.ErrKnockServerNotFound
 	}
 
-	server, sendAddr := a.ResolvePeer(server)
+	sendAddr := serverPeer.SendAddr()
 	if sendAddr == nil {
 		log.Critical("agent(%s)[ExitKnockRequest] knock server IP cannot be parsed", a.knockUser.UserId)
 		return nil, common.ErrKnockServerNotFound
@@ -182,7 +182,7 @@ func (a *UdpAgent) ExitKnockRequest(res *KnockTarget) (ackMsg *common.ServerKnoc
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       knkBytes,
-		PeerPk:        server.PublicKey(),
+		PeerPk:        serverPeer.PublicKey(),
 		ResponseMsgCh: make(chan *core.PacketParserData),
 	}
 

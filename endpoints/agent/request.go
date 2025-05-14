@@ -23,13 +23,13 @@ func (a *UdpAgent) RequestOtp(target *KnockTarget) error {
 	a.knockUserMutex.RUnlock()
 	otpBytes, _ := json.Marshal(otpMsg)
 
-	server := target.ServerPeer
-	if server == nil {
+	serverPeer := target.GetServerPeer()
+	if serverPeer == nil {
 		log.Critical("agent(%s)[RequestOtp] server is not assigned", otpMsg.UserId)
 		return common.ErrKnockServerNotFound
 	}
 
-	server, sendAddr := a.ResolvePeer(server)
+	sendAddr := serverPeer.SendAddr()
 	if sendAddr == nil {
 		log.Critical("agent(%s)[RequestOtp] server IP cannot be parsed", otpMsg.UserId)
 		return common.ErrKnockServerNotFound
@@ -42,7 +42,7 @@ func (a *UdpAgent) RequestOtp(target *KnockTarget) error {
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       otpBytes,
-		PeerPk:        server.PublicKey(),
+		PeerPk:        serverPeer.PublicKey(),
 	}
 
 	if !a.IsRunning() {
@@ -70,13 +70,13 @@ func (a *UdpAgent) RegisterPublicKey(otp string, target *KnockTarget) (rakMsg *c
 	a.knockUserMutex.RUnlock()
 	regBytes, _ := json.Marshal(regMsg)
 
-	server := target.ServerPeer
-	if server == nil {
+	serverPeer := target.GetServerPeer()
+	if serverPeer == nil {
 		log.Critical("agent(%s)[RegisterPublicKey] server is not assigned", regMsg.UserId)
 		return nil, common.ErrKnockServerNotFound
 	}
 
-	server, sendAddr := a.ResolvePeer(server)
+	sendAddr := serverPeer.SendAddr()
 	if sendAddr == nil {
 		log.Critical("agent(%s)[RegisterPublicKey] server IP cannot be parsed", regMsg.UserId)
 		return nil, common.ErrKnockServerNotFound
@@ -90,7 +90,7 @@ func (a *UdpAgent) RegisterPublicKey(otp string, target *KnockTarget) (rakMsg *c
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       regBytes,
-		PeerPk:        server.PublicKey(),
+		PeerPk:        serverPeer.PublicKey(),
 		ResponseMsgCh: make(chan *core.PacketParserData),
 	}
 
@@ -147,13 +147,13 @@ func (a *UdpAgent) ListResource(target *KnockTarget) (lrtMsg *common.ServerListR
 	a.knockUserMutex.RUnlock()
 	lstBytes, _ := json.Marshal(lstMsg)
 
-	server := target.ServerPeer
-	if server == nil {
+	serverPeer := target.GetServerPeer()
+	if serverPeer == nil {
 		log.Critical("agent(%s)[ListResource] server is not assigned", lstMsg.UserId)
 		return nil, common.ErrKnockServerNotFound
 	}
 
-	server, sendAddr := a.ResolvePeer(server)
+	sendAddr := serverPeer.SendAddr()
 	if sendAddr == nil {
 		log.Critical("agent(%s)[ListResource] server IP cannot be parsed", lstMsg.UserId)
 		return nil, common.ErrKnockServerNotFound
@@ -167,7 +167,7 @@ func (a *UdpAgent) ListResource(target *KnockTarget) (lrtMsg *common.ServerListR
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
 		Message:       lstBytes,
-		PeerPk:        server.PublicKey(),
+		PeerPk:        serverPeer.PublicKey(),
 		ResponseMsgCh: make(chan *core.PacketParserData),
 	}
 

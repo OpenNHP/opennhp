@@ -28,13 +28,23 @@ type KnockUser struct {
 }
 
 type KnockResource struct {
-	AuthServiceId string `json:"aspId"`
-	ResourceId    string `json:"resId"`
-	ServerAddr    string `json:"serverAddr"`
+	AuthServiceId  string `json:"aspId"`
+	ResourceId     string `json:"resId"`
+	ServerHostname string `json:"serverHostname"`
+	ServerIp       string `json:"serverIp"`
+	ServerPort     string `json:"serverPort"`
 }
 
 func (res *KnockResource) Id() string {
 	return res.AuthServiceId + "/" + res.ResourceId
+}
+
+func (res *KnockResource) ServerHost() string {
+	hostAddr := res.ServerIp
+	if len(res.ServerHostname) > 0 {
+		hostAddr = res.ServerHostname
+	}
+	return fmt.Sprintf("%s:%d", hostAddr, res.ServerPort)
 }
 
 type KnockTarget struct {
@@ -51,14 +61,14 @@ func (kt *KnockTarget) SetResource(res *KnockResource) {
 	kt.KnockResource = *res
 }
 
-func (kt *KnockTarget) SetServer(peer *core.UdpPeer) {
+func (kt *KnockTarget) SetServerPeer(peer *core.UdpPeer) {
 	kt.Lock()
 	defer kt.Unlock()
 
 	kt.ServerPeer = peer
 }
 
-func (kt *KnockTarget) Server() *core.UdpPeer {
+func (kt *KnockTarget) GetServerPeer() *core.UdpPeer {
 	kt.Lock()
 	defer kt.Unlock()
 
@@ -600,6 +610,7 @@ func (a *UdpAgent) RemoveServer(serverKey string) {
 func (a *UdpAgent) AddResource(res *KnockResource) error {
 	peer := a.FindServerPeerFromResource(res)
 	if peer == nil {
+		log.Error("failed to find corresponding server peer for resource %s", res.Id())
 		return common.ErrKnockServerNotFound
 	}
 
@@ -608,7 +619,7 @@ func (a *UdpAgent) AddResource(res *KnockResource) error {
 	target, found := a.knockTargetMap[res.Id()]
 	if found {
 		target.SetResource(res)
-		target.SetServer(peer)
+		target.SetServerPeer(peer)
 	} else {
 		a.knockTargetMap[res.Id()] = &KnockTarget{
 			KnockResource: *res,
@@ -652,42 +663,12 @@ func (a *UdpAgent) FindServerPeerFromResource(res *KnockResource) *core.UdpPeer 
 	a.serverPeerMutex.Lock()
 	defer a.serverPeerMutex.Unlock()
 	for _, peer := range a.serverPeerMap {
-		if peer.HostOrAddr() == res.ServerAddr {
+		if peer.Host() == res.ServerHost() {
 			return peer
 		}
 	}
 
 	return nil
-}
-
-// if the server uses hostname as destination, find the correct peer with the actual IP address
-func (a *UdpAgent) ResolvePeer(peer *core.UdpPeer) (*core.UdpPeer, net.Addr) {
-	addr := peer.SendAddr()
-	if addr == nil {
-		return peer, nil
-	}
-
-	if len(peer.Hostname) == 0 {
-		// peer with fixed ip, no change
-		return peer, addr
-	}
-
-	actualIp := peer.ResolvedIp()
-	if peer.Ip == actualIp {
-		// peer with the correct resolved address, no change
-		return peer, addr
-	}
-
-	a.serverPeerMutex.Lock()
-	defer a.serverPeerMutex.Unlock()
-	for _, p := range a.serverPeerMap {
-		if p.Ip == actualIp {
-			p.CopyResolveStatus(peer)
-			return p, addr
-		}
-	}
-
-	return peer, addr
 }
 
 //Convert ztdo file to Source file
@@ -711,7 +692,6 @@ func (a *UdpAgent) StartDecodeZtdo(ztdo string, output string) {
 	} else {
 		fmt.Println(" ZTDO File Decryption: Failure")
 	}
-
 }
 
 func (a *UdpAgent) GetFirstServerPeer() (serverPeer *core.UdpPeer) {
@@ -722,10 +702,10 @@ func (a *UdpAgent) GetFirstServerPeer() (serverPeer *core.UdpPeer) {
 	}
 	return nil
 }
-func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg, ztdo string, output string) bool {
 
+func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg, ztdo string, output string) bool {
 	result := false
-	server, sendAddr := a.ResolvePeer(server)
+	sendAddr := server.SendAddr()
 	if sendAddr == nil {
 		log.Critical("device(%s)[SendDARMsgToServer] register server IP cannot be parsed", a)
 	}

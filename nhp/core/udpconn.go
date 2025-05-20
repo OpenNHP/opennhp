@@ -93,7 +93,7 @@ func (c *ConnectionData) IsClosed() bool {
 
 func (c *ConnectionData) ForwardOutboundPacket(pkt *Packet) {
 	if c.IsClosed() {
-		log.Warning("connection %s is closed, discard packet", c.RemoteAddr.String())
+		log.Warning("connection %s is closed, discard outbound packet", c.RemoteAddr.String())
 		c.Device.ReleasePoolPacket(pkt)
 		return
 	}
@@ -101,15 +101,17 @@ func (c *ConnectionData) ForwardOutboundPacket(pkt *Packet) {
 	select {
 	case c.SendQueue <- pkt:
 		// fully encrypted packet will be forwarded to higher level entity for physical sending
-	default:
-		log.Critical("connection send channel is full, discard packet")
+		// may block when send queue is full
+	case <-c.StopSignal:
+		// discard pending packets when connection is closed
+		log.Warning("connection %s stopped, discard pending outbound packet", c.RemoteAddr.String())
 		c.Device.ReleasePoolPacket(pkt)
 	}
 }
 
 func (c *ConnectionData) ForwardInboundPacket(pkt *Packet) {
 	if c.IsClosed() {
-		log.Warning("connection %s is closed, discard packet", c.RemoteAddr.String())
+		log.Warning("connection %s is closed, discard inbound packet", c.RemoteAddr.String())
 		c.Device.ReleasePoolPacket(pkt)
 		return
 	}
@@ -117,9 +119,10 @@ func (c *ConnectionData) ForwardInboundPacket(pkt *Packet) {
 	select {
 	case c.RecvQueue <- pkt:
 		// raw packet will be forwarded to connection routine for packet parsing and decrytion
-	default:
-		// non-blocking, just discard
-		log.Critical("connection recv channel is full, discard packet")
+		// may block when recv queue is full
+	case <-c.StopSignal:
+		// discard pending packets when connection is closed
+		log.Warning("connection %s stopped, discard pending inbound packet", c.RemoteAddr.String())
 		c.Device.ReleasePoolPacket(pkt)
 	}
 }

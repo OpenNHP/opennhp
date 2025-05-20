@@ -5,6 +5,8 @@
 - 基础逻辑验证
 - 本机性能压测
 
+![](./infrastructure.png)
+
 ## build 基础镜像
 
 ```shell

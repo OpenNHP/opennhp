@@ -1,14 +1,14 @@
 # List resources id and their sub-fields here
 ["demo"]
 OpenTime = 15
-RedirectUrl = "http://app.opennhp.cn:8001" #目标URL
+RedirectUrl = "https://app.opennhp.cn/" #目标URL
 RedirectWithParams = false
 CookieDomain = "opennhp.cn"
 
 ["demo".Resources."demoServer"]
 ACId = "testAC-1"
 Hostname = "app.opennhp.cn"
-Addr.Ip = "172.19.0.5"
+Addr.Ip = "172.19.0.4"
 Addr.Port = 80 # empty or 0 for all ports
 Addr.Protocol = ""
 PortSuffix = false
@@ -16,7 +16,7 @@ PortSuffix = false
 ["demo".Resources."demoServer2"]
 ACId = "testAC-1"
 Hostname = "app.opennhp.cn"
-Addr.Ip = "172.21.0.4"
+Addr.Ip = "172.18.0.5"
 Addr.Port = 80 # empty or 0 for all ports
 Addr.Protocol = ""
 PortSuffix = false

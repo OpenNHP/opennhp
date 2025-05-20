@@ -113,3 +113,8 @@ https://local.opennhp.cn/plugins/passcode?resid=demo&action=login
 
 input passcode: 123456
 
+## 压测
+
+```shell
+ab -k -n 10000 -c 100 'http://local.opennhp.cn/plugins/passcode?resid=demo&action=valid&passcode=123456'
+```

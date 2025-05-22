@@ -19,7 +19,7 @@ BUILD_TIME = $(shell date "+%Y-%m-%d %H:%M:%S")
 # Built Package File Name
 PACKAGE_FILE = opennhp-$(VERSION).tar.gz
 # Go build flags
-LD_FLAGS = "-extldflags -static -s -w -X '${GOMODULE}/version.Version=${VERSION}' -X '${GOMODULE}/version.CommitId=${COMMIT_ID}' -X '${GOMODULE}/version.CommitTime=${COMMIT_TIME}' -X '${GOMODULE}/version.BuildTime=${BUILD_TIME}'"
+LD_FLAGS = "-extldflags '-static -Wl,--allow-multiple-definition' -s -w -X '${GOMODULE}/version.Version=${VERSION}' -X '${GOMODULE}/version.CommitId=${COMMIT_ID}' -X '${GOMODULE}/version.CommitTime=${COMMIT_TIME}' -X '${GOMODULE}/version.BuildTime=${BUILD_TIME}'"
 
 # Color definition
 COLOUR_GREEN=\033[0;32m

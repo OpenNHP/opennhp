@@ -8,12 +8,14 @@ const (
 	PreCheckThreatCountBeforeBlock  = 5                               // block source address if packet precheck errors exceeds this count
 	DefaultAgentConnectionTimeoutMs = 30 * 1000                       // 30 seconds to delete idle connection
 	DefaultACConnectionTimeoutMs    = 300 * 1000                      // 300 seconds to delete idle connection
-	PacketQueueSizePerConnection    = 64
+	PacketQueueSizePerConnection    = 256
 )
 
 // http APIs
 const (
-	HttpTransactionTimeout = 3 // second
+	DefaultHttpRequestReadTimeoutMs   = 4500 // millisecond
+	DefaultHttpResponseWriteTimeoutMs = 5500 // millisecond
+	DefaultHttpServerIdleTimeoutMs    = 6000 // millisecond
 )
 
 // knock

@@ -528,8 +528,7 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 	defer discoveryRoutineWg.Done()
 
 	acId := a.config.ACId
-	serverAddr := server.HostOrAddr()
-	server, sendAddr := a.ResolvePeer(server)
+	sendAddr := server.SendAddr()
 	if sendAddr == nil {
 		log.Error("Cannot connect to nil server address")
 		return
@@ -537,8 +536,8 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 
 	addrStr := sendAddr.String()
 
-	defer log.Info("server discovery sub-routine at %s stopped", serverAddr)
-	log.Info("server discovery sub-routine at %s started", serverAddr)
+	defer log.Info("server discovery sub-routine at %s stopped", addrStr)
+	log.Info("server discovery sub-routine at %s started", addrStr)
 
 	var failCount int
 
@@ -712,34 +711,4 @@ func (a *UdpAC) RemoveServerPeer(serverKey string) {
 			a.signals.serverMapUpdated <- struct{}{}
 		}
 	}
-}
-
-// if the server uses hostname as destination, find the correct peer with the actual IP address
-func (a *UdpAC) ResolvePeer(peer *core.UdpPeer) (*core.UdpPeer, net.Addr) {
-	addr := peer.SendAddr()
-	if addr == nil {
-		return peer, nil
-	}
-
-	if len(peer.Hostname) == 0 {
-		// peer with fixed ip, no change
-		return peer, addr
-	}
-
-	actualIp := peer.ResolvedIp()
-	if peer.Ip == actualIp {
-		// peer with the correct resolved address, no change
-		return peer, addr
-	}
-
-	a.serverPeerMutex.Lock()
-	defer a.serverPeerMutex.Unlock()
-	for _, p := range a.serverPeerMap {
-		if p.Ip == actualIp {
-			p.CopyResolveStatus(peer)
-			return p, addr
-		}
-	}
-
-	return peer, addr
 }

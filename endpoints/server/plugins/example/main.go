@@ -310,7 +310,6 @@ func AuthWithNHP(req *common.NhpAuthRequest, helper *plugins.NhpServerPluginHelp
 	// skip backend auth and continue with AC operations
 	log.Info("agent user [%s]: skip auth", req.Msg.UserId)
 	ackMsg.OpenTime = res.OpenTime
-	ackMsg.ResourceHost = res.Hosts()
 
 	// PART III: request ac operation for each resource and block for response
 	ackMsg, err = helper.AuthWithNhpCallbackFunc(req, res)

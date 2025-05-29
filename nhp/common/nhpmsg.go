@@ -149,14 +149,15 @@ type ServerACAckMsg struct {
 }
 
 type ResourceInfo struct {
-	ACId       string
+	ACId       string      `json:"acId"`
 	Hostname   string      `json:"host,omitempty"` // hostname, optional
 	Addr       *NetAddress `json:"addr"`           // dst ip + port + protocol
 	PortSuffix bool        `json:"portSuffix,omitempty"`
+	MaskHost   bool        `json:"maskHost,omitempty"` // do not reveal resource host in ack info
 }
 
 func (r *ResourceInfo) DestHost() string {
-	if r.Addr == nil {
+	if r.MaskHost || r.Addr == nil {
 		return ""
 	}
 

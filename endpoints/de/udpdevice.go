@@ -466,36 +466,6 @@ func (a *UdpDevice) RemoveServer(serverKey string) {
 	a.serverPeerMutex.Unlock()
 }
 
-// if the server uses hostname as destination, find the correct peer with the actual IP address
-func (a *UdpDevice) ResolvePeer(peer *core.UdpPeer) (*core.UdpPeer, net.Addr) {
-	addr := peer.SendAddr()
-	if addr == nil {
-		return peer, nil
-	}
-
-	if len(peer.Hostname) == 0 {
-		// peer with fixed ip, no change
-		return peer, addr
-	}
-
-	actualIp := peer.ResolvedIp()
-	if peer.Ip == actualIp {
-		// peer with the correct resolved address, no change
-		return peer, addr
-	}
-
-	a.serverPeerMutex.Lock()
-	defer a.serverPeerMutex.Unlock()
-	for _, p := range a.serverPeerMap {
-		if p.Ip == actualIp {
-			p.CopyResolveStatus(peer)
-			return p, addr
-		}
-	}
-
-	return peer, addr
-}
-
 // get first server
 func (a *UdpDevice) GetServerPeer() (serverPeer *core.UdpPeer) {
 	for key, value := range a.serverPeerMap {
@@ -547,7 +517,7 @@ func (a *UdpDevice) SendDHPRegister(doId string, policy common.DHPPolicy, dataKe
 func (a *UdpDevice) SendNHPDRG(server *core.UdpPeer, msg common.DRGMsg) bool {
 
 	result := false
-	server, sendAddr := a.ResolvePeer(server)
+	sendAddr := server.SendAddr()
 	if sendAddr == nil {
 		log.Critical("device(%s)[SendNHPDRG] register server IP cannot be parsed", a)
 	}

@@ -72,7 +72,7 @@ func (a *UdpAC) Ebpf_engine_load(dirPath string, logLevel int) error {
 	var objs bpfObjects
 	if err := spec.LoadAndAssign(&objs, &ebpf.CollectionOptions{
 		Maps: ebpf.MapOptions{
-			PinPath: "/sys/fs/bpf/", // 自动挂载到 bpffs
+			PinPath: "/sys/fs/bpf/", // automatically mounted to
 		},
 	}); err != nil {
 		log.Error("Failed to load and assign eBPF objects: %v", err)
@@ -101,7 +101,7 @@ func (a *UdpAC) Ebpf_engine_load(dirPath string, logLevel int) error {
 	xdpLink, err = link.AttachXDP(link.XDPOptions{
 		Program:   objs.XdpProg,
 		Interface: iface.Index,
-		Flags:     link.XDPGenericMode, // 或者使用 link.XDPDriverMode
+		Flags:     link.XDPGenericMode, // XDPGenericMode and XDPDriverMode
 	})
 	if err != nil {
 		log.Error("Failed to attach XDP program to enp2s0: %v", err)

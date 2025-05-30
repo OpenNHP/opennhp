@@ -155,7 +155,9 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 					if dstAddr.Port == 0 {
 						ipHashStr = fmt.Sprintf("%s,1-65535,%s", srcAddr.Ip, dstAddr.Ip)
 					}
-					if a.config.FilterMode == "iptables" {
+
+					switch a.config.FilterMode {
+					case "iptables":
 						_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 						if err != nil {
 							log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
@@ -164,7 +166,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							artMsg.ErrMsg = err.Error()
 							return
 						}
-					} else {
+					case "ebpfxdp":
 						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any" {
 							ebpfHashStr := utils.EbpfRuleParams{
 								SrcIP: srcAddr.Ip,
@@ -184,14 +186,15 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 								Protocol: dstAddr.Protocol,
 							}
 							err = utils.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
-
 							if err != nil {
 								log.Error("[EbpfRuleAdd] add ebpf tcp failed src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
 								return
 							}
 						}
+					default:
+						log.Error("[HandleAccessControl] unsupported FilterMode:", a.config.FilterMode)
+						return
 					}
-
 				}
 
 				// for udp
@@ -200,7 +203,9 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 					if dstAddr.Port == 0 {
 						ipHashStr = fmt.Sprintf("%s,udp:1-65535,%s", srcAddr.Ip, dstAddr.Ip)
 					}
-					if a.config.FilterMode == "iptables" {
+
+					switch a.config.FilterMode {
+					case "iptables":
 						_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 						if err != nil {
 							log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
@@ -209,7 +214,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							artMsg.ErrMsg = err.Error()
 							return
 						}
-					} else {
+					case "ebpfxdp":
 						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any" {
 							ebpfHashStr := utils.EbpfRuleParams{
 								SrcIP: srcAddr.Ip,
@@ -235,6 +240,9 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 								return
 							}
 						}
+					default:
+						log.Error("[HandleAccessControl] unsupported FilterMode:", a.config.FilterMode)
+						return
 					}
 				}
 
@@ -242,7 +250,8 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 				if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
 					for _, dstAddr := range dstAddrs {
 						ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", srcAddr.Ip, dstAddr.Ip)
-						if a.config.FilterMode == "iptables" {
+						switch a.config.FilterMode {
+						case "iptables":
 							_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 							if err != nil {
 								log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
@@ -251,7 +260,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 								artMsg.ErrMsg = err.Error()
 								return
 							}
-						} else {
+						case "ebpfxdp":
 							ebpfHashStr := utils.EbpfRuleParams{
 								SrcIP: srcAddr.Ip,
 								DstIP: dstAddr.Ip,
@@ -261,15 +270,18 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 								return
 							}
+						default:
+							log.Error("[HandleAccessControl] unsupported FilterMode:", a.config.FilterMode)
+							return
 						}
-
 					}
 				}
 
 				// add tempset for the adjacent 128 (25bit netmask ipv4, 121bit netmask ipv6) addresses derived from the target IP address
 				if ipPassMode == PASS_KNOCKIP_WITH_RANGE && ipNet != nil {
 					netStr := ipNet.String()
-					if a.config.FilterMode == "iptables" {
+					switch a.config.FilterMode {
+					case "iptables":
 						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "tcp" || dstAddr.Protocol == "any" {
 							netHashStr := fmt.Sprintf("%s,%d", netStr, dstAddr.Port)
 							if dstAddr.Port == 0 {
@@ -290,7 +302,8 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							netHashStr := fmt.Sprintf("%s,icmp:8/0", netStr)
 							_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
 						}
-					} else {
+
+					case "ebpfxdp":
 						srcIp, ipnet, err := net.ParseCIDR(netStr)
 						if err != nil {
 							log.Error("[HandleAccessControl] failed to parse CIDR %s: %v", netStr, err)
@@ -332,25 +345,21 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							}
 						}
 						if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
-							netHashStr := fmt.Sprintf("%s,icmp:8/0", netStr)
-
-							if a.config.FilterMode == "iptables" {
-								_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
-							} else {
-								for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
-									srcIpStr := srcIp.String()
-
-									ebpfHashStr := utils.EbpfRuleParams{
-										SrcIP: srcIpStr,
-										DstIP: dstAddr.Ip,
-									}
-									err = utils.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
-									if err != nil {
-										log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
-									}
+							for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
+								srcIpStr := srcIp.String()
+								ebpfHashStr := utils.EbpfRuleParams{
+									SrcIP: srcIpStr,
+									DstIP: dstAddr.Ip,
+								}
+								err = utils.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
+								if err != nil {
+									log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 								}
 							}
 						}
+					default:
+						log.Error("[HandleAccessControl] unsupported FilterMode:", a.config.FilterMode)
+						return
 					}
 				}
 			}
@@ -629,13 +638,14 @@ func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, 
 			if dstAddr.Port == 0 {
 				ipHashStr = fmt.Sprintf("%s,1-65535,%s", srcAddrIp, dstAddr.Ip)
 			}
-			if a.config.FilterMode == "iptables" {
+			switch a.config.FilterMode {
+			case "iptables":
 				_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 				if err != nil {
 					log.Error("[tcpTempAccessHandler] add ipset %s error: %v", ipHashStr, err)
 					return
 				}
-			} else {
+			case "ebpfxdp":
 				ebpfHashStr := utils.EbpfRuleParams{
 					SrcIP: srcAddrIp,
 					DstIP: dstAddr.Ip,
@@ -645,8 +655,10 @@ func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, 
 					log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 					return
 				}
+			default:
+				log.Error("[HandleAccessControl] unsupported FilterMode:", a.config.FilterMode)
+				return
 			}
-
 		}
 	}
 }
@@ -751,13 +763,14 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 				if dstAddr.Port == 0 {
 					ipHashStr = fmt.Sprintf("%s,udp:1-65535,%s", srcAddrIp, dstAddr.Ip)
 				}
-				if a.config.FilterMode == "iptables" {
+				switch a.config.FilterMode {
+				case "iptables":
 					_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 					if err != nil {
 						log.Error("[udpTempAccessHandler] add ipset %s error: %v", ipHashStr, err)
 						return
 					}
-				} else {
+				case "ebpfxdp":
 					if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any" {
 						ebpfHashStr := utils.EbpfRuleParams{
 							SrcIP: srcAddrIp,
@@ -776,7 +789,6 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 							DstPort:  dstAddr.Port,
 							Protocol: dstAddr.Protocol,
 						}
-
 						err = utils.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
 
 						if err != nil {
@@ -784,14 +796,19 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 							return
 						}
 					}
+				default:
+					log.Error("[HandleAccessControl] unsupported FilterMode:", a.config.FilterMode)
+					return
 				}
 			}
 			// for ping
 			if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
-				if a.config.FilterMode == "iptables" {
+
+				switch a.config.FilterMode {
+				case "iptables":
 					ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", remoteAddr.IP.String(), dstAddr.Ip)
 					a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
-				} else {
+				case "ebpfxdp":
 					ebpfHashStr := utils.EbpfRuleParams{
 						SrcIP: remoteAddr.IP.String(),
 						DstIP: dstAddr.Ip,
@@ -801,6 +818,9 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 						log.Error("[EbpfRuleAdd] add ebpf icmp src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 						return
 					}
+				default:
+					log.Error("[HandleAccessControl] unsupported FilterMode:", a.config.FilterMode)
+					return
 				}
 			}
 		}

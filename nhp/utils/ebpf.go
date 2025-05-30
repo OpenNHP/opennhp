@@ -210,7 +210,7 @@ func WhitelistRule(whitelistMap *ebpf.Map, srcIP, dstIP uint32, dstPort uint16, 
 	}
 	value := WhitelistValue{
 		Allowed:    1,
-		ExpireTime: now + ttlSec*1e9, // 转换为纳秒
+		ExpireTime: now + ttlSec*1e9, // ​​Convert to nanoseconds
 	}
 
 	keyBytes := make([]byte, 11)
@@ -458,7 +458,7 @@ type EbpfRuleParams struct {
 	Protocol string
 }
 
-// 通用入口函数，根据 mapType 和 params 调用相应的函数来添加白名单
+// A generic entry function that calls the corresponding function to add whitelist entries based on mapTypeandparams.
 func EbpfRuleAdd(mapType int, params EbpfRuleParams, TtlSec int) error {
 	var err error
 	TtlSec64 := uint64(TtlSec)

@@ -1,0 +1,106 @@
+//go:build linux
+
+package ac
+
+import (
+	// "log"
+	"net"
+	"os"
+	"path/filepath"
+
+	"github.com/OpenNHP/opennhp/nhp/common"
+	"github.com/OpenNHP/opennhp/nhp/log"
+	"github.com/OpenNHP/opennhp/nhp/version"
+	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
+	"github.com/cilium/ebpf/rlimit"
+)
+
+type bpfObjects struct {
+	XdpProg       *ebpf.Program `ebpf:"xdp_white_prog"`
+	Whitelist     *ebpf.Map     `ebpf:"whitelist"`
+	Icmpwhitelist *ebpf.Map     `ebpf:"icmpwhitelist"`
+	Sdwhitelist   *ebpf.Map     `ebpf:"sdwhitelist"`
+	Srcportlist   *ebpf.Map     `ebpf:"src_port_list"`
+	Conntrack     *ebpf.Map     `ebpf:"conn_track"`
+}
+
+var xdpLink link.Link
+
+func (a *UdpAC) Ebpf_engine_load(dirPath string, logLevel int) error {
+	common.ExeDirPath = dirPath
+	ExeDirPath = dirPath
+	// init logger
+	a.log = log.NewLogger("NHP-AC", logLevel, filepath.Join(ExeDirPath, "logs"), "ac")
+	log.SetGlobalLogger(a.log)
+
+	log.Info("=========================================================")
+	log.Info("=== NHP-AC Ebpf Engine %s started   ===", version.Version)
+	log.Info("=========================================================")
+	err := a.loadBaseConfig()
+	if err != nil {
+		log.Error("Failed to loadBaseConfig for ac : %v", err)
+		return err
+	}
+
+	if err := rlimit.RemoveMemlock(); err != nil {
+		log.Error("Failed to remove memlock limit: %v", err)
+	}
+
+	var ebpfenginename string
+	if len(a.config.EbpfEngineName) > 0 {
+		ebpfenginename = a.config.EbpfEngineName
+	}
+	bpfDir := "etc"
+	specPath := filepath.Join(bpfDir, ebpfenginename)
+	// 确保路径存在
+	if _, err := os.Stat(specPath); os.IsNotExist(err) {
+		log.Error("eBPF object file not found: %s", specPath)
+		return err
+	}
+
+	spec, err := ebpf.LoadCollectionSpec(specPath)
+	if err != nil {
+		log.Error("failed to load eBPF object: %v", err)
+		return err
+	}
+
+	var objs bpfObjects
+	if err := spec.LoadAndAssign(&objs, &ebpf.CollectionOptions{
+		Maps: ebpf.MapOptions{
+			PinPath: "/sys/fs/bpf/", // 自动挂载到 bpffs
+		},
+	}); err != nil {
+		log.Error("Failed to load and assign eBPF objects: %v", err)
+	}
+	// defer objs.XdpProg.Close()
+	// defer objs.Whitelist.Close()
+	// defer objs.Conntrack.Close()
+
+	if err := objs.XdpProg.Pin("/sys/fs/bpf/xdp_white_prog"); err != nil {
+		log.Error("Failed to pin XDP program: %v", err)
+		// log.Fatalf("Failed to pin XDP program: %v", err)
+	}
+
+	var ifaceName string
+	if len(a.config.EbpfLoadNicName) > 0 {
+		ifaceName = a.config.EbpfLoadNicName
+	}
+	iface, err := net.InterfaceByName(ifaceName)
+	if err != nil {
+		log.Info("Failed to find interface %s: %v\n", ifaceName, err)
+		os.Exit(1)
+	}
+
+	xdpLink, err = link.AttachXDP(link.XDPOptions{
+		Program:   objs.XdpProg,
+		Interface: iface.Index,
+		Flags:     link.XDPGenericMode, // 或者使用 link.XDPDriverMode
+	})
+	if err != nil {
+		log.Error("Failed to attach XDP program to enp2s0: %v", err)
+	}
+	// defer link.Close()
+	log.Info("Successfully attached XDP program to enp2s0")
+	return nil
+}

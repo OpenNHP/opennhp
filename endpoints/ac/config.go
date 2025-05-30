@@ -31,6 +31,8 @@ type Config struct {
 	LogLevel            int             `json:"logLevel"`
 	DefaultCipherScheme int             `json:"defaultCipherScheme"`
 	IptablesEnable      int             `json:"iptablesenable"`
+	EbpfLoadNicName     string          `json:"ebpfloadnicname"`
+	EbpfEngineName      string          `json:"ebpfenginename"`
 }
 
 type HttpConfig struct {

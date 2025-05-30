@@ -6,6 +6,7 @@ toolchain go1.24.2
 
 require (
 	github.com/OpenNHP/opennhp/nhp v0.5.0
+	github.com/cilium/ebpf v0.18.0
 	github.com/emmansun/gmsm v0.24.1
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/gin-gonic/gin v1.10.0
@@ -18,7 +19,6 @@ require (
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cilium/ebpf v0.18.0 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
 	github.com/coocood/freecache v1.2.4 // indirect

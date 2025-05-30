@@ -96,17 +96,18 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 
 	// load http config and turn on http server if needed
 	a.loadHttpConfig()
+	if a.config.IptablesEnable == 1 {
+		a.iptables, err = utils.NewIPTables()
+		if err != nil {
+			log.Error("iptables command not found")
+			return
+		}
 
-	a.iptables, err = utils.NewIPTables()
-	if err != nil {
-		log.Error("iptables command not found")
-		return
-	}
-
-	a.ipset, err = utils.NewIPSet(false)
-	if err != nil {
-		log.Error("ipset command not found")
-		return
+		a.ipset, err = utils.NewIPSet(false)
+		if err != nil {
+			log.Error("ipset command not found")
+			return
+		}
 	}
 
 	prk, err := base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
@@ -455,7 +456,9 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 	log.Info("maintainServerConnectionRoutine started")
 
 	// reset iptables before exiting
-	defer a.iptables.ResetAllInput()
+	if a.config.IptablesEnable == 1 {
+		defer a.iptables.ResetAllInput()
+	}
 
 	var discoveryRoutineWg sync.WaitGroup
 	defer discoveryRoutineWg.Wait()
@@ -500,9 +503,13 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 					}
 
 					if totalFail < int32(len(discoveryFailStatusArr)) {
-						a.iptables.ResetAllInput()
+						if a.config.IptablesEnable == 1 {
+							a.iptables.ResetAllInput()
+						}
 					} else {
-						a.iptables.AcceptAllInput()
+						if a.config.IptablesEnable == 1 {
+							a.iptables.AcceptAllInput()
+						}
 					}
 				}
 			}

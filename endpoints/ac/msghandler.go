@@ -92,7 +92,6 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 	} else {
 		artMsg = artMsgIn
 	}
-
 	// process ac operation
 	tempOpenTimeSec := TempPortOpenTime
 	// 1 sec timeout means exit defaultset access, so exit tempset too
@@ -110,12 +109,14 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 	}
 
 	// ac ipset operations
-	if a.ipset == nil {
-		log.Error("[HandleAccessControl] ipset is nil")
-		err = common.ErrACIPSetNotFound
-		artMsg.ErrCode = common.ErrACIPSetNotFound.ErrorCode()
-		artMsg.ErrMsg = err.Error()
-		return
+	if a.config.IptablesEnable == 1 {
+		if a.ipset == nil {
+			log.Error("[HandleAccessControl] ipset is nil")
+			err = common.ErrACIPSetNotFound
+			artMsg.ErrCode = common.ErrACIPSetNotFound.ErrorCode()
+			artMsg.ErrMsg = err.Error()
+			return
+		}
 	}
 
 	// use ac default ip to override empty destination ip
@@ -154,39 +155,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 					if dstAddr.Port == 0 {
 						ipHashStr = fmt.Sprintf("%s,1-65535,%s", srcAddr.Ip, dstAddr.Ip)
 					}
-
-					_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
-					if err != nil {
-						log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
-						err = common.ErrACIPSetOperationFailed
-						artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-						artMsg.ErrMsg = err.Error()
-						return
-					}
-				}
-
-				// for udp
-				if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "udp" || dstAddr.Protocol == "any" {
-					ipHashStr := fmt.Sprintf("%s,udp:%d,%s", srcAddr.Ip, dstAddr.Port, dstAddr.Ip)
-					if dstAddr.Port == 0 {
-						ipHashStr = fmt.Sprintf("%s,udp:1-65535,%s", srcAddr.Ip, dstAddr.Ip)
-					}
-
-					_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
-					if err != nil {
-						log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
-						err = common.ErrACIPSetOperationFailed
-						artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-						artMsg.ErrMsg = err.Error()
-						return
-					}
-				}
-
-				// for icmp ping
-				if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
-					for _, dstAddr := range dstAddrs {
-						ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", srcAddr.Ip, dstAddr.Ip)
-
+					if a.config.IptablesEnable == 1 {
 						_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 						if err != nil {
 							log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
@@ -195,31 +164,193 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							artMsg.ErrMsg = err.Error()
 							return
 						}
+					} else {
+						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any" {
+							ebpfHashStr := utils.EbpfRuleParams{
+								SrcIP: srcAddr.Ip,
+								DstIP: dstAddr.Ip,
+							}
+							err = utils.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
+							if err != nil {
+								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								return
+							}
+						}
+						if dstAddr.Protocol == "tcp" {
+							ebpfHashStr := utils.EbpfRuleParams{
+								SrcIP:    srcAddr.Ip,
+								DstIP:    dstAddr.Ip,
+								DstPort:  dstAddr.Port,
+								Protocol: dstAddr.Protocol,
+							}
+							err = utils.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
+
+							if err != nil {
+								log.Error("[EbpfRuleAdd] add ebpf tcp failed src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+								return
+							}
+						}
+					}
+
+				}
+
+				// for udp
+				if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "udp" || dstAddr.Protocol == "any" {
+					ipHashStr := fmt.Sprintf("%s,udp:%d,%s", srcAddr.Ip, dstAddr.Port, dstAddr.Ip)
+					if dstAddr.Port == 0 {
+						ipHashStr = fmt.Sprintf("%s,udp:1-65535,%s", srcAddr.Ip, dstAddr.Ip)
+					}
+					if a.config.IptablesEnable == 1 {
+						_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
+						if err != nil {
+							log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
+							err = common.ErrACIPSetOperationFailed
+							artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+							artMsg.ErrMsg = err.Error()
+							return
+						}
+					} else {
+						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any" {
+							ebpfHashStr := utils.EbpfRuleParams{
+								SrcIP: srcAddr.Ip,
+								DstIP: dstAddr.Ip,
+							}
+							err = utils.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
+							if err != nil {
+								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								return
+							}
+						}
+						if dstAddr.Protocol == "udp" {
+							ebpfHashStr := utils.EbpfRuleParams{
+								SrcIP:    srcAddr.Ip,
+								DstIP:    dstAddr.Ip,
+								DstPort:  dstAddr.Port,
+								Protocol: dstAddr.Protocol,
+							}
+							err = utils.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
+
+							if err != nil {
+								log.Error("[EbpfRuleAdd] add ebpf udp failed src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+								return
+							}
+						}
+					}
+				}
+
+				// for icmp ping
+				if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
+					for _, dstAddr := range dstAddrs {
+						ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", srcAddr.Ip, dstAddr.Ip)
+						if a.config.IptablesEnable == 1 {
+							_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
+							if err != nil {
+								log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
+								err = common.ErrACIPSetOperationFailed
+								artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+								artMsg.ErrMsg = err.Error()
+								return
+							}
+						} else {
+							ebpfHashStr := utils.EbpfRuleParams{
+								SrcIP: srcAddr.Ip,
+								DstIP: dstAddr.Ip,
+							}
+							err = utils.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
+							if err != nil {
+								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								return
+							}
+						}
+
 					}
 				}
 
 				// add tempset for the adjacent 128 (25bit netmask ipv4, 121bit netmask ipv6) addresses derived from the target IP address
 				if ipPassMode == PASS_KNOCKIP_WITH_RANGE && ipNet != nil {
 					netStr := ipNet.String()
-					if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "tcp" || dstAddr.Protocol == "any" {
-						netHashStr := fmt.Sprintf("%s,%d", netStr, dstAddr.Port)
-						if dstAddr.Port == 0 {
-							netHashStr = fmt.Sprintf("%s,1-65535", netStr)
+					if a.config.IptablesEnable == 1 {
+						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "tcp" || dstAddr.Protocol == "any" {
+							netHashStr := fmt.Sprintf("%s,%d", netStr, dstAddr.Port)
+							if dstAddr.Port == 0 {
+								netHashStr = fmt.Sprintf("%s,1-65535", netStr)
+							}
+							_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
 						}
-						_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
-					}
 
-					if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "udp" || dstAddr.Protocol == "any" {
-						netHashStr := fmt.Sprintf("%s,udp:%d", netStr, dstAddr.Port)
-						if dstAddr.Port == 0 {
-							netHashStr = fmt.Sprintf("%s,udp:1-65535", netStr)
+						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "udp" || dstAddr.Protocol == "any" {
+							netHashStr := fmt.Sprintf("%s,udp:%d", netStr, dstAddr.Port)
+							if dstAddr.Port == 0 {
+								netHashStr = fmt.Sprintf("%s,udp:1-65535", netStr)
+							}
+							_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
 						}
-						_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
-					}
 
-					if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
-						netHashStr := fmt.Sprintf("%s,icmp:8/0", netStr)
-						_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+						if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
+							netHashStr := fmt.Sprintf("%s,icmp:8/0", netStr)
+							_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+						}
+					} else {
+						srcIp, ipnet, err := net.ParseCIDR(netStr)
+						if err != nil {
+							log.Error("[HandleAccessControl] failed to parse CIDR %s: %v", netStr, err)
+						}
+						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "tcp" || dstAddr.Protocol == "any" {
+							for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
+								srcIpStr := srcIp.String()
+								if dstAddr.Port != 0 {
+									ebpfHashStr := utils.EbpfRuleParams{
+										SrcIP:   srcIpStr,
+										DstPort: dstAddr.Port,
+									}
+									err = utils.EbpfRuleAdd(4, ebpfHashStr, tempOpenTimeSec)
+									if err != nil {
+										log.Error("[EbpfRuleAdd] add ebpf for tcp dst port src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPort, err)
+									}
+
+								} else {
+									//TODO
+								}
+							}
+						}
+						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "udp" || dstAddr.Protocol == "any" {
+							for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
+								srcIpStr := srcIp.String()
+
+								if dstAddr.Port != 0 {
+									ebpfHashStr := utils.EbpfRuleParams{
+										SrcIP:   srcIpStr,
+										DstPort: dstAddr.Port,
+									}
+									err = utils.EbpfRuleAdd(4, ebpfHashStr, tempOpenTimeSec)
+									if err != nil {
+										log.Error("[EbpfRuleAdd] add ebpf for udp dst port src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPort, err)
+									}
+								} else {
+									//TODO
+								}
+							}
+						}
+						if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
+							netHashStr := fmt.Sprintf("%s,icmp:8/0", netStr)
+
+							if a.config.IptablesEnable == 1 {
+								_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+							} else {
+								for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
+									srcIpStr := srcIp.String()
+
+									ebpfHashStr := utils.EbpfRuleParams{
+										SrcIP: srcIpStr,
+										DstIP: dstAddr.Ip,
+									}
+									err = utils.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
+									if err != nil {
+										log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -227,149 +358,152 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 
 		// return temporary listened port(s) and nhp access token, then pass the real ip when agent sends access message
 	case PASS_PRE_ACCESS_IP:
-		// ac open a temporary tcp or udp port for access
-		dstIp := net.ParseIP(dstAddrs[0].Ip)
-		if dstIp == nil {
-			log.Error("[HandleAccessControl] destination IP %s is invalid", dstAddrs[0].Ip)
-			err = common.ErrInvalidIpAddress
-			artMsg.ErrCode = common.ErrInvalidIpAddress.ErrorCode()
-			artMsg.ErrMsg = err.Error()
-			return
-		}
+		if a.config.IptablesEnable == 1 {
+			// ac open a temporary tcp or udp port for access
+			dstIp := net.ParseIP(dstAddrs[0].Ip)
+			if dstIp == nil {
+				log.Error("[HandleAccessControl] destination IP %s is invalid", dstAddrs[0].Ip)
+				err = common.ErrInvalidIpAddress
+				artMsg.ErrCode = common.ErrInvalidIpAddress.ErrorCode()
+				artMsg.ErrMsg = err.Error()
+				return
+			}
 
-		var ipType utils.IPTYPE
-		var netStr string
-		var netStr1 string
-		var pickedPort int
-		var tcpListener *net.TCPListener
-		var udpListener *net.UDPConn
+			var ipType utils.IPTYPE
+			var netStr string
+			var netStr1 string
+			var pickedPort int
+			var tcpListener *net.TCPListener
+			var udpListener *net.UDPConn
 
-		if strings.Contains(dstAddrs[0].Ip, ":") {
-			ipType = utils.IPV6
-			netStr = "0:0:0:0:0:0:0:0/0"
-		} else {
-			// since ipset does not allow full ip range 0.0.0.0/0, we use two ip ranges
-			ipType = utils.IPV4
-			netStr = "0.0.0.0/1"
-			netStr1 = "128.0.0.0/1"
-		}
+			if strings.Contains(dstAddrs[0].Ip, ":") {
+				ipType = utils.IPV6
+				netStr = "0:0:0:0:0:0:0:0/0"
+			} else {
+				// since ipset does not allow full ip range 0.0.0.0/0, we use two ip ranges
+				ipType = utils.IPV4
+				netStr = "0.0.0.0/1"
+				netStr1 = "128.0.0.0/1"
+			}
 
-		// openning temp tcp access
-		tcpListener, err = net.ListenTCP("tcp", &net.TCPAddr{
-			IP:   dstIp,
-			Port: 0, // ephemeral port
-		})
+			// openning temp tcp access
+			tcpListener, err = net.ListenTCP("tcp", &net.TCPAddr{
+				IP:   dstIp,
+				Port: 0, // ephemeral port
+			})
 
-		if err != nil {
-			log.Error("[HandleAccessControl] temporary tcp listening error: %v", err)
-			err = common.ErrACTempPortListenFailed
-			artMsg.ErrCode = common.ErrACTempPortListenFailed.ErrorCode()
-			artMsg.ErrMsg = err.Error()
-			return
-		}
+			if err != nil {
+				log.Error("[HandleAccessControl] temporary tcp listening error: %v", err)
+				err = common.ErrACTempPortListenFailed
+				artMsg.ErrCode = common.ErrACTempPortListenFailed.ErrorCode()
+				artMsg.ErrMsg = err.Error()
+				return
+			}
 
-		// retrieve local port
-		tladdr := tcpListener.Addr()
-		tlocalAddr, locErr := net.ResolveTCPAddr(tladdr.Network(), tladdr.String())
-		if locErr != nil {
-			log.Error("[HandleAccessControl] resolve local TCPAddr error: %v", locErr)
-			err = common.ErrACResolveTempPortFailed
-			artMsg.ErrCode = common.ErrACResolveTempPortFailed.ErrorCode()
-			artMsg.ErrMsg = err.Error()
-			return
-		}
+			// retrieve local port
+			tladdr := tcpListener.Addr()
+			tlocalAddr, locErr := net.ResolveTCPAddr(tladdr.Network(), tladdr.String())
+			if locErr != nil {
+				log.Error("[HandleAccessControl] resolve local TCPAddr error: %v", locErr)
+				err = common.ErrACResolveTempPortFailed
+				artMsg.ErrCode = common.ErrACResolveTempPortFailed.ErrorCode()
+				artMsg.ErrMsg = err.Error()
+				return
+			}
 
-		log.Debug("open temporary tcp port %s", tlocalAddr.String())
-		portHashStr := fmt.Sprintf("%s,%d", netStr, tlocalAddr.Port)
-		_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
-		if err != nil {
-			log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
-			err = common.ErrACIPSetOperationFailed
-			artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-			artMsg.ErrMsg = err.Error()
-			return
-		}
-		portHashStr = fmt.Sprintf("%s,%d", netStr1, tlocalAddr.Port)
-		_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
-		if err != nil {
-			log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
-			err = common.ErrACIPSetOperationFailed
-			artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-			artMsg.ErrMsg = err.Error()
-			return
-		}
+			log.Debug("open temporary tcp port %s", tlocalAddr.String())
+			portHashStr := fmt.Sprintf("%s,%d", netStr, tlocalAddr.Port)
 
-		pickedPort = tlocalAddr.Port
-		log.Info("[HandleAccessControl] open temporary tcp port on %s", tladdr.String())
+			_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
+			if err != nil {
+				log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
+				err = common.ErrACIPSetOperationFailed
+				artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+				artMsg.ErrMsg = err.Error()
+				return
+			}
+			portHashStr = fmt.Sprintf("%s,%d", netStr1, tlocalAddr.Port)
+			_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
+			if err != nil {
+				log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
+				err = common.ErrACIPSetOperationFailed
+				artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+				artMsg.ErrMsg = err.Error()
+				return
+			}
 
-		// for temp udp access
-		udpListener, err = net.ListenUDP("udp", &net.UDPAddr{
-			IP:   dstIp,
-			Port: pickedPort, // ephemeral port(0) or continue with previously picked tcp port
-		})
-		if err != nil {
-			log.Error("[HandleAccessControl] temporary udp listening error: %v", err)
-			err = common.ErrACTempPortListenFailed
-			artMsg.ErrCode = common.ErrACTempPortListenFailed.ErrorCode()
-			artMsg.ErrMsg = err.Error()
-			return
-		}
+			pickedPort = tlocalAddr.Port
+			log.Info("[HandleAccessControl] open temporary tcp port on %s", tladdr.String())
 
-		// retrieve local port
-		uladdr := udpListener.LocalAddr()
-		_, locErr = net.ResolveUDPAddr(uladdr.Network(), uladdr.String())
-		if locErr != nil {
-			log.Error("[HandleAccessControl] resolve local UDPAddr error: %v", locErr)
-			err = common.ErrACResolveTempPortFailed
-			artMsg.ErrCode = common.ErrACResolveTempPortFailed.ErrorCode()
-			artMsg.ErrMsg = err.Error()
-			return
-		}
+			// for temp udp access
+			udpListener, err = net.ListenUDP("udp", &net.UDPAddr{
+				IP:   dstIp,
+				Port: pickedPort, // ephemeral port(0) or continue with previously picked tcp port
+			})
+			if err != nil {
+				log.Error("[HandleAccessControl] temporary udp listening error: %v", err)
+				err = common.ErrACTempPortListenFailed
+				artMsg.ErrCode = common.ErrACTempPortListenFailed.ErrorCode()
+				artMsg.ErrMsg = err.Error()
+				return
+			}
 
-		log.Debug("open temporary udp port %s", tlocalAddr.String())
-		pickedPort = tlocalAddr.Port
-		portHashStr = fmt.Sprintf("%s,udp:%d", netStr, tlocalAddr.Port)
-		_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
-		if err != nil {
-			log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
-			err = common.ErrACIPSetOperationFailed
-			artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-			artMsg.ErrMsg = err.Error()
-			return
-		}
-		portHashStr = fmt.Sprintf("%s,udp:%d", netStr1, tlocalAddr.Port)
-		_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
-		if err != nil {
-			log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
-			err = common.ErrACIPSetOperationFailed
-			artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-			artMsg.ErrMsg = err.Error()
-			return
-		}
+			// retrieve local port
+			uladdr := udpListener.LocalAddr()
+			_, locErr = net.ResolveUDPAddr(uladdr.Network(), uladdr.String())
+			if locErr != nil {
+				log.Error("[HandleAccessControl] resolve local UDPAddr error: %v", locErr)
+				err = common.ErrACResolveTempPortFailed
+				artMsg.ErrCode = common.ErrACResolveTempPortFailed.ErrorCode()
+				artMsg.ErrMsg = err.Error()
+				return
+			}
 
-		log.Info("[HandleAccessControl] open temporary udp port on %s", tladdr.String())
+			log.Debug("open temporary udp port %s", tlocalAddr.String())
+			pickedPort = tlocalAddr.Port
+			portHashStr = fmt.Sprintf("%s,udp:%d", netStr, tlocalAddr.Port)
+			_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
+			if err != nil {
+				log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
+				err = common.ErrACIPSetOperationFailed
+				artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+				artMsg.ErrMsg = err.Error()
+				return
+			}
+			portHashStr = fmt.Sprintf("%s,udp:%d", netStr1, tlocalAddr.Port)
+			_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
+			if err != nil {
+				log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
+				err = common.ErrACIPSetOperationFailed
+				artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+				artMsg.ErrMsg = err.Error()
+				return
+			}
 
-		tempEntry := &AccessEntry{
-			User:     au,
-			SrcAddrs: srcAddrs,
-			DstAddrs: dstAddrs,
-			OpenTime: tempOpenTimeSec,
-		}
-		artMsg.PreAccessAction = &common.PreAccessInfo{
-			AccessPort:     strconv.Itoa(pickedPort),
-			ACPubKey:       a.device.PublicKeyExBase64(),
-			ACToken:        a.GenerateAccessToken(tempEntry),
-			ACCipherScheme: a.config.DefaultCipherScheme,
-		}
+			log.Info("[HandleAccessControl] open temporary udp port on %s", tladdr.String())
 
-		if tcpListener != nil {
-			a.wg.Add(1)
-			go a.tcpTempAccessHandler(tcpListener, tempOpenTimeSec, dstAddrs, openTimeSec)
-		}
+			tempEntry := &AccessEntry{
+				User:     au,
+				SrcAddrs: srcAddrs,
+				DstAddrs: dstAddrs,
+				OpenTime: tempOpenTimeSec,
+			}
+			artMsg.PreAccessAction = &common.PreAccessInfo{
+				AccessPort:     strconv.Itoa(pickedPort),
+				ACPubKey:       a.device.PublicKeyExBase64(),
+				ACToken:        a.GenerateAccessToken(tempEntry),
+				ACCipherScheme: a.config.DefaultCipherScheme,
+			}
 
-		if udpListener != nil {
-			a.wg.Add(1)
-			go a.udpTempAccessHandler(udpListener, tempOpenTimeSec, dstAddrs, openTimeSec)
+			if tcpListener != nil {
+				a.wg.Add(1)
+				go a.tcpTempAccessHandler(tcpListener, tempOpenTimeSec, dstAddrs, openTimeSec)
+			}
+
+			if udpListener != nil {
+				a.wg.Add(1)
+				go a.udpTempAccessHandler(udpListener, tempOpenTimeSec, dstAddrs, openTimeSec)
+			}
 		}
 	}
 
@@ -495,12 +629,24 @@ func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, 
 			if dstAddr.Port == 0 {
 				ipHashStr = fmt.Sprintf("%s,1-65535,%s", srcAddrIp, dstAddr.Ip)
 			}
-
-			_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
-			if err != nil {
-				log.Error("[tcpTempAccessHandler] add ipset %s error: %v", ipHashStr, err)
-				return
+			if a.config.IptablesEnable == 1 {
+				_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
+				if err != nil {
+					log.Error("[tcpTempAccessHandler] add ipset %s error: %v", ipHashStr, err)
+					return
+				}
+			} else {
+				ebpfHashStr := utils.EbpfRuleParams{
+					SrcIP: srcAddrIp,
+					DstIP: dstAddr.Ip,
+				}
+				err = utils.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
+				if err != nil {
+					log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+					return
+				}
 			}
+
 		}
 	}
 }
@@ -508,7 +654,6 @@ func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, 
 func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs []*common.NetAddress, openTimeSec int) {
 	defer a.wg.Done()
 	defer conn.Close()
-
 	// listen to accept and handle only one incoming connection
 	startTime := time.Now()
 	deadlineTime := startTime.Add(time.Duration(timeoutSec) * time.Second)
@@ -606,18 +751,57 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 				if dstAddr.Port == 0 {
 					ipHashStr = fmt.Sprintf("%s,udp:1-65535,%s", srcAddrIp, dstAddr.Ip)
 				}
+				if a.config.IptablesEnable == 1 {
+					_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
+					if err != nil {
+						log.Error("[udpTempAccessHandler] add ipset %s error: %v", ipHashStr, err)
+						return
+					}
+				} else {
+					if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any" {
+						ebpfHashStr := utils.EbpfRuleParams{
+							SrcIP: srcAddrIp,
+							DstIP: dstAddr.Ip,
+						}
+						err = utils.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
+						if err != nil {
+							log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+							return
+						}
+					}
+					if dstAddr.Protocol == "udp" {
+						ebpfHashStr := utils.EbpfRuleParams{
+							SrcIP:    srcAddrIp,
+							DstIP:    dstAddr.Ip,
+							DstPort:  dstAddr.Port,
+							Protocol: dstAddr.Protocol,
+						}
 
-				_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
-				if err != nil {
-					log.Error("[udpTempAccessHandler] add ipset %s error: %v", ipHashStr, err)
-					return
+						err = utils.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
+
+						if err != nil {
+							log.Error("[EbpfRuleAdd] add ebpf udp failed src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+							return
+						}
+					}
 				}
 			}
-
 			// for ping
 			if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
-				ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", remoteAddr.IP.String(), dstAddr.Ip)
-				a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
+				if a.config.IptablesEnable == 1 {
+					ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", remoteAddr.IP.String(), dstAddr.Ip)
+					a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
+				} else {
+					ebpfHashStr := utils.EbpfRuleParams{
+						SrcIP: remoteAddr.IP.String(),
+						DstIP: dstAddr.Ip,
+					}
+					err = utils.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
+					if err != nil {
+						log.Error("[EbpfRuleAdd] add ebpf icmp src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+						return
+					}
+				}
 			}
 		}
 	}
@@ -631,5 +815,14 @@ func (a *UdpAC) tempConnTerminator(conn net.Conn, ctx context.Context) {
 
 	case <-ctx.Done():
 		return
+	}
+}
+
+func incrementIP(ip net.IP) {
+	for j := len(ip) - 1; j >= 0; j-- {
+		ip[j]++
+		if ip[j] > 0 {
+			break
+		}
 	}
 }

@@ -96,7 +96,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 
 	// load http config and turn on http server if needed
 	a.loadHttpConfig()
-	if a.config.IptablesEnable == 1 {
+	if a.config.FilterMode == "iptables" {
 		a.iptables, err = utils.NewIPTables()
 		if err != nil {
 			log.Error("iptables command not found")
@@ -456,7 +456,7 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 	log.Info("maintainServerConnectionRoutine started")
 
 	// reset iptables before exiting
-	if a.config.IptablesEnable == 1 {
+	if a.config.FilterMode == "iptables" {
 		defer a.iptables.ResetAllInput()
 	}
 
@@ -503,11 +503,11 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 					}
 
 					if totalFail < int32(len(discoveryFailStatusArr)) {
-						if a.config.IptablesEnable == 1 {
+						if a.config.FilterMode == "iptables" {
 							a.iptables.ResetAllInput()
 						}
 					} else {
-						if a.config.IptablesEnable == 1 {
+						if a.config.FilterMode == "iptables" {
 							a.iptables.AcceptAllInput()
 						}
 					}

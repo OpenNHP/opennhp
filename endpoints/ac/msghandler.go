@@ -109,7 +109,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 	}
 
 	// ac ipset operations
-	if a.config.IptablesEnable == 1 {
+	if a.config.FilterMode == "iptables" {
 		if a.ipset == nil {
 			log.Error("[HandleAccessControl] ipset is nil")
 			err = common.ErrACIPSetNotFound
@@ -155,7 +155,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 					if dstAddr.Port == 0 {
 						ipHashStr = fmt.Sprintf("%s,1-65535,%s", srcAddr.Ip, dstAddr.Ip)
 					}
-					if a.config.IptablesEnable == 1 {
+					if a.config.FilterMode == "iptables" {
 						_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 						if err != nil {
 							log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
@@ -200,7 +200,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 					if dstAddr.Port == 0 {
 						ipHashStr = fmt.Sprintf("%s,udp:1-65535,%s", srcAddr.Ip, dstAddr.Ip)
 					}
-					if a.config.IptablesEnable == 1 {
+					if a.config.FilterMode == "iptables" {
 						_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 						if err != nil {
 							log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
@@ -242,7 +242,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 				if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
 					for _, dstAddr := range dstAddrs {
 						ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", srcAddr.Ip, dstAddr.Ip)
-						if a.config.IptablesEnable == 1 {
+						if a.config.FilterMode == "iptables" {
 							_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 							if err != nil {
 								log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
@@ -269,7 +269,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 				// add tempset for the adjacent 128 (25bit netmask ipv4, 121bit netmask ipv6) addresses derived from the target IP address
 				if ipPassMode == PASS_KNOCKIP_WITH_RANGE && ipNet != nil {
 					netStr := ipNet.String()
-					if a.config.IptablesEnable == 1 {
+					if a.config.FilterMode == "iptables" {
 						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "tcp" || dstAddr.Protocol == "any" {
 							netHashStr := fmt.Sprintf("%s,%d", netStr, dstAddr.Port)
 							if dstAddr.Port == 0 {
@@ -334,7 +334,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 						if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
 							netHashStr := fmt.Sprintf("%s,icmp:8/0", netStr)
 
-							if a.config.IptablesEnable == 1 {
+							if a.config.FilterMode == "iptables" {
 								_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
 							} else {
 								for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
@@ -358,7 +358,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 
 		// return temporary listened port(s) and nhp access token, then pass the real ip when agent sends access message
 	case PASS_PRE_ACCESS_IP:
-		if a.config.IptablesEnable == 1 {
+		if a.config.FilterMode == "iptables" {
 			// ac open a temporary tcp or udp port for access
 			dstIp := net.ParseIP(dstAddrs[0].Ip)
 			if dstIp == nil {
@@ -629,7 +629,7 @@ func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, 
 			if dstAddr.Port == 0 {
 				ipHashStr = fmt.Sprintf("%s,1-65535,%s", srcAddrIp, dstAddr.Ip)
 			}
-			if a.config.IptablesEnable == 1 {
+			if a.config.FilterMode == "iptables" {
 				_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 				if err != nil {
 					log.Error("[tcpTempAccessHandler] add ipset %s error: %v", ipHashStr, err)
@@ -751,7 +751,7 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 				if dstAddr.Port == 0 {
 					ipHashStr = fmt.Sprintf("%s,udp:1-65535,%s", srcAddrIp, dstAddr.Ip)
 				}
-				if a.config.IptablesEnable == 1 {
+				if a.config.FilterMode == "iptables" {
 					_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 					if err != nil {
 						log.Error("[udpTempAccessHandler] add ipset %s error: %v", ipHashStr, err)
@@ -788,7 +788,7 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 			}
 			// for ping
 			if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
-				if a.config.IptablesEnable == 1 {
+				if a.config.FilterMode == "iptables" {
 					ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", remoteAddr.IP.String(), dstAddr.Ip)
 					a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 				} else {

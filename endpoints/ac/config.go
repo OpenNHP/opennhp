@@ -30,8 +30,7 @@ type Config struct {
 	IpPassMode          int             `json:"ipPassMode"` // 0: pass the knock source IP, 1: use pre-access mode and release the access source IP
 	LogLevel            int             `json:"logLevel"`
 	DefaultCipherScheme int             `json:"defaultCipherScheme"`
-	IptablesEnable      int             `json:"iptablesenable"`
-	EbpfLoadNicName     string          `json:"ebpfloadnicname"`
+	FilterMode          string          `json:"filterMode"`
 	EbpfEngineName      string          `json:"ebpfenginename"`
 }
 

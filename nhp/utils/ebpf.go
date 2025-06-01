@@ -51,7 +51,6 @@ func getBootTimeNanos() (uint64, error) {
 
 func xdp_manager() {
 
-	// 直接从 /sys/fs/bpf/ 加载已固定的 map
 	whitelistMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/whitelist", nil)
 	if err != nil {
 		log.Error("Failed to load pinned whitelist map: %v", err)

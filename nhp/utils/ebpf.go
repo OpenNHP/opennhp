@@ -70,7 +70,6 @@ func xdp_manager() {
 	}
 	defer conntrackMap.Close()
 
-	// 提供命令行接口来管理白名单规则
 	fmt.Println("XDP White Program Manager is running. Type commands to manage whitelist:")
 	fmt.Println("add <src_ip> <dst_ip> <dst_port> <protocol> - Add a whitelist rule")
 	fmt.Println("del <src_ip> <dst_ip> <dst_port> <protocol> - Delete a whitelist rule")
@@ -166,7 +165,6 @@ func xdp_manager() {
 	}
 }
 
-// 解析 IP 地址
 func parseIP(ipStr string) (uint32, error) {
 	ip := net.ParseIP(ipStr)
 	if ip == nil {

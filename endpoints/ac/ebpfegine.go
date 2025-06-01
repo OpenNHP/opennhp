@@ -57,7 +57,7 @@ func (a *UdpAC) Ebpf_engine_load(dirPath string, logLevel int) error {
 	}
 	bpfDir := "etc"
 	specPath := filepath.Join(bpfDir, ebpfenginename)
-	// 确保路径存在
+
 	if _, err := os.Stat(specPath); os.IsNotExist(err) {
 		log.Error("eBPF object file not found: %s", specPath)
 		return err

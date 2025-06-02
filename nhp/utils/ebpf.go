@@ -41,6 +41,12 @@ type WhitelistValue struct {
 	ExpireTime uint64
 }
 
+type portListKey struct {
+	SrcIP        uint32 `ebpf:"src_ip"`
+	DstPortStart uint16 `ebpf:"dst_port_start"`
+	DstPortEnd   uint16 `ebpf:"dst_port_end"`
+}
+
 func getBootTimeNanos() (uint64, error) {
 	var ts unix.Timespec
 	if err := unix.ClockGettime(unix.CLOCK_BOOTTIME, &ts); err != nil {
@@ -445,14 +451,17 @@ const (
 	MapTypeWhitelist     = 1
 	MapTypeSdWhitelist   = 2
 	MapTypeIcmpWhitelist = 3
-	MapTypeSrcPortList   = 4
+	MapTypeSrcAndPort    = 4
+	MapTypeSrcPortList   = 5
 )
 
 type EbpfRuleParams struct {
-	SrcIP    string
-	DstIP    string
-	DstPort  int
-	Protocol string
+	SrcIP        string
+	DstIP        string
+	DstPort      int
+	DstPortStart int
+	DstPortEnd   int
+	Protocol     string
 }
 
 // A generic entry function that calls the corresponding function to add whitelist entries based on mapTypeandparams.
@@ -497,7 +506,7 @@ func EbpfRuleAdd(mapType int, params EbpfRuleParams, TtlSec int) error {
 			return err
 		}
 
-	case MapTypeSrcPortList:
+	case MapTypeSrcAndPort:
 
 		err = AddEbpfRuleForSrcDestPort(params.SrcIP, params.DstPort, TtlSec64)
 		if err != nil {
@@ -505,8 +514,75 @@ func EbpfRuleAdd(mapType int, params EbpfRuleParams, TtlSec int) error {
 			return err
 		}
 
+	case MapTypeSrcPortList:
+
+		err = AddEbpfRuleForSrcDestPortList(params.SrcIP, params.DstPortStart, params.DstPortEnd, TtlSec64)
+		if err != nil {
+			log.Error("[EbpfRuleAdd] add ebpf src: %s dstportstart: %d,  dstportend: %d,  error: %v", params.SrcIP, params.DstPortStart, params.DstPortStart, err)
+			return err
+		}
+
 	default:
 		return fmt.Errorf("unsupported map type: %d", mapType)
+	}
+
+	return nil
+}
+
+func WhitelistPortListRangeRule(whitelistMap *ebpf.Map, srcIP uint32, dstPortStart, dstPortEnd int, ttlSec uint64) error {
+	now, err := getBootTimeNanos()
+	if err != nil {
+		return err
+	}
+	portStart, err := safeIntToUint16(dstPortStart)
+	portEnd, err := safeIntToUint16(dstPortEnd)
+
+	if err != nil {
+		fmt.Errorf("failed to safeIntToUint16 in src_port_list map: %v", err)
+		return err
+	}
+
+	key := portListKey{
+		SrcIP:        srcIP,
+		DstPortStart: portStart,
+		DstPortEnd:   portEnd,
+	}
+
+	value := WhitelistValue{
+		Allowed:    1,
+		ExpireTime: now + ttlSec*1e9,
+	}
+	keyBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint32(keyBytes[0:4], key.SrcIP)
+	binary.LittleEndian.PutUint16(keyBytes[4:6], key.DstPortStart)
+	binary.LittleEndian.PutUint16(keyBytes[6:8], key.DstPortEnd)
+
+	if err := whitelistMap.Update(keyBytes, &value, ebpf.UpdateAny); err != nil {
+		fmt.Errorf("failed to update port_list map: %v", err)
+		return fmt.Errorf("failed to update port_list map: %v", err)
+	}
+
+	return nil
+}
+
+func AddEbpfRuleForSrcDestPortList(srcIPStr string, dstPortStart, dstPortEnd int, ttlSec uint64) error {
+	portListMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/port_list", nil)
+	if err != nil {
+		fmt.Errorf("failed to load pinned port_list map: %v", err)
+		return fmt.Errorf("failed to load pinned port_list map: %v", err)
+	}
+	defer portListMap.Close()
+
+	srcIP, err := parseIP(srcIPStr)
+	if err != nil {
+		fmt.Errorf("invalid source IP: %v", err)
+		return fmt.Errorf("invalid source IP: %v", err)
+	}
+
+	err = WhitelistPortListRangeRule(portListMap, srcIP, dstPortStart, dstPortEnd, ttlSec)
+	if err != nil {
+		fmt.Errorf("[AddEbpfRuleForSrcDestPortList] update port_list %s error: %v")
+		return err
 	}
 
 	return nil

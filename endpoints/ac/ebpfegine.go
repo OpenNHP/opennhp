@@ -26,6 +26,7 @@ type bpfObjects struct {
 	Icmpwhitelist *ebpf.Map     `ebpf:"icmpwhitelist"`
 	Sdwhitelist   *ebpf.Map     `ebpf:"sdwhitelist"`
 	Srcportlist   *ebpf.Map     `ebpf:"src_port_list"`
+	PortlistRange *ebpf.Map     `ebpf:"port_list"`
 	Conntrack     *ebpf.Map     `ebpf:"conn_track"`
 }
 

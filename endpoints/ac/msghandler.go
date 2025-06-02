@@ -322,7 +322,15 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 									}
 
 								} else {
-									//TODO
+									ebpfHashStr := utils.EbpfRuleParams{
+										SrcIP:        srcIpStr,
+										DstPortStart: 0,
+										DstPortEnd:   65535,
+									}
+									err = utils.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
+									if err != nil {
+										log.Error("[EbpfRuleAdd] add ebpf src: %s  dstportstart: %d,  dstportend: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPortStart, ebpfHashStr.DstPortEnd, err)
+									}
 								}
 							}
 						}
@@ -340,7 +348,15 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 										log.Error("[EbpfRuleAdd] add ebpf for udp dst port src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPort, err)
 									}
 								} else {
-									//TODO
+									ebpfHashStr := utils.EbpfRuleParams{
+										SrcIP:        srcIpStr,
+										DstPortStart: 0,
+										DstPortEnd:   65535,
+									}
+									err = utils.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
+									if err != nil {
+										log.Error("[EbpfRuleAdd] add ebpf src: %s  dstportstart: %d,  dstportend: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPortStart, ebpfHashStr.DstPortEnd, err)
+									}
 								}
 							}
 						}

@@ -96,7 +96,8 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 
 	// load http config and turn on http server if needed
 	a.loadHttpConfig()
-	if a.config.FilterMode == "iptables" {
+	switch a.config.FilterMode {
+	case "iptables":
 		a.iptables, err = utils.NewIPTables()
 		if err != nil {
 			log.Error("iptables command not found")
@@ -108,6 +109,14 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			log.Error("ipset command not found")
 			return
 		}
+	case "ebpfxdp":
+		err = a.Ebpf_engine_load()
+		if err != nil {
+			return err
+		}
+	default:
+		log.Error("[Start] unsupported FilterMode:", a.config.FilterMode)
+		return
 	}
 
 	prk, err := base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)

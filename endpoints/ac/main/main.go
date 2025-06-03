@@ -9,7 +9,6 @@ import (
 
 	"github.com/OpenNHP/opennhp/endpoints/ac"
 	"github.com/OpenNHP/opennhp/nhp/core"
-	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/version"
 	"github.com/urfave/cli/v2"
 )
@@ -50,20 +49,10 @@ func main() {
 		},
 	}
 
-	ebpfCmd := &cli.Command{
-		Name:  "ebpfload",
-		Usage: "load and run ebpf engine for NHP ac",
-		Action: func(c *cli.Context) error {
-			return runEbpf()
-		},
-	}
-
 	app.Commands = []*cli.Command{
 		runCmd,
 		keygenCmd,
-		ebpfCmd,
 	}
-
 	if err := app.Run(os.Args); err != nil {
 		panic(err)
 	}
@@ -89,30 +78,6 @@ func runApp() error {
 	// block until terminated
 	<-termCh
 	d.Stop()
-
-	return nil
-}
-
-func runEbpf() error {
-	exeFilePath, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	exeDirPath := filepath.Dir(exeFilePath)
-
-	d := &ac.UdpAC{}
-	err = d.Ebpf_engine_load(exeDirPath, 4)
-	if err != nil {
-		return err
-	}
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGTERM, os.Interrupt, syscall.SIGABRT)
-
-	log.Info("XDP program is running. Press Ctrl+C to exit.")
-
-	<-sigChan
-	log.Info("Shutting down...")
 
 	return nil
 }

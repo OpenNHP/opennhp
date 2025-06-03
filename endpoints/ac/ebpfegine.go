@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/version"
 	"github.com/cilium/ebpf"
@@ -26,20 +25,12 @@ type bpfObjects struct {
 	Icmpwhitelist *ebpf.Map     `ebpf:"icmpwhitelist"`
 	Sdwhitelist   *ebpf.Map     `ebpf:"sdwhitelist"`
 	Srcportlist   *ebpf.Map     `ebpf:"src_port_list"`
-	PortlistRange *ebpf.Map     `ebpf:"port_list"`
 	Conntrack     *ebpf.Map     `ebpf:"conn_track"`
 }
 
 var xdpLink link.Link
 
-func (a *UdpAC) Ebpf_engine_load(dirPath string, logLevel int) error {
-	common.ExeDirPath = dirPath
-	ExeDirPath = dirPath
-	// init logger
-	a.log = log.NewLogger("NHP-AC", logLevel, filepath.Join(ExeDirPath, "logs"), "ac")
-	log.SetGlobalLogger(a.log)
-
-	log.Info("=========================================================")
+func (a *UdpAC) Ebpf_engine_load() error {
 	log.Info("=== NHP-AC Ebpf Engine %s started   ===", version.Version)
 	log.Info("=========================================================")
 	err := a.loadBaseConfig()

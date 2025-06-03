@@ -138,6 +138,21 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	// load peers
 	a.loadPeers()
 
+	if a.config.FilterMode == "ebpfxdp" {
+		for _, server := range a.config.Servers {
+			ebpfHashStr := utils.EbpfRuleParams{
+				SrcIP: server.Ip,
+				DstIP: a.config.DefaultIp,
+			}
+			log.Info("server ip is %s", server.Ip)
+			err = utils.EbpfRuleAdd(2, ebpfHashStr, 31536000)
+			if err != nil {
+				log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+				continue
+			}
+		}
+	}
+
 	a.signals.stop = make(chan struct{})
 	a.signals.serverMapUpdated = make(chan struct{}, 1)
 

@@ -201,6 +201,7 @@ func (a *UdpAC) updateServerPeers(file string) (err error) {
 		a.device.AddPeer(p)
 		serverPeerMap[p.PublicKeyBase64()] = p
 	}
+	a.config.Servers = peers.Servers
 
 	// remove old peers from device
 	a.serverPeerMutex.Lock()

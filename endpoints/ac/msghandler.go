@@ -383,63 +383,64 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 
 		// return temporary listened port(s) and nhp access token, then pass the real ip when agent sends access message
 	case PASS_PRE_ACCESS_IP:
-		if a.config.FilterMode == "iptables" {
-			// ac open a temporary tcp or udp port for access
-			dstIp := net.ParseIP(dstAddrs[0].Ip)
-			if dstIp == nil {
-				log.Error("[HandleAccessControl] destination IP %s is invalid", dstAddrs[0].Ip)
-				err = common.ErrInvalidIpAddress
-				artMsg.ErrCode = common.ErrInvalidIpAddress.ErrorCode()
-				artMsg.ErrMsg = err.Error()
-				return
-			}
+		// ac open a temporary tcp or udp port for access
+		dstIp := net.ParseIP(dstAddrs[0].Ip)
+		if dstIp == nil {
+			log.Error("[HandleAccessControl] destination IP %s is invalid", dstAddrs[0].Ip)
+			err = common.ErrInvalidIpAddress
+			artMsg.ErrCode = common.ErrInvalidIpAddress.ErrorCode()
+			artMsg.ErrMsg = err.Error()
+			return
+		}
 
-			var ipType utils.IPTYPE
-			var netStr string
-			var netStr1 string
-			var pickedPort int
-			var tcpListener *net.TCPListener
-			var udpListener *net.UDPConn
+		var ipType utils.IPTYPE
+		var netStr string
+		var netStr1 string
+		var pickedPort int
+		var tcpListener *net.TCPListener
+		var udpListener *net.UDPConn
 
-			if strings.Contains(dstAddrs[0].Ip, ":") {
-				ipType = utils.IPV6
-				netStr = "0:0:0:0:0:0:0:0/0"
-			} else {
-				// since ipset does not allow full ip range 0.0.0.0/0, we use two ip ranges
-				ipType = utils.IPV4
-				netStr = "0.0.0.0/1"
-				netStr1 = "128.0.0.0/1"
-			}
+		if strings.Contains(dstAddrs[0].Ip, ":") {
+			ipType = utils.IPV6
+			netStr = "0:0:0:0:0:0:0:0/0"
+		} else {
+			// since ipset does not allow full ip range 0.0.0.0/0, we use two ip ranges
+			ipType = utils.IPV4
+			netStr = "0.0.0.0/1"
+			netStr1 = "128.0.0.0/1"
+		}
 
-			// openning temp tcp access
-			tcpListener, err = net.ListenTCP("tcp", &net.TCPAddr{
-				IP:   dstIp,
-				Port: 0, // ephemeral port
-			})
+		// openning temp tcp access
+		tcpListener, err = net.ListenTCP("tcp", &net.TCPAddr{
+			IP:   dstIp,
+			Port: 0, // ephemeral port
+		})
 
-			if err != nil {
-				log.Error("[HandleAccessControl] temporary tcp listening error: %v", err)
-				err = common.ErrACTempPortListenFailed
-				artMsg.ErrCode = common.ErrACTempPortListenFailed.ErrorCode()
-				artMsg.ErrMsg = err.Error()
-				return
-			}
+		if err != nil {
+			log.Error("[HandleAccessControl] temporary tcp listening error: %v", err)
+			err = common.ErrACTempPortListenFailed
+			artMsg.ErrCode = common.ErrACTempPortListenFailed.ErrorCode()
+			artMsg.ErrMsg = err.Error()
+			return
+		}
 
-			// retrieve local port
-			tladdr := tcpListener.Addr()
-			tlocalAddr, locErr := net.ResolveTCPAddr(tladdr.Network(), tladdr.String())
-			if locErr != nil {
-				log.Error("[HandleAccessControl] resolve local TCPAddr error: %v", locErr)
-				err = common.ErrACResolveTempPortFailed
-				artMsg.ErrCode = common.ErrACResolveTempPortFailed.ErrorCode()
-				artMsg.ErrMsg = err.Error()
-				return
-			}
+		// retrieve local port
+		tladdr := tcpListener.Addr()
+		tlocalAddr, locErr := net.ResolveTCPAddr(tladdr.Network(), tladdr.String())
+		if locErr != nil {
+			log.Error("[HandleAccessControl] resolve local TCPAddr error: %v", locErr)
+			err = common.ErrACResolveTempPortFailed
+			artMsg.ErrCode = common.ErrACResolveTempPortFailed.ErrorCode()
+			artMsg.ErrMsg = err.Error()
+			return
+		}
 
-			log.Debug("open temporary tcp port %s", tlocalAddr.String())
+		log.Debug("open temporary tcp port %s", tlocalAddr.String())
+		switch a.config.FilterMode {
+		case "iptables":
 			portHashStr := fmt.Sprintf("%s,%d", netStr, tlocalAddr.Port)
-
 			_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
+
 			if err != nil {
 				log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
 				err = common.ErrACIPSetOperationFailed
@@ -456,37 +457,54 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 				artMsg.ErrMsg = err.Error()
 				return
 			}
-
-			pickedPort = tlocalAddr.Port
-			log.Info("[HandleAccessControl] open temporary tcp port on %s", tladdr.String())
-
-			// for temp udp access
-			udpListener, err = net.ListenUDP("udp", &net.UDPAddr{
-				IP:   dstIp,
-				Port: pickedPort, // ephemeral port(0) or continue with previously picked tcp port
-			})
+		case "ebpfxdp":
+			ebpfHashStr := utils.EbpfRuleParams{
+				Protocol: "tcp",
+				DstPort:  tlocalAddr.Port,
+			}
+			err = utils.EbpfRuleAdd(6, ebpfHashStr, tempOpenTimeSec)
 			if err != nil {
-				log.Error("[HandleAccessControl] temporary udp listening error: %v", err)
-				err = common.ErrACTempPortListenFailed
-				artMsg.ErrCode = common.ErrACTempPortListenFailed.ErrorCode()
-				artMsg.ErrMsg = err.Error()
+				log.Error("[EbpfRuleAdd] add ebpf type 6 protocol: %s, dstport :%d, %v", ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
 				return
 			}
+		default:
+			log.Error("[HandleAccessControl] unsupported FilterMode:", a.config.FilterMode)
+			return
+		}
 
-			// retrieve local port
-			uladdr := udpListener.LocalAddr()
-			_, locErr = net.ResolveUDPAddr(uladdr.Network(), uladdr.String())
-			if locErr != nil {
-				log.Error("[HandleAccessControl] resolve local UDPAddr error: %v", locErr)
-				err = common.ErrACResolveTempPortFailed
-				artMsg.ErrCode = common.ErrACResolveTempPortFailed.ErrorCode()
-				artMsg.ErrMsg = err.Error()
-				return
-			}
+		pickedPort = tlocalAddr.Port
+		log.Info("[HandleAccessControl] open temporary tcp port on %s", tladdr.String())
 
-			log.Debug("open temporary udp port %s", tlocalAddr.String())
-			pickedPort = tlocalAddr.Port
-			portHashStr = fmt.Sprintf("%s,udp:%d", netStr, tlocalAddr.Port)
+		// for temp udp access
+		udpListener, err = net.ListenUDP("udp", &net.UDPAddr{
+			IP:   dstIp,
+			Port: pickedPort, // ephemeral port(0) or continue with previously picked tcp port
+		})
+		if err != nil {
+			log.Error("[HandleAccessControl] temporary udp listening error: %v", err)
+			err = common.ErrACTempPortListenFailed
+			artMsg.ErrCode = common.ErrACTempPortListenFailed.ErrorCode()
+			artMsg.ErrMsg = err.Error()
+			return
+		}
+
+		// retrieve local port
+		uladdr := udpListener.LocalAddr()
+		_, locErr = net.ResolveUDPAddr(uladdr.Network(), uladdr.String())
+		if locErr != nil {
+			log.Error("[HandleAccessControl] resolve local UDPAddr error: %v", locErr)
+			err = common.ErrACResolveTempPortFailed
+			artMsg.ErrCode = common.ErrACResolveTempPortFailed.ErrorCode()
+			artMsg.ErrMsg = err.Error()
+			return
+		}
+
+		log.Debug("open temporary udp port %s", tlocalAddr.String())
+		pickedPort = tlocalAddr.Port
+
+		switch a.config.FilterMode {
+		case "iptables":
+			portHashStr := fmt.Sprintf("%s,udp:%d", netStr, tlocalAddr.Port)
 			_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
 			if err != nil {
 				log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
@@ -504,31 +522,43 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 				artMsg.ErrMsg = err.Error()
 				return
 			}
-
-			log.Info("[HandleAccessControl] open temporary udp port on %s", tladdr.String())
-
-			tempEntry := &AccessEntry{
-				User:     au,
-				SrcAddrs: srcAddrs,
-				DstAddrs: dstAddrs,
-				OpenTime: tempOpenTimeSec,
+		case "ebpfxdp":
+			ebpfHashStr := utils.EbpfRuleParams{
+				Protocol: "udp",
+				DstPort:  tlocalAddr.Port,
 			}
-			artMsg.PreAccessAction = &common.PreAccessInfo{
-				AccessPort:     strconv.Itoa(pickedPort),
-				ACPubKey:       a.device.PublicKeyExBase64(),
-				ACToken:        a.GenerateAccessToken(tempEntry),
-				ACCipherScheme: a.config.DefaultCipherScheme,
+			err = utils.EbpfRuleAdd(6, ebpfHashStr, tempOpenTimeSec)
+			if err != nil {
+				log.Error("[EbpfRuleAdd] add ebpf type 6 protocol: %s, dstport :%d, %v", ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+				return
 			}
+		default:
+			log.Error("[HandleAccessControl] unsupported FilterMode:", a.config.FilterMode)
+			return
+		}
+		log.Info("[HandleAccessControl] open temporary udp port on %s", tladdr.String())
 
-			if tcpListener != nil {
-				a.wg.Add(1)
-				go a.tcpTempAccessHandler(tcpListener, tempOpenTimeSec, dstAddrs, openTimeSec)
-			}
+		tempEntry := &AccessEntry{
+			User:     au,
+			SrcAddrs: srcAddrs,
+			DstAddrs: dstAddrs,
+			OpenTime: tempOpenTimeSec,
+		}
+		artMsg.PreAccessAction = &common.PreAccessInfo{
+			AccessPort:     strconv.Itoa(pickedPort),
+			ACPubKey:       a.device.PublicKeyExBase64(),
+			ACToken:        a.GenerateAccessToken(tempEntry),
+			ACCipherScheme: a.config.DefaultCipherScheme,
+		}
 
-			if udpListener != nil {
-				a.wg.Add(1)
-				go a.udpTempAccessHandler(udpListener, tempOpenTimeSec, dstAddrs, openTimeSec)
-			}
+		if tcpListener != nil {
+			a.wg.Add(1)
+			go a.tcpTempAccessHandler(tcpListener, tempOpenTimeSec, dstAddrs, openTimeSec)
+		}
+
+		if udpListener != nil {
+			a.wg.Add(1)
+			go a.udpTempAccessHandler(udpListener, tempOpenTimeSec, dstAddrs, openTimeSec)
 		}
 	}
 

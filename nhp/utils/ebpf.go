@@ -30,6 +30,11 @@ type EbpfMapKey struct {
 	Protocol uint8  `ebpf:"protocol"`
 }
 
+type procoPortKey struct {
+	DstPort  uint16 `ebpf:"dst_port"`
+	Protocol uint8  `ebpf:"protocol"`
+}
+
 type WhitelistKeyicmp struct {
 	SrcIP uint32 `ebpf:"src_ip"`
 	DstIP uint32 `ebpf:"dst_ip"`
@@ -38,6 +43,11 @@ type WhitelistKeyicmp struct {
 type WhitelistValue struct {
 	Allowed    uint8
 	_          [7]byte
+	ExpireTime uint64
+}
+
+type procoPortValue struct {
+	Allowed    uint8
 	ExpireTime uint64
 }
 
@@ -453,6 +463,7 @@ const (
 	MapTypeIcmpWhitelist = 3
 	MapTypeSrcAndPort    = 4
 	MapTypeSrcPortList   = 5
+	MapTypeProtocolPort  = 6
 )
 
 type EbpfRuleParams struct {
@@ -522,6 +533,14 @@ func EbpfRuleAdd(mapType int, params EbpfRuleParams, TtlSec int) error {
 			return err
 		}
 
+	case MapTypeProtocolPort:
+		dstPort := uint16(params.DstPort)
+		err = AddEbpfRuleForProtocolPort(protocol, dstPort, TtlSec64)
+		if err != nil {
+			log.Error("[EbpfRuleAdd] add ebpf src: %s dstportstart: %d,  dstportend: %d,  error: %v", params.SrcIP, params.DstPortStart, params.DstPortStart, err)
+			return err
+		}
+
 	default:
 		return fmt.Errorf("unsupported map type: %d", mapType)
 	}
@@ -580,6 +599,56 @@ func AddEbpfRuleForSrcDestPortList(srcIPStr string, dstPortStart, dstPortEnd int
 	}
 
 	err = WhitelistPortListRangeRule(portListMap, srcIP, dstPortStart, dstPortEnd, ttlSec)
+	if err != nil {
+		fmt.Errorf("[AddEbpfRuleForSrcDestPortList] update port_list %s error: %v")
+		return err
+	}
+
+	return nil
+}
+
+func WhitelistProtocolPortRule(whitelistMap *ebpf.Map, dstPort uint16, protocol uint8, ttlSec uint64) error {
+	now, err := getBootTimeNanos()
+	if err != nil {
+		return err
+	}
+
+	key := procoPortKey{
+		DstPort:  dstPort,
+		Protocol: protocol,
+	}
+	value := procoPortValue{
+		Allowed:    1,
+		ExpireTime: now + ttlSec*1e9, // ​​Convert to nanoseconds
+	}
+
+	keyBytes := make([]byte, 3)
+
+	binary.LittleEndian.PutUint16(keyBytes[0:2], key.DstPort)
+	keyBytes[2] = key.Protocol
+
+	if err := whitelistMap.Update(keyBytes, &value, ebpf.UpdateAny); err != nil {
+		// log.Error("failed to update whitelist map: %v", err)
+		return fmt.Errorf("failed to update protocol port map: %v", err)
+	}
+
+	return nil
+}
+
+func AddEbpfRuleForProtocolPort(protocol uint8, dstPort uint16, ttlSec uint64) error {
+	portStr := fmt.Sprintf("%d", dstPort)
+	dstPortt, err := parsePort(portStr)
+	if err != nil {
+		return fmt.Errorf("invalid destination port: %v", err)
+	}
+	portListMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/protocol_port", nil)
+	if err != nil {
+		fmt.Errorf("failed to load pinned protocol_port map: %v", err)
+		return fmt.Errorf("failed to load pinned protocol_port map: %v", err)
+	}
+	defer portListMap.Close()
+
+	err = WhitelistProtocolPortRule(portListMap, dstPortt, protocol, ttlSec)
 	if err != nil {
 		fmt.Errorf("[AddEbpfRuleForSrcDestPortList] update port_list %s error: %v")
 		return err

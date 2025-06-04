@@ -1,4 +1,4 @@
-# 检查 clang 是否安装
+# Verify if clang is installed
 CLANG := $(shell command -v clang 2>/dev/null)
 ifeq ($(CLANG),)
     $(error "clang is not installed. Please install clang to compile eBPF programs.")

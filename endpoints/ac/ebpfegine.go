@@ -25,6 +25,8 @@ type bpfObjects struct {
 	Icmpwhitelist *ebpf.Map     `ebpf:"icmpwhitelist"`
 	Sdwhitelist   *ebpf.Map     `ebpf:"sdwhitelist"`
 	Srcportlist   *ebpf.Map     `ebpf:"src_port_list"`
+	Portlist      *ebpf.Map     `ebpf:"port_list"`
+	Protocolport  *ebpf.Map     `ebpf:"protocol_port"`
 	Conntrack     *ebpf.Map     `ebpf:"conn_track"`
 }
 
@@ -38,7 +40,8 @@ func (a *UdpAC) Ebpf_engine_load() error {
 		log.Error("Failed to loadBaseConfig for ac : %v", err)
 		return err
 	}
-
+	//Clean up residual eBPF files from the previous run
+	a.CleanupBPFFiles()
 	if err := rlimit.RemoveMemlock(); err != nil {
 		log.Error("Failed to remove memlock limit: %v", err)
 	}
@@ -69,9 +72,14 @@ func (a *UdpAC) Ebpf_engine_load() error {
 	}); err != nil {
 		log.Error("Failed to load and assign eBPF objects: %v", err)
 	}
-	// defer objs.XdpProg.Close()
-	// defer objs.Whitelist.Close()
-	// defer objs.Conntrack.Close()
+	defer objs.XdpProg.Close()
+	defer objs.Whitelist.Close()
+	defer objs.Icmpwhitelist.Close()
+	defer objs.Sdwhitelist.Close()
+	defer objs.Srcportlist.Close()
+	defer objs.Portlist.Close()
+	defer objs.Protocolport.Close()
+	defer objs.Conntrack.Close()
 
 	if err := objs.XdpProg.Pin("/sys/fs/bpf/xdp_white_prog"); err != nil {
 		log.Error("Failed to pin XDP program: %v", err)
@@ -98,7 +106,7 @@ func (a *UdpAC) Ebpf_engine_load() error {
 	if err != nil {
 		log.Error("Failed to attach XDP program to enp2s0: %v", err)
 	}
-	// defer link.Close()
+	defer xdpLink.Close()
 	log.Info("Successfully attached XDP program to enp2s0")
 	return nil
 }
@@ -119,4 +127,28 @@ func getDefaultRouteInterface() (string, error) {
 	}
 	interfaceName := matches[2]
 	return interfaceName, nil
+}
+
+// clean eBPF map file
+func (a *UdpAC) CleanupBPFFiles() {
+	bpfFiles := []string{
+		"/sys/fs/bpf/xdp_white_prog",
+		"/sys/fs/bpf/conn_track",
+		"/sys/fs/bpf/icmpwhitelist",
+		"/sys/fs/bpf/port_list",
+		"/sys/fs/bpf/protocol_port",
+		"/sys/fs/bpf/sdwhitelist",
+		"/sys/fs/bpf/src_port_list",
+		"/sys/fs/bpf/whitelist",
+	}
+
+	for _, file := range bpfFiles {
+		if err := os.Remove(file); err != nil {
+			if !os.IsNotExist(err) {
+				log.Error("Failed to remove BPF file %s: %v", file, err)
+			}
+		} else {
+			log.Info("Successfully removed BPF file: %s", file)
+		}
+	}
 }

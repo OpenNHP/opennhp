@@ -743,3 +743,7 @@ func (a *UdpAC) RemoveServerPeer(serverKey string) {
 		}
 	}
 }
+
+func (a *UdpAC) GetConfig() *Config {
+	return a.config // return  config
+}

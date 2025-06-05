@@ -271,7 +271,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             (icmp->type == ICMP_ECHOREPLY && icmp->code == 0)) {
             
             if (icmp->type == ICMP_ECHO) {
-                //Lookup in the icmp whitelist
+                //Lookup icmpwhitelist entry
                 struct icmpwhitelist_value *iw_val = bpf_map_lookup_elem(&icmpwhitelist, &icmpkey);
                 if (!iw_val) {
                     bpf_printk("icmpnotWhitelisted src IP: 0x%08x, dst IP: 0x%08x", icmpkey.src_ip, icmpkey.dst_ip);
@@ -280,6 +280,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
                     return XDP_DROP;
                 }   
                 __u64 now = bpf_ktime_get_ns();
+                // Check if whitelist entry has expired
                 if (iw_val->expire_time < now) {
                     bpf_printk("Time check: now=%llu expire=%llu delta=%lld", 
                         bpf_ktime_get_ns(), 
@@ -289,12 +290,11 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
                     bpf_map_delete_elem(&icmpwhitelist, &icmpkey);
                     return XDP_DROP;
                 }
+                // Check if source IP is icmpwhitelisted and allowed
                 if (iw_val->allowed == 1) {
-                    // bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
                     bpf_printk("icmpWhitelisted src IP: 0x%08x, dst IP: 0x%08x", icmpkey.src_ip, icmpkey.dst_ip);
                     print_ip(bpf_ntohl(icmpkey.src_ip));
                     print_ip(bpf_ntohl(icmpkey.dst_ip));
-                    // bpf_printk("Whitelisted IP: 0x%08x", key.src_ip);
                     return XDP_PASS;
                 }
             }  else {
@@ -377,15 +377,20 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         .protocol = iph->protocol
     };
 
-    //Lookup in the whitelist
+    //Lookup whitelist entry
     struct whitelist_value *w_val = bpf_map_lookup_elem(&whitelist, &key);
+    //Lookup sdwhitelist entry
     struct sdwhitelist_value *sd_val = bpf_map_lookup_elem(&sdwhitelist, &sdkey);
+    //Lookup src_port_list entry
     struct src_port_list_value *sp_val = bpf_map_lookup_elem(&src_port_list, &spkey);
+    //Lookup port_list entry
     struct port_list_value *pl_val= bpf_map_lookup_elem(&port_list, &pl_key);
+    //Lookup protocol_port entry
     struct protocol_port_value *pp_val= bpf_map_lookup_elem(&protocol_port, &pp_key);
 
 
     __u64 now = bpf_ktime_get_ns();
+    // Check if whitelist entry has expired
     if (w_val && (w_val->expire_time < now)) {
         bpf_printk("Time check: now=%llu expire=%llu delta=%lld", 
             bpf_ktime_get_ns(), 
@@ -395,7 +400,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         bpf_map_delete_elem(&whitelist, &key);
         return XDP_DROP;
     }
-
+    // Check if sdwhitelist entry has expired
     if (sd_val && (sd_val->expire_time < now)) {
         bpf_printk("Time check: now=%llu expire=%llu delta=%lld", 
             bpf_ktime_get_ns(), 
@@ -405,7 +410,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         bpf_map_delete_elem(&sdwhitelist, &sdkey);
         return XDP_DROP;
     }
-
+    // Check if src_port_list entry has expired
     if (sp_val && (sp_val->expire_time < now)) {
         bpf_printk("Time check: now=%llu expire=%llu delta=%lld", 
             bpf_ktime_get_ns(), 
@@ -415,7 +420,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         bpf_map_delete_elem(&src_port_list, &spkey);
         return XDP_DROP;
     }
-
+    // Check if port_list entry has expired
     if (pl_val && (pl_val->expire_time < now)) {
         bpf_printk("Time check: now=%llu expire=%llu delta=%lld", 
             bpf_ktime_get_ns(), 
@@ -425,7 +430,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         bpf_map_delete_elem(&port_list, &pl_key);
         return XDP_DROP;
     }
-
+    // Check if protocol_port entry has expired
     if (pp_val && (pp_val->expire_time < now)) {
         bpf_printk("Time check: now=%llu expire=%llu delta=%lld", 
             bpf_ktime_get_ns(), 
@@ -436,6 +441,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         return XDP_DROP;
     }
 
+    // Check if whitelist entry allows this connection
     if (w_val && w_val->allowed == 1) {
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
@@ -453,7 +459,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         print_ip(bpf_ntohl(iph->daddr));
         return XDP_PASS;
     }
-    
+    // Check if sdwhitelist entry allows this connection
     if (sd_val && sd_val->allowed == 1) {
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
@@ -471,7 +477,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         print_ip(bpf_ntohl(iph->daddr));
         return XDP_PASS;
     }
-       
+    // Check if src_port_list entry allows this connection
     if (sp_val && sp_val->allowed == 1) {
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
@@ -489,7 +495,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         print_ip(bpf_ntohl(iph->daddr));
         return XDP_PASS;
     }
-
+    // Check if port_list entry allows this connection
     if ((pl_val && pl_val->allowed == 1) && (dst_port >= pl_key.min_port && dst_port <= pl_key.max_port)) {
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
@@ -507,7 +513,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         print_ip(bpf_ntohl(iph->daddr));
         return XDP_PASS;
     }
-
+    // Check if protocol_port entry allows this connection
     if (pp_val && pp_val->allowed == 1){
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),

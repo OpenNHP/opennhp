@@ -72,15 +72,6 @@ func (a *UdpAC) Ebpf_engine_load() error {
 	}); err != nil {
 		log.Error("Failed to load and assign eBPF objects")
 	}
-	//close ebpf file handle after program exit
-	defer objs.XdpProg.Close()
-	defer objs.Whitelist.Close()
-	defer objs.Icmpwhitelist.Close()
-	defer objs.Sdwhitelist.Close()
-	defer objs.Srcportlist.Close()
-	defer objs.Portlist.Close()
-	defer objs.Protocolport.Close()
-	defer objs.Conntrack.Close()
 
 	if err := objs.XdpProg.Pin("/sys/fs/bpf/xdp_white_prog"); err != nil {
 		log.Error("failed to pin XDP program xdp_white_prog to /sys/fs/bpf/")
@@ -108,7 +99,7 @@ func (a *UdpAC) Ebpf_engine_load() error {
 		log.Error("failed to attach XDP program to interface: %s", ifaceName)
 		return err
 	}
-	defer xdpLink.Close()
+
 	log.Info("Successfully attached XDP program to interface: %s", ifaceName)
 	return nil
 }

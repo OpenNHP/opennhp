@@ -72,6 +72,7 @@ func (a *UdpAC) Ebpf_engine_load() error {
 	}); err != nil {
 		log.Error("Failed to load and assign eBPF objects")
 	}
+	//close ebpf file handle after program exit
 	defer objs.XdpProg.Close()
 	defer objs.Whitelist.Close()
 	defer objs.Icmpwhitelist.Close()
@@ -82,19 +83,19 @@ func (a *UdpAC) Ebpf_engine_load() error {
 	defer objs.Conntrack.Close()
 
 	if err := objs.XdpProg.Pin("/sys/fs/bpf/xdp_white_prog"); err != nil {
-		log.Error("Failed to pin XDP program: %v", err)
+		log.Error("failed to pin XDP program xdp_white_prog to /sys/fs/bpf/")
 		return err
 	}
-
+	// obtain the nic interface which default route exit
 	ifaceName, err := getDefaultRouteInterface()
 	if err != nil {
-		log.Error("Failed to get default route interface")
+		log.Error("failed to get default route interface")
 		return err
 	}
 	log.Info("Default route interface: %s\n", ifaceName)
 	iface, err := net.InterfaceByName(ifaceName)
 	if err != nil {
-		log.Error("Failed to find interface %s", ifaceName)
+		log.Error("failed to find interface %s", ifaceName)
 		os.Exit(1)
 	}
 	//load ebpf nhp_ebpf_xdp.o to net interface which default route exit
@@ -104,26 +105,26 @@ func (a *UdpAC) Ebpf_engine_load() error {
 		Flags:     link.XDPGenericMode, // XDPGenericMode and XDPDriverMode
 	})
 	if err != nil {
-		log.Error("Failed to attach XDP program to enp2s0: %v", err)
+		log.Error("failed to attach XDP program to interface: %s", ifaceName)
+		return err
 	}
 	defer xdpLink.Close()
-	log.Info("Successfully attached XDP program to enp2s0")
+	log.Info("Successfully attached XDP program to interface: %s", ifaceName)
 	return nil
 }
 
-// obtain the nic interface which default route exit
 func getDefaultRouteInterface() (string, error) {
 	cmd := exec.Command("ip", "route")
 	output, err := cmd.Output()
 	if err != nil {
-		log.Error("Error running ip route:", err)
+		log.Error("failed to get running ip route:")
 		return "", err
 	}
 
 	re := regexp.MustCompile(`default via (\S+) dev (\S+)`)
 	matches := re.FindStringSubmatch(string(output))
 	if len(matches) < 3 {
-		log.Error("Failed to parse default route")
+		log.Error("failed to parse default route")
 		return "", fmt.Errorf("failed to parse default route")
 	}
 	interfaceName := matches[2]

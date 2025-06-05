@@ -34,33 +34,33 @@ var xdpLink link.Link
 
 func (a *UdpAC) Ebpf_engine_load() error {
 	log.Info("=== NHP-AC Ebpf Engine %s started   ===", version.Version)
-	log.Info("=========================================================")
 	err := a.loadBaseConfig()
 	if err != nil {
-		log.Error("Failed to loadBaseConfig for ac : %v", err)
+		log.Error("Failed to loadBaseConfig for ac")
 		return err
 	}
 	//Clean up residual eBPF files from the previous run
 	a.CleanupBPFFiles()
 	if err := rlimit.RemoveMemlock(); err != nil {
-		log.Error("Failed to remove memlock limit: %v", err)
+		log.Error("Failed to remove memlock limit")
 	}
 
 	var ebpfenginename string
 	if len(a.config.EbpfEngineName) > 0 {
 		ebpfenginename = a.config.EbpfEngineName
 	}
+	//ebpf nhp_ebpf_xdp.o save to etc/ after clang compile
 	bpfDir := "etc"
 	specPath := filepath.Join(bpfDir, ebpfenginename)
 
 	if _, err := os.Stat(specPath); os.IsNotExist(err) {
-		log.Error("eBPF object file not found: %s", specPath)
+		log.Error("eBPF object file not found ")
 		return err
 	}
 
 	spec, err := ebpf.LoadCollectionSpec(specPath)
 	if err != nil {
-		log.Error("failed to load eBPF object: %v", err)
+		log.Error("failed to load eBPF object")
 		return err
 	}
 
@@ -70,7 +70,7 @@ func (a *UdpAC) Ebpf_engine_load() error {
 			PinPath: "/sys/fs/bpf/", // automatically mounted to
 		},
 	}); err != nil {
-		log.Error("Failed to load and assign eBPF objects: %v", err)
+		log.Error("Failed to load and assign eBPF objects")
 	}
 	defer objs.XdpProg.Close()
 	defer objs.Whitelist.Close()
@@ -88,16 +88,16 @@ func (a *UdpAC) Ebpf_engine_load() error {
 
 	ifaceName, err := getDefaultRouteInterface()
 	if err != nil {
-		log.Error("Failed to get default route interface: %v", err)
+		log.Error("Failed to get default route interface")
 		return err
 	}
 	log.Info("Default route interface: %s\n", ifaceName)
 	iface, err := net.InterfaceByName(ifaceName)
 	if err != nil {
-		log.Info("Failed to find interface %s: %v\n", ifaceName, err)
+		log.Error("Failed to find interface %s", ifaceName)
 		os.Exit(1)
 	}
-
+	//load ebpf nhp_ebpf_xdp.o to net interface which default route exit
 	xdpLink, err = link.AttachXDP(link.XDPOptions{
 		Program:   objs.XdpProg,
 		Interface: iface.Index,
@@ -111,6 +111,7 @@ func (a *UdpAC) Ebpf_engine_load() error {
 	return nil
 }
 
+// obtain the nic interface which default route exit
 func getDefaultRouteInterface() (string, error) {
 	cmd := exec.Command("ip", "route")
 	output, err := cmd.Output()

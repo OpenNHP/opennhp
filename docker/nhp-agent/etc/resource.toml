@@ -1,0 +1,9 @@
+# List resources for the agent to knock automatically after launch
+
+# AuthServiceId: id of the authentication and authorization service provider the resource belongs to.
+# ResourceId: id of the resource group.
+# ServerAddr: the server address that manages this resource group.
+[[Resources]]
+AuthServiceId = "passcode"
+ResourceId = "demo"
+ServerAddr = "172.19.0.2"

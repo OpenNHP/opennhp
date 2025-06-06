@@ -1,0 +1,34 @@
+FROM opennhp-base:latest AS builder
+
+FROM ubuntu:20.04  AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && \
+    apt-get install -y  wget \
+    ca-certificates \
+    iptables \
+    tcpdump \
+    ipset \
+    git \
+    curl \
+    telnet \
+    && rm -rf /var/lib/apt/lists/* 
+
+# Traefik version
+ARG TRAEFIK_VERSION=v2.10.4
+
+# traefik config
+RUN mkdir -p /opt/traefik/
+
+# Copy the traefik configuration file
+COPY ./fengyily/opennhp/docker/traefik_v3.4.0-rc2_linux_amd64.tar.gz /traefik.tar.gz
+RUN tar -zxvf traefik.tar.gz && \
+    mv traefik /opt/traefik/ && \
+    chmod +x /opt/traefik/traefik && \
+    rm -rf /tmp/*
+
+COPY --from=builder /nhp-server/release/nhp-ac /nhp-ac 
+COPY --from=builder /nhp-server/docker/iptables_defaults_ubuntu.sh /iptables_defaults_ubuntu.sh
+RUN chmod +x /iptables_defaults_ubuntu.sh
+ENTRYPOINT ["/bin/sh", "-c"]
+CMD ["/iptables_defaults_ubuntu.sh && cd /opt/traefik/ && nohup ./traefik --configFile=traefik.toml 2>&1 & -- & /nhp-ac/nhp-acd run"]
+#ENTRYPOINT ["/nhp-ac/nhp-acd", "run"]

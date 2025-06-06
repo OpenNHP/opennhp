@@ -3,7 +3,7 @@ package ac
 const (
 	MaxConcurrentConnection      = 256
 	DefaultConnectionTimeoutMs   = 300 * 1000 // 300 seconds to delete idle connection, align with server
-	PacketQueueSizePerConnection = 256
+	PacketQueueSizePerConnection = 32
 
 	ReportToServerInterval         = 60 // seconds
 	MinialServerDiscoveryInterval  = 5  // seconds

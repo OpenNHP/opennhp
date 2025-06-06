@@ -30,6 +30,8 @@ type Config struct {
 	IpPassMode          int             `json:"ipPassMode"` // 0: pass the knock source IP, 1: use pre-access mode and release the access source IP
 	LogLevel            int             `json:"logLevel"`
 	DefaultCipherScheme int             `json:"defaultCipherScheme"`
+	FilterMode          string          `json:"filterMode"`
+	EbpfEngineName      string          `json:"ebpfenginename"`
 }
 
 type HttpConfig struct {
@@ -199,6 +201,7 @@ func (a *UdpAC) updateServerPeers(file string) (err error) {
 		a.device.AddPeer(p)
 		serverPeerMap[p.PublicKeyBase64()] = p
 	}
+	a.config.Servers = peers.Servers
 
 	// remove old peers from device
 	a.serverPeerMutex.Lock()

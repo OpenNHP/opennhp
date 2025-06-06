@@ -53,7 +53,6 @@ func main() {
 		runCmd,
 		keygenCmd,
 	}
-
 	if err := app.Run(os.Args); err != nil {
 		panic(err)
 	}
@@ -71,13 +70,16 @@ func runApp() error {
 	if err != nil {
 		return err
 	}
-
+	cfg := d.GetConfig()
 	// react to terminate signals
 	termCh := make(chan os.Signal, 1)
 	signal.Notify(termCh, syscall.SIGTERM, os.Interrupt, syscall.SIGABRT)
-
+	if cfg.FilterMode == "ebpfxdp" {
+		defer d.CleanupBPFFiles()
+	}
 	// block until terminated
 	<-termCh
+
 	d.Stop()
 
 	return nil

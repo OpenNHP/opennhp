@@ -113,7 +113,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			return
 		}
 	case "ebpfxdp":
-		err = a.Ebpf_engine_load()
+		err = a.ebpfEngineLoad()
 		if err != nil {
 			return err
 		}

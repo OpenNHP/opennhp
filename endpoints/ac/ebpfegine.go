@@ -32,7 +32,7 @@ type bpfObjects struct {
 
 var xdpLink link.Link
 
-func (a *UdpAC) Ebpf_engine_load() error {
+func (a *UdpAC) ebpfEngineLoad() error {
 	log.Info("=== NHP-AC Ebpf Engine %s started   ===", version.Version)
 	err := a.loadBaseConfig()
 	if err != nil {

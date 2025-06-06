@@ -1,0 +1,97 @@
+networks:
+  nginx:
+    ipam:
+      driver: default
+      config:
+        - subnet: '177.9.0.0/16'
+  server:
+    ipam:
+      driver: default
+      config:
+        - subnet: '177.8.0.0/16'
+  ac:
+    ipam:
+      driver: default
+      config:
+        - subnet: '177.7.0.0/16'
+
+volumes:
+  postgres_data: 
+
+services:
+  nhp-server:
+    image: opennhp-server
+    build: 
+      context: ../..
+      dockerfile: ./opennhp/docker/Dockerfile.server
+    container_name: nhp-server
+    restart: always
+    networks:
+      server:
+        ipv4_address: 177.8.0.9
+      nginx:
+        ipv4_address: 177.9.0.9
+    volumes:
+      - ./nhp-server/etc/:/nhp-server/etc/:rw
+      - ./nhp-server/logs/:/nhp-server/logs/:rw
+      - ./nhp-server/templates/:/nhp-server/templates/:rw
+      - ./nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
+    # ports:
+    #   - "62206:62206/udp"
+    #   - "62206:62206/tcp"
+
+  nhp-ac:
+    image: opennhp-ac
+    container_name: nhp-ac
+    build: 
+      context: ../../..
+      dockerfile: ./fengyily/opennhp/docker/Dockerfile.ac
+    volumes:
+      - ./nhp-ac/etc/:/nhp-ac/etc/
+      - ./nhp-ac/traefik/etc/traefik.toml:/opt/traefik/traefik.toml
+      - ./nhp-ac/traefik/etc/provider.toml:/opt/traefik/provider.toml
+      - ./nhp-ac/logs/:/nhp-ac/logs/
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      - nhp-server
+    networks:
+      ac:
+        ipv4_address: 177.7.0.10
+      nginx:
+        ipv4_address: 177.9.0.10
+
+  nhp-app:
+    image: nginx:latest
+    container_name: nhp-app
+    restart: always
+    # ports:
+    #   - "8080:80"
+    networks:
+      ac:
+        ipv4_address: 177.7.0.11
+
+  nhp-enter:
+    image: nginx:latest
+    container_name: nhp-enter
+    restart: always
+    ports:
+      - "443:443"
+    networks:
+      nginx:
+        ipv4_address: 177.9.0.13
+    depends_on:
+      - nhp-server
+      - nhp-ac
+    volumes:
+      - ./nhp-enter-nginx.conf:/etc/nginx/nginx.conf:rw
+      - ./certs/server.crt:/cert.pem:rw
+      - ./certs/server.key:/key.pem:rw
+  # nhp-base:
+  #   image: opennhp-base
+  #   build: 
+  #     context: ..
+  #     dockerfile: ./docker/Dockerfile.base
+  #   container_name: nhp-base
+  #   restart: always

@@ -96,6 +96,9 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 
 	// load http config and turn on http server if needed
 	a.loadHttpConfig()
+	if a.config.FilterMode == "" {
+		a.config.FilterMode = "iptables" //default to executive iptables mode
+	}
 	switch a.config.FilterMode {
 	case "iptables":
 		a.iptables, err = utils.NewIPTables()

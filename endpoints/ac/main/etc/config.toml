@@ -19,4 +19,3 @@ LogLevel = 4
 AuthServiceId = "example"
 ResourceIds = ["demo"]
 FilterMode = "iptables"
-EbpfEngineName = "nhp_ebpf_xdp.o"

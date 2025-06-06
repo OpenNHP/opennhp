@@ -45,10 +45,7 @@ func (a *UdpAC) Ebpf_engine_load() error {
 		log.Error("Failed to remove memlock limit")
 	}
 
-	var ebpfenginename string
-	if len(a.config.EbpfEngineName) > 0 {
-		ebpfenginename = a.config.EbpfEngineName
-	}
+	ebpfenginename := "nhp_ebpf_xdp.o"
 	//ebpf nhp_ebpf_xdp.o save to etc/ after clang compile
 	bpfDir := "etc"
 	specPath := filepath.Join(bpfDir, ebpfenginename)

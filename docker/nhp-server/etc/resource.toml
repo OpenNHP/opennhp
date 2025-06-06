@@ -5,9 +5,3 @@
 # PluginPath: path of plugin to implement auth logic.
 ["example"]
 PluginPath = "example/example.so"
-["zydd"]
-PluginPath = "zydd/zydd.so"
-["zzd"]
-PluginPath = "zzd/zzd.so"
-["passcode"]
-PluginPath = "passcode/passcode.so"

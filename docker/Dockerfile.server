@@ -1,16 +1,14 @@
 FROM opennhp-base:latest  AS builder
 
-# 设置工作目录
 WORKDIR /nhp-server
 
 COPY ./opennhp .
 
-## 添加插件
-COPY ../nhp-plugins-passcode /nhp-server/endpoints/server/plugins/nhp-plugins-passcode/
-COPY ../nhp-plugins-zzd /nhp-server/endpoints/server/plugins/nhp-plugins-zzd/
-RUN cd /nhp-server/endpoints/server/plugins/nhp-plugins-passcode/ && rm -rf go.mod go.sum
-RUN cd /nhp-server/endpoints/server/plugins/nhp-plugins-zzd/ && rm -rf go.mod go.sum
-RUN cd /nhp-server && export GOARCH=arm64 && export CGO_ENABLED=1 && make
+RUN echo "Building for architecture: ${TARGETARCH}"
+## 
+ENV GOPROXY=https://goproxy.cn,direct
+
+RUN cd /nhp-server &&  make init serverd plugins test
 
 FROM ubuntu:20.04  AS runtime
 

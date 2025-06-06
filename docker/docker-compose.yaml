@@ -1,7 +1,22 @@
 networks:
   nginx:
+    ipam:
+      driver: default
+      config:
+        - subnet: '177.9.0.0/16'
   server:
+    ipam:
+      driver: default
+      config:
+        - subnet: '177.8.0.0/16'
   ac:
+    ipam:
+      driver: default
+      config:
+        - subnet: '177.7.0.0/16'
+
+volumes:
+  postgres_data: 
 
 services:
   nhp-server:
@@ -12,17 +27,18 @@ services:
     container_name: nhp-server
     restart: always
     networks:
-      - server
-      - nginx
+      server:
+        ipv4_address: 177.8.0.9
+      nginx:
+        ipv4_address: 177.9.0.9
     volumes:
       - ./nhp-server/etc/:/nhp-server/etc/:rw
+      - ./nhp-server/logs/:/nhp-server/logs/:rw
       - ./nhp-server/templates/:/nhp-server/templates/:rw
       - ./nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
-      - ./nhp-server/plugins/passcode/etc/:/nhp-server/plugins/passcode/etc/:rw
-      - ./nhp-server/logs/:/nhp-server/logs/:rw
-    ports:
-      - "62206:62206/udp"
-      - "62206:62206/tcp"
+    # ports:
+    #   - "62206:62206/udp"
+    #   - "62206:62206/tcp"
 
   nhp-ac:
     image: opennhp-ac
@@ -31,10 +47,9 @@ services:
       context: ../../..
       dockerfile: ./fengyily/opennhp/docker/Dockerfile.ac
     volumes:
-      - ../../../traefik-plugins/traefik-plugins-hqdata/plugins-local/:/opt/traefik/plugins-local/
       - ./nhp-ac/etc/:/nhp-ac/etc/
-      - ./nhp-ac/traefik/etc/hqdata-traefik.toml:/opt/traefik/hqdata-traefik.toml
-      - ./nhp-ac/traefik/etc/hqdata-provider.toml:/opt/traefik/hqdata-provider.toml
+      - ./nhp-ac/traefik/etc/traefik.toml:/opt/traefik/traefik.toml
+      - ./nhp-ac/traefik/etc/provider.toml:/opt/traefik/provider.toml
       - ./nhp-ac/logs/:/nhp-ac/logs/
     restart: always
     cap_add:
@@ -42,23 +57,10 @@ services:
     depends_on:
       - nhp-server
     networks:
-      - ac
-      - nginx
-    ports:
-      - "8001:80"
-
-  nhp-agent:
-    image: opennhp-agent
-    build: 
-      context: ..
-      dockerfile: ./docker/Dockerfile.agent
-    container_name: nhp-agent
-    restart: always
-    volumes:
-      - ./nhp-agent/etc/:/nhp-agent/etc/:rw
-      - ./nhp-agent/logs/:/nhp-agent/logs/:rw
-    networks:
-      - ac
+      ac:
+        ipv4_address: 177.7.0.10
+      nginx:
+        ipv4_address: 177.9.0.10
 
   nhp-app:
     image: nginx:latest
@@ -67,20 +69,8 @@ services:
     # ports:
     #   - "8080:80"
     networks:
-      - ac
-
-  nhp-helloworld:
-    image: helloworld:latest
-    build: 
-      context: .
-      dockerfile: ./Dockerfile.app
-    container_name: nhp-helloworld
-    restart: always
-    ports:
-      - "8090:8080"
-    networks:
-      - ac
-      - nginx
+      ac:
+        ipv4_address: 177.7.0.11
 
   nhp-enter:
     image: nginx:latest
@@ -88,9 +78,9 @@ services:
     restart: always
     ports:
       - "443:443"
-      - "80:80"
     networks:
-      - nginx
+      nginx:
+        ipv4_address: 177.9.0.13
     depends_on:
       - nhp-server
       - nhp-ac

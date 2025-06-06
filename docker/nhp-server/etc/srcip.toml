@@ -3,11 +3,6 @@
 # syntax [["{SrcIp}"]]
 # SrcIp: specify the agent source ip. Each source ip can have multiple side source ips.
 # Ip: specify a side source ip address to be also passed after successful knock.
-[["192.168.2.27"]]
-Ip = "192.168.2.26"
-
-[["192.168.2.27"]]
-Ip = "192.168.2.28"
 
 [["192.168.65.1"]]
-Ip = "172.19.0.5"
+Ip = "177.9.0.13"

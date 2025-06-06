@@ -9,7 +9,7 @@
 ["demo"]
 SkipAuth = true
 OpenTime = 15
-RedirectUrl = "http://app.opennhp.cn"
+RedirectUrl = "https://app.opennhp.cn"
 RedirectWithParams = false
 CookieDomain = "opennhp.cn"
 
@@ -21,18 +21,18 @@ CookieDomain = "opennhp.cn"
 # Addr.Port: destination port of the resource.
 # Addr.Protocol: whether to pass a specific protocol among "tcp", "udp", "any". "any" also includes ping traffic.
 # PortSuffix: true: fill ack field "resHost" with "{Hostname}:{Port}", false: fill ack field "resHost" with just "{Hostname}"
+# ["demo".Resources."demoServer"]
+# ACId = "testAC-1"
+# Hostname = "app.opennhp.cn"
+# Addr.Ip = "177.7.0.10"
+# Addr.Port = 80 # empty or 0 for all ports
+# Addr.Protocol = "" # "tcp/udp/any", empty for "any"
+# PortSuffix = false
+
 ["demo".Resources."demoServer"]
 ACId = "testAC-1"
 Hostname = "app.opennhp.cn"
-Addr.Ip = "172.18.0.5"
-Addr.Port = 80 # empty or 0 for all ports
-Addr.Protocol = "" # "tcp/udp/any", empty for "any"
-PortSuffix = false
-
-["demo".Resources."demoServer2"]
-ACId = "testAC-1"
-Hostname = "app.opennhp.cn"
-Addr.Ip = "172.19.0.4"
+Addr.Ip = "177.9.0.10"
 Addr.Port = 80 # empty or 0 for all ports
 Addr.Protocol = "" # "tcp/udp/any", empty for "any"
 PortSuffix = false

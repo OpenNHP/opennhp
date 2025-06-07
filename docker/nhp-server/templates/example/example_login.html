@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenNHP Demo</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f0f4f8;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            width: 640px;
+            transition: width 0.3s ease;
+        }
+
+        .container.expanded {
+            width: 800px;
+        }
+
+        h1 {
+            color: #3498db;
+            text-align: center;
+        }
+
+        .input-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #555;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        .note {
+            text-align: center;
+            margin-top: 1rem;
+            font-size: 1.1rem;
+            color: #777;
+        }
+
+        .status {
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 1rem;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .status-label {
+            font-weight: 600;
+            padding-right: 0.5rem;
+        }
+
+        .status-value {
+            font-weight: 300;
+        }
+
+        .timeout {
+            color: #e74c3c;
+        }
+
+        .success {
+            color: #2ecc71;
+        }
+
+        .language-select {
+            text-align: right;
+            margin-bottom: 1rem;
+        }
+
+        select {
+            padding: 0.25rem;
+        }
+
+        #message {
+            margin-top: 1rem;
+            font-size: 1.2rem;
+            color: #2ecc71;  
+            display: none;  
+            text-align: center;
+        }
+
+        .countdown-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            white-space: nowrap;  
+            min-width: 200px;  
+            margin-top: 1rem; /* Adjust if needed */
+        }
+
+        #countdown {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-right: 0.5rem;
+        }
+
+        #timeUnit {
+            font-size: 1.2rem;
+        }
+
+        #welcomeMessage {
+            font-size: 1.3rem;
+            margin-right: 0.5rem;
+        }
+
+        .note a {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="mainContainer">
+        <div class="language-select" id="languageSelectContainer">
+            <select id="languageSelect" onchange="changeLanguage()">
+                <option value="en">English</option>
+                <option value="zh">中文</option>
+                <option value="es">Español</option>
+            </select>
+        </div>
+        <h1 id="title">OpenNHP Demo</h1>
+        <div class="status">
+            <p class="note">
+                <span id="protectedServer">The Protected Server is</span> 
+                <a href="https://app.opennhp.cn" target="_blank">https://app.opennhp.cn</a>. 
+            </p>
+            <div class="status-item">
+                <span class="status-label" id="beforeLogin">Before Login: </span>
+                <span class="status-value timeout" id="timeoutStatus">Connection to the Protected Server should be <strong>TIMEOUT. ❌</strong></span>
+            </div>
+            <div class="status-item">
+                <span class="status-label" id="afterLogin">After Login: </span>
+                <span class="status-value success" id="successStatus">Connection to the Protected Server should be <strong>SUCCESSFUL. ✅</strong></span>
+            </div>
+        </div>     
+        <form id="loginForm" onsubmit="return nhpValidate()">
+            <div class="input-group">
+                <label for="username" id="usernameLabel">Username:</label>
+                <input type="text" id="username" name="username" value="user">
+            </div>
+            <div class="input-group">
+                <label for="password" id="passwordLabel">Password:</label>
+                <input type="password" id="password" name="password" value="password">
+            </div>
+            <button type="submit" id="loginButton">Login</button>
+        </form>
+        <div id="message">
+            <h2 id="authSuccessMessage"></h2>
+
+            <div class="message-content">
+                <span id="redirectMessage"></span> 
+                <a href="" id="redirectUrl"></a>
+            </div>
+            <div class="countdown-container">
+                <div id="welcomeMessage"></div> <!-- Welcome Message -->
+                <span id="countdown">5</span>
+                <span id="timeUnit"></span>
+            </div>
+        </div> 
+    </div>
+
+    <script>
+        const translations = {
+            en: {
+                title: "OpenNHP Demo",
+                protectedServer: "The Protected Server is",
+                scanPorts: "Scan Its Ports >>",
+                beforeLogin: "Before Login:",
+                afterLogin: "After Login:",
+                timeoutStatus: "Connection to the Protected Server should be TIMEOUT. ❌",
+                successStatus: "Connection to the Protected Server should be SUCCESSFUL. ✅",
+                usernameLabel: "Username:",
+                passwordLabel: "Password:",
+                loginButton: "Login",
+                authSuccess: "Authentication Succeeded!",
+                redirectMessage: "You can now access",
+                timeUnit: "   seconds ...",
+                welcomeMessage: "Redirecting in"
+            },
+            zh: {
+                title: "OpenNHP 演示",
+                protectedServer: "受保护的服务器是",
+                scanPorts: "扫描其端口 >>",
+                beforeLogin: "登录前：",
+                afterLogin: "登录后：",
+                timeoutStatus: "与受保护服务器的连接应为超时。❌",
+                successStatus: "与受保护服务器的连接应该成功。✅",
+                usernameLabel: "用户名：",
+                passwordLabel: "密码：",
+                loginButton: "登录",
+                authSuccess: "认证成功！",
+                redirectMessage: "您现在可以访问",
+                timeUnit: "   秒后自动跳转...",
+                welcomeMessage: ""
+            },
+            es: {
+                title: "Demostración de OpenNHP",
+                protectedServer: "El Servidor Protegido es",
+                scanPorts: "Escanear Sus Puertos >>",
+                beforeLogin: "Antes del Inicio de Sesión:",
+                afterLogin: "Después del Inicio de Sesión:",
+                timeoutStatus: "La conexión al Servidor Protegido debe ser TIEMPO DE ESPERA. ❌",
+                successStatus: "La conexión al Servidor Protegido debe ser EXITOSA. ✅",
+                usernameLabel: "Nombre de Usuario:",
+                passwordLabel: "Contraseña:",
+                loginButton: "Iniciar Sesión",
+                authSuccess: "¡Autenticación Exitosa!",
+                redirectMessage: "Ahora puedes acceder a",
+                timeUnit: "   segundo...",
+                welcomeMessage: "Saltar automáticamente después de"
+            }
+        };
+
+        function changeLanguage() {
+            const lang = document.getElementById('languageSelect').value;
+            const container = document.getElementById('mainContainer');
+            if (lang === 'es') {
+                container.classList.add('expanded');
+            } else {
+                container.classList.remove('expanded');
+            }
+            document.documentElement.lang = lang;
+            const t = translations[lang];
+
+            document.getElementById('title').textContent = t.title;
+            document.getElementById('protectedServer').textContent = t.protectedServer;
+            document.getElementById('scanPorts').textContent = t.scanPorts;
+            document.getElementById('beforeLogin').textContent = t.beforeLogin;
+            document.getElementById('afterLogin').textContent = t.afterLogin;
+            document.getElementById('timeoutStatus').textContent = t.timeoutStatus;
+            document.getElementById('successStatus').textContent = t.successStatus;
+            document.getElementById('usernameLabel').textContent = t.usernameLabel;
+            document.getElementById('passwordLabel').textContent = t.passwordLabel;
+            document.getElementById('loginButton').textContent = t.loginButton;
+        }
+
+        function nhpValidate() {
+            const user = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+            const nhpValidUrl = "/plugins/example?resid=demo&action=valid" + 
+            "&username=" + encodeURIComponent(user) + 
+            "&password=" + encodeURIComponent(password);
+            console.log(nhpValidUrl);
+
+            fetch(nhpValidUrl,{
+                credentials: "include"
+            })
+            .then(response => response.json())
+            .then(result => {
+                console.log(result);
+                const lang = document.getElementById('languageSelect').value;  
+                const t = translations[lang];  
+                const messageElement = document.getElementById("message");
+                const authSuccessMessageElement = document.getElementById("authSuccessMessage");
+                const welcomeMessageElement = document.getElementById("welcomeMessage");
+                const redirectMessageElement = document.getElementById("redirectMessage");
+                const redirectUrlElement = document.getElementById("redirectUrl");
+                const timeUnitElement = document.getElementById('timeUnit');
+
+                if (result && result.redirectUrl) {
+
+                    document.getElementById('languageSelectContainer').style.display = 'none';
+
+                    redirectUrlElement.href = result.redirectUrl;
+                    redirectUrlElement.textContent = result.redirectUrl;
+                    authSuccessMessageElement.textContent = t.authSuccess;
+                    welcomeMessageElement.textContent = t.welcomeMessage; // 添加的欢迎消息显示
+                    redirectMessageElement.textContent = t.redirectMessage;
+                    messageElement.style.display = 'block';
+                    document.getElementById("loginForm").style.display = "none"; 
+
+                    let countdown = 5;
+                    const countdownElement = document.getElementById('countdown');
+                    const intervalId = setInterval(() => {
+                        countdown -= 1;
+                        if (countdown <= 0) {
+                            clearInterval(intervalId);
+                            window.location.href = result.redirectUrl;
+                        } else {
+                            countdownElement.textContent = countdown;
+                        }
+                    }, 1000);
+                    timeUnitElement.textContent = t.timeUnit;
+
+                } else {
+                    if (result.errMsg) {
+                        alert(result.errMsg);
+                    } else {
+                        alert("Invalid username or password");
+                    }
+                }
+            })
+            .catch(error => {
+                alert(error.message);
+            });
+            return false; 
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const userLang = navigator.language || navigator.userLanguage;
+            const lang = userLang.startsWith('es') ? 'es' : (userLang.startsWith('zh') ? 'zh' : 'en');
+            document.getElementById('languageSelect').value = lang;
+            changeLanguage(); 
+        });
+    </script>
+</body>
+</html>

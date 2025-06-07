@@ -1,0 +1,20 @@
+# NHP-Agent base config
+# field with (-) does not support dynamic update
+
+# PrivateKeyBase64 (-): agent private key in base64 format.
+# DefaultCipherScheme: 0: gmsm, 1: curve25519.
+# UserId: specify the user id this agent represents.
+# OrganizationId: specify the organization id this agent represents.
+# LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.
+PrivateKeyBase64 = "bbe8HwPGsj5frUtflZywGC8l3+FN4Mm72W95o/EWW1Y="
+DefaultCipherScheme = 0
+UserId = "agent-0"
+OrganizationId = "opennhp.cn"
+LogLevel = 5
+DHPExeCMD = "..\\nhp-de\\nhp-de.exe"
+# UserData: a customized user entry for flexibility.
+# Its key-value pairs will be send to server along with knock message.
+[UserData]
+"ExampleKey0" = "StringValue"
+"ExampleKey1" = 1
+"ExampleKey2" = true

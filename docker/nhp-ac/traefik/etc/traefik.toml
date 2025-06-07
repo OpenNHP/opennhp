@@ -1,0 +1,11 @@
+[entryPoints]
+  [entryPoints.web]
+    address = ":80"
+
+[providers.file]
+  filename = "provider.toml"
+
+[log]
+  level = "TRACE"
+
+  # Js147258!

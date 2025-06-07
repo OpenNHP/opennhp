@@ -1,0 +1,17 @@
+
+[http]
+  [http.routers]
+    #
+    # hqdata-opennhp-cn
+    #
+    [http.routers.router-hqdata-opennhp-cn]
+      entryPoints = ["web"]
+      #rule = "Host(`*`)"
+      rule = "PathPrefix(`/`)"
+      service = "service-demo"
+      #tls = "true"
+      
+  [http.services]
+    [http.services.service-demo.loadBalancer]
+      [[http.services.service-demo.loadBalancer.servers]]
+        url = "http://nhp-app"

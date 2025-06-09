@@ -88,5 +88,5 @@ Members:
 ## Stress Testing
 
 ```shell
-ab -k -n 10000 -c 100 'http://local.opennhp.cn/plugins/example?resid=demo&action=valid&passcode=123456'
+ab -k -n 10000 -c 100 'https://local.opennhp.cn/plugins/example?resid=demo&action=valid&passcode=123456'
 ```

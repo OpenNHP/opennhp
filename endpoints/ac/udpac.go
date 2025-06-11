@@ -96,16 +96,26 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 
 	// load http config and turn on http server if needed
 	a.loadHttpConfig()
+	switch a.config.FilterMode {
+	case FilterMode_IPTABLES:
+		a.iptables, err = utils.NewIPTables()
+		if err != nil {
+			log.Error("iptables command not found")
+			return
+		}
 
-	a.iptables, err = utils.NewIPTables()
-	if err != nil {
-		log.Error("iptables command not found")
-		return
-	}
-
-	a.ipset, err = utils.NewIPSet(false)
-	if err != nil {
-		log.Error("ipset command not found")
+		a.ipset, err = utils.NewIPSet(false)
+		if err != nil {
+			log.Error("ipset command not found")
+			return
+		}
+	case FilterMode_EBPFXDP:
+		err = a.ebpfEngineLoad()
+		if err != nil {
+			return err
+		}
+	default:
+		log.Error("[HandleAccessControl] unsupported FilterMode: %d (expected 0=IPTABLES or 1=EBPFXDP)", a.config.FilterMode)
 		return
 	}
 
@@ -127,6 +137,21 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 
 	// load peers
 	a.loadPeers()
+
+	if a.config.FilterMode == FilterMode_EBPFXDP {
+		for _, server := range a.config.Servers {
+			ebpfHashStr := utils.EbpfRuleParams{
+				SrcIP: server.Ip,
+				DstIP: a.config.DefaultIp,
+			}
+			log.Info("server ip is %s", server.Ip)
+			err = utils.EbpfRuleAdd(2, ebpfHashStr, 31536000)
+			if err != nil {
+				log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+				continue
+			}
+		}
+	}
 
 	a.signals.stop = make(chan struct{})
 	a.signals.serverMapUpdated = make(chan struct{}, 1)
@@ -455,7 +480,9 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 	log.Info("maintainServerConnectionRoutine started")
 
 	// reset iptables before exiting
-	defer a.iptables.ResetAllInput()
+	if a.config.FilterMode == FilterMode_IPTABLES {
+		defer a.iptables.ResetAllInput()
+	}
 
 	var discoveryRoutineWg sync.WaitGroup
 	defer discoveryRoutineWg.Wait()
@@ -500,9 +527,13 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 					}
 
 					if totalFail < int32(len(discoveryFailStatusArr)) {
-						a.iptables.ResetAllInput()
+						if a.config.FilterMode == FilterMode_IPTABLES {
+							a.iptables.ResetAllInput()
+						}
 					} else {
-						a.iptables.AcceptAllInput()
+						if a.config.FilterMode == FilterMode_IPTABLES {
+							a.iptables.AcceptAllInput()
+						}
 					}
 				}
 			}
@@ -711,4 +742,8 @@ func (a *UdpAC) RemoveServerPeer(serverKey string) {
 			a.signals.serverMapUpdated <- struct{}{}
 		}
 	}
+}
+
+func (a *UdpAC) GetConfig() *Config {
+	return a.config // return  config
 }

@@ -92,7 +92,6 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 	} else {
 		artMsg = artMsgIn
 	}
-
 	// process ac operation
 	tempOpenTimeSec := TempPortOpenTime
 	// 1 sec timeout means exit defaultset access, so exit tempset too
@@ -110,12 +109,14 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 	}
 
 	// ac ipset operations
-	if a.ipset == nil {
-		log.Error("[HandleAccessControl] ipset is nil")
-		err = common.ErrACIPSetNotFound
-		artMsg.ErrCode = common.ErrACIPSetNotFound.ErrorCode()
-		artMsg.ErrMsg = err.Error()
-		return
+	if a.config.FilterMode == FilterMode_IPTABLES {
+		if a.ipset == nil {
+			log.Error("[HandleAccessControl] ipset is nil")
+			err = common.ErrACIPSetNotFound
+			artMsg.ErrCode = common.ErrACIPSetNotFound.ErrorCode()
+			artMsg.ErrMsg = err.Error()
+			return
+		}
 	}
 
 	// use ac default ip to override empty destination ip
@@ -155,12 +156,43 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 						ipHashStr = fmt.Sprintf("%s,1-65535,%s", srcAddr.Ip, dstAddr.Ip)
 					}
 
-					_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
-					if err != nil {
-						log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
-						err = common.ErrACIPSetOperationFailed
-						artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-						artMsg.ErrMsg = err.Error()
+					switch a.config.FilterMode {
+					case FilterMode_IPTABLES:
+						_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
+						if err != nil {
+							log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
+							err = common.ErrACIPSetOperationFailed
+							artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+							artMsg.ErrMsg = err.Error()
+							return
+						}
+					case FilterMode_EBPFXDP:
+						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any" {
+							ebpfHashStr := utils.EbpfRuleParams{
+								SrcIP: srcAddr.Ip,
+								DstIP: dstAddr.Ip,
+							}
+							err = utils.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
+							if err != nil {
+								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								return
+							}
+						}
+						if dstAddr.Protocol == "tcp" {
+							ebpfHashStr := utils.EbpfRuleParams{
+								SrcIP:    srcAddr.Ip,
+								DstIP:    dstAddr.Ip,
+								DstPort:  dstAddr.Port,
+								Protocol: dstAddr.Protocol,
+							}
+							err = utils.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
+							if err != nil {
+								log.Error("[EbpfRuleAdd] add ebpf tcp failed src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+								return
+							}
+						}
+					default:
+						log.Error("[HandleAccessControl] unsupported FilterMode: %d (expected 0=IPTABLES or 1=EBPFXDP)", a.config.FilterMode)
 						return
 					}
 				}
@@ -172,21 +204,8 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 						ipHashStr = fmt.Sprintf("%s,udp:1-65535,%s", srcAddr.Ip, dstAddr.Ip)
 					}
 
-					_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
-					if err != nil {
-						log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
-						err = common.ErrACIPSetOperationFailed
-						artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-						artMsg.ErrMsg = err.Error()
-						return
-					}
-				}
-
-				// for icmp ping
-				if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
-					for _, dstAddr := range dstAddrs {
-						ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", srcAddr.Ip, dstAddr.Ip)
-
+					switch a.config.FilterMode {
+					case FilterMode_IPTABLES:
 						_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 						if err != nil {
 							log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
@@ -195,31 +214,168 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							artMsg.ErrMsg = err.Error()
 							return
 						}
+					case FilterMode_EBPFXDP:
+						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any" {
+							ebpfHashStr := utils.EbpfRuleParams{
+								SrcIP: srcAddr.Ip,
+								DstIP: dstAddr.Ip,
+							}
+							err = utils.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
+							if err != nil {
+								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								return
+							}
+						}
+						if dstAddr.Protocol == "udp" {
+							ebpfHashStr := utils.EbpfRuleParams{
+								SrcIP:    srcAddr.Ip,
+								DstIP:    dstAddr.Ip,
+								DstPort:  dstAddr.Port,
+								Protocol: dstAddr.Protocol,
+							}
+							err = utils.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
+
+							if err != nil {
+								log.Error("[EbpfRuleAdd] add ebpf udp failed src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+								return
+							}
+						}
+					default:
+						log.Error("[HandleAccessControl] unsupported FilterMode: %d (expected 0=IPTABLES or 1=EBPFXDP)", a.config.FilterMode)
+						return
+					}
+				}
+
+				// for icmp ping
+				if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
+					for _, dstAddr := range dstAddrs {
+						ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", srcAddr.Ip, dstAddr.Ip)
+						switch a.config.FilterMode {
+						case FilterMode_IPTABLES:
+							_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
+							if err != nil {
+								log.Error("[HandleAccessControl] add ipset %s error: %v", ipHashStr, err)
+								err = common.ErrACIPSetOperationFailed
+								artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+								artMsg.ErrMsg = err.Error()
+								return
+							}
+						case FilterMode_EBPFXDP:
+							ebpfHashStr := utils.EbpfRuleParams{
+								SrcIP: srcAddr.Ip,
+								DstIP: dstAddr.Ip,
+							}
+							err = utils.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
+							if err != nil {
+								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								return
+							}
+						default:
+							log.Error("[HandleAccessControl] unsupported FilterMode: %d (expected 0=IPTABLES or 1=EBPFXDP)", a.config.FilterMode)
+							return
+						}
 					}
 				}
 
 				// add tempset for the adjacent 128 (25bit netmask ipv4, 121bit netmask ipv6) addresses derived from the target IP address
 				if ipPassMode == PASS_KNOCKIP_WITH_RANGE && ipNet != nil {
 					netStr := ipNet.String()
-					if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "tcp" || dstAddr.Protocol == "any" {
-						netHashStr := fmt.Sprintf("%s,%d", netStr, dstAddr.Port)
-						if dstAddr.Port == 0 {
-							netHashStr = fmt.Sprintf("%s,1-65535", netStr)
+					switch a.config.FilterMode {
+					case FilterMode_IPTABLES:
+						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "tcp" || dstAddr.Protocol == "any" {
+							netHashStr := fmt.Sprintf("%s,%d", netStr, dstAddr.Port)
+							if dstAddr.Port == 0 {
+								netHashStr = fmt.Sprintf("%s,1-65535", netStr)
+							}
+							_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
 						}
-						_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
-					}
 
-					if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "udp" || dstAddr.Protocol == "any" {
-						netHashStr := fmt.Sprintf("%s,udp:%d", netStr, dstAddr.Port)
-						if dstAddr.Port == 0 {
-							netHashStr = fmt.Sprintf("%s,udp:1-65535", netStr)
+						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "udp" || dstAddr.Protocol == "any" {
+							netHashStr := fmt.Sprintf("%s,udp:%d", netStr, dstAddr.Port)
+							if dstAddr.Port == 0 {
+								netHashStr = fmt.Sprintf("%s,udp:1-65535", netStr)
+							}
+							_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
 						}
-						_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
-					}
 
-					if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
-						netHashStr := fmt.Sprintf("%s,icmp:8/0", netStr)
-						_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+						if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
+							netHashStr := fmt.Sprintf("%s,icmp:8/0", netStr)
+							_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+						}
+
+					case FilterMode_EBPFXDP:
+						srcIp, ipnet, err := net.ParseCIDR(netStr)
+						if err != nil {
+							log.Error("[HandleAccessControl] failed to parse CIDR %s: %v", netStr, err)
+						}
+						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "tcp" || dstAddr.Protocol == "any" {
+							for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
+								srcIpStr := srcIp.String()
+								if dstAddr.Port != 0 {
+									ebpfHashStr := utils.EbpfRuleParams{
+										SrcIP:   srcIpStr,
+										DstPort: dstAddr.Port,
+									}
+									err = utils.EbpfRuleAdd(4, ebpfHashStr, tempOpenTimeSec)
+									if err != nil {
+										log.Error("[EbpfRuleAdd] add ebpf for tcp dst port src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPort, err)
+									}
+
+								} else {
+									ebpfHashStr := utils.EbpfRuleParams{
+										SrcIP:        srcIpStr,
+										DstPortStart: 1,
+										DstPortEnd:   65535,
+									}
+									err = utils.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
+									if err != nil {
+										log.Error("[EbpfRuleAdd] add ebpf src: %s  dstportstart: %d,  dstportend: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPortStart, ebpfHashStr.DstPortEnd, err)
+									}
+								}
+							}
+						}
+						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "udp" || dstAddr.Protocol == "any" {
+							for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
+								srcIpStr := srcIp.String()
+
+								if dstAddr.Port != 0 {
+									ebpfHashStr := utils.EbpfRuleParams{
+										SrcIP:   srcIpStr,
+										DstPort: dstAddr.Port,
+									}
+									err = utils.EbpfRuleAdd(4, ebpfHashStr, tempOpenTimeSec)
+									if err != nil {
+										log.Error("[EbpfRuleAdd] add ebpf for udp dst port src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPort, err)
+									}
+								} else {
+									ebpfHashStr := utils.EbpfRuleParams{
+										SrcIP:        srcIpStr,
+										DstPortStart: 1,
+										DstPortEnd:   65535,
+									}
+									err = utils.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
+									if err != nil {
+										log.Error("[EbpfRuleAdd] add ebpf src: %s  dstportstart: %d,  dstportend: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPortStart, ebpfHashStr.DstPortEnd, err)
+									}
+								}
+							}
+						}
+						if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
+							for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
+								srcIpStr := srcIp.String()
+								ebpfHashStr := utils.EbpfRuleParams{
+									SrcIP: srcIpStr,
+									DstIP: dstAddr.Ip,
+								}
+								err = utils.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
+								if err != nil {
+									log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								}
+							}
+						}
+					default:
+						log.Error("[HandleAccessControl] unsupported FilterMode: %d (expected 0=IPTABLES or 1=EBPFXDP)", a.config.FilterMode)
+						return
 					}
 				}
 			}
@@ -280,22 +436,39 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 		}
 
 		log.Debug("open temporary tcp port %s", tlocalAddr.String())
-		portHashStr := fmt.Sprintf("%s,%d", netStr, tlocalAddr.Port)
-		_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
-		if err != nil {
-			log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
-			err = common.ErrACIPSetOperationFailed
-			artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-			artMsg.ErrMsg = err.Error()
-			return
-		}
-		portHashStr = fmt.Sprintf("%s,%d", netStr1, tlocalAddr.Port)
-		_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
-		if err != nil {
-			log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
-			err = common.ErrACIPSetOperationFailed
-			artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-			artMsg.ErrMsg = err.Error()
+		switch a.config.FilterMode {
+		case FilterMode_IPTABLES:
+			portHashStr := fmt.Sprintf("%s,%d", netStr, tlocalAddr.Port)
+			_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
+
+			if err != nil {
+				log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
+				err = common.ErrACIPSetOperationFailed
+				artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+				artMsg.ErrMsg = err.Error()
+				return
+			}
+			portHashStr = fmt.Sprintf("%s,%d", netStr1, tlocalAddr.Port)
+			_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
+			if err != nil {
+				log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
+				err = common.ErrACIPSetOperationFailed
+				artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+				artMsg.ErrMsg = err.Error()
+				return
+			}
+		case FilterMode_EBPFXDP:
+			ebpfHashStr := utils.EbpfRuleParams{
+				Protocol: "tcp",
+				DstPort:  tlocalAddr.Port,
+			}
+			err = utils.EbpfRuleAdd(6, ebpfHashStr, tempOpenTimeSec)
+			if err != nil {
+				log.Error("[EbpfRuleAdd] add ebpf type 6 protocol: %s, dstport :%d, %v", ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+				return
+			}
+		default:
+			log.Error("[HandleAccessControl] unsupported FilterMode: %d (expected 0=IPTABLES or 1=EBPFXDP)", a.config.FilterMode)
 			return
 		}
 
@@ -328,25 +501,41 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 
 		log.Debug("open temporary udp port %s", tlocalAddr.String())
 		pickedPort = tlocalAddr.Port
-		portHashStr = fmt.Sprintf("%s,udp:%d", netStr, tlocalAddr.Port)
-		_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
-		if err != nil {
-			log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
-			err = common.ErrACIPSetOperationFailed
-			artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-			artMsg.ErrMsg = err.Error()
-			return
-		}
-		portHashStr = fmt.Sprintf("%s,udp:%d", netStr1, tlocalAddr.Port)
-		_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
-		if err != nil {
-			log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
-			err = common.ErrACIPSetOperationFailed
-			artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-			artMsg.ErrMsg = err.Error()
-			return
-		}
 
+		switch a.config.FilterMode {
+		case FilterMode_IPTABLES:
+			portHashStr := fmt.Sprintf("%s,udp:%d", netStr, tlocalAddr.Port)
+			_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
+			if err != nil {
+				log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
+				err = common.ErrACIPSetOperationFailed
+				artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+				artMsg.ErrMsg = err.Error()
+				return
+			}
+			portHashStr = fmt.Sprintf("%s,udp:%d", netStr1, tlocalAddr.Port)
+			_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
+			if err != nil {
+				log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
+				err = common.ErrACIPSetOperationFailed
+				artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+				artMsg.ErrMsg = err.Error()
+				return
+			}
+		case FilterMode_EBPFXDP:
+			ebpfHashStr := utils.EbpfRuleParams{
+				Protocol: "udp",
+				DstPort:  tlocalAddr.Port,
+			}
+			err = utils.EbpfRuleAdd(6, ebpfHashStr, tempOpenTimeSec)
+			if err != nil {
+				log.Error("[EbpfRuleAdd] add ebpf type 6 protocol: %s, dstport :%d, %v", ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+				return
+			}
+		default:
+			log.Error("[HandleAccessControl] unsupported FilterMode: %d (expected 0=IPTABLES or 1=EBPFXDP)", a.config.FilterMode)
+			return
+		}
 		log.Info("[HandleAccessControl] open temporary udp port on %s", tladdr.String())
 
 		tempEntry := &AccessEntry{
@@ -495,10 +684,25 @@ func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, 
 			if dstAddr.Port == 0 {
 				ipHashStr = fmt.Sprintf("%s,1-65535,%s", srcAddrIp, dstAddr.Ip)
 			}
-
-			_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
-			if err != nil {
-				log.Error("[tcpTempAccessHandler] add ipset %s error: %v", ipHashStr, err)
+			switch a.config.FilterMode {
+			case FilterMode_IPTABLES:
+				_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
+				if err != nil {
+					log.Error("[tcpTempAccessHandler] add ipset %s error: %v", ipHashStr, err)
+					return
+				}
+			case FilterMode_EBPFXDP:
+				ebpfHashStr := utils.EbpfRuleParams{
+					SrcIP: srcAddrIp,
+					DstIP: dstAddr.Ip,
+				}
+				err = utils.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
+				if err != nil {
+					log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+					return
+				}
+			default:
+				log.Error("[HandleAccessControl] unsupported FilterMode: %d (expected 0=IPTABLES or 1=EBPFXDP)", a.config.FilterMode)
 				return
 			}
 		}
@@ -508,7 +712,6 @@ func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, 
 func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs []*common.NetAddress, openTimeSec int) {
 	defer a.wg.Done()
 	defer conn.Close()
-
 	// listen to accept and handle only one incoming connection
 	startTime := time.Now()
 	deadlineTime := startTime.Add(time.Duration(timeoutSec) * time.Second)
@@ -606,18 +809,65 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 				if dstAddr.Port == 0 {
 					ipHashStr = fmt.Sprintf("%s,udp:1-65535,%s", srcAddrIp, dstAddr.Ip)
 				}
+				switch a.config.FilterMode {
+				case FilterMode_IPTABLES:
+					_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
+					if err != nil {
+						log.Error("[udpTempAccessHandler] add ipset %s error: %v", ipHashStr, err)
+						return
+					}
+				case FilterMode_EBPFXDP:
+					if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any" {
+						ebpfHashStr := utils.EbpfRuleParams{
+							SrcIP: srcAddrIp,
+							DstIP: dstAddr.Ip,
+						}
+						err = utils.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
+						if err != nil {
+							log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+							return
+						}
+					}
+					if dstAddr.Protocol == "udp" {
+						ebpfHashStr := utils.EbpfRuleParams{
+							SrcIP:    srcAddrIp,
+							DstIP:    dstAddr.Ip,
+							DstPort:  dstAddr.Port,
+							Protocol: dstAddr.Protocol,
+						}
+						err = utils.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
 
-				_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
-				if err != nil {
-					log.Error("[udpTempAccessHandler] add ipset %s error: %v", ipHashStr, err)
+						if err != nil {
+							log.Error("[EbpfRuleAdd] add ebpf udp failed src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+							return
+						}
+					}
+				default:
+					log.Error("[HandleAccessControl] unsupported FilterMode: %d (expected 0=IPTABLES or 1=EBPFXDP)", a.config.FilterMode)
 					return
 				}
 			}
-
 			// for ping
 			if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
-				ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", remoteAddr.IP.String(), dstAddr.Ip)
-				a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
+
+				switch a.config.FilterMode {
+				case FilterMode_IPTABLES:
+					ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", remoteAddr.IP.String(), dstAddr.Ip)
+					a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
+				case FilterMode_EBPFXDP:
+					ebpfHashStr := utils.EbpfRuleParams{
+						SrcIP: remoteAddr.IP.String(),
+						DstIP: dstAddr.Ip,
+					}
+					err = utils.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
+					if err != nil {
+						log.Error("[EbpfRuleAdd] add ebpf icmp src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+						return
+					}
+				default:
+					log.Error("[HandleAccessControl] unsupported FilterMode: %d (expected 0=IPTABLES or 1=EBPFXDP)", a.config.FilterMode)
+					return
+				}
 			}
 		}
 	}
@@ -631,5 +881,14 @@ func (a *UdpAC) tempConnTerminator(conn net.Conn, ctx context.Context) {
 
 	case <-ctx.Done():
 		return
+	}
+}
+
+func incrementIP(ip net.IP) {
+	for j := len(ip) - 1; j >= 0; j-- {
+		ip[j]++
+		if ip[j] > 0 {
+			break
+		}
 	}
 }

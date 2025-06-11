@@ -7,14 +7,18 @@
 # IpPassMode:
 #  0: (default) immediately pass traffic with the agent source ip,
 #  1: process pre-access to determine actual agent source ip then pass.
+# FilterMode: 
+#  0: iptables (default)
+#  1: ebpf xdp (requires Linux kernel >= 5.6 and XDP-capable network interface)
 # LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.
 # AuthServiceId (-): id for authentication and authorization service provider this AC belongs to.
 # ResourceIds (-): resource group ids that this AC protects.
-ACId = "testAC-1"
-DefaultIp = ""
-PrivateKeyBase64 = "+B0RLGbe+nknJBZ0Fjt7kCBWfSTUttbUqkGteLfIp30="
+ACId = "testAC-346"
+DefaultIp = "172.16.3.46"
+PrivateKeyBase64 = "6++hr1lJkvbCVBCbTm4OpXusFJI0wmDi/RR3WpTz3tk="
 DefaultCipherScheme = 0
 IpPassMode = 0
 LogLevel = 4
 AuthServiceId = "example"
 ResourceIds = ["demo"]
+FilterMode = 0

@@ -20,6 +20,11 @@ var (
 	errLoadConfig = fmt.Errorf("config load error")
 )
 
+const (
+	FilterMode_IPTABLES = iota // 0
+	FilterMode_EBPFXDP         // 1
+)
+
 type Config struct {
 	PrivateKeyBase64    string          `json:"privateKey"`
 	ACId                string          `json:"acId"`
@@ -30,8 +35,7 @@ type Config struct {
 	IpPassMode          int             `json:"ipPassMode"` // 0: pass the knock source IP, 1: use pre-access mode and release the access source IP
 	LogLevel            int             `json:"logLevel"`
 	DefaultCipherScheme int             `json:"defaultCipherScheme"`
-	FilterMode          string          `json:"filterMode"`
-	EbpfEngineName      string          `json:"ebpfenginename"`
+	FilterMode          int             `json:"filterMode"`
 }
 
 type HttpConfig struct {

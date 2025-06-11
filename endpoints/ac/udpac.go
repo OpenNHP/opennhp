@@ -96,11 +96,8 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 
 	// load http config and turn on http server if needed
 	a.loadHttpConfig()
-	if a.config.FilterMode == "" {
-		a.config.FilterMode = "iptables" //default to executive iptables mode
-	}
 	switch a.config.FilterMode {
-	case "iptables":
+	case FilterMode_IPTABLES:
 		a.iptables, err = utils.NewIPTables()
 		if err != nil {
 			log.Error("iptables command not found")
@@ -112,7 +109,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			log.Error("ipset command not found")
 			return
 		}
-	case "ebpfxdp":
+	case FilterMode_EBPFXDP:
 		err = a.ebpfEngineLoad()
 		if err != nil {
 			return err
@@ -141,7 +138,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	// load peers
 	a.loadPeers()
 
-	if a.config.FilterMode == "ebpfxdp" {
+	if a.config.FilterMode == FilterMode_EBPFXDP {
 		for _, server := range a.config.Servers {
 			ebpfHashStr := utils.EbpfRuleParams{
 				SrcIP: server.Ip,
@@ -483,7 +480,7 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 	log.Info("maintainServerConnectionRoutine started")
 
 	// reset iptables before exiting
-	if a.config.FilterMode == "iptables" {
+	if a.config.FilterMode == FilterMode_IPTABLES {
 		defer a.iptables.ResetAllInput()
 	}
 
@@ -530,11 +527,11 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 					}
 
 					if totalFail < int32(len(discoveryFailStatusArr)) {
-						if a.config.FilterMode == "iptables" {
+						if a.config.FilterMode == FilterMode_IPTABLES {
 							a.iptables.ResetAllInput()
 						}
 					} else {
-						if a.config.FilterMode == "iptables" {
+						if a.config.FilterMode == FilterMode_IPTABLES {
 							a.iptables.AcceptAllInput()
 						}
 					}

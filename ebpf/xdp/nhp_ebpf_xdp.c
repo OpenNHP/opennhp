@@ -274,27 +274,16 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
                 //Lookup icmpwhitelist entry
                 struct icmpwhitelist_value *iw_val = bpf_map_lookup_elem(&icmpwhitelist, &icmpkey);
                 if (!iw_val) {
-                    bpf_printk("icmpnotWhitelisted src IP: 0x%08x, dst IP: 0x%08x", icmpkey.src_ip, icmpkey.dst_ip);
-                    print_ip(bpf_ntohl(icmpkey.src_ip));
-                    print_ip(bpf_ntohl(icmpkey.dst_ip));
                     return XDP_DROP;
                 }   
                 __u64 now = bpf_ktime_get_ns();
                 // Check if whitelist entry has expired
                 if (iw_val->expire_time < now) {
-                    bpf_printk("Time check: now=%llu expire=%llu delta=%lld", 
-                        bpf_ktime_get_ns(), 
-                        iw_val->expire_time,
-                        iw_val->expire_time - bpf_ktime_get_ns());
-
                     bpf_map_delete_elem(&icmpwhitelist, &icmpkey);
                     return XDP_DROP;
                 }
                 // Check if source IP is icmpwhitelisted and allowed
                 if (iw_val->allowed == 1) {
-                    bpf_printk("icmpWhitelisted src IP: 0x%08x, dst IP: 0x%08x", icmpkey.src_ip, icmpkey.dst_ip);
-                    print_ip(bpf_ntohl(icmpkey.src_ip));
-                    print_ip(bpf_ntohl(icmpkey.dst_ip));
                     return XDP_PASS;
                 }
             }  else {
@@ -318,11 +307,6 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         new_val.tx_packets++;
         new_val.last_timestamp = bpf_ktime_get_ns();
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_EXIST);
-
-        bpf_printk("direct--- src : 0x%08x, dst: 0x%08x, port: %d, protocol: %d", 
-            iph->saddr, iph->daddr, bpf_htons(ct_key.dport), (int)iph->protocol);
-        print_ip(bpf_ntohl(iph->saddr));
-        print_ip(bpf_ntohl(iph->daddr));
         return XDP_PASS;
     }
 
@@ -339,11 +323,6 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         new_val.last_timestamp = bpf_ktime_get_ns();
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_EXIST);
         reverseTuple(&ct_key);
-
-        bpf_printk("opposite----src : 0x%08x, dst: 0x%08x, port: %d, protocol: %d", 
-            iph->saddr, iph->daddr, bpf_htons(ct_key.dport), (int)iph->protocol);
-        print_ip(bpf_ntohl(iph->saddr));
-        print_ip(bpf_ntohl(iph->daddr));
         return XDP_PASS;
     }
     reverseTuple(&ct_key);
@@ -392,51 +371,26 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     __u64 now = bpf_ktime_get_ns();
     // Check if whitelist entry has expired
     if (w_val && (w_val->expire_time < now)) {
-        bpf_printk("Time check: now=%llu expire=%llu delta=%lld", 
-            bpf_ktime_get_ns(), 
-            w_val->expire_time,
-            w_val->expire_time - bpf_ktime_get_ns());
-
         bpf_map_delete_elem(&whitelist, &key);
         return XDP_DROP;
     }
     // Check if sdwhitelist entry has expired
     if (sd_val && (sd_val->expire_time < now)) {
-        bpf_printk("Time check: now=%llu expire=%llu delta=%lld", 
-            bpf_ktime_get_ns(), 
-            sd_val->expire_time,
-            sd_val->expire_time - bpf_ktime_get_ns());
-
         bpf_map_delete_elem(&sdwhitelist, &sdkey);
         return XDP_DROP;
     }
     // Check if src_port_list entry has expired
     if (sp_val && (sp_val->expire_time < now)) {
-        bpf_printk("Time check: now=%llu expire=%llu delta=%lld", 
-            bpf_ktime_get_ns(), 
-            sp_val->expire_time,
-            sp_val->expire_time - bpf_ktime_get_ns());
-
         bpf_map_delete_elem(&src_port_list, &spkey);
         return XDP_DROP;
     }
     // Check if port_list entry has expired
     if (pl_val && (pl_val->expire_time < now)) {
-        bpf_printk("Time check: now=%llu expire=%llu delta=%lld", 
-            bpf_ktime_get_ns(), 
-            pl_val->expire_time,
-            pl_val->expire_time - bpf_ktime_get_ns());
-
         bpf_map_delete_elem(&port_list, &pl_key);
         return XDP_DROP;
     }
     // Check if protocol_port entry has expired
     if (pp_val && (pp_val->expire_time < now)) {
-        bpf_printk("Time check: now=%llu expire=%llu delta=%lld", 
-            bpf_ktime_get_ns(), 
-            pp_val->expire_time,
-            pp_val->expire_time - bpf_ktime_get_ns());
-
         bpf_map_delete_elem(&protocol_port, &pp_key);
         return XDP_DROP;
     }
@@ -453,10 +407,6 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             .tx_packets = 0,
         };
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
-        bpf_printk("Whitelisted src : 0x%08x, dst: 0x%08x, port: %d, protocol: %d", 
-            key.src_ip, key.dst_ip, bpf_htons(key.dst_port), (int)key.protocol);
-        print_ip(bpf_ntohl(iph->saddr));
-        print_ip(bpf_ntohl(iph->daddr));
         return XDP_PASS;
     }
     // Check if sdwhitelist entry allows this connection
@@ -471,10 +421,6 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             .tx_packets = 0,
         };
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
-        bpf_printk("Whitelisted src : 0x%08x, dst: 0x%08x, port: %d, protocol: %d", 
-            iph->saddr, iph->daddr, bpf_htons(ct_key.dport), (int)iph->protocol);
-        print_ip(bpf_ntohl(iph->saddr));
-        print_ip(bpf_ntohl(iph->daddr));
         return XDP_PASS;
     }
     // Check if src_port_list entry allows this connection
@@ -489,10 +435,6 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             .tx_packets = 0,
         };
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
-        bpf_printk("Whitelisted src : 0x%08x, dst: 0x%08x, port: %d, protocol: %d", 
-            iph->saddr, iph->daddr, bpf_htons(ct_key.dport), (int)iph->protocol);
-        print_ip(bpf_ntohl(iph->saddr));
-        print_ip(bpf_ntohl(iph->daddr));
         return XDP_PASS;
     }
     // Check if port_list entry allows this connection
@@ -507,10 +449,6 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             .tx_packets = 0,
         };
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
-        bpf_printk("Whitelisted src : 0x%08x, dst: 0x%08x, port: %d, protocol: %d", 
-            iph->saddr, iph->daddr, bpf_htons(ct_key.dport), (int)iph->protocol);
-        print_ip(bpf_ntohl(iph->saddr));
-        print_ip(bpf_ntohl(iph->daddr));
         return XDP_PASS;
     }
     // Check if protocol_port entry allows this connection
@@ -525,18 +463,10 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             .tx_packets = 0,
         };
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
-        bpf_printk("Whitelisted src : 0x%08x, dst: 0x%08x, port: %d, protocol: %d", 
-            iph->saddr, iph->daddr, bpf_htons(ct_key.dport), (int)iph->protocol);
-        print_ip(bpf_ntohl(iph->saddr));
-        print_ip(bpf_ntohl(iph->daddr));
         return XDP_PASS;
     }
 
-    bpf_printk("Deny: src : 0x%08x, dst: 0x%08x, port: %d, protocol: %d", 
-        iph->saddr, iph->daddr, bpf_htons(ct_key.dport), (int)iph->protocol);
-    print_ip(bpf_ntohl(iph->saddr));
-    print_ip(bpf_ntohl(iph->daddr));
     return XDP_DROP;
 }
 
-char _license[] SEC("license") = "GPL";
+char _license[] SEC("license") = "Dual BSD/GPL";

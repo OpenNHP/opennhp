@@ -74,7 +74,7 @@ func runApp() error {
 	// react to terminate signals
 	termCh := make(chan os.Signal, 1)
 	signal.Notify(termCh, syscall.SIGTERM, os.Interrupt, syscall.SIGABRT)
-	if cfg.FilterMode == "ebpfxdp" {
+	if cfg.FilterMode == ac.FilterMode_EBPFXDP {
 		defer d.CleanupBPFFiles()
 	}
 	// block until terminated

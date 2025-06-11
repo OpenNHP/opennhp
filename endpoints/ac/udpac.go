@@ -115,7 +115,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			return err
 		}
 	default:
-		log.Error("[Start] unsupported FilterMode:", a.config.FilterMode)
+		log.Error("[HandleAccessControl] unsupported FilterMode: %d (expected 0=IPTABLES or 1=EBPFXDP)", a.config.FilterMode)
 		return
 	}
 

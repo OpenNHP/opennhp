@@ -20,7 +20,7 @@ const (
 	NHP_SERVER
 	NHP_AC
 	NHP_RELAY
-	NHP_DE
+	NHP_DB
 )
 
 type DeviceOptions struct {
@@ -41,7 +41,7 @@ func defaultDeviceOptions(t int) (option DeviceOptions) {
 	switch t {
 	case NHP_AGENT:
 	case NHP_SERVER:
-	case NHP_DE:
+	case NHP_DB:
 	case NHP_AC:
 		// NHP_AC does not validate, nor store any agent peer. Related message: NHP-ACC (agent-ac pre-access)
 		option.DisableAgentPeerValidation = true

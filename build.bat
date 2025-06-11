@@ -40,11 +40,11 @@ IF %ERRORLEVEL% NEQ 0 goto :exit
 if not exist ..\release\nhp-server\etc mkdir ..\release\nhp-server\etc
 copy  server\main\etc\*.* ..\release\nhp-server\etc
 
-:de
-go build -trimpath -ldflags %LD_FLAGS% -v -o ..\release\nhp-de\nhp-de.exe de\main\main.go
+:db
+go build -trimpath -ldflags %LD_FLAGS% -v -o ..\release\nhp-db\nhp-db.exe db\main\main.go
 IF %ERRORLEVEL% NEQ 0 goto :exit
-if not exist ..\release\nhp-de\etc mkdir ..\release\nhp-de\etc
-copy  de\main\etc\*.* ..\release\nhp-de\etc
+if not exist ..\release\nhp-db\etc mkdir ..\release\nhp-db\etc
+copy  db\main\etc\*.* ..\release\nhp-db\etc
 
 :agentsdk
 go build -trimpath -buildmode=c-shared -ldflags %LD_FLAGS% -v -o ..\release\nhp-agent\nhp-agent.dll agent\main\main.go agent\main\export.go

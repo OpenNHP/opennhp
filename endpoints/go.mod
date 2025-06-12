@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.24.2
 
 require (
-	github.com/OpenNHP/opennhp/nhp v0.5.0
+	github.com/OpenNHP/opennhp/nhp v0.6.0
 	github.com/cilium/ebpf v0.18.0
 	github.com/emmansun/gmsm v0.24.1
 	github.com/fsnotify/fsnotify v1.8.0
@@ -65,4 +65,4 @@ require (
 	gorm.io/gorm v1.25.5 // indirect
 )
 
-replace github.com/OpenNHP/opennhp/nhp v0.5.0 => ../nhp
+replace github.com/OpenNHP/opennhp/nhp v0.6.0 => ../nhp

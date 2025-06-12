@@ -1,5 +1,3 @@
-//go:build linux
-
 package utils
 
 import (
@@ -9,8 +7,8 @@ import (
 	"strconv"
 
 	"github.com/OpenNHP/opennhp/nhp/log"
+	ebpflocal "github.com/OpenNHP/opennhp/nhp/utils/ebpf"
 	"github.com/cilium/ebpf"
-	"golang.org/x/sys/unix"
 )
 
 type WhitelistKey struct {
@@ -54,15 +52,6 @@ type portListKey struct {
 	DstPortEnd   uint16 `ebpf:"dst_port_end"`
 }
 
-// Obtain the system startup time
-func getBootTimeNanos() (uint64, error) {
-	var ts unix.Timespec
-	if err := unix.ClockGettime(unix.CLOCK_BOOTTIME, &ts); err != nil {
-		return 0, fmt.Errorf("clock_gettime failed: %v", err)
-	}
-	return uint64(ts.Sec)*1e9 + uint64(ts.Nsec), nil
-}
-
 // Parse the IP address
 func parseIP(ipStr string) (uint32, error) {
 	ip := net.ParseIP(ipStr)
@@ -89,7 +78,7 @@ func parsePort(portStr string) (uint16, error) {
 
 // function for update whitelist map
 func WhitelistRule(whitelistMap *ebpf.Map, srcIP, dstIP uint32, dstPort uint16, protocol uint8, ttlSec uint64) error {
-	now, err := getBootTimeNanos()
+	now, err := ebpflocal.GetBootTimeNanos()
 	if err != nil {
 		return err
 	}
@@ -120,7 +109,7 @@ func WhitelistRule(whitelistMap *ebpf.Map, srcIP, dstIP uint32, dstPort uint16, 
 
 // function for update sdwhitelist map
 func WhitelistRuleNoProtocol(whitelistMap *ebpf.Map, srcIP, dstIP uint32, ttlSec uint64) error {
-	now, err := getBootTimeNanos()
+	now, err := ebpflocal.GetBootTimeNanos()
 	if err != nil {
 		return err
 	}
@@ -147,7 +136,7 @@ func WhitelistRuleNoProtocol(whitelistMap *ebpf.Map, srcIP, dstIP uint32, ttlSec
 
 // function for update src_port_list map
 func WhitelistPortRule(whitelistMap *ebpf.Map, srcIP uint32, dstPort int, ttlSec uint64) error {
-	now, err := getBootTimeNanos()
+	now, err := ebpflocal.GetBootTimeNanos()
 	if err != nil {
 		return err
 	}
@@ -262,7 +251,7 @@ func AddEbpfRuleForSrcDestPort(srcIPStr string, dstPort int, ttlSec uint64) erro
 
 // function for update icmpwhitelist map
 func icmpWhitelistRule(whitelistMap *ebpf.Map, srcIP, dstIP uint32, ttlSec uint64) error {
-	now, err := getBootTimeNanos()
+	now, err := ebpflocal.GetBootTimeNanos()
 	if err != nil {
 		return err
 	}
@@ -417,7 +406,7 @@ func EbpfRuleAdd(mapType int, params EbpfRuleParams, TtlSec int) error {
 
 // function for update port_list map
 func WhitelistPortListRangeRule(whitelistMap *ebpf.Map, srcIP uint32, dstPortStart, dstPortEnd int, ttlSec uint64) error {
-	now, err := getBootTimeNanos()
+	now, err := ebpflocal.GetBootTimeNanos()
 	if err != nil {
 		return err
 	}
@@ -481,7 +470,7 @@ func AddEbpfRuleForSrcDestPortList(srcIPStr string, dstPortStart, dstPortEnd int
 
 // function for update protocol_port map
 func WhitelistProtocolPortRule(whitelistMap *ebpf.Map, dstPort uint16, protocol uint8, ttlSec uint64) error {
-	now, err := getBootTimeNanos()
+	now, err := ebpflocal.GetBootTimeNanos()
 	if err != nil {
 		return err
 	}

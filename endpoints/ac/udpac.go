@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	ebpflocal "github.com/OpenNHP/opennhp/endpoints/ac/ebpf"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -110,7 +111,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			return
 		}
 	case FilterMode_EBPFXDP:
-		err = a.ebpfEngineLoad()
+		err = ebpflocal.EbpfEngineLoad()
 		if err != nil {
 			return err
 		}

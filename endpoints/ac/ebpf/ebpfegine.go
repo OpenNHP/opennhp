@@ -1,6 +1,6 @@
 //go:build linux
 
-package ac
+package ebpf
 
 import (
 	// "log"
@@ -13,7 +13,6 @@ import (
 	"regexp"
 
 	"github.com/OpenNHP/opennhp/nhp/log"
-	"github.com/OpenNHP/opennhp/nhp/version"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
@@ -32,15 +31,8 @@ type bpfObjects struct {
 
 var xdpLink link.Link
 
-func (a *UdpAC) ebpfEngineLoad() error {
-	log.Info("=== NHP-AC Ebpf Engine %s started   ===", version.Version)
-	err := a.loadBaseConfig()
-	if err != nil {
-		log.Error("Failed to loadBaseConfig for ac")
-		return err
-	}
-	//Clean up residual eBPF files from the previous run
-	a.CleanupBPFFiles()
+func EbpfEngineLoad() error {
+	CleanupBPFFiles()
 	if err := rlimit.RemoveMemlock(); err != nil {
 		log.Error("Failed to remove memlock limit")
 	}
@@ -120,7 +112,7 @@ func getDefaultRouteInterface() (string, error) {
 }
 
 // clean eBPF map file
-func (a *UdpAC) CleanupBPFFiles() {
+func CleanupBPFFiles() {
 	bpfFiles := []string{
 		"/sys/fs/bpf/xdp_white_prog",
 		"/sys/fs/bpf/conn_track",

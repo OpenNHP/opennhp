@@ -8,7 +8,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func GetBootTimeNanos() (uint64, error) {
+func getBootTimeNanos() (uint64, error) {
 	var ts unix.Timespec
 	if err := unix.ClockGettime(unix.CLOCK_BOOTTIME, &ts); err != nil {
 		return 0, fmt.Errorf("clock_gettime failed: %v", err)

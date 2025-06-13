@@ -1,4 +1,4 @@
-package utils
+package ebpf
 
 import (
 	"encoding/binary"
@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"github.com/OpenNHP/opennhp/nhp/log"
-	ebpflocal "github.com/OpenNHP/opennhp/nhp/utils/ebpf"
 	"github.com/cilium/ebpf"
 )
 
@@ -78,7 +77,7 @@ func parsePort(portStr string) (uint16, error) {
 
 // function for update whitelist map
 func WhitelistRule(whitelistMap *ebpf.Map, srcIP, dstIP uint32, dstPort uint16, protocol uint8, ttlSec uint64) error {
-	now, err := ebpflocal.GetBootTimeNanos()
+	now, err := getBootTimeNanos()
 	if err != nil {
 		return err
 	}
@@ -109,7 +108,7 @@ func WhitelistRule(whitelistMap *ebpf.Map, srcIP, dstIP uint32, dstPort uint16, 
 
 // function for update sdwhitelist map
 func WhitelistRuleNoProtocol(whitelistMap *ebpf.Map, srcIP, dstIP uint32, ttlSec uint64) error {
-	now, err := ebpflocal.GetBootTimeNanos()
+	now, err := getBootTimeNanos()
 	if err != nil {
 		return err
 	}
@@ -136,7 +135,7 @@ func WhitelistRuleNoProtocol(whitelistMap *ebpf.Map, srcIP, dstIP uint32, ttlSec
 
 // function for update src_port_list map
 func WhitelistPortRule(whitelistMap *ebpf.Map, srcIP uint32, dstPort int, ttlSec uint64) error {
-	now, err := ebpflocal.GetBootTimeNanos()
+	now, err := getBootTimeNanos()
 	if err != nil {
 		return err
 	}
@@ -251,7 +250,7 @@ func AddEbpfRuleForSrcDestPort(srcIPStr string, dstPort int, ttlSec uint64) erro
 
 // function for update icmpwhitelist map
 func icmpWhitelistRule(whitelistMap *ebpf.Map, srcIP, dstIP uint32, ttlSec uint64) error {
-	now, err := ebpflocal.GetBootTimeNanos()
+	now, err := getBootTimeNanos()
 	if err != nil {
 		return err
 	}
@@ -406,7 +405,7 @@ func EbpfRuleAdd(mapType int, params EbpfRuleParams, TtlSec int) error {
 
 // function for update port_list map
 func WhitelistPortListRangeRule(whitelistMap *ebpf.Map, srcIP uint32, dstPortStart, dstPortEnd int, ttlSec uint64) error {
-	now, err := ebpflocal.GetBootTimeNanos()
+	now, err := getBootTimeNanos()
 	if err != nil {
 		return err
 	}
@@ -470,7 +469,7 @@ func AddEbpfRuleForSrcDestPortList(srcIPStr string, dstPortStart, dstPortEnd int
 
 // function for update protocol_port map
 func WhitelistProtocolPortRule(whitelistMap *ebpf.Map, dstPort uint16, protocol uint8, ttlSec uint64) error {
-	now, err := ebpflocal.GetBootTimeNanos()
+	now, err := getBootTimeNanos()
 	if err != nil {
 		return err
 	}

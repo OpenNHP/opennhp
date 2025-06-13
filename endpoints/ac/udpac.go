@@ -15,6 +15,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
+	"github.com/OpenNHP/opennhp/nhp/utils/ebpf"
 	"github.com/OpenNHP/opennhp/nhp/version"
 )
 
@@ -141,12 +142,12 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 
 	if a.config.FilterMode == FilterMode_EBPFXDP {
 		for _, server := range a.config.Servers {
-			ebpfHashStr := utils.EbpfRuleParams{
+			ebpfHashStr := ebpf.EbpfRuleParams{
 				SrcIP: server.Ip,
 				DstIP: a.config.DefaultIp,
 			}
 			log.Info("server ip is %s", server.Ip)
-			err = utils.EbpfRuleAdd(2, ebpfHashStr, 31536000)
+			err = ebpf.EbpfRuleAdd(2, ebpfHashStr, 31536000)
 			if err != nil {
 				log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 				continue

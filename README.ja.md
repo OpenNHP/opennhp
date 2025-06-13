@@ -139,7 +139,7 @@ OpenNHPは[Apache 2.0ライセンス](LICENSE)の下でリリースされてい�
 
 - [ソフトウェア定義境界（SDP）仕様 v2.0](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2)。Jason Garbis、Juanita Koilpillai、Junaid Islam、Bob Flores、Daniel Bailey、Benfeng Chen、Eitan Bremler、Michael Roza、Ahmed Refaey Hussein。[*クラウドセキュリティアライアンス（CSA）*](https://cloudsecurityalliance.org/)。2022年3月。
 - [AHAC：高度なネットワーク隠蔽アクセス制御フレームワーク](https://www.mdpi.com/2076-3417/14/13/5593)。Mudi Xu、Benfeng Chen、Zhizhong Tan、Shan Chen、Lei Wang、Yan Liu、Tai Io San、Sou Wang Fong、Wenyong Wang、Jing Feng。*応用科学ジャーナル*。2024年6月。
-- [STALE ：電子メールと ECDH 鍵交換を活用したスケーラブルでセキュアなクロスボーダー認証スキーム](https://www.mdpi.com/2079-9292/14/12/2399) Zhizhong Tan， Mudi Xu， Benfeng Chen， Anyu Wang， Shuo Zhang， Yan Liu， Jiexin Zheng， Kevin Qi Zhang， and Wenyong Wang.エレクトロニクス。2025 年 6 月。
+- [STALE ：電子メールと ECDH 鍵交換を活用したスケーラブルでセキュアなクロスボーダー認証スキーム](https://www.mdpi.com/2079-9292/14/12/2399) Zhizhong Tan， Mudi Xu， Benfeng Chen， Anyu Wang， Shuo Zhang， Yan Liu， Jiexin Zheng， Kevin Qi Zhang， and Wenyong Wang.*電子ジャーナル*。2025 年 6 月。
 - ノイズプロトコルフレームワーク。https://noiseprotocol.org/
 - 脆弱性管理フレームワークプロジェクト。https://phoenix.security/web-vuln-management/
 

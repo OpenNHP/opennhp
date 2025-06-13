@@ -204,7 +204,7 @@ Pour plus de documentation détaillée, veuillez visiter notre [Documentation Of
 
 - [Spécification du Périmètre Défini par Logiciel (SDP) v2.0](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2). Jason Garbis, Juanita Koilpillai, Junaid lslam, Bob Flores, Daniel Bailey, Benfeng Chen, Eitan Bremler, Michael Roza, Ahmed Refaey Hussein. [*Cloud Security Alliance (CSA)*](https://cloudsecurityalliance.org/). Mar 2022.
 - [AHAC : Cadre Avancé de Contrôle d'Accès Caché au Réseau](https://www.mdpi.com/2076-3417/14/13/5593). Mudi Xu, Benfeng Chen, Zhizhong Tan, Shan Chen, Lei Wang, Yan Liu, Tai Io San, Sou Wang Fong, Wenyong Wang, et Jing Feng. *Journal des Sciences Appliquées*. Juin 2024.
-- [STALE : Un schéma d'authentification transfrontalière évolutif et sécurisé tirant parti du courrier électronique et de l'échange de clés ECDH](https://www.mdpi.com/2079-9292/14/12/2399) Jiexin Zheng, Mudi Xu, Jianqing Li, Benfeng Chen, Zhizhong Tan, Anyu Wang, Shuo Zhang, Yan Liu, Kevin Qi Zhang, Lirong Zheng, and Wenyong Wang. *électronique*. Juin 2025.
+- [STALE : Un schéma d'authentification transfrontalière évolutif et sécurisé tirant parti du courrier électronique et de l'échange de clés ECDH](https://www.mdpi.com/2079-9292/14/12/2399) Jiexin Zheng, Mudi Xu, Jianqing Li, Benfeng Chen, Zhizhong Tan, Anyu Wang, Shuo Zhang, Yan Liu, Kevin Qi Zhang, Lirong Zheng, et Wenyong Wang. *électronique*. Juin 2025.
 - Noise Protocol Framework. https://noiseprotocol.org/
 - Projet de Cadre de Gestion des Vulnérabilités. https://phoenix.security/web-vuln-management/
 

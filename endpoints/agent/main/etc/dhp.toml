@@ -1,0 +1,6 @@
+# Configuration that is related to data object hiding protocol in agent side.
+
+# TEEPrivateKeyBase64: base64 encoded private key of TEE (Trusted Execution Environment).
+# DHPExeCMD: the path to the DHP data broker executable file.
+TEEPrivateKeyBase64 = "j20JfF3rjoRtz2m+KP+agYjDBPdQwC9Dwfcasn83yAQ="
+DHPExeCMD = "..\\nhp-db\\nhp-db.exe"

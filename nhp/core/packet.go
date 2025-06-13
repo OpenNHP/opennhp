@@ -27,12 +27,16 @@ const (
 	NHP_ACC        // agent sends to ac/resource for actual ip access
 	NHP_EXT        // agent requests immediate disconnection
 	//DHP
-	NHP_DRG //DE sends a message to register a data object file to the NHP Server
-	NHP_DAK //NHP-Server sends a result of the NHP_DRG registration request to the DE.
+	NHP_DRG //DB sends a message to register a data object file to the NHP Server
+	NHP_DAK //NHP-Server sends a result of the NHP_DRG registration request to the DB.
 	NHP_DAR //NHP Agent sends messages to get access to the file and then work with it.
 	NHP_DAG //The NHP Server sends  the authorization status of the data object to NHP Agent.
 	NHP_DPC //The NHP Server sends a policy validation challenge to the NHP Agent
 	NHP_DPV //The NHP Agent sends the policy validation proof to the NHP Server.
+	NHP_DWR // The NHP Server sends a request to the NHP DB to get the wrapping of the data private key
+	NHP_DWA //The NHP DB sends the data private key to the NHP Server
+	NHP_DOL //DB sends online status to server
+	NHP_DBA //server send ack to db after receiving db's online status
 )
 
 var nhpHeaderTypeStrings []string = []string{
@@ -53,12 +57,16 @@ var nhpHeaderTypeStrings []string = []string{
 	"NHP-RAK", // server sends back ack when agent registers correctly
 	"NHP-ACC", // agent sends to ac/resource for actual ip access
 	"NHP-EXT", // agent requests immediate disconnection
-	"NHP_DRG", //DE sends a message to register a data object file to the NHP Server
-	"NHP_DAK", //NHP-Server sends a result of the NHP_DRG registration request to the DE.
+	"NHP_DRG", //DB sends a message to register a data object file to the NHP Server
+	"NHP_DAK", //NHP-Server sends a result of the NHP_DRG registration request to the DB.
 	"NHP_DAR", //NHP Agent sends messages to get access to the file and then work with it.
 	"NHP_DAG", //The NHP Server sends  the authorization status of the data object to NHP Agent.
 	"NHP_DPC", //The NHP Server sends a policy validation challenge to the NHP Agent
 	"NHP_DPV", //The NHP Agent sends the policy validation proof to the NHP Server.
+	"NHP_DWR", //The NHP Server sends a request to the NHP DB to get the wrapping of the data private key
+	"NHP_DWA", //The NHP DB sends the data private key to the NHP Server
+	"NHP_DOL", //DB sends online status to server
+	"NHP_DBA", //server send ack to db after receiving db's online status
 }
 
 func HeaderTypeToString(t int) string {
@@ -72,7 +80,7 @@ func HeaderTypeToDeviceType(t int) int {
 	switch t {
 	case NHP_KNK, NHP_LST, NHP_RKN, NHP_OTP, NHP_REG, NHP_ACC, NHP_EXT, NHP_DAR:
 		return NHP_AGENT
-	case NHP_ACK, NHP_AOP, NHP_LRT, NHP_COK, NHP_AAK, NHP_RAK, NHP_DAK, NHP_DAG:
+	case NHP_ACK, NHP_AOP, NHP_LRT, NHP_COK, NHP_AAK, NHP_RAK, NHP_DAK, NHP_DAG, NHP_DBA, NHP_DWR:
 		return NHP_SERVER
 
 	case NHP_AOL, NHP_ART:
@@ -80,8 +88,8 @@ func HeaderTypeToDeviceType(t int) int {
 
 	case NHP_RLY:
 		return NHP_RELAY
-	case NHP_DRG:
-		return NHP_DE
+	case NHP_DRG, NHP_DOL, NHP_DWA:
+		return NHP_DB
 	}
 
 	return NHP_NO_DEVICE
@@ -175,7 +183,7 @@ func (d *Device) CheckRecvHeaderType(t int) bool {
 		}
 	case NHP_SERVER:
 		switch t {
-		case NHP_REG, NHP_KNK, NHP_LST, NHP_RKN, NHP_EXT, NHP_ART, NHP_RLY, NHP_AOL, NHP_OTP, NHP_DRG, NHP_DAR:
+		case NHP_REG, NHP_KNK, NHP_LST, NHP_RKN, NHP_EXT, NHP_ART, NHP_RLY, NHP_AOL, NHP_OTP, NHP_DRG, NHP_DAR, NHP_DOL, NHP_DWA:
 			return true
 		}
 	case NHP_AC:
@@ -189,9 +197,9 @@ func (d *Device) CheckRecvHeaderType(t int) bool {
 			return true
 		}
 
-	case NHP_DE:
+	case NHP_DB:
 		switch t {
-		case NHP_DRG, NHP_DAG, NHP_DAK, NHP_DPC, NHP_DPV:
+		case NHP_DRG, NHP_DAG, NHP_DAK, NHP_DPC, NHP_DPV, NHP_DBA, NHP_DWR:
 			return true
 		}
 	}

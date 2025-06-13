@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -55,6 +56,9 @@ type UdpServer struct {
 	acPeerMapMutex sync.Mutex
 	acPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
+	dbConnectionMapMutex sync.Mutex
+	dbConnectionMap      map[string]*DBConn // ac connection is indexed by remote IP address
+
 	tokenStoreMutex sync.Mutex
 	tokenStore      TokenStore
 
@@ -82,9 +86,9 @@ type UdpServer struct {
 	recvMsgCh <-chan *core.PacketParserData
 	sendMsgCh chan *core.MsgData
 
-	//NHP-DE
-	dePeerMapMutex sync.Mutex
-	dePeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
+	//NHP-DB
+	dbPeerMapMutex sync.Mutex
+	dbPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 }
 
 type BlockAddr struct {
@@ -95,6 +99,7 @@ type BlockAddr struct {
 type UdpConn struct {
 	ConnData       *core.ConnectionData
 	isACConnection bool // Immutable. Don't change it after creation. Conn object is also stored in acConnectionMap which is indexed by ACId
+	isDBConnection bool // Immutable. Don't change it after creation. Conn object is also stored in dbConnectionMap which is indexed by DBId
 }
 
 type ACConn struct {
@@ -104,6 +109,13 @@ type ACConn struct {
 	ACId           string
 	ServiceId      string
 	Apps           []string
+}
+
+type DBConn struct {
+	ConnData       *core.ConnectionData
+	DBPeer         *core.UdpPeer
+	DBCipherScheme int
+	DBId           string
 }
 
 func (c *UdpConn) Close() {
@@ -197,6 +209,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 
 	s.remoteConnectionMap = make(map[string]*UdpConn)
 	s.acConnectionMap = make(map[string]*ACConn)
+	s.dbConnectionMap = make(map[string]*DBConn)
 	s.tokenStore = make(TokenStore)
 	s.blockAddrMap = make(map[string]*BlockAddr)
 	s.signals.stop = make(chan struct{})
@@ -358,8 +371,10 @@ func (s *UdpServer) recvPacketRoutine() {
 			s.remoteConnectionMapMutex.Unlock()
 
 			isACConn := pkt.HeaderType == core.NHP_AOL
+			isDBConn := pkt.HeaderType == core.NHP_DOL
 			conn = &UdpConn{
 				isACConnection: isACConn,
+				isDBConnection: isDBConn,
 			}
 			// setup new routine for connection
 			conn.ConnData = &core.ConnectionData{
@@ -381,6 +396,10 @@ func (s *UdpServer) recvPacketRoutine() {
 			if conn.isACConnection {
 				conn.ConnData.TimeoutMs = DefaultACConnectionTimeoutMs
 				log.Debug("Received new ac connection from %s", addrStr)
+			}
+			if conn.isDBConnection {
+				conn.ConnData.TimeoutMs = DefaultDBConnectionTimeoutMs
+				log.Debug("Received new db connection from %s", addrStr)
 			}
 			s.remoteConnectionMapMutex.Lock()
 			s.remoteConnectionMap[addrStr] = conn
@@ -422,6 +441,19 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			}
 			delete(s.acConnectionMap, acToDelete)
 			s.acConnectionMapMutex.Unlock()
+		}
+
+		if conn.isDBConnection {
+			var dbToDelete string
+			s.dbConnectionMapMutex.Lock()
+			for dbId, dbConn := range s.dbConnectionMap {
+				if dbConn.ConnData.Equal(conn.ConnData) {
+					dbToDelete = dbId
+					break
+				}
+			}
+			delete(s.dbConnectionMap, dbToDelete)
+			s.dbConnectionMapMutex.Unlock()
 		}
 
 		// remove the udp conn from remoteConnectionMap
@@ -610,6 +642,9 @@ func (s *UdpServer) recvMessageRoutine() {
 			case core.NHP_AOL:
 				// synchronously block and deal with NHP_DOL to ensure future ac messages will be correctly processed. Don't use go routine
 				s.HandleACOnline(ppd)
+
+			case core.NHP_DOL:
+				s.HandleDBOnline(ppd)
 
 			case core.NHP_OTP:
 				go s.HandleOTPRequest(ppd)
@@ -982,10 +1017,63 @@ func (us *UdpServer) FindPluginHandler(aspId string) plugins.PluginHandler {
 
 // DHP
 func (s *UdpServer) AddDEPeer(device *core.UdpPeer) {
-	if device.DeviceType() == core.NHP_DE {
+	if device.DeviceType() == core.NHP_DB {
 		s.device.AddPeer(device)
-		s.dePeerMapMutex.Lock()
-		s.dePeerMap[device.PublicKeyBase64()] = device
-		s.dePeerMapMutex.Unlock()
+		s.dbPeerMapMutex.Lock()
+		s.dbPeerMap[device.PublicKeyBase64()] = device
+		s.dbPeerMapMutex.Unlock()
 	}
+}
+
+func (s *UdpServer) ProcessDataPrivateKeyWrapping(dwrMsg *common.DWRMsg, conn *DBConn) (dwaMsg *common.DWAMsg, err error) {
+	if dwrMsg == nil || conn == nil {
+		log.Critical("processACOperation with nil input argument")
+		err = common.ErrInvalidInput
+		return
+	}
+
+	dbAddrStr := conn.DBPeer.RecvAddr().String()
+
+	dwrBytes, _ := json.Marshal(dwrMsg)
+
+	dwrMd := &core.MsgData{
+		ConnData:      conn.ConnData,
+		HeaderType:    core.NHP_DWR,
+		CipherScheme:  conn.DBCipherScheme,
+		TransactionId: s.device.NextCounterIndex(),
+		Compress:      true,
+		PeerPk:        conn.DBPeer.PublicKey(),
+		Message:       dwrBytes,
+		ResponseMsgCh: make(chan *core.PacketParserData),
+	}
+
+	dwaMsg = &common.DWAMsg{}
+
+	if !s.IsRunning() {
+		log.Error("server-agent-db(%s#%d@%s)[ProcessDataPrivateKeyWrapping] MsgData channel closed or being closed, skip sending", conn.DBId, dwrMd.TransactionId, dbAddrStr)
+		err = common.ErrPacketToMessageRoutineStopped
+		errCode, _ := strconv.Atoi(common.ErrPacketToMessageRoutineStopped.ErrorCode())
+		dwaMsg.ErrCode = errCode
+		dwaMsg.ErrMsg = err.Error()
+		return
+	}
+
+	s.sendMsgCh <- dwrMd
+
+	// wait for ac sending back operation result
+	// block until transaction completes
+	dbPpd := <-dwrMd.ResponseMsgCh
+	close(dwrMd.ResponseMsgCh)
+
+
+	err = json.Unmarshal(dbPpd.BodyMessage, dwaMsg)
+	if err != nil {
+		log.Error("server-agent-db(%s#%d@%s)[ProcessDataPrivateKeyWrapping] failed to parse %s message: %v", conn.DBId, dwrMd.TransactionId, dbAddrStr, core.HeaderTypeToString(dbPpd.HeaderType), err)
+		errCode, _ := strconv.Atoi(common.ErrJsonParseFailed.ErrorCode())
+		dwaMsg.ErrCode = errCode
+		dwaMsg.ErrMsg = err.Error()
+		return
+	}
+
+	return dwaMsg, nil
 }

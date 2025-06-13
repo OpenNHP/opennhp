@@ -309,7 +309,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 
 	case NHP_RELAY:
 		toValidate = !option.DisableRelayPeerValidation
-	case NHP_DE:
+	case NHP_DB:
 		toValidate = !option.DisableDePeerValidation
 	}
 

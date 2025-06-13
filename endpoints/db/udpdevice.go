@@ -1,4 +1,4 @@
-package de
+package db
 
 import (
 	"encoding/base64"
@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/version"
 )
@@ -79,6 +81,9 @@ type UdpDevice struct {
 	serverPeerMutex sync.Mutex
 	serverPeerMap   map[string]*core.UdpPeer // indexed by server's public key
 
+	teeMutex sync.Mutex
+	teeMap  map[string]*TEE // indexed by tee's public key
+
 	device  *core.Device
 	wg      sync.WaitGroup
 	running atomic.Bool
@@ -90,13 +95,15 @@ type UdpDevice struct {
 
 	recvMsgCh <-chan *core.PacketParserData
 	sendMsgCh chan *core.MsgData
-	// one device should serve only one specific user at a time
-	registerUserMutex sync.RWMutex
+
+	EnableOnlineReport bool
 }
 
 type UdpConn struct {
 	ConnData *core.ConnectionData
 	netConn  *net.UDPConn
+	connected    atomic.Bool
+	externalAddr string
 }
 
 func (c *UdpConn) Close() {
@@ -112,11 +119,11 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 	common.ExeDirPath = dirPath
 	ExeDirPath = dirPath
 	// init logger
-	a.log = log.NewLogger("NHP-DE", logLevel, filepath.Join(ExeDirPath, "logs"), "device")
+	a.log = log.NewLogger("NHP-DB", logLevel, filepath.Join(ExeDirPath, "logs"), "device")
 	log.SetGlobalLogger(a.log)
 
 	log.Info("=========================================================")
-	log.Info("=== NHP-DE %s started                           ===", version.Version)
+	log.Info("=== NHP-DB %s started                           ===", version.Version)
 	log.Info("=== REVISION %s ===", version.CommitId)
 	log.Info("=== RELEASE %s                       ===", version.BuildTime)
 	log.Info("=========================================================")
@@ -132,7 +139,7 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 		return fmt.Errorf("private key parse error %v", err)
 	}
 
-	a.device = core.NewDevice(core.NHP_DE, prk, nil)
+	a.device = core.NewDevice(core.NHP_DB, prk, nil)
 	if a.device == nil {
 		log.Critical("failed to create device %v\n", err)
 		return fmt.Errorf("failed to create device %v", err)
@@ -143,6 +150,9 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 
 	// load peers
 	a.loadPeers()
+
+	// load TEEs
+	a.loadTEEs()
 
 	a.signals.stop = make(chan struct{})
 	a.signals.serverMapUpdated = make(chan struct{}, 1)
@@ -157,6 +167,10 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 
 	go a.sendMessageRoutine()
 	go a.recvMessageRoutine()
+	if a.EnableOnlineReport{
+		a.wg.Add(1)
+		go a.maintainServerConnectionRoutine()
+	}
 	a.running.Store(true)
 	// time.Sleep(1000 * time.Millisecond)
 	return nil
@@ -170,6 +184,8 @@ func (a *UdpDevice) Stop() {
 	a.StopConfigWatch()
 	a.wg.Wait()
 	close(a.sendMsgCh)
+	close(a.signals.serverMapUpdated)
+
 	log.Info("=========================")
 	log.Info("=== NHP-Device stopped ===")
 	log.Info("=========================")
@@ -447,6 +463,214 @@ func (a *UdpDevice) recvMessageRoutine() {
 			if ppd == nil {
 				continue
 			}
+
+			switch ppd.HeaderType {
+			case core.NHP_DWR:
+				// deal with NHP_AOP message
+				a.wg.Add(1)
+				go a.HandleUdpDataKeyWrappingOperations(ppd)
+			}
+		}
+	}
+}
+
+func (a *UdpDevice) maintainServerConnectionRoutine() {
+	defer a.wg.Done()
+	defer log.Info("maintainServerConnectionRoutine stopped")
+
+	log.Info("maintainServerConnectionRoutine started")
+
+
+	var discoveryRoutineWg sync.WaitGroup
+	defer discoveryRoutineWg.Wait()
+
+	for {
+		// make a local copy of servers then iterate because next operations are time consuming (too long to use locked iteration)
+		a.serverPeerMutex.Lock()
+		var serverCount int32 = int32(len(a.serverPeerMap))
+		discoveryQuitArr := make([]chan struct{}, 0, serverCount)
+
+		for _, server := range a.serverPeerMap {
+			// launch discovery routine for each server
+			fail := new(int32)
+			quit := make(chan struct{})
+			discoveryQuitArr = append(discoveryQuitArr, quit)
+
+			discoveryRoutineWg.Add(1)
+			go a.serverDiscovery(server, &discoveryRoutineWg, fail, quit)
+		}
+		a.serverPeerMutex.Unlock()
+
+		select {
+		case <-a.signals.stop:
+			log.Info("maintainServerConnectionRoutine receives stop signal")
+			return
+		case _, ok := <-a.signals.serverMapUpdated:
+			if !ok {
+				return
+			}
+			// stop all current discovery routines
+			for _, q := range discoveryQuitArr {
+				close(q)
+			}
+			// continue and restart with new server discovery cycle
+		}
+	}
+}
+
+func (a *UdpDevice) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.WaitGroup, serverFailCount *int32, quit <-chan struct{}) {
+	defer discoveryRoutineWg.Done()
+
+	dbId := a.config.DbId
+	sendAddr := server.SendAddr()
+	if sendAddr == nil {
+		log.Error("Cannot connect to nil server address")
+		return
+	}
+
+	addrStr := sendAddr.String()
+
+	defer log.Info("server discovery sub-routine at %s stopped", addrStr)
+	log.Info("server discovery sub-routine at %s started", addrStr)
+
+	var failCount int
+
+	for {
+		var lastSendTime int64
+		var lastRecvTime int64
+		var connected bool
+
+		// find whether connection is already connected
+		a.remoteConnectionMutex.Lock()
+		conn, found := a.remoteConnectionMap[addrStr]
+		a.remoteConnectionMutex.Unlock()
+
+		if found {
+			// connection based timing
+			lastSendTime = atomic.LoadInt64(&conn.ConnData.LastLocalSendTime)
+			lastRecvTime = atomic.LoadInt64(&conn.ConnData.LastLocalRecvTime)
+			connected = conn.connected.Load()
+		} else {
+			// peer based timing
+			conn = nil
+			lastSendTime = server.LastSendTime()
+			lastRecvTime = server.LastRecvTime()
+		}
+
+		currTime := time.Now().UnixNano()
+		peerPbk := server.PublicKey()
+
+		// when a server is not connected, try to connect in every ACLocalTransactionResponseTimeoutMs
+		// when a server is connected when ServerConnectionInterval is reached since last receive, try resend NHP_AOL for maintaining server connection
+		if !connected || (currTime-lastRecvTime) > int64(ReportToServerInterval*time.Second) {
+			// send NHP_AOL message to server
+			aolMsg := &common.DBOnlineMsg{
+				DBId:          dbId,
+			}
+			aolBytes, _ := json.Marshal(aolMsg)
+
+			aolMd := &core.MsgData{
+				RemoteAddr:    sendAddr.(*net.UDPAddr),
+				HeaderType:    core.NHP_DOL,
+				CipherScheme:  a.config.DefaultCipherScheme,
+				TransactionId: a.device.NextCounterIndex(),
+				Compress:      true,
+				PeerPk:        peerPbk,
+				Message:       aolBytes,
+				ResponseMsgCh: make(chan *core.PacketParserData),
+			}
+
+			if !a.IsRunning() {
+				log.Error("db(%s#%d)[DBOnline] MsgData channel closed or being closed, skip sending", dbId, aolMd.TransactionId)
+				return
+			}
+
+			a.sendMsgCh <- aolMd // create new connection
+			server.UpdateSend(currTime)
+
+			// block until transaction completes or timeouts
+			ppd := <-aolMd.ResponseMsgCh
+			close(aolMd.ResponseMsgCh)
+
+			var err error
+			func() {
+				defer func() {
+					if err != nil {
+						if conn != nil {
+							conn.connected.Store(false)
+						}
+
+						failCount += 1
+						if failCount%ServerDiscoveryRetryBeforeFail == 0 {
+							atomic.StoreInt32(serverFailCount, 1)
+							// remove failed connection
+							a.remoteConnectionMutex.Lock()
+							conn = a.remoteConnectionMap[addrStr]
+							if conn != nil {
+								log.Info("server discovery failed, close local connection: %s", conn.ConnData.LocalAddr.String())
+								delete(a.remoteConnectionMap, addrStr)
+							}
+							a.remoteConnectionMutex.Unlock()
+							conn.Close()
+						}
+						log.Error("db(%s#%d)[DBOnline] reporting to server %s failed", dbId, aolMd.TransactionId, addrStr)
+					}
+				}()
+
+				if ppd.Error != nil {
+					log.Error("db(%s#%d)[DBOnline] failed to receive response from server %s: %v", dbId, aolMd.TransactionId, addrStr, ppd.Error)
+					err = ppd.Error
+					return
+				}
+
+				if ppd.HeaderType != core.NHP_DBA {
+					log.Error("db(%s#%d)[DBOnline] response from server %s has wrong type: %s", dbId, aolMd.TransactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType))
+					err = common.ErrTransactionRepliedWithWrongType
+					return
+				}
+
+				aakMsg := &common.ServerDBAckMsg{}
+				err = json.Unmarshal(ppd.BodyMessage, aakMsg)
+				if err != nil {
+					log.Error("db(%s#%d)[HandleDBAck] failed to parse %s message: %v", dbId, ppd.SenderTrxId, core.HeaderTypeToString(ppd.HeaderType), err)
+					return
+				}
+
+				// server discovery succeeded
+				failCount = 0
+				atomic.StoreInt32(serverFailCount, 0)
+				a.remoteConnectionMutex.Lock()
+				conn = a.remoteConnectionMap[addrStr] // conn must be available at this point
+				conn.connected.Store(true)
+				conn.externalAddr = aakMsg.DBAddr
+				a.remoteConnectionMutex.Unlock()
+				log.Info("db(%s#%d)[DBOnline] succeed. db external address is %s, replied by server %s", dbId, aolMd.TransactionId, aakMsg.DBAddr, addrStr)
+			}()
+
+		}  else if connected {
+			if (currTime - lastSendTime) > int64(ServerKeepaliveInterval*time.Second) {
+				// send NHP_KPL to server if no send happens within ServerKeepaliveInterval
+				md := &core.MsgData{
+					RemoteAddr:   sendAddr.(*net.UDPAddr),
+					HeaderType:   core.NHP_KPL,
+					CipherScheme: a.config.DefaultCipherScheme,
+					//PeerPk:        peerPbk, // pubkey not needed
+					TransactionId: a.device.NextCounterIndex(),
+				}
+
+				a.sendMsgCh <- md // send NHP_KPL to server via existing connection
+				server.UpdateSend(currTime)
+			}
+		}
+
+		select {
+		case <-a.signals.stop:
+			log.Info("server discovery sub-routine at %s receives stop signal", addrStr)
+			return
+		case <-quit:
+			return
+		case <-time.After(MinialServerDiscoveryInterval * time.Second):
+			// wait for ServerConnectionDiscoveryInterval
 		}
 	}
 }
@@ -468,41 +692,15 @@ func (a *UdpDevice) RemoveServer(serverKey string) {
 
 // get first server
 func (a *UdpDevice) GetServerPeer() (serverPeer *core.UdpPeer) {
-	for key, value := range a.serverPeerMap {
-		fmt.Println("Key:", key, "Value:", value)
+	for _, value := range a.serverPeerMap {
 		serverPeer = value
 		return serverPeer
 	}
 	return nil
 }
-func (a *UdpDevice) SendDHPRegister(doId string, policy common.DHPPolicy, dataKey string) {
+func (a *UdpDevice) SendDHPRegister(msg common.DRGMsg) {
 	log.Debug("DHP started")
 	serverPeer := a.GetServerPeer()
-	wrappedKey := dataKey
-	kaoContent := common.DHPKao{
-		KeyWrapper:    "consumer",
-		PolicyBinding: "",
-		ConsumerId:    policy.ConsumerId,
-		WrappedKey:    wrappedKey,
-	}
-
-	jsonkaoContent, err := json.Marshal(kaoContent)
-	if err != nil {
-		log.Error("json parse error:%v", err)
-		return
-	}
-	log.Debug("jsonkaoContent:%s \n", string(jsonkaoContent))
-	msg := common.DRGMsg{
-		DoType:      DoType_Default,
-		DoId:        doId,
-		AccessUrl:   "",
-		AccessByNHP: false,
-		AspHost:     "",
-		KasType:     0,
-		KaoContent:  string(jsonkaoContent),
-		PasType:     2,
-		PaoContent:  "",
-	}
 
 	log.Debug("serverPeer:%s \n", serverPeer)
 	result := a.SendNHPDRG(serverPeer, msg)
@@ -550,13 +748,13 @@ func (a *UdpDevice) SendNHPDRG(server *core.UdpPeer, msg common.DRGMsg) bool {
 	result = func() bool {
 
 		if serverPpd.Error != nil {
-			log.Error("DE(%s#%d)[SendNHPDRG] failed to receive response from server %s: %v", drgMsg.DoId, drgMd.TransactionId, server.Ip, serverPpd.Error)
+			log.Error("DB(%s#%d)[SendNHPDRG] failed to receive response from server %s: %v", drgMsg.DoId, drgMd.TransactionId, server.Ip, serverPpd.Error)
 			err = serverPpd.Error
 			return false
 		}
 
 		if serverPpd.HeaderType != core.NHP_DAK {
-			log.Error("DE(%s#%d)[SendNHPDRG] response from server %s has wrong type: %s", drgMsg.DoId, drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
+			log.Error("DB(%s#%d)[SendNHPDRG] response from server %s has wrong type: %s", drgMsg.DoId, drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
 			err = common.ErrTransactionRepliedWithWrongType
 			return false
 		}
@@ -565,22 +763,133 @@ func (a *UdpDevice) SendNHPDRG(server *core.UdpPeer, msg common.DRGMsg) bool {
 		//json string to DAKMsg Object
 		err = json.Unmarshal(serverPpd.BodyMessage, dakMsg)
 		if err != nil {
-			log.Error("DE(%s#%d)[HandleDHPDRGMessage] failed to parse %s message: %v", drgMsg.DoId, serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
+			log.Error("DB(%s#%d)[HandleDHPDRGMessage] failed to parse %s message: %v", drgMsg.DoId, serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
 			return false
 		}
 		dakMsgString, err := json.Marshal(dakMsg)
 		if err != nil {
-			log.Error("DE(%s#%d)DAKMsg failed to parse %s message: %v", dakMsg.DoId, err)
+			log.Error("DB(%s#%d)DAKMsg failed to parse %s message: %v", dakMsg.DoId, err)
 			return false
 		}
 		log.Info("SendNHPDRG result：%v", string(dakMsgString))
 		if dakMsg.ErrCode != 0 {
 			log.Error("SendNHPDRG send failed,error:", dakMsg.ErrMsg)
-			fmt.Println("SendNHPDRG send failed,error:" + dakMsg.ErrMsg)
 			return false
 		}
 		return true
 	}()
 	log.Info("SendNHPDRG sent successfully | Returned result:%v", result)
 	return result
+}
+
+func (a *UdpDevice) GetCipherSchema() int {
+	return a.config.DefaultCipherScheme
+}
+
+func (a *UdpDevice) GetSymmetricCipherMode() string {
+	return a.config.SymmetricCipherMode
+}
+
+func (a *UdpDevice) GetDataBrokerId() string {
+	return a.config.DbId
+}
+
+func (a *UdpDevice) GetOwnEcdh() core.Ecdh {
+	prk, _ := base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
+	eccMode := core.ECC_CURVE25519
+	if a.config.DefaultCipherScheme == 0 {
+		eccMode = core.ECC_SM2
+	}
+
+	return core.ECDHFromKey(eccMode, prk)
+}
+
+func (a *UdpDevice) isTEEAuthorized(teePbkBase64 string) bool {
+	a.teeMutex.Lock()
+	defer a.teeMutex.Unlock()
+	if tee, found := a.teeMap[teePbkBase64]; found {
+		return tee.ExpireTime > 0 && time.Now().UnixMilli() < tee.ExpireTime*1000
+	}
+
+	return false
+}
+
+func (a *UdpDevice) HandleUdpDataKeyWrappingOperations(ppd *core.PacketParserData) (err error) {
+	defer a.wg.Done()
+
+	dbId := a.config.DbId
+
+	dwrMsg := &common.DWRMsg{}
+	dwaMsg := &common.DWAMsg{}
+
+	transactionId := ppd.SenderTrxId
+	err = json.Unmarshal(ppd.BodyMessage, dwrMsg)
+	if err == nil {
+		if !a.isTEEAuthorized(dwrMsg.TeePublicKey) {
+			errCode, _ := strconv.Atoi(common.ErrTEENotAuthorized.ErrorCode())
+			dwaMsg.ErrCode = errCode
+			dwaMsg.ErrMsg = common.ErrTEENotAuthorized.Error()
+		} else {
+			dataPrkStore, err := NewDataPrivateKeyStoreWith(dwrMsg.DoId)
+			if err != nil {
+				errCode, _ := strconv.Atoi(common.ErrDataPrivateKeyStore.ErrorCode())
+				dwaMsg.ErrCode = errCode
+				dwaMsg.ErrMsg = common.ErrDataPrivateKeyStore.Error()
+			} else {
+				dataKeyPairEccMode := ztdolib.SM2
+				if a.config.DefaultCipherScheme == core.CIPHER_SCHEME_CURVE {
+					dataKeyPairEccMode = ztdolib.CURVE25519
+				}
+
+				teePbk, _ := base64.StdEncoding.DecodeString(dwrMsg.TeePublicKey)
+				consumerEPbk, _ := base64.StdEncoding.DecodeString(dwrMsg.ConsumerEphemeralPublicKey)
+
+
+				sa := ztdolib.NewSymmetricAgreement(dataKeyPairEccMode, true)
+				sa.SetMessagePatterns(ztdolib.DataPrivateKeyWrappingPatterns)
+				sa.SetPsk([]byte(ztdolib.InitialDHPKeyWrappingString))
+				sa.SetStaticKeyPair(a.GetOwnEcdh())
+				sa.SetRemoteStaticPublicKey(teePbk)
+				sa.SetRemoteEphemeralPublicKey(consumerEPbk)
+
+				gcmKey, ad := sa.AgreeSymmetricKey()
+
+				dataPrkWrapping := ztdolib.NewDataPrivateKeyWrapping(dataPrkStore.ProviderPublicKeyBase64, dataPrkStore.DataPrivateKeyBase64, gcmKey[:], ad)
+
+				dataPrkWrappingJson, _ := json.Marshal(dataPrkWrapping)
+
+				kao := common.KeyAccessObject{
+					WrappedDataKey: string(dataPrkWrappingJson),
+				}
+				dwaMsg.Kao = &kao
+				dwaMsg.DoId = dwrMsg.DoId
+			}
+		}
+	} else {
+		log.Error("db(%s#%d)[HandleUdpDataKeyWrappingOperations] failed to parse %s message: %v", dbId, transactionId, core.HeaderTypeToString(ppd.HeaderType), err)
+		errCode, _ := strconv.Atoi(common.ErrJsonParseFailed.ErrorCode())
+		dwaMsg.ErrCode = errCode
+		dwaMsg.ErrMsg = err.Error()
+	}
+
+	dwaBytes, _ := json.Marshal(dwaMsg)
+	md := &core.MsgData{
+		HeaderType:     core.NHP_DWA,
+		TransactionId:  transactionId,
+		Compress:       true,
+		PrevParserData: ppd,
+		Message:        dwaBytes,
+	}
+
+	// forward to a specific transaction
+	transaction := ppd.ConnData.FindRemoteTransaction(transactionId)
+	if transaction == nil {
+		log.Error("db(%s#%d)[HandleUdpDataKeyWrappingOperations] transaction is not available", dbId, transactionId)
+		err = common.ErrTransactionIdNotFound
+		return err
+	}
+
+	transaction.NextMsgCh <- md
+
+	return err
 }

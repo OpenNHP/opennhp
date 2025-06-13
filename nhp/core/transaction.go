@@ -36,7 +36,7 @@ func (d *Device) IsTransactionRequest(t int) bool {
 		}
 	case NHP_SERVER:
 		switch t {
-		case NHP_REG, NHP_LST, NHP_KNK, NHP_RKN, NHP_EXT, NHP_AOL, NHP_AOP, NHP_DAK, NHP_DAG, NHP_DAR, NHP_DRG:
+		case NHP_REG, NHP_LST, NHP_KNK, NHP_RKN, NHP_EXT, NHP_AOL, NHP_AOP, NHP_DAK, NHP_DAG, NHP_DAR, NHP_DRG, NHP_DOL, NHP_DWR:
 			return true
 		}
 	case NHP_AC:
@@ -44,9 +44,9 @@ func (d *Device) IsTransactionRequest(t int) bool {
 		case NHP_AOL, NHP_AOP:
 			return true
 		}
-	case NHP_DE:
+	case NHP_DB:
 		switch t {
-		case NHP_DRG:
+		case NHP_DRG, NHP_DOL, NHP_DWR:
 			return true
 		}
 	case NHP_RELAY:
@@ -66,7 +66,7 @@ func (d *Device) LocalTransactionTimeout() int {
 		return ServerLocalTransactionResponseTimeoutMs
 	case NHP_AC:
 		return ACLocalTransactionResponseTimeoutMs
-	case NHP_DE:
+	case NHP_DB:
 		return DELocalTransactionResponseTimeoutMs
 	case NHP_RELAY:
 		// no transaction request for relay
@@ -90,7 +90,7 @@ func (d *Device) IsTransactionResponse(t int) bool {
 		}
 	case NHP_SERVER:
 		switch t {
-		case NHP_RAK, NHP_LRT, NHP_ACK, NHP_AAK, NHP_ART, NHP_DAK:
+		case NHP_RAK, NHP_LRT, NHP_ACK, NHP_AAK, NHP_ART, NHP_DAK, NHP_DWA:
 			// note NHP_COK is not handled as transaction for server
 			return true
 		}
@@ -99,9 +99,9 @@ func (d *Device) IsTransactionResponse(t int) bool {
 		case NHP_AAK, NHP_ART:
 			return true
 		}
-	case NHP_DE:
+	case NHP_DB:
 		switch t {
-		case NHP_DAK:
+		case NHP_DAK, NHP_DBA:
 			return true
 		}
 	case NHP_RELAY:

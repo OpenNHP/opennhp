@@ -49,7 +49,7 @@ type HttpConfig struct {
 type Peers struct {
 	ACs    []*core.UdpPeer
 	Agents []*core.UdpPeer
-	DEs    []*core.UdpPeer
+	DBs    []*core.UdpPeer
 }
 
 func (s *UdpServer) loadBaseConfig() error {
@@ -107,8 +107,8 @@ func (s *UdpServer) loadPeers() error {
 		s.updateAgentPeers(fileNameAgent)
 	})
 
-	//de.toml
-	fileNameDE := filepath.Join(ExeDirPath, "etc", "de.toml")
+	//db.toml
+	fileNameDE := filepath.Join(ExeDirPath, "etc", "db.toml")
 	if err := s.updateDePeers(fileNameDE); err != nil {
 		// ignore error
 		_ = err
@@ -418,24 +418,24 @@ func (s *UdpServer) updateDePeers(file string) (err error) {
 	}
 
 	var peers Peers
-	dePeerMap := make(map[string]*core.UdpPeer)
+	dbPeerMap := make(map[string]*core.UdpPeer)
 	if err := toml.Unmarshal(content, &peers); err != nil {
 		log.Error("failed to unmarshal device peer config: %v", err)
 	}
-	for _, p := range peers.DEs {
-		p.Type = core.NHP_DE
+	for _, p := range peers.DBs {
+		p.Type = core.NHP_DB
 		s.device.AddPeer(p)
-		dePeerMap[p.PublicKeyBase64()] = p
+		dbPeerMap[p.PublicKeyBase64()] = p
 	}
 
 	// remove old peers from device
-	s.dePeerMapMutex.Lock()
-	defer s.dePeerMapMutex.Unlock()
-	for pubKey := range s.dePeerMap {
-		if _, found := dePeerMap[pubKey]; !found {
+	s.dbPeerMapMutex.Lock()
+	defer s.dbPeerMapMutex.Unlock()
+	for pubKey := range s.dbPeerMap {
+		if _, found := dbPeerMap[pubKey]; !found {
 			s.device.RemovePeer(pubKey)
 		}
 	}
-	s.dePeerMap = dePeerMap
+	s.dbPeerMap = dbPeerMap
 	return err
 }

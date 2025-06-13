@@ -254,6 +254,64 @@ func (s *UdpServer) HandleACOnline(ppd *core.PacketParserData) (err error) {
 	return nil
 }
 
+func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
+	defer s.wg.Done()
+	s.wg.Add(1)
+
+	transactionId := ppd.SenderTrxId
+	addrStr := ppd.ConnData.RemoteAddr.String()
+	dolMsg := &common.DBOnlineMsg{}
+
+	err = json.Unmarshal(ppd.BodyMessage, dolMsg)
+	if err != nil {
+		log.Error("server-db(#%d@%s)[HandleDBOnline] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
+		return err
+	}
+
+	dbId := dolMsg.DBId
+	dbPubkeyBase64 := base64.StdEncoding.EncodeToString(ppd.RemotePubKey)
+	s.dbPeerMapMutex.Lock()
+	dbPeer := s.dbPeerMap[dbPubkeyBase64] // ac peer's recvAddr has already been updated by nhp packet parser
+	s.dbPeerMapMutex.Unlock()
+
+	dbConn := &DBConn{
+		ConnData:       ppd.ConnData,
+		DBPeer:         dbPeer,
+		DBCipherScheme: ppd.CipherScheme,
+		DBId:           dbId,
+	}
+
+	s.dbConnectionMapMutex.Lock()
+	s.dbConnectionMap[dbId] = dbConn
+	s.dbConnectionMapMutex.Unlock()
+
+	aakMsg := &common.ServerDBAckMsg{
+		ErrCode: common.ErrSuccess.ErrorCode(),
+		DBAddr:  ppd.ConnData.RemoteAddr.String(),
+	}
+	aakBytes, _ := json.Marshal(aakMsg)
+
+	aakMd := &core.MsgData{
+		HeaderType:     core.NHP_DBA,
+		TransactionId:  transactionId,
+		Compress:       true,
+		PrevParserData: ppd,
+		Message:        aakBytes,
+	}
+
+	// forward to a specific transaction
+	transaction := ppd.ConnData.FindRemoteTransaction(transactionId)
+	if transaction == nil {
+		log.Error("server-db(@%s#%d@%s)[HandleDBOnline] transaction is not available", dbId, transactionId, addrStr)
+		err = common.ErrTransactionIdNotFound
+		return err
+	}
+
+	transaction.NextMsgCh <- aakMd
+
+	return nil
+}
+
 func (s *UdpServer) HandleDHPDARMessage(ppd *core.PacketParserData) (err error) {
 	fmt.Println("HandleDHPDARMessage received")
 	defer s.wg.Done()
@@ -261,28 +319,50 @@ func (s *UdpServer) HandleDHPDARMessage(ppd *core.PacketParserData) (err error) 
 
 	transactionId := ppd.SenderTrxId
 	addrStr := ppd.ConnData.RemoteAddr.String()
-	aolMsg := &common.DARMsg{}
+	darMsg := &common.DARMsg{}
 
-	err = json.Unmarshal(ppd.BodyMessage, aolMsg)
+	err = json.Unmarshal(ppd.BodyMessage, darMsg)
 	if err != nil {
 		log.Error("server-agent(#%d@%s)[HandleDHPDARMessage] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
 		return err
 	}
 
-	doId := aolMsg.DoId
+	doId := darMsg.DoId
 	config, err := ReadZdtoConfig(doId)
 	dagMsg := &common.DAGMsg{}
 	if err != nil {
 		dagMsg.DoId = doId
 		dagMsg.ErrCode = 1
 		dagMsg.ErrMsg = err.Error()
-
 	} else {
-		result := CheckZtdoPower(config, ppd)
-		dagMsg.DoId = result.DoId
-		dagMsg.ErrCode = result.ErrCode
-		dagMsg.ErrMsg = result.ErrMsg
-		dagMsg.WrappedKey = result.WrappedKey
+		dagMsg.DoId = doId
+
+		dwrMsg := &common.DWRMsg{
+			DoId: doId,
+			TeePublicKey: darMsg.TeePublicKey,
+			ConsumerEphemeralPublicKey: darMsg.ConsumerEphemeralPublicKey,
+		}
+
+		dbConn, found := s.dbConnectionMap[config.DbId]
+		if !found {
+			log.Critical("dbConn not found for dbId:%s", config.DbId)
+			err = common.ErrInvalidInput
+			dagMsg.ErrCode = 1
+			dagMsg.ErrMsg = err.Error()
+		} else {
+			dwaMsg, err := s.ProcessDataPrivateKeyWrapping(dwrMsg, dbConn)
+			if err != nil || dwaMsg.ErrCode != 0 {
+				dagMsg.ErrCode = dwaMsg.ErrCode
+				dagMsg.ErrMsg = dwaMsg.ErrMsg
+			}
+
+			dagMsg.Kao = dwaMsg.Kao
+			dagMsg.Spo = &config.Spo
+			dagMsg.DataSourceType = config.DataSourceType
+			dagMsg.AccessUrl = config.AccessUrl
+			dagMsg.AccessByNHP = config.AccessByNHP
+			dagMsg.DoType = config.DoType
+		}
 	}
 
 	aakBytes, _ := json.Marshal(dagMsg)
@@ -324,11 +404,8 @@ func (s *UdpServer) HandleDHPDRGMessage(ppd *core.PacketParserData) (err error) 
 	}
 
 	doId := aolMsg.DoId
-	if aolMsg.KasType == 0 {
-		err = SaveZdtoConfig(aolMsg)
 
-	} else if aolMsg.KasType == 1 {
-	}
+	err = SaveZdtoConfig(aolMsg)
 
 	errCode := 0 //success
 	errMsg := ""
@@ -357,7 +434,7 @@ func (s *UdpServer) HandleDHPDRGMessage(ppd *core.PacketParserData) (err error) 
 
 	transaction := ppd.ConnData.FindRemoteTransaction(transactionId)
 	if transaction == nil {
-		log.Error("server-DE(@%s#%d@%s)[HandleDHPDRGMessage] transaction is not available", doId, transactionId, addrStr)
+		log.Error("server-DB(@%s#%d@%s)[HandleDHPDRGMessage] transaction is not available", doId, transactionId, addrStr)
 		err = common.ErrTransactionIdNotFound
 		return err
 	}
@@ -417,50 +494,4 @@ func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
 	}
 	return config, nil
 }
-func CheckZtdoPower(config common.DRGMsg, ppd *core.PacketParserData) common.DAGMsg {
-	fmt.Printf("CheckZtdoPower DoId:%s \n", config.DoId)
-	if config.AccessUrl != "" && config.KasType != 0 {
-		errCode := 1
-		errMsg := "Authorization Failed"
-		dagMsg := common.DAGMsg{
-			DoId:    config.DoId,
-			ErrCode: errCode,
-			ErrMsg:  errMsg,
-		}
-		return dagMsg
-	}
 
-	if config.KaoContent == "" {
-		errCode := 1
-		errMsg := "Authorization File Not Found or Deleted"
-		dagMsg := common.DAGMsg{
-			DoId:    config.DoId,
-			ErrCode: errCode,
-			ErrMsg:  errMsg,
-		}
-		return dagMsg
-	}
-	dhpKao := &common.DHPKao{}
-	err := json.Unmarshal([]byte(config.KaoContent), dhpKao)
-	if err != nil {
-		errCode := 1
-		errMsg := "Failed to Retrieve Key Object"
-		dagMsg := common.DAGMsg{
-			DoId:    config.DoId,
-			ErrCode: errCode,
-			ErrMsg:  errMsg,
-		}
-		return dagMsg
-	}
-	fmt.Printf("CheckZtdoPower KaoContent:%s \n", config.KaoContent)
-
-	wrappedKey := dhpKao.WrappedKey
-	dagMsg := common.DAGMsg{
-		DoId:       config.DoId,
-		ErrCode:    0,
-		ErrMsg:     "",
-		WrappedKey: wrappedKey,
-	}
-	return dagMsg
-
-}

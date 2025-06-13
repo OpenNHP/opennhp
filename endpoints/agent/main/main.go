@@ -78,8 +78,8 @@ func main() {
 		Name:  "dhp",
 		Usage: "create and dhp agent process for NHP protocol",
 		Flags: []cli.Flag{
-			&cli.StringFlag{Name: "ztdo", Value: "", Usage: "Ztdo file path"},
-			&cli.StringFlag{Name: "output", Value: "", Usage: "Decrypted file output path"},
+			&cli.StringFlag{Name: "ztdo", Value: "", Usage: "Ztdo file path", Required: true},
+			&cli.StringFlag{Name: "output", Value: "", Usage: "Decrypted file output path", Required: true},
 		},
 		Action: func(c *cli.Context) error {
 			ztdo := c.String("ztdo")
@@ -143,12 +143,6 @@ func runDHPApp(ztdo string, output string) error {
 		a.StartKnockLoop()
 	}
 
-	// react to terminate signals
-	termCh := make(chan os.Signal, 1)
-	signal.Notify(termCh, syscall.SIGTERM, os.Interrupt, syscall.SIGABRT)
-
-	// block until terminated
-	<-termCh
 	a.Stop()
 	return nil
 }

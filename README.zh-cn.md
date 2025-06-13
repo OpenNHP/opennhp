@@ -204,7 +204,7 @@ OpenNHP 遵循 [Apache 2.0 许可协议](LICENSE)。
 
 - [软件定义边界（SDP）规范 v2.0](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2)。Jason Garbis、Juanita Koilpillai、Junaid lslam、Bob Flores、Daniel Bailey、Benfeng Chen、Eitan Bremler、Michael Roza、Ahmed Refaey Hussein。[*云安全联盟（CSA）*](https://cloudsecurityalliance.org/)。2022 年 3 月。
 - [AHAC：高级网络隐藏访问控制框架](https://www.mdpi.com/2076-3417/14/13/5593)。Mudi Xu、Benfeng Chen、Zhizhong Tan、Shan Chen、Lei Wang、Yan Liu、Tai Io San、Sou Wang Fong、Wenyong Wang 和 Jing Feng。*应用科学杂志*。2024 年 6 月。
-- [STALE：利用电子邮件和ECDH密钥交换的可扩展、安全的跨境认证方案](https://www.mdpi.com/2079-9292/14/12/2399).Tan Zhizong，Mudi Xu，Benfeng Chen，Anyu Wang，Shuo Zhang，Yan Liu，Jixin Zheng，Kevin Qi Zhang和Wenyong Wang。*电子学报*。2025年6月。
+- [STALE：利用电子邮件和ECDH密钥交换的可扩展、安全的跨境认证方案](https://www.mdpi.com/2079-9292/14/12/2399).Jiexin Zheng, Mudi Xu, Jianqing Li, Benfeng Chen, Zhizhong Tan, Anyu Wang, Shuo Zhang, Yan Liu, Kevin Qi Zhang, Lirong Zheng, 和 Wenyong Wang.*电子学报*。2025年6月。
 - Noise 协议框架。https://noiseprotocol.org/
 - 漏洞管理框架项目。https://phoenix.security/web-vuln-management/
 

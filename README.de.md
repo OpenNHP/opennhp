@@ -204,7 +204,7 @@ Für eine detaillierte Dokumentation besuchen Sie bitte unsere [Offizielle Dokum
 
 - [Software-Defined Perimeter (SDP) Specification v2.0](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2). Jason Garbis, Juanita Koilpillai, Junaid lslam, Bob Flores, Daniel Bailey, Benfeng Chen, Eitan Bremler, Michael Roza, Ahmed Refaey Hussein. [*Cloud Security Alliance (CSA)*](https://cloudsecurityalliance.org/). März 2022.
 - [AHAC: Fortschrittliches Netzwerk-Verbergung-Zugriffskontroll-Framework](https://www.mdpi.com/2076-3417/14/13/5593). Mudi Xu, Benfeng Chen, Zhizhong Tan, Shan Chen, Lei Wang, Yan Liu, Tai Io San, Sou Wang Fong, Wenyong Wang und Jing Feng. *Zeitschrift für Angewandte Wissenschaften*. Juni 2024.
-- [STALE: Ein skalierbares und sicheres grenzüberschreitendes Authentifizierungssystem, das E-Mail und ECDH-Schlüsselaustausch nutzt](https://www.mdpi.com/2079-9292/14/12/2399) Zhizhong Tan, Mudi Xu, Benfeng Chen, Anyu Wang, Shuo Zhang, Yan Liu, Jiexin Zheng, Kevin Qi Zhang und Wenyong Wang. *Elektronik*. Juni 2025
+- [STALE: Ein skalierbares und sicheres grenzüberschreitendes Authentifizierungssystem, das E-Mail und ECDH-Schlüsselaustausch nutzt](https://www.mdpi.com/2079-9292/14/12/2399) Jiexin Zheng, Mudi Xu, Jianqing Li, Benfeng Chen, Zhizhong Tan, Anyu Wang, Shuo Zhang, Yan Liu, Kevin Qi Zhang, Lirong Zheng, and Wenyong Wang. *Elektronik*. Juni 2025
 - Noise Protocol Framework. https://noiseprotocol.org/
 - Vulnerability Management Framework-Projekt. https://phoenix.security/web-vuln-management/
 

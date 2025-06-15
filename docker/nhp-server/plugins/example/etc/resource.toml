@@ -1,0 +1,42 @@
+# List resources id and their sub-fields here
+
+# syntax ["{ResourceId}"]
+# ResourceId: id for the resource group. Each AuthServiceId can have multiple ResourceIds.
+# SkipAuth: true: auth by matching the AuthServiceId and ResourceId, skip using plugin logic.
+# OpenTime: seconds for traffic passing duration after successful knock.
+# RedirectUrl: a customized url send back with the http response message as an option for redirection. (only applicable for http agent)
+# RedirectWithParams: whether or not to include queries in the original http request. (only applicable for http agent)
+["demo"]
+SkipAuth = true
+OpenTime = 15
+RedirectUrl = "https://app.opennhp.cn"
+RedirectWithParams = false
+CookieDomain = "opennhp.cn"
+
+# syntax ["{ResourceId}".Resources."{ResourceName}"]
+# ResourceName: name of resource inside a resource group. Each ResourceId can have multiple ResourceNames.
+# ACId: id of the NHP-AC that guards the resource.
+# Hostname: domain for the resource.
+# Addr.Ip: destination ip address of the resource.
+# Addr.Port: destination port of the resource.
+# Addr.Protocol: whether to pass a specific protocol among "tcp", "udp", "any". "any" also includes ping traffic.
+# PortSuffix: true: fill ack field "resHost" with "{Hostname}:{Port}", false: fill ack field "resHost" with just "{Hostname}"
+# ["demo".Resources."demoServer"]
+# ACId = "testAC-1"
+# Hostname = "app.opennhp.cn"
+# Addr.Ip = "177.7.0.10"
+# Addr.Port = 80 # empty or 0 for all ports
+# Addr.Protocol = "" # "tcp/udp/any", empty for "any"
+# PortSuffix = false
+
+["demo".Resources."demoServer"]
+ACId = "testAC-1"
+Hostname = "app.opennhp.cn"
+Addr.Ip = "177.9.0.10"
+Addr.Port = 80 # empty or 0 for all ports
+Addr.Protocol = "" # "tcp/udp/any", empty for "any"
+PortSuffix = false
+
+# extra information as per-plugin defined fields
+["demo".ExInfo]
+Title = "OpenNHP Demo Login(Local docker)"

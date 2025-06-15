@@ -229,13 +229,13 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 						}
 						if dstAddr.Protocol == "udp" {
 							ebpfHashStr := ebpf.EbpfRuleParams{
+
 								SrcIP:    srcAddr.Ip,
 								DstIP:    dstAddr.Ip,
 								DstPort:  dstAddr.Port,
 								Protocol: dstAddr.Protocol,
 							}
 							err = ebpf.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
-
 							if err != nil {
 								log.Error("[EbpfRuleAdd] add ebpf udp failed src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
 								return
@@ -819,6 +819,7 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 					}
 				case FilterMode_EBPFXDP:
 					if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any" {
+
 						ebpfHashStr := ebpf.EbpfRuleParams{
 							SrcIP: srcAddrIp,
 							DstIP: dstAddr.Ip,
@@ -831,6 +832,7 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 					}
 					if dstAddr.Protocol == "udp" {
 						ebpfHashStr := ebpf.EbpfRuleParams{
+
 							SrcIP:    srcAddrIp,
 							DstIP:    dstAddr.Ip,
 							DstPort:  dstAddr.Port,

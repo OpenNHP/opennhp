@@ -31,6 +31,25 @@ END_COLOUR=\033[0m
 # Plugins
 NHP_SERVER_PLUGINS = ./endpoints/server/plugins
 
+# eBPF compile
+EBPF_SRC = ./nhp/ebpf/xdp/nhp_ebpf_xdp.c
+EBPF_OBJ = ./release/nhp-ac/etc/nhp_ebpf_xdp.o
+CLANG_OPTS = -O2 -target bpf -g -Wall -I.
+
+# check if clang is installed before
+CLANG := $(shell command -v clang 2>/dev/null)
+ifeq ($(CLANG),)
+    $(error "clang is not installed. Please install clang to compile eBPF programs.")
+endif
+
+ebpf: $(EBPF_OBJ)
+
+$(EBPF_OBJ): $(EBPF_SRC)
+	$(CLANG) $(CLANG_OPTS) -c $(EBPF_SRC) -o $(EBPF_OBJ)
+
+clean_ebpf:
+	rm -f $(EBPF_OBJ)
+
 generate-version-and-build:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Start building... $(END_COLOUR)"
 	@echo "$(COLOUR_BLUE)Version: ${VERSION} $(END_COLOUR)"
@@ -109,4 +128,8 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-de nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init agentd acd serverd de agentsdk devicesdk plugins test archive
+
+ebpf: ebpf generate-version-and-build
+
+.PHONY: all generate-version-and-build init agentd acd serverd de agentsdk devicesdk plugins test archive ebpf clean_ebpf
+

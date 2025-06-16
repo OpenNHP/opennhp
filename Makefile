@@ -128,7 +128,7 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-de nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-
+# make ebpf
 ebpf: ebpf generate-version-and-build
 
 .PHONY: all generate-version-and-build init agentd acd serverd de agentsdk devicesdk plugins test archive ebpf clean_ebpf

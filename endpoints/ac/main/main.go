@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/OpenNHP/opennhp/endpoints/ac"
+	"github.com/OpenNHP/opennhp/endpoints/ac/ebpf"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/version"
 	"github.com/urfave/cli/v2"
@@ -75,7 +76,7 @@ func runApp() error {
 	termCh := make(chan os.Signal, 1)
 	signal.Notify(termCh, syscall.SIGTERM, os.Interrupt, syscall.SIGABRT)
 	if cfg.FilterMode == ac.FilterMode_EBPFXDP {
-		defer d.CleanupBPFFiles()
+		defer ebpf.CleanupBPFFiles()
 	}
 	// block until terminated
 	<-termCh

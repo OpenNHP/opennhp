@@ -1,4 +1,4 @@
-package de
+package db
 
 import (
 	"fmt"
@@ -15,6 +15,7 @@ import (
 var (
 	baseConfigWatch     io.Closer
 	serverConfigWatch   io.Closer
+	teesConfigWatch io.Closer
 	resourceConfigWatch io.Closer
 
 	errLoadConfig = fmt.Errorf("config load error")
@@ -24,6 +25,8 @@ type Config struct {
 	LogLevel            int
 	PrivateKeyBase64    string
 	DefaultCipherScheme int `json:"defaultCipherScheme"`
+	SymmetricCipherMode string `json:"symmetricCipherMode"`
+	DbId                string `json:"dbId"`
 }
 
 type Peers struct {
@@ -32,6 +35,15 @@ type Peers struct {
 
 type Resources struct {
 	Resources []*KnockResource
+}
+
+type TEE struct {
+	TEEPublicKeyBase64 string `json:"teePublicKeyBase64"`
+	ExpireTime         int64  `json:"expireTime"`
+}
+
+type TEEs struct {
+	TEEs []*TEE
 }
 
 func (a *UdpDevice) loadBaseConfig() error {
@@ -60,6 +72,21 @@ func (a *UdpDevice) loadPeers() error {
 	serverConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("server peer config: %s has been updated", fileName)
 		a.updateServerPeers(fileName)
+	})
+
+	return nil
+}
+
+func (a *UdpDevice) loadTEEs() error {
+	// consumer.toml
+	fileName := filepath.Join(ExeDirPath, "etc", "tee.toml")
+	if err := a.updateTEEConfig(fileName); err != nil {
+		// ignore error
+		_ = err
+	}
+
+	teesConfigWatch = utils.WatchFile(fileName, func() {
+		log.Info("tee peer config: %s has been updated", fileName)
 	})
 
 	return nil
@@ -117,7 +144,7 @@ func (a *UdpDevice) updateServerPeers(file string) (err error) {
 		log.Error("failed to unmarshal server config: %v", err)
 	}
 	for _, p := range peers.Servers {
-		p.Type = core.NHP_DE
+		p.Type = core.NHP_DB
 		a.device.AddPeer(p)
 		serverPeerMap[p.PublicKeyBase64()] = p
 	}
@@ -135,6 +162,33 @@ func (a *UdpDevice) updateServerPeers(file string) (err error) {
 	return err
 }
 
+func (a *UdpDevice) updateTEEConfig(file string) (err error) {
+	utils.CatchPanicThenRun(func() {
+		err = errLoadConfig
+	})
+
+	content, err := os.ReadFile(file)
+	if err != nil {
+		log.Error("failed to read TEE config: %v", err)
+	}
+
+	var tees TEEs
+	if err := toml.Unmarshal(content, &tees); err != nil {
+		log.Error("failed to unmarshal TEE config: %v", err)
+	}
+
+	teeMap := make(map[string]*TEE)
+	for _, tee:= range tees.TEEs {
+		teeMap[tee.TEEPublicKeyBase64] = tee
+	}
+
+	a.teeMutex.Lock()
+	defer a.teeMutex.Unlock()
+	a.teeMap = teeMap
+
+	return nil
+}
+
 func (a *UdpDevice) StopConfigWatch() {
 	if baseConfigWatch != nil {
 		baseConfigWatch.Close()
@@ -144,5 +198,8 @@ func (a *UdpDevice) StopConfigWatch() {
 	}
 	if resourceConfigWatch != nil {
 		resourceConfigWatch.Close()
+	}
+	if teesConfigWatch != nil {
+		teesConfigWatch.Close()
 	}
 }

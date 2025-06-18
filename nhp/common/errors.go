@@ -116,4 +116,8 @@ var (
 	ErrHttpResponseFormatError     = newError("54002", "http response format error", "http响应格式错误")
 	ErrHttpReturnedWithError       = newError("54003", "http returns with error", "http返回带有错误")
 	ErrHttpResourceAddressNotFound = newError("54004", "http resource address not found", "http无法找到资源地址")
+
+	// db
+	ErrTEENotAuthorized = newError("55001", "TEE is  not authorized", "可信执行环境未授权")
+	ErrDataPrivateKeyStore = newError("55002", "data private key store error", "数据私钥存储错误")
 )

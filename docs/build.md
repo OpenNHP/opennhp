@@ -9,7 +9,7 @@ permalink: /build/
 {: .fs-9 }
 
 This article explains how to build OpenNHP from source code.
-{: .fs-6 .fw-300 } 
+{: .fs-6 .fw-300 }
 
 [中文版](/zh-cn/build/){: .label .fs-4 }
 
@@ -20,7 +20,7 @@ This article explains how to build OpenNHP from source code.
 **Note：** You can run Linux through the WSL subsystem on Windows 10/11. For details, see the official WSL documentation: https://learn.microsoft.com/en-us/windows/wsl/install
 
 - **【Enable the WSL function】** On Win10, you need to enable WSL first to use it for installing Linux. See the settings interface in the image below.
-  
+
    ![Windows 10 on WSL Settings](/images/win10wsl_en.png)
 
 - **【Install Linux on WSL】** It is recommended to install Ubuntu Linux on WSL by running the following command through PowerShell:
@@ -71,7 +71,7 @@ This article explains how to build OpenNHP from source code.
     - To install GCC: `sudo apt install build-essential`
   - **Windows**:
     1. Step 1: **Install mingw64**. mingw64 can be downloaded from msys2's package management tool. Installation requirements, downloads, and installation tutorials for msys2 are available at <https://www.msys2.org/>.
-   
+
     ![install_msys2](/images/install_msys2.png)
 
     2. Step 2: **Install GCC**. Enter the command in msys2's console:
@@ -102,7 +102,7 @@ This article explains how to build OpenNHP from source code.
 
 
   - The lib utility is used in the compile run command, which is a tool for generating.lib files, usually for linking static libraries or exporting symbol tables (the.lib file is generated in Windows to work with the.dll file). The error message lib is not an internal or external command, indicating that the system cannot find the lib utility.
-  
+
   - **To solve the problem ('lib' is not an internal or external command, nor is it a runnable program or batch file) :** Install Visual Studio and Visual Studio tools.
 
     - The lib tool is Microsoft's library management tool and is usually installed with Microsoft Build Tools for Visual Studio. Make sure you have Visual Studio installed and have selected the C++ Build Tools components, including lib.exe.
@@ -110,7 +110,7 @@ This article explains how to build OpenNHP from source code.
     - If you do not have Visual Studio installed, you can download and install it from the official Visual Studio website: https://visualstudiomicrosoft.com/zh-hans/ when installation, select the desktop development (c + +) "the workload, it contains the lib. Exe and other necessary tools.
 
     - After installing Visual Studio, make sure to use the Visual Studio Developer Command Prompt to run the `build.bat` file that contains the lib command. This command line tool automatically loads environment variables for the build tool, such as lib.exe
-  
+
    - **To resolve the problem (the system cannot find the specified path) :** Change the path in the `build.bat` file
 
      - Open the `build.bat` file and find it
@@ -151,8 +151,9 @@ Compiled binaries are in the code directory under the `release` subdirectory.
 - **NHP-Server** executable and configuration files: `release\nhp-server` subdirectory
 - **NHP-AC** executable and configuration files: `release\nhp-ac` subdirectory
 - **NHP-Agent** executable and configuration files: `release\nhp-agent` subdirectory
+- **NHP-DB** executable and configuration files: `release\nhp-db` subdirectory
 - All binaries are packaged into a `tar` file: `release\archive` subdirectory
-  
+
 [中文版](/zh-cn/build/){: .label .fs-4 }
 
 ---

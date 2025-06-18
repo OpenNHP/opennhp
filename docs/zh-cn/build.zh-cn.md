@@ -44,7 +44,7 @@ permalink: /zh-cn/build/
 
 - 2.1 `Go语言`环境：**Go 1.21** 。安装包下载地址: <https://go.dev/dl/>
   - **Windows与macOS**环境下，通过下载的安装程序来安装Go。
-  - **Linux**环境下可以直接通过管理工具安装： `sudo apt install golang ` 
+  - **Linux**环境下可以直接通过管理工具安装： `sudo apt install golang `
   - 安装成功后，运行命令`go version` 来查看Go版本号。
   - **Windows与macOS**环境下，通过下载的安装程序来安装Go。
   - **Linux**环境下可以直接通过管理工具安装：`sudo apt install golang` 或者通过以下命令手动安装：
@@ -85,7 +85,7 @@ permalink: /zh-cn/build/
        gcc --version
        ```
 
-  - **提示：** Windows下可以通过`WSL`子系统来运行Linux，详细请见WSL官方文档：<https://learn.microsoft.com/zh-cn/windows/wsl/install> 
+  - **提示：** Windows下可以通过`WSL`子系统来运行Linux，详细请见WSL官方文档：<https://learn.microsoft.com/zh-cn/windows/wsl/install>
     - 推荐在WSL上运行Ubuntu最新版v22，在Windows上的PowerShell运行以下命令安装：
       ```bat
       wsl --install --distribution Ubuntu-22.04
@@ -97,7 +97,7 @@ permalink: /zh-cn/build/
 
 
   - 在编译运行的命令中使用了 lib 工具，这是用于生成 .lib 文件的工具，通常用于链接静态库或导出符号表（在 Windows 中生成 .lib 文件以便与 .dll 文件配合使用）。遇到的错误提示 lib 不是内部或外部命令，表示系统找不到 lib 工具。
-  
+
   - **解决（'lib' 不是内部或外部命令，也不是可运行的程序或批处理文件）问题 ：** 安装 Visual Studio 和 Visual Studio tools。
 
     - lib 工具是微软的库管理工具，通常随 Visual Studio 的 Microsoft Build Tools 安装。确保你已安装 Visual Studio，并且选择了 C++ 生成工具（C++ Build Tools）组件，其中包括 lib.exe。
@@ -105,7 +105,7 @@ permalink: /zh-cn/build/
     - 如果还没有安装 Visual Studio，可以从 Visual Studio 官方网站下载安装：https://visualstudiomicrosoft.com/zh-hans/ 安装时，选择“桌面开发(C++)”工作负载，它包含 lib.exe 及其他必要的工具。
 
     - 安装 Visual Studio 后，确保使用 Visual Studio 开发者命令行（Developer Command Prompt） 来运行包含 lib 命令的 `build.bat `文件。这个命令行工具会自动加载构建工具的环境变量，如 lib.exe
-  
+
    - **解决（系统找不到指定路径的错误）问题 ：** 更改`bulid.bat`文件中的路径
 
      - 打开 `build.bat` 文件，找到
@@ -117,7 +117,7 @@ permalink: /zh-cn/build/
      ```bat
      call "F:\develop\visualstu\VC\Auxiliary\Build\vcvarsall.bat" x64
      ```
-  
+
 - 2.4 `clang`编译环境:
 
   - 查看clang版本的命令：`clang --version`
@@ -127,10 +127,10 @@ permalink: /zh-cn/build/
     - 安装clang llvm libbpf-dev：`sudo yum install clang llvm libbpf-dev -y`
   - **编译eBPF**:
     - 编译命令：`make ebpf`
-  - **提示：** 
+  - **提示：**
     - 关于clang编译工具，clang 只支持Linux，、不支持windows，windows下无需安装clang。
     - 关于eBPF模块编译，eBPF不支持windows，eBPF只支持Linux及内核5.6版本以上，在Opennhp根目录下执行编译命令：`make ebpf`,则会连带ebpf模块一起编译。
-  
+
 
 
 ## 3. 编译
@@ -161,6 +161,7 @@ permalink: /zh-cn/build/
 - **NHP-Server**的可执行文件和配置文件： `release\nhp-server` 子目录下
 - **NHP-AC**的可执行文件和配置文件： `release\nhp-ac` 子目录下
 - **NHP-Agent**的可执行文件和配置文件： `release\nhp-agent` 子目录下
+- **NHP-DB**的可执行文件和配置文件： `release\nhp-db` 子目录下
 - 所有二进制文件打包成一个`tar`文件:  `release\archive` 子目录下
 
---- 
+---

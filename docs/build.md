@@ -123,7 +123,7 @@ This article explains how to build OpenNHP from source code.
      call "F:\develop\visualstu\VC\Auxiliary\Build\vcvarsall.bat" x64
      ```
    
-- 2.4 `clang` Compilation Environment (Optional):
+- 2.4 `clang` environment (optional):
 
   - **Note:**
     - Regarding the clang compiler tool, clang is only supported on Linux and not available on Windows, Windows don't need to install clang.

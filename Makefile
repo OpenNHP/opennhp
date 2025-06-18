@@ -60,7 +60,7 @@ generate-version-and-build:
 	@$(MAKE) agentd
 	@$(MAKE) acd
 	@$(MAKE) serverd
-	@$(MAKE) de
+	@$(MAKE) db
 	@$(MAKE) agentsdk
 	@$(MAKE) devicesdk
 	@$(MAKE) plugins
@@ -92,7 +92,7 @@ serverd:
 	mkdir -p ../release/nhp-server/etc; \
 	cp ./server/main/etc/*.toml ../release/nhp-server/etc/
 
-de:
+db:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building nhp-db... $(END_COLOUR)"
 	cd endpoints && \
 	go build -trimpath -ldflags ${LD_FLAGS} -v -o ../release/nhp-db/nhp-db ./db/main/main.go && \

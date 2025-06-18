@@ -152,9 +152,9 @@ permalink: /zh-cn/build/
    - **Windows**：运行代码根目录下*BAT*文件
    `build.bat`<br>
    <small>*（注：如果在windows下编译过程中出现错误，请尝试此编译方法：在Visual Studio的developer command prompt for VS命令窗口中，切换到项目目录，执行`./build.bat`命令）*</small>
-   - **Linux下编译eBPF**: 运行代码根目录下执行
-     - 编译命令：`make ebpf`
-     <small>*（注：命令 `make ebpf`，会连带编译ebpf模块）*</small>
+   - **Linux下编译eBPF**: 运行代码根目录下脚本
+   `make ebpf`
+   <small>*（注：命令 `make ebpf`，会连带编译ebpf模块）*</small>
 
 ## 4. 结果
 

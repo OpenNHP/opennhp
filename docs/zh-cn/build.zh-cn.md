@@ -125,7 +125,7 @@ permalink: /zh-cn/build/
     - 安装clang llvm libbpf-dev：`sudo apt install clang llvm libbpf-dev`
   - **Linux Centos**:
     - 安装clang llvm libbpf-dev：`sudo yum install clang llvm libbpf-dev -y`
-  - **提示：** 编译eBPF字节码.o文件，依赖于clang编译工具，如果不编译eBPF，则不需要clang编译环境。 eBPF只支持Linux及内核5.6版本以上、不支持windows，clang编译工具也不支持windows，windows下无需安装clang
+  - **提示：** 编译eBPF字节码.o文件，依赖于clang编译工具，如果不编译eBPF，则不需要clang编译环境。 eBPF只支持Linux及内核5.6版本以上、不支持windows，clang编译工具也不支持windows，windows下无需安装clang。
   
 
 

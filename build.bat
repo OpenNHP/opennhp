@@ -46,6 +46,12 @@ IF %ERRORLEVEL% NEQ 0 goto :exit
 if not exist ..\release\nhp-db\etc mkdir ..\release\nhp-db\etc
 copy  db\main\etc\*.* ..\release\nhp-db\etc
 
+:kgc
+go build -trimpath -ldflags %LD_FLAGS% -v -o ..\release\nhp-kgc\nhp-kgc.exe kgc\main\main.go
+IF %ERRORLEVEL% NEQ 0 goto :exit
+if not exist ..\release\nhp-kgc\etc mkdir ..\release\nhp-kgc\etc
+copy  kgc\main\etc\*.* ..\release\nhp-kgc\etc
+
 :agentsdk
 go build -trimpath -buildmode=c-shared -ldflags %LD_FLAGS% -v -o ..\release\nhp-agent\nhp-agent.dll agent\main\main.go agent\main\export.go
 IF %ERRORLEVEL% NEQ 0 goto :exit

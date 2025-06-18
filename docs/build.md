@@ -152,6 +152,7 @@ Compiled binaries are in the code directory under the `release` subdirectory.
 - **NHP-AC** executable and configuration files: `release\nhp-ac` subdirectory
 - **NHP-Agent** executable and configuration files: `release\nhp-agent` subdirectory
 - **NHP-DB** executable and configuration files: `release\nhp-db` subdirectory
+- **NHP-KGC** executable and configuration files: `release\nhp-kgc` subdirectory
 - All binaries are packaged into a `tar` file: `release\archive` subdirectory
 
 [中文版](/zh-cn/build/){: .label .fs-4 }

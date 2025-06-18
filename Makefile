@@ -10,7 +10,7 @@ GOMODULE = github.com/OpenNHP/opennhp/nhp
 MAKEFLAGS += --no-print-directory
 OS_NAME = $(shell uname -s | tr A-Z a-z)
 
-# Version number auto increment 
+# Version number auto increment
 TIMESTAMP=$(shell date +%y%m%d%H%M%S)
 VERSION = $(shell cat nhp/version/VERSION).$(TIMESTAMP)
 # Other version settings
@@ -93,11 +93,11 @@ serverd:
 	cp ./server/main/etc/*.toml ../release/nhp-server/etc/
 
 de:
-	@echo "$(COLOUR_BLUE)[OpenNHP] Building nhp-de... $(END_COLOUR)"
+	@echo "$(COLOUR_BLUE)[OpenNHP] Building nhp-db... $(END_COLOUR)"
 	cd endpoints && \
-	go build -trimpath -ldflags ${LD_FLAGS} -v -o ../release/nhp-de/nhp-de ./de/main/main.go && \
-	mkdir -p ../release/nhp-de/etc; \
-	cp ./de/main/etc/*.toml ../release/nhp-de/etc/
+	go build -trimpath -ldflags ${LD_FLAGS} -v -o ../release/nhp-db/nhp-db ./db/main/main.go && \
+	mkdir -p ../release/nhp-db/etc; \
+	cp ./db/main/etc/*.toml ../release/nhp-db/etc/
 
 agentsdk:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building agent SDK... $(END_COLOUR)"
@@ -125,11 +125,10 @@ test:
 
 archive:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Start archiving... $(END_COLOUR)"
-	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-de nhp-server
+	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
 # make ebpf
 ebpf: ebpf generate-version-and-build
 
-.PHONY: all generate-version-and-build init agentd acd serverd de agentsdk devicesdk plugins test archive ebpf clean_ebpf
-
+.PHONY: all generate-version-and-build init agentd acd serverd db agentsdk devicesdk plugins test archive ebpf clean_ebpf

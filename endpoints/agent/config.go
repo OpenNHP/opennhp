@@ -14,6 +14,7 @@ import (
 
 var (
 	baseConfigWatch     io.Closer
+	dhpConfigWatch      io.Closer
 	serverConfigWatch   io.Closer
 	resourceConfigWatch io.Closer
 
@@ -25,7 +26,12 @@ type Config struct {
 	DefaultCipherScheme int    `json:"defaultCipherScheme"`
 	PrivateKeyBase64    string `json:"privateKey"`
 	KnockUser           `mapstructure:",squash"`
-	DHPExeCMD           string
+	*DHPConfig
+}
+
+type DHPConfig struct {
+	TEEPrivateKeyBase64 string `json:"teePrivateKeyBase64"`
+	DHPExeCMD           string `json:"dhpExeCMD"`
 }
 
 type Peers struct {
@@ -48,6 +54,22 @@ func (a *UdpAgent) loadBaseConfig() error {
 		log.Info("base config: %s has been updated", fileName)
 		a.updateBaseConfig(fileName)
 	})
+	return nil
+}
+
+func (a *UdpAgent) loadDHPConfig() error {
+	// dhp.toml
+	fileName := filepath.Join(ExeDirPath, "etc", "dhp.toml")
+	if err := a.updateDHPConfig(fileName); err != nil {
+		// ignore error
+		_ = err
+	}
+
+	dhpConfigWatch = utils.WatchFile(fileName, func() {
+		log.Info("DHP config: %s has been updated", fileName)
+		a.updateDHPConfig(fileName)
+	})
+
 	return nil
 }
 
@@ -122,6 +144,34 @@ func (a *UdpAgent) updateBaseConfig(file string) (err error) {
 	if a.config.DefaultCipherScheme != conf.DefaultCipherScheme {
 		log.Info("set default cipher scheme to %d", conf.DefaultCipherScheme)
 		a.config.DefaultCipherScheme = conf.DefaultCipherScheme
+	}
+
+	return err
+}
+
+func (a *UdpAgent) updateDHPConfig(file string) (err error) {
+	utils.CatchPanicThenRun(func() {
+		err = errLoadConfig
+	})
+
+	content, err := os.ReadFile(file)
+	if err != nil {
+		log.Error("failed to read DHP config: %v", err)
+	}
+
+	var conf DHPConfig
+	if err := toml.Unmarshal(content, &conf); err != nil {
+		log.Error("failed to unmarshal DHP config: %v", err)
+	}
+
+	if a.config.DHPConfig == nil {
+		a.config.DHPConfig = &conf
+		return err
+	}
+
+	if a.config.DHPExeCMD != conf.DHPExeCMD {
+		log.Info("set DHP executable command to %s", conf.DHPExeCMD)
+		a.config.DHPExeCMD = conf.DHPExeCMD
 	}
 
 	return err
@@ -210,6 +260,9 @@ func (a *UdpAgent) updateResources(file string) (err error) {
 func (a *UdpAgent) StopConfigWatch() {
 	if baseConfigWatch != nil {
 		baseConfigWatch.Close()
+	}
+	if dhpConfigWatch != nil {
+		dhpConfigWatch.Close()
 	}
 	if serverConfigWatch != nil {
 		serverConfigWatch.Close()

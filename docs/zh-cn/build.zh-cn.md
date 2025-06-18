@@ -117,6 +117,21 @@ permalink: /zh-cn/build/
      ```bat
      call "F:\develop\visualstu\VC\Auxiliary\Build\vcvarsall.bat" x64
      ```
+  
+- 2.4 `clang`编译环境:
+
+  - 查看clang版本的命令：`clang --version`
+  - **Linux Ubuntu**:
+    - 安装clang llvm libbpf-dev：`sudo apt install clang llvm libbpf-dev`
+  - **Linux Centos**:
+    - 安装clang llvm libbpf-dev：`sudo yum install clang llvm libbpf-dev -y`
+  - **编译eBPF**:
+    - 编译命令：`make ebpf`
+  - **提示：** 
+    - 关于clang编译工具，clang 只支持Linux，、不支持windows，windows下无需安装clang。
+    - 关于eBPF模块编译，eBPF不支持windows，eBPF只支持Linux及内核5.6版本以上，在Opennhp根目录下执行编译命令：`make ebpf`,则会连带ebpf模块一起编译。
+  
+
 
 ## 3. 编译
 
@@ -126,7 +141,7 @@ permalink: /zh-cn/build/
    git clone https://github.com/OpenNHP/opennhp.git
    ```
 
-2. Go环境设置
+2. Go环境
 
    ```bash
    go env -w GOPROXY="https://goproxy.cn,direct"

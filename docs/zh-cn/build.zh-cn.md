@@ -125,7 +125,7 @@ permalink: /zh-cn/build/
     - 安装clang llvm libbpf-dev：`sudo apt install clang llvm libbpf-dev`
   - **Linux Centos**:
     - 安装clang llvm libbpf-dev：`sudo yum install clang llvm libbpf-dev -y`
-  - **编译epbf**:
+  - **编译eBPF**:
     - 编译命令：`make ebpf`
   - **提示：** 
     - 关于clang编译工具，clang 只支持Linux，、不支持windows，windows下无需安装clang。
@@ -141,7 +141,7 @@ permalink: /zh-cn/build/
    git clone https://github.com/OpenNHP/opennhp.git
    ```
 
-2. Go环境设置
+2. Go环境
 
    ```bash
    go env -w GOPROXY="https://goproxy.cn,direct"

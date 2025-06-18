@@ -126,10 +126,8 @@ This article explains how to build OpenNHP from source code.
 - 2.4 `clang` Compilation Environment (Optional):
 
   - **Note:**
-    - Regarding the clang compiler tool:
-      * clang is only supported on Linux and not available on Windows. Windows don't need to install clang.
-    - Regarding eBPF module compilation:
-      * eBPF is not supported on Windows. eBPF is only supported on Linux with kernel version 5.6 or higher.
+    - Regarding the clang compiler tool, clang is only supported on Linux and not available on Windows, Windows don't need to install clang.
+    - Regarding eBPF module compilation, eBPF is not supported on Windows, eBPF is only supported on Linux with kernel version 5.6 or higher.
   - To check clang version: `clang --version`
   - **For Linux Ubuntu**:
     - Install clang, llvm, and libbpf-dev: `sudo apt install clang llvm libbpf-dev`
@@ -157,7 +155,7 @@ This article explains how to build OpenNHP from source code.
    `build.bat`<br>
    <small>*（Note: If an error occurs during the compilation process under windows, try this compilation method: In the Visual Studio developer command prompt for VS command window, switch to the project directory and execute the `./build.bat `command）*</small>
    - **Compiling eBPF on Linux**: Run the script in the code root directory
-   `make ebpf`
+   `make ebpf`<br>
    <small>*(Note: The command `make ebpf` will also compile the eBPF module)*</small>
 
 ## 4. result

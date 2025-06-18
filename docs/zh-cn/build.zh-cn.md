@@ -121,15 +121,13 @@ permalink: /zh-cn/build/
 - 2.4 `clang`编译环境(可选):
 
   - **提示：**
-    - 关于clang编译工具，clang 只支持Linux，、不支持windows，windows下无需安装clang。
+    - 关于clang编译工具，clang 只支持Linux，不支持windows，windows下无需安装clang。
     - 关于eBPF模块编译，eBPF不支持windows，eBPF只支持Linux及内核5.6版本以上。
   - 查看clang版本的命令：`clang --version`
   - **Linux Ubuntu**:
     - 安装clang llvm libbpf-dev：`sudo apt install clang llvm libbpf-dev`
   - **Linux Centos**:
     - 安装clang llvm libbpf-dev：`sudo yum install clang llvm libbpf-dev -y`
-
-
 
 
 ## 3. 编译
@@ -153,7 +151,7 @@ permalink: /zh-cn/build/
    `build.bat`<br>
    <small>*（注：如果在windows下编译过程中出现错误，请尝试此编译方法：在Visual Studio的developer command prompt for VS命令窗口中，切换到项目目录，执行`./build.bat`命令）*</small>
    - **Linux下编译eBPF**: 运行代码根目录下脚本
-   `make ebpf`
+   `make ebpf`<br>
    <small>*（注：命令 `make ebpf`，会连带编译ebpf模块）*</small>
 
 ## 4. 结果

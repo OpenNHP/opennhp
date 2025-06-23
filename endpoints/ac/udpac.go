@@ -337,7 +337,7 @@ func (a *UdpAC) recvPacketRoutine(conn *UdpConn) {
 		atomic.AddUint64(&a.stats.totalRecvBytes, uint64(n))
 
 		// check minimal length
-		if n < core.HeaderSize {
+		if n < pkt.MinimalLength() {
 			a.device.ReleasePoolPacket(pkt)
 			log.Error("Received UDP packet from %s is too short, discard", addrStr)
 			continue

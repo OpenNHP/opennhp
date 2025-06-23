@@ -388,7 +388,7 @@ func (a *UdpAgent) recvPacketRoutine(conn *UdpConn) {
 		atomic.AddUint64(&a.stats.totalRecvBytes, uint64(n))
 
 		// check minimal length
-		if n < core.HeaderSize {
+		if n < pkt.MinimalLength() {
 			a.device.ReleasePoolPacket(pkt)
 			log.Error("Received UDP packet from %s is too short, discard", addrStr)
 			continue
@@ -692,7 +692,7 @@ func (a *UdpAgent) StartDecodeZtdo(ztdoPath string, output string) {
 	}
 
 	eccType := core.ECC_SM2
-	if a.config.DefaultCipherScheme == core.CIPHER_SCHEME_CURVE {
+	if a.config.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
 		eccType = core.ECC_CURVE25519
 	}
 	consumerEphemeralEcdh := core.NewECDH(eccType)

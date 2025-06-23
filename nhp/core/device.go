@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/OpenNHP/opennhp/nhp/common"
 	log "github.com/OpenNHP/opennhp/nhp/log"
 )
 
@@ -525,4 +526,15 @@ func (d *Device) IsOverload() bool {
 
 func (d *Device) SetOverload(overloaded bool) {
 	d.Overload.Store(overloaded)
+}
+
+func (d *Device) GetEcdhByCipherScheme(cipherScheme int) Ecdh {
+	switch cipherScheme {
+	case common.CIPHER_SCHEME_CURVE:
+		return d.staticEcdhCurve
+	case common.CIPHER_SCHEME_GMSM:
+		fallthrough
+	default:
+		return d.staticEcdhGmsm
+	}
 }

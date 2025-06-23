@@ -12,11 +12,8 @@ import (
 	"io"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	common "github.com/OpenNHP/opennhp/nhp/common"
-	"github.com/OpenNHP/opennhp/nhp/core/scheme/curve"
-	"github.com/OpenNHP/opennhp/nhp/core/scheme/gmsm"
 	log "github.com/OpenNHP/opennhp/nhp/log"
 )
 
@@ -106,26 +103,12 @@ func (d *Device) createPacketParserData(pd *PacketData) (ppd *PacketParserData, 
 		ppd.decryptedMsgCh = pd.DecryptedMsgCh
 
 		// init header and init device ecdh
-		ppd.HeaderFlag = binary.BigEndian.Uint16(ppd.basePacket.Content[10:12])
-		if ppd.HeaderFlag&NHP_FLAG_EXTENDEDLENGTH == 0 {
-			log.Info("start decryption using CIPHER_SCHEME_CURVE")
-			ppd.CipherScheme = CIPHER_SCHEME_CURVE
-			ppd.header = (*curve.HeaderCurve)(unsafe.Pointer(&ppd.basePacket.Content[0]))
-			ppd.Ciphers = NewCipherSuite(CIPHER_SCHEME_CURVE)
-			ppd.deviceEcdh = d.staticEcdhCurve
-		} else {
-			// check cipher scheme
-			switch ppd.HeaderFlag & (0xF << 12) {
-			case NHP_FLAG_SCHEME_GMSM:
-				fallthrough
-			default:
-				log.Info("start decryption using CIPHER_SCHEME_GMSM")
-				ppd.CipherScheme = CIPHER_SCHEME_GMSM
-				ppd.header = (*gmsm.HeaderGmsm)(unsafe.Pointer(&ppd.basePacket.Content[0]))
-				ppd.Ciphers = NewCipherSuite(CIPHER_SCHEME_GMSM)
-				ppd.deviceEcdh = d.staticEcdhGmsm
-			}
-		}
+		ppd.HeaderFlag = ppd.basePacket.Flag()
+		ppd.header = ppd.basePacket.Header()
+		ppd.CipherScheme = ppd.header.CipherScheme()
+		log.Info("start decryption using CIPHER_SCHEME_%d(0: CURVE; 1: GMSM.)", ppd.CipherScheme)
+		ppd.Ciphers = NewCipherSuite(ppd.CipherScheme)
+		ppd.deviceEcdh = d.GetEcdhByCipherScheme(ppd.CipherScheme)
 
 		// init chain hash -> ChainHash0
 		ppd.chainHash = NewHash(ppd.Ciphers.HashType)
@@ -179,7 +162,7 @@ func (d *Device) createPacketParserData(pd *PacketData) (ppd *PacketParserData, 
 	ppd.SenderTrxId = ppd.header.Counter()
 
 	// init body message
-	ppd.BodyCompress = ppd.HeaderFlag&NHP_FLAG_COMPRESS != 0
+	ppd.BodyCompress = ppd.HeaderFlag&common.NHP_FLAG_COMPRESS != 0
 	ppd.BodyMessage = nil
 
 	return ppd, nil
@@ -201,17 +184,8 @@ func (ppd *PacketParserData) deriveMsgAssemblerData(t int, compress bool, messag
 	mad.BasePacket.HeaderType = t
 
 	// create header and init device ecdh
-	switch mad.CipherScheme {
-	case CIPHER_SCHEME_CURVE:
-		mad.header = (*curve.HeaderCurve)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
-		mad.deviceEcdh = mad.device.staticEcdhCurve
-	case CIPHER_SCHEME_GMSM:
-		fallthrough
-	default:
-		mad.header = (*gmsm.HeaderGmsm)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
-		mad.deviceEcdh = mad.device.staticEcdhGmsm
-
-	}
+	mad.header = mad.BasePacket.HeaderWithCipherScheme(mad.CipherScheme)
+	mad.deviceEcdh = mad.device.GetEcdhByCipherScheme(mad.CipherScheme)
 
 	// continue with the sender's counter
 	mad.header.SetCounter(ppd.SenderTrxId)
@@ -263,9 +237,9 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	SetZero(ess[:])
 	peerPk := make([]byte, PublicKeySizeEx)
 	switch ppd.CipherScheme {
-	case CIPHER_SCHEME_CURVE:
+	case common.CIPHER_SCHEME_CURVE:
 		fallthrough
-	case CIPHER_SCHEME_GMSM:
+	case common.CIPHER_SCHEME_GMSM:
 		fallthrough
 	default:
 		KeyByteSlice := key[:]
@@ -278,7 +252,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		}
 	}
 
-	if ppd.CipherScheme == CIPHER_SCHEME_CURVE {
+	if ppd.CipherScheme == common.CIPHER_SCHEME_CURVE {
 		peerPk = peerPk[:PublicKeySize]
 	}
 
@@ -357,9 +331,9 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 
 	var tsBytes [TimestampSize]byte
 	switch ppd.CipherScheme {
-	case CIPHER_SCHEME_CURVE:
+	case common.CIPHER_SCHEME_CURVE:
 		fallthrough
-	case CIPHER_SCHEME_GMSM:
+	case common.CIPHER_SCHEME_GMSM:
 		fallthrough
 	default:
 		aead = AeadFromKey(ppd.Ciphers.GcmType, &key)
@@ -427,9 +401,9 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// handle knock packet at overload before going into body decryption
 	if ppd.device.deviceType == NHP_SERVER && ppd.Overload && ppd.HeaderType == NHP_KNK {
 		switch ppd.CipherScheme {
-		case CIPHER_SCHEME_CURVE:
+		case common.CIPHER_SCHEME_CURVE:
 			fallthrough
-		case CIPHER_SCHEME_GMSM:
+		case common.CIPHER_SCHEME_GMSM:
 			fallthrough
 		default:
 			ppd.generateCookie()
@@ -563,9 +537,9 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 
 	if sumCookie {
 		switch ppd.CipherScheme {
-		case CIPHER_SCHEME_CURVE:
+		case common.CIPHER_SCHEME_CURVE:
 			fallthrough
-		case CIPHER_SCHEME_GMSM:
+		case common.CIPHER_SCHEME_GMSM:
 			fallthrough
 		default:
 			ppd.ConnData.Lock()

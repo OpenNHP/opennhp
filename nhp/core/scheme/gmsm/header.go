@@ -4,36 +4,28 @@ import (
 	"encoding/binary"
 	"unsafe"
 
+	"github.com/OpenNHP/opennhp/nhp/common"
 	utils "github.com/OpenNHP/opennhp/nhp/utils"
 )
 
 const (
-	HeaderCommonSize = 24
-	HashSize         = 32
-	GCMNonceSize     = 12
-	GCMTagSize       = 16
-	TimestampSize    = 8
-	HeaderSize       = HeaderCommonSize + PublicKeySize + PublicKeySize + GCMTagSize + TimestampSize + GCMTagSize + HashSize
+	HeaderCommonSize    = 24
+	HashSize            = 32
+	GCMNonceSize        = 12
+	GCMTagSize          = 16
+	TimestampSize       = 8
+	MaximumIdentitySize = 64
+	HeaderSize          = HeaderCommonSize + PublicKeySize + MaximumIdentitySize + GCMTagSize + PublicKeySize + GCMTagSize + TimestampSize + GCMTagSize + HashSize
 )
 
 type HeaderGmsm struct {
 	HeaderCommon [HeaderCommonSize]byte
 	Ephermeral   [PublicKeySize]byte
+	Identity     [MaximumIdentitySize + GCMTagSize]byte
 	Static       [PublicKeySize + GCMTagSize]byte
 	Timestamp    [TimestampSize + GCMTagSize]byte
 	HMAC         [HashSize]byte
 }
-
-// header flags (bit 0 - bit 11)
-const (
-	NHP_FLAG_EXTENDEDLENGTH = 1 << iota
-	NHP_FLAG_COMPRESS
-)
-
-// cipher scheme combination (bit 11 - bit 15)
-const (
-	NHP_FLAG_SCHEME_GMSM = 0 << 12
-)
 
 // gmsm header implementations
 func (h *HeaderGmsm) TypeAndPayloadSize() (t int, s int) {
@@ -73,9 +65,9 @@ func (h *HeaderGmsm) Flag() uint16 {
 }
 
 func (h *HeaderGmsm) SetFlag(flag uint16) {
-	flag |= uint16(NHP_FLAG_EXTENDEDLENGTH)
+	flag |= uint16(common.NHP_FLAG_EXTENDEDLENGTH)
 	flag &= 0x0FFF
-	flag |= NHP_FLAG_SCHEME_GMSM << 12
+	flag |= common.NHP_FLAG_SCHEME_GMSM << 12
 	binary.BigEndian.PutUint16(h.HeaderCommon[10:12], flag)
 }
 
@@ -111,9 +103,13 @@ func (h *HeaderGmsm) TimestampBytes() []byte {
 }
 
 func (h *HeaderGmsm) IdentityBytes() []byte {
-	return nil
+	return h.Identity[:]
 }
 
 func (h *HeaderGmsm) HMACBytes() []byte {
 	return h.HMAC[:]
+}
+
+func (h *HeaderGmsm) CipherScheme() int {
+	return common.CIPHER_SCHEME_GMSM
 }

@@ -9,10 +9,8 @@ import (
 	"hash"
 	"net"
 	"time"
-	"unsafe"
 
-	"github.com/OpenNHP/opennhp/nhp/core/scheme/curve"
-	"github.com/OpenNHP/opennhp/nhp/core/scheme/gmsm"
+	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
@@ -27,10 +25,11 @@ type MsgData struct {
 	RemoteAddr     *net.UDPAddr      // used by agent and ac create a new connection or pick an existing connection for msg sending
 	ConnData       *ConnectionData   // used by server to pick an existing connection for msg sending
 	PrevParserData *PacketParserData // when PrevParserData is set, CipherScheme, RemoteAddr, ConnData, TransactionId and PeerPk will be overridden
-	CipherScheme   int               // 0: curve25519/chacha20/blake2s, 1: sm2/sm4/sm3
+	CipherScheme   int               // 0: sm2/sm4/sm3, 1: curve25519/chacha20/blake2s
 	TransactionId  uint64
 	HeaderType     int
 	Compress       bool
+	ClPkc          bool              // 0: non-CL-PKC extented, 1: CL-PKC extended
 	ExternalPacket *Packet
 	ExternalCookie *[CookieSize]byte
 	Message        []byte
@@ -77,6 +76,7 @@ type MsgAssemblerData struct {
 	BodySize      int
 	HeaderFlag    uint16
 	BodyCompress  bool
+	ClPkc         bool
 
 	ExternalCookie *[CookieSize]byte
 	RemotePubKey   []byte
@@ -98,6 +98,7 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 		mad.HeaderType = md.HeaderType
 		mad.RemotePubKey = md.PeerPk
 		mad.BodyCompress = md.Compress
+		mad.ClPkc = md.ClPkc
 		mad.bodyMessage = md.Message
 		mad.TransactionId = md.TransactionId
 		mad.connData = md.ConnData
@@ -117,21 +118,10 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 		}
 
 		// create header and init device ecdh
-		switch mad.CipherScheme {
-		case CIPHER_SCHEME_CURVE:
-			log.Info("start encryption using CIPHER_SCHEME_CURVE")
-			mad.header = (*curve.HeaderCurve)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
-			mad.ciphers = NewCipherSuite(CIPHER_SCHEME_CURVE)
-			mad.deviceEcdh = d.staticEcdhCurve
-
-		case CIPHER_SCHEME_GMSM:
-			fallthrough
-		default:
-			log.Info("start encryption using CIPHER_SCHEME_GMSM")
-			mad.header = (*gmsm.HeaderGmsm)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
-			mad.ciphers = NewCipherSuite(CIPHER_SCHEME_GMSM)
-			mad.deviceEcdh = d.staticEcdhGmsm
-		}
+		log.Info("start encryption using CIPHER_SCHEME_%d(0: CURVE; 1: GMSM.)", mad.CipherScheme)
+		mad.header = mad.BasePacket.HeaderWithCipherScheme(mad.CipherScheme)
+		mad.ciphers = NewCipherSuite(mad.CipherScheme)
+		mad.deviceEcdh = d.GetEcdhByCipherScheme(mad.CipherScheme)
 
 		// init version
 		mad.header.SetVersion(ProtocolVersionMajor, ProtocolVersionMinor)
@@ -176,19 +166,10 @@ func (mad *MsgAssemblerData) derivePacketParserData(pkt *Packet, initTime int64)
 	ppd.feedbackMsgCh = mad.ResponseMsgCh
 
 	// init header and init device ecdh
-	ppd.HeaderFlag = binary.BigEndian.Uint16(ppd.basePacket.Content[10:12])
-	switch mad.CipherScheme {
-	case CIPHER_SCHEME_CURVE:
-		ppd.header = (*curve.HeaderCurve)(unsafe.Pointer(&ppd.basePacket.Content[0]))
-		ppd.Ciphers = NewCipherSuite(CIPHER_SCHEME_CURVE)
-		ppd.deviceEcdh = ppd.device.staticEcdhCurve
-	case CIPHER_SCHEME_GMSM:
-		fallthrough
-	default:
-		ppd.header = (*gmsm.HeaderGmsm)(unsafe.Pointer(&ppd.basePacket.Content[0]))
-		ppd.Ciphers = NewCipherSuite(CIPHER_SCHEME_GMSM)
-		ppd.deviceEcdh = ppd.device.staticEcdhGmsm
-	}
+	ppd.HeaderFlag = ppd.basePacket.Flag()
+	ppd.header = ppd.basePacket.HeaderWithCipherScheme(ppd.CipherScheme)
+	ppd.Ciphers = NewCipherSuite(ppd.CipherScheme)
+	ppd.deviceEcdh = ppd.device.GetEcdhByCipherScheme(ppd.CipherScheme)
 
 	// init chain hash -> ChainHash0
 	ppd.chainHash = NewHash(ppd.Ciphers.HashType)
@@ -215,10 +196,10 @@ func (d *Device) createKeepalivePacket(md *MsgData) (mad *MsgAssemblerData, err 
 		mad.BasePacket = d.AllocatePoolPacket()
 	}
 	mad.BasePacket.HeaderType = NHP_KPL
-	mad.BasePacket.Content = mad.BasePacket.Buf[:HeaderSize]
 
 	// create header
-	mad.header = (*curve.HeaderCurve)(unsafe.Pointer(&mad.BasePacket.Buf[0]))
+	mad.header = mad.BasePacket.HeaderWithCipherScheme(common.CIPHER_SCHEME_CURVE)
+	mad.BasePacket.Content = mad.BasePacket.Buf[:mad.header.Size()]
 
 	// init version
 	mad.header.SetVersion(ProtocolVersionMajor, ProtocolVersionMinor)
@@ -246,12 +227,12 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 
 	lenMismatch := false
 	switch mad.CipherScheme {
-	case CIPHER_SCHEME_CURVE:
+	case common.CIPHER_SCHEME_CURVE:
 		if len(mad.RemotePubKey) != PublicKeySize {
 			lenMismatch = true
 		}
 
-	case CIPHER_SCHEME_GMSM:
+	case common.CIPHER_SCHEME_GMSM:
 		if len(mad.RemotePubKey) != PublicKeySizeEx {
 			lenMismatch = true
 		}
@@ -296,9 +277,9 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 	var static []byte
 	// encrypt initiator's public key and evolve chainhash with the ciphertext
 	switch mad.CipherScheme {
-	case CIPHER_SCHEME_CURVE:
+	case common.CIPHER_SCHEME_CURVE:
 		fallthrough
-	case CIPHER_SCHEME_GMSM:
+	case common.CIPHER_SCHEME_GMSM:
 		fallthrough
 	default:
 		aead = AeadFromKey(mad.ciphers.GcmType, &key)
@@ -327,9 +308,9 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 	binary.BigEndian.PutUint64(tsBytes[:], uint64(mad.LocalInitTime))
 
 	switch mad.CipherScheme {
-	case CIPHER_SCHEME_CURVE:
+	case common.CIPHER_SCHEME_CURVE:
 		fallthrough
-	case CIPHER_SCHEME_GMSM:
+	case common.CIPHER_SCHEME_GMSM:
 		fallthrough
 	default:
 		aead = AeadFromKey(mad.ciphers.GcmType, &key)
@@ -384,12 +365,16 @@ func (mad *MsgAssemblerData) encryptBody() (err error) {
 		mad.BodySize = len(body) + GCMTagSize
 
 		// set header flag
-		mad.HeaderFlag |= NHP_FLAG_COMPRESS
+		mad.HeaderFlag |= common.NHP_FLAG_COMPRESS
 
 	} else {
 		// no compress
 		body = mad.bodyMessage
 		mad.BodySize = len(mad.bodyMessage) + GCMTagSize
+	}
+
+	if mad.ClPkc {
+		mad.HeaderFlag |= common.NHP_FLAG_CL_PKC
 	}
 
 	if mad.BodySize > PacketBufferSize-mad.header.Size() {

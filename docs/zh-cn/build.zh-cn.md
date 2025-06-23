@@ -162,6 +162,7 @@ permalink: /zh-cn/build/
 - **NHP-AC**的可执行文件和配置文件： `release\nhp-ac` 子目录下
 - **NHP-Agent**的可执行文件和配置文件： `release\nhp-agent` 子目录下
 - **NHP-DB**的可执行文件和配置文件： `release\nhp-db` 子目录下
+- **NHP-KGC**的可执行文件和配置文件： `release\nhp-kgc` 子目录下
 - 所有二进制文件打包成一个`tar`文件:  `release\archive` 子目录下
 
 ---

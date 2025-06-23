@@ -42,7 +42,7 @@ permalink: /zh-cn/build/
 
 ## 2. 系统需求
 
-- 2.1 `Go语言`环境：**Go 1.21** 。安装包下载地址: <https://go.dev/dl/>
+- 2.1 `Go语言`环境：**Go 1.23** 。安装包下载地址: <https://go.dev/dl/>
   - **Windows与macOS**环境下，通过下载的安装程序来安装Go。
   - **Linux**环境下可以直接通过管理工具安装： `sudo apt install golang `
   - 安装成功后，运行命令`go version` 来查看Go版本号。
@@ -118,19 +118,16 @@ permalink: /zh-cn/build/
      call "F:\develop\visualstu\VC\Auxiliary\Build\vcvarsall.bat" x64
      ```
 
-- 2.4 `clang`编译环境:
+- 2.4 `clang`编译环境(可选):
 
+  - **提示：**
+    - 关于clang编译工具，clang 只支持Linux，不支持windows，windows下无需安装clang。
+    - 关于eBPF模块编译，eBPF不支持windows，eBPF只支持Linux及内核5.6版本以上。
   - 查看clang版本的命令：`clang --version`
   - **Linux Ubuntu**:
     - 安装clang llvm libbpf-dev：`sudo apt install clang llvm libbpf-dev`
   - **Linux Centos**:
     - 安装clang llvm libbpf-dev：`sudo yum install clang llvm libbpf-dev -y`
-  - **编译eBPF**:
-    - 编译命令：`make ebpf`
-  - **提示：**
-    - 关于clang编译工具，clang 只支持Linux，、不支持windows，windows下无需安装clang。
-    - 关于eBPF模块编译，eBPF不支持windows，eBPF只支持Linux及内核5.6版本以上，在Opennhp根目录下执行编译命令：`make ebpf`,则会连带ebpf模块一起编译。
-
 
 
 ## 3. 编译
@@ -153,6 +150,9 @@ permalink: /zh-cn/build/
    - **Windows**：运行代码根目录下*BAT*文件
    `build.bat`<br>
    <small>*（注：如果在windows下编译过程中出现错误，请尝试此编译方法：在Visual Studio的developer command prompt for VS命令窗口中，切换到项目目录，执行`./build.bat`命令）*</small>
+   - **Linux下编译eBPF**: 运行代码根目录下脚本
+   `make ebpf`<br>
+   <small>*（注：命令 `make ebpf`，会连带编译ebpf模块）*</small>
 
 ## 4. 结果
 

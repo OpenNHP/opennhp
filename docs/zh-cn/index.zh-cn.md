@@ -1,6 +1,6 @@
 ---
 title: 中文版
-nav_order: 10
+nav_order: 11
 layout: page
 has_children: true
 has_toc: true

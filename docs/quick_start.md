@@ -15,7 +15,7 @@ A locally built Docker debugging environment that simulates the setup of nhp-ser
 
 {: .fs-6 .fw-300 }
 
-[中文版](/zh-cn/){: .label .fs-4 }
+[中文版](/zh-cn/quick_start/){: .label .fs-4 }
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: page
 title: How to Deploy
-nav_order: 5
+nav_order: 6
 permalink: /deploy/
 ---
 

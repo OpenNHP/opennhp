@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Server Plugins
-nav_order: 8
+nav_order: 9
 permalink: /server_plugin/
 ---
 

@@ -10,9 +10,9 @@ RUN apt-get update && \
     build-essential \
     wget \
     ca-certificates \
+    clang \
     iptables \
     tcpdump \
-    clang \
     ipset \
     git \
     && rm -rf /var/lib/apt/lists/*
@@ -55,12 +55,6 @@ RUN go version && \
 
 # Set working directory
 WORKDIR /nhp-server
-
-# Copy source code
-COPY ../opennhp/ .
-
-# Build OpenNHP server
-RUN make init acd serverd plugins test
 
 # Default command (keep container running)
 CMD ["tail", "-f", "/dev/null"]

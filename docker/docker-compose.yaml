@@ -22,8 +22,8 @@ services:
   nhp-server:
     image: opennhp-server
     build: 
-      context: ../..
-      dockerfile: ./opennhp/docker/Dockerfile.server
+      context: ..
+      dockerfile: ./docker/Dockerfile.server
     container_name: nhp-server
     restart: always
     networks:
@@ -44,8 +44,8 @@ services:
     image: opennhp-ac
     container_name: nhp-ac
     build: 
-      context: ../..
-      dockerfile: ./opennhp/docker/Dockerfile.ac
+      context: ..
+      dockerfile: ./docker/Dockerfile.ac
     volumes:
       - ./nhp-ac/etc/:/nhp-ac/etc/
       - ./nhp-ac/traefik/etc/traefik.toml:/opt/traefik/traefik.toml

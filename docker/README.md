@@ -11,7 +11,7 @@ A locally built Docker debugging environment that simulates the setup of nhp-ser
 
 ```shell
 cd ./docker
-docker build -t opennhp-base:latest -f Dockerfile.base ../..
+docker build --no-cache -t opennhp-base:latest -f Dockerfile.base ../..
 ```
 
 ### Configure Local HTTPS

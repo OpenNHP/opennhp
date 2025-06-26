@@ -44,8 +44,8 @@ services:
     image: opennhp-ac
     container_name: nhp-ac
     build: 
-      context: ../../..
-      dockerfile: ./fengyily/opennhp/docker/Dockerfile.ac
+      context: ../..
+      dockerfile: ./opennhp/docker/Dockerfile.ac
     volumes:
       - ./nhp-ac/etc/:/nhp-ac/etc/
       - ./nhp-ac/traefik/etc/traefik.toml:/opt/traefik/traefik.toml

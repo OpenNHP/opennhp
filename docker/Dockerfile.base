@@ -12,6 +12,7 @@ RUN apt-get update && \
     ca-certificates \
     iptables \
     tcpdump \
+    clang \
     ipset \
     git \
     && rm -rf /var/lib/apt/lists/*

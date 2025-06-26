@@ -7,6 +7,7 @@ RUN apt-get update && \
     ca-certificates \
     iptables \
     tcpdump \
+    clang \
     ipset \
     git \
     curl \
@@ -20,7 +21,7 @@ ARG TRAEFIK_VERSION=v2.10.4
 RUN mkdir -p /opt/traefik/
 
 # Copy the traefik configuration file
-COPY ./fengyily/opennhp/docker/traefik_v3.4.0-rc2_linux_amd64.tar.gz /traefik.tar.gz
+COPY ./opennhp/docker/traefik_v3.4.0-rc2_linux_amd64.tar.gz /traefik.tar.gz
 RUN tar -zxvf traefik.tar.gz && \
     mv traefik /opt/traefik/ && \
     chmod +x /opt/traefik/traefik && \
@@ -28,7 +29,16 @@ RUN tar -zxvf traefik.tar.gz && \
 
 COPY --from=builder /nhp-server/release/nhp-ac /nhp-ac 
 COPY --from=builder /nhp-server/docker/iptables_defaults_ubuntu.sh /iptables_defaults_ubuntu.sh
+COPY --from=builder /nhp-server/docker/iptables_defaults_x86.sh /iptables_defaults_x86.sh
+RUN if [ "$(uname -m)" = "x86_64" ]; then \
+        mv /tmp/iptables_defaults_x86.sh /iptables_defaults.sh; \
+    else \
+        mv /tmp/iptables_defaults_ubuntu.sh /iptables_defaults.sh; \
+    fi && \
+    chmod +x /iptables_defaults.sh && \
+    rm -f /tmp/iptables_defaults_*.sh
+
 RUN chmod +x /iptables_defaults_ubuntu.sh
 ENTRYPOINT ["/bin/sh", "-c"]
-CMD ["/iptables_defaults_ubuntu.sh && cd /opt/traefik/ && nohup ./traefik --configFile=traefik.toml 2>&1 & -- & /nhp-ac/nhp-acd run"]
+CMD ["/iptables_defaults.sh && cd /opt/traefik/ && nohup ./traefik --configFile=traefik.toml 2>&1 & -- & /nhp-ac/nhp-acd run"]
 #ENTRYPOINT ["/nhp-ac/nhp-acd", "run"]

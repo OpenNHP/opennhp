@@ -22,14 +22,16 @@ echo "Setting ipset OK ..."
 echo "Setting up NHP_BLOCK chain ..."
 echo ""
 iptables -N NHP_BLOCK
-iptables -C NHP_BLOCK -j LOG --log-prefix "[NHP-BLOCK] " --log-level 6 --log-ip-options > /dev/null 2>&1
+iptables -C NHP_BLOCK -d $(hostname -I | awk '{print $1}') -j LOG --log-prefix "[NHP-BLOCK] " --log-level 6 --log-ip-options > /dev/null 2>&1
 if [ $? -ne 0 ]; then
-    iptables -A NHP_BLOCK -j LOG --log-prefix "[NHP-BLOCK] " --log-level 6 --log-ip-options
+    iptables -A NHP_BLOCK -d $(hostname -I | awk '{print $1}') -j LOG --log-prefix "[NHP-BLOCK] " --log-level 6 --log-ip-options
 fi
-iptables -C NHP_BLOCK -j DROP > /dev/null 2>&1
+
+iptables -C NHP_BLOCK -d $(hostname -I | awk '{print $1}') -j DROP > /dev/null 2>&1
 if [ $? -ne 0 ]; then
-    iptables -A NHP_BLOCK -j DROP
+    iptables -A NHP_BLOCK -d $(hostname -I | awk '{print $1}') -j DROP
 fi
+
 
 ### INPUT chain ###
 echo "Setting up INPUT chain ..."
@@ -131,8 +133,10 @@ iptables -P FORWARD DROP
 ### iptables kernel logging ###
 if [ -d /etc/rsyslog.d ] && [ ! -f /etc/rsyslog.d/10-nhplog.conf ]; then
     echo "Setting up rsyslog ..."
-    mkdir -p logs
-    chmod -R 777 logs/
+    mkdir -p $CURRENT_DIR/logs
+    chown $(whoami):$(id -gn) $CURRENT_DIR/logs
+    chmod -R 755 $CURRENT_DIR/logs/
+    setenforce
     echo ":msg,contains,\"[NHP-ACCEPT]\" -$CURRENT_DIR/logs/nhp_accept.log
 
 & stop

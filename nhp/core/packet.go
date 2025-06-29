@@ -3,7 +3,11 @@ package core
 import (
 	"encoding/binary"
 	"fmt"
+	"unsafe"
 
+	"github.com/OpenNHP/opennhp/nhp/common"
+	"github.com/OpenNHP/opennhp/nhp/core/scheme/curve"
+	"github.com/OpenNHP/opennhp/nhp/core/scheme/gmsm"
 	log "github.com/OpenNHP/opennhp/nhp/log"
 	utils "github.com/OpenNHP/opennhp/nhp/utils"
 )
@@ -124,17 +128,6 @@ type Packet struct {
 	Content       []byte
 }
 
-// header flags (bit 0 - bit 11)
-const (
-	NHP_FLAG_EXTENDEDLENGTH = 1 << iota
-	NHP_FLAG_COMPRESS
-)
-
-// cipher scheme combination (bit 11 - bit 15)
-const (
-	NHP_FLAG_SCHEME_GMSM = 0 << 12
-)
-
 type Header interface {
 	SetTypeAndPayloadSize(int, int)
 	TypeAndPayloadSize() (int, int)
@@ -152,10 +145,35 @@ type Header interface {
 	TimestampBytes() []byte
 	IdentityBytes() []byte
 	HMACBytes() []byte
+	CipherScheme() int
 }
 
 func (pkt *Packet) Flag() uint16 {
 	return binary.BigEndian.Uint16(pkt.Content[10:12])
+}
+
+func (pkt *Packet) Header() Header {
+	if pkt.Flag() & common.NHP_FLAG_EXTENDEDLENGTH == 0 {
+		return (*curve.HeaderCurve)(unsafe.Pointer(&pkt.Content[0]))
+	} else {
+		switch pkt.Flag() & (0xF << 12) {
+		case common.NHP_FLAG_SCHEME_GMSM:
+			fallthrough
+		default:
+			return (*gmsm.HeaderGmsm)(unsafe.Pointer(&pkt.Content[0]))
+		}
+	}
+}
+
+func (pkt *Packet) HeaderWithCipherScheme(cipherScheme int) Header {
+	switch cipherScheme {
+	case common.CIPHER_SCHEME_CURVE:
+		return (*curve.HeaderCurve)(unsafe.Pointer(&pkt.Content[0]))
+	case common.CIPHER_SCHEME_GMSM:
+		fallthrough
+	default:
+		return (*gmsm.HeaderGmsm)(unsafe.Pointer(&pkt.Content[0]))
+	}
 }
 
 func (pkt *Packet) HeaderTypeAndSize() (t int, s int) {
@@ -170,6 +188,10 @@ func (pkt *Packet) HeaderTypeAndSize() (t int, s int) {
 
 func (pkt *Packet) Counter() uint64 {
 	return binary.BigEndian.Uint64(pkt.Content[16:24])
+}
+
+func (pkt *Packet) MinimalLength() int {
+	return pkt.HeaderWithCipherScheme(common.CIPHER_SCHEME_CURVE).Size()
 }
 
 // Data Receiver  allowed message types
@@ -208,13 +230,7 @@ func (d *Device) CheckRecvHeaderType(t int) bool {
 }
 
 func (d *Device) RecvPrecheck(pkt *Packet) (int, int, error) {
-	var headerSize int
-	flag := pkt.Flag()
-	if flag&NHP_FLAG_EXTENDEDLENGTH == 0 {
-		headerSize = HeaderSize
-	} else {
-		headerSize = HeaderSizeEx
-	}
+	headerSize := pkt.Header().Size()
 
 	// check type and payload size
 	t, s := pkt.HeaderTypeAndSize()

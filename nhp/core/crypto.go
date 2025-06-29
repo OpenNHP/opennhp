@@ -21,6 +21,7 @@ import (
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/chacha20poly1305"
 
+	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core/scheme/curve"
 	"github.com/OpenNHP/opennhp/nhp/core/scheme/gmsm"
 )
@@ -56,28 +57,23 @@ type CipherSuite struct {
 	GcmType  GcmTypeEnum
 }
 
-const (
-	CIPHER_SCHEME_GMSM int = iota
-	CIPHER_SCHEME_CURVE
-)
-
 // init cipher suite
 func NewCipherSuite(scheme int) (ciphers *CipherSuite) {
 	// init cipher suite
 	switch scheme {
-	case CIPHER_SCHEME_CURVE:
+	case common.CIPHER_SCHEME_CURVE:
 		ciphers = &CipherSuite{
-			Scheme:   CIPHER_SCHEME_CURVE,
+			Scheme:   common.CIPHER_SCHEME_CURVE,
 			HashType: HASH_BLAKE2S,
 			EccType:  ECC_CURVE25519,
 			GcmType:  GCM_AES256,
 		}
 
-	case CIPHER_SCHEME_GMSM:
+	case common.CIPHER_SCHEME_GMSM:
 		fallthrough
 	default:
 		ciphers = &CipherSuite{
-			Scheme:   CIPHER_SCHEME_GMSM,
+			Scheme:   common.CIPHER_SCHEME_GMSM,
 			HashType: HASH_SM3,
 			EccType:  ECC_SM2,
 			GcmType:  GCM_SM4,

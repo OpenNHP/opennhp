@@ -621,13 +621,7 @@ func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, 
 		return
 	}
 
-	var packetSize int
-	flag := pkt.Flag()
-	if flag&core.NHP_FLAG_EXTENDEDLENGTH == 0 {
-		packetSize = core.HeaderSize + msgSize
-	} else {
-		packetSize = core.HeaderSizeEx + msgSize
-	}
+	packetSize := pkt.Header().Size() + msgSize
 	remainingSize := packetSize - n
 	n, err = conn.Read(pkt.Buf[n:packetSize])
 	if err != nil || n < remainingSize {
@@ -748,13 +742,7 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 		return
 	}
 
-	var packetSize int
-	flag := pkt.Flag()
-	if flag&core.NHP_FLAG_EXTENDEDLENGTH == 0 {
-		packetSize = core.HeaderSize + msgSize
-	} else {
-		packetSize = core.HeaderSizeEx + msgSize
-	}
+	packetSize := pkt.Header().Size() + msgSize
 
 	if n != packetSize {
 		log.Error("[udpTempAccessHandler] udp packet size incorrect from remote address %s", remoteAddrStr)

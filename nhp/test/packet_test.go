@@ -7,6 +7,7 @@ import (
 	"testing"
 	"unsafe"
 
+	common "github.com/OpenNHP/opennhp/nhp/common"
 	core "github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/core/scheme/curve"
 	"github.com/OpenNHP/opennhp/nhp/core/scheme/gmsm"
@@ -33,13 +34,13 @@ func TestHMAC(t *testing.T) {
 	prk, _ := base64.StdEncoding.DecodeString("kgvvQaBGfHNWCbZMkFWS1K07BgRXlnOo7CHTZF1bsmI=")
 
 	flag := binary.BigEndian.Uint16(buf[10:12])
-	if flag&core.NHP_FLAG_EXTENDEDLENGTH == 0 {
+	if flag&common.NHP_FLAG_EXTENDEDLENGTH == 0 {
 		header = (*curve.HeaderCurve)(unsafe.Pointer(&buf[0]))
-		ciphers = core.NewCipherSuite(core.CIPHER_SCHEME_CURVE)
+		ciphers = core.NewCipherSuite(common.CIPHER_SCHEME_CURVE)
 		serverEcdh = core.ECDHFromKey(ciphers.EccType, prk)
 	} else {
 		header = (*gmsm.HeaderGmsm)(unsafe.Pointer(&buf[0]))
-		ciphers = core.NewCipherSuite(core.CIPHER_SCHEME_GMSM)
+		ciphers = core.NewCipherSuite(common.CIPHER_SCHEME_GMSM)
 		serverEcdh = core.ECDHFromKey(ciphers.EccType, prk)
 	}
 

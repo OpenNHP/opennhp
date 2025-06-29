@@ -45,8 +45,6 @@ const (
 // packet
 const (
 	HeaderCommonSize      = 24
-	HeaderSize            = 160
-	HeaderSizeEx          = 224
 	SymmetricKeySize      = 32
 	PrivateKeySize        = 32
 	PublicKeySize         = 32

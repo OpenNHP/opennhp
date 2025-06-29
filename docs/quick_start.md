@@ -1,11 +1,27 @@
-# Docker Local Debugging Environment (Mac)
+---
+title: Quick Start
+layout: page
+nav_order: 2
+permalink: /quick_start/
+---
+
+# Quick Start
+{: .fs-9 }
 
 A locally built Docker debugging environment that simulates the setup of nhp-server, nhp-ac, traefik, app, etc. This environment can be used for:
 - plugins debugging
 - basic logic verification
 - local performance stress testing
 
-![](./infrastructure.png)
+{: .fs-6 .fw-300 }
+
+[中文版](/zh-cn/quick_start/){: .label .fs-4 }
+
+---
+
+## Workflow
+
+![](./images/infrastructure.png)
 
 ## Build Base Image
 

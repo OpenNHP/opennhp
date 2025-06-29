@@ -2,7 +2,7 @@ FROM opennhp-base:latest  AS builder
 
 WORKDIR /nhp-server
 
-COPY ./opennhp .
+COPY . .
 
 RUN echo "Building for architecture: ${TARGETARCH}"
 ## 

@@ -1,7 +1,7 @@
 ---
 layout: page
 title: How to Build
-nav_order: 6
+nav_order: 7
 permalink: /build/
 ---
 

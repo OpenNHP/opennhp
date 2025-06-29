@@ -1,4 +1,13 @@
 FROM opennhp-base:latest AS builder
+WORKDIR /nhp-server
+
+COPY . .
+
+RUN echo "Building for architecture: ${TARGETARCH}"
+## 
+ENV GOPROXY=https://goproxy.cn,direct
+
+RUN cd /nhp-server &&  make init acd test
 
 FROM ubuntu:20.04  AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
@@ -7,6 +16,7 @@ RUN apt-get update && \
     ca-certificates \
     iptables \
     tcpdump \
+    clang \
     ipset \
     git \
     curl \
@@ -20,15 +30,23 @@ ARG TRAEFIK_VERSION=v2.10.4
 RUN mkdir -p /opt/traefik/
 
 # Copy the traefik configuration file
-COPY ./fengyily/opennhp/docker/traefik_v3.4.0-rc2_linux_amd64.tar.gz /traefik.tar.gz
+COPY --from=builder /nhp-server/docker/traefik_v3.4.0-rc2_linux_amd64.tar.gz /traefik.tar.gz
 RUN tar -zxvf traefik.tar.gz && \
     mv traefik /opt/traefik/ && \
     chmod +x /opt/traefik/traefik && \
     rm -rf /tmp/*
-
+    
 COPY --from=builder /nhp-server/release/nhp-ac /nhp-ac 
 COPY --from=builder /nhp-server/docker/iptables_defaults_ubuntu.sh /iptables_defaults_ubuntu.sh
-RUN chmod +x /iptables_defaults_ubuntu.sh
+COPY --from=builder /nhp-server/docker/iptables_defaults_x86.sh /iptables_defaults_x86.sh
+RUN if [ "$(uname -m)" = "x86_64" ]; then \
+        mv /iptables_defaults_x86.sh /iptables_defaults.sh; \
+    else \
+        mv /iptables_defaults_ubuntu.sh /iptables_defaults.sh; \
+    fi && \
+    chmod +x /iptables_defaults.sh && \
+    rm -f /iptables_defaults_*.sh
+
 ENTRYPOINT ["/bin/sh", "-c"]
-CMD ["/iptables_defaults_ubuntu.sh && cd /opt/traefik/ && nohup ./traefik --configFile=traefik.toml 2>&1 & -- & /nhp-ac/nhp-acd run"]
+CMD ["/iptables_defaults.sh && cd /opt/traefik/ && nohup ./traefik --configFile=traefik.toml 2>&1 & -- & /nhp-ac/nhp-acd run"]
 #ENTRYPOINT ["/nhp-ac/nhp-acd", "run"]

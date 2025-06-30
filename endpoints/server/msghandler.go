@@ -7,10 +7,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	wasmEngine "github.com/OpenNHP/opennhp/nhp/core/wasm/engine"
 	"github.com/OpenNHP/opennhp/nhp/log"
+	utils "github.com/OpenNHP/opennhp/nhp/utils"
 )
 
 // HandleOTPRequest
@@ -313,7 +316,6 @@ func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
 }
 
 func (s *UdpServer) HandleDHPDARMessage(ppd *core.PacketParserData) (err error) {
-	fmt.Println("HandleDHPDARMessage received")
 	defer s.wg.Done()
 	s.wg.Add(1)
 
@@ -329,6 +331,63 @@ func (s *UdpServer) HandleDHPDARMessage(ppd *core.PacketParserData) (err error) 
 
 	doId := darMsg.DoId
 	config, err := ReadZdtoConfig(doId)
+	dsaMsg := &common.DSAMsg{}
+	if err != nil {
+		dsaMsg.DoId = doId
+		dsaMsg.ErrCode = 1
+		dsaMsg.ErrMsg = err.Error()
+	} else {
+		dsaMsg.DoId = doId
+		dsaMsg.SpoId = config.Spo.PolicyId
+		dsaMsg.Spo = &config.Spo
+		dsaMsg.TTL = int((30 * time.Minute).Milliseconds())
+		s.UpdateTeePublicKeyAndConsumerEphemeralPublicKey(darMsg.TeePublicKey, darMsg.ConsumerEphemeralPublicKey, ppd.RemotePubKey)
+	}
+
+	aakBytes, _ := json.Marshal(dsaMsg)
+	log.Debug("dagMsg:%s", (string)(aakBytes))
+	aakMd := &core.MsgData{
+		HeaderType:     core.NHP_DSA,
+		TransactionId:  transactionId,
+		Compress:       true,
+		PrevParserData: ppd,
+		Message:        aakBytes,
+	}
+	// forward to a specific transaction
+	transaction := ppd.ConnData.FindRemoteTransaction(transactionId)
+	if transaction == nil {
+		log.Error("server-agent(@%s#%d@%s)[HandleDHPDARMessage] transaction is not available", doId, transactionId, addrStr)
+		err = common.ErrTransactionIdNotFound
+		return err
+	}
+
+	transaction.NextMsgCh <- aakMd
+
+	return nil
+}
+
+func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) {
+	defer s.wg.Done()
+	s.wg.Add(1)
+
+	transactionId := ppd.SenderTrxId
+	addrStr := ppd.ConnData.RemoteAddr.String()
+	davMsg := &common.DAVMsg{}
+
+	err = json.Unmarshal(ppd.BodyMessage, davMsg)
+	if err != nil {
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
+		return err
+	}
+
+	doId := davMsg.DoId
+	config, err := ReadZdtoConfig(doId)
+
+	if err := s.onAttestationVerify(&config.Spo, davMsg.Evidence); err != nil {
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attesation: %s", transactionId, addrStr, davMsg.Evidence)
+		return err
+	}
+
 	dagMsg := &common.DAGMsg{}
 	if err != nil {
 		dagMsg.DoId = doId
@@ -337,10 +396,12 @@ func (s *UdpServer) HandleDHPDARMessage(ppd *core.PacketParserData) (err error) 
 	} else {
 		dagMsg.DoId = doId
 
+		teePublicKey, consumerEphemeralPublicKey := s.GetTeePublicKeyBase64AndConsumerEphemeralPublicKeyBase64(ppd.RemotePubKey)
+
 		dwrMsg := &common.DWRMsg{
 			DoId: doId,
-			TeePublicKey: darMsg.TeePublicKey,
-			ConsumerEphemeralPublicKey: darMsg.ConsumerEphemeralPublicKey,
+			TeePublicKey: teePublicKey,
+			ConsumerEphemeralPublicKey: consumerEphemeralPublicKey,
 		}
 
 		dbConn, found := s.dbConnectionMap[config.DbId]
@@ -389,7 +450,6 @@ func (s *UdpServer) HandleDHPDARMessage(ppd *core.PacketParserData) (err error) 
 
 // HandleDHPDRGMessage
 func (s *UdpServer) HandleDHPDRGMessage(ppd *core.PacketParserData) (err error) {
-	fmt.Println("HandleDHPDRGMessage start")
 	defer s.wg.Done()
 	s.wg.Add(1)
 
@@ -442,39 +502,81 @@ func (s *UdpServer) HandleDHPDRGMessage(ppd *core.PacketParserData) (err error) 
 	return nil
 }
 
-func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
+func (s *UdpServer) onAttestationVerify(spo *common.SmartPolicy, attestation string) error {
+	if spo.Policy == "" {
+		return nil
+	}
 
+	wasmBytes, err := base64.StdEncoding.DecodeString(spo.Policy)
+	if err != nil {
+		wasmPath, err := utils.DownloadFileToTemp(spo.Policy, "wasm-")
+		defer os.Remove(filepath.Dir(wasmPath))
+		defer os.Remove(wasmPath)
+		if err != nil {
+			return err
+		}
+		wasmBytes, err = os.ReadFile(wasmPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	engine := wasmEngine.NewEngine()
+	err = engine.LoadWasm(wasmBytes)
+	defer engine.Close()
+	if err != nil {
+		return err
+	}
+
+	if engine.OnAttestationVerify(attestation) {
+		return nil
+	} else {
+		return fmt.Errorf("attestation verification failed")
+	}
+}
+
+func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 	objectId := drgMsg.DoId
-	// Make sure the etc directory exists
+	configFileName := "data-" + objectId + ".json"
+
 	etcDir := "etc/ztdo"
+	configPath := filepath.Join(etcDir, configFileName)
+
+	if existingDrgMsg, err := ReadZdtoConfig(objectId); err == nil {
+		// alway keep original date source type
+		drgMsg.DataSourceType = existingDrgMsg.DataSourceType
+
+		if drgMsg.AccessUrl == "" { // provider update access url
+			drgMsg.AccessUrl = existingDrgMsg.AccessUrl
+		}
+
+		os.Remove(configPath)
+	}
+
+	// Make sure the etc directory exists
 	if err := os.MkdirAll(etcDir, 0755); err != nil {
 		return fmt.Errorf("failed to create etc directory: %v", err)
 	}
 
-	// Check if etc/config.json already exists
-	configFileName := "config-" + objectId + ".json"
-	configPath := filepath.Join(etcDir, configFileName)
 	if _, err := os.Stat(configPath); err == nil {
 		return fmt.Errorf("%v already exists, please delete it first", configFileName)
 	}
 
-	// Create etc/config.json file
 	file, err := os.Create(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to create config.json: %v", err)
 	}
 	defer file.Close()
 
-	// Write data to config.json
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(drgMsg)
 }
 
-// read ztdo-config.json to DRGMsg Object
+// read data-<doId>.json to DRGMsg Object
 func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
 	etcDir := "etc/ztdo"
-	configFilePath := filepath.Join(etcDir, "config-"+doId+".json")
+	configFilePath := filepath.Join(etcDir, "data-"+doId+".json")
 	file, err := os.Open(configFilePath)
 	if err != nil {
 		return common.DRGMsg{}, fmt.Errorf("could not open file: %v", err)
@@ -494,4 +596,5 @@ func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
 	}
 	return config, nil
 }
+
 

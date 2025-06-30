@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
@@ -13,9 +14,11 @@ import (
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
-	"github.com/OpenNHP/opennhp/nhp/log"
-	"github.com/OpenNHP/opennhp/nhp/version"
+	wasmEngine "github.com/OpenNHP/opennhp/nhp/core/wasm/engine"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
+	"github.com/OpenNHP/opennhp/nhp/log"
+	utils "github.com/OpenNHP/opennhp/nhp/utils"
+	"github.com/OpenNHP/opennhp/nhp/version"
 )
 
 var (
@@ -684,11 +687,29 @@ func (a *UdpAgent) FindServerPeerFromResource(res *KnockResource) *core.UdpPeer 
 ztdo: Ztdo file path
 output: Decrypted file output path
 */
-func (a *UdpAgent) StartDecodeZtdo(ztdoPath string, output string) {
+func (a *UdpAgent) StartDecodeZtdo(ztdoPath string, ztdoId string, output string) {
+	var doId string
+
+	if output == "" {
+		// generate temporary file path
+		var err error
+		output, err = utils.GenerateTempFilePath("plaintext-*")
+		if err != nil {
+			fmt.Println("Error: fail to generating temporary file path:", err)
+			return
+		}
+	}
+
 	ztdo := ztdolib.NewZtdo()
-	if err := ztdo.ParseHeader(ztdoPath); err != nil {
-		fmt.Println("ParseHeader error:", err)
-		return
+	if ztdoPath != "" {
+		if err := ztdo.ParseHeader(ztdoPath); err != nil {
+			fmt.Println("Error: parse header error:", err)
+			return
+		}
+
+		doId = ztdo.GetObjectID()
+	} else {
+		doId = ztdoId
 	}
 
 	eccType := core.ECC_SM2
@@ -699,7 +720,6 @@ func (a *UdpAgent) StartDecodeZtdo(ztdoPath string, output string) {
 	teePrk, _ := base64.StdEncoding.DecodeString(a.config.TEEPrivateKeyBase64)
 	teeEcdh := core.ECDHFromKey(eccType, teePrk)
 
-	doId := ztdo.GetObjectID()
 	darMsg := common.DARMsg{
 		DoId: doId,
 		UserId: a.config.UserId,
@@ -713,11 +733,39 @@ func (a *UdpAgent) StartDecodeZtdo(ztdoPath string, output string) {
 
 		if err := json.Unmarshal([]byte(dagMsg.Kao.WrappedDataKey), &dataPrkWrapping); err != nil {
 			log.Error("failed to unmarshal data private key wrapping: %v\n", err)
-			fmt.Printf("failed to unmarshal data private key wrapping: %v\n", err)
+			fmt.Printf("Error: failed to unmarshal data private key wrapping: %v\n", err)
 			return
 		}
 
 		providerPbk, _ := base64.StdEncoding.DecodeString(dataPrkWrapping.ProviderPublicKeyBase64)
+
+		if ztdoPath == "" {
+			if dagMsg.AccessUrl == "" {
+				log.Error("access url is empty, please check with data provider")
+				fmt.Println("Error: access url is empty, please check with data provider")
+				return
+			}
+
+			var err error
+			ztdoPath, err = utils.DownloadFileToTemp(dagMsg.AccessUrl, "ztdo-")
+			defer os.Remove(filepath.Dir(ztdoPath))
+			defer os.Remove(ztdoPath)
+			if err != nil {
+				log.Error("failed to download ztdo: %v\n", err)
+				fmt.Printf("Error: failed to download ztdo: %v\n", err)
+				return
+			}
+
+			if err := ztdo.ParseHeader(ztdoPath); err != nil {
+				fmt.Printf("Error: failed to parse ztdo header:%s\n", err)
+				return
+			}
+
+			if ztdoId != ztdo.GetObjectID() {
+				fmt.Printf("Error: ztdo id mismatch, please check with data provider\n")
+				return
+			}
+		}
 
 		sa := ztdolib.NewSymmetricAgreement(ztdo.GetECCMode(), false)
 		sa.SetMessagePatterns(ztdolib.DataPrivateKeyWrappingPatterns)
@@ -730,16 +778,21 @@ func (a *UdpAgent) StartDecodeZtdo(ztdoPath string, output string) {
 
 		dataPrk, _ := dataPrkWrapping.Unwrap(gcmKey[:], ad)
 
-		cmd := exec.Command(a.config.DHPExeCMD, "run", "--mode=decrypt", "--ztdo="+ztdoPath, "--output="+output, "--dataPrivateKey="+dataPrk, "--providerPublicKey="+dataPrkWrapping.ProviderPublicKeyBase64)
+		if ztdoPath == "" || output == "" {
+			fmt.Printf("Error: ztdo path or output is empty\n")
+			return
+		}
+
+		cmd := exec.Command(a.config.DHPExeCMD, "run", "--mode=decrypt", "--ztdo="+ztdoPath, "--output="+output, "--data-private-key="+dataPrk, "--provider-public-key="+dataPrkWrapping.ProviderPublicKeyBase64)
 
 		_, err := cmd.CombinedOutput()
 		if err != nil {
-			fmt.Println("ZTDO File Decryption: Failure with error: ", err.Error())
+			fmt.Println("Error: fail to decrypt ztdo file with error: ", err.Error())
 		} else {
-			fmt.Println("ZTDO File Decryption: Success")
+			fmt.Println("Successfully decrypt ztdo file into", output)
 		}
 	} else {
-		fmt.Printf("fail to request ZTDO with error: %s.\n", dagMsg.ErrMsg)
+		fmt.Printf("Error: fail to request ztdo with error: %s.\n", dagMsg.ErrMsg)
 	}
 }
 
@@ -783,23 +836,119 @@ func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg) (
 
 	//Wait for NHP-Server response and implement reception and processing within the func() function below.
 	var err error
+	result, dsaMsg := func() (bool, *common.DSAMsg) {
+		dsaMsg := &common.DSAMsg{}
+		if serverPpd.Error != nil {
+			log.Error("Agent(%s#%d)[SendDARMsgToServer] failed to receive response from server %s: %v", drgMsg.DoId, drgMd.TransactionId, server.Ip, serverPpd.Error)
+			err = serverPpd.Error
+			return false, dsaMsg
+		}
+
+		if serverPpd.HeaderType != core.NHP_DSA {
+			log.Error("DB(%s#%d)[SendDARMsgToServer] response from server %s has wrong type: %s", drgMsg.DoId, drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
+			err = common.ErrTransactionRepliedWithWrongType
+			return false, dsaMsg
+		}
+		//message []byte to DSAMSg Object
+		err = json.Unmarshal(serverPpd.BodyMessage, dsaMsg)
+		if err != nil {
+			log.Error("Agent(%s#%d)[HandleDHPDAGMessage] failed to parse %s message: %v", drgMsg.DoId, serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
+			return false, dsaMsg
+		}
+		dsaMsgString, err := json.Marshal(dsaMsg)
+		if err != nil {
+			log.Error("Agent(%s#%d)DSAMsg failed to parse %s message: %v", dsaMsg.DoId, err)
+			return false, dsaMsg
+		}
+		log.Info("SendDARMsgToServer response result: %v", dsaMsgString)
+		if dsaMsg.ErrCode != 0 {
+			log.Error("SendDARMsgToServer send failed,error:", dsaMsg.ErrMsg)
+			return false, dsaMsg
+		}
+		return true, dsaMsg
+	}()
+
+	if result {
+		// Collect attestation proofs with smart policy
+		evidence, err := a.onAttestationCollect(dsaMsg.Spo)
+		if err != nil {
+			dagMsg := &common.DAGMsg{}
+			dagMsg.DoId = dsaMsg.DoId
+			dagMsg.ErrCode = 1
+			dagMsg.ErrMsg = err.Error()
+
+			return false, dagMsg
+		}
+
+		// avoid flood attack from server side
+		time.Sleep(core.MinimalRecvIntervalMs * time.Millisecond)
+
+		davMsg := common.DAVMsg{
+			DoId: msg.DoId,
+			SpoId: dsaMsg.SpoId,
+			Evidence: evidence,
+		}
+
+		return a.SendDAVMsgToServer(server, davMsg)
+	} else {
+		dagMsg := &common.DAGMsg{}
+		dagMsg.DoId = dsaMsg.DoId
+		dagMsg.ErrCode = dsaMsg.ErrCode
+		dagMsg.ErrMsg = dsaMsg.ErrMsg
+
+		return result, dagMsg
+	}
+}
+
+func (a *UdpAgent) SendDAVMsgToServer(server *core.UdpPeer, msg common.DAVMsg) (bool, *common.DAGMsg) {
+	result := false
+	sendAddr := server.SendAddr()
+	if sendAddr == nil {
+		log.Critical("device(%s)[SendDAVMsgToServer] register server IP cannot be parsed", a)
+	}
+	davMsg := msg
+	davBytes, _ := json.Marshal(davMsg)
+	davMd := &core.MsgData{
+		RemoteAddr:    sendAddr.(*net.UDPAddr),
+		HeaderType:    core.NHP_DAV,
+		TransactionId: a.device.NextCounterIndex(),
+		Compress:      true,
+		Message:       davBytes,
+		PeerPk:        server.PublicKey(),
+		ResponseMsgCh: make(chan *core.PacketParserData),
+	}
+
+	currTime := time.Now().UnixNano()
+	if !a.IsRunning() {
+		log.Error("server-agentMsgData channel closed or being closed, skip sending")
+		return result, nil
+	}
+	// device will create or find existing connection and sends the MsgAssembler via that connection
+	a.sendMsgCh <- davMd
+	server.UpdateSend(currTime)
+	// block until transaction completes
+	serverPpd := <-davMd.ResponseMsgCh
+	close(davMd.ResponseMsgCh)
+
+	//Wait for NHP-Server response and implement reception and processing within the func() function below.
+	var err error
 	result, dagMsg := func() (bool, *common.DAGMsg) {
 		dagMsg := &common.DAGMsg{}
 		if serverPpd.Error != nil {
-			log.Error("Agent(%s#%d)[SendDARMsgToServer] failed to receive response from server %s: %v", drgMsg.DoId, drgMd.TransactionId, server.Ip, serverPpd.Error)
+			log.Error("Agent(%s#%d)[SendDAVMsgToServer] failed to receive response from server %s: %v", davMsg.DoId, davMd.TransactionId, server.Ip, serverPpd.Error)
 			err = serverPpd.Error
 			return false, dagMsg
 		}
 
 		if serverPpd.HeaderType != core.NHP_DAG {
-			log.Error("DB(%s#%d)[SendDARMsgToServer] response from server %s has wrong type: %s", drgMsg.DoId, drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
+			log.Error("DB(%s#%d)[SendDAVMsgToServer] response from server %s has wrong type: %s", davMsg.DoId, davMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
 			err = common.ErrTransactionRepliedWithWrongType
 			return false, dagMsg
 		}
 		//message []byte to DAGMSg Object
 		err = json.Unmarshal(serverPpd.BodyMessage, dagMsg)
 		if err != nil {
-			log.Error("Agent(%s#%d)[HandleDHPDAGMessage] failed to parse %s message: %v", drgMsg.DoId, serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
+			log.Error("Agent(%s#%d)[HandleDHPDAVMessage] failed to parse %s message: %v", davMsg.DoId, serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
 			return false, dagMsg
 		}
 		dagMsgString, err := json.Marshal(dagMsg)
@@ -807,12 +956,43 @@ func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg) (
 			log.Error("Agent(%s#%d)DAKMsg failed to parse %s message: %v", dagMsg.DoId, err)
 			return false, dagMsg
 		}
-		log.Info("SendDARMsgToServer response result：%v", dagMsgString)
+		log.Info("SendDAVMsgToServer response result: %v", dagMsgString)
 		if dagMsg.ErrCode != 0 {
-			log.Error("SendDARMsgToServer send failed,error:", dagMsg.ErrMsg)
+			log.Error("SendDAVMsgToServer send failed,error:", dagMsg.ErrMsg)
 			return false, dagMsg
 		}
 		return true, dagMsg
 	}()
 	return result, dagMsg
+}
+
+func (s *UdpAgent) onAttestationCollect(spo *common.SmartPolicy) (string, error) {
+	if spo.Policy == "" {
+		return "", nil
+	}
+
+	wasmBytes, err := base64.StdEncoding.DecodeString(spo.Policy)
+	if err != nil {
+		wasmPath, err := utils.DownloadFileToTemp(spo.Policy, "wasm-")
+		defer os.Remove(filepath.Dir(wasmPath))
+		defer os.Remove(wasmPath)
+		if err != nil {
+			return "", err
+		}
+		wasmBytes, err = os.ReadFile(wasmPath)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	engine := wasmEngine.NewEngine()
+	err = engine.LoadWasm(wasmBytes)
+	defer engine.Close()
+	if err != nil {
+		return "", err
+	}
+
+	attestation := engine.OnAttestationCollect()
+
+	return attestation, nil
 }

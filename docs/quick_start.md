@@ -21,7 +21,7 @@ A locally built Docker debugging environment that simulates the setup of nhp-ser
 
 ## Workflow
 
-![](./images/infrastructure.png)
+![Workflow](https://opennhp.org/images/infrastructure.png)
 
 ## Build Base Image
 

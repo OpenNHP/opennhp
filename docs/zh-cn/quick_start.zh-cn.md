@@ -22,7 +22,7 @@ permalink: /zh-cn/quick_start/
 
 ## 工作流程
 
-![](../images/infrastructure.png)
+![Workflow](https://opennhp.org/images/infrastructure.png)
 
 ## 编译 opennhp-base 镜像
 

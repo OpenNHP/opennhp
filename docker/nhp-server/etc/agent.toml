@@ -3,5 +3,5 @@
 # PubKeyBase64: public key for the agent in base64 format.
 # ExpireTime (epoch timestamp in seconds): peer key validation will fail when it expires.
 [[Agents]]
-PubKeyBase64 = "Wx8cATT26YsvDIHwM6ZJ/sgLZ2tRwLhOSlxG5LFP2zzG4gyvZbYrcjmZC648wIv33VCbPupdL19+YaxuaHU1FQ=="
+PubKeyBase64 = "hdDrqJl0lAPNn7o/+MaZhfPOaAMjveLUsSPEq7ax4IVpsbjxbWwahyb3hoKlY1jqshDZrTc91dEXT4aTBiYmhg=="
 ExpireTime = 1924991999

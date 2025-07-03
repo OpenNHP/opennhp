@@ -22,7 +22,7 @@ permalink: /zh-cn/quick_start/
 
 ## 工作流程
 
-![Workflow](https://opennhp.org/images/infrastructure.png)
+![Workflow](https://opennhp.org/images/infrastructure.jpg)
 
 ## 编译 opennhp-base 镜像
 
@@ -44,8 +44,8 @@ openssl req -x509 -newkey rsa:4096 -sha256 -days 365 -nodes \
 - 添加 /etc/hosts 配置
 
 ```
-127.0.0.1       local.opennhp.cn
-127.0.0.1       app.opennhp.cn
+127.0.0.1       loginlocal.opennhp.org
+127.0.0.1       applocal.opennhp.org
 ```
 
 
@@ -56,10 +56,70 @@ docker compose up -d
 ```
 
 ## 测试
-https://local.opennhp.cn/plugins/example?resid=demo&action=login
+### 场景一: 使用 nhp-agent 服务来敲门
+
+#### 编译 nhp-agent 镜像
+***注意: 先进入到 docker 目录(cd ./docker) ***
+```shell
+docker build --no-cache -t opennhp-agent:latest -f Dockerfile.agent ..
+```
+
+#### 新建 nhp-agent 服务
+```shell
+docker run -d \
+  --name nhp-agent \
+  -v ./nhp-agent/etc:/nhp-agent/etc \
+  -v ./nhp-agent/logs:/nhp-agent/logs \
+  opennhp-agent:latest
+```
+#### 停止/启动 nhp-agent 服务
+```shell
+docker stop/start nhp-agent
+```
+#### 停止/启动服务来验证效果
+
+- 当 nhp-agent 启动时, https://applocal.opennhp.org/ 是允许访问的.
+- 当 nhp-agent 停止时, https://applocal.opennhp.org/ 是不允许访问的.
+
+### 场景二: 使用模拟授权服务的登录来验证
+https://loginlocal.opennhp.org/plugins/example?resid=demo&action=login
 
 - 预期页面正常显示
 - 点击登录后，能正常跳转，并能访问正常
+
+### 在 nhp-enter 容器中，扫描 nhp-ac 端口
+
+#### 进入 nhp-enter 容器 并安装 nmap
+```shell
+# docker exec -it nhp-enter bash
+root@ee88ec992447:/# apt-get update && apt-get install nmap
+```
+#### 扫描 nhp-ac 端口
+当 nhp-agent 停止，扫描不到任何端口
+```shell
+# nmap 177.9.0.10
+Starting Nmap 7.93 ( https://nmap.org ) at 2025-07-03 07:33 UTC
+Nmap scan report for nhp-ac.docker_nginx (177.9.0.10)
+Host is up (0.000044s latency).
+All 1000 scanned ports on nhp-ac.docker_nginx (177.9.0.10) are in ignored states.
+Not shown: 1000 filtered tcp ports (no-response)
+MAC Address: 12:B4:5C:EB:72:F4 (Unknown)
+
+Nmap done: 1 IP address (1 host up) scanned in 21.84 seconds
+```
+当 nhp-agent 启动，可以扫描到 80 端口
+```shell
+root@ee88ec992447:/# nmap 177.9.0.10
+Starting Nmap 7.93 ( https://nmap.org ) at 2025-07-03 07:37 UTC
+Nmap scan report for nhp-ac.docker_nginx (177.9.0.10)
+Host is up (0.000094s latency).
+Not shown: 999 filtered tcp ports (no-response)
+PORT   STATE SERVICE
+80/tcp open  http
+MAC Address: 12:B4:5C:EB:72:F4 (Unknown)
+
+Nmap done: 1 IP address (1 host up) scanned in 4.96 seconds
+```
 
 ### 验证 ipset 规则是否生效
 ```shell
@@ -105,5 +165,5 @@ Members:
 ## 压力测试
 
 ```shell
-ab -k -n 10000 -c 100 'https://local.opennhp.cn/plugins/example?resid=demo&action=valid&passcode=123456'
+ab -k -n 10000 -c 100 'https://loginlocal.opennhp.org/plugins/example?resid=demo&action=valid&username=user&password=password'
 ```

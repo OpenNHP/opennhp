@@ -36,8 +36,8 @@ services:
       - ./nhp-server/logs/:/nhp-server/logs/:rw
       - ./nhp-server/templates/:/nhp-server/templates/:rw
       - ./nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
-    # ports:
-    #   - "62206:62206/udp"
+    ports:
+      - "62206:62206/udp"
     #   - "62206:62206/tcp"
 
   nhp-ac:

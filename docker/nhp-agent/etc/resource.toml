@@ -4,6 +4,8 @@
 # ResourceId: id of the resource group.
 # ServerAddr: the server address that manages this resource group.
 [[Resources]]
-AuthServiceId = "passcode"
+AuthServiceId = "example"
 ResourceId = "demo"
-ServerAddr = "172.19.0.2"
+ServerHostname = "host.docker.internal"
+ServerIp = ""
+ServerPort = 62206

@@ -6,8 +6,8 @@
 # PubKeyBase64: public key of the server peer in base64 format
 # ExpireTime (epoch timestamp in seconds): peer key validation will fail when it expires.
 [[Servers]]
-Hostname = ""
-Ip = "172.19.0.2"
+Hostname = "host.docker.internal"
+Ip = ""
 Port = 62206
 PubKeyBase64 = "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA=="
 ExpireTime = 1924991999

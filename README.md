@@ -22,7 +22,7 @@
 
 ## Challenge: AI transforms the Internet into a "Dark Forest" 
 
-The rapid evolution of **AI** technologies, particularly large language models (LLMs), is significantly reshaping the cybersecurity landscape. The emergence of **Autonomous Vulnerability Exploitation (AVE)** represents a major leap in the AI era, streamlining the exploitation of vulnerabilities, as highlighted in recent research such as [[1]](https://googleprojectzero.blogspot.com/2024/10/from-naptime-to-big-sleep.html), [[2]](https://arxiv.org/abs/2404.08144), [[3]](https://github.com/protectai/vulnhuntr) and etc. This development dramatically increases the risk for any exposed network services, reflecting the [Dark Forest Hypothesis](https://en.wikipedia.org/wiki/Dark_forest_hypothesis) of the Internet. AI-powered tools are continuously scanning the digital realm, quickly finding and exploiting weaknesses. Consequently, the Internet is evolving into a **"Dark Forest,"** where **visibility equates to vulnerability**.
+The rapid evolution of **AI** technologies, particularly large language models (LLMs), is significantly reshaping the cybersecurity landscape. The emergence of **Autonomous Vulnerability Exploitation (AVE)** represents a major leap in the AI era, streamlining the exploitation of vulnerabilities, as highlighted in recent research such as [[1]](https://googleprojectzero.blogspot.com/2024/10/from-naptime-to-big-sleep.html), [[2]](https://arxiv.org/abs/2404.08144), [[3]](https://github.com/protectai/vulnhuntr) and etc. This development dramatically increases the risk for any exposed network services, reflecting the [Dark Forest Hypothesis](https://en.wikipedia.org/wiki/Dark_forest_hypothesis) of the Internet. AI-powered tools are continuously scanning the digital realm, quickly finding and exploiting weaknesses. Consequently, the Internet is evolving into a **"Dark Forest,"** where **VISIBILITY equates to VULNERABILITY**.
 
 ![Vulnerability Risks](docs/images/Vul_Risks.png)
 
@@ -30,7 +30,7 @@ Gartner research anticipates a [sharp rise in AI-driven cyberattacks](https://ww
 
 ---
 
-## Quick Demo 1: Hiding Application Server Ports
+## NHP Quick Demo: Hiding Application Server Ports
 
 Before diving into the details of OpenNHP, let's start with a quick demonstration of how OpenNHP protects a server from unauthorized access. You can see it in action by accessing the protected server at https://acdemo.opennhp.org.
 
@@ -56,11 +56,17 @@ Once you click the "Login" button, authentication is completed successfully, and
 
 ---
 
+## Quick Start: Build and Test OpenNHP
+
+Follow our [quick start tutorial](https://opennhp.org/quick_start/) to build the OpenNHP source code and test it in a Docker environment. You will get your own OpenNHP environment up, simulate the “invisible” network hiding behavior and test authentication workflows. 
+
+---
+
 ## Vision: Making the Internet Trustworthy
 
 The openness of TCP/IP protocols has driven the explosive growth of internet applications but also exposed vulnerabilities, allowing malicious actors to gain unauthorized access and exploit any exposed IP address. Although the [OSI network model](https://en.wikipedia.org/wiki/OSI_model) defines the *5th layer (Session Layer)* for managing connections, few effective solutions have been implemented to address this.
 
-**NHP**, or the **"Network-resource Hiding Protocol"**, is a lightweight cryptography-driven Zero Trust  protocol designed to function at the *OSI 5th and 6th Layer*, which is optimal for managing network visibility and connections. NHP's key objective is to conceal protected resources from unauthorized entities, granting access only to verified, authorized users through continuous verification, contributing to a more trustworthy Internet.
+**NHP**, or the **"Network-infrastructure Hiding Protocol"**, is a lightweight cryptography-driven Zero Trust  protocol designed to function at the *OSI 5th Layer*, which is optimal for managing network visibility and connections. NHP's key objective is to conceal protected resources from unauthorized entities, granting access only to verified, authorized users through continuous verification, contributing to a more trustworthy Internet.
 
 ![Trustworthy Internet](docs/images/TrustworthyCyberspace.png)
 

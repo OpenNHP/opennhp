@@ -109,7 +109,7 @@ var (
 	ErrACIPSetNotFound         = newError("53003", "ipset not found", "无法找到ipset")
 	ErrACIPSetOperationFailed  = newError("53004", "ipset operation failed", "ipset操作失败")
 	ErrACTempPortListenFailed  = newError("53005", "temporary port listening failed", "临时端口监听失败")
-	ErrACResolveTempPortFailed = newError("53006", "resolve temparory port failed", "解析临时端口失败")
+	ErrACResolveTempPortFailed = newError("53006", "resolve temporary port failed", "解析临时端口失败")
 
 	// api
 	ErrHttpRequestFailed           = newError("54001", "http request failed", "http请求失败")

@@ -76,7 +76,7 @@ func (d *DataPrivateKeyStore) Generate(mode ztdolib.DataKeyPairECCMode) (private
 	return ecdh.PrivateKey()
 }
 
-// Save saves the dataPrivateKeyBase64 to a file, the format of file name is config-<doId>.json
+// Save saves the dataPrivateKeyBase64 to a file, the format of file name is data-<doId>.json
 // Notes: this default way to store data private key is not safe. In the wild environment, need to use a secure way to store data private key.
 func (d *DataPrivateKeyStore) Save(doId string) error {
 	// Make sure the etc directory exists

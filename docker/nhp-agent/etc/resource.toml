@@ -6,6 +6,6 @@
 [[Resources]]
 AuthServiceId = "example"
 ResourceId = "demo"
-ServerHostname = "host.docker.internal"
-ServerIp = ""
+ServerHostname = ""
+ServerIp = "177.7.0.9"
 ServerPort = 62206

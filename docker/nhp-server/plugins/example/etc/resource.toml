@@ -9,7 +9,7 @@
 ["demo"]
 SkipAuth = true
 OpenTime = 15
-RedirectUrl = "https://applocal.opennhp.org"
+RedirectUrl = "https://localhost"
 RedirectWithParams = false
 CookieDomain = "opennhp.org"
 
@@ -24,8 +24,8 @@ CookieDomain = "opennhp.org"
 
 ["demo".Resources."demoServer"]
 ACId = "testAC-1"
-Hostname = "applocal.opennhp.org"
-Addr.Ip = "177.9.0.10"
+Hostname = "localhost"
+Addr.Ip = "177.7.0.10"
 Addr.Port = 80 # empty or 0 for all ports
 Addr.Protocol = "" # "tcp/udp/any", empty for "any"
 PortSuffix = false

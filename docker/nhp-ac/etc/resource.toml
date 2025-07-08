@@ -7,4 +7,4 @@
 AuthServiceId = "example"
 ResourceId = "demo"
 #ServerAddr = "host.docker.internal"
-ServerAddr = "177.9.0.9"
+ServerAddr = "177.7.0.9"

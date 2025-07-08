@@ -1,6 +1,6 @@
 FROM opennhp-base:latest  AS builder
 
-WORKDIR /nhp-server
+WORKDIR /workdir
 
 COPY . .
 
@@ -8,7 +8,7 @@ RUN echo "Building for architecture: ${TARGETARCH}"
 ## 
 ENV GOPROXY=https://goproxy.cn,direct
 
-RUN cd /nhp-server && cat Makefile && make init agentd test
+RUN cd /workdir && cat Makefile && make init agentd test
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
@@ -18,12 +18,18 @@ RUN apt-get update && \
     tcpdump \
     clang \
     ipset \
+    nginx \
     git \
     curl \
+    inetutils-ping \
     telnet \
     && rm -rf /var/lib/apt/lists/* 
-    
-RUN mv /nhp-server/release/nhp-agent /nhp-agent
+RUN groupadd -r nginx && \
+    useradd -r -g nginx -s /bin/bash -d /home/nginx -m nginx
 
-ENTRYPOINT ["/bin/sh", "-c"]
-CMD ["/nhp-agent/nhp-agentd run"]
+RUN mv /workdir/release/nhp-agent /nhp-agent
+USER root
+
+CMD ["tail", "-f", "/dev/null"]
+#CMD ["nginx && /nhp-agent/nhp-agentd run"]
+#CMD ["nginx"]

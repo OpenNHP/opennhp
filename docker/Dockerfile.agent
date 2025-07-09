@@ -1,9 +1,35 @@
-FROM opennhp-base:latest AS builder
+FROM opennhp-base:latest  AS builder
 
-FROM ubuntu:20.04  AS runtime
+WORKDIR /workdir
+
+COPY . .
+
+RUN echo "Building for architecture: ${TARGETARCH}"
+## 
+ENV GOPROXY=https://goproxy.cn,direct
+
+RUN cd /workdir && cat Makefile && make init agentd test
+
 ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && \
+    apt-get install -y  wget \
+    ca-certificates \
+    iptables \
+    tcpdump \
+    clang \
+    ipset \
+    nginx \
+    git \
+    curl \
+    inetutils-ping \
+    telnet \
+    && rm -rf /var/lib/apt/lists/* 
+RUN groupadd -r nginx && \
+    useradd -r -g nginx -s /bin/bash -d /home/nginx -m nginx
 
-COPY --from=builder /nhp-server/release/nhp-agent /nhp-agent 
+RUN mv /workdir/release/nhp-agent /nhp-agent
+USER root
 
-ENTRYPOINT ["/bin/sh", "-c"]
-CMD ["/nhp-agent/nhp-agentd run"]
+CMD ["tail", "-f", "/dev/null"]
+#CMD ["nginx && /nhp-agent/nhp-agentd run"]
+#CMD ["nginx"]

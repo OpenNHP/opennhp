@@ -1,15 +1,5 @@
 networks:
-  nginx:
-    ipam:
-      driver: default
-      config:
-        - subnet: '177.9.0.0/16'
-  server:
-    ipam:
-      driver: default
-      config:
-        - subnet: '177.8.0.0/16'
-  ac:
+  network_default:
     ipam:
       driver: default
       config:
@@ -27,18 +17,13 @@ services:
     container_name: nhp-server
     restart: always
     networks:
-      server:
-        ipv4_address: 177.8.0.9
-      nginx:
-        ipv4_address: 177.9.0.9
+      network_default:
+        ipv4_address: 177.7.0.9
     volumes:
       - ./nhp-server/etc/:/nhp-server/etc/:rw
       - ./nhp-server/logs/:/nhp-server/logs/:rw
       - ./nhp-server/templates/:/nhp-server/templates/:rw
       - ./nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
-    # ports:
-    #   - "62206:62206/udp"
-    #   - "62206:62206/tcp"
 
   nhp-ac:
     image: opennhp-ac
@@ -57,41 +42,42 @@ services:
     depends_on:
       - nhp-server
     networks:
-      ac:
+      network_default:
         ipv4_address: 177.7.0.10
-      nginx:
-        ipv4_address: 177.9.0.10
 
-  nhp-app:
-    image: nginx:latest
-    container_name: nhp-app
+  web-app:
+    image: web-app
+    container_name: web-app
+    build: 
+      context: .
+      dockerfile: ./Dockerfile.app
     restart: always
-    # ports:
-    #   - "8080:80"
+    cap_add:
+      - NET_ADMIN
     networks:
-      ac:
+      network_default:
         ipv4_address: 177.7.0.11
 
-  nhp-enter:
-    image: nginx:latest
-    container_name: nhp-enter
+  nhp-agent:
+    image: opennhp-agent:latest
+    build: 
+      context: ..
+      dockerfile: ./docker/Dockerfile.agent
+    container_name: nhp-agent
     restart: always
+    #command: []
     ports:
       - "443:443"
+      - "80:80"
     networks:
-      nginx:
-        ipv4_address: 177.9.0.13
+      network_default:
+        ipv4_address: 177.7.0.8
     depends_on:
       - nhp-server
       - nhp-ac
     volumes:
       - ./nhp-enter-nginx.conf:/etc/nginx/nginx.conf:rw
-      - ./certs/server.crt:/cert.pem:rw
-      - ./certs/server.key:/key.pem:rw
-  # nhp-base:
-  #   image: opennhp-base
-  #   build: 
-  #     context: ..
-  #     dockerfile: ./docker/Dockerfile.base
-  #   container_name: nhp-base
-  #   restart: always
+      - ./certs/server.crt:/cert.pem:r
+      - ./certs/server.key:/key.pem:r
+      - ./nhp-agent/etc:/nhp-agent/etc:rw
+      - ./nhp-agent/logs:/nhp-agent/logs:rw

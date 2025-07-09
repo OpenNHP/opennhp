@@ -69,10 +69,10 @@ if [ $? -ne 0 ]; then
 fi
 
 # ssh
-iptables -C INPUT -p tcp --dport 22  -j ACCEPT > /dev/null 2>&1
-if [ $? -ne 0 ]; then
-    iptables -I INPUT -p tcp --dport 22  -j ACCEPT
-fi
+# iptables -C INPUT -p tcp --dport 22  -j ACCEPT > /dev/null 2>&1
+# if [ $? -ne 0 ]; then
+#     iptables -I INPUT -p tcp --dport 22  -j ACCEPT
+# fi
 
 # established connections
 iptables -C INPUT -m state --state ESTABLISHED -j ACCEPT > /dev/null 2>&1

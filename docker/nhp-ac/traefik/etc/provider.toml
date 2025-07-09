@@ -14,4 +14,4 @@
   [http.services]
     [http.services.service-demo.loadBalancer]
       [[http.services.service-demo.loadBalancer.servers]]
-        url = "http://nhp-app"
+        url = "http://web-app:8080"

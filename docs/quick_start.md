@@ -35,7 +35,7 @@ A locally built Docker debugging environment, simulating nhp-server, nhp-ac, tra
 ### 1.2 Protection Effectiveness
 |State|	Expected Result|
 |---|---|
-|Scenario 1	|Default (Protected State)	Ping or direct access to NHP-AC Server's proxied Web-app fails|
+|Scenario 1	|Invisibility (for unauthorized users)	Ping or direct access to NHP-AC Server's proxied Web-app fails|
 |Scenario 2	|After "knocking" via NHP-Agent	Can successfully access the NHP-AC protected Web-app|
 |Scenario 3	|After web identity authentication "knock"	Can successfully access the NHP-AC protected Web-app|
 
@@ -59,23 +59,26 @@ https://www.docker.com/products/docker-desktop/
 
 Launch Docker Desktop after installation completes
 
-## 3. Building from Source Code
-***Note: This environment is built from local source code***
-### 3.1 Building the opennhp-base Docker Image
+## 3. Building base images from Source Code
+### 3.1 Clone the latest code
+```shell
+git clone https://github.com/OpenNHP/opennhp.git
+```
+### 3.2 Building the opennhp-base Docker Image
 ```shell
 cd ./docker
 docker build --no-cache -t opennhp-base:latest -f Dockerfile.base ../..
 ```
 
 ## 4. Running and Testing the Environment
-The following startup command will compile nhp-server, nhp-ac, web-app, and nhp-agent images during the startup process.
+The following startup command will build nhp-server, nhp-ac, web-app, and nhp-agent images during the startup process.
 ### 4.1 Start All Services
 ```shell
 cd ./docker
 docker compose up -d
 ```
 
-### 4.2 Scenario 1: Default (Protection Status: No NHP Agent and Web Authentication Knock)
+### 4.2 Scenario 1: Invisibility (for unauthorized users)
 Enter the nhp agentd container for verification
 ```shell
 cd ./docker
@@ -85,6 +88,24 @@ By default, the following error occurs when using curl NHP-AC (under protection)
 ```shell
 root@68a230812459:/workdir# curl -i  http://177.7.0.10
 curl: (28) Failed to connect to 177.7.0.10 port 80: Connection timed out
+```
+
+Port scan verification, enter the NHP Agent container and install nmap
+```shell
+root@ee88ec992447:/# docker exec -it nhp-agent bash
+root@ee88ec992447:/# apt-get update && apt-get install -y nmap
+```
+Scanning NHP-AC through NHP-Agent cannot detect any ports
+```shell
+root@ee88ec992447:/# nmap 177.7.0.10
+Starting Nmap 7.93 ( https://nmap.org ) at 2025-07-03 07:33 UTC
+Nmap scan report for nhp-ac.docker_nginx (177.7.0.10)
+Host is up (0.000044s latency).
+All 1000 scanned ports on nhp-ac.docker_nginx (177.7.0.10) are in ignored states.
+Not shown: 1000 filtered tcp ports (no-response)
+MAC Address: 12:B4:5C:EB:72:F4 (Unknown)
+
+Nmap done: 1 IP address (1 host up) scanned in 21.84 seconds
 ```
 
 ### 4.3 Scenario 2: Using nhp-agentd service to knock on the door
@@ -99,6 +120,19 @@ Content-Type: application/json; charset=utf-8
 Date: Tue, 08 Jul 2025 06:21:10 GMT
 
 {"message":"Hello World!"}
+```
+When NHP agent starts, it can scan to port 80 of NHP-AC
+```shell
+root@ee88ec992447:/# nmap 177.7.0.10
+Starting Nmap 7.93 ( https://nmap.org ) at 2025-07-03 07:37 UTC
+Nmap scan report for nhp-ac.docker_nginx (177.7.0.10)
+Host is up (0.000094s latency).
+Not shown: 999 filtered tcp ports (no-response)
+PORT   STATE SERVICE
+80/tcp open  http
+MAC Address: 12:B4:5C:EB:72:F4 (Unknown)
+
+Nmap done: 1 IP address (1 host up) scanned in 4.96 seconds
 ```
 
 ### 4.4 Scenario 3: Using simulated authorization service login to verify
@@ -117,33 +151,11 @@ visit: http://localhost/plugins/example?resid=demo&action=login
 -Visit before knocking on the door: https://localhost/ Timeout (504 Gateway Time out)
 -Click login (after knocking on the door), the page will jump to normal and can be accessed normally https://localhost/ (Note: The opening time is 15 seconds, and access is prohibited after 15 seconds)
 -In the NHP Agent container, use ``` curl - i http://177.7.0.10 ```Can display content normally
-
-### 4.5 Scan the NHP-AC port in the NHP-Agent container
-
-Enter the NHP-Agent container and install nmap
-```shell
-root@ee88ec992447:/# docker exec -it nhp-agent bash
-root@ee88ec992447:/# apt-get update && apt-get install -y nmap
-```
-#### 4.5.1 Scan NHP-AC ports
-When nhp-agentd stops, no ports can be scanned
-```shell
-root@ee88ec992447:/# nmap 177.7.0.10
-Starting Nmap 7.93 ( https://nmap.org ) at 2025-07-03 07:33 UTC
-Nmap scan report for nhp-ac.docker_nginx (177.9.0.10)
-Host is up (0.000044s latency).
-All 1000 scanned ports on nhp-ac.docker_nginx (177.9.0.10) are in ignored states.
-Not shown: 1000 filtered tcp ports (no-response)
-MAC Address: 12:B4:5C:EB:72:F4 (Unknown)
-
-Nmap done: 1 IP address (1 host up) scanned in 21.84 seconds
-```
-
-When nhp-agentd starts, it can scan to port 80 of NHP-AC
+- When clicking on login (after knocking on the door), you can scan to port 80 of NHP-AC
 ```shell
 root@ee88ec992447:/# nmap 177.7.0.10
 Starting Nmap 7.93 ( https://nmap.org ) at 2025-07-03 07:37 UTC
-Nmap scan report for nhp-ac.docker_nginx (177.9.0.10)
+Nmap scan report for nhp-ac.docker_nginx (177.7.0.10)
 Host is up (0.000094s latency).
 Not shown: 999 filtered tcp ports (no-response)
 PORT   STATE SERVICE
@@ -153,7 +165,7 @@ MAC Address: 12:B4:5C:EB:72:F4 (Unknown)
 Nmap done: 1 IP address (1 host up) scanned in 4.96 seconds
 ```
 
-### 4.6 Verify if the ipset rules are effective
+### 4.5 Verify if the ipset rules are effective
 ```shell
 docker exec -it nhp-ac ipset list
 ```
@@ -194,7 +206,12 @@ Members:
 ## 5. Edit the Code and Rebuild 
 In actual debugging,After you have modified the code, you can use ```docker compose build [container_name]``` (such as``` docker compose build nhp-ac ```to compile nhp-ac) to compile the service separately for debugging
 
-### 5.1 Build nhp-server and Test
+### 5.1 Code editing
+You can use your IDE (such as VSCode to open the project) and modify the OpenNHP code.
+
+### 5.2 ReBuild and Test
+Use the following methods to rebuild and debug the corresponding modified services
+### 5.1.2 ReBuild nhp-server and Test
 ```shell
 cd ./docker
 docker compose build nhp-server
@@ -202,7 +219,7 @@ docker stop nhp-server && docker rm nhp-server
 docker compose up -d
 ```
 
-### 5.2 Build nhp-ac and Test
+### 5.1.2 ReBuild nhp-ac and Test
 ```shell
 cd ./docker
 docker compose build nhp-ac

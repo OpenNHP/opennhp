@@ -300,19 +300,15 @@ func (ipset *IPSet) GetDefaultName(ipType IPTYPE, t int) string {
 	var name string
 	switch t {
 	case 2: // Whitelist
-		if ipType == IPV4 {
-			name = WhitelistSet
-		} else if ipType == IPV6 {
+		name = WhitelistSet
+		if ipType == IPV6 {
 			name = WhitelistSetV6
 		}
-		name = WhitelistSet
 	case 3: // Blacklist
-		if ipType == IPV4 {
-			name = BlacklistSet
-		} else if ipType == IPV6 {
+		name = BlacklistSet
+		if ipType == IPV6 {
 			name = BlacklistSetV6
 		}
-		name = BlacklistSet
 	}
 	return name
 }

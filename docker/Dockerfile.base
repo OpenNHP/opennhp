@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM ubuntu:20.04 AS builder
+FROM --platform=$BUILDPLATFORM ubuntu:22.04 AS builder
 
 # Get target platform architecture
 ARG TARGETARCH
@@ -15,6 +15,7 @@ RUN apt-get update && \
     tcpdump \
     ipset \
     git \
+    vim \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Go version

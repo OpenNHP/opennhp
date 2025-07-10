@@ -1,7 +1,12 @@
 package common
 
 import (
+	"encoding/base64"
 	"fmt"
+	"path/filepath"
+	"os"
+
+	utils "github.com/OpenNHP/opennhp/nhp/utils"
 )
 
 type NetAddress struct {
@@ -271,6 +276,25 @@ type KeyAccessObject struct {
 type SmartPolicy struct {
 	PolicyId string `json:"policyId"` // Policy identifier
 	Policy   string `json:"policy"`   // Base64-encoded wasm policy
+	Embedded bool    `json:"embedded"`
+}
+
+func (spo *SmartPolicy) GetPolicy() ([]byte, error) {
+	wasmBytes, err := base64.StdEncoding.DecodeString(spo.Policy)
+	if err != nil {
+		wasmPath, err := utils.DownloadFileToTemp(spo.Policy, "wasm-")
+		defer os.Remove(filepath.Dir(wasmPath))
+		defer os.Remove(wasmPath)
+		if err != nil {
+			return nil, err
+		}
+		wasmBytes, err = os.ReadFile(wasmPath)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return wasmBytes, nil
 }
 
 type DBOnlineMsg struct {
@@ -281,4 +305,18 @@ type ServerDBAckMsg struct {
 	ErrCode string `json:"errCode"`
 	ErrMsg  string `json:"errMsg,omitempty"`
 	DBAddr  string `json:"dbAddr"`
+}
+
+type DHPKnockMsg struct {
+	UserId         string         `json:"usrId"`
+	DeviceId       string         `json:"devId"`
+	OrganizationId string         `json:"orgId,omitempty"`
+	UserData       map[string]any `json:"usrData,omitempty"`
+	Evidence       string         `json:"evidence"`
+}
+
+type ServerDHPKnockAckMsg struct {
+	ErrCode           string                    `json:"errCode"`
+	ErrMsg            string                    `json:"errMsg,omitempty"`
+	OpenTime          uint32                    `json:"opnTime"`
 }

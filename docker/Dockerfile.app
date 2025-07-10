@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM ubuntu:20.04 AS builder
+FROM --platform=$BUILDPLATFORM ubuntu:22.04 AS builder
 
 # Get target platform architecture
 ARG TARGETARCH
@@ -57,13 +57,13 @@ WORKDIR /app
 
 # Copy the source code
 COPY ./web-app .
-## 
+##
 ENV GOPROXY=https://goproxy.cn,direct
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go mod tidy && go build -o app
 
 # Stage 2: Create a minimal runtime image
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \

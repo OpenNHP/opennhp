@@ -1,12 +1,14 @@
 package utils
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -101,4 +103,68 @@ func GenerateTempFilePath(pattern string) (string, error) {
 	}
 
 	return tempPath, nil
+}
+
+func SaveStructAsJsonFile(filePath string, data any) error {
+	if data == nil {
+		return fmt.Errorf("data cannot be nil")
+	}
+	if filePath == "" {
+		return fmt.Errorf("file path cannot be empty")
+	}
+
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal data to JSON: " + err.Error())
+	}
+
+	err = os.WriteFile(filePath, jsonData, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write JSON to file: " + err.Error())
+	}
+
+	return nil
+}
+
+func LoadJsonFileAsStruct(filePath string) (any, error) {
+	if filePath == "" {
+		return nil, fmt.Errorf("file path cannot be empty")
+	}
+
+	jsonData, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	var data map[string]any
+
+	if err := json.Unmarshal(jsonData, &data); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON %s to struct: %w", string(jsonData), err)
+	}
+
+	return data, nil
+}
+
+func UpdateTomlConfig(filePath string, key string, value any) error {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+
+	var newContent string
+
+	switch value := value.(type) {
+	case string:
+		re := regexp.MustCompile(`(?m)^\s*` + key + `\s*=\s*".+"\s*$`)
+		newContent = re.ReplaceAllString(string(content), fmt.Sprintf("%s = \"%s\"", key, value))
+	default:
+		return fmt.Errorf("unsupported type: %T", value)
+	}
+
+	err = os.WriteFile(filePath, []byte(newContent), 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

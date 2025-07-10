@@ -4,12 +4,12 @@ WORKDIR /nhp-server
 COPY . .
 
 RUN echo "Building for architecture: ${TARGETARCH}"
-## 
+##
 ENV GOPROXY=https://goproxy.cn,direct
 
 RUN cd /nhp-server &&  make init acd test
 
-FROM ubuntu:20.04  AS runtime
+FROM ubuntu:22.04  AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get install -y  wget \
@@ -21,7 +21,7 @@ RUN apt-get update && \
     git \
     curl \
     telnet \
-    && rm -rf /var/lib/apt/lists/* 
+    && rm -rf /var/lib/apt/lists/*
 
 # Traefik version
 ARG TRAEFIK_VERSION=v2.10.4
@@ -35,8 +35,8 @@ RUN tar -zxvf traefik.tar.gz && \
     mv traefik /opt/traefik/ && \
     chmod +x /opt/traefik/traefik && \
     rm -rf /tmp/*
-    
-COPY --from=builder /nhp-server/release/nhp-ac /nhp-ac 
+
+COPY --from=builder /nhp-server/release/nhp-ac /nhp-ac
 COPY --from=builder /nhp-server/docker/iptables_defaults_ubuntu.sh /iptables_defaults_ubuntu.sh
 COPY --from=builder /nhp-server/docker/iptables_defaults_x86.sh /iptables_defaults_x86.sh
 RUN if [ "$(uname -m)" = "x86_64" ]; then \

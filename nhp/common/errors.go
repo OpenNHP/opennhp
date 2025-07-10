@@ -118,6 +118,9 @@ var (
 	ErrHttpResourceAddressNotFound = newError("54004", "http resource address not found", "http无法找到资源地址")
 
 	// db
-	ErrTEENotAuthorized = newError("55001", "TEE is  not authorized", "可信执行环境未授权")
-	ErrDataPrivateKeyStore = newError("55002", "data private key store error", "数据私钥存储错误")
+	ErrTEENotAuthorized        = newError("55001", "TEE is  not authorized", "可信执行环境未授权")
+	ErrDataPrivateKeyStore     = newError("55002", "data private key store error", "数据私钥存储错误")
+	ErrEvidenceAppraisalFailed = newError("55003", "remote attestation appraisal failed", "远程证明评估失败")
+	ErrEvidenceGetFailed       = newError("55004", "failed to get evidence", "无法获取远程证明")
+	ErrDBOffline               = newError("55005", "data broker offline", "数据经纪件离线")
 )

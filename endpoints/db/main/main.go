@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strings"
 	"syscall"
 
 	"github.com/OpenNHP/opennhp/endpoints/db"
@@ -220,10 +222,23 @@ func runApp(params db.AppParams) error {
 	switch params.Mode {
 	case "encrypt":
 		outputFilePath := params.Output
-		smartPolicy, err := params.GetSmartPolicy()
+		smartPolicy, err := params.NewSmartPolicy()
 		if err != nil {
 			log.Error("failed to read policy file:%s\n", err)
 			return err
+		}
+		if strings.HasPrefix(smartPolicy.Policy, "file://") {
+			smartPolicyDir := filepath.Dir(params.SmartPolicy)
+			policyPath := smartPolicy.Policy[7:]
+			if !filepath.IsAbs(policyPath) {
+				policyPath = filepath.Join(smartPolicyDir, policyPath)
+			}
+
+			smartPolicy.Policy, err = a.UploadFileToNHPServer(policyPath)
+			if err != nil {
+				log.Error("failed to upload policy file:%s\n", err)
+				return err
+			}
 		}
 
 		ztdoId := params.ZtdoId
@@ -231,10 +246,36 @@ func runApp(params db.AppParams) error {
 		if ztdoId == "" {
 			ztdoId = ztdo.GetObjectID()
 
-			metadata, err := params.GetMetadata()
-			if err != nil {
-				log.Error("failed to read metadata file:%s\n", err)
-				return err
+			var metadata string
+
+			if smartPolicy.Embedded {
+				structMetadata, err := params.LoadMetadataAsStruct()
+				if err != nil {
+					log.Error("failed to load metadata:%s\n", err)
+					return err
+				}
+
+				wasmBytes, err := smartPolicy.GetPolicy()
+				if err != nil {
+					log.Error("failed to get policy:%s\n", err)
+					return err
+				}
+
+				structMetadata["smartPolicy"] = base64.StdEncoding.EncodeToString(wasmBytes)
+
+				metadataBytes, err := json.Marshal(structMetadata)
+				if err != nil {
+					log.Error("failed to marshal metadata:%s\n", err)
+					return err
+				}
+
+				metadata = string(metadataBytes)
+			} else {
+				metadata, err = params.GetMetadata()
+				if err != nil {
+					log.Error("failed to read metadata file:%s\n", err)
+					return err
+				}
 			}
 
 			ztdo.SetMetadata(metadata)
@@ -271,6 +312,15 @@ func runApp(params db.AppParams) error {
 				if err := ztdo.EncryptZtdoFile(params.Source, outputFilePath, gcmKey[:], ad); err != nil {
 					log.Error("failed to encrypt ztdo file: %s\n", err)
 					return err
+				}
+
+				if params.AccessUrl == "" {
+					// upload ztdo to nhp server
+					params.AccessUrl, err = a.UploadFileToNHPServer(outputFilePath)
+					if err != nil {
+						log.Error("failed to upload ztdo file:%s\n", err)
+						return err
+					}
 				}
 			}
 

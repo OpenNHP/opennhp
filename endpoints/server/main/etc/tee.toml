@@ -1,0 +1,12 @@
+# list trusted execution environments under [[TEEs]] table
+
+# Measure: cryptographic hashes that ensure the integrity of software and data within the TEE.
+# SerialNumber: unique serial number of the TEE.
+
+[[TEEs]]
+Measure = "19178a674248bbca705863bbf75ecaa049fcf3dfcc5ff59a80dcc5cbb60dae59"
+SerialNumber = "TMEX300023050201"
+
+[[TEEs]]
+Measure = "c8b352707a25207e0fefc647aa933d4bd20981c80d8cebcc7389b3204d43130c"
+SerialNumber = "c8b352707a25207e0fefc647aa933d4bd20981c80d8cebcc7389b3204d43130c"

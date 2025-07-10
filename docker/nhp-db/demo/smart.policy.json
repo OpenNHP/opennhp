@@ -1,0 +1,4 @@
+{
+    "policy": "file://./allow.policy.wasm",
+    "embedded": true
+}

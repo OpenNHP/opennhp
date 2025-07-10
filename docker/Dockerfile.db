@@ -1,0 +1,24 @@
+FROM opennhp-base:latest  AS builder
+
+WORKDIR /workdir
+
+COPY . .
+
+RUN echo "Building for architecture: ${TARGETARCH}"
+##
+ENV GOPROXY=https://goproxy.cn,direct
+
+RUN cd /workdir && cat Makefile && make init db test
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && \
+    apt-get install -y  wget \
+    ca-certificates \
+    tcpdump \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mv /workdir/release/nhp-db /nhp-db
+USER root
+
+CMD ["tail", "-f", "/dev/null"]

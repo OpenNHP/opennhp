@@ -1,0 +1,6 @@
+# Configuration for trusted execution environment.
+
+# TEEPublicKeyBase64: base64 encoded public key of TEE (Trusted Execution Environment).
+[[TEEs]]
+TEEPublicKeyBase64 = "Jxg2hkMuHSr0Lw5DMKtm2PE9skt/VD53bWxlmnn8XI7J+30A2zxTAyVSoMwt5YveD5sQOFRXyTI/ihbMriyBpw=="
+ExpireTime = 1924991999

@@ -1,0 +1,19 @@
+# NHP-Db base config
+# field with (-) does not support dynamic update
+
+# PrivateKeyBase64 (-): db private key in base64 format.
+# SymmetricCipherMode: default mode is AES-256-GCM-128, supported modes:
+#   AES-256-GCM-64, AES-256-GCM-96, AES-256-GCM-104, AES-256-GCM-112, AES-256-GCM-120, AES-256-GCM-128, SM4-GCM-64, SM4-GCM-128.
+# UserId: specify the user id this agent represents.
+# OrganizationId: specify the organization id this agent represents.
+# LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.
+PrivateKeyBase64 = "WAb4iFVXHnF5yMpacue1HKTa6nyOebx7BPNn++0ix1c="
+DefaultCipherScheme = 0
+SymmetricCipherMode = "AES-256-GCM-128"
+DbId = "device-0"
+OrganizationId = "opennhp.cn"
+LogLevel = 4
+
+# UserData: a customized user entry for flexibility.
+# Its key-value pairs will be send to server along with knock message.
+[UserData]

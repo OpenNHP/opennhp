@@ -254,6 +254,8 @@ func (hs *HttpServer) initRouter() {
 		hs.legacyAuthWithAspPlugin(ctx, req)
 	})
 
+	hs.initStorageRouter()
+
 	/*
 		refreshGrp := g.Group("refresh")
 		refreshGrp.GET("/:token", func(ctx *gin.Context) {

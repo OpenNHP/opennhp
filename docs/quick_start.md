@@ -147,10 +147,10 @@ root@6e21724b68f1:/workdir# nginx
 
 visit: http://localhost/plugins/example?resid=demo&action=login
 
--Expected page to display normally
--Visit before knocking on the door: https://localhost/ Timeout (504 Gateway Time out)
--Click login (after knocking on the door), the page will jump to normal and can be accessed normally https://localhost/ (Note: The opening time is 15 seconds, and access is prohibited after 15 seconds)
--In the NHP Agent container, use ``` curl - i http://177.7.0.10 ```Can display content normally
+- Expected page to display normally
+- Visit before knocking on the door: https://localhost/ Timeout (504 Gateway Time out)
+- Click login (after knocking on the door), the page will jump to normal and can be accessed normally https://localhost/ (Note: The opening time is 15 seconds, and access is prohibited after 15 seconds)
+- In the NHP Agent container, use ``` curl - i http://177.7.0.10 ```Can display content normally
 - When clicking on login (after knocking on the door), you can scan to port 80 of NHP-AC
 ```shell
 root@ee88ec992447:/# nmap 177.7.0.10

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/OpenNHP/opennhp/nhp/etcd"
 	"net"
 	"path/filepath"
 	"sync"
@@ -57,6 +58,9 @@ type UdpAC struct {
 
 	recvMsgCh <-chan *core.PacketParserData
 	sendMsgCh chan *core.MsgData
+
+	// etcd client
+	etcdConn *etcd.EtcdConn
 }
 
 type UdpConn struct {
@@ -90,14 +94,19 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	log.Info("=== RELEASE %s                       ===", version.BuildTime)
 	log.Info("=========================================================")
 
-	// init config
-	err = a.loadBaseConfig()
+	// load remote config,init etcd client
+	err = a.initEtcdClient()
+	if err == nil && a.etcdConn == nil {
+		// init config
+		err = a.loadBaseConfig()
+	} else {
+		// nhp ac base config must be loaded first
+		err = a.loadRemoteBaseConfig()
+	}
 	if err != nil {
 		return err
 	}
 
-	// load http config and turn on http server if needed
-	a.loadHttpConfig()
 	switch a.config.FilterMode {
 	case FilterMode_IPTABLES:
 		a.iptables, err = utils.NewIPTables()
@@ -137,8 +146,15 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	a.serverPeerMap = make(map[string]*core.UdpPeer)
 	a.tokenStore = make(TokenStore)
 
-	// load peers
-	a.loadPeers()
+	if a.etcdConn != nil {
+		a.loadRemoteConfig()
+	} else {
+		// load http config and turn on http server if needed
+		a.loadHttpConfig()
+
+		// load peers
+		a.loadPeers()
+	}
 
 	if a.config.FilterMode == FilterMode_EBPFXDP {
 		for _, server := range a.config.Servers {
@@ -178,7 +194,9 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 func (ac *UdpAC) Stop() {
 	ac.running.Store(false)
 	close(ac.signals.stop)
-
+	if ac.etcdConn != nil {
+		ac.etcdConn.Close()
+	}
 	ac.device.Stop()
 	ac.StopConfigWatch()
 	ac.wg.Wait()

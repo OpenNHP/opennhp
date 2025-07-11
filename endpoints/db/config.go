@@ -15,7 +15,7 @@ import (
 var (
 	baseConfigWatch     io.Closer
 	serverConfigWatch   io.Closer
-	teesConfigWatch io.Closer
+	teesConfigWatch     io.Closer
 	resourceConfigWatch io.Closer
 
 	errLoadConfig = fmt.Errorf("config load error")
@@ -24,7 +24,7 @@ var (
 type Config struct {
 	LogLevel            int
 	PrivateKeyBase64    string
-	DefaultCipherScheme int `json:"defaultCipherScheme"`
+	DefaultCipherScheme int    `json:"defaultCipherScheme"`
 	SymmetricCipherMode string `json:"symmetricCipherMode"`
 	DbId                string `json:"dbId"`
 }
@@ -178,7 +178,7 @@ func (a *UdpDevice) updateTEEConfig(file string) (err error) {
 	}
 
 	teeMap := make(map[string]*TEE)
-	for _, tee:= range tees.TEEs {
+	for _, tee := range tees.TEEs {
 		teeMap[tee.TEEPublicKeyBase64] = tee
 	}
 

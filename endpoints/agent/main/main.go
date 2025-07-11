@@ -78,13 +78,24 @@ func main() {
 		Name:  "dhp",
 		Usage: "create and dhp agent process for NHP protocol",
 		Flags: []cli.Flag{
-			&cli.StringFlag{Name: "ztdo", Value: "", Usage: "Ztdo file path", Required: true},
-			&cli.StringFlag{Name: "output", Value: "", Usage: "Decrypted file output path", Required: true},
+			&cli.StringFlag{Name: "ztdo", Value: "", Usage: "Ztdo file path"},
+			&cli.StringFlag{Name: "ztdo-id", Value: "", Usage: "Identifier of ztdo"},
+			&cli.StringFlag{Name: "output", Value: "", Usage: "Decrypted file output path"},
+		},
+		Before: func(c *cli.Context) error {
+			if c.String("ztdo") == "" && c.String("ztdo-id") == "" {
+				return fmt.Errorf("--ztdo or --ztdo-id MUST be specified")
+			}
+			if c.String("ztdo") != "" && c.String("ztdo-id") != "" {
+				return fmt.Errorf("--ztdo and --ztdo-id CANNOT be specified at the same time")
+			}
+			return nil
 		},
 		Action: func(c *cli.Context) error {
 			ztdo := c.String("ztdo")
+			ztdoId := c.String("ztdo-id")
 			output := c.String("output")
-			return runDHPApp(ztdo, output)
+			return runDHPApp(ztdo, ztdoId, output)
 		},
 	}
 
@@ -123,7 +134,8 @@ func runApp() error {
 	a.Stop()
 	return nil
 }
-func runDHPApp(ztdo string, output string) error {
+
+func runDHPApp(ztdo string, ztdoId string, output string) error {
 	exeFilePath, err := os.Executable()
 	if err != nil {
 		return err
@@ -136,9 +148,9 @@ func runDHPApp(ztdo string, output string) error {
 	if err != nil {
 		return err
 	}
-	if ztdo != "" {
+	if ztdo != "" || ztdoId != "" {
 		//request ztdo file
-		a.StartDecodeZtdo(ztdo, output)
+		a.StartDecodeZtdo(ztdo, ztdoId, output)
 	} else {
 		a.StartKnockLoop()
 	}

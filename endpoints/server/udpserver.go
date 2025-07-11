@@ -89,6 +89,7 @@ type UdpServer struct {
 	//NHP-DB
 	dbPeerMapMutex sync.Mutex
 	dbPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
+
 }
 
 type BlockAddr struct {
@@ -658,6 +659,8 @@ func (s *UdpServer) recvMessageRoutine() {
 				go s.HandleDHPDARMessage(ppd)
 			case core.NHP_DRG:
 				go s.HandleDHPDRGMessage(ppd)
+			case core.NHP_DAV:
+				go s.HandleDHPDAVMessage(ppd)
 			}
 
 		}
@@ -673,6 +676,23 @@ func (s *UdpServer) AddAgentPeer(agent *core.UdpPeer) {
 	}
 }
 
+func (s *UdpServer) UpdateTeePublicKeyAndConsumerEphemeralPublicKey(teePublicKeyBase64 string, consumerEphemeralPublicKeyBase64 string, agentPulicKey []byte) {
+	agentPulicKeyBase64 := base64.StdEncoding.EncodeToString(agentPulicKey)
+
+	if peer, found := s.agentPeerMap[agentPulicKeyBase64]; found {
+		peer.SetTeePublicKeyBase64(teePublicKeyBase64)
+		peer.SetConsumerEphemeralPublicKeyBase64(consumerEphemeralPublicKeyBase64)
+	}
+}
+
+func (s *UdpServer) GetTeePublicKeyBase64AndConsumerEphemeralPublicKeyBase64(agentPublicKey []byte) (teePublicKeyBase64 string, consumerEphemeralPublicKeyBase64 string) {
+	agentPulicKeyBase64 := base64.StdEncoding.EncodeToString(agentPublicKey)
+
+	if peer, found := s.agentPeerMap[agentPulicKeyBase64]; found {
+		return peer.TeePublicKeyBase64(), peer.ConsumerEphemeralPublicKeyBase64()
+	}
+	return "", ""
+}
 func (s *UdpServer) AddACPeer(acPeer *core.UdpPeer) {
 	if acPeer.DeviceType() == core.NHP_AC {
 		s.device.AddPeer(acPeer)

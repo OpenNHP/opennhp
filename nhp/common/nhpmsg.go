@@ -252,6 +252,8 @@ type DSAMsg struct {
 	SpoId string      `json:"spoId"`         // Smart Policy Object identifier
 	Spo   *SmartPolicy `json:"spo,omitempty"` // Smart policy Object
 	TTL   int         `json:"TTL"`           // Evidence validity period in milliseconds
+	ErrCode int             `json:"errCode"`       // Registration error code (0=success)
+	ErrMsg  string          `json:"errMsg"`        // Error message (empty if success)
 }
 
 type DAVMsg struct {

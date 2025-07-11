@@ -49,6 +49,8 @@ type UdpPeer struct {
 	resolvedIpArr     []string
 	primaryResolvedIp string
 	recvAddr          *net.UDPAddr
+	teePublicKeyBase64      string
+	consumerEphemeralPublicKeyBase64 string
 }
 
 func (p *UdpPeer) DeviceType() DeviceTypeEnum {
@@ -192,4 +194,32 @@ func (p *UdpPeer) UpdateRecv(currTime int64, currAddr net.Addr) {
 
 	p.lastRecvTime = currTime
 	p.recvAddr = currAddr.(*net.UDPAddr)
+}
+
+func (p *UdpPeer) TeePublicKeyBase64() string {
+	p.Lock()
+	defer p.Unlock()
+
+	return p.teePublicKeyBase64
+}
+
+func (p *UdpPeer) SetTeePublicKeyBase64(teePublicKeyBase64 string) {
+	p.Lock()
+	defer p.Unlock()
+
+	p.teePublicKeyBase64 = teePublicKeyBase64
+}
+
+func (p *UdpPeer) ConsumerEphemeralPublicKeyBase64() string {
+	p.Lock()
+	defer p.Unlock()
+
+	return p.consumerEphemeralPublicKeyBase64
+}
+
+func (p *UdpPeer) SetConsumerEphemeralPublicKeyBase64(consumerEphemeralPublicKeyBase64 string) {
+	p.Lock()
+	defer p.Unlock()
+
+	p.consumerEphemeralPublicKeyBase64 = consumerEphemeralPublicKeyBase64
 }

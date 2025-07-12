@@ -66,9 +66,6 @@ Endpoints = ["172.16.3.53:2379"]
 Key = "openserver-1"
 ```
 
-配置中Key对应的内容在ETCD Keeper中的内容如下图
-
-![image-20250710151053433](..\images\remote-config-server.png)
 
 ### 3.2 启用远端配置
 

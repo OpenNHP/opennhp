@@ -151,7 +151,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		// init config
 		err = s.loadBaseConfig()
 	} else {
-		// nhp server base config must be loaded first
+		// nhp server base config must be loaded first.
 		err = s.loadRemoteBaseConfig()
 	}
 	if err != nil {

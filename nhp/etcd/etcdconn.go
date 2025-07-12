@@ -51,6 +51,7 @@ func (conn *EtcdConn) GetValue() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if len(val.Kvs) == 0 {
 		return nil, errors.New("key not found")
 	}

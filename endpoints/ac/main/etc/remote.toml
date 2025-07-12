@@ -1,6 +1,6 @@
 # NHP-AC remote config
 # field with (-) does not support dynamic update
-# If the file remote.toml exists, NHP-AC will obtain remote configuration information through the etcd client
+# If the file remote.toml exists, NHP-AC will obtain remote configuration information through the etcd client.
 
 # Endpoints: ETCD service access address.
 # Key: NHP-AC obtain the configuration information through this key.

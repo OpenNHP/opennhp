@@ -328,9 +328,11 @@ func (a *UdpAC) updateEtcdConfig(content []byte, baseLoad bool) (err error) {
 		log.Error("failed to unmarshal remote config: %v", err)
 		return err
 	}
+
 	if baseLoad {
 		a.updateBaseConfig(acEtcdConfig.BaseConfig)
 	}
+
 	a.updateHttpConfig(acEtcdConfig.HttpConfig)
 	a.updateServerPeers(acEtcdConfig.Servers)
 	return

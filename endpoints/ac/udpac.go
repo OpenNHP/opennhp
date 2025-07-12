@@ -100,7 +100,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 		// init config
 		err = a.loadBaseConfig()
 	} else {
-		// nhp ac base config must be loaded first
+		// nhp ac base config must be loaded first.
 		err = a.loadRemoteBaseConfig()
 	}
 	if err != nil {

@@ -341,6 +341,7 @@ func (s *UdpServer) updateEtcdConfig(content []byte, baseLoad bool) (err error) 
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
+
 	var serverEtcdConfig ServerEtcdConfig
 	if err = toml.Unmarshal(content, &serverEtcdConfig); err != nil {
 		log.Error("failed to unmarshal remote config: %v", err)

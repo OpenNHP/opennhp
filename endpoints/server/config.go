@@ -1,10 +1,13 @@
 package server
 
 import (
+	"errors"
 	"fmt"
+	"github.com/OpenNHP/opennhp/nhp/etcd"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
@@ -25,6 +28,21 @@ var (
 	errLoadConfig    = fmt.Errorf("config load error")
 )
 
+type ServerEtcdConfig struct {
+	BaseConfig    Config
+	HttpConfig    HttpConfig
+	ACs           []*core.UdpPeer
+	Agents        []*core.UdpPeer
+	DBs           []*core.UdpPeer
+	AuthServiceId []*common.AuthServiceProviderData
+	SrcIps        []*SrcIpMap
+}
+
+type SrcIpMap struct {
+	SrcIp string
+	Ip    []string
+}
+
 type Config struct {
 	PrivateKeyBase64       string `json:"privateKey"`
 	Hostname               string `json:"hostname"`
@@ -33,6 +51,14 @@ type Config struct {
 	LogLevel               int    `json:"logLevel"`
 	DefaultCipherScheme    int    `json:"defaultCipherScheme"`
 	DisableAgentValidation bool   `json:"disableAgentValidation"`
+}
+
+type RemoteConfig struct {
+	Provider  string
+	Key       string
+	Endpoints []string
+	Username  string
+	Password  string
 }
 
 type HttpConfig struct {
@@ -55,14 +81,28 @@ type Peers struct {
 func (s *UdpServer) loadBaseConfig() error {
 	// config.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
-	if err := s.updateBaseConfig(fileName); err != nil {
+	content, err := s.loadConfigFile(fileName)
+	if err != nil {
+		log.Error("load base config err: %v", err)
+		return err
+	}
+	var config Config
+	if err := toml.Unmarshal(content, &config); err != nil {
+		log.Error("failed to unmarshal base config: %v", err)
+	}
+	if err = s.updateBaseConfig(config); err != nil {
 		// report base config error
 		return err
 	}
 
 	baseConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("base config: %s has been updated", fileName)
-		s.updateBaseConfig(fileName)
+		if content, err = s.loadConfigFile(fileName); err == nil {
+			if err = toml.Unmarshal(content, &config); err == nil {
+				s.updateBaseConfig(config)
+			}
+
+		}
 	})
 	return nil
 }
@@ -70,14 +110,28 @@ func (s *UdpServer) loadBaseConfig() error {
 func (s *UdpServer) loadHttpConfig() error {
 	// http.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "http.toml")
-	if err := s.updateHttpConfig(fileName); err != nil {
+	content, err := s.loadConfigFile(fileName)
+	if err != nil {
+		log.Error("load http config err: %v", err)
+		return err
+	}
+	var httpConf HttpConfig
+	if err := toml.Unmarshal(content, &httpConf); err != nil {
+		log.Error("failed to unmarshal http config: %v", err)
+	}
+	if err = s.updateHttpConfig(httpConf); err != nil {
 		// ignore error
 		_ = err
 	}
 
 	httpConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("http config: %s has been updated", fileName)
-		s.updateHttpConfig(fileName)
+		if content, err = s.loadConfigFile(fileName); err == nil {
+			if err = toml.Unmarshal(content, &httpConf); err == nil {
+				s.updateHttpConfig(httpConf)
+			}
+		}
+
 	})
 	return nil
 }
@@ -85,37 +139,78 @@ func (s *UdpServer) loadHttpConfig() error {
 func (s *UdpServer) loadPeers() error {
 	// ac.toml
 	fileNameAC := filepath.Join(ExeDirPath, "etc", "ac.toml")
-	if err := s.updateACPeers(fileNameAC); err != nil {
+
+	contentAC, err := s.loadConfigFile(fileNameAC)
+	if err != nil {
+		log.Error("load ac peer config err: %v", err)
+		return err
+	}
+	var acPeers Peers
+	if err := toml.Unmarshal(contentAC, &acPeers); err != nil {
+		log.Error("failed to unmarshal ac peers config: %v", err)
+	}
+
+	if err := s.updateACPeers(acPeers.ACs); err != nil {
 		// ignore error
 		_ = err
 	}
 
 	acConfigWatch = utils.WatchFile(fileNameAC, func() {
 		log.Info("ac peer config: %s has been updated", fileNameAC)
-		s.updateACPeers(fileNameAC)
+		if contentAC, err = s.loadConfigFile(fileNameAC); err == nil {
+			if err = toml.Unmarshal(contentAC, &acPeers); err == nil {
+				s.updateACPeers(acPeers.ACs)
+			}
+		}
 	})
 
 	// agent.toml
 	fileNameAgent := filepath.Join(ExeDirPath, "etc", "agent.toml")
-	if err := s.updateAgentPeers(fileNameAgent); err != nil {
+	contentAgent, err := s.loadConfigFile(fileNameAgent)
+	if err != nil {
+		log.Error("load agent peer config err: %v", err)
+		return err
+	}
+	var agentPeers Peers
+	if err := toml.Unmarshal(contentAgent, &agentPeers); err != nil {
+		log.Error("failed to unmarshal agent peers config: %v", err)
+	}
+	if err := s.updateAgentPeers(agentPeers.Agents); err != nil {
 		// ignore error
 		_ = err
 	}
 
 	agentConfigWatch = utils.WatchFile(fileNameAgent, func() {
 		log.Info("agent peer config: %s has been updated", fileNameAgent)
-		s.updateAgentPeers(fileNameAgent)
+		if contentAgent, err = s.loadConfigFile(fileNameAgent); err == nil {
+			if err = toml.Unmarshal(contentAgent, &agentPeers); err == nil {
+				s.updateAgentPeers(agentPeers.Agents)
+			}
+		}
 	})
 
 	//db.toml
 	fileNameDE := filepath.Join(ExeDirPath, "etc", "db.toml")
-	if err := s.updateDePeers(fileNameDE); err != nil {
+	contentDE, err := s.loadConfigFile(fileNameDE)
+	if err != nil {
+		log.Error("load db peer config err: %v", err)
+		return err
+	}
+	var dePeers Peers
+	if err := toml.Unmarshal(contentDE, &dePeers); err != nil {
+		log.Error("failed to unmarshal db peers config: %v", err)
+	}
+	if err := s.updateDePeers(dePeers.DBs); err != nil {
 		// ignore error
 		_ = err
 	}
 	deConfigWatch = utils.WatchFile(fileNameDE, func() {
 		log.Info("device peer config: %s has been updated", fileNameDE)
-		s.updateDePeers(fileNameDE)
+		if contentDE, err = s.loadConfigFile(fileNameDE); err == nil {
+			if err = toml.Unmarshal(contentDE, &dePeers); err == nil {
+				s.updateDePeers(dePeers.DBs)
+			}
+		}
 	})
 	return nil
 }
@@ -123,14 +218,27 @@ func (s *UdpServer) loadPeers() error {
 func (s *UdpServer) loadResources() error {
 	// resource.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "resource.toml")
-	if err := s.updateResources(fileName); err != nil {
+	content, err := os.ReadFile(fileName)
+	if err != nil {
+		log.Error("failed to read resource config: %v", err)
+	}
+	aspMap := make(common.AuthSvcProviderMap)
+	// update
+	if err := toml.Unmarshal(content, &aspMap); err != nil {
+		log.Error("failed to unmarshal resource config: %v", err)
+	}
+	if err := s.updateResources(aspMap); err != nil {
 		// ignore error
 		_ = err
 	}
 
 	resConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("resource config: %s has been updated", fileName)
-		s.updateResources(fileName)
+		if content, err = s.loadConfigFile(fileName); err == nil {
+			if err = toml.Unmarshal(content, &resConfigWatch); err == nil {
+				s.updateResources(aspMap)
+			}
+		}
 	})
 	return nil
 }
@@ -138,33 +246,165 @@ func (s *UdpServer) loadResources() error {
 func (s *UdpServer) loadSourceIps() error {
 	// srcip.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "srcip.toml")
-	if err := s.updateSourceIps(fileName); err != nil {
+	content, err := os.ReadFile(fileName)
+	if err != nil {
+		log.Error("failed to read src ip config: %v", err)
+	}
+
+	// update
+	srcIpMap := make(map[string][]*common.NetAddress)
+	if err := toml.Unmarshal(content, &srcIpMap); err != nil {
+		log.Error("failed to unmarshal src ip config: %v", err)
+	}
+	if err := s.updateSourceIps(srcIpMap); err != nil {
 		// ignore error
 		_ = err
 	}
 
 	srcipConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("src ip config: %s has been updated", fileName)
-		s.updateSourceIps(fileName)
+		if content, err = s.loadConfigFile(fileName); err == nil {
+			if err = toml.Unmarshal(content, &srcIpMap); err == nil {
+				s.updateSourceIps(srcIpMap)
+			}
+		}
 	})
 	return nil
 }
 
-func (s *UdpServer) updateBaseConfig(file string) (err error) {
+func (s *UdpServer) initRemoteConn() error {
+	// remote.toml
+	fileName := filepath.Join(ExeDirPath, "etc", "remote.toml")
+
+	_, e := os.Stat(fileName)
+	if os.IsNotExist(e) {
+		//remote.toml file not found,use local config
+		return nil
+	}
+
+	content, err := os.ReadFile(fileName)
+	if err != nil {
+		log.Error("failed to read remote config: %v", err)
+		return err
+	}
+
+	var conf RemoteConfig
+	if err = toml.Unmarshal(content, &conf); err != nil {
+		log.Error("failed to unmarshal remote config: %v", err)
+		return err
+	}
+
+	if strings.EqualFold(conf.Provider, "etcd") {
+		if len(conf.Endpoints) == 0 {
+			log.Error("remote config has no endpoints,open nhp server will startup with local configuration")
+			return nil
+		}
+
+		if len(conf.Key) == 0 {
+			log.Error("remote config has no key,open nhp server will startup with local configuration")
+			return nil
+		}
+
+		s.etcdConn = &etcd.EtcdConn{
+			Endpoints: conf.Endpoints,
+			Username:  conf.Username,
+			Password:  conf.Password,
+			Key:       conf.Key,
+		}
+
+		err = s.etcdConn.InitClient()
+		return err
+	} else {
+		return errors.New("unknown remote provider")
+	}
+
+}
+
+func (s *UdpServer) loadRemoteBaseConfig() error {
+	var serverEtcdConfig ServerEtcdConfig
+	value, err := s.etcdConn.GetValue()
+	if err != nil {
+		return err
+	}
+	if err = toml.Unmarshal(value, &serverEtcdConfig); err != nil {
+		log.Error("failed to unmarshal remote config: %v", err)
+		return err
+	}
+
+	err = s.updateBaseConfig(serverEtcdConfig.BaseConfig)
+	return err
+}
+
+func (s *UdpServer) loadRemoteConfig() error {
+	value, err := s.etcdConn.GetValue()
+	if err != nil {
+		return err
+	}
+	//base config has been loaded and no secondary loading is required
+	if err = s.updateEtcdConfig(value, false); err != nil {
+		return err
+	}
+
+	go s.etcdConn.WatchValue(func(val []byte) {
+		s.updateEtcdConfig(val, true)
+	})
+
+	return nil
+}
+
+func (s *UdpServer) updateEtcdConfig(content []byte, baseLoad bool) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
 
-	content, err := os.ReadFile(file)
+	var serverEtcdConfig ServerEtcdConfig
+	if err = toml.Unmarshal(content, &serverEtcdConfig); err != nil {
+		log.Error("failed to unmarshal remote config: %v", err)
+		return err
+	}
+	if baseLoad {
+		s.updateBaseConfig(serverEtcdConfig.BaseConfig)
+	}
+	s.updateHttpConfig(serverEtcdConfig.HttpConfig)
+	s.updateACPeers(serverEtcdConfig.ACs)
+	s.updateAgentPeers(serverEtcdConfig.Agents)
+	s.updateDePeers(serverEtcdConfig.DBs)
+
+	aspMap := make(common.AuthSvcProviderMap)
+	for _, aspData := range serverEtcdConfig.AuthServiceId {
+		aspId := aspData.AuthSvcId
+		aspMap[aspId] = aspData
+	}
+	s.updateResources(aspMap)
+
+	srcIpMap := make(map[string][]*common.NetAddress)
+	for _, srcIp := range serverEtcdConfig.SrcIps {
+		ips := make([]*common.NetAddress, 0)
+		for _, ip := range srcIp.Ip {
+			addr := &common.NetAddress{
+				Ip: ip,
+			}
+			ips = append(ips, addr)
+		}
+		srcIpMap[srcIp.SrcIp] = ips
+	}
+	s.updateSourceIps(srcIpMap)
+
+	return err
+}
+
+func (s *UdpServer) loadConfigFile(file string) (content []byte, err error) {
+	utils.CatchPanicThenRun(func() {
+		err = errLoadConfig
+	})
+	content, err = os.ReadFile(file)
 	if err != nil {
 		log.Error("failed to read base config: %v", err)
 	}
+	return
+}
 
-	var conf Config
-	if err := toml.Unmarshal(content, &conf); err != nil {
-		log.Error("failed to unmarshal base config: %v", err)
-	}
-
+func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 	if s.config == nil {
 		s.config = &conf
 		s.log.SetLogLevel(conf.LogLevel)
@@ -195,20 +435,10 @@ func (s *UdpServer) updateBaseConfig(file string) (err error) {
 	return err
 }
 
-func (s *UdpServer) updateHttpConfig(file string) (err error) {
+func (s *UdpServer) updateHttpConfig(httpConf HttpConfig) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
-
-	content, err := os.ReadFile(file)
-	if err != nil {
-		log.Error("failed to read http config: %v", err)
-	}
-
-	var httpConf HttpConfig
-	if err := toml.Unmarshal(content, &httpConf); err != nil {
-		log.Error("failed to unmarshal http config: %v", err)
-	}
 
 	// set http default timeout values
 	// 4.5s for read timeout, 4s for write timeout, 5s for idle timeout
@@ -249,23 +479,13 @@ func (s *UdpServer) updateHttpConfig(file string) (err error) {
 	return err
 }
 
-func (s *UdpServer) updateACPeers(file string) (err error) {
+func (s *UdpServer) updateACPeers(peers []*core.UdpPeer) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
 
-	content, err := os.ReadFile(file)
-	if err != nil {
-		log.Error("failed to read ac peer config: %v", err)
-	}
-
-	// update
-	var peers Peers
 	acPeerMap := make(map[string]*core.UdpPeer)
-	if err := toml.Unmarshal(content, &peers); err != nil {
-		log.Error("failed to unmarshal ac peer config: %v", err)
-	}
-	for _, p := range peers.ACs {
+	for _, p := range peers {
 		p.Type = core.NHP_AC
 		s.device.AddPeer(p)
 		acPeerMap[p.PublicKeyBase64()] = p
@@ -284,22 +504,12 @@ func (s *UdpServer) updateACPeers(file string) (err error) {
 	return err
 }
 
-func (s *UdpServer) updateAgentPeers(file string) (err error) {
+func (s *UdpServer) updateAgentPeers(peers []*core.UdpPeer) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
-
-	content, err := os.ReadFile(file)
-	if err != nil {
-		log.Error("failed to read agent peer config: %v", err)
-	}
-
-	var peers Peers
 	agentPeerMap := make(map[string]*core.UdpPeer)
-	if err := toml.Unmarshal(content, &peers); err != nil {
-		log.Error("failed to unmarshal agent peer config: %v", err)
-	}
-	for _, p := range peers.Agents {
+	for _, p := range peers {
 		p.Type = core.NHP_AGENT
 		s.device.AddPeer(p)
 		agentPeerMap[p.PublicKeyBase64()] = p
@@ -318,21 +528,10 @@ func (s *UdpServer) updateAgentPeers(file string) (err error) {
 	return err
 }
 
-func (s *UdpServer) updateResources(file string) (err error) {
+func (s *UdpServer) updateResources(aspMap common.AuthSvcProviderMap) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
-
-	content, err := os.ReadFile(file)
-	if err != nil {
-		log.Error("failed to read resource config: %v", err)
-	}
-
-	// update
-	aspMap := make(common.AuthSvcProviderMap)
-	if err := toml.Unmarshal(content, &aspMap); err != nil {
-		log.Error("failed to unmarshal resource config: %v", err)
-	}
 
 	for aspId, aspData := range aspMap {
 		aspData.AuthSvcId = aspId
@@ -357,21 +556,10 @@ func (s *UdpServer) updateResources(file string) (err error) {
 	return err
 }
 
-func (s *UdpServer) updateSourceIps(file string) (err error) {
+func (s *UdpServer) updateSourceIps(srcIpMap map[string][]*common.NetAddress) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
-
-	content, err := os.ReadFile(file)
-	if err != nil {
-		log.Error("failed to read src ip config: %v", err)
-	}
-
-	// update
-	srcIpMap := make(map[string][]*common.NetAddress)
-	if err := toml.Unmarshal(content, &srcIpMap); err != nil {
-		log.Error("failed to unmarshal src ip config: %v", err)
-	}
 
 	s.srcIpAssociatedAddrMapMutex.Lock()
 	defer s.srcIpAssociatedAddrMapMutex.Unlock()
@@ -407,22 +595,13 @@ func (s *UdpServer) StopConfigWatch() {
 }
 
 // updateDePeers
-func (s *UdpServer) updateDePeers(file string) (err error) {
+func (s *UdpServer) updateDePeers(peers []*core.UdpPeer) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
 	})
 
-	content, err := os.ReadFile(file)
-	if err != nil {
-		log.Error("failed to read device peer config: %v", err)
-	}
-
-	var peers Peers
 	dbPeerMap := make(map[string]*core.UdpPeer)
-	if err := toml.Unmarshal(content, &peers); err != nil {
-		log.Error("failed to unmarshal device peer config: %v", err)
-	}
-	for _, p := range peers.DBs {
+	for _, p := range peers {
 		p.Type = core.NHP_DB
 		s.device.AddPeer(p)
 		dbPeerMap[p.PublicKeyBase64()] = p

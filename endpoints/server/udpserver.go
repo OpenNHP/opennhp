@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/OpenNHP/opennhp/nhp/etcd"
 	"net"
 	"path/filepath"
 	"strconv"
@@ -89,6 +90,9 @@ type UdpServer struct {
 	//NHP-DB
 	dbPeerMapMutex sync.Mutex
 	dbPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
+
+	// etcd client
+	etcdConn *etcd.EtcdConn
 }
 
 type BlockAddr struct {
@@ -141,8 +145,15 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	log.Info("=== RELEASE %s                       ===", version.BuildTime)
 	log.Info("=========================================================")
 
-	// init config
-	err = s.loadBaseConfig()
+	// load remote config,init etcd client
+	err = s.initRemoteConn()
+	if err == nil && s.etcdConn == nil {
+		// init config
+		err = s.loadBaseConfig()
+	} else {
+		// nhp server base config must be loaded first.
+		err = s.loadRemoteBaseConfig()
+	}
 	if err != nil {
 		return err
 	}
@@ -193,19 +204,23 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	// retrieve local ip and mac
 	s.localIp = utils.GetLocalOutboundAddress().String()
 	s.localMac = utils.GetMacAddress(s.localIp)
-
-	// load peers
-	s.loadPeers()
-
-	// load http config and turn on http server if needed
-	s.loadHttpConfig()
-
-	// load ip associated addresses
-	s.loadSourceIps()
-
 	// load asp resources and plugins
 	s.pluginHandlerMap = make(map[string]plugins.PluginHandler)
-	s.loadResources()
+	if s.etcdConn != nil {
+		// load nhp server
+		s.loadRemoteConfig()
+	} else {
+		// load peers
+		s.loadPeers()
+
+		// load http config and turn on http server if needed
+		s.loadHttpConfig()
+
+		// load ip associated addresses
+		s.loadSourceIps()
+
+		s.loadResources()
+	}
 
 	s.remoteConnectionMap = make(map[string]*UdpConn)
 	s.acConnectionMap = make(map[string]*ACConn)
@@ -241,6 +256,9 @@ func (s *UdpServer) Stop() {
 	// stop http server first
 	if s.httpServer != nil {
 		s.httpServer.Stop()
+	}
+	if s.etcdConn != nil {
+		s.etcdConn.Close()
 	}
 	close(s.signals.stop)
 	s.listenConn.Close()

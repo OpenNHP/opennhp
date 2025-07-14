@@ -1,11 +1,13 @@
 package ac
 
 import (
+	"errors"
 	"fmt"
 	"github.com/OpenNHP/opennhp/nhp/etcd"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -43,6 +45,14 @@ type Config struct {
 	LogLevel            int             `json:"logLevel"`
 	DefaultCipherScheme int             `json:"defaultCipherScheme"`
 	FilterMode          int             `json:"filterMode"`
+}
+
+type RemoteConfig struct {
+	Provider  string
+	Key       string
+	Endpoints []string
+	Username  string
+	Password  string
 }
 
 type HttpConfig struct {
@@ -247,13 +257,13 @@ func (a *UdpAC) loadConfigFile(file string) (content []byte, err error) {
 	}
 	return
 }
-func (a *UdpAC) initEtcdClient() error {
-	// etcd.toml
+func (a *UdpAC) initRemoteConn() error {
+	// remote.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "remote.toml")
 
 	_, e := os.Stat(fileName)
 	if os.IsNotExist(e) {
-		//etcd.toml file not found,use local config
+		//remote.toml file not found,use local config
 		return nil
 	}
 
@@ -263,31 +273,36 @@ func (a *UdpAC) initEtcdClient() error {
 		return err
 	}
 
-	var conf etcd.EtcdConfig
+	var conf RemoteConfig
 	if err = toml.Unmarshal(content, &conf); err != nil {
 		log.Error("failed to unmarshal remote config: %v", err)
 		return err
 	}
 
-	if len(conf.Endpoints) == 0 {
-		log.Error("remote config has no endpoints,open nhp ac will startup with local configuration")
-		return nil
+	if strings.EqualFold(conf.Provider, "etcd") {
+		if len(conf.Endpoints) == 0 {
+			log.Error("remote config has no endpoints,open nhp server will startup with local configuration")
+			return nil
+		}
+
+		if len(conf.Key) == 0 {
+			log.Error("remote config has no key,open nhp server will startup with local configuration")
+			return nil
+		}
+
+		a.etcdConn = &etcd.EtcdConn{
+			Endpoints: conf.Endpoints,
+			Username:  conf.Username,
+			Password:  conf.Password,
+			Key:       conf.Key,
+		}
+
+		err = a.etcdConn.InitClient()
+		return err
+	} else {
+		return errors.New("unknown remote provider")
 	}
 
-	if len(conf.Key) == 0 {
-		log.Error("remote config has no key,open nhp ac will startup with local configuration")
-		return nil
-	}
-
-	a.etcdConn = &etcd.EtcdConn{
-		Endpoints: conf.Endpoints,
-		Username:  conf.Username,
-		Password:  conf.Password,
-		Key:       conf.Key,
-	}
-
-	err = a.etcdConn.InitClient()
-	return err
 }
 
 func (a *UdpAC) loadRemoteConfig() error {

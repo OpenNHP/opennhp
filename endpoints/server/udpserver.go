@@ -146,7 +146,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	log.Info("=========================================================")
 
 	// load remote config,init etcd client
-	err = s.initEtcdClient()
+	err = s.initRemoteConn()
 	if err == nil && s.etcdConn == nil {
 		// init config
 		err = s.loadBaseConfig()

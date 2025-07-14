@@ -95,7 +95,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	log.Info("=========================================================")
 
 	// load remote config,init etcd client
-	err = a.initEtcdClient()
+	err = a.initRemoteConn()
 	if err == nil && a.etcdConn == nil {
 		// init config
 		err = a.loadBaseConfig()

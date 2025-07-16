@@ -21,23 +21,22 @@ A locally built Docker debugging environment, simulating nhp-server, nhp-ac, tra
 ---
 
 ## 1. Overview
-
+This Quick Start guide helps developers rapidly set up the OpenNHP Docker environment, build the source code, and test key features of OpenNHP. Whether you’re exploring how OpenNHP makes servers “invisible” to unauthorized scans or integrating it into existing Zero Trust architectures, this guide provides the essential steps to get you up and running quickly.
+### 1.1 Network Topology
 ![Workflow](https://opennhp.org/images/infrastructure.jpg)
+| Container Name      | IP            | Description                                                                                               |
+| ------------------  | ------------  | --------------------------------------------------------------------------------------------------------- |
+| NHP-Agent           |	177.7.0.8     |	Runs nhp-agentd & nginx (both disabled by default). Port mapping: 443→AC:80, 80→NHP-Server:62206          |
+| NHP-Server	        | 177.7.0.9	    | Runs nhp-serverd with exposed port 62206                                                                  |
+| NHP-AC	            | 177.7.0.10    |	Runs nhp-acd & traefik. All ports blocked by default                                                      |
+| Web App	            | 177.7.0.11	  | Protected web application. Only allows NHP-AC access on port 8080                                         |
 
-### 1.1 Container
-|Container Name|	IP	|Description|
-|---|---|---|
-|NHP-Agent|	177.7.0.8|	Runs nhp-agentd & nginx (both disabled by default). Port mapping: 443→AC:80, 80→NHP-Server:62206|
-|NHP-Server	|177.7.0.9	|Runs nhp-serverd with exposed port 62206|
-|NHP-AC	|177.7.0.10|	Runs nhp-acd & traefik. All ports blocked by default|
-|Web App	|177.7.0.11	|Protected web application. Only allows NHP-AC access on port 8080|
-
-### 1.2 Protection Effectiveness
-|State|	Expected Result|
-|---|---|
-|Scenario 1	|Invisibility (for unauthorized users)	Ping or direct access to NHP-AC Server's proxied Web-app fails|
-|Scenario 2	|After "knocking" via NHP-Agent	Can successfully access the NHP-AC protected Web-app|
-|Scenario 3	|After web identity authentication "knock"	Can successfully access the NHP-AC protected Web-app|
+### 1.2 Test Scenarios
+| State         |	Expected Result                                                                                           |
+| ------------- | --------------------------------------------------------------------------------------------------------- |
+| Scenario 1	  | Invisibility (for unauthorized users)	Ping or direct access to NHP-AC Server's proxied Web-app fails      |
+| Scenario 2	  | After "knocking" via NHP-Agent	Can successfully access the NHP-AC protected Web-app                      |
+| Scenario 3	  | After web identity authentication "knock"	Can successfully access the NHP-AC protected Web-app            |
 
 
 ## 2. Installing Docker Environment
@@ -150,8 +149,10 @@ visit: http://localhost/plugins/example?resid=demo&action=login
 - Expected page to display normally
 - Visit before knocking on the door: https://localhost/ Timeout (504 Gateway Time out)
 - Click login (after knocking on the door), the page will jump to normal and can be accessed normally https://localhost/ (Note: The opening time is 15 seconds, and access is prohibited after 15 seconds)
-- In the NHP Agent container, use ``` curl - i http://177.7.0.10 ```Can display content normally
+- In the NHP Agent container, use ```curl - i http://177.7.0.10``` Can display content normally
 - When clicking on login (after knocking on the door), you can scan to port 80 of NHP-AC
+
+
 ```shell
 root@ee88ec992447:/# nmap 177.7.0.10
 Starting Nmap 7.93 ( https://nmap.org ) at 2025-07-03 07:37 UTC

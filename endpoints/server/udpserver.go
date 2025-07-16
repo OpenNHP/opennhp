@@ -17,6 +17,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/plugins"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 	"github.com/OpenNHP/opennhp/nhp/version"
+	"github.com/pion/webrtc/v4"
 )
 
 var (
@@ -37,10 +38,11 @@ type UdpServer struct {
 	localIp    string
 	localMac   string
 
-	device     *core.Device
-	httpServer *HttpServer
-	wg         sync.WaitGroup
-	running    atomic.Bool
+	device       *core.Device
+	httpServer   *HttpServer
+	webrtcServer *WebRTCServer
+	wg           sync.WaitGroup
+	running      atomic.Bool
 
 	// connection and remote transaction management
 
@@ -100,6 +102,8 @@ type UdpConn struct {
 	ConnData       *core.ConnectionData
 	isACConnection bool // Immutable. Don't change it after creation. Conn object is also stored in acConnectionMap which is indexed by ACId
 	isDBConnection bool // Immutable. Don't change it after creation. Conn object is also stored in dbConnectionMap which is indexed by DBId
+	isWebRTC       bool
+	dc             *webrtc.DataChannel
 }
 
 type ACConn struct {
@@ -145,6 +149,13 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	err = s.loadBaseConfig()
 	if err != nil {
 		return err
+	}
+
+	if s.config.WebRTC.Enable {
+		s.webrtcServer = NewWebRTCServer(s, &s.config.WebRTC)
+		if err := s.webrtcServer.Start(); err != nil {
+			log.Error("failed to start WebRTC server: %v", err)
+		}
 	}
 
 	var netIP net.IP
@@ -242,6 +253,9 @@ func (s *UdpServer) Stop() {
 	if s.httpServer != nil {
 		s.httpServer.Stop()
 	}
+	if s.webrtcServer != nil {
+		s.webrtcServer.Stop()
+	}
 	close(s.signals.stop)
 	s.listenConn.Close()
 	s.device.Stop()
@@ -271,9 +285,14 @@ func (s *UdpServer) SendPacket(pkt *core.Packet, conn *UdpConn) (n int, err erro
 	}()
 
 	pktType := core.HeaderTypeToString(pkt.HeaderType)
-	//log.Debug("Send [%s] packet (%s -> %s)", pktType, s.localAddr.String(), conn.ConnData.RemoteAddr.String(), pkt.Content)
 	log.Info("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
 	log.Evaluate("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
+
+	if conn.isWebRTC && conn.dc != nil {
+		err = conn.dc.Send(pkt.Content)
+		return len(pkt.Content), err
+	}
+
 	return s.listenConn.WriteToUDP(pkt.Content, conn.ConnData.RemoteAddr)
 }
 
@@ -1064,7 +1083,6 @@ func (s *UdpServer) ProcessDataPrivateKeyWrapping(dwrMsg *common.DWRMsg, conn *D
 	// block until transaction completes
 	dbPpd := <-dwrMd.ResponseMsgCh
 	close(dwrMd.ResponseMsgCh)
-
 
 	err = json.Unmarshal(dbPpd.BodyMessage, dwaMsg)
 	if err != nil {

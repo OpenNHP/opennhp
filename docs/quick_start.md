@@ -32,11 +32,11 @@ This Quick Start guide helps developers rapidly set up the OpenNHP Docker enviro
 | Web App	            | 177.7.0.11	  | Protected web application. Only allows NHP-AC access on port 8080                                         |
 
 ### 1.2 Test Scenarios
-| State         |	Expected Result                                                                                         |
-| ------------- |---------------------------------------------------------------------------------------------------------|
-| Scenario 1	  | Invisibility (for unauthorized users)	Ping or direct access to NHP-AC Server's proxied Web-app fails    |
-| Scenario 2	  | After "knocking" via NHP-Agent	Can successfully access the NHP-AC protected Web-app                    |
-| Scenario 3	  | After web identity authentication "knock"	Can successfully access the NHP-AC protected Web-app          |
+| State         |	Expected Result                                                                                           |
+| ------------- | --------------------------------------------------------------------------------------------------------- |
+| Scenario 1	  | Invisibility (for unauthorized users)	Ping or direct access to NHP-AC Server's proxied Web-app fails      |
+| Scenario 2	  | After "knocking" via NHP-Agent	Can successfully access the NHP-AC protected Web-app                      |
+| Scenario 3	  | After web identity authentication "knock"	Can successfully access the NHP-AC protected Web-app            |
 
 
 ## 2. Installing Docker Environment

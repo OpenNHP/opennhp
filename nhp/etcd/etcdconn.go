@@ -2,7 +2,7 @@ package etcd
 import (
 	"context"
 	"errors"
-	"fmt"
+	"github.com/OpenNHP/opennhp/nhp/log"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"time"
 )
@@ -22,6 +22,9 @@ type EtcdConn struct {
 	client    *clientv3.Client
 	ctx       context.Context
 	watcher   clientv3.Watcher
+	signals   struct {
+		stop chan struct{}
+	}
 }
 
 func (conn *EtcdConn) InitClient() error {
@@ -68,19 +71,25 @@ func (conn *EtcdConn) SetValue(v string) error {
 func (conn *EtcdConn) WatchValue(callbackFunc func(val []byte)) {
 	// create etcd watcher
 	conn.watcher = clientv3.NewWatcher(conn.client)
-	defer conn.watcher.Close()
+	
 
 	watchChan := conn.watcher.Watch(context.Background(), conn.Key)
 
-	// process listening events
-	for resp := range watchChan {
-		for _, ev := range resp.Events {
-			switch ev.Type {
-			case clientv3.EventTypePut:
-				callbackFunc(ev.Kv.Value)
-			case clientv3.EventTypeDelete:
-				fmt.Printf("[DELETE] Key: %s\n", string(ev.Kv.Key))
+	for {
+		select {
+		case resp := <-watchChan:
+			// handle change events
+			for _, ev := range resp.Events {
+				switch ev.Type {
+				case clientv3.EventTypePut:
+					callbackFunc(ev.Kv.Value)
+				case clientv3.EventTypeDelete:
+					log.Debug("[DELETE] Key: %s\n", string(ev.Kv.Key))
+				}
 			}
+		case <-conn.signals.stop:
+			conn.watcher.Close()
+			return
 		}
 	}
 
@@ -88,9 +97,8 @@ func (conn *EtcdConn) WatchValue(callbackFunc func(val []byte)) {
 
 func (conn *EtcdConn) Close() {
 	if conn.client != nil {
-		if conn.watcher != nil {
-			conn.watcher.Close()
-		}
+		// stop the etcd watcher
+		close(conn.signals.stop)
 		conn.client.Close()
 	}
 }

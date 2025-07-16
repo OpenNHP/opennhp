@@ -316,6 +316,8 @@ func (a *UdpAC) loadRemoteConfig() error {
 	}
 
 	go a.etcdConn.WatchValue(func(val []byte) {
+		a.remoteConfigUpdateMutex.Lock()
+		defer a.remoteConfigUpdateMutex.Unlock()
 		a.updateEtcdConfig(val, true)
 	})
 

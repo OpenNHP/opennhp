@@ -93,6 +93,7 @@ type UdpServer struct {
 
 	// etcd client
 	etcdConn *etcd.EtcdConn
+	remoteConfigUpdateMutex sync.Mutex
 }
 
 type BlockAddr struct {

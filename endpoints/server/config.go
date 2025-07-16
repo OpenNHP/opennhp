@@ -346,6 +346,8 @@ func (s *UdpServer) loadRemoteConfig() error {
 	}
 
 	go s.etcdConn.WatchValue(func(val []byte) {
+		s.remoteConfigUpdateMutex.Lock()
+		defer s.remoteConfigUpdateMutex.Unlock()
 		s.updateEtcdConfig(val, true)
 	})
 

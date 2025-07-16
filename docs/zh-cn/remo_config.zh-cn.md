@@ -69,7 +69,7 @@ Key = "openserver-1"
 
 ### 3.2 启用远端配置
 
-确保配置文件./nhp-server/etc/remote.toml文件存在，并确保Endpoints和Key正确配置，在nhp sever服务启动时会加载remote.toml文件并去获取文件中Key对应的配置内容。
+确保配置文件./nhp-server/etc/remote.toml文件存在，并确保Endpoints和Key正确配置，在nhp server服务启动时会加载remote.toml文件并去获取文件中Key对应的配置内容。
 
 
 

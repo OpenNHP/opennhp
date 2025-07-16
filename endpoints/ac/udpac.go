@@ -60,6 +60,7 @@ type UdpAC struct {
 	sendMsgCh chan *core.MsgData
 	// etcd client
 	etcdConn *etcd.EtcdConn
+	remoteConfigUpdateMutex sync.Mutex
 }
 
 type UdpConn struct {

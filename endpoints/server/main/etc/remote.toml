@@ -1,0 +1,13 @@
+# NHP-Server remote config
+# field with (-) does not support dynamic update
+# If the file remote.toml exists, NHP-Server will obtain remote configuration information through the etcd client.
+
+# Provider: Remote configuration provider type. Currently only etcd supported
+# Endpoints: ETCD service access address.
+# Key: NHP-Server obtain the configuration information through this key.
+# Username: The account of the NHP-Server accessing ETCD.
+# Password: The password for NHP-Server to access ETCD.
+
+Provider = "etcd"
+Endpoints = ["172.16.3.53:2379"]
+Key = "openserver-1"

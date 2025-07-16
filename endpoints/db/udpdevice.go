@@ -82,7 +82,7 @@ type UdpDevice struct {
 	serverPeerMap   map[string]*core.UdpPeer // indexed by server's public key
 
 	teeMutex sync.Mutex
-	teeMap  map[string]*TEE // indexed by tee's public key
+	teeMap   map[string]*TEE // indexed by tee's public key
 
 	device  *core.Device
 	wg      sync.WaitGroup
@@ -100,8 +100,8 @@ type UdpDevice struct {
 }
 
 type UdpConn struct {
-	ConnData *core.ConnectionData
-	netConn  *net.UDPConn
+	ConnData     *core.ConnectionData
+	netConn      *net.UDPConn
 	connected    atomic.Bool
 	externalAddr string
 }
@@ -167,7 +167,7 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 
 	go a.sendMessageRoutine()
 	go a.recvMessageRoutine()
-	if a.EnableOnlineReport{
+	if a.EnableOnlineReport {
 		a.wg.Add(1)
 		go a.maintainServerConnectionRoutine()
 	}
@@ -480,7 +480,6 @@ func (a *UdpDevice) maintainServerConnectionRoutine() {
 
 	log.Info("maintainServerConnectionRoutine started")
 
-
 	var discoveryRoutineWg sync.WaitGroup
 	defer discoveryRoutineWg.Wait()
 
@@ -565,7 +564,7 @@ func (a *UdpDevice) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sy
 		if !connected || (currTime-lastRecvTime) > int64(ReportToServerInterval*time.Second) {
 			// send NHP_AOL message to server
 			aolMsg := &common.DBOnlineMsg{
-				DBId:          dbId,
+				DBId: dbId,
 			}
 			aolBytes, _ := json.Marshal(aolMsg)
 
@@ -647,7 +646,7 @@ func (a *UdpDevice) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sy
 				log.Info("db(%s#%d)[DBOnline] succeed. db external address is %s, replied by server %s", dbId, aolMd.TransactionId, aakMsg.DBAddr, addrStr)
 			}()
 
-		}  else if connected {
+		} else if connected {
 			if (currTime - lastSendTime) > int64(ServerKeepaliveInterval*time.Second) {
 				// send NHP_KPL to server if no send happens within ServerKeepaliveInterval
 				md := &core.MsgData{
@@ -705,9 +704,9 @@ func (a *UdpDevice) SendDHPRegister(msg common.DRGMsg) {
 	log.Debug("serverPeer:%s \n", serverPeer)
 	result := a.SendNHPDRG(serverPeer, msg)
 	if result {
-		fmt.Println("File Encryption & Registration: Successful")
+		fmt.Printf("Successfully register or update data object which doId is %s.\n", msg.DoId)
 	} else {
-		fmt.Println("File Encryption & Registration: Failed")
+		fmt.Printf("Error: fail to register or update data object.\n")
 	}
 }
 
@@ -843,7 +842,6 @@ func (a *UdpDevice) HandleUdpDataKeyWrappingOperations(ppd *core.PacketParserDat
 
 				teePbk, _ := base64.StdEncoding.DecodeString(dwrMsg.TeePublicKey)
 				consumerEPbk, _ := base64.StdEncoding.DecodeString(dwrMsg.ConsumerEphemeralPublicKey)
-
 
 				sa := ztdolib.NewSymmetricAgreement(dataKeyPairEccMode, true)
 				sa.SetMessagePatterns(ztdolib.DataPrivateKeyWrappingPatterns)

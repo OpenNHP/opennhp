@@ -21,22 +21,21 @@ permalink: /zh-cn/quick_start/
 ---
 
 ## 1. 概述
-
+快速入门指南帮助开发人员快速设置 OpenNHP Docker 环境，构建源代码，并测试 OpenNHP 的关键功能。无论您是在探索 OpenNHP 如何使服务器对未经授权的扫描“不可见”，还是将其集成到现有的零信任架构中，本指南都提供了快速启动和运行的基本步骤。
+### 1.1 网络拓扑
 ![Workflow](https://opennhp.org/images/infrastructure.jpg)
+| 容器名      | IP           | 说明                                                              |
+| ---------- | ------------ | --------------------------------------------------------------- |
+| NHP-Agent  | 177.7.0.8    | nhp-agentd & nginx（默认均不运行），443->AC:80, 80-> NHP-Server:62206 |
+| NHP-Server | 177.7.0.9    | nhp-serverd，开放端口 62206                                         |
+| NHP-AC     | 177.7.0.10   | nhp-acd & traefik，禁止任何端口访问                                  |
+| Web app    | 177.7.0.11   | 被保护的 Web app，只允许 NHP-AC 访问 8080 端口                        |
 
-### 1.1 容器
-| 容器名 | IP | 说明 |
-|-------|-------|-------|
-| NHP-Agent  | 177.7.0.8    |nhp-agentd & nginx（默认均不运行），443->AC:80, 80-> NHP-Server:62206|
-| NHP-Server | 177.7.0.9    |nhp-serverd，开放端口 62206|
-| NHP-AC     | 177.7.0.10   |nhp-acd & traefik，禁止任何端口访问|
-| Web app    | 177.7.0.11   |被保护的 Web app，只允许 NHP-AC 访问 8080 端口|
-
-### 1.2 防护效果
-| 场景一   | 隐身（对于未授权的用户）   | ping 或者访问 NHP-AC Server 代理的 Web-app 失败|
-|-------         |-------         |-------|
-| 场景二 | 通过 NHP-Agent 敲门后  | 能正常访问通过 NHP-AC 防护的 Web-app |
-| 场景三 | 通过 web 身份认证敲门后 | 能正常访问通过 NHP-AC 防护的 Web-app|
+### 1.2 测试场景
+| 场景一      | 隐身（对于未授权的用户）   | ping 或者访问 NHP-AC Server 代理的 Web-app 失败 |
+| ---------- | ---------------------- | ---------------------------------------------|
+| 场景二      | 通过 NHP-Agent 敲门后    | 能正常访问通过 NHP-AC 防护的 Web-app            |
+| 场景三      | 通过 web 身份认证敲门后   | 能正常访问通过 NHP-AC 防护的 Web-app            |
  
 ## 2. 安装 Docker 环境
 ### 2.1 Docker Desktop for Mac
@@ -150,8 +149,10 @@ root@6e21724b68f1:/workdir# nginx
 - 预期页面正常显示
 - 敲门前访问：https://localhost/ 超时（504 Gateway Time-out）
 - 点击登录（敲门后），页面正常跳转，并能正常访问 https://localhost/ （注：开门时间为 15s，15s后禁止访问）
-- 在 NHP-Agent 容器内，通过 ``` curl -i  http://177.7.0.10 ``` 能正常显示内容
+- 在 NHP-Agent 容器内，通过 ```curl -i  http://177.7.0.10``` 能正常显示内容
 - 当点击登录（敲门后），可以扫描到 NHP-AC 的 80 端口
+
+
 ```shell
 root@ee88ec992447:/# nmap 177.7.0.10
 Starting Nmap 7.93 ( https://nmap.org ) at 2025-07-03 07:37 UTC

@@ -32,23 +32,29 @@ END_COLOUR=\033[0m
 NHP_SERVER_PLUGINS = ./endpoints/server/plugins
 
 # eBPF compile
+ifneq (,$(findstring ebpf,$(MAKECMDGOALS)))
+    CLANG := $(shell command -v clang 2>/dev/null)
+    ifeq ($(CLANG),)
+        $(error "clang is not installed. Please install clang to compile eBPF programs.")
+    endif
+endif
+
 EBPF_SRC = ./nhp/ebpf/xdp/nhp_ebpf_xdp.c
 EBPF_OBJ = ./release/nhp-ac/etc/nhp_ebpf_xdp.o
 CLANG_OPTS = -O2 -target bpf -g -Wall -I.
 
-# check if clang is installed before
-CLANG := $(shell command -v clang 2>/dev/null)
-ifeq ($(CLANG),)
-    $(error "clang is not installed. Please install clang to compile eBPF programs.")
-endif
-
-ebpf: $(EBPF_OBJ)
+.PHONY: ebpf
+ebpf: $(EBPF_OBJ) generate-version-and-build
+	@echo "$(COLOUR_GREEN)[eBPF] Full build completed$(END_COLOUR)"
 
 $(EBPF_OBJ): $(EBPF_SRC)
+	@mkdir -p $(@D)
+	@echo "$(COLOUR_BLUE)[eBPF] Compiling: $< -> $@ $(END_COLOUR)"
 	$(CLANG) $(CLANG_OPTS) -c $(EBPF_SRC) -o $(EBPF_OBJ)
 
 clean_ebpf:
-	rm -f $(EBPF_OBJ)
+	@rm -f $(EBPF_OBJ)
+	@echo "$(COLOUR_GREEN)[Clean] Removed eBPF object file$(END_COLOUR)"
 
 generate-version-and-build:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Start building... $(END_COLOUR)"
@@ -135,8 +141,5 @@ archive:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Start archiving... $(END_COLOUR)"
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
-
-# make ebpf
-ebpf: ebpf generate-version-and-build
 
 .PHONY: all generate-version-and-build init agentd acd serverd db agentsdk devicesdk plugins test archive ebpf clean_ebpf

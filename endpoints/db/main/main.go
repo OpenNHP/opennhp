@@ -33,48 +33,56 @@ func initApp() {
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "mode", Value: "none", Usage: "encrypt;decrypt"},
 			&cli.StringFlag{Name: "source", Value: "", Usage: "source file to be encrypted, this is not required for streaming mode"},
-			&cli.StringFlag{Name: "dataSourceType", Value: "", Usage: "type of data source, the default value is online, supported values are online, offline and stream"},
-			&cli.StringFlag{Name: "smartPolicy", Value: "", Usage: "The wasm policy file"},
+			&cli.StringFlag{Name: "data-source-type", Value: "", Usage: "type of data source, the default value is online, supported values are online, offline and stream"},
+			&cli.StringFlag{Name: "smart-policy", Value: "", Usage: "The wasm policy file"},
+			&cli.StringFlag{Name: "metadata", Value: "", Usage: "metadata file"},
 			&cli.StringFlag{Name: "output", Value: "", Usage: "Save path of the ztdo file or decrypted file"},
-			&cli.StringFlag{Name: "accessUrl", Value: "", Usage: "ZTDO access url for online or offline mode or API url for streaming mode"},
+			&cli.StringFlag{Name: "access-url", Value: "", Usage: "ZTDO access url for online or offline mode or API url for streaming mode"},
 			&cli.StringFlag{Name: "ztdo", Value: "", Usage: "path to the ztdo file"},
-			&cli.StringFlag{Name: "dataPrivateKey", Value: "", Usage: "data private key with base64 format"},
-			&cli.StringFlag{Name: "providerPublicKey", Value: "", Usage: "provider public key with base64 format"},
+			&cli.StringFlag{Name: "ztdo-id", Value: "", Usage: "identifier of the ztdo file"},
+			&cli.StringFlag{Name: "data-private-key", Value: "", Usage: "data private key with base64 format"},
+			&cli.StringFlag{Name: "provider-public-key", Value: "", Usage: "provider public key with base64 format"},
 		},
 		Before: func(c *cli.Context) error {
 			if c.String("mode") == "encrypt" {
-				if c.String("dataSourceType") == "" {
-					return fmt.Errorf("--dataSourceType is required in encrypt mode")
-				} else {
-					if !slices.Contains([]string{"online", "offline", "stream"}, c.String("dataSourceType")) {
-						return fmt.Errorf("invalid --dataSourceType, allowed values are online, offline and stream")
+				if c.String("data-source-type") != "" {
+					if !slices.Contains([]string{"online", "offline", "stream"}, c.String("data-source-type")) {
+						return fmt.Errorf("invalid --data-source-type, allowed values are online, offline and stream")
 					}
+				}
 
-					if c.String("dataSourceType") != "stream" {
+				if c.String("ztdo-id") != "" { // update ztdo
+					if c.String("source") != "" || c.String("output") != "" || c.String("metadata") != "" || c.String("data-source-type") != "" {
+						return fmt.Errorf("--source, --output, --data-source-type and --metadata are not allowed when --ztdo-id is specified")
+					}
+				} else { // create ztdo
+					if c.String("data-source-type") != "stream" {
 						if c.String("source") == "" {
-							return fmt.Errorf("--source is required when --dataSourceType is not stream")
+							return fmt.Errorf("--source is required when --data-source-type is not stream and --ztdo-id is not specified")
 						}
 					} else {
-						if c.String("accessUrl") == "" {
-							return fmt.Errorf("--accessUrl is required when --dataSourceType is stream")
+						if c.String("access-url") == "" {
+							return fmt.Errorf("--access-url is required when --data-source-type is stream")
 						}
 					}
-
-					if c.String("smartPolicy") == "" {
-						return fmt.Errorf("--smartPolicy is required in encrypt mode")
-					}
 				}
 
-				if c.String("ztdo") != "" || c.String("dataPrivateKey") != "" || c.String("providerPublicKey") != "" {
-					return fmt.Errorf("--ztdo, --dataPrivateKey and --providerPublicKey are only allowed in decrypt mode")
+				if c.String("smart-policy") == "" {
+					return fmt.Errorf("--smart-policy is required in encrypt mode")
+				}
+
+				// only be available in decrypt mode
+				if c.String("ztdo") != "" || c.String("data-private-key") != "" || c.String("provider-public-key") != "" {
+					return fmt.Errorf("--ztdo, --data-private-key and --provider-public-key are only allowed in decrypt mode")
 				}
 			} else if c.String("mode") == "decrypt" {
-				if c.String("source") != "" || c.String("smartPolicy") != "" || c.String("accessUrl") != "" {
-					return fmt.Errorf("--source, --smartPolicy and --accessUrl are only allowed in encrypt mode")
+				if c.String("source") != "" || c.String("smart-policy") != "" || c.String("access-url") != "" {
+					return fmt.Errorf("--source, --smart-policy and --access-url are only allowed in encrypt mode")
 				}
 
-				if c.String("ztdo") == "" || c.String("output") == "" || c.String("dataPrivateKey") == "" || c.String("providerPublicKey") == ""{
-					return fmt.Errorf("--ztdo, --output, --dataPrivateKey and --providerPublicKey are required in decrypt mode")
+				// only be available in encrypt mode
+				if c.String("ztdo") == "" || c.String("output") == "" || c.String("data-private-key") == "" || c.String("provider-public-key") == "" {
+					return fmt.Errorf("--ztdo, --output, --data-private-key and --provider-public-key are required in decrypt mode")
 				}
 			} else {
 				return nil
@@ -85,14 +93,31 @@ func initApp() {
 		Action: func(c *cli.Context) error {
 			mode := c.String("mode")
 			source := c.String("source")
-			dsType := c.String("dataSourceType")
-			smartPolicy := c.String("smartPolicy")
+			dsType := c.String("data-source-type")
+			smartPolicy := c.String("smart-policy")
+			metadata := c.String("metadata")
 			output := c.String("output")
 			ztdo := c.String("ztdo")
-			dataPrivateKey := c.String("dataPrivateKey")
-			accessUrl := c.String("accessUrl")
-			providerPublicKeyBase64 := c.String("providerPublicKey")
-			return runApp(mode, source, dsType, output, smartPolicy, ztdo, dataPrivateKey, accessUrl, providerPublicKeyBase64)
+			ztdoId := c.String("ztdo-id")
+			dataPrivateKey := c.String("data-private-key")
+			accessUrl := c.String("access-url")
+			providerPublicKeyBase64 := c.String("provider-public-key")
+
+			params := db.AppParams{
+				Mode:                    mode,
+				Source:                  source,
+				DsType:                  dsType,
+				SmartPolicy:             smartPolicy,
+				Metadata:                metadata,
+				Output:                  output,
+				ZtdoFilePath:            ztdo,
+				ZtdoId:                  ztdoId,
+				DataPrivateKeyBase64:    dataPrivateKey,
+				AccessUrl:               accessUrl,
+				ProviderPublicKeyBase64: providerPublicKeyBase64,
+			}
+
+			return runApp(params)
 		},
 	}
 
@@ -155,15 +180,14 @@ func initApp() {
 	}
 }
 
-
-func runApp(mode string, source string, dsType string, output string, smartPolicy string, ztdoFilePath string, dataPrivateKeyBase64 string, accessUrl string, providerPublicKeyBase64 string) error {
+func runApp(params db.AppParams) error {
 	exeFilePath, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	exeDirPath := filepath.Dir(exeFilePath)
 	a := &db.UdpDevice{}
-	if mode == "none" {
+	if params.Mode == "none" {
 		a.EnableOnlineReport = true
 	}
 	err = a.Start(exeDirPath, 4)
@@ -171,7 +195,7 @@ func runApp(mode string, source string, dsType string, output string, smartPolic
 		return err
 	}
 
-	if mode == "none" {
+	if params.Mode == "none" {
 		termCh := make(chan os.Signal, 1)
 		signal.Notify(termCh, syscall.SIGTERM, os.Interrupt, syscall.SIGABRT)
 
@@ -193,96 +217,110 @@ func runApp(mode string, source string, dsType string, output string, smartPolic
 		dataKeyPairEccMode = ztdolib.SM2
 	}
 
-	if mode == "encrypt" {
-		outputFilePath := output
-		policyFile := smartPolicy
-		smartPolicy, err := db.ReadPolicyFile(policyFile)
+	switch params.Mode {
+	case "encrypt":
+		outputFilePath := params.Output
+		smartPolicy, err := params.GetSmartPolicy()
 		if err != nil {
 			log.Error("failed to read policy file:%s\n", err)
 			return err
 		}
 
-		if !(dsType == "stream") {
-			if dsType == "online" {
-				ztdo.SetNhpServer(a.GetServerPeer().SendAddr().String())
-			} else { // offline
-				ztdo.SetNhpServer("")
+		ztdoId := params.ZtdoId
+
+		if ztdoId == "" {
+			ztdoId = ztdo.GetObjectID()
+
+			metadata, err := params.GetMetadata()
+			if err != nil {
+				log.Error("failed to read metadata file:%s\n", err)
+				return err
 			}
 
+			ztdo.SetMetadata(metadata)
+
+			// generate data private key
 			dataPrkStore := db.NewDataPrivateKeyStore(a.GetOwnEcdh().PublicKeyBase64())
 			dataPrk := dataPrkStore.Generate(dataKeyPairEccMode)
 
-			dataPbk := core.ECDHFromKey(dataKeyPairEccMode.ToEccType(), dataPrk).PublicKey()
-			sa := ztdolib.NewSymmetricAgreement(dataKeyPairEccMode, true)
-			sa.SetMessagePatterns(dataMsgPattern)
+			if !(params.DsType == "stream") { // generate ztdo file
+				if params.DsType == "online" {
+					ztdo.SetNhpServer(a.GetServerPeer().SendAddr().String())
+				} else { // offline
+					ztdo.SetNhpServer("")
+				}
 
-			sa.SetStaticKeyPair(a.GetOwnEcdh())
-			sa.SetRemoteStaticPublicKey(dataPbk)
+				dataPbk := core.ECDHFromKey(dataKeyPairEccMode.ToEccType(), dataPrk).PublicKey()
+				sa := ztdolib.NewSymmetricAgreement(dataKeyPairEccMode, true)
+				sa.SetMessagePatterns(dataMsgPattern)
 
-			gcmKey, ad :=sa.AgreeSymmetricKey()
+				sa.SetStaticKeyPair(a.GetOwnEcdh())
+				sa.SetRemoteStaticPublicKey(dataPbk)
 
-			symmetricCipherMode, err := ztdolib.NewSymmetricCipherMode(a.GetSymmetricCipherMode())
-			if err != nil {
-				log.Error("failed to create symmetric cipher mode:%s\n", err)
-				return err
-			}
-			ztdo.SetCipherConfig(true, symmetricCipherMode, dataKeyPairEccMode)
-			zoId := ztdo.GetObjectID()
+				gcmKey, ad := sa.AgreeSymmetricKey()
 
-			log.Info("Encrypt ztdo file(file name: %s and ztdo id: %s) with cipher settings: ECC mode(%s) and Symmetric Cipher Mode(%s)\n", source, zoId, dataKeyPairEccMode, symmetricCipherMode)
+				symmetricCipherMode, err := ztdolib.NewSymmetricCipherMode(a.GetSymmetricCipherMode())
+				if err != nil {
+					log.Error("failed to create symmetric cipher mode:%s\n", err)
+					return err
+				}
+				ztdo.SetCipherConfig(true, symmetricCipherMode, dataKeyPairEccMode)
 
-			if err := ztdo.EncryptZtdoFile(source, outputFilePath, gcmKey[:], ad); err != nil {
-				log.Error("failed to encrypt ztdo file: %s\n", err)
-				return err
+				log.Info("Encrypt ztdo file(file name: %s and ztdo id: %s) with cipher settings: ECC mode(%s) and Symmetric Cipher Mode(%s)\n", params.Source, ztdoId, dataKeyPairEccMode, symmetricCipherMode)
+
+				if err := ztdo.EncryptZtdoFile(params.Source, outputFilePath, gcmKey[:], ad); err != nil {
+					log.Error("failed to encrypt ztdo file: %s\n", err)
+					return err
+				}
 			}
 
 			// Save data private key after success encryption
-			dataPrkStore.Save(zoId)
+			dataPrkStore.Save(ztdoId)
 		}
 
-		if dsType != "offline" {
+		if params.DsType != "offline" {
 			drgMsg := common.DRGMsg{
-				DoType: db.DoType_Default,
-				DoId:   ztdo.GetObjectID(),
-				DbId:   a.GetDataBrokerId(),
-				DataSourceType: dsType,
-				AccessUrl: accessUrl,
-				AccessByNHP: false,
-				Spo: smartPolicy,
+				DoType:         db.DoType_Default,
+				DoId:           ztdoId,
+				DbId:           a.GetDataBrokerId(),
+				DataSourceType: params.DsType,
+				AccessUrl:      params.AccessUrl,
+				AccessByNHP:    false,
+				Spo:            smartPolicy,
 			}
 
 			a.SendDHPRegister(drgMsg)
 		}
 
 		os.Exit(0)
-	} else if mode == "decrypt" {
-		if err := ztdo.ParseHeader(ztdoFilePath); err != nil {
+	case "decrypt":
+		if err := ztdo.ParseHeader(params.ZtdoFilePath); err != nil {
 			log.Error("failed to parse ztdo header:%s\n", err)
-			fmt.Printf("failed to parse ztdo header:%s\n", err)
+			fmt.Printf("Error: failed to parse ztdo header:%s.\n", err)
 			os.Exit(1)
 		}
 
 		dataKeyPairEccMode := ztdo.GetECCMode()
 
-		dataPrk, _ := base64.StdEncoding.DecodeString(dataPrivateKeyBase64)
+		dataPrk, _ := base64.StdEncoding.DecodeString(params.DataPrivateKeyBase64)
 		sa := ztdolib.NewSymmetricAgreement(dataKeyPairEccMode, false)
 		sa.SetMessagePatterns(dataMsgPattern)
 		sa.SetStaticKeyPair(core.ECDHFromKey(dataKeyPairEccMode.ToEccType(), dataPrk))
 
-		providerPublicKey, _ := base64.StdEncoding.DecodeString(providerPublicKeyBase64)
+		providerPublicKey, _ := base64.StdEncoding.DecodeString(params.ProviderPublicKeyBase64)
 		sa.SetRemoteStaticPublicKey(providerPublicKey)
 
 		gcmKey, ad := sa.AgreeSymmetricKey()
 
-		log.Info("Decrypting ztdo file(file name: %s and ztdo id: %s) with cipher settings: ECC mode(%s) and Symmetric Cipher Mode(%s)\n", ztdoFilePath, ztdo.GetObjectID(), dataKeyPairEccMode, ztdo.GetCipherMode())
+		log.Info("Decrypting ztdo file(file name: %s and ztdo id: %s) with cipher settings: ECC mode(%s) and Symmetric Cipher Mode(%s)\n", params.ZtdoFilePath, ztdo.GetObjectID(), dataKeyPairEccMode, ztdo.GetCipherMode())
 
-		if err := ztdo.DecryptZtdoFile(ztdoFilePath, output, gcmKey[:], ad); err != nil {
+		if err := ztdo.DecryptZtdoFile(params.ZtdoFilePath, params.Output, gcmKey[:], ad); err != nil {
 			log.Error("failed to decrypt ztdo file:%s\n", err)
-			fmt.Printf("failed to decrypt ztdo file:%s\n", err)
+			fmt.Printf("Error: failed to decrypt ztdo file:%s.\n", err)
 			os.Exit(1)
 		} else {
 			log.Info("Decrypt ztdo file successfully\n")
-			fmt.Printf("Decrypt ztdo file successfully\n")
+			fmt.Printf("Successfully decrypt ztdo file.\n")
 		}
 
 		os.Exit(0)

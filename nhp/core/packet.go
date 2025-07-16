@@ -35,8 +35,8 @@ const (
 	NHP_DAK //NHP-Server sends a result of the NHP_DRG registration request to the DB.
 	NHP_DAR //NHP Agent sends messages to get access to the file and then work with it.
 	NHP_DAG //The NHP Server sends  the authorization status of the data object to NHP Agent.
-	NHP_DPC //The NHP Server sends a policy validation challenge to the NHP Agent
-	NHP_DPV //The NHP Agent sends the policy validation proof to the NHP Server.
+	NHP_DSA //The NHP Server sends a self attestation requiestr to the NHP Agent
+	NHP_DAV //The NHP Agent sends the attestation proof to the NHP Server.
 	NHP_DWR // The NHP Server sends a request to the NHP DB to get the wrapping of the data private key
 	NHP_DWA //The NHP DB sends the data private key to the NHP Server
 	NHP_DOL //DB sends online status to server
@@ -65,8 +65,8 @@ var nhpHeaderTypeStrings []string = []string{
 	"NHP_DAK", //NHP-Server sends a result of the NHP_DRG registration request to the DB.
 	"NHP_DAR", //NHP Agent sends messages to get access to the file and then work with it.
 	"NHP_DAG", //The NHP Server sends  the authorization status of the data object to NHP Agent.
-	"NHP_DPC", //The NHP Server sends a policy validation challenge to the NHP Agent
-	"NHP_DPV", //The NHP Agent sends the policy validation proof to the NHP Server.
+	"NHP_DSA", //The NHP Server sends a self attestation request to the NHP Agent
+	"NHP_DAV", //The NHP Agent sends the attestation proof to the NHP Server.
 	"NHP_DWR", //The NHP Server sends a request to the NHP DB to get the wrapping of the data private key
 	"NHP_DWA", //The NHP DB sends the data private key to the NHP Server
 	"NHP_DOL", //DB sends online status to server
@@ -82,9 +82,9 @@ func HeaderTypeToString(t int) string {
 
 func HeaderTypeToDeviceType(t int) int {
 	switch t {
-	case NHP_KNK, NHP_LST, NHP_RKN, NHP_OTP, NHP_REG, NHP_ACC, NHP_EXT, NHP_DAR:
+	case NHP_KNK, NHP_LST, NHP_RKN, NHP_OTP, NHP_REG, NHP_ACC, NHP_EXT, NHP_DAR, NHP_DAV:
 		return NHP_AGENT
-	case NHP_ACK, NHP_AOP, NHP_LRT, NHP_COK, NHP_AAK, NHP_RAK, NHP_DAK, NHP_DAG, NHP_DBA, NHP_DWR:
+	case NHP_ACK, NHP_AOP, NHP_LRT, NHP_COK, NHP_AAK, NHP_RAK, NHP_DAK, NHP_DAG, NHP_DBA, NHP_DWR, NHP_DSA:
 		return NHP_SERVER
 
 	case NHP_AOL, NHP_ART:
@@ -200,12 +200,12 @@ func (d *Device) CheckRecvHeaderType(t int) bool {
 	switch d.deviceType {
 	case NHP_AGENT:
 		switch t {
-		case NHP_ACK, NHP_LRT, NHP_COK, NHP_RAK, NHP_DAG:
+		case NHP_ACK, NHP_LRT, NHP_COK, NHP_RAK, NHP_DAG, NHP_DSA:
 			return true
 		}
 	case NHP_SERVER:
 		switch t {
-		case NHP_REG, NHP_KNK, NHP_LST, NHP_RKN, NHP_EXT, NHP_ART, NHP_RLY, NHP_AOL, NHP_OTP, NHP_DRG, NHP_DAR, NHP_DOL, NHP_DWA:
+		case NHP_REG, NHP_KNK, NHP_LST, NHP_RKN, NHP_EXT, NHP_ART, NHP_RLY, NHP_AOL, NHP_OTP, NHP_DRG, NHP_DAR, NHP_DAV, NHP_DOL, NHP_DWA:
 			return true
 		}
 	case NHP_AC:
@@ -221,7 +221,7 @@ func (d *Device) CheckRecvHeaderType(t int) bool {
 
 	case NHP_DB:
 		switch t {
-		case NHP_DRG, NHP_DAG, NHP_DAK, NHP_DPC, NHP_DPV, NHP_DBA, NHP_DWR:
+		case NHP_DRG, NHP_DAG, NHP_DAK, NHP_DBA, NHP_DWR:
 			return true
 		}
 	}

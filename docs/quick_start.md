@@ -6,9 +6,11 @@ permalink: /quick_start/
 ---
 
 # Quick Start
+
 {: .fs-9 }
 
 A locally built Docker debugging environment, simulating nhp-server, nhp-ac, traefik, web-app, etc. This environment can be used for:
+
 - Quickly understanding how opennhp works
 - Plugin debugging
 - Basic logic validation
@@ -21,33 +23,41 @@ A locally built Docker debugging environment, simulating nhp-server, nhp-ac, tra
 ---
 
 ## 1. Overview
+
 This Quick Start guide helps developers rapidly set up the OpenNHP Docker environment, build the source code, and test key features of OpenNHP. Whether you’re exploring how OpenNHP makes servers “invisible” to unauthorized scans or integrating it into existing Zero Trust architectures, this guide provides the essential steps to get you up and running quickly.
+
 ### 1.1 Network Topology
+
 ![Workflow](https://opennhp.org/images/infrastructure.jpg)
+
 | Container Name      | IP            | Description                                                                                               |
 | ------------------  | ------------  | --------------------------------------------------------------------------------------------------------- |
-| NHP-Agent           |	177.7.0.8     |	Runs nhp-agentd & nginx (both disabled by default). Port mapping: 443→AC:80, 80→NHP-Server:62206          |
-| NHP-Server	        | 177.7.0.9	    | Runs nhp-serverd with exposed port 62206                                                                  |
-| NHP-AC	            | 177.7.0.10    |	Runs nhp-acd & traefik. All ports blocked by default                                                      |
-| Web App	            | 177.7.0.11	  | Protected web application. Only allows NHP-AC access on port 8080                                         |
+| NHP-Agent           | 177.7.0.8     | Runs nhp-agentd & nginx (both disabled by default). Port mapping: 443→AC:80, 80→NHP-Server:62206          |
+| NHP-Server          | 177.7.0.9     | Runs nhp-serverd with exposed port 62206                                                                  |
+| NHP-AC              | 177.7.0.10    | Runs nhp-acd & traefik. All ports blocked by default                                                      |
+| Web App             | 177.7.0.11    | Protected web application. Only allows NHP-AC access on port 8080                                         |
 
 ### 1.2 Test Scenarios
-| State         |	Expected Result                                                                                           |
-| ------------- | --------------------------------------------------------------------------------------------------------- |
-| Scenario 1	  | Invisibility (for unauthorized users)	Ping or direct access to NHP-AC Server's proxied Web-app fails      |
-| Scenario 2	  | After "knocking" via NHP-Agent	Can successfully access the NHP-AC protected Web-app                      |
-| Scenario 3	  | After web identity authentication "knock"	Can successfully access the NHP-AC protected Web-app            |
 
+| State         | Expected Result                                                                                           |
+| ------------- | --------------------------------------------------------------------------------------------------------- |
+| Scenario 1    | Invisibility (for unauthorized users), Ping or direct access to NHP-AC Server's proxied Web-app fails      |
+| Scenario 2    | After "knocking" via NHP-Agent, can successfully access the NHP-AC protected Web-app                      |
+| Scenario 3    | After web identity authentication "knock", can successfully access the NHP-AC protected Web-app            |
 
 ## 2. Installing Docker Environment
+
 ### 2.1 Docker Desktop for Mac
+
 ```shell
 brew install --cask docker
 ```
+
 Alternative: Download the .dmg package directly from Docker's official website:
-https://www.docker.com/products/docker-desktop/
+<https://www.docker.com/products/docker-desktop/>
 
 ### 2.2 Docker Desktop for Windows
+
 - System Requirements:
   - Windows 10/11 (64-bit, Pro/Enterprise/Home editions)
   - WSL 2 enabled (recommended) or Hyper-V
@@ -59,42 +69,56 @@ https://www.docker.com/products/docker-desktop/
 Launch Docker Desktop after installation completes
 
 ## 3. Building base images from Source Code
+
 ### 3.1 Clone the latest code
+
 ```shell
 git clone https://github.com/OpenNHP/opennhp.git
 ```
+
 ### 3.2 Building the opennhp-base Docker Image
+
 ```shell
 cd ./docker
 docker build --no-cache -t opennhp-base:latest -f Dockerfile.base ../..
 ```
 
 ## 4. Running and Testing the Environment
+
 The following startup command will build nhp-server, nhp-ac, web-app, and nhp-agent images during the startup process.
+
 ### 4.1 Start All Services
+
 ```shell
 cd ./docker
 docker compose up -d
 ```
 
 ### 4.2 Scenario 1: Invisibility (for unauthorized users)
+
 Enter the nhp agentd container for verification
+
 ```shell
 cd ./docker
 docker exec -it nhp-agent bash
 ```
+
 By default, the following error occurs when using curl NHP-AC (under protection)
+
 ```shell
 root@68a230812459:/workdir# curl -i  http://177.7.0.10
 curl: (28) Failed to connect to 177.7.0.10 port 80: Connection timed out
 ```
 
 Port scan verification, enter the NHP Agent container and install nmap
+
 ```shell
 root@ee88ec992447:/# docker exec -it nhp-agent bash
 root@ee88ec992447:/# apt-get update && apt-get install -y nmap
 ```
+
 Scanning NHP-AC through NHP-Agent cannot detect any ports
+
 ```shell
 root@ee88ec992447:/# nmap 177.7.0.10
 Starting Nmap 7.93 ( https://nmap.org ) at 2025-07-03 07:33 UTC
@@ -108,6 +132,7 @@ Nmap done: 1 IP address (1 host up) scanned in 21.84 seconds
 ```
 
 ### 4.3 Scenario 2: Using nhp-agentd service to knock on the door
+
 After starting the nhp agentd service with the command ```nohup /nhp-agent/nhp-agentd run 2>&1 &```, the access is normal as follows:
 
 ```shell
@@ -120,7 +145,9 @@ Date: Tue, 08 Jul 2025 06:21:10 GMT
 
 {"message":"Hello World!"}
 ```
+
 When NHP agent starts, it can scan to port 80 of NHP-AC
+
 ```shell
 root@ee88ec992447:/# nmap 177.7.0.10
 Starting Nmap 7.93 ( https://nmap.org ) at 2025-07-03 07:37 UTC
@@ -135,7 +162,9 @@ Nmap done: 1 IP address (1 host up) scanned in 4.96 seconds
 ```
 
 ### 4.4 Scenario 3: Using simulated authorization service login to verify
+
 Stop the nhp-agentd service and start nginx in the NHP-Agent container
+
 ```shell
 root@6e21724b68f1:/workdir# ps -aux|grep nhp-agentd
 root        38  0.3  0.2 1974072 20448 pts/0   Sl   02:55   0:00 /nhp-agent/nhp-agentd run
@@ -144,14 +173,13 @@ root@6e21724b68f1:/workdir# kill 38
 root@6e21724b68f1:/workdir# nginx
 ```
 
-visit: http://localhost/plugins/example?resid=demo&action=login
+visit: <http://localhost/plugins/example?resid=demo&action=login>
 
 - Expected page to display normally
-- Visit before knocking on the door: https://localhost/ Timeout (504 Gateway Time out)
-- Click login (after knocking on the door), the page will jump to normal and can be accessed normally https://localhost/ (Note: The opening time is 15 seconds, and access is prohibited after 15 seconds)
+- Visit before knocking on the door: <https://localhost/> Timeout (504 Gateway Time out)
+- Click login (after knocking on the door), the page will jump to normal and can be accessed normally <https://localhost/> (Note: The opening time is 15 seconds, and access is prohibited after 15 seconds)
 - In the NHP Agent container, use ```curl - i http://177.7.0.10``` Can display content normally
 - When clicking on login (after knocking on the door), you can scan to port 80 of NHP-AC
-
 
 ```shell
 root@ee88ec992447:/# nmap 177.7.0.10
@@ -167,9 +195,11 @@ Nmap done: 1 IP address (1 host up) scanned in 4.96 seconds
 ```
 
 ### 4.5 Verify if the ipset rules are effective
+
 ```shell
 docker exec -it nhp-ac ipset list
 ```
+
 After knocking on the door through nhp-agentd or authorized plugins, if the following result appears in NHP-AC's ipset, it indicates that the rule was successfully written, which means that the knocking was successful:
 ***Name: defaultset Rules***
 
@@ -204,15 +234,20 @@ Number of entries: 0
 Members:
 ```
 
-## 5. Edit the Code and Rebuild 
+## 5. Edit the Code and Rebuild
+
 In actual debugging,After you have modified the code, you can use ```docker compose build [container_name]``` (such as``` docker compose build nhp-ac ```to compile nhp-ac) to compile the service separately for debugging
 
 ### 5.1 Code editing
+
 You can use your IDE (such as VSCode to open the project) and modify the OpenNHP code.
 
 ### 5.2 ReBuild and Test
+
 Use the following methods to rebuild and debug the corresponding modified services
+
 ### 5.1.2 ReBuild nhp-server and Test
+
 ```shell
 cd ./docker
 docker compose build nhp-server
@@ -221,6 +256,7 @@ docker compose up -d
 ```
 
 ### 5.1.2 ReBuild nhp-ac and Test
+
 ```shell
 cd ./docker
 docker compose build nhp-ac

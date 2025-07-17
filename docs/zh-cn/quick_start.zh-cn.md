@@ -7,8 +7,11 @@ permalink: /zh-cn/quick_start/
 ---
 
 # 快速开始
+
 {: .fs-9 }
+
 一个本地搭建的 Docker 调试环境，模拟 nhp-server、nhp-ac、traefik、web-app 等。此环境可用于：
+
 - 快速理解 opennhp 的运作方式
 - 插件调试
 - 基本逻辑验证
@@ -21,9 +24,13 @@ permalink: /zh-cn/quick_start/
 ---
 
 ## 1. 概述
+
 快速入门指南帮助开发人员快速设置 OpenNHP Docker 环境，构建源代码，并测试 OpenNHP 的关键功能。无论您是在探索 OpenNHP 如何使服务器对未经授权的扫描“不可见”，还是将其集成到现有的零信任架构中，本指南都提供了快速启动和运行的基本步骤。
+
 ### 1.1 网络拓扑
+
 ![Workflow](https://opennhp.org/images/infrastructure.jpg)
+
 | 容器名      | IP           | 说明                                                              |
 | ---------- | ------------ | --------------------------------------------------------------- |
 | NHP-Agent  | 177.7.0.8    | nhp-agentd & nginx（默认均不运行），443->AC:80, 80-> NHP-Server:62206 |
@@ -32,70 +39,91 @@ permalink: /zh-cn/quick_start/
 | Web app    | 177.7.0.11   | 被保护的 Web app，只允许 NHP-AC 访问 8080 端口                        |
 
 ### 1.2 测试场景
+
+| 场景        | 状态                     | 期望结果                                       |
+| ---------- | ------------------------ | --------------------------------------------- |
 | 场景一      | 隐身（对于未授权的用户）   | ping 或者访问 NHP-AC Server 代理的 Web-app 失败 |
-| ---------- | ---------------------- | --------------------------------------------- |
 | 场景二      | 通过 NHP-Agent 敲门后    | 能正常访问通过 NHP-AC 防护的 Web-app            |
 | 场景三      | 通过 web 身份认证敲门后   | 能正常访问通过 NHP-AC 防护的 Web-app            |
- 
+
 ## 2. 安装 Docker 环境
+
 ### 2.1 Docker Desktop for Mac
+
 ```shell
 brew install --cask docker
 ```
+
 或者从 Docker 官网下载 .dmg 文件手动安装：
-https://www.docker.com/products/docker-desktop/
+<https://www.docker.com/products/docker-desktop/>
+
 ### 2.2 Docker Desktop for Windows
+
 - 系统要求：
   - Windows 10/11（64 位，专业版/企业版/家庭版）
   - 启用 WSL 2（推荐）或 Hyper-V
 - 安装步骤
   - 下载 Docker Desktop：官网下载
   - 运行安装程序，按提示完成安装。
-  
 
 安装完成后，启动 Docker Desktop。
 
 ## 3. 根据最新代码构建基础镜像
+
 ### 3.1 获取最新代码
+
 ```shell
 git clone https://github.com/OpenNHP/opennhp.git
 ```
 
 ### 3.2 构建 opennhp-base 镜像
+
 ***注意: 先进入到 docker 目录(cd ./docker)***
+
 ```shell
 cd ./docker
 docker build --no-cache -t opennhp-base:latest -f Dockerfile.base ../..
 ```
 
 ## 4. 运行与测试
-以下启动命令，在启动过程会相应的构建 nhp-server、nhp-ac、web-app、nhp-agent 镜像，在实际调试过程中，可使用 ``` docker compose build [container_name] ```（如：```docker compose build nhp-ac ``` 编译 nhp-ac）对服务单独编译
+
+以下启动命令，在启动过程会相应的构建 nhp-server、nhp-ac、web-app、nhp-agent 镜像，在实际调试过程中，可使用 ``` docker compose build [container_name] ```（如：```docker compose build nhp-ac``` 编译 nhp-ac）对服务单独编译
+
 ### 4.1 启动所有服务
+
 ***注意: 先进入到 docker 目录(cd ./docker)***
+
 ```shell
 cd ./docker
 docker compose up -d
 ```
 
 ### 4.2 场景一: 隐身（对于未授权的用户）
+
 进入 nhp-agentd 容器进行验证
 ***注意: 先进入到 docker 目录(cd ./docker)***
+
 ```shell
 cd ./docker
 docker exec -it nhp-agent bash
 ```
+
 默认情况下，通过 curl NHP-AC 会出现以下错误（保护中）
+
 ```shell
 root@68a230812459:/workdir# curl -i  http://177.7.0.10
 curl: (28) Failed to connect to 177.7.0.10 port 80: Connection timed out
 ```
 
 端口扫描验证，进入 NHP-Agent 容器 并安装 nmap
+
 ```shell
 root@ee88ec992447:/# docker exec -it nhp-agent bash
 root@ee88ec992447:/# apt-get update && apt-get install -y nmap
 ```
+
 通过 NHP-Agent 扫描 NHP-AC 扫描不到任何端口
+
 ```shell
 root@ee88ec992447:/# nmap 177.7.0.10
 Starting Nmap 7.93 ( https://nmap.org ) at 2025-07-03 07:33 UTC
@@ -109,6 +137,7 @@ Nmap done: 1 IP address (1 host up) scanned in 21.84 seconds
 ```
 
 ### 4.3 场景二: 使用 nhp-agentd 服务来敲门
+
 通过``` nohup /nhp-agent/nhp-agentd run 2>&1 & ``` 命令来启动 nhp-agentd 服务后，访问正常，如下：
 
 ```shell
@@ -121,7 +150,9 @@ Date: Tue, 08 Jul 2025 06:21:10 GMT
 
 {"message":"Hello World!"}
 ```
+
 当 nhp-agent 启动，可以扫描到 NHP-AC 的 80 端口
+
 ```shell
 root@ee88ec992447:/# nmap 177.7.0.10
 Starting Nmap 7.93 ( https://nmap.org ) at 2025-07-03 07:37 UTC
@@ -136,7 +167,9 @@ Nmap done: 1 IP address (1 host up) scanned in 4.96 seconds
 ```
 
 ### 4.4 场景三: 使用模拟授权服务的登录来验证
-停止 nhp-agentd 服务，并启动 NHP-Agent 容器中的 nginx 
+
+停止 nhp-agentd 服务，并启动 NHP-Agent 容器中的 nginx
+
 ```shell
 root@6e21724b68f1:/workdir# ps -aux|grep nhp-agentd
 root        38  0.3  0.2 1974072 20448 pts/0   Sl   02:55   0:00 /nhp-agent/nhp-agentd run
@@ -144,14 +177,14 @@ root        51  0.0  0.0   2844  1424 pts/0    S+   02:55   0:00 grep --color=au
 root@6e21724b68f1:/workdir# kill 38
 root@6e21724b68f1:/workdir# nginx
 ```
-访问：http://localhost/plugins/example?resid=demo&action=login
+
+访问：<http://localhost/plugins/example?resid=demo&action=login>
 
 - 预期页面正常显示
-- 敲门前访问：https://localhost/ 超时（504 Gateway Time-out）
-- 点击登录（敲门后），页面正常跳转，并能正常访问 https://localhost/ （注：开门时间为 15s，15s后禁止访问）
+- 敲门前访问：<https://localhost/> 超时（504 Gateway Time-out）
+- 点击登录（敲门后），页面正常跳转，并能正常访问 <https://localhost/> （注：开门时间为 15s，15s后禁止访问）
 - 在 NHP-Agent 容器内，通过 ```curl -i  http://177.7.0.10``` 能正常显示内容
 - 当点击登录（敲门后），可以扫描到 NHP-AC 的 80 端口
-
 
 ```shell
 root@ee88ec992447:/# nmap 177.7.0.10
@@ -166,11 +199,12 @@ MAC Address: 12:B4:5C:EB:72:F4 (Unknown)
 Nmap done: 1 IP address (1 host up) scanned in 4.96 seconds
 ```
 
-
 ### 4.5 验证 ipset 规则是否生效
+
 ```shell
 docker exec -it nhp-ac ipset list
 ```
+
 通过 nhp-agentd 或 授权插件敲门后，如果 NHP-AC 的 ipset 中出现以下结果，则表示规则写入成功，这意味着敲门成功：
 ***Name: defaultset Rules***
 
@@ -206,6 +240,7 @@ Members:
 ```
 
 ## 5. 修改代码重新构建镜像并调试
+
 在实际的调试中，修改完代码后，可以使用 ```docker compose build [container_name]``` (如：``` docker compose build nhp-ac ``` 构建 nhp-ac 镜像) 来重新构建相应的服务来进行调试
 
 ### 5.1 代码修改
@@ -213,8 +248,11 @@ Members:
 用 IDE 打开项目（如：vscode）并修改 OpenNHP 源代码。
 
 ### 5.2 重新构建服务并调试
+
 采用以下方式对相应修改的服务进行重新构建并调试
+
 ### 5.2.1 重新构建 nhp-server 并启动
+
 ```shell
 cd ./docker
 docker compose build nhp-server
@@ -223,6 +261,7 @@ docker compose up -d
 ```
 
 ### 5.2.2 重新构建 nhp-ac 并启动
+
 ```shell
 cd ./docker
 docker compose build nhp-ac

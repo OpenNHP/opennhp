@@ -7,16 +7,15 @@ permalink: /zh-cn/quick_start/
 ---
 
 # 快速开始
-
 {: .fs-9 }
 
 一个本地搭建的 Docker 调试环境，模拟 nhp-server、nhp-ac、traefik、web-app 等。此环境可用于：
+{: .fs-6 .fw-300 }
 
 - 快速理解 opennhp 的运作方式
 - 插件调试
 - 基本逻辑验证
 - 局部性能压力测试
-
 {: .fs-6 .fw-300 }
 
 [English](/quick_start/){: .label .fs-4 }

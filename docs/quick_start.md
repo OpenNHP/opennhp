@@ -6,16 +6,15 @@ permalink: /quick_start/
 ---
 
 # Quick Start
-
 {: .fs-9 }
 
 A locally built Docker debugging environment, simulating nhp-server, nhp-ac, traefik, web-app, etc. This environment can be used for:
+{: .fs-6 .fw-300 }
 
 - Quickly understanding how opennhp works
 - Plugin debugging
 - Basic logic validation
 - Partial performance stress testing
-
 {: .fs-6 .fw-300 }
 
 [中文版](/zh-cn/quick_start/){: .label .fs-4 }

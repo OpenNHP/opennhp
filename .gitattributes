@@ -1,0 +1,6 @@
+*.go linguist-language=Go
+
+*.c linguist-language=C
+*.h linguist-language=C
+
+*.md linguist-documentation=true

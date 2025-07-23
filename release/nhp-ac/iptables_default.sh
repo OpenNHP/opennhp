@@ -18,18 +18,18 @@ ipset -exist create tempset hash:net,port counters maxelem 1000000 timeout 5
 echo ""
 echo "Setting ipset OK ..."
 
-### NHP_BLOCK chain ###
-echo "Setting up NHP_BLOCK chain ..."
+### NHP_DENY chain ###
+echo "Setting up NHP_DENY chain ..."
 echo ""
-iptables -N NHP_BLOCK
-iptables -C NHP_BLOCK -d $(hostname -I | awk '{print $1}') -j LOG --log-prefix "[NHP-BLOCK] " --log-level 6 --log-ip-options > /dev/null 2>&1
+iptables -N NHP_DENY
+iptables -C NHP_DENY -d $(hostname -I | awk '{print $1}') -j LOG --log-prefix "[NHP-DENY] " --log-level 6 --log-ip-options > /dev/null 2>&1
 if [ $? -ne 0 ]; then
-    iptables -A NHP_BLOCK -d $(hostname -I | awk '{print $1}') -j LOG --log-prefix "[NHP-BLOCK] " --log-level 6 --log-ip-options
+    iptables -A NHP_DENY -d $(hostname -I | awk '{print $1}') -j LOG --log-prefix "[NHP-DENY] " --log-level 6 --log-ip-options
 fi
 
-iptables -C NHP_BLOCK -d $(hostname -I | awk '{print $1}') -j DROP > /dev/null 2>&1
+iptables -C NHP_DENY -d $(hostname -I | awk '{print $1}') -j DROP > /dev/null 2>&1
 if [ $? -ne 0 ]; then
-    iptables -A NHP_BLOCK -d $(hostname -I | awk '{print $1}') -j DROP
+    iptables -A NHP_DENY -d $(hostname -I | awk '{print $1}') -j DROP
 fi
 
 
@@ -83,9 +83,9 @@ if [ $? -ne 0 ]; then
 fi
 
 # rest of INPUT
-iptables -C INPUT -j NHP_BLOCK > /dev/null 2>&1
+iptables -C INPUT -j NHP_DENY > /dev/null 2>&1
 if [ $? -ne 0 ]; then
-    iptables -A INPUT -j NHP_BLOCK
+    iptables -A INPUT -j NHP_DENY
 fi
 
 ### OUTPUT chain ###
@@ -120,9 +120,9 @@ if [ $? -ne 0 ]; then
 fi
 
 # rest of FORWARD
-iptables -C FORWARD -j NHP_BLOCK > /dev/null 2>&1
+iptables -C FORWARD -j NHP_DENY > /dev/null 2>&1
 if [ $? -ne 0 ]; then
-    iptables -A FORWARD -j NHP_BLOCK
+    iptables -A FORWARD -j NHP_DENY
 fi
 
 ### chain policy ###
@@ -131,21 +131,24 @@ iptables -P OUTPUT ACCEPT
 iptables -P FORWARD DROP
 
 ### iptables kernel logging ###
+LOCAL_IP=$(ip route get 1 | awk '{print $7;exit}')
+[ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I | awk '{print $1}')
+
 if [ -d /etc/rsyslog.d ] && [ ! -f /etc/rsyslog.d/10-nhplog.conf ]; then
-    echo "Setting up rsyslog ..."
+    echo "Setting up rsyslog with dynamic IP..."
     mkdir -p $CURRENT_DIR/logs
     chown $(whoami):$(id -gn) $CURRENT_DIR/logs
     chmod -R 755 $CURRENT_DIR/logs/
-    setenforce
-    echo ":msg,contains,\"[NHP-ACCEPT]\" -$CURRENT_DIR/logs/nhp_accept.log
+    setenforce 
+    echo 'template(name="NHPFormat" type="string" string="%timegenerated% '"${LOCAL_IP}"' kernel: %msg%\n")
 
+:msg,contains,"[NHP-ACCEPT]" -'"$CURRENT_DIR"'/logs/nhp_accept.log;NHPFormat
 & stop
-:msg,contains,\"[NHP-FORWARD]\" -$CURRENT_DIR/logs/nhp_forward.log
-
+:msg,contains,"[NHP-FORWARD]" -'"$CURRENT_DIR"'/logs/nhp_forward.log;NHPFormat
 & stop
-:msg,contains,\"[NHP-BLOCK]\" -$CURRENT_DIR/logs/nhp_block.log
+:msg,contains,"[NHP-DENY]" -'"$CURRENT_DIR"'/logs/nhp_deny.log;NHPFormat
+& stop' > /etc/rsyslog.d/10-nhplog.conf
 
-& stop" > /etc/rsyslog.d/10-nhplog.conf
     systemctl restart rsyslog
 fi
 

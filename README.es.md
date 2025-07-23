@@ -205,6 +205,7 @@ Para obtener una documentación más detallada, visite nuestra [Documentación O
 - [Especificación del Perímetro Definido por Software (SDP) v2.0](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2). Jason Garbis, Juanita Koilpillai, Junaid lslam, Bob Flores, Daniel Bailey, Benfeng Chen, Eitan Bremler, Michael Roza, Ahmed Refaey Hussein. [*Cloud Security Alliance (CSA)*](https://cloudsecurityalliance.org/). Marzo 2022.
 - [AHAC: Marco Avanzado de Control de Acceso Oculto en Red](https://www.mdpi.com/2076-3417/14/13/5593). Mudi Xu, Benfeng Chen, Zhizhong Tan, Shan Chen, Lei Wang, Yan Liu, Tai Io San, Sou Wang Fong, Wenyong Wang y Jing Feng. *Revista de Ciencias Aplicadas*. Junio 2024.
 - [STALE: Un esquema de autenticación transfronteriza escalable y seguro aprovechando el correo electrónico y el intercambio de claves ECDH](https://www.mdpi.com/2079-9292/14/12/2399) Jiexin Zheng, Mudi Xu, Jianqing Li, Benfeng Chen, Zhizhong Tan, Anyu Wang, Shuo Zhang, Yan Liu, Kevin Qi Zhang, Lirong Zheng, Wenyong Wang. *electrónica*. Junio 2025.
+- [DRL-AMIR: Programación de flujo inteligente para redes de confianza cero definidas por software](https://www.techscience.com/cmc/v84n2/62920). WenLong Ke, Zilong Li, Peiyu Chen, Benfeng Chen, Jinglin Lv, Qiang Wang, Ziyi Jia y Shigen Shen. *CMC* julio de 2025.
 - Noise Protocol Framework. https://noiseprotocol.org/
 - Proyecto de Marco de Gestión de Vulnerabilidades. https://phoenix.security/web-vuln-management/
 

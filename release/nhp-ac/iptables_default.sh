@@ -131,21 +131,24 @@ iptables -P OUTPUT ACCEPT
 iptables -P FORWARD DROP
 
 ### iptables kernel logging ###
+LOCAL_IP=$(ip route get 1 | awk '{print $7;exit}')
+[ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I | awk '{print $1}')
+
 if [ -d /etc/rsyslog.d ] && [ ! -f /etc/rsyslog.d/10-nhplog.conf ]; then
-    echo "Setting up rsyslog ..."
+    echo "Setting up rsyslog with dynamic IP..."
     mkdir -p $CURRENT_DIR/logs
     chown $(whoami):$(id -gn) $CURRENT_DIR/logs
     chmod -R 755 $CURRENT_DIR/logs/
-    setenforce
-    echo ":msg,contains,\"[NHP-ACCEPT]\" -$CURRENT_DIR/logs/nhp_accept.log
+    setenforce 
+    echo 'template(name="NHPFormat" type="string" string="%timegenerated% '"${LOCAL_IP}"' kernel: %msg%\n")
 
+:msg,contains,"[NHP-ACCEPT]" -'"$CURRENT_DIR"'/logs/nhp_accept.log;NHPFormat
 & stop
-:msg,contains,\"[NHP-FORWARD]\" -$CURRENT_DIR/logs/nhp_forward.log
-
+:msg,contains,"[NHP-FORWARD]" -'"$CURRENT_DIR"'/logs/nhp_forward.log;NHPFormat
 & stop
-:msg,contains,\"[NHP-BLOCK]\" -$CURRENT_DIR/logs/nhp_block.log
+:msg,contains,"[NHP-BLOCK]" -'"$CURRENT_DIR"'/logs/nhp_block.log;NHPFormat
+& stop' > /etc/rsyslog.d/10-nhplog.conf
 
-& stop" > /etc/rsyslog.d/10-nhplog.conf
     systemctl restart rsyslog
 fi
 

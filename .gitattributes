@@ -1,9 +1,6 @@
 *.go linguist-language=Go
-*.mod linguist-language=Go
-*.sum linguist-language=Go
 
 *.c linguist-language=C
 *.h linguist-language=C
 
-Makefile linguist-vendored
 *.md linguist-documentation=true

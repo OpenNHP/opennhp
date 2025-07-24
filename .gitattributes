@@ -1,6 +1,7 @@
-*.go linguist-language=Go
+* linguist-language=Go
 
-*.c linguist-language=C
-*.h linguist-language=C
+*.c linguist-vendored
+*.h linguist-vendored
+
 
 *.md linguist-documentation=true

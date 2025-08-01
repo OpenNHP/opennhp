@@ -1,0 +1,46 @@
+{
+   "typeIdentifier": "risk involved accounts",
+   "dataSize": 7311,
+   "owner": "police@police.com",
+   "description": "risk involved accounts which are delivered by police.",
+   "structuredData": true,
+   "vocabulary": {
+        "dataType": "csv",
+        "fields": [
+            {
+                "path": "account_id",
+                "type": "string"
+            },
+            {
+                "path": "id_card",
+                "type": "string"
+            },
+            {
+                "path": "risk_level",
+                "type": "string"
+            },
+            {
+                "path": "risk_tags",
+                "type": "string"
+            },
+            {
+                "path": "valid_from",
+                "type": "string"
+            },
+            {
+                "path": "valid_to",
+                "type": "string"
+            }
+        ]
+   },
+   "sample": [
+        {
+            "account_id": "1234567890",
+            "id_card": "1234567890",
+            "risk_level": "high",
+            "risk_tags": "high risk",
+            "valid_from": "2019-01-01",
+            "valid_to": "2019-01-02"
+        }
+   ]
+}

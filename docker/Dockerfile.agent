@@ -5,7 +5,7 @@ WORKDIR /workdir
 COPY . .
 
 RUN echo "Building for architecture: ${TARGETARCH}"
-## 
+##
 ENV GOPROXY=https://goproxy.cn,direct
 
 RUN cd /workdir && cat Makefile && make init agentd test
@@ -23,7 +23,7 @@ RUN apt-get update && \
     curl \
     inetutils-ping \
     telnet \
-    && rm -rf /var/lib/apt/lists/* 
+    && rm -rf /var/lib/apt/lists/*
 RUN groupadd -r nginx && \
     useradd -r -g nginx -s /bin/bash -d /home/nginx -m nginx
 

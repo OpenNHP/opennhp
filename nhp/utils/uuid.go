@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func NewUUID() (string, error) {
@@ -31,4 +33,13 @@ func RandNumber() int {
 	}
 
 	return randomNumber
+}
+
+// GenerateUUIDv4 creates a random UUID (version 4)
+func GenerateUUIDv4() (string, error) {
+	u, err := uuid.NewRandom()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate UUID v4: %w", err)
+	}
+	return u.String(), nil
 }

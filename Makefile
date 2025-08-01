@@ -84,7 +84,8 @@ agentd:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building nhp-agent... $(END_COLOUR)"
 	cd endpoints && \
 	go build -trimpath -ldflags ${LD_FLAGS} -v -o ../release/nhp-agent/nhp-agentd ./agent/main/main.go && \
-	cp ./agent/main/etc/*.toml ../release/nhp-agent/etc/
+	cp ./agent/main/etc/*.toml ../release/nhp-agent/etc/ && \
+	cp -rf ./agent/main/etc/certs ../release/nhp-agent/etc/
 
 acd:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building nhp-ac... $(END_COLOUR)"

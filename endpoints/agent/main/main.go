@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/OpenNHP/opennhp/endpoints/agent"
+	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/version"
 	"github.com/urfave/cli/v2"
@@ -76,26 +77,9 @@ func main() {
 	}
 	dhpCmd := &cli.Command{
 		Name:  "dhp",
-		Usage: "create and dhp agent process for NHP protocol",
-		Flags: []cli.Flag{
-			&cli.StringFlag{Name: "ztdo", Value: "", Usage: "Ztdo file path"},
-			&cli.StringFlag{Name: "ztdo-id", Value: "", Usage: "Identifier of ztdo"},
-			&cli.StringFlag{Name: "output", Value: "", Usage: "Decrypted file output path"},
-		},
-		Before: func(c *cli.Context) error {
-			if c.String("ztdo") == "" && c.String("ztdo-id") == "" {
-				return fmt.Errorf("--ztdo or --ztdo-id MUST be specified")
-			}
-			if c.String("ztdo") != "" && c.String("ztdo-id") != "" {
-				return fmt.Errorf("--ztdo and --ztdo-id CANNOT be specified at the same time")
-			}
-			return nil
-		},
+		Usage: "create dhp agent process for NHP protocol",
 		Action: func(c *cli.Context) error {
-			ztdo := c.String("ztdo")
-			ztdoId := c.String("ztdo-id")
-			output := c.String("output")
-			return runDHPApp(ztdo, ztdoId, output)
+			return runDHPApp()
 		},
 	}
 
@@ -135,26 +119,37 @@ func runApp() error {
 	return nil
 }
 
-func runDHPApp(ztdo string, ztdoId string, output string) error {
+func runDHPApp() error {
 	exeFilePath, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	exeDirPath := filepath.Dir(exeFilePath)
 
+	common.ExeDirPath = exeDirPath
+	agent.ExeDirPath = exeDirPath
+
 	a := &agent.UdpAgent{}
+
+	err = a.InitializeSecret()
+	if err != nil {
+		return err
+	}
 
 	err = a.Start(exeDirPath, 4)
 	if err != nil {
 		return err
 	}
-	if ztdo != "" || ztdoId != "" {
-		//request ztdo file
-		a.StartDecodeZtdo(ztdo, ztdoId, output)
-	} else {
-		a.StartKnockLoop()
-	}
 
+	a.CreateDHPWebConsole()
+	a.StartDHPKnockLoop()
+
+	// react to terminate signals
+	termCh := make(chan os.Signal, 1)
+	signal.Notify(termCh, syscall.SIGTERM, os.Interrupt, syscall.SIGABRT)
+
+	// block until terminated
+	<-termCh
 	a.Stop()
 	return nil
 }

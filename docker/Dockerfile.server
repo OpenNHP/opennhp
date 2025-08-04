@@ -5,12 +5,12 @@ WORKDIR /nhp-server
 COPY . .
 
 RUN echo "Building for architecture: ${TARGETARCH}"
-## 
+##
 ENV GOPROXY=https://goproxy.cn,direct
 
 RUN cd /nhp-server &&  make init serverd plugins test
 
-FROM ubuntu:20.04  AS runtime
+FROM ubuntu:22.04  AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
@@ -23,9 +23,10 @@ RUN apt-get update && \
     git \
     curl \
     telnet \
-    && rm -rf /var/lib/apt/lists/* 
+    vim \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /nhp-server/release/nhp-server /nhp-server 
+COPY --from=builder /nhp-server/release/nhp-server /nhp-server
 
 ENTRYPOINT ["/bin/sh", "-c"]
 CMD ["nginx & /nhp-server/nhp-serverd run"]

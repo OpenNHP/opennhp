@@ -1,0 +1,65 @@
+networks:
+  network_default:
+    ipam:
+      driver: default
+      config:
+        - subnet: '177.7.0.0/16'
+
+volumes:
+  postgres_data:
+
+services:
+  nhp-server:
+    image: opennhp-server
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile.server
+    container_name: nhp-server
+    restart: always
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.9
+    volumes:
+      - ./nhp-server/etc/:/nhp-server/etc/:rw
+      - ./nhp-server/logs/:/nhp-server/logs/:rw
+      - ./nhp-server/templates/:/nhp-server/templates/:rw
+      - ./nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
+
+  nhp-db:
+    image: opennhp-db
+    container_name: nhp-db
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile.db
+    volumes:
+      - ./nhp-db/etc/:/nhp-db/etc/
+      - ./nhp-db/logs/:/nhp-db/logs/
+      - ./nhp-db/demo/:/nhp-db/demo/
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      - nhp-server
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.12
+
+  nhp-agent:
+    image: opennhp-agent:latest
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile.agent
+    container_name: nhp-agent
+    restart: always
+    #command: []
+    ports:
+      - "8443:443"
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.8
+    depends_on:
+      - nhp-server
+      - nhp-db
+    volumes:
+      - ./nhp-agent/etc:/nhp-agent/etc:rw
+      - ./nhp-agent/logs:/nhp-agent/logs:rw

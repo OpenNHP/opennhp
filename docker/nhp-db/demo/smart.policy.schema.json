@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Policy Configuration",
+  "description": "Schema for policy configuration including various protocol references and base64 encoded content",
+  "required": [
+    "policy",
+    "embedded"
+  ],
+  "properties": {
+    "policy": {
+      "type": "string",
+      "description": "Policy reference which can be a URL (http, https, file) or base64 encoded raw content",
+      "oneOf": [
+        {
+          "description": "HTTP protocol reference",
+          "pattern": "^http://.*$",
+          "examples": ["http://example.com/policies/allow.policy.wasm"]
+        },
+        {
+          "description": "HTTPS protocol reference",
+          "pattern": "^https://.*$",
+          "examples": ["https://example.com/policies/deny.policy.wasm"]
+        },
+        {
+          "description": "File protocol reference. Relative paths are relative to this JSON configuration file's location.",
+          "pattern": "^file://.*$",
+          "examples": [
+            "file://./allow.policy.wasm",
+            "file:///absolute/path/to/deny.policy.wasm",
+            "file://../parentdir/policy.wasm"
+          ]
+        },
+        {
+          "description": "Base64 encoded raw policy content",
+          "pattern": "^[A-Za-z0-9+/=]+$",
+          "examples": ["SGVsbG8gV29ybGQhCg=="]
+        }
+      ]
+    },
+    "embedded": {
+      "type": "boolean",
+      "description": "Flag indicating whether the policy is embedded",
+      "examples": [true, false]
+    }
+  },
+  "additionalProperties": false
+}

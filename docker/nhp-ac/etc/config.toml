@@ -12,7 +12,6 @@ DefaultCipherScheme = 0
 UserId = "agent-0"
 OrganizationId = "opennhp.cn"
 LogLevel = 4
-DHPExeCMD = "..\\nhp-de\\nhp-de.exe"
 # UserData: a customized user entry for flexibility.
 # Its key-value pairs will be send to server along with knock message.
 [UserData]

@@ -87,6 +87,7 @@ func (a *UdpDevice) loadTEEs() error {
 
 	teesConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("tee peer config: %s has been updated", fileName)
+		a.updateTEEConfig(fileName)
 	})
 
 	return nil

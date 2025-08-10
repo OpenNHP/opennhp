@@ -1,12 +1,12 @@
 ---
 layout: page
-title: 快速开始
+title: NHP快速开始
 parent: 中文版
 nav_order: 2
-permalink: /zh-cn/quick_start/
+permalink: /zh-cn/nhp_quick_start/
 ---
 
-# 快速开始
+# NHP快速开始
 {: .fs-9 }
 
 一个本地搭建的 Docker 调试环境，模拟 nhp-server、nhp-ac、traefik、web-app 等。此环境可用于：
@@ -18,7 +18,7 @@ permalink: /zh-cn/quick_start/
 - 局部性能压力测试
 {: .fs-6 .fw-300 }
 
-[English](/quick_start/){: .label .fs-4 }
+[English](/nhp_quick_start/){: .label .fs-4 }
 
 ---
 
@@ -255,7 +255,7 @@ Members:
 ```shell
 cd ./docker
 docker compose build nhp-server
-docker stop nhp-server && docker rm nhp-server 
+docker stop nhp-server && docker rm nhp-server
 docker compose up -d
 ```
 
@@ -264,6 +264,6 @@ docker compose up -d
 ```shell
 cd ./docker
 docker compose build nhp-ac
-docker stop nhp-ac && docker rm nhp-ac 
+docker stop nhp-ac && docker rm nhp-ac
 docker compose up -d
 ```

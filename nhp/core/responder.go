@@ -285,6 +285,8 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		toValidate = !option.DisableRelayPeerValidation
 	case NHP_DB:
 		toValidate = !option.DisableDePeerValidation
+	case DHP_AGENT:
+		toValidate = !option.DisableAgentPeerValidation
 	}
 
 	if toValidate {
@@ -399,7 +401,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)
 
 	// handle knock packet at overload before going into body decryption
-	if ppd.device.deviceType == NHP_SERVER && ppd.Overload && ppd.HeaderType == NHP_KNK {
+	if ppd.device.deviceType == NHP_SERVER && ppd.Overload && (ppd.HeaderType == NHP_KNK || ppd.HeaderType == DHP_KNK) {
 		switch ppd.CipherScheme {
 		case common.CIPHER_SCHEME_CURVE:
 			fallthrough
@@ -577,7 +579,7 @@ func (ppd *PacketParserData) Destroy() {
 
 func (ppd *PacketParserData) IsAllowedAtOverload() bool {
 	switch ppd.HeaderType {
-	case NHP_KNK, NHP_RKN, NHP_EXT, NHP_AOL, NHP_ART:
+	case NHP_KNK, DHP_KNK, NHP_RKN, NHP_EXT, NHP_AOL, NHP_ART:
 		return true
 	default:
 		return false

@@ -1,11 +1,11 @@
 ---
-title: Quick Start
+title: NHP Quick Start
 layout: page
 nav_order: 2
-permalink: /quick_start/
+permalink: /nhp_quick_start/
 ---
 
-# Quick Start
+# NHP Quick Start
 {: .fs-9 }
 
 A locally built Docker debugging environment, simulating nhp-server, nhp-ac, traefik, web-app, etc. This environment can be used for:
@@ -17,7 +17,7 @@ A locally built Docker debugging environment, simulating nhp-server, nhp-ac, tra
 - Partial performance stress testing
 {: .fs-6 .fw-300 }
 
-[中文版](/zh-cn/quick_start/){: .label .fs-4 }
+[中文版](/zh-cn/nhp_quick_start/){: .label .fs-4 }
 
 ---
 
@@ -250,7 +250,7 @@ Use the following methods to rebuild and debug the corresponding modified servic
 ```shell
 cd ./docker
 docker compose build nhp-server
-docker stop nhp-server && docker rm nhp-server 
+docker stop nhp-server && docker rm nhp-server
 docker compose up -d
 ```
 
@@ -259,6 +259,6 @@ docker compose up -d
 ```shell
 cd ./docker
 docker compose build nhp-ac
-docker stop nhp-ac && docker rm nhp-ac 
+docker stop nhp-ac && docker rm nhp-ac
 docker compose up -d
 ```

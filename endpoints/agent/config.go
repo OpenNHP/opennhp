@@ -1,11 +1,13 @@
 package agent
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
+	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
@@ -19,6 +21,8 @@ var (
 	resourceConfigWatch io.Closer
 
 	errLoadConfig = fmt.Errorf("config load error")
+
+	secretCreated = "/var/run/secret.created"
 )
 
 type Config struct {
@@ -31,7 +35,32 @@ type Config struct {
 
 type DHPConfig struct {
 	TEEPrivateKeyBase64 string `json:"teePrivateKeyBase64"`
-	DHPExeCMD           string `json:"dhpExeCMD"`
+}
+
+func (c *Config) GetAgentEcdh() core.Ecdh {
+	eccType := core.ECC_SM2
+	if c.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
+		eccType = core.ECC_CURVE25519
+	}
+	teePrk, _ := base64.StdEncoding.DecodeString(c.PrivateKeyBase64)
+	return core.ECDHFromKey(eccType, teePrk)
+}
+
+func (c *Config) GetTeeEcdh() core.Ecdh {
+	eccType := core.ECC_SM2
+	if c.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
+		eccType = core.ECC_CURVE25519
+	}
+	teePrk, _ := base64.StdEncoding.DecodeString(c.TEEPrivateKeyBase64)
+	return core.ECDHFromKey(eccType, teePrk)
+}
+
+func (c *Config) GetEccType() core.EccTypeEnum {
+	eccType := core.ECC_SM2
+	if c.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
+		eccType = core.ECC_CURVE25519
+	}
+	return eccType
 }
 
 type Peers struct {
@@ -169,11 +198,6 @@ func (a *UdpAgent) updateDHPConfig(file string) (err error) {
 		return err
 	}
 
-	if a.config.DHPExeCMD != conf.DHPExeCMD {
-		log.Info("set DHP executable command to %s", conf.DHPExeCMD)
-		a.config.DHPExeCMD = conf.DHPExeCMD
-	}
-
 	return err
 }
 
@@ -270,4 +294,70 @@ func (a *UdpAgent) StopConfigWatch() {
 	if resourceConfigWatch != nil {
 		resourceConfigWatch.Close()
 	}
+}
+
+func (a *UdpAgent) NewEcdhFromConfigFile() (core.Ecdh, error) {
+	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
+
+	content, err := os.ReadFile(fileName)
+	if err != nil {
+		return nil, err
+	}
+
+	var conf Config
+	if err := toml.Unmarshal(content, &conf); err != nil {
+		return nil, err
+	}
+
+	return core.NewECDH(conf.GetEccType()), nil
+}
+
+func (a *UdpAgent) RotateTeeKey() error {
+	fileName := filepath.Join(ExeDirPath, "etc", "dhp.toml")
+
+	ecdh, err := a.NewEcdhFromConfigFile()
+	if err != nil {
+		return err
+	}
+
+	if err := utils.UpdateTomlConfig(fileName, "TEEPrivateKeyBase64", ecdh.PrivateKeyBase64()); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (a *UdpAgent) RotateAgentKey() error {
+	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
+
+	ecdh, err := a.NewEcdhFromConfigFile()
+	if err != nil {
+		return err
+	}
+
+	if err := utils.UpdateTomlConfig(fileName, "PrivateKeyBase64", ecdh.PrivateKeyBase64()); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (a *UdpAgent) InitializeSecret() error {
+	if _, err := os.Stat(secretCreated); os.IsNotExist(err) {
+		err := a.RotateAgentKey()
+		if err != nil {
+			return err
+		}
+		err = a.RotateTeeKey()
+		if err != nil {
+			return err
+		}
+
+		_, err = os.Create(secretCreated)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

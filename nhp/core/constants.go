@@ -20,6 +20,7 @@ const (
 	ThreatCountBeforeBlock = 1   // block at 2nd attempt
 	CookieRegenerateTime   = 120 // second
 	CookieRoundTripTimeMs  = 20  // millisecond
+	FailureRetryInterval   = 10  // second
 )
 
 // transaction

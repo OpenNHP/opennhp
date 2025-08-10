@@ -10,6 +10,8 @@ require (
 	github.com/emmansun/gmsm v0.24.1
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/gin-gonic/gin v1.10.0
+	github.com/google/uuid v1.6.0
+	github.com/mark3labs/mcp-go v0.33.0
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/spf13/viper v1.20.1
 	github.com/urfave/cli/v2 v2.27.6
@@ -35,7 +37,6 @@ require (
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
@@ -56,6 +57,7 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.etcd.io/etcd/api/v3 v3.6.1 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.6.1 // indirect
 	go.etcd.io/etcd/client/v3 v3.6.1 // indirect

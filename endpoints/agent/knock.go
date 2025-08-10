@@ -9,6 +9,7 @@ import (
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	wasmEngine "github.com/OpenNHP/opennhp/nhp/core/wasm/engine"
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
@@ -377,4 +378,99 @@ func (a *UdpAgent) processPreAccessAction(info *common.PreAccessInfo) error {
 	}(packetBytes, udpACAddr)
 
 	return nil
+}
+
+func (a *UdpAgent) KnockDHP() (ackMsg *common.ServerDHPKnockAckMsg, err error) {
+	serverPeer := a.GetFirstServerPeer()
+	if serverPeer == nil {
+		log.Critical("agent(%s)[KnockDHP] knock server is not assigned", a.knockUser.UserId)
+		return nil, common.ErrKnockServerNotFound
+	}
+
+	sendAddr := serverPeer.SendAddr()
+	if sendAddr == nil {
+		log.Critical("agent(%s)[KnockDHP] knock server IP cannot be parsed", a.knockUser.UserId)
+		return nil, common.ErrKnockServerNotFound
+	}
+	addrStr := sendAddr.String()
+
+	evidence, err := wasmEngine.GetEvidence()
+	if err != nil {
+		log.Error("agent(%s)[KnockDHP] cannot get evidence: %s", a.knockUser.UserId, err)
+		return nil, common.ErrEvidenceGetFailed
+	}
+
+	a.knockUserMutex.RLock()
+	knkMsg := &common.DHPKnockMsg{
+		UserId:         a.knockUser.UserId,
+		DeviceId:       a.deviceId,
+		OrganizationId: a.knockUser.OrganizationId,
+		UserData:       a.knockUser.UserData,
+		Evidence:       evidence,
+	}
+	a.knockUserMutex.RUnlock()
+
+	knkBytes, _ := json.Marshal(knkMsg)
+	knkMd := &core.MsgData{
+		RemoteAddr:    sendAddr.(*net.UDPAddr),
+		HeaderType:    core.DHP_KNK,
+		CipherScheme:  a.config.DefaultCipherScheme,
+		TransactionId: a.device.NextCounterIndex(),
+		Compress:      true,
+		Message:       knkBytes,
+		PeerPk:        serverPeer.PublicKey(),
+		ResponseMsgCh: make(chan *core.PacketParserData),
+	}
+
+	ackMsg = &common.ServerDHPKnockAckMsg{}
+	if !a.IsRunning() {
+		log.Error("agent(%s#%d)[KnockDHP] MsgData channel closed or being closed, skip sending", knkMsg.UserId, knkMd.TransactionId)
+		err = common.ErrPacketToMessageRoutineStopped
+		ackMsg.ErrCode = common.ErrPacketToMessageRoutineStopped.ErrorCode()
+		ackMsg.ErrMsg = err.Error()
+		return ackMsg, err
+	}
+
+	// device will create or find existing connection and sends the MsgAssembler via that connection
+	a.sendMsgCh <- knkMd
+
+	// block until transaction completes
+	serverPpd := <-knkMd.ResponseMsgCh
+	close(knkMd.ResponseMsgCh)
+
+	if serverPpd.Error != nil {
+		log.Error("agent(%s#%d)[KnockDHP] failed to receive response from server %s: %v", knkMsg.UserId, knkMd.TransactionId, addrStr, serverPpd.Error)
+		a.trustedByNHPServer.Store(false) // in this case, need to check local server configuration and remote agent public key configuration
+		err = serverPpd.Error
+		ackMsg.ErrCode = common.ErrPacketEncryptionFailed.ErrorCode()
+		ackMsg.ErrMsg = serverPpd.Error.Error()
+		return ackMsg, err
+	} else { // In case that peer validation is enabled, agent public key has been configured correctly in server
+		a.trustedByNHPServer.Store(true)
+	}
+
+	if serverPpd.HeaderType != core.NHP_ACK {
+		log.Error("agent(%s#%d)[KnockDHP] response has wrong type: %s", knkMsg.UserId, knkMd.TransactionId, core.HeaderTypeToString(serverPpd.HeaderType))
+		err = common.ErrTransactionRepliedWithWrongType
+		ackMsg.ErrCode = common.ErrTransactionRepliedWithWrongType.ErrorCode()
+		ackMsg.ErrMsg = err.Error()
+		return ackMsg, err
+	}
+
+	err = json.Unmarshal(serverPpd.BodyMessage, ackMsg)
+	if err != nil {
+		log.Error("agent(%s#%d)[KnockDHP] failed to parse %s message: %v", knkMsg.UserId, knkMd.TransactionId, core.HeaderTypeToString(serverPpd.HeaderType), err)
+		ackMsg.ErrCode = common.ErrJsonParseFailed.ErrorCode()
+		ackMsg.ErrMsg = err.Error()
+		return ackMsg, err
+	}
+
+	if ackMsg.ErrCode != common.ErrSuccess.ErrorCode() {
+		log.Error("agent(%s#%d)[KnockDHP] response error: %s", knkMsg.UserId, knkMd.TransactionId, ackMsg.ErrMsg)
+		err = common.ErrorCodeToError(ackMsg.ErrCode)
+		return ackMsg, err
+	}
+
+	log.Info("agent(%s#%d)[KnockDHP] succeed", knkMsg.UserId, knkMd.TransactionId)
+	return ackMsg, nil
 }

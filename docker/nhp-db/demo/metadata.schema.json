@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "metadata of zero trust data object",
+  "description": "Schema for metadata describing zero trust data object",
+  "required": [
+    "typeIdentifier",
+    "dataSize",
+    "owner",
+    "description",
+    "structuredData",
+    "vocabulary",
+    "sample"
+  ],
+  "properties": {
+    "typeIdentifier": {
+      "type": "string",
+      "description": "Identifier for the type of data",
+      "examples": ["risk involved accounts"]
+    },
+    "dataSize": {
+      "type": "integer",
+      "description": "Size of the data in bytes",
+      "minimum": 0,
+      "examples": [7311]
+    },
+    "owner": {
+      "type": "string",
+      "description": "Email address of the data owner",
+      "format": "email",
+      "examples": ["police@police.com"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the data",
+      "examples": ["risk involved accounts which are delivered by police."]
+    },
+    "structuredData": {
+      "type": "boolean",
+      "description": "Indicates whether the data is structured",
+      "examples": [true, false]
+    },
+    "vocabulary": {
+      "type": "object",
+      "description": "Metadata about the data structure and fields",
+      "required": ["dataType", "fields"],
+      "properties": {
+        "dataType": {
+          "type": "string",
+          "description": "Format of the data",
+          "examples": ["csv", "json", "xml"]
+        },
+        "fields": {
+          "type": "array",
+          "description": "List of fields in the data, each with path and type",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["path", "type"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Name or path of the field",
+                "examples": ["account_id", "risk_level", "any_other_field"]
+              },
+              "type": {
+                "type": "string",
+                "description": "Data type of the field",
+                "examples": ["string", "number", "boolean", "date", "integer"]
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "sample": {
+      "type": "array",
+      "description": "Sample data records matching the field definitions",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "description": "A sample data record",
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

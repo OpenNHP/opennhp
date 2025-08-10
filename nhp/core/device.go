@@ -22,6 +22,7 @@ const (
 	NHP_AC
 	NHP_RELAY
 	NHP_DB
+	DHP_AGENT
 )
 
 type DeviceOptions struct {

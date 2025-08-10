@@ -13,6 +13,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"os"
 )
 
 var (
@@ -106,4 +108,30 @@ func GenerateRsaKey(bits int) (string, string) {
 	pubKey := x509.MarshalPKCS1PublicKey(&privateKey.PublicKey)
 
 	return base64.StdEncoding.EncodeToString(pivKey), base64.StdEncoding.EncodeToString(pubKey)
+}
+
+func Md5sum(fullFilePath string) (string, error) {
+	fileInfo, err := os.Stat(fullFilePath)
+	if err != nil {
+		return "", fmt.Errorf("file not found: " + err.Error())
+	}
+
+	if !fileInfo.Mode().IsRegular() {
+		return "", fmt.Errorf("path is not a regular file")
+	}
+
+	file, err := os.Open(fullFilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file: " + err.Error())
+	}
+	defer file.Close()
+
+	hasher := md5.New()
+
+	if _, err := io.Copy(hasher, file); err != nil {
+		return "", fmt.Errorf("failed to read file content: " + err.Error())
+	}
+
+	// Convert hash to hex string
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }

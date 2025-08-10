@@ -3,17 +3,20 @@ package server
 import (
 	"errors"
 	"fmt"
-	"github.com/OpenNHP/opennhp/nhp/etcd"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/OpenNHP/opennhp/nhp/etcd"
+
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/core/verifier"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/plugins"
 	"github.com/OpenNHP/opennhp/nhp/utils"
+
 	toml "github.com/pelletier/go-toml/v2"
 )
 
@@ -24,7 +27,8 @@ var (
 	agentConfigWatch io.Closer
 	resConfigWatch   io.Closer
 	srcipConfigWatch io.Closer
-	deConfigWatch    io.Closer
+	dbConfigWatch    io.Closer
+	teeWatch         io.Closer
 	errLoadConfig    = fmt.Errorf("config load error")
 )
 
@@ -204,7 +208,7 @@ func (s *UdpServer) loadPeers() error {
 		// ignore error
 		_ = err
 	}
-	deConfigWatch = utils.WatchFile(fileNameDE, func() {
+	dbConfigWatch = utils.WatchFile(fileNameDE, func() {
 		log.Info("device peer config: %s has been updated", fileNameDE)
 		if contentDE, err = s.loadConfigFile(fileNameDE); err == nil {
 			if err = toml.Unmarshal(contentDE, &dePeers); err == nil {
@@ -212,6 +216,18 @@ func (s *UdpServer) loadPeers() error {
 			}
 		}
 	})
+
+	// tee.toml
+	fileNameTee := filepath.Join(ExeDirPath, "etc", "tee.toml")
+	if err := s.updateTee(fileNameTee); err != nil {
+		// ignore error
+		_ = err
+	}
+	teeWatch = utils.WatchFile(fileNameTee, func() {
+		log.Info("tee: %s has been updated", fileNameTee)
+		s.updateTee(fileNameTee)
+	})
+
 	return nil
 }
 
@@ -589,11 +605,13 @@ func (s *UdpServer) StopConfigWatch() {
 	if srcipConfigWatch != nil {
 		srcipConfigWatch.Close()
 	}
-	//add deConfigWatch
-	if deConfigWatch != nil {
-		deConfigWatch.Close()
+	//add dbConfigWatch
+	if dbConfigWatch != nil {
+		dbConfigWatch.Close()
 	}
-
+	if teeWatch != nil {
+		teeWatch.Close()
+	}
 }
 
 // updateDePeers
@@ -619,4 +637,59 @@ func (s *UdpServer) updateDePeers(peers []*core.UdpPeer) (err error) {
 	}
 	s.dbPeerMap = dbPeerMap
 	return err
+}
+
+// update tee
+func (s *UdpServer) updateTee(file string) (err error) {
+	utils.CatchPanicThenRun(func() {
+		err = errLoadConfig
+	})
+
+	content, err := os.ReadFile(file)
+	if err != nil {
+		log.Error("failed to read tee config: %v", err)
+	}
+
+	var tees TeeAttestationReports
+	teeMap := make(map[string]*TeeAttestationReport)
+	if err := toml.Unmarshal(content, &tees); err != nil {
+		log.Error("failed to unmarshal device peer config: %v", err)
+	}
+	for _, tee := range tees.TEEs {
+		teeMap[tee.Measure] = tee
+	}
+
+	s.teeMapMutex.Lock()
+	defer s.teeMapMutex.Unlock()
+	s.teeMap = teeMap
+	return err
+}
+
+func (s *UdpServer) AppraiseEvidence(evidenceBase64 string) bool {
+	var measure string
+	var sn string
+
+	attestationVerifier, err := verifier.NewVerifier(evidenceBase64)
+	if err != nil {
+		log.Error("failed to create attestation verifier: %v", err)
+		return false
+	}
+
+	if err := attestationVerifier.Verify(); err != nil {
+		log.Error("failed to verify attestation: %v", err)
+		return false
+	}
+
+	measure = attestationVerifier.GetMeasure()
+	sn = attestationVerifier.GetSerialNumber()
+
+	s.teeMapMutex.Lock()
+	defer s.teeMapMutex.Unlock()
+
+	if _, exist := s.teeMap[measure]; exist {
+		s.teeMap[measure].Verified = true
+		return s.teeMap[measure].SerialNumber == sn
+	}
+
+	return false
 }

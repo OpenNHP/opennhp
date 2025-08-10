@@ -384,7 +384,7 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 	config, err := ReadZdtoConfig(doId)
 
 	if err := s.onAttestationVerify(&config.Spo, davMsg.Evidence); err != nil {
-		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attesation: %s", transactionId, addrStr, davMsg.Evidence)
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attesation: %s with error: %s", transactionId, addrStr, davMsg.Evidence, err.Error())
 		return err
 	}
 
@@ -399,15 +399,15 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 		teePublicKey, consumerEphemeralPublicKey := s.GetTeePublicKeyBase64AndConsumerEphemeralPublicKeyBase64(ppd.RemotePubKey)
 
 		dwrMsg := &common.DWRMsg{
-			DoId: doId,
-			TeePublicKey: teePublicKey,
+			DoId:                       doId,
+			TeePublicKey:               teePublicKey,
 			ConsumerEphemeralPublicKey: consumerEphemeralPublicKey,
 		}
 
 		dbConn, found := s.dbConnectionMap[config.DbId]
 		if !found {
 			log.Critical("dbConn not found for dbId:%s", config.DbId)
-			err = common.ErrInvalidInput
+			err = common.ErrDBOffline
 			dagMsg.ErrCode = 1
 			dagMsg.ErrMsg = err.Error()
 		} else {
@@ -539,7 +539,7 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 	objectId := drgMsg.DoId
 	configFileName := "data-" + objectId + ".json"
 
-	etcDir := "etc/ztdo"
+	etcDir := filepath.Join(ExeDirPath, "etc", "ztdo")
 	configPath := filepath.Join(etcDir, configFileName)
 
 	if existingDrgMsg, err := ReadZdtoConfig(objectId); err == nil {
@@ -575,7 +575,7 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 
 // read data-<doId>.json to DRGMsg Object
 func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
-	etcDir := "etc/ztdo"
+	etcDir := filepath.Join(ExeDirPath, "etc", "ztdo")
 	configFilePath := filepath.Join(etcDir, "data-"+doId+".json")
 	file, err := os.Open(configFilePath)
 	if err != nil {
@@ -596,5 +596,3 @@ func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
 	}
 	return config, nil
 }
-
-

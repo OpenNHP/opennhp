@@ -225,8 +225,8 @@ For more detailed documentation, please visit our [Official Documentation](https
 6. [STALE: A Scalable and Secure Trans-Border Authentication Scheme Leveraging Email and ECDH Key Exchange](https://www.mdpi.com/2079-9292/14/12/2399). Jiexin Zheng, Mudi Xu, Jianqing Li, Benfeng Chen, Zhizhong Tan, Anyu Wang, Shuo Zhang, Yan Liu, Kevin Qi Zhang, Lirong Zheng, and Wenyong Wang. *Electronics*. June 2025.
 7. [DRL-AMIR: Intelligent Flow Scheduling for Software-Defined Zero Trust Networks](https://www.techscience.com/cmc/v84n2/62920). Wenlong Ke, Zilong Li, Peiyu Chen, Benfeng Chen, Jinglin Lv, Qiang Wang, Ziyi Jia and Shigen Shen. *CMC*. July 2025.
 8. Noise Protocol Framework. https://noiseprotocol.org/
-9. Vulnerability Management Framework project. https://phoenix.security/web-vuln-management/
-
+9. Vulnerability Management Framework project. https://phoenix.security/web-vuln-management/ 
+10. [Research on Secure and Trusted Data Interaction Architecture for AI Agents](https://www.cqvip.com/journal/36269/36269).Shuo Zhang,Rui Song,Huibin Xu,Nan Li,Wanyue Xie,Benfeng Chen.Computer Engineering and Applications.August 2025.
 ---
 
 🌟 Thank you for your interest in OpenNHP! We look forward to your contributions and feedback.

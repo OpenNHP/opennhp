@@ -226,7 +226,7 @@ For more detailed documentation, please visit our [Official Documentation](https
 7. [DRL-AMIR: Intelligent Flow Scheduling for Software-Defined Zero Trust Networks](https://www.techscience.com/cmc/v84n2/62920). Wenlong Ke, Zilong Li, Peiyu Chen, Benfeng Chen, Jinglin Lv, Qiang Wang, Ziyi Jia and Shigen Shen. *CMC*. July 2025.
 8. Noise Protocol Framework. https://noiseprotocol.org/
 9. Vulnerability Management Framework project. https://phoenix.security/web-vuln-management/ 
-
+10. [Research on Secure and Trusted Data Interaction Architecture for AI Agents](https://www.cqvip.com/journal/36269/36269).Shuo Zhang,Rui Song,Huibin Xu,Nan Li,Wanyue Xie,Benfeng Chen.Computer Engineering and Applications.August 2025.
 ---
 
 🌟 Thank you for your interest in OpenNHP! We look forward to your contributions and feedback.

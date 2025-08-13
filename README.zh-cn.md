@@ -53,7 +53,7 @@ OpenNHP 支持多种身份验证方法，如 OAuth、SAML、二维码等。为�
 
 ## 快速开始: 构建和测试 OpenNHP
 
-按照我们的[快速入门教程](https://opennhp.org/quick_start/) 构建 OpenNHP 源代码，并在 Docker 环境中进行测试。您将启动自己的 OpenNHP 调试环境，模拟“不可见”的网络隐藏行为并测试身份验证工作流。 
+按照我们的[快速入门教程](https://opennhp.org/zh-cn/nhp_quick_start/) 构建 OpenNHP 源代码，并在 Docker 环境中进行测试。您将启动自己的 OpenNHP 调试环境，模拟“不可见”的网络隐藏行为并测试身份验证工作流。
 
 ---
 

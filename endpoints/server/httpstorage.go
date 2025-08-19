@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -22,7 +23,6 @@ const (
 	maxMemorySize = 10 * 1024 * 1024
 )
 
-// 文件元数据
 type FileMetadata struct {
 	UUID      string `json:"uuid"`       // file UUID
 	Original  string `json:"original"`   // original file name
@@ -189,6 +189,13 @@ func (hs *HttpServer) initStorageRouter() {
 		filename := c.Param("filename")
 		filePath := filepath.Join(ExeDirPath, uploadDir, uuid, filename)
 
+		safeDir := filepath.Join(ExeDirPath, uploadDir)
+		absPath, err := filepath.Abs(filePath)
+		if err != nil || !strings.HasPrefix(absPath, safeDir) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file name"})
+			return
+		}
+
 		// check file exists
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "file not exists"})
@@ -262,6 +269,17 @@ func saveMetadata(metadata FileMetadata) error {
 func loadMetadata(uuid string) (FileMetadata, error) {
 	var metadata FileMetadata
 	metadataPath := filepath.Join(ExeDirPath, metadataDir, uuid+".json")
+
+	absPath, err := filepath.Abs(metadataPath)
+	if err != nil {
+		return metadata, err
+	}
+
+	safeDir := filepath.Join(ExeDirPath, metadataDir)
+	if !strings.HasPrefix(absPath, safeDir) {
+		return metadata, fmt.Errorf("invalid file name")
+	}
+
 	file, err := os.Open(metadataPath)
 	if err != nil {
 		return metadata, err

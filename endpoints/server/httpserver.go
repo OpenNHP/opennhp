@@ -18,6 +18,8 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/plugins"
 	"github.com/OpenNHP/opennhp/nhp/version"
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
@@ -67,6 +69,8 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 
 	gin.SetMode(gin.ReleaseMode)
 	hs.ginEngine = gin.New()
+	store := cookie.NewStore([]byte("nhpstore"))
+	hs.ginEngine.Use(sessions.Sessions("nhpsessions", store))
 	hs.ginEngine.Use(corsMiddleware())
 	hs.ginEngine.Use(gin.LoggerWithWriter(us.log.Writer()))
 	hs.ginEngine.Use(gin.Recovery())

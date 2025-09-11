@@ -62,7 +62,7 @@ Follow our [quick start tutorial](https://opennhp.org/nhp_quick_start/) to build
 
 ---
 
-## Vision: Making the Internet Trustworthy
+## Vision: Reinventing the Internet for Trust in the AI Era
 
 The openness of TCP/IP protocols has driven the explosive growth of internet applications but also exposed vulnerabilities, allowing malicious actors to gain unauthorized access and exploit any exposed IP address. Although the [OSI network model](https://en.wikipedia.org/wiki/OSI_model) defines the *5th layer (Session Layer)* for managing connections, few effective solutions have been implemented to address this.
 

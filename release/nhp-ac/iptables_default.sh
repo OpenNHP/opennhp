@@ -140,13 +140,16 @@ if [ -d /etc/rsyslog.d ] && [ ! -f /etc/rsyslog.d/10-nhplog.conf ]; then
     chown $(whoami):$(id -gn) $CURRENT_DIR/logs
     chmod -R 755 $CURRENT_DIR/logs/
     setenforce 
-    echo 'template(name="NHPFormat" type="string" string="%timegenerated% '"${LOCAL_IP}"' kernel: %msg%\n")
+    echo 'template(name="NHPFormat" type="string" string="%timegenerated:8:19% '"${LOCAL_IP}"' %syslogtag% %msg:::drop-last-lf%\n")
+template(name="NHPAcceptFile" type="string" string="'"$CURRENT_DIR"'/logs/nhp_accept-%$YEAR%-%$MONTH%-%$DAY%.log")
+template(name="NHPForwardFile" type="string" string="'"$CURRENT_DIR"'/logs/nhp_forward-%$YEAR%-%$MONTH%-%$DAY%.log")
+template(name="NHPDenyFile" type="string" string="'"$CURRENT_DIR"'/logs/nhp_deny-%$YEAR%-%$MONTH%-%$DAY%.log")
 
-:msg,contains,"[NHP-ACCEPT]" -'"$CURRENT_DIR"'/logs/nhp_accept.log;NHPFormat
+:msg,contains,"[NHP-ACCEPT]" ?NHPAcceptFile;NHPFormat
 & stop
-:msg,contains,"[NHP-FORWARD]" -'"$CURRENT_DIR"'/logs/nhp_forward.log;NHPFormat
-& stop
-:msg,contains,"[NHP-DENY]" -'"$CURRENT_DIR"'/logs/nhp_deny.log;NHPFormat
+:msg,contains,"[NHP-FORWARD]" ?NHPForwardFile;NHPFormat
+& stopgit pu
+:msg,contains,"[NHP-DENY]" ?NHPDenyFile;NHPFormat
 & stop' > /etc/rsyslog.d/10-nhplog.conf
 
     systemctl restart rsyslog

@@ -60,7 +60,7 @@ func init() {
 	log.Info("系统启动时间: %v", bootTime)
 }
 
-func EbpfEngineLoad() error {
+func EbpfEngineLoad(dirPath string, logLevel int) error {
 	CleanupBPFFiles()
 	if err := rlimit.RemoveMemlock(); err != nil {
 		log.Error("Failed to remove memlock limit")
@@ -131,7 +131,24 @@ func EbpfEngineLoad() error {
 		log.Error("failed to load 'events' map from eBPF object (nil)")
 		return fmt.Errorf("'events' map not found")
 	}
+	// common.ExeDirPath = dirPath
+	ExeDirPath := dirPath
+	denyLogger := log.NewLogger(
+		"NHP-AC",                          // prepend
+		logLevel,                          // level
+		filepath.Join(ExeDirPath, "logs"), // dir: 日志目录
+		"nhp_deny",                        // filename: 前缀
+	)
 
+	// 创建 ACCEPT 日志器
+	acLogger := log.NewLogger(
+		"NHP-AC",
+		logLevel,
+		filepath.Join(ExeDirPath, "logs"), // dir: 日志目录
+		"nhp_accept",
+	)
+
+	log.Info("已创建日志器: nhp_deny-* 和 nhp_accept-*")
 	// 启动 goroutine 监听 Perf Buffer 事件
 	go func() {
 		perfReader, err := perf.NewReader(eventsMap, os.Getpagesize())
@@ -178,6 +195,22 @@ func EbpfEngineLoad() error {
 				srcPort,
 				dstPort,
 			)
+
+			logMsg := fmt.Sprintf("%s SRC=%s DST=%s PROTO=%d SPT=%d DPT=%d",
+				eventTime.Format("2006-01-02 15:04:05"),
+				srcIPStr,
+				dstIPStr,
+				protocol,
+				srcPort,
+				dstPort,
+			)
+
+			if action == 0 { // DENY
+				denyLogger.Info("[NHP-DENY] %s", logMsg)
+			} else { // ACCEPT
+				acLogger.Info("[NHP-ACCEPT] %s", logMsg)
+			}
+
 		}
 	}()
 

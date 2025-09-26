@@ -4,12 +4,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/OpenNHP/opennhp/nhp/etcd"
 	"net"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/OpenNHP/opennhp/nhp/etcd"
 
 	ebpflocal "github.com/OpenNHP/opennhp/endpoints/ac/ebpf"
 	"github.com/OpenNHP/opennhp/nhp/common"
@@ -22,6 +23,8 @@ import (
 
 var (
 	ExeDirPath string
+	denyLogger *log.Logger
+	acLogger   *log.Logger
 )
 
 type UdpAC struct {
@@ -59,7 +62,7 @@ type UdpAC struct {
 	recvMsgCh <-chan *core.PacketParserData
 	sendMsgCh chan *core.MsgData
 	// etcd client
-	etcdConn *etcd.EtcdConn
+	etcdConn                *etcd.EtcdConn
 	remoteConfigUpdateMutex sync.Mutex
 }
 
@@ -121,7 +124,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			return
 		}
 	case FilterMode_EBPFXDP:
-		err = ebpflocal.EbpfEngineLoad()
+		err = ebpflocal.EbpfEngineLoad(dirPath, logLevel)
 		if err != nil {
 			return err
 		}

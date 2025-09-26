@@ -23,8 +23,6 @@ import (
 
 var (
 	ExeDirPath string
-	denyLogger *log.Logger
-	acLogger   *log.Logger
 )
 
 type UdpAC struct {
@@ -210,6 +208,12 @@ func (ac *UdpAC) Stop() {
 	log.Info("=== NHP-AC stopped ===")
 	log.Info("==========================")
 	ac.log.Close()
+	if ebpflocal.DenyLogger != nil {
+		ebpflocal.DenyLogger.Close()
+	}
+	if ebpflocal.AcLogger != nil {
+		ebpflocal.AcLogger.Close()
+	}
 }
 
 func (a *UdpAC) IsRunning() bool {

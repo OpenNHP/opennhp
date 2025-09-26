@@ -11,6 +11,10 @@ import (
 )
 
 var ErrEBPFSupportedOnlyOnLinux = fmt.Errorf("eBPF functionality is only supported on Linux, current platform is not Linux")
+var (
+	DenyLogger *log.Logger
+	AcLogger   *log.Logger
+)
 
 func EbpfEngineLoad(dirPath string, logLevel int) error {
 	log.Info("eBPF function must be compiled on Linux OS")

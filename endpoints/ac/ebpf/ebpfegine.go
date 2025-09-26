@@ -34,6 +34,11 @@ type bpfObjects struct {
 	Events        *ebpf.Map     `ebpf:"events"`
 }
 
+var (
+	DenyLogger *log.Logger
+	AcLogger   *log.Logger
+)
+
 // 定义与 eBPF 中的 event_t 完全一致的结构体
 // 用于接收从 Perf Buffer 传来的事件
 type Event struct {
@@ -133,7 +138,7 @@ func EbpfEngineLoad(dirPath string, logLevel int) error {
 	}
 	// common.ExeDirPath = dirPath
 	ExeDirPath := dirPath
-	denyLogger := log.NewLogger(
+	DenyLogger = log.NewLogger(
 		"NHP-AC",                          // prepend
 		logLevel,                          // level
 		filepath.Join(ExeDirPath, "logs"), // dir: 日志目录
@@ -141,7 +146,7 @@ func EbpfEngineLoad(dirPath string, logLevel int) error {
 	)
 
 	// 创建 ACCEPT 日志器
-	acLogger := log.NewLogger(
+	AcLogger = log.NewLogger(
 		"NHP-AC",
 		logLevel,
 		filepath.Join(ExeDirPath, "logs"), // dir: 日志目录
@@ -206,9 +211,9 @@ func EbpfEngineLoad(dirPath string, logLevel int) error {
 			)
 
 			if action == 0 { // DENY
-				denyLogger.Info("[NHP-DENY] %s", logMsg)
+				DenyLogger.Info("[NHP-DENY] %s", logMsg)
 			} else { // ACCEPT
-				acLogger.Info("[NHP-ACCEPT] %s", logMsg)
+				AcLogger.Info("[NHP-ACCEPT] %s", logMsg)
 			}
 
 		}

@@ -369,6 +369,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
 
 
     __u64 now = bpf_ktime_get_ns();
+    __u64 now_sec = now / 1000000000ULL;
     // Check if whitelist entry has expired
     if (w_val && (w_val->expire_time < now)) {
         bpf_map_delete_elem(&whitelist, &key);
@@ -397,6 +398,19 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
 
     // Check if whitelist entry allows this connection
     if (w_val && w_val->allowed == 1) {
+        bpf_printk("[%llu] [NHP-ACCEPT] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
+            now_sec,
+            iph->saddr & 0xFF,
+            (iph->saddr >> 8) & 0xFF,
+            (iph->saddr >> 16) & 0xFF,
+            (iph->saddr >> 24) & 0xFF,
+            iph->daddr & 0xFF,
+            (iph->daddr >> 8) & 0xFF,
+            (iph->daddr >> 16) & 0xFF,
+            (iph->daddr >> 24) & 0xFF,
+            (int)iph->protocol,
+            bpf_htons(ct_key.sport),
+            bpf_htons(ct_key.dport));
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(),
@@ -411,6 +425,19 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     }
     // Check if sdwhitelist entry allows this connection
     if (sd_val && sd_val->allowed == 1) {
+        bpf_printk("[%llu] [NHP-ACCEPT] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
+            now_sec,
+            iph->saddr & 0xFF,
+            (iph->saddr >> 8) & 0xFF,
+            (iph->saddr >> 16) & 0xFF,
+            (iph->saddr >> 24) & 0xFF,
+            iph->daddr & 0xFF,
+            (iph->daddr >> 8) & 0xFF,
+            (iph->daddr >> 16) & 0xFF,
+            (iph->daddr >> 24) & 0xFF,
+            (int)iph->protocol,
+            bpf_htons(ct_key.sport),
+            bpf_htons(ct_key.dport));
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(),
@@ -421,10 +448,24 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             .tx_packets = 0,
         };
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
+        // 如何把匹配这一项的whitelist_key打印出来，在用户态打印
         return XDP_PASS;
     }
     // Check if src_port_list entry allows this connection
     if (sp_val && sp_val->allowed == 1) {
+        bpf_printk("[%llu] [NHP-ACCEPT] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
+            now_sec,
+            iph->saddr & 0xFF,
+            (iph->saddr >> 8) & 0xFF,
+            (iph->saddr >> 16) & 0xFF,
+            (iph->saddr >> 24) & 0xFF,
+            iph->daddr & 0xFF,
+            (iph->daddr >> 8) & 0xFF,
+            (iph->daddr >> 16) & 0xFF,
+            (iph->daddr >> 24) & 0xFF,
+            (int)iph->protocol,
+            bpf_htons(ct_key.sport),
+            bpf_htons(ct_key.dport));
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(), 
@@ -439,6 +480,19 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     }
     // Check if port_list entry allows this connection
     if ((pl_val && pl_val->allowed == 1) && (dst_port >= pl_key.min_port && dst_port <= pl_key.max_port)) {
+        bpf_printk("[%llu] [NHP-ACCEPT] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
+            now_sec,
+            iph->saddr & 0xFF,
+            (iph->saddr >> 8) & 0xFF,
+            (iph->saddr >> 16) & 0xFF,
+            (iph->saddr >> 24) & 0xFF,
+            iph->daddr & 0xFF,
+            (iph->daddr >> 8) & 0xFF,
+            (iph->daddr >> 16) & 0xFF,
+            (iph->daddr >> 24) & 0xFF,
+            (int)iph->protocol,
+            bpf_htons(ct_key.sport),
+            bpf_htons(ct_key.dport));
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(),
@@ -453,6 +507,19 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     }
     // Check if protocol_port entry allows this connection
     if (pp_val && pp_val->allowed == 1){
+        bpf_printk("[%llu] [NHP-ACCEPT] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
+            now_sec,
+            iph->saddr & 0xFF,
+            (iph->saddr >> 8) & 0xFF,
+            (iph->saddr >> 16) & 0xFF,
+            (iph->saddr >> 24) & 0xFF,
+            iph->daddr & 0xFF,
+            (iph->daddr >> 8) & 0xFF,
+            (iph->daddr >> 16) & 0xFF,
+            (iph->daddr >> 24) & 0xFF,
+            (int)iph->protocol,
+            bpf_htons(ct_key.sport),
+            bpf_htons(ct_key.dport));
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(),
@@ -465,6 +532,21 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
         return XDP_PASS;
     }
+
+    bpf_printk("[%llu] [NHP-DENY] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
+        now_sec,
+        iph->saddr & 0xFF,
+        (iph->saddr >> 8) & 0xFF,
+        (iph->saddr >> 16) & 0xFF,
+        (iph->saddr >> 24) & 0xFF,
+        iph->daddr & 0xFF,
+        (iph->daddr >> 8) & 0xFF,
+        (iph->daddr >> 16) & 0xFF,
+        (iph->daddr >> 24) & 0xFF,
+        (int)iph->protocol,
+        bpf_htons(ct_key.sport),
+        bpf_htons(ct_key.dport));
+
 
     return XDP_DROP;
 }

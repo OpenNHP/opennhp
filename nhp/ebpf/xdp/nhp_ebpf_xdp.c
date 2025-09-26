@@ -168,6 +168,37 @@ struct {
     __uint(pinning, LIBBPF_PIN_BY_NAME);
 } conn_track SEC(".maps");
 
+// 定义发送到用户态的事件结构体
+struct event_t {
+    __u64 timestamp;      // 事件发生时间（纳秒级，来自 bpf_ktime_get_ns()）
+    __u8 action;          // 0 = DENY, 1 = ACCEPT
+    __be32 src_ip;
+    __be32 dst_ip;
+    __be16 src_port;       // 源端口（主机字节序，bpf_htons 转换后存）
+    __be16 dst_port;       // 目的端口（主机字节序）
+    __u8 protocol;        // 协议号，如 17 = UDP
+} __attribute__((packed));
+
+struct {
+    __uint(type, BPF_MAP_TYPE_PERF_EVENT_ARRAY);
+    __uint(max_entries, 1024);
+} events SEC(".maps");
+
+// 提交事件到用户态 Perf Buffer
+static __always_inline int submit_event(void *ctx, __u8 action, __be32 src_ip, __be32 dst_ip, __be16 src_port, __be16 dst_port, __u8 protocol) {
+    struct event_t ev = {};
+    ev.timestamp = bpf_ktime_get_ns();
+    ev.action = action; // 0 = DENY, 1 = ACCEPT
+    ev.src_ip = src_ip;
+    ev.dst_ip = dst_ip;
+    ev.src_port = src_port;
+    ev.dst_port = dst_port;
+    ev.protocol = protocol;
+
+    // 提交到 Perf Buffer
+    return bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &ev, sizeof(ev));
+}
+
 static __always_inline void reverseTuple(struct ipv4_ct_tuple *key) {
     __u32 tmp_ip = key->daddr;
     __u16 tmp_port = key->dport;
@@ -411,6 +442,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             (int)iph->protocol,
             bpf_htons(ct_key.sport),
             bpf_htons(ct_key.dport));
+        submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol);
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(),
@@ -438,6 +470,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             (int)iph->protocol,
             bpf_htons(ct_key.sport),
             bpf_htons(ct_key.dport));
+        submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol);
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(),
@@ -466,6 +499,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             (int)iph->protocol,
             bpf_htons(ct_key.sport),
             bpf_htons(ct_key.dport));
+        submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol);
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(), 
@@ -493,6 +527,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             (int)iph->protocol,
             bpf_htons(ct_key.sport),
             bpf_htons(ct_key.dport));
+        submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol);
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(),
@@ -520,6 +555,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             (int)iph->protocol,
             bpf_htons(ct_key.sport),
             bpf_htons(ct_key.dport));
+        submit_event(ctx, 0, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol);
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(),
@@ -547,7 +583,8 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         bpf_htons(ct_key.sport),
         bpf_htons(ct_key.dport));
 
-
+    // 在 submit_event 前，把网络序 IP 转成主机序（即反转字节）
+    submit_event(ctx, 0, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol);
     return XDP_DROP;
 }
 

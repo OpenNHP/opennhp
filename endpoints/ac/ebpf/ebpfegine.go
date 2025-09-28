@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	stdlog "log"
+
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -123,38 +125,30 @@ func EbpfEngineLoad(dirPath string, logLevel int) error {
 		return err
 	}
 
-	log.Info("Successfully attached XDP program to interface: %s", ifaceName)
-
-	ip := uint32(0x320310AC)                                                   // 小端表示的 172.16.3.50
-	log.Info("测试函数ipUint32ToString uint32(0x320310AC)" + ipUint32ToString(ip)) // 输出：172.16.3.50 ✅
-
-	// 加载 eBPF 程序，假设已经成功到 var objs bpfObjects
-
-	// 访问 eBPF 中定义的名为 "events" 的 Perf Buffer Map
-	eventsMap := objs.Events // ✅ 不是 objs.Maps["events"]
+	// Accessing the Perf Buffer Map named "events" defined in eBPF.
+	eventsMap := objs.Events
 	if eventsMap == nil {
 		log.Error("failed to load 'events' map from eBPF object (nil)")
 		return fmt.Errorf("'events' map not found")
 	}
-	// common.ExeDirPath = dirPath
 	ExeDirPath := dirPath
-	DenyLogger = log.NewLogger(
-		"NHP-AC",                          // prepend
-		logLevel,                          // level
-		filepath.Join(ExeDirPath, "logs"), // dir: 日志目录
-		"nhp_deny",                        // filename: 前缀
-	)
-
-	// 创建 ACCEPT 日志器
-	AcLogger = log.NewLogger(
-		"NHP-AC",
+	//Set up the DENY logger
+	DenyLogger = log.NewLoggerDefine(
+		"",
 		logLevel,
-		filepath.Join(ExeDirPath, "logs"), // dir: 日志目录
+		filepath.Join(ExeDirPath, "logs"),
+		"nhp_deny",
+	)
+	DenyLogger.SetFlags(stdlog.Lmsgprefix)
+	// Set up the ACCEPT logger
+	AcLogger = log.NewLoggerDefine(
+		"",
+		logLevel,
+		filepath.Join(ExeDirPath, "logs"),
 		"nhp_accept",
 	)
-
-	log.Info("已创建日志器: nhp_deny-* 和 nhp_accept-*")
-	// 启动 goroutine 监听 Perf Buffer 事件
+	AcLogger.SetFlags(stdlog.Lmsgprefix)
+	// Start a goroutine to monitor Perf Buffer events
 	go func() {
 		perfReader, err := perf.NewReader(eventsMap, os.Getpagesize())
 		if err != nil {
@@ -163,23 +157,23 @@ func EbpfEngineLoad(dirPath string, logLevel int) error {
 		}
 		defer perfReader.Close()
 
-		log.Info("[*] 开始监听 eBPF 事件（PERF BUFFER）...")
+		log.Info("Start listening for eBPF events (PERF BUFFER)")
 
 		for {
 			record, err := perfReader.Read()
 			if err != nil {
-				log.Error("读取事件错误:", err)
+				log.Error("Error reading eBPF event:", err)
 				continue
 			}
 			action := record.RawSample[8]
 			var actionStr string
 			switch action {
 			case 0:
-				actionStr = "NHP-DENY"
+				actionStr = "DENY"
 			case 1:
-				actionStr = "NHP-ACCEPT"
+				actionStr = "ACCEPT"
 			default:
-				actionStr = "NHP-UNKNOWN"
+				actionStr = "UNKNOWN"
 			}
 			timestamp := binary.LittleEndian.Uint64(record.RawSample[0:8])
 			srcIP := binary.BigEndian.Uint32(record.RawSample[9:13])
@@ -191,29 +185,22 @@ func EbpfEngineLoad(dirPath string, logLevel int) error {
 			srcIPStr := uint32ToIPv4(srcIP)
 			dstIPStr := uint32ToIPv4(dstIP)
 			eventTime := bootTime.Add(time.Duration(timestamp))
-			log.Info("%s [%s] SRC=%s DST=%s PROTO=%d SPT=%d DPT=%d\n",
-				eventTime.Format("2006-01-02 15:04:05"),
+			protoName := protoToString(protocol)
+
+			logMsg := fmt.Sprintf("%s [NHP-%s] SRC=%s DST=%s PROTO=%s SPT=%d DPT=%d",
+				eventTime.Format("15:04:05"),
 				actionStr,
 				srcIPStr,
 				dstIPStr,
-				protocol,
-				srcPort,
-				dstPort,
-			)
-
-			logMsg := fmt.Sprintf("%s SRC=%s DST=%s PROTO=%d SPT=%d DPT=%d",
-				eventTime.Format("2006-01-02 15:04:05"),
-				srcIPStr,
-				dstIPStr,
-				protocol,
+				protoName,
 				srcPort,
 				dstPort,
 			)
 
 			if action == 0 { // DENY
-				DenyLogger.Info("[NHP-DENY] %s", logMsg)
+				DenyLogger.Info("%s", logMsg)
 			} else { // ACCEPT
-				AcLogger.Info("[NHP-ACCEPT] %s", logMsg)
+				AcLogger.Info("%s", logMsg)
 			}
 
 		}
@@ -277,5 +264,35 @@ func CleanupBPFFiles() {
 		} else {
 			log.Info("Successfully removed BPF file: %s", file)
 		}
+	}
+}
+
+// protoToString 将 IP 协议号转换为协议名称
+func protoToString(proto uint8) string {
+	switch proto {
+	case 6:
+		return "TCP"
+	case 17:
+		return "UDP"
+	case 1:
+		return "ICMP"
+	case 2:
+		return "IGMP"
+	case 41:
+		return "IPv6"
+	case 47:
+		return "GRE"
+	case 50:
+		return "ESP"
+	case 51:
+		return "AH"
+	case 88:
+		return "EIGRP"
+	case 89:
+		return "OSPF"
+	case 112:
+		return "VRRP"
+	default:
+		return fmt.Sprintf("PROTO-%d", proto)
 	}
 }

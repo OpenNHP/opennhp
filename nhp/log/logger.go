@@ -438,3 +438,160 @@ func (l *Logger) NewSubLogger(prepend string, level int) *Logger {
 func (l *Logger) DateUpdateChan() chan string {
 	return l.lw.dateUpdatedCh
 }
+
+func (l *Logger) SetFlags(flag int) {
+	l.Lock()
+	defer l.Unlock()
+
+	if l.lgWrn != nil {
+		l.lgWrn.SetFlags(flag)
+	}
+	if l.lgErr != nil {
+		l.lgErr.SetFlags(flag)
+	}
+	if l.lgCrt != nil {
+		l.lgCrt.SetFlags(flag)
+	}
+	if l.lgEva != nil {
+		l.lgEva.SetFlags(flag)
+	}
+	if l.lgInf != nil {
+		l.lgInf.SetFlags(flag)
+	}
+	if l.lgSts != nil {
+		l.lgSts.SetFlags(flag)
+	}
+	if l.lgAdt != nil {
+		l.lgAdt.SetFlags(flag)
+	}
+	if l.lgTrx != nil {
+		l.lgTrx.SetFlags(flag)
+	}
+	if l.lgDbg != nil {
+		l.lgDbg.SetFlags(flag)
+	}
+	if l.lgTrc != nil {
+		l.lgTrc.SetFlags(flag)
+	}
+	if l.lgVbs != nil {
+		l.lgVbs.SetFlags(flag)
+	}
+}
+
+func NewLoggerDefine(prepend string, level int, dir string, filename string) *Logger {
+	l := &Logger{
+		logLevel:  level,
+		callDepth: 2,
+	}
+
+	// start generic log writer
+	l.lw = &AsyncLogWriter{
+		DirPath:       dir,
+		Name:          filename,
+		dateUpdatedCh: make(chan string, 1),
+	}
+	l.lw.Start()
+
+	// start evaluate log writer
+	l.lwEvaluate = &AsyncLogWriter{
+		DirPath: dir,
+		Name:    filename + "-evaluate",
+	}
+	l.lwEvaluate.Start()
+
+	// start audit log writer
+	l.lwAudit = &AsyncLogWriter{
+		DirPath: dir,
+		Name:    filename + "-audit",
+	}
+	l.lwAudit.Start()
+
+	l.initActionsDefine(prepend)
+	return l
+}
+
+func (l *Logger) initActionsDefine(prepend string) {
+	flag := log.Ldate | log.Ltime | log.Lmsgprefix
+	if ShowCallerFileLine {
+		flag |= log.Lshortfile
+	}
+
+	l.lgWrn = log.New(l.lw, prepend+" [Warning] ", flag)
+	l.Warning = func(format string, args ...any) {
+		if l.logLevel >= LogLevelError {
+			l.lgWrn.Output(l.callDepth, fmt.Sprintf(format, args...))
+		}
+	}
+
+	l.lgErr = log.New(l.lw, prepend+" [Error] ", flag)
+	l.Error = func(format string, args ...any) {
+		if l.logLevel >= LogLevelError {
+			l.lgErr.Output(l.callDepth, fmt.Sprintf(format, args...))
+		}
+	}
+
+	l.lgCrt = log.New(l.lw, prepend+" [Critical] ", flag)
+	l.Critical = func(format string, args ...any) {
+		if l.logLevel >= LogLevelError {
+			l.lgCrt.Output(l.callDepth, fmt.Sprintf(format, args...))
+		}
+	}
+
+	l.lgEva = log.New(l.lwEvaluate, prepend+" [Evaluate] ", flag|log.Lmicroseconds)
+	l.Evaluate = func(format string, args ...any) {
+		if l.logLevel >= LogLevelError {
+			l.lgEva.Output(l.callDepth, fmt.Sprintf(format, args...))
+		}
+	}
+
+	l.lgInf = log.New(l.lw, prepend, flag)
+	l.Info = func(format string, args ...any) {
+		if l.logLevel >= LogLevelInfo {
+			l.lgInf.Output(l.callDepth, fmt.Sprintf(format, args...))
+		}
+	}
+
+	l.lgSts = log.New(l.lw, prepend+" [Stats] ", flag)
+	l.Stats = func(format string, args ...any) {
+		if l.logLevel >= LogLevelInfo {
+			l.lgSts.Output(l.callDepth, fmt.Sprintf(format, args...))
+		}
+	}
+
+	// output to audit log writer
+	l.lgAdt = log.New(l.lwAudit, prepend+" [Audit] ", flag)
+	l.Audit = func(format string, args ...any) {
+		if l.logLevel >= LogLevelAudit {
+			l.lgAdt.Output(l.callDepth, fmt.Sprintf(format, args...))
+		}
+	}
+
+	l.lgTrx = log.New(l.lwAudit, prepend+" [Transaction] ", flag)
+	l.Transaction = func(format string, args ...any) {
+		if l.logLevel >= LogLevelAudit {
+			l.lgTrx.Output(l.callDepth, fmt.Sprintf(format, args...))
+		}
+	}
+
+	l.lgDbg = log.New(l.lw, prepend+" [Debug] ", flag)
+	l.Debug = func(format string, args ...any) {
+		if l.logLevel >= LogLevelDebug {
+			l.lgDbg.Output(l.callDepth, fmt.Sprintf(format, args...))
+		}
+	}
+
+	l.lgVbs = log.New(l.lw, prepend+" [Verbose] ", flag)
+	l.Verbose = func(format string, args ...any) {
+		if l.logLevel >= LogLevelTrace {
+			l.lgVbs.Output(l.callDepth, fmt.Sprintf(format, args...))
+		}
+	}
+
+	l.lgTrc = log.New(l.lw, prepend+" [Trace] ", flag)
+	l.Trace = func(format string, args ...any) {
+		if l.logLevel >= LogLevelTrace {
+			l.lgTrc.Output(l.callDepth, fmt.Sprintf(format, args...))
+		}
+	}
+	l.isRunning = true
+}

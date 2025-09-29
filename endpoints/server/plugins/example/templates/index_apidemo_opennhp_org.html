@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to NHP Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            background-color: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #4a4a4a;
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        p {
+            color: #0066cc;
+            font-size: 1.8rem;
+            margin-top: 1rem;
+            font-weight: bold;
+        }
+        #countdown {
+            margin-top: 2rem;
+            color: red;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        #message {
+            margin-top: 1rem;
+            color: green;
+            font-size: 1.5rem;
+            display: none;
+        }
+        #auto-refresh-section {
+            margin-top: 1rem;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to the Demo NHP-AC Server</h1>
+        <p>acdemo.opennhp.org</p>
+        <div><a href="https://dnschecker.org/port-scanner.php?query=acdemo.opennhp.org" target="_blank">Scan Its Ports &gt;&gt;</a></div>
+        
+        <!-- 添加倒计时显示 -->
+        <div id="countdown">This Server Will be Hidden after <span id="timer">15</span> seconds ...</div>
+        <br/>
+        <div id="ip-display" class="color: #777;">Fetching IP...</div>
+        <!-- 自动刷新复选框 -->
+        <div id="auto-refresh-section">
+            <input type="checkbox" id="auto-refresh"> Auto Refresh (Every 10 seconds)
+        </div>
+
+        <!-- 已隐藏信息的消息 -->
+        <div id="message">The Server Has been Hidden.</div>
+    </div>
+
+    <script>
+        // 初始化倒计时秒数
+        let seconds = 15;
+
+        // 获取DOM元素
+        const timerElement = document.getElementById('timer');
+        const countdownElement = document.getElementById('countdown');
+        const messageElement = document.getElementById('message');
+        const autoRefreshSection = document.getElementById('auto-refresh-section');
+        const autoRefreshCheckbox = document.getElementById('auto-refresh');
+
+        // 每秒更新倒计时
+        const countdownInterval = setInterval(() => {
+            seconds--;
+            timerElement.textContent = seconds;
+
+            if (seconds <= 0) {
+                clearInterval(countdownInterval);
+                // 隐藏倒计时
+                countdownElement.style.display = 'none';
+                // 显示隐藏消息
+                messageElement.style.display = 'block';
+                // 隐藏自动刷新复选框
+                autoRefreshSection.style.display = 'none';
+            }
+        }, 1000);
+
+        // 自动刷新功能
+        let autoRefreshInterval;
+
+        // 获取 cookie 中存储的 autoRefreshState
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+
+        // 设置 cookie
+        function setCookie(name, value, days) {
+            const date = new Date();
+            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+            document.cookie = `${name}=${value};expires=${date.toUTCString()};path=/`;
+        }
+
+        // 从 cookie 恢复复选框状态
+        const savedAutoRefreshState = getCookie('autoRefreshState');
+        if (savedAutoRefreshState === 'true') {
+            autoRefreshCheckbox.checked = true;
+        } else {
+            autoRefreshCheckbox.checked = false;
+        }
+
+        // 当复选框状态变化时，开始或停止自动刷新
+        autoRefreshCheckbox.addEventListener('change', () => {
+            if (autoRefreshCheckbox.checked) {
+                // 开始自动刷新，每10秒刷新一次页面
+                autoRefreshInterval = setInterval(() => {
+                    location.reload();  // 每 10 秒刷新页面
+                }, 10000);
+            } else {
+                // 停止自动刷新
+                clearInterval(autoRefreshInterval);
+            }
+
+            // 保存复选框状态到 cookie
+            setCookie('autoRefreshState', autoRefreshCheckbox.checked, 7);  // 7天过期
+        });
+
+        // 页面加载时检查复选框状态并触发自动刷新
+        window.onload = () => {
+            if (autoRefreshCheckbox.checked) {
+                // 如果复选框之前勾选过，启动自动刷新
+                autoRefreshInterval = setInterval(() => {
+                    location.reload();  // 每 10 秒刷新页面
+                }, 10000);
+            }
+
+            fetchIP()
+        };
+
+        async function fetchIP() {
+            try {
+                                    const response = await fetch('https://ipinfo.io/json');
+                const data = await response.json();
+                document.getElementById('ip-display').textContent = "(IP Address:"+data.ip+")";
+            } catch (error) {
+                document.getElementById('ip-display').textContent = "Failed to get IP, please refresh";
+                console.error("Fetch ip error:", error);
+            }
+        }
+    </script>
+</body>
+</html>

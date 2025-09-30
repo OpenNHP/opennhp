@@ -122,7 +122,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			return
 		}
 	case FilterMode_EBPFXDP:
-		err = ebpflocal.EbpfEngineLoad(dirPath, logLevel)
+		err = ebpflocal.EbpfEngineLoad(dirPath, logLevel, a.config.ACId)
 		if err != nil {
 			return err
 		}

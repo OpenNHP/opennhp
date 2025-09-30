@@ -16,7 +16,7 @@ var (
 	AcLogger   *log.Logger
 )
 
-func EbpfEngineLoad(dirPath string, logLevel int) error {
+func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 	log.Info("eBPF function must be compiled on Linux OS")
 	return ErrEBPFSupportedOnlyOnLinux
 }

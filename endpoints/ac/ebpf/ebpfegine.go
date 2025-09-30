@@ -44,13 +44,14 @@ var (
 // 定义与 eBPF 中的 event_t 完全一致的结构体
 // 用于接收从 Perf Buffer 传来的事件
 type Event struct {
-	Timestamp uint64 `ebpf:"timestamp"` // 纳秒级时间戳
-	Action    uint8  `ebpf:"action"`    // 0 = DENY, 1 = ACCEPT
-	SrcIP     uint32 `ebpf:"src_ip"`    // 源IP（网络字节序）
-	DstIP     uint32 `ebpf:"dst_ip"`    // 目的IP（网络字节序）
-	SrcPort   uint16 `ebpf:"src_port"`  // 源端口（主机字节序）
-	DstPort   uint16 `ebpf:"dst_port"`  // 目的端口（主机字节序）
-	Protocol  uint8  `ebpf:"protocol"`  // 协议号，如 6=TCP, 17=UDP
+	Timestamp  uint64 `ebpf:"timestamp"`   // 纳秒级时间戳
+	Action     uint8  `ebpf:"action"`      // 0 = DENY, 1 = ACCEPT
+	SrcIP      uint32 `ebpf:"src_ip"`      // 源IP（网络字节序）
+	DstIP      uint32 `ebpf:"dst_ip"`      // 目的IP（网络字节序）
+	SrcPort    uint16 `ebpf:"src_port"`    // 源端口（主机字节序）
+	DstPort    uint16 `ebpf:"dst_port"`    // 目的端口（主机字节序）
+	Protocol   uint8  `ebpf:"protocol"`    // 协议号，如 6=TCP, 17=UDP
+	PayloadLen uint16 `ebpf:"payload_len"` // 包体长度
 }
 
 var xdpLink link.Link
@@ -67,7 +68,7 @@ func init() {
 	log.Info("系统启动时间: %v", bootTime)
 }
 
-func EbpfEngineLoad(dirPath string, logLevel int) error {
+func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 	CleanupBPFFiles()
 	if err := rlimit.RemoveMemlock(); err != nil {
 		log.Error("Failed to remove memlock limit")
@@ -181,17 +182,20 @@ func EbpfEngineLoad(dirPath string, logLevel int) error {
 			srcPort := binary.BigEndian.Uint16(record.RawSample[17:19])
 			dstPort := binary.BigEndian.Uint16(record.RawSample[19:21])
 			protocol := record.RawSample[21]
+			payloadLen := binary.BigEndian.Uint16(record.RawSample[22:24])
 
 			srcIPStr := uint32ToIPv4(srcIP)
 			dstIPStr := uint32ToIPv4(dstIP)
 			eventTime := bootTime.Add(time.Duration(timestamp))
 			protoName := protoToString(protocol)
 
-			logMsg := fmt.Sprintf("%s [NHP-%s] SRC=%s DST=%s PROTO=%s SPT=%d DPT=%d",
+			logMsg := fmt.Sprintf("%s %s [NHP-%s] SRC=%s DST=%s LEN=%d PROTO=%s SPT=%d DPT=%d",
 				eventTime.Format("15:04:05"),
+				acId,
 				actionStr,
 				srcIPStr,
 				dstIPStr,
+				payloadLen,
 				protoName,
 				srcPort,
 				dstPort,

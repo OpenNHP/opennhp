@@ -177,6 +177,7 @@ struct event_t {
     __be16 src_port;       // 源端口（主机字节序，bpf_htons 转换后存）
     __be16 dst_port;       // 目的端口（主机字节序）
     __u8 protocol;        // 协议号，如 17 = UDP
+    __be16 len;
 } __attribute__((packed));
 
 struct {
@@ -184,8 +185,8 @@ struct {
     __uint(max_entries, 1024);
 } events SEC(".maps");
 
-// 提交事件到用户态 Perf Buffer
-static __always_inline int submit_event(void *ctx, __u8 action, __be32 src_ip, __be32 dst_ip, __be16 src_port, __be16 dst_port, __u8 protocol) {
+// Submit the event details including source and destination IP addresses, source and destination ports, protocol, and total packet length to the user space.
+static __always_inline int submit_event(void *ctx, __u8 action, __be32 src_ip, __be32 dst_ip, __be16 src_port, __be16 dst_port, __u8 protocol, __be16 len) {
     struct event_t ev = {};
     ev.timestamp = bpf_ktime_get_ns();
     ev.action = action; // 0 = DENY, 1 = ACCEPT
@@ -194,8 +195,9 @@ static __always_inline int submit_event(void *ctx, __u8 action, __be32 src_ip, _
     ev.src_port = src_port;
     ev.dst_port = dst_port;
     ev.protocol = protocol;
+    ev.len = len;
 
-    // 提交到 Perf Buffer
+    // Submit the event details to the user space Perf Buffer.
     return bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &ev, sizeof(ev));
 }
 
@@ -284,7 +286,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     }
     
     if (iph->protocol == IPPROTO_UDP && 
-        (ct_key.dport == bpf_htons(67) || ct_key.dport == bpf_htons(68))) {
+        (ct_key.dport == bpf_htons(67) || ct_key.dport == bpf_htons(68) || ct_key.sport == bpf_htons(53))) {
         return XDP_PASS;
     }
 
@@ -429,20 +431,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
 
     // Check if whitelist entry allows this connection
     if (w_val && w_val->allowed == 1) {
-        bpf_printk("[%llu] [NHP-ACCEPT] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
-            now_sec,
-            iph->saddr & 0xFF,
-            (iph->saddr >> 8) & 0xFF,
-            (iph->saddr >> 16) & 0xFF,
-            (iph->saddr >> 24) & 0xFF,
-            iph->daddr & 0xFF,
-            (iph->daddr >> 8) & 0xFF,
-            (iph->daddr >> 16) & 0xFF,
-            (iph->daddr >> 24) & 0xFF,
-            (int)iph->protocol,
-            bpf_htons(ct_key.sport),
-            bpf_htons(ct_key.dport));
-        submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol);
+        submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(),
@@ -457,20 +446,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     }
     // Check if sdwhitelist entry allows this connection
     if (sd_val && sd_val->allowed == 1) {
-        bpf_printk("[%llu] [NHP-ACCEPT] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
-            now_sec,
-            iph->saddr & 0xFF,
-            (iph->saddr >> 8) & 0xFF,
-            (iph->saddr >> 16) & 0xFF,
-            (iph->saddr >> 24) & 0xFF,
-            iph->daddr & 0xFF,
-            (iph->daddr >> 8) & 0xFF,
-            (iph->daddr >> 16) & 0xFF,
-            (iph->daddr >> 24) & 0xFF,
-            (int)iph->protocol,
-            bpf_htons(ct_key.sport),
-            bpf_htons(ct_key.dport));
-        submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol);
+        submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(),
@@ -481,25 +457,11 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             .tx_packets = 0,
         };
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
-        // 如何把匹配这一项的whitelist_key打印出来，在用户态打印
         return XDP_PASS;
     }
     // Check if src_port_list entry allows this connection
     if (sp_val && sp_val->allowed == 1) {
-        bpf_printk("[%llu] [NHP-ACCEPT] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
-            now_sec,
-            iph->saddr & 0xFF,
-            (iph->saddr >> 8) & 0xFF,
-            (iph->saddr >> 16) & 0xFF,
-            (iph->saddr >> 24) & 0xFF,
-            iph->daddr & 0xFF,
-            (iph->daddr >> 8) & 0xFF,
-            (iph->daddr >> 16) & 0xFF,
-            (iph->daddr >> 24) & 0xFF,
-            (int)iph->protocol,
-            bpf_htons(ct_key.sport),
-            bpf_htons(ct_key.dport));
-        submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol);
+        submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(), 
@@ -514,20 +476,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     }
     // Check if port_list entry allows this connection
     if ((pl_val && pl_val->allowed == 1) && (dst_port >= pl_key.min_port && dst_port <= pl_key.max_port)) {
-        bpf_printk("[%llu] [NHP-ACCEPT] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
-            now_sec,
-            iph->saddr & 0xFF,
-            (iph->saddr >> 8) & 0xFF,
-            (iph->saddr >> 16) & 0xFF,
-            (iph->saddr >> 24) & 0xFF,
-            iph->daddr & 0xFF,
-            (iph->daddr >> 8) & 0xFF,
-            (iph->daddr >> 16) & 0xFF,
-            (iph->daddr >> 24) & 0xFF,
-            (int)iph->protocol,
-            bpf_htons(ct_key.sport),
-            bpf_htons(ct_key.dport));
-        submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol);
+        submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(),
@@ -542,20 +491,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     }
     // Check if protocol_port entry allows this connection
     if (pp_val && pp_val->allowed == 1){
-        bpf_printk("[%llu] [NHP-ACCEPT] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
-            now_sec,
-            iph->saddr & 0xFF,
-            (iph->saddr >> 8) & 0xFF,
-            (iph->saddr >> 16) & 0xFF,
-            (iph->saddr >> 24) & 0xFF,
-            iph->daddr & 0xFF,
-            (iph->daddr >> 8) & 0xFF,
-            (iph->daddr >> 16) & 0xFF,
-            (iph->daddr >> 24) & 0xFF,
-            (int)iph->protocol,
-            bpf_htons(ct_key.sport),
-            bpf_htons(ct_key.dport));
-        submit_event(ctx, 0, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol);
+        submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
         struct conn_value new_val = {
             .timestamp = bpf_ktime_get_ns(),
             .last_timestamp = bpf_ktime_get_ns(),
@@ -568,23 +504,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
         return XDP_PASS;
     }
-
-    bpf_printk("[%llu] [NHP-DENY] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
-        now_sec,
-        iph->saddr & 0xFF,
-        (iph->saddr >> 8) & 0xFF,
-        (iph->saddr >> 16) & 0xFF,
-        (iph->saddr >> 24) & 0xFF,
-        iph->daddr & 0xFF,
-        (iph->daddr >> 8) & 0xFF,
-        (iph->daddr >> 16) & 0xFF,
-        (iph->daddr >> 24) & 0xFF,
-        (int)iph->protocol,
-        bpf_htons(ct_key.sport),
-        bpf_htons(ct_key.dport));
-
-    // 在 submit_event 前，把网络序 IP 转成主机序（即反转字节）
-    submit_event(ctx, 0, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol);
+    submit_event(ctx, 0, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
     return XDP_DROP;
 }
 

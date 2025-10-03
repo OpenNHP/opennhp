@@ -60,9 +60,13 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 		netIP = net.IPv4zero // will both listen on ipv4 0.0.0.0:port and ipv6 [::]:port
 	}
 
+	listenPort := us.listenAddr.Port // use the same port as udp server if HttpListenPort is not specified
+	if hc.HttpListenPort > 0 && hc.HttpListenPort < 65536 {
+		listenPort = hc.HttpListenPort
+	}
 	hs.listenAddr = &net.TCPAddr{
 		IP:   netIP,
-		Port: us.listenAddr.Port, // use the same port as udp server
+		Port: listenPort,
 	}
 
 	hs.signals.stop = make(chan struct{})

@@ -69,6 +69,7 @@ type HttpConfig struct {
 	EnableHttp     bool
 	EnableTLS      bool
 	HttpListenIp   string
+	HttpListenPort int
 	TLSCertFile    string
 	TLSKeyFile     string
 	ReadTimeoutMs  int

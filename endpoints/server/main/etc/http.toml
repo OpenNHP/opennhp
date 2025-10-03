@@ -8,5 +8,6 @@
 EnableHttp = true
 EnableTLS = true
 HttpListenIp = "0.0.0.0"    # empty for ipv4 + ipv6, "0.0.0.0" for ipv4 only, "127.0.0.1" for local ipv4 access only
+HttpListenPort = 443
 TLSCertFile = "cert/cert.pem"
 TLSKeyFile = "cert/cert.key"

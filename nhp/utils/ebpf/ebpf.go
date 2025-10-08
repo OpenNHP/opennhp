@@ -206,7 +206,7 @@ func AddSrcipDestPortRule(whitelistMap *ebpf.Map, rule *srcIPdstPortKey, ttlSec 
 }
 
 func AddEbpfRuleForSrcDstPortProto(srcIPStr, dstIPStr string, protocol uint8, dstPort uint16, ttlSec uint64) error {
-	whitelistMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/whitelist", nil)
+	whitelistMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/spp", nil)
 	if err != nil {
 		log.Error("failed to load pinned whitelist map: %v", err)
 		return err
@@ -262,28 +262,6 @@ func AddEbpfRuleForSrcDst(srcIPStr, dstIPStr string, ttlSec uint64) error {
 
 	return AddSdWhitelistRule(whitelistMap, rule, ttlSec)
 }
-
-func AddEbpfRuleForLogEvent()
-{
-	whitelistMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/events", nil)
-	if err != nil {
-		log.Error("failed to load pinned events map: %v", err)
-		return err
-	}
-	defer whitelistMap.Close()
-}
-
-// 与 eBPF 中定义的 event_t 完全一致
-type Event struct {
-	Timestamp uint64 `ebpf:"timestamp"`
-	Action    uint8  `ebpf:"action"`  // 0 = DENY, 1 = ACCEPT
-	SrcIP     uint32 `ebpf:"src_ip"`
-	DstIP     uint32 `ebpf:"dst_ip"`
-	SrcPort   uint16 `ebpf:"src_port"`
-	DstPort   uint16 `ebpf:"dst_port"`
-	Protocol  uint8  `ebpf:"protocol"`
-}
-
 
 func AddEbpfRuleForSrcDestPort(srcIPStr string, dstPort int, ttlSec uint64) error {
 	whitelistMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/src_port_list", nil)

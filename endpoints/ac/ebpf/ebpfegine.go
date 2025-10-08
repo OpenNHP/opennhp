@@ -26,7 +26,7 @@ import (
 
 type bpfObjects struct {
 	XdpProg       *ebpf.Program `ebpf:"xdp_white_prog"`
-	Whitelist     *ebpf.Map     `ebpf:"whitelist"`
+	Whitelist     *ebpf.Map     `ebpf:"spp"`
 	Icmpwhitelist *ebpf.Map     `ebpf:"icmpwhitelist"`
 	Sdwhitelist   *ebpf.Map     `ebpf:"sdwhitelist"`
 	Srcportlist   *ebpf.Map     `ebpf:"src_port_list"`
@@ -97,13 +97,14 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 		},
 	}); err != nil {
 		log.Error("Failed to load and assign eBPF objects")
+		return err
 	}
 
 	if err := objs.XdpProg.Pin("/sys/fs/bpf/xdp_white_prog"); err != nil {
 		log.Error("failed to pin XDP program xdp_white_prog to /sys/fs/bpf/")
 		return err
 	}
-	// obtain the nic interface which default route exit
+
 	ifaceName, err := getDefaultRouteInterface()
 	if err != nil {
 		log.Error("failed to get default route interface")
@@ -125,6 +126,10 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 		log.Error("failed to attach XDP program to interface: %s", ifaceName)
 		return err
 	}
+	log.Info("Whitelist map ID: %d", objs.Whitelist.FD())
+	// log.Info("Whitelist Map Pin Path: %s", objs.Whitelist.PinPath())
+	log.Info("sdWhitelist map ID: %d", objs.Sdwhitelist.FD())
+	// log.Info("sdWhitelist Map Pin Path: %s", objs.Sdwhitelist.PinPath())
 
 	// Accessing the Perf Buffer Map named "events" defined in eBPF.
 	eventsMap := objs.Events
@@ -132,6 +137,7 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 		log.Error("failed to load 'events' map from eBPF object (nil)")
 		return fmt.Errorf("'events' map not found")
 	}
+
 	ExeDirPath := dirPath
 	//Set up the DENY logger
 	DenyLogger = log.NewLoggerDefine(

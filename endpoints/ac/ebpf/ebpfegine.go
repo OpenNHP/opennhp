@@ -185,8 +185,8 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 			timestamp := binary.LittleEndian.Uint64(record.RawSample[0:8])
 			srcIP := binary.BigEndian.Uint32(record.RawSample[9:13])
 			dstIP := binary.BigEndian.Uint32(record.RawSample[13:17])
-			srcPort := binary.BigEndian.Uint16(record.RawSample[17:19])
-			dstPort := binary.BigEndian.Uint16(record.RawSample[19:21])
+			srcPort := binary.LittleEndian.Uint16(record.RawSample[17:19])
+			dstPort := binary.LittleEndian.Uint16(record.RawSample[19:21])
 			protocol := record.RawSample[21]
 			payloadLen := binary.BigEndian.Uint16(record.RawSample[22:24])
 

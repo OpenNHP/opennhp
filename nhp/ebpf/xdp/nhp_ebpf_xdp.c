@@ -405,143 +405,26 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
 
     __u64 now = bpf_ktime_get_ns();
     __u64 now_sec = now / 1000000000ULL;
-    // Check if whitelist entry has expired
-    // if (w_val) {
-    //     __u64 expire_time = w_val->expire_time;
-    
-    //     // 1.1 先检查是否过期
-    //     if (expire_time < now) {
-    //         bpf_map_delete_elem(&spp, &key);
-    //         return XDP_DROP;
-    //     }
-    
-    //     // 1.2 再检查是否 allowed
-    //     if (w_val->allowed == 1) {
-    //         submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
-    //         struct conn_value new_val = {
-    //             .timestamp = bpf_ktime_get_ns(),
-    //             .last_timestamp = bpf_ktime_get_ns(),
-    //             .ttl_ns = expire_time - now,
-    //             .state = CT_ESTABLISHED,
-    //             .flags = CT_FLAG_NONE,
-    //             .rx_packets = 1,
-    //             .tx_packets = 0,
-    //         };
-    //         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
-    //         return XDP_PASS;
-    //     }
-    // } 
-    // // Check if sdwhitelist entry has expired
-    // if (sd_val) {
-    //     __u64 expire_time = sd_val->expire_time;
-    
-    //     // 2.1 先检查是否过期
-    //     if (expire_time < now) {
-    //         bpf_map_delete_elem(&sdwhitelist, &sdkey);
-    //         return XDP_DROP;
-    //     }
-    
-    //     // 2.2 再检查是否 allowed
-    //     if (sd_val->allowed == 1) {
-    //         submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
-    //         struct conn_value new_val = {
-    //             .timestamp = bpf_ktime_get_ns(),
-    //             .last_timestamp = bpf_ktime_get_ns(),
-    //             .ttl_ns = expire_time - now,
-    //             .state = CT_ESTABLISHED,
-    //             .flags = CT_FLAG_NONE,
-    //             .rx_packets = 1,
-    //             .tx_packets = 0,
-    //         };
-    //         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
-    //         return XDP_PASS;
-    //     }
-    // }
     if (w_val && (w_val->expire_time < now)) {
-        bpf_printk("[%llu] [NHP-DENY-Timout] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
-            now_sec,
-            iph->saddr & 0xFF,
-            (iph->saddr >> 8) & 0xFF,
-            (iph->saddr >> 16) & 0xFF,
-            (iph->saddr >> 24) & 0xFF,
-            iph->daddr & 0xFF,
-            (iph->daddr >> 8) & 0xFF,
-            (iph->daddr >> 16) & 0xFF,
-            (iph->daddr >> 24) & 0xFF,
-            (int)iph->protocol,
-            bpf_htons(ct_key.sport),
-            bpf_htons(ct_key.dport)); 
         bpf_map_delete_elem(&spp, &key);
         return XDP_DROP;
     }
     if (sd_val && (sd_val->expire_time < now)) {
-        bpf_printk("[%llu] [NHP-DENY] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
-            now_sec,
-            iph->saddr & 0xFF,
-            (iph->saddr >> 8) & 0xFF,
-            (iph->saddr >> 16) & 0xFF,
-            (iph->saddr >> 24) & 0xFF,
-            iph->daddr & 0xFF,
-            (iph->daddr >> 8) & 0xFF,
-            (iph->daddr >> 16) & 0xFF,
-            (iph->daddr >> 24) & 0xFF,
-            (int)iph->protocol,
-            bpf_htons(ct_key.sport),
-            bpf_htons(ct_key.dport)); 
         bpf_map_delete_elem(&sdwhitelist, &sdkey);
         return XDP_DROP;
     }
     // Check if src_port_list entry has expired
     if (sp_val && (sp_val->expire_time < now)) {
-        bpf_printk("[%llu] [NHP-DENY] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
-            now_sec,
-            iph->saddr & 0xFF,
-            (iph->saddr >> 8) & 0xFF,
-            (iph->saddr >> 16) & 0xFF,
-            (iph->saddr >> 24) & 0xFF,
-            iph->daddr & 0xFF,
-            (iph->daddr >> 8) & 0xFF,
-            (iph->daddr >> 16) & 0xFF,
-            (iph->daddr >> 24) & 0xFF,
-            (int)iph->protocol,
-            bpf_htons(ct_key.sport),
-            bpf_htons(ct_key.dport)); 
         bpf_map_delete_elem(&src_port_list, &spkey);
         return XDP_DROP;
     }
     // Check if port_list entry has expired
     if (pl_val && (pl_val->expire_time < now)) {
-        bpf_printk("[%llu] [NHP-DENY] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
-            now_sec,
-            iph->saddr & 0xFF,
-            (iph->saddr >> 8) & 0xFF,
-            (iph->saddr >> 16) & 0xFF,
-            (iph->saddr >> 24) & 0xFF,
-            iph->daddr & 0xFF,
-            (iph->daddr >> 8) & 0xFF,
-            (iph->daddr >> 16) & 0xFF,
-            (iph->daddr >> 24) & 0xFF,
-            (int)iph->protocol,
-            bpf_htons(ct_key.sport),
-            bpf_htons(ct_key.dport)); 
         bpf_map_delete_elem(&port_list, &pl_key);
         return XDP_DROP;
     }
     // Check if protocol_port entry has expired
     if (pp_val && (pp_val->expire_time < now)) {
-        bpf_printk("[%llu] [NHP-DENY] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
-            now_sec,
-            iph->saddr & 0xFF,
-            (iph->saddr >> 8) & 0xFF,
-            (iph->saddr >> 16) & 0xFF,
-            (iph->saddr >> 24) & 0xFF,
-            iph->daddr & 0xFF,
-            (iph->daddr >> 8) & 0xFF,
-            (iph->daddr >> 16) & 0xFF,
-            (iph->daddr >> 24) & 0xFF,
-            (int)iph->protocol,
-            bpf_htons(ct_key.sport),
-            bpf_htons(ct_key.dport)); 
         bpf_map_delete_elem(&protocol_port, &pp_key);
         return XDP_DROP;
     }
@@ -620,23 +503,6 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
         return XDP_PASS;
     }
-
-    bpf_printk("[%llu] [NHP-DENYEND] SRC=%d.%d.%d.%d DST=%d.%d.%d.%d PROTO=%d SPT=%d DPT=%d",
-        now_sec,
-        iph->saddr & 0xFF,
-        (iph->saddr >> 8) & 0xFF,
-        (iph->saddr >> 16) & 0xFF,
-        (iph->saddr >> 24) & 0xFF,
-        iph->daddr & 0xFF,
-        (iph->daddr >> 8) & 0xFF,
-        (iph->daddr >> 16) & 0xFF,
-        (iph->daddr >> 24) & 0xFF,
-        (int)iph->protocol,
-        bpf_htons(ct_key.sport),
-        bpf_htons(ct_key.dport));
-
-    bpf_printk("Deny: src : 0x%08x, dst: 0x%08x, port: %d, protocol: %d", 
-        iph->saddr, iph->daddr, bpf_htons(ct_key.dport), (int)iph->protocol);
 
     submit_event(ctx, 0, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
     return XDP_DROP;

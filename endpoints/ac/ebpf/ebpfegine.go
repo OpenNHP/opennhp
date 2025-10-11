@@ -75,7 +75,6 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 	}
 
 	const ebpfenginename string = "nhp_ebpf_xdp.o"
-	//ebpf nhp_ebpf_xdp.o save to etc/ after clang compile
 	bpfDir := "etc"
 	specPath := filepath.Join(bpfDir, ebpfenginename)
 
@@ -127,12 +126,6 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 		return err
 	}
 	log.Info("Whitelist map ID: %d", objs.Whitelist.FD())
-	// log.Info("Whitelist Map Pin Path: %s", objs.Whitelist.PinPath())
-	log.Info("sdWhitelist map ID: %d", objs.Sdwhitelist.FD())
-	// log.Info("sdWhitelist Map Pin Path: %s", objs.Sdwhitelist.PinPath())
-
-	// Accessing the Perf Buffer Map named "events" defined in eBPF.
-	eventsMap := objs.Events
 	if eventsMap == nil {
 		log.Error("failed to load 'events' map from eBPF object (nil)")
 		return fmt.Errorf("'events' map not found")

@@ -256,7 +256,7 @@ func CleanupBPFFiles() {
 		"/sys/fs/bpf/protocol_port",
 		"/sys/fs/bpf/sdwhitelist",
 		"/sys/fs/bpf/src_port_list",
-		"/sys/fs/bpf/whitelist",
+		"/sys/fs/bpf/spp",
 	}
 
 	for _, file := range bpfFiles {

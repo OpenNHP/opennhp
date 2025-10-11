@@ -126,6 +126,7 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 		return err
 	}
 	log.Info("Whitelist map ID: %d", objs.Whitelist.FD())
+	eventsMap := objs.Events
 	if eventsMap == nil {
 		log.Error("failed to load 'events' map from eBPF object (nil)")
 		return fmt.Errorf("'events' map not found")

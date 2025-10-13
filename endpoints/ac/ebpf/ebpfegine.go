@@ -29,11 +29,16 @@ type bpfObjects struct {
 	Whitelist     *ebpf.Map     `ebpf:"spp"`
 	Icmpwhitelist *ebpf.Map     `ebpf:"icmpwhitelist"`
 	Sdwhitelist   *ebpf.Map     `ebpf:"sdwhitelist"`
-	Srcportlist   *ebpf.Map     `ebpf:"src_port_list"`
+	Srcportlist   *ebpf.Map     `ebpf:"src_port"`
 	Portlist      *ebpf.Map     `ebpf:"port_list"`
 	Protocolport  *ebpf.Map     `ebpf:"protocol_port"`
 	Conntrack     *ebpf.Map     `ebpf:"conn_track"`
 	Events        *ebpf.Map     `ebpf:"events"`
+}
+
+type tcBpfObjects struct {
+	TcEgressProg *ebpf.Program `ebpf:"tc_egress_prog"`
+	Whitelist    *ebpf.Map     `ebpf:"spp"`
 }
 
 var (
@@ -41,31 +46,30 @@ var (
 	AcLogger   *log.Logger
 )
 
-// 定义与 eBPF 中的 event_t 完全一致的结构体
-// 用于接收从 Perf Buffer 传来的事件
 type Event struct {
-	Timestamp  uint64 `ebpf:"timestamp"`   // 纳秒级时间戳
-	Action     uint8  `ebpf:"action"`      // 0 = DENY, 1 = ACCEPT
-	SrcIP      uint32 `ebpf:"src_ip"`      // 源IP（网络字节序）
-	DstIP      uint32 `ebpf:"dst_ip"`      // 目的IP（网络字节序）
-	SrcPort    uint16 `ebpf:"src_port"`    // 源端口（主机字节序）
-	DstPort    uint16 `ebpf:"dst_port"`    // 目的端口（主机字节序）
-	Protocol   uint8  `ebpf:"protocol"`    // 协议号，如 6=TCP, 17=UDP
-	PayloadLen uint16 `ebpf:"payload_len"` // 包体长度
+	Timestamp  uint64 `ebpf:"timestamp"`
+	Action     uint8  `ebpf:"action"`
+	SrcIP      uint32 `ebpf:"src_ip"`
+	DstIP      uint32 `ebpf:"dst_ip"`
+	SrcPort    uint16 `ebpf:"src_port"`
+	DstPort    uint16 `ebpf:"dst_port"`
+	Protocol   uint8  `ebpf:"protocol"`
+	PayloadLen uint16 `ebpf:"payload_len"`
 }
 
 var xdpLink link.Link
+var tcLink link.Link
 var bootTime time.Time
 
 func init() {
 	var info syscall.Sysinfo_t
 	if err := syscall.Sysinfo(&info); err != nil {
-		panic("无法获取系统运行时间: " + err.Error())
+		panic("Failed to get the system running time: " + err.Error())
 	}
 
 	now := time.Now()
 	bootTime = now.Add(-time.Duration(info.Uptime) * time.Second)
-	log.Info("系统启动时间: %v", bootTime)
+	log.Info("​​System boot time: %v", bootTime)
 }
 
 func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
@@ -75,17 +79,30 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 	}
 
 	const ebpfenginename string = "nhp_ebpf_xdp.o"
+	const tcObjName string = "tc_egress.o"
+	//ebpf nhp_ebpf_xdp.o save to etc/ after clang compile
 	bpfDir := "etc"
 	specPath := filepath.Join(bpfDir, ebpfenginename)
+	tcSpecPath := filepath.Join(bpfDir, tcObjName)
 
 	if _, err := os.Stat(specPath); os.IsNotExist(err) {
 		log.Error("eBPF object file not found ")
+		return err
+	}
+	if _, err := os.Stat(tcSpecPath); os.IsNotExist(err) {
+		log.Error("tc eBPF object file not found ")
 		return err
 	}
 
 	spec, err := ebpf.LoadCollectionSpec(specPath)
 	if err != nil {
 		log.Error("failed to load eBPF object")
+		return err
+	}
+	// Load tc eBPF object
+	tcSpec, err := ebpf.LoadCollectionSpec(tcSpecPath)
+	if err != nil {
+		log.Error("failed to load tc eBPF object")
 		return err
 	}
 
@@ -99,8 +116,22 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 		return err
 	}
 
+	var tcObjs tcBpfObjects
+	if err := tcSpec.LoadAndAssign(&tcObjs, &ebpf.CollectionOptions{
+		Maps: ebpf.MapOptions{
+			PinPath: "/sys/fs/bpf/", // automatically mounted to
+		},
+	}); err != nil {
+		log.Error("Failed to load and assign tc eBPF objects")
+		return err
+	}
+
 	if err := objs.XdpProg.Pin("/sys/fs/bpf/xdp_white_prog"); err != nil {
 		log.Error("failed to pin XDP program xdp_white_prog to /sys/fs/bpf/")
+		return err
+	}
+	if err := tcObjs.TcEgressProg.Pin("/sys/fs/bpf/tc_egress_prog"); err != nil {
+		log.Error("failed to pin TC egress program tc_egress_prog to /sys/fs/bpf/")
 		return err
 	}
 
@@ -125,7 +156,18 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 		log.Error("failed to attach XDP program to interface: %s", ifaceName)
 		return err
 	}
-	log.Info("Whitelist map ID: %d", objs.Whitelist.FD())
+	//load tc eBPF tc_egress.o to net interface which default route exit
+	tcLink, err = link.AttachTCX(link.TCXOptions{
+		Program:   tcObjs.TcEgressProg,
+		Interface: iface.Index,
+		Attach:    ebpf.AttachTCXEgress,
+	})
+	if err != nil {
+		log.Error("failed to attach TC egress program to interface: %s", ifaceName)
+		return err
+	}
+
+	// Accessing the Perf Buffer Map named "events" defined in eBPF.
 	eventsMap := objs.Events
 	if eventsMap == nil {
 		log.Error("failed to load 'events' map from eBPF object (nil)")
@@ -179,8 +221,8 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 			timestamp := binary.LittleEndian.Uint64(record.RawSample[0:8])
 			srcIP := binary.BigEndian.Uint32(record.RawSample[9:13])
 			dstIP := binary.BigEndian.Uint32(record.RawSample[13:17])
-			srcPort := binary.LittleEndian.Uint16(record.RawSample[17:19])
-			dstPort := binary.LittleEndian.Uint16(record.RawSample[19:21])
+			srcPort := binary.BigEndian.Uint16(record.RawSample[17:19])
+			dstPort := binary.BigEndian.Uint16(record.RawSample[19:21])
 			protocol := record.RawSample[21]
 			payloadLen := binary.BigEndian.Uint16(record.RawSample[22:24])
 
@@ -256,8 +298,9 @@ func CleanupBPFFiles() {
 		"/sys/fs/bpf/port_list",
 		"/sys/fs/bpf/protocol_port",
 		"/sys/fs/bpf/sdwhitelist",
-		"/sys/fs/bpf/src_port_list",
+		"/sys/fs/bpf/src_port",
 		"/sys/fs/bpf/spp",
+		"/sys/fs/bpf/tc_egress_prog",
 	}
 
 	for _, file := range bpfFiles {
@@ -269,9 +312,16 @@ func CleanupBPFFiles() {
 			log.Info("Successfully removed BPF file: %s", file)
 		}
 	}
+	if xdpLink != nil {
+		xdpLink.Close()
+		log.Info("XDP link detached and closed")
+	}
+	if tcLink != nil {
+		tcLink.Close()
+		log.Info("TCX link detached and closed")
+	}
 }
 
-// protoToString 将 IP 协议号转换为协议名称
 func protoToString(proto uint8) string {
 	switch proto {
 	case 6:

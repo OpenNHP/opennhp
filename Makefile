@@ -39,21 +39,27 @@ ifneq (,$(findstring ebpf,$(MAKECMDGOALS)))
     endif
 endif
 
-EBPF_SRC = ./nhp/ebpf/xdp/nhp_ebpf_xdp.c
-EBPF_OBJ = ./release/nhp-ac/etc/nhp_ebpf_xdp.o
+EBPF_SRC_XDP = ./nhp/ebpf/xdp/nhp_ebpf_xdp.c
+EBPF_SRC_TC_EGRESS = ./nhp/ebpf/xdp/tc_egress.c
+EBPF_OBJ_XDP = ./release/nhp-ac/etc/nhp_ebpf_xdp.o
+EBPF_OBJ_TC_EGRESS = ./release/nhp-ac/etc/tc_egress.o
 CLANG_OPTS = -O2 -target bpf -g -Wall -I.
 
 .PHONY: ebpf
-ebpf: $(EBPF_OBJ) generate-version-and-build
+ebpf: $(EBPF_OBJ_XDP) $(EBPF_OBJ_TC_EGRESS) generate-version-and-build
 	@echo "$(COLOUR_GREEN)[eBPF] Full build completed$(END_COLOUR)"
 
-$(EBPF_OBJ): $(EBPF_SRC)
+$(EBPF_OBJ_XDP): $(EBPF_SRC_XDP)
 	@mkdir -p $(@D)
 	@echo "$(COLOUR_BLUE)[eBPF] Compiling: $< -> $@ $(END_COLOUR)"
-	$(CLANG) $(CLANG_OPTS) -c $(EBPF_SRC) -o $(EBPF_OBJ)
+	$(CLANG) $(CLANG_OPTS) -c $(EBPF_SRC_XDP) -o $(EBPF_OBJ_XDP)
+$(EBPF_OBJ_TC_EGRESS): $(EBPF_SRC_TC_EGRESS)
+	@mkdir -p $(@D)
+	@echo "$(COLOUR_BLUE)[eBPF] Compiling: $< -> $@ $(END_COLOUR)"
+	$(CLANG) $(CLANG_OPTS) -c $(EBPF_SRC_TC_EGRESS) -o $(EBPF_OBJ_TC_EGRESS)
 
 clean_ebpf:
-	@rm -f $(EBPF_OBJ)
+	@rm -f $(EBPF_OBJ_XDP) $(EBPF_OBJ_TC_EGRESS)
 	@echo "$(COLOUR_GREEN)[Clean] Removed eBPF object file$(END_COLOUR)"
 
 generate-version-and-build:

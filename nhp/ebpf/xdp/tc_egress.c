@@ -3,12 +3,11 @@
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_endian.h>
 
-// ========== 添加 TC action 定义 ==========
 #define TC_ACT_UNSPEC         (-1)
 #define TC_ACT_OK               0
 #define TC_ACT_SHOT             2
 #define TC_ACT_STOLEN           4
-// ==================== 协议常量 ====================
+
 #define ETH_P_IP    0x0800
 #define ETH_P_IPV6  0x86DD
 #define IPPROTO_TCP 6

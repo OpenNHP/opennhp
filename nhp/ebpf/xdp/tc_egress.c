@@ -89,7 +89,7 @@ int tc_egress_prog(struct __sk_buff *ctx)
 
     struct whitelist_value spp_value = {
         .allowed = 1,
-        .expire_time = bpf_ktime_get_ns() + 120 * 1000000000ULL,
+        .expire_time = bpf_ktime_get_ns() + 180 * 1000000000ULL,
     };
     bpf_map_update_elem(&spp, &spp_key, &spp_value, BPF_ANY);
 

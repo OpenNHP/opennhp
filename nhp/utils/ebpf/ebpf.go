@@ -71,7 +71,7 @@ func (r *whitelistKey) ToWlKey() []byte {
 	keyBytes := make([]byte, 11)
 	binary.LittleEndian.PutUint32(keyBytes[0:4], r.SrcIP)
 	binary.LittleEndian.PutUint32(keyBytes[4:8], r.DstIP)
-	binary.LittleEndian.PutUint16(keyBytes[8:10], r.DstPort)
+	binary.BigEndian.PutUint16(keyBytes[8:10], r.DstPort)
 	keyBytes[10] = r.Protocol
 	return keyBytes
 }
@@ -206,7 +206,7 @@ func AddSrcipDestPortRule(whitelistMap *ebpf.Map, rule *srcIPdstPortKey, ttlSec 
 }
 
 func AddEbpfRuleForSrcDstPortProto(srcIPStr, dstIPStr string, protocol uint8, dstPort uint16, ttlSec uint64) error {
-	whitelistMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/whitelist", nil)
+	whitelistMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/spp", nil)
 	if err != nil {
 		log.Error("failed to load pinned whitelist map: %v", err)
 		return err
@@ -264,7 +264,7 @@ func AddEbpfRuleForSrcDst(srcIPStr, dstIPStr string, ttlSec uint64) error {
 }
 
 func AddEbpfRuleForSrcDestPort(srcIPStr string, dstPort int, ttlSec uint64) error {
-	whitelistMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/src_port_list", nil)
+	whitelistMap, err := ebpf.LoadPinnedMap("/sys/fs/bpf/src_port", nil)
 	if err != nil {
 		log.Error("failed to load pinned whitelist map: %v", err)
 		return err

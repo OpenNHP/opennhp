@@ -99,7 +99,7 @@ struct {
     __type(value, struct whitelist_value);
     __uint(max_entries, 1000000);
     __uint(pinning, LIBBPF_PIN_BY_NAME);
-} whitelist SEC(".maps");
+} spp SEC(".maps");
 
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
@@ -107,7 +107,7 @@ struct {
     __type(value, struct src_port_list_value);
     __uint(max_entries, 1000000);
     __uint(pinning, LIBBPF_PIN_BY_NAME);
-} src_port_list SEC(".maps");
+} src_port SEC(".maps");
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
@@ -167,6 +167,38 @@ struct {
     __type(value, struct conn_value);
     __uint(pinning, LIBBPF_PIN_BY_NAME);
 } conn_track SEC(".maps");
+
+struct event_t {
+    __u64 timestamp;    
+    __u8 action;        
+    __be32 src_ip;
+    __be32 dst_ip;
+    __be16 src_port;    
+    __be16 dst_port;    
+    __u8 protocol;      
+    __be16 len;
+} __attribute__((packed));
+
+struct {
+    __uint(type, BPF_MAP_TYPE_PERF_EVENT_ARRAY);
+    __uint(max_entries, 1024);
+} events SEC(".maps");
+
+// Submit the event details including source and destination IP addresses, source and destination ports, protocol, and total packet length to the user space.
+static __always_inline int submit_event(void *ctx, __u8 action, __be32 src_ip, __be32 dst_ip, __be16 src_port, __be16 dst_port, __u8 protocol, __be16 len) {
+    struct event_t ev = {};
+    ev.timestamp = bpf_ktime_get_ns();
+    ev.action = action; // 0 = DENY, 1 = ACCEPT
+    ev.src_ip = src_ip;
+    ev.dst_ip = dst_ip;
+    ev.src_port = src_port;
+    ev.dst_port = dst_port;
+    ev.protocol = protocol;
+    ev.len = len;
+
+    // Submit the event details to the user space Perf Buffer.
+    return bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &ev, sizeof(ev));
+}
 
 static __always_inline void reverseTuple(struct ipv4_ct_tuple *key) {
     __u32 tmp_ip = key->daddr;
@@ -232,6 +264,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         ct_key.nexthdr = IPPROTO_TCP;
         ct_key.sport = tcp->source;
         ct_key.dport = tcp->dest;
+        // ct_key.dport = bpf_htons(tcp->dest);
     } else if (iph->protocol == IPPROTO_UDP) {
         struct udphdr *udp = (void *)(iph + 1);
         if ((void *)(udp + 1) > data_end)
@@ -239,7 +272,9 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         ct_key.nexthdr = IPPROTO_UDP;
         ct_key.sport = udp->source;
         ct_key.dport = udp->dest;
+        // ct_key.dport = bpf_htons(udp->dest);
     } 
+
     
     if (iph->protocol == IPPROTO_TCP) {
         void *tcp_start = (void *)iph + (iph->ihl * 4);
@@ -253,9 +288,11 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     }
     
     if (iph->protocol == IPPROTO_UDP && 
-        (ct_key.dport == bpf_htons(67) || ct_key.dport == bpf_htons(68))) {
+        (ct_key.dport == bpf_htons(67) || ct_key.dport == bpf_htons(68) || ct_key.sport == bpf_htons(53))) {
         return XDP_PASS;
     }
+    __u64 now = bpf_ktime_get_ns();
+    __u64 now_sec = now / 1000000000ULL;
 
     // ICMP
     if (iph->protocol == IPPROTO_ICMP) {
@@ -294,7 +331,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
 
     ct_key.saddr = iph->saddr;
     ct_key.daddr = iph->daddr;
-    ct_key.flags = CT_DIR_EGRESS;
+    ct_key.flags = CT_DIR_INGRESS;
     struct conn_value *existing_val;
 
     existing_val = bpf_map_lookup_elem(&conn_track, &ct_key);
@@ -309,7 +346,6 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_EXIST);
         return XDP_PASS;
     }
-
     reverseTuple(&ct_key);
     existing_val = bpf_map_lookup_elem(&conn_track, &ct_key);
     if (existing_val) {
@@ -326,7 +362,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         return XDP_PASS;
     }
     reverseTuple(&ct_key);
-    
+
     struct whitelist_key key = {
         .src_ip = iph->saddr,
         .dst_ip = iph->daddr,
@@ -357,115 +393,124 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     };
 
     //Lookup whitelist entry
-    struct whitelist_value *w_val = bpf_map_lookup_elem(&whitelist, &key);
+    struct whitelist_value *w_val = bpf_map_lookup_elem(&spp, &key);
     //Lookup sdwhitelist entry
     struct sdwhitelist_value *sd_val = bpf_map_lookup_elem(&sdwhitelist, &sdkey);
     //Lookup src_port_list entry
-    struct src_port_list_value *sp_val = bpf_map_lookup_elem(&src_port_list, &spkey);
+    struct src_port_list_value *sp_val = bpf_map_lookup_elem(&src_port, &spkey);
     //Lookup port_list entry
     struct port_list_value *pl_val= bpf_map_lookup_elem(&port_list, &pl_key);
     //Lookup protocol_port entry
     struct protocol_port_value *pp_val= bpf_map_lookup_elem(&protocol_port, &pp_key);
 
-
-    __u64 now = bpf_ktime_get_ns();
-    // Check if whitelist entry has expired
-    if (w_val && (w_val->expire_time < now)) {
-        bpf_map_delete_elem(&whitelist, &key);
-        return XDP_DROP;
+    if (w_val) {
+        __u64 expire_time = w_val->expire_time;
+        if (expire_time < now) {
+            bpf_map_delete_elem(&spp, &key);
+            return XDP_DROP;
+        }
+        if (w_val->allowed == 1) {
+            submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
+            struct conn_value new_val = {
+                .timestamp = bpf_ktime_get_ns(),
+                .last_timestamp = bpf_ktime_get_ns(),
+                .ttl_ns = expire_time - now,
+                .state = CT_ESTABLISHED,
+                .flags = CT_FLAG_NONE,
+                .rx_packets = 1,
+                .tx_packets = 0,
+            };
+            bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
+            return XDP_PASS;
+        }
     }
-    // Check if sdwhitelist entry has expired
-    if (sd_val && (sd_val->expire_time < now)) {
-        bpf_map_delete_elem(&sdwhitelist, &sdkey);
-        return XDP_DROP;
-    }
-    // Check if src_port_list entry has expired
-    if (sp_val && (sp_val->expire_time < now)) {
-        bpf_map_delete_elem(&src_port_list, &spkey);
-        return XDP_DROP;
-    }
-    // Check if port_list entry has expired
-    if (pl_val && (pl_val->expire_time < now)) {
-        bpf_map_delete_elem(&port_list, &pl_key);
-        return XDP_DROP;
-    }
-    // Check if protocol_port entry has expired
-    if (pp_val && (pp_val->expire_time < now)) {
-        bpf_map_delete_elem(&protocol_port, &pp_key);
-        return XDP_DROP;
-    }
-
-    // Check if whitelist entry allows this connection
-    if (w_val && w_val->allowed == 1) {
-        struct conn_value new_val = {
-            .timestamp = bpf_ktime_get_ns(),
-            .last_timestamp = bpf_ktime_get_ns(),
-            .ttl_ns = w_val->expire_time - now,
-            .state = CT_ESTABLISHED,
-            .flags = CT_FLAG_NONE,
-            .rx_packets = 1,
-            .tx_packets = 0,
-        };
-        bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
-        return XDP_PASS;
-    }
-    // Check if sdwhitelist entry allows this connection
-    if (sd_val && sd_val->allowed == 1) {
-        struct conn_value new_val = {
-            .timestamp = bpf_ktime_get_ns(),
-            .last_timestamp = bpf_ktime_get_ns(),
-            .ttl_ns = sd_val->expire_time - now,
-            .state = CT_ESTABLISHED,
-            .flags = CT_FLAG_NONE,
-            .rx_packets = 1,
-            .tx_packets = 0,
-        };
-        bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
-        return XDP_PASS;
-    }
-    // Check if src_port_list entry allows this connection
-    if (sp_val && sp_val->allowed == 1) {
-        struct conn_value new_val = {
-            .timestamp = bpf_ktime_get_ns(),
-            .last_timestamp = bpf_ktime_get_ns(), 
-            .ttl_ns = sp_val->expire_time - now,
-            .state = CT_ESTABLISHED,
-            .flags = CT_FLAG_NONE,
-            .rx_packets = 1,
-            .tx_packets = 0,
-        };
-        bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
-        return XDP_PASS;
-    }
-    // Check if port_list entry allows this connection
-    if ((pl_val && pl_val->allowed == 1) && (dst_port >= pl_key.min_port && dst_port <= pl_key.max_port)) {
-        struct conn_value new_val = {
-            .timestamp = bpf_ktime_get_ns(),
-            .last_timestamp = bpf_ktime_get_ns(),
-            .ttl_ns = pl_val->expire_time - now,
-            .state = CT_ESTABLISHED,
-            .flags = CT_FLAG_NONE,
-            .rx_packets = 1,
-            .tx_packets = 0,
-        };
-        bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
-        return XDP_PASS;
-    }
-    // Check if protocol_port entry allows this connection
-    if (pp_val && pp_val->allowed == 1){
-        struct conn_value new_val = {
-            .timestamp = bpf_ktime_get_ns(),
-            .last_timestamp = bpf_ktime_get_ns(),
-            .ttl_ns = pp_val->expire_time - now,
-            .state = CT_ESTABLISHED,
-            .flags = CT_FLAG_NONE,
-            .rx_packets = 1,
-            .tx_packets = 0,
-        };
-        bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
-        return XDP_PASS;
+    if (sd_val) {
+        __u64 expire_time = sd_val->expire_time;
+        if (expire_time < now) {
+            bpf_map_delete_elem(&sdwhitelist, &sdkey);
+            return XDP_DROP;
+        }
+        if (sd_val->allowed == 1) {
+            submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
+            struct conn_value new_val = {
+                .timestamp = bpf_ktime_get_ns(),
+                .last_timestamp = bpf_ktime_get_ns(),
+                .ttl_ns = sd_val->expire_time - now,
+                .state = CT_ESTABLISHED,
+                .flags = CT_FLAG_NONE,
+                .rx_packets = 1,
+                .tx_packets = 0,
+            };
+            bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
+            return XDP_PASS;
+        }       
     }
 
+    if (sp_val) {
+        __u64 expire_time = sp_val->expire_time;
+        if (expire_time < now) {
+            bpf_map_delete_elem(&src_port, &spkey);
+            return XDP_DROP;
+        }
+        if (sp_val->allowed == 1) {
+            submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
+            struct conn_value new_val = {
+                .timestamp = bpf_ktime_get_ns(),
+                .last_timestamp = bpf_ktime_get_ns(), 
+                .ttl_ns = sp_val->expire_time - now,
+                .state = CT_ESTABLISHED,
+                .flags = CT_FLAG_NONE,
+                .rx_packets = 1,
+                .tx_packets = 0,
+            };
+            bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
+            return XDP_PASS;
+        }
+    }
+
+    if (pl_val) {
+        __u64 expire_time = pl_val->expire_time;
+        if (expire_time < now) {
+            bpf_map_delete_elem(&port_list, &pl_key);
+            return XDP_DROP;
+        }
+        if (pl_val->allowed == 1) {
+            submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
+            struct conn_value new_val = {
+                .timestamp = bpf_ktime_get_ns(),
+                .last_timestamp = bpf_ktime_get_ns(), 
+                .ttl_ns = pl_val->expire_time - now,
+                .state = CT_ESTABLISHED,
+                .flags = CT_FLAG_NONE,
+                .rx_packets = 1,
+                .tx_packets = 0,
+            };
+            bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
+            return XDP_PASS;
+        }
+    }
+    if (pp_val) {
+        __u64 expire_time = pp_val->expire_time;
+        if (expire_time < now) {
+            bpf_map_delete_elem(&protocol_port, &pp_key);
+            return XDP_DROP;
+        }
+        if (pp_val->allowed == 1) {
+            submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
+            struct conn_value new_val = {
+                .timestamp = bpf_ktime_get_ns(),
+                .last_timestamp = bpf_ktime_get_ns(), 
+                .ttl_ns = pp_val->expire_time - now,
+                .state = CT_ESTABLISHED,
+                .flags = CT_FLAG_NONE,
+                .rx_packets = 1,
+                .tx_packets = 0,
+            };
+            bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_ANY);
+            return XDP_PASS;
+        }
+    }
+    submit_event(ctx, 0, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
     return XDP_DROP;
 }
 

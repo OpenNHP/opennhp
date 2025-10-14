@@ -438,3 +438,90 @@ func (l *Logger) NewSubLogger(prepend string, level int) *Logger {
 func (l *Logger) DateUpdateChan() chan string {
 	return l.lw.dateUpdatedCh
 }
+
+func (l *Logger) SetFlags(flag int) {
+	l.Lock()
+	defer l.Unlock()
+
+	if l.lgWrn != nil {
+		l.lgWrn.SetFlags(flag)
+	}
+	if l.lgErr != nil {
+		l.lgErr.SetFlags(flag)
+	}
+	if l.lgCrt != nil {
+		l.lgCrt.SetFlags(flag)
+	}
+	if l.lgEva != nil {
+		l.lgEva.SetFlags(flag)
+	}
+	if l.lgInf != nil {
+		l.lgInf.SetFlags(flag)
+	}
+	if l.lgSts != nil {
+		l.lgSts.SetFlags(flag)
+	}
+	if l.lgAdt != nil {
+		l.lgAdt.SetFlags(flag)
+	}
+	if l.lgTrx != nil {
+		l.lgTrx.SetFlags(flag)
+	}
+	if l.lgDbg != nil {
+		l.lgDbg.SetFlags(flag)
+	}
+	if l.lgTrc != nil {
+		l.lgTrc.SetFlags(flag)
+	}
+	if l.lgVbs != nil {
+		l.lgVbs.SetFlags(flag)
+	}
+}
+
+func NewLoggerDefine(prepend string, level int, dir string, filename string) *Logger {
+	l := &Logger{
+		logLevel:  level,
+		callDepth: 2,
+	}
+
+	// start generic log writer
+	l.lw = &AsyncLogWriter{
+		DirPath:       dir,
+		Name:          filename,
+		dateUpdatedCh: make(chan string, 1),
+	}
+	l.lw.Start()
+
+	// start evaluate log writer
+	l.lwEvaluate = &AsyncLogWriter{
+		DirPath: dir,
+		Name:    filename + "-evaluate",
+	}
+	l.lwEvaluate.Start()
+
+	// start audit log writer
+	l.lwAudit = &AsyncLogWriter{
+		DirPath: dir,
+		Name:    filename + "-audit",
+	}
+	l.lwAudit.Start()
+
+	l.initActionsNoInfoPrepend(prepend)
+	return l
+}
+
+func (l *Logger) initActionsNoInfoPrepend(prepend string) {
+	flag := log.Ldate | log.Ltime | log.Lmsgprefix
+	if ShowCallerFileLine {
+		flag |= log.Lshortfile
+	}
+
+	l.lgInf = log.New(l.lw, prepend, flag)
+	l.Info = func(format string, args ...any) {
+		if l.logLevel >= LogLevelInfo {
+			l.lgInf.Output(l.callDepth, fmt.Sprintf(format, args...))
+		}
+	}
+
+	l.isRunning = true
+}

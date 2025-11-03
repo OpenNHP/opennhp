@@ -48,13 +48,14 @@ type SrcIpMap struct {
 }
 
 type Config struct {
-	PrivateKeyBase64       string `json:"privateKey"`
-	Hostname               string `json:"hostname"`
-	ListenIp               string `json:"listenIp"`
-	ListenPort             int    `json:"listenPort"`
-	LogLevel               int    `json:"logLevel"`
-	DefaultCipherScheme    int    `json:"defaultCipherScheme"`
-	DisableAgentValidation bool   `json:"disableAgentValidation"`
+	PrivateKeyBase64       string       `json:"privateKey"`
+	Hostname               string       `json:"hostname"`
+	ListenIp               string       `json:"listenIp"`
+	ListenPort             int          `json:"listenPort"`
+	LogLevel               int          `json:"logLevel"`
+	DefaultCipherScheme    int          `json:"defaultCipherScheme"`
+	DisableAgentValidation bool         `json:"disableAgentValidation"`
+	WebRTC                 WebRTCConfig `toml:"webrtc"`
 }
 
 type RemoteConfig struct {
@@ -427,6 +428,12 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 	if s.config == nil {
 		s.config = &conf
 		s.log.SetLogLevel(conf.LogLevel)
+		if conf.WebRTC.Enable {
+			s.webrtcServer = NewWebRTCServer(s, &conf.WebRTC)
+			if err := s.webrtcServer.Start(); err != nil {
+				log.Error("failed to start WebRTC server: %v", err)
+			}
+		}
 		return err
 	}
 
@@ -450,6 +457,19 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 		log.Info("set default cipher scheme to %d", conf.DefaultCipherScheme)
 		s.config.DefaultCipherScheme = conf.DefaultCipherScheme
 	}
+
+	// handle WebRTC configuration change
+	if conf.WebRTC.Enable && s.webrtcServer == nil {
+		s.webrtcServer = NewWebRTCServer(s, &conf.WebRTC)
+		if err := s.webrtcServer.Start(); err != nil {
+			log.Error("failed to start WebRTC server: %v", err)
+		}
+	}
+	if !conf.WebRTC.Enable && s.webrtcServer != nil {
+		s.webrtcServer.Stop()
+		s.webrtcServer = nil
+	}
+	s.config.WebRTC = conf.WebRTC
 
 	return err
 }

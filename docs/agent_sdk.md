@@ -770,6 +770,8 @@ The SDK adaptation on MacOS is the same as on Windows. Refer to section 2.1.1.3 
 - Method 1: Run the script in the project root directory.
   `make`
 
+  <small>*(Note: The Android NDK must be installed, otherwise the Android SDK will fail to compile.)*</small>
+  
 - Method 2: Command to compile the .so file for the SDK separately:
 
   Navigate to the `opennhp/endpoints/agent/main/` directory and execute the build command:

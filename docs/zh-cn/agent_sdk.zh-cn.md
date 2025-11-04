@@ -780,6 +780,8 @@ MacOS下对SDK的适配与Windows一致，代码参照章节**2.1.1.3**
 - 方法一：运行代码根目录下脚本
   `make`
 
+  <small>*（注：确保Android NDK已安装,如果没有安装,Android SDK将不会编译）*</small>
+  
 - 方法二：单独编译SDK的.so文件指令：
 
   在`opennhp/endpoints/agent/main/`目录下执行编译指令

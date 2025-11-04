@@ -138,10 +138,14 @@ endif
 androidagentsdk:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building Android agent SDK... $(END_COLOUR)"
 ifeq ($(OS_NAME), linux)
-	cd endpoints && \
-	GOOS=android GOARCH=arm64 CGO_ENABLED=1 \
-	CC=${ANDROID_CC} CXX=${ANDROID_CXX} \
-	go build -a -trimpath -buildmode=c-shared -ldflags ${LD_FLAGS} -v -o ../release/nhp-agent/libnhpagent.so ./agent/main/main.go ./agent/main/export.go
+    ifeq ($(TOOLCHAIN),)
+		@echo "Android NDK is not installed. Please install Android NDK to compile Android SDK."
+    else
+		cd endpoints && \
+		GOOS=android GOARCH=arm64 CGO_ENABLED=1 \
+		CC=${ANDROID_CC} CXX=${ANDROID_CXX} \
+		go build -a -trimpath -buildmode=c-shared -ldflags ${LD_FLAGS} -v -o ../release/nhp-agent/libnhpagent.so ./agent/main/main.go ./agent/main/export.go
+    endif
 endif
 
 macosagentsdk:
@@ -149,7 +153,7 @@ macosagentsdk:
 ifeq ($(OS_NAME), darwin)
 	cd endpoints && \
 	GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
-	go build -a -trimpath -buildmode=c-shared -ldflags ${LD_FLAGS} -v -o ../release/nhp-agent/nhp-agent.dylib ./agent/main/main.go ./agent/main/export.go
+	go build -a -trimpath -buildmode=c-shared -ldflags ${LD_FLAGS} -v -o ../release/nhp-agent/nhp-agent.dylib ./agent/main/main.go ./agent/main/expotr.go
 endif
 
 iosagentsdk:

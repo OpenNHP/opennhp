@@ -31,6 +31,10 @@ END_COLOUR=\033[0m
 # Plugins
 NHP_SERVER_PLUGINS = ./endpoints/server/plugins
 
+# Android environment settings
+ANDROID_CC='${TOOLCHAIN}/bin/aarch64-linux-android21-clang'
+ANDROID_CXX='${TOOLCHAIN}/bin/aarch64-linux-android21-clang++'
+
 # eBPF compile
 ifneq (,$(findstring ebpf,$(MAKECMDGOALS)))
     CLANG := $(shell command -v clang 2>/dev/null)
@@ -75,6 +79,9 @@ generate-version-and-build:
 	@$(MAKE) db
 	@$(MAKE) kgc
 	@$(MAKE) agentsdk
+	@$(MAKE) androidagentsdk
+	@$(MAKE) macosagentsdk
+	@$(MAKE) iosagentsdk
 	@$(MAKE) devicesdk
 	@$(MAKE) plugins
 	@$(MAKE) archive
@@ -128,6 +135,35 @@ ifeq ($(OS_NAME), linux)
 	gcc ./agent/sdkdemo/nhp-agent-demo.c -I ../release/nhp-agent -l:nhp-agent.so -L../release/nhp-agent -Wl,-rpath=. -o ../release/nhp-agent/nhp-agent-demo
 endif
 
+androidagentsdk:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Building Android agent SDK... $(END_COLOUR)"
+ifeq ($(OS_NAME), linux)
+    ifeq ($(TOOLCHAIN),)
+		@echo "Android NDK is not installed. Please install Android NDK to compile Android SDK."
+    else
+		cd endpoints && \
+		GOOS=android GOARCH=arm64 CGO_ENABLED=1 \
+		CC=${ANDROID_CC} CXX=${ANDROID_CXX} \
+		go build -a -trimpath -buildmode=c-shared -ldflags ${LD_FLAGS} -v -o ../release/nhp-agent/libnhpagent.so ./agent/main/main.go ./agent/main/export.go
+    endif
+endif
+
+macosagentsdk:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Building MacOS agent SDK... $(END_COLOUR)"
+ifeq ($(OS_NAME), darwin)
+	cd endpoints && \
+	GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
+	go build -a -trimpath -buildmode=c-shared -ldflags ${LD_FLAGS} -v -o ../release/nhp-agent/nhp-agent.dylib ./agent/main/main.go ./agent/main/expotr.go
+endif
+
+iosagentsdk:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Building IOS agent SDK... $(END_COLOUR)"
+ifeq ($(OS_NAME), darwin)
+	cd endpoints && \
+	gomobile bind -target ios -o ../release/nhp-agent/nhpagent.xcframework ./agent/iossdk
+endif
+
+
 devicesdk:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building nhp SDK... $(END_COLOUR)"
 ifeq ($(OS_NAME), linux)
@@ -149,4 +185,4 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init agentd acd serverd db agentsdk devicesdk plugins test archive ebpf clean_ebpf
+.PHONY: all generate-version-and-build init agentd acd serverd db agentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins test archive ebpf clean_ebpf

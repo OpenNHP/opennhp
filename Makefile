@@ -78,7 +78,7 @@ generate-version-and-build:
 	@$(MAKE) serverd
 	@$(MAKE) db
 	@$(MAKE) kgc
-	@$(MAKE) agentsdk
+	@$(MAKE) linuxagentsdk
 	@$(MAKE) androidagentsdk
 	@$(MAKE) macosagentsdk
 	@$(MAKE) iosagentsdk
@@ -127,8 +127,8 @@ kgc:
 	mkdir -p ../release/nhp-kgc/etc; \
 	cp ./kgc/main/etc/*.toml ../release/nhp-kgc/etc/
 
-agentsdk:
-	@echo "$(COLOUR_BLUE)[OpenNHP] Building agent SDK... $(END_COLOUR)"
+linuxagentsdk:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Building Linux agent SDK... $(END_COLOUR)"
 ifeq ($(OS_NAME), linux)
 	cd endpoints && \
 	go build -a -trimpath -buildmode=c-shared -ldflags ${LD_FLAGS} -v -o ../release/nhp-agent/nhp-agent.so ./agent/main/main.go ./agent/main/export.go && \
@@ -185,4 +185,4 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init agentd acd serverd db agentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins test archive ebpf clean_ebpf
+.PHONY: all generate-version-and-build init agentd acd serverd db linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins test archive ebpf clean_ebpf

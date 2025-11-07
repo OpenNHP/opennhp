@@ -13,6 +13,8 @@
 #define IPPROTO_TCP 6
 #define IPPROTO_UDP 17
 #define IPPROTO_ICMP 1
+#define KEY_EXPIRE_TIME_SECONDS 180 * 1000000000ULL
+#define MAX_ENTRIES 1000000
 
 struct whitelist_key {
     __be32 src_ip;
@@ -30,7 +32,7 @@ struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __type(key, struct whitelist_key);
     __type(value, struct whitelist_value);
-    __uint(max_entries, 1000000);
+    __uint(max_entries, MAX_ENTRIES);
     __uint(pinning, LIBBPF_PIN_BY_NAME);
 } spp SEC(".maps");
 
@@ -89,7 +91,7 @@ int tc_egress_prog(struct __sk_buff *ctx)
 
     struct whitelist_value spp_value = {
         .allowed = 1,
-        .expire_time = bpf_ktime_get_ns() + 180 * 1000000000ULL,
+        .expire_time = bpf_ktime_get_ns() + KEY_EXPIRE_TIME_SECONDS,
     };
     bpf_map_update_elem(&spp, &spp_key, &spp_value, BPF_ANY);
 

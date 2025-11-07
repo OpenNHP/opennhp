@@ -1,11 +1,11 @@
 ---
 layout: page
-title: OpenNHP Client Agent SDK Introduction
-nav_order: 12
+title: Client SDKs
+nav_order: 10
 permalink: /agent_sdk/
 ---
 
-# OpenNHP Client Agent SDK Introduction
+# Client SDKs
 {: .fs-9 }
 
 [中文版](/zh-cn/agent_sdk/){: .label .fs-4 }
@@ -476,10 +476,10 @@ Set up the compilation environment for Windows by referring to the Windows secti
 - **Method 1**：Run the *BAT* file in the code root directory
   `build.bat`<br>
   <small>*（Note: If an error occurs during the compilation process under windows, try this compilation method: In the Visual Studio developer command prompt for VS command window, switch to the project directory and execute the `./build.bat `command）*</small>
-  
+
 - Method 2: Command to compile the .dll file for the SDK separately:
 
-  Navigate to the opennhp/endpoints/agent/main/ directory and execute:
+  Navigate to the `opennhp/endpoints/agent/main/` directory and execute:
 
   `go build -trimpath -buildmode=c-shared -ldflags '-s -w' -v -o nhp-agent.dll main.go export.go`
 
@@ -491,117 +491,114 @@ Set up the compilation environment for Windows by referring to the Windows secti
 
   Java programs can call SDK methods using JNA:
 
-  - OpennhpLibrary interface loads the OpenNHP agent SDK
+    - OpennhpLibrary interface loads the OpenNHP agent SDK
 
-    ```java
-    package org.example;
-        
-    import com.sun.jna.Library;
-    import com.sun.jna.Native;
-    
-    /**
-     * OpenNHP agent sdk interface
-     *
-     * @author haochangjiu
-     * @version JDK 8
-     * @className OpennhpLibrary
-     * @date 2025/10/27
-     */
-    public interface OpennhpLibrary extends Library {
-        // load OpenNHP agent sdk
-        OpennhpLibrary INSTANCE = Native.load("nhp-agent", OpennhpLibrary.class);
-    
-        /**
-         * @description Initialization of the nhp_agent instance working directory path:
-         *              The configuration files to be read are located under workingdir/etc/,
-         *              and log files will be generated under workingdir/logs/.
-         * @param workingDir: the working directory path for the agent
-         * @param logLevel:   0: silent, 1: error, 2: info, 3: debug, 4: verbose
-         *                    return boolean Whether agent instance has been initialized successfully.
-         * @return boolean
-         * @author haochangjiu
-         * @date 2025/10/27
-         * {@link boolean}
-         */
-        boolean nhp_agent_init(String workingDir, int logLevel);
-    
-        /**
-         * @description Synchronously stop and release nhp_agent.
-         * @author haochangjiu
-         * @date 2025/10/27
-         */
-        void nhp_agent_close();
-        /**
-         * @description Read the user information, resource information, server information,
-         *              and other configuration files written under workingdir/etc,
-         *              and asynchronously start the loop knocking thread.
-         * @return int
-         * @author haochangjiu
-         * @date 2025/10/27
-         * {@link int}
-         */
-        int nhp_agent_knockloop_start();
-    
-        /**
-         * @description Synchronously stop the loop, knock-on sub thread
-         * @author hangchangjiu
-         * @date 2025/10/27
-         */
-        void nhp_agent_knockloop_stop();
-    }
-    ```
+      ```java
+      package org.example;
+          
+      import com.sun.jna.Library;
+      import com.sun.jna.Native;
+      
+      /**
+       * OpenNHP agent sdk interface
+       *
+       * @author haochangjiu
+       * @version JDK 8
+       * @className OpennhpLibrary
+       * @date 2025/10/27
+       */
+      public interface OpennhpLibrary extends Library {
+          // load OpenNHP agent sdk
+          OpennhpLibrary INSTANCE = Native.load("nhp-agent", OpennhpLibrary.class);
+      
+          /**
+           * @description Initialization of the nhp_agent instance working directory path:
+           *              The configuration files to be read are located under workingdir/etc/,
+           *              and log files will be generated under workingdir/logs/.
+           * @param workingDir: the working directory path for the agent
+           * @param logLevel:   0: silent, 1: error, 2: info, 3: debug, 4: verbose
+           *                    return boolean Whether agent instance has been initialized successfully.
+           * @return boolean
+           * @author haochangjiu
+           * @date 2025/10/27
+           * {@link boolean}
+           */
+          boolean nhp_agent_init(String workingDir, int logLevel);
+      
+          /**
+           * @description Synchronously stop and release nhp_agent.
+           * @author haochangjiu
+           * @date 2025/10/27
+           */
+          void nhp_agent_close();
+          /**
+           * @description Read the user information, resource information, server information,
+           *              and other configuration files written under workingdir/etc,
+           *              and asynchronously start the loop knocking thread.
+           * @return int
+           * @author haochangjiu
+           * @date 2025/10/27
+           * {@link int}
+           */
+          int nhp_agent_knockloop_start();
+      
+          /**
+           * @description Synchronously stop the loop, knock-on sub thread
+           * @author hangchangjiu
+           * @date 2025/10/27
+           */
+          void nhp_agent_knockloop_stop();
+      }
+      ```
+    - Application main entry, calling the SDK
 
-    
-
-  - Application main entry, calling the SDK
-
-    ```java
-    package org.example;
-        
-    import java.util.Scanner;
-    
-    /**
-     * Application for calling the OpenNHP agent SDK
-     *
-     * @author haochangjiu
-     * @version JDK 8
-     * @className App
-     * @date 2025/10/27
-     */
-    public class App {
-        public static void main(String[] args) throws Exception {
-            //        Initialize and start the OpenNHP agent SDK service
-            boolean initFlag = OpennhpLibrary.INSTANCE.nhp_agent_init("D:\\console-workspace\\opennhp-knock", 3);
-            if (!initFlag) {
-                System.out.println("NHP Agent init failed");
-                System.exit(0);
-            }
-            //        Invoke methods in the OpenNHP agent SDK via input commands
-            Scanner scanner = new Scanner(System.in);
-    
-            while (true) {
-                System.out.print("> ");
-                if (scanner.hasNextLine()) {
-                    String input = scanner.nextLine().trim();
-                    if ("knock".equalsIgnoreCase(input)) {
-                        System.out.println("start the loop knocking thread...");
-                        OpennhpLibrary.INSTANCE.nhp_agent_knockloop_start();
-                    } else if ("cancel".equalsIgnoreCase(input)) {
-                        System.out.println("stop the loop knocking thread...");
-                        OpennhpLibrary.INSTANCE.nhp_agent_knockloop_stop();
-                    } else if ("exit".equalsIgnoreCase(input)) {
-                        System.out.println("exit nhp agent service...");
-                        OpennhpLibrary.INSTANCE.nhp_agent_close();
-                        break;
-                    } else {
-                        System.out.println("invalid input");
-                    }
-                }
-            }
-            scanner.close();
-        }
-    }
-    ```
+      ```java
+      package org.example;
+          
+      import java.util.Scanner;
+      
+      /**
+       * Application for calling the OpenNHP agent SDK
+       *
+       * @author haochangjiu
+       * @version JDK 8
+       * @className App
+       * @date 2025/10/27
+       */
+      public class App {
+          public static void main(String[] args) throws Exception {
+              //        Initialize and start the OpenNHP agent SDK service
+              boolean initFlag = OpennhpLibrary.INSTANCE.nhp_agent_init("D:\\console-workspace\\opennhp-knock", 3);
+              if (!initFlag) {
+                  System.out.println("NHP Agent init failed");
+                  System.exit(0);
+              }
+              //        Invoke methods in the OpenNHP agent SDK via input commands
+              Scanner scanner = new Scanner(System.in);
+      
+              while (true) {
+                  System.out.print("> ");
+                  if (scanner.hasNextLine()) {
+                      String input = scanner.nextLine().trim();
+                      if ("knock".equalsIgnoreCase(input)) {
+                          System.out.println("start the loop knocking thread...");
+                          OpennhpLibrary.INSTANCE.nhp_agent_knockloop_start();
+                      } else if ("cancel".equalsIgnoreCase(input)) {
+                          System.out.println("stop the loop knocking thread...");
+                          OpennhpLibrary.INSTANCE.nhp_agent_knockloop_stop();
+                      } else if ("exit".equalsIgnoreCase(input)) {
+                          System.out.println("exit nhp agent service...");
+                          OpennhpLibrary.INSTANCE.nhp_agent_close();
+                          break;
+                      } else {
+                          System.out.println("invalid input");
+                      }
+                  }
+              }
+              scanner.close();
+          }
+      }
+      ```
 
 - **c/c++**
 
@@ -639,7 +636,7 @@ Set up the compilation environment for Windows by referring to the Windows secti
   }
   ```
 
-  
+
 
 - **python**
 
@@ -699,7 +696,7 @@ Set up the compilation environment for Linux by referring to the Linux section i
 
 - Method 2: Command to compile the .so file for the SDK separately:
 
-  Navigate to the opennhp/endpoints/agent/main/ directory and execute:
+  Navigate to the `opennhp/endpoints/agent/main/` directory and execute:
 
   `go build -trimpath -buildmode=c-shared -ldflags '-s -w' -v -o nhp-agent.so main.go export.go`
 
@@ -719,13 +716,16 @@ Set up the compilation environment for MacOS by referring to the MacOS section i
 
 ##### 2.1.3.2 Compiling the SDK
 
-The SDK compiled via the make command is a .so file, but the dynamic library file format on MacOS is .dylib. Therefore, SDK compilation needs to be done separately.
+- Method 1: Run the script in the project root directory.
+  `make`
 
-Navigate to the opennhp/endpoints/agent/main/ directory and execute the build command:
+- Method 2: Command to compile the .dylib file for the SDK separately:
 
-`GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -buildmode=c-shared -o nhp-agent.dylib main.go export.go`
+  Navigate to the `opennhp/endpoints/agent/main/` directory and execute the build command:
 
-<small>*(Note: Because export.go does not contain a main method, main.go is included in the build command. For custom SDK code files that include a main method, the build command only needs the SDK code file and does not need to include main.go.)*</small>
+  `GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -buildmode=c-shared -o nhp-agent.dylib main.go export.go`
+
+  <small>*(Note: Because export.go does not contain a main method, main.go is included in the build command. For custom SDK code files that include a main method, the build command only needs the SDK code file and does not need to include main.go.)*</small>
 
 ##### 2.1.3.3 SDK Adaptation
 The SDK adaptation on MacOS is the same as on Windows. Refer to section 2.1.1.3 for the code.
@@ -742,77 +742,81 @@ The SDK adaptation on MacOS is the same as on Windows. Refer to section 2.1.1.3 
 
 - Android NDK Environment:
 
-  - Download and install Android NDK.
+    - Download and install Android NDK.
 
-    `wget https://dl.google.com/android/repository/android-ndk-r25b-linux.zip
-    unzip android-ndk-r25b-linux.zip`
+      `wget https://dl.google.com/android/repository/android-ndk-r25b-linux.zip
+      unzip android-ndk-r25b-linux.zip`
 
-  - Set environment variables.
+    - Set environment variables.
 
-    - Edit the bashrc file.
+        - Edit the bashrc file.
 
-      `vim ~/.bashrc`
+          `vim ~/.bashrc`
 
-    - Add environment variables.
+        - Add environment variables.
 
-      ```sh
-      # Set NDK path (according to your actual installation path)
-      export ANDROID_NDK_HOME=/opt/android-ndk-r25b/
-      export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
-      # For arm64-v8a use aarch64 toolchain
-      export CC=$TOOLCHAIN/bin/aarch64-linux-android21-clang
-      export CXX=$TOOLCHAIN/bin/aarch64-linux-android21-clang++
-      ```
+          ```sh
+          # Set NDK path (according to your actual installation path)
+          export ANDROID_NDK_HOME=/opt/android-ndk-r25b/
+          export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
+          ```
 
-    - Make the configuration effective.
+        - Make the configuration effective.
 
-      `source ~/.bashrc`
+  `source ~/.bashrc`
 
 ##### 2.2.1.2 Compiling the SDK
 
-Navigate to the opennhp/endpoints/agent/main/ directory and execute the build command:
+- Method 1: Run the script in the project root directory.
+  `make`
 
-`GOOS=android GOARCH=arm64 CGO_ENABLED=1 go build -buildmode=c-shared -o libnhpagent.so main.go export.go`
+  <small>*(Note: The Android NDK must be installed, otherwise the Android SDK will fail to compile.)*</small>
+  
+- Method 2: Command to compile the .so file for the SDK separately:
 
-<small>*(Note: When an Android project loads .so files via JNA, it adds 'lib' to the front of the input .so file name. When compiling the SDK, the name should start with 'lib', e.g., libnhpagent.so.)*</small>
+  Navigate to the `opennhp/endpoints/agent/main/` directory and execute the build command:
+
+  `GOOS=android GOARCH=arm64 CGO_ENABLED=1 CC=$TOOLCHAIN/bin/aarch64-linux-android21-clang CXX=$TOOLCHAIN/bin/aarch64-linux-android21-clang++ go build -buildmode=c-shared -o libnhpagent.so main.go export.go`
+
+  <small>*(Note: When an Android project loads .so files via JNA, it adds 'lib' to the front of the input .so file name. When compiling the SDK, the name should start with 'lib', e.g., libnhpagent.so.)*</small>
 
 ##### 2.2.1.3 SDK Adaptation
 
 - **Android Configuration (Applicable for both Kotlin and Java)**:
 
-  - 1.Add the following configuration in build.gradle (app):
+    - 1.Add the following configuration in build.gradle (app):
 
-    Add under the `android` section:
+      Add under the `android` section:
 
-    ```json
-    sourceSets {
-        main {
-            jniLibs.srcDirs = ['src/main/jniLibs', 'libs']
-        }
-    }
-    ```
+      ```json
+      sourceSets {
+          main {
+              jniLibs.srcDirs = ['src/main/jniLibs', 'libs']
+          }
+      }
+      ```
 
-    Add the following dependencies under the `dependencies` section:
+      Add the following dependencies under the `dependencies` section:
 
-    // Note: It is recommended for Android to use an adapted JNA version, e.g., 5.13.0 or higher.`implementation 'net.java.dev.jna:jna:5.13.0@aar'`
+      // Note: It is recommended for Android to use an adapted JNA version, e.g., 5.13.0 or higher.`implementation 'net.java.dev.jna:jna:5.13.0@aar'`
 
-    // Permission request framework: https://github.com/getActivity/XXPermissions
-    `implementation libs.xxpermissions`
+      // Permission request framework: https://github.com/getActivity/XXPermissions
+      `implementation libs.xxpermissions`
 
-    In the libs.versions.toml file:
-    Under `[versions]`, add:
-    `xxpermissions = "18.6"`
-    Under `[libraries]`, add:
-    `xxpermissions = { module = "com.github.getActivity:XXPermissions", version.ref = "xxpermissions" }`
+      In the libs.versions.toml file:
+      Under `[versions]`, add:
+      `xxpermissions = "18.6"`
+      Under `[libraries]`, add:
+      `xxpermissions = { module = "com.github.getActivity:XXPermissions", version.ref = "xxpermissions" }`
 
-  - 2.Add file storage read and write permissions in the AndroidManifest.xml file:
+    - 2.Add file storage read and write permissions in the AndroidManifest.xml file:
 
-    ```xml
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    ```
+      ```xml
+      <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+      <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+      <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+      <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+      ```
 
 - **Kotlin**
 
@@ -931,122 +935,112 @@ Navigate to the opennhp/endpoints/agent/main/ directory and execute the build co
   }
   ```
 
-  
+
 
 - **java**
 
-  - Create the OpennhpLibrary interface to load the OpenNHP agent SDK.
+    - Create the OpennhpLibrary interface to load the OpenNHP agent SDK.
 
-    <small>*(Note: When introducing .so files in an Android project, 'lib' is added before the dynamic library file name. That is, the SDK name loaded in the code is 'nhpagent', but the actual SDK loaded by the program is the 'libnhpagent.so' file.)*</small>
+      <small>*(Note: When introducing .so files in an Android project, 'lib' is added before the dynamic library file name. That is, the SDK name loaded in the code is 'nhpagent', but the actual SDK loaded by the program is the 'libnhpagent.so' file.)*</small>
 
-    ```java
-    package org.example;
-    
-    import com.sun.jna.Library;
-    import com.sun.jna.Native;
-    
-    /**
-     * OpenNHP agent sdk interface
-     *
-     * @author haochangjiu
-     * @version JDK 8
-     * @className OpennhpLibrary
-     * @date 2025/10/27
-     */
-    public interface OpennhpLibrary extends Library {
-        // load OpenNHP agent sdk
-        OpennhpLibrary INSTANCE = Native.load("nhpagent", OpennhpLibrary.class);
-    
-        /**
-         * @description Initialization of the nhp_agent instance working directory path:
-         *              The configuration files to be read are located under workingdir/etc/,
-         *              and log files will be generated under workingdir/logs/.
-         * @param workingDir: the working directory path for the agent
-         * @param logLevel:   0: silent, 1: error, 2: info, 3: debug, 4: verbose
-         *                    return boolean Whether agent instance has been initialized successfully.
-         * @return boolean
-         * @author haochangjiu
-         * @date 2025/10/27
-         * {@link boolean}
-         */
-        boolean nhp_agent_init(String workingDir, int logLevel);
-    
-        /**
-         * @description Synchronously stop and release nhp_agent.
-         * @author haochangjiu
-         * @date 2025/10/27
-         */
-        void nhp_agent_close();
-        /**
-         * @description Read the user information, resource information, server information,
-         *              and other configuration files written under workingdir/etc,
-         *              and asynchronously start the loop knocking thread.
-         * @return int
-         * @author haochangjiu
-         * @date 2025/10/27
-         * {@link int}
-         */
-        int nhp_agent_knockloop_start();
-    
-        /**
-         * @description Synchronously stop the loop, knock-on sub thread
-         * @author hangchangjiu
-         * @date 2025/10/27
-         */
-        void nhp_agent_knockloop_stop();
-    }
-    ```
-  - Calling the SDK: In the sample, the configuration file etc folder is placed in the nhp directory under the phone's download directory.
+      ```java
+      package org.example;
+      
+      import com.sun.jna.Library;
+      import com.sun.jna.Native;
+      
+      /**
+       * OpenNHP agent sdk interface
+       *
+       * @author haochangjiu
+       * @version JDK 8
+       * @className OpennhpLibrary
+       * @date 2025/10/27
+       */
+      public interface OpennhpLibrary extends Library {
+          // load OpenNHP agent sdk
+          OpennhpLibrary INSTANCE = Native.load("nhpagent", OpennhpLibrary.class);
+      
+          /**
+           * @description Initialization of the nhp_agent instance working directory path:
+           *              The configuration files to be read are located under workingdir/etc/,
+           *              and log files will be generated under workingdir/logs/.
+           * @param workingDir: the working directory path for the agent
+           * @param logLevel:   0: silent, 1: error, 2: info, 3: debug, 4: verbose
+           *                    return boolean Whether agent instance has been initialized successfully.
+           * @return boolean
+           * @author haochangjiu
+           * @date 2025/10/27
+           * {@link boolean}
+           */
+          boolean nhp_agent_init(String workingDir, int logLevel);
+      
+          /**
+           * @description Synchronously stop and release nhp_agent.
+           * @author haochangjiu
+           * @date 2025/10/27
+           */
+          void nhp_agent_close();
+          /**
+           * @description Read the user information, resource information, server information,
+           *              and other configuration files written under workingdir/etc,
+           *              and asynchronously start the loop knocking thread.
+           * @return int
+           * @author haochangjiu
+           * @date 2025/10/27
+           * {@link int}
+           */
+          int nhp_agent_knockloop_start();
+      
+          /**
+           * @description Synchronously stop the loop, knock-on sub thread
+           * @author hangchangjiu
+           * @date 2025/10/27
+           */
+          void nhp_agent_knockloop_stop();
+      }
+      ```
+    - Calling the SDK: In the sample, the configuration file etc folder is placed in the nhp directory under the phone's download directory.
 
-    ```java
-    package org.example;
-    
-    import android.os.Bundle;
-    import android.os.Environment;
-    import android.util.Log;
-    import androidx.appcompat.app.AppCompatActivity;
-    
-    
-    import com.OpennhpLibrary;
-    import com.fancy.zerotrust.R;
-    
-    import java.io.File;
-    
-    public class MainActivity extends AppCompatActivity {
-    
-        @Override
-        protected void onCreate(Bundle savedInstanceState) {
-            super.onCreate(savedInstanceState);
-            // Read the phone's storage download directory.
-            String appDir = Environment.getExternalStorageDirectory() + File.separator + "download";
-            // Does the nhp directory exist in the downloads
-            File file = new File(appDir);
-            if (!file.exists()) {
-                Log.d("MainActivity","download file not exist！");
-                return;
-            }
-            Log.d("MainActivity","download file exist！");
-            String appDir1 = Environment.getExternalStorageDirectory() + File.separator + "download"+ File.separator + "nhp";
-            boolean initFlag = OpennhpLibrary.INSTANCE.nhp_agent_init(appDir1, 3);
-            if (!initFlag) {
-                System.out.println("NHP Agent init failed");
-                System.exit(0);
-            }
-            System.out.println("start the loop knocking thread...");
-            OpennhpLibrary.INSTANCE.nhp_agent_knockloop_start();
-        }
-    }
-    ```
-
-    
-
-
-
-
-
-
-
-
+      ```java
+      package org.example;
+      
+      import android.os.Bundle;
+      import android.os.Environment;
+      import android.util.Log;
+      import androidx.appcompat.app.AppCompatActivity;
+      
+      
+      import com.OpennhpLibrary;
+      import com.fancy.zerotrust.R;
+      
+      import java.io.File;
+      
+      public class MainActivity extends AppCompatActivity {
+      
+          @Override
+          protected void onCreate(Bundle savedInstanceState) {
+              super.onCreate(savedInstanceState);
+              // Read the phone's storage download directory.
+              String appDir = Environment.getExternalStorageDirectory() + File.separator + "download";
+              // Does the nhp directory exist in the downloads
+              File file = new File(appDir);
+              if (!file.exists()) {
+                  Log.d("MainActivity","download file not exist！");
+                  return;
+              }
+              Log.d("MainActivity","download file exist！");
+              String appDir1 = Environment.getExternalStorageDirectory() + File.separator + "download"+ File.separator + "nhp";
+              boolean initFlag = OpennhpLibrary.INSTANCE.nhp_agent_init(appDir1, 3);
+              if (!initFlag) {
+                  System.out.println("NHP Agent init failed");
+                  System.exit(0);
+              }
+              System.out.println("start the loop knocking thread...");
+              OpennhpLibrary.INSTANCE.nhp_agent_knockloop_start();
+          }
+      }
+      ```
 
 
 
@@ -1060,22 +1054,22 @@ Navigate to the opennhp/endpoints/agent/main/ directory and execute the build co
 
 - Install gomobile:
 
-  - Install
+    - Install
 
-    `go install golang.org/x/mobile/cmd/gomobile@latest`
+      `go install golang.org/x/mobile/cmd/gomobile@latest`
 
-  - Initialize
+    - Initialize
 
-    `gomobile init`
+      `gomobile init`
 
 ##### 2.2.2.2 SDK Sample
 
-When compiling the .xcframework file required for IOS, the names of the exported methods must start with a capital letter, and the parameter types must be standard Go language types, not C.int and C.char. Another important point is that the code cannot be under package main. Move the program to a newly created sdk path.
+When compiling the .xcframework file required for IOS, the names of the exported methods must start with a capital letter, and the parameter types must be standard Go language types, not C.int and C.char. Another important point is that the code cannot be under package main. Move the program to a newly created iossdk directory.
 
-Modified code based on the export.go file in OpenNHP is as follows:
+Modified code based on the export.go file in OpenNHP is as follows: ***opennhp/endpoints/agent/iossdk/export.go***
 
 ```go
-package sdk
+package iossdk
 
 import "C"
 import (
@@ -1086,6 +1080,7 @@ import (
 	"github.com/OpenNHP/opennhp/endpoints/agent"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	_ "golang.org/x/mobile/bind"
 )
 
 var gAgentInstance *agent.UdpAgent
@@ -1460,300 +1455,305 @@ func NhpPrivkeyToPubkey(cipherType int, privateBase64 string) string {
 
 ##### 2.2.2.3 Compiling the SDK
 
-Navigate to the opennhp/endpoints/agent/sdk/ directory and execute the build command.<small>*(Note: The re-edited sdk source code files are placed under opennhp/endpoints/agent/sdk/)*</small>
+- Method 1: Run the script in the project root directory.
+  `make`
 
-`gomobile bind -target ios -o nhpagent.xcframework .`
+- Method 2: Command to compile the .xcframework file for the SDK separately:
+
+  Navigate to the `opennhp/endpoints/agent/iossdk/` directory and execute the build command.<small>*(Note: The re-edited sdk source code files are placed under opennhp/endpoints/agent/iossdk/)*</small>
+
+  `gomobile bind -target ios -o nhpagent.xcframework .`
 
 ##### 2.2.2.4 SDK Adaptation
 
 - **Objective-C**
-  - FileCopyManager.h: Declares methods to copy SDK configuration files to the sandbox.
-    ```objective-c
-    //
-    //  FileCopyManager.h
-    //  TestXCFramework
-    //
-    //  Created by haochangjiu on 2025/10/30.
-    //
-    
-    #import <Foundation/Foundation.h>
-    
-    NS_ASSUME_NONNULL_BEGIN
-    
-    @interface FileCopyManager : NSObject
-    /// Copy the specified file(s) to the etc and certs directories in the application's home directory
-    + (void)copyFilesToSandboxEtc;
-    @end
-    
-    NS_ASSUME_NONNULL_END
-    ```
-  - FileCopyManager.m: Implementation of FileCopyManager.h.
-    ```objective-c
-    //
-    //  FileCopyManager.m
-    //  TestXCFramework
-    //
-    //  Created by haochangjiu on 2025/10/30.
-    //
-    
-    #import "FileCopyManager.h"
-    #import <Foundation/Foundation.h>
-    
-    @implementation FileCopyManager
-    
-    /// Copy the specified file(s) to the etc and certs directories in the application's home directory
-    + (void)copyFilesToSandboxEtc {
-        // 1. Retrieve the sandboxed Documents directory
-        NSArray *documentsURLs = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask];
-        NSURL *documentsURL = [documentsURLs firstObject];
-        if (!documentsURL) {
-            NSLog(@"Failed to retrieve Documents directory");
-            return;
-        }
-        
-        // 2. Define paths for etc and certs directories within the sandbox
-        NSURL *etcURL = [documentsURL URLByAppendingPathComponent:@"etc"];
-        NSURL *certsURL = [etcURL URLByAppendingPathComponent:@"certs"];
-        
-        // 3. Create etc and certs directories (if they don't exist)
-        [self createDirectoryIfNotExists:etcURL];
-        [self createDirectoryIfNotExists:certsURL];
-        
-        // 4. Copy toml files to the etc directory
-        NSArray *tomlFiles = @[@"server.toml", @"config.toml", @"dhp.toml", @"resource.toml"];
-        for (NSString *fileName in tomlFiles) {
-            [self copyFileFromBundle:fileName toDestinationURL:etcURL];
-        }
-        
-        // 5. Copy certificate files to the etc/certs directory
-        NSArray *certFiles = @[@"server.crt", @"server.key"];
-        for (NSString *fileName in certFiles) {
-            [self copyFileFromBundle:fileName toDestinationURL:certsURL];
-        }
-    }
-    
-    /// Create directory if it does not exist
-    + (void)createDirectoryIfNotExists:(NSURL *)directoryURL {
-        NSFileManager *fileManager = [NSFileManager defaultManager];
-        if (![fileManager fileExistsAtPath:directoryURL.path]) {
-            NSError *error;
-            BOOL success = [fileManager createDirectoryAtURL:directoryURL
-                                  withIntermediateDirectories:YES
-                                                   attributes:nil
-                                                        error:&error];
-            if (success) {
-                NSLog(@"Directory created successfully: %@", directoryURL.path);
-            } else {
-                NSLog(@"Failed to create directory: %@, error: %@", directoryURL.path, error.localizedDescription);
-            }
-        } else {
-            NSLog(@"Directory already exists: %@", directoryURL.path);
-        }
-    }
-    
-    /// Copy file from Bundle to destination path
-    + (void)copyFileFromBundle:(NSString *)fileName toDestinationURL:(NSURL *)destinationURL {
-        // Get the file path in the Bundle
-        NSURL *sourceURL = [[NSBundle mainBundle] URLForResource:[fileName stringByDeletingPathExtension]
-                                                    withExtension:[fileName pathExtension]];
-        if (!sourceURL) {
-            NSLog(@"File not found in Bundle: %@", fileName);
-            return;
-        }
-        
-        // Destination file path (destination directory + file name)
-        NSURL *destFileURL = [destinationURL URLByAppendingPathComponent:fileName];
-        
-        // Copy file (if it doesn't exist)
-        NSFileManager *fileManager = [NSFileManager defaultManager];
-        if (![fileManager fileExistsAtPath:destFileURL.path]) {
-            NSError *error;
-            BOOL success = [fileManager copyItemAtURL:sourceURL toURL:destFileURL error:&error];
-            if (success) {
-                NSLog(@"File copied successfully: %@ -> %@", fileName, destFileURL.path);
-            } else {
-                NSLog(@"File copy failed: %@, error: %@", fileName, error.localizedDescription);
-            }
-        } else {
-            NSLog(@"File already exists: %@", destFileURL.path);
-        }
-    }
-    
-    @end
-    ```
-  - ViewController.m: Program main entry, calling SDK methods.
-    ```objective-c
-    //
-    //  ViewController.m
-    //  TestXCFramework
-    //
-    //  Created by haochangjiu on 2025/10/30.
-    //
-    
-    #import "ViewController.h"
-    #import <Nhpagent/Nhpagent.h>
-    #import "FileCopyManager.h"
-    
-    @interface ViewController ()
-    
-    @end
-    
-    @implementation ViewController
-    
-    - (void)viewDidLoad {
-        [super viewDidLoad];
-        // Do any additional setup after loading the view.
-        // Invoke method to copy files from etc folder to sandbox etc directory
-        [FileCopyManager copyFilesToSandboxEtc];
-        // Retrieve the sandbox target path (Documents), which is the parent directory of the etc folder
-        NSArray *documentsURLs = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask];
-        NSURL *documentsURL = [documentsURLs firstObject];
-        if (!documentsURL) {
-            NSLog(@"Error: Failed to read Documents directory");
-        }
-        // Get the parent directory path of the etc folder
-        NSString *etcPath = documentsURL.path;
-        // SdkNhpAgentInit
-        BOOL initFlag = SdkNhpAgentInit(etcPath, 3);
-        if (!initFlag) {
-            NSLog(@"NHP Agent init failed");
-            return;
-        }
-        // knockloop_start
-        long value = SdkNhpAgentKnockloopStart();
-        NSLog(@"SdkNhpAgentKnockloopStart value : %ld", value);
-    }
-    
-    @end
-    ```
+    - FileCopyManager.h: Declares methods to copy SDK configuration files to the sandbox.
+      ```objective-c
+      //
+      //  FileCopyManager.h
+      //  TestXCFramework
+      //
+      //  Created by haochangjiu on 2025/10/30.
+      //
+      
+      #import <Foundation/Foundation.h>
+      
+      NS_ASSUME_NONNULL_BEGIN
+      
+      @interface FileCopyManager : NSObject
+      /// Copy the specified file(s) to the etc and certs directories in the application's home directory
+      + (void)copyFilesToSandboxEtc;
+      @end
+      
+      NS_ASSUME_NONNULL_END
+      ```
+    - FileCopyManager.m: Implementation of FileCopyManager.h.
+      ```objective-c
+      //
+      //  FileCopyManager.m
+      //  TestXCFramework
+      //
+      //  Created by haochangjiu on 2025/10/30.
+      //
+      
+      #import "FileCopyManager.h"
+      #import <Foundation/Foundation.h>
+      
+      @implementation FileCopyManager
+      
+      /// Copy the specified file(s) to the etc and certs directories in the application's home directory
+      + (void)copyFilesToSandboxEtc {
+          // 1. Retrieve the sandboxed Documents directory
+          NSArray *documentsURLs = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask];
+          NSURL *documentsURL = [documentsURLs firstObject];
+          if (!documentsURL) {
+              NSLog(@"Failed to retrieve Documents directory");
+              return;
+          }
+          
+          // 2. Define paths for etc and certs directories within the sandbox
+          NSURL *etcURL = [documentsURL URLByAppendingPathComponent:@"etc"];
+          NSURL *certsURL = [etcURL URLByAppendingPathComponent:@"certs"];
+          
+          // 3. Create etc and certs directories (if they don't exist)
+          [self createDirectoryIfNotExists:etcURL];
+          [self createDirectoryIfNotExists:certsURL];
+          
+          // 4. Copy toml files to the etc directory
+          NSArray *tomlFiles = @[@"server.toml", @"config.toml", @"dhp.toml", @"resource.toml"];
+          for (NSString *fileName in tomlFiles) {
+              [self copyFileFromBundle:fileName toDestinationURL:etcURL];
+          }
+          
+          // 5. Copy certificate files to the etc/certs directory
+          NSArray *certFiles = @[@"server.crt", @"server.key"];
+          for (NSString *fileName in certFiles) {
+              [self copyFileFromBundle:fileName toDestinationURL:certsURL];
+          }
+      }
+      
+      /// Create directory if it does not exist
+      + (void)createDirectoryIfNotExists:(NSURL *)directoryURL {
+          NSFileManager *fileManager = [NSFileManager defaultManager];
+          if (![fileManager fileExistsAtPath:directoryURL.path]) {
+              NSError *error;
+              BOOL success = [fileManager createDirectoryAtURL:directoryURL
+                                    withIntermediateDirectories:YES
+                                                     attributes:nil
+                                                          error:&error];
+              if (success) {
+                  NSLog(@"Directory created successfully: %@", directoryURL.path);
+              } else {
+                  NSLog(@"Failed to create directory: %@, error: %@", directoryURL.path, error.localizedDescription);
+              }
+          } else {
+              NSLog(@"Directory already exists: %@", directoryURL.path);
+          }
+      }
+      
+      /// Copy file from Bundle to destination path
+      + (void)copyFileFromBundle:(NSString *)fileName toDestinationURL:(NSURL *)destinationURL {
+          // Get the file path in the Bundle
+          NSURL *sourceURL = [[NSBundle mainBundle] URLForResource:[fileName stringByDeletingPathExtension]
+                                                      withExtension:[fileName pathExtension]];
+          if (!sourceURL) {
+              NSLog(@"File not found in Bundle: %@", fileName);
+              return;
+          }
+          
+          // Destination file path (destination directory + file name)
+          NSURL *destFileURL = [destinationURL URLByAppendingPathComponent:fileName];
+          
+          // Copy file (if it doesn't exist)
+          NSFileManager *fileManager = [NSFileManager defaultManager];
+          if (![fileManager fileExistsAtPath:destFileURL.path]) {
+              NSError *error;
+              BOOL success = [fileManager copyItemAtURL:sourceURL toURL:destFileURL error:&error];
+              if (success) {
+                  NSLog(@"File copied successfully: %@ -> %@", fileName, destFileURL.path);
+              } else {
+                  NSLog(@"File copy failed: %@, error: %@", fileName, error.localizedDescription);
+              }
+          } else {
+              NSLog(@"File already exists: %@", destFileURL.path);
+          }
+      }
+      
+      @end
+      ```
+    - ViewController.m: Program main entry, calling SDK methods.
+      ```objective-c
+      //
+      //  ViewController.m
+      //  TestXCFramework
+      //
+      //  Created by haochangjiu on 2025/10/30.
+      //
+      
+      #import "ViewController.h"
+      #import <Nhpagent/Nhpagent.h>
+      #import "FileCopyManager.h"
+      
+      @interface ViewController ()
+      
+      @end
+      
+      @implementation ViewController
+      
+      - (void)viewDidLoad {
+          [super viewDidLoad];
+          // Do any additional setup after loading the view.
+          // Invoke method to copy files from etc folder to sandbox etc directory
+          [FileCopyManager copyFilesToSandboxEtc];
+          // Retrieve the sandbox target path (Documents), which is the parent directory of the etc folder
+          NSArray *documentsURLs = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask];
+          NSURL *documentsURL = [documentsURLs firstObject];
+          if (!documentsURL) {
+              NSLog(@"Error: Failed to read Documents directory");
+          }
+          // Get the parent directory path of the etc folder
+          NSString *etcPath = documentsURL.path;
+          // SdkNhpAgentInit
+          BOOL initFlag = IossdkNhpAgentInit(etcPath, 3);
+          if (!initFlag) {
+              NSLog(@"NHP Agent init failed");
+              return;
+          }
+          // knockloop_start
+          long value = IossdkNhpAgentKnockloopStart();
+          NSLog(@"SdkNhpAgentKnockloopStart value : %ld", value);
+      }
+      
+      @end
+      ```
 
 - **Swift**
-  - FileCopyManager.swift: Methods to copy SDK configuration files to the sandbox.
+    - FileCopyManager.swift: Methods to copy SDK configuration files to the sandbox.
 
-    ```swift
-    //
-    //  FileCopyManager.swift
-    //  TestXCFrameworkSwift
-    //
-    //  Created by haochangjiu on 2025/10/30.
-    //
-    
-    import UIKit
-    import Foundation
-    
-    class FileCopyManager {
-        
-        /// Copy specified files to the etc and certs directories in the sandbox
-        static func copyFilesToSandboxEtc() {
-            // 1. Get the Documents directory in the sandbox
-            guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
-                print("Failed to get Documents directory")
-                return
-            }
-            
-            // 2. Define paths for etc and certs directories in the sandbox
-            let etcURL = documentsURL.appendingPathComponent("etc")
-            let certsURL = etcURL.appendingPathComponent("certs")
-            
-            // 3. Create etc and certs directories (if they don't exist)
-            createDirectoryIfNotExists(at: etcURL)
-            createDirectoryIfNotExists(at: certsURL)
-            
-            // 4. Copy toml files to the etc directory
-            let tomlFiles = ["server.toml", "config.toml", "dhp.toml", "resource.toml"]
-            tomlFiles.forEach { fileName in
-                copyFileFromBundle(fileName: fileName, to: etcURL)
-            }
-            
-            // 5. Copy certificate files to the etc/certs directory
-            let certFiles = ["server.crt", "server.key"]
-            certFiles.forEach { fileName in
-                copyFileFromBundle(fileName: fileName, to: certsURL)
-            }
-        }
-        
-        /// Create directory if it doesn't exist
-        private static func createDirectoryIfNotExists(at url: URL) {
-            let fileManager = FileManager.default
-            guard !fileManager.fileExists(atPath: url.path) else {
-                print("Directory already exists: \(url.path)")
-                return
-            }
-            
-            do {
-                try fileManager.createDirectory(at: url, withIntermediateDirectories: true, attributes: nil)
-                print("Directory created successfully: \(url.path)")
-            } catch {
-                print("Failed to create directory: \(url.path), error: \(error.localizedDescription)")
-            }
-        }
-        
-        /// Copy file from Bundle to destination path
-        private static func copyFileFromBundle(fileName: String, to destinationURL: URL) {
-            // Split filename and extension (handling files with extensions)
-            let fileNameWithoutExt = (fileName as NSString).deletingPathExtension
-            let fileExt = (fileName as NSString).pathExtension
-            
-            // Get the file path in the Bundle
-            guard let sourceURL = Bundle.main.url(forResource: fileNameWithoutExt, withExtension: fileExt) else {
-                print("File not found in Bundle: \(fileName)")
-                return
-            }
-            
-            // Destination file path (destination directory + filename)
-            let destFileURL = destinationURL.appendingPathComponent(fileName)
-            let fileManager = FileManager.default
-            
-            // Copy file (if it doesn't exist)
-            guard !fileManager.fileExists(atPath: destFileURL.path) else {
-                print("File already exists: \(destFileURL.path)")
-                return
-            }
-            
-            do {
-                try fileManager.copyItem(at: sourceURL, to: destFileURL)
-                print("File copied successfully: \(fileName) -> \(destFileURL.path)")
-            } catch {
-                print("File copy failed: \(fileName), error: \(error.localizedDescription)")
-            }
-        }
-    }
-    ```
-  - ViewController.swift: Program main entry, calling SDK methods.
-    ```swift
-    //
-    //  ViewController.swift
-    //  TestXCFrameworkSwift
-    //
-    //  Created by haochangjiu on 2025/10/30.
-    //
-    
-    import UIKit
-    import Nhpagent
-    
-    class ViewController: UIViewController {
-        override func viewDidLoad() {
-            super.viewDidLoad()
-            // Do any additional setup after loading the view.
-            // Call method to copy files from etc folder to sandbox etc directory
-            FileCopyManager.copyFilesToSandboxEtc()
-            // Retrieve the sandbox target path (Documents), which is the parent directory of the etc folder
-            guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
-                print("Error: Failed to read Documents directory")
-                return
-            }
-            // Get the parent directory path of the etc folder
-            let etcPath: String = documentsURL.path
-            // Call SdkNhpAgentInit for initialization
-            let initFlag: Bool = SdkNhpAgentInit(etcPath, 3)
-            if !initFlag {
-                print("NHP Agent init failed")
-            }
-            // Call knockloop_start
-            let value = SdkNhpAgentKnockloopStart()
-            print("SdkNhpAgentKnockloopStart value: %ld", value)
+      ```swift
+      //
+      //  FileCopyManager.swift
+      //  TestXCFrameworkSwift
+      //
+      //  Created by haochangjiu on 2025/10/30.
+      //
+      
+      import UIKit
+      import Foundation
+      
+      class FileCopyManager {
+          
+          /// Copy specified files to the etc and certs directories in the sandbox
+          static func copyFilesToSandboxEtc() {
+              // 1. Get the Documents directory in the sandbox
+              guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                  print("Failed to get Documents directory")
+                  return
+              }
+              
+              // 2. Define paths for etc and certs directories in the sandbox
+              let etcURL = documentsURL.appendingPathComponent("etc")
+              let certsURL = etcURL.appendingPathComponent("certs")
+              
+              // 3. Create etc and certs directories (if they don't exist)
+              createDirectoryIfNotExists(at: etcURL)
+              createDirectoryIfNotExists(at: certsURL)
+              
+              // 4. Copy toml files to the etc directory
+              let tomlFiles = ["server.toml", "config.toml", "dhp.toml", "resource.toml"]
+              tomlFiles.forEach { fileName in
+                  copyFileFromBundle(fileName: fileName, to: etcURL)
+              }
+              
+              // 5. Copy certificate files to the etc/certs directory
+              let certFiles = ["server.crt", "server.key"]
+              certFiles.forEach { fileName in
+                  copyFileFromBundle(fileName: fileName, to: certsURL)
+              }
+          }
+          
+          /// Create directory if it doesn't exist
+          private static func createDirectoryIfNotExists(at url: URL) {
+              let fileManager = FileManager.default
+              guard !fileManager.fileExists(atPath: url.path) else {
+                  print("Directory already exists: \(url.path)")
+                  return
+              }
+              
+              do {
+                  try fileManager.createDirectory(at: url, withIntermediateDirectories: true, attributes: nil)
+                  print("Directory created successfully: \(url.path)")
+              } catch {
+                  print("Failed to create directory: \(url.path), error: \(error.localizedDescription)")
+              }
+          }
+          
+          /// Copy file from Bundle to destination path
+          private static func copyFileFromBundle(fileName: String, to destinationURL: URL) {
+              // Split filename and extension (handling files with extensions)
+              let fileNameWithoutExt = (fileName as NSString).deletingPathExtension
+              let fileExt = (fileName as NSString).pathExtension
+              
+              // Get the file path in the Bundle
+              guard let sourceURL = Bundle.main.url(forResource: fileNameWithoutExt, withExtension: fileExt) else {
+                  print("File not found in Bundle: \(fileName)")
+                  return
+              }
+              
+              // Destination file path (destination directory + filename)
+              let destFileURL = destinationURL.appendingPathComponent(fileName)
+              let fileManager = FileManager.default
+              
+              // Copy file (if it doesn't exist)
+              guard !fileManager.fileExists(atPath: destFileURL.path) else {
+                  print("File already exists: \(destFileURL.path)")
+                  return
+              }
+              
+              do {
+                  try fileManager.copyItem(at: sourceURL, to: destFileURL)
+                  print("File copied successfully: \(fileName) -> \(destFileURL.path)")
+              } catch {
+                  print("File copy failed: \(fileName), error: \(error.localizedDescription)")
+              }
+          }
       }
-    }
-    ```
+      ```
+    - ViewController.swift: Program main entry, calling SDK methods.
+      ```swift
+      //
+      //  ViewController.swift
+      //  TestXCFrameworkSwift
+      //
+      //  Created by haochangjiu on 2025/10/30.
+      //
+      
+      import UIKit
+      import Nhpagent
+      
+      class ViewController: UIViewController {
+          override func viewDidLoad() {
+              super.viewDidLoad()
+              // Do any additional setup after loading the view.
+              // Call method to copy files from etc folder to sandbox etc directory
+              FileCopyManager.copyFilesToSandboxEtc()
+              // Retrieve the sandbox target path (Documents), which is the parent directory of the etc folder
+              guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                  print("Error: Failed to read Documents directory")
+                  return
+              }
+              // Get the parent directory path of the etc folder
+              let etcPath: String = documentsURL.path
+              // Call SdkNhpAgentInit for initialization
+              let initFlag: Bool = IossdkNhpAgentInit(etcPath, 3)
+              if !initFlag {
+                  print("NHP Agent init failed")
+              }
+              // Call knockloop_start
+              let value = IossdkNhpAgentKnockloopStart()
+              print("SdkNhpAgentKnockloopStart value: %ld", value)
+        }
+      }
+      ```
 
     

@@ -82,7 +82,7 @@ func (w *WebRTCServer) setupDataChannel(dc *webrtc.DataChannel) {
 	dc.OnOpen(func() {
 		log.Info("WebRTC data channel %d open", dc.ID())
 		recvTime := time.Now().UnixNano()
-		addr := &net.UDPAddr{IP: net.IPv4zero, Port: int(dc.ID())}
+		addr := &net.UDPAddr{IP: net.IPv4zero, Port: int(*dc.ID())}
 		conn := &UdpConn{isWebRTC: true, dc: dc}
 		conn.ConnData = &core.ConnectionData{
 			InitTime:             recvTime,
@@ -113,7 +113,7 @@ func (w *WebRTCServer) setupDataChannel(dc *webrtc.DataChannel) {
 		if m.IsString {
 			return
 		}
-		addr := &net.UDPAddr{IP: net.IPv4zero, Port: int(dc.ID())}
+		addr := &net.UDPAddr{IP: net.IPv4zero, Port: int(*dc.ID())}
 		key := addr.String()
 		w.us.remoteConnectionMapMutex.Lock()
 		conn, ok := w.us.remoteConnectionMap[key]
@@ -133,7 +133,7 @@ func (w *WebRTCServer) setupDataChannel(dc *webrtc.DataChannel) {
 	})
 
 	dc.OnClose(func() {
-		addr := &net.UDPAddr{IP: net.IPv4zero, Port: int(dc.ID())}
+		addr := &net.UDPAddr{IP: net.IPv4zero, Port: int(*dc.ID())}
 		key := addr.String()
 		w.us.remoteConnectionMapMutex.Lock()
 		conn, ok := w.us.remoteConnectionMap[key]

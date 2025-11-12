@@ -55,8 +55,6 @@ copy  kgc\main\etc\*.* ..\release\nhp-kgc\etc
 :agentsdk
 go build -trimpath -buildmode=c-shared -ldflags %LD_FLAGS% -v -o ..\release\nhp-agent\nhp-agent.dll agent\main\main.go agent\main\export.go
 IF %ERRORLEVEL% NEQ 0 goto :exit
-gcc agent\sdkdemo\nhp-agent-demo.c -I ..\release\nhp-agent -l:nhp-agent.dll -L..\release\nhp-agent -Wl,-rpath=. -o ..\release\nhp-agent\nhp-agent-demo.exe
-IF %ERRORLEVEL% NEQ 0 goto :exit
 @REM :devicesdk
 @REM go build -trimpath -buildmode=c-shared -ldflags %LD_FLAGS% -v -o release\nhp-device\nhpdevice.dll core\main\main.go core\main\nhpdevice.go
 @REM IF %ERRORLEVEL% NEQ 0 exit /b 1

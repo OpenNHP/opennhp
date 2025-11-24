@@ -147,12 +147,16 @@ ifeq ($(OS_NAME), linux)
     endif
 endif
 
+
 macosagentsdk:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building MacOS agent SDK... $(END_COLOUR)"
 ifeq ($(OS_NAME), darwin)
+ifeq (, $(shell which gomobile))
+	$(error "No gomobile in $(PATH), consider doing `go install golang.org/x/mobile/cmd/gomobile@latest`")
+endif
 	cd endpoints && \
 	GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
-	go build -a -trimpath -buildmode=c-shared -ldflags ${LD_FLAGS} -v -o ../release/nhp-agent/nhp-agent.dylib ./agent/main/main.go ./agent/main/expotr.go
+	go build -a -trimpath -buildmode=c-shared -ldflags ${LD_FLAGS} -v -o ../release/nhp-agent/nhp-agent.dylib ./agent/main/main.go ./agent/main/export.go
 endif
 
 iosagentsdk:

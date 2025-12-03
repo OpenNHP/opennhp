@@ -209,6 +209,9 @@ The Single Packet Authorization (SPA) protocol is included in the [Software Defi
 
 We welcome contributions to OpenNHP! Please see our [Contributing Guidelines](CONTRIBUTING.md) for more information on how to get involved.
 
+## Sponsors
+
+[![LayerV.ai](docs/images/layerv_logo.png)](https://layerv.ai)
 
 ## License
 

@@ -211,7 +211,7 @@ We welcome contributions to OpenNHP! Please see our [Contributing Guidelines](CO
 
 ## Sponsors
 
-[![LayerV.ai](docs/images/layerv_logo.png)](https://layerv.ai)
+<a href="https://layerv.ai"><img src="docs/images/layerv_logo.png" width="200" alt="LayerV.ai"></a>
 
 ## License
 

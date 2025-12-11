@@ -81,6 +81,10 @@ git clone https://github.com/OpenNHP/opennhp.git
 cd ./docker
 docker build --no-cache -t opennhp-base:latest -f Dockerfile.base ../..
 ```
+If build issues are encountered, `GO_VERSION` and `GOPROXY` may be overridden by adding a build argument, as in:
+```
+--build-arg GOPROXY=direct
+```
 
 ## 4. Running and Testing the Environment
 

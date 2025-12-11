@@ -46,7 +46,6 @@ ENV PATH="${GOPATH}/bin:${PATH}"
 ENV GOOS=${TARGETOS}
 ENV GOARCH=${TARGETARCH}
 ENV CGO_ENABLED=1
-ENV GOPROXY=https://goproxy.cn,direct
 
 # Verify installations
 RUN go version && \
@@ -58,7 +57,6 @@ WORKDIR /app
 # Copy the source code
 COPY ./web-app .
 ##
-ENV GOPROXY=https://goproxy.cn,direct
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go mod tidy && go build -o app
 

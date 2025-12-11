@@ -15,6 +15,3 @@ docker/*/logs/
 go.sum
 
 release/
-
-.DS_Store
-__*

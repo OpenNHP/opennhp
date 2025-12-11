@@ -21,7 +21,6 @@ RUN apt-get update && \
     ipset \
     git \
     vim \
-    python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Go version

@@ -5,8 +5,6 @@ WORKDIR /nhp-server
 COPY . .
 
 RUN echo "Building for architecture: ${TARGETARCH}"
-##
-ENV GOPROXY=https://goproxy.cn,direct
 
 RUN cd /nhp-server &&  make init serverd plugins test
 

@@ -3,6 +3,11 @@ FROM --platform=$BUILDPLATFORM ubuntu:22.04 AS builder
 # Get target platform architecture
 ARG TARGETARCH
 ARG TARGETOS
+ARG GOPROXY=https://goproxy.cn,direct
+ARG GO_VERSION=1.21.2
+
+# Set Proxy
+ENV GOPROXY=${GOPROXY}
 
 # Install basic tools
 RUN apt-get update && \
@@ -16,10 +21,11 @@ RUN apt-get update && \
     ipset \
     git \
     vim \
+    python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Go version
-ENV GO_VERSION=1.21.2
+ENV GO_VERSION=${GO_VERSION}
 
 # Set Go download URL based on architecture
 RUN case "${TARGETARCH}" in \
@@ -47,7 +53,6 @@ ENV PATH="${GOPATH}/bin:${PATH}"
 ENV GOOS=${TARGETOS}
 ENV GOARCH=${TARGETARCH}
 ENV CGO_ENABLED=1
-ENV GOPROXY=https://goproxy.cn,direct
 
 # Verify installations
 RUN go version && \

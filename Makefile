@@ -9,6 +9,10 @@ GOMODULE = github.com/OpenNHP/opennhp/nhp
 # Version and build settings
 MAKEFLAGS += --no-print-directory
 OS_NAME = $(shell uname -s | tr A-Z a-z)
+GOPATH = $(shell go env GOPATH)
+GOMOBILE = $(shell which gomobile 2>/dev/null || echo $(GOPATH)/bin/gomobile)
+XCODE_APP = $(shell test -d /Applications/Xcode.app && echo found || echo "")
+XCODE_SELECT = $(shell xcode-select -p 2>/dev/null | grep -q Xcode.app && echo found || echo "")
 
 # Version number auto increment
 TIMESTAMP=$(shell date +%y%m%d%H%M%S)
@@ -151,8 +155,8 @@ endif
 macosagentsdk:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building MacOS agent SDK... $(END_COLOUR)"
 ifeq ($(OS_NAME), darwin)
-ifeq (, $(shell which gomobile))
-	$(error "No gomobile in $(PATH), consider doing `go install golang.org/x/mobile/cmd/gomobile@latest`")
+ifeq (, $(shell test -f $(GOMOBILE) && echo found))
+	$(error "No gomobile found, consider doing `go install golang.org/x/mobile/cmd/gomobile@latest`")
 endif
 	cd endpoints && \
 	GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
@@ -162,8 +166,23 @@ endif
 iosagentsdk:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building IOS agent SDK... $(END_COLOUR)"
 ifeq ($(OS_NAME), darwin)
+ifeq (, $(shell test -f $(GOMOBILE) && echo found))
+	@echo "$(COLOUR_RED)[Warning] No gomobile found, skipping iOS SDK build$(END_COLOUR)"
+	@echo "$(COLOUR_RED)Consider doing: go install golang.org/x/mobile/cmd/gomobile@latest$(END_COLOUR)"
+else
+ifeq (, $(XCODE_APP))
+	@echo "$(COLOUR_RED)[Warning] Xcode is not installed, skipping iOS SDK build$(END_COLOUR)"
+	@echo "$(COLOUR_RED)iOS SDK requires full Xcode installation (not just Command Line Tools)$(END_COLOUR)"
+else
+ifeq (, $(XCODE_SELECT))
+	@echo "$(COLOUR_RED)[Warning] xcode-select is not pointing to Xcode.app, skipping iOS SDK build$(END_COLOUR)"
+	@echo "$(COLOUR_RED)Please run: sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer$(END_COLOUR)"
+else
 	cd endpoints && \
-	gomobile bind -target ios -o ../release/nhp-agent/nhpagent.xcframework ./agent/iossdk
+	PATH=$(GOPATH)/bin:$$PATH $(GOMOBILE) bind -target ios -o ../release/nhp-agent/nhpagent.xcframework ./agent/iossdk
+endif
+endif
+endif
 endif
 
 

@@ -19,6 +19,7 @@ require (
 	github.com/sigstore/cosign/v2 v2.5.3
 	github.com/spf13/viper v1.20.1
 	github.com/urfave/cli/v2 v2.27.6
+	golang.org/x/mobile v0.0.0-20190719004257-d2bd2a29d028
 )
 
 require (

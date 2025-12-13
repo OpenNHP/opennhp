@@ -82,7 +82,7 @@ func TestUpdateTomlConfig(t *testing.T) {
 PrivateKeyBase64 = "lDaE1EKKyIJG4A28IZup/GDBZWYWEPZqGFaoV4Rlnn0="
 DefaultCipherScheme = 0
 UserId = "agent-0"
-OrganizationId = "opennhp.cn"
+OrganizationId = "opennhp.org"
 LogLevel = 4
 # UserData: a customized user entry for flexibility.
 # Its key-value pairs will be send to server along with knock message.

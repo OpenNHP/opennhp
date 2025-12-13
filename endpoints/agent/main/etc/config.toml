@@ -10,7 +10,7 @@
 PrivateKeyBase64 = "+Jnee2lP6Kn47qzSaqwSmWxORsBkkCV6YHsRqXCegVo="
 DefaultCipherScheme = 0
 UserId = "agent-0"
-OrganizationId = "opennhp.cn"
+OrganizationId = "opennhp.org"
 LogLevel = 4
 # UserData: a customized user entry for flexibility.
 # Its key-value pairs will be send to server along with knock message.

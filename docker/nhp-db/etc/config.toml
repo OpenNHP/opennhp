@@ -11,7 +11,7 @@ PrivateKeyBase64 = "WAb4iFVXHnF5yMpacue1HKTa6nyOebx7BPNn++0ix1c="
 DefaultCipherScheme = 0
 SymmetricCipherMode = "AES-256-GCM-128"
 DbId = "device-0"
-OrganizationId = "opennhp.cn"
+OrganizationId = "opennhp.org"
 LogLevel = 4
 
 # UserData: a customized user entry for flexibility.

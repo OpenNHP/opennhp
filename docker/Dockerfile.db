@@ -5,8 +5,6 @@ WORKDIR /workdir
 COPY . .
 
 RUN echo "Building for architecture: ${TARGETARCH}"
-##
-ENV GOPROXY=https://goproxy.cn,direct
 
 RUN cd /workdir && cat Makefile && make init db test
 

@@ -58,7 +58,7 @@ Once you click the "Login" button, authentication is completed successfully, and
 
 ## Quick Start: Build and Test OpenNHP
 
-Follow our [quick start tutorial](https://opennhp.org/nhp_quick_start/) to build the OpenNHP source code and test it in a Docker environment. You will get your own OpenNHP environment up, simulate the “invisible” network hiding behavior and test authentication workflows.
+Follow our [quick start tutorial](https://docs.opennhp.org/nhp_quick_start/) to build the OpenNHP source code and test it in a Docker environment. You will get your own OpenNHP environment up, simulate the “invisible” network hiding behavior and test authentication workflows.
 
 ---
 
@@ -110,7 +110,7 @@ The OpenNHP architecture is inspired by the [NIST Zero Trust Architecture standa
 
 ![OpenNHP architecture](docs/images/OpenNHP_Arch.png)
 
-> Please refer to the [OpenNHP Documentation](https://opennhp.org/) for detailed information about architecture and workflow.
+> Please refer to the [OpenNHP Documentation](https://docs.opennhp.org/) for detailed information about architecture and workflow.
 
 ## Core: Cryptographic Algorithms
 

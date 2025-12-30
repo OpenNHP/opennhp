@@ -99,7 +99,7 @@ L'architecture d'OpenNHP s'inspire de la [norme d'architecture Zero Trust du NIS
 
 ![Architecture OpenNHP](docs/images/OpenNHP_Arch.png)
 
-> Veuillez consulter la [documentation d'OpenNHP](https://opennhp.org/) pour des informations détaillées sur l'architecture et le flux de travail.
+> Veuillez consulter la [documentation d'OpenNHP](https://docs.opennhp.org/) pour des informations détaillées sur l'architecture et le flux de travail.
 
 ## Cœur : Algorithmes Cryptographiques
 
@@ -131,7 +131,7 @@ La cryptographie est au cœur d'OpenNHP, fournissant une sécurité robuste, d'e
 
 Pour en savoir plus :
 
-> Veuillez consulter la [documentation OpenNHP](https://opennhp.org/cryptography/) pour une explication détaillée des algorithmes cryptographiques utilisés dans OpenNHP.
+> Veuillez consulter la [documentation OpenNHP](https://docs.opennhp.org/cryptography/) pour une explication détaillée des algorithmes cryptographiques utilisés dans OpenNHP.
 
 ## Principales Fonctionnalités
 
@@ -170,7 +170,7 @@ OpenNHP prend en charge plusieurs modèles de déploiement pour répondre à dif
 - Serveur-à-Serveur : Sécurise la communication entre les services backend
 - Passerelle-à-Passerelle : Sécurise les connexions site-à-site
 
-> Veuillez consulter la [documentation OpenNHP](https://opennhp.org/deploy/) pour des instructions de déploiement détaillées.
+> Veuillez consulter la [documentation OpenNHP](https://docs.opennhp.org/deploy/) pour des instructions de déploiement détaillées.
 
 ## Comparaison entre SPA et NHP
 Le protocole d'Autorisation par Paquet Unique (SPA) est inclus dans la [spécification du Périmètre Défini par Logiciel (SDP)](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2) publiée par l'[Alliance pour la Sécurité Cloud (CSA)](https://cloudsecurityalliance.org/). NHP améliore la sécurité, la fiabilité, la scalabilité et l'extensibilité grâce à un cadre et une architecture de cryptographie modernes, comme démontré dans l'article de recherche [AHAC](https://www.mdpi.com/2076-3417/14/13/5593).

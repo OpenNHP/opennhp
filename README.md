@@ -142,7 +142,7 @@ Cryptography is at the heart of OpenNHP, providing robust security, excellent pe
 
 Further reading:
 
-> Please refer to the [OpenNHP Documentation](https://opennhp.org/cryptography/) for detailed explanation of cryptographic algorithms used in OpenNHP.
+> Please refer to the [OpenNHP Documentation](https://docs.opennhp.org/cryptography/) for detailed explanation of cryptographic algorithms used in OpenNHP.
 
 ## Key Features
 
@@ -181,7 +181,7 @@ OpenNHP supports multiple deployment models to suit different use cases:
 - Server-to-Server: Secures communication between backend services
 - Gateway-to-Gateway: Secures site-to-site connections
 
-> Please refer to the [OpenNHP Documentation](https://opennhp.org/deploy/) for detailed deployment instructions.
+> Please refer to the [OpenNHP Documentation](https://docs.opennhp.org/deploy/) for detailed deployment instructions.
 
 ## Comparison between SPA and NHP
 The Single Packet Authorization (SPA) protocol is included in the [Software Defined Perimeter (SDP) specification](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2) released by the [Cloud Security Alliance (CSA)](https://cloudsecurityalliance.org/). NHP improves security, reliability, scalability, and extensibility through a modern cryptographic framework and architecture, as demonstrated in the [AHAC research paper](https://www.mdpi.com/2076-3417/14/13/5593).

@@ -28,7 +28,7 @@ permalink: /zh-cn/nhp_quick_start/
 
 ### 1.1 网络拓扑
 
-![Workflow](https://opennhp.org/images/infrastructure.jpg)
+![Workflow](https://docs.opennhp.org/images/infrastructure.jpg)
 
 | 容器名      | IP           | 说明                                                              |
 | ---------- | ------------ | --------------------------------------------------------------- |

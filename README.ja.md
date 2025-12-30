@@ -34,7 +34,7 @@ OpenNHPのアーキテクチャは[NISTゼロトラストアーキテクチャ�
 
 ![OpenNHP architecture](docs/images/OpenNHP_Arch.png)
 
-> アーキテクチャとワークフローの詳細については、[OpenNHPドキュメント](https://opennhp.org/)を参照してください。
+> アーキテクチャとワークフローの詳細については、[OpenNHPドキュメント](https://docs.opennhp.org/)を参照してください。
 
 ## コア: 暗号化アルゴリズム
 
@@ -66,7 +66,7 @@ OpenNHPのアーキテクチャは[NISTゼロトラストアーキテクチャ�
 
 詳細について：
 
-> OpenNHPで使用されている暗号化アルゴリズムの詳細な説明については、[OpenNHPドキュメント](https://opennhp.org/cryptography/)を参照してください。
+> OpenNHPで使用されている暗号化アルゴリズムの詳細な説明については、[OpenNHPドキュメント](https://docs.opennhp.org/cryptography/)を参照してください。
 
 ## 主な機能
 
@@ -105,7 +105,7 @@ OpenNHPは、さまざまなユースケースに合わせた複数の展開モ�
 - サーバー対サーバー：バックエンドサービス間の通信を保護します
 - ゲートウェイ対ゲートウェイ：サイト間接続を保護します
 
-> 詳細な展開手順については、[OpenNHPドキュメント](https://opennhp.org/deploy/)を参照してください。
+> 詳細な展開手順については、[OpenNHPドキュメント](https://docs.opennhp.org/deploy/)を参照してください。
 
 ## SPAとNHPの比較
 [クラウドセキュリティアライアンス（CSA）](https://cloudsecurityalliance.org/)がリリースした[ソフトウェア定義境界（SDP）仕様](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2)には、シングルパケット認証（SPA）プロトコルが含まれています。NHPは、最新の暗号化フレームワークとアーキテクチャを通じてセキュリティ、信頼性、スケーラビリティ、拡張性を向上させ、[AHAC研究論文](https://www.mdpi.com/2076-3417/14/13/5593)で示されているように従来の技術の限界を克服しています。

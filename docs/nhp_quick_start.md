@@ -27,7 +27,7 @@ This Quick Start guide helps developers rapidly set up the OpenNHP Docker enviro
 
 ### 1.1 Network Topology
 
-![Workflow](https://opennhp.org/images/infrastructure.jpg)
+![Workflow](https://docs.opennhp.org/images/infrastructure.jpg)
 
 | Container Name      | IP            | Description                                                                                               |
 | ------------------  | ------------  | --------------------------------------------------------------------------------------------------------- |

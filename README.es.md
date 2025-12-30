@@ -99,7 +99,7 @@ La arquitectura de OpenNHP se inspira en el [estándar de Arquitectura de Confia
 
 ![Arquitectura de OpenNHP](docs/images/OpenNHP_Arch.png)
 
-> Consulte la [documentación de OpenNHP](https://opennhp.org/) para obtener información detallada sobre la arquitectura y el flujo de trabajo.
+> Consulte la [documentación de OpenNHP](https://docs.opennhp.org/) para obtener información detallada sobre la arquitectura y el flujo de trabajo.
 
 ## Centro: Algoritmos Criptográficos
 
@@ -131,7 +131,7 @@ La criptografía es el centro de OpenNHP, proporcionando seguridad robusta, un e
 
 Lectura adicional:
 
-> Consulte la [documentación de OpenNHP](https://opennhp.org/cryptography/) para una explicación detallada de los algoritmos criptográficos utilizados en OpenNHP.
+> Consulte la [documentación de OpenNHP](https://docs.opennhp.org/cryptography/) para una explicación detallada de los algoritmos criptográficos utilizados en OpenNHP.
 
 ## Características Clave
 
@@ -170,7 +170,7 @@ OpenNHP admite varios modelos de despliegue para adaptarse a diferentes casos de
 - Servidor a servidor: Asegura la comunicación entre servicios backend
 - Puerta de enlace a puerta de enlace: Asegura conexiones entre sitios
 
-> Consulte la [documentación de OpenNHP](https://opennhp.org/deploy/) para obtener instrucciones detalladas de despliegue.
+> Consulte la [documentación de OpenNHP](https://docs.opennhp.org/deploy/) para obtener instrucciones detalladas de despliegue.
 
 ## Comparación entre SPA y NHP
 El protocolo Single Packet Authorization (SPA) está incluido en la [especificación del Perímetro Definido por Software (SDP)](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2) publicada por la [Cloud Security Alliance (CSA)](https://cloudsecurityalliance.org/). NHP mejora la seguridad, la fiabilidad, la escalabilidad y la extensibilidad mediante un marco criptográfico moderno y una arquitectura moderna, como se demuestra en el [artículo de investigación AHAC](https://www.mdpi.com/2076-3417/14/13/5593).

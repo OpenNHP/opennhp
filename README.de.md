@@ -99,7 +99,7 @@ Die Architektur von OpenNHP orientiert sich an der [NIST Zero Trust-Architektur]
 
 ![OpenNHP Architektur](docs/images/OpenNHP_Arch.png)
 
-> Weitere Informationen zur Architektur und zum Workflow finden Sie in der [OpenNHP-Dokumentation](https://opennhp.org/).
+> Weitere Informationen zur Architektur und zum Workflow finden Sie in der [OpenNHP-Dokumentation](https://docs.opennhp.org/).
 
 ## Kern: Kryptographische Algorithmen
 
@@ -131,7 +131,7 @@ Kryptographie steht im Mittelpunkt von OpenNHP und bietet robuste Sicherheit, he
 
 Weiterführende Informationen:
 
-> Weitere Details zu den in OpenNHP verwendeten kryptographischen Algorithmen finden Sie in der [OpenNHP-Dokumentation](https://opennhp.org/cryptography/).
+> Weitere Details zu den in OpenNHP verwendeten kryptographischen Algorithmen finden Sie in der [OpenNHP-Dokumentation](https://docs.opennhp.org/cryptography/).
 
 ## Hauptfunktionen
 
@@ -170,7 +170,7 @@ OpenNHP unterstützt mehrere Bereitstellungsmodelle für unterschiedliche Anwend
 - Server-zu-Server: Sichert die Kommunikation zwischen Backend-Diensten
 - Gateway-zu-Gateway: Sichert Standort-zu-Standort-Verbindungen
 
-> Weitere Details zur Bereitstellung finden Sie in der [OpenNHP-Dokumentation](https://opennhp.org/deploy/).
+> Weitere Details zur Bereitstellung finden Sie in der [OpenNHP-Dokumentation](https://docs.opennhp.org/deploy/).
 
 ## Vergleich zwischen SPA und NHP
 Das Single Packet Authorization (SPA)-Protokoll ist in der vom [Cloud Security Alliance (CSA)](https://cloudsecurityalliance.org/) veröffentlichten [Software Defined Perimeter (SDP)-Spezifikation](https://cloudsecurityalliance.org/artifacts/software-defined-perimeter-zero-trust-specification-v2) enthalten. NHP verbessert die Sicherheit, Zuverlässigkeit, Skalierbarkeit und Erweiterbarkeit durch ein modernes kryptographisches Framework und eine moderne Architektur, wie im [AHAC-Forschungspapier](https://www.mdpi.com/2076-3417/14/13/5593) gezeigt.

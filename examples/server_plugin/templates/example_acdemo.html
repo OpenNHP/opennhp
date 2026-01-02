@@ -286,6 +286,33 @@
             text-decoration: none;
         }
 
+        .language-select {
+            text-align: right;
+            margin-bottom: 1rem;
+        }
+
+        .language-select select {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-secondary);
+            padding: 0.4rem 0.75rem;
+            border-radius: 8px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .language-select select:hover {
+            border-color: var(--accent-cyan);
+        }
+
+        .language-select select option {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
         @media (max-width: 480px) {
             .container {
                 padding: 2rem 1.5rem;
@@ -309,40 +336,48 @@
 </head>
 <body>
     <div class="container">
+        <div class="language-select">
+            <select id="languageSelect" onchange="changeLanguage()">
+                <option value="en">English</option>
+                <option value="zh">中文</option>
+                <option value="es">Español</option>
+            </select>
+        </div>
+
         <div class="logo-title">
             <img src="https://raw.githubusercontent.com/OpenNHP/opennhp/main/docs/images/logo10.png" alt="OpenNHP Logo">
-            <h1>OpenNHP AC Protected Server</h1>
+            <h1 id="title">OpenNHP AC Protected Server</h1>
         </div>
-        <p class="subtitle">Invisible to Unauthenticated Users</p>
+        <p class="subtitle" id="subtitle">Invisible to Unauthenticated Users</p>
 
         <div class="server-links">
             <div class="server-card">
                 <span class="server-url">https://acdemo.opennhp.org</span>
-                <a href="https://dnschecker.org/port-scanner.php?query=acdemo.opennhp.org&ptype=server" target="_blank" class="scan-link">
+                <a href="https://dnschecker.org/port-scanner.php?query=acdemo.opennhp.org&ptype=server" target="_blank" class="scan-link scan-link-1">
                     <svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
-                    Scan Ports
+                    <span id="scanPorts1">Scan Ports</span>
                 </a>
             </div>
             <div class="server-card">
                 <span class="server-url">https://demo.nhp</span>
-                <a href="https://dnschecker.org/port-scanner.php?query=demo.nhp&ptype=server" target="_blank" class="scan-link">
+                <a href="https://dnschecker.org/port-scanner.php?query=demo.nhp&ptype=server" target="_blank" class="scan-link scan-link-2">
                     <svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
-                    Scan Ports
+                    <span id="scanPorts2">Scan Ports</span>
                 </a>
             </div>
         </div>
 
         <div class="countdown-section" id="countdown">
-            <div class="countdown-label">Server will be hidden in</div>
+            <div class="countdown-label" id="countdownLabel">Server will be hidden in</div>
             <div class="countdown-timer">
                 <span id="timer">15</span>
-                <span class="countdown-unit">seconds</span>
+                <span class="countdown-unit" id="countdownUnit">seconds</span>
             </div>
         </div>
 
         <div id="message">
             <div class="icon">🔒</div>
-            <div class="text">Server is now hidden</div>
+            <div class="text" id="hiddenMessage">Server is now hidden</div>
         </div>
 
         <div class="info-section">
@@ -351,17 +386,81 @@
             <label class="auto-refresh-toggle" id="auto-refresh-section">
                 <input type="checkbox" id="auto-refresh">
                 <span class="toggle-switch"></span>
-                <span class="toggle-label">Auto Refresh (10s)</span>
+                <span class="toggle-label" id="autoRefreshLabel">Auto Refresh (10s)</span>
             </label>
         </div>
 
         <div class="footer">
-            <p class="footer-text">Powered by <a href="https://github.com/OpenNHP/opennhp" target="_blank">OpenNHP</a> 
+            <p class="footer-text" id="footerPowered">Powered by <a href="https://github.com/OpenNHP/opennhp" target="_blank">OpenNHP</a> 
                 - Network-infrastructure Hiding Protocol</p>
+            <p class="footer-text" style="margin-top: 0.5rem;" id="footerSponsored">Sponsored by: <a href="https://layerv.ai" target="_blank">LayerV.ai</a></p>
         </div>
     </div>
 
     <script>
+        // Translations
+        const translations = {
+            en: {
+                title: "OpenNHP AC Protected Server",
+                subtitle: "Invisible to Unauthenticated Users",
+                scanPorts: "Scan Ports",
+                countdownLabel: "SERVER WILL BE HIDDEN IN",
+                countdownUnit: "seconds",
+                hiddenMessage: "Server is now hidden",
+                autoRefreshLabel: "Auto Refresh (10s)",
+                footerPowered: 'Powered by <a href="https://github.com/OpenNHP/opennhp" target="_blank">OpenNHP</a> - Network-infrastructure Hiding Protocol',
+                footerSponsored: 'Sponsored by: <a href="https://layerv.ai" target="_blank">LayerV.ai</a>',
+                detectingIP: "Detecting IP...",
+                ipFailed: "IP detection failed"
+            },
+            zh: {
+                title: "OpenNHP AC 受保护服务器",
+                subtitle: "对未认证用户不可见",
+                scanPorts: "扫描端口",
+                countdownLabel: "服务器将在以下时间后隐藏",
+                countdownUnit: "秒",
+                hiddenMessage: "服务器已隐藏",
+                autoRefreshLabel: "自动刷新 (10秒)",
+                footerPowered: '由 <a href="https://github.com/OpenNHP/opennhp" target="_blank">OpenNHP</a> 提供支持 - 网络基础设施隐藏协议',
+                footerSponsored: '赞助商：<a href="https://layerv.ai" target="_blank">LayerV.ai</a>',
+                detectingIP: "正在检测 IP...",
+                ipFailed: "IP 检测失败"
+            },
+            es: {
+                title: "Servidor Protegido OpenNHP AC",
+                subtitle: "Invisible para Usuarios No Autenticados",
+                scanPorts: "Escanear",
+                countdownLabel: "EL SERVIDOR SE OCULTARÁ EN",
+                countdownUnit: "segundos",
+                hiddenMessage: "El servidor está oculto",
+                autoRefreshLabel: "Auto Refrescar (10s)",
+                footerPowered: 'Desarrollado por <a href="https://github.com/OpenNHP/opennhp" target="_blank">OpenNHP</a> - Protocolo de Ocultación de Infraestructura',
+                footerSponsored: 'Patrocinado por: <a href="https://layerv.ai" target="_blank">LayerV.ai</a>',
+                detectingIP: "Detectando IP...",
+                ipFailed: "Detección de IP fallida"
+            }
+        };
+
+        let currentLang = 'en';
+
+        function changeLanguage() {
+            const lang = document.getElementById('languageSelect').value;
+            currentLang = lang;
+            document.documentElement.lang = lang;
+            const t = translations[lang];
+
+            document.getElementById('title').textContent = t.title;
+            document.getElementById('subtitle').textContent = t.subtitle;
+            document.getElementById('scanPorts1').textContent = t.scanPorts;
+            document.getElementById('scanPorts2').textContent = t.scanPorts;
+            document.getElementById('countdownLabel').textContent = t.countdownLabel;
+            document.getElementById('countdownUnit').textContent = t.countdownUnit;
+            document.getElementById('hiddenMessage').textContent = t.hiddenMessage;
+            document.getElementById('autoRefreshLabel').textContent = t.autoRefreshLabel;
+            document.getElementById('footerPowered').innerHTML = t.footerPowered;
+            document.getElementById('footerSponsored').innerHTML = t.footerSponsored;
+        }
+
         // Initialize countdown seconds
         let seconds = 15;
 
@@ -431,6 +530,12 @@
 
         // Check checkbox state on page load and trigger auto refresh
         window.onload = () => {
+            // Detect user language
+            const userLang = navigator.language || navigator.userLanguage;
+            const lang = userLang.startsWith('es') ? 'es' : (userLang.startsWith('zh') ? 'zh' : 'en');
+            document.getElementById('languageSelect').value = lang;
+            changeLanguage();
+
             if (autoRefreshCheckbox.checked) {
                 // If checkbox was previously checked, start auto refresh
                 autoRefreshInterval = setInterval(() => {
@@ -442,13 +547,32 @@
         };
 
         async function fetchIP() {
+            const ipDisplay = document.getElementById('ip-display');
+            let ipv4 = null, ipv6 = null;
+
+            // Fetch IPv4
             try {
-                const response = await fetch('https://ipinfo.io/json');
-                const data = await response.json();
-                document.getElementById('ip-display').textContent = `Your IP: ${data.ip}`;
-            } catch (error) {
-                document.getElementById('ip-display').textContent = "IP detection failed";
-                console.error("Fetch ip error:", error);
+                const res = await fetch('https://api.ipify.org?format=json');
+                const data = await res.json();
+                ipv4 = data.ip;
+            } catch (e) { console.error("IPv4 fetch error:", e); }
+
+            // Fetch IPv6
+            try {
+                const res = await fetch('https://api6.ipify.org?format=json');
+                const data = await res.json();
+                ipv6 = data.ip;
+            } catch (e) { console.error("IPv6 fetch error:", e); }
+
+            // Display results
+            if (ipv4 && ipv6) {
+                ipDisplay.innerHTML = `IPv4: ${ipv4} | IPv6: ${ipv6}`;
+            } else if (ipv4) {
+                ipDisplay.textContent = `IPv4: ${ipv4}`;
+            } else if (ipv6) {
+                ipDisplay.textContent = `IPv6: ${ipv6}`;
+            } else {
+                ipDisplay.textContent = translations[currentLang].ipFailed;
             }
         }
     </script>

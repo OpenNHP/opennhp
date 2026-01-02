@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 130 32" width="130" height="32">
+  <style>
+    .text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 18px; font-weight: 700; }
+    .layer { fill: #f1f5f9; }
+    .v { fill: #0099FF; }
+    .ai { fill: #f1f5f9; }
+  </style>
+  <rect width="130" height="32" rx="4" fill="#0f172a"/>
+  <text x="10" y="22" class="text">
+    <tspan class="layer">Layer</tspan><tspan class="v">V</tspan><tspan class="ai">.ai</tspan>
+  </text>
+</svg>

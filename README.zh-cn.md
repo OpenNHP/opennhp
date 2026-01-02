@@ -202,7 +202,7 @@ OpenNHP 遵循 [Apache 2.0 许可协议](LICENSE)。
 
 - 项目网站：[https://github.com/OpenNHP/opennhp](https://github.com/OpenNHP/opennhp)
 - 电子邮件：[opennhp@gmail.com](mailto:opennhp@gmail.com)
-- Slack 频道：[加入我们的 Slack](https://slack.opennhp.org)
+- Discord：[加入我们的 Discord](https://discord.gg/CpyVmspx5x)
 
 有关更详细的文档，请访问我们的[官方网站](https://opennhp.org)。
 

@@ -196,7 +196,7 @@ OpenNHP wird unter der [Apache 2.0-Lizenz](LICENSE) veröffentlicht.
 
 - Projekt-Website: [https://github.com/OpenNHP/opennhp](https://github.com/OpenNHP/opennhp)
 - E-Mail: [opennhp@gmail.com](mailto:opennhp@gmail.com)
-- Slack-Kanal: [Treten Sie unserem Slack bei](https://slack.opennhp.org)
+- Discord: [Treten Sie unserem Discord bei](https://discord.gg/CpyVmspx5x)
 
 Für eine detaillierte Dokumentation besuchen Sie bitte unsere [Offizielle Dokumentation](https://opennhp.org).
 

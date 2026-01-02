@@ -131,7 +131,7 @@ OpenNHPは[Apache 2.0ライセンス](LICENSE)の下でリリースされてい�
 
 - プロジェクトウェブサイト：[https://github.com/OpenNHP/opennhp](https://github.com/OpenNHP/opennhp)
 - メール：[opennhp@gmail.com](mailto:opennhp@gmail.com)
-- Slackチャンネル：[Slackに参加する](https://slack.opennhp.org)
+- Discord：[Discordに参加する](https://discord.gg/CpyVmspx5x)
 
 詳細なドキュメントについては、[公式ドキュメント](https://opennhp.org)をご覧ください。
 

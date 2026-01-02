@@ -33,7 +33,7 @@ COLOUR_BLUE=\033[0;34m
 END_COLOUR=\033[0m
 
 # Plugins
-NHP_SERVER_PLUGINS = ./endpoints/server/plugins
+NHP_SERVER_PLUGINS = ./examples/server_plugin
 
 # Android environment settings
 ANDROID_CC='${TOOLCHAIN}/bin/aarch64-linux-android21-clang'
@@ -96,6 +96,7 @@ init:
 	git clean -df release
 	cd nhp && go mod tidy
 	cd endpoints && go mod tidy
+	cd examples/server_plugin && go mod tidy
 
 agentd:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building nhp-agent... $(END_COLOUR)"

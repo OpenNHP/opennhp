@@ -4,7 +4,7 @@ all: build
 
 PluginName = example
 TargetName = ${PluginName}.so
-ServerDir = ../../../../release/nhp-server
+ServerDir = ../../release/nhp-server
 LD_FLAGS = "-s -w"
 
 # Color definition
@@ -22,3 +22,4 @@ build:
 	cp ./templates/*.* ${ServerDir}/templates/${PluginName}
 	@echo "$(COLOUR_GREEN)[Plugin-${PluginName}] Successfully built!$(END_COLOUR)"
 .PHONY: all build
+

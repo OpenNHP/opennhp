@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenNHP Demo - AC Protected Server</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #131a2b;
+            --bg-card: rgba(20, 30, 50, 0.85);
+            --accent-cyan: #00d4ff;
+            --accent-green: #00ff88;
+            --accent-orange: #ff6b35;
+            --text-primary: #e8eef5;
+            --text-secondary: #8892a4;
+            --border-color: rgba(0, 212, 255, 0.2);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: var(--bg-primary);
+            background-image: 
+                radial-gradient(ellipse at 20% 20%, rgba(0, 212, 255, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(0, 255, 136, 0.06) 0%, transparent 50%),
+                linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 640px;
+            width: 100%;
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 3rem;
+            text-align: center;
+            box-shadow: 
+                0 4px 60px rgba(0, 0, 0, 0.4),
+                0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .logo-title {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .logo-title img {
+            height: 48px;
+            width: 48px;
+        }
+
+        .logo-title h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0;
+            letter-spacing: -0.02em;
+        }
+
+        .subtitle {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .server-links {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .server-card {
+            background: rgba(0, 212, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.15);
+            border-radius: 12px;
+            padding: 1rem 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.3s ease;
+        }
+
+        .server-card:hover {
+            background: rgba(0, 212, 255, 0.1);
+            border-color: rgba(0, 212, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .server-url {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            color: var(--accent-cyan);
+            text-decoration: none;
+        }
+
+        .scan-link {
+            font-size: 0.8rem;
+            color: var(--accent-green);
+            text-decoration: none;
+            padding: 0.4rem 0.8rem;
+            background: rgba(0, 255, 136, 0.1);
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .scan-link:hover {
+            background: rgba(0, 255, 136, 0.2);
+        }
+
+        .scan-link svg {
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
+        }
+
+        .countdown-section {
+            background: linear-gradient(135deg, rgba(255, 107, 53, 0.1), rgba(255, 107, 53, 0.05));
+            border: 1px solid rgba(255, 107, 53, 0.2);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .countdown-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .countdown-timer {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        #timer {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 3.5rem;
+            font-weight: 600;
+            color: var(--accent-orange);
+            line-height: 1;
+            text-shadow: 0 0 30px rgba(255, 107, 53, 0.5);
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .countdown-unit {
+            font-size: 1rem;
+            color: var(--text-secondary);
+        }
+
+        #message {
+            display: none;
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.1), rgba(0, 255, 136, 0.05));
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        #message .icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        #message .text {
+            font-size: 1.1rem;
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+
+        .info-section {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        #ip-display {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            background: rgba(255, 255, 255, 0.03);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .auto-refresh-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .auto-refresh-toggle input {
+            display: none;
+        }
+
+        .toggle-switch {
+            width: 44px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            background: var(--text-secondary);
+            border-radius: 50%;
+            top: 3px;
+            left: 3px;
+            transition: all 0.3s ease;
+        }
+
+        .auto-refresh-toggle input:checked + .toggle-switch {
+            background: rgba(0, 255, 136, 0.3);
+        }
+
+        .auto-refresh-toggle input:checked + .toggle-switch::after {
+            background: var(--accent-green);
+            left: 23px;
+        }
+
+        .toggle-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .footer {
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .footer-text {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            opacity: 0.6;
+        }
+
+        .footer-text a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 2rem 1.5rem;
+            }
+
+            h1 {
+                font-size: 1.4rem;
+            }
+
+            .server-card {
+                flex-direction: column;
+                gap: 0.75rem;
+                text-align: center;
+            }
+
+            #timer {
+                font-size: 2.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo-title">
+            <img src="https://raw.githubusercontent.com/OpenNHP/opennhp/main/docs/images/logo10.png" alt="OpenNHP Logo">
+            <h1>OpenNHP AC Protected Server</h1>
+        </div>
+        <p class="subtitle">Invisible to Unauthenticated Users</p>
+
+        <div class="server-links">
+            <div class="server-card">
+                <span class="server-url">https://acdemo.opennhp.org</span>
+                <a href="https://dnschecker.org/port-scanner.php?query=acdemo.opennhp.org&ptype=server" target="_blank" class="scan-link">
+                    <svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
+                    Scan Ports
+                </a>
+            </div>
+            <div class="server-card">
+                <span class="server-url">https://demo.nhp</span>
+                <a href="https://dnschecker.org/port-scanner.php?query=demo.nhp&ptype=server" target="_blank" class="scan-link">
+                    <svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
+                    Scan Ports
+                </a>
+            </div>
+        </div>
+
+        <div class="countdown-section" id="countdown">
+            <div class="countdown-label">Server will be hidden in</div>
+            <div class="countdown-timer">
+                <span id="timer">15</span>
+                <span class="countdown-unit">seconds</span>
+            </div>
+        </div>
+
+        <div id="message">
+            <div class="icon">🔒</div>
+            <div class="text">Server is now hidden</div>
+        </div>
+
+        <div class="info-section">
+            <div id="ip-display">Detecting IP...</div>
+            
+            <label class="auto-refresh-toggle" id="auto-refresh-section">
+                <input type="checkbox" id="auto-refresh">
+                <span class="toggle-switch"></span>
+                <span class="toggle-label">Auto Refresh (10s)</span>
+            </label>
+        </div>
+
+        <div class="footer">
+            <p class="footer-text">Powered by <a href="https://github.com/OpenNHP/opennhp" target="_blank">OpenNHP</a> 
+                - Network-infrastructure Hiding Protocol</p>
+        </div>
+    </div>
+
+    <script>
+        // Initialize countdown seconds
+        let seconds = 15;
+
+        // Get DOM elements
+        const timerElement = document.getElementById('timer');
+        const countdownElement = document.getElementById('countdown');
+        const messageElement = document.getElementById('message');
+        const autoRefreshSection = document.getElementById('auto-refresh-section');
+        const autoRefreshCheckbox = document.getElementById('auto-refresh');
+
+        // Update countdown every second
+        const countdownInterval = setInterval(() => {
+            seconds--;
+            timerElement.textContent = seconds;
+
+            if (seconds <= 0) {
+                clearInterval(countdownInterval);
+                // Hide countdown
+                countdownElement.style.display = 'none';
+                // Show hidden message
+                messageElement.style.display = 'block';
+                // Hide auto refresh checkbox
+                autoRefreshSection.style.display = 'none';
+            }
+        }, 1000);
+
+        // Auto refresh functionality
+        let autoRefreshInterval;
+
+        // Get autoRefreshState stored in cookie
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+
+        // Set cookie
+        function setCookie(name, value, days) {
+            const date = new Date();
+            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+            document.cookie = `${name}=${value};expires=${date.toUTCString()};path=/`;
+        }
+
+        // Restore checkbox state from cookie
+        const savedAutoRefreshState = getCookie('autoRefreshState');
+        if (savedAutoRefreshState === 'true') {
+            autoRefreshCheckbox.checked = true;
+        } else {
+            autoRefreshCheckbox.checked = false;
+        }
+
+        // When checkbox state changes, start or stop auto refresh
+        autoRefreshCheckbox.addEventListener('change', () => {
+            if (autoRefreshCheckbox.checked) {
+                // Start auto refresh, refresh page every 10 seconds
+                autoRefreshInterval = setInterval(() => {
+                    location.reload();
+                }, 10000);
+            } else {
+                // Stop auto refresh
+                clearInterval(autoRefreshInterval);
+            }
+
+            // Save checkbox state to cookie (expires in 7 days)
+            setCookie('autoRefreshState', autoRefreshCheckbox.checked, 7);
+        });
+
+        // Check checkbox state on page load and trigger auto refresh
+        window.onload = () => {
+            if (autoRefreshCheckbox.checked) {
+                // If checkbox was previously checked, start auto refresh
+                autoRefreshInterval = setInterval(() => {
+                    location.reload();
+                }, 10000);
+            }
+
+            fetchIP();
+        };
+
+        async function fetchIP() {
+            try {
+                const response = await fetch('https://ipinfo.io/json');
+                const data = await response.json();
+                document.getElementById('ip-display').textContent = `Your IP: ${data.ip}`;
+            } catch (error) {
+                document.getElementById('ip-display').textContent = "IP detection failed";
+                console.error("Fetch ip error:", error);
+            }
+        }
+    </script>
+</body>
+</html>

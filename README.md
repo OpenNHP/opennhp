@@ -211,7 +211,11 @@ We welcome contributions to OpenNHP! Please see our [Contributing Guidelines](CO
 
 ## Sponsors
 
-<a href="https://layerv.ai"><img src="docs/images/layerv_logo.png" width="200" alt="LayerV.ai"></a>
+<a href="https://layerv.ai">
+  <img src="docs/images/layerv_logo.png" width="80" alt="LayerV.ai">
+  <br>
+  <img src="docs/images/layerv_text.svg" width="120" alt="LayerV.ai">
+</a>
 
 ## License
 
@@ -222,7 +226,7 @@ OpenNHP is released under the [Apache 2.0 License](LICENSE).
 
 - Project Website: [https://github.com/OpenNHP/opennhp](https://github.com/OpenNHP/opennhp)
 - Email: [support@opennhp.org](mailto:support@opennhp.org)
-- Slack Channel: [Join our Slack](https://opennhp.slack.com/)
+- Discord: [Join our Discord](https://discord.gg/CpyVmspx5x)
 
 For more detailed documentation, please visit our [Official Documentation](https://docs.opennhp.org).
 

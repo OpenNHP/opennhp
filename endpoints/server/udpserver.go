@@ -302,6 +302,37 @@ func (s *UdpServer) Stop() {
 	s.log.Close()
 }
 
+// GetListenPort returns the UDP listening port of the server
+func (s *UdpServer) GetListenPort() int {
+	if s.listenAddr != nil {
+		return s.listenAddr.Port
+	}
+	if s.config != nil {
+		return s.config.ListenPort
+	}
+	return 0
+}
+
+// GetHttpPort returns the HTTP listening port and whether HTTP is enabled
+func (s *UdpServer) GetHttpPort() (int, bool) {
+	if s.httpConfig == nil || !s.httpConfig.EnableHttp {
+		return 0, false
+	}
+	port := s.httpConfig.HttpListenPort
+	if port == 0 {
+		port = s.GetListenPort() // falls back to UDP port
+	}
+	return port, true
+}
+
+// GetHttpTLSStatus returns TLS status as a string
+func (s *UdpServer) GetHttpTLSStatus() string {
+	if s.httpConfig != nil && s.httpConfig.EnableTLS {
+		return "enabled"
+	}
+	return "disabled"
+}
+
 func (s *UdpServer) IsRunning() bool {
 	return s.running.Load()
 }

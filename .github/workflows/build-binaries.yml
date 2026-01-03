@@ -1,4 +1,4 @@
-# 编译二进制文件并打包成产物的流水线
+# Build binaries for all modules and upload them as artifacts
 # This workflow builds binaries for all modules and uploads them as artifacts
 
 name: Build Binaries
@@ -14,7 +14,42 @@ env:
   GOMODULE: github.com/OpenNHP/opennhp/nhp
 
 jobs:
+  # Generate version info in a separate job to ensure all platforms use the same version
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit_id: ${{ steps.version.outputs.commit_id }}
+      commit_time: ${{ steps.version.outputs.commit_time }}
+      build_time: ${{ steps.version.outputs.build_time }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(cat nhp/version/VERSION)
+          TIMESTAMP=$(date +%y%m%d%H%M%S)
+          FULL_VERSION="${VERSION}.${TIMESTAMP}"
+          COMMIT_ID=$(git show -s --format=%H)
+          COMMIT_TIME=$(git show -s --format=%cd --date=format:'%Y-%m-%d %H:%M:%S')
+          BUILD_TIME=$(date "+%Y-%m-%d %H:%M:%S")
+          
+          echo "version=${FULL_VERSION}" >> $GITHUB_OUTPUT
+          echo "commit_id=${COMMIT_ID}" >> $GITHUB_OUTPUT
+          echo "commit_time=${COMMIT_TIME}" >> $GITHUB_OUTPUT
+          echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
+          
+          echo "Version: ${FULL_VERSION}"
+          echo "Commit ID: ${COMMIT_ID}"
+          echo "Commit Time: ${COMMIT_TIME}"
+          echo "Build Time: ${BUILD_TIME}"
+
   build:
+    needs: prepare
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -41,39 +76,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 获取完整历史以便获取commit信息
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Get version info
-        id: version
-        shell: bash
-        run: |
-          VERSION=$(cat nhp/version/VERSION)
-          TIMESTAMP=$(date +%y%m%d%H%M%S)
-          FULL_VERSION="${VERSION}.${TIMESTAMP}"
-          COMMIT_ID=$(git show -s --format=%H)
-          COMMIT_TIME=$(git show -s --format=%cd --date=format:'%Y-%m-%d %H:%M:%S')
-          BUILD_TIME=$(date "+%Y-%m-%d %H:%M:%S")
-          
-          echo "version=${FULL_VERSION}" >> $GITHUB_OUTPUT
-          echo "commit_id=${COMMIT_ID}" >> $GITHUB_OUTPUT
-          echo "commit_time=${COMMIT_TIME}" >> $GITHUB_OUTPUT
-          echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
-          
-          echo "Version: ${FULL_VERSION}"
-          echo "Commit ID: ${COMMIT_ID}"
-          echo "Commit Time: ${COMMIT_TIME}"
-          echo "Build Time: ${BUILD_TIME}"
-
       - name: Set LD_FLAGS
         id: ldflags
         shell: bash
         run: |
-          LD_FLAGS="-s -w -X '${GOMODULE}/version.Version=${{ steps.version.outputs.version }}' -X '${GOMODULE}/version.CommitId=${{ steps.version.outputs.commit_id }}' -X '${GOMODULE}/version.CommitTime=${{ steps.version.outputs.commit_time }}' -X '${GOMODULE}/version.BuildTime=${{ steps.version.outputs.build_time }}'"
+          LD_FLAGS="-s -w -X '${GOMODULE}/version.Version=${{ needs.prepare.outputs.version }}' -X '${GOMODULE}/version.CommitId=${{ needs.prepare.outputs.commit_id }}' -X '${GOMODULE}/version.CommitTime=${{ needs.prepare.outputs.commit_time }}' -X '${GOMODULE}/version.BuildTime=${{ needs.prepare.outputs.build_time }}'"
           echo "ldflags=${LD_FLAGS}" >> $GITHUB_OUTPUT
 
       - name: Go mod tidy
@@ -126,7 +140,7 @@ jobs:
           go build -trimpath -ldflags "${{ steps.ldflags.outputs.ldflags }}" -v -o ../output/nhp-kgc/nhp-kgc${{ matrix.ext }} ./kgc/main/main.go
           cp ./kgc/main/etc/*.toml ../output/nhp-kgc/etc/
 
-      # 上传各模块作为独立产物
+      # Upload each module as separate artifact
       - name: Upload nhp-agent artifact
         uses: actions/upload-artifact@v4
         with:
@@ -162,31 +176,31 @@ jobs:
           path: output/nhp-kgc/
           retention-days: 30
 
-      # 创建完整的打包产物
+      # Create full package archive
       - name: Create archive (Unix)
         if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           cd output
-          tar -czvf opennhp-${{ steps.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz nhp-agent nhp-ac nhp-db nhp-server nhp-kgc
+          tar -czvf opennhp-${{ needs.prepare.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz nhp-agent nhp-ac nhp-db nhp-server nhp-kgc
 
       - name: Create archive (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
           cd output
-          Compress-Archive -Path nhp-agent, nhp-ac, nhp-db, nhp-server, nhp-kgc -DestinationPath "opennhp-${{ steps.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip"
+          Compress-Archive -Path nhp-agent, nhp-ac, nhp-db, nhp-server, nhp-kgc -DestinationPath "opennhp-${{ needs.prepare.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip"
 
       - name: Upload full package artifact
         uses: actions/upload-artifact@v4
         with:
           name: opennhp-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: output/opennhp-${{ steps.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.${{ matrix.archive_ext }}
+          path: output/opennhp-${{ needs.prepare.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.${{ matrix.archive_ext }}
           retention-days: 30
 
-  # 汇总所有平台的产物
+  # Aggregate all platform artifacts
   summary:
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -197,6 +211,7 @@ jobs:
       - name: List artifacts
         run: |
           echo "=== All built artifacts ==="
+          echo "Version: ${{ needs.prepare.outputs.version }}"
           find all-artifacts -type f -name "*.tar.gz" -o -name "*.zip" -o -name "nhp-*" | head -100
           echo ""
           echo "=== Artifact sizes ==="
@@ -209,9 +224,9 @@ jobs:
           path: all-artifacts/opennhp-*/
           retention-days: 30
 
-  # 更新 latest release（永久保留最新构建）
+  # Update latest release (permanent storage for latest build)
   latest-release:
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -235,20 +250,20 @@ jobs:
           tag_name: latest
           name: Latest Build
           body: |
-            🚀 **最新构建产物 / Latest Build Artifacts**
+            🚀 **Latest Build Artifacts**
             
-            此 Release 会在每次构建后自动更新，包含最新的二进制文件。
             This release is automatically updated after each build with the latest binaries.
             
-            构建时间 / Build Time: ${{ github.event.head_commit.timestamp }}
-            提交 / Commit: ${{ github.sha }}
+            **Version:** ${{ needs.prepare.outputs.version }}
+            **Commit:** ${{ github.sha }}
+            **Build Time:** ${{ needs.prepare.outputs.build_time }}
           files: release-files/*
           prerelease: true
           make_latest: false
 
-  # 当推送tag时创建正式Release
+  # Create official release when pushing version tags
   release:
-    needs: build
+    needs: [prepare, build]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -274,4 +289,3 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
-

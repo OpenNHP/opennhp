@@ -211,9 +211,10 @@ jobs:
           path: all-artifacts/opennhp-*/
           retention-days: 30
 
-  # Update latest release (always keep the latest build)
+  # Update latest release (only on main branch, not PRs)
   latest-release:
     needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write

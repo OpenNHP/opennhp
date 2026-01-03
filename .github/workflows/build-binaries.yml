@@ -4,13 +4,10 @@
 name: Build Binaries
 
 on:
+  workflow_dispatch:  # Manual trigger only
   push:
-    branches: ["main", "develop"]
     tags:
-      - 'v*'
-  pull_request:
-    branches: ["main"]
-  workflow_dispatch:  # 支持手动触发
+      - 'v*'  # Auto trigger on version tags for release
 
 env:
   GO_VERSION: '1.21'

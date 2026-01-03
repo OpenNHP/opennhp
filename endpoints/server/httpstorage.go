@@ -187,6 +187,17 @@ func (hs *HttpServer) initStorageRouter() {
 	g.GET("/download/:uuid/:filename", func(c *gin.Context) {
 		uuid := c.Param("uuid")
 		filename := c.Param("filename")
+
+		// validate that uuid and filename are single path components
+		if uuid == "" || strings.Contains(uuid, "/") || strings.Contains(uuid, "\\") || strings.Contains(uuid, "..") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file name"})
+			return
+		}
+		if filename == "" || strings.Contains(filename, "/") || strings.Contains(filename, "\\") || strings.Contains(filename, "..") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file name"})
+			return
+		}
+
 		filePath := filepath.Join(ExeDirPath, uploadDir, uuid, filename)
 
 		safeDir := filepath.Join(ExeDirPath, uploadDir)
@@ -203,7 +214,7 @@ func (hs *HttpServer) initStorageRouter() {
 		}
 
 		// ensure that the resolved path is within the safe directory
-		if absPath != safeDirAbs && !strings.HasPrefix(absPath, safeDirAbs+string(os.PathSeparator)) {
+		if !strings.HasPrefix(absPath, safeDirAbs+string(os.PathSeparator)) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file name"})
 			return
 		}

@@ -244,19 +244,62 @@ jobs:
           find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-files/ \;
           ls -la release-files/
 
+      - name: Delete old release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Get all assets from latest release and delete them
+          ASSETS=$(gh api repos/${{ github.repository }}/releases/tags/latest --jq '.assets[].id' 2>/dev/null || echo "")
+          if [ -n "$ASSETS" ]; then
+            echo "Deleting old assets..."
+            for ASSET_ID in $ASSETS; do
+              echo "Deleting asset ID: $ASSET_ID"
+              gh api -X DELETE repos/${{ github.repository }}/releases/assets/$ASSET_ID
+            done
+          else
+            echo "No existing assets to delete or release not found"
+          fi
+
       - name: Update latest release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: latest
-          name: Latest Build
+          name: Latest Build - v${{ needs.prepare.outputs.version }}
           body: |
-            🚀 **Latest Build Artifacts**
+            ## 🚀 Latest Build Artifacts
             
-            This release is automatically updated after each build with the latest binaries.
+            > **Note:** This release is automatically updated after each build. Only the latest version is kept.
             
-            **Version:** ${{ needs.prepare.outputs.version }}
-            **Commit:** ${{ github.sha }}
-            **Build Time:** ${{ needs.prepare.outputs.build_time }}
+            | Item | Value |
+            |------|-------|
+            | **Version** | `${{ needs.prepare.outputs.version }}` |
+            | **Commit** | [`${{ github.sha }}`](https://github.com/${{ github.repository }}/commit/${{ github.sha }}) |
+            | **Build Time** | ${{ needs.prepare.outputs.build_time }} |
+            
+            ### 📦 Available Packages
+            
+            | Platform | Architecture | File |
+            |----------|--------------|------|
+            | Linux | amd64 | `opennhp-${{ needs.prepare.outputs.version }}-linux-amd64.tar.gz` |
+            | macOS | amd64 | `opennhp-${{ needs.prepare.outputs.version }}-darwin-amd64.tar.gz` |
+            | Windows | amd64 | `opennhp-${{ needs.prepare.outputs.version }}-windows-amd64.zip` |
+            
+            ### 🔧 Installation
+            
+            ```bash
+            # Linux/macOS
+            tar -xzf opennhp-${{ needs.prepare.outputs.version }}-<platform>-amd64.tar.gz
+            
+            # Windows
+            # Extract the zip file
+            ```
+            
+            ### ✅ Verify Version
+            
+            ```bash
+            ./nhp-serverd --version
+            # Output: nhp-server version ${{ needs.prepare.outputs.version }}
+            ```
           files: release-files/*
           prerelease: true
           make_latest: false

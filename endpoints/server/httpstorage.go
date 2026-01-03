@@ -190,14 +190,26 @@ func (hs *HttpServer) initStorageRouter() {
 		filePath := filepath.Join(ExeDirPath, uploadDir, uuid, filename)
 
 		safeDir := filepath.Join(ExeDirPath, uploadDir)
+		safeDirAbs, err := filepath.Abs(safeDir)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			return
+		}
+
 		absPath, err := filepath.Abs(filePath)
-		if err != nil || !strings.HasPrefix(absPath, safeDir) {
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file name"})
+			return
+		}
+
+		// ensure that the resolved path is within the safe directory
+		if absPath != safeDirAbs && !strings.HasPrefix(absPath, safeDirAbs+string(os.PathSeparator)) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file name"})
 			return
 		}
 
 		// check file exists
-		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		if _, err := os.Stat(absPath); os.IsNotExist(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "file not exists"})
 			return
 		}
@@ -206,7 +218,7 @@ func (hs *HttpServer) initStorageRouter() {
 		c.Header("Content-Description", "File Transfer")
 		c.Header("Content-Disposition", "attachment; filename="+filename)
 		c.Header("Content-Type", "application/octet-stream")
-		c.File(filePath)
+		c.File(absPath)
 	})
 
 	// get file metadata

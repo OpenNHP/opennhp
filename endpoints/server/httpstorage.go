@@ -288,11 +288,15 @@ func loadMetadata(uuid string) (FileMetadata, error) {
 	}
 
 	safeDir := filepath.Join(ExeDirPath, metadataDir)
-	if !strings.HasPrefix(absPath, safeDir) {
+	safeDirAbs, err := filepath.Abs(safeDir)
+	if err != nil {
+		return metadata, err
+	}
+	if !strings.HasPrefix(absPath, safeDirAbs) {
 		return metadata, fmt.Errorf("invalid file name")
 	}
 
-	file, err := os.Open(metadataPath)
+	file, err := os.Open(absPath)
 	if err != nil {
 		return metadata, err
 	}

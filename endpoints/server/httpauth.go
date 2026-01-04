@@ -24,7 +24,7 @@ func (hs *HttpServer) authWithAspPlugin(c *gin.Context, req *common.HttpKnockReq
 	ackMsg, err := handler.AuthWithHttp(c, req, helper)
 	_ = ackMsg
 	if err != nil {
-		log.Info("auth error: %v", err)
+		log.Warning("auth error: %v", err)
 		if !c.Writer.Written() {
 			c.String(http.StatusOK, "{\"errMsg\": \"auth error: %v\"}", err)
 		}
@@ -45,7 +45,7 @@ func (hs *HttpServer) legacyAuthWithAspPlugin(c *gin.Context, req *common.HttpKn
 	ackMsg, err := handler.AuthWithHttp(c, req, helper)
 	_ = ackMsg
 	if err != nil {
-		log.Info("auth error: %v", err)
+		log.Warning("auth error: %v", err)
 		if !c.Writer.Written() {
 			c.String(http.StatusOK, "{\"errMsg\": \"auth error: %v\"}", err)
 		}

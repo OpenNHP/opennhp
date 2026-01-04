@@ -44,8 +44,7 @@ type UdpAC struct {
 	serverPeerMutex sync.Mutex
 	serverPeerMap   map[string]*core.UdpPeer // indexed by server's public key
 
-	tokenStoreMutex sync.Mutex
-	tokenStore      TokenStore
+	tokenStore *common.TokenStore[*AccessEntry]
 
 	device     *core.Device
 	httpServer *HttpAC
@@ -145,7 +144,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 
 	a.remoteConnectionMap = make(map[string]*UdpConn)
 	a.serverPeerMap = make(map[string]*core.UdpPeer)
-	a.tokenStore = make(TokenStore)
+	a.tokenStore = common.NewTokenStore[*AccessEntry]()
 
 	if a.etcdConn != nil {
 		a.loadRemoteConfig()
@@ -183,7 +182,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 
 	// start ac routines
 	a.wg.Add(4)
-	go a.tokenStoreRefreshRoutine()
+	go a.tokenStore.RunRefreshRoutine(&a.wg, a.signals.stop, TokenStoreRefreshInterval)
 	go a.sendMessageRoutine()
 	go a.recvMessageRoutine()
 	go a.maintainServerConnectionRoutine()

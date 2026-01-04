@@ -43,13 +43,13 @@ type UdpPeer struct {
 	pubKey       []byte
 
 	// mutable fields
-	lastSendTime      int64
-	lastRecvTime      int64
-	lastNSLookupTime  int64
-	resolvedIpArr     []string
-	primaryResolvedIp string
-	recvAddr          *net.UDPAddr
-	teePublicKeyBase64      string
+	lastSendTime                     int64
+	lastRecvTime                     int64
+	lastNSLookupTime                 int64
+	resolvedIpArr                    []string
+	primaryResolvedIp                string
+	recvAddr                         *net.UDPAddr
+	teePublicKeyBase64               string
 	consumerEphemeralPublicKeyBase64 string
 }
 

@@ -196,11 +196,11 @@ func TestIPv6AnyNotation(t *testing.T) {
 // TestIPv6EdgeCases tests edge cases in IPv6 handling
 func TestIPv6EdgeCases(t *testing.T) {
 	tests := []struct {
-		name     string
-		ip       string
-		isIPv4   bool
-		isIPv6   bool
-		isValid  bool
+		name    string
+		ip      string
+		isIPv4  bool
+		isIPv6  bool
+		isValid bool
 	}{
 		// Standard cases
 		{"IPv4 standard", "192.168.1.1", true, false, true},

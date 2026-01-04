@@ -30,7 +30,7 @@ var (
 )
 
 type AttestRequest struct {
-	TeePubkey   TeePubkey   `json:"tee-pubkey"`
+	TeePubkey   TeePubkey      `json:"tee-pubkey"`
 	TeeEvidence map[string]any `json:"tee-evidence"`
 }
 
@@ -42,7 +42,7 @@ type TeePubkey struct {
 }
 
 type CustomClaims struct {
-	CosignAuthorized bool            `json:"cosign_authorized"`
+	CosignAuthorized bool `json:"cosign_authorized"`
 	jwt.RegisteredClaims
 }
 

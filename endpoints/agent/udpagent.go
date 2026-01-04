@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	ExeDirPath string
+	ExeDirPath                 string
 	SmartDataPolicyRefreshTime = 15 * int64(time.Second)
 )
 
@@ -120,13 +120,13 @@ type UdpAgent struct {
 	checkResults   map[string]any
 
 	// dhp
-	smartPolicyEngine        map[string]*wasmEngine.Engine  // index by smart data policy identifier
-	decryptedZtdoRecord      map[string]string  // index by data object id
-	smartPolicyIdentifier    map[string]string  // index by data object id
-	smartDataPolicyRefreshTime map[string]int64 // indexed by data object id, use to record the refresh time of smart data policy, the unit of time is UnixNano
+	smartPolicyEngine          map[string]*wasmEngine.Engine // index by smart data policy identifier
+	decryptedZtdoRecord        map[string]string             // index by data object id
+	smartPolicyIdentifier      map[string]string             // index by data object id
+	smartDataPolicyRefreshTime map[string]int64              // indexed by data object id, use to record the refresh time of smart data policy, the unit of time is UnixNano
 	dataAccessRefreshMutex     sync.Mutex
 
-	safeTee atomic.Bool
+	safeTee            atomic.Bool
 	trustedByNHPServer atomic.Bool
 	trustedByNHPDB     atomic.Bool
 }
@@ -780,7 +780,7 @@ func (a *UdpAgent) StartConfidentialComputing(ztdoId string, taId string, functi
 	params["path"] = output
 
 	var exist bool
-	if policyId, exist = a.smartPolicyIdentifier[ztdoId]; ! exist {
+	if policyId, exist = a.smartPolicyIdentifier[ztdoId]; !exist {
 		return nil, fmt.Errorf("Error: fail to find policyId for ztdoId %s.\n", ztdoId)
 	}
 
@@ -933,7 +933,7 @@ func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOut
 			a.trustedByNHPDB.Store(false)
 		}
 
-		return "",  fmt.Errorf("Error: fail to request ztdo with error: %s.", dagMsg.ErrMsg)
+		return "", fmt.Errorf("Error: fail to request ztdo with error: %s.", dagMsg.ErrMsg)
 	}
 	return output, nil
 }
@@ -950,7 +950,7 @@ func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg) (
 	result := false
 	sendAddr := server.SendAddr()
 	if sendAddr == nil {
-		log.Critical("device(%s)[SendDARMsgToServer] register server IP cannot be parsed", a)
+		log.Critical("device(%v)[SendDARMsgToServer] register server IP cannot be parsed", a)
 	}
 	drgMsg := msg
 	drgBytes, _ := json.Marshal(drgMsg)
@@ -999,12 +999,12 @@ func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg) (
 		}
 		dsaMsgString, err := json.Marshal(dsaMsg)
 		if err != nil {
-			log.Error("Agent(%s#%d)DSAMsg failed to parse %s message: %v", dsaMsg.DoId, err)
+			log.Error("Agent(%s) DSAMsg failed to parse message: %v", dsaMsg.DoId, err)
 			return false, dsaMsg
 		}
 		log.Info("SendDARMsgToServer response result: %v", dsaMsgString)
 		if dsaMsg.ErrCode != 0 {
-			log.Error("SendDARMsgToServer send failed,error:", dsaMsg.ErrMsg)
+			log.Error("SendDARMsgToServer send failed, error: %s", dsaMsg.ErrMsg)
 			return false, dsaMsg
 		}
 		return true, dsaMsg
@@ -1036,8 +1036,8 @@ func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg) (
 		time.Sleep(core.MinimalRecvIntervalMs * time.Millisecond)
 
 		davMsg := common.DAVMsg{
-			DoId: msg.DoId,
-			SpoId: dsaMsg.SpoId,
+			DoId:     msg.DoId,
+			SpoId:    dsaMsg.SpoId,
 			Evidence: evidence,
 		}
 
@@ -1056,7 +1056,7 @@ func (a *UdpAgent) SendDAVMsgToServer(server *core.UdpPeer, msg common.DAVMsg) (
 	result := false
 	sendAddr := server.SendAddr()
 	if sendAddr == nil {
-		log.Critical("device(%s)[SendDAVMsgToServer] register server IP cannot be parsed", a)
+		log.Critical("device(%v)[SendDAVMsgToServer] register server IP cannot be parsed", a)
 	}
 	davMsg := msg
 	davBytes, _ := json.Marshal(davMsg)
@@ -1105,12 +1105,12 @@ func (a *UdpAgent) SendDAVMsgToServer(server *core.UdpPeer, msg common.DAVMsg) (
 		}
 		dagMsgString, err := json.Marshal(dagMsg)
 		if err != nil {
-			log.Error("Agent(%s#%d)DAKMsg failed to parse %s message: %v", dagMsg.DoId, err)
+			log.Error("Agent(%s) DAKMsg failed to parse message: %v", dagMsg.DoId, err)
 			return false, dagMsg
 		}
 		log.Info("SendDAVMsgToServer response result: %v", dagMsgString)
 		if dagMsg.ErrCode != 0 {
-			log.Error("SendDAVMsgToServer send failed,error:", dagMsg.ErrMsg)
+			log.Error("SendDAVMsgToServer send failed, error: %s", dagMsg.ErrMsg)
 			return false, dagMsg
 		}
 		return true, dagMsg

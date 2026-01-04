@@ -13,8 +13,8 @@ import (
 )
 
 type AuthRequest struct {
-	Version     string                 `json:"version"`
-	Tee         string                 `json:"tee"`
+	Version     string         `json:"version"`
+	Tee         string         `json:"tee"`
 	ExtraParams map[string]any `json:"extra-params"`
 }
 

@@ -7,7 +7,6 @@ including token validation, resource access, encryption processes, and session m
 
 package error
 
-
 type ErrorType string
 
 const (

@@ -5,10 +5,11 @@ import (
 	"path/filepath"
 	"plugin"
 
+	"github.com/gin-gonic/gin"
+
 	common "github.com/OpenNHP/opennhp/nhp/common"
 	log "github.com/OpenNHP/opennhp/nhp/log"
 	utils "github.com/OpenNHP/opennhp/nhp/utils"
-	"github.com/gin-gonic/gin"
 )
 
 var ExeDirPath string

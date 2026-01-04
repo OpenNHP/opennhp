@@ -45,10 +45,6 @@ linters:
 issues:
   max-issues-per-linter: 50
   max-same-issues: 10
-  exclude-rules:
-    - linters:
-        - govet
-      text: "shadow:"
 formatters:
   enable:
     - gofmt

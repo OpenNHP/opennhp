@@ -130,35 +130,35 @@ jobs:
 
       # Upload each module as independent artifact
       - name: Upload nhp-agent artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nhp-agent-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-agent/
           retention-days: 30
 
       - name: Upload nhp-ac artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nhp-ac-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-ac/
           retention-days: 30
 
       - name: Upload nhp-server artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nhp-server-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-server/
           retention-days: 30
 
       - name: Upload nhp-db artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nhp-db-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-db/
           retention-days: 30
 
       - name: Upload nhp-kgc artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nhp-kgc-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-kgc/
@@ -180,7 +180,7 @@ jobs:
           Compress-Archive -Path nhp-agent, nhp-ac, nhp-db, nhp-server, nhp-kgc -DestinationPath "opennhp-${{ steps.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip"
 
       - name: Upload full package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: opennhp-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/opennhp-${{ steps.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.${{ matrix.archive_ext }}
@@ -205,7 +205,7 @@ jobs:
           du -sh all-artifacts/*
 
       - name: Upload combined artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: opennhp-all-platforms
           path: all-artifacts/opennhp-*/

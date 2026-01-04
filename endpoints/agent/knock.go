@@ -42,7 +42,7 @@ func (a *UdpAgent) Knock(res *KnockTarget) (ackMsg *common.ServerKnockAckMsg, er
 
 	// deal with ac PASS_ACCESS_IP mode
 	if len(ackMsg.PreAccessActions) > 0 {
-		a.preAccessRequest(ackMsg)
+		_ = a.preAccessRequest(ackMsg)
 	}
 	res.LastKnockSuccessTime = time.Now()
 
@@ -260,7 +260,7 @@ func (a *UdpAgent) preAccessRequest(ackMsg *common.ServerKnockAckMsg) (err error
 		go func(info *common.PreAccessInfo) {
 			defer acWg.Done()
 			if info != nil {
-				a.processPreAccessAction(info)
+				_ = a.processPreAccessAction(info)
 			}
 		}(action)
 	}

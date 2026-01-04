@@ -149,10 +149,10 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 	a.serverPeerMap = make(map[string]*core.UdpPeer)
 
 	// load peers
-	a.loadPeers()
+	_ = a.loadPeers()
 
 	// load TEEs
-	a.loadTEEs()
+	_ = a.loadTEEs()
 
 	a.signals.stop = make(chan struct{})
 	a.signals.serverMapUpdated = make(chan struct{}, 1)
@@ -404,7 +404,7 @@ func (a *UdpDevice) connectionRoutine(conn *UdpConn) {
 			if pkt == nil {
 				continue
 			}
-			a.SendPacket(pkt, conn)
+			_ = a.SendPacket(pkt, conn)
 
 		case pkt, ok := <-conn.ConnData.RecvQueue:
 			if !ok {
@@ -468,7 +468,9 @@ func (a *UdpDevice) recvMessageRoutine() {
 			case core.NHP_DWR:
 				// deal with NHP_AOP message
 				a.wg.Add(1)
-				go a.HandleUdpDataKeyWrappingOperations(ppd)
+				go func() {
+					_ = a.HandleUdpDataKeyWrappingOperations(ppd)
+				}()
 			}
 		}
 	}

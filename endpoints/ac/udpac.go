@@ -148,13 +148,13 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	a.tokenStore = make(TokenStore)
 
 	if a.etcdConn != nil {
-		a.loadRemoteConfig()
+		_ = a.loadRemoteConfig()
 	} else {
 		// load http config and turn on http server if needed
-		a.loadHttpConfig()
+		_ = a.loadHttpConfig()
 
 		// load peers
-		a.loadPeers()
+		_ = a.loadPeers()
 	}
 
 	if a.config.FilterMode == FilterMode_EBPFXDP {
@@ -428,7 +428,7 @@ func (a *UdpAC) connectionRoutine(conn *UdpConn) {
 			if pkt == nil {
 				continue
 			}
-			a.SendPacket(pkt, conn)
+			_ = a.SendPacket(pkt, conn)
 
 		case pkt, ok := <-conn.ConnData.RecvQueue:
 			if !ok {
@@ -493,7 +493,9 @@ func (a *UdpAC) recvMessageRoutine() {
 			case core.NHP_AOP:
 				// deal with NHP_AOP message
 				a.wg.Add(1)
-				go a.HandleUdpACOperations(ppd)
+				go func() {
+					_ = a.HandleUdpACOperations(ppd)
+				}()
 			}
 		}
 	}

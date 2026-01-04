@@ -160,7 +160,7 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 	}
 
 	// save file information into the file which name is md5sum, no matter the file exists or not.
-	utils.SaveStructAsJsonFile(filepath.Join(taDir, md5sum), map[string]any{
+	_ = utils.SaveStructAsJsonFile(filepath.Join(taDir, md5sum), map[string]any{
 		"fileName":    file.Filename,
 		"name":        taName,
 		"uuid":        fileUuid,

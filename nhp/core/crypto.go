@@ -339,6 +339,9 @@ func AESDecrypt(cipherText []byte, key []byte) ([]byte, error) {
 }
 func unpad(padded []byte, blockSize int) []byte {
 	length := len(padded)
+	if length == 0 {
+		return nil
+	}
 	unpadLen := int(padded[length-1])
 	if unpadLen > blockSize || unpadLen > length {
 		return nil

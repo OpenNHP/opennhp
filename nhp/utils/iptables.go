@@ -36,11 +36,14 @@ const (
 )
 
 type IPTables struct {
-	Binary          string
-	InputPolicy     int
-	ForwardPolicy   int
-	OutputPolicy    int
-	AcceptInputMode bool
+	Binary           string
+	Binary6          string // ip6tables binary path
+	IPv6Available    bool   // true if ip6tables is available
+	InputPolicy      int
+	ForwardPolicy    int
+	OutputPolicy     int
+	AcceptInputMode  bool
+	AcceptInput6Mode bool // separate tracking for IPv6
 }
 
 type IPTablesRuleOperation int32
@@ -67,6 +70,21 @@ func NewIPTables() (*IPTables, error) {
 
 	t := &IPTables{
 		Binary: path,
+	}
+
+	// Detect ip6tables (optional - don't fail if not available)
+	path6, err6 := exec.LookPath("ip6tables")
+	if err6 == nil {
+		cmd6 := exec.Command(path6, "-L")
+		if err6 = cmd6.Run(); err6 == nil {
+			t.Binary6 = path6
+			t.IPv6Available = true
+			log.Info("ip6tables detected and available")
+		} else {
+			log.Warning("ip6tables found but not functional: %v", err6)
+		}
+	} else {
+		log.Warning("ip6tables not found - IPv6 firewall rules will be skipped")
 	}
 
 	outStrs := strings.Split(string(ret), "\n")
@@ -237,6 +255,91 @@ func (table *IPTables) AcceptAllInput() {
 	//table.changePolicy(&inputPolicy, nil, nil)
 	table.changeIptablesRule(&inputPolicy, &forwardPolicy, nil, ADD_IPTABLES_RULE_OPERATION, "0.0.0.0/0")
 	table.AcceptInputMode = true
+}
+
+// ResetAllInput6 resets ip6tables input rules (IPv6)
+func (table *IPTables) ResetAllInput6() {
+	if !table.IPv6Available || !table.AcceptInput6Mode {
+		return
+	}
+	log.Info("reset ip6tables input")
+	inputPolicy := POLICY_ACCEPT
+	forwardPolicy := POLICY_ACCEPT
+	table.changeIp6tablesRule(&inputPolicy, &forwardPolicy, nil, DEL_IPTABLES_RULE_OPERATION, "::/0")
+	table.AcceptInput6Mode = false
+}
+
+// AcceptAllInput6 accepts all ip6tables input (IPv6)
+func (table *IPTables) AcceptAllInput6() {
+	if !table.IPv6Available || table.AcceptInput6Mode {
+		return
+	}
+	log.Info("accept ip6tables input")
+	inputPolicy := POLICY_ACCEPT
+	forwardPolicy := POLICY_ACCEPT
+	table.changeIp6tablesRule(&inputPolicy, &forwardPolicy, nil, ADD_IPTABLES_RULE_OPERATION, "::/0")
+	table.AcceptInput6Mode = true
+}
+
+// changeIp6tablesRule applies rules to ip6tables (IPv6 version of changeIptablesRule)
+func (table *IPTables) changeIp6tablesRule(inputPolicy, forwardPolicy, outputPolicy *int, operator IPTablesRuleOperation, dest string) {
+	if !table.IPv6Available {
+		return
+	}
+
+	operStr := "ACCEPT"
+	operation := "-I"
+	if operator == DEL_IPTABLES_RULE_OPERATION {
+		operation = "-D"
+	}
+
+	if inputPolicy != nil {
+		switch *inputPolicy {
+		case POLICY_ACCEPT:
+			operStr = "ACCEPT"
+		case POLICY_DROP:
+			operStr = "DROP"
+		case POLICY_REJECT:
+			operStr = "REJECT"
+		}
+		cmd := exec.Command(table.Binary6, operation, "INPUT", "-d", dest, "-j", operStr)
+		err := cmd.Run()
+		if err != nil {
+			log.Debug("execute command %s, error: %v", cmd.String(), err)
+		}
+	}
+
+	if forwardPolicy != nil {
+		switch *forwardPolicy {
+		case POLICY_ACCEPT:
+			operStr = "ACCEPT"
+		case POLICY_DROP:
+			operStr = "DROP"
+		case POLICY_REJECT:
+			operStr = "REJECT"
+		}
+		cmd := exec.Command(table.Binary6, operation, "FORWARD", "-d", dest, "-j", operStr)
+		err := cmd.Run()
+		if err != nil {
+			log.Debug("execute command %s, error: %v", cmd.String(), err)
+		}
+	}
+
+	if outputPolicy != nil {
+		switch *outputPolicy {
+		case POLICY_ACCEPT:
+			operStr = "ACCEPT"
+		case POLICY_DROP:
+			operStr = "DROP"
+		case POLICY_REJECT:
+			operStr = "REJECT"
+		}
+		cmd := exec.Command(table.Binary6, operation, "OUTPUT", "-d", dest, "-j", operStr)
+		err := cmd.Run()
+		if err != nil {
+			log.Debug("execute command %s, error: %v", cmd.String(), err)
+		}
+	}
 }
 
 type IPSet struct {

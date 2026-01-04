@@ -233,7 +233,7 @@ jobs:
           ls -la release-files/
 
       - name: Update latest release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           name: Latest Build
@@ -270,7 +270,7 @@ jobs:
           ls -la release-files/
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: release-files/*
           generate_release_notes: true

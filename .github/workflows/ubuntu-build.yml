@@ -26,3 +26,6 @@ jobs:
 
     - name: Test
       run: make test
+
+    - name: Fuzz Tests (quick)
+      run: make fuzz-quick

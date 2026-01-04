@@ -494,7 +494,7 @@ func (a *UdpAgent) connectionRoutine(conn *UdpConn) {
 			if pkt == nil {
 				continue
 			}
-			_ = a.SendPacket(pkt, conn)
+			_, _ = a.SendPacket(pkt, conn)
 
 		case pkt, ok := <-conn.ConnData.RecvQueue:
 			if !ok {

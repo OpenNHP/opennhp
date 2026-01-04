@@ -138,7 +138,7 @@ func (hs *HttpServer) Stop() {
 	hs.running.Store(false)
 	close(hs.signals.stop)
 	ctx, cancel := context.WithTimeout(context.Background(), 5500*time.Millisecond)
-	hs.httpServer.Shutdown(ctx)
+	_ = hs.httpServer.Shutdown(ctx)
 
 	hs.wg.Wait()
 	cancel()

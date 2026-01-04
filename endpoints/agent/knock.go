@@ -42,7 +42,9 @@ func (a *UdpAgent) Knock(res *KnockTarget) (ackMsg *common.ServerKnockAckMsg, er
 
 	// deal with ac PASS_ACCESS_IP mode
 	if len(ackMsg.PreAccessActions) > 0 {
-		_ = a.preAccessRequest(ackMsg)
+		if err := a.preAccessRequest(ackMsg); err != nil {
+			log.Warning("agent(%s)[KnockRequest] pre-access request failed: %v", a.knockUser.UserId, err)
+		}
 	}
 	res.LastKnockSuccessTime = time.Now()
 

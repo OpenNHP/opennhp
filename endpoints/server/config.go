@@ -408,7 +408,7 @@ func (s *UdpServer) updateEtcdConfig(content []byte, baseLoad bool) (err error) 
 		}
 		srcIpMap[srcIp.SrcIp] = ips
 	}
-	s.updateSourceIps(srcIpMap)
+	_ = s.updateSourceIps(srcIpMap)
 
 	return err
 }
@@ -577,7 +577,7 @@ func (s *UdpServer) updateResources(aspMap common.AuthSvcProviderMap) (err error
 		if len(aspData.PluginPath) > 0 {
 			h := plugins.ReadPluginHandler(aspData.PluginPath)
 			if h != nil {
-				s.LoadPlugin(aspId, h)
+				_ = s.LoadPlugin(aspId, h)
 			}
 		}
 

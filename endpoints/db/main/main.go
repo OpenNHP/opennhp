@@ -326,7 +326,10 @@ func runApp(params db.AppParams) error {
 			}
 
 			// Save data private key after success encryption
-			_ = dataPrkStore.Save(ztdoId)
+			if err := dataPrkStore.Save(ztdoId); err != nil {
+				log.Error("failed to save data private key: %s\n", err)
+				return err
+			}
 		}
 
 		if params.DsType != "offline" {

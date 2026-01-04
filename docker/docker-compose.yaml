@@ -11,9 +11,11 @@ volumes:
 services:
   nhp-server:
     image: opennhp-server
-    build: 
+    build:
       context: ..
       dockerfile: ./docker/Dockerfile.server
+      args:
+        - GOPROXY=${GOPROXY:-}
     container_name: nhp-server
     restart: always
     networks:
@@ -28,9 +30,11 @@ services:
   nhp-ac:
     image: opennhp-ac
     container_name: nhp-ac
-    build: 
+    build:
       context: ..
       dockerfile: ./docker/Dockerfile.ac
+      args:
+        - GOPROXY=${GOPROXY:-}
     volumes:
       - ./nhp-ac/etc/:/nhp-ac/etc/
       - ./nhp-ac/traefik/etc/traefik.toml:/opt/traefik/traefik.toml
@@ -48,9 +52,11 @@ services:
   web-app:
     image: web-app
     container_name: web-app
-    build: 
+    build:
       context: .
       dockerfile: ./Dockerfile.app
+      args:
+        - GOPROXY=${GOPROXY:-}
     restart: always
     cap_add:
       - NET_ADMIN
@@ -60,9 +66,11 @@ services:
 
   nhp-agent:
     image: opennhp-agent:latest
-    build: 
+    build:
       context: ..
       dockerfile: ./docker/Dockerfile.agent
+      args:
+        - GOPROXY=${GOPROXY:-}
     container_name: nhp-agent
     restart: always
     #command: []

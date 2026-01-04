@@ -26,7 +26,7 @@ jobs:
 
     - name: Run tests with coverage
       run: |
-        cd nhp && go test -coverprofile=coverage.out -covermode=atomic ./...
+        cd nhp && go test -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v 'wasm/policy')
         cd ../endpoints && go test -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage to Codecov

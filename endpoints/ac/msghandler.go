@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
@@ -138,15 +137,19 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 		fallthrough
 	default:
 		for _, srcAddr := range srcAddrs {
-			var ipType utils.IPTYPE
 			var ipNet *net.IPNet
-			if strings.Contains(srcAddr.Ip, ":") {
-				ipType = utils.IPV6
-				_, ipNet, _ = net.ParseCIDR(srcAddr.Ip + "/121")
-			} else {
-				ipType = utils.IPV4
-				_, ipNet, _ = net.ParseCIDR(srcAddr.Ip + "/25")
+
+			// Detect IP type using proper parsing instead of string matching
+			ipType, ipErr := utils.DetectIPType(srcAddr.Ip)
+			if ipErr != nil {
+				log.Error("[HandleAccessControl] invalid source IP: %s, error: %v", srcAddr.Ip, ipErr)
+				continue
 			}
+
+			// Use appropriate CIDR mask based on IP type and pass mode
+			rangeMode := ipPassMode == PASS_KNOCKIP_WITH_RANGE
+			cidrMask := utils.GetCIDRMask(ipType, rangeMode)
+			_, ipNet, _ = net.ParseCIDR(srcAddr.Ip + cidrMask)
 			log.Debug("src ip is %s, net range is %s", srcAddr, ipNet.String())
 
 			for _, dstAddr := range dstAddrs {
@@ -402,12 +405,19 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 		var tcpListener *net.TCPListener
 		var udpListener *net.UDPConn
 
-		if strings.Contains(dstAddrs[0].Ip, ":") {
-			ipType = utils.IPV6
-			netStr = "0:0:0:0:0:0:0:0/0"
+		// Detect IP type using proper parsing instead of string matching
+		ipType, ipErr := utils.DetectIPType(dstAddrs[0].Ip)
+		if ipErr != nil {
+			log.Error("[HandleAccessControl] invalid destination IP for PASS_PRE_ACCESS_IP: %s", dstAddrs[0].Ip)
+			err = common.ErrInvalidIpAddress
+			artMsg.ErrCode = common.ErrInvalidIpAddress.ErrorCode()
+			artMsg.ErrMsg = err.Error()
+			return
+		}
+		if ipType == utils.IPV6 {
+			netStr = "::/0" // Canonical IPv6 "any" notation
 		} else {
 			// since ipset does not allow full ip range 0.0.0.0/0, we use two ip ranges
-			ipType = utils.IPV4
 			netStr = "0.0.0.0/1"
 			netStr1 = "128.0.0.0/1"
 		}
@@ -668,11 +678,12 @@ func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, 
 	if a.VerifyAccessToken(accMsg.ACToken) != nil {
 		remoteAddr, _ := net.ResolveTCPAddr(conn.RemoteAddr().Network(), conn.RemoteAddr().String())
 		srcAddrIp := remoteAddr.IP.String()
-		var ipType utils.IPTYPE
-		if strings.Contains(dstAddrs[0].Ip, ":") {
-			ipType = utils.IPV6
-		} else {
-			ipType = utils.IPV4
+
+		// Detect IP type using proper parsing instead of string matching
+		ipType, ipErr := utils.DetectIPType(dstAddrs[0].Ip)
+		if ipErr != nil {
+			log.Error("[tcpTempAccessHandler] invalid destination IP: %s", dstAddrs[0].Ip)
+			return
 		}
 
 		for _, dstAddr := range dstAddrs {
@@ -786,11 +797,12 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 
 	if a.VerifyAccessToken(accMsg.ACToken) != nil {
 		srcAddrIp := remoteAddr.IP.String()
-		var ipType utils.IPTYPE
-		if strings.Contains(dstAddrs[0].Ip, ":") {
-			ipType = utils.IPV6
-		} else {
-			ipType = utils.IPV4
+
+		// Detect IP type using proper parsing instead of string matching
+		ipType, ipErr := utils.DetectIPType(dstAddrs[0].Ip)
+		if ipErr != nil {
+			log.Error("[udpTempAccessHandler] invalid destination IP: %s", dstAddrs[0].Ip)
+			return
 		}
 
 		for _, dstAddr := range dstAddrs {

@@ -12,8 +12,9 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/google/uuid"
+
+	"github.com/OpenNHP/opennhp/nhp/core"
 )
 
 const (

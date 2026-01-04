@@ -5,8 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/OpenNHP/opennhp/nhp/log"
 	clientv3 "go.etcd.io/etcd/client/v3"
+
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 type EtcdConfig struct {

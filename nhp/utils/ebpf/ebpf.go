@@ -6,8 +6,9 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/cilium/ebpf"
+
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 type whitelistKey struct {

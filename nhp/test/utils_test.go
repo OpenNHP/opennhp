@@ -91,13 +91,15 @@ LogLevel = 4
 "ExampleKey1" = 1
 "ExampleKey2" = true
 `
-	if _, err := tempFile.WriteString(initialContent); err != nil {
-		t.Fatalf("can't write into temporary file: %v", err)
+	_, writeErr := tempFile.WriteString(initialContent)
+	if writeErr != nil {
+		t.Fatalf("can't write into temporary file: %v", writeErr)
 	}
 	tempFile.Close()
 
-	if err := utils.UpdateTomlConfig(tempFile.Name(), "PrivateKeyBase64", "+Jnee2lP6Kn47qzSaqwSmWxORsBkkCV6YHsRqXM23Vo="); err != nil {
-		t.Fatalf("can't update toml config: %v", err)
+	updateErr := utils.UpdateTomlConfig(tempFile.Name(), "PrivateKeyBase64", "+Jnee2lP6Kn47qzSaqwSmWxORsBkkCV6YHsRqXM23Vo=")
+	if updateErr != nil {
+		t.Fatalf("can't update toml config: %v", updateErr)
 	}
 
 	content, err := os.ReadFile(tempFile.Name())

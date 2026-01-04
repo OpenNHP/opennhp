@@ -13,8 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/fsnotify/fsnotify"
+
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 func ReadWholeFile(fileName string) (string, error) {

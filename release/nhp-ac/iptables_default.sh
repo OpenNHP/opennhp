@@ -9,8 +9,8 @@ if [ "$1" = "-f" ]; then
     iptables -X
 fi
 
-### ipset ###
-echo "Setting up ipset"
+### ipset (IPv4) ###
+echo "Setting up IPv4 ipset"
 echo ""
 ipset -exist create defaultset hash:ip,port,ip counters maxelem 1000000 timeout 120 2>/dev/null || \
     ipset create defaultset hash:ip,port,ip counters maxelem 1000000 timeout 120 2>/dev/null || true
@@ -19,18 +19,47 @@ ipset -exist create defaultset_down hash:ip,port,ip counters maxelem 1000000 tim
 ipset -exist create tempset hash:net,port counters maxelem 1000000 timeout 5 2>/dev/null || \
     ipset create tempset hash:net,port counters maxelem 1000000 timeout 5 2>/dev/null || true
 
-# Verify ipset creation
+# Verify IPv4 ipset creation
 IPSET_OK=1
 ipset list defaultset > /dev/null 2>&1 || IPSET_OK=0
 ipset list defaultset_down > /dev/null 2>&1 || IPSET_OK=0
 ipset list tempset > /dev/null 2>&1 || IPSET_OK=0
 
 if [ $IPSET_OK -eq 0 ]; then
-    echo "Warning: Some ipset creation failed. Skipping ipset-related iptables rules."
+    echo "Warning: Some IPv4 ipset creation failed. Skipping ipset-related iptables rules."
     echo "This may happen on systems using nf_tables backend without ipset support."
     echo ""
 fi
-echo "Setting ipset OK ..."
+echo "Setting IPv4 ipset OK ..."
+
+### ipset (IPv6) ###
+echo "Setting up IPv6 ipset"
+echo ""
+IP6TABLES=$(which ip6tables 2>/dev/null)
+IPSET6_OK=0
+if [ -n "$IP6TABLES" ]; then
+    ipset -exist create defaultset_v6 hash:ip,port,ip family inet6 counters maxelem 1000000 timeout 120 2>/dev/null || \
+        ipset create defaultset_v6 hash:ip,port,ip family inet6 counters maxelem 1000000 timeout 120 2>/dev/null || true
+    ipset -exist create defaultset_down_v6 hash:ip,port,ip family inet6 counters maxelem 1000000 timeout 121 2>/dev/null || \
+        ipset create defaultset_down_v6 hash:ip,port,ip family inet6 counters maxelem 1000000 timeout 121 2>/dev/null || true
+    ipset -exist create tempset_v6 hash:net,port family inet6 counters maxelem 1000000 timeout 5 2>/dev/null || \
+        ipset create tempset_v6 hash:net,port family inet6 counters maxelem 1000000 timeout 5 2>/dev/null || true
+
+    # Verify IPv6 ipset creation
+    IPSET6_OK=1
+    ipset list defaultset_v6 > /dev/null 2>&1 || IPSET6_OK=0
+    ipset list defaultset_down_v6 > /dev/null 2>&1 || IPSET6_OK=0
+    ipset list tempset_v6 > /dev/null 2>&1 || IPSET6_OK=0
+
+    if [ $IPSET6_OK -eq 0 ]; then
+        echo "Warning: Some IPv6 ipset creation failed. Skipping IPv6 ipset-related rules."
+        echo ""
+    else
+        echo "Setting IPv6 ipset OK ..."
+    fi
+else
+    echo "ip6tables not found, skipping IPv6 configuration"
+fi
 
 ### NHP_DENY chain ###
 echo "Setting up NHP_DENY chain ..."
@@ -144,10 +173,123 @@ if [ $? -ne 0 ]; then
     iptables -A FORWARD -j NHP_DENY
 fi
 
-### chain policy ###
+### chain policy (IPv4) ###
 iptables -P INPUT DROP
 iptables -P OUTPUT ACCEPT
 iptables -P FORWARD DROP
+
+### IPv6 firewall rules ###
+if [ -n "$IP6TABLES" ] && [ $IPSET6_OK -eq 1 ]; then
+    echo "Setting up IPv6 NHP_DENY chain ..."
+    echo ""
+    ip6tables -N NHP_DENY 2>/dev/null || true
+
+    # Get IPv6 address for logging
+    LOCAL_IP6=$(ip -6 route get 2001:4860:4860::8888 2>/dev/null | awk '{print $7;exit}')
+    if [ -n "$LOCAL_IP6" ]; then
+        ip6tables -C NHP_DENY -d $LOCAL_IP6 -j LOG --log-prefix "[NHP-DENY6] " --log-level 6 --log-ip-options > /dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            ip6tables -A NHP_DENY -d $LOCAL_IP6 -j LOG --log-prefix "[NHP-DENY6] " --log-level 6 --log-ip-options 2>/dev/null || true
+        fi
+        ip6tables -C NHP_DENY -d $LOCAL_IP6 -j DROP > /dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            ip6tables -A NHP_DENY -d $LOCAL_IP6 -j DROP 2>/dev/null || true
+        fi
+    fi
+
+    echo "Setting up IPv6 INPUT chain ..."
+    echo ""
+
+    # tempset_v6 -> defaultset_v6
+    ip6tables -C INPUT -m set --match-set tempset_v6 src,dst -j SET --add-set defaultset_v6 src,dst,dst > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ip6tables -A INPUT -m set --match-set tempset_v6 src,dst -j SET --add-set defaultset_v6 src,dst,dst 2>/dev/null || true
+    fi
+
+    # defaultset_v6 -> defaultset_down_v6
+    ip6tables -C INPUT -m set --match-set defaultset_v6 src,dst,dst -j SET --add-set defaultset_down_v6 src,dst,dst > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ip6tables -A INPUT -m set --match-set defaultset_v6 src,dst,dst -j SET --add-set defaultset_down_v6 src,dst,dst 2>/dev/null || true
+    fi
+
+    # defaultset_v6 accept with logging
+    ip6tables -C INPUT -m set --match-set defaultset_v6 src,dst,dst -j LOG --log-prefix "[NHP-ACCEPT6] " --log-level 6 --log-ip-options > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ip6tables -A INPUT -m set --match-set defaultset_v6 src,dst,dst -j LOG --log-prefix "[NHP-ACCEPT6] " --log-level 6 --log-ip-options 2>/dev/null || true
+    fi
+    ip6tables -C INPUT -m set --match-set defaultset_v6 src,dst,dst -j ACCEPT > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ip6tables -A INPUT -m set --match-set defaultset_v6 src,dst,dst -j ACCEPT 2>/dev/null || true
+    fi
+
+    # tempset_v6 accept
+    ip6tables -C INPUT -m set --match-set tempset_v6 src,dst -j ACCEPT > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ip6tables -A INPUT -m set --match-set tempset_v6 src,dst -j ACCEPT 2>/dev/null || true
+    fi
+
+    # loopback interface
+    ip6tables -C INPUT -i lo -j ACCEPT > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ip6tables -I INPUT -i lo -j ACCEPT
+    fi
+
+    # ssh
+    ip6tables -C INPUT -p tcp --dport 22 -j ACCEPT > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ip6tables -I INPUT -p tcp --dport 22 -j ACCEPT
+    fi
+
+    # established connections
+    ip6tables -C INPUT -m state --state ESTABLISHED -j ACCEPT > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ip6tables -A INPUT -m state --state ESTABLISHED -j ACCEPT
+    fi
+
+    # rest of INPUT
+    ip6tables -C INPUT -j NHP_DENY > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ip6tables -A INPUT -j NHP_DENY 2>/dev/null || true
+    fi
+
+    echo "Setting up IPv6 FORWARD chain ..."
+    echo ""
+
+    # defaultset_v6 -> defaultset_down_v6
+    ip6tables -C FORWARD -m set --match-set defaultset_v6 src,dst,dst -j SET --add-set defaultset_down_v6 src,dst,dst > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ip6tables -A FORWARD -m set --match-set defaultset_v6 src,dst,dst -j SET --add-set defaultset_down_v6 src,dst,dst 2>/dev/null || true
+    fi
+
+    # defaultset_v6 forward with logging
+    ip6tables -C FORWARD -m set --match-set defaultset_v6 src,dst,dst -j LOG --log-prefix "[NHP-FORWARD6] " --log-level 6 --log-ip-options > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ip6tables -A FORWARD -m set --match-set defaultset_v6 src,dst,dst -j LOG --log-prefix "[NHP-FORWARD6] " --log-level 6 --log-ip-options 2>/dev/null || true
+    fi
+    ip6tables -C FORWARD -m set --match-set defaultset_v6 src,dst,dst -j ACCEPT > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ip6tables -A FORWARD -m set --match-set defaultset_v6 src,dst,dst -j ACCEPT 2>/dev/null || true
+    fi
+
+    # established connections
+    ip6tables -C FORWARD -m state --state ESTABLISHED -j ACCEPT > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ip6tables -A FORWARD -m state --state ESTABLISHED -j ACCEPT
+    fi
+
+    # rest of FORWARD
+    ip6tables -C FORWARD -j NHP_DENY > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        ip6tables -A FORWARD -j NHP_DENY 2>/dev/null || true
+    fi
+
+    ### IPv6 chain policy ###
+    ip6tables -P INPUT DROP
+    ip6tables -P OUTPUT ACCEPT
+    ip6tables -P FORWARD DROP
+
+    echo "Setting IPv6 iptables OK ..."
+fi
 
 ### iptables kernel logging ###
 LOCAL_IP=$(ip route get 1 | awk '{print $7;exit}')
@@ -169,12 +311,21 @@ if [ -d /etc/rsyslog.d ]; then
 template(name="NHPAcceptFile" type="string" string="'"$NHP_LOG_DIR"'/nhp_accept-%$YEAR%-%$MONTH%-%$DAY%.log")
 template(name="NHPForwardFile" type="string" string="'"$NHP_LOG_DIR"'/nhp_forward-%$YEAR%-%$MONTH%-%$DAY%.log")
 template(name="NHPDenyFile" type="string" string="'"$NHP_LOG_DIR"'/nhp_deny-%$YEAR%-%$MONTH%-%$DAY%.log")
+template(name="NHPAccept6File" type="string" string="'"$NHP_LOG_DIR"'/nhp_accept6-%$YEAR%-%$MONTH%-%$DAY%.log")
+template(name="NHPForward6File" type="string" string="'"$NHP_LOG_DIR"'/nhp_forward6-%$YEAR%-%$MONTH%-%$DAY%.log")
+template(name="NHPDeny6File" type="string" string="'"$NHP_LOG_DIR"'/nhp_deny6-%$YEAR%-%$MONTH%-%$DAY%.log")
 
 :msg,contains,"[NHP-ACCEPT]" ?NHPAcceptFile;NHPFormat
 & stop
 :msg,contains,"[NHP-FORWARD]" ?NHPForwardFile;NHPFormat
 & stop
 :msg,contains,"[NHP-DENY]" ?NHPDenyFile;NHPFormat
+& stop
+:msg,contains,"[NHP-ACCEPT6]" ?NHPAccept6File;NHPFormat
+& stop
+:msg,contains,"[NHP-FORWARD6]" ?NHPForward6File;NHPFormat
+& stop
+:msg,contains,"[NHP-DENY6]" ?NHPDeny6File;NHPFormat
 & stop' > /etc/rsyslog.d/10-nhplog.conf
 
     systemctl restart rsyslog

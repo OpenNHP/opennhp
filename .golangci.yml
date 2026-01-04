@@ -1,6 +1,8 @@
 run:
   timeout: 5m
   modules-download-mode: readonly
+  skip-dirs:
+    - core/wasm/policy  # WASM stubs, not buildable with standard Go
 
 linters:
   enable:

@@ -206,17 +206,17 @@ dev:
 	cd endpoints && go build ./...
 	@echo "$(COLOUR_GREEN)[OpenNHP] Development build complete$(END_COLOUR)"
 
-# Run all tests
+# Run all tests (excludes wasm/policy which requires WASM build tags)
 test:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Running tests...$(END_COLOUR)"
-	cd nhp && go test -v ./...
+	cd nhp && go test -v $$(go list ./... | grep -v /wasm/policy)
 	cd endpoints && go test -v ./...
 	@echo "$(COLOUR_GREEN)[OpenNHP] All tests passed!$(END_COLOUR)"
 
 # Run tests with race detection
 test-race:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Running tests with race detection...$(END_COLOUR)"
-	cd nhp && go test -race -v ./...
+	cd nhp && go test -race -v $$(go list ./... | grep -v /wasm/policy)
 	cd endpoints && go test -race -v ./...
 	@echo "$(COLOUR_GREEN)[OpenNHP] Race detection tests passed!$(END_COLOUR)"
 

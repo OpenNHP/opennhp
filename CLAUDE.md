@@ -10,6 +10,18 @@ OpenNHP is a Go-based Zero Trust security toolkit implementing two core protocol
 
 The system follows NIST Zero Trust Architecture with three core components that communicate via encrypted UDP packets using the Noise Protocol Framework.
 
+## Git Commit Requirements
+
+All commits must be signed with a verified GPG or SSH key. Unsigned commits will fail CI checks.
+
+```bash
+# Sign commits (if not configured globally)
+git commit -S -m "your message"
+
+# Amend to sign an existing commit
+git commit --amend --no-edit -S
+```
+
 ## Build Commands
 
 ```bash

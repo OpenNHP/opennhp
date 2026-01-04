@@ -179,7 +179,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							}
 							err = ebpf.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
 							if err != nil {
-								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 								return
 							}
 						}
@@ -192,7 +192,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							}
 							err = ebpf.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
 							if err != nil {
-								log.Error("[EbpfRuleAdd] add ebpf tcp failed src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+								log.Error("[EbpfRuleAdd] add ebpf tcp failed src: %s dst: %s, error: %v, protocol: %s, dstport: %d", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err, ebpfHashStr.Protocol, ebpfHashStr.DstPort)
 								return
 							}
 						}
@@ -227,7 +227,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							}
 							err = ebpf.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
 							if err != nil {
-								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 								return
 							}
 						}
@@ -241,7 +241,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							err = ebpf.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
 
 							if err != nil {
-								log.Error("[EbpfRuleAdd] add ebpf udp failed src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+								log.Error("[EbpfRuleAdd] add ebpf udp failed src: %s dst: %s, error: %v, protocol: %s, dstport: %d", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err, ebpfHashStr.Protocol, ebpfHashStr.DstPort)
 								return
 							}
 						}
@@ -272,7 +272,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							}
 							err = ebpf.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
 							if err != nil {
-								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 								return
 							}
 						default:
@@ -309,21 +309,21 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 						}
 
 					case FilterMode_EBPFXDP:
-						srcIp, ipnet, err := net.ParseCIDR(netStr)
-						if err != nil {
-							log.Error("[HandleAccessControl] failed to parse CIDR %s: %v", netStr, err)
+						cidrIP, ipnet, cidrErr := net.ParseCIDR(netStr)
+						if cidrErr != nil {
+							log.Error("[HandleAccessControl] failed to parse CIDR %s: %v", netStr, cidrErr)
 						}
 						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "tcp" || dstAddr.Protocol == "any" {
-							for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
-								srcIpStr := srcIp.String()
+							for iterIP := cidrIP.Mask(ipnet.Mask); ipnet.Contains(iterIP); incrementIP(iterIP) {
+								srcIpStr := iterIP.String()
 								if dstAddr.Port != 0 {
 									ebpfHashStr := ebpf.EbpfRuleParams{
 										SrcIP:   srcIpStr,
 										DstPort: dstAddr.Port,
 									}
-									err = ebpf.EbpfRuleAdd(4, ebpfHashStr, tempOpenTimeSec)
-									if err != nil {
-										log.Error("[EbpfRuleAdd] add ebpf for tcp dst port src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPort, err)
+									addErr := ebpf.EbpfRuleAdd(4, ebpfHashStr, tempOpenTimeSec)
+									if addErr != nil {
+										log.Error("[EbpfRuleAdd] add ebpf for tcp dst port src: %s, dstport: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPort, addErr)
 									}
 
 								} else {
@@ -332,25 +332,25 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 										DstPortStart: 1,
 										DstPortEnd:   65535,
 									}
-									err = ebpf.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
-									if err != nil {
-										log.Error("[EbpfRuleAdd] add ebpf src: %s  dstportstart: %d,  dstportend: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPortStart, ebpfHashStr.DstPortEnd, err)
+									addErr := ebpf.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
+									if addErr != nil {
+										log.Error("[EbpfRuleAdd] add ebpf src: %s dstportstart: %d, dstportend: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPortStart, ebpfHashStr.DstPortEnd, addErr)
 									}
 								}
 							}
 						}
 						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "udp" || dstAddr.Protocol == "any" {
-							for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
-								srcIpStr := srcIp.String()
+							for iterIP := cidrIP.Mask(ipnet.Mask); ipnet.Contains(iterIP); incrementIP(iterIP) {
+								srcIpStr := iterIP.String()
 
 								if dstAddr.Port != 0 {
 									ebpfHashStr := ebpf.EbpfRuleParams{
 										SrcIP:   srcIpStr,
 										DstPort: dstAddr.Port,
 									}
-									err = ebpf.EbpfRuleAdd(4, ebpfHashStr, tempOpenTimeSec)
-									if err != nil {
-										log.Error("[EbpfRuleAdd] add ebpf for udp dst port src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPort, err)
+									addErr := ebpf.EbpfRuleAdd(4, ebpfHashStr, tempOpenTimeSec)
+									if addErr != nil {
+										log.Error("[EbpfRuleAdd] add ebpf for udp dst port src: %s, dstport: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPort, addErr)
 									}
 								} else {
 									ebpfHashStr := ebpf.EbpfRuleParams{
@@ -358,23 +358,23 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 										DstPortStart: 1,
 										DstPortEnd:   65535,
 									}
-									err = ebpf.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
-									if err != nil {
-										log.Error("[EbpfRuleAdd] add ebpf src: %s  dstportstart: %d,  dstportend: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPortStart, ebpfHashStr.DstPortEnd, err)
+									addErr := ebpf.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
+									if addErr != nil {
+										log.Error("[EbpfRuleAdd] add ebpf src: %s dstportstart: %d, dstportend: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPortStart, ebpfHashStr.DstPortEnd, addErr)
 									}
 								}
 							}
 						}
 						if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
-							for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
-								srcIpStr := srcIp.String()
+							for iterIP := cidrIP.Mask(ipnet.Mask); ipnet.Contains(iterIP); incrementIP(iterIP) {
+								srcIpStr := iterIP.String()
 								ebpfHashStr := ebpf.EbpfRuleParams{
 									SrcIP: srcIpStr,
 									DstIP: dstAddr.Ip,
 								}
-								err = ebpf.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
-								if err != nil {
-									log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								addErr := ebpf.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
+								if addErr != nil {
+									log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, addErr)
 								}
 							}
 						}
@@ -705,7 +705,7 @@ func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, 
 				}
 				err = ebpf.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
 				if err != nil {
-					log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+					log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 					return
 				}
 			default:
@@ -826,7 +826,7 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 						}
 						err = ebpf.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
 						if err != nil {
-							log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+							log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 							return
 						}
 					}
@@ -840,7 +840,7 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 						err = ebpf.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
 
 						if err != nil {
-							log.Error("[EbpfRuleAdd] add ebpf udp failed src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+							log.Error("[EbpfRuleAdd] add ebpf udp failed src: %s dst: %s, error: %v, protocol: %s, dstport: %d", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err, ebpfHashStr.Protocol, ebpfHashStr.DstPort)
 							return
 						}
 					}

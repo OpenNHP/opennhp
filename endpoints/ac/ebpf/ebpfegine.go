@@ -195,7 +195,7 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 	go func() {
 		perfReader, err := perf.NewReader(eventsMap, os.Getpagesize())
 		if err != nil {
-			log.Error("failed to create perf reader:", err)
+			log.Error("failed to create perf reader: %v", err)
 			return
 		}
 		defer perfReader.Close()
@@ -205,7 +205,7 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 		for {
 			record, err := perfReader.Read()
 			if err != nil {
-				log.Error("Error reading eBPF event:", err)
+				log.Error("Error reading eBPF event: %v", err)
 				continue
 			}
 			action := record.RawSample[8]

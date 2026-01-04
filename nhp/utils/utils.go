@@ -115,12 +115,12 @@ func SaveStructAsJsonFile(filePath string, data any) error {
 
 	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal data to JSON: " + err.Error())
+		return fmt.Errorf("failed to marshal data to JSON: %w", err)
 	}
 
 	err = os.WriteFile(filePath, jsonData, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to write JSON to file: " + err.Error())
+		return fmt.Errorf("failed to write JSON to file: %w", err)
 	}
 
 	return nil

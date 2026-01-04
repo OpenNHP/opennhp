@@ -24,5 +24,17 @@ jobs:
     - name: Build
       run: make
 
-    - name: Test
-      run: make test
+    - name: Run tests with coverage
+      run: |
+        cd nhp && go test -coverprofile=coverage.out -covermode=atomic ./...
+        cd ../endpoints && go test -coverprofile=coverage.out -covermode=atomic ./...
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./nhp/coverage.out,./endpoints/coverage.out
+        flags: unittests
+        fail_ci_if_error: false
+        verbose: true
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

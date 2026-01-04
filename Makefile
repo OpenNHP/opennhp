@@ -220,9 +220,23 @@ fuzz-quick:
 	cd nhp && go test -fuzz=FuzzAgentKnockMsg -fuzztime=10s ./test/
 	@echo "$(COLOUR_GREEN)[OpenNHP] Quick fuzz tests completed$(END_COLOUR)"
 
+# Run tests with coverage
+coverage:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Running tests with coverage...$(END_COLOUR)"
+	cd nhp && go test -coverprofile=coverage.out -covermode=atomic ./...
+	cd endpoints && go test -coverprofile=coverage.out -covermode=atomic ./...
+	@echo "$(COLOUR_GREEN)[OpenNHP] Coverage reports generated$(END_COLOUR)"
+
+# View coverage report in browser
+coverage-html:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Generating HTML coverage reports...$(END_COLOUR)"
+	cd nhp && go tool cover -html=coverage.out -o coverage.html
+	cd endpoints && go tool cover -html=coverage.out -o coverage.html
+	@echo "$(COLOUR_GREEN)[OpenNHP] Coverage reports: nhp/coverage.html, endpoints/coverage.html$(END_COLOUR)"
+
 archive:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Start archiving... $(END_COLOUR)"
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init agentd acd serverd db linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins test fuzz fuzz-quick archive ebpf clean_ebpf
+.PHONY: all generate-version-and-build init agentd acd serverd db linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins test fuzz fuzz-quick coverage coverage-html archive ebpf clean_ebpf

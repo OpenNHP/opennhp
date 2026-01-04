@@ -721,9 +721,9 @@ func (s *UdpServer) recvMessageRoutine() {
 			switch ppd.HeaderType {
 			case core.NHP_KNK, core.NHP_RKN, core.NHP_EXT, core.DHP_KNK:
 				// aynchronously process knock messages with ack response
-				go func() {
-					_ = s.HandleKnockRequest(ppd)
-				}()
+				go func(p *core.PacketParserData) {
+					_ = s.HandleKnockRequest(p)
+				}(ppd)
 
 			case core.NHP_AOL:
 				// synchronously block and deal with NHP_DOL to ensure future ac messages will be correctly processed. Don't use go routine
@@ -733,31 +733,31 @@ func (s *UdpServer) recvMessageRoutine() {
 				_ = s.HandleDBOnline(ppd)
 
 			case core.NHP_OTP:
-				go func() {
-					_ = s.HandleOTPRequest(ppd)
-				}()
+				go func(p *core.PacketParserData) {
+					_ = s.HandleOTPRequest(p)
+				}(ppd)
 
 			case core.NHP_REG:
-				go func() {
-					_ = s.HandleRegisterRequest(ppd)
-				}()
+				go func(p *core.PacketParserData) {
+					_ = s.HandleRegisterRequest(p)
+				}(ppd)
 
 			case core.NHP_LST:
-				go func() {
-					_ = s.HandleListRequest(ppd)
-				}()
+				go func(p *core.PacketParserData) {
+					_ = s.HandleListRequest(p)
+				}(ppd)
 			case core.NHP_DAR:
-				go func() {
-					_ = s.HandleDHPDARMessage(ppd)
-				}()
+				go func(p *core.PacketParserData) {
+					_ = s.HandleDHPDARMessage(p)
+				}(ppd)
 			case core.NHP_DRG:
-				go func() {
-					_ = s.HandleDHPDRGMessage(ppd)
-				}()
+				go func(p *core.PacketParserData) {
+					_ = s.HandleDHPDRGMessage(p)
+				}(ppd)
 			case core.NHP_DAV:
-				go func() {
-					_ = s.HandleDHPDAVMessage(ppd)
-				}()
+				go func(p *core.PacketParserData) {
+					_ = s.HandleDHPDAVMessage(p)
+				}(ppd)
 			}
 
 		}

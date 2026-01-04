@@ -493,9 +493,9 @@ func (a *UdpAC) recvMessageRoutine() {
 			case core.NHP_AOP:
 				// deal with NHP_AOP message
 				a.wg.Add(1)
-				go func() {
-					_ = a.HandleUdpACOperations(ppd)
-				}()
+				go func(p *core.PacketParserData) {
+					_ = a.HandleUdpACOperations(p)
+				}(ppd)
 			}
 		}
 	}

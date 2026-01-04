@@ -468,9 +468,9 @@ func (a *UdpDevice) recvMessageRoutine() {
 			case core.NHP_DWR:
 				// deal with NHP_AOP message
 				a.wg.Add(1)
-				go func() {
-					_ = a.HandleUdpDataKeyWrappingOperations(ppd)
-				}()
+				go func(p *core.PacketParserData) {
+					_ = a.HandleUdpDataKeyWrappingOperations(p)
+				}(ppd)
 			}
 		}
 	}

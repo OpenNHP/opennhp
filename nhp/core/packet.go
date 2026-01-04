@@ -76,7 +76,7 @@ var nhpHeaderTypeStrings []string = []string{
 }
 
 func HeaderTypeToString(t int) string {
-	if t < len(nhpHeaderTypeStrings) {
+	if t >= 0 && t < len(nhpHeaderTypeStrings) {
 		return nhpHeaderTypeStrings[t]
 	}
 	return "UNKNOWN"

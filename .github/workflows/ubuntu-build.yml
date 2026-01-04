@@ -28,7 +28,7 @@ jobs:
       uses: golangci/golangci-lint-action@v8
       with:
         version: v2.7.2
-        args: --timeout=5m --skip-dirs=core/wasm/policy
+        args: --timeout=5m
         working-directory: nhp
 
     - name: Lint endpoints

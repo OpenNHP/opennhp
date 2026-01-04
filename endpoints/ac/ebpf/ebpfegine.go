@@ -17,11 +17,12 @@ import (
 
 	stdlog "log"
 
-	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/perf"
 	"github.com/cilium/ebpf/rlimit"
+
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 type bpfObjects struct {

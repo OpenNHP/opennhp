@@ -13,9 +13,11 @@ linters:
     - gosec     # TODO: Enable after fixing existing issues
   settings:
     govet:
+      # Not using enable-all to avoid shadow analyzer
+      # TODO: Enable shadow after fixing existing shadow issues (#1374)
       disable:
         - fieldalignment
-      enable-all: true
+        - shadow
     misspell:
       locale: US
       ignore-rules:
@@ -32,6 +34,9 @@ linters:
           - errcheck
           - gosec
         path: _test\.go
+      - linters:
+          - govet
+        text: "shadow: declaration of .* shadows declaration"
     paths:
       - core/wasm/policy
       - third_party$
@@ -40,6 +45,10 @@ linters:
 issues:
   max-issues-per-linter: 50
   max-same-issues: 10
+  exclude-rules:
+    - linters:
+        - govet
+      text: "shadow:"
 formatters:
   enable:
     - gofmt

@@ -22,6 +22,9 @@ type Curve25519ECDH struct {
 }
 
 func (c *Curve25519ECDH) SetPrivateKey(prk []byte) (err error) {
+	if len(prk) < PrivateKeySize {
+		return fmt.Errorf("private key too short: got %d bytes, need %d", len(prk), PrivateKeySize)
+	}
 	copy(c.PrivKey[:], prk[:PrivateKeySize])
 	pbk, err := curve25519.X25519(c.PrivKey[:], curve25519.Basepoint)
 	if err != nil {

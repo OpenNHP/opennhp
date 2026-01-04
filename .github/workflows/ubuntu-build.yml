@@ -3,6 +3,9 @@
 
 name: Build and Test Code on Ubuntu
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [ "main" ]

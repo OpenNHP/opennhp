@@ -1,0 +1,55 @@
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gofmt
+    - goimports
+    - misspell
+    - unconvert
+    - unparam
+    - gosec  # Security linter
+
+  disable:
+    - depguard  # Not needed for this project
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+    exclude-functions:
+      - (io.Closer).Close
+
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment  # Too noisy for existing codebase
+
+  gosec:
+    excludes:
+      - G104  # Audit errors not checked (handled by errcheck)
+      - G304  # File path provided as taint input (intentional in config loading)
+
+  misspell:
+    locale: US
+
+  goimports:
+    local-prefixes: github.com/OpenNHP/opennhp
+
+issues:
+  exclude-rules:
+    # Ignore some checks in test files
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gosec
+
+  max-issues-per-linter: 50
+  max-same-issues: 10

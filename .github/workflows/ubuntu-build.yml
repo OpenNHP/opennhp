@@ -24,5 +24,16 @@ jobs:
     - name: Build
       run: make
 
+    - name: Install golangci-lint
+      uses: golangci/golangci-lint-action@v4
+      with:
+        version: v1.55.0
+        skip-cache: false
+        args: --timeout=5m
+        working-directory: nhp
+
+    - name: Lint endpoints
+      run: cd endpoints && golangci-lint run ./...
+
     - name: Test
       run: make test

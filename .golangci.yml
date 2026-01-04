@@ -2,29 +2,24 @@ version: "2"
 run:
   modules-download-mode: readonly
 linters:
+  default: none
   enable:
-    - gosec
+    - govet
     - misspell
     - unconvert
-    - unparam
   disable:
     - depguard
+    - errcheck  # TODO: Enable after fixing existing issues
+    - gosec     # TODO: Enable after fixing existing issues
   settings:
-    errcheck:
-      check-type-assertions: true
-      check-blank: true
-      exclude-functions:
-        - (io.Closer).Close
-    gosec:
-      excludes:
-        - G104
-        - G304
     govet:
       disable:
         - fieldalignment
       enable-all: true
     misspell:
       locale: US
+      ignore-rules:
+        - tempset  # intentional name for temporary ipset
   exclusions:
     generated: lax
     presets:

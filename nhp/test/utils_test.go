@@ -2,9 +2,9 @@ package test
 
 import (
 	"fmt"
-	"testing"
 	"os"
 	"strings"
+	"testing"
 
 	log "github.com/OpenNHP/opennhp/nhp/log"
 	utils "github.com/OpenNHP/opennhp/nhp/utils"

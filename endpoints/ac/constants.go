@@ -1,17 +1,19 @@
 package ac
 
+import "github.com/OpenNHP/opennhp/nhp/common"
+
 const (
 	MaxConcurrentConnection      = 256
-	DefaultConnectionTimeoutMs   = 300 * 1000 // 300 seconds to delete idle connection, align with server
+	DefaultConnectionTimeoutMs   = common.ServerSideConnectionTimeoutMs
 	PacketQueueSizePerConnection = 256
 
-	ReportToServerInterval         = 60 // seconds
-	MinialServerDiscoveryInterval  = 5  // seconds
-	ServerKeepaliveInterval        = 20 // seconds
-	ServerDiscoveryRetryBeforeFail = 3
+	ReportToServerInterval         = common.ReportToServerInterval
+	MinialServerDiscoveryInterval  = common.MinimalServerDiscoveryInterval
+	ServerKeepaliveInterval        = common.ServerKeepaliveInterval
+	ServerDiscoveryRetryBeforeFail = common.ServerDiscoveryRetryBeforeFail
 
-	TokenStoreRefreshInterval = 10
-	TempPortOpenTime          = 30 //
+	TokenStoreRefreshInterval = common.TokenStoreRefreshInterval
+	TempPortOpenTime          = 30
 
 	IPSET_DEFAULT_NAME      = "defaultset"
 	IPSET_DEFAULT_DOWN_NAME = "defaultset_down"

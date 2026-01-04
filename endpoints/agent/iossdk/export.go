@@ -130,7 +130,7 @@ func NhpAgentAddServer(pubkey string, ip string, host string, port int, expire i
 		return false
 	}
 
-	serverPort := int(port)
+	serverPort := port
 	if serverPort == 0 {
 		serverPort = 62206 // use default server listening port
 	}

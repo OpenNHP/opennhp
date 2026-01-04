@@ -430,7 +430,7 @@ func (ipset *IPSet) Run(ctx context.Context, args ...string) (string, error) {
 		return "", err
 	}
 	if stderr.String() != "" {
-		return "", fmt.Errorf(stderr.String())
+		return "", fmt.Errorf("%s", stderr.String())
 	}
 	return stdout.String(), nil
 }

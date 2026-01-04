@@ -71,7 +71,11 @@ func TestSM2ECDSAKeysSerializeAndDeserialize(t *testing.T) {
 	fmt.Printf("Private key: %s\n", hex.EncodeToString(privKey[:]))
 
 	plainText := "This is a test for sm2 ecdsa keys serialization"
-	hash := core.NewHash(core.HASH_SHA256)
+	hash, err := core.NewHash(core.HASH_SHA256)
+	if err != nil {
+		fmt.Printf("Failed to create hash: %v\n", err)
+		return
+	}
 	hash.Write([]byte(plainText))
 	hashedBytes := hash.Sum(nil)
 	fmt.Printf("hashed hex: %s, length: %d\n", hex.EncodeToString(hashedBytes), len(hashedBytes))

@@ -27,7 +27,7 @@ jobs:
     - name: Install golangci-lint
       uses: golangci/golangci-lint-action@v6
       with:
-        version: v1.62.0
+        version: v1.63.4
         skip-cache: false
         args: --timeout=5m
         working-directory: nhp
@@ -35,7 +35,7 @@ jobs:
     - name: Lint endpoints
       uses: golangci/golangci-lint-action@v6
       with:
-        version: v1.62.0
+        version: v1.63.4
         skip-cache: false
         args: --timeout=5m
         working-directory: endpoints

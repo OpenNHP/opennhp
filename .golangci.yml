@@ -1,8 +1,6 @@
 run:
   timeout: 5m
   modules-download-mode: readonly
-  skip-dirs:
-    - core/wasm/policy  # WASM stubs, not buildable with standard Go
 
 linters:
   enable:
@@ -46,6 +44,9 @@ linters-settings:
     local-prefixes: github.com/OpenNHP/opennhp
 
 issues:
+  exclude-dirs:
+    - core/wasm/policy  # WASM stubs, not buildable with standard Go
+
   exclude-rules:
     # Ignore some checks in test files
     - path: _test\.go

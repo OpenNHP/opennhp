@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/OpenNHP/opennhp/nhp/etcd"
 	"net"
 	"path/filepath"
 	"strconv"
@@ -12,13 +11,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/OpenNHP/opennhp/nhp/etcd"
+
+	"github.com/pion/webrtc/v4"
+
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/plugins"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 	"github.com/OpenNHP/opennhp/nhp/version"
-	"github.com/pion/webrtc/v4"
 )
 
 var (
@@ -93,11 +95,11 @@ type UdpServer struct {
 	dbPeerMapMutex sync.Mutex
 	dbPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
-	teeMapMutex    sync.Mutex
-	teeMap         map[string]*TeeAttestationReport // indexed by tee's measure
+	teeMapMutex sync.Mutex
+	teeMap      map[string]*TeeAttestationReport // indexed by tee's measure
 
 	// etcd client
-	etcdConn *etcd.EtcdConn
+	etcdConn                *etcd.EtcdConn
 	remoteConfigUpdateMutex sync.Mutex
 }
 
@@ -131,9 +133,9 @@ type DBConn struct {
 }
 
 type TeeAttestationReport struct {
-	Measure        string `json:"measure"`
-	SerialNumber   string `json:"serialNumber"`
-	Verified       bool   `json:"verified"`
+	Measure      string `json:"measure"`
+	SerialNumber string `json:"serialNumber"`
+	Verified     bool   `json:"verified"`
 }
 
 type TeeAttestationReports struct {

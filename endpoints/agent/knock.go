@@ -363,7 +363,7 @@ func (a *UdpAgent) processPreAccessAction(info *common.PreAccessInfo) error {
 		// dial udp connection and send accMad packet
 		conn, err := net.DialUDP("udp", nil, udpAddr)
 		if err != nil {
-			log.Error("agent(%s)[PreAccessRequest] failed to connect to temporary udp access port: %v", accMsg.UserId)
+			log.Error("agent(%s)[PreAccessRequest] failed to connect to temporary udp access port: %v", accMsg.UserId, err)
 			return
 		}
 		defer conn.Close()

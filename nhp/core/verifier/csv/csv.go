@@ -17,11 +17,11 @@ import (
 )
 
 var (
-	SM2A  = "fffffffeffffffffffffffffffffffffffffffff00000000fffffffffffffffc"
-	SM2B  = "28e9fa9e9d9f5e344d5a9e4bcf6509a7f39789f515ab8f92ddbcbd414d940e93"
-	SM2GX = "32c4ae2c1f1981195f9904466a39c9948fe30bbff2660be1715a4589334c74c7"
-	SM2GY = "bc3736a2f4f6779c59bdcee36b692153d0a9877cc62a474002df32e52139f0a0"
-	ECKEY = SM2A + SM2B + SM2GX + SM2GY
+	SM2A                  = "fffffffeffffffffffffffffffffffffffffffff00000000fffffffffffffffc"
+	SM2B                  = "28e9fa9e9d9f5e344d5a9e4bcf6509a7f39789f515ab8f92ddbcbd414d940e93"
+	SM2GX                 = "32c4ae2c1f1981195f9904466a39c9948fe30bbff2660be1715a4589334c74c7"
+	SM2GY                 = "bc3736a2f4f6779c59bdcee36b692153d0a9877cc62a474002df32e52139f0a0"
+	ECKEY                 = SM2A + SM2B + SM2GX + SM2GY
 	Verifier *Attestation = nil
 )
 
@@ -502,7 +502,7 @@ func (a *Attestation) performXORBy4BytesGroup(data []byte, anouce uint32) []byte
 		groupInt := binary.LittleEndian.Uint32(group[:])
 
 		// Perform XOR with the key
-		processedInt := uint32(uint32(groupInt) ^ anouce)
+		processedInt := groupInt ^ anouce
 
 		// Convert back to bytes
 		var processedGroup [4]byte
@@ -548,4 +548,3 @@ func NewAttestation(attestationJsonStr string) (*Attestation, error) {
 
 	return attestation, nil
 }
-

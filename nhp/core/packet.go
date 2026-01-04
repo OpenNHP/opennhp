@@ -142,6 +142,7 @@ type Header interface {
 	Flag() uint16
 	SetCounter(uint64)
 	Counter() uint64
+	SetNoncePrefix(uint32)
 	Bytes() []byte
 	NonceBytes() []byte
 	EphermeralBytes() []byte

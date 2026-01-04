@@ -12,6 +12,7 @@ import (
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/log"
+	utils "github.com/OpenNHP/opennhp/nhp/utils"
 )
 
 type InitiatorScheme interface {
@@ -126,8 +127,9 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 		// init version
 		mad.header.SetVersion(ProtocolVersionMajor, ProtocolVersionMinor)
 
-		// init header counter
+		// init header counter and nonce prefix
 		mad.header.SetCounter(mad.TransactionId)
+		mad.header.SetNoncePrefix(utils.GetRandomUint32())
 
 		// init chain hash -> ChainHash0
 		mad.chainHash = NewHash(mad.ciphers.HashType)

@@ -73,8 +73,13 @@ func (h *HeaderGmsm) SetFlag(flag uint16) {
 
 func (h *HeaderGmsm) NonceBytes() []byte {
 	var nonce [GCMNonceSize]byte
-	copy(nonce[4:GCMNonceSize], h.HeaderCommon[16:24])
+	copy(nonce[0:4], h.HeaderCommon[12:16])  // Nonce prefix (4 bytes)
+	copy(nonce[4:12], h.HeaderCommon[16:24]) // Counter (8 bytes)
 	return nonce[:]
+}
+
+func (h *HeaderGmsm) SetNoncePrefix(prefix uint32) {
+	binary.BigEndian.PutUint32(h.HeaderCommon[12:16], prefix)
 }
 
 func (h *HeaderGmsm) SetCounter(counter uint64) {

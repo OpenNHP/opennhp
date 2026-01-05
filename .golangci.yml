@@ -7,10 +7,10 @@ linters:
     - govet
     - misspell
     - unconvert
+    - gosec
   disable:
     - depguard
     - errcheck  # TODO: Enable after fixing existing issues
-    - gosec     # TODO: Enable after fixing existing issues
   settings:
     govet:
       # Not using enable-all to avoid shadow analyzer
@@ -22,6 +22,16 @@ linters:
       locale: US
       ignore-rules:
         - tempset  # intentional name for temporary ipset
+    gosec:
+      excludes:
+        - G101  # Hardcoded credentials - false positives on variable names
+        - G115  # Integer overflow - most are safe conversions with masks/bounds
+        - G204  # Command injection - uses exec.CommandContext with separate args
+        - G304  # File path traversal - paths are application-controlled
+        - G306  # Poor WriteFile permissions - most are config files
+        - G401  # MD5 weak crypto - used for checksums, not security
+        - G501  # Import blocklist md5 - used for checksums, not security
+        - G505  # Import blocklist sha1 - used for checksums, not security
   exclusions:
     generated: lax
     presets:
@@ -37,6 +47,20 @@ linters:
       - linters:
           - govet
         text: "shadow: declaration of .* shadows declaration"
+      # Suppress G103 (unsafe) for crypto/packet code - intentional for performance
+      - linters:
+          - gosec
+        text: "G103:"
+        path: "(core/packet|core/scheme|core/verifier|core/wasm)"
+      # Suppress G104 (unhandled errors) for logging operations
+      - linters:
+          - gosec
+        text: "G104:"
+        path: "(log/|etcd/)"
+      # Suppress G407 (hardcoded IV) - IV is randomly generated before use
+      - linters:
+          - gosec
+        text: "G407:"
     paths:
       - core/wasm/policy
       - third_party$

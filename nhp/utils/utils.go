@@ -16,6 +16,10 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
+// GetRandomUint32 returns a non-zero random uint32 for packet preamble obfuscation.
+// Uses math/rand which is sufficient for this non-cryptographic use case.
+//
+//nolint:gosec // G404: math/rand is intentional - used for packet obfuscation, not security
 func GetRandomUint32() (r uint32) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for {
@@ -72,7 +76,7 @@ func DownloadFileToTemp(fileUrl string, pattern string) (string, error) {
 	}
 	defer outFile.Close()
 
-	resp, err := http.Get(fileUrl)
+	resp, err := http.Get(fileUrl) //nolint:gosec // G107: URL comes from trusted configuration
 	if err != nil {
 		return "", err
 	}

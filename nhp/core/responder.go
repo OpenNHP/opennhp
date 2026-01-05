@@ -452,13 +452,16 @@ func (ppd *PacketParserData) decryptBody() (err error) {
 
 	// Note: ppd.BodyMessage must be a separate []byte slice because ppd.BasePacket.Buf will be released later
 	if ppd.BodyCompress {
-		// decompress
+		// decompress with size limit to prevent decompression bombs
 		var buf bytes.Buffer
 		br := bytes.NewReader(body)
 		r, _ := zlib.NewReader(br)
 		defer r.Close()
 
-		_, err = io.Copy(&buf, r)
+		// Limit decompressed size to 10MB to prevent DoS via decompression bomb
+		const maxDecompressedSize = 10 * 1024 * 1024
+		limitedReader := io.LimitReader(r, maxDecompressedSize)
+		_, err = io.Copy(&buf, limitedReader)
 		if err != nil {
 			log.Critical("message decompression failed: %v", err)
 			ErrDataDecompressionFailed.SetExtraError(err)

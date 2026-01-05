@@ -38,7 +38,9 @@ func (h *HeaderCurve) TypeAndPayloadSize() (t int, s int) {
 
 func (h *HeaderCurve) SetTypeAndPayloadSize(t int, s int) {
 	preamble := utils.GetRandomUint32()
+	//nolint:gosec // G115: Values are masked to 16 bits before conversion, preventing overflow
 	t32 := uint32((t & 0x0000FFFF) << 16)
+	//nolint:gosec // G115: Values are masked to 16 bits before conversion, preventing overflow
 	s32 := uint32(s & 0x0000FFFF)
 	tns := preamble ^ (s32 | t32)
 	binary.BigEndian.PutUint32(h.HeaderCommon[0:4], preamble)
@@ -56,8 +58,10 @@ func (h *HeaderCurve) Version() (int, int) {
 }
 
 func (h *HeaderCurve) SetVersion(major int, minor int) {
-	h.HeaderCommon[8] = uint8(major)
-	h.HeaderCommon[9] = uint8(minor)
+	//nolint:gosec // G115: Protocol version values are always 0-255 by design
+	h.HeaderCommon[8] = uint8(major & 0xFF)
+	//nolint:gosec // G115: Protocol version values are always 0-255 by design
+	h.HeaderCommon[9] = uint8(minor & 0xFF)
 }
 
 func (h *HeaderCurve) Flag() uint16 {
@@ -85,6 +89,7 @@ func (h *HeaderCurve) Counter() uint64 {
 }
 
 func (h *HeaderCurve) Bytes() []byte {
+	//nolint:gosec // G103: Intentional unsafe pointer for zero-copy header serialization
 	pHeader := (*[HeaderSize]byte)(unsafe.Pointer(&h.HeaderCommon))
 	return pHeader[:]
 }

@@ -18,7 +18,7 @@ func Run(command string, in string, args ...string) (string, string, error) {
 	var stderr bytes.Buffer
 	var stdout bytes.Buffer
 
-	cmd := exec.CommandContext(ctx, command, args...)
+	cmd := exec.CommandContext(ctx, command, args...) //nolint:gosec // G204: Command args passed as separate parameters, not shell string
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stdout
 	if len(in) > 0 {

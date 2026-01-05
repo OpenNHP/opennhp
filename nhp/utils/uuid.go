@@ -9,6 +9,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// NewUUID generates a UUID using math/rand. For cryptographically secure UUIDs,
+// use GenerateUUIDv4() instead which uses crypto/rand.
+//
+//nolint:gosec // G404: math/rand is acceptable for non-security UUID generation
 func NewUUID() (string, error) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	uuid := make([]byte, 16)
@@ -25,6 +29,9 @@ func NewUUID() (string, error) {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:]), nil
 }
 
+// RandNumber returns a random 4-digit number (1000-10999) for non-security purposes.
+//
+//nolint:gosec // G404: math/rand is acceptable for non-security random numbers
 func RandNumber() int {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	randomNumber := rng.Intn(10000)

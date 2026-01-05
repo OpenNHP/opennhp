@@ -100,8 +100,13 @@ func (k *KGCImpl) GenerateMasterKey() error {
 	pubKeyBytes = append(pubKeyBytes, masterKey.PpubY.Bytes()...)
 	content = []byte(updateValueWithKey(string(content), "MasterPublicKeyBase64", base64.StdEncoding.EncodeToString(pubKeyBytes)))
 
-	err = os.WriteFile(configFilePath, content, 0600) // Contains master private key
+	err = os.WriteFile(configFilePath, content, 0600)
 	if err != nil {
+		return err
+	}
+	// Ensure restrictive permissions even if file already existed
+	// (WriteFile only sets permissions on new files, not existing ones)
+	if err := os.Chmod(configFilePath, 0600); err != nil {
 		return err
 	}
 

@@ -62,7 +62,7 @@ linters:
           - gosec
         text: "G407:"
     paths:
-      - "nhp/core/wasm/policy"
+      - "nhp/core/wasm/policy/"  # Exclude generated WASM policy code
       - "third_party/"
       - "builtin/"
       - "examples/"
@@ -80,7 +80,7 @@ formatters:
   exclusions:
     generated: lax
     paths:
-      - "nhp/core/wasm/policy"
+      - "nhp/core/wasm/policy/"
       - "third_party/"
       - "builtin/"
       - "examples/"

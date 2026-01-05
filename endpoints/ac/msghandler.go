@@ -254,7 +254,12 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 				// for icmp ping
 				if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
 					for _, dstAddr := range dstAddrs {
-						ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", srcAddr.Ip, dstAddr.Ip)
+						// ICMPv4 Echo Request = type 8, ICMPv6 Echo Request = type 128
+						icmpType := "icmp:8/0"
+						if ipType == utils.IPV6 {
+							icmpType = "icmpv6:128/0"
+						}
+						ipHashStr := fmt.Sprintf("%s,%s,%s", srcAddr.Ip, icmpType, dstAddr.Ip)
 						switch a.config.FilterMode {
 						case FilterMode_IPTABLES:
 							_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
@@ -292,7 +297,10 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							if dstAddr.Port == 0 {
 								netHashStr = fmt.Sprintf("%s,1-65535", netStr)
 							}
-							_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+							_, addErr := a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+							if addErr != nil {
+								log.Warning("[HandleAccessControl] failed to add tempset entry %s: %v", netHashStr, addErr)
+							}
 						}
 
 						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "udp" || dstAddr.Protocol == "any" {
@@ -300,12 +308,23 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							if dstAddr.Port == 0 {
 								netHashStr = fmt.Sprintf("%s,udp:1-65535", netStr)
 							}
-							_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+							_, addErr := a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+							if addErr != nil {
+								log.Warning("[HandleAccessControl] failed to add tempset entry %s: %v", netHashStr, addErr)
+							}
 						}
 
 						if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
-							netHashStr := fmt.Sprintf("%s,icmp:8/0", netStr)
-							_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+							// ICMPv4 Echo Request = type 8, ICMPv6 Echo Request = type 128
+							icmpType := "icmp:8/0"
+							if ipType == utils.IPV6 {
+								icmpType = "icmpv6:128/0"
+							}
+							netHashStr := fmt.Sprintf("%s,%s", netStr, icmpType)
+							_, addErr := a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+							if addErr != nil {
+								log.Warning("[HandleAccessControl] failed to add tempset entry %s: %v", netHashStr, addErr)
+							}
 						}
 
 					case FilterMode_EBPFXDP:
@@ -460,14 +479,18 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 				artMsg.ErrMsg = err.Error()
 				return
 			}
-			portHashStr = fmt.Sprintf("%s,%d", netStr1, tlocalAddr.Port)
-			_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
-			if err != nil {
-				log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
-				err = common.ErrACIPSetOperationFailed
-				artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-				artMsg.ErrMsg = err.Error()
-				return
+			// IPv4 requires two ranges (0.0.0.0/1 and 128.0.0.0/1) since ipset doesn't allow 0.0.0.0/0
+			// IPv6 uses ::/0 directly, so netStr1 is empty for IPv6
+			if netStr1 != "" {
+				portHashStr = fmt.Sprintf("%s,%d", netStr1, tlocalAddr.Port)
+				_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
+				if err != nil {
+					log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
+					err = common.ErrACIPSetOperationFailed
+					artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+					artMsg.ErrMsg = err.Error()
+					return
+				}
 			}
 		case FilterMode_EBPFXDP:
 			ebpfHashStr := ebpf.EbpfRuleParams{
@@ -525,14 +548,18 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 				artMsg.ErrMsg = err.Error()
 				return
 			}
-			portHashStr = fmt.Sprintf("%s,udp:%d", netStr1, tlocalAddr.Port)
-			_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
-			if err != nil {
-				log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
-				err = common.ErrACIPSetOperationFailed
-				artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-				artMsg.ErrMsg = err.Error()
-				return
+			// IPv4 requires two ranges (0.0.0.0/1 and 128.0.0.0/1) since ipset doesn't allow 0.0.0.0/0
+			// IPv6 uses ::/0 directly, so netStr1 is empty for IPv6
+			if netStr1 != "" {
+				portHashStr = fmt.Sprintf("%s,udp:%d", netStr1, tlocalAddr.Port)
+				_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
+				if err != nil {
+					log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
+					err = common.ErrACIPSetOperationFailed
+					artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+					artMsg.ErrMsg = err.Error()
+					return
+				}
 			}
 		case FilterMode_EBPFXDP:
 			ebpfHashStr := ebpf.EbpfRuleParams{
@@ -854,8 +881,13 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 
 				switch a.config.FilterMode {
 				case FilterMode_IPTABLES:
-					ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", remoteAddr.IP.String(), dstAddr.Ip)
-					a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
+					// ICMPv4 Echo Request = type 8, ICMPv6 Echo Request = type 128
+					icmpType := "icmp:8/0"
+					if ipType == utils.IPV6 {
+						icmpType = "icmpv6:128/0"
+					}
+					ipHashStr := fmt.Sprintf("%s,%s,%s", remoteAddr.IP.String(), icmpType, dstAddr.Ip)
+					_, _ = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 				case FilterMode_EBPFXDP:
 					ebpfHashStr := ebpf.EbpfRuleParams{
 						SrcIP: remoteAddr.IP.String(),

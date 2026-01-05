@@ -265,7 +265,8 @@ func TestIPHashStringFormats(t *testing.T) {
 		// IPv6 formats
 		{"IPv6 TCP", "2001:db8::1,80,2001:db8::2", "2001:db8::1,80,2001:db8::2"},
 		{"IPv6 UDP", "2001:db8::1,udp:53,2001:db8::2", "2001:db8::1,udp:53,2001:db8::2"},
-		{"IPv6 ICMP", "2001:db8::1,icmp:8/0,2001:db8::2", "2001:db8::1,icmp:8/0,2001:db8::2"},
+		// Note: ICMPv6 uses type 128 for Echo Request (not type 8 like ICMPv4)
+		{"IPv6 ICMP", "2001:db8::1,icmpv6:128/0,2001:db8::2", "2001:db8::1,icmpv6:128/0,2001:db8::2"},
 
 		// Net/port format for tempset
 		{"IPv4 net,port", "192.168.1.0/25,80", "192.168.1.0/25,80"},
@@ -294,12 +295,33 @@ func TestIPTablesStructFields(t *testing.T) {
 	_ = ipt.AcceptInputMode  // IPv4 accept mode
 	_ = ipt.AcceptInput6Mode // IPv6 accept mode
 
+	// IPv4 policy fields
+	_ = ipt.InputPolicy   // IPv4 INPUT chain policy
+	_ = ipt.ForwardPolicy // IPv4 FORWARD chain policy
+	_ = ipt.OutputPolicy  // IPv4 OUTPUT chain policy
+
+	// IPv6 policy fields (new)
+	_ = ipt.Input6Policy   // IPv6 INPUT chain policy
+	_ = ipt.Forward6Policy // IPv6 FORWARD chain policy
+	_ = ipt.Output6Policy  // IPv6 OUTPUT chain policy
+
 	// Verify default values
 	if ipt.IPv6Available != false {
 		t.Error("IPv6Available should default to false")
 	}
 	if ipt.Binary6 != "" {
 		t.Error("Binary6 should default to empty string")
+	}
+
+	// Verify IPv6 policy defaults (should be 0 = POLICY_ACCEPT by default)
+	if ipt.Input6Policy != 0 {
+		t.Errorf("Input6Policy should default to 0, got %d", ipt.Input6Policy)
+	}
+	if ipt.Forward6Policy != 0 {
+		t.Errorf("Forward6Policy should default to 0, got %d", ipt.Forward6Policy)
+	}
+	if ipt.Output6Policy != 0 {
+		t.Errorf("Output6Policy should default to 0, got %d", ipt.Output6Policy)
 	}
 }
 

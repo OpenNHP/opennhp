@@ -39,9 +39,12 @@ type IPTables struct {
 	Binary           string
 	Binary6          string // ip6tables binary path
 	IPv6Available    bool   // true if ip6tables is available
-	InputPolicy      int
-	ForwardPolicy    int
-	OutputPolicy     int
+	InputPolicy      int    // IPv4 INPUT chain policy
+	ForwardPolicy    int    // IPv4 FORWARD chain policy
+	OutputPolicy     int    // IPv4 OUTPUT chain policy
+	Input6Policy     int    // IPv6 INPUT chain policy
+	Forward6Policy   int    // IPv6 FORWARD chain policy
+	Output6Policy    int    // IPv6 OUTPUT chain policy
 	AcceptInputMode  bool
 	AcceptInput6Mode bool // separate tracking for IPv6
 }
@@ -76,10 +79,47 @@ func NewIPTables() (*IPTables, error) {
 	path6, err6 := exec.LookPath("ip6tables")
 	if err6 == nil {
 		cmd6 := exec.Command(path6, "-L")
-		if err6 = cmd6.Run(); err6 == nil {
+		ret6, err6 := cmd6.Output()
+		if err6 == nil {
 			t.Binary6 = path6
 			t.IPv6Available = true
 			log.Info("ip6tables detected and available")
+
+			// Parse IPv6 policies
+			out6Strs := strings.Split(string(ret6), "\n")
+			for _, line := range out6Strs {
+				switch {
+				case strings.HasPrefix(line, "Chain INPUT"):
+					switch {
+					case strings.Contains(line, "ACCEPT"):
+						t.Input6Policy = POLICY_ACCEPT
+					case strings.Contains(line, "DROP"):
+						t.Input6Policy = POLICY_DROP
+					case strings.Contains(line, "REJECT"):
+						t.Input6Policy = POLICY_REJECT
+					}
+
+				case strings.HasPrefix(line, "Chain FORWARD"):
+					switch {
+					case strings.Contains(line, "ACCEPT"):
+						t.Forward6Policy = POLICY_ACCEPT
+					case strings.Contains(line, "DROP"):
+						t.Forward6Policy = POLICY_DROP
+					case strings.Contains(line, "REJECT"):
+						t.Forward6Policy = POLICY_REJECT
+					}
+
+				case strings.HasPrefix(line, "Chain OUTPUT"):
+					switch {
+					case strings.Contains(line, "ACCEPT"):
+						t.Output6Policy = POLICY_ACCEPT
+					case strings.Contains(line, "DROP"):
+						t.Output6Policy = POLICY_DROP
+					case strings.Contains(line, "REJECT"):
+						t.Output6Policy = POLICY_REJECT
+					}
+				}
+			}
 		} else {
 			log.Warning("ip6tables found but not functional: %v", err6)
 		}

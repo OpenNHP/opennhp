@@ -190,7 +190,9 @@ func (header *ZtdoHeader) GetECCMode() DataKeyPairECCMode {
 }
 
 func (payload *ZtdoPayload) SetIV() {
-	_, _ = rand.Read(payload.Content.Iv[:]) //nolint:gosec // G104: crypto/rand.Read returns nil error on success
+	if _, err := rand.Read(payload.Content.Iv[:]); err != nil {
+		panic("crypto/rand.Read failed: " + err.Error())
+	}
 }
 
 func (payload *ZtdoPayload) SetCipherText(mode SymmetricCipherMode, key, plaintext []byte, ad []byte) error {

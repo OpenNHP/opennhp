@@ -27,7 +27,8 @@ func DetectIPType(ipStr string) (IPTYPE, error) {
 }
 
 // IsIPv6 returns true if the string is a valid IPv6 address.
-// Note: IPv4-mapped IPv6 addresses (::ffff:x.x.x.x) return true.
+// Note: IPv4-mapped IPv6 addresses (::ffff:x.x.x.x) return false because
+// Go's net.IP.To4() returns a non-nil value for these addresses.
 func IsIPv6(ipStr string) bool {
 	ip := net.ParseIP(ipStr)
 	return ip != nil && ip.To4() == nil

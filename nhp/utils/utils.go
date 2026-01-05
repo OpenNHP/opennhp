@@ -122,7 +122,7 @@ func SaveStructAsJsonFile(filePath string, data any) error {
 		return fmt.Errorf("failed to marshal data to JSON: %w", err)
 	}
 
-	err = os.WriteFile(filePath, jsonData, 0644)
+	err = os.WriteFile(filePath, jsonData, 0644) //nolint:gosec // G306: Generic utility - callers determine sensitivity
 	if err != nil {
 		return fmt.Errorf("failed to write JSON to file: %w", err)
 	}
@@ -165,7 +165,7 @@ func UpdateTomlConfig(filePath string, key string, value any) error {
 		return fmt.Errorf("unsupported type: %T", value)
 	}
 
-	err = os.WriteFile(filePath, []byte(newContent), 0644)
+	err = os.WriteFile(filePath, []byte(newContent), 0644) //nolint:gosec // G306: Config files are typically world-readable
 	if err != nil {
 		return err
 	}

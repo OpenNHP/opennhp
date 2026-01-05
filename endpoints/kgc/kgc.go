@@ -100,7 +100,7 @@ func (k *KGCImpl) GenerateMasterKey() error {
 	pubKeyBytes = append(pubKeyBytes, masterKey.PpubY.Bytes()...)
 	content = []byte(updateValueWithKey(string(content), "MasterPublicKeyBase64", base64.StdEncoding.EncodeToString(pubKeyBytes)))
 
-	err = os.WriteFile(configFilePath, content, 0644)
+	err = os.WriteFile(configFilePath, content, 0600) // Contains master private key
 	if err != nil {
 		return err
 	}

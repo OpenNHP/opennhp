@@ -65,7 +65,7 @@ func (w *WebRTCServer) Start() error {
 						if err = w.pc.SetLocalDescription(answer); err == nil {
 							if w.conf.AnswerFile != "" {
 								if data, err := json.Marshal(answer); err == nil {
-									_ = os.WriteFile(w.conf.AnswerFile, data, 0644)
+									_ = os.WriteFile(w.conf.AnswerFile, data, 0644) //nolint:gosec // G306: SDP signaling data is not sensitive
 								}
 							}
 						}

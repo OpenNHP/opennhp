@@ -24,14 +24,14 @@ linters:
         - tempset  # intentional name for temporary ipset
     gosec:
       excludes:
-        - G101  # Hardcoded credentials - false positives on variable names
-        - G115  # Integer overflow - most are safe conversions with masks/bounds
-        - G204  # Command injection - uses exec.CommandContext with separate args
-        - G304  # File path traversal - paths are application-controlled
-        - G306  # Poor WriteFile permissions - most are config files
-        - G401  # MD5 weak crypto - used for checksums, not security
+        - G101  # Hardcoded credentials - false positives on variable names like "PrivateKey"
+        - G115  # Integer overflow - safe conversions: WASM bit extraction, timestamps, bounded lengths
+        - G204  # Command injection - uses exec.CommandContext with args array, not shell strings
+        - G304  # File path traversal - all paths are admin-controlled (config files, CLI args)
+        - G401  # MD5 weak crypto - used for checksums/deduplication, not cryptographic security
         - G501  # Import blocklist md5 - used for checksums, not security
         - G505  # Import blocklist sha1 - used for checksums, not security
+        # NOTE: G306 (file permissions) NOT excluded - must be handled case-by-case
   exclusions:
     generated: lax
     presets:
@@ -47,25 +47,25 @@ linters:
       - linters:
           - govet
         text: "shadow: declaration of .* shadows declaration"
-      # Suppress G103 (unsafe) for crypto/packet code - intentional for performance
+      # Suppress G103 (unsafe) for crypto/packet code - intentional for zero-copy performance
       - linters:
           - gosec
         text: "G103:"
-        path: "(core/packet|core/scheme|core/verifier|core/wasm)"
-      # Suppress G104 (unhandled errors) for logging operations
+        path: "nhp/core/(packet|scheme|verifier|wasm)"
+      # Suppress G104 (unhandled errors) for logging operations where errors are non-fatal
       - linters:
           - gosec
         text: "G104:"
-        path: "(log/|etcd/)"
-      # Suppress G407 (hardcoded IV) - IV is randomly generated before use
+        path: "nhp/(log|etcd)/"
+      # Suppress G407 (hardcoded IV) - IV is randomly generated at runtime before use
       - linters:
           - gosec
         text: "G407:"
     paths:
-      - core/wasm/policy
-      - third_party$
-      - builtin$
-      - examples$
+      - "nhp/core/wasm/policy"
+      - "third_party/"
+      - "builtin/"
+      - "examples/"
 issues:
   max-issues-per-linter: 50
   max-same-issues: 10
@@ -80,7 +80,7 @@ formatters:
   exclusions:
     generated: lax
     paths:
-      - core/wasm/policy
-      - third_party$
-      - builtin$
-      - examples$
+      - "nhp/core/wasm/policy"
+      - "third_party/"
+      - "builtin/"
+      - "examples/"

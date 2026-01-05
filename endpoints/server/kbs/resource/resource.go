@@ -65,7 +65,7 @@ func generateCosignKeyPair(privateKeyPath, publicKeyPath string) error {
 		return fmt.Errorf("fail to write private key file: %w", err)
 	}
 
-	if err := os.WriteFile(publicKeyPath, keys.PublicBytes, 0644); err != nil {
+	if err := os.WriteFile(publicKeyPath, keys.PublicBytes, 0644); err != nil { //nolint:gosec // G306: Public keys are intentionally world-readable
 		return fmt.Errorf("fail to write public key file: %w", err)
 	}
 

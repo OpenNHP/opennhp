@@ -117,8 +117,8 @@ func FuzzUdpPeerName(f *testing.F) {
 	f.Add("abc")
 	f.Add("0123456789")
 	f.Add("012345678901234567890123456789012345678901234") // 45 chars - valid
-	f.Add("01234567890123456789012345678901234567890123") // 44 chars - almost valid
-	f.Add("0123456789012345678901234567890123456789012")  // 43 chars - minimum
+	f.Add("01234567890123456789012345678901234567890123")  // 44 chars - almost valid
+	f.Add("0123456789012345678901234567890123456789012")   // 43 chars - minimum
 
 	f.Fuzz(func(t *testing.T, pubKeyBase64 string) {
 		peer := &core.UdpPeer{
@@ -133,12 +133,12 @@ func FuzzUdpPeerName(f *testing.F) {
 // Network packets could be truncated or malformed by attackers.
 func FuzzPacketParsing(f *testing.F) {
 	// Seed with various packet sizes
-	f.Add([]byte{})                  // empty
-	f.Add(make([]byte, 8))           // too short for most operations
-	f.Add(make([]byte, 12))          // just enough for Flag()
-	f.Add(make([]byte, 24))          // just enough for Counter()
-	f.Add(make([]byte, 64))          // typical minimum header
-	f.Add(make([]byte, 128))         // larger packet
+	f.Add([]byte{})          // empty
+	f.Add(make([]byte, 8))   // too short for most operations
+	f.Add(make([]byte, 12))  // just enough for Flag()
+	f.Add(make([]byte, 24))  // just enough for Counter()
+	f.Add(make([]byte, 64))  // typical minimum header
+	f.Add(make([]byte, 128)) // larger packet
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		pkt := &core.Packet{

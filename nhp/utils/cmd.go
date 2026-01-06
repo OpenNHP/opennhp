@@ -30,7 +30,7 @@ func Run(command string, in string, args ...string) (string, string, error) {
 	}
 	if stderr.String() != "" {
 		log.Println(stderr.String())
-		return "", cmd.String(), fmt.Errorf(stderr.String())
+		return "", cmd.String(), fmt.Errorf("%s", stderr.String())
 	}
 
 	res := strings.Replace(stdout.String(), "\n", "", -1)

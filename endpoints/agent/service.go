@@ -166,8 +166,8 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 		"uuid":        fileUuid,
 		"size":        file.Size,
 		"description": description,
-		"language":   language,
-		"entry":      entry,
+		"language":    language,
+		"entry":       entry,
 	})
 
 	ta, err := NewTrustApplication(fileUuid, language, filepath.Join(taDir, fileUuid, file.Filename))

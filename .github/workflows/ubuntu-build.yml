@@ -3,6 +3,9 @@
 
 name: Build and Test Code on Ubuntu
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [ "main" ]
@@ -14,15 +17,29 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
-        go-version: '1.21'
+        go-version: '1.24'
 
     - name: Build
       run: make
+
+    - name: Lint nhp
+      uses: golangci/golangci-lint-action@v8
+      with:
+        version: v2.7.2
+        args: --timeout=5m
+        working-directory: nhp
+
+    - name: Lint endpoints
+      uses: golangci/golangci-lint-action@v8
+      with:
+        version: v2.7.2
+        args: --timeout=5m
+        working-directory: endpoints
 
     - name: Test
       run: make test

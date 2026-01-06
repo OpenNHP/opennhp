@@ -5,9 +5,10 @@ import (
 	"encoding/binary"
 	"time"
 
+	"github.com/emmansun/gmsm/sm3"
+
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/log"
-	"github.com/emmansun/gmsm/sm3"
 )
 
 type ACTokenEntry struct {

@@ -114,7 +114,6 @@ func (c *CustomStandardCurve) Add(x1, y1, x2, y2 *big.Int) (x, y *big.Int) {
 	y3.Sub(y3, y1)
 	y3.Mod(y3, c.P)
 
-
 	return x3, y3
 }
 
@@ -131,7 +130,7 @@ func (c *CustomStandardCurve) ScalarMult(x1, y1 *big.Int, k []byte) (x, y *big.I
 		}
 
 		x1, y1 = c.Add(x1, y1, x1, y1) // point doubling
-		kCopy.Rsh(kCopy, 1)  // right shift by one bit
+		kCopy.Rsh(kCopy, 1)            // right shift by one bit
 	}
 
 	return x, y
@@ -195,12 +194,12 @@ func (c *OfficialSM2Curve) Params() *CurveParams {
 	A := new(big.Int).Mod(big.NewInt(-3), c.curve.Params().P)
 
 	return &CurveParams{
-		P:      c.curve.Params().P,
-		N:      c.curve.Params().N,
-		A:      A,
-		B:      c.curve.Params().B,
-		Gx:     c.curve.Params().Gx,
-		Gy:     c.curve.Params().Gy,
+		P:       c.curve.Params().P,
+		N:       c.curve.Params().N,
+		A:       A,
+		B:       c.curve.Params().B,
+		Gx:      c.curve.Params().Gx,
+		Gy:      c.curve.Params().Gy,
 		BitSize: c.curve.Params().BitSize,
 		Name:    c.curve.Params().Name,
 	}

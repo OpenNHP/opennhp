@@ -25,7 +25,10 @@ func Compression(data string) ([]byte, error) {
 }
 
 func Decompression(data string) (string, error) {
-	dataBytes, _ := base64.StdEncoding.DecodeString(data)
+	dataBytes, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return "", err
+	}
 	reader := bytes.NewReader(dataBytes)
 	gzreader, err := gzip.NewReader(reader)
 	if err != nil {

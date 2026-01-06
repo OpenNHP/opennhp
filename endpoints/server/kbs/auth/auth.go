@@ -70,7 +70,7 @@ func Auth(c *gin.Context) {
 		3600, // the unit is second
 		"/",
 		"",
-		false,
+		true, // Secure: only send over HTTPS
 		true,
 	)
 

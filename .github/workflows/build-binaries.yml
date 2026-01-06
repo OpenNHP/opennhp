@@ -46,7 +46,7 @@ jobs:
           fetch-depth: 0  # Get full history for commit info
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
 

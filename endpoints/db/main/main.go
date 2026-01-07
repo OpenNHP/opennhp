@@ -308,7 +308,7 @@ func runApp(params db.AppParams) error {
 				}
 			}
 
-			ztdo.SetMetadata(metadata)
+			_ = ztdo.SetMetadata(metadata)
 
 			// generate data private key
 			dataPrkStore := db.NewDataPrivateKeyStore(a.GetOwnEcdh().PublicKeyBase64())
@@ -316,9 +316,9 @@ func runApp(params db.AppParams) error {
 
 			if !(params.DsType == "stream") { // generate ztdo file
 				if params.DsType == "online" {
-					ztdo.SetNhpServer(a.GetServerPeer().SendAddr().String())
+					_ = ztdo.SetNhpServer(a.GetServerPeer().SendAddr().String())
 				} else { // offline
-					ztdo.SetNhpServer("")
+					_ = ztdo.SetNhpServer("")
 				}
 
 				dataPbk := core.ECDHFromKey(dataKeyPairEccMode.ToEccType(), dataPrk).PublicKey()
@@ -355,7 +355,10 @@ func runApp(params db.AppParams) error {
 			}
 
 			// Save data private key after success encryption
-			dataPrkStore.Save(ztdoId)
+			if err := dataPrkStore.Save(ztdoId); err != nil {
+				log.Error("failed to save data private key: %s\n", err)
+				return err
+			}
 		}
 
 		if params.DsType != "offline" {

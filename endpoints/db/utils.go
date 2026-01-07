@@ -48,7 +48,7 @@ func NewDataPrivateKeyStoreWith(doId string) (d *DataPrivateKeyStore, err error)
 	}
 
 	d = &DataPrivateKeyStore{}
-	d.fromJson(fileContentByte)
+	_ = d.fromJson(fileContentByte)
 
 	return
 }
@@ -80,9 +80,8 @@ func (d *DataPrivateKeyStore) Save(doId string) error {
 	}
 	defer file.Close()
 
-	file.Write(d.toJson())
-
-	return nil
+	_, err = file.Write(d.toJson())
+	return err
 }
 
 func (d *DataPrivateKeyStore) Delete(doId string) error {

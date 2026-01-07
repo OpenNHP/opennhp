@@ -152,7 +152,7 @@ func runApp(enableProfiling bool) error {
 		// Start profiling
 		f, err := os.Create(filepath.Join(exeDirPath, "cpu.prf"))
 		if err == nil {
-			pprof.StartCPUProfile(f)
+			_ = pprof.StartCPUProfile(f)
 			defer pprof.StopCPUProfile()
 		}
 	}

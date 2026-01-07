@@ -182,7 +182,7 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	a.device.Start()
 
 	// load peers
-	a.loadPeers()
+	_ = a.loadPeers()
 
 	a.remoteConnectionMap = make(map[string]*UdpConn)
 
@@ -191,7 +191,7 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	a.signals.knockTargetMapUpdated = make(chan struct{}, 1)
 
 	// load knock resources
-	a.loadResources()
+	_ = a.loadResources()
 
 	a.recvMsgCh = a.device.DecryptedMsgQueue
 	a.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
@@ -494,7 +494,7 @@ func (a *UdpAgent) connectionRoutine(conn *UdpConn) {
 			if pkt == nil {
 				continue
 			}
-			a.SendPacket(pkt, conn)
+			_, _ = a.SendPacket(pkt, conn)
 
 		case pkt, ok := <-conn.ConnData.RecvQueue:
 			if !ok {
@@ -590,7 +590,7 @@ func (a *UdpAgent) knockResourceRoutine() {
 				defer knockRoutineWg.Done()
 				defer log.Info("knock %s sub-routine stopped", knockStr)
 				defer func() {
-					a.ExitKnockRequest(res)
+					_, _ = a.ExitKnockRequest(res)
 				}()
 
 				log.Info("knock %s sub-routine started", knockStr)

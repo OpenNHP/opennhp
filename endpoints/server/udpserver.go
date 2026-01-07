@@ -234,18 +234,18 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.pluginHandlerMap = make(map[string]plugins.PluginHandler)
 	if s.etcdConn != nil {
 		// load nhp server
-		s.loadRemoteConfig()
+		_ = s.loadRemoteConfig()
 	} else {
 		// load peers
-		s.loadPeers()
+		_ = s.loadPeers()
 
 		// load http config and turn on http server if needed
-		s.loadHttpConfig()
+		_ = s.loadHttpConfig()
 
 		// load ip associated addresses
-		s.loadSourceIps()
+		_ = s.loadSourceIps()
 
-		s.loadResources()
+		_ = s.loadResources()
 	}
 
 	s.remoteConnectionMap = make(map[string]*UdpConn)
@@ -611,7 +611,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			if pkt == nil {
 				continue
 			}
-			s.SendPacket(pkt, conn)
+			_, _ = s.SendPacket(pkt, conn)
 		}
 	}
 }
@@ -720,29 +720,43 @@ func (s *UdpServer) recvMessageRoutine() {
 			switch ppd.HeaderType {
 			case core.NHP_KNK, core.NHP_RKN, core.NHP_EXT, core.DHP_KNK:
 				// aynchronously process knock messages with ack response
-				go s.HandleKnockRequest(ppd)
+				go func(p *core.PacketParserData) {
+					_ = s.HandleKnockRequest(p)
+				}(ppd)
 
 			case core.NHP_AOL:
 				// synchronously block and deal with NHP_DOL to ensure future ac messages will be correctly processed. Don't use go routine
-				s.HandleACOnline(ppd)
+				_ = s.HandleACOnline(ppd)
 
 			case core.NHP_DOL:
-				s.HandleDBOnline(ppd)
+				_ = s.HandleDBOnline(ppd)
 
 			case core.NHP_OTP:
-				go s.HandleOTPRequest(ppd)
+				go func(p *core.PacketParserData) {
+					_ = s.HandleOTPRequest(p)
+				}(ppd)
 
 			case core.NHP_REG:
-				go s.HandleRegisterRequest(ppd)
+				go func(p *core.PacketParserData) {
+					_ = s.HandleRegisterRequest(p)
+				}(ppd)
 
 			case core.NHP_LST:
-				go s.HandleListRequest(ppd)
+				go func(p *core.PacketParserData) {
+					_ = s.HandleListRequest(p)
+				}(ppd)
 			case core.NHP_DAR:
-				go s.HandleDHPDARMessage(ppd)
+				go func(p *core.PacketParserData) {
+					_ = s.HandleDHPDARMessage(p)
+				}(ppd)
 			case core.NHP_DRG:
-				go s.HandleDHPDRGMessage(ppd)
+				go func(p *core.PacketParserData) {
+					_ = s.HandleDHPDRGMessage(p)
+				}(ppd)
 			case core.NHP_DAV:
-				go s.HandleDHPDAVMessage(ppd)
+				go func(p *core.PacketParserData) {
+					_ = s.HandleDHPDAVMessage(p)
+				}(ppd)
 			}
 
 		}

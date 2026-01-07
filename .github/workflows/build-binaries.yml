@@ -41,12 +41,12 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0  # Get full history for commit info
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
 
@@ -130,35 +130,35 @@ jobs:
 
       # Upload each module as independent artifact
       - name: Upload nhp-agent artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nhp-agent-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-agent/
           retention-days: 30
 
       - name: Upload nhp-ac artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nhp-ac-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-ac/
           retention-days: 30
 
       - name: Upload nhp-server artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nhp-server-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-server/
           retention-days: 30
 
       - name: Upload nhp-db artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nhp-db-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-db/
           retention-days: 30
 
       - name: Upload nhp-kgc artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nhp-kgc-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-kgc/
@@ -180,7 +180,7 @@ jobs:
           Compress-Archive -Path nhp-agent, nhp-ac, nhp-db, nhp-server, nhp-kgc -DestinationPath "opennhp-${{ steps.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip"
 
       - name: Upload full package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: opennhp-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/opennhp-${{ steps.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.${{ matrix.archive_ext }}
@@ -192,7 +192,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: all-artifacts
 
@@ -205,7 +205,7 @@ jobs:
           du -sh all-artifacts/*
 
       - name: Upload combined artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: opennhp-all-platforms
           path: all-artifacts/opennhp-*/
@@ -220,7 +220,7 @@ jobs:
       contents: write
     steps:
       - name: Download all package artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: opennhp-*
           path: release-artifacts
@@ -233,7 +233,7 @@ jobs:
           ls -la release-files/
 
       - name: Update latest release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           name: Latest Build
@@ -257,7 +257,7 @@ jobs:
       contents: write
     steps:
       - name: Download all package artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: opennhp-*
           path: release-artifacts
@@ -270,7 +270,7 @@ jobs:
           ls -la release-files/
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: release-files/*
           generate_release_notes: true

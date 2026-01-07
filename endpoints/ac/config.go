@@ -3,16 +3,18 @@ package ac
 import (
 	"errors"
 	"fmt"
-	"github.com/OpenNHP/opennhp/nhp/etcd"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/OpenNHP/opennhp/nhp/etcd"
+
+	toml "github.com/pelletier/go-toml/v2"
+
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
-	toml "github.com/pelletier/go-toml/v2"
 )
 
 var (
@@ -76,12 +78,12 @@ func (a *UdpAC) loadBaseConfig() error {
 	}
 
 	var conf Config
-	if err := toml.Unmarshal(content, &conf); err != nil {
-		log.Error("failed to unmarshal base config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &conf); unmarshalErr != nil {
+		log.Error("failed to unmarshal base config: %v", unmarshalErr)
 	}
-	if err := a.updateBaseConfig(conf); err != nil {
+	if updateErr := a.updateBaseConfig(conf); updateErr != nil {
 		// report base config error
-		return err
+		return updateErr
 	}
 
 	baseConfigWatch = utils.WatchFile(fileName, func() {
@@ -105,12 +107,12 @@ func (a *UdpAC) loadHttpConfig() error {
 	}
 
 	var httpConf HttpConfig
-	if err := toml.Unmarshal(content, &httpConf); err != nil {
-		log.Error("failed to unmarshal http config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &httpConf); unmarshalErr != nil {
+		log.Error("failed to unmarshal http config: %v", unmarshalErr)
 	}
-	if err := a.updateHttpConfig(httpConf); err != nil {
+	if updateErr := a.updateHttpConfig(httpConf); updateErr != nil {
 		// ignore error
-		_ = err
+		_ = updateErr
 	}
 
 	httpConfigWatch = utils.WatchFile(fileName, func() {
@@ -134,12 +136,12 @@ func (a *UdpAC) loadPeers() error {
 
 	// update
 	var peers Peers
-	if err := toml.Unmarshal(content, &peers); err != nil {
-		log.Error("failed to unmarshal server peer config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &peers); unmarshalErr != nil {
+		log.Error("failed to unmarshal server peer config: %v", unmarshalErr)
 	}
-	if err := a.updateServerPeers(peers.Servers); err != nil {
+	if updateErr := a.updateServerPeers(peers.Servers); updateErr != nil {
 		// ignore error
-		_ = err
+		_ = updateErr
 	}
 
 	serverPeerWatch = utils.WatchFile(fileName, func() {
@@ -370,4 +372,3 @@ func (a *UdpAC) StopConfigWatch() {
 		serverPeerWatch.Close()
 	}
 }
-

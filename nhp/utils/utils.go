@@ -31,7 +31,7 @@ func CatchPanic() {
 	if x := recover(); x != nil {
 		for _, line := range append([]string{fmt.Sprint(x)}, strings.Split(string(debug.Stack()), "\n")...) {
 			if len(strings.TrimSpace(line)) > 0 {
-				log.Error(line)
+				log.Error("%s", line)
 			}
 		}
 	}
@@ -41,7 +41,7 @@ func CatchPanicThenRun(catchFun func()) {
 	if x := recover(); x != nil {
 		for _, line := range append([]string{fmt.Sprint(x)}, strings.Split(string(debug.Stack()), "\n")...) {
 			if len(strings.TrimSpace(line)) > 0 {
-				log.Error(line)
+				log.Error("%s", line)
 			}
 		}
 		if catchFun != nil {

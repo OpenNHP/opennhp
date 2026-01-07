@@ -54,7 +54,7 @@ func TestPeer(t *testing.T) {
 		Type:         core.NHP_SERVER,
 	}
 
-	var p *core.UdpPeer = (*core.UdpPeer)(server)
+	var p *core.UdpPeer = server
 
 	var peer core.Peer = p
 

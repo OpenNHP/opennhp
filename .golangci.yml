@@ -1,0 +1,62 @@
+version: "2"
+run:
+  modules-download-mode: readonly
+linters:
+  default: none
+  enable:
+    - govet
+    - misspell
+    - unconvert
+  disable:
+    - depguard
+    - errcheck  # TODO: Enable after fixing existing issues
+    - gosec     # TODO: Enable after fixing existing issues
+  settings:
+    govet:
+      # Not using enable-all to avoid shadow analyzer
+      # TODO: Enable shadow after fixing existing shadow issues (#1374)
+      disable:
+        - fieldalignment
+        - shadow
+    misspell:
+      locale: US
+      ignore-rules:
+        - tempset  # intentional name for temporary ipset
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+          - gosec
+        path: _test\.go
+      - linters:
+          - govet
+        text: "shadow: declaration of .* shadows declaration"
+    paths:
+      - core/wasm/policy
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 10
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/OpenNHP/opennhp
+  exclusions:
+    generated: lax
+    paths:
+      - core/wasm/policy
+      - third_party$
+      - builtin$
+      - examples$

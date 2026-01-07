@@ -18,13 +18,13 @@ func ReadBufferFromMemory(bufferPosition *uint32, length uint32) []byte {
 // CopyBufferToMemory returns a single value
 // (a kind of pair with position and length)
 func CopyBufferToMemory(buffer []byte) uint64 {
-    bufferPtr := &buffer[0]
-    unsafePtr := uintptr(unsafe.Pointer(bufferPtr))
+	bufferPtr := &buffer[0]
+	unsafePtr := uintptr(unsafe.Pointer(bufferPtr))
 
-    ptr := uint32(unsafePtr)
-    size := uint32(len(buffer))
+	ptr := uint32(unsafePtr)
+	size := uint32(len(buffer))
 
-    return (uint64(ptr) << uint64(32)) | uint64(size)
+	return (uint64(ptr) << uint64(32)) | uint64(size)
 }
 
 func StringToPtr(s string) (uint32, uint32) {

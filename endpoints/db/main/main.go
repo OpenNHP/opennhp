@@ -11,13 +11,14 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/urfave/cli/v2"
+
 	"github.com/OpenNHP/opennhp/endpoints/db"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/version"
-	"github.com/urfave/cli/v2"
 )
 
 func main() {

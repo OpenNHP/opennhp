@@ -26,6 +26,9 @@ type SM2ECDH struct {
 }
 
 func (s *SM2ECDH) SetPrivateKey(prk []byte) (err error) {
+	if len(prk) < PrivateKeySize {
+		return fmt.Errorf("private key too short: got %d bytes, need %d", len(prk), PrivateKeySize)
+	}
 	copy(s.PrivKey[:], prk[:PrivateKeySize])
 	s.prvK, err = ecdh.P256().NewPrivateKey(prk)
 	if err != nil {

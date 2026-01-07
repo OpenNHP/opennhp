@@ -198,7 +198,7 @@ func (a *UdpDevice) UploadFileToNHPServer(filePath string) (string, error) {
 		return "", err
 	}
 
-	if testReq.StatusCode == http.StatusBadRequest{
+	if testReq.StatusCode == http.StatusBadRequest {
 		httpHost = fmt.Sprintf("https://%s/", a.GetServerPeer().Host())
 	}
 
@@ -300,10 +300,10 @@ type UploadProgress struct {
 }
 
 type ServerResponse struct {
-	Message  string `json:"message"`
-	FileURI  string `json:"file_uri"`
-	UUID     string `json:"uuid"`
-	MD5      string `json:"md5"`
+	Message string `json:"message"`
+	FileURI string `json:"file_uri"`
+	UUID    string `json:"uuid"`
+	MD5     string `json:"md5"`
 }
 
 type ProgressReader struct {

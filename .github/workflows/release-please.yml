@@ -15,4 +15,4 @@ jobs:
       - uses: googleapis/release-please-action@v4
         with:
           release-type: go
-          changelog-path: CHANGELOG.md
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}

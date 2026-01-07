@@ -199,9 +199,86 @@ plugins:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building plugins... $(END_COLOUR)"
 	@if test -d $(NHP_SERVER_PLUGINS); then $(MAKE) -C $(NHP_SERVER_PLUGINS); fi
 
+# Development build (faster, no version injection)
+dev:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Development build...$(END_COLOUR)"
+	cd nhp && go build ./...
+	cd endpoints && go build ./...
+	@echo "$(COLOUR_GREEN)[OpenNHP] Development build complete$(END_COLOUR)"
+
+# Run all tests (excludes wasm/policy which requires WASM build tags)
 test:
-	@echo "[OpenNHP] Runing Tests for the Output Binaries ..."
-	@echo "$(COLOUR_GREEN)[OpenNHP] All Tests Are Done!$(END_COLOUR)"
+	@echo "$(COLOUR_BLUE)[OpenNHP] Running tests...$(END_COLOUR)"
+	cd nhp && go test -v $$(go list ./... | grep -v /wasm/policy)
+	cd endpoints && go test -v ./...
+	@echo "$(COLOUR_GREEN)[OpenNHP] All tests passed!$(END_COLOUR)"
+
+# Run tests with race detection
+test-race:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Running tests with race detection...$(END_COLOUR)"
+	cd nhp && go test -race -v $$(go list ./... | grep -v /wasm/policy)
+	cd endpoints && go test -race -v ./...
+	@echo "$(COLOUR_GREEN)[OpenNHP] Race detection tests passed!$(END_COLOUR)"
+
+# Format code
+fmt:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Formatting code...$(END_COLOUR)"
+	cd nhp && go fmt ./...
+	cd endpoints && go fmt ./...
+	cd examples/server_plugin && go fmt ./...
+	@echo "$(COLOUR_GREEN)[OpenNHP] Code formatted$(END_COLOUR)"
+
+# Lint code (requires golangci-lint: https://golangci-lint.run/usage/install/)
+lint:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Linting code...$(END_COLOUR)"
+	@which golangci-lint > /dev/null || (echo "$(COLOUR_RED)golangci-lint not found. Install: https://golangci-lint.run/usage/install/$(END_COLOUR)" && exit 1)
+	cd nhp && golangci-lint run ./...
+	cd endpoints && golangci-lint run ./...
+	@echo "$(COLOUR_GREEN)[OpenNHP] Linting complete$(END_COLOUR)"
+
+# Clean build artifacts
+clean:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Cleaning build artifacts...$(END_COLOUR)"
+	rm -rf release/
+	cd nhp && go clean
+	cd endpoints && go clean
+	@echo "$(COLOUR_GREEN)[OpenNHP] Clean complete$(END_COLOUR)"
+
+# Show available targets
+help:
+	@echo ""
+	@echo "$(COLOUR_BLUE)OpenNHP Makefile$(END_COLOUR)"
+	@echo ""
+	@echo "$(COLOUR_GREEN)Development:$(END_COLOUR)"
+	@echo "  make dev        - Quick development build (no version injection)"
+	@echo "  make test       - Run all tests"
+	@echo "  make test-race  - Run tests with race detection"
+	@echo "  make fmt        - Format code with gofmt"
+	@echo "  make lint       - Lint code with golangci-lint"
+	@echo "  make clean      - Remove build artifacts"
+	@echo ""
+	@echo "$(COLOUR_GREEN)Build:$(END_COLOUR)"
+	@echo "  make            - Build all binaries (default)"
+	@echo "  make init       - Initialize dependencies"
+	@echo "  make agentd     - Build nhp-agent"
+	@echo "  make serverd    - Build nhp-server"
+	@echo "  make acd        - Build nhp-ac"
+	@echo "  make db         - Build nhp-db"
+	@echo "  make kgc        - Build nhp-kgc"
+	@echo "  make plugins    - Build server plugins"
+	@echo ""
+	@echo "$(COLOUR_GREEN)SDK:$(END_COLOUR)"
+	@echo "  make linuxagentsdk    - Build Linux agent SDK (.so)"
+	@echo "  make macosagentsdk    - Build macOS agent SDK (.dylib)"
+	@echo "  make iosagentsdk      - Build iOS agent SDK (.xcframework)"
+	@echo "  make androidagentsdk  - Build Android agent SDK (.so)"
+	@echo "  make devicesdk        - Build device SDK"
+	@echo ""
+	@echo "$(COLOUR_GREEN)Other:$(END_COLOUR)"
+	@echo "  make ebpf       - Compile eBPF programs (requires clang)"
+	@echo "  make archive    - Package binaries for distribution"
+	@echo "  make help       - Show this help message"
+	@echo ""
 
 # Run fuzz tests (60 seconds each by default)
 fuzz:
@@ -239,4 +316,4 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init agentd acd serverd db linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins test fuzz fuzz-quick coverage coverage-html archive ebpf clean_ebpf
+.PHONY: all generate-version-and-build init agentd acd serverd db linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf clean_ebpf

@@ -304,7 +304,10 @@ func (sa *SymmetricAgreement) AgreeSymmetricKey() (gcmKey [core.SymmetricKeySize
 	ck := [core.SymmetricKeySize]byte{}
 
 	// adHash hashes all the involved public key, the final value will be used as associated data for AEAD authentication
-	adHash := core.NewHash(sa.eccMode.ToHashType())
+	adHash, err := core.NewHash(sa.eccMode.ToHashType())
+	if err != nil {
+		panic("failed to create hash for symmetric agreement: " + err.Error())
+	}
 
 	if sa.isPskUsed {
 		adHash.Write(sa.psk)
@@ -408,7 +411,7 @@ type DataPrivateKeyWrapping struct {
 func NewDataPrivateKeyWrapping(providerPublicKeyBase64 string, dataPrivateKeyBase64 string, key, ad []byte) *DataPrivateKeyWrapping {
 	symmetricCipherMode := AES256GCM128Tag
 	var Iv [core.GCMNonceSize]byte
-	rand.Read(Iv[:])
+	_, _ = rand.Read(Iv[:])
 
 	cipherText, _ := symmetricCipherMode.Encrypt(key, Iv[:], []byte(dataPrivateKeyBase64), ad)
 

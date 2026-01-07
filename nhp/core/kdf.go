@@ -12,7 +12,11 @@ type NoiseFactory struct {
 
 func (n *NoiseFactory) HMAC1(dst *[HashSize]byte, key, in0 []byte) {
 	newHash := func() hash.Hash {
-		return NewHash(n.HashType)
+		h, err := NewHash(n.HashType)
+		if err != nil {
+			panic("failed to create hash for HMAC: " + err.Error())
+		}
+		return h
 	}
 	mac := hmac.New(newHash, key)
 	mac.Write(in0)
@@ -22,7 +26,11 @@ func (n *NoiseFactory) HMAC1(dst *[HashSize]byte, key, in0 []byte) {
 
 func (n *NoiseFactory) HMAC2(dst *[HashSize]byte, key, in0, in1 []byte) {
 	newHash := func() hash.Hash {
-		return NewHash(n.HashType)
+		h, err := NewHash(n.HashType)
+		if err != nil {
+			panic("failed to create hash for HMAC: " + err.Error())
+		}
+		return h
 	}
 	mac := hmac.New(newHash, key)
 	mac.Write(in0)
@@ -58,11 +66,14 @@ func (n *NoiseFactory) MixKey(dst *[SymmetricKeySize]byte, key []byte, input []b
 }
 
 func (n *NoiseFactory) MixHash(dst *[HashSize]byte, key []byte, input []byte) {
-	hash := NewHash(n.HashType)
-	hash.Write(key)
-	hash.Write(input)
-	hash.Sum(dst[:0])
-	hash.Reset()
+	h, err := NewHash(n.HashType)
+	if err != nil {
+		panic("failed to create hash for MixHash: " + err.Error())
+	}
+	h.Write(key)
+	h.Write(input)
+	h.Sum(dst[:0])
+	h.Reset()
 }
 
 func SetZero(arr []byte) {

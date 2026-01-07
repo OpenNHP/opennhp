@@ -90,7 +90,7 @@ func (a *UdpAC) loadBaseConfig() error {
 		log.Info("base config: %s has been updated", fileName)
 		if content, err = a.loadConfigFile(fileName); err == nil {
 			if err = toml.Unmarshal(content, &conf); err == nil {
-				a.updateBaseConfig(conf)
+				_ = a.updateBaseConfig(conf)
 			}
 
 		}
@@ -119,7 +119,7 @@ func (a *UdpAC) loadHttpConfig() error {
 		log.Info("http config: %s has been updated", fileName)
 		if content, err = a.loadConfigFile(fileName); err == nil {
 			if err = toml.Unmarshal(content, &httpConf); err == nil {
-				a.updateHttpConfig(httpConf)
+				_ = a.updateHttpConfig(httpConf)
 			}
 		}
 	})
@@ -148,7 +148,7 @@ func (a *UdpAC) loadPeers() error {
 		log.Info("server peer config: %s has been updated", fileName)
 		if content, err = a.loadConfigFile(fileName); err == nil {
 			if err = toml.Unmarshal(content, &peers); err == nil {
-				a.updateServerPeers(peers.Servers)
+				_ = a.updateServerPeers(peers.Servers)
 			}
 		}
 	})
@@ -320,7 +320,7 @@ func (a *UdpAC) loadRemoteConfig() error {
 	go a.etcdConn.WatchValue(func(val []byte) {
 		a.remoteConfigUpdateMutex.Lock()
 		defer a.remoteConfigUpdateMutex.Unlock()
-		a.updateEtcdConfig(val, true)
+		_ = a.updateEtcdConfig(val, true)
 	})
 
 	return nil
@@ -349,11 +349,11 @@ func (a *UdpAC) updateEtcdConfig(content []byte, baseLoad bool) (err error) {
 	}
 
 	if baseLoad {
-		a.updateBaseConfig(acEtcdConfig.BaseConfig)
+		_ = a.updateBaseConfig(acEtcdConfig.BaseConfig)
 	}
 
-	a.updateHttpConfig(acEtcdConfig.HttpConfig)
-	a.updateServerPeers(acEtcdConfig.Servers)
+	_ = a.updateHttpConfig(acEtcdConfig.HttpConfig)
+	_ = a.updateServerPeers(acEtcdConfig.Servers)
 	return
 }
 

@@ -14,6 +14,8 @@ services:
     build:
       context: ..
       dockerfile: ./docker/Dockerfile.server
+      args:
+        - GOPROXY=${GOPROXY:-}
     container_name: nhp-server
     restart: always
     networks:
@@ -31,6 +33,8 @@ services:
     build:
       context: ..
       dockerfile: ./docker/Dockerfile.db
+      args:
+        - GOPROXY=${GOPROXY:-}
     volumes:
       - ./nhp-db/etc/:/nhp-db/etc/
       - ./nhp-db/logs/:/nhp-db/logs/
@@ -49,6 +53,8 @@ services:
     build:
       context: ..
       dockerfile: ./docker/Dockerfile.agent
+      args:
+        - GOPROXY=${GOPROXY:-}
     container_name: nhp-agent
     restart: always
     #command: []

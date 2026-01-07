@@ -64,8 +64,7 @@ type UdpServer struct {
 	dbConnectionMapMutex sync.Mutex
 	dbConnectionMap      map[string]*DBConn // ac connection is indexed by remote IP address
 
-	tokenStoreMutex sync.Mutex
-	tokenStore      TokenStore
+	tokenStore *common.TokenStore[*ACTokenEntry]
 
 	// block address management
 	blockAddrMapMutex sync.Mutex
@@ -252,7 +251,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.remoteConnectionMap = make(map[string]*UdpConn)
 	s.acConnectionMap = make(map[string]*ACConn)
 	s.dbConnectionMap = make(map[string]*DBConn)
-	s.tokenStore = make(TokenStore)
+	s.tokenStore = common.NewTokenStore[*ACTokenEntry]()
 	s.blockAddrMap = make(map[string]*BlockAddr)
 	s.signals.stop = make(chan struct{})
 
@@ -264,7 +263,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 
 	// start server routines
 	s.wg.Add(5)
-	go s.tokenStoreRefreshRoutine()
+	go s.tokenStore.RunRefreshRoutine(&s.wg, s.signals.stop, TokenStoreRefreshInterval)
 	go s.BlockAddrRefreshRoutine()
 	go s.recvPacketRoutine()
 	go s.sendMessageRoutine()

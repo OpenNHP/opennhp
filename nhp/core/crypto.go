@@ -257,8 +257,12 @@ func CBCDecryption(t GcmTypeEnum, key *[SymmetricKeySize]byte, ciphertext []byte
 		return nil, ErrNotApplicable
 	}
 
+	// Validate ciphertext: must be at least one block and a multiple of block size
 	if len(ciphertext) < block.BlockSize() {
-		return nil, fmt.Errorf("ciphertext too short")
+		return nil, fmt.Errorf("ciphertext too short: need at least %d bytes", block.BlockSize())
+	}
+	if len(ciphertext)%block.BlockSize() != 0 {
+		return nil, fmt.Errorf("ciphertext length %d is not a multiple of block size %d", len(ciphertext), block.BlockSize())
 	}
 
 	var plaintext []byte
@@ -361,9 +365,14 @@ func AESDecrypt(cipherText []byte, key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// IV，IV cipherText left 16
-	if len(cipherText) < aes.BlockSize {
-		return nil, fmt.Errorf("cipherText too short")
+	// Validate ciphertext length:
+	// - Must have at least IV (16 bytes) + one encrypted block (16 bytes)
+	// - After IV extraction, remaining must be a multiple of block size
+	if len(cipherText) < aes.BlockSize*2 {
+		return nil, fmt.Errorf("cipherText too short: need at least %d bytes, got %d", aes.BlockSize*2, len(cipherText))
+	}
+	if (len(cipherText)-aes.BlockSize)%aes.BlockSize != 0 {
+		return nil, fmt.Errorf("cipherText length invalid: must be IV + multiple of block size")
 	}
 	iv := cipherText[:aes.BlockSize]
 	cipherText = cipherText[aes.BlockSize:]

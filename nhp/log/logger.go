@@ -149,8 +149,12 @@ func (lw *AsyncLogWriter) writeRoutine() {
 
 			// close after all writes
 			if !useStdout {
-				_ = file.Sync()
-				file.Close()
+				if err := file.Sync(); err != nil {
+					fmt.Printf("Error: AsyncLogWriter failed to sync file %s (%v)\n", file.Name(), err)
+				}
+				if err := file.Close(); err != nil {
+					fmt.Printf("Error: AsyncLogWriter failed to close file %s (%v)\n", file.Name(), err)
+				}
 			}
 		}
 

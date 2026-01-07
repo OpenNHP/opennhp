@@ -5,8 +5,9 @@ import (
 	"encoding/binary"
 	"time"
 
-	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/emmansun/gmsm/sm3"
+
+	"github.com/OpenNHP/opennhp/nhp/common"
 )
 
 // ACTokenEntry represents a server access token entry that maps to multiple AC tokens.

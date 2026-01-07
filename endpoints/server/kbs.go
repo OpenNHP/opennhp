@@ -1,8 +1,8 @@
 package server
 
 import (
-	kbsAttest   "github.com/OpenNHP/opennhp/endpoints/server/kbs/attest"
-	kbsAuth     "github.com/OpenNHP/opennhp/endpoints/server/kbs/auth"
+	kbsAttest "github.com/OpenNHP/opennhp/endpoints/server/kbs/attest"
+	kbsAuth "github.com/OpenNHP/opennhp/endpoints/server/kbs/auth"
 	kbsResource "github.com/OpenNHP/opennhp/endpoints/server/kbs/resource"
 )
 

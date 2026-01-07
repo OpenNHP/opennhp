@@ -6,10 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 
+	_ "golang.org/x/mobile/bind"
+
 	"github.com/OpenNHP/opennhp/endpoints/agent"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
-	_ "golang.org/x/mobile/bind"
 )
 
 var gAgentInstance *agent.UdpAgent
@@ -129,7 +130,7 @@ func NhpAgentAddServer(pubkey string, ip string, host string, port int, expire i
 		return false
 	}
 
-	serverPort := int(port)
+	serverPort := port
 	if serverPort == 0 {
 		serverPort = 62206 // use default server listening port
 	}

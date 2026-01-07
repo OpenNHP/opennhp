@@ -5,8 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/OpenNHP/opennhp/endpoints/server"
 	"github.com/gin-gonic/gin"
+
+	"github.com/OpenNHP/opennhp/endpoints/server"
 )
 
 func TestGlobInit(t *testing.T) {

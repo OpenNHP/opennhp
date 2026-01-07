@@ -165,7 +165,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 			log.Info("server ip is %s", server.Ip)
 			err = ebpf.EbpfRuleAdd(2, ebpfHashStr, 31536000)
 			if err != nil {
-				log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+				log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 				continue
 			}
 		}

@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	uploadDir     = "etc/uploads"       // storage directory
-	metadataDir   = "etc/metadata"      // metadata directory
+	uploadDir     = "etc/uploads"           // storage directory
+	metadataDir   = "etc/metadata"          // metadata directory
 	maxUploadSize = 20 * 1024 * 1024 * 1024 // 20G max upload size
 	maxMemorySize = 10 * 1024 * 1024
 )
@@ -44,8 +44,8 @@ func (hs *HttpServer) initStorageRouter() {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUploadSize)
 		if err := c.Request.ParseMultipartForm(maxMemorySize); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "file size exceeds max upload size",
-				"detail": err.Error(),
+				"error":     "file size exceeds max upload size",
+				"detail":    err.Error(),
 				"max limit": maxUploadSize,
 				"file size": c.Request.ContentLength,
 			})

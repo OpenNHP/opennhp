@@ -1,0 +1,16 @@
+# Default owners for everything
+* @OpenNHP/maintainers
+
+# Core protocol
+/nhp/core/ @OpenNHP/core-team
+/nhp/common/ @OpenNHP/core-team
+
+# Endpoints
+/endpoints/ @OpenNHP/endpoints-team
+
+# Documentation
+/docs/ @OpenNHP/docs-team
+*.md @OpenNHP/docs-team
+
+# CI/CD
+/.github/ @OpenNHP/devops-team

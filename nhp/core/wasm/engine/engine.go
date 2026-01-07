@@ -50,7 +50,7 @@ func (e *Engine) LoadWasm(wasmBytes []byte) error {
 	}
 
 	e.ctx = ctx
-	e.r   = r
+	e.r = r
 	e.mod = mod
 	e.malloc = mod.ExportedFunction("malloc")
 	e.free = mod.ExportedFunction("free")

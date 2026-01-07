@@ -23,7 +23,7 @@ func ReadWholeFile(fileName string) (string, error) {
 		return "", err
 	}
 
-	buf, err := os.ReadFile(fileName)
+	buf, err := os.ReadFile(fileName) //nolint:gosec // G304: fileName is application-controlled config path
 	if err != nil {
 		return "", err
 	}
@@ -31,8 +31,11 @@ func ReadWholeFile(fileName string) (string, error) {
 	return string(buf), nil
 }
 
+// HashFile computes hash for file integrity verification (not cryptographic security)
+//
+//nolint:gosec // G401,G501: MD5/SHA1 used for file integrity checksums, not for cryptographic security
 func HashFile(method string, fileName string) (string, error) {
-	file, err := os.Open(fileName) // Open the file for reading
+	file, err := os.Open(fileName) //nolint:gosec // G304: fileName is application-controlled path
 	if err != nil {
 		return "", err
 	}

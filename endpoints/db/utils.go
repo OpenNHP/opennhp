@@ -192,7 +192,7 @@ func (a *AppParams) LoadMetadataAsStruct() (map[string]any, error) {
 
 func (a *UdpDevice) UploadFileToNHPServer(filePath string) (string, error) {
 	httpHost := fmt.Sprintf("http://%s/", a.GetServerPeer().Host())
-	testReq, err := http.Get(httpHost)
+	testReq, err := http.Get(httpHost) //nolint:gosec // G107: URL constructed from configured server peer
 	if err != nil {
 		return "", err
 	}

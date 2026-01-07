@@ -128,7 +128,7 @@ func (lw *AsyncLogWriter) writeRoutine() {
 				if len(lw.DirPath) > 0 {
 					filename = filepath.Join(lw.DirPath, filename)
 				}
-				file, err = os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+				file, err = os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0600)
 				if err != nil {
 					fmt.Printf("Error: AsyncLogWriter cannot open file %s (%v)\n", filename, err)
 					continue
@@ -258,6 +258,7 @@ func NewLogger(prepend string, level int, dir string, filename string) *Logger {
 	return l
 }
 
+//nolint:gosec // G104: Logger.Output errors are non-critical and handled by async writer
 func (l *Logger) initActions(prepend string) {
 	flag := log.Ldate | log.Ltime | log.Lmsgprefix
 	if ShowCallerFileLine {
@@ -514,6 +515,7 @@ func NewLoggerDefine(prepend string, level int, dir string, filename string) *Lo
 	return l
 }
 
+//nolint:gosec // G104: Logger.Output errors are non-critical and handled by async writer
 func (l *Logger) initActionsNoInfoPrepend(prepend string) {
 	flag := log.Ldate | log.Ltime | log.Lmsgprefix
 	if ShowCallerFileLine {

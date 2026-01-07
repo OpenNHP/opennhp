@@ -104,6 +104,11 @@ func (k *KGCImpl) GenerateMasterKey() error {
 	if err != nil {
 		return err
 	}
+	// Ensure restrictive permissions even if file already existed
+	// (WriteFile only sets permissions on new files, not existing ones)
+	if err := os.Chmod(configFilePath, 0600); err != nil {
+		return err
+	}
 
 	return nil
 }

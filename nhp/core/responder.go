@@ -475,18 +475,30 @@ func (ppd *PacketParserData) decryptBody() (err error) {
 
 	// Note: ppd.BodyMessage must be a separate []byte slice because ppd.BasePacket.Buf will be released later
 	if ppd.BodyCompress {
-		// decompress
+		// decompress with size limit to prevent decompression bombs
 		var buf bytes.Buffer
 		br := bytes.NewReader(body)
-		r, _ := zlib.NewReader(br)
+		r, err := zlib.NewReader(br)
+		if err != nil {
+			log.Critical("invalid compressed data: %v", err)
+			ErrDataDecompressionFailed.SetExtraError(err)
+			return ErrDataDecompressionFailed
+		}
 		defer r.Close()
 
-		_, err = io.Copy(&buf, r)
+		// Limit decompressed size to 10MB to prevent DoS via decompression bomb
+		const maxDecompressedSize = 10 * 1024 * 1024
+		limitedReader := io.LimitReader(r, maxDecompressedSize+1) // +1 to detect overflow
+		n, err := io.Copy(&buf, limitedReader)
 		if err != nil {
 			log.Critical("message decompression failed: %v", err)
 			ErrDataDecompressionFailed.SetExtraError(err)
-			err = ErrDataDecompressionFailed
-			return err
+			return ErrDataDecompressionFailed
+		}
+		if n > maxDecompressedSize {
+			log.Critical("decompressed data exceeds maximum size limit (%d bytes)", maxDecompressedSize)
+			ErrDataDecompressionFailed.SetExtraError(fmt.Errorf("decompressed size %d exceeds limit %d", n, maxDecompressedSize))
+			return ErrDataDecompressionFailed
 		}
 
 		ppd.BodyMessage = buf.Bytes() // separately allocated memory

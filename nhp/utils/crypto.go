@@ -66,6 +66,7 @@ func HMACSha256(key, value string) []byte {
 	return hash
 }
 
+//nolint:gosec // G401: MD5 used for non-cryptographic checksums, not for security
 func MD5(value string) string {
 	_16bytes := md5.Sum([]byte(value))
 	return hex.EncodeToString(_16bytes[:])
@@ -87,6 +88,9 @@ func GenerateRsaKey(bits int) (string, string) {
 	return base64.StdEncoding.EncodeToString(pivKey), base64.StdEncoding.EncodeToString(pubKey)
 }
 
+// Md5sum computes MD5 checksum for file integrity verification (not cryptographic security)
+//
+//nolint:gosec // G401: MD5 used for file integrity checksums, not for cryptographic security
 func Md5sum(fullFilePath string) (string, error) {
 	fileInfo, err := os.Stat(fullFilePath)
 	if err != nil {
@@ -97,7 +101,7 @@ func Md5sum(fullFilePath string) (string, error) {
 		return "", fmt.Errorf("path is not a regular file")
 	}
 
-	file, err := os.Open(fullFilePath)
+	file, err := os.Open(fullFilePath) //nolint:gosec // G304: Path validated by os.Stat above
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}

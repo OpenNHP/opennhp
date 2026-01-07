@@ -158,12 +158,14 @@ func (pkt *Packet) Flag() uint16 {
 
 func (pkt *Packet) Header() Header {
 	if pkt.Flag()&common.NHP_FLAG_EXTENDEDLENGTH == 0 {
+		//nolint:gosec // G103: Intentional unsafe pointer for zero-copy packet header access
 		return (*curve.HeaderCurve)(unsafe.Pointer(&pkt.Content[0]))
 	} else {
 		switch pkt.Flag() & (0xF << 12) {
 		case common.NHP_FLAG_SCHEME_GMSM:
 			fallthrough
 		default:
+			//nolint:gosec // G103: Intentional unsafe pointer for zero-copy packet header access
 			return (*gmsm.HeaderGmsm)(unsafe.Pointer(&pkt.Content[0]))
 		}
 	}
@@ -172,10 +174,12 @@ func (pkt *Packet) Header() Header {
 func (pkt *Packet) HeaderWithCipherScheme(cipherScheme int) Header {
 	switch cipherScheme {
 	case common.CIPHER_SCHEME_GMSM:
+		//nolint:gosec // G103: Intentional unsafe pointer for zero-copy packet header access
 		return (*gmsm.HeaderGmsm)(unsafe.Pointer(&pkt.Content[0]))
 	case common.CIPHER_SCHEME_CURVE:
 		fallthrough
 	default:
+		//nolint:gosec // G103: Intentional unsafe pointer for zero-copy packet header access
 		return (*curve.HeaderCurve)(unsafe.Pointer(&pkt.Content[0]))
 	}
 }

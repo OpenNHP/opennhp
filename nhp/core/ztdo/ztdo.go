@@ -190,7 +190,9 @@ func (header *ZtdoHeader) GetECCMode() DataKeyPairECCMode {
 }
 
 func (payload *ZtdoPayload) SetIV() {
-	_, _ = rand.Read(payload.Content.Iv[:])
+	if _, err := rand.Read(payload.Content.Iv[:]); err != nil {
+		panic("crypto/rand.Read failed: " + err.Error())
+	}
 }
 
 func (payload *ZtdoPayload) SetCipherText(mode SymmetricCipherMode, key, plaintext []byte, ad []byte) error {
@@ -662,6 +664,7 @@ func encodeMetadataLength(length int, continuation bool) ([2]byte, error) {
 		return result, fmt.Errorf("length %d is negative", length)
 	}
 
+	//nolint:gosec // G602: result is [2]byte array, indices 0 and 1 are always valid
 	result[0] = byte((length >> 8) & 0x7F)
 	if continuation {
 		result[0] |= 0x80

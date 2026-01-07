@@ -4,6 +4,7 @@ run:
 linters:
   default: none
   enable:
+    - errcheck
     - govet
     - misspell
     - unconvert
@@ -41,7 +42,6 @@ linters:
       - std-error-handling
     rules:
       - linters:
-          - errcheck
           - gosec
         path: _test\.go
       - linters:

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -52,6 +53,7 @@ func main() {
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "curve", Value: false, DisableDefaultText: true, Usage: "generate curve25519 keys"},
 			&cli.BoolFlag{Name: "sm2", Value: false, DisableDefaultText: true, Usage: "generate sm2 keys (default)"},
+			&cli.BoolFlag{Name: "json", Value: false, DisableDefaultText: true, Usage: "output in JSON format"},
 		},
 		Action: func(c *cli.Context) error {
 			var e core.Ecdh
@@ -62,8 +64,16 @@ func main() {
 			e = core.NewECDH(eccType)
 			pub := e.PublicKeyBase64()
 			priv := e.PrivateKeyBase64()
-			fmt.Println("Private key: ", priv)
-			fmt.Println("Public key: ", pub)
+			if c.Bool("json") {
+				output := map[string]string{
+					"privateKey": priv,
+					"publicKey":  pub,
+				}
+				json.NewEncoder(os.Stdout).Encode(output)
+			} else {
+				fmt.Println("Private key: ", priv)
+				fmt.Println("Public key: ", pub)
+			}
 			return nil
 		},
 	}
@@ -142,7 +152,7 @@ func runApp(enableProfiling bool) error {
 		// Start profiling
 		f, err := os.Create(filepath.Join(exeDirPath, "cpu.prf"))
 		if err == nil {
-			pprof.StartCPUProfile(f)
+			_ = pprof.StartCPUProfile(f)
 			defer pprof.StopCPUProfile()
 		}
 	}

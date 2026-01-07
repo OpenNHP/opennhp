@@ -12,6 +12,9 @@ on:
   pull_request:
     branches: [ "main" ]
 
+permissions:
+  contents: read
+
 jobs:
 
   build:
@@ -41,5 +44,17 @@ jobs:
         args: --timeout=5m
         working-directory: endpoints
 
-    - name: Test
-      run: make test
+    - name: Run tests with coverage
+      run: |
+        cd nhp && go test -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v 'wasm/policy')
+        cd ../endpoints && go test -coverprofile=coverage.out -covermode=atomic ./...
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./nhp/coverage.out,./endpoints/coverage.out
+        flags: unittests
+        fail_ci_if_error: false
+        verbose: true
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

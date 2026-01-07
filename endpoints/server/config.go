@@ -105,7 +105,7 @@ func (s *UdpServer) loadBaseConfig() error {
 		log.Info("base config: %s has been updated", fileName)
 		if content, err = s.loadConfigFile(fileName); err == nil {
 			if err = toml.Unmarshal(content, &config); err == nil {
-				s.updateBaseConfig(config)
+				_ = s.updateBaseConfig(config)
 			}
 
 		}
@@ -134,7 +134,7 @@ func (s *UdpServer) loadHttpConfig() error {
 		log.Info("http config: %s has been updated", fileName)
 		if content, err = s.loadConfigFile(fileName); err == nil {
 			if err = toml.Unmarshal(content, &httpConf); err == nil {
-				s.updateHttpConfig(httpConf)
+				_ = s.updateHttpConfig(httpConf)
 			}
 		}
 
@@ -165,7 +165,7 @@ func (s *UdpServer) loadPeers() error {
 		log.Info("ac peer config: %s has been updated", fileNameAC)
 		if contentAC, err = s.loadConfigFile(fileNameAC); err == nil {
 			if err = toml.Unmarshal(contentAC, &acPeers); err == nil {
-				s.updateACPeers(acPeers.ACs)
+				_ = s.updateACPeers(acPeers.ACs)
 			}
 		}
 	})
@@ -190,7 +190,7 @@ func (s *UdpServer) loadPeers() error {
 		log.Info("agent peer config: %s has been updated", fileNameAgent)
 		if contentAgent, err = s.loadConfigFile(fileNameAgent); err == nil {
 			if err = toml.Unmarshal(contentAgent, &agentPeers); err == nil {
-				s.updateAgentPeers(agentPeers.Agents)
+				_ = s.updateAgentPeers(agentPeers.Agents)
 			}
 		}
 	})
@@ -214,7 +214,7 @@ func (s *UdpServer) loadPeers() error {
 		log.Info("device peer config: %s has been updated", fileNameDE)
 		if contentDE, err = s.loadConfigFile(fileNameDE); err == nil {
 			if err = toml.Unmarshal(contentDE, &dePeers); err == nil {
-				s.updateDePeers(dePeers.DBs)
+				_ = s.updateDePeers(dePeers.DBs)
 			}
 		}
 	})
@@ -227,7 +227,7 @@ func (s *UdpServer) loadPeers() error {
 	}
 	teeWatch = utils.WatchFile(fileNameTee, func() {
 		log.Info("tee: %s has been updated", fileNameTee)
-		s.updateTee(fileNameTee)
+		_ = s.updateTee(fileNameTee)
 	})
 
 	return nil
@@ -254,7 +254,7 @@ func (s *UdpServer) loadResources() error {
 		log.Info("resource config: %s has been updated", fileName)
 		if content, err = s.loadConfigFile(fileName); err == nil {
 			if err = toml.Unmarshal(content, &resConfigWatch); err == nil {
-				s.updateResources(aspMap)
+				_ = s.updateResources(aspMap)
 			}
 		}
 	})
@@ -283,7 +283,7 @@ func (s *UdpServer) loadSourceIps() error {
 		log.Info("src ip config: %s has been updated", fileName)
 		if content, err = s.loadConfigFile(fileName); err == nil {
 			if err = toml.Unmarshal(content, &srcIpMap); err == nil {
-				s.updateSourceIps(srcIpMap)
+				_ = s.updateSourceIps(srcIpMap)
 			}
 		}
 	})
@@ -366,7 +366,7 @@ func (s *UdpServer) loadRemoteConfig() error {
 	go s.etcdConn.WatchValue(func(val []byte) {
 		s.remoteConfigUpdateMutex.Lock()
 		defer s.remoteConfigUpdateMutex.Unlock()
-		s.updateEtcdConfig(val, true)
+		_ = s.updateEtcdConfig(val, true)
 	})
 
 	return nil
@@ -383,19 +383,19 @@ func (s *UdpServer) updateEtcdConfig(content []byte, baseLoad bool) (err error) 
 		return err
 	}
 	if baseLoad {
-		s.updateBaseConfig(serverEtcdConfig.BaseConfig)
+		_ = s.updateBaseConfig(serverEtcdConfig.BaseConfig)
 	}
-	s.updateHttpConfig(serverEtcdConfig.HttpConfig)
-	s.updateACPeers(serverEtcdConfig.ACs)
-	s.updateAgentPeers(serverEtcdConfig.Agents)
-	s.updateDePeers(serverEtcdConfig.DBs)
+	_ = s.updateHttpConfig(serverEtcdConfig.HttpConfig)
+	_ = s.updateACPeers(serverEtcdConfig.ACs)
+	_ = s.updateAgentPeers(serverEtcdConfig.Agents)
+	_ = s.updateDePeers(serverEtcdConfig.DBs)
 
 	aspMap := make(common.AuthSvcProviderMap)
 	for _, aspData := range serverEtcdConfig.AuthServiceId {
 		aspId := aspData.AuthSvcId
 		aspMap[aspId] = aspData
 	}
-	s.updateResources(aspMap)
+	_ = s.updateResources(aspMap)
 
 	srcIpMap := make(map[string][]*common.NetAddress)
 	for _, srcIp := range serverEtcdConfig.SrcIps {
@@ -408,7 +408,7 @@ func (s *UdpServer) updateEtcdConfig(content []byte, baseLoad bool) (err error) 
 		}
 		srcIpMap[srcIp.SrcIp] = ips
 	}
-	s.updateSourceIps(srcIpMap)
+	_ = s.updateSourceIps(srcIpMap)
 
 	return err
 }
@@ -577,7 +577,7 @@ func (s *UdpServer) updateResources(aspMap common.AuthSvcProviderMap) (err error
 		if len(aspData.PluginPath) > 0 {
 			h := plugins.ReadPluginHandler(aspData.PluginPath)
 			if h != nil {
-				s.LoadPlugin(aspId, h)
+				_ = s.LoadPlugin(aspId, h)
 			}
 		}
 

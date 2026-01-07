@@ -9,23 +9,20 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
-func (hs *HttpServer) authWithAspPlugin(c *gin.Context, req *common.HttpKnockRequest) {
-	var err error
-	aspId := req.AuthServiceId
-
-	handler := hs.FindPluginHandler(aspId)
+// doAuthWithPlugin is the common implementation for plugin-based authentication.
+// Both authWithAspPlugin and legacyAuthWithAspPlugin delegate to this function.
+func (hs *HttpServer) doAuthWithPlugin(c *gin.Context, req *common.HttpKnockRequest) {
+	handler := hs.FindPluginHandler(req.AuthServiceId)
 	if handler == nil {
-		err = common.ErrAuthHandlerNotFound
-		log.Error("no auth handler provided")
+		log.Error("no auth handler provided for aspId: %s", req.AuthServiceId)
 		c.String(http.StatusOK, "{\"errMsg\": \"no auth handler provided\"}")
 		return
 	}
 
 	helper := hs.NewHttpServerHelper()
-	ackMsg, err := handler.AuthWithHttp(c, req, helper)
-	_ = ackMsg
+	_, err := handler.AuthWithHttp(c, req, helper)
 	if err != nil {
-		log.Info("auth error: %v", err)
+		log.Warning("auth error: %v", err)
 		if !c.Writer.Written() {
 			c.String(http.StatusOK, "{\"errMsg\": \"auth error: %v\"}", err)
 		}
@@ -34,23 +31,13 @@ func (hs *HttpServer) authWithAspPlugin(c *gin.Context, req *common.HttpKnockReq
 	}
 }
 
-func (hs *HttpServer) legacyAuthWithAspPlugin(c *gin.Context, req *common.HttpKnockRequest) {
-	handler := hs.FindPluginHandler(req.AuthServiceId)
-	if handler == nil {
-		log.Error("no auth handler provided")
-		c.String(http.StatusOK, "{\"errMsg\": \"no auth handler provided\"}")
-		return
-	}
+// authWithAspPlugin handles authentication using the ASP plugin system.
+func (hs *HttpServer) authWithAspPlugin(c *gin.Context, req *common.HttpKnockRequest) {
+	hs.doAuthWithPlugin(c, req)
+}
 
-	helper := hs.NewHttpServerHelper()
-	ackMsg, err := handler.AuthWithHttp(c, req, helper)
-	_ = ackMsg
-	if err != nil {
-		log.Info("auth error: %v", err)
-		if !c.Writer.Written() {
-			c.String(http.StatusOK, "{\"errMsg\": \"auth error: %v\"}", err)
-		}
-	} else {
-		log.Info("auth completed successfully")
-	}
+// legacyAuthWithAspPlugin is the legacy authentication handler.
+// Kept for backward compatibility; delegates to the common implementation.
+func (hs *HttpServer) legacyAuthWithAspPlugin(c *gin.Context, req *common.HttpKnockRequest) {
+	hs.doAuthWithPlugin(c, req)
 }

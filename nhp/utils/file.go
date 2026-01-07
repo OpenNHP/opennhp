@@ -83,7 +83,10 @@ func WatchFile(file string, callback func()) io.Closer {
 	// we have to watch the entire directory to pick up renames/atomic saves in a cross-platform way
 	filename := filepath.Clean(file)
 	dirPath, _ := filepath.Split(filename)
-	watcher.Add(dirPath)
+	if err := watcher.Add(dirPath); err != nil {
+		log.Error("failed to add directory to watcher: %v", err)
+		return nil
+	}
 
 	var eventsWG sync.WaitGroup
 	var debounceTimer *time.Timer

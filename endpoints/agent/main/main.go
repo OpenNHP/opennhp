@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -49,6 +50,7 @@ func main() {
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "curve", Value: false, DisableDefaultText: true, Usage: "generate curve25519 keys"},
 			&cli.BoolFlag{Name: "sm2", Value: false, DisableDefaultText: true, Usage: "generate sm2 keys"},
+			&cli.BoolFlag{Name: "json", Value: false, DisableDefaultText: true, Usage: "output in JSON format"},
 		},
 		Action: func(c *cli.Context) error {
 			var e core.Ecdh
@@ -59,8 +61,16 @@ func main() {
 			e = core.NewECDH(eccType)
 			pub := e.PublicKeyBase64()
 			priv := e.PrivateKeyBase64()
-			fmt.Println("Private key: ", priv)
-			fmt.Println("Public key: ", pub)
+			if c.Bool("json") {
+				output := map[string]string{
+					"privateKey": priv,
+					"publicKey":  pub,
+				}
+				json.NewEncoder(os.Stdout).Encode(output)
+			} else {
+				fmt.Println("Private key: ", priv)
+				fmt.Println("Public key: ", pub)
+			}
 			return nil
 		},
 	}
@@ -71,10 +81,17 @@ func main() {
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "curve", Value: false, DisableDefaultText: true, Usage: "get curve25519 key"},
 			&cli.BoolFlag{Name: "sm2", Value: false, DisableDefaultText: true, Usage: "get sm2 key (default)"},
+			&cli.BoolFlag{Name: "json", Value: false, DisableDefaultText: true, Usage: "output in JSON format"},
 		},
 		Action: func(c *cli.Context) error {
 			privKey, err := base64.StdEncoding.DecodeString(c.Args().First())
 			if err != nil {
+				if c.Bool("json") {
+					json.NewEncoder(os.Stdout).Encode(map[string]interface{}{
+						"error": err.Error(),
+					})
+					return nil
+				}
 				return err
 			}
 			eccType := core.ECC_SM2
@@ -83,10 +100,23 @@ func main() {
 			}
 			e := core.ECDHFromKey(eccType, privKey)
 			if e == nil {
-				return fmt.Errorf("invalid input key")
+				err := fmt.Errorf("invalid input key")
+				if c.Bool("json") {
+					json.NewEncoder(os.Stdout).Encode(map[string]interface{}{
+						"error": err.Error(),
+					})
+					return nil
+				}
+				return err
 			}
 			pub := e.PublicKeyBase64()
-			fmt.Println("Public key: ", pub)
+			if c.Bool("json") {
+				json.NewEncoder(os.Stdout).Encode(map[string]string{
+					"publicKey": pub,
+				})
+			} else {
+				fmt.Println("Public key: ", pub)
+			}
 			return nil
 		},
 	}

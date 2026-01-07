@@ -102,7 +102,7 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 				log.Info("Listening https on %s", hs.listenAddr.String())
 				var err = hs.httpServer.ListenAndServeTLS(certFilePath, keyFilePath)
 				if err != nil && err != http.ErrServerClosed {
-					log.Error("https server close error: %v\n", err)
+					log.Error("https server close error: %v", err)
 					//panic(err)
 				}
 			}()
@@ -116,7 +116,7 @@ func (hs *HttpServer) Start(us *UdpServer, hc *HttpConfig) error {
 		log.Info("Listening http on %s", hs.listenAddr.String())
 		var err = hs.httpServer.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
-			log.Error("http server close error: %v\n", err)
+			log.Error("http server close error: %v", err)
 			//panic(err)
 		}
 	}()
@@ -138,7 +138,7 @@ func (hs *HttpServer) Stop() {
 	hs.running.Store(false)
 	close(hs.signals.stop)
 	ctx, cancel := context.WithTimeout(context.Background(), 5500*time.Millisecond)
-	hs.httpServer.Shutdown(ctx)
+	_ = hs.httpServer.Shutdown(ctx)
 
 	hs.wg.Wait()
 	cancel()

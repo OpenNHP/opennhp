@@ -70,6 +70,7 @@ func TestTomlUnmarshal(t *testing.T) {
 }
 
 func TestTomlViperHandling(t *testing.T) {
+	t.Skip("Skipping interactive test with infinite loop - for manual testing only")
 	var config ac.Config
 	configDir := "../ac/main/etc"
 	viper.SupportedExts = []string{"toml"}
@@ -112,6 +113,7 @@ func TestTomlViperHandling(t *testing.T) {
 }
 
 func TestWxwebTomlViperHandling(t *testing.T) {
+	t.Skip("Skipping interactive test with infinite loop - for manual testing only")
 	configFile := "../server/plugins/wxweb/etc/resource.toml"
 	viper.SetConfigFile(configFile)
 	viper.SetConfigType("toml")
@@ -161,6 +163,7 @@ func TestWxwebTomlViperHandling(t *testing.T) {
 }
 
 func TestUdpServerTomlViperHandling(t *testing.T) {
+	t.Skip("Skipping interactive test with infinite loop - for manual testing only")
 	configFile := "../etc/ac.toml"
 	viper.SetConfigFile(configFile)
 	viper.SetConfigType("toml")

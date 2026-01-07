@@ -10,6 +10,18 @@ OpenNHP is a Go-based Zero Trust security toolkit implementing two core protocol
 
 The system follows NIST Zero Trust Architecture with three core components that communicate via encrypted UDP packets using the Noise Protocol Framework.
 
+## Git Commit Requirements
+
+All commits must be signed with a verified GPG or SSH key. Unsigned commits will fail CI checks.
+
+```bash
+# Sign commits (if not configured globally)
+git commit -S -m "your message"
+
+# Amend to sign an existing commit
+git commit --amend --no-edit -S
+```
+
 ## Build Commands
 
 ```bash
@@ -47,6 +59,64 @@ cd nhp && go test -v ./test/packet_test.go
 
 # Run benchmark tests
 cd nhp && go test -bench=. ./core/benchmark/
+```
+
+## Code Formatting
+
+**IMPORTANT**: All Go code must be properly formatted before committing. CI will fail if formatting is incorrect.
+
+### Before Committing
+
+Always run these commands on modified Go files:
+
+```bash
+# Format code with gofmt
+gofmt -w <file.go>
+
+# Fix import grouping with goimports
+goimports -w <file.go>
+
+# Or format all files in a directory
+gofmt -w ./path/to/package/
+goimports -w ./path/to/package/
+```
+
+### Import Grouping Style
+
+Imports must be organized into three groups separated by blank lines:
+
+1. Standard library imports
+2. External third-party imports
+3. Internal project imports
+
+```go
+import (
+	"fmt"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/pelletier/go-toml/v2"
+
+	"github.com/OpenNHP/opennhp/nhp/common"
+	"github.com/OpenNHP/opennhp/nhp/log"
+)
+```
+
+### Verify Formatting
+
+Check if files need formatting (no output means properly formatted):
+
+```bash
+gofmt -l <file.go>
+goimports -l <file.go>
+```
+
+### Install goimports
+
+If `goimports` is not installed:
+
+```bash
+go install golang.org/x/tools/cmd/goimports@latest
 ```
 
 ## Docker Development

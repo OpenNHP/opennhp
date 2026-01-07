@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -24,6 +23,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core/scheme/curve"
 	"github.com/OpenNHP/opennhp/nhp/core/scheme/gmsm"
+	"github.com/OpenNHP/opennhp/nhp/utils"
 )
 
 type HashTypeEnum int
@@ -82,24 +82,24 @@ func NewCipherSuite(scheme int) (ciphers *CipherSuite) {
 	return
 }
 
-func NewHash(t HashTypeEnum) (h hash.Hash) {
-	var err error
+func NewHash(t HashTypeEnum) (hash.Hash, error) {
 	switch t {
 	case HASH_BLAKE2S:
-		h, err = blake2s.New256(nil)
+		h, err := blake2s.New256(nil)
 		if err != nil {
-			log.Printf("failed to create blake2s hash: %v", err)
-			return nil
+			return nil, fmt.Errorf("failed to create blake2s hash: %w", err)
 		}
+		return h, nil
 
 	case HASH_SM3:
-		h = sm3.New()
+		return sm3.New(), nil
 
 	case HASH_SHA256:
-		h = sha256.New()
-	}
+		return sha256.New(), nil
 
-	return h
+	default:
+		return nil, fmt.Errorf("unsupported hash type: %d", t)
+	}
 }
 
 type Ecdh interface {
@@ -148,44 +148,40 @@ func NewECDH(t EccTypeEnum) (e Ecdh) {
 	return e
 }
 
-func AeadFromKey(t GcmTypeEnum, key *[SymmetricKeySize]byte) (aead cipher.AEAD) {
-	var err error
+func AeadFromKey(t GcmTypeEnum, key *[SymmetricKeySize]byte) (cipher.AEAD, error) {
 	switch t {
 	case GCM_AES256:
-		var aesBlock cipher.Block
-		aesBlock, err = aes.NewCipher(key[:])
+		aesBlock, err := aes.NewCipher(key[:])
 		if err != nil {
-			log.Printf("failed to create AES cipher: %v", err)
-			return nil
+			return nil, fmt.Errorf("failed to create AES cipher: %w", err)
 		}
-		aead, err = cipher.NewGCM(aesBlock)
+		aead, err := cipher.NewGCM(aesBlock)
 		if err != nil {
-			log.Printf("failed to create GCM: %v", err)
-			return nil
+			return nil, fmt.Errorf("failed to create AES-GCM: %w", err)
 		}
+		return aead, nil
 
 	case GCM_SM4:
-		var sm4Block cipher.Block
-		sm4Block, err = sm4.NewCipher(key[:16])
+		sm4Block, err := sm4.NewCipher(key[:16])
 		if err != nil {
-			log.Printf("failed to create SM4 cipher: %v", err)
-			return nil
+			return nil, fmt.Errorf("failed to create SM4 cipher: %w", err)
 		}
-		aead, err = cipher.NewGCM(sm4Block)
+		aead, err := cipher.NewGCM(sm4Block)
 		if err != nil {
-			log.Printf("failed to create GCM: %v", err)
-			return nil
+			return nil, fmt.Errorf("failed to create SM4-GCM: %w", err)
 		}
+		return aead, nil
 
 	case GCM_CHACHA20POLY1305:
-		aead, err = chacha20poly1305.New(key[:])
+		aead, err := chacha20poly1305.New(key[:])
 		if err != nil {
-			log.Printf("failed to create ChaCha20-Poly1305: %v", err)
-			return nil
+			return nil, fmt.Errorf("failed to create ChaCha20-Poly1305: %w", err)
 		}
-	}
+		return aead, nil
 
-	return aead
+	default:
+		return nil, fmt.Errorf("unsupported GCM type: %d", t)
+	}
 }
 
 func CBCEncryption(t GcmTypeEnum, key *[SymmetricKeySize]byte, plaintext []byte, inPlace bool) ([]byte, error) {
@@ -196,19 +192,22 @@ func CBCEncryption(t GcmTypeEnum, key *[SymmetricKeySize]byte, plaintext []byte,
 	case GCM_AES256:
 		block, err = aes.NewCipher(key[:])
 		if err != nil {
-			return nil, fmt.Errorf("failed to create AES cipher: %w", err)
+			return nil, fmt.Errorf("failed to create AES cipher for CBC: %w", err)
 		}
 		iv = key[8:24]
 
 	case GCM_SM4:
 		block, err = sm4.NewCipher(key[:16])
 		if err != nil {
-			return nil, fmt.Errorf("failed to create SM4 cipher: %w", err)
+			return nil, fmt.Errorf("failed to create SM4 cipher for CBC: %w", err)
 		}
 		iv = key[16:]
 
 	case GCM_CHACHA20POLY1305:
 		return nil, ErrNotApplicable
+
+	default:
+		return nil, fmt.Errorf("unsupported cipher type for CBC: %d", t)
 	}
 
 	var paddedPlainText []byte
@@ -242,19 +241,22 @@ func CBCDecryption(t GcmTypeEnum, key *[SymmetricKeySize]byte, ciphertext []byte
 	case GCM_AES256:
 		block, err = aes.NewCipher(key[:])
 		if err != nil {
-			return nil, fmt.Errorf("failed to create AES cipher: %w", err)
+			return nil, fmt.Errorf("failed to create AES cipher for CBC decryption: %w", err)
 		}
 		iv = key[8:24]
 
 	case GCM_SM4:
 		block, err = sm4.NewCipher(key[:16])
 		if err != nil {
-			return nil, fmt.Errorf("failed to create SM4 cipher: %w", err)
+			return nil, fmt.Errorf("failed to create SM4 cipher for CBC decryption: %w", err)
 		}
 		iv = key[16:]
 
 	case GCM_CHACHA20POLY1305:
 		return nil, ErrNotApplicable
+
+	default:
+		return nil, fmt.Errorf("unsupported cipher type for CBC decryption: %d", t)
 	}
 
 	// Validate ciphertext: must be at least one block and a multiple of block size
@@ -353,11 +355,9 @@ func AESEncrypt(plainText []byte, key []byte) ([]byte, error) {
 	return cipherText, nil
 }
 
-// Filling function
+// pad adds PKCS#7 padding to data. Uses shared implementation from utils.
 func pad(data []byte, blockSize int) []byte {
-	padding := blockSize - len(data)%blockSize
-	padText := bytes.Repeat([]byte{byte(padding)}, padding)
-	return append(data, padText...)
+	return utils.PKCS7Pad(data, blockSize)
 }
 
 func AESDecrypt(cipherText []byte, key []byte) ([]byte, error) {
@@ -387,14 +387,8 @@ func AESDecrypt(cipherText []byte, key []byte) ([]byte, error) {
 
 	return decrypted, nil
 }
+
+// unpad removes PKCS#7 padding from data. Uses shared implementation from utils.
 func unpad(padded []byte, blockSize int) []byte {
-	length := len(padded)
-	if length == 0 {
-		return nil
-	}
-	unpadLen := int(padded[length-1])
-	if unpadLen > blockSize || unpadLen > length {
-		return nil
-	}
-	return padded[:length-unpadLen]
+	return utils.PKCS7Unpad(padded, blockSize)
 }

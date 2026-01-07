@@ -70,8 +70,16 @@ func TestECCSharedKey(t *testing.T) {
 		hashs.Write(ssc[:])
 		hasheds := hashs.Sum(nil)
 
-		aeadc := core.AeadFromKey(core.GCM_AES256, &sscKey)
-		aeads := core.AeadFromKey(core.GCM_AES256, &sssKey)
+		aeadc, err := core.AeadFromKey(core.GCM_AES256, &sscKey)
+		if err != nil {
+			fmt.Printf("aead creation error: %v", err)
+			return
+		}
+		aeads, err := core.AeadFromKey(core.GCM_AES256, &sssKey)
+		if err != nil {
+			fmt.Printf("aead creation error: %v", err)
+			return
+		}
 
 		var nonceBytes [12]byte
 		aeadCount++
@@ -122,8 +130,16 @@ func TestGMSharedKey(t *testing.T) {
 		hashs.Write(ssc[:])
 		hasheds := hashs.Sum(nil)
 
-		aeadc := core.AeadFromKey(core.GCM_SM4, &sscKey)
-		aeads := core.AeadFromKey(core.GCM_SM4, &sssKey)
+		aeadc, err := core.AeadFromKey(core.GCM_SM4, &sscKey)
+		if err != nil {
+			fmt.Printf("aead creation error: %v", err)
+			return
+		}
+		aeads, err := core.AeadFromKey(core.GCM_SM4, &sssKey)
+		if err != nil {
+			fmt.Printf("aead creation error: %v", err)
+			return
+		}
 
 		var nonceBytes [12]byte
 		aeadCount++

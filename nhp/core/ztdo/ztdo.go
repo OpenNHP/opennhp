@@ -250,7 +250,10 @@ func NewZtdoSignature() *ZtdoSignature {
 }
 
 func (signature *ZtdoSignature) mixHash(buf *bytes.Buffer) {
-	hashSig := core.NewHash(core.HASH_SHA256)
+	hashSig, err := core.NewHash(core.HASH_SHA256)
+	if err != nil {
+		panic("failed to create hash for signature mixing: " + err.Error())
+	}
 
 	hashSig.Write(signature.Signature[:])
 	hashSig.Write(buf.Bytes())
@@ -259,7 +262,11 @@ func (signature *ZtdoSignature) mixHash(buf *bytes.Buffer) {
 
 func (signature *ZtdoSignature) sign(key []byte) {
 	newHash := func() hash.Hash {
-		return core.NewHash(core.HASH_SHA256)
+		h, err := core.NewHash(core.HASH_SHA256)
+		if err != nil {
+			panic("failed to create hash for HMAC signing: " + err.Error())
+		}
+		return h
 	}
 
 	hmac := hmac.New(newHash, key)

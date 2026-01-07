@@ -18,9 +18,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sigstore/cosign/v2/pkg/cosign"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/sigstore/cosign/v2/pkg/cosign"
 
 	"github.com/OpenNHP/opennhp/endpoints/server/kbs/attest"
 	kbsError "github.com/OpenNHP/opennhp/endpoints/server/kbs/error"
@@ -262,4 +262,3 @@ func VerifyJWT(tokenString string) (*jwt.Token, error) {
 
 	return token, nil
 }
-

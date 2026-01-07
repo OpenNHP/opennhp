@@ -24,7 +24,7 @@ const (
 	NHP_RKN        // agent sends reknock to server
 	NHP_RLY        // relay sends relayed packet to server
 	NHP_AOL        // ac sends online status to server
-	NHP_AAK        // server sends ack to ac after receving ac's online status
+	NHP_AAK        // server sends ack to ac after receiving ac's online status
 	NHP_OTP        // agent requests server for one-time-password
 	NHP_REG        // agent asks server for registering
 	NHP_RAK        // server sends back ack when agent registers correctly
@@ -56,7 +56,7 @@ var nhpHeaderTypeStrings []string = []string{
 	"NHP-RKN", // agent sends reknock to server
 	"NHP-RLY", // relay sends relayed packet to server
 	"NHP-AOL", // ac sends online status to server
-	"NHP-AAK", // server sends ack to ac after receving ac's online status
+	"NHP-AAK", // server sends ack to ac after receiving ac's online status
 	"NHP-OTP", // agent requests server for one-time-password
 	"NHP-REG", // agent asks server for registering
 	"NHP-RAK", // server sends back ack when agent registers correctly
@@ -76,7 +76,7 @@ var nhpHeaderTypeStrings []string = []string{
 }
 
 func HeaderTypeToString(t int) string {
-	if t < len(nhpHeaderTypeStrings) {
+	if t >= 0 && t < len(nhpHeaderTypeStrings) {
 		return nhpHeaderTypeStrings[t]
 	}
 	return "UNKNOWN"
@@ -157,7 +157,7 @@ func (pkt *Packet) Flag() uint16 {
 }
 
 func (pkt *Packet) Header() Header {
-	if pkt.Flag() & common.NHP_FLAG_EXTENDEDLENGTH == 0 {
+	if pkt.Flag()&common.NHP_FLAG_EXTENDEDLENGTH == 0 {
 		return (*curve.HeaderCurve)(unsafe.Pointer(&pkt.Content[0]))
 	} else {
 		switch pkt.Flag() & (0xF << 12) {
@@ -171,12 +171,12 @@ func (pkt *Packet) Header() Header {
 
 func (pkt *Packet) HeaderWithCipherScheme(cipherScheme int) Header {
 	switch cipherScheme {
-	case common.CIPHER_SCHEME_CURVE:
-		return (*curve.HeaderCurve)(unsafe.Pointer(&pkt.Content[0]))
 	case common.CIPHER_SCHEME_GMSM:
+		return (*gmsm.HeaderGmsm)(unsafe.Pointer(&pkt.Content[0]))
+	case common.CIPHER_SCHEME_CURVE:
 		fallthrough
 	default:
-		return (*gmsm.HeaderGmsm)(unsafe.Pointer(&pkt.Content[0]))
+		return (*curve.HeaderCurve)(unsafe.Pointer(&pkt.Content[0]))
 	}
 }
 

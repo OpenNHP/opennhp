@@ -1,3 +1,5 @@
+//go:build wasip1 || wasm
+
 // This file contains the concrete implementation of the policy interface.
 // User should focus on implementing the Policy interface methods in this package
 // to define their specific policy logic.
@@ -21,8 +23,8 @@ type Attestation struct {
 	InKataContainer bool   `json:"inKataContainer"`
 	CanDialIn       bool   `json:"canDialIn"`
 	CPUModel        string `json:"cpuModel"`
-	ProductName 	string `json:"productName"`
-	Manufacturer 	string `json:"manufacturer"`
+	ProductName     string `json:"productName"`
+	Manufacturer    string `json:"manufacturer"`
 }
 
 type PolicyImpl struct {
@@ -36,9 +38,9 @@ func (p *PolicyImpl) OnAttestationCollect() (attestation string) {
 	attestationStruct := Attestation{
 		KernelVersion:   "4.19.121-linuxkit",
 		InKataContainer: true,
-		CanDialIn:	   true,
-		CPUModel:		"Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz",
-		ProductName: 	"Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz",
+		CanDialIn:       true,
+		CPUModel:        "Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz",
+		ProductName:     "Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz",
 	}
 
 	attestationJson, _ := json.Marshal(attestationStruct)
@@ -52,7 +54,7 @@ func (p *PolicyImpl) OnAttestationVerify(attestation string) bool {
 	return true
 }
 
-func (p * PolicyImpl) OnDataPreprocess(metadata string, rawData string, filter string) (processedData string) {
+func (p *PolicyImpl) OnDataPreprocess(metadata string, rawData string, filter string) (processedData string) {
 	policy.Log("log metadata in wasm vm: " + metadata)
 	policy.Log("log rawData in wasm vm: " + rawData)
 	policy.Log("log filter in wasm vm: " + filter)
@@ -60,7 +62,7 @@ func (p * PolicyImpl) OnDataPreprocess(metadata string, rawData string, filter s
 	return "{\"preprocessData\": \"example\"}"
 }
 
-func (p * PolicyImpl) OnDataPostprocess(rawOutput string) (processedOutput string) {
+func (p *PolicyImpl) OnDataPostprocess(rawOutput string) (processedOutput string) {
 	policy.Log("OnDataPostprocess: log rawOutput in wasm vm: " + rawOutput)
 
 	return rawOutput

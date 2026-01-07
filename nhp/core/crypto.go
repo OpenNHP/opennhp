@@ -385,6 +385,7 @@ func AESDecrypt(cipherText []byte, key []byte) ([]byte, error) {
 
 	return decrypted, nil
 }
+
 // unpad removes PKCS#7 padding from data. Uses shared implementation from utils.
 func unpad(padded []byte, blockSize int) []byte {
 	return utils.PKCS7Unpad(padded, blockSize)

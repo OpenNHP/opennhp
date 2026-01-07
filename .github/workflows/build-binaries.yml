@@ -11,6 +11,10 @@ on:
     branches: ["main"]
   workflow_dispatch:  # Manual trigger support
 
+# Restrict default permissions for security (CodeQL alert fix)
+permissions:
+  contents: read
+
 env:
   GO_VERSION: '1.24'
   GOMODULE: github.com/OpenNHP/opennhp/nhp

@@ -15,21 +15,45 @@ import (
 	"os"
 )
 
-func pkcs5Padding(ciphertext []byte, blockSize int) []byte {
-	padding := blockSize - len(ciphertext)%blockSize
-	// padding
-	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
-
-	return append(ciphertext, padtext...)
+// PKCS7Pad adds PKCS#7 padding to data to make it a multiple of blockSize.
+// PKCS#5 is a subset of PKCS#7 with a fixed block size of 8 bytes.
+// This implementation works for any block size (typically 8 or 16 bytes).
+func PKCS7Pad(data []byte, blockSize int) []byte {
+	padding := blockSize - len(data)%blockSize
+	padText := bytes.Repeat([]byte{byte(padding)}, padding)
+	return append(data, padText...)
 }
 
-func pkcs5UnPadding(origData []byte) []byte {
-	length := len(origData)
-	unpadding := int(origData[length-1])
-	if length < unpadding {
+// PKCS7Unpad removes PKCS#7 padding from data.
+// Returns nil if the padding is invalid.
+func PKCS7Unpad(data []byte, blockSize int) []byte {
+	length := len(data)
+	if length == 0 {
 		return nil
 	}
-	return origData[:(length - unpadding)]
+	unpadLen := int(data[length-1])
+	if unpadLen > blockSize || unpadLen > length || unpadLen == 0 {
+		return nil
+	}
+	// Verify padding bytes are all the same value
+	for i := length - unpadLen; i < length; i++ {
+		if data[i] != byte(unpadLen) {
+			return nil
+		}
+	}
+	return data[:length-unpadLen]
+}
+
+// pkcs5Padding is an alias for PKCS7Pad for backward compatibility.
+// Deprecated: Use PKCS7Pad instead.
+func pkcs5Padding(ciphertext []byte, blockSize int) []byte {
+	return PKCS7Pad(ciphertext, blockSize)
+}
+
+// pkcs5UnPadding is an alias for PKCS7Unpad for backward compatibility.
+// Deprecated: Use PKCS7Unpad instead.
+func pkcs5UnPadding(origData []byte) []byte {
+	return PKCS7Unpad(origData, 16) // Default to AES block size
 }
 
 func HMACSha256(key, value string) []byte {

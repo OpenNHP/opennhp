@@ -61,6 +61,64 @@ cd nhp && go test -v ./test/packet_test.go
 cd nhp && go test -bench=. ./core/benchmark/
 ```
 
+## Code Formatting
+
+**IMPORTANT**: All Go code must be properly formatted before committing. CI will fail if formatting is incorrect.
+
+### Before Committing
+
+Always run these commands on modified Go files:
+
+```bash
+# Format code with gofmt
+gofmt -w <file.go>
+
+# Fix import grouping with goimports
+goimports -w <file.go>
+
+# Or format all files in a directory
+gofmt -w ./path/to/package/
+goimports -w ./path/to/package/
+```
+
+### Import Grouping Style
+
+Imports must be organized into three groups separated by blank lines:
+
+1. Standard library imports
+2. External third-party imports
+3. Internal project imports
+
+```go
+import (
+	"fmt"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/pelletier/go-toml/v2"
+
+	"github.com/OpenNHP/opennhp/nhp/common"
+	"github.com/OpenNHP/opennhp/nhp/log"
+)
+```
+
+### Verify Formatting
+
+Check if files need formatting (no output means properly formatted):
+
+```bash
+gofmt -l <file.go>
+goimports -l <file.go>
+```
+
+### Install goimports
+
+If `goimports` is not installed:
+
+```bash
+go install golang.org/x/tools/cmd/goimports@latest
+```
+
 ## Docker Development
 
 ```bash

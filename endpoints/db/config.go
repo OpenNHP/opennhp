@@ -6,10 +6,11 @@ import (
 	"os"
 	"path/filepath"
 
+	toml "github.com/pelletier/go-toml/v2"
+
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
-	toml "github.com/pelletier/go-toml/v2"
 )
 
 var (
@@ -56,7 +57,7 @@ func (a *UdpDevice) loadBaseConfig() error {
 
 	baseConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("base config: %s has been updated", fileName)
-		a.updateBaseConfig(fileName)
+		_ = a.updateBaseConfig(fileName)
 	})
 	return nil
 }
@@ -71,7 +72,7 @@ func (a *UdpDevice) loadPeers() error {
 
 	serverConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("server peer config: %s has been updated", fileName)
-		a.updateServerPeers(fileName)
+		_ = a.updateServerPeers(fileName)
 	})
 
 	return nil
@@ -87,7 +88,7 @@ func (a *UdpDevice) loadTEEs() error {
 
 	teesConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("tee peer config: %s has been updated", fileName)
-		a.updateTEEConfig(fileName)
+		_ = a.updateTEEConfig(fileName)
 	})
 
 	return nil

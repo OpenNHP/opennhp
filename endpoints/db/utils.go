@@ -48,7 +48,7 @@ func NewDataPrivateKeyStoreWith(doId string) (d *DataPrivateKeyStore, err error)
 	}
 
 	d = &DataPrivateKeyStore{}
-	d.fromJson(fileContentByte)
+	_ = d.fromJson(fileContentByte)
 
 	return
 }
@@ -80,9 +80,8 @@ func (d *DataPrivateKeyStore) Save(doId string) error {
 	}
 	defer file.Close()
 
-	file.Write(d.toJson())
-
-	return nil
+	_, err = file.Write(d.toJson())
+	return err
 }
 
 func (d *DataPrivateKeyStore) Delete(doId string) error {
@@ -198,7 +197,7 @@ func (a *UdpDevice) UploadFileToNHPServer(filePath string) (string, error) {
 		return "", err
 	}
 
-	if testReq.StatusCode == http.StatusBadRequest{
+	if testReq.StatusCode == http.StatusBadRequest {
 		httpHost = fmt.Sprintf("https://%s/", a.GetServerPeer().Host())
 	}
 
@@ -300,10 +299,10 @@ type UploadProgress struct {
 }
 
 type ServerResponse struct {
-	Message  string `json:"message"`
-	FileURI  string `json:"file_uri"`
-	UUID     string `json:"uuid"`
-	MD5      string `json:"md5"`
+	Message string `json:"message"`
+	FileURI string `json:"file_uri"`
+	UUID    string `json:"uuid"`
+	MD5     string `json:"md5"`
 }
 
 type ProgressReader struct {

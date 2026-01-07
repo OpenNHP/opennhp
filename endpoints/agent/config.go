@@ -7,11 +7,12 @@ import (
 	"os"
 	"path/filepath"
 
+	toml "github.com/pelletier/go-toml/v2"
+
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
-	toml "github.com/pelletier/go-toml/v2"
 )
 
 var (
@@ -81,7 +82,7 @@ func (a *UdpAgent) loadBaseConfig() error {
 
 	baseConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("base config: %s has been updated", fileName)
-		a.updateBaseConfig(fileName)
+		_ = a.updateBaseConfig(fileName)
 	})
 	return nil
 }
@@ -96,7 +97,7 @@ func (a *UdpAgent) loadDHPConfig() error {
 
 	dhpConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("DHP config: %s has been updated", fileName)
-		a.updateDHPConfig(fileName)
+		_ = a.updateDHPConfig(fileName)
 	})
 
 	return nil
@@ -112,7 +113,7 @@ func (a *UdpAgent) loadPeers() error {
 
 	serverConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("server peer config: %s has been updated", fileName)
-		a.updateServerPeers(fileName)
+		_ = a.updateServerPeers(fileName)
 	})
 
 	return nil
@@ -128,7 +129,7 @@ func (a *UdpAgent) loadResources() error {
 
 	resourceConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("resource config: %s has been updated", fileName)
-		a.updateResources(fileName)
+		_ = a.updateResources(fileName)
 	})
 
 	return nil

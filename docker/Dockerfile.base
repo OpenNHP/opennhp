@@ -3,7 +3,7 @@ FROM --platform=$BUILDPLATFORM ubuntu:22.04 AS builder
 # Get target platform architecture
 ARG TARGETARCH
 ARG TARGETOS
-ARG GOPROXY=https://goproxy.cn,direct
+ARG GOPROXY=https://proxy.golang.org,direct
 ARG GO_VERSION=1.21.2
 
 # Set Proxy

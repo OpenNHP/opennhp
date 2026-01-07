@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -10,10 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/urfave/cli/v2"
+
 	"github.com/OpenNHP/opennhp/endpoints/server"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/version"
-	"github.com/urfave/cli/v2"
 )
 
 // ANSI color codes
@@ -51,6 +53,7 @@ func main() {
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "curve", Value: false, DisableDefaultText: true, Usage: "generate curve25519 keys"},
 			&cli.BoolFlag{Name: "sm2", Value: false, DisableDefaultText: true, Usage: "generate sm2 keys (default)"},
+			&cli.BoolFlag{Name: "json", Value: false, DisableDefaultText: true, Usage: "output in JSON format"},
 		},
 		Action: func(c *cli.Context) error {
 			var e core.Ecdh
@@ -61,8 +64,16 @@ func main() {
 			e = core.NewECDH(eccType)
 			pub := e.PublicKeyBase64()
 			priv := e.PrivateKeyBase64()
-			fmt.Println("Private key: ", priv)
-			fmt.Println("Public key: ", pub)
+			if c.Bool("json") {
+				output := map[string]string{
+					"privateKey": priv,
+					"publicKey":  pub,
+				}
+				json.NewEncoder(os.Stdout).Encode(output)
+			} else {
+				fmt.Println("Private key: ", priv)
+				fmt.Println("Public key: ", pub)
+			}
 			return nil
 		},
 	}
@@ -113,7 +124,7 @@ func printServerInfo(us *server.UdpServer) {
 	fmt.Printf("  %sPlatform:%s   %s/%s\n", colorYellow, colorReset, runtime.GOOS, runtime.GOARCH)
 	fmt.Println()
 	fmt.Printf("  %sUDP Port:%s   %s%d%s\n", colorBlue, colorReset, colorCyan, us.GetListenPort(), colorReset)
-	
+
 	// Display HTTP status
 	httpPort, httpEnabled := us.GetHttpPort()
 	if httpEnabled {
@@ -121,7 +132,7 @@ func printServerInfo(us *server.UdpServer) {
 	} else {
 		fmt.Printf("  %sHTTP:%s       %sdisabled%s\n", colorBlue, colorReset, colorDim, colorReset)
 	}
-	
+
 	fmt.Printf("  %sStarted:%s    %s\n", colorBlue, colorReset, time.Now().Format("2006-01-02 15:04:05"))
 	fmt.Println()
 	fmt.Println(colorGreen + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" + colorReset)
@@ -141,7 +152,7 @@ func runApp(enableProfiling bool) error {
 		// Start profiling
 		f, err := os.Create(filepath.Join(exeDirPath, "cpu.prf"))
 		if err == nil {
-			pprof.StartCPUProfile(f)
+			_ = pprof.StartCPUProfile(f)
 			defer pprof.StopCPUProfile()
 		}
 	}

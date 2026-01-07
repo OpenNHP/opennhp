@@ -12,8 +12,9 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/google/uuid"
+
+	"github.com/OpenNHP/opennhp/nhp/core"
 )
 
 const (
@@ -189,7 +190,7 @@ func (header *ZtdoHeader) GetECCMode() DataKeyPairECCMode {
 }
 
 func (payload *ZtdoPayload) SetIV() {
-	rand.Read(payload.Content.Iv[:])
+	_, _ = rand.Read(payload.Content.Iv[:])
 }
 
 func (payload *ZtdoPayload) SetCipherText(mode SymmetricCipherMode, key, plaintext []byte, ad []byte) error {
@@ -249,7 +250,10 @@ func NewZtdoSignature() *ZtdoSignature {
 }
 
 func (signature *ZtdoSignature) mixHash(buf *bytes.Buffer) {
-	hashSig := core.NewHash(core.HASH_SHA256)
+	hashSig, err := core.NewHash(core.HASH_SHA256)
+	if err != nil {
+		panic("failed to create hash for signature mixing: " + err.Error())
+	}
 
 	hashSig.Write(signature.Signature[:])
 	hashSig.Write(buf.Bytes())
@@ -258,7 +262,11 @@ func (signature *ZtdoSignature) mixHash(buf *bytes.Buffer) {
 
 func (signature *ZtdoSignature) sign(key []byte) {
 	newHash := func() hash.Hash {
-		return core.NewHash(core.HASH_SHA256)
+		h, err := core.NewHash(core.HASH_SHA256)
+		if err != nil {
+			panic("failed to create hash for HMAC signing: " + err.Error())
+		}
+		return h
 	}
 
 	hmac := hmac.New(newHash, key)
@@ -323,13 +331,17 @@ func (ztdo *Ztdo) EncryptZtdoFile(plaintextPath, ciphertextPath string, gcmKey [
 
 	// If metadata is empty, set it to an empty string
 	if len(ztdo.header.GetMetadata()) == 0 {
-		ztdo.SetMetadata("")
+		if err := ztdo.SetMetadata(""); err != nil {
+			return err
+		}
 	}
 
 	// Write header
 	headerBuf := toBuffer(ztdo.header)
 	ztdo.signature.mixHash(headerBuf)
-	ciphertextFile.Write(headerBuf.Bytes())
+	if _, err := ciphertextFile.Write(headerBuf.Bytes()); err != nil {
+		return err
+	}
 
 	// Write payloads
 	for {
@@ -346,16 +358,22 @@ func (ztdo *Ztdo) EncryptZtdoFile(plaintextPath, ciphertextPath string, gcmKey [
 		}
 
 		payload := NewZtdoPayload()
-		payload.SetCipherText(ztdo.header.GetCipherMode(), gcmKey, buf[:n], ad)
+		if err := payload.SetCipherText(ztdo.header.GetCipherMode(), gcmKey, buf[:n], ad); err != nil {
+			return err
+		}
 		payload.SetLength()
 		payloadBuf := toBuffer(payload)
 		ztdo.signature.mixHash(payloadBuf)
-		ciphertextFile.Write(payloadBuf.Bytes())
+		if _, err := ciphertextFile.Write(payloadBuf.Bytes()); err != nil {
+			return err
+		}
 	}
 
 	// update signature
 	ztdo.signature.sign(gcmKey)
-	ciphertextFile.Write(toBuffer(ztdo.signature).Bytes())
+	if _, err := ciphertextFile.Write(toBuffer(ztdo.signature).Bytes()); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -426,7 +444,9 @@ func (ztdo *Ztdo) DecryptZtdoFile(ciphertextPath, plaintextPath string, gcmKey [
 		if err != nil {
 			return err
 		}
-		plaintextFile.Write(plaintext)
+		if _, err := plaintextFile.Write(plaintext); err != nil {
+			return err
+		}
 
 		if ztdo.header.HasSignature() {
 			if remainingCiphertextFileSize == SIGNATURELenSize {
@@ -538,7 +558,7 @@ func unmarshal(f *os.File, data any) error {
 
 				// parse lengthFor and lengthContinue tag
 				// lengthFor tag means that this field represents the length of the field which is specified in the lengthFor tag
-				// lengthContinue tag is ususally used for slices which don't have fixed length.
+				// lengthContinue tag is usually used for slices which don't have fixed length.
 				// lengthContinue tag means that the MSB (most significant bit) of this field indicates that there is still more data to be read
 				lengthFor := field.Tag.Get(LENGTHFOR)
 				lengthContinue := field.Tag.Get(LENGTHCONTINUE)
@@ -594,7 +614,7 @@ func unmarshal(f *os.File, data any) error {
 // toBuffer provides unified way to serialize a Go struct into bytes buffer
 func toBuffer(data any) *bytes.Buffer {
 	buf := bytes.NewBuffer(nil)
-	marshal(buf, data)
+	_ = marshal(buf, data)
 	return buf
 }
 

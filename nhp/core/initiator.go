@@ -29,7 +29,7 @@ type MsgData struct {
 	TransactionId  uint64
 	HeaderType     int
 	Compress       bool
-	ClPkc          bool              // 0: non-CL-PKC extented, 1: CL-PKC extended
+	ClPkc          bool // 0: non-CL-PKC extented, 1: CL-PKC extended
 	ExternalPacket *Packet
 	ExternalCookie *[CookieSize]byte
 	Message        []byte
@@ -130,7 +130,10 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 		mad.header.SetCounter(mad.TransactionId)
 
 		// init chain hash -> ChainHash0
-		mad.chainHash = NewHash(mad.ciphers.HashType)
+		mad.chainHash, err = NewHash(mad.ciphers.HashType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create chain hash: %w", err)
+		}
 		mad.chainHash.Write([]byte(InitialHashString))
 
 		// init chain key -> ChainKey0
@@ -145,7 +148,10 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 	mad.ResponseMsgCh = md.ResponseMsgCh
 
 	// init hmac hash -> HmacHash0
-	mad.hmacHash = NewHash(mad.ciphers.HashType)
+	mad.hmacHash, err = NewHash(mad.ciphers.HashType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HMAC hash: %w", err)
+	}
 	mad.hmacHash.Write([]byte(InitialHashString))
 
 	// create ephermeral key
@@ -172,7 +178,12 @@ func (mad *MsgAssemblerData) derivePacketParserData(pkt *Packet, initTime int64)
 	ppd.deviceEcdh = ppd.device.GetEcdhByCipherScheme(ppd.CipherScheme)
 
 	// init chain hash -> ChainHash0
-	ppd.chainHash = NewHash(ppd.Ciphers.HashType)
+	var err error
+	ppd.chainHash, err = NewHash(ppd.Ciphers.HashType)
+	if err != nil {
+		// This should never happen with valid CipherSuite parameters
+		panic(fmt.Sprintf("failed to create chain hash in derivePacketParserData: %v", err))
+	}
 	ppd.chainHash.Write([]byte(InitialHashString))
 
 	// continue with initiator's chain key -> ChainKey4
@@ -282,7 +293,11 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 	case common.CIPHER_SCHEME_GMSM:
 		fallthrough
 	default:
-		aead = AeadFromKey(mad.ciphers.GcmType, &key)
+		aead, err = AeadFromKey(mad.ciphers.GcmType, &key)
+		if err != nil {
+			log.Error("failed to create AEAD for static encryption: %v", err)
+			return err
+		}
 		static = aead.Seal(mad.header.StaticBytes()[:0], mad.header.NonceBytes(), mad.deviceEcdh.PublicKey(), mad.chainHash.Sum(nil))
 	}
 
@@ -313,7 +328,11 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 	case common.CIPHER_SCHEME_GMSM:
 		fallthrough
 	default:
-		aead = AeadFromKey(mad.ciphers.GcmType, &key)
+		aead, err = AeadFromKey(mad.ciphers.GcmType, &key)
+		if err != nil {
+			log.Error("failed to create AEAD for timestamp encryption: %v", err)
+			return err
+		}
 		ts = aead.Seal(mad.header.TimestampBytes()[:0], mad.header.NonceBytes(), tsBytes[:], mad.chainHash.Sum(nil))
 	}
 
@@ -322,7 +341,11 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 
 	// generate gcm key for body encryption ChainKey3 -> ChainKey4 (ChainKey7 -> ChainKey8)
 	mad.noise.KeyGen2(&mad.chainKey, &key, mad.chainKey[:], ts[:])
-	mad.bodyAead = AeadFromKey(mad.ciphers.GcmType, &key)
+	mad.bodyAead, err = AeadFromKey(mad.ciphers.GcmType, &key)
+	if err != nil {
+		log.Error("failed to create AEAD for body encryption: %v", err)
+		return err
+	}
 
 	return err
 }

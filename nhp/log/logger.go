@@ -149,8 +149,12 @@ func (lw *AsyncLogWriter) writeRoutine() {
 
 			// close after all writes
 			if !useStdout {
-				file.Sync()
-				file.Close()
+				if err := file.Sync(); err != nil {
+					fmt.Printf("Error: AsyncLogWriter failed to sync file %s (%v)\n", file.Name(), err)
+				}
+				if err := file.Close(); err != nil {
+					fmt.Printf("Error: AsyncLogWriter failed to close file %s (%v)\n", file.Name(), err)
+				}
 			}
 		}
 
@@ -263,42 +267,42 @@ func (l *Logger) initActions(prepend string) {
 	l.lgWrn = log.New(l.lw, prepend+" [Warning] ", flag)
 	l.Warning = func(format string, args ...any) {
 		if l.logLevel >= LogLevelError {
-			l.lgWrn.Output(l.callDepth, fmt.Sprintf(format, args...))
+			_ = l.lgWrn.Output(l.callDepth, fmt.Sprintf(format, args...))
 		}
 	}
 
 	l.lgErr = log.New(l.lw, prepend+" [Error] ", flag)
 	l.Error = func(format string, args ...any) {
 		if l.logLevel >= LogLevelError {
-			l.lgErr.Output(l.callDepth, fmt.Sprintf(format, args...))
+			_ = l.lgErr.Output(l.callDepth, fmt.Sprintf(format, args...))
 		}
 	}
 
 	l.lgCrt = log.New(l.lw, prepend+" [Critical] ", flag)
 	l.Critical = func(format string, args ...any) {
 		if l.logLevel >= LogLevelError {
-			l.lgCrt.Output(l.callDepth, fmt.Sprintf(format, args...))
+			_ = l.lgCrt.Output(l.callDepth, fmt.Sprintf(format, args...))
 		}
 	}
 
 	l.lgEva = log.New(l.lwEvaluate, prepend+" [Evaluate] ", flag|log.Lmicroseconds)
 	l.Evaluate = func(format string, args ...any) {
 		if l.logLevel >= LogLevelError {
-			l.lgEva.Output(l.callDepth, fmt.Sprintf(format, args...))
+			_ = l.lgEva.Output(l.callDepth, fmt.Sprintf(format, args...))
 		}
 	}
 
 	l.lgInf = log.New(l.lw, prepend+" [Info] ", flag)
 	l.Info = func(format string, args ...any) {
 		if l.logLevel >= LogLevelInfo {
-			l.lgInf.Output(l.callDepth, fmt.Sprintf(format, args...))
+			_ = l.lgInf.Output(l.callDepth, fmt.Sprintf(format, args...))
 		}
 	}
 
 	l.lgSts = log.New(l.lw, prepend+" [Stats] ", flag)
 	l.Stats = func(format string, args ...any) {
 		if l.logLevel >= LogLevelInfo {
-			l.lgSts.Output(l.callDepth, fmt.Sprintf(format, args...))
+			_ = l.lgSts.Output(l.callDepth, fmt.Sprintf(format, args...))
 		}
 	}
 
@@ -306,35 +310,35 @@ func (l *Logger) initActions(prepend string) {
 	l.lgAdt = log.New(l.lwAudit, prepend+" [Audit] ", flag)
 	l.Audit = func(format string, args ...any) {
 		if l.logLevel >= LogLevelAudit {
-			l.lgAdt.Output(l.callDepth, fmt.Sprintf(format, args...))
+			_ = l.lgAdt.Output(l.callDepth, fmt.Sprintf(format, args...))
 		}
 	}
 
 	l.lgTrx = log.New(l.lwAudit, prepend+" [Transaction] ", flag)
 	l.Transaction = func(format string, args ...any) {
 		if l.logLevel >= LogLevelAudit {
-			l.lgTrx.Output(l.callDepth, fmt.Sprintf(format, args...))
+			_ = l.lgTrx.Output(l.callDepth, fmt.Sprintf(format, args...))
 		}
 	}
 
 	l.lgDbg = log.New(l.lw, prepend+" [Debug] ", flag)
 	l.Debug = func(format string, args ...any) {
 		if l.logLevel >= LogLevelDebug {
-			l.lgDbg.Output(l.callDepth, fmt.Sprintf(format, args...))
+			_ = l.lgDbg.Output(l.callDepth, fmt.Sprintf(format, args...))
 		}
 	}
 
 	l.lgVbs = log.New(l.lw, prepend+" [Verbose] ", flag)
 	l.Verbose = func(format string, args ...any) {
 		if l.logLevel >= LogLevelTrace {
-			l.lgVbs.Output(l.callDepth, fmt.Sprintf(format, args...))
+			_ = l.lgVbs.Output(l.callDepth, fmt.Sprintf(format, args...))
 		}
 	}
 
 	l.lgTrc = log.New(l.lw, prepend+" [Trace] ", flag)
 	l.Trace = func(format string, args ...any) {
 		if l.logLevel >= LogLevelTrace {
-			l.lgTrc.Output(l.callDepth, fmt.Sprintf(format, args...))
+			_ = l.lgTrc.Output(l.callDepth, fmt.Sprintf(format, args...))
 		}
 	}
 	l.isRunning = true
@@ -519,7 +523,7 @@ func (l *Logger) initActionsNoInfoPrepend(prepend string) {
 	l.lgInf = log.New(l.lw, prepend, flag)
 	l.Info = func(format string, args ...any) {
 		if l.logLevel >= LogLevelInfo {
-			l.lgInf.Output(l.callDepth, fmt.Sprintf(format, args...))
+			_ = l.lgInf.Output(l.callDepth, fmt.Sprintf(format, args...))
 		}
 	}
 

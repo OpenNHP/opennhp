@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/OpenNHP/opennhp/endpoints/ac"
-	common "github.com/OpenNHP/opennhp/nhp/common"
-	core "github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/fsnotify/fsnotify"
 	toml "github.com/pelletier/go-toml/v2"
 	"github.com/spf13/viper"
+
+	"github.com/OpenNHP/opennhp/endpoints/ac"
+	common "github.com/OpenNHP/opennhp/nhp/common"
+	core "github.com/OpenNHP/opennhp/nhp/core"
 )
 
 func TestTomlUnmarshal(t *testing.T) {

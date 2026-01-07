@@ -13,8 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/fsnotify/fsnotify"
+
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 func ReadWholeFile(fileName string) (string, error) {
@@ -79,7 +80,10 @@ func WatchFile(file string, callback func()) io.Closer {
 	// we have to watch the entire directory to pick up renames/atomic saves in a cross-platform way
 	filename := filepath.Clean(file)
 	dirPath, _ := filepath.Split(filename)
-	watcher.Add(dirPath)
+	if err := watcher.Add(dirPath); err != nil {
+		log.Error("failed to add directory to watcher: %v", err)
+		return nil
+	}
 
 	var eventsWG sync.WaitGroup
 	var debounceTimer *time.Timer
@@ -114,7 +118,7 @@ func WatchFile(file string, callback func()) io.Closer {
 
 			case err, ok := <-watcher.Errors:
 				if ok { // 'Errors' channel is not closed
-					log.Error(fmt.Sprintf("file watcher error: %v", err))
+					log.Error("file watcher error: %v", err)
 				}
 				return
 			}

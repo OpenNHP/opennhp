@@ -149,10 +149,10 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 	a.serverPeerMap = make(map[string]*core.UdpPeer)
 
 	// load peers
-	a.loadPeers()
+	_ = a.loadPeers()
 
 	// load TEEs
-	a.loadTEEs()
+	_ = a.loadTEEs()
 
 	a.signals.stop = make(chan struct{})
 	a.signals.serverMapUpdated = make(chan struct{}, 1)
@@ -404,7 +404,7 @@ func (a *UdpDevice) connectionRoutine(conn *UdpConn) {
 			if pkt == nil {
 				continue
 			}
-			a.SendPacket(pkt, conn)
+			_, _ = a.SendPacket(pkt, conn)
 
 		case pkt, ok := <-conn.ConnData.RecvQueue:
 			if !ok {
@@ -468,7 +468,9 @@ func (a *UdpDevice) recvMessageRoutine() {
 			case core.NHP_DWR:
 				// deal with NHP_AOP message
 				a.wg.Add(1)
-				go a.HandleUdpDataKeyWrappingOperations(ppd)
+				go func(p *core.PacketParserData) {
+					_ = a.HandleUdpDataKeyWrappingOperations(p)
+				}(ppd)
 			}
 		}
 	}
@@ -701,7 +703,7 @@ func (a *UdpDevice) SendDHPRegister(msg common.DRGMsg) {
 	log.Debug("DHP started")
 	serverPeer := a.GetServerPeer()
 
-	log.Debug("serverPeer:%s \n", serverPeer)
+	log.Debug("serverPeer:%v", serverPeer)
 	result := a.SendNHPDRG(serverPeer, msg)
 	if result {
 		fmt.Printf("Successfully register or update data object which doId is %s.\n", msg.DoId)
@@ -716,7 +718,7 @@ func (a *UdpDevice) SendNHPDRG(server *core.UdpPeer, msg common.DRGMsg) bool {
 	result := false
 	sendAddr := server.SendAddr()
 	if sendAddr == nil {
-		log.Critical("device(%s)[SendNHPDRG] register server IP cannot be parsed", a)
+		log.Critical("device(%v)[SendNHPDRG] register server IP cannot be parsed", a)
 	}
 	drgMsg := msg
 	drgBytes, _ := json.Marshal(drgMsg)
@@ -767,12 +769,12 @@ func (a *UdpDevice) SendNHPDRG(server *core.UdpPeer, msg common.DRGMsg) bool {
 		}
 		dakMsgString, err := json.Marshal(dakMsg)
 		if err != nil {
-			log.Error("DB(%s#%d)DAKMsg failed to parse %s message: %v", dakMsg.DoId, err)
+			log.Error("DB(%s) DAKMsg failed to parse message: %v", dakMsg.DoId, err)
 			return false
 		}
 		log.Info("SendNHPDRG result：%v", string(dakMsgString))
 		if dakMsg.ErrCode != 0 {
-			log.Error("SendNHPDRG send failed,error:", dakMsg.ErrMsg)
+			log.Error("SendNHPDRG send failed, error: %s", dakMsg.ErrMsg)
 			return false
 		}
 		return true

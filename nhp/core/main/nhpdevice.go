@@ -287,7 +287,12 @@ func nhp_sm4_aead_encrypt(key *C.uchar, keyLen C.int, nonce *C.uchar, nonceLen C
 	buf := make([]byte, plainLen+16)
 	copy(aeadKey[:], C.GoBytes(unsafe.Pointer(key), keyLen))
 
-	aead := core.AeadFromKey(core.GCM_SM4, &aeadKey)
+	aead, err := core.AeadFromKey(core.GCM_SM4, &aeadKey)
+	if err != nil {
+		resultPtr.errCode = 1
+		resultPtr.errMsg = C.CString(fmt.Sprintf("Failed to create AEAD: %s", err))
+		return resultPtr
+	}
 	cipher := aead.Seal(buf[:0], C.GoBytes(unsafe.Pointer(nonce), nonceLen), C.GoBytes(unsafe.Pointer(plain), plainLen), C.GoBytes(unsafe.Pointer(additionalData), additionalDataLen))
 	if cipher == nil {
 		resultPtr.errCode = 1
@@ -326,7 +331,12 @@ func nhp_sm4_aead_decrypt(key *C.uchar, keyLen C.int, nonce *C.uchar, nonceLen C
 	buf := make([]byte, cipherLen)
 	copy(aeadKey[:], C.GoBytes(unsafe.Pointer(key), keyLen))
 
-	aead := core.AeadFromKey(core.GCM_SM4, &aeadKey)
+	aead, err := core.AeadFromKey(core.GCM_SM4, &aeadKey)
+	if err != nil {
+		resultPtr.errCode = 1
+		resultPtr.errMsg = C.CString(fmt.Sprintf("Failed to create AEAD: %s", err))
+		return resultPtr
+	}
 	plain, err := aead.Open(buf[:0], C.GoBytes(unsafe.Pointer(nonce), nonceLen), C.GoBytes(unsafe.Pointer(cipher), cipherLen), C.GoBytes(unsafe.Pointer(additionalData), additionalDataLen))
 	if err != nil {
 		resultPtr.errCode = 1

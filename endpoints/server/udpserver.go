@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/OpenNHP/opennhp/nhp/etcd"
 	"net"
 	"path/filepath"
 	"strconv"
@@ -12,13 +11,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/OpenNHP/opennhp/nhp/etcd"
+
+	"github.com/pion/webrtc/v4"
+
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/plugins"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 	"github.com/OpenNHP/opennhp/nhp/version"
-	"github.com/pion/webrtc/v4"
 )
 
 var (
@@ -62,8 +64,7 @@ type UdpServer struct {
 	dbConnectionMapMutex sync.Mutex
 	dbConnectionMap      map[string]*DBConn // ac connection is indexed by remote IP address
 
-	tokenStoreMutex sync.Mutex
-	tokenStore      TokenStore
+	tokenStore *common.TokenStore[*ACTokenEntry]
 
 	// block address management
 	blockAddrMapMutex sync.Mutex
@@ -93,11 +94,11 @@ type UdpServer struct {
 	dbPeerMapMutex sync.Mutex
 	dbPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
-	teeMapMutex    sync.Mutex
-	teeMap         map[string]*TeeAttestationReport // indexed by tee's measure
+	teeMapMutex sync.Mutex
+	teeMap      map[string]*TeeAttestationReport // indexed by tee's measure
 
 	// etcd client
-	etcdConn *etcd.EtcdConn
+	etcdConn                *etcd.EtcdConn
 	remoteConfigUpdateMutex sync.Mutex
 }
 
@@ -131,9 +132,9 @@ type DBConn struct {
 }
 
 type TeeAttestationReport struct {
-	Measure        string `json:"measure"`
-	SerialNumber   string `json:"serialNumber"`
-	Verified       bool   `json:"verified"`
+	Measure      string `json:"measure"`
+	SerialNumber string `json:"serialNumber"`
+	Verified     bool   `json:"verified"`
 }
 
 type TeeAttestationReports struct {
@@ -199,7 +200,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		Port: s.config.ListenPort,
 	})
 	if err != nil {
-		log.Error("listen error %v\n", err)
+		log.Error("listen error: %v", err)
 		return fmt.Errorf("listen error %v", err)
 	}
 
@@ -207,13 +208,13 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	laddr := s.listenConn.LocalAddr()
 	s.listenAddr, err = net.ResolveUDPAddr(laddr.Network(), laddr.String())
 	if err != nil {
-		log.Error("resolve local UDPAddr error %v\n", err)
+		log.Error("resolve local UDPAddr error: %v", err)
 		return fmt.Errorf("resolve UDPAddr error %v", err)
 	}
 
 	prk, err := base64.StdEncoding.DecodeString(s.config.PrivateKeyBase64)
 	if err != nil {
-		log.Error("private key parse error %v\n", err)
+		log.Error("private key parse error: %v", err)
 		return fmt.Errorf("private key parse error %v", err)
 	}
 
@@ -222,7 +223,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 	s.device = core.NewDevice(core.NHP_SERVER, prk, option)
 	if s.device == nil {
-		log.Critical("failed to create device %v\n", err)
+		log.Critical("failed to create device: %v", err)
 		return fmt.Errorf("failed to create device %v", err)
 	}
 
@@ -233,24 +234,24 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.pluginHandlerMap = make(map[string]plugins.PluginHandler)
 	if s.etcdConn != nil {
 		// load nhp server
-		s.loadRemoteConfig()
+		_ = s.loadRemoteConfig()
 	} else {
 		// load peers
-		s.loadPeers()
+		_ = s.loadPeers()
 
 		// load http config and turn on http server if needed
-		s.loadHttpConfig()
+		_ = s.loadHttpConfig()
 
 		// load ip associated addresses
-		s.loadSourceIps()
+		_ = s.loadSourceIps()
 
-		s.loadResources()
+		_ = s.loadResources()
 	}
 
 	s.remoteConnectionMap = make(map[string]*UdpConn)
 	s.acConnectionMap = make(map[string]*ACConn)
 	s.dbConnectionMap = make(map[string]*DBConn)
-	s.tokenStore = make(TokenStore)
+	s.tokenStore = common.NewTokenStore[*ACTokenEntry]()
 	s.blockAddrMap = make(map[string]*BlockAddr)
 	s.signals.stop = make(chan struct{})
 
@@ -262,7 +263,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 
 	// start server routines
 	s.wg.Add(5)
-	go s.tokenStoreRefreshRoutine()
+	go s.tokenStore.RunRefreshRoutine(&s.wg, s.signals.stop, TokenStoreRefreshInterval)
 	go s.BlockAddrRefreshRoutine()
 	go s.recvPacketRoutine()
 	go s.sendMessageRoutine()
@@ -382,7 +383,7 @@ func (s *UdpServer) recvPacketRoutine() {
 		n, remoteAddr, err := s.listenConn.ReadFromUDP(pkt.Buf[:])
 		if err != nil {
 			s.device.ReleasePoolPacket(pkt)
-			log.Error("Read from UDP error: %v\n", err)
+			log.Error("Read from UDP error: %v", err)
 			if n == 0 {
 				// listenConn closed
 				return
@@ -446,7 +447,7 @@ func (s *UdpServer) recvPacketRoutine() {
 				s.device.SetOverload(true)
 			} else if len(s.remoteConnectionMap) >= MaxConcurrentConnection {
 				s.remoteConnectionMapMutex.Unlock()
-				log.Critical("Reached maximum concurrent connection. Discard new packet from addr: %s\n", addrStr)
+				log.Critical("Reached maximum concurrent connection, discarding packet from: %s", addrStr)
 				s.device.ReleasePoolPacket(pkt)
 				continue
 			}
@@ -576,7 +577,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			if pkt == nil {
 				continue
 			}
-			log.Debug("Received udp packet len [%d] from addr: %s\n", len(pkt.Content), addrStr)
+			log.Debug("Received udp packet len [%d] from addr: %s", len(pkt.Content), addrStr)
 
 			// process keepalive packet
 			if pkt.HeaderType == core.NHP_KPL {
@@ -610,7 +611,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			if pkt == nil {
 				continue
 			}
-			s.SendPacket(pkt, conn)
+			_, _ = s.SendPacket(pkt, conn)
 		}
 	}
 }
@@ -719,29 +720,43 @@ func (s *UdpServer) recvMessageRoutine() {
 			switch ppd.HeaderType {
 			case core.NHP_KNK, core.NHP_RKN, core.NHP_EXT, core.DHP_KNK:
 				// aynchronously process knock messages with ack response
-				go s.HandleKnockRequest(ppd)
+				go func(p *core.PacketParserData) {
+					_ = s.HandleKnockRequest(p)
+				}(ppd)
 
 			case core.NHP_AOL:
 				// synchronously block and deal with NHP_DOL to ensure future ac messages will be correctly processed. Don't use go routine
-				s.HandleACOnline(ppd)
+				_ = s.HandleACOnline(ppd)
 
 			case core.NHP_DOL:
-				s.HandleDBOnline(ppd)
+				_ = s.HandleDBOnline(ppd)
 
 			case core.NHP_OTP:
-				go s.HandleOTPRequest(ppd)
+				go func(p *core.PacketParserData) {
+					_ = s.HandleOTPRequest(p)
+				}(ppd)
 
 			case core.NHP_REG:
-				go s.HandleRegisterRequest(ppd)
+				go func(p *core.PacketParserData) {
+					_ = s.HandleRegisterRequest(p)
+				}(ppd)
 
 			case core.NHP_LST:
-				go s.HandleListRequest(ppd)
+				go func(p *core.PacketParserData) {
+					_ = s.HandleListRequest(p)
+				}(ppd)
 			case core.NHP_DAR:
-				go s.HandleDHPDARMessage(ppd)
+				go func(p *core.PacketParserData) {
+					_ = s.HandleDHPDARMessage(p)
+				}(ppd)
 			case core.NHP_DRG:
-				go s.HandleDHPDRGMessage(ppd)
+				go func(p *core.PacketParserData) {
+					_ = s.HandleDHPDRGMessage(p)
+				}(ppd)
 			case core.NHP_DAV:
-				go s.HandleDHPDAVMessage(ppd)
+				go func(p *core.PacketParserData) {
+					_ = s.HandleDHPDAVMessage(p)
+				}(ppd)
 			}
 
 		}

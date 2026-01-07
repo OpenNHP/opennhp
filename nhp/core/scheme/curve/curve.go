@@ -90,7 +90,9 @@ func NewECDH() *Curve25519ECDH {
 	key[0] &= 248
 	key[31] = (key[31] & 127) | 64
 	var c Curve25519ECDH
-	c.SetPrivateKey(key)
+	if err := c.SetPrivateKey(key); err != nil {
+		return nil
+	}
 
 	return &c
 }

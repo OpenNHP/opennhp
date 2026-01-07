@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -9,11 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/urfave/cli/v2"
+
 	"github.com/OpenNHP/opennhp/endpoints/ac"
 	"github.com/OpenNHP/opennhp/endpoints/ac/ebpf"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/version"
-	"github.com/urfave/cli/v2"
 )
 
 // ANSI color codes
@@ -48,6 +50,7 @@ func main() {
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "curve", Value: false, DisableDefaultText: true, Usage: "generate curve25519 keys"},
 			&cli.BoolFlag{Name: "sm2", Value: false, DisableDefaultText: true, Usage: "generate sm2 keys (default)"},
+			&cli.BoolFlag{Name: "json", Value: false, DisableDefaultText: true, Usage: "output in JSON format"},
 		},
 		Action: func(c *cli.Context) error {
 			var e core.Ecdh
@@ -58,8 +61,16 @@ func main() {
 			e = core.NewECDH(eccType)
 			pub := e.PublicKeyBase64()
 			priv := e.PrivateKeyBase64()
-			fmt.Println("Private key: ", priv)
-			fmt.Println("Public key: ", pub)
+			if c.Bool("json") {
+				output := map[string]string{
+					"privateKey": priv,
+					"publicKey":  pub,
+				}
+				json.NewEncoder(os.Stdout).Encode(output)
+			} else {
+				fmt.Println("Private key: ", priv)
+				fmt.Println("Public key: ", pub)
+			}
 			return nil
 		},
 	}
@@ -76,13 +87,13 @@ func main() {
 func printBanner() {
 	banner := `
 ` + colorCyan + colorBold + `
-   ____                   _   _ _   _ ____  
-  / __ \                 | \ | | | | |  _ \ 
+   ____                   _   _ _   _ ____
+  / __ \                 | \ | | | | |  _ \
  | |  | |_ __   ___ _ __ |  \| | |_| | |_) |
- | |  | | '_ \ / _ \ '_ \| . ' |  _  |  __/ 
- | |__| | |_) |  __/ | | | |\  | | | | |    
-  \____/| .__/ \___|_| |_|_| \_|_| |_|_|    
-        | |                                  
+ | |  | | '_ \ / _ \ '_ \| . ' |  _  |  __/
+ | |__| | |_) |  __/ | | | |\  | | | | |
+  \____/| .__/ \___|_| |_|_| \_|_| |_|_|
+        | |
         |_|  ` + colorReset + colorDim + `Network-infrastructure Hiding Protocol` + colorReset + `
 ` + colorPurple + `
   ⭐ GitHub: ` + colorReset + `https://github.com/OpenNHP/opennhp

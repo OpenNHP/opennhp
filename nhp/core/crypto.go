@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -24,6 +23,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core/scheme/curve"
 	"github.com/OpenNHP/opennhp/nhp/core/scheme/gmsm"
+	"github.com/OpenNHP/opennhp/nhp/utils"
 )
 
 type HashTypeEnum int
@@ -353,11 +353,9 @@ func AESEncrypt(plainText []byte, key []byte) ([]byte, error) {
 	return cipherText, nil
 }
 
-// Filling function
+// pad adds PKCS#7 padding to data. Uses shared implementation from utils.
 func pad(data []byte, blockSize int) []byte {
-	padding := blockSize - len(data)%blockSize
-	padText := bytes.Repeat([]byte{byte(padding)}, padding)
-	return append(data, padText...)
+	return utils.PKCS7Pad(data, blockSize)
 }
 
 func AESDecrypt(cipherText []byte, key []byte) ([]byte, error) {
@@ -387,14 +385,8 @@ func AESDecrypt(cipherText []byte, key []byte) ([]byte, error) {
 
 	return decrypted, nil
 }
+
+// unpad removes PKCS#7 padding from data. Uses shared implementation from utils.
 func unpad(padded []byte, blockSize int) []byte {
-	length := len(padded)
-	if length == 0 {
-		return nil
-	}
-	unpadLen := int(padded[length-1])
-	if unpadLen > blockSize || unpadLen > length {
-		return nil
-	}
-	return padded[:length-unpadLen]
+	return utils.PKCS7Unpad(padded, blockSize)
 }

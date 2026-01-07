@@ -149,8 +149,12 @@ func (lw *AsyncLogWriter) writeRoutine() {
 
 			// close after all writes
 			if !useStdout {
-				_ = file.Sync()  //nolint:gosec // G104: Sync errors on log files are non-critical
-				_ = file.Close() //nolint:gosec // G104: Close errors on log files are non-critical
+				if err := file.Sync(); err != nil {
+					fmt.Printf("Error: AsyncLogWriter failed to sync file %s (%v)\n", file.Name(), err)
+				}
+				if err := file.Close(); err != nil {
+					fmt.Printf("Error: AsyncLogWriter failed to close file %s (%v)\n", file.Name(), err)
+				}
 			}
 		}
 

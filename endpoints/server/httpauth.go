@@ -22,7 +22,7 @@ func (hs *HttpServer) doAuthWithPlugin(c *gin.Context, req *common.HttpKnockRequ
 	helper := hs.NewHttpServerHelper()
 	_, err := handler.AuthWithHttp(c, req, helper)
 	if err != nil {
-		log.Info("auth error: %v", err)
+		log.Warning("auth error: %v", err)
 		if !c.Writer.Written() {
 			c.String(http.StatusOK, "{\"errMsg\": \"auth error: %v\"}", err)
 		}

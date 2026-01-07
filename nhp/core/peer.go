@@ -43,13 +43,13 @@ type UdpPeer struct {
 	pubKey       []byte
 
 	// mutable fields
-	lastSendTime      int64
-	lastRecvTime      int64
-	lastNSLookupTime  int64
-	resolvedIpArr     []string
-	primaryResolvedIp string
-	recvAddr          *net.UDPAddr
-	teePublicKeyBase64      string
+	lastSendTime                     int64
+	lastRecvTime                     int64
+	lastNSLookupTime                 int64
+	resolvedIpArr                    []string
+	primaryResolvedIp                string
+	recvAddr                         *net.UDPAddr
+	teePublicKeyBase64               string
 	consumerEphemeralPublicKeyBase64 string
 }
 
@@ -76,7 +76,15 @@ func (p *UdpPeer) Name() string {
 	defer p.Unlock()
 
 	if len(p.name) == 0 {
-		p.name = fmt.Sprintf("%s...%s", p.PubKeyBase64[0:4], p.PubKeyBase64[39:43])
+		// Safely handle short or empty PubKeyBase64 strings
+		if len(p.PubKeyBase64) >= 43 {
+			p.name = fmt.Sprintf("%s...%s", p.PubKeyBase64[0:4], p.PubKeyBase64[39:43])
+		} else if len(p.PubKeyBase64) > 0 {
+			// For short keys, use what we have
+			p.name = p.PubKeyBase64
+		} else {
+			p.name = "unknown"
+		}
 	}
 	return p.name
 }

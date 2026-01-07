@@ -2,7 +2,8 @@
 # field with (-) does not support dynamic update
 
 # PrivateKeyBase64 (-): agent private key in base64 format.
-# DefaultCipherScheme: 0: gmsm, 1: curve25519.
+# DefaultCipherScheme: 0: curve25519, 1: gmsm.
+# MIGRATION: Values changed in v2.x. If upgrading: old 0(gmsm)->new 1, old 1(curve)->new 0.
 # UserId: specify the user id this agent represents.
 # OrganizationId: specify the organization id this agent represents.
 # LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.

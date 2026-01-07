@@ -13,31 +13,32 @@ import (
 )
 
 var (
-	taApiPrefix = fmt.Sprintf("%s/ta", serviceApiPrefix)
-	bufferedTaMap = make(map[string]*TrustedApplication)
+	taApiPrefix    = fmt.Sprintf("%s/ta", serviceApiPrefix)
+	bufferedTaMap  = make(map[string]*TrustedApplication)
 	bufferedTaLock sync.Mutex
 )
 
 type TAFunctionParam struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Type    string       `json:"type"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Type        string `json:"type"`
 }
 
 type TAFunction struct {
-	Method      string                    `json:"method"`
-	Name        string                    `json:"name"`
-	Description string                    `json:"description"`
-	Params      []TAFunctionParam         `json:"params"`
+	Method      string            `json:"method"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Params      []TAFunctionParam `json:"params"`
 }
 
 type TrustedApplication struct {
-	Id            string
-	Functions     []TAFunction
-	Ctx           context.Context
-	Cancel        context.CancelFunc
-	Client        *client.Client
+	Id        string
+	Functions []TAFunction
+	Ctx       context.Context
+	Cancel    context.CancelFunc
+	Client    *client.Client
 }
+
 func NewTrustApplication(tadId string, language string, entry string) (*TrustedApplication, error) {
 	bufferedTaLock.Lock()
 	defer bufferedTaLock.Unlock()
@@ -46,7 +47,7 @@ func NewTrustApplication(tadId string, language string, entry string) (*TrustedA
 	}
 
 	ta := &TrustedApplication{
-		Id: tadId,
+		Id:        tadId,
 		Functions: []TAFunction{},
 	}
 
@@ -95,7 +96,7 @@ func NewTrustApplication(tadId string, language string, entry string) (*TrustedA
 					{
 						Name:        "doId",
 						Description: "identifier of the data object",
-						Type:    "string",
+						Type:        "string",
 					},
 				},
 			}
@@ -109,7 +110,7 @@ func NewTrustApplication(tadId string, language string, entry string) (*TrustedA
 				taFuncParam := TAFunctionParam{
 					Name:        name,
 					Description: prop["description"].(string),
-					Type:    prop["type"].(string),
+					Type:        prop["type"].(string),
 				}
 				taFunc.Params = append(taFunc.Params, taFuncParam)
 			}
@@ -140,13 +141,13 @@ func GetTrustedApplication(trustedAppUuid string) (*TrustedApplication, error) {
 }
 
 func (ta *TrustedApplication) GetSupportedFunctions() []TAFunction {
-    return ta.Functions
+	return ta.Functions
 }
 
 func (ta *TrustedApplication) CallFunction(function string, params map[string]any) (string, error) {
 	callRequest := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
-			Name: function,
+			Name:      function,
 			Arguments: params,
 		},
 	}
@@ -158,9 +159,9 @@ func (ta *TrustedApplication) CallFunction(function string, params map[string]an
 
 	// check the type of content
 	switch firstContent := callResponse.Content[0].(type) {
-		case mcp.TextContent:
-			return firstContent.Text, nil
-		default:
-			return "", fmt.Errorf("unexpected content type: %T", callResponse.Content[0])
+	case mcp.TextContent:
+		return firstContent.Text, nil
+	default:
+		return "", fmt.Errorf("unexpected content type: %T", callResponse.Content[0])
 	}
 }

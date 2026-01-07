@@ -10,11 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/urfave/cli/v2"
+
 	"github.com/OpenNHP/opennhp/endpoints/ac"
 	"github.com/OpenNHP/opennhp/endpoints/ac/ebpf"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/version"
-	"github.com/urfave/cli/v2"
 )
 
 // ANSI color codes
@@ -86,13 +87,13 @@ func main() {
 func printBanner() {
 	banner := `
 ` + colorCyan + colorBold + `
-   ____                   _   _ _   _ ____  
-  / __ \                 | \ | | | | |  _ \ 
+   ____                   _   _ _   _ ____
+  / __ \                 | \ | | | | |  _ \
  | |  | |_ __   ___ _ __ |  \| | |_| | |_) |
- | |  | | '_ \ / _ \ '_ \| . ' |  _  |  __/ 
- | |__| | |_) |  __/ | | | |\  | | | | |    
-  \____/| .__/ \___|_| |_|_| \_|_| |_|_|    
-        | |                                  
+ | |  | | '_ \ / _ \ '_ \| . ' |  _  |  __/
+ | |__| | |_) |  __/ | | | |\  | | | | |
+  \____/| .__/ \___|_| |_|_| \_|_| |_|_|
+        | |
         |_|  ` + colorReset + colorDim + `Network-infrastructure Hiding Protocol` + colorReset + `
 ` + colorPurple + `
   ⭐ GitHub: ` + colorReset + `https://github.com/OpenNHP/opennhp

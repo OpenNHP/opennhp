@@ -12,14 +12,14 @@ import (
 
 type UserPartialKey struct {
 	PrivateKey *big.Int
-	PubX *big.Int
-	PubY *big.Int
+	PubX       *big.Int
+	PubY       *big.Int
 }
 
 type UserFullKey struct {
 	PrivateKey *big.Int
-	PubX *big.Int
-	PubY *big.Int
+	PubX       *big.Int
+	PubY       *big.Int
 }
 
 func (u UserFullKey) String() string {
@@ -48,14 +48,14 @@ type User interface {
 
 type UserImpl struct {
 	curve.Curve
-	h hash.Hash
+	h         hash.Hash
 	masterKey *kgc.MasterKey
 }
 
 func NewUser(params curve.Curve, hash hash.Hash, masterKey *kgc.MasterKey) *UserImpl {
 	return &UserImpl{
-		Curve: params,
-		h: hash,
+		Curve:     params,
+		h:         hash,
 		masterKey: masterKey,
 	}
 }
@@ -74,8 +74,8 @@ func (u *UserImpl) GenerateUserPartialKey() (*UserPartialKey, error) {
 
 	return &UserPartialKey{
 		PrivateKey: partialPrivateKey,
-		PubX: partialPubX,
-		PubY: partialPubY,
+		PubX:       partialPubX,
+		PubY:       partialPubY,
 	}, nil
 }
 
@@ -88,8 +88,8 @@ func (u *UserImpl) GenerateUserFullKey(kgcUserPartialKey *kgc.KGCUserPartialKey,
 
 	return &UserFullKey{
 		PrivateKey: fullPrivateKey,
-		PubX: kgcUserPartialKey.Wx,
-		PubY: kgcUserPartialKey.Wy,
+		PubX:       kgcUserPartialKey.Wx,
+		PubY:       kgcUserPartialKey.Wy,
 	}, nil
 }
 
@@ -122,7 +122,6 @@ func (u *UserImpl) CalculateFullPublicKey(declaredPbkBase64, userId string) (*bi
 	u.h.Write(info)
 	infoHash := u.h.Sum(nil)
 	u.h.Reset()
-
 
 	lamdaInfo := []byte{}
 	lamdaInfo = append(lamdaInfo, declaredPbkX.Bytes()...)
@@ -259,7 +258,6 @@ func (u *UserImpl) Verify(declaredPbkBase64, userId, message, sigBase64 string) 
 	// u2 = r·w mod n
 	u2 := new(big.Int).Mul(r, w)
 	u2.Mod(u2, n)
-
 
 	userPubX, userPubY, err := u.CalculateFullPublicKey(declaredPbkBase64, userId)
 	if err != nil {

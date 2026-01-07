@@ -61,22 +61,22 @@ type CipherSuite struct {
 func NewCipherSuite(scheme int) (ciphers *CipherSuite) {
 	// init cipher suite
 	switch scheme {
-	case common.CIPHER_SCHEME_CURVE:
-		ciphers = &CipherSuite{
-			Scheme:   common.CIPHER_SCHEME_CURVE,
-			HashType: HASH_BLAKE2S,
-			EccType:  ECC_CURVE25519,
-			GcmType:  GCM_AES256,
-		}
-
 	case common.CIPHER_SCHEME_GMSM:
-		fallthrough
-	default:
 		ciphers = &CipherSuite{
 			Scheme:   common.CIPHER_SCHEME_GMSM,
 			HashType: HASH_SM3,
 			EccType:  ECC_SM2,
 			GcmType:  GCM_SM4,
+		}
+
+	case common.CIPHER_SCHEME_CURVE:
+		fallthrough
+	default:
+		ciphers = &CipherSuite{
+			Scheme:   common.CIPHER_SCHEME_CURVE,
+			HashType: HASH_BLAKE2S,
+			EccType:  ECC_CURVE25519,
+			GcmType:  GCM_AES256,
 		}
 	}
 	return
@@ -175,7 +175,7 @@ func AeadFromKey(t GcmTypeEnum, key *[SymmetricKeySize]byte) (cipher.AEAD, error
 	case GCM_CHACHA20POLY1305:
 		aead, err := chacha20poly1305.New(key[:])
 		if err != nil {
-			return nil, fmt.Errorf("failed to create ChaCha20Poly1305: %w", err)
+			return nil, fmt.Errorf("failed to create ChaCha20-Poly1305: %w", err)
 		}
 		return aead, nil
 
@@ -259,8 +259,12 @@ func CBCDecryption(t GcmTypeEnum, key *[SymmetricKeySize]byte, ciphertext []byte
 		return nil, fmt.Errorf("unsupported cipher type for CBC decryption: %d", t)
 	}
 
+	// Validate ciphertext: must be at least one block and a multiple of block size
 	if len(ciphertext) < block.BlockSize() {
-		return nil, fmt.Errorf("ciphertext too short")
+		return nil, fmt.Errorf("ciphertext too short: need at least %d bytes", block.BlockSize())
+	}
+	if len(ciphertext)%block.BlockSize() != 0 {
+		return nil, fmt.Errorf("ciphertext length %d is not a multiple of block size %d", len(ciphertext), block.BlockSize())
 	}
 
 	var plaintext []byte
@@ -363,9 +367,14 @@ func AESDecrypt(cipherText []byte, key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// IV，IV cipherText left 16
-	if len(cipherText) < aes.BlockSize {
-		return nil, fmt.Errorf("cipherText too short")
+	// Validate ciphertext length:
+	// - Must have at least IV (16 bytes) + one encrypted block (16 bytes)
+	// - After IV extraction, remaining must be a multiple of block size
+	if len(cipherText) < aes.BlockSize*2 {
+		return nil, fmt.Errorf("cipherText too short: need at least %d bytes, got %d", aes.BlockSize*2, len(cipherText))
+	}
+	if (len(cipherText)-aes.BlockSize)%aes.BlockSize != 0 {
+		return nil, fmt.Errorf("cipherText length invalid: must be IV + multiple of block size")
 	}
 	iv := cipherText[:aes.BlockSize]
 	cipherText = cipherText[aes.BlockSize:]
@@ -382,6 +391,9 @@ func AESDecrypt(cipherText []byte, key []byte) ([]byte, error) {
 }
 func unpad(padded []byte, blockSize int) []byte {
 	length := len(padded)
+	if length == 0 {
+		return nil
+	}
 	unpadLen := int(padded[length-1])
 	if unpadLen > blockSize || unpadLen > length {
 		return nil

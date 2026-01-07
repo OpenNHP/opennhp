@@ -12,7 +12,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/core"
 )
 
-const  (
+const (
 	InitialDHPKeyWrappingString = "DHP Data Private Key Wrapping"
 )
 
@@ -29,14 +29,14 @@ type DataKeyPairGenerator interface {
 type SymmetricCipherMode uint8
 
 const (
-	AES256GCM64Tag SymmetricCipherMode = iota  // 0x00
-	AES256GCM96Tag                       // 0x01
-	AES256GCM104Tag                      // 0x02
-	AES256GCM112Tag                      // 0x03
-	AES256GCM120Tag                      // 0x04
-	AES256GCM128Tag                      // 0x05
-	SM4GCM64Tag                          // 0x06
-	SM4GCM128Tag                         // 0x07
+	AES256GCM64Tag  SymmetricCipherMode = iota // 0x00
+	AES256GCM96Tag                             // 0x01
+	AES256GCM104Tag                            // 0x02
+	AES256GCM112Tag                            // 0x03
+	AES256GCM120Tag                            // 0x04
+	AES256GCM128Tag                            // 0x05
+	SM4GCM64Tag                                // 0x06
+	SM4GCM128Tag                               // 0x07
 )
 
 func (m SymmetricCipherMode) String() string {
@@ -249,27 +249,27 @@ const (
 )
 
 type SymmetricAgreement struct {
-	ss                core.NoiseFactory
-	s                 core.Ecdh  // local static key pair
-	e                 core.Ecdh  // local ephemeral key pair
-	rs                []byte     // remote static key
-	re                []byte     // remote ephemeral key
-	messagePatterns   [][]MessagePattern  // 1st row is for provider, 2nd row for consumer
-	psk               []byte              // pre-shared key
-	isPskUsed         bool
-	provider          bool                // provider or consumer
-	eccMode           DataKeyPairECCMode  // need to keep the same with NHP agent and NHP-DB
+	ss              core.NoiseFactory
+	s               core.Ecdh          // local static key pair
+	e               core.Ecdh          // local ephemeral key pair
+	rs              []byte             // remote static key
+	re              []byte             // remote ephemeral key
+	messagePatterns [][]MessagePattern // 1st row is for provider, 2nd row for consumer
+	psk             []byte             // pre-shared key
+	isPskUsed       bool
+	provider        bool               // provider or consumer
+	eccMode         DataKeyPairECCMode // need to keep the same with NHP agent and NHP-DB
 }
 
 func NewSymmetricAgreement(eccMode DataKeyPairECCMode, provider bool) *SymmetricAgreement {
 	sa := &SymmetricAgreement{
-		psk: []byte(""),
+		psk:       []byte(""),
 		isPskUsed: false,
-		provider: provider,
-		eccMode:  eccMode,
+		provider:  provider,
+		eccMode:   eccMode,
 	}
 
-	sa.ss.HashType  = eccMode.ToHashType()
+	sa.ss.HashType = eccMode.ToHashType()
 
 	return sa
 }
@@ -303,7 +303,7 @@ func (sa *SymmetricAgreement) AgreeSymmetricKey() (gcmKey [core.SymmetricKeySize
 	// ck is chaining key that hashes all previous DH outputs
 	ck := [core.SymmetricKeySize]byte{}
 
-	// adHash hashes all the invloved public key, the final value will be used as associated data for AEAD authentication
+	// adHash hashes all the involved public key, the final value will be used as associated data for AEAD authentication
 	adHash, err := core.NewHash(sa.eccMode.ToHashType())
 	if err != nil {
 		panic("failed to create hash for symmetric agreement: " + err.Error())
@@ -341,7 +341,7 @@ func (sa *SymmetricAgreement) AgreeSymmetricKey() (gcmKey [core.SymmetricKeySize
 				adHash.Write(sa.s.PublicKey())
 				sa.ss.MixKey(&ck, ck[:], sa.s.PublicKey())
 			}
-			if idx == len(msgPatterns) -1 {
+			if idx == len(msgPatterns)-1 {
 				sa.ss.KeyGen2(&ck, &gcmKey, ck[:], ss[:])
 			} else {
 				sa.ss.MixKey(&ck, ck[:], ss[:])
@@ -355,7 +355,7 @@ func (sa *SymmetricAgreement) AgreeSymmetricKey() (gcmKey [core.SymmetricKeySize
 				adHash.Write(sa.s.PublicKey())
 				sa.ss.MixKey(&ck, ck[:], sa.s.PublicKey())
 			}
-			if idx == len(msgPatterns) -1 {
+			if idx == len(msgPatterns)-1 {
 				sa.ss.KeyGen2(&ck, &gcmKey, ck[:], se[:])
 			} else {
 				sa.ss.MixKey(&ck, ck[:], se[:])
@@ -369,7 +369,7 @@ func (sa *SymmetricAgreement) AgreeSymmetricKey() (gcmKey [core.SymmetricKeySize
 				adHash.Write(sa.e.PublicKey())
 				sa.ss.MixKey(&ck, ck[:], sa.e.PublicKey())
 			}
-			if idx == len(msgPatterns) -1 {
+			if idx == len(msgPatterns)-1 {
 				sa.ss.KeyGen2(&ck, &gcmKey, ck[:], ee[:])
 			} else {
 				sa.ss.MixKey(&ck, ck[:], ee[:])
@@ -383,7 +383,7 @@ func (sa *SymmetricAgreement) AgreeSymmetricKey() (gcmKey [core.SymmetricKeySize
 				adHash.Write(sa.e.PublicKey())
 				sa.ss.MixKey(&ck, ck[:], sa.e.PublicKey())
 			}
-			if idx == len(msgPatterns) -1 {
+			if idx == len(msgPatterns)-1 {
 				sa.ss.KeyGen2(&ck, &gcmKey, ck[:], es[:])
 			} else {
 				sa.ss.MixKey(&ck, ck[:], es[:])

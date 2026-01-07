@@ -3,7 +3,8 @@
 
 # ACId (-): specify the id of this AC.
 # PrivateKeyBase64 (-): AC private key in base64 format.
-# DefaultCipherScheme: 0: gmsm, 1: curve25519.
+# DefaultCipherScheme: 0: curve25519, 1: gmsm.
+# MIGRATION: Values changed in v2.x. If upgrading: old 0(gmsm)->new 1, old 1(curve)->new 0.
 # IpPassMode:
 #  0: (default) immediately pass traffic with the agent source ip,
 #  1: process pre-access to determine actual agent source ip then pass.

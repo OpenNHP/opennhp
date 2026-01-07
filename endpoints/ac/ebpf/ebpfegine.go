@@ -17,11 +17,12 @@ import (
 
 	stdlog "log"
 
-	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/perf"
 	"github.com/cilium/ebpf/rlimit"
+
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 type bpfObjects struct {
@@ -195,7 +196,7 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 	go func() {
 		perfReader, err := perf.NewReader(eventsMap, os.Getpagesize())
 		if err != nil {
-			log.Error("failed to create perf reader:", err)
+			log.Error("failed to create perf reader: %v", err)
 			return
 		}
 		defer perfReader.Close()
@@ -205,7 +206,7 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 		for {
 			record, err := perfReader.Read()
 			if err != nil {
-				log.Error("Error reading eBPF event:", err)
+				log.Error("Error reading eBPF event: %v", err)
 				continue
 			}
 			action := record.RawSample[8]

@@ -31,7 +31,10 @@ func (e *Error) ErrorCode() string {
 }
 
 func (e *Error) ErrorNumber() int {
-	n, _ := strconv.Atoi(e.code)
+	n, err := strconv.Atoi(e.code)
+	if err != nil {
+		return 0
+	}
 	return n
 }
 

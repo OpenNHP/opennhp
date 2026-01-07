@@ -12,8 +12,9 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/google/uuid"
+
+	"github.com/OpenNHP/opennhp/nhp/core"
 )
 
 const (
@@ -545,7 +546,7 @@ func unmarshal(f *os.File, data any) error {
 
 				// parse lengthFor and lengthContinue tag
 				// lengthFor tag means that this field represents the length of the field which is specified in the lengthFor tag
-				// lengthContinue tag is ususally used for slices which don't have fixed length.
+				// lengthContinue tag is usually used for slices which don't have fixed length.
 				// lengthContinue tag means that the MSB (most significant bit) of this field indicates that there is still more data to be read
 				lengthFor := field.Tag.Get(LENGTHFOR)
 				lengthContinue := field.Tag.Get(LENGTHCONTINUE)

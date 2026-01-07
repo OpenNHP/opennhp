@@ -29,4 +29,3 @@ func GetExeDirPath() (string, error) {
 
 	return filepath.Dir(exeFilePath), nil
 }
-

@@ -13,7 +13,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/OpenNHP/opennhp/nhp/utils"
 	"github.com/emmansun/gmsm/padding"
 	"github.com/emmansun/gmsm/sm2"
 	"github.com/emmansun/gmsm/sm3"
@@ -24,6 +23,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core/scheme/curve"
 	"github.com/OpenNHP/opennhp/nhp/core/scheme/gmsm"
+	"github.com/OpenNHP/opennhp/nhp/utils"
 )
 
 type HashTypeEnum int

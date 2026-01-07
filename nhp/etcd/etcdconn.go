@@ -1,10 +1,13 @@
 package etcd
+
 import (
 	"context"
 	"errors"
-	"github.com/OpenNHP/opennhp/nhp/log"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"time"
+
+	clientv3 "go.etcd.io/etcd/client/v3"
+
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 type EtcdConfig struct {
@@ -40,7 +43,9 @@ func (conn *EtcdConn) InitClient() error {
 	if err != nil {
 		return err
 	}
-	conn.ctx, _ = context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	conn.ctx = ctx
 	_, err = conn.client.Status(conn.ctx, conn.Endpoints[0])
 	if err != nil {
 		return err
@@ -71,7 +76,6 @@ func (conn *EtcdConn) SetValue(v string) error {
 func (conn *EtcdConn) WatchValue(callbackFunc func(val []byte)) {
 	// create etcd watcher
 	conn.watcher = clientv3.NewWatcher(conn.client)
-	
 
 	watchChan := conn.watcher.Watch(context.Background(), conn.Key)
 
@@ -102,4 +106,3 @@ func (conn *EtcdConn) Close() {
 		conn.client.Close()
 	}
 }
-

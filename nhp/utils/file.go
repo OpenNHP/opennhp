@@ -13,8 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/fsnotify/fsnotify"
+
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 func ReadWholeFile(fileName string) (string, error) {
@@ -114,7 +115,7 @@ func WatchFile(file string, callback func()) io.Closer {
 
 			case err, ok := <-watcher.Errors:
 				if ok { // 'Errors' channel is not closed
-					log.Error(fmt.Sprintf("file watcher error: %v", err))
+					log.Error("file watcher error: %v", err)
 				}
 				return
 			}

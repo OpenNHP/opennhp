@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/emmansun/gmsm/sm2"
+
 	core "github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/core/scheme/gmsm"
-	"github.com/emmansun/gmsm/sm2"
 )
 
 func TestSM2ECDSAKeys(t *testing.T) {

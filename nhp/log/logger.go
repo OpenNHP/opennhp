@@ -127,11 +127,11 @@ func (lw *AsyncLogWriter) writeRoutine() {
 				filename := fmt.Sprintf("%s-%s.log", lw.Name, date)
 				if len(lw.DirPath) > 0 {
 					filename = filepath.Join(lw.DirPath, filename)
-					file, err = os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-					if err != nil {
-						fmt.Printf("Error: AsyncLogWriter cannot open file %s (%v)\n", filename, err)
-						continue
-					}
+				}
+				file, err = os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+				if err != nil {
+					fmt.Printf("Error: AsyncLogWriter cannot open file %s (%v)\n", filename, err)
+					continue
 				}
 			}
 
@@ -149,8 +149,12 @@ func (lw *AsyncLogWriter) writeRoutine() {
 
 			// close after all writes
 			if !useStdout {
-				file.Sync()
-				file.Close()
+				if err := file.Sync(); err != nil {
+					fmt.Printf("Error: AsyncLogWriter failed to sync file %s (%v)\n", file.Name(), err)
+				}
+				if err := file.Close(); err != nil {
+					fmt.Printf("Error: AsyncLogWriter failed to close file %s (%v)\n", file.Name(), err)
+				}
 			}
 		}
 

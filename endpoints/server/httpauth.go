@@ -3,9 +3,10 @@ package server
 import (
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/log"
-	"github.com/gin-gonic/gin"
 )
 
 func (hs *HttpServer) authWithAspPlugin(c *gin.Context, req *common.HttpKnockRequest) {

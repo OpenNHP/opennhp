@@ -2,9 +2,9 @@ package test
 
 import (
 	"fmt"
-	"testing"
 	"os"
 	"strings"
+	"testing"
 
 	log "github.com/OpenNHP/opennhp/nhp/log"
 	utils "github.com/OpenNHP/opennhp/nhp/utils"
@@ -75,7 +75,7 @@ func TestUpdateTomlConfig(t *testing.T) {
 
 # PrivateKeyBase64 (-): agent private key in base64 format.
 # TEEPrivateKeyBase64 (-): TEE private key in base64 format.
-# DefaultCipherScheme: 0: gmsm, 1: curve25519.
+# DefaultCipherScheme: 0: curve25519, 1: gmsm.
 # UserId: specify the user id this agent represents.
 # OrganizationId: specify the organization id this agent represents.
 # LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.
@@ -91,13 +91,15 @@ LogLevel = 4
 "ExampleKey1" = 1
 "ExampleKey2" = true
 `
-	if _, err := tempFile.WriteString(initialContent); err != nil {
-		t.Fatalf("can't write into temporary file: %v", err)
+	_, writeErr := tempFile.WriteString(initialContent)
+	if writeErr != nil {
+		t.Fatalf("can't write into temporary file: %v", writeErr)
 	}
 	tempFile.Close()
 
-	if err := utils.UpdateTomlConfig(tempFile.Name(), "PrivateKeyBase64", "+Jnee2lP6Kn47qzSaqwSmWxORsBkkCV6YHsRqXM23Vo="); err != nil {
-		t.Fatalf("can't update toml config: %v", err)
+	updateErr := utils.UpdateTomlConfig(tempFile.Name(), "PrivateKeyBase64", "+Jnee2lP6Kn47qzSaqwSmWxORsBkkCV6YHsRqXM23Vo=")
+	if updateErr != nil {
+		t.Fatalf("can't update toml config: %v", updateErr)
 	}
 
 	content, err := os.ReadFile(tempFile.Name())

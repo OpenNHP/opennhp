@@ -3,8 +3,8 @@ package common
 import (
 	"encoding/base64"
 	"fmt"
-	"path/filepath"
 	"os"
+	"path/filepath"
 
 	utils "github.com/OpenNHP/opennhp/nhp/utils"
 )
@@ -228,15 +228,15 @@ type DARMsg struct {
 }
 
 type DAGMsg struct {
-	DoId           string          `json:"doId"`                     // Echoes request's DoId
-	DoType         string          `json:"doType,omitempty"`         // Echoes request's DoType
-	DataSourceType string          `json:"dataSourceType,omitempty"` // Data source type, the default value is online, and supported values are online, offline and stream.
-	AccessUrl      string          `json:"accessUrl,omitempty"`      // Data access URL
-	AccessByNHP    bool            `json:"accessByNHP,omitempty"`    // Indicates whether to grant access to the data through NHP
+	DoId           string           `json:"doId"`                     // Echoes request's DoId
+	DoType         string           `json:"doType,omitempty"`         // Echoes request's DoType
+	DataSourceType string           `json:"dataSourceType,omitempty"` // Data source type, the default value is online, and supported values are online, offline and stream.
+	AccessUrl      string           `json:"accessUrl,omitempty"`      // Data access URL
+	AccessByNHP    bool             `json:"accessByNHP,omitempty"`    // Indicates whether to grant access to the data through NHP
 	Kao            *KeyAccessObject `json:"kao,omitempty"`            // Key access object
 	Spo            *SmartPolicy     `json:"spo,omitempty"`            // Smart policy Object
-	ErrCode        int             `json:"errCode"`                  // Registration error code (0=success)
-	ErrMsg         string          `json:"errMsg"`                   // Error message (empty if success)
+	ErrCode        int              `json:"errCode"`                  // Registration error code (0=success)
+	ErrMsg         string           `json:"errMsg"`                   // Error message (empty if success)
 }
 
 type DWRMsg struct {
@@ -246,19 +246,19 @@ type DWRMsg struct {
 }
 
 type DWAMsg struct {
-	DoId    string          `json:"doId"`          // Data object identifier
+	DoId    string           `json:"doId"`          // Data object identifier
 	Kao     *KeyAccessObject `json:"kao,omitempty"` // Key access object
-	ErrCode int             `json:"errCode"`       // Registration error code (0=success)
-	ErrMsg  string          `json:"errMsg"`        // Error message (empty if success)
+	ErrCode int              `json:"errCode"`       // Registration error code (0=success)
+	ErrMsg  string           `json:"errMsg"`        // Error message (empty if success)
 }
 
 type DSAMsg struct {
-	DoId  string      `json:"doId"`          // Data object identifier
-	SpoId string      `json:"spoId"`         // Smart Policy Object identifier
-	Spo   *SmartPolicy `json:"spo,omitempty"` // Smart policy Object
-	TTL   int         `json:"TTL"`           // Evidence validity period in milliseconds
-	ErrCode int             `json:"errCode"`       // Registration error code (0=success)
-	ErrMsg  string          `json:"errMsg"`        // Error message (empty if success)
+	DoId    string       `json:"doId"`          // Data object identifier
+	SpoId   string       `json:"spoId"`         // Smart Policy Object identifier
+	Spo     *SmartPolicy `json:"spo,omitempty"` // Smart policy Object
+	TTL     int          `json:"TTL"`           // Evidence validity period in milliseconds
+	ErrCode int          `json:"errCode"`       // Registration error code (0=success)
+	ErrMsg  string       `json:"errMsg"`        // Error message (empty if success)
 }
 
 type DAVMsg struct {
@@ -276,7 +276,7 @@ type KeyAccessObject struct {
 type SmartPolicy struct {
 	PolicyId string `json:"policyId"` // Policy identifier
 	Policy   string `json:"policy"`   // Base64-encoded wasm policy
-	Embedded bool    `json:"embedded"`
+	Embedded bool   `json:"embedded"`
 }
 
 func (spo *SmartPolicy) GetPolicy() ([]byte, error) {
@@ -316,7 +316,7 @@ type DHPKnockMsg struct {
 }
 
 type ServerDHPKnockAckMsg struct {
-	ErrCode           string                    `json:"errCode"`
-	ErrMsg            string                    `json:"errMsg,omitempty"`
-	OpenTime          uint32                    `json:"opnTime"`
+	ErrCode  string `json:"errCode"`
+	ErrMsg   string `json:"errMsg,omitempty"`
+	OpenTime uint32 `json:"opnTime"`
 }

@@ -61,31 +61,36 @@ type CipherSuite struct {
 func NewCipherSuite(scheme int) (ciphers *CipherSuite) {
 	// init cipher suite
 	switch scheme {
-	case common.CIPHER_SCHEME_CURVE:
-		ciphers = &CipherSuite{
-			Scheme:   common.CIPHER_SCHEME_CURVE,
-			HashType: HASH_BLAKE2S,
-			EccType:  ECC_CURVE25519,
-			GcmType:  GCM_AES256,
-		}
-
 	case common.CIPHER_SCHEME_GMSM:
-		fallthrough
-	default:
 		ciphers = &CipherSuite{
 			Scheme:   common.CIPHER_SCHEME_GMSM,
 			HashType: HASH_SM3,
 			EccType:  ECC_SM2,
 			GcmType:  GCM_SM4,
 		}
+
+	case common.CIPHER_SCHEME_CURVE:
+		fallthrough
+	default:
+		ciphers = &CipherSuite{
+			Scheme:   common.CIPHER_SCHEME_CURVE,
+			HashType: HASH_BLAKE2S,
+			EccType:  ECC_CURVE25519,
+			GcmType:  GCM_AES256,
+		}
 	}
 	return
 }
 
 func NewHash(t HashTypeEnum) (h hash.Hash) {
+	var err error
 	switch t {
 	case HASH_BLAKE2S:
-		h, _ = blake2s.New256(nil)
+		h, err = blake2s.New256(nil)
+		if err != nil {
+			log.Printf("failed to create blake2s hash: %v", err)
+			return nil
+		}
 
 	case HASH_SM3:
 		h = sm3.New()
@@ -144,17 +149,40 @@ func NewECDH(t EccTypeEnum) (e Ecdh) {
 }
 
 func AeadFromKey(t GcmTypeEnum, key *[SymmetricKeySize]byte) (aead cipher.AEAD) {
+	var err error
 	switch t {
 	case GCM_AES256:
-		aesBlock, _ := aes.NewCipher(key[:])
-		aead, _ = cipher.NewGCM(aesBlock)
+		var aesBlock cipher.Block
+		aesBlock, err = aes.NewCipher(key[:])
+		if err != nil {
+			log.Printf("failed to create AES cipher: %v", err)
+			return nil
+		}
+		aead, err = cipher.NewGCM(aesBlock)
+		if err != nil {
+			log.Printf("failed to create GCM: %v", err)
+			return nil
+		}
 
 	case GCM_SM4:
-		sm4Block, _ := sm4.NewCipher(key[:16])
-		aead, _ = cipher.NewGCM(sm4Block)
+		var sm4Block cipher.Block
+		sm4Block, err = sm4.NewCipher(key[:16])
+		if err != nil {
+			log.Printf("failed to create SM4 cipher: %v", err)
+			return nil
+		}
+		aead, err = cipher.NewGCM(sm4Block)
+		if err != nil {
+			log.Printf("failed to create GCM: %v", err)
+			return nil
+		}
 
 	case GCM_CHACHA20POLY1305:
-		aead, _ = chacha20poly1305.New(key[:])
+		aead, err = chacha20poly1305.New(key[:])
+		if err != nil {
+			log.Printf("failed to create ChaCha20-Poly1305: %v", err)
+			return nil
+		}
 	}
 
 	return aead
@@ -163,13 +191,20 @@ func AeadFromKey(t GcmTypeEnum, key *[SymmetricKeySize]byte) (aead cipher.AEAD) 
 func CBCEncryption(t GcmTypeEnum, key *[SymmetricKeySize]byte, plaintext []byte, inPlace bool) ([]byte, error) {
 	var block cipher.Block
 	var iv []byte
+	var err error
 	switch t {
 	case GCM_AES256:
-		block, _ = aes.NewCipher(key[:])
+		block, err = aes.NewCipher(key[:])
+		if err != nil {
+			return nil, fmt.Errorf("failed to create AES cipher: %w", err)
+		}
 		iv = key[8:24]
 
 	case GCM_SM4:
-		block, _ = sm4.NewCipher(key[:16])
+		block, err = sm4.NewCipher(key[:16])
+		if err != nil {
+			return nil, fmt.Errorf("failed to create SM4 cipher: %w", err)
+		}
 		iv = key[16:]
 
 	case GCM_CHACHA20POLY1305:
@@ -205,19 +240,29 @@ func CBCDecryption(t GcmTypeEnum, key *[SymmetricKeySize]byte, ciphertext []byte
 	var err error
 	switch t {
 	case GCM_AES256:
-		block, _ = aes.NewCipher(key[:])
+		block, err = aes.NewCipher(key[:])
+		if err != nil {
+			return nil, fmt.Errorf("failed to create AES cipher: %w", err)
+		}
 		iv = key[8:24]
 
 	case GCM_SM4:
-		block, _ = sm4.NewCipher(key[:16])
+		block, err = sm4.NewCipher(key[:16])
+		if err != nil {
+			return nil, fmt.Errorf("failed to create SM4 cipher: %w", err)
+		}
 		iv = key[16:]
 
 	case GCM_CHACHA20POLY1305:
 		return nil, ErrNotApplicable
 	}
 
+	// Validate ciphertext: must be at least one block and a multiple of block size
 	if len(ciphertext) < block.BlockSize() {
-		return nil, fmt.Errorf("ciphertext too short")
+		return nil, fmt.Errorf("ciphertext too short: need at least %d bytes", block.BlockSize())
+	}
+	if len(ciphertext)%block.BlockSize() != 0 {
+		return nil, fmt.Errorf("ciphertext length %d is not a multiple of block size %d", len(ciphertext), block.BlockSize())
 	}
 
 	var plaintext []byte
@@ -318,9 +363,14 @@ func AESDecrypt(cipherText []byte, key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// IV，IV cipherText left 16
-	if len(cipherText) < aes.BlockSize {
-		return nil, fmt.Errorf("cipherText too short")
+	// Validate ciphertext length:
+	// - Must have at least IV (16 bytes) + one encrypted block (16 bytes)
+	// - After IV extraction, remaining must be a multiple of block size
+	if len(cipherText) < aes.BlockSize*2 {
+		return nil, fmt.Errorf("cipherText too short: need at least %d bytes, got %d", aes.BlockSize*2, len(cipherText))
+	}
+	if (len(cipherText)-aes.BlockSize)%aes.BlockSize != 0 {
+		return nil, fmt.Errorf("cipherText length invalid: must be IV + multiple of block size")
 	}
 	iv := cipherText[:aes.BlockSize]
 	cipherText = cipherText[aes.BlockSize:]

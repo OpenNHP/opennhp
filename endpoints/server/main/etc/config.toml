@@ -2,7 +2,8 @@
 # field with (-) does not support dynamic update
 
 # PrivateKeyBase64 (-): server private key in base64 format.
-# DefaultCipherScheme: 0: gmsm, 1: curve25519.
+# DefaultCipherScheme: 0: curve25519, 1: gmsm.
+# MIGRATION: Values changed in v2.x. If upgrading: old 0(gmsm)->new 1, old 1(curve)->new 0.
 # ListenIp (-): udp listening address.
 # ListenPort (-): udp listening port.
 # Hostname (-): server domain name.

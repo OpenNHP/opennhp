@@ -90,7 +90,7 @@ func GenerateRsaKey(bits int) (string, string) {
 func Md5sum(fullFilePath string) (string, error) {
 	fileInfo, err := os.Stat(fullFilePath)
 	if err != nil {
-		return "", fmt.Errorf("file not found: " + err.Error())
+		return "", fmt.Errorf("file not found: %w", err)
 	}
 
 	if !fileInfo.Mode().IsRegular() {
@@ -99,14 +99,14 @@ func Md5sum(fullFilePath string) (string, error) {
 
 	file, err := os.Open(fullFilePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to open file: " + err.Error())
+		return "", fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
 	hasher := md5.New()
 
 	if _, err := io.Copy(hasher, file); err != nil {
-		return "", fmt.Errorf("failed to read file content: " + err.Error())
+		return "", fmt.Errorf("failed to read file content: %w", err)
 	}
 
 	// Convert hash to hex string

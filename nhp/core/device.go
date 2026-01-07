@@ -531,11 +531,11 @@ func (d *Device) SetOverload(overloaded bool) {
 
 func (d *Device) GetEcdhByCipherScheme(cipherScheme int) Ecdh {
 	switch cipherScheme {
-	case common.CIPHER_SCHEME_CURVE:
-		return d.staticEcdhCurve
 	case common.CIPHER_SCHEME_GMSM:
+		return d.staticEcdhGmsm
+	case common.CIPHER_SCHEME_CURVE:
 		fallthrough
 	default:
-		return d.staticEcdhGmsm
+		return d.staticEcdhCurve
 	}
 }

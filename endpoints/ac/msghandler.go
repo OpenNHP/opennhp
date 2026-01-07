@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
@@ -138,15 +137,19 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 		fallthrough
 	default:
 		for _, srcAddr := range srcAddrs {
-			var ipType utils.IPTYPE
 			var ipNet *net.IPNet
-			if strings.Contains(srcAddr.Ip, ":") {
-				ipType = utils.IPV6
-				_, ipNet, _ = net.ParseCIDR(srcAddr.Ip + "/121")
-			} else {
-				ipType = utils.IPV4
-				_, ipNet, _ = net.ParseCIDR(srcAddr.Ip + "/25")
+
+			// Detect IP type using proper parsing instead of string matching
+			ipType, ipErr := utils.DetectIPType(srcAddr.Ip)
+			if ipErr != nil {
+				log.Error("[HandleAccessControl] invalid source IP: %s, error: %v", srcAddr.Ip, ipErr)
+				continue
 			}
+
+			// Use appropriate CIDR mask based on IP type and pass mode
+			rangeMode := ipPassMode == PASS_KNOCKIP_WITH_RANGE
+			cidrMask := utils.GetCIDRMask(ipType, rangeMode)
+			_, ipNet, _ = net.ParseCIDR(srcAddr.Ip + cidrMask)
 			log.Debug("src ip is %s, net range is %s", srcAddr, ipNet.String())
 
 			for _, dstAddr := range dstAddrs {
@@ -176,7 +179,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							}
 							err = ebpf.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
 							if err != nil {
-								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 								return
 							}
 						}
@@ -189,7 +192,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							}
 							err = ebpf.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
 							if err != nil {
-								log.Error("[EbpfRuleAdd] add ebpf tcp failed src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+								log.Error("[EbpfRuleAdd] add ebpf tcp failed src: %s dst: %s, error: %v, protocol: %s, dstport: %d", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err, ebpfHashStr.Protocol, ebpfHashStr.DstPort)
 								return
 							}
 						}
@@ -224,7 +227,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							}
 							err = ebpf.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
 							if err != nil {
-								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 								return
 							}
 						}
@@ -238,7 +241,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							err = ebpf.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
 
 							if err != nil {
-								log.Error("[EbpfRuleAdd] add ebpf udp failed src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+								log.Error("[EbpfRuleAdd] add ebpf udp failed src: %s dst: %s, error: %v, protocol: %s, dstport: %d", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err, ebpfHashStr.Protocol, ebpfHashStr.DstPort)
 								return
 							}
 						}
@@ -251,7 +254,12 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 				// for icmp ping
 				if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
 					for _, dstAddr := range dstAddrs {
-						ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", srcAddr.Ip, dstAddr.Ip)
+						// ICMPv4 Echo Request = type 8, ICMPv6 Echo Request = type 128
+						icmpType := "icmp:8/0"
+						if ipType == utils.IPV6 {
+							icmpType = "icmpv6:128/0"
+						}
+						ipHashStr := fmt.Sprintf("%s,%s,%s", srcAddr.Ip, icmpType, dstAddr.Ip)
 						switch a.config.FilterMode {
 						case FilterMode_IPTABLES:
 							_, err = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
@@ -269,7 +277,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							}
 							err = ebpf.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
 							if err != nil {
-								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 								return
 							}
 						default:
@@ -289,7 +297,10 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							if dstAddr.Port == 0 {
 								netHashStr = fmt.Sprintf("%s,1-65535", netStr)
 							}
-							_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+							_, addErr := a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+							if addErr != nil {
+								log.Warning("[HandleAccessControl] failed to add tempset entry %s: %v", netHashStr, addErr)
+							}
 						}
 
 						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "udp" || dstAddr.Protocol == "any" {
@@ -297,30 +308,41 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 							if dstAddr.Port == 0 {
 								netHashStr = fmt.Sprintf("%s,udp:1-65535", netStr)
 							}
-							_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+							_, addErr := a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+							if addErr != nil {
+								log.Warning("[HandleAccessControl] failed to add tempset entry %s: %v", netHashStr, addErr)
+							}
 						}
 
 						if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
-							netHashStr := fmt.Sprintf("%s,icmp:8/0", netStr)
-							_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+							// ICMPv4 Echo Request = type 8, ICMPv6 Echo Request = type 128
+							icmpType := "icmp:8/0"
+							if ipType == utils.IPV6 {
+								icmpType = "icmpv6:128/0"
+							}
+							netHashStr := fmt.Sprintf("%s,%s", netStr, icmpType)
+							_, addErr := a.ipset.Add(ipType, 4, tempOpenTimeSec, netHashStr)
+							if addErr != nil {
+								log.Warning("[HandleAccessControl] failed to add tempset entry %s: %v", netHashStr, addErr)
+							}
 						}
 
 					case FilterMode_EBPFXDP:
-						srcIp, ipnet, err := net.ParseCIDR(netStr)
-						if err != nil {
-							log.Error("[HandleAccessControl] failed to parse CIDR %s: %v", netStr, err)
+						cidrIP, ipnet, cidrErr := net.ParseCIDR(netStr)
+						if cidrErr != nil {
+							log.Error("[HandleAccessControl] failed to parse CIDR %s: %v", netStr, cidrErr)
 						}
 						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "tcp" || dstAddr.Protocol == "any" {
-							for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
-								srcIpStr := srcIp.String()
+							for iterIP := cidrIP.Mask(ipnet.Mask); ipnet.Contains(iterIP); incrementIP(iterIP) {
+								srcIpStr := iterIP.String()
 								if dstAddr.Port != 0 {
 									ebpfHashStr := ebpf.EbpfRuleParams{
 										SrcIP:   srcIpStr,
 										DstPort: dstAddr.Port,
 									}
-									err = ebpf.EbpfRuleAdd(4, ebpfHashStr, tempOpenTimeSec)
-									if err != nil {
-										log.Error("[EbpfRuleAdd] add ebpf for tcp dst port src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPort, err)
+									addErr := ebpf.EbpfRuleAdd(4, ebpfHashStr, tempOpenTimeSec)
+									if addErr != nil {
+										log.Error("[EbpfRuleAdd] add ebpf for tcp dst port src: %s, dstport: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPort, addErr)
 									}
 
 								} else {
@@ -329,25 +351,25 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 										DstPortStart: 1,
 										DstPortEnd:   65535,
 									}
-									err = ebpf.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
-									if err != nil {
-										log.Error("[EbpfRuleAdd] add ebpf src: %s  dstportstart: %d,  dstportend: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPortStart, ebpfHashStr.DstPortEnd, err)
+									addErr := ebpf.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
+									if addErr != nil {
+										log.Error("[EbpfRuleAdd] add ebpf src: %s dstportstart: %d, dstportend: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPortStart, ebpfHashStr.DstPortEnd, addErr)
 									}
 								}
 							}
 						}
 						if len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "udp" || dstAddr.Protocol == "any" {
-							for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
-								srcIpStr := srcIp.String()
+							for iterIP := cidrIP.Mask(ipnet.Mask); ipnet.Contains(iterIP); incrementIP(iterIP) {
+								srcIpStr := iterIP.String()
 
 								if dstAddr.Port != 0 {
 									ebpfHashStr := ebpf.EbpfRuleParams{
 										SrcIP:   srcIpStr,
 										DstPort: dstAddr.Port,
 									}
-									err = ebpf.EbpfRuleAdd(4, ebpfHashStr, tempOpenTimeSec)
-									if err != nil {
-										log.Error("[EbpfRuleAdd] add ebpf for udp dst port src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPort, err)
+									addErr := ebpf.EbpfRuleAdd(4, ebpfHashStr, tempOpenTimeSec)
+									if addErr != nil {
+										log.Error("[EbpfRuleAdd] add ebpf for udp dst port src: %s, dstport: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPort, addErr)
 									}
 								} else {
 									ebpfHashStr := ebpf.EbpfRuleParams{
@@ -355,23 +377,23 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 										DstPortStart: 1,
 										DstPortEnd:   65535,
 									}
-									err = ebpf.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
-									if err != nil {
-										log.Error("[EbpfRuleAdd] add ebpf src: %s  dstportstart: %d,  dstportend: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPortStart, ebpfHashStr.DstPortEnd, err)
+									addErr := ebpf.EbpfRuleAdd(5, ebpfHashStr, tempOpenTimeSec)
+									if addErr != nil {
+										log.Error("[EbpfRuleAdd] add ebpf src: %s dstportstart: %d, dstportend: %d, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstPortStart, ebpfHashStr.DstPortEnd, addErr)
 									}
 								}
 							}
 						}
 						if dstAddr.Port == 0 && (len(dstAddr.Protocol) == 0 || dstAddr.Protocol == "any") {
-							for srcIp := srcIp.Mask(ipnet.Mask); ipnet.Contains(srcIp); incrementIP(srcIp) {
-								srcIpStr := srcIp.String()
+							for iterIP := cidrIP.Mask(ipnet.Mask); ipnet.Contains(iterIP); incrementIP(iterIP) {
+								srcIpStr := iterIP.String()
 								ebpfHashStr := ebpf.EbpfRuleParams{
 									SrcIP: srcIpStr,
 									DstIP: dstAddr.Ip,
 								}
-								err = ebpf.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
-								if err != nil {
-									log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+								addErr := ebpf.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
+								if addErr != nil {
+									log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, addErr)
 								}
 							}
 						}
@@ -402,12 +424,19 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 		var tcpListener *net.TCPListener
 		var udpListener *net.UDPConn
 
-		if strings.Contains(dstAddrs[0].Ip, ":") {
-			ipType = utils.IPV6
-			netStr = "0:0:0:0:0:0:0:0/0"
+		// Detect IP type using proper parsing instead of string matching
+		ipType, ipErr := utils.DetectIPType(dstAddrs[0].Ip)
+		if ipErr != nil {
+			log.Error("[HandleAccessControl] invalid destination IP for PASS_PRE_ACCESS_IP: %s", dstAddrs[0].Ip)
+			err = common.ErrInvalidIpAddress
+			artMsg.ErrCode = common.ErrInvalidIpAddress.ErrorCode()
+			artMsg.ErrMsg = err.Error()
+			return
+		}
+		if ipType == utils.IPV6 {
+			netStr = "::/0" // Canonical IPv6 "any" notation
 		} else {
 			// since ipset does not allow full ip range 0.0.0.0/0, we use two ip ranges
-			ipType = utils.IPV4
 			netStr = "0.0.0.0/1"
 			netStr1 = "128.0.0.0/1"
 		}
@@ -450,14 +479,18 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 				artMsg.ErrMsg = err.Error()
 				return
 			}
-			portHashStr = fmt.Sprintf("%s,%d", netStr1, tlocalAddr.Port)
-			_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
-			if err != nil {
-				log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
-				err = common.ErrACIPSetOperationFailed
-				artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-				artMsg.ErrMsg = err.Error()
-				return
+			// IPv4 requires two ranges (0.0.0.0/1 and 128.0.0.0/1) since ipset doesn't allow 0.0.0.0/0
+			// IPv6 uses ::/0 directly, so netStr1 is empty for IPv6
+			if netStr1 != "" {
+				portHashStr = fmt.Sprintf("%s,%d", netStr1, tlocalAddr.Port)
+				_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
+				if err != nil {
+					log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
+					err = common.ErrACIPSetOperationFailed
+					artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+					artMsg.ErrMsg = err.Error()
+					return
+				}
 			}
 		case FilterMode_EBPFXDP:
 			ebpfHashStr := ebpf.EbpfRuleParams{
@@ -515,14 +548,18 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 				artMsg.ErrMsg = err.Error()
 				return
 			}
-			portHashStr = fmt.Sprintf("%s,udp:%d", netStr1, tlocalAddr.Port)
-			_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
-			if err != nil {
-				log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
-				err = common.ErrACIPSetOperationFailed
-				artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
-				artMsg.ErrMsg = err.Error()
-				return
+			// IPv4 requires two ranges (0.0.0.0/1 and 128.0.0.0/1) since ipset doesn't allow 0.0.0.0/0
+			// IPv6 uses ::/0 directly, so netStr1 is empty for IPv6
+			if netStr1 != "" {
+				portHashStr = fmt.Sprintf("%s,udp:%d", netStr1, tlocalAddr.Port)
+				_, err = a.ipset.Add(ipType, 4, tempOpenTimeSec, portHashStr)
+				if err != nil {
+					log.Error("[HandleAccessControl] add ipset %s error: %v", portHashStr, err)
+					err = common.ErrACIPSetOperationFailed
+					artMsg.ErrCode = common.ErrACIPSetOperationFailed.ErrorCode()
+					artMsg.ErrMsg = err.Error()
+					return
+				}
 			}
 		case FilterMode_EBPFXDP:
 			ebpfHashStr := ebpf.EbpfRuleParams{
@@ -668,11 +705,12 @@ func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, 
 	if a.VerifyAccessToken(accMsg.ACToken) != nil {
 		remoteAddr, _ := net.ResolveTCPAddr(conn.RemoteAddr().Network(), conn.RemoteAddr().String())
 		srcAddrIp := remoteAddr.IP.String()
-		var ipType utils.IPTYPE
-		if strings.Contains(dstAddrs[0].Ip, ":") {
-			ipType = utils.IPV6
-		} else {
-			ipType = utils.IPV4
+
+		// Detect IP type using proper parsing instead of string matching
+		ipType, ipErr := utils.DetectIPType(dstAddrs[0].Ip)
+		if ipErr != nil {
+			log.Error("[tcpTempAccessHandler] invalid destination IP: %s", dstAddrs[0].Ip)
+			return
 		}
 
 		for _, dstAddr := range dstAddrs {
@@ -694,7 +732,7 @@ func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, 
 				}
 				err = ebpf.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
 				if err != nil {
-					log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+					log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 					return
 				}
 			default:
@@ -786,11 +824,12 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 
 	if a.VerifyAccessToken(accMsg.ACToken) != nil {
 		srcAddrIp := remoteAddr.IP.String()
-		var ipType utils.IPTYPE
-		if strings.Contains(dstAddrs[0].Ip, ":") {
-			ipType = utils.IPV6
-		} else {
-			ipType = utils.IPV4
+
+		// Detect IP type using proper parsing instead of string matching
+		ipType, ipErr := utils.DetectIPType(dstAddrs[0].Ip)
+		if ipErr != nil {
+			log.Error("[udpTempAccessHandler] invalid destination IP: %s", dstAddrs[0].Ip)
+			return
 		}
 
 		for _, dstAddr := range dstAddrs {
@@ -814,7 +853,7 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 						}
 						err = ebpf.EbpfRuleAdd(2, ebpfHashStr, openTimeSec)
 						if err != nil {
-							log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+							log.Error("[EbpfRuleAdd] add ebpf src: %s dst: %s, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 							return
 						}
 					}
@@ -828,7 +867,7 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 						err = ebpf.EbpfRuleAdd(1, ebpfHashStr, openTimeSec)
 
 						if err != nil {
-							log.Error("[EbpfRuleAdd] add ebpf udp failed src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, ebpfHashStr.Protocol, ebpfHashStr.DstPort, err)
+							log.Error("[EbpfRuleAdd] add ebpf udp failed src: %s dst: %s, error: %v, protocol: %s, dstport: %d", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err, ebpfHashStr.Protocol, ebpfHashStr.DstPort)
 							return
 						}
 					}
@@ -842,8 +881,13 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 
 				switch a.config.FilterMode {
 				case FilterMode_IPTABLES:
-					ipHashStr := fmt.Sprintf("%s,icmp:8/0,%s", remoteAddr.IP.String(), dstAddr.Ip)
-					a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
+					// ICMPv4 Echo Request = type 8, ICMPv6 Echo Request = type 128
+					icmpType := "icmp:8/0"
+					if ipType == utils.IPV6 {
+						icmpType = "icmpv6:128/0"
+					}
+					ipHashStr := fmt.Sprintf("%s,%s,%s", remoteAddr.IP.String(), icmpType, dstAddr.Ip)
+					_, _ = a.ipset.Add(ipType, 1, openTimeSec, ipHashStr)
 				case FilterMode_EBPFXDP:
 					ebpfHashStr := ebpf.EbpfRuleParams{
 						SrcIP: remoteAddr.IP.String(),
@@ -851,7 +895,7 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 					}
 					err = ebpf.EbpfRuleAdd(3, ebpfHashStr, openTimeSec)
 					if err != nil {
-						log.Error("[EbpfRuleAdd] add ebpf icmp src: %s dst: %s,  error: %v, protocol: %d, dstport :%d, %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
+						log.Error("[EbpfRuleAdd] add ebpf icmp src: %s dst: %s, error: %v", ebpfHashStr.SrcIP, ebpfHashStr.DstIP, err)
 						return
 					}
 				default:

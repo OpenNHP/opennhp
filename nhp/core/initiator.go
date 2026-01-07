@@ -29,7 +29,7 @@ type MsgData struct {
 	TransactionId  uint64
 	HeaderType     int
 	Compress       bool
-	ClPkc          bool              // 0: non-CL-PKC extented, 1: CL-PKC extended
+	ClPkc          bool // 0: non-CL-PKC extented, 1: CL-PKC extended
 	ExternalPacket *Packet
 	ExternalCookie *[CookieSize]byte
 	Message        []byte

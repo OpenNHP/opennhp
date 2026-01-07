@@ -6,8 +6,9 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/cilium/ebpf"
+
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 type whitelistKey struct {
@@ -409,7 +410,7 @@ func EbpfRuleAdd(mapType int, params EbpfRuleParams, TtlSec int) error {
 		//base the map whitelist
 		err = AddEbpfRuleForSrcDstPortProto(params.SrcIP, params.DstIP, protocol, uint16(params.DstPort), TtlSec64)
 		if err != nil {
-			log.Error("failed add ebpf src: %s dst: %s,  error: %v, protocol: %d, dstport :%d", params.SrcIP, params.DstIP, protocol, uint16(params.DstPort))
+			log.Error("failed add ebpf src: %s dst: %s, error: %v, protocol: %d, dstport: %d", params.SrcIP, params.DstIP, err, protocol, uint16(params.DstPort))
 			return err
 		}
 

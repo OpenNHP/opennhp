@@ -72,9 +72,9 @@ func GetEvidenceWithAgentUuid() ([]byte, error) {
 		return nil, fmt.Errorf("failed to get agent unique id: %v", err)
 	}
 
-	evidence := map[string]any {
-		"test_purpose": "this evidence is for testing purposes only",
-		"measure": agentUniqueId,
+	evidence := map[string]any{
+		"test_purpose":  "this evidence is for testing purposes only",
+		"measure":       agentUniqueId,
 		"serial_number": agentUniqueId,
 	}
 

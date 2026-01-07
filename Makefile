@@ -203,9 +203,26 @@ test:
 	@echo "[OpenNHP] Runing Tests for the Output Binaries ..."
 	@echo "$(COLOUR_GREEN)[OpenNHP] All Tests Are Done!$(END_COLOUR)"
 
+# Run fuzz tests (60 seconds each by default)
+fuzz:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Running fuzz tests...$(END_COLOUR)"
+	cd nhp && go test -fuzz=FuzzECDHFromKey -fuzztime=60s ./test/
+	cd nhp && go test -fuzz=FuzzAESDecrypt -fuzztime=60s ./test/
+	cd nhp && go test -fuzz=FuzzHeaderTypeToDeviceType -fuzztime=60s ./test/
+	cd nhp && go test -fuzz=FuzzAgentKnockMsg -fuzztime=60s ./test/
+	@echo "$(COLOUR_GREEN)[OpenNHP] Fuzz tests completed$(END_COLOUR)"
+
+# Run fuzz tests briefly (for CI)
+fuzz-quick:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Running quick fuzz tests...$(END_COLOUR)"
+	cd nhp && go test -fuzz=FuzzECDHFromKey -fuzztime=10s ./test/
+	cd nhp && go test -fuzz=FuzzAESDecrypt -fuzztime=10s ./test/
+	cd nhp && go test -fuzz=FuzzAgentKnockMsg -fuzztime=10s ./test/
+	@echo "$(COLOUR_GREEN)[OpenNHP] Quick fuzz tests completed$(END_COLOUR)"
+
 archive:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Start archiving... $(END_COLOUR)"
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init agentd acd serverd db linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins test archive ebpf clean_ebpf
+.PHONY: all generate-version-and-build init agentd acd serverd db linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins test fuzz fuzz-quick archive ebpf clean_ebpf

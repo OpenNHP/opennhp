@@ -33,7 +33,7 @@ COLOUR_BLUE=\033[0;34m
 END_COLOUR=\033[0m
 
 # Plugins
-NHP_SERVER_PLUGINS = ./examples/server_plugin
+NHP_SERVER_PLUGINS = ./examples/server_plugin/basic
 
 # Android environment settings
 ANDROID_CC='${TOOLCHAIN}/bin/aarch64-linux-android21-clang'
@@ -96,7 +96,7 @@ init:
 	git clean -df release
 	cd nhp && go mod tidy
 	cd endpoints && go mod tidy
-	cd examples/server_plugin && go mod tidy
+	cd examples/server_plugin/basic && go mod tidy
 
 agentd:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building nhp-agent... $(END_COLOUR)"
@@ -225,7 +225,7 @@ fmt:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Formatting code...$(END_COLOUR)"
 	cd nhp && go fmt ./...
 	cd endpoints && go fmt ./...
-	cd examples/server_plugin && go fmt ./...
+	cd examples/server_plugin/basic && go fmt ./...
 	@echo "$(COLOUR_GREEN)[OpenNHP] Code formatted$(END_COLOUR)"
 
 # Lint code (requires golangci-lint: https://golangci-lint.run/usage/install/)

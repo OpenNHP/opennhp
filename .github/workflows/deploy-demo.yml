@@ -1,0 +1,76 @@
+# Deploy templates to Demo servers
+# This workflow deploys templates to demo NHP servers
+
+name: Deploy Demo
+
+on:
+  workflow_dispatch:  # Manual trigger only
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm deployment'
+        required: true
+        default: ''
+
+env:
+  DEPLOY_USER: ec2-user
+  DEPLOY_PATH: /home/ec2-user/nhp-server/templates
+  TEMPLATES_SOURCE: docker/nhp-server/templates
+
+jobs:
+  deploy-templates:
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        server: ${{ fromJson(vars.DEMO_NHP_SERVERS) }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEMO_NHP_SERVER_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ matrix.server }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Deploy templates to ${{ matrix.server }}
+        run: |
+          echo "Deploying templates to ${{ matrix.server }}..."
+          
+          # Sync templates directory
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            ${{ env.TEMPLATES_SOURCE }}/ \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/
+          
+          echo "✅ Templates deployed successfully to ${{ matrix.server }}"
+
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment on ${{ matrix.server }}..."
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+            "ls -la ${{ env.DEPLOY_PATH }}/"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key
+
+  summary:
+    needs: deploy-templates
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Deployment Summary"
+          echo ""
+          echo "| Item | Value |"
+          echo "|------|-------|"
+          echo "| **Commit** | ${{ github.sha }} |"
+          echo "| **Branch** | ${{ github.ref_name }} |"
+          echo "| **Triggered by** | ${{ github.actor }} |"
+          echo "| **Time** | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |"

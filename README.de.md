@@ -206,6 +206,7 @@ Für eine detaillierte Dokumentation besuchen Sie bitte unsere [Offizielle Dokum
 - [AHAC: Fortschrittliches Netzwerk-Verbergung-Zugriffskontroll-Framework](https://www.mdpi.com/2076-3417/14/13/5593). Mudi Xu, Benfeng Chen, Zhizhong Tan, Shan Chen, Lei Wang, Yan Liu, Tai Io San, Sou Wang Fong, Wenyong Wang und Jing Feng. *Zeitschrift für Angewandte Wissenschaften*. Juni 2024.
 - [STALE: Ein skalierbares und sicheres grenzüberschreitendes Authentifizierungssystem, das E-Mail und ECDH-Schlüsselaustausch nutzt](https://www.mdpi.com/2079-9292/14/12/2399) Jiexin Zheng, Mudi Xu, Jianqing Li, Benfeng Chen, Zhizhong Tan, Anyu Wang, Shuo Zhang, Yan Liu, Kevin Qi Zhang, Lirong Zheng, Wenyong Wang. *Elektronik*. Juni 2025
 - [DRL-AMIR: Intelligent Flow Scheduling für Software-Defined Zero Trust Networks](https://www.techscience.com/cmc/v84n2/62920). Wenlong Ke, Zilong Li, Peiyu Chen, Benfeng Chen, Jinglin Lv, Qiang Wang, Ziyi Jia und Shigen Shen. *CMC*. Juli 2025.
+- [auf tiefe zu lernen NHP netzwerke den kontrolle zu](https://www.nature.com/articles/s41598-025-31556-3). Qinglin Huang, Zhizhong Tan, Qiang Wang, Ziyi Jia und Benfeng Chen. *wissenschaftlicher bericht* dezember 2025.
 - Noise Protocol Framework. https://noiseprotocol.org/
 - Vulnerability Management Framework-Projekt. https://phoenix.security/web-vuln-management/
 

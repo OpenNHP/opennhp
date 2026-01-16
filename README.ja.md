@@ -141,6 +141,7 @@ OpenNHPは[Apache 2.0ライセンス](LICENSE)の下でリリースされてい�
 - [AHAC：高度なネットワーク隠蔽アクセス制御フレームワーク](https://www.mdpi.com/2076-3417/14/13/5593)。Mudi Xu、Benfeng Chen、Zhizhong Tan、Shan Chen、Lei Wang、Yan Liu、Tai Io San、Sou Wang Fong、Wenyong Wang、Jing Feng。*応用科学ジャーナル*。2024年6月。
 - [STALE ：電子メールと ECDH 鍵交換を活用したスケーラブルでセキュアなクロスボーダー認証スキーム](https://www.mdpi.com/2079-9292/14/12/2399) Jiexin Zheng, Mudi Xu, Jianqing Li, Benfeng Chen, Zhizhong Tan, Anyu Wang, Shuo Zhang, Yan Liu, Kevin Qi Zhang, Lirong Zheng, Wenyong Wang. *電子ジャーナル*。2025 年 6 月。
 - [DRL—AMIR：ソフトウェア定義ゼロ信頼ネットワークのインテリジェントストリームスケジューリング]（https://www.techscience.com/cmc/v84n2/62920）Wenlong Ke, Zilong Li, Peiyu Chen, Benfeng Chen, Jinglin Lv,Qiang Wang, Ziyi Jia と Shigen Shen 。*コンピュータ材料と連続通信*。2025 年 7 月。
+- [深層強化学習に基づくNHPネットワークトラフィック制御手法](https://www.nature.com/articles/s41598-025-31556-3) Qinglin Huang, Zhizhong Tan, Qiang Wang, Ziyi Jia と Benfeng Chen. 『科学報告』。2025年12月。
 - ノイズプロトコルフレームワーク。https://noiseprotocol.org/
 - 脆弱性管理フレームワークプロジェクト。https://phoenix.security/web-vuln-management/
 

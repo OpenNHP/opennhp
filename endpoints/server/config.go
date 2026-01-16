@@ -253,7 +253,7 @@ func (s *UdpServer) loadResources() error {
 	resConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("resource config: %s has been updated", fileName)
 		if content, err = s.loadConfigFile(fileName); err == nil {
-			if err = toml.Unmarshal(content, &resConfigWatch); err == nil {
+			if err = toml.Unmarshal(content, &aspMap); err == nil {
 				_ = s.updateResources(aspMap)
 			}
 		}

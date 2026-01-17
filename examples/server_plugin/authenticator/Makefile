@@ -4,7 +4,7 @@ all: build
 
 PluginName = authenticator
 TargetName = ${PluginName}.so
-ServerDir = ../../release/nhp-server
+ServerDir = ../../../release/nhp-server
 LD_FLAGS = "-s -w"
 
 # Color definition

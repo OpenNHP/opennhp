@@ -34,7 +34,7 @@ END_COLOUR=\033[0m
 
 # Plugins
 NHP_SERVER_PLUGINS = ./examples/server_plugin/basic
-NHP_AUTHENTICATOR_PLUGINS = ./examples/authenticator_plugin
+NHP_AUTHENTICATOR_PLUGINS = ./examples/server_plugin/authenticator
 
 # Android environment settings
 ANDROID_CC='${TOOLCHAIN}/bin/aarch64-linux-android21-clang'
@@ -98,7 +98,7 @@ init:
 	cd nhp && go mod tidy
 	cd endpoints && go mod tidy
 	cd examples/server_plugin/basic && go mod tidy
-	cd examples/authenticator_plugin && go mod tidy
+	cd examples/server_plugin/authenticator && go mod tidy
 
 agentd:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building nhp-agent... $(END_COLOUR)"

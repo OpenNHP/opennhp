@@ -44,4 +44,4 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
-replace github.com/OpenNHP/opennhp/nhp v0.6.0 => ../../nhp
+replace github.com/OpenNHP/opennhp/nhp v0.6.0 => ../../../nhp

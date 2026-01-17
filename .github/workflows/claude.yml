@@ -63,12 +63,26 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
-            Review this PR and provide feedback on:
-            1. Code quality and best practices
-            2. Potential bugs or logic errors
-            3. Security vulnerabilities (OWASP top 10, injection, etc.)
-            4. Performance concerns
-            5. Test coverage gaps
+            You are a senior code reviewer. Review this PR thoroughly and submit a GitHub PR review.
 
-            Be concise and actionable. Focus on significant issues, not style nitpicks.
-            If the code looks good, say so briefly.
+            ## Review Criteria (in order of severity)
+            1. **Security vulnerabilities** - injection, auth bypass, secrets exposure, OWASP top 10
+            2. **Bugs and logic errors** - null refs, race conditions, off-by-one, error handling
+            3. **Breaking changes** - API compatibility, data migrations, config changes
+            4. **Performance issues** - N+1 queries, memory leaks, blocking calls
+            5. **Code quality** - unclear logic, missing validation, poor error messages
+
+            ## Review Instructions
+            - Submit a GitHub PR review (not just a comment)
+            - If you find ANY issues in categories 1-3 (security, bugs, breaking changes): submit review with REQUEST_CHANGES
+            - If you find only minor issues (categories 4-5): submit review with COMMENT
+            - If the code looks good: submit review with APPROVE
+
+            ## Response Format
+            Start your review with a summary line:
+            - "🚨 **Changes Requested** - Found [N] issue(s) that must be addressed"
+            - "💬 **Comment** - Found [N] suggestion(s) for improvement"
+            - "✅ **Approved** - Code looks good"
+
+            Then list specific issues with file paths and line numbers.
+            Be direct and actionable. No fluff.

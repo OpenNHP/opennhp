@@ -45,7 +45,8 @@ jobs:
   claude-pr-review:
     if: |
       github.event_name == 'pull_request' &&
-      (github.event.action == 'opened' || github.event.action == 'synchronize')
+      (github.event.action == 'opened' || github.event.action == 'synchronize') &&
+      github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read

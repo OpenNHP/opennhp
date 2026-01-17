@@ -1,0 +1,16 @@
+# Authenticator Plugin Configuration
+
+# OTP Secret Key for manual OTP input authentication
+# This is a Base32 encoded secret key (recommended length: 16-32 characters)
+# You can generate one using: https://www.google.com/landing/2step/ or similar tools
+# Example: JBSWY3DPEHPK3PXP (16 characters)
+OTPSecretKey = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+
+# OTP code validity period in seconds (default: 30)
+OTPPeriod = 30
+
+# Number of digits in OTP code (default: 6)
+OTPDigits = 6
+
+# QR code expiry time in seconds (default: 300)
+QRCodeExpiry = 300

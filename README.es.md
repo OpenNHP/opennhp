@@ -206,6 +206,7 @@ Para obtener una documentación más detallada, visite nuestra [Documentación O
 - [AHAC: Marco Avanzado de Control de Acceso Oculto en Red](https://www.mdpi.com/2076-3417/14/13/5593). Mudi Xu, Benfeng Chen, Zhizhong Tan, Shan Chen, Lei Wang, Yan Liu, Tai Io San, Sou Wang Fong, Wenyong Wang y Jing Feng. *Revista de Ciencias Aplicadas*. Junio 2024.
 - [STALE: Un esquema de autenticación transfronteriza escalable y seguro aprovechando el correo electrónico y el intercambio de claves ECDH](https://www.mdpi.com/2079-9292/14/12/2399) Jiexin Zheng, Mudi Xu, Jianqing Li, Benfeng Chen, Zhizhong Tan, Anyu Wang, Shuo Zhang, Yan Liu, Kevin Qi Zhang, Lirong Zheng, Wenyong Wang. *electrónica*. Junio 2025.
 - [DRL-AMIR: Programación de flujo inteligente para redes de confianza cero definidas por software](https://www.techscience.com/cmc/v84n2/62920). WenLong Ke, Zilong Li, Peiyu Chen, Benfeng Chen, Jinglin Lv, Qiang Wang, Ziyi Jia y Shigen Shen. *CMC* julio de 2025.
+- [método de control de tráfico de red de NHP basado en aprendizaje de refuerzo profundo](https://www.nature.com/articles/s41598-025-31556-3). Qinglin Huang, Zhizhong Tan, Qiang Wang, Ziyi Jia y Benfeng Chen.*Informes científicos de la revista Nature* diciembre de 2025.
 - Noise Protocol Framework. https://noiseprotocol.org/
 - Proyecto de Marco de Gestión de Vulnerabilidades. https://phoenix.security/web-vuln-management/
 

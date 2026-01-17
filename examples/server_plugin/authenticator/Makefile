@@ -2,9 +2,9 @@ export GO111MODULE := on
 
 all: build
 
-PluginName = example
+PluginName = authenticator
 TargetName = ${PluginName}.so
-ServerDir = ../../release/nhp-server
+ServerDir = ../../../release/nhp-server
 LD_FLAGS = "-s -w"
 
 # Color definition
@@ -15,7 +15,7 @@ END_COLOUR=\033[0m
 
 build:
 	@echo "$(COLOUR_BLUE)[Plugin-${PluginName}] Start building... $(END_COLOUR)"
-	go build -buildmode=plugin -trimpath -ldflags ${LD_FLAGS} -v -o ${ServerDir}/plugins/${PluginName}/${TargetName} ./main.go
+	go build -buildmode=plugin -trimpath -ldflags ${LD_FLAGS} -v -o ${ServerDir}/plugins/${PluginName}/${TargetName} ./main.go ./qrauth.go
 	mkdir -p ${ServerDir}/plugins/${PluginName}/etc
 	cp ./etc/*.toml ${ServerDir}/plugins/${PluginName}/etc/
 	mkdir -p ${ServerDir}/templates/${PluginName}

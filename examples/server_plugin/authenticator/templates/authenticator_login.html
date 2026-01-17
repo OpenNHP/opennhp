@@ -1,0 +1,1474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.title}} - OTP Authentication</title>
+    <!-- Fonts with fallback - load async to prevent blocking -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet"></noscript>
+    <!-- QR Code Generator Library with fallback -->
+    <script>
+        // Inline minimal QR code generator fallback
+        var qrcodeFallbackLoaded = false;
+        function loadQRCodeFallback() {
+            if (typeof qrcode === 'undefined' && !qrcodeFallbackLoaded) {
+                qrcodeFallbackLoaded = true;
+                console.log('QR library not loaded, using Canvas API fallback');
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"
+            onerror="this.onerror=null; this.src='https://unpkg.com/qrcode-generator@1.4.4/qrcode.min.js';"
+            onload="console.log('QR library loaded successfully')"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #131a2b;
+            --bg-card: rgba(20, 30, 50, 0.85);
+            --accent-cyan: #00d4ff;
+            --accent-green: #00ff88;
+            --accent-orange: #ff6b35;
+            --accent-red: #ff4757;
+            --text-primary: #e8eef5;
+            --text-secondary: #8892a4;
+            --border-color: rgba(0, 212, 255, 0.2);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: var(--bg-primary);
+            background-image:
+                    radial-gradient(ellipse at 20% 20%, rgba(0, 212, 255, 0.08) 0%, transparent 50%),
+                    radial-gradient(ellipse at 80% 80%, rgba(0, 255, 136, 0.06) 0%, transparent 50%),
+                    linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 540px;
+            width: 100%;
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 2.5rem;
+            box-shadow:
+                    0 4px 60px rgba(0, 0, 0, 0.4),
+                    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .language-select {
+            text-align: right;
+            margin-bottom: 1rem;
+        }
+
+        .language-select select {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-secondary);
+            padding: 0.4rem 0.75rem;
+            border-radius: 8px;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 0.85rem;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .language-select select:hover {
+            border-color: var(--accent-cyan);
+        }
+
+        .language-select select option {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        .logo-title {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .logo-title img {
+            height: 42px;
+            width: 42px;
+        }
+
+        .logo-title h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0;
+        }
+
+        .server-info {
+            background: rgba(0, 212, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.15);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .server-url-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .server-url-row span {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .server-url-row a {
+            font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', 'Courier New', monospace;
+            font-size: 0.8rem;
+            color: var(--accent-cyan);
+            text-decoration: none;
+        }
+
+        .server-url-row a:hover {
+            text-decoration: underline;
+        }
+
+        .scan-link {
+            font-size: 0.7rem;
+            font-family: 'Outfit', sans-serif !important;
+            color: var(--accent-green);
+            text-decoration: none;
+            padding: 0.2rem 0.4rem;
+            background: rgba(0, 255, 136, 0.1);
+            border-radius: 4px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .status-grid {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+        }
+
+        .status-label {
+            color: var(--text-secondary);
+            min-width: 100px;
+            text-align: right;
+        }
+
+        .status-value {
+            min-width: 120px;
+        }
+
+        .status-value.timeout {
+            color: var(--accent-red);
+        }
+
+        .status-value.success {
+            color: var(--accent-green);
+        }
+
+        /* Login Tabs */
+        .login-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 0.25rem;
+        }
+
+        .tab-btn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1rem;
+            background: transparent;
+            border: none;
+            border-radius: 10px;
+            color: var(--text-secondary);
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-btn.active {
+            background: rgba(0, 212, 255, 0.15);
+            color: var(--accent-cyan);
+        }
+
+        .tab-btn svg {
+            stroke: currentColor;
+        }
+
+        /* QR Code Section */
+        .qr-login-section {
+            text-align: center;
+        }
+
+        .qr-container {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 1.5rem;
+            display: inline-block;
+            margin-bottom: 1rem;
+            position: relative;
+            min-width: 220px;
+            min-height: 220px;
+        }
+
+        .qr-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 180px;
+            color: #333;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(0, 212, 255, 0.2);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .qr-code-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        #qrCanvas {
+            display: block;
+            max-width: 200px;
+            max-height: 200px;
+            width: 100%;
+            height: auto;
+        }
+
+        .qr-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.95);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-align: center;
+            padding: 1rem;
+        }
+
+        .qr-overlay.show {
+            display: flex;
+        }
+
+        .qr-overlay.success {
+            background: rgba(0, 255, 136, 0.95);
+            color: #0a0e17;
+        }
+
+        .qr-overlay.expired {
+            background: rgba(255, 71, 87, 0.95);
+            color: #fff;
+        }
+
+        .qr-instructions {
+            margin-bottom: 1rem;
+        }
+
+        .qr-instructions p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .qr-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.pending {
+            background: var(--accent-orange);
+        }
+
+        .status-dot.scanned {
+            background: var(--accent-cyan);
+        }
+
+        .status-dot.confirmed {
+            background: var(--accent-green);
+            animation: none;
+        }
+
+        .status-dot.expired {
+            background: var(--accent-red);
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        #qrStatusText {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .qr-timer {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-bottom: 1rem;
+        }
+
+        .refresh-qr-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.6rem 1.2rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .refresh-qr-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+        }
+
+        .refresh-qr-btn svg {
+            stroke: currentColor;
+        }
+
+        /* OTP Input Section */
+        .otp-login-section {
+            text-align: center;
+        }
+
+        .otp-description {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+
+        .secret-section {
+            background: rgba(0, 212, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.15);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .secret-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .secret-expiry {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.75rem;
+            color: var(--accent-orange);
+            font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', 'Courier New', monospace;
+        }
+
+        .secret-expiry svg {
+            flex-shrink: 0;
+        }
+
+        .secret-expiry.expired {
+            color: var(--accent-red);
+        }
+
+        .secret-label {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .secret-value {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+        }
+
+        .secret-code {
+            font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', 'Courier New', monospace;
+            font-size: 0.95rem;
+            color: var(--accent-cyan);
+            background: rgba(0, 0, 0, 0.3);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            word-break: break-all;
+            user-select: all;
+            flex: 1;
+        }
+
+        .copy-btn {
+            padding: 0.6rem 0.8rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+        }
+
+        .copy-btn.copied {
+            color: var(--accent-green);
+            border-color: var(--accent-green);
+        }
+
+        .copy-btn svg {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+        }
+
+        .otp-input-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .otp-input-label {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .otp-input-group {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-bottom: 1rem;
+        }
+
+        .otp-input {
+            width: 48px;
+            height: 56px;
+            text-align: center;
+            font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', 'Courier New', monospace;
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.03);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: var(--text-primary);
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .otp-input:focus {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+        }
+
+        .verify-btn {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--accent-cyan), #0099cc);
+            border: none;
+            border-radius: 10px;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--bg-primary);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .verify-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
+        }
+
+        .verify-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .otp-help {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-top: 1rem;
+            line-height: 1.5;
+        }
+
+        .otp-help a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            cursor: pointer;
+            display: inline;
+        }
+
+        .otp-help a:hover {
+            text-decoration: underline;
+            color: var(--accent-green);
+        }
+
+        /* Message display */
+        .message {
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .message.show {
+            display: flex;
+        }
+
+        .message.success {
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            color: var(--accent-green);
+        }
+
+        .message.error {
+            background: rgba(255, 71, 87, 0.1);
+            border: 1px solid rgba(255, 71, 87, 0.3);
+            color: var(--accent-red);
+        }
+
+        /* IP display */
+        .ip-display {
+            text-align: center;
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        #ip-display {
+            font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', 'Courier New', monospace;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .footer p {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin: 0.3rem 0;
+        }
+
+        .footer a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .footer a:hover {
+            color: var(--accent-green);
+            text-decoration: underline;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 1.5rem;
+            }
+
+            .status-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .status-label {
+                min-width: auto;
+            }
+
+            .login-tabs {
+                flex-direction: column;
+            }
+
+            .qr-container {
+                min-width: 180px;
+                min-height: 180px;
+                padding: 1rem;
+            }
+
+            .otp-input {
+                width: 40px;
+                height: 48px;
+                font-size: 1.25rem;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- Language Select -->
+    <div class="language-select">
+        <select id="languageSelect" onchange="changeLanguage()">
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+        </select>
+    </div>
+
+    <!-- Logo and Title -->
+    <div class="logo-title">
+        <img src="https://raw.githubusercontent.com/OpenNHP/opennhp/main/docs/images/logo10.png"
+             alt="OpenNHP Logo"
+             onerror="this.onerror=null; this.style.display='none';"
+             loading="lazy">
+        <h1 id="title">OTP Authentication</h1>
+    </div>
+
+    <!-- Server Info -->
+    <div class="server-info">
+        <div class="server-url-row">
+            <span id="protectedServer">Protected Server: </span>
+            <a href="https://acdemo.opennhp.org" target="_blank">https://acdemo.opennhp.org</a>
+            <a href="https://dnschecker.org/port-scanner.php?query=acdemo.opennhp.org" target="_blank" class="scan-link" id="scanPorts">Scan Ports</a>
+        </div>
+        <div class="status-grid">
+            <div class="status-row">
+                <span class="status-label" id="beforeLogin">Before Login:</span>
+                <span class="status-value timeout" id="timeoutStatus">Connection Timeout ❌</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label" id="afterLogin">After Login:</span>
+                <span class="status-value success" id="successStatus">Accessible ✅</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Display -->
+    <div id="message" class="message"></div>
+
+    <!-- Login Method Tabs -->
+    <div class="login-tabs">
+        <button type="button" class="tab-btn active" id="otpTabBtn" onclick="switchLoginTab('otp')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <span id="otpTabLabel">Enter OTP Code</span>
+        </button>
+        <button type="button" class="tab-btn" id="qrTabBtn" onclick="switchLoginTab('qr')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            <span id="qrTabLabel">Scan QR Code</span>
+        </button>
+    </div>
+
+    <!-- QR Code Login Section -->
+    <div id="qrLoginSection" class="qr-login-section" style="display: none;">
+        <div class="qr-container" id="qrContainer">
+            <div class="qr-loading" id="qrLoading">
+                <div class="spinner"></div>
+                <span id="qrLoadingText">Generating QR Code...</span>
+            </div>
+            <div class="qr-code-wrapper" id="qrCodeWrapper" style="display: none;">
+                <canvas id="qrCanvas"></canvas>
+                <div class="qr-overlay" id="qrOverlay">
+                    <span id="qrOverlayText"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="qr-instructions">
+            <p id="qrInstructions">Scan with <a href="https://github.com/OpenNHP/stealth-dns" target="_blank" rel="noopener noreferrer">StealthDNS</a> mobile app to login</p>
+            <div class="qr-status">
+                <span class="status-dot pending" id="statusDot"></span>
+                <span id="qrStatusText">Waiting for scan...</span>
+            </div>
+            <p class="qr-timer" id="qrTimer">Expires in 5m 00s</p>
+        </div>
+
+        <button class="refresh-qr-btn" id="refreshQrBtn" onclick="generateQRCode()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 4v6h-6"></path>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+            <span id="refreshText">Refresh QR Code</span>
+        </button>
+    </div>
+
+    <!-- OTP Code Login Section -->
+    <div id="otpLoginSection" class="otp-login-section">
+        <p class="otp-description" id="otpDescription">
+            Add the secret key below to your authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code.
+        </p>
+
+        <div class="secret-section">
+            <p class="secret-label" id="secretLabel">OTP Secret Key</p>
+            <div class="secret-value">
+                <code id="otpSecret" class="secret-code">Loading...</code>
+                <button type="button" class="copy-btn" id="copySecretBtn" onclick="copySecret()" title="Copy to clipboard">
+                    <svg viewBox="0 0 24 24" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="otp-input-section">
+            <p class="otp-input-label" id="otpInputLabel">Enter 6-digit verification code</p>
+            <div class="otp-input-group">
+                <input type="text" class="otp-input" maxlength="1" data-index="0" inputmode="numeric">
+                <input type="text" class="otp-input" maxlength="1" data-index="1" inputmode="numeric">
+                <input type="text" class="otp-input" maxlength="1" data-index="2" inputmode="numeric">
+                <input type="text" class="otp-input" maxlength="1" data-index="3" inputmode="numeric">
+                <input type="text" class="otp-input" maxlength="1" data-index="4" inputmode="numeric">
+                <input type="text" class="otp-input" maxlength="1" data-index="5" inputmode="numeric">
+            </div>
+            <button class="verify-btn" id="verifyOtpBtn" onclick="verifyOTP()" disabled>
+                <span id="verifyBtnText">Verify</span>
+            </button>
+        </div>
+
+        <p class="otp-help" id="otpHelp">
+            Don't have an authenticator app? Download
+            <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" target="_blank" rel="noopener noreferrer">Google Authenticator</a> or
+            <a href="https://authy.com/download/" target="_blank" rel="noopener noreferrer">Authy</a>
+        </p>
+    </div>
+
+    <!-- IP Display -->
+    <div class="ip-display">
+        <span id="ip-display">Detecting IP...</span>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <p id="footerPowered">Powered by <a href="https://github.com/OpenNHP/opennhp" target="_blank">OpenNHP</a></p>
+        <p id="footerSponsored">Sponsored by: <a href="https://layerv.ai" target="_blank">LayerV.ai</a></p>
+    </div>
+</div>
+
+<script>
+    // Configuration
+    const config = {
+        aspId: '{{.aspId}}',
+        resId: '{{.resId}}',
+        baseUrl: window.location.origin,
+        otpSecretKey: '{{.otpSecretKey}}'
+    };
+
+    // Translations
+    const translations = {
+        en: {
+            title: "OTP Authentication",
+            protectedServer: "Protected Server: ",
+            scanPorts: "Scan Ports",
+            beforeLogin: "Before Login:",
+            afterLogin: "After Login:",
+            timeoutStatus: "Connection Timeout ❌",
+            successStatus: "Accessible ✅",
+            qrTabLabel: "Scan QR Code",
+            otpTabLabel: "Enter OTP Code",
+            qrLoadingText: "Generating QR Code...",
+            qrInstructions: 'Scan with <a href="https://github.com/OpenNHP/stealth-dns" target="_blank" rel="noopener noreferrer">StealthDNS</a> mobile app to login',
+            qrStatusWaiting: "Waiting for scan...",
+            qrStatusScanned: "Scanned! Confirming...",
+            qrStatusConfirmed: "Verified!",
+            qrStatusExpired: "Expired",
+            refreshText: "Refresh QR Code",
+            otpDescription: "Add the secret key below to your authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code.",
+            secretLabel: "OTP Secret Key",
+            secretValidFor: "Valid for",
+            secretExpired: "Expired",
+            otpInputLabel: "Enter 6-digit verification code",
+            verifyBtnText: "Verify",
+            otpHelp: 'Don\'t have an authenticator app? Download <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" target="_blank" rel="noopener noreferrer">Google Authenticator</a> or <a href="https://authy.com/download/" target="_blank" rel="noopener noreferrer">Authy</a>',
+            footerPowered: "Powered by",
+            footerSponsored: "Sponsored by:",
+            footerSponsoredSuffix: "",
+            detectingIP: "Detecting IP...",
+            ipFailed: "IP detection failed",
+            loginSuccess: "Login successful! Redirecting...",
+            copySuccess: "Copied!",
+            expiresIn: "Expires in",
+            verifying: "Verifying...",
+            loading: "Loading..."
+        },
+        zh: {
+            title: "OTP 身份认证",
+            protectedServer: "受保护服务器：",
+            scanPorts: "扫描端口",
+            beforeLogin: "登录前：",
+            afterLogin: "登录后：",
+            timeoutStatus: "连接超时 ❌",
+            successStatus: "可访问 ✅",
+            qrTabLabel: "扫描二维码",
+            otpTabLabel: "输入OTP码",
+            qrLoadingText: "正在生成二维码...",
+            qrInstructions: '使用 <a href="https://github.com/OpenNHP/stealth-dns" target="_blank" rel="noopener noreferrer">StealthDNS</a> 手机端扫描二维码登录',
+            qrStatusWaiting: "等待扫描...",
+            qrStatusScanned: "已扫描，确认中...",
+            qrStatusConfirmed: "验证成功！",
+            qrStatusExpired: "已过期",
+            refreshText: "刷新二维码",
+            otpDescription: "将下方密钥添加到您的认证器应用（Google Authenticator、Authy 等），然后输入 6 位验证码。",
+            secretLabel: "OTP 密钥",
+            secretValidFor: "有效期",
+            secretExpired: "已过期",
+            otpInputLabel: "输入 6 位验证码",
+            verifyBtnText: "验证",
+            otpHelp: '没有认证器应用？下载 <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" target="_blank" rel="noopener noreferrer">Google Authenticator</a> 或 <a href="https://authy.com/download/" target="_blank" rel="noopener noreferrer">Authy</a>',
+            footerPowered: "提供支持",
+            footerSponsored: "由",
+            footerSponsoredSuffix: "赞助，",
+            detectingIP: "正在检测 IP...",
+            ipFailed: "IP 检测失败",
+            loginSuccess: "登录成功！正在跳转...",
+            copySuccess: "已复制！",
+            expiresIn: "有效期剩余",
+            verifying: "验证中...",
+            loading: "加载中..."
+        }
+    };
+
+    let currentLang = 'en';
+    let currentSession = {
+        sessionId: null,
+        otpSecret: null,
+        expiresAt: null
+    };
+    let pollingInterval = null;
+    let timerInterval = null;
+
+    // Helper function to safely set element text
+    function setText(id, text) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    }
+
+    function setHtml(id, html) {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+    }
+
+    // Language change
+    function changeLanguage() {
+        currentLang = document.getElementById('languageSelect').value;
+        const t = translations[currentLang];
+
+        // Header and server info
+        setText('title', t.title);
+        setText('protectedServer', t.protectedServer);
+        setText('scanPorts', t.scanPorts);
+        setText('beforeLogin', t.beforeLogin);
+        setText('afterLogin', t.afterLogin);
+        setText('timeoutStatus', t.timeoutStatus);
+        setText('successStatus', t.successStatus);
+
+        // Tab labels
+        setText('qrTabLabel', t.qrTabLabel);
+        setText('otpTabLabel', t.otpTabLabel);
+
+        // QR section
+        setText('qrLoadingText', t.qrLoadingText);
+        setHtml('qrInstructions', t.qrInstructions);
+        setText('refreshText', t.refreshText);
+
+        // OTP section - these are the elements that need translation
+        setText('otpDescription', t.otpDescription);
+        setText('secretLabel', t.secretLabel);
+        setText('otpInputLabel', t.otpInputLabel);
+        setText('verifyBtnText', t.verifyBtnText);
+        setHtml('otpHelp', t.otpHelp);
+
+        // Update OTP secret loading text if still loading
+        const otpSecretEl = document.getElementById('otpSecret');
+        if (otpSecretEl && (otpSecretEl.textContent === 'Loading...' || otpSecretEl.textContent === '加载中...')) {
+            otpSecretEl.textContent = t.loading;
+        }
+
+        // Update QR status text based on current state
+        const qrStatusText = document.getElementById('qrStatusText');
+        const statusDot = document.getElementById('statusDot');
+        const qrOverlayText = document.getElementById('qrOverlayText');
+        if (statusDot && qrStatusText) {
+            if (statusDot.classList.contains('pending')) {
+                qrStatusText.textContent = t.qrStatusWaiting;
+            } else if (statusDot.classList.contains('scanned')) {
+                qrStatusText.textContent = t.qrStatusScanned;
+                if (qrOverlayText) qrOverlayText.textContent = t.qrStatusScanned;
+            } else if (statusDot.classList.contains('confirmed')) {
+                qrStatusText.textContent = t.qrStatusConfirmed;
+                if (qrOverlayText) qrOverlayText.textContent = t.qrStatusConfirmed;
+            } else if (statusDot.classList.contains('expired')) {
+                qrStatusText.textContent = t.qrStatusExpired;
+                if (qrOverlayText) qrOverlayText.textContent = t.qrStatusExpired;
+            }
+        }
+
+        // Update QR timer
+        const qrTimerEl = document.getElementById('qrTimer');
+        if (qrTimerEl) {
+            if (currentSession.expiresAt) {
+                const remaining = Math.max(0, currentSession.expiresAt - Date.now());
+                const minutes = Math.floor(remaining / 60000);
+                const seconds = Math.floor((remaining % 60000) / 1000);
+                qrTimerEl.textContent = `${t.expiresIn} ${minutes}m ${seconds.toString().padStart(2, '0')}s`;
+            } else {
+                qrTimerEl.textContent = `${t.expiresIn} 5m 00s`;
+            }
+        }
+
+        // Update IP display placeholder
+        const ipDisplay = document.getElementById('ip-display');
+        if (ipDisplay && (ipDisplay.textContent.includes('Detecting') || ipDisplay.textContent.includes('检测'))) {
+            ipDisplay.textContent = t.detectingIP;
+        }
+
+        // Update footer
+        if (currentLang === 'zh') {
+            // 中文格式：由LayerV.ai赞助，OpenNHP提供支持。
+            setHtml('footerSponsored', `${t.footerSponsored}<a href="https://layerv.ai" target="_blank">LayerV.ai</a>${t.footerSponsoredSuffix}<a href="https://github.com/OpenNHP/opennhp" target="_blank">OpenNHP</a>${t.footerPowered}。`);
+            document.getElementById('footerPowered').style.display = 'none';
+        } else {
+            // English format: Powered by OpenNHP / Sponsored by: LayerV.ai
+            setHtml('footerPowered', `${t.footerPowered} <a href="https://github.com/OpenNHP/opennhp" target="_blank">OpenNHP</a>`);
+            setHtml('footerSponsored', `${t.footerSponsored} <a href="https://layerv.ai" target="_blank">LayerV.ai</a>`);
+            document.getElementById('footerPowered').style.display = '';
+        }
+
+        console.log('Language changed to:', currentLang);
+    }
+
+    // Tab switching
+    let qrGenerated = false; // Track if QR code has been generated
+
+    function switchLoginTab(tab) {
+        const qrTabBtn = document.getElementById('qrTabBtn');
+        const otpTabBtn = document.getElementById('otpTabBtn');
+        const qrSection = document.getElementById('qrLoginSection');
+        const otpSection = document.getElementById('otpLoginSection');
+
+        if (tab === 'qr') {
+            qrTabBtn.classList.add('active');
+            otpTabBtn.classList.remove('active');
+            qrSection.style.display = 'block';
+            otpSection.style.display = 'none';
+
+            // Generate QR code when switching to QR tab (only once or if expired)
+            if (!qrGenerated || !currentSession.expiresAt || Date.now() > currentSession.expiresAt) {
+                generateQRCode();
+                qrGenerated = true;
+            }
+        } else {
+            qrTabBtn.classList.remove('active');
+            otpTabBtn.classList.add('active');
+            qrSection.style.display = 'none';
+            otpSection.style.display = 'block';
+        }
+    }
+
+    // Generate QR Code
+    async function generateQRCode() {
+        stopPolling();
+        const qrLoading = document.getElementById('qrLoading');
+        const qrCodeWrapper = document.getElementById('qrCodeWrapper');
+        const qrOverlay = document.getElementById('qrOverlay');
+        const statusDot = document.getElementById('statusDot');
+        const qrStatusText = document.getElementById('qrStatusText');
+
+        qrLoading.style.display = 'flex';
+        qrCodeWrapper.style.display = 'none';
+        qrOverlay.classList.remove('show', 'success', 'expired');
+        statusDot.className = 'status-dot pending';
+        qrStatusText.textContent = translations[currentLang].qrStatusWaiting;
+
+        // Reset OTP secret expiry display
+        const secretExpiry = document.getElementById('secretExpiry');
+        const secretExpiryText = document.getElementById('secretExpiryText');
+        if (secretExpiry) secretExpiry.classList.remove('expired');
+        if (secretExpiryText) secretExpiryText.textContent = `${translations[currentLang].secretValidFor} 5m 00s`;
+
+        try {
+            const url = `${config.baseUrl}/plugins/${config.aspId}?resid=${config.resId}&action=generate`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.errMsg || 'Failed to generate QR code');
+            }
+
+            currentSession = {
+                sessionId: data.sessionId,
+                otpSecret: data.otpSecret,
+                expiresAt: data.expiresAt * 1000
+            };
+
+            // Update OTP secret display
+            document.getElementById('otpSecret').textContent = data.otpSecret;
+
+            // Build QR content
+            const qrContent = `nhp://scan?data=${encodeURIComponent(data.qrData)}&otp=${encodeURIComponent(data.otpSecret)}&server=${encodeURIComponent(data.serverUrl)}&asp=${encodeURIComponent(config.aspId)}&res=${encodeURIComponent(config.resId)}&sid=${encodeURIComponent(data.sessionId)}`;
+
+            // Render QR code
+            renderQRCode(qrContent);
+
+            qrLoading.style.display = 'none';
+            qrCodeWrapper.style.display = 'block';
+
+            startTimer();
+            startPolling();
+
+        } catch (err) {
+            console.error('QR generation error:', err);
+            qrLoading.innerHTML = `<span style="color: var(--accent-red);">${err.message}</span>`;
+        }
+    }
+
+    // Render QR Code
+    function renderQRCode(content) {
+        // Check if qrcode library is loaded
+        if (typeof qrcode === 'undefined') {
+            console.error('QR code library not loaded');
+            const qrLoading = document.getElementById('qrLoading');
+            qrLoading.innerHTML = '<span style="color: var(--accent-red);">QR library failed to load. Please refresh the page.</span>';
+            return;
+        }
+
+        try {
+            const qr = qrcode(0, 'M');
+            qr.addData(content);
+            qr.make();
+
+            const canvas = document.getElementById('qrCanvas');
+            const ctx = canvas.getContext('2d');
+            const moduleCount = qr.getModuleCount();
+
+            // Calculate cell size to fit within 200px
+            const targetSize = 200;
+            const cellSize = Math.floor(targetSize / moduleCount);
+            const size = moduleCount * cellSize;
+
+            canvas.width = size;
+            canvas.height = size;
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, size, size);
+
+            ctx.fillStyle = '#000000';
+            for (let row = 0; row < moduleCount; row++) {
+                for (let col = 0; col < moduleCount; col++) {
+                    if (qr.isDark(row, col)) {
+                        ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('QR code generation error:', err);
+            const qrLoading = document.getElementById('qrLoading');
+            qrLoading.innerHTML = '<span style="color: var(--accent-red);">QR generation failed</span>';
+        }
+    }
+
+    // Timer
+    function startTimer() {
+        if (timerInterval) clearInterval(timerInterval);
+        const qrTimer = document.getElementById('qrTimer');
+        const secretExpiry = document.getElementById('secretExpiry');
+        const secretExpiryText = document.getElementById('secretExpiryText');
+
+        timerInterval = setInterval(() => {
+            if (!currentSession.expiresAt) return;
+
+            const remaining = Math.max(0, currentSession.expiresAt - Date.now());
+            const minutes = Math.floor(remaining / 60000);
+            const seconds = Math.floor((remaining % 60000) / 1000);
+            const timeStr = `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
+
+            // Update QR code timer
+            qrTimer.textContent = `${translations[currentLang].expiresIn} ${timeStr}`;
+
+            // Update OTP secret expiry timer
+            if (secretExpiryText) {
+                secretExpiryText.textContent = `${translations[currentLang].secretValidFor} ${timeStr}`;
+            }
+
+            if (remaining <= 0) {
+                clearInterval(timerInterval);
+                stopPolling();
+                const statusDot = document.getElementById('statusDot');
+                const qrStatusText = document.getElementById('qrStatusText');
+                const qrOverlay = document.getElementById('qrOverlay');
+                const qrOverlayText = document.getElementById('qrOverlayText');
+
+                statusDot.className = 'status-dot expired';
+                qrStatusText.textContent = translations[currentLang].qrStatusExpired;
+                qrOverlay.classList.add('show', 'expired');
+                qrOverlayText.textContent = translations[currentLang].qrStatusExpired;
+
+                // Update OTP secret expiry to show expired
+                if (secretExpiry && secretExpiryText) {
+                    secretExpiry.classList.add('expired');
+                    secretExpiryText.textContent = translations[currentLang].secretExpired;
+                }
+            }
+        }, 1000);
+    }
+
+    // Polling
+    function startPolling() {
+        if (pollingInterval) clearInterval(pollingInterval);
+
+        pollingInterval = setInterval(async () => {
+            if (!currentSession.sessionId) return;
+
+            try {
+                const url = `${config.baseUrl}/plugins/${config.aspId}?resid=${config.resId}&action=status&sessionId=${currentSession.sessionId}`;
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (!data.success) return;
+
+                const statusDot = document.getElementById('statusDot');
+                const qrStatusText = document.getElementById('qrStatusText');
+                const qrOverlay = document.getElementById('qrOverlay');
+                const qrOverlayText = document.getElementById('qrOverlayText');
+
+                switch (data.status) {
+                    case 1: // scanned
+                        statusDot.className = 'status-dot scanned';
+                        qrStatusText.textContent = translations[currentLang].qrStatusScanned;
+                        qrOverlay.classList.add('show');
+                        qrOverlayText.textContent = translations[currentLang].qrStatusScanned;
+                        break;
+                    case 2: // confirmed
+                        stopPolling();
+                        statusDot.className = 'status-dot confirmed';
+                        qrStatusText.textContent = translations[currentLang].qrStatusConfirmed;
+                        qrOverlay.classList.add('show', 'success');
+                        qrOverlayText.textContent = translations[currentLang].qrStatusConfirmed;
+                        showMessage(translations[currentLang].loginSuccess, 'success');
+                        await completeAuthentication('qrvalid');
+                        break;
+                    case 3: // expired
+                        stopPolling();
+                        statusDot.className = 'status-dot expired';
+                        qrStatusText.textContent = translations[currentLang].qrStatusExpired;
+                        qrOverlay.classList.add('show', 'expired');
+                        qrOverlayText.textContent = translations[currentLang].qrStatusExpired;
+                        break;
+                }
+            } catch (err) {
+                console.error('Polling error:', err);
+            }
+        }, 2000);
+    }
+
+    function stopPolling() {
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+        }
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+    }
+
+    // OTP Input handling
+    const otpInputs = document.querySelectorAll('.otp-input');
+    otpInputs.forEach((input, index) => {
+        input.addEventListener('input', (e) => {
+            const value = e.target.value.replace(/\D/g, '');
+            e.target.value = value;
+
+            if (value && index < otpInputs.length - 1) {
+                otpInputs[index + 1].focus();
+            }
+
+            checkOtpComplete();
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !e.target.value && index > 0) {
+                otpInputs[index - 1].focus();
+            }
+        });
+
+        input.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const paste = (e.clipboardData || window.clipboardData).getData('text');
+            const digits = paste.replace(/\D/g, '').slice(0, 6);
+
+            digits.split('').forEach((digit, i) => {
+                if (otpInputs[i]) {
+                    otpInputs[i].value = digit;
+                }
+            });
+
+            if (digits.length > 0) {
+                otpInputs[Math.min(digits.length, 5)].focus();
+            }
+
+            checkOtpComplete();
+        });
+    });
+
+    function checkOtpComplete() {
+        const otp = Array.from(otpInputs).map(i => i.value).join('');
+        document.getElementById('verifyOtpBtn').disabled = otp.length !== 6;
+    }
+
+    function getOtpValue() {
+        return Array.from(otpInputs).map(i => i.value).join('');
+    }
+
+    function clearOtpInputs() {
+        otpInputs.forEach(input => input.value = '');
+        document.getElementById('verifyOtpBtn').disabled = true;
+    }
+
+    // Copy secret
+    async function copySecret() {
+        const secretText = document.getElementById('otpSecret').textContent;
+        if (!secretText || secretText === 'Loading...' || secretText === '加载中...') {
+            return;
+        }
+
+        const btn = document.getElementById('copySecretBtn');
+
+        try {
+            // Try modern clipboard API first
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(secretText);
+            } else {
+                // Fallback for non-HTTPS or older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = secretText;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-9999px';
+                textArea.style.top = '-9999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+            }
+
+            // Show success state
+            btn.classList.add('copied');
+            btn.innerHTML = `<svg viewBox="0 0 24 24" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+            showMessage(translations[currentLang].copySuccess, 'success');
+
+            setTimeout(() => {
+                btn.classList.remove('copied');
+                btn.innerHTML = `<svg viewBox="0 0 24 24" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+            }, 2000);
+        } catch (err) {
+            console.error('Copy failed:', err);
+            showMessage('Copy failed', 'error');
+        }
+    }
+
+    // Verify OTP
+    async function verifyOTP() {
+        const otpCode = getOtpValue();
+        if (otpCode.length !== 6) return;
+
+        const verifyBtn = document.getElementById('verifyOtpBtn');
+        verifyBtn.disabled = true;
+        verifyBtn.textContent = translations[currentLang].verifying;
+
+        try {
+            // Use configured OTP secret key - no session needed
+            const url = `${config.baseUrl}/plugins/${config.aspId}?resid=${config.resId}&action=otpvalid&otpCode=${otpCode}`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.errCode === "0" || data.errCode === "") {
+                showMessage(translations[currentLang].loginSuccess, 'success');
+                if (data.redirectUrl) {
+                    setTimeout(() => {
+                        window.location.href = data.redirectUrl;
+                    }, 1500);
+                }
+            } else {
+                throw new Error(data.errMsg || 'Invalid OTP code');
+            }
+        } catch (err) {
+            console.error('OTP verification error:', err);
+            showMessage(err.message, 'error');
+            clearOtpInputs();
+        } finally {
+            verifyBtn.disabled = false;
+            verifyBtn.textContent = translations[currentLang].verifyBtnText;
+        }
+    }
+
+    // Complete authentication
+    async function completeAuthentication(action) {
+        try {
+            const url = `${config.baseUrl}/plugins/${config.aspId}?resid=${config.resId}&action=${action}&sessionId=${currentSession.sessionId}`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.errCode === "0" || data.errCode === "") {
+                if (data.redirectUrl) {
+                    setTimeout(() => {
+                        window.location.href = data.redirectUrl;
+                    }, 1500);
+                }
+            } else {
+                throw new Error(data.errMsg || 'Authentication failed');
+            }
+        } catch (err) {
+            console.error('Complete auth error:', err);
+            showMessage(err.message, 'error');
+        }
+    }
+
+    // Show message
+    function showMessage(text, type) {
+        const messageEl = document.getElementById('message');
+        messageEl.textContent = text;
+        messageEl.className = `message show ${type}`;
+        setTimeout(() => {
+            messageEl.classList.remove('show');
+        }, 5000);
+    }
+
+    // Fetch IP
+    async function fetchIP() {
+        const ipDisplay = document.getElementById('ip-display');
+        try {
+            // Add timeout to prevent slow loading
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+            const res = await fetch('https://api.ipify.org?format=json', {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            const data = await res.json();
+            ipDisplay.textContent = `IP: ${data.ip}`;
+        } catch (e) {
+            // Silently fail - don't block page load
+            ipDisplay.textContent = '';
+        }
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        // Detect language and set default
+        const userLang = navigator.language || navigator.userLanguage;
+        if (userLang.startsWith('zh')) {
+            document.getElementById('languageSelect').value = 'zh';
+            currentLang = 'zh';
+        } else {
+            document.getElementById('languageSelect').value = 'en';
+            currentLang = 'en';
+        }
+
+        // Always call changeLanguage to initialize all translations
+        changeLanguage();
+
+        // Display configured OTP secret key immediately
+        if (config.otpSecretKey) {
+            document.getElementById('otpSecret').textContent = config.otpSecretKey;
+        }
+
+        // Fetch IP
+        fetchIP();
+
+        // Don't auto-generate QR code since OTP is the default tab
+        // QR code will be generated when user switches to QR tab
+    });
+</script>
+</body>
+</html>

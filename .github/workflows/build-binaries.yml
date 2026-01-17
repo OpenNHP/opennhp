@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: '1.24'
+  GO_VERSION: '1.25'
   GOMODULE: github.com/OpenNHP/opennhp/nhp
 
 jobs:

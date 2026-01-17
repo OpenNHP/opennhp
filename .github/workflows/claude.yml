@@ -38,6 +38,8 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Restrict tools to safe GitHub CLI operations
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh issue comment:*),Bash(gh search:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr review:*),Bash(gh pr checks:*)"'
 
   # Automatic code review on PR open/update
   claude-pr-review:
@@ -62,8 +64,15 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Restrict tools to safe GitHub CLI operations for PR review
+          claude_args: '--allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Bash(gh pr checks:*),Bash(gh pr comment:*)"'
           prompt: |
-            You are a senior code reviewer. Review this PR thoroughly and submit a GitHub PR review.
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            You are a senior code reviewer. Review this PR thoroughly.
+
+            Use the repository's CLAUDE.md for guidance on project conventions, code style, and architecture.
 
             ## Review Criteria (in order of severity)
             1. **Security vulnerabilities** - injection, auth bypass, secrets exposure, OWASP top 10
@@ -73,10 +82,13 @@ jobs:
             5. **Code quality** - unclear logic, missing validation, poor error messages
 
             ## Review Instructions
-            - Submit a GitHub PR review (not just a comment)
-            - If you find ANY issues in categories 1-3 (security, bugs, breaking changes): submit review with REQUEST_CHANGES
-            - If you find only minor issues (categories 4-5): submit review with COMMENT
-            - If the code looks good: submit review with APPROVE
+            Use `gh pr review` to submit a GitHub PR review:
+            - If you find ANY issues in categories 1-3 (security, bugs, breaking changes):
+              `gh pr review ${{ github.event.pull_request.number }} --request-changes --body "your review"`
+            - If you find only minor issues (categories 4-5):
+              `gh pr review ${{ github.event.pull_request.number }} --comment --body "your review"`
+            - If the code looks good:
+              `gh pr review ${{ github.event.pull_request.number }} --approve --body "your review"`
 
             ## Response Format
             Start your review with a summary line:
@@ -85,4 +97,4 @@ jobs:
             - "✅ **Approved** - Code looks good"
 
             Then list specific issues with file paths and line numbers.
-            Be direct and actionable. No fluff.
+            Be constructive and actionable. Focus on significant issues, not style nitpicks.

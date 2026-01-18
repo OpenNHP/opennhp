@@ -28,42 +28,54 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      - name: Validate server hostname
+        run: |
+          SERVER="${{ matrix.server }}"
+
+          # RFC 1123 hostname validation: alphanumeric, hyphens, dots
+          # Max 253 chars total, max 63 chars per label
+          if ! echo "$SERVER" | grep -qE '^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$'; then
+            echo "❌ SECURITY ERROR: Invalid hostname format: $SERVER"
+            echo "Hostnames must comply with RFC 1123"
+            exit 1
+          fi
+
+          # Block shell metacharacters
+          if echo "$SERVER" | grep -qE '[$`();&|<>{}\\]'; then
+            echo "❌ SECURITY ERROR: Hostname contains shell metacharacters: $SERVER"
+            exit 1
+          fi
+
+          # Length validation
+          if [ ${#SERVER} -gt 253 ]; then
+            echo "❌ SECURITY ERROR: Hostname exceeds 253 characters"
+            exit 1
+          fi
+
+          echo "✅ Hostname validation passed: $SERVER"
 
       - name: Setup SSH key and known hosts
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          
+
           # Write SSH private key
           echo "${{ secrets.DEMO_NHP_SERVER_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          
-          # Setup known_hosts with proper verification
-          # Option 1: Use pre-configured host keys from secret (recommended)
-          if [ -n "${{ secrets.DEMO_NHP_SERVER_HOST_KEYS }}" ]; then
-            echo "${{ secrets.DEMO_NHP_SERVER_HOST_KEYS }}" > ~/.ssh/known_hosts
-            chmod 644 ~/.ssh/known_hosts
-          else
-            # Option 2: Scan and verify host keys (fallback)
-            # This requires manual verification on first run
-            echo "⚠️  Warning: Host keys not pre-configured. Scanning host keys..."
-            ssh-keyscan -H ${{ matrix.server }} > ~/.ssh/known_hosts.tmp 2>&1
-            if [ $? -eq 0 ] && [ -s ~/.ssh/known_hosts.tmp ]; then
-              # Verify we got valid host keys
-              if grep -q "ssh-" ~/.ssh/known_hosts.tmp; then
-                mv ~/.ssh/known_hosts.tmp ~/.ssh/known_hosts
-                chmod 644 ~/.ssh/known_hosts
-                echo "✅ Host keys scanned successfully"
-              else
-                echo "❌ Failed to get valid host keys"
-                exit 1
-              fi
-            else
-              echo "❌ Failed to scan host keys"
-              exit 1
-            fi
+
+          # Setup known_hosts - MUST be pre-configured to prevent MITM attacks
+          if [ -z "${{ secrets.DEMO_NHP_SERVER_HOST_KEYS }}" ]; then
+            echo "❌ SECURITY ERROR: DEMO_NHP_SERVER_HOST_KEYS secret is not configured"
+            echo "Host keys must be pre-configured to prevent MITM attacks"
+            echo "Please configure the secret with known_hosts entries for all demo servers"
+            exit 1
           fi
+
+          echo "${{ secrets.DEMO_NHP_SERVER_HOST_KEYS }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          echo "✅ Host keys loaded from secret"
 
       - name: Verify SSH connection
         run: |

@@ -82,6 +82,95 @@ jobs:
           LD_FLAGS="-s -w -X '${GOMODULE}/version.Version=${{ steps.version.outputs.version }}' -X '${GOMODULE}/version.CommitId=${{ steps.version.outputs.commit_id }}' -X '${GOMODULE}/version.CommitTime=${{ steps.version.outputs.commit_time }}' -X '${GOMODULE}/version.BuildTime=${{ steps.version.outputs.build_time }}'"
           echo "ldflags=${LD_FLAGS}" >> $GITHUB_OUTPUT
 
+      - name: Clone external plugin repositories
+        if: vars.EXTERNAL_PLUGIN_REPOS != ''
+        shell: bash
+        env:
+          REPOS_JSON: ${{ vars.EXTERNAL_PLUGIN_REPOS }}
+          PLUGIN_TOKEN: ${{ secrets.PLUGIN_REPO_TOKEN }}
+        run: |
+          # Parse JSON configuration for external repositories
+          # Expected format: [{"url": "https://github.com/org/repo", "path": "endpoints/examples/server_plugin/plugin-name", "ref": "main"}]
+
+          if [ -z "$REPOS_JSON" ]; then
+            echo "ℹ️  No external plugin repositories configured"
+            exit 0
+          fi
+
+          echo "📦 Cloning external plugin repositories..."
+          mkdir -p endpoints/examples/server_plugin
+
+          # Use jq if available, otherwise use Python
+          if command -v jq &> /dev/null; then
+            echo "$REPOS_JSON" | jq -c '.[]' | while read -r repo; do
+              url=$(echo "$repo" | jq -r '.url')
+              path=$(echo "$repo" | jq -r '.path')
+              ref=$(echo "$repo" | jq -r '.ref // "main"')
+
+              if [ -z "$url" ] || [ -z "$path" ]; then
+                echo "⚠️  Skipping invalid repo config"
+                continue
+              fi
+
+              # Add token to URL if available
+              if [ -n "$PLUGIN_TOKEN" ] && [[ "$url" == https://github.com/* ]]; then
+                url="${url/https:\/\/github.com\//https://x-access-token:${PLUGIN_TOKEN}@github.com/}"
+              fi
+
+              echo "📥 Cloning $url (ref: $ref) to $path"
+              if git clone --depth 1 --branch "$ref" "$url" "$path"; then
+                echo "✅ Successfully cloned to $path"
+              else
+                echo "❌ Failed to clone $url"
+                exit 1
+              fi
+            done
+          else
+            # Fallback to Python
+            python3 << 'EOF'
+          import json
+          import os
+          import sys
+          import subprocess
+
+          repos_json = os.environ.get('REPOS_JSON', '[]')
+          token = os.environ.get('PLUGIN_TOKEN', '')
+
+          try:
+              repos = json.loads(repos_json)
+          except json.JSONDecodeError as e:
+              print(f"❌ Invalid JSON: {e}")
+              sys.exit(1)
+
+          for repo in repos:
+              url = repo.get('url', '')
+              path = repo.get('path', '')
+              ref = repo.get('ref', 'main')
+
+              if not url or not path:
+                  continue
+
+              # Add token for GitHub URLs
+              if token and 'github.com' in url and url.startswith('https://'):
+                  url = url.replace('https://github.com/', f'https://x-access-token:{token}@github.com/')
+
+              print(f"📥 Cloning {repo.get('url')} (ref: {ref}) to {path}")
+
+              result = subprocess.run(
+                  ['git', 'clone', '--depth', '1', '--branch', ref, url, path],
+                  capture_output=True, text=True
+              )
+
+              if result.returncode != 0:
+                  print(f"❌ Failed: {result.stderr}")
+                  sys.exit(1)
+
+              print(f"✅ Successfully cloned to {path}")
+          EOF
+          fi
+
+          echo "✅ All external plugin repositories cloned successfully"
+
       - name: Go mod tidy
         run: |
           cd nhp && go mod tidy
@@ -117,6 +206,45 @@ jobs:
           cd endpoints
           go build -trimpath -ldflags "${{ steps.ldflags.outputs.ldflags }}" -v -o ../output/nhp-server/nhp-serverd${{ matrix.ext }} ./server/main/main.go
           cp ./server/main/etc/*.toml ../output/nhp-server/etc/
+          # Copy templates directory if it exists
+          if [ -d ../docker/nhp-server/templates ]; then
+            cp -r ../docker/nhp-server/templates ../output/nhp-server/
+            echo "✅ Templates directory copied to output"
+          fi
+
+      - name: Build server plugins
+        shell: bash
+        run: |
+          echo "🔌 Building server plugins..."
+          mkdir -p output/nhp-server/plugins
+
+          # Build basic plugin
+          if [ -d examples/server_plugin/basic ]; then
+            echo "Building basic plugin..."
+            cd examples/server_plugin/basic
+            go build -buildmode=plugin -trimpath -ldflags "-s -w" -v -o ../../../output/nhp-server/plugins/example/example.so ./main.go
+            mkdir -p ../../../output/nhp-server/plugins/example/etc
+            cp ./etc/*.toml ../../../output/nhp-server/plugins/example/etc/
+            mkdir -p ../../../output/nhp-server/templates/example
+            cp ./templates/*.* ../../../output/nhp-server/templates/example/ 2>/dev/null || true
+            cd ../../..
+            echo "✅ Basic plugin built"
+          fi
+
+          # Build authenticator plugin
+          if [ -d examples/server_plugin/authenticator ]; then
+            echo "Building authenticator plugin..."
+            cd examples/server_plugin/authenticator
+            go build -buildmode=plugin -trimpath -ldflags "-s -w" -v -o ../../../output/nhp-server/plugins/qrauth/qrauth.so ./main.go ./qrauth.go
+            mkdir -p ../../../output/nhp-server/plugins/qrauth/etc
+            cp ./etc/*.toml ../../../output/nhp-server/plugins/qrauth/etc/
+            mkdir -p ../../../output/nhp-server/templates/qrauth
+            cp ./templates/*.* ../../../output/nhp-server/templates/qrauth/ 2>/dev/null || true
+            cd ../../..
+            echo "✅ Authenticator plugin built"
+          fi
+
+          echo "✅ All plugins built successfully"
 
       - name: Build nhp-db
         shell: bash

@@ -1,5 +1,5 @@
-# Deploy templates to Demo servers
-# This workflow deploys templates to demo NHP servers
+# Deploy to Demo servers
+# This workflow deploys templates and optionally binaries to demo NHP servers
 
 name: Deploy Demo
 
@@ -10,15 +10,176 @@ on:
         description: 'Type "deploy" to confirm deployment'
         required: true
         default: ''
+      rebuild:
+        description: 'Rebuild binaries before deployment'
+        required: true
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
+        default: 'no'
+      deploy_binaries:
+        description: 'Deploy binaries (nhp-serverd)'
+        required: true
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
+        default: 'no'
 
 env:
   DEPLOY_USER: ec2-user
-  DEPLOY_PATH: /home/ec2-user/nhp-server/templates
+  DEPLOY_PATH: /home/ec2-user/nhp-server
   TEMPLATES_SOURCE: docker/nhp-server/templates
+  GO_VERSION: '1.25'
+  GOMODULE: github.com/OpenNHP/opennhp/nhp
 
 jobs:
-  deploy-templates:
-    if: github.event.inputs.confirm == 'deploy'
+  build-binaries:
+    if: github.event.inputs.confirm == 'deploy' && github.event.inputs.rebuild == 'yes'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(cat nhp/version/VERSION)
+          TIMESTAMP=$(date +%y%m%d%H%M%S)
+          FULL_VERSION="${VERSION}.${TIMESTAMP}"
+          COMMIT_ID=$(git show -s --format=%H)
+          COMMIT_TIME=$(git show -s --format=%cd --date=format:'%Y-%m-%d %H:%M:%S')
+          BUILD_TIME=$(date "+%Y-%m-%d %H:%M:%S")
+
+          echo "version=${FULL_VERSION}" >> $GITHUB_OUTPUT
+          echo "commit_id=${COMMIT_ID}" >> $GITHUB_OUTPUT
+          echo "commit_time=${COMMIT_TIME}" >> $GITHUB_OUTPUT
+          echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
+
+      - name: Set LD_FLAGS
+        id: ldflags
+        run: |
+          LD_FLAGS="-s -w -X '${GOMODULE}/version.Version=${{ steps.version.outputs.version }}' -X '${GOMODULE}/version.CommitId=${{ steps.version.outputs.commit_id }}' -X '${GOMODULE}/version.CommitTime=${{ steps.version.outputs.commit_time }}' -X '${GOMODULE}/version.BuildTime=${{ steps.version.outputs.build_time }}'"
+          echo "ldflags=${LD_FLAGS}" >> $GITHUB_OUTPUT
+
+      - name: Clone external plugin repositories
+        if: vars.EXTERNAL_PLUGIN_REPOS != ''
+        env:
+          REPOS_JSON: ${{ vars.EXTERNAL_PLUGIN_REPOS }}
+          PLUGIN_TOKEN: ${{ secrets.PLUGIN_REPO_TOKEN }}
+        run: |
+          if [ -z "$REPOS_JSON" ]; then
+            echo "ℹ️  No external plugin repositories configured"
+            exit 0
+          fi
+
+          echo "📦 Cloning external plugin repositories..."
+          mkdir -p endpoints/examples/server_plugin
+
+          python3 << 'EOF'
+          import json
+          import os
+          import sys
+          import subprocess
+
+          repos_json = os.environ.get('REPOS_JSON', '[]')
+          token = os.environ.get('PLUGIN_TOKEN', '')
+
+          try:
+              repos = json.loads(repos_json)
+          except json.JSONDecodeError as e:
+              print(f"❌ Invalid JSON: {e}")
+              sys.exit(1)
+
+          for repo in repos:
+              url = repo.get('url', '')
+              path = repo.get('path', '')
+              ref = repo.get('ref', 'main')
+
+              if not url or not path:
+                  continue
+
+              if token and 'github.com' in url and url.startswith('https://'):
+                  url = url.replace('https://github.com/', f'https://x-access-token:{token}@github.com/')
+
+              print(f"📥 Cloning {repo.get('url')} (ref: {ref}) to {path}")
+
+              result = subprocess.run(
+                  ['git', 'clone', '--depth', '1', '--branch', ref, url, path],
+                  capture_output=True, text=True
+              )
+
+              if result.returncode != 0:
+                  print(f"❌ Failed: {result.stderr}")
+                  sys.exit(1)
+
+              print(f"✅ Successfully cloned to {path}")
+          EOF
+
+      - name: Go mod tidy
+        run: |
+          cd nhp && go mod tidy
+          cd ../endpoints && go mod tidy
+
+      - name: Build nhp-serverd
+        run: |
+          cd endpoints
+          CGO_ENABLED=1 go build -trimpath -ldflags "${{ steps.ldflags.outputs.ldflags }}" -v -o nhp-serverd ./server/main/main.go
+          chmod +x nhp-serverd
+          echo "✅ nhp-serverd built successfully"
+
+      - name: Build server plugins
+        run: |
+          echo "🔌 Building server plugins..."
+          mkdir -p build/plugins
+
+          # Build basic plugin
+          if [ -d examples/server_plugin/basic ]; then
+            echo "Building basic plugin..."
+            cd examples/server_plugin/basic
+            CGO_ENABLED=1 go build -buildmode=plugin -trimpath -ldflags "-s -w" -v -o ../../../build/plugins/example.so ./main.go
+            cd ../../..
+            echo "✅ Basic plugin built"
+          fi
+
+          # Build authenticator plugin
+          if [ -d examples/server_plugin/authenticator ]; then
+            echo "Building authenticator plugin..."
+            cd examples/server_plugin/authenticator
+            CGO_ENABLED=1 go build -buildmode=plugin -trimpath -ldflags "-s -w" -v -o ../../../build/plugins/qrauth.so ./main.go ./qrauth.go
+            cd ../../..
+            echo "✅ Authenticator plugin built"
+          fi
+
+          ls -la build/plugins/
+          echo "✅ All plugins built successfully"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: nhp-serverd-linux-amd64
+          path: |
+            endpoints/nhp-serverd
+            build/plugins/*.so
+          retention-days: 1
+
+  deploy-to-servers:
+    needs: [build-binaries]
+    if: |
+      always() &&
+      github.event.inputs.confirm == 'deploy' &&
+      (needs.build-binaries.result == 'success' || needs.build-binaries.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -92,16 +253,126 @@ jobs:
             exit 1
           fi
 
+      - name: Download built binary
+        if: github.event.inputs.deploy_binaries == 'yes' && github.event.inputs.rebuild == 'yes'
+        uses: actions/download-artifact@v6
+        with:
+          name: nhp-serverd-linux-amd64
+          path: ./binaries
+
+      - name: Deploy binary to ${{ matrix.server }}
+        if: github.event.inputs.deploy_binaries == 'yes'
+        run: |
+          if [ "${{ github.event.inputs.rebuild }}" == "yes" ]; then
+            echo "📦 Deploying newly built binary and plugins to ${{ matrix.server }}..."
+            BINARY_PATH="./binaries/nhp-serverd"
+          else
+            echo "⚠️  Binary deployment requested but rebuild=no"
+            echo "Skipping binary deployment (no binary to deploy)"
+            exit 0
+          fi
+
+          if [ ! -f "$BINARY_PATH" ]; then
+            echo "❌ Binary file not found at $BINARY_PATH"
+            exit 1
+          fi
+
+          # Stop the service first
+          echo "Stopping nhp-server service..."
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o BatchMode=yes \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+            "sudo systemctl stop nhp-server || true"
+
+          # Backup existing binary
+          echo "Backing up existing binary..."
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o BatchMode=yes \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+            "cp ${{ env.DEPLOY_PATH }}/nhp-serverd ${{ env.DEPLOY_PATH }}/nhp-serverd.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true"
+
+          # Deploy new binary
+          echo "Deploying new binary..."
+          scp -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o BatchMode=yes \
+            "$BINARY_PATH" \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/nhp-serverd
+
+          # Set executable permissions
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o BatchMode=yes \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+            "chmod +x ${{ env.DEPLOY_PATH }}/nhp-serverd"
+
+          # Deploy plugins (.so files only, not config files)
+          echo "🔌 Deploying plugins..."
+          if [ -d ./binaries/build/plugins ]; then
+            # Create plugins directory structure on server
+            ssh -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -o BatchMode=yes \
+              ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+              "mkdir -p ${{ env.DEPLOY_PATH }}/plugins/example ${{ env.DEPLOY_PATH }}/plugins/qrauth"
+
+            # Deploy example plugin
+            if [ -f ./binaries/build/plugins/example.so ]; then
+              echo "Deploying example.so..."
+              scp -i ~/.ssh/deploy_key \
+                -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile=~/.ssh/known_hosts \
+                -o BatchMode=yes \
+                ./binaries/build/plugins/example.so \
+                ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/example/example.so
+              echo "✅ example.so deployed"
+            fi
+
+            # Deploy qrauth plugin
+            if [ -f ./binaries/build/plugins/qrauth.so ]; then
+              echo "Deploying qrauth.so..."
+              scp -i ~/.ssh/deploy_key \
+                -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile=~/.ssh/known_hosts \
+                -o BatchMode=yes \
+                ./binaries/build/plugins/qrauth.so \
+                ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/qrauth/qrauth.so
+              echo "✅ qrauth.so deployed"
+            fi
+
+            echo "✅ All plugins deployed"
+          else
+            echo "⚠️  No plugins found in build artifacts"
+          fi
+
+          # Start the service
+          echo "Starting nhp-server service..."
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o BatchMode=yes \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+            "sudo systemctl start nhp-server"
+
+          echo "✅ Binary and plugins deployed successfully to ${{ matrix.server }}"
+
       - name: Deploy templates to ${{ matrix.server }}
         run: |
           echo "Deploying templates to ${{ matrix.server }}..."
-          
+
           # Sync templates directory with proper SSH options
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes" \
             ${{ env.TEMPLATES_SOURCE }}/ \
-            ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/
-          
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/templates/
+
           if [ $? -eq 0 ]; then
             echo "✅ Templates deployed successfully to ${{ matrix.server }}"
           else
@@ -131,7 +402,7 @@ jobs:
           rmdir ~/.ssh 2>/dev/null || true
 
   summary:
-    needs: deploy-templates
+    needs: deploy-to-servers
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -143,6 +414,8 @@ jobs:
           echo ""
           echo "| Item | Value |"
           echo "|------|-------|"
+          echo "| **Rebuild** | ${{ github.event.inputs.rebuild }} |"
+          echo "| **Deploy Binaries** | ${{ github.event.inputs.deploy_binaries }} |"
           echo "| **Commit** | ${{ github.sha }} |"
           echo "| **Branch** | ${{ github.ref_name }} |"
           echo "| **Triggered by** | ${{ github.actor }} |"

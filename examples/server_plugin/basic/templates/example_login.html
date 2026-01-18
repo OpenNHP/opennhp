@@ -3,85 +3,107 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OpenNHP Demo - Authentication</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <title>OpenNHP Demo</title>
     <style>
-        :root {
-            --bg-primary: #0a0e17;
-            --bg-secondary: #131a2b;
-            --bg-card: rgba(20, 30, 50, 0.85);
-            --accent-cyan: #00d4ff;
-            --accent-green: #00ff88;
-            --accent-orange: #ff6b35;
-            --accent-red: #ff4757;
-            --text-primary: #e8eef5;
-            --text-secondary: #8892a4;
-            --border-color: rgba(0, 212, 255, 0.2);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
 
         body {
-            font-family: 'Outfit', sans-serif;
-            min-height: 100vh;
+            font-family: 'Poppins', sans-serif;
+            background-color: #f0f4f8;
+            margin: 0;
+            padding: 0;
             display: flex;
             justify-content: center;
             align-items: center;
-            background: var(--bg-primary);
-            background-image: 
-                radial-gradient(ellipse at 20% 20%, rgba(0, 212, 255, 0.08) 0%, transparent 50%),
-                radial-gradient(ellipse at 80% 80%, rgba(0, 255, 136, 0.06) 0%, transparent 50%),
-                linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
-            padding: 2rem;
+            height: 100vh;
         }
 
         .container {
-            max-width: 540px;
-            width: 100%;
-            background: var(--bg-card);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border-color);
-            border-radius: 24px;
-            padding: 2.5rem;
-            box-shadow: 
-                0 4px 60px rgba(0, 0, 0, 0.4),
-                0 0 0 1px rgba(255, 255, 255, 0.05) inset;
-            animation: fadeIn 0.6s ease-out;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            width: 640px;
+            transition: width 0.3s ease;
         }
 
         .container.expanded {
-            max-width: 620px;
+            width: 800px;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+        h1 {
+            color: #3498db;
+            text-align: center;
         }
 
-        .logo-title {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.75rem;
+        .input-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #555;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        .note {
+            text-align: center;
+            margin-top: 1rem;
+            font-size: 1.1rem;
+            color: #777;
+        }
+
+        .status {
             margin-bottom: 1.5rem;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 1rem;
         }
 
-        .logo-title img {
-            height: 42px;
-            width: 42px;
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
         }
 
-        .logo-title h1 {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin: 0;
+        .status-label {
+            font-weight: 600;
+            padding-right: 0.5rem;
+        }
+
+        .status-value {
+            font-weight: 300;
+        }
+
+        .timeout {
+            color: #e74c3c;
+        }
+
+        .success {
+            color: #2ecc71;
         }
 
         .language-select {
@@ -89,331 +111,47 @@
             margin-bottom: 1rem;
         }
 
-        .language-select select {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: var(--text-secondary);
-            padding: 0.4rem 0.75rem;
-            border-radius: 8px;
-            font-family: 'Outfit', sans-serif;
-            font-size: 0.85rem;
-            cursor: pointer;
-            outline: none;
-            transition: all 0.2s ease;
+        select {
+            padding: 0.25rem;
         }
 
-        .language-select select:hover {
-            border-color: var(--accent-cyan);
-        }
-
-        .language-select select option {
-            background: var(--bg-secondary);
-            color: var(--text-primary);
-        }
-
-        .server-info {
-            background: rgba(0, 212, 255, 0.05);
-            border: 1px solid rgba(0, 212, 255, 0.15);
-            border-radius: 12px;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .server-url-row {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .server-url-row span {
-            color: var(--text-secondary);
-            font-size: 0.85rem;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
-        .server-url-row a {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.8rem;
-            color: var(--accent-cyan);
-            text-decoration: none;
-        }
-
-        .server-url-row a:hover {
-            text-decoration: underline;
-        }
-
-        .scan-link {
-            font-size: 0.7rem;
-            font-family: 'Outfit', sans-serif !important;
-            color: var(--accent-green);
-            text-decoration: none;
-            padding: 0.2rem 0.4rem;
-            background: rgba(0, 255, 136, 0.1);
-            border-radius: 4px;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
-        .status-grid {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .status-row {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.85rem;
-        }
-
-        .status-label {
-            color: var(--text-secondary);
-            min-width: 100px;
-            text-align: right;
-        }
-
-        .status-value {
-            min-width: 120px;
-        }
-
-        .status-value.timeout {
-            color: var(--accent-red);
-        }
-
-        .status-value.success {
-            color: var(--accent-green);
-        }
-
-        .login-form {
-            margin-bottom: 1.5rem;
-        }
-
-        .input-group {
-            margin-bottom: 1rem;
-        }
-
-        .input-group label {
-            display: block;
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            margin-bottom: 0.5rem;
-        }
-
-        .input-group input {
-            width: 100%;
-            padding: 0.875rem 1rem;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            font-family: 'Outfit', sans-serif;
-            font-size: 1rem;
-            color: var(--text-primary);
-            outline: none;
-            transition: all 0.2s ease;
-        }
-
-        .input-group input:focus {
-            border-color: var(--accent-cyan);
-            box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
-        }
-
-        .input-group input::placeholder {
-            color: var(--text-secondary);
-        }
-
-        .login-btn {
-            width: 100%;
-            padding: 1rem;
-            background: linear-gradient(135deg, var(--accent-cyan), #0099cc);
-            border: none;
-            border-radius: 10px;
-            font-family: 'Outfit', sans-serif;
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--bg-primary);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: 0.5rem;
-        }
-
-        .login-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
-        }
-
-        .login-btn:active {
-            transform: translateY(0);
-        }
-
-        .divider {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin: 1.5rem 0;
-        }
-
-        .divider::before,
-        .divider::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .divider span {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-        }
-
-        .sso-section {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .sso-btn {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.75rem 1.25rem;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            text-decoration: none;
-            color: var(--text-primary);
-            font-size: 0.9rem;
-            transition: all 0.2s ease;
-        }
-
-        .sso-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            border-color: rgba(255, 255, 255, 0.2);
-        }
-
-        .sso-btn svg {
-            width: 20px;
-            height: 20px;
-            fill: currentColor;
-        }
-
-        .sso-divider {
-            color: var(--text-secondary);
-            font-size: 0.85rem;
-        }
-
-        .ip-display {
-            text-align: center;
-            margin-top: 1.5rem;
-            padding-top: 1rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        #ip-display {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-            opacity: 0.7;
-        }
-
-        .footer {
-            text-align: center;
-            margin-top: 1.5rem;
-            padding-top: 1rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .footer p {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-            margin: 0.3rem 0;
-        }
-
-        .footer a {
-            color: var(--accent-cyan);
-            text-decoration: none;
-            transition: color 0.2s ease;
-        }
-
-        .footer a:hover {
-            color: var(--accent-green);
-            text-decoration: underline;
-        }
-
-        /* Success message styles */
         #message {
-            display: none;
+            margin-top: 1rem;
+            font-size: 1.2rem;
+            color: #2ecc71;  
+            display: none;  
             text-align: center;
-        }
-
-        #message h2 {
-            font-size: 1.5rem;
-            color: var(--accent-green);
-            margin-bottom: 1rem;
-        }
-
-        #message .message-content {
-            margin-bottom: 1rem;
-        }
-
-        #message .message-content span {
-            color: var(--text-secondary);
-        }
-
-        #message .message-content a {
-            color: var(--accent-cyan);
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.9rem;
         }
 
         .countdown-container {
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 0.5rem;
-            margin-top: 1rem;
-        }
-
-        #welcomeMessage {
-            color: var(--text-secondary);
+            gap: 0;
+            white-space: nowrap;  
+            min-width: 200px;  
+            margin-top: 1rem;  
         }
 
         #countdown {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 2rem;
-            font-weight: 600;
-            color: var(--accent-orange);
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-right: 0.5rem;
         }
 
         #timeUnit {
-            color: var(--text-secondary);
+            font-size: 1.2rem;
         }
 
-        @media (max-width: 480px) {
-            .container {
-                padding: 1.5rem;
-            }
+        #welcomeMessage {
+            font-size: 1.3rem;
+            margin-right: 0.5rem;
+        }
 
-            .header {
-                flex-direction: column;
-                gap: 1rem;
-            }
-
-            .status-row {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-
-            .status-label {
-                min-width: auto;
-            }
+        .note a {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
     </style>
 </head>
@@ -426,115 +164,100 @@
                 <option value="es">Español</option>
             </select>
         </div>
-
-        <div class="logo-title">
-            <img src="https://raw.githubusercontent.com/OpenNHP/opennhp/main/docs/images/logo10.png" alt="OpenNHP Logo">
-            <h1 id="title">OpenNHP Demo - Authentication</h1>
-        </div>
-
-        <div class="server-info">
-            <div class="server-url-row">
-                <span id="protectedServer">The Protected Server: </span>
-                <a href="https://acdemo.opennhp.org" target="_blank">https://acdemo.opennhp.org</a>
-                <a href="https://dnschecker.org/port-scanner.php?query=acdemo.opennhp.org" target="_blank" class="scan-link" id="scanPorts">Scan Ports</a>
+        <h1 id="title">OpenNHP Demo</h1>
+        <div class="status">
+            <p class="note">
+                <span id="protectedServer">The Protected Server is</span> 
+                <a href="https://acdemo.opennhp.org" target="_blank">https://acdemo.opennhp.org</a>. 
+                (<a href="https://dnschecker.org/port-scanner.php?query=acdemo.opennhp.org" target="_blank" id="scanPorts">Scan Its Ports &gt;&gt;</a>)
+            </p>
+            <div class="status-item">
+                <span class="status-label" id="beforeLogin">Before Login: </span>
+                <span class="status-value timeout" id="timeoutStatus">Connection to the Protected Server should be <strong>TIMEOUT. ❌</strong></span>
             </div>
-            <div class="status-grid">
-                <div class="status-row">
-                    <span class="status-label" id="beforeLogin">Before Login:</span>
-                    <span class="status-value timeout" id="timeoutStatus">Connection Timeout, Invisible ❌</span>
-                </div>
-                <div class="status-row">
-                    <span class="status-label" id="afterLogin">After Login:</span>
-                    <span class="status-value success" id="successStatus">ACCESSIBLE ✅</span>
-                </div>
+            <div class="status-item">
+                <span class="status-label" id="afterLogin">After Login: </span>
+                <span class="status-value success" id="successStatus">Connection to the Protected Server should be <strong>SUCCESSFUL. ✅</strong></span>
             </div>
-        </div>
-
-        <form id="loginForm" class="login-form" onsubmit="return nhpValidate()">
+        </div>     
+        <form id="loginForm" onsubmit="return nhpValidate()">
             <div class="input-group">
                 <label for="username" id="usernameLabel">Username:</label>
-                <input type="text" id="username" name="username" value="user" autocomplete="username">
+                <input type="text" id="username" name="username" value="user">
             </div>
             <div class="input-group">
                 <label for="password" id="passwordLabel">Password:</label>
-                <input type="password" id="password" name="password" value="password" autocomplete="current-password">
+                <input type="password" id="password" name="password" value="password">
             </div>
-            <button type="submit" class="login-btn" id="loginButton">Login</button>
+            <button type="submit" id="loginButton">Login</button>
         </form>
-
-        
         <div id="message">
             <h2 id="authSuccessMessage"></h2>
+
             <div class="message-content">
-                <span id="redirectMessage"></span>
+                <span id="redirectMessage"></span> 
                 <a href="" id="redirectUrl"></a>
             </div>
             <div class="countdown-container">
-                <span id="welcomeMessage"></span>
+                <div id="welcomeMessage"></div> 
                 <span id="countdown">5</span>
                 <span id="timeUnit"></span>
             </div>
-        </div>
-
-        <div class="ip-display">
-            <span id="ip-display">Detecting IP...</span>
-        </div>
-
-        <div class="footer">
-            <p>Powered by <a href="https://github.com/OpenNHP/opennhp" target="_blank">OpenNHP</a> - Network-infrastructure Hiding Protocol</p>
-            <p>Sponsored by: <a href="https://layerv.ai" target="_blank">LayerV.ai</a></p>
+        </div> 
+        <div class="countdown-container">
+        <div id="ip-display" class="color: #777;">Fetching IP...</div>
         </div>
     </div>
 
     <script>
         const translations = {
             en: {
-                title: "OpenNHP Demo - Authentication",
+                title: "OpenNHP Demo",
                 protectedServer: "The Protected Server is",
-                scanPorts: "Scan Ports",
+                scanPorts: "Scan Its Ports >>",
                 beforeLogin: "Before Login:",
                 afterLogin: "After Login:",
-                timeoutStatus: "Connection Timeout, Invisible ❌",
-                successStatus: "ACCESSIBLE ✅",
+                timeoutStatus: "Connection to the Protected Server should be TIMEOUT. ❌",
+                successStatus: "Connection to the Protected Server should be SUCCESSFUL. ✅",
                 usernameLabel: "Username:",
                 passwordLabel: "Password:",
                 loginButton: "Login",
                 authSuccess: "Authentication Succeeded!",
                 redirectMessage: "You can now access",
-                timeUnit: "seconds",
+                timeUnit: "   seconds ...",
                 welcomeMessage: "Redirecting in"
             },
             zh: {
-                title: "OpenNHP 演示 - 身份认证",
+                title: "OpenNHP 演示",
                 protectedServer: "受保护的服务器是",
-                scanPorts: "扫描端口",
+                scanPorts: "扫描其端口 >>",
                 beforeLogin: "登录前：",
                 afterLogin: "登录后：",
-                timeoutStatus: "连接超时，不可见 ❌",
-                successStatus: "可访问 ✅",
+                timeoutStatus: "与受保护服务器的连接应为超时。❌",
+                successStatus: "与受保护服务器的连接应该成功。✅",
                 usernameLabel: "用户名：",
                 passwordLabel: "密码：",
                 loginButton: "登录",
                 authSuccess: "认证成功！",
                 redirectMessage: "您现在可以访问",
-                timeUnit: "秒后跳转",
+                timeUnit: "   秒后自动跳转...",
                 welcomeMessage: ""
             },
             es: {
-                title: "OpenNHP Demo - Autenticación",
+                title: "Demostración de OpenNHP",
                 protectedServer: "El Servidor Protegido es",
-                scanPorts: "Escanear",
-                beforeLogin: "Antes:",
-                afterLogin: "Después:",
-                timeoutStatus: "Tiempo de Espera, Invisible ❌",
-                successStatus: "ACCESIBLE ✅",
-                usernameLabel: "Usuario:",
+                scanPorts: "Escanear Sus Puertos >>",
+                beforeLogin: "Antes del Inicio de Sesión:",
+                afterLogin: "Después del Inicio de Sesión:",
+                timeoutStatus: "La conexión al Servidor Protegido debe ser TIEMPO DE ESPERA. ❌",
+                successStatus: "La conexión al Servidor Protegido debe ser EXITOSA. ✅",
+                usernameLabel: "Nombre de Usuario:",
                 passwordLabel: "Contraseña:",
                 loginButton: "Iniciar Sesión",
                 authSuccess: "¡Autenticación Exitosa!",
                 redirectMessage: "Ahora puedes acceder a",
-                timeUnit: "segundos",
-                welcomeMessage: "Redirigiendo en"
+                timeUnit: "   segundo...",
+                welcomeMessage: "Saltar automáticamente después de"
             }
         };
 
@@ -565,106 +288,78 @@
             const user = document.getElementById("username").value;
             const password = document.getElementById("password").value;
             const nhpValidUrl = "https://nhp.opennhp.org/plugins/example?resid=demo&action=valid" + 
-                "&username=" + encodeURIComponent(user) + 
-                "&password=" + encodeURIComponent(password);
+            "&username=" + encodeURIComponent(user) + 
+            "&password=" + encodeURIComponent(password);
             console.log(nhpValidUrl);
 
-            // Show loading state
-            const loginBtn = document.getElementById('loginButton');
-            const originalText = loginBtn.textContent;
-            loginBtn.textContent = '...';
-            loginBtn.disabled = true;
-
             fetch(nhpValidUrl)
-                .then(response => response.json())
-                .then(result => {
-                    console.log(result);
-                    const lang = document.getElementById('languageSelect').value;
-                    const t = translations[lang];
-                    const messageElement = document.getElementById("message");
-                    const authSuccessMessageElement = document.getElementById("authSuccessMessage");
-                    const welcomeMessageElement = document.getElementById("welcomeMessage");
-                    const redirectMessageElement = document.getElementById("redirectMessage");
-                    const redirectUrlElement = document.getElementById("redirectUrl");
-                    const timeUnitElement = document.getElementById('timeUnit');
+            .then(response => response.json())
+            .then(result => {
+                console.log(result);
+                const lang = document.getElementById('languageSelect').value;  
+                const t = translations[lang];  
+                const messageElement = document.getElementById("message");
+                const authSuccessMessageElement = document.getElementById("authSuccessMessage");
+                const welcomeMessageElement = document.getElementById("welcomeMessage");
+                const redirectMessageElement = document.getElementById("redirectMessage");
+                const redirectUrlElement = document.getElementById("redirectUrl");
+                const timeUnitElement = document.getElementById('timeUnit');
 
-                    if (result && result.redirectUrl) {
-                        document.getElementById('languageSelectContainer').style.display = 'none';
-                        document.querySelector('.server-info').style.display = 'none';
+                if (result && result.redirectUrl) {
 
-                        redirectUrlElement.href = result.redirectUrl;
-                        redirectUrlElement.textContent = result.redirectUrl;
-                        authSuccessMessageElement.textContent = t.authSuccess;
-                        welcomeMessageElement.textContent = t.welcomeMessage;
-                        redirectMessageElement.textContent = t.redirectMessage + ' ';
-                        messageElement.style.display = 'block';
-                        document.getElementById("loginForm").style.display = "none";
+                    document.getElementById('languageSelectContainer').style.display = 'none';
 
-                        let countdown = 5;
-                        const countdownElement = document.getElementById('countdown');
-                        const intervalId = setInterval(() => {
-                            countdown -= 1;
-                            if (countdown <= 0) {
-                                clearInterval(intervalId);
-                                window.location.href = result.redirectUrl;
-                            } else {
-                                countdownElement.textContent = countdown;
-                            }
-                        }, 1000);
-                        timeUnitElement.textContent = ' ' + t.timeUnit;
-                    } else {
-                        loginBtn.textContent = originalText;
-                        loginBtn.disabled = false;
-                        if (result.errMsg) {
-                            alert(result.errMsg);
+                    redirectUrlElement.href = result.redirectUrl;
+                    redirectUrlElement.textContent = result.redirectUrl;
+                    authSuccessMessageElement.textContent = t.authSuccess;
+                    welcomeMessageElement.textContent = t.welcomeMessage; 
+                    redirectMessageElement.textContent = t.redirectMessage;
+                    messageElement.style.display = 'block';
+                    document.getElementById("loginForm").style.display = "none"; 
+
+                    let countdown = 5;
+                    const countdownElement = document.getElementById('countdown');
+                    const intervalId = setInterval(() => {
+                        countdown -= 1;
+                        if (countdown <= 0) {
+                            clearInterval(intervalId);
+                            window.location.href = result.redirectUrl;
                         } else {
-                            alert("Invalid username or password");
+                            countdownElement.textContent = countdown;
                         }
+                    }, 1000);
+                    timeUnitElement.textContent = t.timeUnit;
+
+                } else {
+                    if (result.errMsg) {
+                        alert(result.errMsg);
+                    } else {
+                        alert("Invalid username or password");
                     }
-                })
-                .catch(error => {
-                    loginBtn.textContent = originalText;
-                    loginBtn.disabled = false;
-                    alert(error.message);
-                });
-            return false;
+                }
+            })
+            .catch(error => {
+                alert(error.message);
+            });
+            return false; 
         }
 
         document.addEventListener('DOMContentLoaded', () => {
             const userLang = navigator.language || navigator.userLanguage;
             const lang = userLang.startsWith('es') ? 'es' : (userLang.startsWith('zh') ? 'zh' : 'en');
             document.getElementById('languageSelect').value = lang;
-            changeLanguage();
+            changeLanguage(); 
             fetchIP();
         });
-
+    
         async function fetchIP() {
-            const ipDisplay = document.getElementById('ip-display');
-            let ipv4 = null, ipv6 = null;
-
-            // Fetch IPv4
             try {
-                const res = await fetch('https://api.ipify.org?format=json');
-                const data = await res.json();
-                ipv4 = data.ip;
-            } catch (e) { console.error("IPv4 fetch error:", e); }
-
-            // Fetch IPv6
-            try {
-                const res = await fetch('https://api6.ipify.org?format=json');
-                const data = await res.json();
-                ipv6 = data.ip;
-            } catch (e) { console.error("IPv6 fetch error:", e); }
-
-            // Display results
-            if (ipv4 && ipv6) {
-                ipDisplay.innerHTML = `IPv4: ${ipv4} | IPv6: ${ipv6}`;
-            } else if (ipv4) {
-                ipDisplay.textContent = `IPv4: ${ipv4}`;
-            } else if (ipv6) {
-                ipDisplay.textContent = `IPv6: ${ipv6}`;
-            } else {
-                ipDisplay.textContent = "IP detection failed";
+                                    const response = await fetch('https://ipinfo.io/json');
+                const data = await response.json();
+                document.getElementById('ip-display').textContent = "(IP Address:"+data.ip+")";
+            } catch (error) {
+                document.getElementById('ip-display').textContent = "Failed to get IP, please refresh";
+                console.error("Fetch ip error:", error);
             }
         }
     </script>

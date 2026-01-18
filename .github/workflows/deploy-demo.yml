@@ -267,7 +267,7 @@ jobs:
         run: |
           if [ "${{ github.event.inputs.rebuild }}" == "yes" ]; then
             echo "📦 Deploying newly built binary and plugins to ${{ matrix.server }}..."
-            BINARY_PATH="./binaries/nhp-serverd"
+            BINARY_PATH="./binaries/endpoints/nhp-serverd"
           else
             echo "⚠️  Binary deployment requested but rebuild=no"
             echo "Skipping binary deployment (no binary to deploy)"
@@ -276,6 +276,8 @@ jobs:
 
           if [ ! -f "$BINARY_PATH" ]; then
             echo "❌ Binary file not found at $BINARY_PATH"
+            echo "Available files in binaries:"
+            find ./binaries -type f 2>/dev/null || echo "binaries directory not found"
             exit 1
           fi
 

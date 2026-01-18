@@ -148,6 +148,7 @@ jobs:
           if [ -d examples/server_plugin/basic ]; then
             echo "Building basic plugin..."
             cd examples/server_plugin/basic
+            go mod tidy
             CGO_ENABLED=1 go build -buildmode=plugin -trimpath -ldflags "-s -w" -v -o ../../../build/plugins/example.so ./main.go
             cd ../../..
             echo "✅ Basic plugin built"
@@ -157,6 +158,7 @@ jobs:
           if [ -d examples/server_plugin/authenticator ]; then
             echo "Building authenticator plugin..."
             cd examples/server_plugin/authenticator
+            go mod tidy
             CGO_ENABLED=1 go build -buildmode=plugin -trimpath -ldflags "-s -w" -v -o ../../../build/plugins/qrauth.so ./main.go ./qrauth.go
             cd ../../..
             echo "✅ Authenticator plugin built"

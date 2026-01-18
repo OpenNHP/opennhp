@@ -222,6 +222,7 @@ jobs:
           if [ -d examples/server_plugin/basic ]; then
             echo "Building basic plugin..."
             cd examples/server_plugin/basic
+            go mod tidy
             go build -buildmode=plugin -trimpath -ldflags "-s -w" -v -o ../../../output/nhp-server/plugins/example/example.so ./main.go
             mkdir -p ../../../output/nhp-server/plugins/example/etc
             cp ./etc/*.toml ../../../output/nhp-server/plugins/example/etc/
@@ -235,6 +236,7 @@ jobs:
           if [ -d examples/server_plugin/authenticator ]; then
             echo "Building authenticator plugin..."
             cd examples/server_plugin/authenticator
+            go mod tidy
             go build -buildmode=plugin -trimpath -ldflags "-s -w" -v -o ../../../output/nhp-server/plugins/qrauth/qrauth.so ./main.go ./qrauth.go
             mkdir -p ../../../output/nhp-server/plugins/qrauth/etc
             cp ./etc/*.toml ../../../output/nhp-server/plugins/qrauth/etc/

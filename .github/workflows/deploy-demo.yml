@@ -1,0 +1,149 @@
+# Deploy templates to Demo servers
+# This workflow deploys templates to demo NHP servers
+
+name: Deploy Demo
+
+on:
+  workflow_dispatch:  # Manual trigger only
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm deployment'
+        required: true
+        default: ''
+
+env:
+  DEPLOY_USER: ec2-user
+  DEPLOY_PATH: /home/ec2-user/nhp-server/templates
+  TEMPLATES_SOURCE: docker/nhp-server/templates
+
+jobs:
+  deploy-templates:
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        server: ${{ fromJson(vars.DEMO_NHP_SERVERS) }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Validate server hostname
+        run: |
+          SERVER="${{ matrix.server }}"
+
+          # RFC 1123 hostname validation: alphanumeric, hyphens, dots
+          # Max 253 chars total, max 63 chars per label
+          if ! echo "$SERVER" | grep -qE '^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$'; then
+            echo "❌ SECURITY ERROR: Invalid hostname format: $SERVER"
+            echo "Hostnames must comply with RFC 1123"
+            exit 1
+          fi
+
+          # Block shell metacharacters
+          if echo "$SERVER" | grep -qE '[$`();&|<>{}\\]'; then
+            echo "❌ SECURITY ERROR: Hostname contains shell metacharacters: $SERVER"
+            exit 1
+          fi
+
+          # Length validation
+          if [ ${#SERVER} -gt 253 ]; then
+            echo "❌ SECURITY ERROR: Hostname exceeds 253 characters"
+            exit 1
+          fi
+
+          echo "✅ Hostname validation passed: $SERVER"
+
+      - name: Setup SSH key and known hosts
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          # Write SSH private key
+          echo "${{ secrets.DEMO_NHP_SERVER_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # Setup known_hosts - MUST be pre-configured to prevent MITM attacks
+          if [ -z "${{ secrets.DEMO_NHP_SERVER_HOST_KEYS }}" ]; then
+            echo "❌ SECURITY ERROR: DEMO_NHP_SERVER_HOST_KEYS secret is not configured"
+            echo "Host keys must be pre-configured to prevent MITM attacks"
+            echo "Please configure the secret with known_hosts entries for all demo servers"
+            exit 1
+          fi
+
+          echo "${{ secrets.DEMO_NHP_SERVER_HOST_KEYS }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          echo "✅ Host keys loaded from secret"
+
+      - name: Verify SSH connection
+        run: |
+          echo "Verifying SSH connection to ${{ matrix.server }}..."
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o BatchMode=yes \
+            -o ConnectTimeout=10 \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+            "echo 'SSH connection successful'"
+          if [ $? -ne 0 ]; then
+            echo "❌ SSH connection verification failed"
+            exit 1
+          fi
+
+      - name: Deploy templates to ${{ matrix.server }}
+        run: |
+          echo "Deploying templates to ${{ matrix.server }}..."
+          
+          # Sync templates directory with proper SSH options
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes" \
+            ${{ env.TEMPLATES_SOURCE }}/ \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Templates deployed successfully to ${{ matrix.server }}"
+          else
+            echo "❌ Deployment failed"
+            exit 1
+          fi
+
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment on ${{ matrix.server }}..."
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o BatchMode=yes \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+            "ls -la ${{ env.DEPLOY_PATH }}/"
+          
+          if [ $? -ne 0 ]; then
+            echo "❌ Deployment verification failed"
+            exit 1
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts ~/.ssh/known_hosts.tmp
+          rmdir ~/.ssh 2>/dev/null || true
+
+  summary:
+    needs: deploy-templates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: always()
+    steps:
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Deployment Summary"
+          echo ""
+          echo "| Item | Value |"
+          echo "|------|-------|"
+          echo "| **Commit** | ${{ github.sha }} |"
+          echo "| **Branch** | ${{ github.ref_name }} |"
+          echo "| **Triggered by** | ${{ github.actor }} |"
+          echo "| **Time** | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |"

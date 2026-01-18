@@ -230,13 +230,7 @@ jobs:
 
           if [ -d release/nhp-server ]; then
             cp -r release/nhp-server output/
-            # Copy templates directory if it exists
-            if [ -d docker/nhp-server/templates ]; then
-              mkdir -p output/nhp-server/templates
-              cp -r docker/nhp-server/templates/* output/nhp-server/templates/
-              echo "✅ Templates copied to output/nhp-server"
-            fi
-            echo "✅ nhp-server copied to output"
+            echo "✅ nhp-server copied to output (includes Makefile-built plugin templates)"
           fi
 
           if [ -d release/nhp-db ]; then

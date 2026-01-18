@@ -127,53 +127,55 @@ jobs:
               print(f"✅ Successfully cloned to {path}")
           EOF
 
-      - name: Go mod tidy
+      - name: Build using make
+        env:
+          CUSTOM_LD_FLAGS: ${{ steps.ldflags.outputs.ldflags }}
         run: |
-          cd nhp && go mod tidy
-          cd ../endpoints && go mod tidy
+          echo "🔨 Building nhp-serverd and plugins..."
 
-      - name: Build nhp-serverd
+          # Initialize and build
+          make init
+          make serverd plugins
+
+          echo "✅ Build completed successfully"
+
+      - name: Prepare deployment artifacts
         run: |
-          cd endpoints
-          CGO_ENABLED=1 go build -trimpath -ldflags "${{ steps.ldflags.outputs.ldflags }}" -v -o nhp-serverd ./server/main/main.go
-          chmod +x nhp-serverd
-          echo "✅ nhp-serverd built successfully"
+          echo "📦 Preparing deployment artifacts..."
+          mkdir -p deploy
 
-      - name: Build server plugins
-        run: |
-          echo "🔌 Building server plugins..."
-          mkdir -p build/plugins
-
-          # Build basic plugin
-          if [ -d examples/server_plugin/basic ]; then
-            echo "Building basic plugin..."
-            cd examples/server_plugin/basic
-            go mod tidy
-            CGO_ENABLED=1 go build -buildmode=plugin -trimpath -ldflags "-s -w" -v -o ../../../build/plugins/example.so ./main.go
-            cd ../../..
-            echo "✅ Basic plugin built"
+          # Copy nhp-serverd binary
+          if [ -f release/nhp-server/nhp-serverd ]; then
+            cp release/nhp-server/nhp-serverd deploy/
+            chmod +x deploy/nhp-serverd
+            echo "✅ nhp-serverd copied"
+          else
+            echo "❌ nhp-serverd not found"
+            exit 1
           fi
 
-          # Build authenticator plugin
-          if [ -d examples/server_plugin/authenticator ]; then
-            echo "Building authenticator plugin..."
-            cd examples/server_plugin/authenticator
-            go mod tidy
-            CGO_ENABLED=1 go build -buildmode=plugin -trimpath -ldflags "-s -w" -v -o ../../../build/plugins/authenticator.so ./main.go ./qrauth.go
-            cd ../../..
-            echo "✅ Authenticator plugin built"
+          # Copy plugin .so files (not config files)
+          mkdir -p deploy/plugins
+          if [ -f release/nhp-server/plugins/example/example.so ]; then
+            mkdir -p deploy/plugins/example
+            cp release/nhp-server/plugins/example/example.so deploy/plugins/example/
+            echo "✅ example.so copied"
           fi
 
-          ls -la build/plugins/
-          echo "✅ All plugins built successfully"
+          if [ -f release/nhp-server/plugins/authenticator/authenticator.so ]; then
+            mkdir -p deploy/plugins/authenticator
+            cp release/nhp-server/plugins/authenticator/authenticator.so deploy/plugins/authenticator/
+            echo "✅ authenticator.so copied"
+          fi
+
+          ls -la deploy/
+          ls -la deploy/plugins/ 2>/dev/null || true
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v6
         with:
           name: nhp-serverd-linux-amd64
-          path: |
-            endpoints/nhp-serverd
-            build/plugins/*.so
+          path: deploy/
           retention-days: 1
 
   deploy-to-servers:
@@ -267,7 +269,7 @@ jobs:
         run: |
           if [ "${{ github.event.inputs.rebuild }}" == "yes" ]; then
             echo "📦 Deploying newly built binary and plugins to ${{ matrix.server }}..."
-            BINARY_PATH="./binaries/endpoints/nhp-serverd"
+            BINARY_PATH="./binaries/nhp-serverd"
           else
             echo "⚠️  Binary deployment requested but rebuild=no"
             echo "Skipping binary deployment (no binary to deploy)"
@@ -327,7 +329,7 @@ jobs:
 
           # Deploy plugins (.so files only, not config files)
           echo "🔌 Deploying plugins..."
-          if [ -d ./binaries/build/plugins ]; then
+          if [ -d ./binaries/plugins ]; then
             # Create plugins directory structure on server
             ssh -i ~/.ssh/deploy_key \
               -o StrictHostKeyChecking=yes \
@@ -337,25 +339,25 @@ jobs:
               "mkdir -p ${{ env.DEPLOY_PATH }}/plugins/example ${{ env.DEPLOY_PATH }}/plugins/authenticator"
 
             # Deploy example plugin
-            if [ -f ./binaries/build/plugins/example.so ]; then
+            if [ -f ./binaries/plugins/example/example.so ]; then
               echo "Deploying example.so..."
               scp -i ~/.ssh/deploy_key \
                 -o StrictHostKeyChecking=yes \
                 -o UserKnownHostsFile=~/.ssh/known_hosts \
                 -o BatchMode=yes \
-                ./binaries/build/plugins/example.so \
+                ./binaries/plugins/example/example.so \
                 ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/example/example.so
               echo "✅ example.so deployed"
             fi
 
             # Deploy authenticator plugin
-            if [ -f ./binaries/build/plugins/authenticator.so ]; then
+            if [ -f ./binaries/plugins/authenticator/authenticator.so ]; then
               echo "Deploying authenticator.so..."
               scp -i ~/.ssh/deploy_key \
                 -o StrictHostKeyChecking=yes \
                 -o UserKnownHostsFile=~/.ssh/known_hosts \
                 -o BatchMode=yes \
-                ./binaries/build/plugins/authenticator.so \
+                ./binaries/plugins/authenticator/authenticator.so \
                 ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/authenticator/authenticator.so
               echo "✅ authenticator.so deployed"
             fi

@@ -168,6 +168,15 @@ jobs:
             echo "✅ authenticator.so copied"
           fi
 
+          # Copy templates (built by make plugins)
+          if [ -d release/nhp-server/templates ]; then
+            cp -r release/nhp-server/templates deploy/
+            echo "✅ Templates copied (from Makefile build)"
+            ls -la deploy/templates/
+          else
+            echo "⚠️  No templates found in release/nhp-server/templates"
+          fi
+
           ls -la deploy/
           ls -la deploy/plugins/ 2>/dev/null || true
 
@@ -382,10 +391,19 @@ jobs:
         run: |
           echo "Deploying templates to ${{ matrix.server }}..."
 
+          # Determine templates source
+          if [ "${{ github.event.inputs.rebuild }}" == "yes" ] && [ -d ./binaries/templates ]; then
+            TEMPLATES_SOURCE="./binaries/templates"
+            echo "📦 Using Makefile-built templates from artifact"
+          else
+            TEMPLATES_SOURCE="${{ env.TEMPLATES_SOURCE }}"
+            echo "📦 Using docker templates (fallback)"
+          fi
+
           # Sync templates directory with proper SSH options
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes" \
-            ${{ env.TEMPLATES_SOURCE }}/ \
+            "$TEMPLATES_SOURCE/" \
             ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/templates/
 
           if [ $? -eq 0 ]; then

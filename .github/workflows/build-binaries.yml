@@ -237,11 +237,11 @@ jobs:
             echo "Building authenticator plugin..."
             cd examples/server_plugin/authenticator
             go mod tidy
-            go build -buildmode=plugin -trimpath -ldflags "-s -w" -v -o ../../../output/nhp-server/plugins/qrauth/qrauth.so ./main.go ./qrauth.go
-            mkdir -p ../../../output/nhp-server/plugins/qrauth/etc
-            cp ./etc/*.toml ../../../output/nhp-server/plugins/qrauth/etc/
-            mkdir -p ../../../output/nhp-server/templates/qrauth
-            cp ./templates/*.* ../../../output/nhp-server/templates/qrauth/ 2>/dev/null || true
+            go build -buildmode=plugin -trimpath -ldflags "-s -w" -v -o ../../../output/nhp-server/plugins/authenticator/authenticator.so ./main.go ./qrauth.go
+            mkdir -p ../../../output/nhp-server/plugins/authenticator/etc
+            cp ./etc/*.toml ../../../output/nhp-server/plugins/authenticator/etc/
+            mkdir -p ../../../output/nhp-server/templates/authenticator
+            cp ./templates/*.* ../../../output/nhp-server/templates/authenticator/ 2>/dev/null || true
             cd ../../..
             echo "✅ Authenticator plugin built"
           fi

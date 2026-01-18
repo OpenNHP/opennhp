@@ -159,7 +159,7 @@ jobs:
             echo "Building authenticator plugin..."
             cd examples/server_plugin/authenticator
             go mod tidy
-            CGO_ENABLED=1 go build -buildmode=plugin -trimpath -ldflags "-s -w" -v -o ../../../build/plugins/qrauth.so ./main.go ./qrauth.go
+            CGO_ENABLED=1 go build -buildmode=plugin -trimpath -ldflags "-s -w" -v -o ../../../build/plugins/authenticator.so ./main.go ./qrauth.go
             cd ../../..
             echo "✅ Authenticator plugin built"
           fi
@@ -334,7 +334,7 @@ jobs:
               -o UserKnownHostsFile=~/.ssh/known_hosts \
               -o BatchMode=yes \
               ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
-              "mkdir -p ${{ env.DEPLOY_PATH }}/plugins/example ${{ env.DEPLOY_PATH }}/plugins/qrauth"
+              "mkdir -p ${{ env.DEPLOY_PATH }}/plugins/example ${{ env.DEPLOY_PATH }}/plugins/authenticator"
 
             # Deploy example plugin
             if [ -f ./binaries/build/plugins/example.so ]; then
@@ -348,16 +348,16 @@ jobs:
               echo "✅ example.so deployed"
             fi
 
-            # Deploy qrauth plugin
-            if [ -f ./binaries/build/plugins/qrauth.so ]; then
-              echo "Deploying qrauth.so..."
+            # Deploy authenticator plugin
+            if [ -f ./binaries/build/plugins/authenticator.so ]; then
+              echo "Deploying authenticator.so..."
               scp -i ~/.ssh/deploy_key \
                 -o StrictHostKeyChecking=yes \
                 -o UserKnownHostsFile=~/.ssh/known_hosts \
                 -o BatchMode=yes \
-                ./binaries/build/plugins/qrauth.so \
-                ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/qrauth/qrauth.so
-              echo "✅ qrauth.so deployed"
+                ./binaries/build/plugins/authenticator.so \
+                ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/authenticator/authenticator.so
+              echo "✅ authenticator.so deployed"
             fi
 
             echo "✅ All plugins deployed"

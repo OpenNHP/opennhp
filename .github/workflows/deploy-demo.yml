@@ -366,13 +366,13 @@ jobs:
           fi
 
           # Start the service
-          echo "Starting nhp-server service..."
+          echo "Starting nhp-serverd service..."
           ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             -o BatchMode=yes \
             ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
-            "sudo systemctl start nhp-server"
+            "sudo systemctl start nhp-serverd"
 
           echo "✅ Binary and plugins deployed successfully to ${{ matrix.server }}"
 

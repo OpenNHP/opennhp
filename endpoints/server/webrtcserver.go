@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -670,6 +671,7 @@ func (w *WebRTCServer) sendError(client *WebSocketClient, errMsg string) {
 // removeClient removes a client and cleans up resources
 func (w *WebRTCServer) removeClient(client *WebSocketClient) {
 	client.closeOnce.Do(func() {
+		close(client.sendCh)
 		close(client.closeCh)
 
 		w.clientsMu.Lock()
@@ -719,9 +721,12 @@ func generateClientID() string {
 func randomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		//panic(err) // or handle appropriately
+		return "0"
+	}
 	for i := range b {
-		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
-		time.Sleep(time.Nanosecond) // ensure different values
+		b[i] = letters[b[i]%byte(len(letters))]
 	}
 	return string(b)
 }

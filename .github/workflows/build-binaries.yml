@@ -194,13 +194,27 @@ jobs:
           for component in "${COMPONENTS[@]}"; do
             component=$(echo "$component" | tr -d ' ')  # Trim whitespace
             case "$component" in
-              agentd|acd|serverd|db|kgc|plugins)
+              agentd|acd|serverd|db|kgc)
                 echo "Building $component..."
                 make $component
                 ;;
+              plugins)
+                # Go plugins are not supported on Windows
+                if [ "${{ matrix.goos }}" != "windows" ]; then
+                  echo "Building $component..."
+                  make $component
+                else
+                  echo "⚠️  Skipping plugins build on Windows (not supported by Go)"
+                fi
+                ;;
               all)
                 echo "Building all components..."
-                make agentd acd serverd db kgc plugins
+                if [ "${{ matrix.goos }}" != "windows" ]; then
+                  make agentd acd serverd db kgc plugins
+                else
+                  echo "⚠️  Building without plugins on Windows (not supported by Go)"
+                  make agentd acd serverd db kgc
+                fi
                 break
                 ;;
               *)

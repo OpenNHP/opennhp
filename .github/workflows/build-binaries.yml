@@ -115,6 +115,8 @@ jobs:
           import sys
           import subprocess
           import re
+          import tempfile
+          import stat
 
           repos_json = os.environ.get('REPOS_JSON', '[]')
           token = os.environ.get('PLUGIN_TOKEN', '')
@@ -127,6 +129,22 @@ jobs:
 
           # Strict ref pattern (security: only allow safe branch/tag names)
           SAFE_REF_PATTERN = re.compile(r'^[a-zA-Z0-9_.-]+$')
+
+          def create_credential_helper(token_value):
+              """Create a secure temporary credential helper script."""
+              fd, path = tempfile.mkstemp(suffix='.sh', prefix='git_cred_')
+              try:
+                  with os.fdopen(fd, 'w') as f:
+                      f.write('#!/bin/sh\n')
+                      f.write('echo "username=x-access-token"\n')
+                      f.write(f'echo "password={token_value}"\n')
+                  # Set permissions to owner-only executable (0700)
+                  os.chmod(path, stat.S_IRWXU)
+                  return path
+              except:
+                  os.close(fd)
+                  os.unlink(path)
+                  raise
 
           try:
               repos = json.loads(repos_json)
@@ -157,45 +175,37 @@ jobs:
                   print(f"❌ Invalid ref (only alphanumeric, dash, underscore, dot allowed): {ref}")
                   sys.exit(1)
 
-              # Store original URL for logging (without token)
-              original_url = url
+              print(f"📥 Cloning {url} (ref: {ref}) to {path}")
 
-              # Use git credential helper to avoid token in process listing
-              env = os.environ.copy()
-              if token:
-                  # Configure git to use token via credential helper
-                  env['GIT_ASKPASS'] = '/bin/echo'
-                  env['GIT_USERNAME'] = 'x-access-token'
-                  env['GIT_PASSWORD'] = token
-                  # Modify URL to trigger credential helper
-                  clone_url = url
-              else:
-                  clone_url = url
+              # Use secure credential helper approach (token not in command line)
+              helper_script = None
+              try:
+                  if token:
+                      # Create temporary credential helper script
+                      helper_script = create_credential_helper(token)
+                      result = subprocess.run(
+                          ['git', 'clone', '--depth', '1', '--branch', ref,
+                           '-c', f'credential.helper={helper_script}',
+                           url, path],
+                          capture_output=True, text=True
+                      )
+                  else:
+                      result = subprocess.run(
+                          ['git', 'clone', '--depth', '1', '--branch', ref, url, path],
+                          capture_output=True, text=True
+                      )
 
-              print(f"📥 Cloning {original_url} (ref: {ref}) to {path}")
+                  if result.returncode != 0:
+                      # Sanitize error message to avoid token leakage
+                      error_msg = result.stderr.replace(token, '***') if token else result.stderr
+                      print(f"❌ Failed: {error_msg}")
+                      sys.exit(1)
 
-              # Use credential helper approach
-              if token:
-                  # Set up credential helper for this clone
-                  result = subprocess.run(
-                      ['git', 'clone', '--depth', '1', '--branch', ref,
-                       '-c', f'credential.helper=!f() {{ echo "username=x-access-token"; echo "password={token}"; }}; f',
-                       url, path],
-                      capture_output=True, text=True, env=env
-                  )
-              else:
-                  result = subprocess.run(
-                      ['git', 'clone', '--depth', '1', '--branch', ref, url, path],
-                      capture_output=True, text=True
-                  )
-
-              if result.returncode != 0:
-                  # Sanitize error message to avoid token leakage
-                  error_msg = result.stderr.replace(token, '***') if token else result.stderr
-                  print(f"❌ Failed: {error_msg}")
-                  sys.exit(1)
-
-              print(f"✅ Successfully cloned to {path}")
+                  print(f"✅ Successfully cloned to {path}")
+              finally:
+                  # Securely delete the credential helper script
+                  if helper_script and os.path.exists(helper_script):
+                      os.unlink(helper_script)
           EOF
 
           echo "✅ All external plugin repositories cloned successfully"

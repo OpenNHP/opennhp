@@ -128,18 +128,18 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 
 		// init header counter
 		mad.header.SetCounter(mad.TransactionId)
-
-		// init chain hash -> ChainHash0
-		mad.chainHash, err = NewHash(mad.ciphers.HashType)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create chain hash: %w", err)
-		}
-		mad.chainHash.Write([]byte(InitialHashString))
-
-		// init chain key -> ChainKey0
-		mad.noise.HashType = mad.ciphers.HashType
-		mad.noise.MixKey(&mad.chainKey, mad.chainHash.Sum(nil), []byte(InitialChainKeyString))
 	}
+
+	// init chain hash -> ChainHash0
+	mad.chainHash, err = NewHash(mad.ciphers.HashType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create chain hash: %w", err)
+	}
+	mad.chainHash.Write([]byte(InitialHashString))
+
+	// init chain key -> ChainKey0
+	mad.noise.HashType = mad.ciphers.HashType
+	mad.noise.MixKey(&mad.chainKey, mad.chainHash.Sum(nil), []byte(InitialChainKeyString))
 
 	// init timestamp
 	mad.LocalInitTime = time.Now().UnixNano()
@@ -176,19 +176,7 @@ func (mad *MsgAssemblerData) derivePacketParserData(pkt *Packet, initTime int64)
 	ppd.header = ppd.basePacket.HeaderWithCipherScheme(ppd.CipherScheme)
 	ppd.Ciphers = NewCipherSuite(ppd.CipherScheme)
 	ppd.deviceEcdh = ppd.device.GetEcdhByCipherScheme(ppd.CipherScheme)
-
-	// init chain hash -> ChainHash0
-	var err error
-	ppd.chainHash, err = NewHash(ppd.Ciphers.HashType)
-	if err != nil {
-		// This should never happen with valid CipherSuite parameters
-		panic(fmt.Sprintf("failed to create chain hash in derivePacketParserData: %v", err))
-	}
-	ppd.chainHash.Write([]byte(InitialHashString))
-
-	// continue with initiator's chain key -> ChainKey4
 	ppd.noise.HashType = mad.ciphers.HashType
-	copy(ppd.chainKey[:], mad.chainKey[:])
 
 	return ppd
 }

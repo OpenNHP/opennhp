@@ -158,11 +158,14 @@ jobs:
               if not url or not path:
                   continue
 
+              # Store original URL for logging (without token)
+              original_url = url
+
               # Add token for GitHub URLs
               if token and 'github.com' in url and url.startswith('https://'):
                   url = url.replace('https://github.com/', f'https://x-access-token:{token}@github.com/')
 
-              print(f"📥 Cloning {repo.get('url')} (ref: {ref}) to {path}")
+              print(f"📥 Cloning {original_url} (ref: {ref}) to {path}")
 
               result = subprocess.run(
                   ['git', 'clone', '--depth', '1', '--branch', ref, url, path],
@@ -186,6 +189,9 @@ jobs:
         run: |
           echo "🔨 Building components: $BUILD_COMPONENTS"
 
+          # Define valid components (whitelist)
+          VALID_COMPONENTS="agentd acd serverd db kgc plugins all"
+
           # Initialize build environment
           make init
 
@@ -193,16 +199,24 @@ jobs:
           IFS=',' read -ra COMPONENTS <<< "$BUILD_COMPONENTS"
           for component in "${COMPONENTS[@]}"; do
             component=$(echo "$component" | tr -d ' ')  # Trim whitespace
+
+            # Validate component name against whitelist (security: prevent command injection)
+            if ! echo "$VALID_COMPONENTS" | grep -qw "$component"; then
+              echo "❌ Invalid component name: $component"
+              echo "   Valid components: $VALID_COMPONENTS"
+              exit 1
+            fi
+
             case "$component" in
               agentd|acd|serverd|db|kgc)
                 echo "Building $component..."
-                make $component
+                make "$component"
                 ;;
               plugins)
                 # Go plugins are not supported on Windows
                 if [ "${{ matrix.goos }}" != "windows" ]; then
                   echo "Building $component..."
-                  make $component
+                  make "$component"
                 else
                   echo "⚠️  Skipping plugins build on Windows (not supported by Go)"
                 fi
@@ -216,9 +230,6 @@ jobs:
                   make agentd acd serverd db kgc
                 fi
                 break
-                ;;
-              *)
-                echo "⚠️  Unknown component: $component"
                 ;;
             esac
           done
@@ -260,8 +271,9 @@ jobs:
           echo "✅ Output directory prepared"
           ls -la output/
 
-      # Upload each module as independent artifact
+      # Upload each module as independent artifact (only if built)
       - name: Upload nhp-agent artifact
+        if: contains(env.BUILD_COMPONENTS, 'agentd') || contains(env.BUILD_COMPONENTS, 'all')
         uses: actions/upload-artifact@v6
         with:
           name: nhp-agent-${{ matrix.goos }}-${{ matrix.goarch }}
@@ -269,6 +281,7 @@ jobs:
           retention-days: 30
 
       - name: Upload nhp-ac artifact
+        if: contains(env.BUILD_COMPONENTS, 'acd') || contains(env.BUILD_COMPONENTS, 'all')
         uses: actions/upload-artifact@v6
         with:
           name: nhp-ac-${{ matrix.goos }}-${{ matrix.goarch }}
@@ -276,6 +289,7 @@ jobs:
           retention-days: 30
 
       - name: Upload nhp-server artifact
+        if: contains(env.BUILD_COMPONENTS, 'serverd') || contains(env.BUILD_COMPONENTS, 'all')
         uses: actions/upload-artifact@v6
         with:
           name: nhp-server-${{ matrix.goos }}-${{ matrix.goarch }}
@@ -283,6 +297,7 @@ jobs:
           retention-days: 30
 
       - name: Upload nhp-db artifact
+        if: contains(env.BUILD_COMPONENTS, 'db') || contains(env.BUILD_COMPONENTS, 'all')
         uses: actions/upload-artifact@v6
         with:
           name: nhp-db-${{ matrix.goos }}-${{ matrix.goarch }}
@@ -290,6 +305,7 @@ jobs:
           retention-days: 30
 
       - name: Upload nhp-kgc artifact
+        if: contains(env.BUILD_COMPONENTS, 'kgc') || contains(env.BUILD_COMPONENTS, 'all')
         uses: actions/upload-artifact@v6
         with:
           name: nhp-kgc-${{ matrix.goos }}-${{ matrix.goarch }}

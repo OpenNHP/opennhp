@@ -110,10 +110,13 @@ jobs:
               if not url or not path:
                   continue
 
+              # Store original URL for logging (without token)
+              original_url = url
+
               if token and 'github.com' in url and url.startswith('https://'):
                   url = url.replace('https://github.com/', f'https://x-access-token:{token}@github.com/')
 
-              print(f"📥 Cloning {repo.get('url')} (ref: {ref}) to {path}")
+              print(f"📥 Cloning {original_url} (ref: {ref}) to {path}")
 
               result = subprocess.run(
                   ['git', 'clone', '--depth', '1', '--branch', ref, url, path],
@@ -128,6 +131,7 @@ jobs:
           EOF
 
       - name: Build using make
+        shell: bash
         env:
           CUSTOM_LD_FLAGS: ${{ steps.ldflags.outputs.ldflags }}
         run: |
@@ -384,6 +388,29 @@ jobs:
             -o BatchMode=yes \
             ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
             "sudo systemctl start nhp-serverd"
+
+          # Verify service started successfully
+          echo "Verifying service status..."
+          sleep 2
+          SERVICE_STATUS=$(ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o BatchMode=yes \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+            "sudo systemctl is-active nhp-serverd" || true)
+
+          if [ "$SERVICE_STATUS" = "active" ]; then
+            echo "✅ nhp-serverd service is running"
+          else
+            echo "⚠️  Service status: $SERVICE_STATUS"
+            echo "Checking service logs..."
+            ssh -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -o BatchMode=yes \
+              ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+              "sudo journalctl -u nhp-serverd -n 20 --no-pager" || true
+          fi
 
           echo "✅ Binary and plugins deployed successfully to ${{ matrix.server }}"
 

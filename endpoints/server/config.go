@@ -460,13 +460,13 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 	}
 
 	// handle WebRTC configuration change
-	if conf.WebRTC.Enable && s.webrtcServer == nil {
+	if !s.config.WebRTC.Enable && conf.WebRTC.Enable && s.webrtcServer == nil {
 		s.webrtcServer = NewWebRTCServer(s, &conf.WebRTC)
 		if err := s.webrtcServer.Start(); err != nil {
 			log.Error("failed to start WebRTC server: %v", err)
 		}
 	}
-	if !conf.WebRTC.Enable && s.webrtcServer != nil {
+	if s.config.WebRTC.Enable && !conf.WebRTC.Enable && s.webrtcServer != nil {
 		s.webrtcServer.Stop()
 		s.webrtcServer = nil
 	}

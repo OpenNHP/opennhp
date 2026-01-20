@@ -1,5 +1,5 @@
 # Deploy to Demo servers
-# This workflow deploys templates and optionally binaries to demo NHP servers
+# This workflow builds and deploys binaries, plugins, and templates to demo NHP servers
 
 name: Deploy Demo
 
@@ -10,16 +10,8 @@ on:
         description: 'Type "deploy" to confirm deployment'
         required: true
         default: ''
-      rebuild:
-        description: 'Rebuild binaries before deployment'
-        required: true
-        type: choice
-        options:
-          - 'no'
-          - 'yes'
-        default: 'no'
       deploy_binaries:
-        description: 'Deploy binaries (nhp-serverd)'
+        description: 'Deploy binaries (nhp-serverd and plugins)'
         required: true
         type: choice
         options:
@@ -36,7 +28,7 @@ env:
 
 jobs:
   build-binaries:
-    if: github.event.inputs.confirm == 'deploy' && github.event.inputs.rebuild == 'yes'
+    if: github.event.inputs.confirm == 'deploy'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -244,10 +236,7 @@ jobs:
 
   deploy-to-servers:
     needs: [build-binaries]
-    if: |
-      always() &&
-      github.event.inputs.confirm == 'deploy' &&
-      (needs.build-binaries.result == 'success' || needs.build-binaries.result == 'skipped')
+    if: github.event.inputs.confirm == 'deploy' && needs.build-binaries.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -322,14 +311,13 @@ jobs:
           fi
 
       - name: Download built binary
-        if: github.event.inputs.deploy_binaries == 'yes' && github.event.inputs.rebuild == 'yes'
         uses: actions/download-artifact@v6
         with:
           name: nhp-serverd-linux-amd64
           path: ./binaries
 
       - name: Deploy binary to ${{ matrix.server }}
-        if: github.event.inputs.deploy_binaries == 'yes' && github.event.inputs.rebuild == 'yes'
+        if: github.event.inputs.deploy_binaries == 'yes'
         run: |
           echo "📦 Deploying newly built binary and plugins to ${{ matrix.server }}..."
           BINARY_PATH="./binaries/nhp-serverd"
@@ -425,14 +413,45 @@ jobs:
             echo "⚠️  No plugins found in build artifacts"
           fi
 
-          # Start the service
-          echo "Starting nhp-serverd service..."
+          echo "✅ Binary and plugins deployed successfully to ${{ matrix.server }}"
+
+      - name: Deploy templates to ${{ matrix.server }}
+        run: |
+          echo "Deploying templates to ${{ matrix.server }}..."
+
+          # Use templates from build artifacts
+          if [ -d ./binaries/templates ]; then
+            TEMPLATES_SOURCE="./binaries/templates"
+            echo "📦 Using Makefile-built templates from artifact"
+          else
+            TEMPLATES_SOURCE="${{ env.TEMPLATES_SOURCE }}"
+            echo "📦 Using docker templates (fallback)"
+          fi
+
+          # Sync templates directory with proper SSH options
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes" \
+            "$TEMPLATES_SOURCE/" \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/templates/
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Templates deployed successfully to ${{ matrix.server }}"
+          else
+            echo "❌ Deployment failed"
+            exit 1
+          fi
+
+      - name: Restart nhp-serverd on ${{ matrix.server }}
+        run: |
+          echo "🔄 Restarting nhp-serverd service on ${{ matrix.server }}..."
+
+          # Restart the service
           ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             -o BatchMode=yes \
             ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
-            "sudo systemctl start nhp-serverd"
+            "sudo systemctl restart nhp-serverd"
 
           # Verify service started successfully
           echo "Verifying service status..."
@@ -459,33 +478,7 @@ jobs:
             exit 1
           fi
 
-          echo "✅ Binary and plugins deployed successfully to ${{ matrix.server }}"
-
-      - name: Deploy templates to ${{ matrix.server }}
-        run: |
-          echo "Deploying templates to ${{ matrix.server }}..."
-
-          # Determine templates source
-          if [ "${{ github.event.inputs.rebuild }}" == "yes" ] && [ -d ./binaries/templates ]; then
-            TEMPLATES_SOURCE="./binaries/templates"
-            echo "📦 Using Makefile-built templates from artifact"
-          else
-            TEMPLATES_SOURCE="${{ env.TEMPLATES_SOURCE }}"
-            echo "📦 Using docker templates (fallback)"
-          fi
-
-          # Sync templates directory with proper SSH options
-          rsync -avz --delete \
-            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes" \
-            "$TEMPLATES_SOURCE/" \
-            ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/templates/
-
-          if [ $? -eq 0 ]; then
-            echo "✅ Templates deployed successfully to ${{ matrix.server }}"
-          else
-            echo "❌ Deployment failed"
-            exit 1
-          fi
+          echo "✅ nhp-serverd restarted successfully on ${{ matrix.server }}"
 
       - name: Verify deployment
         run: |
@@ -521,7 +514,6 @@ jobs:
           echo ""
           echo "| Item | Value |"
           echo "|------|-------|"
-          echo "| **Rebuild** | ${{ github.event.inputs.rebuild }} |"
           echo "| **Deploy Binaries** | ${{ github.event.inputs.deploy_binaries }} |"
           echo "| **Commit** | ${{ github.sha }} |"
           echo "| **Branch** | ${{ github.ref_name }} |"

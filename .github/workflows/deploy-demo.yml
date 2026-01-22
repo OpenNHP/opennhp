@@ -1,5 +1,5 @@
 # Deploy to Demo servers
-# This workflow deploys templates and optionally binaries to demo NHP servers
+# This workflow builds and deploys binaries, plugins, and templates to demo NHP servers
 
 name: Deploy Demo
 
@@ -10,16 +10,8 @@ on:
         description: 'Type "deploy" to confirm deployment'
         required: true
         default: ''
-      rebuild:
-        description: 'Rebuild binaries before deployment'
-        required: true
-        type: choice
-        options:
-          - 'no'
-          - 'yes'
-        default: 'no'
       deploy_binaries:
-        description: 'Deploy binaries (nhp-serverd)'
+        description: 'Deploy binaries (nhp-serverd and plugins)'
         required: true
         type: choice
         options:
@@ -36,7 +28,7 @@ env:
 
 jobs:
   build-binaries:
-    if: github.event.inputs.confirm == 'deploy' && github.event.inputs.rebuild == 'yes'
+    if: github.event.inputs.confirm == 'deploy'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -186,11 +178,11 @@ jobs:
         env:
           CUSTOM_LD_FLAGS: ${{ steps.ldflags.outputs.ldflags }}
         run: |
-          echo "🔨 Building nhp-serverd and plugins..."
+          echo "🔨 Building nhp-serverd, nhp-acd and plugins..."
 
           # Initialize and build
           make init
-          make serverd plugins
+          make serverd acd plugins
 
           echo "✅ Build completed successfully"
 
@@ -232,6 +224,15 @@ jobs:
             echo "⚠️  No templates found in release/nhp-server/templates"
           fi
 
+          # Copy nhp-acd binary
+          if [ -f release/nhp-ac/nhp-acd ]; then
+            cp release/nhp-ac/nhp-acd deploy/
+            chmod +x deploy/nhp-acd
+            echo "✅ nhp-acd copied"
+          else
+            echo "⚠️  nhp-acd not found"
+          fi
+
           ls -la deploy/
           ls -la deploy/plugins/ 2>/dev/null || true
 
@@ -244,16 +245,13 @@ jobs:
 
   deploy-to-servers:
     needs: [build-binaries]
-    if: |
-      always() &&
-      github.event.inputs.confirm == 'deploy' &&
-      (needs.build-binaries.result == 'success' || needs.build-binaries.result == 'skipped')
+    if: github.event.inputs.confirm == 'deploy' && needs.build-binaries.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
     strategy:
       matrix:
-        server: ${{ fromJson(vars.DEMO_NHP_SERVERS) }}
+        server: ${{ fromJson(vars.DEMO_NHP_SERVERS).nhpservers }}
     
     steps:
       - name: Checkout code
@@ -322,14 +320,13 @@ jobs:
           fi
 
       - name: Download built binary
-        if: github.event.inputs.deploy_binaries == 'yes' && github.event.inputs.rebuild == 'yes'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v6
         with:
           name: nhp-serverd-linux-amd64
           path: ./binaries
 
       - name: Deploy binary to ${{ matrix.server }}
-        if: github.event.inputs.deploy_binaries == 'yes' && github.event.inputs.rebuild == 'yes'
+        if: github.event.inputs.deploy_binaries == 'yes'
         run: |
           echo "📦 Deploying newly built binary and plugins to ${{ matrix.server }}..."
           BINARY_PATH="./binaries/nhp-serverd"
@@ -358,15 +355,6 @@ jobs:
             -o BatchMode=yes \
             ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
             "sudo systemctl stop nhp-serverd || true"
-
-          # Backup existing binary
-          echo "Backing up existing binary..."
-          ssh -i ~/.ssh/deploy_key \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -o BatchMode=yes \
-            ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
-            "if [ -f ${{ env.DEPLOY_PATH }}/nhp-serverd ]; then cp ${{ env.DEPLOY_PATH }}/nhp-serverd ${{ env.DEPLOY_PATH }}/nhp-serverd.backup.\$(date +%Y%m%d_%H%M%S); fi"
 
           # Deploy new binary
           echo "Deploying new binary..."
@@ -425,14 +413,45 @@ jobs:
             echo "⚠️  No plugins found in build artifacts"
           fi
 
-          # Start the service
-          echo "Starting nhp-serverd service..."
+          echo "✅ Binary and plugins deployed successfully to ${{ matrix.server }}"
+
+      - name: Deploy templates to ${{ matrix.server }}
+        run: |
+          echo "Deploying templates to ${{ matrix.server }}..."
+
+          # Use templates from build artifacts
+          if [ -d ./binaries/templates ]; then
+            TEMPLATES_SOURCE="./binaries/templates"
+            echo "📦 Using Makefile-built templates from artifact"
+          else
+            TEMPLATES_SOURCE="${{ env.TEMPLATES_SOURCE }}"
+            echo "📦 Using docker templates (fallback)"
+          fi
+
+          # Sync templates directory with proper SSH options
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes" \
+            "$TEMPLATES_SOURCE/" \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/templates/
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Templates deployed successfully to ${{ matrix.server }}"
+          else
+            echo "❌ Deployment failed"
+            exit 1
+          fi
+
+      - name: Restart nhp-serverd on ${{ matrix.server }}
+        run: |
+          echo "🔄 Restarting nhp-serverd service on ${{ matrix.server }}..."
+
+          # Restart the service
           ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             -o BatchMode=yes \
             ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
-            "sudo systemctl start nhp-serverd"
+            "sudo systemctl restart nhp-serverd"
 
           # Verify service started successfully
           echo "Verifying service status..."
@@ -459,33 +478,171 @@ jobs:
             exit 1
           fi
 
-          echo "✅ Binary and plugins deployed successfully to ${{ matrix.server }}"
+          echo "✅ nhp-serverd restarted successfully on ${{ matrix.server }}"
 
-      - name: Deploy templates to ${{ matrix.server }}
+      - name: Deploy to NHP-AC servers via ${{ matrix.server }}
+        if: github.event.inputs.deploy_binaries == 'yes'
+        env:
+          NHPACS_JSON: ${{ toJson(fromJson(vars.DEMO_NHP_SERVERS).nhpacs) }}
         run: |
-          echo "Deploying templates to ${{ matrix.server }}..."
+          echo "🔄 Deploying nhp-acd and templates to NHP-AC servers via jump host ${{ matrix.server }}..."
 
-          # Determine templates source
-          if [ "${{ github.event.inputs.rebuild }}" == "yes" ] && [ -d ./binaries/templates ]; then
-            TEMPLATES_SOURCE="./binaries/templates"
-            echo "📦 Using Makefile-built templates from artifact"
-          else
-            TEMPLATES_SOURCE="${{ env.TEMPLATES_SOURCE }}"
-            echo "📦 Using docker templates (fallback)"
+          # Check if nhp-acd binary exists
+          if [ ! -f ./binaries/nhp-acd ]; then
+            echo "⚠️  nhp-acd not found in binaries, skipping NHP-AC deployment"
+            exit 0
           fi
 
-          # Sync templates directory with proper SSH options
-          rsync -avz --delete \
-            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes" \
-            "$TEMPLATES_SOURCE/" \
-            ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/templates/
-
-          if [ $? -eq 0 ]; then
-            echo "✅ Templates deployed successfully to ${{ matrix.server }}"
-          else
-            echo "❌ Deployment failed"
-            exit 1
+          # Check if example_acdemo.html exists in templates
+          DEPLOY_TEMPLATE=false
+          if [ -f ./binaries/templates/example/example_acdemo.html ]; then
+            DEPLOY_TEMPLATE=true
           fi
+
+          # Copy files to the jump host
+          echo "📦 Copying nhp-acd to jump host..."
+          scp -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o BatchMode=yes \
+            ./binaries/nhp-acd \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }}:/tmp/nhp-acd
+
+          if [ "$DEPLOY_TEMPLATE" = true ]; then
+            echo "📦 Copying example_acdemo.html to jump host..."
+            scp -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -o BatchMode=yes \
+              ./binaries/templates/example/example_acdemo.html \
+              ${{ env.DEPLOY_USER }}@${{ matrix.server }}:/tmp/example_acdemo.html
+          fi
+
+          # Parse nhpacs JSON and deploy to each AC server
+          echo "$NHPACS_JSON" | python3 -c "
+          import json
+          import sys
+
+          nhpacs = json.load(sys.stdin)
+          for ac in nhpacs:
+              ip = ac.get('ip', '')
+              username = ac.get('username', 'ec2-user')
+              if ip:
+                  print(f'{username}@{ip}')
+          " | while read AC_TARGET; do
+            if [ -n "$AC_TARGET" ]; then
+              echo "📦 Deploying to NHP-AC: $AC_TARGET"
+
+              # Deploy nhp-acd binary: stop service, copy binary, start service
+              ssh -i ~/.ssh/deploy_key \
+                -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile=~/.ssh/known_hosts \
+                -o BatchMode=yes \
+                ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+                "ssh -o StrictHostKeyChecking=no $AC_TARGET 'sudo systemctl stop nhp-acd || true' && \
+                 scp -o StrictHostKeyChecking=no /tmp/nhp-acd $AC_TARGET:/tmp/nhp-acd && \
+                 ssh -o StrictHostKeyChecking=no $AC_TARGET 'sudo cp /tmp/nhp-acd /home/ec2-user/nhp-ac/nhp-acd && sudo chmod +x /home/ec2-user/nhp-ac/nhp-acd && rm /tmp/nhp-acd && sudo systemctl start nhp-acd'"
+
+              if [ $? -eq 0 ]; then
+                echo "✅ nhp-acd deployed to $AC_TARGET"
+              else
+                echo "❌ Failed to deploy nhp-acd to $AC_TARGET"
+                exit 1
+              fi
+
+              # Deploy template if exists
+              if [ "$DEPLOY_TEMPLATE" = true ]; then
+                ssh -i ~/.ssh/deploy_key \
+                  -o StrictHostKeyChecking=yes \
+                  -o UserKnownHostsFile=~/.ssh/known_hosts \
+                  -o BatchMode=yes \
+                  ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+                  "scp -o StrictHostKeyChecking=no /tmp/example_acdemo.html $AC_TARGET:/tmp/example_acdemo.html && \
+                   ssh -o StrictHostKeyChecking=no $AC_TARGET 'sudo cp /tmp/example_acdemo.html /etc/nginx/html/index_apidemo_opennhp_org.html && sudo chmod 644 /etc/nginx/html/index_apidemo_opennhp_org.html && rm /tmp/example_acdemo.html'"
+
+                if [ $? -eq 0 ]; then
+                  echo "✅ Template deployed to $AC_TARGET"
+                else
+                  echo "❌ Failed to deploy template to $AC_TARGET"
+                  exit 1
+                fi
+              fi
+            fi
+          done
+
+          # Clean up temp files on jump host
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o BatchMode=yes \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+            "rm -f /tmp/nhp-acd /tmp/example_acdemo.html"
+
+          echo "✅ All NHP-AC servers updated successfully"
+
+      - name: Deploy templates to NHP-AC servers via ${{ matrix.server }}
+        if: github.event.inputs.deploy_binaries == 'no'
+        env:
+          NHPACS_JSON: ${{ toJson(fromJson(vars.DEMO_NHP_SERVERS).nhpacs) }}
+        run: |
+          echo "🔄 Deploying templates to NHP-AC servers via jump host ${{ matrix.server }}..."
+
+          # Check if example_acdemo.html exists in templates
+          if [ ! -f ./binaries/templates/example/example_acdemo.html ]; then
+            echo "⚠️  example/example_acdemo.html not found in templates, skipping NHP-AC template deployment"
+            exit 0
+          fi
+
+          # Copy template file to the jump host
+          echo "📦 Copying example_acdemo.html to jump host..."
+          scp -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o BatchMode=yes \
+            ./binaries/templates/example/example_acdemo.html \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }}:/tmp/example_acdemo.html
+
+          # Parse nhpacs JSON and deploy to each AC server
+          echo "$NHPACS_JSON" | python3 -c "
+          import json
+          import sys
+
+          nhpacs = json.load(sys.stdin)
+          for ac in nhpacs:
+              ip = ac.get('ip', '')
+              username = ac.get('username', 'ec2-user')
+              if ip:
+                  print(f'{username}@{ip}')
+          " | while read AC_TARGET; do
+            if [ -n "$AC_TARGET" ]; then
+              echo "📦 Deploying template to NHP-AC: $AC_TARGET"
+
+              ssh -i ~/.ssh/deploy_key \
+                -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile=~/.ssh/known_hosts \
+                -o BatchMode=yes \
+                ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+                "scp -o StrictHostKeyChecking=no /tmp/example_acdemo.html $AC_TARGET:/tmp/example_acdemo.html && \
+                 ssh -o StrictHostKeyChecking=no $AC_TARGET 'sudo cp /tmp/example_acdemo.html /etc/nginx/html/index_apidemo_opennhp_org.html && sudo chmod 644 /etc/nginx/html/index_apidemo_opennhp_org.html && rm /tmp/example_acdemo.html'"
+
+              if [ $? -eq 0 ]; then
+                echo "✅ Template deployed to $AC_TARGET"
+              else
+                echo "❌ Failed to deploy template to $AC_TARGET"
+                exit 1
+              fi
+            fi
+          done
+
+          # Clean up temp file on jump host
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o BatchMode=yes \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+            "rm -f /tmp/example_acdemo.html"
+
+          echo "✅ All NHP-AC servers templates updated successfully"
 
       - name: Verify deployment
         run: |
@@ -521,7 +678,6 @@ jobs:
           echo ""
           echo "| Item | Value |"
           echo "|------|-------|"
-          echo "| **Rebuild** | ${{ github.event.inputs.rebuild }} |"
           echo "| **Deploy Binaries** | ${{ github.event.inputs.deploy_binaries }} |"
           echo "| **Commit** | ${{ github.sha }} |"
           echo "| **Branch** | ${{ github.ref_name }} |"

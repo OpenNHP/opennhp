@@ -1089,9 +1089,6 @@
                 expiresAt: data.expiresAt * 1000
             };
 
-            // Update OTP secret display
-            document.getElementById('otpSecret').textContent = data.otpSecret;
-
             // Build QR content
             const qrContent = `nhp://scan?data=${encodeURIComponent(data.qrData)}&otp=${encodeURIComponent(data.otpSecret)}&server=${encodeURIComponent(data.serverUrl)}&asp=${encodeURIComponent(config.aspId)}&res=${encodeURIComponent(config.resId)}&sid=${encodeURIComponent(data.sessionId)}`;
 

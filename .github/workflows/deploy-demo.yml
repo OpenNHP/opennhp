@@ -356,15 +356,6 @@ jobs:
             ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
             "sudo systemctl stop nhp-serverd || true"
 
-          # Backup existing binary
-          echo "Backing up existing binary..."
-          ssh -i ~/.ssh/deploy_key \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -o BatchMode=yes \
-            ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
-            "if [ -f ${{ env.DEPLOY_PATH }}/nhp-serverd ]; then cp ${{ env.DEPLOY_PATH }}/nhp-serverd ${{ env.DEPLOY_PATH }}/nhp-serverd.backup.\$(date +%Y%m%d_%H%M%S); fi"
-
           # Deploy new binary
           echo "Deploying new binary..."
           scp -i ~/.ssh/deploy_key \

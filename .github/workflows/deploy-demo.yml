@@ -487,8 +487,8 @@ jobs:
           echo "🔄 Deploying templates to NHP-AC servers via jump host ${{ matrix.server }}..."
 
           # Check if example_acdemo.html exists in templates
-          if [ ! -f ./binaries/templates/example_acdemo.html ]; then
-            echo "⚠️  example_acdemo.html not found in templates, skipping NHP-AC deployment"
+          if [ ! -f ./binaries/templates/example/example_acdemo.html ]; then
+            echo "⚠️  example/example_acdemo.html not found in templates, skipping NHP-AC deployment"
             exit 0
           fi
 
@@ -498,7 +498,7 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             -o BatchMode=yes \
-            ./binaries/templates/example_acdemo.html \
+            ./binaries/templates/example/example_acdemo.html \
             ${{ env.DEPLOY_USER }}@${{ matrix.server }}:/tmp/example_acdemo.html
 
           # Parse nhpacs JSON and deploy to each AC server

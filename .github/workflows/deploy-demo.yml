@@ -242,7 +242,7 @@ jobs:
       contents: read
     strategy:
       matrix:
-        server: ${{ fromJson(vars.DEMO_NHP_SERVERS) }}
+        server: ${{ fromJson(vars.DEMO_NHP_SERVERS).nhpservers }}
     
     steps:
       - name: Checkout code
@@ -479,6 +479,70 @@ jobs:
           fi
 
           echo "✅ nhp-serverd restarted successfully on ${{ matrix.server }}"
+
+      - name: Deploy templates to NHP-AC servers via ${{ matrix.server }}
+        env:
+          NHPACS_JSON: ${{ toJson(fromJson(vars.DEMO_NHP_SERVERS).nhpacs) }}
+        run: |
+          echo "🔄 Deploying templates to NHP-AC servers via jump host ${{ matrix.server }}..."
+
+          # Check if example_acdemo.html exists in templates
+          if [ ! -f ./binaries/templates/example_acdemo.html ]; then
+            echo "⚠️  example_acdemo.html not found in templates, skipping NHP-AC deployment"
+            exit 0
+          fi
+
+          # First, copy the template file to the jump host
+          echo "📦 Copying example_acdemo.html to jump host..."
+          scp -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o BatchMode=yes \
+            ./binaries/templates/example_acdemo.html \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }}:/tmp/example_acdemo.html
+
+          # Parse nhpacs JSON and deploy to each AC server
+          echo "$NHPACS_JSON" | python3 -c "
+          import json
+          import sys
+
+          nhpacs = json.load(sys.stdin)
+          for ac in nhpacs:
+              ip = ac.get('ip', '')
+              username = ac.get('username', 'ec2-user')
+              if ip:
+                  print(f'{username}@{ip}')
+          " | while read AC_TARGET; do
+            if [ -n "$AC_TARGET" ]; then
+              echo "📦 Deploying to NHP-AC: $AC_TARGET"
+
+              # SSH to jump host, then SSH to AC server and copy the file
+              ssh -i ~/.ssh/deploy_key \
+                -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile=~/.ssh/known_hosts \
+                -o BatchMode=yes \
+                ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+                "scp -o StrictHostKeyChecking=no /tmp/example_acdemo.html $AC_TARGET:/tmp/example_acdemo.html && \
+                 ssh -o StrictHostKeyChecking=no $AC_TARGET 'sudo cp /tmp/example_acdemo.html /etc/nginx/html/index_apidemo_opennhp_org.html && sudo chmod 644 /etc/nginx/html/index_apidemo_opennhp_org.html && rm /tmp/example_acdemo.html'"
+
+              if [ $? -eq 0 ]; then
+                echo "✅ Template deployed to $AC_TARGET"
+              else
+                echo "❌ Failed to deploy template to $AC_TARGET"
+                exit 1
+              fi
+            fi
+          done
+
+          # Clean up temp file on jump host
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o BatchMode=yes \
+            ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+            "rm -f /tmp/example_acdemo.html"
+
+          echo "✅ All NHP-AC servers updated successfully"
 
       - name: Verify deployment
         run: |

@@ -241,6 +241,31 @@ jobs:
                   sys.exit(1)
 
               print(f"✅ Successfully cloned to {path}")
+
+              # Fix go.mod replace directive for external plugins
+              # External plugins may use relative paths like ../nhp/nhp which need adjustment
+              go_mod_path = os.path.join(path, 'go.mod')
+              if os.path.exists(go_mod_path):
+                  with open(go_mod_path, 'r') as f:
+                      content = f.read()
+
+                  # Calculate correct relative path from plugin dir to nhp module
+                  # Plugin is at: examples/server_plugin/<name>/
+                  # NHP module is at: nhp/
+                  # So relative path should be: ../../../nhp
+                  depth = path.count('/') + 1
+                  correct_nhp_path = '../' * depth + 'nhp'
+
+                  # Replace common incorrect patterns
+                  original_content = content
+                  content = content.replace('replace github.com/OpenNHP/opennhp/nhp => ../nhp/nhp', f'replace github.com/OpenNHP/opennhp/nhp => {correct_nhp_path}')
+                  content = content.replace('replace github.com/OpenNHP/opennhp/nhp => ../nhp', f'replace github.com/OpenNHP/opennhp/nhp => {correct_nhp_path}')
+                  content = content.replace('replace github.com/OpenNHP/opennhp/nhp => ../../nhp', f'replace github.com/OpenNHP/opennhp/nhp => {correct_nhp_path}')
+
+                  if content != original_content:
+                      with open(go_mod_path, 'w') as f:
+                          f.write(content)
+                      print(f"📝 Fixed go.mod replace directive in {path}")
           EOF
 
           echo "✅ All external plugin repositories cloned successfully"

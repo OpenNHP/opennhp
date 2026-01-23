@@ -3,18 +3,24 @@
 name: Build Binaries
 
 on:
-  push:
-    branches: ["main", "develop"]
-    tags:
-      - 'v*'
-  pull_request:
-    branches: ["main"]
   workflow_dispatch:
     inputs:
       build_components:
         description: 'Components to build (comma-separated: agentd,acd,serverd,db,kgc,plugins,all)'
         required: false
-        default: 'serverd,plugins'
+        default: 'all'
+        type: string
+      create_release:
+        description: 'Create a permanent release'
+        required: true
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
+        default: 'no'
+      release_tag:
+        description: 'Release tag (e.g., v1.0.0). Required if create_release is yes'
+        required: false
         type: string
 
 # Restrict default permissions for security (CodeQL alert fix)
@@ -294,13 +300,14 @@ jobs:
           ls -la output/
 
       # Upload each module as independent artifact (only if built)
+      # retention-days: 1 for temporary builds, 90 for releases
       - name: Upload nhp-agent artifact
         if: contains(env.BUILD_COMPONENTS, 'agentd') || contains(env.BUILD_COMPONENTS, 'all')
         uses: actions/upload-artifact@v6
         with:
           name: nhp-agent-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-agent/
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.create_release == 'yes' && 90 || 1 }}
 
       - name: Upload nhp-ac artifact
         if: contains(env.BUILD_COMPONENTS, 'acd') || contains(env.BUILD_COMPONENTS, 'all')
@@ -308,7 +315,7 @@ jobs:
         with:
           name: nhp-ac-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-ac/
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.create_release == 'yes' && 90 || 1 }}
 
       - name: Upload nhp-server artifact
         if: contains(env.BUILD_COMPONENTS, 'serverd') || contains(env.BUILD_COMPONENTS, 'all')
@@ -316,7 +323,7 @@ jobs:
         with:
           name: nhp-server-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-server/
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.create_release == 'yes' && 90 || 1 }}
 
       - name: Upload nhp-db artifact
         if: contains(env.BUILD_COMPONENTS, 'db') || contains(env.BUILD_COMPONENTS, 'all')
@@ -324,7 +331,7 @@ jobs:
         with:
           name: nhp-db-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-db/
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.create_release == 'yes' && 90 || 1 }}
 
       - name: Upload nhp-kgc artifact
         if: contains(env.BUILD_COMPONENTS, 'kgc') || contains(env.BUILD_COMPONENTS, 'all')
@@ -332,7 +339,7 @@ jobs:
         with:
           name: nhp-kgc-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-kgc/
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.create_release == 'yes' && 90 || 1 }}
 
       # Create complete package artifact (only when building all components)
       - name: Create archive (Unix)
@@ -380,7 +387,7 @@ jobs:
         with:
           name: opennhp-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/opennhp-${{ steps.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.${{ matrix.archive_ext }}
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.create_release == 'yes' && 90 || 1 }}
 
   # Aggregate artifacts from all platforms
   summary:
@@ -405,12 +412,12 @@ jobs:
         with:
           name: opennhp-all-platforms
           path: all-artifacts/opennhp-*/
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.create_release == 'yes' && 90 || 1 }}
 
-  # Update latest release (only on main branch, not PRs)
+  # Update latest release (always update, replacing previous files)
   latest-release:
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event.inputs.create_release == 'no'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -428,6 +435,13 @@ jobs:
           find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-files/ \;
           ls -la release-files/
 
+      - name: Delete existing latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Delete existing release if exists (to clean up old artifacts)
+          gh release delete latest --yes --cleanup-tag || true
+
       - name: Update latest release
         uses: softprops/action-gh-release@v2
         with:
@@ -436,22 +450,34 @@ jobs:
           body: |
             **Latest Build Artifacts**
 
-            This release is automatically updated after each build with the latest binaries.
+            This release contains the latest build artifacts (temporary, will be replaced on next build).
 
-            Build Time: ${{ github.event.head_commit.timestamp }}
+            Build Time: ${{ github.run_id }}
             Commit: ${{ github.sha }}
+            Branch: ${{ github.ref_name }}
+            Triggered by: ${{ github.actor }}
           files: release-files/*
           prerelease: true
           make_latest: false
 
-  # Create official release when a tag is pushed
+  # Create official release when requested
   release:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event.inputs.create_release == 'yes' && github.event.inputs.release_tag != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Validate release tag
+        run: |
+          TAG="${{ github.event.inputs.release_tag }}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "❌ Invalid release tag format: $TAG"
+            echo "   Expected format: v1.0.0 or v1.0.0-rc1"
+            exit 1
+          fi
+          echo "✅ Release tag is valid: $TAG"
+
       - name: Download all package artifacts
         uses: actions/download-artifact@v7
         with:
@@ -468,8 +494,10 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          name: Release ${{ github.event.inputs.release_tag }}
           files: release-files/*
           generate_release_notes: true
           draft: false
-          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+          prerelease: ${{ contains(github.event.inputs.release_tag, '-rc') || contains(github.event.inputs.release_tag, '-beta') || contains(github.event.inputs.release_tag, '-alpha') }}
 

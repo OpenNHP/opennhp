@@ -546,32 +546,40 @@ jobs:
           find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-files/ \;
           ls -la release-files/
 
-      - name: Delete existing latest release
+      - name: Delete existing latest release and create new one
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Delete existing release if exists (to clean up old artifacts)
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
-          # Also delete the tag if it exists
+
+          # Wait for GitHub to process the deletion
+          sleep 5
+
+          # Also delete the tag if it exists (force)
           git push origin :refs/tags/latest 2>/dev/null || true
 
-      - name: Create latest release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: Latest Build
-          body: |
-            **Latest Build Artifacts**
+          # Wait again to ensure tag is fully deleted
+          sleep 3
 
-            This release contains the latest build artifacts (temporary, will be replaced on next build).
+          # Create the release using gh CLI (more reliable than action)
+          cat > /tmp/release-notes.md << 'NOTES'
+          **Latest Build Artifacts**
 
-            Build Time: ${{ github.run_id }}
-            Commit: ${{ github.sha }}
-            Branch: ${{ github.ref_name }}
-            Triggered by: ${{ github.actor }}
-          files: release-files/*
-          prerelease: true
-          make_latest: false
+          This release contains the latest build artifacts (temporary, will be replaced on next build).
+          NOTES
+
+          echo "" >> /tmp/release-notes.md
+          echo "Build Time: ${{ github.run_id }}" >> /tmp/release-notes.md
+          echo "Commit: ${{ github.sha }}" >> /tmp/release-notes.md
+          echo "Branch: ${{ github.ref_name }}" >> /tmp/release-notes.md
+          echo "Triggered by: ${{ github.actor }}" >> /tmp/release-notes.md
+
+          gh release create latest \
+            --title "Latest Build" \
+            --notes-file /tmp/release-notes.md \
+            --prerelease \
+            release-files/*
 
   # Create official release when requested
   release:

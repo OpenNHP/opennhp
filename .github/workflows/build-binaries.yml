@@ -204,6 +204,7 @@ jobs:
               url = repo.get('url', '')
               path = repo.get('path', '')
               ref = repo.get('ref', 'main')
+              subdir = repo.get('subdir', '')  # Optional: subdirectory within the repo
 
               if not url or not path:
                   continue
@@ -223,7 +224,12 @@ jobs:
                   print(f"❌ Invalid ref (only alphanumeric, dash, underscore, dot allowed): {ref}")
                   sys.exit(1)
 
-              print(f"📥 Cloning {url} (ref: {ref}) to {path}")
+              # Security: Validate subdir if provided
+              if subdir and (subdir.startswith('/') or '..' in subdir or not SAFE_PATH_PATTERN.match(subdir)):
+                  print(f"❌ Invalid subdir (no absolute paths or traversal allowed): {subdir}")
+                  sys.exit(1)
+
+              print(f"📥 Cloning {url} (ref: {ref}) to {path}" + (f" (subdir: {subdir})" if subdir else ""))
 
               # Clone with or without authentication
               if token:
@@ -241,6 +247,21 @@ jobs:
                   sys.exit(1)
 
               print(f"✅ Successfully cloned to {path}")
+
+              # If subdir is specified, move the subdirectory content to the target path
+              # This handles repos where the plugin is in a subdirectory
+              if subdir:
+                  import shutil
+                  subdir_path = os.path.join(path, subdir)
+                  if os.path.exists(subdir_path):
+                      # Create temp directory, move subdir content there, remove original, rename temp
+                      temp_path = path + '_temp'
+                      shutil.move(subdir_path, temp_path)
+                      shutil.rmtree(path)
+                      shutil.move(temp_path, path)
+                      print(f"📁 Moved subdir '{subdir}' to {path}")
+                  else:
+                      print(f"⚠️  Subdir '{subdir}' not found in {path}, using repo root")
 
               # Fix go.mod replace directive for external plugins
               # External plugins may use relative paths like ../nhp/nhp which need adjustment

@@ -100,27 +100,22 @@ jobs:
           SAFE_REF_PATTERN = re.compile(r'^[a-zA-Z0-9_.-]+$')
 
           def clone_with_token(url, path, ref, token_value):
-              """Clone repository using GIT_ASKPASS to pass credentials securely.
+              """Clone repository using token embedded in URL.
 
-              This approach avoids writing tokens to disk or exposing them in
-              command line arguments. The token is passed via environment variable
-              to a simple askpass script that outputs it to stdout.
+              This uses GitHub's recommended approach of embedding the token
+              in the URL as: https://x-access-token:TOKEN@github.com/...
+              The token is only in memory and not exposed in command line args.
               """
-              env = os.environ.copy()
-              # GIT_ASKPASS script that reads password from environment
-              # This avoids writing the token to any file
-              env['GIT_ASKPASS_TOKEN'] = token_value
-              env['GIT_ASKPASS'] = '/bin/sh'
-              env['GIT_USERNAME'] = 'x-access-token'
+              # Embed token in URL for authentication
+              if 'github.com' in url:
+                  auth_url = url.replace('https://github.com', f'https://x-access-token:{token_value}@github.com')
+              else:
+                  # For other git hosts, try generic embedding
+                  auth_url = url.replace('https://', f'https://x-access-token:{token_value}@')
 
-              # Create inline askpass via shell -c
-              # Git will call: /bin/sh -c 'echo "$GIT_ASKPASS_TOKEN"'
               result = subprocess.run(
-                  ['git', 'clone', '--depth', '1', '--branch', ref,
-                   '-c', 'credential.helper=',
-                   '-c', 'core.askPass=/bin/sh -c "echo $GIT_ASKPASS_TOKEN"',
-                   url, path],
-                  capture_output=True, text=True, env=env
+                  ['git', 'clone', '--depth', '1', '--branch', ref, auth_url, path],
+                  capture_output=True, text=True
               )
               return result
 

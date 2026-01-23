@@ -10,6 +10,11 @@ on:
         required: false
         default: 'all'
         type: string
+      build_platforms:
+        description: 'Platforms to build (comma-separated: linux,windows,darwin)'
+        required: false
+        default: 'linux'
+        type: string
       create_release:
         description: 'Create a permanent release'
         required: true
@@ -34,26 +39,48 @@ env:
   BUILD_COMPONENTS: ${{ github.event.inputs.build_components || 'serverd,plugins' }}
 
 jobs:
+  # Prepare matrix based on selected platforms
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Set build matrix
+        id: set-matrix
+        run: |
+          PLATFORMS="${{ github.event.inputs.build_platforms || 'linux' }}"
+
+          # Build matrix JSON
+          MATRIX='{"include":['
+          FIRST=true
+
+          if [[ "$PLATFORMS" == *"linux"* ]]; then
+            [ "$FIRST" = false ] && MATRIX+=','
+            MATRIX+='{"os":"ubuntu-latest","goos":"linux","goarch":"amd64","ext":"","archive_ext":"tar.gz"}'
+            FIRST=false
+          fi
+
+          if [[ "$PLATFORMS" == *"windows"* ]]; then
+            [ "$FIRST" = false ] && MATRIX+=','
+            MATRIX+='{"os":"windows-latest","goos":"windows","goarch":"amd64","ext":".exe","archive_ext":"zip"}'
+            FIRST=false
+          fi
+
+          if [[ "$PLATFORMS" == *"darwin"* ]]; then
+            [ "$FIRST" = false ] && MATRIX+=','
+            MATRIX+='{"os":"macos-latest","goos":"darwin","goarch":"amd64","ext":"","archive_ext":"tar.gz"}'
+            FIRST=false
+          fi
+
+          MATRIX+=']}'
+
+          echo "Generated matrix: $MATRIX"
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
   build:
+    needs: prepare-matrix
     strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        include:
-          - os: ubuntu-latest
-            goos: linux
-            goarch: amd64
-            ext: ""
-            archive_ext: tar.gz
-          - os: windows-latest
-            goos: windows
-            goarch: amd64
-            ext: ".exe"
-            archive_ext: zip
-          - os: macos-latest
-            goos: darwin
-            goarch: amd64
-            ext: ""
-            archive_ext: tar.gz
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
 
     runs-on: ${{ matrix.os }}
     
@@ -121,6 +148,11 @@ jobs:
           import sys
           import subprocess
           import re
+
+          # Fix Windows encoding issue (cp1252 doesn't support emoji)
+          if sys.platform == 'win32':
+              sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+              sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
           repos_json = os.environ.get('REPOS_JSON', '[]')
           token = os.environ.get('PLUGIN_TOKEN', '')

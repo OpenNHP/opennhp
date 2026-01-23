@@ -97,8 +97,12 @@ init:
 	git clean -df release
 	cd nhp && go mod tidy
 	cd endpoints && go mod tidy
-	cd examples/server_plugin/basic && go mod tidy
-	cd examples/server_plugin/authenticator && go mod tidy
+	@for dir in ./examples/server_plugin/*/; do \
+		if [ -f "$$dir/go.mod" ]; then \
+			echo "$(COLOUR_BLUE)[Plugin-$$(basename $$dir)] Running go mod tidy... $(END_COLOUR)"; \
+			cd "$$dir" && go mod tidy && cd - > /dev/null; \
+		fi \
+	done
 
 agentd:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building nhp-agent... $(END_COLOUR)"
@@ -199,8 +203,12 @@ endif
 
 plugins:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building plugins... $(END_COLOUR)"
-	@if test -d $(NHP_SERVER_PLUGINS); then $(MAKE) -C $(NHP_SERVER_PLUGINS); fi
-	@if test -d $(NHP_AUTHENTICATOR_PLUGINS); then $(MAKE) -C $(NHP_AUTHENTICATOR_PLUGINS); fi
+	@for dir in ./examples/server_plugin/*/; do \
+		if [ -f "$$dir/Makefile" ]; then \
+			echo "$(COLOUR_BLUE)[Plugin-$$(basename $$dir)] Building... $(END_COLOUR)"; \
+			$(MAKE) -C "$$dir" || exit 1; \
+		fi \
+	done
 # Development build (faster, no version injection)
 dev:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Development build...$(END_COLOUR)"

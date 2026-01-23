@@ -457,6 +457,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
       - name: Download all package artifacts
         uses: actions/download-artifact@v7
         with:
@@ -475,9 +478,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Delete existing release if exists (to clean up old artifacts)
-          gh release delete latest --yes --cleanup-tag || true
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+          # Also delete the tag if it exists
+          git push origin :refs/tags/latest 2>/dev/null || true
 
-      - name: Update latest release
+      - name: Create latest release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest

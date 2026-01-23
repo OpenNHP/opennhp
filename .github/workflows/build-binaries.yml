@@ -10,11 +10,21 @@ on:
         required: false
         default: 'all'
         type: string
-      build_platforms:
-        description: 'Platforms to build (comma-separated: linux,windows,darwin)'
+      platform_linux:
+        description: 'Build for Linux'
         required: false
-        default: 'linux'
-        type: string
+        default: true
+        type: boolean
+      platform_windows:
+        description: 'Build for Windows'
+        required: false
+        default: false
+        type: boolean
+      platform_darwin:
+        description: 'Build for macOS'
+        required: false
+        default: false
+        type: boolean
       create_release:
         description: 'Create a permanent release'
         required: true
@@ -48,25 +58,23 @@ jobs:
       - name: Set build matrix
         id: set-matrix
         run: |
-          PLATFORMS="${{ github.event.inputs.build_platforms || 'linux' }}"
-
-          # Build matrix JSON
+          # Build matrix JSON from checkbox inputs
           MATRIX='{"include":['
           FIRST=true
 
-          if [[ "$PLATFORMS" == *"linux"* ]]; then
+          if [[ "${{ github.event.inputs.platform_linux }}" == "true" ]]; then
             [ "$FIRST" = false ] && MATRIX+=','
             MATRIX+='{"os":"ubuntu-latest","goos":"linux","goarch":"amd64","ext":"","archive_ext":"tar.gz"}'
             FIRST=false
           fi
 
-          if [[ "$PLATFORMS" == *"windows"* ]]; then
+          if [[ "${{ github.event.inputs.platform_windows }}" == "true" ]]; then
             [ "$FIRST" = false ] && MATRIX+=','
             MATRIX+='{"os":"windows-latest","goos":"windows","goarch":"amd64","ext":".exe","archive_ext":"zip"}'
             FIRST=false
           fi
 
-          if [[ "$PLATFORMS" == *"darwin"* ]]; then
+          if [[ "${{ github.event.inputs.platform_darwin }}" == "true" ]]; then
             [ "$FIRST" = false ] && MATRIX+=','
             MATRIX+='{"os":"macos-latest","goos":"darwin","goarch":"amd64","ext":"","archive_ext":"tar.gz"}'
             FIRST=false

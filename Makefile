@@ -101,6 +101,13 @@ init:
 		if [ -f "$$dir/go.mod" ]; then \
 			echo "$(COLOUR_BLUE)[Plugin-$$(basename $$dir)] Running go mod tidy... $(END_COLOUR)"; \
 			cd "$$dir" && go mod tidy && cd - > /dev/null; \
+		else \
+			for subdir in "$$dir"/*/; do \
+				if [ -f "$$subdir/go.mod" ]; then \
+					echo "$(COLOUR_BLUE)[Plugin-$$(basename $$subdir)] Running go mod tidy... $(END_COLOUR)"; \
+					cd "$$subdir" && go mod tidy && cd - > /dev/null; \
+				fi \
+			done \
 		fi \
 	done
 
@@ -207,6 +214,13 @@ plugins:
 		if [ -f "$$dir/Makefile" ]; then \
 			echo "$(COLOUR_BLUE)[Plugin-$$(basename $$dir)] Building... $(END_COLOUR)"; \
 			$(MAKE) -C "$$dir" || exit 1; \
+		else \
+			for subdir in "$$dir"/*/; do \
+				if [ -f "$$subdir/Makefile" ]; then \
+					echo "$(COLOUR_BLUE)[Plugin-$$(basename $$subdir)] Building... $(END_COLOUR)"; \
+					$(MAKE) -C "$$subdir" || exit 1; \
+				fi \
+			done \
 		fi \
 	done
 # Development build (faster, no version injection)

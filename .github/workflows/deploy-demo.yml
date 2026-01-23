@@ -77,7 +77,7 @@ jobs:
           fi
 
           echo "📦 Cloning external plugin repositories..."
-          mkdir -p endpoints/examples/server_plugin
+          mkdir -p examples/server_plugin
 
           # Use Python for secure JSON parsing and validation
           python3 << 'EOF'
@@ -190,17 +190,16 @@ jobs:
 
               # Fix go.mod replace directive for external plugins
               # External plugins may use relative paths like ../nhp/nhp which need adjustment
-              go_mod_path = os.path.join(path, 'go.mod')
-              if os.path.exists(go_mod_path):
+              def fix_go_mod(go_mod_path, target_depth):
+                  """Fix go.mod replace directive with correct relative path."""
+                  if not os.path.exists(go_mod_path):
+                      return False
+
                   with open(go_mod_path, 'r') as f:
                       content = f.read()
 
                   # Calculate correct relative path from plugin dir to nhp module
-                  # Plugin is at: examples/server_plugin/<name>/
-                  # NHP module is at: nhp/
-                  # So relative path should be: ../../../nhp
-                  depth = path.count('/') + 1
-                  correct_nhp_path = '../' * depth + 'nhp'
+                  correct_nhp_path = '../' * target_depth + 'nhp'
 
                   # Replace common incorrect patterns
                   original_content = content
@@ -211,6 +210,34 @@ jobs:
                   if content != original_content:
                       with open(go_mod_path, 'w') as f:
                           f.write(content)
+                      return True
+                  return False
+
+              go_mod_path = os.path.join(path, 'go.mod')
+              depth = path.count('/') + 1
+
+              # Check for nested plugin structure: go.mod at root, Makefile in subdirectory
+              # This handles repos like nhp-plugins-okta with oktaoidc/ subdirectory
+              subdirs_with_makefile = []
+              for entry in os.listdir(path):
+                  subdir_path = os.path.join(path, entry)
+                  if os.path.isdir(subdir_path) and os.path.exists(os.path.join(subdir_path, 'Makefile')):
+                      subdirs_with_makefile.append(entry)
+
+              if os.path.exists(go_mod_path) and subdirs_with_makefile:
+                  # Nested structure: copy go.mod to each subdirectory with Makefile
+                  for subdir in subdirs_with_makefile:
+                      subdir_go_mod = os.path.join(path, subdir, 'go.mod')
+                      if not os.path.exists(subdir_go_mod):
+                          import shutil
+                          shutil.copy(go_mod_path, subdir_go_mod)
+                          print(f"📋 Copied go.mod to {path}/{subdir}/")
+                      # Fix the copied go.mod with correct depth (one level deeper)
+                      if fix_go_mod(subdir_go_mod, depth + 1):
+                          print(f"📝 Fixed go.mod replace directive in {path}/{subdir}/")
+              elif os.path.exists(go_mod_path):
+                  # Simple structure: go.mod and Makefile in same directory
+                  if fix_go_mod(go_mod_path, depth):
                       print(f"📝 Fixed go.mod replace directive in {path}")
           EOF
 

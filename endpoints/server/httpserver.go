@@ -210,6 +210,9 @@ func (hs *HttpServer) initRouter() {
 	templatePath := filepath.Join(ExeDirPath, "templates")
 	LoadFilesRecursively(g, templatePath)
 
+	// WebRTC WebSocket signaling endpoint
+	hs.initWebRTCRouter()
+
 	pluginGrp := g.Group("plugins")
 	// display login page with templates
 	pluginGrp.GET("/:aspid", func(ctx *gin.Context) {
@@ -457,4 +460,28 @@ func (hs *HttpServer) FindPluginHandler(aspId string) plugins.PluginHandler {
 func (hs *HttpServer) handleRefreshResource(token string) (err error) {
 	// to do
 	return nil
+}
+
+// initWebRTCRouter initializes the WebRTC WebSocket signaling route
+func (hs *HttpServer) initWebRTCRouter() {
+	if hs.udpServer == nil || hs.udpServer.webrtcServer == nil {
+		return
+	}
+
+	webrtcServer := hs.udpServer.webrtcServer
+	if !webrtcServer.IsWebSocketEnabled() {
+		return
+	}
+
+	wsPath := webrtcServer.GetWebSocketPath()
+	if wsPath == "" {
+		wsPath = "/webrtc/signaling"
+	}
+
+	log.Info("Registering WebRTC WebSocket signaling endpoint: %s", wsPath)
+
+	// Register WebSocket endpoint using Gin's raw handler wrapper
+	hs.ginEngine.GET(wsPath, func(c *gin.Context) {
+		webrtcServer.HandleWebSocket(c.Writer, c.Request)
+	})
 }

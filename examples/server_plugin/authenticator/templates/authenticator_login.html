@@ -710,7 +710,7 @@
         <div class="server-url-row">
             <span id="protectedServer">Protected Server: </span>
             <a href="https://acdemo.opennhp.org" target="_blank">https://acdemo.opennhp.org</a>
-            <a href="https://dnschecker.org/port-scanner.php?query=acdemo.opennhp.org" target="_blank" class="scan-link" id="scanPorts">Scan Ports</a>
+            <a href="https://dnschecker.org/port-scanner.php?query=acdemo.opennhp.org&ptype=server" target="_blank" class="scan-link" id="scanPorts">Scan Ports</a>
         </div>
         <div class="status-grid">
             <div class="status-row">
@@ -1089,8 +1089,6 @@
                 expiresAt: data.expiresAt * 1000
             };
 
-            // Update OTP secret display
-            document.getElementById('otpSecret').textContent = data.otpSecret;
 
             // Build QR content
             const qrContent = `nhp://scan?data=${encodeURIComponent(data.qrData)}&otp=${encodeURIComponent(data.otpSecret)}&server=${encodeURIComponent(data.serverUrl)}&asp=${encodeURIComponent(config.aspId)}&res=${encodeURIComponent(config.resId)}&sid=${encodeURIComponent(data.sessionId)}`;

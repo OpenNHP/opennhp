@@ -248,11 +248,29 @@ jobs:
         run: |
           echo "🔨 Building nhp-serverd, nhp-acd and plugins..."
 
+          # Debug: Show plugin source directories before build
+          echo ""
+          echo "📂 Plugin source directories (examples/server_plugin/):"
+          ls -la examples/server_plugin/
+          echo ""
+
           # Initialize and build
           make init
           make serverd acd plugins
 
+          echo ""
           echo "✅ Build completed successfully"
+          echo ""
+
+          # Debug: Show build output directories
+          echo "📂 Built plugins directory (release/nhp-server/plugins/):"
+          ls -la release/nhp-server/plugins/ || echo "Directory not found"
+          echo ""
+          echo "📂 All .so files in release/:"
+          find release -name "*.so" -type f 2>/dev/null || echo "No .so files found"
+          echo ""
+          echo "📂 Built templates directory (release/nhp-server/templates/):"
+          ls -la release/nhp-server/templates/ || echo "Directory not found"
 
       - name: Prepare deployment artifacts
         run: |

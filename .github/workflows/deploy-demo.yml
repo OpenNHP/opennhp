@@ -271,27 +271,50 @@ jobs:
 
           # Auto-detect and copy all plugins (.so files and config files)
           mkdir -p deploy/plugins
+          echo "🔍 Scanning for plugins in release/nhp-server/plugins/..."
           if [ -d release/nhp-server/plugins ]; then
+            echo "📂 Found plugin directories:"
+            ls -la release/nhp-server/plugins/
             for plugin_dir in release/nhp-server/plugins/*/; do
               plugin_name=$(basename "$plugin_dir")
               so_file="${plugin_dir}${plugin_name}.so"
+              echo "🔍 Checking plugin: ${plugin_name}"
+              echo "   - Directory: ${plugin_dir}"
+              echo "   - Expected .so file: ${so_file}"
               if [ -f "$so_file" ]; then
                 mkdir -p "deploy/plugins/${plugin_name}"
                 cp "$so_file" "deploy/plugins/${plugin_name}/"
+                echo "   ✅ Copied ${plugin_name}.so"
                 # Copy etc folder for first deployment
                 if [ -d "${plugin_dir}etc" ]; then
                   cp -r "${plugin_dir}etc" "deploy/plugins/${plugin_name}/"
+                  echo "   ✅ Copied etc/ folder"
+                else
+                  echo "   ⚠️  No etc/ folder found"
                 fi
-                echo "✅ ${plugin_name}.so copied"
+              else
+                echo "   ❌ .so file not found, skipping"
+                echo "   📂 Contents of ${plugin_dir}:"
+                ls -la "${plugin_dir}" || echo "   (directory listing failed)"
               fi
             done
+            echo ""
+            echo "📦 Final plugins artifact content:"
+            find deploy/plugins -type f | sort
+          else
+            echo "⚠️  No plugins directory found at release/nhp-server/plugins"
           fi
 
           # Copy templates (built by make plugins)
+          echo ""
+          echo "🔍 Scanning for templates in release/nhp-server/templates/..."
           if [ -d release/nhp-server/templates ]; then
             cp -r release/nhp-server/templates deploy/
             echo "✅ Templates copied (from Makefile build)"
+            echo "📂 Template directories:"
             ls -la deploy/templates/
+            echo "📄 All template files:"
+            find deploy/templates -type f | sort
           else
             echo "⚠️  No templates found in release/nhp-server/templates"
           fi
@@ -446,15 +469,22 @@ jobs:
             "chmod +x ${{ env.DEPLOY_PATH }}/nhp-serverd"
 
           # Auto-detect and deploy all plugins (.so files, config files only on first deployment)
+          echo ""
           echo "🔌 Deploying plugins..."
+          echo "🔍 Scanning local plugins in ./binaries/plugins/..."
           if [ -d ./binaries/plugins ]; then
+            echo "📂 Local plugin directories:"
+            ls -la ./binaries/plugins/
+            echo ""
             for plugin_dir in ./binaries/plugins/*/; do
               plugin_name=$(basename "$plugin_dir")
               so_file="${plugin_dir}${plugin_name}.so"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "🔍 Processing plugin: ${plugin_name}"
+              echo "   - Local directory: ${plugin_dir}"
+              echo "   - Expected .so file: ${so_file}"
 
               if [ -f "$so_file" ]; then
-                echo "Deploying ${plugin_name} plugin..."
-
                 # Check if plugin directory exists on server (first deployment check)
                 PLUGIN_EXISTS=$(ssh -i ~/.ssh/deploy_key \
                   -o StrictHostKeyChecking=yes \
@@ -462,6 +492,12 @@ jobs:
                   -o BatchMode=yes \
                   ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
                   "[ -d ${{ env.DEPLOY_PATH }}/plugins/${plugin_name} ] && echo 'yes' || echo 'no'")
+
+                if [ "$PLUGIN_EXISTS" = "yes" ]; then
+                  echo "   📁 Server status: EXISTS (updating .so only)"
+                else
+                  echo "   📁 Server status: NEW (first deployment)"
+                fi
 
                 # Create plugin directory on server
                 ssh -i ~/.ssh/deploy_key \
@@ -472,6 +508,7 @@ jobs:
                   "mkdir -p ${{ env.DEPLOY_PATH }}/plugins/${plugin_name}"
 
                 # Deploy .so file
+                echo "   📤 Uploading ${plugin_name}.so..."
                 scp -i ~/.ssh/deploy_key \
                   -o StrictHostKeyChecking=yes \
                   -o UserKnownHostsFile=~/.ssh/known_hosts \
@@ -481,37 +518,57 @@ jobs:
 
                 # Copy config files only on first deployment
                 if [ "$PLUGIN_EXISTS" = "no" ] && [ -d "${plugin_dir}etc" ]; then
-                  echo "First deployment, copying ${plugin_name} config files..."
+                  echo "   📤 Uploading config files (first deployment)..."
                   scp -r -i ~/.ssh/deploy_key \
                     -o StrictHostKeyChecking=yes \
                     -o UserKnownHostsFile=~/.ssh/known_hosts \
                     -o BatchMode=yes \
                     "${plugin_dir}etc" \
                     ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/${plugin_name}/
+                  echo "   ✅ Config files uploaded"
+                elif [ "$PLUGIN_EXISTS" = "no" ]; then
+                  echo "   ⚠️  No etc/ folder to upload for first deployment"
+                else
+                  echo "   ℹ️  Skipping config files (not first deployment)"
                 fi
-                echo "✅ ${plugin_name} plugin deployed"
+                echo "   ✅ ${plugin_name} plugin deployed successfully"
+              else
+                echo "   ❌ .so file not found locally, skipping"
+                echo "   📂 Local directory contents:"
+                ls -la "${plugin_dir}" || echo "   (listing failed)"
               fi
             done
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo "✅ All plugins deployed"
           else
-            echo "⚠️  No plugins found in build artifacts"
+            echo "❌ No plugins directory found at ./binaries/plugins"
+            echo "📂 Contents of ./binaries/:"
+            ls -la ./binaries/ || echo "(listing failed)"
           fi
 
           echo "✅ Binary and plugins deployed successfully to ${{ matrix.server }}"
 
       - name: Deploy templates to ${{ matrix.server }}
         run: |
-          echo "Deploying templates to ${{ matrix.server }}..."
+          echo ""
+          echo "🎨 Deploying templates to ${{ matrix.server }}..."
 
           # Use templates from build artifacts
           if [ -d ./binaries/templates ]; then
             TEMPLATES_SOURCE="./binaries/templates"
             echo "📦 Using Makefile-built templates from artifact"
+            echo "📂 Template directories to deploy:"
+            ls -la "$TEMPLATES_SOURCE/"
+            echo "📄 All template files:"
+            find "$TEMPLATES_SOURCE" -type f | sort
           else
             TEMPLATES_SOURCE="${{ env.TEMPLATES_SOURCE }}"
-            echo "📦 Using docker templates (fallback)"
+            echo "📦 Using docker templates (fallback): $TEMPLATES_SOURCE"
           fi
 
+          echo ""
+          echo "📤 Syncing templates to server..."
           # Sync templates directory with proper SSH options
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes" \
@@ -521,7 +578,7 @@ jobs:
           if [ $? -eq 0 ]; then
             echo "✅ Templates deployed successfully to ${{ matrix.server }}"
           else
-            echo "❌ Deployment failed"
+            echo "❌ Template deployment failed"
             exit 1
           fi
 

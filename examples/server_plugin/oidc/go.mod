@@ -10,7 +10,7 @@ require (
 	github.com/gin-contrib/sessions v1.0.4
 	github.com/gin-gonic/gin v1.11.0
 	github.com/pelletier/go-toml/v2 v2.2.4
-	golang.org/x/oauth2 v0.23.0
+	golang.org/x/oauth2 v0.34.0
 )
 
 require (

@@ -1,4 +1,4 @@
-module github.com/fengyily/nhp-plugins-oidc
+module github.com/OpenNHP/opennhp/examples/server_plugin
 
 go 1.23
 
@@ -10,4 +10,4 @@ require (
 	golang.org/x/oauth2 v0.23.0
 )
 
-replace github.com/OpenNHP/opennhp/nhp v0.6.0 => ../../../nhp
+replace github.com/OpenNHP/opennhp/nhp v0.0.0 => ../../../nhp

@@ -269,18 +269,22 @@ jobs:
             exit 1
           fi
 
-          # Copy plugin .so files (not config files)
+          # Auto-detect and copy all plugins (.so files and config files)
           mkdir -p deploy/plugins
-          if [ -f release/nhp-server/plugins/example/example.so ]; then
-            mkdir -p deploy/plugins/example
-            cp release/nhp-server/plugins/example/example.so deploy/plugins/example/
-            echo "✅ example.so copied"
-          fi
-
-          if [ -f release/nhp-server/plugins/authenticator/authenticator.so ]; then
-            mkdir -p deploy/plugins/authenticator
-            cp release/nhp-server/plugins/authenticator/authenticator.so deploy/plugins/authenticator/
-            echo "✅ authenticator.so copied"
+          if [ -d release/nhp-server/plugins ]; then
+            for plugin_dir in release/nhp-server/plugins/*/; do
+              plugin_name=$(basename "$plugin_dir")
+              so_file="${plugin_dir}${plugin_name}.so"
+              if [ -f "$so_file" ]; then
+                mkdir -p "deploy/plugins/${plugin_name}"
+                cp "$so_file" "deploy/plugins/${plugin_name}/"
+                # Copy etc folder for first deployment
+                if [ -d "${plugin_dir}etc" ]; then
+                  cp -r "${plugin_dir}etc" "deploy/plugins/${plugin_name}/"
+                fi
+                echo "✅ ${plugin_name}.so copied"
+              fi
+            done
           fi
 
           # Copy templates (built by make plugins)
@@ -441,41 +445,53 @@ jobs:
             ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
             "chmod +x ${{ env.DEPLOY_PATH }}/nhp-serverd"
 
-          # Deploy plugins (.so files only, not config files)
+          # Auto-detect and deploy all plugins (.so files, config files only on first deployment)
           echo "🔌 Deploying plugins..."
           if [ -d ./binaries/plugins ]; then
-            # Create plugins directory structure on server
-            ssh -i ~/.ssh/deploy_key \
-              -o StrictHostKeyChecking=yes \
-              -o UserKnownHostsFile=~/.ssh/known_hosts \
-              -o BatchMode=yes \
-              ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
-              "mkdir -p ${{ env.DEPLOY_PATH }}/plugins/example ${{ env.DEPLOY_PATH }}/plugins/authenticator"
+            for plugin_dir in ./binaries/plugins/*/; do
+              plugin_name=$(basename "$plugin_dir")
+              so_file="${plugin_dir}${plugin_name}.so"
 
-            # Deploy example plugin
-            if [ -f ./binaries/plugins/example/example.so ]; then
-              echo "Deploying example.so..."
-              scp -i ~/.ssh/deploy_key \
-                -o StrictHostKeyChecking=yes \
-                -o UserKnownHostsFile=~/.ssh/known_hosts \
-                -o BatchMode=yes \
-                ./binaries/plugins/example/example.so \
-                ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/example/example.so
-              echo "✅ example.so deployed"
-            fi
+              if [ -f "$so_file" ]; then
+                echo "Deploying ${plugin_name} plugin..."
 
-            # Deploy authenticator plugin
-            if [ -f ./binaries/plugins/authenticator/authenticator.so ]; then
-              echo "Deploying authenticator.so..."
-              scp -i ~/.ssh/deploy_key \
-                -o StrictHostKeyChecking=yes \
-                -o UserKnownHostsFile=~/.ssh/known_hosts \
-                -o BatchMode=yes \
-                ./binaries/plugins/authenticator/authenticator.so \
-                ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/authenticator/authenticator.so
-              echo "✅ authenticator.so deployed"
-            fi
+                # Check if plugin directory exists on server (first deployment check)
+                PLUGIN_EXISTS=$(ssh -i ~/.ssh/deploy_key \
+                  -o StrictHostKeyChecking=yes \
+                  -o UserKnownHostsFile=~/.ssh/known_hosts \
+                  -o BatchMode=yes \
+                  ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+                  "[ -d ${{ env.DEPLOY_PATH }}/plugins/${plugin_name} ] && echo 'yes' || echo 'no'")
 
+                # Create plugin directory on server
+                ssh -i ~/.ssh/deploy_key \
+                  -o StrictHostKeyChecking=yes \
+                  -o UserKnownHostsFile=~/.ssh/known_hosts \
+                  -o BatchMode=yes \
+                  ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+                  "mkdir -p ${{ env.DEPLOY_PATH }}/plugins/${plugin_name}"
+
+                # Deploy .so file
+                scp -i ~/.ssh/deploy_key \
+                  -o StrictHostKeyChecking=yes \
+                  -o UserKnownHostsFile=~/.ssh/known_hosts \
+                  -o BatchMode=yes \
+                  "$so_file" \
+                  ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/${plugin_name}/${plugin_name}.so
+
+                # Copy config files only on first deployment
+                if [ "$PLUGIN_EXISTS" = "no" ] && [ -d "${plugin_dir}etc" ]; then
+                  echo "First deployment, copying ${plugin_name} config files..."
+                  scp -r -i ~/.ssh/deploy_key \
+                    -o StrictHostKeyChecking=yes \
+                    -o UserKnownHostsFile=~/.ssh/known_hosts \
+                    -o BatchMode=yes \
+                    "${plugin_dir}etc" \
+                    ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/${plugin_name}/
+                fi
+                echo "✅ ${plugin_name} plugin deployed"
+              fi
+            done
             echo "✅ All plugins deployed"
           else
             echo "⚠️  No plugins found in build artifacts"

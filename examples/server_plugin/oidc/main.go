@@ -7,88 +7,19 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
+
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-gonic/gin"
+	toml "github.com/pelletier/go-toml/v2"
+	"golang.org/x/oauth2"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	nhplog "github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/plugins"
 	"github.com/OpenNHP/opennhp/nhp/utils"
-	"github.com/gin-gonic/gin"
-	"golang.org/x/oauth2"
-
-	toml "github.com/pelletier/go-toml/v2"
 )
-
-// sessionWrapper wraps a session object using reflection to bypass Go plugin type system limitations.
-// In Go plugins, even identical interfaces from the same package version are treated as different types
-// because they are compiled in separate compilation units.
-type sessionWrapper struct {
-	session interface{}
-	val     reflect.Value
-}
-
-func getSession(ctx *gin.Context) *sessionWrapper {
-	const DefaultKey = "github.com/gin-contrib/sessions"
-	s, exists := ctx.Get(DefaultKey)
-	if !exists {
-		return nil
-	}
-	return &sessionWrapper{session: s, val: reflect.ValueOf(s)}
-}
-
-func (sw *sessionWrapper) Get(key interface{}) interface{} {
-	if sw == nil || !sw.val.IsValid() {
-		return nil
-	}
-	method := sw.val.MethodByName("Get")
-	if !method.IsValid() {
-		return nil
-	}
-	results := method.Call([]reflect.Value{reflect.ValueOf(key)})
-	if len(results) > 0 && results[0].IsValid() {
-		return results[0].Interface()
-	}
-	return nil
-}
-
-func (sw *sessionWrapper) Set(key interface{}, val interface{}) {
-	if sw == nil || !sw.val.IsValid() {
-		return
-	}
-	method := sw.val.MethodByName("Set")
-	if !method.IsValid() {
-		return
-	}
-	method.Call([]reflect.Value{reflect.ValueOf(key), reflect.ValueOf(val)})
-}
-
-func (sw *sessionWrapper) Save() error {
-	if sw == nil || !sw.val.IsValid() {
-		return fmt.Errorf("invalid session")
-	}
-	method := sw.val.MethodByName("Save")
-	if !method.IsValid() {
-		return fmt.Errorf("Save method not found")
-	}
-	results := method.Call(nil)
-	if len(results) > 0 && !results[0].IsNil() {
-		return results[0].Interface().(error)
-	}
-	return nil
-}
-
-func (sw *sessionWrapper) Clear() {
-	if sw == nil || !sw.val.IsValid() {
-		return
-	}
-	method := sw.val.MethodByName("Clear")
-	if !method.IsValid() {
-		return
-	}
-	method.Call(nil)
-}
 
 type config struct {
 	AUTH0_DOMAIN        string
@@ -280,18 +211,16 @@ func AuthWithHttp(ctx *gin.Context, req *common.HttpKnockRequest, helper *plugin
 }
 
 func authAndShowLogin(ctx *gin.Context) {
-	session := getSession(ctx)
-	if session != nil {
-		t := session.Get("oauth_token")
-		oauthToken, ok1 := t.(oauth2.Token)
-		s := session.Get("state")
-		state, ok2 := s.(string)
-		if ok1 && ok2 {
-			_, err := oidcAuth.VerifyIDToken(ctx.Request.Context(), &oauthToken)
-			if err == nil {
-				ctx.Redirect(http.StatusSeeOther, "/plugins/oidc?resid=demo&action=valid"+"&state="+state)
-				return
-			}
+	session := sessions.Default(ctx)
+	t := session.Get("oauth_token")
+	oauthToken, ok1 := t.(oauth2.Token)
+	s := session.Get("state")
+	state, ok2 := s.(string)
+	if ok1 && ok2 {
+		_, err := oidcAuth.VerifyIDToken(ctx.Request.Context(), &oauthToken)
+		if err == nil {
+			ctx.Redirect(http.StatusSeeOther, "/plugins/oidc?resid=demo&action=valid"+"&state="+state)
+			return
 		}
 	}
 
@@ -322,12 +251,7 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 		return nil, fmt.Errorf("invalid authenticator")
 	}
 
-	session := getSession(ctx)
-	if session == nil {
-		ctx.String(http.StatusOK, "{\"errMsg\": \"session not available\"}")
-		return nil, fmt.Errorf("session not available")
-	}
-
+	session := sessions.Default(ctx)
 	stateVal := session.Get("state")
 	stateStr, _ := stateVal.(string)
 	if ctx.Query("state") != stateStr {

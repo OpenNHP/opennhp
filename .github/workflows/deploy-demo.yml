@@ -349,6 +349,27 @@ jobs:
           ls -la deploy/
           ls -la deploy/plugins/ 2>/dev/null || true
 
+      - name: Inject secrets into plugin configs
+        env:
+          AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+        run: |
+          echo "🔐 Injecting secrets into plugin configurations..."
+
+          # Inject AUTH0 secrets into oidc plugin config
+          OIDC_CONFIG="deploy/plugins/oidc/etc/config.toml"
+          if [ -f "$OIDC_CONFIG" ]; then
+            if [ -n "$AUTH0_CLIENT_ID" ] && [ -n "$AUTH0_CLIENT_SECRET" ]; then
+              sed -i "s/__AUTH0_CLIENT_ID__/$AUTH0_CLIENT_ID/g" "$OIDC_CONFIG"
+              sed -i "s/__AUTH0_CLIENT_SECRET__/$AUTH0_CLIENT_SECRET/g" "$OIDC_CONFIG"
+              echo "✅ Injected AUTH0 secrets into oidc plugin config"
+            else
+              echo "⚠️  AUTH0 secrets not configured, skipping injection"
+            fi
+          else
+            echo "ℹ️  oidc plugin config not found, skipping"
+          fi
+
       - name: Upload binary artifact
         uses: actions/upload-artifact@v6
         with:

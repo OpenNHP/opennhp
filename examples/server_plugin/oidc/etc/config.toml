@@ -1,4 +1,4 @@
 AUTH0_DOMAIN = "dev-y6ay708guvsacsaq.ca.auth0.com"
-AUTH0_CLIENT_ID = "CF75aEpFxZ1AU71Z2R6KLrLcOU3JOZYS"
-AUTH0_CLIENT_SECRET = "JO2EM1fXTkaQB0bnXs_OPcRmjdpmTVoSuwAjJrH0LDwG4FRFT-xJ_ZCvmipgbELH"
+AUTH0_CLIENT_ID = "__AUTH0_CLIENT_ID__"
+AUTH0_CLIENT_SECRET = "__AUTH0_CLIENT_SECRET__"
 AUTH0_CALLBACK_URL = "https://nhp.opennhp.org/plugins/oidc?resid=demo&action=valid"

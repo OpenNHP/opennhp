@@ -320,7 +320,7 @@ jobs:
           fi
 
       - name: Download built binary
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: nhp-serverd-linux-amd64
           path: ./binaries

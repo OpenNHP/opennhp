@@ -41,32 +41,54 @@ func setHelper(ctx *gin.Context, helper *plugins.HttpServerPluginHelper) {
 // Session helper functions that use the helper from gin context (thread-safe)
 func sessionGet(ctx *gin.Context, key string) interface{} {
 	helper := getHelper(ctx)
-	if helper != nil && helper.SessionGet != nil {
-		return helper.SessionGet(ctx, key)
+	if helper == nil {
+		log.Error("sessionGet: helper not found in context - plugin initialization error")
+		return nil
 	}
-	return nil
+	if helper.SessionGet == nil {
+		log.Error("sessionGet: SessionGet function not provided - plugin initialization error")
+		return nil
+	}
+	return helper.SessionGet(ctx, key)
 }
 
 func sessionSet(ctx *gin.Context, key string, val interface{}) {
 	helper := getHelper(ctx)
-	if helper != nil && helper.SessionSet != nil {
-		helper.SessionSet(ctx, key, val)
+	if helper == nil {
+		log.Error("sessionSet: helper not found in context - plugin initialization error")
+		return
 	}
+	if helper.SessionSet == nil {
+		log.Error("sessionSet: SessionSet function not provided - plugin initialization error")
+		return
+	}
+	helper.SessionSet(ctx, key, val)
 }
 
 func sessionSave(ctx *gin.Context) error {
 	helper := getHelper(ctx)
-	if helper != nil && helper.SessionSave != nil {
-		return helper.SessionSave(ctx)
+	if helper == nil {
+		log.Error("sessionSave: helper not found in context - plugin initialization error")
+		return fmt.Errorf("session helper not available")
 	}
-	return fmt.Errorf("session helper not available")
+	if helper.SessionSave == nil {
+		log.Error("sessionSave: SessionSave function not provided - plugin initialization error")
+		return fmt.Errorf("session helper not available")
+	}
+	return helper.SessionSave(ctx)
 }
 
 func sessionClear(ctx *gin.Context) {
 	helper := getHelper(ctx)
-	if helper != nil && helper.SessionClear != nil {
-		helper.SessionClear(ctx)
+	if helper == nil {
+		log.Error("sessionClear: helper not found in context - plugin initialization error")
+		return
 	}
+	if helper.SessionClear == nil {
+		log.Error("sessionClear: SessionClear function not provided - plugin initialization error")
+		return
+	}
+	helper.SessionClear(ctx)
 }
 
 type config struct {
@@ -156,15 +178,27 @@ func updateConfig(file string) (err error) {
 	content, err := os.ReadFile(file)
 	if err != nil {
 		log.Error("failed to read base config: %v", err)
+		return err
 	}
 
 	var conf config
 	if err := toml.Unmarshal(content, &conf); err != nil {
 		log.Error("failed to unmarshal base config: %v", err)
+		return err
+	}
+
+	// Validate that secrets are properly configured (not placeholder values)
+	if strings.HasPrefix(conf.AUTH0_CLIENT_ID, "__") || strings.HasSuffix(conf.AUTH0_CLIENT_ID, "__") {
+		log.Error("AUTH0_CLIENT_ID contains placeholder value - secrets not properly configured")
+		return fmt.Errorf("AUTH0_CLIENT_ID not configured")
+	}
+	if strings.HasPrefix(conf.AUTH0_CLIENT_SECRET, "__") || strings.HasSuffix(conf.AUTH0_CLIENT_SECRET, "__") {
+		log.Error("AUTH0_CLIENT_SECRET contains placeholder value - secrets not properly configured")
+		return fmt.Errorf("AUTH0_CLIENT_SECRET not configured")
 	}
 
 	baseConf = &conf
-	return err
+	return nil
 }
 
 func updateResource(file string) (err error) {
@@ -297,24 +331,28 @@ func authOidc(ctx *gin.Context) error {
 
 func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.ResourceData, helper *plugins.HttpServerPluginHelper) (*common.ServerKnockAckMsg, error) {
 	if oidcAuth == nil {
-		ctx.String(http.StatusOK, "{\"errMsg\": \"invalid authenticator\"}")
+		log.Error("authenticator not initialized")
+		ctx.String(http.StatusOK, "{\"errMsg\": \"authentication failed\"}")
 		return nil, fmt.Errorf("invalid authenticator")
 	}
 
 	// Validate state parameter to prevent CSRF attacks
 	stateVal := sessionGet(ctx, "state")
 	if stateVal == nil {
-		ctx.String(http.StatusOK, "{\"errMsg\": \"no state in session\"}")
+		log.Error("no state found in session")
+		ctx.String(http.StatusOK, "{\"errMsg\": \"authentication failed\"}")
 		return nil, fmt.Errorf("no state in session")
 	}
 	stateStr, ok := stateVal.(string)
 	if !ok || stateStr == "" {
-		ctx.String(http.StatusOK, "{\"errMsg\": \"invalid state in session\"}")
+		log.Error("invalid state type or empty state in session")
+		ctx.String(http.StatusOK, "{\"errMsg\": \"authentication failed\"}")
 		return nil, fmt.Errorf("invalid state in session")
 	}
 	queryState := ctx.Query("state")
 	if queryState == "" || queryState != stateStr {
-		ctx.String(http.StatusOK, "{\"errMsg\": \"invalid authentication session\"}")
+		log.Error("state mismatch: query state does not match session state")
+		ctx.String(http.StatusOK, "{\"errMsg\": \"authentication failed\"}")
 		return nil, fmt.Errorf("invalid authentication session")
 	}
 	// Clear state after validation to prevent replay attacks
@@ -330,19 +368,22 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 		// Exchange an authorization code for a token.
 		oidcToken, err = oidcAuth.Exchange(ctx.Request.Context(), authorizeCode)
 		if err != nil {
-			ctx.String(http.StatusOK, "{\"errMsg\": \"failed to convert an authorization code into a token\"}")
+			log.Error("failed to exchange authorization code: %v", err)
+			ctx.String(http.StatusOK, "{\"errMsg\": \"authentication failed\"}")
 			return nil, fmt.Errorf("failed to convert an authorization code into a token")
 		}
 
 		idToken, err := oidcAuth.VerifyIDToken(ctx.Request.Context(), oidcToken)
 		if err != nil {
-			ctx.String(http.StatusOK, "{\"errMsg\": \"failed to verify ID token\"}")
+			log.Error("failed to verify ID token: %v", err)
+			ctx.String(http.StatusOK, "{\"errMsg\": \"authentication failed\"}")
 			return nil, fmt.Errorf("failed to verify ID token")
 		}
 
 		var profile map[string]interface{}
 		if err := idToken.Claims(&profile); err != nil {
-			ctx.String(http.StatusOK, "{\"errMsg\": \"failed to claim user profile\"}")
+			log.Error("failed to claim user profile: %v", err)
+			ctx.String(http.StatusOK, "{\"errMsg\": \"authentication failed\"}")
 			return nil, fmt.Errorf("failed to claim user profile")
 		}
 
@@ -354,14 +395,16 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 		oauthToken := sessionGet(ctx, "oauth_token")
 		t, ok := oauthToken.(oauth2.Token)
 		if !ok {
-			ctx.String(http.StatusOK, "{\"errMsg\": \"invalid session paramete\"}")
+			log.Error("invalid or missing oauth token in session")
+			ctx.String(http.StatusOK, "{\"errMsg\": \"authentication failed\"}")
 			return nil, fmt.Errorf("invalid session parameter")
 		}
 		oidcToken = &t
 
 		_, err := oidcAuth.VerifyIDToken(ctx.Request.Context(), oidcToken)
 		if err != nil {
-			ctx.String(http.StatusOK, "{\"errMsg\": \"failed to verify ID token\"}")
+			log.Error("failed to verify ID token from session: %v", err)
+			ctx.String(http.StatusOK, "{\"errMsg\": \"authentication failed\"}")
 			sessionClear(ctx)
 			ctx.Redirect(http.StatusSeeOther, "/plugins/oidc?resid=demo&action=login")
 			return nil, fmt.Errorf("failed to verify ID token")

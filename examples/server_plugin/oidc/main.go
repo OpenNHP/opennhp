@@ -20,33 +20,52 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
 
-// currentHelper holds the current HttpServerPluginHelper for session access
-var currentHelper *plugins.HttpServerPluginHelper
+// helperContextKey is the context key for storing HttpServerPluginHelper
+const helperContextKey = "oidc_plugin_helper"
 
-// Session helper functions that use the currentHelper provided by main program
+// getHelper retrieves the HttpServerPluginHelper from the gin context
+func getHelper(ctx *gin.Context) *plugins.HttpServerPluginHelper {
+	if h, exists := ctx.Get(helperContextKey); exists {
+		if helper, ok := h.(*plugins.HttpServerPluginHelper); ok {
+			return helper
+		}
+	}
+	return nil
+}
+
+// setHelper stores the HttpServerPluginHelper in the gin context
+func setHelper(ctx *gin.Context, helper *plugins.HttpServerPluginHelper) {
+	ctx.Set(helperContextKey, helper)
+}
+
+// Session helper functions that use the helper from gin context (thread-safe)
 func sessionGet(ctx *gin.Context, key string) interface{} {
-	if currentHelper != nil && currentHelper.SessionGet != nil {
-		return currentHelper.SessionGet(ctx, key)
+	helper := getHelper(ctx)
+	if helper != nil && helper.SessionGet != nil {
+		return helper.SessionGet(ctx, key)
 	}
 	return nil
 }
 
 func sessionSet(ctx *gin.Context, key string, val interface{}) {
-	if currentHelper != nil && currentHelper.SessionSet != nil {
-		currentHelper.SessionSet(ctx, key, val)
+	helper := getHelper(ctx)
+	if helper != nil && helper.SessionSet != nil {
+		helper.SessionSet(ctx, key, val)
 	}
 }
 
 func sessionSave(ctx *gin.Context) error {
-	if currentHelper != nil && currentHelper.SessionSave != nil {
-		return currentHelper.SessionSave(ctx)
+	helper := getHelper(ctx)
+	if helper != nil && helper.SessionSave != nil {
+		return helper.SessionSave(ctx)
 	}
 	return fmt.Errorf("session helper not available")
 }
 
 func sessionClear(ctx *gin.Context) {
-	if currentHelper != nil && currentHelper.SessionClear != nil {
-		currentHelper.SessionClear(ctx)
+	helper := getHelper(ctx)
+	if helper != nil && helper.SessionClear != nil {
+		helper.SessionClear(ctx)
 	}
 }
 
@@ -201,8 +220,8 @@ func AuthWithHttp(ctx *gin.Context, req *common.HttpKnockRequest, helper *plugin
 		return nil, fmt.Errorf("AuthWithHttp: helper is null")
 	}
 
-	// Set current helper for session access in this request
-	currentHelper = helper
+	// Store helper in context for thread-safe session access
+	setHelper(ctx, helper)
 
 	resId := ctx.Query("resid")
 	action := ctx.Query("action")
@@ -282,12 +301,25 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 		return nil, fmt.Errorf("invalid authenticator")
 	}
 
+	// Validate state parameter to prevent CSRF attacks
 	stateVal := sessionGet(ctx, "state")
-	stateStr, _ := stateVal.(string)
-	if ctx.Query("state") != stateStr {
+	if stateVal == nil {
+		ctx.String(http.StatusOK, "{\"errMsg\": \"no state in session\"}")
+		return nil, fmt.Errorf("no state in session")
+	}
+	stateStr, ok := stateVal.(string)
+	if !ok || stateStr == "" {
+		ctx.String(http.StatusOK, "{\"errMsg\": \"invalid state in session\"}")
+		return nil, fmt.Errorf("invalid state in session")
+	}
+	queryState := ctx.Query("state")
+	if queryState == "" || queryState != stateStr {
 		ctx.String(http.StatusOK, "{\"errMsg\": \"invalid authentication session\"}")
 		return nil, fmt.Errorf("invalid authentication session")
 	}
+	// Clear state after validation to prevent replay attacks
+	sessionSet(ctx, "state", "")
+	sessionSave(ctx)
 
 	authorizeCode := ctx.Query("code")
 	var err error
@@ -422,12 +454,24 @@ func AuthWithNHP(req *common.NhpAuthRequest, helper *plugins.NhpServerPluginHelp
 	return ackMsg, err
 }
 
+// allowedOrigins is the list of trusted origins for CORS
+var allowedOrigins = []string{
+	"https://nhp.opennhp.org",
+	"https://acdemo.opennhp.org",
+	"https://demo.opennhp.org",
+}
+
 func corsMiddleware(ctx *gin.Context) {
 	originResource := ctx.Request.Header.Get("Origin")
 
 	if originResource != "" {
-		// HTTP headers for CORS
-		ctx.Writer.Header().Set("Access-Control-Allow-Origin", originResource) // allow cross-origin resource sharing
+		// Validate origin against allowlist
+		for _, allowed := range allowedOrigins {
+			if originResource == allowed {
+				ctx.Writer.Header().Set("Access-Control-Allow-Origin", originResource)
+				break
+			}
+		}
 	}
 
 	ctx.Next()

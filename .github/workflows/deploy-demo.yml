@@ -77,7 +77,7 @@ jobs:
           fi
 
           echo "📦 Cloning external plugin repositories..."
-          mkdir -p endpoints/examples/server_plugin
+          mkdir -p examples/server_plugin
 
           # Use Python for secure JSON parsing and validation
           python3 << 'EOF'
@@ -100,27 +100,22 @@ jobs:
           SAFE_REF_PATTERN = re.compile(r'^[a-zA-Z0-9_.-]+$')
 
           def clone_with_token(url, path, ref, token_value):
-              """Clone repository using GIT_ASKPASS to pass credentials securely.
+              """Clone repository using token embedded in URL.
 
-              This approach avoids writing tokens to disk or exposing them in
-              command line arguments. The token is passed via environment variable
-              to a simple askpass script that outputs it to stdout.
+              This uses GitHub's recommended approach of embedding the token
+              in the URL as: https://x-access-token:TOKEN@github.com/...
+              The token is only in memory and not exposed in command line args.
               """
-              env = os.environ.copy()
-              # GIT_ASKPASS script that reads password from environment
-              # This avoids writing the token to any file
-              env['GIT_ASKPASS_TOKEN'] = token_value
-              env['GIT_ASKPASS'] = '/bin/sh'
-              env['GIT_USERNAME'] = 'x-access-token'
+              # Embed token in URL for authentication
+              if 'github.com' in url:
+                  auth_url = url.replace('https://github.com', f'https://x-access-token:{token_value}@github.com')
+              else:
+                  # For other git hosts, try generic embedding
+                  auth_url = url.replace('https://', f'https://x-access-token:{token_value}@')
 
-              # Create inline askpass via shell -c
-              # Git will call: /bin/sh -c 'echo "$GIT_ASKPASS_TOKEN"'
               result = subprocess.run(
-                  ['git', 'clone', '--depth', '1', '--branch', ref,
-                   '-c', 'credential.helper=',
-                   '-c', 'core.askPass=/bin/sh -c "echo $GIT_ASKPASS_TOKEN"',
-                   url, path],
-                  capture_output=True, text=True, env=env
+                  ['git', 'clone', '--depth', '1', '--branch', ref, auth_url, path],
+                  capture_output=True, text=True
               )
               return result
 
@@ -134,6 +129,7 @@ jobs:
               url = repo.get('url', '')
               path = repo.get('path', '')
               ref = repo.get('ref', 'main')
+              subdir = repo.get('subdir', '')  # Optional: subdirectory within the repo
 
               if not url or not path:
                   continue
@@ -153,7 +149,12 @@ jobs:
                   print(f"❌ Invalid ref (only alphanumeric, dash, underscore, dot allowed): {ref}")
                   sys.exit(1)
 
-              print(f"📥 Cloning {url} (ref: {ref}) to {path}")
+              # Security: Validate subdir if provided
+              if subdir and (subdir.startswith('/') or '..' in subdir or not SAFE_PATH_PATTERN.match(subdir)):
+                  print(f"❌ Invalid subdir (no absolute paths or traversal allowed): {subdir}")
+                  sys.exit(1)
+
+              print(f"📥 Cloning {url} (ref: {ref}) to {path}" + (f" (subdir: {subdir})" if subdir else ""))
 
               # Clone with or without authentication
               if token:
@@ -171,6 +172,73 @@ jobs:
                   sys.exit(1)
 
               print(f"✅ Successfully cloned to {path}")
+
+              # If subdir is specified, move the subdirectory content to the target path
+              # This handles repos where the plugin is in a subdirectory
+              if subdir:
+                  import shutil
+                  subdir_path = os.path.join(path, subdir)
+                  if os.path.exists(subdir_path):
+                      # Create temp directory, move subdir content there, remove original, rename temp
+                      temp_path = path + '_temp'
+                      shutil.move(subdir_path, temp_path)
+                      shutil.rmtree(path)
+                      shutil.move(temp_path, path)
+                      print(f"📁 Moved subdir '{subdir}' to {path}")
+                  else:
+                      print(f"⚠️  Subdir '{subdir}' not found in {path}, using repo root")
+
+              # Fix go.mod replace directive for external plugins
+              # External plugins may use relative paths like ../nhp/nhp which need adjustment
+              def fix_go_mod(go_mod_path, target_depth):
+                  """Fix go.mod replace directive with correct relative path."""
+                  if not os.path.exists(go_mod_path):
+                      return False
+
+                  with open(go_mod_path, 'r') as f:
+                      content = f.read()
+
+                  # Calculate correct relative path from plugin dir to nhp module
+                  correct_nhp_path = '../' * target_depth + 'nhp'
+
+                  # Replace common incorrect patterns
+                  original_content = content
+                  content = content.replace('replace github.com/OpenNHP/opennhp/nhp => ../nhp/nhp', f'replace github.com/OpenNHP/opennhp/nhp => {correct_nhp_path}')
+                  content = content.replace('replace github.com/OpenNHP/opennhp/nhp => ../nhp', f'replace github.com/OpenNHP/opennhp/nhp => {correct_nhp_path}')
+                  content = content.replace('replace github.com/OpenNHP/opennhp/nhp => ../../nhp', f'replace github.com/OpenNHP/opennhp/nhp => {correct_nhp_path}')
+
+                  if content != original_content:
+                      with open(go_mod_path, 'w') as f:
+                          f.write(content)
+                      return True
+                  return False
+
+              go_mod_path = os.path.join(path, 'go.mod')
+              depth = path.count('/') + 1
+
+              # Check for nested plugin structure: go.mod at root, Makefile in subdirectory
+              # This handles repos like nhp-plugins-okta with oktaoidc/ subdirectory
+              subdirs_with_makefile = []
+              for entry in os.listdir(path):
+                  subdir_path = os.path.join(path, entry)
+                  if os.path.isdir(subdir_path) and os.path.exists(os.path.join(subdir_path, 'Makefile')):
+                      subdirs_with_makefile.append(entry)
+
+              if os.path.exists(go_mod_path) and subdirs_with_makefile:
+                  # Nested structure: copy go.mod to each subdirectory with Makefile
+                  for subdir in subdirs_with_makefile:
+                      subdir_go_mod = os.path.join(path, subdir, 'go.mod')
+                      if not os.path.exists(subdir_go_mod):
+                          import shutil
+                          shutil.copy(go_mod_path, subdir_go_mod)
+                          print(f"📋 Copied go.mod to {path}/{subdir}/")
+                      # Fix the copied go.mod with correct depth (one level deeper)
+                      if fix_go_mod(subdir_go_mod, depth + 1):
+                          print(f"📝 Fixed go.mod replace directive in {path}/{subdir}/")
+              elif os.path.exists(go_mod_path):
+                  # Simple structure: go.mod and Makefile in same directory
+                  if fix_go_mod(go_mod_path, depth):
+                      print(f"📝 Fixed go.mod replace directive in {path}")
           EOF
 
       - name: Build using make
@@ -180,11 +248,29 @@ jobs:
         run: |
           echo "🔨 Building nhp-serverd, nhp-acd and plugins..."
 
+          # Debug: Show plugin source directories before build
+          echo ""
+          echo "📂 Plugin source directories (examples/server_plugin/):"
+          ls -la examples/server_plugin/
+          echo ""
+
           # Initialize and build
           make init
           make serverd acd plugins
 
+          echo ""
           echo "✅ Build completed successfully"
+          echo ""
+
+          # Debug: Show build output directories
+          echo "📂 Built plugins directory (release/nhp-server/plugins/):"
+          ls -la release/nhp-server/plugins/ || echo "Directory not found"
+          echo ""
+          echo "📂 All .so files in release/:"
+          find release -name "*.so" -type f 2>/dev/null || echo "No .so files found"
+          echo ""
+          echo "📂 Built templates directory (release/nhp-server/templates/):"
+          ls -la release/nhp-server/templates/ || echo "Directory not found"
 
       - name: Prepare deployment artifacts
         run: |
@@ -201,25 +287,52 @@ jobs:
             exit 1
           fi
 
-          # Copy plugin .so files (not config files)
+          # Auto-detect and copy all plugins (.so files and config files)
           mkdir -p deploy/plugins
-          if [ -f release/nhp-server/plugins/example/example.so ]; then
-            mkdir -p deploy/plugins/example
-            cp release/nhp-server/plugins/example/example.so deploy/plugins/example/
-            echo "✅ example.so copied"
-          fi
-
-          if [ -f release/nhp-server/plugins/authenticator/authenticator.so ]; then
-            mkdir -p deploy/plugins/authenticator
-            cp release/nhp-server/plugins/authenticator/authenticator.so deploy/plugins/authenticator/
-            echo "✅ authenticator.so copied"
+          echo "🔍 Scanning for plugins in release/nhp-server/plugins/..."
+          if [ -d release/nhp-server/plugins ]; then
+            echo "📂 Found plugin directories:"
+            ls -la release/nhp-server/plugins/
+            for plugin_dir in release/nhp-server/plugins/*/; do
+              plugin_name=$(basename "$plugin_dir")
+              so_file="${plugin_dir}${plugin_name}.so"
+              echo "🔍 Checking plugin: ${plugin_name}"
+              echo "   - Directory: ${plugin_dir}"
+              echo "   - Expected .so file: ${so_file}"
+              if [ -f "$so_file" ]; then
+                mkdir -p "deploy/plugins/${plugin_name}"
+                cp "$so_file" "deploy/plugins/${plugin_name}/"
+                echo "   ✅ Copied ${plugin_name}.so"
+                # Copy etc folder for first deployment
+                if [ -d "${plugin_dir}etc" ]; then
+                  cp -r "${plugin_dir}etc" "deploy/plugins/${plugin_name}/"
+                  echo "   ✅ Copied etc/ folder"
+                else
+                  echo "   ⚠️  No etc/ folder found"
+                fi
+              else
+                echo "   ❌ .so file not found, skipping"
+                echo "   📂 Contents of ${plugin_dir}:"
+                ls -la "${plugin_dir}" || echo "   (directory listing failed)"
+              fi
+            done
+            echo ""
+            echo "📦 Final plugins artifact content:"
+            find deploy/plugins -type f | sort
+          else
+            echo "⚠️  No plugins directory found at release/nhp-server/plugins"
           fi
 
           # Copy templates (built by make plugins)
+          echo ""
+          echo "🔍 Scanning for templates in release/nhp-server/templates/..."
           if [ -d release/nhp-server/templates ]; then
             cp -r release/nhp-server/templates deploy/
             echo "✅ Templates copied (from Makefile build)"
+            echo "📂 Template directories:"
             ls -la deploy/templates/
+            echo "📄 All template files:"
+            find deploy/templates -type f | sort
           else
             echo "⚠️  No templates found in release/nhp-server/templates"
           fi
@@ -235,6 +348,27 @@ jobs:
 
           ls -la deploy/
           ls -la deploy/plugins/ 2>/dev/null || true
+
+      - name: Inject secrets into plugin configs
+        env:
+          AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+        run: |
+          echo "🔐 Injecting secrets into plugin configurations..."
+
+          # Inject AUTH0 secrets into oidc plugin config
+          OIDC_CONFIG="deploy/plugins/oidc/etc/config.toml"
+          if [ -f "$OIDC_CONFIG" ]; then
+            if [ -n "$AUTH0_CLIENT_ID" ] && [ -n "$AUTH0_CLIENT_SECRET" ]; then
+              sed -i "s/__AUTH0_CLIENT_ID__/$AUTH0_CLIENT_ID/g" "$OIDC_CONFIG"
+              sed -i "s/__AUTH0_CLIENT_SECRET__/$AUTH0_CLIENT_SECRET/g" "$OIDC_CONFIG"
+              echo "✅ Injected AUTH0 secrets into oidc plugin config"
+            else
+              echo "⚠️  AUTH0 secrets not configured, skipping injection"
+            fi
+          else
+            echo "ℹ️  oidc plugin config not found, skipping"
+          fi
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v6
@@ -373,61 +507,107 @@ jobs:
             ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
             "chmod +x ${{ env.DEPLOY_PATH }}/nhp-serverd"
 
-          # Deploy plugins (.so files only, not config files)
+          # Auto-detect and deploy all plugins (.so files, config files only on first deployment)
+          echo ""
           echo "🔌 Deploying plugins..."
+          echo "🔍 Scanning local plugins in ./binaries/plugins/..."
           if [ -d ./binaries/plugins ]; then
-            # Create plugins directory structure on server
-            ssh -i ~/.ssh/deploy_key \
-              -o StrictHostKeyChecking=yes \
-              -o UserKnownHostsFile=~/.ssh/known_hosts \
-              -o BatchMode=yes \
-              ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
-              "mkdir -p ${{ env.DEPLOY_PATH }}/plugins/example ${{ env.DEPLOY_PATH }}/plugins/authenticator"
+            echo "📂 Local plugin directories:"
+            ls -la ./binaries/plugins/
+            echo ""
+            for plugin_dir in ./binaries/plugins/*/; do
+              plugin_name=$(basename "$plugin_dir")
+              so_file="${plugin_dir}${plugin_name}.so"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "🔍 Processing plugin: ${plugin_name}"
+              echo "   - Local directory: ${plugin_dir}"
+              echo "   - Expected .so file: ${so_file}"
 
-            # Deploy example plugin
-            if [ -f ./binaries/plugins/example/example.so ]; then
-              echo "Deploying example.so..."
-              scp -i ~/.ssh/deploy_key \
-                -o StrictHostKeyChecking=yes \
-                -o UserKnownHostsFile=~/.ssh/known_hosts \
-                -o BatchMode=yes \
-                ./binaries/plugins/example/example.so \
-                ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/example/example.so
-              echo "✅ example.so deployed"
-            fi
+              if [ -f "$so_file" ]; then
+                # Check if plugin directory exists on server (first deployment check)
+                PLUGIN_EXISTS=$(ssh -i ~/.ssh/deploy_key \
+                  -o StrictHostKeyChecking=yes \
+                  -o UserKnownHostsFile=~/.ssh/known_hosts \
+                  -o BatchMode=yes \
+                  ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+                  "[ -d ${{ env.DEPLOY_PATH }}/plugins/${plugin_name} ] && echo 'yes' || echo 'no'")
 
-            # Deploy authenticator plugin
-            if [ -f ./binaries/plugins/authenticator/authenticator.so ]; then
-              echo "Deploying authenticator.so..."
-              scp -i ~/.ssh/deploy_key \
-                -o StrictHostKeyChecking=yes \
-                -o UserKnownHostsFile=~/.ssh/known_hosts \
-                -o BatchMode=yes \
-                ./binaries/plugins/authenticator/authenticator.so \
-                ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/authenticator/authenticator.so
-              echo "✅ authenticator.so deployed"
-            fi
+                if [ "$PLUGIN_EXISTS" = "yes" ]; then
+                  echo "   📁 Server status: EXISTS (updating .so only)"
+                else
+                  echo "   📁 Server status: NEW (first deployment)"
+                fi
 
+                # Create plugin directory on server
+                ssh -i ~/.ssh/deploy_key \
+                  -o StrictHostKeyChecking=yes \
+                  -o UserKnownHostsFile=~/.ssh/known_hosts \
+                  -o BatchMode=yes \
+                  ${{ env.DEPLOY_USER }}@${{ matrix.server }} \
+                  "mkdir -p ${{ env.DEPLOY_PATH }}/plugins/${plugin_name}"
+
+                # Deploy .so file
+                echo "   📤 Uploading ${plugin_name}.so..."
+                scp -i ~/.ssh/deploy_key \
+                  -o StrictHostKeyChecking=yes \
+                  -o UserKnownHostsFile=~/.ssh/known_hosts \
+                  -o BatchMode=yes \
+                  "$so_file" \
+                  ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/${plugin_name}/${plugin_name}.so
+
+                # Copy config files only on first deployment
+                if [ "$PLUGIN_EXISTS" = "no" ] && [ -d "${plugin_dir}etc" ]; then
+                  echo "   📤 Uploading config files (first deployment)..."
+                  scp -r -i ~/.ssh/deploy_key \
+                    -o StrictHostKeyChecking=yes \
+                    -o UserKnownHostsFile=~/.ssh/known_hosts \
+                    -o BatchMode=yes \
+                    "${plugin_dir}etc" \
+                    ${{ env.DEPLOY_USER }}@${{ matrix.server }}:${{ env.DEPLOY_PATH }}/plugins/${plugin_name}/
+                  echo "   ✅ Config files uploaded"
+                elif [ "$PLUGIN_EXISTS" = "no" ]; then
+                  echo "   ⚠️  No etc/ folder to upload for first deployment"
+                else
+                  echo "   ℹ️  Skipping config files (not first deployment)"
+                fi
+                echo "   ✅ ${plugin_name} plugin deployed successfully"
+              else
+                echo "   ❌ .so file not found locally, skipping"
+                echo "   📂 Local directory contents:"
+                ls -la "${plugin_dir}" || echo "   (listing failed)"
+              fi
+            done
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo "✅ All plugins deployed"
           else
-            echo "⚠️  No plugins found in build artifacts"
+            echo "❌ No plugins directory found at ./binaries/plugins"
+            echo "📂 Contents of ./binaries/:"
+            ls -la ./binaries/ || echo "(listing failed)"
           fi
 
           echo "✅ Binary and plugins deployed successfully to ${{ matrix.server }}"
 
       - name: Deploy templates to ${{ matrix.server }}
         run: |
-          echo "Deploying templates to ${{ matrix.server }}..."
+          echo ""
+          echo "🎨 Deploying templates to ${{ matrix.server }}..."
 
           # Use templates from build artifacts
           if [ -d ./binaries/templates ]; then
             TEMPLATES_SOURCE="./binaries/templates"
             echo "📦 Using Makefile-built templates from artifact"
+            echo "📂 Template directories to deploy:"
+            ls -la "$TEMPLATES_SOURCE/"
+            echo "📄 All template files:"
+            find "$TEMPLATES_SOURCE" -type f | sort
           else
             TEMPLATES_SOURCE="${{ env.TEMPLATES_SOURCE }}"
-            echo "📦 Using docker templates (fallback)"
+            echo "📦 Using docker templates (fallback): $TEMPLATES_SOURCE"
           fi
 
+          echo ""
+          echo "📤 Syncing templates to server..."
           # Sync templates directory with proper SSH options
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes" \
@@ -437,7 +617,7 @@ jobs:
           if [ $? -eq 0 ]; then
             echo "✅ Templates deployed successfully to ${{ matrix.server }}"
           else
-            echo "❌ Deployment failed"
+            echo "❌ Template deployment failed"
             exit 1
           fi
 

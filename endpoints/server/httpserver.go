@@ -445,6 +445,25 @@ func (hs *HttpServer) NewHttpServerHelper() *plugins.HttpServerPluginHelper {
 	h.AuthWithHttpCallbackFunc = func(req *common.HttpKnockRequest, res *common.ResourceData) (*common.ServerKnockAckMsg, error) {
 		return hs.handleHttpOpenResource(req, res)
 	}
+
+	// Session helper functions for plugins
+	h.SessionGet = func(ctx *gin.Context, key string) interface{} {
+		session := sessions.Default(ctx)
+		return session.Get(key)
+	}
+	h.SessionSet = func(ctx *gin.Context, key string, val interface{}) {
+		session := sessions.Default(ctx)
+		session.Set(key, val)
+	}
+	h.SessionSave = func(ctx *gin.Context) error {
+		session := sessions.Default(ctx)
+		return session.Save()
+	}
+	h.SessionClear = func(ctx *gin.Context) {
+		session := sessions.Default(ctx)
+		session.Clear()
+	}
+
 	return h
 }
 

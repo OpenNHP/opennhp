@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	toml "github.com/pelletier/go-toml/v2"
 	"golang.org/x/oauth2"
@@ -20,6 +19,36 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/plugins"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
+
+// currentHelper holds the current HttpServerPluginHelper for session access
+var currentHelper *plugins.HttpServerPluginHelper
+
+// Session helper functions that use the currentHelper provided by main program
+func sessionGet(ctx *gin.Context, key string) interface{} {
+	if currentHelper != nil && currentHelper.SessionGet != nil {
+		return currentHelper.SessionGet(ctx, key)
+	}
+	return nil
+}
+
+func sessionSet(ctx *gin.Context, key string, val interface{}) {
+	if currentHelper != nil && currentHelper.SessionSet != nil {
+		currentHelper.SessionSet(ctx, key, val)
+	}
+}
+
+func sessionSave(ctx *gin.Context) error {
+	if currentHelper != nil && currentHelper.SessionSave != nil {
+		return currentHelper.SessionSave(ctx)
+	}
+	return fmt.Errorf("session helper not available")
+}
+
+func sessionClear(ctx *gin.Context) {
+	if currentHelper != nil && currentHelper.SessionClear != nil {
+		currentHelper.SessionClear(ctx)
+	}
+}
 
 type config struct {
 	AUTH0_DOMAIN        string
@@ -172,6 +201,9 @@ func AuthWithHttp(ctx *gin.Context, req *common.HttpKnockRequest, helper *plugin
 		return nil, fmt.Errorf("AuthWithHttp: helper is null")
 	}
 
+	// Set current helper for session access in this request
+	currentHelper = helper
+
 	resId := ctx.Query("resid")
 	action := ctx.Query("action")
 	if len(resId) > 0 && strings.Contains(resId, "|") {
@@ -211,10 +243,9 @@ func AuthWithHttp(ctx *gin.Context, req *common.HttpKnockRequest, helper *plugin
 }
 
 func authAndShowLogin(ctx *gin.Context) {
-	session := sessions.Default(ctx)
-	t := session.Get("oauth_token")
+	t := sessionGet(ctx, "oauth_token")
 	oauthToken, ok1 := t.(oauth2.Token)
-	s := session.Get("state")
+	s := sessionGet(ctx, "state")
 	state, ok2 := s.(string)
 	if ok1 && ok2 {
 		_, err := oidcAuth.VerifyIDToken(ctx.Request.Context(), &oauthToken)
@@ -251,8 +282,7 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 		return nil, fmt.Errorf("invalid authenticator")
 	}
 
-	session := sessions.Default(ctx)
-	stateVal := session.Get("state")
+	stateVal := sessionGet(ctx, "state")
 	stateStr, _ := stateVal.(string)
 	if ctx.Query("state") != stateStr {
 		ctx.String(http.StatusOK, "{\"errMsg\": \"invalid authentication session\"}")
@@ -284,12 +314,12 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 			return nil, fmt.Errorf("failed to claim user profile")
 		}
 
-		session.Set("oauth_token", *oidcToken)
-		session.Set("profile", profile)
-		session.Save()
+		sessionSet(ctx, "oauth_token", *oidcToken)
+		sessionSet(ctx, "profile", profile)
+		sessionSave(ctx)
 	} else {
 		// if no authorize code exists, try extract the oauth token from the session
-		oauthToken := session.Get("oauth_token")
+		oauthToken := sessionGet(ctx, "oauth_token")
 		t, ok := oauthToken.(oauth2.Token)
 		if !ok {
 			ctx.String(http.StatusOK, "{\"errMsg\": \"invalid session paramete\"}")
@@ -300,7 +330,7 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 		_, err := oidcAuth.VerifyIDToken(ctx.Request.Context(), oidcToken)
 		if err != nil {
 			ctx.String(http.StatusOK, "{\"errMsg\": \"failed to verify ID token\"}")
-			session.Clear()
+			sessionClear(ctx)
 			ctx.Redirect(http.StatusSeeOther, "/plugins/oidc?resid=demo&action=login")
 			return nil, fmt.Errorf("failed to verify ID token")
 		}

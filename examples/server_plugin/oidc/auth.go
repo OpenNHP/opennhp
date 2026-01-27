@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
 )
@@ -63,10 +62,9 @@ func (a *Authenticator) DoAuth(ctx *gin.Context) error {
 		return err
 	}
 
-	// Save the state inside the session.
-	session := sessions.Default(ctx)
-	session.Set("state", state)
-	if err := session.Save(); err != nil {
+	// Save the state inside the session using helper functions
+	sessionSet(ctx, "state", state)
+	if err := sessionSave(ctx); err != nil {
 		return err
 	}
 

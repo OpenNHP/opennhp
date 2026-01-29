@@ -169,6 +169,13 @@ type NhpPluginPostAuthFunc func(*common.NhpAuthRequest, *common.ResourceData) (*
 
 type HttpPluginPostAuthFunc func(*common.HttpKnockRequest, *common.ResourceData) (*common.ServerKnockAckMsg, error)
 
+// Session helper function types for plugin access to HTTP session.
+// These bypass Go plugin type system limitations by using primitive types.
+type SessionGetFunc func(ctx *gin.Context, key string) interface{}
+type SessionSetFunc func(ctx *gin.Context, key string, val interface{})
+type SessionSaveFunc func(ctx *gin.Context) error
+type SessionClearFunc func(ctx *gin.Context)
+
 type NhpServerPluginHelper struct {
 	StopSignal              <-chan struct{}
 	AuthWithNhpCallbackFunc NhpPluginPostAuthFunc
@@ -177,4 +184,9 @@ type NhpServerPluginHelper struct {
 type HttpServerPluginHelper struct {
 	StopSignal               <-chan struct{}
 	AuthWithHttpCallbackFunc HttpPluginPostAuthFunc
+	// Session helper functions - provided by main program
+	SessionGet   SessionGetFunc
+	SessionSet   SessionSetFunc
+	SessionSave  SessionSaveFunc
+	SessionClear SessionClearFunc
 }

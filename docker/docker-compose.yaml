@@ -16,6 +16,7 @@ services:
       dockerfile: ./docker/Dockerfile.server
       args:
         - GOPROXY=${GOPROXY:-}
+        - APT_MIRROR=${APT_MIRROR:-}
     container_name: nhp-server
     restart: always
     networks:
@@ -35,6 +36,7 @@ services:
       dockerfile: ./docker/Dockerfile.ac
       args:
         - GOPROXY=${GOPROXY:-}
+        - APT_MIRROR=${APT_MIRROR:-}
     volumes:
       - ./nhp-ac/etc/:/nhp-ac/etc/
       - ./nhp-ac/traefik/etc/traefik.toml:/opt/traefik/traefik.toml
@@ -57,6 +59,7 @@ services:
       dockerfile: ./Dockerfile.app
       args:
         - GOPROXY=${GOPROXY:-}
+        - APT_MIRROR=${APT_MIRROR:-}
     restart: always
     cap_add:
       - NET_ADMIN
@@ -71,6 +74,7 @@ services:
       dockerfile: ./docker/Dockerfile.agent
       args:
         - GOPROXY=${GOPROXY:-}
+        - APT_MIRROR=${APT_MIRROR:-}
     container_name: nhp-agent
     restart: always
     #command: []

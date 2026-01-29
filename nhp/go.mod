@@ -1,8 +1,8 @@
 module github.com/OpenNHP/opennhp/nhp
 
-go 1.24.0
+go 1.25.6
 
-toolchain go1.24.11
+toolchain go1.25.6
 
 require (
 	github.com/cilium/ebpf v0.20.0

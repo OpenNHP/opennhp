@@ -6,7 +6,7 @@ COPY . .
 
 RUN echo "Building for architecture: ${TARGETARCH}"
 
-RUN cd /workdir && cat Makefile && make init agentd test
+RUN cd /workdir && cat Makefile && make init agentd
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \

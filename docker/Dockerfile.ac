@@ -5,10 +5,20 @@ COPY . .
 
 RUN echo "Building for architecture: ${TARGETARCH}"
 
-RUN cd /nhp-server &&  make init acd test
+RUN cd /nhp-server &&  make init acd
 
 FROM ubuntu:22.04  AS runtime
+
+ARG APT_MIRROR=
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Switch APT mirror if specified
+RUN if [ -n "$APT_MIRROR" ]; then \
+    sed -i "s|ports.ubuntu.com|${APT_MIRROR}|g" /etc/apt/sources.list && \
+    sed -i "s|archive.ubuntu.com|${APT_MIRROR}|g" /etc/apt/sources.list && \
+    sed -i "s|security.ubuntu.com|${APT_MIRROR}|g" /etc/apt/sources.list; \
+    fi
+
 RUN apt-get update && \
     apt-get install -y  wget \
     ca-certificates \

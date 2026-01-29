@@ -3,18 +3,39 @@
 name: Build Binaries
 
 on:
-  push:
-    branches: ["main", "develop"]
-    tags:
-      - 'v*'
-  pull_request:
-    branches: ["main"]
   workflow_dispatch:
     inputs:
       build_components:
         description: 'Components to build (comma-separated: agentd,acd,serverd,db,kgc,plugins,all)'
         required: false
-        default: 'serverd,plugins'
+        default: 'all'
+        type: string
+      platform_linux:
+        description: 'Build for Linux'
+        required: false
+        default: true
+        type: boolean
+      platform_windows:
+        description: 'Build for Windows'
+        required: false
+        default: false
+        type: boolean
+      platform_darwin:
+        description: 'Build for macOS'
+        required: false
+        default: false
+        type: boolean
+      create_release:
+        description: 'Create a permanent release'
+        required: true
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
+        default: 'no'
+      release_tag:
+        description: 'Release tag (e.g., v1.0.0). Required if create_release is yes'
+        required: false
         type: string
 
 # Restrict default permissions for security (CodeQL alert fix)
@@ -28,26 +49,46 @@ env:
   BUILD_COMPONENTS: ${{ github.event.inputs.build_components || 'serverd,plugins' }}
 
 jobs:
+  # Prepare matrix based on selected platforms
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Set build matrix
+        id: set-matrix
+        run: |
+          # Build matrix JSON from checkbox inputs
+          MATRIX='{"include":['
+          FIRST=true
+
+          if [[ "${{ github.event.inputs.platform_linux }}" == "true" ]]; then
+            [ "$FIRST" = false ] && MATRIX+=','
+            MATRIX+='{"os":"ubuntu-latest","goos":"linux","goarch":"amd64","ext":"","archive_ext":"tar.gz"}'
+            FIRST=false
+          fi
+
+          if [[ "${{ github.event.inputs.platform_windows }}" == "true" ]]; then
+            [ "$FIRST" = false ] && MATRIX+=','
+            MATRIX+='{"os":"windows-latest","goos":"windows","goarch":"amd64","ext":".exe","archive_ext":"zip"}'
+            FIRST=false
+          fi
+
+          if [[ "${{ github.event.inputs.platform_darwin }}" == "true" ]]; then
+            [ "$FIRST" = false ] && MATRIX+=','
+            MATRIX+='{"os":"macos-latest","goos":"darwin","goarch":"amd64","ext":"","archive_ext":"tar.gz"}'
+            FIRST=false
+          fi
+
+          MATRIX+=']}'
+
+          echo "Generated matrix: $MATRIX"
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
   build:
+    needs: prepare-matrix
     strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        include:
-          - os: ubuntu-latest
-            goos: linux
-            goarch: amd64
-            ext: ""
-            archive_ext: tar.gz
-          - os: windows-latest
-            goos: windows
-            goarch: amd64
-            ext: ".exe"
-            archive_ext: zip
-          - os: macos-latest
-            goos: darwin
-            goarch: amd64
-            ext: ""
-            archive_ext: tar.gz
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
 
     runs-on: ${{ matrix.os }}
     
@@ -106,7 +147,7 @@ jobs:
           fi
 
           echo "📦 Cloning external plugin repositories..."
-          mkdir -p endpoints/examples/server_plugin
+          mkdir -p examples/server_plugin
 
           # Use Python for secure JSON parsing and validation
           python3 << 'EOF'
@@ -115,6 +156,11 @@ jobs:
           import sys
           import subprocess
           import re
+
+          # Fix Windows encoding issue (cp1252 doesn't support emoji)
+          if sys.platform == 'win32':
+              sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+              sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
           repos_json = os.environ.get('REPOS_JSON', '[]')
           token = os.environ.get('PLUGIN_TOKEN', '')
@@ -129,27 +175,22 @@ jobs:
           SAFE_REF_PATTERN = re.compile(r'^[a-zA-Z0-9_.-]+$')
 
           def clone_with_token(url, path, ref, token_value):
-              """Clone repository using GIT_ASKPASS to pass credentials securely.
+              """Clone repository using token embedded in URL.
 
-              This approach avoids writing tokens to disk or exposing them in
-              command line arguments. The token is passed via environment variable
-              to a simple askpass script that outputs it to stdout.
+              This uses GitHub's recommended approach of embedding the token
+              in the URL as: https://x-access-token:TOKEN@github.com/...
+              The token is only in memory and not exposed in command line args.
               """
-              env = os.environ.copy()
-              # GIT_ASKPASS script that reads password from environment
-              # This avoids writing the token to any file
-              env['GIT_ASKPASS_TOKEN'] = token_value
-              env['GIT_ASKPASS'] = '/bin/sh'
-              env['GIT_USERNAME'] = 'x-access-token'
+              # Embed token in URL for authentication
+              if 'github.com' in url:
+                  auth_url = url.replace('https://github.com', f'https://x-access-token:{token_value}@github.com')
+              else:
+                  # For other git hosts, try generic embedding
+                  auth_url = url.replace('https://', f'https://x-access-token:{token_value}@')
 
-              # Create inline askpass via shell -c
-              # Git will call: /bin/sh -c 'echo "$GIT_ASKPASS_TOKEN"'
               result = subprocess.run(
-                  ['git', 'clone', '--depth', '1', '--branch', ref,
-                   '-c', 'credential.helper=',
-                   '-c', 'core.askPass=/bin/sh -c "echo $GIT_ASKPASS_TOKEN"',
-                   url, path],
-                  capture_output=True, text=True, env=env
+                  ['git', 'clone', '--depth', '1', '--branch', ref, auth_url, path],
+                  capture_output=True, text=True
               )
               return result
 
@@ -163,6 +204,7 @@ jobs:
               url = repo.get('url', '')
               path = repo.get('path', '')
               ref = repo.get('ref', 'main')
+              subdir = repo.get('subdir', '')  # Optional: subdirectory within the repo
 
               if not url or not path:
                   continue
@@ -182,7 +224,12 @@ jobs:
                   print(f"❌ Invalid ref (only alphanumeric, dash, underscore, dot allowed): {ref}")
                   sys.exit(1)
 
-              print(f"📥 Cloning {url} (ref: {ref}) to {path}")
+              # Security: Validate subdir if provided
+              if subdir and (subdir.startswith('/') or '..' in subdir or not SAFE_PATH_PATTERN.match(subdir)):
+                  print(f"❌ Invalid subdir (no absolute paths or traversal allowed): {subdir}")
+                  sys.exit(1)
+
+              print(f"📥 Cloning {url} (ref: {ref}) to {path}" + (f" (subdir: {subdir})" if subdir else ""))
 
               # Clone with or without authentication
               if token:
@@ -200,6 +247,73 @@ jobs:
                   sys.exit(1)
 
               print(f"✅ Successfully cloned to {path}")
+
+              # If subdir is specified, move the subdirectory content to the target path
+              # This handles repos where the plugin is in a subdirectory
+              if subdir:
+                  import shutil
+                  subdir_path = os.path.join(path, subdir)
+                  if os.path.exists(subdir_path):
+                      # Create temp directory, move subdir content there, remove original, rename temp
+                      temp_path = path + '_temp'
+                      shutil.move(subdir_path, temp_path)
+                      shutil.rmtree(path)
+                      shutil.move(temp_path, path)
+                      print(f"📁 Moved subdir '{subdir}' to {path}")
+                  else:
+                      print(f"⚠️  Subdir '{subdir}' not found in {path}, using repo root")
+
+              # Fix go.mod replace directive for external plugins
+              # External plugins may use relative paths like ../nhp/nhp which need adjustment
+              def fix_go_mod(go_mod_path, target_depth):
+                  """Fix go.mod replace directive with correct relative path."""
+                  if not os.path.exists(go_mod_path):
+                      return False
+
+                  with open(go_mod_path, 'r') as f:
+                      content = f.read()
+
+                  # Calculate correct relative path from plugin dir to nhp module
+                  correct_nhp_path = '../' * target_depth + 'nhp'
+
+                  # Replace common incorrect patterns
+                  original_content = content
+                  content = content.replace('replace github.com/OpenNHP/opennhp/nhp => ../nhp/nhp', f'replace github.com/OpenNHP/opennhp/nhp => {correct_nhp_path}')
+                  content = content.replace('replace github.com/OpenNHP/opennhp/nhp => ../nhp', f'replace github.com/OpenNHP/opennhp/nhp => {correct_nhp_path}')
+                  content = content.replace('replace github.com/OpenNHP/opennhp/nhp => ../../nhp', f'replace github.com/OpenNHP/opennhp/nhp => {correct_nhp_path}')
+
+                  if content != original_content:
+                      with open(go_mod_path, 'w') as f:
+                          f.write(content)
+                      return True
+                  return False
+
+              go_mod_path = os.path.join(path, 'go.mod')
+              depth = path.count('/') + 1
+
+              # Check for nested plugin structure: go.mod at root, Makefile in subdirectory
+              # This handles repos like nhp-plugins-okta with oktaoidc/ subdirectory
+              subdirs_with_makefile = []
+              for entry in os.listdir(path):
+                  subdir_path = os.path.join(path, entry)
+                  if os.path.isdir(subdir_path) and os.path.exists(os.path.join(subdir_path, 'Makefile')):
+                      subdirs_with_makefile.append(entry)
+
+              if os.path.exists(go_mod_path) and subdirs_with_makefile:
+                  # Nested structure: copy go.mod to each subdirectory with Makefile
+                  for subdir in subdirs_with_makefile:
+                      subdir_go_mod = os.path.join(path, subdir, 'go.mod')
+                      if not os.path.exists(subdir_go_mod):
+                          import shutil
+                          shutil.copy(go_mod_path, subdir_go_mod)
+                          print(f"📋 Copied go.mod to {path}/{subdir}/")
+                      # Fix the copied go.mod with correct depth (one level deeper)
+                      if fix_go_mod(subdir_go_mod, depth + 1):
+                          print(f"📝 Fixed go.mod replace directive in {path}/{subdir}/")
+              elif os.path.exists(go_mod_path):
+                  # Simple structure: go.mod and Makefile in same directory
+                  if fix_go_mod(go_mod_path, depth):
+                      print(f"📝 Fixed go.mod replace directive in {path}")
           EOF
 
           echo "✅ All external plugin repositories cloned successfully"
@@ -294,13 +408,14 @@ jobs:
           ls -la output/
 
       # Upload each module as independent artifact (only if built)
+      # retention-days: 1 for temporary builds, 90 for releases
       - name: Upload nhp-agent artifact
         if: contains(env.BUILD_COMPONENTS, 'agentd') || contains(env.BUILD_COMPONENTS, 'all')
         uses: actions/upload-artifact@v6
         with:
           name: nhp-agent-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-agent/
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.create_release == 'yes' && 90 || 1 }}
 
       - name: Upload nhp-ac artifact
         if: contains(env.BUILD_COMPONENTS, 'acd') || contains(env.BUILD_COMPONENTS, 'all')
@@ -308,7 +423,7 @@ jobs:
         with:
           name: nhp-ac-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-ac/
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.create_release == 'yes' && 90 || 1 }}
 
       - name: Upload nhp-server artifact
         if: contains(env.BUILD_COMPONENTS, 'serverd') || contains(env.BUILD_COMPONENTS, 'all')
@@ -316,7 +431,7 @@ jobs:
         with:
           name: nhp-server-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-server/
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.create_release == 'yes' && 90 || 1 }}
 
       - name: Upload nhp-db artifact
         if: contains(env.BUILD_COMPONENTS, 'db') || contains(env.BUILD_COMPONENTS, 'all')
@@ -324,7 +439,7 @@ jobs:
         with:
           name: nhp-db-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-db/
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.create_release == 'yes' && 90 || 1 }}
 
       - name: Upload nhp-kgc artifact
         if: contains(env.BUILD_COMPONENTS, 'kgc') || contains(env.BUILD_COMPONENTS, 'all')
@@ -332,7 +447,7 @@ jobs:
         with:
           name: nhp-kgc-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/nhp-kgc/
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.create_release == 'yes' && 90 || 1 }}
 
       # Create complete package artifact (only when building all components)
       - name: Create archive (Unix)
@@ -380,7 +495,7 @@ jobs:
         with:
           name: opennhp-${{ matrix.goos }}-${{ matrix.goarch }}
           path: output/opennhp-${{ steps.version.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.${{ matrix.archive_ext }}
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.create_release == 'yes' && 90 || 1 }}
 
   # Aggregate artifacts from all platforms
   summary:
@@ -405,16 +520,19 @@ jobs:
         with:
           name: opennhp-all-platforms
           path: all-artifacts/opennhp-*/
-          retention-days: 30
+          retention-days: ${{ github.event.inputs.create_release == 'yes' && 90 || 1 }}
 
-  # Update latest release (only on main branch, not PRs)
+  # Update latest release (always update, replacing previous files)
   latest-release:
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event.inputs.create_release == 'no'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
       - name: Download all package artifacts
         uses: actions/download-artifact@v7
         with:
@@ -428,30 +546,59 @@ jobs:
           find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-files/ \;
           ls -la release-files/
 
-      - name: Update latest release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: Latest Build
-          body: |
-            **Latest Build Artifacts**
+      - name: Delete existing latest release and create new one
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Delete existing release if exists (to clean up old artifacts)
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
 
-            This release is automatically updated after each build with the latest binaries.
+          # Wait for GitHub to process the deletion
+          sleep 5
 
-            Build Time: ${{ github.event.head_commit.timestamp }}
-            Commit: ${{ github.sha }}
-          files: release-files/*
-          prerelease: true
-          make_latest: false
+          # Also delete the tag if it exists (force)
+          git push origin :refs/tags/latest 2>/dev/null || true
 
-  # Create official release when a tag is pushed
+          # Wait again to ensure tag is fully deleted
+          sleep 3
+
+          # Create the release using gh CLI (more reliable than action)
+          cat > /tmp/release-notes.md << 'NOTES'
+          **Latest Build Artifacts**
+
+          This release contains the latest build artifacts (temporary, will be replaced on next build).
+          NOTES
+
+          echo "" >> /tmp/release-notes.md
+          echo "Build Time: ${{ github.run_id }}" >> /tmp/release-notes.md
+          echo "Commit: ${{ github.sha }}" >> /tmp/release-notes.md
+          echo "Branch: ${{ github.ref_name }}" >> /tmp/release-notes.md
+          echo "Triggered by: ${{ github.actor }}" >> /tmp/release-notes.md
+
+          gh release create latest \
+            --title "Latest Build" \
+            --notes-file /tmp/release-notes.md \
+            --prerelease \
+            release-files/*
+
+  # Create official release when requested
   release:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event.inputs.create_release == 'yes' && github.event.inputs.release_tag != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Validate release tag
+        run: |
+          TAG="${{ github.event.inputs.release_tag }}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "❌ Invalid release tag format: $TAG"
+            echo "   Expected format: v1.0.0 or v1.0.0-rc1"
+            exit 1
+          fi
+          echo "✅ Release tag is valid: $TAG"
+
       - name: Download all package artifacts
         uses: actions/download-artifact@v7
         with:
@@ -468,8 +615,10 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          name: Release ${{ github.event.inputs.release_tag }}
           files: release-files/*
           generate_release_notes: true
           draft: false
-          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+          prerelease: ${{ contains(github.event.inputs.release_tag, '-rc') || contains(github.event.inputs.release_tag, '-beta') || contains(github.event.inputs.release_tag, '-alpha') }}
 

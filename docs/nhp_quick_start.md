@@ -75,15 +75,71 @@ Launch Docker Desktop after installation completes
 git clone https://github.com/OpenNHP/opennhp.git
 ```
 
-### 3.2 Building the opennhp-base Docker Image
+### 3.2 Quick Start Script (Recommended)
+
+The easiest way to build and manage the Docker environment is using the `quick_start.sh` script:
 
 ```shell
 cd ./docker
-docker build --no-cache -t opennhp-base:latest -f Dockerfile.base ../..
+
+# Run the interactive menu
+./quick_start.sh
+
+# For users in China, use --china flag to enable mirrors
+./quick_start.sh --china
 ```
-If build issues are encountered, `GO_VERSION` and `GOPROXY` may be overridden by adding a build argument, as in:
+
+The script provides an interactive menu with the following options:
+
+| Option | Description |
+| ------ | ----------- |
+| **1** | **Build ALL and Start (Recommended for first-time users)** |
+| 2 | Build Base Image (opennhp-base) |
+| 3 | Build NHP-Server |
+| 4 | Build NHP-AC |
+| 5 | Build NHP-Agent |
+| 6 | Build Web-App |
+| 7 | Start All Services |
+| 8 | Stop All Services |
+| 9 | Restart All Services |
+| 10-12 | View Logs (nhp-server/nhp-ac/nhp-agent) |
+| 13 | Clean Docker Images |
+| 14 | Clean ALL (images + volumes + networks) |
+| 15 | Toggle China Mirror |
+
+### 3.3 Manual Build: opennhp-base Docker Image
+
+If you prefer manual commands:
+
+```shell
+cd ./docker
+docker build --no-cache -t opennhp-base:latest -f Dockerfile.base ..
 ```
---build-arg GOPROXY=direct
+
+**Build Arguments:**
+
+You can override `GO_VERSION` and `GOPROXY` by adding build arguments:
+
+```shell
+# For users in China, use goproxy.cn and mirrors.aliyun.com for faster downloads
+docker build --build-arg GOPROXY=https://goproxy.cn,direct --build-arg APT_MIRROR=mirrors.aliyun.com --no-cache -t opennhp-base:latest -f Dockerfile.base ..
+
+# To specify a different Go version (default: 1.25.6)
+docker build --build-arg GO_VERSION=1.25.6 --no-cache -t opennhp-base:latest -f Dockerfile.base ..
+```
+
+**Troubleshooting - BuildKit Builder Issue:**
+
+If `docker compose build` fails with error like `pull access denied, repository does not exist`, it may be because your Docker is using a `docker-container` buildx builder which cannot access local images. Fix it by switching to the default builder:
+
+```shell
+# Check current builder
+docker buildx ls
+
+# Switch to docker driver builder
+docker buildx use desktop-linux
+# or
+docker buildx use default
 ```
 
 ## 4. Running and Testing the Environment
@@ -92,9 +148,25 @@ The following startup command will build nhp-server, nhp-ac, web-app, and nhp-ag
 
 ### 4.1 Start All Services
 
+**Using quick_start.sh (Recommended):**
+
+```shell
+cd ./docker
+./quick_start.sh          # Select option [7] Start All Services
+./quick_start.sh --china  # For users in China
+```
+
+**Using docker compose directly:**
+
 ```shell
 cd ./docker
 docker compose up -d
+```
+
+For users in China, pass `GOPROXY` and `APT_MIRROR` environment variables for faster builds:
+
+```shell
+GOPROXY=https://goproxy.cn,direct APT_MIRROR=mirrors.aliyun.com docker compose up -d
 ```
 
 ### 4.2 Scenario 1: Invisibility (for unauthorized users)
@@ -239,30 +311,87 @@ Members:
 
 ## 5. Edit the Code and Rebuild
 
-In actual debugging,After you have modified the code, you can use ```docker compose build [container_name]``` (such as``` docker compose build nhp-ac ```to compile nhp-ac) to compile the service separately for debugging
+After modifying the code, you can rebuild individual services or all services for debugging.
 
 ### 5.1 Code editing
 
-You can use your IDE (such as VSCode to open the project) and modify the OpenNHP code.
+You can use your IDE (such as VSCode) to open the project and modify the OpenNHP code.
 
-### 5.2 ReBuild and Test
+### 5.2 Rebuild Using quick_start.sh (Recommended)
 
-Use the following methods to rebuild and debug the corresponding modified services
-
-### 5.1.2 ReBuild nhp-server and Test
+The `quick_start.sh` script provides the easiest way to rebuild services:
 
 ```shell
 cd ./docker
-docker compose build nhp-server
-docker stop nhp-server && docker rm nhp-server
+./quick_start.sh          # Interactive menu
+./quick_start.sh --china  # For users in China
+```
+
+| Option | Service | Description |
+| ------ | ------- | ----------- |
+| 3 | nhp-server | Rebuild and restart NHP-Server |
+| 4 | nhp-ac | Rebuild and restart NHP-AC |
+| 5 | nhp-agent | Rebuild and restart NHP-Agent |
+| 6 | web-app | Rebuild and restart Web-App |
+| 1 | ALL | Full rebuild including base image |
+
+### 5.3 Manual Rebuild Commands
+
+If you prefer manual commands instead of using `quick_start.sh`:
+
+```shell
+cd ./docker
+
+# Rebuild a specific service (replace SERVICE_NAME with: nhp-server, nhp-ac, nhp-agent, or web-app)
+docker compose build --no-cache SERVICE_NAME
+docker stop SERVICE_NAME && docker rm SERVICE_NAME
+docker compose up -d SERVICE_NAME
+
+# Rebuild all services
+docker compose build --no-cache
+docker compose down
 docker compose up -d
 ```
 
-### 5.1.2 ReBuild nhp-ac and Test
+For users in China, add environment variables:
 
 ```shell
 cd ./docker
-docker compose build nhp-ac
-docker stop nhp-ac && docker rm nhp-ac
+
+# Rebuild a specific service
+GOPROXY=https://goproxy.cn,direct APT_MIRROR=mirrors.aliyun.com docker compose build --no-cache SERVICE_NAME
+docker stop SERVICE_NAME && docker rm SERVICE_NAME
+docker compose up -d SERVICE_NAME
+
+# Rebuild all services
+GOPROXY=https://goproxy.cn,direct APT_MIRROR=mirrors.aliyun.com docker compose build --no-cache
+docker compose down
 docker compose up -d
+```
+
+### 5.4 View Logs
+
+Using quick_start.sh (options 10-12) or docker compose:
+
+```shell
+# View nhp-server logs
+docker compose logs -f nhp-server
+
+# View nhp-ac logs
+docker compose logs -f nhp-ac
+
+# View nhp-agent logs
+docker compose logs -f nhp-agent
+```
+
+### 5.5 Clean Up
+
+Using quick_start.sh (options 13-14) or manual commands:
+
+```shell
+# Remove all OpenNHP images
+docker rmi opennhp-base:latest opennhp-server:latest opennhp-ac:latest opennhp-agent:latest web-app:latest
+
+# Stop and remove containers, networks, volumes
+docker compose down -v
 ```

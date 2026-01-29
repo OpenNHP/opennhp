@@ -4,10 +4,18 @@ FROM --platform=$BUILDPLATFORM ubuntu:22.04 AS builder
 ARG TARGETARCH
 ARG TARGETOS
 ARG GOPROXY=https://proxy.golang.org,direct
-ARG GO_VERSION=1.21.2
+ARG GO_VERSION=1.25.6
+ARG APT_MIRROR=
 
 # Set Proxy
 ENV GOPROXY=${GOPROXY}
+
+# Switch APT mirror if specified (for users in China, use mirrors.aliyun.com)
+RUN if [ -n "$APT_MIRROR" ]; then \
+    sed -i "s|ports.ubuntu.com|${APT_MIRROR}|g" /etc/apt/sources.list && \
+    sed -i "s|archive.ubuntu.com|${APT_MIRROR}|g" /etc/apt/sources.list && \
+    sed -i "s|security.ubuntu.com|${APT_MIRROR}|g" /etc/apt/sources.list; \
+    fi
 
 # Install basic tools
 RUN apt-get update && \
@@ -52,6 +60,8 @@ ENV PATH="${GOPATH}/bin:${PATH}"
 ENV GOOS=${TARGETOS}
 ENV GOARCH=${TARGETARCH}
 ENV CGO_ENABLED=1
+# Force all builds to use go1.25.6 to ensure plugin compatibility
+ENV GOTOOLCHAIN=go1.25.6
 
 # Verify installations
 RUN go version && \

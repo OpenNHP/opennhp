@@ -18,9 +18,21 @@ LogLevel = 4
 DisableAgentValidation = false
 
 [webrtc]
+# Enable: enable WebRTC transport
 Enable = false
+# OfferFile/AnswerFile: file-based signaling (legacy)
 OfferFile = ""
 AnswerFile = ""
+# STUN/TURN servers for ICE
 StunServers = ["stun:stun.l.google.com:19302"]
 TurnServers = []
+# WebSocket signaling configuration
+# EnableWebSocket: enable WebSocket-based signaling (requires HTTP server)
+EnableWebSocket = false
+# WebSocketPath: WebSocket endpoint path (default: "/webrtc/signaling")
+WebSocketPath = "/webrtc/signaling"
+# MaxConnections: maximum concurrent WebSocket connections (default: 100)
+MaxConnections = 100
+# PingIntervalSecs: WebSocket ping interval in seconds (default: 30)
+PingIntervalSecs = 30
 

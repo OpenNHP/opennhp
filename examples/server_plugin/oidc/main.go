@@ -456,7 +456,12 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 			log.Info("ctx.SetCookie.")
 		}
 	}
-	ctx.JSON(http.StatusOK, ackMsg)
+	// Redirect to the resource URL if available, otherwise return JSON
+	if ackMsg.ErrCode == common.ErrSuccess.ErrorCode() && ackMsg.RedirectUrl != "" {
+		ctx.Redirect(http.StatusSeeOther, ackMsg.RedirectUrl)
+	} else {
+		ctx.JSON(http.StatusOK, ackMsg)
+	}
 	return ackMsg, nil
 }
 

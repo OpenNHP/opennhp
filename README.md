@@ -66,7 +66,7 @@ opennhp/
 
 ### Prerequisites
 
-- Go 1.21+
+- Go 1.25.6+
 - `make`
 - Docker and Docker Compose (for the full-stack demo)
 

@@ -417,7 +417,9 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 		log.Error("knock failed. ackMsg is nil")
 		ackMsg = &common.ServerKnockAckMsg{}
 		ackMsg.ErrCode = common.ErrServerACOpsFailed.ErrorCode()
-		ackMsg.ErrMsg = err.Error()
+		if err != nil {
+			ackMsg.ErrMsg = err.Error()
+		}
 	} else {
 		log.Info("knock succeeded.")
 		ackMsg.ErrMsg = ""
@@ -463,8 +465,14 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 		u, err := url.Parse(ackMsg.RedirectUrl)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			log.Error("invalid or unsafe RedirectUrl: %s", ackMsg.RedirectUrl)
-			ctx.JSON(http.StatusOK, ackMsg)
+			ctx.Data(http.StatusBadRequest, "text/html; charset=utf-8", []byte(
+				`<html><body><h3>Authentication Error</h3>`+
+					`<p>The configured redirect URL is invalid. Please contact the administrator.</p>`+
+					`</body></html>`))
 		} else {
+			if u.Scheme == "http" {
+				log.Warning("RedirectUrl uses plain HTTP, HTTPS is recommended for post-authentication redirects: %s", ackMsg.RedirectUrl)
+			}
 			ctx.Redirect(http.StatusSeeOther, ackMsg.RedirectUrl)
 		}
 	} else {

@@ -456,9 +456,17 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 			log.Info("ctx.SetCookie.")
 		}
 	}
-	// Redirect to the resource URL if available, otherwise return JSON
+	// OIDC uses server-side redirect (instead of returning JSON like basic/authenticator plugins)
+	// because the OIDC flow is entirely browser-based: the user arrives via OAuth callback and
+	// must be redirected to the protected resource without client-side JavaScript handling.
 	if ackMsg.ErrCode == common.ErrSuccess.ErrorCode() && ackMsg.RedirectUrl != "" {
-		ctx.Redirect(http.StatusSeeOther, ackMsg.RedirectUrl)
+		u, err := url.Parse(ackMsg.RedirectUrl)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			log.Error("invalid or unsafe RedirectUrl: %s", ackMsg.RedirectUrl)
+			ctx.JSON(http.StatusOK, ackMsg)
+		} else {
+			ctx.Redirect(http.StatusSeeOther, ackMsg.RedirectUrl)
+		}
 	} else {
 		ctx.JSON(http.StatusOK, ackMsg)
 	}

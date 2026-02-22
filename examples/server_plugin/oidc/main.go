@@ -465,10 +465,13 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 		u, err := url.Parse(ackMsg.RedirectUrl)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			log.Error("invalid or unsafe RedirectUrl: %s", ackMsg.RedirectUrl)
+			ackMsg.ErrCode = common.ErrServerACOpsFailed.ErrorCode()
+			ackMsg.ErrMsg = fmt.Sprintf("invalid or unsafe RedirectUrl: %s", ackMsg.RedirectUrl)
 			ctx.Data(http.StatusBadRequest, "text/html; charset=utf-8", []byte(
 				`<html><body><h3>Authentication Error</h3>`+
 					`<p>The configured redirect URL is invalid. Please contact the administrator.</p>`+
 					`</body></html>`))
+			return ackMsg, fmt.Errorf("invalid RedirectUrl: %s", ackMsg.RedirectUrl)
 		} else {
 			if u.Scheme == "http" {
 				log.Warning("RedirectUrl uses plain HTTP, HTTPS is recommended for post-authentication redirects: %s", ackMsg.RedirectUrl)

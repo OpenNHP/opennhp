@@ -423,9 +423,11 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 	} else {
 		log.Info("knock succeeded.")
 		ackMsg.ErrMsg = ""
-		// assign the redirect url to the ackMsg
+		// assign the redirect url from resource config to the ackMsg;
+		// always overwrite to prevent the knock response from injecting an arbitrary redirect target
 		if len(res.RedirectUrl) == 0 {
 			log.Error("RedirectUrl is not provided.")
+			ackMsg.RedirectUrl = ""
 		} else {
 			ackMsg.RedirectUrl = res.RedirectUrl
 		}

@@ -2,19 +2,17 @@ module github.com/OpenNHP/opennhp/nhp
 
 go 1.25.6
 
-toolchain go1.25.6
-
 require (
 	github.com/cilium/ebpf v0.20.0
-	github.com/coocood/freecache v1.2.4
-	github.com/emmansun/gmsm v0.40.1
+	github.com/coocood/freecache v1.2.5
+	github.com/emmansun/gmsm v0.41.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-gonic/gin v1.11.0
 	github.com/google/uuid v1.6.0
 	github.com/tetratelabs/wazero v1.11.0
-	go.etcd.io/etcd/client/v3 v3.6.7
-	golang.org/x/crypto v0.47.0
-	golang.org/x/sys v0.40.0
+	go.etcd.io/etcd/client/v3 v3.6.8
+	golang.org/x/crypto v0.48.0
+	golang.org/x/sys v0.41.0
 )
 
 require (
@@ -46,14 +44,14 @@ require (
 	github.com/quic-go/quic-go v0.58.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
-	go.etcd.io/etcd/api/v3 v3.6.7 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.6.7 // indirect
+	go.etcd.io/etcd/api/v3 v3.6.8 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.6.8 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
 	golang.org/x/arch v0.23.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/text v0.33.0 // indirect
+	golang.org/x/net v0.49.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251222181119-0a764e51fe1b // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b // indirect
 	google.golang.org/grpc v1.78.0 // indirect

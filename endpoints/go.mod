@@ -5,15 +5,15 @@ go 1.25.6
 require (
 	github.com/OpenNHP/opennhp/nhp v0.6.0
 	github.com/cilium/ebpf v0.20.0
-	github.com/emmansun/gmsm v0.40.1
+	github.com/emmansun/gmsm v0.41.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-contrib/sessions v1.0.4
 	github.com/gin-gonic/gin v1.11.0
-	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/mark3labs/mcp-go v0.43.2
+	github.com/mark3labs/mcp-go v0.44.0
 	github.com/pelletier/go-toml/v2 v2.2.4
-	github.com/pion/webrtc/v4 v4.2.3
+	github.com/pion/webrtc/v4 v4.2.6
 	github.com/sigstore/cosign/v2 v2.6.2
 	github.com/spf13/viper v1.21.0
 	github.com/urfave/cli/v2 v2.27.7
@@ -110,14 +110,14 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pion/datachannel v1.6.0 // indirect
-	github.com/pion/dtls/v3 v3.0.10 // indirect
+	github.com/pion/dtls/v3 v3.1.2 // indirect
 	github.com/pion/ice/v4 v4.2.0 // indirect
-	github.com/pion/interceptor v0.1.43 // indirect
+	github.com/pion/interceptor v0.1.44 // indirect
 	github.com/pion/logging v0.2.4 // indirect
 	github.com/pion/mdns/v2 v2.1.0 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.16 // indirect
-	github.com/pion/rtp v1.10.0 // indirect
+	github.com/pion/rtp v1.10.1 // indirect
 	github.com/pion/sctp v1.9.2 // indirect
 	github.com/pion/sdp/v3 v3.0.17 // indirect
 	github.com/pion/srtp/v3 v3.0.10 // indirect
@@ -160,9 +160,9 @@ require (
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	go.etcd.io/etcd/api/v3 v3.6.7 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.6.7 // indirect
-	go.etcd.io/etcd/client/v3 v3.6.7 // indirect
+	go.etcd.io/etcd/api/v3 v3.6.8 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.6.8 // indirect
+	go.etcd.io/etcd/client/v3 v3.6.8 // indirect
 	go.mongodb.org/mongo-driver v1.17.6 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.38.0 // indirect
@@ -172,14 +172,14 @@ require (
 	go.uber.org/zap v1.27.1 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.23.0 // indirect
-	golang.org/x/crypto v0.47.0 // indirect
-	golang.org/x/mod v0.31.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
+	golang.org/x/crypto v0.48.0 // indirect
+	golang.org/x/mod v0.32.0 // indirect
+	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
-	golang.org/x/term v0.39.0 // indirect
-	golang.org/x/text v0.33.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/term v0.40.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251222181119-0a764e51fe1b // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b // indirect

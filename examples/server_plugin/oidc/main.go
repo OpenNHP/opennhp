@@ -417,13 +417,17 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 		log.Error("knock failed. ackMsg is nil")
 		ackMsg = &common.ServerKnockAckMsg{}
 		ackMsg.ErrCode = common.ErrServerACOpsFailed.ErrorCode()
-		ackMsg.ErrMsg = err.Error()
+		if err != nil {
+			ackMsg.ErrMsg = err.Error()
+		}
 	} else {
 		log.Info("knock succeeded.")
 		ackMsg.ErrMsg = ""
-		// assign the redirect url to the ackMsg
+		// assign the redirect url from resource config to the ackMsg;
+		// always overwrite to prevent the knock response from injecting an arbitrary redirect target
 		if len(res.RedirectUrl) == 0 {
 			log.Error("RedirectUrl is not provided.")
+			ackMsg.RedirectUrl = ""
 		} else {
 			ackMsg.RedirectUrl = res.RedirectUrl
 		}
@@ -456,7 +460,29 @@ func authRegular(ctx *gin.Context, req *common.HttpKnockRequest, res *common.Res
 			log.Info("ctx.SetCookie.")
 		}
 	}
-	ctx.JSON(http.StatusOK, ackMsg)
+	// OIDC uses server-side redirect (instead of returning JSON like basic/authenticator plugins)
+	// because the OIDC flow is entirely browser-based: the user arrives via OAuth callback and
+	// must be redirected to the protected resource without client-side JavaScript handling.
+	if ackMsg.ErrCode == common.ErrSuccess.ErrorCode() && ackMsg.RedirectUrl != "" {
+		u, err := url.Parse(ackMsg.RedirectUrl)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			log.Error("invalid or unsafe RedirectUrl: %s", ackMsg.RedirectUrl)
+			ackMsg.ErrCode = common.ErrServerACOpsFailed.ErrorCode()
+			ackMsg.ErrMsg = fmt.Sprintf("invalid or unsafe RedirectUrl: %s", ackMsg.RedirectUrl)
+			ctx.Data(http.StatusBadRequest, "text/html; charset=utf-8", []byte(
+				`<html><body><h3>Authentication Error</h3>`+
+					`<p>The configured redirect URL is invalid. Please contact the administrator.</p>`+
+					`</body></html>`))
+			return ackMsg, fmt.Errorf("invalid RedirectUrl: %s", ackMsg.RedirectUrl)
+		} else {
+			if u.Scheme == "http" {
+				log.Warning("RedirectUrl uses plain HTTP, HTTPS is recommended for post-authentication redirects: %s", ackMsg.RedirectUrl)
+			}
+			ctx.Redirect(http.StatusSeeOther, ackMsg.RedirectUrl)
+		}
+	} else {
+		ctx.JSON(http.StatusOK, ackMsg)
+	}
 	return ackMsg, nil
 }
 

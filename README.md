@@ -17,10 +17,10 @@
 
 **OpenNHP** is a lightweight, cryptography-powered, open-source toolkit implementing Zero Trust security for infrastructure, applications, and data. It features two core protocols:
 
-- **Network-infrastructure Hiding Protocol (NHP):** Conceals server ports, IP addresses, and domain names to protect applications and infrastructure from unauthorized access.
+- **[Network-infrastructure Hiding Protocol (NHP)](https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trust-network-infrastructure):** Conceals server ports, IP addresses, and domain names to protect applications and infrastructure from unauthorized access.
 - **Data-object Hiding Protocol (DHP):** Ensures data security and privacy via encryption and confidential computing, making data *"usable but not visible."*
 
-**[Website](https://opennhp.org) · [Documentation](https://docs.opennhp.org) · [Live Demo](https://acdemo.opennhp.org) · [Discord](https://discord.gg/CpyVmspx5x)**
+**[Website](https://opennhp.org) · [Documentation](https://docs.opennhp.org) · [Live Demo](https://opennhp.org/demo.html) · [Discord](https://discord.gg/CpyVmspx5x)**
 
 ---
 

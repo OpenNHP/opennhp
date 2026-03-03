@@ -454,7 +454,7 @@ jobs:
           fi
 
       - name: Download built binary
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: nhp-serverd-linux-amd64
           path: ./binaries

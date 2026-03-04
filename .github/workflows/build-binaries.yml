@@ -503,7 +503,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: all-artifacts
 
@@ -534,7 +534,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download all package artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: opennhp-*
           path: release-artifacts
@@ -600,7 +600,7 @@ jobs:
           echo "✅ Release tag is valid: $TAG"
 
       - name: Download all package artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: opennhp-*
           path: release-artifacts

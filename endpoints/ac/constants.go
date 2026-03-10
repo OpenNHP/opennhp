@@ -12,6 +12,11 @@ const (
 	ServerKeepaliveInterval        = common.ServerKeepaliveInterval
 	ServerDiscoveryRetryBeforeFail = common.ServerDiscoveryRetryBeforeFail
 
+	// StartupGracePeriod is the time after AC startup during which it stays
+	// in deny-all mode even if all server discoveries fail. This prevents
+	// fail-open during container orchestration when the server hasn't started yet.
+	StartupGracePeriod = 60 // seconds
+
 	TokenStoreRefreshInterval = common.TokenStoreRefreshInterval
 	TempPortOpenTime          = 30
 

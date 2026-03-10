@@ -515,6 +515,8 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 	var discoveryRoutineWg sync.WaitGroup
 	defer discoveryRoutineWg.Wait()
 
+	startupTime := time.Now()
+
 	for {
 		// make a local copy of servers then iterate because next operations are time consuming (too long to use locked iteration)
 		a.serverPeerMutex.Lock()
@@ -535,7 +537,7 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 		a.serverPeerMutex.Unlock()
 
 		// check whether all server discovery failed.
-		// If so, open all blocked input
+		// If so, open all blocked input (but not during startup grace period)
 		quitCheck := make(chan struct{})
 		discoveryQuitArr = append(discoveryQuitArr, quitCheck)
 		discoveryRoutineWg.Add(1)
@@ -559,8 +561,14 @@ func (a *UdpAC) maintainServerConnectionRoutine() {
 							a.iptables.ResetAllInput()
 						}
 					} else {
-						if a.config.FilterMode == FilterMode_IPTABLES {
-							a.iptables.AcceptAllInput()
+						// During startup grace period, stay in deny-all mode
+						// to avoid fail-open when server hasn't started yet
+						if time.Since(startupTime) < StartupGracePeriod*time.Second {
+							log.Info("all server discoveries failed, but within startup grace period (%ds) - staying in deny-all mode", StartupGracePeriod)
+						} else {
+							if a.config.FilterMode == FilterMode_IPTABLES {
+								a.iptables.AcceptAllInput()
+							}
 						}
 					}
 				}

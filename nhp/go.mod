@@ -12,7 +12,7 @@ require (
 	github.com/tetratelabs/wazero v1.11.0
 	go.etcd.io/etcd/client/v3 v3.6.8
 	golang.org/x/crypto v0.48.0
-	golang.org/x/sys v0.41.0
+	golang.org/x/sys v0.42.0
 )
 
 require (

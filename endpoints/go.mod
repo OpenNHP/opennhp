@@ -4,7 +4,7 @@ go 1.25.6
 
 require (
 	github.com/OpenNHP/opennhp/nhp v0.6.0
-	github.com/cilium/ebpf v0.20.0
+	github.com/cilium/ebpf v0.21.0
 	github.com/emmansun/gmsm v0.41.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-contrib/sessions v1.0.4

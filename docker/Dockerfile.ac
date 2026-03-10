@@ -56,5 +56,5 @@ RUN if [ "$(uname -m)" = "x86_64" ]; then \
     rm -f /iptables_defaults_*.sh
 
 ENTRYPOINT ["/bin/sh", "-c"]
-CMD ["/iptables_defaults.sh && cd /opt/traefik/ && nohup ./traefik --configFile=traefik.toml 2>&1 & -- & /nhp-ac/nhp-acd run"]
+CMD ["/iptables_defaults.sh -f && cd /opt/traefik/ && nohup ./traefik --configFile=traefik.toml 2>&1 & -- & /nhp-ac/nhp-acd run"]
 #ENTRYPOINT ["/nhp-ac/nhp-acd", "run"]

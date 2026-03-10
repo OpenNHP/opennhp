@@ -5,8 +5,21 @@ CURRENT_DIR=`cd \`dirname $0\`; pwd`
 if [ "$1" = "-f" ]; then
     echo "Flushing existing iptables rules..."
     echo ""
+    # Set DROP policy first to avoid exposure window during flush
+    iptables -P INPUT DROP
+    iptables -P FORWARD DROP
     iptables -F
     iptables -X
+    # Flush ipsets to clear previously authorized tuples
+    ipset flush 2>/dev/null || true
+    ipset destroy 2>/dev/null || true
+    # Flush IPv6 rules as well
+    if which ip6tables > /dev/null 2>&1; then
+        ip6tables -P INPUT DROP
+        ip6tables -P FORWARD DROP
+        ip6tables -F
+        ip6tables -X
+    fi
 fi
 
 ### ipset (IPv4) ###

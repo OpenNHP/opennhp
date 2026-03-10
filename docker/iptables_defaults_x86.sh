@@ -10,8 +10,11 @@ if [ "$1" = "-f" ]; then
     iptables -P FORWARD DROP
     iptables -F
     iptables -X
+    # Flush ipsets to clear previously authorized tuples
+    ipset flush 2>/dev/null || true
+    ipset destroy 2>/dev/null || true
     # Flush IPv6 rules as well
-    if command -v ip6tables > /dev/null 2>&1; then
+    if which ip6tables > /dev/null 2>&1; then
         ip6tables -P INPUT DROP
         ip6tables -P FORWARD DROP
         ip6tables -F

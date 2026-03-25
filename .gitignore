@@ -5,6 +5,7 @@
 *.so
 *.dylib
 .*
+!.vitepress/
 !.github/
 # Test binary, build with `go test -c`
 *.test
@@ -18,3 +19,5 @@ go.work
 go.work.sum
 
 release/
+node_modules
+docs/dist/

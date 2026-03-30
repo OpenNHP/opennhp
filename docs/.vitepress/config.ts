@@ -1,45 +1,28 @@
 import { defineConfig } from 'vitepress'
 
+// This VitePress setup is used exclusively for local rendering of the
+// interactive Vue architecture diagram (ArchDiagram.vue), so that
+// capture-arch.mjs can record it as a GIF via Puppeteer.
+// It is NOT part of the CI/CD documentation pipeline — the live site
+// continues to be built by Jekyll (.github/workflows/pages.yml).
+// Existing Jekyll pages are excluded to avoid VitePress build errors.
 export default defineConfig({
   title: 'OpenNHP Documentation',
   description: 'Zero Trust Network-infrastructure Hiding Protocol',
-  srcExclude: ['**/zh-cn/**', 'about.md', 'agent_sdk.md', 'build.md', 'code.md', 'comparison.md', 'cryptography.md', 'deploy.md', 'dhp_quick_start.md', 'features.md', 'index.md', 'nhp_quick_start.md', 'server_plugin.md', 'README.md'],  // TODO: remove srcExclude after migrating Jekyll markdown syntax
+  srcExclude: ['**/zh-cn/**', 'about.md', 'agent_sdk.md', 'build.md', 'code.md', 'comparison.md', 'cryptography.md', 'deploy.md', 'dhp_quick_start.md', 'features.md', 'index.md', 'nhp_quick_start.md', 'server_plugin.md', 'README.md'],
 
   themeConfig: {
     logo: '/images/logo12.png',
     nav: [
-      { text: 'Home', link: '/' },
-      { text: 'Features', link: '/features' },
-      { text: 'Quick Start', link: '/nhp_quick_start' },
+      { text: 'Architecture', link: '/arch-demo' },
     ],
     sidebar: [
       {
-        text: 'Getting Started',
+        text: 'Visualization',
         items: [
-          { text: 'Overview', link: '/' },
-          { text: 'About', link: '/about' },
-          { text: 'Features', link: '/features' },
+          { text: 'Architecture Diagram', link: '/arch-demo' },
         ]
       },
-      {
-        text: 'Guide',
-        items: [
-          { text: 'Build', link: '/build' },
-          { text: 'Deploy', link: '/deploy' },
-          { text: 'NHP Quick Start', link: '/nhp_quick_start' },
-          { text: 'DHP Quick Start', link: '/dhp_quick_start' },
-        ]
-      },
-      {
-        text: 'Reference',
-        items: [
-          { text: 'Architecture', link: '/code' },
-          { text: 'Cryptography', link: '/cryptography' },
-          { text: 'Agent SDK', link: '/agent_sdk' },
-          { text: 'Server Plugin', link: '/server_plugin' },
-          { text: 'Comparison', link: '/comparison' },
-        ]
-      }
     ],
     socialLinks: [
       { icon: 'github', link: 'https://github.com/OpenNHP/opennhp' }

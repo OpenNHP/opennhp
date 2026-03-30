@@ -320,7 +320,7 @@
         <div v-if="active && info[active]" class="info-card" :style="{ borderLeftColor: info[active].color }">
           <div class="info-card-header">
             <div class="info-icon" :style="{ background: info[active].color }">
-              <span v-html="info[active].icon"></span>
+              {{ info[active].icon }}
             </div>
             <div>
               <h4 class="info-title">{{ info[active].title }}</h4>
@@ -339,7 +339,9 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vitepress'
 
+const router = useRouter()
 const active = ref<string | null>(null)
 
 const flowSteps = [
@@ -355,16 +357,16 @@ const flowSteps = [
 interface Info { title: string; badge: string; desc: string; color: string; icon: string; features?: string[]; link?: string }
 
 const info: Record<string, Info> = {
-  server: { title: 'NHP-Server', badge: 'Core Component', desc: 'Central controller that processes and validates knock requests, interacts with the Authorization Service Provider, and orchestrates access control.', color: '#3b82f6', icon: '&#9741;', features: ['Noise Protocol', 'Key Management', 'Distributed Deploy'], link: '/code#nhp-server' },
-  agent: { title: 'NHP-Agent', badge: 'Client Component', desc: 'Client-side component that initiates encrypted knock requests to gain access to protected resources. Available as standalone app, SDK, or browser plugin.', color: '#8b5cf6', icon: '&#9000;', features: ['Encrypted UDP', 'Multi-platform', 'SDK Available'], link: '/code#nhp-agent' },
-  ac: { title: 'NHP-AC', badge: 'Enforcement Point', desc: 'Access Controller that enforces deny-all by default. Opens network paths only upon NHP-Server instruction, ensuring complete infrastructure hiding.', color: '#f59e0b', icon: '&#9855;', features: ['Default Deny-All', 'eBPF Support', 'Auto Expire'], link: '/code#nhp-ac' },
-  asp: { title: 'Authorization Service Provider', badge: 'Third-Party External Service', desc: 'An external, independent service that validates access policies and provides actual resource addresses. Operates outside the NHP infrastructure boundary.', color: '#10b981', icon: '&#10003;', features: ['Policy Engine', 'SDP Compatible', 'RBAC / ABAC', 'Independent'] },
-  resource: { title: 'Protected Resource', badge: 'Protected Target', desc: 'The target service, API, or infrastructure hidden from unauthorized access. Completely invisible on the network until NHP grants access.', color: '#6366f1', icon: '&#9881;', features: ['Zero Exposure', 'Port Hiding', 'IP Concealment'] },
+  server: { title: 'NHP-Server', badge: 'Core Component', desc: 'Central controller that processes and validates knock requests, interacts with the Authorization Service Provider, and orchestrates access control.', color: '#3b82f6', icon: '\u260D', features: ['Noise Protocol', 'Key Management', 'Distributed Deploy'], link: '/code#nhp-server' },
+  agent: { title: 'NHP-Agent', badge: 'Client Component', desc: 'Client-side component that initiates encrypted knock requests to gain access to protected resources. Available as standalone app, SDK, or browser plugin.', color: '#8b5cf6', icon: '\u2328', features: ['Encrypted UDP', 'Multi-platform', 'SDK Available'], link: '/code#nhp-agent' },
+  ac: { title: 'NHP-AC', badge: 'Enforcement Point', desc: 'Access Controller that enforces deny-all by default. Opens network paths only upon NHP-Server instruction, ensuring complete infrastructure hiding.', color: '#f59e0b', icon: '\u267F', features: ['Default Deny-All', 'eBPF Support', 'Auto Expire'], link: '/code#nhp-ac' },
+  asp: { title: 'Authorization Service Provider', badge: 'Third-Party External Service', desc: 'An external, independent service that validates access policies and provides actual resource addresses. Operates outside the NHP infrastructure boundary.', color: '#10b981', icon: '\u2713', features: ['Policy Engine', 'SDP Compatible', 'RBAC / ABAC', 'Independent'] },
+  resource: { title: 'Protected Resource', badge: 'Protected Target', desc: 'The target service, API, or infrastructure hidden from unauthorized access. Completely invisible on the network until NHP grants access.', color: '#6366f1', icon: '\u2699', features: ['Zero Exposure', 'Port Hiding', 'IP Concealment'] },
 }
 
 function handleClick(id: string) {
   const item = info[id]
-  if (item?.link) window.location.href = item.link
+  if (item?.link) router.go(item.link)
 }
 </script>
 

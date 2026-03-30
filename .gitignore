@@ -21,3 +21,4 @@ go.work.sum
 release/
 node_modules
 docs/dist/
+docs/recordings/

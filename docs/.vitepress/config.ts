@@ -5,11 +5,12 @@ import { defineConfig } from 'vitepress'
 // capture-arch.mjs can record it as a GIF via Puppeteer.
 // It is NOT part of the CI/CD documentation pipeline — the live site
 // continues to be built by Jekyll (.github/workflows/pages.yml).
-// Existing Jekyll pages are excluded to avoid VitePress build errors.
+// Exclude all markdown except the arch-demo page to avoid VitePress build
+// errors from unconverted Jekyll pages. Add new VitePress pages here.
 export default defineConfig({
   title: 'OpenNHP Documentation',
   description: 'Zero Trust Network-infrastructure Hiding Protocol',
-  srcExclude: ['**/zh-cn/**', 'about.md', 'agent_sdk.md', 'build.md', 'code.md', 'comparison.md', 'cryptography.md', 'deploy.md', 'dhp_quick_start.md', 'features.md', 'index.md', 'nhp_quick_start.md', 'server_plugin.md', 'README.md'],
+  srcExclude: ['**/*.md', '!arch-demo.md'],
 
   themeConfig: {
     logo: '/images/logo12.png',

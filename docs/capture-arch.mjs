@@ -1,9 +1,40 @@
-import puppeteer from 'puppeteer'
+/**
+ * Capture the interactive architecture diagram as GIF and MP4.
+ *
+ * Prerequisites:
+ *   npm install          # install dependencies (in docs/)
+ *   ffmpeg               # must be available on PATH
+ *   Chrome or Chromium   # auto-detected, or set CHROME_PATH env var
+ *
+ * Usage:
+ *   1. Start the VitePress dev server:
+ *        npm run dev -- --port 5180
+ *   2. In another terminal, run this script:
+ *        node capture-arch.mjs
+ *
+ * Output files are written to docs/recordings/ (gitignored).
+ * Copy the GIF to docs/images/OpenNHP_Arch.gif to update the README.
+ */
+import puppeteer from 'puppeteer-core'
 import { execFileSync } from 'child_process'
 import { mkdirSync, existsSync, statSync, rmSync } from 'fs'
 import path from 'path'
 
-const URL = process.env.CAPTURE_URL || 'http://localhost:5180/arch-demo'
+const PAGE_URL = process.env.CAPTURE_URL || 'http://localhost:5180/arch-demo'
+
+// Detect a locally installed Chrome/Chromium. Set CHROME_PATH to override.
+const CHROME_PATH = process.env.CHROME_PATH || [
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium-browser',
+  '/usr/bin/chromium',
+].find(p => existsSync(p))
+
+if (!CHROME_PATH) {
+  console.error('Chrome/Chromium not found. Set CHROME_PATH env var.')
+  process.exit(1)
+}
 const OUT_DIR = path.resolve('recordings')
 const DURATION = 8          // seconds to record
 const FPS = 30
@@ -16,6 +47,7 @@ if (!existsSync(OUT_DIR)) mkdirSync(OUT_DIR)
   console.log('Launching browser...')
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath: CHROME_PATH,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   })
 
@@ -23,7 +55,7 @@ if (!existsSync(OUT_DIR)) mkdirSync(OUT_DIR)
   await page.setViewport({ width: WIDTH, height: HEIGHT, deviceScaleFactor: 2 })
 
   console.log('Loading page...')
-  await page.goto(URL, { waitUntil: 'networkidle0', timeout: 30000 })
+  await page.goto(PAGE_URL, { waitUntil: 'networkidle0', timeout: 30000 })
 
   // Wait for Vue SPA to hydrate and render the component
   console.log('Waiting for component to render...')

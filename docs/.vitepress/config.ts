@@ -10,18 +10,20 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'OpenNHP Documentation',
   description: 'Zero Trust Network-infrastructure Hiding Protocol',
-  srcExclude: ['**/*.md', '!arch-demo.md'],
+  srcExclude: ['**/*.md', '!arch-demo.md', '!claw-dhp-demo.md'],
 
   themeConfig: {
     logo: '/images/logo12.png',
     nav: [
       { text: 'Architecture', link: '/arch-demo' },
+      { text: 'OpenClaw + DHP', link: '/claw-dhp-demo' },
     ],
     sidebar: [
       {
         text: 'Visualization',
         items: [
           { text: 'Architecture Diagram', link: '/arch-demo' },
+          { text: 'OpenClaw + DHP', link: '/claw-dhp-demo' },
         ]
       },
     ],

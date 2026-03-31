@@ -100,12 +100,12 @@ init:
 	@for dir in ./examples/server_plugin/*/; do \
 		if [ -f "$$dir/go.mod" ]; then \
 			echo "$(COLOUR_BLUE)[Plugin-$$(basename $$dir)] Running go mod download... $(END_COLOUR)"; \
-			cd "$$dir" && go mod download && cd - > /dev/null; \
+			cd "$$dir" && go mod download && go mod tidy && cd - > /dev/null; \
 		else \
 			for subdir in "$$dir"/*/; do \
 				if [ -f "$$subdir/go.mod" ]; then \
 					echo "$(COLOUR_BLUE)[Plugin-$$(basename $$subdir)] Running go mod download... $(END_COLOUR)"; \
-					cd "$$subdir" && go mod download && cd - > /dev/null; \
+					cd "$$subdir" && go mod download && go mod tidy && cd - > /dev/null; \
 				fi \
 			done \
 		fi \

@@ -97,7 +97,7 @@ Da OpenNHP Zero Trust-Prinzipien auf der *OSI-Sitzungsschicht* implementiert, bi
 
 Die Architektur von OpenNHP orientiert sich an der [NIST Zero Trust-Architektur](https://www.nist.gov/publications/zero-trust-architecture). Sie folgt einem modularen Design mit drei Hauptkomponenten: **NHP-Server**, **NHP-AC** und **NHP-Agent**, wie in der folgenden Abbildung dargestellt.
 
-![OpenNHP Architektur](docs/images/OpenNHP_Arch.png)
+![OpenNHP Architektur](docs/images/OpenNHP_Arch.gif)
 
 > Weitere Informationen zur Architektur und zum Workflow finden Sie in der [OpenNHP-Dokumentation](https://docs.opennhp.org/).
 

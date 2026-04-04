@@ -103,7 +103,7 @@ OpenNHP 构建在早期的网络隐藏技术研究基础之上，利用现代加
 
 OpenNHP 的架构受 [NIST 零信任架构标准](https://www.nist.gov/publications/zero-trust-architecture) 启发，采用模块化设计，包含三个核心组件：**NHP-Server**、**NHP-AC** 和 **NHP-Agent**，如下图所示。
 
-![OpenNHP architecture](docs/images/OpenNHP_Arch.png)
+![OpenNHP architecture](docs/images/OpenNHP_Arch.gif)
 
 > 有关架构和工作流程的详细信息，请参阅 [OpenNHP 文档](https://docs.opennhp.org/)。
 

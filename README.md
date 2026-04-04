@@ -28,7 +28,7 @@
 
 OpenNHP follows a modular design with three core components, inspired by the [NIST Zero Trust Architecture](https://www.nist.gov/publications/zero-trust-architecture):
 
-![OpenNHP architecture](docs/images/OpenNHP_Arch.png)
+![OpenNHP architecture](docs/images/OpenNHP_Arch.gif)
 
 | Component | Role |
 |-----------|------|

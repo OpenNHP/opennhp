@@ -97,7 +97,7 @@ Dado que OpenNHP implementa los principios de confianza cero en la *capa de sesi
 
 La arquitectura de OpenNHP se inspira en el [estándar de Arquitectura de Confianza Cero del NIST](https://www.nist.gov/publications/zero-trust-architecture). Sigue un diseño modular con los tres componentes principales: **NHP-Server**, **NHP-AC** y **NHP-Agent**, como se ilustra en el siguiente diagrama.
 
-![Arquitectura de OpenNHP](docs/images/OpenNHP_Arch.png)
+![Arquitectura de OpenNHP](docs/images/OpenNHP_Arch.gif)
 
 > Consulte la [documentación de OpenNHP](https://docs.opennhp.org/) para obtener información detallada sobre la arquitectura y el flujo de trabajo.
 

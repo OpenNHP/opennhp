@@ -20,7 +20,7 @@ A lightweight cryptography-driven zero trust networking protocol at the OSI 5th 
 
 The OpenNHP architecture is inspired by the NIST Zero Trust Architecture standard. It follows a modular design with the following core components: 
 
-![OpenNHP architecture](./images/OpenNHP_Arch.png)
+![OpenNHP architecture](./images/OpenNHP_Arch.gif)
 
 
 ### 2. OpenNHP Core Components:

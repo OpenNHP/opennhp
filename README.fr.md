@@ -97,7 +97,7 @@ Puisqu'OpenNHP implémente les principes de zéro confiance au *niveau de la cou
 
 L'architecture d'OpenNHP s'inspire de la [norme d'architecture Zero Trust du NIST](https://www.nist.gov/publications/zero-trust-architecture). Elle suit une conception modulaire avec trois composants principaux : **NHP-Server**, **NHP-AC** et **NHP-Agent**, comme illustré dans le diagramme ci-dessous.
 
-![Architecture OpenNHP](docs/images/OpenNHP_Arch.png)
+![Architecture OpenNHP](docs/images/OpenNHP_Arch.gif)
 
 > Veuillez consulter la [documentation d'OpenNHP](https://docs.opennhp.org/) pour des informations détaillées sur l'architecture et le flux de travail.
 

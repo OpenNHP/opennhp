@@ -3,3 +3,8 @@ _site
 .jekyll-cache
 .jekyll-metadata
 vendor
+
+# VitePress
+.vitepress/dist
+.vitepress/cache
+node_modules

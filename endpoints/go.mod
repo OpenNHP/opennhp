@@ -11,7 +11,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/mark3labs/mcp-go v0.47.0
+	github.com/mark3labs/mcp-go v0.47.1
 	github.com/pelletier/go-toml/v2 v2.3.0
 	github.com/pion/webrtc/v4 v4.2.11
 	github.com/sigstore/cosign/v2 v2.6.3
@@ -156,9 +156,9 @@ require (
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	go.etcd.io/etcd/api/v3 v3.6.9 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.6.9 // indirect
-	go.etcd.io/etcd/client/v3 v3.6.9 // indirect
+	go.etcd.io/etcd/api/v3 v3.6.10 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.6.10 // indirect
+	go.etcd.io/etcd/client/v3 v3.6.10 // indirect
 	go.mongodb.org/mongo-driver v1.17.6 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

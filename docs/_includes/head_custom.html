@@ -1,0 +1,40 @@
+<!-- Brand webfonts (match opennhp.org) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+
+<!--
+  Theme init — runs before first paint to apply the user's stored scheme
+  preference and swap Just-the-Docs' theme stylesheet if it differs from
+  the default (set in _config.yml). This avoids a flash of the wrong theme.
+-->
+<script>
+  (function () {
+    var STORAGE_KEY = 'opennhp-theme';
+    var DEFAULT_THEME = 'opennhp-dark';
+    var VALID_THEMES = ['opennhp-dark', 'opennhp-light'];
+
+    var stored;
+    try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) { stored = null; }
+    var theme = VALID_THEMES.indexOf(stored) !== -1 ? stored : DEFAULT_THEME;
+
+    document.documentElement.setAttribute('data-opennhp-theme', theme);
+
+    if (theme !== DEFAULT_THEME) {
+      // Swap the jtd theme stylesheet href. The <link> is already in the DOM
+      // above this script but may still be loading; changing href triggers a
+      // fresh request for the correct scheme file.
+      var links = document.getElementsByTagName('link');
+      for (var i = 0; i < links.length; i++) {
+        var href = links[i].getAttribute('href') || '';
+        if (href.indexOf('just-the-docs-') !== -1) {
+          links[i].setAttribute('href', href.replace(/just-the-docs-[^.]+\.css/, 'just-the-docs-' + theme + '.css'));
+          break;
+        }
+      }
+    }
+
+    // Expose for the toggle script
+    window.__opennhpTheme = theme;
+  })();
+</script>

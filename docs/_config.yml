@@ -91,8 +91,9 @@ nav_enabled: true
 # Supports true (default) or false
 heading_anchors: true
 
-# Color scheme supports "light" (default) and "dark"
-color_scheme: light
+# Color scheme — custom "opennhp-dark" / "opennhp-light" match opennhp.org branding.
+# Switch at runtime via the toggle in the top bar (see _includes/header_custom.html).
+color_scheme: opennhp-dark
 
 
 # Exclude from processing.

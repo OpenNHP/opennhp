@@ -1,0 +1,88 @@
+// OpenNHP — typography + component polish shared by both schemes.
+// Variables are bound at scheme-import time; this file runs last and applies
+// regardless of which scheme is active.
+
+// --- Typography ------------------------------------------------------------
+
+$font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+$font-heading: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+$font-mono:    'JetBrains Mono', 'Fira Code', ui-monospace, 'SF Mono', Consolas, monospace;
+
+body {
+  font-family: $font-body;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6,
+.site-title,
+.main-content h1,
+.main-content h2,
+.main-content h3,
+.main-content h4,
+.main-content h5,
+.main-content h6 {
+  font-family: $font-heading;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+code, pre, kbd, samp, .text-mono {
+  font-family: $font-mono;
+}
+
+// --- Site-title spacing ----------------------------------------------------
+
+.site-title {
+  letter-spacing: -0.015em;
+}
+
+// --- Theme toggle button ---------------------------------------------------
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-left: 0.5rem;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--opennhp-border-color, currentColor);
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 150ms ease, background-color 150ms ease, border-color 150ms ease;
+
+  &:hover,
+  &:focus-visible {
+    opacity: 1;
+    outline: none;
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  // Show moon when dark scheme active, sun when light active
+  .theme-toggle__sun  { display: none; }
+  .theme-toggle__moon { display: block; }
+}
+
+html[data-opennhp-theme='opennhp-light'] .theme-toggle {
+  .theme-toggle__sun  { display: block; }
+  .theme-toggle__moon { display: none; }
+}
+
+// --- Aux-nav layout so toggle sits cleanly next to GitHub link -------------
+
+.aux-nav-list-item .theme-toggle {
+  vertical-align: middle;
+}

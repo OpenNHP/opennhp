@@ -50,8 +50,8 @@ func (d *Device) IsTransactionRequest(t int) bool {
 			return true
 		}
 	case NHP_RELAY:
-
-		// no transaction request for relay
+		// Relay does not use LocalTransaction for NHP_RLY.
+		// ACK responses are routed via pendingRelayRequests in relay.go.
 	}
 
 	return false
@@ -105,7 +105,8 @@ func (d *Device) IsTransactionResponse(t int) bool {
 			return true
 		}
 	case NHP_RELAY:
-		// no transaction response for relay
+		// Relay does not use LocalTransaction for response matching.
+		// ACK/COK responses are routed via pendingRelayRequests in relay.go.
 	}
 
 	return false

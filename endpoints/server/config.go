@@ -82,6 +82,7 @@ type Peers struct {
 	ACs    []*core.UdpPeer
 	Agents []*core.UdpPeer
 	DBs    []*core.UdpPeer
+	Relays []*core.UdpPeer
 }
 
 func (s *UdpServer) loadBaseConfig() error {
@@ -218,6 +219,21 @@ func (s *UdpServer) loadPeers() error {
 			}
 		}
 	})
+
+	// relay.toml
+	fileNameRelay := filepath.Join(ExeDirPath, "etc", "relay.toml")
+	contentRelay, err := s.loadConfigFile(fileNameRelay)
+	if err != nil {
+		log.Warning("load relay peer config err (optional): %v", err)
+	} else {
+		var relayPeers Peers
+		if err := toml.Unmarshal(contentRelay, &relayPeers); err != nil {
+			log.Error("failed to unmarshal relay peers config: %v", err)
+		}
+		if err := s.updateRelayPeers(relayPeers.Relays); err != nil {
+			_ = err
+		}
+	}
 
 	// tee.toml
 	fileNameTee := filepath.Join(ExeDirPath, "etc", "tee.toml")
@@ -564,6 +580,31 @@ func (s *UdpServer) updateAgentPeers(peers []*core.UdpPeer) (err error) {
 		}
 	}
 	s.agentPeerMap = agentPeerMap
+
+	return err
+}
+
+func (s *UdpServer) updateRelayPeers(peers []*core.UdpPeer) (err error) {
+	utils.CatchPanicThenRun(func() {
+		err = errLoadConfig
+	})
+
+	relayPeerMap := make(map[string]*core.UdpPeer)
+	for _, p := range peers {
+		p.Type = core.NHP_RELAY
+		s.device.AddPeer(p)
+		relayPeerMap[p.PublicKeyBase64()] = p
+	}
+
+	// remove old peers from device
+	s.relayPeerMapMutex.Lock()
+	defer s.relayPeerMapMutex.Unlock()
+	for pubKey := range s.relayPeerMap {
+		if _, found := relayPeerMap[pubKey]; !found {
+			s.device.RemovePeer(pubKey)
+		}
+	}
+	s.relayPeerMap = relayPeerMap
 
 	return err
 }

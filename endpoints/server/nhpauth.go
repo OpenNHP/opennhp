@@ -16,7 +16,13 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 	s.wg.Add(1)
 
 	transactionId := ppd.SenderTrxId
-	addrStr := ppd.ConnData.RemoteAddr.String()
+	// For relay-forwarded connections, use the real client address
+	// (the browser behind the relay) for auth and logging.
+	clientAddr := ppd.ConnData.RemoteAddr
+	if ppd.ConnData.RealRemoteAddr != nil {
+		clientAddr = ppd.ConnData.RealRemoteAddr
+	}
+	addrStr := clientAddr.String()
 	knkMsg := &common.AgentKnockMsg{}
 	dhpKnkMsg := &common.DHPKnockMsg{}
 	ackMsg := &common.ServerKnockAckMsg{
@@ -79,8 +85,8 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 			Ack:       ackMsg,
 			PublicKey: base64.StdEncoding.EncodeToString(ppd.RemotePubKey),
 			SrcAddr: &common.NetAddress{
-				Ip:   ppd.ConnData.RemoteAddr.IP.String(),
-				Port: ppd.ConnData.RemoteAddr.Port,
+				Ip:   clientAddr.IP.String(),
+				Port: clientAddr.Port,
 			},
 		}
 

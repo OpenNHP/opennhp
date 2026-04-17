@@ -67,6 +67,27 @@ services:
       network_default:
         ipv4_address: 177.7.0.11
 
+  nhp-relay:
+    image: opennhp-relay
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile.relay
+      args:
+        - GOPROXY=${GOPROXY:-}
+        - APT_MIRROR=${APT_MIRROR:-}
+    container_name: nhp-relay
+    restart: always
+    ports:
+      - "8080:8080"
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.12
+    depends_on:
+      - nhp-server
+    volumes:
+      - ./nhp-relay/etc/:/nhp-relay/etc/:rw
+      - ./nhp-relay/logs/:/nhp-relay/logs/:rw
+
   nhp-agent:
     image: opennhp-agent:latest
     build:

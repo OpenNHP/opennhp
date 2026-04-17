@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
@@ -595,4 +597,122 @@ func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
 		return common.DRGMsg{}, fmt.Errorf("json parsing error: %s", err)
 	}
 	return config, nil
+}
+
+// HandleRelayForward processes a decrypted NHP_RLY message from the standard
+// Noise pipeline.  The relay's identity has already been validated by
+// validatePeer as part of the standard decryption flow.
+//
+// The message body is a JSON-encoded RelayForwardMsg containing:
+//   - SourceAddr:  the real client's IP/port
+//   - InnerPacket: base64-encoded inner NHP packet (encrypted by agent)
+//
+// The inner packet is injected into the standard pipeline as if the agent
+// had connected directly.
+func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
+	var rlyMsg common.RelayForwardMsg
+	if err := json.Unmarshal(ppd.BodyMessage, &rlyMsg); err != nil {
+		log.Error("server-relay[HandleRelayForward] failed to parse RelayForwardMsg: %v", err)
+		return err
+	}
+
+	if rlyMsg.SourceAddr == nil {
+		log.Error("server-relay[HandleRelayForward] missing source address")
+		return fmt.Errorf("missing source address")
+	}
+
+	innerBytes, err := base64.StdEncoding.DecodeString(rlyMsg.InnerPacket)
+	if err != nil {
+		log.Error("server-relay[HandleRelayForward] failed to decode inner packet: %v", err)
+		return err
+	}
+
+	realAddr := &net.UDPAddr{
+		IP:   net.ParseIP(rlyMsg.SourceAddr.Ip),
+		Port: rlyMsg.SourceAddr.Port,
+	}
+	if realAddr.IP == nil {
+		realAddr.IP = net.IPv4zero
+	}
+
+	relayAddrStr := ppd.ConnData.RemoteAddr.String()
+	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",
+		relayAddrStr, realAddr, len(innerBytes))
+
+	// Allocate a pool packet for the inner bytes.
+	innerPkt := s.device.AllocatePoolPacket()
+	if len(innerBytes) > len(innerPkt.Buf) {
+		s.device.ReleasePoolPacket(innerPkt)
+		log.Warning("server-relay[HandleRelayForward] inner packet too large (%d bytes)", len(innerBytes))
+		return fmt.Errorf("inner packet too large")
+	}
+	copy(innerPkt.Buf[:], innerBytes)
+	innerPkt.Content = innerPkt.Buf[:len(innerBytes)]
+
+	// Run standard RecvPrecheck on the inner packet.
+	innerType, _, err := s.device.RecvPrecheck(innerPkt)
+	if err != nil {
+		s.device.ReleasePoolPacket(innerPkt)
+		log.Warning("server-relay[HandleRelayForward] inner RecvPrecheck failed: %v", err)
+		return err
+	}
+	innerPkt.HeaderType = innerType
+	log.Info("server-relay[HandleRelayForward] inner [%s] from real client %s via relay %s",
+		core.HeaderTypeToString(innerType), realAddr, relayAddrStr)
+
+	// Build or reuse a connection keyed on "relay:<relayAddr>:<realClientAddr>".
+	// This avoids collisions with the relay's own NHP_RLY connection (which is
+	// already keyed on relayAddrStr) and isolates per-client anti-replay state.
+	// RemoteAddr must be the relay's UDP address so that response packets
+	// (ACK/COK) are sent back to the relay — the relay then forwards them
+	// to the browser over HTTP.  The real client address is used only for
+	// auth/logging purposes.
+	relayAddr := ppd.ConnData.RemoteAddr
+	connKey := "relay:" + relayAddrStr + ":" + realAddr.String()
+	recvTime := time.Now().UnixNano()
+
+	s.remoteConnectionMapMutex.Lock()
+	conn, found := s.remoteConnectionMap[connKey]
+	s.remoteConnectionMapMutex.Unlock()
+
+	if found && conn.ConnData.IsClosed() {
+		// Previous relay-forwarded connection for this client timed out.
+		// Remove the stale entry and create a fresh connection.
+		s.remoteConnectionMapMutex.Lock()
+		delete(s.remoteConnectionMap, connKey)
+		s.remoteConnectionMapMutex.Unlock()
+		found = false
+	}
+
+	if !found {
+		conn = &UdpConn{}
+		conn.ConnData = &core.ConnectionData{
+			InitTime:             recvTime,
+			LastLocalRecvTime:    recvTime,
+			Device:               s.device,
+			LocalAddr:            s.listenAddr,
+			RemoteAddr:           relayAddr,
+			RealRemoteAddr:       realAddr,
+			CookieStore:          &core.CookieStore{},
+			RemoteTransactionMap: make(map[uint64]*core.RemoteTransaction),
+			TimeoutMs:            DefaultAgentConnectionTimeoutMs,
+			SendQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),
+			RecvQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),
+			BlockSignal:          make(chan struct{}),
+			SetTimeoutSignal:     make(chan struct{}),
+			StopSignal:           make(chan struct{}),
+		}
+		s.remoteConnectionMapMutex.Lock()
+		s.remoteConnectionMap[connKey] = conn
+		s.remoteConnectionMapMutex.Unlock()
+
+		s.wg.Add(1)
+		go s.connectionRoutine(conn)
+		log.Info("server-relay[HandleRelayForward] new relay connection %s (real client %s, key=%s)", relayAddrStr, realAddr, connKey)
+	} else {
+		atomic.StoreInt64(&conn.ConnData.LastLocalRecvTime, recvTime)
+	}
+
+	conn.ConnData.ForwardInboundPacket(innerPkt)
+	return nil
 }

@@ -320,3 +320,9 @@ type ServerDHPKnockAckMsg struct {
 	ErrMsg   string `json:"errMsg,omitempty"`
 	OpenTime uint32 `json:"opnTime"`
 }
+
+// relay <-> server
+type RelayForwardMsg struct {
+	SourceAddr  *NetAddress `json:"srcAddr"`  // real client address
+	InnerPacket string      `json:"innerPkt"` // base64-encoded inner NHP packet
+}

@@ -61,6 +61,9 @@ type UdpServer struct {
 	acPeerMapMutex sync.Mutex
 	acPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
+	relayPeerMapMutex sync.Mutex
+	relayPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
+
 	dbConnectionMapMutex sync.Mutex
 	dbConnectionMap      map[string]*DBConn // ac connection is indexed by remote IP address
 
@@ -251,6 +254,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.remoteConnectionMap = make(map[string]*UdpConn)
 	s.acConnectionMap = make(map[string]*ACConn)
 	s.dbConnectionMap = make(map[string]*DBConn)
+	s.relayPeerMap = make(map[string]*core.UdpPeer)
 	s.tokenStore = common.NewTokenStore[*ACTokenEntry]()
 	s.blockAddrMap = make(map[string]*BlockAddr)
 	s.signals.stop = make(chan struct{})
@@ -722,6 +726,11 @@ func (s *UdpServer) recvMessageRoutine() {
 				// aynchronously process knock messages with ack response
 				go func(p *core.PacketParserData) {
 					_ = s.HandleKnockRequest(p)
+				}(ppd)
+
+			case core.NHP_RLY:
+				go func(p *core.PacketParserData) {
+					_ = s.HandleRelayForward(p)
 				}(ppd)
 
 			case core.NHP_AOL:

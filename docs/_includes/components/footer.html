@@ -1,20 +1,21 @@
 {% assign is_zh = false %}
 {% if page.url contains '/zh-cn/' %}{% assign is_zh = true %}{% endif %}
 
+{% assign year = site.time | date: '%Y' %}
 {% if is_zh %}
   {% assign edit_text = '在 GitHub 上编辑此页' %}
   {% assign back_text = '返回顶部' %}
   {% assign ack_prefix = '致谢：' %}
   {% assign ack_suffix = ' Jekyll 主题' %}
   {% assign last_modified_label = '页面最后修改：' %}
-  {% assign copyright_text = 'Copyright © 2026 <a href="https://opennhp.org">OpenNHP</a> 开源项目' %}
+  {% capture copyright_text %}Copyright © {{ year }} <a href="https://opennhp.org">OpenNHP</a> 开源项目{% endcapture %}
 {% else %}
   {% assign edit_text = site.gh_edit_link_text %}
   {% assign back_text = site.back_to_top_text %}
   {% assign ack_prefix = 'Acknowledgement: ' %}
   {% assign ack_suffix = ' Jekyll theme' %}
   {% assign last_modified_label = 'Page last modified: ' %}
-  {% assign copyright_text = site.footer_content %}
+  {% capture copyright_text %}Copyright &copy; {{ year }} <a href="https://opennhp.org">OpenNHP</a> Open Source Project.{% endcapture %}
 {% endif %}
 
 <hr>

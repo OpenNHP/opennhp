@@ -9,6 +9,15 @@
   // lives at /zh-cn/overview/. Map the English root ↔ Chinese overview.
   var ZH_OVERVIEW = '/zh-cn/overview/';
 
+  /* English pages that have no Chinese equivalent. Selecting 简体中文
+     from one of these sends the user to the Chinese overview instead
+     of /zh-cn/<page>/ (which would 404). Keep this list in sync with
+     the docs/ filesystem whenever a new untranslated page lands. */
+  var ENGLISH_ONLY_PATHS = [
+    '/arch-demo/',
+    '/claw-dhp-demo/'
+  ];
+
   function targetUrl(lang) {
     var path = window.location.pathname;
     var onZh = path.indexOf(ZH_PREFIX + '/') === 0;
@@ -16,6 +25,7 @@
     if (lang === 'zh-cn') {
       if (onZh) return path;
       if (path === '/' || path === '') return ZH_OVERVIEW;
+      if (ENGLISH_ONLY_PATHS.indexOf(path) !== -1) return ZH_OVERVIEW;
       return ZH_PREFIX + path;
     }
     // lang === 'en'

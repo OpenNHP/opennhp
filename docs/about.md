@@ -9,7 +9,7 @@ layout: null
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="refresh" content="0; url={{ '/' | relative_url }}">
+  <meta http-equiv="refresh" content="0; url={{ '/' | absolute_url }}">
   <link rel="canonical" href="{{ '/' | absolute_url }}">
   <title>Redirecting…</title>
 </head>

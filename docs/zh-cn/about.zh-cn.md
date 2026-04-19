@@ -9,7 +9,7 @@ layout: null
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="refresh" content="0; url={{ '/zh-cn/overview/' | relative_url }}">
+  <meta http-equiv="refresh" content="0; url={{ '/zh-cn/overview/' | absolute_url }}">
   <link rel="canonical" href="{{ '/zh-cn/overview/' | absolute_url }}">
   <title>重定向中…</title>
 </head>

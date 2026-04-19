@@ -429,11 +429,10 @@ html[data-opennhp-theme='opennhp-light'] {
   margin-bottom: 0.5rem;
 }
 
-// jtd renders the "This site uses Just the Docs..." blurb in the sidebar
-// footer. We've relocated it to the main page footer, so hide the original.
-.side-bar .site-footer {
-  display: none;
-}
+// jtd renders the "This site uses Just the Docs…" blurb in a sidebar
+// footer that we've relocated to components/footer.html. The
+// override of components/sidebar.html removes that element from the
+// DOM entirely; no CSS hide-rule needed.
 
 // --- Syntax-highlight (Rouge) readability in dark mode --------------------
 // jtd's Rouge palette is tuned for light backgrounds; the default

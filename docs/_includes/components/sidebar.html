@@ -1,9 +1,15 @@
 {%- comment -%}
-  Override of jtd's sidebar.html. The ONLY change vs the upstream is using
-  {% include %} instead of {% include_cached %} for components/site_nav.html
-  so our site_nav override can filter nav items per page based on language
-  (English vs /zh-cn/). jtd's default caches the nav output across pages
-  which would make the filter's first render stick for every page.
+  Override of jtd's sidebar.html. Two changes vs upstream:
+  1. Use `include` instead of `include_cached` for components/site_nav.html
+     so our site_nav override can filter nav items per page based on
+     language (English vs /zh-cn/). jtd's default caches the nav output
+     across pages, which would make the filter's first render stick for
+     every page.
+  2. Drop the fallback "This site uses Just the Docs…" footer entirely —
+     our components/footer.html already renders an acknowledgement line
+     in the page footer, so emitting a second one here and hiding it via
+     CSS would leave it present for screen readers. Removing from DOM
+     is cleaner.
 {%- endcomment -%}
 
 <div class="side-bar">
@@ -21,9 +27,5 @@
   {% endcapture %}
   {% if nav_footer_custom != "" %}
     {{ nav_footer_custom }}
-  {% else %}
-    <footer class="site-footer">
-      This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
-    </footer>
   {% endif %}
 </div>

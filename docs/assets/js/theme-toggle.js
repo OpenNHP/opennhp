@@ -5,6 +5,7 @@
 (function () {
   var STORAGE_KEY = 'opennhp-theme';
   var THEMES = { dark: 'opennhp-dark', light: 'opennhp-light' };
+  var VALID_THEMES = ['opennhp-dark', 'opennhp-light'];
 
   function currentTheme() {
     return document.documentElement.getAttribute('data-opennhp-theme') || THEMES.dark;
@@ -23,6 +24,10 @@
   }
 
   function applyTheme(theme) {
+    /* Defense-in-depth: only accept the two known scheme names so an
+       attacker-controlled value (e.g. via a prior XSS that manipulated
+       the attribute) can't be written into a stylesheet href. */
+    if (VALID_THEMES.indexOf(theme) === -1) return;
     document.documentElement.setAttribute('data-opennhp-theme', theme);
     try { localStorage.setItem(STORAGE_KEY, theme); } catch (e) { /* ignore quota/private-mode */ }
     var link = stylesheetLink();

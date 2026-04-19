@@ -1,15 +1,19 @@
 ---
-layout: page
 title: 关于我们
-parent: 中文版
-nav_order: 11
 permalink: /zh-cn/about/
+nav_exclude: true
+sitemap: false
+layout: null
 ---
-
-# 关于OpenNHP开源项目
-{: .fs-9 }
-
-[English](/about/){: .label .fs-4 }
----
-
-
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="0; url={{ '/zh-cn/overview/' | absolute_url }}">
+  <link rel="canonical" href="{{ '/zh-cn/overview/' | absolute_url }}">
+  <title>重定向中…</title>
+</head>
+<body>
+  <p>此页面已移动，正在跳转至 <a href="{{ '/zh-cn/overview/' | relative_url }}">{{ '/zh-cn/overview/' | relative_url }}</a>…</p>
+</body>
+</html>

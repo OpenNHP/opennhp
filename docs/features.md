@@ -11,7 +11,6 @@ permalink: /features/
 OpenNHP offers robust security, excellent performance, and scalability to protect your network resources.
 {: .fs-6 .fw-300 }
 
-[中文版](/zh-cn/features/){: .label .fs-4 }
 
 ---
 

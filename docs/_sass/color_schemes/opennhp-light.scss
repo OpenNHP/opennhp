@@ -1,0 +1,32 @@
+// OpenNHP Light — brand-aligned light variant
+// Accent hue preserved but darkened for WCAG AA contrast on white.
+
+$opennhp-bg-primary:       #ffffff;
+$opennhp-bg-secondary:     #f8fafc;
+$opennhp-bg-tertiary:      #f1f5f9;
+$opennhp-accent-primary:   #047857; // emerald-700 — brand mint tuned for light bg
+$opennhp-accent-secondary: #059669;
+$opennhp-accent-purple:    #6d28d9;
+$opennhp-text-primary:     #0a0e17;
+$opennhp-text-secondary:   #475569;
+$opennhp-text-muted:       #64748b;
+$opennhp-border:           #e2e8f0;
+// Layout width lives in _sass/custom/setup.scss (see comment there).
+
+// Just-the-Docs variable overrides
+$body-background-color:       $opennhp-bg-primary;
+$sidebar-color:               $opennhp-bg-secondary;
+// Body (paragraph) text uses the secondary gray — matches opennhp.org.
+// Headings stay at the primary (near-black) color for contrast on white.
+$body-text-color:             $opennhp-text-secondary;
+$body-heading-color:          $opennhp-text-primary;
+$link-color:                  $opennhp-accent-primary;
+$btn-primary-color:           $opennhp-accent-primary;
+$base-button-color:           $opennhp-bg-tertiary;
+$code-background-color:       $opennhp-bg-tertiary;
+$search-background-color:     $opennhp-bg-secondary;
+$search-result-preview-color: $opennhp-text-secondary;
+$table-background-color:      $opennhp-bg-primary;
+$feedback-color:              $opennhp-accent-primary;
+$border-color:                $opennhp-border;
+$nav-child-link-color:        $opennhp-text-secondary;

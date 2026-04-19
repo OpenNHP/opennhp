@@ -24,8 +24,8 @@ baseurl: "" # the subpath of your site, e.g. /blog
 #remote_theme: just-the-docs
 theme: just-the-docs
 
-url: "https://opennhp.org"
-logo: "/images/logo12.png"
+url: "https://docs.opennhp.org"
+logo: "/images/OpenNHP_Docs_logo_blue.png"
 favicon_ico: "/favicon.ico"
 repository: OpenNHP/opennhp # for github-metadata
 
@@ -73,10 +73,12 @@ search:
 # For copy button on code
 enable_copy_code_button: true
 
-# Aux links for the upper right navigation
-aux_links:
-  "OpenNHP on GitHub":
-    - "//github.com/OpenNHP/opennhp"
+# Aux links for the upper right navigation.
+# The GitHub link and theme toggle are rendered via _includes/header_custom.html
+# so we can show an icon instead of text and control the order.
+# aux_links:
+#   "OpenNHP on GitHub":
+#     - "//github.com/OpenNHP/opennhp"
 
 # Makes Aux links open in a new tab. Default is false
 aux_links_new_tab: true
@@ -91,8 +93,9 @@ nav_enabled: true
 # Supports true (default) or false
 heading_anchors: true
 
-# Color scheme supports "light" (default) and "dark"
-color_scheme: light
+# Color scheme — custom "opennhp-dark" / "opennhp-light" match opennhp.org branding.
+# Switch at runtime via the toggle in the top bar (see _includes/header_custom.html).
+color_scheme: opennhp-dark
 
 
 # Exclude from processing.
@@ -152,7 +155,9 @@ callouts:
 back_to_top: true
 back_to_top_text: "Back to Top"
 
-footer_content: 'Copyright &copy; 2024 OpenNHP Open Source Project.'
+# Auto-updating year; rendered via {{ site.time | date: '%Y' }} in the footer include.
+# Kept here as a template so we don't duplicate the "Copyright © YEAR …" string.
+footer_year_source: 'site.time'
 
 # Footer last edited timestamp
 last_edit_timestamp: true # show or hide edit time - page must have `last_modified_date` defined in the frontmatter

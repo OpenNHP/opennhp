@@ -11,7 +11,6 @@ permalink: /cryptography/
 Cryptography is at the heart of OpenNHP, providing robust security, excellent performance, and scalability by utilizing cutting-edge cryptographic algorithms.
 {: .fs-6 .fw-300 }
 
-[中文版](/zh-cn/cryptography/){: .label .fs-4 }
 
 ---
 

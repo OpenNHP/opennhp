@@ -1,7 +1,6 @@
 ---
 layout: page
 title: 加密算法
-parent: 中文版
 nav_order: 4
 permalink: /zh-cn/cryptography/
 ---
@@ -12,7 +11,6 @@ permalink: /zh-cn/cryptography/
 加密是 OpenNHP 的核心，通过利用尖端的加密算法提供强大的安全性、卓越的性能和可扩展性。
 {: .fs-6 .fw-300 }
 
-[English](/cryptography/){: .label .fs-4 }
 
 ---
 

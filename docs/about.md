@@ -1,18 +1,19 @@
 ---
-layout: page
 title: About
-nav_order: 11
 permalink: /about/
+nav_exclude: true
+sitemap: false
+layout: null
 ---
-
-# About OpenNHP Project
-{: .fs-9 }
-
-OpenNHP is developed by a global community of passionate modern security enthusiasts.
-{: .fs-6 .fw-300 }
-
-[中文版](/zh-cn/about/){: .label .fs-4 }
-
----
-
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="0; url={{ '/' | absolute_url }}">
+  <link rel="canonical" href="{{ '/' | absolute_url }}">
+  <title>Redirecting…</title>
+</head>
+<body>
+  <p>This page has moved. Redirecting to <a href="{{ '/' | relative_url }}">{{ '/' | relative_url }}</a>…</p>
+</body>
+</html>

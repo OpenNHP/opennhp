@@ -1,7 +1,6 @@
 ---
 layout: page
 title: 编译源代码
-parent: 中文版
 nav_order: 7
 permalink: /zh-cn/build/
 ---
@@ -9,7 +8,6 @@ permalink: /zh-cn/build/
 # 编译OpenNHP
 {: .fs-9 }
 
-[English](/build/){: .label .fs-4 }
 
 ---
 

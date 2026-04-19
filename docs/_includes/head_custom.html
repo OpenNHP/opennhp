@@ -1,0 +1,65 @@
+<!-- Brand webfonts (match opennhp.org) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+
+<!--
+  Theme init: applies the stored scheme preference. Inlined (no HTTP
+  roundtrip) so it runs synchronously before first paint.
+
+  Flicker-free swap pattern: instead of changing the existing link's
+  href (which leaves the page unstyled until the new CSS downloads),
+  we INSERT a new stylesheet link alongside the existing one and
+  remove the original only after the new link has loaded. During the
+  overlap both sheets are active; the new sheet wins by source order,
+  so styles transition cleanly with no unstyled paint.
+
+  Compression-safe: no `//` single-line comments in the script body.
+-->
+<script>
+  (function () {
+    var STORAGE_KEY = 'opennhp-theme';
+    var DEFAULT_THEME = 'opennhp-dark';
+    var VALID_THEMES = ['opennhp-dark', 'opennhp-light'];
+    var stored;
+    try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) { stored = null; }
+    var theme = VALID_THEMES.indexOf(stored) !== -1 ? stored : DEFAULT_THEME;
+    document.documentElement.setAttribute('data-opennhp-theme', theme);
+
+    var targetHref = '/assets/css/just-the-docs-' + theme + '.css';
+    var oldLink = null;
+    var links = document.getElementsByTagName('link');
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].getAttribute('href') || '';
+      if (/\/just-the-docs-[a-z0-9-]+\.css$/.test(href) &&
+          href.indexOf('just-the-docs-head-nav') === -1) {
+        if (href !== targetHref) {
+          oldLink = links[i];
+        }
+        break;
+      }
+    }
+
+    if (oldLink) {
+      var newLink = document.createElement('link');
+      newLink.rel = 'stylesheet';
+      newLink.href = targetHref;
+      function cleanup() {
+        if (oldLink && oldLink.parentNode) {
+          oldLink.parentNode.removeChild(oldLink);
+          oldLink = null;
+        }
+      }
+      newLink.addEventListener('load', cleanup);
+      newLink.addEventListener('error', cleanup);
+      oldLink.parentNode.insertBefore(newLink, oldLink.nextSibling);
+    }
+
+    window.__opennhpTheme = theme;
+  })();
+</script>
+
+<!-- Non-critical enhancements, external + deferred. -->
+<script src="{{ '/assets/js/console-banner.js' | relative_url }}" defer></script>
+<script src="{{ '/assets/js/search-hint.js' | relative_url }}" defer></script>
+<script src="{{ '/assets/js/bg-grid.js' | relative_url }}" defer></script>

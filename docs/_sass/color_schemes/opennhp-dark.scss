@@ -1,0 +1,33 @@
+// OpenNHP Dark — matches opennhp.org brand palette
+// Source of truth: https://opennhp.org/css/styles.css (Dark Forest theme)
+
+$opennhp-bg-primary:       #0a0e17;
+$opennhp-bg-secondary:     #0d1321;
+$opennhp-bg-tertiary:      #131a2b;
+$opennhp-accent-primary:   #00ff9d;
+$opennhp-accent-secondary: #00d4aa;
+$opennhp-accent-purple:    #7c3aed;
+$opennhp-text-primary:     #e8edf5;
+$opennhp-text-secondary:   #a0aec0;
+$opennhp-text-muted:       #64748b;
+$opennhp-border:           rgba(255, 255, 255, 0.08);
+$opennhp-border-strong:    rgba(255, 255, 255, 0.14);
+// Layout width lives in _sass/custom/setup.scss (see comment there).
+
+// Just-the-Docs variable overrides
+$body-background-color:       $opennhp-bg-primary;
+$sidebar-color:               $opennhp-bg-secondary;
+// Body (paragraph) text uses the secondary gray — matches opennhp.org where
+// paragraphs render in $text-secondary and only headings sit at $text-primary.
+$body-text-color:             $opennhp-text-secondary;
+$body-heading-color:          $opennhp-text-primary;
+$link-color:                  $opennhp-accent-primary;
+$btn-primary-color:           $opennhp-accent-primary;
+$base-button-color:           $opennhp-bg-tertiary;
+$code-background-color:       $opennhp-bg-tertiary;
+$search-background-color:     $opennhp-bg-secondary;
+$search-result-preview-color: $opennhp-text-secondary;
+$table-background-color:      $opennhp-bg-tertiary;
+$feedback-color:              $opennhp-accent-primary;
+$border-color:                $opennhp-border;
+$nav-child-link-color:        $opennhp-text-secondary;

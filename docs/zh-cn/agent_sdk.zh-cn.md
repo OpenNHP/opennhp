@@ -1,7 +1,6 @@
 ---
 layout: page
 title: 客户端SDK
-parent: 中文版
 nav_order: 10
 permalink: /zh-cn/agent_sdk/
 ---
@@ -9,7 +8,6 @@ permalink: /zh-cn/agent_sdk/
 # 客户端SDK
 {: .fs-9 }
 
-[English](/agent_sdk/){: .label .fs-4 }
 
 ---
 

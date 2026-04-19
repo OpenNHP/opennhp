@@ -20,7 +20,7 @@
     }
     // lang === 'en'
     if (!onZh) return path;
-    if (path === ZH_OVERVIEW || path === ZH_PREFIX + '/overview') return '/';
+    if (path === ZH_OVERVIEW) return '/';
     var stripped = path.slice(ZH_PREFIX.length) || '/';
     return stripped;
   }

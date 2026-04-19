@@ -6,7 +6,9 @@
   function injectSearchHint() {
     var wrap = document.querySelector('.search-input-wrap');
     if (!wrap || wrap.querySelector('.search-kbd')) return;
-    var mac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
+    /* navigator.userAgent first — navigator.platform is deprecated and
+       only kept as a fallback for older browsers without userAgent. */
+    var mac = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent || navigator.platform || '');
     var kbd = document.createElement('span');
     kbd.className = 'search-kbd';
     kbd.setAttribute('aria-hidden', 'true');

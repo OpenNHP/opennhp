@@ -6,12 +6,14 @@
   {% assign back_text = '返回顶部' %}
   {% assign ack_prefix = '致谢：' %}
   {% assign ack_suffix = ' Jekyll 主题' %}
+  {% assign last_modified_label = '页面最后修改：' %}
   {% assign copyright_text = 'Copyright © 2026 <a href="https://opennhp.org">OpenNHP</a> 开源项目' %}
 {% else %}
   {% assign edit_text = site.gh_edit_link_text %}
   {% assign back_text = site.back_to_top_text %}
   {% assign ack_prefix = 'Acknowledgement: ' %}
   {% assign ack_suffix = ' Jekyll theme' %}
+  {% assign last_modified_label = 'Page last modified: ' %}
   {% assign copyright_text = site.footer_content %}
 {% endif %}
 
@@ -47,7 +49,7 @@
 
   {% if site.last_edit_timestamp and site.last_edit_time_format and page.last_modified_date %}
     <p class="text-small text-grey-dk-000 mb-0 mt-2">
-      Page last modified: <span class="d-inline-block">{{ page.last_modified_date | date: site.last_edit_time_format }}</span>.
+      {{ last_modified_label }}<span class="d-inline-block">{{ page.last_modified_date | date: site.last_edit_time_format }}</span>.
     </p>
   {% endif %}
 </footer>

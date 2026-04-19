@@ -30,10 +30,28 @@
     if (VALID_THEMES.indexOf(theme) === -1) return;
     document.documentElement.setAttribute('data-opennhp-theme', theme);
     try { localStorage.setItem(STORAGE_KEY, theme); } catch (e) { /* ignore quota/private-mode */ }
-    var link = stylesheetLink();
-    if (link) {
-      link.setAttribute('href', '/assets/css/just-the-docs-' + theme + '.css');
+
+    var oldLink = stylesheetLink();
+    if (!oldLink) return;
+    var targetHref = '/assets/css/just-the-docs-' + theme + '.css';
+    if (oldLink.getAttribute('href') === targetHref) return;
+
+    /* Flicker-free swap: insert a parallel <link> and only remove the
+       old one after the new sheet's load event. Both sheets are active
+       during the overlap; the new one wins by source order. Matches
+       the init pattern in head_custom.html. */
+    var newLink = document.createElement('link');
+    newLink.rel = 'stylesheet';
+    newLink.href = targetHref;
+    function cleanup() {
+      if (oldLink && oldLink.parentNode) {
+        oldLink.parentNode.removeChild(oldLink);
+        oldLink = null;
+      }
     }
+    newLink.addEventListener('load', cleanup);
+    newLink.addEventListener('error', cleanup);
+    oldLink.parentNode.insertBefore(newLink, oldLink.nextSibling);
   }
 
   function init() {

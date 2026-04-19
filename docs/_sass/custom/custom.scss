@@ -384,7 +384,7 @@ html[data-opennhp-theme='opennhp-light'] body::before {
 // divider is provided by body::before above — the per-element borders
 // are removed here to prevent the double-line effect.
 .site-header {
-  background-color: #0a0e17 !important;
+  background-color: $opennhp-bg-primary !important;
   border-bottom: 0 !important;
 }
 
@@ -393,7 +393,7 @@ html[data-opennhp-theme='opennhp-light'] body::before {
 // and adhere to the viewport top once scrolled past. The sidebar is
 // already position: fixed at this breakpoint (jtd default).
 .main-header {
-  background-color: #0a0e17 !important;
+  background-color: $opennhp-bg-primary !important;
   border-bottom: 0 !important;
   position: sticky !important;
   top: 0;
@@ -402,7 +402,7 @@ html[data-opennhp-theme='opennhp-light'] body::before {
 
 .search-input,
 .search-active .search-input {
-  background-color: #0a0e17 !important;
+  background-color: $opennhp-bg-primary !important;
 }
 
 html[data-opennhp-theme='opennhp-light'] {

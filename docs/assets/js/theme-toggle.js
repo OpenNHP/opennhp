@@ -1,7 +1,6 @@
 // Theme toggle for docs.opennhp.org
-// Flips between opennhp-dark and opennhp-light, persists to localStorage,
-// and uses jtd.setTheme() (the Just-the-Docs runtime API) to swap the
-// active color scheme stylesheet without reloading.
+// Flips between opennhp-dark and opennhp-light by swapping the href
+// on the Just-the-Docs theme <link>. Persists choice in localStorage.
 
 (function () {
   var STORAGE_KEY = 'opennhp-theme';
@@ -11,11 +10,24 @@
     return document.documentElement.getAttribute('data-opennhp-theme') || THEMES.dark;
   }
 
+  function stylesheetLink() {
+    var links = document.getElementsByTagName('link');
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].getAttribute('href') || '';
+      if (/\/just-the-docs-[a-z0-9-]+\.css$/.test(href) &&
+          href.indexOf('just-the-docs-head-nav') === -1) {
+        return links[i];
+      }
+    }
+    return null;
+  }
+
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-opennhp-theme', theme);
     try { localStorage.setItem(STORAGE_KEY, theme); } catch (e) { /* ignore quota/private-mode */ }
-    if (window.jtd && typeof window.jtd.setTheme === 'function') {
-      window.jtd.setTheme(theme);
+    var link = stylesheetLink();
+    if (link) {
+      link.setAttribute('href', '/assets/css/just-the-docs-' + theme + '.css');
     }
   }
 

@@ -1,0 +1,29 @@
+{%- comment -%}
+  Override of jtd's sidebar.html. The ONLY change vs the upstream is using
+  {% include %} instead of {% include_cached %} for components/site_nav.html
+  so our site_nav override can filter nav items per page based on language
+  (English vs /zh-cn/). jtd's default caches the nav output across pages
+  which would make the filter's first render stick for every page.
+{%- endcomment -%}
+
+<div class="side-bar">
+  <div class="site-header" role="banner">
+    <a href="{{ '/' | relative_url }}" class="site-title lh-tight">{% include title.html %}</a>
+    <button id="menu-button" class="site-button btn-reset" aria-label="Toggle menu" aria-pressed="false">
+      <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><use xlink:href="#svg-menu"></use></svg>
+    </button>
+  </div>
+
+  {% include components/site_nav.html %}
+
+  {% capture nav_footer_custom %}
+    {%- include nav_footer_custom.html -%}
+  {% endcapture %}
+  {% if nav_footer_custom != "" %}
+    {{ nav_footer_custom }}
+  {% else %}
+    <footer class="site-footer">
+      This site uses <a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>, a documentation theme for Jekyll.
+    </footer>
+  {% endif %}
+</div>

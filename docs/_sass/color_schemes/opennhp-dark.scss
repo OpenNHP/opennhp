@@ -12,12 +12,15 @@ $opennhp-text-secondary:   #a0aec0;
 $opennhp-text-muted:       #64748b;
 $opennhp-border:           rgba(255, 255, 255, 0.08);
 $opennhp-border-strong:    rgba(255, 255, 255, 0.14);
+// Layout width lives in _sass/custom/setup.scss (see comment there).
 
 // Just-the-Docs variable overrides
 $body-background-color:       $opennhp-bg-primary;
 $sidebar-color:               $opennhp-bg-secondary;
-$body-text-color:             $opennhp-text-primary;
-$body-heading-color:          #ffffff;
+// Body (paragraph) text uses the secondary gray — matches opennhp.org where
+// paragraphs render in $text-secondary and only headings sit at $text-primary.
+$body-text-color:             $opennhp-text-secondary;
+$body-heading-color:          $opennhp-text-primary;
 $link-color:                  $opennhp-accent-primary;
 $btn-primary-color:           $opennhp-accent-primary;
 $base-button-color:           $opennhp-bg-tertiary;

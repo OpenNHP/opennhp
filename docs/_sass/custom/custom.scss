@@ -2,6 +2,17 @@
 // Variables are bound at scheme-import time; this file runs last and applies
 // regardless of which scheme is active.
 
+// Brand variables with fallbacks. The opennhp-dark/opennhp-light schemes
+// each set these to the right values; the fallbacks only apply if
+// custom.scss is compiled against one of Just-the-Docs' built-in scheme
+// entry-points (e.g. just-the-docs-dark.scss) where $opennhp-* isn't defined.
+$opennhp-text-primary:    #e8edf5 !default;
+$opennhp-text-secondary:  #a0aec0 !default;
+$opennhp-accent-primary:  #00ff9d !default;
+$opennhp-bg-primary:      #0a0e17 !default;
+$opennhp-accent-purple:   #7c3aed !default;
+$opennhp-border:          rgba(255, 255, 255, 0.08) !default;
+
 // --- Typography ------------------------------------------------------------
 
 $font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -35,25 +46,151 @@ code, pre, kbd, samp, .text-mono {
 
 .site-title {
   letter-spacing: -0.015em;
+
+  // jtd paints the same mint gradient on the logo's hover state as on
+  // active nav items. Remove it — the logo already reads as a brand mark.
+  &:hover,
+  &:focus {
+    background-image: none;
+  }
 }
 
-// --- Theme toggle button ---------------------------------------------------
+// --- Custom site brand (icon + "OpenNHP Docs" wordmark) -------------------
+// Replaces the squeezed-to-header-height logo image with a clean composition:
+// the creature icon at a fixed size next to a typographic wordmark.
 
-.theme-toggle {
+.opennhp-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+}
+
+.opennhp-brand__icon {
+  flex-shrink: 0;
+  display: block;
+  width: 36px;
+  height: 36px;
+  background-image: url('/images/OpenNHP_Docs_logo_blue.png');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
+.opennhp-brand__text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-family: $font-heading;
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: -0.015em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.opennhp-brand__name {
+  color: #38bdf8; // sky-400 — matches the creature icon's hue
+}
+
+.opennhp-brand__suffix {
+  color: $opennhp-text-primary;
+  font-weight: 500;
+}
+
+html[data-opennhp-theme='opennhp-light'] .opennhp-brand__suffix {
+  // In light mode fall back to near-black so "Docs" stays legible on white
+  color: $opennhp-text-primary;
+}
+
+// jtd's .site-logo rule still applies to my icon span because jtd's existing
+// stylesheet targets the class — but I'm not using .site-logo anymore.
+// No conflict to worry about.
+
+// --- Page heading & lead paragraph: dial back jtd's extra-large defaults
+// jtd's .fs-9 / .fs-6 shout at 42px / 24px on desktop; trim to a calmer
+// scale that reads at the same weight as the sidebar nav.
+
+.main-content {
+  font-size: 0.875rem; // ~14px body text
+
+  h1, h1.fs-9 {
+    font-size: 1.75rem !important;   // ~28px
+    line-height: 1.25;
+  }
+  h2 {
+    font-size: 1.375rem !important;  // ~22px
+    line-height: 1.3;
+  }
+  h3 {
+    font-size: 1.125rem !important;  // ~18px
+    line-height: 1.35;
+  }
+  h4 {
+    font-size: 1rem !important;      // ~16px
+    line-height: 1.4;
+  }
+  h5, h6 {
+    font-size: 0.9375rem !important; // ~15px
+  }
+
+  .fs-6 {
+    font-size: 0.9375rem !important; // ~15px lead paragraph
+    line-height: 1.6;
+  }
+}
+
+@media (min-width: 31.25rem) {
+  .main-content h1.fs-9 {
+    font-size: 1.75rem !important;
+  }
+  .main-content .fs-6 {
+    font-size: 0.9375rem !important;
+  }
+}
+
+// --- Sidebar nav: muted by default, accent only on hover/active ----------
+// Matches opennhp.org where nav text is $text-secondary (#a0aec0 on dark,
+// #475569 on light) and the brand accent is reserved for active/hover.
+
+.site-nav .nav-list .nav-list-item .nav-list-link {
+  color: $opennhp-text-secondary;
+  font-size: 1rem; // ~16px
+
+  &:hover,
+  &.active {
+    color: $opennhp-accent-primary;
+    // jtd paints a green gradient strip on hover/active — drop it, the color
+    // change alone reads cleaner against the dark sidebar.
+    background-image: none;
+  }
+
+  &.active {
+    font-weight: 600;
+  }
+}
+
+// --- Aux-nav icon buttons (GitHub link + theme toggle) --------------------
+
+%aux-icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  align-self: center;
+  flex: 0 0 auto;
   width: 36px;
   height: 36px;
-  margin-left: 0.5rem;
+  margin-top: auto;
+  margin-bottom: auto;
+  margin-left: 0.4rem;
   padding: 0;
   background: transparent;
-  border: 1px solid var(--opennhp-border-color, currentColor);
+  border: 1px solid currentColor;
   border-radius: 8px;
   color: inherit;
   cursor: pointer;
   opacity: 0.7;
-  transition: opacity 150ms ease, background-color 150ms ease, border-color 150ms ease;
+  transition: opacity 150ms ease;
 
   &:hover,
   &:focus-visible {
@@ -64,6 +201,27 @@ code, pre, kbd, samp, .text-mono {
   svg {
     width: 18px;
     height: 18px;
+  }
+}
+
+.aux-icon-link {
+  @extend %aux-icon-button;
+  text-decoration: none !important;
+
+  svg {
+    fill: currentColor;
+  }
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: none !important;
+  }
+}
+
+.theme-toggle {
+  @extend %aux-icon-button;
+
+  svg {
     stroke: currentColor;
     fill: none;
     stroke-width: 2;
@@ -81,8 +239,423 @@ html[data-opennhp-theme='opennhp-light'] .theme-toggle {
   .theme-toggle__moon { display: none; }
 }
 
-// --- Aux-nav layout so toggle sits cleanly next to GitHub link -------------
+// --- Language switcher ----------------------------------------------------
 
-.aux-nav-list-item .theme-toggle {
-  vertical-align: middle;
+.lang-switcher {
+  position: relative;
+  display: inline-flex;
+  align-self: center;
+
+  &__button {
+    @extend %aux-icon-button;
+
+    svg {
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+  }
+
+  &__menu {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    min-width: 10rem;
+    margin: 0;
+    padding: 0.25rem 0;
+    list-style: none;
+    background-color: rgba(13, 19, 33, 0.95);
+    border: 1px solid $opennhp-border;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    z-index: 100;
+
+    &[hidden] { display: none; }
+
+    li {
+      margin: 0;
+      padding: 0;
+    }
+  }
+
+  &__item {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0.9rem;
+    background: transparent;
+    border: 0;
+    color: $opennhp-text-secondary;
+    font-family: inherit;
+    font-size: 0.9rem;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 150ms ease, color 150ms ease;
+
+    &:hover,
+    &:focus-visible {
+      background-color: rgba(255, 255, 255, 0.06);
+      color: $opennhp-accent-primary;
+      outline: none;
+    }
+  }
+}
+
+// Light-mode surface for the dropdown
+html[data-opennhp-theme='opennhp-light'] .lang-switcher__menu {
+  background-color: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 8px 24px rgba(10, 14, 23, 0.08);
+}
+html[data-opennhp-theme='opennhp-light'] .lang-switcher__item:hover,
+html[data-opennhp-theme='opennhp-light'] .lang-switcher__item:focus-visible {
+  background-color: #f1f5f9;
+}
+
+// --- Atmospheric background (dark only) -----------------------------------
+// Mirrors opennhp.org's "Dark Forest" layers:
+//   1. Radial purple/mint glows over the solid bg
+//   2. A subtle grid
+//   3. Animated mint particles drifting upward
+// Dots and grid are injected by the init script in head_custom.html.
+
+// Default body background: always paint the atmospheric gradients.
+// Light mode overrides these back to a solid surface further down so the
+// behavior doesn't depend on the [data-opennhp-theme] attribute being set
+// before first paint (the jtd-default.css link loads before the init script
+// finishes, and relying on the attribute caused the gradient to only show
+// after an explicit theme toggle).
+body {
+  background:
+    // Opaque black strip across the top of the viewport — fills the gaps
+    // between the fixed sidebar header and the centered main-header so
+    // the top chrome reads as one continuous band from left to right edge.
+    linear-gradient(to bottom, #{$opennhp-bg-primary} 3.75rem, transparent 3.75rem),
+    radial-gradient(ellipse at 20% 20%, rgba(124, 58, 237, 0.16) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 80%, rgba(0, 255, 157, 0.1) 0%, transparent 55%),
+    #{$opennhp-bg-primary} !important;
+  background-attachment: fixed !important;
+}
+
+html[data-opennhp-theme='opennhp-light'] body {
+  background: #ffffff !important;
+}
+
+// Chrome surfaces:
+//   - A fixed full-width top strip paints the black "chrome bar" across
+//     the entire viewport so the logo area and search area share one
+//     continuous black band without any visible seam at the sidebar edge.
+//   - Sidebar nav area (below the top strip) → transparent so the body's
+//     purple/mint gradient flows across both sidebar and main content.
+//   - Site-header + main-header have transparent bg so the fixed strip
+//     behind them shows through; the search input keeps its own solid
+//     bg for visual affordance.
+
+.side-bar {
+  background-color: transparent !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+// 1px divider line that runs across the FULL viewport under the top bar.
+// Just a line — only 1px tall so it can't cover anything (unlike an
+// earlier attempt with a 3.75rem strip that hid the logo). Sits above
+// scrolling content so it remains visible as the page scrolls.
+body::before {
+  content: '';
+  position: fixed;
+  top: 3.75rem; // bottom edge of the top bar
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: rgba(255, 255, 255, 0.08);
+  z-index: 10;
+  pointer-events: none;
+}
+
+html[data-opennhp-theme='opennhp-light'] body::before {
+  background-color: rgba(10, 14, 23, 0.08);
+}
+
+// Solid dark top chrome. Both .site-header (inside the already-fixed
+// .side-bar) and .main-header (made sticky below) get the same background
+// so they read as one continuous top bar across the viewport. The
+// divider is provided by body::before above — the per-element borders
+// are removed here to prevent the double-line effect.
+.site-header {
+  background-color: #0a0e17 !important;
+  border-bottom: 0 !important;
+}
+
+// Pin the main-header (search + aux icons) to the top so it stays visible
+// as the user scrolls. sticky lets it participate in normal flow at rest
+// and adhere to the viewport top once scrolled past. The sidebar is
+// already position: fixed at this breakpoint (jtd default).
+.main-header {
+  background-color: #0a0e17 !important;
+  border-bottom: 0 !important;
+  position: sticky !important;
+  top: 0;
+  z-index: 10; // above scrolling content below it
+}
+
+.search-input,
+.search-active .search-input {
+  background-color: #0a0e17 !important;
+}
+
+html[data-opennhp-theme='opennhp-light'] {
+  .site-header,
+  .main-header {
+    background-color: #ffffff !important;
+  }
+  .search-input,
+  .search-active .search-input {
+    background-color: #ffffff !important;
+  }
+}
+
+// --- Footer row layout ----------------------------------------------------
+// Puts "Edit this page on GitHub" / copyright on the left and
+// "Back to Top" / theme attribution on the right of two flex rows.
+
+.opennhp-footer__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+// jtd renders the "This site uses Just the Docs..." blurb in the sidebar
+// footer. We've relocated it to the main page footer, so hide the original.
+.side-bar .site-footer {
+  display: none;
+}
+
+// --- Syntax-highlight (Rouge) readability in dark mode --------------------
+// jtd's Rouge palette is tuned for light backgrounds; the default
+// identifier color (#383942) disappears on our dark panel. Boost the
+// base + common "name" tokens to a legible off-white. Accent colors
+// for keywords/strings/numbers/comments stay untouched.
+
+html[data-opennhp-theme='opennhp-dark'] {
+  // Solid dark background so the body gradient doesn't tint code text.
+  .highlight,
+  .highlighter-rouge pre,
+  div.highlighter-rouge {
+    background-color: #131a2b !important;
+  }
+
+  .highlight,
+  .highlighter-rouge .highlight,
+  .highlight pre,
+  .highlight code {
+    color: #f1f5f9 !important;
+  }
+
+  .highlight {
+    // Name tokens: identifiers, functions, classes, attributes, variables
+    .n,  .na, .nb, .nc, .nd, .nf,
+    .nl, .nn, .no, .nv, .nx, .py,
+    .vc, .vg, .vi, .w, .bp,
+    // Operators, punctuation, whitespace
+    .o, .p, .ow {
+      color: #f1f5f9 !important;
+    }
+  }
+
+  // Inline code (not in code blocks)
+  code.highlighter-rouge {
+    background-color: #131a2b !important;
+    color: #f1f5f9 !important;
+  }
+}
+
+// --- Polish passes --------------------------------------------------------
+
+// 1) Embedded images: give standalone content images a subtle frame so they
+//    don't look pasted onto the gradient. Inline images in prose (badges,
+//    etc.) are left alone.
+.main-content p > img {
+  display: block;
+  max-width: 100%;
+  border-radius: 12px;
+  border: 1px solid $opennhp-border;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+
+// 2) Anchor-link icons next to headings: hide until heading is hovered so
+//    the default reading state stays clean.
+.main-content {
+  h1, h2, h3, h4, h5, h6 {
+    .anchor-heading {
+      opacity: 0;
+      transition: opacity 150ms ease;
+    }
+    &:hover .anchor-heading,
+    &:focus-within .anchor-heading {
+      opacity: 1;
+    }
+  }
+}
+
+// 3) Active sidebar item: add a left accent bar for "you are here" affordance.
+//    Use inset box-shadow rather than border so the text position doesn't
+//    shift when the active state toggles.
+.site-nav .nav-list .nav-list-item .nav-list-link.active {
+  box-shadow: inset 3px 0 0 $opennhp-accent-primary;
+}
+
+// 4) Drop the thin <hr> under page intros; let whitespace separate sections.
+//    Keeps the markdown source valid (users can still author `---` separators)
+//    without rendering a visible rule in the content area.
+.main-content hr {
+  border: 0;
+  margin: 2.5rem 0;
+}
+
+// --- Polish pass 2 --------------------------------------------------------
+
+// 5) Callouts — restyle jtd's blockquote.{note,important,warning,new,highlight}
+//    with brighter, dark-mode-friendly borders/titles. Keeps the left-bar
+//    pattern but softens the background tint so content dominates.
+$callout-types: (
+  highlight: (#fbbf24, rgba(251, 191, 36, 0.08)),  // amber
+  important: (#60a5fa, rgba(96, 165, 250, 0.08)),  // sky
+  new:       (#34d399, rgba(52, 211, 153, 0.08)),  // emerald
+  note:      (#a78bfa, rgba(167, 139, 250, 0.08)), // violet
+  warning:   (#f87171, rgba(248, 113, 113, 0.08)), // red
+);
+
+@each $name, $pair in $callout-types {
+  $accent: nth($pair, 1);
+  $tint:   nth($pair, 2);
+
+  blockquote.#{$name},
+  p.#{$name} {
+    background: $tint !important;
+    border-left: 3px solid $accent !important;
+    border-top: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    border-radius: 6px !important;
+    padding: 0.75rem 1rem !important;
+    margin: 1.25rem 0 !important;
+
+    &::before {
+      color: $accent !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.02em !important;
+    }
+  }
+
+  blockquote.#{$name}-title,
+  p.#{$name}-title {
+    background: $tint !important;
+    border-left: 3px solid $accent !important;
+    border-radius: 6px !important;
+
+    > .highlight-title,
+    > p:first-child {
+      color: $accent !important;
+    }
+  }
+}
+
+// 6) Custom scrollbar (dark mode). Thin, translucent, brand-nudge on hover.
+html[data-opennhp-theme='opennhp-dark'] {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.12);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 255, 157, 0.35);
+    background-clip: padding-box;
+  }
+}
+
+// 7) Body links: subtle animated underline, not just a color change.
+//    Scoped to prose links so nav / toc / callout-title links aren't
+//    pulled into the underline pattern.
+.main-content p a,
+.main-content li a,
+.main-content td a {
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0 1px;
+  transition: background-size 200ms ease;
+
+  &:hover {
+    background-size: 100% 1px;
+  }
+}
+
+// 8) Keyboard-shortcut hint in the search input (⌘K / Ctrl K).
+//    Injected by head_custom.html so the label is platform-correct.
+.search-kbd {
+  position: absolute;
+  right: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.4rem;
+  font-family: $font-mono;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+  z-index: 2;
+
+  .search-active &,
+  .search-input:focus ~ & {
+    opacity: 0;
+  }
+}
+
+html[data-opennhp-theme='opennhp-light'] .search-kbd {
+  color: rgba(10, 14, 23, 0.5);
+  background: rgba(10, 14, 23, 0.04);
+  border-color: rgba(10, 14, 23, 0.1);
+}
+
+// Atmospheric grid (subtle). Hidden in light mode.
+.opennhp-bg-grid {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.03;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+  background-size: 60px 60px;
+  transition: opacity 300ms ease;
+}
+
+html[data-opennhp-theme='opennhp-light'] .opennhp-bg-grid {
+  opacity: 0 !important;
 }

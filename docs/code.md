@@ -11,7 +11,6 @@ permalink: /code/
 This article explains the architecture and structure of the OpenNHP codebase.
 {: .fs-6 .fw-300 }
 
-[中文版](/zh-cn/code/){: .label .fs-4 }
 
 ---
 

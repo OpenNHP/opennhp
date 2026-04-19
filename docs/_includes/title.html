@@ -1,0 +1,14 @@
+{% comment %}
+  Override of jtd's default title include. Shows the creature logo as a
+  square icon plus a "OpenNHP Docs" wordmark next to it, so the two
+  elements render cleanly instead of the image being squeezed into the
+  sidebar header height.
+{% endcomment %}
+<div class="opennhp-brand" role="img" aria-label="{{ site.title }}">
+  {% if site.logo %}
+    <span class="opennhp-brand__icon" aria-hidden="true"></span>
+  {% endif %}
+  <span class="opennhp-brand__text">
+    <span class="opennhp-brand__name">OpenNHP</span><span class="opennhp-brand__suffix">Docs</span>
+  </span>
+</div>

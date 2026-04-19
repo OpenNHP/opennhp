@@ -1,0 +1,53 @@
+{% assign is_zh = false %}
+{% if page.url contains '/zh-cn/' %}{% assign is_zh = true %}{% endif %}
+
+{% if is_zh %}
+  {% assign edit_text = '在 GitHub 上编辑此页' %}
+  {% assign back_text = '返回顶部' %}
+  {% assign ack_prefix = '致谢：' %}
+  {% assign ack_suffix = ' Jekyll 主题' %}
+  {% assign copyright_text = 'Copyright © 2026 <a href="https://opennhp.org">OpenNHP</a> 开源项目' %}
+{% else %}
+  {% assign edit_text = site.gh_edit_link_text %}
+  {% assign back_text = site.back_to_top_text %}
+  {% assign ack_prefix = 'Acknowledgement: ' %}
+  {% assign ack_suffix = ' Jekyll theme' %}
+  {% assign copyright_text = site.footer_content %}
+{% endif %}
+
+<hr>
+<footer class="opennhp-footer">
+  {% comment %} First row: edit link left, back-to-top right {% endcomment %}
+  <div class="opennhp-footer__row">
+    {% if
+      site.gh_edit_link and
+      site.gh_edit_repository and
+      site.gh_edit_branch and
+      site.gh_edit_view_mode
+    %}
+      <p class="text-small text-grey-dk-000 mb-0">
+        <a href="{{ site.gh_edit_repository }}/{{ site.gh_edit_view_mode }}/{{ site.gh_edit_branch }}{% if site.gh_edit_source %}/{{ site.gh_edit_source }}{% endif %}{% if page.collection and site.collections_dir %}/{{ site.collections_dir }}{% endif %}/{{ page.path }}" id="edit-this-page">{{ edit_text }}</a>
+      </p>
+    {% else %}
+      <span></span>
+    {% endif %}
+
+    {% if site.back_to_top %}
+      <p class="text-small text-grey-dk-000 mb-0"><a href="#top" id="back-to-top">{{ back_text }}</a></p>
+    {% endif %}
+  </div>
+
+  {% comment %} Second row: copyright left, theme attribution right {% endcomment %}
+  <div class="opennhp-footer__row">
+    <p class="text-small text-grey-dk-000 mb-0">{{ copyright_text }}</p>
+    <p class="text-small text-grey-dk-000 mb-0">
+      {{ ack_prefix }}<a href="https://github.com/just-the-docs/just-the-docs">Just the Docs</a>{{ ack_suffix }}
+    </p>
+  </div>
+
+  {% if site.last_edit_timestamp and site.last_edit_time_format and page.last_modified_date %}
+    <p class="text-small text-grey-dk-000 mb-0 mt-2">
+      Page last modified: <span class="d-inline-block">{{ page.last_modified_date | date: site.last_edit_time_format }}</span>.
+    </p>
+  {% endif %}
+</footer>

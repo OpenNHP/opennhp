@@ -11,7 +11,6 @@ permalink: /build/
 This article explains how to build OpenNHP from source code.
 {: .fs-6 .fw-300 }
 
-[中文版](/zh-cn/build/){: .label .fs-4 }
 
 ---
 
@@ -170,7 +169,6 @@ Compiled binaries are in the code directory under the `release` subdirectory.
 - **NHP-KGC** executable and configuration files: `release\nhp-kgc` subdirectory
 - All binaries are packaged into a `tar` file: `release\archive` subdirectory
 
-[中文版](/zh-cn/build/){: .label .fs-4 }
 
 ---
 

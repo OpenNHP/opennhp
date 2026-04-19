@@ -25,7 +25,7 @@ baseurl: "" # the subpath of your site, e.g. /blog
 theme: just-the-docs
 
 url: "https://opennhp.org"
-logo: "/images/logo12.png"
+logo: "/images/OpenNHP_Docs_logo_blue.png"
 favicon_ico: "/favicon.ico"
 repository: OpenNHP/opennhp # for github-metadata
 
@@ -73,10 +73,12 @@ search:
 # For copy button on code
 enable_copy_code_button: true
 
-# Aux links for the upper right navigation
-aux_links:
-  "OpenNHP on GitHub":
-    - "//github.com/OpenNHP/opennhp"
+# Aux links for the upper right navigation.
+# The GitHub link and theme toggle are rendered via _includes/header_custom.html
+# so we can show an icon instead of text and control the order.
+# aux_links:
+#   "OpenNHP on GitHub":
+#     - "//github.com/OpenNHP/opennhp"
 
 # Makes Aux links open in a new tab. Default is false
 aux_links_new_tab: true
@@ -153,7 +155,7 @@ callouts:
 back_to_top: true
 back_to_top_text: "Back to Top"
 
-footer_content: 'Copyright &copy; 2024 OpenNHP Open Source Project.'
+footer_content: 'Copyright &copy; 2026 <a href="https://opennhp.org">OpenNHP</a> Open Source Project.'
 
 # Footer last edited timestamp
 last_edit_timestamp: true # show or hide edit time - page must have `last_modified_date` defined in the frontmatter

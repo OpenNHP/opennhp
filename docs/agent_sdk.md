@@ -8,7 +8,6 @@ permalink: /agent_sdk/
 # Client SDKs
 {: .fs-9 }
 
-[中文版](/zh-cn/agent_sdk/){: .label .fs-4 }
 
 ---
 

@@ -15,7 +15,6 @@ A locally built Docker debugging environment, simulating nhp-server, nhp-db and 
 - Basic logic validation
 {: .fs-6 .fw-300 }
 
-[中文版](/zh-cn/dhp_quick_start/){: .label .fs-4 }
 
 ---
 

@@ -1,13 +1,15 @@
 ---
-nav_exclude: true
-title: OpenClaw + DHP
+layout: page
+title: OpenClaw+DHP数据安全
+nav_order: 11
+permalink: /zh-cn/claw-dhp-demo/
 ---
 
-# OpenClaw + DHP 安全增强架构
+# OpenClaw + DHP 数据安全增强架构
 
 通过 **DHP（数据隐藏协议）** 对 **OpenClaw** 进行安全增强。用户的敏感数据（照片、邮件等）通过 NHP-DB（DHP数据经纪件）以零信任数据对象（ZTDO）的形式加密存储。当用户发起 AI 任务时，任务在**可信执行环境（TEE）**中运行，NHP代理在NHP服务器的控制下从NHP-DB获取加密数据并在TEE内解密，**全程敏感数据不出可信执行环境**。
 
-<ClawDhpDiagram />
+![OpenClaw + DHP 架构](/images/OpenClaw_DHP_Arch.gif)
 
 ## 核心安全特性
 

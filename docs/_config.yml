@@ -130,6 +130,11 @@ exclude:
    - CODE_OF_CONDUCT.md
    - docker-compose.yml
    - Dockerfile
+   # Dev tooling — not content:
+   - tools/
+   - capture-arch.mjs
+   - capture-claw-dhp.mjs
+   - recordings/
 
 callouts_level: quiet # or loud
 callouts:

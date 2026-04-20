@@ -117,8 +117,6 @@ git commit -S -m "your message"
 
 <a href="https://layerv.ai">
   <img src="docs/images/layerv_logo.png" height="40" alt="LayerV.ai logo">
-  &nbsp;
-  <img src="docs/images/layerv_text.svg" height="24" alt="LayerV.ai">
 </a>
 
 ---

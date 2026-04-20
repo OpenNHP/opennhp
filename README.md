@@ -15,12 +15,12 @@
 [![codecov](https://codecov.io/gh/OpenNHP/opennhp/branch/main/graph/badge.svg)](https://codecov.io/gh/OpenNHP/opennhp)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/OpenNHP/opennhp)
 
-**OpenNHP** is a lightweight, cryptography-powered, open-source toolkit implementing Zero Trust security for infrastructure, applications, and data. It features two core protocols:
+**OpenNHP** is a lightweight, cryptography-powered, open-source toolkit implementing Zero Trust security for infrastructure, applications, and data. It is the reference implementation of the [**Cloud Security Alliance (CSA) Network-infrastructure Hiding Protocol (NHP) specification**](https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trust-network-infrastructure), and features two core protocols:
 
-- **[Network-infrastructure Hiding Protocol (NHP)](https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trust-network-infrastructure):** Conceals server ports, IP addresses, and domain names to protect applications and infrastructure from unauthorized access.
+- **Network-infrastructure Hiding Protocol (NHP):** Conceals server ports, IP addresses, and domain names to protect applications and infrastructure from unauthorized access.
 - **Data-object Hiding Protocol (DHP):** Ensures data security and privacy via encryption and confidential computing, making data *"usable but not visible."*
 
-**[Website](https://opennhp.org) · [Documentation](https://docs.opennhp.org) · [Live Demo](https://opennhp.org/demo.html) · [Discord](https://discord.gg/CpyVmspx5x)**
+**[Website](https://opennhp.org) · [Documentation](https://docs.opennhp.org) · [Live Demo](https://opennhp.org/demo/) · [Discord](https://discord.gg/CpyVmspx5x)**
 
 ---
 
@@ -116,9 +116,7 @@ git commit -S -m "your message"
 ## Sponsors
 
 <a href="https://layerv.ai">
-  <img src="docs/images/layerv_logo.png" width="80" alt="LayerV.ai">
-  <br>
-  <img src="docs/images/layerv_text.svg" width="120" alt="LayerV.ai">
+  <img src="https://layerv.ai/layerv-wordmark.svg" height="40" alt="LayerV.ai">
 </a>
 
 ---

@@ -21,7 +21,7 @@ The OpenNHP architecture is inspired by the NIST Zero Trust Architecture standar
 
 ![OpenNHP architecture](./images/OpenNHP_Arch.gif)
 
-### Protocol Highlights
+**Protocol highlights:**
 
 - **Default Deny-All**: All resources are hidden until authenticated access is granted
 - **Encrypted UDP Knock**: Uses Noise Protocol Framework for secure communication

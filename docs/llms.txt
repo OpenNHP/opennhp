@@ -6,7 +6,14 @@ layout: null
 permalink: /llms.txt
 sitemap: false
 ---
-# OpenNHP
+{% comment %}
+Maintainer note (stripped from the published /llms.txt by Liquid, but
+kept in the source for anyone editing this file outside the front
+matter): the absolute URLs below are required by the llmstxt.org
+convention. Off-site LLM and tooling consumers fetch this file on its
+own, with no implicit base, so `{{ '/x/' | relative_url }}` filters
+would break them. Leave them as-is.
+{% endcomment %}# OpenNHP
 
 > OpenNHP is the open-source reference implementation of the Cloud Security Alliance
 > (CSA) Network-infrastructure Hiding Protocol (NHP) specification. It enforces

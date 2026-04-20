@@ -200,7 +200,7 @@ Carries `errCode` (`"0"` on success), `errMsg`, and `aspId`. Failures during reg
 
 **ID:** `15` · **Direction:** Agent → AC · **Payload struct:** `common.AgentAccessMsg`
 
-Carries `usrId`, `devId`, optional `orgId`, `acToken` (from NHP-ACK's `acTokens`), and `usrData`. Presented directly to the AC's short-lived listener when the deployment uses per-session temporary endpoints (`PreAccessInfo`) rather than long-lived allow-lists. The AC replies with a `common.ACAccessAckMsg` (`errCode`, `errMsg`, `agentAddr`) carried as the plain response to this exchange — it is not a separate NHP header type.
+Carries `usrId`, `devId`, optional `orgId`, `acToken` (from NHP-ACK's `acTokens`), and `usrData`. Presented directly to the AC's short-lived listener when the deployment uses per-session temporary endpoints (`PreAccessInfo`) rather than long-lived allow-lists. After verifying the token, the AC installs the firewall rule for the observed source address and closes the temporary port — see [`tcpTempAccessHandler` / `udpTempAccessHandler`](https://github.com/OpenNHP/opennhp/blob/main/endpoints/ac/msghandler.go). No NHP-level reply is emitted on this path; success is signalled implicitly by the subsequent data-plane connection succeeding against the Protected Resource. The `common.ACAccessAckMsg` struct is defined but not currently wired up on the send path; treat it as reserved for future use.
 
 ## NHP-EXT — Exit {#nhp-ext--exit}
 

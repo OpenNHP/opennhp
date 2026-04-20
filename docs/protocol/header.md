@@ -48,9 +48,9 @@ supported when UDP is unavailable.
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |                       Reserved (4, zero)                      |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                                                               |
-|                       Counter (8, big-endian)                 |
-|                                                               |
+|                  Counter, big-endian (bytes 0–3)              |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                  Counter, big-endian (bytes 4–7)              |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |                                                               |
 |        Ephemeral Public Key  (32 Curve25519 / 64 SM2)         |
@@ -92,7 +92,7 @@ plaintext follows the same size split.
 | 6 | 2 | **Message Length** | Length of the ciphertext that follows the header, **including** the 16-byte AEAD tag, big-endian. XOR-masked together with Message Type. Max 65,535 (UDP limit). |
 | 8 | 1 | **Protocol Major Version** | Plaintext. Receivers silently discard packets with an unsupported major version (default-deny). |
 | 9 | 1 | **Protocol Minor Version** | Plaintext. Backward-compatible increments only. |
-| 10 | 2 | **Protocol Flags** | Big-endian bit flags (see table below). Unused bits in the lower 12 should be zero. The top nibble (bits 12–15) holds the cipher-scheme selector: only bit 12 is allocated today (`0` = Curve, `1` = GMSM); bits 13–15 are reserved so the selector can grow as new schemes land. |
+| 10 | 2 | **Protocol Flags** | Big-endian bit flags (see table below). Unused bits in the lower 12 should be zero. Bit 12 is the cipher-scheme selector (`0` = Curve, `1` = GMSM); bits 13–15 are reserved and sit alongside bit 12 in the top nibble so the selector can grow as new schemes land. |
 | 12 | 4 | **Reserved** | Zero in current senders; receivers ignore the contents. Forward-compatibility padding. |
 | 16 | 8 | **Counter** | 64-bit big-endian nonce and transaction tracker. The low 8 bytes form the AEAD nonce (`NonceBytes` prepends 4 zero bytes so the 12-byte GCM nonce is derived from the counter). Monotonically increments per encryption; receivers reject stale counters for that session. |
 | 24 | 32 or 64 | **Ephemeral Public Key** | Fresh per-packet ephemeral public key — 32 bytes for Curve25519/X25519 (standard), 64 bytes for SM2 (extended, uncompressed X‖Y coordinates). Drives Noise handshake key derivation and provides forward secrecy even for single-shot message types. |
@@ -111,7 +111,8 @@ Total header length: **240** bytes (standard) or **304** bytes (extended).
 | 1 | `NHP_FLAG_COMPRESS` | Payload ciphertext plaintext was zlib-compressed before encryption. |
 | 2 | `NHP_FLAG_CL_PKC` | CL-PKC (certificate-less public-key cryptography) mode. |
 | 3–11 | — | Reserved. |
-| 12–15 | cipher-scheme selector (top nibble) | Only bit 12 is currently allocated: `0` = `CIPHER_SCHEME_CURVE`, `1` = `CIPHER_SCHEME_GMSM`. Bits 13–15 are reserved for additional schemes. |
+| 12 | cipher-scheme selector | `0` = `CIPHER_SCHEME_CURVE`; `1` = `CIPHER_SCHEME_GMSM`. |
+| 13–15 | — | Reserved. Grouped with bit 12 as the top-nibble selector so additional schemes can be encoded without reflowing the field. |
 
 See [`nhp/common/packet.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/common/packet.go) for the authoritative constants.
 
@@ -122,12 +123,15 @@ Type‖Length tuple — are the only pre-decryption surface. A single 4-byte
 XOR masks Type and Length together against the Leading Obfuscation word:
 
 ```
-preamble      = wire[0..4]            // big-endian uint32 random
-type_and_len  = wire[4..8]            // big-endian uint32, XOR-masked
+preamble      = wire[0..4]    // bytes 0–3, big-endian uint32 random
+type_and_len  = wire[4..8]    // bytes 4–7, big-endian uint32, XOR-masked
 decoded       = preamble XOR type_and_len
 type          = (decoded >> 16) & 0xFFFF
 length        = decoded        & 0xFFFF
 ```
+
+*Half-open ranges (`a..b`) mean "byte index `a` inclusive, byte index `b`
+exclusive", matching Go / Rust slice semantics.*
 
 This is defence-in-depth — the payload itself is AEAD-encrypted and the static
 key is AEAD-wrapped — but the obfuscation foils trivial traffic analysis and

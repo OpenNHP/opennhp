@@ -50,8 +50,8 @@ typedef struct _NhpResult {
 
 typedef struct _NhpEncryptParams {
     // Specifies the encryption scheme used for the message:
-    // 0: curve25519/chacha20poly1305/blake2s
-    // 1: sm2/sm4/sm3
+    // 0: curve25519/aes-256-gcm/blake2s (CIPHER_SCHEME_CURVE)
+    // 1: sm2/sm4-gcm/sm3              (CIPHER_SCHEME_GMSM)
     unsigned char cipherScheme;
     // true: Use zlib to compress the plaintext message
     unsigned char compress;

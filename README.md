@@ -116,10 +116,9 @@ git commit -S -m "your message"
 ## Sponsors
 
 <a href="https://layerv.ai">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://layerv.ai/layerv-wordmark.svg">
-    <img src="https://layerv.ai/layerv-wordmark-dark.svg" height="40" alt="LayerV.ai">
-  </picture>
+  <img src="docs/images/layerv_logo.png" height="40" alt="LayerV.ai logo">
+  &nbsp;
+  <img src="docs/images/layerv_text.svg" height="24" alt="LayerV.ai">
 </a>
 
 ---

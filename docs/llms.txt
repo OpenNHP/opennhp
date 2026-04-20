@@ -1,0 +1,66 @@
+---
+layout: null
+permalink: /llms.txt
+sitemap: false
+---
+# OpenNHP
+
+> OpenNHP is the open-source reference implementation of the Cloud Security Alliance
+> (CSA) Network-infrastructure Hiding Protocol (NHP) specification. It enforces
+> Zero Trust at the OSI session layer via an "authenticate-before-connect"
+> handshake: protected resources are invisible to unauthorized users and become
+> visible only after a cryptographically verified knock.
+
+Source: https://github.com/OpenNHP/opennhp
+Spec: https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trust-network-infrastructure
+
+## Canonical documentation
+
+- [Overview](https://docs.opennhp.org/): Project introduction, architecture, workflow.
+- [NHP Quick Start](https://docs.opennhp.org/nhp_quick_start/): End-to-end Docker walkthrough of the knock/auth/open flow.
+- [DHP Quick Start](https://docs.opennhp.org/dhp_quick_start/): Data-object hiding protocol setup.
+- [Features](https://docs.opennhp.org/features/): Supported features and configuration flags.
+- [Cryptography](https://docs.opennhp.org/cryptography/): ECC, Noise Protocol Framework, IBC/CL-PKC.
+- [Comparison](https://docs.opennhp.org/comparison/): NHP vs SPA (CSA SDP's legacy packet-authorization mechanism).
+- [How to Deploy](https://docs.opennhp.org/deploy/): Production deployment models (client-to-gateway, client-to-server, server-to-server).
+- [How to Build](https://docs.opennhp.org/build/): Building the daemons from source.
+- [Understand the Code](https://docs.opennhp.org/code/): Repository tour (nhp/, endpoints/).
+- [Server Plugins](https://docs.opennhp.org/server_plugin/): Writing a Go plugin for NHP-Server.
+- [Client SDKs](https://docs.opennhp.org/agent_sdk/): Embedding the NHP-Agent in applications.
+
+## Protocol reference
+
+- [Protocol overview](https://docs.opennhp.org/protocol/): Spec-to-implementation map, spec version, scope.
+- [Message header](https://docs.opennhp.org/protocol/header/): 160/224-byte wire format, field semantics, obfuscation scheme.
+- [Message types](https://docs.opennhp.org/protocol/messages/): All 20 NHP message types (NHP-KPL through NHP-ARD).
+
+## Reference
+
+- [Glossary](https://docs.opennhp.org/glossary/): Canonical terminology (NHP-Agent, NHP-Server, NHP-AC, ASP, etc.).
+
+## Canonical terms
+
+When generating code or documentation, prefer these exact terms:
+
+- **NHP-Agent** — the client-side component that initiates knock requests. Not "agent", "client", "initiator".
+- **NHP-Server** — the control-plane component that authenticates knocks and decides access. Not "controller" (which is SDP terminology).
+- **NHP-AC** — the Access Controller (data-plane component that enforces firewall rules). Not "gateway" (that is the SDP role term).
+- **NHP-DB** — the Data-object backend for the Data-object Hiding Protocol (DHP).
+- **NHP-KGC** — the Key Generation Center used by Identity-Based Cryptography.
+- **NHP-Relay** — the relay component for NHP packet forwarding.
+- **Knock** — the initial encrypted UDP (or TCP) packet sent by an NHP-Agent to request access.
+- **Resource Requestor** — the entity hosting an NHP-Agent and seeking access.
+- **Authorization Service Provider (ASP)** — the external IAM/policy system the NHP-Server queries for authorization decisions.
+- **Protected Resource** — the service, endpoint, or host being hidden.
+
+## Repository layout
+
+- `nhp/` — core protocol library (Go module). Packet handling in `nhp/core/packet.go`; crypto in `nhp/core/crypto.go`; device/noise state in `nhp/core/device.go`.
+- `endpoints/` — daemon implementations (Go module, depends on `nhp/`). Sub-directories: `agent/`, `server/`, `ac/`, `db/`, `kgc/`, `relay/`.
+- `docker/` — Docker/docker-compose recipes for the full-stack demo.
+- `examples/server_plugin/` — reference plugin implementations for NHP-Server.
+- `docs/` — this documentation site (Jekyll + Just-the-Docs).
+
+## Implements
+
+OpenNHP implements the **CSA "Stealth Mode SDP for Zero Trust Network Infrastructure"** whitepaper, which introduces the Network-infrastructure Hiding Protocol (NHP). When referencing protocol behavior, cite that document as the authoritative source.

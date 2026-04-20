@@ -1,4 +1,7 @@
 ---
+# Absolute URLs below are intentional. The llmstxt.org convention
+# requires fully-qualified links so off-site consumers can resolve
+# them without a base — do NOT rewrite to Jekyll `relative_url` filters.
 layout: null
 permalink: /llms.txt
 sitemap: false

@@ -4,25 +4,29 @@ title: Message Types
 parent: Protocol Reference
 nav_order: 2
 permalink: /protocol/messages/
-description: Complete reference of the 20 NHP message types, their direction, and their payload shape.
+description: Complete reference of the NHP and DHP message types, their direction, and their payload shape.
 ---
 
 # NHP Message Types
 {: .fs-9 }
 
-Every NHP packet carries a 2-byte Message Type ID in the header. That ID
-routes the packet to a logical handler on the receiver. Twenty types are
-defined today, covering the knock/auth/access flow, AC lifecycle, relay,
-logging, registration, and OTP.
+Every packet carries a 2-byte Message Type ID in the header. That ID
+routes the packet to a logical handler on the receiver. Twenty-eight IDs
+are defined today: seventeen **NHP** types (IDs 0–16) covering the
+knock/auth/access flow, AC lifecycle, relay, registration, OTP, and
+explicit session exit; plus eleven **DHP** types (IDs 17–27) used by the
+Data-object Hiding Protocol.
 {: .fs-6 .fw-300 }
 
-*Implements CSA Stealth Mode SDP §NHP Message Types (Table 4) and Appendix 2. IDs defined in [`nhp/core/packet.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/core/packet.go); message structs in [`nhp/common/message.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/common/message.go).*
+*Implements CSA Stealth Mode SDP §NHP Message Types (Table 4) and Appendix 2. IDs and string names defined in [`nhp/core/packet.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/core/packet.go); payload structs in [`nhp/common/nhpmsg.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/common/nhpmsg.go).*
 
 ## Message envelope
 
-Every message type uses the same header (see [Message Header]({{ '/protocol/header/' | relative_url }})) followed by an encrypted payload. Payloads are JSON, zlib-compressed, then AEAD-encrypted using the session key derived during header parsing — unless the type description says otherwise (e.g., `NHP-KPL` has no body; `NHP-RLY` carries a raw inner packet).
+Every message type uses the same header (see [Message Header]({{ '/protocol/header/' | relative_url }})) followed by an encrypted payload. Payloads are JSON, optionally zlib-compressed (see the `NHP_FLAG_COMPRESS` flag), then AEAD-encrypted using the session key derived during header parsing — unless the type description says otherwise (e.g., `NHP-KPL` has no body; `NHP-RLY` carries a raw inner packet).
 
 ## Index
+
+NHP — Network-infrastructure Hiding Protocol
 
 | ID | Name | Direction | Purpose |
 |---:|---|---|---|
@@ -38,155 +42,172 @@ Every message type uses the same header (see [Message Header]({{ '/protocol/head
 | 9 | [NHP-RLY](#nhp-rly--relay) | Relay → Server | Forward a raw NHP packet from an NHP-Relay, preserving source address. |
 | 10 | [NHP-AOL](#nhp-aol--ac-online) | AC → Server | AC announces its online status and the resources it protects. |
 | 11 | [NHP-AAK](#nhp-aak--ac-acknowledge) | Server → AC | Server confirms the AC's registration. Carries the AC's public IP/port. |
-| 12 | [NHP-OTP](#nhp-otp--one-time-password) | Agent ↔ Server / KGC | Request / verify an out-of-band OTP used during registration. |
-| 13 | [NHP-REG](#nhp-reg--register) | Agent → Server | Agent registers its static public key. |
-| 14 | [NHP-RAK](#nhp-rak--register-acknowledge) | Server / KGC → Agent | Confirmation of successful registration. Empty body. |
+| 12 | [NHP-OTP](#nhp-otp--one-time-password) | Agent → Server | Request an out-of-band OTP for registration. |
+| 13 | [NHP-REG](#nhp-reg--register) | Agent → Server | Agent registers its static public key, authenticated by the OTP. |
+| 14 | [NHP-RAK](#nhp-rak--register-acknowledge) | Server → Agent | Confirmation (or failure code) for `NHP-REG`. |
 | 15 | [NHP-ACC](#nhp-acc--access) | Agent → AC | Agent presents its temporary access token to the AC's listener. |
 | 16 | [NHP-EXT](#nhp-ext--exit) | Agent → Server | Request early closure of an active session. Empty body. |
-| 17 | [NHP-LOG](#nhp-log--log) | AC → Server | AC submits an access-log record. |
-| 18 | [NHP-LAK](#nhp-lak--log-acknowledge) | Server → AC | Ack for a received log record. |
-| 19 | [NHP-ARD](#nhp-ard--ac-redispatch) | Server → AC | Redirect an AC to a different NHP-Server endpoint for load-balanced reassignment. |
+
+DHP — Data-object Hiding Protocol *(documented here for completeness; detailed DHP semantics live with the DHP docs)*
+
+| ID | Constant | Direction | Purpose |
+|---:|---|---|---|
+| 17 | `NHP_DRG` | DB → Server | Register a data object with the NHP-Server. |
+| 18 | `NHP_DAK` | Server → DB | Acknowledgement / error code for `NHP_DRG`. |
+| 19 | `NHP_DAR` | DHP-Agent → Server | Request access to a registered data object. |
+| 20 | `NHP_DAG` | Server → DHP-Agent | Authorization decision for `NHP_DAR`. |
+| 21 | `NHP_DSA` | Server → DHP-Agent | Request a self-attestation (TEE / evidence). |
+| 22 | `NHP_DAV` | DHP-Agent → Server | Attestation proof returned to the server. |
+| 23 | `NHP_DWR` | Server → DB | Ask the DB for the wrapped data-object private key. |
+| 24 | `NHP_DWA` | DB → Server | DB returns the wrapped key (Key Access Object). |
+| 25 | `NHP_DOL` | DB → Server | DB online / status announcement. |
+| 26 | `NHP_DBA` | Server → DB | Acknowledgement of `NHP_DOL`. |
+| 27 | `DHP_KNK` | DHP-Agent → Server | DHP-flavoured knock carrying attestation evidence. |
 
 ---
 
 ## NHP-KPL — Keepalive {#nhp-kpl--keepalive}
 
-**ID:** `0` · **Direction:** bidirectional (Agent ↔ Server, AC ↔ Server) · **Body:** empty (header only, all fields after Length set to zero)
+**ID:** `0` · **Direction:** bidirectional (Agent ↔ Server, AC ↔ Server) · **Body:** empty (header only)
 
-Keeps the NAT binding / TCP connection alive between Agent/AC and Server. Receivers do nothing beyond acknowledging receipt. Relay nodes do **not** forward keepalives.
+Keeps the NAT binding / TCP connection alive between Agent/AC and Server. Receivers do nothing beyond accepting the packet. Relay nodes do **not** forward keepalives.
 
 ## NHP-KNK — Knock {#nhp-knk--knock}
 
-**ID:** `1` · **Direction:** Agent → Server · **Payload fields:**
+**ID:** `1` · **Direction:** Agent → Server · **Payload struct:** `common.AgentKnockMsg`
 
-| Field | Description |
-|---|---|
-| User ID | Per-user identifier tying the request to a human or service principal. |
-| Device ID | Per-device identifier for multi-device / posture policies. |
-| Authorized Service Provider ID | Which ASP (IAM / SDP Controller / custom) the Server should consult. |
-| Resource ID | The Protected Resource being requested (domain, service name, or opaque ID). |
-| Source IP / Port | Optional. Exit address of the agent, when the agent can discover it. |
-| Terminal Environment Parameters | Optional `{checkID: result}` map reflecting client-side posture checks (OS version, disk encryption, etc.). |
+| JSON key | Field | Description |
+|---|---|---|
+| `headerType` | Header Type | Echo of the on-wire message type. |
+| `usrId` | User ID | Per-user identifier tying the request to a human or service principal. |
+| `devId` | Device ID | Per-device identifier for multi-device / posture policies. |
+| `orgId` | Organization ID | Optional tenant scope. |
+| `aspId` | ASP ID | Which Authorization Service Provider the Server should consult. |
+| `resId` | Resource ID | The Protected Resource being requested (domain, service name, or opaque ID). |
+| `results` | Check Results | Optional `{checkID: result}` map reflecting client-side posture checks. |
+| `usrData` | User Data | Optional free-form data passed through to the ASP plugin. |
 
 The knock is the only message that initiates an NHP exchange from a cold start.
 
 ## NHP-ACK — Acknowledge {#nhp-ack--acknowledge}
 
-**ID:** `2` · **Direction:** Server → Agent · **Payload fields:**
+**ID:** `2` · **Direction:** Server → Agent · **Payload struct:** `common.ServerKnockAckMsg`
 
-| Field | Description |
-|---|---|
-| User ID / Device ID / Service Provider ID / Resource ID | Echo of the matching NHP-KNK for session correlation. |
-| Session ID | 64-bit session tracker. |
-| Error Code | `0` on success; nonzero indicates the authoritative failure reason. |
-| Resource Address | IP / hostname of the Protected Resource (or the fronting AC). |
-| Access Duration | Seconds the open-door window remains valid. |
-| Temporary Access Endpoint / Key | Optional — present when NHP-ACC is used to gate a secondary listener. |
+| JSON key | Field | Description |
+|---|---|---|
+| `errCode` / `errMsg` | Error code / message | `"0"` (or empty) on success; any other value indicates the failure reason. |
+| `resHost` | Resource Hosts | Map of resource name → host address. |
+| `opnTime` | Open Time | Seconds the open-door window remains valid. |
+| `aspToken` | ASP Token | Optional token for AC-side backend validation. |
+| `agentAddr` | Agent Address | The agent's public tuple as the server saw it. |
+| `acTokens` | AC Tokens | Map of resource name → short-lived token used with `NHP-ACC`. |
+| `preActions` | Pre-access Actions | Optional per-resource `PreAccessInfo` (AC IP, port, pubkey, token, cipher scheme) used when the deployment requires an `NHP-ACC` step. |
+| `redirectUrl` | Redirect URL | Optional HTTPS redirect (e.g., login flow) instead of direct connect. |
 
 ## NHP-AOP — AC Operation {#nhp-aop--ac-operation}
 
-**ID:** `3` · **Direction:** Server → AC · **Payload fields:**
+**ID:** `3` · **Direction:** Server → AC · **Payload struct:** `common.ServerACOpsMsg`
 
-| Field | Description |
-|---|---|
-| Session ID | Matches the agent's session (from NHP-ACK). |
-| Device ID | Agent identity, for session attribution. |
-| Public Key | Agent's static public key. |
-| Source IP / Port | Tuple the AC should allow. |
-| Destination IP / Port | Protected-resource tuple. |
-| Access Duration | Seconds; `0` means **deny** / close. |
+| JSON key | Field | Description |
+|---|---|---|
+| `usrId` / `devId` / `orgId` | Agent identity | Attribution fields. |
+| `aspId` / `resId` | ASP + Resource | Correlates to the original knock. |
+| `srcAddrs` | Source addresses | List of `NetAddress` the AC should allow. |
+| `dstAddrs` | Destination addresses | Protected-resource tuples. |
+| `opnTime` | Open Time | Seconds; `0` means **deny** / close. |
 
-NAT note: behind CGNAT or shared egress the Source IP is not unique per agent. Deployments should layer an application-layer token/cookie between AC and the Protected Resource, or prefer IPv6 end-to-end.
+NAT note: behind CGNAT or shared egress the Source IP is not unique per agent. Deployments should layer an application-layer token/cookie between AC and the Protected Resource (the `NHP-ACC` path does exactly this), or prefer IPv6 end-to-end.
 
 ## NHP-ART — AC Result {#nhp-art--ac-result}
 
-**ID:** `4` · **Direction:** AC → Server · **Payload fields:** Session ID, granted Access Duration (0 = denied), optional Temporary Access Endpoint and Key.
+**ID:** `4` · **Direction:** AC → Server · **Payload struct:** `common.ACOpsResultMsg`
 
-Forms the second half of the AOP/ART pair. Only after ART reaches the Server does the Server send NHP-ACK to the Agent.
+Carries `errCode` / `errMsg`, the granted `opnTime` (0 = denied), the AC-issued `token`, and an optional `preAct` (`PreAccessInfo`). Only after ART reaches the Server does the Server send NHP-ACK to the Agent.
 
 ## NHP-LST — List {#nhp-lst--list}
 
-**ID:** `5` · **Direction:** Agent → Server · **Payload fields:** User ID, Device ID, Request ID, Request Port Information flag, Requested Application Information (UUID or custom string).
+**ID:** `5` · **Direction:** Agent → Server · **Payload struct:** `common.AgentListMsg`
+
+Carries `usrId`, `devId`, optional `orgId`, `aspId`, and free-form `usrData`.
 
 ## NHP-LRT — List Result {#nhp-lrt--list-result}
 
-**ID:** `6` · **Direction:** Server → Agent · **Payload fields:** List Request ID, Server Name, Server Type, Service and Application Info.
+**ID:** `6` · **Direction:** Server → Agent · **Payload struct:** `common.ServerListResultMsg`
+
+Carries `errCode` / `errMsg` and a `list` map whose shape is defined by the ASP plugin.
 
 ## NHP-COK — Cookie {#nhp-cok--cookie}
 
-**ID:** `7` · **Direction:** Server → Agent · **Payload fields:** 32-byte server-generated cookie.
+**ID:** `7` · **Direction:** Server → Agent · **Payload struct:** `common.ServerCookieMsg`
 
-Issued when the Server is under load. The Agent must re-knock using NHP-RKN and include this cookie in the HMAC to prove a round-trip and survive early-drop.
+Carries the server-echoed `trxId` and a server-generated `cookie`. Issued when the Server is under load. The Agent must re-knock using NHP-RKN and include this cookie in the HMAC calculation to prove a round-trip and survive early-drop.
 
 ## NHP-RKN — Re-Knock {#nhp-rkn--re-knock}
 
-**ID:** `8` · **Direction:** Agent → Server · **Payload fields:** identical to NHP-KNK.
+**ID:** `8` · **Direction:** Agent → Server · **Payload:** identical to NHP-KNK.
 
-Difference from NHP-KNK: the header HMAC is keyed with the NHP-COK cookie in addition to the normal chaining key.
+Difference from NHP-KNK: the header HMAC is keyed with the NHP-COK cookie in addition to the normal chaining key (see `addHMAC(sumCookie: true)` in [`nhp/core/initiator.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/core/initiator.go)).
 
 ## NHP-RLY — Relay {#nhp-rly--relay}
 
-**ID:** `9` · **Direction:** Relay → Server · **Payload:** the raw inner NHP packet from the origin, uncompressed, un-re-encrypted. The protocol flag's compression bit is `0`.
+**ID:** `9` · **Direction:** Relay → Server · **Payload:** the raw inner NHP packet from the origin.
 
-Preserves the origin source address through the relay, which most other message types do not need (they're forwarded transparently).
+Preserves the origin source address through the relay, which most other message types do not need (they are forwarded transparently).
 
 ## NHP-AOL — AC Online {#nhp-aol--ac-online}
 
-**ID:** `10` · **Direction:** AC → Server · **Payload fields:** AC ID, Service and Application Info (resources the AC protects, with inbound/outbound traffic info).
+**ID:** `10` · **Direction:** AC → Server · **Payload struct:** `common.ACOnlineMsg`
 
-Announces an AC joining the control plane.
+Carries `aspId`, the list of `resIds` the AC protects, and an optional `acId`. Announces an AC joining the control plane.
 
 ## NHP-AAK — AC Acknowledge {#nhp-aak--ac-acknowledge}
 
-**ID:** `11` · **Direction:** Server → AC · **Payload fields:** NHP-AC public IP and port.
+**ID:** `11` · **Direction:** Server → AC · **Payload struct:** `common.ServerACAckMsg`
 
-Confirms AC registration and echoes back the AC's public address (useful when the AC is behind NAT and learns its external tuple from the Server).
+Carries `errCode` / `errMsg` and `acAddr`. Confirms AC registration and echoes back the AC's public address (useful when the AC is behind NAT and learns its external tuple from the Server).
 
 ## NHP-OTP — One-Time Password {#nhp-otp--one-time-password}
 
-**ID:** `12` · **Direction:** Agent ↔ Server ↔ KGC · **Payload fields:** User ID, Device ID.
+**ID:** `12` · **Direction:** Agent → Server · **Payload struct:** `common.AgentOTPMsg`
 
-Pre-registration primitive: triggers the ASP to issue an OTP out-of-band (SMS, email, QR).
+Carries `usrId`, `devId`, optional `orgId`, `aspId`, an optional `pass` (pre-shared passcode), and free-form `usrData`. Triggers the ASP plugin to issue an OTP out-of-band (SMS, email, QR). The server does not reply with a dedicated message type; success is signalled by the ASP delivering the OTP through its own channel.
 
 ## NHP-REG — Register {#nhp-reg--register}
 
-**ID:** `13` · **Direction:** Agent → Server · **Payload fields:** User ID, Device ID, OTP.
+**ID:** `13` · **Direction:** Agent → Server · **Payload struct:** `common.AgentRegisterMsg`
 
-Registers the Agent's static public key against its identity, authenticated by the OTP.
+Carries `usrId`, `devId`, optional `orgId`, `aspId`, the `otp` received out-of-band, and free-form `usrData`. Registers the Agent's static public key (carried in the encrypted header) against its identity.
 
 ## NHP-RAK — Register Acknowledge {#nhp-rak--register-acknowledge}
 
-**ID:** `14` · **Direction:** Server / KGC → Agent · **Body:** empty.
+**ID:** `14` · **Direction:** Server → Agent · **Payload struct:** `common.ServerRegisterAckMsg`
 
-Success marker for NHP-REG. Failure is signalled by silence (and an eventual client timeout).
+Carries `errCode` (`"0"` on success), `errMsg`, and `aspId`. Unlike some NHP flows, failures are **reported explicitly** with a non-zero `errCode` rather than by silent drop — see [`HandleRegisterRequest`](https://github.com/OpenNHP/opennhp/blob/main/endpoints/server/msghandler.go).
 
 ## NHP-ACC — Access {#nhp-acc--access}
 
-**ID:** `15` · **Direction:** Agent → AC · **Payload fields:** User ID, Device ID, Temporary Access Token (from NHP-ACK).
+**ID:** `15` · **Direction:** Agent → AC · **Payload struct:** `common.AgentAccessMsg`
 
-Presented directly to the AC's short-lived listener when the deployment uses per-session temporary endpoints rather than long-lived allow-lists.
+Carries `usrId`, `devId`, optional `orgId`, `acToken` (from NHP-ACK's `acTokens`), and `usrData`. Presented directly to the AC's short-lived listener when the deployment uses per-session temporary endpoints (`PreAccessInfo`) rather than long-lived allow-lists. The AC replies with a `common.ACAccessAckMsg` (`errCode`, `errMsg`, `agentAddr`) carried as the plain response to this exchange — it is not a separate NHP header type.
 
 ## NHP-EXT — Exit {#nhp-ext--exit}
 
 **ID:** `16` · **Direction:** Agent → Server · **Body:** empty.
 
-Agent explicitly requests early teardown of an active session. The Server then sends an NHP-AOP with `Access Duration = 0`.
+Agent explicitly requests early teardown of an active session. The Server then sends an NHP-AOP with `opnTime = 0` to close the AC rule.
 
-## NHP-LOG — Log {#nhp-log--log}
+---
 
-**ID:** `17` · **Direction:** AC → Server · **Payload fields:** AC ID, Log ID (usually a content hash), Log Content.
+## DHP message types {#dhp}
 
-## NHP-LAK — Log Acknowledge {#nhp-lak--log-acknowledge}
-
-**ID:** `18` · **Direction:** Server → AC · **Payload fields:** Log ID.
-
-Mirrors the AOP/ART pattern for logging reliability.
-
-## NHP-ARD — AC Redispatch {#nhp-ard--ac-redispatch}
-
-**ID:** `19` · **Direction:** Server → AC · **Payload fields:** new NHP-Server address(es).
-
-Sent during `NHP-AOL` handling to steer an AC to a different Server for load-balancing or failover, without exposing topology to outside observers.
+The Data-object Hiding Protocol reuses the NHP wire format for a separate
+set of flows around data-object registration, access, attestation, and key
+wrapping. They are listed here so the ID table is complete; their payload
+fields (`DRGMsg`, `DAKMsg`, `DARMsg`, `DAGMsg`, `DSAMsg`, `DAVMsg`, `DWRMsg`,
+`DWAMsg`, `DBOnlineMsg`, `ServerDBAckMsg`, `DHPKnockMsg`) are defined in
+[`nhp/common/nhpmsg.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/common/nhpmsg.go).
+A dedicated DHP reference page will expand these; for now, see the
+[DHP Quick Start]({{ '/dhp_quick_start/' | relative_url }}).
 
 ---
 

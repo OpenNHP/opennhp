@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Protocol Reference
-nav_order: 4
+nav_order: 11
 has_children: true
 permalink: /protocol/
 description: OpenNHP wire-format reference. Maps the CSA NHP specification to the Go implementation.
@@ -20,15 +20,15 @@ is the authoritative starting point.
 
 ## What's in this section
 
-- **[Message Header]({{ '/protocol/header/' | relative_url }})** — the 160/224-byte fixed header that prefixes every NHP packet. Field layout, obfuscation scheme, cryptographic role of each field.
-- **[Message Types]({{ '/protocol/messages/' | relative_url }})** — all 20 NHP message types, each with the role of its sender/receiver, payload fields, and pointers into the code.
+- **[Message Header]({{ '/protocol/header/' | relative_url }})** — the 240/304-byte fixed header that prefixes every NHP or DHP packet. Field layout, obfuscation scheme, cryptographic role of each field.
+- **[Message Types]({{ '/protocol/messages/' | relative_url }})** — all 17 NHP message types plus the 11 DHP types, each with the role of its sender/receiver, payload fields, and pointers into the code.
 
 ## Spec ↔ implementation
 
 | CSA spec section | OpenNHP code |
 |---|---|
-| NHP Message Header (Table 3) | [`nhp/core/packet.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/core/packet.go) |
-| NHP Message Types (Table 4, Appendix 2) | [`nhp/common/message.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/common/message.go) |
+| NHP Message Header (Table 3) | [`nhp/core/scheme/curve/header.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/core/scheme/curve/header.go), [`nhp/core/scheme/gmsm/header.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/core/scheme/gmsm/header.go), [`nhp/core/packet.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/core/packet.go) |
+| NHP Message Types (Table 4, Appendix 2) | [`nhp/common/nhpmsg.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/common/nhpmsg.go) |
 | Cryptographic Algorithms and Frameworks | [`nhp/core/crypto.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/core/crypto.go), [`nhp/core/device.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/core/device.go) |
 | NHP Workflow (Figure 3) | [`endpoints/agent/`](https://github.com/OpenNHP/opennhp/tree/main/endpoints/agent), [`endpoints/server/`](https://github.com/OpenNHP/opennhp/tree/main/endpoints/server), [`endpoints/ac/`](https://github.com/OpenNHP/opennhp/tree/main/endpoints/ac) |
 | Integration with SDP | See [Deploy]({{ '/deploy/' | relative_url }}) |

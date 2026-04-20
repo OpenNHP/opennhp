@@ -35,7 +35,7 @@ alternate is listed but the canonical term is what the implementation uses.
 | **Resource Requestor** | The entity (user, device, application, or server) that hosts an NHP-Agent and seeks access to a Protected Resource. |
 | **Authorization Service Provider (ASP)** | External IAM / policy system the NHP-Server queries to authorize access (e.g., corporate IAM, SDP Controller when NHP fronts an SDP deployment). |
 | **Protected Resource** | The service, host, port, or data object being concealed by NHP. |
-| **Log Server** | Optional external SIEM or log store that receives NHP-LOG messages. |
+| **Log Server** | Optional external SIEM or log store fed by NHP-Server / NHP-AC access and audit logs. |
 
 ## Protocol concepts
 
@@ -58,7 +58,7 @@ alternate is listed but the canonical term is what the implementation uses.
 | **IBC** | Identity-Based Cryptography. An alternative to PKI where a user's ID string *is* their public key. Simplifies key distribution at the cost of key escrow at the NHP-KGC. |
 | **CL-PKC** | Certificate-Less Public Key Cryptography. A variant of IBC that mitigates key escrow by splitting key generation between the KGC and the user. |
 | **PKI** | Traditional Public Key Infrastructure with X.509 certificates and a CA hierarchy. Supported alongside IBC. |
-| **Cipher scheme** | A named bundle of crypto primitives. `CIPHER_SCHEME_CURVE` = Curve25519 + ChaCha20-Poly1305 + BLAKE2s. `CIPHER_SCHEME_GMSM` = SM2 + SM4-GCM + SM3. |
+| **Cipher scheme** | A named bundle of crypto primitives. `CIPHER_SCHEME_CURVE` = Curve25519 + AES-256-GCM + BLAKE2s (international / standard). `CIPHER_SCHEME_GMSM` = SM2 + SM4-GCM + SM3 (Chinese national standard). |
 
 ## Architectural frames
 

@@ -31,8 +31,8 @@ Spec: https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trus
 ## Protocol reference
 
 - [Protocol overview](https://docs.opennhp.org/protocol/): Spec-to-implementation map, spec version, scope.
-- [Message header](https://docs.opennhp.org/protocol/header/): 160/224-byte wire format, field semantics, obfuscation scheme.
-- [Message types](https://docs.opennhp.org/protocol/messages/): All 20 NHP message types (NHP-KPL through NHP-ARD).
+- [Message header](https://docs.opennhp.org/protocol/header/): 240/304-byte wire format, field semantics, obfuscation scheme.
+- [Message types](https://docs.opennhp.org/protocol/messages/): All 17 NHP message types (NHP-KPL through NHP-EXT) plus the 11 DHP types (NHP_DRG through DHP_KNK).
 
 ## Reference
 

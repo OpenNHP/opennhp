@@ -80,6 +80,11 @@ supported when UDP is unavailable.
 
 ## Fields
 
+Offsets and sizes are listed as **Curve / GMSM** pairs where they differ. Fields
+shift between the two schemes because the ephemeral public key is 32 bytes for
+Curve25519 versus 64 bytes (uncompressed X‖Y) for SM2, and the static public-key
+plaintext follows the same size split.
+
 | Offset | Size (bytes) | Field | Description |
 |---:|---:|---|---|
 | 0 | 4 | **Leading Obfuscation** | 4 random bytes generated per packet. Used as a one-shot XOR mask for the 4-byte Type‖Length tuple that follows, so that passive observers cannot trivially identify the packet type or size. Plaintext on the wire; the receiver reads it first, then deobfuscates. |
@@ -87,7 +92,7 @@ supported when UDP is unavailable.
 | 6 | 2 | **Message Length** | Length of the ciphertext that follows the header, **including** the 16-byte AEAD tag, big-endian. XOR-masked together with Message Type. Max 65,535 (UDP limit). |
 | 8 | 1 | **Protocol Major Version** | Plaintext. Receivers silently discard packets with an unsupported major version (default-deny). |
 | 9 | 1 | **Protocol Minor Version** | Plaintext. Backward-compatible increments only. |
-| 10 | 2 | **Protocol Flags** | Big-endian bit flags (see table below). Unused bits in the lower 12 should be zero; bit 12 is the cipher-scheme selector (`0` = Curve, `1` = GMSM), bits 13–15 are reserved for future schemes. |
+| 10 | 2 | **Protocol Flags** | Big-endian bit flags (see table below). Unused bits in the lower 12 should be zero. The top nibble (bits 12–15) holds the cipher-scheme selector: only bit 12 is allocated today (`0` = Curve, `1` = GMSM); bits 13–15 are reserved so the selector can grow as new schemes land. |
 | 12 | 4 | **Reserved** | Zero in current senders; receivers ignore the contents. Forward-compatibility padding. |
 | 16 | 8 | **Counter** | 64-bit big-endian nonce and transaction tracker. The low 8 bytes form the AEAD nonce (`NonceBytes` prepends 4 zero bytes so the 12-byte GCM nonce is derived from the counter). Monotonically increments per encryption; receivers reject stale counters for that session. |
 | 24 | 32 or 64 | **Ephemeral Public Key** | Fresh per-packet ephemeral public key — 32 bytes for Curve25519/X25519 (standard), 64 bytes for SM2 (extended, uncompressed X‖Y coordinates). Drives Noise handshake key derivation and provides forward secrecy even for single-shot message types. |
@@ -106,8 +111,7 @@ Total header length: **240** bytes (standard) or **304** bytes (extended).
 | 1 | `NHP_FLAG_COMPRESS` | Payload ciphertext plaintext was zlib-compressed before encryption. |
 | 2 | `NHP_FLAG_CL_PKC` | CL-PKC (certificate-less public-key cryptography) mode. |
 | 3–11 | — | Reserved. |
-| 12 | cipher-scheme selector | `0` = `CIPHER_SCHEME_CURVE`; `1` = `CIPHER_SCHEME_GMSM`. |
-| 13–15 | — | Reserved for additional cipher schemes. |
+| 12–15 | cipher-scheme selector (top nibble) | Only bit 12 is currently allocated: `0` = `CIPHER_SCHEME_CURVE`, `1` = `CIPHER_SCHEME_GMSM`. Bits 13–15 are reserved for additional schemes. |
 
 See [`nhp/common/packet.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/common/packet.go) for the authoritative constants.
 

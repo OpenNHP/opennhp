@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Glossary
-nav_order: 13
+nav_order: 12
 permalink: /glossary/
 description: Canonical terminology used across OpenNHP and the CSA NHP specification.
 ---
@@ -54,7 +54,7 @@ alternate is listed but the canonical term is what the implementation uses.
 | Term | Meaning |
 |---|---|
 | **ECC** | Elliptic Curve Cryptography. NHP's default curve is Curve25519 (256-bit) for the international cipher suite; SM2 for the extended/domestic suite. |
-| **Noise Protocol Framework** | The handshake + symmetric-crypto framework NHP uses for mutual authentication and per-session key derivation. OpenNHP uses the one-way `K` pattern (steps `e`, `es`, `ss`) by default. |
+| **Noise Protocol Framework** | The handshake + symmetric-crypto framework NHP uses for mutual authentication and per-session key derivation. OpenNHP's handshake follows the Noise `K` pattern structure (`e`, `es`, `ss`), extended with an AEAD-wrapped IBC identity block (`MaximumIdentitySize`, zeroed in PKI mode) inserted before the static-key ciphertext. |
 | **IBC** | Identity-Based Cryptography. An alternative to PKI where a user's ID string *is* their public key. Simplifies key distribution at the cost of key escrow at the NHP-KGC. |
 | **CL-PKC** | Certificate-Less Public Key Cryptography. A variant of IBC that mitigates key escrow by splitting key generation between the KGC and the user. |
 | **PKI** | Traditional Public Key Infrastructure with X.509 certificates and a CA hierarchy. Supported alongside IBC. |

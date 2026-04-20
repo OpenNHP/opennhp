@@ -55,6 +55,12 @@ DHP entries are shown under their Go constant names (e.g., `NHP_DRG`) rather
 than as hyphenated mnemonics, and are not yet anchored to per-type subsections.
 A dedicated DHP Reference page will expand each row with a payload-field table
 matching the NHP format above.
+**Wire-name quirk:** in [`nhp/core/packet.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/core/packet.go)
+the DHP string labels are a mix — IDs 17–26 render as `NHP_DRG` … `NHP_DBA`
+(underscore, NHP prefix; differs from the NHP block above which uses hyphens),
+while ID 27 renders as `"DHP-KNK"` (hyphen, DHP prefix; its Go constant is
+`DHP_KNK`). Implementers decoding the `HeaderTypeToString` output should match
+the exact strings shown in the table below.
 
 | ID | Constant | Direction | Purpose |
 |---:|---|---|---|
@@ -188,7 +194,7 @@ Carries `usrId`, `devId`, optional `orgId`, `aspId`, the `otp` received out-of-b
 
 **ID:** `14` · **Direction:** Server → Agent · **Payload struct:** `common.ServerRegisterAckMsg`
 
-Carries `errCode` (`"0"` on success), `errMsg`, and `aspId`. Unlike some NHP flows, failures are **reported explicitly** with a non-zero `errCode` rather than by silent drop — see [`HandleRegisterRequest`](https://github.com/OpenNHP/opennhp/blob/main/endpoints/server/msghandler.go).
+Carries `errCode` (`"0"` on success), `errMsg`, and `aspId`. Failures during registration are reported here explicitly via a non-zero `errCode` — see [`HandleRegisterRequest`](https://github.com/OpenNHP/opennhp/blob/main/endpoints/server/msghandler.go).
 
 ## NHP-ACC — Access {#nhp-acc--access}
 

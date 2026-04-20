@@ -50,6 +50,12 @@ NHP — Network-infrastructure Hiding Protocol
 
 DHP — Data-object Hiding Protocol *(documented here for completeness; detailed DHP semantics live with the DHP docs)*
 
+{: .note }
+DHP entries are shown under their Go constant names (e.g., `NHP_DRG`) rather
+than as hyphenated mnemonics, and are not yet anchored to per-type subsections.
+A dedicated DHP Reference page will expand each row with a payload-field table
+matching the NHP format above.
+
 | ID | Constant | Direction | Purpose |
 |---:|---|---|---|
 | 17 | `NHP_DRG` | DB → Server | Register a data object with the NHP-Server. |

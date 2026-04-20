@@ -106,7 +106,8 @@ Total header length: **240** bytes (standard) or **304** bytes (extended).
 | 1 | `NHP_FLAG_COMPRESS` | Payload ciphertext plaintext was zlib-compressed before encryption. |
 | 2 | `NHP_FLAG_CL_PKC` | CL-PKC (certificate-less public-key cryptography) mode. |
 | 3–11 | — | Reserved. |
-| 12–15 | cipher scheme | `0` = `CIPHER_SCHEME_CURVE`; `1` = `CIPHER_SCHEME_GMSM`. |
+| 12 | cipher-scheme selector | `0` = `CIPHER_SCHEME_CURVE`; `1` = `CIPHER_SCHEME_GMSM`. |
+| 13–15 | — | Reserved for additional cipher schemes. |
 
 See [`nhp/common/packet.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/common/packet.go) for the authoritative constants.
 

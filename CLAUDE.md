@@ -171,7 +171,7 @@ The codebase uses two separate Go modules with a local replace directive:
 - `DHP_*`: Data Hiding Protocol messages
 
 **Cipher Schemes** (in `nhp/core/crypto.go`):
-- `CIPHER_SCHEME_CURVE`: Curve25519 + ChaCha20-Poly1305 + BLAKE2s
+- `CIPHER_SCHEME_CURVE`: Curve25519 + AES-256-GCM + BLAKE2s
 - `CIPHER_SCHEME_GMSM`: SM2 + SM4-GCM + SM3 (Chinese national standards)
 
 ### Configuration

@@ -1,7 +1,7 @@
 ---
 layout: page
 title: 术语表
-nav_order: 12
+nav_order: 14
 permalink: /zh-cn/glossary/
 description: OpenNHP 与 CSA NHP 规范通用的规范术语。
 ---

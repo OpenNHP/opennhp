@@ -1,7 +1,7 @@
 ---
 layout: page
 title: 协议参考
-nav_order: 11
+nav_order: 13
 has_children: true
 permalink: /zh-cn/protocol/
 description: OpenNHP 线上格式参考。将 CSA NHP 规范映射到 Go 实现。

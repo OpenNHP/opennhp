@@ -46,8 +46,12 @@ jobs:
 
     - name: Run tests with coverage
       run: |
-        cd nhp && go test -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v 'wasm/policy')
-        cd ../endpoints && go test -coverprofile=coverage.out -covermode=atomic ./...
+        cd nhp
+        PKGS=$(go list ./... | grep -v 'wasm/policy')
+        COVERPKG=$(echo "$PKGS" | paste -sd,)
+        go test -coverpkg="$COVERPKG" -coverprofile=coverage.out -covermode=atomic $PKGS
+        cd ../endpoints
+        go test -coverpkg=./... -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v6

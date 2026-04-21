@@ -15,9 +15,9 @@
 [![codecov](https://codecov.io/gh/OpenNHP/opennhp/branch/main/graph/badge.svg)](https://codecov.io/gh/OpenNHP/opennhp)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/OpenNHP/opennhp)
 
-**OpenNHP** is a lightweight, cryptography-powered, open-source toolkit implementing Zero Trust security for infrastructure, applications, and data. It is the reference implementation of the [**Cloud Security Alliance (CSA)**](https://cloudsecurityalliance.org/) *Network-infrastructure Hiding Protocol (NHP) specification*, and features two core protocols:
+**OpenNHP** is a lightweight, cryptography-powered, open-source toolkit implementing Zero Trust security for infrastructure, applications, and data. It is the reference implementation of the [**Cloud Security Alliance (CSA)**](https://cloudsecurityalliance.org/) *[Network-infrastructure Hiding Protocol (NHP) specification](https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trust-network-infrastructure)*, and features two core protocols:
 
-- [**Network-infrastructure Hiding Protocol (NHP):**](https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trust-network-infrastructure) Conceals server ports, IP addresses, and domain names to protect applications and infrastructure from unauthorized access.
+- **Network-infrastructure Hiding Protocol (NHP):** Conceals server ports, IP addresses, and domain names to protect applications and infrastructure from unauthorized access.
 - **Data-content Hiding Protocol (DHP):** Ensures data security and privacy via encryption and confidential computing, making data *"usable but not visible."*
 
 **[Website](https://opennhp.org) · [Documentation](https://docs.opennhp.org) · [Live Demo](https://opennhp.org/demo/) · [Discord](https://discord.gg/CpyVmspx5x)**
@@ -26,7 +26,7 @@
 
 ## Why OpenNHP
 
-The modern internet is a dark forest. Attackers — increasingly backed by LLMs that scan, fingerprint, and exploit at machine speed — treat every reachable service as a target. Traditional defenses authenticate users *after* the network lets them in, leaving exposed ports, IPs, and domains as a permanent attack surface.
+The modern internet is a [dark forest](https://en.wikipedia.org/wiki/Dark_forest_hypothesis). Attackers — increasingly backed by LLMs that scan, fingerprint, and exploit at machine speed via [Autonomous Vulnerability Exploitation](https://arxiv.org/abs/2404.08144) — treat every reachable service as a target. [Gartner projects](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025) AI-driven cyberattacks will rise rapidly. Traditional defenses authenticate users *after* the network lets them in, leaving exposed ports, IPs, and domains as a permanent attack surface.
 
 OpenNHP inverts that model: **invisible until trusted.** Every port, IP, and hostname sits behind a default-deny gate. Access is granted only after a cryptographically signed knock is authenticated and authorized out-of-band. Attackers can't exploit what they can't discover.
 
@@ -92,7 +92,7 @@ opennhp/
     ├── agent/        # NHP-Agent daemon
     ├── server/       # NHP-Server daemon
     ├── ac/           # NHP-AC (access controller) daemon
-    ├── db/           # NHP-DB (data object backend for DHP)
+    ├── db/           # NHP-DB (Data Broker for DHP)
     ├── kgc/          # Key Generation Center (IBC)
     └── relay/        # TCP relay
 ```

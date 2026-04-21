@@ -37,7 +37,7 @@ NHP is the next step in a line of "hide the service first" designs:
 | Generation | Protocol | Limitations |
 |---|---|---|
 | 1 | Port Knocking | Plaintext, replay-prone |
-| 2 | Single Packet Authorization (SPA) | Shared secrets, one-way, ports only, typically C/C++ |
+| 2 | Single Packet Authorization (SPA) | Shared secrets, one-way, typically hides ports only, typically C/C++ |
 | **3** | **NHP** | Modern crypto, bi-directional with status, hides domain + IP + ports, stateless and horizontally scalable, memory-safe Go |
 
 NHP slots in alongside existing IAM, DNS, FIDO, and Zero Trust policy engines rather than replacing them — it extends your stack instead of forking it.
@@ -53,7 +53,7 @@ OpenNHP follows a modular design with three core components, inspired by the [NI
 | Component | Role |
 |-----------|------|
 | **NHP-Agent** | Client that sends encrypted knock requests to gain access |
-| **NHP-Server** | Authenticates and authorizes requests; runs separately from the protected host |
+| **NHP-Server** | Authenticates and authorizes requests; runs separately and is architecturally decoupled from the protected host |
 | **NHP-AC** | Access controller that manages firewall rules on the protected server |
 
 ### Protocol flow
@@ -147,6 +147,8 @@ We welcome contributions! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before 
 ```bash
 git commit -S -m "your message"
 ```
+
+---
 
 ## Security
 

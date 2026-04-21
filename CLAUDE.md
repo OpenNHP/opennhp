@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 OpenNHP is a Go-based Zero Trust security toolkit implementing two core protocols:
 - **NHP (Network-infrastructure Hiding Protocol)**: Conceals server ports, IPs, and domains from unauthorized access
-- **DHP (Data-object Hiding Protocol)**: Ensures data security via encryption and confidential computing
+- **DHP (Data-content Hiding Protocol)**: Ensures data security via encryption and confidential computing
 
 The system follows NIST Zero Trust Architecture with three core components that communicate via encrypted UDP packets using the Noise Protocol Framework.
 

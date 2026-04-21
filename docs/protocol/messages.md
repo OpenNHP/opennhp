@@ -15,7 +15,7 @@ routes the packet to a logical handler on the receiver. Twenty-eight IDs
 are defined today: seventeen **NHP** types (IDs 0–16) covering the
 knock/auth/access flow, AC lifecycle, relay, registration, OTP, and
 explicit session exit; plus eleven **DHP** types (IDs 17–27) used by the
-Data-object Hiding Protocol.
+Data-content Hiding Protocol.
 {: .fs-6 .fw-300 }
 
 *Implements CSA Stealth Mode SDP §NHP Message Types (Table 4) and Appendix 2. IDs and string names defined in [`nhp/core/packet.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/core/packet.go); payload structs in [`nhp/common/nhpmsg.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/common/nhpmsg.go).*
@@ -48,7 +48,7 @@ NHP — Network-infrastructure Hiding Protocol
 | 15 | [NHP-ACC](#nhp-acc--access) | Agent → AC | Agent presents its temporary access token to the AC's listener. |
 | 16 | [NHP-EXT](#nhp-ext--exit) | Agent → Server | Request early closure of an active session. Empty body. |
 
-DHP — Data-object Hiding Protocol *(documented here for completeness; detailed DHP semantics live with the DHP docs)*
+DHP — Data-content Hiding Protocol *(documented here for completeness; detailed DHP semantics live with the DHP docs)*
 
 {: .note }
 DHP entries are shown under their Go constant names (e.g., `NHP_DRG`) rather
@@ -212,7 +212,7 @@ Agent explicitly requests early teardown of an active session. The Server then s
 
 ## DHP message types {#dhp}
 
-The Data-object Hiding Protocol reuses the NHP wire format for a separate
+The Data-content Hiding Protocol reuses the NHP wire format for a separate
 set of flows around data-object registration, access, attestation, and key
 wrapping. They are listed here so the ID table is complete; their payload
 fields (`DRGMsg`, `DAKMsg`, `DARMsg`, `DAGMsg`, `DSAMsg`, `DAVMsg`, `DWRMsg`,

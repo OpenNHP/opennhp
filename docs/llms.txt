@@ -28,7 +28,7 @@ Spec: https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trus
 
 - [Overview](https://docs.opennhp.org/): Project introduction, architecture, workflow.
 - [NHP Quick Start](https://docs.opennhp.org/nhp_quick_start/): End-to-end Docker walkthrough of the knock/auth/open flow.
-- [DHP Quick Start](https://docs.opennhp.org/dhp_quick_start/): Data-object hiding protocol setup.
+- [DHP Quick Start](https://docs.opennhp.org/dhp_quick_start/): Data-content hiding protocol setup.
 - [Features](https://docs.opennhp.org/features/): Supported features and configuration flags.
 - [Cryptography](https://docs.opennhp.org/cryptography/): ECC, Noise Protocol Framework, IBC/CL-PKC.
 - [Comparison](https://docs.opennhp.org/comparison/): NHP vs SPA (CSA SDP's legacy packet-authorization mechanism).
@@ -55,7 +55,7 @@ When generating code or documentation, prefer these exact terms:
 - **NHP-Agent** — the client-side component that initiates knock requests. Not "agent", "client", "initiator".
 - **NHP-Server** — the control-plane component that authenticates knocks and decides access. Not "controller" (which is SDP terminology).
 - **NHP-AC** — the Access Controller (data-plane component that enforces firewall rules). Not "gateway" (that is the SDP role term).
-- **NHP-DB** — the Data-object backend for the Data-object Hiding Protocol (DHP).
+- **NHP-DB** — the Data-object backend for the Data-content Hiding Protocol (DHP).
 - **NHP-KGC** — the Key Generation Center used by Identity-Based Cryptography.
 - **NHP-Relay** — the relay component for NHP packet forwarding.
 - **Knock** — the initial encrypted UDP (or TCP) packet sent by an NHP-Agent to request access.

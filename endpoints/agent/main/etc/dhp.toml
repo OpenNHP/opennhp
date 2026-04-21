@@ -1,4 +1,4 @@
-# Configuration that is related to data object hiding protocol in agent side.
+# Configuration that is related to data content hiding protocol in agent side.
 
 # TEEPrivateKeyBase64: base64 encoded private key of TEE (Trusted Execution Environment).
 TEEPrivateKeyBase64 = "j20JfF3rjoRtz2m+KP+agYjDBPdQwC9Dwfcasn83yAQ="

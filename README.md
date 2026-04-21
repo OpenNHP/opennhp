@@ -9,18 +9,38 @@
 
 # OpenNHP: Open Source Zero Trust Security Toolkit
 
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+[![Build](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml/badge.svg)](https://github.com/OpenNHP/opennhp/actions/workflows/ubuntu-build.yml)
+[![Release](https://img.shields.io/github/v/release/OpenNHP/opennhp)](https://github.com/OpenNHP/opennhp/releases)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 [![codecov](https://codecov.io/gh/OpenNHP/opennhp/branch/main/graph/badge.svg)](https://codecov.io/gh/OpenNHP/opennhp)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/OpenNHP/opennhp)
 
-**OpenNHP** is a lightweight, cryptography-powered, open-source toolkit implementing Zero Trust security for infrastructure, applications, and data. It is the reference implementation of the [**Cloud Security Alliance (CSA) Network-infrastructure Hiding Protocol (NHP) specification**](https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trust-network-infrastructure), and features two core protocols:
+**OpenNHP** is a lightweight, cryptography-powered, open-source toolkit implementing Zero Trust security for infrastructure, applications, and data. It is the reference implementation of the [**Cloud Security Alliance (CSA)**](https://cloudsecurityalliance.org/) *[Network-infrastructure Hiding Protocol (NHP) specification](https://cloudsecurityalliance.org/artifacts/stealth-mode-sdp-for-zero-trust-network-infrastructure)*, and features two core protocols:
 
 - **Network-infrastructure Hiding Protocol (NHP):** Conceals server ports, IP addresses, and domain names to protect applications and infrastructure from unauthorized access.
-- **Data-object Hiding Protocol (DHP):** Ensures data security and privacy via encryption and confidential computing, making data *"usable but not visible."*
+- **Data-content Hiding Protocol (DHP):** Ensures data security and privacy via encryption and confidential computing, making data *"usable but not visible."*
 
 **[Website](https://opennhp.org) · [Documentation](https://docs.opennhp.org) · [Live Demo](https://opennhp.org/demo/) · [Discord](https://discord.gg/CpyVmspx5x)**
+
+---
+
+## Why OpenNHP
+
+The modern internet is a [dark forest](https://en.wikipedia.org/wiki/Dark_forest_hypothesis). Attackers — increasingly backed by LLMs that scan, fingerprint, and exploit at machine speed via [Autonomous Vulnerability Exploitation](https://arxiv.org/abs/2404.08144) — treat every reachable service as a target. [Gartner projects](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025) AI-driven cyberattacks will rise rapidly. Traditional defenses authenticate users *after* the network lets them in, leaving exposed ports, IPs, and domains as a permanent attack surface.
+
+OpenNHP inverts that model: **invisible until trusted.** Every port, IP, and hostname sits behind a default-deny gate. Access is granted only after a cryptographically signed knock is authenticated and authorized out-of-band. Attackers can't exploit what they can't discover.
+
+### The third-generation network hiding protocol
+
+NHP is the next step in a line of "hide the service first" designs:
+
+| Generation | Protocol | Limitations |
+|---|---|---|
+| 1 | Port Knocking | Plaintext, replay-prone |
+| 2 | Single Packet Authorization (SPA) | Shared secrets, one-way, typically hides ports only, typically C/C++ |
+| **3** | **NHP** | Modern crypto, bi-directional with status, hides domain + IP + ports, stateless and horizontally scalable, memory-safe Go |
+
+NHP slots in alongside existing IAM, DNS, FIDO, and Zero Trust policy engines rather than replacing them — it extends your stack instead of forking it.
 
 ---
 
@@ -33,8 +53,25 @@ OpenNHP follows a modular design with three core components, inspired by the [NI
 | Component | Role |
 |-----------|------|
 | **NHP-Agent** | Client that sends encrypted knock requests to gain access |
-| **NHP-Server** | Authenticates and authorizes requests; decoupled from protected resources |
+| **NHP-Server** | Authenticates and authorizes requests; runs separately and is architecturally decoupled from the protected host |
 | **NHP-AC** | Access controller that manages firewall rules on the protected server |
+
+### Protocol flow
+
+1. Agent sends an encrypted knock (`NHP_KNK`) to the Server.
+2. Server validates the knock and sends an operation request (`NHP_AOP`) to the AC.
+3. AC opens the firewall and replies (`NHP_ART`) to the Server.
+4. Server returns an acknowledgment (`NHP_ACK`) with access info to the Agent.
+5. Agent reaches the protected resource through the AC.
+
+### Cryptography
+
+OpenNHP ships with two interchangeable cipher suites:
+
+- **`CIPHER_SCHEME_CURVE`** — Curve25519 + AES-256-GCM + BLAKE2s
+- **`CIPHER_SCHEME_GMSM`** — SM2 + SM4-GCM + SM3
+
+Both are driven by the [Noise Protocol Framework](https://noiseprotocol.org/). An Identity-Based Cryptography (IBC) mode is available via the Key Generation Center (KGC).
 
 > For protocol details, deployment models, and cryptographic design, see the [documentation](https://docs.opennhp.org).
 
@@ -53,9 +90,9 @@ opennhp/
 │   └── etcd/         # Distributed configuration support
 └── endpoints/        # Daemon implementations (Go module, depends on nhp)
     ├── agent/        # NHP-Agent daemon
-    ├── server/        # NHP-Server daemon
+    ├── server/       # NHP-Server daemon
     ├── ac/           # NHP-AC (access controller) daemon
-    ├── db/           # NHP-DB (data object backend for DHP)
+    ├── db/           # NHP-DB (Data Broker for DHP)
     ├── kgc/          # Key Generation Center (IBC)
     └── relay/        # TCP relay
 ```
@@ -110,6 +147,12 @@ We welcome contributions! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before 
 ```bash
 git commit -S -m "your message"
 ```
+
+---
+
+## Security
+
+Found a vulnerability? Please follow the responsible-disclosure process in [SECURITY.md](SECURITY.md) rather than opening a public issue.
 
 ---
 

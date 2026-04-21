@@ -24,7 +24,7 @@ alternate is listed but the canonical term is what the implementation uses.
 | **NHP-Agent** | agent, client, initiator | Client-side component embedded in a host, SDK, browser, or app. Sends the encrypted knock request and, once access is granted, connects to the Protected Resource. |
 | **NHP-Server** | server, controller (SDP) | Control-plane component that decrypts knocks, authenticates the NHP-Agent, checks policy via the ASP, and instructs the NHP-AC. Maps to the *Policy Engine/Administrator* in NIST SP 800-207. |
 | **NHP-AC** | Access Controller, gateway (SDP) | Data-plane component that enforces default-deny and dynamically opens the firewall on the NHP-Server's instruction. Maps to the *Policy Enforcement Point* in NIST SP 800-207. |
-| **NHP-DB** | — | Data-object backend for the Data-object Hiding Protocol (DHP). Stores encrypted zero-trust data objects. |
+| **NHP-DB** | — | Data Broker for the Data-content Hiding Protocol (DHP). Stores encrypted zero-trust data objects. |
 | **NHP-KGC** | KGC | Key Generation Center used by Identity-Based Cryptography (IBC) to issue agent/server keys. |
 | **NHP-Relay** | relay | Optional forwarder for NHP packets across network segments; preserves source addresses via the NHP-RLY message type. |
 

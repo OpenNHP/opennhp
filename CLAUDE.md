@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 OpenNHP is a Go-based Zero Trust security toolkit implementing two core protocols:
 - **NHP (Network-infrastructure Hiding Protocol)**: Conceals server ports, IPs, and domains from unauthorized access
-- **DHP (Data-object Hiding Protocol)**: Ensures data security via encryption and confidential computing
+- **DHP (Data-content Hiding Protocol)**: Ensures data security via encryption and confidential computing
 
 The system follows NIST Zero Trust Architecture with three core components that communicate via encrypted UDP packets using the Noise Protocol Framework.
 
@@ -149,7 +149,7 @@ The codebase uses two separate Go modules with a local replace directive:
   - `agent/`: NHP-Agent - client that sends knock requests
   - `server/`: NHP-Server - authenticates and authorizes requests
   - `ac/`: NHP-AC - access controller that manages firewall rules
-  - `db/`: NHP-DB - data object management for DHP
+  - `db/`: NHP-DB - Data Broker for DHP
   - `kgc/`: Key Generation Center for IBC (Identity-Based Cryptography)
   - `relay/`: TCP relay functionality
 
@@ -159,7 +159,7 @@ The codebase uses two separate Go modules with a local replace directive:
 - `NHP_AGENT`: Client initiating access requests
 - `NHP_SERVER`: Central authentication/authorization server
 - `NHP_AC`: Access controller managing network rules
-- `NHP_DB`: Data object backend for DHP
+- `NHP_DB`: Data Broker for DHP
 - `NHP_RELAY`: Packet relay
 
 **Packet Types** (defined in `nhp/core/packet.go`):

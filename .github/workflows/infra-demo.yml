@@ -1,0 +1,149 @@
+# Manage demo infrastructure with Terraform
+# Creates/destroys EC2 instances, VPC, security groups, and Cloudflare DNS records
+
+name: Demo Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Terraform action to perform'
+        required: true
+        type: choice
+        options:
+          - 'plan'
+          - 'apply'
+          - 'destroy'
+        default: 'plan'
+      confirm:
+        description: 'Type "confirm" for apply/destroy'
+        required: false
+        default: ''
+
+env:
+  AWS_REGION: us-east-2
+  TF_WORKING_DIR: terraform/demo
+
+jobs:
+  terraform:
+    name: "Terraform ${{ github.event.inputs.action }}"
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # Required for OIDC
+      contents: read
+
+    steps:
+      - name: Validate confirmation
+        if: github.event.inputs.action != 'plan' && github.event.inputs.confirm != 'confirm'
+        run: |
+          echo "ERROR: You must type 'confirm' to run ${{ github.event.inputs.action }}"
+          exit 1
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch secrets from AWS Secrets Manager
+        id: secrets
+        run: |
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' \
+            --output text)
+
+          # Extract Cloudflare credentials
+          CF_TOKEN=$(echo "$SECRETS" | jq -r '.cloudflare_api_token')
+          CF_ZONE=$(echo "$SECRETS" | jq -r '.cloudflare_zone_id')
+
+          # Set as masked outputs
+          echo "::add-mask::$CF_TOKEN"
+          echo "cf_token=$CF_TOKEN" >> $GITHUB_OUTPUT
+          echo "cf_zone=$CF_ZONE" >> $GITHUB_OUTPUT
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform plan \
+            -var="aws_account_id=401696231478" \
+            -var="cloudflare_api_token=${{ steps.secrets.outputs.cf_token }}" \
+            -var="cloudflare_zone_id=${{ steps.secrets.outputs.cf_zone }}" \
+            ${{ github.event.inputs.action == 'destroy' && '-destroy' || '' }} \
+            -out=tfplan
+
+      - name: Terraform Apply
+        if: github.event.inputs.action == 'apply' && github.event.inputs.confirm == 'confirm'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform apply -auto-approve tfplan
+
+      - name: Terraform Destroy
+        if: github.event.inputs.action == 'destroy' && github.event.inputs.confirm == 'confirm'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform apply -auto-approve tfplan
+
+      - name: Show outputs
+        if: github.event.inputs.action == 'apply'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          echo "## Infrastructure Outputs"
+          echo ""
+          terraform output -json | jq -r 'to_entries[] | "**\(.key)**: \(.value.value)"'
+
+      - name: Scan SSH host keys from relay
+        if: github.event.inputs.action == 'apply'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          RELAY_IP=$(terraform output -raw relay_public_ip)
+          echo "Waiting for relay instance to be reachable..."
+          for i in $(seq 1 30); do
+            if ssh-keyscan -T 5 "$RELAY_IP" 2>/dev/null | grep -q .; then
+              echo "Host key obtained from $RELAY_IP"
+              HOST_KEYS=$(ssh-keyscan -T 5 "$RELAY_IP" 2>/dev/null)
+              echo "$HOST_KEYS"
+
+              # Save host keys to AWS Secrets Manager
+              SECRETS=$(aws secretsmanager get-secret-value \
+                --secret-id opennhp/demo \
+                --region ${{ env.AWS_REGION }} \
+                --query 'SecretString' \
+                --output text)
+
+              UPDATED=$(echo "$SECRETS" | jq --arg hk "$HOST_KEYS" '. + {ssh_host_keys: $hk}')
+              aws secretsmanager put-secret-value \
+                --secret-id opennhp/demo \
+                --region ${{ env.AWS_REGION }} \
+                --secret-string "$UPDATED"
+
+              echo "SSH host keys saved to AWS Secrets Manager"
+              exit 0
+            fi
+            echo "  Attempt $i/30 - waiting 10s..."
+            sleep 10
+          done
+          echo "WARNING: Could not obtain SSH host keys (instance may not be ready yet)"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Demo Infrastructure Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Action** | ${{ github.event.inputs.action }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Triggered by** | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Time** | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |" >> $GITHUB_STEP_SUMMARY

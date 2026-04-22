@@ -1,0 +1,4 @@
+# Copy this file to terraform.tfvars and fill in values
+# DO NOT commit terraform.tfvars to git
+
+aws_account_id = "REPLACE_ME"

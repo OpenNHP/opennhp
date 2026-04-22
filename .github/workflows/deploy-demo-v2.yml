@@ -1,0 +1,562 @@
+# Deploy Demo (v2) - Terraform-managed infrastructure
+#
+# Builds nhp-serverd/nhp-acd/nhp-relayd + plugins, generates configs,
+# and deploys to the three EC2 instances created by infra-demo.yml.
+#
+# Flow:
+#   1. Build binaries + plugins
+#   2. Fetch IPs from Terraform state, generate keys/configs
+#   3. Deploy relay directly (it's the jump host)
+#   4. Deploy server and ac via the relay (ProxyJump)
+
+name: Deploy Demo v2
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm deployment'
+        required: true
+        default: ''
+      deploy_binaries:
+        description: 'Deploy binaries (serverd/acd/relayd + plugins)'
+        required: true
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
+        default: 'no'
+      regenerate_keys:
+        description: 'Regenerate NHP key pairs (DANGEROUS - will break existing agents)'
+        required: true
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
+        default: 'no'
+
+env:
+  AWS_REGION: us-east-2
+  GO_VERSION: '1.25.6'
+  GOMODULE: github.com/OpenNHP/opennhp/nhp
+  DEPLOY_USER: ec2-user
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Job 1: Build all binaries and plugins
+  # ─────────────────────────────────────────────────────────────
+  build:
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(cat nhp/version/VERSION)
+          TIMESTAMP=$(date +%y%m%d%H%M%S)
+          FULL_VERSION="${VERSION}.${TIMESTAMP}"
+          COMMIT_ID=$(git show -s --format=%H)
+          COMMIT_TIME=$(git show -s --format=%cd --date=format:'%Y-%m-%d %H:%M:%S')
+          BUILD_TIME=$(date "+%Y-%m-%d %H:%M:%S")
+          LD_FLAGS="-s -w -X '${GOMODULE}/version.Version=${FULL_VERSION}' -X '${GOMODULE}/version.CommitId=${COMMIT_ID}' -X '${GOMODULE}/version.CommitTime=${COMMIT_TIME}' -X '${GOMODULE}/version.BuildTime=${BUILD_TIME}'"
+          echo "ldflags=${LD_FLAGS}" >> $GITHUB_OUTPUT
+
+      - name: Clone external plugin repositories
+        if: vars.EXTERNAL_PLUGIN_REPOS != ''
+        env:
+          REPOS_JSON: ${{ vars.EXTERNAL_PLUGIN_REPOS }}
+          PLUGIN_TOKEN: ${{ secrets.PLUGIN_REPO_TOKEN }}
+        run: |
+          # (unchanged from v1 - see deploy-demo.yml for full implementation)
+          echo "External plugin cloning - see deploy-demo.yml for reference implementation"
+          # TODO: copy the python inline script here when needed
+
+      - name: Build serverd, acd, relayd, and plugins
+        env:
+          CUSTOM_LD_FLAGS: ${{ steps.version.outputs.ldflags }}
+        run: |
+          echo "Building all NHP daemons..."
+          make init
+          make serverd acd relayd plugins
+
+          echo ""
+          echo "Build output:"
+          ls -la release/nhp-server/ release/nhp-ac/ release/nhp-relay/ 2>/dev/null || true
+
+      - name: Package artifacts
+        run: |
+          mkdir -p artifact/server artifact/ac artifact/relay artifact/plugins
+
+          # Server
+          cp release/nhp-server/nhp-serverd artifact/server/
+          chmod +x artifact/server/nhp-serverd
+
+          # AC
+          cp release/nhp-ac/nhp-acd artifact/ac/
+          chmod +x artifact/ac/nhp-acd
+
+          # Relay
+          cp release/nhp-relay/nhp-relayd artifact/relay/
+          chmod +x artifact/relay/nhp-relayd
+
+          # Plugins (.so + etc/)
+          if [ -d release/nhp-server/plugins ]; then
+            for plugin_dir in release/nhp-server/plugins/*/; do
+              name=$(basename "$plugin_dir")
+              so="${plugin_dir}${name}.so"
+              if [ -f "$so" ]; then
+                mkdir -p "artifact/plugins/$name"
+                cp "$so" "artifact/plugins/$name/"
+                [ -d "${plugin_dir}etc" ] && cp -r "${plugin_dir}etc" "artifact/plugins/$name/"
+              fi
+            done
+          fi
+
+          # Templates
+          [ -d release/nhp-server/templates ] && cp -r release/nhp-server/templates artifact/
+
+          find artifact -type f | sort
+
+      - name: Inject plugin secrets
+        env:
+          AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+        run: |
+          OIDC_CFG="artifact/plugins/oidc/etc/config.toml"
+          if [ -f "$OIDC_CFG" ] && [ -n "$AUTH0_CLIENT_ID" ]; then
+            sed -i "s/__AUTH0_CLIENT_ID__/$AUTH0_CLIENT_ID/g" "$OIDC_CFG"
+            sed -i "s/__AUTH0_CLIENT_SECRET__/$AUTH0_CLIENT_SECRET/g" "$OIDC_CFG"
+            echo "Auth0 secrets injected into oidc plugin"
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nhp-demo-build
+          path: artifact/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 2: Generate keys and render configs
+  # ─────────────────────────────────────────────────────────────
+  configure:
+    needs: build
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    outputs:
+      server_public_ip: ${{ steps.tf_outputs.outputs.server_public_ip }}
+      server_private_ip: ${{ steps.tf_outputs.outputs.server_private_ip }}
+      ac_public_ip: ${{ steps.tf_outputs.outputs.ac_public_ip }}
+      ac_private_ip: ${{ steps.tf_outputs.outputs.ac_private_ip }}
+      relay_public_ip: ${{ steps.tf_outputs.outputs.relay_public_ip }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+
+      - name: Read Terraform outputs (get IPs)
+        id: tf_outputs
+        working-directory: terraform/demo
+        run: |
+          terraform init -backend=true
+
+          SERVER_PUB=$(terraform output -raw server_public_ip)
+          SERVER_PRIV=$(terraform output -raw server_private_ip)
+          AC_PUB=$(terraform output -raw ac_public_ip)
+          AC_PRIV=$(terraform output -raw ac_private_ip)
+          RELAY_PUB=$(terraform output -raw relay_public_ip)
+
+          echo "server_public_ip=$SERVER_PUB"   >> $GITHUB_OUTPUT
+          echo "server_private_ip=$SERVER_PRIV" >> $GITHUB_OUTPUT
+          echo "ac_public_ip=$AC_PUB"           >> $GITHUB_OUTPUT
+          echo "ac_private_ip=$AC_PRIV"         >> $GITHUB_OUTPUT
+          echo "relay_public_ip=$RELAY_PUB"     >> $GITHUB_OUTPUT
+
+          echo "Server public/private:  $SERVER_PUB / $SERVER_PRIV"
+          echo "AC public/private:      $AC_PUB / $AC_PRIV"
+          echo "Relay public:           $RELAY_PUB"
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-build
+          path: ./artifact
+
+      - name: Generate keys and render configs
+        run: |
+          chmod +x ./scripts/generate-nhp-keys.sh
+
+          # Build dir structure expected by script
+          mkdir -p ./artifact/bin/nhp-server ./artifact/bin/nhp-ac ./artifact/bin/nhp-relay
+          cp ./artifact/server/nhp-serverd ./artifact/bin/nhp-server/
+          cp ./artifact/ac/nhp-acd ./artifact/bin/nhp-ac/
+          cp ./artifact/relay/nhp-relayd ./artifact/bin/nhp-relay/
+          chmod +x ./artifact/bin/*/nhp-*
+
+          REGEN_FLAG=""
+          if [ "${{ github.event.inputs.regenerate_keys }}" = "yes" ]; then
+            REGEN_FLAG="--regenerate"
+            echo "WARNING: Regenerating all NHP keys"
+          fi
+
+          ./scripts/generate-nhp-keys.sh \
+            --binary-dir ./artifact/bin \
+            --template-dir ./deploy/config-templates \
+            --output-dir ./artifact/configs \
+            --server-private-ip "${{ steps.tf_outputs.outputs.server_private_ip }}" \
+            --ac-private-ip "${{ steps.tf_outputs.outputs.ac_private_ip }}" \
+            --domain opennhp.org \
+            $REGEN_FLAG
+
+          echo "Generated configs:"
+          find ./artifact/configs -type f | sort
+
+      - name: Upload configs
+        uses: actions/upload-artifact@v7
+        with:
+          name: nhp-demo-configs
+          path: ./artifact/configs/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 3: Setup SSH and deploy relay (direct)
+  # ─────────────────────────────────────────────────────────────
+  deploy-relay:
+    needs: configure
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch SSH credentials from AWS Secrets Manager
+        id: ssh_creds
+        run: |
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' --output text)
+
+          SSH_KEY=$(echo "$SECRETS" | jq -r '.ssh_deploy_private_key')
+          HOST_KEYS=$(echo "$SECRETS" | jq -r '.ssh_host_keys // empty')
+
+          if [ -z "$SSH_KEY" ] || [ "$SSH_KEY" = "null" ]; then
+            echo "ERROR: ssh_deploy_private_key missing in AWS SM"
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          if [ -n "$HOST_KEYS" ]; then
+            echo "$HOST_KEYS" > ~/.ssh/known_hosts
+          else
+            echo "WARNING: no pre-saved host keys; scanning now"
+            ssh-keyscan -T 10 ${{ needs.configure.outputs.relay_public_ip }} > ~/.ssh/known_hosts
+          fi
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Download build + configs
+        uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-build
+          path: ./artifact
+      - uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-configs
+          path: ./configs
+
+      - name: Deploy nhp-relayd
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-relay"
+
+          echo "Stopping nhp-relayd..."
+          ssh $SSH_OPTS $TARGET "sudo systemctl stop nhp-relayd || true"
+
+          if [ "${{ github.event.inputs.deploy_binaries }}" = "yes" ]; then
+            echo "Uploading nhp-relayd binary..."
+            scp $SSH_OPTS ./artifact/relay/nhp-relayd $TARGET:$REMOTE_DIR/
+            ssh $SSH_OPTS $TARGET "chmod +x $REMOTE_DIR/nhp-relayd"
+          fi
+
+          echo "Uploading relay config..."
+          scp $SSH_OPTS ./configs/relay/config.toml $TARGET:$REMOTE_DIR/etc/
+
+          echo "Starting nhp-relayd..."
+          ssh $SSH_OPTS $TARGET "sudo systemctl start nhp-relayd"
+          sleep 2
+
+          STATUS=$(ssh $SSH_OPTS $TARGET "sudo systemctl is-active nhp-relayd" || true)
+          if [ "$STATUS" != "active" ]; then
+            ssh $SSH_OPTS $TARGET "sudo journalctl -u nhp-relayd -n 30 --no-pager"
+            echo "ERROR: nhp-relayd failed to start"
+            exit 1
+          fi
+          echo "nhp-relayd deployed successfully"
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 4: Deploy server via relay jump host
+  # ─────────────────────────────────────────────────────────────
+  deploy-server:
+    needs: [configure, deploy-relay]
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup SSH with ProxyJump
+        run: |
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' --output text)
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "$SECRETS" | jq -r '.ssh_host_keys' > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          # SSH config with ProxyJump via relay
+          cat > ~/.ssh/config <<EOF
+          Host relay-jump
+            HostName ${{ needs.configure.outputs.relay_public_ip }}
+            User ${{ env.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+
+          Host nhp-server
+            HostName ${{ needs.configure.outputs.server_private_ip }}
+            User ${{ env.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            ProxyJump relay-jump
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-build
+          path: ./artifact
+      - uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-configs
+          path: ./configs
+
+      - name: Deploy nhp-serverd and plugins
+        run: |
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-server"
+
+          echo "Stopping nhp-serverd..."
+          ssh nhp-server "sudo systemctl stop nhp-serverd || true"
+
+          if [ "${{ github.event.inputs.deploy_binaries }}" = "yes" ]; then
+            echo "Uploading nhp-serverd..."
+            scp ./artifact/server/nhp-serverd nhp-server:$REMOTE_DIR/
+            ssh nhp-server "chmod +x $REMOTE_DIR/nhp-serverd"
+
+            echo "Uploading plugins..."
+            for plugin_dir in ./artifact/plugins/*/; do
+              name=$(basename "$plugin_dir")
+              ssh nhp-server "mkdir -p $REMOTE_DIR/plugins/$name"
+              scp "${plugin_dir}${name}.so" "nhp-server:$REMOTE_DIR/plugins/$name/"
+
+              PLUGIN_EXISTS=$(ssh nhp-server "[ -d $REMOTE_DIR/plugins/$name/etc ] && echo yes || echo no")
+              if [ "$PLUGIN_EXISTS" = "no" ] && [ -d "${plugin_dir}etc" ]; then
+                scp -r "${plugin_dir}etc" "nhp-server:$REMOTE_DIR/plugins/$name/"
+              fi
+            done
+
+            if [ -d ./artifact/templates ]; then
+              rsync -avz --delete -e ssh ./artifact/templates/ nhp-server:$REMOTE_DIR/templates/
+            fi
+          fi
+
+          echo "Uploading server configs..."
+          scp ./configs/server/*.toml nhp-server:$REMOTE_DIR/etc/
+
+          echo "Starting nhp-serverd..."
+          ssh nhp-server "sudo systemctl start nhp-serverd"
+          sleep 2
+
+          STATUS=$(ssh nhp-server "sudo systemctl is-active nhp-serverd" || true)
+          if [ "$STATUS" != "active" ]; then
+            ssh nhp-server "sudo journalctl -u nhp-serverd -n 30 --no-pager"
+            exit 1
+          fi
+          echo "nhp-serverd deployed successfully"
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 5: Deploy AC via relay jump host
+  # ─────────────────────────────────────────────────────────────
+  deploy-ac:
+    needs: [configure, deploy-relay]
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup SSH with ProxyJump
+        run: |
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' --output text)
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "$SECRETS" | jq -r '.ssh_host_keys' > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          cat > ~/.ssh/config <<EOF
+          Host relay-jump
+            HostName ${{ needs.configure.outputs.relay_public_ip }}
+            User ${{ env.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+
+          Host nhp-ac
+            HostName ${{ needs.configure.outputs.ac_private_ip }}
+            User ${{ env.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            ProxyJump relay-jump
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-build
+          path: ./artifact
+      - uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-configs
+          path: ./configs
+
+      - name: Deploy nhp-acd
+        run: |
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-ac"
+
+          echo "Stopping nhp-acd..."
+          ssh nhp-ac "sudo systemctl stop nhp-acd || true"
+
+          if [ "${{ github.event.inputs.deploy_binaries }}" = "yes" ]; then
+            echo "Uploading nhp-acd..."
+            scp ./artifact/ac/nhp-acd nhp-ac:$REMOTE_DIR/
+            ssh nhp-ac "chmod +x $REMOTE_DIR/nhp-acd"
+          fi
+
+          # Deploy acdemo template if it exists
+          if [ -f ./artifact/templates/example/example_acdemo.html ]; then
+            scp ./artifact/templates/example/example_acdemo.html nhp-ac:/tmp/
+            ssh nhp-ac "sudo cp /tmp/example_acdemo.html /etc/nginx/html/index_acdemo_opennhp_org.html && sudo chmod 644 /etc/nginx/html/index_acdemo_opennhp_org.html && rm /tmp/example_acdemo.html"
+          fi
+
+          echo "Uploading AC configs..."
+          scp ./configs/ac/*.toml nhp-ac:$REMOTE_DIR/etc/
+
+          echo "Starting nhp-acd..."
+          ssh nhp-ac "sudo systemctl start nhp-acd"
+          sleep 2
+
+          STATUS=$(ssh nhp-ac "sudo systemctl is-active nhp-acd" || true)
+          if [ "$STATUS" != "active" ]; then
+            ssh nhp-ac "sudo journalctl -u nhp-acd -n 30 --no-pager"
+            exit 1
+          fi
+          echo "nhp-acd deployed successfully"
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 6: Summary
+  # ─────────────────────────────────────────────────────────────
+  summary:
+    needs: [deploy-relay, deploy-server, deploy-ac]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Relay        | ${{ needs.deploy-relay.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Server       | ${{ needs.deploy-server.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| AC           | ${{ needs.deploy-ac.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Binaries?    | ${{ github.event.inputs.deploy_binaries }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Regen keys?  | ${{ github.event.inputs.regenerate_keys }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch       | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Actor        | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY

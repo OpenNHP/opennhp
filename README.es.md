@@ -29,6 +29,8 @@
 
 La internet moderna es un [bosque oscuro](https://en.wikipedia.org/wiki/Dark_forest_hypothesis). Los atacantes —respaldados cada vez más por LLMs que escanean, toman huellas y explotan a velocidad de máquina mediante [Autonomous Vulnerability Exploitation](https://arxiv.org/abs/2404.08144)— tratan todo servicio alcanzable como un objetivo. [Gartner prevé](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025) un rápido aumento de los ciberataques impulsados por IA. Las defensas tradicionales autentican a los usuarios *después* de que la red los deja entrar, dejando los puertos, IPs y dominios expuestos como una superficie de ataque permanente.
 
+> **En la era de la IA, VISIBILIDAD = VULNERABILIDAD.**
+
 OpenNHP invierte ese modelo: **invisible hasta la confianza**. Cada puerto, IP y nombre de host se sitúa detrás de una puerta de denegación por defecto. El acceso se concede solo después de que un «golpe en la puerta» firmado criptográficamente haya sido autenticado y autorizado fuera de banda. Los atacantes no pueden explotar lo que no pueden descubrir.
 
 ### El protocolo de ocultación de red de tercera generación

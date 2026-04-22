@@ -29,6 +29,8 @@
 
 現代のインターネットは[暗黒森林](https://en.wikipedia.org/wiki/Dark_forest_hypothesis)です。攻撃者は—— LLM の力を得て [Autonomous Vulnerability Exploitation](https://arxiv.org/abs/2404.08144) により機械的なスピードでスキャン、フィンガープリンティング、エクスプロイトを実行し——到達可能なすべてのサービスを標的とみなします。[Gartner は](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025) AI 駆動型サイバー攻撃が急増すると予測しています。従来の防御策はネットワークにユーザーを通した *後* に認証を行うため、露出したポート、IP、ドメインは永続的な攻撃面となり続けます。
 
+> **AI 時代において、可視性 = 脆弱性。**
+
 OpenNHP はこのモデルを反転させます：**信頼されるまで不可視**。すべてのポート、IP、ホスト名はデフォルト拒否のゲートの背後に置かれます。アクセスが許可されるのは、暗号署名された「ノック」がアウトオブバンドで認証・認可された後に限られます。攻撃者は発見できないものを悪用できません。
 
 ### 第 3 世代のネットワーク隠蔽プロトコル

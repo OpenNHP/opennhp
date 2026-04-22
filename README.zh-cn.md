@@ -29,6 +29,8 @@
 
 当今的互联网是一片[黑暗森林](https://en.wikipedia.org/wiki/Dark_forest_hypothesis)。攻击者——越来越多地借助大语言模型（LLM）通过[自主漏洞利用（AVE）](https://arxiv.org/abs/2404.08144)以机器速度进行扫描、指纹识别和漏洞利用——将所有可达的服务都视为攻击目标。[Gartner 预测](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025) AI 驱动的网络攻击将快速增长。传统防御仅在*网络放行之后*才对用户进行身份验证，使得暴露的端口、IP 和域名成为永久的攻击面。
 
+> **在 AI 时代，可见性 = 脆弱性。**
+
 OpenNHP 颠覆了这一模式：**验证之前不可见。** 所有端口、IP 和主机名均置于默认拒绝的门之后。只有经过加密签名的"敲门"请求通过带外认证与授权之后，才会开放访问。攻击者无法利用他们发现不了的东西。
 
 ### 第三代网络隐藏协议

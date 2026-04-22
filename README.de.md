@@ -29,6 +29,8 @@
 
 Das moderne Internet ist ein [dunkler Wald](https://en.wikipedia.org/wiki/Dark_forest_hypothesis). Angreifer – zunehmend unterstützt durch LLMs, die mittels [Autonomous Vulnerability Exploitation](https://arxiv.org/abs/2404.08144) in Maschinengeschwindigkeit scannen, Fingerprinting betreiben und ausnutzen – behandeln jeden erreichbaren Dienst als Ziel. [Gartner prognostiziert](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025), dass KI-gestützte Cyberangriffe rasant zunehmen werden. Herkömmliche Verteidigungsmaßnahmen authentifizieren Nutzer erst *nachdem* das Netzwerk sie hereingelassen hat, sodass offene Ports, IPs und Domains zur dauerhaften Angriffsfläche werden.
 
+> **Im KI-Zeitalter gilt: SICHTBARKEIT = VERWUNDBARKEIT.**
+
 OpenNHP dreht dieses Modell um: **unsichtbar bis vertrauenswürdig.** Jeder Port, jede IP und jeder Hostname liegt hinter einem Default-Deny-Gate. Zugriff wird erst nach einem kryptographisch signierten Knock gewährt, der außerhalb des Datenkanals authentifiziert und autorisiert wurde. Angreifer können nicht ausnutzen, was sie nicht entdecken können.
 
 ### Das Netzwerkverstecker-Protokoll der dritten Generation

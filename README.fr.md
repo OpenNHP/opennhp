@@ -29,6 +29,8 @@
 
 L'internet moderne est une [forêt sombre](https://en.wikipedia.org/wiki/Dark_forest_hypothesis). Les attaquants — de plus en plus soutenus par des LLM qui scannent, identifient et exploitent à la vitesse de la machine via l'[Autonomous Vulnerability Exploitation](https://arxiv.org/abs/2404.08144) — considèrent chaque service accessible comme une cible. [Gartner prévoit](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025) une hausse rapide des cyberattaques pilotées par l'IA. Les défenses traditionnelles authentifient les utilisateurs *après* que le réseau les ait laissés entrer, laissant les ports, IP et domaines exposés comme une surface d'attaque permanente.
 
+> **À l'ère de l'IA, VISIBILITÉ = VULNÉRABILITÉ.**
+
 OpenNHP inverse ce modèle : **invisible jusqu'à la confiance**. Chaque port, IP et nom d'hôte est placé derrière une porte refusant tout par défaut. L'accès n'est accordé qu'après qu'un « toc-toc » cryptographiquement signé a été authentifié et autorisé hors bande. Les attaquants ne peuvent pas exploiter ce qu'ils ne peuvent pas découvrir.
 
 ### Le protocole de masquage réseau de troisième génération

@@ -19,14 +19,22 @@ on:
         description: 'Type "confirm" for apply/destroy'
         required: false
         default: ''
+  push:
+    branches:
+      - feature/nhp-relay
+    paths:
+      - 'terraform/demo/**'
+      - '.github/workflows/infra-demo.yml'
 
 env:
   AWS_REGION: us-east-2
   TF_WORKING_DIR: terraform/demo
+  # push events always run plan; dispatch uses the input
+  TF_ACTION: ${{ github.event.inputs.action || 'plan' }}
 
 jobs:
   terraform:
-    name: "Terraform ${{ github.event.inputs.action }}"
+    name: "Terraform ${{ github.event.inputs.action || 'plan' }}"
     runs-on: ubuntu-latest
     permissions:
       id-token: write   # Required for OIDC
@@ -34,9 +42,9 @@ jobs:
 
     steps:
       - name: Validate confirmation
-        if: github.event.inputs.action != 'plan' && github.event.inputs.confirm != 'confirm'
+        if: env.TF_ACTION != 'plan' && github.event.inputs.confirm != 'confirm'
         run: |
-          echo "ERROR: You must type 'confirm' to run ${{ github.event.inputs.action }}"
+          echo "ERROR: You must type 'confirm' to run ${{ env.TF_ACTION }}"
           exit 1
 
       - name: Checkout code
@@ -82,21 +90,21 @@ jobs:
             -var="aws_account_id=401696231478" \
             -var="cloudflare_api_token=${{ steps.secrets.outputs.cf_token }}" \
             -var="cloudflare_zone_id=${{ steps.secrets.outputs.cf_zone }}" \
-            ${{ github.event.inputs.action == 'destroy' && '-destroy' || '' }} \
+            ${{ env.TF_ACTION == 'destroy' && '-destroy' || '' }} \
             -out=tfplan
 
       - name: Terraform Apply
-        if: github.event.inputs.action == 'apply' && github.event.inputs.confirm == 'confirm'
+        if: env.TF_ACTION == 'apply' && github.event.inputs.confirm == 'confirm'
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform apply -auto-approve tfplan
 
       - name: Terraform Destroy
-        if: github.event.inputs.action == 'destroy' && github.event.inputs.confirm == 'confirm'
+        if: env.TF_ACTION == 'destroy' && github.event.inputs.confirm == 'confirm'
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform apply -auto-approve tfplan
 
       - name: Show outputs
-        if: github.event.inputs.action == 'apply'
+        if: env.TF_ACTION == 'apply'
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           echo "## Infrastructure Outputs"
@@ -104,7 +112,7 @@ jobs:
           terraform output -json | jq -r 'to_entries[] | "**\(.key)**: \(.value.value)"'
 
       - name: Scan SSH host keys from relay
-        if: github.event.inputs.action == 'apply'
+        if: env.TF_ACTION == 'apply'
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           RELAY_IP=$(terraform output -raw relay_public_ip)
@@ -143,7 +151,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Action** | ${{ github.event.inputs.action }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Action** | ${{ env.TF_ACTION }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Branch** | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Triggered by** | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Time** | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |" >> $GITHUB_STEP_SUMMARY

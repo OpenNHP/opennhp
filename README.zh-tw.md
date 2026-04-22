@@ -29,6 +29,8 @@
 
 當今的網際網路是一座[黑暗森林](https://en.wikipedia.org/wiki/Dark_forest_hypothesis)。攻擊者——日益仰賴大型語言模型（LLM）透過[自主漏洞利用（AVE）](https://arxiv.org/abs/2404.08144)以機器速度進行掃描、指紋辨識與漏洞利用——將每一個可達的服務都視為攻擊目標。[Gartner 預測](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025) AI 驅動的網路攻擊將快速增長。傳統防禦僅在*網路放行之後*才對使用者進行身分驗證，讓暴露的連接埠、IP 與網域成為永久的攻擊面。
 
+> **在 AI 時代，可見性 = 脆弱性。**
+
 OpenNHP 翻轉了這個模式：**驗證前不可見。** 所有連接埠、IP 與主機名稱皆置於預設拒絕的閘門之後。只有經加密簽署的「敲門」請求通過頻外認證與授權後，才會開放存取。攻擊者無法利用他們發現不了的東西。
 
 ### 第三代網路隱藏協定

@@ -29,6 +29,8 @@
 
 The modern internet is a [dark forest](https://en.wikipedia.org/wiki/Dark_forest_hypothesis). Attackers — increasingly backed by LLMs that scan, fingerprint, and exploit at machine speed via [Autonomous Vulnerability Exploitation](https://arxiv.org/abs/2404.08144) — treat every reachable service as a target. [Gartner projects](https://www.gartner.com/en/newsroom/press-releases/2024-08-28-gartner-forecasts-global-information-security-spending-to-grow-15-percent-in-2025) AI-driven cyberattacks will rise rapidly. Traditional defenses authenticate users *after* the network lets them in, leaving exposed ports, IPs, and domains as a permanent attack surface.
 
+> **In the AI era, VISIBILITY = VULNERABILITY.**
+
 OpenNHP inverts that model: **invisible until trusted.** Every port, IP, and hostname sits behind a default-deny gate. Access is granted only after a cryptographically signed knock is authenticated and authorized out-of-band. Attackers can't exploit what they can't discover.
 
 ### The third-generation network hiding protocol

@@ -21,6 +21,7 @@ terraform {
     key          = "demo/terraform.tfstate"
     region       = "us-east-2"
     encrypt      = true
+    kms_key_id   = "alias/aws/s3"
     use_lockfile = true
   }
 }

@@ -222,17 +222,26 @@ func (s *UdpServer) loadPeers() error {
 
 	// relay.toml
 	fileNameRelay := filepath.Join(ExeDirPath, "etc", "relay.toml")
+	log.Info("[relay-load] reading %s", fileNameRelay)
 	contentRelay, err := s.loadConfigFile(fileNameRelay)
 	if err != nil {
-		log.Warning("load relay peer config err (optional): %v", err)
+		log.Warning("[relay-load] load relay peer config err (optional): %v", err)
 	} else {
+		log.Info("[relay-load] file size=%d bytes", len(contentRelay))
 		var relayPeers Peers
 		if err := toml.Unmarshal(contentRelay, &relayPeers); err != nil {
-			log.Error("failed to unmarshal relay peers config: %v", err)
+			log.Error("[relay-load] failed to unmarshal relay peers config: %v", err)
+		} else {
+			log.Info("[relay-load] parsed %d relay peer(s)", len(relayPeers.Relays))
+			for i, p := range relayPeers.Relays {
+				log.Info("[relay-load]   peer[%d] pubkey=%q expire=%d ip=%q port=%d host=%q",
+					i, p.PubKeyBase64, p.ExpireTime, p.Ip, p.Port, p.Hostname)
+			}
 		}
 		if err := s.updateRelayPeers(relayPeers.Relays); err != nil {
-			_ = err
+			log.Error("[relay-load] updateRelayPeers returned err: %v", err)
 		}
+		log.Info("[relay-load] after updateRelayPeers, device peer keys: %v", s.device.ListPeerKeys())
 	}
 
 	// tee.toml

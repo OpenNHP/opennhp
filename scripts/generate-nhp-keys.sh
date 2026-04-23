@@ -81,6 +81,8 @@ EXISTING_RELAY_PRIV=$(echo "$SECRETS_JSON" | jq -r '.nhp_relay_private_key // em
 EXISTING_RELAY_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_relay_public_key // empty')
 EXISTING_AGENT_PRIV=$(echo "$SECRETS_JSON" | jq -r '.nhp_agent_private_key // empty')
 EXISTING_AGENT_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_agent_public_key // empty')
+EXISTING_JSAGENT_PRIV=$(echo "$SECRETS_JSON" | jq -r '.nhp_jsagent_private_key // empty')
+EXISTING_JSAGENT_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_jsagent_public_key // empty')
 
 # --- Generate or reuse keys ---
 generate_keys() {
@@ -134,12 +136,18 @@ AGENT_KEYS=$(generate_keys "$BINARY_DIR/nhp-server/nhp-serverd" "agent" "$EXISTI
 NHP_AGENT_PRIVATE_KEY=$(echo "$AGENT_KEYS" | cut -d'|' -f1)
 NHP_AGENT_PUBLIC_KEY=$(echo "$AGENT_KEYS" | cut -d'|' -f2)
 
+# js-agent keys (browser-side client; private key consumed from AWS SM by the js-agent repo)
+JSAGENT_KEYS=$(generate_keys "$BINARY_DIR/nhp-server/nhp-serverd" "js-agent" "$EXISTING_JSAGENT_PRIV" "$EXISTING_JSAGENT_PUB")
+NHP_JSAGENT_PRIVATE_KEY=$(echo "$JSAGENT_KEYS" | cut -d'|' -f1)
+NHP_JSAGENT_PUBLIC_KEY=$(echo "$JSAGENT_KEYS" | cut -d'|' -f2)
+
 echo ""
 echo "--- Key summary ---"
 echo "  Server public key: ${NHP_SERVER_PUBLIC_KEY:0:20}..."
 echo "  AC public key:     ${NHP_AC_PUBLIC_KEY:0:20}..."
 echo "  Relay public key:  ${NHP_RELAY_PUBLIC_KEY:0:20}..."
-echo "  Agent public key:  ${NHP_AGENT_PUBLIC_KEY:0:20}..."
+echo "  Agent public key:    ${NHP_AGENT_PUBLIC_KEY:0:20}..."
+echo "  js-agent public key: ${NHP_JSAGENT_PUBLIC_KEY:0:20}..."
 echo ""
 
 # --- Save keys to AWS Secrets Manager ---
@@ -155,6 +163,8 @@ UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
   --arg rp "$NHP_RELAY_PUBLIC_KEY" \
   --arg agk "$NHP_AGENT_PRIVATE_KEY" \
   --arg agp "$NHP_AGENT_PUBLIC_KEY" \
+  --arg jk "$NHP_JSAGENT_PRIVATE_KEY" \
+  --arg jp "$NHP_JSAGENT_PUBLIC_KEY" \
   '. + {
     nhp_server_private_key: $sk,
     nhp_server_public_key: $sp,
@@ -163,7 +173,9 @@ UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
     nhp_relay_private_key: $rk,
     nhp_relay_public_key: $rp,
     nhp_agent_private_key: $agk,
-    nhp_agent_public_key: $agp
+    nhp_agent_public_key: $agp,
+    nhp_jsagent_private_key: $jk,
+    nhp_jsagent_public_key: $jp
   }')
 
 aws secretsmanager put-secret-value \
@@ -181,6 +193,7 @@ export NHP_SERVER_PRIVATE_KEY NHP_SERVER_PUBLIC_KEY
 export NHP_AC_PRIVATE_KEY NHP_AC_PUBLIC_KEY
 export NHP_RELAY_PRIVATE_KEY NHP_RELAY_PUBLIC_KEY
 export NHP_AGENT_PRIVATE_KEY NHP_AGENT_PUBLIC_KEY
+export NHP_JSAGENT_PRIVATE_KEY NHP_JSAGENT_PUBLIC_KEY
 export SERVER_PRIVATE_IP="$SERVER_PRIVATE_IP"
 export AC_PRIVATE_IP="$AC_PRIVATE_IP"
 export DOMAIN="$DOMAIN"

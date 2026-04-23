@@ -3,3 +3,8 @@
 [[Agents]]
 PubKeyBase64 = "${NHP_AGENT_PUBLIC_KEY}"
 ExpireTime = 1924991999
+
+[[Agents]]
+# js-agent (browser client; key pair in AWS SM opennhp/demo)
+PubKeyBase64 = "${NHP_JSAGENT_PUBLIC_KEY}"
+ExpireTime = 1924991999

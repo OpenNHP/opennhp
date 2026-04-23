@@ -623,8 +623,8 @@ jobs:
         run: |
           REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-ac"
 
-          # nhp-acd shells out to iptables; Amazon Linux 2023 doesn't ship it.
-          ssh nhp-ac "command -v iptables >/dev/null || sudo dnf install -y iptables"
+          # nhp-acd shells out to iptables/ipset; Amazon Linux 2023 doesn't ship them.
+          ssh nhp-ac "for pkg in iptables ipset; do command -v \$pkg >/dev/null || sudo dnf install -y \$pkg; done"
 
           echo "Stopping nhp-acd..."
           ssh nhp-ac "sudo systemctl stop nhp-acd || true"

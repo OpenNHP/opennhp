@@ -125,9 +125,11 @@ jobs:
           cp release/nhp-server/nhp-serverd artifact/server/
           chmod +x artifact/server/nhp-serverd
 
-          # AC
+          # AC (binary + firewall bootstrap script)
           cp release/nhp-ac/nhp-acd artifact/ac/
           chmod +x artifact/ac/nhp-acd
+          cp release/nhp-ac/iptables_default.sh artifact/ac/
+          chmod +x artifact/ac/iptables_default.sh
 
           # Relay
           cp release/nhp-relay/nhp-relayd artifact/relay/
@@ -634,6 +636,13 @@ jobs:
             scp ./artifact/ac/nhp-acd nhp-ac:$REMOTE_DIR/
             ssh nhp-ac "chmod +x $REMOTE_DIR/nhp-acd"
           fi
+
+          echo "Installing firewall bootstrap script..."
+          scp ./artifact/ac/iptables_default.sh nhp-ac:$REMOTE_DIR/
+          ssh nhp-ac "chmod +x $REMOTE_DIR/iptables_default.sh"
+
+          echo "Applying default firewall rules..."
+          ssh nhp-ac "sudo bash $REMOTE_DIR/iptables_default.sh -f || true"
 
           # Deploy acdemo static page to nginx root
           if [ -f ./artifact/templates/example/example_acdemo.html ]; then

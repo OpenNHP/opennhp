@@ -34,19 +34,31 @@ on:
           - 'no'
           - 'yes'
         default: 'no'
+  push:
+    branches:
+      - feature/nhp-relay
+    paths:
+      - '.github/workflows/deploy-demo-v2.yml'
+      - 'deploy/**'
+      - 'endpoints/**'
+      - 'nhp/**'
 
 env:
   AWS_REGION: us-east-2
   GO_VERSION: '1.25.6'
   GOMODULE: github.com/OpenNHP/opennhp/nhp
   DEPLOY_USER: ec2-user
+  # push events always run a full deploy with binaries, never regenerate keys
+  CONFIRM: ${{ github.event.inputs.confirm || 'deploy' }}
+  DEPLOY_BINARIES: ${{ github.event.inputs.deploy_binaries || 'yes' }}
+  REGENERATE_KEYS: ${{ github.event.inputs.regenerate_keys || 'no' }}
 
 jobs:
   # ─────────────────────────────────────────────────────────────
   # Job 1: Build all binaries and plugins
   # ─────────────────────────────────────────────────────────────
   build:
-    if: github.event.inputs.confirm == 'deploy'
+    if: env.CONFIRM == 'deploy'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -154,7 +166,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   configure:
     needs: build
-    if: github.event.inputs.confirm == 'deploy'
+    if: env.CONFIRM == 'deploy'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -222,7 +234,7 @@ jobs:
           chmod +x ./artifact/bin/*/nhp-*
 
           REGEN_FLAG=""
-          if [ "${{ github.event.inputs.regenerate_keys }}" = "yes" ]; then
+          if [ "${{ env.REGENERATE_KEYS }}" = "yes" ]; then
             REGEN_FLAG="--regenerate"
             echo "WARNING: Regenerating all NHP keys"
           fi
@@ -251,7 +263,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   deploy-relay:
     needs: configure
-    if: github.event.inputs.confirm == 'deploy'
+    if: env.CONFIRM == 'deploy'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -313,7 +325,7 @@ jobs:
           echo "Stopping nhp-relayd..."
           ssh $SSH_OPTS $TARGET "sudo systemctl stop nhp-relayd || true"
 
-          if [ "${{ github.event.inputs.deploy_binaries }}" = "yes" ]; then
+          if [ "${{ env.DEPLOY_BINARIES }}" = "yes" ]; then
             echo "Uploading nhp-relayd binary..."
             scp $SSH_OPTS ./artifact/relay/nhp-relayd $TARGET:$REMOTE_DIR/
             ssh $SSH_OPTS $TARGET "chmod +x $REMOTE_DIR/nhp-relayd"
@@ -343,7 +355,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   deploy-server:
     needs: [configure, deploy-relay]
-    if: github.event.inputs.confirm == 'deploy'
+    if: env.CONFIRM == 'deploy'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -404,7 +416,7 @@ jobs:
           echo "Stopping nhp-serverd..."
           ssh nhp-server "sudo systemctl stop nhp-serverd || true"
 
-          if [ "${{ github.event.inputs.deploy_binaries }}" = "yes" ]; then
+          if [ "${{ env.DEPLOY_BINARIES }}" = "yes" ]; then
             echo "Uploading nhp-serverd..."
             scp ./artifact/server/nhp-serverd nhp-server:$REMOTE_DIR/
             ssh nhp-server "chmod +x $REMOTE_DIR/nhp-serverd"
@@ -449,7 +461,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   deploy-ac:
     needs: [configure, deploy-relay]
-    if: github.event.inputs.confirm == 'deploy'
+    if: env.CONFIRM == 'deploy'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -509,7 +521,7 @@ jobs:
           echo "Stopping nhp-acd..."
           ssh nhp-ac "sudo systemctl stop nhp-acd || true"
 
-          if [ "${{ github.event.inputs.deploy_binaries }}" = "yes" ]; then
+          if [ "${{ env.DEPLOY_BINARIES }}" = "yes" ]; then
             echo "Uploading nhp-acd..."
             scp ./artifact/ac/nhp-acd nhp-ac:$REMOTE_DIR/
             ssh nhp-ac "chmod +x $REMOTE_DIR/nhp-acd"
@@ -556,7 +568,7 @@ jobs:
           echo "| Relay        | ${{ needs.deploy-relay.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Server       | ${{ needs.deploy-server.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| AC           | ${{ needs.deploy-ac.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Binaries?    | ${{ github.event.inputs.deploy_binaries }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Regen keys?  | ${{ github.event.inputs.regenerate_keys }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Binaries?    | ${{ env.DEPLOY_BINARIES }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Regen keys?  | ${{ env.REGENERATE_KEYS }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Branch       | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Actor        | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY

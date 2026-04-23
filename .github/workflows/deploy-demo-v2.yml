@@ -52,6 +52,11 @@ env:
   CONFIRM: ${{ github.event.inputs.confirm || 'deploy' }}
   DEPLOY_BINARIES: ${{ github.event.inputs.deploy_binaries || 'yes' }}
   REGENERATE_KEYS: ${{ github.event.inputs.regenerate_keys || 'no' }}
+  ACME_EMAIL: dev@layerv.ai
+  DOMAIN_SERVER: demologin.opennhp.org
+  DOMAIN_AC: acdemo.opennhp.org
+  DOMAIN_RELAY: relay.opennhp.org
+  DOMAIN_AGENT: agent.opennhp.org
 
 jobs:
   # ─────────────────────────────────────────────────────────────
@@ -314,6 +319,42 @@ jobs:
           name: nhp-demo-configs
           path: ./configs
 
+      - name: Checkout code (for nginx + bootstrap scripts)
+        uses: actions/checkout@v6
+        with:
+          path: repo
+
+      - name: Ensure TLS certificate + nginx on relay
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+
+          CF_TOKEN=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo --region ${{ env.AWS_REGION }} \
+            --query SecretString --output text \
+            | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['cloudflare_api_token'])")
+
+          # Render nginx vhost locally
+          export DOMAIN_RELAY='${{ env.DOMAIN_RELAY }}' DOMAIN_AGENT='${{ env.DOMAIN_AGENT }}'
+          envsubst '$DOMAIN_RELAY $DOMAIN_AGENT' < repo/deploy/nginx/relay.conf.template > /tmp/relay-nginx.conf
+
+          # Upload script + rendered vhost
+          scp $SSH_OPTS repo/deploy/scripts/bootstrap-tls.sh $TARGET:/tmp/bootstrap-tls.sh
+          scp $SSH_OPTS /tmp/relay-nginx.conf $TARGET:/tmp/relay-nginx.conf
+          ssh $SSH_OPTS $TARGET "chmod +x /tmp/bootstrap-tls.sh"
+
+          # Run bootstrap
+          ssh $SSH_OPTS $TARGET \
+            "COMPONENT=relay \
+             PRIMARY_DOMAIN='${{ env.DOMAIN_RELAY }}' \
+             EXTRA_DOMAINS='${{ env.DOMAIN_AGENT }}' \
+             CF_API_TOKEN='$CF_TOKEN' \
+             ACME_EMAIL='${{ env.ACME_EMAIL }}' \
+             NGINX_CONF='/tmp/relay-nginx.conf' \
+             /tmp/bootstrap-tls.sh"
+
       - name: Deploy nhp-relayd
         env:
           RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
@@ -408,6 +449,33 @@ jobs:
         with:
           name: nhp-demo-configs
           path: ./configs
+
+      - name: Checkout code (for nginx + bootstrap scripts)
+        uses: actions/checkout@v6
+        with:
+          path: repo
+
+      - name: Ensure TLS certificate + nginx on server
+        run: |
+          CF_TOKEN=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo --region ${{ env.AWS_REGION }} \
+            --query SecretString --output text \
+            | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['cloudflare_api_token'])")
+
+          export DOMAIN_SERVER='${{ env.DOMAIN_SERVER }}'
+          envsubst '$DOMAIN_SERVER' < repo/deploy/nginx/server.conf.template > /tmp/server-nginx.conf
+
+          scp repo/deploy/scripts/bootstrap-tls.sh nhp-server:/tmp/bootstrap-tls.sh
+          scp /tmp/server-nginx.conf nhp-server:/tmp/server-nginx.conf
+          ssh nhp-server "chmod +x /tmp/bootstrap-tls.sh"
+
+          ssh nhp-server \
+            "COMPONENT=server \
+             PRIMARY_DOMAIN='${{ env.DOMAIN_SERVER }}' \
+             CF_API_TOKEN='$CF_TOKEN' \
+             ACME_EMAIL='${{ env.ACME_EMAIL }}' \
+             NGINX_CONF='/tmp/server-nginx.conf' \
+             /tmp/bootstrap-tls.sh"
 
       - name: Deploy nhp-serverd and plugins
         run: |
@@ -514,6 +582,33 @@ jobs:
           name: nhp-demo-configs
           path: ./configs
 
+      - name: Checkout code (for nginx + bootstrap scripts)
+        uses: actions/checkout@v6
+        with:
+          path: repo
+
+      - name: Ensure TLS certificate + nginx on ac
+        run: |
+          CF_TOKEN=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo --region ${{ env.AWS_REGION }} \
+            --query SecretString --output text \
+            | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['cloudflare_api_token'])")
+
+          export DOMAIN_AC='${{ env.DOMAIN_AC }}'
+          envsubst '$DOMAIN_AC' < repo/deploy/nginx/ac.conf.template > /tmp/ac-nginx.conf
+
+          scp repo/deploy/scripts/bootstrap-tls.sh nhp-ac:/tmp/bootstrap-tls.sh
+          scp /tmp/ac-nginx.conf nhp-ac:/tmp/ac-nginx.conf
+          ssh nhp-ac "chmod +x /tmp/bootstrap-tls.sh"
+
+          ssh nhp-ac \
+            "COMPONENT=ac \
+             PRIMARY_DOMAIN='${{ env.DOMAIN_AC }}' \
+             CF_API_TOKEN='$CF_TOKEN' \
+             ACME_EMAIL='${{ env.ACME_EMAIL }}' \
+             NGINX_CONF='/tmp/ac-nginx.conf' \
+             /tmp/bootstrap-tls.sh"
+
       - name: Deploy nhp-acd
         run: |
           REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-ac"
@@ -527,10 +622,13 @@ jobs:
             ssh nhp-ac "chmod +x $REMOTE_DIR/nhp-acd"
           fi
 
-          # Deploy acdemo template if it exists
+          # Deploy acdemo static page to nginx root
           if [ -f ./artifact/templates/example/example_acdemo.html ]; then
             scp ./artifact/templates/example/example_acdemo.html nhp-ac:/tmp/
-            ssh nhp-ac "sudo cp /tmp/example_acdemo.html /etc/nginx/html/index_acdemo_opennhp_org.html && sudo chmod 644 /etc/nginx/html/index_acdemo_opennhp_org.html && rm /tmp/example_acdemo.html"
+            ssh nhp-ac "sudo mkdir -p /var/www/acdemo && \
+              sudo cp /tmp/example_acdemo.html /var/www/acdemo/index.html && \
+              sudo chmod 644 /var/www/acdemo/index.html && \
+              rm /tmp/example_acdemo.html"
           fi
 
           echo "Uploading AC configs..."

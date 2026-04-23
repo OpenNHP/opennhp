@@ -20,4 +20,4 @@ writeTimeoutMs = 10000
 idleTimeoutMs  = 60000
 udpTimeoutMs   = 5000
 
-logLevel = 2
+logLevel = 5

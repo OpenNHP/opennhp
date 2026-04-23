@@ -34,6 +34,10 @@ on:
           - 'no'
           - 'yes'
         default: 'no'
+      jsagent_branch:
+        description: 'Branch of OpenNHP/js-agent to deploy'
+        required: false
+        default: 'feature/nhp-relay'
   push:
     branches:
       - feature/nhp-relay
@@ -54,6 +58,7 @@ env:
   CONFIRM: ${{ github.event.inputs.confirm || 'deploy' }}
   DEPLOY_BINARIES: ${{ github.event.inputs.deploy_binaries || 'yes' }}
   REGENERATE_KEYS: ${{ github.event.inputs.regenerate_keys || 'no' }}
+  JSAGENT_BRANCH: ${{ github.event.inputs.jsagent_branch || 'feature/nhp-relay' }}
   ACME_EMAIL: dev@layerv.ai
   DOMAIN_SERVER: demologin.opennhp.org
   DOMAIN_AC: acdemo.opennhp.org
@@ -686,10 +691,160 @@ jobs:
         run: rm -rf ~/.ssh
 
   # ─────────────────────────────────────────────────────────────
-  # Job 6: Summary
+  # Job 6: Deploy js-agent demo page (static) to relay host
+  # ─────────────────────────────────────────────────────────────
+  deploy-jsagent:
+    needs: [configure, deploy-relay]
+    if: (github.event.inputs.confirm || 'deploy') == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout opennhp (for nginx + bootstrap scripts)
+        uses: actions/checkout@v6
+        with:
+          path: opennhp
+
+      - name: Checkout js-agent
+        uses: actions/checkout@v6
+        with:
+          repository: OpenNHP/js-agent
+          ref: ${{ env.JSAGENT_BRANCH }}
+          path: jsagent
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: jsagent/nhp-js/package-lock.json
+
+      - name: Build js-agent SDK
+        working-directory: jsagent/nhp-js
+        run: |
+          npm ci
+          npm run build
+          ls -la dist/
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch keys + Cloudflare token from AWS Secrets Manager
+        id: secrets
+        run: |
+          RAW=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo --region ${{ env.AWS_REGION }} \
+            --query SecretString --output text)
+
+          SERVER_PUB=$(echo "$RAW" | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['nhp_server_public_key'])")
+          JS_PRIV=$(echo "$RAW" | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['nhp_jsagent_private_key'])")
+          JS_PUB=$(echo "$RAW" | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['nhp_jsagent_public_key'])")
+          CF_TOKEN=$(echo "$RAW" | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['cloudflare_api_token'])")
+          SSH_KEY=$(echo "$RAW" | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['ssh_deploy_private_key'])")
+          HOST_KEYS=$(echo "$RAW" | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False).get('ssh_host_keys', ''))")
+
+          echo "::add-mask::$JS_PRIV"
+          echo "::add-mask::$CF_TOKEN"
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "$HOST_KEYS" ]; then
+            printf '%s' "$HOST_KEYS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -T 10 ${{ needs.configure.outputs.relay_public_ip }} > ~/.ssh/known_hosts
+          fi
+          chmod 644 ~/.ssh/known_hosts
+
+          echo "server_pub=$SERVER_PUB" >> $GITHUB_OUTPUT
+          echo "js_priv=$JS_PRIV"       >> $GITHUB_OUTPUT
+          echo "js_pub=$JS_PUB"         >> $GITHUB_OUTPUT
+          echo "cf_token=$CF_TOKEN"     >> $GITHUB_OUTPUT
+
+      - name: Assemble deploy bundle
+        run: |
+          mkdir -p bundle/nhp-js/dist
+
+          # Entry page is nhp-js/examples/relay-test.html, exposed as / .
+          # Rewrite the SDK import path so it resolves alongside index.html.
+          sed "s|from '../dist/index.js'|from './nhp-js/dist/index.js'|g" \
+            jsagent/nhp-js/examples/relay-test.html > bundle/index.html
+
+          cp -r jsagent/nhp-js/dist/. bundle/nhp-js/dist/
+
+          # Render config.json with live keys
+          cat > bundle/config.json <<EOF
+          {
+            "cipherScheme":    "curve25519",
+            "transport":       "relay",
+            "relayUrl":        "https://${{ env.DOMAIN_RELAY }}/relay",
+            "serverHost":      "${{ env.DOMAIN_SERVER }}",
+            "serverPort":      443,
+            "serverPublicKey": "${{ steps.secrets.outputs.server_pub }}",
+            "agentPrivateKey": "${{ steps.secrets.outputs.js_priv }}",
+            "agentPublicKey":  "${{ steps.secrets.outputs.js_pub }}",
+            "userId":          "demo browser agent",
+            "deviceId":        "browser-relay-test",
+            "orgId":           "opennhp.org",
+            "resourceId":      "demo",
+            "serviceId":       "example"
+          }
+          EOF
+
+          echo "Bundle contents:"
+          find bundle -type f | sort
+
+      - name: Install nginx vhost for js-agent
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+
+          export DOMAIN_AGENT='${{ env.DOMAIN_AGENT }}' DOMAIN_RELAY='${{ env.DOMAIN_RELAY }}'
+          envsubst '$DOMAIN_AGENT $DOMAIN_RELAY' \
+            < opennhp/deploy/nginx/jsagent.conf.template > /tmp/jsagent-nginx.conf
+
+          scp $SSH_OPTS opennhp/deploy/scripts/bootstrap-tls.sh $TARGET:/tmp/bootstrap-tls.sh
+          scp $SSH_OPTS /tmp/jsagent-nginx.conf $TARGET:/tmp/jsagent-nginx.conf
+          ssh $SSH_OPTS $TARGET "chmod +x /tmp/bootstrap-tls.sh"
+
+          # PRIMARY_DOMAIN is the relay domain so certbot reuses the existing
+          # SAN certificate (relay.* + agent.*) without issuing a new one.
+          ssh $SSH_OPTS $TARGET \
+            "COMPONENT=jsagent \
+             PRIMARY_DOMAIN='${{ env.DOMAIN_RELAY }}' \
+             EXTRA_DOMAINS='${{ env.DOMAIN_AGENT }}' \
+             CF_API_TOKEN='${{ steps.secrets.outputs.cf_token }}' \
+             ACME_EMAIL='${{ env.ACME_EMAIL }}' \
+             NGINX_CONF='/tmp/jsagent-nginx.conf' \
+             /tmp/bootstrap-tls.sh"
+
+      - name: Sync bundle to relay
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+
+          ssh $SSH_OPTS $TARGET "sudo mkdir -p /var/www/jsagent && sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} /var/www/jsagent"
+          rsync -avz --delete -e "ssh $SSH_OPTS" ./bundle/ $TARGET:/var/www/jsagent/
+          ssh $SSH_OPTS $TARGET "sudo chmod -R a+rX /var/www/jsagent"
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 7: Summary
   # ─────────────────────────────────────────────────────────────
   summary:
-    needs: [deploy-relay, deploy-server, deploy-ac]
+    needs: [deploy-relay, deploy-server, deploy-ac, deploy-jsagent]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -702,6 +857,8 @@ jobs:
           echo "| Relay        | ${{ needs.deploy-relay.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Server       | ${{ needs.deploy-server.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| AC           | ${{ needs.deploy-ac.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| js-agent     | ${{ needs.deploy-jsagent.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| js-agent branch | ${{ env.JSAGENT_BRANCH }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Binaries?    | ${{ env.DEPLOY_BINARIES }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Regen keys?  | ${{ env.REGENERATE_KEYS }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Branch       | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY

@@ -502,14 +502,26 @@ jobs:
             ssh nhp-server "chmod +x $REMOTE_DIR/nhp-serverd"
 
             echo "Uploading plugins..."
+            # Render placeholders in plugin configs before upload
+            export AC_PRIVATE_IP='${{ needs.configure.outputs.ac_private_ip }}'
             for plugin_dir in ./artifact/plugins/*/; do
               name=$(basename "$plugin_dir")
               ssh nhp-server "mkdir -p $REMOTE_DIR/plugins/$name"
               scp "${plugin_dir}${name}.so" "nhp-server:$REMOTE_DIR/plugins/$name/"
 
-              PLUGIN_EXISTS=$(ssh nhp-server "[ -d $REMOTE_DIR/plugins/$name/etc ] && echo yes || echo no")
-              if [ "$PLUGIN_EXISTS" = "no" ] && [ -d "${plugin_dir}etc" ]; then
-                scp -r "${plugin_dir}etc" "nhp-server:$REMOTE_DIR/plugins/$name/"
+              if [ -d "${plugin_dir}etc" ]; then
+                # Render envsubst on any *.toml in etc/ so values like
+                # ${AC_PRIVATE_IP} get substituted at deploy time.
+                rendered_etc=$(mktemp -d)
+                cp -r "${plugin_dir}etc/." "$rendered_etc/"
+                for f in "$rendered_etc"/*.toml; do
+                  [ -f "$f" ] || continue
+                  envsubst '$AC_PRIVATE_IP' < "$f" > "$f.rendered"
+                  mv "$f.rendered" "$f"
+                done
+                ssh nhp-server "mkdir -p $REMOTE_DIR/plugins/$name/etc"
+                scp -r "$rendered_etc/." "nhp-server:$REMOTE_DIR/plugins/$name/etc/"
+                rm -rf "$rendered_etc"
               fi
             done
 

@@ -653,7 +653,7 @@
         function nhpValidate() {
             const user = document.getElementById("username").value;
             const password = document.getElementById("password").value;
-            const nhpValidUrl = "https://nhp.opennhp.org/plugins/example?resid=demo&action=valid" +
+            const nhpValidUrl = "https://{{ .nhpServer }}/plugins/{{ .aspId }}?resid={{ .resId }}&action=valid" +
                 "&username=" + encodeURIComponent(user) +
                 "&password=" + encodeURIComponent(password);
 

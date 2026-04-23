@@ -5,7 +5,7 @@ DefaultCipherScheme = 0
 ListenIp = ""
 ListenPort = 62206
 Hostname = "demologin.${DOMAIN}"
-LogLevel = 5
+LogLevel = 3
 DisableAgentValidation = false
 
 [webrtc]

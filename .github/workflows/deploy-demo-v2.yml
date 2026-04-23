@@ -737,29 +737,31 @@ jobs:
       - name: Fetch keys + Cloudflare token from AWS Secrets Manager
         id: secrets
         run: |
-          RAW=$(aws secretsmanager get-secret-value \
+          SECRETS=$(aws secretsmanager get-secret-value \
             --secret-id opennhp/demo --region ${{ env.AWS_REGION }} \
-            --query SecretString --output text)
+            --query 'SecretString' --output text)
 
-          SERVER_PUB=$(echo "$RAW" | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['nhp_server_public_key'])")
-          JS_PRIV=$(echo "$RAW" | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['nhp_jsagent_private_key'])")
-          JS_PUB=$(echo "$RAW" | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['nhp_jsagent_public_key'])")
-          CF_TOKEN=$(echo "$RAW" | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['cloudflare_api_token'])")
-          SSH_KEY=$(echo "$RAW" | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['ssh_deploy_private_key'])")
-          HOST_KEYS=$(echo "$RAW" | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False).get('ssh_host_keys', ''))")
-
-          echo "::add-mask::$JS_PRIV"
-          echo "::add-mask::$CF_TOKEN"
-
+          # Write SSH artefacts directly from jq to disk to preserve newlines.
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s' "$SSH_KEY" > ~/.ssh/deploy_key
+          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+
+          HOST_KEYS=$(echo "$SECRETS" | jq -r '.ssh_host_keys // empty')
           if [ -n "$HOST_KEYS" ]; then
-            printf '%s' "$HOST_KEYS" > ~/.ssh/known_hosts
+            echo "$SECRETS" | jq -r '.ssh_host_keys' > ~/.ssh/known_hosts
           else
             ssh-keyscan -T 10 ${{ needs.configure.outputs.relay_public_ip }} > ~/.ssh/known_hosts
           fi
           chmod 644 ~/.ssh/known_hosts
+
+          # Scalar fields that travel through step outputs can safely go through bash.
+          SERVER_PUB=$(echo "$SECRETS" | jq -r '.nhp_server_public_key')
+          JS_PRIV=$(echo "$SECRETS" | jq -r '.nhp_jsagent_private_key')
+          JS_PUB=$(echo "$SECRETS" | jq -r '.nhp_jsagent_public_key')
+          CF_TOKEN=$(echo "$SECRETS" | jq -r '.cloudflare_api_token')
+
+          echo "::add-mask::$JS_PRIV"
+          echo "::add-mask::$CF_TOKEN"
 
           echo "server_pub=$SERVER_PUB" >> $GITHUB_OUTPUT
           echo "js_priv=$JS_PRIV"       >> $GITHUB_OUTPUT

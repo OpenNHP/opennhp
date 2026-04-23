@@ -67,6 +67,13 @@ if [ "$NEED_ISSUE" = "1" ]; then
         D_ARGS="$D_ARGS -d $d"
     done
 
+    # The dnf-installed certbot (v2.x) may have left a stale account record
+    # that v4+ rejects as "Account not found" upstream. Wipe any pre-existing
+    # accounts dir before first issuance so certbot registers fresh.
+    if [ ! -f "$CERT_DIR/fullchain.pem" ]; then
+        sudo rm -rf /etc/letsencrypt/accounts/*
+    fi
+
     echo "[tls] requesting certificate: $D_ARGS"
     sudo "$CERTBOT_BIN" certonly \
         --non-interactive --agree-tos \

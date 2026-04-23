@@ -485,6 +485,12 @@ jobs:
         run: |
           REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-server"
 
+          # nhp-serverd's KBS init() writes to /opt/confidential-containers;
+          # create it up-front with correct ownership so the daemon (ec2-user)
+          # can populate it on first start.
+          ssh nhp-server "sudo mkdir -p /opt/confidential-containers/kbs/repository/default/cosign-key && \
+            sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} /opt/confidential-containers"
+
           echo "Stopping nhp-serverd..."
           ssh nhp-server "sudo systemctl stop nhp-serverd || true"
 

@@ -39,10 +39,14 @@ provider "cloudflare" {
 }
 
 # Read secrets from AWS Secrets Manager
-data "aws_secretsmanager_secret_value" "demo" {
-  secret_id = "opennhp/demo"
+data "aws_secretsmanager_secret" "demo" {
+  name = "opennhp/demo"
+}
+
+data "aws_secretsmanager_secret_version" "demo" {
+  secret_id = data.aws_secretsmanager_secret.demo.id
 }
 
 locals {
-  secrets = jsondecode(data.aws_secretsmanager_secret_value.demo.secret_string)
+  secrets = jsondecode(data.aws_secretsmanager_secret_version.demo.secret_string)
 }

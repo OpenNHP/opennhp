@@ -180,7 +180,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "~1.9"
+          terraform_version: "~1.10"
 
       - name: Read Terraform outputs (get IPs)
         id: tf_outputs

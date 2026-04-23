@@ -90,12 +90,12 @@ generate_keys() {
   local existing_pub="$4"
 
   if [[ "$REGENERATE" == "false" && -n "$existing_priv" && -n "$existing_pub" ]]; then
-    echo "  Reusing existing $name keys from AWS SM"
+    echo "  Reusing existing $name keys from AWS SM" >&2
     echo "$existing_priv|$existing_pub"
     return
   fi
 
-  echo "  Generating new $name keys..."
+  echo "  Generating new $name keys..." >&2
   local keys_json
   keys_json=$("$binary" keygen --curve --json)
   local priv pub

@@ -196,29 +196,29 @@ func (s *UdpServer) loadPeers() error {
 		}
 	})
 
-	//db.toml
+	//db.toml (optional)
 	fileNameDE := filepath.Join(ExeDirPath, "etc", "db.toml")
 	contentDE, err := s.loadConfigFile(fileNameDE)
 	if err != nil {
-		log.Error("load db peer config err: %v", err)
-		return err
-	}
-	var dePeers Peers
-	if err := toml.Unmarshal(contentDE, &dePeers); err != nil {
-		log.Error("failed to unmarshal db peers config: %v", err)
-	}
-	if err := s.updateDePeers(dePeers.DBs); err != nil {
-		// ignore error
-		_ = err
-	}
-	dbConfigWatch = utils.WatchFile(fileNameDE, func() {
-		log.Info("device peer config: %s has been updated", fileNameDE)
-		if contentDE, err = s.loadConfigFile(fileNameDE); err == nil {
-			if err = toml.Unmarshal(contentDE, &dePeers); err == nil {
-				_ = s.updateDePeers(dePeers.DBs)
-			}
+		log.Warning("load db peer config err (optional): %v", err)
+	} else {
+		var dePeers Peers
+		if err := toml.Unmarshal(contentDE, &dePeers); err != nil {
+			log.Error("failed to unmarshal db peers config: %v", err)
 		}
-	})
+		if err := s.updateDePeers(dePeers.DBs); err != nil {
+			// ignore error
+			_ = err
+		}
+		dbConfigWatch = utils.WatchFile(fileNameDE, func() {
+			log.Info("device peer config: %s has been updated", fileNameDE)
+			if contentDE, err = s.loadConfigFile(fileNameDE); err == nil {
+				if err = toml.Unmarshal(contentDE, &dePeers); err == nil {
+					_ = s.updateDePeers(dePeers.DBs)
+				}
+			}
+		})
+	}
 
 	// relay.toml
 	fileNameRelay := filepath.Join(ExeDirPath, "etc", "relay.toml")

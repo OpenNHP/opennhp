@@ -42,6 +42,8 @@ on:
       - 'deploy/**'
       - 'endpoints/**'
       - 'nhp/**'
+      - 'scripts/**'
+      - 'examples/**'
 
 env:
   AWS_REGION: us-east-2

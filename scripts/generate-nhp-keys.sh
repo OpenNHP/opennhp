@@ -96,8 +96,16 @@ generate_keys() {
   fi
 
   echo "  Generating new $name keys..." >&2
-  local keys_json
-  keys_json=$("$binary" keygen --curve --json)
+  # Some binaries (e.g. nhp-acd) have init() side-effects that write log
+  # lines to stdout before the JSON output. Extract the JSON line only.
+  local raw_output keys_json
+  raw_output=$("$binary" keygen --curve --json)
+  keys_json=$(echo "$raw_output" | grep -E '^\{.*"privateKey".*\}$' | tail -1)
+  if [ -z "$keys_json" ]; then
+    echo "  ERROR: no JSON output from $name keygen; raw output was:" >&2
+    echo "$raw_output" >&2
+    return 1
+  fi
   local priv pub
   priv=$(echo "$keys_json" | jq -r '.privateKey')
   pub=$(echo "$keys_json" | jq -r '.publicKey')

@@ -22,9 +22,25 @@ EXTRA_DOMAINS="${EXTRA_DOMAINS:-}"
 echo "[tls] component=$COMPONENT primary=$PRIMARY_DOMAIN extras='$EXTRA_DOMAINS'"
 
 # --- Install prerequisites (idempotent) ---
-if ! rpm -q nginx certbot python3-certbot-dns-cloudflare >/dev/null 2>&1; then
-    echo "[tls] installing nginx + certbot + dns-cloudflare plugin"
-    sudo dnf install -y nginx certbot python3-certbot-dns-cloudflare
+# nginx comes from dnf; certbot + cloudflare plugin via venv because
+# Amazon Linux 2023 doesn't ship python3-certbot-dns-cloudflare.
+if ! rpm -q nginx >/dev/null 2>&1; then
+    echo "[tls] installing nginx"
+    sudo dnf install -y nginx
+fi
+
+CERTBOT_VENV=/opt/certbot
+CERTBOT_BIN=$CERTBOT_VENV/bin/certbot
+if [ ! -x "$CERTBOT_BIN" ]; then
+    echo "[tls] installing certbot + dns-cloudflare plugin into $CERTBOT_VENV"
+    sudo dnf install -y python3 python3-pip
+    sudo python3 -m venv "$CERTBOT_VENV"
+    sudo "$CERTBOT_VENV/bin/pip" install --upgrade pip
+    sudo "$CERTBOT_VENV/bin/pip" install certbot certbot-dns-cloudflare
+fi
+# Expose as /usr/local/bin/certbot so systemd timer and other callers find it
+if [ ! -L /usr/local/bin/certbot ]; then
+    sudo ln -sf "$CERTBOT_BIN" /usr/local/bin/certbot
 fi
 
 # --- Write Cloudflare credentials (0600) ---
@@ -52,7 +68,7 @@ if [ "$NEED_ISSUE" = "1" ]; then
     done
 
     echo "[tls] requesting certificate: $D_ARGS"
-    sudo certbot certonly \
+    sudo "$CERTBOT_BIN" certonly \
         --non-interactive --agree-tos \
         --email "$ACME_EMAIL" \
         --dns-cloudflare --dns-cloudflare-credentials "$CF_INI" \
@@ -85,10 +101,37 @@ systemctl reload nginx
 EOF
 sudo chmod +x "$HOOK"
 
-# --- Ensure renewal timer is on ---
-# certbot package on AL2023 ships certbot-renew.timer
-sudo systemctl enable --now certbot-renew.timer 2>/dev/null \
-    || sudo systemctl enable --now certbot.timer 2>/dev/null \
-    || echo "[tls] WARNING: no certbot systemd timer found; renewals won't run"
+# --- Renewal timer ---
+# The venv certbot is the source of truth (it has the cloudflare plugin).
+# Install a dedicated systemd timer that invokes it daily.
+sudo tee /etc/systemd/system/certbot-venv.service >/dev/null <<EOF
+[Unit]
+Description=Let's Encrypt renewal via certbot venv
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=$CERTBOT_BIN renew --quiet
+EOF
+
+sudo tee /etc/systemd/system/certbot-venv.timer >/dev/null <<'EOF'
+[Unit]
+Description=Run certbot renewal twice daily
+
+[Timer]
+OnCalendar=*-*-* 03,15:00:00
+RandomizedDelaySec=3600
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now certbot-venv.timer
+
+# Disable the dnf-provided timer if present (it would call system certbot
+# which lacks the cloudflare plugin)
+sudo systemctl disable --now certbot-renew.timer 2>/dev/null || true
 
 echo "[tls] done"

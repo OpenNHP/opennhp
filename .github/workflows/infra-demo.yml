@@ -85,10 +85,13 @@ jobs:
 
       - name: Terraform Plan
         working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          # Pass secrets via TF_VAR_* to keep them off the command line
+          # (argv is visible to other processes on the runner).
+          TF_VAR_cloudflare_api_token: ${{ steps.secrets.outputs.cf_token }}
+          TF_VAR_cloudflare_zone_id: ${{ steps.secrets.outputs.cf_zone }}
         run: |
           terraform plan \
-            -var="cloudflare_api_token=${{ steps.secrets.outputs.cf_token }}" \
-            -var="cloudflare_zone_id=${{ steps.secrets.outputs.cf_zone }}" \
             ${{ env.TF_ACTION == 'destroy' && '-destroy' || '' }} \
             -out=tfplan
 

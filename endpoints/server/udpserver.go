@@ -116,6 +116,13 @@ type UdpConn struct {
 	isDBConnection bool // Immutable. Don't change it after creation. Conn object is also stored in dbConnectionMap which is indexed by DBId
 	isWebRTC       bool
 	dc             *webrtc.DataChannel
+
+	// mapKey is the exact key under which this conn was inserted into
+	// remoteConnectionMap. For direct UDP clients it equals
+	// ConnData.RemoteAddr.String(); for relay-forwarded clients it is a
+	// compound key "relay:<relayAddr>:<realClientAddr>". connectionRoutine
+	// uses this on teardown so the right entry gets removed.
+	mapKey string
 }
 
 type ACConn struct {
@@ -462,6 +469,7 @@ func (s *UdpServer) recvPacketRoutine() {
 			conn = &UdpConn{
 				isACConnection: isACConn,
 				isDBConnection: isDBConn,
+				mapKey:         addrStr,
 			}
 			// setup new routine for connection
 			conn.ConnData = &core.ConnectionData{
@@ -543,9 +551,18 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			s.dbConnectionMapMutex.Unlock()
 		}
 
-		// remove the udp conn from remoteConnectionMap
+		// remove the udp conn from remoteConnectionMap using the same key
+		// that was used on insert. For direct UDP clients that's addrStr;
+		// for relay-forwarded clients it's the compound "relay:..." key
+		// (see msghandler.HandleRelayForward). Using RemoteAddr.String()
+		// here would leak relay-forwarded entries because RemoteAddr is
+		// just the relay's address.
+		mapKey := conn.mapKey
+		if mapKey == "" {
+			mapKey = addrStr
+		}
 		s.remoteConnectionMapMutex.Lock()
-		delete(s.remoteConnectionMap, addrStr)
+		delete(s.remoteConnectionMap, mapKey)
 		if len(s.remoteConnectionMap) <= OverloadConnectionThreshold {
 			s.device.SetOverload(false)
 		}

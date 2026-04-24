@@ -76,12 +76,16 @@ type RelayServer struct {
 	sendMsgCh chan *core.MsgData
 	recvMsgCh <-chan *core.PacketParserData
 
-	// pendingRelayRequests maps an inner packet's counter (uint64) to a channel
-	// that receives the raw encrypted ACK/COK bytes from the server.  The HTTP
-	// handler registers entries before sending the RLY envelope; the connection
-	// routine fulfills them when a matching response arrives.
+	// pendingRequests correlates server responses back to the right HTTP
+	// handler. The server echoes the inner packet's counter in its ACK/COK
+	// response, but the counter is chosen by the (untrusted) browser — two
+	// clients can send the same counter and race. We therefore key pending
+	// requests by (counter, realClientAddr): a response is dispatched only
+	// when exactly one handler is waiting. If two handlers share a counter
+	// we refuse to guess and let both time out; neither client learns which
+	// one "won", so a malicious client can't hijack a legitimate response.
 	pendingMu       sync.Mutex
-	pendingRequests map[uint64]chan []byte
+	pendingRequests map[uint64]map[string]chan []byte // counter -> realAddr string -> ch
 
 	wg      sync.WaitGroup
 	running atomic.Bool
@@ -135,7 +139,7 @@ func New(cfg *Config) (*RelayServer, error) {
 		serverPubKey:    serverPubKey,
 		serverAddr:      serverAddr,
 		sendMsgCh:       make(chan *core.MsgData, PacketQueueSizePerConnection),
-		pendingRequests: make(map[uint64]chan []byte),
+		pendingRequests: make(map[uint64]map[string]chan []byte),
 		stopCh:          make(chan struct{}),
 	}
 	rs.recvMsgCh = device.DecryptedMsgQueue
@@ -336,6 +340,41 @@ func (rs *RelayServer) recvPacketRoutine(conn *UdpConn) {
 	}
 }
 
+// dispatchResponse routes a server ACK/COK payload back to the HTTP handler
+// waiting on the given counter. The counter is chosen by the (untrusted)
+// browser, so two concurrent clients can pick the same value. We deliver
+// only when exactly one handler is waiting: any ambiguity drops the payload
+// and lets all waiters time out, so a malicious client can't hijack a
+// legitimate ACK by guessing counters.
+//
+// Returns (delivered, ambiguous). If both are false the counter was unknown
+// (e.g. a late response after the handler timed out).
+func (rs *RelayServer) dispatchResponse(counter uint64, raw []byte) (delivered, ambiguous bool) {
+	rs.pendingMu.Lock()
+	waiters, found := rs.pendingRequests[counter]
+	if !found {
+		rs.pendingMu.Unlock()
+		return false, false
+	}
+	if len(waiters) != 1 {
+		log.Warning("[Relay] ambiguous response for counter=%d (%d waiters); dropping to prevent hijack",
+			counter, len(waiters))
+		rs.pendingMu.Unlock()
+		return false, true
+	}
+	var ch chan []byte
+	for _, c := range waiters {
+		ch = c
+	}
+	delete(rs.pendingRequests, counter)
+	rs.pendingMu.Unlock()
+
+	// Handler channels are buffered (size 1) and the handler only registers
+	// one request at a time, so this send never blocks.
+	ch <- raw
+	return true, false
+}
+
 func (rs *RelayServer) connectionRoutine(conn *UdpConn) {
 	addrStr := conn.ConnData.RemoteAddr.String()
 	defer rs.wg.Done()
@@ -386,26 +425,22 @@ func (rs *RelayServer) connectionRoutine(conn *UdpConn) {
 			}
 
 			// Check if this is a response (ACK/COK) for a pending relay
-			// request.  The counter in the response header matches the
-			// counter of the original inner packet sent by the agent.
+			// request.
 			if pkt.HeaderType == core.NHP_ACK || pkt.HeaderType == core.NHP_COK {
 				counter := pkt.Counter()
-				rs.pendingMu.Lock()
-				ch, found := rs.pendingRequests[counter]
-				if found {
-					delete(rs.pendingRequests, counter)
-				}
-				rs.pendingMu.Unlock()
-
-				if found {
-					// Copy raw bytes before releasing the pool packet.
-					raw := make([]byte, len(pkt.Content))
-					copy(raw, pkt.Content)
-					rs.device.ReleasePoolPacket(pkt)
-
+				// Copy raw bytes before releasing the pool packet — dispatch
+				// sends them into a handler channel.
+				raw := make([]byte, len(pkt.Content))
+				copy(raw, pkt.Content)
+				delivered, ambiguous := rs.dispatchResponse(counter, raw)
+				if delivered {
 					log.Info("[Relay] matched pending request counter=%d, forwarding %d raw bytes",
 						counter, len(raw))
-					ch <- raw
+					rs.device.ReleasePoolPacket(pkt)
+					continue
+				}
+				if ambiguous {
+					rs.device.ReleasePoolPacket(pkt)
 					continue
 				}
 			}
@@ -613,21 +648,39 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 	innerCounter := binary.BigEndian.Uint64(innerPacket[16:24])
 
 	realAddr := realClientAddr(r)
+	realAddrKey := realAddr.String()
 	log.Info("[Relay] forwarding %d-byte inner packet (counter=%d) from client %s to server %s",
 		n, innerCounter, realAddr, rs.serverAddr)
 
-	// Register a pending request keyed on the inner packet counter.
-	// The connectionRoutine will fulfill this channel when a matching
-	// ACK/COK arrives from the server.
+	// Register a pending request under (counter, realAddr). The connection
+	// routine dispatches the server's ACK/COK to this channel only if this
+	// handler is the sole waiter on this counter — see the ambiguity check
+	// in connectionRoutine above.
 	responseCh := make(chan []byte, 1)
 	rs.pendingMu.Lock()
-	rs.pendingRequests[innerCounter] = responseCh
+	waiters, ok := rs.pendingRequests[innerCounter]
+	if !ok {
+		waiters = make(map[string]chan []byte)
+		rs.pendingRequests[innerCounter] = waiters
+	}
+	if _, dup := waiters[realAddrKey]; dup {
+		// Same client reusing the same counter concurrently — reject fast.
+		rs.pendingMu.Unlock()
+		http.Error(w, "duplicate in-flight counter", http.StatusConflict)
+		return
+	}
+	waiters[realAddrKey] = responseCh
 	rs.pendingMu.Unlock()
 
 	// Ensure cleanup on timeout / early return.
 	defer func() {
 		rs.pendingMu.Lock()
-		delete(rs.pendingRequests, innerCounter)
+		if waiters, ok := rs.pendingRequests[innerCounter]; ok {
+			delete(waiters, realAddrKey)
+			if len(waiters) == 0 {
+				delete(rs.pendingRequests, innerCounter)
+			}
+		}
 		rs.pendingMu.Unlock()
 	}()
 

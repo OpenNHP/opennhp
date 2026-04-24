@@ -11,6 +11,9 @@
 
 name: Deploy Demo v2
 
+# Manual-only. Deploying binaries to the production demo is a risky action
+# (key material, firewall state, live service) so we require an operator to
+# explicitly dispatch this workflow rather than auto-running on push.
 on:
   workflow_dispatch:
     inputs:
@@ -38,26 +41,15 @@ on:
         description: 'Branch of OpenNHP/js-agent to deploy'
         required: false
         default: 'main'
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/deploy-demo-v2.yml'
-      - 'deploy/**'
-      - 'endpoints/**'
-      - 'nhp/**'
-      - 'scripts/**'
-      - 'examples/**'
 
 env:
   AWS_REGION: us-east-2
   GO_VERSION: '1.25.6'
   GOMODULE: github.com/OpenNHP/opennhp/nhp
   DEPLOY_USER: ec2-user
-  # push events always run a full deploy with binaries, never regenerate keys
-  CONFIRM: ${{ github.event.inputs.confirm || 'deploy' }}
-  DEPLOY_BINARIES: ${{ github.event.inputs.deploy_binaries || 'yes' }}
-  REGENERATE_KEYS: ${{ github.event.inputs.regenerate_keys || 'no' }}
+  CONFIRM: ${{ github.event.inputs.confirm }}
+  DEPLOY_BINARIES: ${{ github.event.inputs.deploy_binaries }}
+  REGENERATE_KEYS: ${{ github.event.inputs.regenerate_keys }}
   JSAGENT_BRANCH: ${{ github.event.inputs.jsagent_branch || 'main' }}
   ACME_EMAIL: dev@layerv.ai
   DOMAIN_SERVER: demologin.opennhp.org
@@ -70,7 +62,7 @@ jobs:
   # Job 1: Build all binaries and plugins
   # ─────────────────────────────────────────────────────────────
   build:
-    if: (github.event.inputs.confirm || 'deploy') == 'deploy'
+    if: github.event.inputs.confirm == 'deploy'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -194,7 +186,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   configure:
     needs: build
-    if: (github.event.inputs.confirm || 'deploy') == 'deploy'
+    if: github.event.inputs.confirm == 'deploy'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -291,7 +283,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   deploy-relay:
     needs: configure
-    if: (github.event.inputs.confirm || 'deploy') == 'deploy'
+    if: github.event.inputs.confirm == 'deploy'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -425,7 +417,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   deploy-server:
     needs: [configure, deploy-relay]
-    if: (github.event.inputs.confirm || 'deploy') == 'deploy'
+    if: github.event.inputs.confirm == 'deploy'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -579,7 +571,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   deploy-ac:
     needs: [configure, deploy-relay]
-    if: (github.event.inputs.confirm || 'deploy') == 'deploy'
+    if: github.event.inputs.confirm == 'deploy'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -717,7 +709,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   deploy-jsagent:
     needs: [configure, deploy-relay]
-    if: (github.event.inputs.confirm || 'deploy') == 'deploy'
+    if: github.event.inputs.confirm == 'deploy'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -801,9 +793,17 @@ jobs:
 
           cp -r jsagent/nhp-js/dist/. bundle/nhp-js/dist/
 
-          # Render config.json with live keys
+          # Render config.json with keys for the PUBLIC browser demo.
+          #
+          # IMPORTANT: agentPrivateKey here is a PUBLICLY SHARED demo key,
+          # deliberately served at https://${{ env.DOMAIN_AGENT }}/config.json
+          # so any visitor's browser can knock against the demo server. It
+          # authenticates ONLY a demo identity limited to the "demo" resource
+          # on the NHP server (see agent.toml / resource.toml). Treat it as
+          # public; do NOT reuse these key pair for anything else.
           cat > bundle/config.json <<EOF
           {
+            "_comment":        "PUBLIC DEMO CONFIG - agentPrivateKey is intentionally public; see deploy-demo-v2.yml.",
             "cipherScheme":    "curve25519",
             "transport":       "relay",
             "relayUrl":        "https://${{ env.DOMAIN_RELAY }}/relay",

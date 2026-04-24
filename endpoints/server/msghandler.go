@@ -685,7 +685,7 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	}
 
 	if !found {
-		conn = &UdpConn{}
+		conn = &UdpConn{mapKey: connKey}
 		conn.ConnData = &core.ConnectionData{
 			InitTime:             recvTime,
 			LastLocalRecvTime:    recvTime,

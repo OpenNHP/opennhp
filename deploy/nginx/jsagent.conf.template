@@ -12,7 +12,11 @@ server {
     root  /var/www/jsagent;
     index index.html;
 
-    # config.json is rendered per-deploy and contains demo keys; disable caching.
+    # /config.json is intentionally world-readable and contains a PUBLIC
+    # demo agent key pair. The browser demo at https://${DOMAIN_AGENT}/
+    # needs to fetch it to bootstrap. The key pair is scoped to the demo
+    # identity only on the NHP server (see agent.toml + resource.toml);
+    # do NOT reuse these keys for anything else. See deploy-demo-v2.yml.
     location = /config.json {
         add_header Cache-Control "no-store" always;
         try_files $uri =404;

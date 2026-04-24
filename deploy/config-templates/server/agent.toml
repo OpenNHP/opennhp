@@ -5,6 +5,9 @@ PubKeyBase64 = "${NHP_AGENT_PUBLIC_KEY}"
 ExpireTime = 1924991999
 
 [[Agents]]
-# js-agent (browser client; key pair in AWS SM opennhp/demo)
+# PUBLIC DEMO js-agent. The matching private key is served as part of
+# https://${DOMAIN_AGENT}/config.json so any browser can use it. Scope
+# this peer's access to demo-only resources in resource.toml — anyone
+# with this pubkey can authenticate as "demo browser agent".
 PubKeyBase64 = "${NHP_JSAGENT_PUBLIC_KEY}"
 ExpireTime = 1924991999

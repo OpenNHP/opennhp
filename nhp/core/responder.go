@@ -228,20 +228,12 @@ func shouldCheckRecvAttack(deviceType int, peerType int, msgType int) bool {
 }
 
 func (ppd *PacketParserData) validatePeer() (err error) {
-
-	log.Debug("headType:%s,validatePeer pubkey: %s,EphermeralBytes:%s", HeaderTypeToString(ppd.HeaderType), base64.StdEncoding.EncodeToString(ppd.deviceEcdh.PublicKey()),
-		base64.StdEncoding.EncodeToString(ppd.header.EphermeralBytes()))
 	// evolve chain hash ChainHash0 -> ChainHash1
 	ppd.chainHash.Write(ppd.deviceEcdh.PublicKey())
 	ppd.chainHash.Write(ppd.header.EphermeralBytes())
-	chainHashSnap := ppd.chainHash.Sum(nil)
-	log.Debug("validatePeer chainHash after pubkey+ephemeral: %s, devicePubKeyLen=%d, ephemeralLen=%d",
-		base64.StdEncoding.EncodeToString(chainHashSnap),
-		len(ppd.deviceEcdh.PublicKey()), len(ppd.header.EphermeralBytes()))
 
 	// evolve chain key ChainKey0 -> ChainKey1 (ChainKey4 -> ChainKey5)
 	ppd.noise.MixKey(&ppd.chainKey, ppd.chainKey[:], ppd.header.EphermeralBytes())
-	log.Debug("validatePeer chainKey after MixKey: %s", base64.StdEncoding.EncodeToString(ppd.chainKey[:]))
 
 	// get ephermeral shared key
 	ess := ppd.deviceEcdh.SharedSecret(ppd.header.EphermeralBytes())
@@ -265,8 +257,6 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	case common.CIPHER_SCHEME_GMSM:
 		fallthrough
 	default:
-		KeyByteSlice := key[:]
-		log.Debug("ppd.Ciphers.GcmType:%d,&key:%s,NonceBytes:%s,StaticBytes:%s", ppd.Ciphers.GcmType, base64.StdEncoding.EncodeToString(KeyByteSlice), base64.StdEncoding.EncodeToString(ppd.header.NonceBytes()), base64.StdEncoding.EncodeToString(ppd.header.StaticBytes()))
 		aead, err = AeadFromKey(ppd.Ciphers.GcmType, &key)
 		if err != nil {
 			log.Error("failed to create AEAD for peer pubkey decryption: %v", err)

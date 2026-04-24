@@ -368,12 +368,18 @@ jobs:
           scp $SSH_OPTS /tmp/relay-nginx.conf $TARGET:/tmp/relay-nginx.conf
           ssh $SSH_OPTS $TARGET "chmod +x /tmp/bootstrap-tls.sh"
 
-          # Run bootstrap
+          # Pipe the CF token through stdin into a 0600 file on the remote.
+          # This keeps the token off argv/env, where it would otherwise be
+          # visible in `ps` and process audit logs.
+          printf '%s' "$CF_TOKEN" | ssh $SSH_OPTS $TARGET \
+            "umask 077 && cat > /tmp/cf_token && chmod 600 /tmp/cf_token"
+
+          # bootstrap-tls.sh reads + shreds /tmp/cf_token before running certbot.
           ssh $SSH_OPTS $TARGET \
             "COMPONENT=relay \
              PRIMARY_DOMAIN='${{ env.DOMAIN_RELAY }}' \
              EXTRA_DOMAINS='${{ env.DOMAIN_AGENT }}' \
-             CF_API_TOKEN='$CF_TOKEN' \
+             CF_API_TOKEN_FILE=/tmp/cf_token \
              ACME_EMAIL='${{ env.ACME_EMAIL }}' \
              NGINX_CONF='/tmp/relay-nginx.conf' \
              /tmp/bootstrap-tls.sh"
@@ -459,8 +465,8 @@ jobs:
             User ${{ env.DEPLOY_USER }}
             IdentityFile ~/.ssh/deploy_key
             ProxyJump relay-jump
-            StrictHostKeyChecking no
-            UserKnownHostsFile /dev/null
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
           EOF
           chmod 600 ~/.ssh/config
 
@@ -492,10 +498,13 @@ jobs:
           scp /tmp/server-nginx.conf nhp-server:/tmp/server-nginx.conf
           ssh nhp-server "chmod +x /tmp/bootstrap-tls.sh"
 
+          printf '%s' "$CF_TOKEN" | ssh nhp-server \
+            "umask 077 && cat > /tmp/cf_token && chmod 600 /tmp/cf_token"
+
           ssh nhp-server \
             "COMPONENT=server \
              PRIMARY_DOMAIN='${{ env.DOMAIN_SERVER }}' \
-             CF_API_TOKEN='$CF_TOKEN' \
+             CF_API_TOKEN_FILE=/tmp/cf_token \
              ACME_EMAIL='${{ env.ACME_EMAIL }}' \
              NGINX_CONF='/tmp/server-nginx.conf' \
              /tmp/bootstrap-tls.sh"
@@ -609,8 +618,8 @@ jobs:
             User ${{ env.DEPLOY_USER }}
             IdentityFile ~/.ssh/deploy_key
             ProxyJump relay-jump
-            StrictHostKeyChecking no
-            UserKnownHostsFile /dev/null
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
           EOF
           chmod 600 ~/.ssh/config
 
@@ -642,10 +651,13 @@ jobs:
           scp /tmp/ac-nginx.conf nhp-ac:/tmp/ac-nginx.conf
           ssh nhp-ac "chmod +x /tmp/bootstrap-tls.sh"
 
+          printf '%s' "$CF_TOKEN" | ssh nhp-ac \
+            "umask 077 && cat > /tmp/cf_token && chmod 600 /tmp/cf_token"
+
           ssh nhp-ac \
             "COMPONENT=ac \
              PRIMARY_DOMAIN='${{ env.DOMAIN_AC }}' \
-             CF_API_TOKEN='$CF_TOKEN' \
+             CF_API_TOKEN_FILE=/tmp/cf_token \
              ACME_EMAIL='${{ env.ACME_EMAIL }}' \
              NGINX_CONF='/tmp/ac-nginx.conf' \
              /tmp/bootstrap-tls.sh"
@@ -826,13 +838,16 @@ jobs:
           scp $SSH_OPTS /tmp/jsagent-nginx.conf $TARGET:/tmp/jsagent-nginx.conf
           ssh $SSH_OPTS $TARGET "chmod +x /tmp/bootstrap-tls.sh"
 
+          printf '%s' '${{ steps.secrets.outputs.cf_token }}' | ssh $SSH_OPTS $TARGET \
+            "umask 077 && cat > /tmp/cf_token && chmod 600 /tmp/cf_token"
+
           # PRIMARY_DOMAIN is the relay domain so certbot reuses the existing
           # SAN certificate (relay.* + agent.*) without issuing a new one.
           ssh $SSH_OPTS $TARGET \
             "COMPONENT=jsagent \
              PRIMARY_DOMAIN='${{ env.DOMAIN_RELAY }}' \
              EXTRA_DOMAINS='${{ env.DOMAIN_AGENT }}' \
-             CF_API_TOKEN='${{ steps.secrets.outputs.cf_token }}' \
+             CF_API_TOKEN_FILE=/tmp/cf_token \
              ACME_EMAIL='${{ env.ACME_EMAIL }}' \
              NGINX_CONF='/tmp/jsagent-nginx.conf' \
              /tmp/bootstrap-tls.sh"

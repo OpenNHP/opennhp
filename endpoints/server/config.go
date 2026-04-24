@@ -28,6 +28,7 @@ var (
 	resConfigWatch   io.Closer
 	srcipConfigWatch io.Closer
 	dbConfigWatch    io.Closer
+	relayConfigWatch io.Closer
 	teeWatch         io.Closer
 	errLoadConfig    = fmt.Errorf("config load error")
 )
@@ -233,6 +234,15 @@ func (s *UdpServer) loadPeers() error {
 		if err := s.updateRelayPeers(relayPeers.Relays); err != nil {
 			_ = err
 		}
+		relayConfigWatch = utils.WatchFile(fileNameRelay, func() {
+			log.Info("relay peer config: %s has been updated", fileNameRelay)
+			if contentRelay, err = s.loadConfigFile(fileNameRelay); err == nil {
+				var relayPeers Peers
+				if err = toml.Unmarshal(contentRelay, &relayPeers); err == nil {
+					_ = s.updateRelayPeers(relayPeers.Relays)
+				}
+			}
+		})
 	}
 
 	// tee.toml
@@ -671,6 +681,9 @@ func (s *UdpServer) StopConfigWatch() {
 	//add dbConfigWatch
 	if dbConfigWatch != nil {
 		dbConfigWatch.Close()
+	}
+	if relayConfigWatch != nil {
+		relayConfigWatch.Close()
 	}
 	if teeWatch != nil {
 		teeWatch.Close()

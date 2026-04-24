@@ -203,8 +203,9 @@ All daemons support the `keygen` command:
 ## Demo Deployment (AWS)
 
 The `terraform/demo/` stack provisions the public demo (nhp-server, nhp-ac,
-nhp-relay + nginx + Let's Encrypt) on AWS account `401696231478` / `us-east-2`.
-All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
+nhp-relay + nginx + Let's Encrypt) in `us-east-2` on the OpenNHP demo AWS
+account (see `terraform/demo/` backend config for the account ID). All secrets
+live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 
 ### `opennhp/demo` schema
 

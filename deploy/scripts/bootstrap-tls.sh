@@ -3,21 +3,40 @@
 # and install an nginx vhost. Idempotent: safe to re-run.
 #
 # Expected env vars (set by caller):
-#   COMPONENT        = "server" | "ac" | "relay"
-#   PRIMARY_DOMAIN   = e.g. "demologin.opennhp.org"
-#   EXTRA_DOMAINS    = space-separated additional SANs (may be empty)
-#   CF_API_TOKEN     = Cloudflare API token with Zone:DNS:Edit + Zone:Zone:Read
-#   ACME_EMAIL       = contact email for Let's Encrypt
-#   NGINX_CONF       = path to rendered nginx vhost file on this host
+#   COMPONENT         = "server" | "ac" | "relay"
+#   PRIMARY_DOMAIN    = e.g. "demologin.opennhp.org"
+#   EXTRA_DOMAINS     = space-separated additional SANs (may be empty)
+#   CF_API_TOKEN_FILE = path to a file (0600) containing the Cloudflare token.
+#                       Preferred: keeps the token off argv/env exposed via ps.
+#                       The file is deleted after we read it.
+#   CF_API_TOKEN      = fallback if CF_API_TOKEN_FILE is not set. Discouraged:
+#                       visible in the remote host's process list.
+#   ACME_EMAIL        = contact email for Let's Encrypt
+#   NGINX_CONF        = path to rendered nginx vhost file on this host
 
 set -euo pipefail
 
 : "${COMPONENT:?}"
 : "${PRIMARY_DOMAIN:?}"
-: "${CF_API_TOKEN:?}"
 : "${ACME_EMAIL:?}"
 : "${NGINX_CONF:?}"
 EXTRA_DOMAINS="${EXTRA_DOMAINS:-}"
+
+# Resolve Cloudflare token, preferring the file-based source.
+if [ -n "${CF_API_TOKEN_FILE:-}" ]; then
+    if [ ! -r "$CF_API_TOKEN_FILE" ]; then
+        echo "[tls] ERROR: CF_API_TOKEN_FILE=$CF_API_TOKEN_FILE not readable" >&2
+        exit 1
+    fi
+    CF_API_TOKEN=$(cat "$CF_API_TOKEN_FILE")
+    # Best-effort shred; fall back to rm if shred is not installed.
+    if command -v shred >/dev/null 2>&1; then
+        shred -u "$CF_API_TOKEN_FILE" 2>/dev/null || rm -f "$CF_API_TOKEN_FILE"
+    else
+        rm -f "$CF_API_TOKEN_FILE"
+    fi
+fi
+: "${CF_API_TOKEN:?CF_API_TOKEN or CF_API_TOKEN_FILE must be set}"
 
 echo "[tls] component=$COMPONENT primary=$PRIMARY_DOMAIN extras='$EXTRA_DOMAINS'"
 

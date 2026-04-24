@@ -110,38 +110,84 @@ jobs:
           echo ""
           terraform output -json | jq -r 'to_entries[] | "**\(.key)**: \(.value.value)"'
 
-      - name: Scan SSH host keys from relay
+      - name: Scan SSH host keys from all hosts
         if: env.TF_ACTION == 'apply'
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
+          # The relay is public; server and ac are only reachable from inside
+          # the VPC, so we bounce ssh-keyscan off the relay to reach them. All
+          # three sets of keys go into ssh_host_keys so every deploy path can
+          # use StrictHostKeyChecking=yes.
           RELAY_IP=$(terraform output -raw relay_public_ip)
-          echo "Waiting for relay instance to be reachable..."
+          SERVER_PRIV=$(terraform output -raw server_private_ip)
+          AC_PRIV=$(terraform output -raw ac_private_ip)
+
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' \
+            --output text)
+
+          SSH_KEY_TMP=$(mktemp)
+          trap 'rm -f "$SSH_KEY_TMP"' EXIT
+          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > "$SSH_KEY_TMP"
+          chmod 600 "$SSH_KEY_TMP"
+
+          echo "Waiting for relay to be reachable..."
+          RELAY_HOST_KEYS=""
           for i in $(seq 1 30); do
-            if ssh-keyscan -T 5 "$RELAY_IP" 2>/dev/null | grep -q .; then
-              echo "Host key obtained from $RELAY_IP"
-              HOST_KEYS=$(ssh-keyscan -T 5 "$RELAY_IP" 2>/dev/null)
-              echo "$HOST_KEYS"
-
-              # Save host keys to AWS Secrets Manager
-              SECRETS=$(aws secretsmanager get-secret-value \
-                --secret-id opennhp/demo \
-                --region ${{ env.AWS_REGION }} \
-                --query 'SecretString' \
-                --output text)
-
-              UPDATED=$(echo "$SECRETS" | jq --arg hk "$HOST_KEYS" '. + {ssh_host_keys: $hk}')
-              aws secretsmanager put-secret-value \
-                --secret-id opennhp/demo \
-                --region ${{ env.AWS_REGION }} \
-                --secret-string "$UPDATED"
-
-              echo "SSH host keys saved to AWS Secrets Manager"
-              exit 0
+            if RELAY_HOST_KEYS=$(ssh-keyscan -T 5 "$RELAY_IP" 2>/dev/null) && [ -n "$RELAY_HOST_KEYS" ]; then
+              echo "Host keys obtained from relay $RELAY_IP"
+              break
             fi
             echo "  Attempt $i/30 - waiting 10s..."
             sleep 10
           done
-          echo "WARNING: Could not obtain SSH host keys (instance may not be ready yet)"
+          if [ -z "$RELAY_HOST_KEYS" ]; then
+            echo "WARNING: Could not obtain relay host keys; aborting host key capture"
+            exit 0
+          fi
+
+          # Trust the relay for the jump, then ssh-keyscan the private hosts
+          # through it.  Running ssh-keyscan on the relay itself is the only
+          # way to reach private subnet IPs.
+          RELAY_KNOWN=$(mktemp)
+          trap 'rm -f "$SSH_KEY_TMP" "$RELAY_KNOWN"' EXIT
+          echo "$RELAY_HOST_KEYS" > "$RELAY_KNOWN"
+
+          SSH_OPTS="-i $SSH_KEY_TMP -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$RELAY_KNOWN -o BatchMode=yes"
+          # Allow the relay userdata to install + start sshd on targets.
+          scan_via_relay() {
+            local ip=$1
+            local keys=""
+            for i in $(seq 1 30); do
+              keys=$(ssh $SSH_OPTS ec2-user@"$RELAY_IP" "ssh-keyscan -T 5 $ip 2>/dev/null" 2>/dev/null || true)
+              if [ -n "$keys" ]; then
+                echo "$keys"
+                return 0
+              fi
+              sleep 10
+            done
+            return 1
+          }
+
+          SERVER_HOST_KEYS=$(scan_via_relay "$SERVER_PRIV" || true)
+          AC_HOST_KEYS=$(scan_via_relay "$AC_PRIV" || true)
+
+          if [ -z "$SERVER_HOST_KEYS" ] || [ -z "$AC_HOST_KEYS" ]; then
+            echo "ERROR: Failed to scan server ($SERVER_PRIV) or ac ($AC_PRIV) host keys"
+            exit 1
+          fi
+
+          ALL_HOST_KEYS=$(printf '%s\n%s\n%s\n' "$RELAY_HOST_KEYS" "$SERVER_HOST_KEYS" "$AC_HOST_KEYS")
+
+          UPDATED=$(echo "$SECRETS" | jq --arg hk "$ALL_HOST_KEYS" '. + {ssh_host_keys: $hk}')
+          aws secretsmanager put-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --secret-string "$UPDATED"
+
+          echo "SSH host keys (relay + server + ac) saved to AWS Secrets Manager"
 
       - name: Summary
         if: always()

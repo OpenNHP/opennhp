@@ -250,9 +250,14 @@ func (rs *RelayServer) getOrCreateConnection() *UdpConn {
 		StopSignal:           make(chan struct{}),
 	}
 
-	// Start recv and connection routines.
+	// Start recv and connection routines. Both track rs.wg so Stop() fully
+	// drains them before returning.
 	conn.ConnData.Add(1)
-	go rs.recvPacketRoutine(conn)
+	rs.wg.Add(1)
+	go func() {
+		defer rs.wg.Done()
+		rs.recvPacketRoutine(conn)
+	}()
 
 	rs.wg.Add(1)
 	go rs.connectionRoutine(conn)

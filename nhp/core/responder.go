@@ -323,9 +323,8 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 
 		peer = ppd.device.LookupPeer(peerPk)
 		if peer == nil {
-			registered := ppd.device.ListPeerKeys()
-			log.Error("validatePeer: %s peer not found in peer pool, pubkey=%s, registered peers: %v",
-				peerDeviceTypeName, peerPkBase64, registered)
+			log.Error("validatePeer: %s peer not found in peer pool, pubkey=%s",
+				peerDeviceTypeName, peerPkBase64)
 			err = fmt.Errorf("peer not found in peer pool (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
 			return err
 		}

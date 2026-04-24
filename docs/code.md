@@ -11,7 +11,6 @@ permalink: /code/
 This article explains the architecture and structure of the OpenNHP codebase.
 {: .fs-6 .fw-300 }
 
-[中文版](/zh-cn/code/){: .label .fs-4 }
 
 ---
 
@@ -61,7 +60,7 @@ The `endpoints` module contains executable daemons:
 | `agent/` | `nhp-agent` | Client that sends knock requests |
 | `server/` | `nhp-server` | Central server handling knock validation |
 | `ac/` | `nhp-ac` | Access Controller managing firewall rules |
-| `db/` | `nhp-db` | Data broker for DHP (Data Hiding Protocol) |
+| `db/` | `nhp-db` | Data Broker for DHP (Data-content Hiding Protocol) |
 | `kgc/` | `nhp-kgc` | Key Generation Center for IBC keys |
 
 Each daemon follows a similar structure:
@@ -83,7 +82,7 @@ OpenNHP supports two cipher schemes:
 
 | Scheme | Algorithms | Use Case |
 |--------|-----------|----------|
-| `CIPHER_SCHEME_CURVE` | Curve25519 + ChaCha20-Poly1305 + BLAKE2s | International |
+| `CIPHER_SCHEME_CURVE` | Curve25519 + AES-256-GCM + BLAKE2s | International |
 | `CIPHER_SCHEME_GMSM` | SM2 + SM4-GCM + SM3 | Chinese standards |
 
 See [Cryptography](/cryptography/) for detailed protocol documentation.

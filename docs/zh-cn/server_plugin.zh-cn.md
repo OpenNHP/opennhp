@@ -1,7 +1,6 @@
 ---
 layout: page
 title: 服务器插件开发
-parent: 中文版
 nav_order: 9
 permalink: /zh-cn/server_plugin/
 ---
@@ -9,7 +8,6 @@ permalink: /zh-cn/server_plugin/
 # OpenNHP插件开发教程
 {: .fs-9 }
 
-[English](/server_plugin/){: .label .fs-4 }
 
 ---
 

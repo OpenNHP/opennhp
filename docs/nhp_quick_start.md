@@ -17,7 +17,6 @@ A locally built Docker debugging environment, simulating nhp-server, nhp-ac, tra
 - Partial performance stress testing
 {: .fs-6 .fw-300 }
 
-[中文版](/zh-cn/nhp_quick_start/){: .label .fs-4 }
 
 ---
 

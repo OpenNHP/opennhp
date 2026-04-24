@@ -1,0 +1,17 @@
+// Overrides that must run before modules/layout compile.
+// jtd imports this file right after its own _variables.scss, which is the
+// only safe place to re-define $content-width and $media-queries: the
+// `$media-queries` map is evaluated at definition time, so overriding
+// $content-width later (e.g. in a color scheme) has no effect on breakpoints.
+
+// Match opennhp.org (--container-max: 1280px).
+// sidebar (16.5rem ≈ 264px) + content (63.5rem ≈ 1016px) = 1280px total.
+$content-width: 63.5rem;
+
+$media-queries: (
+  xs: 20rem,
+  sm: 31.25rem,
+  md: $content-width,
+  lg: $content-width + $nav-width,
+  xl: 87.5rem,
+);

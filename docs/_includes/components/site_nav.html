@@ -1,0 +1,51 @@
+{%- comment -%}
+  Override of jtd's site_nav.html. Splits the nav by language so that
+  visitors on /zh-cn/ pages see the Chinese sidebar, and everyone else
+  sees the English one. The filter is based on page URLs — pages whose
+  URL contains `/zh-cn/` are Chinese, everything else is English.
+{%- endcomment -%}
+
+{% assign is_zh = false %}
+{% if page.url contains '/zh-cn/' %}{% assign is_zh = true %}{% endif %}
+
+{%- comment -%}
+  Build lang_pages manually — Liquid's where_exp struggles with
+  negated `contains` expressions, so we loop and push explicitly.
+{%- endcomment -%}
+{% assign lang_pages = "" | split: "" %}
+{% for p in site.html_pages %}
+  {% assign p_is_zh = false %}
+  {% if p.url contains '/zh-cn/' %}{% assign p_is_zh = true %}{% endif %}
+  {% if p_is_zh == is_zh %}
+    {% assign lang_pages = lang_pages | push: p %}
+  {% endif %}
+{% endfor %}
+
+<nav aria-label="Main" id="site-nav" class="site-nav">
+  {% assign lang_pages_top = lang_pages
+        | where_exp: "item", "item.title != nil"
+        | where_exp: "item", "item.parent == nil"
+        | where_exp: "item", "item.nav_exclude != true"
+        | size %}
+
+  {% if lang_pages_top > 0 %}
+    {% include components/nav.html pages=lang_pages %}
+  {% endif %}
+
+  {%- if site.nav_external_links -%}
+    <ul class="nav-list">
+      {%- for node in site.nav_external_links -%}
+        <li class="nav-list-item external">
+          <a href="{{ node.url | absolute_url }}" class="nav-list-link external"
+            {% if node.opens_in_new_tab or node.opens_in_new_tab == nil and site.nav_external_links_new_tab %}
+              target="_blank" rel="noopener noreferrer"
+            {% endif %}
+          >
+            {{ node.title }}
+            {% unless node.hide_icon %}<svg viewBox="0 0 24 24" aria-labelledby="svg-external-link-title"><use xlink:href="#svg-external-link"></use></svg>{% endunless %}
+          </a>
+        </li>
+      {%- endfor -%}
+    </ul>
+  {%- endif -%}
+</nav>

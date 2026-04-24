@@ -12,5 +12,8 @@
     "puppeteer-core": "^24.40.0",
     "vitepress": "^1.6.3",
     "vue": "^3.5.13"
+  },
+  "overrides": {
+    "vite": "^6.4.2"
   }
 }

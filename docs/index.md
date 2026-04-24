@@ -12,16 +12,20 @@ permalink: /
 A lightweight cryptography-driven zero trust networking protocol at the OSI 5th layer to hide your server and data from attackers.
 {: .fs-6 .fw-300 }
 
-[中文版](/zh-cn/){: .label .fs-4 }
 
 ---
 
 ## 1. OpenNHP Architecture
 
-The OpenNHP architecture is inspired by the NIST Zero Trust Architecture standard. It follows a modular design with the following core components: 
+The OpenNHP architecture is inspired by the NIST Zero Trust Architecture standard. It follows a modular design with the following core components:
 
 ![OpenNHP architecture](./images/OpenNHP_Arch.gif)
 
+**Protocol highlights:**
+
+- **Default Deny-All**: All resources are hidden until authenticated access is granted
+- **Encrypted UDP Knock**: Uses Noise Protocol Framework for secure communication
+- **Time-Limited Access**: Opened paths automatically expire after the configured TTL
 
 ### 2. OpenNHP Core Components:
 #### 2.1 NHP-Agent

@@ -1,7 +1,6 @@
 ---
 layout: page
 title: DHP快速开始
-parent: 中文版
 nav_order: 3
 permalink: /zh-cn/dhp_quick_start/
 ---
@@ -16,7 +15,6 @@ permalink: /zh-cn/dhp_quick_start/
 - 基本逻辑验证
 {: .fs-6 .fw-300 }
 
-[English](/dhp_quick_start/){: .label .fs-4 }
 
 ---
 

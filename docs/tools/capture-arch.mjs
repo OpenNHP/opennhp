@@ -6,11 +6,11 @@
  *   ffmpeg               # must be available on PATH
  *   Chrome or Chromium   # auto-detected, or set CHROME_PATH env var
  *
- * Usage:
+ * Usage (run from docs/):
  *   1. Start the VitePress dev server:
  *        npm run dev -- --port 5180
  *   2. In another terminal, run this script:
- *        node capture-arch.mjs
+ *        node tools/capture-arch.mjs
  *
  * Output files are written to docs/recordings/ (gitignored).
  * Copy the GIF to docs/images/OpenNHP_Arch.gif to update the README.

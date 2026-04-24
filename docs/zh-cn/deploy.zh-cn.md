@@ -1,7 +1,6 @@
 ---
 layout: page
 title: 部署OpenNHP
-parent: 中文版
 nav_order: 6
 permalink: /zh-cn/deploy/
 ---
@@ -9,7 +8,6 @@ permalink: /zh-cn/deploy/
 # 部署OpenNHP
 {: .fs-9 }
 
-[English](/deploy/){: .label .fs-4 }
 
 ---
 

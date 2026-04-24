@@ -1,16 +1,18 @@
 import { defineConfig } from 'vitepress'
 
-// This VitePress setup is used exclusively for local rendering of the
-// interactive Vue architecture diagram (ArchDiagram.vue), so that
-// capture-arch.mjs can record it as a GIF via Puppeteer.
-// It is NOT part of the CI/CD documentation pipeline — the live site
-// continues to be built by Jekyll (.github/workflows/pages.yml).
-// Exclude all markdown except the arch-demo page to avoid VitePress build
-// errors from unconverted Jekyll pages. Add new VitePress pages here.
+// This VitePress setup exists solely so tools/capture-*.mjs can render
+// the interactive Vue architecture diagrams (ArchDiagram.vue and
+// ClawDhpDiagram.vue) and screenshot them into GIFs. It is NOT part of
+// the CI/CD documentation pipeline — the live site continues to be
+// built by Jekyll (.github/workflows/pages.yml).
+//
+// The two pages VitePress serves live under .vitepress/pages/ (outside
+// Jekyll's source tree) so Jekyll never sees them and VitePress has a
+// clean, minimal source root to index.
 export default defineConfig({
   title: 'OpenNHP Documentation',
   description: 'Zero Trust Network-infrastructure Hiding Protocol',
-  srcExclude: ['**/*.md', '!arch-demo.md', '!claw-dhp-demo.md'],
+  srcDir: '.vitepress/pages',
 
   themeConfig: {
     logo: '/images/logo12.png',

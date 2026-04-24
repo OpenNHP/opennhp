@@ -1,7 +1,6 @@
 ---
 layout: page
 title: 源代码解读
-parent: 中文版
 nav_order: 8
 permalink: /zh-cn/code/
 ---
@@ -9,7 +8,6 @@ permalink: /zh-cn/code/
 # OpeNHP代码解读
 {: .fs-9 }
 
-[English](/code/){: .label .fs-4 }
 
 ---
 

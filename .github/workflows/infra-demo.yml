@@ -87,7 +87,6 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           terraform plan \
-            -var="aws_account_id=401696231478" \
             -var="cloudflare_api_token=${{ steps.secrets.outputs.cf_token }}" \
             -var="cloudflare_zone_id=${{ steps.secrets.outputs.cf_zone }}" \
             ${{ env.TF_ACTION == 'destroy' && '-destroy' || '' }} \

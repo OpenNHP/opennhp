@@ -4,11 +4,6 @@ variable "aws_region" {
   default     = "us-east-2"
 }
 
-variable "aws_account_id" {
-  description = "AWS account ID (do not commit)"
-  type        = string
-}
-
 variable "domain" {
   description = "Base domain name"
   type        = string

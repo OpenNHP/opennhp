@@ -21,7 +21,7 @@ on:
         default: ''
   push:
     branches:
-      - feature/nhp-relay
+      - main
     paths:
       - 'terraform/demo/**'
       - '.github/workflows/infra-demo.yml'

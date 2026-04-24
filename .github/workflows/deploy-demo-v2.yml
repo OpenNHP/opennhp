@@ -37,10 +37,10 @@ on:
       jsagent_branch:
         description: 'Branch of OpenNHP/js-agent to deploy'
         required: false
-        default: 'feature/nhp-relay'
+        default: 'main'
   push:
     branches:
-      - feature/nhp-relay
+      - main
     paths:
       - '.github/workflows/deploy-demo-v2.yml'
       - 'deploy/**'
@@ -58,7 +58,7 @@ env:
   CONFIRM: ${{ github.event.inputs.confirm || 'deploy' }}
   DEPLOY_BINARIES: ${{ github.event.inputs.deploy_binaries || 'yes' }}
   REGENERATE_KEYS: ${{ github.event.inputs.regenerate_keys || 'no' }}
-  JSAGENT_BRANCH: ${{ github.event.inputs.jsagent_branch || 'feature/nhp-relay' }}
+  JSAGENT_BRANCH: ${{ github.event.inputs.jsagent_branch || 'main' }}
   ACME_EMAIL: dev@layerv.ai
   DOMAIN_SERVER: demologin.opennhp.org
   DOMAIN_AC: acdemo.opennhp.org

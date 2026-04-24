@@ -1,7 +1,16 @@
 # NHP Relay Service Configuration
 # Bridges browser HTTPS clients to the UDP NHP Server using standard NHP protocol.
 #
-# Generate relay keypair:
+# ⚠️  LOCAL DOCKER-COMPOSE DEMO ONLY ⚠️
+# The privateKeyBase64 and nhpServerPublicKeyBase64 values below are
+# PUBLIC demo keys that paired with the other docker/*/etc/config.toml
+# files. They are intentionally committed so `docker-compose up` works
+# out of the box. DO NOT REUSE THEM IN ANY DEPLOYMENT THAT IS REACHABLE
+# OVER A NETWORK YOU DO NOT FULLY CONTROL.
+#
+# For real deployments, generate fresh keys and inject them from a
+# secrets store (see terraform/demo/ + scripts/generate-nhp-keys.sh for
+# an AWS Secrets Manager example):
 #   Curve25519: docker run --rm opennhp-relay keygen --curve
 #   SM2/GMSM:   docker run --rm opennhp-relay keygen --sm2
 # Then set privateKeyBase64 to the private key output and register the

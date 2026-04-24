@@ -20,8 +20,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -551,6 +553,7 @@ func (rs *RelayServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 //	400 Bad Request  — empty or over-size body
 //	504 Gateway Timeout  — NHP Server did not respond in time
 //	502 Bad Gateway  — internal error
+//
 // corsMiddleware adds CORS headers so browser-based NHP agents can reach the
 // relay from any origin.  The relay is a public transport bridge — there is no
 // session state to protect, so a permissive CORS policy is appropriate.
@@ -576,18 +579,24 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read inner NHP packet from request body.
-	innerBuf := make([]byte, maxPacketSize+1)
-	n, _ := r.Body.Read(innerBuf)
-	if n == 0 {
+	// Read inner NHP packet from request body. Cap at maxPacketSize+1 so we
+	// can reject oversize bodies without pulling an unbounded amount into
+	// memory. A single r.Body.Read() is not guaranteed to return the full
+	// payload; io.ReadAll drains until EOF.
+	innerPacket, err := io.ReadAll(io.LimitReader(r.Body, int64(maxPacketSize)+1))
+	if err != nil {
+		http.Error(w, "failed to read body", http.StatusBadRequest)
+		return
+	}
+	if len(innerPacket) == 0 {
 		http.Error(w, "empty packet", http.StatusBadRequest)
 		return
 	}
-	if n > maxPacketSize {
+	if len(innerPacket) > maxPacketSize {
 		http.Error(w, "packet too large", http.StatusBadRequest)
 		return
 	}
-	innerPacket := innerBuf[:n]
+	n := len(innerPacket)
 
 	// Extract the counter from the inner packet header (bytes [16:24], big-endian uint64).
 	// The NHP server echoes this counter in its ACK/COK response, so we use it
@@ -668,33 +677,36 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 
 // realClientAddr returns the originating address of an HTTP request as a
 // *net.UDPAddr so it can be encoded in the RelayForwardMsg.
+//
+// X-Forwarded-For is only trusted when the direct TCP peer is on the
+// loopback interface — i.e. when a local reverse proxy (nginx, etc.)
+// forwarded the request. Any other peer setting XFF is treated as
+// untrusted and ignored.
 func realClientAddr(r *http.Request) *net.UDPAddr {
-	ipStr := ""
-	port := 0
+	// Parse the direct TCP peer first so we always have a port.
+	peerHost, peerPortStr, err := net.SplitHostPort(r.RemoteAddr)
+	peerIP := net.IPv4zero
+	peerPort := 0
+	if err == nil {
+		if ip := net.ParseIP(peerHost); ip != nil {
+			peerIP = ip
+		}
+		_, _ = fmt.Sscanf(peerPortStr, "%d", &peerPort)
+	}
 
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		for i := 0; i < len(xff); i++ {
-			if xff[i] == ',' {
-				ipStr = xff[:i]
-				break
+	// Only trust X-Forwarded-For when the direct peer is on loopback.
+	if peerIP.IsLoopback() {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			first := strings.TrimSpace(xff)
+			if comma := strings.IndexByte(first, ','); comma >= 0 {
+				first = strings.TrimSpace(first[:comma])
+			}
+			if ip := net.ParseIP(first); ip != nil {
+				// XFF has no port; keep the proxy peer's port for uniqueness.
+				return &net.UDPAddr{IP: ip, Port: peerPort}
 			}
 		}
-		if ipStr == "" {
-			ipStr = xff
-		}
-	} else {
-		host, portStr, err := net.SplitHostPort(r.RemoteAddr)
-		if err == nil {
-			ipStr = host
-			_, _ = fmt.Sscanf(portStr, "%d", &port)
-		} else {
-			ipStr = r.RemoteAddr
-		}
 	}
 
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		ip = net.IPv4zero
-	}
-	return &net.UDPAddr{IP: ip, Port: port}
+	return &net.UDPAddr{IP: peerIP, Port: peerPort}
 }

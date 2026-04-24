@@ -167,8 +167,18 @@ jobs:
         run: |
           OIDC_CFG="artifact/plugins/oidc/etc/config.toml"
           if [ -f "$OIDC_CFG" ] && [ -n "$AUTH0_CLIENT_ID" ]; then
-            sed -i "s/__AUTH0_CLIENT_ID__/$AUTH0_CLIENT_ID/g" "$OIDC_CFG"
-            sed -i "s/__AUTH0_CLIENT_SECRET__/$AUTH0_CLIENT_SECRET/g" "$OIDC_CFG"
+            # Use python for substitution so secrets containing /, \, &,
+            # or newlines don't corrupt the sed expression or the config.
+            python3 - "$OIDC_CFG" <<'PY'
+          import os, sys
+          path = sys.argv[1]
+          with open(path) as f:
+              content = f.read()
+          content = content.replace("__AUTH0_CLIENT_ID__",     os.environ["AUTH0_CLIENT_ID"])
+          content = content.replace("__AUTH0_CLIENT_SECRET__", os.environ["AUTH0_CLIENT_SECRET"])
+          with open(path, "w") as f:
+              f.write(content)
+          PY
             echo "Auth0 secrets injected into oidc plugin"
           fi
 

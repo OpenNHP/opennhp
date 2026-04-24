@@ -5,9 +5,18 @@ resource "aws_security_group" "relay" {
   description = "NHP Relay - jump host with SSH + HTTPS relay"
   vpc_id      = aws_vpc.demo.id
 
-  # SSH from anywhere (jump host)
+  # SSH from anywhere (jump host).
+  #
+  # This demo deploys from GitHub Actions runners, whose egress IPs are
+  # a large, changing set documented at
+  # https://api.github.com/meta. Restricting to that list is operationally
+  # expensive and still very broad. Hardening options for non-demo use:
+  #   1. Replace the jump-host pattern with AWS Systems Manager Session
+  #      Manager (no open SSH port required).
+  #   2. Restrict to a known admin CIDR via a `ssh_admin_cidrs` variable.
+  # Neither is done here to keep the demo single-command reproducible.
   ingress {
-    description = "SSH"
+    description = "SSH (demo jump host)"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"

@@ -79,7 +79,7 @@ type RelayServer struct {
 	// pendingRelayRequests maps an inner packet's counter (uint64) to a channel
 	// that receives the raw encrypted ACK/COK bytes from the server.  The HTTP
 	// handler registers entries before sending the RLY envelope; the connection
-	// routine fulfils them when a matching response arrives.
+	// routine fulfills them when a matching response arrives.
 	pendingMu       sync.Mutex
 	pendingRequests map[uint64]chan []byte
 
@@ -612,7 +612,7 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 		n, innerCounter, realAddr, rs.serverAddr)
 
 	// Register a pending request keyed on the inner packet counter.
-	// The connectionRoutine will fulfil this channel when a matching
+	// The connectionRoutine will fulfill this channel when a matching
 	// ACK/COK arrives from the server.
 	responseCh := make(chan []byte, 1)
 	rs.pendingMu.Lock()

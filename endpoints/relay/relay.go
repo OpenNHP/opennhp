@@ -736,10 +736,18 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 // realClientAddr returns the originating address of an HTTP request as a
 // *net.UDPAddr so it can be encoded in the RelayForwardMsg.
 //
-// X-Forwarded-For is only trusted when the direct TCP peer is on the
-// loopback interface — i.e. when a local reverse proxy (nginx, etc.)
-// forwarded the request. Any other peer setting XFF is treated as
-// untrusted and ignored.
+// When the direct TCP peer is on the loopback interface — i.e. a local
+// reverse proxy (nginx, etc.) forwarded the request — the proxy's view
+// of the real client is taken from X-Real-IP, which the proxy is
+// expected to overwrite unconditionally (e.g. nginx
+// `proxy_set_header X-Real-IP $remote_addr;`).
+//
+// X-Forwarded-For is intentionally NOT consulted: nginx's standard
+// `$proxy_add_x_forwarded_for` *appends* to whatever XFF the client
+// sent, so its first entry is attacker-controlled. Trusting XFF would
+// let any HTTP client choose the SourceAddr that flows to nhp-server
+// and ultimately to the AC ipset rule, defeating the per-source-IP
+// authorization model.
 func realClientAddr(r *http.Request) *net.UDPAddr {
 	// Parse the direct TCP peer first so we always have a port.
 	peerHost, peerPortStr, err := net.SplitHostPort(r.RemoteAddr)
@@ -752,15 +760,13 @@ func realClientAddr(r *http.Request) *net.UDPAddr {
 		_, _ = fmt.Sscanf(peerPortStr, "%d", &peerPort)
 	}
 
-	// Only trust X-Forwarded-For when the direct peer is on loopback.
+	// Only honour X-Real-IP when the direct peer is on loopback (a local
+	// reverse proxy). Any other peer setting it is untrusted.
 	if peerIP.IsLoopback() {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			first := strings.TrimSpace(xff)
-			if comma := strings.IndexByte(first, ','); comma >= 0 {
-				first = strings.TrimSpace(first[:comma])
-			}
-			if ip := net.ParseIP(first); ip != nil {
-				// XFF has no port; keep the proxy peer's port for uniqueness.
+		if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
+			if ip := net.ParseIP(realIP); ip != nil {
+				// X-Real-IP carries no port; the proxy peer's port is
+				// used so connection-tracking keys remain unique.
 				return &net.UDPAddr{IP: ip, Port: peerPort}
 			}
 		}

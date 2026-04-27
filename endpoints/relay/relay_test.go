@@ -1,9 +1,108 @@
 package relay
 
 import (
+	"net/http"
 	"testing"
 	"time"
 )
+
+// TestRealClientAddr covers the security-sensitive parts of how the
+// relay derives the originating client address: X-Real-IP must only be
+// honoured when the direct TCP peer is on loopback (a local reverse
+// proxy), and a missing/malformed X-Real-IP from such a peer must
+// surface as an error rather than a silent fallback to 127.0.0.1.
+func TestRealClientAddr(t *testing.T) {
+	tests := []struct {
+		name       string
+		remoteAddr string
+		xRealIP    string
+		xff        string // must NEVER be honoured; included to verify it's ignored
+		wantErr    bool
+		wantIP     string
+		wantPort   int
+	}{
+		{
+			name:       "loopback peer with valid X-Real-IP returns the header value",
+			remoteAddr: "127.0.0.1:54321",
+			xRealIP:    "203.0.113.7",
+			wantIP:     "203.0.113.7",
+			wantPort:   54321,
+		},
+		{
+			name:       "loopback peer with no X-Real-IP errors out (does not fall back to 127.0.0.1)",
+			remoteAddr: "127.0.0.1:54321",
+			xRealIP:    "",
+			wantErr:    true,
+		},
+		{
+			name:       "loopback peer with malformed X-Real-IP errors out",
+			remoteAddr: "127.0.0.1:54321",
+			xRealIP:    "not-an-ip",
+			wantErr:    true,
+		},
+		{
+			name:       "IPv6 loopback peer is treated as loopback (X-Real-IP honoured)",
+			remoteAddr: "[::1]:54321",
+			xRealIP:    "203.0.113.8",
+			wantIP:     "203.0.113.8",
+			wantPort:   54321,
+		},
+		{
+			name:       "non-loopback peer ignores X-Real-IP and returns the direct peer",
+			remoteAddr: "198.51.100.5:1234",
+			xRealIP:    "203.0.113.99", // attacker setting it directly — must not be trusted
+			wantIP:     "198.51.100.5",
+			wantPort:   1234,
+		},
+		{
+			name:       "non-loopback peer ignores X-Forwarded-For",
+			remoteAddr: "198.51.100.5:1234",
+			xff:        "203.0.113.99", // even from XFF — must not be trusted
+			wantIP:     "198.51.100.5",
+			wantPort:   1234,
+		},
+		{
+			name:       "loopback peer ignores X-Forwarded-For even when X-Real-IP is also set",
+			remoteAddr: "127.0.0.1:54321",
+			xRealIP:    "203.0.113.7",
+			xff:        "1.2.3.4", // attacker-prepended XFF — must be ignored
+			wantIP:     "203.0.113.7",
+			wantPort:   54321,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &http.Request{
+				RemoteAddr: tt.remoteAddr,
+				Header:     http.Header{},
+			}
+			if tt.xRealIP != "" {
+				r.Header.Set("X-Real-IP", tt.xRealIP)
+			}
+			if tt.xff != "" {
+				r.Header.Set("X-Forwarded-For", tt.xff)
+			}
+
+			addr, err := realClientAddr(r)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got addr=%v", addr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if addr.IP.String() != tt.wantIP {
+				t.Errorf("IP = %q, want %q", addr.IP.String(), tt.wantIP)
+			}
+			if addr.Port != tt.wantPort {
+				t.Errorf("Port = %d, want %d", addr.Port, tt.wantPort)
+			}
+		})
+	}
+}
 
 // newTestRelayServer constructs a RelayServer with only the fields the
 // pending-map/dispatch code touches. Everything else (net, device, HTTP) is

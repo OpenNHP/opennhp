@@ -647,7 +647,12 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 	}
 	innerCounter := binary.BigEndian.Uint64(innerPacket[16:24])
 
-	realAddr := realClientAddr(r)
+	realAddr, err := realClientAddr(r)
+	if err != nil {
+		log.Error("[Relay] %v", err)
+		http.Error(w, "relay misconfigured: missing X-Real-IP header from local reverse proxy", http.StatusBadGateway)
+		return
+	}
 	realAddrKey := realAddr.String()
 	log.Info("[Relay] forwarding %d-byte inner packet (counter=%d) from client %s to server %s",
 		n, innerCounter, realAddr, rs.serverAddr)
@@ -748,7 +753,14 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 // let any HTTP client choose the SourceAddr that flows to nhp-server
 // and ultimately to the AC ipset rule, defeating the per-source-IP
 // authorization model.
-func realClientAddr(r *http.Request) *net.UDPAddr {
+//
+// If the direct peer is on loopback but X-Real-IP is missing or
+// malformed, the function returns an error rather than falling back to
+// the loopback address. Falling back would set SourceAddr=127.0.0.1,
+// which the server's isRoutablePublicIP check rejects, producing
+// silent 504s that are hard to diagnose. A loud error here points
+// operators at the misconfigured reverse proxy instead.
+func realClientAddr(r *http.Request) (*net.UDPAddr, error) {
 	// Parse the direct TCP peer first so we always have a port.
 	peerHost, peerPortStr, err := net.SplitHostPort(r.RemoteAddr)
 	peerIP := net.IPv4zero
@@ -760,17 +772,19 @@ func realClientAddr(r *http.Request) *net.UDPAddr {
 		_, _ = fmt.Sscanf(peerPortStr, "%d", &peerPort)
 	}
 
-	// Only honour X-Real-IP when the direct peer is on loopback (a local
-	// reverse proxy). Any other peer setting it is untrusted.
 	if peerIP.IsLoopback() {
-		if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
-			if ip := net.ParseIP(realIP); ip != nil {
-				// X-Real-IP carries no port; the proxy peer's port is
-				// used so connection-tracking keys remain unique.
-				return &net.UDPAddr{IP: ip, Port: peerPort}
-			}
+		realIP := strings.TrimSpace(r.Header.Get("X-Real-IP"))
+		if realIP == "" {
+			return nil, fmt.Errorf("loopback peer %s sent no X-Real-IP header; check reverse proxy config", r.RemoteAddr)
 		}
+		ip := net.ParseIP(realIP)
+		if ip == nil {
+			return nil, fmt.Errorf("loopback peer %s sent malformed X-Real-IP %q", r.RemoteAddr, realIP)
+		}
+		// X-Real-IP carries no port; the proxy peer's port is
+		// used so connection-tracking keys remain unique.
+		return &net.UDPAddr{IP: ip, Port: peerPort}, nil
 	}
 
-	return &net.UDPAddr{IP: peerIP, Port: peerPort}
+	return &net.UDPAddr{IP: peerIP, Port: peerPort}, nil
 }

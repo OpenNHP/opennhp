@@ -10,16 +10,13 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "~> 4.0"
     }
-    tls = {
-      source  = "hashicorp/tls"
-      version = "~> 4.0"
-    }
   }
 
+  # Backend config is partial: bucket + region are supplied at init time via
+  # -backend-config (see workflows). Keeping them out of source avoids leaking
+  # the AWS account ID embedded in the bucket name.
   backend "s3" {
-    bucket       = "opennhp-tfstate-401696231478"
     key          = "demo/terraform.tfstate"
-    region       = "us-east-2"
     encrypt      = true
     kms_key_id   = "alias/aws/s3"
     use_lockfile = true

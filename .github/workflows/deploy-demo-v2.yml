@@ -218,7 +218,9 @@ jobs:
         id: tf_outputs
         working-directory: terraform/demo
         run: |
-          terraform init -backend=true
+          terraform init -backend=true \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.AWS_REGION }}"
 
           SERVER_PUB=$(terraform output -raw server_public_ip)
           SERVER_PRIV=$(terraform output -raw server_private_ip)
@@ -316,12 +318,13 @@ jobs:
           echo "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          if [ -n "$HOST_KEYS" ]; then
-            echo "$HOST_KEYS" > ~/.ssh/known_hosts
-          else
-            echo "WARNING: no pre-saved host keys; scanning now"
-            ssh-keyscan -T 10 ${{ needs.configure.outputs.relay_public_ip }} > ~/.ssh/known_hosts
+          if [ -z "$HOST_KEYS" ]; then
+            echo "ERROR: ssh_host_keys missing in opennhp/demo Secrets Manager."
+            echo "Run the infra-demo workflow with action=apply to capture and"
+            echo "persist the EC2 host keys before deploying."
+            exit 1
           fi
+          echo "$HOST_KEYS" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
       - name: Download build + configs
@@ -761,11 +764,13 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
 
           HOST_KEYS=$(echo "$SECRETS" | jq -r '.ssh_host_keys // empty')
-          if [ -n "$HOST_KEYS" ]; then
-            echo "$SECRETS" | jq -r '.ssh_host_keys' > ~/.ssh/known_hosts
-          else
-            ssh-keyscan -T 10 ${{ needs.configure.outputs.relay_public_ip }} > ~/.ssh/known_hosts
+          if [ -z "$HOST_KEYS" ]; then
+            echo "ERROR: ssh_host_keys missing in opennhp/demo Secrets Manager."
+            echo "Run the infra-demo workflow with action=apply to capture and"
+            echo "persist the EC2 host keys before deploying."
+            exit 1
           fi
+          echo "$SECRETS" | jq -r '.ssh_host_keys' > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
           # Scalar fields that travel through step outputs can safely go through bash.

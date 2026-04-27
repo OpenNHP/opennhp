@@ -17,9 +17,14 @@ variable "instance_type" {
 }
 
 variable "key_pair_name" {
-  description = "EC2 SSH key pair name (auto-created by Terraform)"
+  description = "EC2 SSH key pair name (registered with the public key in var.deploy_public_key)"
   type        = string
   default     = "opennhp-demo"
+}
+
+variable "deploy_public_key" {
+  description = "OpenSSH-format public key for the deploy keypair. Generated outside Terraform; the matching private key lives only in AWS Secrets Manager (opennhp/demo -> ssh_deploy_private_key)."
+  type        = string
 }
 
 variable "vpc_cidr" {

@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -17,6 +18,24 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 	utils "github.com/OpenNHP/opennhp/nhp/utils"
 )
+
+// isRoutablePublicIP returns true only if ip is a plausible public client
+// address. Relay peers are trusted to forward traffic, but a malicious or
+// compromised relay must not be able to spam the connection map with
+// fabricated SourceAddr values, so non-routable ranges are rejected.
+func isRoutablePublicIP(ip net.IP) bool {
+	if ip == nil || ip.IsUnspecified() || ip.IsLoopback() ||
+		ip.IsMulticast() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsInterfaceLocalMulticast() ||
+		ip.IsPrivate() {
+		return false
+	}
+	// Reject CGNAT (100.64.0.0/10) — not exposed by net.IP helpers.
+	if ip4 := ip.To4(); ip4 != nil && ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
+		return false
+	}
+	return true
+}
 
 // HandleOTPRequest
 // Server will not respond to agent's otp request
@@ -627,13 +646,13 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		return err
 	}
 
-	realAddr := &net.UDPAddr{
-		IP:   net.ParseIP(rlyMsg.SourceAddr.Ip),
-		Port: rlyMsg.SourceAddr.Port,
+	realIP := net.ParseIP(rlyMsg.SourceAddr.Ip)
+	if !isRoutablePublicIP(realIP) || rlyMsg.SourceAddr.Port <= 0 || rlyMsg.SourceAddr.Port > 65535 {
+		log.Warning("server-relay[HandleRelayForward] rejecting non-routable source addr from relay %s: %s:%d",
+			ppd.ConnData.RemoteAddr.String(), rlyMsg.SourceAddr.Ip, rlyMsg.SourceAddr.Port)
+		return fmt.Errorf("non-routable relay source address")
 	}
-	if realAddr.IP == nil {
-		realAddr.IP = net.IPv4zero
-	}
+	realAddr := &net.UDPAddr{IP: realIP, Port: rlyMsg.SourceAddr.Port}
 
 	relayAddrStr := ppd.ConnData.RemoteAddr.String()
 	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",
@@ -685,6 +704,41 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	}
 
 	if !found {
+		// Apply the same global overload guard used for direct UDP
+		// connections, plus a per-relay cap so a single misbehaving
+		// (or compromised) relay cannot exhaust the connection table
+		// on its own.
+		relayPrefix := "relay:" + relayAddrStr + ":"
+		s.remoteConnectionMapMutex.Lock()
+		total := len(s.remoteConnectionMap)
+		if total >= MaxConcurrentConnection {
+			s.remoteConnectionMapMutex.Unlock()
+			s.device.ReleasePoolPacket(innerPkt)
+			log.Critical("server-relay[HandleRelayForward] reached MaxConcurrentConnection (%d), dropping forward from relay %s",
+				MaxConcurrentConnection, relayAddrStr)
+			return fmt.Errorf("server connection table full")
+		}
+		if total > OverloadConnectionThreshold {
+			s.device.SetOverload(true)
+		}
+		perRelay := 0
+		for k := range s.remoteConnectionMap {
+			if strings.HasPrefix(k, relayPrefix) {
+				perRelay++
+				if perRelay >= MaxConnectionsPerRelay {
+					break
+				}
+			}
+		}
+		if perRelay >= MaxConnectionsPerRelay {
+			s.remoteConnectionMapMutex.Unlock()
+			s.device.ReleasePoolPacket(innerPkt)
+			log.Critical("server-relay[HandleRelayForward] relay %s exceeded MaxConnectionsPerRelay (%d), dropping forward",
+				relayAddrStr, MaxConnectionsPerRelay)
+			return fmt.Errorf("relay forward cap exceeded")
+		}
+		s.remoteConnectionMapMutex.Unlock()
+
 		conn = &UdpConn{mapKey: connKey}
 		conn.ConnData = &core.ConnectionData{
 			InitTime:             recvTime,

@@ -69,10 +69,25 @@ jobs:
           CF_TOKEN=$(echo "$SECRETS" | jq -r '.cloudflare_api_token')
           CF_ZONE=$(echo "$SECRETS" | jq -r '.cloudflare_zone_id')
 
+          # Derive deploy public key from the private key stored in Secrets
+          # Manager. The private key is bootstrapped manually outside Terraform
+          # (see terraform/demo/RUNBOOK.md) and never enters Terraform state.
+          PRIV_TMP=$(mktemp)
+          trap 'rm -f "$PRIV_TMP"' EXIT
+          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > "$PRIV_TMP"
+          chmod 600 "$PRIV_TMP"
+          if ! [ -s "$PRIV_TMP" ] || [ "$(head -c 4 "$PRIV_TMP")" = "null" ]; then
+            echo "ERROR: ssh_deploy_private_key missing in opennhp/demo Secrets Manager."
+            echo "Bootstrap it with the runbook in terraform/demo/RUNBOOK.md."
+            exit 1
+          fi
+          DEPLOY_PUB=$(ssh-keygen -y -f "$PRIV_TMP")
+
           # Set as masked outputs
           echo "::add-mask::$CF_TOKEN"
           echo "cf_token=$CF_TOKEN" >> $GITHUB_OUTPUT
           echo "cf_zone=$CF_ZONE" >> $GITHUB_OUTPUT
+          echo "deploy_pub=$DEPLOY_PUB" >> $GITHUB_OUTPUT
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -81,7 +96,10 @@ jobs:
 
       - name: Terraform Init
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.AWS_REGION }}"
 
       - name: Terraform Plan
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -90,6 +108,7 @@ jobs:
           # (argv is visible to other processes on the runner).
           TF_VAR_cloudflare_api_token: ${{ steps.secrets.outputs.cf_token }}
           TF_VAR_cloudflare_zone_id: ${{ steps.secrets.outputs.cf_zone }}
+          TF_VAR_deploy_public_key: ${{ steps.secrets.outputs.deploy_pub }}
         run: |
           terraform plan \
             ${{ env.TF_ACTION == 'destroy' && '-destroy' || '' }} \

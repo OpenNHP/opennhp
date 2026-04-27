@@ -97,6 +97,11 @@ jobs:
       - name: Terraform Init
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
+          if [ -z "${{ vars.TF_STATE_BUCKET }}" ]; then
+            echo "ERROR: repo variable TF_STATE_BUCKET is not set."
+            echo "Configure it under Settings -> Variables -> Actions before running this workflow."
+            exit 1
+          fi
           terraform init \
             -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
             -backend-config="region=${{ env.AWS_REGION }}"
@@ -166,8 +171,11 @@ jobs:
             sleep 10
           done
           if [ -z "$RELAY_HOST_KEYS" ]; then
-            echo "WARNING: Could not obtain relay host keys; aborting host key capture"
-            exit 0
+            echo "ERROR: Could not obtain relay host keys after 30 attempts."
+            echo "deploy-demo-v2 requires ssh_host_keys to be present in opennhp/demo;"
+            echo "failing here so the operator re-runs infra-demo apply rather than"
+            echo "discovering the missing field on the next deploy."
+            exit 1
           fi
 
           # Trust the relay for the jump, then ssh-keyscan the private hosts

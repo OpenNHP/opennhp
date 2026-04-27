@@ -218,6 +218,11 @@ jobs:
         id: tf_outputs
         working-directory: terraform/demo
         run: |
+          if [ -z "${{ vars.TF_STATE_BUCKET }}" ]; then
+            echo "ERROR: repo variable TF_STATE_BUCKET is not set."
+            echo "Configure it under Settings -> Variables -> Actions before running this workflow."
+            exit 1
+          fi
           terraform init -backend=true \
             -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
             -backend-config="region=${{ env.AWS_REGION }}"

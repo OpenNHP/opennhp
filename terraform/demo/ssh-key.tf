@@ -12,3 +12,23 @@ resource "aws_key_pair" "deploy" {
 
   tags = { Name = "opennhp-demo-keypair" }
 }
+
+# Tell Terraform that the previous tls_private_key.deploy and
+# aws_secretsmanager_secret_version.ssh_key_writeback resources are gone
+# from configuration but should NOT be destroyed in AWS. Without this,
+# any environment whose state still contains those resources would, on
+# the next apply, destroy the live SecretVersion under opennhp/demo —
+# rolling AWSCURRENT back to a stale payload and breaking deploys.
+removed {
+  from = tls_private_key.deploy
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = aws_secretsmanager_secret_version.ssh_key_writeback
+  lifecycle {
+    destroy = false
+  }
+}

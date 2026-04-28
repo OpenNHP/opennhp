@@ -49,9 +49,8 @@ const (
 
 // UdpConn wraps a UDP connection with NHP connection data.
 type UdpConn struct {
-	ConnData  *core.ConnectionData
-	netConn   *net.UDPConn
-	connected atomic.Bool
+	ConnData *core.ConnectionData
+	netConn  *net.UDPConn
 }
 
 func (c *UdpConn) Close() {
@@ -179,7 +178,7 @@ func (rs *RelayServer) Start() error {
 	if rs.config.EnableTLS {
 		log.Info("[Relay] starting HTTPS relay on %s → NHP Server %s",
 			addr, rs.serverAddr)
-		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
 		rs.httpServer.TLSConfig = tlsCfg
 		return rs.httpServer.ListenAndServeTLS(rs.config.TLSCertFile, rs.config.TLSKeyFile)
 	}

@@ -53,11 +53,16 @@ OpenNHP 採模組化設計，包含三個核心元件，設計靈感來自 [NIST
 
 ![OpenNHP architecture](docs/images/OpenNHP_Arch.gif)
 
-| 元件 | 職責 |
+| 核心元件 | 職責 |
 |-----------|------|
 | **NHP-Agent** | 用戶端，發送加密的「敲門」請求以取得存取權限 |
 | **NHP-Server** | 認證與授權請求；獨立部署，在架構上與受保護主機解耦 |
 | **NHP-AC** | 存取控制器，管理受保護伺服器上的防火牆規則 |
+
+| 附加元件 | 職責 |
+|-----------|------|
+| **NHP-Relay** | HTTP 到 UDP 橋接，使瀏覽器代理能夠透過 HTTPS 發送 NHP 敲門請求 |
+| **NHP-KGC** | 基於身分加密（IBC）的金鑰產生中心 |
 
 ### 協定流程
 
@@ -96,8 +101,8 @@ opennhp/
     ├── server/       # NHP-Server 背景程式
     ├── ac/           # NHP-AC（存取控制器）背景程式
     ├── db/           # NHP-DB（DHP 的資料經紀人）
-    ├── kgc/          # 金鑰產生中心（IBC）
-    └── relay/        # TCP 中繼
+    ├── kgc/          # NHP-KGC（金鑰產生中心）
+    └── relay/        # NHP-Relay 背景程式
 ```
 
 ---
@@ -121,7 +126,8 @@ make agentd    # NHP-Agent
 make serverd   # NHP-Server
 make acd       # NHP-AC
 make db        # NHP-DB
-make kgc       # 金鑰產生中心
+make relayd    # NHP-Relay
+make kgc       # NHP-KGC
 ```
 
 ### 測試

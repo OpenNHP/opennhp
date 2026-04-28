@@ -53,11 +53,16 @@ OpenNHP folgt einem modularen Design mit drei Kernkomponenten, inspiriert von de
 
 ![OpenNHP architecture](docs/images/OpenNHP_Arch.gif)
 
-| Komponente | Rolle |
+| Kernkomponente | Rolle |
 |-----------|------|
 | **NHP-Agent** | Client, der verschlüsselte Knock-Anfragen sendet, um Zugriff zu erhalten |
 | **NHP-Server** | Authentifiziert und autorisiert Anfragen; läuft separat und ist architektonisch vom geschützten Host entkoppelt |
 | **NHP-AC** | Zugriffs-Controller, der die Firewall-Regeln auf dem geschützten Server verwaltet |
+
+| Zusatzkomponente | Rolle |
+|-----------|------|
+| **NHP-Relay** | HTTP-zu-UDP-Brücke, die browserbasierte Agents ermöglicht, NHP-Knocks über HTTPS zu senden |
+| **NHP-KGC** | Key Generation Center für Identity-Based Cryptography (IBC) |
 
 ### Protokollablauf
 
@@ -96,8 +101,8 @@ opennhp/
     ├── server/       # NHP-Server-Daemon
     ├── ac/           # NHP-AC-(Zugriffs-Controller)-Daemon
     ├── db/           # NHP-DB (Data Broker für DHP)
-    ├── kgc/          # Key Generation Center (IBC)
-    └── relay/        # TCP-Relay
+    ├── kgc/          # NHP-KGC (Key Generation Center)
+    └── relay/        # NHP-Relay-Daemon
 ```
 
 ---
@@ -121,7 +126,8 @@ make agentd    # NHP-Agent
 make serverd   # NHP-Server
 make acd       # NHP-AC
 make db        # NHP-DB
-make kgc       # Key Generation Center
+make relayd    # NHP-Relay
+make kgc       # NHP-KGC
 ```
 
 ### Testen

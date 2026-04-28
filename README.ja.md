@@ -53,11 +53,16 @@ OpenNHP は [NIST ゼロトラスト・アーキテクチャ](https://www.nist.g
 
 ![OpenNHP architecture](docs/images/OpenNHP_Arch.gif)
 
-| コンポーネント | 役割 |
+| コアコンポーネント | 役割 |
 |-----------|------|
 | **NHP-Agent** | 暗号化された「ノック」リクエストを送信し、アクセスを得るクライアント |
 | **NHP-Server** | リクエストを認証・認可。独立して稼働し、保護対象ホストとアーキテクチャ上分離されている |
 | **NHP-AC** | 保護対象サーバーのファイアウォール・ルールを管理するアクセス・コントローラ |
+
+| アドオンコンポーネント | 役割 |
+|-----------|------|
+| **NHP-Relay** | ブラウザベースのエージェントが HTTPS 経由で NHP ノックを送信できるようにする HTTP-UDP ブリッジ |
+| **NHP-KGC** | Identity-Based Cryptography（IBC）用の鍵生成センター |
 
 ### プロトコル・フロー
 
@@ -96,8 +101,8 @@ opennhp/
     ├── server/       # NHP-Server デーモン
     ├── ac/           # NHP-AC（アクセス・コントローラ）デーモン
     ├── db/           # NHP-DB（DHP のデータ・ブローカー）
-    ├── kgc/          # Key Generation Center（IBC）
-    └── relay/        # TCP リレー
+    ├── kgc/          # NHP-KGC（Key Generation Center）
+    └── relay/        # NHP-Relay デーモン
 ```
 
 ---
@@ -121,7 +126,8 @@ make agentd    # NHP-Agent
 make serverd   # NHP-Server
 make acd       # NHP-AC
 make db        # NHP-DB
-make kgc       # Key Generation Center
+make relayd    # NHP-Relay
+make kgc       # NHP-KGC
 ```
 
 ### テスト

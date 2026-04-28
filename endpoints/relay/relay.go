@@ -563,8 +563,18 @@ func (rs *RelayServer) keepaliveRoutine() {
 					CipherScheme:  rs.config.CipherScheme,
 					TransactionId: rs.device.NextCounterIndex(),
 				}
-				rs.sendMsgCh <- md
-				log.Info("[Relay] sent NHP_KPL keepalive to %s", rs.serverAddr)
+				// Non-blocking send: if the queue is full, drop this
+				// keepalive rather than stall the routine (which would
+				// also miss stopCh on shutdown). A missed keepalive is
+				// recovered on the next tick.
+				select {
+				case rs.sendMsgCh <- md:
+					log.Info("[Relay] sent NHP_KPL keepalive to %s", rs.serverAddr)
+				case <-rs.stopCh:
+					return
+				default:
+					log.Warning("[Relay] send queue full, skipping keepalive")
+				}
 			}
 		}
 	}
@@ -715,14 +725,32 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 		PeerPk:        rs.serverPubKey,
 	}
 
-	rs.sendMsgCh <- md
-
-	// Wait for the raw encrypted ACK/COK packet from the server.
 	udpTimeout := rs.config.UDPTimeoutMs
 	if udpTimeout <= 0 {
 		udpTimeout = defaultUDPTimeoutMs
 	}
 
+	// Hand the message to sendMessageRoutine. A naked send would block
+	// indefinitely if the channel (capacity PacketQueueSizePerConnection)
+	// is full — net/http's WriteTimeout closes the TCP connection but
+	// does not unblock a goroutine parked on a channel send, so a slow
+	// upstream server would silently leak handler goroutines under load.
+	// Bound the wait by the same UDP timeout used for the response.
+	select {
+	case rs.sendMsgCh <- md:
+	case <-r.Context().Done():
+		log.Warning("[Relay] client disconnected before send queued (counter=%d, client %s)",
+			innerCounter, realAddr)
+		// HTTP body is already gone; defer cleans up pendingRequests.
+		return
+	case <-time.After(time.Duration(udpTimeout) * time.Millisecond):
+		log.Error("[Relay] send queue full for %dms, dropping forward (counter=%d, client %s)",
+			udpTimeout, innerCounter, realAddr)
+		http.Error(w, "relay overloaded", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Wait for the raw encrypted ACK/COK packet from the server.
 	select {
 	case rawBytes := <-responseCh:
 		log.Info("[Relay] received response for inner counter=%d, %d raw bytes, forwarding to client %s",

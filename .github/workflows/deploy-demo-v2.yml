@@ -44,7 +44,7 @@ on:
 
 env:
   AWS_REGION: us-east-2
-  GO_VERSION: '1.25.6'
+  GO_VERSION: '1.25'
   GOMODULE: github.com/OpenNHP/opennhp/nhp
   DEPLOY_USER: ec2-user
   CONFIRM: ${{ github.event.inputs.confirm }}

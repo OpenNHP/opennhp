@@ -83,3 +83,40 @@ func TestIsRoutablePublicIP(t *testing.T) {
 		}
 	})
 }
+
+// TestRelayAddrFromConnKey ensures the mapKey parser used by the
+// per-relay connection counter correctly recovers the relay's address
+// from compound keys of the form "relay:<relayAddr>:<realClientAddr>".
+// Both segments are themselves "host:port" so the parser must strip
+// exactly the trailing two colon-separated tokens.
+func TestRelayAddrFromConnKey(t *testing.T) {
+	tests := []struct {
+		mapKey string
+		want   string
+	}{
+		// Direct UDP keys are not relay-forwarded.
+		{"203.0.113.5:54321", ""},
+		{"", ""},
+
+		// IPv4 relay + IPv4 client.
+		{"relay:198.51.100.1:62206:203.0.113.5:54321", "198.51.100.1:62206"},
+
+		// Same relay but realClient port edge values.
+		{"relay:198.51.100.1:62206:203.0.113.5:1", "198.51.100.1:62206"},
+		{"relay:198.51.100.1:62206:203.0.113.5:65535", "198.51.100.1:62206"},
+
+		// Malformed keys.
+		{"relay:", ""},
+		{"relay:foo", ""},
+		{"relay:foo:bar", ""}, // only one colon after prefix → not enough segments
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.mapKey, func(t *testing.T) {
+			got := relayAddrFromConnKey(tt.mapKey)
+			if got != tt.want {
+				t.Errorf("relayAddrFromConnKey(%q) = %q, want %q", tt.mapKey, got, tt.want)
+			}
+		})
+	}
+}

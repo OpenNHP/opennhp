@@ -49,6 +49,14 @@ type UdpServer struct {
 	remoteConnectionMapMutex sync.Mutex
 	remoteConnectionMap      map[string]*UdpConn // indexed by remote UDP address
 
+	// relayConnCount tracks how many relay-forwarded client connections
+	// each NHP_RLY peer currently has open in remoteConnectionMap. Used
+	// to enforce MaxConnectionsPerRelay in O(1) instead of scanning the
+	// entire connection map under remoteConnectionMapMutex (which is
+	// also held by recvPacketRoutine for every incoming UDP packet).
+	relayConnCountMutex sync.Mutex
+	relayConnCount      map[string]int // indexed by relayAddr.String()
+
 	agentPeerMapMutex sync.Mutex
 	agentPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
@@ -247,6 +255,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 
 	s.remoteConnectionMap = make(map[string]*UdpConn)
+	s.relayConnCount = make(map[string]int)
 	s.acConnectionMap = make(map[string]*ACConn)
 	s.dbConnectionMap = make(map[string]*DBConn)
 	s.relayPeerMap = make(map[string]*core.UdpPeer)
@@ -542,11 +551,24 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			mapKey = addrStr
 		}
 		s.remoteConnectionMapMutex.Lock()
-		delete(s.remoteConnectionMap, mapKey)
+		_, stillPresent := s.remoteConnectionMap[mapKey]
+		if stillPresent {
+			delete(s.remoteConnectionMap, mapKey)
+		}
 		if len(s.remoteConnectionMap) <= OverloadConnectionThreshold {
 			s.device.SetOverload(false)
 		}
 		s.remoteConnectionMapMutex.Unlock()
+
+		// Decrement the per-relay counter only if this routine actually
+		// owned the map entry (stillPresent). If a stale-cleanup path
+		// in HandleRelayForward already deleted us, the counter was
+		// also rolled back by that path so we must not double-count.
+		if stillPresent {
+			if relayAddr := relayAddrFromConnKey(mapKey); relayAddr != "" {
+				s.decRelayConnCount(relayAddr)
+			}
+		}
 
 		conn.Close()
 	}()

@@ -19,6 +19,62 @@ import (
 	utils "github.com/OpenNHP/opennhp/nhp/utils"
 )
 
+// relayConnKeyPrefix is what every relay-forwarded connection's mapKey
+// begins with (see HandleRelayForward). Used by helpers below to
+// distinguish relay-forwarded entries from direct UDP entries.
+const relayConnKeyPrefix = "relay:"
+
+// relayAddrFromConnKey extracts the relay's address (the
+// "<relayHost>:<relayPort>" segment) from a relay-forwarded mapKey of
+// the form "relay:<relayAddr>:<realClientAddr>". Returns "" if the
+// key is not a relay-forwarded one.
+//
+// Note: <relayAddr> itself contains a colon (host:port), so this
+// splits at the LAST colon belonging to the relay segment by stripping
+// the prefix and the trailing ":<realClientAddr>".
+func relayAddrFromConnKey(mapKey string) string {
+	if !strings.HasPrefix(mapKey, relayConnKeyPrefix) {
+		return ""
+	}
+	rest := mapKey[len(relayConnKeyPrefix):]
+	// rest = "<relayHost>:<relayPort>:<realClientHost>:<realClientPort>"
+	// The realClient segment is itself "host:port", so strip its two
+	// trailing colon-separated tokens to recover the relay segment.
+	for i := 0; i < 2; i++ {
+		idx := strings.LastIndexByte(rest, ':')
+		if idx < 0 {
+			return ""
+		}
+		rest = rest[:idx]
+	}
+	return rest
+}
+
+// incRelayConnCount and decRelayConnCount maintain a per-relay counter
+// of forwarded-client connections so HandleRelayForward can enforce
+// MaxConnectionsPerRelay in O(1) instead of scanning the whole
+// connection map under the global mutex.
+func (s *UdpServer) incRelayConnCount(relayAddr string) {
+	s.relayConnCountMutex.Lock()
+	s.relayConnCount[relayAddr]++
+	s.relayConnCountMutex.Unlock()
+}
+
+func (s *UdpServer) decRelayConnCount(relayAddr string) {
+	s.relayConnCountMutex.Lock()
+	s.relayConnCount[relayAddr]--
+	if s.relayConnCount[relayAddr] <= 0 {
+		delete(s.relayConnCount, relayAddr)
+	}
+	s.relayConnCountMutex.Unlock()
+}
+
+func (s *UdpServer) getRelayConnCount(relayAddr string) int {
+	s.relayConnCountMutex.Lock()
+	defer s.relayConnCountMutex.Unlock()
+	return s.relayConnCount[relayAddr]
+}
+
 // isRoutablePublicIP returns true only if ip is a plausible public client
 // address. Relay peers are trusted to forward traffic, but a malicious or
 // compromised relay must not be able to spam the connection map with
@@ -700,19 +756,37 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		s.remoteConnectionMapMutex.Lock()
 		delete(s.remoteConnectionMap, connKey)
 		s.remoteConnectionMapMutex.Unlock()
+		// Roll back the per-relay counter for the stale entry; the
+		// stale conn's own routine deferred-cleanup will see
+		// stillPresent=false and skip its own decrement.
+		s.decRelayConnCount(relayAddrStr)
 		found = false
 	}
 
 	if !found {
+		// Per-relay cap: reserve a slot under the dedicated counter
+		// mutex BEFORE touching remoteConnectionMap. Atomic check-then-
+		// increment under one lock so two concurrent forwards from the
+		// same relay can't both pass the check.
+		s.relayConnCountMutex.Lock()
+		if s.relayConnCount[relayAddrStr] >= MaxConnectionsPerRelay {
+			s.relayConnCountMutex.Unlock()
+			s.device.ReleasePoolPacket(innerPkt)
+			log.Critical("server-relay[HandleRelayForward] relay %s exceeded MaxConnectionsPerRelay (%d), dropping forward",
+				relayAddrStr, MaxConnectionsPerRelay)
+			return fmt.Errorf("relay forward cap exceeded")
+		}
+		s.relayConnCount[relayAddrStr]++
+		s.relayConnCountMutex.Unlock()
+
 		// Apply the same global overload guard used for direct UDP
-		// connections, plus a per-relay cap so a single misbehaving
-		// (or compromised) relay cannot exhaust the connection table
-		// on its own.
-		relayPrefix := "relay:" + relayAddrStr + ":"
+		// connections.
 		s.remoteConnectionMapMutex.Lock()
 		total := len(s.remoteConnectionMap)
 		if total >= MaxConcurrentConnection {
 			s.remoteConnectionMapMutex.Unlock()
+			// Roll back the per-relay reservation we just took.
+			s.decRelayConnCount(relayAddrStr)
 			s.device.ReleasePoolPacket(innerPkt)
 			log.Critical("server-relay[HandleRelayForward] reached MaxConcurrentConnection (%d), dropping forward from relay %s",
 				MaxConcurrentConnection, relayAddrStr)
@@ -720,22 +794,6 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		}
 		if total > OverloadConnectionThreshold {
 			s.device.SetOverload(true)
-		}
-		perRelay := 0
-		for k := range s.remoteConnectionMap {
-			if strings.HasPrefix(k, relayPrefix) {
-				perRelay++
-				if perRelay >= MaxConnectionsPerRelay {
-					break
-				}
-			}
-		}
-		if perRelay >= MaxConnectionsPerRelay {
-			s.remoteConnectionMapMutex.Unlock()
-			s.device.ReleasePoolPacket(innerPkt)
-			log.Critical("server-relay[HandleRelayForward] relay %s exceeded MaxConnectionsPerRelay (%d), dropping forward",
-				relayAddrStr, MaxConnectionsPerRelay)
-			return fmt.Errorf("relay forward cap exceeded")
 		}
 		s.remoteConnectionMapMutex.Unlock()
 

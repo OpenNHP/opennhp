@@ -93,6 +93,14 @@ func (s *UdpServer) loadBaseConfig() error {
 		log.Error("load base config err: %v", err)
 		return err
 	}
+	// pelletier/go-toml/v2 silently drops unknown sections, so a stale
+	// [webrtc] block in an upgraded config.toml would otherwise produce
+	// no signal that the transport is gone. Warn loudly once at load.
+	if strings.Contains(string(content), "[webrtc]") {
+		log.Warning("[loadBaseConfig] [webrtc] section in config.toml is ignored: " +
+			"the WebRTC transport was removed; delete the section to silence this warning")
+	}
+
 	var config Config
 	if err := toml.Unmarshal(content, &config); err != nil {
 		log.Error("failed to unmarshal base config: %v", err)

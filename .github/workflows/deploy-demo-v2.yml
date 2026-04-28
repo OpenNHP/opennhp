@@ -100,9 +100,15 @@ jobs:
           REPOS_JSON: ${{ vars.EXTERNAL_PLUGIN_REPOS }}
           PLUGIN_TOKEN: ${{ secrets.PLUGIN_REPO_TOKEN }}
         run: |
-          # (unchanged from v1 - see deploy-demo.yml for full implementation)
-          echo "External plugin cloning - see deploy-demo.yml for reference implementation"
-          # TODO: copy the python inline script here when needed
+          # External plugin cloning is not implemented in deploy-demo-v2 yet.
+          # The reference implementation lives in the deleted v1 workflow:
+          #   git show 6b764b5~1:.github/workflows/deploy-demo.yml
+          # Failing fast here so a configured EXTERNAL_PLUGIN_REPOS variable
+          # doesn't silently produce a deploy that's missing those plugins.
+          echo "ERROR: EXTERNAL_PLUGIN_REPOS is set but deploy-demo-v2 does not yet"
+          echo "       implement external plugin cloning."
+          echo "       See deploy-demo.yml at commit 6b764b5~1 for the v1 implementation."
+          exit 1
 
       - name: Build serverd, acd, relayd, and plugins
         env:

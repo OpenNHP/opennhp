@@ -8,7 +8,7 @@ import (
 
 // TestRealClientAddr covers the security-sensitive parts of how the
 // relay derives the originating client address: X-Real-IP must only be
-// honoured when the direct TCP peer is on loopback (a local reverse
+// honored when the direct TCP peer is on loopback (a local reverse
 // proxy), and a missing/malformed X-Real-IP from such a peer must
 // surface as an error rather than a silent fallback to 127.0.0.1.
 func TestRealClientAddr(t *testing.T) {
@@ -16,7 +16,7 @@ func TestRealClientAddr(t *testing.T) {
 		name       string
 		remoteAddr string
 		xRealIP    string
-		xff        string // must NEVER be honoured; included to verify it's ignored
+		xff        string // must NEVER be honored; included to verify it's ignored
 		wantErr    bool
 		wantIP     string
 		wantPort   int
@@ -41,7 +41,7 @@ func TestRealClientAddr(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name:       "IPv6 loopback peer is treated as loopback (X-Real-IP honoured)",
+			name:       "IPv6 loopback peer is treated as loopback (X-Real-IP honored)",
 			remoteAddr: "[::1]:54321",
 			xRealIP:    "203.0.113.8",
 			wantIP:     "203.0.113.8",

@@ -520,6 +520,38 @@ func (d *Device) LookupPeer(pk []byte) Peer {
 	return nil
 }
 
+// ListPeerKeys returns all registered peer public keys (base64) for debugging.
+func (d *Device) ListPeerKeys() []string {
+	d.peerMapMutex.Lock()
+	defer d.peerMapMutex.Unlock()
+
+	keys := make([]string, 0, len(d.peerMap))
+	for k := range d.peerMap {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// DeviceTypeToString returns a human-readable name for a device type.
+func DeviceTypeToString(dt int) string {
+	switch dt {
+	case NHP_AGENT:
+		return "NHP_AGENT"
+	case NHP_SERVER:
+		return "NHP_SERVER"
+	case NHP_AC:
+		return "NHP_AC"
+	case NHP_RELAY:
+		return "NHP_RELAY"
+	case NHP_DB:
+		return "NHP_DB"
+	case DHP_AGENT:
+		return "DHP_AGENT"
+	default:
+		return fmt.Sprintf("UNKNOWN(%d)", dt)
+	}
+}
+
 func (d *Device) IsOverload() bool {
 	//return true // debug
 	return d.Overload.Load()

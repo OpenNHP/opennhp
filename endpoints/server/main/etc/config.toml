@@ -16,11 +16,3 @@ ListenPort = 62206
 Hostname = "localhost" # the hostname of NHP-Server
 LogLevel = 4
 DisableAgentValidation = false
-
-[webrtc]
-Enable = false
-OfferFile = ""
-AnswerFile = ""
-StunServers = ["stun:stun.l.google.com:19302"]
-TurnServers = []
-

@@ -151,7 +151,10 @@ func (d *Device) createPacketParserData(pd *PacketData) (ppd *PacketParserData, 
 		// for RKN, check HMAC with cookie. For remaining allowed key messages, check HMAC without cookie.
 		sumCookie := overload && ppd.HeaderType == NHP_RKN
 		if !ppd.checkHMAC(sumCookie) {
-			log.Error("HMAC validation failed on server side. sumCookie: %v", sumCookie)
+			msgType := HeaderTypeToString(ppd.HeaderType)
+			log.Error("HMAC validation failed on server side. msgType=%s, sumCookie=%v, cipherScheme=%d, bodySize=%d, devicePubKey=%s",
+				msgType, sumCookie, ppd.CipherScheme, ppd.BodySize,
+				base64.StdEncoding.EncodeToString(ppd.deviceEcdh.PublicKey()))
 			err = ErrServerHMACCheckFailed
 			return
 		}
@@ -205,7 +208,10 @@ func (ppd *PacketParserData) deriveMsgAssemblerData(t int, compress bool, messag
 	}
 	mad.chainHash.Write([]byte(InitialHashString))
 
-	// continue with responder's chain key -> ChainKey4
+	// continue with responder's chain key
+	// Note: ppd.chainKey is cleared by decryptBody's defer, so this is
+	// effectively all-zeros.  The Go agent's initiator side has the same
+	// behavior (encryptBody clears mad.chainKey), so both sides match.
 	mad.noise.HashType = ppd.Ciphers.HashType
 	copy(mad.chainKey[:], ppd.chainKey[:])
 
@@ -222,15 +228,13 @@ func shouldCheckRecvAttack(deviceType int, peerType int, msgType int) bool {
 }
 
 func (ppd *PacketParserData) validatePeer() (err error) {
-
-	log.Debug("headType:%s,validatePeer pubkey: %s,EphermeralBytes:%s", HeaderTypeToString(ppd.HeaderType), base64.StdEncoding.EncodeToString(ppd.deviceEcdh.PublicKey()),
-		base64.StdEncoding.EncodeToString(ppd.header.EphermeralBytes()))
 	// evolve chain hash ChainHash0 -> ChainHash1
 	ppd.chainHash.Write(ppd.deviceEcdh.PublicKey())
 	ppd.chainHash.Write(ppd.header.EphermeralBytes())
 
 	// evolve chain key ChainKey0 -> ChainKey1 (ChainKey4 -> ChainKey5)
 	ppd.noise.MixKey(&ppd.chainKey, ppd.chainKey[:], ppd.header.EphermeralBytes())
+
 	// get ephermeral shared key
 	ess := ppd.deviceEcdh.SharedSecret(ppd.header.EphermeralBytes())
 	if ess == nil {
@@ -253,8 +257,6 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	case common.CIPHER_SCHEME_GMSM:
 		fallthrough
 	default:
-		KeyByteSlice := key[:]
-		log.Debug("ppd.Ciphers.GcmType:%d,&key:%s,NonceBytes:%s,StaticBytes:%s", ppd.Ciphers.GcmType, base64.StdEncoding.EncodeToString(KeyByteSlice), base64.StdEncoding.EncodeToString(ppd.header.NonceBytes()), base64.StdEncoding.EncodeToString(ppd.header.StaticBytes()))
 		aead, err = AeadFromKey(ppd.Ciphers.GcmType, &key)
 		if err != nil {
 			log.Error("failed to create AEAD for peer pubkey decryption: %v", err)
@@ -305,22 +307,28 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	}
 
 	if toValidate {
+		peerPkBase64 := base64.StdEncoding.EncodeToString(peerPk)
+		peerDeviceTypeName := DeviceTypeToString(peerDeviceType)
+		log.Debug("validatePeer: looking up %s peer pubkey=%s in peer pool", peerDeviceTypeName, peerPkBase64)
+
 		peer = ppd.device.LookupPeer(peerPk)
 		if peer == nil {
-			log.Error("peer not found in peer pool")
-			err = fmt.Errorf("peer not found in peer pool")
+			log.Error("validatePeer: %s peer not found in peer pool, pubkey=%s",
+				peerDeviceTypeName, peerPkBase64)
+			err = fmt.Errorf("peer not found in peer pool (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
 			return err
 		}
 
 		if peer.IsExpired() {
-			log.Error("peer expired")
-			err = fmt.Errorf("peer expired")
+			log.Error("validatePeer: %s peer expired, pubkey=%s", peerDeviceTypeName, peerPkBase64)
+			err = fmt.Errorf("peer expired (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
 			return err
 		}
 
 		if !peer.CheckRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr) {
-			log.Error("peer does not match its previous address")
-			err = fmt.Errorf("peer does not match its previous address")
+			log.Error("validatePeer: %s peer address mismatch, pubkey=%s, remoteAddr=%s",
+				peerDeviceTypeName, peerPkBase64, ppd.ConnData.RemoteAddr)
+			err = fmt.Errorf("peer does not match its previous address (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
 			return err
 		}
 		peer.UpdateRecv(ppd.LocalInitTime, ppd.ConnData.RemoteAddr)
@@ -596,7 +604,13 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 		}
 	} else {
 		calculatedHmac := ppd.hmacHash.Sum(nil)
-		return bytes.Equal(calculatedHmac, ppd.header.HMACBytes())
+		headerHmac := ppd.header.HMACBytes()
+		if !bytes.Equal(calculatedHmac, headerHmac) {
+			log.Debug("checkHMAC: mismatch, calculated=%x, header=%x, headerSize=%d, cipherScheme=%d",
+				calculatedHmac[:8], headerHmac[:8], ppd.header.Size(), ppd.CipherScheme)
+			return false
+		}
+		return true
 	}
 }
 

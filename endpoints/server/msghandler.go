@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
@@ -15,6 +18,80 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 	utils "github.com/OpenNHP/opennhp/nhp/utils"
 )
+
+// relayConnKeyPrefix is what every relay-forwarded connection's mapKey
+// begins with (see HandleRelayForward). Used by helpers below to
+// distinguish relay-forwarded entries from direct UDP entries.
+const relayConnKeyPrefix = "relay:"
+
+// relayAddrFromConnKey extracts the relay's address (the
+// "<relayHost>:<relayPort>" segment) from a relay-forwarded mapKey of
+// the form "relay:<relayAddr>:<realClientAddr>". Returns "" if the
+// key is not a relay-forwarded one.
+//
+// Note: <relayAddr> itself contains a colon (host:port), so this
+// splits at the LAST colon belonging to the relay segment by stripping
+// the prefix and the trailing ":<realClientAddr>".
+func relayAddrFromConnKey(mapKey string) string {
+	if !strings.HasPrefix(mapKey, relayConnKeyPrefix) {
+		return ""
+	}
+	rest := mapKey[len(relayConnKeyPrefix):]
+	// rest = "<relayHost>:<relayPort>:<realClientHost>:<realClientPort>"
+	// The realClient segment is itself "host:port", so strip its two
+	// trailing colon-separated tokens to recover the relay segment.
+	for i := 0; i < 2; i++ {
+		idx := strings.LastIndexByte(rest, ':')
+		if idx < 0 {
+			return ""
+		}
+		rest = rest[:idx]
+	}
+	return rest
+}
+
+// incRelayConnCount and decRelayConnCount maintain a per-relay counter
+// of forwarded-client connections so HandleRelayForward can enforce
+// MaxConnectionsPerRelay in O(1) instead of scanning the whole
+// connection map under the global mutex.
+func (s *UdpServer) incRelayConnCount(relayAddr string) {
+	s.relayConnCountMutex.Lock()
+	s.relayConnCount[relayAddr]++
+	s.relayConnCountMutex.Unlock()
+}
+
+func (s *UdpServer) decRelayConnCount(relayAddr string) {
+	s.relayConnCountMutex.Lock()
+	s.relayConnCount[relayAddr]--
+	if s.relayConnCount[relayAddr] <= 0 {
+		delete(s.relayConnCount, relayAddr)
+	}
+	s.relayConnCountMutex.Unlock()
+}
+
+func (s *UdpServer) getRelayConnCount(relayAddr string) int {
+	s.relayConnCountMutex.Lock()
+	defer s.relayConnCountMutex.Unlock()
+	return s.relayConnCount[relayAddr]
+}
+
+// isRoutablePublicIP returns true only if ip is a plausible public client
+// address. Relay peers are trusted to forward traffic, but a malicious or
+// compromised relay must not be able to spam the connection map with
+// fabricated SourceAddr values, so non-routable ranges are rejected.
+func isRoutablePublicIP(ip net.IP) bool {
+	if ip == nil || ip.IsUnspecified() || ip.IsLoopback() ||
+		ip.IsMulticast() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsInterfaceLocalMulticast() ||
+		ip.IsPrivate() {
+		return false
+	}
+	// Reject CGNAT (100.64.0.0/10) — not exposed by net.IP helpers.
+	if ip4 := ip.To4(); ip4 != nil && ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
+		return false
+	}
+	return true
+}
 
 // HandleOTPRequest
 // Server will not respond to agent's otp request
@@ -595,4 +672,159 @@ func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
 		return common.DRGMsg{}, fmt.Errorf("json parsing error: %s", err)
 	}
 	return config, nil
+}
+
+// HandleRelayForward processes a decrypted NHP_RLY message from the standard
+// Noise pipeline.  The relay's identity has already been validated by
+// validatePeer as part of the standard decryption flow.
+//
+// The message body is a JSON-encoded RelayForwardMsg containing:
+//   - SourceAddr:  the real client's IP/port
+//   - InnerPacket: base64-encoded inner NHP packet (encrypted by agent)
+//
+// The inner packet is injected into the standard pipeline as if the agent
+// had connected directly.
+func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
+	var rlyMsg common.RelayForwardMsg
+	if err := json.Unmarshal(ppd.BodyMessage, &rlyMsg); err != nil {
+		log.Error("server-relay[HandleRelayForward] failed to parse RelayForwardMsg: %v", err)
+		return err
+	}
+
+	if rlyMsg.SourceAddr == nil {
+		log.Error("server-relay[HandleRelayForward] missing source address")
+		return fmt.Errorf("missing source address")
+	}
+
+	innerBytes, err := base64.StdEncoding.DecodeString(rlyMsg.InnerPacket)
+	if err != nil {
+		log.Error("server-relay[HandleRelayForward] failed to decode inner packet: %v", err)
+		return err
+	}
+
+	realIP := net.ParseIP(rlyMsg.SourceAddr.Ip)
+	if !isRoutablePublicIP(realIP) || rlyMsg.SourceAddr.Port <= 0 || rlyMsg.SourceAddr.Port > 65535 {
+		log.Warning("server-relay[HandleRelayForward] rejecting non-routable source addr from relay %s: %s:%d",
+			ppd.ConnData.RemoteAddr.String(), rlyMsg.SourceAddr.Ip, rlyMsg.SourceAddr.Port)
+		return fmt.Errorf("non-routable relay source address")
+	}
+	realAddr := &net.UDPAddr{IP: realIP, Port: rlyMsg.SourceAddr.Port}
+
+	relayAddrStr := ppd.ConnData.RemoteAddr.String()
+	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",
+		relayAddrStr, realAddr, len(innerBytes))
+
+	// Allocate a pool packet for the inner bytes.
+	innerPkt := s.device.AllocatePoolPacket()
+	if len(innerBytes) > len(innerPkt.Buf) {
+		s.device.ReleasePoolPacket(innerPkt)
+		log.Warning("server-relay[HandleRelayForward] inner packet too large (%d bytes)", len(innerBytes))
+		return fmt.Errorf("inner packet too large")
+	}
+	copy(innerPkt.Buf[:], innerBytes)
+	innerPkt.Content = innerPkt.Buf[:len(innerBytes)]
+
+	// Run standard RecvPrecheck on the inner packet.
+	innerType, _, err := s.device.RecvPrecheck(innerPkt)
+	if err != nil {
+		s.device.ReleasePoolPacket(innerPkt)
+		log.Warning("server-relay[HandleRelayForward] inner RecvPrecheck failed: %v", err)
+		return err
+	}
+	innerPkt.HeaderType = innerType
+	log.Info("server-relay[HandleRelayForward] inner [%s] from real client %s via relay %s",
+		core.HeaderTypeToString(innerType), realAddr, relayAddrStr)
+
+	// Build or reuse a connection keyed on "relay:<relayAddr>:<realClientAddr>".
+	// This avoids collisions with the relay's own NHP_RLY connection (which is
+	// already keyed on relayAddrStr) and isolates per-client anti-replay state.
+	// RemoteAddr must be the relay's UDP address so that response packets
+	// (ACK/COK) are sent back to the relay — the relay then forwards them
+	// to the browser over HTTP.  The real client address is used only for
+	// auth/logging purposes.
+	relayAddr := ppd.ConnData.RemoteAddr
+	connKey := "relay:" + relayAddrStr + ":" + realAddr.String()
+	recvTime := time.Now().UnixNano()
+
+	s.remoteConnectionMapMutex.Lock()
+	conn, found := s.remoteConnectionMap[connKey]
+	s.remoteConnectionMapMutex.Unlock()
+
+	if found && conn.ConnData.IsClosed() {
+		// Previous relay-forwarded connection for this client timed out.
+		// Remove the stale entry and create a fresh connection.
+		s.remoteConnectionMapMutex.Lock()
+		delete(s.remoteConnectionMap, connKey)
+		s.remoteConnectionMapMutex.Unlock()
+		// Roll back the per-relay counter for the stale entry; the
+		// stale conn's own routine deferred-cleanup will see
+		// stillPresent=false and skip its own decrement.
+		s.decRelayConnCount(relayAddrStr)
+		found = false
+	}
+
+	if !found {
+		// Per-relay cap: reserve a slot under the dedicated counter
+		// mutex BEFORE touching remoteConnectionMap. Atomic check-then-
+		// increment under one lock so two concurrent forwards from the
+		// same relay can't both pass the check.
+		s.relayConnCountMutex.Lock()
+		if s.relayConnCount[relayAddrStr] >= MaxConnectionsPerRelay {
+			s.relayConnCountMutex.Unlock()
+			s.device.ReleasePoolPacket(innerPkt)
+			log.Critical("server-relay[HandleRelayForward] relay %s exceeded MaxConnectionsPerRelay (%d), dropping forward",
+				relayAddrStr, MaxConnectionsPerRelay)
+			return fmt.Errorf("relay forward cap exceeded")
+		}
+		s.relayConnCount[relayAddrStr]++
+		s.relayConnCountMutex.Unlock()
+
+		// Apply the same global overload guard used for direct UDP
+		// connections.
+		s.remoteConnectionMapMutex.Lock()
+		total := len(s.remoteConnectionMap)
+		if total >= MaxConcurrentConnection {
+			s.remoteConnectionMapMutex.Unlock()
+			// Roll back the per-relay reservation we just took.
+			s.decRelayConnCount(relayAddrStr)
+			s.device.ReleasePoolPacket(innerPkt)
+			log.Critical("server-relay[HandleRelayForward] reached MaxConcurrentConnection (%d), dropping forward from relay %s",
+				MaxConcurrentConnection, relayAddrStr)
+			return fmt.Errorf("server connection table full")
+		}
+		if total > OverloadConnectionThreshold {
+			s.device.SetOverload(true)
+		}
+		s.remoteConnectionMapMutex.Unlock()
+
+		conn = &UdpConn{mapKey: connKey}
+		conn.ConnData = &core.ConnectionData{
+			InitTime:             recvTime,
+			LastLocalRecvTime:    recvTime,
+			Device:               s.device,
+			LocalAddr:            s.listenAddr,
+			RemoteAddr:           relayAddr,
+			RealRemoteAddr:       realAddr,
+			CookieStore:          &core.CookieStore{},
+			RemoteTransactionMap: make(map[uint64]*core.RemoteTransaction),
+			TimeoutMs:            DefaultAgentConnectionTimeoutMs,
+			SendQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),
+			RecvQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),
+			BlockSignal:          make(chan struct{}),
+			SetTimeoutSignal:     make(chan struct{}),
+			StopSignal:           make(chan struct{}),
+		}
+		s.remoteConnectionMapMutex.Lock()
+		s.remoteConnectionMap[connKey] = conn
+		s.remoteConnectionMapMutex.Unlock()
+
+		s.wg.Add(1)
+		go s.connectionRoutine(conn)
+		log.Info("server-relay[HandleRelayForward] new relay connection %s (real client %s, key=%s)", relayAddrStr, realAddr, connKey)
+	} else {
+		atomic.StoreInt64(&conn.ConnData.LastLocalRecvTime, recvTime)
+	}
+
+	conn.ConnData.ForwardInboundPacket(innerPkt)
+	return nil
 }

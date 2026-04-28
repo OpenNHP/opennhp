@@ -22,6 +22,7 @@ type ConnectionData struct {
 	Device           *Device
 	LocalAddr        *net.UDPAddr
 	RemoteAddr       *net.UDPAddr
+	RealRemoteAddr   *net.UDPAddr // set for relay-forwarded connections: the real client address behind the relay
 	CookieStore      *CookieStore
 	TimeoutMs        int
 	SendQueue        chan *Packet

@@ -22,3 +22,17 @@ release/
 node_modules
 docs/dist/
 docs/recordings/
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+terraform.tfvars
+*.auto.tfvars
+crash.log
+crash.*.log
+
+# Generated configs (rendered by CI, contain secrets)
+deploy/configs/

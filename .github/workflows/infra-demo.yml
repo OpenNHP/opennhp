@@ -1,0 +1,232 @@
+# Manage demo infrastructure with Terraform
+# Creates/destroys EC2 instances, VPC, security groups, and Cloudflare DNS records
+
+name: Demo Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Terraform action to perform'
+        required: true
+        type: choice
+        options:
+          - 'plan'
+          - 'apply'
+          - 'destroy'
+        default: 'plan'
+      confirm:
+        description: 'Type "confirm" for apply/destroy'
+        required: false
+        default: ''
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/demo/**'
+      - '.github/workflows/infra-demo.yml'
+
+env:
+  AWS_REGION: us-east-2
+  TF_WORKING_DIR: terraform/demo
+  # push events always run plan; dispatch uses the input
+  TF_ACTION: ${{ github.event.inputs.action || 'plan' }}
+
+jobs:
+  terraform:
+    name: "Terraform ${{ github.event.inputs.action || 'plan' }}"
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # Required for OIDC
+      contents: read
+
+    steps:
+      - name: Validate confirmation
+        if: env.TF_ACTION != 'plan' && github.event.inputs.confirm != 'confirm'
+        run: |
+          echo "ERROR: You must type 'confirm' to run ${{ env.TF_ACTION }}"
+          exit 1
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch secrets from AWS Secrets Manager
+        id: secrets
+        run: |
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' \
+            --output text)
+
+          # Extract Cloudflare credentials
+          CF_TOKEN=$(echo "$SECRETS" | jq -r '.cloudflare_api_token')
+          CF_ZONE=$(echo "$SECRETS" | jq -r '.cloudflare_zone_id')
+
+          # Derive deploy public key from the private key stored in Secrets
+          # Manager. The private key is bootstrapped manually outside Terraform
+          # (see terraform/demo/RUNBOOK.md) and never enters Terraform state.
+          PRIV_TMP=$(mktemp)
+          trap 'rm -f "$PRIV_TMP"' EXIT
+          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > "$PRIV_TMP"
+          chmod 600 "$PRIV_TMP"
+          if ! [ -s "$PRIV_TMP" ] || [ "$(head -c 4 "$PRIV_TMP")" = "null" ]; then
+            echo "ERROR: ssh_deploy_private_key missing in opennhp/demo Secrets Manager."
+            echo "Bootstrap it with the runbook in terraform/demo/RUNBOOK.md."
+            exit 1
+          fi
+          DEPLOY_PUB=$(ssh-keygen -y -f "$PRIV_TMP")
+
+          # Set as masked outputs
+          echo "::add-mask::$CF_TOKEN"
+          echo "cf_token=$CF_TOKEN" >> $GITHUB_OUTPUT
+          echo "cf_zone=$CF_ZONE" >> $GITHUB_OUTPUT
+          echo "deploy_pub=$DEPLOY_PUB" >> $GITHUB_OUTPUT
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.10"
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          if [ -z "${{ vars.TF_STATE_BUCKET }}" ]; then
+            echo "ERROR: repo variable TF_STATE_BUCKET is not set."
+            echo "Configure it under Settings -> Variables -> Actions before running this workflow."
+            exit 1
+          fi
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform Plan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          # Pass secrets via TF_VAR_* to keep them off the command line
+          # (argv is visible to other processes on the runner).
+          TF_VAR_cloudflare_api_token: ${{ steps.secrets.outputs.cf_token }}
+          TF_VAR_cloudflare_zone_id: ${{ steps.secrets.outputs.cf_zone }}
+          TF_VAR_deploy_public_key: ${{ steps.secrets.outputs.deploy_pub }}
+        run: |
+          terraform plan \
+            ${{ env.TF_ACTION == 'destroy' && '-destroy' || '' }} \
+            -out=tfplan
+
+      - name: Terraform Apply
+        if: env.TF_ACTION == 'apply' && github.event.inputs.confirm == 'confirm'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform apply -auto-approve tfplan
+
+      - name: Terraform Destroy
+        if: env.TF_ACTION == 'destroy' && github.event.inputs.confirm == 'confirm'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform apply -auto-approve tfplan
+
+      - name: Show outputs
+        if: env.TF_ACTION == 'apply'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          echo "## Infrastructure Outputs"
+          echo ""
+          terraform output -json | jq -r 'to_entries[] | "**\(.key)**: \(.value.value)"'
+
+      - name: Scan SSH host keys from all hosts
+        if: env.TF_ACTION == 'apply'
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          # The relay is public; server and ac are only reachable from inside
+          # the VPC, so we bounce ssh-keyscan off the relay to reach them. All
+          # three sets of keys go into ssh_host_keys so every deploy path can
+          # use StrictHostKeyChecking=yes.
+          RELAY_IP=$(terraform output -raw relay_public_ip)
+          SERVER_PRIV=$(terraform output -raw server_private_ip)
+          AC_PRIV=$(terraform output -raw ac_private_ip)
+
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' \
+            --output text)
+
+          SSH_KEY_TMP=$(mktemp)
+          trap 'rm -f "$SSH_KEY_TMP"' EXIT
+          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > "$SSH_KEY_TMP"
+          chmod 600 "$SSH_KEY_TMP"
+
+          echo "Waiting for relay to be reachable..."
+          RELAY_HOST_KEYS=""
+          for i in $(seq 1 30); do
+            if RELAY_HOST_KEYS=$(ssh-keyscan -T 5 "$RELAY_IP" 2>/dev/null) && [ -n "$RELAY_HOST_KEYS" ]; then
+              echo "Host keys obtained from relay $RELAY_IP"
+              break
+            fi
+            echo "  Attempt $i/30 - waiting 10s..."
+            sleep 10
+          done
+          if [ -z "$RELAY_HOST_KEYS" ]; then
+            echo "ERROR: Could not obtain relay host keys after 30 attempts."
+            echo "deploy-demo-v2 requires ssh_host_keys to be present in opennhp/demo;"
+            echo "failing here so the operator re-runs infra-demo apply rather than"
+            echo "discovering the missing field on the next deploy."
+            exit 1
+          fi
+
+          # Trust the relay for the jump, then ssh-keyscan the private hosts
+          # through it.  Running ssh-keyscan on the relay itself is the only
+          # way to reach private subnet IPs.
+          RELAY_KNOWN=$(mktemp)
+          trap 'rm -f "$SSH_KEY_TMP" "$RELAY_KNOWN"' EXIT
+          echo "$RELAY_HOST_KEYS" > "$RELAY_KNOWN"
+
+          SSH_OPTS="-i $SSH_KEY_TMP -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$RELAY_KNOWN -o BatchMode=yes"
+          # Allow the relay userdata to install + start sshd on targets.
+          scan_via_relay() {
+            local ip=$1
+            local keys=""
+            for i in $(seq 1 30); do
+              keys=$(ssh $SSH_OPTS ec2-user@"$RELAY_IP" "ssh-keyscan -T 5 $ip 2>/dev/null" 2>/dev/null || true)
+              if [ -n "$keys" ]; then
+                echo "$keys"
+                return 0
+              fi
+              sleep 10
+            done
+            return 1
+          }
+
+          SERVER_HOST_KEYS=$(scan_via_relay "$SERVER_PRIV" || true)
+          AC_HOST_KEYS=$(scan_via_relay "$AC_PRIV" || true)
+
+          if [ -z "$SERVER_HOST_KEYS" ] || [ -z "$AC_HOST_KEYS" ]; then
+            echo "ERROR: Failed to scan server ($SERVER_PRIV) or ac ($AC_PRIV) host keys"
+            exit 1
+          fi
+
+          ALL_HOST_KEYS=$(printf '%s\n%s\n%s\n' "$RELAY_HOST_KEYS" "$SERVER_HOST_KEYS" "$AC_HOST_KEYS")
+
+          UPDATED=$(echo "$SECRETS" | jq --arg hk "$ALL_HOST_KEYS" '. + {ssh_host_keys: $hk}')
+          aws secretsmanager put-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --secret-string "$UPDATED"
+
+          echo "SSH host keys (relay + server + ac) saved to AWS Secrets Manager"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Demo Infrastructure Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Action** | ${{ env.TF_ACTION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Triggered by** | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Time** | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |" >> $GITHUB_STEP_SUMMARY

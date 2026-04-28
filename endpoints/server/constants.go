@@ -5,6 +5,7 @@ import "github.com/OpenNHP/opennhp/nhp/common"
 const (
 	MaxConcurrentConnection         = 20480
 	OverloadConnectionThreshold     = MaxConcurrentConnection * 4 / 5      // 80%
+	MaxConnectionsPerRelay          = 1024                                 // per-relay-peer cap on forwarded-client fan-out
 	BlockAddrRefreshRate            = 20                                   // 20 seconds
 	BlockAddrExpireTime             = 90                                   // 90 seconds
 	PreCheckThreatCountBeforeBlock  = 5                                    // block source address if packet precheck errors exceeds this count

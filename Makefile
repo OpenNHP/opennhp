@@ -165,6 +165,13 @@ kgc:
 	mkdir -p ../release/nhp-kgc/etc; \
 	cp ./kgc/main/etc/*.toml ../release/nhp-kgc/etc/
 
+relayd:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Building nhp-relay... $(END_COLOUR)"
+	cd endpoints && \
+	go build -trimpath -ldflags ${LD_FLAGS} -v -o ../release/nhp-relay/nhp-relayd ./relay/main/main.go && \
+	mkdir -p ../release/nhp-relay/etc; \
+	cp ./relay/main/etc/*.toml ../release/nhp-relay/etc/
+
 linuxagentsdk:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building Linux agent SDK... $(END_COLOUR)"
 ifeq ($(OS_NAME), linux)
@@ -310,6 +317,7 @@ help:
 	@echo "  make acd        - Build nhp-ac"
 	@echo "  make db         - Build nhp-db"
 	@echo "  make kgc        - Build nhp-kgc"
+	@echo "  make relayd     - Build nhp-relay"
 	@echo "  make plugins    - Build server plugins"
 	@echo ""
 	@echo "$(COLOUR_GREEN)SDK:$(END_COLOUR)"
@@ -361,4 +369,4 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init tidy agentd acd serverd db linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf clean_ebpf
+.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf clean_ebpf

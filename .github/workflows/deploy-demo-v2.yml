@@ -1,0 +1,908 @@
+# Deploy Demo (v2) - Terraform-managed infrastructure
+#
+# Builds nhp-serverd/nhp-acd/nhp-relayd + plugins, generates configs,
+# and deploys to the three EC2 instances created by infra-demo.yml.
+#
+# Flow:
+#   1. Build binaries + plugins
+#   2. Fetch IPs from Terraform state, generate keys/configs
+#   3. Deploy relay directly (it's the jump host)
+#   4. Deploy server and ac via the relay (ProxyJump)
+
+name: Deploy Demo v2
+
+# Manual-only. Deploying binaries to the production demo is a risky action
+# (key material, firewall state, live service) so we require an operator to
+# explicitly dispatch this workflow rather than auto-running on push.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm deployment'
+        required: true
+        default: ''
+      deploy_binaries:
+        description: 'Deploy binaries (serverd/acd/relayd + plugins)'
+        required: true
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
+        default: 'no'
+      regenerate_keys:
+        description: 'Regenerate NHP key pairs (DANGEROUS - will break existing agents)'
+        required: true
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
+        default: 'no'
+      jsagent_branch:
+        description: 'Branch of OpenNHP/js-agent to deploy'
+        required: false
+        default: 'main'
+
+env:
+  AWS_REGION: us-east-2
+  GO_VERSION: '1.25'
+  GOMODULE: github.com/OpenNHP/opennhp/nhp
+  DEPLOY_USER: ec2-user
+  CONFIRM: ${{ github.event.inputs.confirm }}
+  DEPLOY_BINARIES: ${{ github.event.inputs.deploy_binaries }}
+  REGENERATE_KEYS: ${{ github.event.inputs.regenerate_keys }}
+  JSAGENT_BRANCH: ${{ github.event.inputs.jsagent_branch || 'main' }}
+  ACME_EMAIL: dev@layerv.ai
+  DOMAIN_SERVER: demologin.opennhp.org
+  DOMAIN_AC: acdemo.opennhp.org
+  DOMAIN_RELAY: relay.opennhp.org
+  DOMAIN_AGENT: agent.opennhp.org
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Job 1: Build all binaries and plugins
+  # ─────────────────────────────────────────────────────────────
+  build:
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            nhp/go.sum
+            endpoints/go.sum
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(cat nhp/version/VERSION)
+          TIMESTAMP=$(date +%y%m%d%H%M%S)
+          FULL_VERSION="${VERSION}.${TIMESTAMP}"
+          COMMIT_ID=$(git show -s --format=%H)
+          COMMIT_TIME=$(git show -s --format=%cd --date=format:'%Y-%m-%d %H:%M:%S')
+          BUILD_TIME=$(date "+%Y-%m-%d %H:%M:%S")
+          LD_FLAGS="-s -w -X '${GOMODULE}/version.Version=${FULL_VERSION}' -X '${GOMODULE}/version.CommitId=${COMMIT_ID}' -X '${GOMODULE}/version.CommitTime=${COMMIT_TIME}' -X '${GOMODULE}/version.BuildTime=${BUILD_TIME}'"
+          echo "ldflags=${LD_FLAGS}" >> $GITHUB_OUTPUT
+
+      - name: Clone external plugin repositories
+        if: vars.EXTERNAL_PLUGIN_REPOS != ''
+        env:
+          REPOS_JSON: ${{ vars.EXTERNAL_PLUGIN_REPOS }}
+          PLUGIN_TOKEN: ${{ secrets.PLUGIN_REPO_TOKEN }}
+        run: |
+          # External plugin cloning is not implemented in deploy-demo-v2 yet.
+          # The reference implementation lives in the deleted v1 workflow:
+          #   git show 6b764b5~1:.github/workflows/deploy-demo.yml
+          # Failing fast here so a configured EXTERNAL_PLUGIN_REPOS variable
+          # doesn't silently produce a deploy that's missing those plugins.
+          echo "ERROR: EXTERNAL_PLUGIN_REPOS is set but deploy-demo-v2 does not yet"
+          echo "       implement external plugin cloning."
+          echo "       See deploy-demo.yml at commit 6b764b5~1 for the v1 implementation."
+          exit 1
+
+      - name: Build serverd, acd, relayd, and plugins
+        env:
+          CUSTOM_LD_FLAGS: ${{ steps.version.outputs.ldflags }}
+        run: |
+          echo "Building all NHP daemons..."
+          make init
+          make serverd acd relayd plugins
+
+          echo ""
+          echo "Build output:"
+          ls -la release/nhp-server/ release/nhp-ac/ release/nhp-relay/ 2>/dev/null || true
+
+      - name: Package artifacts
+        run: |
+          mkdir -p artifact/server artifact/ac artifact/relay artifact/plugins
+
+          # Server
+          cp release/nhp-server/nhp-serverd artifact/server/
+          chmod +x artifact/server/nhp-serverd
+
+          # AC (binary + firewall bootstrap script)
+          cp release/nhp-ac/nhp-acd artifact/ac/
+          chmod +x artifact/ac/nhp-acd
+          cp release/nhp-ac/iptables_default.sh artifact/ac/
+          chmod +x artifact/ac/iptables_default.sh
+
+          # Relay
+          cp release/nhp-relay/nhp-relayd artifact/relay/
+          chmod +x artifact/relay/nhp-relayd
+
+          # Plugins (.so + etc/)
+          if [ -d release/nhp-server/plugins ]; then
+            for plugin_dir in release/nhp-server/plugins/*/; do
+              name=$(basename "$plugin_dir")
+              so="${plugin_dir}${name}.so"
+              if [ -f "$so" ]; then
+                mkdir -p "artifact/plugins/$name"
+                cp "$so" "artifact/plugins/$name/"
+                [ -d "${plugin_dir}etc" ] && cp -r "${plugin_dir}etc" "artifact/plugins/$name/"
+              fi
+            done
+          fi
+
+          # Templates
+          [ -d release/nhp-server/templates ] && cp -r release/nhp-server/templates artifact/
+
+          find artifact -type f | sort
+
+      - name: Inject plugin secrets
+        env:
+          AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+        run: |
+          OIDC_CFG="artifact/plugins/oidc/etc/config.toml"
+          if [ -f "$OIDC_CFG" ] && [ -n "$AUTH0_CLIENT_ID" ]; then
+            # Use python for substitution so secrets containing /, \, &,
+            # or newlines don't corrupt the sed expression or the config.
+            python3 - "$OIDC_CFG" <<'PY'
+          import os, sys
+          path = sys.argv[1]
+          with open(path) as f:
+              content = f.read()
+          content = content.replace("__AUTH0_CLIENT_ID__",     os.environ["AUTH0_CLIENT_ID"])
+          content = content.replace("__AUTH0_CLIENT_SECRET__", os.environ["AUTH0_CLIENT_SECRET"])
+          with open(path, "w") as f:
+              f.write(content)
+          PY
+            echo "Auth0 secrets injected into oidc plugin"
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nhp-demo-build
+          path: artifact/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 2: Generate keys and render configs
+  # ─────────────────────────────────────────────────────────────
+  configure:
+    needs: build
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    outputs:
+      server_public_ip: ${{ steps.tf_outputs.outputs.server_public_ip }}
+      server_private_ip: ${{ steps.tf_outputs.outputs.server_private_ip }}
+      ac_public_ip: ${{ steps.tf_outputs.outputs.ac_public_ip }}
+      ac_private_ip: ${{ steps.tf_outputs.outputs.ac_private_ip }}
+      relay_public_ip: ${{ steps.tf_outputs.outputs.relay_public_ip }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.10"
+
+      - name: Read Terraform outputs (get IPs)
+        id: tf_outputs
+        working-directory: terraform/demo
+        run: |
+          if [ -z "${{ vars.TF_STATE_BUCKET }}" ]; then
+            echo "ERROR: repo variable TF_STATE_BUCKET is not set."
+            echo "Configure it under Settings -> Variables -> Actions before running this workflow."
+            exit 1
+          fi
+          terraform init -backend=true \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+          SERVER_PUB=$(terraform output -raw server_public_ip)
+          SERVER_PRIV=$(terraform output -raw server_private_ip)
+          AC_PUB=$(terraform output -raw ac_public_ip)
+          AC_PRIV=$(terraform output -raw ac_private_ip)
+          RELAY_PUB=$(terraform output -raw relay_public_ip)
+
+          echo "server_public_ip=$SERVER_PUB"   >> $GITHUB_OUTPUT
+          echo "server_private_ip=$SERVER_PRIV" >> $GITHUB_OUTPUT
+          echo "ac_public_ip=$AC_PUB"           >> $GITHUB_OUTPUT
+          echo "ac_private_ip=$AC_PRIV"         >> $GITHUB_OUTPUT
+          echo "relay_public_ip=$RELAY_PUB"     >> $GITHUB_OUTPUT
+
+          echo "Server public/private:  $SERVER_PUB / $SERVER_PRIV"
+          echo "AC public/private:      $AC_PUB / $AC_PRIV"
+          echo "Relay public:           $RELAY_PUB"
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-build
+          path: ./artifact
+
+      - name: Generate keys and render configs
+        run: |
+          chmod +x ./scripts/generate-nhp-keys.sh
+
+          # Build dir structure expected by script
+          mkdir -p ./artifact/bin/nhp-server ./artifact/bin/nhp-ac ./artifact/bin/nhp-relay
+          cp ./artifact/server/nhp-serverd ./artifact/bin/nhp-server/
+          cp ./artifact/ac/nhp-acd ./artifact/bin/nhp-ac/
+          cp ./artifact/relay/nhp-relayd ./artifact/bin/nhp-relay/
+          chmod +x ./artifact/bin/*/nhp-*
+
+          REGEN_FLAG=""
+          if [ "${{ env.REGENERATE_KEYS }}" = "yes" ]; then
+            REGEN_FLAG="--regenerate"
+            echo "WARNING: Regenerating all NHP keys"
+          fi
+
+          ./scripts/generate-nhp-keys.sh \
+            --binary-dir ./artifact/bin \
+            --template-dir ./deploy/config-templates \
+            --output-dir ./artifact/configs \
+            --server-private-ip "${{ steps.tf_outputs.outputs.server_private_ip }}" \
+            --ac-private-ip "${{ steps.tf_outputs.outputs.ac_private_ip }}" \
+            --domain opennhp.org \
+            $REGEN_FLAG
+
+          echo "Generated configs:"
+          find ./artifact/configs -type f | sort
+
+      - name: Upload configs
+        uses: actions/upload-artifact@v7
+        with:
+          name: nhp-demo-configs
+          path: ./artifact/configs/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 3: Setup SSH and deploy relay (direct)
+  # ─────────────────────────────────────────────────────────────
+  deploy-relay:
+    needs: configure
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch SSH credentials from AWS Secrets Manager
+        id: ssh_creds
+        run: |
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' --output text)
+
+          SSH_KEY=$(echo "$SECRETS" | jq -r '.ssh_deploy_private_key')
+          HOST_KEYS=$(echo "$SECRETS" | jq -r '.ssh_host_keys // empty')
+
+          if [ -z "$SSH_KEY" ] || [ "$SSH_KEY" = "null" ]; then
+            echo "ERROR: ssh_deploy_private_key missing in AWS SM"
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          if [ -z "$HOST_KEYS" ]; then
+            echo "ERROR: ssh_host_keys missing in opennhp/demo Secrets Manager."
+            echo "Run the infra-demo workflow with action=apply to capture and"
+            echo "persist the EC2 host keys before deploying."
+            exit 1
+          fi
+          echo "$HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Download build + configs
+        uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-build
+          path: ./artifact
+      - uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-configs
+          path: ./configs
+
+      - name: Checkout code (for nginx + bootstrap scripts)
+        uses: actions/checkout@v6
+        with:
+          path: repo
+
+      - name: Ensure TLS certificate + nginx on relay
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+
+          CF_TOKEN=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo --region ${{ env.AWS_REGION }} \
+            --query SecretString --output text \
+            | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['cloudflare_api_token'])")
+
+          # Render nginx vhost locally
+          export DOMAIN_RELAY='${{ env.DOMAIN_RELAY }}' DOMAIN_AGENT='${{ env.DOMAIN_AGENT }}'
+          envsubst '$DOMAIN_RELAY $DOMAIN_AGENT' < repo/deploy/nginx/relay.conf.template > /tmp/relay-nginx.conf
+
+          # Upload script + rendered vhost
+          scp $SSH_OPTS repo/deploy/scripts/bootstrap-tls.sh $TARGET:/tmp/bootstrap-tls.sh
+          scp $SSH_OPTS /tmp/relay-nginx.conf $TARGET:/tmp/relay-nginx.conf
+          ssh $SSH_OPTS $TARGET "chmod +x /tmp/bootstrap-tls.sh"
+
+          # Pipe the CF token through stdin into a 0600 file on the remote.
+          # This keeps the token off argv/env, where it would otherwise be
+          # visible in `ps` and process audit logs.
+          printf '%s' "$CF_TOKEN" | ssh $SSH_OPTS $TARGET \
+            "umask 077 && cat > /tmp/cf_token && chmod 600 /tmp/cf_token"
+
+          # bootstrap-tls.sh reads + shreds /tmp/cf_token before running certbot.
+          ssh $SSH_OPTS $TARGET \
+            "COMPONENT=relay \
+             PRIMARY_DOMAIN='${{ env.DOMAIN_RELAY }}' \
+             EXTRA_DOMAINS='${{ env.DOMAIN_AGENT }}' \
+             CF_API_TOKEN_FILE=/tmp/cf_token \
+             ACME_EMAIL='${{ env.ACME_EMAIL }}' \
+             NGINX_CONF='/tmp/relay-nginx.conf' \
+             /tmp/bootstrap-tls.sh"
+
+      - name: Deploy nhp-relayd
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-relay"
+
+          echo "Stopping nhp-relayd..."
+          ssh $SSH_OPTS $TARGET "sudo systemctl stop nhp-relayd || true"
+
+          if [ "${{ env.DEPLOY_BINARIES }}" = "yes" ]; then
+            echo "Uploading nhp-relayd binary..."
+            scp $SSH_OPTS ./artifact/relay/nhp-relayd $TARGET:$REMOTE_DIR/
+            ssh $SSH_OPTS $TARGET "chmod +x $REMOTE_DIR/nhp-relayd"
+          fi
+
+          echo "Uploading relay config..."
+          scp $SSH_OPTS ./configs/relay/config.toml $TARGET:$REMOTE_DIR/etc/
+
+          echo "Starting nhp-relayd..."
+          ssh $SSH_OPTS $TARGET "sudo systemctl start nhp-relayd"
+          sleep 2
+
+          STATUS=$(ssh $SSH_OPTS $TARGET "sudo systemctl is-active nhp-relayd" || true)
+          if [ "$STATUS" != "active" ]; then
+            ssh $SSH_OPTS $TARGET "sudo journalctl -u nhp-relayd -n 30 --no-pager"
+            echo "ERROR: nhp-relayd failed to start"
+            exit 1
+          fi
+          echo "nhp-relayd deployed successfully"
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 4: Deploy server via relay jump host
+  # ─────────────────────────────────────────────────────────────
+  deploy-server:
+    needs: [configure, deploy-relay]
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup SSH with ProxyJump
+        run: |
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' --output text)
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "$SECRETS" | jq -r '.ssh_host_keys' > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          # SSH config with ProxyJump via relay
+          cat > ~/.ssh/config <<EOF
+          Host relay-jump
+            HostName ${{ needs.configure.outputs.relay_public_ip }}
+            User ${{ env.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+
+          Host nhp-server
+            HostName ${{ needs.configure.outputs.server_private_ip }}
+            User ${{ env.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            ProxyJump relay-jump
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-build
+          path: ./artifact
+      - uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-configs
+          path: ./configs
+
+      - name: Checkout code (for nginx + bootstrap scripts)
+        uses: actions/checkout@v6
+        with:
+          path: repo
+
+      - name: Ensure TLS certificate + nginx on server
+        run: |
+          CF_TOKEN=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo --region ${{ env.AWS_REGION }} \
+            --query SecretString --output text \
+            | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['cloudflare_api_token'])")
+
+          export DOMAIN_SERVER='${{ env.DOMAIN_SERVER }}'
+          envsubst '$DOMAIN_SERVER' < repo/deploy/nginx/server.conf.template > /tmp/server-nginx.conf
+
+          scp repo/deploy/scripts/bootstrap-tls.sh nhp-server:/tmp/bootstrap-tls.sh
+          scp /tmp/server-nginx.conf nhp-server:/tmp/server-nginx.conf
+          ssh nhp-server "chmod +x /tmp/bootstrap-tls.sh"
+
+          printf '%s' "$CF_TOKEN" | ssh nhp-server \
+            "umask 077 && cat > /tmp/cf_token && chmod 600 /tmp/cf_token"
+
+          ssh nhp-server \
+            "COMPONENT=server \
+             PRIMARY_DOMAIN='${{ env.DOMAIN_SERVER }}' \
+             CF_API_TOKEN_FILE=/tmp/cf_token \
+             ACME_EMAIL='${{ env.ACME_EMAIL }}' \
+             NGINX_CONF='/tmp/server-nginx.conf' \
+             /tmp/bootstrap-tls.sh"
+
+      - name: Deploy nhp-serverd and plugins
+        run: |
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-server"
+
+          # nhp-serverd's KBS init() writes to /opt/confidential-containers;
+          # create it up-front with correct ownership so the daemon (ec2-user)
+          # can populate it on first start.
+          ssh nhp-server "sudo mkdir -p /opt/confidential-containers/kbs/repository/default/cosign-key && \
+            sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} /opt/confidential-containers"
+
+          echo "Stopping nhp-serverd..."
+          ssh nhp-server "sudo systemctl stop nhp-serverd || true"
+
+          if [ "${{ env.DEPLOY_BINARIES }}" = "yes" ]; then
+            echo "Uploading nhp-serverd..."
+            scp ./artifact/server/nhp-serverd nhp-server:$REMOTE_DIR/
+            ssh nhp-server "chmod +x $REMOTE_DIR/nhp-serverd"
+
+            echo "Uploading plugins..."
+            # Render placeholders in plugin configs before upload
+            export AC_PRIVATE_IP='${{ needs.configure.outputs.ac_private_ip }}'
+            for plugin_dir in ./artifact/plugins/*/; do
+              name=$(basename "$plugin_dir")
+              ssh nhp-server "mkdir -p $REMOTE_DIR/plugins/$name"
+              scp "${plugin_dir}${name}.so" "nhp-server:$REMOTE_DIR/plugins/$name/"
+
+              if [ -d "${plugin_dir}etc" ]; then
+                # Render envsubst on any *.toml in etc/ so values like
+                # ${AC_PRIVATE_IP} get substituted at deploy time.
+                rendered_etc=$(mktemp -d)
+                cp -r "${plugin_dir}etc/." "$rendered_etc/"
+                for f in "$rendered_etc"/*.toml; do
+                  [ -f "$f" ] || continue
+                  envsubst '$AC_PRIVATE_IP' < "$f" > "$f.rendered"
+                  mv "$f.rendered" "$f"
+                done
+                ssh nhp-server "mkdir -p $REMOTE_DIR/plugins/$name/etc"
+                scp -r "$rendered_etc/." "nhp-server:$REMOTE_DIR/plugins/$name/etc/"
+                rm -rf "$rendered_etc"
+              fi
+            done
+
+            if [ -d ./artifact/templates ]; then
+              rsync -avz --delete -e ssh ./artifact/templates/ nhp-server:$REMOTE_DIR/templates/
+            fi
+          fi
+
+          echo "Uploading server configs..."
+          scp ./configs/server/*.toml nhp-server:$REMOTE_DIR/etc/
+
+          echo "Starting nhp-serverd..."
+          ssh nhp-server "sudo systemctl start nhp-serverd"
+          sleep 2
+
+          STATUS=$(ssh nhp-server "sudo systemctl is-active nhp-serverd" || true)
+          if [ "$STATUS" != "active" ]; then
+            ssh nhp-server "sudo journalctl -u nhp-serverd -n 30 --no-pager"
+            exit 1
+          fi
+          echo "nhp-serverd deployed successfully"
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 5: Deploy AC via relay jump host
+  # ─────────────────────────────────────────────────────────────
+  deploy-ac:
+    needs: [configure, deploy-relay]
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup SSH with ProxyJump
+        run: |
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' --output text)
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "$SECRETS" | jq -r '.ssh_host_keys' > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          cat > ~/.ssh/config <<EOF
+          Host relay-jump
+            HostName ${{ needs.configure.outputs.relay_public_ip }}
+            User ${{ env.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+
+          Host nhp-ac
+            HostName ${{ needs.configure.outputs.ac_private_ip }}
+            User ${{ env.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            ProxyJump relay-jump
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-build
+          path: ./artifact
+      - uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-configs
+          path: ./configs
+
+      - name: Checkout code (for nginx + bootstrap scripts)
+        uses: actions/checkout@v6
+        with:
+          path: repo
+
+      - name: Ensure TLS certificate + nginx on ac
+        run: |
+          CF_TOKEN=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo --region ${{ env.AWS_REGION }} \
+            --query SecretString --output text \
+            | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['cloudflare_api_token'])")
+
+          export DOMAIN_AC='${{ env.DOMAIN_AC }}'
+          envsubst '$DOMAIN_AC' < repo/deploy/nginx/ac.conf.template > /tmp/ac-nginx.conf
+
+          scp repo/deploy/scripts/bootstrap-tls.sh nhp-ac:/tmp/bootstrap-tls.sh
+          scp /tmp/ac-nginx.conf nhp-ac:/tmp/ac-nginx.conf
+          ssh nhp-ac "chmod +x /tmp/bootstrap-tls.sh"
+
+          printf '%s' "$CF_TOKEN" | ssh nhp-ac \
+            "umask 077 && cat > /tmp/cf_token && chmod 600 /tmp/cf_token"
+
+          ssh nhp-ac \
+            "COMPONENT=ac \
+             PRIMARY_DOMAIN='${{ env.DOMAIN_AC }}' \
+             CF_API_TOKEN_FILE=/tmp/cf_token \
+             ACME_EMAIL='${{ env.ACME_EMAIL }}' \
+             NGINX_CONF='/tmp/ac-nginx.conf' \
+             /tmp/bootstrap-tls.sh"
+
+      - name: Deploy nhp-acd
+        run: |
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-ac"
+
+          # nhp-acd shells out to iptables/ipset; Amazon Linux 2023 doesn't ship them.
+          ssh nhp-ac "for pkg in iptables ipset; do command -v \$pkg >/dev/null || sudo dnf install -y \$pkg; done"
+
+          echo "Stopping nhp-acd..."
+          ssh nhp-ac "sudo systemctl stop nhp-acd || true"
+
+          if [ "${{ env.DEPLOY_BINARIES }}" = "yes" ]; then
+            echo "Uploading nhp-acd..."
+            scp ./artifact/ac/nhp-acd nhp-ac:$REMOTE_DIR/
+            ssh nhp-ac "chmod +x $REMOTE_DIR/nhp-acd"
+          fi
+
+          echo "Installing firewall bootstrap script..."
+          scp ./artifact/ac/iptables_default.sh nhp-ac:$REMOTE_DIR/
+          ssh nhp-ac "chmod +x $REMOTE_DIR/iptables_default.sh"
+
+          echo "Applying default firewall rules..."
+          ssh nhp-ac "sudo bash $REMOTE_DIR/iptables_default.sh -f || true"
+
+          # Deploy acdemo static page to nginx root
+          if [ -f ./artifact/templates/example/example_acdemo.html ]; then
+            scp ./artifact/templates/example/example_acdemo.html nhp-ac:/tmp/
+            ssh nhp-ac "sudo mkdir -p /var/www/acdemo && \
+              sudo cp /tmp/example_acdemo.html /var/www/acdemo/index.html && \
+              sudo chmod 644 /var/www/acdemo/index.html && \
+              rm /tmp/example_acdemo.html"
+          fi
+
+          echo "Uploading AC configs..."
+          scp ./configs/ac/*.toml nhp-ac:$REMOTE_DIR/etc/
+
+          echo "Starting nhp-acd..."
+          ssh nhp-ac "sudo systemctl start nhp-acd"
+          sleep 2
+
+          STATUS=$(ssh nhp-ac "sudo systemctl is-active nhp-acd" || true)
+          if [ "$STATUS" != "active" ]; then
+            ssh nhp-ac "sudo journalctl -u nhp-acd -n 30 --no-pager"
+            exit 1
+          fi
+          echo "nhp-acd deployed successfully"
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 6: Deploy js-agent demo page (static) to relay host
+  # ─────────────────────────────────────────────────────────────
+  deploy-jsagent:
+    needs: [configure, deploy-relay]
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout opennhp (for nginx + bootstrap scripts)
+        uses: actions/checkout@v6
+        with:
+          path: opennhp
+
+      - name: Checkout js-agent
+        uses: actions/checkout@v6
+        with:
+          repository: OpenNHP/js-agent
+          ref: ${{ env.JSAGENT_BRANCH }}
+          path: jsagent
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: jsagent/nhp-js/package-lock.json
+
+      - name: Build js-agent SDK
+        working-directory: jsagent/nhp-js
+        run: |
+          npm ci
+          npm run build
+          ls -la dist/
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch keys + Cloudflare token from AWS Secrets Manager
+        id: secrets
+        run: |
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' --output text)
+
+          # Write SSH artefacts directly from jq to disk to preserve newlines.
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          HOST_KEYS=$(echo "$SECRETS" | jq -r '.ssh_host_keys // empty')
+          if [ -z "$HOST_KEYS" ]; then
+            echo "ERROR: ssh_host_keys missing in opennhp/demo Secrets Manager."
+            echo "Run the infra-demo workflow with action=apply to capture and"
+            echo "persist the EC2 host keys before deploying."
+            exit 1
+          fi
+          echo "$SECRETS" | jq -r '.ssh_host_keys' > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          # Scalar fields that travel through step outputs can safely go through bash.
+          SERVER_PUB=$(echo "$SECRETS" | jq -r '.nhp_server_public_key')
+          JS_PRIV=$(echo "$SECRETS" | jq -r '.nhp_jsagent_private_key')
+          JS_PUB=$(echo "$SECRETS" | jq -r '.nhp_jsagent_public_key')
+          CF_TOKEN=$(echo "$SECRETS" | jq -r '.cloudflare_api_token')
+
+          echo "::add-mask::$JS_PRIV"
+          echo "::add-mask::$CF_TOKEN"
+
+          echo "server_pub=$SERVER_PUB" >> $GITHUB_OUTPUT
+          echo "js_priv=$JS_PRIV"       >> $GITHUB_OUTPUT
+          echo "js_pub=$JS_PUB"         >> $GITHUB_OUTPUT
+          echo "cf_token=$CF_TOKEN"     >> $GITHUB_OUTPUT
+
+      - name: Assemble deploy bundle
+        run: |
+          mkdir -p bundle/nhp-js/dist
+
+          # Entry page is nhp-js/examples/relay-test.html, exposed as / .
+          # Rewrite the SDK import path so it resolves alongside index.html.
+          sed "s|from '../dist/index.js'|from './nhp-js/dist/index.js'|g" \
+            jsagent/nhp-js/examples/relay-test.html > bundle/index.html
+
+          cp -r jsagent/nhp-js/dist/. bundle/nhp-js/dist/
+
+          # Render config.json with keys for the PUBLIC browser demo.
+          #
+          # IMPORTANT: agentPrivateKey here is a PUBLICLY SHARED demo key,
+          # deliberately served at https://${{ env.DOMAIN_AGENT }}/config.json
+          # so any visitor's browser can knock against the demo server. It
+          # authenticates ONLY a demo identity limited to the "demo" resource
+          # on the NHP server (see agent.toml / resource.toml). Treat it as
+          # public; do NOT reuse these key pair for anything else.
+          cat > bundle/config.json <<EOF
+          {
+            "_comment":        "PUBLIC DEMO CONFIG - agentPrivateKey is intentionally public; see deploy-demo-v2.yml.",
+            "cipherScheme":    "curve25519",
+            "transport":       "relay",
+            "relayUrl":        "https://${{ env.DOMAIN_RELAY }}/relay",
+            "serverHost":      "${{ env.DOMAIN_SERVER }}",
+            "serverPort":      443,
+            "serverPublicKey": "${{ steps.secrets.outputs.server_pub }}",
+            "agentPrivateKey": "${{ steps.secrets.outputs.js_priv }}",
+            "agentPublicKey":  "${{ steps.secrets.outputs.js_pub }}",
+            "userId":          "demo browser agent",
+            "deviceId":        "browser-relay-test",
+            "orgId":           "opennhp.org",
+            "resourceId":      "demo",
+            "serviceId":       "example"
+          }
+          EOF
+
+          echo "Bundle contents:"
+          find bundle -type f | sort
+
+      - name: Install nginx vhost for js-agent
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+
+          export DOMAIN_AGENT='${{ env.DOMAIN_AGENT }}' DOMAIN_RELAY='${{ env.DOMAIN_RELAY }}'
+          envsubst '$DOMAIN_AGENT $DOMAIN_RELAY' \
+            < opennhp/deploy/nginx/jsagent.conf.template > /tmp/jsagent-nginx.conf
+
+          scp $SSH_OPTS opennhp/deploy/scripts/bootstrap-tls.sh $TARGET:/tmp/bootstrap-tls.sh
+          scp $SSH_OPTS /tmp/jsagent-nginx.conf $TARGET:/tmp/jsagent-nginx.conf
+          ssh $SSH_OPTS $TARGET "chmod +x /tmp/bootstrap-tls.sh"
+
+          printf '%s' '${{ steps.secrets.outputs.cf_token }}' | ssh $SSH_OPTS $TARGET \
+            "umask 077 && cat > /tmp/cf_token && chmod 600 /tmp/cf_token"
+
+          # PRIMARY_DOMAIN is the relay domain so certbot reuses the existing
+          # SAN certificate (relay.* + agent.*) without issuing a new one.
+          ssh $SSH_OPTS $TARGET \
+            "COMPONENT=jsagent \
+             PRIMARY_DOMAIN='${{ env.DOMAIN_RELAY }}' \
+             EXTRA_DOMAINS='${{ env.DOMAIN_AGENT }}' \
+             CF_API_TOKEN_FILE=/tmp/cf_token \
+             ACME_EMAIL='${{ env.ACME_EMAIL }}' \
+             NGINX_CONF='/tmp/jsagent-nginx.conf' \
+             /tmp/bootstrap-tls.sh"
+
+      - name: Sync bundle to relay
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+
+          ssh $SSH_OPTS $TARGET "sudo mkdir -p /var/www/jsagent && sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} /var/www/jsagent"
+          rsync -avz --delete -e "ssh $SSH_OPTS" ./bundle/ $TARGET:/var/www/jsagent/
+          ssh $SSH_OPTS $TARGET "sudo chmod -R a+rX /var/www/jsagent"
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 7: Summary
+  # ─────────────────────────────────────────────────────────────
+  summary:
+    needs: [deploy-relay, deploy-server, deploy-ac, deploy-jsagent]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Relay        | ${{ needs.deploy-relay.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Server       | ${{ needs.deploy-server.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| AC           | ${{ needs.deploy-ac.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| js-agent     | ${{ needs.deploy-jsagent.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| js-agent branch | ${{ env.JSAGENT_BRANCH }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Binaries?    | ${{ env.DEPLOY_BINARIES }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Regen keys?  | ${{ env.REGENERATE_KEYS }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch       | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Actor        | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY

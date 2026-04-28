@@ -28,6 +28,7 @@ var (
 	resConfigWatch   io.Closer
 	srcipConfigWatch io.Closer
 	dbConfigWatch    io.Closer
+	relayConfigWatch io.Closer
 	teeWatch         io.Closer
 	errLoadConfig    = fmt.Errorf("config load error")
 )
@@ -48,14 +49,13 @@ type SrcIpMap struct {
 }
 
 type Config struct {
-	PrivateKeyBase64       string       `json:"privateKey"`
-	Hostname               string       `json:"hostname"`
-	ListenIp               string       `json:"listenIp"`
-	ListenPort             int          `json:"listenPort"`
-	LogLevel               int          `json:"logLevel"`
-	DefaultCipherScheme    int          `json:"defaultCipherScheme"`
-	DisableAgentValidation bool         `json:"disableAgentValidation"`
-	WebRTC                 WebRTCConfig `toml:"webrtc"`
+	PrivateKeyBase64       string `json:"privateKey"`
+	Hostname               string `json:"hostname"`
+	ListenIp               string `json:"listenIp"`
+	ListenPort             int    `json:"listenPort"`
+	LogLevel               int    `json:"logLevel"`
+	DefaultCipherScheme    int    `json:"defaultCipherScheme"`
+	DisableAgentValidation bool   `json:"disableAgentValidation"`
 }
 
 type RemoteConfig struct {
@@ -82,6 +82,7 @@ type Peers struct {
 	ACs    []*core.UdpPeer
 	Agents []*core.UdpPeer
 	DBs    []*core.UdpPeer
+	Relays []*core.UdpPeer
 }
 
 func (s *UdpServer) loadBaseConfig() error {
@@ -92,6 +93,14 @@ func (s *UdpServer) loadBaseConfig() error {
 		log.Error("load base config err: %v", err)
 		return err
 	}
+	// pelletier/go-toml/v2 silently drops unknown sections, so a stale
+	// [webrtc] block in an upgraded config.toml would otherwise produce
+	// no signal that the transport is gone. Warn loudly once at load.
+	if strings.Contains(string(content), "[webrtc]") {
+		log.Warning("[loadBaseConfig] [webrtc] section in config.toml is ignored: " +
+			"the WebRTC transport was removed; delete the section to silence this warning")
+	}
+
 	var config Config
 	if err := toml.Unmarshal(content, &config); err != nil {
 		log.Error("failed to unmarshal base config: %v", err)
@@ -195,29 +204,53 @@ func (s *UdpServer) loadPeers() error {
 		}
 	})
 
-	//db.toml
+	//db.toml (optional)
 	fileNameDE := filepath.Join(ExeDirPath, "etc", "db.toml")
 	contentDE, err := s.loadConfigFile(fileNameDE)
 	if err != nil {
-		log.Error("load db peer config err: %v", err)
-		return err
-	}
-	var dePeers Peers
-	if err := toml.Unmarshal(contentDE, &dePeers); err != nil {
-		log.Error("failed to unmarshal db peers config: %v", err)
-	}
-	if err := s.updateDePeers(dePeers.DBs); err != nil {
-		// ignore error
-		_ = err
-	}
-	dbConfigWatch = utils.WatchFile(fileNameDE, func() {
-		log.Info("device peer config: %s has been updated", fileNameDE)
-		if contentDE, err = s.loadConfigFile(fileNameDE); err == nil {
-			if err = toml.Unmarshal(contentDE, &dePeers); err == nil {
-				_ = s.updateDePeers(dePeers.DBs)
-			}
+		log.Warning("load db peer config err (optional): %v", err)
+	} else {
+		var dePeers Peers
+		if err := toml.Unmarshal(contentDE, &dePeers); err != nil {
+			log.Error("failed to unmarshal db peers config: %v", err)
 		}
-	})
+		if err := s.updateDePeers(dePeers.DBs); err != nil {
+			// ignore error
+			_ = err
+		}
+		dbConfigWatch = utils.WatchFile(fileNameDE, func() {
+			log.Info("device peer config: %s has been updated", fileNameDE)
+			if contentDE, err = s.loadConfigFile(fileNameDE); err == nil {
+				if err = toml.Unmarshal(contentDE, &dePeers); err == nil {
+					_ = s.updateDePeers(dePeers.DBs)
+				}
+			}
+		})
+	}
+
+	// relay.toml (optional)
+	fileNameRelay := filepath.Join(ExeDirPath, "etc", "relay.toml")
+	contentRelay, err := s.loadConfigFile(fileNameRelay)
+	if err != nil {
+		log.Warning("load relay peer config err (optional): %v", err)
+	} else {
+		var relayPeers Peers
+		if err := toml.Unmarshal(contentRelay, &relayPeers); err != nil {
+			log.Error("failed to unmarshal relay peers config: %v", err)
+		}
+		if err := s.updateRelayPeers(relayPeers.Relays); err != nil {
+			_ = err
+		}
+		relayConfigWatch = utils.WatchFile(fileNameRelay, func() {
+			log.Info("relay peer config: %s has been updated", fileNameRelay)
+			if contentRelay, err = s.loadConfigFile(fileNameRelay); err == nil {
+				var relayPeers Peers
+				if err = toml.Unmarshal(contentRelay, &relayPeers); err == nil {
+					_ = s.updateRelayPeers(relayPeers.Relays)
+				}
+			}
+		})
+	}
 
 	// tee.toml
 	fileNameTee := filepath.Join(ExeDirPath, "etc", "tee.toml")
@@ -429,12 +462,6 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 	if s.config == nil {
 		s.config = &conf
 		s.log.SetLogLevel(conf.LogLevel)
-		if conf.WebRTC.Enable {
-			s.webrtcServer = NewWebRTCServer(s, &conf.WebRTC)
-			if err := s.webrtcServer.Start(); err != nil {
-				log.Error("failed to start WebRTC server: %v", err)
-			}
-		}
 		return err
 	}
 
@@ -458,19 +485,6 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 		log.Info("set default cipher scheme to %d", conf.DefaultCipherScheme)
 		s.config.DefaultCipherScheme = conf.DefaultCipherScheme
 	}
-
-	// handle WebRTC configuration change
-	if conf.WebRTC.Enable && s.webrtcServer == nil {
-		s.webrtcServer = NewWebRTCServer(s, &conf.WebRTC)
-		if err := s.webrtcServer.Start(); err != nil {
-			log.Error("failed to start WebRTC server: %v", err)
-		}
-	}
-	if !conf.WebRTC.Enable && s.webrtcServer != nil {
-		s.webrtcServer.Stop()
-		s.webrtcServer = nil
-	}
-	s.config.WebRTC = conf.WebRTC
 
 	return err
 }
@@ -568,6 +582,31 @@ func (s *UdpServer) updateAgentPeers(peers []*core.UdpPeer) (err error) {
 	return err
 }
 
+func (s *UdpServer) updateRelayPeers(peers []*core.UdpPeer) (err error) {
+	utils.CatchPanicThenRun(func() {
+		err = errLoadConfig
+	})
+
+	relayPeerMap := make(map[string]*core.UdpPeer)
+	for _, p := range peers {
+		p.Type = core.NHP_RELAY
+		s.device.AddPeer(p)
+		relayPeerMap[p.PublicKeyBase64()] = p
+	}
+
+	// remove old peers from device
+	s.relayPeerMapMutex.Lock()
+	defer s.relayPeerMapMutex.Unlock()
+	for pubKey := range s.relayPeerMap {
+		if _, found := relayPeerMap[pubKey]; !found {
+			s.device.RemovePeer(pubKey)
+		}
+	}
+	s.relayPeerMap = relayPeerMap
+
+	return err
+}
+
 func (s *UdpServer) updateResources(aspMap common.AuthSvcProviderMap) (err error) {
 	utils.CatchPanicThenRun(func() {
 		err = errLoadConfig
@@ -630,6 +669,9 @@ func (s *UdpServer) StopConfigWatch() {
 	//add dbConfigWatch
 	if dbConfigWatch != nil {
 		dbConfigWatch.Close()
+	}
+	if relayConfigWatch != nil {
+		relayConfigWatch.Close()
 	}
 	if teeWatch != nil {
 		teeWatch.Close()

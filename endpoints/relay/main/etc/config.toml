@@ -1,0 +1,33 @@
+# NHP Relay Service Configuration
+
+# HTTP listener
+listenIp   = "0.0.0.0"
+listenPort = 8080
+
+# TLS (set enableTLS = true and provide cert/key paths for production HTTPS)
+enableTLS   = false
+tlsCertFile = ""
+tlsKeyFile  = ""
+
+# Cipher scheme: 0 = Curve25519 (default), 1 = SM2/GMSM.
+cipherScheme = 0
+
+# Relay identity key — generate with: nhp-relayd keygen --curve (or --sm2)
+privateKeyBase64 = ""
+
+# NHP Server upstream (UDP)
+nhpServerHost = "127.0.0.1"
+nhpServerPort = 62206
+nhpServerPublicKeyBase64 = ""
+
+# Keepalive interval in seconds
+keepaliveIntervalS = 20
+
+# Timeouts in milliseconds
+readTimeoutMs  = 10000
+writeTimeoutMs = 10000
+idleTimeoutMs  = 60000
+udpTimeoutMs   = 5000
+
+# Log level: 0=silent, 1=error, 2=info, 3=debug
+logLevel = 2

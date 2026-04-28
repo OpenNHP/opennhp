@@ -200,6 +200,48 @@ All daemons support the `keygen` command:
 ./nhp-serverd keygen --sm2    # Generate SM2 keys (default)
 ```
 
+## Demo Deployment (AWS)
+
+The `terraform/demo/` stack provisions the public demo (nhp-server, nhp-ac,
+nhp-relay + nginx + Let's Encrypt) in `us-east-2` on the OpenNHP demo AWS
+account. The state bucket is configured at `terraform init` time via
+`-backend-config="bucket=$TF_STATE_BUCKET"` (workflows read the
+`TF_STATE_BUCKET` repo variable) so the account ID is not committed in source.
+All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
+
+### `opennhp/demo` schema
+
+The secret is JSON; fields are added idempotently by scripts and workflows.
+Missing fields are auto-generated on the next `scripts/generate-nhp-keys.sh`
+run (triggered by the `deploy-demo-v2` workflow).
+
+| Field | Populated by | Used by |
+| --- | --- | --- |
+| `nhp_server_private_key` / `_public_key` | `scripts/generate-nhp-keys.sh` | server `config.toml`; peer tables on ac/relay |
+| `nhp_ac_private_key` / `_public_key` | same | ac `config.toml`; peer table on server |
+| `nhp_relay_private_key` / `_public_key` | same | relay `config.toml`; peer table on server |
+| `nhp_agent_private_key` / `_public_key` | same | native nhp-agent clients; `agent.toml` on server |
+| `nhp_jsagent_private_key` / `_public_key` | same | `OpenNHP/js-agent` demo page (rendered into `config.json` at deploy time) |
+| `cloudflare_api_token` | manually provisioned once | Terraform + certbot DNS-01 (`Zone:DNS:Edit` + `Zone:Zone:Read`) |
+| `cloudflare_zone_id` | same | Terraform DNS records for `opennhp.org` |
+| `ssh_deploy_private_key` | manually bootstrapped (see `terraform/demo/RUNBOOK.md`); never enters Terraform state | CI SSH into EC2 hosts |
+| `ssh_deploy_public_key` | derived in CI via `ssh-keygen -y` and passed as `TF_VAR_deploy_public_key` | `aws_key_pair.deploy` → `ec2-user` authorized keys |
+| `ssh_host_keys` | `infra-demo` workflow on `apply` | CI `known_hosts` for strict host key checking |
+
+### Key-generation flow
+
+`scripts/generate-nhp-keys.sh`:
+
+1. Reads existing values from `opennhp/demo`.
+2. Uses each daemon's `keygen --curve --json` to fill any missing pair.
+3. Writes the merged object back to `opennhp/demo` (preserving unrelated fields).
+4. Renders `deploy/config-templates/` via `envsubst` into `deploy/configs/` for
+   scp to the hosts.
+
+Pass `--regenerate` to the script (or `regenerate_keys=yes` on the workflow) to
+force a full rotation. This breaks every registered agent/ac/relay until their
+peer tables are redeployed in lockstep, so use sparingly.
+
 ## Protocol Flow
 
 1. Agent sends encrypted knock (`NHP_KNK`) to Server

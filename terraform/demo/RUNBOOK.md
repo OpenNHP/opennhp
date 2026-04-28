@@ -1,0 +1,191 @@
+# Demo Terraform Runbook
+
+## One-time migration: SSH deploy key out of Terraform state
+
+Until this migration runs, the SSH deploy private key is stored in plaintext
+inside Terraform state (`tls_private_key.deploy.private_key_openssh`). Anyone
+with read access to the state bucket can recover it.
+
+After this migration:
+- Terraform only holds the **public** key (passed in via
+  `TF_VAR_deploy_public_key`).
+- The **private** key lives only in AWS Secrets Manager
+  (`opennhp/demo` → `ssh_deploy_private_key`).
+- Future `terraform apply` runs never read or write the private key.
+
+The migration **does not rotate** the keypair — it only relocates ownership.
+The same public key stays registered with EC2; SSH access is uninterrupted.
+
+If you suspect the existing private key is compromised (it has been in state
+for a while; assume any historical state-bucket reader has a copy), rotate
+**after** this migration completes — see "Rotation" below.
+
+### Prerequisites
+
+- AWS CLI configured against the demo account, with
+  `secretsmanager:GetSecretValue` and `secretsmanager:PutSecretValue` on
+  `opennhp/demo`.
+- `terraform` ≥ 1.10, `jq`, `ssh-keygen`, `gh` (GitHub CLI) on PATH.
+- `cd terraform/demo`
+- `terraform init -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="region=us-east-2"`
+
+### Step 1 — Derive the public key from the existing private key
+
+```bash
+PRIV=$(mktemp) && chmod 600 "$PRIV"
+trap 'shred -u "$PRIV" 2>/dev/null || rm -f "$PRIV"' EXIT
+
+aws secretsmanager get-secret-value \
+  --secret-id opennhp/demo --region us-east-2 \
+  --query SecretString --output text \
+  | jq -r '.ssh_deploy_private_key' > "$PRIV"
+
+PUB=$(ssh-keygen -y -f "$PRIV")
+echo "$PUB"
+```
+
+Sanity-check: this string should match the `public_key` field on the existing
+`opennhp-demo` keypair in EC2:
+
+```bash
+aws ec2 describe-key-pairs --key-names opennhp-demo --include-public-key \
+  --region us-east-2 --query 'KeyPairs[0].PublicKey' --output text
+```
+
+If they don't match, **stop** — Secrets Manager and EC2 are out of sync, and
+the migration would lock you out. Investigate before continuing.
+
+### Step 2 — Drop the old resources from state
+
+These are state-only operations; they don't touch AWS.
+
+```bash
+terraform state rm tls_private_key.deploy
+terraform state rm aws_secretsmanager_secret_version.ssh_key_writeback
+terraform state rm aws_key_pair.deploy
+```
+
+### Step 3 — Re-import the existing keypair under the new resource definition
+
+```bash
+export TF_VAR_deploy_public_key="$PUB"
+# Plus the variables Terraform expects for any apply:
+export TF_VAR_cloudflare_api_token="$(aws secretsmanager get-secret-value \
+  --secret-id opennhp/demo --region us-east-2 --query SecretString --output text \
+  | jq -r '.cloudflare_api_token')"
+export TF_VAR_cloudflare_zone_id="$(aws secretsmanager get-secret-value \
+  --secret-id opennhp/demo --region us-east-2 --query SecretString --output text \
+  | jq -r '.cloudflare_zone_id')"
+
+terraform import aws_key_pair.deploy opennhp-demo
+```
+
+### Step 4 — Verify drift is zero
+
+```bash
+terraform plan
+```
+
+Expected: **No changes**. If Terraform wants to recreate `aws_key_pair.deploy`
+or any `aws_instance`, **stop** and reconcile — replacing the keypair forces
+EC2 instance replacement, which takes the demo offline. Recreating an instance
+also blanks any state your demo has accumulated (logs, generated keys on disk,
+etc).
+
+### Step 5 — Commit and push
+
+The repo's `infra-demo` workflow now reads the private key from Secrets
+Manager, derives the public key with `ssh-keygen -y`, and passes it via
+`TF_VAR_deploy_public_key`. After Step 4 shows zero drift, future CI applies
+should be no-ops on the keypair.
+
+---
+
+## Rotation (separate, optional, manual)
+
+Run this only when you're sure you want to invalidate the existing private key
+(e.g., after the migration above, to clear the historical exposure window).
+**Do not automate this** — a mistake locks you out of every demo host.
+
+### Step R1 — Generate a fresh keypair locally
+
+```bash
+NEW_PRIV=$(mktemp) && chmod 600 "$NEW_PRIV"
+trap 'shred -u "$NEW_PRIV" "${NEW_PRIV}.pub" 2>/dev/null || rm -f "$NEW_PRIV" "${NEW_PRIV}.pub"' EXIT
+
+ssh-keygen -t ed25519 -f "$NEW_PRIV" -N "" -C "opennhp-demo-deploy-$(date -u +%Y%m%d)"
+NEW_PUB=$(cat "${NEW_PRIV}.pub")
+```
+
+### Step R2 — Append the new public key to authorized_keys on every host
+
+Use the **current** key (still valid) to add the new one. Do **not** remove
+the old one yet.
+
+```bash
+OLD_PRIV=$(mktemp) && chmod 600 "$OLD_PRIV"
+aws secretsmanager get-secret-value \
+  --secret-id opennhp/demo --region us-east-2 \
+  --query SecretString --output text \
+  | jq -r '.ssh_deploy_private_key' > "$OLD_PRIV"
+
+# Repeat for SERVER, AC, RELAY public IPs (use Terraform outputs)
+for HOST in $SERVER_IP $AC_IP $RELAY_IP; do
+  ssh -i "$OLD_PRIV" ec2-user@"$HOST" \
+    "echo '$NEW_PUB' >> ~/.ssh/authorized_keys"
+done
+```
+
+### Step R3 — Verify the new key works
+
+```bash
+for HOST in $SERVER_IP $AC_IP $RELAY_IP; do
+  ssh -i "$NEW_PRIV" -o StrictHostKeyChecking=yes ec2-user@"$HOST" \
+    'echo OK from $(hostname)'
+done
+```
+
+If any host fails, **stop**. Re-run Step R2 for that host. Do not proceed
+until every host responds with `OK`.
+
+### Step R4 — Swap the keypair in EC2 / Terraform
+
+```bash
+# Drop and re-import with the new public key.
+terraform state rm aws_key_pair.deploy
+aws ec2 delete-key-pair --key-name opennhp-demo --region us-east-2
+aws ec2 import-key-pair --key-name opennhp-demo \
+  --public-key-material "fileb://${NEW_PRIV}.pub" --region us-east-2
+
+export TF_VAR_deploy_public_key="$NEW_PUB"
+terraform import aws_key_pair.deploy opennhp-demo
+terraform plan   # expect: no changes
+```
+
+### Step R5 — Rotate the secret in Secrets Manager
+
+```bash
+SECRETS=$(aws secretsmanager get-secret-value \
+  --secret-id opennhp/demo --region us-east-2 \
+  --query SecretString --output text)
+NEW_PRIV_PEM=$(cat "$NEW_PRIV")
+UPDATED=$(echo "$SECRETS" | jq --arg k "$NEW_PRIV_PEM" '. + {ssh_deploy_private_key: $k}')
+aws secretsmanager put-secret-value \
+  --secret-id opennhp/demo --region us-east-2 \
+  --secret-string "$UPDATED"
+```
+
+### Step R6 — Remove the old key from authorized_keys on every host
+
+Use the **new** key now.
+
+```bash
+OLD_PUB=$(ssh-keygen -y -f "$OLD_PRIV")
+for HOST in $SERVER_IP $AC_IP $RELAY_IP; do
+  ssh -i "$NEW_PRIV" ec2-user@"$HOST" \
+    "grep -vF '$OLD_PUB' ~/.ssh/authorized_keys > ~/.ssh/authorized_keys.new \
+     && mv ~/.ssh/authorized_keys.new ~/.ssh/authorized_keys"
+done
+```
+
+Verify CI still works by running the `deploy-demo-v2` workflow.

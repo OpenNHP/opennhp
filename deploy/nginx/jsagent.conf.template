@@ -1,0 +1,28 @@
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${DOMAIN_AGENT};
+
+    # Cert SAN covers both relay.* and agent.*; keep the single cert.
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN_RELAY}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_RELAY}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    root  /var/www/jsagent;
+    index index.html;
+
+    # /config.json is intentionally world-readable and contains a PUBLIC
+    # demo agent key pair. The browser demo at https://${DOMAIN_AGENT}/
+    # needs to fetch it to bootstrap. The key pair is scoped to the demo
+    # identity only on the NHP server (see agent.toml + resource.toml);
+    # do NOT reuse these keys for anything else. See deploy-demo-v2.yml.
+    location = /config.json {
+        add_header Cache-Control "no-store" always;
+        try_files $uri =404;
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}

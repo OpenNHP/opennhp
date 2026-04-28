@@ -54,15 +54,18 @@ print_menu() {
     echo "  [4] Build NHP-AC"
     echo "  [5] Build NHP-Agent"
     echo "  [6] Build Web-App"
-    echo "  [7] Start All Services"
-    echo "  [8] Stop All Services"
-    echo "  [9] Restart All Services"
-    echo "  [10] View Logs (nhp-server)"
-    echo "  [11] View Logs (nhp-ac)"
-    echo "  [12] View Logs (nhp-agent)"
-    echo "  [13] Clean Docker Images"
-    echo "  [14] Clean ALL (images + volumes + networks)"
-    echo "  [15] Toggle China Mirror (current: $([ "$USE_CHINA_MIRROR" = true ] && echo "ON" || echo "OFF"))"
+    echo "  [7] Build NHP-Relay"
+    echo "  [8] Start All Services"
+    echo "  [9] Stop All Services"
+    echo "  [10] Restart All Services"
+    echo "  [11] View Logs (nhp-server)"
+    echo "  [12] View Logs (nhp-ac)"
+    echo "  [13] View Logs (nhp-agent)"
+    echo "  [14] View Logs (nhp-relay)"
+    echo "  [15] Clean Docker Images"
+    echo "  [16] Clean ALL (images + volumes + networks)"
+    echo "  [17] Generate Keypair"
+    echo "  [18] Toggle China Mirror (current: $([ "$USE_CHINA_MIRROR" = true ] && echo "ON" || echo "OFF"))"
     echo "  [0] Exit"
     echo ""
 }
@@ -158,6 +161,7 @@ clean_images() {
         docker rmi opennhp-server:latest 2>/dev/null || true
         docker rmi opennhp-ac:latest 2>/dev/null || true
         docker rmi opennhp-agent:latest 2>/dev/null || true
+        docker rmi opennhp-relay:latest 2>/dev/null || true
         docker rmi web-app:latest 2>/dev/null || true
 
         # Also remove by compose project name
@@ -198,6 +202,63 @@ clean_all() {
     else
         echo -e "${YELLOW}Operation cancelled.${NC}"
     fi
+}
+
+# Generate keypair
+generate_keypair() {
+    echo -e "${YELLOW}Select service to generate keypair for:${NC}"
+    echo ""
+    echo "  [1] NHP-Server  (opennhp-server)"
+    echo "  [2] NHP-AC      (opennhp-ac)"
+    echo "  [3] NHP-Agent   (opennhp-agent)"
+    echo "  [4] NHP-Relay   (opennhp-relay)"
+    echo ""
+    read -p "Enter service [1-4]: " svc_choice
+
+    local image=""
+    local binary=""
+    case $svc_choice in
+        1) image="opennhp-server"; binary="/nhp-server/nhp-serverd" ;;
+        2) image="opennhp-ac";     binary="/nhp-ac/nhp-acd" ;;
+        3) image="opennhp-agent";  binary="/nhp-agent/nhp-agentd" ;;
+        4) image="opennhp-relay";  binary="/nhp-relay/nhp-relayd" ;;
+        *)
+            echo -e "${RED}Invalid service selection.${NC}"
+            return
+            ;;
+    esac
+
+    # Check if image exists
+    if ! docker image inspect "$image" &>/dev/null; then
+        echo -e "${RED}Error: Docker image '$image' not found. Please build it first.${NC}"
+        return
+    fi
+
+    echo ""
+    echo -e "${YELLOW}Select cipher algorithm:${NC}"
+    echo ""
+    echo "  [1] Curve25519 (international standard)"
+    echo "  [2] SM2/GMSM   (Chinese national standard)"
+    echo ""
+    read -p "Enter algorithm [1-2]: " algo_choice
+
+    local algo_flag=""
+    local algo_name=""
+    case $algo_choice in
+        1) algo_flag="--curve"; algo_name="Curve25519" ;;
+        2) algo_flag="--sm2";   algo_name="SM2" ;;
+        *)
+            echo -e "${RED}Invalid algorithm selection.${NC}"
+            return
+            ;;
+    esac
+
+    echo ""
+    echo -e "${BLUE}Generating $algo_name keypair using $image ...${NC}"
+    echo ""
+    docker run --rm --entrypoint "$binary" "$image" keygen "$algo_flag"
+    echo ""
+    echo -e "${GREEN}Keypair generated! Copy the keys into the corresponding config files.${NC}"
 }
 
 # Toggle China mirror
@@ -256,7 +317,7 @@ main() {
         print_header
         print_menu
 
-        read -p "Enter your choice [0-15]: " choice
+        read -p "Enter your choice [0-18]: " choice
         echo ""
 
         case $choice in
@@ -279,30 +340,39 @@ main() {
                 rebuild_and_restart_service "web-app"
                 ;;
             7)
-                start_services
+                rebuild_and_restart_service "nhp-relay"
                 ;;
             8)
-                stop_services
+                start_services
                 ;;
             9)
-                restart_services
+                stop_services
                 ;;
             10)
-                view_logs "nhp-server"
+                restart_services
                 ;;
             11)
-                view_logs "nhp-ac"
+                view_logs "nhp-server"
                 ;;
             12)
-                view_logs "nhp-agent"
+                view_logs "nhp-ac"
                 ;;
             13)
-                clean_images
+                view_logs "nhp-agent"
                 ;;
             14)
-                clean_all
+                view_logs "nhp-relay"
                 ;;
             15)
+                clean_images
+                ;;
+            16)
+                clean_all
+                ;;
+            17)
+                generate_keypair
+                ;;
+            18)
                 toggle_china_mirror
                 ;;
             0)

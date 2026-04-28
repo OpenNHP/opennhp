@@ -13,8 +13,6 @@ import (
 
 	"github.com/OpenNHP/opennhp/nhp/etcd"
 
-	"github.com/pion/webrtc/v4"
-
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -41,16 +39,23 @@ type UdpServer struct {
 	localIp    string
 	localMac   string
 
-	device       *core.Device
-	httpServer   *HttpServer
-	webrtcServer *WebRTCServer
-	wg           sync.WaitGroup
-	running      atomic.Bool
+	device     *core.Device
+	httpServer *HttpServer
+	wg         sync.WaitGroup
+	running    atomic.Bool
 
 	// connection and remote transaction management
 
 	remoteConnectionMapMutex sync.Mutex
 	remoteConnectionMap      map[string]*UdpConn // indexed by remote UDP address
+
+	// relayConnCount tracks how many relay-forwarded client connections
+	// each NHP_RLY peer currently has open in remoteConnectionMap. Used
+	// to enforce MaxConnectionsPerRelay in O(1) instead of scanning the
+	// entire connection map under remoteConnectionMapMutex (which is
+	// also held by recvPacketRoutine for every incoming UDP packet).
+	relayConnCountMutex sync.Mutex
+	relayConnCount      map[string]int // indexed by relayAddr.String()
 
 	agentPeerMapMutex sync.Mutex
 	agentPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
@@ -60,6 +65,9 @@ type UdpServer struct {
 
 	acPeerMapMutex sync.Mutex
 	acPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
+
+	relayPeerMapMutex sync.Mutex
+	relayPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
 	dbConnectionMapMutex sync.Mutex
 	dbConnectionMap      map[string]*DBConn // ac connection is indexed by remote IP address
@@ -111,8 +119,13 @@ type UdpConn struct {
 	ConnData       *core.ConnectionData
 	isACConnection bool // Immutable. Don't change it after creation. Conn object is also stored in acConnectionMap which is indexed by ACId
 	isDBConnection bool // Immutable. Don't change it after creation. Conn object is also stored in dbConnectionMap which is indexed by DBId
-	isWebRTC       bool
-	dc             *webrtc.DataChannel
+
+	// mapKey is the exact key under which this conn was inserted into
+	// remoteConnectionMap. For direct UDP clients it equals
+	// ConnData.RemoteAddr.String(); for relay-forwarded clients it is a
+	// compound key "relay:<relayAddr>:<realClientAddr>". connectionRoutine
+	// uses this on teardown so the right entry gets removed.
+	mapKey string
 }
 
 type ACConn struct {
@@ -175,13 +188,6 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 	if err != nil {
 		return err
-	}
-
-	if s.config.WebRTC.Enable {
-		s.webrtcServer = NewWebRTCServer(s, &s.config.WebRTC)
-		if err := s.webrtcServer.Start(); err != nil {
-			log.Error("failed to start WebRTC server: %v", err)
-		}
 	}
 
 	var netIP net.IP
@@ -249,8 +255,10 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 
 	s.remoteConnectionMap = make(map[string]*UdpConn)
+	s.relayConnCount = make(map[string]int)
 	s.acConnectionMap = make(map[string]*ACConn)
 	s.dbConnectionMap = make(map[string]*DBConn)
+	s.relayPeerMap = make(map[string]*core.UdpPeer)
 	s.tokenStore = common.NewTokenStore[*ACTokenEntry]()
 	s.blockAddrMap = make(map[string]*BlockAddr)
 	s.signals.stop = make(chan struct{})
@@ -285,9 +293,6 @@ func (s *UdpServer) Stop() {
 	}
 	if s.etcdConn != nil {
 		s.etcdConn.Close()
-	}
-	if s.webrtcServer != nil {
-		s.webrtcServer.Stop()
 	}
 	close(s.signals.stop)
 	s.listenConn.Close()
@@ -351,11 +356,6 @@ func (s *UdpServer) SendPacket(pkt *core.Packet, conn *UdpConn) (n int, err erro
 	pktType := core.HeaderTypeToString(pkt.HeaderType)
 	log.Info("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
 	log.Evaluate("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
-
-	if conn.isWebRTC && conn.dc != nil {
-		err = conn.dc.Send(pkt.Content)
-		return len(pkt.Content), err
-	}
 
 	return s.listenConn.WriteToUDP(pkt.Content, conn.ConnData.RemoteAddr)
 }
@@ -458,6 +458,7 @@ func (s *UdpServer) recvPacketRoutine() {
 			conn = &UdpConn{
 				isACConnection: isACConn,
 				isDBConnection: isDBConn,
+				mapKey:         addrStr,
 			}
 			// setup new routine for connection
 			conn.ConnData = &core.ConnectionData{
@@ -539,13 +540,35 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			s.dbConnectionMapMutex.Unlock()
 		}
 
-		// remove the udp conn from remoteConnectionMap
+		// remove the udp conn from remoteConnectionMap using the same key
+		// that was used on insert. For direct UDP clients that's addrStr;
+		// for relay-forwarded clients it's the compound "relay:..." key
+		// (see msghandler.HandleRelayForward). Using RemoteAddr.String()
+		// here would leak relay-forwarded entries because RemoteAddr is
+		// just the relay's address.
+		mapKey := conn.mapKey
+		if mapKey == "" {
+			mapKey = addrStr
+		}
 		s.remoteConnectionMapMutex.Lock()
-		delete(s.remoteConnectionMap, addrStr)
+		_, stillPresent := s.remoteConnectionMap[mapKey]
+		if stillPresent {
+			delete(s.remoteConnectionMap, mapKey)
+		}
 		if len(s.remoteConnectionMap) <= OverloadConnectionThreshold {
 			s.device.SetOverload(false)
 		}
 		s.remoteConnectionMapMutex.Unlock()
+
+		// Decrement the per-relay counter only if this routine actually
+		// owned the map entry (stillPresent). If a stale-cleanup path
+		// in HandleRelayForward already deleted us, the counter was
+		// also rolled back by that path so we must not double-count.
+		if stillPresent {
+			if relayAddr := relayAddrFromConnKey(mapKey); relayAddr != "" {
+				s.decRelayConnCount(relayAddr)
+			}
+		}
 
 		conn.Close()
 	}()
@@ -722,6 +745,11 @@ func (s *UdpServer) recvMessageRoutine() {
 				// aynchronously process knock messages with ack response
 				go func(p *core.PacketParserData) {
 					_ = s.HandleKnockRequest(p)
+				}(ppd)
+
+			case core.NHP_RLY:
+				go func(p *core.PacketParserData) {
+					_ = s.HandleRelayForward(p)
 				}(ppd)
 
 			case core.NHP_AOL:

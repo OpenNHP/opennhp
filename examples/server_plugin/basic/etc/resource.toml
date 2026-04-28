@@ -22,9 +22,12 @@ CookieDomain = "opennhp.org"
 # Addr.Protocol: whether to pass a specific protocol among "tcp", "udp", "any". "any" also includes ping traffic.
 # PortSuffix: true: fill ack field "resHost" with "{Hostname}:{Port}", false: fill ack field "resHost" with just "{Hostname}"
 ["demo".Resources."demoServer"]
-ACId = "testAC-1"
+ACId = "demo-ac"
 Hostname = "acdemo.opennhp.org"
-Addr.Ip = "220.191.216.236"
+# ${AC_PRIVATE_IP} is substituted at deploy time by the deploy-demo-v2
+# workflow (via envsubst). For local builds, replace it with the AC's
+# reachable IP before starting nhp-serverd.
+Addr.Ip = "${AC_PRIVATE_IP}"
 Addr.Port = 443 # empty or 0 for all ports
 Addr.Protocol = "" # "tcp/udp/any", empty for "any"
 PortSuffix = false

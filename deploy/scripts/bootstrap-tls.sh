@@ -4,8 +4,15 @@
 #
 # Expected env vars (set by caller):
 #   COMPONENT         = "server" | "ac" | "relay"
-#   PRIMARY_DOMAIN    = e.g. "demologin.opennhp.org"
+#   PRIMARY_DOMAIN    = e.g. "auth-plugin.opennhp.org"
 #   EXTRA_DOMAINS     = space-separated additional SANs (may be empty)
+#   LEGACY_CERT_NAME  = optional. Old certbot lineage name to migrate from
+#                       (e.g. "demologin.opennhp.org"). When the host has
+#                       /etc/letsencrypt/renewal/$LEGACY_CERT_NAME.conf but no
+#                       lineage at $PRIMARY_DOMAIN yet, the old lineage is
+#                       reissued with --cert-name $PRIMARY_DOMAIN --expand so
+#                       its SAN set picks up the new primary domain and the
+#                       lineage is renamed in one step.
 #   CF_API_TOKEN_FILE = path to a file (0600) containing the Cloudflare token.
 #                       Preferred: keeps the token off argv/env exposed via ps.
 #                       The file is deleted after we read it.
@@ -21,6 +28,7 @@ set -euo pipefail
 : "${ACME_EMAIL:?}"
 : "${NGINX_CONF:?}"
 EXTRA_DOMAINS="${EXTRA_DOMAINS:-}"
+LEGACY_CERT_NAME="${LEGACY_CERT_NAME:-}"
 
 # Resolve Cloudflare token, preferring the file-based source.
 if [ -n "${CF_API_TOKEN_FILE:-}" ]; then
@@ -93,6 +101,21 @@ if [ "$NEED_ISSUE" = "1" ]; then
         sudo rm -rf /etc/letsencrypt/accounts/*
     fi
 
+    # If a legacy lineage exists and the new lineage doesn't, migrate the
+    # old lineage in place: certbot --cert-name $PRIMARY_DOMAIN --expand will
+    # rename the lineage directory + renewal config to the new primary name
+    # and add any missing SANs (the legacy hostname stays as a SAN since we
+    # pass it via $EXTRA_DOMAINS). Without --expand, certbot v2+ refuses
+    # non-interactively when the requested SAN set is a superset of an
+    # existing lineage and aborts the deploy.
+    CERT_NAME_ARGS=""
+    if [ -n "$LEGACY_CERT_NAME" ] \
+       && [ ! -f "$CERT_DIR/fullchain.pem" ] \
+       && [ -f "/etc/letsencrypt/renewal/${LEGACY_CERT_NAME}.conf" ]; then
+        echo "[tls] migrating legacy lineage $LEGACY_CERT_NAME -> $PRIMARY_DOMAIN"
+        CERT_NAME_ARGS="--cert-name $PRIMARY_DOMAIN --expand"
+    fi
+
     echo "[tls] requesting certificate: $D_ARGS"
     sudo "$CERTBOT_BIN" certonly \
         --non-interactive --agree-tos \
@@ -100,6 +123,7 @@ if [ "$NEED_ISSUE" = "1" ]; then
         --dns-cloudflare --dns-cloudflare-credentials "$CF_INI" \
         --dns-cloudflare-propagation-seconds 30 \
         --keep-until-expiring \
+        $CERT_NAME_ARGS \
         $D_ARGS
 fi
 

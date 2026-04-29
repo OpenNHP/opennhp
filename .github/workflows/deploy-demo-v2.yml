@@ -518,6 +518,7 @@ jobs:
             "COMPONENT=server \
              PRIMARY_DOMAIN='${{ env.DOMAIN_SERVER }}' \
              EXTRA_DOMAINS='${{ env.LEGACY_DOMAIN_SERVER }}' \
+             LEGACY_CERT_NAME='${{ env.LEGACY_DOMAIN_SERVER }}' \
              CF_API_TOKEN_FILE=/tmp/cf_token \
              ACME_EMAIL='${{ env.ACME_EMAIL }}' \
              NGINX_CONF='/tmp/server-nginx.conf' \
@@ -674,6 +675,7 @@ jobs:
             "COMPONENT=ac \
              PRIMARY_DOMAIN='${{ env.DOMAIN_AC }}' \
              EXTRA_DOMAINS='${{ env.LEGACY_DOMAIN_AC }}' \
+             LEGACY_CERT_NAME='${{ env.LEGACY_DOMAIN_AC }}' \
              CF_API_TOKEN_FILE=/tmp/cf_token \
              ACME_EMAIL='${{ env.ACME_EMAIL }}' \
              NGINX_CONF='/tmp/ac-nginx.conf' \

@@ -105,19 +105,24 @@ if [ "$NEED_ISSUE" = "1" ]; then
         sudo rm -rf /etc/letsencrypt/accounts/*
     fi
 
-    # If a legacy lineage exists and the new lineage doesn't, migrate the
-    # old lineage in place: certbot --cert-name $PRIMARY_DOMAIN --expand will
-    # rename the lineage directory + renewal config to the new primary name
-    # and add any missing SANs (the legacy hostname stays as a SAN since we
-    # pass it via $EXTRA_DOMAINS). Without --expand, certbot v2+ refuses
-    # non-interactively when the requested SAN set is a superset of an
-    # existing lineage and aborts the deploy.
-    CERT_NAME_ARGS=""
+    # If a legacy lineage exists and the new lineage doesn't, delete the
+    # legacy lineage outright so certbot issues the new one from a clean
+    # slate. Earlier we tried `--cert-name $PRIMARY_DOMAIN --expand` to
+    # migrate in place, but certbot v4 does not actually rename the old
+    # renewal config that way: it ends up with both lineages on disk and
+    # reuses stale ACME state from the legacy one, which the Let's Encrypt
+    # server then rejects with "No such authorization". The legacy hostname
+    # stays in the new cert as a SAN via $EXTRA_DOMAINS.
     if [ -n "$LEGACY_CERT_NAME" ] \
        && ! sudo test -f "$CERT_DIR/fullchain.pem" \
        && sudo test -f "/etc/letsencrypt/renewal/${LEGACY_CERT_NAME}.conf"; then
-        echo "[tls] migrating legacy lineage $LEGACY_CERT_NAME -> $PRIMARY_DOMAIN"
-        CERT_NAME_ARGS="--cert-name $PRIMARY_DOMAIN --expand"
+        echo "[tls] deleting legacy lineage $LEGACY_CERT_NAME so $PRIMARY_DOMAIN can be issued cleanly"
+        sudo "$CERTBOT_BIN" delete --non-interactive --cert-name "$LEGACY_CERT_NAME" || \
+            echo "[tls] warning: certbot delete failed; continuing"
+        # Wipe local ACME account state too — the dnf-installed certbot v2
+        # used to register here and v4+ has rejected those records with
+        # "Account not found" / "No such authorization" upstream.
+        sudo rm -rf /etc/letsencrypt/accounts/*
     fi
 
     echo "[tls] requesting certificate: $D_ARGS"
@@ -127,7 +132,6 @@ if [ "$NEED_ISSUE" = "1" ]; then
         --dns-cloudflare --dns-cloudflare-credentials "$CF_INI" \
         --dns-cloudflare-propagation-seconds 30 \
         --keep-until-expiring \
-        $CERT_NAME_ARGS \
         $D_ARGS
 fi
 

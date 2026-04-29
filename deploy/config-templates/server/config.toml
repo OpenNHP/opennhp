@@ -4,6 +4,6 @@ PrivateKeyBase64 = "${NHP_SERVER_PRIVATE_KEY}"
 DefaultCipherScheme = 0
 ListenIp = ""
 ListenPort = 62206
-Hostname = "demologin.${DOMAIN}"
+Hostname = "auth-plugin.${DOMAIN}"
 LogLevel = 3
 DisableAgentValidation = false

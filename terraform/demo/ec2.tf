@@ -16,7 +16,7 @@ resource "aws_eip" "relay" {
 
 # --- EC2 Instances ---
 
-# nhp-server (demologin.opennhp.org)
+# nhp-server (auth-plugin.opennhp.org; legacy: demologin.opennhp.org)
 resource "aws_instance" "server" {
   ami                    = data.aws_ami.amazon_linux_2023.id
   instance_type          = var.instance_type
@@ -41,7 +41,7 @@ resource "aws_eip_association" "server" {
   allocation_id = aws_eip.server.id
 }
 
-# nhp-ac (acdemo.opennhp.org)
+# nhp-ac (ac.opennhp.org; legacy: acdemo.opennhp.org)
 resource "aws_instance" "ac" {
   ami                    = data.aws_ami.amazon_linux_2023.id
   instance_type          = var.instance_type

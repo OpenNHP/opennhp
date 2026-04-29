@@ -1,7 +1,7 @@
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
-    server_name ${DOMAIN_SERVER};
+    server_name ${DOMAIN_SERVER} ${LEGACY_DOMAIN_SERVER};
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN_SERVER}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_SERVER}/privkey.pem;

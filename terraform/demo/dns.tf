@@ -1,24 +1,47 @@
 # Cloudflare DNS records for opennhp.org
 # proxied = false because NHP uses UDP which Cloudflare proxy doesn't support
 
-resource "cloudflare_record" "demologin" {
+resource "cloudflare_record" "auth_plugin" {
   zone_id = var.cloudflare_zone_id
-  name    = "demologin"
+  name    = "auth-plugin"
   content = aws_eip.server.public_ip
   type    = "A"
   proxied = false
   ttl     = 300
-  comment = "NHP Server demo - managed by Terraform"
+  comment = "NHP Server (auth plugin) - managed by Terraform"
+}
+
+resource "cloudflare_record" "ac" {
+  zone_id = var.cloudflare_zone_id
+  name    = "ac"
+  content = aws_eip.ac.public_ip
+  type    = "A"
+  proxied = false
+  ttl     = 300
+  comment = "NHP AC - managed by Terraform"
+}
+
+# Legacy aliases. Kept as CNAMEs to the new primary names so existing
+# agents, bookmarks, and shipped plugin configs that still reference the
+# old hostnames continue to work.
+resource "cloudflare_record" "demologin" {
+  zone_id = var.cloudflare_zone_id
+  name    = "demologin"
+  content = "auth-plugin.opennhp.org"
+  type    = "CNAME"
+  proxied = false
+  ttl     = 300
+  comment = "Legacy alias for auth-plugin.opennhp.org - managed by Terraform"
 }
 
 resource "cloudflare_record" "acdemo" {
   zone_id = var.cloudflare_zone_id
   name    = "acdemo"
-  content = aws_eip.ac.public_ip
-  type    = "A"
+  content = "ac.opennhp.org"
+  type    = "CNAME"
   proxied = false
   ttl     = 300
-  comment = "NHP AC demo - managed by Terraform"
+  comment = "Legacy alias for ac.opennhp.org - managed by Terraform"
 }
 
 resource "cloudflare_record" "relay" {

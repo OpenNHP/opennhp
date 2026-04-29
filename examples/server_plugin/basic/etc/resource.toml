@@ -9,7 +9,7 @@
 ["demo"]
 SkipAuth = true
 OpenTime = 15
-RedirectUrl = "https://acdemo.opennhp.org"
+RedirectUrl = "https://ac.opennhp.org"
 RedirectWithParams = false
 CookieDomain = "opennhp.org"
 
@@ -23,7 +23,7 @@ CookieDomain = "opennhp.org"
 # PortSuffix: true: fill ack field "resHost" with "{Hostname}:{Port}", false: fill ack field "resHost" with just "{Hostname}"
 ["demo".Resources."demoServer"]
 ACId = "demo-ac"
-Hostname = "acdemo.opennhp.org"
+Hostname = "ac.opennhp.org"
 # ${AC_PRIVATE_IP} is substituted at deploy time by the deploy-demo-v2
 # workflow (via envsubst). For local builds, replace it with the AC's
 # reachable IP before starting nhp-serverd.

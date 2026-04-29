@@ -1,5 +1,5 @@
 output "server_public_ip" {
-  description = "NHP Server public IP (demologin.opennhp.org)"
+  description = "NHP Server public IP (auth-plugin.opennhp.org; legacy: demologin.opennhp.org)"
   value       = aws_eip.server.public_ip
 }
 
@@ -9,7 +9,7 @@ output "server_private_ip" {
 }
 
 output "ac_public_ip" {
-  description = "NHP AC public IP (acdemo.opennhp.org)"
+  description = "NHP AC public IP (ac.opennhp.org; legacy: acdemo.opennhp.org)"
   value       = aws_eip.ac.public_ip
 }
 
@@ -31,10 +31,12 @@ output "relay_private_ip" {
 output "dns_records" {
   description = "DNS records created"
   value = {
-    demologin = "demologin.${var.domain} -> ${aws_eip.server.public_ip}"
-    acdemo    = "acdemo.${var.domain} -> ${aws_eip.ac.public_ip}"
-    relay     = "relay.${var.domain} -> ${aws_eip.relay.public_ip}"
-    agent     = "agent.${var.domain} -> ${aws_eip.relay.public_ip}"
+    auth_plugin = "auth-plugin.${var.domain} -> ${aws_eip.server.public_ip}"
+    ac          = "ac.${var.domain} -> ${aws_eip.ac.public_ip}"
+    demologin   = "demologin.${var.domain} -> CNAME auth-plugin.${var.domain} (legacy)"
+    acdemo      = "acdemo.${var.domain} -> CNAME ac.${var.domain} (legacy)"
+    relay       = "relay.${var.domain} -> ${aws_eip.relay.public_ip}"
+    agent       = "agent.${var.domain} -> ${aws_eip.relay.public_ip}"
   }
 }
 

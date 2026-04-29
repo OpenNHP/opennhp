@@ -52,10 +52,15 @@ env:
   REGENERATE_KEYS: ${{ github.event.inputs.regenerate_keys }}
   JSAGENT_BRANCH: ${{ github.event.inputs.jsagent_branch || 'main' }}
   ACME_EMAIL: dev@layerv.ai
-  DOMAIN_SERVER: demologin.opennhp.org
-  DOMAIN_AC: acdemo.opennhp.org
+  DOMAIN_SERVER: auth-plugin.opennhp.org
+  DOMAIN_AC: ac.opennhp.org
   DOMAIN_RELAY: relay.opennhp.org
   DOMAIN_AGENT: agent.opennhp.org
+  # Legacy hostnames retained as DNS CNAMEs to the new primaries; included
+  # as TLS SANs and as nginx server_name aliases so existing agents and
+  # bookmarks continue to work.
+  LEGACY_DOMAIN_SERVER: demologin.opennhp.org
+  LEGACY_DOMAIN_AC: acdemo.opennhp.org
 
 jobs:
   # ─────────────────────────────────────────────────────────────
@@ -497,8 +502,10 @@ jobs:
             --query SecretString --output text \
             | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['cloudflare_api_token'])")
 
-          export DOMAIN_SERVER='${{ env.DOMAIN_SERVER }}'
-          envsubst '$DOMAIN_SERVER' < repo/deploy/nginx/server.conf.template > /tmp/server-nginx.conf
+          export DOMAIN_SERVER='${{ env.DOMAIN_SERVER }}' \
+                 LEGACY_DOMAIN_SERVER='${{ env.LEGACY_DOMAIN_SERVER }}'
+          envsubst '$DOMAIN_SERVER $LEGACY_DOMAIN_SERVER' \
+            < repo/deploy/nginx/server.conf.template > /tmp/server-nginx.conf
 
           scp repo/deploy/scripts/bootstrap-tls.sh nhp-server:/tmp/bootstrap-tls.sh
           scp /tmp/server-nginx.conf nhp-server:/tmp/server-nginx.conf
@@ -510,6 +517,8 @@ jobs:
           ssh nhp-server \
             "COMPONENT=server \
              PRIMARY_DOMAIN='${{ env.DOMAIN_SERVER }}' \
+             EXTRA_DOMAINS='${{ env.LEGACY_DOMAIN_SERVER }}' \
+             LEGACY_CERT_NAME='${{ env.LEGACY_DOMAIN_SERVER }}' \
              CF_API_TOKEN_FILE=/tmp/cf_token \
              ACME_EMAIL='${{ env.ACME_EMAIL }}' \
              NGINX_CONF='/tmp/server-nginx.conf' \
@@ -650,8 +659,10 @@ jobs:
             --query SecretString --output text \
             | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['cloudflare_api_token'])")
 
-          export DOMAIN_AC='${{ env.DOMAIN_AC }}'
-          envsubst '$DOMAIN_AC' < repo/deploy/nginx/ac.conf.template > /tmp/ac-nginx.conf
+          export DOMAIN_AC='${{ env.DOMAIN_AC }}' \
+                 LEGACY_DOMAIN_AC='${{ env.LEGACY_DOMAIN_AC }}'
+          envsubst '$DOMAIN_AC $LEGACY_DOMAIN_AC' \
+            < repo/deploy/nginx/ac.conf.template > /tmp/ac-nginx.conf
 
           scp repo/deploy/scripts/bootstrap-tls.sh nhp-ac:/tmp/bootstrap-tls.sh
           scp /tmp/ac-nginx.conf nhp-ac:/tmp/ac-nginx.conf
@@ -663,6 +674,8 @@ jobs:
           ssh nhp-ac \
             "COMPONENT=ac \
              PRIMARY_DOMAIN='${{ env.DOMAIN_AC }}' \
+             EXTRA_DOMAINS='${{ env.LEGACY_DOMAIN_AC }}' \
+             LEGACY_CERT_NAME='${{ env.LEGACY_DOMAIN_AC }}' \
              CF_API_TOKEN_FILE=/tmp/cf_token \
              ACME_EMAIL='${{ env.ACME_EMAIL }}' \
              NGINX_CONF='/tmp/ac-nginx.conf' \

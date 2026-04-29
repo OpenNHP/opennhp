@@ -526,6 +526,7 @@ func AuthWithNHP(req *common.NhpAuthRequest, helper *plugins.NhpServerPluginHelp
 // allowedOrigins is the list of trusted origins for CORS
 var allowedOrigins = []string{
 	"https://nhp.opennhp.org",
+	"https://ac.opennhp.org",
 	"https://acdemo.opennhp.org",
 	"https://demo.opennhp.org",
 }

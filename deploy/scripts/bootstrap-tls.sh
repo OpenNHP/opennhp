@@ -79,9 +79,13 @@ EOF
 sudo chmod 600 "$CF_INI"
 
 # --- Obtain certificate (skip if current cert is still valid for >30 days) ---
+# All path checks under /etc/letsencrypt/ go through sudo because the directory
+# tree is 0700 root:root on Amazon Linux. A bare `[ -f ... ]` as ec2-user
+# silently returns false on permission-denied, which previously caused the
+# legacy-lineage migration branch to never fire.
 CERT_DIR="/etc/letsencrypt/live/$PRIMARY_DOMAIN"
 NEED_ISSUE=1
-if [ -f "$CERT_DIR/fullchain.pem" ]; then
+if sudo test -f "$CERT_DIR/fullchain.pem"; then
     if sudo openssl x509 -checkend $((30 * 86400)) -noout -in "$CERT_DIR/fullchain.pem" >/dev/null 2>&1; then
         echo "[tls] existing certificate for $PRIMARY_DOMAIN still valid >30d, skipping issue"
         NEED_ISSUE=0
@@ -97,7 +101,7 @@ if [ "$NEED_ISSUE" = "1" ]; then
     # The dnf-installed certbot (v2.x) may have left a stale account record
     # that v4+ rejects as "Account not found" upstream. Wipe any pre-existing
     # accounts dir before first issuance so certbot registers fresh.
-    if [ ! -f "$CERT_DIR/fullchain.pem" ]; then
+    if ! sudo test -f "$CERT_DIR/fullchain.pem"; then
         sudo rm -rf /etc/letsencrypt/accounts/*
     fi
 
@@ -110,8 +114,8 @@ if [ "$NEED_ISSUE" = "1" ]; then
     # existing lineage and aborts the deploy.
     CERT_NAME_ARGS=""
     if [ -n "$LEGACY_CERT_NAME" ] \
-       && [ ! -f "$CERT_DIR/fullchain.pem" ] \
-       && [ -f "/etc/letsencrypt/renewal/${LEGACY_CERT_NAME}.conf" ]; then
+       && ! sudo test -f "$CERT_DIR/fullchain.pem" \
+       && sudo test -f "/etc/letsencrypt/renewal/${LEGACY_CERT_NAME}.conf"; then
         echo "[tls] migrating legacy lineage $LEGACY_CERT_NAME -> $PRIMARY_DOMAIN"
         CERT_NAME_ARGS="--cert-name $PRIMARY_DOMAIN --expand"
     fi

@@ -21,7 +21,7 @@
 - **Network-infrastructure Hiding Protocol (NHP):** Verbirgt Server-Ports, IP-Adressen und Domainnamen, um Anwendungen und Infrastruktur vor unbefugtem Zugriff zu schützen.
 - **Data-content Hiding Protocol (DHP):** Sorgt für Datensicherheit und -vertraulichkeit durch Verschlüsselung und Confidential Computing, sodass Daten *„nutzbar, aber nicht sichtbar"* werden.
 
-**[Website](https://opennhp.org) · [Dokumentation](https://docs.opennhp.org) · [Live-Demo](https://opennhp.org/demo/) · [Discord](https://discord.gg/CpyVmspx5x)**
+**[Website](https://opennhp.org) · [Vision](https://opennhp.org/vision/) · [Live-Demo](https://opennhp.org/demo/) · [Dokumentation](https://docs.opennhp.org) · [Discord](https://discord.gg/CpyVmspx5x)**
 
 ---
 

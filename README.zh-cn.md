@@ -21,7 +21,7 @@
 - **网络基础设施隐藏协议（NHP）：** 隐藏服务器端口、IP 地址和域名，防止应用和基础设施被未授权访问。
 - **数据内容隐藏协议（DHP）：** 通过加密和机密计算保障数据安全与隐私，实现数据*"可用而不可见"*。
 
-**[官方网站](https://opennhp.org) · [文档](https://docs.opennhp.org) · [在线演示](https://opennhp.org/demo/) · [Discord](https://discord.gg/CpyVmspx5x)**
+**[官方网站](https://opennhp.org) · [愿景](https://opennhp.org/vision/) · [在线演示](https://opennhp.org/demo/) · [文档](https://docs.opennhp.org) · [Discord](https://discord.gg/CpyVmspx5x)**
 
 ---
 

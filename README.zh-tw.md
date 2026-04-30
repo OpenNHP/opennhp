@@ -21,7 +21,7 @@
 - **網路基礎架構隱藏協定（NHP）：** 隱藏伺服器連接埠、IP 位址與網域名稱，避免應用程式與基礎架構遭未授權存取。
 - **資料內容隱藏協定（DHP）：** 透過加密與機密運算保障資料安全與隱私，使資料*「可用但不可見」*。
 
-**[官方網站](https://opennhp.org) · [文件](https://docs.opennhp.org) · [線上展示](https://opennhp.org/demo/) · [Discord](https://discord.gg/CpyVmspx5x)**
+**[官方網站](https://opennhp.org) · [願景](https://opennhp.org/vision/) · [線上展示](https://opennhp.org/demo/) · [文件](https://docs.opennhp.org) · [Discord](https://discord.gg/CpyVmspx5x)**
 
 ---
 

@@ -9,7 +9,6 @@ import { NHPHeader, NHPHeaderEx } from './header.js';
 import {
   PACKET_BUFFER_SIZE,
   HEADER_SIZE,
-  HEADER_EX_SIZE,
   INITIAL_CHAIN_KEY_STRING,
   INITIAL_HASH_STRING,
   NHP_PACKET_TYPES,
@@ -45,7 +44,6 @@ import {
 import { sm4GcmSeal, sm4GcmOpen } from '../crypto/sm4.js';
 import {
   base64ToBytes,
-  bytesToBase64,
   stringToBytes,
   bytesToString,
   equalBytes,
@@ -55,30 +53,62 @@ import {
   concatBytes,
 } from '../crypto/utils.js';
 
-// Global state for packet management
-// Seed counter from current time so page reloads don't trigger anti-replay on server
-let globalCounter = BigInt(Date.now()) * 1000000n; // milliseconds → nanoseconds
-const serverCookieMap = new Map<string, Uint8Array>();
-const lastSendTimeMap = new Map<string, bigint>();
-const lastRemoteSendTimeMap = new Map<string, bigint>();
+/**
+ * Per-agent packet state.
+ *
+ * Holds the monotonic counter, server cookie cache, anti-replay timestamps,
+ * and saved chain keys for one logical NHP agent.  Two NHPAgent instances
+ * sharing process scope must NOT share a context — otherwise their counters
+ * interleave, their replay-timestamp maps poison each other, and the maps
+ * grow unbounded.
+ */
+export class PacketContext {
+  // Seed counter from current time so page reloads don't trigger anti-replay on the server.
+  counter: bigint = BigInt(Date.now()) * 1_000_000n;
+  readonly serverCookies = new Map<string, Uint8Array>();
+  readonly lastSendTimes = new Map<string, bigint>();
+  readonly lastRemoteSendTimes = new Map<string, bigint>();
 
-// Stores the chain key produced by buildNHPPacket, keyed by remotePublicKey.
-// The NHP Noise protocol is a continuous chain: the server's ACK is encrypted
-// starting from the chain key left over after decrypting the agent's KNK.
-// parseNHPPacket uses this saved key as the starting point instead of
-// re-deriving from scratch.  Only populated when callers pass
-// prevChainKey to parseNHPPacket (see NHPAgent).
-const lastBuildChainKeyMap = new Map<string, Uint8Array>();
+  // Stores the chain key produced by buildNHPPacket, keyed by remotePublicKey.
+  // The NHP Noise protocol is a continuous chain: the server's ACK is encrypted
+  // starting from the chain key left over after decrypting the agent's KNK.
+  // parseNHPPacket uses this saved key as the starting point instead of
+  // re-deriving from scratch.
+  readonly lastBuildChainKeys = new Map<string, Uint8Array>();
+
+  /** Drop all per-remote state. */
+  clear(): void {
+    this.serverCookies.clear();
+    this.lastSendTimes.clear();
+    this.lastRemoteSendTimes.clear();
+    this.lastBuildChainKeys.clear();
+  }
+
+  /** Drop all state for a specific remote peer. */
+  clearRemote(remotePublicKey: string): void {
+    this.serverCookies.delete(remotePublicKey);
+    this.lastSendTimes.delete(remotePublicKey);
+    this.lastRemoteSendTimes.delete(remotePublicKey);
+    this.lastBuildChainKeys.delete(remotePublicKey);
+  }
+}
+
+// Default context for callers that don't supply one (test code, simple SDK
+// users with one agent).  Real agents own their own PacketContext.
+const defaultContext = new PacketContext();
 
 /**
  * Retrieve and consume the chain key saved by the most recent buildNHPPacket
  * call for the given remotePublicKey.  Returns undefined if no key was saved.
  * The entry is deleted after retrieval so it cannot be re-used accidentally.
  */
-export function consumeLastBuildChainKey(remotePublicKey: string): Uint8Array | undefined {
-  const ck = lastBuildChainKeyMap.get(remotePublicKey);
+export function consumeLastBuildChainKey(
+  remotePublicKey: string,
+  context: PacketContext = defaultContext
+): Uint8Array | undefined {
+  const ck = context.lastBuildChainKeys.get(remotePublicKey);
   if (ck) {
-    lastBuildChainKeyMap.delete(remotePublicKey);
+    context.lastBuildChainKeys.delete(remotePublicKey);
   }
   return ck;
 }
@@ -91,7 +121,8 @@ export function consumeLastBuildChainKey(remotePublicKey: string): Uint8Array | 
  * @param remotePublicKey - Base64-encoded remote public key
  * @param message - Message payload to encrypt
  * @param compress - Whether to compress the payload
- * @param cipherScheme - Cipher scheme to use (default: auto-detect from key size)
+ * @param cipherScheme - Cipher scheme to use (must match the keys; required)
+ * @param context - Per-agent state container (defaults to a process-wide instance)
  * @returns Encrypted packet bytes
  */
 export async function buildNHPPacket(
@@ -101,14 +132,11 @@ export async function buildNHPPacket(
   remotePublicKey: string,
   message: string,
   compress: boolean,
-  cipherScheme?: CipherScheme
+  cipherScheme: CipherScheme,
+  context: PacketContext = defaultContext
 ): Promise<Uint8Array> {
-  // Auto-detect cipher scheme from key size if not specified
-  // X25519: 32 bytes = 44 base64 chars, SM2: 64 bytes = 88 base64 chars (public key)
-  const detectedScheme = cipherScheme ?? (publicKey.length > 50 ? 'gmsm' : 'curve25519');
-
-  if (detectedScheme === 'gmsm') {
-    return buildNHPPacketGMSM(type, privateKey, publicKey, remotePublicKey, message, compress);
+  if (cipherScheme === 'gmsm') {
+    return buildNHPPacketGMSM(type, privateKey, publicKey, remotePublicKey, message, compress, context);
   }
 
   const packet = new Uint8Array(PACKET_BUFFER_SIZE);
@@ -123,8 +151,8 @@ export async function buildNHPPacket(
   // Set header fields
   header.version = { major: PROTOCOL_VERSION.MAJOR, minor: PROTOCOL_VERSION.MINOR };
   header.flags = { extended: false, compressed: compress };
-  globalCounter++;
-  header.counter = globalCounter;
+  context.counter++;
+  header.counter = context.counter;
   const nonce = header.nonce;
 
   // Initialize chain key and hash
@@ -177,7 +205,7 @@ export async function buildNHPPacket(
   const timestamp = getUnixNano();
   tsView.setBigUint64(0, timestamp);
   const ts = new Uint8Array(tsBuf);
-  lastSendTimeMap.set(remotePublicKey, timestamp);
+  context.lastSendTimes.set(remotePublicKey, timestamp);
 
   const tsStatic = aesGcmSeal(derivedKeys1.second, nonce, ts, chainHash);
   header.timestamp = tsStatic;
@@ -201,7 +229,7 @@ export async function buildNHPPacket(
 
   // Compute HMAC
   if (type === NHP_PACKET_TYPES.RNK) {
-    const cookie = serverCookieMap.get(remotePublicKey);
+    const cookie = context.serverCookies.get(remotePublicKey);
     if (cookie) {
       updateBlake2s(hmacHasher, cookie);
     }
@@ -211,7 +239,7 @@ export async function buildNHPPacket(
 
   // Save the final chain key so parseNHPPacket can continue the Noise chain
   // when decrypting the server's ACK response.
-  lastBuildChainKeyMap.set(remotePublicKey, new Uint8Array(chainKey));
+  context.lastBuildChainKeys.set(remotePublicKey, new Uint8Array(chainKey));
 
   return packet.subarray(0, header.size + payloadSize);
 }
@@ -229,7 +257,8 @@ export async function parseNHPPacket(
   privateKey: string,
   publicKey: string,
   remotePublicKey: string,
-  prevChainKey?: Uint8Array
+  prevChainKey?: Uint8Array,
+  context: PacketContext = defaultContext
 ): Promise<ParsedPacket> {
   if (packet.length < HEADER_SIZE) {
     throw new Error('Packet size is too small');
@@ -244,7 +273,7 @@ export async function parseNHPPacket(
   // FLAGS field is at offset 10-11. Big-endian: high byte at [10], low byte at [11].
   const flagByte = (packet[10] << 8) | packet[11];
   if (flagByte & 0x1) {
-    return parseNHPPacketGMSM(packet, privateKey, publicKey, remotePublicKey, prevChainKey);
+    return parseNHPPacketGMSM(packet, privateKey, publicKey, remotePublicKey, prevChainKey, context);
   }
 
   // Create a clean ArrayBuffer copy to avoid SharedArrayBuffer issues
@@ -338,9 +367,10 @@ export async function parseNHPPacket(
   const tsView = new DataView(tsBuf);
   const remoteSendTime = tsView.getBigUint64(0);
 
-  // Anti-replay checks
-  const lastRemoteSendTime = lastRemoteSendTimeMap.get(remotePublicKey);
-  lastRemoteSendTimeMap.set(remotePublicKey, remoteSendTime);
+  // Anti-replay checks — only mutate the recorded timestamp after every check
+  // passes, so a rejected packet (replay/flood/stale) cannot poison the
+  // accepted-window for subsequent legitimate packets.
+  const lastRemoteSendTime = context.lastRemoteSendTimes.get(remotePublicKey);
 
   if (lastRemoteSendTime !== undefined) {
     if (remoteSendTime < lastRemoteSendTime) {
@@ -354,6 +384,8 @@ export async function parseNHPPacket(
   if (remoteSendTime < recvTime - STALE_PACKET_THRESHOLD_NS) {
     throw new Error('Received stale packet');
   }
+
+  context.lastRemoteSendTimes.set(remotePublicKey, remoteSendTime);
 
   // Decrypt message
   const derivedKeys2 = keyGen2(chainKey, header.timestamp);
@@ -369,7 +401,7 @@ export async function parseNHPPacket(
 
   // Handle cookie packets
   if (type === NHP_PACKET_TYPES.COK) {
-    serverCookieMap.set(remotePublicKey, msg);
+    context.serverCookies.set(remotePublicKey, msg);
   }
 
   return {
@@ -380,18 +412,21 @@ export async function parseNHPPacket(
 }
 
 /**
- * Clear stored cookies for a server
+ * Clear stored cookies for a server (and any other per-remote state).
  */
-export function clearServerCookie(remotePublicKey: string): void {
-  serverCookieMap.delete(remotePublicKey);
+export function clearServerCookie(
+  remotePublicKey: string,
+  context: PacketContext = defaultContext
+): void {
+  context.clearRemote(remotePublicKey);
 }
 
 /**
- * Reset the global packet counter (for testing)
+ * Reset the global packet counter (for testing).
  */
-export function resetGlobalCounter(): void {
-  globalCounter = 0n;
-  lastBuildChainKeyMap.clear();
+export function resetGlobalCounter(context: PacketContext = defaultContext): void {
+  context.counter = 0n;
+  context.clear();
 }
 
 /**
@@ -403,7 +438,8 @@ async function buildNHPPacketGMSM(
   publicKey: string,
   remotePublicKey: string,
   message: string,
-  compress: boolean
+  compress: boolean,
+  context: PacketContext
 ): Promise<Uint8Array> {
   const packet = new Uint8Array(PACKET_BUFFER_SIZE);
   const header = new NHPHeaderEx(packet.buffer);
@@ -417,8 +453,8 @@ async function buildNHPPacketGMSM(
   // Set header fields
   header.version = { major: PROTOCOL_VERSION.MAJOR, minor: PROTOCOL_VERSION.MINOR };
   header.flags = { extended: true, compressed: compress };
-  globalCounter++;
-  header.counter = globalCounter;
+  context.counter++;
+  header.counter = context.counter;
   const nonce = header.nonce;
 
   // Initialize chain key and chain hash using SM3 (streaming, matching Go's hash.Hash pattern)
@@ -450,13 +486,6 @@ async function buildNHPPacketGMSM(
   chainKey = derivedKeys0[0];
 
   const chainHashSnap = chainHasher.sum();
-  // Debug: print intermediate values for cross-implementation comparison
-  console.debug('[GMSM-BUILD] chainHash(after pubkey+ephemeral):', bytesToBase64(chainHashSnap));
-  console.debug('[GMSM-BUILD] chainKey(after MixKey):', bytesToBase64(chainKey));
-  console.debug('[GMSM-BUILD] ess:', bytesToBase64(ess));
-  console.debug('[GMSM-BUILD] aead key:', bytesToBase64(derivedKeys0[1].slice(0, 16)));
-  console.debug('[GMSM-BUILD] nonce:', bytesToBase64(nonce));
-  console.debug('[GMSM-BUILD] localPubKey len:', localPubKeyBytes.length, 'remotePubKey len:', remotePubKeyBytes.length);
 
   const keyStatic = sm4GcmSeal(derivedKeys0[1].slice(0, 16), nonce, localPubKeyBytes, chainHashSnap);
   header.static = keyStatic;
@@ -476,7 +505,7 @@ async function buildNHPPacketGMSM(
   const timestamp = getUnixNano();
   tsView.setBigUint64(0, timestamp);
   const ts = new Uint8Array(tsBuf);
-  lastSendTimeMap.set(remotePublicKey, timestamp);
+  context.lastSendTimes.set(remotePublicKey, timestamp);
 
   const tsStatic = sm4GcmSeal(derivedKeys1[1].slice(0, 16), nonce, ts, chainHasher.sum());
   header.timestamp = tsStatic;
@@ -500,7 +529,7 @@ async function buildNHPPacketGMSM(
   // Compute HMAC using plain SM3 hash (matching Go server's hmacHash pattern):
   //   SM3(InitialHashString || serverPubKey || [cookie] || header[0:size-32])
   if (type === NHP_PACKET_TYPES.RNK) {
-    const cookie = serverCookieMap.get(remotePublicKey);
+    const cookie = context.serverCookies.get(remotePublicKey);
     if (cookie) {
       hmacData = concatBytes(hmacData, cookie);
     }
@@ -510,7 +539,7 @@ async function buildNHPPacketGMSM(
 
   // Save the final chain key so parseNHPPacketGMSM can continue the Noise chain
   // when decrypting the server's ACK response.
-  lastBuildChainKeyMap.set(remotePublicKey, new Uint8Array(chainKey));
+  context.lastBuildChainKeys.set(remotePublicKey, new Uint8Array(chainKey));
 
   return packet.subarray(0, header.size + payloadSize);
 }
@@ -523,7 +552,8 @@ async function parseNHPPacketGMSM(
   privateKey: string,
   publicKey: string,
   remotePublicKey: string,
-  prevChainKey?: Uint8Array
+  prevChainKey: Uint8Array | undefined,
+  context: PacketContext
 ): Promise<ParsedPacket> {
   // Create a clean ArrayBuffer copy
   const packetBuffer = new ArrayBuffer(packet.length);
@@ -611,9 +641,9 @@ async function parseNHPPacketGMSM(
   const tsView = new DataView(tsBuf);
   const remoteSendTime = tsView.getBigUint64(0);
 
-  // Anti-replay checks
-  const lastRemoteSendTime = lastRemoteSendTimeMap.get(remotePublicKey);
-  lastRemoteSendTimeMap.set(remotePublicKey, remoteSendTime);
+  // Anti-replay checks — only mutate the recorded timestamp after every check
+  // passes (see parseNHPPacket above for rationale).
+  const lastRemoteSendTime = context.lastRemoteSendTimes.get(remotePublicKey);
 
   if (lastRemoteSendTime !== undefined) {
     if (remoteSendTime < lastRemoteSendTime) {
@@ -628,6 +658,8 @@ async function parseNHPPacketGMSM(
     throw new Error('Received stale packet');
   }
 
+  context.lastRemoteSendTimes.set(remotePublicKey, remoteSendTime);
+
   // Decrypt message
   const derivedKeys2 = keyGenSM3_2(chainKey, header.timestamp);
   chainKey = derivedKeys2[0];
@@ -641,7 +673,7 @@ async function parseNHPPacketGMSM(
 
   // Handle cookie packets
   if (type === NHP_PACKET_TYPES.COK) {
-    serverCookieMap.set(remotePublicKey, msg);
+    context.serverCookies.set(remotePublicKey, msg);
   }
 
   return {

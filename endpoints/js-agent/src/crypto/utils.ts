@@ -3,9 +3,14 @@
  * Works in both browser and Node.js environments
  */
 
-// Type declarations for Node.js compatibility
+// Type declarations for Node.js compatibility.  Node's Buffer is a Uint8Array
+// subclass, so we model just the bits we need without claiming full coverage.
+interface NodeBuffer extends Uint8Array {
+  toString(encoding?: string): string;
+}
 declare const Buffer: {
-  from(data: string, encoding?: string): { toString(encoding?: string): string };
+  from(data: Uint8Array | ArrayBuffer): NodeBuffer;
+  from(data: string, encoding?: string): NodeBuffer;
 };
 declare const process: { versions?: { node?: string } };
 
@@ -18,8 +23,9 @@ const isNode = typeof process !== 'undefined' && process.versions?.node;
  */
 export function bytesToBase64(bytes: Uint8Array): string {
   if (isNode && typeof Buffer !== 'undefined') {
-    // Node.js path
-    return Buffer.from(bytes as unknown as string, 'binary').toString('base64');
+    // Node.js path — Buffer.from(typedarray) shares the underlying memory and
+    // gives us the native, fast base64 encoder.
+    return Buffer.from(bytes).toString('base64');
   }
   // Browser path
   let binary = '';
@@ -35,14 +41,10 @@ export function bytesToBase64(bytes: Uint8Array): string {
  */
 export function base64ToBytes(base64: string): Uint8Array {
   if (isNode && typeof Buffer !== 'undefined') {
-    // Node.js path
+    // Node.js path — copy out of the Buffer into a fresh Uint8Array so callers
+    // see a plain typed array and don't accidentally share Buffer memory.
     const buf = Buffer.from(base64, 'base64');
-    const bytes = new Uint8Array(buf.toString('binary').length);
-    const binary = buf.toString('binary');
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes;
+    return new Uint8Array(buf);
   }
   // Browser path
   const binary = atob(base64);
@@ -70,14 +72,17 @@ export function bytesToString(bytes: Uint8Array): string {
 }
 
 /**
- * Compare two byte arrays for equality
+ * Constant-time byte-array equality.
+ * Used for HMAC verification on attacker-controlled bytes, so the loop must
+ * always touch every byte and accumulate differences without short-circuiting.
  */
 export function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
+  let diff = 0;
   for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
+    diff |= a[i] ^ b[i];
   }
-  return true;
+  return diff === 0;
 }
 
 /**

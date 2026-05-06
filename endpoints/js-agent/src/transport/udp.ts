@@ -3,7 +3,7 @@
  * Provides connection management and message handling for NHP over UDP
  *
  * Note: This transport only works in Node.js environments.
- * For browser environments, use WebRTCTransport.
+ * For browser environments, use HttpRelayTransport.
  */
 
 import type {

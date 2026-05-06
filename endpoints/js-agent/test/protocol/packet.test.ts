@@ -101,15 +101,15 @@ describe('CURVE25519 ACK round-trip', () => {
     expect(compressed.length).toBeLessThan(uncompressed.length);
   });
 
-  it('auto-detects curve25519 scheme when cipherScheme is omitted', async () => {
+  it('round-trips with explicit curve25519 cipherScheme argument', async () => {
     const { agent, server } = makeKeyPairs();
-    const msg = 'auto detect';
+    const msg = 'explicit scheme';
 
     const packet = await buildNHPPacket(
       NHP_PACKET_TYPES.ACK,
       server.privateKey, server.publicKey,
       agent.publicKey,
-      msg, false
+      msg, false, 'curve25519'
     );
 
     const parsed = await parseNHPPacket(
@@ -358,16 +358,15 @@ describe('GMSM ACK round-trip', () => {
     expect(gmPacket.length).toBeGreaterThan(c25519Packet.length);
   });
 
-  it('auto-detects gmsm scheme from SM2 key length', async () => {
+  it('round-trips with explicit gmsm cipherScheme argument', async () => {
     const { agent, server } = makeGMKeyPairs();
-    const msg = 'auto gmsm';
+    const msg = 'explicit gmsm';
 
-    // Pass no cipherScheme — should auto-detect gmsm from key length > 50 chars
     const packet = await buildNHPPacket(
       NHP_PACKET_TYPES.ACK,
       server.privateKey, server.publicKey,
       agent.publicKey,
-      msg, false
+      msg, false, 'gmsm'
     );
 
     const parsed = await parseNHPPacket(

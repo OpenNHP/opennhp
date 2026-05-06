@@ -43,7 +43,6 @@
     "sm4",
     "gmsm",
     "noise-protocol",
-    "webrtc",
     "authentication"
   ],
   "author": "OpenNHP",

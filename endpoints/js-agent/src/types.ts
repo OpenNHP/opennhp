@@ -8,8 +8,19 @@ export type CipherScheme = 'curve25519' | 'gmsm';
 /** Log level for SDK output */
 export type LogLevel = 'silent' | 'error' | 'info' | 'debug';
 
+/**
+ * Minimal logger interface used by transports.
+ * Transports should not call console.* directly — they receive a logger that
+ * routes through the NHPAgent's `logLevel` setting.
+ */
+export interface Logger {
+  error(message: string, ...args: unknown[]): void;
+  info(message: string, ...args: unknown[]): void;
+  debug(message: string, ...args: unknown[]): void;
+}
+
 /** Transport type for NHP communication */
-export type TransportType = 'udp' | 'webrtc' | 'websocket' | 'relay';
+export type TransportType = 'udp' | 'websocket' | 'relay';
 
 /** Configuration for initializing the NHP Agent */
 export interface NHPAgentConfig {
@@ -19,7 +30,7 @@ export interface NHPAgentConfig {
   cipherScheme?: CipherScheme;
   /** Logging level */
   logLevel?: LogLevel;
-  /** Transport type to use (default: 'udp' for Node.js, 'webrtc' for browser) */
+  /** Transport type to use (default: 'udp' for Node.js, 'relay' for browser) */
   transport?: TransportType;
   /**
    * Full URL of the HTTP relay endpoint (required when transport='relay').
@@ -34,9 +45,9 @@ export interface ServerConfig {
   id?: string;
   /** Base64-encoded public key of the server */
   publicKey: string;
-  /** Server hostname or IP address (required for udp/webrtc/websocket, optional for relay) */
+  /** Server hostname or IP address (required for udp/websocket, optional for relay) */
   host?: string;
-  /** Server port number (required for udp/webrtc/websocket, optional for relay) */
+  /** Server port number (required for udp/websocket, optional for relay) */
   port?: number;
   /** Optional expiration timestamp (Unix milliseconds) */
   expiresAt?: number;

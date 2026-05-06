@@ -2,7 +2,7 @@
  * HTTP Relay Transport for Browser Environments
  *
  * Forwards NHP packets to the NHP Server via an intermediary HTTP relay
- * service instead of a direct WebRTC / WebSocket connection.
+ * service instead of a direct UDP / WebSocket connection.
  *
  * Flow:
  *   NHPAgent  ──send(KNK)──▶  HttpRelayTransport
@@ -25,7 +25,13 @@
  * interface compatibility.
  */
 
-import type { TransportEvent, EventHandler } from '../types.js';
+import type { Logger, TransportEvent, EventHandler } from '../types.js';
+
+const noopLogger: Logger = {
+  error: () => {},
+  info: () => {},
+  debug: () => {},
+};
 
 /** Configuration for the HTTP relay transport */
 export interface HttpRelayTransportConfig {
@@ -40,6 +46,9 @@ export interface HttpRelayTransportConfig {
    * Should be ≥ the relay's udpTimeoutMs setting.
    */
   timeoutMs?: number;
+
+  /** Optional logger; if omitted, the transport stays silent in production. */
+  logger?: Logger;
 }
 
 /**
@@ -47,8 +56,9 @@ export interface HttpRelayTransportConfig {
  * ACK/COK responses in the HTTP response body.
  */
 export class HttpRelayTransport {
-  private readonly config: Required<HttpRelayTransportConfig>;
+  private readonly config: Omit<Required<HttpRelayTransportConfig>, 'logger'> & { logger?: Logger };
   private readonly eventHandlers: Map<TransportEvent, Set<EventHandler>> = new Map();
+  private readonly log: Logger;
   private connected = false;
 
   constructor(config: HttpRelayTransportConfig) {
@@ -56,6 +66,7 @@ export class HttpRelayTransport {
       timeoutMs: 10_000,
       ...config,
     };
+    this.log = config.logger ?? noopLogger;
   }
 
   // ─── Transport interface ──────────────────────────────────────────────────
@@ -150,7 +161,7 @@ export class HttpRelayTransport {
 
     const buf = await response.arrayBuffer();
     const respBytes = new Uint8Array(buf);
-    console.debug(`[HttpRelayTransport] sent ${packet.byteLength}B, received ${respBytes.byteLength}B (HTTP ${response.status})`);
+    this.log.debug(`[HttpRelayTransport] sent ${packet.byteLength}B, received ${respBytes.byteLength}B (HTTP ${response.status})`);
     return respBytes;
   }
 

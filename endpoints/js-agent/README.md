@@ -23,7 +23,7 @@ src/
   index.ts, types.ts   public exports
   crypto/              X25519 / SM2 / AES-GCM / SM4 / BLAKE2s / SM3
   protocol/            NHP packet header + framing
-  transport/           UDP, WebSocket, WebRTC, HTTP relay
+  transport/           UDP, WebSocket, HTTP relay
 test/                  vitest unit tests for SDK + crypto + protocol
 examples/
   relay-test.html      browser demo page (deployed at https://agent.opennhp.org/)
@@ -65,3 +65,13 @@ in `examples/relay-test.html`. They are declared as `external` in
 depends on a third-party CDN being reachable. If you need a self-contained
 deployment, either remove the `external` entries (bundle the noble libs) or
 copy them next to `dist/` and point the importmap at local paths.
+
+> **Security note** — pulling cryptographic primitives over a third-party CDN
+> at runtime means the demo's confidentiality relies on esm.sh (and any
+> intermediary it uses) not being compromised or impersonated. The demo's
+> `agentPrivateKey` is published anyway, so this is acceptable for the demo
+> page. **Anyone reusing this template for a non-demo deployment must bundle
+> the `@noble/*` modules locally** — do not ship a real agent that imports
+> crypto code from a CDN you don't control. By contrast, `sm-crypto-v2` is
+> *not* externalized and is bundled into `dist/index.js`; consider similarly
+> bundling all crypto dependencies for production use.

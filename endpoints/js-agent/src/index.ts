@@ -87,5 +87,5 @@ export {
 export type { INHPHeader, TypeAndPayloadSize } from './protocol/index.js';
 
 // Transport (for advanced usage)
-export { WebSocketTransport, UdpTransport, WebRTCTransport, HttpRelayTransport } from './transport/index.js';
-export type { UdpTransportConfig, WebRTCTransportConfig, WebRTCTransportEvent, HttpRelayTransportConfig } from './transport/index.js';
+export { WebSocketTransport, UdpTransport, HttpRelayTransport } from './transport/index.js';
+export type { UdpTransportConfig, HttpRelayTransportConfig } from './transport/index.js';

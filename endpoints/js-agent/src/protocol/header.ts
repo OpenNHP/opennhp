@@ -32,7 +32,9 @@ export interface INHPHeader {
   counter: bigint;
   readonly nonce: Uint8Array;
   ephemeral: Uint8Array;
-  identity: Uint8Array;
+  // Identity is read-only on this SDK because we don't support IBC mode;
+  // see NHPHeader.identity comment.
+  readonly identity: Uint8Array;
   static: Uint8Array;
   timestamp: Uint8Array;
   hmac: Uint8Array;
@@ -126,17 +128,17 @@ export class NHPHeader implements INHPHeader {
     }
   }
 
+  // The identity field is reserved for IBC (Identity-Based Cryptography)
+  // deployments where the agent encodes its identity in the header.  The
+  // browser SDK targets non-IBC X25519/SM2 modes, so we leave this field
+  // zero-filled (matching the default Go agent's behavior).  Getter is kept
+  // so callers/tooling can still inspect the wire bytes; setter is intentionally
+  // omitted to make "we don't write this" explicit.
   get identity(): Uint8Array {
     return this.bytes.subarray(
       HEADER_OFFSETS.IDENTITY,
       HEADER_OFFSETS.IDENTITY + FIELD_SIZES.IDENTITY
     );
-  }
-
-  set identity(bytes: Uint8Array) {
-    if (bytes.length === FIELD_SIZES.IDENTITY) {
-      this.bytes.set(bytes, HEADER_OFFSETS.IDENTITY);
-    }
   }
 
   get static(): Uint8Array {
@@ -262,17 +264,14 @@ export class NHPHeaderEx implements INHPHeader {
     }
   }
 
+  // See NHPHeader.identity above — the SDK leaves this field zero-filled
+  // because it doesn't currently support IBC mode.  Keep getter for parity
+  // and inspection; omit setter so its absence documents intent.
   get identity(): Uint8Array {
     return this.bytes.subarray(
       HEADER_EX_OFFSETS.IDENTITY,
       HEADER_EX_OFFSETS.IDENTITY + FIELD_SIZES.IDENTITY
     );
-  }
-
-  set identity(bytes: Uint8Array) {
-    if (bytes.length === FIELD_SIZES.IDENTITY) {
-      this.bytes.set(bytes, HEADER_EX_OFFSETS.IDENTITY);
-    }
   }
 
   get static(): Uint8Array {

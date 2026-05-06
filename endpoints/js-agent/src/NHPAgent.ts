@@ -11,6 +11,7 @@ import type {
   NHPAgentEvent,
   EventHandler,
   KeyPairBase64,
+  Logger,
   LogLevel,
   AgentKnockMsg,
   ServerKnockAckMsg,
@@ -20,11 +21,10 @@ import type {
 import { generateX25519KeyPairBase64, derivePublicKeyFromBase64 } from './crypto/ecdh.js';
 import { generateSM2KeyPairBase64, deriveSM2PublicKeyFromBase64 } from './crypto/sm2.js';
 import { randomBytes, bytesToHex } from './crypto/utils.js';
-import { buildNHPPacket, parseNHPPacket, clearServerCookie } from './protocol/packet.js';
+import { buildNHPPacket, parseNHPPacket, clearServerCookie, PacketContext } from './protocol/packet.js';
 import { NHP_PACKET_TYPES } from './protocol/constants.js';
 import { WebSocketTransport } from './transport/websocket.js';
 import { UdpTransport } from './transport/udp.js';
-import { WebRTCTransport } from './transport/webrtc.js';
 import { HttpRelayTransport } from './transport/relay.js';
 
 /** Common transport interface */
@@ -44,7 +44,7 @@ const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'u
 const DEFAULT_CONFIG: Required<Omit<NHPAgentConfig, 'privateKey' | 'relayUrl'>> = {
   cipherScheme: 'curve25519',
   logLevel: 'error',
-  transport: isBrowser ? 'webrtc' : 'udp',
+  transport: isBrowser ? 'relay' : 'udp',
 };
 
 /**
@@ -92,6 +92,12 @@ export class NHPAgent {
   private transports: Map<string, Transport> = new Map();
   private eventHandlers: Map<NHPAgentEvent, Set<EventHandler>> = new Map();
   private initialized = false;
+  private readonly packetContext = new PacketContext();
+  private readonly logger: Logger = {
+    error: (msg: string, ...args: unknown[]) => this.logRaw('error', msg, args),
+    info: (msg: string, ...args: unknown[]) => this.logRaw('info', msg, args),
+    debug: (msg: string, ...args: unknown[]) => this.logRaw('debug', msg, args),
+  };
 
   constructor(config: NHPAgentConfig = {}) {
     this.config = {
@@ -143,10 +149,8 @@ export class NHPAgent {
     }
     this.transports.clear();
 
-    // Clear server cookies
-    for (const server of this.servers.values()) {
-      clearServerCookie(server.publicKey);
-    }
+    // Clear all per-server packet state (cookies, replay timestamps, chain keys).
+    this.packetContext.clear();
     this.servers.clear();
 
     this.initialized = false;
@@ -190,7 +194,7 @@ export class NHPAgent {
   removeServer(serverId: string): void {
     const server = this.servers.get(serverId);
     if (server) {
-      clearServerCookie(server.publicKey);
+      clearServerCookie(server.publicKey, this.packetContext);
       this.servers.delete(serverId);
 
       const transport = this.transports.get(serverId);
@@ -308,7 +312,7 @@ export class NHPAgent {
     const server = this.servers.get(serverId);
 
     if (server) {
-      clearServerCookie(server.publicKey);
+      clearServerCookie(server.publicKey, this.packetContext);
     }
 
     const transport = this.transports.get(serverId);
@@ -360,7 +364,8 @@ export class NHPAgent {
       server.publicKey,
       knockMessage,
       true, // compress
-      this.config.cipherScheme
+      this.config.cipherScheme,
+      this.packetContext
     );
 
     this.log('debug', `${packetType === NHP_PACKET_TYPES.KNK ? 'KNK' : 'RNK'} packet built: ${packet.length} bytes`);
@@ -407,10 +412,11 @@ export class NHPAgent {
         agentAddress: ackMsg.agentAddr,
         preAccessUrl: ackMsg.preAccUrl,
       };
-    } catch {
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
       return {
         success: false,
-        error: 'Failed to parse server response',
+        error: `Failed to parse server response: ${detail}`,
         errorCode: 7,
       };
     }
@@ -423,20 +429,6 @@ export class NHPAgent {
       case 'udp':
         this.log('debug', `Creating UDP transport to ${host}:${port}`);
         return new UdpTransport({ host, port }) as Transport;
-
-      case 'webrtc':
-        this.log('debug', `Creating WebRTC transport to ${host}:${port}`);
-        // WebRTC requires signaling - prefer WebSocket for trickle ICE support
-        // Handle host that may already include protocol prefix
-        const wsHostRtc = host.replace(/^https?:\/\//, '');
-        // Determine if we should use secure WebSocket based on original URL
-        const isSecure = host.startsWith('https://') || !host.startsWith('http://');
-        const wsProtocol = isSecure ? 'wss' : 'ws';
-        const httpProtocol = isSecure ? 'https' : 'http';
-        return new WebRTCTransport({
-          wsSignalingUrl: `${wsProtocol}://${wsHostRtc}:${port}/webrtc/signaling`,
-          signalingUrl: `${httpProtocol}://${wsHostRtc}:${port}/webrtc/signaling`, // fallback
-        }) as Transport;
 
       case 'websocket':
         this.log('debug', `Creating WebSocket transport to ${host}:${port}`);
@@ -455,7 +447,7 @@ export class NHPAgent {
           );
         }
         this.log('debug', `Creating HTTP relay transport via ${relayUrl}`);
-        return new HttpRelayTransport({ relayUrl }) as unknown as Transport;
+        return new HttpRelayTransport({ relayUrl, logger: this.logger }) as unknown as Transport;
       }
 
       default:
@@ -488,7 +480,9 @@ export class NHPAgent {
 
           // Try parsing with the previous chain key first (real server
           // continues the Noise chain from the KNK).  If that fails, fall
-          // back to a fresh chain key (self-test / standalone ACK).
+          // back to a fresh chain key (self-test / standalone ACK).  If both
+          // fail, surface both errors so HMAC/replay/key-mismatch failures
+          // aren't masked as a generic "parse error".
           let parsed: ParsedPacket;
           if (prevChainKey) {
             try {
@@ -497,22 +491,34 @@ export class NHPAgent {
                 this.keyPair.privateKey,
                 this.keyPair.publicKey,
                 serverPublicKey,
-                prevChainKey
+                prevChainKey,
+                this.packetContext
               );
-            } catch {
-              parsed = await parseNHPPacket(
-                message.data,
-                this.keyPair.privateKey,
-                this.keyPair.publicKey,
-                serverPublicKey
-              );
+            } catch (firstErr) {
+              this.log('debug', `parseNHPPacket with prevChainKey failed: ${(firstErr as Error).message}; retrying without`);
+              try {
+                parsed = await parseNHPPacket(
+                  message.data,
+                  this.keyPair.privateKey,
+                  this.keyPair.publicKey,
+                  serverPublicKey,
+                  undefined,
+                  this.packetContext
+                );
+              } catch (secondErr) {
+                throw new Error(
+                  `parseNHPPacket failed (chained: ${(firstErr as Error).message}; fresh: ${(secondErr as Error).message})`
+                );
+              }
             }
           } else {
             parsed = await parseNHPPacket(
               message.data,
               this.keyPair.privateKey,
               this.keyPair.publicKey,
-              serverPublicKey
+              serverPublicKey,
+              undefined,
+              this.packetContext
             );
           }
 
@@ -545,6 +551,11 @@ export class NHPAgent {
   }
 
   private log(level: LogLevel, message: string): void {
+    if (level === 'silent') return;
+    this.logRaw(level, message, []);
+  }
+
+  private logRaw(level: Exclude<LogLevel, 'silent'>, message: string, args: unknown[]): void {
     const levels: Record<LogLevel, number> = {
       silent: 0,
       error: 1,
@@ -552,19 +563,21 @@ export class NHPAgent {
       debug: 3,
     };
 
-    if (levels[level] <= levels[this.config.logLevel]) {
-      const prefix = `[NHPAgent:${level.toUpperCase()}]`;
-      switch (level) {
-        case 'error':
-          console.error(prefix, message);
-          break;
-        case 'info':
-          console.info(prefix, message);
-          break;
-        case 'debug':
-          console.debug(prefix, message);
-          break;
-      }
+    if (levels[level] > levels[this.config.logLevel]) {
+      return;
+    }
+
+    const prefix = `[NHPAgent:${level.toUpperCase()}]`;
+    switch (level) {
+      case 'error':
+        console.error(prefix, message, ...args);
+        break;
+      case 'info':
+        console.info(prefix, message, ...args);
+        break;
+      case 'debug':
+        console.debug(prefix, message, ...args);
+        break;
     }
   }
 }

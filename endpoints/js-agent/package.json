@@ -1,6 +1,7 @@
 {
   "name": "@opennhp/agent",
   "version": "1.0.0",
+  "private": true,
   "description": "OpenNHP JavaScript/TypeScript SDK for zero-trust network security",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -26,8 +27,7 @@
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",
     "format": "prettier --write src test",
-    "docs": "typedoc",
-    "prepublishOnly": "npm run build"
+    "docs": "typedoc"
   },
   "keywords": [
     "nhp",
@@ -50,7 +50,8 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OpenNHP/js-agent.git"
+    "url": "https://github.com/OpenNHP/opennhp.git",
+    "directory": "endpoints/js-agent"
   },
   "dependencies": {
     "@noble/ciphers": "^2.1.1",

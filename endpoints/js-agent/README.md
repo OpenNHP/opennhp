@@ -11,6 +11,10 @@ Only the SDK + the `relay-test.html` page used by the production demo pipeline
 were brought over; the upstream repo's GitHub Pages landing page is not
 included.
 
+This directory is a standalone npm package and is **not** part of the Go
+workspace defined by [`endpoints/go.mod`](../go.mod) — `go build ./...` ignores
+it.
+
 ## Layout
 
 ```text
@@ -50,3 +54,14 @@ Built and deployed by the `deploy-jsagent` job in
 
 The `agentPrivateKey` exposed in `config.json` is intentionally public — see
 the comment in the workflow before reusing it for anything else.
+
+## Runtime dependency on esm.sh
+
+The browser demo loads the `@noble/{ciphers,curves,hashes}` packages from
+[esm.sh](https://esm.sh/) at runtime via the `<script type="importmap">` block
+in `examples/relay-test.html`. They are declared as `external` in
+[vite.config.ts](vite.config.ts) and therefore are *not* bundled into
+`dist/index.js`. This keeps the SDK build small but means the demo page
+depends on a third-party CDN being reachable. If you need a self-contained
+deployment, either remove the `external` entries (bundle the noble libs) or
+copy them next to `dist/` and point the importmap at local paths.

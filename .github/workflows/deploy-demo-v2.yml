@@ -754,6 +754,7 @@ jobs:
         working-directory: opennhp/endpoints/js-agent
         run: |
           npm ci
+          npm run test:run
           npm run build
           ls -la dist/
 

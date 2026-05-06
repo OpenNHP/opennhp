@@ -37,10 +37,6 @@ on:
           - 'no'
           - 'yes'
         default: 'no'
-      jsagent_branch:
-        description: 'Branch of OpenNHP/js-agent to deploy'
-        required: false
-        default: 'main'
 
 env:
   AWS_REGION: us-east-2
@@ -50,7 +46,6 @@ env:
   CONFIRM: ${{ github.event.inputs.confirm }}
   DEPLOY_BINARIES: ${{ github.event.inputs.deploy_binaries }}
   REGENERATE_KEYS: ${{ github.event.inputs.regenerate_keys }}
-  JSAGENT_BRANCH: ${{ github.event.inputs.jsagent_branch || 'main' }}
   ACME_EMAIL: dev@layerv.ai
   DOMAIN_SERVER: auth-plugin.opennhp.org
   DOMAIN_AC: ac.opennhp.org
@@ -743,27 +738,20 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout opennhp (for nginx + bootstrap scripts)
+      - name: Checkout opennhp (sources, nginx + bootstrap scripts)
         uses: actions/checkout@v6
         with:
           path: opennhp
-
-      - name: Checkout js-agent
-        uses: actions/checkout@v6
-        with:
-          repository: OpenNHP/js-agent
-          ref: ${{ env.JSAGENT_BRANCH }}
-          path: jsagent
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: jsagent/nhp-js/package-lock.json
+          cache-dependency-path: opennhp/endpoints/js-agent/package-lock.json
 
       - name: Build js-agent SDK
-        working-directory: jsagent/nhp-js
+        working-directory: opennhp/endpoints/js-agent
         run: |
           npm ci
           npm run build
@@ -815,12 +803,12 @@ jobs:
         run: |
           mkdir -p bundle/nhp-js/dist
 
-          # Entry page is nhp-js/examples/relay-test.html, exposed as / .
+          # Entry page is examples/relay-test.html, exposed as / .
           # Rewrite the SDK import path so it resolves alongside index.html.
           sed "s|from '../dist/index.js'|from './nhp-js/dist/index.js'|g" \
-            jsagent/nhp-js/examples/relay-test.html > bundle/index.html
+            opennhp/endpoints/js-agent/examples/relay-test.html > bundle/index.html
 
-          cp -r jsagent/nhp-js/dist/. bundle/nhp-js/dist/
+          cp -r opennhp/endpoints/js-agent/dist/. bundle/nhp-js/dist/
 
           # Render config.json with keys for the PUBLIC browser demo.
           #
@@ -914,7 +902,6 @@ jobs:
           echo "| Server       | ${{ needs.deploy-server.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| AC           | ${{ needs.deploy-ac.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| js-agent     | ${{ needs.deploy-jsagent.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| js-agent branch | ${{ env.JSAGENT_BRANCH }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Binaries?    | ${{ env.DEPLOY_BINARIES }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Regen keys?  | ${{ env.REGENERATE_KEYS }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Branch       | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY

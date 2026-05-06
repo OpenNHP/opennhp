@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NHP Relay Transport Test</title>
+
+  <!-- Resolve bare specifiers the SDK build leaves external (@noble/*). -->
+  <script type="importmap">
+  {
+    "imports": {
+      "@noble/ciphers":  "https://esm.sh/@noble/ciphers@2.1.1",
+      "@noble/ciphers/": "https://esm.sh/@noble/ciphers@2.1.1/",
+      "@noble/curves":   "https://esm.sh/@noble/curves@2.0.1",
+      "@noble/curves/":  "https://esm.sh/@noble/curves@2.0.1/",
+      "@noble/hashes":   "https://esm.sh/@noble/hashes@1.7.2",
+      "@noble/hashes/":  "https://esm.sh/@noble/hashes@1.7.2/"
+    }
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 20px;
+    }
+    h1 { color: #58a6ff; margin-bottom: 4px; font-size: 22px; }
+    .subtitle { color: #8b949e; font-size: 13px; margin-bottom: 20px; }
+    .container { max-width: 900px; margin: 0 auto; }
+    .panel {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .panel-title {
+      color: #58a6ff;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .row { display: flex; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+    .field { flex: 1; min-width: 200px; }
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: #8b949e;
+      margin-bottom: 4px;
+    }
+    .field input, .field select {
+      width: 100%;
+      padding: 8px 10px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #c9d1d9;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .field input:focus, .field select:focus {
+      outline: none;
+      border-color: #58a6ff;
+    }
+    .btn {
+      padding: 8px 20px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-primary {
+      background: #238636;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #2ea043; }
+    .btn-primary:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+    .btn-secondary {
+      background: #21262d;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+    }
+    .btn-secondary:hover { background: #30363d; }
+    .btn-row { display: flex; gap: 8px; align-items: center; }
+
+    /* Log area */
+    #log {
+      background: #010409;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      padding: 12px;
+      font-size: 12px;
+      line-height: 1.6;
+      max-height: 500px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-time { color: #484f58; }
+    .log-info { color: #58a6ff; }
+    .log-ok { color: #3fb950; }
+    .log-err { color: #f85149; }
+    .log-warn { color: #d29922; }
+    .log-data { color: #8b949e; }
+    .log-arrow { color: #d29922; font-weight: bold; }
+
+    /* Sequence diagram */
+    .seq-diagram {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 12px;
+      padding: 8px 0;
+    }
+    .seq-step {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 8px;
+      border-radius: 3px;
+      transition: background 0.2s;
+    }
+    .seq-step.active { background: rgba(88,166,255,0.1); }
+    .seq-step.done { opacity: 0.6; }
+    .seq-step.error { background: rgba(248,81,73,0.1); }
+    .seq-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #30363d;
+      flex-shrink: 0;
+    }
+    .seq-dot.active { background: #58a6ff; animation: pulse 1s infinite; }
+    .seq-dot.done { background: #3fb950; }
+    .seq-dot.error { background: #f85149; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #484f58;
+    }
+    .status-dot.ok { background: #3fb950; }
+    .status-dot.err { background: #f85149; }
+    .status-dot.busy { background: #58a6ff; animation: pulse 1s infinite; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>NHP Relay Transport Test</h1>
+  <p class="subtitle">Browser → HTTP Relay → NHP Server (UDP) → Relay → Browser</p>
+
+  <!-- Config Panel -->
+  <div class="panel">
+    <div class="panel-title">&#9881; Configuration</div>
+    <div class="row">
+      <div class="field" style="flex:2">
+        <label>Server Public Key (Base64)</label>
+        <input id="serverPubKey" type="text" placeholder="E3o8gUUxI5dUAUiEOi6SvgV9bWKmjpWWQaOO6GChO2A=">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:2">
+        <label>Agent Private Key (Base64)</label>
+        <input id="agentPrivKey" type="text" placeholder="Paste an existing Agent private key">
+      </div>
+      <div class="field" style="flex:2">
+        <label>Agent Public Key (register this in server's agent.toml)</label>
+        <input id="agentPubKey" type="text" readonly style="color:#3fb950; cursor:default;">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Timeout (ms)</label>
+        <input id="timeoutMs" type="number" value="10000">
+      </div>
+    </div>
+    <!-- Hardcoded values (hidden from UI) -->
+    <input id="cipherScheme" type="hidden" value="curve25519">
+    <input id="relayUrl" type="hidden" value="https://relay.opennhp.org/relay">
+    <input id="userId" type="hidden" value="test@example.com">
+    <input id="deviceId" type="hidden" value="browser-relay-test">
+    <input id="orgId" type="hidden" value="opennhp.org">
+    <input id="resourceId" type="hidden" value="demo">
+    <input id="serviceId" type="hidden" value="example">
+  </div>
+
+  <!-- Status & Actions -->
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Ready</span>
+    <span style="flex:1"></span>
+    <span id="timing" style="color:#8b949e; font-size:12px;"></span>
+  </div>
+
+  <div class="btn-row" style="margin-bottom:16px;">
+    <button class="btn btn-primary" id="knockBtn" onclick="doKnock()">Send Knock (KNK via Relay)</button>
+    <button class="btn btn-secondary" onclick="clearLog()">Clear Log</button>
+  </div>
+
+  <!-- Sequence Diagram -->
+  <div class="panel">
+    <div class="panel-title">&#9654; Sequence</div>
+    <div class="seq-diagram" id="seqDiagram">
+      <div class="seq-step" id="seq-init">
+        <div class="seq-dot" id="dot-init"></div>
+        <span>Initialize NHPAgent (load key pair)</span>
+      </div>
+      <div class="seq-step" id="seq-identity">
+        <div class="seq-dot" id="dot-identity"></div>
+        <span>Set identity &amp; add server</span>
+      </div>
+      <div class="seq-step" id="seq-build">
+        <div class="seq-dot" id="dot-build"></div>
+        <span>Build KNK packet (ECDH + AEAD encrypt)</span>
+      </div>
+      <div class="seq-step" id="seq-post">
+        <div class="seq-dot" id="dot-post"></div>
+        <span>POST → Relay → NHP Server (UDP)</span>
+      </div>
+      <div class="seq-step" id="seq-resp">
+        <div class="seq-dot" id="dot-resp"></div>
+        <span>Receive &amp; parse ACK/COK response</span>
+      </div>
+      <div class="seq-step" id="seq-done">
+        <div class="seq-dot" id="dot-done"></div>
+        <span>Result</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log Panel -->
+  <div class="panel">
+    <div class="panel-title">&#9776; Log</div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script type="module">
+  import { NHPAgent } from '../dist/index.js';
+
+  const logEl = document.getElementById('log');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const timingEl = document.getElementById('timing');
+
+  const STORAGE_KEY = 'nhp-relay-test';
+
+  // Persist visible form fields to localStorage
+  const FIELD_IDS = ['serverPubKey','agentPrivKey','timeoutMs'];
+
+  function saveFields() {
+    const data = {};
+    for (const id of FIELD_IDS) {
+      data[id] = document.getElementById(id).value;
+    }
+    // Also save the derived public key
+    data.agentPubKey = document.getElementById('agentPubKey').value;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+
+  function loadFields() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      for (const id of FIELD_IDS) {
+        if (data[id] != null) document.getElementById(id).value = data[id];
+      }
+      if (data.agentPubKey) document.getElementById('agentPubKey').value = data.agentPubKey;
+    } catch {}
+  }
+
+  // Auto-save on any input change
+  for (const id of FIELD_IDS) {
+    document.getElementById(id).addEventListener('input', saveFields);
+  }
+
+  // Load saved fields on startup
+  loadFields();
+
+  // Best-effort: load deployment-provided defaults from config.json (written by
+  // CI next to this page). Only applies to fields the user hasn't set yet so
+  // localStorage edits are respected.
+  async function loadDefaultsFromConfig() {
+    try {
+      const r = await fetch('./config.json', { cache: 'no-store' });
+      if (!r.ok) return;
+      const cfg = await r.json();
+      const apply = (id, v) => {
+        const el = document.getElementById(id);
+        if (el && v != null && !el.value) el.value = v;
+      };
+      apply('serverPubKey', cfg.serverPublicKey);
+      apply('agentPrivKey', cfg.agentPrivateKey);
+      apply('relayUrl',     cfg.relayUrl);
+      apply('cipherScheme', cfg.cipherScheme);
+      apply('userId',       cfg.userId);
+      apply('deviceId',     cfg.deviceId);
+      apply('orgId',        cfg.orgId);
+      apply('resourceId',   cfg.resourceId);
+      apply('serviceId',    cfg.serviceId);
+    } catch {
+      // config.json is optional (local dev); ignore
+    }
+  }
+  loadDefaultsFromConfig();
+
+  function val(id) { return document.getElementById(id).value.trim(); }
+
+  function ts() {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}.${String(d.getMilliseconds()).padStart(3,'0')}`;
+  }
+
+  function log(level, msg) {
+    const cls = { info:'log-info', ok:'log-ok', err:'log-err', warn:'log-warn', data:'log-data', arrow:'log-arrow' }[level] || 'log-data';
+    logEl.innerHTML += `<span class="log-time">[${ts()}]</span> <span class="${cls}">${msg}</span>\n`;
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function setStatus(state, text) {
+    statusDot.className = 'status-dot' + (state ? ' ' + state : '');
+    statusText.textContent = text;
+  }
+
+  function setStep(id, state) {
+    const step = document.getElementById('seq-' + id);
+    const dot = document.getElementById('dot-' + id);
+    if (!step || !dot) return;
+    step.className = 'seq-step ' + state;
+    dot.className = 'seq-dot ' + state;
+  }
+
+  function resetSteps() {
+    ['init','identity','build','post','resp','done'].forEach(id => {
+      setStep(id, '');
+    });
+  }
+
+  window.clearLog = function() {
+    logEl.innerHTML = '';
+    timingEl.textContent = '';
+    resetSteps();
+    setStatus('', 'Ready');
+  };
+
+  window.doKnock = async function() {
+    const btn = document.getElementById('knockBtn');
+    btn.disabled = true;
+    resetSteps();
+    logEl.innerHTML = '';
+    timingEl.textContent = '';
+
+    const relayUrl = val('relayUrl');
+    const serverPubKey = val('serverPubKey');
+    const cipherScheme = val('cipherScheme');
+    const agentPrivKey = val('agentPrivKey');
+    const userId = val('userId');
+    const deviceId = val('deviceId');
+    const orgId = val('orgId');
+    const resourceId = val('resourceId');
+    const serviceId = val('serviceId');
+
+    // Clear previous agent pubkey display
+    document.getElementById('agentPubKey').value = '';
+
+    if (!serverPubKey) { log('err', 'Server Public Key is required'); btn.disabled = false; return; }
+    if (!agentPrivKey) { log('err', 'Agent Private Key is required'); btn.disabled = false; return; }
+
+    const t0 = performance.now();
+    setStatus('busy', 'Knocking...');
+
+    try {
+      // Step 1: Init
+      setStep('init', 'active');
+      const agentCfg = {
+        cipherScheme,
+        transport: 'relay',
+        relayUrl,
+        privateKey: agentPrivKey,
+        logLevel: 'debug',
+      };
+      log('info', `Creating NHPAgent (cipher=${cipherScheme}, transport=relay)`);
+      log('data', `  relayUrl = ${relayUrl}`);
+
+      const agent = new NHPAgent(agentCfg);
+
+      await agent.init();
+      const pubKey = agent.getPublicKey();
+      // Show agent public key in the UI and persist
+      document.getElementById('agentPubKey').value = pubKey;
+      saveFields();
+      log('ok', `Agent initialized`);
+      log('info', `  Agent Public Key = ${pubKey}`);
+      setStep('init', 'done');
+
+      // Step 2: Identity + Server
+      setStep('identity', 'active');
+      agent.setIdentity({ userId, deviceId, organizationId: orgId });
+      log('info', `Identity: userId=${userId}, deviceId=${deviceId}`);
+
+      agent.addServer({ publicKey: serverPubKey });
+      log('info', `Server pubkey=${serverPubKey.substring(0, 20)}...`);
+      setStep('identity', 'done');
+
+      // Step 3: Listen for events
+      agent.on('knock', (data) => {
+        setStep('build', 'done');
+        setStep('post', 'active');
+        log('arrow', `>>> KNK packet built: ${data.packet.length} bytes`);
+        log('data', `  packetType = ${data.packetType}`);
+        log('info', `  POST ${relayUrl} (${data.packet.length} bytes)`);
+        // Hex dump of first 32 bytes
+        const hex = Array.from(data.packet.slice(0, 32)).map(b => b.toString(16).padStart(2,'0')).join(' ');
+        log('data', `  header[0:32] = ${hex}`);
+      });
+
+      agent.on('ack', (ackMsg) => {
+        log('ok', `<<< ACK received from server`);
+        log('data', `  resHost  = ${JSON.stringify(ackMsg.resHost)}`);
+        log('data', `  opnTime  = ${ackMsg.opnTime}s`);
+        log('data', `  agentAddr= ${ackMsg.agentAddr}`);
+        if (ackMsg.aspToken) log('data', `  aspToken = ${ackMsg.aspToken}`);
+        if (ackMsg.preAccUrl) log('data', `  preAccUrl= ${ackMsg.preAccUrl}`);
+      });
+
+      agent.on('error', (err) => {
+        log('err', `Agent error: ${err?.message || err}`);
+        if (err?.stack) log('data', err.stack);
+      });
+
+      // Intercept console.debug to capture transport-level logs
+      const origDebug = console.debug;
+      console.debug = (...args) => {
+        const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+        if (msg.includes('[HttpRelayTransport]') || msg.includes('[NHPAgent')) {
+          log('data', msg);
+        }
+        origDebug.apply(console, args);
+      };
+
+      // Step 4: Knock — also do a manual fetch to capture raw HTTP response details
+      setStep('build', 'active');
+      log('info', `Knocking resource=${resourceId}, service=${serviceId}`);
+
+      const result = await agent.knockResource({
+        resourceId,
+        serviceId,
+      });
+
+      // Restore console.debug
+      console.debug = origDebug;
+
+      const elapsed = (performance.now() - t0).toFixed(0);
+      setStep('post', 'done');
+      setStep('resp', 'done');
+
+      // Step 5: Result
+      if (result.success) {
+        setStep('done', 'done');
+        setStatus('ok', `Success (${elapsed}ms)`);
+        timingEl.textContent = `${elapsed}ms`;
+
+        log('ok', `=== KNOCK SUCCESSFUL ===`);
+        log('ok', `  expiresAt    = ${new Date(result.expiresAt).toLocaleString()}`);
+        log('ok', `  resourceHosts= ${JSON.stringify(result.resourceHosts)}`);
+        log('ok', `  agentAddress = ${result.agentAddress}`);
+        if (result.accessToken) log('ok', `  accessToken  = ${result.accessToken}`);
+        if (result.preAccessUrl) log('ok', `  preAccessUrl = ${result.preAccessUrl}`);
+
+        // Redirect to the first resource host returned by the server
+        const hosts = result.resourceHosts || {};
+        const firstHost = Object.values(hosts)[0];
+        if (firstHost) {
+          const redirectUrl = `https://${firstHost}`;
+          log('info', `Redirecting to ${redirectUrl} in 2 seconds...`);
+          setTimeout(() => {
+            window.location.href = redirectUrl;
+          }, 2000);
+        } else {
+          log('warn', 'No resource host in ACK response — skipping redirect');
+        }
+      } else {
+        setStep('done', 'error');
+        setStatus('err', `Failed: ${result.error} (${elapsed}ms)`);
+        timingEl.textContent = `${elapsed}ms`;
+
+        log('err', `=== KNOCK FAILED ===`);
+        log('err', `  error     = ${result.error}`);
+        log('err', `  errorCode = ${result.errorCode}`);
+        log('warn', `  Tip: check relay server logs and NHP server logs for details`);
+      }
+
+      await agent.close();
+      log('data', 'Agent closed');
+
+    } catch (err) {
+      const elapsed = (performance.now() - t0).toFixed(0);
+      setStep('done', 'error');
+      setStatus('err', `Error (${elapsed}ms)`);
+      timingEl.textContent = `${elapsed}ms`;
+      log('err', `Exception: ${err.message}`);
+      log('data', err.stack || '');
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  // Log ready
+  log('info', 'Relay test page loaded');
+  log('data', `Relay URL: ${val('relayUrl')}`);
+  log('data', 'Flow: Browser → NHPAgent(relay) → POST /relay → NHP Server (UDP) → ACK → Browser');
+  if (val('agentPrivKey')) {
+    log('ok', `Restored saved agent private key from localStorage`);
+  } else {
+    log('warn', 'Paste Server Public Key and Agent Private Key to knock');
+  }
+</script>
+</body>
+</html>

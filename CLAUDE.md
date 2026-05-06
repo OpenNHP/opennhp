@@ -221,7 +221,7 @@ run (triggered by the `deploy-demo-v2` workflow).
 | `nhp_ac_private_key` / `_public_key` | same | ac `config.toml`; peer table on server |
 | `nhp_relay_private_key` / `_public_key` | same | relay `config.toml`; peer table on server |
 | `nhp_agent_private_key` / `_public_key` | same | native nhp-agent clients; `agent.toml` on server |
-| `nhp_jsagent_private_key` / `_public_key` | same | `OpenNHP/js-agent` demo page (rendered into `config.json` at deploy time) |
+| `nhp_jsagent_private_key` / `_public_key` | same | `endpoints/js-agent/` demo page (rendered into `config.json` at deploy time) |
 | `cloudflare_api_token` | manually provisioned once | Terraform + certbot DNS-01 (`Zone:DNS:Edit` + `Zone:Zone:Read`) |
 | `cloudflare_zone_id` | same | Terraform DNS records for `opennhp.org` |
 | `ssh_deploy_private_key` | manually bootstrapped (see `terraform/demo/RUNBOOK.md`); never enters Terraform state | CI SSH into EC2 hosts |

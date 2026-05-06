@@ -90,7 +90,7 @@ jobs:
           echo "deploy_pub=$DEPLOY_PUB" >> $GITHUB_OUTPUT
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "~1.10"
 

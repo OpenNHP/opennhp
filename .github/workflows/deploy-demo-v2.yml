@@ -11,6 +11,9 @@
 
 name: Deploy Demo v2
 
+permissions:
+  contents: read
+
 # Manual-only. Deploying binaries to the production demo is a risky action
 # (key material, firewall state, live service) so we require an operator to
 # explicitly dispatch this workflow rather than auto-running on push.

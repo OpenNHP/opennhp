@@ -34,5 +34,5 @@ PortSuffix = false
 
 # extra information as per-plugin defined fields
 ["demo".ExInfo]
-Title = "OpenNHP Demo - Authentication"
+Title = "OpenNHP Auth Plugin Demo - Authentication"
 

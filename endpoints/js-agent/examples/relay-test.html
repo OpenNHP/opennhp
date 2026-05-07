@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OpenNHP JavaScript SDK Demo</title>
 
+  <!-- Syntax highlighting for the inline code sample (github-dark theme matches the page palette). -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
+  <script defer src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script defer>document.addEventListener('DOMContentLoaded', () => { if (window.hljs) hljs.highlightAll(); });</script>
+
   <!-- Resolve bare specifiers the SDK build leaves external (@noble/*). -->
   <script type="importmap">
   {
@@ -30,7 +35,7 @@
     h1 { color: #58a6ff; margin-bottom: 6px; font-size: 26px; }
     .subtitle { color: #8b949e; font-size: 14px; line-height: 1.5; margin-bottom: 20px; }
     .container { max-width: 1080px; margin: 0 auto; }
-    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 440px; gap: 16px; align-items: start; }
     @media (max-width: 920px) { .layout { grid-template-columns: 1fr; } }
     .panel {
       background: #161b22;
@@ -163,14 +168,6 @@
     .status-dot.ok { background: #3fb950; }
     .status-dot.err { background: #f85149; }
     .status-dot.busy { background: #58a6ff; animation: pulse 1s infinite; }
-    .integration-list {
-      display: grid;
-      gap: 8px;
-      color: #c9d1d9;
-      font-size: 13px;
-      line-height: 1.45;
-    }
-    .integration-list strong { color: #f0f6fc; }
     .code-sample {
       background: #010409;
       border: 1px solid #30363d;
@@ -178,9 +175,17 @@
       color: #d1d7e0;
       font-size: 12px;
       line-height: 1.55;
-      overflow-x: auto;
       padding: 12px;
-      white-space: pre;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    /* Let highlight.js color tokens inherit the surrounding pre's background/padding. */
+    .code-sample code.hljs {
+      background: transparent;
+      padding: 0;
+      font-size: inherit;
+      line-height: inherit;
     }
     .note {
       color: #8b949e;
@@ -247,6 +252,10 @@
       color: #8b949e;
       font-size: 12px;
     }
+    .protected-target .scan-hint strong {
+      color: #d29922;
+      font-weight: 700;
+    }
     .protected-target .scan-btn {
       background: #d29922;
       color: #0d1117;
@@ -262,6 +271,78 @@
       border-color: #e0a83a;
     }
 
+    /* Success overlay (shown after a successful knock, before redirect) */
+    .success-overlay {
+      display: none;
+      background: linear-gradient(135deg, rgba(63,185,80,0.10), rgba(63,185,80,0.02));
+      border: 1px solid rgba(63,185,80,0.4);
+      border-radius: 8px;
+      padding: 24px 20px;
+      margin-bottom: 16px;
+      text-align: center;
+      animation: successPulse 0.4s ease-out;
+    }
+    .success-overlay.show { display: block; }
+    @keyframes successPulse {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .success-overlay .success-title {
+      color: #3fb950;
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      letter-spacing: 0.2px;
+    }
+    .success-overlay .success-target {
+      color: #c9d1d9;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+    .success-overlay .success-target a {
+      color: #58a6ff;
+      text-decoration: none;
+      font-family: ui-monospace, Consolas, 'Courier New', monospace;
+    }
+    .success-overlay .success-target a:hover { text-decoration: underline; }
+    .success-overlay .countdown-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      color: #8b949e;
+      font-size: 13px;
+    }
+    .success-overlay .countdown-num {
+      font-size: 38px;
+      font-weight: 700;
+      color: #d29922;
+      font-family: ui-monospace, Consolas, 'Courier New', monospace;
+      line-height: 1;
+      min-width: 1.1em;
+      text-align: center;
+      animation: countdownPulse 1s ease-in-out infinite;
+    }
+    @keyframes countdownPulse {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.55; }
+    }
+    .success-overlay .cancel-btn {
+      background: transparent;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      padding: 6px 16px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .success-overlay .cancel-btn:hover {
+      background: #30363d;
+      border-color: #484f58;
+    }
+
     /* Page footer */
     .footer {
       margin-top: 32px;
@@ -275,6 +356,13 @@
     .footer strong { color: #c9d1d9; font-weight: 600; }
     .footer a { color: #58a6ff; text-decoration: none; }
     .footer a:hover { text-decoration: underline; }
+    .footer .ip-display {
+      color: #6e7681;
+      font-family: ui-monospace, Consolas, 'Courier New', monospace;
+      font-size: 12px;
+      margin-bottom: 8px;
+      letter-spacing: 0.2px;
+    }
   </style>
 </head>
 <body>
@@ -290,8 +378,16 @@
   <div class="protected-target">
     <span class="label">Protected Server:</span>
     <a class="target-url" href="https://ac.opennhp.org" target="_blank" rel="noopener">https://ac.opennhp.org</a>
-    <span class="scan-hint">Invisible by default, scan its ports to verify</span>
+    <span class="scan-hint"><strong>Invisible</strong> by default, scan its ports to verify</span>
     <a class="btn btn-secondary scan-btn" href="https://dnschecker.org/port-scanner.php?query=ac.opennhp.org&amp;ptype=server" target="_blank" rel="noopener">Scan Ports</a>
+  </div>
+
+  <!-- Success overlay (revealed after a successful knock; runs a 5s countdown then redirects). -->
+  <div class="success-overlay" id="successOverlay" role="status" aria-live="polite">
+    <div class="success-title">&#10003; Knock Successful</div>
+    <div class="success-target">You can now access <a id="successHost" href="#" target="_blank" rel="noopener"></a></div>
+    <div class="countdown-row">Redirecting in <span class="countdown-num" id="countdownNum">5</span> seconds</div>
+    <button type="button" class="cancel-btn" id="cancelRedirectBtn">Stay on this page</button>
   </div>
 
   <!-- Status & Actions -->
@@ -416,26 +512,20 @@
 
     <aside>
       <div class="panel">
-        <div class="panel-title">&#128295; Integration Steps</div>
-        <div class="integration-list">
-          <div><strong>1. Create the agent.</strong> Use <code>transport: 'relay'</code> in browsers because web pages cannot send UDP packets directly.</div>
-          <div><strong>2. Set identity.</strong> Pass the current app user, device, and organization identifiers into the knock payload.</div>
-          <div><strong>3. Add server.</strong> Pin the nhp-server public key your app trusts.</div>
-          <div><strong>4. Knock resource.</strong> Ask for a resource/service pair and redirect only after a successful ACK.</div>
-        </div>
-      </div>
-
-      <div class="panel">
         <div class="panel-title">&#9000; Minimal Browser Code</div>
-        <pre class="code-sample"><code>import { NHPAgent } from '@opennhp/agent';
+        <pre class="code-sample"><code class="language-javascript">import { NHPAgent } from '@opennhp/agent';
 
+// 1. Create the agent. Browsers can't send UDP,
+//    so use the relay transport.
 const agent = new NHPAgent({
   transport: 'relay',
   relayUrl: 'https://relay.example.com/relay',
   privateKey: agentPrivateKey,
 });
-
 await agent.init();
+
+// 2. Identify the caller and pin the nhp-server
+//    your app trusts.
 agent.setIdentity({
   userId: currentUser.email,
   deviceId: browserDeviceId,
@@ -443,6 +533,8 @@ agent.setIdentity({
 });
 agent.addServer({ publicKey: serverPublicKey });
 
+// 3. Knock for the resource. Redirect only
+//    after a successful ACK.
 const result = await agent.knockResource({
   resourceId: 'demo',
   serviceId: 'example',
@@ -458,6 +550,7 @@ if (result.success) {
   </div>
 
   <footer class="footer">
+    <div class="ip-display" id="ipDisplay">Detecting IP&hellip;</div>
     <div>Powered by <a href="https://github.com/OpenNHP/opennhp" target="_blank" rel="noopener"><strong>OpenNHP</strong></a> &mdash; Network-infrastructure Hiding Protocol</div>
     <div>Sponsored by: <a href="https://layerv.ai" target="_blank" rel="noopener">LayerV.ai</a></div>
   </footer>
@@ -580,10 +673,53 @@ if (result.success) {
     });
   }
 
+  // Success-redirect countdown ----------------------------------------------
+  let redirectInterval = null;
+
+  function hideSuccessOverlay() {
+    if (redirectInterval) { clearInterval(redirectInterval); redirectInterval = null; }
+    const overlay = document.getElementById('successOverlay');
+    if (overlay) overlay.classList.remove('show');
+  }
+
+  function startRedirectCountdown(redirectUrl, seconds) {
+    const overlay  = document.getElementById('successOverlay');
+    const hostLink = document.getElementById('successHost');
+    const numEl    = document.getElementById('countdownNum');
+    const cancelBtn = document.getElementById('cancelRedirectBtn');
+    if (!overlay || !hostLink || !numEl || !cancelBtn) return;
+
+    hostLink.href = redirectUrl;
+    hostLink.textContent = redirectUrl;
+
+    let remaining = seconds;
+    numEl.textContent = remaining;
+    overlay.classList.add('show');
+    overlay.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    if (redirectInterval) clearInterval(redirectInterval);
+    redirectInterval = setInterval(() => {
+      remaining -= 1;
+      numEl.textContent = Math.max(remaining, 0);
+      if (remaining <= 0) {
+        clearInterval(redirectInterval);
+        redirectInterval = null;
+        window.location.href = redirectUrl;
+      }
+    }, 1000);
+
+    cancelBtn.onclick = () => {
+      if (redirectInterval) { clearInterval(redirectInterval); redirectInterval = null; }
+      overlay.classList.remove('show');
+      log('info', 'Redirect cancelled — staying on this page.');
+    };
+  }
+
   window.clearLog = function() {
     logEl.innerHTML = '';
     timingEl.textContent = '';
     resetSteps();
+    hideSuccessOverlay();
     setStatus('', 'Ready');
   };
 
@@ -591,6 +727,7 @@ if (result.success) {
     const btn = document.getElementById('knockBtn');
     btn.disabled = true;
     resetSteps();
+    hideSuccessOverlay();
     logEl.innerHTML = '';
     timingEl.textContent = '';
 
@@ -711,15 +848,13 @@ if (result.success) {
         if (result.accessToken) log('ok', `  accessToken  = ${result.accessToken}`);
         if (result.preAccessUrl) log('ok', `  preAccessUrl = ${result.preAccessUrl}`);
 
-        // Redirect to the first resource host returned by the server
+        // Show success overlay with 5s countdown, then redirect to the first resource host.
         const hosts = result.resourceHosts || {};
         const firstHost = Object.values(hosts)[0];
         if (firstHost) {
           const redirectUrl = `https://${firstHost}`;
-          log('info', `Redirecting to ${redirectUrl} in 2 seconds...`);
-          setTimeout(() => {
-            window.location.href = redirectUrl;
-          }, 2000);
+          log('info', `Redirecting to ${redirectUrl} in 5 seconds...`);
+          startRedirectCountdown(redirectUrl, 5);
         } else {
           log('warn', 'No resource host in ACK response — skipping redirect');
         }
@@ -758,6 +893,32 @@ if (result.success) {
   } else {
     log('warn', 'Waiting for demo keys from config.json or manual key input');
   }
+
+  // Detect the visitor's public IPv4/IPv6 and show it in the footer.
+  // Mirrors the pattern used by the auth-plugin demo (api.ipify.org / api6.ipify.org).
+  async function fetchIP() {
+    const el = document.getElementById('ipDisplay');
+    if (!el) return;
+    let ipv4 = null, ipv6 = null;
+    try {
+      const r = await fetch('https://api.ipify.org?format=json');
+      if (r.ok) ipv4 = (await r.json()).ip;
+    } catch (_) {}
+    try {
+      const r = await fetch('https://api6.ipify.org?format=json');
+      if (r.ok) ipv6 = (await r.json()).ip;
+    } catch (_) {}
+    if (ipv4 && ipv6) {
+      el.textContent = `IPv4: ${ipv4}  |  IPv6: ${ipv6}`;
+    } else if (ipv4) {
+      el.textContent = `IPv4: ${ipv4}`;
+    } else if (ipv6) {
+      el.textContent = `IPv6: ${ipv6}`;
+    } else {
+      el.textContent = 'IP detection unavailable';
+    }
+  }
+  fetchIP();
 </script>
 </body>
 </html>

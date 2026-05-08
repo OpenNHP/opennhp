@@ -455,12 +455,8 @@
       </div>
       <div class="row">
         <div class="field" style="flex:2">
-          <label>Agent Private Key (Base64)</label>
+          <label>nhp-agent Private Key (Base64)</label>
           <input id="agentPrivKey" type="text" placeholder="Loaded from config.json on the public demo">
-        </div>
-        <div class="field" style="flex:2">
-          <label>Agent Public Key (register this with nhp-server)</label>
-          <input id="agentPubKey" type="text" readonly style="color:#3fb950; cursor:default;">
         </div>
       </div>
       <div class="row">
@@ -478,7 +474,7 @@
       </div>
       <div class="row">
         <div class="field" style="flex:2">
-          <label>Relay URL</label>
+          <label>Relay API Path (relayUrl)</label>
           <input id="relayUrl" type="text" value="https://relay.opennhp.org/relay">
         </div>
       </div>
@@ -705,13 +701,14 @@ if (result.success) {
     const resourceId = val('resourceId');
     const serviceId = val('serviceId');
 
-    // Clear previous agent pubkey display
-    document.getElementById('agentPubKey').value = '';
-
     if (!serverPubKey) { log('err', 'Server Public Key is required'); btn.disabled = false; return; }
     if (!agentPrivKey) { log('err', 'Agent Private Key is required'); btn.disabled = false; return; }
 
-    const t0 = performance.now();
+    // Network round-trip timing: starts when the encrypted KNK packet is
+    // ready to send (knock event), stops when the ACK is received (ack event).
+    // Excludes agent construction, key derivation, and packet build.
+    let tNetStart = null;
+    let tNetEnd = null;
     setStatus('busy', 'Knocking...');
 
     try {
@@ -731,9 +728,8 @@ if (result.success) {
 
       await agent.init();
       const pubKey = agent.getPublicKey();
-      document.getElementById('agentPubKey').value = pubKey;
       log('ok', `Agent initialized`);
-      log('info', `  Agent Public Key = ${pubKey}`);
+      log('ok', `  Agent Public Key (register this with nhp-server) = ${pubKey}`);
       setStep('init', 'done');
 
       // Step 2: Identity + Server
@@ -747,6 +743,7 @@ if (result.success) {
 
       // Step 3: Listen for events
       agent.on('knock', (data) => {
+        tNetStart = performance.now();
         setStep('build', 'done');
         setStep('post', 'active');
         log('arrow', `>>> KNK packet built: ${data.packet.length} bytes`);
@@ -758,6 +755,7 @@ if (result.success) {
       });
 
       agent.on('ack', (ackMsg) => {
+        tNetEnd = performance.now();
         log('ok', `<<< ACK received from server`);
         log('data', `  resHost  = ${JSON.stringify(ackMsg.resHost)}`);
         log('data', `  opnTime  = ${ackMsg.opnTime}s`);
@@ -793,7 +791,9 @@ if (result.success) {
       // Restore console.debug
       console.debug = origDebug;
 
-      const elapsed = (performance.now() - t0).toFixed(0);
+      // Fall back to function-return time if 'ack' didn't fire (e.g. error response).
+      if (tNetEnd == null) tNetEnd = performance.now();
+      const elapsed = tNetStart != null ? (tNetEnd - tNetStart).toFixed(0) : '?';
       setStep('post', 'done');
       setStep('resp', 'done');
 
@@ -835,7 +835,8 @@ if (result.success) {
       log('data', 'Agent closed');
 
     } catch (err) {
-      const elapsed = (performance.now() - t0).toFixed(0);
+      if (tNetEnd == null) tNetEnd = performance.now();
+      const elapsed = tNetStart != null ? (tNetEnd - tNetStart).toFixed(0) : '?';
       setStep('done', 'error');
       setStatus('err', `Error (${elapsed}ms)`);
       timingEl.textContent = `${elapsed}ms`;

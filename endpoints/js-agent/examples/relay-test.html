@@ -32,9 +32,16 @@
       color: #c9d1d9;
       padding: 20px;
     }
-    h1 { color: #58a6ff; margin-bottom: 6px; font-size: 26px; }
+    h1 { color: #58a6ff; font-size: 26px; }
     .subtitle { color: #8b949e; font-size: 14px; line-height: 1.5; margin-bottom: 20px; }
     .container { max-width: 1080px; margin: 0 auto; }
+    .header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
     .layout { display: grid; grid-template-columns: minmax(0, 1fr) 440px; gap: 16px; align-items: start; }
     @media (max-width: 920px) { .layout { grid-template-columns: 1fr; } }
     .panel {
@@ -97,6 +104,55 @@
     }
     .btn-secondary:hover { background: #30363d; }
     .btn-row { display: flex; gap: 8px; align-items: center; }
+
+    /* Language switcher (compact dropdown matching the docs.opennhp.org pattern) */
+    .lang-switcher { position: relative; flex-shrink: 0; }
+    .lang-switcher button {
+      background: #21262d;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .lang-switcher button:hover { background: #30363d; }
+    .lang-switcher button .caret {
+      font-size: 9px;
+      color: #8b949e;
+    }
+    .lang-switcher button .lang-icon {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      color: #8b949e;
+    }
+    .lang-menu {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 4px);
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      list-style: none;
+      padding: 4px 0;
+      margin: 0;
+      min-width: 140px;
+      z-index: 10;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    }
+    .lang-menu li {
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #c9d1d9;
+    }
+    .lang-menu li:hover { background: #21262d; }
+    .lang-menu li.active { color: #58a6ff; font-weight: 600; }
 
     /* Log area */
     #log {
@@ -367,8 +423,20 @@
 </head>
 <body>
 <div class="container">
-  <h1>OpenNHP JavaScript SDK Demo</h1>
-  <p class="subtitle">The OpenNHP JavaScript SDK lets a browser app &ldquo;knock&rdquo; an nhp-server for zero-trust access before redirecting the user to a protected resource. Click <strong>Request Access</strong> button below to run the exact integration flow you'd add to your own web app &mdash; then peek at the right column for the equivalent code. SDK source on <a href="https://github.com/OpenNHP/opennhp/tree/main/endpoints/js-agent" target="_blank" rel="noopener">GitHub</a>.</p>
+  <div class="header-row">
+    <h1 data-i18n="page.heading">OpenNHP JavaScript SDK Demo</h1>
+    <div class="lang-switcher">
+      <button id="langButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Language">
+        <svg class="lang-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg>
+        <span id="langButtonLabel">EN</span><span class="caret">&#9662;</span>
+      </button>
+      <ul id="langMenu" class="lang-menu" role="menu" hidden>
+        <li role="menuitem" data-lang="en">English</li>
+        <li role="menuitem" data-lang="zh-cn">&#31616;&#20307;&#20013;&#25991;</li>
+      </ul>
+    </div>
+  </div>
+  <p class="subtitle" data-i18n-html="page.subtitle">The OpenNHP JavaScript SDK lets a browser app &ldquo;knock&rdquo; an nhp-server for zero-trust access before redirecting the user to a protected resource. Click <strong>Request Access</strong> button below to run the exact integration flow you'd add to your own web app &mdash; then peek at the right column for the equivalent code. SDK source on <a href="https://github.com/OpenNHP/opennhp/tree/main/endpoints/js-agent" target="_blank" rel="noopener">GitHub</a>.</p>
 
   <div class="layout">
     <main>
@@ -376,18 +444,25 @@
   <!-- What this demo unlocks. The host is hidden by NHP until the knock succeeds —
        click "Scan Ports" before & after to see the difference. -->
   <div class="protected-target">
-    <span class="label">Protected Server:</span>
+    <span class="label" data-i18n="protected.label">Protected Server:</span>
     <a class="target-url" href="https://ac.opennhp.org" target="_blank" rel="noopener">https://ac.opennhp.org</a>
-    <span class="scan-hint"><strong>Invisible</strong> by default, scan its ports to verify</span>
-    <a class="btn btn-secondary scan-btn" href="https://dnschecker.org/port-scanner.php?query=ac.opennhp.org&amp;ptype=server" target="_blank" rel="noopener">Scan Ports</a>
+    <span class="scan-hint" data-i18n-html="protected.scanHint"><strong>Invisible</strong> by default, scan its ports to verify</span>
+    <a class="btn btn-secondary scan-btn" href="https://dnschecker.org/port-scanner.php?query=ac.opennhp.org&amp;ptype=server" target="_blank" rel="noopener" data-i18n="protected.scanBtn">Scan Ports</a>
   </div>
 
   <!-- Success overlay (revealed after a successful knock; runs a 5s countdown then redirects). -->
   <div class="success-overlay" id="successOverlay" role="status" aria-live="polite">
-    <div class="success-title">&#10003; Knock Successful</div>
-    <div class="success-target">You can now access <a id="successHost" href="#" target="_blank" rel="noopener"></a></div>
-    <div class="countdown-row">Redirecting in <span class="countdown-num" id="countdownNum">5</span> seconds</div>
-    <button type="button" class="cancel-btn" id="cancelRedirectBtn">Stay on this page</button>
+    <div class="success-title" data-i18n="success.title">&#10003; Knock Successful</div>
+    <div class="success-target">
+      <span data-i18n="success.target">You can now access</span>
+      <a id="successHost" href="#" target="_blank" rel="noopener"></a>
+    </div>
+    <div class="countdown-row">
+      <span data-i18n="success.countdownPrefix">Redirecting in</span>
+      <span class="countdown-num" id="countdownNum">5</span>
+      <span data-i18n="success.countdownSuffix">seconds</span>
+    </div>
+    <button type="button" class="cancel-btn" id="cancelRedirectBtn" data-i18n="success.cancel">Stay on this page</button>
   </div>
 
   <!-- Status & Actions -->
@@ -399,44 +474,44 @@
   </div>
 
   <div class="btn-row" style="margin-bottom:16px;">
-    <button class="btn btn-primary" id="knockBtn" onclick="doKnock()">Request Access</button>
-    <button class="btn btn-secondary" onclick="clearLog()">Clear Log</button>
+    <button class="btn btn-primary" id="knockBtn" onclick="doKnock()" data-i18n="btn.knock">Request Access</button>
+    <button class="btn btn-secondary" onclick="clearLog()" data-i18n="btn.clear">Clear Log</button>
   </div>
 
   <!-- Runtime flow diagram (the workflow shown first) -->
   <div class="panel">
-    <div class="panel-title">&#9654; Runtime Flow</div>
+    <div class="panel-title">&#9654; <span data-i18n="panel.runtimeFlow">Runtime Flow</span></div>
     <div class="seq-diagram" id="seqDiagram">
       <div class="seq-step" id="seq-init">
         <div class="seq-dot" id="dot-init"></div>
-        <span>Initialize NHPAgent with a browser relay transport</span>
+        <span data-i18n="seq.init">Initialize NHPAgent with a browser relay transport</span>
       </div>
       <div class="seq-step" id="seq-identity">
         <div class="seq-dot" id="dot-identity"></div>
-        <span>Attach app identity and trusted nhp-server key</span>
+        <span data-i18n="seq.identity">Attach app identity and trusted nhp-server key</span>
       </div>
       <div class="seq-step" id="seq-build">
         <div class="seq-dot" id="dot-build"></div>
-        <span>Build encrypted KNK packet using ECDH and AEAD</span>
+        <span data-i18n="seq.build">Build encrypted KNK packet using ECDH and AEAD</span>
       </div>
       <div class="seq-step" id="seq-post">
         <div class="seq-dot" id="dot-post"></div>
-        <span>POST to nhp-relay server, which forwards the knock to nhp-server over UDP</span>
+        <span data-i18n="seq.post">POST to nhp-relay server, which forwards the knock to nhp-server over UDP</span>
       </div>
       <div class="seq-step" id="seq-resp">
         <div class="seq-dot" id="dot-resp"></div>
-        <span>Parse ACK/COK response and extract temporary access details</span>
+        <span data-i18n="seq.resp">Parse ACK/COK response and extract temporary access details</span>
       </div>
       <div class="seq-step" id="seq-done">
         <div class="seq-dot" id="dot-done"></div>
-        <span>Redirect the user to the now-accessible protected resource</span>
+        <span data-i18n="seq.done">Redirect the user to the now-accessible protected resource</span>
       </div>
     </div>
   </div>
 
   <!-- Log Panel (foldable; open by default so a running knock is visible) -->
   <details class="panel details-panel" id="log-details" open>
-    <summary class="panel-title">&#9776; SDK Event Log<span class="summary-hint">click to fold / unfold</span></summary>
+    <summary class="panel-title">&#9776; <span data-i18n="panel.eventLog">SDK Event Log</span><span class="summary-hint" data-i18n="summary.foldHint">click to fold / unfold</span></summary>
     <div class="details-content">
       <div id="log"></div>
     </div>
@@ -445,60 +520,60 @@
   <!-- NHP-Agent parameters (collapsed; opens automatically if keys are missing).
        These map 1:1 to the SDK calls: NHPAgent({...}) / setIdentity / addServer / knockResource. -->
   <details class="panel details-panel" id="keys-details">
-    <summary class="panel-title">&#9881; NHP-Agent Parameters<span class="summary-hint">click to view / edit</span></summary>
+    <summary class="panel-title">&#9881; <span data-i18n="panel.parameters">NHP-Agent Parameters</span><span class="summary-hint" data-i18n="summary.editHint">click to view / edit</span></summary>
     <div class="details-content">
       <div class="row">
         <div class="field" style="flex:2">
-          <label>nhp-server Public Key (Base64)</label>
+          <label data-i18n="field.serverPubKey">nhp-server Public Key (Base64)</label>
           <input id="serverPubKey" type="text" placeholder="E3o8gUUxI5dUAUiEOi6SvgV9bWKmjpWWQaOO6GChO2A=">
         </div>
       </div>
       <div class="row">
         <div class="field" style="flex:2">
-          <label>nhp-agent Private Key (Base64)</label>
-          <input id="agentPrivKey" type="text" placeholder="Loaded from config.json on the public demo">
+          <label data-i18n="field.agentPrivKey">nhp-agent Private Key (Base64)</label>
+          <input id="agentPrivKey" type="text" data-i18n-attr="placeholder:field.agentPrivKey.placeholder" placeholder="Loaded from config.json on the public demo">
         </div>
       </div>
       <div class="row">
         <div class="field">
-          <label>Cipher Scheme</label>
+          <label data-i18n="field.cipherScheme">Cipher Scheme</label>
           <select id="cipherScheme">
             <option value="curve25519">curve25519 (X25519 + AES-GCM + BLAKE2s)</option>
             <option value="gmsm">gmsm (SM2 + SM4-GCM + SM3)</option>
           </select>
         </div>
         <div class="field">
-          <label>Timeout (ms)</label>
+          <label data-i18n="field.timeoutMs">Timeout (ms)</label>
           <input id="timeoutMs" type="number" value="10000">
         </div>
       </div>
       <div class="row">
         <div class="field" style="flex:2">
-          <label>Relay API Path (relayUrl)</label>
+          <label data-i18n="field.relayUrl">Relay API Path (relayUrl)</label>
           <input id="relayUrl" type="text" value="https://relay.opennhp.org/relay">
         </div>
       </div>
       <div class="row">
         <div class="field">
-          <label>User ID</label>
+          <label data-i18n="field.userId">User ID</label>
           <input id="userId" type="text" value="developer@example.com">
         </div>
         <div class="field">
-          <label>Device ID</label>
+          <label data-i18n="field.deviceId">Device ID</label>
           <input id="deviceId" type="text" value="browser-sdk-demo">
         </div>
         <div class="field">
-          <label>Organization ID</label>
+          <label data-i18n="field.orgId">Organization ID</label>
           <input id="orgId" type="text" value="opennhp.org">
         </div>
       </div>
       <div class="row">
         <div class="field">
-          <label>Resource ID</label>
+          <label data-i18n="field.resourceId">Resource ID</label>
           <input id="resourceId" type="text" value="demo">
         </div>
         <div class="field">
-          <label>Service ID</label>
+          <label data-i18n="field.serviceId">Service ID</label>
           <input id="serviceId" type="text" value="example">
         </div>
       </div>
@@ -508,7 +583,7 @@
 
     <aside>
       <div class="panel">
-        <div class="panel-title">&#9000; Minimal Browser Code</div>
+        <div class="panel-title">&#9000; <span data-i18n="panel.code">Minimal Browser Code</span></div>
         <pre class="code-sample"><code class="language-javascript">import { NHPAgent } from '@opennhp/agent';
 
 // 1. Create the agent. Browsers can't send UDP,
@@ -540,26 +615,321 @@ if (result.success) {
   window.location.href =
     `https://${Object.values(result.resourceHosts)[0]}`;
 }</code></pre>
-        <p class="note">This public demo intentionally uses demo keys. Production apps should issue per-user or per-device keys and bundle crypto dependencies with the application.</p>
+        <p class="note" data-i18n="note.demo">This public demo intentionally uses demo keys. Production apps should issue per-user or per-device keys and bundle crypto dependencies with the application.</p>
       </div>
     </aside>
   </div>
 
   <footer class="footer">
-    <div class="ip-display" id="ipDisplay">Detecting IP&hellip;</div>
-    <div>Powered by <a href="https://github.com/OpenNHP/opennhp" target="_blank" rel="noopener"><strong>OpenNHP</strong></a> &mdash; Network-infrastructure Hiding Protocol</div>
-    <div>Sponsored by: <a href="https://layerv.ai" target="_blank" rel="noopener">LayerV.ai</a></div>
+    <div class="ip-display" id="ipDisplay" data-i18n="footer.detectingIp">Detecting IP&hellip;</div>
+    <div data-i18n-html="footer.line1">Powered by <a href="https://github.com/OpenNHP/opennhp" target="_blank" rel="noopener"><strong>OpenNHP</strong></a> &mdash; Network-infrastructure Hiding Protocol</div>
+    <div data-i18n-html="footer.line2">Sponsored by: <a href="https://layerv.ai" target="_blank" rel="noopener">LayerV.ai</a></div>
   </footer>
 </div>
 
 <script type="module">
   import { NHPAgent } from '../dist/index.js';
 
+  // ---------- i18n ----------------------------------------------------------
+  // Lightweight, dependency-free translations inlined for the demo. To add a
+  // language: append a new key to I18N (use the same shape as 'en') and add
+  // an <li data-lang="..."> entry to #langMenu in the markup above.
+  const I18N = {
+    en: {
+      'page.title': 'OpenNHP JavaScript SDK Demo',
+      'page.heading': 'OpenNHP JavaScript SDK Demo',
+      'page.subtitle': 'The OpenNHP JavaScript SDK lets a browser app &ldquo;knock&rdquo; an nhp-server for zero-trust access before redirecting the user to a protected resource. Click <strong>Request Access</strong> button below to run the exact integration flow you\'d add to your own web app &mdash; then peek at the right column for the equivalent code. SDK source on <a href="https://github.com/OpenNHP/opennhp/tree/main/endpoints/js-agent" target="_blank" rel="noopener">GitHub</a>.',
+
+      'protected.label': 'Protected Server:',
+      'protected.scanHint': '<strong>Invisible</strong> by default, scan its ports to verify',
+      'protected.scanBtn': 'Scan Ports',
+
+      'success.title': '✓ Knock Successful',
+      'success.target': 'You can now access',
+      'success.countdownPrefix': 'Redirecting in',
+      'success.countdownSuffix': 'seconds',
+      'success.cancel': 'Stay on this page',
+
+      'status.ready': 'Ready',
+      'status.knocking': 'Knocking...',
+      'status.success': 'Success ({ms}ms)',
+      'status.failed': 'Failed: {err} ({ms}ms)',
+      'status.error': 'Error ({ms}ms)',
+
+      'btn.knock': 'Request Access',
+      'btn.clear': 'Clear Log',
+
+      'panel.runtimeFlow': 'Runtime Flow',
+      'panel.eventLog': 'SDK Event Log',
+      'panel.parameters': 'NHP-Agent Parameters',
+      'panel.code': 'Minimal Browser Code',
+
+      'summary.foldHint': 'click to fold / unfold',
+      'summary.editHint': 'click to view / edit',
+
+      'seq.init': 'Initialize NHPAgent with a browser relay transport',
+      'seq.identity': 'Attach app identity and trusted nhp-server key',
+      'seq.build': 'Build encrypted KNK packet using ECDH and AEAD',
+      'seq.post': 'POST to nhp-relay server, which forwards the knock to nhp-server over UDP',
+      'seq.resp': 'Parse ACK/COK response and extract temporary access details',
+      'seq.done': 'Redirect the user to the now-accessible protected resource',
+
+      'field.serverPubKey': 'nhp-server Public Key (Base64)',
+      'field.agentPrivKey': 'nhp-agent Private Key (Base64)',
+      'field.agentPrivKey.placeholder': 'Loaded from config.json on the public demo',
+      'field.cipherScheme': 'Cipher Scheme',
+      'field.timeoutMs': 'Timeout (ms)',
+      'field.relayUrl': 'Relay API Path (relayUrl)',
+      'field.userId': 'User ID',
+      'field.deviceId': 'Device ID',
+      'field.orgId': 'Organization ID',
+      'field.resourceId': 'Resource ID',
+      'field.serviceId': 'Service ID',
+
+      'note.demo': 'This public demo intentionally uses demo keys. Production apps should issue per-user or per-device keys and bundle crypto dependencies with the application.',
+
+      'footer.detectingIp': 'Detecting IP…',
+      'footer.ipUnavailable': 'IP detection unavailable',
+      'footer.line1': 'Powered by <a href="https://github.com/OpenNHP/opennhp" target="_blank" rel="noopener"><strong>OpenNHP</strong></a> &mdash; Network-infrastructure Hiding Protocol',
+      'footer.line2': 'Sponsored by: <a href="https://layerv.ai" target="_blank" rel="noopener">LayerV.ai</a>',
+
+      'log.demoLoaded': 'OpenNHP JavaScript SDK demo loaded',
+      'log.relayUrl': 'Relay URL: {url}',
+      'log.flow': 'Flow: Web app → NHPAgent(relay) → POST /relay → nhp-server (UDP) → ACK → protected resource',
+      'log.waiting': 'Waiting for demo keys from config.json (or fill them in manually below)',
+      'log.serverKeyRequired': 'Server Public Key is required',
+      'log.agentKeyRequired': 'Agent Private Key is required',
+      'log.creatingAgent': 'Creating NHPAgent (cipher={cipher}, transport=relay)',
+      'log.agentInitialized': 'Agent initialized',
+      'log.agentPubKey': '  Agent Public Key (register this with nhp-server) = {key}',
+      'log.identity': 'Identity: userId={userId}, deviceId={deviceId}',
+      'log.serverPubKey': 'Server pubkey={key}...',
+      'log.knkBuilt': '>>> KNK packet built: {bytes} bytes',
+      'log.packetType': '  packetType = {type}',
+      'log.posting': '  POST {url} ({bytes} bytes)',
+      'log.headerHex': '  header[0:32] = {hex}',
+      'log.ackReceived': '<<< ACK received from server',
+      'log.knockingResource': 'Knocking resource={resourceId}, service={serviceId}',
+      'log.knockSuccess': '=== KNOCK SUCCESSFUL ===',
+      'log.knockFailed': '=== KNOCK FAILED ===',
+      'log.errorTip': '  Tip: check relay server logs and nhp-server logs for details',
+      'log.redirecting': 'Redirecting to {url} in 5 seconds...',
+      'log.noHost': 'No resource host in ACK response — skipping redirect',
+      'log.agentClosed': 'Agent closed',
+      'log.exception': 'Exception: {msg}',
+      'log.redirectCancelled': 'Redirect cancelled — staying on this page.',
+      'log.agentError': 'Agent error: {msg}',
+    },
+    'zh-cn': {
+      'page.title': 'OpenNHP JavaScript SDK 演示',
+      'page.heading': 'OpenNHP JavaScript SDK 演示',
+      'page.subtitle': 'OpenNHP JavaScript SDK 让浏览器在访问受保护服务器之前，先向 nhp-server 发起“敲门”以获得零信任访问授权。点击下方的<strong>请求访问</strong>按钮体验集成OpenNHP的Web应用的完整流程，右侧栏展示了其代码示例。SDK 源码请见 <a href="https://github.com/OpenNHP/opennhp/tree/main/endpoints/js-agent" target="_blank" rel="noopener">GitHub</a>。',
+
+      'protected.label': '受保护服务器：',
+      'protected.scanHint': '默认<strong>不可见</strong>，扫描端口验证',
+      'protected.scanBtn': '扫描端口',
+
+      'success.title': '✓ 敲门成功',
+      'success.target': '您现在可以访问',
+      'success.countdownPrefix': '将在',
+      'success.countdownSuffix': '秒后跳转',
+      'success.cancel': '留在本页',
+
+      'status.ready': '就绪',
+      'status.knocking': '敲门中…',
+      'status.success': '成功（{ms} 毫秒）',
+      'status.failed': '失败：{err}（{ms} 毫秒）',
+      'status.error': '错误（{ms} 毫秒）',
+
+      'btn.knock': '请求访问',
+      'btn.clear': '清空日志',
+
+      'panel.runtimeFlow': '运行时流程',
+      'panel.eventLog': 'SDK 事件日志',
+      'panel.parameters': 'NHP-Agent 参数',
+      'panel.code': '最简示例代码',
+
+      'summary.foldHint': '点击折叠 / 展开',
+      'summary.editHint': '点击查看 / 编辑',
+
+      'seq.init': '初始化 NHPAgent',
+      'seq.identity': '附加应用身份信息并指定可信任的 nhp-server 公钥',
+      'seq.build': '使用 ECDH 与 AEAD 构建加密的 KNK 数据包',
+      'seq.post': 'POST 到 nhp-relay 服务器，由其通过 UDP 将敲门请求转发至 nhp-server',
+      'seq.resp': '解析 ACK/COK 响应并提取临时访问凭证',
+      'seq.done': '将用户跳转到现已可访问的受保护资源',
+
+      'field.serverPubKey': 'nhp-server 公钥（Base64）',
+      'field.agentPrivKey': 'nhp-agent 私钥（Base64）',
+      'field.agentPrivKey.placeholder': '公开演示页面会从 config.json 自动加载',
+      'field.cipherScheme': '加密套件',
+      'field.timeoutMs': '超时（毫秒）',
+      'field.relayUrl': ' nhp-relay API 路径（relayUrl）',
+      'field.userId': '用户 ID',
+      'field.deviceId': '设备 ID',
+      'field.orgId': '组织 ID',
+      'field.resourceId': '资源 ID',
+      'field.serviceId': '服务 ID',
+
+      'note.demo': '本公开演示页有意使用示例密钥。生产环境应为每位用户或每台设备签发独立密钥，并将加密依赖打包进自身应用。',
+
+      'footer.detectingIp': '正在检测 IP…',
+      'footer.ipUnavailable': '无法检测 IP',
+      'footer.line1': '驱动技术：<a href="https://github.com/OpenNHP/opennhp" target="_blank" rel="noopener"><strong>OpenNHP</strong></a> — 网络基础设施隐藏协议',
+      'footer.line2': '赞助方：<a href="https://layerv.ai" target="_blank" rel="noopener">LayerV.ai</a>',
+
+      'log.demoLoaded': 'OpenNHP JavaScript SDK 演示已加载',
+      'log.relayUrl': ' nhp-relay服务器URL：{url}',
+      'log.flow': '流程：Web 应用 → NHPAgent(relay) → POST /relay → nhp-server (UDP) → ACK → 受保护资源',
+      'log.waiting': '正在等待 config.json 中的演示密钥（或在下方手动填写）',
+      'log.serverKeyRequired': '需要填写 nhp-server 公钥',
+      'log.agentKeyRequired': '需要填写 nhp-agent 私钥',
+      'log.creatingAgent': '正在创建 NHPAgent（cipher={cipher}，transport=relay）',
+      'log.agentInitialized': 'Agent 已初始化',
+      'log.agentPubKey': '  Agent 公钥（请向 nhp-server 注册） = {key}',
+      'log.identity': '身份：userId={userId}，deviceId={deviceId}',
+      'log.serverPubKey': '服务器公钥={key}…',
+      'log.knkBuilt': '>>> KNK 数据包已构建：{bytes} 字节',
+      'log.packetType': '  packetType = {type}',
+      'log.posting': '  POST {url}（{bytes} 字节）',
+      'log.headerHex': '  header[0:32] = {hex}',
+      'log.ackReceived': '<<< 已收到来自服务器的 ACK',
+      'log.knockingResource': '敲门资源 resource={resourceId}，service={serviceId}',
+      'log.knockSuccess': '=== 敲门成功 ===',
+      'log.knockFailed': '=== 敲门失败 ===',
+      'log.errorTip': '  提示：请查看 relay 服务器与 nhp-server 的日志了解详情',
+      'log.redirecting': '将在 5 秒后跳转到 {url}…',
+      'log.noHost': 'ACK 响应中没有资源主机 — 跳过跳转',
+      'log.agentClosed': 'Agent 已关闭',
+      'log.exception': '异常：{msg}',
+      'log.redirectCancelled': '已取消跳转，留在本页。',
+      'log.agentError': 'Agent 错误：{msg}',
+    },
+  };
+
+  let currentLang = detectLang();
+  // Status bar state is tracked by key so language switches refresh it.
+  let statusKey = 'status.ready';
+  let statusVars = {};
+
+  function detectLang() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const fromUrl = params.get('lang');
+      if (fromUrl && I18N[fromUrl]) return fromUrl;
+    } catch {}
+    try {
+      const stored = localStorage.getItem('nhp-demo-lang');
+      if (stored && I18N[stored]) return stored;
+    } catch {}
+    const nav = (navigator.language || 'en').toLowerCase();
+    if (nav === 'zh-cn' || nav.startsWith('zh-cn')) return 'zh-cn';
+    return 'en';
+  }
+
+  function t(key, vars) {
+    const dict = I18N[currentLang] || I18N.en;
+    let s = dict[key];
+    if (s == null) s = I18N.en[key];
+    if (s == null) return key;
+    if (vars) {
+      for (const k in vars) {
+        s = s.split('{' + k + '}').join(String(vars[k]));
+      }
+    }
+    return s;
+  }
+
+  function applyI18n() {
+    document.documentElement.lang = currentLang === 'zh-cn' ? 'zh-CN' : 'en';
+    document.title = t('page.title');
+
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      el.textContent = t(el.getAttribute('data-i18n'));
+    });
+    document.querySelectorAll('[data-i18n-html]').forEach(el => {
+      el.innerHTML = t(el.getAttribute('data-i18n-html'));
+    });
+    document.querySelectorAll('[data-i18n-attr]').forEach(el => {
+      const spec = el.getAttribute('data-i18n-attr');
+      spec.split(';').forEach(pair => {
+        const idx = pair.indexOf(':');
+        if (idx < 0) return;
+        const attr = pair.slice(0, idx).trim();
+        const key = pair.slice(idx + 1).trim();
+        if (attr && key) el.setAttribute(attr, t(key));
+      });
+    });
+
+    // Status bar text is dynamic; refresh from tracked state.
+    statusText.textContent = t(statusKey, statusVars);
+  }
+
+  function setLanguage(lang) {
+    if (!I18N[lang] || lang === currentLang) return;
+    currentLang = lang;
+    try { localStorage.setItem('nhp-demo-lang', lang); } catch {}
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('lang', lang);
+      history.replaceState({}, '', url.toString());
+    } catch {}
+    applyI18n();
+    updateLangSwitcherUI();
+  }
+
+  // ---------- DOM refs ------------------------------------------------------
   const logEl = document.getElementById('log');
   const statusDot = document.getElementById('statusDot');
   const statusText = document.getElementById('statusText');
   const timingEl = document.getElementById('timing');
 
+  // ---------- Language switcher UI ------------------------------------------
+  const LANG_LABELS = { en: 'EN', 'zh-cn': '中文' };
+
+  function updateLangSwitcherUI() {
+    const labelEl = document.getElementById('langButtonLabel');
+    if (labelEl) labelEl.textContent = LANG_LABELS[currentLang] || currentLang.toUpperCase();
+    document.querySelectorAll('#langMenu [data-lang]').forEach(li => {
+      li.classList.toggle('active', li.getAttribute('data-lang') === currentLang);
+    });
+  }
+
+  function setupLangSwitcher() {
+    const button = document.getElementById('langButton');
+    const menu = document.getElementById('langMenu');
+    if (!button || !menu) return;
+
+    button.addEventListener('click', e => {
+      e.stopPropagation();
+      const opening = menu.hidden;
+      menu.hidden = !opening;
+      button.setAttribute('aria-expanded', String(opening));
+    });
+    menu.addEventListener('click', e => {
+      const item = e.target.closest('[data-lang]');
+      if (!item) return;
+      setLanguage(item.getAttribute('data-lang'));
+      menu.hidden = true;
+      button.setAttribute('aria-expanded', 'false');
+    });
+    document.addEventListener('click', e => {
+      if (!menu.hidden && !menu.contains(e.target) && e.target !== button) {
+        menu.hidden = true;
+        button.setAttribute('aria-expanded', 'false');
+      }
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !menu.hidden) {
+        menu.hidden = true;
+        button.setAttribute('aria-expanded', 'false');
+        button.focus();
+      }
+    });
+    updateLangSwitcherUI();
+  }
+
+  // ---------- Demo logic ----------------------------------------------------
   // Always pull defaults from the deployment-rendered config.json on every
   // load. We deliberately do NOT cache anything in localStorage — when the
   // server rotates demo keys, returning visitors must see the new values.
@@ -585,17 +955,6 @@ if (result.success) {
       // config.json is optional (local dev); ignore
     }
   }
-  loadDefaultsFromConfig().then(() => {
-    // Auto-expand the Demo Keys panel when either key is still empty so a
-    // first-time visitor (or a local-dev page without config.json) sees what
-    // they need to fill in before clicking the button.
-    const sk = document.getElementById('serverPubKey').value;
-    const ak = document.getElementById('agentPrivKey').value;
-    if (!sk || !ak) {
-      const det = document.getElementById('keys-details');
-      if (det) det.open = true;
-    }
-  });
 
   // One-time cleanup: drop any stale state from older builds that persisted
   // form values. Safe to remove after one release cycle.
@@ -614,9 +973,12 @@ if (result.success) {
     logEl.scrollTop = logEl.scrollHeight;
   }
 
-  function setStatus(state, text) {
+  // setStatus tracks the current i18n key + vars so language switches re-render.
+  function setStatus(state, key, vars) {
+    statusKey = key;
+    statusVars = vars || {};
     statusDot.className = 'status-dot' + (state ? ' ' + state : '');
-    statusText.textContent = text;
+    statusText.textContent = t(key, statusVars);
   }
 
   function setStep(id, state) {
@@ -671,7 +1033,7 @@ if (result.success) {
     cancelBtn.onclick = () => {
       if (redirectInterval) { clearInterval(redirectInterval); redirectInterval = null; }
       overlay.classList.remove('show');
-      log('info', 'Redirect cancelled — staying on this page.');
+      log('info', t('log.redirectCancelled'));
     };
   }
 
@@ -680,7 +1042,7 @@ if (result.success) {
     timingEl.textContent = '';
     resetSteps();
     hideSuccessOverlay();
-    setStatus('', 'Ready');
+    setStatus('', 'status.ready');
   };
 
   window.doKnock = async function() {
@@ -701,15 +1063,15 @@ if (result.success) {
     const resourceId = val('resourceId');
     const serviceId = val('serviceId');
 
-    if (!serverPubKey) { log('err', 'Server Public Key is required'); btn.disabled = false; return; }
-    if (!agentPrivKey) { log('err', 'Agent Private Key is required'); btn.disabled = false; return; }
+    if (!serverPubKey) { log('err', t('log.serverKeyRequired')); btn.disabled = false; return; }
+    if (!agentPrivKey) { log('err', t('log.agentKeyRequired')); btn.disabled = false; return; }
 
     // Network round-trip timing: starts when the encrypted KNK packet is
     // ready to send (knock event), stops when the ACK is received (ack event).
     // Excludes agent construction, key derivation, and packet build.
     let tNetStart = null;
     let tNetEnd = null;
-    setStatus('busy', 'Knocking...');
+    setStatus('busy', 'status.knocking');
 
     try {
       // Step 1: Init
@@ -721,24 +1083,24 @@ if (result.success) {
         privateKey: agentPrivKey,
         logLevel: 'debug',
       };
-      log('info', `Creating NHPAgent (cipher=${cipherScheme}, transport=relay)`);
+      log('info', t('log.creatingAgent', { cipher: cipherScheme }));
       log('data', `  relayUrl = ${relayUrl}`);
 
       const agent = new NHPAgent(agentCfg);
 
       await agent.init();
       const pubKey = agent.getPublicKey();
-      log('ok', `Agent initialized`);
-      log('ok', `  Agent Public Key (register this with nhp-server) = ${pubKey}`);
+      log('ok', t('log.agentInitialized'));
+      log('ok', t('log.agentPubKey', { key: pubKey }));
       setStep('init', 'done');
 
       // Step 2: Identity + Server
       setStep('identity', 'active');
       agent.setIdentity({ userId, deviceId, organizationId: orgId });
-      log('info', `Identity: userId=${userId}, deviceId=${deviceId}`);
+      log('info', t('log.identity', { userId, deviceId }));
 
       agent.addServer({ publicKey: serverPubKey });
-      log('info', `Server pubkey=${serverPubKey.substring(0, 20)}...`);
+      log('info', t('log.serverPubKey', { key: serverPubKey.substring(0, 20) }));
       setStep('identity', 'done');
 
       // Step 3: Listen for events
@@ -746,17 +1108,17 @@ if (result.success) {
         tNetStart = performance.now();
         setStep('build', 'done');
         setStep('post', 'active');
-        log('arrow', `>>> KNK packet built: ${data.packet.length} bytes`);
-        log('data', `  packetType = ${data.packetType}`);
-        log('info', `  POST ${relayUrl} (${data.packet.length} bytes)`);
+        log('arrow', t('log.knkBuilt', { bytes: data.packet.length }));
+        log('data', t('log.packetType', { type: data.packetType }));
+        log('info', t('log.posting', { url: relayUrl, bytes: data.packet.length }));
         // Hex dump of first 32 bytes
         const hex = Array.from(data.packet.slice(0, 32)).map(b => b.toString(16).padStart(2,'0')).join(' ');
-        log('data', `  header[0:32] = ${hex}`);
+        log('data', t('log.headerHex', { hex }));
       });
 
       agent.on('ack', (ackMsg) => {
         tNetEnd = performance.now();
-        log('ok', `<<< ACK received from server`);
+        log('ok', t('log.ackReceived'));
         log('data', `  resHost  = ${JSON.stringify(ackMsg.resHost)}`);
         log('data', `  opnTime  = ${ackMsg.opnTime}s`);
         log('data', `  agentAddr= ${ackMsg.agentAddr}`);
@@ -765,7 +1127,7 @@ if (result.success) {
       });
 
       agent.on('error', (err) => {
-        log('err', `Agent error: ${err?.message || err}`);
+        log('err', t('log.agentError', { msg: err?.message || err }));
         if (err?.stack) log('data', err.stack);
       });
 
@@ -781,7 +1143,7 @@ if (result.success) {
 
       // Step 4: Knock — also do a manual fetch to capture raw HTTP response details
       setStep('build', 'active');
-      log('info', `Knocking resource=${resourceId}, service=${serviceId}`);
+      log('info', t('log.knockingResource', { resourceId, serviceId }));
 
       const result = await agent.knockResource({
         resourceId,
@@ -800,10 +1162,10 @@ if (result.success) {
       // Step 5: Result
       if (result.success) {
         setStep('done', 'done');
-        setStatus('ok', `Success (${elapsed}ms)`);
+        setStatus('ok', 'status.success', { ms: elapsed });
         timingEl.textContent = `${elapsed}ms`;
 
-        log('ok', `=== KNOCK SUCCESSFUL ===`);
+        log('ok', t('log.knockSuccess'));
         log('ok', `  expiresAt    = ${new Date(result.expiresAt).toLocaleString()}`);
         log('ok', `  resourceHosts= ${JSON.stringify(result.resourceHosts)}`);
         log('ok', `  agentAddress = ${result.agentAddress}`);
@@ -815,43 +1177,37 @@ if (result.success) {
         const firstHost = Object.values(hosts)[0];
         if (firstHost) {
           const redirectUrl = `https://${firstHost}`;
-          log('info', `Redirecting to ${redirectUrl} in 5 seconds...`);
+          log('info', t('log.redirecting', { url: redirectUrl }));
           startRedirectCountdown(redirectUrl, 5);
         } else {
-          log('warn', 'No resource host in ACK response — skipping redirect');
+          log('warn', t('log.noHost'));
         }
       } else {
         setStep('done', 'error');
-        setStatus('err', `Failed: ${result.error} (${elapsed}ms)`);
+        setStatus('err', 'status.failed', { err: result.error, ms: elapsed });
         timingEl.textContent = `${elapsed}ms`;
 
-        log('err', `=== KNOCK FAILED ===`);
+        log('err', t('log.knockFailed'));
         log('err', `  error     = ${result.error}`);
         log('err', `  errorCode = ${result.errorCode}`);
-        log('warn', `  Tip: check relay server logs and nhp-server logs for details`);
+        log('warn', t('log.errorTip'));
       }
 
       await agent.close();
-      log('data', 'Agent closed');
+      log('data', t('log.agentClosed'));
 
     } catch (err) {
       if (tNetEnd == null) tNetEnd = performance.now();
       const elapsed = tNetStart != null ? (tNetEnd - tNetStart).toFixed(0) : '?';
       setStep('done', 'error');
-      setStatus('err', `Error (${elapsed}ms)`);
+      setStatus('err', 'status.error', { ms: elapsed });
       timingEl.textContent = `${elapsed}ms`;
-      log('err', `Exception: ${err.message}`);
+      log('err', t('log.exception', { msg: err.message }));
       log('data', err.stack || '');
     } finally {
       btn.disabled = false;
     }
   };
-
-  // Log ready
-  log('info', 'OpenNHP JavaScript SDK demo loaded');
-  log('data', `Relay URL: ${val('relayUrl')}`);
-  log('data', 'Flow: Web app → NHPAgent(relay) → POST /relay → nhp-server (UDP) → ACK → protected resource');
-  log('info', 'Waiting for demo keys from config.json (or fill them in manually below)');
 
   // Detect the visitor's public IPv4/IPv6 and show it in the footer.
   // Mirrors the pattern used by the auth-plugin demo (api.ipify.org / api6.ipify.org).
@@ -867,16 +1223,42 @@ if (result.success) {
       const r = await fetch('https://api6.ipify.org?format=json');
       if (r.ok) ipv6 = (await r.json()).ip;
     } catch (_) {}
-    if (ipv4 && ipv6) {
-      el.textContent = `IPv4: ${ipv4}  |  IPv6: ${ipv6}`;
-    } else if (ipv4) {
-      el.textContent = `IPv4: ${ipv4}`;
-    } else if (ipv6) {
-      el.textContent = `IPv6: ${ipv6}`;
+    // Resolved IPs are language-neutral data, so drop data-i18n to stop
+    // applyI18n() from clobbering them. The "unavailable" branch keeps
+    // data-i18n so language switches still re-translate it.
+    if (ipv4 || ipv6) {
+      el.removeAttribute('data-i18n');
+      if (ipv4 && ipv6) el.textContent = `IPv4: ${ipv4}  |  IPv6: ${ipv6}`;
+      else if (ipv4)   el.textContent = `IPv4: ${ipv4}`;
+      else             el.textContent = `IPv6: ${ipv6}`;
     } else {
-      el.textContent = 'IP detection unavailable';
+      el.setAttribute('data-i18n', 'footer.ipUnavailable');
+      el.textContent = t('footer.ipUnavailable');
     }
   }
+
+  // ---------- Bootstrap -----------------------------------------------------
+  applyI18n();
+  setupLangSwitcher();
+  setStatus('', 'status.ready');
+
+  loadDefaultsFromConfig().then(() => {
+    // Auto-expand the Demo Keys panel when either key is still empty so a
+    // first-time visitor (or a local-dev page without config.json) sees what
+    // they need to fill in before clicking the button.
+    const sk = document.getElementById('serverPubKey').value;
+    const ak = document.getElementById('agentPrivKey').value;
+    if (!sk || !ak) {
+      const det = document.getElementById('keys-details');
+      if (det) det.open = true;
+    }
+  });
+
+  log('info', t('log.demoLoaded'));
+  log('data', t('log.relayUrl', { url: val('relayUrl') }));
+  log('data', t('log.flow'));
+  log('info', t('log.waiting'));
+
   fetchIP();
 </script>
 </body>

@@ -564,49 +564,9 @@ if (result.success) {
   const statusText = document.getElementById('statusText');
   const timingEl = document.getElementById('timing');
 
-  const STORAGE_KEY = 'nhp-relay-test';
-
-  // Persist visible form fields to localStorage
-  const FIELD_IDS = [
-    'serverPubKey','agentPrivKey','timeoutMs',
-    'cipherScheme','relayUrl',
-    'userId','deviceId','orgId',
-    'resourceId','serviceId',
-  ];
-
-  function saveFields() {
-    const data = {};
-    for (const id of FIELD_IDS) {
-      data[id] = document.getElementById(id).value;
-    }
-    // Also save the derived public key
-    data.agentPubKey = document.getElementById('agentPubKey').value;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  }
-
-  function loadFields() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      for (const id of FIELD_IDS) {
-        if (data[id] != null) document.getElementById(id).value = data[id];
-      }
-      if (data.agentPubKey) document.getElementById('agentPubKey').value = data.agentPubKey;
-    } catch {}
-  }
-
-  // Auto-save on any input change
-  for (const id of FIELD_IDS) {
-    document.getElementById(id).addEventListener('input', saveFields);
-  }
-
-  // Load saved fields on startup
-  loadFields();
-
-  // Best-effort: load deployment-provided defaults from config.json (written by
-  // CI next to this page). Only applies to fields the user hasn't set yet so
-  // localStorage edits are respected.
+  // Always pull defaults from the deployment-rendered config.json on every
+  // load. We deliberately do NOT cache anything in localStorage — when the
+  // server rotates demo keys, returning visitors must see the new values.
   async function loadDefaultsFromConfig() {
     try {
       const r = await fetch('./config.json', { cache: 'no-store' });
@@ -614,7 +574,7 @@ if (result.success) {
       const cfg = await r.json();
       const apply = (id, v) => {
         const el = document.getElementById(id);
-        if (el && v != null && !el.value) el.value = v;
+        if (el && v != null) el.value = v;
       };
       apply('serverPubKey', cfg.serverPublicKey);
       apply('agentPrivKey', cfg.agentPrivateKey);
@@ -640,6 +600,10 @@ if (result.success) {
       if (det) det.open = true;
     }
   });
+
+  // One-time cleanup: drop any stale state from older builds that persisted
+  // form values. Safe to remove after one release cycle.
+  try { localStorage.removeItem('nhp-relay-test'); } catch {}
 
   function val(id) { return document.getElementById(id).value.trim(); }
 
@@ -767,9 +731,7 @@ if (result.success) {
 
       await agent.init();
       const pubKey = agent.getPublicKey();
-      // Show agent public key in the UI and persist
       document.getElementById('agentPubKey').value = pubKey;
-      saveFields();
       log('ok', `Agent initialized`);
       log('info', `  Agent Public Key = ${pubKey}`);
       setStep('init', 'done');
@@ -888,11 +850,7 @@ if (result.success) {
   log('info', 'OpenNHP JavaScript SDK demo loaded');
   log('data', `Relay URL: ${val('relayUrl')}`);
   log('data', 'Flow: Web app → NHPAgent(relay) → POST /relay → nhp-server (UDP) → ACK → protected resource');
-  if (val('agentPrivKey')) {
-    log('ok', `Restored saved agent private key from localStorage`);
-  } else {
-    log('warn', 'Waiting for demo keys from config.json or manual key input');
-  }
+  log('info', 'Waiting for demo keys from config.json (or fill them in manually below)');
 
   // Detect the visitor's public IPv4/IPv6 and show it in the footer.
   // Mirrors the pattern used by the auth-plugin demo (api.ipify.org / api6.ipify.org).

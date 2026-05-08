@@ -88,6 +88,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// ─── Static metadata ──────────────────────────────────────────────────────────
+
+describe('NHPAgent.version', () => {
+  it('exposes a non-empty semver string', () => {
+    expect(NHPAgent.version).toMatch(/^\d+\.\d+\.\d+/);
+  });
+});
+
 // ─── Initialization ───────────────────────────────────────────────────────────
 
 describe('NHPAgent initialization', () => {

@@ -1,6 +1,12 @@
 import { defineConfig } from 'vite';
 import dts from 'vite-plugin-dts';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'path';
+
+// Single source of truth shared with the Go binaries (see Makefile: VERSION =
+// $(shell cat nhp/version/VERSION).$(TIMESTAMP)). Bump nhp/version/VERSION and
+// both the binaries and this SDK pick up the new number on next build.
+const sdkVersion = readFileSync(resolve(__dirname, '../../nhp/version/VERSION'), 'utf8').trim();
 
 export default defineConfig({
   plugins: [
@@ -9,6 +15,9 @@ export default defineConfig({
       rollupTypes: true,
     }),
   ],
+  define: {
+    __SDK_VERSION__: JSON.stringify(sdkVersion),
+  },
   test: {
     coverage: {
       provider: 'v8',

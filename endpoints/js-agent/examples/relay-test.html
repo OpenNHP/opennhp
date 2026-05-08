@@ -694,6 +694,7 @@ if (result.success) {
       'footer.line2': 'Sponsored by: <a href="https://layerv.ai" target="_blank" rel="noopener">LayerV.ai</a>',
 
       'log.demoLoaded': 'OpenNHP JavaScript SDK demo loaded',
+      'log.sdkVersion': 'SDK version: {version}',
       'log.relayUrl': 'Relay URL: {url}',
       'log.flow': 'Flow: Web app → NHPAgent(relay) → POST /relay → nhp-server (UDP) → ACK → protected resource',
       'log.waiting': 'Waiting for demo keys from config.json (or fill them in manually below)',
@@ -779,6 +780,7 @@ if (result.success) {
       'footer.line2': '赞助方：<a href="https://layerv.ai" target="_blank" rel="noopener">LayerV.ai</a>',
 
       'log.demoLoaded': 'OpenNHP JavaScript SDK 演示已加载',
+      'log.sdkVersion': 'SDK 版本：{version}',
       'log.relayUrl': ' nhp-relay服务器URL：{url}',
       'log.flow': '流程：Web 应用 → NHPAgent(relay) → POST /relay → nhp-server (UDP) → ACK → 受保护资源',
       'log.waiting': '正在等待 config.json 中的演示密钥（或在下方手动填写）',
@@ -1255,6 +1257,7 @@ if (result.success) {
   });
 
   log('info', t('log.demoLoaded'));
+  log('data', t('log.sdkVersion', { version: NHPAgent.version }));
   log('data', t('log.relayUrl', { url: val('relayUrl') }));
   log('data', t('log.flow'));
   log('info', t('log.waiting'));

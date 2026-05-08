@@ -235,7 +235,11 @@ ifeq ($(OS_NAME), linux)
 #	gcc ./core/sdkdemo/nhp-device-demo.c -I ./release/nhp-device -I ./core/main -l:nhpdevice.so -L./release/nhp-device -Wl,-rpath=. -o ./release/nhp-device/nhp-device-demo
 endif
 
-plugins:
+check-plugin-deps:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Checking plugin dependency alignment... $(END_COLOUR)"
+	@./scripts/check-plugin-deps.sh
+
+plugins: check-plugin-deps
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building plugins... $(END_COLOUR)"
 	@for dir in ./examples/server_plugin/*/; do \
 		if [ -f "$$dir/Makefile" ]; then \
@@ -369,4 +373,4 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf clean_ebpf
+.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins check-plugin-deps dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf clean_ebpf

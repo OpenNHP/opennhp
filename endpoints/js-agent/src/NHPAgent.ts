@@ -85,6 +85,12 @@ const DEFAULT_CONFIG: Required<Omit<NHPAgentConfig, 'privateKey' | 'relayUrl'>> 
  * ```
  */
 export class NHPAgent {
+  /**
+   * SDK version, mirrored from `nhp/version/VERSION` at build time so it
+   * matches the version stamped into the OpenNHP Go binaries.
+   */
+  static readonly version: string = __SDK_VERSION__;
+
   private config: Required<Omit<NHPAgentConfig, 'privateKey' | 'relayUrl'>> & { privateKey?: string; relayUrl?: string };
   private keyPair: KeyPairBase64 | null = null;
   private identity: AgentIdentity | null = null;

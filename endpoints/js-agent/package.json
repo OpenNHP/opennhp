@@ -1,6 +1,6 @@
 {
   "name": "@opennhp/agent",
-  "version": "1.0.0",
+  "version": "0.7.3",
   "private": true,
   "description": "OpenNHP JavaScript/TypeScript SDK for zero-trust network security",
   "type": "module",

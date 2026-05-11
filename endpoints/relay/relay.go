@@ -105,12 +105,29 @@ type clusterRuntime struct {
 
 // pickInstance selects an instance to handle a request. Phase 1 always
 // returns instances[0]; the signature is shaped so phase 2 can plug in
-// random / weighted / round-robin without touching call sites.
+// random / weighted / round-robin later.
 //
 // Returns nil if the cluster has no instances. normalize() guarantees ≥1
 // in phase 1, but phase 2 (with health checks / draining) may legitimately
 // land here on an all-unhealthy cluster — callers should surface that as a
 // 503 rather than panicking on an out-of-bounds index.
+//
+// PHASE-2 TRAP — read before swapping in a non-deterministic picker:
+// handleRelay calls pickInstance once to choose the instance it registers
+// a pending waiter on, then enqueues *core.MsgData without that instance
+// reference. sendMessageRoutine -> dispatchSend -> resolveTarget calls
+// pickInstance a *second* time on the same cluster. Phase 1 is safe
+// because the picker is deterministic, so both calls return the same
+// instance. A random / weighted / round-robin picker would put the
+// waiter on instance A while the send goes out on instance B's
+// connection; the server's ACK arrives on B, inst.dispatch on B finds
+// no waiter, and the handler times out with no signal. To fix in
+// phase 2, thread the chosen *clusterInstance through the send path
+// (e.g. add a field to *core.MsgData or carry it on ConnectionData)
+// so resolveTarget does NOT pick again. TestPickInstance_Deterministic
+// in relay_test.go locks the phase-1 invariant; that test will fail
+// the moment someone introduces a non-deterministic picker without
+// also threading the instance through.
 func (c *clusterRuntime) pickInstance() *clusterInstance {
 	if len(c.instances) == 0 {
 		return nil
@@ -619,6 +636,11 @@ func (rs *RelayServer) dispatchSend(md *core.MsgData) {
 // route the packet through the wrong Noise identity and produce confusing
 // "peer address mismatch" errors at the server. Returning nil here makes
 // dispatchSend log the drop with the actual PeerPk for diagnosis.
+//
+// PHASE-2 NOTE: this is the second pickInstance call for a forward (see
+// the trap notice on (*clusterRuntime).pickInstance). When phase 2 lifts
+// the single-instance restriction, the chosen *clusterInstance must be
+// carried from handleRelay through send, not re-picked here.
 func (rs *RelayServer) resolveTarget(md *core.MsgData) (*clusterRuntime, *clusterInstance) {
 	if len(md.PeerPk) > 0 {
 		fp := utils.PubKeyFingerprint(md.PeerPk)

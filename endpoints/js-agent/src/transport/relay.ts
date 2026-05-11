@@ -6,10 +6,10 @@
  *
  * Flow:
  *   NHPAgent  ──send(KNK)──▶  HttpRelayTransport
- *                              │  POST /relay (binary body = raw KNK packet)
+ *                              │  POST /relay/{clusterId}  (binary body = raw KNK packet)
  *                              ▼
  *                         nhp-relay service
- *                              │  UDP NHLY frame (realClientIP + KNK)
+ *                              │  UDP NHP_RLY frame (realClientIP + KNK)
  *                              ▼
  *                         NHP Server
  *                              │  UDP ACK/COK (encrypted to original agent)
@@ -36,25 +36,24 @@ const noopLogger: Logger = {
 /** Configuration for the HTTP relay transport */
 export interface HttpRelayTransportConfig {
   /**
-   * Full URL of the relay endpoint, e.g. "https://relay.example.com/relay"
-   * or "http://localhost:8080/relay".
-   *
-   * The cluster ID (if any) is appended automatically; supplying a URL that
-   * already includes a cluster ID is supported but discouraged because it
-   * bypasses the per-call clusterId option below.
+   * Base URL of the relay endpoint, e.g. "https://relay.example.com/relay"
+   * or "http://localhost:8080/relay". The cluster id is appended at send
+   * time, so this URL must NOT already include one.
    */
   relayUrl: string;
 
   /**
-   * Cluster ID (11-char base64url fingerprint of the target nhp-server's
-   * public key). When set, requests go to `${relayUrl}/${clusterId}`.
+   * Required. The 11-char base64url fingerprint of the target nhp-server
+   * cluster's public key — same algorithm as Go's utils.PubKeyFingerprint
+   * and this package's pubKeyFingerprint helper. The transport sends each
+   * request to `${relayUrl}/${clusterId}`.
    *
-   * When omitted, the request hits `relayUrl` directly and the relay uses
-   * its configured `defaultClusterId`. Browsers targeting a relay that
-   * fronts multiple clusters MUST set this; single-cluster relays accept
-   * either form.
+   * The relay no longer accepts a bare `POST /relay`; an omitted or empty
+   * clusterId would surface as a 301-then-400 from the server. NHPAgent's
+   * createTransport derives this from the server's public key on every
+   * request, so direct users of HttpRelayTransport must do the same.
    */
-  clusterId?: string;
+  clusterId: string;
 
   /**
    * Request timeout in milliseconds (default: 10000).
@@ -71,12 +70,12 @@ export interface HttpRelayTransportConfig {
  * ACK/COK responses in the HTTP response body.
  */
 export class HttpRelayTransport {
-  // relayUrl and timeoutMs are always populated (default applied below);
-  // clusterId and logger remain optional and inherit their original types.
+  // relayUrl, clusterId, and timeoutMs are always populated (default
+  // applied below for timeoutMs); logger remains optional.
   private readonly config: {
     relayUrl: string;
+    clusterId: string;
     timeoutMs: number;
-    clusterId?: string;
     logger?: Logger;
   };
   private readonly eventHandlers: Map<TransportEvent, Set<EventHandler>> = new Map();
@@ -84,6 +83,11 @@ export class HttpRelayTransport {
   private connected = false;
 
   constructor(config: HttpRelayTransportConfig) {
+    if (!config.clusterId) {
+      // Fail loudly at construction time. A late 400 from the relay is
+      // harder to diagnose than an Error here pointing at the source.
+      throw new Error('[HttpRelayTransport] clusterId is required');
+    }
     this.config = {
       timeoutMs: 10_000,
       ...config,
@@ -149,12 +153,9 @@ export class HttpRelayTransport {
 
   private async postToRelay(packet: Uint8Array): Promise<Uint8Array> {
     const { relayUrl, clusterId, timeoutMs } = this.config;
-    // Suffix the cluster ID as a path segment when provided. We avoid an
-    // explicit `URL` constructor here so callers can pass relative URLs in
-    // odd test setups.
-    const targetUrl = clusterId
-      ? `${relayUrl.replace(/\/+$/, '')}/${encodeURIComponent(clusterId)}`
-      : relayUrl;
+    // Suffix the cluster id as a path segment. We avoid an explicit `URL`
+    // constructor so callers can pass relative URLs in odd test setups.
+    const targetUrl = `${relayUrl.replace(/\/+$/, '')}/${encodeURIComponent(clusterId)}`;
 
     // Always copy to a clean ArrayBuffer — packet may be a view into a larger buffer
     const body = new Uint8Array(packet).buffer;

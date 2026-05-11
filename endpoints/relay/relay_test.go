@@ -113,6 +113,41 @@ func newTestInstance() *clusterInstance {
 	}
 }
 
+// TestPickInstance_Deterministic locks the phase-1 invariant that
+// pickInstance returns the same *clusterInstance on every call. The whole
+// send pipeline depends on this: handleRelay registers a pending waiter
+// on the instance it gets here, and sendMessageRoutine -> resolveTarget
+// later calls pickInstance again to choose the connection. If those two
+// answers ever diverge, the ACK lands on the "other" instance's conn
+// and the handler times out silently.
+//
+// When phase 2 introduces a non-deterministic picker (random / weighted
+// / round-robin), this test WILL fail — and that failure is intentional.
+// It forces the contributor to either keep determinism per-request
+// (sticky session, request-id hash) or to thread the chosen instance
+// through *core.MsgData so resolveTarget stops re-picking. See the
+// phase-2 trap notice on (*clusterRuntime).pickInstance.
+func TestPickInstance_Deterministic(t *testing.T) {
+	cr := &clusterRuntime{
+		instances: []*clusterInstance{
+			newTestInstance(),
+			// The second slot is unreachable in phase 1 (normalize()
+			// rejects it). It's here only so the test still has a
+			// failure mode when phase 2 lifts that restriction —
+			// without this, pickInstance would have nothing to be
+			// "non-deterministic about" and a broken phase-2 picker
+			// could silently pass.
+			newTestInstance(),
+		},
+	}
+	first := cr.pickInstance()
+	for i := 0; i < 100; i++ {
+		if got := cr.pickInstance(); got != first {
+			t.Fatalf("pickInstance not deterministic on call %d: handleRelay and resolveTarget would disagree about the target instance; see the phase-2 trap notice on (*clusterRuntime).pickInstance", i)
+		}
+	}
+}
+
 // register mirrors what handleRelay does when a request arrives: insert a
 // buffered channel under (counter, realAddr). Returns the channel and a
 // cleanup func so callers can undo their registration.

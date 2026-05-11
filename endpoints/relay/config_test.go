@@ -175,6 +175,53 @@ func TestConfig_RequiresPrivateKey(t *testing.T) {
 	}
 }
 
+// TestConfig_LoadBalanceUnknownRejected: a typo like "weighted_random" or
+// "roundrobin" is harmless in phase 1 (the value is unused) but would
+// silently fall through to the default policy once phase 2 enables LB.
+// Reject at load time so the operator notices now.
+func TestConfig_LoadBalanceUnknownRejected(t *testing.T) {
+	for _, bad := range []string{"weighted_random", "roundrobin", "random-with-jitter", "rr"} {
+		t.Run(bad, func(t *testing.T) {
+			cfg := &Config{
+				PrivateKeyBase64: fakeKey(0x10),
+				Clusters: []Cluster{{
+					PublicKeyBase64: fakeKey(0x20),
+					LoadBalance:     LoadBalanceScheme(bad),
+					Instances:       []ClusterInstance{{Host: "1.1.1.1", Port: 62206}},
+				}},
+			}
+			if err := cfg.normalize(); err == nil {
+				t.Fatalf("expected error for loadBalance=%q", bad)
+			} else if !strings.Contains(err.Error(), "loadBalance") {
+				t.Errorf("error should name the field, got: %v", err)
+			}
+		})
+	}
+}
+
+// TestConfig_LoadBalanceKnownAccepted: all three documented schemes load
+// without error and are preserved through normalization.
+func TestConfig_LoadBalanceKnownAccepted(t *testing.T) {
+	for _, ok := range []LoadBalanceScheme{LBRandom, LBWeightedRandom, LBRoundRobin} {
+		t.Run(string(ok), func(t *testing.T) {
+			cfg := &Config{
+				PrivateKeyBase64: fakeKey(0x10),
+				Clusters: []Cluster{{
+					PublicKeyBase64: fakeKey(0x20),
+					LoadBalance:     ok,
+					Instances:       []ClusterInstance{{Host: "1.1.1.1", Port: 62206}},
+				}},
+			}
+			if err := cfg.normalize(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.Clusters[0].LoadBalance != ok {
+				t.Errorf("loadBalance mutated: got %q, want %q", cfg.Clusters[0].LoadBalance, ok)
+			}
+		})
+	}
+}
+
 // TestConfig_InstanceWeightDefault: unspecified weight should default to 1
 // rather than 0 (which would make weighted-random treat the instance as a
 // black hole once phase 2 enables LB).

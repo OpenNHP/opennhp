@@ -238,8 +238,19 @@ func (cfg *Config) normalize() error {
 				inst.Weight = 1
 			}
 		}
-		if c.LoadBalance == "" {
+		switch c.LoadBalance {
+		case "":
 			c.LoadBalance = LBWeightedRandom
+		case LBRandom, LBWeightedRandom, LBRoundRobin:
+			// known scheme, keep as-is
+		default:
+			// Typos like "weighted_random" or "roundrobin" are harmless in
+			// phase 1 (the value is unused with a single instance) but
+			// would silently degrade phase-2 load balancing to whatever
+			// the default policy is. Reject at load time so the operator
+			// hears about it now, not after a later upgrade.
+			return fmt.Errorf("relay: cluster #%d (fingerprint %s) loadBalance %q is not one of: %q, %q, %q",
+				i, fp, c.LoadBalance, LBRandom, LBWeightedRandom, LBRoundRobin)
 		}
 	}
 

@@ -8,9 +8,16 @@
 //	        ◀──HTTP 200────
 //
 // The relay is a standard NHP node: it holds a core.Device, maintains a
-// persistent UDP connection to the server, sends encrypted NHP_RLY messages
-// through the standard Noise pipeline, and uses NHP_KPL keepalive packets
-// to maintain the connection — identical to how NHP-AC communicates.
+// persistent UDP connection to each configured upstream cluster, sends
+// encrypted NHP_RLY messages through the standard Noise pipeline, and uses
+// NHP_KPL keepalive packets to maintain those connections — identical to how
+// NHP-AC communicates.
+//
+// One relay instance can serve multiple logical nhp-server clusters. Each
+// cluster is identified by the fingerprint of its public key (see
+// utils.PubKeyFingerprint), and HTTP clients address a cluster via
+// `POST /relay/{clusterId}`. Phase 1 supports one upstream instance per
+// cluster; the schema is already shaped for the multi-instance future.
 package relay
 
 import (
@@ -31,6 +38,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	log "github.com/OpenNHP/opennhp/nhp/log"
+	"github.com/OpenNHP/opennhp/nhp/utils"
 )
 
 const (
@@ -60,31 +68,58 @@ func (c *UdpConn) Close() {
 	}
 }
 
+// clusterInstance is the runtime state for one physical nhp-server instance.
+// Phase 1: every cluster has exactly one of these. Phase 2 will add health
+// state and load-balancing bookkeeping here.
+type clusterInstance struct {
+	host   string
+	port   int
+	weight int
+	addr   *net.UDPAddr
+
+	connMu sync.Mutex
+	conn   *UdpConn
+
+	// pendingRequests correlates server responses back to the HTTP handler
+	// that issued each forward. It is per-instance because the connection
+	// that delivers the ACK/COK is also per-instance — keying it here
+	// means dispatchResponse never has to think about which cluster a
+	// packet belongs to.
+	//
+	// The map is keyed by (counter, realClientAddr); the same hijack-
+	// prevention rule as before applies: ambiguous waiters all time out.
+	pendingMu       sync.Mutex
+	pendingRequests map[uint64]map[string]chan []byte
+}
+
+// clusterRuntime is the runtime state for one logical nhp-server cluster.
+type clusterRuntime struct {
+	id           string
+	name         string
+	pubKey       []byte
+	pubKeyBase64 string
+	scheme       LoadBalanceScheme
+	instances    []*clusterInstance
+}
+
+// pickInstance selects an instance to handle a request. Phase 1 always
+// returns instances[0]; the signature is shaped so phase 2 can plug in
+// random / weighted / round-robin without touching call sites.
+func (c *clusterRuntime) pickInstance() *clusterInstance {
+	return c.instances[0]
+}
+
 // RelayServer is the NHP HTTP Relay service.
 type RelayServer struct {
 	config     *Config
 	httpServer *http.Server
 	device     *core.Device
 
-	serverPubKey []byte       // decoded NHP server public key
-	serverAddr   *net.UDPAddr // resolved NHP server UDP address
-
-	connMutex sync.Mutex
-	conn      *UdpConn // persistent UDP connection to server
+	clusters  map[string]*clusterRuntime // keyed by fingerprint
+	defaultID string                     // optional default cluster fingerprint
 
 	sendMsgCh chan *core.MsgData
 	recvMsgCh <-chan *core.PacketParserData
-
-	// pendingRequests correlates server responses back to the right HTTP
-	// handler. The server echoes the inner packet's counter in its ACK/COK
-	// response, but the counter is chosen by the (untrusted) browser — two
-	// clients can send the same counter and race. We therefore key pending
-	// requests by (counter, realClientAddr): a response is dispatched only
-	// when exactly one handler is waiting. If two handlers share a counter
-	// we refuse to guess and let both time out; neither client learns which
-	// one "won", so a malicious client can't hijack a legitimate response.
-	pendingMu       sync.Mutex
-	pendingRequests map[uint64]map[string]chan []byte // counter -> realAddr string -> ch
 
 	wg      sync.WaitGroup
 	running atomic.Bool
@@ -110,42 +145,40 @@ func New(cfg *Config) (*RelayServer, error) {
 		return nil, fmt.Errorf("relay: failed to create NHP device")
 	}
 
-	// Decode NHP server public key.
-	serverPubKey, err := base64.StdEncoding.DecodeString(cfg.NHPServerPublicKeyBase64)
-	if err != nil {
-		return nil, fmt.Errorf("relay: invalid nhpServerPublicKeyBase64: %w", err)
-	}
-
-	// Register server as a peer.
-	serverPeer := &core.UdpPeer{
-		PubKeyBase64: cfg.NHPServerPublicKeyBase64,
-		Ip:           cfg.NHPServerHost,
-		Port:         cfg.NHPServerPort,
-		Type:         core.NHP_SERVER,
-	}
-	device.AddPeer(serverPeer)
-
-	// Resolve server address.
-	serverAddrStr := fmt.Sprintf("%s:%d", cfg.NHPServerHost, cfg.NHPServerPort)
-	serverAddr, err := net.ResolveUDPAddr("udp", serverAddrStr)
-	if err != nil {
-		return nil, fmt.Errorf("relay: failed to resolve server address %s: %w", serverAddrStr, err)
-	}
-
 	rs := &RelayServer{
-		config:          cfg,
-		device:          device,
-		serverPubKey:    serverPubKey,
-		serverAddr:      serverAddr,
-		sendMsgCh:       make(chan *core.MsgData, PacketQueueSizePerConnection),
-		pendingRequests: make(map[uint64]map[string]chan []byte),
-		stopCh:          make(chan struct{}),
+		config:    cfg,
+		device:    device,
+		clusters:  make(map[string]*clusterRuntime, len(cfg.Clusters)),
+		defaultID: cfg.DefaultClusterID,
+		sendMsgCh: make(chan *core.MsgData, PacketQueueSizePerConnection),
+		stopCh:    make(chan struct{}),
 	}
 	rs.recvMsgCh = device.DecryptedMsgQueue
 
+	for i := range cfg.Clusters {
+		c := &cfg.Clusters[i]
+		cr, err := rs.buildCluster(c)
+		if err != nil {
+			return nil, err
+		}
+		rs.clusters[cr.id] = cr
+	}
+
+	// Single-default-cluster shortcut: if exactly one cluster is configured
+	// and no explicit DefaultClusterID, treat that cluster as default so
+	// the legacy `POST /relay` path keeps working.
+	if rs.defaultID == "" && len(rs.clusters) == 1 {
+		for id := range rs.clusters {
+			rs.defaultID = id
+		}
+	}
+
 	// Set up HTTP server.
 	mux := http.NewServeMux()
+	// Trailing slash on /relay/ enables {clusterId} routing via path prefix.
 	mux.HandleFunc("/relay", rs.handleRelay)
+	mux.HandleFunc("/relay/", rs.handleRelay)
+	mux.HandleFunc("/clusters", rs.handleClusters)
 	mux.HandleFunc("/health", rs.handleHealth)
 
 	rs.httpServer = &http.Server{
@@ -156,11 +189,64 @@ func New(cfg *Config) (*RelayServer, error) {
 		IdleTimeout:  time.Duration(cfg.IdleTimeoutMs) * time.Millisecond,
 	}
 
-	log.Info("[Relay] initialized, relay pubkey=%s", device.PublicKeyBase64())
+	log.Info("[Relay] initialized, relay pubkey=%s, %d cluster(s)",
+		device.PublicKeyBase64(), len(rs.clusters))
+	for _, cr := range rs.clusters {
+		inst := cr.instances[0]
+		log.Info("[Relay]   cluster id=%s name=%q upstream=%s:%d",
+			cr.id, cr.name, inst.host, inst.port)
+	}
 	return rs, nil
 }
 
-// Start starts the device, UDP connection, keepalive, and HTTP server.
+// buildCluster turns a config Cluster into runtime state, registering each
+// instance as a peer on the NHP device.
+func (rs *RelayServer) buildCluster(c *Cluster) (*clusterRuntime, error) {
+	pubKey, err := base64.StdEncoding.DecodeString(c.PublicKeyBase64)
+	if err != nil {
+		return nil, fmt.Errorf("relay: cluster %q invalid publicKeyBase64: %w", c.Name, err)
+	}
+	id := utils.PubKeyFingerprint(pubKey)
+
+	cr := &clusterRuntime{
+		id:           id,
+		name:         c.Name,
+		pubKey:       pubKey,
+		pubKeyBase64: c.PublicKeyBase64,
+		scheme:       c.LoadBalance,
+		instances:    make([]*clusterInstance, 0, len(c.Instances)),
+	}
+
+	for j := range c.Instances {
+		ci := &c.Instances[j]
+		addrStr := fmt.Sprintf("%s:%d", ci.Host, ci.Port)
+		udpAddr, err := net.ResolveUDPAddr("udp", addrStr)
+		if err != nil {
+			return nil, fmt.Errorf("relay: cluster %s instance #%d resolve %s: %w", id, j, addrStr, err)
+		}
+
+		// Register this instance as a peer. Phase 1: at most one peer
+		// per cluster, so device.AddPeer keyed-by-pubkey is fine.
+		peer := &core.UdpPeer{
+			PubKeyBase64: c.PublicKeyBase64,
+			Ip:           ci.Host,
+			Port:         ci.Port,
+			Type:         core.NHP_SERVER,
+		}
+		rs.device.AddPeer(peer)
+
+		cr.instances = append(cr.instances, &clusterInstance{
+			host:            ci.Host,
+			port:            ci.Port,
+			weight:          ci.Weight,
+			addr:            udpAddr,
+			pendingRequests: make(map[uint64]map[string]chan []byte),
+		})
+	}
+	return cr, nil
+}
+
+// Start starts the device, UDP connections, keepalives, and HTTP server.
 func (rs *RelayServer) Start() error {
 	rs.running.Store(true)
 
@@ -168,22 +254,27 @@ func (rs *RelayServer) Start() error {
 	rs.device.Start()
 
 	// Start send/recv message routines.
-	rs.wg.Add(3)
+	rs.wg.Add(2)
 	go rs.sendMessageRoutine()
 	go rs.recvMessageRoutine()
-	go rs.keepaliveRoutine()
 
-	// Start HTTP server (blocks).
+	// One keepalive goroutine per instance. Cheap (mostly sleeping) and
+	// keeps the per-instance state owned by exactly one routine.
+	for _, cr := range rs.clusters {
+		for _, inst := range cr.instances {
+			rs.wg.Add(1)
+			go rs.keepaliveRoutine(cr, inst)
+		}
+	}
+
 	addr := rs.httpServer.Addr
 	if rs.config.EnableTLS {
-		log.Info("[Relay] starting HTTPS relay on %s → NHP Server %s",
-			addr, rs.serverAddr)
+		log.Info("[Relay] starting HTTPS relay on %s", addr)
 		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
 		rs.httpServer.TLSConfig = tlsCfg
 		return rs.httpServer.ListenAndServeTLS(rs.config.TLSCertFile, rs.config.TLSKeyFile)
 	}
-	log.Info("[Relay] starting HTTP relay on %s → NHP Server %s",
-		addr, rs.serverAddr)
+	log.Info("[Relay] starting HTTP relay on %s", addr)
 	return rs.httpServer.ListenAndServe()
 }
 
@@ -195,12 +286,16 @@ func (rs *RelayServer) Stop(ctx context.Context) error {
 	// Shut down HTTP server.
 	err := rs.httpServer.Shutdown(ctx)
 
-	// Close UDP connection.
-	rs.connMutex.Lock()
-	if rs.conn != nil {
-		rs.conn.Close()
+	// Close UDP connections.
+	for _, cr := range rs.clusters {
+		for _, inst := range cr.instances {
+			inst.connMu.Lock()
+			if inst.conn != nil {
+				inst.conn.Close()
+			}
+			inst.connMu.Unlock()
+		}
 	}
-	rs.connMutex.Unlock()
 
 	// Stop device.
 	rs.device.Stop()
@@ -210,41 +305,41 @@ func (rs *RelayServer) Stop(ctx context.Context) error {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// UDP connection management (mirrors AC pattern)
+// UDP connection management (per upstream instance)
 // ──────────────────────────────────────────────────────────────────────────────
 
-func (rs *RelayServer) getOrCreateConnection() *UdpConn {
-	rs.connMutex.Lock()
-	defer rs.connMutex.Unlock()
+func (rs *RelayServer) getOrCreateConnection(cr *clusterRuntime, inst *clusterInstance) *UdpConn {
+	inst.connMu.Lock()
+	defer inst.connMu.Unlock()
 
-	if rs.conn != nil {
-		return rs.conn
+	if inst.conn != nil {
+		return inst.conn
 	}
 
 	conn := &UdpConn{}
 	var err error
-	conn.netConn, err = net.DialUDP("udp", nil, rs.serverAddr)
+	conn.netConn, err = net.DialUDP("udp", nil, inst.addr)
 	if err != nil {
-		log.Error("[Relay] failed to dial server %s: %v", rs.serverAddr, err)
+		log.Error("[Relay] cluster %s: failed to dial %s: %v", cr.id, inst.addr, err)
 		return nil
 	}
 
 	laddr := conn.netConn.LocalAddr()
 	localAddr, err := net.ResolveUDPAddr(laddr.Network(), laddr.String())
 	if err != nil {
-		log.Error("[Relay] resolve local addr error: %v", err)
+		log.Error("[Relay] cluster %s: resolve local addr error: %v", cr.id, err)
 		conn.netConn.Close()
 		return nil
 	}
 
-	log.Info("[Relay] new UDP connection %s → %s", localAddr, rs.serverAddr)
+	log.Info("[Relay] cluster %s: new UDP connection %s → %s", cr.id, localAddr, inst.addr)
 
 	conn.ConnData = &core.ConnectionData{
 		Device:               rs.device,
 		CookieStore:          &core.CookieStore{},
 		RemoteTransactionMap: make(map[uint64]*core.RemoteTransaction),
 		LocalAddr:            localAddr,
-		RemoteAddr:           rs.serverAddr,
+		RemoteAddr:           inst.addr,
 		TimeoutMs:            DefaultConnectionTimeoutMs,
 		SendQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),
 		RecvQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),
@@ -259,18 +354,18 @@ func (rs *RelayServer) getOrCreateConnection() *UdpConn {
 	rs.wg.Add(1)
 	go func() {
 		defer rs.wg.Done()
-		rs.recvPacketRoutine(conn)
+		rs.recvPacketRoutine(cr, inst, conn)
 	}()
 
 	rs.wg.Add(1)
-	go rs.connectionRoutine(conn)
+	go rs.connectionRoutine(cr, inst, conn)
 
-	rs.conn = conn
+	inst.conn = conn
 	return conn
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Packet send/recv routines (mirrors AC pattern)
+// Packet send/recv routines
 // ──────────────────────────────────────────────────────────────────────────────
 
 func (rs *RelayServer) sendPacket(pkt *core.Packet, conn *UdpConn) (int, error) {
@@ -289,12 +384,13 @@ func (rs *RelayServer) sendPacket(pkt *core.Packet, conn *UdpConn) (int, error) 
 	return n, err
 }
 
-func (rs *RelayServer) recvPacketRoutine(conn *UdpConn) {
+func (rs *RelayServer) recvPacketRoutine(cr *clusterRuntime, inst *clusterInstance, conn *UdpConn) {
 	addrStr := conn.ConnData.RemoteAddr.String()
 	defer conn.ConnData.Done()
-	defer log.Info("[Relay] recvPacketRoutine for %s stopped", addrStr)
+	defer log.Info("[Relay] recvPacketRoutine for %s (cluster %s) stopped", addrStr, cr.id)
 
-	log.Info("[Relay] recvPacketRoutine for %s started", addrStr)
+	log.Info("[Relay] recvPacketRoutine for %s (cluster %s) started", addrStr, cr.id)
+	_ = inst // reserved for phase 2 health tracking
 
 	for {
 		select {
@@ -340,33 +436,30 @@ func (rs *RelayServer) recvPacketRoutine(conn *UdpConn) {
 }
 
 // dispatchResponse routes a server ACK/COK payload back to the HTTP handler
-// waiting on the given counter. The counter is chosen by the (untrusted)
-// browser, so two concurrent clients can pick the same value. We deliver
-// only when exactly one handler is waiting: any ambiguity drops the payload
-// and lets all waiters time out, so a malicious client can't hijack a
-// legitimate ACK by guessing counters.
+// waiting on the given counter for the given instance. See clusterInstance
+// docs for the hijack-prevention rule (ambiguous waiters are all dropped).
 //
 // Returns (delivered, ambiguous). If both are false the counter was unknown
 // (e.g. a late response after the handler timed out).
-func (rs *RelayServer) dispatchResponse(counter uint64, raw []byte) (delivered, ambiguous bool) {
-	rs.pendingMu.Lock()
-	waiters, found := rs.pendingRequests[counter]
+func (rs *RelayServer) dispatchResponse(inst *clusterInstance, counter uint64, raw []byte) (delivered, ambiguous bool) {
+	inst.pendingMu.Lock()
+	waiters, found := inst.pendingRequests[counter]
 	if !found {
-		rs.pendingMu.Unlock()
+		inst.pendingMu.Unlock()
 		return false, false
 	}
 	if len(waiters) != 1 {
 		log.Warning("[Relay] ambiguous response for counter=%d (%d waiters); dropping to prevent hijack",
 			counter, len(waiters))
-		rs.pendingMu.Unlock()
+		inst.pendingMu.Unlock()
 		return false, true
 	}
 	var ch chan []byte
 	for _, c := range waiters {
 		ch = c
 	}
-	delete(rs.pendingRequests, counter)
-	rs.pendingMu.Unlock()
+	delete(inst.pendingRequests, counter)
+	inst.pendingMu.Unlock()
 
 	// Handler channels are buffered (size 1) and the handler only registers
 	// one request at a time, so this send never blocks.
@@ -374,19 +467,19 @@ func (rs *RelayServer) dispatchResponse(counter uint64, raw []byte) (delivered, 
 	return true, false
 }
 
-func (rs *RelayServer) connectionRoutine(conn *UdpConn) {
+func (rs *RelayServer) connectionRoutine(cr *clusterRuntime, inst *clusterInstance, conn *UdpConn) {
 	addrStr := conn.ConnData.RemoteAddr.String()
 	defer rs.wg.Done()
-	defer log.Info("[Relay] connectionRoutine for %s stopped", addrStr)
+	defer log.Info("[Relay] connectionRoutine for %s (cluster %s) stopped", addrStr, cr.id)
 
-	log.Info("[Relay] connectionRoutine for %s started", addrStr)
+	log.Info("[Relay] connectionRoutine for %s (cluster %s) started", addrStr, cr.id)
 
 	defer func() {
-		rs.connMutex.Lock()
-		if rs.conn == conn {
-			rs.conn = nil
+		inst.connMu.Lock()
+		if inst.conn == conn {
+			inst.conn = nil
 		}
-		rs.connMutex.Unlock()
+		inst.connMu.Unlock()
 		conn.Close()
 	}()
 
@@ -396,7 +489,7 @@ func (rs *RelayServer) connectionRoutine(conn *UdpConn) {
 			return
 
 		case <-time.After(time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond):
-			log.Info("[Relay] connection idle timeout")
+			log.Info("[Relay] connection idle timeout (cluster %s)", cr.id)
 			return
 
 		case pkt, ok := <-conn.ConnData.SendQueue:
@@ -419,22 +512,22 @@ func (rs *RelayServer) connectionRoutine(conn *UdpConn) {
 			// Handle keepalive.
 			if pkt.HeaderType == core.NHP_KPL {
 				rs.device.ReleasePoolPacket(pkt)
-				log.Info("[Relay] recv [NHP_KPL] from %s", addrStr)
+				log.Info("[Relay] recv [NHP_KPL] from %s (cluster %s)", addrStr, cr.id)
 				continue
 			}
 
 			// Check if this is a response (ACK/COK) for a pending relay
-			// request.
+			// request on this instance.
 			if pkt.HeaderType == core.NHP_ACK || pkt.HeaderType == core.NHP_COK {
 				counter := pkt.Counter()
 				// Copy raw bytes before releasing the pool packet — dispatch
 				// sends them into a handler channel.
 				raw := make([]byte, len(pkt.Content))
 				copy(raw, pkt.Content)
-				delivered, ambiguous := rs.dispatchResponse(counter, raw)
+				delivered, ambiguous := rs.dispatchResponse(inst, counter, raw)
 				if delivered {
-					log.Info("[Relay] matched pending request counter=%d, forwarding %d raw bytes",
-						counter, len(raw))
+					log.Info("[Relay] matched pending request counter=%d on cluster %s, forwarding %d raw bytes",
+						counter, cr.id, len(raw))
 					rs.device.ReleasePoolPacket(pkt)
 					continue
 				}
@@ -453,7 +546,7 @@ func (rs *RelayServer) connectionRoutine(conn *UdpConn) {
 			rs.device.RecvPacketToMsg(pd)
 
 		case <-conn.ConnData.BlockSignal:
-			log.Warning("[Relay] connection blocked %s", addrStr)
+			log.Warning("[Relay] connection blocked %s (cluster %s)", addrStr, cr.id)
 			return
 		}
 	}
@@ -462,6 +555,23 @@ func (rs *RelayServer) connectionRoutine(conn *UdpConn) {
 // ──────────────────────────────────────────────────────────────────────────────
 // Message send/recv routines
 // ──────────────────────────────────────────────────────────────────────────────
+
+// targetedMsg is what handleRelay enqueues — it carries the destination
+// cluster/instance alongside the message so sendMessageRoutine doesn't have to
+// guess which connection to use.
+type targetedMsg struct {
+	md   *core.MsgData
+	cr   *clusterRuntime
+	inst *clusterInstance
+}
+
+// dispatchSend is the typed channel for outbound relay forwards. We can't use
+// rs.sendMsgCh directly because *core.MsgData has no field for routing the
+// outbound to a specific cluster, and we don't want to widen the core type
+// for a relay-only concept.
+//
+// keepalives are also pushed through this channel — same routing needs.
+var _ = (*targetedMsg)(nil)
 
 func (rs *RelayServer) sendMessageRoutine() {
 	defer rs.wg.Done()
@@ -481,17 +591,59 @@ func (rs *RelayServer) sendMessageRoutine() {
 			if md == nil {
 				continue
 			}
-
-			conn := rs.getOrCreateConnection()
-			if conn == nil {
-				log.Error("[Relay] no connection to server, dropping message")
-				continue
-			}
-
-			md.ConnData = conn.ConnData
-			rs.device.SendMsgToPacket(md)
+			rs.dispatchSend(md)
 		}
 	}
+}
+
+// dispatchSend resolves the outbound MsgData to a (cluster, instance) by
+// matching md.PeerPk / md.RemoteAddr to the registered clusters, then
+// attaches the right ConnData and forwards through the device.
+//
+// We chose to keep core.MsgData unmodified and route here, rather than
+// invent a relay-specific Send path: the device handles the cipher pipeline
+// uniformly this way.
+func (rs *RelayServer) dispatchSend(md *core.MsgData) {
+	cr, inst := rs.resolveTarget(md)
+	if cr == nil || inst == nil {
+		log.Error("[Relay] dropping outbound: cannot match MsgData to a cluster (peer=%x remote=%v)",
+			md.PeerPk, md.RemoteAddr)
+		return
+	}
+
+	conn := rs.getOrCreateConnection(cr, inst)
+	if conn == nil {
+		log.Error("[Relay] cluster %s: no connection, dropping message", cr.id)
+		return
+	}
+
+	md.ConnData = conn.ConnData
+	rs.device.SendMsgToPacket(md)
+}
+
+// resolveTarget figures out which cluster instance an outbound MsgData is
+// destined for. We match on RemoteAddr first (exact), falling back to PeerPk
+// (cluster pubkey). PeerPk is required for keepalive packets, which carry
+// only the address; RemoteAddr is required for relay forwards because the
+// handler set it explicitly.
+func (rs *RelayServer) resolveTarget(md *core.MsgData) (*clusterRuntime, *clusterInstance) {
+	if md.RemoteAddr != nil {
+		want := md.RemoteAddr.String()
+		for _, cr := range rs.clusters {
+			for _, inst := range cr.instances {
+				if inst.addr.String() == want {
+					return cr, inst
+				}
+			}
+		}
+	}
+	if len(md.PeerPk) > 0 {
+		fp := utils.PubKeyFingerprint(md.PeerPk)
+		if cr, ok := rs.clusters[fp]; ok {
+			return cr, cr.pickInstance()
+		}
+	}
+	return nil, nil
 }
 
 func (rs *RelayServer) recvMessageRoutine() {
@@ -522,14 +674,14 @@ func (rs *RelayServer) recvMessageRoutine() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Keepalive routine (mirrors AC pattern)
+// Keepalive routine (per instance)
 // ──────────────────────────────────────────────────────────────────────────────
 
-func (rs *RelayServer) keepaliveRoutine() {
+func (rs *RelayServer) keepaliveRoutine(cr *clusterRuntime, inst *clusterInstance) {
 	defer rs.wg.Done()
-	defer log.Info("[Relay] keepaliveRoutine stopped")
+	defer log.Info("[Relay] keepaliveRoutine for cluster %s instance %s stopped", cr.id, inst.addr)
 
-	log.Info("[Relay] keepaliveRoutine started")
+	log.Info("[Relay] keepaliveRoutine for cluster %s instance %s started", cr.id, inst.addr)
 
 	interval := rs.config.KeepaliveIntervalS
 	if interval <= 0 {
@@ -545,9 +697,9 @@ func (rs *RelayServer) keepaliveRoutine() {
 			return
 
 		case <-ticker.C:
-			rs.connMutex.Lock()
-			conn := rs.conn
-			rs.connMutex.Unlock()
+			inst.connMu.Lock()
+			conn := inst.conn
+			inst.connMu.Unlock()
 
 			if conn == nil {
 				// No connection yet; getOrCreateConnection will be called on first request.
@@ -557,10 +709,11 @@ func (rs *RelayServer) keepaliveRoutine() {
 			lastSend := atomic.LoadInt64(&conn.ConnData.LastLocalSendTime)
 			if (time.Now().UnixNano() - lastSend) > int64(time.Duration(interval)*time.Second) {
 				md := &core.MsgData{
-					RemoteAddr:    rs.serverAddr,
+					RemoteAddr:    inst.addr,
 					HeaderType:    core.NHP_KPL,
 					CipherScheme:  rs.config.CipherScheme,
 					TransactionId: rs.device.NextCounterIndex(),
+					PeerPk:        cr.pubKey,
 				}
 				// Non-blocking send: if the queue is full, drop this
 				// keepalive rather than stall the routine (which would
@@ -568,11 +721,11 @@ func (rs *RelayServer) keepaliveRoutine() {
 				// recovered on the next tick.
 				select {
 				case rs.sendMsgCh <- md:
-					log.Info("[Relay] sent NHP_KPL keepalive to %s", rs.serverAddr)
+					log.Info("[Relay] sent NHP_KPL keepalive to %s (cluster %s)", inst.addr, cr.id)
 				case <-rs.stopCh:
 					return
 				default:
-					log.Warning("[Relay] send queue full, skipping keepalive")
+					log.Warning("[Relay] send queue full, skipping keepalive (cluster %s)", cr.id)
 				}
 			}
 		}
@@ -588,21 +741,41 @@ func (rs *RelayServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("ok"))
 }
 
-// handleRelay is the main relay endpoint.
-//
-// Expected request:
-//
-//	POST /relay
-//	Content-Type: application/octet-stream
-//	Body: raw inner NHP packet bytes (KNK / RKN / etc., encrypted by agent)
-//
-// Response:
-//
-//	200 OK  — body contains raw NHP ACK / COK packet bytes (encrypted to agent)
-//	400 Bad Request  — empty or over-size body
-//	504 Gateway Timeout  — NHP Server did not respond in time
-//	502 Bad Gateway  — internal error
-//
+// clusterInfo is the JSON shape returned by /clusters. It surfaces only the
+// non-secret routing metadata clients need to choose a cluster (pubkey and
+// the fingerprint derived from it). Instance addresses are intentionally
+// omitted because clients route by cluster ID, not by instance.
+type clusterInfo struct {
+	ID          string `json:"id"`
+	Name        string `json:"name,omitempty"`
+	PublicKey   string `json:"publicKeyBase64"`
+	IsDefault   bool   `json:"isDefault,omitempty"`
+	InstanceCnt int    `json:"instanceCount"`
+	LoadBalance string `json:"loadBalance,omitempty"`
+}
+
+func (rs *RelayServer) handleClusters(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	out := make([]clusterInfo, 0, len(rs.clusters))
+	for _, cr := range rs.clusters {
+		out = append(out, clusterInfo{
+			ID:          cr.id,
+			Name:        cr.name,
+			PublicKey:   cr.pubKeyBase64,
+			IsDefault:   cr.id == rs.defaultID,
+			InstanceCnt: len(cr.instances),
+			LoadBalance: string(cr.scheme),
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
 // corsMiddleware adds CORS headers so browser-based NHP agents can reach the
 // relay from any origin.  The relay is a public transport bridge — there is no
 // session state to protect, so a permissive CORS policy is appropriate.
@@ -622,11 +795,61 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// resolveCluster picks the target cluster for an incoming HTTP request.
+// Supports both `POST /relay` (uses DefaultClusterID) and `POST /relay/{id}`.
+func (rs *RelayServer) resolveCluster(r *http.Request) (*clusterRuntime, int, string) {
+	// Path may be "/relay", "/relay/", or "/relay/<id>". TrimPrefix handles
+	// both registered ServeMux routes.
+	id := strings.TrimPrefix(r.URL.Path, "/relay")
+	id = strings.TrimPrefix(id, "/")
+	id = strings.TrimSuffix(id, "/")
+
+	if id == "" {
+		if rs.defaultID == "" {
+			return nil, http.StatusBadRequest,
+				"no cluster ID in path and no defaultClusterId configured; use POST /relay/<clusterId>"
+		}
+		id = rs.defaultID
+	}
+
+	cr, ok := rs.clusters[id]
+	if !ok {
+		return nil, http.StatusNotFound, fmt.Sprintf("unknown cluster ID %q", id)
+	}
+	return cr, 0, ""
+}
+
+// handleRelay is the main relay endpoint.
+//
+// Expected request:
+//
+//	POST /relay/{clusterId}
+//	Content-Type: application/octet-stream
+//	Body: raw inner NHP packet bytes (KNK / RKN / etc., encrypted by agent)
+//
+// Legacy compatible:
+//
+//	POST /relay  — uses Config.DefaultClusterID; rejected if unset and >1 cluster exists.
+//
+// Response:
+//
+//	200 OK  — body contains raw NHP ACK / COK packet bytes (encrypted to agent)
+//	400 Bad Request  — empty / over-size body, or missing cluster ID
+//	404 Not Found    — unknown cluster ID
+//	504 Gateway Timeout  — NHP Server did not respond in time
+//	502 Bad Gateway  — internal error
 func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	cr, status, errMsg := rs.resolveCluster(r)
+	if cr == nil {
+		http.Error(w, errMsg, status)
+		return
+	}
+	inst := cr.pickInstance()
 
 	// Read inner NHP packet from request body. Cap at maxPacketSize+1 so we
 	// can reject oversize bodies without pulling an unbounded amount into
@@ -663,39 +886,39 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	realAddrKey := realAddr.String()
-	log.Info("[Relay] forwarding %d-byte inner packet (counter=%d) from client %s to server %s",
-		n, innerCounter, realAddr, rs.serverAddr)
+	log.Info("[Relay] forwarding %d-byte inner packet (counter=%d, cluster=%s) from client %s to %s",
+		n, innerCounter, cr.id, realAddr, inst.addr)
 
-	// Register a pending request under (counter, realAddr). The connection
-	// routine dispatches the server's ACK/COK to this channel only if this
-	// handler is the sole waiter on this counter — see the ambiguity check
-	// in connectionRoutine above.
+	// Register a pending request under (counter, realAddr) on the instance.
+	// The connection routine dispatches the server's ACK/COK to this channel
+	// only if this handler is the sole waiter on this counter — see the
+	// ambiguity check in connectionRoutine above.
 	responseCh := make(chan []byte, 1)
-	rs.pendingMu.Lock()
-	waiters, ok := rs.pendingRequests[innerCounter]
+	inst.pendingMu.Lock()
+	waiters, ok := inst.pendingRequests[innerCounter]
 	if !ok {
 		waiters = make(map[string]chan []byte)
-		rs.pendingRequests[innerCounter] = waiters
+		inst.pendingRequests[innerCounter] = waiters
 	}
 	if _, dup := waiters[realAddrKey]; dup {
 		// Same client reusing the same counter concurrently — reject fast.
-		rs.pendingMu.Unlock()
+		inst.pendingMu.Unlock()
 		http.Error(w, "duplicate in-flight counter", http.StatusConflict)
 		return
 	}
 	waiters[realAddrKey] = responseCh
-	rs.pendingMu.Unlock()
+	inst.pendingMu.Unlock()
 
 	// Ensure cleanup on timeout / early return.
 	defer func() {
-		rs.pendingMu.Lock()
-		if waiters, ok := rs.pendingRequests[innerCounter]; ok {
+		inst.pendingMu.Lock()
+		if waiters, ok := inst.pendingRequests[innerCounter]; ok {
 			delete(waiters, realAddrKey)
 			if len(waiters) == 0 {
-				delete(rs.pendingRequests, innerCounter)
+				delete(inst.pendingRequests, innerCounter)
 			}
 		}
-		rs.pendingMu.Unlock()
+		inst.pendingMu.Unlock()
 	}()
 
 	// Construct RelayForwardMsg (standard JSON body).
@@ -713,15 +936,15 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Send the NHP_RLY envelope to the server.
+	// Send the NHP_RLY envelope to the chosen instance.
 	trxId := rs.device.NextCounterIndex()
 	md := &core.MsgData{
-		RemoteAddr:    rs.serverAddr,
+		RemoteAddr:    inst.addr,
 		HeaderType:    core.NHP_RLY,
 		CipherScheme:  rs.config.CipherScheme,
 		TransactionId: trxId,
 		Message:       msgBytes,
-		PeerPk:        rs.serverPubKey,
+		PeerPk:        cr.pubKey,
 	}
 
 	udpTimeout := rs.config.UDPTimeoutMs
@@ -738,13 +961,12 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 	select {
 	case rs.sendMsgCh <- md:
 	case <-r.Context().Done():
-		log.Warning("[Relay] client disconnected before send queued (counter=%d, client %s)",
-			innerCounter, realAddr)
-		// HTTP body is already gone; defer cleans up pendingRequests.
+		log.Warning("[Relay] client disconnected before send queued (counter=%d, client %s, cluster %s)",
+			innerCounter, realAddr, cr.id)
 		return
 	case <-time.After(time.Duration(udpTimeout) * time.Millisecond):
-		log.Error("[Relay] send queue full for %dms, dropping forward (counter=%d, client %s)",
-			udpTimeout, innerCounter, realAddr)
+		log.Error("[Relay] send queue full for %dms, dropping forward (counter=%d, client %s, cluster %s)",
+			udpTimeout, innerCounter, realAddr, cr.id)
 		http.Error(w, "relay overloaded", http.StatusServiceUnavailable)
 		return
 	}
@@ -752,15 +974,16 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 	// Wait for the raw encrypted ACK/COK packet from the server.
 	select {
 	case rawBytes := <-responseCh:
-		log.Info("[Relay] received response for inner counter=%d, %d raw bytes, forwarding to client %s",
-			innerCounter, len(rawBytes), realAddr)
+		log.Info("[Relay] received response for inner counter=%d, %d raw bytes, forwarding to client %s (cluster %s)",
+			innerCounter, len(rawBytes), realAddr, cr.id)
 
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(rawBytes)
 
 	case <-time.After(time.Duration(udpTimeout) * time.Millisecond):
-		log.Warning("[Relay] timeout waiting for server response (inner counter=%d, client %s)", innerCounter, realAddr)
+		log.Warning("[Relay] timeout waiting for server response (inner counter=%d, client %s, cluster %s)",
+			innerCounter, realAddr, cr.id)
 		http.Error(w, "NHP Server timeout", http.StatusGatewayTimeout)
 	}
 }

@@ -38,8 +38,23 @@ export interface HttpRelayTransportConfig {
   /**
    * Full URL of the relay endpoint, e.g. "https://relay.example.com/relay"
    * or "http://localhost:8080/relay".
+   *
+   * The cluster ID (if any) is appended automatically; supplying a URL that
+   * already includes a cluster ID is supported but discouraged because it
+   * bypasses the per-call clusterId option below.
    */
   relayUrl: string;
+
+  /**
+   * Cluster ID (11-char base64url fingerprint of the target nhp-server's
+   * public key). When set, requests go to `${relayUrl}/${clusterId}`.
+   *
+   * When omitted, the request hits `relayUrl` directly and the relay uses
+   * its configured `defaultClusterId`. Browsers targeting a relay that
+   * fronts multiple clusters MUST set this; single-cluster relays accept
+   * either form.
+   */
+  clusterId?: string;
 
   /**
    * Request timeout in milliseconds (default: 10000).
@@ -56,7 +71,14 @@ export interface HttpRelayTransportConfig {
  * ACK/COK responses in the HTTP response body.
  */
 export class HttpRelayTransport {
-  private readonly config: Omit<Required<HttpRelayTransportConfig>, 'logger'> & { logger?: Logger };
+  // relayUrl and timeoutMs are always populated (default applied below);
+  // clusterId and logger remain optional and inherit their original types.
+  private readonly config: {
+    relayUrl: string;
+    timeoutMs: number;
+    clusterId?: string;
+    logger?: Logger;
+  };
   private readonly eventHandlers: Map<TransportEvent, Set<EventHandler>> = new Map();
   private readonly log: Logger;
   private connected = false;
@@ -126,7 +148,13 @@ export class HttpRelayTransport {
   // ─── Internal ─────────────────────────────────────────────────────────────
 
   private async postToRelay(packet: Uint8Array): Promise<Uint8Array> {
-    const { relayUrl, timeoutMs } = this.config;
+    const { relayUrl, clusterId, timeoutMs } = this.config;
+    // Suffix the cluster ID as a path segment when provided. We avoid an
+    // explicit `URL` constructor here so callers can pass relative URLs in
+    // odd test setups.
+    const targetUrl = clusterId
+      ? `${relayUrl.replace(/\/+$/, '')}/${encodeURIComponent(clusterId)}`
+      : relayUrl;
 
     // Always copy to a clean ArrayBuffer — packet may be a view into a larger buffer
     const body = new Uint8Array(packet).buffer;
@@ -136,7 +164,7 @@ export class HttpRelayTransport {
 
     let response: Response;
     try {
-      response = await fetch(relayUrl, {
+      response = await fetch(targetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream' },
         body: body as ArrayBuffer,
@@ -145,7 +173,7 @@ export class HttpRelayTransport {
     } catch (err) {
       clearTimeout(timer);
       if ((err as Error).name === 'AbortError') {
-        throw new Error(`[HttpRelayTransport] request to ${relayUrl} timed out after ${timeoutMs}ms`);
+        throw new Error(`[HttpRelayTransport] request to ${targetUrl} timed out after ${timeoutMs}ms`);
       }
       throw new Error(`[HttpRelayTransport] fetch failed: ${(err as Error).message}`);
     } finally {

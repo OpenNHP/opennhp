@@ -10,3 +10,6 @@ ExpireTime = 1924991999
 PubKeyBase64 = "ykaf9HEVQ40Ri4F8pjsJEyEitTX0d48m8gaTAIlZkAbzVYTC6q2JtnwOf/6QmFxhhbfDzdBLwWf8Gxt+SUkb4A=="
 ExpireTime = 1924991999
 
+[[Agents]]
+PubKeyBase64 = "boB03Ta2t07kfR1sbKYtDCMgpkkNjGG1mXq4fQoVFcG8geXmEiF4n68LaReKihwR8wEpr2Z/qWbcDJAE/oquDQ=="
+ExpireTime = 1924991999

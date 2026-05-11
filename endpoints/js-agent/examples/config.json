@@ -1,0 +1,16 @@
+{
+  "_comment":        "PUBLIC DEMO CONFIG - local docker environment with relay transport",
+  "cipherScheme":    "gmsm",
+  "transport":       "relay",
+  "relayUrl":        "http://localhost:8080/relay",
+  "serverHost":      "auth-plugin.opennhp.org",
+  "serverPort":      443,
+  "serverPublicKey": "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA==",
+  "agentPrivateKey": "aSclkGblmcxuKnD31nqNxuhxSaNPkZvqxNlANKdlLCw=",
+  "agentPublicKey":  "boB03Ta2t07kfR1sbKYtDCMgpkkNjGG1mXq4fQoVFcG8geXmEiF4n68LaReKihwR8wEpr2Z/qWbcDJAE/oquDQ==",
+  "userId":          "demo browser agent",
+  "deviceId":        "browser-relay-test",
+  "orgId":           "opennhp.org",
+  "resourceId":      "demo",
+  "serviceId":       "example"
+}

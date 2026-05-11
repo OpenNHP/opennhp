@@ -91,7 +91,7 @@ func TestRouting_MissingClusterIdReturns400(t *testing.T) {
 	}
 }
 
-// TestRouting_LegacyBarePathRedirects documents the post-legacy behaviour
+// TestRouting_LegacyBarePathRedirects documents the post-legacy behavior
 // of bare POST /relay (no id, no trailing slash). The relay only registers
 // "/relay/" with ServeMux, so a bare "/relay" gets the standard library's
 // 301 redirect to "/relay/" — which then hits handleRelay and 400s on the

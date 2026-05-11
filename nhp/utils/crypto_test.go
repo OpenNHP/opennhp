@@ -42,6 +42,28 @@ func TestPubKeyFingerprintDistinct(t *testing.T) {
 	}
 }
 
+// TestPubKeyFingerprintCrossLanguageVectors locks in the exact strings the
+// TypeScript side asserts in endpoints/js-agent/test/crypto/fingerprint.test.ts.
+// If either side changes algorithm — hash, prefix length, or base64 variant —
+// these vectors break before a divergent build can ship.
+func TestPubKeyFingerprintCrossLanguageVectors(t *testing.T) {
+	filled := make([]byte, 32)
+	for i := range filled {
+		filled[i] = 0x42
+	}
+	if got := PubKeyFingerprint(filled); got != "Ql7U5KNrMOo" {
+		t.Fatalf("fill(0x42) fingerprint = %q, want %q", got, "Ql7U5KNrMOo")
+	}
+
+	seq := make([]byte, 32)
+	for i := range seq {
+		seq[i] = byte(i + 1)
+	}
+	if got := PubKeyFingerprint(seq); got != "riFsLvUkejc" {
+		t.Fatalf("[1..32] fingerprint = %q, want %q", got, "riFsLvUkejc")
+	}
+}
+
 func TestPubKeyFingerprintFromBase64(t *testing.T) {
 	raw := []byte("the-quick-brown-fox-jumps-over-32")
 	want := PubKeyFingerprint(raw)

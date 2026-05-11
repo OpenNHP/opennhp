@@ -62,7 +62,7 @@ func pkcs5UnPadding(origData []byte) []byte {
 const PubKeyFingerprintLen = 11
 
 // PubKeyFingerprint returns a short, URL-safe identifier derived from a raw
-// public key: base64url(SHA-256(rawPubKey)[:8]), 12 characters with no
+// public key: base64url(SHA-256(rawPubKey)[:8]), 11 characters with no
 // padding. The same public key always produces the same fingerprint, so
 // both Go and TypeScript implementations can compute it independently.
 //

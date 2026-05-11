@@ -44,4 +44,19 @@ describe('pubKeyFingerprint', () => {
     const indirect = await pubKeyFingerprintFromBase64(bytesToBase64(raw));
     expect(indirect).toBe(direct);
   });
+
+  // Cross-language pin: these two outputs were computed once with
+  // nhp/utils.PubKeyFingerprint (Go) and hardcoded here. Either side
+  // changing its algorithm — different hash, different prefix length,
+  // different encoding — flips one of these strings and fails the test
+  // before the divergence ships. Pair-tested via go run + node, see
+  // commit feat(relay): support multiple nhp-server clusters.
+  it('matches the Go implementation for known keys', async () => {
+    const filledKey = new Uint8Array(32).fill(0x42);
+    expect(await pubKeyFingerprint(filledKey)).toBe('Ql7U5KNrMOo');
+
+    const seqKey = new Uint8Array(32);
+    for (let i = 0; i < seqKey.length; i++) seqKey[i] = i + 1;
+    expect(await pubKeyFingerprint(seqKey)).toBe('riFsLvUkejc');
+  });
 });

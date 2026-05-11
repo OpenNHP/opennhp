@@ -390,7 +390,6 @@ func (rs *RelayServer) recvPacketRoutine(cr *clusterRuntime, inst *clusterInstan
 	defer log.Info("[Relay] recvPacketRoutine for %s (cluster %s) stopped", addrStr, cr.id)
 
 	log.Info("[Relay] recvPacketRoutine for %s (cluster %s) started", addrStr, cr.id)
-	_ = inst // reserved for phase 2 health tracking
 
 	for {
 		select {
@@ -555,23 +554,6 @@ func (rs *RelayServer) connectionRoutine(cr *clusterRuntime, inst *clusterInstan
 // ──────────────────────────────────────────────────────────────────────────────
 // Message send/recv routines
 // ──────────────────────────────────────────────────────────────────────────────
-
-// targetedMsg is what handleRelay enqueues — it carries the destination
-// cluster/instance alongside the message so sendMessageRoutine doesn't have to
-// guess which connection to use.
-type targetedMsg struct {
-	md   *core.MsgData
-	cr   *clusterRuntime
-	inst *clusterInstance
-}
-
-// dispatchSend is the typed channel for outbound relay forwards. We can't use
-// rs.sendMsgCh directly because *core.MsgData has no field for routing the
-// outbound to a specific cluster, and we don't want to widen the core type
-// for a relay-only concept.
-//
-// keepalives are also pushed through this channel — same routing needs.
-var _ = (*targetedMsg)(nil)
 
 func (rs *RelayServer) sendMessageRoutine() {
 	defer rs.wg.Done()
@@ -754,6 +736,14 @@ type clusterInfo struct {
 	LoadBalance string `json:"loadBalance,omitempty"`
 }
 
+// handleClusters lists every configured cluster. The endpoint is intentionally
+// unauthenticated: a client that wants to knock must already know the target
+// cluster's public key (it's required to encrypt the KNK packet), so exposing
+// the pubkey + the routing id derived from it leaks nothing a determined
+// caller couldn't recompute. The "name" field is an operator-chosen label —
+// keep it free of sensitive context. If a deployment ever needs cluster
+// topology to be opaque to anonymous browsers, gate this handler behind the
+// reverse proxy (e.g. nginx allow/deny) rather than adding auth here.
 func (rs *RelayServer) handleClusters(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

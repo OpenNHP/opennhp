@@ -173,11 +173,7 @@ func printRelayInfo(cfg *relay.Config) {
 		if label == "" {
 			label = "(unnamed)"
 		}
-		marker := ""
-		if fp == cfg.DefaultClusterID || (cfg.DefaultClusterID == "" && len(cfg.Clusters) == 1) {
-			marker = " [default]"
-		}
-		fmt.Printf("  %sCluster:%s    %s %s%s\n", colorBlue, colorReset, fp, label, marker)
+		fmt.Printf("  %sCluster:%s    %s %s\n", colorBlue, colorReset, fp, label)
 		for j := range c.Instances {
 			inst := &c.Instances[j]
 			fmt.Printf("              └─ udp://%s:%d\n", inst.Host, inst.Port)

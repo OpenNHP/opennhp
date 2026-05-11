@@ -104,14 +104,13 @@ func TestRealClientAddr(t *testing.T) {
 	}
 }
 
-// newTestRelayServer constructs a RelayServer with a single empty cluster
-// instance, just enough for the pending-map/dispatch tests. Everything else
-// (net, device, HTTP) is left zero so this test stays hermetic.
-func newTestRelayServer() (*RelayServer, *clusterInstance) {
-	inst := &clusterInstance{
+// newTestInstance constructs a clusterInstance with just enough state for
+// the pending-map/dispatch tests. Everything else (net, device, HTTP) is
+// left zero so these tests stay hermetic.
+func newTestInstance() *clusterInstance {
+	return &clusterInstance{
 		pendingRequests: make(map[uint64]map[string]chan []byte),
 	}
-	return &RelayServer{}, inst
 }
 
 // register mirrors what handleRelay does when a request arrives: insert a
@@ -155,10 +154,10 @@ func recvOrTimeout(t *testing.T, ch chan []byte) ([]byte, bool) {
 // TestDispatch_SoleWaiter: the normal path. One client waiting, response
 // delivered, map cleared.
 func TestDispatch_SoleWaiter(t *testing.T) {
-	rs, inst := newTestRelayServer()
+	inst := newTestInstance()
 	ch, _ := register(inst, 42, "1.2.3.4:5555")
 
-	delivered, ambiguous := rs.dispatchResponse(inst, 42, []byte("ok"))
+	delivered, ambiguous := inst.dispatch(42, []byte("ok"))
 	if !delivered || ambiguous {
 		t.Fatalf("expected delivered=true ambiguous=false, got %v/%v", delivered, ambiguous)
 	}
@@ -178,11 +177,11 @@ func TestDispatch_SoleWaiter(t *testing.T) {
 // same counter. Neither gets the response; both must time out. This is the
 // invariant that prevents a malicious client from stealing a legitimate ACK.
 func TestDispatch_TwoWaitersDropped(t *testing.T) {
-	rs, inst := newTestRelayServer()
+	inst := newTestInstance()
 	chA, _ := register(inst, 99, "10.0.0.1:1111") // legitimate client
 	chB, _ := register(inst, 99, "10.0.0.2:2222") // attacker guessing the counter
 
-	delivered, ambiguous := rs.dispatchResponse(inst, 99, []byte("ack"))
+	delivered, ambiguous := inst.dispatch(99, []byte("ack"))
 	if delivered {
 		t.Fatalf("ambiguous counter must not deliver to any waiter")
 	}
@@ -209,8 +208,8 @@ func TestDispatch_TwoWaitersDropped(t *testing.T) {
 // TestDispatch_UnknownCounter: stale/late responses must be silently dropped
 // rather than panicking or blocking.
 func TestDispatch_UnknownCounter(t *testing.T) {
-	rs, inst := newTestRelayServer()
-	delivered, ambiguous := rs.dispatchResponse(inst, 0xdeadbeef, []byte("whatever"))
+	inst := newTestInstance()
+	delivered, ambiguous := inst.dispatch(0xdeadbeef, []byte("whatever"))
 	if delivered || ambiguous {
 		t.Fatalf("unknown counter must return (false,false), got %v/%v", delivered, ambiguous)
 	}
@@ -221,7 +220,7 @@ func TestDispatch_UnknownCounter(t *testing.T) {
 // with the same counter hit the "unknown" path — not the "sole waiter" path
 // with a stale channel.
 func TestDispatch_WaiterCleanupReleasesMap(t *testing.T) {
-	rs, inst := newTestRelayServer()
+	inst := newTestInstance()
 	_, cancelA := register(inst, 7, "1.1.1.1:1")
 	cancelA() // simulate handler timeout cleanup
 
@@ -233,7 +232,7 @@ func TestDispatch_WaiterCleanupReleasesMap(t *testing.T) {
 	}
 
 	// A late response now finds no waiter and returns (false, false).
-	delivered, ambiguous := rs.dispatchResponse(inst, 7, []byte("late"))
+	delivered, ambiguous := inst.dispatch(7, []byte("late"))
 	if delivered || ambiguous {
 		t.Fatalf("late response to cleaned-up counter must be ignored, got %v/%v", delivered, ambiguous)
 	}
@@ -244,12 +243,12 @@ func TestDispatch_WaiterCleanupReleasesMap(t *testing.T) {
 // waiter should still receive the response — ambiguity is only a *current*
 // state, not a poison pill.
 func TestDispatch_AfterOneWaiterLeavesStillDispatches(t *testing.T) {
-	rs, inst := newTestRelayServer()
+	inst := newTestInstance()
 	chA, _ := register(inst, 11, "1.1.1.1:1")
 	_, cancelB := register(inst, 11, "2.2.2.2:2")
 	cancelB() // attacker's request timed out first
 
-	delivered, ambiguous := rs.dispatchResponse(inst, 11, []byte("ok"))
+	delivered, ambiguous := inst.dispatch(11, []byte("ok"))
 	if !delivered || ambiguous {
 		t.Fatalf("expected sole remaining waiter to receive: delivered=%v ambiguous=%v", delivered, ambiguous)
 	}

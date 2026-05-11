@@ -19,14 +19,6 @@ func fakeKey(seed byte) string {
 	return utils.Base64(raw)
 }
 
-func fakeFingerprint(seed byte) string {
-	raw := make([]byte, 32)
-	for i := range raw {
-		raw[i] = seed + byte(i)
-	}
-	return utils.PubKeyFingerprint(raw)
-}
-
 // TestConfig_LegacyFieldsPromoted verifies that the deprecated single-server
 // fields are auto-promoted into a single-cluster shape so existing demo
 // configs keep working through phase 1.
@@ -103,37 +95,61 @@ func TestConfig_RejectsDuplicateClusterPubkey(t *testing.T) {
 	}
 }
 
-// TestConfig_DefaultClusterIDMustMatch: a configured defaultClusterId that
-// doesn't correspond to any cluster's fingerprint is a typo, and silently
-// ignoring it would surface as confusing 4xx errors later.
-func TestConfig_DefaultClusterIDMustMatch(t *testing.T) {
+// TestConfig_RejectsDuplicateInstanceAddress catches the silent-failure mode
+// where two clusters point at the same host:port. resolveTarget keys by
+// PeerPk so this wouldn't misroute on its own, but it's almost always a
+// copy-paste mistake the operator wants to hear about at load time rather
+// than discover later.
+func TestConfig_RejectsDuplicateInstanceAddress(t *testing.T) {
 	cfg := &Config{
 		PrivateKeyBase64: fakeKey(0x10),
-		DefaultClusterID: "not-a-real-fp",
-		Clusters: []Cluster{{
-			PublicKeyBase64: fakeKey(0x20),
-			Instances:       []ClusterInstance{{Host: "1.1.1.1", Port: 62206}},
-		}},
+		Clusters: []Cluster{
+			{
+				PublicKeyBase64: fakeKey(0x20),
+				Instances:       []ClusterInstance{{Host: "10.0.0.1", Port: 62206}},
+			},
+			{
+				PublicKeyBase64: fakeKey(0x21), // distinct pubkey
+				Instances:       []ClusterInstance{{Host: "10.0.0.1", Port: 62206}},
+			},
+		},
 	}
-	if err := cfg.normalize(); err == nil {
-		t.Fatalf("expected error for unknown defaultClusterId")
+	err := cfg.normalize()
+	if err == nil {
+		t.Fatalf("expected error for duplicate (host,port)")
+	}
+	if !strings.Contains(err.Error(), "already claimed") {
+		t.Errorf("error should mention the conflict, got: %v", err)
 	}
 }
 
-// TestConfig_DefaultClusterIDValid: when defaultClusterId matches an existing
-// fingerprint, normalize accepts it.
-func TestConfig_DefaultClusterIDValid(t *testing.T) {
-	fp := fakeFingerprint(0x20)
+// TestConfig_LegacyAndClusterCoexist: when an operator's config has both
+// the old single-server fields and a new [[cluster]] block, normalize
+// must keep the [[cluster]] data, NOT promote the legacy fields. The
+// promotion would otherwise silently overwrite the operator's explicit
+// choice on a copy-paste upgrade.
+func TestConfig_LegacyAndClusterCoexist(t *testing.T) {
 	cfg := &Config{
 		PrivateKeyBase64: fakeKey(0x10),
-		DefaultClusterID: fp,
+		// Legacy values that should be ignored.
+		NHPServerHost:            "legacy-host.example",
+		NHPServerPort:            99999,
+		NHPServerPublicKeyBase64: fakeKey(0x99),
+		// Real config.
 		Clusters: []Cluster{{
 			PublicKeyBase64: fakeKey(0x20),
-			Instances:       []ClusterInstance{{Host: "1.1.1.1", Port: 62206}},
+			Instances:       []ClusterInstance{{Host: "10.0.0.1", Port: 62206}},
 		}},
 	}
 	if err := cfg.normalize(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("coexistence should warn, not fail: %v", err)
+	}
+	if len(cfg.Clusters) != 1 {
+		t.Fatalf("expected exactly 1 cluster, got %d (legacy must not append)", len(cfg.Clusters))
+	}
+	if cfg.Clusters[0].Instances[0].Host != "10.0.0.1" {
+		t.Errorf("explicit [[cluster]] block must win over legacy fields, got host=%q",
+			cfg.Clusters[0].Instances[0].Host)
 	}
 }
 

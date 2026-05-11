@@ -30,6 +30,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -105,7 +106,15 @@ type clusterRuntime struct {
 // pickInstance selects an instance to handle a request. Phase 1 always
 // returns instances[0]; the signature is shaped so phase 2 can plug in
 // random / weighted / round-robin without touching call sites.
+//
+// Returns nil if the cluster has no instances. normalize() guarantees ≥1
+// in phase 1, but phase 2 (with health checks / draining) may legitimately
+// land here on an all-unhealthy cluster — callers should surface that as a
+// 503 rather than panicking on an out-of-bounds index.
 func (c *clusterRuntime) pickInstance() *clusterInstance {
+	if len(c.instances) == 0 {
+		return nil
+	}
 	return c.instances[0]
 }
 
@@ -115,8 +124,7 @@ type RelayServer struct {
 	httpServer *http.Server
 	device     *core.Device
 
-	clusters  map[string]*clusterRuntime // keyed by fingerprint
-	defaultID string                     // optional default cluster fingerprint
+	clusters map[string]*clusterRuntime // keyed by fingerprint
 
 	sendMsgCh chan *core.MsgData
 	recvMsgCh <-chan *core.PacketParserData
@@ -149,7 +157,6 @@ func New(cfg *Config) (*RelayServer, error) {
 		config:    cfg,
 		device:    device,
 		clusters:  make(map[string]*clusterRuntime, len(cfg.Clusters)),
-		defaultID: cfg.DefaultClusterID,
 		sendMsgCh: make(chan *core.MsgData, PacketQueueSizePerConnection),
 		stopCh:    make(chan struct{}),
 	}
@@ -164,19 +171,10 @@ func New(cfg *Config) (*RelayServer, error) {
 		rs.clusters[cr.id] = cr
 	}
 
-	// Single-default-cluster shortcut: if exactly one cluster is configured
-	// and no explicit DefaultClusterID, treat that cluster as default so
-	// the legacy `POST /relay` path keeps working.
-	if rs.defaultID == "" && len(rs.clusters) == 1 {
-		for id := range rs.clusters {
-			rs.defaultID = id
-		}
-	}
-
-	// Set up HTTP server.
+	// Set up HTTP server. Only /relay/{clusterId} is accepted — the legacy
+	// path POST /relay (no cluster id) was removed when multi-cluster
+	// support landed; see commit log for migration notes.
 	mux := http.NewServeMux()
-	// Trailing slash on /relay/ enables {clusterId} routing via path prefix.
-	mux.HandleFunc("/relay", rs.handleRelay)
 	mux.HandleFunc("/relay/", rs.handleRelay)
 	mux.HandleFunc("/clusters", rs.handleClusters)
 	mux.HandleFunc("/health", rs.handleHealth)
@@ -434,13 +432,17 @@ func (rs *RelayServer) recvPacketRoutine(cr *clusterRuntime, inst *clusterInstan
 	}
 }
 
-// dispatchResponse routes a server ACK/COK payload back to the HTTP handler
-// waiting on the given counter for the given instance. See clusterInstance
-// docs for the hijack-prevention rule (ambiguous waiters are all dropped).
+// dispatch routes a server ACK/COK payload back to the HTTP handler waiting
+// on the given counter for this instance. See clusterInstance docs for the
+// hijack-prevention rule (ambiguous waiters are all dropped).
 //
 // Returns (delivered, ambiguous). If both are false the counter was unknown
 // (e.g. a late response after the handler timed out).
-func (rs *RelayServer) dispatchResponse(inst *clusterInstance, counter uint64, raw []byte) (delivered, ambiguous bool) {
+//
+// Implemented as a method on *clusterInstance because it only touches
+// instance-local state — moving it off *RelayServer makes ownership
+// obvious at the call site.
+func (inst *clusterInstance) dispatch(counter uint64, raw []byte) (delivered, ambiguous bool) {
 	inst.pendingMu.Lock()
 	waiters, found := inst.pendingRequests[counter]
 	if !found {
@@ -523,7 +525,7 @@ func (rs *RelayServer) connectionRoutine(cr *clusterRuntime, inst *clusterInstan
 				// sends them into a handler channel.
 				raw := make([]byte, len(pkt.Content))
 				copy(raw, pkt.Content)
-				delivered, ambiguous := rs.dispatchResponse(inst, counter, raw)
+				delivered, ambiguous := inst.dispatch(counter, raw)
 				if delivered {
 					log.Info("[Relay] matched pending request counter=%d on cluster %s, forwarding %d raw bytes",
 						counter, cr.id, len(raw))
@@ -604,21 +606,20 @@ func (rs *RelayServer) dispatchSend(md *core.MsgData) {
 }
 
 // resolveTarget figures out which cluster instance an outbound MsgData is
-// destined for. We match on RemoteAddr first (exact), falling back to PeerPk
-// (cluster pubkey). PeerPk is required for keepalive packets, which carry
-// only the address; RemoteAddr is required for relay forwards because the
-// handler set it explicitly.
+// destined for. Both call sites (handleRelay forwards and keepaliveRoutine)
+// set PeerPk, so we try the fingerprint map first — that's an O(1) hit on
+// rs.clusters and avoids the worst-case O(N·M) address scan as cluster /
+// instance counts grow.
+//
+// We deliberately do NOT fall back to scanning by RemoteAddr if the PeerPk
+// lookup misses: normalize() rejects duplicate (host, port) across clusters,
+// so two clusters can never legitimately share an address. A PeerPk miss
+// means an outbound was constructed for a cluster that isn't configured,
+// which is a bug — silently picking some address-matching cluster would
+// route the packet through the wrong Noise identity and produce confusing
+// "peer address mismatch" errors at the server. Returning nil here makes
+// dispatchSend log the drop with the actual PeerPk for diagnosis.
 func (rs *RelayServer) resolveTarget(md *core.MsgData) (*clusterRuntime, *clusterInstance) {
-	if md.RemoteAddr != nil {
-		want := md.RemoteAddr.String()
-		for _, cr := range rs.clusters {
-			for _, inst := range cr.instances {
-				if inst.addr.String() == want {
-					return cr, inst
-				}
-			}
-		}
-	}
 	if len(md.PeerPk) > 0 {
 		fp := utils.PubKeyFingerprint(md.PeerPk)
 		if cr, ok := rs.clusters[fp]; ok {
@@ -731,7 +732,6 @@ type clusterInfo struct {
 	ID          string `json:"id"`
 	Name        string `json:"name,omitempty"`
 	PublicKey   string `json:"publicKeyBase64"`
-	IsDefault   bool   `json:"isDefault,omitempty"`
 	InstanceCnt int    `json:"instanceCount"`
 	LoadBalance string `json:"loadBalance,omitempty"`
 }
@@ -756,11 +756,14 @@ func (rs *RelayServer) handleClusters(w http.ResponseWriter, r *http.Request) {
 			ID:          cr.id,
 			Name:        cr.name,
 			PublicKey:   cr.pubKeyBase64,
-			IsDefault:   cr.id == rs.defaultID,
 			InstanceCnt: len(cr.instances),
 			LoadBalance: string(cr.scheme),
 		})
 	}
+	// Stable output so callers that diff or hash the response (change
+	// detection, ETag generators, log diffs) don't see spurious churn
+	// from Go map iteration order.
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
@@ -786,20 +789,20 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 // resolveCluster picks the target cluster for an incoming HTTP request.
-// Supports both `POST /relay` (uses DefaultClusterID) and `POST /relay/{id}`.
+// The only accepted form is `POST /relay/{clusterId}`; the legacy
+// `POST /relay` path was removed when multi-cluster support landed —
+// clients must derive the fingerprint from the target server's public
+// key (see nhp/utils.PubKeyFingerprint and its TypeScript twin).
 func (rs *RelayServer) resolveCluster(r *http.Request) (*clusterRuntime, int, string) {
-	// Path may be "/relay", "/relay/", or "/relay/<id>". TrimPrefix handles
-	// both registered ServeMux routes.
-	id := strings.TrimPrefix(r.URL.Path, "/relay")
-	id = strings.TrimPrefix(id, "/")
+	// ServeMux routes `/relay/` here; everything after the prefix is the
+	// caller-supplied cluster id. Trailing slashes are tolerated so that
+	// proxies that normalize paths don't change the routing decision.
+	id := strings.TrimPrefix(r.URL.Path, "/relay/")
 	id = strings.TrimSuffix(id, "/")
 
 	if id == "" {
-		if rs.defaultID == "" {
-			return nil, http.StatusBadRequest,
-				"no cluster ID in path and no defaultClusterId configured; use POST /relay/<clusterId>"
-		}
-		id = rs.defaultID
+		return nil, http.StatusBadRequest,
+			"missing cluster id; use POST /relay/<clusterId> (see GET /clusters)"
 	}
 
 	cr, ok := rs.clusters[id]
@@ -817,15 +820,12 @@ func (rs *RelayServer) resolveCluster(r *http.Request) (*clusterRuntime, int, st
 //	Content-Type: application/octet-stream
 //	Body: raw inner NHP packet bytes (KNK / RKN / etc., encrypted by agent)
 //
-// Legacy compatible:
-//
-//	POST /relay  — uses Config.DefaultClusterID; rejected if unset and >1 cluster exists.
-//
 // Response:
 //
 //	200 OK  — body contains raw NHP ACK / COK packet bytes (encrypted to agent)
-//	400 Bad Request  — empty / over-size body, or missing cluster ID
-//	404 Not Found    — unknown cluster ID
+//	400 Bad Request  — empty / over-size body, or missing cluster id
+//	404 Not Found    — unknown cluster id
+//	503 Service Unavailable — cluster has no usable instance (phase 2)
 //	504 Gateway Timeout  — NHP Server did not respond in time
 //	502 Bad Gateway  — internal error
 func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
@@ -839,7 +839,6 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, errMsg, status)
 		return
 	}
-	inst := cr.pickInstance()
 
 	// Read inner NHP packet from request body. Cap at maxPacketSize+1 so we
 	// can reject oversize bodies without pulling an unbounded amount into
@@ -868,6 +867,16 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	innerCounter := binary.BigEndian.Uint64(innerPacket[16:24])
+
+	// Body is valid; pick a target instance. normalize() blocks an empty
+	// instance list in phase 1, but phase 2's health checks can legitimately
+	// empty the healthy pool, so surface that as a 503 instead of panicking
+	// on a nil dereference downstream.
+	inst := cr.pickInstance()
+	if inst == nil {
+		http.Error(w, "cluster has no usable instance", http.StatusServiceUnavailable)
+		return
+	}
 
 	realAddr, err := realClientAddr(r)
 	if err != nil {

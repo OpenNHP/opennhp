@@ -18,8 +18,8 @@ udpTimeoutMs   = 5000
 
 logLevel = 3
 
-# Phase 1: one cluster, one instance. The demo currently runs a single
-# nhp-server, so legacy clients hitting `POST /relay` are auto-routed here.
+# Phase 1: one cluster, one instance. Clients must address this cluster
+# explicitly via POST /relay/<fingerprint> (see GET /clusters).
 [[cluster]]
 name            = "demo"
 publicKeyBase64 = "${NHP_SERVER_PUBLIC_KEY}"

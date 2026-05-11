@@ -76,15 +76,11 @@ type Config struct {
 	// (one public key) that may be backed by multiple physical instances.
 	Clusters []Cluster `toml:"cluster"`
 
-	// DefaultClusterID is the cluster fingerprint used when an HTTP request
-	// targets the legacy "POST /relay" path (no cluster ID in the URL).
-	// Empty means legacy requests are rejected with 400 once any cluster
-	// is configured.
-	DefaultClusterID string `toml:"defaultClusterId"`
-
-	// Legacy single-server fields. Kept for one release so existing demo
-	// configs keep working; LoadConfig promotes them into Clusters[0] and
-	// logs a deprecation warning. Remove after operators migrate.
+	// Legacy single-server fields. When [[cluster]] is empty, LoadConfig
+	// promotes these into Clusters[0] with a deprecation warning. When
+	// [[cluster]] is also present, the legacy fields are ignored and a
+	// louder warning is logged so the operator notices the dead values.
+	// Slated for removal in a future release.
 	NHPServerHost            string `toml:"nhpServerHost"`
 	NHPServerPort            int    `toml:"nhpServerPort"`
 	NHPServerPublicKeyBase64 string `toml:"nhpServerPublicKeyBase64"`
@@ -155,11 +151,14 @@ func (cfg *Config) normalize() error {
 		return fmt.Errorf("relay: privateKeyBase64 must be set in config")
 	}
 
-	// Promote legacy nhpServer* fields into Clusters[0] when no explicit
-	// cluster is configured. This keeps existing single-server demo
-	// configs working through phase 1; operators are expected to migrate
-	// to the [[cluster]] form on their next config edit.
-	if len(cfg.Clusters) == 0 && cfg.NHPServerHost != "" {
+	hasLegacy := cfg.NHPServerHost != "" ||
+		cfg.NHPServerPort != 0 ||
+		cfg.NHPServerPublicKeyBase64 != ""
+
+	switch {
+	case hasLegacy && len(cfg.Clusters) == 0:
+		// Auto-migrate: promote the legacy fields into a single cluster
+		// so existing demo configs keep working through phase 1.
 		log.Warning("[Relay] nhpServerHost/nhpServerPort/nhpServerPublicKeyBase64 are deprecated; " +
 			"migrate to [[cluster]] / [[cluster.instance]] in config.toml")
 		cfg.Clusters = []Cluster{{
@@ -169,6 +168,14 @@ func (cfg *Config) normalize() error {
 				Port: cfg.NHPServerPort,
 			}},
 		}}
+	case hasLegacy && len(cfg.Clusters) > 0:
+		// Both forms present. The [[cluster]] block wins because it's
+		// strictly more expressive; but a copy-paste upgrade that left
+		// the old fields behind would silently route to whatever the
+		// new block declares and drop the legacy values. Log loudly so
+		// the operator notices and can remove the dead config.
+		log.Warning("[Relay] both legacy nhpServer* fields and [[cluster]] blocks are set; " +
+			"the legacy fields are ignored — remove them from config.toml to silence this warning")
 	}
 
 	if len(cfg.Clusters) == 0 {
@@ -176,6 +183,16 @@ func (cfg *Config) normalize() error {
 	}
 
 	seenFP := make(map[string]int, len(cfg.Clusters))
+	// seenAddr catches two clusters that point at the same host:port.
+	// resolveTarget keys by PeerPk, so duplicate addresses don't cause a
+	// routing bug on their own — but they almost certainly mean the
+	// operator copied a cluster and forgot to change the instance, and
+	// silently accepting that would mask a real config mistake.
+	type addrOrigin struct {
+		cluster  int
+		instance int
+	}
+	seenAddr := make(map[string]addrOrigin)
 	for i := range cfg.Clusters {
 		c := &cfg.Clusters[i]
 		if c.PublicKeyBase64 == "" {
@@ -211,18 +228,18 @@ func (cfg *Config) normalize() error {
 			if inst.Port <= 0 {
 				return fmt.Errorf("relay: cluster #%d instance #%d missing or invalid port", i, j)
 			}
+			addr := fmt.Sprintf("%s:%d", inst.Host, inst.Port)
+			if dup, ok := seenAddr[addr]; ok {
+				return fmt.Errorf("relay: cluster #%d instance #%d address %s already claimed by cluster #%d instance #%d",
+					i, j, addr, dup.cluster, dup.instance)
+			}
+			seenAddr[addr] = addrOrigin{cluster: i, instance: j}
 			if inst.Weight <= 0 {
 				inst.Weight = 1
 			}
 		}
 		if c.LoadBalance == "" {
 			c.LoadBalance = LBWeightedRandom
-		}
-	}
-
-	if cfg.DefaultClusterID != "" {
-		if _, ok := seenFP[cfg.DefaultClusterID]; !ok {
-			return fmt.Errorf("relay: defaultClusterId %q does not match any configured cluster fingerprint", cfg.DefaultClusterID)
 		}
 	}
 

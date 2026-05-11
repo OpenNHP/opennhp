@@ -32,20 +32,15 @@ logLevel = 2
 # ────────────────────────────────────────────────────────────────────────
 #
 # Each [[cluster]] describes one logical nhp-server identity, addressed by
-# the SHA-256 fingerprint of its public key. Browsers reach a cluster via
+# the SHA-256 fingerprint of its public key. Clients reach a cluster via
 #   POST /relay/<clusterId>
 # where <clusterId> is the 11-char fingerprint printed in the relay logs at
-# startup (also available from GET /clusters).
+# startup (also available from GET /clusters). There is no default cluster:
+# every request must carry the id in the URL.
 #
 # Phase 1 supports exactly one [[cluster.instance]] per cluster. The schema
 # already accepts a list and a load-balancing scheme so that the future
 # multi-instance support (phase 2) needs no config changes.
-
-# Optional: when an HTTP client uses the legacy `POST /relay` path with no
-# cluster ID, fall back to this cluster. If unset, single-cluster configs
-# automatically use that one cluster as default; multi-cluster configs
-# require the client to specify the ID.
-defaultClusterId = ""
 
 [[cluster]]
 name            = "default"

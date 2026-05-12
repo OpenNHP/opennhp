@@ -325,13 +325,14 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 
-		if !peer.CheckRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr) {
-			log.Error("validatePeer: %s peer address mismatch, pubkey=%s, remoteAddr=%s",
+		if !ppd.ConnData.CheckRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr) {
+			log.Error("validatePeer: %s peer address mismatch on connection, pubkey=%s, remoteAddr=%s",
 				peerDeviceTypeName, peerPkBase64, ppd.ConnData.RemoteAddr)
-			err = fmt.Errorf("peer does not match its previous address (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
+			err = fmt.Errorf("peer does not match its previous address on this connection (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
 			return err
 		}
-		peer.UpdateRecv(ppd.LocalInitTime, ppd.ConnData.RemoteAddr)
+		ppd.ConnData.UpdateRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr)
+		peer.UpdateRecv(ppd.LocalInitTime)
 	}
 
 	ppd.RemotePubKey = peerPk

@@ -974,7 +974,7 @@ func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACCon
 		srcAddrs = append(srcAddrs, asscAddrs...)
 	}
 
-	acAddrStr := conn.ACPeer.RecvAddr().String()
+	acAddrStr := conn.ConnData.RemoteAddr.String()
 	if openTime == 0 {
 		openTime = DefaultIpOpenTime
 	}
@@ -1176,7 +1176,7 @@ func (s *UdpServer) ProcessDataPrivateKeyWrapping(dwrMsg *common.DWRMsg, conn *D
 		return
 	}
 
-	dbAddrStr := conn.DBPeer.RecvAddr().String()
+	dbAddrStr := conn.ConnData.RemoteAddr.String()
 
 	dwrBytes, _ := json.Marshal(dwrMsg)
 

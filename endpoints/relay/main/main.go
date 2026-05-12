@@ -15,6 +15,7 @@ import (
 
 	"github.com/OpenNHP/opennhp/endpoints/relay"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/utils"
 	"github.com/OpenNHP/opennhp/nhp/version"
 )
 
@@ -164,8 +165,20 @@ func printRelayInfo(cfg *relay.Config) {
 	fmt.Printf("  %sCommit:%s     %s\n", colorYellow, colorReset, commitId)
 	fmt.Printf("  %sBuild:%s      %s\n", colorYellow, colorReset, version.BuildTime)
 	fmt.Printf("  %sPlatform:%s   %s/%s\n\n", colorYellow, colorReset, runtime.GOOS, runtime.GOARCH)
-	fmt.Printf("  %sListen:%s     %s://%s:%d/relay\n", colorBlue, colorReset, listenScheme, cfg.ListenIP, cfg.ListenPort)
-	fmt.Printf("  %sUpstream:%s   udp://%s:%d\n", colorBlue, colorReset, cfg.NHPServerHost, cfg.NHPServerPort)
+	fmt.Printf("  %sListen:%s     %s://%s:%d/relay/<clusterId>\n", colorBlue, colorReset, listenScheme, cfg.ListenIP, cfg.ListenPort)
+	for i := range cfg.Clusters {
+		c := &cfg.Clusters[i]
+		fp, _ := utils.PubKeyFingerprintFromBase64(c.PublicKeyBase64)
+		label := c.Name
+		if label == "" {
+			label = "(unnamed)"
+		}
+		fmt.Printf("  %sCluster:%s    %s %s\n", colorBlue, colorReset, fp, label)
+		for j := range c.Instances {
+			inst := &c.Instances[j]
+			fmt.Printf("              └─ udp://%s:%d\n", inst.Host, inst.Port)
+		}
+	}
 	fmt.Printf("  %sUDP timeout:%s %dms\n", colorBlue, colorReset, cfg.UDPTimeoutMs)
 	fmt.Printf("  %sStarted:%s    %s\n\n", colorBlue, colorReset, time.Now().Format("2006-01-02 15:04:05"))
 	fmt.Println(colorGreen + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" + colorReset)

@@ -9,10 +9,6 @@ cipherScheme = 0
 
 privateKeyBase64 = "${NHP_RELAY_PRIVATE_KEY}"
 
-nhpServerHost = "${SERVER_PRIVATE_IP}"
-nhpServerPort = 62206
-nhpServerPublicKeyBase64 = "${NHP_SERVER_PUBLIC_KEY}"
-
 keepaliveIntervalS = 20
 
 readTimeoutMs  = 10000
@@ -21,3 +17,15 @@ idleTimeoutMs  = 60000
 udpTimeoutMs   = 5000
 
 logLevel = 3
+
+# Phase 1: one cluster, one instance. Clients must address this cluster
+# explicitly via POST /relay/<fingerprint> (see GET /clusters).
+[[cluster]]
+name            = "demo"
+publicKeyBase64 = "${NHP_SERVER_PUBLIC_KEY}"
+loadBalance     = "weighted-random"
+
+  [[cluster.instance]]
+  host   = "${SERVER_PRIVATE_IP}"
+  port   = 62206
+  weight = 1

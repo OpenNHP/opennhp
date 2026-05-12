@@ -15,11 +15,6 @@ cipherScheme = 0
 # Relay identity key — generate with: nhp-relayd keygen --curve (or --sm2)
 privateKeyBase64 = ""
 
-# NHP Server upstream (UDP)
-nhpServerHost = "127.0.0.1"
-nhpServerPort = 62206
-nhpServerPublicKeyBase64 = ""
-
 # Keepalive interval in seconds
 keepaliveIntervalS = 20
 
@@ -31,3 +26,28 @@ udpTimeoutMs   = 5000
 
 # Log level: 0=silent, 1=error, 2=info, 3=debug
 logLevel = 2
+
+# ────────────────────────────────────────────────────────────────────────
+# Upstream NHP-Server clusters
+# ────────────────────────────────────────────────────────────────────────
+#
+# Each [[cluster]] describes one logical nhp-server identity, addressed by
+# the SHA-256 fingerprint of its public key. Clients reach a cluster via
+#   POST /relay/<clusterId>
+# where <clusterId> is the 11-char fingerprint printed in the relay logs at
+# startup (also available from GET /clusters). There is no default cluster:
+# every request must carry the id in the URL.
+#
+# Phase 1 supports exactly one [[cluster.instance]] per cluster. The schema
+# already accepts a list and a load-balancing scheme so that the future
+# multi-instance support (phase 2) needs no config changes.
+
+[[cluster]]
+name            = "default"
+publicKeyBase64 = ""
+loadBalance     = "weighted-random"   # phase 1: ignored (only 1 instance)
+
+  [[cluster.instance]]
+  host   = "127.0.0.1"
+  port   = 62206
+  weight = 1

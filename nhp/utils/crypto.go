@@ -56,6 +56,36 @@ func pkcs5UnPadding(origData []byte) []byte {
 	return PKCS7Unpad(origData, 16) // Default to AES block size
 }
 
+// PubKeyFingerprintLen is the length in characters of the short ID produced
+// by PubKeyFingerprint. It comes from base64.RawURLEncoding of the first 8
+// bytes of SHA-256 (8 bytes → 11 base64url chars, unpadded).
+const PubKeyFingerprintLen = 11
+
+// PubKeyFingerprint returns a short, URL-safe identifier derived from a raw
+// public key: base64url(SHA-256(rawPubKey)[:8]), 11 characters with no
+// padding. The same public key always produces the same fingerprint, so
+// both Go and TypeScript implementations can compute it independently.
+//
+// This is a stable routing identifier, not a security primitive. The
+// truncation gives ~2^-32 collision probability per pair of distinct keys,
+// which is acceptable for the small number of upstream nhp-server clusters a
+// relay will host. Callers MUST NOT use it as an authentication token.
+func PubKeyFingerprint(rawPubKey []byte) string {
+	sum := sha256.Sum256(rawPubKey)
+	return base64.RawURLEncoding.EncodeToString(sum[:8])
+}
+
+// PubKeyFingerprintFromBase64 is a convenience wrapper that decodes a
+// standard-base64-encoded public key (as stored in TOML configs) before
+// hashing. Returns the fingerprint and any decode error.
+func PubKeyFingerprintFromBase64(pubKeyBase64 string) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(pubKeyBase64)
+	if err != nil {
+		return "", err
+	}
+	return PubKeyFingerprint(raw), nil
+}
+
 func HMACSha256(key, value string) []byte {
 	var secretKey = []byte(key)
 	h := hmac.New(sha256.New, secretKey)

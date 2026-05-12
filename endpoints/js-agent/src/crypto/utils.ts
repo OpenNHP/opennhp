@@ -204,3 +204,43 @@ export function hexToBytes(hex: string): Uint8Array {
   }
   return bytes;
 }
+
+/**
+ * Encode bytes using base64url without padding — the same encoding the relay
+ * uses for cluster fingerprints. Kept inline rather than depending on a
+ * library because the agent already vendors only what it needs.
+ */
+function bytesToBase64Url(bytes: Uint8Array): string {
+  return bytesToBase64(bytes)
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replaceAll('=', '');
+}
+
+/**
+ * Compute the relay cluster fingerprint for a raw public key.
+ *
+ * Mirrors nhp/utils.PubKeyFingerprint exactly:
+ *   base64url(SHA-256(rawPubKey)[:8])
+ *
+ * The result is 11 characters with no padding. Use this to derive the
+ * `/relay/<clusterId>` path segment from a server's public key without
+ * having to ask the relay for its cluster list.
+ */
+export async function pubKeyFingerprint(rawPubKey: Uint8Array): Promise<string> {
+  // Copy the bytes into a fresh ArrayBuffer so the typed array is guaranteed
+  // to be a plain Uint8Array<ArrayBuffer>. Without this, callers passing
+  // Buffer or a SharedArrayBuffer view trip the BufferSource type guard.
+  const input = new Uint8Array(rawPubKey.byteLength);
+  input.set(rawPubKey);
+  const digest = await crypto.subtle.digest('SHA-256', input);
+  return bytesToBase64Url(new Uint8Array(digest, 0, 8));
+}
+
+/**
+ * Convenience wrapper that decodes a standard-base64-encoded public key
+ * (as stored in agent ServerConfig) before fingerprinting.
+ */
+export async function pubKeyFingerprintFromBase64(pubKeyBase64: string): Promise<string> {
+  return pubKeyFingerprint(base64ToBytes(pubKeyBase64));
+}

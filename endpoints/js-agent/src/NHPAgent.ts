@@ -20,7 +20,7 @@ import type {
 } from './types.js';
 import { generateX25519KeyPairBase64, derivePublicKeyFromBase64 } from './crypto/ecdh.js';
 import { generateSM2KeyPairBase64, deriveSM2PublicKeyFromBase64 } from './crypto/sm2.js';
-import { randomBytes, bytesToHex } from './crypto/utils.js';
+import { randomBytes, bytesToHex, pubKeyFingerprintFromBase64 } from './crypto/utils.js';
 import { buildNHPPacket, parseNHPPacket, clearServerCookie, PacketContext } from './protocol/packet.js';
 import { NHP_PACKET_TYPES } from './protocol/constants.js';
 import { WebSocketTransport } from './transport/websocket.js';
@@ -381,7 +381,7 @@ export class NHPAgent {
     const serverId = server.id!;
     let transport = this.transports.get(serverId);
     if (!transport) {
-      transport = this.createTransport(server.host ?? '', server.port ?? 0);
+      transport = await this.createTransport(server.host ?? '', server.port ?? 0, server.publicKey);
       this.transports.set(serverId, transport);
     }
 
@@ -428,7 +428,11 @@ export class NHPAgent {
     }
   }
 
-  private createTransport(host: string, port: number): Transport {
+  private async createTransport(
+    host: string,
+    port: number,
+    serverPublicKey: string
+  ): Promise<Transport> {
     const transportType = this.config.transport;
 
     switch (transportType) {
@@ -452,8 +456,18 @@ export class NHPAgent {
             '[NHPAgent] transport="relay" requires relayUrl to be set in NHPAgentConfig'
           );
         }
-        this.log('debug', `Creating HTTP relay transport via ${relayUrl}`);
-        return new HttpRelayTransport({ relayUrl, logger: this.logger }) as unknown as Transport;
+        // The cluster ID is derived from the target server's public key so
+        // the agent can address any cluster on a multi-cluster relay
+        // without explicit configuration. The same algorithm runs in Go
+        // (utils.PubKeyFingerprint), keeping the routing identifier
+        // canonical on both sides.
+        const clusterId = await pubKeyFingerprintFromBase64(serverPublicKey);
+        this.log('debug', `Creating HTTP relay transport via ${relayUrl}/${clusterId}`);
+        return new HttpRelayTransport({
+          relayUrl,
+          clusterId,
+          logger: this.logger,
+        }) as unknown as Transport;
       }
 
       default:

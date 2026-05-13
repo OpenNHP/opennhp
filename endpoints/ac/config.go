@@ -305,25 +305,46 @@ func (a *UdpAC) updateServerPeers(peers []*core.UdpPeer) (err error) {
 		err = errLoadConfig
 	})
 
-	serverPeerMap := make(map[string]*core.UdpPeer)
+	// One [[Servers]] entry may have N endpoints sharing a pubkey, so the
+	// AC-side map is keyed by (pubkey, addr) to keep each endpoint distinct.
+	// The device's peerMap is still keyed by pubkey alone (which is fine — its
+	// only job is gating "is this pubkey in the whitelist?"; per-connection
+	// state lives on ConnectionData since commit A). We collapse to a set of
+	// pubkeys for the device add/remove diff.
+	serverPeerMap := make(map[string]*core.UdpPeer, len(peers))
+	pubKeyPresent := make(map[string]struct{})
 	for _, p := range peers {
 		p.Type = core.NHP_SERVER
 		a.device.AddPeer(p)
-		serverPeerMap[p.PublicKeyBase64()] = p
+		serverPeerMap[endpointKey(p)] = p
+		pubKeyPresent[p.PublicKeyBase64()] = struct{}{}
 	}
 	a.config.Servers = peers
 
-	// remove old peers from device
 	a.serverPeerMutex.Lock()
 	defer a.serverPeerMutex.Unlock()
-	for pubKey := range a.serverPeerMap {
-		if _, found := serverPeerMap[pubKey]; !found {
+
+	// Remove from device any pubkey that no longer appears in the new config.
+	// Iterate the old map to find pubkeys that have fully disappeared.
+	oldPubKeys := make(map[string]struct{})
+	for _, oldPeer := range a.serverPeerMap {
+		oldPubKeys[oldPeer.PublicKeyBase64()] = struct{}{}
+	}
+	for pubKey := range oldPubKeys {
+		if _, stillPresent := pubKeyPresent[pubKey]; !stillPresent {
 			a.device.RemovePeer(pubKey)
 		}
 	}
 	a.serverPeerMap = serverPeerMap
 
 	return err
+}
+
+// endpointKey is the AC-internal map key for a server peer. It must keep
+// same-pubkey peers at different addresses distinct, so the discovery
+// fan-out launches one routine per (pubkey, addr).
+func endpointKey(p *core.UdpPeer) string {
+	return p.PublicKeyBase64() + "|" + p.Ip + ":" + strconv.Itoa(p.Port)
 }
 func (a *UdpAC) loadConfigFile(file string) (content []byte, err error) {
 	utils.CatchPanicThenRun(func() {

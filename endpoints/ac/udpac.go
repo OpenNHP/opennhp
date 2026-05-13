@@ -742,12 +742,16 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 	}
 }
 
+// AddServerPeer registers one server endpoint with the AC. Multiple calls with
+// the same pubkey but different (Ip, Port) co-exist — each addressable
+// instance is tracked separately so the discovery routine can fan AOL out to
+// all of them.
 func (a *UdpAC) AddServerPeer(server *core.UdpPeer) {
 	if server.DeviceType() == core.NHP_SERVER {
 		a.device.AddPeer(server)
 
 		a.serverPeerMutex.Lock()
-		a.serverPeerMap[server.PublicKeyBase64()] = server
+		a.serverPeerMap[endpointKey(server)] = server
 		a.serverPeerMutex.Unlock()
 
 		// renew server connection cycle
@@ -757,18 +761,38 @@ func (a *UdpAC) AddServerPeer(server *core.UdpPeer) {
 	}
 }
 
-func (a *UdpAC) RemoveServerPeer(serverKey string) {
+// RemoveServerPeer removes one specific server endpoint by its endpointKey.
+// Other endpoints sharing the same pubkey are unaffected; the device-level
+// peer entry is removed only when the last endpoint for that pubkey is gone.
+func (a *UdpAC) RemoveServerPeer(serverEndpointKey string) {
 	a.serverPeerMutex.Lock()
-	beforeSize := len(a.serverPeerMap)
-	delete(a.serverPeerMap, serverKey)
-	afterSize := len(a.serverPeerMap)
+	removed, present := a.serverPeerMap[serverEndpointKey]
+	if present {
+		delete(a.serverPeerMap, serverEndpointKey)
+	}
+	// Did any other endpoint with the same pubkey remain?
+	var pubKeyStillUsed bool
+	if removed != nil {
+		for _, p := range a.serverPeerMap {
+			if p.PublicKeyBase64() == removed.PublicKeyBase64() {
+				pubKeyStillUsed = true
+				break
+			}
+		}
+	}
 	a.serverPeerMutex.Unlock()
 
-	if beforeSize != afterSize {
-		// renew server connection cycle
-		if len(a.signals.serverMapUpdated) == 0 {
-			a.signals.serverMapUpdated <- struct{}{}
-		}
+	if !present {
+		return
+	}
+
+	if !pubKeyStillUsed {
+		a.device.RemovePeer(removed.PublicKeyBase64())
+	}
+
+	// renew server connection cycle
+	if len(a.signals.serverMapUpdated) == 0 {
+		a.signals.serverMapUpdated <- struct{}{}
 	}
 }
 

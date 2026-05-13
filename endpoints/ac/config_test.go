@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	toml "github.com/pelletier/go-toml/v2"
+
+	"github.com/OpenNHP/opennhp/nhp/core"
 )
 
 // TestExpandServerPeers_LegacySingleEndpoint covers the pre-2A schema: a
@@ -160,5 +162,29 @@ ExpireTime = 1924991999
 	expanded := expandServerPeers(peers.Servers)
 	if len(expanded) != 2 {
 		t.Fatalf("want 2 expanded peers, got %d", len(expanded))
+	}
+}
+
+// TestEndpointKey_DistinctSamePubKey: the AC-internal map key for a server
+// peer must distinguish two endpoints that share a pubkey but differ in
+// address. This is what allows updateServerPeers to keep both rows and what
+// makes the discovery launcher fan AOL out to both.
+func TestEndpointKey_DistinctSamePubKey(t *testing.T) {
+	a := &core.UdpPeer{PubKeyBase64: "ABC=", Ip: "10.0.0.1", Port: 62206}
+	b := &core.UdpPeer{PubKeyBase64: "ABC=", Ip: "10.0.0.2", Port: 62206}
+	if endpointKey(a) == endpointKey(b) {
+		t.Fatalf("same-pubkey different-addr peers must produce distinct keys; got %q and %q",
+			endpointKey(a), endpointKey(b))
+	}
+}
+
+// TestEndpointKey_StableForSamePeer: identical (pubkey, addr) must produce
+// the identical key across calls. updateServerPeers reuses this for diff'ing
+// the new config against the live map.
+func TestEndpointKey_StableForSamePeer(t *testing.T) {
+	a := &core.UdpPeer{PubKeyBase64: "ABC=", Ip: "10.0.0.1", Port: 62206}
+	b := &core.UdpPeer{PubKeyBase64: "ABC=", Ip: "10.0.0.1", Port: 62206}
+	if endpointKey(a) != endpointKey(b) {
+		t.Fatalf("equal peers produced different keys: %q vs %q", endpointKey(a), endpointKey(b))
 	}
 }

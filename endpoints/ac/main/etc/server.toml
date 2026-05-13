@@ -1,10 +1,27 @@
 # list the server peers for the AC under [[Servers]] table
-
-# Hostname: the domain of the server peer. If specified, it overrides the "Ip" field with its first resolved address.
-# Ip: specify the ip address of the server peer
-# Port: specify the port number of this server peer is listening
+#
+# Each [[Servers]] entry is one logical nhp-server identity (one pubkey).
+# That identity may be reachable at multiple addresses, e.g. a same-pubkey
+# nhp-server cluster fronted by DNS round-robin.
+#
 # PubKeyBase64: public key of the server peer in base64 format
-# ExpireTime (epoch timestamp in seconds): peer key validation will fail when it expires.
+# ExpireTime  : (epoch timestamp in seconds) peer key validation fails after this
+#
+# Use ONE of the two endpoint-shape options below per entry:
+#
+# 1) Endpoints (preferred when one pubkey has multiple instances):
+#       Endpoints = ["10.0.0.1:62206", "10.0.0.2:62206"]
+#    The AC registers (NHP_AOL) with every endpoint so that any nhp-server
+#    instance in the cluster can route knock requests back to this AC.
+#
+# 2) Legacy single endpoint (still supported for one-instance deployments):
+#       Hostname = ""          # if set, resolves to a single IP
+#       Ip       = "192.168.80.35"
+#       Port     = 62206
+#
+# If both forms are set on the same entry, Endpoints wins and the legacy
+# fields are ignored with an info-level log.
+
 [[Servers]]
 Hostname = ""
 Ip = "192.168.80.35"

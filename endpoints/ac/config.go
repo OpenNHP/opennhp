@@ -4,15 +4,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
-
-	"github.com/OpenNHP/opennhp/nhp/etcd"
 
 	toml "github.com/pelletier/go-toml/v2"
 
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/etcd"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
@@ -33,7 +34,7 @@ const (
 type ACEtcdConfig struct {
 	BaseConfig Config
 	HttpConfig HttpConfig
-	Servers    []*core.UdpPeer
+	Servers    []ServerPeerEntry
 }
 
 type Config struct {
@@ -47,6 +48,22 @@ type Config struct {
 	LogLevel            int             `json:"logLevel"`
 	DefaultCipherScheme int             `json:"defaultCipherScheme"`
 	FilterMode          int             `json:"filterMode"`
+}
+
+// ServerPeerEntry is the TOML/etcd loader shape for a server peer entry. One
+// entry represents one logical nhp-server identity (a single ECDH keypair);
+// Endpoints allows that identity to be reachable at multiple addresses, which
+// is how an AC fans AOL/KPL out to a same-pubkey nhp-server cluster.
+//
+// Legacy single-endpoint configs (Hostname or Ip+Port at the entry root)
+// remain supported and are normalized to Endpoints during load.
+type ServerPeerEntry struct {
+	PubKeyBase64 string
+	Hostname     string
+	Ip           string
+	Port         int
+	Endpoints    []string
+	ExpireTime   int64
 }
 
 type RemoteConfig struct {
@@ -66,7 +83,66 @@ type HttpConfig struct {
 }
 
 type Peers struct {
-	Servers []*core.UdpPeer
+	Servers []ServerPeerEntry
+}
+
+// expandServerPeers normalizes loader-shape entries into []*core.UdpPeer,
+// fanning a single entry with N endpoints into N UdpPeer rows that share a
+// pubkey. The new fan-out path uses the Endpoints slice; the legacy path
+// (Hostname or Ip+Port at the entry root) collapses to a single UdpPeer.
+//
+// Endpoints, when non-empty, take precedence over the legacy fields; the
+// legacy fields are then ignored with an info-level log so misconfigurations
+// are visible.
+func expandServerPeers(entries []ServerPeerEntry) []*core.UdpPeer {
+	out := make([]*core.UdpPeer, 0, len(entries))
+	for _, e := range entries {
+		if len(e.Endpoints) > 0 {
+			if e.Hostname != "" || e.Ip != "" || e.Port != 0 {
+				log.Info("server peer %s: Endpoints set, ignoring legacy Hostname/Ip/Port fields", e.PubKeyBase64)
+			}
+			for _, ep := range e.Endpoints {
+				ip, port, err := splitHostPort(ep)
+				if err != nil {
+					log.Error("server peer %s: skip endpoint %q: %v", e.PubKeyBase64, ep, err)
+					continue
+				}
+				out = append(out, &core.UdpPeer{
+					PubKeyBase64: e.PubKeyBase64,
+					Ip:           ip,
+					Port:         port,
+					ExpireTime:   e.ExpireTime,
+				})
+			}
+			continue
+		}
+		out = append(out, &core.UdpPeer{
+			PubKeyBase64: e.PubKeyBase64,
+			Hostname:     e.Hostname,
+			Ip:           e.Ip,
+			Port:         e.Port,
+			ExpireTime:   e.ExpireTime,
+		})
+	}
+	return out
+}
+
+// splitHostPort parses a "host:port" endpoint string. Bare IPv6 must be in
+// brackets; the function accepts both IPv4 "1.2.3.4:5000" and IPv6
+// "[::1]:5000" forms.
+func splitHostPort(endpoint string) (string, int, error) {
+	host, portStr, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid endpoint %q: %w", endpoint, err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid port in %q: %w", endpoint, err)
+	}
+	if port <= 0 || port > 65535 {
+		return "", 0, fmt.Errorf("port out of range in %q", endpoint)
+	}
+	return host, port, nil
 }
 
 func (a *UdpAC) loadBaseConfig() error {
@@ -139,7 +215,7 @@ func (a *UdpAC) loadPeers() error {
 	if unmarshalErr := toml.Unmarshal(content, &peers); unmarshalErr != nil {
 		log.Error("failed to unmarshal server peer config: %v", unmarshalErr)
 	}
-	if updateErr := a.updateServerPeers(peers.Servers); updateErr != nil {
+	if updateErr := a.updateServerPeers(expandServerPeers(peers.Servers)); updateErr != nil {
 		// ignore error
 		_ = updateErr
 	}
@@ -148,7 +224,7 @@ func (a *UdpAC) loadPeers() error {
 		log.Info("server peer config: %s has been updated", fileName)
 		if content, err = a.loadConfigFile(fileName); err == nil {
 			if err = toml.Unmarshal(content, &peers); err == nil {
-				_ = a.updateServerPeers(peers.Servers)
+				_ = a.updateServerPeers(expandServerPeers(peers.Servers))
 			}
 		}
 	})
@@ -353,7 +429,7 @@ func (a *UdpAC) updateEtcdConfig(content []byte, baseLoad bool) (err error) {
 	}
 
 	_ = a.updateHttpConfig(acEtcdConfig.HttpConfig)
-	_ = a.updateServerPeers(acEtcdConfig.Servers)
+	_ = a.updateServerPeers(expandServerPeers(acEtcdConfig.Servers))
 	return
 }
 

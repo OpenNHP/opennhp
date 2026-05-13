@@ -28,6 +28,39 @@ services:
       - ./nhp-server/templates/:/nhp-server/templates/:rw
       - ./nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
 
+  # Second nhp-server instance sharing the same ECDH keypair (one logical
+  # cluster identity, two reachable endpoints). Both instances mount the same
+  # ./nhp-server/etc volume — same private key, same peer tables, same
+  # resources. The AC fans NHP_AOL out to both addresses (177.7.0.9 and
+  # 177.7.0.14), so an agent KNK that lands on either server can still find
+  # the AC's ACConn in its local map.
+  nhp-server-2:
+    image: opennhp-server
+    # Declaring the build context (identical to nhp-server's) keeps the two
+    # instances in lock-step: `docker compose up --build` rebuilds the image
+    # once and both containers come up running the same binary. Without
+    # this, nhp-server-2 silently kept whatever image was pulled the first
+    # time the service was created, which means rebuilding nhp-server
+    # alone would split the demo across two different binaries.
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile.server
+      args:
+        - GOPROXY=${GOPROXY:-}
+        - APT_MIRROR=${APT_MIRROR:-}
+    container_name: nhp-server-2
+    restart: always
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.14
+    volumes:
+      - ./nhp-server/etc/:/nhp-server/etc/:rw
+      - ./nhp-server/logs-2/:/nhp-server/logs/:rw
+      - ./nhp-server/templates/:/nhp-server/templates/:rw
+      - ./nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
+    depends_on:
+      - nhp-server
+
   nhp-ac:
     image: opennhp-ac
     container_name: nhp-ac

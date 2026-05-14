@@ -210,16 +210,6 @@ func (cfg *Config) normalize() error {
 		if len(c.Instances) == 0 {
 			return fmt.Errorf("relay: cluster #%d (fingerprint %s) has no [[cluster.instance]]", i, fp)
 		}
-		// Phase 1: nhp/core's peer map keys by pubkey, so a single
-		// pubkey cannot map to multiple addresses. Reject configs that
-		// would require multi-instance support until phase 2 lifts
-		// that limit.
-		if len(c.Instances) > 1 {
-			return fmt.Errorf("relay: cluster #%d (fingerprint %s) declares %d instances; "+
-				"multi-instance per cluster is not yet supported (phase 2). "+
-				"Configure exactly one [[cluster.instance]] for now",
-				i, fp, len(c.Instances))
-		}
 		for j := range c.Instances {
 			inst := &c.Instances[j]
 			if inst.Host == "" {

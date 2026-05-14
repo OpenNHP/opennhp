@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"sort"
@@ -101,38 +102,77 @@ type clusterRuntime struct {
 	pubKeyBase64 string
 	scheme       LoadBalanceScheme
 	instances    []*clusterInstance
+
+	// rrCounter is the round-robin cursor; only meaningful when
+	// scheme == LBRoundRobin. atomic.Uint64 so picks across concurrent
+	// HTTP handlers don't need a mutex.
+	rrCounter atomic.Uint64
+
+	// totalWeight is the sum of inst.weight, precomputed once for the
+	// weighted-random scheme. Stays constant for the lifetime of the
+	// cluster runtime — no rebuild on instance churn because phase 2A
+	// has no instance churn (config reload rebuilds the whole cluster).
+	totalWeight int
 }
 
-// pickInstance selects an instance to handle a request. Phase 1 always
-// returns instances[0]; the signature is shaped so phase 2 can plug in
-// random / weighted / round-robin later.
+// pickInstance selects an instance to handle a new HTTP forward according to
+// the cluster's load-balance scheme. Returns nil if the cluster has no
+// instances — callers must surface that as 503 rather than panicking on a
+// zero-length slice access.
 //
-// Returns nil if the cluster has no instances. normalize() guarantees ≥1
-// in phase 1, but phase 2 (with health checks / draining) may legitimately
-// land here on an all-unhealthy cluster — callers should surface that as a
-// 503 rather than panicking on an out-of-bounds index.
-//
-// PHASE-2 TRAP — read before swapping in a non-deterministic picker:
-// handleRelay calls pickInstance once to choose the instance it registers
-// a pending waiter on, then enqueues *core.MsgData without that instance
-// reference. sendMessageRoutine -> dispatchSend -> resolveTarget calls
-// pickInstance a *second* time on the same cluster. Phase 1 is safe
-// because the picker is deterministic, so both calls return the same
-// instance. A random / weighted / round-robin picker would put the
-// waiter on instance A while the send goes out on instance B's
-// connection; the server's ACK arrives on B, inst.dispatch on B finds
-// no waiter, and the handler times out with no signal. To fix in
-// phase 2, thread the chosen *clusterInstance through the send path
-// (e.g. add a field to *core.MsgData or carry it on ConnectionData)
-// so resolveTarget does NOT pick again. TestPickInstance_Deterministic
-// in relay_test.go locks the phase-1 invariant; that test will fail
-// the moment someone introduces a non-deterministic picker without
-// also threading the instance through.
+// IMPORTANT: this is called exactly once per HTTP request, in handleRelay,
+// to choose which instance the request is forwarded to. The chosen instance
+// is then pinned to that request via md.RemoteAddr; resolveTarget on the
+// send side reads md.RemoteAddr instead of calling pickInstance again. Any
+// future code path that picks an instance must remember to write the pin
+// onto md.RemoteAddr so the response-correlation map on the right instance
+// gets a hit.
 func (c *clusterRuntime) pickInstance() *clusterInstance {
 	if len(c.instances) == 0 {
 		return nil
 	}
-	return c.instances[0]
+	if len(c.instances) == 1 {
+		return c.instances[0]
+	}
+
+	switch c.scheme {
+	case LBRoundRobin:
+		// Subtract 1 because Add returns the post-increment value; we want
+		// the first pick to land on index 0.
+		i := (c.rrCounter.Add(1) - 1) % uint64(len(c.instances))
+		return c.instances[i]
+
+	case LBRandom:
+		return c.instances[rand.IntN(len(c.instances))]
+
+	case LBWeightedRandom, "":
+		// Empty scheme defaults to weighted-random (config.normalize
+		// rewrites it, but be defensive in case a future code path
+		// constructs a clusterRuntime directly).
+		if c.totalWeight <= 0 {
+			// Defensive fallback: weights all zero shouldn't happen
+			// because normalize promotes weight=0 to weight=1, but if
+			// it does, behave like LBRandom rather than dividing by zero.
+			return c.instances[rand.IntN(len(c.instances))]
+		}
+		r := rand.IntN(c.totalWeight)
+		for _, inst := range c.instances {
+			r -= inst.weight
+			if r < 0 {
+				return inst
+			}
+		}
+		// Numerically unreachable (sum of weights == totalWeight); the
+		// fallthrough exists so the function has a return on every path.
+		return c.instances[len(c.instances)-1]
+
+	default:
+		// normalize() rejects unknown schemes at load time, so reaching
+		// here means someone constructed a clusterRuntime by hand with
+		// an invalid scheme. Pick the first instance so requests still
+		// flow rather than silently failing.
+		return c.instances[0]
+	}
 }
 
 // RelayServer is the NHP HTTP Relay service.
@@ -207,9 +247,12 @@ func New(cfg *Config) (*RelayServer, error) {
 	log.Info("[Relay] initialized, relay pubkey=%s, %d cluster(s)",
 		device.PublicKeyBase64(), len(rs.clusters))
 	for _, cr := range rs.clusters {
-		inst := cr.instances[0]
-		log.Info("[Relay]   cluster id=%s name=%q upstream=%s:%d",
-			cr.id, cr.name, inst.host, inst.port)
+		log.Info("[Relay]   cluster id=%s name=%q lb=%s instances=%d",
+			cr.id, cr.name, cr.scheme, len(cr.instances))
+		for _, inst := range cr.instances {
+			log.Info("[Relay]     upstream %s:%d (weight=%d)",
+				inst.host, inst.port, inst.weight)
+		}
 	}
 	return rs, nil
 }
@@ -257,6 +300,7 @@ func (rs *RelayServer) buildCluster(c *Cluster) (*clusterRuntime, error) {
 			addr:            udpAddr,
 			pendingRequests: make(map[uint64]map[string]chan []byte),
 		})
+		cr.totalWeight += ci.Weight
 	}
 	return cr, nil
 }
@@ -622,33 +666,52 @@ func (rs *RelayServer) dispatchSend(md *core.MsgData) {
 	rs.device.SendMsgToPacket(md)
 }
 
-// resolveTarget figures out which cluster instance an outbound MsgData is
-// destined for. Both call sites (handleRelay forwards and keepaliveRoutine)
-// set PeerPk, so we try the fingerprint map first — that's an O(1) hit on
-// rs.clusters and avoids the worst-case O(N·M) address scan as cluster /
-// instance counts grow.
+// resolveTarget figures out which (cluster, instance) an outbound MsgData is
+// destined for. Cluster lookup is O(1) on the pubkey fingerprint. The
+// instance is found by matching md.RemoteAddr against cr.instances — the
+// invariant being that handleRelay (and keepaliveRoutine) pinned md.RemoteAddr
+// to the addr of a specific instance at the moment of pickInstance, and the
+// response will be correlated against that same instance's pendingRequests
+// map. Re-picking here would break that correlation under any non-trivial
+// load-balance scheme: handleRelay would register a waiter on instance A
+// while dispatchSend sends on instance B's connection, and the server's ACK
+// would arrive on B with no matching waiter.
 //
-// We deliberately do NOT fall back to scanning by RemoteAddr if the PeerPk
-// lookup misses: normalize() rejects duplicate (host, port) across clusters,
-// so two clusters can never legitimately share an address. A PeerPk miss
-// means an outbound was constructed for a cluster that isn't configured,
-// which is a bug — silently picking some address-matching cluster would
-// route the packet through the wrong Noise identity and produce confusing
-// "peer address mismatch" errors at the server. Returning nil here makes
-// dispatchSend log the drop with the actual PeerPk for diagnosis.
-//
-// PHASE-2 NOTE: this is the second pickInstance call for a forward (see
-// the trap notice on (*clusterRuntime).pickInstance). When phase 2 lifts
-// the single-instance restriction, the chosen *clusterInstance must be
-// carried from handleRelay through send, not re-picked here.
+// We deliberately do NOT fall back to scanning by RemoteAddr across all
+// clusters if the PeerPk lookup misses: normalize() rejects duplicate
+// (host, port) across clusters, so two clusters can never legitimately
+// share an address. A PeerPk miss means an outbound was constructed for
+// a cluster that isn't configured, which is a bug — silently picking some
+// address-matching cluster would route the packet through the wrong Noise
+// identity and produce confusing "peer address mismatch" errors at the
+// server. Returning nil here makes dispatchSend log the drop with the
+// actual PeerPk for diagnosis.
 func (rs *RelayServer) resolveTarget(md *core.MsgData) (*clusterRuntime, *clusterInstance) {
-	if len(md.PeerPk) > 0 {
-		fp := utils.PubKeyFingerprint(md.PeerPk)
-		if cr, ok := rs.clusters[fp]; ok {
-			return cr, cr.pickInstance()
+	if len(md.PeerPk) == 0 {
+		return nil, nil
+	}
+	fp := utils.PubKeyFingerprint(md.PeerPk)
+	cr, ok := rs.clusters[fp]
+	if !ok {
+		return nil, nil
+	}
+	if md.RemoteAddr == nil {
+		// Caller forgot to pin an instance. With one instance the answer
+		// is unambiguous; with N instances this would be a routing bug
+		// (response would land on the wrong pendingRequests map). Return
+		// nil so dispatchSend logs the drop instead of silently guessing.
+		if len(cr.instances) == 1 {
+			return cr, cr.instances[0]
+		}
+		return cr, nil
+	}
+	wantAddr := md.RemoteAddr.String()
+	for _, inst := range cr.instances {
+		if inst.addr.String() == wantAddr {
+			return cr, inst
 		}
 	}
-	return nil, nil
+	return cr, nil
 }
 
 func (rs *RelayServer) recvMessageRoutine() {

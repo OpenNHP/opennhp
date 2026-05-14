@@ -50,26 +50,34 @@ func TestConfig_LegacyFieldsPromoted(t *testing.T) {
 	}
 }
 
-// TestConfig_RejectsMultipleInstancesPerCluster locks in the phase-1 boundary:
-// multi-instance configs MUST be rejected at load time until nhp/core can
-// support multiple peers per public key (phase 2).
-func TestConfig_RejectsMultipleInstancesPerCluster(t *testing.T) {
+// TestConfig_AcceptsMultipleInstancesPerCluster: phase 2 lifts the
+// single-instance restriction. Two instances under one [[cluster]] must
+// load cleanly, both addresses must be preserved, and weights must default
+// to 1 the same way they would for a single-instance cluster.
+func TestConfig_AcceptsMultipleInstancesPerCluster(t *testing.T) {
 	cfg := &Config{
 		PrivateKeyBase64: fakeKey(0x10),
 		Clusters: []Cluster{{
 			PublicKeyBase64: fakeKey(0x20),
+			LoadBalance:     LBRoundRobin,
 			Instances: []ClusterInstance{
 				{Host: "10.0.0.1", Port: 62206},
 				{Host: "10.0.0.2", Port: 62206},
 			},
 		}},
 	}
-	err := cfg.normalize()
-	if err == nil {
-		t.Fatalf("expected error for multi-instance cluster, got nil")
+	if err := cfg.normalize(); err != nil {
+		t.Fatalf("multi-instance cluster should load: %v", err)
 	}
-	if !strings.Contains(err.Error(), "multi-instance per cluster is not yet supported") {
-		t.Errorf("error should mention phase-1 limit, got: %v", err)
+	got := cfg.Clusters[0].Instances
+	if len(got) != 2 {
+		t.Fatalf("expected 2 instances, got %d", len(got))
+	}
+	if got[0].Host != "10.0.0.1" || got[1].Host != "10.0.0.2" {
+		t.Errorf("instance hosts not preserved in order: %+v", got)
+	}
+	if got[0].Weight != 1 || got[1].Weight != 1 {
+		t.Errorf("instance weights should default to 1, got %d/%d", got[0].Weight, got[1].Weight)
 	}
 }
 

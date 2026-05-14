@@ -1,9 +1,14 @@
 package relay
 
 import (
+	"fmt"
+	"net"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/utils"
 )
 
 // TestRealClientAddr covers the security-sensitive parts of how the
@@ -113,39 +118,235 @@ func newTestInstance() *clusterInstance {
 	}
 }
 
-// TestPickInstance_Deterministic locks the phase-1 invariant that
-// pickInstance returns the same *clusterInstance on every call. The whole
-// send pipeline depends on this: handleRelay registers a pending waiter
-// on the instance it gets here, and sendMessageRoutine -> resolveTarget
-// later calls pickInstance again to choose the connection. If those two
-// answers ever diverge, the ACK lands on the "other" instance's conn
-// and the handler times out silently.
-//
-// When phase 2 introduces a non-deterministic picker (random / weighted
-// / round-robin), this test WILL fail — and that failure is intentional.
-// It forces the contributor to either keep determinism per-request
-// (sticky session, request-id hash) or to thread the chosen instance
-// through *core.MsgData so resolveTarget stops re-picking. See the
-// phase-2 trap notice on (*clusterRuntime).pickInstance.
-func TestPickInstance_Deterministic(t *testing.T) {
-	cr := &clusterRuntime{
-		instances: []*clusterInstance{
-			newTestInstance(),
-			// The second slot is unreachable in phase 1 (normalize()
-			// rejects it). It's here only so the test still has a
-			// failure mode when phase 2 lifts that restriction —
-			// without this, pickInstance would have nothing to be
-			// "non-deterministic about" and a broken phase-2 picker
-			// could silently pass.
-			newTestInstance(),
-		},
+// newAddrInstance constructs a clusterInstance with a resolvable UDP addr,
+// which the resolveTarget tests need so they can match by md.RemoteAddr.
+func newAddrInstance(t *testing.T, host string, port, weight int) *clusterInstance {
+	t.Helper()
+	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", host, port))
+	if err != nil {
+		t.Fatalf("resolve %s:%d: %v", host, port, err)
 	}
-	first := cr.pickInstance()
-	for i := 0; i < 100; i++ {
-		if got := cr.pickInstance(); got != first {
-			t.Fatalf("pickInstance not deterministic on call %d: handleRelay and resolveTarget would disagree about the target instance; see the phase-2 trap notice on (*clusterRuntime).pickInstance", i)
+	return &clusterInstance{
+		host:            host,
+		port:            port,
+		weight:          weight,
+		addr:            addr,
+		pendingRequests: make(map[uint64]map[string]chan []byte),
+	}
+}
+
+// TestPickInstance_SingleInstance: with one instance, every scheme returns
+// that instance (no math, no division by zero). This was the phase-1
+// behavior and stays the same after lifting the multi-instance limit.
+func TestPickInstance_SingleInstance(t *testing.T) {
+	for _, scheme := range []LoadBalanceScheme{LBRandom, LBWeightedRandom, LBRoundRobin, "", "garbage"} {
+		cr := &clusterRuntime{
+			scheme:      scheme,
+			instances:   []*clusterInstance{newAddrInstance(t, "10.0.0.1", 62206, 1)},
+			totalWeight: 1,
+		}
+		for i := 0; i < 10; i++ {
+			if cr.pickInstance() != cr.instances[0] {
+				t.Fatalf("scheme=%q must always return the sole instance", scheme)
+			}
 		}
 	}
+}
+
+// TestPickInstance_RoundRobin: round-robin must cycle through all instances
+// in order. Deterministic, so we can assert an exact sequence rather than a
+// statistical bound.
+func TestPickInstance_RoundRobin(t *testing.T) {
+	cr := &clusterRuntime{
+		scheme: LBRoundRobin,
+		instances: []*clusterInstance{
+			newAddrInstance(t, "10.0.0.1", 62206, 1),
+			newAddrInstance(t, "10.0.0.2", 62206, 1),
+			newAddrInstance(t, "10.0.0.3", 62206, 1),
+		},
+		totalWeight: 3,
+	}
+	want := []*clusterInstance{cr.instances[0], cr.instances[1], cr.instances[2]}
+	// Two full cycles to confirm the cursor wraps cleanly.
+	for cycle := 0; cycle < 2; cycle++ {
+		for i, w := range want {
+			got := cr.pickInstance()
+			if got != w {
+				t.Fatalf("round-robin cycle %d step %d: got %s, want %s",
+					cycle, i, got.addr, w.addr)
+			}
+		}
+	}
+}
+
+// TestPickInstance_Random: random scheme must eventually hit every instance.
+// We give it a generous budget (1000 picks across 3 instances) so the test
+// is effectively impossible to flake on a working implementation — the
+// probability of missing one instance for that many picks is < 10^-176.
+func TestPickInstance_Random(t *testing.T) {
+	cr := &clusterRuntime{
+		scheme: LBRandom,
+		instances: []*clusterInstance{
+			newAddrInstance(t, "10.0.0.1", 62206, 1),
+			newAddrInstance(t, "10.0.0.2", 62206, 1),
+			newAddrInstance(t, "10.0.0.3", 62206, 1),
+		},
+		totalWeight: 3,
+	}
+	hit := make(map[*clusterInstance]int)
+	for i := 0; i < 1000; i++ {
+		hit[cr.pickInstance()]++
+	}
+	for i, inst := range cr.instances {
+		if hit[inst] == 0 {
+			t.Fatalf("random scheme never picked instances[%d]", i)
+		}
+	}
+}
+
+// TestPickInstance_WeightedRandom: with weights [1, 1, 10], instance 2's
+// share of picks should be near 10/12 ≈ 83%. We assert it's at least 60%
+// — that bound is so loose that any reasonable RNG passes, but a
+// fully-broken implementation (e.g. ignoring weights, or off-by-one in the
+// cumulative-weight loop) gets caught. The point of the test is the
+// invariant "weights actually influence distribution", not exact ratios.
+func TestPickInstance_WeightedRandom(t *testing.T) {
+	cr := &clusterRuntime{
+		scheme: LBWeightedRandom,
+		instances: []*clusterInstance{
+			newAddrInstance(t, "10.0.0.1", 62206, 1),
+			newAddrInstance(t, "10.0.0.2", 62206, 1),
+			newAddrInstance(t, "10.0.0.3", 62206, 10),
+		},
+		totalWeight: 12,
+	}
+	const samples = 5000
+	hit := make(map[*clusterInstance]int)
+	for i := 0; i < samples; i++ {
+		hit[cr.pickInstance()]++
+	}
+	share := float64(hit[cr.instances[2]]) / float64(samples)
+	if share < 0.60 {
+		t.Fatalf("weighted-random did not bias toward the high-weight instance: share=%.3f want >=0.60 (hits=%v)",
+			share, hit)
+	}
+	// All instances must still receive at least *some* picks; weight=1
+	// each on the first two should land them well above zero in 5000
+	// samples (expected ~417 each).
+	for i := 0; i < 2; i++ {
+		if hit[cr.instances[i]] == 0 {
+			t.Fatalf("weighted-random starved instances[%d]: %v", i, hit)
+		}
+	}
+}
+
+// TestPickInstance_EmptyCluster: 0 instances returns nil so handlers can
+// answer 503 without panicking.
+func TestPickInstance_EmptyCluster(t *testing.T) {
+	cr := &clusterRuntime{scheme: LBRoundRobin}
+	if got := cr.pickInstance(); got != nil {
+		t.Fatalf("empty cluster must return nil, got %v", got)
+	}
+}
+
+// TestResolveTarget_UsesRemoteAddr is the new core invariant after the
+// phase-2 picker lift: once handleRelay has chosen an instance and pinned
+// it on md.RemoteAddr, resolveTarget must return that same instance — NOT
+// re-pick. If this ever regresses, the symptom is silent: the response
+// from the server's ACK lands on the wrong instance's pendingRequests map
+// (because the handler registered on instance A while dispatchSend sent
+// the packet from instance B's connection), and the handler times out.
+//
+// We construct a cluster of 3 instances using LBRandom (the picker that
+// would most obviously mis-route on a re-pick) and assert that whichever
+// instance we put in md.RemoteAddr is what comes back, every time.
+func TestResolveTarget_UsesRemoteAddr(t *testing.T) {
+	pubKey, _ := pubKeyForTest()
+	cr := &clusterRuntime{
+		id:     "cluster-x",
+		pubKey: pubKey,
+		scheme: LBRandom,
+		instances: []*clusterInstance{
+			newAddrInstance(t, "10.0.0.1", 62206, 1),
+			newAddrInstance(t, "10.0.0.2", 62206, 1),
+			newAddrInstance(t, "10.0.0.3", 62206, 1),
+		},
+		totalWeight: 3,
+	}
+	rs := &RelayServer{
+		clusters: map[string]*clusterRuntime{cr.id: cr},
+	}
+	// Override the fingerprint indexing: we don't actually compute it
+	// from pubKey here, we just register the cluster under its id and
+	// monkey-patch the map key to be the fingerprint resolveTarget will
+	// compute. Computing it via utils.PubKeyFingerprint keeps the test
+	// honest.
+	rs.clusters = map[string]*clusterRuntime{fingerprintForTest(pubKey): cr}
+
+	for _, want := range cr.instances {
+		md := &core.MsgData{
+			PeerPk:     pubKey,
+			RemoteAddr: want.addr,
+		}
+		gotCR, gotInst := rs.resolveTarget(md)
+		if gotCR != cr {
+			t.Fatalf("resolveTarget returned wrong cluster: got %v want %v", gotCR, cr)
+		}
+		if gotInst != want {
+			t.Fatalf("resolveTarget returned wrong instance for RemoteAddr=%s: got %s want %s",
+				want.addr, gotInst.addr, want.addr)
+		}
+	}
+}
+
+// TestResolveTarget_UnknownAddr: an md.RemoteAddr that doesn't match any
+// instance in the cluster must return (cr, nil). dispatchSend then logs the
+// drop with the actual addr for diagnosis — better than silently routing
+// to instances[0].
+func TestResolveTarget_UnknownAddr(t *testing.T) {
+	pubKey, _ := pubKeyForTest()
+	cr := &clusterRuntime{
+		id:     "cluster-x",
+		pubKey: pubKey,
+		scheme: LBRandom,
+		instances: []*clusterInstance{
+			newAddrInstance(t, "10.0.0.1", 62206, 1),
+			newAddrInstance(t, "10.0.0.2", 62206, 1),
+		},
+		totalWeight: 2,
+	}
+	rs := &RelayServer{clusters: map[string]*clusterRuntime{fingerprintForTest(pubKey): cr}}
+
+	stranger, _ := net.ResolveUDPAddr("udp", "10.99.99.99:62206")
+	md := &core.MsgData{
+		PeerPk:     pubKey,
+		RemoteAddr: stranger,
+	}
+	gotCR, gotInst := rs.resolveTarget(md)
+	if gotCR != cr {
+		t.Fatalf("expected cluster match by pubkey, got %v", gotCR)
+	}
+	if gotInst != nil {
+		t.Fatalf("expected nil instance for unknown addr, got %s", gotInst.addr)
+	}
+}
+
+// pubKeyForTest returns a fixed 32-byte slice usable as a Curve25519 pubkey
+// for resolveTarget tests. The value isn't valid cryptographically — we
+// only need its bytes to be stable so utils.PubKeyFingerprint is stable.
+func pubKeyForTest() ([]byte, string) {
+	pk := make([]byte, 32)
+	for i := range pk {
+		pk[i] = byte(i + 1)
+	}
+	return pk, fingerprintForTest(pk)
+}
+
+// fingerprintForTest computes the cluster-map key the same way resolveTarget
+// computes it from md.PeerPk. The test registers the cluster under this key
+// so resolveTarget's lookup succeeds against the bytes from pubKeyForTest.
+func fingerprintForTest(pk []byte) string {
+	return utils.PubKeyFingerprint(pk)
 }
 
 // register mirrors what handleRelay does when a request arrives: insert a

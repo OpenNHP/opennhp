@@ -56,6 +56,24 @@ type Config struct {
 	LogLevel               int    `json:"logLevel"`
 	DefaultCipherScheme    int    `json:"defaultCipherScheme"`
 	DisableAgentValidation bool   `json:"disableAgentValidation"`
+
+	// AllowPrivateRelaySource relaxes the SourceAddr public-routability check
+	// that HandleRelayForward applies to inner KNK packets arriving via a
+	// relay. When false (production default), private / loopback / CGNAT
+	// addresses in RelayForwardMsg.SourceAddr are rejected as fabricated;
+	// the threat model assumes a relay peer might be compromised and trying
+	// to fill the server's connectionMap with synthetic clients.
+	//
+	// Set true ONLY in environments where the relay legitimately sees
+	// non-public client addresses, such as the bundled docker-compose demo:
+	// when a host-side browser hits the relay through Docker Desktop's port
+	// mapping, the relay container sees the request as coming from the
+	// vpnkit gateway (192.168.65.1 on macOS / 172.x.x.x on Linux), which is
+	// RFC1918. A production-facing relay should NEVER see such an address;
+	// flipping this on there would let a misbehaving relay inject any
+	// private-range SourceAddr it wants into the server's connection map
+	// and the downstream AC ipset whitelist.
+	AllowPrivateRelaySource bool `json:"allowPrivateRelaySource"`
 }
 
 type RemoteConfig struct {
@@ -479,6 +497,13 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 			})
 		}
 		s.config.DisableAgentValidation = conf.DisableAgentValidation
+	}
+
+	if s.config.AllowPrivateRelaySource != conf.AllowPrivateRelaySource {
+		log.Info("AllowPrivateRelaySource set to %v (relay SourceAddr public-IP check is %s)",
+			conf.AllowPrivateRelaySource,
+			map[bool]string{true: "disabled", false: "enforced"}[conf.AllowPrivateRelaySource])
+		s.config.AllowPrivateRelaySource = conf.AllowPrivateRelaySource
 	}
 
 	if s.config.DefaultCipherScheme != conf.DefaultCipherScheme {

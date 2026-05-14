@@ -17,3 +17,23 @@ Hostname = "localhost:62206" # the hostname of NHP-Server
 LogLevel = 5
 DisableAgentValidation = false
 
+# ─── Demo-only ───────────────────────────────────────────────────────────
+# Accept RFC1918 / loopback / CGNAT addresses as the SourceAddr field of
+# an inner KNK forwarded via nhp-relay (NHP_RLY → HandleRelayForward).
+#
+# Why this is needed for the docker compose demo: when a host browser
+# hits the relay through Docker Desktop's published port mapping, the
+# relay container sees the request as coming from Docker's vpnkit
+# gateway (e.g. 192.168.65.1 on macOS, 172.x.x.x on Linux), and that
+# private address is what gets written into RelayForwardMsg.SourceAddr.
+# The server's default anti-DoS check rejects RFC1918 SourceAddr
+# values because, in production, a public-facing relay should never
+# see one — it would mean the relay was injecting fabricated clients.
+#
+# DO NOT enable this on a production-facing nhp-server. With this
+# flag on, a compromised relay can fill the server's connection map
+# (and the downstream AC ipset whitelist) with any private-range
+# SourceAddr it likes. Keep the default (false) everywhere except in
+# trusted local-only demos like this one.
+AllowPrivateRelaySource = true
+

@@ -7,3 +7,8 @@ ListenPort = 62206
 Hostname = "auth-plugin.${DOMAIN}"
 LogLevel = 3
 DisableAgentValidation = false
+# AllowPrivateRelaySource intentionally absent — defaults to false. The
+# production relay only sees public clients; accepting RFC1918 source
+# addresses here would let a compromised relay inject fabricated
+# entries into the connection map and AC ipset whitelist. Only flip
+# this on for trusted local-only demos (see docker/nhp-server/etc/config.toml).

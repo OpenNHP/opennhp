@@ -93,6 +93,28 @@ func isRoutablePublicIP(ip net.IP) bool {
 	return true
 }
 
+// validateRelaySourceAddr decides whether the (ip, port) pair extracted from
+// a RelayForwardMsg.SourceAddr should be accepted. Returns "" on accept, or
+// a short reason string on reject (used both in the log line and the
+// error returned to the relay).
+//
+// Port sanity is enforced unconditionally; out-of-range ports are never
+// legitimate. The IP-routability check is the part that conflicts with the
+// docker-compose demo (Docker Desktop's vpnkit gateway is RFC1918), so it
+// is gated behind allowPrivate. Keep that flag OFF in production: it is
+// the only thing stopping a compromised relay from injecting any private-
+// range SourceAddr it likes into the server's connection map and the
+// downstream AC ipset whitelist.
+func validateRelaySourceAddr(ip net.IP, port int, allowPrivate bool) string {
+	if ip == nil || port <= 0 || port > 65535 {
+		return "malformed"
+	}
+	if !allowPrivate && !isRoutablePublicIP(ip) {
+		return "non-routable"
+	}
+	return ""
+}
+
 // HandleOTPRequest
 // Server will not respond to agent's otp request
 func (s *UdpServer) HandleOTPRequest(ppd *core.PacketParserData) (err error) {
@@ -703,10 +725,10 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	}
 
 	realIP := net.ParseIP(rlyMsg.SourceAddr.Ip)
-	if !isRoutablePublicIP(realIP) || rlyMsg.SourceAddr.Port <= 0 || rlyMsg.SourceAddr.Port > 65535 {
-		log.Warning("server-relay[HandleRelayForward] rejecting non-routable source addr from relay %s: %s:%d",
-			ppd.ConnData.RemoteAddr.String(), rlyMsg.SourceAddr.Ip, rlyMsg.SourceAddr.Port)
-		return fmt.Errorf("non-routable relay source address")
+	if reason := validateRelaySourceAddr(realIP, rlyMsg.SourceAddr.Port, s.config.AllowPrivateRelaySource); reason != "" {
+		log.Warning("server-relay[HandleRelayForward] rejecting %s from relay %s: %s:%d",
+			reason, ppd.ConnData.RemoteAddr.String(), rlyMsg.SourceAddr.Ip, rlyMsg.SourceAddr.Port)
+		return fmt.Errorf("%s relay source address", reason)
 	}
 	realAddr := &net.UDPAddr{IP: realIP, Port: rlyMsg.SourceAddr.Port}
 

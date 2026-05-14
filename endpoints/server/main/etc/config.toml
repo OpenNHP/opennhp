@@ -9,6 +9,13 @@
 # Hostname (-): server domain name.
 # LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.
 # DisableAgentValidation: whether for the server to skip the agent's public key validation.
+# AllowPrivateRelaySource: accept private (RFC1918 / loopback / CGNAT)
+#   addresses in RelayForwardMsg.SourceAddr. Keep false in production:
+#   a public-facing relay should only ever forward public clients, so
+#   a private SourceAddr there is a sign of a compromised relay
+#   injecting fabricated entries. Set true only in trusted local
+#   demos where the relay legitimately sees private addresses
+#   (e.g. Docker Desktop's vpnkit gateway).
 PrivateKeyBase64 = "eHdyRHKJy/YZJsResCt5XTAZgtcwvLpSXAiZ8DBc0V4="
 DefaultCipherScheme = 0
 ListenIp = ""    # empty for ipv4 + ipv6, "0.0.0.0" for ipv4 only
@@ -16,3 +23,4 @@ ListenPort = 62206
 Hostname = "localhost" # the hostname of NHP-Server
 LogLevel = 4
 DisableAgentValidation = false
+AllowPrivateRelaySource = false

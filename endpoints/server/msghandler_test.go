@@ -5,6 +5,69 @@ import (
 	"testing"
 )
 
+// TestValidateRelaySourceAddr_FlagToggles is the production-safety
+// invariant: with allowPrivate=false, RFC1918 / loopback / CGNAT must
+// be rejected so a compromised relay cannot inject fabricated entries
+// into the server's connection map. With allowPrivate=true (set only
+// in trusted local-only demos), the same private addresses must be
+// accepted so that Docker Desktop's vpnkit gateway (and similar local
+// NAT setups) can forward the docker-compose demo end-to-end.
+//
+// Port sanity is independent of the flag — out-of-range ports must
+// always be rejected; there is no demo-friendly reason for them.
+func TestValidateRelaySourceAddr_FlagToggles(t *testing.T) {
+	const goodPort = 443
+
+	tests := []struct {
+		name         string
+		ip           string
+		port         int
+		allowPrivate bool
+		wantReject   bool
+	}{
+		// Production default: flag=false.
+		{"public IP accepted in production", "203.0.113.5", goodPort, false, false},
+		{"RFC1918 rejected in production", "192.168.65.1", goodPort, false, true},
+		{"loopback rejected in production", "127.0.0.1", goodPort, false, true},
+		{"CGNAT rejected in production", "100.64.0.1", goodPort, false, true},
+
+		// Demo override: flag=true.
+		{"Docker NAT gateway accepted under demo flag", "192.168.65.1", goodPort, true, false},
+		{"loopback accepted under demo flag", "127.0.0.1", goodPort, true, false},
+		{"public IP still accepted under demo flag", "203.0.113.5", goodPort, true, false},
+
+		// Port sanity, both modes.
+		{"zero port rejected even with flag off", "203.0.113.5", 0, false, true},
+		{"negative port rejected even with flag on", "192.168.65.1", -1, true, true},
+		{"port above range rejected with flag on", "192.168.65.1", 65536, true, true},
+		{"port above range rejected with flag off", "203.0.113.5", 70000, false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ip := net.ParseIP(tt.ip)
+			reason := validateRelaySourceAddr(ip, tt.port, tt.allowPrivate)
+			rejected := reason != ""
+			if rejected != tt.wantReject {
+				t.Fatalf("validateRelaySourceAddr(%s, %d, allowPrivate=%v) reason=%q reject=%v, want reject=%v",
+					tt.ip, tt.port, tt.allowPrivate, reason, rejected, tt.wantReject)
+			}
+		})
+	}
+}
+
+// TestValidateRelaySourceAddr_NilIP makes sure a SourceAddr.Ip that
+// fails net.ParseIP (typo, empty string, etc.) is rejected regardless
+// of the demo flag. The handler upstream is the only caller, so this
+// is the boundary where we catch malformed input from the relay.
+func TestValidateRelaySourceAddr_NilIP(t *testing.T) {
+	for _, allowPrivate := range []bool{false, true} {
+		if reason := validateRelaySourceAddr(nil, 443, allowPrivate); reason != "malformed" {
+			t.Fatalf("nil IP should be rejected as malformed (allowPrivate=%v); got %q", allowPrivate, reason)
+		}
+	}
+}
+
 // TestIsRoutablePublicIP guards the SourceAddr filter that
 // HandleRelayForward uses to reject fabricated entries from a
 // misbehaving relay. The intent is "only accept addresses a real public

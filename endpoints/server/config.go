@@ -74,6 +74,23 @@ type Config struct {
 	// private-range SourceAddr it wants into the server's connection map
 	// and the downstream AC ipset whitelist.
 	AllowPrivateRelaySource bool `json:"allowPrivateRelaySource"`
+
+	// ForceOverload pins the device's Overload flag to true at startup,
+	// short-circuiting the connection-count-driven trigger. The normal
+	// trigger fires when remoteConnectionMap crosses
+	// OverloadConnectionThreshold (~16k concurrent connections), which a
+	// local demo will never reach — so this flag exists purely to let
+	// developers exercise the cookie path (KNK → NHP_COK → NHP_RKN) on a
+	// quiet local stack.
+	//
+	// Default: false. Production deployments must leave this off; pinning
+	// Overload on permanently forces every agent through the slower
+	// cookie-stamped handshake even when the server is idle, and tells
+	// the cookie store that load is constantly elevated.
+	//
+	// This is a debug/test affordance, NOT a feature flag. Do not key
+	// production behavior off it.
+	ForceOverload bool `json:"forceOverload"`
 }
 
 type RemoteConfig struct {

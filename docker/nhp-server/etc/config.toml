@@ -37,3 +37,22 @@ DisableAgentValidation = false
 # trusted local-only demos like this one.
 AllowPrivateRelaySource = true
 
+# ForceOverload pins the server's Overload flag ON at startup. With it
+# on, every agent goes through the cookie-stamped handshake
+# (KNK → NHP_COK → NHP_RKN) instead of the fast KNK → NHP_ACK path.
+#
+# Why this matters for the local demo: the normal Overload trigger
+# fires only after ~16k concurrent agent connections, which a docker
+# compose demo never produces. Without this flag the cookie path
+# stays dormant and any cookie-related correctness issues (e.g.
+# multi-server cookie-store divergence) are invisible. Flipping this
+# on locally is how a developer exercises and validates the cookie
+# code paths.
+#
+# DO NOT enable this in production. ForceOverload forces every agent
+# through the slower cookie handshake even when the server is idle,
+# and tells the cookie store that load is constantly elevated.
+# Production must rely on the natural connection-count trigger, which
+# is what the threshold is calibrated for.
+ForceOverload = true
+

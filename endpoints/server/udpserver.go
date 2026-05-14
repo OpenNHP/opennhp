@@ -233,6 +233,18 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		return fmt.Errorf("failed to create device %v", err)
 	}
 
+	// ForceOverload pins device Overload at startup so the cookie path
+	// (KNK → NHP_COK → NHP_RKN) is exercised by every agent, including
+	// on a quiet local demo where remoteConnectionMap never crosses
+	// OverloadConnectionThreshold. This is a debug-only toggle; see
+	// the field docstring on Config.ForceOverload. Don't pair this with
+	// SetOverload(false) in reload — once on, leave it on; the normal
+	// trigger may also be active and we don't want to fight it.
+	if s.config.ForceOverload {
+		log.Warning("ForceOverload=true: device Overload pinned ON for the lifetime of this process (debug/test only)")
+		s.device.SetOverload(true)
+	}
+
 	// retrieve local ip and mac
 	s.localIp = utils.GetLocalOutboundAddress().String()
 	s.localMac = utils.GetMacAddress(s.localIp)
@@ -555,7 +567,12 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		if stillPresent {
 			delete(s.remoteConnectionMap, mapKey)
 		}
-		if len(s.remoteConnectionMap) <= OverloadConnectionThreshold {
+		// ForceOverload (debug only) keeps Overload pinned ON for the
+		// lifetime of the process, so a quiet local demo can still
+		// exercise the cookie path. Honor it here — without this guard,
+		// the very first connection teardown drops the map size back
+		// below threshold and flips Overload off, defeating the flag.
+		if !s.config.ForceOverload && len(s.remoteConnectionMap) <= OverloadConnectionThreshold {
 			s.device.SetOverload(false)
 		}
 		s.remoteConnectionMapMutex.Unlock()

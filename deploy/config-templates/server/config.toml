@@ -12,3 +12,8 @@ DisableAgentValidation = false
 # addresses here would let a compromised relay inject fabricated
 # entries into the connection map and AC ipset whitelist. Only flip
 # this on for trusted local-only demos (see docker/nhp-server/etc/config.toml).
+#
+# ForceOverload also intentionally absent — defaults to false. It is a
+# local debug toggle that pins Overload on so a developer can exercise
+# the cookie handshake without generating ~16k concurrent connections.
+# Production must rely on the natural connection-count trigger.

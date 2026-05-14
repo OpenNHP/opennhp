@@ -16,6 +16,11 @@
 #   injecting fabricated entries. Set true only in trusted local
 #   demos where the relay legitimately sees private addresses
 #   (e.g. Docker Desktop's vpnkit gateway).
+# ForceOverload: pin the device's Overload flag ON at startup so every
+#   agent goes through the cookie-stamped KNK → COK → RKN handshake.
+#   Debug/test only — production must rely on the natural connection-
+#   count trigger. Leave false except when reproducing or testing
+#   cookie-path behavior on a quiet local stack.
 PrivateKeyBase64 = "eHdyRHKJy/YZJsResCt5XTAZgtcwvLpSXAiZ8DBc0V4="
 DefaultCipherScheme = 0
 ListenIp = ""    # empty for ipv4 + ipv6, "0.0.0.0" for ipv4 only
@@ -24,3 +29,4 @@ Hostname = "localhost" # the hostname of NHP-Server
 LogLevel = 4
 DisableAgentValidation = false
 AllowPrivateRelaySource = false
+ForceOverload = false

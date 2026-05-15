@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0](https://github.com/OpenNHP/opennhp/compare/v0.7.3...v1.0.0) (2026-05-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **relay:** remove legacy POST /relay; tighten routing contract
+
+### Features
+
+* **js-agent:** add EN/zh-cn language switcher to demo page ([5a7f89d](https://github.com/OpenNHP/opennhp/commit/5a7f89dd9c28b6bf32d1839f9693fce521b6b610))
+* **js-agent:** add EN/zh-cn language switcher to demo page ([ca4604e](https://github.com/OpenNHP/opennhp/commit/ca4604e3883b1d99e005f527b1d8638455c94979))
+* **js-agent:** expose NHPAgent.version + bump VERSION to 0.7.3 ([e9ba4a4](https://github.com/OpenNHP/opennhp/commit/e9ba4a42a93d485bb22e95f1ca303c169ae51cad))
+* **js-agent:** expose NHPAgent.version sourced from nhp/version/VERSION ([0616094](https://github.com/OpenNHP/opennhp/commit/061609405b84098ce8f9a158aedaee3db1feaec0))
+* **js-agent:** scope perf metric to network round trip; demo form polish ([1f5408d](https://github.com/OpenNHP/opennhp/commit/1f5408d752ba2a1a5037f3de0436d6f6760f34a3))
+* **js-agent:** scope perf metric to network round trip; demo form polish ([8b4c869](https://github.com/OpenNHP/opennhp/commit/8b4c869ab227fdf86714f927351af2ad85671edd))
+* **relay:** support multiple nhp-server clusters via pubkey-derived id ([eef8b56](https://github.com/OpenNHP/opennhp/commit/eef8b56dedeb75e0302080b5a31c552df4d16f63))
+* **relay:** support multiple nhp-server clusters via pubkey-derived id ([d083653](https://github.com/OpenNHP/opennhp/commit/d0836539febc6b9ea4b264d2b55d1a30d2749270))
+
+
+### Bug Fixes
+
+* **js-agent:** prevent protected server section from wrapping to two lines ([fbc4ae1](https://github.com/OpenNHP/opennhp/commit/fbc4ae18e37774cb45d97c3f66fc6f98abd041d2))
+* **js-agent:** prevent protected server section from wrapping to two lines ([ca398f4](https://github.com/OpenNHP/opennhp/commit/ca398f48625e72230edafce557c2c392566be82e))
+* **js-agent:** shorten protected server text to prevent wrapping ([6a9d475](https://github.com/OpenNHP/opennhp/commit/6a9d4752939ff14f5cbc78a81a01244d09a6a615))
+* **js-agent:** shorten protected server text to prevent wrapping ([d282fae](https://github.com/OpenNHP/opennhp/commit/d282fae22c036a1e47646802f7c2c71270bbe00a))
+* **js-agent:** sync package-lock.json version with package.json ([811f1cf](https://github.com/OpenNHP/opennhp/commit/811f1cf47ba1125e2d403d8f41eb40296f63eb3e))
+* **js-agent:** update i18n strings to match shortened text ([0daaba2](https://github.com/OpenNHP/opennhp/commit/0daaba2a4054ba601256bff6384ea24966868e14))
+* **js-agent:** update i18n strings to match shortened text ([1000647](https://github.com/OpenNHP/opennhp/commit/1000647bb2759b9a5e93493ca8d7fd6e3656d9f1))
+* **relay:** spell "behavior" the American way to satisfy misspell linter ([768725a](https://github.com/OpenNHP/opennhp/commit/768725a132b9151c8ab5165c4940289f19f4d8b2))
+
+
+### Code Refactoring
+
+* **relay:** remove legacy POST /relay; tighten routing contract ([bda88e1](https://github.com/OpenNHP/opennhp/commit/bda88e18108874bd38c02744f467cb37a4894321))
+
 ## [0.7.3](https://github.com/OpenNHP/opennhp/compare/v0.7.2...v0.7.3) (2026-05-08)
 
 

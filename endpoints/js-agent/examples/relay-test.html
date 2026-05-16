@@ -19,7 +19,8 @@
       "@noble/curves":   "https://esm.sh/@noble/curves@2.0.1",
       "@noble/curves/":  "https://esm.sh/@noble/curves@2.0.1/",
       "@noble/hashes":   "https://esm.sh/@noble/hashes@1.7.2",
-      "@noble/hashes/":  "https://esm.sh/@noble/hashes@1.7.2/"
+      "@noble/hashes/":  "https://esm.sh/@noble/hashes@1.7.2/",
+      "cbor-x":          "https://esm.sh/cbor-x@1.6.4"
     }
   }
   </script>
@@ -275,6 +276,19 @@
       transition: transform 0.15s;
     }
     .details-panel[open] > summary::before { transform: rotate(90deg); }
+    .details-panel > summary .load-token-btn {
+      margin-left: 12px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      background: #238636;
+      border: 1px solid #238636;
+      color: #fff;
+    }
+    .details-panel > summary .load-token-btn:hover {
+      background: #2ea043;
+      border-color: #2ea043;
+    }
     .details-panel > summary .summary-hint {
       margin-left: auto;
       font-weight: 400;
@@ -282,6 +296,95 @@
       color: #8b949e;
     }
     .details-content { padding: 0 16px 16px 16px; }
+
+    /* Token Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 20px;
+      width: 90%;
+      max-width: 800px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-title {
+      color: #58a6ff;
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    .modal .field { margin-bottom: 12px; min-width: auto; }
+    .modal .field textarea {
+      width: 100%;
+      padding: 8px 10px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #c9d1d9;
+      font-size: 13px;
+      font-family: ui-monospace, Consolas, 'Courier New', monospace;
+      resize: vertical;
+      min-height: 80px;
+    }
+    .modal .field textarea:focus {
+      outline: none;
+      border-color: #58a6ff;
+    }
+    .modal .field input {
+      width: 100%;
+      padding: 8px 10px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #c9d1d9;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .modal .field input:focus {
+      outline: none;
+      border-color: #58a6ff;
+    }
+    .modal .field input[readonly] {
+      background: #0d1117;
+      color: #8b949e;
+    }
+    .modal-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .modal-row > .field {
+      flex: 1;
+      min-width: 120px;
+    }
+    @media (max-width: 500px) {
+      .modal-row > .field { min-width: 100%; }
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+    .token-error {
+      color: #f85149;
+      font-size: 12px;
+      margin-top: 4px;
+    }
 
     /* Protected server (what the knock unlocks) */
     .protected-target {
@@ -519,7 +622,7 @@
   <!-- NHP-Agent parameters (collapsed; opens automatically if keys are missing).
        These map 1:1 to the SDK calls: NHPAgent({...}) / setIdentity / addServer / knockResource. -->
   <details class="panel details-panel" id="keys-details">
-    <summary class="panel-title">&#9881; <span data-i18n="panel.parameters">NHP-Agent Parameters</span><span class="summary-hint" data-i18n="summary.editHint">click to view / edit</span></summary>
+    <summary class="panel-title">&#9881; <span data-i18n="panel.parameters">NHP-Agent Parameters</span><button type="button" class="btn btn-secondary load-token-btn" id="loadFromTokenBtn" data-i18n="btn.loadFromToken">Load from Token</button><span class="summary-hint" data-i18n="summary.editHint">click to view / edit</span></summary>
     <div class="details-content">
       <div class="row">
         <div class="field" style="flex:2">
@@ -626,8 +729,98 @@ if (result.success) {
   </footer>
 </div>
 
+<!-- Token Load Modal -->
+<div class="modal-overlay" id="tokenModal">
+  <div class="modal">
+    <div class="modal-title" data-i18n="modal.title">Load Configuration from Token</div>
+    <div class="field">
+      <label data-i18n="modal.tokenInput">Paste Token</label>
+      <textarea id="tokenInput" rows="6" style="min-height: 120px;" placeholder="Paste CBOR token (Base64)"></textarea>
+      <div class="token-error" id="tokenError"></div>
+      <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
+        <span id="tokenLength" style="color: #8b949e; font-size: 12px;"></span>
+        <button type="button" class="btn btn-primary" id="tokenDecodeBtn" data-i18n="modal.decode">Decode Token</button>
+      </div>
+    </div>
+    <div class="modal-row">
+      <div class="field">
+        <label data-i18n="modal.serverPubKey">nhp-server Public Key</label>
+        <input type="text" id="tokenServerPubKey" readonly>
+      </div>
+      <div class="field">
+        <label data-i18n="modal.agentPrivKey">nhp-agent Private Key</label>
+        <input type="text" id="tokenAgentPrivKey" readonly>
+      </div>
+    </div>
+    <div class="modal-row">
+      <div class="field">
+        <label data-i18n="modal.relayUrl">Relay URL</label>
+        <input type="text" id="tokenRelayUrl" readonly>
+      </div>
+      <div class="field">
+        <label data-i18n="modal.cipherScheme">Cipher</label>
+        <input type="text" id="tokenCipherScheme" readonly>
+      </div>
+      <div class="field">
+        <label data-i18n="modal.timeoutMs">Timeout</label>
+        <input type="text" id="tokenTimeoutMs" readonly>
+      </div>
+    </div>
+    <div class="modal-row">
+      <div class="field">
+        <label data-i18n="modal.userId">User ID</label>
+        <input type="text" id="tokenUserId" readonly>
+      </div>
+      <div class="field">
+        <label data-i18n="modal.deviceId">Device ID</label>
+        <input type="text" id="tokenDeviceId" readonly>
+      </div>
+      <div class="field">
+        <label data-i18n="modal.orgId">Org ID</label>
+        <input type="text" id="tokenOrgId" readonly>
+      </div>
+    </div>
+    <div class="modal-row">
+      <div class="field">
+        <label data-i18n="modal.serviceId">Service ID</label>
+        <input type="text" id="tokenServiceId" readonly>
+      </div>
+      <div class="field">
+        <label data-i18n="modal.resourceId">Resource ID</label>
+        <input type="text" id="tokenResourceId" readonly>
+      </div>
+    </div>
+    <div class="modal-buttons">
+      <button type="button" class="btn btn-secondary" id="tokenCancelBtn" data-i18n="modal.cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="tokenApplyBtn" data-i18n="modal.apply">Apply</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
   import { NHPAgent } from '../dist/index.js';
+  import { decode as cborDecode } from 'cbor-x';
+
+  // ---------- CBOR Token Decoder ---------------------------------------------
+  // Decode a Base64-encoded CBOR map containing NHP configuration
+  function decodeCborConfig(base64Input) {
+    // Decode base64 to bytes
+    const binaryString = atob(base64Input);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // Decode CBOR
+    const config = cborDecode(bytes);
+
+    // Expect a map/object with NHP configuration fields
+    if (typeof config !== 'object' || config === null) {
+      throw new Error('CBOR data must be a map/object');
+    }
+
+    return config;
+  }
 
   // ---------- i18n ----------------------------------------------------------
   // Lightweight, dependency-free translations inlined for the demo. To add a
@@ -657,6 +850,7 @@ if (result.success) {
 
       'btn.knock': 'Request Access',
       'btn.clear': 'Clear Log',
+      'btn.loadFromToken': 'Load from Token',
 
       'panel.runtimeFlow': 'Runtime Flow',
       'panel.eventLog': 'SDK Event Log',
@@ -719,6 +913,27 @@ if (result.success) {
       'log.exception': 'Exception: {msg}',
       'log.redirectCancelled': 'Redirect cancelled — staying on this page.',
       'log.agentError': 'Agent error: {msg}',
+
+      'modal.title': 'Load NHP-Agent Parameters from Token (CBOR)',
+      'modal.tokenInput': 'Paste CBOR Token (Base64)',
+      'modal.serverPubKey': 'nhp-server Public Key',
+      'modal.agentPrivKey': 'nhp-agent Private Key',
+      'modal.relayUrl': 'Relay URL',
+      'modal.cipherScheme': 'Cipher',
+      'modal.timeoutMs': 'Timeout',
+      'modal.userId': 'User ID',
+      'modal.deviceId': 'Device ID',
+      'modal.orgId': 'Org ID',
+      'modal.serviceId': 'Service ID',
+      'modal.resourceId': 'Resource ID',
+      'modal.cancel': 'Cancel',
+      'modal.apply': 'Apply',
+      'modal.decode': 'Decode Token',
+      'modal.tokenLength': 'Token Length = {n} Chars',
+      'modal.emptyInput': 'Please paste a token first',
+      'modal.notDecoded': 'Please decode the token first',
+      'modal.parseError': 'Failed to parse token: {msg}',
+      'modal.applied': 'Configuration loaded from token',
     },
     'zh-cn': {
       'page.title': 'OpenNHP JavaScript SDK 演示',
@@ -743,6 +958,7 @@ if (result.success) {
 
       'btn.knock': '请求访问',
       'btn.clear': '清空日志',
+      'btn.loadFromToken': '从令牌加载',
 
       'panel.runtimeFlow': '运行时流程',
       'panel.eventLog': 'SDK 事件日志',
@@ -805,6 +1021,27 @@ if (result.success) {
       'log.exception': '异常：{msg}',
       'log.redirectCancelled': '已取消跳转，留在本页。',
       'log.agentError': 'Agent 错误：{msg}',
+
+      'modal.title': '从令牌加载 NHP-Agent 参数 (CBOR)',
+      'modal.tokenInput': '粘贴 CBOR 令牌（Base64）',
+      'modal.serverPubKey': 'nhp-server 公钥',
+      'modal.agentPrivKey': 'nhp-agent 私钥',
+      'modal.relayUrl': 'Relay URL',
+      'modal.cipherScheme': '加密套件',
+      'modal.timeoutMs': '超时',
+      'modal.userId': '用户 ID',
+      'modal.deviceId': '设备 ID',
+      'modal.orgId': '组织 ID',
+      'modal.serviceId': '服务 ID',
+      'modal.resourceId': '资源 ID',
+      'modal.cancel': '取消',
+      'modal.apply': '应用',
+      'modal.decode': '解码令牌',
+      'modal.tokenLength': '令牌长度 = {n} 字符',
+      'modal.emptyInput': '请先粘贴令牌',
+      'modal.notDecoded': '请先解码令牌',
+      'modal.parseError': '解析令牌失败：{msg}',
+      'modal.applied': '已从令牌加载配置',
     },
   };
 
@@ -955,6 +1192,175 @@ if (result.success) {
     } catch {
       // config.json is optional (local dev); ignore
     }
+  }
+
+  // Token Modal functionality
+  function setupTokenModal() {
+    const modal = document.getElementById('tokenModal');
+    const tokenInput = document.getElementById('tokenInput');
+    const tokenError = document.getElementById('tokenError');
+    const applyBtn = document.getElementById('tokenApplyBtn');
+    const cancelBtn = document.getElementById('tokenCancelBtn');
+    const decodeBtn = document.getElementById('tokenDecodeBtn');
+    const loadBtn = document.getElementById('loadFromTokenBtn');
+    const tokenLengthEl = document.getElementById('tokenLength');
+
+    if (!modal || !tokenInput || !loadBtn) return;
+
+    function updateTokenLength() {
+      if (tokenLengthEl) {
+        const len = tokenInput.value.trim().length;
+        tokenLengthEl.textContent = len > 0 ? t('modal.tokenLength', { n: len }) : '';
+      }
+    }
+
+    // Modal field elements
+    const fields = {
+      serverPubKey: document.getElementById('tokenServerPubKey'),
+      agentPrivKey: document.getElementById('tokenAgentPrivKey'),
+      relayUrl: document.getElementById('tokenRelayUrl'),
+      cipherScheme: document.getElementById('tokenCipherScheme'),
+      timeoutMs: document.getElementById('tokenTimeoutMs'),
+      userId: document.getElementById('tokenUserId'),
+      deviceId: document.getElementById('tokenDeviceId'),
+      orgId: document.getElementById('tokenOrgId'),
+      serviceId: document.getElementById('tokenServiceId'),
+      resourceId: document.getElementById('tokenResourceId'),
+    };
+
+    let parsedPayload = null;
+
+    // Sample CBOR-encoded NHP configuration for demonstration
+    const SAMPLE_TOKEN = 'uQAKb3NlcnZlclB1YmxpY0tleXgsRTNvOGdVVXhJNWRVQVVpRU9pNlN2Z1Y5YldLbWpwV1dRYU9PNkdDaE8yQT1vYWdlbnRQcml2YXRlS2V5eCBZV2RsYm5SUWNtbDJZWFJsUzJWNVJHVnRiekV5TXc9PWhyZWxheVVybHgfaHR0cHM6Ly9yZWxheS5vcGVubmhwLm9yZy9yZWxheWxjaXBoZXJTY2hlbWVqY3VydmUyNTUxOWl0aW1lb3V0TXMZJxBmdXNlcklkcGRlbW9AZXhhbXBsZS5jb21oZGV2aWNlSWRwYnJvd3Nlci1zZGstZGVtb25vcmdhbml6YXRpb25JZGtvcGVubmhwLm9yZ2lzZXJ2aWNlSWRnZXhhbXBsZWpyZXNvdXJjZUlkZGRlbW8=';
+
+    function clearModalFields() {
+      tokenInput.value = '';
+      tokenError.textContent = '';
+      if (tokenLengthEl) tokenLengthEl.textContent = '';
+      parsedPayload = null;
+      for (const f of Object.values(fields)) {
+        if (f) f.value = '';
+      }
+    }
+
+    function showModal() {
+      clearModalFields();
+      // Pre-fill with sample token for user to decode
+      tokenInput.value = SAMPLE_TOKEN;
+      updateTokenLength();
+      modal.classList.add('show');
+      tokenInput.focus();
+      tokenInput.select();
+    }
+
+    // Update token length on input
+    tokenInput.addEventListener('input', updateTokenLength);
+
+    function hideModal() {
+      modal.classList.remove('show');
+    }
+
+    // Decode button - parse CBOR token when clicked
+    decodeBtn.addEventListener('click', () => {
+      const input = tokenInput.value.trim();
+      tokenError.textContent = '';
+      parsedPayload = null;
+
+      // Clear fields
+      for (const f of Object.values(fields)) {
+        if (f) f.value = '';
+      }
+
+      if (!input) {
+        tokenError.textContent = t('modal.emptyInput');
+        return;
+      }
+
+      try {
+        parsedPayload = decodeCborConfig(input);
+        // Populate fields from payload (supports both camelCase and snake_case)
+        if (fields.serverPubKey) fields.serverPubKey.value = parsedPayload.serverPublicKey || parsedPayload.server_public_key || '';
+        if (fields.agentPrivKey) fields.agentPrivKey.value = parsedPayload.agentPrivateKey || parsedPayload.agent_private_key || '';
+        if (fields.relayUrl) fields.relayUrl.value = parsedPayload.relayUrl || parsedPayload.relay_url || '';
+        if (fields.cipherScheme) fields.cipherScheme.value = parsedPayload.cipherScheme || parsedPayload.cipher_scheme || '';
+        if (fields.timeoutMs) fields.timeoutMs.value = parsedPayload.timeoutMs || parsedPayload.timeout_ms || parsedPayload.timeout || '';
+        if (fields.userId) fields.userId.value = parsedPayload.userId || parsedPayload.user_id || '';
+        if (fields.deviceId) fields.deviceId.value = parsedPayload.deviceId || parsedPayload.device_id || '';
+        if (fields.orgId) fields.orgId.value = parsedPayload.organizationId || parsedPayload.organization_id || parsedPayload.orgId || parsedPayload.org_id || '';
+        if (fields.serviceId) fields.serviceId.value = parsedPayload.serviceId || parsedPayload.service_id || '';
+        if (fields.resourceId) fields.resourceId.value = parsedPayload.resourceId || parsedPayload.resource_id || '';
+      } catch (err) {
+        tokenError.textContent = t('modal.parseError', { msg: err.message });
+      }
+    });
+
+    // Prevent summary toggle when clicking the button
+    const summary = loadBtn.closest('summary');
+    if (summary) {
+      summary.addEventListener('click', (e) => {
+        if (e.target === loadBtn || loadBtn.contains(e.target)) {
+          e.preventDefault();
+        }
+      });
+    }
+
+    // Open modal button
+    loadBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showModal();
+    });
+
+    // Cancel button
+    cancelBtn.addEventListener('click', () => {
+      hideModal();
+    });
+
+    // Apply button
+    applyBtn.addEventListener('click', () => {
+      if (!parsedPayload) {
+        tokenError.textContent = t('modal.notDecoded');
+        return;
+      }
+
+      // Apply to main form
+      const apply = (id, v) => {
+        const el = document.getElementById(id);
+        if (el && v) el.value = v;
+      };
+
+      apply('serverPubKey', fields.serverPubKey?.value);
+      apply('agentPrivKey', fields.agentPrivKey?.value);
+      apply('relayUrl', fields.relayUrl?.value);
+      apply('cipherScheme', fields.cipherScheme?.value);
+      apply('timeoutMs', fields.timeoutMs?.value);
+      apply('userId', fields.userId?.value);
+      apply('deviceId', fields.deviceId?.value);
+      apply('orgId', fields.orgId?.value);
+      apply('serviceId', fields.serviceId?.value);
+      apply('resourceId', fields.resourceId?.value);
+
+      // Ensure the details panel is open
+      const det = document.getElementById('keys-details');
+      if (det) det.open = true;
+
+      log('ok', t('modal.applied'));
+      hideModal();
+    });
+
+    // Close modal on overlay click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        hideModal();
+      }
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal.classList.contains('show')) {
+        hideModal();
+      }
+    });
   }
 
   // One-time cleanup: drop any stale state from older builds that persisted
@@ -1241,6 +1647,7 @@ if (result.success) {
   // ---------- Bootstrap -----------------------------------------------------
   applyI18n();
   setupLangSwitcher();
+  setupTokenModal();
   setStatus('', 'status.ready');
 
   loadDefaultsFromConfig().then(() => {

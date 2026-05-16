@@ -739,7 +739,7 @@ if (result.success) {
       <div class="token-error" id="tokenError"></div>
       <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
         <span id="tokenLength" style="color: #8b949e; font-size: 12px;"></span>
-        <button type="button" class="btn btn-primary" id="tokenDecryptBtn" data-i18n="modal.decrypt">Decrypt</button>
+        <button type="button" class="btn btn-primary" id="tokenDecodeBtn" data-i18n="modal.decode">Decode Token</button>
       </div>
     </div>
     <div class="modal-row">
@@ -801,18 +801,7 @@ if (result.success) {
   import { NHPAgent } from '../dist/index.js';
   import { decode as cborDecode } from 'cbor-x';
 
-  // ---------- Token Format Detection & CBOR Decoder -------------------------
-  // Detect whether input is JWT (3 dot-separated parts) or CBOR (base64-encoded)
-  function detectTokenFormat(input) {
-    const trimmed = input.trim();
-    // JWT: three Base64url parts separated by dots
-    if (/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(trimmed)) {
-      return 'jwt';
-    }
-    // Otherwise assume CBOR-encoded data
-    return 'cbor';
-  }
-
+  // ---------- CBOR Token Decoder ---------------------------------------------
   // Decode a Base64-encoded CBOR map containing NHP configuration
   function decodeCborConfig(base64Input) {
     // Decode base64 to bytes
@@ -944,8 +933,10 @@ if (result.success) {
       'modal.resourceId': 'Resource ID',
       'modal.cancel': 'Cancel',
       'modal.apply': 'Apply',
-      'modal.decrypt': 'Decrypt Token',
-      'modal.invalidJwt': 'Invalid token format',
+      'modal.decode': 'Decode Token',
+      'modal.tokenLength': 'Token Length = {n} Chars',
+      'modal.emptyInput': 'Please paste a token first',
+      'modal.notDecoded': 'Please decode the token first',
       'modal.parseError': 'Failed to parse token: {msg}',
       'modal.applied': 'Configuration loaded from token',
     },
@@ -1055,8 +1046,10 @@ if (result.success) {
       'modal.resourceId': '资源 ID',
       'modal.cancel': '取消',
       'modal.apply': '应用',
-      'modal.decrypt': '解密令牌',
-      'modal.invalidJwt': '令牌格式无效',
+      'modal.decode': '解码令牌',
+      'modal.tokenLength': '令牌长度 = {n} 字符',
+      'modal.emptyInput': '请先粘贴令牌',
+      'modal.notDecoded': '请先解码令牌',
       'modal.parseError': '解析令牌失败：{msg}',
       'modal.applied': '已从令牌加载配置',
     },
@@ -1212,26 +1205,13 @@ if (result.success) {
   }
 
   // Token Modal functionality
-  function decodeJwtPayload(jwt) {
-    const parts = jwt.split('.');
-    if (parts.length !== 3) {
-      throw new Error(t('modal.invalidJwt'));
-    }
-    // Base64url decode the payload (second part)
-    const payload = parts[1];
-    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
-    const decoded = atob(padded);
-    return JSON.parse(decoded);
-  }
-
   function setupTokenModal() {
     const modal = document.getElementById('tokenModal');
     const tokenInput = document.getElementById('tokenInput');
     const tokenError = document.getElementById('tokenError');
     const applyBtn = document.getElementById('tokenApplyBtn');
     const cancelBtn = document.getElementById('tokenCancelBtn');
-    const decryptBtn = document.getElementById('tokenDecryptBtn');
+    const decodeBtn = document.getElementById('tokenDecodeBtn');
     const loadBtn = document.getElementById('loadFromTokenBtn');
     const tokenLengthEl = document.getElementById('tokenLength');
 
@@ -1240,7 +1220,7 @@ if (result.success) {
     function updateTokenLength() {
       if (tokenLengthEl) {
         const len = tokenInput.value.trim().length;
-        tokenLengthEl.textContent = len > 0 ? `Token Length = ${len} Chars` : '';
+        tokenLengthEl.textContent = len > 0 ? t('modal.tokenLength', { n: len }) : '';
       }
     }
 
@@ -1290,8 +1270,8 @@ if (result.success) {
       modal.classList.remove('show');
     }
 
-    // Decrypt button - parse JWT or CBOR token when clicked
-    decryptBtn.addEventListener('click', () => {
+    // Decode button - parse JWT or CBOR token when clicked
+    decodeBtn.addEventListener('click', () => {
       const input = tokenInput.value.trim();
       tokenError.textContent = '';
       parsedPayload = null;
@@ -1302,24 +1282,19 @@ if (result.success) {
       }
 
       if (!input) {
-        tokenError.textContent = t('modal.invalidJwt');
+        tokenError.textContent = t('modal.emptyInput');
         return;
       }
 
       try {
-        const format = detectTokenFormat(input);
-        if (format === 'jwt') {
-          parsedPayload = decodeJwtPayload(input);
-        } else {
-          parsedPayload = decodeCborConfig(input);
-        }
+        parsedPayload = decodeCborConfig(input);
         // Populate fields from payload (supports both camelCase and snake_case)
         if (fields.serverPubKey) fields.serverPubKey.value = parsedPayload.serverPublicKey || parsedPayload.server_public_key || '';
         if (fields.agentPrivKey) fields.agentPrivKey.value = parsedPayload.agentPrivateKey || parsedPayload.agent_private_key || '';
         if (fields.relayUrl) fields.relayUrl.value = parsedPayload.relayUrl || parsedPayload.relay_url || '';
         if (fields.cipherScheme) fields.cipherScheme.value = parsedPayload.cipherScheme || parsedPayload.cipher_scheme || '';
         if (fields.timeoutMs) fields.timeoutMs.value = parsedPayload.timeoutMs || parsedPayload.timeout_ms || parsedPayload.timeout || '';
-        if (fields.userId) fields.userId.value = parsedPayload.userId || parsedPayload.user_id || parsedPayload.sub || '';
+        if (fields.userId) fields.userId.value = parsedPayload.userId || parsedPayload.user_id || '';
         if (fields.deviceId) fields.deviceId.value = parsedPayload.deviceId || parsedPayload.device_id || '';
         if (fields.orgId) fields.orgId.value = parsedPayload.organizationId || parsedPayload.organization_id || parsedPayload.orgId || parsedPayload.org_id || '';
         if (fields.serviceId) fields.serviceId.value = parsedPayload.serviceId || parsedPayload.service_id || '';
@@ -1354,7 +1329,7 @@ if (result.success) {
     // Apply button
     applyBtn.addEventListener('click', () => {
       if (!parsedPayload) {
-        tokenError.textContent = t('modal.invalidJwt');
+        tokenError.textContent = t('modal.notDecoded');
         return;
       }
 

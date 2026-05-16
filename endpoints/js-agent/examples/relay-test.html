@@ -20,7 +20,7 @@
       "@noble/curves/":  "https://esm.sh/@noble/curves@2.0.1/",
       "@noble/hashes":   "https://esm.sh/@noble/hashes@1.7.2",
       "@noble/hashes/":  "https://esm.sh/@noble/hashes@1.7.2/",
-      "cbor-x":          "https://esm.sh/cbor-x@1.6.0"
+      "cbor-x":          "https://esm.sh/cbor-x@1.6.4"
     }
   }
   </script>
@@ -735,7 +735,7 @@ if (result.success) {
     <div class="modal-title" data-i18n="modal.title">Load Configuration from Token</div>
     <div class="field">
       <label data-i18n="modal.tokenInput">Paste Token</label>
-      <textarea id="tokenInput" rows="6" style="min-height: 120px;" placeholder="Paste JWT (eyJhbG...) or CBOR (Base64) token"></textarea>
+      <textarea id="tokenInput" rows="6" style="min-height: 120px;" placeholder="Paste CBOR token (Base64)"></textarea>
       <div class="token-error" id="tokenError"></div>
       <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
         <span id="tokenLength" style="color: #8b949e; font-size: 12px;"></span>
@@ -914,11 +914,6 @@ if (result.success) {
       'log.redirectCancelled': 'Redirect cancelled — staying on this page.',
       'log.agentError': 'Agent error: {msg}',
 
-      'loadUrl.prompt': 'Enter the URL to load config from:',
-      'loadUrl.loading': 'Loading config from URL...',
-      'loadUrl.success': 'Config loaded successfully from URL',
-      'loadUrl.error': 'Failed to load config: {msg}',
-
       'modal.title': 'Load NHP-Agent Parameters from Token (CBOR)',
       'modal.tokenInput': 'Paste CBOR Token (Base64)',
       'modal.serverPubKey': 'nhp-server Public Key',
@@ -1026,11 +1021,6 @@ if (result.success) {
       'log.exception': '异常：{msg}',
       'log.redirectCancelled': '已取消跳转，留在本页。',
       'log.agentError': 'Agent 错误：{msg}',
-
-      'loadUrl.prompt': '请输入配置文件的 URL：',
-      'loadUrl.loading': '正在从 URL 加载配置...',
-      'loadUrl.success': '已成功从 URL 加载配置',
-      'loadUrl.error': '加载配置失败：{msg}',
 
       'modal.title': '从令牌加载 NHP-Agent 参数 (CBOR)',
       'modal.tokenInput': '粘贴 CBOR 令牌（Base64）',
@@ -1255,7 +1245,7 @@ if (result.success) {
 
     function showModal() {
       clearModalFields();
-      // Pre-fill with sample token for user to decrypt
+      // Pre-fill with sample token for user to decode
       tokenInput.value = SAMPLE_TOKEN;
       updateTokenLength();
       modal.classList.add('show');
@@ -1270,7 +1260,7 @@ if (result.success) {
       modal.classList.remove('show');
     }
 
-    // Decode button - parse JWT or CBOR token when clicked
+    // Decode button - parse CBOR token when clicked
     decodeBtn.addEventListener('click', () => {
       const input = tokenInput.value.trim();
       tokenError.textContent = '';

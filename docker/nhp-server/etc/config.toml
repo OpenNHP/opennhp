@@ -56,3 +56,24 @@ AllowPrivateRelaySource = true
 # is what the threshold is calibrated for.
 ForceOverload = true
 
+# ─── Cookie (stateless, multi-instance-safe) ──────────────────────────────
+# When the server enters Overload (real load OR ForceOverload), it answers
+# the first KNK from each agent with an NHP_COK challenge containing a
+# cookie; the agent must echo that cookie in an NHP_RKN before the
+# handshake proceeds. Cookies are derived statelessly from
+# HMAC-SHA256(CookieSigningKey, "ip:port" || timeWindow), so any
+# nhp-server in a cluster can verify a cookie a sibling minted — required
+# when agents reach the cluster via round-robin DNS / a load balancer.
+#
+# CookieSigningKeyBase64: base64 of exactly 32 random bytes. Every server
+# in the same cluster MUST share the same value. Leave empty for a
+# single-instance deployment; a random per-process key will be generated
+# at startup (works, but breaks the moment you add a second instance).
+# Generate one with:   head -c 32 /dev/urandom | base64
+CookieSigningKeyBase64 = "w62S2G1P5GOG66Y5tIv3WlfBv8CNBdDe2JJDFr9Q+h0="
+
+# CookieTimeWindowSeconds: cookies rotate every N seconds; the server
+# accepts cookies from the current and the previous window. Default 60s
+# if unset / non-positive, giving an agent [60, 120) seconds to redeem.
+CookieTimeWindowSeconds = 60
+

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -232,6 +233,38 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		log.Critical("failed to create device: %v", err)
 		return fmt.Errorf("failed to create device %v", err)
 	}
+
+	// Stateless cookie signing key. In a multi-instance cluster all
+	// nhp-server replicas must share the same value so any of them can
+	// verify a cookie that a sibling minted. When the operator hasn't
+	// configured one we mint a random per-process key — fine for a single
+	// instance, broken for a cluster (the failure is silent: cookies
+	// minted by replica A don't verify on replica B and the agent's RKN
+	// stalls until timeout). Always log which mode we're in.
+	cookieKey, cookieKeyErr := decodeCookieSigningKey(s.config.CookieSigningKeyBase64)
+	if cookieKeyErr != nil {
+		// Malformed (not empty) is an ops mistake — fail fast rather
+		// than silently degrading to a per-process random key. Silent
+		// fallback would let a cluster look healthy while its replicas
+		// each mint cookies a sibling can't verify.
+		log.Critical("invalid CookieSigningKeyBase64 in config: %v", cookieKeyErr)
+		return fmt.Errorf("invalid CookieSigningKeyBase64: %w", cookieKeyErr)
+	}
+	if len(cookieKey) == 0 {
+		cookieKey = make([]byte, 32)
+		if _, err := rand.Read(cookieKey); err != nil {
+			log.Critical("failed to generate random cookie signing key: %v", err)
+			return fmt.Errorf("failed to generate random cookie signing key: %v", err)
+		}
+		log.Info("CookieSigningKeyBase64 not set; using a random per-process key (single-instance only — clusters must share an operator-supplied key)")
+	} else {
+		log.Info("CookieSigningKeyBase64 configured; cookies are stateless and shared across the cluster")
+	}
+	cookieWindow := s.config.CookieTimeWindowSeconds
+	if cookieWindow <= 0 {
+		cookieWindow = DefaultCookieTimeWindowSeconds
+	}
+	s.device.SetStatelessCookieParams(cookieKey, cookieWindow)
 
 	// ForceOverload pins device Overload at startup so the cookie path
 	// (KNK → NHP_COK → NHP_RKN) is exercised by every agent, including
@@ -474,12 +507,14 @@ func (s *UdpServer) recvPacketRoutine() {
 			}
 			// setup new routine for connection
 			conn.ConnData = &core.ConnectionData{
-				InitTime:             recvTime,
-				LastLocalRecvTime:    recvTime, // not in multithreaded yet, directly assign value
-				Device:               s.device,
-				LocalAddr:            s.listenAddr,
-				RemoteAddr:           remoteAddr,
-				CookieStore:          &core.CookieStore{},
+				InitTime:          recvTime,
+				LastLocalRecvTime: recvTime, // not in multithreaded yet, directly assign value
+				Device:            s.device,
+				LocalAddr:         s.listenAddr,
+				RemoteAddr:        remoteAddr,
+				// CookieStore omitted: server cookies are now stateless
+				// (HMAC of remote ip:port + time window). The legacy
+				// per-conn store is dead state on the server side.
 				RemoteTransactionMap: make(map[uint64]*core.RemoteTransaction),
 				TimeoutMs:            DefaultAgentConnectionTimeoutMs,
 				SendQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),

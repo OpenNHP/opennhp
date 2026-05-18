@@ -821,13 +821,13 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 
 		conn = &UdpConn{mapKey: connKey}
 		conn.ConnData = &core.ConnectionData{
-			InitTime:             recvTime,
-			LastLocalRecvTime:    recvTime,
-			Device:               s.device,
-			LocalAddr:            s.listenAddr,
-			RemoteAddr:           relayAddr,
-			RealRemoteAddr:       realAddr,
-			CookieStore:          &core.CookieStore{},
+			InitTime:          recvTime,
+			LastLocalRecvTime: recvTime,
+			Device:            s.device,
+			LocalAddr:         s.listenAddr,
+			RemoteAddr:        relayAddr,
+			RealRemoteAddr:    realAddr,
+			// CookieStore omitted: see udpserver.go for rationale.
 			RemoteTransactionMap: make(map[uint64]*core.RemoteTransaction),
 			TimeoutMs:            DefaultAgentConnectionTimeoutMs,
 			SendQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),

@@ -4,18 +4,58 @@ import (
 	"bytes"
 	"compress/zlib"
 	"crypto/cipher"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"hash"
 	"io"
+	"net"
 	"sync/atomic"
 	"time"
 
 	common "github.com/OpenNHP/opennhp/nhp/common"
 	log "github.com/OpenNHP/opennhp/nhp/log"
 )
+
+// cookieRemoteKey extracts the IP portion of a remote UDP address as a
+// stable string suitable for cookie derivation. The port is deliberately
+// dropped: an agent that round-robins its KNK and RKN across two
+// nhp-server instances opens a separate kernel UDP conn to each, and
+// each conn gets its own ephemeral source port — so the port the
+// minting instance sees on the KNK is NOT the port the verifying
+// instance sees on the RKN, even though the agent process is the same.
+// Keying on IP only lets the second instance re-derive the same cookie.
+//
+// Trade-off: agents behind the same NAT share a cookie within a time
+// window. The attack surface is narrow — cookie content stays off the
+// wire (it's an HMAC input, never plaintext), windows are short (default
+// 60s), and an attacker behind the same NAT can already send packets
+// from any source port. Worth it to enable multi-instance routing.
+func cookieRemoteKey(remoteAddr *net.UDPAddr) string {
+	if remoteAddr == nil || remoteAddr.IP == nil {
+		return ""
+	}
+	return remoteAddr.IP.String()
+}
+
+// deriveStatelessCookie produces a deterministic 32-byte cookie from the
+// cluster-wide signing key, the remote IP (NOT ip:port — see
+// cookieRemoteKey for why), and a time-window bucket. Any nhp-server
+// instance configured with the same key can independently re-derive the
+// cookie an agent received from a sibling instance, so the KNK → COK →
+// RKN handshake survives load-balancer or agent-side LB shuffling
+// between instances.
+func deriveStatelessCookie(signingKey []byte, remoteKey string, windowIndex int64) []byte {
+	mac := hmac.New(sha256.New, signingKey)
+	mac.Write([]byte(remoteKey))
+	var wb [8]byte
+	binary.BigEndian.PutUint64(wb[:], uint64(windowIndex))
+	mac.Write(wb[:])
+	return mac.Sum(nil) // 32 bytes (HashSize/CookieSize)
+}
 
 type ResponderScheme interface {
 	CreatePacketParserData(d *Device, pd *PacketData) (ppd *PacketParserData, err error)
@@ -428,19 +468,13 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// clear threat
 	atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)
 
-	// handle knock packet at overload before going into body decryption
+	// handle knock packet at overload before going into body decryption.
+	// sendCookie derives the cookie statelessly from the device's signing
+	// key and the remote ip:port + time window, so there is nothing to
+	// pre-generate or store per connection.
 	if ppd.device.deviceType == NHP_SERVER && ppd.Overload && (ppd.HeaderType == NHP_KNK || ppd.HeaderType == DHP_KNK) {
-		switch ppd.CipherScheme {
-		case common.CIPHER_SCHEME_CURVE:
-			fallthrough
-		case common.CIPHER_SCHEME_GMSM:
-			fallthrough
-		default:
-			ppd.generateCookie()
-			ppd.sendCookie()
-			err = ErrServerRejectWithCookie
-		}
-
+		ppd.sendCookie()
+		err = ErrServerRejectWithCookie
 		return err
 	}
 
@@ -519,39 +553,20 @@ func (ppd *PacketParserData) decryptBody() (err error) {
 	return nil
 }
 
-func (ppd *PacketParserData) makeCookieStore(cookieStore *CookieStore) *CookieStore {
-	if cookieStore != nil {
-		var tsBytes [TimestampSize]byte
-		currTime := time.Now().UnixNano()
-		if (currTime - cookieStore.LastCookieTime) > CookieRegenerateTime*int64(time.Second) {
-			copy(cookieStore.PrevCookie[:], cookieStore.CurrCookie[:])
-			binary.BigEndian.PutUint64(tsBytes[:], uint64(currTime))
-			ppd.noise.KeyGen1(&cookieStore.CurrCookie, ppd.header.EphermeralBytes(), tsBytes[:])
-			cookieStore.LastCookieTime = currTime
-		}
-		return cookieStore
-	}
-
-	return nil
-}
-
-func (ppd *PacketParserData) generateCookie() {
-	var tsBytes [TimestampSize]byte
-	currTime := time.Now().UnixNano()
-
-	ppd.ConnData.Lock()
-	defer ppd.ConnData.Unlock()
-
-	if (currTime - ppd.ConnData.CookieStore.LastCookieTime) > CookieRegenerateTime*int64(time.Second) {
-		copy(ppd.ConnData.CookieStore.PrevCookie[:], ppd.ConnData.CookieStore.CurrCookie[:])
-		binary.BigEndian.PutUint64(tsBytes[:], uint64(currTime))
-		ppd.noise.KeyGen1(&ppd.ConnData.CookieStore.CurrCookie, ppd.header.EphermeralBytes(), tsBytes[:])
-		ppd.ConnData.CookieStore.LastCookieTime = currTime
-	}
-}
-
 func (ppd *PacketParserData) sendCookie() {
-	cokStr := base64.StdEncoding.EncodeToString(ppd.ConnData.CookieStore.CurrCookie[:])
+	// Only NHP_SERVER reaches this path (the call site in validatePeer is
+	// gated on deviceType == NHP_SERVER). Server startup guarantees a
+	// signing key is installed — either operator-supplied for clusters,
+	// or randomly generated at process start for single-instance
+	// deployments — so an empty key here is a programmer error.
+	key, win := ppd.device.StatelessCookieParams()
+	if len(key) == 0 || win <= 0 {
+		log.Critical("sendCookie: device has no stateless cookie params; dropping cookie response")
+		return
+	}
+	window := time.Now().Unix() / win
+	cookie := deriveStatelessCookie(key, cookieRemoteKey(ppd.ConnData.RemoteAddr), window)
+	cokStr := base64.StdEncoding.EncodeToString(cookie)
 	cokMsg := &common.ServerCookieMsg{
 		TransactionId: ppd.SenderTrxId,
 		Cookie:        cokStr,
@@ -578,31 +593,54 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 		ppd.hmacHash = nil
 	}()
 
-	len := ppd.header.Size() - HashSize
-	ppd.hmacHash.Write(ppd.header.Bytes()[0:len])
+	headerPrefixLen := ppd.header.Size() - HashSize
+	ppd.hmacHash.Write(ppd.header.Bytes()[0:headerPrefixLen])
 
 	if sumCookie {
-		switch ppd.CipherScheme {
-		case common.CIPHER_SCHEME_CURVE:
-			fallthrough
-		case common.CIPHER_SCHEME_GMSM:
-			fallthrough
-		default:
-			ppd.ConnData.Lock()
-			defer ppd.ConnData.Unlock()
-
-			if ppd.LocalInitTime < ppd.ConnData.CookieStore.LastCookieTime+CookieRoundTripTimeMs*int64(time.Millisecond) {
-				// cookie has already or nearly been updated, use previous cookie
-				ppd.hmacHash.Write(ppd.ConnData.CookieStore.PrevCookie[:])
-				prevCookieHmac := ppd.hmacHash.Sum(nil)
-				return bytes.Equal(prevCookieHmac, ppd.header.HMACBytes())
-			} else {
-				// use current cookie
-				ppd.hmacHash.Write(ppd.ConnData.CookieStore.CurrCookie[:])
-				cookieHmac := ppd.hmacHash.Sum(nil)
-				return bytes.Equal(cookieHmac, ppd.header.HMACBytes())
+		// Re-derive the cookie this server (or any sibling sharing the
+		// same signing key) would have minted for this remote endpoint
+		// in the current + previous time window, and accept either. Two
+		// windows cover both the slow agent that takes a moment to
+		// round-trip and the window-boundary case where a cookie minted
+		// just before the rollover gets used just after.
+		//
+		// Only reachable on NHP_SERVER under Overload (validatePeer
+		// gates the sumCookie=true case behind those two conditions);
+		// startup guarantees a signing key is installed, so missing
+		// params here is a programmer error.
+		key, win := ppd.device.StatelessCookieParams()
+		if len(key) == 0 || win <= 0 {
+			log.Critical("checkHMAC(sumCookie): device has no stateless cookie params")
+			return false
+		}
+		// The agent computes its HMAC as
+		//   Hash(InitialHashString || ServerPubKey || header[:len] || cookie)
+		// (initiator.go addHMAC, after the Init+PubKey seeding in
+		// createMsgAssemblerData / setPeerPublicKey).
+		// Reconstruct that exact byte sequence for each candidate cookie
+		// — don't try to clone ppd.hmacHash's intermediate state, since
+		// hash.Hash isn't guaranteed to support state cloning across all
+		// our cipher suites (blake2s/sm3/sha256).
+		headerHmac := ppd.header.HMACBytes()
+		serverPubKey := ppd.deviceEcdh.PublicKey()
+		headerPrefix := ppd.header.Bytes()[0:headerPrefixLen]
+		remote := cookieRemoteKey(ppd.ConnData.RemoteAddr)
+		currWindow := time.Now().Unix() / win
+		for _, w := range [2]int64{currWindow, currWindow - 1} {
+			cookie := deriveStatelessCookie(key, remote, w)
+			h, err := NewHash(ppd.Ciphers.HashType)
+			if err != nil {
+				return false
+			}
+			h.Write([]byte(InitialHashString))
+			h.Write(serverPubKey)
+			h.Write(headerPrefix)
+			h.Write(cookie)
+			if bytes.Equal(h.Sum(nil), headerHmac) {
+				return true
 			}
 		}
+		return false
 	} else {
 		calculatedHmac := ppd.hmacHash.Sum(nil)
 		headerHmac := ppd.header.HMACBytes()

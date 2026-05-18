@@ -71,6 +71,14 @@ type Device struct {
 	pool     *PacketBufferPool
 	Overload atomic.Bool
 
+	// cookieSigningKey, when non-nil, switches overload-mode cookies onto a
+	// stateless derivation path so any instance in a multi-server cluster
+	// can mint and verify a peer's cookie without shared session state.
+	// Only consulted on NHP_SERVER; safe to leave nil elsewhere.
+	cookieSigningMu     sync.RWMutex
+	cookieSigningKey    []byte // 32 bytes
+	cookieTimeWindowSec int64  // seconds; 0 means "stateless cookies disabled"
+
 	wg      sync.WaitGroup
 	signals struct {
 		stop chan struct{}
@@ -122,6 +130,32 @@ func (d *Device) SetOption(option DeviceOptions) {
 	defer d.optionMutex.Unlock()
 
 	d.option = option
+}
+
+// SetStatelessCookieParams installs the cluster-wide cookie HMAC key and the
+// time window (in seconds) used for derivation. Passing a nil/zero-length key
+// or non-positive window disables the stateless path; the device falls back
+// to per-connection CookieStore behaviour (single-instance only).
+func (d *Device) SetStatelessCookieParams(key []byte, windowSec int) {
+	d.cookieSigningMu.Lock()
+	defer d.cookieSigningMu.Unlock()
+
+	if len(key) == 0 || windowSec <= 0 {
+		d.cookieSigningKey = nil
+		d.cookieTimeWindowSec = 0
+		return
+	}
+	d.cookieSigningKey = append([]byte(nil), key...)
+	d.cookieTimeWindowSec = int64(windowSec)
+}
+
+// StatelessCookieParams returns the configured signing key and window, or
+// (nil, 0) when stateless cookies are disabled. The returned slice is the
+// internal buffer — callers must treat it as read-only.
+func (d *Device) StatelessCookieParams() ([]byte, int64) {
+	d.cookieSigningMu.RLock()
+	defer d.cookieSigningMu.RUnlock()
+	return d.cookieSigningKey, d.cookieTimeWindowSec
 }
 
 func (d *Device) Start() {

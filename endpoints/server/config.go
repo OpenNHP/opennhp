@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,23 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 )
+
+// decodeCookieSigningKey parses a base64-encoded 32-byte cookie signing
+// key. An empty input yields (nil, nil): the caller will fall back to a
+// random per-process key, which is fine for single-instance deployments.
+func decodeCookieSigningKey(b64 string) ([]byte, error) {
+	if b64 == "" {
+		return nil, nil
+	}
+	raw, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return nil, fmt.Errorf("base64 decode failed: %w", err)
+	}
+	if len(raw) != 32 {
+		return nil, fmt.Errorf("cookie signing key must be exactly 32 bytes after base64 decode, got %d", len(raw))
+	}
+	return raw, nil
+}
 
 var (
 	baseConfigWatch  io.Closer
@@ -74,6 +92,29 @@ type Config struct {
 	// private-range SourceAddr it wants into the server's connection map
 	// and the downstream AC ipset whitelist.
 	AllowPrivateRelaySource bool `json:"allowPrivateRelaySource"`
+
+	// CookieSigningKeyBase64 is a base64-encoded 32-byte HMAC key used to
+	// derive overload-mode cookies statelessly from (remoteAddr || time
+	// window). When multiple nhp-server instances sit behind a load
+	// balancer / round-robin DNS, an agent's KNK and its follow-up RKN may
+	// land on different instances; with per-instance random cookie state
+	// (the legacy CookieStore), the second instance can't validate the
+	// cookie issued by the first, and the handshake stalls. Sharing this
+	// signing key across every instance in the cluster lets any of them
+	// independently mint and verify the same cookie.
+	//
+	// Format: base64 of exactly 32 bytes. If empty, the server generates a
+	// random per-process key at startup — fine for single-instance
+	// deployments, broken for multi-instance ones (the failure mode is the
+	// same as the legacy CookieStore: cookies don't cross instances).
+	// Generate one with:   head -c 32 /dev/urandom | base64
+	CookieSigningKeyBase64 string `json:"cookieSigningKey"`
+
+	// CookieTimeWindowSeconds is the rolling time window used in cookie
+	// derivation. The current and previous window are both accepted on
+	// verify, so an agent has between [window, 2*window] seconds to use a
+	// cookie before it expires. Default 60s if unset / non-positive.
+	CookieTimeWindowSeconds int `json:"cookieTimeWindowSeconds"`
 
 	// ForceOverload pins the device's Overload flag to true at startup,
 	// short-circuiting the connection-count-driven trigger. The normal
@@ -528,7 +569,48 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 		s.config.DefaultCipherScheme = conf.DefaultCipherScheme
 	}
 
+	// Cookie signing key / window: only re-apply when the operator
+	// actually changed something AND the new key parses. A blanked-out
+	// field on reload is treated as "leave the running key alone" rather
+	// than silently regenerating a random one (that'd break a cluster on
+	// the next reload). Window-only updates are allowed.
+	keyChanged := s.config.CookieSigningKeyBase64 != conf.CookieSigningKeyBase64
+	windowChanged := s.config.CookieTimeWindowSeconds != conf.CookieTimeWindowSeconds
+	if (keyChanged || windowChanged) && s.device != nil {
+		newKey, err := decodeCookieSigningKey(conf.CookieSigningKeyBase64)
+		if err != nil {
+			log.Warning("ignoring CookieSigningKeyBase64 change: %v (keeping running key)", err)
+		} else {
+			currKey, currWin := s.device.StatelessCookieParams()
+			if len(newKey) == 0 && keyChanged {
+				log.Warning("CookieSigningKeyBase64 cleared on reload; keeping previous key in memory")
+				newKey = currKey
+			}
+			newWin := conf.CookieTimeWindowSeconds
+			if newWin <= 0 {
+				newWin = DefaultCookieTimeWindowSeconds
+			}
+			if !bytesEqualConstantTime(newKey, currKey) || int64(newWin) != currWin {
+				s.device.SetStatelessCookieParams(newKey, newWin)
+				log.Info("stateless cookie params updated (window=%ds, keyChanged=%v)", newWin, !bytesEqualConstantTime(newKey, currKey))
+			}
+		}
+		s.config.CookieSigningKeyBase64 = conf.CookieSigningKeyBase64
+		s.config.CookieTimeWindowSeconds = conf.CookieTimeWindowSeconds
+	}
+
 	return err
+}
+
+func bytesEqualConstantTime(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	var diff byte
+	for i := range a {
+		diff |= a[i] ^ b[i]
+	}
+	return diff == 0
 }
 
 func (s *UdpServer) updateHttpConfig(httpConf HttpConfig) (err error) {

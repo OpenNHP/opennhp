@@ -28,3 +28,12 @@ const (
 	ACOpenCompensationTime    = 5   // second
 	TokenStoreRefreshInterval = common.TokenStoreRefreshInterval
 )
+
+// cookie
+const (
+	// DefaultCookieTimeWindowSeconds is the rolling window used for
+	// stateless cookie derivation when Config.CookieTimeWindowSeconds is
+	// unset or non-positive. Verification accepts current + previous
+	// window, so an agent has [60, 120) seconds to redeem a cookie.
+	DefaultCookieTimeWindowSeconds = 60
+)

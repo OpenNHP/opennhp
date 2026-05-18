@@ -32,45 +32,46 @@ type KnockUser struct {
 	UserData       map[string]any
 }
 
+// KnockResource binds an (AuthServiceId, ResourceId) pair to the
+// nhp-server cluster responsible for it. Exactly one of the two server
+// reference fields below must be set; configuring both at load time is
+// rejected. Picking one over the other:
+//
+//   - Cluster (preferred for resource.toml): a stable, operator-friendly
+//     label that survives key rotation. The agent looks the cluster up
+//     in server.toml's Name index, so rotating the cluster's pubkey
+//     touches only server.toml.
+//
+//   - ServerPubKey (preferred for programmatic / SDK callers): the raw
+//     base64 pubkey of the target cluster, used when the caller doesn't
+//     have a name to reference (e.g. C export building a KnockResource
+//     on the fly).
+//
+// The legacy ServerHostname/ServerIp/ServerPort fields were removed:
+// they were ignored whenever ServerPubKey was set, which let
+// resource.toml display addresses that the agent never dialed.
 type KnockResource struct {
-	AuthServiceId  string `json:"aspId"`
-	ResourceId     string `json:"resId"`
-	ServerHostname string `json:"serverHostname"`
-	ServerIp       string `json:"serverIp"`
-	ServerPort     int    `json:"serverPort"`
+	AuthServiceId string `json:"aspId"`
+	ResourceId    string `json:"resId"`
 
-	// ServerPubKey is the base64-encoded pubkey of the cluster this
-	// resource targets. Preferred over ServerHostname/ServerIp because
-	// it's stable across DNS changes, NAT, and instance churn within a
-	// cluster. When set, FindServerClusterFromResource matches on
-	// pubkey alone and ignores the host fields entirely.
-	//
-	// Optional: when empty, the legacy host:port match against any
-	// instance in any cluster is used (preserves the pre-cluster
-	// behaviour for unmigrated resource configs).
-	ServerPubKey string `json:"serverPubKey,omitempty"`
+	// Cluster is the human-readable Name of an entry in server.toml.
+	// Preferred form for resource.toml.
+	Cluster string `json:"cluster,omitempty" toml:"Cluster"`
+
+	// ServerPubKey is the base64-encoded pubkey of the target cluster.
+	// Kept for programmatic callers (SDK) that build a KnockResource
+	// without a config-file context. Mutually exclusive with Cluster
+	// at load time.
+	ServerPubKey string `json:"serverPubKey,omitempty" toml:"ServerPubKey"`
 }
 
 func (res *KnockResource) Id() string {
 	return res.AuthServiceId + "/" + res.ResourceId
 }
 
-// ServerPubKeyBase64 returns the resource's preferred cluster pubkey,
-// or "" when the resource hasn't been migrated to pubkey-based
-// routing.
+// ServerPubKeyBase64 returns the resource's configured pubkey, or "".
 func (res *KnockResource) ServerPubKeyBase64() string {
 	return res.ServerPubKey
-}
-
-func (res *KnockResource) ServerHost() string {
-	hostAddr := res.ServerIp
-	if len(res.ServerHostname) > 0 {
-		hostAddr = res.ServerHostname
-	}
-	if res.ServerPort == 0 {
-		return hostAddr
-	}
-	return fmt.Sprintf("%s:%d", hostAddr, res.ServerPort)
 }
 
 type KnockTarget struct {
@@ -250,8 +251,9 @@ type UdpAgent struct {
 	// cluster (it keys on pubkey, so it can hold at most one per
 	// cluster anyway); per-instance addresses live here and are used
 	// at send time.
-	serverPeerMutex  sync.Mutex
-	serverClusterMap map[string]*ServerCluster
+	serverPeerMutex     sync.Mutex
+	serverClusterMap    map[string]*ServerCluster // indexed by PublicKeyBase64
+	serverClusterByName map[string]*ServerCluster // indexed by ClusterConfig.Name; shares the same *ServerCluster values
 
 	device  *core.Device
 	wg      sync.WaitGroup
@@ -339,6 +341,7 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	// callers like AddServer / GetFirstServerPeer touch it on
 	// agents that haven't loaded a server.toml yet.
 	a.serverClusterMap = make(map[string]*ServerCluster)
+	a.serverClusterByName = make(map[string]*ServerCluster)
 
 	// load peers
 	_ = a.loadPeers()
@@ -857,8 +860,12 @@ func (a *UdpAgent) AddServer(server *core.UdpPeer) {
 	if displayHost == "" {
 		displayHost = server.Ip
 	}
+	// SDK callers don't supply a Name; fall back to the pubkey itself
+	// so the name index has a valid entry. Resource lookups from these
+	// SDK-built clusters must use ServerPubKey, not Cluster name.
 	sc := &ServerCluster{
 		PublicKeyBase64: server.PublicKeyBase64(),
+		Name:            server.PublicKeyBase64(),
 		Sticky:          true,
 		instances: []*ServerInstance{{
 			peer:     server,
@@ -870,12 +877,19 @@ func (a *UdpAgent) AddServer(server *core.UdpPeer) {
 	sc.picker = loadbalance.NewPicker(loadbalance.DefaultScheme, sc.instances)
 
 	a.serverPeerMutex.Lock()
+	if prev, ok := a.serverClusterMap[server.PublicKeyBase64()]; ok {
+		delete(a.serverClusterByName, prev.Name)
+	}
 	a.serverClusterMap[server.PublicKeyBase64()] = sc
+	a.serverClusterByName[sc.Name] = sc
 	a.serverPeerMutex.Unlock()
 }
 
 func (a *UdpAgent) RemoveServer(serverKey string) {
 	a.serverPeerMutex.Lock()
+	if prev, ok := a.serverClusterMap[serverKey]; ok {
+		delete(a.serverClusterByName, prev.Name)
+	}
 	delete(a.serverClusterMap, serverKey)
 	a.serverPeerMutex.Unlock()
 	a.device.RemovePeer(serverKey)
@@ -937,39 +951,44 @@ func (a *UdpAgent) RemoveResource(aspId string, resId string) {
 }
 
 // FindServerClusterFromResource picks the cluster a resource is bound
-// to. Matching priority:
+// to. Exactly one reference field must be set on the resource:
 //
-//  1. If the resource's ServerPubKeyBase64 is set, match by pubkey.
-//     This is the strong/preferred form — survives DNS changes,
-//     ambiguous hostnames, and instance churn within a cluster.
+//  1. Cluster — looked up in the by-name index. Preferred form; used by
+//     resource.toml so operators don't have to paste base64 pubkeys.
 //
-//  2. Otherwise, fall back to legacy host:port matching against any
-//     instance in the cluster (matches the pre-cluster behaviour for
-//     resource configs that haven't been updated).
+//  2. ServerPubKey — looked up by pubkey. Used by SDK callers that build
+//     a KnockResource programmatically without a config-file context.
 //
-// Returns nil if no cluster matches.
+// Returns nil when both fields are empty, both are set, or the
+// referenced cluster is unknown. The caller logs the failure; we
+// don't silently fall through to a different lookup strategy because
+// that would route the resource to the wrong identity.
 func (a *UdpAgent) FindServerClusterFromResource(res *KnockResource) *ServerCluster {
 	a.serverPeerMutex.Lock()
 	defer a.serverPeerMutex.Unlock()
 
-	if pk := res.ServerPubKeyBase64(); pk != "" {
+	name := res.Cluster
+	pk := res.ServerPubKey
+	switch {
+	case name == "" && pk == "":
+		log.Error("resource %s has neither Cluster nor ServerPubKey set", res.Id())
+		return nil
+	case name != "" && pk != "":
+		log.Error("resource %s sets both Cluster (%q) and ServerPubKey — pick one", res.Id(), name)
+		return nil
+	case name != "":
+		if sc, ok := a.serverClusterByName[name]; ok {
+			return sc
+		}
+		log.Error("resource %s references unknown cluster %q (check server.toml [[Servers]] Name fields)", res.Id(), name)
+		return nil
+	default: // pk != ""
 		if sc, ok := a.serverClusterMap[pk]; ok {
 			return sc
 		}
-		// pubkey configured but unknown — don't silently fall through
-		// to host matching, that would route to the wrong identity.
+		log.Error("resource %s references unknown ServerPubKey (no cluster in server.toml has this pubkey)", res.Id())
 		return nil
 	}
-
-	want := res.ServerHost()
-	for _, sc := range a.serverClusterMap {
-		for _, inst := range sc.instances {
-			if inst.peer.Host() == want {
-				return sc
-			}
-		}
-	}
-	return nil
 }
 
 // FindServerPeerFromResource is kept for compatibility with the legacy

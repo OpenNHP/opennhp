@@ -2,9 +2,18 @@ package agent
 
 import (
 	"fmt"
+	"regexp"
 
 	"github.com/OpenNHP/opennhp/nhp/common/loadbalance"
 )
+
+// clusterNameRegex constrains cluster names to a TOML- and shell-safe
+// subset. Names appear unquoted in resource.toml (Cluster = "...") and
+// in log lines, so we forbid whitespace, '/', and quoting characters
+// up front rather than discovering the encoding bugs at runtime.
+var clusterNameRegex = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+
+const clusterNameMaxLen = 64
 
 // ClusterConfig is the TOML shape of one [[Servers]] entry. Two forms
 // are accepted:
@@ -90,6 +99,18 @@ func normalizeClusters(clusters []*ClusterConfig, deprecate func(string, ...any)
 		if c.PubKeyBase64 == "" {
 			return fmt.Errorf("agent: [[Servers]][%d] missing PubKeyBase64", i)
 		}
+		if c.Name == "" {
+			return fmt.Errorf("agent: [[Servers]][%d] (%s) missing Name — clusters are referenced from resource.toml by Name",
+				i, c.PubKeyBase64)
+		}
+		if len(c.Name) > clusterNameMaxLen {
+			return fmt.Errorf("agent: [[Servers]][%d] Name %q exceeds %d chars",
+				i, c.Name, clusterNameMaxLen)
+		}
+		if !clusterNameRegex.MatchString(c.Name) {
+			return fmt.Errorf("agent: [[Servers]][%d] Name %q invalid — allowed chars: [a-zA-Z0-9._-]",
+				i, c.Name)
+		}
 
 		legacy := c.hasLegacyFields()
 		hasInstances := len(c.Instances) > 0
@@ -141,14 +162,26 @@ func normalizeClusters(clusters []*ClusterConfig, deprecate func(string, ...any)
 	// would race for the same slot in device.peerMap. Catch it here
 	// so the error is obvious at load rather than as a mysterious
 	// "wrong instance answered" at runtime.
-	seen := make(map[string]int, len(clusters))
+	seenPK := make(map[string]int, len(clusters))
 	for i, c := range clusters {
-		if prev, ok := seen[c.PubKeyBase64]; ok {
+		if prev, ok := seenPK[c.PubKeyBase64]; ok {
 			return fmt.Errorf("agent: [[Servers]][%d] and [[Servers]][%d] share PubKeyBase64 %s — "+
 				"merge them into one cluster with multiple Instances",
 				prev, i, c.PubKeyBase64)
 		}
-		seen[c.PubKeyBase64] = i
+		seenPK[c.PubKeyBase64] = i
+	}
+
+	// Duplicate Name detection — resource.toml references clusters by
+	// Name, so collisions would silently route to whichever entry won
+	// the map-insert race. Reject at load time.
+	seenName := make(map[string]int, len(clusters))
+	for i, c := range clusters {
+		if prev, ok := seenName[c.Name]; ok {
+			return fmt.Errorf("agent: [[Servers]][%d] and [[Servers]][%d] share Name %q",
+				prev, i, c.Name)
+		}
+		seenName[c.Name] = i
 	}
 	return nil
 }

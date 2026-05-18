@@ -56,10 +56,12 @@ cookie = HMAC-SHA256(CookieSigningKey, remoteIP || windowIndex)
 
 ### 1.2 资源 → 集群绑定
 
-[`FindServerClusterFromResource`](../../endpoints/agent/udpagent.go#L951-L973) 双路匹配：
+[`FindServerClusterFromResource`](../../endpoints/agent/udpagent.go)——`resource.toml` 必须二选一设置引用字段（同时设置或都不设置都会被拒）：
 
-1. **优先 pubkey**：`KnockResource.ServerPubKey` 非空时按 pubkey 查 `serverClusterMap`；命中即返回，命中失败 **不再回落** 到 host 匹配（pubkey 显式错配是路由 bug）。
-2. **遗留 host:port**：`ServerPubKey` 为空时，对所有集群所有实例做 host:port 线性匹配，保留老 `resource.toml` 兼容性。
+1. **`Cluster`**（`resource.toml` 推荐）：人友好的集群名，从 `serverClusterByName` 索引查。公钥 rotate 时只需要改 `server.toml`，`resource.toml` 不动。
+2. **`ServerPubKey`**（SDK 推荐）：集群的 base64 公钥，给程序化构造 `KnockResource` 的调用方用（如 `endpoints/agent/main/export.go`、`endpoints/agent/iossdk/export.go`）。
+
+查不到 → 返回 nil 并打错误日志。**不再有** host:port 兜底——原先的 `ServerHostname/ServerIp/ServerPort` 字段已删掉，因为它们在 `ServerPubKey` 设置时被代码无声忽略，会让 `resource.toml` 显示出 agent 实际从不访问的地址。
 
 ### 1.3 实例选择（PickInstance）
 
@@ -258,7 +260,7 @@ flowchart TD
 | 端点 | 文件 | 关键字段 |
 | --- | --- | --- |
 | Agent | `server.toml` | `PubKeyBase64`, `LoadBalance`, `StickyInstance`, `[[Servers.Instances]]` |
-| Agent | `resource.toml` | `ServerPubKey`（推荐）或遗留 `ServerHostname/Ip/Port` |
+| Agent | `resource.toml` | `Cluster`（引用 `server.toml` 的 Name）—— 必填；SDK 调用方可改用 `ServerPubKey` |
 | AC | `server.toml` | `PubKeyBase64`, `Endpoints = ["ip:port", ...]` |
 | Relay | `config.toml` | `[[Clusters]]` + `LoadBalance` + `[[Clusters.Instances]]` |
 | Server（前置依赖） | `config.toml` | `CookieSigningKeyBase64`, `CookieTimeWindowSeconds` |
@@ -272,4 +274,4 @@ flowchart TD
 3. AC 的 `[[Servers]]` 已用 `Endpoints` 列出所有副本地址。
 4. Relay 的 `[[Clusters.Instances]]` 已列出所有副本；负载均衡策略与 Agent 一致更便于排查。
 5. Agent 端 `StickyInstance` 与服务端的 cookie 共享情况匹配（共享 → 可设 false；不共享 → 必须 true）。
-6. Resources 尽量使用 `ServerPubKey` 绑定集群，而非具体 `ServerHostname/Ip`。
+6. Resources 通过名字绑定集群（`Cluster = "<server.toml Name>"`）；公钥 rotate 时只动 `server.toml`，`resource.toml` 不需要修改。

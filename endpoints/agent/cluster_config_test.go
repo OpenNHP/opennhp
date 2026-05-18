@@ -29,6 +29,7 @@ func (r *recordingDeprecate) Warn(format string, args ...any) {
 func TestNormalize_LegacyFlatFormUpgrades(t *testing.T) {
 	rec := &recordingDeprecate{}
 	cfgs := []*ClusterConfig{{
+		Name:         "c1",
 		PubKeyBase64: "k1",
 		Hostname:     "server1.example.com",
 		Ip:           "10.0.0.1",
@@ -63,6 +64,7 @@ func TestNormalize_LegacyFlatFormUpgrades(t *testing.T) {
 func TestNormalize_ClusterFormSilent(t *testing.T) {
 	rec := &recordingDeprecate{}
 	cfgs := []*ClusterConfig{{
+		Name:         "c1",
 		PubKeyBase64: "k1",
 		Instances: []InstanceConfig{
 			{Ip: "10.0.0.1", Port: 62206, Weight: 1},
@@ -83,6 +85,7 @@ func TestNormalize_ClusterFormSilent(t *testing.T) {
 // resolve the ambiguity rather than silently dropping one form.
 func TestNormalize_RejectsMixedForms(t *testing.T) {
 	cfgs := []*ClusterConfig{{
+		Name:         "c1",
 		PubKeyBase64: "k1",
 		Ip:           "10.0.0.1",
 		Port:         62206,
@@ -102,7 +105,7 @@ func TestNormalize_RejectsMixedForms(t *testing.T) {
 // useless — fail load rather than booting an agent that silently
 // can't reach any server.
 func TestNormalize_RejectsEmpty(t *testing.T) {
-	cfgs := []*ClusterConfig{{PubKeyBase64: "k1"}}
+	cfgs := []*ClusterConfig{{Name: "c1", PubKeyBase64: "k1"}}
 	err := normalizeClusters(cfgs, (&recordingDeprecate{}).Warn)
 	if err == nil {
 		t.Fatal("normalize must reject entry with no instances and no legacy fields")
@@ -117,10 +120,12 @@ func TestNormalize_RejectsEmpty(t *testing.T) {
 func TestNormalize_DuplicatePubKeyRejected(t *testing.T) {
 	cfgs := []*ClusterConfig{
 		{
+			Name:         "c1",
 			PubKeyBase64: "samekey",
 			Instances:    []InstanceConfig{{Ip: "10.0.0.1", Port: 62206}},
 		},
 		{
+			Name:         "c2",
 			PubKeyBase64: "samekey",
 			Instances:    []InstanceConfig{{Ip: "10.0.0.2", Port: 62206}},
 		},
@@ -140,6 +145,7 @@ func TestNormalize_DuplicatePubKeyRejected(t *testing.T) {
 // weighted-random.
 func TestNormalize_DefaultsAndZeroWeight(t *testing.T) {
 	cfgs := []*ClusterConfig{{
+		Name:         "c1",
 		PubKeyBase64: "k1",
 		Instances: []InstanceConfig{
 			{Ip: "10.0.0.1", Port: 62206}, // no Weight set
@@ -163,6 +169,7 @@ func TestNormalize_DefaultsAndZeroWeight(t *testing.T) {
 // degraded-but-running is a worse failure mode than refusing to boot.
 func TestNormalize_RejectsBadScheme(t *testing.T) {
 	cfgs := []*ClusterConfig{{
+		Name:         "c1",
 		PubKeyBase64: "k1",
 		LoadBalance:  "weighted_random", // underscore typo
 		Instances:    []InstanceConfig{{Ip: "10.0.0.1", Port: 62206}},
@@ -197,6 +204,7 @@ func TestStickyOrDefault(t *testing.T) {
 // passing the wrong slice or scheme to NewPicker).
 func TestBuildCluster_PickRespectsScheme(t *testing.T) {
 	cfg := &ClusterConfig{
+		Name:         "c1",
 		PubKeyBase64: "k1",
 		LoadBalance:  loadbalance.SchemeRoundRobin,
 		Instances: []InstanceConfig{
@@ -238,6 +246,7 @@ func TestBuildCluster_PickRespectsScheme(t *testing.T) {
 // failure mode in non-stateless clusters.
 func TestKnockTarget_StickyHonored(t *testing.T) {
 	cfg := &ClusterConfig{
+		Name:         "c1",
 		PubKeyBase64: "k1",
 		LoadBalance:  loadbalance.SchemeRoundRobin,
 		Instances: []InstanceConfig{
@@ -283,6 +292,7 @@ func TestKnockTarget_StickyHonored(t *testing.T) {
 func TestKnockTarget_NonStickyRotates(t *testing.T) {
 	fa := false
 	cfg := &ClusterConfig{
+		Name:           "c1",
 		PubKeyBase64:   "k1",
 		LoadBalance:    loadbalance.SchemeRoundRobin,
 		StickyInstance: &fa,
@@ -308,5 +318,59 @@ func TestKnockTarget_NonStickyRotates(t *testing.T) {
 	}
 	if len(seen) < 2 {
 		t.Fatalf("non-sticky PickInstance pinned to one instance %v — sticky knob ignored", seen)
+	}
+}
+
+// TestNormalize_NameRequired: Name is the operator-facing handle used
+// from resource.toml (Cluster = "..."). A missing Name turns the
+// resource lookup into "you forgot a string", which is a much worse
+// failure mode at runtime than refusing to boot.
+func TestNormalize_NameRequired(t *testing.T) {
+	cfgs := []*ClusterConfig{{
+		PubKeyBase64: "k1",
+		Instances:    []InstanceConfig{{Ip: "10.0.0.1", Port: 62206}},
+	}}
+	err := normalizeClusters(cfgs, (&recordingDeprecate{}).Warn)
+	if err == nil || !strings.Contains(err.Error(), "Name") {
+		t.Fatalf("normalize must require Name, got: %v", err)
+	}
+}
+
+// TestNormalize_NameCharsetRejected: names appear unquoted in
+// resource.toml and in log lines; whitespace or quoting characters
+// would force escaping at every callsite. Reject up front.
+func TestNormalize_NameCharsetRejected(t *testing.T) {
+	for _, bad := range []string{"has space", `with"quote`, "slash/path", "back\\slash"} {
+		cfgs := []*ClusterConfig{{
+			Name:         bad,
+			PubKeyBase64: "k1",
+			Instances:    []InstanceConfig{{Ip: "10.0.0.1", Port: 62206}},
+		}}
+		err := normalizeClusters(cfgs, (&recordingDeprecate{}).Warn)
+		if err == nil {
+			t.Fatalf("normalize must reject Name %q", bad)
+		}
+	}
+}
+
+// TestNormalize_DuplicateNameRejected: two clusters sharing a Name
+// would cause silent routing to whichever entry won the map-insert
+// race in updateServerPeers. Catch at load.
+func TestNormalize_DuplicateNameRejected(t *testing.T) {
+	cfgs := []*ClusterConfig{
+		{
+			Name:         "samename",
+			PubKeyBase64: "k1",
+			Instances:    []InstanceConfig{{Ip: "10.0.0.1", Port: 62206}},
+		},
+		{
+			Name:         "samename",
+			PubKeyBase64: "k2",
+			Instances:    []InstanceConfig{{Ip: "10.0.0.2", Port: 62206}},
+		},
+	}
+	err := normalizeClusters(cfgs, (&recordingDeprecate{}).Warn)
+	if err == nil || !strings.Contains(err.Error(), "samename") {
+		t.Fatalf("normalize must reject duplicate Name, got: %v", err)
 	}
 }

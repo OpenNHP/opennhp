@@ -231,6 +231,7 @@ func (a *UdpAgent) updateServerPeers(file string) (err error) {
 	}
 
 	newMap := make(map[string]*ServerCluster, len(peers.Servers))
+	newByName := make(map[string]*ServerCluster, len(peers.Servers))
 	for _, cfg := range peers.Servers {
 		sc, berr := buildCluster(cfg)
 		if berr != nil {
@@ -239,6 +240,7 @@ func (a *UdpAgent) updateServerPeers(file string) (err error) {
 		}
 		a.device.AddPeer(sc.representativePeer)
 		newMap[sc.PublicKeyBase64] = sc
+		newByName[sc.Name] = sc
 	}
 
 	// Swap atomically, then drop peers from device that no longer
@@ -249,6 +251,7 @@ func (a *UdpAgent) updateServerPeers(file string) (err error) {
 	a.serverPeerMutex.Lock()
 	old := a.serverClusterMap
 	a.serverClusterMap = newMap
+	a.serverClusterByName = newByName
 	a.serverPeerMutex.Unlock()
 
 	for pubKey := range old {

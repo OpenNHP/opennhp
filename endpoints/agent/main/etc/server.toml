@@ -1,11 +1,14 @@
 # list the server peers for the agent under [[Servers]] table
 
+# Name: cluster identifier, referenced from resource.toml's Cluster = "..."
+#   field. Allowed chars: [a-zA-Z0-9._-], max 64.
 # Hostname: the domain of the server peer. If specified, it overrides the "Ip" field with its first resolved address.
 # Ip: specify the ip address of the server peer
 # Port: specify the port number of this server peer is listening
 # PubKeyBase64: public key of the server peer in base64 format
 # ExpireTime (epoch timestamp in seconds): peer key validation will fail when it expires.
 [[Servers]]
+Name = "default"
 Hostname = ""
 Ip = "192.168.80.35"
 Port = 62206

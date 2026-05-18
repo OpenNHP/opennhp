@@ -56,10 +56,12 @@ cookie = HMAC-SHA256(CookieSigningKey, remoteIP || windowIndex)
 
 ### 1.2 Resource → cluster binding
 
-[`FindServerClusterFromResource`](../endpoints/agent/udpagent.go#L951-L973) — two-tier match:
+[`FindServerClusterFromResource`](../endpoints/agent/udpagent.go) — exactly one reference field must be set on the resource; the function rejects both-set and neither-set:
 
-1. **Prefer pubkey**: if `KnockResource.ServerPubKey` is set, look up in `serverClusterMap` by pubkey; on miss, **do not fall through** to host matching (an explicit pubkey miss is a routing bug, not a config nuance).
-2. **Legacy host:port fallback**: when `ServerPubKey` is empty, scan all clusters' instances by host:port. Preserves the pre-cluster behavior for unmigrated `resource.toml`.
+1. **`Cluster`** (preferred for `resource.toml`): operator-friendly cluster name. Looked up in the by-name index (`serverClusterByName`); stable across pubkey rotation because rotating a key only touches `server.toml`.
+2. **`ServerPubKey`** (preferred for SDK callers): base64 pubkey of the target cluster. Used by programmatic callers (`endpoints/agent/main/export.go`, `endpoints/agent/iossdk/export.go`) that don't have a config-file context.
+
+Unknown name → `nil` + error log. There is **no** host:port fallback — the previous `ServerHostname/ServerIp/ServerPort` fields were removed because they were silently ignored whenever `ServerPubKey` was set, which let `resource.toml` display addresses that the agent never dialed.
 
 ### 1.3 Instance selection (PickInstance)
 
@@ -258,7 +260,7 @@ flowchart TD
 | Endpoint | File | Key fields |
 | --- | --- | --- |
 | Agent | `server.toml` | `PubKeyBase64`, `LoadBalance`, `StickyInstance`, `[[Servers.Instances]]` |
-| Agent | `resource.toml` | `ServerPubKey` (preferred) or legacy `ServerHostname/Ip/Port` |
+| Agent | `resource.toml` | `Cluster` (cluster name from `server.toml`) — required unless a programmatic caller sets `ServerPubKey` |
 | AC | `server.toml` | `PubKeyBase64`, `Endpoints = ["ip:port", ...]` |
 | Relay | `config.toml` | `[[Clusters]]` + `LoadBalance` + `[[Clusters.Instances]]` |
 | Server (prerequisite) | `config.toml` | `CookieSigningKeyBase64`, `CookieTimeWindowSeconds` |
@@ -272,4 +274,4 @@ Before deploying a cluster, confirm:
 3. AC's `[[Servers]]` lists every replica address under `Endpoints`.
 4. Relay's `[[Clusters.Instances]]` lists every replica; matching the agent's load-balance scheme makes diagnosis simpler.
 5. Agent's `StickyInstance` matches what the server side actually supports (shared cookie keys → safe to set false; not shared → must stay true).
-6. Resources bind to clusters via `ServerPubKey` where possible, not via concrete `ServerHostname/Ip`.
+6. Resources bind to clusters by name (`Cluster = "<server.toml Name>"`); pubkey rotation only touches `server.toml`, never `resource.toml`.

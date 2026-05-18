@@ -28,7 +28,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net"
 	"net/http"
 	"sort"
@@ -38,6 +37,7 @@ import (
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
+	"github.com/OpenNHP/opennhp/nhp/common/loadbalance"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	log "github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
@@ -94,6 +94,12 @@ type clusterInstance struct {
 	pendingRequests map[uint64]map[string]chan []byte
 }
 
+// Weight satisfies loadbalance.Weighted so the shared Picker can rank
+// instances. Weight=0 is treated as 1 inside the picker, matching
+// normalize()'s policy of "every instance gets at least baseline
+// traffic even if the operator forgot to set Weight".
+func (ci *clusterInstance) Weight() int { return ci.weight }
+
 // clusterRuntime is the runtime state for one logical nhp-server cluster.
 type clusterRuntime struct {
 	id           string
@@ -103,16 +109,11 @@ type clusterRuntime struct {
 	scheme       LoadBalanceScheme
 	instances    []*clusterInstance
 
-	// rrCounter is the round-robin cursor; only meaningful when
-	// scheme == LBRoundRobin. atomic.Uint64 so picks across concurrent
-	// HTTP handlers don't need a mutex.
-	rrCounter atomic.Uint64
-
-	// totalWeight is the sum of inst.weight, precomputed once for the
-	// weighted-random scheme. Stays constant for the lifetime of the
-	// cluster runtime — no rebuild on instance churn because phase 2A
-	// has no instance churn (config reload rebuilds the whole cluster).
-	totalWeight int
+	// picker carries the load-balancing policy + per-scheme state
+	// (round-robin cursor, weight totals). Built once at cluster
+	// construction; config reload rebuilds the entire clusterRuntime,
+	// so picker churn is not a concern.
+	picker *loadbalance.Picker[*clusterInstance]
 }
 
 // pickInstance selects an instance to handle a new HTTP forward according to
@@ -128,51 +129,21 @@ type clusterRuntime struct {
 // onto md.RemoteAddr so the response-correlation map on the right instance
 // gets a hit.
 func (c *clusterRuntime) pickInstance() *clusterInstance {
-	if len(c.instances) == 0 {
+	if c.picker == nil {
+		// Defensive: a hand-built clusterRuntime missing the picker
+		// (only happens in tests that bypass buildCluster). Fall back
+		// to the first instance so the failure is visible rather than
+		// a nil-deref panic.
+		if len(c.instances) == 0 {
+			return nil
+		}
+		return c.instances[0]
+	}
+	inst, ok := c.picker.Pick()
+	if !ok {
 		return nil
 	}
-	if len(c.instances) == 1 {
-		return c.instances[0]
-	}
-
-	switch c.scheme {
-	case LBRoundRobin:
-		// Subtract 1 because Add returns the post-increment value; we want
-		// the first pick to land on index 0.
-		i := (c.rrCounter.Add(1) - 1) % uint64(len(c.instances))
-		return c.instances[i]
-
-	case LBRandom:
-		return c.instances[rand.IntN(len(c.instances))]
-
-	case LBWeightedRandom, "":
-		// Empty scheme defaults to weighted-random (config.normalize
-		// rewrites it, but be defensive in case a future code path
-		// constructs a clusterRuntime directly).
-		if c.totalWeight <= 0 {
-			// Defensive fallback: weights all zero shouldn't happen
-			// because normalize promotes weight=0 to weight=1, but if
-			// it does, behave like LBRandom rather than dividing by zero.
-			return c.instances[rand.IntN(len(c.instances))]
-		}
-		r := rand.IntN(c.totalWeight)
-		for _, inst := range c.instances {
-			r -= inst.weight
-			if r < 0 {
-				return inst
-			}
-		}
-		// Numerically unreachable (sum of weights == totalWeight); the
-		// fallthrough exists so the function has a return on every path.
-		return c.instances[len(c.instances)-1]
-
-	default:
-		// normalize() rejects unknown schemes at load time, so reaching
-		// here means someone constructed a clusterRuntime by hand with
-		// an invalid scheme. Pick the first instance so requests still
-		// flow rather than silently failing.
-		return c.instances[0]
-	}
+	return inst
 }
 
 // RelayServer is the NHP HTTP Relay service.
@@ -300,8 +271,8 @@ func (rs *RelayServer) buildCluster(c *Cluster) (*clusterRuntime, error) {
 			addr:            udpAddr,
 			pendingRequests: make(map[uint64]map[string]chan []byte),
 		})
-		cr.totalWeight += ci.Weight
 	}
+	cr.picker = loadbalance.NewPicker(cr.scheme, cr.instances)
 	return cr, nil
 }
 

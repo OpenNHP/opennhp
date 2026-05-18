@@ -7,9 +7,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/OpenNHP/opennhp/nhp/common/loadbalance"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
+
+// withPicker is a test helper that wires a clusterRuntime's picker for
+// hand-built (i.e. non-buildCluster) cluster instances. Production code
+// only ever reaches clusterRuntime via buildCluster, which sets picker;
+// the tests construct clusters directly to assert per-scheme behavior,
+// so they must mirror the same wiring.
+func withPicker(cr *clusterRuntime) *clusterRuntime {
+	cr.picker = loadbalance.NewPicker(cr.scheme, cr.instances)
+	return cr
+}
 
 // TestRealClientAddr covers the security-sensitive parts of how the
 // relay derives the originating client address: X-Real-IP must only be
@@ -140,11 +151,10 @@ func newAddrInstance(t *testing.T, host string, port, weight int) *clusterInstan
 // behavior and stays the same after lifting the multi-instance limit.
 func TestPickInstance_SingleInstance(t *testing.T) {
 	for _, scheme := range []LoadBalanceScheme{LBRandom, LBWeightedRandom, LBRoundRobin, "", "garbage"} {
-		cr := &clusterRuntime{
-			scheme:      scheme,
-			instances:   []*clusterInstance{newAddrInstance(t, "10.0.0.1", 62206, 1)},
-			totalWeight: 1,
-		}
+		cr := withPicker(&clusterRuntime{
+			scheme:    scheme,
+			instances: []*clusterInstance{newAddrInstance(t, "10.0.0.1", 62206, 1)},
+		})
 		for i := 0; i < 10; i++ {
 			if cr.pickInstance() != cr.instances[0] {
 				t.Fatalf("scheme=%q must always return the sole instance", scheme)
@@ -157,15 +167,14 @@ func TestPickInstance_SingleInstance(t *testing.T) {
 // in order. Deterministic, so we can assert an exact sequence rather than a
 // statistical bound.
 func TestPickInstance_RoundRobin(t *testing.T) {
-	cr := &clusterRuntime{
+	cr := withPicker(&clusterRuntime{
 		scheme: LBRoundRobin,
 		instances: []*clusterInstance{
 			newAddrInstance(t, "10.0.0.1", 62206, 1),
 			newAddrInstance(t, "10.0.0.2", 62206, 1),
 			newAddrInstance(t, "10.0.0.3", 62206, 1),
 		},
-		totalWeight: 3,
-	}
+	})
 	want := []*clusterInstance{cr.instances[0], cr.instances[1], cr.instances[2]}
 	// Two full cycles to confirm the cursor wraps cleanly.
 	for cycle := 0; cycle < 2; cycle++ {
@@ -184,15 +193,14 @@ func TestPickInstance_RoundRobin(t *testing.T) {
 // is effectively impossible to flake on a working implementation — the
 // probability of missing one instance for that many picks is < 10^-176.
 func TestPickInstance_Random(t *testing.T) {
-	cr := &clusterRuntime{
+	cr := withPicker(&clusterRuntime{
 		scheme: LBRandom,
 		instances: []*clusterInstance{
 			newAddrInstance(t, "10.0.0.1", 62206, 1),
 			newAddrInstance(t, "10.0.0.2", 62206, 1),
 			newAddrInstance(t, "10.0.0.3", 62206, 1),
 		},
-		totalWeight: 3,
-	}
+	})
 	hit := make(map[*clusterInstance]int)
 	for i := 0; i < 1000; i++ {
 		hit[cr.pickInstance()]++
@@ -211,15 +219,14 @@ func TestPickInstance_Random(t *testing.T) {
 // cumulative-weight loop) gets caught. The point of the test is the
 // invariant "weights actually influence distribution", not exact ratios.
 func TestPickInstance_WeightedRandom(t *testing.T) {
-	cr := &clusterRuntime{
+	cr := withPicker(&clusterRuntime{
 		scheme: LBWeightedRandom,
 		instances: []*clusterInstance{
 			newAddrInstance(t, "10.0.0.1", 62206, 1),
 			newAddrInstance(t, "10.0.0.2", 62206, 1),
 			newAddrInstance(t, "10.0.0.3", 62206, 10),
 		},
-		totalWeight: 12,
-	}
+	})
 	const samples = 5000
 	hit := make(map[*clusterInstance]int)
 	for i := 0; i < samples; i++ {
@@ -243,7 +250,7 @@ func TestPickInstance_WeightedRandom(t *testing.T) {
 // TestPickInstance_EmptyCluster: 0 instances returns nil so handlers can
 // answer 503 without panicking.
 func TestPickInstance_EmptyCluster(t *testing.T) {
-	cr := &clusterRuntime{scheme: LBRoundRobin}
+	cr := withPicker(&clusterRuntime{scheme: LBRoundRobin})
 	if got := cr.pickInstance(); got != nil {
 		t.Fatalf("empty cluster must return nil, got %v", got)
 	}
@@ -262,7 +269,7 @@ func TestPickInstance_EmptyCluster(t *testing.T) {
 // instance we put in md.RemoteAddr is what comes back, every time.
 func TestResolveTarget_UsesRemoteAddr(t *testing.T) {
 	pubKey, _ := pubKeyForTest()
-	cr := &clusterRuntime{
+	cr := withPicker(&clusterRuntime{
 		id:     "cluster-x",
 		pubKey: pubKey,
 		scheme: LBRandom,
@@ -271,8 +278,7 @@ func TestResolveTarget_UsesRemoteAddr(t *testing.T) {
 			newAddrInstance(t, "10.0.0.2", 62206, 1),
 			newAddrInstance(t, "10.0.0.3", 62206, 1),
 		},
-		totalWeight: 3,
-	}
+	})
 	rs := &RelayServer{
 		clusters: map[string]*clusterRuntime{cr.id: cr},
 	}
@@ -305,7 +311,7 @@ func TestResolveTarget_UsesRemoteAddr(t *testing.T) {
 // to instances[0].
 func TestResolveTarget_UnknownAddr(t *testing.T) {
 	pubKey, _ := pubKeyForTest()
-	cr := &clusterRuntime{
+	cr := withPicker(&clusterRuntime{
 		id:     "cluster-x",
 		pubKey: pubKey,
 		scheme: LBRandom,
@@ -313,8 +319,7 @@ func TestResolveTarget_UnknownAddr(t *testing.T) {
 			newAddrInstance(t, "10.0.0.1", 62206, 1),
 			newAddrInstance(t, "10.0.0.2", 62206, 1),
 		},
-		totalWeight: 2,
-	}
+	})
 	rs := &RelayServer{clusters: map[string]*clusterRuntime{fingerprintForTest(pubKey): cr}}
 
 	stranger, _ := net.ResolveUDPAddr("udp", "10.99.99.99:62206")

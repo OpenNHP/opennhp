@@ -8,6 +8,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
+	"github.com/OpenNHP/opennhp/nhp/common/loadbalance"
 	log "github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
@@ -27,14 +28,15 @@ type ClusterInstance struct {
 	Weight int    `toml:"weight"`
 }
 
-// LoadBalanceScheme names a strategy for selecting an instance within a
-// cluster. Phase 1 stores the value but always returns instances[0].
-type LoadBalanceScheme string
+// LoadBalanceScheme is an alias for the shared loadbalance.Scheme; kept
+// under the old name so existing relay references compile unchanged.
+// The string values are identical to those documented in TOML configs.
+type LoadBalanceScheme = loadbalance.Scheme
 
 const (
-	LBRandom         LoadBalanceScheme = "random"
-	LBWeightedRandom LoadBalanceScheme = "weighted-random"
-	LBRoundRobin     LoadBalanceScheme = "round-robin"
+	LBRandom         = loadbalance.SchemeRandom
+	LBWeightedRandom = loadbalance.SchemeWeightedRandom
+	LBRoundRobin     = loadbalance.SchemeRoundRobin
 )
 
 // Cluster groups instances that share a single nhp-server identity (public

@@ -1,0 +1,79 @@
+# NHP-Server base config
+# field with (-) does not support dynamic update
+
+# PrivateKeyBase64 (-): server private key in base64 format.
+# DefaultCipherScheme: 0: curve25519, 1: gmsm.
+# MIGRATION: Values changed in v2.x. If upgrading: old 0(gmsm)->new 1, old 1(curve)->new 0.
+# ListenIp (-): udp listening address.
+# ListenPort (-): udp listening port.
+# Hostname (-): server domain name.
+# LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.
+# DisableAgentValidation: whether for the server to skip the agent's public key validation.
+PrivateKeyBase64 = "I9UzYO3skKYmDykz9DRBbV+cEebSw/L5yIvzHI4jz+o="
+DefaultCipherScheme = 1
+ListenIp = "0.0.0.0"    # empty for ipv4 + ipv6, "0.0.0.0" for ipv4 only
+ListenPort = 62206
+Hostname = "localhost:62206" # the hostname of NHP-Server
+LogLevel = 5
+DisableAgentValidation = false
+
+# ─── Demo-only ───────────────────────────────────────────────────────────
+# Accept RFC1918 / loopback / CGNAT addresses as the SourceAddr field of
+# an inner KNK forwarded via nhp-relay (NHP_RLY → HandleRelayForward).
+#
+# Why this is needed for the docker compose demo: when a host browser
+# hits the relay through Docker Desktop's published port mapping, the
+# relay container sees the request as coming from Docker's vpnkit
+# gateway (e.g. 192.168.65.1 on macOS, 172.x.x.x on Linux), and that
+# private address is what gets written into RelayForwardMsg.SourceAddr.
+# The server's default anti-DoS check rejects RFC1918 SourceAddr
+# values because, in production, a public-facing relay should never
+# see one — it would mean the relay was injecting fabricated clients.
+#
+# DO NOT enable this on a production-facing nhp-server. With this
+# flag on, a compromised relay can fill the server's connection map
+# (and the downstream AC ipset whitelist) with any private-range
+# SourceAddr it likes. Keep the default (false) everywhere except in
+# trusted local-only demos like this one.
+AllowPrivateRelaySource = true
+
+# ForceOverload pins the server's Overload flag ON at startup. With it
+# on, every agent goes through the cookie-stamped handshake
+# (KNK → NHP_COK → NHP_RKN) instead of the fast KNK → NHP_ACK path.
+#
+# Why this matters for the local demo: the normal Overload trigger
+# fires only after ~16k concurrent agent connections, which a docker
+# compose demo never produces. Without this flag the cookie path
+# stays dormant and any cookie-related correctness issues (e.g.
+# multi-server cookie-store divergence) are invisible. Flipping this
+# on locally is how a developer exercises and validates the cookie
+# code paths.
+#
+# DO NOT enable this in production. ForceOverload forces every agent
+# through the slower cookie handshake even when the server is idle,
+# and tells the cookie store that load is constantly elevated.
+# Production must rely on the natural connection-count trigger, which
+# is what the threshold is calibrated for.
+ForceOverload = true
+
+# ─── Cookie (stateless, multi-instance-safe) ──────────────────────────────
+# When the server enters Overload (real load OR ForceOverload), it answers
+# the first KNK from each agent with an NHP_COK challenge containing a
+# cookie; the agent must echo that cookie in an NHP_RKN before the
+# handshake proceeds. Cookies are derived statelessly from
+# HMAC-SHA256(CookieSigningKey, "ip:port" || timeWindow), so any
+# nhp-server in a cluster can verify a cookie a sibling minted — required
+# when agents reach the cluster via round-robin DNS / a load balancer.
+#
+# CookieSigningKeyBase64: base64 of exactly 32 random bytes. Every server
+# in the same cluster MUST share the same value. Leave empty for a
+# single-instance deployment; a random per-process key will be generated
+# at startup (works, but breaks the moment you add a second instance).
+# Generate one with:   head -c 32 /dev/urandom | base64
+CookieSigningKeyBase64 = "w62S2G1P5GOG66Y5tIv3WlfBv8CNBdDe2JJDFr9Q+h0="
+
+# CookieTimeWindowSeconds: cookies rotate every N seconds; the server
+# accepts cookies from the current and the previous window. Default 60s
+# if unset / non-positive, giving an agent [60, 120) seconds to redeem.
+CookieTimeWindowSeconds = 60
+

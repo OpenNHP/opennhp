@@ -28,10 +28,14 @@ func (a *UdpAgent) RequestOtp(target *KnockTarget) error {
 		log.Critical("agent(%s)[RequestOtp] server is not assigned", otpMsg.UserId)
 		return common.ErrKnockServerNotFound
 	}
-
-	sendAddr := serverPeer.SendAddr()
+	inst := target.PickInstance()
+	if inst == nil {
+		log.Critical("agent(%s)[RequestOtp] no instance available", otpMsg.UserId)
+		return common.ErrKnockServerNotFound
+	}
+	sendAddr := inst.SendAddr()
 	if sendAddr == nil {
-		log.Critical("agent(%s)[RequestOtp] server IP cannot be parsed", otpMsg.UserId)
+		log.Critical("agent(%s)[RequestOtp] server IP cannot be parsed (instance %s)", otpMsg.UserId, inst.HostPort())
 		return common.ErrKnockServerNotFound
 	}
 
@@ -75,10 +79,14 @@ func (a *UdpAgent) RegisterPublicKey(otp string, target *KnockTarget) (rakMsg *c
 		log.Critical("agent(%s)[RegisterPublicKey] server is not assigned", regMsg.UserId)
 		return nil, common.ErrKnockServerNotFound
 	}
-
-	sendAddr := serverPeer.SendAddr()
+	inst := target.PickInstance()
+	if inst == nil {
+		log.Critical("agent(%s)[RegisterPublicKey] no instance available", regMsg.UserId)
+		return nil, common.ErrKnockServerNotFound
+	}
+	sendAddr := inst.SendAddr()
 	if sendAddr == nil {
-		log.Critical("agent(%s)[RegisterPublicKey] server IP cannot be parsed", regMsg.UserId)
+		log.Critical("agent(%s)[RegisterPublicKey] server IP cannot be parsed (instance %s)", regMsg.UserId, inst.HostPort())
 		return nil, common.ErrKnockServerNotFound
 	}
 	addrStr := sendAddr.String()
@@ -152,10 +160,14 @@ func (a *UdpAgent) ListResource(target *KnockTarget) (lrtMsg *common.ServerListR
 		log.Critical("agent(%s)[ListResource] server is not assigned", lstMsg.UserId)
 		return nil, common.ErrKnockServerNotFound
 	}
-
-	sendAddr := serverPeer.SendAddr()
+	inst := target.PickInstance()
+	if inst == nil {
+		log.Critical("agent(%s)[ListResource] no instance available", lstMsg.UserId)
+		return nil, common.ErrKnockServerNotFound
+	}
+	sendAddr := inst.SendAddr()
 	if sendAddr == nil {
-		log.Critical("agent(%s)[ListResource] server IP cannot be parsed", lstMsg.UserId)
+		log.Critical("agent(%s)[ListResource] server IP cannot be parsed (instance %s)", lstMsg.UserId, inst.HostPort())
 		return nil, common.ErrKnockServerNotFound
 	}
 	addrStr := sendAddr.String()

@@ -54,7 +54,7 @@ services:
       network_default:
         ipv4_address: 177.7.0.14
     volumes:
-      - ./nhp-server/etc/:/nhp-server/etc/:rw
+      - ./nhp-server/etc2/:/nhp-server/etc/:rw
       - ./nhp-server/logs-2/:/nhp-server/logs/:rw
       - ./nhp-server/templates/:/nhp-server/templates/:rw
       - ./nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw

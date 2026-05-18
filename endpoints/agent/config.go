@@ -64,8 +64,12 @@ func (c *Config) GetEccType() core.EccTypeEnum {
 	return eccType
 }
 
+// Peers is the top-level shape of server.toml. Each entry is one
+// logical nhp-server identity (one pubkey) that may be backed by 1..N
+// physical Instances. See ClusterConfig for both the cluster form and
+// the auto-upgraded legacy flat form.
 type Peers struct {
-	Servers []*core.UdpPeer
+	Servers []*ClusterConfig
 }
 
 type Resources struct {
@@ -210,29 +214,48 @@ func (a *UdpAgent) updateServerPeers(file string) (err error) {
 	content, err := os.ReadFile(file)
 	if err != nil {
 		log.Error("failed to read server peer config: %v", err)
+		return err
 	}
 
-	// update
 	var peers Peers
-	serverPeerMap := make(map[string]*core.UdpPeer)
 	if err := toml.Unmarshal(content, &peers); err != nil {
 		log.Error("failed to unmarshal server config: %v", err)
+		return err
 	}
-	for _, p := range peers.Servers {
-		p.Type = core.NHP_SERVER
-		a.device.AddPeer(p)
-		serverPeerMap[p.PublicKeyBase64()] = p
+	// Validate + auto-upgrade legacy flat form to cluster form.
+	// Deprecation warnings go through log.Warning so operators see
+	// them in the running daemon's logs, not just at first load.
+	if err := normalizeClusters(peers.Servers, log.Warning); err != nil {
+		log.Error("invalid server.toml: %v", err)
+		return err
 	}
 
-	// remove old peers from device
+	newMap := make(map[string]*ServerCluster, len(peers.Servers))
+	for _, cfg := range peers.Servers {
+		sc, berr := buildCluster(cfg)
+		if berr != nil {
+			log.Error("buildCluster for %s failed: %v", cfg.PubKeyBase64, berr)
+			return berr
+		}
+		a.device.AddPeer(sc.representativePeer)
+		newMap[sc.PublicKeyBase64] = sc
+	}
+
+	// Swap atomically, then drop peers from device that no longer
+	// appear in the new config. Removal-after-swap avoids a brief
+	// window where an inbound packet could be matched against a
+	// freshly-removed peer that's still in serverClusterMap (or
+	// vice versa).
 	a.serverPeerMutex.Lock()
-	defer a.serverPeerMutex.Unlock()
-	for pubKey := range a.serverPeerMap {
-		if _, found := serverPeerMap[pubKey]; !found {
+	old := a.serverClusterMap
+	a.serverClusterMap = newMap
+	a.serverPeerMutex.Unlock()
+
+	for pubKey := range old {
+		if _, found := newMap[pubKey]; !found {
 			a.device.RemovePeer(pubKey)
 		}
 	}
-	a.serverPeerMap = serverPeerMap
 
 	return err
 }
@@ -253,14 +276,15 @@ func (a *UdpAgent) updateResources(file string) (err error) {
 		log.Error("failed to unmarshal resource config: %v", err)
 	}
 	for _, res := range resources.Resources {
-		peer := a.FindServerPeerFromResource(res)
-		if peer == nil {
-			log.Error("failed to find corresponding server peer for resource %s", res.Id())
+		sc := a.FindServerClusterFromResource(res)
+		if sc == nil {
+			log.Error("failed to find corresponding server cluster for resource %s", res.Id())
 			continue
 		}
 		targetMap[res.Id()] = &KnockTarget{
 			KnockResource: *res,
-			ServerPeer:    peer,
+			ServerPeer:    sc.representativePeer,
+			ServerCluster: sc,
 		}
 	}
 

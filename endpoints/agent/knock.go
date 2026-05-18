@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net"
 	"strconv"
@@ -59,9 +60,24 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 		return nil, common.ErrKnockServerNotFound
 	}
 
-	sendAddr := serverPeer.SendAddr()
+	// Pick the cluster instance for this send. When the cluster is
+	// sticky (default), KNK and the follow-up RKN both route to the
+	// same instance so cookie verification stays put even if the
+	// cluster's instances don't share a cookie key. With
+	// stateless-cookie clusters and Sticky=false, retries spread
+	// across instances.
+	inst := res.PickInstance()
+	if inst == nil {
+		log.Critical("agent(%s)[KnockRequest] no instance available in cluster %s",
+			a.knockUser.UserId, serverPeer.PublicKeyBase64())
+		return nil, common.ErrKnockServerNotFound
+	}
+	sendAddr := inst.SendAddr()
 	if sendAddr == nil {
-		log.Critical("agent(%s)[KnockRequest] knock server IP cannot be parsed", a.knockUser.UserId)
+		log.Critical("agent(%s)[KnockRequest] knock server IP cannot be parsed (instance %s)",
+			a.knockUser.UserId, inst.HostPort())
+		// Drop the sticky pin so the next retry tries a sibling.
+		res.ResetInstancePin()
 		return nil, common.ErrKnockServerNotFound
 	}
 	addrStr := sendAddr.String()
@@ -91,6 +107,14 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 	}
 	if useCookie {
 		knkMd.HeaderType = core.NHP_RKN
+		// Carry the cookie the previous KNK round stashed on this
+		// target. ExternalCookie short-circuits the addHMAC fallback
+		// to ConnData.CookieStore (initiator.go:444), which would
+		// otherwise read from whichever conn this RKN is being sent
+		// over — wrong conn in the Sticky=false multi-instance case.
+		if c := res.ConsumePendingCookie(); c != nil {
+			knkMd.ExternalCookie = c
+		}
 	}
 
 	ackMsg = &common.ServerKnockAckMsg{}
@@ -118,6 +142,26 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 	}
 
 	if serverPpd.HeaderType == core.NHP_COK {
+		// Pull the cookie bytes out of the COK body and stash them
+		// on the target so the follow-up RKN can pass them via
+		// MsgData.ExternalCookie. The legacy behaviour wrote into
+		// ppd.ConnData.CookieStore — see HandleCookieMessage — but
+		// that's tied to the UDP conn the COK arrived through, and
+		// a non-sticky cluster picks a different instance (=> new
+		// conn => empty CookieStore) for the RKN. Stash on the
+		// target so the value travels with the knock attempt.
+		cokMsg := &common.ServerCookieMsg{}
+		if uerr := json.Unmarshal(serverPpd.BodyMessage, cokMsg); uerr == nil {
+			if cookieBytes, derr := base64.StdEncoding.DecodeString(cokMsg.Cookie); derr == nil {
+				res.StashCookie(cookieBytes)
+			} else {
+				log.Error("agent(%s#%d)[KnockRequest] cookie base64 decode failed: %v",
+					knkMsg.UserId, knkMd.TransactionId, derr)
+			}
+		} else {
+			log.Error("agent(%s#%d)[KnockRequest] failed to parse NHP-COK body: %v",
+				knkMsg.UserId, knkMd.TransactionId, uerr)
+		}
 		log.Error("agent(%s#%d)[KnockRequest] terminated by server's cookie message", knkMsg.UserId, knkMd.TransactionId)
 		err = common.ErrKnockTerminatedByCookie
 		ackMsg.ErrCode = common.ErrKnockTerminatedByCookie.ErrorCode()
@@ -158,9 +202,19 @@ func (a *UdpAgent) ExitKnockRequest(res *KnockTarget) (ackMsg *common.ServerKnoc
 		return nil, common.ErrKnockServerNotFound
 	}
 
-	sendAddr := serverPeer.SendAddr()
+	// Exit goes to the same instance the KNK landed on, so the
+	// server cleans up the right session. PickInstance honours the
+	// sticky pin captured during knock.
+	inst := res.PickInstance()
+	if inst == nil {
+		log.Critical("agent(%s)[ExitKnockRequest] no instance available in cluster %s",
+			a.knockUser.UserId, serverPeer.PublicKeyBase64())
+		return nil, common.ErrKnockServerNotFound
+	}
+	sendAddr := inst.SendAddr()
 	if sendAddr == nil {
-		log.Critical("agent(%s)[ExitKnockRequest] knock server IP cannot be parsed", a.knockUser.UserId)
+		log.Critical("agent(%s)[ExitKnockRequest] knock server IP cannot be parsed (instance %s)",
+			a.knockUser.UserId, inst.HostPort())
 		return nil, common.ErrKnockServerNotFound
 	}
 	addrStr := sendAddr.String()
@@ -383,15 +437,26 @@ func (a *UdpAgent) processPreAccessAction(info *common.PreAccessInfo) error {
 }
 
 func (a *UdpAgent) KnockDHP() (ackMsg *common.ServerDHPKnockAckMsg, err error) {
-	serverPeer := a.GetFirstServerPeer()
-	if serverPeer == nil {
-		log.Critical("agent(%s)[KnockDHP] knock server is not assigned", a.knockUser.UserId)
+	// DHP knock has no KnockResource → no cluster routing input. Use
+	// the "first cluster" pick (with the multi-cluster warning baked
+	// into GetFirstServerCluster) and apply the cluster's LB policy
+	// to pick an instance.
+	sc := a.GetFirstServerCluster()
+	if sc == nil {
+		log.Critical("agent(%s)[KnockDHP] no server cluster configured", a.knockUser.UserId)
 		return nil, common.ErrKnockServerNotFound
 	}
-
-	sendAddr := serverPeer.SendAddr()
+	serverPeer := sc.representativePeer
+	inst := sc.Pick()
+	if inst == nil {
+		log.Critical("agent(%s)[KnockDHP] no instance available in cluster %s",
+			a.knockUser.UserId, serverPeer.PublicKeyBase64())
+		return nil, common.ErrKnockServerNotFound
+	}
+	sendAddr := inst.SendAddr()
 	if sendAddr == nil {
-		log.Critical("agent(%s)[KnockDHP] knock server IP cannot be parsed", a.knockUser.UserId)
+		log.Critical("agent(%s)[KnockDHP] knock server IP cannot be parsed (instance %s)",
+			a.knockUser.UserId, inst.HostPort())
 		return nil, common.ErrKnockServerNotFound
 	}
 	addrStr := sendAddr.String()

@@ -254,8 +254,8 @@ func NhpAgentKnockResource(aspId string, resId string, cluster string) string {
 			Cluster:       cluster,
 		}
 
-		peer := gAgentInstance.FindServerPeerFromResource(resource)
-		if peer == nil {
+		sc := gAgentInstance.FindServerClusterFromResource(resource)
+		if sc == nil {
 			ackMsg.ErrCode = common.ErrKnockServerNotFound.ErrorCode()
 			ackMsg.ErrMsg = common.ErrKnockServerNotFound.Error()
 			return
@@ -263,7 +263,8 @@ func NhpAgentKnockResource(aspId string, resId string, cluster string) string {
 
 		target := &agent.KnockTarget{
 			KnockResource: *resource,
-			ServerPeer:    peer,
+			ServerPeer:    sc.RepresentativePeer(),
+			ServerCluster: sc,
 		}
 
 		ackMsg, _ = gAgentInstance.Knock(target)
@@ -312,8 +313,8 @@ func NhpAgentExitResource(aspId string, resId string, cluster string) bool {
 			Cluster:       cluster,
 		}
 
-		peer := gAgentInstance.FindServerPeerFromResource(resource)
-		if peer == nil {
+		sc := gAgentInstance.FindServerClusterFromResource(resource)
+		if sc == nil {
 			ackMsg.ErrCode = common.ErrKnockServerNotFound.ErrorCode()
 			ackMsg.ErrMsg = common.ErrKnockServerNotFound.Error()
 			err = common.ErrKnockServerNotFound
@@ -322,7 +323,8 @@ func NhpAgentExitResource(aspId string, resId string, cluster string) bool {
 
 		target := &agent.KnockTarget{
 			KnockResource: *resource,
-			ServerPeer:    peer,
+			ServerPeer:    sc.RepresentativePeer(),
+			ServerCluster: sc,
 		}
 
 		ackMsg, err = gAgentInstance.ExitKnockRequest(target)

@@ -28,6 +28,23 @@ func (a *UdpAgent) Knock(res *KnockTarget) (ackMsg *common.ServerKnockAckMsg, er
 		// use flat calling
 		ackMsg, err = a.knockRequest(res, true)
 	}
+	// knockRequest has early-return paths (no cluster bound, no instance
+	// available, unparseable send address) that return (nil, err) without
+	// constructing an ackMsg. Synthesize one from err so the rest of Knock
+	// can read ackMsg.ErrCode without dereferencing nil.
+	if ackMsg == nil {
+		if err == nil {
+			err = common.ErrKnockServerNotFound
+		}
+		code := common.ErrorToErrorCode(err)
+		if code == "" {
+			code = common.ErrKnockServerNotFound.ErrorCode()
+		}
+		ackMsg = &common.ServerKnockAckMsg{
+			ErrCode: code,
+			ErrMsg:  err.Error(),
+		}
+	}
 	if ackMsg.ErrCode == common.ErrPacketEncryptionFailed.ErrorCode() {
 		// local failure, packet not sent
 		return ackMsg, err

@@ -96,11 +96,19 @@ type Peers struct {
 // are visible.
 func expandServerPeers(entries []ServerPeerEntry) []*core.UdpPeer {
 	out := make([]*core.UdpPeer, 0, len(entries))
+	// Track which pubkeys have already been emitted from a legacy
+	// single-endpoint entry so we can warn when a second legacy entry
+	// adds another endpoint under the same pubkey — that's the case
+	// endpointKey can disambiguate (now that Hostname is part of the
+	// key) but operators almost always mean to use the Endpoints list
+	// instead.
+	legacyPubKeys := make(map[string]int)
 	for _, e := range entries {
 		if len(e.Endpoints) > 0 {
 			if e.Hostname != "" || e.Ip != "" || e.Port != 0 {
 				log.Info("server peer %s: Endpoints set, ignoring legacy Hostname/Ip/Port fields", e.PubKeyBase64)
 			}
+			before := len(out)
 			for _, ep := range e.Endpoints {
 				ip, port, err := splitHostPort(ep)
 				if err != nil {
@@ -114,8 +122,17 @@ func expandServerPeers(entries []ServerPeerEntry) []*core.UdpPeer {
 					ExpireTime:   e.ExpireTime,
 				})
 			}
+			if len(out) == before {
+				// All endpoints in this entry failed to parse, so the
+				// pubkey contributes zero peers — without this log the
+				// cluster vanishes silently and AOL/AOP traffic stops
+				// reaching it.
+				log.Critical("server peer %s: all %d endpoints invalid, entry dropped",
+					e.PubKeyBase64, len(e.Endpoints))
+			}
 			continue
 		}
+		legacyPubKeys[e.PubKeyBase64]++
 		out = append(out, &core.UdpPeer{
 			PubKeyBase64: e.PubKeyBase64,
 			Hostname:     e.Hostname,
@@ -123,6 +140,12 @@ func expandServerPeers(entries []ServerPeerEntry) []*core.UdpPeer {
 			Port:         e.Port,
 			ExpireTime:   e.ExpireTime,
 		})
+	}
+	for pk, n := range legacyPubKeys {
+		if n > 1 {
+			log.Critical("server peer %s: %d legacy [[Servers]] entries share this pubkey — consider merging them into a single entry with an Endpoints list",
+				pk, n)
+		}
 	}
 	return out
 }
@@ -343,8 +366,18 @@ func (a *UdpAC) updateServerPeers(peers []*core.UdpPeer) (err error) {
 // endpointKey is the AC-internal map key for a server peer. It must keep
 // same-pubkey peers at different addresses distinct, so the discovery
 // fan-out launches one routine per (pubkey, addr).
+//
+// Hostname is part of the key because legacy entries that use only
+// Hostname (no Ip) leave p.Ip empty, so two same-pubkey entries with
+// different hostnames would otherwise collide on "pk|:port" and one
+// would silently overwrite the other in serverPeerMap — meaning AOL
+// fan-out skips one of the instances. Including Hostname keeps each
+// instance distinct until the hostname is resolved.
 func endpointKey(p *core.UdpPeer) string {
-	return p.PublicKeyBase64() + "|" + p.Ip + ":" + strconv.Itoa(p.Port)
+	return "pk=" + p.PublicKeyBase64() +
+		"|host=" + p.Hostname +
+		"|ip=" + p.Ip +
+		":" + strconv.Itoa(p.Port)
 }
 func (a *UdpAC) loadConfigFile(file string) (content []byte, err error) {
 	utils.CatchPanicThenRun(func() {

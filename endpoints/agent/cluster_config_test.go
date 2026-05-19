@@ -285,6 +285,19 @@ func TestKnockTarget_StickyHonored(t *testing.T) {
 	}
 }
 
+// TestKnockTarget_NoClusterReturnsNil: a KnockTarget built without a
+// ServerCluster (the shape SDK callers produced before they were
+// taught to call FindServerClusterFromResource) must surface "no
+// instance" via PickInstance rather than dereferencing nil. The
+// Knock() caller relies on this so it can synthesize an ackMsg
+// instead of crashing on a nil return from knockRequest.
+func TestKnockTarget_NoClusterReturnsNil(t *testing.T) {
+	target := &KnockTarget{}
+	if inst := target.PickInstance(); inst != nil {
+		t.Fatalf("PickInstance on a cluster-less target must return nil, got %+v", inst)
+	}
+}
+
 // TestKnockTarget_NonStickyRotates: when Sticky=false every
 // PickInstance call must re-run the picker (here round-robin),
 // proving the sticky knob actually toggles behaviour. Catches

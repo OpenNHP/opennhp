@@ -188,3 +188,19 @@ func TestEndpointKey_StableForSamePeer(t *testing.T) {
 		t.Fatalf("equal peers produced different keys: %q vs %q", endpointKey(a), endpointKey(b))
 	}
 }
+
+// TestEndpointKey_DistinctSamePubKeyDifferentHostnames: two legacy
+// hostname-only entries that share a pubkey but resolve via different
+// DNS names must produce distinct keys, otherwise the second overwrites
+// the first in serverPeerMap and AOL fan-out skips one of the
+// instances. Regression: the original implementation keyed on
+// "pubkey|ip:port" where Ip is empty for legacy hostname entries, so
+// "pk|:port" collided.
+func TestEndpointKey_DistinctSamePubKeyDifferentHostnames(t *testing.T) {
+	a := &core.UdpPeer{PubKeyBase64: "ABC=", Hostname: "a.example.com", Port: 62206}
+	b := &core.UdpPeer{PubKeyBase64: "ABC=", Hostname: "b.example.com", Port: 62206}
+	if endpointKey(a) == endpointKey(b) {
+		t.Fatalf("same-pubkey different-hostname peers must produce distinct keys; got %q",
+			endpointKey(a))
+	}
+}

@@ -5,13 +5,13 @@ go 1.25.6
 require (
 	github.com/OpenNHP/opennhp/nhp v0.6.0
 	github.com/cilium/ebpf v0.21.0
-	github.com/emmansun/gmsm v0.42.0
+	github.com/emmansun/gmsm v0.43.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gin-contrib/sessions v1.1.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/mark3labs/mcp-go v0.52.0
+	github.com/mark3labs/mcp-go v0.54.0
 	github.com/pelletier/go-toml/v2 v2.3.1
 	github.com/sigstore/cosign/v2 v2.6.3
 	github.com/spf13/viper v1.21.0

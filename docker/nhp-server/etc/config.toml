@@ -70,6 +70,12 @@ ForceOverload = true
 # single-instance deployment; a random per-process key will be generated
 # at startup (works, but breaks the moment you add a second instance).
 # Generate one with:   head -c 32 /dev/urandom | base64
+#
+# DEMO ONLY — the value below is committed to source for the local docker
+# stack so all replicas in the compose file agree out of the box. Any
+# non-demo deployment MUST regenerate this; reusing the committed value
+# means anyone with a checkout of this repo can mint valid cookies for
+# your cluster.
 CookieSigningKeyBase64 = "w62S2G1P5GOG66Y5tIv3WlfBv8CNBdDe2JJDFr9Q+h0="
 
 # CookieTimeWindowSeconds: cookies rotate every N seconds; the server

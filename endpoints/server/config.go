@@ -131,6 +131,14 @@ type Config struct {
 	//
 	// This is a debug/test affordance, NOT a feature flag. Do not key
 	// production behavior off it.
+	//
+	// Hot-reload caveat: flipping this back to false at runtime via a
+	// config reload does NOT immediately restore normal behaviour. The
+	// connection-teardown path in udpserver.go honours ForceOverload to
+	// keep Overload pinned across connection churn, so as long as the
+	// process keeps observing ForceOverload=true it will never call
+	// SetOverload(false) — the flag is sticky for the lifetime of the
+	// process. Restart the server to clear it.
 	ForceOverload bool `json:"forceOverload"`
 }
 

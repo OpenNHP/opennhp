@@ -6,13 +6,13 @@ import (
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"hash"
 	"io"
-	"net"
 	"sync/atomic"
 	"time"
 
@@ -20,7 +20,7 @@ import (
 	log "github.com/OpenNHP/opennhp/nhp/log"
 )
 
-// cookieRemoteKey extracts the IP portion of a remote UDP address as a
+// cookieRemoteKey extracts the IP portion of the real client address as a
 // stable string suitable for cookie derivation. The port is deliberately
 // dropped: an agent that round-robins its KNK and RKN across two
 // nhp-server instances opens a separate kernel UDP conn to each, and
@@ -29,16 +29,39 @@ import (
 // instance sees on the RKN, even though the agent process is the same.
 // Keying on IP only lets the second instance re-derive the same cookie.
 //
+// For relay-forwarded packets we key on ConnData.RealRemoteAddr (the
+// actual client behind the relay) rather than RemoteAddr (the relay's
+// own UDP address). If we keyed on the relay address, every client
+// arriving through one public relay would share a cookie within a time
+// window — that scales DoS-proof-of-address with relay throughput
+// instead of per-client, and lets one authenticated relay user replay
+// another's cookie. Falling back to RemoteAddr for direct UDP keeps
+// the single-server path unchanged.
+//
+// IPv4 addresses are normalized via To4() so a dual-stack listener that
+// presents the same agent as "::ffff:1.2.3.4" on one socket and
+// "1.2.3.4" on another still derives the same cookie key.
+//
 // Trade-off: agents behind the same NAT share a cookie within a time
 // window. The attack surface is narrow — cookie content stays off the
 // wire (it's an HMAC input, never plaintext), windows are short (default
 // 60s), and an attacker behind the same NAT can already send packets
 // from any source port. Worth it to enable multi-instance routing.
-func cookieRemoteKey(remoteAddr *net.UDPAddr) string {
-	if remoteAddr == nil || remoteAddr.IP == nil {
+func cookieRemoteKey(connData *ConnectionData) string {
+	if connData == nil {
 		return ""
 	}
-	return remoteAddr.IP.String()
+	addr := connData.RealRemoteAddr
+	if addr == nil {
+		addr = connData.RemoteAddr
+	}
+	if addr == nil || addr.IP == nil {
+		return ""
+	}
+	if v4 := addr.IP.To4(); v4 != nil {
+		return v4.String()
+	}
+	return addr.IP.String()
 }
 
 // deriveStatelessCookie produces a deterministic 32-byte cookie from the
@@ -565,7 +588,7 @@ func (ppd *PacketParserData) sendCookie() {
 		return
 	}
 	window := time.Now().Unix() / win
-	cookie := deriveStatelessCookie(key, cookieRemoteKey(ppd.ConnData.RemoteAddr), window)
+	cookie := deriveStatelessCookie(key, cookieRemoteKey(ppd.ConnData), window)
 	cokStr := base64.StdEncoding.EncodeToString(cookie)
 	cokMsg := &common.ServerCookieMsg{
 		TransactionId: ppd.SenderTrxId,
@@ -624,7 +647,7 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 		headerHmac := ppd.header.HMACBytes()
 		serverPubKey := ppd.deviceEcdh.PublicKey()
 		headerPrefix := ppd.header.Bytes()[0:headerPrefixLen]
-		remote := cookieRemoteKey(ppd.ConnData.RemoteAddr)
+		remote := cookieRemoteKey(ppd.ConnData)
 		currWindow := time.Now().Unix() / win
 		for _, w := range [2]int64{currWindow, currWindow - 1} {
 			cookie := deriveStatelessCookie(key, remote, w)
@@ -636,7 +659,12 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 			h.Write(serverPubKey)
 			h.Write(headerPrefix)
 			h.Write(cookie)
-			if bytes.Equal(h.Sum(nil), headerHmac) {
+			// Constant-time compare across the two-window candidate
+			// loop. The leak surface is narrow (32-byte HMAC, agent
+			// already needed authenticated noise-channel access to
+			// reach this path) but the cost is one helper call, so
+			// take it.
+			if subtle.ConstantTimeCompare(h.Sum(nil), headerHmac) == 1 {
 				return true
 			}
 		}

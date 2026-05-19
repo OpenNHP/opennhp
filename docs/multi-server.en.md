@@ -20,6 +20,8 @@ Across all three endpoints, a cluster is:
 | Cluster | 1 pubkey + N instances; every instance shares the pubkey, each has a distinct address |
 | `representativePeer` | The single `UdpPeer` registered into `device.peerMap`; identity is keyed by pubkey, so only one entry per cluster |
 
+![Cluster = 1 pubkey + N instances](images/multi-nhp-server/multi-nhp-server.png)
+
 ### 0.2 Load-balance picker (shared)
 
 [nhp/common/loadbalance/loadbalance.go](../nhp/common/loadbalance/loadbalance.go) provides a generic `Picker[T Weighted]` used by all three endpoints:
@@ -39,6 +41,8 @@ cookie = HMAC-SHA256(CookieSigningKey, remoteIP || windowIndex)
 - Acceptance window: current + previous window (default 60s), so the boundary case still works.
 - IP-only, not ip:port: when an agent rotates instances, each UDP conn gets its own ephemeral source port — the port a sibling sees on the RKN is not the port the original instance saw on the KNK. Keying by IP lets the sibling re-derive the same cookie.
 - Config: `CookieSigningKeyBase64`, `CookieTimeWindowSeconds` — see [responder.go:23-58](../nhp/core/responder.go#L23-L58), [udpserver.go:235-270](../endpoints/server/udpserver.go#L235-L270).
+
+![Cookie derivation & cross-replica verification](images/multi-nhp-server/cookie-derivation.png)
 
 ---
 
@@ -128,6 +132,8 @@ Highlights (with code references):
 ### 2.1 Why AC is structurally different
 
 For AC, "multi-instance" is an **operational topology**: one AC must serve every replica of one logical nhp-server cluster (each replica may independently emit AOP / KPL toward AC). AC must keep parallel connections to all replicas — there's nothing to "pick from". So AC **does not use the picker**, it **fans out across all endpoints**.
+
+![AC multi-replica fan-out topology](images/multi-nhp-server/ac-multi-replica.png)
 
 ### 2.2 Config: `Endpoints` field
 

@@ -20,6 +20,8 @@
 | 集群 | 1 个 pubkey + N 个 instance；N 个 instance 共享 pubkey、各自地址不同 |
 | `representativePeer` | 注册到 device.peerMap 时使用的"代表"`UdpPeer`；身份按 pubkey 索引，因此只能注册一个 |
 
+![集群 = 1 个 pubkey + N 个 instance](../images/multi-nhp-server/multi-nhp-server.png)
+
 ### 0.2 负载均衡 picker（共享）
 
 [nhp/common/loadbalance/loadbalance.go](../../nhp/common/loadbalance/loadbalance.go) 提供泛型 `Picker[T Weighted]`，三个端点共用：
@@ -39,6 +41,8 @@ cookie = HMAC-SHA256(CookieSigningKey, remoteIP || windowIndex)
 - 验证窗口：当前 + 上一窗口（默认 60s），跨窗口边界仍可用。
 - 只用 IP 不用 port：Agent 跨实例切换时每个 UDP conn 各自一个临时源端口，port 在 KNK 与 RKN 之间会变；用 IP 派生才能让另一副本算出同一 cookie。
 - 配置：`CookieSigningKeyBase64`、`CookieTimeWindowSeconds`，详见 [responder.go:23-58](../../nhp/core/responder.go#L23-L58)、[udpserver.go:235-270](../../endpoints/server/udpserver.go#L235-L270)。
+
+![Cookie 派生与跨副本校验](../images/multi-nhp-server/cookie-derivation.png)
 
 ---
 
@@ -128,6 +132,8 @@ flowchart TD
 ### 2.1 与 Agent / Relay 的根本差别
 
 AC 端的"多实例"是 **运维拓扑**：同一台 AC 要同时为同一逻辑 nhp-server 集群下的多个副本服务（每个副本都会单独发 AOP / KPL 给 AC），AC 必须并行维护到所有副本的连接，而不是从中"选一个"。所以 AC **不需要 picker**，而是 **fan-out 到所有 endpoint**。
+
+![AC 多副本扇出拓扑](../images/multi-nhp-server/ac-multi-replica.png)
 
 ### 2.2 配置：`Endpoints` 字段
 

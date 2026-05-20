@@ -577,6 +577,19 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 		s.config.DefaultCipherScheme = conf.DefaultCipherScheme
 	}
 
+	// ForceOverload: the in-memory Overload state is sticky for the
+	// process lifetime (see the field docstring), so a reload can't
+	// actually toggle behaviour. But silently dropping the new value
+	// leaves s.config disagreeing with the on-disk config.toml — which
+	// confuses anyone reading the in-memory view. Adopt the new value
+	// for accuracy and surface a warning so the operator knows a
+	// restart is required.
+	if s.config.ForceOverload != conf.ForceOverload {
+		log.Warning("ForceOverload changed in config (%v -> %v) on reload; the in-memory Overload state is sticky for the process lifetime, restart to apply",
+			s.config.ForceOverload, conf.ForceOverload)
+		s.config.ForceOverload = conf.ForceOverload
+	}
+
 	// Cookie signing key / window: only re-apply when the operator
 	// actually changed something AND the new key parses. A blanked-out
 	// field on reload is treated as "leave the running key alone" rather

@@ -11,7 +11,47 @@ permalink: /zh-cn/agent_sdk/
 
 ---
 
+## v0.x 到 v1.x 迁移说明
 
+自 v1.0 起，资源按 nhp-server **集群（cluster）** 引用，而不再按 host:port。三个资源相关的 SDK 入口去掉了地址参数，新增一个 `cluster` 参数：
+
+| 函数 | v0.x 签名 | v1.x 签名 |
+| --- | --- | --- |
+| `nhp_agent_add_resource` | `(aspId, resId, serverIp, serverHostname, serverPort)` | `(aspId, resId, cluster)` |
+| `nhp_agent_knock_resource` | `(aspId, resId, serverIp, serverHostname, serverPort)` | `(aspId, resId, cluster)` |
+| `nhp_agent_exit_resource` | `(aspId, resId, serverIp, serverHostname, serverPort)` | `(aspId, resId, cluster)` |
+
+iOS / Android 端的封装（`NhpAgentAddResource`、`NhpAgentKnockResource`、`NhpAgentExitResource`）同步变更。
+
+`nhp_agent_add_server` **未变** —— 仍为 `(pubkey, ip, host, port, expire)`。新增的 `cluster` 参数用于在已注册的 server 中指明资源路由的目标。
+
+### `cluster` 取值方式
+
+- **加载 `server.toml` 的调用方**：传入目标集群的 `[[Servers]] Name`。
+- **通过 `nhp_agent_add_server` 注册的调用方**：传入该 server 的 base64 公钥（SDK 会以 pubkey 自动命名单实例集群）。这让 SDK 调用者可以零额外学习集群命名概念、按调用粒度逐步迁移。
+
+集群名不存在、pubkey 未注册、同时设置了 `Cluster` 与 `ServerPubKey`、两者都未设置——这几类失败都通过 knock 响应的 `errCode` 字段透传，下游可用错误码精确分支。见下文 [集群查找错误码](#集群查找错误码) 一节。
+
+### 为什么删除地址参数
+
+v1.x 之前，只要资源（或其底层 server peer）配置了 pubkey，`serverIp` / `serverHostname` / `serverPort` 就会被静默忽略——`resource.toml` 可能展示了 agent 实际从未拨号的地址。这些字段已删除：保留它们没有一致的语义，要么破坏运维直觉、要么破坏路由正确性。
+
+### Go 调用方
+
+`agent.KnockResource` 删除了 `ServerHostname` / `ServerIp` / `ServerPort`，新增 `Cluster` / `ServerPubKey`。**恰好设置其中一个**。`FindServerClusterFromResource` 签名改为 `(*ServerCluster, error)`，迁移相关失败会返回以下 sentinel error：
+
+- `common.ErrKnockResourceMissingClusterRef` —— `Cluster` 和 `ServerPubKey` 都未设置。
+- `common.ErrKnockResourceAmbiguousClusterRef` —— `Cluster` 和 `ServerPubKey` 同时设置。
+- `common.ErrKnockResourceUnknownClusterName` —— `Cluster` 引用的名字在 `server.toml` 中不存在。
+- `common.ErrKnockResourceUnknownClusterPubKey` —— `ServerPubKey` 未在 agent 中注册。
+
+破坏性变更落在 commit `a947e1c5`（`feat(agent)!: bind resources to clusters by name, drop ambiguous host fields`）；后续示例 / 文档 / SDK 清理见同分支后续 commits。
+
+### 集群查找错误码
+
+knock / exit JSON 响应的 `errCode` 字段会被填为上述 sentinel error 的数字码。需要向终端用户呈现精确诊断的调用方，应按 `errCode` 分支而不是 `errMsg`（人类可读文本）。错误码总表见 [`nhp/common/errors.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/common/errors.go)。
+
+---
 
 ## 1 客户端代理SDK介绍
 

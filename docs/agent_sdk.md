@@ -11,7 +11,47 @@ permalink: /agent_sdk/
 
 ---
 
+## Migration from v0.x to v1.x
 
+Starting in v1.0, resources reference an nhp-server **cluster** instead of a host:port. The three resource-bound SDK entry points lost their address arguments and gained a single `cluster` argument:
+
+| Function | v0.x signature | v1.x signature |
+| --- | --- | --- |
+| `nhp_agent_add_resource` | `(aspId, resId, serverIp, serverHostname, serverPort)` | `(aspId, resId, cluster)` |
+| `nhp_agent_knock_resource` | `(aspId, resId, serverIp, serverHostname, serverPort)` | `(aspId, resId, cluster)` |
+| `nhp_agent_exit_resource` | `(aspId, resId, serverIp, serverHostname, serverPort)` | `(aspId, resId, cluster)` |
+
+The iOS / Android wrappers (`NhpAgentAddResource`, `NhpAgentKnockResource`, `NhpAgentExitResource`) follow the same change.
+
+`nhp_agent_add_server` is **unchanged** — it still takes `(pubkey, ip, host, port, expire)`. The new `cluster` argument names which previously-registered server to route the resource through.
+
+### Picking the `cluster` value
+
+- **Callers that load `server.toml`**: pass the `[[Servers]] Name` of the target cluster.
+- **Callers that registered servers via `nhp_agent_add_server`**: pass the server's base64 public key (the SDK auto-names a single-instance cluster after its pubkey). This keeps a one-call-at-a-time SDK migration possible without learning the cluster-name concept.
+
+Passing an unknown cluster name, an unknown pubkey, both `Cluster` and `ServerPubKey`, or neither, surfaces in the `errCode` field of the knock response — see the [error codes](#error-codes-for-cluster-lookup) section below for the specific codes so callers can branch on the failure programmatically.
+
+### Why the address arguments went away
+
+Pre-v1.x, `serverIp` / `serverHostname` / `serverPort` were silently ignored whenever the resource (or its underlying server peer) had a pubkey configured — `resource.toml` could display addresses the agent never actually dialed. The address fields were removed because there is no consistent meaning that would not break either operator intuition or routing correctness.
+
+### Go-level callers
+
+`agent.KnockResource` lost its `ServerHostname` / `ServerIp` / `ServerPort` fields and gained `Cluster` / `ServerPubKey`. Set exactly one of those two. `FindServerClusterFromResource` now returns `(*ServerCluster, error)` with one of these sentinel errors for migration-related failures:
+
+- `common.ErrKnockResourceMissingClusterRef` — neither `Cluster` nor `ServerPubKey` set.
+- `common.ErrKnockResourceAmbiguousClusterRef` — both `Cluster` and `ServerPubKey` set.
+- `common.ErrKnockResourceUnknownClusterName` — `Cluster` references a name not in `server.toml`.
+- `common.ErrKnockResourceUnknownClusterPubKey` — `ServerPubKey` not registered with the agent.
+
+The breaking change landed in commit `a947e1c5` (`feat(agent)!: bind resources to clusters by name, drop ambiguous host fields`); follow-on docs / examples / SDK cleanups landed in subsequent commits on the same branch.
+
+### Error codes for cluster lookup
+
+The knock/exit JSON response's `errCode` is set to the sentinel-error's numeric code in the failure cases above. Callers that want to surface a precise diagnostic to the end user should branch on `errCode` rather than the human-readable `errMsg`. The canonical mapping is in [`nhp/common/errors.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/common/errors.go).
+
+---
 
 ## 1 Client Agent SDK Introduction
 ### 1.1 Introduction

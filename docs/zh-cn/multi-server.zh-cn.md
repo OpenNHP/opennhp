@@ -32,14 +32,15 @@
 
 ### 0.3 无状态 cookie（前置依赖）
 
-集群内任意 nhp-server 副本要能验证同伴下发的 cookie，前提是 **共享 cookie 签名密钥** + **按 IP（去掉 port）派生**：
+集群内任意 nhp-server 副本要能验证同伴下发的 cookie，前提是三个条件同时成立：**共享 cookie 签名密钥** + **按 IP（去掉 port）派生** + **绑定 agent 静态公钥**：
 
 ```text
-cookie = HMAC-SHA256(CookieSigningKey, remoteIP || windowIndex)
+cookie = HMAC-SHA256(CookieSigningKey, remoteIP || agentStaticPubKey || windowIndex)
 ```
 
 - 验证窗口：当前 + 上一窗口（默认 60s），跨窗口边界仍可用。
 - 只用 IP 不用 port：Agent 跨实例切换时每个 UDP conn 各自一个临时源端口，port 在 KNK 与 RKN 之间会变；用 IP 派生才能让另一副本算出同一 cookie。
+- 绑定 agent 静态公钥：若不绑定，共享同一 NAT/CGN 出口 IP 的两个 agent 在同一窗口内会派生相同 cookie——其中一个通过自己的合法 KNK 拿到 cookie 后，同 NAT 后的另一个 agent 即可在无关 RKN 中重放。跨副本派生仍然成立，因为 agent 静态公钥全局唯一。Server 在 cookie 校验前会从 IK static 字段解出 agent 公钥，**线协议保持不变**，agent 完全感知不到这层绑定。
 - 配置：`CookieSigningKeyBase64`、`CookieTimeWindowSeconds`，详见 [responder.go:23-58](../../nhp/core/responder.go#L23-L58)、[udpserver.go:235-270](../../endpoints/server/udpserver.go#L235-L270)。
 
 ![Cookie 派生与跨副本校验](../images/multi-nhp-server/cookie-derivation.png)

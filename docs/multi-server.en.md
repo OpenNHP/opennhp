@@ -32,14 +32,15 @@ Across all three endpoints, a cluster is:
 
 ### 0.3 Stateless cookies (prerequisite)
 
-For any nhp-server replica in a cluster to verify a cookie a sibling minted, two things must hold: **the cookie signing key is shared cluster-wide**, and **the cookie is derived from IP (not ip:port)**:
+For any nhp-server replica in a cluster to verify a cookie a sibling minted, three things must hold: **the cookie signing key is shared cluster-wide**, **the cookie is derived from IP (not ip:port)**, and **the cookie is bound to the agent's static public key**:
 
 ```text
-cookie = HMAC-SHA256(CookieSigningKey, remoteIP || windowIndex)
+cookie = HMAC-SHA256(CookieSigningKey, remoteIP || agentStaticPubKey || windowIndex)
 ```
 
 - Acceptance window: current + previous window (default 60s), so the boundary case still works.
 - IP-only, not ip:port: when an agent rotates instances, each UDP conn gets its own ephemeral source port — the port a sibling sees on the RKN is not the port the original instance saw on the KNK. Keying by IP lets the sibling re-derive the same cookie.
+- Bound to agent static pubkey: without this, two distinct agents sharing a NAT/CGN egress IP would derive identical cookies in the same window, letting one mint a cookie via its own KNK and have a sibling behind the same NAT replay it. Cross-replica re-derivation still works because the agent's static pubkey is global. The server recovers the pubkey from the IK static field before the cookie check, so the protocol on the wire is unchanged — agents are agnostic to this binding.
 - Config: `CookieSigningKeyBase64`, `CookieTimeWindowSeconds` — see [responder.go:23-58](../nhp/core/responder.go#L23-L58), [udpserver.go:235-270](../endpoints/server/udpserver.go#L235-L270).
 
 ![Cookie derivation & cross-replica verification](images/multi-nhp-server/cookie-derivation.png)

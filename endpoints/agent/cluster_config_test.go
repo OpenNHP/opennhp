@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/common/loadbalance"
 )
 
@@ -385,5 +386,120 @@ func TestNormalize_DuplicateNameRejected(t *testing.T) {
 	err := normalizeClusters(cfgs, (&recordingDeprecate{}).Warn)
 	if err == nil || !strings.Contains(err.Error(), "samename") {
 		t.Fatalf("normalize must reject duplicate Name, got: %v", err)
+	}
+}
+
+// TestFindServerClusterFromResource_SentinelErrors pins the four
+// failure modes to distinct sentinel errors. Pre-v1.x callers got
+// nil for any of these and could only distinguish them by reading
+// agent logs — useless for C/iOS SDK consumers that surface the
+// numeric errCode to end users.
+//
+// The mapping is part of the public API now: an SDK consumer that
+// branches on errCode == "51006" to show "unknown cluster name" must
+// keep working across refactors of this function.
+func TestFindServerClusterFromResource_SentinelErrors(t *testing.T) {
+	// Build an agent with one known cluster "good-cluster" with pubkey
+	// "k1" so we can produce both "unknown name" and "unknown pubkey"
+	// failures by referencing other values.
+	cfg := &ClusterConfig{
+		Name:         "good-cluster",
+		PubKeyBase64: "k1",
+		LoadBalance:  loadbalance.SchemeRoundRobin,
+		Instances:    []InstanceConfig{{Ip: "10.0.0.1", Port: 62206}},
+	}
+	if err := normalizeClusters([]*ClusterConfig{cfg}, (&recordingDeprecate{}).Warn); err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	sc, err := buildCluster(cfg)
+	if err != nil {
+		t.Fatalf("buildCluster: %v", err)
+	}
+	a := &UdpAgent{
+		serverClusterMap:    map[string]*ServerCluster{"k1": sc},
+		serverClusterByName: map[string]*ServerCluster{"good-cluster": sc},
+	}
+
+	tests := []struct {
+		name    string
+		res     *KnockResource
+		wantErr *common.Error
+		wantNil bool
+	}{
+		{
+			name:    "neither set → ErrKnockResourceMissingClusterRef",
+			res:     &KnockResource{AuthServiceId: "asp", ResourceId: "res"},
+			wantErr: common.ErrKnockResourceMissingClusterRef,
+			wantNil: true,
+		},
+		{
+			name:    "both set → ErrKnockResourceAmbiguousClusterRef",
+			res:     &KnockResource{AuthServiceId: "asp", ResourceId: "res", Cluster: "good-cluster", ServerPubKey: "k1"},
+			wantErr: common.ErrKnockResourceAmbiguousClusterRef,
+			wantNil: true,
+		},
+		{
+			name:    "unknown name → ErrKnockResourceUnknownClusterName",
+			res:     &KnockResource{AuthServiceId: "asp", ResourceId: "res", Cluster: "no-such-cluster"},
+			wantErr: common.ErrKnockResourceUnknownClusterName,
+			wantNil: true,
+		},
+		{
+			name:    "unknown pubkey → ErrKnockResourceUnknownClusterPubKey",
+			res:     &KnockResource{AuthServiceId: "asp", ResourceId: "res", ServerPubKey: "no-such-key"},
+			wantErr: common.ErrKnockResourceUnknownClusterPubKey,
+			wantNil: true,
+		},
+		{
+			name:    "known name → success",
+			res:     &KnockResource{AuthServiceId: "asp", ResourceId: "res", Cluster: "good-cluster"},
+			wantErr: nil,
+			wantNil: false,
+		},
+		{
+			name:    "known pubkey → success",
+			res:     &KnockResource{AuthServiceId: "asp", ResourceId: "res", ServerPubKey: "k1"},
+			wantErr: nil,
+			wantNil: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := a.FindServerClusterFromResource(tt.res)
+			if tt.wantNil && got != nil {
+				t.Fatalf("want nil cluster, got %+v", got)
+			}
+			if !tt.wantNil && got == nil {
+				t.Fatalf("want non-nil cluster, got nil (err=%v)", err)
+			}
+			if tt.wantErr == nil && err != nil {
+				t.Fatalf("want nil err, got %v", err)
+			}
+			if tt.wantErr != nil && err != tt.wantErr {
+				t.Fatalf("want %v (code=%s), got %v (code=%s)",
+					tt.wantErr, tt.wantErr.ErrorCode(),
+					err, common.ErrorToErrorCode(err))
+			}
+		})
+	}
+}
+
+// TestFindServerClusterFromResource_ErrorCodesStable freezes the
+// numeric errCode values that SDK consumers branch on. If anyone
+// renumbers these in nhp/common/errors.go without coordinating with
+// downstream, this test fails loudly. Changing an existing code is
+// itself a breaking change — bump the major and migrate consumers.
+func TestFindServerClusterFromResource_ErrorCodesStable(t *testing.T) {
+	mapping := map[*common.Error]string{
+		common.ErrKnockResourceMissingClusterRef:    "51004",
+		common.ErrKnockResourceAmbiguousClusterRef:  "51005",
+		common.ErrKnockResourceUnknownClusterName:   "51006",
+		common.ErrKnockResourceUnknownClusterPubKey: "51007",
+	}
+	for e, want := range mapping {
+		if got := e.ErrorCode(); got != want {
+			t.Fatalf("error %q has code %q, want %q — this code is part of the public SDK contract; renumbering it breaks downstream consumers", e.Error(), got, want)
+		}
 	}
 }

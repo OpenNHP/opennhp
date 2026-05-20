@@ -260,10 +260,14 @@ func NhpAgentKnockResource(aspId string, resId string, cluster string) string {
 			Cluster:       cluster,
 		}
 
-		sc := gAgentInstance.FindServerClusterFromResource(resource)
+		sc, lookupErr := gAgentInstance.FindServerClusterFromResource(resource)
 		if sc == nil {
-			ackMsg.ErrCode = common.ErrKnockServerNotFound.ErrorCode()
-			ackMsg.ErrMsg = common.ErrKnockServerNotFound.Error()
+			// lookupErr is one of ErrKnockResource{Missing,
+			// Ambiguous,UnknownName,UnknownPubKey}ClusterRef —
+			// surface the specific code so iOS callers can branch
+			// on errCode.
+			ackMsg.ErrCode = common.ErrorToErrorCode(lookupErr)
+			ackMsg.ErrMsg = lookupErr.Error()
 			return
 		}
 
@@ -317,11 +321,11 @@ func NhpAgentExitResource(aspId string, resId string, cluster string) bool {
 			Cluster:       cluster,
 		}
 
-		sc := gAgentInstance.FindServerClusterFromResource(resource)
+		sc, lookupErr := gAgentInstance.FindServerClusterFromResource(resource)
 		if sc == nil {
-			ackMsg.ErrCode = common.ErrKnockServerNotFound.ErrorCode()
-			ackMsg.ErrMsg = common.ErrKnockServerNotFound.Error()
-			err = common.ErrKnockServerNotFound
+			ackMsg.ErrCode = common.ErrorToErrorCode(lookupErr)
+			ackMsg.ErrMsg = lookupErr.Error()
+			err = lookupErr
 			return
 		}
 

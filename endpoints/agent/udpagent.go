@@ -896,10 +896,12 @@ func (a *UdpAgent) RemoveServer(serverKey string) {
 }
 
 func (a *UdpAgent) AddResource(res *KnockResource) error {
-	sc := a.FindServerClusterFromResource(res)
+	sc, err := a.FindServerClusterFromResource(res)
 	if sc == nil {
-		log.Error("failed to find corresponding server cluster for resource %s", res.Id())
-		return common.ErrKnockServerNotFound
+		// err is already specific (missing/ambiguous/unknown ref);
+		// propagate it so SDK callers see the precise reason instead
+		// of a generic "knock server not found".
+		return err
 	}
 	peer := sc.representativePeer
 
@@ -950,20 +952,30 @@ func (a *UdpAgent) RemoveResource(aspId string, resId string) {
 	}
 }
 
-// FindServerClusterFromResource picks the cluster a resource is bound
-// to. Exactly one reference field must be set on the resource:
+// FindServerClusterFromResource returns the cluster a resource is
+// bound to. Exactly one of res.Cluster (operator-friendly name from
+// server.toml) or res.ServerPubKey (SDK programmatic ref) must be
+// set; the other must be empty. The returned error is one of the
+// sentinel values in nhp/common so SDK callers can map it to a
+// stable errCode in the knock response without parsing the human-
+// readable message:
 //
-//  1. Cluster — looked up in the by-name index. Preferred form; used by
-//     resource.toml so operators don't have to paste base64 pubkeys.
+//   - ErrKnockResourceMissingClusterRef:   neither set.
+//   - ErrKnockResourceAmbiguousClusterRef: both set.
+//   - ErrKnockResourceUnknownClusterName:  Cluster name unknown.
+//   - ErrKnockResourceUnknownClusterPubKey: ServerPubKey unregistered.
 //
-//  2. ServerPubKey — looked up by pubkey. Used by SDK callers that build
-//     a KnockResource programmatically without a config-file context.
+// We don't silently fall through to a different lookup strategy
+// (e.g. ignore ServerPubKey when Cluster is also set) because that
+// would route a misconfigured resource to the wrong identity.
 //
-// Returns nil when both fields are empty, both are set, or the
-// referenced cluster is unknown. The caller logs the failure; we
-// don't silently fall through to a different lookup strategy because
-// that would route the resource to the wrong identity.
-func (a *UdpAgent) FindServerClusterFromResource(res *KnockResource) *ServerCluster {
+// Pre-v1.x this returned only *ServerCluster, collapsing all four
+// failures into a single nil outcome that surfaced to C/iOS callers
+// as the generic ErrKnockServerNotFound. Diagnosing a misuse
+// required cross-referencing the agent logs, which C consumers
+// typically can't. See docs/agent_sdk.md "Migration from v0.x to
+// v1.x".
+func (a *UdpAgent) FindServerClusterFromResource(res *KnockResource) (*ServerCluster, error) {
 	a.serverPeerMutex.Lock()
 	defer a.serverPeerMutex.Unlock()
 
@@ -972,22 +984,22 @@ func (a *UdpAgent) FindServerClusterFromResource(res *KnockResource) *ServerClus
 	switch {
 	case name == "" && pk == "":
 		log.Error("resource %s has neither Cluster nor ServerPubKey set", res.Id())
-		return nil
+		return nil, common.ErrKnockResourceMissingClusterRef
 	case name != "" && pk != "":
 		log.Error("resource %s sets both Cluster (%q) and ServerPubKey — pick one", res.Id(), name)
-		return nil
+		return nil, common.ErrKnockResourceAmbiguousClusterRef
 	case name != "":
 		if sc, ok := a.serverClusterByName[name]; ok {
-			return sc
+			return sc, nil
 		}
 		log.Error("resource %s references unknown cluster %q (check server.toml [[Servers]] Name fields)", res.Id(), name)
-		return nil
+		return nil, common.ErrKnockResourceUnknownClusterName
 	default: // pk != ""
 		if sc, ok := a.serverClusterMap[pk]; ok {
-			return sc
+			return sc, nil
 		}
 		log.Error("resource %s references unknown ServerPubKey (no cluster in server.toml has this pubkey)", res.Id())
-		return nil
+		return nil, common.ErrKnockResourceUnknownClusterPubKey
 	}
 }
 
@@ -999,7 +1011,7 @@ func (a *UdpAgent) FindServerClusterFromResource(res *KnockResource) *ServerClus
 // FindServerClusterFromResource + Cluster.Pick() to honour
 // load-balancing across instances.
 func (a *UdpAgent) FindServerPeerFromResource(res *KnockResource) *core.UdpPeer {
-	sc := a.FindServerClusterFromResource(res)
+	sc, _ := a.FindServerClusterFromResource(res)
 	if sc == nil {
 		return nil
 	}

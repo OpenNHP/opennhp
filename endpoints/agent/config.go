@@ -279,9 +279,12 @@ func (a *UdpAgent) updateResources(file string) (err error) {
 		log.Error("failed to unmarshal resource config: %v", err)
 	}
 	for _, res := range resources.Resources {
-		sc := a.FindServerClusterFromResource(res)
+		sc, err := a.FindServerClusterFromResource(res)
 		if sc == nil {
-			log.Error("failed to find corresponding server cluster for resource %s", res.Id())
+			// err is already specific (the function logs the
+			// failure mode); skip this entry and move on so a
+			// single bad resource doesn't block the rest.
+			log.Error("skipping resource %s: %v", res.Id(), err)
 			continue
 		}
 		targetMap[res.Id()] = &KnockTarget{

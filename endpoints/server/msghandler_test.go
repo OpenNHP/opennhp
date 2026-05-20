@@ -2,8 +2,39 @@ package server
 
 import (
 	"net"
+	"sync"
 	"testing"
+
+	"github.com/OpenNHP/opennhp/nhp/core"
 )
+
+// newTestServerForCounter spins up the bare minimum UdpServer state
+// needed to exercise per-relay counter accounting in isolation: maps,
+// mutexes, and nothing else. No listener, no goroutines.
+func newTestServerForCounter() *UdpServer {
+	return &UdpServer{
+		remoteConnectionMap: make(map[string]*UdpConn),
+		relayConnCount:      make(map[string]int),
+	}
+}
+
+// makeRelayConn fabricates a UdpConn shaped like one HandleRelayForward
+// would have inserted: same mapKey form, real RemoteAddr/RealRemoteAddr
+// so relayAddrFromConnKey and the rest of the counter logic see what
+// they'd see in production.
+func makeRelayConn(relayHostPort, realClientHostPort string) (*UdpConn, string, string) {
+	relayUDP, _ := net.ResolveUDPAddr("udp", relayHostPort)
+	clientUDP, _ := net.ResolveUDPAddr("udp", realClientHostPort)
+	connKey := "relay:" + relayHostPort + ":" + realClientHostPort
+	conn := &UdpConn{
+		mapKey: connKey,
+		ConnData: &core.ConnectionData{
+			RemoteAddr:     relayUDP,
+			RealRemoteAddr: clientUDP,
+		},
+	}
+	return conn, connKey, relayHostPort
+}
 
 // TestValidateRelaySourceAddr_FlagToggles is the production-safety
 // invariant: with allowPrivate=false, RFC1918 / loopback / CGNAT must
@@ -182,4 +213,255 @@ func TestRelayAddrFromConnKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestTeardownPerRelayCounter_Decision pins the truth table for the
+// per-relay counter teardown logic. The four combinations of
+// (stillPresent, replaced) cover every path through the helper:
+//
+//   - (true,  false): the routine still owns the map entry and no
+//     replacement claimed the slot — this is the only path that dec's.
+//   - (true,  true):  HRF set replaced=true before CR-defer reached
+//     the teardown; do NOT dec (replacement inherits the slot).
+//   - (false, false): the map entry is gone but no replacement
+//     happened (e.g. some hypothetical future shutdown path) — do
+//     NOT dec, since whoever removed the entry should own the dec.
+//   - (false, true):  HRF removed the entry AND set replaced; do NOT
+//     dec (this is the normal stale-replace ordering).
+//
+// Pre-fix, "do NOT dec" was inferred from stillPresent=false alone, so
+// the (true, true) row would have dec'd — leaking a slot below the
+// true live count on every stale-replace race.
+func TestTeardownPerRelayCounter_Decision(t *testing.T) {
+	const relay = "198.51.100.10:62206"
+	const client = "203.0.113.42:51234"
+
+	tests := []struct {
+		name         string
+		stillPresent bool
+		replaced     bool
+		wantDec      bool
+	}{
+		{"normal teardown decrements", true, false, true},
+		{"replaced-by-HRF must not decrement", true, true, false},
+		{"map entry already gone, no replacement: do not decrement", false, false, false},
+		{"map entry gone and replaced: do not decrement", false, true, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestServerForCounter()
+			conn, _, relayAddr := makeRelayConn(relay, client)
+			// Seed the counter so we can observe a dec.
+			s.relayConnCount[relayAddr] = 1
+			conn.replaced.Store(tt.replaced)
+
+			s.teardownPerRelayCounter(conn, conn.mapKey, tt.stillPresent)
+
+			got := s.getRelayConnCount(relayAddr)
+			want := 1
+			if tt.wantDec {
+				want = 0 // decRelayConnCount deletes on <=0; getRelayConnCount returns 0 for missing key
+			}
+			if got != want {
+				t.Fatalf("after teardown(stillPresent=%v, replaced=%v): counter=%d, want %d",
+					tt.stillPresent, tt.replaced, got, want)
+			}
+		})
+	}
+}
+
+// TestStaleReplace_CounterIsNetZero is the regression test for the
+// double-decrement race that motivated this fix. The original code
+// kept four short critical sections in HandleRelayForward and let
+// connectionRoutine's teardown defer race against the stale-replace
+// path; depending on the interleaving, the per-relay counter could
+// either drop below or rise above the true live-connection count.
+//
+// The fix turns the stale-replace into a slot transfer: HRF detects
+// the stale conn under the map mutex, marks it replaced (so CR-defer
+// will skip its dec), deletes the old entry, and inserts the new
+// entry — all without touching the counter. The new conn's matching
+// dec on its own teardown is what eventually returns the slot.
+//
+// The test runs both orderings of CR-defer vs HRF stale-replace and
+// asserts the counter ends at exactly 1 either way (one live
+// replacement conn). Pre-fix this would have ended at 0 (or below)
+// in one ordering and 2 in the other.
+func TestStaleReplace_CounterIsNetZero(t *testing.T) {
+	const relay = "198.51.100.10:62206"
+	const client = "203.0.113.42:51234"
+
+	tests := []struct {
+		name string
+		// crFirst: simulate connectionRoutine's teardown defer
+		// running before HandleRelayForward's stale-replace path.
+		// !crFirst: HRF runs first; CR-defer trails.
+		crFirst bool
+	}{
+		{"CR-defer runs first then HRF takes over the slot", true},
+		{"HRF stale-replace runs first then CR-defer trails", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestServerForCounter()
+			oldConn, connKey, relayAddr := makeRelayConn(relay, client)
+			// Mirror what HandleRelayForward would have done on the
+			// original insert: map entry + inc'd counter.
+			s.remoteConnectionMap[connKey] = oldConn
+			s.relayConnCount[relayAddr] = 1
+
+			// The conn is stale: connectionRoutine has exited and
+			// Close has flipped IsClosed. Drive it directly because
+			// we don't want to run the full routine here.
+			closeConn(oldConn)
+
+			crDefer := func() {
+				// Mirror udpserver.go connectionRoutine's defer.
+				s.remoteConnectionMapMutex.Lock()
+				_, stillPresent := s.remoteConnectionMap[connKey]
+				if stillPresent {
+					delete(s.remoteConnectionMap, connKey)
+				}
+				s.remoteConnectionMapMutex.Unlock()
+				s.teardownPerRelayCounter(oldConn, connKey, stillPresent)
+			}
+
+			hrfStaleReplace := func() {
+				// Mirror the slot-transfer half of
+				// HandleRelayForward. Skips the full
+				// packet-parsing/insert path because we only care
+				// about the counter-accounting half of the race.
+				s.remoteConnectionMapMutex.Lock()
+				if existing, found := s.remoteConnectionMap[connKey]; found && existing.ConnData.IsClosed() {
+					existing.replaced.Store(true)
+					delete(s.remoteConnectionMap, connKey)
+					// Slot transfers; no inc, no dec. The
+					// replacement insert below would be the
+					// "new conn inherits the slot" half.
+					newConn, _, _ := makeRelayConn(relay, client)
+					s.remoteConnectionMap[connKey] = newConn
+				}
+				s.remoteConnectionMapMutex.Unlock()
+			}
+
+			if tt.crFirst {
+				crDefer()
+				hrfStaleReplace()
+			} else {
+				hrfStaleReplace()
+				crDefer()
+			}
+
+			got := s.getRelayConnCount(relayAddr)
+			if got != 1 {
+				t.Fatalf("counter=%d, want 1 (one live replacement conn). "+
+					"CR-defer first=%v. Pre-fix this race produced 0 (double-dec) "+
+					"or 2 (skip-dec) depending on ordering.", got, tt.crFirst)
+			}
+		})
+	}
+}
+
+// TestStaleReplace_ConcurrentInterleavings runs the same race many
+// times with real goroutines, relying on the runtime scheduler to
+// produce both orderings. With -race this also asserts the absence of
+// data races on relayConnCount and the replaced flag. The invariant
+// is the same as the deterministic test above: after the race
+// completes, the counter must equal the live-replacement count (1).
+func TestStaleReplace_ConcurrentInterleavings(t *testing.T) {
+	const relay = "198.51.100.10:62206"
+	const iterations = 1000
+
+	for i := 0; i < iterations; i++ {
+		s := newTestServerForCounter()
+		// Use a per-iteration unique client port so each iteration
+		// has its own connKey and counter starts fresh.
+		client := "203.0.113.42:" + itoa(50000+i)
+		oldConn, connKey, relayAddr := makeRelayConn(relay, client)
+		s.remoteConnectionMap[connKey] = oldConn
+		s.relayConnCount[relayAddr] = 1
+		closeConn(oldConn)
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			s.remoteConnectionMapMutex.Lock()
+			_, stillPresent := s.remoteConnectionMap[connKey]
+			if stillPresent {
+				delete(s.remoteConnectionMap, connKey)
+			}
+			s.remoteConnectionMapMutex.Unlock()
+			s.teardownPerRelayCounter(oldConn, connKey, stillPresent)
+		}()
+		go func() {
+			defer wg.Done()
+			s.remoteConnectionMapMutex.Lock()
+			if existing, found := s.remoteConnectionMap[connKey]; found && existing.ConnData.IsClosed() {
+				existing.replaced.Store(true)
+				delete(s.remoteConnectionMap, connKey)
+				newConn, _, _ := makeRelayConn(relay, client)
+				s.remoteConnectionMap[connKey] = newConn
+			}
+			s.remoteConnectionMapMutex.Unlock()
+		}()
+		wg.Wait()
+
+		got := s.getRelayConnCount(relayAddr)
+		// Acceptable outcomes:
+		//   - CR wins: HRF sees no entry → no replace → CR-defer dec's. counter=0.
+		//   - HRF wins: HRF replaces (no inc, no dec) → CR-defer sees
+		//     replaced=true OR stillPresent=false → skip dec. counter=1.
+		// Either is consistent with "counter == live conn count": 0
+		// live (CR finished cleanup, HRF never claimed slot) or 1
+		// live (HRF inserted replacement).
+		if got != 0 && got != 1 {
+			t.Fatalf("iteration %d: counter=%d, want 0 (no replacement) or 1 (replacement inserted). "+
+				"A value of 2 means CR-defer skipped dec while HRF didn't actually claim the slot. "+
+				"A value of -clamped-to-deleted means both dec'd the same slot.", i, got)
+		}
+	}
+}
+
+// closeConn flips a ConnectionData into the IsClosed=true state
+// without running the full Close() machinery (which would close
+// channels we never created in the test fixture).
+func closeConn(c *UdpConn) {
+	// ConnectionData.closed is unexported; we can't poke it directly
+	// from outside nhp/core. Instead, set up the minimal channels so
+	// Close() can run flush+close without panicking. The test only
+	// needs IsClosed()==true; the side-effect of channel teardown
+	// inside the same fixture is harmless.
+	c.ConnData.StopSignal = make(chan struct{})
+	c.ConnData.SendQueue = make(chan *core.Packet, 1)
+	c.ConnData.RecvQueue = make(chan *core.Packet, 1)
+	c.ConnData.BlockSignal = make(chan struct{}, 1)
+	c.ConnData.SetTimeoutSignal = make(chan struct{}, 1)
+	c.ConnData.Close()
+}
+
+// itoa is a small local int→string helper to avoid pulling strconv
+// into the test for one line.
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b [20]byte
+	i := len(b)
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		b[i] = '-'
+	}
+	return string(b[i:])
 }

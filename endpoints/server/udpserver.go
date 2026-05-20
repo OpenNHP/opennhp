@@ -127,6 +127,21 @@ type UdpConn struct {
 	// compound key "relay:<relayAddr>:<realClientAddr>". connectionRoutine
 	// uses this on teardown so the right entry gets removed.
 	mapKey string
+
+	// replaced is set by HandleRelayForward when it observes this conn
+	// as stale (IsClosed=true) and swaps in a fresh replacement under
+	// the same connKey. The per-relay slot is transferred to the new
+	// conn rather than dec'd and re-inc'd, and connectionRoutine's
+	// teardown reads this flag to know it must NOT dec the counter
+	// (the slot now belongs to the replacement).
+	//
+	// Without this flag, the counter accounting depends on whichever
+	// goroutine deletes the map entry first — a race that lets the
+	// teardown defer and HRF both dec the same slot (or both skip the
+	// dec, depending on the interleaving), drifting relayConnCount
+	// away from the true live-connection count and either tightening
+	// or relaxing MaxConnectionsPerRelay over time.
+	replaced atomic.Bool
 }
 
 type ACConn struct {
@@ -612,15 +627,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		}
 		s.remoteConnectionMapMutex.Unlock()
 
-		// Decrement the per-relay counter only if this routine actually
-		// owned the map entry (stillPresent). If a stale-cleanup path
-		// in HandleRelayForward already deleted us, the counter was
-		// also rolled back by that path so we must not double-count.
-		if stillPresent {
-			if relayAddr := relayAddrFromConnKey(mapKey); relayAddr != "" {
-				s.decRelayConnCount(relayAddr)
-			}
-		}
+		s.teardownPerRelayCounter(conn, mapKey, stillPresent)
 
 		conn.Close()
 	}()

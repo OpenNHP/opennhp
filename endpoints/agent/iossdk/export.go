@@ -168,9 +168,9 @@ func NhpAgentRemoveServer(pubkey string) {
 // Input:
 // aspId: Authentication Service Provider Identifier
 // resId: Resource Identifier
-// serverIp: NHP server IP address or domain name (the NHP server managing the resource)
-// serverHostname: NHP server domain name (the NHP server managing the resource)
-// serverPort: NHP server port (the NHP server managing the resource)
+// cluster: nhp-server cluster name (must match a [[Servers]] Name in server.toml,
+// or a pubkey previously registered via NhpAgentAddServer when used as the
+// cluster's auto-name)
 //
 // Return:
 // Whether the resource information has been added successfully
@@ -214,9 +214,7 @@ func NhpAgentRemoveResource(aspId string, resId string) {
 // Input:
 // aspId: Authentication service provider identifier
 // resId: Resource identifier
-// serverIp: NHP server IP address or domain name (the NHP server managing the resource)
-// serverHostname: NHP server domain name (the NHP server managing the resource)
-// serverPort: NHP server port (the NHP server managing the resource)
+// cluster: nhp-server cluster name (see NhpAgentAddResource)
 //
 // Returns:
 // The server's response message (json format string buffer pointer):
@@ -280,9 +278,7 @@ func NhpAgentKnockResource(aspId string, resId string, cluster string) string {
 // Input:
 // aspId: Authentication Service Provider Identifier
 // resId: Resource Identifier
-// serverIp: NHP server IP address or domain name (the NHP server managing the resource)
-// serverHostname: NHP server domain name (the NHP server managing the resource)
-// serverPort: NHP server port (the NHP server managing the resource)
+// cluster: nhp-server cluster name (see NhpAgentAddResource)
 //
 // Return:
 // Whether the exit was successful

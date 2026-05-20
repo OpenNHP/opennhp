@@ -161,6 +161,14 @@ func nhp_agent_add_server(pubkey *C.char, ip *C.char, host *C.char, port C.int, 
 	}
 
 	serverPort := int(port)
+	// Reject obviously-bogus port values at the SDK boundary so a
+	// caller-side signed-int underflow (or any other accidental
+	// negative) fails loudly here, rather than slipping through to
+	// SendAddr() and resurfacing as a confusing "server IP cannot be
+	// parsed" deep in knockRequest.
+	if serverPort < 0 || serverPort > 65535 {
+		return false
+	}
 	if serverPort == 0 {
 		serverPort = 62206 // use default server listening port
 	}

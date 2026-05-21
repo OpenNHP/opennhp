@@ -48,3 +48,16 @@ output "ssh_jump_command" {
     ac     = "ssh -J ec2-user@${aws_eip.relay.public_ip} ec2-user@${aws_instance.ac.private_ip}"
   }
 }
+
+# demo.nhp certificate (signed by stealth CA)
+output "demo_nhp_cert" {
+  description = "demo.nhp server certificate (PEM)"
+  value       = tls_locally_signed_cert.demo_nhp.cert_pem
+  sensitive   = true
+}
+
+output "demo_nhp_key" {
+  description = "demo.nhp server private key (PEM)"
+  value       = tls_private_key.demo_nhp.private_key_pem
+  sensitive   = true
+}

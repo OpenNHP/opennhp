@@ -679,6 +679,33 @@ jobs:
              NGINX_CONF='/tmp/ac-nginx.conf' \
              /tmp/bootstrap-tls.sh"
 
+      - name: Deploy demo.nhp certificate (signed by stealth CA)
+        working-directory: repo/terraform/demo
+        run: |
+          # Initialize Terraform to read outputs
+          terraform init -backend=true \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+          # Get demo.nhp certificate and key from Terraform outputs
+          DEMO_NHP_CERT=$(terraform output -raw demo_nhp_cert)
+          DEMO_NHP_KEY=$(terraform output -raw demo_nhp_key)
+
+          # Create certs directory and deploy certificate to EC2
+          ssh nhp-ac "sudo mkdir -p /etc/nginx/certs && sudo chmod 755 /etc/nginx/certs"
+
+          # Deploy certificate (securely via stdin to avoid command-line exposure)
+          printf '%s' "$DEMO_NHP_CERT" | ssh nhp-ac \
+            "sudo tee /etc/nginx/certs/demo.nhp.pem > /dev/null && sudo chmod 644 /etc/nginx/certs/demo.nhp.pem"
+
+          printf '%s' "$DEMO_NHP_KEY" | ssh nhp-ac \
+            "sudo tee /etc/nginx/certs/demo.nhp-key.pem > /dev/null && sudo chmod 600 /etc/nginx/certs/demo.nhp-key.pem"
+
+          # Reload nginx to pick up the new certificate
+          ssh nhp-ac "sudo nginx -t && sudo systemctl reload nginx"
+
+          echo "demo.nhp certificate deployed successfully"
+
       - name: Deploy nhp-acd
         run: |
           REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-ac"

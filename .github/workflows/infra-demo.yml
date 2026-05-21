@@ -56,6 +56,48 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Sync stealth CA from GitHub Secrets to AWS Secrets Manager
+        if: env.TF_ACTION == 'apply'
+        env:
+          STEALTH_CA_CERT: ${{ secrets.STEALTH_CA_CERT }}
+          STEALTH_CA_KEY: ${{ secrets.STEALTH_CA_KEY }}
+        run: |
+          # Skip if GitHub Secrets are not configured
+          if [ -z "$STEALTH_CA_CERT" ] || [ -z "$STEALTH_CA_KEY" ]; then
+            echo "STEALTH_CA_CERT or STEALTH_CA_KEY not configured in GitHub Secrets, skipping sync"
+            exit 0
+          fi
+
+          echo "Syncing stealth CA to AWS Secrets Manager..."
+
+          # Fetch existing secret
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' \
+            --output text)
+
+          # Check if already synced (compare cert content)
+          EXISTING_CERT=$(echo "$SECRETS" | jq -r '.stealth_ca_cert // empty')
+          if [ "$EXISTING_CERT" = "$STEALTH_CA_CERT" ]; then
+            echo "Stealth CA already up to date in AWS Secrets Manager"
+            exit 0
+          fi
+
+          # Merge stealth CA into existing secret
+          UPDATED=$(echo "$SECRETS" | jq \
+            --arg cert "$STEALTH_CA_CERT" \
+            --arg key "$STEALTH_CA_KEY" \
+            '. + {stealth_ca_cert: $cert, stealth_ca_key: $key}')
+
+          # Update AWS Secrets Manager
+          aws secretsmanager put-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --secret-string "$UPDATED"
+
+          echo "Stealth CA synced to AWS Secrets Manager"
+
       - name: Fetch secrets from AWS Secrets Manager
         id: secrets
         run: |

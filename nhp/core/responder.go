@@ -254,18 +254,18 @@ func (d *Device) createPacketParserData(pd *PacketData) (ppd *PacketParserData, 
 		log.Info("start decryption using CIPHER_SCHEME_%d(0: CURVE; 1: GMSM.)", ppd.CipherScheme)
 		ppd.Ciphers = NewCipherSuite(ppd.CipherScheme)
 		ppd.deviceEcdh = d.GetEcdhByCipherScheme(ppd.CipherScheme)
-
-		// init chain hash -> ChainHash0
-		ppd.chainHash, err = NewHash(ppd.Ciphers.HashType)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create chain hash: %w", err)
-		}
-		ppd.chainHash.Write([]byte(InitialHashString))
-
-		// init chain key -> ChainKey0
-		ppd.noise.HashType = ppd.Ciphers.HashType
-		ppd.noise.MixKey(&ppd.chainKey, ppd.chainHash.Sum(nil), []byte(InitialChainKeyString))
 	}
+
+	// init chain hash -> ChainHash0
+	ppd.chainHash, err = NewHash(ppd.Ciphers.HashType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create chain hash: %w", err)
+	}
+	ppd.chainHash.Write([]byte(InitialHashString))
+
+	// init chain key -> ChainKey0
+	ppd.noise.HashType = ppd.Ciphers.HashType
+	ppd.noise.MixKey(&ppd.chainKey, ppd.chainHash.Sum(nil), []byte(InitialChainKeyString))
 
 	ppd.HeaderType, ppd.BodySize = ppd.header.TypeAndPayloadSize()
 
@@ -343,22 +343,7 @@ func (ppd *PacketParserData) deriveMsgAssemblerData(t int, compress bool, messag
 
 	// continue with the sender's counter
 	mad.header.SetCounter(ppd.SenderTrxId)
-
-	// init chain hash -> ChainHash0
-	var err error
-	mad.chainHash, err = NewHash(mad.ciphers.HashType)
-	if err != nil {
-		// This should never happen with valid CipherSuite parameters
-		panic(fmt.Sprintf("failed to create chain hash in deriveMsgAssemblerData: %v", err))
-	}
-	mad.chainHash.Write([]byte(InitialHashString))
-
-	// continue with responder's chain key
-	// Note: ppd.chainKey is cleared by decryptBody's defer, so this is
-	// effectively all-zeros.  The Go agent's initiator side has the same
-	// behavior (encryptBody clears mad.chainKey), so both sides match.
 	mad.noise.HashType = ppd.Ciphers.HashType
-	copy(mad.chainKey[:], ppd.chainKey[:])
 
 	return mad
 }

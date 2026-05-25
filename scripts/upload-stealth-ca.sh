@@ -12,6 +12,7 @@
 #
 # Prerequisites:
 #   - AWS CLI configured with appropriate credentials
+#   - jq installed locally
 #   - Access to opennhp/demo secret in Secrets Manager
 #
 # This script is intended for the initial bootstrap or emergency/manual sync.
@@ -88,11 +89,6 @@ if [[ ! -f "$CA_KEY_FILE" ]]; then
     exit 1
 fi
 
-# Read certificate and key
-echo "Reading CA certificate and key..."
-CA_CERT=$(cat "$CA_CERT_FILE")
-CA_KEY=$(cat "$CA_KEY_FILE")
-
 # Fetch existing secret
 echo "Fetching existing secret from AWS Secrets Manager..."
 EXISTING_SECRET=$(aws secretsmanager get-secret-value \
@@ -101,23 +97,13 @@ EXISTING_SECRET=$(aws secretsmanager get-secret-value \
     --query SecretString \
     --output text)
 
-# Merge new fields into existing secret using Python (handles JSON properly).
-# Pass values through environment variables to avoid shell expansion issues
-# with triple-quoted strings (PEM content may contain ''', backslashes, etc.).
+# Merge in the PEM files byte-for-byte, preserving trailing newlines.
 echo "Merging stealth CA into secret..."
-UPDATED_SECRET=$(EXISTING_SECRET="$EXISTING_SECRET" CA_CERT="$CA_CERT" CA_KEY="$CA_KEY" python3 << 'EOF'
-import json
-import os
-
-existing = json.loads(os.environ["EXISTING_SECRET"], strict=False)
-
-# Add/update stealth CA fields
-existing["stealth_ca_cert"] = os.environ["CA_CERT"]
-existing["stealth_ca_key"] = os.environ["CA_KEY"]
-
-print(json.dumps(existing))
-EOF
-)
+UPDATED_SECRET=$(jq \
+    --rawfile cert "$CA_CERT_FILE" \
+    --rawfile key "$CA_KEY_FILE" \
+    '. + {stealth_ca_cert: $cert, stealth_ca_key: $key}' \
+    <<< "$EXISTING_SECRET")
 
 # Update secret in AWS
 echo "Updating AWS Secrets Manager..."

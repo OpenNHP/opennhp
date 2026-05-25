@@ -740,16 +740,29 @@ jobs:
 
           if [ "${{ steps.demo_nhp_cert.outputs.stealth_ca_enabled }}" = "true" ]; then
             ssh nhp-ac \
-              "sudo install -m 644 /tmp/ac-demo-nhp.conf /etc/nginx/conf.d/ac-demo-nhp.conf && \
-               sudo nginx -t && \
-               sudo systemctl reload nginx"
+              "set -e
+               if sudo test -f /etc/nginx/conf.d/ac-demo-nhp.conf && \
+                  sudo cmp -s /tmp/ac-demo-nhp.conf /etc/nginx/conf.d/ac-demo-nhp.conf; then
+                 echo 'ac-demo-nhp.conf unchanged; skipping nginx reload'
+               else
+                 sudo install -m 644 /tmp/ac-demo-nhp.conf /etc/nginx/conf.d/ac-demo-nhp.conf
+                 sudo nginx -t
+                 sudo systemctl reload nginx
+               fi"
           else
             ssh nhp-ac \
-              "sudo rm -f /etc/nginx/conf.d/ac-demo-nhp.conf \
-                          /etc/nginx/certs/demo.nhp.pem \
-                          /etc/nginx/certs/demo.nhp-key.pem && \
-               sudo nginx -t && \
-               sudo systemctl reload nginx"
+              "set -e
+               if sudo test -f /etc/nginx/conf.d/ac-demo-nhp.conf || \
+                  sudo test -f /etc/nginx/certs/demo.nhp.pem || \
+                  sudo test -f /etc/nginx/certs/demo.nhp-key.pem; then
+                 sudo rm -f /etc/nginx/conf.d/ac-demo-nhp.conf \
+                             /etc/nginx/certs/demo.nhp.pem \
+                             /etc/nginx/certs/demo.nhp-key.pem
+                 sudo nginx -t
+                 sudo systemctl reload nginx
+               else
+                 echo 'demo.nhp nginx artifacts already absent; skipping nginx reload'
+               fi"
           fi
 
       - name: Deploy nhp-acd

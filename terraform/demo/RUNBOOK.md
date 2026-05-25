@@ -64,9 +64,9 @@ during `terraform apply`, after which the PEM files must be copied to
 The repository includes a scheduled GitHub Actions workflow,
 `Renew demo.nhp Certificate`, that runs monthly to:
 
-1. Execute `terraform apply` in `terraform/demo`
-2. Read the refreshed `demo_nhp_cert` / `demo_nhp_key` outputs
-3. Deploy them to the AC instance and reload nginx
+1. Execute a targeted Terraform plan/apply for the `demo.nhp` certificate resources
+2. Read the refreshed `demo_nhp_cert` / `demo_nhp_key` outputs when the stealth CA is enabled
+3. Deploy them to the AC instance and reload nginx, or remove stale `demo.nhp` nginx/cert files if the stealth CA has been disabled
 
 If that workflow is disabled or fails repeatedly, re-run it manually before the
 certificate reaches expiry.

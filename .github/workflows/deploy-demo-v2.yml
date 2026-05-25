@@ -698,7 +698,7 @@ jobs:
             "sudo tee /etc/nginx/certs/demo.nhp.pem > /dev/null && sudo chmod 644 /etc/nginx/certs/demo.nhp.pem"
 
           printf '%s\n' "$DEMO_NHP_KEY" | ssh nhp-ac \
-            "sudo tee /etc/nginx/certs/demo.nhp-key.pem > /dev/null && sudo chmod 600 /etc/nginx/certs/demo.nhp-key.pem"
+            "sudo install -m 600 /dev/stdin /etc/nginx/certs/demo.nhp-key.pem"
 
           echo "demo.nhp certificate deployed successfully"
 

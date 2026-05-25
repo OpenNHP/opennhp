@@ -5,6 +5,10 @@ on:
     - cron: '23 4 1 * *'
   workflow_dispatch:
 
+concurrency:
+  group: demo-nhp-renew
+  cancel-in-progress: false
+
 env:
   AWS_REGION: us-east-2
   DEPLOY_USER: ec2-user
@@ -27,7 +31,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Setup SSH with ProxyJump
+      - name: Fetch secrets and setup SSH credentials
+        id: secrets
         env:
           TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
         run: |
@@ -41,7 +46,8 @@ jobs:
             --region ${{ env.AWS_REGION }} \
             --query 'SecretString' --output text)
 
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          CF_TOKEN=$(echo "$SECRETS" | jq -r '.cloudflare_api_token')
+          CF_ZONE=$(echo "$SECRETS" | jq -r '.cloudflare_zone_id')
           SSH_KEY=$(echo "$SECRETS" | jq -r '.ssh_deploy_private_key')
           HOST_KEYS=$(echo "$SECRETS" | jq -r '.ssh_host_keys // empty')
 
@@ -50,15 +56,37 @@ jobs:
             exit 1
           fi
 
+          if [ -z "$CF_TOKEN" ] || [ "$CF_TOKEN" = "null" ]; then
+            echo "ERROR: cloudflare_api_token missing in opennhp/demo"
+            exit 1
+          fi
+
+          if [ -z "$CF_ZONE" ] || [ "$CF_ZONE" = "null" ]; then
+            echo "ERROR: cloudflare_zone_id missing in opennhp/demo"
+            exit 1
+          fi
+
           if [ -z "$HOST_KEYS" ]; then
             echo "ERROR: ssh_host_keys missing in opennhp/demo"
             exit 1
           fi
 
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "$HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key
           chmod 644 ~/.ssh/known_hosts
+
+          PRIV_TMP=$(mktemp)
+          trap 'rm -f "$PRIV_TMP"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$PRIV_TMP"
+          chmod 600 "$PRIV_TMP"
+          DEPLOY_PUB=$(ssh-keygen -y -f "$PRIV_TMP")
+
+          echo "::add-mask::$CF_TOKEN"
+          echo "cf_token=$CF_TOKEN" >> "$GITHUB_OUTPUT"
+          echo "cf_zone=$CF_ZONE" >> "$GITHUB_OUTPUT"
+          echo "deploy_pub=$DEPLOY_PUB" >> "$GITHUB_OUTPUT"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
@@ -69,23 +97,25 @@ jobs:
         working-directory: terraform/demo
         env:
           TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          TF_VAR_cloudflare_api_token: ${{ steps.secrets.outputs.cf_token }}
+          TF_VAR_cloudflare_zone_id: ${{ steps.secrets.outputs.cf_zone }}
+          TF_VAR_deploy_public_key: ${{ steps.secrets.outputs.deploy_pub }}
         run: |
           terraform init -backend=true \
             -backend-config="bucket=$TF_STATE_BUCKET" \
             -backend-config="region=${{ env.AWS_REGION }}"
 
-          terraform apply -auto-approve
+          terraform plan \
+            -out=renew.tfplan \
+            -target=tls_private_key.demo_nhp \
+            -target=tls_cert_request.demo_nhp \
+            -target=tls_locally_signed_cert.demo_nhp
+
+          terraform apply -auto-approve renew.tfplan
 
           STEALTH_CA_ENABLED=$(terraform output -raw stealth_ca_enabled 2>/dev/null || true)
-          if [ "$STEALTH_CA_ENABLED" != "true" ]; then
-            echo "stealth CA not configured, skipping demo.nhp certificate renewal"
-            exit 0
-          fi
-
           RELAY_PUBLIC_IP=$(terraform output -raw relay_public_ip)
           AC_PRIVATE_IP=$(terraform output -raw ac_private_ip)
-          DEMO_NHP_CERT=$(terraform output -raw demo_nhp_cert)
-          DEMO_NHP_KEY=$(terraform output -raw demo_nhp_key)
 
           cat > ~/.ssh/config <<EOF
           Host relay-jump
@@ -105,13 +135,27 @@ jobs:
           EOF
           chmod 600 ~/.ssh/config
 
+          if [ "$STEALTH_CA_ENABLED" != "true" ]; then
+            echo "stealth CA not configured, removing any stale demo.nhp nginx config and certificates"
+            ssh nhp-ac \
+              "sudo rm -f /etc/nginx/conf.d/ac-demo-nhp.conf \
+                          /etc/nginx/certs/demo.nhp.pem \
+                          /etc/nginx/certs/demo.nhp-key.pem && \
+               sudo nginx -t && \
+               sudo systemctl reload nginx"
+            exit 0
+          fi
+
+          DEMO_NHP_CERT=$(terraform output -raw demo_nhp_cert)
+          DEMO_NHP_KEY=$(terraform output -raw demo_nhp_key)
+
           ssh nhp-ac "sudo mkdir -p /etc/nginx/certs && sudo chmod 755 /etc/nginx/certs"
 
           printf '%s\n' "$DEMO_NHP_CERT" | ssh nhp-ac \
             "sudo tee /etc/nginx/certs/demo.nhp.pem > /dev/null && sudo chmod 644 /etc/nginx/certs/demo.nhp.pem"
 
           printf '%s\n' "$DEMO_NHP_KEY" | ssh nhp-ac \
-            "sudo tee /etc/nginx/certs/demo.nhp-key.pem > /dev/null && sudo chmod 600 /etc/nginx/certs/demo.nhp-key.pem"
+            "sudo install -m 600 /dev/stdin /etc/nginx/certs/demo.nhp-key.pem"
 
           scp ../../deploy/nginx/ac-demo-nhp.conf.template nhp-ac:/tmp/ac-demo-nhp.conf
           ssh nhp-ac \

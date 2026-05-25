@@ -81,8 +81,6 @@ jobs:
             exit 1
           fi
           SECRETS=$(echo "$SECRET_RESPONSE" | jq -r '.SecretString')
-          VERSION_ID=$(echo "$SECRET_RESPONSE" | jq -r '.VersionId')
-
           # Validate that we got valid JSON
           if [ -z "$SECRETS" ] || [ "$SECRETS" = "null" ]; then
             echo "ERROR: opennhp/demo secret is empty or invalid"
@@ -106,8 +104,9 @@ jobs:
           # Generate a unique client request token based on content hash.
           # This provides idempotency: if this exact update was already applied
           # (e.g., workflow retry), Secrets Manager returns success without
-          # creating a duplicate version.
-          TOKEN_HASH=$(echo -n "$UPDATED" | sha256sum | cut -c1-64)
+          # creating a duplicate version. This read/merge/write flow is still
+          # TOCTOU-prone if multiple writers update opennhp/demo concurrently.
+          TOKEN_HASH=$(printf '%s' "$UPDATED" | sha256sum | cut -c1-64)
 
           # Update AWS Secrets Manager via a temp file so PEM content stays off argv.
           SECRET_FILE=$(mktemp)

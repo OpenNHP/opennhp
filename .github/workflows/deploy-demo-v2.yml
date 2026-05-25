@@ -11,6 +11,10 @@
 
 name: Deploy Demo v2
 
+concurrency:
+  group: demo-terraform
+  cancel-in-progress: false
+
 permissions:
   contents: read
 

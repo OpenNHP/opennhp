@@ -53,12 +53,13 @@ resource "tls_locally_signed_cert" "demo_nhp" {
   ca_private_key_pem = local.secrets["stealth_ca_key"]
   ca_cert_pem        = local.secrets["stealth_ca_cert"]
 
-  # 2 years validity with automatic renewal 30 days before expiry.
+  # 2 years validity with automatic renewal 60 days before expiry.
   # Shorter validity limits blast radius if state leaks and ensures
-  # regular key rotation. Terraform will recreate the cert when
-  # early_renewal_hours threshold is reached.
+  # regular key rotation. A 60-day window gives the monthly renewal
+  # workflow two scheduled chances to renew before expiry.
   validity_period_hours = 17520 # 2 years (365 * 2 * 24)
-  early_renewal_hours   = 720   # 30 days (30 * 24)
+  early_renewal_hours   = 1440  # 60 days (60 * 24)
+  set_subject_key_id    = true
 
   allowed_uses = [
     "key_encipherment",

@@ -54,7 +54,6 @@ output "ssh_jump_command" {
 output "demo_nhp_cert" {
   description = "demo.nhp server certificate (PEM). Empty if stealth CA not configured."
   value       = try(tls_locally_signed_cert.demo_nhp[0].cert_pem, "")
-  sensitive   = true
 }
 
 output "demo_nhp_key" {

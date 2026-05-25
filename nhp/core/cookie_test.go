@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"net"
 	"testing"
+
+	"github.com/OpenNHP/opennhp/nhp/common"
 )
 
 // TestCookieRemoteKey_DirectUDPUsesRemoteAddr: when there is no relay
@@ -139,6 +141,81 @@ func TestDeriveStatelessCookie_WindowSeparation(t *testing.T) {
 	next := deriveStatelessCookie(key, remote, pk, 12346)
 	if bytes.Equal(curr, next) {
 		t.Fatalf("consecutive windows must derive distinct cookies; got identical %x", curr)
+	}
+}
+
+// TestSendCookie_WireCounterMatchesAgentKnk fences the
+// browser→relay→cluster timeout regression under Overload. The HTTP
+// relay matches the server's COK back to the pending agent request
+// by comparing the wire header counter against the counter inside
+// the agent's KNK header (see endpoints/relay/relay.go). Every other
+// server→agent path (ACK/AOP/RAK/LRT/…) routes through
+// PrevParserData so deriveMsgAssemblerData copies ppd.SenderTrxId
+// onto the wire — sendCookie was the lone exception, taking the
+// non-prev branch of createMsgAssemblerData and stamping the
+// server's own NextCounterIndex() on the wire. The mismatch made
+// the relay silently drop the COK and the browser hit
+// UDPTimeoutMs → 504.
+//
+// The test calls sendCookie directly, drains the MsgData it queues,
+// then runs that MsgData through createMsgAssemblerData (the same
+// step the msgToPacketRoutine worker performs) and asserts the
+// resulting wire header counter equals ppd.SenderTrxId — i.e. that
+// a relay sitting in front of this server would find a matching
+// pending request. Done end-to-end through sendCookie so a
+// regression that drops PrevParserData or reintroduces a
+// server-side TransactionId fails here.
+func TestSendCookie_WireCounterMatchesAgentKnk(t *testing.T) {
+	dev := newDeviceForChainKeyTest(t)
+	// sendCookie aborts if cookie params are unset (it's only
+	// reachable on a server, where startup installs them); install
+	// dummies so the function reaches the SendMsgToPacket call.
+	dev.SetStatelessCookieParams(bytes.Repeat([]byte{0x42}, 32), 5)
+
+	const agentTrxId uint64 = 0xA11CE0DEADBEEF42
+	ppd := &PacketParserData{
+		device:       dev,
+		CipherScheme: common.CIPHER_SCHEME_CURVE,
+		Ciphers:      NewCipherSuite(common.CIPHER_SCHEME_CURVE),
+		RemotePubKey: testPeerPk(),
+		SenderTrxId:  agentTrxId,
+		ConnData: &ConnectionData{
+			RemoteAddr: &net.UDPAddr{IP: net.ParseIP("203.0.113.7"), Port: 51234},
+		},
+	}
+
+	ppd.sendCookie()
+
+	// newDeviceForChainKeyTest does not call dev.Start(), so the
+	// msgToPacketRoutine workers are not draining the queue —
+	// sendCookie's MsgData is sitting there waiting for us.
+	var md *MsgData
+	select {
+	case md = <-dev.msgToPacketQueue:
+	default:
+		t.Fatal("sendCookie did not enqueue an MsgData")
+	}
+
+	if md.PrevParserData != ppd {
+		t.Fatalf("sendCookie must build MsgData with PrevParserData set so deriveMsgAssemblerData stamps the agent's SenderTrxId on the wire; got PrevParserData=%v", md.PrevParserData)
+	}
+	if md.TransactionId != 0 {
+		t.Fatalf("sendCookie must not assign a server-side TransactionId — that overwrites the agent's counter on the wire and breaks relay correlation; got TransactionId=%#x", md.TransactionId)
+	}
+
+	// Run the same finalization step the worker would, then check
+	// the on-wire counter — this is what the relay actually reads.
+	mad, err := dev.createMsgAssemblerData(md)
+	if err != nil {
+		t.Fatalf("createMsgAssemblerData: %v", err)
+	}
+	t.Cleanup(mad.Destroy)
+
+	got := mad.header.Counter()
+	if got != agentTrxId {
+		t.Fatalf("COK wire counter must equal agent's SenderTrxId so the HTTP relay can match the response.\n"+
+			"got=%#x want=%#x — sendCookie likely regressed to the no-prev branch and stamped a server-side counter on the wire",
+			got, agentTrxId)
 	}
 }
 

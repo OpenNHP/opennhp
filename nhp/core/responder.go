@@ -667,14 +667,18 @@ func (ppd *PacketParserData) sendCookie() {
 	}
 	cokBytes, _ := json.Marshal(cokMsg)
 
+	// Route through PrevParserData so the wire counter is the agent's
+	// SenderTrxId — matching every other server→agent response (ACK/AOP/RAK/
+	// LRT/…). The HTTP relay matches pending requests by the counter in the
+	// agent's inbound KNK header (relay.go), so a COK carrying a server-side
+	// counter is silently dropped and the browser times out under Overload.
+	// Per MsgData's contract (initiator.go), PrevParserData overrides
+	// CipherScheme, ConnData, TransactionId and PeerPk, so they're omitted.
 	md := &MsgData{
-		HeaderType:    NHP_COK,
-		CipherScheme:  ppd.CipherScheme,
-		TransactionId: ppd.device.NextCounterIndex(),
-		Compress:      true,
-		ConnData:      ppd.ConnData,
-		PeerPk:        ppd.RemotePubKey,
-		Message:       cokBytes,
+		HeaderType:     NHP_COK,
+		PrevParserData: ppd,
+		Compress:       true,
+		Message:        cokBytes,
 	}
 
 	log.Debug("Send cookie back to %s: %s ", ppd.ConnData.RemoteAddr, string(md.Message))

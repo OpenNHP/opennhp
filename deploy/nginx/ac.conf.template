@@ -16,27 +16,3 @@ server {
         try_files $uri $uri/ =404;
     }
 }
-
-# demo.nhp server block (stealth CA certificate)
-# Serves the same content as ac.opennhp.org directly, avoiding an unnecessary
-# internal HTTPS proxy hop. Clients with the stealth CA trusted can access
-# the demo page via https://demo.nhp instead of the public domain.
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name demo.nhp;
-
-    ssl_certificate     /etc/nginx/certs/demo.nhp.pem;
-    ssl_certificate_key /etc/nginx/certs/demo.nhp-key.pem;
-    ssl_protocols       TLSv1.2 TLSv1.3;
-    ssl_ciphers         HIGH:!aNULL:!MD5;
-
-    # Serve the same content directly instead of proxying to avoid the
-    # architectural smell of looping HTTPS requests through ourselves.
-    root  /var/www/acdemo;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ =404;
-    }
-}

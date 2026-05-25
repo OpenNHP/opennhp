@@ -1,0 +1,124 @@
+name: Renew demo.nhp Certificate
+
+on:
+  schedule:
+    - cron: '23 4 1 * *'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-2
+  DEPLOY_USER: ec2-user
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  renew-demo-nhp-cert:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup SSH with ProxyJump
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: |
+          if [ -z "$TF_STATE_BUCKET" ]; then
+            echo "ERROR: repo variable TF_STATE_BUCKET is not set."
+            exit 1
+          fi
+
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' --output text)
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          SSH_KEY=$(echo "$SECRETS" | jq -r '.ssh_deploy_private_key')
+          HOST_KEYS=$(echo "$SECRETS" | jq -r '.ssh_host_keys // empty')
+
+          if [ -z "$SSH_KEY" ] || [ "$SSH_KEY" = "null" ]; then
+            echo "ERROR: ssh_deploy_private_key missing in opennhp/demo"
+            exit 1
+          fi
+
+          if [ -z "$HOST_KEYS" ]; then
+            echo "ERROR: ssh_host_keys missing in opennhp/demo"
+            exit 1
+          fi
+
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "~1.10"
+
+      - name: Renew and deploy demo.nhp certificate
+        working-directory: terraform/demo
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: |
+          terraform init -backend=true \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+          terraform apply -auto-approve
+
+          STEALTH_CA_ENABLED=$(terraform output -raw stealth_ca_enabled 2>/dev/null || true)
+          if [ "$STEALTH_CA_ENABLED" != "true" ]; then
+            echo "stealth CA not configured, skipping demo.nhp certificate renewal"
+            exit 0
+          fi
+
+          RELAY_PUBLIC_IP=$(terraform output -raw relay_public_ip)
+          AC_PRIVATE_IP=$(terraform output -raw ac_private_ip)
+          DEMO_NHP_CERT=$(terraform output -raw demo_nhp_cert)
+          DEMO_NHP_KEY=$(terraform output -raw demo_nhp_key)
+
+          cat > ~/.ssh/config <<EOF
+          Host relay-jump
+            HostName $RELAY_PUBLIC_IP
+            User ${{ env.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+
+          Host nhp-ac
+            HostName $AC_PRIVATE_IP
+            User ${{ env.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            ProxyJump relay-jump
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+          EOF
+          chmod 600 ~/.ssh/config
+
+          ssh nhp-ac "sudo mkdir -p /etc/nginx/certs && sudo chmod 755 /etc/nginx/certs"
+
+          printf '%s\n' "$DEMO_NHP_CERT" | ssh nhp-ac \
+            "sudo tee /etc/nginx/certs/demo.nhp.pem > /dev/null && sudo chmod 644 /etc/nginx/certs/demo.nhp.pem"
+
+          printf '%s\n' "$DEMO_NHP_KEY" | ssh nhp-ac \
+            "sudo tee /etc/nginx/certs/demo.nhp-key.pem > /dev/null && sudo chmod 600 /etc/nginx/certs/demo.nhp-key.pem"
+
+          scp ../../deploy/nginx/ac-demo-nhp.conf.template nhp-ac:/tmp/ac-demo-nhp.conf
+          ssh nhp-ac \
+            "sudo install -m 644 /tmp/ac-demo-nhp.conf /etc/nginx/conf.d/ac-demo-nhp.conf && \
+             sudo nginx -t && \
+             sudo systemctl reload nginx"
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh

@@ -650,22 +650,26 @@ jobs:
         with:
           path: repo
 
-      # IMPORTANT: Deploy demo.nhp certificate BEFORE installing nginx config.
-      # The ac.conf.template includes a server block for demo.nhp that references
-      # /etc/nginx/certs/demo.nhp.pem. If the cert files don't exist when
-      # bootstrap-tls.sh runs nginx -t, the deploy will fail.
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "~1.10"
 
       - name: Deploy demo.nhp certificate (signed by stealth CA)
+        id: demo_nhp_cert
         working-directory: repo/terraform/demo
         run: |
           # Initialize Terraform to read outputs
           terraform init -backend=true \
             -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
             -backend-config="region=${{ env.AWS_REGION }}"
+
+          STEALTH_CA_ENABLED=$(terraform output -raw stealth_ca_enabled 2>/dev/null || true)
+          if [ "$STEALTH_CA_ENABLED" != "true" ]; then
+            echo "stealth CA not configured, skipping demo.nhp certificate deployment"
+            echo "stealth_ca_enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           # Get demo.nhp certificate and key from Terraform outputs.
           # terraform output -raw strips trailing newlines, but PEM files must
@@ -682,6 +686,8 @@ jobs:
             echo "and STEALTH_CA_CERT/STEALTH_CA_KEY GitHub Secrets are configured."
             exit 1
           fi
+
+          echo "stealth_ca_enabled=true" >> "$GITHUB_OUTPUT"
 
           # Create certs directory and deploy certificate to EC2
           ssh nhp-ac "sudo mkdir -p /etc/nginx/certs && sudo chmod 755 /etc/nginx/certs"
@@ -708,8 +714,15 @@ jobs:
           envsubst '$DOMAIN_AC $LEGACY_DOMAIN_AC' \
             < repo/deploy/nginx/ac.conf.template > /tmp/ac-nginx.conf
 
+          if [ "${{ steps.demo_nhp_cert.outputs.stealth_ca_enabled }}" = "true" ]; then
+            cp repo/deploy/nginx/ac-demo-nhp.conf.template /tmp/ac-demo-nhp.conf
+          fi
+
           scp repo/deploy/scripts/bootstrap-tls.sh nhp-ac:/tmp/bootstrap-tls.sh
           scp /tmp/ac-nginx.conf nhp-ac:/tmp/ac-nginx.conf
+          if [ -f /tmp/ac-demo-nhp.conf ]; then
+            scp /tmp/ac-demo-nhp.conf nhp-ac:/tmp/ac-demo-nhp.conf
+          fi
           ssh nhp-ac "chmod +x /tmp/bootstrap-tls.sh"
 
           printf '%s' "$CF_TOKEN" | ssh nhp-ac \
@@ -724,6 +737,20 @@ jobs:
              ACME_EMAIL='${{ env.ACME_EMAIL }}' \
              NGINX_CONF='/tmp/ac-nginx.conf' \
              /tmp/bootstrap-tls.sh"
+
+          if [ "${{ steps.demo_nhp_cert.outputs.stealth_ca_enabled }}" = "true" ]; then
+            ssh nhp-ac \
+              "sudo install -m 644 /tmp/ac-demo-nhp.conf /etc/nginx/conf.d/ac-demo-nhp.conf && \
+               sudo nginx -t && \
+               sudo systemctl reload nginx"
+          else
+            ssh nhp-ac \
+              "sudo rm -f /etc/nginx/conf.d/ac-demo-nhp.conf \
+                          /etc/nginx/certs/demo.nhp.pem \
+                          /etc/nginx/certs/demo.nhp-key.pem && \
+               sudo nginx -t && \
+               sudo systemctl reload nginx"
+          fi
 
       - name: Deploy nhp-acd
         run: |

@@ -31,8 +31,9 @@ that victim.
    principals have `s3:GetObject` on the state bucket. Review access regularly.
 
 3. **Use short-lived certificates.** The `demo.nhp` certificate validity is
-   set to 2 years with automatic renewal. This limits blast radius if state
-   ever leaks.
+   set to 2 years and Terraform is configured to rotate it 30 days before
+   expiry during `terraform apply`. This limits blast radius if state ever
+   leaks, but the renewed certificate still must be redeployed to the EC2 host.
 
 4. **Rotate the CA if state is compromised.** If you suspect the state bucket
    was accessed by unauthorized parties, generate a new CA keypair and update
@@ -52,6 +53,31 @@ openssl x509 -req -in demo_nhp.csr \
 Then import the signed certificate into Secrets Manager manually rather than
 using `tls_locally_signed_cert`. This keeps the CA key entirely out of
 Terraform state at the cost of manual certificate management.
+
+### Renewal and deployment path
+
+The `demo.nhp` certificate is not renewed by certbot on the EC2 host. Renewal
+only happens when Terraform reevaluates `tls_locally_signed_cert.demo_nhp`
+during `terraform apply`, after which the PEM files must be copied to
+`/etc/nginx/certs/` on the AC instance.
+
+The repository includes a scheduled GitHub Actions workflow,
+`Renew demo.nhp Certificate`, that runs monthly to:
+
+1. Execute `terraform apply` in `terraform/demo`
+2. Read the refreshed `demo_nhp_cert` / `demo_nhp_key` outputs
+3. Deploy them to the AC instance and reload nginx
+
+If that workflow is disabled or fails repeatedly, re-run it manually before the
+certificate reaches expiry.
+
+### Stealth CA upload paths
+
+The canonical path for syncing `stealth_ca_cert` and `stealth_ca_key` into AWS
+Secrets Manager is the `infra-demo` workflow during `action=apply`.
+
+Use `scripts/upload-stealth-ca.sh` only for the initial bootstrap or an
+emergency/manual re-sync when the GitHub workflow path is unavailable.
 
 ### opennhp/demo secret schema (stealth CA fields)
 

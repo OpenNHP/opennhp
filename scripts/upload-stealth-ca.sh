@@ -13,6 +13,10 @@
 # Prerequisites:
 #   - AWS CLI configured with appropriate credentials
 #   - Access to opennhp/demo secret in Secrets Manager
+#
+# This script is intended for the initial bootstrap or emergency/manual sync.
+# The normal path is the infra-demo workflow, which keeps GitHub Secrets and
+# AWS Secrets Manager aligned during Terraform apply.
 
 set -euo pipefail
 
@@ -117,10 +121,14 @@ EOF
 
 # Update secret in AWS
 echo "Updating AWS Secrets Manager..."
+SECRET_FILE=$(mktemp)
+trap 'rm -f "$SECRET_FILE"' EXIT
+printf '%s' "$UPDATED_SECRET" > "$SECRET_FILE"
+
 aws secretsmanager put-secret-value \
     --secret-id "$SECRET_ID" \
     --region "$REGION" \
-    --secret-string "$UPDATED_SECRET"
+    --secret-string "file://$SECRET_FILE"
 
 echo
 echo "=== Success ==="
@@ -128,5 +136,6 @@ echo "Stealth CA certificate and key have been stored in $SECRET_ID"
 echo "Fields added: stealth_ca_cert, stealth_ca_key"
 echo
 echo "Next steps:"
-echo "  1. Run 'terraform init && terraform apply' in terraform/demo/"
-echo "  2. Run deploy-demo-v2 workflow on GitHub"
+echo "  1. Use this script only for bootstrap or emergency/manual sync."
+echo "  2. Run 'terraform init && terraform apply' in terraform/demo/"
+echo "  3. Run deploy-demo-v2 workflow on GitHub"

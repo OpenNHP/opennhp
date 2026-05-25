@@ -70,7 +70,7 @@ jobs:
 
           echo "Syncing stealth CA to AWS Secrets Manager..."
 
-          # Fetch existing secret with version ID for optimistic locking.
+          # Fetch existing secret before merging in the stealth CA fields.
           # Explicitly check for errors to provide clear diagnostics if the
           # secret doesn't exist or AWS credentials are misconfigured.
           if ! SECRET_RESPONSE=$(aws secretsmanager get-secret-value \
@@ -109,11 +109,15 @@ jobs:
           # creating a duplicate version.
           TOKEN_HASH=$(echo -n "$UPDATED" | sha256sum | cut -c1-64)
 
-          # Update AWS Secrets Manager with optimistic locking
+          # Update AWS Secrets Manager via a temp file so PEM content stays off argv.
+          SECRET_FILE=$(mktemp)
+          trap 'rm -f "$SECRET_FILE"' EXIT
+          printf '%s' "$UPDATED" > "$SECRET_FILE"
+
           aws secretsmanager put-secret-value \
             --secret-id opennhp/demo \
             --region ${{ env.AWS_REGION }} \
-            --secret-string "$UPDATED" \
+            --secret-string "file://$SECRET_FILE" \
             --client-request-token "$TOKEN_HASH"
 
           echo "Stealth CA synced to AWS Secrets Manager"

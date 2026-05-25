@@ -94,7 +94,16 @@ type Peers struct {
 // Endpoints, when non-empty, take precedence over the legacy fields; the
 // legacy fields are then ignored with an info-level log so misconfigurations
 // are visible.
-func expandServerPeers(entries []ServerPeerEntry) []*core.UdpPeer {
+//
+// Returns a non-nil error (and a nil peers slice) when any entry's Endpoints
+// list is non-empty but every member failed to parse — that case used to
+// silently drop the entire cluster from the peer table while leaving only a
+// log line behind, so AOL/AOP traffic was dropped without an actionable
+// signal. Individual bad endpoints inside an otherwise-valid entry are still
+// just skipped — only the all-bad case is fail-closed. See callers below for
+// the policy split: initial load propagates, reload/etcd keeps the running
+// peer table.
+func expandServerPeers(entries []ServerPeerEntry) ([]*core.UdpPeer, error) {
 	out := make([]*core.UdpPeer, 0, len(entries))
 	// Track which pubkeys have already been emitted from a legacy
 	// single-endpoint entry so we can warn when a second legacy entry
@@ -124,10 +133,11 @@ func expandServerPeers(entries []ServerPeerEntry) []*core.UdpPeer {
 			}
 			if len(out) == before {
 				// All endpoints in this entry failed to parse, so the
-				// pubkey contributes zero peers — without this log the
-				// cluster vanishes silently and AOL/AOP traffic stops
-				// reaching it.
-				log.Critical("server peer %s: all %d endpoints invalid, entry dropped",
+				// pubkey contributes zero peers — fail closed for the
+				// whole config rather than silently dropping the
+				// cluster. Callers decide whether to propagate (initial
+				// load) or keep the running peer table (reload/etcd).
+				return nil, fmt.Errorf("server peer %s: all %d endpoints invalid, entry dropped",
 					e.PubKeyBase64, len(e.Endpoints))
 			}
 			continue
@@ -147,7 +157,7 @@ func expandServerPeers(entries []ServerPeerEntry) []*core.UdpPeer {
 				pk, n)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // splitHostPort parses a "host:port" endpoint string. Bare IPv6 must be in
@@ -238,7 +248,15 @@ func (a *UdpAC) loadPeers() error {
 	if unmarshalErr := toml.Unmarshal(content, &peers); unmarshalErr != nil {
 		log.Error("failed to unmarshal server peer config: %v", unmarshalErr)
 	}
-	if updateErr := a.updateServerPeers(expandServerPeers(peers.Servers)); updateErr != nil {
+	expanded, expandErr := expandServerPeers(peers.Servers)
+	if expandErr != nil {
+		// Initial load: surface the bad config so the operator sees a
+		// loud signal at startup rather than discovering an empty
+		// peerMap by chasing dropped AOL/AOP traffic. Leave the running
+		// peer table untouched (it's empty here anyway, but the next
+		// reload path relies on the same fail-close discipline).
+		log.Critical("loadPeers: %v; keeping previous peer table", expandErr)
+	} else if updateErr := a.updateServerPeers(expanded); updateErr != nil {
 		// ignore error
 		_ = updateErr
 	}
@@ -247,7 +265,15 @@ func (a *UdpAC) loadPeers() error {
 		log.Info("server peer config: %s has been updated", fileName)
 		if content, err = a.loadConfigFile(fileName); err == nil {
 			if err = toml.Unmarshal(content, &peers); err == nil {
-				_ = a.updateServerPeers(expandServerPeers(peers.Servers))
+				expanded, expandErr := expandServerPeers(peers.Servers)
+				if expandErr != nil {
+					// Reload: do NOT call updateServerPeers — that
+					// would rewrite the live peerMap. Keep the running
+					// peer table and let the operator fix the file.
+					log.Critical("loadPeers reload: %v; keeping previous peer table", expandErr)
+					return
+				}
+				_ = a.updateServerPeers(expanded)
 			}
 		}
 	})
@@ -483,7 +509,15 @@ func (a *UdpAC) updateEtcdConfig(content []byte, baseLoad bool) (err error) {
 	}
 
 	_ = a.updateHttpConfig(acEtcdConfig.HttpConfig)
-	_ = a.updateServerPeers(expandServerPeers(acEtcdConfig.Servers))
+	expanded, expandErr := expandServerPeers(acEtcdConfig.Servers)
+	if expandErr != nil {
+		// etcd reload: same fail-close discipline as the file watcher —
+		// keep the running peer table rather than swap in a config that
+		// would silently drop a cluster from peerMap.
+		log.Critical("updateEtcdConfig: %v; keeping previous peer table", expandErr)
+		return
+	}
+	_ = a.updateServerPeers(expanded)
 	return
 }
 

@@ -19,7 +19,10 @@ func TestExpandServerPeers_LegacySingleEndpoint(t *testing.T) {
 		Port:         62206,
 		ExpireTime:   1924991999,
 	}}
-	peers := expandServerPeers(entries)
+	peers, err := expandServerPeers(entries)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(peers) != 1 {
 		t.Fatalf("want 1 peer, got %d", len(peers))
 	}
@@ -37,7 +40,10 @@ func TestExpandServerPeers_LegacyHostname(t *testing.T) {
 		Hostname:     "server.example.com",
 		Port:         62206,
 	}}
-	peers := expandServerPeers(entries)
+	peers, err := expandServerPeers(entries)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(peers) != 1 {
 		t.Fatalf("want 1 peer, got %d", len(peers))
 	}
@@ -55,7 +61,10 @@ func TestExpandServerPeers_EndpointsFanOut(t *testing.T) {
 		Endpoints:    []string{"10.0.0.1:62206", "10.0.0.2:62206", "10.0.0.3:62206"},
 		ExpireTime:   1924991999,
 	}}
-	peers := expandServerPeers(entries)
+	peers, err := expandServerPeers(entries)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(peers) != 3 {
 		t.Fatalf("want 3 peers, got %d", len(peers))
 	}
@@ -92,7 +101,10 @@ func TestExpandServerPeers_EndpointsOverrideLegacy(t *testing.T) {
 		Port:         9999,
 		Endpoints:    []string{"10.0.0.1:62206"},
 	}}
-	peers := expandServerPeers(entries)
+	peers, err := expandServerPeers(entries)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(peers) != 1 {
 		t.Fatalf("want 1 peer, got %d", len(peers))
 	}
@@ -103,17 +115,68 @@ func TestExpandServerPeers_EndpointsOverrideLegacy(t *testing.T) {
 
 // TestExpandServerPeers_InvalidEndpointSkipped: malformed endpoint entries
 // are skipped (not fatal) so one typo doesn't block the rest from loading.
+// One bad endpoint inside an otherwise-valid entry must not trip the
+// all-endpoints-invalid fail-close path.
 func TestExpandServerPeers_InvalidEndpointSkipped(t *testing.T) {
 	entries := []ServerPeerEntry{{
 		PubKeyBase64: "ABC=",
 		Endpoints:    []string{"not-a-valid-endpoint", "10.0.0.2:62206"},
 	}}
-	peers := expandServerPeers(entries)
+	peers, err := expandServerPeers(entries)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(peers) != 1 {
 		t.Fatalf("want 1 peer (the valid one), got %d", len(peers))
 	}
 	if peers[0].Ip != "10.0.0.2" {
 		t.Fatalf("kept the wrong endpoint: %+v", peers[0])
+	}
+}
+
+// TestExpandServerPeers_AllEndpointsInvalidFailsClosed fences the silent-
+// cluster-drop regression. Before the fix, an entry whose Endpoints list
+// was fully malformed produced *zero* peers for that pubkey, left a single
+// log.Critical line behind, and let configuration loading complete — so
+// the device's peerMap had no entry for the cluster and AOL/AOP traffic
+// silently went to the "unknown peer" branch with no actionable signal.
+//
+// The fix: surface an error from expandServerPeers so callers can
+// fail-close (initial load aborts, reload/etcd keeps the running peer
+// table). nil peers + non-nil err is the contract — partial peer lists
+// on error would re-introduce the hole this test guards against.
+func TestExpandServerPeers_AllEndpointsInvalidFailsClosed(t *testing.T) {
+	entries := []ServerPeerEntry{{
+		PubKeyBase64: "ABC=",
+		Endpoints:    []string{"not-a-valid-endpoint", "also-bad", ""},
+	}}
+	peers, err := expandServerPeers(entries)
+	if err == nil {
+		t.Fatalf("expected error when every endpoint in an entry is invalid; got peers=%+v", peers)
+	}
+	if peers != nil {
+		t.Fatalf("on error the peers slice must be nil so callers can fail-close — partial lists silently drop other entries; got %d peers", len(peers))
+	}
+}
+
+// TestExpandServerPeers_AllBadAbortsOtherwiseValidEntries documents the
+// fail-close *scope*: one entry with all-invalid endpoints aborts the
+// whole config, including other entries that would have parsed fine. The
+// alternative (return the good entries + an error) was rejected because
+// it lets the operator believe a reload succeeded while a cluster they
+// didn't notice was silently dropped — exactly the failure mode this
+// fix exists to eliminate.
+func TestExpandServerPeers_AllBadAbortsOtherwiseValidEntries(t *testing.T) {
+	entries := []ServerPeerEntry{
+		{PubKeyBase64: "GOOD=", Endpoints: []string{"10.0.0.1:62206"}},
+		{PubKeyBase64: "BAD=", Endpoints: []string{"not-a-valid-endpoint"}},
+	}
+	peers, err := expandServerPeers(entries)
+	if err == nil {
+		t.Fatalf("expected error when one entry has all-invalid endpoints; got peers=%+v", peers)
+	}
+	if peers != nil {
+		t.Fatalf("on error the peers slice must be nil — returning the GOOD entry alongside an error would invite callers to apply a partial config; got %d peers", len(peers))
 	}
 }
 
@@ -159,7 +222,10 @@ ExpireTime = 1924991999
 	if err := toml.Unmarshal([]byte(cfg), &peers); err != nil {
 		t.Fatalf("new toml failed to unmarshal: %v", err)
 	}
-	expanded := expandServerPeers(peers.Servers)
+	expanded, err := expandServerPeers(peers.Servers)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(expanded) != 2 {
 		t.Fatalf("want 2 expanded peers, got %d", len(expanded))
 	}

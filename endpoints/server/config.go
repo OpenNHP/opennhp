@@ -616,7 +616,20 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 				log.Info("stateless cookie params updated (window=%ds, keyChanged=%v)", newWin, !bytesEqualConstantTime(newKey, currKey))
 			}
 		}
-		s.config.CookieSigningKeyBase64 = conf.CookieSigningKeyBase64
+		// Only persist the new base64 into s.config when we actually
+		// applied (or were able to preserve) a usable key — i.e. the
+		// operator handed us a non-empty, well-formed value. If we
+		// instead write back an empty or malformed string, the next
+		// reload will see no delta (s.config == conf), skip the whole
+		// validation/preservation block, and silently leave the
+		// running device key disagreeing with the in-memory config —
+		// so the operator stops seeing the "cleared, keeping previous
+		// key" / "ignoring CookieSigningKeyBase64 change" warning even
+		// though the divergence persists. Window is always written
+		// back since it's plain numeric and re-validated each reload.
+		if err == nil && conf.CookieSigningKeyBase64 != "" {
+			s.config.CookieSigningKeyBase64 = conf.CookieSigningKeyBase64
+		}
 		s.config.CookieTimeWindowSeconds = conf.CookieTimeWindowSeconds
 	}
 

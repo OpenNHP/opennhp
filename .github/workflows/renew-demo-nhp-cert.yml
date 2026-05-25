@@ -156,6 +156,16 @@ jobs:
           DEMO_NHP_CERT=$(terraform output -raw demo_nhp_cert)
           DEMO_NHP_KEY=$(terraform output -raw demo_nhp_key)
 
+          mask_multiline() {
+            local escaped="$1"
+            escaped=${escaped//'%'/'%25'}
+            escaped=${escaped//$'\r'/'%0D'}
+            escaped=${escaped//$'\n'/'%0A'}
+            echo "::add-mask::$escaped"
+          }
+
+          mask_multiline "$DEMO_NHP_KEY"
+
           ssh nhp-ac "sudo mkdir -p /etc/nginx/certs && sudo chmod 750 /etc/nginx/certs"
 
           printf '%s\n' "$DEMO_NHP_CERT" | ssh nhp-ac \

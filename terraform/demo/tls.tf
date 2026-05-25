@@ -23,6 +23,8 @@ locals {
 
 # Generate a new private key for demo.nhp server certificate
 resource "tls_private_key" "demo_nhp" {
+  # Intentionally tie the server keypair lifecycle to stealth_ca_enabled:
+  # removing and later restoring the CA secrets regenerates demo.nhp.
   count = local.stealth_ca_enabled ? 1 : 0
 
   algorithm = "RSA"

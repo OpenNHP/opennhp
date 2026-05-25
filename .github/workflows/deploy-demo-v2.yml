@@ -687,6 +687,16 @@ jobs:
             exit 1
           fi
 
+          mask_multiline() {
+            local escaped="$1"
+            escaped=${escaped//'%'/'%25'}
+            escaped=${escaped//$'\r'/'%0D'}
+            escaped=${escaped//$'\n'/'%0A'}
+            echo "::add-mask::$escaped"
+          }
+
+          mask_multiline "$DEMO_NHP_KEY"
+
           echo "stealth_ca_enabled=true" >> "$GITHUB_OUTPUT"
 
           # Create certs directory and deploy certificate to EC2
@@ -695,7 +705,7 @@ jobs:
           # Deploy certificate (securely via stdin to avoid command-line exposure).
           # printf '%s\n' ensures the PEM ends with a newline.
           printf '%s\n' "$DEMO_NHP_CERT" | ssh nhp-ac \
-            "sudo tee /etc/nginx/certs/demo.nhp.pem > /dev/null && sudo chmod 644 /etc/nginx/certs/demo.nhp.pem"
+            "sudo install -m 644 /dev/stdin /etc/nginx/certs/demo.nhp.pem"
 
           printf '%s\n' "$DEMO_NHP_KEY" | ssh nhp-ac \
             "sudo install -m 600 /dev/stdin /etc/nginx/certs/demo.nhp-key.pem"

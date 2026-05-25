@@ -103,6 +103,36 @@ jobs:
           printf '%s' "$STEALTH_CA_CERT" > "$NEW_CERT_FILE"
           printf '%s' "$STEALTH_CA_KEY" > "$NEW_KEY_FILE"
 
+          if ! openssl x509 -noout -in "$NEW_CERT_FILE" >/dev/null 2>&1; then
+            echo "ERROR: STEALTH_CA_CERT is not a valid PEM X.509 certificate"
+            exit 1
+          fi
+
+          if ! openssl pkey -noout -in "$NEW_KEY_FILE" >/dev/null 2>&1; then
+            echo "ERROR: STEALTH_CA_KEY is not a valid PEM private key"
+            exit 1
+          fi
+
+          CERT_PUB_HASH=$(
+            openssl x509 -in "$NEW_CERT_FILE" -pubkey -noout \
+              | openssl pkey -pubin -outform DER 2>/dev/null \
+              | openssl dgst -sha256 | awk '{print $2}'
+          )
+          KEY_PUB_HASH=$(
+            openssl pkey -in "$NEW_KEY_FILE" -pubout -outform DER 2>/dev/null \
+              | openssl dgst -sha256 | awk '{print $2}'
+          )
+
+          if [ "$CERT_PUB_HASH" != "$KEY_PUB_HASH" ]; then
+            echo "ERROR: STEALTH_CA_CERT and STEALTH_CA_KEY do not match"
+            exit 1
+          fi
+
+          if ! openssl x509 -ext basicConstraints -noout -in "$NEW_CERT_FILE" | grep -q "CA:TRUE"; then
+            echo "ERROR: STEALTH_CA_CERT is missing basicConstraints CA:TRUE"
+            exit 1
+          fi
+
           # Check if already synced (compare BOTH cert and key to catch partial updates)
           if cmp -s "$EXISTING_CERT_FILE" "$NEW_CERT_FILE" && cmp -s "$EXISTING_KEY_FILE" "$NEW_KEY_FILE"; then
             echo "Stealth CA already up to date in AWS Secrets Manager"

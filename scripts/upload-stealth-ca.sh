@@ -70,8 +70,7 @@ validate_stealth_ca() {
         exit 1
     fi
 
-    if ! openssl x509 -in "$CA_CERT_FILE" -noout -text \
-        | awk '/Basic Constraints/ { getline; if ($0 ~ /CA:TRUE/) found=1 } END { exit(found ? 0 : 1) }'; then
+    if ! openssl x509 -ext basicConstraints -noout -in "$CA_CERT_FILE" | grep -q "CA:TRUE"; then
         echo "ERROR: CA certificate is missing basicConstraints CA:TRUE"
         exit 1
     fi

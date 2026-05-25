@@ -650,6 +650,52 @@ jobs:
         with:
           path: repo
 
+      # IMPORTANT: Deploy demo.nhp certificate BEFORE installing nginx config.
+      # The ac.conf.template includes a server block for demo.nhp that references
+      # /etc/nginx/certs/demo.nhp.pem. If the cert files don't exist when
+      # bootstrap-tls.sh runs nginx -t, the deploy will fail.
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "~1.10"
+
+      - name: Deploy demo.nhp certificate (signed by stealth CA)
+        working-directory: repo/terraform/demo
+        run: |
+          # Initialize Terraform to read outputs
+          terraform init -backend=true \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+          # Get demo.nhp certificate and key from Terraform outputs.
+          # terraform output -raw strips trailing newlines, but PEM files must
+          # end with a newline for compatibility with some parsers (e.g., openssl).
+          DEMO_NHP_CERT=$(terraform output -raw demo_nhp_cert 2>/dev/null || true)
+          DEMO_NHP_KEY=$(terraform output -raw demo_nhp_key 2>/dev/null || true)
+
+          # Validate outputs are non-empty. If terraform apply hasn't run yet
+          # with tls.tf, these will be empty and we should fail early with a
+          # clear error rather than deploying empty cert files.
+          if [ -z "$DEMO_NHP_CERT" ] || [ -z "$DEMO_NHP_KEY" ]; then
+            echo "ERROR: demo_nhp_cert or demo_nhp_key output is empty."
+            echo "Ensure 'infra-demo' workflow has been run with action=apply"
+            echo "and STEALTH_CA_CERT/STEALTH_CA_KEY GitHub Secrets are configured."
+            exit 1
+          fi
+
+          # Create certs directory and deploy certificate to EC2
+          ssh nhp-ac "sudo mkdir -p /etc/nginx/certs && sudo chmod 755 /etc/nginx/certs"
+
+          # Deploy certificate (securely via stdin to avoid command-line exposure).
+          # printf '%s\n' ensures the PEM ends with a newline.
+          printf '%s\n' "$DEMO_NHP_CERT" | ssh nhp-ac \
+            "sudo tee /etc/nginx/certs/demo.nhp.pem > /dev/null && sudo chmod 644 /etc/nginx/certs/demo.nhp.pem"
+
+          printf '%s\n' "$DEMO_NHP_KEY" | ssh nhp-ac \
+            "sudo tee /etc/nginx/certs/demo.nhp-key.pem > /dev/null && sudo chmod 600 /etc/nginx/certs/demo.nhp-key.pem"
+
+          echo "demo.nhp certificate deployed successfully"
+
       - name: Ensure TLS certificate + nginx on ac
         run: |
           CF_TOKEN=$(aws secretsmanager get-secret-value \
@@ -678,33 +724,6 @@ jobs:
              ACME_EMAIL='${{ env.ACME_EMAIL }}' \
              NGINX_CONF='/tmp/ac-nginx.conf' \
              /tmp/bootstrap-tls.sh"
-
-      - name: Deploy demo.nhp certificate (signed by stealth CA)
-        working-directory: repo/terraform/demo
-        run: |
-          # Initialize Terraform to read outputs
-          terraform init -backend=true \
-            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
-            -backend-config="region=${{ env.AWS_REGION }}"
-
-          # Get demo.nhp certificate and key from Terraform outputs
-          DEMO_NHP_CERT=$(terraform output -raw demo_nhp_cert)
-          DEMO_NHP_KEY=$(terraform output -raw demo_nhp_key)
-
-          # Create certs directory and deploy certificate to EC2
-          ssh nhp-ac "sudo mkdir -p /etc/nginx/certs && sudo chmod 755 /etc/nginx/certs"
-
-          # Deploy certificate (securely via stdin to avoid command-line exposure)
-          printf '%s' "$DEMO_NHP_CERT" | ssh nhp-ac \
-            "sudo tee /etc/nginx/certs/demo.nhp.pem > /dev/null && sudo chmod 644 /etc/nginx/certs/demo.nhp.pem"
-
-          printf '%s' "$DEMO_NHP_KEY" | ssh nhp-ac \
-            "sudo tee /etc/nginx/certs/demo.nhp-key.pem > /dev/null && sudo chmod 600 /etc/nginx/certs/demo.nhp-key.pem"
-
-          # Reload nginx to pick up the new certificate
-          ssh nhp-ac "sudo nginx -t && sudo systemctl reload nginx"
-
-          echo "demo.nhp certificate deployed successfully"
 
       - name: Deploy nhp-acd
         run: |

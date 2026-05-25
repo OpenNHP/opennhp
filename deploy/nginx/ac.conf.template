@@ -1,3 +1,4 @@
+# Primary AC server block (public Let's Encrypt certificate)
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
@@ -16,8 +17,10 @@ server {
     }
 }
 
-# demo.nhp proxy to ac.opennhp.org
-# Certificate is signed by stealth CA and deployed via Terraform
+# demo.nhp server block (stealth CA certificate)
+# Serves the same content as ac.opennhp.org directly, avoiding an unnecessary
+# internal HTTPS proxy hop. Clients with the stealth CA trusted can access
+# the demo page via https://demo.nhp instead of the public domain.
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
@@ -28,12 +31,12 @@ server {
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
+    # Serve the same content directly instead of proxying to avoid the
+    # architectural smell of looping HTTPS requests through ourselves.
+    root  /var/www/acdemo;
+    index index.html;
+
     location / {
-        proxy_pass https://ac.opennhp.org;
-        proxy_ssl_server_name on;
-        proxy_set_header Host ac.opennhp.org;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        try_files $uri $uri/ =404;
     }
 }

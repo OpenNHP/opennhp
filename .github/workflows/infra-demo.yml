@@ -70,16 +70,29 @@ jobs:
 
           echo "Syncing stealth CA to AWS Secrets Manager..."
 
-          # Fetch existing secret
-          SECRETS=$(aws secretsmanager get-secret-value \
+          # Fetch existing secret with version ID for optimistic locking.
+          # Explicitly check for errors to provide clear diagnostics if the
+          # secret doesn't exist or AWS credentials are misconfigured.
+          if ! SECRET_RESPONSE=$(aws secretsmanager get-secret-value \
             --secret-id opennhp/demo \
-            --region ${{ env.AWS_REGION }} \
-            --query 'SecretString' \
-            --output text)
+            --region ${{ env.AWS_REGION }} 2>&1); then
+            echo "ERROR: Failed to fetch opennhp/demo from AWS Secrets Manager:"
+            echo "$SECRET_RESPONSE"
+            exit 1
+          fi
+          SECRETS=$(echo "$SECRET_RESPONSE" | jq -r '.SecretString')
+          VERSION_ID=$(echo "$SECRET_RESPONSE" | jq -r '.VersionId')
 
-          # Check if already synced (compare cert content)
+          # Validate that we got valid JSON
+          if [ -z "$SECRETS" ] || [ "$SECRETS" = "null" ]; then
+            echo "ERROR: opennhp/demo secret is empty or invalid"
+            exit 1
+          fi
+
+          # Check if already synced (compare BOTH cert and key to catch partial updates)
           EXISTING_CERT=$(echo "$SECRETS" | jq -r '.stealth_ca_cert // empty')
-          if [ "$EXISTING_CERT" = "$STEALTH_CA_CERT" ]; then
+          EXISTING_KEY=$(echo "$SECRETS" | jq -r '.stealth_ca_key // empty')
+          if [ "$EXISTING_CERT" = "$STEALTH_CA_CERT" ] && [ "$EXISTING_KEY" = "$STEALTH_CA_KEY" ]; then
             echo "Stealth CA already up to date in AWS Secrets Manager"
             exit 0
           fi
@@ -90,11 +103,18 @@ jobs:
             --arg key "$STEALTH_CA_KEY" \
             '. + {stealth_ca_cert: $cert, stealth_ca_key: $key}')
 
-          # Update AWS Secrets Manager
+          # Generate a unique client request token based on content hash.
+          # This provides idempotency: if this exact update was already applied
+          # (e.g., workflow retry), Secrets Manager returns success without
+          # creating a duplicate version.
+          TOKEN_HASH=$(echo -n "$UPDATED" | sha256sum | cut -c1-64)
+
+          # Update AWS Secrets Manager with optimistic locking
           aws secretsmanager put-secret-value \
             --secret-id opennhp/demo \
             --region ${{ env.AWS_REGION }} \
-            --secret-string "$UPDATED"
+            --secret-string "$UPDATED" \
+            --client-request-token "$TOKEN_HASH"
 
           echo "Stealth CA synced to AWS Secrets Manager"
 
@@ -177,7 +197,10 @@ jobs:
         run: |
           echo "## Infrastructure Outputs"
           echo ""
-          terraform output -json | jq -r 'to_entries[] | "**\(.key)**: \(.value.value)"'
+          # Filter out sensitive outputs to prevent private keys from leaking to logs.
+          # terraform output -json includes sensitive values in clear text regardless
+          # of the sensitive = true attribute, so we must filter them in jq.
+          terraform output -json | jq -r 'to_entries[] | select(.value.sensitive | not) | "**\(.key)**: \(.value.value)"'
 
       - name: Scan SSH host keys from all hosts
         if: env.TF_ACTION == 'apply'

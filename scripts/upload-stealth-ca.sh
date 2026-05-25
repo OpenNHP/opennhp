@@ -1,6 +1,14 @@
 #!/bin/bash
 # Upload stealth CA certificate and key to AWS Secrets Manager
-# Usage: ./upload-stealth-ca.sh [--region REGION]
+#
+# Usage:
+#   ./upload-stealth-ca.sh --ca-cert /path/to/ca.pem --ca-key /path/to/ca-key.pem
+#   ./upload-stealth-ca.sh [--region REGION] [--ca-cert FILE] [--ca-key FILE]
+#
+# Options:
+#   --region      AWS region (default: us-east-2 or $AWS_REGION)
+#   --ca-cert     Path to CA certificate PEM file (required)
+#   --ca-key      Path to CA private key PEM file (required)
 #
 # Prerequisites:
 #   - AWS CLI configured with appropriate credentials
@@ -8,11 +16,24 @@
 
 set -euo pipefail
 
+usage() {
+    echo "Usage: $0 --ca-cert FILE --ca-key FILE [--region REGION]"
+    echo ""
+    echo "Options:"
+    echo "  --ca-cert FILE   Path to CA certificate PEM file (required)"
+    echo "  --ca-key FILE    Path to CA private key PEM file (required)"
+    echo "  --region REGION  AWS region (default: us-east-2)"
+    echo ""
+    echo "Example:"
+    echo "  $0 --ca-cert ./rootCA.pem --ca-key ./rootCA-key.pem"
+    exit 1
+}
+
 # Default values
 REGION="${AWS_REGION:-us-east-2}"
 SECRET_ID="opennhp/demo"
-CA_CERT_FILE="/opt/fengbi/stealth-dns/etc/cert/rootCA.pem"
-CA_KEY_FILE="/opt/fengbi/stealth-dns/etc/cert/rootCA-key.pem"
+CA_CERT_FILE=""
+CA_KEY_FILE=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -21,12 +42,30 @@ while [[ $# -gt 0 ]]; do
             REGION="$2"
             shift 2
             ;;
+        --ca-cert)
+            CA_CERT_FILE="$2"
+            shift 2
+            ;;
+        --ca-key)
+            CA_KEY_FILE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
         *)
             echo "Unknown option: $1"
-            exit 1
+            usage
             ;;
     esac
 done
+
+# Validate required arguments
+if [[ -z "$CA_CERT_FILE" ]] || [[ -z "$CA_KEY_FILE" ]]; then
+    echo "ERROR: --ca-cert and --ca-key are required"
+    echo ""
+    usage
+fi
 
 echo "=== Upload Stealth CA to AWS Secrets Manager ==="
 echo "Region: $REGION"
@@ -58,17 +97,19 @@ EXISTING_SECRET=$(aws secretsmanager get-secret-value \
     --query SecretString \
     --output text)
 
-# Merge new fields into existing secret using Python (handles JSON properly)
+# Merge new fields into existing secret using Python (handles JSON properly).
+# Pass values through environment variables to avoid shell expansion issues
+# with triple-quoted strings (PEM content may contain ''', backslashes, etc.).
 echo "Merging stealth CA into secret..."
-UPDATED_SECRET=$(python3 << EOF
+UPDATED_SECRET=$(EXISTING_SECRET="$EXISTING_SECRET" CA_CERT="$CA_CERT" CA_KEY="$CA_KEY" python3 << 'EOF'
 import json
-import sys
+import os
 
-existing = json.loads('''$EXISTING_SECRET''', strict=False)
+existing = json.loads(os.environ["EXISTING_SECRET"], strict=False)
 
 # Add/update stealth CA fields
-existing['stealth_ca_cert'] = '''$CA_CERT'''
-existing['stealth_ca_key'] = '''$CA_KEY'''
+existing["stealth_ca_cert"] = os.environ["CA_CERT"]
+existing["stealth_ca_key"] = os.environ["CA_KEY"]
 
 print(json.dumps(existing))
 EOF

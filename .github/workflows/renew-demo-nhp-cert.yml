@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: demo-nhp-renew
+  group: demo-terraform
   cancel-in-progress: false
 
 env:
@@ -138,30 +138,68 @@ jobs:
           if [ "$STEALTH_CA_ENABLED" != "true" ]; then
             echo "stealth CA not configured, removing any stale demo.nhp nginx config and certificates"
             ssh nhp-ac \
-              "sudo rm -f /etc/nginx/conf.d/ac-demo-nhp.conf \
-                          /etc/nginx/certs/demo.nhp.pem \
-                          /etc/nginx/certs/demo.nhp-key.pem && \
-               sudo nginx -t && \
-               sudo systemctl reload nginx"
+              "set -e
+               if sudo test -f /etc/nginx/conf.d/ac-demo-nhp.conf || \
+                  sudo test -f /etc/nginx/certs/demo.nhp.pem || \
+                  sudo test -f /etc/nginx/certs/demo.nhp-key.pem; then
+                 sudo rm -f /etc/nginx/conf.d/ac-demo-nhp.conf \
+                             /etc/nginx/certs/demo.nhp.pem \
+                             /etc/nginx/certs/demo.nhp-key.pem
+                 sudo nginx -t
+                 sudo systemctl reload nginx
+               else
+                 echo 'demo.nhp nginx artifacts already absent; skipping reload'
+               fi"
             exit 0
           fi
 
           DEMO_NHP_CERT=$(terraform output -raw demo_nhp_cert)
           DEMO_NHP_KEY=$(terraform output -raw demo_nhp_key)
 
-          ssh nhp-ac "sudo mkdir -p /etc/nginx/certs && sudo chmod 755 /etc/nginx/certs"
+          ssh nhp-ac "sudo mkdir -p /etc/nginx/certs && sudo chmod 750 /etc/nginx/certs"
 
           printf '%s\n' "$DEMO_NHP_CERT" | ssh nhp-ac \
-            "sudo tee /etc/nginx/certs/demo.nhp.pem > /dev/null && sudo chmod 644 /etc/nginx/certs/demo.nhp.pem"
+            "umask 077 && cat > /tmp/demo.nhp.pem.new"
 
           printf '%s\n' "$DEMO_NHP_KEY" | ssh nhp-ac \
-            "sudo install -m 600 /dev/stdin /etc/nginx/certs/demo.nhp-key.pem"
+            "umask 077 && cat > /tmp/demo.nhp-key.pem.new"
 
           scp ../../deploy/nginx/ac-demo-nhp.conf.template nhp-ac:/tmp/ac-demo-nhp.conf
           ssh nhp-ac \
-            "sudo install -m 644 /tmp/ac-demo-nhp.conf /etc/nginx/conf.d/ac-demo-nhp.conf && \
-             sudo nginx -t && \
-             sudo systemctl reload nginx"
+            "set -e
+             trap 'rm -f /tmp/demo.nhp.pem.new /tmp/demo.nhp-key.pem.new /tmp/ac-demo-nhp.conf' EXIT
+             reload_nginx=0
+
+             if ! sudo test -f /etc/nginx/certs/demo.nhp.pem || \
+                ! sudo cmp -s /tmp/demo.nhp.pem.new /etc/nginx/certs/demo.nhp.pem; then
+               sudo install -m 644 /tmp/demo.nhp.pem.new /etc/nginx/certs/demo.nhp.pem
+               reload_nginx=1
+             else
+               echo 'demo.nhp certificate unchanged'
+             fi
+
+             if ! sudo test -f /etc/nginx/certs/demo.nhp-key.pem || \
+                ! sudo cmp -s /tmp/demo.nhp-key.pem.new /etc/nginx/certs/demo.nhp-key.pem; then
+               sudo install -m 600 /tmp/demo.nhp-key.pem.new /etc/nginx/certs/demo.nhp-key.pem
+               reload_nginx=1
+             else
+               echo 'demo.nhp private key unchanged'
+             fi
+
+             if ! sudo test -f /etc/nginx/conf.d/ac-demo-nhp.conf || \
+                ! sudo cmp -s /tmp/ac-demo-nhp.conf /etc/nginx/conf.d/ac-demo-nhp.conf; then
+               sudo install -m 644 /tmp/ac-demo-nhp.conf /etc/nginx/conf.d/ac-demo-nhp.conf
+               reload_nginx=1
+             else
+               echo 'ac-demo-nhp.conf unchanged'
+             fi
+
+             if [ \"\$reload_nginx\" -eq 1 ]; then
+               sudo nginx -t
+               sudo systemctl reload nginx
+             else
+               echo 'demo.nhp nginx artifacts unchanged; skipping reload'
+             fi"
 
       - name: Cleanup
         if: always()

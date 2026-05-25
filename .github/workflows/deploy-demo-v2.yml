@@ -690,7 +690,7 @@ jobs:
           echo "stealth_ca_enabled=true" >> "$GITHUB_OUTPUT"
 
           # Create certs directory and deploy certificate to EC2
-          ssh nhp-ac "sudo mkdir -p /etc/nginx/certs && sudo chmod 755 /etc/nginx/certs"
+          ssh nhp-ac "sudo mkdir -p /etc/nginx/certs && sudo chmod 750 /etc/nginx/certs"
 
           # Deploy certificate (securely via stdin to avoid command-line exposure).
           # printf '%s\n' ensures the PEM ends with a newline.

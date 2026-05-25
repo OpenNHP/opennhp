@@ -26,6 +26,10 @@ on:
       - 'terraform/demo/**'
       - '.github/workflows/infra-demo.yml'
 
+concurrency:
+  group: demo-terraform
+  cancel-in-progress: false
+
 env:
   AWS_REGION: us-east-2
   TF_WORKING_DIR: terraform/demo
@@ -87,10 +91,20 @@ jobs:
             exit 1
           fi
 
+          TMP_DIR=$(mktemp -d)
+          trap 'rm -rf "$TMP_DIR"' EXIT
+          EXISTING_CERT_FILE="$TMP_DIR/existing-cert.pem"
+          EXISTING_KEY_FILE="$TMP_DIR/existing-key.pem"
+          NEW_CERT_FILE="$TMP_DIR/new-cert.pem"
+          NEW_KEY_FILE="$TMP_DIR/new-key.pem"
+
+          jq -j '.stealth_ca_cert // empty' <<< "$SECRETS" > "$EXISTING_CERT_FILE"
+          jq -j '.stealth_ca_key // empty' <<< "$SECRETS" > "$EXISTING_KEY_FILE"
+          printf '%s' "$STEALTH_CA_CERT" > "$NEW_CERT_FILE"
+          printf '%s' "$STEALTH_CA_KEY" > "$NEW_KEY_FILE"
+
           # Check if already synced (compare BOTH cert and key to catch partial updates)
-          EXISTING_CERT=$(echo "$SECRETS" | jq -r '.stealth_ca_cert // empty')
-          EXISTING_KEY=$(echo "$SECRETS" | jq -r '.stealth_ca_key // empty')
-          if [ "$EXISTING_CERT" = "$STEALTH_CA_CERT" ] && [ "$EXISTING_KEY" = "$STEALTH_CA_KEY" ]; then
+          if cmp -s "$EXISTING_CERT_FILE" "$NEW_CERT_FILE" && cmp -s "$EXISTING_KEY_FILE" "$NEW_KEY_FILE"; then
             echo "Stealth CA already up to date in AWS Secrets Manager"
             exit 0
           fi
@@ -109,8 +123,7 @@ jobs:
           TOKEN_HASH=$(printf '%s' "$UPDATED" | sha256sum | cut -c1-64)
 
           # Update AWS Secrets Manager via a temp file so PEM content stays off argv.
-          SECRET_FILE=$(mktemp)
-          trap 'rm -f "$SECRET_FILE"' EXIT
+          SECRET_FILE="$TMP_DIR/secret.json"
           printf '%s' "$UPDATED" > "$SECRET_FILE"
 
           aws secretsmanager put-secret-value \

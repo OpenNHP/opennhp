@@ -34,6 +34,49 @@ usage() {
     exit 1
 }
 
+require_command() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        echo "ERROR: Required command not found: $1"
+        exit 1
+    fi
+}
+
+validate_stealth_ca() {
+    local cert_pub_hash
+    local key_pub_hash
+
+    if ! openssl x509 -noout -in "$CA_CERT_FILE" >/dev/null 2>&1; then
+        echo "ERROR: CA certificate is not a valid PEM X.509 certificate: $CA_CERT_FILE"
+        exit 1
+    fi
+
+    if ! openssl pkey -noout -in "$CA_KEY_FILE" >/dev/null 2>&1; then
+        echo "ERROR: CA key is not a valid PEM private key: $CA_KEY_FILE"
+        exit 1
+    fi
+
+    cert_pub_hash=$(
+        openssl x509 -in "$CA_CERT_FILE" -pubkey -noout \
+            | openssl pkey -pubin -outform DER 2>/dev/null \
+            | openssl dgst -sha256 | awk '{print $2}'
+    )
+    key_pub_hash=$(
+        openssl pkey -in "$CA_KEY_FILE" -pubout -outform DER 2>/dev/null \
+            | openssl dgst -sha256 | awk '{print $2}'
+    )
+
+    if [[ "$cert_pub_hash" != "$key_pub_hash" ]]; then
+        echo "ERROR: CA certificate and private key do not match"
+        exit 1
+    fi
+
+    if ! openssl x509 -in "$CA_CERT_FILE" -noout -text \
+        | awk '/Basic Constraints/ { getline; if ($0 ~ /CA:TRUE/) found=1 } END { exit(found ? 0 : 1) }'; then
+        echo "ERROR: CA certificate is missing basicConstraints CA:TRUE"
+        exit 1
+    fi
+}
+
 # Default values
 REGION="${AWS_REGION:-us-east-2}"
 SECRET_ID="opennhp/demo"
@@ -79,6 +122,10 @@ echo "CA Cert: $CA_CERT_FILE"
 echo "CA Key:  $CA_KEY_FILE"
 echo
 
+require_command aws
+require_command jq
+require_command openssl
+
 # Check files exist
 if [[ ! -f "$CA_CERT_FILE" ]]; then
     echo "ERROR: CA certificate not found: $CA_CERT_FILE"
@@ -88,6 +135,9 @@ if [[ ! -f "$CA_KEY_FILE" ]]; then
     echo "ERROR: CA key not found: $CA_KEY_FILE"
     exit 1
 fi
+
+echo "Validating CA certificate and private key..."
+validate_stealth_ca
 
 # Fetch existing secret
 echo "Fetching existing secret from AWS Secrets Manager..."

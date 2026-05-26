@@ -31,9 +31,11 @@ that victim.
    principals have `s3:GetObject` on the state bucket. Review access regularly.
 
 3. **Use short-lived certificates.** The `demo.nhp` certificate validity is
-   set to 2 years and Terraform is configured to rotate it 30 days before
-   expiry during `terraform apply`. This limits blast radius if state ever
-   leaks, but the renewed certificate still must be redeployed to the EC2 host.
+   set to 2 years and Terraform is configured to rotate it 60 days before
+   expiry during `terraform apply`. The 60-day window gives the monthly
+   renewal workflow two scheduled chances to renew before expiry. This limits
+   blast radius if state ever leaks, but the renewed certificate still must
+   be redeployed to the EC2 host.
 
 4. **Rotate the CA if state is compromised.** If you suspect the state bucket
    was accessed by unauthorized parties, generate a new CA keypair and update

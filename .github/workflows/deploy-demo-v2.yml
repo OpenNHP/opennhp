@@ -703,18 +703,41 @@ jobs:
 
           echo "stealth_ca_enabled=true" >> "$GITHUB_OUTPUT"
 
-          # Create certs directory and deploy certificate to EC2
+          # Create certs directory and deploy certificate to EC2.
+          # Use the same idempotent pattern as renew-demo-nhp-cert.yml: write to
+          # tmp files, compare, and only install if changed. This avoids spurious
+          # file modifications and maintains consistency across both workflows.
           ssh nhp-ac "sudo mkdir -p /etc/nginx/certs && sudo chmod 750 /etc/nginx/certs"
 
-          # Deploy certificate (securely via stdin to avoid command-line exposure).
-          # printf '%s\n' ensures the PEM ends with a newline.
+          # Write cert/key to temp files (securely via stdin to avoid argv exposure)
           printf '%s\n' "$DEMO_NHP_CERT" | ssh nhp-ac \
-            "sudo install -m 644 /dev/stdin /etc/nginx/certs/demo.nhp.pem"
+            "umask 077 && cat > /tmp/demo.nhp.pem.new"
 
           printf '%s\n' "$DEMO_NHP_KEY" | ssh nhp-ac \
-            "sudo install -m 600 /dev/stdin /etc/nginx/certs/demo.nhp-key.pem"
+            "umask 077 && cat > /tmp/demo.nhp-key.pem.new"
 
-          echo "demo.nhp certificate deployed successfully"
+          # Compare and install only if changed
+          ssh nhp-ac \
+            "set -e
+             trap 'rm -f /tmp/demo.nhp.pem.new /tmp/demo.nhp-key.pem.new' EXIT
+
+             if ! sudo test -f /etc/nginx/certs/demo.nhp.pem || \
+                ! sudo cmp -s /tmp/demo.nhp.pem.new /etc/nginx/certs/demo.nhp.pem; then
+               sudo install -m 644 /tmp/demo.nhp.pem.new /etc/nginx/certs/demo.nhp.pem
+               echo 'demo.nhp certificate installed'
+             else
+               echo 'demo.nhp certificate unchanged'
+             fi
+
+             if ! sudo test -f /etc/nginx/certs/demo.nhp-key.pem || \
+                ! sudo cmp -s /tmp/demo.nhp-key.pem.new /etc/nginx/certs/demo.nhp-key.pem; then
+               sudo install -m 600 /tmp/demo.nhp-key.pem.new /etc/nginx/certs/demo.nhp-key.pem
+               echo 'demo.nhp private key installed'
+             else
+               echo 'demo.nhp private key unchanged'
+             fi"
+
+          echo "demo.nhp certificate deployment complete"
 
       - name: Ensure TLS certificate + nginx on ac
         run: |
@@ -729,7 +752,7 @@ jobs:
             < repo/deploy/nginx/ac.conf.template > /tmp/ac-nginx.conf
 
           if [ "${{ steps.demo_nhp_cert.outputs.stealth_ca_enabled }}" = "true" ]; then
-            cp repo/deploy/nginx/ac-demo-nhp.conf.template /tmp/ac-demo-nhp.conf
+            cp repo/deploy/nginx/ac-demo-nhp.conf /tmp/ac-demo-nhp.conf
           fi
 
           scp repo/deploy/scripts/bootstrap-tls.sh nhp-ac:/tmp/bootstrap-tls.sh

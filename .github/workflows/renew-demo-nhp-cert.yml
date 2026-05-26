@@ -174,7 +174,7 @@ jobs:
           printf '%s\n' "$DEMO_NHP_KEY" | ssh nhp-ac \
             "umask 077 && cat > /tmp/demo.nhp-key.pem.new"
 
-          scp ../../deploy/nginx/ac-demo-nhp.conf.template nhp-ac:/tmp/ac-demo-nhp.conf
+          scp ../../deploy/nginx/ac-demo-nhp.conf nhp-ac:/tmp/ac-demo-nhp.conf
           ssh nhp-ac \
             "set -e
              trap 'rm -f /tmp/demo.nhp.pem.new /tmp/demo.nhp-key.pem.new /tmp/ac-demo-nhp.conf' EXIT

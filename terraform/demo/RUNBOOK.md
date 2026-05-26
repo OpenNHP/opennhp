@@ -1,5 +1,95 @@
 # Demo Terraform Runbook
 
+## Stealth CA Security Model
+
+The demo infrastructure includes a "stealth CA" for signing certificates for
+internal hostnames (e.g., `demo.nhp`) that are not publicly resolvable. This
+section documents the security implications.
+
+### Trust Model
+
+**Important:** The stealth CA private key is stored in Terraform state.
+
+When `tls_locally_signed_cert.demo_nhp` signs a certificate using
+`ca_private_key_pem = local.secrets["stealth_ca_key"]`, Terraform persists this
+value (and all resource inputs) to the state file. Although the state bucket is
+KMS-encrypted, anyone with `s3:GetObject` on the bucket or access to
+`terraform show -json` can extract the CA root private key.
+
+**Risk:** This CA can sign certificates for **any hostname**, not just
+`demo.nhp`. If an attacker obtains the CA key and a victim trusts the stealth
+CA, the attacker can perform MitM attacks against any HTTPS connection from
+that victim.
+
+### Mitigations
+
+1. **Limit who trusts the stealth CA.** Only install the CA certificate on
+   machines specifically intended for demo testing. Never install it on
+   production systems or personal devices used for sensitive work.
+
+2. **Restrict state bucket access.** Ensure only the minimum required IAM
+   principals have `s3:GetObject` on the state bucket. Review access regularly.
+
+3. **Use short-lived certificates.** The `demo.nhp` certificate validity is
+   set to 2 years and Terraform is configured to rotate it 60 days before
+   expiry during `terraform apply`. The 60-day window gives the monthly
+   renewal workflow two scheduled chances to renew before expiry. This limits
+   blast radius if state ever leaks, but the renewed certificate still must
+   be redeployed to the EC2 host.
+
+4. **Rotate the CA if state is compromised.** If you suspect the state bucket
+   was accessed by unauthorized parties, generate a new CA keypair and update
+   all clients that trust it.
+
+### Alternative: Out-of-band signing
+
+For higher security, consider signing certificates outside of Terraform:
+
+```bash
+# One-shot signing that never writes the CA key to state
+openssl x509 -req -in demo_nhp.csr \
+  -CA /path/to/ca.crt -CAkey /path/to/ca.key \
+  -CAcreateserial -out demo_nhp.crt -days 730
+```
+
+Then import the signed certificate into Secrets Manager manually rather than
+using `tls_locally_signed_cert`. This keeps the CA key entirely out of
+Terraform state at the cost of manual certificate management.
+
+### Renewal and deployment path
+
+The `demo.nhp` certificate is not renewed by certbot on the EC2 host. Renewal
+only happens when Terraform reevaluates `tls_locally_signed_cert.demo_nhp`
+during `terraform apply`, after which the PEM files must be copied to
+`/etc/nginx/certs/` on the AC instance.
+
+The repository includes a scheduled GitHub Actions workflow,
+`Renew demo.nhp Certificate`, that runs monthly to:
+
+1. Execute a targeted Terraform plan/apply for the `demo.nhp` certificate resources
+2. Read the refreshed `demo_nhp_cert` / `demo_nhp_key` outputs when the stealth CA is enabled
+3. Deploy them to the AC instance and reload nginx, or remove stale `demo.nhp` nginx/cert files if the stealth CA has been disabled
+
+If that workflow is disabled or fails repeatedly, re-run it manually before the
+certificate reaches expiry.
+
+### Stealth CA upload paths
+
+The canonical path for syncing `stealth_ca_cert` and `stealth_ca_key` into AWS
+Secrets Manager is the `infra-demo` workflow during `action=apply`.
+
+Use `scripts/upload-stealth-ca.sh` only for the initial bootstrap or an
+emergency/manual re-sync when the GitHub workflow path is unavailable.
+
+### opennhp/demo secret schema (stealth CA fields)
+
+| Field | Populated by | Used by |
+|-------|--------------|---------|
+| `stealth_ca_cert` | `infra-demo` workflow (from GitHub Secrets) | `tls_locally_signed_cert.demo_nhp` |
+| `stealth_ca_key` | `infra-demo` workflow (from GitHub Secrets) | `tls_locally_signed_cert.demo_nhp` |
+
+---
+
 ## One-time migration: SSH deploy key out of Terraform state
 
 Until this migration runs, the SSH deploy private key is stored in plaintext

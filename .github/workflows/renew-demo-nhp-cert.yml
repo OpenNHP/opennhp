@@ -1,0 +1,189 @@
+name: Renew demo.nhp Certificate
+
+on:
+  schedule:
+    - cron: '23 4 1 * *'
+  workflow_dispatch:
+
+concurrency:
+  group: demo-terraform
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-2
+  DEPLOY_USER: ec2-user
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  renew-demo-nhp-cert:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Fetch secrets and setup SSH credentials
+        id: secrets
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: |
+          if [ -z "$TF_STATE_BUCKET" ]; then
+            echo "ERROR: repo variable TF_STATE_BUCKET is not set."
+            exit 1
+          fi
+
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' --output text)
+
+          CF_TOKEN=$(echo "$SECRETS" | jq -r '.cloudflare_api_token')
+          CF_ZONE=$(echo "$SECRETS" | jq -r '.cloudflare_zone_id')
+          SSH_KEY=$(echo "$SECRETS" | jq -r '.ssh_deploy_private_key')
+          HOST_KEYS=$(echo "$SECRETS" | jq -r '.ssh_host_keys // empty')
+
+          if [ -z "$SSH_KEY" ] || [ "$SSH_KEY" = "null" ]; then
+            echo "ERROR: ssh_deploy_private_key missing in opennhp/demo"
+            exit 1
+          fi
+
+          if [ -z "$CF_TOKEN" ] || [ "$CF_TOKEN" = "null" ]; then
+            echo "ERROR: cloudflare_api_token missing in opennhp/demo"
+            exit 1
+          fi
+
+          if [ -z "$CF_ZONE" ] || [ "$CF_ZONE" = "null" ]; then
+            echo "ERROR: cloudflare_zone_id missing in opennhp/demo"
+            exit 1
+          fi
+
+          if [ -z "$HOST_KEYS" ]; then
+            echo "ERROR: ssh_host_keys missing in opennhp/demo"
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key
+          chmod 644 ~/.ssh/known_hosts
+
+          PRIV_TMP=$(mktemp)
+          trap 'rm -f "$PRIV_TMP"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$PRIV_TMP"
+          chmod 600 "$PRIV_TMP"
+          DEPLOY_PUB=$(ssh-keygen -y -f "$PRIV_TMP")
+
+          echo "::add-mask::$CF_TOKEN"
+          echo "cf_token=$CF_TOKEN" >> "$GITHUB_OUTPUT"
+          echo "cf_zone=$CF_ZONE" >> "$GITHUB_OUTPUT"
+          echo "deploy_pub=$DEPLOY_PUB" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "~1.10"
+
+      - name: Renew and deploy demo.nhp certificate
+        working-directory: terraform/demo
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          TF_VAR_cloudflare_api_token: ${{ steps.secrets.outputs.cf_token }}
+          TF_VAR_cloudflare_zone_id: ${{ steps.secrets.outputs.cf_zone }}
+          TF_VAR_deploy_public_key: ${{ steps.secrets.outputs.deploy_pub }}
+        run: |
+          terraform init -backend=true \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+          # Use -target to narrow the plan to only certificate resources.
+          # HashiCorp officially discourages routine -target use because it
+          # bypasses drift detection on the rest of the plan, but it's acceptable
+          # here for a narrow monthly renewal that touches only these three TLS
+          # resources. Any other pending plan changes (e.g., instance updates,
+          # DNS changes) will sit unapplied until the next infra-demo workflow run.
+          terraform plan \
+            -out=renew.tfplan \
+            -target=tls_private_key.demo_nhp \
+            -target=tls_cert_request.demo_nhp \
+            -target=tls_locally_signed_cert.demo_nhp
+
+          terraform apply -auto-approve renew.tfplan
+
+          STEALTH_CA_ENABLED=$(terraform output -raw stealth_ca_enabled 2>/dev/null || true)
+          RELAY_PUBLIC_IP=$(terraform output -raw relay_public_ip)
+          AC_PRIVATE_IP=$(terraform output -raw ac_private_ip)
+
+          cat > ~/.ssh/config <<EOF
+          Host relay-jump
+            HostName $RELAY_PUBLIC_IP
+            User ${{ env.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+
+          Host nhp-ac
+            HostName $AC_PRIVATE_IP
+            User ${{ env.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            ProxyJump relay-jump
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+          EOF
+          chmod 600 ~/.ssh/config
+
+          if [ "$STEALTH_CA_ENABLED" != "true" ]; then
+            echo "stealth CA not configured, removing any stale demo.nhp nginx config and certificates"
+            ssh nhp-ac \
+              "set -e
+               if sudo test -f /etc/nginx/conf.d/ac-demo-nhp.conf || \
+                  sudo test -f /etc/nginx/certs/demo.nhp.pem || \
+                  sudo test -f /etc/nginx/certs/demo.nhp-key.pem; then
+                 sudo rm -f /etc/nginx/conf.d/ac-demo-nhp.conf \
+                             /etc/nginx/certs/demo.nhp.pem \
+                             /etc/nginx/certs/demo.nhp-key.pem
+                 sudo nginx -t
+                 sudo systemctl reload nginx
+               else
+                 echo 'demo.nhp nginx artifacts already absent; skipping reload'
+               fi"
+            exit 0
+          fi
+
+          DEMO_NHP_CERT=$(terraform output -raw demo_nhp_cert)
+          DEMO_NHP_KEY=$(terraform output -raw demo_nhp_key)
+
+          # Mask each line of the private key separately.
+          # GitHub Actions ::add-mask:: only works on single-line strings;
+          # multiline URL-encoding doesn't actually mask anything.
+          while IFS= read -r line; do
+            [ -n "$line" ] && printf '::add-mask::%s\n' "$line"
+          done <<< "$DEMO_NHP_KEY"
+
+          # Write cert/key to temp files (securely via stdin to avoid argv exposure)
+          printf '%s\n' "$DEMO_NHP_CERT" | ssh nhp-ac \
+            "umask 077 && cat > /tmp/demo.nhp.pem.new"
+
+          printf '%s\n' "$DEMO_NHP_KEY" | ssh nhp-ac \
+            "umask 077 && cat > /tmp/demo.nhp-key.pem.new"
+
+          # Upload nginx config and the shared installation script
+          scp ../../deploy/nginx/ac-demo-nhp.conf nhp-ac:/tmp/ac-demo-nhp.conf
+          scp ../../deploy/scripts/install-demo-nhp-cert.sh nhp-ac:/tmp/install-demo-nhp-cert.sh
+          ssh nhp-ac "chmod +x /tmp/install-demo-nhp-cert.sh"
+
+          # Run the shared script to install all artifacts and reload nginx if needed
+          ssh nhp-ac "/tmp/install-demo-nhp-cert.sh"
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh

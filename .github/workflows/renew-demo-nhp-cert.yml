@@ -105,6 +105,12 @@ jobs:
             -backend-config="bucket=$TF_STATE_BUCKET" \
             -backend-config="region=${{ env.AWS_REGION }}"
 
+          # Use -target to narrow the plan to only certificate resources.
+          # HashiCorp officially discourages routine -target use because it
+          # bypasses drift detection on the rest of the plan, but it's acceptable
+          # here for a narrow monthly renewal that touches only these three TLS
+          # resources. Any other pending plan changes (e.g., instance updates,
+          # DNS changes) will sit unapplied until the next infra-demo workflow run.
           terraform plan \
             -out=renew.tfplan \
             -target=tls_private_key.demo_nhp \

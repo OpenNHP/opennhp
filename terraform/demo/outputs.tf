@@ -52,8 +52,12 @@ output "ssh_jump_command" {
 # demo.nhp certificate (signed by stealth CA)
 # These outputs are empty strings if stealth CA is not configured.
 output "demo_nhp_cert" {
-  description = "demo.nhp server certificate (PEM). Empty if stealth CA not configured."
-  value       = try(tls_locally_signed_cert.demo_nhp[0].cert_pem, "")
+  description = "demo.nhp server certificate chain (leaf + CA, PEM). Empty if stealth CA not configured."
+  # Concatenate leaf cert with CA cert so nginx serves the full chain.
+  # Browsers with the stealth CA in their root store will validate the leaf,
+  # and clients doing path-building from the server-presented chain will have
+  # the intermediate/root available.
+  value = local.stealth_ca_enabled ? "${tls_locally_signed_cert.demo_nhp[0].cert_pem}${local.secrets["stealth_ca_cert"]}" : ""
 }
 
 output "demo_nhp_key" {

@@ -156,60 +156,27 @@ jobs:
           DEMO_NHP_CERT=$(terraform output -raw demo_nhp_cert)
           DEMO_NHP_KEY=$(terraform output -raw demo_nhp_key)
 
-          mask_multiline() {
-            local escaped="$1"
-            escaped=${escaped//'%'/'%25'}
-            escaped=${escaped//$'\r'/'%0D'}
-            escaped=${escaped//$'\n'/'%0A'}
-            echo "::add-mask::$escaped"
-          }
+          # Mask each line of the private key separately.
+          # GitHub Actions ::add-mask:: only works on single-line strings;
+          # multiline URL-encoding doesn't actually mask anything.
+          while IFS= read -r line; do
+            [ -n "$line" ] && printf '::add-mask::%s\n' "$line"
+          done <<< "$DEMO_NHP_KEY"
 
-          mask_multiline "$DEMO_NHP_KEY"
-
-          ssh nhp-ac "sudo mkdir -p /etc/nginx/certs && sudo chmod 750 /etc/nginx/certs"
-
+          # Write cert/key to temp files (securely via stdin to avoid argv exposure)
           printf '%s\n' "$DEMO_NHP_CERT" | ssh nhp-ac \
             "umask 077 && cat > /tmp/demo.nhp.pem.new"
 
           printf '%s\n' "$DEMO_NHP_KEY" | ssh nhp-ac \
             "umask 077 && cat > /tmp/demo.nhp-key.pem.new"
 
+          # Upload nginx config and the shared installation script
           scp ../../deploy/nginx/ac-demo-nhp.conf nhp-ac:/tmp/ac-demo-nhp.conf
-          ssh nhp-ac \
-            "set -e
-             trap 'rm -f /tmp/demo.nhp.pem.new /tmp/demo.nhp-key.pem.new /tmp/ac-demo-nhp.conf' EXIT
-             reload_nginx=0
+          scp ../../deploy/scripts/install-demo-nhp-cert.sh nhp-ac:/tmp/install-demo-nhp-cert.sh
+          ssh nhp-ac "chmod +x /tmp/install-demo-nhp-cert.sh"
 
-             if ! sudo test -f /etc/nginx/certs/demo.nhp.pem || \
-                ! sudo cmp -s /tmp/demo.nhp.pem.new /etc/nginx/certs/demo.nhp.pem; then
-               sudo install -m 644 /tmp/demo.nhp.pem.new /etc/nginx/certs/demo.nhp.pem
-               reload_nginx=1
-             else
-               echo 'demo.nhp certificate unchanged'
-             fi
-
-             if ! sudo test -f /etc/nginx/certs/demo.nhp-key.pem || \
-                ! sudo cmp -s /tmp/demo.nhp-key.pem.new /etc/nginx/certs/demo.nhp-key.pem; then
-               sudo install -m 600 /tmp/demo.nhp-key.pem.new /etc/nginx/certs/demo.nhp-key.pem
-               reload_nginx=1
-             else
-               echo 'demo.nhp private key unchanged'
-             fi
-
-             if ! sudo test -f /etc/nginx/conf.d/ac-demo-nhp.conf || \
-                ! sudo cmp -s /tmp/ac-demo-nhp.conf /etc/nginx/conf.d/ac-demo-nhp.conf; then
-               sudo install -m 644 /tmp/ac-demo-nhp.conf /etc/nginx/conf.d/ac-demo-nhp.conf
-               reload_nginx=1
-             else
-               echo 'ac-demo-nhp.conf unchanged'
-             fi
-
-             if [ \"\$reload_nginx\" -eq 1 ]; then
-               sudo nginx -t
-               sudo systemctl reload nginx
-             else
-               echo 'demo.nhp nginx artifacts unchanged; skipping reload'
-             fi"
+          # Run the shared script to install all artifacts and reload nginx if needed
+          ssh nhp-ac "/tmp/install-demo-nhp-cert.sh"
 
       - name: Cleanup
         if: always()

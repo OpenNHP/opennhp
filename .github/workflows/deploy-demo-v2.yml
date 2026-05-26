@@ -691,23 +691,23 @@ jobs:
             exit 1
           fi
 
-          mask_multiline() {
-            local escaped="$1"
-            escaped=${escaped//'%'/'%25'}
-            escaped=${escaped//$'\r'/'%0D'}
-            escaped=${escaped//$'\n'/'%0A'}
-            echo "::add-mask::$escaped"
-          }
-
-          mask_multiline "$DEMO_NHP_KEY"
+          # Mask each line of the private key separately.
+          # GitHub Actions ::add-mask:: only works on single-line strings;
+          # multiline URL-encoding doesn't actually mask anything.
+          while IFS= read -r line; do
+            [ -n "$line" ] && printf '::add-mask::%s\n' "$line"
+          done <<< "$DEMO_NHP_KEY"
 
           echo "stealth_ca_enabled=true" >> "$GITHUB_OUTPUT"
 
-          # Create certs directory and deploy certificate to EC2.
-          # Use the same idempotent pattern as renew-demo-nhp-cert.yml: write to
-          # tmp files, compare, and only install if changed. This avoids spurious
-          # file modifications and maintains consistency across both workflows.
-          ssh nhp-ac "sudo mkdir -p /etc/nginx/certs && sudo chmod 750 /etc/nginx/certs"
+          # Deploy certificate, key, and nginx config using the shared script.
+          # This ensures consistent idempotent deployment logic across both
+          # deploy-demo-v2 and renew-demo-nhp-cert workflows, and guarantees
+          # nginx is reloaded when any artifact changes.
+
+          # Upload the shared installation script
+          scp ../../deploy/scripts/install-demo-nhp-cert.sh nhp-ac:/tmp/install-demo-nhp-cert.sh
+          ssh nhp-ac "chmod +x /tmp/install-demo-nhp-cert.sh"
 
           # Write cert/key to temp files (securely via stdin to avoid argv exposure)
           printf '%s\n' "$DEMO_NHP_CERT" | ssh nhp-ac \
@@ -716,26 +716,11 @@ jobs:
           printf '%s\n' "$DEMO_NHP_KEY" | ssh nhp-ac \
             "umask 077 && cat > /tmp/demo.nhp-key.pem.new"
 
-          # Compare and install only if changed
-          ssh nhp-ac \
-            "set -e
-             trap 'rm -f /tmp/demo.nhp.pem.new /tmp/demo.nhp-key.pem.new' EXIT
+          # Upload nginx config for demo.nhp vhost
+          scp ../../deploy/nginx/ac-demo-nhp.conf nhp-ac:/tmp/ac-demo-nhp.conf
 
-             if ! sudo test -f /etc/nginx/certs/demo.nhp.pem || \
-                ! sudo cmp -s /tmp/demo.nhp.pem.new /etc/nginx/certs/demo.nhp.pem; then
-               sudo install -m 644 /tmp/demo.nhp.pem.new /etc/nginx/certs/demo.nhp.pem
-               echo 'demo.nhp certificate installed'
-             else
-               echo 'demo.nhp certificate unchanged'
-             fi
-
-             if ! sudo test -f /etc/nginx/certs/demo.nhp-key.pem || \
-                ! sudo cmp -s /tmp/demo.nhp-key.pem.new /etc/nginx/certs/demo.nhp-key.pem; then
-               sudo install -m 600 /tmp/demo.nhp-key.pem.new /etc/nginx/certs/demo.nhp-key.pem
-               echo 'demo.nhp private key installed'
-             else
-               echo 'demo.nhp private key unchanged'
-             fi"
+          # Run the shared script to install all artifacts and reload nginx if needed
+          ssh nhp-ac "/tmp/install-demo-nhp-cert.sh"
 
           echo "demo.nhp certificate deployment complete"
 
@@ -751,15 +736,8 @@ jobs:
           envsubst '$DOMAIN_AC $LEGACY_DOMAIN_AC' \
             < repo/deploy/nginx/ac.conf.template > /tmp/ac-nginx.conf
 
-          if [ "${{ steps.demo_nhp_cert.outputs.stealth_ca_enabled }}" = "true" ]; then
-            cp repo/deploy/nginx/ac-demo-nhp.conf /tmp/ac-demo-nhp.conf
-          fi
-
           scp repo/deploy/scripts/bootstrap-tls.sh nhp-ac:/tmp/bootstrap-tls.sh
           scp /tmp/ac-nginx.conf nhp-ac:/tmp/ac-nginx.conf
-          if [ -f /tmp/ac-demo-nhp.conf ]; then
-            scp /tmp/ac-demo-nhp.conf nhp-ac:/tmp/ac-demo-nhp.conf
-          fi
           ssh nhp-ac "chmod +x /tmp/bootstrap-tls.sh"
 
           printf '%s' "$CF_TOKEN" | ssh nhp-ac \
@@ -775,18 +753,10 @@ jobs:
              NGINX_CONF='/tmp/ac-nginx.conf' \
              /tmp/bootstrap-tls.sh"
 
-          if [ "${{ steps.demo_nhp_cert.outputs.stealth_ca_enabled }}" = "true" ]; then
-            ssh nhp-ac \
-              "set -e
-               if sudo test -f /etc/nginx/conf.d/ac-demo-nhp.conf && \
-                  sudo cmp -s /tmp/ac-demo-nhp.conf /etc/nginx/conf.d/ac-demo-nhp.conf; then
-                 echo 'ac-demo-nhp.conf unchanged; skipping nginx reload'
-               else
-                 sudo install -m 644 /tmp/ac-demo-nhp.conf /etc/nginx/conf.d/ac-demo-nhp.conf
-                 sudo nginx -t
-                 sudo systemctl reload nginx
-               fi"
-          else
+          # When stealth CA is disabled, clean up any stale demo.nhp artifacts.
+          # When enabled, install-demo-nhp-cert.sh (run in previous step) has
+          # already deployed the cert/key/config and reloaded nginx.
+          if [ "${{ steps.demo_nhp_cert.outputs.stealth_ca_enabled }}" != "true" ]; then
             ssh nhp-ac \
               "set -e
                if sudo test -f /etc/nginx/conf.d/ac-demo-nhp.conf || \

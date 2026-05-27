@@ -271,6 +271,63 @@ func TestTeardownPerRelayCounter_Decision(t *testing.T) {
 	}
 }
 
+// mockCrDefer mirrors connectionRoutine's teardown defer in
+// udpserver.go: it grabs the map mutex, removes the entry if it
+// still owns it, and routes the counter dec through the same
+// teardownPerRelayCounter helper production uses. Returned for use
+// from the stale-replace race tests below so both the deterministic
+// and the concurrent variant agree on what "CR-defer ran" means.
+func mockCrDefer(s *UdpServer, conn *UdpConn, connKey string) {
+	s.remoteConnectionMapMutex.Lock()
+	_, stillPresent := s.remoteConnectionMap[connKey]
+	if stillPresent {
+		delete(s.remoteConnectionMap, connKey)
+	}
+	s.remoteConnectionMapMutex.Unlock()
+	s.teardownPerRelayCounter(conn, connKey, stillPresent)
+}
+
+// mockHrfReplaceOrInsert mirrors the relevant counter-accounting
+// half of HandleRelayForward. It deliberately models BOTH branches
+// of the lookup:
+//
+//   - found && IsClosed: stale-replace. Mark replaced (so CR-defer
+//     skips its dec), delete the old entry, insert the new entry,
+//     leave the counter untouched — the slot transfers.
+//   - !found (or found && !IsClosed, which doesn't happen in these
+//     tests): fresh insert. Inc the counter, insert the new entry.
+//
+// Modeling only the stale-replace branch (the original mock did
+// this) would silently misreport the CR-first ordering: in
+// production, after CR has deleted the entry, HRF's lookup misses
+// and falls through to the fresh-insert path, re-incrementing the
+// counter. Without that step, the deterministic test ends at
+// counter=0 while production ends at counter=1, and the test
+// assertion of "counter == 1" is unsatisfiable through the mock.
+func mockHrfReplaceOrInsert(s *UdpServer, connKey, relay, client string) {
+	s.remoteConnectionMapMutex.Lock()
+	if existing, found := s.remoteConnectionMap[connKey]; found && existing.ConnData.IsClosed() {
+		// Stale-replace: slot transfers, no counter change.
+		existing.replaced.Store(true)
+		delete(s.remoteConnectionMap, connKey)
+		newConn, _, _ := makeRelayConn(relay, client)
+		s.remoteConnectionMap[connKey] = newConn
+		s.remoteConnectionMapMutex.Unlock()
+		return
+	}
+	// Fresh-insert: HRF treats this as a genuinely new slot, so it
+	// inc's the per-relay counter (msghandler.go:868-896 in
+	// production) before inserting. Production also enforces caps
+	// here; the cap path is exercised in dedicated tests and is
+	// orthogonal to the race we're modeling, so skip it.
+	s.remoteConnectionMapMutex.Unlock()
+	newConn, _, relayAddr := makeRelayConn(relay, client)
+	s.incRelayConnCount(relayAddr)
+	s.remoteConnectionMapMutex.Lock()
+	s.remoteConnectionMap[connKey] = newConn
+	s.remoteConnectionMapMutex.Unlock()
+}
+
 // TestStaleReplace_CounterIsNetZero is the regression test for the
 // double-decrement race that motivated this fix. The original code
 // kept four short critical sections in HandleRelayForward and let
@@ -284,10 +341,15 @@ func TestTeardownPerRelayCounter_Decision(t *testing.T) {
 // entry — all without touching the counter. The new conn's matching
 // dec on its own teardown is what eventually returns the slot.
 //
-// The test runs both orderings of CR-defer vs HRF stale-replace and
-// asserts the counter ends at exactly 1 either way (one live
-// replacement conn). Pre-fix this would have ended at 0 (or below)
-// in one ordering and 2 in the other.
+// The test runs both orderings of CR-defer vs HRF and asserts the
+// counter ends at exactly 1 either way (one live replacement conn).
+//   - HRF-first: stale-replace claims the slot, CR-defer sees
+//     replaced=true and skips its dec. Counter stays at 1.
+//   - CR-first: CR-defer dec's (1 → 0), then HRF's lookup misses and
+//     falls through to fresh-insert which inc's (0 → 1).
+//
+// Pre-fix this would have ended at 0 (or below) in one ordering and
+// 2 in the other.
 func TestStaleReplace_CounterIsNetZero(t *testing.T) {
 	const relay = "198.51.100.10:62206"
 	const client = "203.0.113.42:51234"
@@ -295,11 +357,10 @@ func TestStaleReplace_CounterIsNetZero(t *testing.T) {
 	tests := []struct {
 		name string
 		// crFirst: simulate connectionRoutine's teardown defer
-		// running before HandleRelayForward's stale-replace path.
-		// !crFirst: HRF runs first; CR-defer trails.
+		// running before HandleRelayForward. !crFirst: HRF first.
 		crFirst bool
 	}{
-		{"CR-defer runs first then HRF takes over the slot", true},
+		{"CR-defer runs first then HRF re-inserts via fresh path", true},
 		{"HRF stale-replace runs first then CR-defer trails", false},
 	}
 
@@ -317,41 +378,12 @@ func TestStaleReplace_CounterIsNetZero(t *testing.T) {
 			// we don't want to run the full routine here.
 			closeConn(oldConn)
 
-			crDefer := func() {
-				// Mirror udpserver.go connectionRoutine's defer.
-				s.remoteConnectionMapMutex.Lock()
-				_, stillPresent := s.remoteConnectionMap[connKey]
-				if stillPresent {
-					delete(s.remoteConnectionMap, connKey)
-				}
-				s.remoteConnectionMapMutex.Unlock()
-				s.teardownPerRelayCounter(oldConn, connKey, stillPresent)
-			}
-
-			hrfStaleReplace := func() {
-				// Mirror the slot-transfer half of
-				// HandleRelayForward. Skips the full
-				// packet-parsing/insert path because we only care
-				// about the counter-accounting half of the race.
-				s.remoteConnectionMapMutex.Lock()
-				if existing, found := s.remoteConnectionMap[connKey]; found && existing.ConnData.IsClosed() {
-					existing.replaced.Store(true)
-					delete(s.remoteConnectionMap, connKey)
-					// Slot transfers; no inc, no dec. The
-					// replacement insert below would be the
-					// "new conn inherits the slot" half.
-					newConn, _, _ := makeRelayConn(relay, client)
-					s.remoteConnectionMap[connKey] = newConn
-				}
-				s.remoteConnectionMapMutex.Unlock()
-			}
-
 			if tt.crFirst {
-				crDefer()
-				hrfStaleReplace()
+				mockCrDefer(s, oldConn, connKey)
+				mockHrfReplaceOrInsert(s, connKey, relay, client)
 			} else {
-				hrfStaleReplace()
-				crDefer()
+				mockHrfReplaceOrInsert(s, connKey, relay, client)
+				mockCrDefer(s, oldConn, connKey)
 			}
 
 			got := s.getRelayConnCount(relayAddr)
@@ -366,10 +398,14 @@ func TestStaleReplace_CounterIsNetZero(t *testing.T) {
 
 // TestStaleReplace_ConcurrentInterleavings runs the same race many
 // times with real goroutines, relying on the runtime scheduler to
-// produce both orderings. With -race this also asserts the absence of
-// data races on relayConnCount and the replaced flag. The invariant
-// is the same as the deterministic test above: after the race
-// completes, the counter must equal the live-replacement count (1).
+// produce both orderings. With -race this also asserts the absence
+// of data races on relayConnCount and the replaced flag.
+//
+// Both orderings must end at counter=1 (matching the deterministic
+// test above): one live replacement conn either way. A previous
+// version of this test allowed counter ∈ {0, 1} because its mock
+// for HRF omitted the fresh-insert branch — that hid the property
+// the fix actually guarantees and weakened the regression fence.
 func TestStaleReplace_ConcurrentInterleavings(t *testing.T) {
 	const relay = "198.51.100.10:62206"
 	const iterations = 1000
@@ -388,39 +424,20 @@ func TestStaleReplace_ConcurrentInterleavings(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			s.remoteConnectionMapMutex.Lock()
-			_, stillPresent := s.remoteConnectionMap[connKey]
-			if stillPresent {
-				delete(s.remoteConnectionMap, connKey)
-			}
-			s.remoteConnectionMapMutex.Unlock()
-			s.teardownPerRelayCounter(oldConn, connKey, stillPresent)
+			mockCrDefer(s, oldConn, connKey)
 		}()
 		go func() {
 			defer wg.Done()
-			s.remoteConnectionMapMutex.Lock()
-			if existing, found := s.remoteConnectionMap[connKey]; found && existing.ConnData.IsClosed() {
-				existing.replaced.Store(true)
-				delete(s.remoteConnectionMap, connKey)
-				newConn, _, _ := makeRelayConn(relay, client)
-				s.remoteConnectionMap[connKey] = newConn
-			}
-			s.remoteConnectionMapMutex.Unlock()
+			mockHrfReplaceOrInsert(s, connKey, relay, client)
 		}()
 		wg.Wait()
 
 		got := s.getRelayConnCount(relayAddr)
-		// Acceptable outcomes:
-		//   - CR wins: HRF sees no entry → no replace → CR-defer dec's. counter=0.
-		//   - HRF wins: HRF replaces (no inc, no dec) → CR-defer sees
-		//     replaced=true OR stillPresent=false → skip dec. counter=1.
-		// Either is consistent with "counter == live conn count": 0
-		// live (CR finished cleanup, HRF never claimed slot) or 1
-		// live (HRF inserted replacement).
-		if got != 0 && got != 1 {
-			t.Fatalf("iteration %d: counter=%d, want 0 (no replacement) or 1 (replacement inserted). "+
-				"A value of 2 means CR-defer skipped dec while HRF didn't actually claim the slot. "+
-				"A value of -clamped-to-deleted means both dec'd the same slot.", i, got)
+		if got != 1 {
+			t.Fatalf("iteration %d: counter=%d, want 1.\n"+
+				"  HRF-wins: replaces (no inc/dec); CR-defer sees replaced=true, skips dec → 1.\n"+
+				"  CR-wins:  dec's (1→0); HRF lookup misses, fresh-insert inc's (0→1) → 1.\n"+
+				"counter != 1 means one branch of the race is mis-accounting slots.", i, got)
 		}
 	}
 }

@@ -273,13 +273,16 @@ func TestTeardownPerRelayCounter_Decision(t *testing.T) {
 
 // mockCrDefer mirrors connectionRoutine's teardown defer in
 // udpserver.go: it grabs the map mutex, removes the entry if it
-// still owns it, and routes the counter dec through the same
-// teardownPerRelayCounter helper production uses. Returned for use
-// from the stale-replace race tests below so both the deterministic
-// and the concurrent variant agree on what "CR-defer ran" means.
+// still owns it (identity-checked, not just presence-checked, so a
+// replacement conn HRF has already inserted is left alone), and
+// routes the counter dec through the same teardownPerRelayCounter
+// helper production uses. Returned for use from the stale-replace
+// race tests below so both the deterministic and the concurrent
+// variant agree on what "CR-defer ran" means.
 func mockCrDefer(s *UdpServer, conn *UdpConn, connKey string) {
 	s.remoteConnectionMapMutex.Lock()
-	_, stillPresent := s.remoteConnectionMap[connKey]
+	existing, ok := s.remoteConnectionMap[connKey]
+	stillPresent := ok && existing == conn
 	if stillPresent {
 		delete(s.remoteConnectionMap, connKey)
 	}
@@ -439,6 +442,49 @@ func TestStaleReplace_ConcurrentInterleavings(t *testing.T) {
 				"  CR-wins:  dec's (1→0); HRF lookup misses, fresh-insert inc's (0→1) → 1.\n"+
 				"counter != 1 means one branch of the race is mis-accounting slots.", i, got)
 		}
+	}
+}
+
+// TestStaleReplace_CrDeferDoesNotOrphanReplacementMapEntry fences the
+// map-side identity-check fix. After HRF has stale-replaced (mapKey
+// now holds newConn), the old conn's teardown defer must NOT delete
+// the map entry — newConn owns it and has its own routine pending.
+//
+// Pre-fix the defer keyed only on presence (`_, stillPresent := map[key]`)
+// so a replacement entry got blindly deleted, orphaning newConn's
+// connectionRoutine and any future RKN traffic for that client.
+// Today this race is unreachable in production (IsClosed is only
+// flipped by the owning routine), but if any future code adds an
+// external Close() path the gap re-opens. Counter-side accounting
+// already uses an explicit replaced flag to stay identity-aware; this
+// test pins the matching property on the map side.
+func TestStaleReplace_CrDeferDoesNotOrphanReplacementMapEntry(t *testing.T) {
+	const relay = "198.51.100.10:62206"
+	const client = "203.0.113.42:51234"
+
+	s := newTestServerForCounter()
+	oldConn, connKey, _ := makeRelayConn(relay, client)
+	s.remoteConnectionMap[connKey] = oldConn
+	closeConn(oldConn)
+
+	// HRF goes first: replaces oldConn with newConn under the map mutex.
+	mockHrfReplaceOrInsert(s, connKey, relay, client)
+	newConn, ok := s.remoteConnectionMap[connKey]
+	if !ok || newConn == oldConn {
+		t.Fatalf("setup: HRF mock did not install a replacement entry; got ok=%v, same=%v", ok, newConn == oldConn)
+	}
+
+	// CR-defer trails. With the identity check it must observe
+	// "entry is not me" and leave newConn alone.
+	mockCrDefer(s, oldConn, connKey)
+
+	got, present := s.remoteConnectionMap[connKey]
+	if !present {
+		t.Fatalf("CR-defer orphaned the replacement entry: map[connKey] was deleted after HRF inserted newConn. " +
+			"Pre-fix the defer keyed on presence only; the identity check (existing == conn) closes that gap.")
+	}
+	if got != newConn {
+		t.Fatalf("map[connKey] no longer points to newConn after CR-defer: got %p, want %p", got, newConn)
 	}
 }
 

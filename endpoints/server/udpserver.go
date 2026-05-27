@@ -613,7 +613,21 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			mapKey = addrStr
 		}
 		s.remoteConnectionMapMutex.Lock()
-		_, stillPresent := s.remoteConnectionMap[mapKey]
+		// Identity check, not just presence: only this routine's own
+		// entry is ours to delete. Today HRF's stale-replace path is
+		// the only writer that swaps a closed conn for a fresh one
+		// under this mutex, and the only flipper of IsClosed is this
+		// routine itself (so HRF can't run its replace until after
+		// the defer returns) — meaning a stranger entry under our
+		// mapKey is currently unreachable. But the counter-side
+		// teardown already uses an explicit replaced flag to stay
+		// identity-aware (see teardownPerRelayCounter); aligning the
+		// map-side here closes the gap pre-emptively so any future
+		// external close path (admin endpoint, timeout sweeper) can't
+		// orphan a newly-inserted replacement entry by deleting it
+		// out from under HRF.
+		existing, ok := s.remoteConnectionMap[mapKey]
+		stillPresent := ok && existing == conn
 		if stillPresent {
 			delete(s.remoteConnectionMap, mapKey)
 		}

@@ -678,7 +678,11 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 						failCount += 1
 						if failCount%ServerDiscoveryRetryBeforeFail == 0 {
 							atomic.StoreInt32(serverFailCount, 1)
-							// remove failed connection
+							// remove failed connection. The map lookup can race
+							// with another teardown path that already removed
+							// the entry; conn==nil is the legitimate "already
+							// gone" signal and Close() must be skipped to
+							// avoid a nil deref.
 							a.remoteConnectionMutex.Lock()
 							conn = a.remoteConnectionMap[addrStr]
 							if conn != nil {
@@ -686,7 +690,9 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 								delete(a.remoteConnectionMap, addrStr)
 							}
 							a.remoteConnectionMutex.Unlock()
-							conn.Close()
+							if conn != nil {
+								conn.Close()
+							}
 						}
 						log.Error("ac(%s#%d)[ACOnline] reporting to server %s failed", acId, aolMd.TransactionId, addrStr)
 					}

@@ -770,6 +770,15 @@ func (a *UdpAgent) knockResourceRoutine() {
 					if err != nil {
 						// if error happens wait some time (total AgentLocalTransactionResponseTimeoutMs) to retry
 						log.Error("failed to knock %s, error: %v", knockStr, err)
+						// Drop any sticky instance pin before the retry so
+						// the next PickInstance spreads to a sibling. Without
+						// this, a dead instance in a Sticky=true cluster
+						// would wedge the target forever — PickInstance
+						// would keep handing back the same failed pin and
+						// the failover story collapses. Safe to call on
+						// non-sticky clusters too (it's idempotent on a
+						// nil pin).
+						res.ResetInstancePin()
 						continue // retry knock
 					}
 

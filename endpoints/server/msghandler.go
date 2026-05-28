@@ -520,16 +520,23 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 	doId := davMsg.DoId
 	config, err := ReadZdtoConfig(doId)
 
-	if err := s.onAttestationVerify(&config.Spo, davMsg.Evidence); err != nil {
-		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attesation: %s with error: %s", transactionId, addrStr, davMsg.Evidence, err.Error())
-		return err
-	}
-
 	dagMsg := &common.DAGMsg{}
 	if err != nil {
+		// ReadZdtoConfig failed → config is the zero value, so its
+		// Spo.Policy is empty. Running onAttestationVerify on it would
+		// vacuously pass (the function returns nil when Policy == ""),
+		// effectively bypassing attestation on a misconfigured /
+		// missing object. Short-circuit instead: report the
+		// config-read failure to the agent and skip attestation
+		// entirely. Attestation must never be evaluated against a
+		// policy we couldn't load.
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] ReadZdtoConfig(%s) failed: %v", transactionId, addrStr, doId, err)
 		dagMsg.DoId = doId
 		dagMsg.ErrCode = 1
 		dagMsg.ErrMsg = err.Error()
+	} else if attErr := s.onAttestationVerify(&config.Spo, davMsg.Evidence); attErr != nil {
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attesation: %s with error: %s", transactionId, addrStr, davMsg.Evidence, attErr.Error())
+		return attErr
 	} else {
 		dagMsg.DoId = doId
 

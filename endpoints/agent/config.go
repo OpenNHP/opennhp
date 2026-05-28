@@ -260,7 +260,85 @@ func (a *UdpAgent) updateServerPeers(file string) (err error) {
 		}
 	}
 
+	// Re-bind any in-flight KnockTargets onto the freshly-loaded
+	// clusters. Without this, a server.toml-only reload leaves each
+	// KnockTarget holding a stale *ServerCluster (no longer reachable
+	// from serverClusterMap) and a stale *UdpPeer (already removed
+	// from device.peerMap above), and the next handshake fails the
+	// device pubkey lookup. PickInstance's "instance survived the
+	// reload" guard only catches in-cluster shrinkage; it cannot
+	// detect that the entire cluster object was replaced. On a fresh
+	// agent startup loadPeers runs before loadResources, so
+	// knockTargetMap is still nil — skip in that case.
+	a.refreshKnockTargetClusters()
+
 	return err
+}
+
+// refreshKnockTargetClusters re-resolves every KnockTarget's cluster
+// pointer after a server.toml reload and signals the knock-cycle
+// goroutine to restart its sub-routines so they observe the new
+// state. Targets whose Cluster / ServerPubKey reference no longer
+// resolves are removed from knockTargetMap so the knock loop won't
+// keep retrying against vanished servers.
+func (a *UdpAgent) refreshKnockTargetClusters() {
+	a.knockTargetMapMutex.Lock()
+	if a.knockTargetMap == nil {
+		a.knockTargetMapMutex.Unlock()
+		return
+	}
+	// Take a snapshot of the targets we need to revisit; release the
+	// map mutex before calling FindServerClusterFromResource because
+	// that helper takes serverPeerMutex and we want to keep these
+	// locks independent.
+	type pending struct {
+		id     string
+		target *KnockTarget
+	}
+	snapshot := make([]pending, 0, len(a.knockTargetMap))
+	for id, tgt := range a.knockTargetMap {
+		snapshot = append(snapshot, pending{id: id, target: tgt})
+	}
+	a.knockTargetMapMutex.Unlock()
+
+	type removal struct{ id string }
+	var toRemove []removal
+	for _, p := range snapshot {
+		res := &p.target.KnockResource
+		sc, ferr := a.FindServerClusterFromResource(res)
+		if sc == nil {
+			log.Error("server.toml reload removed cluster for resource %s: %v", p.id, ferr)
+			toRemove = append(toRemove, removal{id: p.id})
+			continue
+		}
+		// SetServerCluster resets the sticky pin when the cluster
+		// pointer changes, which is exactly what we want here even
+		// when the cluster name is the same — every *ServerCluster
+		// and its instances were replaced by the swap above.
+		p.target.SetServerCluster(sc)
+		p.target.SetServerPeer(sc.representativePeer)
+	}
+
+	if len(toRemove) > 0 {
+		a.knockTargetMapMutex.Lock()
+		for _, r := range toRemove {
+			delete(a.knockTargetMap, r.id)
+		}
+		a.knockTargetMapMutex.Unlock()
+	}
+
+	// Wake knockResourceRoutine so it tears down its per-target
+	// sub-routines and restarts them with the refreshed map. Without
+	// this, sub-routines that captured the *KnockTarget keep using
+	// the stale chosenInstance until their next natural cycle, and
+	// removed entries continue to be knocked from old sub-routines.
+	// The signal channel is buffered (size 1); a non-blocking send
+	// preserves the existing coalescing semantics — if a previous
+	// update is already queued, this one folds into it.
+	select {
+	case a.signals.knockTargetMapUpdated <- struct{}{}:
+	default:
+	}
 }
 
 func (a *UdpAgent) updateResources(file string) (err error) {

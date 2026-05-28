@@ -152,8 +152,16 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 		// load http config and turn on http server if needed
 		_ = a.loadHttpConfig()
 
-		// load peers
-		_ = a.loadPeers()
+		// load peers. A non-nil error here means the initial
+		// expandServerPeers parse failed and the running peerMap is
+		// empty. Starting the daemon in that state lets it drop
+		// AOL/AOP traffic silently (no peer matches), which is much
+		// harder to diagnose than a startup refusal. Reloads still
+		// keep the previous peer table on parse error — that's the
+		// right call once a good table is live.
+		if loadErr := a.loadPeers(); loadErr != nil {
+			return fmt.Errorf("server peer config invalid on initial load: %w", loadErr)
+		}
 	}
 
 	if a.config.FilterMode == FilterMode_EBPFXDP {

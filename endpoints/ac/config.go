@@ -238,24 +238,32 @@ func (a *UdpAC) loadHttpConfig() error {
 func (a *UdpAC) loadPeers() error {
 	// server.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "server.toml")
-	content, err := os.ReadFile(fileName)
-	if err != nil {
-		log.Error("failed to read server peer config: %v", err)
+	content, readErr := os.ReadFile(fileName)
+	if readErr != nil {
+		log.Error("failed to read server peer config: %v", readErr)
 	}
 
 	// update
 	var peers Peers
-	if unmarshalErr := toml.Unmarshal(content, &peers); unmarshalErr != nil {
+	var unmarshalErr error
+	if unmarshalErr = toml.Unmarshal(content, &peers); unmarshalErr != nil {
 		log.Error("failed to unmarshal server peer config: %v", unmarshalErr)
 	}
 	expanded, expandErr := expandServerPeers(peers.Servers)
+	var initialErr error
 	if expandErr != nil {
-		// Initial load: surface the bad config so the operator sees a
-		// loud signal at startup rather than discovering an empty
-		// peerMap by chasing dropped AOL/AOP traffic. Leave the running
-		// peer table untouched (it's empty here anyway, but the next
-		// reload path relies on the same fail-close discipline).
-		log.Critical("loadPeers: %v; keeping previous peer table", expandErr)
+		// Initial load with a malformed file: refuse to start with an
+		// empty peerMap. Previously this only logged Critical and fell
+		// through; the daemon would come up with zero servers, AOL/AOP
+		// fan-out would silently no-op, and the operator would have to
+		// chase dropped packets back to a single log line. Propagating
+		// the error to the caller turns the failure into a refusal-to-
+		// start that's much easier to diagnose. The reload branch
+		// below keeps its existing keep-previous-table discipline —
+		// that's the right behaviour mid-flight when a running
+		// process already has a good peer table.
+		log.Critical("loadPeers: %v; refusing to start with empty peer table", expandErr)
+		initialErr = expandErr
 	} else if updateErr := a.updateServerPeers(expanded); updateErr != nil {
 		// ignore error
 		_ = updateErr
@@ -263,22 +271,27 @@ func (a *UdpAC) loadPeers() error {
 
 	serverPeerWatch = utils.WatchFile(fileName, func() {
 		log.Info("server peer config: %s has been updated", fileName)
-		if content, err = a.loadConfigFile(fileName); err == nil {
-			if err = toml.Unmarshal(content, &peers); err == nil {
-				expanded, expandErr := expandServerPeers(peers.Servers)
-				if expandErr != nil {
-					// Reload: do NOT call updateServerPeers — that
-					// would rewrite the live peerMap. Keep the running
-					// peer table and let the operator fix the file.
-					log.Critical("loadPeers reload: %v; keeping previous peer table", expandErr)
-					return
-				}
-				_ = a.updateServerPeers(expanded)
-			}
+		reloadContent, reloadErr := a.loadConfigFile(fileName)
+		if reloadErr != nil {
+			return
 		}
+		var reloadPeers Peers
+		if uerr := toml.Unmarshal(reloadContent, &reloadPeers); uerr != nil {
+			log.Error("failed to unmarshal server peer config on reload: %v", uerr)
+			return
+		}
+		expanded, expandErr := expandServerPeers(reloadPeers.Servers)
+		if expandErr != nil {
+			// Reload: do NOT call updateServerPeers — that
+			// would rewrite the live peerMap. Keep the running
+			// peer table and let the operator fix the file.
+			log.Critical("loadPeers reload: %v; keeping previous peer table", expandErr)
+			return
+		}
+		_ = a.updateServerPeers(expanded)
 	})
 
-	return nil
+	return initialErr
 }
 
 func (a *UdpAC) updateBaseConfig(conf Config) (err error) {

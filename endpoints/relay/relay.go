@@ -254,8 +254,14 @@ func (rs *RelayServer) buildCluster(c *Cluster) (*clusterRuntime, error) {
 			return nil, fmt.Errorf("relay: cluster %s instance #%d resolve %s: %w", id, j, addrStr, err)
 		}
 
-		// Register this instance as a peer. Phase 1: at most one peer
-		// per cluster, so device.AddPeer keyed-by-pubkey is fine.
+		// Register the cluster's pubkey in the device peer table.
+		// All siblings share one keypair so device.AddPeer (keyed by
+		// pubkey) collapses them to a single entry — that's the
+		// intent, not a bug. Routing to a specific instance happens
+		// later via clusterInstance.addr; validatePeer in the Noise
+		// path only consults LookupPeer for pubkey-existence and
+		// expiry, and uses ConnData.RemoteAddr (not Peer.Ip) for the
+		// per-connection address stickiness check.
 		peer := &core.UdpPeer{
 			PubKeyBase64: c.PublicKeyBase64,
 			Ip:           ci.Host,

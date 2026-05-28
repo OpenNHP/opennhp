@@ -212,20 +212,6 @@ func (cfg *Config) normalize() error {
 		if len(c.Instances) == 0 {
 			return fmt.Errorf("relay: cluster #%d (fingerprint %s) has no [[cluster.instance]]", i, fp)
 		}
-		// Phase 1: at most one peer per cluster. The schema accepts
-		// multiple [[cluster.instance]] blocks per cluster as a
-		// forward-compat hook, but the runtime peer table is keyed
-		// by pubkey only (device.peerMap; see core/device.go
-		// LookupPeer), so sibling instances would silently overwrite
-		// each other at AddPeer time and any Noise-level source-IP
-		// validation against LookupPeer().Ip would reject responses
-		// from the surviving-but-mismatched sibling. Reject the
-		// config now rather than letting the operator discover this
-		// by chasing dropped responses.
-		if len(c.Instances) > 1 {
-			return fmt.Errorf("relay: cluster #%d (fingerprint %s) declares %d instances; multi-instance clusters are not supported yet (the device peer table is keyed by pubkey only). Split into one cluster per identity, or declare a single instance",
-				i, fp, len(c.Instances))
-		}
 		for j := range c.Instances {
 			inst := &c.Instances[j]
 			if inst.Host == "" {

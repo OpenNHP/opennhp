@@ -50,15 +50,18 @@ func TestConfig_LegacyFieldsPromoted(t *testing.T) {
 	}
 }
 
-// TestConfig_RejectsMultipleInstancesPerCluster: phase 1 holds the
-// "at most one peer per cluster" invariant — the runtime peer table
-// (core/device.go peerMap) is keyed by pubkey only, so siblings under
-// one [[cluster]] would silently overwrite each other at AddPeer time
-// and any source-IP validation against LookupPeer().Ip would reject
-// responses from mismatched siblings. normalize() must refuse the
-// config so the operator sees a startup error instead of chasing
-// dropped traffic.
-func TestConfig_RejectsMultipleInstancesPerCluster(t *testing.T) {
+// TestConfig_AcceptsMultipleInstancesPerCluster: phase 2 lifts the
+// single-instance restriction. Two instances under one [[cluster]] must
+// load cleanly, both addresses must be preserved, and weights must default
+// to 1 the same way they would for a single-instance cluster.
+//
+// device.peerMap being keyed by pubkey is fine for this scheme: the
+// per-instance UDP address lives on the clusterInstance (used by the
+// load-balance picker and outbound MsgData.RemoteAddr); validatePeer
+// only consults LookupPeer for pubkey-existence and expiry, and uses
+// ConnData.RemoteAddr (not Peer.Ip) for the per-connection address
+// stickiness check.
+func TestConfig_AcceptsMultipleInstancesPerCluster(t *testing.T) {
 	cfg := &Config{
 		PrivateKeyBase64: fakeKey(0x10),
 		Clusters: []Cluster{{
@@ -70,8 +73,18 @@ func TestConfig_RejectsMultipleInstancesPerCluster(t *testing.T) {
 			},
 		}},
 	}
-	if err := cfg.normalize(); err == nil {
-		t.Fatalf("expected normalize() to reject multi-instance cluster, got nil")
+	if err := cfg.normalize(); err != nil {
+		t.Fatalf("multi-instance cluster should load: %v", err)
+	}
+	got := cfg.Clusters[0].Instances
+	if len(got) != 2 {
+		t.Fatalf("expected 2 instances, got %d", len(got))
+	}
+	if got[0].Host != "10.0.0.1" || got[1].Host != "10.0.0.2" {
+		t.Errorf("instance hosts not preserved in order: %+v", got)
+	}
+	if got[0].Weight != 1 || got[1].Weight != 1 {
+		t.Errorf("instance weights should default to 1, got %d/%d", got[0].Weight, got[1].Weight)
 	}
 }
 

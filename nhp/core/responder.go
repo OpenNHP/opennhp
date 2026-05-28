@@ -42,6 +42,13 @@ import (
 // presents the same agent as "::ffff:1.2.3.4" on one socket and
 // "1.2.3.4" on another still derives the same cookie key.
 //
+// IPv6 zone IDs (e.g. "fe80::1%eth0") are intentionally NOT stripped:
+// link-local sources can't reach the cookie path in the first place
+// because isRoutablePublicIP (msghandler.go) rejects them at the relay
+// boundary, so two zones on the same fe80:: would never both arrive
+// here. If a future change widens the routability filter, revisit this
+// — same-IP-different-zone would otherwise hash to different keys.
+//
 // Trade-off: agents behind the same NAT share a cookie within a time
 // window. The attack surface is narrow — cookie content stays off the
 // wire (it's an HMAC input, never plaintext), windows are short (default

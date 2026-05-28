@@ -45,6 +45,16 @@ type UdpServer struct {
 	wg         sync.WaitGroup
 	running    atomic.Bool
 
+	// Atomic mirrors of Config bool fields that are read on hot paths
+	// (per-packet handlers, per-connection teardown) while updateBaseConfig
+	// may concurrently write s.config from the file-watch goroutine. Reading
+	// the Config struct directly under no lock is a data race (Go does not
+	// guarantee atomic bool reads). These mirrors are the source of truth
+	// for the runtime check; s.config retains the field for json/etcd round
+	// trips and operator-visible state.
+	allowPrivateRelaySource atomic.Bool
+	forceOverload           atomic.Bool
+
 	// connection and remote transaction management
 
 	remoteConnectionMapMutex sync.Mutex
@@ -98,6 +108,14 @@ type UdpServer struct {
 
 	recvMsgCh <-chan *core.PacketParserData
 	sendMsgCh chan *core.MsgData
+
+	// handlerSem bounds in-flight handler goroutines (see
+	// MaxConcurrentHandlers for rationale). Each KNK/RKN/EXT/RLY/OTP/
+	// REG/LST/DAR/DRG/DAV branch in recvMessageRoutine acquires a slot
+	// before spawning and releases on goroutine exit. A non-blocking
+	// acquire is used so the recv routine itself never stalls — packets
+	// that can't acquire a slot are dropped (the agent will retry).
+	handlerSem chan struct{}
 
 	//NHP-DB
 	dbPeerMapMutex sync.Mutex
@@ -288,6 +306,8 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	// the field docstring on Config.ForceOverload. Don't pair this with
 	// SetOverload(false) in reload — once on, leave it on; the normal
 	// trigger may also be active and we don't want to fight it.
+	s.forceOverload.Store(s.config.ForceOverload)
+	s.allowPrivateRelaySource.Store(s.config.AllowPrivateRelaySource)
 	if s.config.ForceOverload {
 		log.Warning("ForceOverload=true: device Overload pinned ON for the lifetime of this process (debug/test only)")
 		s.device.SetOverload(true)
@@ -325,6 +345,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 
 	s.recvMsgCh = s.device.DecryptedMsgQueue
 	s.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
+	s.handlerSem = make(chan struct{}, MaxConcurrentHandlers)
 
 	// start device routines
 	s.device.Start()
@@ -636,7 +657,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		// exercise the cookie path. Honor it here — without this guard,
 		// the very first connection teardown drops the map size back
 		// below threshold and flips Overload off, defeating the flag.
-		if !s.config.ForceOverload && len(s.remoteConnectionMap) <= OverloadConnectionThreshold {
+		if !s.forceOverload.Load() && len(s.remoteConnectionMap) <= OverloadConnectionThreshold {
 			s.device.SetOverload(false)
 		}
 		s.remoteConnectionMapMutex.Unlock()
@@ -793,6 +814,29 @@ func (s *UdpServer) sendMessageRoutine() {
 	}
 }
 
+// dispatchHandler launches fn in its own goroutine under the
+// handlerSem budget. A non-blocking acquire keeps recvMessageRoutine
+// itself from stalling when the budget is exhausted: the packet is
+// dropped instead, and the agent will retry. This is the cap that
+// prevents a single misbehaving peer from running the process out of
+// memory by flooding handshake-class packets — MaxConcurrentConnection
+// only bounds unique remote addrs in the connection table, not how
+// many in-flight handlers exist for any one of them.
+func (s *UdpServer) dispatchHandler(ppd *core.PacketParserData, fn func(*core.PacketParserData) error) {
+	select {
+	case s.handlerSem <- struct{}{}:
+	default:
+		log.Warning("handler goroutine budget (%d) exhausted, dropping %s from %s",
+			MaxConcurrentHandlers, core.HeaderTypeToString(ppd.HeaderType),
+			ppd.ConnData.RemoteAddr.String())
+		return
+	}
+	go func(p *core.PacketParserData) {
+		defer func() { <-s.handlerSem }()
+		_ = fn(p)
+	}(ppd)
+}
+
 func (s *UdpServer) recvMessageRoutine() {
 	defer s.wg.Done()
 	defer log.Info("recvMessageRoutine stopped")
@@ -816,14 +860,10 @@ func (s *UdpServer) recvMessageRoutine() {
 			switch ppd.HeaderType {
 			case core.NHP_KNK, core.NHP_RKN, core.NHP_EXT, core.DHP_KNK:
 				// aynchronously process knock messages with ack response
-				go func(p *core.PacketParserData) {
-					_ = s.HandleKnockRequest(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleKnockRequest)
 
 			case core.NHP_RLY:
-				go func(p *core.PacketParserData) {
-					_ = s.HandleRelayForward(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleRelayForward)
 
 			case core.NHP_AOL:
 				// synchronously block and deal with NHP_DOL to ensure future ac messages will be correctly processed. Don't use go routine
@@ -833,31 +873,19 @@ func (s *UdpServer) recvMessageRoutine() {
 				_ = s.HandleDBOnline(ppd)
 
 			case core.NHP_OTP:
-				go func(p *core.PacketParserData) {
-					_ = s.HandleOTPRequest(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleOTPRequest)
 
 			case core.NHP_REG:
-				go func(p *core.PacketParserData) {
-					_ = s.HandleRegisterRequest(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleRegisterRequest)
 
 			case core.NHP_LST:
-				go func(p *core.PacketParserData) {
-					_ = s.HandleListRequest(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleListRequest)
 			case core.NHP_DAR:
-				go func(p *core.PacketParserData) {
-					_ = s.HandleDHPDARMessage(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleDHPDARMessage)
 			case core.NHP_DRG:
-				go func(p *core.PacketParserData) {
-					_ = s.HandleDHPDRGMessage(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleDHPDRGMessage)
 			case core.NHP_DAV:
-				go func(p *core.PacketParserData) {
-					_ = s.HandleDHPDAVMessage(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleDHPDAVMessage)
 			}
 
 		}

@@ -763,7 +763,7 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	}
 
 	realIP := net.ParseIP(rlyMsg.SourceAddr.Ip)
-	if reason := validateRelaySourceAddr(realIP, rlyMsg.SourceAddr.Port, s.config.AllowPrivateRelaySource); reason != "" {
+	if reason := validateRelaySourceAddr(realIP, rlyMsg.SourceAddr.Port, s.allowPrivateRelaySource.Load()); reason != "" {
 		log.Warning("server-relay[HandleRelayForward] rejecting %s from relay %s: %s:%d",
 			reason, ppd.ConnData.RemoteAddr.String(), rlyMsg.SourceAddr.Ip, rlyMsg.SourceAddr.Port)
 		return fmt.Errorf("%s relay source address", reason)
@@ -869,23 +869,32 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 			post = curr + 1
 		}
 		if post > MaxConnectionsPerRelay {
-			s.relayConnCountMutex.Unlock()
-			// Undo the replaced mark if we promised to transfer the
-			// slot but can't actually take over — the original conn's
-			// teardown should still own the dec. Map entry remains
-			// deleted because the stale conn is unreachable anyway;
-			// CR-defer will see stillPresent=false and (now that
-			// replaced=false again) skip its dec. Net: counter holds
-			// at curr, matching the cap we just refused to exceed.
+			// When transferred is true the slot WAS owned by the OLD
+			// conn whose map entry we just removed above; OLD's
+			// teardown will run with stillPresent=false (entry gone)
+			// and skip its dec. If we also refuse to take over, the
+			// slot leaks — counter stays at curr forever despite no
+			// live owner. Reverting replaced=false would help only if
+			// OLD's teardown could still see the entry, but it can't
+			// (we deleted it). So take the dec ourselves here, while
+			// still holding relayConnCountMutex, instead of trying to
+			// hand ownership back. Leave replaced=true so OLD's
+			// teardown's belt-and-suspenders check also refuses to
+			// dec, keeping the invariant "at most one dec per inc".
 			//
-			// In practice this path is unreachable when transferred
-			// is true (curr was already <= MaxConnectionsPerRelay
-			// before we started, and we're not inc'ing). Coding it
-			// defensively in case MaxConnectionsPerRelay is hot-
-			// reloaded to a lower value mid-flight.
-			if transferred {
-				conn.replaced.Store(false)
+			// In practice the OLD <= MaxConnectionsPerRelay invariant
+			// means this branch is unreachable for the current
+			// constant cap; it becomes reachable if
+			// MaxConnectionsPerRelay is ever hot-reloaded to a lower
+			// value mid-flight. The fix-up is cheap so do it
+			// unconditionally.
+			if transferred && curr > 0 {
+				s.relayConnCount[relayAddrStr]--
+				if s.relayConnCount[relayAddrStr] == 0 {
+					delete(s.relayConnCount, relayAddrStr)
+				}
 			}
+			s.relayConnCountMutex.Unlock()
 			s.remoteConnectionMapMutex.Unlock()
 			s.device.ReleasePoolPacket(innerPkt)
 			log.Critical("server-relay[HandleRelayForward] relay %s exceeded MaxConnectionsPerRelay (%d), dropping forward",

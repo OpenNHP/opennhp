@@ -570,6 +570,10 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 			conf.AllowPrivateRelaySource,
 			map[bool]string{true: "disabled", false: "enforced"}[conf.AllowPrivateRelaySource])
 		s.config.AllowPrivateRelaySource = conf.AllowPrivateRelaySource
+		// Mirror onto the atomic-read field that hot paths consult; see
+		// the field comment in UdpServer for why the bool isn't read
+		// directly from s.config under no lock.
+		s.allowPrivateRelaySource.Store(conf.AllowPrivateRelaySource)
 	}
 
 	if s.config.DefaultCipherScheme != conf.DefaultCipherScheme {
@@ -588,6 +592,12 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 		log.Warning("ForceOverload changed in config (%v -> %v) on reload; the in-memory Overload state is sticky for the process lifetime, restart to apply",
 			s.config.ForceOverload, conf.ForceOverload)
 		s.config.ForceOverload = conf.ForceOverload
+		// Mirror onto the atomic-read field; same reasoning as
+		// AllowPrivateRelaySource above. The Overload itself remains
+		// sticky for the process lifetime even when this transitions
+		// false → true → false; only the teardown predicate observes
+		// the new value.
+		s.forceOverload.Store(conf.ForceOverload)
 	}
 
 	// Cookie signing key / window: only re-apply when the operator

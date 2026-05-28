@@ -3,9 +3,22 @@ package server
 import "github.com/OpenNHP/opennhp/nhp/common"
 
 const (
-	MaxConcurrentConnection         = 20480
-	OverloadConnectionThreshold     = MaxConcurrentConnection * 4 / 5      // 80%
-	MaxConnectionsPerRelay          = 1024                                 // per-relay-peer cap on forwarded-client fan-out
+	MaxConcurrentConnection     = 20480
+	OverloadConnectionThreshold = MaxConcurrentConnection * 4 / 5 // 80%
+	MaxConnectionsPerRelay      = 1024                            // per-relay-peer cap on forwarded-client fan-out
+
+	// MaxConcurrentHandlers bounds in-flight handler goroutines spawned
+	// per inbound NHP packet (KNK, RKN, EXT, RLY, OTP, REG, LST, DAR,
+	// DRG, DAV). MaxConcurrentConnection caps unique remote-addr entries
+	// in the connection table; it does NOT cap how many handshake-class
+	// packets a single peer can have in flight concurrently, so without
+	// this an attacker controlling one relay/agent can drive the server
+	// into OOM well before the connection cap matters. The cookie path
+	// is designed to make cheap CPU rejection possible — this cap is
+	// what keeps that design from being undermined by an unbounded
+	// goroutine spawn. When the semaphore is full, packets are dropped
+	// at recvMessageRoutine so the device-receive queue stays drainable.
+	MaxConcurrentHandlers           = 4096
 	BlockAddrRefreshRate            = 20                                   // 20 seconds
 	BlockAddrExpireTime             = 90                                   // 90 seconds
 	PreCheckThreatCountBeforeBlock  = 5                                    // block source address if packet precheck errors exceeds this count

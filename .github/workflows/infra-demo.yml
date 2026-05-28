@@ -26,6 +26,10 @@ on:
       - 'terraform/demo/**'
       - '.github/workflows/infra-demo.yml'
 
+concurrency:
+  group: demo-terraform
+  cancel-in-progress: false
+
 env:
   AWS_REGION: us-east-2
   TF_WORKING_DIR: terraform/demo
@@ -55,6 +59,110 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Sync stealth CA from GitHub Secrets to AWS Secrets Manager
+        if: env.TF_ACTION == 'apply'
+        env:
+          STEALTH_CA_CERT: ${{ secrets.STEALTH_CA_CERT }}
+          STEALTH_CA_KEY: ${{ secrets.STEALTH_CA_KEY }}
+        run: |
+          # Skip if GitHub Secrets are not configured
+          if [ -z "$STEALTH_CA_CERT" ] || [ -z "$STEALTH_CA_KEY" ]; then
+            echo "STEALTH_CA_CERT or STEALTH_CA_KEY not configured in GitHub Secrets, skipping sync"
+            exit 0
+          fi
+
+          echo "Syncing stealth CA to AWS Secrets Manager..."
+
+          # Fetch existing secret before merging in the stealth CA fields.
+          # Explicitly check for errors to provide clear diagnostics if the
+          # secret doesn't exist or AWS credentials are misconfigured.
+          if ! SECRET_RESPONSE=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} 2>&1); then
+            echo "ERROR: Failed to fetch opennhp/demo from AWS Secrets Manager:"
+            echo "$SECRET_RESPONSE"
+            exit 1
+          fi
+          SECRETS=$(echo "$SECRET_RESPONSE" | jq -r '.SecretString')
+          # Validate that we got valid JSON
+          if [ -z "$SECRETS" ] || [ "$SECRETS" = "null" ]; then
+            echo "ERROR: opennhp/demo secret is empty or invalid"
+            exit 1
+          fi
+
+          TMP_DIR=$(mktemp -d)
+          trap 'rm -rf "$TMP_DIR"' EXIT
+          EXISTING_CERT_FILE="$TMP_DIR/existing-cert.pem"
+          EXISTING_KEY_FILE="$TMP_DIR/existing-key.pem"
+          NEW_CERT_FILE="$TMP_DIR/new-cert.pem"
+          NEW_KEY_FILE="$TMP_DIR/new-key.pem"
+
+          jq -j '.stealth_ca_cert // empty' <<< "$SECRETS" > "$EXISTING_CERT_FILE"
+          jq -j '.stealth_ca_key // empty' <<< "$SECRETS" > "$EXISTING_KEY_FILE"
+          printf '%s' "$STEALTH_CA_CERT" > "$NEW_CERT_FILE"
+          printf '%s' "$STEALTH_CA_KEY" > "$NEW_KEY_FILE"
+
+          if ! openssl x509 -noout -in "$NEW_CERT_FILE" >/dev/null 2>&1; then
+            echo "ERROR: STEALTH_CA_CERT is not a valid PEM X.509 certificate"
+            exit 1
+          fi
+
+          if ! openssl pkey -noout -in "$NEW_KEY_FILE" >/dev/null 2>&1; then
+            echo "ERROR: STEALTH_CA_KEY is not a valid PEM private key"
+            exit 1
+          fi
+
+          CERT_PUB_HASH=$(
+            openssl x509 -in "$NEW_CERT_FILE" -pubkey -noout \
+              | openssl pkey -pubin -outform DER 2>/dev/null \
+              | openssl dgst -sha256 | awk '{print $2}'
+          )
+          KEY_PUB_HASH=$(
+            openssl pkey -in "$NEW_KEY_FILE" -pubout -outform DER 2>/dev/null \
+              | openssl dgst -sha256 | awk '{print $2}'
+          )
+
+          if [ "$CERT_PUB_HASH" != "$KEY_PUB_HASH" ]; then
+            echo "ERROR: STEALTH_CA_CERT and STEALTH_CA_KEY do not match"
+            exit 1
+          fi
+
+          if ! openssl x509 -ext basicConstraints -noout -in "$NEW_CERT_FILE" | grep -q "CA:TRUE"; then
+            echo "ERROR: STEALTH_CA_CERT is missing basicConstraints CA:TRUE"
+            exit 1
+          fi
+
+          # Check if already synced (compare BOTH cert and key to catch partial updates)
+          if cmp -s "$EXISTING_CERT_FILE" "$NEW_CERT_FILE" && cmp -s "$EXISTING_KEY_FILE" "$NEW_KEY_FILE"; then
+            echo "Stealth CA already up to date in AWS Secrets Manager"
+            exit 0
+          fi
+
+          # Merge stealth CA into existing secret
+          UPDATED=$(echo "$SECRETS" | jq \
+            --arg cert "$STEALTH_CA_CERT" \
+            --arg key "$STEALTH_CA_KEY" \
+            '. + {stealth_ca_cert: $cert, stealth_ca_key: $key}')
+
+          # Generate a unique client request token based on content hash.
+          # This provides idempotency: if this exact update was already applied
+          # (e.g., workflow retry), Secrets Manager returns success without
+          # creating a duplicate version. This read/merge/write flow is still
+          # TOCTOU-prone if multiple writers update opennhp/demo concurrently.
+          TOKEN_HASH=$(printf '%s' "$UPDATED" | sha256sum | cut -c1-64)
+
+          # Update AWS Secrets Manager via a temp file so PEM content stays off argv.
+          SECRET_FILE="$TMP_DIR/secret.json"
+          printf '%s' "$UPDATED" > "$SECRET_FILE"
+
+          aws secretsmanager put-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --secret-string "file://$SECRET_FILE" \
+            --client-request-token "$TOKEN_HASH"
+
+          echo "Stealth CA synced to AWS Secrets Manager"
 
       - name: Fetch secrets from AWS Secrets Manager
         id: secrets
@@ -135,7 +243,10 @@ jobs:
         run: |
           echo "## Infrastructure Outputs"
           echo ""
-          terraform output -json | jq -r 'to_entries[] | "**\(.key)**: \(.value.value)"'
+          # Filter out sensitive outputs to prevent private keys from leaking to logs.
+          # terraform output -json includes sensitive values in clear text regardless
+          # of the sensitive = true attribute, so we must filter them in jq.
+          terraform output -json | jq -r 'to_entries[] | select(.value.sensitive | not) | "**\(.key)**: \(.value.value)"'
 
       - name: Scan SSH host keys from all hosts
         if: env.TF_ACTION == 'apply'

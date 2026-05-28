@@ -48,3 +48,28 @@ output "ssh_jump_command" {
     ac     = "ssh -J ec2-user@${aws_eip.relay.public_ip} ec2-user@${aws_instance.ac.private_ip}"
   }
 }
+
+# demo.nhp certificate (signed by stealth CA)
+# These outputs are empty strings if stealth CA is not configured.
+output "demo_nhp_cert" {
+  description = "demo.nhp server certificate chain (leaf + CA, PEM). Empty if stealth CA not configured."
+  # Concatenate leaf cert with CA cert so nginx serves the full chain.
+  # Browsers with the stealth CA in their root store will validate the leaf,
+  # and clients doing path-building from the server-presented chain will have
+  # the intermediate/root available.
+  value     = local.stealth_ca_enabled ? "${tls_locally_signed_cert.demo_nhp[0].cert_pem}${local.secrets["stealth_ca_cert"]}" : ""
+  sensitive = true
+}
+
+output "demo_nhp_key" {
+  description = "demo.nhp server private key (PEM). Empty if stealth CA not configured."
+  value       = try(tls_private_key.demo_nhp[0].private_key_pem, "")
+  sensitive   = true
+}
+
+output "stealth_ca_enabled" {
+  description = "Whether stealth CA is configured and demo.nhp cert is available"
+  # nonsensitive() is safe because this is just a boolean indicating whether
+  # the CA secrets exist - it doesn't expose any actual secret values.
+  value = nonsensitive(local.stealth_ca_enabled)
+}

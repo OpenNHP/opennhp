@@ -11,6 +11,10 @@
 
 name: Deploy Demo v2
 
+concurrency:
+  group: demo-terraform
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -650,6 +654,29 @@ jobs:
         with:
           path: repo
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "~1.10"
+
+      - name: Check stealth CA status
+        id: demo_nhp_cert
+        working-directory: repo/terraform/demo
+        run: |
+          # Initialize Terraform to read outputs
+          terraform init -backend=true \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+          STEALTH_CA_ENABLED=$(terraform output -raw stealth_ca_enabled 2>/dev/null || true)
+          if [ "$STEALTH_CA_ENABLED" != "true" ]; then
+            echo "stealth CA not configured, skipping demo.nhp certificate deployment"
+            echo "stealth_ca_enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "stealth_ca_enabled=true" >> "$GITHUB_OUTPUT"
+
       - name: Ensure TLS certificate + nginx on ac
         run: |
           CF_TOKEN=$(aws secretsmanager get-secret-value \
@@ -678,6 +705,74 @@ jobs:
              ACME_EMAIL='${{ env.ACME_EMAIL }}' \
              NGINX_CONF='/tmp/ac-nginx.conf' \
              /tmp/bootstrap-tls.sh"
+
+          # When stealth CA is disabled, clean up any stale demo.nhp artifacts.
+          if [ "${{ steps.demo_nhp_cert.outputs.stealth_ca_enabled }}" != "true" ]; then
+            ssh nhp-ac \
+              "set -e
+               if sudo test -f /etc/nginx/conf.d/ac-demo-nhp.conf || \
+                  sudo test -f /etc/nginx/certs/demo.nhp.pem || \
+                  sudo test -f /etc/nginx/certs/demo.nhp-key.pem; then
+                 sudo rm -f /etc/nginx/conf.d/ac-demo-nhp.conf \
+                             /etc/nginx/certs/demo.nhp.pem \
+                             /etc/nginx/certs/demo.nhp-key.pem
+                 sudo nginx -t
+                 sudo systemctl reload nginx
+               else
+                 echo 'demo.nhp nginx artifacts already absent; skipping nginx reload'
+               fi"
+          fi
+
+      - name: Deploy demo.nhp certificate (signed by stealth CA)
+        if: steps.demo_nhp_cert.outputs.stealth_ca_enabled == 'true'
+        working-directory: repo/terraform/demo
+        run: |
+          # Get demo.nhp certificate and key from Terraform outputs.
+          # terraform output -raw strips trailing newlines, but PEM files must
+          # end with a newline for compatibility with some parsers (e.g., openssl).
+          DEMO_NHP_CERT=$(terraform output -raw demo_nhp_cert 2>/dev/null || true)
+          DEMO_NHP_KEY=$(terraform output -raw demo_nhp_key 2>/dev/null || true)
+
+          # Validate outputs are non-empty. If terraform apply hasn't run yet
+          # with tls.tf, these will be empty and we should fail early with a
+          # clear error rather than deploying empty cert files.
+          if [ -z "$DEMO_NHP_CERT" ] || [ -z "$DEMO_NHP_KEY" ]; then
+            echo "ERROR: demo_nhp_cert or demo_nhp_key output is empty."
+            echo "Ensure 'infra-demo' workflow has been run with action=apply"
+            echo "and STEALTH_CA_CERT/STEALTH_CA_KEY GitHub Secrets are configured."
+            exit 1
+          fi
+
+          # Mask each line of the private key separately.
+          # GitHub Actions ::add-mask:: only works on single-line strings;
+          # multiline URL-encoding doesn't actually mask anything.
+          while IFS= read -r line; do
+            [ -n "$line" ] && printf '::add-mask::%s\n' "$line"
+          done <<< "$DEMO_NHP_KEY"
+
+          # Deploy certificate, key, and nginx config using the shared script.
+          # This step runs AFTER bootstrap-tls.sh has provisioned the Let's Encrypt
+          # cert for ac.opennhp.org, so nginx -t won't fail on a fresh AC instance
+          # due to missing /etc/letsencrypt/live/ac.opennhp.org/fullchain.pem.
+
+          # Upload the shared installation script
+          scp ../../deploy/scripts/install-demo-nhp-cert.sh nhp-ac:/tmp/install-demo-nhp-cert.sh
+          ssh nhp-ac "chmod +x /tmp/install-demo-nhp-cert.sh"
+
+          # Write cert/key to temp files (securely via stdin to avoid argv exposure)
+          printf '%s\n' "$DEMO_NHP_CERT" | ssh nhp-ac \
+            "umask 077 && cat > /tmp/demo.nhp.pem.new"
+
+          printf '%s\n' "$DEMO_NHP_KEY" | ssh nhp-ac \
+            "umask 077 && cat > /tmp/demo.nhp-key.pem.new"
+
+          # Upload nginx config for demo.nhp vhost
+          scp ../../deploy/nginx/ac-demo-nhp.conf nhp-ac:/tmp/ac-demo-nhp.conf
+
+          # Run the shared script to install all artifacts and reload nginx if needed
+          ssh nhp-ac "/tmp/install-demo-nhp-cert.sh"
+
+          echo "demo.nhp certificate deployment complete"
 
       - name: Deploy nhp-acd
         run: |

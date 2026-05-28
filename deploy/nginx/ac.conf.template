@@ -1,3 +1,4 @@
+# Primary AC server block (public Let's Encrypt certificate)
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;

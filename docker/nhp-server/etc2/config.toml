@@ -54,7 +54,11 @@ AllowPrivateRelaySource = true
 # and tells the cookie store that load is constantly elevated.
 # Production must rely on the natural connection-count trigger, which
 # is what the threshold is calibrated for.
-ForceOverload = true
+#
+# Default: false. Only flip to true when locally validating that the
+# agent's overload / cookie-retry handling works end-to-end; revert
+# before committing any other changes.
+ForceOverload = false
 
 # ─── Cookie (stateless, multi-instance-safe) ──────────────────────────────
 # When the server enters Overload (real load OR ForceOverload), it answers

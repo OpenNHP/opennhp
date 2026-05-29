@@ -671,6 +671,16 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		// exercise the cookie path. Honor it here — without this guard,
 		// the very first connection teardown drops the map size back
 		// below threshold and flips Overload off, defeating the flag.
+		//
+		// CONCURRENCY: this whole len + SetOverload(false) lives
+		// inside remoteConnectionMapMutex (locked at the top of this
+		// deferred block, unlocked immediately after). Every other
+		// SetOverload(true) call site — udpserver.go:540 and
+		// msghandler.go:875 — also runs under the same mutex while
+		// checking len > threshold, so the three call sites are
+		// serialized and the len() observed here is the post-delete
+		// authoritative size. No TOCTOU window between the size
+		// check and the SetOverload call.
 		if !s.forceOverload.Load() && len(s.remoteConnectionMap) <= OverloadConnectionThreshold {
 			s.device.SetOverload(false)
 		}

@@ -42,15 +42,21 @@ import (
 // presents the same agent as "::ffff:1.2.3.4" on one socket and
 // "1.2.3.4" on another still derives the same cookie key.
 //
-// IPv6 zones are inherently ignored by this function: we hash
-// addr.IP.String(), and net.IP.String() never includes the zone (the
-// zone lives on *net.UDPAddr.Zone, a separate field we don't touch).
-// So same-IP-different-zone packets would hash to the same cookie key.
-// That collision is harmless today because isRoutablePublicIP
-// (msghandler.go) rejects link-local sources at the relay boundary, so
-// fe80:: traffic can't actually reach the cookie path. If a future
-// change widens the routability filter to include link-local, revisit
-// this — at that point you'd want to include addr.Zone in the key.
+// SECURITY: IPv6 zones are inherently ignored by this function — we
+// hash addr.IP.String(), and net.IP.String() never includes the zone
+// (the zone lives on *net.UDPAddr.Zone, a separate field we don't
+// touch). So fe80::1%eth0 and fe80::1%eth1 collide to the same cookie
+// key. That collision is currently unreachable because isRoutablePublicIP
+// in msghandler.go rejects link-local sources at the relay boundary —
+// link-local packets cannot reach this helper.
+//
+// LOAD-BEARING INVARIANT: this function assumes its callers have
+// already filtered out link-local addresses. If you reuse it from any
+// path that admits link-local traffic (a new transport, a different
+// upstream filter, etc.), either add an explicit
+// `addr.IP.IsLinkLocalUnicast() → fail-closed` reject here OR include
+// addr.Zone in the hashed key. Today's caller chain has the filter;
+// future caller chains may not.
 //
 // Trade-off: agents behind the same NAT share a cookie within a time
 // window. The attack surface is narrow — cookie content stays off the
@@ -162,12 +168,35 @@ func extractInitiatorStaticPubKey(device *Device, ciphers *CipherSuite, header H
 	if err != nil {
 		return nil, fmt.Errorf("extractInitiatorStaticPubKey: aead: %w", err)
 	}
-	peerPk := make([]byte, PublicKeySizeEx)
-	if _, err := aead.Open(peerPk[:0], header.NonceBytes(), header.StaticBytes(), chainHash.Sum(nil)); err != nil {
+	// Trust the AEAD's returned plaintext length over a static
+	// scheme→size mapping. The previous version allocated a
+	// PublicKeySizeEx-sized buffer and sliced it back down based on
+	// header.CipherScheme(); that worked because the only two ciphers
+	// today happen to match the scheme→size table exactly, but a
+	// future cipher whose plaintext length doesn't fit either fixed
+	// size would silently mis-key the cookie HMAC (Open writes
+	// however many bytes the AEAD decrypted, then the caller would
+	// either truncate them or hash trailing zero-padding).
+	//
+	// Validate the length explicitly before returning so future
+	// breakage manifests as an error here, not as cookie failures
+	// further down. Pass nil for the dst so Open allocates exactly
+	// the right size.
+	peerPk, err := aead.Open(nil, header.NonceBytes(), header.StaticBytes(), chainHash.Sum(nil))
+	if err != nil {
 		return nil, fmt.Errorf("extractInitiatorStaticPubKey: open: %w", err)
 	}
-	if header.CipherScheme() == common.CIPHER_SCHEME_CURVE {
-		peerPk = peerPk[:PublicKeySize]
+	switch header.CipherScheme() {
+	case common.CIPHER_SCHEME_CURVE:
+		if len(peerPk) != PublicKeySize {
+			return nil, fmt.Errorf("extractInitiatorStaticPubKey: curve scheme expected %d-byte pubkey, got %d", PublicKeySize, len(peerPk))
+		}
+	case common.CIPHER_SCHEME_GMSM:
+		if len(peerPk) != PublicKeySizeEx {
+			return nil, fmt.Errorf("extractInitiatorStaticPubKey: gmsm scheme expected %d-byte pubkey, got %d", PublicKeySizeEx, len(peerPk))
+		}
+	default:
+		return nil, fmt.Errorf("extractInitiatorStaticPubKey: unknown cipher scheme %d (pubkey length %d)", header.CipherScheme(), len(peerPk))
 	}
 	return peerPk, nil
 }
@@ -730,10 +759,29 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 		// cookies (see deriveStatelessCookie docstring). validatePeer
 		// is what normally fills ppd.RemotePubKey, but at this point
 		// in the parse flow it hasn't run yet — so re-do the
-		// IK static-decryption locally. One extra ECDH per
-		// RKN-under-overload packet; harmless under load (cookie
-		// path is the cheap rejector, ECDH cost is bounded by
-		// agents that can already mint a legitimate KNK).
+		// IK static-decryption locally.
+		//
+		// SECURITY trade-off, NOT a free lunch: this costs one ECDH +
+		// one AEAD-Open + two hash chains per RKN-under-overload
+		// packet, BEFORE the cookie HMAC check rejects it. An
+		// unauthenticated attacker only needs the server's public key
+		// (which is public by design) to mint syntactically-valid
+		// RKN frames and force the server through this path. So
+		// under sustained attack the cookie path is NOT the cheap
+		// rejector the rest of the design assumes — it costs roughly
+		// "one Noise IK handshake floor per attacker packet."
+		//
+		// The work per packet is still bounded (one IK floor, not a
+		// linear scan or unbounded crypto), so this isn't a DoS
+		// amplifier in absolute terms. If a future deployment
+		// observes the cookie path becoming the bottleneck, two
+		// mitigations preserve cross-replica re-derivation:
+		//   - per-source-IP rate-limit ahead of the cookie verify, or
+		//   - cache (srcIP, ephemeral) → peerPk for the cookie window
+		//     so repeat attempts from the same address pay one ECDH
+		//     and HMAC-compare-only thereafter.
+		// Neither is required for correctness today; the bound is
+		// considered acceptable until production traffic disagrees.
 		peerPk, err := extractInitiatorStaticPubKey(ppd.device, ppd.Ciphers, ppd.header)
 		if err != nil {
 			log.Debug("checkHMAC(sumCookie): cannot recover peer static pubkey: %v", err)

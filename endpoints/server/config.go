@@ -21,6 +21,19 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 )
 
+// shippedDemoCookieSigningKeyBase64 is the value committed in
+// docker/nhp-server/etc/config.toml so that `docker-compose up` works
+// out of the box. udpserver.Start compares the configured key to this
+// constant and logs a Critical line if they match, so operators who
+// copy the demo and forget to rotate the key get a loud warning
+// instead of silently running with a public secret.
+//
+// Keep this in sync with docker/nhp-server/etc/config.toml (and
+// docker/nhp-server/etc2/config.toml, which intentionally shares the
+// same value to enable the same-key multi-instance demo). If we ever
+// rotate the demo key, update this constant in the same commit.
+const shippedDemoCookieSigningKeyBase64 = "w62S2G1P5GOG66Y5tIv3WlfBv8CNBdDe2JJDFr9Q+h0="
+
 // decodeCookieSigningKey parses a base64-encoded 32-byte cookie signing
 // key. An empty input yields (nil, nil): the caller will fall back to a
 // random per-process key, which is fine for single-instance deployments.

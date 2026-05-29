@@ -3,6 +3,9 @@ package server
 import (
 	"bytes"
 	"encoding/base64"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/OpenNHP/opennhp/nhp/core"
@@ -174,5 +177,81 @@ func TestUpdateBaseConfig_WindowOnlyChangePersists(t *testing.T) {
 	}
 	if s.config.CookieTimeWindowSeconds != newWin {
 		t.Fatalf("window update did not persist; got %d, want %d", s.config.CookieTimeWindowSeconds, newWin)
+	}
+}
+
+// TestShippedDemoCookieSigningKey_MatchesCommittedConfig pins the
+// constant we compare against at startup to the value actually
+// committed under docker/nhp-server/etc/config.toml. The startup
+// warning is only useful if those two stay aligned — if the demo
+// config rotates to a new key and we forget to update the constant,
+// the warning silently stops firing and we ship the new "demo"
+// secret in real deployments without anyone noticing.
+//
+// docker/nhp-server/etc2/config.toml is intentionally the same key
+// (the multi-instance demo relies on both replicas sharing the
+// cookie signing key); cross-check both.
+func TestShippedDemoCookieSigningKey_MatchesCommittedConfig(t *testing.T) {
+	// Walk up from the test's working dir to the repo root, then read
+	// the demo configs. The package lives at endpoints/server, so the
+	// repo root is two levels up — but use filepath.Abs + a directory
+	// climb so this works regardless of how `go test` was invoked.
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd: %v", err)
+	}
+	root := cwd
+	for i := 0; i < 5; i++ {
+		if _, err := os.Stat(filepath.Join(root, "docker", "nhp-server", "etc", "config.toml")); err == nil {
+			break
+		}
+		root = filepath.Dir(root)
+	}
+
+	for _, rel := range []string{
+		"docker/nhp-server/etc/config.toml",
+		"docker/nhp-server/etc2/config.toml",
+	} {
+		t.Run(rel, func(t *testing.T) {
+			path := filepath.Join(root, rel)
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Skipf("cannot read %s: %v", path, err)
+			}
+			// Look for an uncommented `CookieSigningKeyBase64 = "..."`
+			// line. We don't pull in a TOML parser here on purpose —
+			// the demo files are stable, this check is purely "did
+			// the literal value drift", and reaching for a parser
+			// would invite parsing surprises the regression itself
+			// doesn't need.
+			var got string
+			for _, line := range strings.Split(string(data), "\n") {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+				if !strings.HasPrefix(trimmed, "CookieSigningKeyBase64") {
+					continue
+				}
+				// "CookieSigningKeyBase64 = \"...\"" — pull out the
+				// value between the first pair of double quotes.
+				first := strings.IndexByte(trimmed, '"')
+				last := strings.LastIndexByte(trimmed, '"')
+				if first < 0 || last <= first {
+					t.Fatalf("%s: malformed line %q", rel, trimmed)
+				}
+				got = trimmed[first+1 : last]
+				break
+			}
+			if got == "" {
+				t.Fatalf("%s: no CookieSigningKeyBase64 line found", rel)
+			}
+			if got != shippedDemoCookieSigningKeyBase64 {
+				t.Fatalf("%s ships CookieSigningKeyBase64=%q but the demo-key constant is %q — "+
+					"update shippedDemoCookieSigningKeyBase64 in config.go (or revert the demo config), "+
+					"otherwise the startup warning will silently stop catching copy-paste deployments.",
+					rel, got, shippedDemoCookieSigningKeyBase64)
+			}
+		})
 	}
 }

@@ -292,6 +292,20 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		log.Info("CookieSigningKeyBase64 not set; using a random per-process key (single-instance only — clusters must share an operator-supplied key)")
 	} else {
 		log.Info("CookieSigningKeyBase64 configured; cookies are stateless and shared across the cluster")
+		// Catch operators who copy the docker-compose demo config and
+		// forget to regenerate the shared key. The shipped value is
+		// public (committed to docker/nhp-server/etc/config.toml so
+		// `docker-compose up` works out of the box) — running it in
+		// any environment a real client can reach lets anyone who has
+		// browsed the repo mint cookies the server will accept.
+		// Critical (not Warning) so it surfaces in default journalctl
+		// filters and any oncall log-volume alarms.
+		if s.config.CookieSigningKeyBase64 == shippedDemoCookieSigningKeyBase64 {
+			log.Critical("CookieSigningKeyBase64 matches the docker-compose demo value committed at " +
+				"docker/nhp-server/etc/config.toml — this key is PUBLIC. Regenerate before any " +
+				"deployment reachable from outside the host (use `nhp-serverd keygen --curve` or " +
+				"`openssl rand -base64 32`).")
+		}
 	}
 	cookieWindow := s.config.CookieTimeWindowSeconds
 	if cookieWindow <= 0 {

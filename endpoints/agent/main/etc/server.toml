@@ -1,16 +1,59 @@
-# list the server peers for the agent under [[Servers]] table
-
-# Name: cluster identifier, referenced from resource.toml's Cluster = "..."
-#   field. Allowed chars: [a-zA-Z0-9._-], max 64.
-# Hostname: the domain of the server peer. If specified, it overrides the "Ip" field with its first resolved address.
-# Ip: specify the ip address of the server peer
-# Port: specify the port number of this server peer is listening
-# PubKeyBase64: public key of the server peer in base64 format
-# ExpireTime (epoch timestamp in seconds): peer key validation will fail when it expires.
+# nhp-agent server-peer configuration.
+#
+# Each [[Servers]] block declares ONE logical nhp-server identity (one
+# pubkey) and lists 1..N physical instances that share that pubkey.
+# Multi-instance entries enable load-balancing across an nhp-server
+# cluster (e.g. multiple replicas behind a load balancer); the cookie
+# handshake works across the cluster because every replica is
+# configured with the same CookieSigningKeyBase64.
+#
+# The schema is shared with nhp-ac and nhp-db (see
+# nhp/common/clusterconfig) so the same [[Servers]] block can be copied
+# between peer tables. nhp-agent is the most feature-complete consumer:
+# it honours every field below — LoadBalance picks an instance per
+# knock, StickyInstance keeps the KNK/RKN pair on the same replica.
+#
+# Per-field reference:
+#   Name           — cluster identifier, referenced from resource.toml's
+#                    Cluster = "..." field. Allowed chars: [a-zA-Z0-9._-],
+#                    max 64. REQUIRED for nhp-agent.
+#   PubKeyBase64   — the cluster's nhp-server public key (base64)
+#   ExpireTime     — epoch seconds; peer-key validation fails after this
+#   LoadBalance    — "weighted-random" (default), "random", "round-robin"
+#   StickyInstance — bool; default true. When true, a KnockTarget that
+#                    picks instance X for its KNK reuses X for the
+#                    follow-up RKN, so cookie verification stays put.
+#                    Setting false spreads retries across the cluster's
+#                    instances (only safe with stateless cookies).
+#
+# Per-instance fields (under [[Servers.Instances]]):
+#   Host           — DNS name (preferred); resolves at send time
+#   Ip             — static IP (used if Host is empty)
+#   Port           — UDP port (required, > 0)
+#   Weight         — relative weight for weighted-random; default 1
+#
+# ─── Cluster form (recommended) ──────────────────────────────────────
 [[Servers]]
 Name = "default"
-Hostname = ""
-Ip = "192.168.80.35"
-Port = 62206
 PubKeyBase64 = "WqJxe+Z4+wLen3VRgZx6YnbjvJFmptz99zkONCt/7gc="
 ExpireTime = 1924991999
+LoadBalance = "weighted-random"
+
+  [[Servers.Instances]]
+  Ip   = "192.168.80.35"
+  Port = 62206
+
+# ─── Legacy flat form (auto-upgraded, deprecated) ────────────────────
+# Kept for backwards compatibility with pre-cluster server.toml files;
+# existing single-server entries are auto-promoted to a single-instance
+# cluster on load with a deprecation warning. Don't mix this form with
+# [[Servers.Instances]] in the same entry — the loader refuses to guess
+# which one wins.
+#
+# [[Servers]]
+# Name = "default"
+# Hostname = ""
+# Ip = "192.168.80.35"
+# Port = 62206
+# PubKeyBase64 = "WqJxe+Z4+wLen3VRgZx6YnbjvJFmptz99zkONCt/7gc="
+# ExpireTime = 1924991999

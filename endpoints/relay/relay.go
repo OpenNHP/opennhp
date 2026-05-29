@@ -8,16 +8,16 @@
 //	        ◀──HTTP 200────
 //
 // The relay is a standard NHP node: it holds a core.Device, maintains a
-// persistent UDP connection to each configured upstream cluster, sends
+// persistent UDP connection to each configured upstream server, sends
 // encrypted NHP_RLY messages through the standard Noise pipeline, and uses
 // NHP_KPL keepalive packets to maintain those connections — identical to how
 // NHP-AC communicates.
 //
-// One relay instance can serve multiple logical nhp-server clusters. Each
-// cluster is identified by the fingerprint of its public key (see
-// utils.PubKeyFingerprint), and HTTP clients address a cluster via
-// `POST /relay/{clusterId}`. Phase 1 supports one upstream instance per
-// cluster; the schema is already shaped for the multi-instance future.
+// One relay instance can serve multiple logical nhp-server servers. Each
+// server is identified by the fingerprint of its public key (see
+// utils.PubKeyFingerprint), and HTTP clients address a server via
+// `POST /relay/{serverId}`. Phase 1 supports one upstream instance per
+// server; the schema is already shaped for the multi-instance future.
 package relay
 
 import (
@@ -70,10 +70,10 @@ func (c *UdpConn) Close() {
 	}
 }
 
-// clusterInstance is the runtime state for one physical nhp-server instance.
-// Phase 1: every cluster has exactly one of these. Phase 2 will add health
+// serverInstance is the runtime state for one physical nhp-server instance.
+// Phase 1: every server has exactly one of these. Phase 2 will add health
 // state and load-balancing bookkeeping here.
-type clusterInstance struct {
+type serverInstance struct {
 	host   string
 	port   int
 	weight int
@@ -85,7 +85,7 @@ type clusterInstance struct {
 	// pendingRequests correlates server responses back to the HTTP handler
 	// that issued each forward. It is per-instance because the connection
 	// that delivers the ACK/COK is also per-instance — keying it here
-	// means dispatchResponse never has to think about which cluster a
+	// means dispatchResponse never has to think about which server a
 	// packet belongs to.
 	//
 	// The map is keyed by (counter, realClientAddr); the same hijack-
@@ -98,26 +98,26 @@ type clusterInstance struct {
 // instances. Weight=0 is treated as 1 inside the picker, matching
 // normalize()'s policy of "every instance gets at least baseline
 // traffic even if the operator forgot to set Weight".
-func (ci *clusterInstance) Weight() int { return ci.weight }
+func (ci *serverInstance) Weight() int { return ci.weight }
 
-// clusterRuntime is the runtime state for one logical nhp-server cluster.
-type clusterRuntime struct {
+// serverRuntime is the runtime state for one logical nhp-server server.
+type serverRuntime struct {
 	id           string
 	name         string
 	pubKey       []byte
 	pubKeyBase64 string
 	scheme       LoadBalanceScheme
-	instances    []*clusterInstance
+	instances    []*serverInstance
 
 	// picker carries the load-balancing policy + per-scheme state
-	// (round-robin cursor, weight totals). Built once at cluster
-	// construction; config reload rebuilds the entire clusterRuntime,
+	// (round-robin cursor, weight totals). Built once at server
+	// construction; config reload rebuilds the entire serverRuntime,
 	// so picker churn is not a concern.
-	picker *loadbalance.Picker[*clusterInstance]
+	picker *loadbalance.Picker[*serverInstance]
 }
 
 // pickInstance selects an instance to handle a new HTTP forward according to
-// the cluster's load-balance scheme. Returns nil if the cluster has no
+// the server's load-balance scheme. Returns nil if the server has no
 // instances — callers must surface that as 503 rather than panicking on a
 // zero-length slice access.
 //
@@ -128,10 +128,10 @@ type clusterRuntime struct {
 // future code path that picks an instance must remember to write the pin
 // onto md.RemoteAddr so the response-correlation map on the right instance
 // gets a hit.
-func (c *clusterRuntime) pickInstance() *clusterInstance {
+func (c *serverRuntime) pickInstance() *serverInstance {
 	if c.picker == nil {
-		// Defensive: a hand-built clusterRuntime missing the picker
-		// (only happens in tests that bypass buildCluster). Fall back
+		// Defensive: a hand-built serverRuntime missing the picker
+		// (only happens in tests that bypass buildServer). Fall back
 		// to the first instance so the failure is visible rather than
 		// a nil-deref panic.
 		if len(c.instances) == 0 {
@@ -152,7 +152,7 @@ type RelayServer struct {
 	httpServer *http.Server
 	device     *core.Device
 
-	clusters map[string]*clusterRuntime // keyed by fingerprint
+	servers map[string]*serverRuntime // keyed by fingerprint
 
 	sendMsgCh chan *core.MsgData
 	recvMsgCh <-chan *core.PacketParserData
@@ -184,27 +184,27 @@ func New(cfg *Config) (*RelayServer, error) {
 	rs := &RelayServer{
 		config:    cfg,
 		device:    device,
-		clusters:  make(map[string]*clusterRuntime, len(cfg.Clusters)),
+		servers:   make(map[string]*serverRuntime, len(cfg.Servers)),
 		sendMsgCh: make(chan *core.MsgData, PacketQueueSizePerConnection),
 		stopCh:    make(chan struct{}),
 	}
 	rs.recvMsgCh = device.DecryptedMsgQueue
 
-	for i := range cfg.Clusters {
-		c := &cfg.Clusters[i]
-		cr, err := rs.buildCluster(c)
+	for i := range cfg.Servers {
+		c := &cfg.Servers[i]
+		cr, err := rs.buildServer(c)
 		if err != nil {
 			return nil, err
 		}
-		rs.clusters[cr.id] = cr
+		rs.servers[cr.id] = cr
 	}
 
-	// Set up HTTP server. Only /relay/{clusterId} is accepted — the legacy
-	// path POST /relay (no cluster id) was removed when multi-cluster
+	// Set up HTTP server. Only /relay/{serverId} is accepted — the legacy
+	// path POST /relay (no server id) was removed when multi-server
 	// support landed; see commit log for migration notes.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/relay/", rs.handleRelay)
-	mux.HandleFunc("/clusters", rs.handleClusters)
+	mux.HandleFunc("/servers", rs.handleServers)
 	mux.HandleFunc("/health", rs.handleHealth)
 
 	rs.httpServer = &http.Server{
@@ -215,10 +215,10 @@ func New(cfg *Config) (*RelayServer, error) {
 		IdleTimeout:  time.Duration(cfg.IdleTimeoutMs) * time.Millisecond,
 	}
 
-	log.Info("[Relay] initialized, relay pubkey=%s, %d cluster(s)",
-		device.PublicKeyBase64(), len(rs.clusters))
-	for _, cr := range rs.clusters {
-		log.Info("[Relay]   cluster id=%s name=%q lb=%s instances=%d",
+	log.Info("[Relay] initialized, relay pubkey=%s, %d server(s)",
+		device.PublicKeyBase64(), len(rs.servers))
+	for _, cr := range rs.servers {
+		log.Info("[Relay]   server id=%s name=%q lb=%s instances=%d",
 			cr.id, cr.name, cr.scheme, len(cr.instances))
 		for _, inst := range cr.instances {
 			log.Info("[Relay]     upstream %s:%d (weight=%d)",
@@ -228,22 +228,22 @@ func New(cfg *Config) (*RelayServer, error) {
 	return rs, nil
 }
 
-// buildCluster turns a config Cluster into runtime state, registering each
+// buildServer turns a config Server into runtime state, registering each
 // instance as a peer on the NHP device.
-func (rs *RelayServer) buildCluster(c *Cluster) (*clusterRuntime, error) {
-	pubKey, err := base64.StdEncoding.DecodeString(c.PublicKeyBase64)
+func (rs *RelayServer) buildServer(c *Server) (*serverRuntime, error) {
+	pubKey, err := base64.StdEncoding.DecodeString(c.PubKeyBase64)
 	if err != nil {
-		return nil, fmt.Errorf("relay: cluster %q invalid publicKeyBase64: %w", c.Name, err)
+		return nil, fmt.Errorf("relay: server %q invalid publicKeyBase64: %w", c.Name, err)
 	}
 	id := utils.PubKeyFingerprint(pubKey)
 
-	cr := &clusterRuntime{
+	cr := &serverRuntime{
 		id:           id,
 		name:         c.Name,
 		pubKey:       pubKey,
-		pubKeyBase64: c.PublicKeyBase64,
+		pubKeyBase64: c.PubKeyBase64,
 		scheme:       c.LoadBalance,
-		instances:    make([]*clusterInstance, 0, len(c.Instances)),
+		instances:    make([]*serverInstance, 0, len(c.Instances)),
 	}
 
 	for j := range c.Instances {
@@ -251,26 +251,27 @@ func (rs *RelayServer) buildCluster(c *Cluster) (*clusterRuntime, error) {
 		addrStr := fmt.Sprintf("%s:%d", ci.Host, ci.Port)
 		udpAddr, err := net.ResolveUDPAddr("udp", addrStr)
 		if err != nil {
-			return nil, fmt.Errorf("relay: cluster %s instance #%d resolve %s: %w", id, j, addrStr, err)
+			return nil, fmt.Errorf("relay: server %s instance #%d resolve %s: %w", id, j, addrStr, err)
 		}
 
-		// Register the cluster's pubkey in the device peer table.
+		// Register the server's pubkey in the device peer table.
 		// All siblings share one keypair so device.AddPeer (keyed by
 		// pubkey) collapses them to a single entry — that's the
 		// intent, not a bug. Routing to a specific instance happens
-		// later via clusterInstance.addr; validatePeer in the Noise
+		// later via serverInstance.addr; validatePeer in the Noise
 		// path only consults LookupPeer for pubkey-existence and
 		// expiry, and uses ConnData.RemoteAddr (not Peer.Ip) for the
 		// per-connection address stickiness check.
 		peer := &core.UdpPeer{
-			PubKeyBase64: c.PublicKeyBase64,
+			PubKeyBase64: c.PubKeyBase64,
 			Ip:           ci.Host,
 			Port:         ci.Port,
 			Type:         core.NHP_SERVER,
+			ExpireTime:   c.ExpireTime,
 		}
 		rs.device.AddPeer(peer)
 
-		cr.instances = append(cr.instances, &clusterInstance{
+		cr.instances = append(cr.instances, &serverInstance{
 			host:            ci.Host,
 			port:            ci.Port,
 			weight:          ci.Weight,
@@ -296,7 +297,7 @@ func (rs *RelayServer) Start() error {
 
 	// One keepalive goroutine per instance. Cheap (mostly sleeping) and
 	// keeps the per-instance state owned by exactly one routine.
-	for _, cr := range rs.clusters {
+	for _, cr := range rs.servers {
 		for _, inst := range cr.instances {
 			rs.wg.Add(1)
 			go rs.keepaliveRoutine(cr, inst)
@@ -323,7 +324,7 @@ func (rs *RelayServer) Stop(ctx context.Context) error {
 	err := rs.httpServer.Shutdown(ctx)
 
 	// Close UDP connections.
-	for _, cr := range rs.clusters {
+	for _, cr := range rs.servers {
 		for _, inst := range cr.instances {
 			inst.connMu.Lock()
 			if inst.conn != nil {
@@ -344,7 +345,7 @@ func (rs *RelayServer) Stop(ctx context.Context) error {
 // UDP connection management (per upstream instance)
 // ──────────────────────────────────────────────────────────────────────────────
 
-func (rs *RelayServer) getOrCreateConnection(cr *clusterRuntime, inst *clusterInstance) *UdpConn {
+func (rs *RelayServer) getOrCreateConnection(cr *serverRuntime, inst *serverInstance) *UdpConn {
 	inst.connMu.Lock()
 	defer inst.connMu.Unlock()
 
@@ -356,19 +357,19 @@ func (rs *RelayServer) getOrCreateConnection(cr *clusterRuntime, inst *clusterIn
 	var err error
 	conn.netConn, err = net.DialUDP("udp", nil, inst.addr)
 	if err != nil {
-		log.Error("[Relay] cluster %s: failed to dial %s: %v", cr.id, inst.addr, err)
+		log.Error("[Relay] server %s: failed to dial %s: %v", cr.id, inst.addr, err)
 		return nil
 	}
 
 	laddr := conn.netConn.LocalAddr()
 	localAddr, err := net.ResolveUDPAddr(laddr.Network(), laddr.String())
 	if err != nil {
-		log.Error("[Relay] cluster %s: resolve local addr error: %v", cr.id, err)
+		log.Error("[Relay] server %s: resolve local addr error: %v", cr.id, err)
 		conn.netConn.Close()
 		return nil
 	}
 
-	log.Info("[Relay] cluster %s: new UDP connection %s → %s", cr.id, localAddr, inst.addr)
+	log.Info("[Relay] server %s: new UDP connection %s → %s", cr.id, localAddr, inst.addr)
 
 	conn.ConnData = &core.ConnectionData{
 		Device:               rs.device,
@@ -420,12 +421,12 @@ func (rs *RelayServer) sendPacket(pkt *core.Packet, conn *UdpConn) (int, error) 
 	return n, err
 }
 
-func (rs *RelayServer) recvPacketRoutine(cr *clusterRuntime, inst *clusterInstance, conn *UdpConn) {
+func (rs *RelayServer) recvPacketRoutine(cr *serverRuntime, inst *serverInstance, conn *UdpConn) {
 	addrStr := conn.ConnData.RemoteAddr.String()
 	defer conn.ConnData.Done()
-	defer log.Info("[Relay] recvPacketRoutine for %s (cluster %s) stopped", addrStr, cr.id)
+	defer log.Info("[Relay] recvPacketRoutine for %s (server %s) stopped", addrStr, cr.id)
 
-	log.Info("[Relay] recvPacketRoutine for %s (cluster %s) started", addrStr, cr.id)
+	log.Info("[Relay] recvPacketRoutine for %s (server %s) started", addrStr, cr.id)
 
 	for {
 		select {
@@ -471,16 +472,16 @@ func (rs *RelayServer) recvPacketRoutine(cr *clusterRuntime, inst *clusterInstan
 }
 
 // dispatch routes a server ACK/COK payload back to the HTTP handler waiting
-// on the given counter for this instance. See clusterInstance docs for the
+// on the given counter for this instance. See serverInstance docs for the
 // hijack-prevention rule (ambiguous waiters are all dropped).
 //
 // Returns (delivered, ambiguous). If both are false the counter was unknown
 // (e.g. a late response after the handler timed out).
 //
-// Implemented as a method on *clusterInstance because it only touches
+// Implemented as a method on *serverInstance because it only touches
 // instance-local state — moving it off *RelayServer makes ownership
 // obvious at the call site.
-func (inst *clusterInstance) dispatch(counter uint64, raw []byte) (delivered, ambiguous bool) {
+func (inst *serverInstance) dispatch(counter uint64, raw []byte) (delivered, ambiguous bool) {
 	inst.pendingMu.Lock()
 	waiters, found := inst.pendingRequests[counter]
 	if !found {
@@ -506,12 +507,12 @@ func (inst *clusterInstance) dispatch(counter uint64, raw []byte) (delivered, am
 	return true, false
 }
 
-func (rs *RelayServer) connectionRoutine(cr *clusterRuntime, inst *clusterInstance, conn *UdpConn) {
+func (rs *RelayServer) connectionRoutine(cr *serverRuntime, inst *serverInstance, conn *UdpConn) {
 	addrStr := conn.ConnData.RemoteAddr.String()
 	defer rs.wg.Done()
-	defer log.Info("[Relay] connectionRoutine for %s (cluster %s) stopped", addrStr, cr.id)
+	defer log.Info("[Relay] connectionRoutine for %s (server %s) stopped", addrStr, cr.id)
 
-	log.Info("[Relay] connectionRoutine for %s (cluster %s) started", addrStr, cr.id)
+	log.Info("[Relay] connectionRoutine for %s (server %s) started", addrStr, cr.id)
 
 	defer func() {
 		inst.connMu.Lock()
@@ -528,7 +529,7 @@ func (rs *RelayServer) connectionRoutine(cr *clusterRuntime, inst *clusterInstan
 			return
 
 		case <-time.After(time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond):
-			log.Info("[Relay] connection idle timeout (cluster %s)", cr.id)
+			log.Info("[Relay] connection idle timeout (server %s)", cr.id)
 			return
 
 		case pkt, ok := <-conn.ConnData.SendQueue:
@@ -551,7 +552,7 @@ func (rs *RelayServer) connectionRoutine(cr *clusterRuntime, inst *clusterInstan
 			// Handle keepalive.
 			if pkt.HeaderType == core.NHP_KPL {
 				rs.device.ReleasePoolPacket(pkt)
-				log.Info("[Relay] recv [NHP_KPL] from %s (cluster %s)", addrStr, cr.id)
+				log.Info("[Relay] recv [NHP_KPL] from %s (server %s)", addrStr, cr.id)
 				continue
 			}
 
@@ -565,7 +566,7 @@ func (rs *RelayServer) connectionRoutine(cr *clusterRuntime, inst *clusterInstan
 				copy(raw, pkt.Content)
 				delivered, ambiguous := inst.dispatch(counter, raw)
 				if delivered {
-					log.Info("[Relay] matched pending request counter=%d on cluster %s, forwarding %d raw bytes",
+					log.Info("[Relay] matched pending request counter=%d on server %s, forwarding %d raw bytes",
 						counter, cr.id, len(raw))
 					rs.device.ReleasePoolPacket(pkt)
 					continue
@@ -585,7 +586,7 @@ func (rs *RelayServer) connectionRoutine(cr *clusterRuntime, inst *clusterInstan
 			rs.device.RecvPacketToMsg(pd)
 
 		case <-conn.ConnData.BlockSignal:
-			log.Warning("[Relay] connection blocked %s (cluster %s)", addrStr, cr.id)
+			log.Warning("[Relay] connection blocked %s (server %s)", addrStr, cr.id)
 			return
 		}
 	}
@@ -618,8 +619,8 @@ func (rs *RelayServer) sendMessageRoutine() {
 	}
 }
 
-// dispatchSend resolves the outbound MsgData to a (cluster, instance) by
-// matching md.PeerPk / md.RemoteAddr to the registered clusters, then
+// dispatchSend resolves the outbound MsgData to a (server, instance) by
+// matching md.PeerPk / md.RemoteAddr to the registered servers, then
 // attaches the right ConnData and forwards through the device.
 //
 // We chose to keep core.MsgData unmodified and route here, rather than
@@ -628,14 +629,14 @@ func (rs *RelayServer) sendMessageRoutine() {
 func (rs *RelayServer) dispatchSend(md *core.MsgData) {
 	cr, inst := rs.resolveTarget(md)
 	if cr == nil || inst == nil {
-		log.Error("[Relay] dropping outbound: cannot match MsgData to a cluster (peer=%x remote=%v)",
+		log.Error("[Relay] dropping outbound: cannot match MsgData to a server (peer=%x remote=%v)",
 			md.PeerPk, md.RemoteAddr)
 		return
 	}
 
 	conn := rs.getOrCreateConnection(cr, inst)
 	if conn == nil {
-		log.Error("[Relay] cluster %s: no connection, dropping message", cr.id)
+		log.Error("[Relay] server %s: no connection, dropping message", cr.id)
 		return
 	}
 
@@ -643,8 +644,8 @@ func (rs *RelayServer) dispatchSend(md *core.MsgData) {
 	rs.device.SendMsgToPacket(md)
 }
 
-// resolveTarget figures out which (cluster, instance) an outbound MsgData is
-// destined for. Cluster lookup is O(1) on the pubkey fingerprint. The
+// resolveTarget figures out which (server, instance) an outbound MsgData is
+// destined for. Server lookup is O(1) on the pubkey fingerprint. The
 // instance is found by matching md.RemoteAddr against cr.instances — the
 // invariant being that handleRelay (and keepaliveRoutine) pinned md.RemoteAddr
 // to the addr of a specific instance at the moment of pickInstance, and the
@@ -655,20 +656,20 @@ func (rs *RelayServer) dispatchSend(md *core.MsgData) {
 // would arrive on B with no matching waiter.
 //
 // We deliberately do NOT fall back to scanning by RemoteAddr across all
-// clusters if the PeerPk lookup misses: normalize() rejects duplicate
-// (host, port) across clusters, so two clusters can never legitimately
+// servers if the PeerPk lookup misses: normalize() rejects duplicate
+// (host, port) across servers, so two servers can never legitimately
 // share an address. A PeerPk miss means an outbound was constructed for
-// a cluster that isn't configured, which is a bug — silently picking some
-// address-matching cluster would route the packet through the wrong Noise
+// a server that isn't configured, which is a bug — silently picking some
+// address-matching server would route the packet through the wrong Noise
 // identity and produce confusing "peer address mismatch" errors at the
 // server. Returning nil here makes dispatchSend log the drop with the
 // actual PeerPk for diagnosis.
-func (rs *RelayServer) resolveTarget(md *core.MsgData) (*clusterRuntime, *clusterInstance) {
+func (rs *RelayServer) resolveTarget(md *core.MsgData) (*serverRuntime, *serverInstance) {
 	if len(md.PeerPk) == 0 {
 		return nil, nil
 	}
 	fp := utils.PubKeyFingerprint(md.PeerPk)
-	cr, ok := rs.clusters[fp]
+	cr, ok := rs.servers[fp]
 	if !ok {
 		return nil, nil
 	}
@@ -722,11 +723,11 @@ func (rs *RelayServer) recvMessageRoutine() {
 // Keepalive routine (per instance)
 // ──────────────────────────────────────────────────────────────────────────────
 
-func (rs *RelayServer) keepaliveRoutine(cr *clusterRuntime, inst *clusterInstance) {
+func (rs *RelayServer) keepaliveRoutine(cr *serverRuntime, inst *serverInstance) {
 	defer rs.wg.Done()
-	defer log.Info("[Relay] keepaliveRoutine for cluster %s instance %s stopped", cr.id, inst.addr)
+	defer log.Info("[Relay] keepaliveRoutine for server %s instance %s stopped", cr.id, inst.addr)
 
-	log.Info("[Relay] keepaliveRoutine for cluster %s instance %s started", cr.id, inst.addr)
+	log.Info("[Relay] keepaliveRoutine for server %s instance %s started", cr.id, inst.addr)
 
 	interval := rs.config.KeepaliveIntervalS
 	if interval <= 0 {
@@ -766,11 +767,11 @@ func (rs *RelayServer) keepaliveRoutine(cr *clusterRuntime, inst *clusterInstanc
 				// recovered on the next tick.
 				select {
 				case rs.sendMsgCh <- md:
-					log.Info("[Relay] sent NHP_KPL keepalive to %s (cluster %s)", inst.addr, cr.id)
+					log.Info("[Relay] sent NHP_KPL keepalive to %s (server %s)", inst.addr, cr.id)
 				case <-rs.stopCh:
 					return
 				default:
-					log.Warning("[Relay] send queue full, skipping keepalive (cluster %s)", cr.id)
+					log.Warning("[Relay] send queue full, skipping keepalive (server %s)", cr.id)
 				}
 			}
 		}
@@ -786,11 +787,11 @@ func (rs *RelayServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("ok"))
 }
 
-// clusterInfo is the JSON shape returned by /clusters. It surfaces only the
-// non-secret routing metadata clients need to choose a cluster (pubkey and
+// serverInfo is the JSON shape returned by /servers. It surfaces only the
+// non-secret routing metadata clients need to choose a server (pubkey and
 // the fingerprint derived from it). Instance addresses are intentionally
-// omitted because clients route by cluster ID, not by instance.
-type clusterInfo struct {
+// omitted because clients route by server ID, not by instance.
+type serverInfo struct {
 	ID          string `json:"id"`
 	Name        string `json:"name,omitempty"`
 	PublicKey   string `json:"publicKeyBase64"`
@@ -798,23 +799,23 @@ type clusterInfo struct {
 	LoadBalance string `json:"loadBalance,omitempty"`
 }
 
-// handleClusters lists every configured cluster. The endpoint is intentionally
+// handleServers lists every configured server. The endpoint is intentionally
 // unauthenticated: a client that wants to knock must already know the target
-// cluster's public key (it's required to encrypt the KNK packet), so exposing
+// server's public key (it's required to encrypt the KNK packet), so exposing
 // the pubkey + the routing id derived from it leaks nothing a determined
 // caller couldn't recompute. The "name" field is an operator-chosen label —
-// keep it free of sensitive context. If a deployment ever needs cluster
+// keep it free of sensitive context. If a deployment ever needs server
 // topology to be opaque to anonymous browsers, gate this handler behind the
 // reverse proxy (e.g. nginx allow/deny) rather than adding auth here.
-func (rs *RelayServer) handleClusters(w http.ResponseWriter, r *http.Request) {
+func (rs *RelayServer) handleServers(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	out := make([]clusterInfo, 0, len(rs.clusters))
-	for _, cr := range rs.clusters {
-		out = append(out, clusterInfo{
+	out := make([]serverInfo, 0, len(rs.servers))
+	for _, cr := range rs.servers {
+		out = append(out, serverInfo{
 			ID:          cr.id,
 			Name:        cr.name,
 			PublicKey:   cr.pubKeyBase64,
@@ -850,26 +851,26 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// resolveCluster picks the target cluster for an incoming HTTP request.
-// The only accepted form is `POST /relay/{clusterId}`; the legacy
-// `POST /relay` path was removed when multi-cluster support landed —
+// resolveServer picks the target server for an incoming HTTP request.
+// The only accepted form is `POST /relay/{serverId}`; the legacy
+// `POST /relay` path was removed when multi-server support landed —
 // clients must derive the fingerprint from the target server's public
 // key (see nhp/utils.PubKeyFingerprint and its TypeScript twin).
-func (rs *RelayServer) resolveCluster(r *http.Request) (*clusterRuntime, int, string) {
+func (rs *RelayServer) resolveServer(r *http.Request) (*serverRuntime, int, string) {
 	// ServeMux routes `/relay/` here; everything after the prefix is the
-	// caller-supplied cluster id. Trailing slashes are tolerated so that
+	// caller-supplied server id. Trailing slashes are tolerated so that
 	// proxies that normalize paths don't change the routing decision.
 	id := strings.TrimPrefix(r.URL.Path, "/relay/")
 	id = strings.TrimSuffix(id, "/")
 
 	if id == "" {
 		return nil, http.StatusBadRequest,
-			"missing cluster id; use POST /relay/<clusterId> (see GET /clusters)"
+			"missing server id; use POST /relay/<serverId> (see GET /servers)"
 	}
 
-	cr, ok := rs.clusters[id]
+	cr, ok := rs.servers[id]
 	if !ok {
-		return nil, http.StatusNotFound, fmt.Sprintf("unknown cluster ID %q", id)
+		return nil, http.StatusNotFound, fmt.Sprintf("unknown server ID %q", id)
 	}
 	return cr, 0, ""
 }
@@ -878,16 +879,16 @@ func (rs *RelayServer) resolveCluster(r *http.Request) (*clusterRuntime, int, st
 //
 // Expected request:
 //
-//	POST /relay/{clusterId}
+//	POST /relay/{serverId}
 //	Content-Type: application/octet-stream
 //	Body: raw inner NHP packet bytes (KNK / RKN / etc., encrypted by agent)
 //
 // Response:
 //
 //	200 OK  — body contains raw NHP ACK / COK packet bytes (encrypted to agent)
-//	400 Bad Request  — empty / over-size body, or missing cluster id
-//	404 Not Found    — unknown cluster id
-//	503 Service Unavailable — cluster has no usable instance (phase 2)
+//	400 Bad Request  — empty / over-size body, or missing server id
+//	404 Not Found    — unknown server id
+//	503 Service Unavailable — server has no usable instance (phase 2)
 //	504 Gateway Timeout  — NHP Server did not respond in time
 //	502 Bad Gateway  — internal error
 func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
@@ -896,7 +897,7 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cr, status, errMsg := rs.resolveCluster(r)
+	cr, status, errMsg := rs.resolveServer(r)
 	if cr == nil {
 		http.Error(w, errMsg, status)
 		return
@@ -936,7 +937,7 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 	// on a nil dereference downstream.
 	inst := cr.pickInstance()
 	if inst == nil {
-		http.Error(w, "cluster has no usable instance", http.StatusServiceUnavailable)
+		http.Error(w, "server has no usable instance", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -947,7 +948,7 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	realAddrKey := realAddr.String()
-	log.Info("[Relay] forwarding %d-byte inner packet (counter=%d, cluster=%s) from client %s to %s",
+	log.Info("[Relay] forwarding %d-byte inner packet (counter=%d, server=%s) from client %s to %s",
 		n, innerCounter, cr.id, realAddr, inst.addr)
 
 	// Register a pending request under (counter, realAddr) on the instance.
@@ -1022,11 +1023,11 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 	select {
 	case rs.sendMsgCh <- md:
 	case <-r.Context().Done():
-		log.Warning("[Relay] client disconnected before send queued (counter=%d, client %s, cluster %s)",
+		log.Warning("[Relay] client disconnected before send queued (counter=%d, client %s, server %s)",
 			innerCounter, realAddr, cr.id)
 		return
 	case <-time.After(time.Duration(udpTimeout) * time.Millisecond):
-		log.Error("[Relay] send queue full for %dms, dropping forward (counter=%d, client %s, cluster %s)",
+		log.Error("[Relay] send queue full for %dms, dropping forward (counter=%d, client %s, server %s)",
 			udpTimeout, innerCounter, realAddr, cr.id)
 		http.Error(w, "relay overloaded", http.StatusServiceUnavailable)
 		return
@@ -1035,7 +1036,7 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 	// Wait for the raw encrypted ACK/COK packet from the server.
 	select {
 	case rawBytes := <-responseCh:
-		log.Info("[Relay] received response for inner counter=%d, %d raw bytes, forwarding to client %s (cluster %s)",
+		log.Info("[Relay] received response for inner counter=%d, %d raw bytes, forwarding to client %s (server %s)",
 			innerCounter, len(rawBytes), realAddr, cr.id)
 
 		w.Header().Set("Content-Type", "application/octet-stream")
@@ -1043,7 +1044,7 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(rawBytes)
 
 	case <-time.After(time.Duration(udpTimeout) * time.Millisecond):
-		log.Warning("[Relay] timeout waiting for server response (inner counter=%d, client %s, cluster %s)",
+		log.Warning("[Relay] timeout waiting for server response (inner counter=%d, client %s, server %s)",
 			innerCounter, realAddr, cr.id)
 		http.Error(w, "NHP Server timeout", http.StatusGatewayTimeout)
 	}

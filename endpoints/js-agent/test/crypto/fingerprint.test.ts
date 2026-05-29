@@ -1,5 +1,5 @@
 /**
- * Tests for the relay cluster fingerprint helper.
+ * Tests for the relay-side server fingerprint helper.
  *
  * The fingerprint is also computed in Go (nhp/utils.PubKeyFingerprint); this
  * test pins a known input → output so any divergence between the two
@@ -50,7 +50,7 @@ describe('pubKeyFingerprint', () => {
   // changing its algorithm — different hash, different prefix length,
   // different encoding — flips one of these strings and fails the test
   // before the divergence ships. Pair-tested via go run + node, see
-  // commit feat(relay): support multiple nhp-server clusters.
+  // commit feat(relay): support multiple nhp-server entries.
   it('matches the Go implementation for known keys', async () => {
     const filledKey = new Uint8Array(32).fill(0x42);
     expect(await pubKeyFingerprint(filledKey)).toBe('Ql7U5KNrMOo');

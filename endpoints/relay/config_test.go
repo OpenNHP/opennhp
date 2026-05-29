@@ -20,7 +20,7 @@ func fakeKey(seed byte) string {
 }
 
 // TestConfig_LegacyFieldsPromoted verifies that the deprecated single-server
-// fields are auto-promoted into a single-cluster shape so existing demo
+// fields are auto-promoted into a single-server shape so existing demo
 // configs keep working through phase 1.
 func TestConfig_LegacyFieldsPromoted(t *testing.T) {
 	cfg := &Config{
@@ -32,15 +32,15 @@ func TestConfig_LegacyFieldsPromoted(t *testing.T) {
 	if err := cfg.normalize(); err != nil {
 		t.Fatalf("legacy fields should normalize without error: %v", err)
 	}
-	if len(cfg.Clusters) != 1 {
-		t.Fatalf("legacy promotion should yield 1 cluster, got %d", len(cfg.Clusters))
+	if len(cfg.Servers) != 1 {
+		t.Fatalf("legacy promotion should yield 1 server, got %d", len(cfg.Servers))
 	}
-	c := cfg.Clusters[0]
-	if c.PublicKeyBase64 != fakeKey(0x20) {
-		t.Errorf("cluster pubkey not promoted from legacy field")
+	c := cfg.Servers[0]
+	if c.PubKeyBase64 != fakeKey(0x20) {
+		t.Errorf("server pubkey not promoted from legacy field")
 	}
 	if len(c.Instances) != 1 || c.Instances[0].Host != "10.0.0.1" || c.Instances[0].Port != 62206 {
-		t.Errorf("cluster instance not promoted from legacy fields, got %+v", c.Instances)
+		t.Errorf("server instance not promoted from legacy fields, got %+v", c.Instances)
 	}
 	if c.Instances[0].Weight != 1 {
 		t.Errorf("instance weight should default to 1, got %d", c.Instances[0].Weight)
@@ -50,33 +50,33 @@ func TestConfig_LegacyFieldsPromoted(t *testing.T) {
 	}
 }
 
-// TestConfig_AcceptsMultipleInstancesPerCluster: phase 2 lifts the
-// single-instance restriction. Two instances under one [[cluster]] must
+// TestConfig_AcceptsMultipleInstancesPerServer: phase 2 lifts the
+// single-instance restriction. Two instances under one [[server]] must
 // load cleanly, both addresses must be preserved, and weights must default
-// to 1 the same way they would for a single-instance cluster.
+// to 1 the same way they would for a single-instance server.
 //
 // device.peerMap being keyed by pubkey is fine for this scheme: the
-// per-instance UDP address lives on the clusterInstance (used by the
+// per-instance UDP address lives on the serverInstance (used by the
 // load-balance picker and outbound MsgData.RemoteAddr); validatePeer
 // only consults LookupPeer for pubkey-existence and expiry, and uses
 // ConnData.RemoteAddr (not Peer.Ip) for the per-connection address
 // stickiness check.
-func TestConfig_AcceptsMultipleInstancesPerCluster(t *testing.T) {
+func TestConfig_AcceptsMultipleInstancesPerServer(t *testing.T) {
 	cfg := &Config{
 		PrivateKeyBase64: fakeKey(0x10),
-		Clusters: []Cluster{{
-			PublicKeyBase64: fakeKey(0x20),
-			LoadBalance:     LBRoundRobin,
-			Instances: []ClusterInstance{
+		Servers: []Server{{
+			PubKeyBase64: fakeKey(0x20),
+			LoadBalance:  LBRoundRobin,
+			Instances: []ServerInstance{
 				{Host: "10.0.0.1", Port: 62206},
 				{Host: "10.0.0.2", Port: 62206},
 			},
 		}},
 	}
 	if err := cfg.normalize(); err != nil {
-		t.Fatalf("multi-instance cluster should load: %v", err)
+		t.Fatalf("multi-instance server should load: %v", err)
 	}
-	got := cfg.Clusters[0].Instances
+	got := cfg.Servers[0].Instances
 	if len(got) != 2 {
 		t.Fatalf("expected 2 instances, got %d", len(got))
 	}
@@ -88,44 +88,44 @@ func TestConfig_AcceptsMultipleInstancesPerCluster(t *testing.T) {
 	}
 }
 
-// TestConfig_RejectsDuplicateClusterPubkey catches operator mistakes where
-// the same pubkey appears in two [[cluster]] blocks — the fingerprint would
+// TestConfig_RejectsDuplicateServerPubkey catches operator mistakes where
+// the same pubkey appears in two [[server]] blocks — the fingerprint would
 // collide and routing would be undefined.
-func TestConfig_RejectsDuplicateClusterPubkey(t *testing.T) {
+func TestConfig_RejectsDuplicateServerPubkey(t *testing.T) {
 	cfg := &Config{
 		PrivateKeyBase64: fakeKey(0x10),
-		Clusters: []Cluster{
+		Servers: []Server{
 			{
-				PublicKeyBase64: fakeKey(0x20),
-				Instances:       []ClusterInstance{{Host: "1.1.1.1", Port: 62206}},
+				PubKeyBase64: fakeKey(0x20),
+				Instances:    []ServerInstance{{Host: "1.1.1.1", Port: 62206}},
 			},
 			{
-				PublicKeyBase64: fakeKey(0x20), // same key
-				Instances:       []ClusterInstance{{Host: "2.2.2.2", Port: 62206}},
+				PubKeyBase64: fakeKey(0x20), // same key
+				Instances:    []ServerInstance{{Host: "2.2.2.2", Port: 62206}},
 			},
 		},
 	}
 	if err := cfg.normalize(); err == nil {
-		t.Fatalf("expected error for duplicate cluster pubkey")
+		t.Fatalf("expected error for duplicate server pubkey")
 	}
 }
 
 // TestConfig_RejectsDuplicateInstanceAddress catches the silent-failure mode
-// where two clusters point at the same host:port. resolveTarget keys by
+// where two servers point at the same host:port. resolveTarget keys by
 // PeerPk so this wouldn't misroute on its own, but it's almost always a
 // copy-paste mistake the operator wants to hear about at load time rather
 // than discover later.
 func TestConfig_RejectsDuplicateInstanceAddress(t *testing.T) {
 	cfg := &Config{
 		PrivateKeyBase64: fakeKey(0x10),
-		Clusters: []Cluster{
+		Servers: []Server{
 			{
-				PublicKeyBase64: fakeKey(0x20),
-				Instances:       []ClusterInstance{{Host: "10.0.0.1", Port: 62206}},
+				PubKeyBase64: fakeKey(0x20),
+				Instances:    []ServerInstance{{Host: "10.0.0.1", Port: 62206}},
 			},
 			{
-				PublicKeyBase64: fakeKey(0x21), // distinct pubkey
-				Instances:       []ClusterInstance{{Host: "10.0.0.1", Port: 62206}},
+				PubKeyBase64: fakeKey(0x21), // distinct pubkey
+				Instances:    []ServerInstance{{Host: "10.0.0.1", Port: 62206}},
 			},
 		},
 	}
@@ -138,12 +138,12 @@ func TestConfig_RejectsDuplicateInstanceAddress(t *testing.T) {
 	}
 }
 
-// TestConfig_LegacyAndClusterCoexist: when an operator's config has both
-// the old single-server fields and a new [[cluster]] block, normalize
-// must keep the [[cluster]] data, NOT promote the legacy fields. The
+// TestConfig_LegacyAndServersCoexist: when an operator's config has both
+// the old single-server fields and a new [[server]] block, normalize
+// must keep the [[server]] data, NOT promote the legacy fields. The
 // promotion would otherwise silently overwrite the operator's explicit
 // choice on a copy-paste upgrade.
-func TestConfig_LegacyAndClusterCoexist(t *testing.T) {
+func TestConfig_LegacyAndServersCoexist(t *testing.T) {
 	cfg := &Config{
 		PrivateKeyBase64: fakeKey(0x10),
 		// Legacy values that should be ignored.
@@ -151,38 +151,38 @@ func TestConfig_LegacyAndClusterCoexist(t *testing.T) {
 		NHPServerPort:            99999,
 		NHPServerPublicKeyBase64: fakeKey(0x99),
 		// Real config.
-		Clusters: []Cluster{{
-			PublicKeyBase64: fakeKey(0x20),
-			Instances:       []ClusterInstance{{Host: "10.0.0.1", Port: 62206}},
+		Servers: []Server{{
+			PubKeyBase64: fakeKey(0x20),
+			Instances:    []ServerInstance{{Host: "10.0.0.1", Port: 62206}},
 		}},
 	}
 	if err := cfg.normalize(); err != nil {
 		t.Fatalf("coexistence should warn, not fail: %v", err)
 	}
-	if len(cfg.Clusters) != 1 {
-		t.Fatalf("expected exactly 1 cluster, got %d (legacy must not append)", len(cfg.Clusters))
+	if len(cfg.Servers) != 1 {
+		t.Fatalf("expected exactly 1 server, got %d (legacy must not append)", len(cfg.Servers))
 	}
-	if cfg.Clusters[0].Instances[0].Host != "10.0.0.1" {
-		t.Errorf("explicit [[cluster]] block must win over legacy fields, got host=%q",
-			cfg.Clusters[0].Instances[0].Host)
+	if cfg.Servers[0].Instances[0].Host != "10.0.0.1" {
+		t.Errorf("explicit [[server]] block must win over legacy fields, got host=%q",
+			cfg.Servers[0].Instances[0].Host)
 	}
 }
 
-// TestConfig_RequiresAtLeastOneCluster: a config with neither legacy fields
-// nor any [[cluster]] block is unusable.
-func TestConfig_RequiresAtLeastOneCluster(t *testing.T) {
+// TestConfig_RequiresAtLeastOneServer: a config with neither legacy fields
+// nor any [[server]] block is unusable.
+func TestConfig_RequiresAtLeastOneServer(t *testing.T) {
 	cfg := &Config{PrivateKeyBase64: fakeKey(0x10)}
 	if err := cfg.normalize(); err == nil {
-		t.Fatalf("expected error when no cluster configured")
+		t.Fatalf("expected error when no server configured")
 	}
 }
 
 // TestConfig_RequiresPrivateKey: the relay needs its own identity key.
 func TestConfig_RequiresPrivateKey(t *testing.T) {
 	cfg := &Config{
-		Clusters: []Cluster{{
-			PublicKeyBase64: fakeKey(0x20),
-			Instances:       []ClusterInstance{{Host: "1.1.1.1", Port: 62206}},
+		Servers: []Server{{
+			PubKeyBase64: fakeKey(0x20),
+			Instances:    []ServerInstance{{Host: "1.1.1.1", Port: 62206}},
 		}},
 	}
 	if err := cfg.normalize(); err == nil {
@@ -199,10 +199,10 @@ func TestConfig_LoadBalanceUnknownRejected(t *testing.T) {
 		t.Run(bad, func(t *testing.T) {
 			cfg := &Config{
 				PrivateKeyBase64: fakeKey(0x10),
-				Clusters: []Cluster{{
-					PublicKeyBase64: fakeKey(0x20),
-					LoadBalance:     LoadBalanceScheme(bad),
-					Instances:       []ClusterInstance{{Host: "1.1.1.1", Port: 62206}},
+				Servers: []Server{{
+					PubKeyBase64: fakeKey(0x20),
+					LoadBalance:  LoadBalanceScheme(bad),
+					Instances:    []ServerInstance{{Host: "1.1.1.1", Port: 62206}},
 				}},
 			}
 			if err := cfg.normalize(); err == nil {
@@ -221,17 +221,17 @@ func TestConfig_LoadBalanceKnownAccepted(t *testing.T) {
 		t.Run(string(ok), func(t *testing.T) {
 			cfg := &Config{
 				PrivateKeyBase64: fakeKey(0x10),
-				Clusters: []Cluster{{
-					PublicKeyBase64: fakeKey(0x20),
-					LoadBalance:     ok,
-					Instances:       []ClusterInstance{{Host: "1.1.1.1", Port: 62206}},
+				Servers: []Server{{
+					PubKeyBase64: fakeKey(0x20),
+					LoadBalance:  ok,
+					Instances:    []ServerInstance{{Host: "1.1.1.1", Port: 62206}},
 				}},
 			}
 			if err := cfg.normalize(); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if cfg.Clusters[0].LoadBalance != ok {
-				t.Errorf("loadBalance mutated: got %q, want %q", cfg.Clusters[0].LoadBalance, ok)
+			if cfg.Servers[0].LoadBalance != ok {
+				t.Errorf("loadBalance mutated: got %q, want %q", cfg.Servers[0].LoadBalance, ok)
 			}
 		})
 	}
@@ -243,15 +243,15 @@ func TestConfig_LoadBalanceKnownAccepted(t *testing.T) {
 func TestConfig_InstanceWeightDefault(t *testing.T) {
 	cfg := &Config{
 		PrivateKeyBase64: fakeKey(0x10),
-		Clusters: []Cluster{{
-			PublicKeyBase64: fakeKey(0x20),
-			Instances:       []ClusterInstance{{Host: "1.1.1.1", Port: 62206}},
+		Servers: []Server{{
+			PubKeyBase64: fakeKey(0x20),
+			Instances:    []ServerInstance{{Host: "1.1.1.1", Port: 62206}},
 		}},
 	}
 	if err := cfg.normalize(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if w := cfg.Clusters[0].Instances[0].Weight; w != 1 {
+	if w := cfg.Servers[0].Instances[0].Weight; w != 1 {
 		t.Errorf("default weight = %d, want 1", w)
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,6 +11,7 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 
+	"github.com/OpenNHP/opennhp/nhp/common/clusterconfig"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/etcd"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -31,10 +31,15 @@ const (
 	FilterMode_EBPFXDP         // 1
 )
 
+// ACEtcdConfig is the remote-config (etcd) shape. Servers carries the
+// shared cluster schema so the etcd value is identical to the on-disk
+// server.toml. The previous Endpoints-string form lived only on this
+// branch and is removed in the AC → ClusterConfig migration; redeploy
+// any etcd values written under that schema.
 type ACEtcdConfig struct {
 	BaseConfig Config
 	HttpConfig HttpConfig
-	Servers    []ServerPeerEntry
+	Servers    []*clusterconfig.ClusterConfig
 }
 
 type Config struct {
@@ -48,22 +53,6 @@ type Config struct {
 	LogLevel            int             `json:"logLevel"`
 	DefaultCipherScheme int             `json:"defaultCipherScheme"`
 	FilterMode          int             `json:"filterMode"`
-}
-
-// ServerPeerEntry is the TOML/etcd loader shape for a server peer entry. One
-// entry represents one logical nhp-server identity (a single ECDH keypair);
-// Endpoints allows that identity to be reachable at multiple addresses, which
-// is how an AC fans AOL/KPL out to a same-pubkey nhp-server cluster.
-//
-// Legacy single-endpoint configs (Hostname or Ip+Port at the entry root)
-// remain supported and are normalized to Endpoints during load.
-type ServerPeerEntry struct {
-	PubKeyBase64 string
-	Hostname     string
-	Ip           string
-	Port         int
-	Endpoints    []string
-	ExpireTime   int64
 }
 
 type RemoteConfig struct {
@@ -82,100 +71,54 @@ type HttpConfig struct {
 	TLSKeyFile     string
 }
 
+// Peers is the top-level shape of server.toml. Each entry is one
+// logical nhp-server identity (one pubkey) reachable at 1..N instances
+// — same schema as nhp-agent's server.toml (see
+// nhp/common/clusterconfig). nhp-ac doesn't run a multi-step handshake
+// against any single instance, so LoadBalance / StickyInstance are
+// loaded but ignored: AOL fan-out broadcasts to every instance for
+// failover, not load-balancing.
 type Peers struct {
-	Servers []ServerPeerEntry
+	Servers []*clusterconfig.ClusterConfig
 }
 
-// expandServerPeers normalizes loader-shape entries into []*core.UdpPeer,
-// fanning a single entry with N endpoints into N UdpPeer rows that share a
-// pubkey. The new fan-out path uses the Endpoints slice; the legacy path
-// (Hostname or Ip+Port at the entry root) collapses to a single UdpPeer.
+// expandServerPeers turns a parsed + normalized cluster list into the
+// flat []*core.UdpPeer the rest of nhp-ac consumes. One cluster with N
+// Instances becomes N UdpPeer rows sharing a pubkey — that fan-out is
+// what lets the AC register (NHP_AOL) with every instance in a
+// same-pubkey nhp-server cluster.
 //
-// Endpoints, when non-empty, take precedence over the legacy fields; the
-// legacy fields are then ignored with an info-level log so misconfigurations
-// are visible.
-//
-// Returns a non-nil error (and a nil peers slice) when any entry's Endpoints
-// list is non-empty but every member failed to parse — that case used to
-// silently drop the entire cluster from the peer table while leaving only a
-// log line behind, so AOL/AOP traffic was dropped without an actionable
-// signal. Individual bad endpoints inside an otherwise-valid entry are still
-// just skipped — only the all-bad case is fail-closed. See callers below for
-// the policy split: initial load propagates, reload/etcd keeps the running
-// peer table.
-func expandServerPeers(entries []ServerPeerEntry) ([]*core.UdpPeer, error) {
-	out := make([]*core.UdpPeer, 0, len(entries))
-	// Track which pubkeys have already been emitted from a legacy
-	// single-endpoint entry so we can warn when a second legacy entry
-	// adds another endpoint under the same pubkey — that's the case
-	// endpointKey can disambiguate (now that Hostname is part of the
-	// key) but operators almost always mean to use the Endpoints list
-	// instead.
-	legacyPubKeys := make(map[string]int)
-	for _, e := range entries {
-		if len(e.Endpoints) > 0 {
-			if e.Hostname != "" || e.Ip != "" || e.Port != 0 {
-				log.Info("server peer %s: Endpoints set, ignoring legacy Hostname/Ip/Port fields", e.PubKeyBase64)
-			}
-			before := len(out)
-			for _, ep := range e.Endpoints {
-				ip, port, err := splitHostPort(ep)
-				if err != nil {
-					log.Error("server peer %s: skip endpoint %q: %v", e.PubKeyBase64, ep, err)
-					continue
-				}
-				out = append(out, &core.UdpPeer{
-					PubKeyBase64: e.PubKeyBase64,
-					Ip:           ip,
-					Port:         port,
-					ExpireTime:   e.ExpireTime,
-				})
-			}
-			if len(out) == before {
-				// All endpoints in this entry failed to parse, so the
-				// pubkey contributes zero peers — fail closed for the
-				// whole config rather than silently dropping the
-				// cluster. Callers decide whether to propagate (initial
-				// load) or keep the running peer table (reload/etcd).
-				return nil, fmt.Errorf("server peer %s: all %d endpoints invalid, entry dropped",
-					e.PubKeyBase64, len(e.Endpoints))
-			}
-			continue
-		}
-		legacyPubKeys[e.PubKeyBase64]++
-		out = append(out, &core.UdpPeer{
-			PubKeyBase64: e.PubKeyBase64,
-			Hostname:     e.Hostname,
-			Ip:           e.Ip,
-			Port:         e.Port,
-			ExpireTime:   e.ExpireTime,
-		})
-	}
-	for pk, n := range legacyPubKeys {
-		if n > 1 {
-			log.Critical("server peer %s: %d legacy [[Servers]] entries share this pubkey — consider merging them into a single entry with an Endpoints list",
-				pk, n)
+// The caller is responsible for running clusterconfig.Normalize on the
+// input first; this helper trusts that every entry has at least one
+// Instances row with a non-zero Port.
+func expandServerPeers(clusters []*clusterconfig.ClusterConfig) []*core.UdpPeer {
+	out := make([]*core.UdpPeer, 0, len(clusters))
+	for _, c := range clusters {
+		for _, inst := range c.Instances {
+			out = append(out, &core.UdpPeer{
+				PubKeyBase64: c.PubKeyBase64,
+				Hostname:     inst.Host,
+				Ip:           inst.Ip,
+				Port:         inst.Port,
+				ExpireTime:   c.ExpireTime,
+			})
 		}
 	}
-	return out, nil
+	return out
 }
 
-// splitHostPort parses a "host:port" endpoint string. Bare IPv6 must be in
-// brackets; the function accepts both IPv4 "1.2.3.4:5000" and IPv6
-// "[::1]:5000" forms.
-func splitHostPort(endpoint string) (string, int, error) {
-	host, portStr, err := net.SplitHostPort(endpoint)
-	if err != nil {
-		return "", 0, fmt.Errorf("invalid endpoint %q: %w", endpoint, err)
+// normalizeAndExpand parses, validates, and flattens the [[Servers]]
+// list in one step. Returns (nil, err) on any validation failure so
+// callers can fail-close — leaving the running peerMap untouched on
+// reload, or refusing to start on initial load.
+func normalizeAndExpand(clusters []*clusterconfig.ClusterConfig) ([]*core.UdpPeer, error) {
+	if err := clusterconfig.Normalize(clusters, clusterconfig.Options{
+		ConsumerLabel: "ac",
+		RequireName:   false,
+	}, log.Warning); err != nil {
+		return nil, err
 	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		return "", 0, fmt.Errorf("invalid port in %q: %w", endpoint, err)
-	}
-	if port <= 0 || port > 65535 {
-		return "", 0, fmt.Errorf("port out of range in %q", endpoint)
-	}
-	return host, port, nil
+	return expandServerPeers(clusters), nil
 }
 
 func (a *UdpAC) loadBaseConfig() error {
@@ -249,7 +192,7 @@ func (a *UdpAC) loadPeers() error {
 	if unmarshalErr = toml.Unmarshal(content, &peers); unmarshalErr != nil {
 		log.Error("failed to unmarshal server peer config: %v", unmarshalErr)
 	}
-	expanded, expandErr := expandServerPeers(peers.Servers)
+	expanded, expandErr := normalizeAndExpand(peers.Servers)
 	var initialErr error
 	if expandErr != nil {
 		// Initial load with a malformed file: refuse to start with an
@@ -280,7 +223,7 @@ func (a *UdpAC) loadPeers() error {
 			log.Error("failed to unmarshal server peer config on reload: %v", uerr)
 			return
 		}
-		expanded, expandErr := expandServerPeers(reloadPeers.Servers)
+		expanded, expandErr := normalizeAndExpand(reloadPeers.Servers)
 		if expandErr != nil {
 			// Reload: do NOT call updateServerPeers — that
 			// would rewrite the live peerMap. Keep the running
@@ -522,7 +465,7 @@ func (a *UdpAC) updateEtcdConfig(content []byte, baseLoad bool) (err error) {
 	}
 
 	_ = a.updateHttpConfig(acEtcdConfig.HttpConfig)
-	expanded, expandErr := expandServerPeers(acEtcdConfig.Servers)
+	expanded, expandErr := normalizeAndExpand(acEtcdConfig.Servers)
 	if expandErr != nil {
 		// etcd reload: same fail-close discipline as the file watcher —
 		// keep the running peer table rather than swap in a config that

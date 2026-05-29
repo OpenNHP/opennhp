@@ -1,26 +1,44 @@
 # list the server peers for the AC under [[Servers]] table
 #
-# Each [[Servers]] entry is one logical nhp-server identity (one pubkey).
-# That identity may be reachable at multiple addresses, e.g. a same-pubkey
-# nhp-server cluster fronted by DNS round-robin.
+# Each [[Servers]] entry is one logical nhp-server identity (one pubkey)
+# reachable at 1..N instances that share that keypair. The schema is the
+# same as nhp-agent's and nhp-db's server.toml — see
+# nhp/common/clusterconfig for the canonical reference.
 #
-# PubKeyBase64: public key of the server peer in base64 format
-# ExpireTime  : (epoch timestamp in seconds) peer key validation fails after this
+# Per-field reference:
+#   PubKeyBase64   — the cluster's nhp-server public key (base64)
+#   ExpireTime     — epoch seconds; peer-key validation fails after this
+#   LoadBalance    — accepted but ignored by nhp-ac (AOL fan-out is a
+#                    broadcast for failover, not a load-balancing pick)
+#   StickyInstance — same as above; nhp-ac doesn't run a multi-step
+#                    handshake against a single instance
 #
-# Use ONE of the two endpoint-shape options below per entry:
+# Per-instance fields (under [[Servers.Instances]]):
+#   Host           — DNS name (preferred); resolves at send time
+#   Ip             — static IP (used if Host is empty)
+#   Port           — UDP port (required, > 0)
+#   Weight         — relative weight for weighted-random (informational
+#                    on nhp-ac; see LoadBalance above)
 #
-# 1) Endpoints (preferred when one pubkey has multiple instances):
-#       Endpoints = ["10.0.0.1:62206", "10.0.0.2:62206"]
-#    The AC registers (NHP_AOL) with every endpoint so that any nhp-server
-#    instance in the cluster can route knock requests back to this AC.
+# ─── Cluster form (recommended) ──────────────────────────────────────
+# [[Servers]]
+# PubKeyBase64 = "..."
+# ExpireTime   = 1924991999
 #
-# 2) Legacy single endpoint (still supported for one-instance deployments):
-#       Hostname = ""          # if set, resolves to a single IP
-#       Ip       = "192.168.80.35"
-#       Port     = 62206
+#   [[Servers.Instances]]
+#   Ip   = "10.0.0.1"
+#   Port = 62206
 #
-# If both forms are set on the same entry, Endpoints wins and the legacy
-# fields are ignored with an info-level log.
+#   [[Servers.Instances]]
+#   Ip   = "10.0.0.2"
+#   Port = 62206
+#
+# ─── Legacy single-server form (auto-upgraded, deprecated) ───────────
+# Kept for backwards compatibility with pre-cluster server.toml files;
+# existing single-server entries are auto-promoted to a single-instance
+# cluster on load with a deprecation warning. Don't mix this form with
+# [[Servers.Instances]] in the same entry — the loader refuses to guess
+# which one wins.
 
 [[Servers]]
 Hostname = ""
@@ -28,4 +46,3 @@ Ip = "192.168.80.35"
 Port = 62206
 PubKeyBase64 = "WqJxe+Z4+wLen3VRgZx6YnbjvJFmptz99zkONCt/7gc="
 ExpireTime = 1924991999
-

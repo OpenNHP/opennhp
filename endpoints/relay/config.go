@@ -15,17 +15,18 @@ import (
 
 var ExeDirPath string
 
-// ClusterInstance describes one physical nhp-server instance backing a logical
-// cluster. Instances in the same cluster share a keypair and differ only in
-// network address; the relay picks one at request time via load balancing.
+// ServerInstance describes one physical nhp-server endpoint backing a logical
+// Server entry. Sibling instances in the same Server share a keypair and
+// differ only in network address; the relay picks one at request time via
+// load balancing.
 //
-// Phase 1 supports exactly one instance per cluster. The schema accepts a list
-// so that operator configs and the API surface are stable when phase 2 lifts
-// the restriction in nhp/core (multi-peer-per-pubkey support).
-type ClusterInstance struct {
-	Host   string `toml:"host"`
-	Port   int    `toml:"port"`
-	Weight int    `toml:"weight"`
+// Field names + TOML tags mirror nhp/common/clusterconfig.InstanceConfig so
+// nhp-relay, nhp-agent, nhp-ac, and nhp-db share one TOML dialect for
+// describing an upstream nhp-server.
+type ServerInstance struct {
+	Host   string `toml:"Host"`
+	Port   int    `toml:"Port"`
+	Weight int    `toml:"Weight"`
 }
 
 // LoadBalanceScheme is an alias for the shared loadbalance.Scheme; kept
@@ -39,21 +40,35 @@ const (
 	LBRoundRobin     = loadbalance.SchemeRoundRobin
 )
 
-// Cluster groups instances that share a single nhp-server identity (public
-// key). Browsers and other relay clients address a cluster by its fingerprint
-// (see utils.PubKeyFingerprint); the relay then routes inside the cluster.
-type Cluster struct {
-	// Optional human-readable label, surfaced in logs and the /clusters API.
-	Name string `toml:"name"`
+// Server is one logical nhp-server identity (one pubkey) reachable at 1..N
+// physical instances that share that keypair. Relay clients address a
+// Server by the fingerprint of its public key (see utils.PubKeyFingerprint)
+// over the HTTP path POST /relay/<serverId>; the relay then routes inside
+// the Server to a specific instance per request.
+//
+// The TOML shape and field names match nhp-agent / nhp-ac / nhp-db's
+// [[Servers]] schema (see nhp/common/clusterconfig.ClusterConfig) so the
+// same block can be copied between the relay's config.toml and a peer
+// table's server.toml.
+type Server struct {
+	// Optional human-readable label, surfaced in logs and the /servers API.
+	Name string `toml:"Name"`
 
-	// Base64-encoded public key shared by all instances in this cluster.
-	PublicKeyBase64 string `toml:"publicKeyBase64"`
+	// Base64-encoded public key shared by all instances backing this Server.
+	PubKeyBase64 string `toml:"PubKeyBase64"`
 
 	// Load balancing strategy. Defaults to weighted-random.
-	LoadBalance LoadBalanceScheme `toml:"loadBalance"`
+	LoadBalance LoadBalanceScheme `toml:"LoadBalance"`
 
-	// One or more nhp-server addresses. Phase 1 requires exactly one.
-	Instances []ClusterInstance `toml:"instance"`
+	// Epoch seconds at which this Server's pubkey is considered
+	// expired. Mirrors the same-named field on nhp-agent/ac/db so
+	// operators can reuse one ExpireTime across all peer tables.
+	// Currently advisory: the relay propagates it to the device peer
+	// for noise-handshake validation, the same way nhp-ac does.
+	ExpireTime int64 `toml:"ExpireTime"`
+
+	// One or more nhp-server addresses backing this Server's pubkey.
+	Instances []ServerInstance `toml:"Instances"`
 }
 
 // Config holds all relay service configuration.
@@ -74,13 +89,15 @@ type Config struct {
 	// Cipher scheme: 0 = Curve25519 (default), 1 = SM2/GMSM.
 	CipherScheme int `toml:"cipherScheme"`
 
-	// NHP-server clusters. Each entry is one logical upstream identity
-	// (one public key) that may be backed by multiple physical instances.
-	Clusters []Cluster `toml:"cluster"`
+	// Upstream nhp-server entries. Each entry is one logical upstream
+	// identity (one public key) that may be backed by multiple physical
+	// instances. Same schema as nhp-agent/nhp-ac/nhp-db's server.toml
+	// (see nhp/common/clusterconfig).
+	Servers []Server `toml:"Servers"`
 
-	// Legacy single-server fields. When [[cluster]] is empty, LoadConfig
-	// promotes these into Clusters[0] with a deprecation warning. When
-	// [[cluster]] is also present, the legacy fields are ignored and a
+	// Legacy single-server fields. When [[Servers]] is empty, LoadConfig
+	// promotes these into Servers[0] with a deprecation warning. When
+	// [[Servers]] is also present, the legacy fields are ignored and a
 	// louder warning is logged so the operator notices the dead values.
 	// Slated for removal in a future release.
 	NHPServerHost            string `toml:"nhpServerHost"`
@@ -140,12 +157,12 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 
-	log.Info("[Relay] loaded config from %s with %d cluster(s)", path, len(cfg.Clusters))
+	log.Info("[Relay] loaded config from %s with %d server(s)", path, len(cfg.Servers))
 	return cfg, nil
 }
 
 // normalize validates the configuration and applies legacy-field migration so
-// that the rest of the relay only has to look at Config.Clusters. It is
+// that the rest of the relay only has to look at Config.Servers. It is
 // exported as a method (not a function) to make it directly testable on a
 // hand-built Config in unit tests without round-tripping through TOML.
 func (cfg *Config) normalize() error {
@@ -158,74 +175,74 @@ func (cfg *Config) normalize() error {
 		cfg.NHPServerPublicKeyBase64 != ""
 
 	switch {
-	case hasLegacy && len(cfg.Clusters) == 0:
-		// Auto-migrate: promote the legacy fields into a single cluster
+	case hasLegacy && len(cfg.Servers) == 0:
+		// Auto-migrate: promote the legacy fields into a single server
 		// so existing demo configs keep working through phase 1.
 		log.Warning("[Relay] nhpServerHost/nhpServerPort/nhpServerPublicKeyBase64 are deprecated; " +
-			"migrate to [[cluster]] / [[cluster.instance]] in config.toml")
-		cfg.Clusters = []Cluster{{
-			PublicKeyBase64: cfg.NHPServerPublicKeyBase64,
-			Instances: []ClusterInstance{{
+			"migrate to [[Servers]] / [[Servers.Instances]] in config.toml")
+		cfg.Servers = []Server{{
+			PubKeyBase64: cfg.NHPServerPublicKeyBase64,
+			Instances: []ServerInstance{{
 				Host: cfg.NHPServerHost,
 				Port: cfg.NHPServerPort,
 			}},
 		}}
-	case hasLegacy && len(cfg.Clusters) > 0:
-		// Both forms present. The [[cluster]] block wins because it's
+	case hasLegacy && len(cfg.Servers) > 0:
+		// Both forms present. The [[Servers]] block wins because it's
 		// strictly more expressive; but a copy-paste upgrade that left
 		// the old fields behind would silently route to whatever the
 		// new block declares and drop the legacy values. Log loudly so
 		// the operator notices and can remove the dead config.
-		log.Warning("[Relay] both legacy nhpServer* fields and [[cluster]] blocks are set; " +
+		log.Warning("[Relay] both legacy nhpServer* fields and [[Servers]] blocks are set; " +
 			"the legacy fields are ignored — remove them from config.toml to silence this warning")
 	}
 
-	if len(cfg.Clusters) == 0 {
-		return fmt.Errorf("relay: no upstream configured; add at least one [[cluster]] with one [[cluster.instance]]")
+	if len(cfg.Servers) == 0 {
+		return fmt.Errorf("relay: no upstream configured; add at least one [[Servers]] with one [[Servers.Instances]]")
 	}
 
-	seenFP := make(map[string]int, len(cfg.Clusters))
-	// seenAddr catches two clusters that point at the same host:port.
+	seenFP := make(map[string]int, len(cfg.Servers))
+	// seenAddr catches two servers that point at the same host:port.
 	// resolveTarget keys by PeerPk, so duplicate addresses don't cause a
 	// routing bug on their own — but they almost certainly mean the
-	// operator copied a cluster and forgot to change the instance, and
+	// operator copied a server and forgot to change the instance, and
 	// silently accepting that would mask a real config mistake.
 	type addrOrigin struct {
-		cluster  int
+		server   int
 		instance int
 	}
 	seenAddr := make(map[string]addrOrigin)
-	for i := range cfg.Clusters {
-		c := &cfg.Clusters[i]
-		if c.PublicKeyBase64 == "" {
-			return fmt.Errorf("relay: cluster #%d missing publicKeyBase64", i)
+	for i := range cfg.Servers {
+		c := &cfg.Servers[i]
+		if c.PubKeyBase64 == "" {
+			return fmt.Errorf("relay: server #%d missing publicKeyBase64", i)
 		}
-		fp, err := utils.PubKeyFingerprintFromBase64(c.PublicKeyBase64)
+		fp, err := utils.PubKeyFingerprintFromBase64(c.PubKeyBase64)
 		if err != nil {
-			return fmt.Errorf("relay: cluster #%d publicKeyBase64 invalid: %w", i, err)
+			return fmt.Errorf("relay: server #%d publicKeyBase64 invalid: %w", i, err)
 		}
 		if dup, ok := seenFP[fp]; ok {
-			return fmt.Errorf("relay: cluster #%d and #%d share the same publicKeyBase64 (fingerprint %s)", dup, i, fp)
+			return fmt.Errorf("relay: server #%d and #%d share the same publicKeyBase64 (fingerprint %s)", dup, i, fp)
 		}
 		seenFP[fp] = i
 
 		if len(c.Instances) == 0 {
-			return fmt.Errorf("relay: cluster #%d (fingerprint %s) has no [[cluster.instance]]", i, fp)
+			return fmt.Errorf("relay: server #%d (fingerprint %s) has no [[Servers.Instances]]", i, fp)
 		}
 		for j := range c.Instances {
 			inst := &c.Instances[j]
 			if inst.Host == "" {
-				return fmt.Errorf("relay: cluster #%d instance #%d missing host", i, j)
+				return fmt.Errorf("relay: server #%d instance #%d missing host", i, j)
 			}
 			if inst.Port <= 0 {
-				return fmt.Errorf("relay: cluster #%d instance #%d missing or invalid port", i, j)
+				return fmt.Errorf("relay: server #%d instance #%d missing or invalid port", i, j)
 			}
 			addr := fmt.Sprintf("%s:%d", inst.Host, inst.Port)
 			if dup, ok := seenAddr[addr]; ok {
-				return fmt.Errorf("relay: cluster #%d instance #%d address %s already claimed by cluster #%d instance #%d",
-					i, j, addr, dup.cluster, dup.instance)
+				return fmt.Errorf("relay: server #%d instance #%d address %s already claimed by server #%d instance #%d",
+					i, j, addr, dup.server, dup.instance)
 			}
-			seenAddr[addr] = addrOrigin{cluster: i, instance: j}
+			seenAddr[addr] = addrOrigin{server: i, instance: j}
 			if inst.Weight <= 0 {
 				inst.Weight = 1
 			}
@@ -241,7 +258,7 @@ func (cfg *Config) normalize() error {
 			// would silently degrade phase-2 load balancing to whatever
 			// the default policy is. Reject at load time so the operator
 			// hears about it now, not after a later upgrade.
-			return fmt.Errorf("relay: cluster #%d (fingerprint %s) loadBalance %q is not one of: %q, %q, %q",
+			return fmt.Errorf("relay: server #%d (fingerprint %s) loadBalance %q is not one of: %q, %q, %q",
 				i, fp, c.LoadBalance, LBRandom, LBWeightedRandom, LBRoundRobin)
 		}
 	}

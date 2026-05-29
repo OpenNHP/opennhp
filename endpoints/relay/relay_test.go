@@ -12,12 +12,12 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
 
-// withPicker is a test helper that wires a clusterRuntime's picker for
-// hand-built (i.e. non-buildCluster) cluster instances. Production code
-// only ever reaches clusterRuntime via buildCluster, which sets picker;
-// the tests construct clusters directly to assert per-scheme behavior,
+// withPicker is a test helper that wires a serverRuntime's picker for
+// hand-built (i.e. non-buildServer) server instances. Production code
+// only ever reaches serverRuntime via buildServer, which sets picker;
+// the tests construct servers directly to assert per-scheme behavior,
 // so they must mirror the same wiring.
-func withPicker(cr *clusterRuntime) *clusterRuntime {
+func withPicker(cr *serverRuntime) *serverRuntime {
 	cr.picker = loadbalance.NewPicker(cr.scheme, cr.instances)
 	return cr
 }
@@ -120,24 +120,24 @@ func TestRealClientAddr(t *testing.T) {
 	}
 }
 
-// newTestInstance constructs a clusterInstance with just enough state for
+// newTestInstance constructs a serverInstance with just enough state for
 // the pending-map/dispatch tests. Everything else (net, device, HTTP) is
 // left zero so these tests stay hermetic.
-func newTestInstance() *clusterInstance {
-	return &clusterInstance{
+func newTestInstance() *serverInstance {
+	return &serverInstance{
 		pendingRequests: make(map[uint64]map[string]chan []byte),
 	}
 }
 
-// newAddrInstance constructs a clusterInstance with a resolvable UDP addr,
+// newAddrInstance constructs a serverInstance with a resolvable UDP addr,
 // which the resolveTarget tests need so they can match by md.RemoteAddr.
-func newAddrInstance(t *testing.T, host string, port, weight int) *clusterInstance {
+func newAddrInstance(t *testing.T, host string, port, weight int) *serverInstance {
 	t.Helper()
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
 		t.Fatalf("resolve %s:%d: %v", host, port, err)
 	}
-	return &clusterInstance{
+	return &serverInstance{
 		host:            host,
 		port:            port,
 		weight:          weight,
@@ -151,9 +151,9 @@ func newAddrInstance(t *testing.T, host string, port, weight int) *clusterInstan
 // behavior and stays the same after lifting the multi-instance limit.
 func TestPickInstance_SingleInstance(t *testing.T) {
 	for _, scheme := range []LoadBalanceScheme{LBRandom, LBWeightedRandom, LBRoundRobin, "", "garbage"} {
-		cr := withPicker(&clusterRuntime{
+		cr := withPicker(&serverRuntime{
 			scheme:    scheme,
-			instances: []*clusterInstance{newAddrInstance(t, "10.0.0.1", 62206, 1)},
+			instances: []*serverInstance{newAddrInstance(t, "10.0.0.1", 62206, 1)},
 		})
 		for i := 0; i < 10; i++ {
 			if cr.pickInstance() != cr.instances[0] {
@@ -167,15 +167,15 @@ func TestPickInstance_SingleInstance(t *testing.T) {
 // in order. Deterministic, so we can assert an exact sequence rather than a
 // statistical bound.
 func TestPickInstance_RoundRobin(t *testing.T) {
-	cr := withPicker(&clusterRuntime{
+	cr := withPicker(&serverRuntime{
 		scheme: LBRoundRobin,
-		instances: []*clusterInstance{
+		instances: []*serverInstance{
 			newAddrInstance(t, "10.0.0.1", 62206, 1),
 			newAddrInstance(t, "10.0.0.2", 62206, 1),
 			newAddrInstance(t, "10.0.0.3", 62206, 1),
 		},
 	})
-	want := []*clusterInstance{cr.instances[0], cr.instances[1], cr.instances[2]}
+	want := []*serverInstance{cr.instances[0], cr.instances[1], cr.instances[2]}
 	// Two full cycles to confirm the cursor wraps cleanly.
 	for cycle := 0; cycle < 2; cycle++ {
 		for i, w := range want {
@@ -193,15 +193,15 @@ func TestPickInstance_RoundRobin(t *testing.T) {
 // is effectively impossible to flake on a working implementation — the
 // probability of missing one instance for that many picks is < 10^-176.
 func TestPickInstance_Random(t *testing.T) {
-	cr := withPicker(&clusterRuntime{
+	cr := withPicker(&serverRuntime{
 		scheme: LBRandom,
-		instances: []*clusterInstance{
+		instances: []*serverInstance{
 			newAddrInstance(t, "10.0.0.1", 62206, 1),
 			newAddrInstance(t, "10.0.0.2", 62206, 1),
 			newAddrInstance(t, "10.0.0.3", 62206, 1),
 		},
 	})
-	hit := make(map[*clusterInstance]int)
+	hit := make(map[*serverInstance]int)
 	for i := 0; i < 1000; i++ {
 		hit[cr.pickInstance()]++
 	}
@@ -219,16 +219,16 @@ func TestPickInstance_Random(t *testing.T) {
 // cumulative-weight loop) gets caught. The point of the test is the
 // invariant "weights actually influence distribution", not exact ratios.
 func TestPickInstance_WeightedRandom(t *testing.T) {
-	cr := withPicker(&clusterRuntime{
+	cr := withPicker(&serverRuntime{
 		scheme: LBWeightedRandom,
-		instances: []*clusterInstance{
+		instances: []*serverInstance{
 			newAddrInstance(t, "10.0.0.1", 62206, 1),
 			newAddrInstance(t, "10.0.0.2", 62206, 1),
 			newAddrInstance(t, "10.0.0.3", 62206, 10),
 		},
 	})
 	const samples = 5000
-	hit := make(map[*clusterInstance]int)
+	hit := make(map[*serverInstance]int)
 	for i := 0; i < samples; i++ {
 		hit[cr.pickInstance()]++
 	}
@@ -247,12 +247,12 @@ func TestPickInstance_WeightedRandom(t *testing.T) {
 	}
 }
 
-// TestPickInstance_EmptyCluster: 0 instances returns nil so handlers can
+// TestPickInstance_EmptyServer: 0 instances returns nil so handlers can
 // answer 503 without panicking.
-func TestPickInstance_EmptyCluster(t *testing.T) {
-	cr := withPicker(&clusterRuntime{scheme: LBRoundRobin})
+func TestPickInstance_EmptyServer(t *testing.T) {
+	cr := withPicker(&serverRuntime{scheme: LBRoundRobin})
 	if got := cr.pickInstance(); got != nil {
-		t.Fatalf("empty cluster must return nil, got %v", got)
+		t.Fatalf("empty server must return nil, got %v", got)
 	}
 }
 
@@ -264,30 +264,30 @@ func TestPickInstance_EmptyCluster(t *testing.T) {
 // (because the handler registered on instance A while dispatchSend sent
 // the packet from instance B's connection), and the handler times out.
 //
-// We construct a cluster of 3 instances using LBRandom (the picker that
+// We construct a server of 3 instances using LBRandom (the picker that
 // would most obviously mis-route on a re-pick) and assert that whichever
 // instance we put in md.RemoteAddr is what comes back, every time.
 func TestResolveTarget_UsesRemoteAddr(t *testing.T) {
 	pubKey, _ := pubKeyForTest()
-	cr := withPicker(&clusterRuntime{
-		id:     "cluster-x",
+	cr := withPicker(&serverRuntime{
+		id:     "server-x",
 		pubKey: pubKey,
 		scheme: LBRandom,
-		instances: []*clusterInstance{
+		instances: []*serverInstance{
 			newAddrInstance(t, "10.0.0.1", 62206, 1),
 			newAddrInstance(t, "10.0.0.2", 62206, 1),
 			newAddrInstance(t, "10.0.0.3", 62206, 1),
 		},
 	})
 	rs := &RelayServer{
-		clusters: map[string]*clusterRuntime{cr.id: cr},
+		servers: map[string]*serverRuntime{cr.id: cr},
 	}
 	// Override the fingerprint indexing: we don't actually compute it
-	// from pubKey here, we just register the cluster under its id and
+	// from pubKey here, we just register the server under its id and
 	// monkey-patch the map key to be the fingerprint resolveTarget will
 	// compute. Computing it via utils.PubKeyFingerprint keeps the test
 	// honest.
-	rs.clusters = map[string]*clusterRuntime{fingerprintForTest(pubKey): cr}
+	rs.servers = map[string]*serverRuntime{fingerprintForTest(pubKey): cr}
 
 	for _, want := range cr.instances {
 		md := &core.MsgData{
@@ -296,7 +296,7 @@ func TestResolveTarget_UsesRemoteAddr(t *testing.T) {
 		}
 		gotCR, gotInst := rs.resolveTarget(md)
 		if gotCR != cr {
-			t.Fatalf("resolveTarget returned wrong cluster: got %v want %v", gotCR, cr)
+			t.Fatalf("resolveTarget returned wrong server: got %v want %v", gotCR, cr)
 		}
 		if gotInst != want {
 			t.Fatalf("resolveTarget returned wrong instance for RemoteAddr=%s: got %s want %s",
@@ -306,21 +306,21 @@ func TestResolveTarget_UsesRemoteAddr(t *testing.T) {
 }
 
 // TestResolveTarget_UnknownAddr: an md.RemoteAddr that doesn't match any
-// instance in the cluster must return (cr, nil). dispatchSend then logs the
+// instance in the server must return (cr, nil). dispatchSend then logs the
 // drop with the actual addr for diagnosis — better than silently routing
 // to instances[0].
 func TestResolveTarget_UnknownAddr(t *testing.T) {
 	pubKey, _ := pubKeyForTest()
-	cr := withPicker(&clusterRuntime{
-		id:     "cluster-x",
+	cr := withPicker(&serverRuntime{
+		id:     "server-x",
 		pubKey: pubKey,
 		scheme: LBRandom,
-		instances: []*clusterInstance{
+		instances: []*serverInstance{
 			newAddrInstance(t, "10.0.0.1", 62206, 1),
 			newAddrInstance(t, "10.0.0.2", 62206, 1),
 		},
 	})
-	rs := &RelayServer{clusters: map[string]*clusterRuntime{fingerprintForTest(pubKey): cr}}
+	rs := &RelayServer{servers: map[string]*serverRuntime{fingerprintForTest(pubKey): cr}}
 
 	stranger, _ := net.ResolveUDPAddr("udp", "10.99.99.99:62206")
 	md := &core.MsgData{
@@ -329,7 +329,7 @@ func TestResolveTarget_UnknownAddr(t *testing.T) {
 	}
 	gotCR, gotInst := rs.resolveTarget(md)
 	if gotCR != cr {
-		t.Fatalf("expected cluster match by pubkey, got %v", gotCR)
+		t.Fatalf("expected server match by pubkey, got %v", gotCR)
 	}
 	if gotInst != nil {
 		t.Fatalf("expected nil instance for unknown addr, got %s", gotInst.addr)
@@ -347,8 +347,8 @@ func pubKeyForTest() ([]byte, string) {
 	return pk, fingerprintForTest(pk)
 }
 
-// fingerprintForTest computes the cluster-map key the same way resolveTarget
-// computes it from md.PeerPk. The test registers the cluster under this key
+// fingerprintForTest computes the server-map key the same way resolveTarget
+// computes it from md.PeerPk. The test registers the server under this key
 // so resolveTarget's lookup succeeds against the bytes from pubKeyForTest.
 func fingerprintForTest(pk []byte) string {
 	return utils.PubKeyFingerprint(pk)
@@ -357,7 +357,7 @@ func fingerprintForTest(pk []byte) string {
 // register mirrors what handleRelay does when a request arrives: insert a
 // buffered channel under (counter, realAddr). Returns the channel and a
 // cleanup func so callers can undo their registration.
-func register(inst *clusterInstance, counter uint64, realAddr string) (chan []byte, func()) {
+func register(inst *serverInstance, counter uint64, realAddr string) (chan []byte, func()) {
 	ch := make(chan []byte, 1)
 	inst.pendingMu.Lock()
 	waiters, ok := inst.pendingRequests[counter]

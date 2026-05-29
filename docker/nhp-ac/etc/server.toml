@@ -1,15 +1,19 @@
 # list the server peers for the AC under [[Servers]] table
 #
 # Each [[Servers]] entry is one logical nhp-server identity (one pubkey).
-# Endpoints lists every concrete address the AC should reach for that
-# identity; the AC fans NHP_AOL out to all of them so any one instance can
-# route a knock back to this AC. See endpoints/ac/main/etc/server.toml for
-# the full schema reference.
+# Same schema as nhp-agent/nhp-db: declare 1..N [[Servers.Instances]]
+# that share the entry's PubKeyBase64 and the AC fans NHP_AOL out to
+# every instance so any one of them can route a knock back to this AC.
+# See endpoints/ac/main/etc/server.toml for the full schema reference.
 
 [[Servers]]
 PubKeyBase64 = "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA=="
-Endpoints = [
-    "177.7.0.9:62206",  # nhp-server
-    "177.7.0.14:62206", # nhp-server-2 (same keypair, second instance)
-]
 ExpireTime = 1924991999
+
+  [[Servers.Instances]]
+  Ip = "177.7.0.9"   # nhp-server
+  Port = 62206
+
+  [[Servers.Instances]]
+  Ip = "177.7.0.14"  # nhp-server-2 (same keypair, second instance)
+  Port = 62206

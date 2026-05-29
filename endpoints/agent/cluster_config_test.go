@@ -186,14 +186,14 @@ func TestNormalize_RejectsBadScheme(t *testing.T) {
 // promise — accidentally flipping the default would change every
 // agent's cookie-handshake behaviour on upgrade.
 func TestStickyOrDefault(t *testing.T) {
-	if !(&ClusterConfig{}).stickyOrDefault() {
+	if !(&ClusterConfig{}).StickyOrDefault() {
 		t.Fatal("unset Sticky must default to true")
 	}
 	tr, fa := true, false
-	if !(&ClusterConfig{StickyInstance: &tr}).stickyOrDefault() {
+	if !(&ClusterConfig{StickyInstance: &tr}).StickyOrDefault() {
 		t.Fatal("explicit Sticky=true must round-trip")
 	}
-	if (&ClusterConfig{StickyInstance: &fa}).stickyOrDefault() {
+	if (&ClusterConfig{StickyInstance: &fa}).StickyOrDefault() {
 		t.Fatal("explicit Sticky=false must round-trip")
 	}
 }

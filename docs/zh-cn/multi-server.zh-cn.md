@@ -53,8 +53,8 @@ cookie = HMAC-SHA256(CookieSigningKey, remoteIP || agentStaticPubKey || windowIn
 
 | 类型 | 文件 | 说明 |
 | --- | --- | --- |
-| `ClusterConfig` | [cluster_config.go:24-39](../../endpoints/agent/cluster_config.go#L24-L39) | `server.toml` 中一个 `[[Servers]]` 块 |
-| `InstanceConfig` | [cluster_config.go:44-49](../../endpoints/agent/cluster_config.go#L44-L49) | 一条 `[[Servers.Instances]]` |
+| `ClusterConfig` | [clusterconfig.go](../../nhp/common/clusterconfig/clusterconfig.go) | 共享 TOML 结构——一个 `[[Servers]]` 块。nhp-agent 通过 type alias 重新导出为 `agent.ClusterConfig` |
+| `InstanceConfig` | 同上 | 一条 `[[Servers.Instances]]` |
 | `ServerCluster` | [cluster.go:48-90](../../endpoints/agent/cluster.go#L48-L90) | 运行时集群对象（含 picker、sticky 标志、`representativePeer`） |
 | `ServerInstance` | [cluster.go:11-46](../../endpoints/agent/cluster.go#L11-L46) | 一个物理实例；实现 `loadbalance.Weighted` |
 | `KnockTarget` | [udpagent.go:76-117](../../endpoints/agent/udpagent.go#L76-L117) | 资源 → 集群绑定 + 粘连状态（`chosenInstance`）+ cookie 暂存（`pendingCookie`） |
@@ -136,22 +136,32 @@ AC 端的"多实例"是 **运维拓扑**：同一台 AC 要同时为同一逻辑
 
 ![AC 多副本扇出拓扑](../images/multi-nhp-server/ac-multi-replica.png)
 
-### 2.2 配置：`Endpoints` 字段
+### 2.2 配置：共享的 `[[Servers.Instances]]` 结构
 
-[config.go:60-67](../../endpoints/ac/config.go#L60-L67) `ServerPeerEntry`：
+nhp-ac 与 nhp-agent 共用同一份 TOML schema——见 [nhp/common/clusterconfig/clusterconfig.go](../../nhp/common/clusterconfig/clusterconfig.go)：
 
 ```toml
 [[Servers]]
 PubKeyBase64 = "..."
-Endpoints = ["10.0.0.9:62206", "10.0.0.14:62206"]   # 优先
-# 或遗留单端点：
-# Hostname = "..."
+ExpireTime   = 1924991999
+
+  [[Servers.Instances]]
+  Ip   = "10.0.0.9"
+  Port = 62206
+
+  [[Servers.Instances]]
+  Ip   = "10.0.0.14"
+  Port = 62206
+
+# 遗留单实例形式（加载时自动升级，附带一条 deprecation 警告）：
+# [[Servers]]
+# Hostname = ""
 # Ip = "10.0.0.9"
 # Port = 62206
-ExpireTime = 1924991999
+# PubKeyBase64 = "..."
 ```
 
-[`expandServerPeers`](../../endpoints/ac/config.go#L97-L128) 把一条带 N 个 endpoint 的配置展开成 N 个 `core.UdpPeer`：pubkey 都一样，地址各异。结果放进 `serverPeerMap`，key 是 [`endpointKey`](../../endpoints/ac/config.go#L346-L348) = `PubKeyBase64 + "|" + ip:port`，保证同 pubkey 不同地址互不覆盖。
+[`normalizeAndExpand`](../../endpoints/ac/config.go) 先调用 `clusterconfig.Normalize`（包含遗留形态自动升级），再把每个集群的 Instances 展开成 N 个 `core.UdpPeer`：pubkey 都一样，地址各异。结果放进 `serverPeerMap`，key 是 [`endpointKey`](../../endpoints/ac/config.go) = `pk=<key>|host=<host>|ip=<ip>:<port>`，保证同 pubkey 不同地址互不覆盖。
 
 ### 2.3 流程图：AOL 同时发往所有 endpoint
 
@@ -197,9 +207,9 @@ flowchart TD
 
 | 类型 | 文件 | 说明 |
 | --- | --- | --- |
-| `Cluster` | [relay.go:45-56](../../endpoints/relay/relay.go#L45-L56) | TOML 集群配置 |
-| `clusterRuntime` | [relay.go:103-147](../../endpoints/relay/relay.go#L103-L147) | 运行时；持 picker、instances |
-| `clusterInstance` | [relay.go:73-101](../../endpoints/relay/relay.go#L73-L101) | 单实例；每实例独立 `pendingRequests` 关联表 |
+| `Server` | [config.go](../../endpoints/relay/config.go) | TOML `[[Servers]]` 块（一个逻辑 nhp-server 身份） |
+| `serverRuntime` | [relay.go](../../endpoints/relay/relay.go) | 运行时；持 picker、instances |
+| `serverInstance` | [relay.go](../../endpoints/relay/relay.go) | 单实例；每实例独立 `pendingRequests` 关联表 |
 
 ### 3.2 实例选择只发生一次
 
@@ -211,16 +221,16 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[HTTP POST /relay/CLUSTER_ID] --> B[按指纹查 clusterRuntime]
+    A[HTTP POST /relay/SERVER_ID] --> B[按指纹查 serverRuntime]
     B --> C[读取 inner NHP 包<br/>提取 counter, real client IP]
-    C --> D[cr.pickInstance<br/>—— 决定走哪个副本 ——]
+    C --> D[sr.pickInstance<br/>—— 决定走哪个副本 ——]
     D --> E["inst.pendingRequests<br/>counter+realIP = responseCh<br/>注册等待"]
-    E --> F[构造 MsgData<br/>RemoteAddr := inst.addr<br/>PeerPk := 集群 pubkey]
+    E --> F[构造 MsgData<br/>RemoteAddr := inst.addr<br/>PeerPk := server 的 pubkey]
     F --> G[a.sendMsgCh -> MsgData]
     G --> H[device 发到 inst.addr]
     H --> I[服务端副本回 NHP_RLY<br/>counter 不变]
     I --> J[inst 的 conn 收到响应]
-    J --> K["resolveTarget(md)<br/>按 PeerPk 找集群<br/>按 RemoteAddr 找 instance"]
+    J --> K["resolveTarget(md)<br/>按 PeerPk 找 server<br/>按 RemoteAddr 找 instance"]
     K --> L["从 inst.pendingRequests<br/>counter+realIP 取出 responseCh"]
     L --> M[HTTP handler 写回响应体]
 
@@ -232,9 +242,9 @@ flowchart TD
 
 ### 3.4 容错与配置校验
 
-- **重复 pubkey** 跨集群：[normalize](../../endpoints/relay/relay.go#L187-L210) 拒绝（指纹冲突会导致 `resolveTarget` 无法唯一定位）。
-- **重复 host:port** 跨集群：同样拒绝（响应回包没法判定属于哪个集群）。
-- **picker 为 nil**：[pickInstance](../../endpoints/relay/relay.go#L131-L147) 防御性返回 `instances[0]`，仅在测试绕过 `buildCluster` 时触发。
+- **重复 pubkey** 跨条目：[normalize](../../endpoints/relay/config.go) 拒绝（指纹冲突会导致 `resolveTarget` 无法唯一定位）。
+- **重复 host:port** 跨条目：同样拒绝（响应回包没法判定属于哪个 server）。
+- **picker 为 nil**：[pickInstance](../../endpoints/relay/relay.go) 防御性返回 `instances[0]`，仅在测试绕过 `buildServer` 时触发。
 - **md.RemoteAddr 为空**：单实例时返回该唯一实例；多实例时拒绝（不猜，明确报路由错误）。
 
 ---
@@ -250,8 +260,8 @@ flowchart TD
 | Agent Exit | 同上 | 复用 KNK 的 pin | 同上 |
 | AC AOL | 无（fan-out） | N/A | 一实例一 goroutine |
 | AC AOP→ART | 无（按来源连接回写） | N/A | UDP 连接本身 |
-| Relay HTTP→UDP | [`clusterRuntime.pickInstance`](../../endpoints/relay/relay.go#L131-L147) | 每请求选一次 | `md.RemoteAddr`（pin） |
-| Relay UDP→HTTP | [`resolveTarget`](../../endpoints/relay/relay.go#L640-L686) | 不重选，读 pin | 来自上面 pin |
+| Relay HTTP→UDP | [`serverRuntime.pickInstance`](../../endpoints/relay/relay.go) | 每请求选一次 | `md.RemoteAddr`（pin） |
+| Relay UDP→HTTP | [`resolveTarget`](../../endpoints/relay/relay.go) | 不重选，读 pin | 来自上面 pin |
 
 ### 4.2 Cookie 行为对照
 
@@ -268,8 +278,8 @@ flowchart TD
 | --- | --- | --- |
 | Agent | `server.toml` | `PubKeyBase64`, `LoadBalance`, `StickyInstance`, `[[Servers.Instances]]` |
 | Agent | `resource.toml` | `Cluster`（引用 `server.toml` 的 Name）—— 必填；SDK 调用方可改用 `ServerPubKey` |
-| AC | `server.toml` | `PubKeyBase64`, `Endpoints = ["ip:port", ...]` |
-| Relay | `config.toml` | `[[Clusters]]` + `LoadBalance` + `[[Clusters.Instances]]` |
+| AC | `server.toml` | `PubKeyBase64`, `[[Servers.Instances]]`（与 agent 同 schema） |
+| Relay | `config.toml` | `[[Servers]]` + `LoadBalance` + `[[Servers.Instances]]`（与 agent 同 schema） |
 | Server（前置依赖） | `config.toml` | `CookieSigningKeyBase64`, `CookieTimeWindowSeconds` |
 
 ### 4.4 运维 checklist
@@ -278,7 +288,7 @@ flowchart TD
 
 1. 所有 nhp-server 副本 **同一 pubkey/私钥** —— 集群身份必须一致。
 2. 所有副本 `CookieSigningKeyBase64` **完全相同** —— 否则跨副本握手失败（默认随机生成会出问题）。
-3. AC 的 `[[Servers]]` 已用 `Endpoints` 列出所有副本地址。
-4. Relay 的 `[[Clusters.Instances]]` 已列出所有副本；负载均衡策略与 Agent 一致更便于排查。
+3. AC 的 `[[Servers]]` 已用 `[[Servers.Instances]]` 列出所有副本。
+4. Relay 的 `[[Servers.Instances]]` 已列出所有副本；负载均衡策略与 Agent 一致更便于排查。
 5. Agent 端 `StickyInstance` 与服务端的 cookie 共享情况匹配（共享 → 可设 false；不共享 → 必须 true）。
 6. Resources 通过名字绑定集群（`Cluster = "<server.toml Name>"`）；公钥 rotate 时只动 `server.toml`，`resource.toml` 不需要修改。

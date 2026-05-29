@@ -2,7 +2,7 @@
 # Bridges browser HTTPS clients to the UDP NHP Server using standard NHP protocol.
 #
 # ⚠️  LOCAL DOCKER-COMPOSE DEMO ONLY ⚠️
-# The privateKeyBase64 and cluster publicKeyBase64 values below are
+# The privateKeyBase64 and the upstream PubKeyBase64 values below are
 # PUBLIC demo keys that paired with the other docker/*/etc/config.toml
 # files. They are intentionally committed so `docker-compose up` works
 # out of the box. DO NOT REUSE THEM IN ANY DEPLOYMENT THAT IS REACHABLE
@@ -26,8 +26,8 @@ tlsCertFile = ""
 tlsKeyFile  = ""
 
 # Cipher scheme: 0 = Curve25519 (default), 1 = SM2/GMSM.
-# Must match the key type used in privateKeyBase64 and the cluster
-# publicKeyBase64 values below.
+# Must match the key type used in privateKeyBase64 and the upstream
+# PubKeyBase64 values below.
 cipherScheme = 1
 
 # Relay identity key — MUST be set before starting.
@@ -46,34 +46,39 @@ udpTimeoutMs   = 5000
 logLevel = 2
 
 # ────────────────────────────────────────────────────────────────────────
-# Upstream NHP-Server clusters
+# Upstream NHP-Server entries
 # ────────────────────────────────────────────────────────────────────────
 #
-# Each [[cluster]] describes one logical nhp-server identity, addressed by
-# the 11-char SHA-256 fingerprint of its publicKeyBase64. Browser clients
-# reach a cluster via:
-#   POST /relay/<clusterId>
-# where <clusterId> is printed at startup ("Cluster: <id> <name>") and is
-# also exposed by GET /clusters for runtime discovery.
+# Each [[Servers]] entry describes one logical nhp-server identity
+# (one pubkey), addressed by the 11-char SHA-256 fingerprint of its
+# PubKeyBase64. Browser clients reach a server via:
+#   POST /relay/<serverId>
+# where <serverId> is printed at startup ("Server: <id> <name>") and is
+# also exposed by GET /servers for runtime discovery.
 #
-# One [[cluster]] can declare multiple [[cluster.instance]] entries that
-# share the cluster's publicKeyBase64 (same ECDH keypair on the back-end
-# nhp-server processes). loadBalance picks one of them per HTTP request:
+# One [[Servers]] can declare multiple [[Servers.Instances]] that share
+# the entry's PubKeyBase64 (same ECDH keypair on the back-end nhp-server
+# processes). LoadBalance picks one of them per HTTP request:
 #   "round-robin"     — strict cycling, easy to verify in logs
 #   "random"          — uniform random
-#   "weighted-random" — random weighted by each instance's weight field
+#   "weighted-random" — random weighted by each instance's Weight field
+#
+# Schema is identical to nhp-agent/nhp-ac/nhp-db's server.toml — the
+# same block can be copied across peer tables. See
+# nhp/common/clusterconfig for the canonical reference.
 
-[[cluster]]
-name            = "demo"
-publicKeyBase64 = "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA=="
-loadBalance     = "round-robin"
+[[Servers]]
+Name         = "demo"
+PubKeyBase64 = "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA=="
+LoadBalance  = "round-robin"
+ExpireTime   = 1924991999
 
-  [[cluster.instance]]
-  host   = "177.7.0.9"   # nhp-server
-  port   = 62206
-  weight = 1
+  [[Servers.Instances]]
+  Host   = "177.7.0.9"   # nhp-server
+  Port   = 62206
+  Weight = 1
 
-  [[cluster.instance]]
-  host   = "177.7.0.14"  # nhp-server-2 (same keypair, second instance)
-  port   = 62206
-  weight = 1
+  [[Servers.Instances]]
+  Host   = "177.7.0.14"  # nhp-server-2 (same keypair, second instance)
+  Port   = 62206
+  Weight = 1

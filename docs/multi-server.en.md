@@ -53,8 +53,8 @@ cookie = HMAC-SHA256(CookieSigningKey, remoteIP || agentStaticPubKey || windowIn
 
 | Type | File | Purpose |
 | --- | --- | --- |
-| `ClusterConfig` | [cluster_config.go:24-39](../endpoints/agent/cluster_config.go#L24-L39) | One `[[Servers]]` block in `server.toml` |
-| `InstanceConfig` | [cluster_config.go:44-49](../endpoints/agent/cluster_config.go#L44-L49) | One `[[Servers.Instances]]` |
+| `ClusterConfig` | [clusterconfig.go](../nhp/common/clusterconfig/clusterconfig.go) | Shared TOML shape — one `[[Servers]]` block in `server.toml`. nhp-agent re-exports as `agent.ClusterConfig` |
+| `InstanceConfig` | same | One `[[Servers.Instances]]` |
 | `ServerCluster` | [cluster.go:48-90](../endpoints/agent/cluster.go#L48-L90) | Runtime cluster (picker, sticky flag, `representativePeer`) |
 | `ServerInstance` | [cluster.go:11-46](../endpoints/agent/cluster.go#L11-L46) | One physical instance; implements `loadbalance.Weighted` |
 | `KnockTarget` | [udpagent.go:76-117](../endpoints/agent/udpagent.go#L76-L117) | Resource→cluster binding + sticky state (`chosenInstance`) + cookie stash (`pendingCookie`) |
@@ -136,22 +136,32 @@ For AC, "multi-instance" is an **operational topology**: one AC must serve every
 
 ![AC multi-replica fan-out topology](images/multi-nhp-server/ac-multi-replica.png)
 
-### 2.2 Config: `Endpoints` field
+### 2.2 Config: shared `[[Servers.Instances]]` schema
 
-[config.go:60-67](../endpoints/ac/config.go#L60-L67) `ServerPeerEntry`:
+nhp-ac loads the same TOML shape as nhp-agent — see [nhp/common/clusterconfig/clusterconfig.go](../nhp/common/clusterconfig/clusterconfig.go):
 
 ```toml
 [[Servers]]
 PubKeyBase64 = "..."
-Endpoints = ["10.0.0.9:62206", "10.0.0.14:62206"]   # preferred
-# or legacy single-endpoint form:
-# Hostname = "..."
+ExpireTime   = 1924991999
+
+  [[Servers.Instances]]
+  Ip   = "10.0.0.9"
+  Port = 62206
+
+  [[Servers.Instances]]
+  Ip   = "10.0.0.14"
+  Port = 62206
+
+# Legacy single-instance form (auto-upgraded with deprecation warning):
+# [[Servers]]
+# Hostname = ""
 # Ip = "10.0.0.9"
 # Port = 62206
-ExpireTime = 1924991999
+# PubKeyBase64 = "..."
 ```
 
-[`expandServerPeers`](../endpoints/ac/config.go#L97-L128) fans one entry with N endpoints into N `core.UdpPeer` rows: same pubkey, distinct addresses. Results go into `serverPeerMap` keyed by [`endpointKey`](../endpoints/ac/config.go#L346-L348) = `PubKeyBase64 + "|" + ip:port`, so endpoints sharing a pubkey don't overwrite each other.
+[`normalizeAndExpand`](../endpoints/ac/config.go) runs `clusterconfig.Normalize` (which handles the legacy auto-upgrade) and then fans each cluster's Instances into one `core.UdpPeer` row per instance: same pubkey, distinct addresses. Results go into `serverPeerMap` keyed by [`endpointKey`](../endpoints/ac/config.go) = `pk=<key>|host=<host>|ip=<ip>:<port>`, so instances sharing a pubkey don't overwrite each other.
 
 ### 2.3 Flow: AOL fans out to every endpoint
 
@@ -197,9 +207,9 @@ When some replica sends `NHP_AOP`:
 
 | Type | File | Purpose |
 | --- | --- | --- |
-| `Cluster` | [relay.go:45-56](../endpoints/relay/relay.go#L45-L56) | TOML cluster config |
-| `clusterRuntime` | [relay.go:103-147](../endpoints/relay/relay.go#L103-L147) | Runtime; owns picker + instances |
-| `clusterInstance` | [relay.go:73-101](../endpoints/relay/relay.go#L73-L101) | One instance; each holds its own `pendingRequests` correlation map |
+| `Server` | [config.go](../endpoints/relay/config.go) | TOML `[[Servers]]` block (one logical nhp-server identity) |
+| `serverRuntime` | [relay.go](../endpoints/relay/relay.go) | Runtime; owns picker + instances |
+| `serverInstance` | [relay.go](../endpoints/relay/relay.go) | One physical instance; each holds its own `pendingRequests` correlation map |
 
 ### 3.2 Instance selection happens exactly once
 
@@ -211,16 +221,16 @@ Relay bridges HTTP → UDP; the UDP response must come back through the instance
 
 ```mermaid
 flowchart TD
-    A[HTTP POST /relay/CLUSTER_ID] --> B[look up clusterRuntime by fingerprint]
+    A[HTTP POST /relay/SERVER_ID] --> B[look up serverRuntime by fingerprint]
     B --> C[read inner NHP packet<br/>extract counter, real client IP]
-    C --> D[cr.pickInstance<br/>—— which replica? ——]
+    C --> D[sr.pickInstance<br/>—— which replica? ——]
     D --> E["inst.pendingRequests<br/>counter+realIP = responseCh"]
-    E --> F[build MsgData<br/>RemoteAddr := inst.addr<br/>PeerPk := cluster pubkey]
+    E --> F[build MsgData<br/>RemoteAddr := inst.addr<br/>PeerPk := server pubkey]
     F --> G[a.sendMsgCh -> MsgData]
     G --> H[device sends to inst.addr]
     H --> I[server replica replies NHP_RLY<br/>same counter]
     I --> J[response arrives on inst's conn]
-    J --> K["resolveTarget(md)<br/>cluster lookup by PeerPk<br/>instance lookup by RemoteAddr"]
+    J --> K["resolveTarget(md)<br/>server lookup by PeerPk<br/>instance lookup by RemoteAddr"]
     K --> L["pull responseCh from<br/>inst.pendingRequests[counter+realIP]"]
     L --> M[HTTP handler writes response body]
 
@@ -232,10 +242,10 @@ flowchart TD
 
 ### 3.4 Resilience & config validation
 
-- **Duplicate pubkey across clusters**: [normalize](../endpoints/relay/relay.go#L187-L210) rejects (fingerprint collision would make `resolveTarget` ambiguous).
-- **Duplicate host:port across clusters**: also rejected (the response wouldn't tell us which cluster it belongs to).
-- **nil picker**: [pickInstance](../endpoints/relay/relay.go#L131-L147) defensively falls back to `instances[0]`; only reachable from tests that bypass `buildCluster`.
-- **nil md.RemoteAddr**: single-instance cluster returns the lone instance; multi-instance refuses (don't guess — surface the routing bug).
+- **Duplicate pubkey across servers**: [normalize](../endpoints/relay/config.go) rejects (fingerprint collision would make `resolveTarget` ambiguous).
+- **Duplicate host:port across servers**: also rejected (the response wouldn't tell us which server it belongs to).
+- **nil picker**: [pickInstance](../endpoints/relay/relay.go) defensively falls back to `instances[0]`; only reachable from tests that bypass `buildServer`.
+- **nil md.RemoteAddr**: single-instance server returns the lone instance; multi-instance refuses (don't guess — surface the routing bug).
 
 ---
 
@@ -250,8 +260,8 @@ flowchart TD
 | Agent Exit | same | reuses KNK pin | same |
 | AC AOL | none (fan-out) | N/A | one goroutine per instance |
 | AC AOP→ART | none (reply on arriving conn) | N/A | the UDP connection itself |
-| Relay HTTP→UDP | [`clusterRuntime.pickInstance`](../endpoints/relay/relay.go#L131-L147) | one pick per request | `md.RemoteAddr` (pin) |
-| Relay UDP→HTTP | [`resolveTarget`](../endpoints/relay/relay.go#L640-L686) | reads pin, no re-pick | derived from pin above |
+| Relay HTTP→UDP | [`serverRuntime.pickInstance`](../endpoints/relay/relay.go) | one pick per request | `md.RemoteAddr` (pin) |
+| Relay UDP→HTTP | [`resolveTarget`](../endpoints/relay/relay.go) | reads pin, no re-pick | derived from pin above |
 
 ### 4.2 Cookie behavior
 
@@ -268,8 +278,8 @@ flowchart TD
 | --- | --- | --- |
 | Agent | `server.toml` | `PubKeyBase64`, `LoadBalance`, `StickyInstance`, `[[Servers.Instances]]` |
 | Agent | `resource.toml` | `Cluster` (cluster name from `server.toml`) — required unless a programmatic caller sets `ServerPubKey` |
-| AC | `server.toml` | `PubKeyBase64`, `Endpoints = ["ip:port", ...]` |
-| Relay | `config.toml` | `[[Clusters]]` + `LoadBalance` + `[[Clusters.Instances]]` |
+| AC | `server.toml` | `PubKeyBase64`, `[[Servers.Instances]]` (same schema as agent) |
+| Relay | `config.toml` | `[[Servers]]` + `LoadBalance` + `[[Servers.Instances]]` (same schema as agent) |
 | Server (prerequisite) | `config.toml` | `CookieSigningKeyBase64`, `CookieTimeWindowSeconds` |
 
 ### 4.4 Operator checklist
@@ -278,7 +288,7 @@ Before deploying a cluster, confirm:
 
 1. All nhp-server replicas share **the same pubkey/privkey** — the cluster identity is one keypair.
 2. All replicas share **exactly the same** `CookieSigningKeyBase64` — otherwise cross-replica handshake fails (the default random-per-process key will break clusters).
-3. AC's `[[Servers]]` lists every replica address under `Endpoints`.
-4. Relay's `[[Clusters.Instances]]` lists every replica; matching the agent's load-balance scheme makes diagnosis simpler.
+3. AC's `[[Servers]]` lists every replica under `[[Servers.Instances]]`.
+4. Relay's `[[Servers.Instances]]` lists every replica; matching the agent's load-balance scheme makes diagnosis simpler.
 5. Agent's `StickyInstance` matches what the server side actually supports (shared cookie keys → safe to set false; not shared → must stay true).
 6. Resources bind to clusters by name (`Cluster = "<server.toml Name>"`); pubkey rotation only touches `server.toml`, never `resource.toml`.

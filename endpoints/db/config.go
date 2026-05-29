@@ -8,6 +8,7 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 
+	"github.com/OpenNHP/opennhp/nhp/common/clusterconfig"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
@@ -30,8 +31,15 @@ type Config struct {
 	DbId                string `json:"dbId"`
 }
 
+// Peers is the top-level shape of server.toml. Each entry is one
+// logical nhp-server identity (one pubkey) reachable at 1..N instances
+// — same schema as nhp-agent's and nhp-ac's server.toml (see
+// nhp/common/clusterconfig). nhp-db only ever talks to a single
+// instance per cluster today, so LoadBalance / StickyInstance are
+// loaded but ignored; the schema is shared so operators don't need a
+// per-daemon dialect.
 type Peers struct {
-	Servers []*core.UdpPeer
+	Servers []*clusterconfig.ClusterConfig
 }
 
 type Resources struct {
@@ -141,14 +149,41 @@ func (a *UdpDevice) updateServerPeers(file string) (err error) {
 
 	// update
 	var peers Peers
-	serverPeerMap := make(map[string]*core.UdpPeer)
 	if err := toml.Unmarshal(content, &peers); err != nil {
 		log.Error("failed to unmarshal server config: %v", err)
 	}
-	for _, p := range peers.Servers {
-		p.Type = core.NHP_DB
-		a.device.AddPeer(p)
-		serverPeerMap[p.PublicKeyBase64()] = p
+	// Normalize first so legacy single-server entries (Ip/Port at the
+	// top level) auto-upgrade to a single-instance cluster. nhp-db
+	// only ever picks one instance per cluster, so LoadBalance and
+	// StickyInstance are loaded but unused — the shared schema lets
+	// nhp-db, nhp-ac, and nhp-agent take the same TOML.
+	if nerr := clusterconfig.Normalize(peers.Servers, clusterconfig.Options{
+		ConsumerLabel: "db",
+		RequireName:   false,
+	}, log.Warning); nerr != nil {
+		log.Error("invalid server.toml: %v", nerr)
+		return nerr
+	}
+
+	serverPeerMap := make(map[string]*core.UdpPeer)
+	for _, c := range peers.Servers {
+		// One UdpPeer per (pubkey, address). nhp-db's serverPeerMap is
+		// keyed by pubkey alone — if a cluster declares multiple
+		// instances, the later one wins. That's fine: nhp-db only
+		// needs one reachable address per identity, and the others
+		// stay as failover candidates the operator can swap in.
+		for _, inst := range c.Instances {
+			p := &core.UdpPeer{
+				PubKeyBase64: c.PubKeyBase64,
+				Hostname:     inst.Host,
+				Ip:           inst.Ip,
+				Port:         inst.Port,
+				ExpireTime:   c.ExpireTime,
+				Type:         core.NHP_DB,
+			}
+			a.device.AddPeer(p)
+			serverPeerMap[p.PublicKeyBase64()] = p
+		}
 	}
 
 	// remove old peers from device

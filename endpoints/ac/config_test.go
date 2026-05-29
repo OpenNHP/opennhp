@@ -1,25 +1,28 @@
 package ac
 
 import (
+	"strings"
 	"testing"
 
 	toml "github.com/pelletier/go-toml/v2"
 
+	"github.com/OpenNHP/opennhp/nhp/common/clusterconfig"
 	"github.com/OpenNHP/opennhp/nhp/core"
 )
 
-// TestExpandServerPeers_LegacySingleEndpoint covers the pre-2A schema: a
-// single [[Servers]] entry with Ip+Port produces exactly one UdpPeer with
-// those fields preserved. Existing deployments must continue to load.
-func TestExpandServerPeers_LegacySingleEndpoint(t *testing.T) {
-	entries := []ServerPeerEntry{{
+// TestNormalizeAndExpand_LegacySingleEndpoint covers the pre-cluster
+// schema: a single [[Servers]] entry with Ip+Port produces exactly one
+// UdpPeer with those fields preserved. Existing deployments must
+// continue to load — that's the whole point of keeping the legacy
+// auto-upgrade path inside clusterconfig.Normalize.
+func TestNormalizeAndExpand_LegacySingleEndpoint(t *testing.T) {
+	entries := []*clusterconfig.ClusterConfig{{
 		PubKeyBase64: "ABC=",
-		Hostname:     "",
 		Ip:           "192.168.0.1",
 		Port:         62206,
 		ExpireTime:   1924991999,
 	}}
-	peers, err := expandServerPeers(entries)
+	peers, err := normalizeAndExpand(entries)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -32,15 +35,15 @@ func TestExpandServerPeers_LegacySingleEndpoint(t *testing.T) {
 	}
 }
 
-// TestExpandServerPeers_LegacyHostname: Hostname-only entry (DNS path)
+// TestNormalizeAndExpand_LegacyHostname: Hostname-only entry (DNS path)
 // preserves the Hostname field so core.ResolveHost() can resolve later.
-func TestExpandServerPeers_LegacyHostname(t *testing.T) {
-	entries := []ServerPeerEntry{{
+func TestNormalizeAndExpand_LegacyHostname(t *testing.T) {
+	entries := []*clusterconfig.ClusterConfig{{
 		PubKeyBase64: "ABC=",
 		Hostname:     "server.example.com",
 		Port:         62206,
 	}}
-	peers, err := expandServerPeers(entries)
+	peers, err := normalizeAndExpand(entries)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -52,16 +55,21 @@ func TestExpandServerPeers_LegacyHostname(t *testing.T) {
 	}
 }
 
-// TestExpandServerPeers_EndpointsFanOut: the new Endpoints field expands
-// to N UdpPeer rows sharing a pubkey. This is the property that lets an AC
-// register with N nhp-server instances behind one logical identity.
-func TestExpandServerPeers_EndpointsFanOut(t *testing.T) {
-	entries := []ServerPeerEntry{{
+// TestNormalizeAndExpand_InstancesFanOut: the structured [[Instances]]
+// form expands to N UdpPeer rows sharing a pubkey. This is the property
+// that lets an AC register (AOL) with N nhp-server instances behind one
+// logical identity.
+func TestNormalizeAndExpand_InstancesFanOut(t *testing.T) {
+	entries := []*clusterconfig.ClusterConfig{{
 		PubKeyBase64: "ABC=",
-		Endpoints:    []string{"10.0.0.1:62206", "10.0.0.2:62206", "10.0.0.3:62206"},
 		ExpireTime:   1924991999,
+		Instances: []clusterconfig.InstanceConfig{
+			{Ip: "10.0.0.1", Port: 62206},
+			{Ip: "10.0.0.2", Port: 62206},
+			{Ip: "10.0.0.3", Port: 62206},
+		},
 	}}
-	peers, err := expandServerPeers(entries)
+	peers, err := normalizeAndExpand(entries)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,97 +99,78 @@ func TestExpandServerPeers_EndpointsFanOut(t *testing.T) {
 	}
 }
 
-// TestExpandServerPeers_EndpointsOverrideLegacy: when both Endpoints and
-// the legacy Ip/Port are set, Endpoints wins. This must hold so a partial
-// migration cannot silently mix two sources of truth.
-func TestExpandServerPeers_EndpointsOverrideLegacy(t *testing.T) {
-	entries := []ServerPeerEntry{{
+// TestNormalizeAndExpand_RejectsMixedForms: setting BOTH top-level
+// Ip/Port AND [[Servers.Instances]] in the same entry is almost
+// certainly an incomplete migration — fail load rather than guessing
+// which form wins. This is what blocks a partial upgrade from silently
+// dropping one source of truth.
+func TestNormalizeAndExpand_RejectsMixedForms(t *testing.T) {
+	entries := []*clusterconfig.ClusterConfig{{
 		PubKeyBase64: "ABC=",
 		Ip:           "1.1.1.1",
 		Port:         9999,
-		Endpoints:    []string{"10.0.0.1:62206"},
+		Instances:    []clusterconfig.InstanceConfig{{Ip: "10.0.0.1", Port: 62206}},
 	}}
-	peers, err := expandServerPeers(entries)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(peers) != 1 {
-		t.Fatalf("want 1 peer, got %d", len(peers))
-	}
-	if peers[0].Ip != "10.0.0.1" || peers[0].Port != 62206 {
-		t.Fatalf("legacy fields leaked through: %+v", peers[0])
-	}
-}
-
-// TestExpandServerPeers_InvalidEndpointSkipped: malformed endpoint entries
-// are skipped (not fatal) so one typo doesn't block the rest from loading.
-// One bad endpoint inside an otherwise-valid entry must not trip the
-// all-endpoints-invalid fail-close path.
-func TestExpandServerPeers_InvalidEndpointSkipped(t *testing.T) {
-	entries := []ServerPeerEntry{{
-		PubKeyBase64: "ABC=",
-		Endpoints:    []string{"not-a-valid-endpoint", "10.0.0.2:62206"},
-	}}
-	peers, err := expandServerPeers(entries)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(peers) != 1 {
-		t.Fatalf("want 1 peer (the valid one), got %d", len(peers))
-	}
-	if peers[0].Ip != "10.0.0.2" {
-		t.Fatalf("kept the wrong endpoint: %+v", peers[0])
-	}
-}
-
-// TestExpandServerPeers_AllEndpointsInvalidFailsClosed fences the silent-
-// cluster-drop regression. Before the fix, an entry whose Endpoints list
-// was fully malformed produced *zero* peers for that pubkey, left a single
-// log.Critical line behind, and let configuration loading complete — so
-// the device's peerMap had no entry for the cluster and AOL/AOP traffic
-// silently went to the "unknown peer" branch with no actionable signal.
-//
-// The fix: surface an error from expandServerPeers so callers can
-// fail-close (initial load aborts, reload/etcd keeps the running peer
-// table). nil peers + non-nil err is the contract — partial peer lists
-// on error would re-introduce the hole this test guards against.
-func TestExpandServerPeers_AllEndpointsInvalidFailsClosed(t *testing.T) {
-	entries := []ServerPeerEntry{{
-		PubKeyBase64: "ABC=",
-		Endpoints:    []string{"not-a-valid-endpoint", "also-bad", ""},
-	}}
-	peers, err := expandServerPeers(entries)
+	peers, err := normalizeAndExpand(entries)
 	if err == nil {
-		t.Fatalf("expected error when every endpoint in an entry is invalid; got peers=%+v", peers)
+		t.Fatalf("expected error for mixed legacy + Instances form; got peers=%+v", peers)
 	}
 	if peers != nil {
-		t.Fatalf("on error the peers slice must be nil so callers can fail-close — partial lists silently drop other entries; got %d peers", len(peers))
+		t.Fatalf("on error the peers slice must be nil so callers can fail-close; got %d peers", len(peers))
 	}
 }
 
-// TestExpandServerPeers_AllBadAbortsOtherwiseValidEntries documents the
-// fail-close *scope*: one entry with all-invalid endpoints aborts the
-// whole config, including other entries that would have parsed fine. The
-// alternative (return the good entries + an error) was rejected because
-// it lets the operator believe a reload succeeded while a cluster they
-// didn't notice was silently dropped — exactly the failure mode this
-// fix exists to eliminate.
-func TestExpandServerPeers_AllBadAbortsOtherwiseValidEntries(t *testing.T) {
-	entries := []ServerPeerEntry{
-		{PubKeyBase64: "GOOD=", Endpoints: []string{"10.0.0.1:62206"}},
-		{PubKeyBase64: "BAD=", Endpoints: []string{"not-a-valid-endpoint"}},
-	}
-	peers, err := expandServerPeers(entries)
+// TestNormalizeAndExpand_RejectsEmpty: a [[Servers]] entry with no
+// instances and no legacy fields is structurally useless — fail load
+// rather than booting an AC that silently can't reach any server.
+func TestNormalizeAndExpand_RejectsEmpty(t *testing.T) {
+	entries := []*clusterconfig.ClusterConfig{{PubKeyBase64: "ABC="}}
+	peers, err := normalizeAndExpand(entries)
 	if err == nil {
-		t.Fatalf("expected error when one entry has all-invalid endpoints; got peers=%+v", peers)
+		t.Fatalf("expected error for empty entry; got peers=%+v", peers)
 	}
 	if peers != nil {
-		t.Fatalf("on error the peers slice must be nil — returning the GOOD entry alongside an error would invite callers to apply a partial config; got %d peers", len(peers))
+		t.Fatalf("on error the peers slice must be nil; got %d peers", len(peers))
 	}
 }
 
-// TestLegacyTomlStillParses guards that a pre-2A server.toml format still
-// unmarshals through the new Peers wrapper without operator changes.
+// TestNormalizeAndExpand_RejectsBadPort: instance with zero port surfaces
+// at load. AOL fan-out with port=0 would send to :0 silently.
+func TestNormalizeAndExpand_RejectsBadPort(t *testing.T) {
+	entries := []*clusterconfig.ClusterConfig{{
+		PubKeyBase64: "ABC=",
+		Instances:    []clusterconfig.InstanceConfig{{Ip: "10.0.0.1", Port: 0}},
+	}}
+	_, err := normalizeAndExpand(entries)
+	if err == nil {
+		t.Fatal("expected error for invalid Port=0")
+	}
+}
+
+// TestNormalizeAndExpand_RejectsDuplicatePubKey: two clusters with the
+// same pubkey race for the same slot in device.peerMap. Catch it at
+// load — the runtime symptom would be "one cluster silently
+// disappears" which is much harder to diagnose.
+func TestNormalizeAndExpand_RejectsDuplicatePubKey(t *testing.T) {
+	entries := []*clusterconfig.ClusterConfig{
+		{
+			PubKeyBase64: "samekey",
+			Instances:    []clusterconfig.InstanceConfig{{Ip: "10.0.0.1", Port: 62206}},
+		},
+		{
+			PubKeyBase64: "samekey",
+			Instances:    []clusterconfig.InstanceConfig{{Ip: "10.0.0.2", Port: 62206}},
+		},
+	}
+	_, err := normalizeAndExpand(entries)
+	if err == nil || !strings.Contains(err.Error(), "samekey") {
+		t.Fatalf("normalize must reject duplicate PubKeyBase64, got: %v", err)
+	}
+}
+
+// TestLegacyTomlStillParses guards that the pre-cluster on-disk format
+// still unmarshals + normalizes cleanly. Existing single-server AC
+// deployments must keep loading without operator edits.
 func TestLegacyTomlStillParses(t *testing.T) {
 	legacy := `
 [[Servers]]
@@ -198,31 +187,38 @@ ExpireTime = 1924991999
 	if len(peers.Servers) != 1 {
 		t.Fatalf("want 1 entry, got %d", len(peers.Servers))
 	}
-	e := peers.Servers[0]
-	if e.PubKeyBase64 != "WqJxe+Z4+wLen3VRgZx6YnbjvJFmptz99zkONCt/7gc=" {
-		t.Fatalf("pubkey not parsed: %+v", e)
+	expanded, err := normalizeAndExpand(peers.Servers)
+	if err != nil {
+		t.Fatalf("legacy toml normalize: %v", err)
 	}
-	if e.Ip != "192.168.80.35" || e.Port != 62206 {
-		t.Fatalf("legacy endpoint not parsed: %+v", e)
+	if len(expanded) != 1 {
+		t.Fatalf("want 1 expanded peer, got %d", len(expanded))
 	}
-	if len(e.Endpoints) != 0 {
-		t.Fatalf("legacy toml should produce no Endpoints, got %v", e.Endpoints)
+	if expanded[0].Ip != "192.168.80.35" || expanded[0].Port != 62206 {
+		t.Fatalf("legacy endpoint not parsed: %+v", expanded[0])
 	}
 }
 
-// TestNewTomlEndpointsParses guards the new format end-to-end.
-func TestNewTomlEndpointsParses(t *testing.T) {
+// TestClusterTomlParses guards the new structured form end-to-end.
+func TestClusterTomlParses(t *testing.T) {
 	cfg := `
 [[Servers]]
 PubKeyBase64 = "ABC="
-Endpoints = ["10.0.0.1:62206", "10.0.0.2:62206"]
 ExpireTime = 1924991999
+
+  [[Servers.Instances]]
+  Ip = "10.0.0.1"
+  Port = 62206
+
+  [[Servers.Instances]]
+  Ip = "10.0.0.2"
+  Port = 62206
 `
 	var peers Peers
 	if err := toml.Unmarshal([]byte(cfg), &peers); err != nil {
 		t.Fatalf("new toml failed to unmarshal: %v", err)
 	}
-	expanded, err := expandServerPeers(peers.Servers)
+	expanded, err := normalizeAndExpand(peers.Servers)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -234,7 +230,7 @@ ExpireTime = 1924991999
 // TestEndpointKey_DistinctSamePubKey: the AC-internal map key for a server
 // peer must distinguish two endpoints that share a pubkey but differ in
 // address. This is what allows updateServerPeers to keep both rows and what
-// makes the discovery launcher fan AOL out to both.
+// makes the discovery fan-out launch one routine per (pubkey, addr).
 func TestEndpointKey_DistinctSamePubKey(t *testing.T) {
 	a := &core.UdpPeer{PubKeyBase64: "ABC=", Ip: "10.0.0.1", Port: 62206}
 	b := &core.UdpPeer{PubKeyBase64: "ABC=", Ip: "10.0.0.2", Port: 62206}

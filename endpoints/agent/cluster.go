@@ -138,7 +138,7 @@ func buildCluster(cfg *ClusterConfig) (*ServerCluster, error) {
 	sc := &ServerCluster{
 		PublicKeyBase64: cfg.PubKeyBase64,
 		Name:            cfg.Name,
-		Sticky:          cfg.stickyOrDefault(),
+		Sticky:          cfg.StickyOrDefault(),
 		instances:       make([]*ServerInstance, 0, len(cfg.Instances)),
 	}
 

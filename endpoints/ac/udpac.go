@@ -165,7 +165,31 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	}
 
 	if a.config.FilterMode == FilterMode_EBPFXDP {
-		for _, server := range a.config.Servers {
+		// Snapshot the expanded peer list under serverPeerMutex so we
+		// don't race the file/etcd watcher path that rewrites
+		// a.config.Servers on reload (see config.go: updateServerPeers).
+		// Keep the lock window minimal — copy the slice header, release,
+		// then issue eBPF syscalls outside the lock so a slow kernel
+		// syscall can't block a pending reload.
+		a.serverPeerMutex.Lock()
+		servers := make([]*core.UdpPeer, len(a.config.Servers))
+		copy(servers, a.config.Servers)
+		a.serverPeerMutex.Unlock()
+		for _, server := range servers {
+			// XDP rules key on the source IP; instances configured
+			// with a DNS-only Host (Ip == "" — legitimate under the
+			// new schema, see clusterconfig.Normalize) have nothing
+			// to install at startup. Skip with a log line instead of
+			// silently writing SrcIP="" into eBPF, which would either
+			// be rejected by the kernel or — worse — match every
+			// source. A host-only instance can still receive traffic
+			// once it's resolved on the data path; this loop only
+			// handles the boot-time static rule.
+			if server.Ip == "" {
+				log.Info("[EbpfRuleAdd] skipping peer %s: instance has no static Ip (Host=%q); add an Ip field to install a boot-time XDP rule",
+					server.PublicKeyBase64(), server.Hostname)
+				continue
+			}
 			ebpfHashStr := ebpf.EbpfRuleParams{
 				SrcIP: server.Ip,
 				DstIP: a.config.DefaultIp,

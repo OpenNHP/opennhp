@@ -42,12 +42,15 @@ import (
 // presents the same agent as "::ffff:1.2.3.4" on one socket and
 // "1.2.3.4" on another still derives the same cookie key.
 //
-// IPv6 zone IDs (e.g. "fe80::1%eth0") are intentionally NOT stripped:
-// link-local sources can't reach the cookie path in the first place
-// because isRoutablePublicIP (msghandler.go) rejects them at the relay
-// boundary, so two zones on the same fe80:: would never both arrive
-// here. If a future change widens the routability filter, revisit this
-// — same-IP-different-zone would otherwise hash to different keys.
+// IPv6 zones are inherently ignored by this function: we hash
+// addr.IP.String(), and net.IP.String() never includes the zone (the
+// zone lives on *net.UDPAddr.Zone, a separate field we don't touch).
+// So same-IP-different-zone packets would hash to the same cookie key.
+// That collision is harmless today because isRoutablePublicIP
+// (msghandler.go) rejects link-local sources at the relay boundary, so
+// fe80:: traffic can't actually reach the cookie path. If a future
+// change widens the routability filter to include link-local, revisit
+// this — at that point you'd want to include addr.Zone in the key.
 //
 // Trade-off: agents behind the same NAT share a cookie within a time
 // window. The attack surface is narrow — cookie content stays off the
@@ -693,13 +696,7 @@ func (ppd *PacketParserData) sendCookie() {
 }
 
 func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
-	defer func() {
-		ppd.hmacHash.Reset()
-		ppd.hmacHash = nil
-	}()
-
 	headerPrefixLen := ppd.header.Size() - HashSize
-	ppd.hmacHash.Write(ppd.header.Bytes()[0:headerPrefixLen])
 
 	if sumCookie {
 		// Re-derive the cookie this server (or any sibling sharing the
@@ -708,6 +705,16 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 		// windows cover both the slow agent that takes a moment to
 		// round-trip and the window-boundary case where a cookie minted
 		// just before the rollover gets used just after.
+		//
+		// Note: ppd.hmacHash is intentionally not touched in this
+		// branch. We build a fresh hash per candidate window (h, below)
+		// because the agent's HMAC seeds with InitialHashString +
+		// ServerPubKey + headerPrefix + cookie, and that prefix doesn't
+		// match the running hmacHash state. The old code wrote
+		// headerPrefix into hmacHash before this branch fork; the
+		// result was discarded and the Reset happened in a now-removed
+		// defer. ppd.Destroy still clears hmacHash when the parser
+		// tears down, so leaving it untouched here leaks nothing.
 		//
 		// Only reachable on NHP_SERVER under Overload (validatePeer
 		// gates the sumCookie=true case behind those two conditions);
@@ -766,6 +773,18 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 		}
 		return false
 	} else {
+		// Non-cookie path: ppd.hmacHash carries the running noise hash
+		// state from the parse pipeline; absorb the header prefix and
+		// compare against the on-the-wire HMAC. Reset the hash after
+		// use — ppd.Destroy also clears it, but resetting here keeps
+		// the "one hash, one use" discipline so a future caller that
+		// invokes checkHMAC twice on the same ppd can't silently mix
+		// states.
+		defer func() {
+			ppd.hmacHash.Reset()
+			ppd.hmacHash = nil
+		}()
+		ppd.hmacHash.Write(ppd.header.Bytes()[0:headerPrefixLen])
 		calculatedHmac := ppd.hmacHash.Sum(nil)
 		headerHmac := ppd.header.HMACBytes()
 		if !bytes.Equal(calculatedHmac, headerHmac) {

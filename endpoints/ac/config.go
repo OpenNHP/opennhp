@@ -324,10 +324,18 @@ func (a *UdpAC) updateServerPeers(peers []*core.UdpPeer) (err error) {
 		serverPeerMap[endpointKey(p)] = p
 		pubKeyPresent[p.PublicKeyBase64()] = struct{}{}
 	}
-	a.config.Servers = peers
 
 	a.serverPeerMutex.Lock()
 	defer a.serverPeerMutex.Unlock()
+
+	// a.config.Servers must be assigned under the same mutex that
+	// guards a.serverPeerMap because the file/etcd watcher path
+	// triggers this function concurrently with Start()'s eBPF init
+	// loop (udpac.go: "if a.config.FilterMode == FilterMode_EBPFXDP")
+	// and with any external GetConfig() reader. Before this lock
+	// moved, the assignment raced with that loop and the race detector
+	// would flag a write/read collision under any reload pressure.
+	a.config.Servers = peers
 
 	// Remove from device any pubkey that no longer appears in the new config.
 	// Iterate the old map to find pubkeys that have fully disappeared.

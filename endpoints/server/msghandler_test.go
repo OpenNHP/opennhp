@@ -21,11 +21,13 @@ func newTestServerForCounter() *UdpServer {
 // makeRelayConn fabricates a UdpConn shaped like one HandleRelayForward
 // would have inserted: same mapKey form, real RemoteAddr/RealRemoteAddr
 // so relayAddrFromConnKey and the rest of the counter logic see what
-// they'd see in production.
+// they'd see in production. Uses the production key builder
+// (relayConnKeyPrefix + relayConnKeySep) rather than literal strings so
+// the test cannot drift from the real format if the separator changes.
 func makeRelayConn(relayHostPort, realClientHostPort string) (*UdpConn, string, string) {
 	relayUDP, _ := net.ResolveUDPAddr("udp", relayHostPort)
 	clientUDP, _ := net.ResolveUDPAddr("udp", realClientHostPort)
-	connKey := "relay:" + relayHostPort + ":" + realClientHostPort
+	connKey := relayConnKeyPrefix + relayHostPort + relayConnKeySep + realClientHostPort
 	conn := &UdpConn{
 		mapKey: connKey,
 		ConnData: &core.ConnectionData{
@@ -180,33 +182,65 @@ func TestIsRoutablePublicIP(t *testing.T) {
 
 // TestRelayAddrFromConnKey ensures the mapKey parser used by the
 // per-relay connection counter correctly recovers the relay's address
-// from compound keys of the form "relay:<relayAddr>:<realClientAddr>".
-// Both segments are themselves "host:port" so the parser must strip
-// exactly the trailing two colon-separated tokens.
+// from compound keys of the form "relay|<relayAddr>|<realClientAddr>".
+//
+// Coverage requirements driven by the production failure mode this
+// guards: the previous ':'-separated key form silently mis-parsed any
+// mapKey whose realClientAddr was IPv6 (because the
+// strings.LastIndexByte-based right-peel would land inside the address'
+// own colons), leaking the relay's per-connection counter upward by one
+// per IPv6 forward — eventually rejecting legitimate traffic when the
+// counter crossed MaxConnectionsPerRelay. The IPv6-client and IPv6-relay
+// cases below are the regression fence.
 func TestRelayAddrFromConnKey(t *testing.T) {
+	// Build keys with the production helper so we cannot drift from
+	// the real key format if the separator changes again.
+	key := func(relay, client string) string {
+		return relayConnKeyPrefix + relay + relayConnKeySep + client
+	}
+
 	tests := []struct {
+		name   string
 		mapKey string
 		want   string
 	}{
 		// Direct UDP keys are not relay-forwarded.
-		{"203.0.113.5:54321", ""},
-		{"", ""},
+		{"direct UDP key", "203.0.113.5:54321", ""},
+		{"empty key", "", ""},
 
-		// IPv4 relay + IPv4 client.
-		{"relay:198.51.100.1:62206:203.0.113.5:54321", "198.51.100.1:62206"},
+		// IPv4 relay + IPv4 client — the historical baseline case.
+		{"v4 relay v4 client", key("198.51.100.1:62206", "203.0.113.5:54321"), "198.51.100.1:62206"},
+		{"v4 relay v4 client port=1", key("198.51.100.1:62206", "203.0.113.5:1"), "198.51.100.1:62206"},
+		{"v4 relay v4 client port=65535", key("198.51.100.1:62206", "203.0.113.5:65535"), "198.51.100.1:62206"},
 
-		// Same relay but realClient port edge values.
-		{"relay:198.51.100.1:62206:203.0.113.5:1", "198.51.100.1:62206"},
-		{"relay:198.51.100.1:62206:203.0.113.5:65535", "198.51.100.1:62206"},
+		// IPv4 relay + IPv6 client: the original bug. Real
+		// net.UDPAddr.String() form for IPv6 is "[host]:port", and
+		// the address itself contains ':' separators that a right-
+		// peeling parser would interpret as token boundaries. With
+		// the '|' separator a single forward split recovers the
+		// relay segment cleanly.
+		{"v4 relay v6 client", key("198.51.100.1:62206", "[2001:db8::1]:80"), "198.51.100.1:62206"},
+		{"v4 relay v6 loopback client", key("198.51.100.1:62206", "[::1]:443"), "198.51.100.1:62206"},
+
+		// IPv6 relay + IPv4 client: the *worse* case under the old
+		// parser — it would scramble the relay segment itself, so
+		// the per-relay counter was keyed on a corrupted string and
+		// would never decrement on teardown.
+		{"v6 relay v4 client", key("[2001:db8::42]:62206", "203.0.113.5:54321"), "[2001:db8::42]:62206"},
+
+		// IPv6 relay + IPv6 client: both segments contain ':' but
+		// neither contains '|', so the parser stays correct.
+		{"v6 relay v6 client", key("[2001:db8::42]:62206", "[2001:db8::1]:80"), "[2001:db8::42]:62206"},
 
 		// Malformed keys.
-		{"relay:", ""},
-		{"relay:foo", ""},
-		{"relay:foo:bar", ""}, // only one colon after prefix → not enough segments
+		{"prefix only", "relay|", ""},
+		{"no separator", "relay|foo", ""},                   // missing the second segment entirely
+		{"empty real-client segment", "relay|foo|", ""},     // "<relay>|"
+		{"empty relay segment", "relay||203.0.113.5:1", ""}, // "|<client>"
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.mapKey, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			got := relayAddrFromConnKey(tt.mapKey)
 			if got != tt.want {
 				t.Errorf("relayAddrFromConnKey(%q) = %q, want %q", tt.mapKey, got, tt.want)

@@ -142,7 +142,7 @@ type UdpConn struct {
 	// mapKey is the exact key under which this conn was inserted into
 	// remoteConnectionMap. For direct UDP clients it equals
 	// ConnData.RemoteAddr.String(); for relay-forwarded clients it is a
-	// compound key "relay:<relayAddr>:<realClientAddr>". connectionRoutine
+	// compound key "relay|<relayAddr>|<realClientAddr>". connectionRoutine
 	// uses this on teardown so the right entry gets removed.
 	mapKey string
 
@@ -625,7 +625,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 
 		// remove the udp conn from remoteConnectionMap using the same key
 		// that was used on insert. For direct UDP clients that's addrStr;
-		// for relay-forwarded clients it's the compound "relay:..." key
+		// for relay-forwarded clients it's the compound "relay|..." key
 		// (see msghandler.HandleRelayForward). Using RemoteAddr.String()
 		// here would leak relay-forwarded entries because RemoteAddr is
 		// just the relay's address.

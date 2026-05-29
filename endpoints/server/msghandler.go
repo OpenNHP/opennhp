@@ -22,32 +22,43 @@ import (
 // relayConnKeyPrefix is what every relay-forwarded connection's mapKey
 // begins with (see HandleRelayForward). Used by helpers below to
 // distinguish relay-forwarded entries from direct UDP entries.
-const relayConnKeyPrefix = "relay:"
+const relayConnKeyPrefix = "relay|"
+
+// relayConnKeySep separates the relay-addr segment from the
+// real-client-addr segment inside a relay-forwarded mapKey. We
+// deliberately avoid ':' here because net.UDPAddr.String() formats
+// IPv6 as "[2001:db8::1]:80" — colons appear *inside* the address
+// itself, so a ':'-separated key cannot be reliably parsed from the
+// right with strings.LastIndexByte. '|' never appears in any IP-or-
+// host:port serialisation Go produces, so a single split is enough.
+const relayConnKeySep = "|"
 
 // relayAddrFromConnKey extracts the relay's address (the
 // "<relayHost>:<relayPort>" segment) from a relay-forwarded mapKey of
-// the form "relay:<relayAddr>:<realClientAddr>". Returns "" if the
-// key is not a relay-forwarded one.
+// the form "relay|<relayAddr>|<realClientAddr>". Returns "" if the key
+// is not a relay-forwarded one or doesn't carry both segments.
 //
-// Note: <relayAddr> itself contains a colon (host:port), so this
-// splits at the LAST colon belonging to the relay segment by stripping
-// the prefix and the trailing ":<realClientAddr>".
+// The map key is in-memory only (never persisted, never wire-
+// serialised), so the '|' separator is a free invariant — see
+// relayConnKeySep for why we picked it over ':'.
 func relayAddrFromConnKey(mapKey string) string {
 	if !strings.HasPrefix(mapKey, relayConnKeyPrefix) {
 		return ""
 	}
 	rest := mapKey[len(relayConnKeyPrefix):]
-	// rest = "<relayHost>:<relayPort>:<realClientHost>:<realClientPort>"
-	// The realClient segment is itself "host:port", so strip its two
-	// trailing colon-separated tokens to recover the relay segment.
-	for i := 0; i < 2; i++ {
-		idx := strings.LastIndexByte(rest, ':')
-		if idx < 0 {
-			return ""
-		}
-		rest = rest[:idx]
+	// rest = "<relayAddr>|<realClientAddr>"; each segment is itself
+	// "host:port" but contains no '|', so one split recovers both.
+	idx := strings.IndexByte(rest, relayConnKeySep[0])
+	if idx <= 0 {
+		// idx==0 means "relay||..." (empty relay segment); idx<0
+		// means the real-client segment is missing entirely.
+		return ""
 	}
-	return rest
+	if idx == len(rest)-1 {
+		// "relay|<addr>|" — real-client segment empty.
+		return ""
+	}
+	return rest[:idx]
 }
 
 // incRelayConnCount and decRelayConnCount maintain a per-relay counter
@@ -802,15 +813,19 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	log.Info("server-relay[HandleRelayForward] inner [%s] from real client %s via relay %s",
 		core.HeaderTypeToString(innerType), realAddr, relayAddrStr)
 
-	// Build or reuse a connection keyed on "relay:<relayAddr>:<realClientAddr>".
+	// Build or reuse a connection keyed on "relay|<relayAddr>|<realClientAddr>".
 	// This avoids collisions with the relay's own NHP_RLY connection (which is
 	// already keyed on relayAddrStr) and isolates per-client anti-replay state.
 	// RemoteAddr must be the relay's UDP address so that response packets
 	// (ACK/COK) are sent back to the relay — the relay then forwards them
 	// to the browser over HTTP.  The real client address is used only for
 	// auth/logging purposes.
+	//
+	// The '|' separator is required, not cosmetic: an IPv6 address renders
+	// as "[2001:db8::1]:80", so a ':'-delimited key could not be reliably
+	// split from the right. See relayConnKeySep for the full reasoning.
 	relayAddr := ppd.ConnData.RemoteAddr
-	connKey := "relay:" + relayAddrStr + ":" + realAddr.String()
+	connKey := relayConnKeyPrefix + relayAddrStr + relayConnKeySep + realAddr.String()
 	recvTime := time.Now().UnixNano()
 
 	// Three steps run under a single map-mutex critical section so that

@@ -869,6 +869,20 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		total := len(s.remoteConnectionMap)
 		if total >= MaxConcurrentConnection {
 			s.remoteConnectionMapMutex.Unlock()
+			// If we got here via the stale-replace path we already
+			// deleted the OLD entry and marked it replaced, so the
+			// OLD conn's teardown will skip its dec (stillPresent=false
+			// AND replaced=true). Refusing to take over the slot here
+			// without compensating would leak it permanently — the
+			// per-relay counter would stay elevated with no live owner,
+			// eventually capping the relay below MaxConnectionsPerRelay.
+			// Mirror the per-relay branch's fix-up: reclaim the dec
+			// ourselves. (decRelayConnCount takes relayConnCountMutex on
+			// its own; do it after releasing the map mutex to preserve
+			// the map→counter lock order used elsewhere.)
+			if transferred {
+				s.decRelayConnCount(relayAddrStr)
+			}
 			s.device.ReleasePoolPacket(innerPkt)
 			log.Critical("server-relay[HandleRelayForward] reached MaxConcurrentConnection (%d), dropping forward from relay %s",
 				MaxConcurrentConnection, relayAddrStr)

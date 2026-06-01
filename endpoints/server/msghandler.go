@@ -30,7 +30,7 @@ const relayConnKeyPrefix = "relay|"
 // IPv6 as "[2001:db8::1]:80" — colons appear *inside* the address
 // itself, so a ':'-separated key cannot be reliably parsed from the
 // right with strings.LastIndexByte. '|' never appears in any IP-or-
-// host:port serialisation Go produces, so a single split is enough.
+// host:port serialization Go produces, so a single split is enough.
 const relayConnKeySep = "|"
 
 // relayAddrFromConnKey extracts the relay's address (the
@@ -39,7 +39,7 @@ const relayConnKeySep = "|"
 // is not a relay-forwarded one or doesn't carry both segments.
 //
 // The map key is in-memory only (never persisted, never wire-
-// serialised), so the '|' separator is a free invariant — see
+// serialized), so the '|' separator is a free invariant — see
 // relayConnKeySep for why we picked it over ':'.
 func relayAddrFromConnKey(mapKey string) string {
 	if !strings.HasPrefix(mapKey, relayConnKeyPrefix) {
@@ -108,7 +108,7 @@ func (s *UdpServer) getRelayConnCount(relayAddr string) int {
 // Both must hold for the dec to fire. The pair is what eliminates the
 // previous race where CR-defer and HRF could both dec the same slot
 // (or, after a naïve fix, both skip the dec): the slot transfer is
-// signalled explicitly, not inferred from "who deleted the map entry
+// signaled explicitly, not inferred from "who deleted the map entry
 // first".
 func (s *UdpServer) teardownPerRelayCounter(conn *UdpConn, mapKey string, stillPresent bool) {
 	if !stillPresent {

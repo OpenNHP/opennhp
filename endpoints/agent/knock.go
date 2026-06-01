@@ -161,7 +161,7 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 	if serverPpd.HeaderType == core.NHP_COK {
 		// Pull the cookie bytes out of the COK body and stash them
 		// on the target so the follow-up RKN can pass them via
-		// MsgData.ExternalCookie. The legacy behaviour wrote into
+		// MsgData.ExternalCookie. The legacy behavior wrote into
 		// ppd.ConnData.CookieStore — see HandleCookieMessage — but
 		// that's tied to the UDP conn the COK arrived through, and
 		// a non-sticky cluster picks a different instance (=> new
@@ -220,7 +220,7 @@ func (a *UdpAgent) ExitKnockRequest(res *KnockTarget) (ackMsg *common.ServerKnoc
 	}
 
 	// Exit goes to the same instance the KNK landed on, so the
-	// server cleans up the right session. PickInstance honours the
+	// server cleans up the right session. PickInstance honors the
 	// sticky pin captured during knock.
 	inst := res.PickInstance()
 	if inst == nil {

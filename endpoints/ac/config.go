@@ -203,7 +203,7 @@ func (a *UdpAC) loadPeers() error {
 		// the error to the caller turns the failure into a refusal-to-
 		// start that's much easier to diagnose. The reload branch
 		// below keeps its existing keep-previous-table discipline —
-		// that's the right behaviour mid-flight when a running
+		// that's the right behavior mid-flight when a running
 		// process already has a good peer table.
 		log.Critical("loadPeers: %v; refusing to start with empty peer table", expandErr)
 		initialErr = expandErr

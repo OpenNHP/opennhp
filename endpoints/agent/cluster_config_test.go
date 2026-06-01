@@ -184,7 +184,7 @@ func TestNormalize_RejectsBadScheme(t *testing.T) {
 // TestStickyOrDefault: Sticky defaults to true when unset and round-
 // trips its explicit value otherwise. This is the user-visible knob
 // promise — accidentally flipping the default would change every
-// agent's cookie-handshake behaviour on upgrade.
+// agent's cookie-handshake behavior on upgrade.
 func TestStickyOrDefault(t *testing.T) {
 	if !(&ClusterConfig{}).StickyOrDefault() {
 		t.Fatal("unset Sticky must default to true")
@@ -301,7 +301,7 @@ func TestKnockTarget_NoClusterReturnsNil(t *testing.T) {
 
 // TestKnockTarget_NonStickyRotates: when Sticky=false every
 // PickInstance call must re-run the picker (here round-robin),
-// proving the sticky knob actually toggles behaviour. Catches
+// proving the sticky knob actually toggles behavior. Catches
 // "Sticky=false but pin still applied" bugs.
 func TestKnockTarget_NonStickyRotates(t *testing.T) {
 	fa := false

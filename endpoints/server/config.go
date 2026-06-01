@@ -146,8 +146,8 @@ type Config struct {
 	// production behavior off it.
 	//
 	// Hot-reload caveat: flipping this back to false at runtime via a
-	// config reload does NOT immediately restore normal behaviour. The
-	// connection-teardown path in udpserver.go honours ForceOverload to
+	// config reload does NOT immediately restore normal behavior. The
+	// connection-teardown path in udpserver.go honors ForceOverload to
 	// keep Overload pinned across connection churn, so as long as the
 	// process keeps observing ForceOverload=true it will never call
 	// SetOverload(false) — the flag is sticky for the lifetime of the
@@ -596,7 +596,7 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 
 	// ForceOverload: the in-memory Overload state is sticky for the
 	// process lifetime (see the field docstring), so a reload can't
-	// actually toggle behaviour. But silently dropping the new value
+	// actually toggle behavior. But silently dropping the new value
 	// leaves s.config disagreeing with the on-disk config.toml — which
 	// confuses anyone reading the in-memory view. Adopt the new value
 	// for accuracy and surface a warning so the operator knows a

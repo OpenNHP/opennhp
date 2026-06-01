@@ -80,7 +80,7 @@ type KnockTarget struct {
 
 	// ServerPeer is the cluster's representative peer (used for
 	// pubkey/identity lookups). Address-bearing operations should go
-	// through ServerCluster + chosenInstance instead, so they honour
+	// through ServerCluster + chosenInstance instead, so they honor
 	// the cluster's load-balance policy.
 	ServerPeer *core.UdpPeer
 
@@ -153,7 +153,7 @@ func (kt *KnockTarget) SetServerCluster(sc *ServerCluster) {
 }
 
 // PickInstance returns the instance this target should send to next.
-// Honours the cluster's Sticky flag: when sticky, the first call
+// Honors the cluster's Sticky flag: when sticky, the first call
 // captures a pin and subsequent calls return the same instance; when
 // non-sticky, every call re-runs the picker.
 //
@@ -1017,7 +1017,7 @@ func (a *UdpAgent) FindServerClusterFromResource(res *KnockResource) (*ServerClu
 // representative peer (the one registered with core.Device), which is
 // sufficient for callers that only need the pubkey — but NOT the
 // per-send destination address. Send paths should use
-// FindServerClusterFromResource + Cluster.Pick() to honour
+// FindServerClusterFromResource + Cluster.Pick() to honor
 // load-balancing across instances.
 func (a *UdpAgent) FindServerPeerFromResource(res *KnockResource) *core.UdpPeer {
 	sc, _ := a.FindServerClusterFromResource(res)
@@ -1220,7 +1220,7 @@ func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOut
 // paths must either route via a KnockResource (so pubkey selection
 // applies) or accept that registration/DHP land on whichever cluster
 // happens to win the iteration. The caller logs at WARNING level when
-// multiple clusters exist so this behaviour is at least visible.
+// multiple clusters exist so this behavior is at least visible.
 func (a *UdpAgent) GetFirstServerPeer() (serverPeer *core.UdpPeer) {
 	a.serverPeerMutex.Lock()
 	defer a.serverPeerMutex.Unlock()

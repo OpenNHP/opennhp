@@ -264,6 +264,11 @@ type UdpAgent struct {
 		knockTargetStop       chan struct{}
 		knockTargetMapUpdated chan struct{}
 	}
+	// knockTargetStopOnce guards close(knockTargetStop). Both
+	// StopKnockLoop() (an exported SDK entry point) and Stop() close
+	// this channel; the documented RestartAgent flow calls the former
+	// before the latter, so an unguarded close double-closes and panics.
+	knockTargetStopOnce sync.Once
 
 	recvMsgCh <-chan *core.PacketParserData
 	sendMsgCh chan *core.MsgData
@@ -407,8 +412,18 @@ func (a *UdpAgent) StartDHPKnockLoop() {
 	go a.dhpKnockResourceRoutine()
 }
 
+// stopKnockLoop closes knockTargetStop exactly once, so callers may
+// invoke it from StopKnockLoop() and Stop() in any order (e.g. the
+// RestartAgent flow stops the knock loop before tearing the agent down)
+// without risking a double-close panic.
+func (a *UdpAgent) stopKnockLoop() {
+	a.knockTargetStopOnce.Do(func() {
+		close(a.signals.knockTargetStop)
+	})
+}
+
 func (a *UdpAgent) StopKnockLoop() {
-	close(a.signals.knockTargetStop)
+	a.stopKnockLoop()
 }
 
 func (a *UdpAgent) SetKnockUser(usrId string, orgId string, userData map[string]any) {
@@ -430,13 +445,22 @@ func (a *UdpAgent) SetCheckResults(results map[string]any) {
 // export Stop
 func (a *UdpAgent) Stop() {
 	a.running.Store(false)
-	close(a.signals.knockTargetStop)
+	a.stopKnockLoop()
 	close(a.signals.stop)
 	a.device.Stop()
 	a.StopConfigWatch()
 	a.wg.Wait()
 	close(a.sendMsgCh)
-	close(a.signals.knockTargetMapUpdated)
+	// Deliberately NOT closing knockTargetMapUpdated. Its only consumer
+	// (knockResourceRoutine) reads it in a select alongside
+	// knockTargetStop and relies on the latter for shutdown, so the
+	// close served no purpose — but a config file-watcher's debounced
+	// callback (utils.WatchFile fires via time.AfterFunc, which
+	// StopConfigWatch's WaitGroup does NOT track) can still run
+	// ~100ms after StopConfigWatch returns and would panic on a send to
+	// a closed channel. Leaving it open lets such a late send land
+	// harmlessly in the buffer (or be dropped by the non-blocking send
+	// in updateResources / refreshKnockTargetClusters).
 
 	log.Info("=========================")
 	log.Info("=== NHP-Agent stopped ===")

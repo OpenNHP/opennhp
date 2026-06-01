@@ -382,9 +382,19 @@ func (a *UdpAgent) updateResources(file string) (err error) {
 	a.knockTargetMap = targetMap
 	a.knockTargetMapMutex.Unlock()
 
-	// renew knock cycle
-	if len(a.signals.knockTargetMapUpdated) == 0 {
-		a.signals.knockTargetMapUpdated <- struct{}{}
+	// renew knock cycle. Non-blocking send (matches
+	// refreshKnockTargetClusters): a debounced file-watcher callback can
+	// fire after Stop(), and the previous blocking send guarded only by
+	// a len()==0 check both raced (two watchers could both observe 0 and
+	// the second would block) and risked blocking forever once the
+	// consumer routine had exited. The non-blocking select coalesces
+	// duplicate updates into the size-1 buffer and never blocks.
+	// knockTargetMapUpdated is intentionally never closed (see Stop()),
+	// so a late send after shutdown lands in the buffer rather than
+	// panicking.
+	select {
+	case a.signals.knockTargetMapUpdated <- struct{}{}:
+	default:
 	}
 
 	return err

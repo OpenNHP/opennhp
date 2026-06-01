@@ -130,7 +130,10 @@ func (p *Picker[T]) Pick() (T, bool) {
 		return p.instances[i], true
 
 	case SchemeRandom:
-		return p.instances[rand.IntN(len(p.instances))], true
+		// Load-balancing selection only needs statistical spread, not
+		// unpredictability — math/rand/v2 is the correct, intentional
+		// choice (no security decision rides on which instance is picked).
+		return p.instances[rand.IntN(len(p.instances))], true //nolint:gosec // G404: non-cryptographic load balancing
 
 	case SchemeWeightedRandom:
 		if p.totalWeight <= 0 {
@@ -138,9 +141,9 @@ func (p *Picker[T]) Pick() (T, bool) {
 			// is only reachable if a caller constructed a Picker
 			// with no instances (already handled above) or
 			// supplied a custom Weight() that returned negatives.
-			return p.instances[rand.IntN(len(p.instances))], true
+			return p.instances[rand.IntN(len(p.instances))], true //nolint:gosec // G404: non-cryptographic load balancing
 		}
-		r := rand.IntN(p.totalWeight)
+		r := rand.IntN(p.totalWeight) //nolint:gosec // G404: non-cryptographic load balancing
 		for _, inst := range p.instances {
 			w := inst.Weight()
 			if w <= 0 {

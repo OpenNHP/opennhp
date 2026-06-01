@@ -135,7 +135,7 @@ func (d *Device) SetOption(option DeviceOptions) {
 // SetStatelessCookieParams installs the cluster-wide cookie HMAC key and the
 // time window (in seconds) used for derivation. Passing a nil/zero-length key
 // or non-positive window disables the stateless path; the device falls back
-// to per-connection CookieStore behaviour (single-instance only).
+// to per-connection CookieStore behavior (single-instance only).
 func (d *Device) SetStatelessCookieParams(key []byte, windowSec int) {
 	d.cookieSigningMu.Lock()
 	defer d.cookieSigningMu.Unlock()

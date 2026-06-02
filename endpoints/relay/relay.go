@@ -55,6 +55,18 @@ const (
 
 	// DefaultConnectionTimeoutMs is the idle timeout for the persistent connection.
 	DefaultConnectionTimeoutMs = 120000
+
+	// MaxInFlightPerInstance caps concurrent forwarded requests per target
+	// server instance. Each in-flight forward holds a pendingRequests entry
+	// (keyed on counter+client) until its handler returns — bounded by
+	// udpTimeout (5s default) but otherwise ungated, so an adversary opening
+	// requests faster than they drain grows that map without limit. This is
+	// the relay's analogue of the server's MaxConcurrentHandlers semaphore:
+	// when full, new forwards are shed with 503 (backpressure) rather than
+	// letting the pending map become a memory-DoS vector. Sized to comfortably
+	// cover steady-state λ×5s for a busy instance while still being a hard
+	// ceiling.
+	MaxInFlightPerInstance = 4096
 )
 
 // UdpConn wraps a UDP connection with NHP connection data.
@@ -92,6 +104,14 @@ type serverInstance struct {
 	// prevention rule as before applies: ambiguous waiters all time out.
 	pendingMu       sync.Mutex
 	pendingRequests map[uint64]map[string]chan []byte
+
+	// inFlight is a counting semaphore (buffered to MaxInFlightPerInstance)
+	// bounding concurrent forwards to this instance. A handler acquires a
+	// slot before registering in pendingRequests and releases it on return,
+	// so pendingRequests can never exceed the semaphore depth. A
+	// non-blocking acquire lets the handler shed load (503) instead of
+	// queueing when the instance is saturated.
+	inFlight chan struct{}
 }
 
 // Weight satisfies loadbalance.Weighted so the shared Picker can rank
@@ -277,6 +297,7 @@ func (rs *RelayServer) buildServer(c *Server) (*serverRuntime, error) {
 			weight:          ci.Weight,
 			addr:            udpAddr,
 			pendingRequests: make(map[uint64]map[string]chan []byte),
+			inFlight:        make(chan struct{}, MaxInFlightPerInstance),
 		})
 	}
 	cr.picker = loadbalance.NewPicker(cr.scheme, cr.instances)
@@ -938,6 +959,21 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 	inst := cr.pickInstance()
 	if inst == nil {
 		http.Error(w, "server has no usable instance", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Bound concurrent forwards (and thus pendingRequests size) per
+	// instance. Non-blocking acquire: if the instance is saturated, shed
+	// the request with 503 rather than queueing — the alternative is the
+	// pending map growing unbounded when an adversary opens faster than
+	// the 5s handler timeout drains. Released on handler return.
+	select {
+	case inst.inFlight <- struct{}{}:
+		defer func() { <-inst.inFlight }()
+	default:
+		log.Warning("[Relay] instance %s at in-flight cap (%d); shedding forward from %s",
+			inst.addr, MaxInFlightPerInstance, r.RemoteAddr)
+		http.Error(w, "server instance busy", http.StatusServiceUnavailable)
 		return
 	}
 

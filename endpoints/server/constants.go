@@ -50,3 +50,24 @@ const (
 	// window, so an agent has [60, 120) seconds to redeem a cookie.
 	DefaultCookieTimeWindowSeconds = 60
 )
+
+// overload RKN rate limiting (see rknRateLimiter)
+const (
+	// OverloadRknRatePerSecondPerIP / OverloadRknBurstPerIP size the
+	// per-source-IP token bucket that gates the expensive cookie-verify
+	// ECDH while the server is overloaded. A legitimate agent reknocks at
+	// most a handful of times per cookie window (default 60s), so 20/s
+	// with a burst of 40 is orders of magnitude above any honest cadence
+	// while still capping an attacker's forced ECDH rate per address.
+	OverloadRknRatePerSecondPerIP = 20
+	OverloadRknBurstPerIP         = 40
+	// OverloadRknLimiterMaxEntries bounds the limiter's per-IP table so a
+	// spoofed-source flood can't grow it without bound. At ~48 bytes per
+	// entry this is a few MB worst case, and it is reclaimed by sweeps and
+	// oldest-eviction (see rknRateLimiter.evict).
+	OverloadRknLimiterMaxEntries = 65536
+	// OverloadRknLimiterIdleSeconds: a bucket untouched this long is
+	// reclaimable. Set above a couple of cookie windows so an agent that
+	// goes briefly quiet keeps its bucket.
+	OverloadRknLimiterIdleSeconds = 300
+)

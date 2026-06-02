@@ -89,6 +89,11 @@ type UdpServer struct {
 	blockAddrMapMutex sync.Mutex
 	blockAddrMap      map[string]*BlockAddr // indexed by remote UDP address, need lock for dynamic change
 
+	// rknLimiter gates the cookie-verify ECDH for RKN-under-overload per
+	// source IP. Shared (internally locked) between the direct-UDP receive
+	// loop and the relay-forward handlers. See rknRateLimiter.
+	rknLimiter *rknRateLimiter
+
 	// address association map
 	srcIpAssociatedAddrMapMutex sync.Mutex
 	srcIpAssociatedAddrMap      map[string][]*common.NetAddress // indexed by source ip
@@ -355,6 +360,12 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.relayPeerMap = make(map[string]*core.UdpPeer)
 	s.tokenStore = common.NewTokenStore[*ACTokenEntry]()
 	s.blockAddrMap = make(map[string]*BlockAddr)
+	s.rknLimiter = newRknRateLimiter(
+		OverloadRknRatePerSecondPerIP,
+		OverloadRknBurstPerIP,
+		OverloadRknLimiterMaxEntries,
+		OverloadRknLimiterIdleSeconds*int64(time.Second),
+	)
 	s.signals.stop = make(chan struct{})
 
 	s.recvMsgCh = s.device.DecryptedMsgQueue
@@ -525,6 +536,24 @@ func (s *UdpServer) recvPacketRoutine() {
 		}
 		// clear threat
 		delete(preCheckThreats, addrStr)
+
+		// Rate-limit RKN-under-overload per source IP BEFORE the packet
+		// reaches the connection routine (and thus before the cookie-
+		// verify ECDH in responder.checkHMAC). This is the only path that
+		// pays a Noise IK floor per packet ahead of authentication and
+		// ahead of the existing connection-level RecvThreatCount limiter,
+		// so an unauthenticated flood is throttled here at its cheapest
+		// point. Over-limit packets are dropped only — not counted as
+		// threats, not block-listed — so honest agents and shared-NAT
+		// egress IPs degrade to dropped-RKN (which agents retry) rather
+		// than a hard block. recvTime is reused as the monotonic-ish now.
+		if pkt.HeaderType == core.NHP_RKN && s.device.IsOverload() {
+			if !s.rknLimiter.allow(remoteAddr, recvTime) {
+				s.device.ReleasePoolPacket(pkt)
+				log.Warning("RKN from %s dropped: per-IP rate limit exceeded under overload", addrStr)
+				continue
+			}
+		}
 
 		s.remoteConnectionMapMutex.Lock()
 		conn, found := s.remoteConnectionMap[addrStr]

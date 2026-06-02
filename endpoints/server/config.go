@@ -625,6 +625,17 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 		if err != nil {
 			log.Warning("ignoring CookieSigningKeyBase64 change: %v (keeping running key)", err)
 		} else {
+			// Mirror the startup demo-key guard in udpserver.Start: a
+			// hot-reload that swaps in the committed docker-compose demo
+			// key is just as dangerous as booting with it, and previously
+			// got no warning at all. Check the raw config string (not the
+			// decoded bytes) so this fires regardless of the preservation
+			// logic below.
+			if keyChanged && conf.CookieSigningKeyBase64 == shippedDemoCookieSigningKeyBase64 {
+				log.Critical("CookieSigningKeyBase64 reloaded to the docker-compose demo value committed at " +
+					"docker/nhp-server/etc/config.toml — this key is PUBLIC. Regenerate before any " +
+					"deployment reachable from outside the host.")
+			}
 			currKey, currWin := s.device.StatelessCookieParams()
 			if len(newKey) == 0 {
 				// Preserve the running key whenever the config field is

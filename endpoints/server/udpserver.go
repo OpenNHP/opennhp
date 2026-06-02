@@ -328,8 +328,18 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.forceOverload.Store(s.config.ForceOverload)
 	s.allowPrivateRelaySource.Store(s.config.AllowPrivateRelaySource)
 	if s.config.ForceOverload {
-		log.Warning("ForceOverload=true: device Overload pinned ON for the lifetime of this process (debug/test only)")
+		// Critical (not Warning): each of these flags disables a real
+		// production safeguard, and Warning is filtered out of default
+		// journalctl views — exactly where an operator who left a
+		// debug/relaxed flag on would miss it. Match the demo-cookie
+		// Critical above so all three "you are running with a guard off"
+		// signals share one severity.
+		log.Critical("ForceOverload=true: device Overload pinned ON for the lifetime of this process (debug/test only)")
 		s.device.SetOverload(true)
+	}
+	if s.config.AllowPrivateRelaySource {
+		log.Critical("AllowPrivateRelaySource=true: relay SourceAddr public-routability check is DISABLED — " +
+			"a relay can claim private/loopback/link-local client IPs. Intended for local/test only.")
 	}
 
 	// retrieve local ip and mac

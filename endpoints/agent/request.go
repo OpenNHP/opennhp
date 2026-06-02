@@ -54,8 +54,21 @@ func (a *UdpAgent) RequestOtp(target *KnockTarget) error {
 		return common.ErrPacketToMessageRoutineStopped
 	}
 
-	// device will create or find existing connection and sends the MsgAssembler via that connection
-	a.sendMsgCh <- otpMd
+	// IsRunning() above is only a cheap fast-path reject; it cannot make
+	// the bare send safe, because Stop() can win the race between the
+	// check and the send and close(sendMsgCh) underneath us (these request
+	// methods do not register with a.wg, so wg.Wait() in Stop() does not
+	// wait for them — unlike Knock). signals.stop is closed BEFORE
+	// sendMsgCh in Stop(), so selecting on it means we either send while
+	// the channel is still open or bail out cleanly — never send on a
+	// closed channel. device will create or find existing connection and
+	// sends the MsgAssembler via that connection.
+	select {
+	case a.sendMsgCh <- otpMd:
+	case <-a.signals.stop:
+		log.Error("agent(%s#%d)[RequestOtp] message routine stopped, skip sending", otpMsg.UserId, otpMd.TransactionId)
+		return common.ErrPacketToMessageRoutineStopped
+	}
 
 	log.Info("agent(%s#%d)[RequestOtp] sending otp request", otpMsg.UserId, otpMd.TransactionId)
 	return nil
@@ -107,8 +120,14 @@ func (a *UdpAgent) RegisterPublicKey(otp string, target *KnockTarget) (rakMsg *c
 		return nil, common.ErrPacketToMessageRoutineStopped
 	}
 
-	// device will create or find existing connection and sends the MsgAssembler via that connection
-	a.sendMsgCh <- regMd
+	// See RequestOtp: select on signals.stop so a concurrent Stop() that
+	// closes sendMsgCh after the IsRunning() check can't panic the send.
+	select {
+	case a.sendMsgCh <- regMd:
+	case <-a.signals.stop:
+		log.Error("agent(%s#%d)[RegisterPublicKey] message routine stopped, skip sending", regMsg.UserId, regMd.TransactionId)
+		return nil, common.ErrPacketToMessageRoutineStopped
+	}
 
 	// block until transaction completes
 	serverPpd := <-regMd.ResponseMsgCh
@@ -188,8 +207,14 @@ func (a *UdpAgent) ListResource(target *KnockTarget) (lrtMsg *common.ServerListR
 		return nil, common.ErrPacketToMessageRoutineStopped
 	}
 
-	// device will create or find existing connection and sends the MsgAssembler via that connection
-	a.sendMsgCh <- lstMd
+	// See RequestOtp: select on signals.stop so a concurrent Stop() that
+	// closes sendMsgCh after the IsRunning() check can't panic the send.
+	select {
+	case a.sendMsgCh <- lstMd:
+	case <-a.signals.stop:
+		log.Error("agent(%s#%d)[ListResource] message routine stopped, skip sending", lstMsg.UserId, lstMd.TransactionId)
+		return nil, common.ErrPacketToMessageRoutineStopped
+	}
 
 	// block until transaction completes
 	serverPpd := <-lstMd.ResponseMsgCh

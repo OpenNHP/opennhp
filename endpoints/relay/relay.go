@@ -510,6 +510,19 @@ func (inst *serverInstance) dispatch(counter uint64, raw []byte) (delivered, amb
 		return false, false
 	}
 	if len(waiters) != 1 {
+		// KNOWN LIMITATION (correlation on agent-supplied counter):
+		// correlation keys on the inner packet's 64-bit counter, which the
+		// NHP server echoes verbatim — the relay can't rewrite it without
+		// breaking the inner Noise framing, so it can't substitute a
+		// relay-assigned token. Counters are per-agent-process, so two
+		// DISTINCT honest clients (e.g. after an agent restart resets its
+		// counter) can collide on the same value to the same instance.
+		// Both then land here and are dropped to a single ACK they can't
+		// safely be disambiguated for. This is degraded QoS, not failure:
+		// browsers retry and a fresh forward gets a new counter. Hijack
+		// prevention is the load-bearing property and is preserved — an
+		// attacker racing a victim's counter still can't steal the
+		// response, it just denies it (which the retry recovers from).
 		log.Warning("[Relay] ambiguous response for counter=%d (%d waiters); dropping to prevent hijack",
 			counter, len(waiters))
 		inst.pendingMu.Unlock()

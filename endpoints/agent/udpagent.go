@@ -148,6 +148,14 @@ func (kt *KnockTarget) SetServerCluster(sc *ServerCluster) {
 	defer kt.Unlock()
 	if kt.ServerCluster != sc {
 		kt.chosenInstance = nil
+		// Drop any stashed COK cookie too: it was minted against the old
+		// cluster's HMAC key + peer pubkey. If a KNK->COK->RKN cycle
+		// straddles a server.toml reload, carrying it into the next RKN
+		// would either pass within the cluster (CookieSigningKeyBase64
+		// configured) or — after a cluster pubkey rotation — silently
+		// fail the handshake instead of falling back to a fresh KNK.
+		// Clearing it forces that clean KNK re-acquisition.
+		kt.pendingCookie = nil
 	}
 	kt.ServerCluster = sc
 }
@@ -956,9 +964,14 @@ func (a *UdpAgent) AddResource(res *KnockResource) error {
 	a.knockTargetMapMutex.Unlock()
 
 	if updated {
-		// renew knock cycle
-		if len(a.signals.knockTargetMapUpdated) == 0 {
-			a.signals.knockTargetMapUpdated <- struct{}{}
+		// renew knock cycle. Non-blocking send (channel is buffered size
+		// 1): coalesces with an already-queued update and, critically,
+		// can't block forever or panic if Stop() raced us and closed the
+		// consumer — same pattern as updateResources /
+		// refreshKnockTargetClusters.
+		select {
+		case a.signals.knockTargetMapUpdated <- struct{}{}:
+		default:
 		}
 	}
 
@@ -978,9 +991,11 @@ func (a *UdpAgent) RemoveResource(aspId string, resId string) {
 	a.knockTargetMapMutex.Unlock()
 
 	if beforeSize != afterSize {
-		// renew knock cycle
-		if len(a.signals.knockTargetMapUpdated) == 0 {
-			a.signals.knockTargetMapUpdated <- struct{}{}
+		// renew knock cycle. See AddResource: non-blocking send so a
+		// concurrent caller or a racing Stop() can't block or panic.
+		select {
+		case a.signals.knockTargetMapUpdated <- struct{}{}:
+		default:
 		}
 	}
 }

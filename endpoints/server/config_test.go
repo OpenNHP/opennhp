@@ -180,6 +180,65 @@ func TestUpdateBaseConfig_WindowOnlyChangePersists(t *testing.T) {
 	}
 }
 
+// TestUpdateBaseConfig_WindowOnlyReloadPreservesRandomKey fences the
+// single-instance random-key regression. In production, an operator who
+// leaves CookieSigningKeyBase64 unset gets a random per-process key
+// minted by udpserver.Start; s.config.CookieSigningKeyBase64 stays "".
+//
+// A later window-only reload (CookieSigningKeyBase64 still "") computes
+// keyChanged=false. Pre-fix, the preservation branch was gated on
+// "len(newKey)==0 && keyChanged", so it was skipped, newKey stayed nil,
+// and SetStatelessCookieParams(nil, win) DISABLED stateless cookies —
+// silently stalling every agent that hit the overload path. The fix
+// preserves the running key whenever the config field is empty,
+// regardless of keyChanged.
+//
+// Note this test sets up the state directly rather than via
+// newServerForReloadTest, which always populates a non-empty base64
+// (and so could never reproduce the always-empty production flow).
+func TestUpdateBaseConfig_WindowOnlyReloadPreservesRandomKey(t *testing.T) {
+	devPriv := make([]byte, 32)
+	for i := range devPriv {
+		devPriv[i] = byte(i + 1)
+	}
+	dev := core.NewDevice(core.NHP_SERVER, devPriv, nil)
+	if dev == nil {
+		t.Fatal("NewDevice returned nil")
+	}
+	t.Cleanup(dev.Stop)
+
+	// Mimic udpserver.Start's single-instance path: a random key on the
+	// device, but an EMPTY CookieSigningKeyBase64 in s.config.
+	randomKey := bytes.Repeat([]byte{0xAB}, 32)
+	dev.SetStatelessCookieParams(randomKey, DefaultCookieTimeWindowSeconds)
+	s := &UdpServer{
+		device: dev,
+		config: &Config{
+			CookieSigningKeyBase64:  "",
+			CookieTimeWindowSeconds: DefaultCookieTimeWindowSeconds,
+		},
+	}
+
+	const newWin = DefaultCookieTimeWindowSeconds + 30
+	if err := s.updateBaseConfig(Config{
+		CookieSigningKeyBase64:  "", // still unset, as on disk
+		CookieTimeWindowSeconds: newWin,
+	}); err != nil {
+		t.Fatalf("window-only reload returned error: %v", err)
+	}
+
+	devKey, devWin := dev.StatelessCookieParams()
+	if len(devKey) == 0 {
+		t.Fatal("window-only reload disabled stateless cookies (device key nil'd); the random per-process key must be preserved")
+	}
+	if !bytes.Equal(devKey, randomKey) {
+		t.Fatalf("device key must be the preserved random key; got %x, want %x", devKey, randomKey)
+	}
+	if devWin != int64(newWin) {
+		t.Fatalf("window update must still reach the device; got %d, want %d", devWin, newWin)
+	}
+}
+
 // TestShippedDemoCookieSigningKey_MatchesCommittedConfig pins the
 // constant we compare against at startup to the value actually
 // committed under docker/nhp-server/etc/config.toml. The startup

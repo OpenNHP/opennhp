@@ -626,8 +626,21 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 			log.Warning("ignoring CookieSigningKeyBase64 change: %v (keeping running key)", err)
 		} else {
 			currKey, currWin := s.device.StatelessCookieParams()
-			if len(newKey) == 0 && keyChanged {
-				log.Warning("CookieSigningKeyBase64 cleared on reload; keeping previous key in memory")
+			if len(newKey) == 0 {
+				// Preserve the running key whenever the config field is
+				// empty — NOT only when it changed. The single-instance
+				// flow never sets CookieSigningKeyBase64: udpserver.Start
+				// mints a random per-process key, so s.config's field
+				// stays "" and keyChanged is false on a window-only
+				// reload. Gating preservation on keyChanged here would
+				// let newKey stay nil and hand SetStatelessCookieParams a
+				// nil key, which silently DISABLES stateless cookies and
+				// stalls every agent that hits the overload path. Only
+				// the operator-cleared-a-configured-key case warrants a
+				// warning; the always-empty case is normal.
+				if keyChanged {
+					log.Warning("CookieSigningKeyBase64 cleared on reload; keeping previous key in memory")
+				}
 				newKey = currKey
 			}
 			newWin := conf.CookieTimeWindowSeconds

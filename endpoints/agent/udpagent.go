@@ -363,6 +363,16 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 
 	a.signals.stop = make(chan struct{})
 	a.signals.knockTargetStop = make(chan struct{})
+	// Re-arm the once alongside the channel it guards. RestartAgent reuses
+	// the same *UdpAgent (Stop() -> Start()), and a sync.Once is spent
+	// after its first Do. Without this reset, every post-restart
+	// stopKnockLoop() (from both StopKnockLoop() and Stop()) would no-op,
+	// leaving the new knockTargetStop never closed — so knockResourceRoutine
+	// (which only selects on knockTargetStop / knockTargetMapUpdated, never
+	// signals.stop) never stops and Stop()'s wg.Wait() deadlocks. Assigning
+	// a fresh zero Once is the idiomatic re-arm (go vet does not flag it —
+	// it isn't a copy of an in-use lock).
+	a.knockTargetStopOnce = sync.Once{}
 	a.signals.knockTargetMapUpdated = make(chan struct{}, 1)
 
 	// load knock resources

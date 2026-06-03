@@ -269,8 +269,23 @@ func (a *UdpAgent) ExitKnockRequest(res *KnockTarget) (ackMsg *common.ServerKnoc
 		return ackMsg, err
 	}
 
-	// device will create or find existing connection and sends the MsgAssembler via that connection
-	a.sendMsgCh <- knkMd
+	// Same guard as RequestOtp / RegisterPublicKey / ListResource:
+	// ExitKnockRequest is reachable directly from the unsynchronized SDK
+	// exports (NhpAgentExitResource) and is NOT wg-tracked, so a concurrent
+	// Stop() can close(sendMsgCh) after the IsRunning() check above. Select
+	// on signals.stop (closed before sendMsgCh in Stop()) so the send either
+	// completes while the channel is open or bails out cleanly. The sends in
+	// knockRequest and KnockDHP don't need this — their callers (Knock /
+	// dhpKnockResourceRoutine) are wg-tracked and complete before close.
+	select {
+	case a.sendMsgCh <- knkMd:
+	case <-a.signals.stop:
+		log.Error("agent(%s#%d)[ExitKnockRequest] message routine stopped, skip sending", knkMsg.UserId, knkMd.TransactionId)
+		err = common.ErrPacketToMessageRoutineStopped
+		ackMsg.ErrCode = common.ErrPacketToMessageRoutineStopped.ErrorCode()
+		ackMsg.ErrMsg = err.Error()
+		return ackMsg, err
+	}
 
 	// block until transaction completes
 	serverPpd := <-knkMd.ResponseMsgCh

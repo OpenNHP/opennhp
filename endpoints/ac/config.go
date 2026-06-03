@@ -475,11 +475,22 @@ func (a *UdpAC) updateEtcdConfig(content []byte, baseLoad bool) (err error) {
 	_ = a.updateHttpConfig(acEtcdConfig.HttpConfig)
 	expanded, expandErr := normalizeAndExpand(acEtcdConfig.Servers)
 	if expandErr != nil {
-		// etcd reload: same fail-close discipline as the file watcher —
-		// keep the running peer table rather than swap in a config that
-		// would silently drop a cluster from peerMap.
+		// baseLoad==false is the initial load (loadRemoteConfig); ==true is
+		// a watch-triggered reload.
+		if !baseLoad {
+			// Initial load must fail-close, mirroring the file path's
+			// loadPeers (config.go refuses to Start() on an empty/invalid
+			// peer table). Returning the error propagates through
+			// loadRemoteConfig so Start() aborts instead of booting an
+			// etcd-backed AC with an empty peer table that silently
+			// no-ops AOL/AOP fan-out.
+			log.Critical("updateEtcdConfig: initial load failed: %v; refusing to start", expandErr)
+			return expandErr
+		}
+		// Reload: keep the running peer table rather than swap in a config
+		// that would silently drop a cluster from peerMap.
 		log.Critical("updateEtcdConfig: %v; keeping previous peer table", expandErr)
-		return
+		return nil
 	}
 	_ = a.updateServerPeers(expanded)
 	return

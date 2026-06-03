@@ -9,9 +9,9 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
-	github.com/tetratelabs/wazero v1.11.0
+	github.com/tetratelabs/wazero v1.12.0
 	go.etcd.io/etcd/client/v3 v3.6.11
-  golang.org/x/crypto v0.52.0
+	golang.org/x/crypto v0.52.0
 	golang.org/x/sys v0.45.0
 )
 

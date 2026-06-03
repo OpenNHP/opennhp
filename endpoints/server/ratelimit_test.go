@@ -136,25 +136,47 @@ func TestRknRateLimiter_EvictionBoundsMap(t *testing.T) {
 	}
 }
 
-// TestRknRateLimiter_IdleSweepReclaims: idle buckets are reclaimed by the
-// sweep before oldest-eviction is needed.
-func TestRknRateLimiter_IdleSweepReclaims(t *testing.T) {
+// TestRknRateLimiter_IdleBucketsReclaimed: when the map is full of idle
+// buckets, each new insertion reclaims an idle one via the sample (evict
+// drops the first idle bucket it sees), so the map stays at capacity and
+// the stale entries are cycled out — without the old O(n) full-table
+// sweep. Over maxEntries fresh insertions every stale bucket is replaced.
+func TestRknRateLimiter_IdleBucketsReclaimed(t *testing.T) {
 	const maxEntries = 10
 	rl := newRknRateLimiter(10, 5, maxEntries, 100*sec)
 	now := int64(0)
 
-	// Fill with maxEntries IPs at t=0.
+	// Fill with maxEntries stale IPs at t=0.
+	stale := make([]string, maxEntries)
 	for i := 0; i < maxEntries; i++ {
-		rl.allow(addr(fmt.Sprintf("172.16.0.%d", i)), now)
+		stale[i] = fmt.Sprintf("172.16.0.%d", i)
+		rl.allow(addr(stale[i]), now)
 	}
 	if len(rl.buckets) != maxEntries {
 		t.Fatalf("expected %d buckets, got %d", maxEntries, len(rl.buckets))
 	}
-	// Advance past idleNanos so every existing bucket is sweepable, then a
-	// new IP triggers eviction: the sweep should clear the stale ones.
+
+	// Advance past idleNanos so every existing bucket is reclaimable. With
+	// the whole table idle, a single insertion's sample (evictSampleSize of
+	// maxEntries buckets) is guaranteed to contain an idle bucket, so evict
+	// drops an idle one — never grows the map, and prefers idle over fresh.
 	now += 101 * sec
-	rl.allow(addr("172.16.0.200"), now)
-	if len(rl.buckets) != 1 {
-		t.Fatalf("idle sweep should have reclaimed all stale buckets, leaving only the new one; got %d", len(rl.buckets))
+	rl.allow(addr("198.51.100.1"), now)
+	if len(rl.buckets) != maxEntries {
+		t.Fatalf("map should stay at cap after idle reclamation, got %d", len(rl.buckets))
+	}
+	// Exactly one stale bucket was reclaimed (an idle one), and the fresh
+	// IP is present.
+	staleRemaining := 0
+	for _, k := range stale {
+		if _, ok := rl.buckets[k]; ok {
+			staleRemaining++
+		}
+	}
+	if staleRemaining != maxEntries-1 {
+		t.Fatalf("expected exactly one idle bucket reclaimed (%d stale remaining), got %d", maxEntries-1, staleRemaining)
+	}
+	if _, ok := rl.buckets["198.51.100.1"]; !ok {
+		t.Fatal("freshly inserted IP should be present")
 	}
 }

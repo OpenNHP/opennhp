@@ -142,32 +142,45 @@ func (r *rknRateLimiter) allow(addr *net.UDPAddr, nowNanos int64) bool {
 	return false
 }
 
-// evict reclaims map space when maxEntries is reached. It first sweeps
-// every bucket idle longer than idleNanos; if that frees nothing (e.g. an
-// active flood across many fresh IPs), it drops the single oldest bucket
-// so the map never exceeds the cap. Called inline from allow() with r.mu
+// evictSampleSize is the number of buckets inspected per eviction. Go
+// randomizes map iteration order, so the first N keys are an unbiased
+// random sample — large enough that the bucket we drop is very likely
+// among the older/idle ones, small enough to stay O(1) per packet.
+const evictSampleSize = 8
+
+// evict makes room for one new bucket when the map is at capacity. It
+// inspects at most evictSampleSize buckets (a random sample, courtesy of
+// Go's randomized map iteration) and deletes one: the first idle bucket it
+// sees, or — if none in the sample is idle — the oldest in the sample.
+//
+// This is deliberately O(evictSampleSize), NOT O(len(buckets)). The
+// earlier full-table sweep + full-table oldest-scan ran on every packet
+// once the map saturated, so an attacker spraying RKN from >maxEntries
+// rotating spoofed source IPs forced an O(maxEntries) scan per packet —
+// under r.mu, which also serializes recvPacketRoutine and the relay
+// handlers — re-introducing the very CPU/contention cost the limiter
+// exists to remove. Random-sample eviction keeps the hard memory bound
+// (one deletion guarantees room for one insertion) while making the
+// per-packet cost a small constant. Called inline from allow() with r.mu
 // already held.
 func (r *rknRateLimiter) evict(nowNanos int64) {
-	freed := false
-	for k, b := range r.buckets {
-		if nowNanos-b.lastSeenNanos > r.idleNanos {
-			delete(r.buckets, k)
-			freed = true
-		}
-	}
-	if freed {
-		return
-	}
-	// Nothing idle: evict the oldest by lastSeen. O(n) but only on the
-	// rare full-table-of-active-IPs case, and bounded by maxEntries.
 	var oldestKey string
 	var oldest int64
-	first := true
+	seen := 0
 	for k, b := range r.buckets {
-		if first || b.lastSeenNanos < oldest {
+		if nowNanos-b.lastSeenNanos > r.idleNanos {
+			// Idle bucket in the sample: drop it immediately, it's the
+			// best possible eviction (reclaimable anyway).
+			delete(r.buckets, k)
+			return
+		}
+		if seen == 0 || b.lastSeenNanos < oldest {
 			oldest = b.lastSeenNanos
 			oldestKey = k
-			first = false
+		}
+		seen++
+		if seen >= evictSampleSize {
+			break
 		}
 	}
 	if oldestKey != "" {

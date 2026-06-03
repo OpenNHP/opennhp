@@ -61,7 +61,7 @@ const (
 	// (keyed on counter+client) until its handler returns — bounded by
 	// udpTimeout (5s default) but otherwise ungated, so an adversary opening
 	// requests faster than they drain grows that map without limit. This is
-	// the relay's analogue of the server's MaxConcurrentHandlers semaphore:
+	// the relay's analog of the server's MaxConcurrentHandlers semaphore:
 	// when full, new forwards are shed with 503 (backpressure) rather than
 	// letting the pending map become a memory-DoS vector. Sized to comfortably
 	// cover steady-state λ×5s for a busy instance while still being a hard

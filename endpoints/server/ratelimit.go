@@ -27,7 +27,7 @@ import (
 //
 // DISPOSITION: over-limit packets are DROPPED only. They are not counted
 // as threats and never trigger AddBlockAddr, so a legitimate agent whose
-// retry cadence is far below the bucket rate is never penalised, and many
+// retry cadence is far below the bucket rate is never penalized, and many
 // agents behind one NAT/CGN egress IP degrade to dropped-RKN (which the
 // agent already retries) rather than a hard block on the shared address.
 //

@@ -110,12 +110,38 @@ func TestConfig_RejectsDuplicateServerPubkey(t *testing.T) {
 	}
 }
 
-// TestConfig_RejectsDuplicateInstanceAddress catches the silent-failure mode
-// where two servers point at the same host:port. resolveTarget keys by
-// PeerPk so this wouldn't misroute on its own, but it's almost always a
-// copy-paste mistake the operator wants to hear about at load time rather
-// than discover later.
-func TestConfig_RejectsDuplicateInstanceAddress(t *testing.T) {
+// TestConfig_RejectsDuplicateInstanceAddressSamePubkey catches the
+// unambiguous copy-paste mistake: the SAME identity listing the same
+// host:port twice. The dedupe is scoped to (fingerprint, addr), so this is
+// the case that still fails at load time.
+func TestConfig_RejectsDuplicateInstanceAddressSamePubkey(t *testing.T) {
+	cfg := &Config{
+		PrivateKeyBase64: fakeKey(0x10),
+		Servers: []Server{
+			{
+				PubKeyBase64: fakeKey(0x20),
+				Instances: []ServerInstance{
+					{Host: "10.0.0.1", Port: 62206},
+					{Host: "10.0.0.1", Port: 62206}, // same identity, same addr
+				},
+			},
+		},
+	}
+	err := cfg.normalize()
+	if err == nil {
+		t.Fatalf("expected error for duplicate (host,port) under same pubkey")
+	}
+	if !strings.Contains(err.Error(), "already claimed") {
+		t.Errorf("error should mention the conflict, got: %v", err)
+	}
+}
+
+// TestConfig_AcceptsSameAddressDistinctPubkeys: two DISTINCT identities
+// sharing one host:port (a SNI/header-routed front-end, or port-multiplexed
+// identities) is a valid topology — resolveTarget routes by PeerPk — and
+// must not be rejected at load time. Regression guard for the over-strict
+// addr-only dedupe.
+func TestConfig_AcceptsSameAddressDistinctPubkeys(t *testing.T) {
 	cfg := &Config{
 		PrivateKeyBase64: fakeKey(0x10),
 		Servers: []Server{
@@ -124,17 +150,13 @@ func TestConfig_RejectsDuplicateInstanceAddress(t *testing.T) {
 				Instances:    []ServerInstance{{Host: "10.0.0.1", Port: 62206}},
 			},
 			{
-				PubKeyBase64: fakeKey(0x21), // distinct pubkey
+				PubKeyBase64: fakeKey(0x21), // distinct pubkey, same addr
 				Instances:    []ServerInstance{{Host: "10.0.0.1", Port: 62206}},
 			},
 		},
 	}
-	err := cfg.normalize()
-	if err == nil {
-		t.Fatalf("expected error for duplicate (host,port)")
-	}
-	if !strings.Contains(err.Error(), "already claimed") {
-		t.Errorf("error should mention the conflict, got: %v", err)
+	if err := cfg.normalize(); err != nil {
+		t.Fatalf("distinct pubkeys sharing one address should load: %v", err)
 	}
 }
 

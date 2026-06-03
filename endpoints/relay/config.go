@@ -202,11 +202,14 @@ func (cfg *Config) normalize() error {
 	}
 
 	seenFP := make(map[string]int, len(cfg.Servers))
-	// seenAddr catches two servers that point at the same host:port.
-	// resolveTarget keys by PeerPk, so duplicate addresses don't cause a
-	// routing bug on their own — but they almost certainly mean the
-	// operator copied a server and forgot to change the instance, and
-	// silently accepting that would mask a real config mistake.
+	// seenAddr catches a server+instance pair duplicated under the SAME
+	// pubkey — the "operator copied a [[Servers]] block and forgot to
+	// change the instance" mistake. The dedupe key is (fingerprint, addr),
+	// NOT addr alone: resolveTarget routes by PeerPk, so two DISTINCT
+	// pubkeys legitimately sharing one host:port (a SNI/header-routed
+	// front-end, or port-multiplexed identities) is a valid topology and
+	// must not be a hard config-load failure. Only same-pubkey + same-addr
+	// is the unambiguous copy-paste error.
 	type addrOrigin struct {
 		server   int
 		instance int
@@ -238,11 +241,15 @@ func (cfg *Config) normalize() error {
 				return fmt.Errorf("relay: server #%d instance #%d missing or invalid port", i, j)
 			}
 			addr := fmt.Sprintf("%s:%d", inst.Host, inst.Port)
-			if dup, ok := seenAddr[addr]; ok {
-				return fmt.Errorf("relay: server #%d instance #%d address %s already claimed by server #%d instance #%d",
-					i, j, addr, dup.server, dup.instance)
+			// Scope to this server's pubkey: same identity reusing an
+			// address is the copy-paste error we reject; a sibling
+			// identity on the same address is allowed (see seenAddr docs).
+			addrKey := fp + "@" + addr
+			if dup, ok := seenAddr[addrKey]; ok {
+				return fmt.Errorf("relay: server #%d instance #%d address %s already claimed by server #%d instance #%d under the same publicKeyBase64 (fingerprint %s)",
+					i, j, addr, dup.server, dup.instance, fp)
 			}
-			seenAddr[addr] = addrOrigin{server: i, instance: j}
+			seenAddr[addrKey] = addrOrigin{server: i, instance: j}
 			if inst.Weight <= 0 {
 				inst.Weight = 1
 			}

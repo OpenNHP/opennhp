@@ -150,12 +150,19 @@ func (d *Device) SetStatelessCookieParams(key []byte, windowSec int) {
 }
 
 // StatelessCookieParams returns the configured signing key and window, or
-// (nil, 0) when stateless cookies are disabled. The returned slice is the
-// internal buffer — callers must treat it as read-only.
+// (nil, 0) when stateless cookies are disabled. The key is copied out
+// under the read lock so the caller holds an independent buffer: returning
+// the internal slice header would alias d.cookieSigningKey, and a
+// concurrent SetStatelessCookieParams (the hot-reload path) rebinds that
+// field non-atomically against this read. The copy makes the getter
+// self-contained and the "read-only" caller invariant unnecessary.
 func (d *Device) StatelessCookieParams() ([]byte, int64) {
 	d.cookieSigningMu.RLock()
 	defer d.cookieSigningMu.RUnlock()
-	return d.cookieSigningKey, d.cookieTimeWindowSec
+	if d.cookieSigningKey == nil {
+		return nil, d.cookieTimeWindowSec
+	}
+	return append([]byte(nil), d.cookieSigningKey...), d.cookieTimeWindowSec
 }
 
 func (d *Device) Start() {

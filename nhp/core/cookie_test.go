@@ -238,3 +238,56 @@ func TestDeriveStatelessCookie_EmptyPeerPkSafe(t *testing.T) {
 		t.Fatalf("expected %d-byte cookie even with nil peerPk, got %d", CookieSize, len(got))
 	}
 }
+
+// TestStatelessCookieParams_CopiesOut verifies the getter returns an
+// independent buffer, not an alias of the device's internal key. A caller
+// mutating the returned slice — or a concurrent SetStatelessCookieParams
+// rebinding the field — must not be observable through a previously
+// returned slice.
+func TestStatelessCookieParams_CopiesOut(t *testing.T) {
+	dev := newDeviceForChainKeyTest(t)
+	orig := bytes.Repeat([]byte{0xAB}, 32)
+	dev.SetStatelessCookieParams(orig, 5)
+
+	got, win := dev.StatelessCookieParams()
+	if win != 5 {
+		t.Fatalf("window = %d, want 5", win)
+	}
+	if !bytes.Equal(got, orig) {
+		t.Fatalf("returned key %x, want %x", got, orig)
+	}
+
+	// Mutating the returned slice must not corrupt the device's key.
+	got[0] ^= 0xFF
+	again, _ := dev.StatelessCookieParams()
+	if !bytes.Equal(again, orig) {
+		t.Fatalf("device key was aliased: mutation leaked, got %x want %x", again, orig)
+	}
+
+	// Rebinding via the setter must not be visible through the slice the
+	// first call already returned.
+	first, _ := dev.StatelessCookieParams()
+	newKey := bytes.Repeat([]byte{0xCD}, 32)
+	dev.SetStatelessCookieParams(newKey, 7)
+	if first[0] == 0xCD {
+		t.Fatal("previously returned slice aliased the internal key across a setter rebind")
+	}
+	after, win2 := dev.StatelessCookieParams()
+	if win2 != 7 || !bytes.Equal(after, newKey) {
+		t.Fatalf("after rebind got (%x, %d), want (%x, 7)", after, win2, newKey)
+	}
+}
+
+// TestStatelessCookieParams_NilWhenDisabled: a zero/empty key disables
+// cookies and the getter returns nil (not an empty non-nil slice).
+func TestStatelessCookieParams_NilWhenDisabled(t *testing.T) {
+	dev := newDeviceForChainKeyTest(t)
+	dev.SetStatelessCookieParams(nil, 5)
+	got, win := dev.StatelessCookieParams()
+	if got != nil {
+		t.Fatalf("disabled cookies should return nil key, got %x", got)
+	}
+	if win != 0 {
+		t.Fatalf("disabled cookies should return window 0, got %d", win)
+	}
+}

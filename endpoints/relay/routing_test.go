@@ -10,16 +10,16 @@ import (
 )
 
 // newRoutingTestServer builds a RelayServer just complete enough for
-// resolveCluster + handleRelay's HTTP-layer checks. It never connects a UDP
-// socket: every cluster is created with an empty instances list, so the
+// resolveServer + handleRelay's HTTP-layer checks. It never connects a UDP
+// socket: every server is created with an empty instances list, so the
 // pickInstance() nil-guard short-circuits the request with 503 before any
 // device code is touched. That's exactly the boundary we want to exercise —
 // the HTTP routing contract — without dragging the full NHP pipeline into
 // the test.
-func newRoutingTestServer(clusterIDs ...string) *RelayServer {
-	clusters := make(map[string]*clusterRuntime, len(clusterIDs))
-	for _, id := range clusterIDs {
-		clusters[id] = &clusterRuntime{
+func newRoutingTestServer(serverIDs ...string) *RelayServer {
+	servers := make(map[string]*serverRuntime, len(serverIDs))
+	for _, id := range serverIDs {
+		servers[id] = &serverRuntime{
 			id:        id,
 			name:      "test-" + id,
 			scheme:    LBWeightedRandom,
@@ -27,7 +27,7 @@ func newRoutingTestServer(clusterIDs ...string) *RelayServer {
 		}
 	}
 	return &RelayServer{
-		clusters: clusters,
+		servers: servers,
 	}
 }
 
@@ -57,10 +57,10 @@ func newRelayRequest(method, path string, body []byte) *http.Request {
 	return r
 }
 
-// TestRouting_UnknownClusterReturns404 confirms the no-silent-fallback
-// invariant: an unrecognized cluster id must fail loudly, never get
-// auto-redirected to some "default" cluster.
-func TestRouting_UnknownClusterReturns404(t *testing.T) {
+// TestRouting_UnknownServerReturns404 confirms the no-silent-fallback
+// invariant: an unrecognized server id must fail loudly, never get
+// auto-redirected to some "default" server.
+func TestRouting_UnknownServerReturns404(t *testing.T) {
 	rs := newRoutingTestServer("good-id")
 
 	w := httptest.NewRecorder()
@@ -74,10 +74,10 @@ func TestRouting_UnknownClusterReturns404(t *testing.T) {
 	}
 }
 
-// TestRouting_MissingClusterIdReturns400 covers POST /relay/ (just the
+// TestRouting_MissingServerIdReturns400 covers POST /relay/ (just the
 // trailing slash). The legacy POST /relay path was removed, so an empty id
 // must surface as a clear 400 telling the caller to use /relay/<id>.
-func TestRouting_MissingClusterIdReturns400(t *testing.T) {
+func TestRouting_MissingServerIdReturns400(t *testing.T) {
 	rs := newRoutingTestServer("good-id")
 
 	w := httptest.NewRecorder()
@@ -86,7 +86,7 @@ func TestRouting_MissingClusterIdReturns400(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d (body: %s)", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "missing cluster id") {
+	if !strings.Contains(w.Body.String(), "missing server id") {
 		t.Errorf("error body should explain the missing id, got: %s", w.Body.String())
 	}
 }
@@ -97,18 +97,18 @@ func TestRouting_MissingClusterIdReturns400(t *testing.T) {
 // 301 redirect to "/relay/" — which then hits handleRelay and 400s on the
 // missing id. Either response makes "use the legacy URL" loud, so this is
 // the desired contract; the test pins it so a future change can't silently
-// re-introduce a fallback to a default cluster.
+// re-introduce a fallback to a default server.
 func TestRouting_LegacyBarePathRedirects(t *testing.T) {
 	rs := newRoutingTestServer("good-id")
 	mux := http.NewServeMux()
 	mux.HandleFunc("/relay/", rs.handleRelay)
-	mux.HandleFunc("/clusters", rs.handleClusters)
+	mux.HandleFunc("/servers", rs.handleServers)
 
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, newRelayRequest(http.MethodPost, "/relay", validInnerPacket))
 
 	// 301 (ServeMux redirect) or 400 (handler missing-id) are both acceptable.
-	// 200 / 2xx would mean some default-cluster path snuck back in — fail loudly.
+	// 200 / 2xx would mean some default-server path snuck back in — fail loudly.
 	if w.Code == http.StatusMovedPermanently {
 		loc := w.Header().Get("Location")
 		if loc != "/relay/" {
@@ -178,7 +178,7 @@ func TestRouting_OversizeBodyReturns400(t *testing.T) {
 }
 
 // TestRouting_NoInstanceReturns503 exercises the phase-2-future safety
-// guard: a configured cluster with zero usable instances must return 503,
+// guard: a configured server with zero usable instances must return 503,
 // not panic on a nil pickInstance().
 func TestRouting_NoInstanceReturns503(t *testing.T) {
 	rs := newRoutingTestServer("good-id")
@@ -187,7 +187,7 @@ func TestRouting_NoInstanceReturns503(t *testing.T) {
 	rs.handleRelay(w, newRelayRequest(http.MethodPost, "/relay/good-id", validInnerPacket))
 
 	if w.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 when cluster has no instance, got %d (body: %s)",
+		t.Fatalf("expected 503 when server has no instance, got %d (body: %s)",
 			w.Code, w.Body.String())
 	}
 }
@@ -202,31 +202,31 @@ func TestRouting_TrailingSlashTolerated(t *testing.T) {
 	rs.handleRelay(w, newRelayRequest(http.MethodPost, "/relay/good-id/", validInnerPacket))
 
 	if w.Code != http.StatusServiceUnavailable {
-		// 503 = recognized cluster id but no instance (our test setup); that's
+		// 503 = recognized server id but no instance (our test setup); that's
 		// the expected "passed routing" outcome here, not 404.
 		t.Fatalf("expected 503 (recognized id), got %d (body: %s)",
 			w.Code, w.Body.String())
 	}
 }
 
-// TestClusters_SortedAndStable verifies the /clusters output is sorted by
+// TestServers_SortedAndStable verifies the /servers output is sorted by
 // id, so callers that diff or hash the response don't see Go-map-order
 // churn between requests.
-func TestClusters_SortedAndStable(t *testing.T) {
+func TestServers_SortedAndStable(t *testing.T) {
 	rs := newRoutingTestServer("zeta", "alpha", "mu")
 
 	w := httptest.NewRecorder()
-	rs.handleClusters(w, httptest.NewRequest(http.MethodGet, "/clusters", nil))
+	rs.handleServers(w, httptest.NewRequest(http.MethodGet, "/servers", nil))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	var got []clusterInfo
+	var got []serverInfo
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 		t.Fatalf("response is not JSON: %v", err)
 	}
 	if len(got) != 3 {
-		t.Fatalf("expected 3 clusters, got %d", len(got))
+		t.Fatalf("expected 3 servers, got %d", len(got))
 	}
 	wantOrder := []string{"alpha", "mu", "zeta"}
 	for i := range got {
@@ -236,13 +236,13 @@ func TestClusters_SortedAndStable(t *testing.T) {
 	}
 }
 
-// TestClusters_NonGetReturns405 keeps the method check on the discovery
+// TestServers_NonGetReturns405 keeps the method check on the discovery
 // endpoint in the regression net.
-func TestClusters_NonGetReturns405(t *testing.T) {
+func TestServers_NonGetReturns405(t *testing.T) {
 	rs := newRoutingTestServer("good-id")
 
 	w := httptest.NewRecorder()
-	rs.handleClusters(w, httptest.NewRequest(http.MethodPost, "/clusters", nil))
+	rs.handleServers(w, httptest.NewRequest(http.MethodPost, "/servers", nil))
 
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405, got %d", w.Code)

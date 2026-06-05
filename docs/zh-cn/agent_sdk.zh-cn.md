@@ -11,7 +11,47 @@ permalink: /zh-cn/agent_sdk/
 
 ---
 
+## v0.x 到 v1.x 迁移说明
 
+自 v1.0 起，资源按 nhp-server **集群（cluster）** 引用，而不再按 host:port。三个资源相关的 SDK 入口去掉了地址参数，新增一个 `cluster` 参数：
+
+| 函数 | v0.x 签名 | v1.x 签名 |
+| --- | --- | --- |
+| `nhp_agent_add_resource` | `(aspId, resId, serverIp, serverHostname, serverPort)` | `(aspId, resId, cluster)` |
+| `nhp_agent_knock_resource` | `(aspId, resId, serverIp, serverHostname, serverPort)` | `(aspId, resId, cluster)` |
+| `nhp_agent_exit_resource` | `(aspId, resId, serverIp, serverHostname, serverPort)` | `(aspId, resId, cluster)` |
+
+iOS / Android 端的封装（`NhpAgentAddResource`、`NhpAgentKnockResource`、`NhpAgentExitResource`）同步变更。
+
+`nhp_agent_add_server` **未变** —— 仍为 `(pubkey, ip, host, port, expire)`。新增的 `cluster` 参数用于在已注册的 server 中指明资源路由的目标。
+
+### `cluster` 取值方式
+
+- **加载 `server.toml` 的调用方**：传入目标集群的 `[[Servers]] Name`。
+- **通过 `nhp_agent_add_server` 注册的调用方**：传入该 server 的 base64 公钥（SDK 会以 pubkey 自动命名单实例集群）。这让 SDK 调用者可以零额外学习集群命名概念、按调用粒度逐步迁移。
+
+集群名不存在、pubkey 未注册、同时设置了 `Cluster` 与 `ServerPubKey`、两者都未设置——这几类失败都通过 knock 响应的 `errCode` 字段透传，下游可用错误码精确分支。见下文 [集群查找错误码](#集群查找错误码) 一节。
+
+### 为什么删除地址参数
+
+v1.x 之前，只要资源（或其底层 server peer）配置了 pubkey，`serverIp` / `serverHostname` / `serverPort` 就会被静默忽略——`resource.toml` 可能展示了 agent 实际从未拨号的地址。这些字段已删除：保留它们没有一致的语义，要么破坏运维直觉、要么破坏路由正确性。
+
+### Go 调用方
+
+`agent.KnockResource` 删除了 `ServerHostname` / `ServerIp` / `ServerPort`，新增 `Cluster` / `ServerPubKey`。**恰好设置其中一个**。`FindServerClusterFromResource` 签名改为 `(*ServerCluster, error)`，迁移相关失败会返回以下 sentinel error：
+
+- `common.ErrKnockResourceMissingClusterRef` —— `Cluster` 和 `ServerPubKey` 都未设置。
+- `common.ErrKnockResourceAmbiguousClusterRef` —— `Cluster` 和 `ServerPubKey` 同时设置。
+- `common.ErrKnockResourceUnknownClusterName` —— `Cluster` 引用的名字在 `server.toml` 中不存在。
+- `common.ErrKnockResourceUnknownClusterPubKey` —— `ServerPubKey` 未在 agent 中注册。
+
+破坏性变更落在 commit `a947e1c5`（`feat(agent)!: bind resources to clusters by name, drop ambiguous host fields`）；后续示例 / 文档 / SDK 清理见同分支后续 commits。
+
+### 集群查找错误码
+
+knock / exit JSON 响应的 `errCode` 字段会被填为上述 sentinel error 的数字码。需要向终端用户呈现精确诊断的调用方，应按 `errCode` 分支而不是 `errMsg`（人类可读文本）。错误码总表见 [`nhp/common/errors.go`](https://github.com/OpenNHP/opennhp/blob/main/nhp/common/errors.go)。
+
+---
 
 ## 1 客户端代理SDK介绍
 
@@ -238,29 +278,27 @@ func nhp_agent_remove_server(pubkey *C.char) {
 // Input:
 // aspId: Authentication Service Provider Identifier
 // resId: Resource Identifier
-// serverIp: NHP server IP address or domain name (the NHP server managing the resource)
-// serverHostname: NHP server domain name (the NHP server managing the resource)
-// serverPort: NHP server port (the NHP server managing the resource)
+// cluster: nhp-server cluster name (must match a [[Servers]] Name in server.toml,
+// or a pubkey previously registered via nhp_agent_add_server when used as the
+// cluster's auto-name)
 //
 // Return:
 // Whether the resource information has been added successfully
 //
 //export nhp_agent_add_resource
-func nhp_agent_add_resource(aspId *C.char, resId *C.char, serverIp *C.char, serverHostname *C.char, serverPort C.int) bool {
+func nhp_agent_add_resource(aspId *C.char, resId *C.char, cluster *C.char) bool {
 	if gAgentInstance == nil {
 		return false
 	}
 
-	if aspId == nil || resId == nil || (serverIp == nil && serverHostname == nil) {
+	if aspId == nil || resId == nil || cluster == nil {
 		return false
 	}
 
 	resource := &agent.KnockResource{
-		AuthServiceId:  deepCopyCString(aspId),
-		ResourceId:     deepCopyCString(resId),
-		ServerIp:       deepCopyCString(serverIp),
-		ServerHostname: deepCopyCString(serverHostname),
-		ServerPort:     int(serverPort),
+		AuthServiceId: deepCopyCString(aspId),
+		ResourceId:    deepCopyCString(resId),
+		Cluster:       deepCopyCString(cluster),
 	}
 	err := gAgentInstance.AddResource(resource)
 	return err == nil
@@ -290,9 +328,7 @@ func nhp_agent_remove_resource(aspId *C.char, resId *C.char) {
 // Input:
 // aspId: Authentication service provider identifier
 // resId: Resource identifier
-// serverIp: NHP server IP address or domain name (the NHP server managing the resource)
-// serverHostname: NHP server domain name (the NHP server managing the resource)
-// serverPort: NHP server port (the NHP server managing the resource)
+// cluster: nhp-server cluster name (see nhp_agent_add_resource)
 //
 // Returns:
 // The server's response message (json format string buffer pointer):
@@ -310,7 +346,7 @@ func nhp_agent_remove_resource(aspId *C.char, resId *C.char) {
 // The caller is responsible for calling nhp_free_cstring to release the returned char* pointer
 //
 //export nhp_agent_knock_resource
-func nhp_agent_knock_resource(aspId *C.char, resId *C.char, serverIp *C.char, serverHostname *C.char, serverPort C.int) *C.char {
+func nhp_agent_knock_resource(aspId *C.char, resId *C.char, cluster *C.char) *C.char {
 	ackMsg := &common.ServerKnockAckMsg{}
 
 	func() {
@@ -320,22 +356,20 @@ func nhp_agent_knock_resource(aspId *C.char, resId *C.char, serverIp *C.char, se
 			return
 		}
 
-		if aspId == nil || resId == nil || (serverIp == nil && serverHostname == nil) {
+		if aspId == nil || resId == nil || cluster == nil {
 			ackMsg.ErrCode = common.ErrInvalidInput.ErrorCode()
 			ackMsg.ErrMsg = common.ErrInvalidInput.Error()
 			return
 		}
 
 		resource := &agent.KnockResource{
-			AuthServiceId:  deepCopyCString(aspId),
-			ResourceId:     deepCopyCString(resId),
-			ServerIp:       deepCopyCString(serverIp),
-			ServerHostname: deepCopyCString(serverHostname),
-			ServerPort:     int(serverPort),
+			AuthServiceId: deepCopyCString(aspId),
+			ResourceId:    deepCopyCString(resId),
+			Cluster:       deepCopyCString(cluster),
 		}
 
-		peer := gAgentInstance.FindServerPeerFromResource(resource)
-		if peer == nil {
+		sc := gAgentInstance.FindServerClusterFromResource(resource)
+		if sc == nil {
 			ackMsg.ErrCode = common.ErrKnockServerNotFound.ErrorCode()
 			ackMsg.ErrMsg = common.ErrKnockServerNotFound.Error()
 			return
@@ -343,7 +377,8 @@ func nhp_agent_knock_resource(aspId *C.char, resId *C.char, serverIp *C.char, se
 
 		target := &agent.KnockTarget{
 			KnockResource: *resource,
-			ServerPeer:    peer,
+			ServerPeer:    sc.RepresentativePeer(),
+			ServerCluster: sc,
 		}
 
 		ackMsg, _ = gAgentInstance.Knock(target)
@@ -360,9 +395,7 @@ func nhp_agent_knock_resource(aspId *C.char, resId *C.char, serverIp *C.char, se
 // Input:
 // aspId: Authentication Service Provider Identifier
 // resId: Resource Identifier
-// serverIp: NHP server IP address or domain name (the NHP server managing the resource)
-// serverHostname: NHP server domain name (the NHP server managing the resource)
-// serverPort: NHP server port (the NHP server managing the resource)
+// cluster: nhp-server cluster name (see nhp_agent_add_resource)
 //
 // Return:
 // Whether the exit was successful
@@ -370,7 +403,7 @@ func nhp_agent_knock_resource(aspId *C.char, resId *C.char, serverIp *C.char, se
 // It is necessary to call nhp_agent_add_server before calling, to add the NHP server's public key, address, and other information to the agent.
 //
 //export nhp_agent_exit_resource
-func nhp_agent_exit_resource(aspId *C.char, resId *C.char, serverIp *C.char, serverHostname *C.char, serverPort C.int) bool {
+func nhp_agent_exit_resource(aspId *C.char, resId *C.char, cluster *C.char) bool {
 	var err error
 	ackMsg := &common.ServerKnockAckMsg{}
 
@@ -382,7 +415,7 @@ func nhp_agent_exit_resource(aspId *C.char, resId *C.char, serverIp *C.char, ser
 			return
 		}
 
-		if aspId == nil || resId == nil || (serverIp == nil && serverHostname == nil) {
+		if aspId == nil || resId == nil || cluster == nil {
 			ackMsg.ErrCode = common.ErrInvalidInput.ErrorCode()
 			ackMsg.ErrMsg = common.ErrInvalidInput.Error()
 			err = common.ErrInvalidInput
@@ -390,15 +423,13 @@ func nhp_agent_exit_resource(aspId *C.char, resId *C.char, serverIp *C.char, ser
 		}
 
 		resource := &agent.KnockResource{
-			AuthServiceId:  deepCopyCString(aspId),
-			ResourceId:     deepCopyCString(resId),
-			ServerIp:       deepCopyCString(serverIp),
-			ServerHostname: deepCopyCString(serverHostname),
-			ServerPort:     int(serverPort),
+			AuthServiceId: deepCopyCString(aspId),
+			ResourceId:    deepCopyCString(resId),
+			Cluster:       deepCopyCString(cluster),
 		}
 
-		peer := gAgentInstance.FindServerPeerFromResource(resource)
-		if peer == nil {
+		sc := gAgentInstance.FindServerClusterFromResource(resource)
+		if sc == nil {
 			ackMsg.ErrCode = common.ErrKnockServerNotFound.ErrorCode()
 			ackMsg.ErrMsg = common.ErrKnockServerNotFound.Error()
 			err = common.ErrKnockServerNotFound
@@ -407,7 +438,8 @@ func nhp_agent_exit_resource(aspId *C.char, resId *C.char, serverIp *C.char, ser
 
 		target := &agent.KnockTarget{
 			KnockResource: *resource,
-			ServerPeer:    peer,
+			ServerPeer:    sc.RepresentativePeer(),
+			ServerCluster: sc,
 		}
 
 		ackMsg, err = gAgentInstance.ExitKnockRequest(target)
@@ -624,19 +656,26 @@ Windows下的编译环境参照**编译源代码**中***系统需求***章节win
       // Set the user information for the knock-on-the-door feature.
       nhp_agent_set_knock_user("zengl", NULL, NULL, NULL);
   
-      // Set NHP server information
-      // If there is already a configuration file for the server, the call to nhp_agent_add_server can be omitted
-      // Timestamp date is visible at https://unixtime.org/
-      nhp_agent_add_server("replace_with_actual_publickeybase64", "192.168.1.66", NULL, 62206, 1748908471);
+      // 设置 NHP server 信息。
+      // 若 ./etc/server.toml 已列出该集群，可省略 nhp_agent_add_server。
+      // 时间戳参见 https://unixtime.org/
+      const char *server_pubkey = "replace_with_actual_publickeybase64";
+      nhp_agent_add_server(server_pubkey, "192.168.1.66", NULL, 62206, 1748908471);
   
-      // Send a request to the server to access the resource example/demo, and return information in the form of a JSON format string
-      // Note: The resource information here is an independent input, and is unrelated to the resource information saved in the configuration file
-      char *ret = nhp_agent_knock_resource("example", "demo", "192.168.1.66", NULL, 62206);
+      // 敲门资源现按"集群名"绑定 nhp-server。集群标识：
+      //   - SDK 调用者（nhp_agent_add_server）：使用 server 的 pubkey base64
+      //     作为单实例集群的自动名。
+      //   - 加载 server.toml 的调用者：使用 [[Servers]] 的 Name 字段。
+      // 旧版尾部的 (serverIp, serverHostname, serverPort) 三个参数已在
+      // v1.x 移除——当 ServerPubKey 被设置时它们会被忽略，导致
+      // resource.toml 展示了 agent 实际从未拨号的地址。
+      char *ret = nhp_agent_knock_resource("example", "demo", server_pubkey);
       printf("knock return: %s\n", ret);
+      nhp_free_cstring(ret);
   
-      // Immediately close the agent's access to the example/demo resources,
-      // if not invoked, access permission will automatically close after the door opening duration has passed.
-      nhp_agent_exit_resource("example", "demo", "192.168.1.66", NULL, 62206);
+      // 立即关闭 agent 对 example/demo 资源的访问；否则到达开门时长后
+      // 访问权限会自动关闭。
+      nhp_agent_exit_resource("example", "demo", server_pubkey);
   
       // Turn off and release nhp_agent.
       nhp_agent_close();
@@ -1240,27 +1279,25 @@ func NhpAgentRemoveServer(pubkey string) {
 // Input:
 // aspId: Authentication Service Provider Identifier
 // resId: Resource Identifier
-// serverIp: NHP server IP address or domain name (the NHP server managing the resource)
-// serverHostname: NHP server domain name (the NHP server managing the resource)
-// serverPort: NHP server port (the NHP server managing the resource)
+// cluster: nhp-server cluster name (must match a [[Servers]] Name in server.toml,
+// or a pubkey previously registered via NhpAgentAddServer when used as the
+// cluster's auto-name)
 //
 // Return:
 // Whether the resource information has been added successfully
-func NhpAgentAddResource(aspId string, resId string, serverIp string, serverHostname string, serverPort int) bool {
+func NhpAgentAddResource(aspId string, resId string, cluster string) bool {
 	if gAgentInstance == nil {
 		return false
 	}
 
-	if len(aspId) == 0 || len(resId) == 0 || (len(serverIp) == 0 && len(serverHostname) == 0) {
+	if len(aspId) == 0 || len(resId) == 0 || len(cluster) == 0 {
 		return false
 	}
 
 	resource := &agent.KnockResource{
-		AuthServiceId:  aspId,
-		ResourceId:     resId,
-		ServerIp:       serverIp,
-		ServerHostname: serverHostname,
-		ServerPort:     serverPort,
+		AuthServiceId: aspId,
+		ResourceId:    resId,
+		Cluster:       cluster,
 	}
 	err := gAgentInstance.AddResource(resource)
 	return err == nil
@@ -1288,9 +1325,7 @@ func NhpAgentRemoveResource(aspId string, resId string) {
 // Input:
 // aspId: Authentication service provider identifier
 // resId: Resource identifier
-// serverIp: NHP server IP address or domain name (the NHP server managing the resource)
-// serverHostname: NHP server domain name (the NHP server managing the resource)
-// serverPort: NHP server port (the NHP server managing the resource)
+// cluster: nhp-server cluster name (see NhpAgentAddResource)
 //
 // Returns:
 // The server's response message (json format string buffer pointer):
@@ -1306,7 +1341,7 @@ func NhpAgentRemoveResource(aspId string, resId string) {
 // It is necessary to call NhpAgentAddServer before calling,
 // to add the NHP server's public key, address, and other information to the agent
 // The caller is responsible for calling NhpFreeCstring to release the returned char* pointer
-func NhpAgentKnockResource(aspId string, resId string, serverIp string, serverHostname string, serverPort int) string {
+func NhpAgentKnockResource(aspId string, resId string, cluster string) string {
 	ackMsg := &common.ServerKnockAckMsg{}
 
 	func() {
@@ -1316,22 +1351,20 @@ func NhpAgentKnockResource(aspId string, resId string, serverIp string, serverHo
 			return
 		}
 
-		if len(aspId) == 0 || len(resId) == 0 || (len(serverIp) == 0 && len(serverHostname) == 0) {
+		if len(aspId) == 0 || len(resId) == 0 || len(cluster) == 0 {
 			ackMsg.ErrCode = common.ErrInvalidInput.ErrorCode()
 			ackMsg.ErrMsg = common.ErrInvalidInput.Error()
 			return
 		}
 
 		resource := &agent.KnockResource{
-			AuthServiceId:  aspId,
-			ResourceId:     resId,
-			ServerIp:       serverIp,
-			ServerHostname: serverHostname,
-			ServerPort:     serverPort,
+			AuthServiceId: aspId,
+			ResourceId:    resId,
+			Cluster:       cluster,
 		}
 
-		peer := gAgentInstance.FindServerPeerFromResource(resource)
-		if peer == nil {
+		sc := gAgentInstance.FindServerClusterFromResource(resource)
+		if sc == nil {
 			ackMsg.ErrCode = common.ErrKnockServerNotFound.ErrorCode()
 			ackMsg.ErrMsg = common.ErrKnockServerNotFound.Error()
 			return
@@ -1339,7 +1372,8 @@ func NhpAgentKnockResource(aspId string, resId string, serverIp string, serverHo
 
 		target := &agent.KnockTarget{
 			KnockResource: *resource,
-			ServerPeer:    peer,
+			ServerPeer:    sc.RepresentativePeer(),
+			ServerCluster: sc,
 		}
 
 		ackMsg, _ = gAgentInstance.Knock(target)
@@ -1355,15 +1389,13 @@ func NhpAgentKnockResource(aspId string, resId string, serverIp string, serverHo
 // Input:
 // aspId: Authentication Service Provider Identifier
 // resId: Resource Identifier
-// serverIp: NHP server IP address or domain name (the NHP server managing the resource)
-// serverHostname: NHP server domain name (the NHP server managing the resource)
-// serverPort: NHP server port (the NHP server managing the resource)
+// cluster: nhp-server cluster name (see NhpAgentAddResource)
 //
 // Return:
 // Whether the exit was successful
 //
 // It is necessary to call NhpAgentAddServer before calling, to add the NHP server's public key, address, and other information to the
-func NhpAgentExitResource(aspId string, resId string, serverIp string, serverHostname string, serverPort int) bool {
+func NhpAgentExitResource(aspId string, resId string, cluster string) bool {
 	var err error
 	ackMsg := &common.ServerKnockAckMsg{}
 
@@ -1375,7 +1407,7 @@ func NhpAgentExitResource(aspId string, resId string, serverIp string, serverHos
 			return
 		}
 
-		if len(aspId) == 0 || len(resId) == 0 || (len(serverIp) == 0 && len(serverHostname) == 0) {
+		if len(aspId) == 0 || len(resId) == 0 || len(cluster) == 0 {
 			ackMsg.ErrCode = common.ErrInvalidInput.ErrorCode()
 			ackMsg.ErrMsg = common.ErrInvalidInput.Error()
 			err = common.ErrInvalidInput
@@ -1383,15 +1415,13 @@ func NhpAgentExitResource(aspId string, resId string, serverIp string, serverHos
 		}
 
 		resource := &agent.KnockResource{
-			AuthServiceId:  aspId,
-			ResourceId:     resId,
-			ServerIp:       serverIp,
-			ServerHostname: serverHostname,
-			ServerPort:     serverPort,
+			AuthServiceId: aspId,
+			ResourceId:    resId,
+			Cluster:       cluster,
 		}
 
-		peer := gAgentInstance.FindServerPeerFromResource(resource)
-		if peer == nil {
+		sc := gAgentInstance.FindServerClusterFromResource(resource)
+		if sc == nil {
 			ackMsg.ErrCode = common.ErrKnockServerNotFound.ErrorCode()
 			ackMsg.ErrMsg = common.ErrKnockServerNotFound.Error()
 			err = common.ErrKnockServerNotFound
@@ -1400,7 +1430,8 @@ func NhpAgentExitResource(aspId string, resId string, serverIp string, serverHos
 
 		target := &agent.KnockTarget{
 			KnockResource: *resource,
-			ServerPeer:    peer,
+			ServerPeer:    sc.RepresentativePeer(),
+			ServerCluster: sc,
 		}
 
 		ackMsg, err = gAgentInstance.ExitKnockRequest(target)

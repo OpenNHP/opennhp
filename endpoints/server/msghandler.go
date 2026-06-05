@@ -22,32 +22,43 @@ import (
 // relayConnKeyPrefix is what every relay-forwarded connection's mapKey
 // begins with (see HandleRelayForward). Used by helpers below to
 // distinguish relay-forwarded entries from direct UDP entries.
-const relayConnKeyPrefix = "relay:"
+const relayConnKeyPrefix = "relay|"
+
+// relayConnKeySep separates the relay-addr segment from the
+// real-client-addr segment inside a relay-forwarded mapKey. We
+// deliberately avoid ':' here because net.UDPAddr.String() formats
+// IPv6 as "[2001:db8::1]:80" — colons appear *inside* the address
+// itself, so a ':'-separated key cannot be reliably parsed from the
+// right with strings.LastIndexByte. '|' never appears in any IP-or-
+// host:port serialization Go produces, so a single split is enough.
+const relayConnKeySep = "|"
 
 // relayAddrFromConnKey extracts the relay's address (the
 // "<relayHost>:<relayPort>" segment) from a relay-forwarded mapKey of
-// the form "relay:<relayAddr>:<realClientAddr>". Returns "" if the
-// key is not a relay-forwarded one.
+// the form "relay|<relayAddr>|<realClientAddr>". Returns "" if the key
+// is not a relay-forwarded one or doesn't carry both segments.
 //
-// Note: <relayAddr> itself contains a colon (host:port), so this
-// splits at the LAST colon belonging to the relay segment by stripping
-// the prefix and the trailing ":<realClientAddr>".
+// The map key is in-memory only (never persisted, never wire-
+// serialized), so the '|' separator is a free invariant — see
+// relayConnKeySep for why we picked it over ':'.
 func relayAddrFromConnKey(mapKey string) string {
 	if !strings.HasPrefix(mapKey, relayConnKeyPrefix) {
 		return ""
 	}
 	rest := mapKey[len(relayConnKeyPrefix):]
-	// rest = "<relayHost>:<relayPort>:<realClientHost>:<realClientPort>"
-	// The realClient segment is itself "host:port", so strip its two
-	// trailing colon-separated tokens to recover the relay segment.
-	for i := 0; i < 2; i++ {
-		idx := strings.LastIndexByte(rest, ':')
-		if idx < 0 {
-			return ""
-		}
-		rest = rest[:idx]
+	// rest = "<relayAddr>|<realClientAddr>"; each segment is itself
+	// "host:port" but contains no '|', so one split recovers both.
+	idx := strings.IndexByte(rest, relayConnKeySep[0])
+	if idx <= 0 {
+		// idx==0 means "relay||..." (empty relay segment); idx<0
+		// means the real-client segment is missing entirely.
+		return ""
 	}
-	return rest
+	if idx == len(rest)-1 {
+		// "relay|<addr>|" — real-client segment empty.
+		return ""
+	}
+	return rest[:idx]
 }
 
 // incRelayConnCount and decRelayConnCount maintain a per-relay counter
@@ -75,6 +86,44 @@ func (s *UdpServer) getRelayConnCount(relayAddr string) int {
 	return s.relayConnCount[relayAddr]
 }
 
+// teardownPerRelayCounter encapsulates the connection-teardown
+// decision "should I decrement the per-relay slot counter?". It's
+// extracted so the invariant — at most one dec per inc, and zero dec
+// when HRF has transferred the slot to a replacement conn — is
+// testable without spinning up a full UdpServer.
+//
+// Two independent signals gate the dec:
+//
+//   - stillPresent: the caller still owned the map entry when the
+//     teardown defer ran. If false, HandleRelayForward's stale-replace
+//     path has already removed the entry and (atomically, under the
+//     same map mutex) marked this conn as replaced — the slot has
+//     transitioned to the replacement.
+//
+//   - !conn.replaced.Load(): belt-and-suspenders. Even on a future
+//     refactor that removes the entry without going through HRF's
+//     stale-replace path, replaced=false means no one has claimed the
+//     slot, so the original dec is the right cleanup.
+//
+// Both must hold for the dec to fire. The pair is what eliminates the
+// previous race where CR-defer and HRF could both dec the same slot
+// (or, after a naïve fix, both skip the dec): the slot transfer is
+// signaled explicitly, not inferred from "who deleted the map entry
+// first".
+func (s *UdpServer) teardownPerRelayCounter(conn *UdpConn, mapKey string, stillPresent bool) {
+	if !stillPresent {
+		return
+	}
+	if conn.replaced.Load() {
+		return
+	}
+	relayAddr := relayAddrFromConnKey(mapKey)
+	if relayAddr == "" {
+		return
+	}
+	s.decRelayConnCount(relayAddr)
+}
+
 // isRoutablePublicIP returns true only if ip is a plausible public client
 // address. Relay peers are trusted to forward traffic, but a malicious or
 // compromised relay must not be able to spam the connection map with
@@ -91,6 +140,28 @@ func isRoutablePublicIP(ip net.IP) bool {
 		return false
 	}
 	return true
+}
+
+// validateRelaySourceAddr decides whether the (ip, port) pair extracted from
+// a RelayForwardMsg.SourceAddr should be accepted. Returns "" on accept, or
+// a short reason string on reject (used both in the log line and the
+// error returned to the relay).
+//
+// Port sanity is enforced unconditionally; out-of-range ports are never
+// legitimate. The IP-routability check is the part that conflicts with the
+// docker-compose demo (Docker Desktop's vpnkit gateway is RFC1918), so it
+// is gated behind allowPrivate. Keep that flag OFF in production: it is
+// the only thing stopping a compromised relay from injecting any private-
+// range SourceAddr it likes into the server's connection map and the
+// downstream AC ipset whitelist.
+func validateRelaySourceAddr(ip net.IP, port int, allowPrivate bool) string {
+	if ip == nil || port <= 0 || port > 65535 {
+		return "malformed"
+	}
+	if !allowPrivate && !isRoutablePublicIP(ip) {
+		return "non-routable"
+	}
+	return ""
 }
 
 // HandleOTPRequest
@@ -460,16 +531,23 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 	doId := davMsg.DoId
 	config, err := ReadZdtoConfig(doId)
 
-	if err := s.onAttestationVerify(&config.Spo, davMsg.Evidence); err != nil {
-		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attesation: %s with error: %s", transactionId, addrStr, davMsg.Evidence, err.Error())
-		return err
-	}
-
 	dagMsg := &common.DAGMsg{}
 	if err != nil {
+		// ReadZdtoConfig failed → config is the zero value, so its
+		// Spo.Policy is empty. Running onAttestationVerify on it would
+		// vacuously pass (the function returns nil when Policy == ""),
+		// effectively bypassing attestation on a misconfigured /
+		// missing object. Short-circuit instead: report the
+		// config-read failure to the agent and skip attestation
+		// entirely. Attestation must never be evaluated against a
+		// policy we couldn't load.
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] ReadZdtoConfig(%s) failed: %v", transactionId, addrStr, doId, err)
 		dagMsg.DoId = doId
 		dagMsg.ErrCode = 1
 		dagMsg.ErrMsg = err.Error()
+	} else if attErr := s.onAttestationVerify(&config.Spo, davMsg.Evidence); attErr != nil {
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attesation: %s with error: %s", transactionId, addrStr, davMsg.Evidence, attErr.Error())
+		return attErr
 	} else {
 		dagMsg.DoId = doId
 
@@ -703,10 +781,10 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	}
 
 	realIP := net.ParseIP(rlyMsg.SourceAddr.Ip)
-	if !isRoutablePublicIP(realIP) || rlyMsg.SourceAddr.Port <= 0 || rlyMsg.SourceAddr.Port > 65535 {
-		log.Warning("server-relay[HandleRelayForward] rejecting non-routable source addr from relay %s: %s:%d",
-			ppd.ConnData.RemoteAddr.String(), rlyMsg.SourceAddr.Ip, rlyMsg.SourceAddr.Port)
-		return fmt.Errorf("non-routable relay source address")
+	if reason := validateRelaySourceAddr(realIP, rlyMsg.SourceAddr.Port, s.allowPrivateRelaySource.Load()); reason != "" {
+		log.Warning("server-relay[HandleRelayForward] rejecting %s from relay %s: %s:%d",
+			reason, ppd.ConnData.RemoteAddr.String(), rlyMsg.SourceAddr.Ip, rlyMsg.SourceAddr.Port)
+		return fmt.Errorf("%s relay source address", reason)
 	}
 	realAddr := &net.UDPAddr{IP: realIP, Port: rlyMsg.SourceAddr.Port}
 
@@ -735,58 +813,93 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	log.Info("server-relay[HandleRelayForward] inner [%s] from real client %s via relay %s",
 		core.HeaderTypeToString(innerType), realAddr, relayAddrStr)
 
-	// Build or reuse a connection keyed on "relay:<relayAddr>:<realClientAddr>".
+	// Same RKN-under-overload gate as the direct-UDP path
+	// (recvPacketRoutine), but keyed on the REAL client IP rather than the
+	// relay's: a relay legitimately fans out many clients, so keying on
+	// the relay address would let one busy relay's honest traffic throttle
+	// itself while doing nothing to isolate a single abusive client. The
+	// inner RKN reaches the same cookie-verify ECDH (via
+	// ForwardInboundPacket -> connectionRoutine -> RecvPacketToMsg), so it
+	// needs the same pre-ECDH throttle. Dropped-only, no block-listing.
+	if innerType == core.NHP_RKN && s.device.IsOverload() {
+		if !s.rknLimiter.allow(realAddr, time.Now().UnixNano()) {
+			s.device.ReleasePoolPacket(innerPkt)
+			log.Warning("server-relay[HandleRelayForward] inner RKN from real client %s (via relay %s) dropped: per-IP rate limit exceeded under overload",
+				realAddr, relayAddrStr)
+			return fmt.Errorf("rkn rate limit exceeded")
+		}
+	}
+
+	// Build or reuse a connection keyed on "relay|<relayAddr>|<realClientAddr>".
 	// This avoids collisions with the relay's own NHP_RLY connection (which is
 	// already keyed on relayAddrStr) and isolates per-client anti-replay state.
 	// RemoteAddr must be the relay's UDP address so that response packets
 	// (ACK/COK) are sent back to the relay — the relay then forwards them
 	// to the browser over HTTP.  The real client address is used only for
 	// auth/logging purposes.
+	//
+	// The '|' separator is required, not cosmetic: an IPv6 address renders
+	// as "[2001:db8::1]:80", so a ':'-delimited key could not be reliably
+	// split from the right. See relayConnKeySep for the full reasoning.
 	relayAddr := ppd.ConnData.RemoteAddr
-	connKey := "relay:" + relayAddrStr + ":" + realAddr.String()
+	connKey := relayConnKeyPrefix + relayAddrStr + relayConnKeySep + realAddr.String()
 	recvTime := time.Now().UnixNano()
 
+	// Three steps run under a single map-mutex critical section so that
+	// connectionRoutine's teardown defer can't interleave between stale
+	// detection and slot transfer:
+	//
+	//   1. Detect a live or stale conn at connKey.
+	//   2. If stale, mark it replaced and delete it (slot transfers).
+	//   3. If absent, check the per-relay + global caps and insert a
+	//      fresh conn with an inc'd counter.
+	//
+	// Previously each of these was its own short critical section, which
+	// let CR-defer slip in between stale-detect and counter-dec, causing
+	// the relay slot to be double-dec'd (and silently re-clamped to zero
+	// inside decRelayConnCount). Holding the map mutex for the whole
+	// transition keeps the (conn-table, per-relay-counter) pair
+	// consistent — the per-relay counter is now incremented exactly when
+	// a new map entry is created, and decremented exactly when the
+	// routine that owns the entry tears it down.
+	transferred := false
 	s.remoteConnectionMapMutex.Lock()
 	conn, found := s.remoteConnectionMap[connKey]
-	s.remoteConnectionMapMutex.Unlock()
-
 	if found && conn.ConnData.IsClosed() {
-		// Previous relay-forwarded connection for this client timed out.
-		// Remove the stale entry and create a fresh connection.
-		s.remoteConnectionMapMutex.Lock()
+		// Previous relay-forwarded conn for this client timed out.
+		// Mark replaced (under the same mutex that deletes the entry
+		// and inserts the replacement) so CR-defer sees an explicit
+		// "slot has been transferred, don't dec" signal regardless of
+		// when it finally acquires the map mutex.
+		conn.replaced.Store(true)
 		delete(s.remoteConnectionMap, connKey)
-		s.remoteConnectionMapMutex.Unlock()
-		// Roll back the per-relay counter for the stale entry; the
-		// stale conn's own routine deferred-cleanup will see
-		// stillPresent=false and skip its own decrement.
-		s.decRelayConnCount(relayAddrStr)
 		found = false
+		transferred = true
 	}
 
-	if !found {
-		// Per-relay cap: reserve a slot under the dedicated counter
-		// mutex BEFORE touching remoteConnectionMap. Atomic check-then-
-		// increment under one lock so two concurrent forwards from the
-		// same relay can't both pass the check.
-		s.relayConnCountMutex.Lock()
-		if s.relayConnCount[relayAddrStr] >= MaxConnectionsPerRelay {
-			s.relayConnCountMutex.Unlock()
-			s.device.ReleasePoolPacket(innerPkt)
-			log.Critical("server-relay[HandleRelayForward] relay %s exceeded MaxConnectionsPerRelay (%d), dropping forward",
-				relayAddrStr, MaxConnectionsPerRelay)
-			return fmt.Errorf("relay forward cap exceeded")
-		}
-		s.relayConnCount[relayAddrStr]++
-		s.relayConnCountMutex.Unlock()
-
-		// Apply the same global overload guard used for direct UDP
-		// connections.
-		s.remoteConnectionMapMutex.Lock()
+	if found {
+		s.remoteConnectionMapMutex.Unlock()
+		atomic.StoreInt64(&conn.ConnData.LastLocalRecvTime, recvTime)
+	} else {
+		// Apply the global overload guard while still holding the map
+		// mutex — the map size we just observed is authoritative.
 		total := len(s.remoteConnectionMap)
 		if total >= MaxConcurrentConnection {
 			s.remoteConnectionMapMutex.Unlock()
-			// Roll back the per-relay reservation we just took.
-			s.decRelayConnCount(relayAddrStr)
+			// If we got here via the stale-replace path we already
+			// deleted the OLD entry and marked it replaced, so the
+			// OLD conn's teardown will skip its dec (stillPresent=false
+			// AND replaced=true). Refusing to take over the slot here
+			// without compensating would leak it permanently — the
+			// per-relay counter would stay elevated with no live owner,
+			// eventually capping the relay below MaxConnectionsPerRelay.
+			// Mirror the per-relay branch's fix-up: reclaim the dec
+			// ourselves. (decRelayConnCount takes relayConnCountMutex on
+			// its own; do it after releasing the map mutex to preserve
+			// the map→counter lock order used elsewhere.)
+			if transferred {
+				s.decRelayConnCount(relayAddrStr)
+			}
 			s.device.ReleasePoolPacket(innerPkt)
 			log.Critical("server-relay[HandleRelayForward] reached MaxConcurrentConnection (%d), dropping forward from relay %s",
 				MaxConcurrentConnection, relayAddrStr)
@@ -795,17 +908,66 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		if total > OverloadConnectionThreshold {
 			s.device.SetOverload(true)
 		}
-		s.remoteConnectionMapMutex.Unlock()
+
+		// Per-relay cap: if we're transferring a slot from a stale
+		// conn the counter already accounts for it, so just check the
+		// cap; otherwise this is a fresh slot and we must inc.
+		s.relayConnCountMutex.Lock()
+		curr := s.relayConnCount[relayAddrStr]
+		// The cap compares against curr (slot transfer) or curr+1
+		// (genuinely new slot). Use the post-action value either way
+		// so the check is uniform.
+		post := curr
+		if !transferred {
+			post = curr + 1
+		}
+		if post > MaxConnectionsPerRelay {
+			// When transferred is true the slot WAS owned by the OLD
+			// conn whose map entry we just removed above; OLD's
+			// teardown will run with stillPresent=false (entry gone)
+			// and skip its dec. If we also refuse to take over, the
+			// slot leaks — counter stays at curr forever despite no
+			// live owner. Reverting replaced=false would help only if
+			// OLD's teardown could still see the entry, but it can't
+			// (we deleted it). So take the dec ourselves here, while
+			// still holding relayConnCountMutex, instead of trying to
+			// hand ownership back. Leave replaced=true so OLD's
+			// teardown's belt-and-suspenders check also refuses to
+			// dec, keeping the invariant "at most one dec per inc".
+			//
+			// In practice the OLD <= MaxConnectionsPerRelay invariant
+			// means this branch is unreachable for the current
+			// constant cap; it becomes reachable if
+			// MaxConnectionsPerRelay is ever hot-reloaded to a lower
+			// value mid-flight. The fix-up is cheap so do it
+			// unconditionally.
+			if transferred && curr > 0 {
+				s.relayConnCount[relayAddrStr]--
+				if s.relayConnCount[relayAddrStr] == 0 {
+					delete(s.relayConnCount, relayAddrStr)
+				}
+			}
+			s.relayConnCountMutex.Unlock()
+			s.remoteConnectionMapMutex.Unlock()
+			s.device.ReleasePoolPacket(innerPkt)
+			log.Critical("server-relay[HandleRelayForward] relay %s exceeded MaxConnectionsPerRelay (%d), dropping forward",
+				relayAddrStr, MaxConnectionsPerRelay)
+			return fmt.Errorf("relay forward cap exceeded")
+		}
+		if !transferred {
+			s.relayConnCount[relayAddrStr]++
+		}
+		s.relayConnCountMutex.Unlock()
 
 		conn = &UdpConn{mapKey: connKey}
 		conn.ConnData = &core.ConnectionData{
-			InitTime:             recvTime,
-			LastLocalRecvTime:    recvTime,
-			Device:               s.device,
-			LocalAddr:            s.listenAddr,
-			RemoteAddr:           relayAddr,
-			RealRemoteAddr:       realAddr,
-			CookieStore:          &core.CookieStore{},
+			InitTime:          recvTime,
+			LastLocalRecvTime: recvTime,
+			Device:            s.device,
+			LocalAddr:         s.listenAddr,
+			RemoteAddr:        relayAddr,
+			RealRemoteAddr:    realAddr,
+			// CookieStore omitted: see udpserver.go for rationale.
 			RemoteTransactionMap: make(map[uint64]*core.RemoteTransaction),
 			TimeoutMs:            DefaultAgentConnectionTimeoutMs,
 			SendQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),
@@ -814,15 +976,13 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 			SetTimeoutSignal:     make(chan struct{}),
 			StopSignal:           make(chan struct{}),
 		}
-		s.remoteConnectionMapMutex.Lock()
 		s.remoteConnectionMap[connKey] = conn
 		s.remoteConnectionMapMutex.Unlock()
 
 		s.wg.Add(1)
 		go s.connectionRoutine(conn)
-		log.Info("server-relay[HandleRelayForward] new relay connection %s (real client %s, key=%s)", relayAddrStr, realAddr, connKey)
-	} else {
-		atomic.StoreInt64(&conn.ConnData.LastLocalRecvTime, recvTime)
+		log.Info("server-relay[HandleRelayForward] new relay connection %s (real client %s, key=%s, slotTransferred=%v)",
+			relayAddrStr, realAddr, connKey, transferred)
 	}
 
 	conn.ConnData.ForwardInboundPacket(innerPkt)

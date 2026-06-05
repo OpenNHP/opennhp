@@ -7,3 +7,28 @@ ListenPort = 62206
 Hostname = "auth-plugin.${DOMAIN}"
 LogLevel = 3
 DisableAgentValidation = false
+# AllowPrivateRelaySource intentionally absent — defaults to false. The
+# production relay only sees public clients; accepting RFC1918 source
+# addresses here would let a compromised relay inject fabricated
+# entries into the connection map and AC ipset whitelist. Only flip
+# this on for trusted local-only demos (see docker/nhp-server/etc/config.toml).
+#
+# ForceOverload also intentionally absent — defaults to false. It is a
+# local debug toggle that pins Overload on so a developer can exercise
+# the cookie handshake without generating ~16k concurrent connections.
+# Production must rely on the natural connection-count trigger.
+
+# CookieSigningKeyBase64: cluster-wide HMAC key used to derive stateless
+# overload cookies. All nhp-server replicas behind the same load balancer
+# MUST share this exact value, or an agent's NHP_RKN minted against one
+# replica will fail to verify on another and the handshake stalls.
+# Generate once with:   head -c 32 /dev/urandom | base64
+# Then inject the same value into every replica's config (e.g. via the
+# same Secrets Manager key used for the NHP private key). Leave empty
+# for single-instance deployments; a random per-process key is used.
+CookieSigningKeyBase64 = "${NHP_SERVER_COOKIE_SIGNING_KEY}"
+
+# CookieTimeWindowSeconds: rolling window for cookie derivation. Current
+# and previous window are both accepted on verify (so an agent has
+# [N, 2N) seconds to redeem a cookie). Default 60s if unset.
+CookieTimeWindowSeconds = 60

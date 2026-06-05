@@ -165,15 +165,15 @@ func printRelayInfo(cfg *relay.Config) {
 	fmt.Printf("  %sCommit:%s     %s\n", colorYellow, colorReset, commitId)
 	fmt.Printf("  %sBuild:%s      %s\n", colorYellow, colorReset, version.BuildTime)
 	fmt.Printf("  %sPlatform:%s   %s/%s\n\n", colorYellow, colorReset, runtime.GOOS, runtime.GOARCH)
-	fmt.Printf("  %sListen:%s     %s://%s:%d/relay/<clusterId>\n", colorBlue, colorReset, listenScheme, cfg.ListenIP, cfg.ListenPort)
-	for i := range cfg.Clusters {
-		c := &cfg.Clusters[i]
-		fp, _ := utils.PubKeyFingerprintFromBase64(c.PublicKeyBase64)
+	fmt.Printf("  %sListen:%s     %s://%s:%d/relay/<serverId>\n", colorBlue, colorReset, listenScheme, cfg.ListenIP, cfg.ListenPort)
+	for i := range cfg.Servers {
+		c := &cfg.Servers[i]
+		fp, _ := utils.PubKeyFingerprintFromBase64(c.PubKeyBase64)
 		label := c.Name
 		if label == "" {
 			label = "(unnamed)"
 		}
-		fmt.Printf("  %sCluster:%s    %s %s\n", colorBlue, colorReset, fp, label)
+		fmt.Printf("  %sServer:%s     %s %s\n", colorBlue, colorReset, fp, label)
 		for j := range c.Instances {
 			inst := &c.Instances[j]
 			fmt.Printf("              └─ udp://%s:%d\n", inst.Host, inst.Port)

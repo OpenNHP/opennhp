@@ -50,7 +50,7 @@ print_menu() {
     echo ""
     echo "  [1] Build ALL and Start (Full rebuild)"
     echo "  [2] Build Base Image (opennhp-base)"
-    echo "  [3] Build NHP-Server"
+    echo "  [3] Build NHP-Server (both nhp-server and nhp-server-2)"
     echo "  [4] Build NHP-AC"
     echo "  [5] Build NHP-Agent"
     echo "  [6] Build Web-App"
@@ -59,13 +59,14 @@ print_menu() {
     echo "  [9] Stop All Services"
     echo "  [10] Restart All Services"
     echo "  [11] View Logs (nhp-server)"
-    echo "  [12] View Logs (nhp-ac)"
-    echo "  [13] View Logs (nhp-agent)"
-    echo "  [14] View Logs (nhp-relay)"
-    echo "  [15] Clean Docker Images"
-    echo "  [16] Clean ALL (images + volumes + networks)"
-    echo "  [17] Generate Keypair"
-    echo "  [18] Toggle China Mirror (current: $([ "$USE_CHINA_MIRROR" = true ] && echo "ON" || echo "OFF"))"
+    echo "  [12] View Logs (nhp-server-2)"
+    echo "  [13] View Logs (nhp-ac)"
+    echo "  [14] View Logs (nhp-agent)"
+    echo "  [15] View Logs (nhp-relay)"
+    echo "  [16] Clean Docker Images"
+    echo "  [17] Clean ALL (images + volumes + networks)"
+    echo "  [18] Generate Keypair"
+    echo "  [19] Toggle China Mirror (current: $([ "$USE_CHINA_MIRROR" = true ] && echo "ON" || echo "OFF"))"
     echo "  [0] Exit"
     echo ""
 }
@@ -272,18 +273,28 @@ toggle_china_mirror() {
     fi
 }
 
-# Rebuild and restart a specific service
+# Rebuild and restart one or more services. Accepting multiple service names
+# matters for the same-binary cluster pair (nhp-server + nhp-server-2): the
+# image is built once and both containers are recreated together. Forgetting
+# to recreate nhp-server-2 after rebuilding nhp-server leaves the two
+# instances on different binaries, which has produced a silent split-brain
+# in the relay multi-instance demo.
 rebuild_and_restart_service() {
-    local service=$1
-    echo -e "${BLUE}Rebuilding and restarting $service...${NC}"
+    if [ "$#" -eq 0 ]; then
+        echo -e "${RED}rebuild_and_restart_service: no service names provided${NC}"
+        return 1
+    fi
+    echo -e "${BLUE}Rebuilding and restarting $*...${NC}"
     export_env
 
-    docker compose build --no-cache "$service"
-    docker stop "$service" 2>/dev/null || true
-    docker rm "$service" 2>/dev/null || true
-    docker compose up -d "$service"
+    docker compose build --no-cache "$@"
+    for svc in "$@"; do
+        docker stop "$svc" 2>/dev/null || true
+        docker rm "$svc" 2>/dev/null || true
+    done
+    docker compose up -d "$@"
 
-    echo -e "${GREEN}$service rebuilt and restarted!${NC}"
+    echo -e "${GREEN}$* rebuilt and restarted!${NC}"
 }
 
 # Check Docker
@@ -317,7 +328,7 @@ main() {
         print_header
         print_menu
 
-        read -p "Enter your choice [0-18]: " choice
+        read -p "Enter your choice [0-19]: " choice
         echo ""
 
         case $choice in
@@ -328,7 +339,9 @@ main() {
                 build_base
                 ;;
             3)
-                rebuild_and_restart_service "nhp-server"
+                # Rebuild both server instances together — they share one
+                # keypair and must stay on the same binary; see the helper.
+                rebuild_and_restart_service "nhp-server" "nhp-server-2"
                 ;;
             4)
                 rebuild_and_restart_service "nhp-ac"
@@ -355,24 +368,27 @@ main() {
                 view_logs "nhp-server"
                 ;;
             12)
-                view_logs "nhp-ac"
+                view_logs "nhp-server-2"
                 ;;
             13)
-                view_logs "nhp-agent"
+                view_logs "nhp-ac"
                 ;;
             14)
-                view_logs "nhp-relay"
+                view_logs "nhp-agent"
                 ;;
             15)
-                clean_images
+                view_logs "nhp-relay"
                 ;;
             16)
-                clean_all
+                clean_images
                 ;;
             17)
-                generate_keypair
+                clean_all
                 ;;
             18)
+                generate_keypair
+                ;;
+            19)
                 toggle_china_mirror
                 ;;
             0)

@@ -1,0 +1,7 @@
+# list the device peers for the server under [[Devices]] table
+
+# PubKeyBase64: public key for the device in base64 format.
+# ExpireTime (epoch timestamp in seconds): peer key validation will fail when it expires.
+[[DBs]]
+PubKeyBase64 = "hyYDOu6Hkv6vDMwgqVJ3ZWB/A+WmHASTWGLmhGJI5mebMQgpf56RQPhRR7xTm7JXJ0dIXxSpSLL8w5DdN9WDMw=="
+ExpireTime = 1924991999

@@ -18,14 +18,16 @@ udpTimeoutMs   = 5000
 
 logLevel = 3
 
-# Phase 1: one cluster, one instance. Clients must address this cluster
-# explicitly via POST /relay/<fingerprint> (see GET /clusters).
-[[cluster]]
-name            = "demo"
-publicKeyBase64 = "${NHP_SERVER_PUBLIC_KEY}"
-loadBalance     = "weighted-random"
+# One server, one instance. Clients must address this server
+# explicitly via POST /relay/<fingerprint> (see GET /servers).
+# Schema aligns with the [[Servers]] block used by nhp-agent /
+# nhp-ac / nhp-db — see nhp/common/clusterconfig.
+[[Servers]]
+Name         = "demo"
+PubKeyBase64 = "${NHP_SERVER_PUBLIC_KEY}"
+LoadBalance  = "weighted-random"
 
-  [[cluster.instance]]
-  host   = "${SERVER_PRIVATE_IP}"
-  port   = 62206
-  weight = 1
+  [[Servers.Instances]]
+  Host   = "${SERVER_PRIVATE_IP}"
+  Port   = 62206
+  Weight = 1

@@ -23,10 +23,12 @@ type Peer interface {
 	LastSendTime() int64
 	UpdateSend(currTime int64)
 
-	RecvAddr() net.Addr
+	// LastRecvTime is the timestamp of the most recent successfully validated
+	// packet from this peer (across all connections). Used by AC/DB discovery
+	// loops to decide when to re-register. Source-address stickiness is no
+	// longer a peer concern; see ConnectionData.CheckRecvAddress.
 	LastRecvTime() int64
-	UpdateRecv(currTime int64, currAddr net.Addr)
-	CheckRecvAddress(currTime int64, currAddr net.Addr) bool
+	UpdateRecv(currTime int64)
 }
 
 type UdpPeer struct {
@@ -48,7 +50,6 @@ type UdpPeer struct {
 	lastNSLookupTime                 int64
 	resolvedIpArr                    []string
 	primaryResolvedIp                string
-	recvAddr                         *net.UDPAddr
 	teePublicKeyBase64               string
 	consumerEphemeralPublicKeyBase64 string
 }
@@ -166,29 +167,6 @@ func (p *UdpPeer) UpdateSend(currTime int64) {
 	p.lastSendTime = currTime
 }
 
-// a peer should not have multiple layer-4 addresses within its hold time
-func (p *UdpPeer) CheckRecvAddress(currTime int64, currAddr net.Addr) bool {
-	p.Lock()
-	defer p.Unlock()
-
-	if currTime > p.lastRecvTime+MinimalPeerAddressHoldTime*int64(time.Second) {
-		return true
-	}
-
-	if p.recvAddr.String() == currAddr.String() {
-		return true
-	}
-
-	return false
-}
-
-func (p *UdpPeer) RecvAddr() net.Addr {
-	p.Lock()
-	defer p.Unlock()
-
-	return p.recvAddr
-}
-
 func (p *UdpPeer) LastRecvTime() int64 {
 	p.Lock()
 	defer p.Unlock()
@@ -196,12 +174,11 @@ func (p *UdpPeer) LastRecvTime() int64 {
 	return p.lastRecvTime
 }
 
-func (p *UdpPeer) UpdateRecv(currTime int64, currAddr net.Addr) {
+func (p *UdpPeer) UpdateRecv(currTime int64) {
 	p.Lock()
 	defer p.Unlock()
 
 	p.lastRecvTime = currTime
-	p.recvAddr = currAddr.(*net.UDPAddr)
 }
 
 func (p *UdpPeer) TeePublicKeyBase64() string {

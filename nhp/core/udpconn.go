@@ -4,6 +4,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
@@ -36,6 +37,16 @@ type ConnectionData struct {
 	// remote transactions
 	RemoteTransactionMutex sync.Mutex
 	RemoteTransactionMap   map[uint64]*RemoteTransaction
+
+	// stickyRecvMu guards stickyRecvAddr and stickyRecvTime. Recv stickiness
+	// used to live on the peer (keyed by pubkey), but multiple connections can
+	// share one pubkey (e.g. an AC fans out AOL to N nhp-server instances that
+	// share an ECDH keypair). Sticking by pubkey would then bounce between
+	// instances and falsely reject packets. Stickiness belongs to the
+	// connection: source addr must stay stable within MinimalPeerAddressHoldTime.
+	stickyRecvMu   sync.Mutex
+	stickyRecvAddr *net.UDPAddr
+	stickyRecvTime int64
 
 	// specific
 	RecvThreatCount int32
@@ -126,6 +137,36 @@ func (c *ConnectionData) ForwardInboundPacket(pkt *Packet) {
 		log.Warning("connection %s stopped, discard pending inbound packet", c.RemoteAddr.String())
 		c.Device.ReleasePoolPacket(pkt)
 	}
+}
+
+// CheckRecvAddress enforces source-address stickiness on this connection:
+// within MinimalPeerAddressHoldTime of the last accepted packet, currAddr
+// must match the previously seen source. After the hold time elapses, a new
+// address is accepted.
+func (c *ConnectionData) CheckRecvAddress(currTime int64, currAddr net.Addr) bool {
+	c.stickyRecvMu.Lock()
+	defer c.stickyRecvMu.Unlock()
+
+	if c.stickyRecvAddr == nil {
+		return true
+	}
+	if currTime > c.stickyRecvTime+MinimalPeerAddressHoldTime*int64(time.Second) {
+		return true
+	}
+	return c.stickyRecvAddr.String() == currAddr.String()
+}
+
+// UpdateRecvAddress records the latest accepted source address for this
+// connection. Call only after CheckRecvAddress has approved currAddr.
+func (c *ConnectionData) UpdateRecvAddress(currTime int64, currAddr net.Addr) {
+	udpAddr, ok := currAddr.(*net.UDPAddr)
+	if !ok {
+		return
+	}
+	c.stickyRecvMu.Lock()
+	c.stickyRecvAddr = udpAddr
+	c.stickyRecvTime = currTime
+	c.stickyRecvMu.Unlock()
 }
 
 func (c *ConnectionData) SendBlockSignal() {

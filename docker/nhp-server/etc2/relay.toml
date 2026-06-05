@@ -1,0 +1,10 @@
+# NHP Server relay peers configuration
+# Each relay must be registered with its Curve25519 public key so the
+# server can verify NHP-RLY packets.
+#
+# PubKeyBase64: relay's Curve25519 public key (from `nhp-relayd keygen --curve`)
+# ExpireTime (epoch timestamp in seconds): peer key expires after this time.
+
+[[Relays]]
+PubKeyBase64 = "wxTo+ybfcVsmEx5NYnSpz1ibOkWxDaYlRR4fFkQwfp/g2alyquKdffeoxBtz6LUUTX5LrTtgZk0BupQoNOGnwg=="
+ExpireTime = 1924991999

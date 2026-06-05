@@ -1,11 +1,14 @@
-# List resources for the agent to knock automatically after launch
+# Resources the agent should knock on automatically after launch.
+#
+# Each [[Resources]] entry binds a (AuthServiceId, ResourceId) pair to
+# one nhp-server cluster. Cluster references work by name:
+#
+#   Cluster = "<server.toml [[Servers]] Name>"
+#
+# Cluster names are stable across pubkey rotation — rotating an
+# nhp-server's keypair only touches server.toml, not resource.toml.
 
-# AuthServiceId: id of the authentication and authorization service provider the resource belongs to.
-# ResourceId: id of the resource group.
-# ServerAddr: the server address that manages this resource group.
 [[Resources]]
 AuthServiceId = "example"
-ResourceId = "demo"
-ServerHostname = ""
-ServerIp = "177.7.0.9"
-ServerPort = 62206
+ResourceId    = "demo"
+Cluster       = "demo-cluster"

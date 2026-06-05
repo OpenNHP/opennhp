@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -44,6 +45,16 @@ type UdpServer struct {
 	wg         sync.WaitGroup
 	running    atomic.Bool
 
+	// Atomic mirrors of Config bool fields that are read on hot paths
+	// (per-packet handlers, per-connection teardown) while updateBaseConfig
+	// may concurrently write s.config from the file-watch goroutine. Reading
+	// the Config struct directly under no lock is a data race (Go does not
+	// guarantee atomic bool reads). These mirrors are the source of truth
+	// for the runtime check; s.config retains the field for json/etcd round
+	// trips and operator-visible state.
+	allowPrivateRelaySource atomic.Bool
+	forceOverload           atomic.Bool
+
 	// connection and remote transaction management
 
 	remoteConnectionMapMutex sync.Mutex
@@ -78,6 +89,11 @@ type UdpServer struct {
 	blockAddrMapMutex sync.Mutex
 	blockAddrMap      map[string]*BlockAddr // indexed by remote UDP address, need lock for dynamic change
 
+	// rknLimiter gates the cookie-verify ECDH for RKN-under-overload per
+	// source IP. Shared (internally locked) between the direct-UDP receive
+	// loop and the relay-forward handlers. See rknRateLimiter.
+	rknLimiter *rknRateLimiter
+
 	// address association map
 	srcIpAssociatedAddrMapMutex sync.Mutex
 	srcIpAssociatedAddrMap      map[string][]*common.NetAddress // indexed by source ip
@@ -97,6 +113,14 @@ type UdpServer struct {
 
 	recvMsgCh <-chan *core.PacketParserData
 	sendMsgCh chan *core.MsgData
+
+	// handlerSem bounds in-flight handler goroutines (see
+	// MaxConcurrentHandlers for rationale). Each KNK/RKN/EXT/RLY/OTP/
+	// REG/LST/DAR/DRG/DAV branch in recvMessageRoutine acquires a slot
+	// before spawning and releases on goroutine exit. A non-blocking
+	// acquire is used so the recv routine itself never stalls — packets
+	// that can't acquire a slot are dropped (the agent will retry).
+	handlerSem chan struct{}
 
 	//NHP-DB
 	dbPeerMapMutex sync.Mutex
@@ -123,9 +147,24 @@ type UdpConn struct {
 	// mapKey is the exact key under which this conn was inserted into
 	// remoteConnectionMap. For direct UDP clients it equals
 	// ConnData.RemoteAddr.String(); for relay-forwarded clients it is a
-	// compound key "relay:<relayAddr>:<realClientAddr>". connectionRoutine
+	// compound key "relay|<relayAddr>|<realClientAddr>". connectionRoutine
 	// uses this on teardown so the right entry gets removed.
 	mapKey string
+
+	// replaced is set by HandleRelayForward when it observes this conn
+	// as stale (IsClosed=true) and swaps in a fresh replacement under
+	// the same connKey. The per-relay slot is transferred to the new
+	// conn rather than dec'd and re-inc'd, and connectionRoutine's
+	// teardown reads this flag to know it must NOT dec the counter
+	// (the slot now belongs to the replacement).
+	//
+	// Without this flag, the counter accounting depends on whichever
+	// goroutine deletes the map entry first — a race that lets the
+	// teardown defer and HRF both dec the same slot (or both skip the
+	// dec, depending on the interleaving), drifting relayConnCount
+	// away from the true live-connection count and either tightening
+	// or relaxing MaxConnectionsPerRelay over time.
+	replaced atomic.Bool
 }
 
 type ACConn struct {
@@ -233,6 +272,76 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		return fmt.Errorf("failed to create device %v", err)
 	}
 
+	// Stateless cookie signing key. In a multi-instance cluster all
+	// nhp-server replicas must share the same value so any of them can
+	// verify a cookie that a sibling minted. When the operator hasn't
+	// configured one we mint a random per-process key — fine for a single
+	// instance, broken for a cluster (the failure is silent: cookies
+	// minted by replica A don't verify on replica B and the agent's RKN
+	// stalls until timeout). Always log which mode we're in.
+	cookieKey, cookieKeyErr := decodeCookieSigningKey(s.config.CookieSigningKeyBase64)
+	if cookieKeyErr != nil {
+		// Malformed (not empty) is an ops mistake — fail fast rather
+		// than silently degrading to a per-process random key. Silent
+		// fallback would let a cluster look healthy while its replicas
+		// each mint cookies a sibling can't verify.
+		log.Critical("invalid CookieSigningKeyBase64 in config: %v", cookieKeyErr)
+		return fmt.Errorf("invalid CookieSigningKeyBase64: %w", cookieKeyErr)
+	}
+	if len(cookieKey) == 0 {
+		cookieKey = make([]byte, 32)
+		if _, err := rand.Read(cookieKey); err != nil {
+			log.Critical("failed to generate random cookie signing key: %v", err)
+			return fmt.Errorf("failed to generate random cookie signing key: %v", err)
+		}
+		log.Info("CookieSigningKeyBase64 not set; using a random per-process key (single-instance only — clusters must share an operator-supplied key)")
+	} else {
+		log.Info("CookieSigningKeyBase64 configured; cookies are stateless and shared across the cluster")
+		// Catch operators who copy the docker-compose demo config and
+		// forget to regenerate the shared key. The shipped value is
+		// public (committed to docker/nhp-server/etc/config.toml so
+		// `docker-compose up` works out of the box) — running it in
+		// any environment a real client can reach lets anyone who has
+		// browsed the repo mint cookies the server will accept.
+		// Critical (not Warning) so it surfaces in default journalctl
+		// filters and any oncall log-volume alarms.
+		if s.config.CookieSigningKeyBase64 == shippedDemoCookieSigningKeyBase64 {
+			log.Critical("CookieSigningKeyBase64 matches the docker-compose demo value committed at " +
+				"docker/nhp-server/etc/config.toml — this key is PUBLIC. Regenerate before any " +
+				"deployment reachable from outside the host (use `nhp-serverd keygen --curve` or " +
+				"`openssl rand -base64 32`).")
+		}
+	}
+	cookieWindow := s.config.CookieTimeWindowSeconds
+	if cookieWindow <= 0 {
+		cookieWindow = DefaultCookieTimeWindowSeconds
+	}
+	s.device.SetStatelessCookieParams(cookieKey, cookieWindow)
+
+	// ForceOverload pins device Overload at startup so the cookie path
+	// (KNK → NHP_COK → NHP_RKN) is exercised by every agent, including
+	// on a quiet local demo where remoteConnectionMap never crosses
+	// OverloadConnectionThreshold. This is a debug-only toggle; see
+	// the field docstring on Config.ForceOverload. Don't pair this with
+	// SetOverload(false) in reload — once on, leave it on; the normal
+	// trigger may also be active and we don't want to fight it.
+	s.forceOverload.Store(s.config.ForceOverload)
+	s.allowPrivateRelaySource.Store(s.config.AllowPrivateRelaySource)
+	if s.config.ForceOverload {
+		// Critical (not Warning): each of these flags disables a real
+		// production safeguard, and Warning is filtered out of default
+		// journalctl views — exactly where an operator who left a
+		// debug/relaxed flag on would miss it. Match the demo-cookie
+		// Critical above so all three "you are running with a guard off"
+		// signals share one severity.
+		log.Critical("ForceOverload=true: device Overload pinned ON for the lifetime of this process (debug/test only)")
+		s.device.SetOverload(true)
+	}
+	if s.config.AllowPrivateRelaySource {
+		log.Critical("AllowPrivateRelaySource=true: relay SourceAddr public-routability check is DISABLED — " +
+			"a relay can claim private/loopback/link-local client IPs. Intended for local/test only.")
+	}
+
 	// retrieve local ip and mac
 	s.localIp = utils.GetLocalOutboundAddress().String()
 	s.localMac = utils.GetMacAddress(s.localIp)
@@ -261,10 +370,17 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.relayPeerMap = make(map[string]*core.UdpPeer)
 	s.tokenStore = common.NewTokenStore[*ACTokenEntry]()
 	s.blockAddrMap = make(map[string]*BlockAddr)
+	s.rknLimiter = newRknRateLimiter(
+		OverloadRknRatePerSecondPerIP,
+		OverloadRknBurstPerIP,
+		OverloadRknLimiterMaxEntries,
+		OverloadRknLimiterIdleSeconds*int64(time.Second),
+	)
 	s.signals.stop = make(chan struct{})
 
 	s.recvMsgCh = s.device.DecryptedMsgQueue
 	s.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
+	s.handlerSem = make(chan struct{}, MaxConcurrentHandlers)
 
 	// start device routines
 	s.device.Start()
@@ -431,6 +547,24 @@ func (s *UdpServer) recvPacketRoutine() {
 		// clear threat
 		delete(preCheckThreats, addrStr)
 
+		// Rate-limit RKN-under-overload per source IP BEFORE the packet
+		// reaches the connection routine (and thus before the cookie-
+		// verify ECDH in responder.checkHMAC). This is the only path that
+		// pays a Noise IK floor per packet ahead of authentication and
+		// ahead of the existing connection-level RecvThreatCount limiter,
+		// so an unauthenticated flood is throttled here at its cheapest
+		// point. Over-limit packets are dropped only — not counted as
+		// threats, not block-listed — so honest agents and shared-NAT
+		// egress IPs degrade to dropped-RKN (which agents retry) rather
+		// than a hard block. recvTime is reused as the monotonic-ish now.
+		if pkt.HeaderType == core.NHP_RKN && s.device.IsOverload() {
+			if !s.rknLimiter.allow(remoteAddr, recvTime) {
+				s.device.ReleasePoolPacket(pkt)
+				log.Warning("RKN from %s dropped: per-IP rate limit exceeded under overload", addrStr)
+				continue
+			}
+		}
+
 		s.remoteConnectionMapMutex.Lock()
 		conn, found := s.remoteConnectionMap[addrStr]
 		s.remoteConnectionMapMutex.Unlock()
@@ -462,12 +596,14 @@ func (s *UdpServer) recvPacketRoutine() {
 			}
 			// setup new routine for connection
 			conn.ConnData = &core.ConnectionData{
-				InitTime:             recvTime,
-				LastLocalRecvTime:    recvTime, // not in multithreaded yet, directly assign value
-				Device:               s.device,
-				LocalAddr:            s.listenAddr,
-				RemoteAddr:           remoteAddr,
-				CookieStore:          &core.CookieStore{},
+				InitTime:          recvTime,
+				LastLocalRecvTime: recvTime, // not in multithreaded yet, directly assign value
+				Device:            s.device,
+				LocalAddr:         s.listenAddr,
+				RemoteAddr:        remoteAddr,
+				// CookieStore omitted: server cookies are now stateless
+				// (HMAC of remote ip:port + time window). The legacy
+				// per-conn store is dead state on the server side.
 				RemoteTransactionMap: make(map[uint64]*core.RemoteTransaction),
 				TimeoutMs:            DefaultAgentConnectionTimeoutMs,
 				SendQueue:            make(chan *core.Packet, PacketQueueSizePerConnection),
@@ -542,7 +678,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 
 		// remove the udp conn from remoteConnectionMap using the same key
 		// that was used on insert. For direct UDP clients that's addrStr;
-		// for relay-forwarded clients it's the compound "relay:..." key
+		// for relay-forwarded clients it's the compound "relay|..." key
 		// (see msghandler.HandleRelayForward). Using RemoteAddr.String()
 		// here would leak relay-forwarded entries because RemoteAddr is
 		// just the relay's address.
@@ -551,24 +687,45 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			mapKey = addrStr
 		}
 		s.remoteConnectionMapMutex.Lock()
-		_, stillPresent := s.remoteConnectionMap[mapKey]
+		// Identity check, not just presence: only this routine's own
+		// entry is ours to delete. Today HRF's stale-replace path is
+		// the only writer that swaps a closed conn for a fresh one
+		// under this mutex, and the only flipper of IsClosed is this
+		// routine itself (so HRF can't run its replace until after
+		// the defer returns) — meaning a stranger entry under our
+		// mapKey is currently unreachable. But the counter-side
+		// teardown already uses an explicit replaced flag to stay
+		// identity-aware (see teardownPerRelayCounter); aligning the
+		// map-side here closes the gap pre-emptively so any future
+		// external close path (admin endpoint, timeout sweeper) can't
+		// orphan a newly-inserted replacement entry by deleting it
+		// out from under HRF.
+		existing, ok := s.remoteConnectionMap[mapKey]
+		stillPresent := ok && existing == conn
 		if stillPresent {
 			delete(s.remoteConnectionMap, mapKey)
 		}
-		if len(s.remoteConnectionMap) <= OverloadConnectionThreshold {
+		// ForceOverload (debug only) keeps Overload pinned ON for the
+		// lifetime of the process, so a quiet local demo can still
+		// exercise the cookie path. Honor it here — without this guard,
+		// the very first connection teardown drops the map size back
+		// below threshold and flips Overload off, defeating the flag.
+		//
+		// CONCURRENCY: this whole len + SetOverload(false) lives
+		// inside remoteConnectionMapMutex (locked at the top of this
+		// deferred block, unlocked immediately after). Every other
+		// SetOverload(true) call site — udpserver.go:540 and
+		// msghandler.go:875 — also runs under the same mutex while
+		// checking len > threshold, so the three call sites are
+		// serialized and the len() observed here is the post-delete
+		// authoritative size. No TOCTOU window between the size
+		// check and the SetOverload call.
+		if !s.forceOverload.Load() && len(s.remoteConnectionMap) <= OverloadConnectionThreshold {
 			s.device.SetOverload(false)
 		}
 		s.remoteConnectionMapMutex.Unlock()
 
-		// Decrement the per-relay counter only if this routine actually
-		// owned the map entry (stillPresent). If a stale-cleanup path
-		// in HandleRelayForward already deleted us, the counter was
-		// also rolled back by that path so we must not double-count.
-		if stillPresent {
-			if relayAddr := relayAddrFromConnKey(mapKey); relayAddr != "" {
-				s.decRelayConnCount(relayAddr)
-			}
-		}
+		s.teardownPerRelayCounter(conn, mapKey, stillPresent)
 
 		conn.Close()
 	}()
@@ -720,6 +877,29 @@ func (s *UdpServer) sendMessageRoutine() {
 	}
 }
 
+// dispatchHandler launches fn in its own goroutine under the
+// handlerSem budget. A non-blocking acquire keeps recvMessageRoutine
+// itself from stalling when the budget is exhausted: the packet is
+// dropped instead, and the agent will retry. This is the cap that
+// prevents a single misbehaving peer from running the process out of
+// memory by flooding handshake-class packets — MaxConcurrentConnection
+// only bounds unique remote addrs in the connection table, not how
+// many in-flight handlers exist for any one of them.
+func (s *UdpServer) dispatchHandler(ppd *core.PacketParserData, fn func(*core.PacketParserData) error) {
+	select {
+	case s.handlerSem <- struct{}{}:
+	default:
+		log.Warning("handler goroutine budget (%d) exhausted, dropping %s from %s",
+			MaxConcurrentHandlers, core.HeaderTypeToString(ppd.HeaderType),
+			ppd.ConnData.RemoteAddr.String())
+		return
+	}
+	go func(p *core.PacketParserData) {
+		defer func() { <-s.handlerSem }()
+		_ = fn(p)
+	}(ppd)
+}
+
 func (s *UdpServer) recvMessageRoutine() {
 	defer s.wg.Done()
 	defer log.Info("recvMessageRoutine stopped")
@@ -743,14 +923,10 @@ func (s *UdpServer) recvMessageRoutine() {
 			switch ppd.HeaderType {
 			case core.NHP_KNK, core.NHP_RKN, core.NHP_EXT, core.DHP_KNK:
 				// aynchronously process knock messages with ack response
-				go func(p *core.PacketParserData) {
-					_ = s.HandleKnockRequest(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleKnockRequest)
 
 			case core.NHP_RLY:
-				go func(p *core.PacketParserData) {
-					_ = s.HandleRelayForward(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleRelayForward)
 
 			case core.NHP_AOL:
 				// synchronously block and deal with NHP_DOL to ensure future ac messages will be correctly processed. Don't use go routine
@@ -760,31 +936,19 @@ func (s *UdpServer) recvMessageRoutine() {
 				_ = s.HandleDBOnline(ppd)
 
 			case core.NHP_OTP:
-				go func(p *core.PacketParserData) {
-					_ = s.HandleOTPRequest(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleOTPRequest)
 
 			case core.NHP_REG:
-				go func(p *core.PacketParserData) {
-					_ = s.HandleRegisterRequest(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleRegisterRequest)
 
 			case core.NHP_LST:
-				go func(p *core.PacketParserData) {
-					_ = s.HandleListRequest(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleListRequest)
 			case core.NHP_DAR:
-				go func(p *core.PacketParserData) {
-					_ = s.HandleDHPDARMessage(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleDHPDARMessage)
 			case core.NHP_DRG:
-				go func(p *core.PacketParserData) {
-					_ = s.HandleDHPDRGMessage(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleDHPDRGMessage)
 			case core.NHP_DAV:
-				go func(p *core.PacketParserData) {
-					_ = s.HandleDHPDAVMessage(p)
-				}(ppd)
+				s.dispatchHandler(ppd, s.HandleDHPDAVMessage)
 			}
 
 		}
@@ -974,7 +1138,7 @@ func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACCon
 		srcAddrs = append(srcAddrs, asscAddrs...)
 	}
 
-	acAddrStr := conn.ACPeer.RecvAddr().String()
+	acAddrStr := conn.ConnData.RemoteAddr.String()
 	if openTime == 0 {
 		openTime = DefaultIpOpenTime
 	}
@@ -1176,7 +1340,7 @@ func (s *UdpServer) ProcessDataPrivateKeyWrapping(dwrMsg *common.DWRMsg, conn *D
 		return
 	}
 
-	dbAddrStr := conn.DBPeer.RecvAddr().String()
+	dbAddrStr := conn.ConnData.RemoteAddr.String()
 
 	dwrBytes, _ := json.Marshal(dwrMsg)
 

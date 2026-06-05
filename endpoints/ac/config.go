@@ -6,13 +6,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
-
-	"github.com/OpenNHP/opennhp/nhp/etcd"
 
 	toml "github.com/pelletier/go-toml/v2"
 
+	"github.com/OpenNHP/opennhp/nhp/common/clusterconfig"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/etcd"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
@@ -30,10 +31,15 @@ const (
 	FilterMode_EBPFXDP         // 1
 )
 
+// ACEtcdConfig is the remote-config (etcd) shape. Servers carries the
+// shared cluster schema so the etcd value is identical to the on-disk
+// server.toml. The previous Endpoints-string form lived only on this
+// branch and is removed in the AC → ClusterConfig migration; redeploy
+// any etcd values written under that schema.
 type ACEtcdConfig struct {
 	BaseConfig Config
 	HttpConfig HttpConfig
-	Servers    []*core.UdpPeer
+	Servers    []*clusterconfig.ClusterConfig
 }
 
 type Config struct {
@@ -65,8 +71,54 @@ type HttpConfig struct {
 	TLSKeyFile     string
 }
 
+// Peers is the top-level shape of server.toml. Each entry is one
+// logical nhp-server identity (one pubkey) reachable at 1..N instances
+// — same schema as nhp-agent's server.toml (see
+// nhp/common/clusterconfig). nhp-ac doesn't run a multi-step handshake
+// against any single instance, so LoadBalance / StickyInstance are
+// loaded but ignored: AOL fan-out broadcasts to every instance for
+// failover, not load-balancing.
 type Peers struct {
-	Servers []*core.UdpPeer
+	Servers []*clusterconfig.ClusterConfig
+}
+
+// expandServerPeers turns a parsed + normalized cluster list into the
+// flat []*core.UdpPeer the rest of nhp-ac consumes. One cluster with N
+// Instances becomes N UdpPeer rows sharing a pubkey — that fan-out is
+// what lets the AC register (NHP_AOL) with every instance in a
+// same-pubkey nhp-server cluster.
+//
+// The caller is responsible for running clusterconfig.Normalize on the
+// input first; this helper trusts that every entry has at least one
+// Instances row with a non-zero Port.
+func expandServerPeers(clusters []*clusterconfig.ClusterConfig) []*core.UdpPeer {
+	out := make([]*core.UdpPeer, 0, len(clusters))
+	for _, c := range clusters {
+		for _, inst := range c.Instances {
+			out = append(out, &core.UdpPeer{
+				PubKeyBase64: c.PubKeyBase64,
+				Hostname:     inst.Host,
+				Ip:           inst.Ip,
+				Port:         inst.Port,
+				ExpireTime:   c.ExpireTime,
+			})
+		}
+	}
+	return out
+}
+
+// normalizeAndExpand parses, validates, and flattens the [[Servers]]
+// list in one step. Returns (nil, err) on any validation failure so
+// callers can fail-close — leaving the running peerMap untouched on
+// reload, or refusing to start on initial load.
+func normalizeAndExpand(clusters []*clusterconfig.ClusterConfig) ([]*core.UdpPeer, error) {
+	if err := clusterconfig.Normalize(clusters, clusterconfig.Options{
+		ConsumerLabel: "ac",
+		RequireName:   false,
+	}, log.Warning); err != nil {
+		return nil, err
+	}
+	return expandServerPeers(clusters), nil
 }
 
 func (a *UdpAC) loadBaseConfig() error {
@@ -129,31 +181,60 @@ func (a *UdpAC) loadHttpConfig() error {
 func (a *UdpAC) loadPeers() error {
 	// server.toml
 	fileName := filepath.Join(ExeDirPath, "etc", "server.toml")
-	content, err := os.ReadFile(fileName)
-	if err != nil {
-		log.Error("failed to read server peer config: %v", err)
+	content, readErr := os.ReadFile(fileName)
+	if readErr != nil {
+		log.Error("failed to read server peer config: %v", readErr)
 	}
 
 	// update
 	var peers Peers
-	if unmarshalErr := toml.Unmarshal(content, &peers); unmarshalErr != nil {
+	var unmarshalErr error
+	if unmarshalErr = toml.Unmarshal(content, &peers); unmarshalErr != nil {
 		log.Error("failed to unmarshal server peer config: %v", unmarshalErr)
 	}
-	if updateErr := a.updateServerPeers(peers.Servers); updateErr != nil {
+	expanded, expandErr := normalizeAndExpand(peers.Servers)
+	var initialErr error
+	if expandErr != nil {
+		// Initial load with a malformed file: refuse to start with an
+		// empty peerMap. Previously this only logged Critical and fell
+		// through; the daemon would come up with zero servers, AOL/AOP
+		// fan-out would silently no-op, and the operator would have to
+		// chase dropped packets back to a single log line. Propagating
+		// the error to the caller turns the failure into a refusal-to-
+		// start that's much easier to diagnose. The reload branch
+		// below keeps its existing keep-previous-table discipline —
+		// that's the right behavior mid-flight when a running
+		// process already has a good peer table.
+		log.Critical("loadPeers: %v; refusing to start with empty peer table", expandErr)
+		initialErr = expandErr
+	} else if updateErr := a.updateServerPeers(expanded); updateErr != nil {
 		// ignore error
 		_ = updateErr
 	}
 
 	serverPeerWatch = utils.WatchFile(fileName, func() {
 		log.Info("server peer config: %s has been updated", fileName)
-		if content, err = a.loadConfigFile(fileName); err == nil {
-			if err = toml.Unmarshal(content, &peers); err == nil {
-				_ = a.updateServerPeers(peers.Servers)
-			}
+		reloadContent, reloadErr := a.loadConfigFile(fileName)
+		if reloadErr != nil {
+			return
 		}
+		var reloadPeers Peers
+		if uerr := toml.Unmarshal(reloadContent, &reloadPeers); uerr != nil {
+			log.Error("failed to unmarshal server peer config on reload: %v", uerr)
+			return
+		}
+		expanded, expandErr := normalizeAndExpand(reloadPeers.Servers)
+		if expandErr != nil {
+			// Reload: do NOT call updateServerPeers — that
+			// would rewrite the live peerMap. Keep the running
+			// peer table and let the operator fix the file.
+			log.Critical("loadPeers reload: %v; keeping previous peer table", expandErr)
+			return
+		}
+		_ = a.updateServerPeers(expanded)
 	})
 
-	return nil
+	return initialErr
 }
 
 func (a *UdpAC) updateBaseConfig(conf Config) (err error) {
@@ -229,25 +310,64 @@ func (a *UdpAC) updateServerPeers(peers []*core.UdpPeer) (err error) {
 		err = errLoadConfig
 	})
 
-	serverPeerMap := make(map[string]*core.UdpPeer)
+	// One [[Servers]] entry may have N endpoints sharing a pubkey, so the
+	// AC-side map is keyed by (pubkey, addr) to keep each endpoint distinct.
+	// The device's peerMap is still keyed by pubkey alone (which is fine — its
+	// only job is gating "is this pubkey in the whitelist?"; per-connection
+	// state lives on ConnectionData since commit A). We collapse to a set of
+	// pubkeys for the device add/remove diff.
+	serverPeerMap := make(map[string]*core.UdpPeer, len(peers))
+	pubKeyPresent := make(map[string]struct{})
 	for _, p := range peers {
 		p.Type = core.NHP_SERVER
 		a.device.AddPeer(p)
-		serverPeerMap[p.PublicKeyBase64()] = p
+		serverPeerMap[endpointKey(p)] = p
+		pubKeyPresent[p.PublicKeyBase64()] = struct{}{}
 	}
-	a.config.Servers = peers
 
-	// remove old peers from device
 	a.serverPeerMutex.Lock()
 	defer a.serverPeerMutex.Unlock()
-	for pubKey := range a.serverPeerMap {
-		if _, found := serverPeerMap[pubKey]; !found {
+
+	// a.config.Servers must be assigned under the same mutex that
+	// guards a.serverPeerMap because the file/etcd watcher path
+	// triggers this function concurrently with Start()'s eBPF init
+	// loop (udpac.go: "if a.config.FilterMode == FilterMode_EBPFXDP")
+	// and with any external GetConfig() reader. Before this lock
+	// moved, the assignment raced with that loop and the race detector
+	// would flag a write/read collision under any reload pressure.
+	a.config.Servers = peers
+
+	// Remove from device any pubkey that no longer appears in the new config.
+	// Iterate the old map to find pubkeys that have fully disappeared.
+	oldPubKeys := make(map[string]struct{})
+	for _, oldPeer := range a.serverPeerMap {
+		oldPubKeys[oldPeer.PublicKeyBase64()] = struct{}{}
+	}
+	for pubKey := range oldPubKeys {
+		if _, stillPresent := pubKeyPresent[pubKey]; !stillPresent {
 			a.device.RemovePeer(pubKey)
 		}
 	}
 	a.serverPeerMap = serverPeerMap
 
 	return err
+}
+
+// endpointKey is the AC-internal map key for a server peer. It must keep
+// same-pubkey peers at different addresses distinct, so the discovery
+// fan-out launches one routine per (pubkey, addr).
+//
+// Hostname is part of the key because legacy entries that use only
+// Hostname (no Ip) leave p.Ip empty, so two same-pubkey entries with
+// different hostnames would otherwise collide on "pk|:port" and one
+// would silently overwrite the other in serverPeerMap — meaning AOL
+// fan-out skips one of the instances. Including Hostname keeps each
+// instance distinct until the hostname is resolved.
+func endpointKey(p *core.UdpPeer) string {
+	return "pk=" + p.PublicKeyBase64() +
+		"|host=" + p.Hostname +
+		"|ip=" + p.Ip +
+		":" + strconv.Itoa(p.Port)
 }
 func (a *UdpAC) loadConfigFile(file string) (content []byte, err error) {
 	utils.CatchPanicThenRun(func() {
@@ -353,7 +473,26 @@ func (a *UdpAC) updateEtcdConfig(content []byte, baseLoad bool) (err error) {
 	}
 
 	_ = a.updateHttpConfig(acEtcdConfig.HttpConfig)
-	_ = a.updateServerPeers(acEtcdConfig.Servers)
+	expanded, expandErr := normalizeAndExpand(acEtcdConfig.Servers)
+	if expandErr != nil {
+		// baseLoad==false is the initial load (loadRemoteConfig); ==true is
+		// a watch-triggered reload.
+		if !baseLoad {
+			// Initial load must fail-close, mirroring the file path's
+			// loadPeers (config.go refuses to Start() on an empty/invalid
+			// peer table). Returning the error propagates through
+			// loadRemoteConfig so Start() aborts instead of booting an
+			// etcd-backed AC with an empty peer table that silently
+			// no-ops AOL/AOP fan-out.
+			log.Critical("updateEtcdConfig: initial load failed: %v; refusing to start", expandErr)
+			return expandErr
+		}
+		// Reload: keep the running peer table rather than swap in a config
+		// that would silently drop a cluster from peerMap.
+		log.Critical("updateEtcdConfig: %v; keeping previous peer table", expandErr)
+		return nil
+	}
+	_ = a.updateServerPeers(expanded)
 	return
 }
 

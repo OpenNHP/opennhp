@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,36 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 )
+
+// shippedDemoCookieSigningKeyBase64 is the value committed in
+// docker/nhp-server/etc/config.toml so that `docker-compose up` works
+// out of the box. udpserver.Start compares the configured key to this
+// constant and logs a Critical line if they match, so operators who
+// copy the demo and forget to rotate the key get a loud warning
+// instead of silently running with a public secret.
+//
+// Keep this in sync with docker/nhp-server/etc/config.toml (and
+// docker/nhp-server/etc2/config.toml, which intentionally shares the
+// same value to enable the same-key multi-instance demo). If we ever
+// rotate the demo key, update this constant in the same commit.
+const shippedDemoCookieSigningKeyBase64 = "w62S2G1P5GOG66Y5tIv3WlfBv8CNBdDe2JJDFr9Q+h0="
+
+// decodeCookieSigningKey parses a base64-encoded 32-byte cookie signing
+// key. An empty input yields (nil, nil): the caller will fall back to a
+// random per-process key, which is fine for single-instance deployments.
+func decodeCookieSigningKey(b64 string) ([]byte, error) {
+	if b64 == "" {
+		return nil, nil
+	}
+	raw, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return nil, fmt.Errorf("base64 decode failed: %w", err)
+	}
+	if len(raw) != 32 {
+		return nil, fmt.Errorf("cookie signing key must be exactly 32 bytes after base64 decode, got %d", len(raw))
+	}
+	return raw, nil
+}
 
 var (
 	baseConfigWatch  io.Closer
@@ -56,6 +87,72 @@ type Config struct {
 	LogLevel               int    `json:"logLevel"`
 	DefaultCipherScheme    int    `json:"defaultCipherScheme"`
 	DisableAgentValidation bool   `json:"disableAgentValidation"`
+
+	// AllowPrivateRelaySource relaxes the SourceAddr public-routability check
+	// that HandleRelayForward applies to inner KNK packets arriving via a
+	// relay. When false (production default), private / loopback / CGNAT
+	// addresses in RelayForwardMsg.SourceAddr are rejected as fabricated;
+	// the threat model assumes a relay peer might be compromised and trying
+	// to fill the server's connectionMap with synthetic clients.
+	//
+	// Set true ONLY in environments where the relay legitimately sees
+	// non-public client addresses, such as the bundled docker-compose demo:
+	// when a host-side browser hits the relay through Docker Desktop's port
+	// mapping, the relay container sees the request as coming from the
+	// vpnkit gateway (192.168.65.1 on macOS / 172.x.x.x on Linux), which is
+	// RFC1918. A production-facing relay should NEVER see such an address;
+	// flipping this on there would let a misbehaving relay inject any
+	// private-range SourceAddr it wants into the server's connection map
+	// and the downstream AC ipset whitelist.
+	AllowPrivateRelaySource bool `json:"allowPrivateRelaySource"`
+
+	// CookieSigningKeyBase64 is a base64-encoded 32-byte HMAC key used to
+	// derive overload-mode cookies statelessly from (remoteAddr || time
+	// window). When multiple nhp-server instances sit behind a load
+	// balancer / round-robin DNS, an agent's KNK and its follow-up RKN may
+	// land on different instances; with per-instance random cookie state
+	// (the legacy CookieStore), the second instance can't validate the
+	// cookie issued by the first, and the handshake stalls. Sharing this
+	// signing key across every instance in the cluster lets any of them
+	// independently mint and verify the same cookie.
+	//
+	// Format: base64 of exactly 32 bytes. If empty, the server generates a
+	// random per-process key at startup — fine for single-instance
+	// deployments, broken for multi-instance ones (the failure mode is the
+	// same as the legacy CookieStore: cookies don't cross instances).
+	// Generate one with:   head -c 32 /dev/urandom | base64
+	CookieSigningKeyBase64 string `json:"cookieSigningKey"`
+
+	// CookieTimeWindowSeconds is the rolling time window used in cookie
+	// derivation. The current and previous window are both accepted on
+	// verify, so an agent has between [window, 2*window] seconds to use a
+	// cookie before it expires. Default 60s if unset / non-positive.
+	CookieTimeWindowSeconds int `json:"cookieTimeWindowSeconds"`
+
+	// ForceOverload pins the device's Overload flag to true at startup,
+	// short-circuiting the connection-count-driven trigger. The normal
+	// trigger fires when remoteConnectionMap crosses
+	// OverloadConnectionThreshold (~16k concurrent connections), which a
+	// local demo will never reach — so this flag exists purely to let
+	// developers exercise the cookie path (KNK → NHP_COK → NHP_RKN) on a
+	// quiet local stack.
+	//
+	// Default: false. Production deployments must leave this off; pinning
+	// Overload on permanently forces every agent through the slower
+	// cookie-stamped handshake even when the server is idle, and tells
+	// the cookie store that load is constantly elevated.
+	//
+	// This is a debug/test affordance, NOT a feature flag. Do not key
+	// production behavior off it.
+	//
+	// Hot-reload caveat: flipping this back to false at runtime via a
+	// config reload does NOT immediately restore normal behavior. The
+	// connection-teardown path in udpserver.go honors ForceOverload to
+	// keep Overload pinned across connection churn, so as long as the
+	// process keeps observing ForceOverload=true it will never call
+	// SetOverload(false) — the flag is sticky for the lifetime of the
+	// process. Restart the server to clear it.
+	ForceOverload bool `json:"forceOverload"`
 }
 
 type RemoteConfig struct {
@@ -481,12 +578,120 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 		s.config.DisableAgentValidation = conf.DisableAgentValidation
 	}
 
+	if s.config.AllowPrivateRelaySource != conf.AllowPrivateRelaySource {
+		log.Info("AllowPrivateRelaySource set to %v (relay SourceAddr public-IP check is %s)",
+			conf.AllowPrivateRelaySource,
+			map[bool]string{true: "disabled", false: "enforced"}[conf.AllowPrivateRelaySource])
+		s.config.AllowPrivateRelaySource = conf.AllowPrivateRelaySource
+		// Mirror onto the atomic-read field that hot paths consult; see
+		// the field comment in UdpServer for why the bool isn't read
+		// directly from s.config under no lock.
+		s.allowPrivateRelaySource.Store(conf.AllowPrivateRelaySource)
+	}
+
 	if s.config.DefaultCipherScheme != conf.DefaultCipherScheme {
 		log.Info("set default cipher scheme to %d", conf.DefaultCipherScheme)
 		s.config.DefaultCipherScheme = conf.DefaultCipherScheme
 	}
 
+	// ForceOverload: the in-memory Overload state is sticky for the
+	// process lifetime (see the field docstring), so a reload can't
+	// actually toggle behavior. But silently dropping the new value
+	// leaves s.config disagreeing with the on-disk config.toml — which
+	// confuses anyone reading the in-memory view. Adopt the new value
+	// for accuracy and surface a warning so the operator knows a
+	// restart is required.
+	if s.config.ForceOverload != conf.ForceOverload {
+		log.Warning("ForceOverload changed in config (%v -> %v) on reload; the in-memory Overload state is sticky for the process lifetime, restart to apply",
+			s.config.ForceOverload, conf.ForceOverload)
+		s.config.ForceOverload = conf.ForceOverload
+		// Mirror onto the atomic-read field; same reasoning as
+		// AllowPrivateRelaySource above. The Overload itself remains
+		// sticky for the process lifetime even when this transitions
+		// false → true → false; only the teardown predicate observes
+		// the new value.
+		s.forceOverload.Store(conf.ForceOverload)
+	}
+
+	// Cookie signing key / window: only re-apply when the operator
+	// actually changed something AND the new key parses. A blanked-out
+	// field on reload is treated as "leave the running key alone" rather
+	// than silently regenerating a random one (that'd break a cluster on
+	// the next reload). Window-only updates are allowed.
+	keyChanged := s.config.CookieSigningKeyBase64 != conf.CookieSigningKeyBase64
+	windowChanged := s.config.CookieTimeWindowSeconds != conf.CookieTimeWindowSeconds
+	if (keyChanged || windowChanged) && s.device != nil {
+		newKey, err := decodeCookieSigningKey(conf.CookieSigningKeyBase64)
+		if err != nil {
+			log.Warning("ignoring CookieSigningKeyBase64 change: %v (keeping running key)", err)
+		} else {
+			// Mirror the startup demo-key guard in udpserver.Start: a
+			// hot-reload that swaps in the committed docker-compose demo
+			// key is just as dangerous as booting with it, and previously
+			// got no warning at all. Check the raw config string (not the
+			// decoded bytes) so this fires regardless of the preservation
+			// logic below.
+			if keyChanged && conf.CookieSigningKeyBase64 == shippedDemoCookieSigningKeyBase64 {
+				log.Critical("CookieSigningKeyBase64 reloaded to the docker-compose demo value committed at " +
+					"docker/nhp-server/etc/config.toml — this key is PUBLIC. Regenerate before any " +
+					"deployment reachable from outside the host.")
+			}
+			currKey, currWin := s.device.StatelessCookieParams()
+			if len(newKey) == 0 {
+				// Preserve the running key whenever the config field is
+				// empty — NOT only when it changed. The single-instance
+				// flow never sets CookieSigningKeyBase64: udpserver.Start
+				// mints a random per-process key, so s.config's field
+				// stays "" and keyChanged is false on a window-only
+				// reload. Gating preservation on keyChanged here would
+				// let newKey stay nil and hand SetStatelessCookieParams a
+				// nil key, which silently DISABLES stateless cookies and
+				// stalls every agent that hits the overload path. Only
+				// the operator-cleared-a-configured-key case warrants a
+				// warning; the always-empty case is normal.
+				if keyChanged {
+					log.Warning("CookieSigningKeyBase64 cleared on reload; keeping previous key in memory")
+				}
+				newKey = currKey
+			}
+			newWin := conf.CookieTimeWindowSeconds
+			if newWin <= 0 {
+				newWin = DefaultCookieTimeWindowSeconds
+			}
+			if !bytesEqualConstantTime(newKey, currKey) || int64(newWin) != currWin {
+				s.device.SetStatelessCookieParams(newKey, newWin)
+				log.Info("stateless cookie params updated (window=%ds, keyChanged=%v)", newWin, !bytesEqualConstantTime(newKey, currKey))
+			}
+		}
+		// Only persist the new base64 into s.config when we actually
+		// applied (or were able to preserve) a usable key — i.e. the
+		// operator handed us a non-empty, well-formed value. If we
+		// instead write back an empty or malformed string, the next
+		// reload will see no delta (s.config == conf), skip the whole
+		// validation/preservation block, and silently leave the
+		// running device key disagreeing with the in-memory config —
+		// so the operator stops seeing the "cleared, keeping previous
+		// key" / "ignoring CookieSigningKeyBase64 change" warning even
+		// though the divergence persists. Window is always written
+		// back since it's plain numeric and re-validated each reload.
+		if err == nil && conf.CookieSigningKeyBase64 != "" {
+			s.config.CookieSigningKeyBase64 = conf.CookieSigningKeyBase64
+		}
+		s.config.CookieTimeWindowSeconds = conf.CookieTimeWindowSeconds
+	}
+
 	return err
+}
+
+func bytesEqualConstantTime(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	var diff byte
+	for i := range a {
+		diff |= a[i] ^ b[i]
+	}
+	return diff == 0
 }
 
 func (s *UdpServer) updateHttpConfig(httpConf HttpConfig) (err error) {

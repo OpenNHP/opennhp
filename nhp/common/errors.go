@@ -92,6 +92,16 @@ var (
 	ErrKnockServerNotFound     = newError("51002", "failed to find knock server", "无法找到敲门服务器")
 	ErrKnockTerminatedByCookie = newError("51003", "knock terminated by cookie", "敲门被cookie包中止")
 
+	// agent: cluster lookup failure modes for KnockResource. These split
+	// the previous "cluster not found" generic failure into the four
+	// distinct mistakes a caller can make on the v1.x cluster ABI, so
+	// SDK consumers can branch on errCode instead of parsing errMsg.
+	// See docs/agent_sdk.md "Migration from v0.x to v1.x".
+	ErrKnockResourceMissingClusterRef    = newError("51004", "knock resource has neither Cluster nor ServerPubKey set", "敲门资源未设置 Cluster 或 ServerPubKey")
+	ErrKnockResourceAmbiguousClusterRef  = newError("51005", "knock resource sets both Cluster and ServerPubKey", "敲门资源同时设置了 Cluster 与 ServerPubKey")
+	ErrKnockResourceUnknownClusterName   = newError("51006", "knock resource references unknown cluster name", "敲门资源引用了未知集群名")
+	ErrKnockResourceUnknownClusterPubKey = newError("51007", "knock resource references unknown ServerPubKey", "敲门资源引用了未注册的 ServerPubKey")
+
 	// agentsdk
 	ErrNoAgentInstance = newError("51100", "agent instance does not exist", "未创建agent实例")
 	ErrInvalidInput    = newError("51101", "invalid input parameter", "无效的输入参数")

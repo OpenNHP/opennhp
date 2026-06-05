@@ -1,10 +1,46 @@
-# list the server peers for the device under [[Servers]] table
+# list the server peers for the nhp-db under [[Servers]] table
+#
+# Each [[Servers]] entry is one logical nhp-server identity (one pubkey)
+# reachable at 1..N instances that share that keypair. The schema is the
+# same as nhp-agent's and nhp-ac's server.toml — see
+# nhp/common/clusterconfig for the canonical reference. The same block
+# can be copied between peer tables.
+#
+# nhp-db only ever picks one instance per cluster, so LoadBalance and
+# StickyInstance are loaded but unused. If a cluster declares multiple
+# [[Servers.Instances]], the last one wins; the others stay as
+# documentation/failover candidates the operator can swap in.
+#
+# Per-field reference:
+#   PubKeyBase64   — the cluster's nhp-server public key (base64)
+#   ExpireTime     — epoch seconds; peer-key validation fails after this
+#   Name           — optional human-readable label (logs only); nhp-db
+#                    does not require it
+#   LoadBalance    — accepted but ignored (single-instance consumer)
+#   StickyInstance — accepted but ignored (no multi-step handshake)
+#
+# Per-instance fields (under [[Servers.Instances]]):
+#   Host           — DNS name (preferred); resolves at send time
+#   Ip             — static IP (used if Host is empty)
+#   Port           — UDP port (required, > 0)
+#   Weight         — informational on nhp-db (see LoadBalance above)
+#
+# ─── Cluster form (recommended) ──────────────────────────────────────
+# [[Servers]]
+# PubKeyBase64 = "..."
+# ExpireTime   = 1924991999
+#
+#   [[Servers.Instances]]
+#   Ip   = "192.168.50.39"
+#   Port = 62206
+#
+# ─── Legacy single-server form (auto-upgraded, deprecated) ───────────
+# Kept for backwards compatibility with pre-cluster server.toml files;
+# existing single-server entries are auto-promoted to a single-instance
+# cluster on load with a deprecation warning. Don't mix this form with
+# [[Servers.Instances]] in the same entry — the loader refuses to guess
+# which one wins.
 
-# Hostname: the domain of the server peer. If specified, it overrides the "Ip" field with its first resolved address.
-# Ip: specify the ip address of the server peer
-# Port: specify the port number of this server peer is listening
-# PubKeyBase64: public key of the server peer in base64 format
-# ExpireTime (epoch timestamp in seconds): peer key validation will fail when it expires.
 [[Servers]]
 Hostname = ""
 Ip = "192.168.50.39"

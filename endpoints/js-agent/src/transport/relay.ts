@@ -6,7 +6,7 @@
  *
  * Flow:
  *   NHPAgent  ──send(KNK)──▶  HttpRelayTransport
- *                              │  POST /relay/{clusterId}  (binary body = raw KNK packet)
+ *                              │  POST /relay/{serverId}  (binary body = raw KNK packet)
  *                              ▼
  *                         nhp-relay service
  *                              │  UDP NHP_RLY frame (realClientIP + KNK)
@@ -37,23 +37,23 @@ const noopLogger: Logger = {
 export interface HttpRelayTransportConfig {
   /**
    * Base URL of the relay endpoint, e.g. "https://relay.example.com/relay"
-   * or "http://localhost:8080/relay". The cluster id is appended at send
+   * or "http://localhost:8080/relay". The server id is appended at send
    * time, so this URL must NOT already include one.
    */
   relayUrl: string;
 
   /**
-   * Required. The 11-char base64url fingerprint of the target nhp-server
-   * cluster's public key — same algorithm as Go's utils.PubKeyFingerprint
-   * and this package's pubKeyFingerprint helper. The transport sends each
-   * request to `${relayUrl}/${clusterId}`.
+   * Required. The 11-char base64url fingerprint of the target nhp-server's
+   * public key — same algorithm as Go's utils.PubKeyFingerprint and this
+   * package's pubKeyFingerprint helper. The transport sends each request to
+   * `${relayUrl}/${serverId}`.
    *
    * The relay no longer accepts a bare `POST /relay`; an omitted or empty
-   * clusterId would surface as a 301-then-400 from the server. NHPAgent's
-   * createTransport derives this from the server's public key on every
-   * request, so direct users of HttpRelayTransport must do the same.
+   * serverId would surface as a 301-then-400 from the relay. NHPAgent's
+   * createTransport derives this from the target server's public key on
+   * every request, so direct users of HttpRelayTransport must do the same.
    */
-  clusterId: string;
+  serverId: string;
 
   /**
    * Request timeout in milliseconds (default: 10000).
@@ -70,11 +70,11 @@ export interface HttpRelayTransportConfig {
  * ACK/COK responses in the HTTP response body.
  */
 export class HttpRelayTransport {
-  // relayUrl, clusterId, and timeoutMs are always populated (default
+  // relayUrl, serverId, and timeoutMs are always populated (default
   // applied below for timeoutMs); logger remains optional.
   private readonly config: {
     relayUrl: string;
-    clusterId: string;
+    serverId: string;
     timeoutMs: number;
     logger?: Logger;
   };
@@ -83,10 +83,10 @@ export class HttpRelayTransport {
   private connected = false;
 
   constructor(config: HttpRelayTransportConfig) {
-    if (!config.clusterId) {
+    if (!config.serverId) {
       // Fail loudly at construction time. A late 400 from the relay is
       // harder to diagnose than an Error here pointing at the source.
-      throw new Error('[HttpRelayTransport] clusterId is required');
+      throw new Error('[HttpRelayTransport] serverId is required');
     }
     this.config = {
       timeoutMs: 10_000,
@@ -152,10 +152,10 @@ export class HttpRelayTransport {
   // ─── Internal ─────────────────────────────────────────────────────────────
 
   private async postToRelay(packet: Uint8Array): Promise<Uint8Array> {
-    const { relayUrl, clusterId, timeoutMs } = this.config;
-    // Suffix the cluster id as a path segment. We avoid an explicit `URL`
+    const { relayUrl, serverId, timeoutMs } = this.config;
+    // Suffix the server id as a path segment. We avoid an explicit `URL`
     // constructor so callers can pass relative URLs in odd test setups.
-    const targetUrl = `${relayUrl.replace(/\/+$/, '')}/${encodeURIComponent(clusterId)}`;
+    const targetUrl = `${relayUrl.replace(/\/+$/, '')}/${encodeURIComponent(serverId)}`;
 
     // Always copy to a clean ArrayBuffer — packet may be a view into a larger buffer
     const body = new Uint8Array(packet).buffer;

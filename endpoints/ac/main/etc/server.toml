@@ -1,14 +1,48 @@
 # list the server peers for the AC under [[Servers]] table
+#
+# Each [[Servers]] entry is one logical nhp-server identity (one pubkey)
+# reachable at 1..N instances that share that keypair. The schema is the
+# same as nhp-agent's and nhp-db's server.toml — see
+# nhp/common/clusterconfig for the canonical reference.
+#
+# Per-field reference:
+#   PubKeyBase64   — the cluster's nhp-server public key (base64)
+#   ExpireTime     — epoch seconds; peer-key validation fails after this
+#   LoadBalance    — accepted but ignored by nhp-ac (AOL fan-out is a
+#                    broadcast for failover, not a load-balancing pick)
+#   StickyInstance — same as above; nhp-ac doesn't run a multi-step
+#                    handshake against a single instance
+#
+# Per-instance fields (under [[Servers.Instances]]):
+#   Host           — DNS name (preferred); resolves at send time
+#   Ip             — static IP (used if Host is empty)
+#   Port           — UDP port (required, > 0)
+#   Weight         — relative weight for weighted-random (informational
+#                    on nhp-ac; see LoadBalance above)
+#
+# ─── Cluster form (recommended) ──────────────────────────────────────
+# [[Servers]]
+# PubKeyBase64 = "..."
+# ExpireTime   = 1924991999
+#
+#   [[Servers.Instances]]
+#   Ip   = "10.0.0.1"
+#   Port = 62206
+#
+#   [[Servers.Instances]]
+#   Ip   = "10.0.0.2"
+#   Port = 62206
+#
+# ─── Legacy single-server form (auto-upgraded, deprecated) ───────────
+# Kept for backwards compatibility with pre-cluster server.toml files;
+# existing single-server entries are auto-promoted to a single-instance
+# cluster on load with a deprecation warning. Don't mix this form with
+# [[Servers.Instances]] in the same entry — the loader refuses to guess
+# which one wins.
 
-# Hostname: the domain of the server peer. If specified, it overrides the "Ip" field with its first resolved address.
-# Ip: specify the ip address of the server peer
-# Port: specify the port number of this server peer is listening
-# PubKeyBase64: public key of the server peer in base64 format
-# ExpireTime (epoch timestamp in seconds): peer key validation will fail when it expires.
 [[Servers]]
 Hostname = ""
 Ip = "192.168.80.35"
 Port = 62206
 PubKeyBase64 = "WqJxe+Z4+wLen3VRgZx6YnbjvJFmptz99zkONCt/7gc="
 ExpireTime = 1924991999
-

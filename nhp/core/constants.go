@@ -16,11 +16,9 @@ const (
 
 // session
 const (
-	MinimalRecvIntervalMs  = 20  // millisecond
-	ThreatCountBeforeBlock = 1   // block at 2nd attempt
-	CookieRegenerateTime   = 120 // second
-	CookieRoundTripTimeMs  = 20  // millisecond
-	FailureRetryInterval   = 10  // second
+	MinimalRecvIntervalMs  = 20 // millisecond
+	ThreatCountBeforeBlock = 1  // block at 2nd attempt
+	FailureRetryInterval   = 10 // second
 )
 
 // transaction

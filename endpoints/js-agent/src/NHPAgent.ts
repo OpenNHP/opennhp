@@ -456,16 +456,16 @@ export class NHPAgent {
             '[NHPAgent] transport="relay" requires relayUrl to be set in NHPAgentConfig'
           );
         }
-        // The cluster ID is derived from the target server's public key so
-        // the agent can address any cluster on a multi-cluster relay
+        // The server ID is derived from the target server's public key so
+        // the agent can address any server on a multi-server relay
         // without explicit configuration. The same algorithm runs in Go
         // (utils.PubKeyFingerprint), keeping the routing identifier
         // canonical on both sides.
-        const clusterId = await pubKeyFingerprintFromBase64(serverPublicKey);
-        this.log('debug', `Creating HTTP relay transport via ${relayUrl}/${clusterId}`);
+        const serverId = await pubKeyFingerprintFromBase64(serverPublicKey);
+        this.log('debug', `Creating HTTP relay transport via ${relayUrl}/${serverId}`);
         return new HttpRelayTransport({
           relayUrl,
-          clusterId,
+          serverId,
           logger: this.logger,
         }) as unknown as Transport;
       }

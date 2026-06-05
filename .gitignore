@@ -36,3 +36,4 @@ crash.*.log
 
 # Generated configs (rendered by CI, contain secrets)
 deploy/configs/
+*.log

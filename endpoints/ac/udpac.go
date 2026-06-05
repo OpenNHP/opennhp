@@ -152,12 +152,44 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 		// load http config and turn on http server if needed
 		_ = a.loadHttpConfig()
 
-		// load peers
-		_ = a.loadPeers()
+		// load peers. A non-nil error here means the initial
+		// expandServerPeers parse failed and the running peerMap is
+		// empty. Starting the daemon in that state lets it drop
+		// AOL/AOP traffic silently (no peer matches), which is much
+		// harder to diagnose than a startup refusal. Reloads still
+		// keep the previous peer table on parse error — that's the
+		// right call once a good table is live.
+		if loadErr := a.loadPeers(); loadErr != nil {
+			return fmt.Errorf("server peer config invalid on initial load: %w", loadErr)
+		}
 	}
 
 	if a.config.FilterMode == FilterMode_EBPFXDP {
-		for _, server := range a.config.Servers {
+		// Snapshot the expanded peer list under serverPeerMutex so we
+		// don't race the file/etcd watcher path that rewrites
+		// a.config.Servers on reload (see config.go: updateServerPeers).
+		// Keep the lock window minimal — copy the slice header, release,
+		// then issue eBPF syscalls outside the lock so a slow kernel
+		// syscall can't block a pending reload.
+		a.serverPeerMutex.Lock()
+		servers := make([]*core.UdpPeer, len(a.config.Servers))
+		copy(servers, a.config.Servers)
+		a.serverPeerMutex.Unlock()
+		for _, server := range servers {
+			// XDP rules key on the source IP; instances configured
+			// with a DNS-only Host (Ip == "" — legitimate under the
+			// new schema, see clusterconfig.Normalize) have nothing
+			// to install at startup. Skip with a log line instead of
+			// silently writing SrcIP="" into eBPF, which would either
+			// be rejected by the kernel or — worse — match every
+			// source. A host-only instance can still receive traffic
+			// once it's resolved on the data path; this loop only
+			// handles the boot-time static rule.
+			if server.Ip == "" {
+				log.Info("[EbpfRuleAdd] skipping peer %s: instance has no static Ip (Host=%q); add an Ip field to install a boot-time XDP rule",
+					server.PublicKeyBase64(), server.Hostname)
+				continue
+			}
 			ebpfHashStr := ebpf.EbpfRuleParams{
 				SrcIP: server.Ip,
 				DstIP: a.config.DefaultIp,
@@ -670,7 +702,11 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 						failCount += 1
 						if failCount%ServerDiscoveryRetryBeforeFail == 0 {
 							atomic.StoreInt32(serverFailCount, 1)
-							// remove failed connection
+							// remove failed connection. The map lookup can race
+							// with another teardown path that already removed
+							// the entry; conn==nil is the legitimate "already
+							// gone" signal and Close() must be skipped to
+							// avoid a nil deref.
 							a.remoteConnectionMutex.Lock()
 							conn = a.remoteConnectionMap[addrStr]
 							if conn != nil {
@@ -678,7 +714,9 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 								delete(a.remoteConnectionMap, addrStr)
 							}
 							a.remoteConnectionMutex.Unlock()
-							conn.Close()
+							if conn != nil {
+								conn.Close()
+							}
 						}
 						log.Error("ac(%s#%d)[ACOnline] reporting to server %s failed", acId, aolMd.TransactionId, addrStr)
 					}
@@ -742,12 +780,16 @@ func (a *UdpAC) serverDiscovery(server *core.UdpPeer, discoveryRoutineWg *sync.W
 	}
 }
 
+// AddServerPeer registers one server endpoint with the AC. Multiple calls with
+// the same pubkey but different (Ip, Port) co-exist — each addressable
+// instance is tracked separately so the discovery routine can fan AOL out to
+// all of them.
 func (a *UdpAC) AddServerPeer(server *core.UdpPeer) {
 	if server.DeviceType() == core.NHP_SERVER {
 		a.device.AddPeer(server)
 
 		a.serverPeerMutex.Lock()
-		a.serverPeerMap[server.PublicKeyBase64()] = server
+		a.serverPeerMap[endpointKey(server)] = server
 		a.serverPeerMutex.Unlock()
 
 		// renew server connection cycle
@@ -757,18 +799,38 @@ func (a *UdpAC) AddServerPeer(server *core.UdpPeer) {
 	}
 }
 
-func (a *UdpAC) RemoveServerPeer(serverKey string) {
+// RemoveServerPeer removes one specific server endpoint by its endpointKey.
+// Other endpoints sharing the same pubkey are unaffected; the device-level
+// peer entry is removed only when the last endpoint for that pubkey is gone.
+func (a *UdpAC) RemoveServerPeer(serverEndpointKey string) {
 	a.serverPeerMutex.Lock()
-	beforeSize := len(a.serverPeerMap)
-	delete(a.serverPeerMap, serverKey)
-	afterSize := len(a.serverPeerMap)
+	removed, present := a.serverPeerMap[serverEndpointKey]
+	if present {
+		delete(a.serverPeerMap, serverEndpointKey)
+	}
+	// Did any other endpoint with the same pubkey remain?
+	var pubKeyStillUsed bool
+	if removed != nil {
+		for _, p := range a.serverPeerMap {
+			if p.PublicKeyBase64() == removed.PublicKeyBase64() {
+				pubKeyStillUsed = true
+				break
+			}
+		}
+	}
 	a.serverPeerMutex.Unlock()
 
-	if beforeSize != afterSize {
-		// renew server connection cycle
-		if len(a.signals.serverMapUpdated) == 0 {
-			a.signals.serverMapUpdated <- struct{}{}
-		}
+	if !present {
+		return
+	}
+
+	if !pubKeyStillUsed {
+		a.device.RemovePeer(removed.PublicKeyBase64())
+	}
+
+	// renew server connection cycle
+	if len(a.signals.serverMapUpdated) == 0 {
+		a.signals.serverMapUpdated <- struct{}{}
 	}
 }
 

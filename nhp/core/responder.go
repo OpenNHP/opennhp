@@ -771,17 +771,25 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 		// rejector the rest of the design assumes — it costs roughly
 		// "one Noise IK handshake floor per attacker packet."
 		//
-		// The work per packet is still bounded (one IK floor, not a
-		// linear scan or unbounded crypto), so this isn't a DoS
-		// amplifier in absolute terms. If a future deployment
-		// observes the cookie path becoming the bottleneck, two
-		// mitigations preserve cross-replica re-derivation:
-		//   - per-source-IP rate-limit ahead of the cookie verify, or
-		//   - cache (srcIP, ephemeral) → peerPk for the cookie window
-		//     so repeat attempts from the same address pay one ECDH
-		//     and HMAC-compare-only thereafter.
-		// Neither is required for correctness today; the bound is
-		// considered acceptable until production traffic disagrees.
+		// This per-packet cost is gated by the per-source-IP rate
+		// limiter (rknRateLimiter, endpoints/server/ratelimit.go),
+		// which runs BEFORE this code on both the direct-UDP and
+		// relay-forward paths — so a single flooding source can only
+		// drive this ECDH at its bucket rate, not per packet. The
+		// limiter does NOT stop an attacker who spoofs source IPs:
+		// each spoofed IP gets a fresh bucket, so a wide-spread spoof
+		// still reaches this path. That is accepted because the work
+		// per packet stays bounded (one IK floor, not a linear scan
+		// or unbounded crypto), so it isn't a DoS amplifier in
+		// absolute terms.
+		//
+		// If a future deployment observes the cookie path becoming
+		// the bottleneck despite the rate limit, a second mitigation
+		// preserves cross-replica re-derivation: cache
+		// (srcIP, ephemeral) → peerPk for the cookie window so repeat
+		// attempts from the same address pay one ECDH and
+		// HMAC-compare-only thereafter. Not required for correctness
+		// today.
 		peerPk, err := extractInitiatorStaticPubKey(ppd.device, ppd.Ciphers, ppd.header)
 		if err != nil {
 			log.Debug("checkHMAC(sumCookie): cannot recover peer static pubkey: %v", err)

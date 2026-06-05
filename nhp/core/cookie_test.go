@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 )
@@ -289,5 +290,202 @@ func TestStatelessCookieParams_NilWhenDisabled(t *testing.T) {
 	}
 	if win != 0 {
 		t.Fatalf("disabled cookies should return window 0, got %d", win)
+	}
+}
+
+// newCurveDevice builds a real curve25519 device from a deterministic
+// 32-byte private key (filled with `seed`). Unlike newDeviceForChainKeyTest
+// the public key here is a *real* point, so device-ECDH actually works —
+// required for the cookie-verify e2e tests below, where the server runs
+// extractInitiatorStaticPubKey (a real ECDH + AEAD-Open) against the
+// agent's IK static field.
+func newCurveDevice(t *testing.T, deviceType int, seed byte) *Device {
+	t.Helper()
+	priv := make([]byte, 32)
+	for i := range priv {
+		priv[i] = seed
+	}
+	dev := NewDevice(deviceType, priv, nil)
+	if dev == nil {
+		t.Fatalf("NewDevice(seed=%d) returned nil", seed)
+	}
+	t.Cleanup(dev.Stop)
+	return dev
+}
+
+// curvePubKey returns a device's curve25519 static public key bytes.
+func curvePubKey(dev *Device) []byte {
+	return dev.GetEcdhByCipherScheme(common.CIPHER_SCHEME_CURVE).PublicKey()
+}
+
+// buildAgentRKNWithCookie drives the *agent* assembly path to produce a
+// fully-encrypted NHP_RKN whose HMAC was summed over `cookie` (i.e. the
+// real addHMAC(sumCookie=true) at initiator.go). MsgToPacket runs
+// createMsgAssemblerData → setPeerPublicKey → encryptBody, and encryptBody
+// calls addHMAC(HeaderType==NHP_RKN). Returns a copy of the wire bytes the
+// agent would put on the socket.
+func buildAgentRKNWithCookie(t *testing.T, agentDev *Device, serverPubKey []byte, cookie *[CookieSize]byte, remote *net.UDPAddr) []byte {
+	t.Helper()
+	md := &MsgData{
+		HeaderType:     NHP_RKN,
+		CipherScheme:   common.CIPHER_SCHEME_CURVE,
+		TransactionId:  0xC00C1E00DEADBEEF,
+		PeerPk:         serverPubKey,
+		Message:        []byte(`{"hello":"rkn"}`),
+		ExternalCookie: cookie,
+		ConnData:       &ConnectionData{RemoteAddr: remote},
+	}
+	mad, err := agentDev.MsgToPacket(md)
+	if err != nil {
+		t.Fatalf("agent MsgToPacket(NHP_RKN): %v", err)
+	}
+	// MsgToPacket defers mad.Destroy() (it releases the pool packet on
+	// return), so copy the wire bytes out before they're recycled.
+	wire := make([]byte, len(mad.BasePacket.Content))
+	copy(wire, mad.BasePacket.Content)
+	return wire
+}
+
+// parseRKNOnServer feeds raw agent wire bytes through the *server* parse
+// pipeline. With the device in overload, createPacketParserData routes
+// NHP_RKN to checkHMAC(sumCookie=true) — the production verify path,
+// including extractInitiatorStaticPubKey. Returns the parse error (nil on
+// HMAC success).
+func parseRKNOnServer(t *testing.T, serverDev *Device, wire []byte, remote *net.UDPAddr) error {
+	t.Helper()
+	pkt := serverDev.AllocatePoolPacket()
+	if pkt == nil {
+		t.Fatal("AllocatePoolPacket returned nil")
+	}
+	copy(pkt.Buf[:], wire)
+	pkt.Content = pkt.Buf[:len(wire)]
+
+	serverDev.SetOverload(true)
+	defer serverDev.SetOverload(false)
+
+	ppd, err := serverDev.createPacketParserData(&PacketData{
+		BasePacket: pkt,
+		ConnData:   &ConnectionData{RemoteAddr: remote},
+		InitTime:   time.Now().UnixNano(),
+	})
+	if ppd != nil {
+		t.Cleanup(ppd.Destroy)
+	}
+	return err
+}
+
+// TestCookieVerify_EndToEnd is the regression the reviewer asked for: it
+// exercises the full cookie *verify* path that only runs in production —
+// checkHMAC(sumCookie=true), including extractInitiatorStaticPubKey — and
+// holds it byte-for-byte against the agent's addHMAC. The unit tests above
+// cover deriveStatelessCookie / cookieRemoteKey / sendCookie in isolation,
+// but none runs the verify side, so a divergence between the agent's HMAC
+// input (initiator.go addHMAC: Hash(Init||ServerPub||header[:n]||cookie))
+// and the server's by-hand rebuild (responder.go:809-812) would compile,
+// pass every other test, and silently break every cross-replica RKN under
+// overload — the headline feature of this change.
+//
+// The agent mints nothing itself: the cluster mints the cookie (as a
+// sibling server would) bound to the agent's static pubkey + source IP +
+// window, hands it to the agent, and the agent stamps it into a real RKN.
+// The server then re-derives and verifies. This is the KNK→COK→RKN loop
+// minus the wire hop.
+func TestCookieVerify_EndToEnd(t *testing.T) {
+	const window = 5 // seconds
+	signingKey := bytes.Repeat([]byte{0x42}, 32)
+
+	agentDev := newCurveDevice(t, NHP_AGENT, 0x11)
+	serverDev := newCurveDevice(t, NHP_SERVER, 0x22)
+	serverDev.SetStatelessCookieParams(signingKey, window)
+
+	remote := &net.UDPAddr{IP: net.ParseIP("203.0.113.7"), Port: 51234}
+	serverPub := curvePubKey(serverDev)
+	agentPub := curvePubKey(agentDev)
+
+	// Mint the cookie exactly as a server instance would in sendCookie:
+	// bound to (source IP, agent static pubkey, current window).
+	remoteKey := cookieRemoteKey(&ConnectionData{RemoteAddr: remote})
+	curWindow := time.Now().Unix() / int64(window)
+	raw := deriveStatelessCookie(signingKey, remoteKey, agentPub, curWindow)
+	var cookie [CookieSize]byte
+	copy(cookie[:], raw)
+
+	wire := buildAgentRKNWithCookie(t, agentDev, serverPub, &cookie, remote)
+
+	if err := parseRKNOnServer(t, serverDev, wire, remote); err != nil {
+		t.Fatalf("cookie verify failed end-to-end: %v\n"+
+			"the agent's addHMAC input (initiator.go) and the server's "+
+			"rebuild (responder.go ~809) have diverged, or "+
+			"extractInitiatorStaticPubKey failed to recover the agent pubkey",
+			err)
+	}
+}
+
+// TestCookieVerify_CrossReplica locks the cluster invariant: a cookie minted
+// by one server instance must verify on a *different* instance that shares
+// only the signing key + window (no shared connection state). If this breaks,
+// load-balancer reshuffling between KNK and RKN starts failing silently —
+// which is exactly what stateless cookies exist to prevent.
+func TestCookieVerify_CrossReplica(t *testing.T) {
+	const window = 5
+	signingKey := bytes.Repeat([]byte{0x42}, 32)
+
+	agentDev := newCurveDevice(t, NHP_AGENT, 0x11)
+	// Two server instances with DISTINCT static keys (distinct identities)
+	// but the SAME cookie signing key — i.e. two replicas behind an LB.
+	// The minter mints below by hand (a sibling server's sendCookie); the
+	// verifier — a separate identity — must accept that cookie.
+	verifier := newCurveDevice(t, NHP_SERVER, 0x33)
+	verifier.SetStatelessCookieParams(signingKey, window)
+
+	remote := &net.UDPAddr{IP: net.ParseIP("203.0.113.7"), Port: 51234}
+	agentPub := curvePubKey(agentDev)
+
+	// The minter issues the cookie (bound to agent identity + source IP +
+	// window). Because the derivation never references the responding
+	// instance's identity, the verifier replica must compute the identical
+	// cookie from the same signing key — that is the cross-replica
+	// invariant under test.
+	remoteKey := cookieRemoteKey(&ConnectionData{RemoteAddr: remote})
+	curWindow := time.Now().Unix() / int64(window)
+	raw := deriveStatelessCookie(signingKey, remoteKey, agentPub, curWindow)
+	var cookie [CookieSize]byte
+	copy(cookie[:], raw)
+
+	// The IK static field is encrypted to whichever instance the agent's
+	// RKN actually reaches, so assemble against the verifier's pubkey: its
+	// extractInitiatorStaticPubKey must then recover the agent key and
+	// re-derive the minter's cookie.
+	wire := buildAgentRKNWithCookie(t, agentDev, curvePubKey(verifier), &cookie, remote)
+	if err := parseRKNOnServer(t, verifier, wire, remote); err != nil {
+		t.Fatalf("cookie minted by instance A failed to verify on instance B: %v", err)
+	}
+}
+
+// TestCookieVerify_RejectsWrongCookie confirms the verify path actually
+// rejects — a guard that the e2e success test alone can't give, since a
+// checkHMAC that returned true unconditionally would pass it. A cookie
+// bound to a different source IP must fail.
+func TestCookieVerify_RejectsWrongCookie(t *testing.T) {
+	const window = 5
+	signingKey := bytes.Repeat([]byte{0x42}, 32)
+
+	agentDev := newCurveDevice(t, NHP_AGENT, 0x11)
+	serverDev := newCurveDevice(t, NHP_SERVER, 0x22)
+	serverDev.SetStatelessCookieParams(signingKey, window)
+
+	remote := &net.UDPAddr{IP: net.ParseIP("203.0.113.7"), Port: 51234}
+	agentPub := curvePubKey(agentDev)
+
+	// Cookie bound to a DIFFERENT source IP than the RKN arrives from.
+	curWindow := time.Now().Unix() / int64(window)
+	raw := deriveStatelessCookie(signingKey, "198.51.100.99", agentPub, curWindow)
+	var cookie [CookieSize]byte
+	copy(cookie[:], raw)
+
+	wire := buildAgentRKNWithCookie(t, agentDev, curvePubKey(serverDev), &cookie, remote)
+
+	if err := parseRKNOnServer(t, serverDev, wire, remote); err == nil {
+		t.Fatal("expected cookie verify to reject an RKN whose cookie is bound to a different source IP, but it passed")
 	}
 }

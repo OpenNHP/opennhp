@@ -24,19 +24,32 @@ import (
 //
 // Coverage limit — the cache is in-process, so an AC restart
 // resets it. A captured AOP whose timestamp is still inside the
-// 600 s staleness floor can therefore replay successfully against
-// a freshly-started AC: both the responder gate and this cache
-// are empty, so neither layer catches it. Closing the restart
-// window requires either a persisted dedupe set or a signed
-// monotonic-counter promise from the server; tracked in #1464.
+// staleness floor can therefore replay successfully against a
+// freshly-started AC: both the responder gate and this cache are
+// empty, so neither layer catches it. #1464 bounds this window by
+// tightening the AOP-specific staleness floor in
+// nhp/core/responder.go (recvStalenessFloor /
+// AOPRecvStalenessFloorSeconds) from the historical 600 s default
+// to 120 s — the staleness floor is the only gate that survives a
+// cache wipe, so a tighter floor shrinks the replay window ~5×
+// across every restart class (process restart, deploy, failover).
+// Full elimination would need a persisted dedupe set or a shared
+// instance-spanning store; that was evaluated under #1464 and
+// judged disproportionate to the bounded threat (a replay only
+// re-opens the ORIGINAL already-authorized (src,dst) ipset entry,
+// and requires in-VPC packet capture) and to the priority:low
+// severity. A signed monotonic-counter promise from the server
+// remains a possible future hardening if the threat model
+// escalates.
 //
 // Operational note — every blue/green color flip on sandbox or
 // canary instance roll on prod creates a fresh-cache instance, so
 // the deploy cadence directly bounds this exposure window. A
-// captured AOP still inside the 600 s staleness floor at deploy
-// time can replay against the new color; oncall reading after an
-// incident should treat "we are protected" as having a deploy-
-// window asterisk attached.
+// captured AOP still inside the (now 120 s) AOP staleness floor at
+// deploy time can replay against the new color; oncall reading
+// after an incident should treat "we are protected" as having a
+// deploy-window asterisk attached — narrowed but not removed by
+// #1464.
 //
 // CPU-amplification note — MarkSeen runs after AEAD decryption
 // (the timestamp must be authenticated before it can be trusted
@@ -106,15 +119,22 @@ import (
 // byte-array key (#1460) would move the invariant into the type
 // system and pre-empt that hazard.
 //
-// TTL must cover the upstream 600 s staleness floor in
-// nhp/core/responder.go (`remoteSendTime < LocalInitTime - 600 s`),
-// otherwise a captured AOP aged between the cache TTL and the
-// staleness floor would slip past both gates: the responder
-// accepts it (timestamp not yet stale) and the cache no longer
-// remembers it (entry expired). 11 min = 660 s leaves ~60 s of
-// one-direction wall-clock skew tolerance — a sender ahead of the
-// AC by more than that could land a captured packet in the gap.
-// Production hosts run NTP and stay well inside this budget.
+// TTL must cover the upstream AOP staleness floor in
+// nhp/core/responder.go (`remoteSendTime < LocalInitTime -
+// AOPRecvStalenessFloorSeconds`), otherwise a captured AOP aged
+// between the cache TTL and the staleness floor would slip past
+// both gates: the responder accepts it (timestamp not yet stale)
+// and the cache no longer remembers it (entry expired). The floor
+// was tightened to 120 s for AOP under #1464 (it was 600 s when
+// this TTL was first sized), so the 11 min = 660 s TTL now
+// over-covers the floor by ~5×; the "must cover" invariant holds
+// with a wide margin. The TTL is deliberately left generous rather
+// than shrunk to track the floor: the extra retention costs
+// nothing at current AOP cadence and preserves the post-restart
+// counter-collision protection below, whose correctness depends on
+// remembering pre-restart triples for the full TTL regardless of
+// the floor. Production hosts run NTP and stay well inside the
+// ~60 s one-direction skew budget the floor tolerates.
 //
 // Size (10 000 entries) is sized off the eviction floor that
 // matters operationally: at 660 s TTL, the steady-state sustained

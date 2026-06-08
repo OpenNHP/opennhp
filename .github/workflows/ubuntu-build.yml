@@ -54,7 +54,7 @@ jobs:
         go test -coverpkg=./... -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v6
+      uses: codecov/codecov-action@v7
       with:
         files: ./nhp/coverage.out,./endpoints/coverage.out
         flags: unittests

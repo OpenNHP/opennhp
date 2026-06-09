@@ -9,7 +9,7 @@
 ["demo"]
 SkipAuth = true
 OpenTime = 15
-RedirectUrl = "https://localhost"
+RedirectUrl = "https://localhost:8443"
 RedirectWithParams = false
 CookieDomain = "opennhp.org"
 
@@ -24,7 +24,13 @@ CookieDomain = "opennhp.org"
 
 ["demo".Resources."demoServer"]
 ACId = "testAC-1"
-Hostname = "localhost"
+# Local docker demo tells the two clusters apart by the nginx entrypoint PORT
+# (8443 = cluster 1, 8444 = cluster 2), since neither has a real domain/cert.
+# The browser reaches the resource via nginx (https://localhost:8443) which
+# proxies to this AC; the host port lives in Hostname (PortSuffix=false) because
+# it is the nginx port, not the AC's in-container target port (80, below). The
+# public demo uses distinct domains (ac / ac2) instead.
+Hostname = "localhost:8443"
 Addr.Ip = "177.7.0.10"
 Addr.Port = 80 # empty or 0 for all ports
 Addr.Protocol = "" # "tcp/udp/any", empty for "any"

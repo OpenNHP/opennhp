@@ -94,6 +94,94 @@ resource "aws_security_group" "server" {
   }
 }
 
+# --- nhp-server cluster 2 Security Group ---
+# Pure NHP: UDP knocking only. No HTTPS/HTTP (no plugin web endpoint, no
+# domain). SSH from relay (jump host) only.
+resource "aws_security_group" "server2" {
+  name_prefix = "opennhp-demo-server2-"
+  description = "NHP Server cluster 2 - UDP knocking only (no HTTPS)"
+  vpc_id      = aws_vpc.demo.id
+
+  # NHP protocol (UDP) from anywhere
+  ingress {
+    description = "NHP UDP"
+    from_port   = var.nhp_listen_port
+    to_port     = var.nhp_listen_port
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # SSH only from relay (jump host)
+  ingress {
+    description     = "SSH from relay"
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.relay.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "opennhp-demo-server2-sg" }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# --- nhp-ac cluster 2 Security Group ---
+# Same shape as cluster 1 ac, but NHP UDP is accepted from server2.
+resource "aws_security_group" "ac2" {
+  name_prefix = "opennhp-demo-ac2-"
+  description = "NHP AC cluster 2 - access controller with protected resources"
+  vpc_id      = aws_vpc.demo.id
+
+  # Protected resource HTTPS from anywhere (ac2.opennhp.org)
+  ingress {
+    description = "HTTPS protected resource"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # NHP AOP from cluster 2 server (UDP)
+  ingress {
+    description     = "NHP UDP from server2"
+    from_port       = var.nhp_listen_port
+    to_port         = var.nhp_listen_port
+    protocol        = "udp"
+    security_groups = [aws_security_group.server2.id]
+  }
+
+  # SSH only from relay (jump host)
+  ingress {
+    description     = "SSH from relay"
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.relay.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "opennhp-demo-ac2-sg" }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 # --- nhp-ac Security Group ---
 # No public SSH, only SSH from relay SG
 resource "aws_security_group" "ac" {

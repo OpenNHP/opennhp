@@ -15,12 +15,6 @@ PubKeyBase64 = "boB03Ta2t07kfR1sbKYtDCMgpkkNjGG1mXq4fQoVFcG8geXmEiF4n68LaReKihwR
 ExpireTime = 1924991999
 
 [[Agents]]
-PubKeyBase64 = "CHMfQ48eauP20AhtIoOmat//m/WNBOUu8xxoX6VbJ/FoTGic9bnxfyoAISVI3aAadZV3oqsTAGjHiQLld0YDOg=="
-ExpireTime = 1924991999
-
-# Shared demo browser agent (priv S9Aq... -> pub 74ET...), also registered on
-# cluster2 so the relay-test page's cluster picker can knock either cluster
-# with the single identity shipped in examples/config.json.
-[[Agents]]
+# test agent for local multi-cluster end-to-end knock
 PubKeyBase64 = "74ET+AmB01Q1I+5h5vV17P+p7kQlbhT95nb96/4rvZqDzzZRzsT+tmrvY5aX92NbpevA8dpcDEEE4EpRTKm6TA=="
 ExpireTime = 1924991999

@@ -1,0 +1,11 @@
+# NHP-AC cluster 2 base config (LOCAL DOCKER MULTI-CLUSTER DEMO)
+PrivateKeyBase64 = "vsr4HYSQIQ6zncAqW1+XzQ2y2zXDFnwiLe3OIWbm4kE="
+ACId = "testAC-c2"
+DefaultCipherScheme = 1
+UserId = "agent-0"
+OrganizationId = "opennhp.org"
+LogLevel = 4
+[UserData]
+"ExampleKey0" = "StringValue"
+"ExampleKey1" = 1
+"ExampleKey2" = true

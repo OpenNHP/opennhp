@@ -1,0 +1,4 @@
+# cluster 2 AC peer (independent AC keypair)
+[[ACs]]
+PubKeyBase64 = "uEqdDea5lXqy76BrZu3sx0bVbpGYtImTAf96hhmU1E9kNJY9ZGbBx8vNaxwPw4iTjn/p3PCyVvHBSd1YvZtTQQ=="
+ExpireTime = 1924991999

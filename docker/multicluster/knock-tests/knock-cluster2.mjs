@@ -1,7 +1,11 @@
-import { NHPAgent } from '/Users/f1/project/opennhp/endpoints/js-agent/dist/index.js';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
-const agentPriv = fs.readFileSync('/Users/f1/project/opennhp/docker/multicluster/knock-tests/agent_priv.txt','utf8').trim();
+const here = dirname(fileURLToPath(import.meta.url));
+const { NHPAgent } = await import(join(here, '../../../endpoints/js-agent/dist/index.js'));
+
+const agentPriv = fs.readFileSync(join(here, 'agent_priv.txt'),'utf8').trim();
 const SERVER_C2_PUB = "SKAApHxZRTa3EPF1nlRi38neCT1H8dcJUJzcq1tUvsaIXpUj/r4DU4cZB8ApsAm9C1RGu1ZcXxm7C8frYc26+A==";
 
 const agent = new NHPAgent({

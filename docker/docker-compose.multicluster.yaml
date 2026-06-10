@@ -35,7 +35,9 @@ services:
       - ./nhp-server/etc/:/nhp-server/etc/:rw
       - ./nhp-server/logs/:/nhp-server/logs/:rw
       - ./nhp-server/templates/:/nhp-server/templates/:rw
-      - ./nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
+      # cluster-1 override: entrypoint is the shared nginx on host :8443, so the
+      # demo resource redirects to https://localhost:8443 (not :443 / no port).
+      - ./multicluster/nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
 
   nhp-ac:
     image: opennhp-ac:current

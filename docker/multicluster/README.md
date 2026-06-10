@@ -10,12 +10,19 @@ multi-cluster routing locally before the AWS demo deploy (server cluster 2).
 | nhp-server-c2 | `nhp-server-c2` | 177.7.0.20 | 2 |
 | nhp-ac-c2 | `nhp-ac-c2` | 177.7.0.21 | 2 |
 | nhp-relay (shared) | `nhp-relay` | 177.7.0.12 → host **:8081** | 1 + 2 |
+| nhp-enter (nginx) | `nhp-enter` | 177.7.0.8 → host **:8443/:8444** | 1 + 2 |
 | web-app (protected) | `web-app` | 177.7.0.11:80 | shared |
 
 Clusters 1 and 2 use **independent GMSM keypairs** and **separate ACs**
 (`testAC-1` vs `testAC-c2`). The relay declares both as distinct `[[Servers]]`
 entries, so `GET /servers` returns two fingerprints and
 `POST /relay/<fingerprint>` routes to the chosen cluster.
+
+The shared nginx entrypoint (`nhp-enter`) fans out by **host port** to each
+cluster's AC after a successful knock — `https://localhost:8443` → cluster 1,
+`https://localhost:8444` → cluster 2. That host port is what each cluster's
+`resource.toml` override puts in `Hostname`/`RedirectUrl` (see the bind-mount
+gotcha under "Rebuilding images").
 
 Configs live under `multicluster/` (server-c2, ac-c2, relay). The stack runs
 the `:current` images (built from current source — see "Rebuilding images").
@@ -110,8 +117,15 @@ DOCKER
 > - Server plugins are Go plugins → require **CGO** and the **same build** as the
 >   server binary. Cross-compiling on macOS gives `plugin: not implemented`;
 >   build inside the linux container.
-> - Bind-mounting a plugin's `etc/` dir **hides** the image's `config.toml`; the
->   mount under `multicluster/nhp-server-c2/plugins/example/etc/` therefore
->   includes both `config.toml` and `resource.toml`. Missing `config.toml`
->   breaks ASP registration (knock fails with error 52002).
+> - Bind-mounting a plugin's `etc/` dir **hides** the image's `config.toml`. Both
+>   clusters mount their own override of it so the demo redirect carries the
+>   right host port (cluster 1 → `:8443`, cluster 2 → `:8444`) instead of the
+>   shared `docker/nhp-server/.../resource.toml` default (`localhost`, used by the
+>   single-cluster `docker-compose.yaml`):
+>
+>   - `multicluster/nhp-server/plugins/example/etc/` (cluster 1)
+>   - `multicluster/nhp-server-c2/plugins/example/etc/` (cluster 2)
+>
+>   Each override dir therefore includes both `config.toml` and `resource.toml`.
+>   Missing `config.toml` breaks ASP registration (knock fails with error 52002).
 > - Host 8080 may be taken by another project, so the relay is published on 8081.

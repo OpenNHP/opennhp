@@ -9,7 +9,7 @@
 ["demo"]
 SkipAuth = true
 OpenTime = 15
-RedirectUrl = "https://localhost:8443"
+RedirectUrl = "https://localhost"
 RedirectWithParams = false
 CookieDomain = "opennhp.org"
 
@@ -24,13 +24,13 @@ CookieDomain = "opennhp.org"
 
 ["demo".Resources."demoServer"]
 ACId = "testAC-1"
-# Local docker demo tells the two clusters apart by the nginx entrypoint PORT
-# (8443 = cluster 1, 8444 = cluster 2), since neither has a real domain/cert.
-# The browser reaches the resource via nginx (https://localhost:8443) which
-# proxies to this AC; the host port lives in Hostname (PortSuffix=false) because
-# it is the nginx port, not the AC's in-container target port (80, below). The
-# public demo uses distinct domains (ac / ac2) instead.
-Hostname = "localhost:8443"
+# Standard single-cluster docker demo: the nhp-agent/nginx entrypoint is exposed
+# on host :443 (docker-compose.yaml), so the browser reaches the resource at
+# https://localhost with no port suffix. Stacks that expose the entrypoint on a
+# different host port (docker-compose.dhp.yaml -> :8443,
+# docker-compose.multicluster.yaml -> :8443/:8444) mount their own override of
+# this file instead of mutating this shared default.
+Hostname = "localhost"
 Addr.Ip = "177.7.0.10"
 Addr.Port = 80 # empty or 0 for all ports
 Addr.Protocol = "" # "tcp/udp/any", empty for "any"

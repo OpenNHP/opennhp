@@ -1,0 +1,26 @@
+# cluster 1 "basic"/example plugin resource mapping (LOCAL DOCKER DEMO)
+# Override of docker/nhp-server/plugins/example/etc/resource.toml for the
+# multicluster stack. Same plugin binary as the single-cluster demo, but the
+# browser entrypoint is the shared nginx reverse proxy (see
+# docker-compose.multicluster.yaml) rather than nhp-agent on host :443.
+["demo"]
+SkipAuth = true
+OpenTime = 15
+RedirectUrl = "https://localhost:8443"
+RedirectWithParams = false
+CookieDomain = "opennhp.org"
+
+["demo".Resources."demoServer"]
+ACId = "testAC-1"
+# Local docker multicluster demo: cluster 1 is reached via the nginx entrypoint
+# on host port 8443 (cluster 2 = 8444). nginx proxies https://localhost:8443 ->
+# this AC. Host port lives in Hostname (PortSuffix=false); Addr.Port stays the
+# AC's in-container target (80). The public demo uses ac.opennhp.org instead.
+Hostname = "localhost:8443"
+Addr.Ip = "177.7.0.10"
+Addr.Port = 80
+Addr.Protocol = ""
+PortSuffix = false
+
+["demo".ExInfo]
+Title = "OpenNHP Demo Login (Local docker - Cluster 1)"

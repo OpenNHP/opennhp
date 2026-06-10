@@ -1,5 +1,9 @@
 * linguist-language=Go
 
+# Shell scripts must use LF; a CRLF shebang makes the kernel look for
+# "/bin/bash\r" and fail to exec with "required file not found" (exit 127).
+*.sh text eol=lf
+
 *.c linguist-vendored
 *.h linguist-vendored
 

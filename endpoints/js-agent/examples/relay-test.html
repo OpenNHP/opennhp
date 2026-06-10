@@ -624,6 +624,16 @@
   <details class="panel details-panel" id="keys-details">
     <summary class="panel-title">&#9881; <span data-i18n="panel.parameters">NHP-Agent Parameters</span><button type="button" class="btn btn-secondary load-token-btn" id="loadFromTokenBtn" data-i18n="btn.loadFromToken">Load from Token</button><span class="summary-hint" data-i18n="summary.editHint">click to view / edit</span></summary>
     <div class="details-content">
+      <!-- Server cluster picker. Populated from config.json "clusters"; hidden
+           when only one cluster is configured. Selecting a cluster swaps the
+           nhp-server public key below — the relay routes by that key's
+           fingerprint, so no other field needs to change. -->
+      <div class="row" id="clusterRow" style="display:none">
+        <div class="field" style="flex:2">
+          <label data-i18n="field.cluster">Server Cluster</label>
+          <select id="clusterSelect"></select>
+        </div>
+      </div>
       <div class="row">
         <div class="field" style="flex:2">
           <label data-i18n="field.serverPubKey">nhp-server Public Key (Base64)</label>
@@ -867,6 +877,7 @@ if (result.success) {
       'seq.resp': 'Parse ACK/COK response and extract temporary access details',
       'seq.done': 'Redirect the user to the now-accessible protected resource',
 
+      'field.cluster': 'Server Cluster',
       'field.serverPubKey': 'nhp-server Public Key (Base64)',
       'field.agentPrivKey': 'nhp-agent Private Key (Base64)',
       'field.agentPrivKey.placeholder': 'Loaded from config.json on the public demo',
@@ -891,6 +902,7 @@ if (result.success) {
       'log.relayUrl': 'Relay URL: {url}',
       'log.flow': 'Flow: Web app → NHPAgent(relay) → POST /relay → nhp-server (UDP) → ACK → protected resource',
       'log.waiting': 'Waiting for demo keys from config.json (or fill them in manually below)',
+      'log.clusterSelected': 'Selected server cluster: {name}',
       'log.serverKeyRequired': 'Server Public Key is required',
       'log.agentKeyRequired': 'Agent Private Key is required',
       'log.creatingAgent': 'Creating NHPAgent (cipher={cipher}, transport=relay)',
@@ -975,6 +987,7 @@ if (result.success) {
       'seq.resp': '解析 ACK/COK 响应并提取临时访问凭证',
       'seq.done': '将用户跳转到现已可访问的受保护资源',
 
+      'field.cluster': '服务器集群',
       'field.serverPubKey': 'nhp-server 公钥（Base64）',
       'field.agentPrivKey': 'nhp-agent 私钥（Base64）',
       'field.agentPrivKey.placeholder': '公开演示页面会从 config.json 自动加载',
@@ -999,6 +1012,7 @@ if (result.success) {
       'log.relayUrl': ' nhp-relay服务器URL：{url}',
       'log.flow': '流程：Web 应用 → NHPAgent(relay) → POST /relay → nhp-server (UDP) → ACK → 受保护资源',
       'log.waiting': '正在等待 config.json 中的演示密钥（或在下方手动填写）',
+      'log.clusterSelected': '已选择服务器集群：{name}',
       'log.serverKeyRequired': '需要填写 nhp-server 公钥',
       'log.agentKeyRequired': '需要填写 nhp-agent 私钥',
       'log.creatingAgent': '正在创建 NHPAgent（cipher={cipher}，transport=relay）',
@@ -1189,9 +1203,48 @@ if (result.success) {
       apply('orgId',        cfg.orgId);
       apply('resourceId',   cfg.resourceId);
       apply('serviceId',    cfg.serviceId);
+      populateClusters(cfg.clusters);
     } catch {
       // config.json is optional (local dev); ignore
     }
+  }
+
+  // Build the cluster picker from config.json "clusters". Each entry carries
+  // a display name, the target nhp-server public key, and (for display) the
+  // protected resource host. Selecting a cluster rewrites the serverPubKey
+  // field; the SDK derives the relay routing fingerprint from that key, so the
+  // relayUrl and identity stay shared across clusters.
+  function populateClusters(clusters) {
+    const row = document.getElementById('clusterRow');
+    const sel = document.getElementById('clusterSelect');
+    if (!row || !sel) return;
+    // Only show the picker when config.json defines more than one cluster.
+    if (!Array.isArray(clusters) || clusters.length < 2) {
+      row.style.display = 'none';
+      return;
+    }
+    sel.innerHTML = '';
+    clusters.forEach((c, i) => {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      const host = c.serverHost ? ` — ${c.serverHost}` : '';
+      opt.textContent = `${c.name || ('Cluster ' + (i + 1))}${host}`;
+      opt.dataset.pubkey = c.serverPublicKey || '';
+      sel.appendChild(opt);
+    });
+    sel.onchange = () => {
+      const opt = sel.options[sel.selectedIndex];
+      const pk = opt && opt.dataset.pubkey;
+      if (pk) {
+        const el = document.getElementById('serverPubKey');
+        if (el) el.value = pk;
+        log('info', t('log.clusterSelected', { name: opt.textContent }));
+      }
+    };
+    row.style.display = '';
+    // Default to the first cluster's key (matches the flat config fields).
+    sel.selectedIndex = 0;
+    sel.onchange();
   }
 
   // Token Modal functionality
@@ -1583,7 +1636,15 @@ if (result.success) {
         const hosts = result.resourceHosts || {};
         const firstHost = Object.values(hosts)[0];
         if (firstHost) {
-          const redirectUrl = `https://${firstHost}`;
+          // Protected resources are served over https (public demo: ac /
+          // ac2.opennhp.org; local docker: nginx with a self-signed cert on
+          // :8443 / :8444). The resHost is a bare host[:port], so default to
+          // https — NOT the page's own scheme, since the local demo page is
+          // plain http but the resource behind nginx is still https. If a
+          // resHost ever carries an explicit scheme, honor it as-is.
+          const redirectUrl = /^https?:\/\//.test(firstHost)
+            ? firstHost
+            : `https://${firstHost}`;
           log('info', t('log.redirecting', { url: redirectUrl }));
           startRedirectCountdown(redirectUrl, 5);
         } else {

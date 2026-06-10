@@ -1,0 +1,8 @@
+# cluster 2 AC server peer — connects ONLY to the cluster 2 nhp-server.
+[[Servers]]
+PubKeyBase64 = "SKAApHxZRTa3EPF1nlRi38neCT1H8dcJUJzcq1tUvsaIXpUj/r4DU4cZB8ApsAm9C1RGu1ZcXxm7C8frYc26+A=="
+ExpireTime = 1924991999
+
+  [[Servers.Instances]]
+  Ip = "177.7.0.20"   # nhp-server-c2
+  Port = 62206

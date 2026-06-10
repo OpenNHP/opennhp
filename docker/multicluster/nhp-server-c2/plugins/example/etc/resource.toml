@@ -1,0 +1,25 @@
+# cluster 2 "basic"/example plugin resource mapping (LOCAL DOCKER DEMO)
+# Same plugin binary as cluster 1, but "demo" is guarded by the cluster 2
+# AC (testAC-c2) instead of cluster 1's testAC-1.
+["demo"]
+SkipAuth = true
+OpenTime = 15
+RedirectUrl = "https://localhost:8444"
+RedirectWithParams = false
+CookieDomain = "opennhp.org"
+
+["demo".Resources."demoServer"]
+ACId = "testAC-c2"
+# Local docker demo: cluster 2 is reached via the nginx entrypoint on host port
+# 8444 (cluster 1 = 8443). nginx proxies https://localhost:8444 -> this AC.
+# Host port in Hostname (PortSuffix=false); Addr.Port stays the AC's in-container
+# target (80). The public demo uses ac2.opennhp.org instead — see the deploy
+# template deploy/config-templates/server2/plugin-resource.toml.
+Hostname = "localhost:8444"
+Addr.Ip = "177.7.0.21"
+Addr.Port = 80
+Addr.Protocol = ""
+PortSuffix = false
+
+["demo".ExInfo]
+Title = "OpenNHP Demo Login (Local docker - Cluster 2)"

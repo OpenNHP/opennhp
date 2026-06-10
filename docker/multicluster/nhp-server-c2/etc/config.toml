@@ -1,0 +1,19 @@
+# NHP-Server cluster 2 base config (LOCAL DOCKER MULTI-CLUSTER DEMO)
+# Independent identity from cluster 1 — its own keypair and AC.
+
+PrivateKeyBase64 = "QhN+r5HfMHxStq16ZkuVN1A/ac6/ZRKSW+zDFxvSAqU="
+DefaultCipherScheme = 1
+ListenIp = "0.0.0.0"
+ListenPort = 62206
+Hostname = "localhost:62206"
+LogLevel = 5
+DisableAgentValidation = false
+
+# Demo-only: accept RFC1918 SourceAddr forwarded by the relay (Docker NAT).
+# See cluster 1 config.toml for the full rationale and production warning.
+AllowPrivateRelaySource = true
+ForceOverload = false
+
+# Single-instance cluster 2 → random per-process cookie key is fine.
+CookieSigningKeyBase64 = ""
+CookieTimeWindowSeconds = 60

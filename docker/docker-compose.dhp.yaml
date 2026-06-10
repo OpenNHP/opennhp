@@ -25,7 +25,9 @@ services:
       - ./nhp-server/etc/:/nhp-server/etc/:rw
       - ./nhp-server/logs/:/nhp-server/logs/:rw
       - ./nhp-server/templates/:/nhp-server/templates/:rw
-      - ./nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
+      # DHP override: entrypoint is exposed on host :8443 (see "8443:443" below),
+      # so the demo resource redirects to https://localhost:8443 (not :443).
+      - ./dhp/nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
 
   nhp-db:
     image: opennhp-db

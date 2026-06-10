@@ -1,0 +1,190 @@
+# Local multi-cluster validation stack.
+#
+# Two INDEPENDENT server clusters behind one relay:
+#   cluster 1: nhp-server (177.7.0.9)  + nhp-ac    (177.7.0.10)  [committed demo keys]
+#   cluster 2: nhp-server-c2 (177.7.0.20) + nhp-ac-c2 (177.7.0.21) [own keypairs]
+# The relay (177.7.0.12) declares both as separate [[Servers]] entries, so
+# GET /servers returns two fingerprints and POST /relay/<id> routes to either.
+#
+# Run:   docker compose -f docker-compose.multicluster.yaml up --build
+# Verify: curl http://localhost:8080/servers   → two entries
+
+networks:
+  network_default:
+    ipam:
+      driver: default
+      config:
+        - subnet: '177.7.0.0/16'
+
+services:
+  # ── Cluster 1 ────────────────────────────────────────────────────────────
+  nhp-server:
+    image: opennhp-server:current
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile.server
+      args:
+        - GOPROXY=${GOPROXY:-}
+        - APT_MIRROR=${APT_MIRROR:-}
+    container_name: nhp-server
+    restart: always
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.9
+    volumes:
+      - ./nhp-server/etc/:/nhp-server/etc/:rw
+      - ./nhp-server/logs/:/nhp-server/logs/:rw
+      - ./nhp-server/templates/:/nhp-server/templates/:rw
+      # cluster-1 override: entrypoint is the shared nginx on host :8443, so the
+      # demo resource redirects to https://localhost:8443 (not :443 / no port).
+      - ./multicluster/nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
+
+  nhp-ac:
+    image: opennhp-ac:current
+    container_name: nhp-ac
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile.ac
+      args:
+        - GOPROXY=${GOPROXY:-}
+        - APT_MIRROR=${APT_MIRROR:-}
+    volumes:
+      - ./nhp-ac/etc/:/nhp-ac/etc/
+      - ./nhp-ac/traefik/etc/traefik.toml:/opt/traefik/traefik.toml
+      - ./nhp-ac/traefik/etc/provider.toml:/opt/traefik/provider.toml
+      - ./nhp-ac/logs/:/nhp-ac/logs/
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      - nhp-server
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.10
+
+  # ── Cluster 2 (independent identity + AC) ────────────────────────────────
+  nhp-server-c2:
+    image: opennhp-server:current
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile.server
+      args:
+        - GOPROXY=${GOPROXY:-}
+        - APT_MIRROR=${APT_MIRROR:-}
+    container_name: nhp-server-c2
+    restart: always
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.20
+    volumes:
+      - ./multicluster/nhp-server-c2/etc/:/nhp-server/etc/:rw
+      - ./multicluster/nhp-server-c2/logs/:/nhp-server/logs/:rw
+      - ./nhp-server/templates/:/nhp-server/templates/:rw
+      - ./multicluster/nhp-server-c2/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
+
+  nhp-ac-c2:
+    image: opennhp-ac:current
+    container_name: nhp-ac-c2
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile.ac
+      args:
+        - GOPROXY=${GOPROXY:-}
+        - APT_MIRROR=${APT_MIRROR:-}
+    volumes:
+      - ./multicluster/nhp-ac-c2/etc/:/nhp-ac/etc/
+      - ./nhp-ac/traefik/etc/traefik.toml:/opt/traefik/traefik.toml
+      # cluster 2's traefik forwards to web-app-c2 (its own backend), not the
+      # shared cluster-1 web-app.
+      - ./multicluster/nhp-ac-c2/traefik/etc/provider.toml:/opt/traefik/provider.toml
+      - ./multicluster/nhp-ac-c2/logs/:/nhp-ac/logs/
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      - nhp-server-c2
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.21
+
+  # ── Browser entrypoint (nginx reverse proxy) ─────────────────────────────
+  # Reuses the opennhp-agent image (nginx + nhp-agent). Its docker IP
+  # (177.7.0.8) is the source each AC opens on a knock, so proxying from here
+  # reaches the protected resource. nginx fans out by PORT to each cluster's AC:
+  #   host :8443 -> nhp-ac    -> web-app      (cluster 1)
+  #   host :8444 -> nhp-ac-c2 -> web-app-c2   (cluster 2)
+  # The image CMD is a no-op (tail -f); we start nginx in the foreground here.
+  nhp-enter:
+    image: opennhp-agent:latest
+    container_name: nhp-enter
+    restart: always
+    command: ["nginx", "-g", "daemon off;"]
+    ports:
+      - "8443:8443"
+      - "8444:8444"
+    volumes:
+      - ./multicluster/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs/server.crt:/cert.pem:ro
+      - ./certs/server.key:/key.pem:ro
+    depends_on:
+      - nhp-ac
+      - nhp-ac-c2
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.8
+
+  # ── Shared relay (declares BOTH clusters) ────────────────────────────────
+  nhp-relay:
+    # Current-source relay (multi-cluster [[Servers]] schema). Built locally as
+    # opennhp-relay:current — see docker/multicluster/README for how it was made
+    # (host cross-build overlaid on the existing runtime image).
+    image: opennhp-relay:current
+    container_name: nhp-relay
+    restart: always
+    ports:
+      # Host 8081 → container 8080 (host 8080 is taken by another project).
+      - "8081:8080"
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.12
+    depends_on:
+      - nhp-server
+      - nhp-server-c2
+    volumes:
+      - ./multicluster/nhp-relay/etc/:/nhp-relay/etc/:rw
+      - ./multicluster/nhp-relay/logs/:/nhp-relay/logs/:rw
+
+  # ── Protected web target for cluster 1 ───────────────────────────────────
+  web-app:
+    # web-app:current = host cross-built binary (APP_NAME/AC_SOURCE_IP aware)
+    # overlaid on the web-app:latest runtime, mirroring how the server/ac/relay
+    # :current images were produced. Avoids the flaky apt step in Dockerfile.app.
+    image: web-app:current
+    container_name: web-app
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - APP_NAME=Hello from Cluster 1
+      - AC_SOURCE_IP=177.7.0.10
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.11
+
+  # ── Protected web target for cluster 2 ───────────────────────────────────
+  # Same image as web-app, but a distinct backend so a knock against cluster 2
+  # reaches different content. Only the cluster-2 AC (177.7.0.21) may reach it.
+  web-app-c2:
+    image: web-app:current
+    container_name: web-app-c2
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - APP_NAME=Hello from Cluster 2
+      - AC_SOURCE_IP=177.7.0.21
+    depends_on:
+      - web-app
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.31

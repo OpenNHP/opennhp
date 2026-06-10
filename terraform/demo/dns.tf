@@ -44,6 +44,16 @@ resource "cloudflare_record" "acdemo" {
   comment = "Legacy alias for ac.opennhp.org - managed by Terraform"
 }
 
+resource "cloudflare_record" "ac2" {
+  zone_id = var.cloudflare_zone_id
+  name    = "ac2"
+  content = aws_eip.ac2.public_ip
+  type    = "A"
+  proxied = false
+  ttl     = 300
+  comment = "NHP AC cluster 2 - managed by Terraform"
+}
+
 resource "cloudflare_record" "relay" {
   zone_id = var.cloudflare_zone_id
   name    = "relay"

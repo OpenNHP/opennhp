@@ -6,7 +6,8 @@ DEPLOY_PATH="${deploy_path}"
 # Create deploy directory
 mkdir -p "$DEPLOY_PATH/etc"
 mkdir -p "$DEPLOY_PATH/cert"
-mkdir -p "$DEPLOY_PATH/log"
+# nhp-acd writes to ExeDirPath/logs (plural); see endpoints/ac/udpac.go.
+mkdir -p "$DEPLOY_PATH/logs"
 chown -R ec2-user:ec2-user "$DEPLOY_PATH"
 
 # Install certbot for TLS certificates

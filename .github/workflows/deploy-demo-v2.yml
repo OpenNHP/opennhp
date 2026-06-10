@@ -595,6 +595,10 @@ jobs:
           echo "Uploading server configs..."
           scp ./configs/server/*.toml nhp-server:$REMOTE_DIR/etc/
 
+          # nhp-serverd writes to $REMOTE_DIR/logs (plural). Ensure it exists and
+          # is owned by the service user; older userdata created "log" (singular).
+          ssh nhp-server "mkdir -p $REMOTE_DIR/logs && sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} $REMOTE_DIR/logs"
+
           echo "Starting nhp-serverd..."
           ssh nhp-server "sudo systemctl start nhp-serverd"
           sleep 2
@@ -828,6 +832,10 @@ jobs:
           echo "Uploading AC configs..."
           scp ./configs/ac/*.toml nhp-ac:$REMOTE_DIR/etc/
 
+          # nhp-acd writes to $REMOTE_DIR/logs (plural). Ensure it exists and is
+          # owned by the service user; older userdata created "log" (singular).
+          ssh nhp-ac "mkdir -p $REMOTE_DIR/logs && sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} $REMOTE_DIR/logs"
+
           echo "Starting nhp-acd..."
           ssh nhp-ac "sudo systemctl start nhp-acd"
           sleep 2
@@ -954,6 +962,10 @@ jobs:
           for f in config.toml ac.toml relay.toml agent.toml resource.toml; do
             scp "./configs/server2/$f" "nhp-server2:$REMOTE_DIR/etc/"
           done
+
+          # nhp-serverd writes to $REMOTE_DIR/logs (plural). Ensure it exists and
+          # is owned by the service user; older userdata created "log" (singular).
+          ssh nhp-server2 "mkdir -p $REMOTE_DIR/logs && sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} $REMOTE_DIR/logs"
 
           echo "Starting nhp-serverd..."
           ssh nhp-server2 "sudo systemctl start nhp-serverd"
@@ -1096,6 +1108,10 @@ jobs:
 
           echo "Uploading AC configs (cluster 2)..."
           scp ./configs/ac2/*.toml nhp-ac2:$REMOTE_DIR/etc/
+
+          # nhp-acd writes to $REMOTE_DIR/logs (plural). Ensure it exists and is
+          # owned by the service user; older userdata created "log" (singular).
+          ssh nhp-ac2 "mkdir -p $REMOTE_DIR/logs && sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} $REMOTE_DIR/logs"
 
           echo "Starting nhp-acd..."
           ssh nhp-ac2 "sudo systemctl start nhp-acd"

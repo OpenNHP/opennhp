@@ -836,6 +836,16 @@ jobs:
           # owned by the service user; older userdata created "log" (singular).
           ssh nhp-ac "mkdir -p $REMOTE_DIR/logs && sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} $REMOTE_DIR/logs"
 
+          # nhp-acd runs as ec2-user and shells out to iptables/ipset. On
+          # Amazon Linux 2023 (iptables-nft) it needs CAP_NET_RAW and
+          # CAP_DAC_OVERRIDE in addition to CAP_NET_ADMIN, or `iptables -L` at
+          # startup fails with "exit status 1". userdata only runs at instance
+          # creation, so patch the live unit here for already-running hosts.
+          ssh nhp-ac "sudo sed -i \
+            -e 's/^AmbientCapabilities=.*/AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE/' \
+            -e 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE/' \
+            /etc/systemd/system/nhp-acd.service && sudo systemctl daemon-reload"
+
           echo "Starting nhp-acd..."
           ssh nhp-ac "sudo systemctl start nhp-acd"
           sleep 2
@@ -1112,6 +1122,16 @@ jobs:
           # nhp-acd writes to $REMOTE_DIR/logs (plural). Ensure it exists and is
           # owned by the service user; older userdata created "log" (singular).
           ssh nhp-ac2 "mkdir -p $REMOTE_DIR/logs && sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} $REMOTE_DIR/logs"
+
+          # nhp-acd runs as ec2-user and shells out to iptables/ipset. On
+          # Amazon Linux 2023 (iptables-nft) it needs CAP_NET_RAW and
+          # CAP_DAC_OVERRIDE in addition to CAP_NET_ADMIN, or `iptables -L` at
+          # startup fails with "exit status 1". userdata only runs at instance
+          # creation, so patch the live unit here for already-running hosts.
+          ssh nhp-ac2 "sudo sed -i \
+            -e 's/^AmbientCapabilities=.*/AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE/' \
+            -e 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE/' \
+            /etc/systemd/system/nhp-acd.service && sudo systemctl daemon-reload"
 
           echo "Starting nhp-acd..."
           ssh nhp-ac2 "sudo systemctl start nhp-acd"

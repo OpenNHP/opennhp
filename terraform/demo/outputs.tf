@@ -19,7 +19,7 @@ output "ac_private_ip" {
 }
 
 output "server2_public_ip" {
-  description = "NHP Server cluster 2 public IP (pure NHP; no domain)"
+  description = "NHP Server cluster 2 public IP (server2.opennhp.org)"
   value       = aws_eip.server2.public_ip
 }
 
@@ -52,9 +52,11 @@ output "dns_records" {
   description = "DNS records created"
   value = {
     auth_plugin = "auth-plugin.${var.domain} -> ${aws_eip.server.public_ip}"
+    server      = "server.${var.domain} -> CNAME auth-plugin.${var.domain}"
     ac          = "ac.${var.domain} -> ${aws_eip.ac.public_ip}"
     demologin   = "demologin.${var.domain} -> CNAME auth-plugin.${var.domain} (legacy)"
     acdemo      = "acdemo.${var.domain} -> CNAME ac.${var.domain} (legacy)"
+    server2     = "server2.${var.domain} -> ${aws_eip.server2.public_ip}"
     ac2         = "ac2.${var.domain} -> ${aws_eip.ac2.public_ip}"
     relay       = "relay.${var.domain} -> ${aws_eip.relay.public_ip}"
     agent       = "agent.${var.domain} -> ${aws_eip.relay.public_ip}"

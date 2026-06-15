@@ -55,6 +55,11 @@ type UdpServer struct {
 	allowPrivateRelaySource atomic.Bool
 	forceOverload           atomic.Bool
 
+	// disableKnockHeaderTypeValidation mirrors Config.DisableKnockHeaderTypeValidation
+	// for the knock hot path (enforceKnockHeaderType), read without a lock the
+	// same way allowPrivateRelaySource is. Stored at startup and on config reload.
+	disableKnockHeaderTypeValidation atomic.Bool
+
 	// connection and remote transaction management
 
 	remoteConnectionMapMutex sync.Mutex
@@ -327,6 +332,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	// trigger may also be active and we don't want to fight it.
 	s.forceOverload.Store(s.config.ForceOverload)
 	s.allowPrivateRelaySource.Store(s.config.AllowPrivateRelaySource)
+	s.disableKnockHeaderTypeValidation.Store(s.config.DisableKnockHeaderTypeValidation)
 	if s.config.ForceOverload {
 		// Critical (not Warning): each of these flags disables a real
 		// production safeguard, and Warning is filtered out of default

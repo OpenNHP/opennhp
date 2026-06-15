@@ -63,9 +63,11 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 		// and forge the open/close decision. Require it to match the
 		// AEAD-authenticated body HeaderType the agent carries; on success
 		// knkMsg.HeaderType already holds that (equal) authenticated value.
-		// Rejected unconditionally on a mismatch or a legacy unpopulated
-		// body — secure by default. See knock_headertype.go.
-		if gateErr := verifyKnockHeaderType(knkMsg.HeaderType, ppd.HeaderType, transactionId, addrStr); gateErr != nil {
+		// Rejected on a mismatch or a legacy unpopulated body — secure by
+		// default. DisableKnockHeaderTypeValidation can suppress the reject
+		// during a fleet-migration transition (each suppression logged at
+		// WARN); see knock_headertype.go / config.go.
+		if gateErr := s.enforceKnockHeaderType(knkMsg.HeaderType, ppd.HeaderType, transactionId, addrStr); gateErr != nil {
 			err = gateErr
 			ackMsg.ErrCode = gateErr.ErrorCode()
 			ackMsg.ErrMsg = gateErr.Error()

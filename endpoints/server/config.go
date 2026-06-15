@@ -88,6 +88,17 @@ type Config struct {
 	DefaultCipherScheme    int    `json:"defaultCipherScheme"`
 	DisableAgentValidation bool   `json:"disableAgentValidation"`
 
+	// DisableKnockHeaderTypeValidation opts OUT of the knock HeaderType
+	// authentication check (see knock_headertype.go). Default false = enforced
+	// (secure): a knock whose AEAD-authenticated body HeaderType is missing
+	// (legacy agent) or disagrees with the wire HeaderType (on-path tampering)
+	// is rejected. Set true ONLY as a temporary transition escape hatch while a
+	// legacy agent fleet that predates the body HeaderType is migrated; each
+	// suppressed rejection is logged at WARN so the open window stays visible.
+	// Return to false once the fleet is migrated. Read race-free in the knock
+	// hot path via the s.disableKnockHeaderTypeValidation atomic mirror.
+	DisableKnockHeaderTypeValidation bool `json:"disableKnockHeaderTypeValidation"`
+
 	// AllowPrivateRelaySource relaxes the SourceAddr public-routability check
 	// that HandleRelayForward applies to inner KNK packets arriving via a
 	// relay. When false (production default), private / loopback / CGNAT
@@ -587,6 +598,16 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 		// the field comment in UdpServer for why the bool isn't read
 		// directly from s.config under no lock.
 		s.allowPrivateRelaySource.Store(conf.AllowPrivateRelaySource)
+	}
+
+	if s.config.DisableKnockHeaderTypeValidation != conf.DisableKnockHeaderTypeValidation {
+		log.Info("DisableKnockHeaderTypeValidation set to %v (knock HeaderType authentication is %s)",
+			conf.DisableKnockHeaderTypeValidation,
+			map[bool]string{true: "DISABLED (transition escape hatch)", false: "enforced"}[conf.DisableKnockHeaderTypeValidation])
+		s.config.DisableKnockHeaderTypeValidation = conf.DisableKnockHeaderTypeValidation
+		// Mirror onto the atomic-read field the knock hot path consults; see
+		// the field comment in UdpServer.
+		s.disableKnockHeaderTypeValidation.Store(conf.DisableKnockHeaderTypeValidation)
 	}
 
 	if s.config.DefaultCipherScheme != conf.DefaultCipherScheme {

@@ -60,3 +60,22 @@ func verifyKnockHeaderType(bodyType, wireType int, transactionId uint64, addrStr
 	}
 	return nil
 }
+
+// enforceKnockHeaderType applies the HeaderType gate for one knock and is the
+// sole request-path caller of verifyKnockHeaderType. It returns a non-nil
+// *common.Error to reject when enforcement is on (the default). When
+// DisableKnockHeaderTypeValidation is set — a temporary transition escape hatch
+// for a legacy agent fleet that predates the body HeaderType (see config.go) —
+// a would-be rejection is instead logged at WARN and nil is returned, so the
+// legacy/mismatched knock is accepted. The flag is read from the atomic mirror
+// so this stays race-free against a concurrent config reload, matching
+// allowPrivateRelaySource.
+func (s *UdpServer) enforceKnockHeaderType(bodyType, wireType int, transactionId uint64, addrStr string) *common.Error {
+	gateErr := verifyKnockHeaderType(bodyType, wireType, transactionId, addrStr)
+	if gateErr == nil || !s.disableKnockHeaderTypeValidation.Load() {
+		return gateErr
+	}
+	log.Warning("server-agent(#%d@%s)[HeaderType] check failed but DisableKnockHeaderTypeValidation=true: accepting anyway (legacy agent or on-path tampering): %s",
+		transactionId, addrStr, gateErr.Error())
+	return nil
+}

@@ -41,3 +41,38 @@ func TestVerifyKnockHeaderType(t *testing.T) {
 		})
 	}
 }
+
+// TestEnforceKnockHeaderType_Gate covers the DisableKnockHeaderTypeValidation
+// gate around verifyKnockHeaderType: with enforcement on (flag false) a legacy
+// or mismatched body is rejected; with enforcement disabled (flag true, the
+// transition escape hatch) the same body is accepted. A matching body is
+// accepted either way.
+func TestEnforceKnockHeaderType_Gate(t *testing.T) {
+	cases := []struct {
+		name     string
+		disabled bool
+		body     int
+		wire     int
+		wantErr  *common.Error
+	}{
+		{"enforced_ok", false, core.NHP_KNK, core.NHP_KNK, nil},
+		{"enforced_legacy_rejected", false, core.NHP_KPL, core.NHP_KNK, common.ErrKnockHeaderTypeLegacy},
+		{"enforced_mismatch_rejected", false, core.NHP_KNK, core.NHP_EXT, common.ErrKnockHeaderTypeMismatch},
+
+		{"disabled_ok_still_ok", true, core.NHP_KNK, core.NHP_KNK, nil},
+		{"disabled_legacy_accepted", true, core.NHP_KPL, core.NHP_KNK, nil},
+		{"disabled_mismatch_accepted", true, core.NHP_KNK, core.NHP_EXT, nil},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &UdpServer{}
+			s.disableKnockHeaderTypeValidation.Store(tc.disabled)
+			got := s.enforceKnockHeaderType(tc.body, tc.wire, 1, "test-addr")
+			if got != tc.wantErr {
+				t.Errorf("enforceKnockHeaderType(disabled=%v, body=%d, wire=%d) = %v, want %v",
+					tc.disabled, tc.body, tc.wire, got, tc.wantErr)
+			}
+		})
+	}
+}

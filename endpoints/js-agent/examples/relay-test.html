@@ -34,8 +34,17 @@
       padding: 20px;
     }
     h1 { color: #58a6ff; font-size: 26px; }
+    h1 .sdk-version {
+      margin-left: 8px;
+      color: #9ae42c;
+      font-family: ui-monospace, Consolas, 'Courier New', monospace;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      vertical-align: middle;
+    }
     .subtitle { color: #8b949e; font-size: 14px; line-height: 1.5; margin-bottom: 20px; }
-    .container { max-width: 1080px; margin: 0 auto; }
+    .container { max-width: 1200px; margin: 0 auto; }
     .header-row {
       display: flex;
       justify-content: space-between;
@@ -398,17 +407,28 @@
       margin-bottom: 12px;
       font-size: 13px;
     }
-    .protected-target .label { color: #8b949e; font-size: 13px; }
+    .protected-target .label { color: #8b949e; font-size: 13px; flex-shrink: 0; }
     .protected-target .target-url {
       color: #58a6ff;
       text-decoration: none;
       font-family: ui-monospace, Consolas, 'Courier New', monospace;
     }
-    .protected-target .target-url:hover { text-decoration: underline; }
+    .protected-target a.target-url:hover { text-decoration: underline; }
+    .protected-target select.target-url {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 13px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .protected-target select.target-url:hover { border-color: #58a6ff; }
     .protected-target .scan-hint {
       margin-left: auto;
       color: #8b949e;
       font-size: 12px;
+      white-space: nowrap;
     }
     .protected-target .scan-hint strong {
       color: #d29922;
@@ -521,19 +541,12 @@
       margin-bottom: 8px;
       letter-spacing: 0.2px;
     }
-    .footer .sdk-version {
-      color: #6e7681;
-      font-family: ui-monospace, Consolas, 'Courier New', monospace;
-      font-size: 12px;
-      margin: 4px 0;
-      letter-spacing: 0.2px;
-    }
   </style>
 </head>
 <body>
 <div class="container">
   <div class="header-row">
-    <h1 data-i18n="page.heading">OpenNHP JavaScript SDK Demo</h1>
+    <h1><span data-i18n="page.heading">OpenNHP JavaScript SDK Demo</span><span class="sdk-version" id="sdkVersion"></span></h1>
     <div class="lang-switcher">
       <button id="langButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Language">
         <svg class="lang-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg>
@@ -554,9 +567,9 @@
        click "Scan Ports" before & after to see the difference. -->
   <div class="protected-target">
     <span class="label" data-i18n="protected.label">Protected Server:</span>
-    <a class="target-url" href="https://ac.opennhp.org" target="_blank" rel="noopener">https://ac.opennhp.org</a>
+    <select class="target-url" id="protectedHost" aria-label="Protected server"></select>
     <span class="scan-hint" data-i18n-html="protected.scanHint"><strong>Invisible</strong> by default, scan ports to verify</span>
-    <a class="btn btn-secondary scan-btn" href="https://dnschecker.org/port-scanner.php?query=ac.opennhp.org&amp;ptype=server" target="_blank" rel="noopener" data-i18n="protected.scanBtn">Scan</a>
+    <a class="btn btn-secondary scan-btn" id="scanBtn" href="#" target="_blank" rel="noopener" data-i18n="protected.scanBtn">Scan</a>
   </div>
 
   <!-- Success overlay (revealed after a successful knock; runs a 5s countdown then redirects). -->
@@ -742,7 +755,6 @@ if (result.success) {
   <footer class="footer">
     <div class="ip-display" id="ipDisplay" data-i18n="footer.detectingIp">Detecting IP&hellip;</div>
     <div data-i18n-html="footer.line1">Powered by <a href="https://github.com/OpenNHP/opennhp" target="_blank" rel="noopener"><strong>OpenNHP</strong></a> &mdash; Network-infrastructure Hiding Protocol</div>
-    <div class="sdk-version" id="sdkVersion"></div>
     <div data-i18n-html="footer.line2">Sponsored by: <a href="https://layerv.ai" target="_blank" rel="noopener">LayerV.ai</a></div>
   </footer>
 </div>
@@ -1126,8 +1138,9 @@ if (result.success) {
     // Status bar text is dynamic; refresh from tracked state.
     statusText.textContent = t(statusKey, statusVars);
 
-    // SDK version label is interpolated (and not marked data-i18n so it is not
-    // clobbered above); refresh it here so the prefix follows the language.
+    // SDK version label sits beside the title; it's interpolated (and kept in
+    // its own span, not marked data-i18n, so it isn't clobbered above). Refresh
+    // it here so the "SDK v" prefix follows the language.
     const verEl = document.getElementById('sdkVersion');
     if (verEl) verEl.textContent = t('footer.version', { version: NHPAgent.version });
   }
@@ -1219,16 +1232,18 @@ if (result.success) {
       apply('resourceId',   cfg.resourceId);
       apply('serviceId',    cfg.serviceId);
       populateClusters(cfg.clusters);
+      populateProtectedHosts(cfg.clusters, cfg);
     } catch {
       // config.json is optional (local dev); ignore
     }
   }
 
-  // Build the cluster picker from config.json "clusters". Each entry carries
-  // a display name, the target nhp-server public key, and (for display) the
-  // protected resource host. Selecting a cluster rewrites the serverPubKey
-  // field; the SDK derives the relay routing fingerprint from that key, so the
-  // relayUrl and identity stay shared across clusters.
+  // Build the cluster picker from config.json "clusters". Each entry carries a
+  // display name, the target nhp-server public key, the protected resource host
+  // (for display), and the cluster's OWN agent private key. Each cluster has an
+  // INDEPENDENT agent identity — the two nhp-servers trust different agent keys
+  // — so selecting a cluster rewrites BOTH the serverPubKey and the agent
+  // private key fields. The relayUrl and user/device identity stay shared.
   function populateClusters(clusters) {
     const row = document.getElementById('clusterRow');
     const sel = document.getElementById('clusterSelect');
@@ -1245,21 +1260,69 @@ if (result.success) {
       const host = c.serverHost ? ` — ${c.serverHost}` : '';
       opt.textContent = `${c.name || ('Cluster ' + (i + 1))}${host}`;
       opt.dataset.pubkey = c.serverPublicKey || '';
+      // Per-cluster agent key; falls back to empty so the shared flat
+      // agentPrivateKey field is left untouched when a cluster omits it.
+      opt.dataset.agentkey = c.agentPrivateKey || '';
       sel.appendChild(opt);
     });
     sel.onchange = () => {
       const opt = sel.options[sel.selectedIndex];
-      const pk = opt && opt.dataset.pubkey;
+      if (!opt) return;
+      const pk = opt.dataset.pubkey;
       if (pk) {
         const el = document.getElementById('serverPubKey');
         if (el) el.value = pk;
-        log('info', t('log.clusterSelected', { name: opt.textContent }));
       }
+      const ak = opt.dataset.agentkey;
+      if (ak) {
+        const el = document.getElementById('agentPrivKey');
+        if (el) el.value = ak;
+      }
+      log('info', t('log.clusterSelected', { name: opt.textContent }));
     };
     row.style.display = '';
-    // Default to the first cluster's key (matches the flat config fields).
+    // Default to the first cluster's keys (matches the flat config fields).
     sel.selectedIndex = 0;
     sel.onchange();
+  }
+
+  // Build the "Protected Server" picker from config.json. Each cluster's
+  // "acHost" is the protected resource hostname (ac.opennhp.org /
+  // ac2.opennhp.org). Selecting one repoints the external port-scanner link.
+  // This picker is independent of the Server Cluster picker above — the user
+  // can scan either AC regardless of which nhp-server cluster they knock
+  // against.
+  function populateProtectedHosts(clusters, cfg) {
+    const sel = document.getElementById('protectedHost');
+    const scanBtn = document.getElementById('scanBtn');
+    if (!sel) return;
+
+    // Collect AC hosts from clusters[].acHost; fall back to the flat acHost
+    // (local dev) when no clusters are defined.
+    const hosts = [];
+    if (Array.isArray(clusters)) {
+      clusters.forEach(c => { if (c && c.acHost) hosts.push(c.acHost); });
+    }
+    if (!hosts.length && cfg && cfg.acHost) hosts.push(cfg.acHost);
+    if (!hosts.length) return;
+
+    sel.innerHTML = '';
+    hosts.forEach(h => {
+      const opt = document.createElement('option');
+      opt.value = h;
+      opt.textContent = `https://${h}`;
+      sel.appendChild(opt);
+    });
+
+    const sync = () => {
+      const host = sel.value;
+      if (scanBtn) {
+        scanBtn.href = `https://dnschecker.org/port-scanner.php?query=${encodeURIComponent(host)}&ptype=server`;
+      }
+    };
+    sel.onchange = sync;
+    sel.selectedIndex = 0;
+    sync();
   }
 
   // Token Modal functionality

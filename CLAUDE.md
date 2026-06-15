@@ -221,7 +221,10 @@ run (triggered by the `deploy-demo-v2` workflow).
 | `nhp_ac_private_key` / `_public_key` | same | ac `config.toml`; peer table on server |
 | `nhp_relay_private_key` / `_public_key` | same | relay `config.toml`; peer table on server |
 | `nhp_agent_private_key` / `_public_key` | same | native nhp-agent clients; `agent.toml` on server |
-| `nhp_jsagent_private_key` / `_public_key` | same | `endpoints/js-agent/` demo page (rendered into `config.json` at deploy time) |
+| `nhp_jsagent_private_key` / `_public_key` | same | cluster 1 `endpoints/js-agent/` demo identity (rendered into `config.json` `clusters[0]` at deploy time); trusted by server cluster 1 only |
+| `nhp_jsagent2_private_key` / `_public_key` | same | cluster 2 js-agent demo identity (rendered into `config.json` `clusters[1]`); trusted by server cluster 2 only, so the two clusters use independent agent keys |
+| `nhp_server2_private_key` / `_public_key` | same | cluster 2 server `config.toml`; peer tables on ac2/relay |
+| `nhp_ac2_private_key` / `_public_key` | same | cluster 2 ac `config.toml`; peer table on server2 |
 | `cloudflare_api_token` | manually provisioned once | Terraform + certbot DNS-01 (`Zone:DNS:Edit` + `Zone:Zone:Read`) |
 | `cloudflare_zone_id` | same | Terraform DNS records for `opennhp.org` |
 | `stealth_ca_cert` | `infra-demo` workflow (from GitHub Secrets `STEALTH_CA_CERT`) | `tls_locally_signed_cert.demo_nhp` |

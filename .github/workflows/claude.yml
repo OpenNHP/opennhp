@@ -9,8 +9,13 @@ on:
     types: [opened, assigned]
   pull_request_review:
     types: [submitted]
-  pull_request:
-    types: [opened, synchronize]
+  # SECURITY: pull_request_target (not pull_request) so the auto-review can run on
+  # PRs from forks. Fork `pull_request` runs get a read-only token and no secrets,
+  # so the review job fails on every external contribution. pull_request_target runs
+  # in the base-repo context (secrets + write token available); the claude-pr-review
+  # job below is hardened to never check out or execute untrusted PR-head code.
+  pull_request_target:
+    types: [opened, synchronize, reopened]
 
 jobs:
   # Respond to @claude mentions
@@ -44,8 +49,8 @@ jobs:
   # Automatic code review on PR open/update
   claude-pr-review:
     if: |
-      github.event_name == 'pull_request' &&
-      (github.event.action == 'opened' || github.event.action == 'synchronize') &&
+      github.event_name == 'pull_request_target' &&
+      (github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened') &&
       !endsWith(github.actor, '[bot]')
     runs-on: ubuntu-latest
     permissions:
@@ -55,9 +60,15 @@ jobs:
       id-token: write
       actions: read
     steps:
-      - name: Checkout repository
+      # SECURITY: pull_request_target exposes repository secrets and a write token.
+      # Pin the checkout to the BASE commit so untrusted PR-head code is never placed
+      # on disk or executed. The PR is reviewed entirely through the GitHub API
+      # (gh pr diff/view) and Claude's tools are restricted to read-only `gh pr`
+      # subcommands below, so the diff content is treated as data, not code.
+      - name: Checkout base (trusted) — never the PR head
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
 
       - name: Run Claude Code Review
@@ -65,6 +76,12 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # GitHub auth: use the workflow GITHUB_TOKEN directly. Under
+          # pull_request_target the default OIDC -> GitHub-App token exchange is
+          # rejected ("Invalid OIDC token", anthropics/claude-code-action#873), so
+          # bypass it. Reviews post as github-actions[bot]; the job's permissions
+          # block scopes this token (pull-requests/issues: write, contents: read).
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           # Restrict tools to safe GitHub CLI operations for PR review
           claude_args: '--allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Bash(gh pr checks:*),Bash(gh pr comment:*)"'
           prompt: |
@@ -88,8 +105,10 @@ jobs:
               `gh pr review ${{ github.event.pull_request.number }} --request-changes --body "your review"`
             - If you find only minor issues (categories 4-5):
               `gh pr review ${{ github.event.pull_request.number }} --comment --body "your review"`
-            - If the code looks good:
-              `gh pr review ${{ github.event.pull_request.number }} --approve --body "your review"`
+            - If the code looks good (post a comment, NOT a formal approval — the
+              GITHUB_TOKEN bot cannot approve PRs, and a bot approval must not
+              satisfy required-review branch protection):
+              `gh pr review ${{ github.event.pull_request.number }} --comment --body "your review"`
 
             ## Response Format
             Start your review with a summary line:

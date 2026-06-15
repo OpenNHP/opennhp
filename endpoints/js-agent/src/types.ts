@@ -186,6 +186,15 @@ export interface AgentKnockMsg {
   resId: string;
   /** Check mode (optional, for validation only) */
   cknMode?: number;
+  /**
+   * Wire packet type, mirrored into the AEAD-authenticated knock body so the
+   * server can require body == wire and reject on-path header-type flips
+   * (e.g. NHP_KNK <-> NHP_EXT). Populated per send from the same value as the
+   * wire packet type (KNK=1, RNK=8) — see {@link NHPAgent.sendKnock}. Matches
+   * Go `AgentKnockMsg.HeaderType` (`json:"headerType"`); a server that verifies
+   * header types rejects a knock whose body omits it with error 52010.
+   */
+  headerType?: number;
 }
 
 /**

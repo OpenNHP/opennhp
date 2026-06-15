@@ -40,9 +40,13 @@ import (
 //   - bodyType is populated but disagrees with wireType: the wire header
 //     was tampered with on path -> ErrKnockHeaderTypeMismatch.
 //
-// A routed knock never has a NHP_KPL wire type (the device dispatcher
-// handles keepalives elsewhere), so the zero-body check unambiguously
-// means "legacy agent".
+// This zero-value test relies on NHP_KPL being the iota-zero sentinel
+// (nhp/core/packet.go) that never appears as a routed knock type on either
+// side: the device dispatcher handles keepalives elsewhere, so no routed
+// knock carries a NHP_KPL wire type, and an upgraded agent always sets a
+// non-zero body type (NHP_KNK/NHP_RKN/NHP_EXT). A zero body therefore
+// unambiguously means "field absent" (legacy agent), not a legitimately
+// sent type whose value happens to be 0.
 func verifyKnockHeaderType(bodyType, wireType int, transactionId uint64, addrStr string) *common.Error {
 	if bodyType == core.NHP_KPL {
 		log.Warning("server-agent(#%d@%s)[HeaderType] knock rejected: body HeaderType missing, upgrade agent; wire=%s",

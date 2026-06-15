@@ -360,7 +360,13 @@ export class NHPAgent {
       throw new Error('Agent not initialized');
     }
 
-    const knockMessage = JSON.stringify(knockMsg);
+    // Authenticate the knock type: mirror the wire packet type into the
+    // AEAD-protected body so the server can require body == wire and reject
+    // on-path header-type flips (NHP_KNK <-> NHP_EXT). Both the wire packet
+    // (below) and the body derive from this same `packetType`, so they cannot
+    // drift. Spread rather than mutate `knockMsg` so the caller's shared object
+    // can be reused for the cookie-resend RNK without the KNK type leaking.
+    const knockMessage = JSON.stringify({ ...knockMsg, headerType: packetType });
 
     // Build knock packet
     const packet = await buildNHPPacket(

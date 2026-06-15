@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NHPAgent } from '../src/NHPAgent.js';
 import { buildNHPPacket, resetGlobalCounter } from '../src/protocol/packet.js';
+import * as packetModule from '../src/protocol/packet.js';
 import { NHP_PACKET_TYPES } from '../src/protocol/constants.js';
 import { generateX25519KeyPairBase64 } from '../src/crypto/ecdh.js';
 import { generateSM2KeyPairBase64 } from '../src/crypto/sm2.js';
@@ -387,6 +388,90 @@ describe('knockResource — success path', () => {
     expect(result.success).toBe(false);
     expect(result.errorCode).toBe(5);
     expect(result.error).toBe('connection refused');
+    await agent.close();
+  });
+});
+
+// ─── Knock body authenticates the HeaderType (on-path flip protection) ───────
+
+describe('knock body HeaderType', () => {
+  it('KNK knock body carries headerType matching the wire packet type', async () => {
+    const server = generateX25519KeyPairBase64();
+    const agent = new NHPAgent({ transport: 'websocket' });
+    await agent.init();
+
+    const ackPacket = await makeAckPacket(
+      server.privateKey, server.publicKey,
+      agent.getPublicKey(), SUCCESS_ACK
+    );
+
+    agent.setIdentity({ userId: 'u', deviceId: 'd' });
+    agent.addServer({ publicKey: server.publicKey, host: 'nhp.example.com', port: 62206 });
+    injectMockTransport(agent, ackPacket);
+
+    // Spy after the ACK is built so only the outbound knock body is captured.
+    const buildSpy = vi.spyOn(packetModule, 'buildNHPPacket');
+
+    const result = await agent.knockResource({
+      resourceId: 'r', serviceId: 's',
+      serverHost: 'nhp.example.com', serverPort: 62206,
+    });
+    expect(result.success).toBe(true);
+
+    // The knock body (5th arg to buildNHPPacket) must serialize headerType ==
+    // the wire packet type, using the exact JSON key the Go server unmarshals
+    // (AgentKnockMsg.HeaderType, `json:"headerType"`). Otherwise the server
+    // rejects the knock as 52010 (legacy/missing) — the demo-breaking bug.
+    const knockCall = buildSpy.mock.calls.find(c => c[0] === NHP_PACKET_TYPES.KNK);
+    expect(knockCall, 'buildNHPPacket was not called with a KNK packet').toBeTruthy();
+    const rawBody = knockCall![4] as string;
+    expect(rawBody).toContain('"headerType"');
+    expect(JSON.parse(rawBody).headerType).toBe(NHP_PACKET_TYPES.KNK);
+    expect(JSON.parse(rawBody).headerType).toBe(1); // wire contract with Go core.NHP_KNK
+
+    await agent.close();
+  });
+
+  it('sets headerType per send (KNK then RNK) without mutating the shared knockMsg', async () => {
+    const server = generateX25519KeyPairBase64();
+    const agent = new NHPAgent({ transport: 'websocket' });
+    await agent.init();
+    agent.setIdentity({ userId: 'u', deviceId: 'd' });
+
+    // Decouple from crypto + networking: capture the body buildNHPPacket
+    // receives and resolve the response immediately, so we exercise the
+    // per-send injection for both packet types deterministically.
+    const buildSpy = vi
+      .spyOn(packetModule, 'buildNHPPacket')
+      .mockResolvedValue(new Uint8Array([0]));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.spyOn(agent as any, 'sendAndWaitForResponse').mockResolvedValue({
+      type: NHP_PACKET_TYPES.ACK,
+      message: JSON.stringify(SUCCESS_ACK),
+    });
+
+    // One shared body object, reused for the initial knock and the cookie-resend.
+    const knockMsg = { usrId: 'u', devId: 'd', aspId: 's', resId: 'r' };
+    const serverCfg = { id: 's1', publicKey: server.publicKey, host: 'h', port: 1 };
+    const resource = { resourceId: 'r', serviceId: 's' };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (agent as any).sendKnock(NHP_PACKET_TYPES.KNK, knockMsg, serverCfg, resource);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (agent as any).sendKnock(NHP_PACKET_TYPES.RNK, knockMsg, serverCfg, resource);
+
+    const bodyFor = (pt: number) => {
+      const call = buildSpy.mock.calls.find(c => c[0] === pt);
+      expect(call, `buildNHPPacket not called with packet type ${pt}`).toBeTruthy();
+      return JSON.parse(call![4] as string);
+    };
+    expect(bodyFor(NHP_PACKET_TYPES.KNK).headerType).toBe(1); // NHP_KNK
+    expect(bodyFor(NHP_PACKET_TYPES.RNK).headerType).toBe(8); // NHP_RKN
+
+    // The shared object must never be mutated, or the cookie-resend RNK would
+    // carry the KNK type and the server would reject the body/wire mismatch.
+    expect(Object.prototype.hasOwnProperty.call(knockMsg, 'headerType')).toBe(false);
+
     await agent.close();
   });
 });

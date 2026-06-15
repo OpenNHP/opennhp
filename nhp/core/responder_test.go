@@ -109,6 +109,41 @@ func TestShouldEscalateStale_DefaultEnforced(t *testing.T) {
 	}
 }
 
+// TestShouldEscalateReplay_AOPExempt fences the #2518 escalation
+// exemption — the symmetric server→AC counterpart of #1457. A dropped
+// in-connection AOP replay (timestamp regression) must NOT escalate
+// toward a connection block: AOP send-times are stamped by the same
+// concurrent msgToPacketRoutine workers, so a benign server knock-burst
+// reorder (reachable without any network reorder) must not be able to
+// self-block the trusted server→AC connection. The drop still rejects the
+// replay; the cross-connection cache in endpoints/ac/aop_replay_cache.go
+// is the real cross-connection defense.
+func TestShouldEscalateReplay_AOPExempt(t *testing.T) {
+	if shouldEscalateReplay(NHP_AC, NHP_SERVER, NHP_AOP) {
+		t.Fatal("dropped NHP_AOP replay on AC must NOT escalate to threat/block (#2518)")
+	}
+}
+
+// TestShouldEscalateReplay_DefaultEnforced asserts every other
+// (deviceType, peerType, msgType) still escalates a dropped replay, so
+// the AOP exemption stays narrowly scoped.
+func TestShouldEscalateReplay_DefaultEnforced(t *testing.T) {
+	cases := []struct {
+		name                          string
+		deviceType, peerType, msgType int
+	}{
+		{"agent knock", NHP_SERVER, NHP_AGENT, NHP_KNK},
+		{"ART", NHP_SERVER, NHP_AC, NHP_ART},
+		// AOP on a non-AC device must NOT pick up the AC-scoped exemption.
+		{"AOP wrong device scope", NHP_SERVER, NHP_SERVER, NHP_AOP},
+	}
+	for _, tc := range cases {
+		if !shouldEscalateReplay(tc.deviceType, tc.peerType, tc.msgType) {
+			t.Errorf("%s: dropped replay must escalate to threat/block", tc.name)
+		}
+	}
+}
+
 // TestRecvStalenessFloor_AOPTightened is the regression fence for
 // issue #1464. NHP_AOP (server→AC) must use the tighter
 // AOPRecvStalenessFloorSeconds floor, not the 600 s default, so the
@@ -329,6 +364,88 @@ func TestValidatePeer_StaleAOPDropsWithoutBlock(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&srvConn.RecvThreatCount); got != 1 {
 		t.Fatalf("stale ART must escalate (RecvThreatCount=1); got %d — the AOP exemption must be scoped, not global", got)
+	}
+}
+
+// TestValidatePeer_ReplayAOPDropsWithoutBlock is the call-site fence for
+// the #2518 replay-escalation exemption — the symmetric server→AC analog
+// of TestValidatePeer_ReplayARTDropsWithoutBlock. It drives
+// timestamp-regressed packets through validatePeer on an explicit
+// connection and inspects threat/block state:
+//
+//   - two regressed AOPs (server→AC) are each dropped
+//     (ErrReplayPacketReceived) but leave RecvThreatCount at 0 and never
+//     fire SendBlockSignal — so a benign server knock-burst reorder
+//     (reachable WITHOUT network reorder, since AOP send-times are stamped
+//     by concurrent msgToPacketRoutine workers) cannot sever the trusted
+//     server→AC link;
+//   - two regressed NHP_AOLs (AC→server online, a non-exempt type) at the
+//     same setup ARE escalated (RecvThreatCount clamps to
+//     ThreatCountBeforeBlock and SendBlockSignal fires), proving the
+//     exemption is AOP-scoped and the replay-branch block path is intact.
+//
+// Seeding matches the ART fence: the high-water-mark is written directly
+// to LastRemoteSendTime so each fresh (age-0) packet regresses
+// deterministically, and a dropped replay does not advance
+// LastRemoteSendTime, so both packets in a pair regress.
+func TestValidatePeer_ReplayAOPDropsWithoutBlock(t *testing.T) {
+	silenceGlobalLogger(t)
+
+	acDevice := NewDevice(NHP_AC, validatePeerPrivateKey(1), nil)
+	serverDevice := NewDevice(NHP_SERVER, validatePeerPrivateKey(33), nil)
+	if acDevice == nil || serverDevice == nil {
+		t.Fatal("failed to create AC/server devices")
+	}
+	acPeer := &UdpPeer{PubKeyBase64: acDevice.PublicKeyBase64(), Ip: "127.0.0.1", Port: 12345, Type: NHP_AC}
+	serverPeer := &UdpPeer{PubKeyBase64: serverDevice.PublicKeyBase64(), Ip: "127.0.0.1", Port: 12346, Type: NHP_SERVER}
+	serverDevice.AddPeer(acPeer)
+	acDevice.AddPeer(serverPeer)
+
+	validateOn := func(receiver *Device, conn *ConnectionData, pkt *Packet, initTime int64) error {
+		t.Helper()
+		ppd, err := receiver.createPacketParserData(&PacketData{BasePacket: pkt, ConnData: conn, InitTime: initTime})
+		if err != nil {
+			t.Fatalf("createPacketParserData failed: %v", err)
+		}
+		defer ppd.Destroy()
+		return ppd.validatePeer()
+	}
+
+	const highWater = time.Hour // far enough that any age-0 send time regresses below it
+
+	// Two regressed AOPs (AC is the receiver) → dropped, NOT escalated.
+	acConn := validatePeerConnectionData(acDevice, 12345, 12346)
+	atomic.StoreInt64(&acConn.LastRemoteSendTime, time.Now().Add(highWater).UnixNano())
+	for i := 1; i <= 2; i++ {
+		pkt, initTime := buildAgedPacket(t, serverDevice, validatePeerConnectionData(serverDevice, 12346, 12345), acPeer.PublicKey(), NHP_AOP, 0)
+		if err := validateOn(acDevice, acConn, pkt, initTime); !errors.Is(err, ErrReplayPacketReceived) {
+			t.Fatalf("regressed AOP #%d: got %v, want ErrReplayPacketReceived", i, err)
+		}
+	}
+	if got := atomic.LoadInt32(&acConn.RecvThreatCount); got != 0 {
+		t.Fatalf("two regressed AOPs must NOT bump RecvThreatCount (got %d) — AOP is exempt from replay escalation (#2518)", got)
+	}
+	if len(acConn.BlockSignal) != 0 {
+		t.Fatal("two regressed AOPs must NOT fire SendBlockSignal — without the exemption the 2nd would cross ThreatCountBeforeBlock and sever the trusted server→AC connection")
+	}
+
+	// Two regressed NHP_AOLs (server is the receiver) → dropped AND
+	// escalated, proving the exemption is AOP-scoped. NHP_AOL (AC→server
+	// online status) rides the AC→server connection but is NOT
+	// replay-exempt, so it still fences the replay-branch escalation path.
+	srvConn := validatePeerConnectionData(serverDevice, 12346, 12345)
+	atomic.StoreInt64(&srvConn.LastRemoteSendTime, time.Now().Add(highWater).UnixNano())
+	for i := 1; i <= 2; i++ {
+		pkt, initTime := buildAgedPacket(t, acDevice, validatePeerConnectionData(acDevice, 12345, 12346), serverPeer.PublicKey(), NHP_AOL, 0)
+		if err := validateOn(serverDevice, srvConn, pkt, initTime); !errors.Is(err, ErrReplayPacketReceived) {
+			t.Fatalf("regressed AOL #%d: got %v, want ErrReplayPacketReceived", i, err)
+		}
+	}
+	if got := atomic.LoadInt32(&srvConn.RecvThreatCount); got != ThreatCountBeforeBlock {
+		t.Fatalf("two regressed AOLs must escalate (RecvThreatCount clamped to %d); got %d — the AOP exemption must be scoped, not global", ThreatCountBeforeBlock, got)
+	}
+	if len(srvConn.BlockSignal) != 1 {
+		t.Fatal("two regressed AOLs must fire SendBlockSignal (the 2nd crosses ThreatCountBeforeBlock)")
 	}
 }
 

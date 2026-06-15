@@ -417,20 +417,25 @@ func (ppd *PacketParserData) deriveMsgAssemblerData(t int, compress bool, messag
 // (server restart / AC failover / NAT flush) lives in
 // endpoints/ac/aop_replay_cache.go.
 //
-// AOP-specific trade-off — the strict less-than comparison at the
-// replay site means a UDP reorder of two µs-spaced AOPs from the
-// same server arrives with the earlier-stamped one rejected as a
-// "replay" by this gate. In sandbox/prod (single-VPC, NLB)
-// reordering is rare so this is tolerable; #1463 (deployed-binary
-// smoke) and any future #1458 (duplicate-drop counter) work should
-// keep an eye on the AOP-drop rate to catch any reorder pattern
-// that turns this into an availability issue. ART (#1457) will
-// face the symmetric concern when its own dedupe lands.
+// AOP timestamps are stamped by concurrent packet workers, so a burst may
+// arrive with a benign timestamp regression. The packet remains drop-only;
+// shouldEscalateReplay prevents that regression from blocking the trusted
+// server-to-AC connection.
 func shouldCheckRecvAttack(deviceType int, peerType int, msgType int) bool {
 	if deviceType == NHP_SERVER && peerType == NHP_AC && msgType == NHP_ART {
 		return false
 	}
+	return true
+}
 
+// shouldEscalateReplay controls only punitive threat/block escalation. A
+// replay packet is dropped regardless. AOP is drop-only because benign burst
+// reordering can regress its timestamp; cross-connection duplicate rejection
+// is provided by the AC replay cache.
+func shouldEscalateReplay(deviceType int, peerType int, msgType int) bool {
+	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
+		return false
+	}
 	return true
 }
 
@@ -525,15 +530,20 @@ func recvStalenessFloor(deviceType int, peerType int, msgType int) int64 {
 // weak rate-limit on a low-payoff stale-AOP flood — already largely
 // forgone by the flood-gate exemption.
 //
-// Accepted residual — with this exemption AOP is now exempt from both
-// the flood gate and the stale gate, leaving the replay gate
-// (shouldCheckRecvAttack, in-connection timestamp regression) as AOP's
-// SOLE remaining auto-block trigger. A replay flood on a *fresh*
-// connection (LastRemoteSendTime == 0, no regression) therefore can no
-// longer be source-blocked by any gate — but every such packet is
-// still dropped (no authz bypass) and the attacker is bounded by their
-// finite captured packets, each costing one already-required AEAD
-// decrypt. This is a deliberate trade, not a side effect.
+// Accepted residual — AOP is exempt from the flood gate
+// (shouldCheckFlood) and the stale gate (this predicate), and now also
+// from the replay-gate escalation (shouldEscalateReplay, #2518), so AOP
+// has NO remaining per-connection auto-block trigger: the replay gate
+// (shouldCheckRecvAttack) still DROPS an in-connection timestamp
+// regression, but no longer escalates it. An in-connection regression or
+// a replay flood on a *fresh* connection (LastRemoteSendTime == 0, no
+// regression) therefore can no longer be source-blocked by any gate —
+// but every such packet is still dropped (ErrReplayPacketReceived, no
+// authz bypass), the attacker is bounded by their finite captured
+// packets (each costing one already-required AEAD decrypt), and the
+// cross-connection AC dedupe cache (endpoints/ac/aop_replay_cache.go)
+// remains AOP's real replay defense. This is a deliberate trade, not a
+// side effect.
 //
 // NHP_ART (AC → server) keeps the default escalation: it is exempt
 // from the replay/flood gates but a genuinely stale ART is not an
@@ -716,16 +726,22 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	if shouldCheckRecvAttack(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
 		// block remote if threat level is reached
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime {
-			// replay packet, drop
-			log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
-			// threat plus 1
-			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
-			// with high queue number, the device may use ConnData channels when conn is already closed
-			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
-				// clamp threat count to avoid overflow
-				atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, ThreatCountBeforeBlock)
-				// block source address
-				ppd.ConnData.SendBlockSignal()
+			// Drop every replay. Escalate only when the regression is an attack
+			// signal rather than plausible benign burst reordering.
+			escalate := shouldEscalateReplay(ppd.device.deviceType, peerDeviceType, ppd.HeaderType)
+			if escalate {
+				log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
+				// threat plus 1
+				threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
+				// with high queue number, the device may use ConnData channels when conn is already closed
+				if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
+					// clamp threat count to avoid overflow
+					atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, ThreatCountBeforeBlock)
+					// block source address
+					ppd.ConnData.SendBlockSignal()
+				}
+			} else {
+				log.Warning("received replay packet from %s, drop packet (drop-only type, not escalated)", ppd.ConnData.RemoteAddr.String())
 			}
 			err = fmt.Errorf("received replay packet")
 			return err

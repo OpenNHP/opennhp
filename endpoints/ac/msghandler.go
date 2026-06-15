@@ -56,11 +56,14 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 	// Reject replays of (sender_pubkey, txid, send_time) triples
 	// already processed within the cache TTL. Drop without sending
 	// NHP_ART so the response channel cannot be used as a
-	// replay-success oracle. Unlike the per-connection replay/flood
-	// gate in core.responder, no RecvThreatCount bump or
-	// SendBlockSignal here: the threat counter lives on ConnData and
-	// is meaningless across the connections this cache exists to
-	// span. See aop_replay_cache.go for the threat model (#1123).
+	// replay-success oracle. No RecvThreatCount bump or SendBlockSignal
+	// here — the threat counter lives on ConnData and is meaningless
+	// across the connections this cache exists to span. (For AOP the
+	// per-connection gate in core.responder is now drop-only too:
+	// flood-exempt #1123, stale-escalation-exempt #1464,
+	// replay-escalation-exempt #2518 — so this cache is AOP's sole
+	// cross-connection replay defense.) See aop_replay_cache.go for the
+	// threat model (#1123).
 	if !a.aopReplay.MarkSeen(ppd.RemotePubKey, transactionId, ppd.RemoteSendTime) {
 		// Warning, not Critical: this fires both on replay attempts
 		// (the security signal we care about) and on benign in-flight

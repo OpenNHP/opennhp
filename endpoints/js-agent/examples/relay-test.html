@@ -1238,11 +1238,12 @@ if (result.success) {
     }
   }
 
-  // Build the cluster picker from config.json "clusters". Each entry carries
-  // a display name, the target nhp-server public key, and (for display) the
-  // protected resource host. Selecting a cluster rewrites the serverPubKey
-  // field; the SDK derives the relay routing fingerprint from that key, so the
-  // relayUrl and identity stay shared across clusters.
+  // Build the cluster picker from config.json "clusters". Each entry carries a
+  // display name, the target nhp-server public key, the protected resource host
+  // (for display), and the cluster's OWN agent private key. Each cluster has an
+  // INDEPENDENT agent identity — the two nhp-servers trust different agent keys
+  // — so selecting a cluster rewrites BOTH the serverPubKey and the agent
+  // private key fields. The relayUrl and user/device identity stay shared.
   function populateClusters(clusters) {
     const row = document.getElementById('clusterRow');
     const sel = document.getElementById('clusterSelect');
@@ -1259,19 +1260,28 @@ if (result.success) {
       const host = c.serverHost ? ` — ${c.serverHost}` : '';
       opt.textContent = `${c.name || ('Cluster ' + (i + 1))}${host}`;
       opt.dataset.pubkey = c.serverPublicKey || '';
+      // Per-cluster agent key; falls back to empty so the shared flat
+      // agentPrivateKey field is left untouched when a cluster omits it.
+      opt.dataset.agentkey = c.agentPrivateKey || '';
       sel.appendChild(opt);
     });
     sel.onchange = () => {
       const opt = sel.options[sel.selectedIndex];
-      const pk = opt && opt.dataset.pubkey;
+      if (!opt) return;
+      const pk = opt.dataset.pubkey;
       if (pk) {
         const el = document.getElementById('serverPubKey');
         if (el) el.value = pk;
-        log('info', t('log.clusterSelected', { name: opt.textContent }));
       }
+      const ak = opt.dataset.agentkey;
+      if (ak) {
+        const el = document.getElementById('agentPrivKey');
+        if (el) el.value = ak;
+      }
+      log('info', t('log.clusterSelected', { name: opt.textContent }));
     };
     row.style.display = '';
-    // Default to the first cluster's key (matches the flat config fields).
+    // Default to the first cluster's keys (matches the flat config fields).
     sel.selectedIndex = 0;
     sel.onchange();
   }

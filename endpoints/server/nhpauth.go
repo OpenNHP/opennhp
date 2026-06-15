@@ -58,8 +58,19 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 			return
 		}
 
-		// determine knock type
-		knkMsg.HeaderType = ppd.HeaderType
+		// The wire HeaderType (ppd.HeaderType) is NOT authenticated, so
+		// trusting it would let an on-path attacker flip NHP_KNK <-> NHP_EXT
+		// and forge the open/close decision. Require it to match the
+		// AEAD-authenticated body HeaderType the agent carries; on success
+		// knkMsg.HeaderType already holds that (equal) authenticated value.
+		// Rejected unconditionally on a mismatch or a legacy unpopulated
+		// body — secure by default. See knock_headertype.go.
+		if gateErr := verifyKnockHeaderType(knkMsg.HeaderType, ppd.HeaderType, transactionId, addrStr); gateErr != nil {
+			err = gateErr
+			ackMsg.ErrCode = gateErr.ErrorCode()
+			ackMsg.ErrMsg = gateErr.Error()
+			return
+		}
 
 		// find out auth service provider
 		aspData := s.FindAuthSvcProvider(knkMsg.AuthServiceId)

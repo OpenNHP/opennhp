@@ -115,6 +115,12 @@ var (
 	ErrAuthHandlerNotFound         = newError("52006", "failed to find auth handler", "无法找到验证处理接口")
 	ErrBackendAuthRequired         = newError("52007", "server backend auth required", "服务器需要后端敲门验证")
 	ErrUrlPathInvalid              = newError("52008", "client request url path is invalid", "请求路径无效")
+	// Knock HeaderType verification (on-path header-flip protection). The agent
+	// mirrors the wire HeaderType inside the AEAD-authenticated knock body
+	// (AgentKnockMsg.HeaderType); the server requires the two to match and
+	// rejects otherwise. See endpoints/server/knock_headertype.go.
+	ErrKnockHeaderTypeMismatch = newError("52009", "knock body header type does not match wire header type", "敲门报文体头部类型与报文头部类型不匹配")
+	ErrKnockHeaderTypeLegacy   = newError("52010", "knock body header type missing, please upgrade agent", "敲门报文体缺少头部类型，请升级agent")
 
 	// ac
 	ErrACOperationFailed       = newError("53001", "ac operation failed", "门禁操作失败")

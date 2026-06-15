@@ -55,11 +55,15 @@ env:
   REGENERATE_KEYS: ${{ github.event.inputs.regenerate_keys }}
   ACME_EMAIL: dev@layerv.ai
   DOMAIN_SERVER: auth-plugin.opennhp.org
+  # Canonical cluster 1 nhp-server alias (CNAME -> auth-plugin), used for
+  # display in the demo cluster picker.
+  DOMAIN_SERVER_ALIAS: server.opennhp.org
   DOMAIN_AC: ac.opennhp.org
   DOMAIN_RELAY: relay.opennhp.org
   DOMAIN_AGENT: agent.opennhp.org
-  # Server cluster 2: AC has a domain; the cluster 2 nhp-server is pure NHP
-  # (no domain, no HTTP/HTTPS).
+  # Server cluster 2: both the nhp-server (server2) and its AC (ac2) have
+  # domains.
+  DOMAIN_SERVER2: server2.opennhp.org
   DOMAIN_AC2: ac2.opennhp.org
   # Legacy hostnames retained as DNS CNAMEs to the new primaries; included
   # as TLS SANs and as nginx server_name aliases so existing agents and
@@ -1213,15 +1217,21 @@ jobs:
           SERVER2_PUB=$(echo "$SECRETS" | jq -r '.nhp_server2_public_key')
           JS_PRIV=$(echo "$SECRETS" | jq -r '.nhp_jsagent_private_key')
           JS_PUB=$(echo "$SECRETS" | jq -r '.nhp_jsagent_public_key')
+          # Cluster 2 has its own js-agent identity (trusted only by server2).
+          JS2_PRIV=$(echo "$SECRETS" | jq -r '.nhp_jsagent2_private_key')
+          JS2_PUB=$(echo "$SECRETS" | jq -r '.nhp_jsagent2_public_key')
           CF_TOKEN=$(echo "$SECRETS" | jq -r '.cloudflare_api_token')
 
           echo "::add-mask::$JS_PRIV"
+          echo "::add-mask::$JS2_PRIV"
           echo "::add-mask::$CF_TOKEN"
 
           echo "server_pub=$SERVER_PUB"   >> $GITHUB_OUTPUT
           echo "server2_pub=$SERVER2_PUB" >> $GITHUB_OUTPUT
           echo "js_priv=$JS_PRIV"         >> $GITHUB_OUTPUT
           echo "js_pub=$JS_PUB"           >> $GITHUB_OUTPUT
+          echo "js2_priv=$JS2_PRIV"       >> $GITHUB_OUTPUT
+          echo "js2_pub=$JS2_PUB"         >> $GITHUB_OUTPUT
           echo "cf_token=$CF_TOKEN"       >> $GITHUB_OUTPUT
 
       - name: Assemble deploy bundle
@@ -1248,18 +1258,25 @@ jobs:
           # identity; only the target nhp-server (serverPublicKey) differs.
           # The relay routes by the fingerprint of serverPublicKey, which the
           # SDK derives client-side — so no per-cluster relay path is needed.
-          # The flat serverHost/serverPublicKey fields are kept for backward
-          # compatibility and mirror clusters[0] (cluster 1).
+          # The flat serverHost/acHost/serverPublicKey fields are kept for
+          # backward compatibility and mirror clusters[0] (cluster 1).
           #
-          # cluster 2's nhp-server is pure NHP (no domain); "serverHost" is its
-          # protected AC hostname (ac2.opennhp.org) for display only.
+          # Per cluster: "serverHost" is the nhp-server hostname shown in the
+          # cluster picker; "acHost" is the protected AC hostname shown (and
+          # port-scanned) in the "Protected Server" picker;
+          # "agentPrivateKey"/"agentPublicKey" is that cluster's OWN browser-demo
+          # identity. Cluster 1 and cluster 2 use INDEPENDENT agent keys — each
+          # nhp-server trusts only its own — so selecting a cluster swaps the
+          # agent key too. Both private keys are intentionally public demo keys
+          # scoped to demo-only resources.
           cat > bundle/config.json <<EOF
           {
             "_comment":        "PUBLIC DEMO CONFIG - agentPrivateKey is intentionally public; see deploy-demo-v2.yml.",
             "cipherScheme":    "curve25519",
             "transport":       "relay",
             "relayUrl":        "https://${{ env.DOMAIN_RELAY }}/relay",
-            "serverHost":      "${{ env.DOMAIN_SERVER }}",
+            "serverHost":      "${{ env.DOMAIN_SERVER_ALIAS }}",
+            "acHost":          "${{ env.DOMAIN_AC }}",
             "serverPort":      443,
             "serverPublicKey": "${{ steps.secrets.outputs.server_pub }}",
             "agentPrivateKey": "${{ steps.secrets.outputs.js_priv }}",
@@ -1271,14 +1288,20 @@ jobs:
             "serviceId":       "example",
             "clusters": [
               {
-                "name":            "Cluster 1 (auth-plugin)",
-                "serverHost":      "${{ env.DOMAIN_SERVER }}",
-                "serverPublicKey": "${{ steps.secrets.outputs.server_pub }}"
+                "name":            "Cluster 1",
+                "serverHost":      "${{ env.DOMAIN_SERVER_ALIAS }}",
+                "acHost":          "${{ env.DOMAIN_AC }}",
+                "serverPublicKey": "${{ steps.secrets.outputs.server_pub }}",
+                "agentPrivateKey": "${{ steps.secrets.outputs.js_priv }}",
+                "agentPublicKey":  "${{ steps.secrets.outputs.js_pub }}"
               },
               {
-                "name":            "Cluster 2 (ac2)",
-                "serverHost":      "${{ env.DOMAIN_AC2 }}",
-                "serverPublicKey": "${{ steps.secrets.outputs.server2_pub }}"
+                "name":            "Cluster 2",
+                "serverHost":      "${{ env.DOMAIN_SERVER2 }}",
+                "acHost":          "${{ env.DOMAIN_AC2 }}",
+                "serverPublicKey": "${{ steps.secrets.outputs.server2_pub }}",
+                "agentPrivateKey": "${{ steps.secrets.outputs.js2_priv }}",
+                "agentPublicKey":  "${{ steps.secrets.outputs.js2_pub }}"
               }
             ]
           }

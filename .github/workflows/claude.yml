@@ -9,8 +9,13 @@ on:
     types: [opened, assigned]
   pull_request_review:
     types: [submitted]
-  pull_request:
-    types: [opened, synchronize]
+  # SECURITY: pull_request_target (not pull_request) so the auto-review can run on
+  # PRs from forks. Fork `pull_request` runs get a read-only token and no secrets,
+  # so the review job fails on every external contribution. pull_request_target runs
+  # in the base-repo context (secrets + write token available); the claude-pr-review
+  # job below is hardened to never check out or execute untrusted PR-head code.
+  pull_request_target:
+    types: [opened, synchronize, reopened]
 
 jobs:
   # Respond to @claude mentions
@@ -44,8 +49,8 @@ jobs:
   # Automatic code review on PR open/update
   claude-pr-review:
     if: |
-      github.event_name == 'pull_request' &&
-      (github.event.action == 'opened' || github.event.action == 'synchronize') &&
+      github.event_name == 'pull_request_target' &&
+      (github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened') &&
       !endsWith(github.actor, '[bot]')
     runs-on: ubuntu-latest
     permissions:
@@ -55,9 +60,15 @@ jobs:
       id-token: write
       actions: read
     steps:
-      - name: Checkout repository
+      # SECURITY: pull_request_target exposes repository secrets and a write token.
+      # Pin the checkout to the BASE commit so untrusted PR-head code is never placed
+      # on disk or executed. The PR is reviewed entirely through the GitHub API
+      # (gh pr diff/view) and Claude's tools are restricted to read-only `gh pr`
+      # subcommands below, so the diff content is treated as data, not code.
+      - name: Checkout base (trusted) — never the PR head
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
 
       - name: Run Claude Code Review

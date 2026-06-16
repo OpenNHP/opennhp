@@ -92,6 +92,12 @@
       outline: none;
       border-color: #58a6ff;
     }
+    .field select:disabled {
+      color: #6e7681;
+      background: #161b22;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
     .btn {
       padding: 8px 20px;
       border: none;
@@ -1281,6 +1287,11 @@ if (result.success) {
       log('info', t('log.clusterSelected', { name: opt.textContent }));
     };
     row.style.display = '';
+    // This picker is slaved to the Protected Server picker (each AC maps to
+    // one cluster), so it is read-only — disabled to prevent a selection that
+    // contradicts the chosen AC. populateProtectedHosts() drives it.
+    sel.disabled = true;
+    sel.title = 'Determined by the Protected Server selection above';
     // Default to the first cluster's keys (matches the flat config fields).
     sel.selectedIndex = 0;
     sel.onchange();
@@ -1288,10 +1299,12 @@ if (result.success) {
 
   // Build the "Protected Server" picker from config.json. Each cluster's
   // "acHost" is the protected resource hostname (ac.opennhp.org /
-  // ac2.opennhp.org). Selecting one repoints the external port-scanner link.
-  // This picker is independent of the Server Cluster picker above — the user
-  // can scan either AC regardless of which nhp-server cluster they knock
-  // against.
+  // ac2.opennhp.org). This picker is the PRIMARY selector: each AC belongs
+  // to exactly one nhp-server cluster, so picking an AC also drives which
+  // cluster the knock goes to. The Server Cluster picker below is slaved to
+  // this one — it mirrors the selection and is disabled so the two can't
+  // disagree. Both selects are built from the same clusters[] in the same
+  // order, so option index i here maps to cluster i there.
   function populateProtectedHosts(clusters, cfg) {
     const sel = document.getElementById('protectedHost');
     const scanBtn = document.getElementById('scanBtn');
@@ -1314,10 +1327,18 @@ if (result.success) {
       sel.appendChild(opt);
     });
 
+    const clusterSel = document.getElementById('clusterSelect');
+
     const sync = () => {
       const host = sel.value;
       if (scanBtn) {
         scanBtn.href = `https://dnschecker.org/port-scanner.php?query=${encodeURIComponent(host)}&ptype=server`;
+      }
+      // Slave the Server Cluster picker to this selection: same index, then
+      // fire its onchange so the server pubkey + agent key swap follows.
+      if (clusterSel && clusterSel.options.length > sel.selectedIndex) {
+        clusterSel.selectedIndex = sel.selectedIndex;
+        if (typeof clusterSel.onchange === 'function') clusterSel.onchange();
       }
     };
     sel.onchange = sync;

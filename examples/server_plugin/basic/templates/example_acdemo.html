@@ -358,6 +358,7 @@
                     <span id="scanPorts1">Scan Ports</span>
                 </a>
             </div>
+            <!-- demo.nhp-card:begin (cluster-1 internal alias; CI strips this block on AC hosts that have no demo.nhp) -->
             <div class="server-card">
                 <span class="server-url">https://demo.nhp</span>
                 <a href="https://dnschecker.org/port-scanner.php?query=demo.nhp&ptype=server" target="_blank" class="scan-link scan-link-2">
@@ -365,6 +366,7 @@
                     <span id="scanPorts2">Scan Ports</span>
                 </a>
             </div>
+            <!-- demo.nhp-card:end -->
         </div>
 
         <div class="countdown-section" id="countdown">
@@ -451,8 +453,13 @@
 
             document.getElementById('title').textContent = t.title;
             document.getElementById('subtitle').textContent = t.subtitle;
-            document.getElementById('scanPorts1').textContent = t.scanPorts;
-            document.getElementById('scanPorts2').textContent = t.scanPorts;
+            // Scan-port labels live inside the server cards, which the
+            // per-host deploy may strip (e.g. the demo.nhp card on ac2), so
+            // guard against a missing element.
+            const sp1 = document.getElementById('scanPorts1');
+            if (sp1) sp1.textContent = t.scanPorts;
+            const sp2 = document.getElementById('scanPorts2');
+            if (sp2) sp2.textContent = t.scanPorts;
             document.getElementById('countdownLabel').textContent = t.countdownLabel;
             document.getElementById('countdownUnit').textContent = t.countdownUnit;
             document.getElementById('hiddenMessage').textContent = t.hiddenMessage;

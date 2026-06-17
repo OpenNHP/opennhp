@@ -824,13 +824,19 @@ jobs:
           echo "Applying default firewall rules..."
           ssh nhp-ac "sudo bash $REMOTE_DIR/iptables_default.sh -f || true"
 
-          # Deploy acdemo static page to nginx root
+          # Deploy acdemo static page to nginx root. The template ships with
+          # the cluster-1 hostnames hard-coded; rewrite the first server card
+          # to this AC's real domain so the page matches the host it serves
+          # from. cluster 1 keeps the demo.nhp card (its internal alias).
           if [ -f ./artifact/templates/example/example_acdemo.html ]; then
-            scp ./artifact/templates/example/example_acdemo.html nhp-ac:/tmp/
+            sed "s|ac\.opennhp\.org|${DOMAIN_AC}|g" \
+              ./artifact/templates/example/example_acdemo.html > /tmp/acdemo_ac.html
+            scp /tmp/acdemo_ac.html nhp-ac:/tmp/example_acdemo.html
             ssh nhp-ac "sudo mkdir -p /var/www/acdemo && \
               sudo cp /tmp/example_acdemo.html /var/www/acdemo/index.html && \
               sudo chmod 644 /var/www/acdemo/index.html && \
               rm /tmp/example_acdemo.html"
+            rm -f /tmp/acdemo_ac.html
           fi
 
           echo "Uploading AC configs..."
@@ -1111,13 +1117,20 @@ jobs:
           echo "Applying default firewall rules..."
           ssh nhp-ac2 "sudo bash $REMOTE_DIR/iptables_default.sh -f || true"
 
-          # cluster 2 serves the SAME protected demo page as cluster 1.
+          # cluster 2 serves the same protected demo page, but rewritten for
+          # this AC: the first server card points at ${DOMAIN_AC2}, and the
+          # demo.nhp card (a cluster-1 internal alias with no ac2 equivalent)
+          # is stripped between its CI anchors.
           if [ -f ./artifact/templates/example/example_acdemo.html ]; then
-            scp ./artifact/templates/example/example_acdemo.html nhp-ac2:/tmp/
+            sed -e "s|ac\.opennhp\.org|${DOMAIN_AC2}|g" \
+                -e "/demo.nhp-card:begin/,/demo.nhp-card:end/d" \
+              ./artifact/templates/example/example_acdemo.html > /tmp/acdemo_ac2.html
+            scp /tmp/acdemo_ac2.html nhp-ac2:/tmp/example_acdemo.html
             ssh nhp-ac2 "sudo mkdir -p /var/www/acdemo && \
               sudo cp /tmp/example_acdemo.html /var/www/acdemo/index.html && \
               sudo chmod 644 /var/www/acdemo/index.html && \
               rm /tmp/example_acdemo.html"
+            rm -f /tmp/acdemo_ac2.html
           fi
 
           echo "Uploading AC configs (cluster 2)..."

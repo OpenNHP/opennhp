@@ -92,6 +92,12 @@
       outline: none;
       border-color: #58a6ff;
     }
+    .field select:disabled {
+      color: #6e7681;
+      background: #161b22;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
     .btn {
       padding: 8px 20px;
       border: none;
@@ -1281,6 +1287,11 @@ if (result.success) {
       log('info', t('log.clusterSelected', { name: opt.textContent }));
     };
     row.style.display = '';
+    // This picker is slaved to the Protected Server picker (each AC maps to
+    // one cluster), so it is read-only — disabled to prevent a selection that
+    // contradicts the chosen AC. populateProtectedHosts() drives it.
+    sel.disabled = true;
+    sel.title = 'Determined by the Protected Server selection above';
     // Default to the first cluster's keys (matches the flat config fields).
     sel.selectedIndex = 0;
     sel.onchange();
@@ -1288,36 +1299,55 @@ if (result.success) {
 
   // Build the "Protected Server" picker from config.json. Each cluster's
   // "acHost" is the protected resource hostname (ac.opennhp.org /
-  // ac2.opennhp.org). Selecting one repoints the external port-scanner link.
-  // This picker is independent of the Server Cluster picker above — the user
-  // can scan either AC regardless of which nhp-server cluster they knock
-  // against.
+  // ac2.opennhp.org). This picker is the PRIMARY selector: each AC belongs
+  // to exactly one nhp-server cluster, so picking an AC also drives which
+  // cluster the knock goes to. The Server Cluster picker below is slaved to
+  // this one — it mirrors the selection and is disabled so the two can't
+  // disagree. Each AC option carries its source cluster index in
+  // dataset.cluster, so the mapping survives a cluster that omits acHost
+  // (no positional-index assumption between the two lists).
   function populateProtectedHosts(clusters, cfg) {
     const sel = document.getElementById('protectedHost');
     const scanBtn = document.getElementById('scanBtn');
     if (!sel) return;
 
     // Collect AC hosts from clusters[].acHost; fall back to the flat acHost
-    // (local dev) when no clusters are defined.
+    // (local dev) when no clusters are defined. Each host option records its
+    // originating cluster index in dataset.cluster so the Server Cluster
+    // picker can be slaved by explicit cluster, not by positional index — a
+    // cluster that omits acHost would otherwise misalign the two lists and
+    // silently knock the wrong cluster's server pubkey/agent key.
     const hosts = [];
     if (Array.isArray(clusters)) {
-      clusters.forEach(c => { if (c && c.acHost) hosts.push(c.acHost); });
+      clusters.forEach((c, i) => { if (c && c.acHost) hosts.push({ host: c.acHost, cluster: i }); });
     }
-    if (!hosts.length && cfg && cfg.acHost) hosts.push(cfg.acHost);
+    if (!hosts.length && cfg && cfg.acHost) hosts.push({ host: cfg.acHost, cluster: 0 });
     if (!hosts.length) return;
 
     sel.innerHTML = '';
-    hosts.forEach(h => {
+    hosts.forEach(({ host, cluster }) => {
       const opt = document.createElement('option');
-      opt.value = h;
-      opt.textContent = `https://${h}`;
+      opt.value = host;
+      opt.textContent = `https://${host}`;
+      opt.dataset.cluster = String(cluster);
       sel.appendChild(opt);
     });
 
+    const clusterSel = document.getElementById('clusterSelect');
+
     const sync = () => {
+      const opt = sel.options[sel.selectedIndex];
       const host = sel.value;
       if (scanBtn) {
         scanBtn.href = `https://dnschecker.org/port-scanner.php?query=${encodeURIComponent(host)}&ptype=server`;
+      }
+      // Slave the Server Cluster picker to this selection by the AC's own
+      // cluster index, then fire its onchange so the server pubkey + agent
+      // key swap follows.
+      const clusterIdx = opt ? Number(opt.dataset.cluster) : 0;
+      if (clusterSel && clusterSel.options.length > clusterIdx) {
+        clusterSel.selectedIndex = clusterIdx;
+        if (typeof clusterSel.onchange === 'function') clusterSel.onchange();
       }
     };
     sel.onchange = sync;

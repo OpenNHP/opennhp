@@ -172,7 +172,7 @@ Found a vulnerability? Please follow the responsible-disclosure process in [SECU
   <img src="docs/images/layerv_logo.png" height="40" alt="LayerV.ai logo">
 </a>
 &nbsp;&nbsp;
-<a href="https://atlas.cloud">
+<a href="https://www.atlascloud.ai/">
   <img src="docs/images/atlascloud_logo.png" height="40" alt="Atlas Cloud logo">
 </a>
 

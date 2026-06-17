@@ -1303,41 +1303,50 @@ if (result.success) {
   // to exactly one nhp-server cluster, so picking an AC also drives which
   // cluster the knock goes to. The Server Cluster picker below is slaved to
   // this one — it mirrors the selection and is disabled so the two can't
-  // disagree. Both selects are built from the same clusters[] in the same
-  // order, so option index i here maps to cluster i there.
+  // disagree. Each AC option carries its source cluster index in
+  // dataset.cluster, so the mapping survives a cluster that omits acHost
+  // (no positional-index assumption between the two lists).
   function populateProtectedHosts(clusters, cfg) {
     const sel = document.getElementById('protectedHost');
     const scanBtn = document.getElementById('scanBtn');
     if (!sel) return;
 
     // Collect AC hosts from clusters[].acHost; fall back to the flat acHost
-    // (local dev) when no clusters are defined.
+    // (local dev) when no clusters are defined. Each host option records its
+    // originating cluster index in dataset.cluster so the Server Cluster
+    // picker can be slaved by explicit cluster, not by positional index — a
+    // cluster that omits acHost would otherwise misalign the two lists and
+    // silently knock the wrong cluster's server pubkey/agent key.
     const hosts = [];
     if (Array.isArray(clusters)) {
-      clusters.forEach(c => { if (c && c.acHost) hosts.push(c.acHost); });
+      clusters.forEach((c, i) => { if (c && c.acHost) hosts.push({ host: c.acHost, cluster: i }); });
     }
-    if (!hosts.length && cfg && cfg.acHost) hosts.push(cfg.acHost);
+    if (!hosts.length && cfg && cfg.acHost) hosts.push({ host: cfg.acHost, cluster: 0 });
     if (!hosts.length) return;
 
     sel.innerHTML = '';
-    hosts.forEach(h => {
+    hosts.forEach(({ host, cluster }) => {
       const opt = document.createElement('option');
-      opt.value = h;
-      opt.textContent = `https://${h}`;
+      opt.value = host;
+      opt.textContent = `https://${host}`;
+      opt.dataset.cluster = String(cluster);
       sel.appendChild(opt);
     });
 
     const clusterSel = document.getElementById('clusterSelect');
 
     const sync = () => {
+      const opt = sel.options[sel.selectedIndex];
       const host = sel.value;
       if (scanBtn) {
         scanBtn.href = `https://dnschecker.org/port-scanner.php?query=${encodeURIComponent(host)}&ptype=server`;
       }
-      // Slave the Server Cluster picker to this selection: same index, then
-      // fire its onchange so the server pubkey + agent key swap follows.
-      if (clusterSel && clusterSel.options.length > sel.selectedIndex) {
-        clusterSel.selectedIndex = sel.selectedIndex;
+      // Slave the Server Cluster picker to this selection by the AC's own
+      // cluster index, then fire its onchange so the server pubkey + agent
+      // key swap follows.
+      const clusterIdx = opt ? Number(opt.dataset.cluster) : 0;
+      if (clusterSel && clusterSel.options.length > clusterIdx) {
+        clusterSel.selectedIndex = clusterIdx;
         if (typeof clusterSel.onchange === 'function') clusterSel.onchange();
       }
     };

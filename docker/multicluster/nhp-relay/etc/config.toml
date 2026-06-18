@@ -1,0 +1,92 @@
+# NHP Relay Service Configuration
+# Bridges browser HTTPS clients to the UDP NHP Server using standard NHP protocol.
+#
+# ⚠️  LOCAL DOCKER-COMPOSE DEMO ONLY ⚠️
+# The privateKeyBase64 and the upstream PubKeyBase64 values below are
+# PUBLIC demo keys that paired with the other docker/*/etc/config.toml
+# files. They are intentionally committed so `docker-compose up` works
+# out of the box. DO NOT REUSE THEM IN ANY DEPLOYMENT THAT IS REACHABLE
+# OVER A NETWORK YOU DO NOT FULLY CONTROL.
+#
+# For real deployments, generate fresh keys and inject them from a
+# secrets store (see terraform/demo/ + scripts/generate-nhp-keys.sh for
+# an AWS Secrets Manager example):
+#   Curve25519: docker run --rm opennhp-relay keygen --curve
+#   SM2/GMSM:   docker run --rm opennhp-relay keygen --sm2
+# Then set privateKeyBase64 to the private key output and register the
+# corresponding public key on nhp-server in etc/relay.toml.
+
+# HTTP listener
+listenIp   = "0.0.0.0"
+listenPort = 8080
+
+# TLS (set enableTLS = true and provide cert/key paths for HTTPS)
+enableTLS   = false
+tlsCertFile = ""
+tlsKeyFile  = ""
+
+# Cipher scheme: 0 = Curve25519 (default), 1 = SM2/GMSM.
+# Must match the key type used in privateKeyBase64 and the upstream
+# PubKeyBase64 values below.
+cipherScheme = 1
+
+# Relay identity key — MUST be set before starting.
+privateKeyBase64 = "rZA6LsYh3r2l//riMRTWin7VUT/0tlrIL6YgfrJ4css="
+
+# Keepalive interval in seconds (sends NHP_KPL to keep each UDP connection alive)
+keepaliveIntervalS = 20
+
+# Timeouts in milliseconds
+readTimeoutMs  = 10000
+writeTimeoutMs = 10000
+idleTimeoutMs  = 60000
+udpTimeoutMs   = 5000
+
+# Log level: 0=silent, 1=error, 2=info, 3=debug
+logLevel = 2
+
+# ────────────────────────────────────────────────────────────────────────
+# Upstream NHP-Server entries
+# ────────────────────────────────────────────────────────────────────────
+#
+# Each [[Servers]] entry describes one logical nhp-server identity
+# (one pubkey), addressed by the 11-char SHA-256 fingerprint of its
+# PubKeyBase64. Browser clients reach a server via:
+#   POST /relay/<serverId>
+# where <serverId> is printed at startup ("Server: <id> <name>") and is
+# also exposed by GET /servers for runtime discovery.
+#
+# One [[Servers]] can declare multiple [[Servers.Instances]] that share
+# the entry's PubKeyBase64 (same ECDH keypair on the back-end nhp-server
+# processes). LoadBalance picks one of them per HTTP request:
+#   "round-robin"     — strict cycling, easy to verify in logs
+#   "random"          — uniform random
+#   "weighted-random" — random weighted by each instance's Weight field
+#
+# Schema is identical to nhp-agent/nhp-ac/nhp-db's server.toml — the
+# same block can be copied across peer tables. See
+# nhp/common/clusterconfig for the canonical reference.
+
+[[Servers]]
+Name         = "demo"
+PubKeyBase64 = "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA=="
+LoadBalance  = "round-robin"
+ExpireTime   = 1924991999
+
+  [[Servers.Instances]]
+  Host   = "177.7.0.9"   # nhp-server
+  Port   = 62206
+  Weight = 1
+
+# ── Server cluster 2 ── independent nhp-server identity (its own keypair
+# and its own AC). Reached via POST /relay/<fingerprint-of-this-pubkey>.
+[[Servers]]
+Name         = "demo-cluster2"
+PubKeyBase64 = "SKAApHxZRTa3EPF1nlRi38neCT1H8dcJUJzcq1tUvsaIXpUj/r4DU4cZB8ApsAm9C1RGu1ZcXxm7C8frYc26+A=="
+LoadBalance  = "round-robin"
+ExpireTime   = 1924991999
+
+  [[Servers.Instances]]
+  Host   = "177.7.0.20"  # nhp-server-c2
+  Port   = 62206
+  Weight = 1

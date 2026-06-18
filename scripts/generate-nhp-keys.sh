@@ -11,6 +11,8 @@
 #     --output-dir ./deploy/configs \
 #     --server-private-ip 10.0.1.10 \
 #     --ac-private-ip 10.0.1.20 \
+#     --server2-private-ip 10.0.1.30 \
+#     --ac2-private-ip 10.0.1.40 \
 #     --domain opennhp.org \
 #     [--regenerate]
 #
@@ -24,6 +26,8 @@ TEMPLATE_DIR=""
 OUTPUT_DIR=""
 SERVER_PRIVATE_IP=""
 AC_PRIVATE_IP=""
+SERVER2_PRIVATE_IP=""
+AC2_PRIVATE_IP=""
 DOMAIN="opennhp.org"
 REGENERATE=false
 AWS_SECRET_ID="opennhp/demo"
@@ -35,6 +39,8 @@ while [[ $# -gt 0 ]]; do
     --output-dir)     OUTPUT_DIR="$2"; shift 2 ;;
     --server-private-ip) SERVER_PRIVATE_IP="$2"; shift 2 ;;
     --ac-private-ip)  AC_PRIVATE_IP="$2"; shift 2 ;;
+    --server2-private-ip) SERVER2_PRIVATE_IP="$2"; shift 2 ;;
+    --ac2-private-ip) AC2_PRIVATE_IP="$2"; shift 2 ;;
     --domain)         DOMAIN="$2"; shift 2 ;;
     --regenerate)     REGENERATE=true; shift ;;
     *) echo "Unknown option: $1"; exit 1 ;;
@@ -42,7 +48,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate required args
-for var in BINARY_DIR TEMPLATE_DIR OUTPUT_DIR SERVER_PRIVATE_IP AC_PRIVATE_IP; do
+for var in BINARY_DIR TEMPLATE_DIR OUTPUT_DIR SERVER_PRIVATE_IP AC_PRIVATE_IP SERVER2_PRIVATE_IP AC2_PRIVATE_IP; do
   if [[ -z "${!var}" ]]; then
     echo "ERROR: --$(echo $var | tr '[:upper:]' '[:lower:]' | tr '_' '-') is required"
     exit 1
@@ -55,6 +61,8 @@ echo "  Template dir:   $TEMPLATE_DIR"
 echo "  Output dir:     $OUTPUT_DIR"
 echo "  Server IP:      $SERVER_PRIVATE_IP"
 echo "  AC IP:          $AC_PRIVATE_IP"
+echo "  Server2 IP:     $SERVER2_PRIVATE_IP"
+echo "  AC2 IP:         $AC2_PRIVATE_IP"
 echo "  Domain:         $DOMAIN"
 echo "  Regenerate:     $REGENERATE"
 echo ""
@@ -63,6 +71,8 @@ echo ""
 mkdir -p "$OUTPUT_DIR/server"
 mkdir -p "$OUTPUT_DIR/ac"
 mkdir -p "$OUTPUT_DIR/relay"
+mkdir -p "$OUTPUT_DIR/server2"
+mkdir -p "$OUTPUT_DIR/ac2"
 
 # --- Fetch existing keys from AWS Secrets Manager ---
 echo "Fetching secrets from AWS Secrets Manager..."
@@ -83,6 +93,15 @@ EXISTING_AGENT_PRIV=$(echo "$SECRETS_JSON" | jq -r '.nhp_agent_private_key // em
 EXISTING_AGENT_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_agent_public_key // empty')
 EXISTING_JSAGENT_PRIV=$(echo "$SECRETS_JSON" | jq -r '.nhp_jsagent_private_key // empty')
 EXISTING_JSAGENT_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_jsagent_public_key // empty')
+# Cluster 2 js-agent: independent browser-demo identity so cluster 1 and
+# cluster 2 do not share an agent key (each nhp-server trusts only its own).
+EXISTING_JSAGENT2_PRIV=$(echo "$SECRETS_JSON" | jq -r '.nhp_jsagent2_private_key // empty')
+EXISTING_JSAGENT2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_jsagent2_public_key // empty')
+# Server cluster 2 (independent key pairs; see CLAUDE.md opennhp/demo schema)
+EXISTING_SERVER2_PRIV=$(echo "$SECRETS_JSON" | jq -r '.nhp_server2_private_key // empty')
+EXISTING_SERVER2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_server2_public_key // empty')
+EXISTING_AC2_PRIV=$(echo "$SECRETS_JSON" | jq -r '.nhp_ac2_private_key // empty')
+EXISTING_AC2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_ac2_public_key // empty')
 
 # --- Generate or reuse keys ---
 generate_keys() {
@@ -141,13 +160,31 @@ JSAGENT_KEYS=$(generate_keys "$BINARY_DIR/nhp-server/nhp-serverd" "js-agent" "$E
 NHP_JSAGENT_PRIVATE_KEY=$(echo "$JSAGENT_KEYS" | cut -d'|' -f1)
 NHP_JSAGENT_PUBLIC_KEY=$(echo "$JSAGENT_KEYS" | cut -d'|' -f2)
 
+# Cluster 2 js-agent keys (independent browser-demo identity; trusted only by
+# server cluster 2, so the cluster 1 and cluster 2 demo agents are isolated)
+JSAGENT2_KEYS=$(generate_keys "$BINARY_DIR/nhp-server/nhp-serverd" "js-agent2" "$EXISTING_JSAGENT2_PRIV" "$EXISTING_JSAGENT2_PUB")
+NHP_JSAGENT2_PRIVATE_KEY=$(echo "$JSAGENT2_KEYS" | cut -d'|' -f1)
+NHP_JSAGENT2_PUBLIC_KEY=$(echo "$JSAGENT2_KEYS" | cut -d'|' -f2)
+
+# Server cluster 2 keys (independent identity, isolated from cluster 1)
+SERVER2_KEYS=$(generate_keys "$BINARY_DIR/nhp-server/nhp-serverd" "server2" "$EXISTING_SERVER2_PRIV" "$EXISTING_SERVER2_PUB")
+NHP_SERVER2_PRIVATE_KEY=$(echo "$SERVER2_KEYS" | cut -d'|' -f1)
+NHP_SERVER2_PUBLIC_KEY=$(echo "$SERVER2_KEYS" | cut -d'|' -f2)
+
+AC2_KEYS=$(generate_keys "$BINARY_DIR/nhp-ac/nhp-acd" "ac2" "$EXISTING_AC2_PRIV" "$EXISTING_AC2_PUB")
+NHP_AC2_PRIVATE_KEY=$(echo "$AC2_KEYS" | cut -d'|' -f1)
+NHP_AC2_PUBLIC_KEY=$(echo "$AC2_KEYS" | cut -d'|' -f2)
+
 echo ""
 echo "--- Key summary ---"
 echo "  Server public key: ${NHP_SERVER_PUBLIC_KEY:0:20}..."
 echo "  AC public key:     ${NHP_AC_PUBLIC_KEY:0:20}..."
 echo "  Relay public key:  ${NHP_RELAY_PUBLIC_KEY:0:20}..."
 echo "  Agent public key:    ${NHP_AGENT_PUBLIC_KEY:0:20}..."
-echo "  js-agent public key: ${NHP_JSAGENT_PUBLIC_KEY:0:20}..."
+echo "  js-agent public key:  ${NHP_JSAGENT_PUBLIC_KEY:0:20}..."
+echo "  js-agent2 public key: ${NHP_JSAGENT2_PUBLIC_KEY:0:20}..."
+echo "  Server2 public key:  ${NHP_SERVER2_PUBLIC_KEY:0:20}..."
+echo "  AC2 public key:      ${NHP_AC2_PUBLIC_KEY:0:20}..."
 echo ""
 
 # --- Save keys to AWS Secrets Manager ---
@@ -165,6 +202,12 @@ UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
   --arg agp "$NHP_AGENT_PUBLIC_KEY" \
   --arg jk "$NHP_JSAGENT_PRIVATE_KEY" \
   --arg jp "$NHP_JSAGENT_PUBLIC_KEY" \
+  --arg j2k "$NHP_JSAGENT2_PRIVATE_KEY" \
+  --arg j2p "$NHP_JSAGENT2_PUBLIC_KEY" \
+  --arg s2k "$NHP_SERVER2_PRIVATE_KEY" \
+  --arg s2p "$NHP_SERVER2_PUBLIC_KEY" \
+  --arg a2k "$NHP_AC2_PRIVATE_KEY" \
+  --arg a2p "$NHP_AC2_PUBLIC_KEY" \
   '. + {
     nhp_server_private_key: $sk,
     nhp_server_public_key: $sp,
@@ -175,7 +218,13 @@ UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
     nhp_agent_private_key: $agk,
     nhp_agent_public_key: $agp,
     nhp_jsagent_private_key: $jk,
-    nhp_jsagent_public_key: $jp
+    nhp_jsagent_public_key: $jp,
+    nhp_jsagent2_private_key: $j2k,
+    nhp_jsagent2_public_key: $j2p,
+    nhp_server2_private_key: $s2k,
+    nhp_server2_public_key: $s2p,
+    nhp_ac2_private_key: $a2k,
+    nhp_ac2_public_key: $a2p
   }')
 
 aws secretsmanager put-secret-value \
@@ -194,12 +243,18 @@ export NHP_AC_PRIVATE_KEY NHP_AC_PUBLIC_KEY
 export NHP_RELAY_PRIVATE_KEY NHP_RELAY_PUBLIC_KEY
 export NHP_AGENT_PRIVATE_KEY NHP_AGENT_PUBLIC_KEY
 export NHP_JSAGENT_PRIVATE_KEY NHP_JSAGENT_PUBLIC_KEY
+export NHP_JSAGENT2_PRIVATE_KEY NHP_JSAGENT2_PUBLIC_KEY
+export NHP_SERVER2_PRIVATE_KEY NHP_SERVER2_PUBLIC_KEY
+export NHP_AC2_PRIVATE_KEY NHP_AC2_PUBLIC_KEY
 export SERVER_PRIVATE_IP="$SERVER_PRIVATE_IP"
 export AC_PRIVATE_IP="$AC_PRIVATE_IP"
+export SERVER2_PRIVATE_IP="$SERVER2_PRIVATE_IP"
+export AC2_PRIVATE_IP="$AC2_PRIVATE_IP"
 export DOMAIN="$DOMAIN"
 
-# Render all templates
-for component in server ac relay; do
+# Render all templates. cluster 2 (server2/ac2) reuses the same key/IP
+# env vars exported above; the relay config references both clusters.
+for component in server ac relay server2 ac2; do
   echo "  Rendering $component configs..."
   for template in "$TEMPLATE_DIR/$component"/*.toml; do
     filename=$(basename "$template")

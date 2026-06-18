@@ -1,7 +1,15 @@
 # Primary AC server block (public Let's Encrypt certificate)
+#
+# NHP gates at the connection (IP) level: after the AC closes the door it only
+# blocks NEW connections, it does not tear down ESTABLISHED ones. To make the
+# demo "lock instantly" we must force every browser refresh onto a fresh TCP
+# connection (so the closed firewall drops it) instead of reusing a kept-alive
+# socket, and never let the static page sit in the browser cache. Hence: no
+# HTTP/2 (single multiplexed long-lived connection defeats the point),
+# keepalive_timeout 0, and no-store on the page.
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
     server_name ${DOMAIN_AC} ${LEGACY_DOMAIN_AC};
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN_AC}/fullchain.pem;
@@ -9,10 +17,13 @@ server {
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
+    keepalive_timeout 0;
+
     root  /var/www/acdemo;
     index index.html;
 
     location / {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
         try_files $uri $uri/ =404;
     }
 }

@@ -34,8 +34,17 @@
       padding: 20px;
     }
     h1 { color: #58a6ff; font-size: 26px; }
+    h1 .sdk-version {
+      margin-left: 8px;
+      color: #9ae42c;
+      font-family: ui-monospace, Consolas, 'Courier New', monospace;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      vertical-align: middle;
+    }
     .subtitle { color: #8b949e; font-size: 14px; line-height: 1.5; margin-bottom: 20px; }
-    .container { max-width: 1080px; margin: 0 auto; }
+    .container { max-width: 1200px; margin: 0 auto; }
     .header-row {
       display: flex;
       justify-content: space-between;
@@ -82,6 +91,12 @@
     .field input:focus, .field select:focus {
       outline: none;
       border-color: #58a6ff;
+    }
+    .field select:disabled {
+      color: #6e7681;
+      background: #161b22;
+      cursor: not-allowed;
+      opacity: 0.7;
     }
     .btn {
       padding: 8px 20px;
@@ -398,17 +413,28 @@
       margin-bottom: 12px;
       font-size: 13px;
     }
-    .protected-target .label { color: #8b949e; font-size: 13px; }
+    .protected-target .label { color: #8b949e; font-size: 13px; flex-shrink: 0; }
     .protected-target .target-url {
       color: #58a6ff;
       text-decoration: none;
       font-family: ui-monospace, Consolas, 'Courier New', monospace;
     }
-    .protected-target .target-url:hover { text-decoration: underline; }
+    .protected-target a.target-url:hover { text-decoration: underline; }
+    .protected-target select.target-url {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 13px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .protected-target select.target-url:hover { border-color: #58a6ff; }
     .protected-target .scan-hint {
       margin-left: auto;
       color: #8b949e;
       font-size: 12px;
+      white-space: nowrap;
     }
     .protected-target .scan-hint strong {
       color: #d29922;
@@ -526,7 +552,7 @@
 <body>
 <div class="container">
   <div class="header-row">
-    <h1 data-i18n="page.heading">OpenNHP JavaScript SDK Demo</h1>
+    <h1><span data-i18n="page.heading">OpenNHP JavaScript SDK Demo</span><span class="sdk-version" id="sdkVersion"></span></h1>
     <div class="lang-switcher">
       <button id="langButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Language">
         <svg class="lang-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg>
@@ -547,9 +573,9 @@
        click "Scan Ports" before & after to see the difference. -->
   <div class="protected-target">
     <span class="label" data-i18n="protected.label">Protected Server:</span>
-    <a class="target-url" href="https://ac.opennhp.org" target="_blank" rel="noopener">https://ac.opennhp.org</a>
+    <select class="target-url" id="protectedHost" aria-label="Protected server"></select>
     <span class="scan-hint" data-i18n-html="protected.scanHint"><strong>Invisible</strong> by default, scan ports to verify</span>
-    <a class="btn btn-secondary scan-btn" href="https://dnschecker.org/port-scanner.php?query=ac.opennhp.org&amp;ptype=server" target="_blank" rel="noopener" data-i18n="protected.scanBtn">Scan</a>
+    <a class="btn btn-secondary scan-btn" id="scanBtn" href="#" target="_blank" rel="noopener" data-i18n="protected.scanBtn">Scan</a>
   </div>
 
   <!-- Success overlay (revealed after a successful knock; runs a 5s countdown then redirects). -->
@@ -624,6 +650,16 @@
   <details class="panel details-panel" id="keys-details">
     <summary class="panel-title">&#9881; <span data-i18n="panel.parameters">NHP-Agent Parameters</span><button type="button" class="btn btn-secondary load-token-btn" id="loadFromTokenBtn" data-i18n="btn.loadFromToken">Load from Token</button><span class="summary-hint" data-i18n="summary.editHint">click to view / edit</span></summary>
     <div class="details-content">
+      <!-- Server cluster picker. Populated from config.json "clusters"; hidden
+           when only one cluster is configured. Selecting a cluster swaps the
+           nhp-server public key below — the relay routes by that key's
+           fingerprint, so no other field needs to change. -->
+      <div class="row" id="clusterRow" style="display:none">
+        <div class="field" style="flex:2">
+          <label data-i18n="field.cluster">Server Cluster</label>
+          <select id="clusterSelect"></select>
+        </div>
+      </div>
       <div class="row">
         <div class="field" style="flex:2">
           <label data-i18n="field.serverPubKey">nhp-server Public Key (Base64)</label>
@@ -867,6 +903,7 @@ if (result.success) {
       'seq.resp': 'Parse ACK/COK response and extract temporary access details',
       'seq.done': 'Redirect the user to the now-accessible protected resource',
 
+      'field.cluster': 'Server Cluster',
       'field.serverPubKey': 'nhp-server Public Key (Base64)',
       'field.agentPrivKey': 'nhp-agent Private Key (Base64)',
       'field.agentPrivKey.placeholder': 'Loaded from config.json on the public demo',
@@ -885,12 +922,14 @@ if (result.success) {
       'footer.ipUnavailable': 'IP detection unavailable',
       'footer.line1': 'Powered by <a href="https://github.com/OpenNHP/opennhp" target="_blank" rel="noopener"><strong>OpenNHP</strong></a> &mdash; Network-infrastructure Hiding Protocol',
       'footer.line2': 'Sponsored by: <a href="https://layerv.ai" target="_blank" rel="noopener">LayerV.ai</a>',
+      'footer.version': 'SDK v{version}',
 
       'log.demoLoaded': 'OpenNHP JavaScript SDK demo loaded',
       'log.sdkVersion': 'SDK version: {version}',
       'log.relayUrl': 'Relay URL: {url}',
       'log.flow': 'Flow: Web app → NHPAgent(relay) → POST /relay → nhp-server (UDP) → ACK → protected resource',
       'log.waiting': 'Waiting for demo keys from config.json (or fill them in manually below)',
+      'log.clusterSelected': 'Selected server cluster: {name}',
       'log.serverKeyRequired': 'Server Public Key is required',
       'log.agentKeyRequired': 'Agent Private Key is required',
       'log.creatingAgent': 'Creating NHPAgent (cipher={cipher}, transport=relay)',
@@ -975,6 +1014,7 @@ if (result.success) {
       'seq.resp': '解析 ACK/COK 响应并提取临时访问凭证',
       'seq.done': '将用户跳转到现已可访问的受保护资源',
 
+      'field.cluster': '服务器集群',
       'field.serverPubKey': 'nhp-server 公钥（Base64）',
       'field.agentPrivKey': 'nhp-agent 私钥（Base64）',
       'field.agentPrivKey.placeholder': '公开演示页面会从 config.json 自动加载',
@@ -993,12 +1033,14 @@ if (result.success) {
       'footer.ipUnavailable': '无法检测 IP',
       'footer.line1': '驱动技术：<a href="https://github.com/OpenNHP/opennhp" target="_blank" rel="noopener"><strong>OpenNHP</strong></a> — 网络基础设施隐藏协议',
       'footer.line2': '赞助方：<a href="https://layerv.ai" target="_blank" rel="noopener">LayerV.ai</a>',
+      'footer.version': 'SDK v{version}',
 
       'log.demoLoaded': 'OpenNHP JavaScript SDK 演示已加载',
       'log.sdkVersion': 'SDK 版本：{version}',
       'log.relayUrl': ' nhp-relay服务器URL：{url}',
       'log.flow': '流程：Web 应用 → NHPAgent(relay) → POST /relay → nhp-server (UDP) → ACK → 受保护资源',
       'log.waiting': '正在等待 config.json 中的演示密钥（或在下方手动填写）',
+      'log.clusterSelected': '已选择服务器集群：{name}',
       'log.serverKeyRequired': '需要填写 nhp-server 公钥',
       'log.agentKeyRequired': '需要填写 nhp-agent 私钥',
       'log.creatingAgent': '正在创建 NHPAgent（cipher={cipher}，transport=relay）',
@@ -1101,6 +1143,12 @@ if (result.success) {
 
     // Status bar text is dynamic; refresh from tracked state.
     statusText.textContent = t(statusKey, statusVars);
+
+    // SDK version label sits beside the title; it's interpolated (and kept in
+    // its own span, not marked data-i18n, so it isn't clobbered above). Refresh
+    // it here so the "SDK v" prefix follows the language.
+    const verEl = document.getElementById('sdkVersion');
+    if (verEl) verEl.textContent = t('footer.version', { version: NHPAgent.version });
   }
 
   function setLanguage(lang) {
@@ -1189,9 +1237,122 @@ if (result.success) {
       apply('orgId',        cfg.orgId);
       apply('resourceId',   cfg.resourceId);
       apply('serviceId',    cfg.serviceId);
+      populateClusters(cfg.clusters);
+      populateProtectedHosts(cfg.clusters, cfg);
     } catch {
       // config.json is optional (local dev); ignore
     }
+  }
+
+  // Build the cluster picker from config.json "clusters". Each entry carries a
+  // display name, the target nhp-server public key, the protected resource host
+  // (for display), and the cluster's OWN agent private key. Each cluster has an
+  // INDEPENDENT agent identity — the two nhp-servers trust different agent keys
+  // — so selecting a cluster rewrites BOTH the serverPubKey and the agent
+  // private key fields. The relayUrl and user/device identity stay shared.
+  function populateClusters(clusters) {
+    const row = document.getElementById('clusterRow');
+    const sel = document.getElementById('clusterSelect');
+    if (!row || !sel) return;
+    // Only show the picker when config.json defines more than one cluster.
+    if (!Array.isArray(clusters) || clusters.length < 2) {
+      row.style.display = 'none';
+      return;
+    }
+    sel.innerHTML = '';
+    clusters.forEach((c, i) => {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      const host = c.serverHost ? ` — ${c.serverHost}` : '';
+      opt.textContent = `${c.name || ('Cluster ' + (i + 1))}${host}`;
+      opt.dataset.pubkey = c.serverPublicKey || '';
+      // Per-cluster agent key; falls back to empty so the shared flat
+      // agentPrivateKey field is left untouched when a cluster omits it.
+      opt.dataset.agentkey = c.agentPrivateKey || '';
+      sel.appendChild(opt);
+    });
+    sel.onchange = () => {
+      const opt = sel.options[sel.selectedIndex];
+      if (!opt) return;
+      const pk = opt.dataset.pubkey;
+      if (pk) {
+        const el = document.getElementById('serverPubKey');
+        if (el) el.value = pk;
+      }
+      const ak = opt.dataset.agentkey;
+      if (ak) {
+        const el = document.getElementById('agentPrivKey');
+        if (el) el.value = ak;
+      }
+      log('info', t('log.clusterSelected', { name: opt.textContent }));
+    };
+    row.style.display = '';
+    // This picker is slaved to the Protected Server picker (each AC maps to
+    // one cluster), so it is read-only — disabled to prevent a selection that
+    // contradicts the chosen AC. populateProtectedHosts() drives it.
+    sel.disabled = true;
+    sel.title = 'Determined by the Protected Server selection above';
+    // Default to the first cluster's keys (matches the flat config fields).
+    sel.selectedIndex = 0;
+    sel.onchange();
+  }
+
+  // Build the "Protected Server" picker from config.json. Each cluster's
+  // "acHost" is the protected resource hostname (ac.opennhp.org /
+  // ac2.opennhp.org). This picker is the PRIMARY selector: each AC belongs
+  // to exactly one nhp-server cluster, so picking an AC also drives which
+  // cluster the knock goes to. The Server Cluster picker below is slaved to
+  // this one — it mirrors the selection and is disabled so the two can't
+  // disagree. Each AC option carries its source cluster index in
+  // dataset.cluster, so the mapping survives a cluster that omits acHost
+  // (no positional-index assumption between the two lists).
+  function populateProtectedHosts(clusters, cfg) {
+    const sel = document.getElementById('protectedHost');
+    const scanBtn = document.getElementById('scanBtn');
+    if (!sel) return;
+
+    // Collect AC hosts from clusters[].acHost; fall back to the flat acHost
+    // (local dev) when no clusters are defined. Each host option records its
+    // originating cluster index in dataset.cluster so the Server Cluster
+    // picker can be slaved by explicit cluster, not by positional index — a
+    // cluster that omits acHost would otherwise misalign the two lists and
+    // silently knock the wrong cluster's server pubkey/agent key.
+    const hosts = [];
+    if (Array.isArray(clusters)) {
+      clusters.forEach((c, i) => { if (c && c.acHost) hosts.push({ host: c.acHost, cluster: i }); });
+    }
+    if (!hosts.length && cfg && cfg.acHost) hosts.push({ host: cfg.acHost, cluster: 0 });
+    if (!hosts.length) return;
+
+    sel.innerHTML = '';
+    hosts.forEach(({ host, cluster }) => {
+      const opt = document.createElement('option');
+      opt.value = host;
+      opt.textContent = `https://${host}`;
+      opt.dataset.cluster = String(cluster);
+      sel.appendChild(opt);
+    });
+
+    const clusterSel = document.getElementById('clusterSelect');
+
+    const sync = () => {
+      const opt = sel.options[sel.selectedIndex];
+      const host = sel.value;
+      if (scanBtn) {
+        scanBtn.href = `https://dnschecker.org/port-scanner.php?query=${encodeURIComponent(host)}&ptype=server`;
+      }
+      // Slave the Server Cluster picker to this selection by the AC's own
+      // cluster index, then fire its onchange so the server pubkey + agent
+      // key swap follows.
+      const clusterIdx = opt ? Number(opt.dataset.cluster) : 0;
+      if (clusterSel && clusterSel.options.length > clusterIdx) {
+        clusterSel.selectedIndex = clusterIdx;
+        if (typeof clusterSel.onchange === 'function') clusterSel.onchange();
+      }
+    };
+    sel.onchange = sync;
+    sel.selectedIndex = 0;
+    sync();
   }
 
   // Token Modal functionality
@@ -1583,7 +1744,15 @@ if (result.success) {
         const hosts = result.resourceHosts || {};
         const firstHost = Object.values(hosts)[0];
         if (firstHost) {
-          const redirectUrl = `https://${firstHost}`;
+          // Protected resources are served over https (public demo: ac /
+          // ac2.opennhp.org; local docker: nginx with a self-signed cert on
+          // :8443 / :8444). The resHost is a bare host[:port], so default to
+          // https — NOT the page's own scheme, since the local demo page is
+          // plain http but the resource behind nginx is still https. If a
+          // resHost ever carries an explicit scheme, honor it as-is.
+          const redirectUrl = /^https?:\/\//.test(firstHost)
+            ? firstHost
+            : `https://${firstHost}`;
           log('info', t('log.redirecting', { url: redirectUrl }));
           startRedirectCountdown(redirectUrl, 5);
         } else {

@@ -24,6 +24,12 @@ CookieDomain = "opennhp.org"
 
 ["demo".Resources."demoServer"]
 ACId = "testAC-1"
+# Standard single-cluster docker demo: the nhp-agent/nginx entrypoint is exposed
+# on host :443 (docker-compose.yaml), so the browser reaches the resource at
+# https://localhost with no port suffix. Stacks that expose the entrypoint on a
+# different host port (docker-compose.dhp.yaml -> :8443,
+# docker-compose.multicluster.yaml -> :8443/:8444) mount their own override of
+# this file instead of mutating this shared default.
 Hostname = "localhost"
 Addr.Ip = "177.7.0.10"
 Addr.Port = 80 # empty or 0 for all ports

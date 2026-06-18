@@ -1,0 +1,10 @@
+[http]
+  [http.routers]
+    [http.routers.router-cluster2]
+      entryPoints = ["web"]
+      rule = "PathPrefix(`/`)"
+      service = "service-demo-c2"
+  [http.services]
+    [http.services.service-demo-c2.loadBalancer]
+      [[http.services.service-demo-c2.loadBalancer.servers]]
+        url = "http://web-app-c2:8080"

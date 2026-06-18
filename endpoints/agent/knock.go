@@ -99,8 +99,19 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 	}
 	addrStr := sendAddr.String()
 
+	// The body HeaderType MUST equal the wire HeaderType set on knkMd below.
+	// Carrying it inside the AEAD-authenticated body lets the server verify
+	// the (unauthenticated) wire value and detect on-path NHP_KNK / NHP_RKN
+	// <-> NHP_EXT flips. Derive both from this single variable so they can't
+	// drift apart.
+	headerType := core.NHP_KNK
+	if useCookie {
+		headerType = core.NHP_RKN
+	}
+
 	a.knockUserMutex.RLock()
 	knkMsg := &common.AgentKnockMsg{
+		HeaderType:     headerType,
 		UserId:         a.knockUser.UserId,
 		DeviceId:       a.deviceId,
 		OrganizationId: a.knockUser.OrganizationId,
@@ -114,7 +125,7 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 	knkBytes, _ := json.Marshal(knkMsg)
 	knkMd := &core.MsgData{
 		RemoteAddr:    sendAddr.(*net.UDPAddr),
-		HeaderType:    core.NHP_KNK,
+		HeaderType:    headerType,
 		CipherScheme:  a.config.DefaultCipherScheme,
 		TransactionId: a.device.NextCounterIndex(),
 		Compress:      true,
@@ -123,7 +134,6 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 		ResponseMsgCh: make(chan *core.PacketParserData),
 	}
 	if useCookie {
-		knkMd.HeaderType = core.NHP_RKN
 		// Carry the cookie the previous KNK round stashed on this
 		// target. ExternalCookie short-circuits the addHMAC fallback
 		// to ConnData.CookieStore (initiator.go:444), which would
@@ -238,6 +248,9 @@ func (a *UdpAgent) ExitKnockRequest(res *KnockTarget) (ackMsg *common.ServerKnoc
 
 	a.knockUserMutex.RLock()
 	knkMsg := &common.AgentKnockMsg{
+		// Mirror the wire HeaderType (NHP_EXT) inside the AEAD-authenticated
+		// body so the server can verify it (see endpoints/server/knock_headertype.go).
+		HeaderType:     core.NHP_EXT,
 		UserId:         a.knockUser.UserId,
 		DeviceId:       a.deviceId,
 		OrganizationId: a.knockUser.OrganizationId,

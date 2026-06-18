@@ -6,7 +6,8 @@ DEPLOY_PATH="${deploy_path}"
 # Create deploy directory
 mkdir -p "$DEPLOY_PATH/etc"
 mkdir -p "$DEPLOY_PATH/cert"
-mkdir -p "$DEPLOY_PATH/log"
+# nhp-acd writes to ExeDirPath/logs (plural); see endpoints/ac/udpac.go.
+mkdir -p "$DEPLOY_PATH/logs"
 chown -R ec2-user:ec2-user "$DEPLOY_PATH"
 
 # Install certbot for TLS certificates
@@ -28,12 +29,15 @@ ExecStart=/home/ec2-user/nhp-ac/nhp-acd run
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536
-# nhp-acd shells out to iptables/ipset, both of which require
-# CAP_NET_ADMIN. Granted as an ambient capability so the unprivileged
-# user inherits it across exec; bounded so the process cannot acquire
-# additional capabilities at runtime.
-AmbientCapabilities=CAP_NET_ADMIN
-CapabilityBoundingSet=CAP_NET_ADMIN
+# nhp-acd shells out to iptables/ipset. On Amazon Linux 2023 (iptables-nft
+# backend) the unprivileged user needs more than CAP_NET_ADMIN: CAP_NET_RAW
+# for the raw sockets iptables opens, and CAP_DAC_OVERRIDE so it can take the
+# /run/xtables.lock file lock. Without these, `iptables -L` at startup fails
+# with "exit status 1" and the daemon never starts. Granted as ambient caps so
+# the unprivileged user inherits them across exec; bounded so the process
+# cannot acquire additional capabilities at runtime.
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE
 NoNewPrivileges=true
 
 [Install]

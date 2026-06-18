@@ -1,0 +1,26 @@
+# cluster 2 AC server block (public Let's Encrypt certificate)
+# Same protected demo content as cluster 1, served at ac2.opennhp.org.
+#
+# See ac.conf.template for why HTTP/2 is off and keepalive/cache are disabled:
+# NHP only blocks new connections on door close, so we force each refresh onto
+# a fresh TCP connection and keep the page out of the browser cache.
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name ${DOMAIN_AC2};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN_AC2}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_AC2}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    keepalive_timeout 0;
+
+    root  /var/www/acdemo;
+    index index.html;
+
+    location / {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        try_files $uri $uri/ =404;
+    }
+}

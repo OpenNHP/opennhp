@@ -43,8 +43,10 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # Restrict tools to safe GitHub CLI operations
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh issue comment:*),Bash(gh search:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr review:*),Bash(gh pr checks:*)"'
+          # Restrict tools to safe GitHub CLI operations. Mention-triggered
+          # replies are comment-only so claude-pr-review stays the only
+          # github-actions[bot] author of blocking reviews.
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh issue comment:*),Bash(gh search:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr checks:*)"'
 
   # Automatic code review on PR open/update
   claude-pr-review:
@@ -53,11 +55,17 @@ jobs:
       (github.event.action == 'opened' || github.event.action == 'synchronize' || github.event.action == 'reopened') &&
       !endsWith(github.actor, '[bot]')
     runs-on: ubuntu-latest
+    # Superseded runs may leave stale reviews until the latest run reaches
+    # cleanup; the head/review guards below make that convergence explicit.
+    concurrency:
+      group: claude-pr-review-${{ github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: true
     permissions:
       contents: read
       pull-requests: write
+      # The action may post PR progress comments through the issue-comments API;
+      # Claude itself cannot call `gh pr comment` in this job's tool allow-list.
       issues: write
-      id-token: write
       actions: read
     steps:
       # SECURITY: pull_request_target exposes repository secrets and a write token.
@@ -72,23 +80,24 @@ jobs:
           fetch-depth: 0
 
       - name: Run Claude Code Review
-        id: claude-review
+        id: claude_review
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # GitHub auth: use the workflow GITHUB_TOKEN directly. Under
-          # pull_request_target the default OIDC -> GitHub-App token exchange is
-          # rejected ("Invalid OIDC token", anthropics/claude-code-action#873), so
-          # bypass it. Reviews post as github-actions[bot]; the job's permissions
-          # block scopes this token (pull-requests/issues: write, contents: read).
+          # GitHub auth: write reviews with GITHUB_TOKEN so GitHub's hard
+          # "github-actions[bot] cannot approve" guard still protects required
+          # review branch protection. A later app-token step clears stale
+          # older-commit bot requests only after Claude posts successfully.
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Restrict tools to safe GitHub CLI operations for PR review
-          claude_args: '--allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Bash(gh pr checks:*),Bash(gh pr comment:*)"'
+          claude_args: '--allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Bash(gh pr checks:*)"'
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
             You are a senior code reviewer. Review this PR thoroughly.
+            Only review the PR number above in the repository above. Do not submit
+            reviews, comments, or checks requests against any other PR or repository.
 
             Use the repository's CLAUDE.md for guidance on project conventions, code style, and architecture.
 
@@ -106,15 +115,202 @@ jobs:
             - If you find only minor issues (categories 4-5):
               `gh pr review ${{ github.event.pull_request.number }} --comment --body "your review"`
             - If the code looks good (post a comment, NOT a formal approval — the
-              GITHUB_TOKEN bot cannot approve PRs, and a bot approval must not
-              satisfy required-review branch protection):
+              stale older-commit bot requests will be dismissed after this
+              review posts successfully, and the GITHUB_TOKEN bot cannot approve):
               `gh pr review ${{ github.event.pull_request.number }} --comment --body "your review"`
 
             ## Response Format
             Start your review with a summary line:
             - "🚨 **Changes Requested** - Found [N] issue(s) that must be addressed"
             - "💬 **Comment** - Found [N] suggestion(s) for improvement"
-            - "✅ **Approved** - Code looks good"
+            - "✅ **Looks Good** - Code looks good"
 
             Then list specific issues with file paths and line numbers.
             Be constructive and actionable. Focus on significant issues, not style nitpicks.
+
+      - name: Find stale bot changes-requested reviews
+        if: steps.claude_review.outcome == 'success'
+        id: find_stale_reviews
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # Keep this single-owner. If another workflow must post blocking
+          # github-actions[bot] reviews, add a distinct marker before widening
+          # the stale-review dismissal filter.
+          REVIEW_BOT_LOGIN: github-actions[bot]
+        run: |
+          set -euo pipefail
+
+          # Find stale bot reviews with GITHUB_TOKEN first, so the release-please
+          # app token is minted only when there is stale review state to clear.
+          listing_failed=false
+
+          read_current_head_sha() {
+            for attempt in 1 2 3; do
+              if gh pr view "${PR_NUMBER}" --repo "${GH_REPO}" --json headRefOid --jq .headRefOid; then
+                return 0
+              fi
+              echo "::warning::failed to read current PR head on attempt ${attempt}" >&2
+              [ "${attempt}" -eq 3 ] || sleep $((attempt * 2))
+            done
+            return 1
+          }
+
+          # Unknown head state is treated like a listing failure so a green
+          # review check cannot hide stale blockers when cleanup state is unclear.
+          current_head_sha="$(read_current_head_sha)" || {
+            echo "::warning::failed to read current PR head before stale review dismissal after retries"
+            listing_failed=true
+            echo "listing_failed=${listing_failed}" >> "${GITHUB_OUTPUT}"
+            echo "stale_review_ids=" >> "${GITHUB_OUTPUT}"
+            exit 0
+          }
+          if [ "${current_head_sha}" != "${HEAD_SHA}" ]; then
+            echo "::notice::PR head moved from ${HEAD_SHA} to ${current_head_sha}; skipping stale review dismissal for this run"
+            echo "listing_failed=${listing_failed}" >> "${GITHUB_OUTPUT}"
+            echo "stale_review_ids=" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          stale_review_ids=""
+          for attempt in 1 2 3; do
+            if stale_review_ids="$(
+              # ubuntu-latest ships a gh version with --slurp support; preserve
+              # that requirement, plus Ruby, if this job moves to a pinned
+              # or minimal runner image.
+              gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}/reviews" --paginate --slurp |
+              ruby -rjson -e '
+                pages = JSON.parse(STDIN.read)
+                reviews = pages.flat_map { |page| page.is_a?(Array) ? page : [page] }
+                head_sha = ENV.fetch("HEAD_SHA")
+                bot_logins = [ENV.fetch("REVIEW_BOT_LOGIN")].compact.reject(&:empty?)
+                fresh_review_seen = reviews.any? do |review|
+                  review["commit_id"] == head_sha &&
+                    bot_logins.include?(review.dig("user", "login"))
+                end
+                unless fresh_review_seen
+                  warn "::notice::no same-head #{bot_logins.join("/")} review found for #{head_sha}; skipping stale review dismissal"
+                  exit
+                end
+
+                reviews.each do |review|
+                  next unless review["state"] == "CHANGES_REQUESTED"
+                  # Keep same-head requests so a review rerun cannot clear a
+                  # current blocker before the replacement review is posted;
+                  # duplicate same-head bot reviews are the accepted tradeoff.
+                  # claude-pr-review is the only workflow allowed to create
+                  # github-actions[bot] blocking reviews; mention-triggered
+                  # Claude replies are intentionally comment-only.
+                  next if review["commit_id"] == head_sha
+                  next unless bot_logins.include?(review.dig("user", "login"))
+                  puts review.fetch("id")
+                end
+              '
+            )"; then
+              listing_failed=false
+              break
+            fi
+            listing_failed=true
+            echo "::warning::failed to list stale bot reviews on attempt ${attempt}; check GitHub API access and gh api --slurp support"
+            [ "${attempt}" -eq 3 ] || sleep $((attempt * 2))
+          done
+
+          if [ "${listing_failed}" = "true" ]; then
+            stale_review_ids=""
+          fi
+
+          echo "listing_failed=${listing_failed}" >> "${GITHUB_OUTPUT}"
+          if [ -n "${stale_review_ids}" ]; then
+            {
+              echo "stale_review_ids<<EOF"
+              printf '%s\n' "${stale_review_ids}"
+              echo "EOF"
+            } >> "${GITHUB_OUTPUT}"
+          else
+            echo "stale_review_ids=" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Generate stale-review dismissal app token
+        if: steps.find_stale_reviews.outputs.stale_review_ids != ''
+        id: review_app_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          # Reuse the existing release-please app only when stale bot review
+          # states actually need dismissal.
+          app-id: ${{ vars.RELEASE_PLEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
+          permission-pull-requests: write
+
+      - name: Dismiss stale bot changes-requested reviews
+        if: steps.find_stale_reviews.outputs.stale_review_ids != '' && steps.review_app_token.outcome == 'success'
+        id: dismiss_stale_reviews
+        env:
+          GH_TOKEN: ${{ steps.review_app_token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          STALE_REVIEW_IDS: ${{ steps.find_stale_reviews.outputs.stale_review_ids }}
+        run: |
+          set -euo pipefail
+
+          # GITHUB_TOKEN can write the review but cannot dismiss stale bot
+          # reviews, so stale cleanup uses the app token after Claude posts.
+          # Missing or rotated app credentials should surface as a red
+          # claude-pr-review check, not as a silent fallback.
+          dismissal_failed=false
+
+          read_current_head_sha() {
+            for attempt in 1 2 3; do
+              if gh pr view "${PR_NUMBER}" --repo "${GH_REPO}" --json headRefOid --jq .headRefOid; then
+                return 0
+              fi
+              echo "::warning::failed to re-read current PR head on attempt ${attempt}" >&2
+              [ "${attempt}" -eq 3 ] || sleep $((attempt * 2))
+            done
+            return 1
+          }
+
+          # Re-check fail-closed; dismissing against an unknown head risks
+          # clearing the wrong review state after a rapid push.
+          current_head_sha="$(read_current_head_sha)" || {
+            echo "::warning::failed to re-read current PR head before stale review dismissal after retries"
+            dismissal_failed=true
+            echo "dismissal_failed=${dismissal_failed}" >> "${GITHUB_OUTPUT}"
+            exit 0
+          }
+          if [ "${current_head_sha}" != "${HEAD_SHA}" ]; then
+            echo "::notice::PR head moved from ${HEAD_SHA} to ${current_head_sha}; skipping stale review dismissal for this run"
+            echo "dismissal_failed=${dismissal_failed}" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          while read -r review_id; do
+            [ -n "${review_id}" ] || continue
+            dismissed=false
+            for attempt in 1 2 3; do
+              if gh api --method PUT \
+                "repos/${GH_REPO}/pulls/${PR_NUMBER}/reviews/${review_id}/dismissals" \
+                -f message="Superseded by Claude review for ${HEAD_SHA}."; then
+                dismissed=true
+                break
+              fi
+              echo "::warning::failed to dismiss stale review ${review_id} on attempt ${attempt}"
+              [ "${attempt}" -eq 3 ] || sleep $((attempt * 2))
+            done
+            if [ "${dismissed}" != "true" ]; then
+              dismissal_failed=true
+              echo "::warning::failed to dismiss stale review ${review_id} after retries"
+            fi
+          done <<< "${STALE_REVIEW_IDS}"
+
+          echo "dismissal_failed=${dismissal_failed}" >> "${GITHUB_OUTPUT}"
+
+      - name: Fail if stale bot reviews could not be checked or dismissed
+        # Fail closed: a red review check is preferable to a green check that
+        # hides stale blockers or unclear partial-dismissal state.
+        if: always() && (steps.find_stale_reviews.outputs.listing_failed == 'true' || steps.dismiss_stale_reviews.outputs.dismissal_failed == 'true')
+        run: |
+          echo "::error::stale bot review state may remain blocked; check dismissal step warnings"
+          exit 1

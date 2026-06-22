@@ -34,7 +34,7 @@ jobs:
       actions: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
@@ -74,7 +74,7 @@ jobs:
       # (gh pr diff/view) and Claude's tools are restricted to read-only `gh pr`
       # subcommands below, so the diff content is treated as data, not code.
       - name: Checkout base (trusted) — never the PR head
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0

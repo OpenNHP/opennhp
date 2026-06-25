@@ -97,7 +97,7 @@ fi
 # --expand so new vhosts (e.g. reg.opennhp.org) get covered.
 if [ "$NEED_ISSUE" = "0" ] && [ -n "$EXTRA_DOMAINS" ]; then
     EXISTING_SANS=$(sudo openssl x509 -noout -ext subjectAltName -in "$CERT_DIR/fullchain.pem" 2>/dev/null | \
-        sed 's/.*DNS://g' | tr ',' '\n' | sed 's/^ *//' | sort -u)
+        tr ',' '\n' | sed -n 's/^[[:space:]]*DNS://p' | sort -u)
     for d in $EXTRA_DOMAINS; do
         if ! echo "$EXISTING_SANS" | grep -qxF "$d"; then
             echo "[tls] existing cert missing SAN $d, re-issuing with --expand"

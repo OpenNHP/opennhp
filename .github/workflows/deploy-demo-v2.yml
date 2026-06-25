@@ -83,7 +83,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -225,7 +225,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
@@ -379,7 +379,7 @@ jobs:
           path: ./configs
 
       - name: Checkout code (for nginx + bootstrap scripts)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: repo
 
@@ -516,7 +516,7 @@ jobs:
           path: ./configs
 
       - name: Checkout code (for nginx + bootstrap scripts)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: repo
 
@@ -677,7 +677,7 @@ jobs:
           path: ./configs
 
       - name: Checkout code (for nginx + bootstrap scripts)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: repo
 
@@ -1061,7 +1061,7 @@ jobs:
           path: ./configs
 
       - name: Checkout code (for nginx + bootstrap scripts)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: repo
 
@@ -1178,7 +1178,7 @@ jobs:
 
     steps:
       - name: Checkout opennhp (sources, nginx + bootstrap scripts)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: opennhp
 

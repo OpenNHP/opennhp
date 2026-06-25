@@ -92,6 +92,21 @@ if sudo test -f "$CERT_DIR/fullchain.pem"; then
     fi
 fi
 
+# Even when the cert exists and is not near expiry, check whether any
+# EXTRA_DOMAINS are missing from its SAN list.  If so, re-issue with
+# --expand so new vhosts (e.g. reg.opennhp.org) get covered.
+if [ "$NEED_ISSUE" = "0" ] && [ -n "$EXTRA_DOMAINS" ]; then
+    EXISTING_SANS=$(sudo openssl x509 -noout -ext subjectAltName -in "$CERT_DIR/fullchain.pem" 2>/dev/null | \
+        sed 's/.*DNS://g' | tr ',' '\n' | sed 's/^ *//' | sort -u)
+    for d in $EXTRA_DOMAINS; do
+        if ! echo "$EXISTING_SANS" | grep -qxF "$d"; then
+            echo "[tls] existing cert missing SAN $d, re-issuing with --expand"
+            NEED_ISSUE=1
+            break
+        fi
+    done
+fi
+
 if [ "$NEED_ISSUE" = "1" ]; then
     D_ARGS="-d $PRIMARY_DOMAIN"
     for d in $EXTRA_DOMAINS; do

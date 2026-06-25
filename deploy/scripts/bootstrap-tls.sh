@@ -147,17 +147,19 @@ if [ "$NEED_ISSUE" = "1" ]; then
     fi
 
     EXPAND_FLAG=""
+    RENEW_FLAG="--keep-until-expiring"
     if sudo test -f "$CERT_DIR/fullchain.pem"; then
         EXPAND_FLAG="--expand"
-        echo "[tls] existing cert found, using --expand to add new SANs"
+        RENEW_FLAG="--force-renewal"
+        echo "[tls] existing cert found, using --expand --force-renewal to add new SANs"
     fi
-    echo "[tls] requesting certificate: $D_ARGS $EXPAND_FLAG"
+    echo "[tls] requesting certificate: $D_ARGS $EXPAND_FLAG $RENEW_FLAG"
     sudo "$CERTBOT_BIN" certonly \
         --non-interactive --agree-tos \
         --email "$ACME_EMAIL" \
         --dns-cloudflare --dns-cloudflare-credentials "$CF_INI" \
         --dns-cloudflare-propagation-seconds 30 \
-        --keep-until-expiring \
+        $RENEW_FLAG \
         $EXPAND_FLAG \
         $D_ARGS
 fi

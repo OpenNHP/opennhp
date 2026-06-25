@@ -98,13 +98,19 @@ fi
 if [ "$NEED_ISSUE" = "0" ] && [ -n "$EXTRA_DOMAINS" ]; then
     EXISTING_SANS=$(sudo openssl x509 -noout -ext subjectAltName -in "$CERT_DIR/fullchain.pem" 2>/dev/null | \
         tr ',' '\n' | sed -n 's/^[[:space:]]*DNS://p' | sort -u)
+    echo "[tls] existing cert SANs: $(echo "$EXISTING_SANS" | tr '\n' ' ')"
     for d in $EXTRA_DOMAINS; do
         if ! echo "$EXISTING_SANS" | grep -qxF "$d"; then
-            echo "[tls] existing cert missing SAN $d, re-issuing with --expand"
+            echo "[tls] SAN MISSING: $d — will re-issue with --expand"
             NEED_ISSUE=1
             break
+        else
+            echo "[tls] SAN present: $d"
         fi
     done
+    if [ "$NEED_ISSUE" = "0" ]; then
+        echo "[tls] all EXTRA_DOMAINS already in certificate, no action needed"
+    fi
 fi
 
 if [ "$NEED_ISSUE" = "1" ]; then
@@ -168,6 +174,14 @@ if [ -f /etc/nginx/nginx.conf ]; then
 fi
 
 sudo nginx -t
+
+# After certbot success, verify SANs include all expected domains.
+echo "[tls] --- certificate summary ---"
+sudo openssl x509 -noout -subject -issuer -dates -in "$CERT_DIR/fullchain.pem" 2>/dev/null || true
+echo "[tls] SANs after issuance:"
+sudo openssl x509 -noout -ext subjectAltName -in "$CERT_DIR/fullchain.pem" 2>/dev/null | tr ',' '\n' | sed 's/^/  [tls]   /' || true
+echo "[tls] --- end certificate summary ---"
+
 sudo systemctl enable nginx
 sudo systemctl reload nginx 2>/dev/null || sudo systemctl restart nginx
 

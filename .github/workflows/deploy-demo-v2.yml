@@ -550,7 +550,7 @@ jobs:
              NGINX_CONF='/tmp/server-nginx.conf' \
              /tmp/bootstrap-tls.sh"
 
-      - name: Setup SMTP credentials for OTP email
+      - name: Load SMTP credentials for OTP email
         run: |
           SECRET_JSON=$(aws secretsmanager get-secret-value \
             --secret-id opennhp/demo \
@@ -559,55 +559,24 @@ jobs:
 
           SMTP_HOST=$(echo "$SECRET_JSON" | jq -r '.smtp_host // empty')
           SMTP_USERNAME=$(echo "$SECRET_JSON" | jq -r '.smtp_username // empty')
+          SMTP_PASSWORD=$(echo "$SECRET_JSON" | jq -r '.smtp_password // empty')
 
-          if [ -z "$SMTP_PASSWORD" ]; then
-            # First deploy: derive SMTP password from IAM access key.
-            # The IAM access key ID is stored in smtp_username during the
-            # infra-demo workflow.  Read the IAM secret key, then call
-            # `aws ses get-smtp-password` to derive the SMTP credential.
-            SMTP_ACCESS_KEY_ID="$SMTP_USERNAME"
-            if [ -z "$SMTP_ACCESS_KEY_ID" ]; then
-              echo "SMTP not configured — OTP emails will be printed to server log"
-              echo "SMTP_HOST=" >> $GITHUB_ENV
-              echo "SMTP_PORT=" >> $GITHUB_ENV
-              echo "SMTP_USERNAME=" >> $GITHUB_ENV
-              echo "SMTP_PASSWORD=" >> $GITHUB_ENV
-              echo "SMTP_FROM=" >> $GITHUB_ENV
-              echo "SMTP_SUBJECT=" >> $GITHUB_ENV
-              exit 0
-            fi
-            echo "Deriving SMTP password from IAM access key ${SMTP_ACCESS_KEY_ID}..."
-            SMTP_PASSWORD=$(aws ses get-smtp-password \
-              --secret-key "$(aws iam list-access-keys --user-name opennhp-demo-ses-smtp --query 'AccessKeyMetadata[0].AccessKeyId' --output text)" \
-              --region ${{ env.AWS_REGION }} \
-              --query SmtpPassword --output text 2>/dev/null || echo "")
-            if [ -z "$SMTP_PASSWORD" ]; then
-              echo "WARNING: Could not derive SMTP password — OTP emails disabled"
-              exit 0
-            fi
-            # Write back to Secrets Manager (idempotent).
-            UPDATED=$(echo "$SECRET_JSON" | jq \
-              --arg h "$SMTP_HOST" \
-              --arg p "587" \
-              --arg u "$SMTP_USERNAME" \
-              --arg pw "$SMTP_PASSWORD" \
-              --arg f "noreply@opennhp.org" \
-              --arg s "Your OpenNHP Verification Code" \
-              '. + {smtp_host: $h, smtp_port: $p, smtp_username: $u, smtp_password: $pw, smtp_from: $f, smtp_subject: $s}')
-            aws secretsmanager put-secret-value \
-              --secret-id opennhp/demo \
-              --region ${{ env.AWS_REGION }} \
-              --secret-string "$UPDATED"
-            echo "SMTP credentials written to Secrets Manager"
+          if [ -z "$SMTP_HOST" ] || [ -z "$SMTP_USERNAME" ]; then
+            echo "SMTP not configured — OTP emails will be printed to server log"
+            echo "SMTP_HOST=" >> $GITHUB_ENV
+            echo "SMTP_PORT=" >> $GITHUB_ENV
+            echo "SMTP_USERNAME=" >> $GITHUB_ENV
+            echo "SMTP_PASSWORD=" >> $GITHUB_ENV
+            echo "SMTP_FROM=" >> $GITHUB_ENV
+            echo "SMTP_SUBJECT=" >> $GITHUB_ENV
+          else
+            echo "SMTP_HOST=$SMTP_HOST" >> $GITHUB_ENV
+            echo "SMTP_PORT=587" >> $GITHUB_ENV
+            echo "SMTP_USERNAME=$SMTP_USERNAME" >> $GITHUB_ENV
+            echo "SMTP_PASSWORD=$SMTP_PASSWORD" >> $GITHUB_ENV
+            echo "SMTP_FROM=noreply@opennhp.org" >> $GITHUB_ENV
+            echo "SMTP_SUBJECT=Your OpenNHP Verification Code" >> $GITHUB_ENV
           fi
-
-          # Export for envsubst in the plugin config rendering step.
-          echo "SMTP_HOST=$SMTP_HOST" >> $GITHUB_ENV
-          echo "SMTP_PORT=587" >> $GITHUB_ENV
-          echo "SMTP_USERNAME=$SMTP_USERNAME" >> $GITHUB_ENV
-          echo "SMTP_PASSWORD=$SMTP_PASSWORD" >> $GITHUB_ENV
-          echo "SMTP_FROM=noreply@opennhp.org" >> $GITHUB_ENV
-          echo "SMTP_SUBJECT=Your OpenNHP Verification Code" >> $GITHUB_ENV
 
       - name: Deploy nhp-serverd and plugins
         run: |

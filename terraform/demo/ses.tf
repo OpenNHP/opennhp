@@ -69,45 +69,12 @@ resource "aws_ses_email_identity" "noreply" {
   email = "noreply@opennhp.org"
 }
 
-# ── SMTP IAM user ───────────────────────────────────────────────────
-# SES SMTP uses IAM credentials.  The IAM user gets ses:SendRawEmail;
-# the CI pipeline derives the SMTP password from the IAM access key
-# secret via:  aws ses get-smtp-password --secret-key <key> --region us-east-2
-
-resource "aws_iam_user" "ses_smtp" {
-  name = "opennhp-demo-ses-smtp"
-  tags = var.tags
-}
-
-resource "aws_iam_user_policy" "ses_smtp" {
-  name = "ses-send-email"
-  user = aws_iam_user.ses_smtp.name
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "ses:SendEmail",
-          "ses:SendRawEmail",
-        ]
-        Resource = ["*"]
-        Condition = {
-          StringEquals = {
-            "ses:FromAddress" = "noreply@opennhp.org"
-          }
-        }
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["ses:GetSendQuota"]
-        Resource = ["*"]
-      }
-    ]
-  })
-}
-
-resource "aws_iam_access_key" "ses_smtp" {
-  user = aws_iam_user.ses_smtp.name
-}
+# ── SMTP credentials ────────────────────────────────────────────────
+# SES SMTP credentials are created ONCE in the AWS Console
+# (SES → SMTP settings → Create SMTP credentials) and stored
+# manually in the opennhp/demo Secrets Manager secret:
+#   smtp_host, smtp_port, smtp_username, smtp_password,
+#   smtp_from, smtp_subject
+#
+# No Terraform-managed IAM user needed — the SMTP credentials are
+# independent IAM credentials scoped to ses:SendRawEmail only.

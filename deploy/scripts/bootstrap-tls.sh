@@ -146,13 +146,13 @@ if [ "$NEED_ISSUE" = "1" ]; then
         sudo rm -rf /etc/letsencrypt/accounts/*
     fi
 
-    echo "[tls] requesting certificate: $D_ARGS $EXPAND_FLAG"
     EXPAND_FLAG=""
-if sudo test -f "$CERT_DIR/fullchain.pem"; then
-    EXPAND_FLAG="--expand"
-    echo "[tls] existing cert found, using --expand to add new SANs"
-fi
-sudo "$CERTBOT_BIN" certonly \
+    if sudo test -f "$CERT_DIR/fullchain.pem"; then
+        EXPAND_FLAG="--expand"
+        echo "[tls] existing cert found, using --expand to add new SANs"
+    fi
+    echo "[tls] requesting certificate: $D_ARGS $EXPAND_FLAG"
+    sudo "$CERTBOT_BIN" certonly \
         --non-interactive --agree-tos \
         --email "$ACME_EMAIL" \
         --dns-cloudflare --dns-cloudflare-credentials "$CF_INI" \

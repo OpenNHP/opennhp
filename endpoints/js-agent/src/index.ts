@@ -63,6 +63,11 @@ export type {
   AgentKnockMsg,
   ServerKnockAckMsg,
   AgentIdentity,
+  AgentOTPMsg,
+  AgentRegisterMsg,
+  ServerRegisterAckMsg,
+  OtpResult,
+  RegisterResult,
 } from './types.js';
 
 // Crypto utilities (for advanced usage)

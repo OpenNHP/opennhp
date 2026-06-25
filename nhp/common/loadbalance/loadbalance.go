@@ -10,6 +10,7 @@ package loadbalance
 
 import (
 	"fmt"
+	"hash/fnv"
 	"math/rand/v2"
 	"sync/atomic"
 )
@@ -166,6 +167,25 @@ func (p *Picker[T]) Pick() (T, bool) {
 		// selection (visible in metrics) rather than 503s.
 		return p.instances[0], true
 	}
+}
+
+// PickByKey returns an instance deterministically for the given key using
+// FNV-64a hashing. Different keys MAY land on different instances; the
+// same key always lands on the same instance as long as the instance
+// slice is unchanged. Used by the relay to implement StickyInstance
+// (source-IP-based session affinity).
+func (p *Picker[T]) PickByKey(key string) (T, bool) {
+	var zero T
+	if len(p.instances) == 0 {
+		return zero, false
+	}
+	if len(p.instances) == 1 {
+		return p.instances[0], true
+	}
+	h := fnv.New64a()
+	h.Write([]byte(key))
+	idx := h.Sum64() % uint64(len(p.instances))
+	return p.instances[idx], true
 }
 
 // Len reports the number of instances in this picker. Useful for

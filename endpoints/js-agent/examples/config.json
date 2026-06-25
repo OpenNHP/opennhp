@@ -1,8 +1,8 @@
 {
-  "_comment":        "LOCAL DEV CONFIG - local docker multicluster stack via relay transport. relayUrl port matches docker-compose.multicluster.yaml relay http mapping (8081). clusters[] drives the cluster picker; identity + relayUrl are shared. NOTE: the PUBLIC AWS demo gives each cluster an INDEPENDENT agentPrivateKey (each nhp-server trusts only its own); this local stack intentionally reuses ONE agent key across both clusters so docker/multicluster/nhp-server-c2 can e2e-knock without a second trusted key. The per-cluster agentPrivateKey fields below are present so the picker's key-swap path is exercised locally too.",
+  "_comment":        "LOCAL DEV CONFIG - docker compose via relay transport. relayUrl matches docker-compose.yaml relay mapping (8080). For multicluster, change to 8081.",
   "cipherScheme":    "gmsm",
   "transport":       "relay",
-  "relayUrl":        "http://localhost:8081/relay",
+  "relayUrl":        "http://localhost:8080/relay",
   "serverHost":      "server.opennhp.org",
   "acHost":          "ac.opennhp.org",
   "serverPort":      443,

@@ -115,6 +115,9 @@ export enum PacketType {
   RNK = 8,  // Re-knock
   RLY = 9,  // Relay
   AOL = 10, // Agent Online
+  OTP = 12, // One-Time Password request
+  REG = 13, // Register public key
+  RAK = 14, // Register acknowledge
 }
 
 /** NHP protocol version */
@@ -228,4 +231,75 @@ export interface AgentIdentity {
   deviceId: string;
   /** Organization ID (optional) */
   organizationId?: string;
+}
+
+/**
+ * Agent OTP Request Message - matches Go AgentOTPMsg
+ * Sent by agent to request a one-time password for registration.
+ */
+export interface AgentOTPMsg {
+  /** User ID */
+  usrId: string;
+  /** Device ID */
+  devId: string;
+  /** Organization ID (optional) */
+  orgId?: string;
+  /** Auth Service Provider ID */
+  aspId: string;
+  /** User data map (optional) — e.g. email address under "email" key */
+  usrData?: Record<string, unknown>;
+}
+
+/**
+ * Agent Register Message - matches Go AgentRegisterMsg
+ * Sent by agent to register its public key with the server.
+ */
+export interface AgentRegisterMsg {
+  /** User ID */
+  usrId: string;
+  /** Device ID */
+  devId: string;
+  /** Organization ID (optional) */
+  orgId?: string;
+  /** Auth Service Provider ID */
+  aspId: string;
+  /** One-time password received via email */
+  otp: string;
+  /** User data map (optional) */
+  usrData?: Record<string, unknown>;
+}
+
+/**
+ * Server Register Acknowledge Message - matches Go ServerRegisterAckMsg
+ * Sent by server to confirm registration.
+ */
+export interface ServerRegisterAckMsg {
+  /** Error code ("0" means success) */
+  errCode: string;
+  /** Error message (if errCode is not "0") */
+  errMsg?: string;
+  /** Auth Service Provider ID */
+  aspId?: string;
+}
+
+/**
+ * Result of a registration OTP request.
+ */
+export interface OtpResult {
+  /** Whether the OTP request was sent successfully */
+  success: boolean;
+  /** Error message if request failed */
+  error?: string;
+}
+
+/**
+ * Result of a registration attempt.
+ */
+export interface RegisterResult {
+  /** Whether registration was successful */
+  success: boolean;
+  /** Error message if registration failed */
+  error?: string;
+  /** Error code if registration failed */
+  errorCode?: string;
 }

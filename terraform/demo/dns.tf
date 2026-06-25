@@ -96,3 +96,13 @@ resource "cloudflare_record" "agent" {
   ttl     = 300
   comment = "NHP Agent app (hosted on relay) - managed by Terraform"
 }
+
+resource "cloudflare_record" "reg" {
+  zone_id = var.cloudflare_zone_id
+  name    = "reg"
+  content = aws_eip.relay.public_ip
+  type    = "A"
+  proxied = false
+  ttl     = 300
+  comment = "NHP Agent Registration page (hosted on relay) - managed by Terraform"
+}

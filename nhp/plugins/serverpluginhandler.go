@@ -176,9 +176,25 @@ type SessionSetFunc func(ctx *gin.Context, key string, val interface{})
 type SessionSaveFunc func(ctx *gin.Context) error
 type SessionClearFunc func(ctx *gin.Context)
 
+// OTP and registration helper function types. These allow plugins to
+// interact with the server's AgentKeyStore without directly accessing
+// the database.
+type PluginOTPGenerateFunc func(userId, deviceId string, ttlSeconds int64) (otpCode string, err error)
+type PluginOTPValidateFunc func(userId, deviceId, otpCode string) error
+type PluginRegisterKeyFunc func(userId, deviceId, pubKeyBase64 string) error
+type PluginIsRegisteredFunc func(userId, deviceId string) (bool, error)
+
 type NhpServerPluginHelper struct {
 	StopSignal              <-chan struct{}
 	AuthWithNhpCallbackFunc NhpPluginPostAuthFunc
+	// OTP and registration helpers — set by server, called by plugin.
+	GenerateOTPFunc  PluginOTPGenerateFunc
+	ValidateOTPFunc  PluginOTPValidateFunc
+	RegisterKeyFunc  PluginRegisterKeyFunc
+	IsRegisteredFunc PluginIsRegisteredFunc
+	// OTPTTLSeconds is the server-configured OTP lifetime in seconds.
+	// Plugins should read this instead of hardcoding a TTL.
+	OTPTTLSeconds int64
 }
 
 type HttpServerPluginHelper struct {

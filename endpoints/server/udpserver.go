@@ -122,6 +122,9 @@ type UdpServer struct {
 	// that can't acquire a slot are dropped (the agent will retry).
 	handlerSem chan struct{}
 
+	// keyStore persists agent public keys and OTP records in SQLite.
+	keyStore *AgentKeyStore
+
 	//NHP-DB
 	dbPeerMapMutex sync.Mutex
 	dbPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
@@ -363,6 +366,14 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		_ = s.loadResources()
 	}
 
+	// Initialize agent key store (SQLite).
+	ks, err := NewAgentKeyStore(s.config.DatabasePath)
+	if err != nil {
+		log.Critical("failed to open agent key store: %v", err)
+		return err
+	}
+	s.keyStore = ks
+
 	s.remoteConnectionMap = make(map[string]*UdpConn)
 	s.relayConnCount = make(map[string]int)
 	s.acConnectionMap = make(map[string]*ACConn)
@@ -381,6 +392,22 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.recvMsgCh = s.device.DecryptedMsgQueue
 	s.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
 	s.handlerSem = make(chan struct{}, MaxConcurrentHandlers)
+
+	// Register keystore-backed peer lookup fallback so dynamically
+	// registered agents (via NHP-REG) are accepted even though they
+	// are not in the static agent.toml peer pool.
+	if s.keyStore != nil {
+		opt := s.device.GetOption()
+		opt.PeerLookupFallback = func(pubKey []byte, headerType int) bool {
+			if headerType != core.NHP_KNK && headerType != core.NHP_RKN && headerType != core.NHP_EXT {
+				return false
+			}
+			pk := base64.StdEncoding.EncodeToString(pubKey)
+			found, _ := s.keyStore.FindAgentByPublicKey(pk)
+			return found
+		}
+		s.device.SetOption(opt)
+	}
 
 	// start device routines
 	s.device.Start()
@@ -417,6 +444,10 @@ func (s *UdpServer) Stop() {
 	s.wg.Wait()
 	close(s.sendMsgCh)
 	s.ClosePlugins()
+
+	if s.keyStore != nil {
+		s.keyStore.Close()
+	}
 
 	log.Info("==========================")
 	log.Info("=== NHP-Server stopped ===")
@@ -1307,6 +1338,26 @@ func (us *UdpServer) NewNhpServerHelper(ppd *core.PacketParserData) *plugins.Nhp
 
 	h.AuthWithNhpCallbackFunc = func(req *common.NhpAuthRequest, res *common.ResourceData) (*common.ServerKnockAckMsg, error) {
 		return us.handleNhpOpenResource(req, res)
+	}
+
+	// Keystore-backed OTP and registration helpers.
+	if us.keyStore != nil {
+		ttl := int64(us.config.OTPTTLSeconds)
+		if ttl <= 0 {
+			ttl = 300 // 5 minutes default
+		}
+		h.OTPTTLSeconds = ttl
+		h.GenerateOTPFunc = func(userId, deviceId string, ttlSeconds int64) (string, error) {
+			ttl := time.Duration(ttlSeconds) * time.Second
+			return us.keyStore.GenerateOTP(OTPParams{
+				UserId:   userId,
+				DeviceId: deviceId,
+				TTL:      ttl,
+			})
+		}
+		h.ValidateOTPFunc = us.keyStore.ValidateOTP
+		h.RegisterKeyFunc = us.keyStore.RegisterAgentKey
+		h.IsRegisteredFunc = us.keyStore.IsAgentRegistered
 	}
 
 	return h

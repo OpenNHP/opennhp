@@ -136,6 +136,15 @@ var (
 	ErrHttpReturnedWithError       = newError("54003", "http returns with error", "http返回带有错误")
 	ErrHttpResourceAddressNotFound = newError("54004", "http resource address not found", "http无法找到资源地址")
 
+	// registration
+	ErrOTPInvalid                 = newError("56001", "otp validation failed", "一次性验证码验证失败")
+	ErrOTPExpired                 = newError("56002", "otp has expired", "一次性验证码已过期")
+	ErrOTPAlreadyUsed             = newError("56003", "otp already used", "一次性验证码已被使用")
+	ErrPublicKeyAlreadyRegistered = newError("56004", "public key already registered by another user", "公钥已被其他用户注册")
+	ErrAgentAlreadyRegistered     = newError("56005", "agent already registered", "设备已注册")
+	ErrAgentNotRegistered         = newError("56006", "agent not registered", "设备未注册")
+	ErrAgentKeyStoreError         = newError("56007", "agent key store operation failed", "密钥存储操作失败")
+
 	// db
 	ErrTEENotAuthorized        = newError("55001", "TEE is  not authorized", "可信执行环境未授权")
 	ErrDataPrivateKeyStore     = newError("55002", "data private key store error", "数据私钥存储错误")

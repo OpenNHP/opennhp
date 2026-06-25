@@ -1,0 +1,25 @@
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${DOMAIN_REG};
+
+    # Cert SAN covers relay.*, agent.* and reg.*; share the single cert.
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN_RELAY}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_RELAY}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    root  /var/www/jsagent/reg;
+    index index.html;
+
+    # Registration page needs config.json for relay URL and server key.
+    # The /reg/ directory does not have its own copy — proxy the root one.
+    location = /config.json {
+        alias /var/www/jsagent/config.json;
+        add_header Cache-Control "no-store" always;
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}

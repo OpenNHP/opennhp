@@ -565,6 +565,22 @@
     </div>
   </div>
   <p class="subtitle" data-i18n-html="page.subtitle">The OpenNHP JavaScript SDK lets a browser app &ldquo;knock&rdquo; an nhp-server for zero-trust access before redirecting the user to a protected resource. Click <strong>Request Access</strong> button below to run the exact integration flow you'd add to your own web app &mdash; then peek at the right column for the equivalent code. SDK source on <a href="https://github.com/OpenNHP/opennhp/tree/main/endpoints/js-agent" target="_blank" rel="noopener">GitHub</a>.</p>
+  <p class="subtitle" id="reg-link" style="margin-top:-10px;margin-bottom:16px">&#128274; Need to register a new agent? <a href="reg.html" style="color:#58a6ff;font-weight:600">Open Registration Page</a> &mdash; keys are saved automatically and imported below.</p>
+  <div class="panel" id="reg-banner" style="display:none;margin-bottom:16px;border-color:#238636">
+    <div class="panel-title" style="color:#3fb950">&#x2705; Registered Agent Key Loaded</div>
+    <div style="font-size:13px;line-height:1.6">
+      <div>Keys imported from <strong>Agent Registration</strong> &mdash; your device is ready to knock.</div>
+      <div style="margin-top:4px;color:#8b949e">
+        User: <strong id="reg-banner-user" style="color:#c9d1d9"></strong> &middot;
+        Device: <strong id="reg-banner-device" style="color:#c9d1d9"></strong> &middot;
+        Server: <strong id="reg-banner-server" style="color:#c9d1d9"></strong>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="document.getElementById('knockBtn').click()" style="flex:0 0 auto">&#128274; Request Access with this key</button>
+        <button class="btn btn-secondary" onclick="clearRegData()" style="flex:0 0 auto;font-size:12px">Use demo keys instead</button>
+      </div>
+    </div>
+  </div>
 
   <div class="layout">
     <main>
@@ -1244,6 +1260,71 @@ if (result.success) {
     }
   }
 
+  // Read registration data saved by reg.html via localStorage, and pre-fill
+  // the agent key fields + select the matching cluster if possible.
+  function importRegisteredKey() {
+    try {
+      const raw = localStorage.getItem('nhp-reg-data');
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (!d.privateKey) return;
+
+      const apply = (id, v) => {
+        const el = document.getElementById(id);
+        if (el && v != null) { el.value = v; el.style.background = '#0d2b1e'; }
+      };
+      apply('agentPrivKey', d.privateKey);
+      apply('userId', d.userId);
+      apply('deviceId', d.deviceId);
+      apply('cipherScheme', d.cipherScheme);
+      if (d.orgId) apply('orgId', d.orgId);
+
+      // If the registered server's public key matches a cluster, select it.
+      // The cluster onchange handler overwrites agentPrivKey with the
+      // cluster's demo key, so re-apply the registered key afterwards.
+      if (d.serverPublicKey) {
+        apply('serverPubKey', d.serverPublicKey);
+        const sel = document.getElementById('clusterSelect');
+        if (sel && sel.options.length > 1) {
+          for (let i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].dataset.pubkey === d.serverPublicKey) {
+              sel.selectedIndex = i;
+              sel.onchange(); // triggers agentPrivKey ← demo key
+              apply('agentPrivKey', d.privateKey); // re-override with registered key
+              break;
+            }
+          }
+        }
+      }
+
+      // Show the registration banner.
+      const banner = document.getElementById('reg-banner');
+      const link = document.getElementById('reg-link');
+      if (banner) {
+        const u = document.getElementById('reg-banner-user');
+        const dev = document.getElementById('reg-banner-device');
+        const srv = document.getElementById('reg-banner-server');
+        if (u) u.textContent = d.userId || '—';
+        if (dev) dev.textContent = d.deviceId || '—';
+        if (srv) srv.textContent = d.serverName || d.serverId || '—';
+        banner.style.display = '';
+      }
+      if (link) link.style.display = 'none';
+
+      log('ok', `\u{1F510} Imported registered key for ${d.userId} (device ${d.deviceId}) from reg.html`);
+    } catch (_) { /* ignore */ }
+  }
+
+  // Clear imported registration data and revert to demo keys.
+  window.clearRegData = () => {
+    try { localStorage.removeItem('nhp-reg-data'); } catch (_) {}
+    document.getElementById('reg-banner').style.display = 'none';
+    document.getElementById('reg-link').style.display = '';
+    loadDefaultsFromConfig().then(() => {
+      log('info', '\u{1F504} Reverted to demo keys from config.json');
+    });
+  };
+
   // Build the cluster picker from config.json "clusters". Each entry carries a
   // display name, the target nhp-server public key, the protected resource host
   // (for display), and the cluster's OWN agent private key. Each cluster has an
@@ -1820,6 +1901,10 @@ if (result.success) {
   setStatus('', 'status.ready');
 
   loadDefaultsFromConfig().then(() => {
+    // Import keys saved by reg.html via localStorage. This must run AFTER
+    // config.json so it overrides the demo defaults.
+    importRegisteredKey();
+
     // Auto-expand the Demo Keys panel when either key is still empty so a
     // first-time visitor (or a local-dev page without config.json) sees what
     // they need to fill in before clicking the button.

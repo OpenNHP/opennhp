@@ -1,3 +1,12 @@
 ExampleUsername = "user"
 ExamplePassword = "password"
 
+# SMTP settings for OTP email delivery.  In the CI deploy, ${...}
+# placeholders are replaced via envsubst from Secrets Manager values.
+# Locally, leave empty to print OTP codes to the server log instead.
+smtp_host = "${SMTP_HOST}"
+smtp_port = ${SMTP_PORT}
+smtp_username = "${SMTP_USERNAME}"
+smtp_password = "${SMTP_PASSWORD}"
+smtp_from = "${SMTP_FROM}"
+smtp_subject = "${SMTP_SUBJECT}"

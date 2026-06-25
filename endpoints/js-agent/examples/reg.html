@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenNHP Agent Registration</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+    background: #0d1117;
+    color: #c9d1d9;
+    padding: 20px;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 24px;
+    max-width: 460px;
+    width: 100%;
+  }
+  .card h1 { color: #58a6ff; font-size: 22px; margin-bottom: 4px; }
+  .card .sub { color: #8b949e; font-size: 13px; margin-bottom: 20px; }
+  .step { display: none; }
+  .step.active { display: block; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; color: #8b949e; margin-bottom: 4px; }
+  .field input, .field select {
+    width: 100%;
+    padding: 8px 10px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    color: #c9d1d9;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .field input:focus, .field select:focus { outline: none; border-color: #58a6ff; }
+  .field .hint { font-size: 11px; color: #484f58; margin-top: 2px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 8px 20px; border: none; border-radius: 4px;
+    font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+    width: 100%;
+  }
+  .btn-primary { background: #238636; color: #fff; }
+  .btn-primary:hover { background: #2ea043; }
+  .btn-primary:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+  .btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+  .btn-secondary:hover { background: #30363d; }
+  .btn-row { display: flex; gap: 8px; }
+  .btn-row .btn { flex: 1; }
+  .alert {
+    padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-bottom: 16px;
+    line-height: 1.5;
+  }
+  .alert-info { background: #0d2b5e; color: #58a6ff; border: 1px solid #1f3a5f; }
+  .alert-success { background: #0d2b1e; color: #3fb950; border: 1px solid #1f3a2f; }
+  .alert-error { background: #2b0d0d; color: #f85149; border: 1px solid #3f1f1f; }
+  .status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 13px; }
+  .spinner {
+    width: 16px; height: 16px; border: 2px solid #30363d; border-top-color: #58a6ff;
+    border-radius: 50%; animation: spin 0.6s linear infinite; display: none; flex-shrink: 0;
+  }
+  .spinner.visible { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .key-display {
+    word-break: break-all; font-family: ui-monospace, Consolas, 'Courier New', monospace;
+    font-size: 12px; background: #010409; border: 1px solid #30363d;
+    padding: 8px 10px; border-radius: 4px; max-height: 120px; overflow-y: auto; margin-top: 6px;
+  }
+  .badge {
+    display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 3px;
+    margin-left: 4px; font-weight: 500;
+  }
+  .badge-curve { background: #0d2b5e; color: #58a6ff; }
+  .badge-gmsm { background: #2b1e0d; color: #d29922; }
+  hr { border: none; border-top: 1px solid #30363d; margin: 18px 0; }
+  .footer { font-size: 11px; color: #484f58; text-align: center; margin-top: 18px; }
+  .footer a { color: #58a6ff; text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+  .back-link { font-size: 12px; color: #58a6ff; text-decoration: none; }
+  .back-link:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>Agent Registration</h1>
+  <p class="sub">Register your device to access protected resources</p>
+
+  <div id="alert-container"></div>
+
+  <!-- Step 1: Identity + Server selection -->
+  <div id="step-identity" class="step active">
+    <div class="field">
+      <label for="relay-url">Relay URL</label>
+      <input type="text" id="relay-url" value="http://localhost:8080/relay" placeholder="https://relay.opennhp.org/relay" autocomplete="url">
+      <div class="hint">Auto-discovers available servers on change</div>
+    </div>
+    <div class="field">
+      <label for="server-select">Target Server <span id="server-count"></span></label>
+      <select id="server-select" disabled>
+        <option value="">Enter relay URL first...</option>
+      </select>
+      <div class="hint" id="server-detail"></div>
+    </div>
+    <div class="field">
+      <label for="asp-id">Auth Service Provider ID</label>
+      <input type="text" id="asp-id" value="example" placeholder="example">
+    </div>
+    <hr>
+    <div class="field">
+      <label for="user-id">User ID</label>
+      <input type="text" id="user-id" placeholder="alice@example.com" autocomplete="username">
+    </div>
+    <div class="field">
+      <label for="device-id">Device ID</label>
+      <input type="text" id="device-id" placeholder="auto-generated if empty">
+      <div class="hint">Leave blank to auto-generate</div>
+    </div>
+    <div class="field">
+      <label for="email">Email (for receiving OTP)</label>
+      <input type="email" id="email" placeholder="alice@example.com" autocomplete="email">
+    </div>
+    <div class="field">
+      <label for="org-id">Organization ID <span style="font-weight:400;color:#484f58">(optional)</span></label>
+      <input type="text" id="org-id" placeholder="opennhp.org">
+    </div>
+    <button class="btn btn-primary" id="btn-next" onclick="goToOtpStep()">Get Verification Code</button>
+  </div>
+
+  <!-- Step 2: OTP -->
+  <div id="step-otp" class="step">
+    <div class="status-row">
+      <div class="spinner" id="spinner-otp"></div>
+      <span id="otp-status-text">Sending verification code...</span>
+    </div>
+    <p style="font-size:12px;color:#8b949e;margin-bottom:12px">
+      A 6-digit code has been sent to <strong id="otp-email-display" style="color:#c9d1d9"></strong>.
+      It expires in 5 minutes.
+    </p>
+    <div class="field">
+      <label for="otp-input">Verification Code</label>
+      <input type="text" id="otp-input" placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="goToIdentityStep()">Back</button>
+      <button class="btn btn-primary" id="btn-register" onclick="doRegister()">Register</button>
+    </div>
+    <p style="font-size:11px;color:#484f58;text-align:center;margin-top:8px">
+      No code? <a href="#" onclick="goToIdentityStep();return false" class="back-link">Go back</a> and send a new one.
+    </p>
+  </div>
+
+  <!-- Step 3: Done -->
+  <div id="step-done" class="step">
+    <div id="done-content"></div>
+  </div>
+
+  <p class="footer">
+    OpenNHP Agent SDK v<span id="sdk-version">—</span> &middot;
+    <a href="https://opennhp.org" target="_blank" rel="noopener">opennhp.org</a>
+  </p>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "@opennhp/agent": "../dist/index.js",
+    "@noble/ciphers": "https://esm.sh/@noble/ciphers@2.1.1",
+    "@noble/curves": "https://esm.sh/@noble/curves@2.0.1",
+    "@noble/hashes": "https://esm.sh/@noble/hashes@1.7.2"
+  }
+}
+</script>
+<script type="module">
+import { NHPAgent } from '@opennhp/agent';
+
+// ── State ──
+let agent = null;
+let servers = [];          // merged list: /servers API + config.json clusters
+let selectedServer = null;
+let cipherScheme = 'gmsm';
+let configClusters = [];   // clusters from config.json, deduped later
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+function showStep(name) {
+  $$('.step').forEach(el => el.classList.remove('active'));
+  $(`#step-${name}`).classList.add('active');
+  $('#alert-container').innerHTML = '';
+}
+
+window.goToIdentityStep = () => showStep('identity');
+
+// ── Server discovery ──
+let relayInputTimer = null;
+$('#relay-url').addEventListener('input', () => {
+  clearTimeout(relayInputTimer);
+  relayInputTimer = setTimeout(discoverServers, 500);
+});
+$('#relay-url').addEventListener('change', discoverServers);
+
+$('#server-select').addEventListener('change', () => {
+  const idx = parseInt($('#server-select').value);
+  if (!isNaN(idx) && servers[idx]) {
+    selectedServer = servers[idx];
+    cipherScheme = selectedServer.cipherScheme === 0 ? 'curve25519' : 'gmsm';
+    const badge = cipherScheme === 'curve25519'
+      ? '<span class="badge badge-curve">Curve25519</span>'
+      : '<span class="badge badge-gmsm">GMSM/SM2</span>';
+    $('#server-detail').innerHTML = `Fingerprint: ${selectedServer.id} ${badge}`;
+  }
+});
+
+async function discoverServers() {
+  const relayUrl = $('#relay-url').value.trim();
+  const sel = $('#server-select');
+  sel.disabled = true;
+  sel.innerHTML = '<option value="">Discovering...</option>';
+
+  // 1. Fetch from relay /servers API.
+  let relayServers = [];
+  if (relayUrl) {
+    try {
+      const base = relayUrl.replace(/\/relay\/?$/, '');
+      const resp = await fetch(base + '/servers');
+      if (resp.ok) relayServers = await resp.json();
+    } catch (_) {}
+  }
+
+  // 2. Merge config.json clusters (dedupe by publicKeyBase64).
+  const seen = new Set();
+  servers = [];
+  const add = (s) => {
+    const key = s.publicKeyBase64 || s.serverPublicKey;
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    servers.push({
+      id: s.id || key.substring(0, 11),
+      name: s.name || '',
+      publicKeyBase64: key,
+      cipherScheme: s.cipherScheme ?? 1, // default GMSM
+    });
+  };
+  relayServers.forEach(add);
+  configClusters.forEach(add);
+
+  if (servers.length === 0) {
+    sel.innerHTML = '<option value="">No servers found</option>';
+    return;
+  }
+
+  sel.innerHTML = servers.map((s, i) => {
+    const cs = s.cipherScheme === 0 ? 'Curve' : 'GMSM';
+    const name = s.name || `Server ${i + 1}`;
+    return `<option value="${i}">${name} (${cs}) — ${s.id}</option>`;
+  }).join('');
+  sel.disabled = false;
+  $('#server-count').textContent = `(${servers.length} available)`;
+  if (selectedServer === null) { sel.value = '0'; sel.dispatchEvent(new Event('change')); }
+}
+
+// ── Registration flow ──
+window.goToOtpStep = async () => {
+  const userId = $('#user-id').value.trim();
+  const email = $('#email').value.trim();
+  if (!userId || !email) { showAlert('Please fill in User ID and Email', 'error'); return; }
+  if (!selectedServer) { showAlert('Please select a target server', 'error'); return; }
+
+  showStep('otp');
+  $('#otp-email-display').textContent = email;
+  $('#spinner-otp').classList.add('visible');
+  $('#otp-status-text').textContent = 'Initializing agent...';
+
+  try {
+    await initAgent();
+    $('#otp-status-text').textContent = 'Sending verification code...';
+    const result = await agent.requestOtp($('#asp-id').value.trim() || 'example', { email });
+    $('#spinner-otp').classList.remove('visible');
+    if (result.success) {
+      $('#otp-status-text').textContent = 'Code sent! Check server logs (local dev) or email.';
+    } else {
+      showAlert(`Failed: ${result.error}`, 'error');
+      $('#otp-status-text').textContent = 'Failed.';
+    }
+  } catch (err) {
+    $('#spinner-otp').classList.remove('visible');
+    showAlert('Error: ' + (err.message || 'Unknown'), 'error');
+  }
+};
+
+window.doRegister = async () => {
+  const otp = $('#otp-input').value.trim();
+  if (!otp || otp.length !== 6) { showAlert('Enter a 6-digit code', 'error'); return; }
+  $('#btn-register').disabled = true;
+  $('#btn-register').textContent = 'Registering...';
+
+  try {
+    const result = await agent.registerPublicKey(
+      $('#asp-id').value.trim() || 'example', otp, { email: $('#email').value.trim() }
+    );
+    if (result.success) {
+      // Save to localStorage so relay-test.html can import it.
+      const regData = {
+        userId: $('#user-id').value.trim(),
+        deviceId: $('#device-id').value.trim(),
+        privateKey: agent.getPrivateKey(),
+        publicKey: agent.getPublicKey(),
+        cipherScheme: cipherScheme,
+        serverPublicKey: selectedServer.publicKeyBase64,
+        serverName: selectedServer.name || selectedServer.id,
+        serverId: selectedServer.id,
+      };
+      try { localStorage.setItem('nhp-reg-data', JSON.stringify(regData)); } catch (_) {}
+
+      showStep('done');
+      const isRelayTest = window.opener || window.parent !== window;
+      const knockUrl = isRelayTest ? '#' : (
+        window.location.pathname.replace(/reg\.html$/, 'relay-test.html').replace(/\/reg\/?/, '/')
+        || 'relay-test.html'
+      );
+      $('#done-content').innerHTML = `
+        <div class="alert alert-success">
+          <strong>&check; Registration Successful</strong><br>
+          Server: ${selectedServer.name || selectedServer.id}<br>
+          Keys saved — keep your private key safe.
+        </div>
+        <div class="field">
+          <label>Private Key <span class="hint">(saved to localStorage + download)</span></label>
+          <div class="key-display">${agent.getPrivateKey()}</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="downloadKey()">Download Key File</button>
+          <button class="btn btn-primary" onclick="goKnock()">Knock with this key &rarr;</button>
+        </div>
+        <p style="font-size:12px;color:#8b949e;margin-top:12px">
+          Click <strong>Knock</strong> to open the demo page with your registered key pre-filled.
+        </p>
+      `;
+    } else {
+      showAlert(`Registration failed: ${result.error} (code: ${result.errorCode || '—'})`, 'error');
+    }
+  } catch (err) {
+    showAlert('Error: ' + (err.message || 'Unknown'), 'error');
+  } finally {
+    $('#btn-register').disabled = false;
+    $('#btn-register').textContent = 'Register';
+  }
+};
+
+window.goKnock = () => {
+  // Navigate to relay-test.html. If opened from relay-test.html in the
+  // same tab, use history.back(); otherwise navigate directly.
+  const target = window.location.pathname.replace(/reg\.html$/, 'relay-test.html')
+    .replace(/\/reg\/index\.html$/, '/index.html');
+  window.location.href = target || 'relay-test.html';
+};
+
+window.downloadKey = () => {
+  const blob = new Blob([JSON.stringify({
+    userId: $('#user-id').value.trim(),
+    deviceId: $('#device-id').value.trim(),
+    serverId: selectedServer?.id,
+    serverName: selectedServer?.name,
+    cipherScheme: cipherScheme,
+    privateKey: agent ? agent.getPrivateKey() : '',
+    publicKey: agent ? agent.getPublicKey() : '',
+    note: 'Keep this file safe. Do not share your private key.',
+  }, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `nhp-agent-key-${$('#user-id').value.trim()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+// ── Helpers ──
+async function initAgent() {
+  if (agent && agent.getPublicKey()) return;
+  if (!selectedServer) throw new Error('No server selected');
+  agent = new NHPAgent({
+    cipherScheme: cipherScheme,
+    logLevel: 'info',
+    transport: 'relay',
+    relayUrl: $('#relay-url').value.trim() || undefined,
+  });
+  await agent.init();
+  try { $('#sdk-version').textContent = NHPAgent.version || '—'; } catch (_) {}
+  const deviceId = $('#device-id').value.trim() || generateDeviceId();
+  if (!$('#device-id').value.trim()) $('#device-id').value = deviceId;
+  agent.setIdentity({
+    userId: $('#user-id').value.trim(),
+    deviceId: deviceId,
+    organizationId: $('#org-id').value.trim() || undefined,
+  });
+  agent.addServer({ publicKey: selectedServer.publicKeyBase64 });
+}
+
+function showAlert(msg, type) {
+  const cls = { info: 'alert-info', success: 'alert-success', error: 'alert-error' };
+  $('#alert-container').innerHTML = `<div class="alert ${cls[type] || 'alert-info'}">${msg}</div>`;
+}
+
+function generateDeviceId() {
+  const chars = 'abcdef0123456789';
+  let id = '';
+  for (let i = 0; i < 32; i++) id += chars[Math.floor(Math.random() * chars.length)];
+  return id;
+}
+
+// ── Bootstrap ──
+(async () => {
+  try {
+    const resp = await fetch('./config.json', { cache: 'no-store' });
+    if (resp.ok) {
+      const cfg = await resp.json();
+      if (cfg.relayUrl) $('#relay-url').value = cfg.relayUrl;
+      if (cfg.serviceId) $('#asp-id').value = cfg.serviceId;
+      if (cfg.userId) $('#user-id').value = cfg.userId;
+      if (cfg.cipherScheme) cipherScheme = cfg.cipherScheme;
+      // Store clusters for merging with /servers discovery.
+      if (Array.isArray(cfg.clusters)) {
+        configClusters = cfg.clusters.map(c => ({
+          name: c.name || '',
+          publicKeyBase64: c.serverPublicKey || '',
+          cipherScheme: cfg.cipherScheme === 'curve25519' ? 0 : 1,
+        }));
+      }
+    }
+  } catch (_) {}
+  await discoverServers();
+})();
+</script>
+</body>
+</html>

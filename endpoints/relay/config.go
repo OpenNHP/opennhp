@@ -60,6 +60,12 @@ type Server struct {
 	// Load balancing strategy. Defaults to weighted-random.
 	LoadBalance LoadBalanceScheme `toml:"LoadBalance"`
 
+	// StickyInstance (default true) keeps the same real-client IP routed
+	// to the same instance via hash-based selection. When false, each
+	// request is load-balanced independently. Mirrors
+	// clusterconfig.ClusterConfig.StickyInstance.
+	StickyInstance *bool `toml:"StickyInstance"`
+
 	// Epoch seconds at which this Server's pubkey is considered
 	// expired. Mirrors the same-named field on nhp-agent/ac/db so
 	// operators can reuse one ExpireTime across all peer tables.

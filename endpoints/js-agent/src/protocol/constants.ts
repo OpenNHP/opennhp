@@ -32,6 +32,9 @@ export const NHP_PACKET_TYPES = {
   RNK: 8,   // Re-knock
   RLY: 9,   // Relay
   AOL: 10,  // Agent Online
+  OTP: 12,  // One-Time Password request
+  REG: 13,  // Register public key
+  RAK: 14,  // Register acknowledge
 } as const;
 
 /** Protocol version */

@@ -223,7 +223,7 @@ func (d *Device) CheckRecvHeaderType(t int) bool {
 		}
 	case NHP_RELAY:
 		switch t {
-		case NHP_REG, NHP_KNK, NHP_ACK, NHP_LST, NHP_LRT, NHP_COK, NHP_RKN, NHP_EXT:
+		case NHP_REG, NHP_KNK, NHP_ACK, NHP_LST, NHP_LRT, NHP_COK, NHP_RKN, NHP_EXT, NHP_RAK:
 			return true
 		}
 

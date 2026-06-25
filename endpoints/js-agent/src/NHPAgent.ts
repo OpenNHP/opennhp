@@ -16,6 +16,11 @@ import type {
   AgentKnockMsg,
   ServerKnockAckMsg,
   AgentIdentity,
+  AgentOTPMsg,
+  AgentRegisterMsg,
+  ServerRegisterAckMsg,
+  OtpResult,
+  RegisterResult,
   ParsedPacket,
 } from './types.js';
 import { generateX25519KeyPairBase64, derivePublicKeyFromBase64 } from './crypto/ecdh.js';
@@ -224,6 +229,17 @@ export class NHPAgent {
   }
 
   /**
+   * Get the agent's private key (base64 encoded).
+   * Call only after init(); handle with care — this is secret material.
+   */
+  getPrivateKey(): string {
+    if (!this.keyPair) {
+      throw new Error('Agent not initialized');
+    }
+    return this.keyPair.privateKey;
+  }
+
+  /**
    * Knock on a resource to request access
    */
   async knockResource(resource: ResourceConfig): Promise<KnockResult> {
@@ -328,6 +344,175 @@ export class NHPAgent {
     }
 
     this.log('debug', `Exited resource: ${resource.resourceId}`);
+  }
+
+  /**
+   * Request a one-time password for agent registration.
+   *
+   * The OTP is delivered out-of-band (e.g., via email) by the ASP plugin.
+   * This method is fire-and-forget — it sends the request but does not wait
+   * for a response (the server does not send an NHP-level reply for OTP).
+   *
+   * @param serviceId - Auth Service Provider ID (maps to the ASP plugin)
+   * @param userData - Optional user data (include `email` key for email delivery)
+   * @returns Result indicating whether the request was sent successfully
+   */
+  async requestOtp(serviceId: string, userData?: Record<string, unknown>): Promise<OtpResult> {
+    if (!this.initialized || !this.keyPair) {
+      return { success: false, error: 'Agent not initialized' };
+    }
+    if (!this.identity) {
+      return { success: false, error: 'Identity not set. Call setIdentity() first.' };
+    }
+
+    const server = this.getDefaultServer();
+    if (!server) {
+      return { success: false, error: 'No server configured. Call addServer() first.' };
+    }
+
+    try {
+      const otpMsg: AgentOTPMsg = {
+        usrId: this.identity.userId,
+        devId: this.identity.deviceId,
+        orgId: this.identity.organizationId,
+        aspId: serviceId,
+        usrData: userData,
+      };
+
+      const message = JSON.stringify(otpMsg);
+      const packet = await buildNHPPacket(
+        NHP_PACKET_TYPES.OTP,
+        this.keyPair.privateKey,
+        this.keyPair.publicKey,
+        server.publicKey,
+        message,
+        true, // compress
+        this.config.cipherScheme,
+        this.packetContext
+      );
+
+      // OTP is fire-and-forget — the server does not send an NHP response.
+      // Use a direct fetch to the relay without waiting for a response body
+      // (the relay will time out waiting for a non-existent server reply).
+      const serverId = await pubKeyFingerprintFromBase64(server.publicKey);
+      const url = `${this.config.relayUrl}/${serverId}`;
+      // Note: Uint8Array is not a valid fetch body; wrap in Blob.
+      fetch(url, { method: 'POST', body: new Blob([packet as BlobPart]) }).catch(() => {
+        // Ignore errors — the relay may return 504 after UDP timeout.
+      });
+
+      this.log('info', `OTP request sent for user=${this.identity.userId} device=${this.identity.deviceId}`);
+      return { success: true };
+    } catch (err) {
+      const error = err instanceof Error ? err.message : 'Unknown error';
+      this.log('error', `OTP request failed: ${error}`);
+      return { success: false, error };
+    }
+  }
+
+  /**
+   * Register the agent's public key with the server.
+   *
+   * The agent's current key pair (generated during init or set via config)
+   * is registered. The server validates the OTP and stores the public key.
+   *
+   * @param serviceId - Auth Service Provider ID
+   * @param otp - One-time password received via email
+   * @param userData - Optional user data
+   * @returns Registration result
+   */
+  async registerPublicKey(
+    serviceId: string,
+    otp: string,
+    userData?: Record<string, unknown>
+  ): Promise<RegisterResult> {
+    if (!this.initialized || !this.keyPair) {
+      return { success: false, error: 'Agent not initialized', errorCode: '1' };
+    }
+    if (!this.identity) {
+      return { success: false, error: 'Identity not set. Call setIdentity() first.', errorCode: '2' };
+    }
+
+    const server = this.getDefaultServer();
+    if (!server) {
+      return { success: false, error: 'No server configured. Call addServer() first.', errorCode: '3' };
+    }
+
+    try {
+      const regMsg: AgentRegisterMsg = {
+        usrId: this.identity.userId,
+        devId: this.identity.deviceId,
+        orgId: this.identity.organizationId,
+        aspId: serviceId,
+        otp,
+        usrData: userData,
+      };
+
+      const message = JSON.stringify(regMsg);
+      const packet = await buildNHPPacket(
+        NHP_PACKET_TYPES.REG,
+        this.keyPair.privateKey,
+        this.keyPair.publicKey,
+        server.publicKey,
+        message,
+        true, // compress
+        this.config.cipherScheme,
+        this.packetContext
+      );
+
+      const transport = await this.getOrCreateTransport(server);
+      const zeroChainKey = new Uint8Array(32);
+      const response = await this.sendAndWaitForResponse(transport, packet, server.publicKey, zeroChainKey);
+
+      if (response.type !== (NHP_PACKET_TYPES.RAK as number)) {
+        return {
+          success: false,
+          error: `Unexpected response type: ${response.type}`,
+          errorCode: '4',
+        };
+      }
+
+      const ack: ServerRegisterAckMsg = JSON.parse(response.message);
+
+      if (ack.errCode && ack.errCode !== '' && ack.errCode !== '0') {
+        return {
+          success: false,
+          error: ack.errMsg || `Registration failed: ${ack.errCode}`,
+          errorCode: ack.errCode,
+        };
+      }
+
+      this.log('info', `Registration successful for user=${this.identity.userId} device=${this.identity.deviceId}`);
+      return { success: true };
+    } catch (err) {
+      const error = err instanceof Error ? err.message : 'Unknown error';
+      this.log('error', `Registration failed: ${error}`);
+      return { success: false, error, errorCode: '5' };
+    }
+  }
+
+  /**
+   * Get the default (first configured) server.
+   */
+  private getDefaultServer(): ServerConfig | undefined {
+    const first = this.servers.entries().next();
+    if (first.done) {
+      return undefined;
+    }
+    return first.value[1];
+  }
+
+  /**
+   * Get or create transport for a server.
+   */
+  private async getOrCreateTransport(server: ServerConfig): Promise<Transport> {
+    const serverId = server.id!;
+    let transport = this.transports.get(serverId);
+    if (!transport) {
+      transport = await this.createTransport(server.host ?? '', server.port ?? 0, server.publicKey);
+      this.transports.set(serverId, transport);
+    }
+    return transport;
   }
 
   /**

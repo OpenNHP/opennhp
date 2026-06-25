@@ -25,12 +25,18 @@ const (
 	DHP_AGENT
 )
 
+// PeerLookupFallbackFunc is called when a peer is not found in the static
+// peer pool. If it returns true, the peer is accepted as valid (used by
+// the server to check dynamically-registered agent keys in SQLite).
+type PeerLookupFallbackFunc func(pubKey []byte, headerType int) bool
+
 type DeviceOptions struct {
 	DisableAgentPeerValidation  bool
 	DisableServerPeerValidation bool
 	DisableACPeerValidation     bool
 	DisableRelayPeerValidation  bool
 	DisableDePeerValidation     bool
+	PeerLookupFallback          PeerLookupFallbackFunc
 }
 
 type NhpError interface {
@@ -130,6 +136,14 @@ func (d *Device) SetOption(option DeviceOptions) {
 	defer d.optionMutex.Unlock()
 
 	d.option = option
+}
+
+// GetOption returns a copy of the current device options.
+func (d *Device) GetOption() DeviceOptions {
+	d.optionMutex.Lock()
+	defer d.optionMutex.Unlock()
+
+	return d.option
 }
 
 // SetStatelessCookieParams installs the cluster-wide cookie HMAC key and the

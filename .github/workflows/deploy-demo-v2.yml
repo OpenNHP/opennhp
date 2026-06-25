@@ -61,6 +61,7 @@ env:
   DOMAIN_AC: ac.opennhp.org
   DOMAIN_RELAY: relay.opennhp.org
   DOMAIN_AGENT: agent.opennhp.org
+  DOMAIN_REG: reg.opennhp.org
   # Server cluster 2: both the nhp-server (server2) and its AC (ac2) have
   # domains.
   DOMAIN_SERVER2: server2.opennhp.org
@@ -549,6 +550,65 @@ jobs:
              NGINX_CONF='/tmp/server-nginx.conf' \
              /tmp/bootstrap-tls.sh"
 
+      - name: Setup SMTP credentials for OTP email
+        run: |
+          SECRET_JSON=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' --output text)
+
+          SMTP_HOST=$(echo "$SECRET_JSON" | jq -r '.smtp_host // empty')
+          SMTP_USERNAME=$(echo "$SECRET_JSON" | jq -r '.smtp_username // empty')
+
+          if [ -z "$SMTP_PASSWORD" ]; then
+            # First deploy: derive SMTP password from IAM access key.
+            # The IAM access key ID is stored in smtp_username during the
+            # infra-demo workflow.  Read the IAM secret key, then call
+            # `aws ses get-smtp-password` to derive the SMTP credential.
+            SMTP_ACCESS_KEY_ID="$SMTP_USERNAME"
+            if [ -z "$SMTP_ACCESS_KEY_ID" ]; then
+              echo "SMTP not configured — OTP emails will be printed to server log"
+              echo "SMTP_HOST=" >> $GITHUB_ENV
+              echo "SMTP_PORT=" >> $GITHUB_ENV
+              echo "SMTP_USERNAME=" >> $GITHUB_ENV
+              echo "SMTP_PASSWORD=" >> $GITHUB_ENV
+              echo "SMTP_FROM=" >> $GITHUB_ENV
+              echo "SMTP_SUBJECT=" >> $GITHUB_ENV
+              exit 0
+            fi
+            echo "Deriving SMTP password from IAM access key ${SMTP_ACCESS_KEY_ID}..."
+            SMTP_PASSWORD=$(aws ses get-smtp-password \
+              --secret-key "$(aws iam list-access-keys --user-name opennhp-demo-ses-smtp --query 'AccessKeyMetadata[0].AccessKeyId' --output text)" \
+              --region ${{ env.AWS_REGION }} \
+              --query SmtpPassword --output text 2>/dev/null || echo "")
+            if [ -z "$SMTP_PASSWORD" ]; then
+              echo "WARNING: Could not derive SMTP password — OTP emails disabled"
+              exit 0
+            fi
+            # Write back to Secrets Manager (idempotent).
+            UPDATED=$(echo "$SECRET_JSON" | jq \
+              --arg h "$SMTP_HOST" \
+              --arg p "587" \
+              --arg u "$SMTP_USERNAME" \
+              --arg pw "$SMTP_PASSWORD" \
+              --arg f "noreply@opennhp.org" \
+              --arg s "Your OpenNHP Verification Code" \
+              '. + {smtp_host: $h, smtp_port: $p, smtp_username: $u, smtp_password: $pw, smtp_from: $f, smtp_subject: $s}')
+            aws secretsmanager put-secret-value \
+              --secret-id opennhp/demo \
+              --region ${{ env.AWS_REGION }} \
+              --secret-string "$UPDATED"
+            echo "SMTP credentials written to Secrets Manager"
+          fi
+
+          # Export for envsubst in the plugin config rendering step.
+          echo "SMTP_HOST=$SMTP_HOST" >> $GITHUB_ENV
+          echo "SMTP_PORT=587" >> $GITHUB_ENV
+          echo "SMTP_USERNAME=$SMTP_USERNAME" >> $GITHUB_ENV
+          echo "SMTP_PASSWORD=$SMTP_PASSWORD" >> $GITHUB_ENV
+          echo "SMTP_FROM=noreply@opennhp.org" >> $GITHUB_ENV
+          echo "SMTP_SUBJECT=Your OpenNHP Verification Code" >> $GITHUB_ENV
+
       - name: Deploy nhp-serverd and plugins
         run: |
           REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-server"
@@ -582,7 +642,7 @@ jobs:
                 cp -r "${plugin_dir}etc/." "$rendered_etc/"
                 for f in "$rendered_etc"/*.toml; do
                   [ -f "$f" ] || continue
-                  envsubst '$AC_PRIVATE_IP' < "$f" > "$f.rendered"
+                  envsubst '$AC_PRIVATE_IP $SMTP_HOST $SMTP_PORT $SMTP_USERNAME $SMTP_PASSWORD $SMTP_FROM $SMTP_SUBJECT' < "$f" > "$f.rendered"
                   mv "$f.rendered" "$f"
                 done
                 ssh nhp-server "mkdir -p $REMOTE_DIR/plugins/$name/etc"
@@ -1250,11 +1310,19 @@ jobs:
       - name: Assemble deploy bundle
         run: |
           mkdir -p bundle/nhp-js/dist
+          mkdir -p bundle/reg
 
           # Entry page is examples/relay-test.html, exposed as / .
+          # Rewrite the SDK import path and the reg.html link so they
+          # resolve correctly in the deployed environment.
+          sed -e "s|from '../dist/index.js'|from './nhp-js/dist/index.js'|g" \
+              -e "s|href=\"reg.html\"|href=\"https://${{ env.DOMAIN_REG }}/\"|g" \
+            opennhp/endpoints/js-agent/examples/relay-test.html > bundle/index.html
+
+          # Registration page for reg.opennhp.org.
           # Rewrite the SDK import path so it resolves alongside index.html.
           sed "s|from '../dist/index.js'|from './nhp-js/dist/index.js'|g" \
-            opennhp/endpoints/js-agent/examples/relay-test.html > bundle/index.html
+            opennhp/endpoints/js-agent/examples/reg.html > bundle/reg/index.html
 
           cp -r opennhp/endpoints/js-agent/dist/. bundle/nhp-js/dist/
 
@@ -1350,6 +1418,31 @@ jobs:
              CF_API_TOKEN_FILE=/tmp/cf_token \
              ACME_EMAIL='${{ env.ACME_EMAIL }}' \
              NGINX_CONF='/tmp/jsagent-nginx.conf' \
+             /tmp/bootstrap-tls.sh"
+
+      - name: Install nginx vhost for reg
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+
+          export DOMAIN_REG='${{ env.DOMAIN_REG }}' DOMAIN_RELAY='${{ env.DOMAIN_RELAY }}'
+          envsubst '$DOMAIN_REG $DOMAIN_RELAY' \
+            < opennhp/deploy/nginx/reg.conf.template > /tmp/reg-nginx.conf
+
+          scp $SSH_OPTS /tmp/reg-nginx.conf $TARGET:/tmp/reg-nginx.conf
+
+          printf '%s' '${{ steps.secrets.outputs.cf_token }}' | ssh $SSH_OPTS $TARGET \
+            "umask 077 && cat > /tmp/cf_token && chmod 600 /tmp/cf_token"
+
+          ssh $SSH_OPTS $TARGET \
+            "COMPONENT=reg \
+             PRIMARY_DOMAIN='${{ env.DOMAIN_RELAY }}' \
+             EXTRA_DOMAINS='${{ env.DOMAIN_REG }}' \
+             CF_API_TOKEN_FILE=/tmp/cf_token \
+             ACME_EMAIL='${{ env.ACME_EMAIL }}' \
+             NGINX_CONF='/tmp/reg-nginx.conf' \
              /tmp/bootstrap-tls.sh"
 
       - name: Sync bundle to relay

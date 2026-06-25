@@ -129,6 +129,11 @@ type Config struct {
 	// cookie before it expires. Default 60s if unset / non-positive.
 	CookieTimeWindowSeconds int `json:"cookieTimeWindowSeconds"`
 
+	// DatabasePath is the filesystem path to the SQLite database used for
+	// agent key registration and OTP storage. If empty, defaults to
+	// "<exe_dir>/data/nhp_server.db".
+	DatabasePath string `json:"databasePath"`
+
 	// ForceOverload pins the device's Overload flag to true at startup,
 	// short-circuiting the connection-count-driven trigger. The normal
 	// trigger fires when remoteConnectionMap crosses
@@ -153,6 +158,10 @@ type Config struct {
 	// SetOverload(false) — the flag is sticky for the lifetime of the
 	// process. Restart the server to clear it.
 	ForceOverload bool `json:"forceOverload"`
+
+	// OTPTTLSeconds is the lifetime of a one-time password for agent
+	// registration, in seconds. Default 300 (5 minutes) if unset / zero.
+	OTPTTLSeconds int `json:"otpTTLSeconds"`
 }
 
 type RemoteConfig struct {

@@ -127,6 +127,7 @@ type serverRuntime struct {
 	pubKey       []byte
 	pubKeyBase64 string
 	scheme       LoadBalanceScheme
+	sticky       bool
 	instances    []*serverInstance
 
 	// picker carries the load-balancing policy + per-scheme state
@@ -257,12 +258,17 @@ func (rs *RelayServer) buildServer(c *Server) (*serverRuntime, error) {
 	}
 	id := utils.PubKeyFingerprint(pubKey)
 
+	sticky := true // default
+	if c.StickyInstance != nil {
+		sticky = *c.StickyInstance
+	}
 	cr := &serverRuntime{
 		id:           id,
 		name:         c.Name,
 		pubKey:       pubKey,
 		pubKeyBase64: c.PubKeyBase64,
 		scheme:       c.LoadBalance,
+		sticky:       sticky,
 		instances:    make([]*serverInstance, 0, len(c.Instances)),
 	}
 
@@ -590,9 +596,10 @@ func (rs *RelayServer) connectionRoutine(cr *serverRuntime, inst *serverInstance
 				continue
 			}
 
-			// Check if this is a response (ACK/COK) for a pending relay
-			// request on this instance.
-			if pkt.HeaderType == core.NHP_ACK || pkt.HeaderType == core.NHP_COK {
+			// Check if this is a response for a pending relay request on this
+			// instance. NHP_RAK (register acknowledge) is included so the
+			// agent registration flow works through the relay.
+			if pkt.HeaderType == core.NHP_ACK || pkt.HeaderType == core.NHP_COK || pkt.HeaderType == core.NHP_RAK {
 				counter := pkt.Counter()
 				// Copy raw bytes before releasing the pool packet — dispatch
 				// sends them into a handler channel.
@@ -822,15 +829,17 @@ func (rs *RelayServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 // serverInfo is the JSON shape returned by /servers. It surfaces only the
-// non-secret routing metadata clients need to choose a server (pubkey and
-// the fingerprint derived from it). Instance addresses are intentionally
-// omitted because clients route by server ID, not by instance.
+// non-secret routing metadata clients need to choose a server (pubkey,
+// the fingerprint derived from it, and the cipher scheme the relay uses).
+// Instance addresses are intentionally omitted because clients route by
+// server ID, not by instance.
 type serverInfo struct {
-	ID          string `json:"id"`
-	Name        string `json:"name,omitempty"`
-	PublicKey   string `json:"publicKeyBase64"`
-	InstanceCnt int    `json:"instanceCount"`
-	LoadBalance string `json:"loadBalance,omitempty"`
+	ID           string `json:"id"`
+	Name         string `json:"name,omitempty"`
+	PublicKey    string `json:"publicKeyBase64"`
+	CipherScheme int    `json:"cipherScheme"` // 0=Curve25519, 1=GMSM
+	InstanceCnt  int    `json:"instanceCount"`
+	LoadBalance  string `json:"loadBalance,omitempty"`
 }
 
 // handleServers lists every configured server. The endpoint is intentionally
@@ -850,11 +859,12 @@ func (rs *RelayServer) handleServers(w http.ResponseWriter, r *http.Request) {
 	out := make([]serverInfo, 0, len(rs.servers))
 	for _, cr := range rs.servers {
 		out = append(out, serverInfo{
-			ID:          cr.id,
-			Name:        cr.name,
-			PublicKey:   cr.pubKeyBase64,
-			InstanceCnt: len(cr.instances),
-			LoadBalance: string(cr.scheme),
+			ID:           cr.id,
+			Name:         cr.name,
+			PublicKey:    cr.pubKeyBase64,
+			CipherScheme: rs.config.CipherScheme,
+			InstanceCnt:  len(cr.instances),
+			LoadBalance:  string(cr.scheme),
 		})
 	}
 	// Stable output so callers that diff or hash the response (change
@@ -965,11 +975,31 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 	}
 	innerCounter := binary.BigEndian.Uint64(innerPacket[16:24])
 
-	// Body is valid; pick a target instance. normalize() blocks an empty
-	// instance list in phase 1, but phase 2's health checks can legitimately
-	// empty the healthy pool, so surface that as a 503 instead of panicking
-	// on a nil dereference downstream.
-	inst := cr.pickInstance()
+	// Extract real client address before picking an instance so sticky
+	// sessions can hash on it.
+	realAddr, err := realClientAddr(r)
+	if err != nil {
+		log.Error("[Relay] %v", err)
+		http.Error(w, "relay misconfigured: missing X-Real-IP header from local reverse proxy", http.StatusBadGateway)
+		return
+	}
+	realAddrKey := realAddr.String()
+
+	// Pick a target instance. When StickyInstance is enabled (default),
+	// hash the real client IP so the same client always reaches the same
+	// instance — required for stateful flows like OTP→REG where per-
+	// instance local state (SQLite) must be consistent across requests.
+	var inst *serverInstance
+	if cr.sticky && len(cr.instances) > 1 {
+		var ok bool
+		inst, ok = cr.picker.PickByKey(realAddrKey)
+		if !ok {
+			http.Error(w, "server has no usable instance", http.StatusServiceUnavailable)
+			return
+		}
+	} else {
+		inst = cr.pickInstance()
+	}
 	if inst == nil {
 		http.Error(w, "server has no usable instance", http.StatusServiceUnavailable)
 		return
@@ -990,15 +1020,8 @@ func (rs *RelayServer) handleRelay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	realAddr, err := realClientAddr(r)
-	if err != nil {
-		log.Error("[Relay] %v", err)
-		http.Error(w, "relay misconfigured: missing X-Real-IP header from local reverse proxy", http.StatusBadGateway)
-		return
-	}
-	realAddrKey := realAddr.String()
-	log.Info("[Relay] forwarding %d-byte inner packet (counter=%d, server=%s) from client %s to %s",
-		n, innerCounter, cr.id, realAddr, inst.addr)
+	log.Info("[Relay] forwarding %d-byte inner packet (counter=%d, server=%s) from client %s to %s (sticky=%v)",
+		n, innerCounter, cr.id, realAddr, inst.addr, cr.sticky)
 
 	// Register a pending request under (counter, realAddr) on the instance.
 	// The connection routine dispatches the server's ACK/COK to this channel

@@ -460,6 +460,12 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	switch peerDeviceType {
 	case NHP_AGENT:
 		toValidate = !option.DisableAgentPeerValidation
+		// NHP_OTP and NHP_REG are registration messages sent by agents
+		// that are not yet in the peer pool — skip peer validation so
+		// new agents can register before their key is known.
+		if toValidate && (ppd.HeaderType == NHP_OTP || ppd.HeaderType == NHP_REG) {
+			toValidate = false
+		}
 
 	case NHP_SERVER:
 		toValidate = !option.DisableServerPeerValidation
@@ -482,6 +488,17 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 
 		peer = ppd.device.LookupPeer(peerPk)
 		if peer == nil {
+			// Fallback: check dynamically-registered peers (e.g., agents
+			// registered via NHP-REG stored in SQLite).
+			ppd.device.optionMutex.Lock()
+			fallback := ppd.device.option.PeerLookupFallback
+			ppd.device.optionMutex.Unlock()
+			if fallback != nil && fallback(peerPk, ppd.HeaderType) {
+				log.Info("validatePeer: %s peer accepted via fallback, pubkey=%s",
+					peerDeviceTypeName, peerPkBase64)
+				// Skip expiry/address checks for fallback peers.
+				goto peerAccepted
+			}
 			log.Error("validatePeer: %s peer not found in peer pool, pubkey=%s",
 				peerDeviceTypeName, peerPkBase64)
 			err = fmt.Errorf("peer not found in peer pool (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
@@ -502,6 +519,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		}
 		ppd.ConnData.UpdateRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr)
 		peer.UpdateRecv(ppd.LocalInitTime)
+	peerAccepted:
 	}
 
 	ppd.RemotePubKey = peerPk

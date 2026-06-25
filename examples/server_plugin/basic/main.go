@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/smtp"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -22,6 +23,13 @@ import (
 type config struct {
 	ExampleUsername string
 	ExamplePassword string
+	// SMTP settings for OTP email delivery.
+	SMTPHost     string `toml:"smtp_host"`
+	SMTPPort     int    `toml:"smtp_port"`
+	SMTPUsername string `toml:"smtp_username"`
+	SMTPPassword string `toml:"smtp_password"`
+	SMTPFrom     string `toml:"smtp_from"`
+	SMTPSubject  string `toml:"smtp_subject"`
 }
 
 var (
@@ -317,6 +325,146 @@ func AuthWithNHP(req *common.NhpAuthRequest, helper *plugins.NhpServerPluginHelp
 	return ackMsg, err
 }
 
+// ── Plugin metadata exports ──────────────────────────────────────────────
+
+func Signature() string {
+	return name + "/" + version
+}
+
+func ExportedData() *plugins.PluginParamsOut {
+	return &plugins.PluginParamsOut{}
+}
+
+// ── OTP and registration ─────────────────────────────────────────────────
+
+// RequestOTP generates a one-time password, sends it via email, and stores
+// it via the server's key store.
+func RequestOTP(req *common.NhpOTPRequest, helper *plugins.NhpServerPluginHelper) error {
+	if helper == nil || helper.GenerateOTPFunc == nil {
+		return fmt.Errorf("RequestOTP: keystore helper not available")
+	}
+
+	// Use server-configured OTP TTL (default 300s = 5 min).
+	ttl := helper.OTPTTLSeconds
+	if ttl <= 0 {
+		ttl = 300
+	}
+	otpCode, err := helper.GenerateOTPFunc(req.Msg.UserId, req.Msg.DeviceId, ttl)
+	if err != nil {
+		log.Error("RequestOTP: generate otp failed: %v", err)
+		return err
+	}
+
+	// Send OTP via email.
+	to := req.Msg.UserData["email"]
+	emailAddr, ok := to.(string)
+	if !ok || emailAddr == "" {
+		emailAddr = req.Msg.UserId // fallback: use userId as email
+		log.Warning("RequestOTP: no email in UserData, using userId as email recipient")
+	}
+
+	if err := sendOTPEmail(emailAddr, otpCode); err != nil {
+		log.Error("RequestOTP: send email failed: %v", err)
+		return err
+	}
+
+	log.Info("RequestOTP: otp sent to %s for user=%s device=%s", emailAddr, req.Msg.UserId, req.Msg.DeviceId)
+	return nil
+}
+
+// RegisterAgent validates the OTP and registers the agent's public key.
+func RegisterAgent(req *common.NhpRegisterRequest, helper *plugins.NhpServerPluginHelper) (*common.ServerRegisterAckMsg, error) {
+	ack := req.Ack
+	if ack == nil {
+		ack = &common.ServerRegisterAckMsg{}
+	}
+
+	if helper == nil || helper.ValidateOTPFunc == nil || helper.RegisterKeyFunc == nil {
+		err := fmt.Errorf("RegisterAgent: keystore helper not available")
+		ack.ErrCode = common.ErrAgentKeyStoreError.ErrorCode()
+		ack.ErrMsg = err.Error()
+		return ack, err
+	}
+
+	// Step 1: validate OTP.
+	if err := helper.ValidateOTPFunc(req.Msg.UserId, req.Msg.DeviceId, req.Msg.OTP); err != nil {
+		log.Error("RegisterAgent: otp validation failed for user=%s: %v", req.Msg.UserId, err)
+		ack.ErrCode = common.ErrorToErrorCode(err)
+		ack.ErrMsg = common.ErrorToString(err)
+		return ack, err
+	}
+
+	// Step 2: register the agent's public key.
+	if err := helper.RegisterKeyFunc(req.Msg.UserId, req.Msg.DeviceId, req.PublicKey); err != nil {
+		log.Error("RegisterAgent: register key failed for user=%s: %v", req.Msg.UserId, err)
+		ack.ErrCode = common.ErrorToErrorCode(err)
+		ack.ErrMsg = common.ErrorToString(err)
+		return ack, err
+	}
+
+	ack.ErrCode = common.ErrSuccess.ErrorCode()
+	ack.AuthServiceId = req.Msg.AuthServiceId
+	log.Info("RegisterAgent: registered user=%s device=%s", req.Msg.UserId, req.Msg.DeviceId)
+	return ack, nil
+}
+
+// ListService returns the list of available services for the agent.
+func ListService(req *common.NhpListRequest, helper *plugins.NhpServerPluginHelper) (*common.ServerListResultMsg, error) {
+	ack := req.Ack
+	if ack == nil {
+		ack = &common.ServerListResultMsg{}
+	}
+
+	resourceMapMutex.Lock()
+	defer resourceMapMutex.Unlock()
+
+	if ack.ListResults == nil {
+		ack.ListResults = make(map[string]any)
+	}
+	for resId := range resourceMap {
+		ack.ListResults[resId] = nil
+	}
+
+	ack.ErrCode = common.ErrSuccess.ErrorCode()
+	return ack, nil
+}
+
+// ── Email helper ─────────────────────────────────────────────────────────
+
+func sendOTPEmail(to, code string) error {
+	if baseConf == nil || baseConf.SMTPHost == "" {
+		// No SMTP configured — log the OTP for development/demo use.
+		log.Info("OTP CODE for %s: %s (SMTP not configured, printed to log)", to, code)
+		return nil
+	}
+
+	subject := baseConf.SMTPSubject
+	if subject == "" {
+		subject = "Your OpenNHP Verification Code"
+	}
+
+	body := fmt.Sprintf("Subject: %s\r\n", subject)
+	body += "MIME-Version: 1.0\r\n"
+	body += "Content-Type: text/plain; charset=\"UTF-8\"\r\n"
+	body += "\r\n"
+	body += fmt.Sprintf("Your verification code is: %s\r\n", code)
+	body += fmt.Sprintf("This code will expire in 5 minutes.\r\n")
+
+	addr := fmt.Sprintf("%s:%d", baseConf.SMTPHost, baseConf.SMTPPort)
+
+	var auth smtp.Auth
+	if baseConf.SMTPUsername != "" {
+		auth = smtp.PlainAuth("", baseConf.SMTPUsername, baseConf.SMTPPassword, baseConf.SMTPHost)
+	}
+
+	from := baseConf.SMTPFrom
+	if from == "" {
+		from = "noreply@opennhp.org"
+	}
+
+	return smtp.SendMail(addr, auth, from, []string{to}, []byte(body))
+}
+
 func corsMiddleware(ctx *gin.Context) {
 	originResource := ctx.Request.Header.Get("Origin")
 
@@ -331,4 +479,3 @@ func corsMiddleware(ctx *gin.Context) {
 func main() {
 
 }
-

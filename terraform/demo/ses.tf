@@ -10,29 +10,30 @@ resource "aws_ses_domain_identity" "opennhp" {
 }
 
 # SES domain verification TXT record in Cloudflare.
+# The verification token goes in a TXT record at _amazones.opennhp.org.
 resource "cloudflare_record" "ses_verification" {
   zone_id = var.cloudflare_zone_id
-  name    = trimsuffix(aws_ses_domain_identity.opennhp.verification_txt_domain, ".opennhp.org")
-  content = aws_ses_domain_identity.opennhp.verification_txt_record
+  name    = "_amazones"
+  content = aws_ses_domain_identity.opennhp.verification_token
   type    = "TXT"
   ttl     = 300
   comment = "SES domain verification — managed by Terraform"
 }
 
-# DKIM records (3 CNAME entries).
-resource "cloudflare_record" "ses_dkim" {
-  count   = 3
-  zone_id = var.cloudflare_zone_id
-  name    = "${aws_ses_domain_identity.opennhp.dkim_tokens[count.index]}._domainkey"
-  content = "${aws_ses_domain_identity.opennhp.dkim_tokens[count.index]}.dkim.amazonses.com"
-  type    = "CNAME"
-  ttl     = 300
-  comment = "SES DKIM ${count.index + 1}/3 — managed by Terraform"
-}
-
 # Enable DKIM signing on the verified domain.
 resource "aws_ses_domain_dkim" "opennhp" {
   domain = aws_ses_domain_identity.opennhp.domain
+}
+
+# DKIM records (3 CNAME entries).  Tokens come from aws_ses_domain_dkim.
+resource "cloudflare_record" "ses_dkim" {
+  count   = 3
+  zone_id = var.cloudflare_zone_id
+  name    = "${aws_ses_domain_dkim.opennhp.dkim_tokens[count.index]}._domainkey"
+  content = "${aws_ses_domain_dkim.opennhp.dkim_tokens[count.index]}.dkim.amazonses.com"
+  type    = "CNAME"
+  ttl     = 300
+  comment = "SES DKIM ${count.index + 1}/3 — managed by Terraform"
 }
 
 # MAIL FROM subdomain for bounce/complaint handling.

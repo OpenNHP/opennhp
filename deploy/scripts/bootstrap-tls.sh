@@ -92,12 +92,18 @@ if sudo test -f "$CERT_DIR/fullchain.pem"; then
     fi
 fi
 
+# Extract existing SANs early so they can be reused in both the
+# missing-SAN check and the D_ARGS construction below.
+EXISTING_SANS=""
+if sudo test -f "$CERT_DIR/fullchain.pem"; then
+    EXISTING_SANS=$(sudo openssl x509 -noout -ext subjectAltName -in "$CERT_DIR/fullchain.pem" 2>/dev/null | \
+        tr ',' '\n' | sed -n 's/^[[:space:]]*DNS://p' | sort -u)
+fi
+
 # Even when the cert exists and is not near expiry, check whether any
 # EXTRA_DOMAINS are missing from its SAN list.  If so, re-issue with
 # --expand so new vhosts (e.g. reg.opennhp.org) get covered.
 if [ "$NEED_ISSUE" = "0" ] && [ -n "$EXTRA_DOMAINS" ]; then
-    EXISTING_SANS=$(sudo openssl x509 -noout -ext subjectAltName -in "$CERT_DIR/fullchain.pem" 2>/dev/null | \
-        tr ',' '\n' | sed -n 's/^[[:space:]]*DNS://p' | sort -u)
     echo "[tls] existing cert SANs: $(echo "$EXISTING_SANS" | tr '\n' ' ')"
     for d in $EXTRA_DOMAINS; do
         if ! echo "$EXISTING_SANS" | grep -qxF "$d"; then
@@ -114,9 +120,20 @@ if [ "$NEED_ISSUE" = "0" ] && [ -n "$EXTRA_DOMAINS" ]; then
 fi
 
 if [ "$NEED_ISSUE" = "1" ]; then
+    # Build domain arguments from primary + extra domains, then merge in
+    # every existing SAN so that certbot --expand sees the requested set
+    # as a superset of the current certificate's names.  Without this,
+    # certbot creates a new lineage (e.g. relay.opennhp.org-0001) instead
+    # of expanding the existing one, and nothing points at the new cert.
     D_ARGS="-d $PRIMARY_DOMAIN"
     for d in $EXTRA_DOMAINS; do
         D_ARGS="$D_ARGS -d $d"
+    done
+    for d in $EXISTING_SANS; do
+        # Wrap in spaces so the first -d also matches the " -d X " pattern.
+        if ! echo " $D_ARGS " | grep -qF " -d $d "; then
+            D_ARGS="$D_ARGS -d $d"
+        fi
     done
 
     # The dnf-installed certbot (v2.x) may have left a stale account record

@@ -163,6 +163,15 @@ if [ "$NEED_ISSUE" = "1" ]; then
         sudo rm -rf /etc/letsencrypt/accounts/*
     fi
 
+    # If a stale -0001 lineage exists from a previous failed --expand run,
+    # delete it so certbot doesn't match against it instead of the real
+    # $PRIMARY_DOMAIN lineage.
+    if sudo test -f "/etc/letsencrypt/renewal/${PRIMARY_DOMAIN}-0001.conf"; then
+        echo "[tls] deleting stale -0001 lineage so $PRIMARY_DOMAIN can be expanded cleanly"
+        sudo "$CERTBOT_BIN" delete --non-interactive --cert-name "${PRIMARY_DOMAIN}-0001" || \
+            echo "[tls] warning: certbot delete -0001 failed; continuing"
+    fi
+
     EXPAND_FLAG=""
     RENEW_FLAG="--keep-until-expiring"
     if sudo test -f "$CERT_DIR/fullchain.pem"; then
@@ -172,6 +181,7 @@ if [ "$NEED_ISSUE" = "1" ]; then
     fi
     echo "[tls] requesting certificate: $D_ARGS $EXPAND_FLAG $RENEW_FLAG"
     sudo "$CERTBOT_BIN" certonly \
+        --cert-name "$PRIMARY_DOMAIN" \
         --non-interactive --agree-tos \
         --email "$ACME_EMAIL" \
         --dns-cloudflare --dns-cloudflare-credentials "$CF_INI" \

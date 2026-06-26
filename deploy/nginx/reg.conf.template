@@ -20,6 +20,14 @@ server {
         try_files /config.json =404;
     }
 
+    # The SDK bundle is shared with the main jsagent vhost. reg.html sits
+    # in the reg/ subdirectory but resolves nhp-js/dist/ relative to /, so
+    # we serve the bundle from the parent directory directly.
+    location /nhp-js/ {
+        root /var/www/jsagent;
+        try_files $uri =404;
+    }
+
     location / {
         try_files $uri $uri/ =404;
     }

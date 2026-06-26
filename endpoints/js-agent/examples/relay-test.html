@@ -1260,11 +1260,21 @@ if (result.success) {
     }
   }
 
-  // Read registration data saved by reg.html via localStorage, and pre-fill
-  // the agent key fields + select the matching cluster if possible.
+  // Read registration data saved by reg.html. reg.html and relay-test.html
+  // are served from different vhosts so localStorage does not carry over;
+  // reg.html embeds the payload in the URL fragment and we re-import it.
   function importRegisteredKey() {
+    let raw;
     try {
-      const raw = localStorage.getItem('nhp-reg-data');
+      // 1. Prefer same-origin localStorage (returning visitor).
+      raw = localStorage.getItem('nhp-reg-data');
+      // 2. Fallback: URL fragment from reg.html (cross-vhost handoff).
+      if (!raw && window.location.hash.startsWith('#reg=')) {
+        raw = decodeURIComponent(window.location.hash.slice(5));
+        try { localStorage.setItem('nhp-reg-data', raw); } catch (_) {}
+        // Clean up the URL so reloads don't re-apply.
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
       if (!raw) return;
       const d = JSON.parse(raw);
       if (!d.privateKey) return;

@@ -357,11 +357,26 @@ window.doRegister = async () => {
 };
 
 window.goKnock = () => {
-  // Navigate to relay-test.html. If opened from relay-test.html in the
-  // same tab, use history.back(); otherwise navigate directly.
-  const target = window.location.pathname.replace(/reg\.html$/, 'relay-test.html')
-    .replace(/\/reg\/index\.html$/, '/index.html');
-  window.location.href = target || 'relay-test.html';
+  // Navigate to the demo page on the agent vhost. The reg page is served
+  // by a separate vhost from the demo page, so localStorage does not
+  // carry across; embed the registration payload in the URL fragment
+  // and let the demo page import it into its own localStorage on load.
+  // (regData is only the just-registered device's public material — the
+  // server's public key was already on the demo page via config.json.)
+  const payload = encodeURIComponent(JSON.stringify({
+    privateKey:      agent.getPrivateKey(),
+    publicKey:       agent.getPublicKey(),
+    userId:          $('#user-id').value.trim(),
+    deviceId:        $('#device-id').value.trim(),
+    cipherScheme,
+    serverPublicKey: selectedServer.publicKeyBase64,
+    serverName:      selectedServer.name || selectedServer.id,
+    serverId:        selectedServer.id,
+  }));
+  // Derive the demo host from the current hostname so local dev keeps
+  // working: localhost stays localhost, reg.opennhp.org → agent.opennhp.org.
+  const host = window.location.hostname.replace(/^reg\./, 'agent.');
+  window.location.href = `https://${host}/#reg=${payload}`;
 };
 
 window.downloadKey = () => {

@@ -116,7 +116,12 @@
     </div>
     <hr>
     <div class="field">
-      <label for="user-id">User ID</label>
+      <label for="email">Email <span style="font-weight:400;color:#8b949e">(User ID — the OTP code is sent here)</span></label>
+      <input type="email" id="email" placeholder="alice@example.com" autocomplete="email" required>
+      <div class="hint">Used as both your user identity and OTP delivery address.</div>
+    </div>
+    <div class="field">
+      <label for="user-id">User ID <span style="font-weight:400;color:#484f58">(optional, defaults to email)</span></label>
       <input type="text" id="user-id" placeholder="alice@example.com" autocomplete="username">
     </div>
     <div class="field">
@@ -125,14 +130,10 @@
       <div class="hint">Leave blank to auto-generate</div>
     </div>
     <div class="field">
-      <label for="email">Email (for receiving OTP)</label>
-      <input type="email" id="email" placeholder="alice@example.com" autocomplete="email">
-    </div>
-    <div class="field">
       <label for="org-id">Organization ID <span style="font-weight:400;color:#484f58">(optional)</span></label>
       <input type="text" id="org-id" placeholder="opennhp.org">
     </div>
-    <button class="btn btn-primary" id="btn-next" onclick="goToOtpStep()">Get Verification Code</button>
+    <button class="btn btn-primary" id="btn-next" onclick="goToOtpStep()">Send Verification Code (NHP-OTP)</button>
   </div>
 
   <!-- Step 2: OTP -->
@@ -175,12 +176,14 @@
     "@opennhp/agent": "../dist/index.js",
     "@noble/ciphers": "https://esm.sh/@noble/ciphers@2.1.1",
     "@noble/curves": "https://esm.sh/@noble/curves@2.0.1",
-    "@noble/hashes": "https://esm.sh/@noble/hashes@1.7.2"
+    "@noble/hashes": "https://esm.sh/@noble/hashes@1.7.2",
+    "cbor-x": "https://esm.sh/cbor-x@1.6.4"
   }
 }
 </script>
 <script type="module">
 import { NHPAgent } from '@opennhp/agent';
+import { encode as cborEncode } from 'cbor-x';
 
 // ── State ──
 let agent = null;
@@ -270,9 +273,11 @@ async function discoverServers() {
 
 // ── Registration flow ──
 window.goToOtpStep = async () => {
-  const userId = $('#user-id').value.trim();
+  // Email is the primary identity — User ID defaults to it.
   const email = $('#email').value.trim();
-  if (!userId || !email) { showAlert('Please fill in User ID and Email', 'error'); return; }
+  if (!email) { showAlert('Please enter your email (used as both user ID and OTP address)', 'error'); return; }
+  const userId = $('#user-id').value.trim() || email;
+  $('#user-id').value = userId;
   if (!selectedServer) { showAlert('Please select a target server', 'error'); return; }
 
   showStep('otp');
@@ -322,16 +327,18 @@ window.doRegister = async () => {
       try { localStorage.setItem('nhp-reg-data', JSON.stringify(regData)); } catch (_) {}
 
       showStep('done');
-      const isRelayTest = window.opener || window.parent !== window;
-      const knockUrl = isRelayTest ? '#' : (
-        window.location.pathname.replace(/reg\.html$/, 'relay-test.html').replace(/\/reg\/?/, '/')
-        || 'relay-test.html'
-      );
       $('#done-content').innerHTML = `
         <div class="alert alert-success">
           <strong>&check; Registration Successful</strong><br>
           Server: ${selectedServer.name || selectedServer.id}<br>
           Keys saved — keep your private key safe.
+        </div>
+        <div class="alert alert-info" style="background:#0d2b1e;border-color:#238636;color:#7ee787">
+          <strong>Key valid for 24 hours.</strong> The nhp-server treats this
+          public key as authorized for the "demo" resource until
+          <strong>${new Date(Date.now() + 24 * 60 * 60 * 1000).toUTCString()}</strong>.
+          After that you will need to re-register (re-run this page and enter
+          a fresh OTP) to knock again.
         </div>
         <div class="field">
           <label>Private Key <span class="hint">(saved to localStorage + download)</span></label>
@@ -339,10 +346,13 @@ window.doRegister = async () => {
         </div>
         <div class="btn-row">
           <button class="btn btn-secondary" onclick="downloadKey()">Download Key File</button>
+          <button class="btn btn-secondary" onclick="copyCborToken()">Copy CBOR Token</button>
           <button class="btn btn-primary" onclick="goKnock()">Knock with this key &rarr;</button>
         </div>
         <p style="font-size:12px;color:#8b949e;margin-top:12px">
-          Click <strong>Knock</strong> to open the demo page with your registered key pre-filled.
+          Click <strong>Knock</strong> to open the demo page with your registered key pre-filled,
+          or paste the <strong>CBOR Token</strong> into the demo page's "Load from Token" dialog
+          (CBOR has the same fields as the JSON download, encoded compactly).
         </p>
       `;
     } else {
@@ -361,9 +371,34 @@ window.goKnock = () => {
   // by a separate vhost from the demo page, so localStorage does not
   // carry across; embed the registration payload in the URL fragment
   // and let the demo page import it into its own localStorage on load.
-  // (regData is only the just-registered device's public material — the
-  // server's public key was already on the demo page via config.json.)
-  const payload = encodeURIComponent(JSON.stringify({
+  // Prefer CBOR (Base64) over JSON for the cross-vhost handoff — same
+  // fields, smaller and unambiguous. Fall back to JSON if CBOR fails.
+  let fragment;
+  try {
+    fragment = 'cbor:' + buildCborToken();
+  } catch (_) {
+    fragment = encodeURIComponent(JSON.stringify({
+      privateKey:      agent.getPrivateKey(),
+      publicKey:       agent.getPublicKey(),
+      userId:          $('#user-id').value.trim(),
+      deviceId:        $('#device-id').value.trim(),
+      cipherScheme,
+      serverPublicKey: selectedServer.publicKeyBase64,
+      serverName:      selectedServer.name || selectedServer.id,
+      serverId:        selectedServer.id,
+    }));
+  }
+  // Derive the demo host from the current hostname so local dev keeps
+  // working: localhost stays localhost, reg.opennhp.org → agent.opennhp.org.
+  const host = window.location.hostname.replace(/^reg\./, 'agent.');
+  window.location.href = `https://${host}/#reg=${fragment}`;
+};
+
+// Build a Base64-encoded CBOR token with the same fields as the JSON
+// download + URL-fragment payload, so it can be pasted into the demo
+// page's "Load from Token" dialog.
+function buildCborToken() {
+  const obj = {
     privateKey:      agent.getPrivateKey(),
     publicKey:       agent.getPublicKey(),
     userId:          $('#user-id').value.trim(),
@@ -372,11 +407,28 @@ window.goKnock = () => {
     serverPublicKey: selectedServer.publicKeyBase64,
     serverName:      selectedServer.name || selectedServer.id,
     serverId:        selectedServer.id,
-  }));
-  // Derive the demo host from the current hostname so local dev keeps
-  // working: localhost stays localhost, reg.opennhp.org → agent.opennhp.org.
-  const host = window.location.hostname.replace(/^reg\./, 'agent.');
-  window.location.href = `https://${host}/#reg=${payload}`;
+  };
+  // cbor-x encode → Uint8Array → standard Base64 (btoa handles binary).
+  const bytes = cborEncode(obj);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+window.copyCborToken = async () => {
+  const token = buildCborToken();
+  try {
+    await navigator.clipboard.writeText(token);
+    showAlert('CBOR token copied to clipboard.', 'success');
+  } catch {
+    // Fallback: show in a textarea so the user can copy manually.
+    const ta = document.createElement('textarea');
+    ta.value = token;
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:90%;height:120px;z-index:9999';
+    document.body.appendChild(ta);
+    ta.select();
+    showAlert('Clipboard blocked — token shown in a textbox; press Cmd/Ctrl+C.', 'info');
+  }
 };
 
 window.downloadKey = () => {

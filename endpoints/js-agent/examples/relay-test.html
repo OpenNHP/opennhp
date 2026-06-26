@@ -1263,6 +1263,9 @@ if (result.success) {
   // Read registration data saved by reg.html. reg.html and relay-test.html
   // are served from different vhosts so localStorage does not carry over;
   // reg.html embeds the payload in the URL fragment and we re-import it.
+  // The fragment may be either URL-encoded JSON ("#reg={...}") or Base64
+  // CBOR ("#reg=cbor:..."); CBOR is preferred when present since it's
+  // what reg.html emits via its "Copy CBOR Token" button.
   function importRegisteredKey() {
     let raw;
     try {
@@ -1270,8 +1273,22 @@ if (result.success) {
       raw = localStorage.getItem('nhp-reg-data');
       // 2. Fallback: URL fragment from reg.html (cross-vhost handoff).
       if (!raw && window.location.hash.startsWith('#reg=')) {
-        raw = decodeURIComponent(window.location.hash.slice(5));
-        try { localStorage.setItem('nhp-reg-data', raw); } catch (_) {}
+        raw = window.location.hash.slice(5);
+        try {
+          let obj;
+          if (raw.startsWith('cbor:')) {
+            const bin = atob(raw.slice(5));
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            obj = cborDecode(bytes);
+          } else {
+            obj = JSON.parse(decodeURIComponent(raw));
+          }
+          raw = JSON.stringify(obj);
+        } catch (_) { raw = null; }
+        if (raw) {
+          try { localStorage.setItem('nhp-reg-data', raw); } catch (_) {}
+        }
         // Clean up the URL so reloads don't re-apply.
         history.replaceState(null, '', window.location.pathname + window.location.search);
       }

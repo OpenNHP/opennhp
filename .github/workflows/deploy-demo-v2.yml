@@ -1289,8 +1289,12 @@ jobs:
             opennhp/endpoints/js-agent/examples/relay-test.html > bundle/index.html
 
           # Registration page for reg.opennhp.org.
-          # Rewrite the SDK import path so it resolves alongside index.html.
-          sed "s|from '../dist/index.js'|from './nhp-js/dist/index.js'|g" \
+          # Rewrite SDK paths (import map + direct imports) and links so
+          # everything resolves under /nhp-js/dist/ on the deployed host.
+          # The reg page sits in a subdirectory (reg/), so relative paths
+          # need ../ to reach the nhp-js/ sibling directory.
+          sed -e "s|from '../dist/index.js'|from '../nhp-js/dist/index.js'|g" \
+              -e 's|"../dist/index.js"|"../nhp-js/dist/index.js"|g' \
             opennhp/endpoints/js-agent/examples/reg.html > bundle/reg/index.html
 
           cp -r opennhp/endpoints/js-agent/dist/. bundle/nhp-js/dist/

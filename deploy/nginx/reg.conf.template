@@ -13,10 +13,11 @@ server {
     index index.html;
 
     # Registration page needs config.json for relay URL and server key.
-    # The /reg/ directory does not have its own copy — proxy the root one.
+    # Serve the same config.json as the main jsagent vhost.
     location = /config.json {
-        alias /var/www/jsagent/config.json;
+        root /var/www/jsagent;
         add_header Cache-Control "no-store" always;
+        try_files /config.json =404;
     }
 
     location / {

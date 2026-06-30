@@ -4,7 +4,7 @@ go 1.25.6
 
 require (
 	github.com/OpenNHP/opennhp/nhp v0.6.0
-	github.com/cilium/ebpf v0.21.0
+	github.com/cilium/ebpf v0.22.0
 	github.com/emmansun/gmsm v0.44.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gin-contrib/sessions v1.1.0
@@ -121,7 +121,7 @@ require (
 	github.com/sigstore/sigstore v1.10.6 // indirect
 	github.com/sigstore/sigstore-go v1.1.4 // indirect
 	github.com/sigstore/timestamp-authority/v2 v2.0.6 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
+	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect

@@ -280,6 +280,13 @@ export interface ServerRegisterAckMsg {
   errMsg?: string;
   /** Auth Service Provider ID */
   aspId?: string;
+  /**
+   * Unix-seconds timestamp at which the registered public key becomes
+   * invalid. Omitted when the server is configured for non-expiring
+   * keys (agentKeyTTLSeconds=0) or when registration failed.
+   * The SDK converts this to milliseconds in RegisterResult.expiresAt.
+   */
+  expiresAt?: number;
 }
 
 /**
@@ -302,4 +309,11 @@ export interface RegisterResult {
   error?: string;
   /** Error code if registration failed */
   errorCode?: string;
+  /**
+   * Unix-milliseconds timestamp at which the registered public key
+   * expires. Populated only on success and only when the server
+   * returned one (non-expiring configurations omit it). Matches the
+   * unit of KnockResult.expiresAt / ServerConfig.expiresAt.
+   */
+  expiresAt?: number;
 }

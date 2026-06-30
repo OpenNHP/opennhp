@@ -162,6 +162,12 @@ type Config struct {
 	// OTPTTLSeconds is the lifetime of a one-time password for agent
 	// registration, in seconds. Default 300 (5 minutes) if unset / zero.
 	OTPTTLSeconds int `json:"otpTTLSeconds"`
+
+	// AgentKeyTTLSeconds is the lifetime of a registered agent public
+	// key, in seconds. After this elapses, the noise-layer peer
+	// validation will reject the key and knocks will fail as if the
+	// agent were never registered. Default 86400 (24h) if unset / zero.
+	AgentKeyTTLSeconds int `json:"agentKeyTTLSeconds"`
 }
 
 type RemoteConfig struct {

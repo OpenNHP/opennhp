@@ -482,8 +482,11 @@ export class NHPAgent {
         };
       }
 
-      this.log('info', `Registration successful for user=${this.identity.userId} device=${this.identity.deviceId}`);
-      return { success: true };
+      this.log('info', `Registration successful for user=${this.identity.userId} device=${this.identity.deviceId} expiresAt=${ack.expiresAt ?? 'never'}`);
+      // Convert expiresAt from unix-seconds (Go wire format) to
+      // unix-milliseconds to match ServerConfig.expiresAt / KnockResult.expiresAt.
+      const expiresAtMs = ack.expiresAt !== undefined ? ack.expiresAt * 1000 : undefined;
+      return { success: true, expiresAt: expiresAtMs };
     } catch (err) {
       const error = err instanceof Error ? err.message : 'Unknown error';
       this.log('error', `Registration failed: ${error}`);

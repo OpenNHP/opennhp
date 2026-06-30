@@ -170,6 +170,10 @@ git commit -S -m "your message"
 <a href="https://layerv.ai">
   <img src="docs/images/layerv_logo.png" height="40" alt="LayerV.ai logo">
 </a>
+&nbsp;&nbsp;
+<a href="https://cloud.tencent.com/">
+  <img src="docs/images/tencentcloud_logo.svg" height="40" alt="Tencent Cloud logo">
+</a>
 
 ---
 

@@ -175,6 +175,10 @@ Found a vulnerability? Please follow the responsible-disclosure process in [SECU
 <a href="https://www.atlascloud.ai/">
   <img src="docs/images/atlascloud_logo.png" height="40" alt="Atlas Cloud logo">
 </a>
+&nbsp;&nbsp;
+<a href="https://cloud.tencent.com/">
+  <img src="docs/images/tencentcloud_logo.svg" height="40" alt="Tencent Cloud logo">
+</a>
 
 ---
 

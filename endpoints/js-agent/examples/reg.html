@@ -323,6 +323,7 @@ window.doRegister = async () => {
         serverPublicKey: selectedServer.publicKeyBase64,
         serverName: selectedServer.name || selectedServer.id,
         serverId: selectedServer.id,
+        expiresAt: result.expiresAt, // unix-ms from SDK; undefined if server has no TTL
       };
       try { localStorage.setItem('nhp-reg-data', JSON.stringify(regData)); } catch (_) {}
 
@@ -334,11 +335,12 @@ window.doRegister = async () => {
           Keys saved — keep your private key safe.
         </div>
         <div class="alert alert-info" style="background:#0d2b1e;border-color:#238636;color:#7ee787">
-          <strong>Key valid for 24 hours.</strong> The nhp-server treats this
-          public key as authorized for the "demo" resource until
-          <strong>${new Date(Date.now() + 24 * 60 * 60 * 1000).toUTCString()}</strong>.
-          After that you will need to re-register (re-run this page and enter
-          a fresh OTP) to knock again.
+          ${result.expiresAt !== undefined
+            ? `<strong>Key valid until ${new Date(result.expiresAt).toUTCString()}.</strong>
+              The nhp-server returned this absolute expiry (server-configured TTL).`
+            : `<strong>Key valid indefinitely.</strong>
+              The nhp-server is configured with no TTL on registered keys.`}
+          After expiry you will need to re-register (re-run this page and enter a fresh OTP) to knock again.
         </div>
         <div class="field">
           <label>Private Key <span class="hint">(saved to localStorage + download)</span></label>

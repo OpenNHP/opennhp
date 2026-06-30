@@ -402,9 +402,25 @@ func RegisterAgent(req *common.NhpRegisterRequest, helper *plugins.NhpServerPlug
 		return ack, err
 	}
 
+	// Step 3: echo the stored expiry back to the agent so the SDK can
+	// show "valid until <date>" instead of computing it client-side.
+	// GetAgentKeyExpiry is nil-safe: if the helper did not wire it
+	// (older server), we simply omit ExpiresAt from the ack.
+	if helper.GetAgentKeyExpiryFunc != nil {
+		if _, exp, err := helper.GetAgentKeyExpiryFunc(req.Msg.UserId, req.Msg.DeviceId); err == nil {
+			ack.ExpiresAt = exp
+		} else {
+			log.Warning("RegisterAgent: read expiry failed for user=%s: %v", req.Msg.UserId, err)
+		}
+	}
+
 	ack.ErrCode = common.ErrSuccess.ErrorCode()
 	ack.AuthServiceId = req.Msg.AuthServiceId
-	log.Info("RegisterAgent: registered user=%s device=%s", req.Msg.UserId, req.Msg.DeviceId)
+	if ack.ExpiresAt != nil {
+		log.Info("RegisterAgent: registered user=%s device=%s expiresAt=%d", req.Msg.UserId, req.Msg.DeviceId, *ack.ExpiresAt)
+	} else {
+		log.Info("RegisterAgent: registered user=%s device=%s (no expiry)", req.Msg.UserId, req.Msg.DeviceId)
+	}
 	return ack, nil
 }
 

@@ -420,6 +420,31 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	go s.sendMessageRoutine()
 	go s.recvMessageRoutine()
 
+	// Sweep expired registered-key rows on a 5-minute cadence. This is
+	// a housekeeping measure only — FindAgentByPublicKey already
+	// filters on expires_at, so an expired key is rejected on the next
+	// knock even without this goroutine.
+	if s.keyStore != nil {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			t := time.NewTicker(5 * time.Minute)
+			defer t.Stop()
+			for {
+				select {
+				case <-s.signals.stop:
+					return
+				case <-t.C:
+					if n, err := s.keyStore.SweepExpiredDeactivates(); err != nil {
+						log.Warning("keystore: sweep failed: %v", err)
+					} else if n > 0 {
+						log.Info("keystore: swept %d expired agent key(s)", n)
+					}
+				}
+			}
+		}()
+	}
+
 	s.running.Store(true)
 	return nil
 }
@@ -1342,11 +1367,21 @@ func (us *UdpServer) NewNhpServerHelper(ppd *core.PacketParserData) *plugins.Nhp
 
 	// Keystore-backed OTP and registration helpers.
 	if us.keyStore != nil {
-		ttl := int64(us.config.OTPTTLSeconds)
-		if ttl <= 0 {
-			ttl = 300 // 5 minutes default
+		otpTTL := int64(us.config.OTPTTLSeconds)
+		if otpTTL <= 0 {
+			otpTTL = 300 // 5 minutes default
 		}
-		h.OTPTTLSeconds = ttl
+		h.OTPTTLSeconds = otpTTL
+
+		// Bind the configured registered-key TTL into RegisterKeyFunc so
+		// the plugin does not have to know about it. Zero in config
+		// means "unset"; fall back to the 24h default.
+		keyTTL := int64(us.config.AgentKeyTTLSeconds)
+		if keyTTL == 0 {
+			keyTTL = DefaultAgentKeyTTLSeconds
+		}
+		h.AgentKeyTTLSeconds = keyTTL
+
 		h.GenerateOTPFunc = func(userId, deviceId string, ttlSeconds int64) (string, error) {
 			ttl := time.Duration(ttlSeconds) * time.Second
 			return us.keyStore.GenerateOTP(OTPParams{
@@ -1356,8 +1391,11 @@ func (us *UdpServer) NewNhpServerHelper(ppd *core.PacketParserData) *plugins.Nhp
 			})
 		}
 		h.ValidateOTPFunc = us.keyStore.ValidateOTP
-		h.RegisterKeyFunc = us.keyStore.RegisterAgentKey
+		h.RegisterKeyFunc = func(userId, deviceId, pubKeyBase64 string) error {
+			return us.keyStore.RegisterAgentKey(userId, deviceId, pubKeyBase64, keyTTL)
+		}
 		h.IsRegisteredFunc = us.keyStore.IsAgentRegistered
+		h.GetAgentKeyExpiryFunc = us.keyStore.GetAgentKeyExpiry
 	}
 
 	return h

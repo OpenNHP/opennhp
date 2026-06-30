@@ -20,6 +20,11 @@ type AgentKeyStore struct {
 	db *sql.DB
 }
 
+// DefaultAgentKeyTTLSeconds is the lifetime of a newly-registered agent
+// public key when the operator has not configured agentKeyTTLSeconds.
+// 24 hours. Mirrors how OTPTTLSeconds is defaulted at the helper layer.
+const DefaultAgentKeyTTLSeconds int64 = 86400
+
 // NewAgentKeyStore opens (or creates) the SQLite database at dbPath.
 // The directory is created if it does not exist.
 func NewAgentKeyStore(dbPath string) (*AgentKeyStore, error) {
@@ -85,6 +90,7 @@ func (s *AgentKeyStore) migrate() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_agent_usr ON agent_keys(usr_id);
 	CREATE INDEX IF NOT EXISTS idx_agent_pubkey ON agent_keys(public_key);
+	CREATE INDEX IF NOT EXISTS idx_agent_expires ON agent_keys(expires_at);
 	`
 	_, err := s.db.Exec(ddl)
 	return err
@@ -187,12 +193,23 @@ type AgentKeyRecord struct {
 	Active    bool
 }
 
-// RegisterAgentKey stores an agent's public key. Returns a specific error:
+// RegisterAgentKey stores an agent's public key. ttlSeconds == 0 stores
+// the row with expires_at = NULL (treated as never-expiring by the
+// read paths); any positive value sets expires_at = now + ttlSeconds.
+// Negative values are clamped to 0.
+//
+// Returns a specific error:
 //
 //	ErrPublicKeyAlreadyRegistered — key belongs to a different user
 //
-// If (userId, deviceId) already exists, the public key is updated (key rotation).
-func (s *AgentKeyStore) RegisterAgentKey(userId, deviceId, pubKey string) error {
+// If (userId, deviceId) already exists with the SAME public key, this
+// is an idempotent no-op (the existing expires_at is preserved). With
+// a DIFFERENT public key, the row is updated and the clock is reset
+// to a fresh expires_at.
+func (s *AgentKeyStore) RegisterAgentKey(userId, deviceId, pubKey string, ttlSeconds int64) error {
+	if ttlSeconds < 0 {
+		ttlSeconds = 0
+	}
 	now := time.Now().Unix()
 
 	// Check for public key conflict (same key, different user/device).
@@ -205,42 +222,55 @@ func (s *AgentKeyStore) RegisterAgentKey(userId, deviceId, pubKey string) error 
 		if existingUserId != userId {
 			return common.ErrPublicKeyAlreadyRegistered
 		}
-		// Same user, same key — idempotent, no-op.
+		// Same user, same key — idempotent, no-op. Do NOT reset the
+		// expiry clock: a re-register attempt for the same key should
+		// not extend an already-issued lifetime.
 		return nil
 	}
 	if err != sql.ErrNoRows {
 		return fmt.Errorf("keystore: query pubkey conflict: %w", err)
 	}
 
-	// Upsert: insert or update on (usr_id, dev_id) conflict.
+	// Compute expires_at for this registration.
+	var expiresAt sql.NullInt64
+	if ttlSeconds > 0 {
+		expiresAt = sql.NullInt64{Int64: now + ttlSeconds, Valid: true}
+	}
+
+	// Upsert: insert or update on (usr_id, dev_id) conflict. Both fresh
+	// inserts and key rotations reset the clock.
 	_, err = s.db.Exec(
 		`INSERT INTO agent_keys (usr_id, dev_id, public_key, cipher, created_at, expires_at, active)
-		 VALUES (?, ?, ?, 0, ?, NULL, 1)
+		 VALUES (?, ?, ?, 0, ?, ?, 1)
 		 ON CONFLICT(usr_id, dev_id) DO UPDATE SET
 		   public_key = excluded.public_key,
 		   cipher     = excluded.cipher,
 		   created_at = excluded.created_at,
+		   expires_at = excluded.expires_at,
 		   active     = 1`,
-		userId, deviceId, pubKey, now,
+		userId, deviceId, pubKey, now, expiresAt,
 	)
 	if err != nil {
 		return fmt.Errorf("keystore: insert agent key: %w", err)
 	}
 
-	log.Info("keystore: agent key registered for user=%s device=%s", userId, deviceId)
+	log.Info("keystore: agent key registered for user=%s device=%s ttl=%ds", userId, deviceId, ttlSeconds)
 	return nil
 }
 
-// GetAgentKey returns the public key for a given user+device, or nil if not
-// found.
+// GetAgentKey returns the public key for a given user+device, or nil if
+// not found OR if the row is past its expires_at. Expired rows are
+// indistinguishable from never-registered ones to all callers.
 func (s *AgentKeyStore) GetAgentKey(userId, deviceId string) (*AgentKeyRecord, error) {
 	rec := &AgentKeyRecord{}
 	var expiresAt sql.NullInt64
 	var active int
 	err := s.db.QueryRow(
 		`SELECT usr_id, dev_id, public_key, cipher, created_at, expires_at, active
-		 FROM agent_keys WHERE usr_id = ? AND dev_id = ? AND active = 1`,
-		userId, deviceId,
+		 FROM agent_keys
+		 WHERE usr_id = ? AND dev_id = ? AND active = 1
+		   AND (expires_at IS NULL OR expires_at > ?)`,
+		userId, deviceId, time.Now().Unix(),
 	).Scan(&rec.UserId, &rec.DeviceId, &rec.PublicKey, &rec.Cipher, &rec.CreatedAt, &expiresAt, &active)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -257,12 +287,16 @@ func (s *AgentKeyStore) GetAgentKey(userId, deviceId string) (*AgentKeyRecord, e
 }
 
 // FindAgentByPublicKey returns true if the given base64-encoded public key
-// is registered and active in the keystore. Used by peer validation fallback.
+// is registered, active, and not expired. This is the gate consulted by
+// the noise-layer peer validation fallback; an expired key behaves as if
+// the agent were never registered.
 func (s *AgentKeyStore) FindAgentByPublicKey(pubKeyBase64 string) (bool, error) {
 	var count int
 	err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM agent_keys WHERE public_key = ? AND active = 1`,
-		pubKeyBase64,
+		`SELECT COUNT(*) FROM agent_keys
+		 WHERE public_key = ? AND active = 1
+		   AND (expires_at IS NULL OR expires_at > ?)`,
+		pubKeyBase64, time.Now().Unix(),
 	).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("keystore: find agent by pubkey: %w", err)
@@ -270,17 +304,80 @@ func (s *AgentKeyStore) FindAgentByPublicKey(pubKeyBase64 string) (bool, error) 
 	return count > 0, nil
 }
 
-// IsAgentRegistered returns true if the user+device pair has a registered key.
+// IsAgentRegistered returns true if the user+device pair has an active,
+// non-expired registered key.
 func (s *AgentKeyStore) IsAgentRegistered(userId, deviceId string) (bool, error) {
 	var count int
 	err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM agent_keys WHERE usr_id = ? AND dev_id = ? AND active = 1`,
-		userId, deviceId,
+		`SELECT COUNT(*) FROM agent_keys
+		 WHERE usr_id = ? AND dev_id = ? AND active = 1
+		   AND (expires_at IS NULL OR expires_at > ?)`,
+		userId, deviceId, time.Now().Unix(),
 	).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("keystore: check agent registered: %w", err)
 	}
 	return count > 0, nil
+}
+
+// GetAgentKeyExpiry returns the expiry status for the given user+device:
+//
+//	(true,  &ts, nil) — row exists and is active with expires_at = ts
+//	(true,  nil,  nil) — row exists and is active with no expiry (NULL)
+//	(false, nil,  nil) — row is missing, deactivated, or already expired
+//
+// Used by the plugin helper to surface "valid until when?" without
+// reaching into the keystore itself. The third return value is reserved
+// for future I/O errors; today it is always nil when the lookup ran.
+func (s *AgentKeyStore) GetAgentKeyExpiry(userId, deviceId string) (bool, *int64, error) {
+	var active int
+	var expiresAt sql.NullInt64
+	err := s.db.QueryRow(
+		`SELECT active, expires_at FROM agent_keys WHERE usr_id = ? AND dev_id = ?`,
+		userId, deviceId,
+	).Scan(&active, &expiresAt)
+	if err == sql.ErrNoRows {
+		return false, nil, nil
+	}
+	if err != nil {
+		return false, nil, fmt.Errorf("keystore: get agent key expiry: %w", err)
+	}
+	if active != 1 {
+		return false, nil, nil
+	}
+	if expiresAt.Valid && expiresAt.Int64 <= time.Now().Unix() {
+		return false, nil, nil
+	}
+	if expiresAt.Valid {
+		ts := expiresAt.Int64
+		return true, &ts, nil
+	}
+	return true, nil, nil
+}
+
+// SweepExpiredDeactivates flips active=0 for any row whose expires_at has
+// elapsed. Returns the number of rows updated. NULL expires_at rows are
+// never swept (they are configured to never expire). The result of
+// FindAgentByPublicKey / IsAgentRegistered does not depend on this
+// sweeper — those functions already filter on expires_at — so this
+// method is purely a hygiene / index-utility measure.
+func (s *AgentKeyStore) SweepExpiredDeactivates() (int64, error) {
+	res, err := s.db.Exec(
+		`UPDATE agent_keys
+		 SET active = 0
+		 WHERE active = 1
+		   AND expires_at IS NOT NULL
+		   AND expires_at <= ?`,
+		time.Now().Unix(),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("keystore: sweep expired: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("keystore: sweep rows affected: %w", err)
+	}
+	return n, nil
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────

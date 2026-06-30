@@ -74,6 +74,22 @@ async function makeAckPacket(
   );
 }
 
+async function makeRakPacket(
+  serverPrivKey: string,
+  serverPubKey: string,
+  agentPubKey: string,
+  payload: object
+) {
+  return buildNHPPacket(
+    NHP_PACKET_TYPES.RAK,
+    serverPrivKey, serverPubKey,
+    agentPubKey,
+    JSON.stringify(payload),
+    true,
+    'curve25519'
+  );
+}
+
 const SUCCESS_ACK = {
   errCode: '',
   resHost: { 'my-service': '10.0.0.1:8080' },
@@ -619,5 +635,54 @@ describe('close', () => {
     await agent.close();
     // close() clears transports and servers but retains the key pair
     expect(agent.getPublicKey()).toBe(pubKey);
+  });
+});
+
+describe('registerPublicKey — expiresAt passthrough', () => {
+  // ServerRegisterAckMsg carries an optional expiresAt (unix-seconds).
+  // The SDK must surface it on RegisterResult converted to milliseconds.
+  it('returns expiresAt in milliseconds when server provides it', async () => {
+    const server = generateX25519KeyPairBase64();
+    const agent = new NHPAgent({ transport: 'websocket' });
+    await agent.init();
+
+    const expiresAtSec = 1_900_000_000; // some future-ish unix-seconds
+    const ackPacket = await makeAckPacket(
+      server.privateKey, server.publicKey,
+      agent.getPublicKey(),
+      { errCode: '', aspId: 'example', expiresAt: expiresAtSec }
+    );
+
+    agent.setIdentity({ userId: 'user@example.com', deviceId: 'device-001' });
+    agent.addServer({ publicKey: server.publicKey, host: 'nhp.example.com', port: 62206 });
+    injectMockTransport(agent, ackPacket);
+
+    const result = await agent.registerPublicKey('example', '123456');
+
+    expect(result.success).toBe(true);
+    expect(result.expiresAt).toBe(expiresAtSec * 1000);
+    await agent.close();
+  });
+
+  it('omits expiresAt when server does not return one', async () => {
+    const server = generateX25519KeyPairBase64();
+    const agent = new NHPAgent({ transport: 'websocket' });
+    await agent.init();
+
+    const ackPacket = await makeAckPacket(
+      server.privateKey, server.publicKey,
+      agent.getPublicKey(),
+      { errCode: '', aspId: 'example' }
+    );
+
+    agent.setIdentity({ userId: 'user@example.com', deviceId: 'device-001' });
+    agent.addServer({ publicKey: server.publicKey, host: 'nhp.example.com', port: 62206 });
+    injectMockTransport(agent, ackPacket);
+
+    const result = await agent.registerPublicKey('example', '123456');
+
+    expect(result.success).toBe(true);
+    expect(result.expiresAt).toBeUndefined();
+    await agent.close();
   });
 });

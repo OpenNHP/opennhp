@@ -5,7 +5,7 @@ go 1.25.6
 require (
 	github.com/OpenNHP/opennhp/nhp v0.6.0
 	github.com/gin-gonic/gin v1.12.0
-	github.com/pelletier/go-toml/v2 v2.4.1
+	github.com/pelletier/go-toml/v2 v2.4.2
 )
 
 require (

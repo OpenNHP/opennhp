@@ -6,7 +6,7 @@ require (
 	github.com/OpenNHP/opennhp/nhp v0.6.0
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/gin-gonic/gin v1.12.0
-	github.com/pelletier/go-toml/v2 v2.4.1
+	github.com/pelletier/go-toml/v2 v2.4.2
 	golang.org/x/oauth2 v0.36.0
 )
 

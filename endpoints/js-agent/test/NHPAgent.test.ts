@@ -647,7 +647,7 @@ describe('registerPublicKey — expiresAt passthrough', () => {
     await agent.init();
 
     const expiresAtSec = 1_900_000_000; // some future-ish unix-seconds
-    const ackPacket = await makeAckPacket(
+    const rakPacket = await makeRakPacket(
       server.privateKey, server.publicKey,
       agent.getPublicKey(),
       { errCode: '', aspId: 'example', expiresAt: expiresAtSec }
@@ -655,7 +655,7 @@ describe('registerPublicKey — expiresAt passthrough', () => {
 
     agent.setIdentity({ userId: 'user@example.com', deviceId: 'device-001' });
     agent.addServer({ publicKey: server.publicKey, host: 'nhp.example.com', port: 62206 });
-    injectMockTransport(agent, ackPacket);
+    injectMockTransport(agent, rakPacket);
 
     const result = await agent.registerPublicKey('example', '123456');
 
@@ -669,7 +669,7 @@ describe('registerPublicKey — expiresAt passthrough', () => {
     const agent = new NHPAgent({ transport: 'websocket' });
     await agent.init();
 
-    const ackPacket = await makeAckPacket(
+    const rakPacket = await makeRakPacket(
       server.privateKey, server.publicKey,
       agent.getPublicKey(),
       { errCode: '', aspId: 'example' }
@@ -677,7 +677,7 @@ describe('registerPublicKey — expiresAt passthrough', () => {
 
     agent.setIdentity({ userId: 'user@example.com', deviceId: 'device-001' });
     agent.addServer({ publicKey: server.publicKey, host: 'nhp.example.com', port: 62206 });
-    injectMockTransport(agent, ackPacket);
+    injectMockTransport(agent, rakPacket);
 
     const result = await agent.registerPublicKey('example', '123456');
 

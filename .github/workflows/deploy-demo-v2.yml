@@ -552,14 +552,20 @@ jobs:
 
       - name: Load SMTP credentials for OTP email
         run: |
+          # SES SMTP credentials live in the opennhp account's Secrets Manager
+          # at nhp-agent/ses-smtp (us-east-2). The secret carries the SES region
+          # endpoint and from address, so read them from the secret rather than
+          # hardcoding.
           SECRET_JSON=$(aws secretsmanager get-secret-value \
-            --secret-id opennhp/demo \
-            --region ${{ env.AWS_REGION }} \
+            --secret-id nhp-agent/ses-smtp \
+            --region us-east-2 \
             --query 'SecretString' --output text)
 
           SMTP_HOST=$(echo "$SECRET_JSON" | jq -r '.smtp_host // empty')
+          SMTP_PORT=$(echo "$SECRET_JSON" | jq -r '.smtp_port // empty')
           SMTP_USERNAME=$(echo "$SECRET_JSON" | jq -r '.smtp_username // empty')
           SMTP_PASSWORD=$(echo "$SECRET_JSON" | jq -r '.smtp_password // empty')
+          SMTP_FROM=$(echo "$SECRET_JSON" | jq -r '.from_address // empty')
 
           if [ -z "$SMTP_HOST" ] || [ -z "$SMTP_USERNAME" ]; then
             echo "SMTP not configured — OTP emails will be printed to server log"
@@ -571,10 +577,10 @@ jobs:
             echo "SMTP_SUBJECT=" >> $GITHUB_ENV
           else
             echo "SMTP_HOST=$SMTP_HOST" >> $GITHUB_ENV
-            echo "SMTP_PORT=587" >> $GITHUB_ENV
+            echo "SMTP_PORT=${SMTP_PORT:-587}" >> $GITHUB_ENV
             echo "SMTP_USERNAME=$SMTP_USERNAME" >> $GITHUB_ENV
             echo "SMTP_PASSWORD=$SMTP_PASSWORD" >> $GITHUB_ENV
-            echo "SMTP_FROM=noreply@opennhp.org" >> $GITHUB_ENV
+            echo "SMTP_FROM=${SMTP_FROM:-noreply@opennhp.org}" >> $GITHUB_ENV
             echo "SMTP_SUBJECT=Your OpenNHP Verification Code" >> $GITHUB_ENV
           fi
 

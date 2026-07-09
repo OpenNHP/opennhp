@@ -16,6 +16,19 @@
     align-items: center;
     justify-content: center;
   }
+  .layout {
+    display: flex;
+    gap: 24px;
+    align-items: stretch;
+    max-width: 940px;
+    width: 100%;
+  }
+  .layout > .card { flex: 0 0 460px; }
+  .layout > .protocol { flex: 1 1 0; }
+  @media (max-width: 860px) {
+    .layout { flex-direction: column; align-items: center; }
+    .layout > .card, .layout > .protocol { flex: 1 1 auto; max-width: 460px; width: 100%; }
+  }
   .card {
     background: #161b22;
     border: 1px solid #30363d;
@@ -24,6 +37,42 @@
     max-width: 460px;
     width: 100%;
   }
+  .protocol {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 24px;
+  }
+  .protocol h2 { color: #58a6ff; font-size: 16px; margin-bottom: 4px; }
+  .protocol .sub { color: #8b949e; font-size: 12px; margin-bottom: 16px; }
+  .protocol svg { width: 100%; height: auto; display: block; }
+  .protocol .phase-note {
+    font-size: 11px; color: #8b949e; line-height: 1.6; margin-top: 14px;
+    border-top: 1px solid #30363d; padding-top: 12px;
+  }
+  .protocol .phase-note b { color: #c9d1d9; font-weight: 600; }
+  /* Sequence diagram theming + active-phase highlight */
+  .seq-lane { fill: #0d1117; stroke: #30363d; }
+  .seq-lane-label { fill: #c9d1d9; font-size: 11px; font-weight: 600; }
+  .seq-life { stroke: #30363d; stroke-dasharray: 3 3; }
+  .seq-msg { stroke: #484f58; }
+  .seq-msg-label { fill: #8b949e; font-size: 10px; }
+  .seq-phase-box { fill: none; stroke: #30363d; stroke-dasharray: 4 3; }
+  .seq-phase-label { fill: #6e7681; font-size: 10px; font-weight: 600; }
+  .seq-node { fill: #21262d; stroke: #30363d; }
+  .seq-node-label { fill: #c9d1d9; font-size: 10px; }
+  /* When a phase is active, light it up */
+  .seq-phase.active .seq-phase-box { stroke: #58a6ff; }
+  .seq-phase.active .seq-phase-label { fill: #58a6ff; }
+  .seq-phase.active .seq-msg { stroke: #58a6ff; }
+  .seq-phase.active .seq-msg-label { fill: #c9d1d9; }
+  .seq-phase.active .seq-node { fill: #0d2b5e; stroke: #1f3a5f; }
+  .seq-phase.active .seq-arrowhead { fill: #58a6ff; }
+  .seq-arrowhead { fill: #484f58; }
+  .seq-phase.done .seq-phase-box { stroke: #238636; }
+  .seq-phase.done .seq-phase-label { fill: #3fb950; }
+  .seq-phase.done .seq-msg { stroke: #238636; }
+  .seq-phase.done .seq-arrowhead { fill: #238636; }
   .card h1 { color: #58a6ff; font-size: 22px; margin-bottom: 4px; }
   .card .sub { color: #8b949e; font-size: 13px; margin-bottom: 20px; }
   .step { display: none; }
@@ -90,6 +139,7 @@
 </head>
 <body>
 
+<div class="layout">
 <div class="card">
   <h1>Agent Registration</h1>
   <p class="sub">Register your device to access protected resources</p>
@@ -178,6 +228,72 @@
   </p>
 </div>
 
+<aside class="protocol">
+  <h2>How registration works</h2>
+  <p class="sub">Two protocol messages bind your device key to your identity.</p>
+  <svg viewBox="0 0 400 312" role="img" aria-labelledby="seq-title seq-desc">
+    <title id="seq-title">NHP-OTP and NHP-REG protocol workflow</title>
+    <desc id="seq-desc">Your browser requests a one-time password over NHP-OTP, the server emails you the code, then your browser proves possession of its key over NHP-REG and the server acknowledges with NHP-RAK.</desc>
+
+    <!-- Lane headers -->
+    <rect class="seq-lane" x="10" y="4" width="90" height="26" rx="4"/>
+    <text class="seq-lane-label" x="55" y="21" text-anchor="middle">You</text>
+    <rect class="seq-lane" x="155" y="4" width="90" height="26" rx="4"/>
+    <text class="seq-lane-label" x="200" y="21" text-anchor="middle">Server</text>
+    <rect class="seq-lane" x="300" y="4" width="90" height="26" rx="4"/>
+    <text class="seq-lane-label" x="345" y="21" text-anchor="middle">Email</text>
+
+    <!-- Lifelines -->
+    <line class="seq-life" x1="55" y1="30" x2="55" y2="304"/>
+    <line class="seq-life" x1="200" y1="30" x2="200" y2="304"/>
+    <line class="seq-life" x1="345" y1="30" x2="345" y2="304"/>
+
+    <!-- Phase 1: NHP-OTP -->
+    <g class="seq-phase" id="seq-phase-otp">
+      <rect class="seq-phase-box" x="8" y="42" width="384" height="112" rx="5"/>
+      <text class="seq-phase-label" x="16" y="56">1 · NHP-OTP  (request code)</text>
+
+      <line class="seq-msg" x1="55" y1="80" x2="200" y2="80"/>
+      <polygon class="seq-arrowhead" points="200,80 194,77 194,83"/>
+      <text class="seq-msg-label" x="127" y="76" text-anchor="middle">NHP-OTP: id + public key</text>
+
+      <line class="seq-msg" x1="200" y1="110" x2="345" y2="110"/>
+      <polygon class="seq-arrowhead" points="345,110 339,107 339,113"/>
+      <text class="seq-msg-label" x="272" y="106" text-anchor="middle">send OTP code</text>
+
+      <line class="seq-msg" x1="345" y1="140" x2="55" y2="140" stroke-dasharray="4 3"/>
+      <polygon class="seq-arrowhead" points="55,140 61,137 61,143"/>
+      <text class="seq-msg-label" x="200" y="136" text-anchor="middle">6-digit code (out-of-band)</text>
+    </g>
+
+    <!-- Phase 2: NHP-REG -->
+    <g class="seq-phase" id="seq-phase-reg">
+      <rect class="seq-phase-box" x="8" y="168" width="384" height="128" rx="5"/>
+      <text class="seq-phase-label" x="16" y="182">2 · NHP-REG  (prove &amp; register)</text>
+
+      <line class="seq-msg" x1="55" y1="206" x2="200" y2="206"/>
+      <polygon class="seq-arrowhead" points="200,206 194,203 194,209"/>
+      <text class="seq-msg-label" x="127" y="202" text-anchor="middle">NHP-REG: OTP + signature</text>
+
+      <rect class="seq-node" x="168" y="222" width="64" height="30" rx="4"/>
+      <text class="seq-node-label" x="200" y="234" text-anchor="middle">verify OTP</text>
+      <text class="seq-node-label" x="200" y="246" text-anchor="middle">+ key</text>
+
+      <line class="seq-msg" x1="200" y1="278" x2="55" y2="278"/>
+      <polygon class="seq-arrowhead" points="55,278 61,275 61,281"/>
+      <text class="seq-msg-label" x="127" y="274" text-anchor="middle">NHP-RAK: success</text>
+    </g>
+  </svg>
+  <p class="phase-note">
+    <b>NHP-OTP</b> binds your device's public key to your identity and triggers an
+    emailed code. <b>NHP-REG</b> then proves you hold the matching private key and
+    completes registration — the server replies with <b>NHP-RAK</b>. Everything
+    travels inside an encrypted Noise channel; the code itself is never sent back to
+    the server in the clear.
+  </p>
+</aside>
+</div>
+
 <script type="importmap">
 {
   "imports": {
@@ -207,6 +323,26 @@ function showStep(name) {
   $$('.step').forEach(el => el.classList.remove('active'));
   $(`#step-${name}`).classList.add('active');
   $('#alert-container').innerHTML = '';
+  highlightProtocolPhase(name);
+}
+
+// Sync the sequence diagram with the current form step so users can see
+// which protocol message the page is performing right now.
+function highlightProtocolPhase(name) {
+  const otp = $('#seq-phase-otp');
+  const reg = $('#seq-phase-reg');
+  if (!otp || !reg) return;
+  otp.classList.remove('active', 'done');
+  reg.classList.remove('active', 'done');
+  if (name === 'identity') {
+    otp.classList.add('active');            // about to send NHP-OTP
+  } else if (name === 'otp') {
+    otp.classList.add('done');              // OTP sent + code delivered
+    reg.classList.add('active');            // entering code → NHP-REG next
+  } else if (name === 'done') {
+    otp.classList.add('done');
+    reg.classList.add('done');              // NHP-RAK received
+  }
 }
 
 window.goToIdentityStep = () => showStep('identity');
@@ -646,6 +782,7 @@ function generateDeviceId() {
     }
   } catch (_) {}
   populateServers();
+  highlightProtocolPhase('identity');
 })();
 </script>
 </body>

@@ -26,10 +26,10 @@ iptables -w -N "$CHAIN" 2>/dev/null || true
 iptables -w -F "$CHAIN"
 iptables -w -A "$CHAIN" -m hashlimit \
   --hashlimit-above "$GLOBAL_RATE/sec" --hashlimit-burst "$GLOBAL_BURST" \
-  --hashlimit-mode dstip --hashlimit-name nhp_knock_global -j DROP
+  --hashlimit-mode dstip --hashlimit-name nhp_knock_gbl -j DROP
 iptables -w -A "$CHAIN" -m hashlimit \
   --hashlimit-above "$PER_IP_RATE/sec" --hashlimit-burst "$PER_IP_BURST" \
-  --hashlimit-mode srcip --hashlimit-name nhp_knock_per_ip -j DROP
+  --hashlimit-mode srcip --hashlimit-name nhp_knock_ip -j DROP
 iptables -w -A "$CHAIN" -j RETURN
 
 iptables -w -C INPUT -p udp --dport "$PORT" -j "$CHAIN" 2>/dev/null || \

@@ -682,11 +682,11 @@ func (s *UdpServer) onAttestationVerify(spo *common.SmartPolicy, attestation str
 	wasmBytes, err := base64.StdEncoding.DecodeString(spo.Policy)
 	if err != nil {
 		wasmPath, err := utils.DownloadFileToTemp(spo.Policy, "wasm-")
-		defer os.Remove(filepath.Dir(wasmPath))
-		defer os.Remove(wasmPath)
 		if err != nil {
 			return err
 		}
+		defer func() { _ = os.Remove(filepath.Dir(wasmPath)) }()
+		defer func() { _ = os.Remove(wasmPath) }()
 		wasmBytes, err = os.ReadFile(wasmPath)
 		if err != nil {
 			return err
@@ -694,9 +694,8 @@ func (s *UdpServer) onAttestationVerify(spo *common.SmartPolicy, attestation str
 	}
 
 	engine := wasmEngine.NewEngine()
-	err = engine.LoadWasm(wasmBytes)
 	defer engine.Close()
-	if err != nil {
+	if err = engine.LoadWasm(wasmBytes); err != nil {
 		return err
 	}
 

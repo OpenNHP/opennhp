@@ -834,7 +834,10 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 				transactionId := pkt.Counter()
 				transaction := s.device.FindLocalTransaction(transactionId)
 				if transaction != nil {
-					transaction.NextPacketCh <- pkt
+					if err := transaction.SendPacket(pkt); err != nil {
+						log.Warning("local transaction %d closed before packet forward: %v", transactionId, err)
+						s.device.ReleasePoolPacket(pkt)
+					}
 					continue
 				}
 			}
@@ -929,7 +932,9 @@ func (s *UdpServer) sendMessageRoutine() {
 				// forward to a specific transaction
 				transaction := md.ConnData.FindRemoteTransaction(md.PrevParserData.SenderTrxId)
 				if transaction != nil {
-					transaction.NextMsgCh <- md
+					if err := transaction.SendMessage(md); err != nil {
+						log.Warning("remote transaction %d closed before message forward: %v", md.PrevParserData.SenderTrxId, err)
+					}
 					continue
 				}
 			}

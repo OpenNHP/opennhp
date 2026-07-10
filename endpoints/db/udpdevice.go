@@ -425,7 +425,10 @@ func (a *UdpDevice) connectionRoutine(conn *UdpConn) {
 				transactionId := pkt.Counter()
 				transaction := a.device.FindLocalTransaction(transactionId)
 				if transaction != nil {
-					transaction.NextPacketCh <- pkt
+					if err := transaction.SendPacket(pkt); err != nil {
+						log.Warning("local transaction %d closed before packet forward: %v", transactionId, err)
+						a.device.ReleasePoolPacket(pkt)
+					}
 					continue
 				}
 			}
@@ -889,7 +892,10 @@ func (a *UdpDevice) HandleUdpDataKeyWrappingOperations(ppd *core.PacketParserDat
 		return err
 	}
 
-	transaction.NextMsgCh <- md
+	if sendErr := transaction.SendMessage(md); sendErr != nil {
+		log.Error("db(%s#%d)[HandleUdpDataKeyWrappingOperations] transaction closed before forward: %v", dbId, transactionId, sendErr)
+		return sendErr
+	}
 
 	return err
 }

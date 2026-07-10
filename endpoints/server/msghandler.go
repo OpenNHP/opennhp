@@ -287,7 +287,10 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 		return err
 	}
 
-	transaction.NextMsgCh <- rakMd
+	if sendErr := transaction.SendMessage(rakMd); sendErr != nil {
+		log.Error("server-agent(%s#%d@%s)[HandleRegisterRequest] transaction closed before forward: %v", regMsg.UserId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 
 	return err
 }
@@ -357,7 +360,10 @@ func (s *UdpServer) HandleListRequest(ppd *core.PacketParserData) (err error) {
 		return err
 	}
 
-	transaction.NextMsgCh <- ackMd
+	if sendErr := transaction.SendMessage(ackMd); sendErr != nil {
+		log.Error("server-agent(%s#%d@%s)[HandleListRequest] transaction closed before forward: %v", lstMsg.UserId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 
 	return err
 }
@@ -417,7 +423,10 @@ func (s *UdpServer) HandleACOnline(ppd *core.PacketParserData) (err error) {
 		return err
 	}
 
-	transaction.NextMsgCh <- aakMd
+	if sendErr := transaction.SendMessage(aakMd); sendErr != nil {
+		log.Error("server-ac(%s#%d@%s)[HandleACOnline] transaction closed before forward: %v", acId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 
 	return nil
 }
@@ -475,7 +484,10 @@ func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
 		return err
 	}
 
-	transaction.NextMsgCh <- aakMd
+	if sendErr := transaction.SendMessage(aakMd); sendErr != nil {
+		log.Error("server-db(%s#%d@%s)[HandleDBOnline] transaction closed before forward: %v", dbId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 
 	return nil
 }
@@ -526,7 +538,10 @@ func (s *UdpServer) HandleDHPDARMessage(ppd *core.PacketParserData) (err error) 
 		return err
 	}
 
-	transaction.NextMsgCh <- aakMd
+	if sendErr := transaction.SendMessage(aakMd); sendErr != nil {
+		log.Error("server-agent(%s#%d@%s)[HandleDHPDARMessage] transaction closed before forward: %v", doId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 
 	return nil
 }
@@ -615,7 +630,10 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 		return err
 	}
 
-	transaction.NextMsgCh <- aakMd
+	if sendErr := transaction.SendMessage(aakMd); sendErr != nil {
+		log.Error("server-agent(%s#%d@%s)[HandleDHPDAVMessage] transaction closed before forward: %v", doId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 
 	return nil
 }
@@ -670,7 +688,10 @@ func (s *UdpServer) HandleDHPDRGMessage(ppd *core.PacketParserData) (err error) 
 		err = common.ErrTransactionIdNotFound
 		return err
 	}
-	transaction.NextMsgCh <- aakMd
+	if sendErr := transaction.SendMessage(aakMd); sendErr != nil {
+		log.Error("server-db(%s#%d@%s)[HandleDHPDRGMessage] transaction closed before forward: %v", doId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 	return nil
 }
 

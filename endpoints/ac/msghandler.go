@@ -81,7 +81,10 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 		return err
 	}
 
-	transaction.NextMsgCh <- md
+	if sendErr := transaction.SendMessage(md); sendErr != nil {
+		log.Error("ac(%s#%d)[HandleUdpACOperations] transaction closed before forward: %v", acId, transactionId, sendErr)
+		return sendErr
+	}
 
 	return err
 }

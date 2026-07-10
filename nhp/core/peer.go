@@ -145,6 +145,23 @@ func (p *UdpPeer) ResolvedIps() []string {
 	return p.resolvedIpArr
 }
 
+// MatchesIP reports whether ip matches the peer's configured or cached DNS
+// address without performing DNS I/O. Server admission uses this to ensure a
+// packet cannot claim an AC/DB header merely to bypass per-IP agent limits.
+func (p *UdpPeer) MatchesIP(ip string) bool {
+	p.Lock()
+	defer p.Unlock()
+	if p.Ip == ip || p.primaryResolvedIp == ip {
+		return true
+	}
+	for _, resolved := range p.resolvedIpArr {
+		if resolved == ip {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *UdpPeer) IsExpired() bool {
 	p.Lock()
 	defer p.Unlock()

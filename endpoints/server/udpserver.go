@@ -147,8 +147,8 @@ type BlockAddr struct {
 
 type UdpConn struct {
 	ConnData       *core.ConnectionData
-	isACConnection bool // Immutable. Don't change it after creation. Conn object is also stored in acConnectionMap which is indexed by ACId
-	isDBConnection bool // Immutable. Don't change it after creation. Conn object is also stored in dbConnectionMap which is indexed by DBId
+	isACConnection atomic.Bool // promoted only after HandleACOnline authenticates the peer
+	isDBConnection atomic.Bool // promoted only after HandleDBOnline authenticates the peer
 
 	// mapKey is the exact key under which this conn was inserted into
 	// remoteConnectionMap. For direct UDP clients it equals
@@ -179,6 +179,11 @@ type UdpConn struct {
 	// displaced by the per-IP cap. It is nil for relay-forwarded connections,
 	// which have their own per-relay cap and therefore disable this select case.
 	evictSignal chan struct{}
+	// timeoutMs/timeoutUpdate let authenticated promotion extend a direct
+	// connection's timeout without racing ConnectionData.TimeoutMs or sending on
+	// a lifecycle channel that connection teardown closes.
+	timeoutMs     atomic.Int64
+	timeoutUpdate chan struct{}
 }
 
 type ACConn struct {
@@ -662,16 +667,12 @@ func (s *UdpServer) recvPacketRoutine() {
 			}
 			s.remoteConnectionMapMutex.Unlock()
 
-			// Header bytes alone are attacker-controlled at this point. Only a
-			// configured peer source IP may bypass the direct-agent per-IP cap.
-			isACConn := pkt.HeaderType == core.NHP_AOL && s.isKnownACPeerIP(remoteAddr.IP.String())
-			isDBConn := pkt.HeaderType == core.NHP_DOL && s.isKnownDBPeerIP(remoteAddr.IP.String())
 			conn = &UdpConn{
-				isACConnection: isACConn,
-				isDBConnection: isDBConn,
-				mapKey:         addrStr,
-				evictSignal:    make(chan struct{}),
+				mapKey:        addrStr,
+				evictSignal:   make(chan struct{}),
+				timeoutUpdate: make(chan struct{}, 1),
 			}
+			conn.timeoutMs.Store(DefaultAgentConnectionTimeoutMs)
 			// setup new routine for connection
 			conn.ConnData = &core.ConnectionData{
 				InitTime:          recvTime,
@@ -691,14 +692,6 @@ func (s *UdpServer) recvPacketRoutine() {
 				StopSignal:           make(chan struct{}),
 			}
 
-			if conn.isACConnection {
-				conn.ConnData.TimeoutMs = DefaultACConnectionTimeoutMs
-				log.Debug("Received new ac connection from %s", addrStr)
-			}
-			if conn.isDBConnection {
-				conn.ConnData.TimeoutMs = DefaultDBConnectionTimeoutMs
-				log.Debug("Received new db connection from %s", addrStr)
-			}
 			s.admitDirectConnection(conn, addrStr)
 
 			conn.ConnData.RecvQueue <- pkt
@@ -712,39 +705,14 @@ func (s *UdpServer) recvPacketRoutine() {
 	}
 }
 
-func (s *UdpServer) isKnownACPeerIP(ip string) bool {
-	s.acPeerMapMutex.Lock()
-	defer s.acPeerMapMutex.Unlock()
-	for _, peer := range s.acPeerMap {
-		if peer.MatchesIP(ip) {
-			return true
-		}
-	}
-	return false
-}
-
-func (s *UdpServer) isKnownDBPeerIP(ip string) bool {
-	s.dbPeerMapMutex.Lock()
-	defer s.dbPeerMapMutex.Unlock()
-	for _, peer := range s.dbPeerMap {
-		if peer.MatchesIP(ip) {
-			return true
-		}
-	}
-	return false
-}
-
 // admitDirectConnection preserves the full remote UDP tuple in the global
 // map while keeping a separate IP-only FIFO for fairness. When the per-IP cap
-// is full, the oldest agent routine is signaled to exit; AC and DB connections
-// bypass this cap only after the configured-peer IP gate above succeeds.
+// is full, the oldest unauthenticated/agent routine is signaled to exit. AC and
+// DB connections enter this bucket initially and are promoted out only after
+// their online handlers authenticate the peer.
 func (s *UdpServer) admitDirectConnection(conn *UdpConn, mapKey string) {
 	s.remoteConnectionMapMutex.Lock()
 	s.remoteConnectionMap[mapKey] = conn
-	if conn.isACConnection || conn.isDBConnection {
-		s.remoteConnectionMapMutex.Unlock()
-		return
-	}
 
 	ip := conn.ConnData.RemoteAddr.IP.String()
 	bucket := s.connectionsByIP[ip]
@@ -772,6 +740,67 @@ func (s *UdpServer) admitDirectConnection(conn *UdpConn, mapKey string) {
 	}
 }
 
+type controlConnectionKind int
+
+const (
+	controlConnectionAC controlConnectionKind = iota
+	controlConnectionDB
+)
+
+// promoteControlConnection removes an authenticated AC/DB tuple from the
+// direct-agent fairness bucket and applies its longer infrastructure timeout.
+// Promotion is keyed by ConnectionData identity, so a stale handler cannot
+// promote a replacement that reused the same UDP tuple.
+func (s *UdpServer) promoteControlConnection(connData *core.ConnectionData, kind controlConnectionKind) bool {
+	if connData == nil || connData.RemoteAddr == nil {
+		return false
+	}
+	if kind != controlConnectionAC && kind != controlConnectionDB {
+		return false
+	}
+	mapKey := connData.RemoteAddr.String()
+	s.remoteConnectionMapMutex.Lock()
+	conn := s.remoteConnectionMap[mapKey]
+	if conn == nil || conn.ConnData != connData {
+		s.remoteConnectionMapMutex.Unlock()
+		return false
+	}
+	if conn.perIPElem != nil {
+		ip := connData.RemoteAddr.IP.String()
+		if bucket := s.connectionsByIP[ip]; bucket != nil {
+			bucket.Remove(conn.perIPElem)
+			if bucket.Len() == 0 {
+				delete(s.connectionsByIP, ip)
+			}
+		}
+		conn.perIPElem = nil
+	}
+	var timeout int
+	switch kind {
+	case controlConnectionAC:
+		conn.isACConnection.Store(true)
+		timeout = DefaultACConnectionTimeoutMs
+	case controlConnectionDB:
+		conn.isDBConnection.Store(true)
+		timeout = DefaultDBConnectionTimeoutMs
+	}
+	s.remoteConnectionMapMutex.Unlock()
+
+	conn.timeoutMs.Store(int64(timeout))
+	select {
+	case conn.timeoutUpdate <- struct{}{}:
+	default:
+	}
+	return true
+}
+
+func (c *UdpConn) timeout() int {
+	if timeout := c.timeoutMs.Load(); timeout > 0 {
+		return int(timeout)
+	}
+	return c.ConnData.TimeoutMs
+}
+
 func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 	addrStr := conn.ConnData.RemoteAddr.String()
 
@@ -786,7 +815,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		// Note on server side, before an old ac connection times out, the very ac can send new connections (due to restart or deemed connection failure)
 		// and it may come with the same remote ip but a different remote port
 		// so make sure the timeout removal here does not delete newer ac connections
-		if conn.isACConnection {
+		if conn.isACConnection.Load() {
 			var acToDelete string
 			s.acConnectionMapMutex.Lock()
 			for acId, acConn := range s.acConnectionMap {
@@ -799,7 +828,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			s.acConnectionMapMutex.Unlock()
 		}
 
-		if conn.isDBConnection {
+		if conn.isDBConnection.Load() {
 			var dbToDelete string
 			s.dbConnectionMapMutex.Lock()
 			for dbId, dbConn := range s.dbConnectionMap {
@@ -886,12 +915,17 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			return
 
 		case <-conn.ConnData.SetTimeoutSignal:
-			if conn.ConnData.TimeoutMs <= 0 {
+			if conn.timeout() <= 0 {
 				log.Debug("Connection routine closed immediately")
 				return
 			}
 
-		case <-time.After(time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond):
+		case <-conn.timeoutUpdate:
+			if conn.timeout() <= 0 {
+				return
+			}
+
+		case <-time.After(time.Duration(conn.timeout()) * time.Millisecond):
 			// timeout, quit routine
 			log.Debug("Connection routine idle timeout")
 			return

@@ -16,14 +16,13 @@ func newPerIPCapTestServer() *UdpServer {
 	}
 }
 
-func newPerIPCapTestConn(ip string, port int, ac, db bool) *UdpConn {
+func newPerIPCapTestConn(ip string, port int) *UdpConn {
 	return &UdpConn{
 		ConnData: &core.ConnectionData{
 			RemoteAddr: &net.UDPAddr{IP: net.ParseIP(ip), Port: port},
 		},
-		isACConnection: ac,
-		isDBConnection: db,
-		evictSignal:    make(chan struct{}),
+		evictSignal:   make(chan struct{}),
+		timeoutUpdate: make(chan struct{}, 1),
 	}
 }
 
@@ -32,7 +31,7 @@ func TestAdmitDirectConnectionCapsOneIPAndPreservesTuples(t *testing.T) {
 	const ip = "198.51.100.20"
 	conns := make([]*UdpConn, 0, MaxAgentConnectionsPerIP+4)
 	for i := 0; i < MaxAgentConnectionsPerIP+4; i++ {
-		conn := newPerIPCapTestConn(ip, 30000+i, false, false)
+		conn := newPerIPCapTestConn(ip, 30000+i)
 		conns = append(conns, conn)
 		s.admitDirectConnection(conn, conn.ConnData.RemoteAddr.String())
 	}
@@ -60,7 +59,7 @@ func TestAdmitDirectConnectionIPsAreIndependent(t *testing.T) {
 	s := newPerIPCapTestServer()
 	for _, ip := range []string{"192.0.2.10", "192.0.2.11"} {
 		for i := 0; i < MaxAgentConnectionsPerIP; i++ {
-			conn := newPerIPCapTestConn(ip, 40000+i, false, false)
+			conn := newPerIPCapTestConn(ip, 40000+i)
 			s.admitDirectConnection(conn, conn.ConnData.RemoteAddr.String())
 		}
 		if got := s.connectionsByIP[ip].Len(); got != MaxAgentConnectionsPerIP {
@@ -69,22 +68,51 @@ func TestAdmitDirectConnectionIPsAreIndependent(t *testing.T) {
 	}
 }
 
-func TestAdmitDirectConnectionTrustedInfrastructureBypassesAgentCap(t *testing.T) {
-	for _, kind := range []struct {
-		name string
-		ac   bool
-		db   bool
-	}{{name: "AC", ac: true}, {name: "DB", db: true}} {
-		t.Run(kind.name, func(t *testing.T) {
+func TestPromoteControlConnectionRemovesAuthenticatedTupleFromAgentBucket(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		kind        controlConnectionKind
+		wantTimeout int
+	}{
+		{name: "AC", kind: controlConnectionAC, wantTimeout: DefaultACConnectionTimeoutMs},
+		{name: "DB", kind: controlConnectionDB, wantTimeout: DefaultDBConnectionTimeoutMs},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
 			s := newPerIPCapTestServer()
-			for i := 0; i < MaxAgentConnectionsPerIP+2; i++ {
-				conn := newPerIPCapTestConn("203.0.113.30", 50000+i, kind.ac, kind.db)
-				s.admitDirectConnection(conn, conn.ConnData.RemoteAddr.String())
+			conn := newPerIPCapTestConn("203.0.113.30", 50000)
+			s.admitDirectConnection(conn, conn.ConnData.RemoteAddr.String())
+			if !s.promoteControlConnection(conn.ConnData, tt.kind) {
+				t.Fatal("authenticated tuple was not promoted")
 			}
 			if len(s.connectionsByIP) != 0 {
-				t.Fatal("trusted infrastructure connection entered agent bucket")
+				t.Fatal("promoted control connection remained in agent bucket")
+			}
+			if got := conn.timeout(); got != tt.wantTimeout {
+				t.Fatalf("timeout = %d, want %d", got, tt.wantTimeout)
+			}
+			if tt.kind == controlConnectionAC && !conn.isACConnection.Load() {
+				t.Fatal("AC promotion flag was not set")
+			}
+			if tt.kind == controlConnectionDB && !conn.isDBConnection.Load() {
+				t.Fatal("DB promotion flag was not set")
 			}
 		})
+	}
+}
+
+func TestPromoteControlConnectionRejectsStaleTuple(t *testing.T) {
+	s := newPerIPCapTestServer()
+	current := newPerIPCapTestConn("203.0.113.31", 50001)
+	s.admitDirectConnection(current, current.ConnData.RemoteAddr.String())
+	stale := &core.ConnectionData{
+		RemoteAddr:       current.ConnData.RemoteAddr,
+		SetTimeoutSignal: make(chan struct{}, 1),
+	}
+	if s.promoteControlConnection(stale, controlConnectionAC) {
+		t.Fatal("stale ConnectionData promoted the current tuple")
+	}
+	if len(s.connectionsByIP) != 1 {
+		t.Fatal("stale promotion removed the current agent bucket entry")
 	}
 }
 
@@ -96,7 +124,7 @@ func TestAdmitDirectConnectionConcurrentCap(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			conn := newPerIPCapTestConn("198.51.100.90", 10000+i, false, false)
+			conn := newPerIPCapTestConn("198.51.100.90", 10000+i)
 			s.admitDirectConnection(conn, conn.ConnData.RemoteAddr.String())
 		}(i)
 	}
@@ -106,17 +134,5 @@ func TestAdmitDirectConnectionConcurrentCap(t *testing.T) {
 	}
 	if got := len(s.remoteConnectionMap); got != attempts {
 		t.Fatalf("global tuple map size = %d, want %d pending asynchronous cleanup", got, attempts)
-	}
-}
-
-func TestKnownPeerIPGate(t *testing.T) {
-	s := newPerIPCapTestServer()
-	s.acPeerMap = map[string]*core.UdpPeer{"ac": {Ip: "192.0.2.50"}}
-	s.dbPeerMap = map[string]*core.UdpPeer{"db": {Ip: "192.0.2.51"}}
-	if !s.isKnownACPeerIP("192.0.2.50") || s.isKnownACPeerIP("192.0.2.99") {
-		t.Fatal("AC source-IP gate mismatch")
-	}
-	if !s.isKnownDBPeerIP("192.0.2.51") || s.isKnownDBPeerIP("192.0.2.99") {
-		t.Fatal("DB source-IP gate mismatch")
 	}
 }

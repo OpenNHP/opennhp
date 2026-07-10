@@ -32,6 +32,7 @@ const (
 	PacketQueueSizePerConnection    = 256
 )
 
+// Compile-time assertion: the FIFO eviction path requires a positive cap.
 const _ = uint(MaxAgentConnectionsPerIP - 1)
 
 // http APIs

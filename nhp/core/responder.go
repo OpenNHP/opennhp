@@ -391,7 +391,8 @@ func (ppd *PacketParserData) deriveMsgAssemblerData(t int, compress bool, messag
 }
 
 func shouldCheckRecvAttack(deviceType int, peerType int, msgType int) bool {
-	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
+	if (deviceType == NHP_SERVER && peerType == NHP_AC && msgType == NHP_ART) ||
+		(deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP) {
 		return false
 	}
 	return true
@@ -407,13 +408,6 @@ func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
 		return false
 	}
 	return true
-}
-
-// shouldEscalateReplay controls threat/block escalation only; the replay is
-// always dropped. ART is drop-only because concurrent packet workers can
-// produce benign timestamp reordering during bursts.
-func shouldEscalateReplay(deviceType int, peerType int, msgType int) bool {
-	return !(deviceType == NHP_SERVER && peerType == NHP_AC && msgType == NHP_ART)
 }
 
 func (ppd *PacketParserData) validatePeer() (err error) {
@@ -587,12 +581,10 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime {
 			// replay packet, drop
 			log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
-			if shouldEscalateReplay(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
-				threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
-				if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
-					atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, ThreatCountBeforeBlock)
-					ppd.ConnData.SendBlockSignal()
-				}
+			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
+			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
+				atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, ThreatCountBeforeBlock)
+				ppd.ConnData.SendBlockSignal()
 			}
 			err = fmt.Errorf("received replay packet")
 			return err

@@ -8,12 +8,43 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/core"
 )
 
-func artTestPubkey(fill byte) []byte {
-	key := make([]byte, core.PublicKeySize)
+func artTestPubkey(fill byte, sizes ...int) []byte {
+	size := core.PublicKeySize
+	if len(sizes) > 0 {
+		size = sizes[0]
+	}
+	key := make([]byte, size)
 	for i := range key {
 		key[i] = fill
 	}
 	return key
+}
+
+func TestARTReplayCacheSupportsCurveAndGMSMKeys(t *testing.T) {
+	for _, size := range []int{core.PublicKeySize, core.PublicKeySizeEx} {
+		cache := newARTReplayCache()
+		key := artTestPubkey(1, size)
+		if !cache.MarkSeen(key, 1, 1) {
+			t.Fatalf("first %d-byte key rejected", size)
+		}
+		if cache.MarkSeen(key, 1, 1) {
+			t.Fatalf("duplicate %d-byte key accepted", size)
+		}
+	}
+}
+
+func TestARTReplayCacheAcceptsOutOfOrderFreshPackets(t *testing.T) {
+	cache := newARTReplayCache()
+	key := artTestPubkey(1)
+	if !cache.MarkSeen(key, 2, 200) {
+		t.Fatal("newer packet rejected")
+	}
+	if !cache.MarkSeen(key, 1, 100) {
+		t.Fatal("fresh packet with an earlier timestamp must survive burst reordering")
+	}
+	if cache.MarkSeen(key, 1, 100) {
+		t.Fatal("replay of the reordered packet accepted")
+	}
 }
 
 func TestARTReplayCacheScopesAndRejectsDuplicates(t *testing.T) {
@@ -58,7 +89,9 @@ func TestARTReplayCacheExpiresAndEvicts(t *testing.T) {
 
 func TestARTReplayCacheFailsClosedOnInvalidKey(t *testing.T) {
 	cache := newARTReplayCache()
-	if cache.MarkSeen(nil, 1, 1) || cache.MarkSeen(make([]byte, core.PublicKeySize-1), 1, 1) {
+	if cache.MarkSeen(nil, 1, 1) ||
+		cache.MarkSeen(make([]byte, core.PublicKeySize-1), 1, 1) ||
+		cache.MarkSeen(make([]byte, core.PublicKeySizeEx+1), 1, 1) {
 		t.Fatal("invalid peer key accepted")
 	}
 }

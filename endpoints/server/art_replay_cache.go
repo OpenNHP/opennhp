@@ -18,9 +18,10 @@ const (
 // distinguishes a fresh packet after an AC counter reset from a byte-identical
 // replay of an older packet.
 type artReplayKey struct {
-	peerPubkey [core.PublicKeySize]byte
-	txid       uint64
-	sendTime   int64
+	peerPubkey    [core.PublicKeySizeEx]byte
+	peerPubkeyLen uint8
+	txid          uint64
+	sendTime      int64
 }
 
 type artReplayEntry struct {
@@ -57,12 +58,16 @@ func newARTReplayCacheWithParams(maxEntries int, ttl time.Duration, now func() t
 // tuple. It returns true on first observation and false for a duplicate or an
 // invalid peer key. Callers must distinguish invalid input before calling.
 func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64) bool {
-	if c == nil || len(peerPubkey) != core.PublicKeySize || c.maxEntries <= 0 || c.ttl <= 0 {
+	if c == nil || c.maxEntries <= 0 || c.ttl <= 0 {
+		return false
+	}
+	if len(peerPubkey) != core.PublicKeySize && len(peerPubkey) != core.PublicKeySizeEx {
 		return false
 	}
 
 	var key artReplayKey
 	copy(key.peerPubkey[:], peerPubkey)
+	key.peerPubkeyLen = uint8(len(peerPubkey))
 	key.txid = txid
 	key.sendTime = sendTime
 

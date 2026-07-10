@@ -3,14 +3,11 @@ package core
 import "testing"
 
 func TestARTReplayAndFloodPredicates(t *testing.T) {
-	if !shouldCheckRecvAttack(NHP_SERVER, NHP_AC, NHP_ART) {
-		t.Fatal("ART must use the per-connection replay gate")
+	if shouldCheckRecvAttack(NHP_SERVER, NHP_AC, NHP_ART) {
+		t.Fatal("ART must remain exempt from the monotonic timestamp gate so reordered bursts are accepted")
 	}
 	if shouldCheckFlood(NHP_SERVER, NHP_AC, NHP_ART) {
 		t.Fatal("ART must remain exempt from the 20ms flood gate")
-	}
-	if shouldEscalateReplay(NHP_SERVER, NHP_AC, NHP_ART) {
-		t.Fatal("ART replay must be drop-only")
 	}
 }
 
@@ -22,8 +19,7 @@ func TestAOPAndDefaultPredicatesRemainStable(t *testing.T) {
 		t.Fatal("AOP must remain flood-exempt")
 	}
 	if !shouldCheckRecvAttack(NHP_SERVER, NHP_AGENT, NHP_KNK) ||
-		!shouldCheckFlood(NHP_SERVER, NHP_AGENT, NHP_KNK) ||
-		!shouldEscalateReplay(NHP_SERVER, NHP_AGENT, NHP_KNK) {
+		!shouldCheckFlood(NHP_SERVER, NHP_AGENT, NHP_KNK) {
 		t.Fatal("default packet gates must remain enabled")
 	}
 }

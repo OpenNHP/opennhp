@@ -169,18 +169,28 @@ func loadResource(resourceID string) ([]byte, error) {
 	}
 
 	// Check if the path is within the base directory to avoid path traversal attack.
-	if !strings.HasPrefix(absFullPath, absBaseDir) {
+	if !strings.HasPrefix(absFullPath, absBaseDir+string(os.PathSeparator)) {
 		return nil, errors.New("invalid resource ID: potential path traversal attack")
 	}
 
-	if _, err := os.Stat(absFullPath); err != nil {
+	f, err := os.Open(absFullPath) //nolint:gosec // G304: absFullPath is restricted to baseDir above
+	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, errors.New("resource not found")
 		}
-		return nil, fmt.Errorf("fail to check resource: %w", err)
+		return nil, fmt.Errorf("fail to open resource: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	fileInfo, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("fail to stat resource: %w", err)
+	}
+	if !fileInfo.Mode().IsRegular() {
+		return nil, errors.New("resource is not a regular file")
 	}
 
-	data, err := os.ReadFile(absFullPath)
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return nil, fmt.Errorf("fail to read resource: %w", err)
 	}

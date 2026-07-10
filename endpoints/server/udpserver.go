@@ -787,9 +787,9 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		// CONCURRENCY: this whole len + SetOverload(false) lives
 		// inside remoteConnectionMapMutex (locked at the top of this
 		// deferred block, unlocked immediately after). Every other
-		// SetOverload(true) call site — udpserver.go:540 and
-		// msghandler.go:875 — also runs under the same mutex while
-		// checking len > threshold, so the three call sites are
+		// SetOverload(true) path — globalCapAdmits and relay admission in
+		// msghandler.HandleRelayForward — also runs under the same mutex
+		// while checking len > threshold, so the three call sites are
 		// serialized and the len() observed here is the post-delete
 		// authoritative size. No TOCTOU window between the size
 		// check and the SetOverload call.

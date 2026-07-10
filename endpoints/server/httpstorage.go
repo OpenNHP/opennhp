@@ -219,17 +219,36 @@ func (hs *HttpServer) initStorageRouter() {
 			return
 		}
 
-		// check file exists
-		if _, err := os.Stat(absPath); os.IsNotExist(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "file not exists"})
+		// Open the file before inspecting it so validation and serving use the
+		// same file descriptor. This removes the window where the path could be
+		// replaced between os.Stat and gin.Context.File.
+		f, err := os.Open(absPath) //nolint:gosec // G304: absPath is restricted to safeDir above
+		if err != nil {
+			if os.IsNotExist(err) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "file not exists"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			}
+			return
+		}
+		defer func() { _ = f.Close() }()
+
+		fileInfo, err := f.Stat()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			return
+		}
+		if !fileInfo.Mode().IsRegular() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file"})
 			return
 		}
 
 		// provide file download
 		c.Header("Content-Description", "File Transfer")
-		c.Header("Content-Disposition", "attachment; filename="+filename)
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"",
+			strings.ReplaceAll(filename, "\"", "\\\"")))
 		c.Header("Content-Type", "application/octet-stream")
-		c.File(absPath)
+		http.ServeContent(c.Writer, c.Request, filename, fileInfo.ModTime(), f)
 	})
 
 	// get file metadata

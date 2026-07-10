@@ -100,3 +100,36 @@ func TestKnownRelayPeerIPGate(t *testing.T) {
 		t.Fatal("unknown source was trusted as a relay")
 	}
 }
+
+func TestAuthenticatedControlPlaneAddrRequiresRegisteredTuple(t *testing.T) {
+	s := &UdpServer{
+		acConnectionMap: make(map[string]*ACConn),
+		dbConnectionMap: make(map[string]*DBConn),
+	}
+	acAddr := &net.UDPAddr{IP: net.ParseIP("192.0.2.80"), Port: 20000}
+	dbAddr := &net.UDPAddr{IP: net.ParseIP("192.0.2.81"), Port: 20001}
+	if s.isAuthenticatedControlPlaneAddr(acAddr) {
+		t.Fatal("unregistered tuple was trusted")
+	}
+	s.acConnectionMap["ac"] = &ACConn{ConnData: &core.ConnectionData{RemoteAddr: acAddr}}
+	s.dbConnectionMap["db"] = &DBConn{ConnData: &core.ConnectionData{RemoteAddr: dbAddr}}
+	if !s.isAuthenticatedControlPlaneAddr(acAddr) || !s.isAuthenticatedControlPlaneAddr(dbAddr) {
+		t.Fatal("authenticated AC/DB tuple was not recognized")
+	}
+	if s.isAuthenticatedControlPlaneAddr(&net.UDPAddr{IP: acAddr.IP, Port: acAddr.Port + 1}) {
+		t.Fatal("different source port inherited control-plane trust")
+	}
+}
+
+func TestBlockAddressForConnectionUsesRealRelayClient(t *testing.T) {
+	relay := &net.UDPAddr{IP: net.ParseIP("192.0.2.90"), Port: 62206}
+	realClient := &net.UDPAddr{IP: net.ParseIP("198.51.100.90"), Port: 40000}
+	relayed := &UdpConn{ConnData: &core.ConnectionData{RemoteAddr: relay, RealRemoteAddr: realClient}}
+	if got := blockAddressForConnection(relayed); got != realClient {
+		t.Fatalf("block address = %v, want real client %v", got, realClient)
+	}
+	direct := &UdpConn{ConnData: &core.ConnectionData{RemoteAddr: realClient}}
+	if got := blockAddressForConnection(direct); got != realClient {
+		t.Fatalf("direct block address = %v, want remote %v", got, realClient)
+	}
+}

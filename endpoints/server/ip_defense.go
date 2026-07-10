@@ -214,6 +214,45 @@ func (s *UdpServer) isKnownRelayPeerIP(ip string) bool {
 	return false
 }
 
+// isAuthenticatedControlPlaneAddr recognizes an AC/DB transport tuple only
+// after HandleACOnline/HandleDBOnline has validated its cryptographic identity
+// and registered it. This avoids throttling high-fan-in control traffic without
+// trusting attacker-controlled AOL/DOL header bytes or requiring IPs in the
+// shipped public-key-only peer configuration.
+func (s *UdpServer) isAuthenticatedControlPlaneAddr(addr *net.UDPAddr) bool {
+	if addr == nil {
+		return false
+	}
+	key := addr.String()
+	s.acConnectionMapMutex.Lock()
+	for _, conn := range s.acConnectionMap {
+		if conn != nil && conn.ConnData != nil && conn.ConnData.RemoteAddr != nil && conn.ConnData.RemoteAddr.String() == key {
+			s.acConnectionMapMutex.Unlock()
+			return true
+		}
+	}
+	s.acConnectionMapMutex.Unlock()
+
+	s.dbConnectionMapMutex.Lock()
+	defer s.dbConnectionMapMutex.Unlock()
+	for _, conn := range s.dbConnectionMap {
+		if conn != nil && conn.ConnData != nil && conn.ConnData.RemoteAddr != nil && conn.ConnData.RemoteAddr.String() == key {
+			return true
+		}
+	}
+	return false
+}
+
+func blockAddressForConnection(conn *UdpConn) *net.UDPAddr {
+	if conn != nil && conn.ConnData != nil && conn.ConnData.RealRemoteAddr != nil {
+		return conn.ConnData.RealRemoteAddr
+	}
+	if conn == nil || conn.ConnData == nil {
+		return nil
+	}
+	return conn.ConnData.RemoteAddr
+}
+
 func (s *UdpServer) logPacketRateLimitDrop(ip string) {
 	drops := s.packetRateLimitDrops.Add(1)
 	if drops == 1 || drops%1000 == 0 {

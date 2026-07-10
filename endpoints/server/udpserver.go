@@ -625,9 +625,11 @@ func (s *UdpServer) recvPacketRoutine() {
 
 		// Apply the general application-layer packet budget after the cheap
 		// structural precheck. Relay envelopes are accounted by their real client
-		// IP in HandleRelayForward, not by the relay's shared transport address.
+		// IP in HandleRelayForward. AC/DB tuples bypass the budget only after their
+		// authenticated online handlers have registered the connection.
 		isTrustedRelayEnvelope := pkt.HeaderType == core.NHP_RLY && s.isKnownRelayPeerIP(ipStr)
-		if !isTrustedRelayEnvelope && !s.allowPacketFromIP(ipStr, recvTime) {
+		isAuthenticatedControlPlane := s.isAuthenticatedControlPlaneAddr(remoteAddr)
+		if !isTrustedRelayEnvelope && !isAuthenticatedControlPlane && !s.allowPacketFromIP(ipStr, recvTime) {
 			s.device.ReleasePoolPacket(pkt)
 			s.logPacketRateLimitDrop(ipStr)
 			continue
@@ -838,7 +840,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			return
 
 		case <-conn.ConnData.BlockSignal:
-			s.AddBlockAddr(conn.ConnData.RemoteAddr)
+			s.AddBlockAddr(blockAddressForConnection(conn))
 			return
 
 		case pkt, ok := <-conn.ConnData.RecvQueue:

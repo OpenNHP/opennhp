@@ -804,6 +804,10 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		return fmt.Errorf("%s relay source address", reason)
 	}
 	realAddr := &net.UDPAddr{IP: realIP, Port: rlyMsg.SourceAddr.Port}
+	if s.IsBlockAddr(realAddr) {
+		log.Warning("server-relay[HandleRelayForward] real client %s is temporarily blocked", realAddr)
+		return fmt.Errorf("relay client is blocked")
+	}
 
 	relayAddrStr := ppd.ConnData.RemoteAddr.String()
 	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",

@@ -42,14 +42,9 @@ import (
 // remains a possible future hardening if the threat model
 // escalates.
 //
-// Operational note — every blue/green color flip on sandbox or
-// canary instance roll on prod creates a fresh-cache instance, so
-// the deploy cadence directly bounds this exposure window. A
-// captured AOP still inside the (now 120 s) AOP staleness floor at
-// deploy time can replay against the new color; oncall reading
-// after an incident should treat "we are protected" as having a
-// deploy-window asterisk attached — narrowed but not removed by
-// #1464.
+// Operational note — every process replacement creates a fresh cache. A
+// captured AOP still inside the 120 s AOP staleness floor can therefore replay
+// after restart; the staleness check bounds, but does not eliminate, that gap.
 //
 // CPU-amplification note — MarkSeen runs after AEAD decryption
 // (the timestamp must be authenticated before it can be trusted
@@ -79,13 +74,10 @@ import (
 //   - SendTime scoping closes a server-restart false-reject the
 //     bare (pubkey, txid) shape would have. The server's
 //     SenderTrxId is `atomic.AddUint64` over an in-memory counter
-//     that resets on process restart, and the production server
-//     deployment shares one keypair across the fleet (see
-//     `terraform/modules/compute/main.tf` aws_secretsmanager_secret
-//     "server" — one secret per cell, mounted by every server
-//     instance). After a server restart or instance refresh the
-//     fleet's first ~K post-restart AOPs would collide on
-//     (K_fleet, 1..K) with cached pre-restart entries and silently
+//     that resets on process restart. Deployments may also share a
+//     keypair among multiple server instances. After a restart the
+//     first post-restart AOPs would collide on
+//     (pubkey, 1..K) with cached pre-restart entries and silently
 //     drop for up to TTL (11 min). Including the per-packet send
 //     timestamp distinguishes them: a captured-and-replayed packet
 //     has byte-identical timestamp (the timestamp is in the AEAD
@@ -130,19 +122,17 @@ import (
 // over-covers the floor by ~5×; the "must cover" invariant holds
 // with a wide margin. The TTL is deliberately left generous rather
 // than shrunk to track the floor: the extra retention costs
-// nothing at current AOP cadence and preserves the post-restart
+// little at expected AOP cadence and preserves the post-restart
 // counter-collision protection below, whose correctness depends on
 // remembering pre-restart triples for the full TTL regardless of
-// the floor. Production hosts run NTP and stay well inside the
-// ~60 s one-direction skew budget the floor tolerates.
+// the floor. Deployments should synchronize clocks to stay within the
+// floor's skew budget.
 //
 // Size (10 000 entries) is sized off the eviction floor that
 // matters operationally: at 660 s TTL, the steady-state sustained
 // AOP rate before LRU starts dropping live entries is
-// 10_000 / 660 ≈ 15 AOP/sec. Real fleet load is human-paced knock
-// cadence (single-digit/sec across all servers), so the cap leaves
-// a >5× headroom for fan-in growth (more servers per AC, batch ops)
-// before sizing needs revisiting. An attacker cannot inflate the
+// 10_000 / 660 ≈ 15 AOP/sec. Deployments expecting sustained rates above
+// that should increase the cap. An attacker cannot inflate the
 // cache without first presenting a valid HMAC + AEAD-decrypting
 // AOP, so the pre-pubkey-validation flood does not stress this
 // budget — any flood that does is already an authenticated
@@ -162,12 +152,12 @@ const (
 	// pubkeyFingerprintLen is the truncation budget for the
 	// log-line fingerprint emitted on duplicate-drops. 12 base64
 	// chars ≈ 9 bytes (~72 bits) of pubkey entropy — enough to
-	// distinguish one misbehaving server from a fleet-wide signal
+	// distinguish one misbehaving server from a deployment-wide signal
 	// in oncall logs without bloating the line or leaking the full
 	// key. Birthday-bound collision probability for a typical
-	// fleet of a few dozen servers per cell is on the order of
+	// deployment of a few dozen servers is on the order of
 	// 1e-19, so the truncation is collision-safe in operational
-	// terms; if the fleet grows past ~10 000 servers per cell the
+	// terms; if a deployment grows past ~10 000 servers the
 	// budget should be revisited.
 	pubkeyFingerprintLen = 12
 )

@@ -69,12 +69,11 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 		// (the security signal we care about) and on benign in-flight
 		// AOPs that hit the AC after a server restart / AC failover /
 		// NAT-table flush (where the same packet is genuinely retried
-		// and arrives twice). The duplicate-drop counter in #1458 is
-		// the right primary alert surface; the log is the breadcrumb
+		// and arrives twice). The log is an operational breadcrumb
 		// that tells the operator which (acId, txid, pubkey, ts) saw
 		// it. The pubkey fingerprint is base64-truncated to keep the
 		// line short while remaining sufficient to distinguish one
-		// misbehaving server from a fleet-wide signal.
+		// misbehaving server from a deployment-wide signal.
 		log.Warning("ac(%s#%d)[HandleUdpACOperations] duplicate transaction id, drop replayed %s packet (pubkey=%s, sendTime=%d)", acId, transactionId, core.HeaderTypeToString(ppd.HeaderType), pubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
 		return common.ErrACDuplicateTransaction
 	}

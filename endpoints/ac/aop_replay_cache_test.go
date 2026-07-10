@@ -80,12 +80,11 @@ func TestAOPReplayCache_DifferentPubkeysSameTxid(t *testing.T) {
 
 // TestAOPReplayCache_PostRestartCounterCollision asserts the
 // sendTime component closes the false-reject window the bare
-// (pubkey, txid) shape would have. Production servers share one
-// keypair across the fleet (terraform/modules/compute/main.tf:
-// aws_secretsmanager_secret "server" is one secret per cell), and
+// (pubkey, txid) shape would have. Server instances may share one
+// keypair in a deployment, and
 // SenderTrxId is `atomic.AddUint64` over an in-memory counter that
 // resets on process restart. Without the sendTime in the key, the
-// fleet's first ~K post-restart AOPs would silently drop for up to
+// the first post-restart AOPs would silently drop for up to
 // TTL (11 min). With the sendTime in the key, a fresh wall-clock
 // timestamp distinguishes the legitimate post-restart packet from
 // the cached pre-restart entry.

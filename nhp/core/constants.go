@@ -36,12 +36,12 @@ const (
 
 	// AOPRecvStalenessFloorSeconds is the tighter floor for NHP_AOP
 	// (server→AC). recvStalenessFloor documents WHY AOP gets one (the
-	// cross-restart replay window of #1464); this constant is the
-	// canonical home for the VALUE. AOP is server→AC, intra-VPC (NLB,
-	// sub-ms), both LayerV-controlled hosts running NTP, so 120 s is 2×
-	// the one-direction wall-clock skew budget documented in
+	// cross-restart replay window); this constant is the canonical home
+	// for the value. AOP is normally exchanged between infrastructure
+	// components with synchronized clocks, so 120 s provides margin for
+	// wall-clock skew while still shrinking the replay window documented in
 	// endpoints/ac/aop_replay_cache.go — comfortable margin against
-	// clock-step-at-boot and recv-queue-delay false-rejects, which for
+	// clock-step-at-boot and receive-queue-delay false rejects, which for
 	// AOP drop the packet but do NOT block the connection (see
 	// shouldEscalateStale) — while still shrinking the replay window 5×
 	// versus the 600 s default.

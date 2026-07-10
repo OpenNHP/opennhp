@@ -793,23 +793,15 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// Surface the AEAD-authenticated per-packet timestamp to
 	// downstream handlers — set here (not inside the
 	// shouldCheckRecvAttack branch) so the AC AOP dedupe and any
-	// future ART consumer get a populated value on every accepted
-	// packet, including the ART/AOP exemption paths.
+	// future replay-cache consumer gets a populated value on every accepted
+	// packet, including replay/flood-exempt paths.
 	//
 	// Cross-package contract: the AC AOP replay cache in
 	// endpoints/ac/aop_replay_cache.go keys on this field. A
 	// refactor that moves or skips this assignment silently
 	// degrades the AC dedupe to (pubkey, txid, 0) keying — the
-	// post-restart counter-collision regression test in
-	// aop_replay_cache_test.go fences the cache layer but not the
-	// responder wire-up. Issue #1468 tracks an integration-style
-	// test that drives a real AOP through validatePeer to fence
-	// this assignment end-to-end (a minimal-fixture unit test
-	// would require the full noise-handshake context — Device,
-	// Peer, ECDH, AEAD chain — which is substantively heavier
-	// than this assignment justifies as a unit test). Until #1468
-	// lands, the next reviewer of validatePeer must catch any
-	// reordering here.
+	// responder_test.go drives authenticated packets through validatePeer to
+	// fence this cross-package contract.
 	ppd.RemoteSendTime = remoteSendTime
 	// clear threat
 	atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)

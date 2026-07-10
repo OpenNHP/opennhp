@@ -50,16 +50,6 @@ type UdpAC struct {
 	// a fresh UDP connection, where per-connection timestamp state is empty.
 	aopReplay *aopReplayCache
 
-	// aopReplay dedupes recently observed NHP_AOP packets by
-	// (sender_pubkey, txid, send_time) so a captured-and-replayed
-	// packet cannot re-open ipset entries on a fresh connection.
-	// Initialized in Start(); tests that construct &UdpAC{} without
-	// going through Start MUST wire `aopReplay: newAOPReplayCache()`
-	// manually before invoking HandleUdpACOperations, or the call
-	// will nil-deref on MarkSeen. See aop_replay_cache.go for the
-	// threat model and sizing.
-	aopReplay *aopReplayCache
-
 	device     *core.Device
 	httpServer *HttpAC
 	wg         sync.WaitGroup

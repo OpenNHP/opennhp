@@ -235,6 +235,7 @@ For high-availability deployments, consider:
 
 **Post-deployment:**
 - [ ] Verify NHP-Server is listening on UDP 62206
+- [ ] For a host-network or bare-metal server, run `sudo docker/harden_nhp_server_udp.sh` to raise `rmem_max` and install aggregate plus per-source kernel rate limits. Docker Compose raises the receive-buffer ceiling inside each server container automatically.
 - [ ] Verify NHP-AC iptables rules are active (`iptables -L`)
 - [ ] Test knock sequence from NHP-Agent
 - [ ] Verify stealth with nmap from unauthorized host

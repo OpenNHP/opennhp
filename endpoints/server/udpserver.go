@@ -639,16 +639,11 @@ func (s *UdpServer) recvPacketRoutine() {
 
 		} else {
 			// create new connection if there is room
-			s.remoteConnectionMapMutex.Lock()
-			if len(s.remoteConnectionMap) > OverloadConnectionThreshold {
-				s.device.SetOverload(true)
-			} else if len(s.remoteConnectionMap) >= MaxConcurrentConnection {
-				s.remoteConnectionMapMutex.Unlock()
+			if !s.globalCapAdmits() {
 				log.Critical("Reached maximum concurrent connection, discarding packet from: %s", addrStr)
 				s.device.ReleasePoolPacket(pkt)
 				continue
 			}
-			s.remoteConnectionMapMutex.Unlock()
 
 			isACConn := pkt.HeaderType == core.NHP_AOL
 			isDBConn := pkt.HeaderType == core.NHP_DOL
@@ -697,6 +692,21 @@ func (s *UdpServer) recvPacketRoutine() {
 			go s.connectionRoutine(conn)
 		}
 	}
+}
+
+// globalCapAdmits reports whether a new direct UDP connection fits under the
+// global connection-table cap. Overload mode and the hard cap are independent
+// conditions: using an else-if makes the cap unreachable once the lower
+// overload threshold has been crossed.
+func (s *UdpServer) globalCapAdmits() bool {
+	s.remoteConnectionMapMutex.Lock()
+	defer s.remoteConnectionMapMutex.Unlock()
+
+	n := len(s.remoteConnectionMap)
+	if n > OverloadConnectionThreshold {
+		s.device.SetOverload(true)
+	}
+	return n < MaxConcurrentConnection
 }
 
 func (s *UdpServer) connectionRoutine(conn *UdpConn) {

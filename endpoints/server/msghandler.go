@@ -830,6 +830,15 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	log.Info("server-relay[HandleRelayForward] inner [%s] from real client %s via relay %s",
 		core.HeaderTypeToString(innerType), realAddr, relayAddrStr)
 
+	// Account relayed traffic by the real client IP. Charging the relay's
+	// outer UDP address would make many legitimate clients behind one relay
+	// consume a shared bucket and would regress relay fan-out behavior.
+	if !s.allowPacketFromIP(realIP.String(), time.Now().UnixNano()) {
+		s.device.ReleasePoolPacket(innerPkt)
+		s.logPacketRateLimitDrop(realIP.String())
+		return fmt.Errorf("packet rate limit exceeded")
+	}
+
 	// Same RKN-under-overload gate as the direct-UDP path
 	// (recvPacketRoutine), but keyed on the REAL client IP rather than the
 	// relay's: a relay legitimately fans out many clients, so keying on

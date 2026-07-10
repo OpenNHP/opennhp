@@ -522,7 +522,7 @@ func recvStalenessFloor(deviceType int, peerType int, msgType int) int64 {
 // server→AC connection. It also removes a small DoS lever: an in-VPC
 // attacker replaying one captured AOP after it ages past the floor
 // could otherwise trip the block on a fresh connection. The packet is
-// still dropped (ErrStalePacketReceived) and genuine in-connection
+// still dropped with a stale-packet error and genuine in-connection
 // timestamp regressions are still caught + escalated by the replay
 // gate (shouldCheckRecvAttack, which AOP remains subject to), and a
 // replayed AOP is independently dropped by the AC dedupe cache
@@ -538,7 +538,7 @@ func recvStalenessFloor(deviceType int, peerType int, msgType int) int64 {
 // regression, but no longer escalates it. An in-connection regression or
 // a replay flood on a *fresh* connection (LastRemoteSendTime == 0, no
 // regression) therefore can no longer be source-blocked by any gate —
-// but every such packet is still dropped (ErrReplayPacketReceived, no
+// but every such packet is still dropped with a replay error (no
 // authz bypass), the attacker is bounded by their finite captured
 // packets (each costing one already-required AEAD decrypt), and the
 // cross-connection AC dedupe cache (endpoints/ac/aop_replay_cache.go)

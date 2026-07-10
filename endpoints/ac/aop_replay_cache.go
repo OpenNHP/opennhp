@@ -96,20 +96,11 @@ import (
 // false-reject a retry — only a byte-for-byte replay of the
 // original packet collides on the full triple.
 //
-// Key construction relies on three implicit invariants documented
-// here so a future refactor that breaks any one notices: pubkey
-// is fixed-size, txid renders as digits only, and sendTime renders
-// as a signed-decimal nanos-since-epoch, so the `:` separators
-// unambiguously delimit the three fields. Today every
-// `ppd.RemotePubKey` is 32 bytes (PublicKeySize, allocated in
-// `nhp/core/responder.go` via `make([]byte, PublicKeySize)`);
-// PublicKeySizeEx (64 bytes) is reserved for a future cipher
-// scheme but never assigned into RemotePubKey, so the unambiguity
-// holds because every key has identical length. If a future scheme
-// starts mixing 32-byte and 64-byte pubkeys without a length
-// prefix, the analysis must be redone — switching to a fixed-size
-// byte-array key (#1460) would move the invariant into the type
-// system and pre-empt that hazard.
+// The key is an opaque concatenation of the peer key bytes and the decimal
+// transaction/timestamp fields. Curve peers use PublicKeySize bytes and GMSM
+// peers use PublicKeySizeEx bytes; because lookup always reconstructs the key
+// from the same authenticated tuple, no parsing or delimiter ambiguity is
+// involved.
 //
 // TTL must cover the upstream AOP staleness floor in
 // nhp/core/responder.go (`remoteSendTime < LocalInitTime -
@@ -144,8 +135,7 @@ import (
 // AC process lifetime so this is a non-issue; any future
 // integration test that spins up/tears down UdpAC in one process,
 // or a graceful-reload path, would leak one goroutine per restart
-// until the library exposes a teardown hook. Same constraint
-// already documented for endpoints/server/precheck_threat_cache.go.
+// until the library exposes a teardown hook.
 const (
 	aopReplayCacheSize = 10_000
 	aopReplayCacheTTL  = 11 * time.Minute
@@ -205,15 +195,10 @@ func newAOPReplayCacheWithParams(size int, ttl time.Duration) *aopReplayCache {
 // upstream guard will still not silently key every empty-pubkey
 // AOP under the same `":<txid>:<ts>"` slot.
 //
-// The `len(peerPubkey) != core.PublicKeySize` guard is the runtime
-// enforcement of the fixed-pubkey-length invariant the
-// key-construction docstring relies on (32 bytes today). A future
-// cipher scheme that lights up 64-byte pubkeys without revisiting
-// this file fails closed here rather than silently violating the
-// `:` separator unambiguity argument. #1460 moves this into the
-// type system.
+// Curve and GMSM use different authenticated public-key lengths. Any other
+// length fails closed.
 func (c *aopReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64) bool {
-	if len(peerPubkey) != core.PublicKeySize {
+	if len(peerPubkey) != core.PublicKeySize && len(peerPubkey) != core.PublicKeySizeEx {
 		return false
 	}
 

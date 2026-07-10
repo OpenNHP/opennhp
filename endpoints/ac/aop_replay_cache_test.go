@@ -2,6 +2,7 @@ package ac
 
 import (
 	"bytes"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -18,12 +19,13 @@ import (
 // it is readable in failure messages.
 const testSendTime int64 = 1_700_000_000_000_000_000
 
-// pubkeyN returns a 32-byte (PublicKeySize) test pubkey filled with
-// the given byte. Inline at call sites to avoid a helper file —
-// MarkSeen runtime-rejects anything that is not exactly
-// PublicKeySize, so every test fixture must hit that length.
+// pubkeyN returns a Curve-sized test pubkey filled with the given byte.
 func pubkeyN(b byte) []byte {
 	return bytes.Repeat([]byte{b}, core.PublicKeySize)
+}
+
+func pubkeyNSize(b byte, size int) []byte {
+	return bytes.Repeat([]byte{b}, size)
 }
 
 // TestAOPReplayCache_FirstSeenAccepted ensures a fresh
@@ -58,6 +60,21 @@ func TestAOPReplayCache_DuplicateRejected(t *testing.T) {
 	}
 	if c.MarkSeen(pub, 100, testSendTime) {
 		t.Fatal("duplicate observation must be reported as already-seen")
+	}
+}
+
+func TestAOPReplayCacheSupportsCurveAndGMSMKeys(t *testing.T) {
+	for _, size := range []int{core.PublicKeySize, core.PublicKeySizeEx} {
+		t.Run(fmt.Sprintf("size-%d", size), func(t *testing.T) {
+			c := newAOPReplayCache()
+			pub := pubkeyNSize('A', size)
+			if !c.MarkSeen(pub, 100, testSendTime) {
+				t.Fatal("first observation rejected")
+			}
+			if c.MarkSeen(pub, 100, testSendTime) {
+				t.Fatal("duplicate observation accepted")
+			}
+		})
 	}
 }
 
@@ -117,9 +134,7 @@ func TestAOPReplayCache_PostRestartCounterCollision(t *testing.T) {
 // cache cannot grow unbounded under steady traffic. Uses a polling
 // loop with a generous deadline rather than a fixed sleep — heavily-
 // loaded CI runners can stall a goroutine well past the TTL, so a
-// fixed 3× margin is a known flake source (see
-// endpoints/server/precheck_threat_cache_test.go for the same
-// pattern).
+// fixed 3× margin is a known flake source.
 func TestAOPReplayCache_TTLExpiry(t *testing.T) {
 	c := newAOPReplayCacheWithParams(aopReplayCacheSize, 50*time.Millisecond)
 	pub := pubkeyN('A')
@@ -191,27 +206,24 @@ func TestAOPReplayCache_EmptyPubkeyRejected(t *testing.T) {
 	}
 }
 
-// TestAOPReplayCache_WrongLengthPubkeyRejected pins the runtime
-// enforcement of the fixed-PublicKeySize invariant. The
-// key-construction docstring relies on every key bytes-block being
-// the same length so the `:` separators delimit unambiguously; a
-// future cipher scheme that produced 64-byte pubkeys without
-// revisiting this file would silently violate that argument. The
-// length guard fails closed instead.
+// TestAOPReplayCache_WrongLengthPubkeyRejected pins the runtime acceptance of
+// exactly the supported Curve and GMSM key lengths.
 func TestAOPReplayCache_WrongLengthPubkeyRejected(t *testing.T) {
 	c := newAOPReplayCache()
 
 	short := bytes.Repeat([]byte{'A'}, core.PublicKeySize-1)
 	long := bytes.Repeat([]byte{'A'}, core.PublicKeySize+1)
-	doublelong := bytes.Repeat([]byte{'A'}, core.PublicKeySize*2)
+	almostGMSM := bytes.Repeat([]byte{'A'}, core.PublicKeySizeEx-1)
+	overGMSM := bytes.Repeat([]byte{'A'}, core.PublicKeySizeEx+1)
 
 	for label, pub := range map[string][]byte{
 		"short":      short,
 		"long":       long,
-		"doublelong": doublelong,
+		"almostGMSM": almostGMSM,
+		"overGMSM":   overGMSM,
 	} {
 		if c.MarkSeen(pub, 100, testSendTime) {
-			t.Errorf("pubkey of len=%d (%s) must be rejected (PublicKeySize=%d)", len(pub), label, core.PublicKeySize)
+			t.Errorf("pubkey of len=%d (%s) must be rejected", len(pub), label)
 		}
 	}
 	if got := c.Len(); got != 0 {

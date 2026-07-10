@@ -33,7 +33,7 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 	// Fail-closed on missing-or-wrong-length peer pubkey: the
 	// dedupe key is scoped per pubkey AND per the fixed-size
 	// invariant the cache key construction relies on, so any
-	// RemotePubKey that is not exactly core.PublicKeySize means
+	// RemotePubKey that is neither a Curve nor GMSM key means
 	// core.responder.validatePeer either didn't run or didn't
 	// populate ppd correctly. The threat model treats both
 	// zero-length and wrong-length identically — both are
@@ -42,14 +42,14 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 	// return. This branch should never fire in production;
 	// returning the distinct error ensures an oncall chasing a
 	// duplicate-spike alert isn't misled. Without this match, a
-	// hypothetical 31- or 64-byte pubkey from a future cipher
+	// hypothetical wrong-length pubkey from a parser
 	// scheme regression / parser bug / fuzz harness would fall
 	// through to MarkSeen, get rejected by its
-	// `len != core.PublicKeySize` guard, and silently surface as
+	// key-length guard, and silently surface as
 	// ErrACDuplicateTransaction — exactly the masquerade that
 	// adding ErrACMissingPeerPubkey was supposed to prevent.
-	if len(ppd.RemotePubKey) != core.PublicKeySize {
-		log.Critical("ac(%s#%d)[HandleUdpACOperations] missing or wrong-length peer pubkey (len=%d, want %d), drop %s packet", acId, transactionId, len(ppd.RemotePubKey), core.PublicKeySize, core.HeaderTypeToString(ppd.HeaderType))
+	if l := len(ppd.RemotePubKey); l != core.PublicKeySize && l != core.PublicKeySizeEx {
+		log.Critical("ac(%s#%d)[HandleUdpACOperations] missing or wrong-length peer pubkey (len=%d, want %d or %d), drop %s packet", acId, transactionId, l, core.PublicKeySize, core.PublicKeySizeEx, core.HeaderTypeToString(ppd.HeaderType))
 		return common.ErrACMissingPeerPubkey
 	}
 

@@ -61,7 +61,7 @@ func TestDecompressWarnAllowedThrottle(t *testing.T) {
 	lastDecompressWarnNano.Store(0)
 	t.Cleanup(func() { lastDecompressWarnNano.Store(0) })
 
-	now := int64(2 * decompressWarnInterval)
+	now := 2 * decompressWarnInterval
 	if !decompressWarnAllowed(now) {
 		t.Fatal("first warning should be allowed")
 	}

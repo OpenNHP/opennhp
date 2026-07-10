@@ -87,7 +87,7 @@ type UdpServer struct {
 
 	// block address management
 	blockAddrMapMutex sync.Mutex
-	blockAddrMap      map[string]*BlockAddr // indexed by remote UDP address, need lock for dynamic change
+	blockAddrMap      map[string]*BlockAddr // indexed by source IP, need lock for dynamic change
 
 	// rknLimiter gates the cookie-verify ECDH for RKN-under-overload per
 	// source IP. Shared (internally locked) between the direct-UDP receive
@@ -610,8 +610,6 @@ func (s *UdpServer) recvPacketRoutine() {
 
 		typ, _, err := s.device.RecvPrecheck(pkt) // this check also records packet header type
 		msgType := core.HeaderTypeToString(typ)
-		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
-		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
 		if err != nil {
 			// threat plus 1
 			if preCheckThreats.increment(ipStr, recvTime) > PreCheckThreatCountBeforeBlock {
@@ -652,6 +650,11 @@ func (s *UdpServer) recvPacketRoutine() {
 				continue
 			}
 		}
+
+		// Keep per-packet info/evaluation logging after the cheap drop gates so
+		// an over-limit source cannot turn a packet flood into a logging flood.
+		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
+		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
 
 		s.remoteConnectionMapMutex.Lock()
 		conn, found := s.remoteConnectionMap[addrStr]

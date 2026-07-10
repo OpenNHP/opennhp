@@ -28,8 +28,6 @@ services:
         - APT_MIRROR=${APT_MIRROR:-}
     container_name: nhp-server
     restart: always
-    sysctls:
-      net.core.rmem_max: "${NHP_UDP_RECV_BUFFER_BYTES:-8388608}"
     environment:
       NHP_UDP_RECV_BUFFER_BYTES: "${NHP_UDP_RECV_BUFFER_BYTES:-8388608}"
     networks:
@@ -77,8 +75,6 @@ services:
         - APT_MIRROR=${APT_MIRROR:-}
     container_name: nhp-server-c2
     restart: always
-    sysctls:
-      net.core.rmem_max: "${NHP_UDP_RECV_BUFFER_BYTES:-8388608}"
     environment:
       NHP_UDP_RECV_BUFFER_BYTES: "${NHP_UDP_RECV_BUFFER_BYTES:-8388608}"
     networks:

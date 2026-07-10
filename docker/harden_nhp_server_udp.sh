@@ -8,6 +8,8 @@ PORT="${NHP_KNOCK_PORT:-62206}"
 GLOBAL_RATE="${NHP_KNOCK_GLOBAL_RATE_PPS:-5000}"
 GLOBAL_BURST="${NHP_KNOCK_GLOBAL_RATE_BURST:-10000}"
 PER_IP_RATE="${NHP_KNOCK_PER_IP_RATE_PPS:-100}"
+# A tight half-rate burst is deliberate for a single noisy source; the global
+# bucket below is looser (2x rate) so simultaneous legitimate clients can spike.
 PER_IP_BURST="${NHP_KNOCK_PER_IP_RATE_BURST:-50}"
 RECV_BUFFER="${NHP_UDP_RECV_BUFFER_BYTES:-8388608}"
 CHAIN="NHP_KNOCK_GUARD"
@@ -24,6 +26,9 @@ sysctl -w "net.core.rmem_max=$RECV_BUFFER"
 
 iptables -w -N "$CHAIN" 2>/dev/null || true
 iptables -w -F "$CHAIN"
+# dstip produces one aggregate bucket on the normal single-address NHP host.
+# Multi-address hosts get one bucket per destination IP and must size the rate
+# accordingly or install an environment-specific aggregate rule upstream.
 iptables -w -A "$CHAIN" -m hashlimit \
   --hashlimit-above "$GLOBAL_RATE/sec" --hashlimit-burst "$GLOBAL_BURST" \
   --hashlimit-mode dstip --hashlimit-name nhp_knock_gbl -j DROP

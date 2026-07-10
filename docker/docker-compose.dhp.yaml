@@ -18,8 +18,6 @@ services:
         - GOPROXY=${GOPROXY:-}
     container_name: nhp-server
     restart: always
-    sysctls:
-      net.core.rmem_max: "${NHP_UDP_RECV_BUFFER_BYTES:-8388608}"
     environment:
       NHP_UDP_RECV_BUFFER_BYTES: "${NHP_UDP_RECV_BUFFER_BYTES:-8388608}"
     networks:

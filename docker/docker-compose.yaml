@@ -19,10 +19,8 @@ services:
         - APT_MIRROR=${APT_MIRROR:-}
     container_name: nhp-server
     restart: always
-    # Keep the container namespace ceiling aligned with the server's default
-    # NHP_UDP_RECV_BUFFER_BYTES target.
-    sysctls:
-      net.core.rmem_max: "${NHP_UDP_RECV_BUFFER_BYTES:-8388608}"
+    # The server requests this socket size and warns if the host kernel clamps
+    # it. net.core.rmem_max must be raised on the host, not from Compose.
     environment:
       NHP_UDP_RECV_BUFFER_BYTES: "${NHP_UDP_RECV_BUFFER_BYTES:-8388608}"
     networks:
@@ -56,8 +54,6 @@ services:
         - APT_MIRROR=${APT_MIRROR:-}
     container_name: nhp-server-2
     restart: always
-    sysctls:
-      net.core.rmem_max: "${NHP_UDP_RECV_BUFFER_BYTES:-8388608}"
     environment:
       NHP_UDP_RECV_BUFFER_BYTES: "${NHP_UDP_RECV_BUFFER_BYTES:-8388608}"
     networks:

@@ -14,13 +14,6 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
-type InitiatorScheme interface {
-	CreateMsgAssemblerData(d *Device, md *MsgData) (mad *MsgAssemblerData, err error)
-	DeriveMsgAssemblerDataFromPrevParserData(ppd *PacketParserData, t int, message []byte) (mad *MsgAssemblerData)
-	SetPeerPublicKey(d *Device, mad *MsgAssemblerData, peerPk []byte) (err error)
-	EncryptBody(d *Device, mad *MsgAssemblerData) (err error)
-}
-
 type MsgData struct {
 	RemoteAddr     *net.UDPAddr      // used by agent and ac create a new connection or pick an existing connection for msg sending
 	ConnData       *ConnectionData   // used by server to pick an existing connection for msg sending

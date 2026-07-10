@@ -119,8 +119,10 @@ var (
 	// mirrors the wire HeaderType inside the AEAD-authenticated knock body
 	// (AgentKnockMsg.HeaderType); the server requires the two to match and
 	// rejects otherwise. See endpoints/server/knock_headertype.go.
-	ErrKnockHeaderTypeMismatch = newError("52009", "knock body header type does not match wire header type", "敲门报文体头部类型与报文头部类型不匹配")
-	ErrKnockHeaderTypeLegacy   = newError("52010", "knock body header type missing, please upgrade agent", "敲门报文体缺少头部类型，请升级agent")
+	ErrKnockHeaderTypeMismatch    = newError("52009", "knock body header type does not match wire header type", "敲门报文体头部类型与报文头部类型不匹配")
+	ErrKnockHeaderTypeLegacy      = newError("52010", "knock body header type missing, please upgrade agent", "敲门报文体缺少头部类型，请升级agent")
+	ErrServerDuplicateTransaction = newError("52011", "server duplicate transaction (replayed packet)", "服务器重复交互（重放报文）")
+	ErrServerMissingPeerPubkey    = newError("52012", "missing peer pubkey on server transaction", "服务器交互缺少对端公钥")
 
 	// ac
 	ErrACOperationFailed       = newError("53001", "ac operation failed", "门禁操作失败")

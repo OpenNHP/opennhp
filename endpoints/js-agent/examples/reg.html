@@ -13,8 +13,45 @@
     padding: 20px;
     min-height: 100vh;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 24px;
+  }
+  /* Floating full-width alert bar fixed to the top of the window,
+     dismissable via the × button. */
+  #alert-container {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  }
+  #alert-container:empty { display: none; }
+  #alert-container .alert {
+    position: relative;
+    margin: 0; border-radius: 0; border-width: 0 0 1px 0;
+    padding: 12px 44px; font-size: 14px; text-align: center;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+  }
+  #alert-container .alert-close {
+    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; color: inherit; font-size: 22px;
+    line-height: 1; cursor: pointer; opacity: 0.7; padding: 0;
+  }
+  #alert-container .alert-close:hover { opacity: 1; }
+  .page-header { text-align: left; max-width: 1200px; width: 100%; }
+  .page-header h1 { color: #58a6ff; font-size: 26px; margin-bottom: 6px; }
+  .page-header p { color: #8b949e; font-size: 14px; }
+  .layout {
+    display: flex;
+    gap: 24px;
+    align-items: stretch;
+    max-width: 1200px;
+    width: 100%;
+  }
+  .layout > .card { flex: 0 0 460px; }
+  .layout > .protocol { flex: 1 1 0; }
+  @media (max-width: 860px) {
+    .layout { flex-direction: column; align-items: center; }
+    .layout > .card, .layout > .protocol { flex: 1 1 auto; max-width: 460px; width: 100%; }
   }
   .card {
     background: #161b22;
@@ -24,10 +61,112 @@
     max-width: 460px;
     width: 100%;
   }
+  .protocol {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 24px;
+  }
+  .protocol h2 { color: #58a6ff; font-size: 16px; margin-bottom: 4px; }
+  .protocol .sub { color: #8b949e; font-size: 12px; margin-bottom: 16px; }
+  .protocol svg { width: 100%; height: auto; display: block; }
+  .protocol .phase-note {
+    font-size: 11px; color: #8b949e; line-height: 1.6; margin-top: 14px;
+    border-top: 1px solid #30363d; padding-top: 12px;
+  }
+  .protocol .phase-note b { color: #c9d1d9; font-weight: 600; }
+  .msg-spec { margin-top: 16px; border-top: 1px solid #30363d; padding-top: 14px; }
+  .msg-spec h3 {
+    font-size: 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
+  }
+  .msg-spec h3 .dir { font-size: 10px; font-weight: 400; color: #8b949e; }
+  .msg-spec .tag {
+    font-family: ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 600;
+    padding: 1px 7px; border-radius: 3px;
+  }
+  .msg-spec .tag-otp { background: #10233f; color: #96c8ff; border: 1px solid #1f4f8f; }
+  .msg-spec .tag-reg { background: #10331c; color: #7ee787; border: 1px solid #2ea043; }
+  .msg-spec .tag-rak { background: #2a1e10; color: #e3b341; border: 1px solid #8f6a1f; }
+  .msg-spec dl {
+    margin: 0 0 14px 0; display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px;
+    font-size: 12px; line-height: 1.5;
+  }
+  .msg-spec dt {
+    font-family: ui-monospace, Consolas, monospace; color: #c9d1d9; font-size: 11px;
+  }
+  .msg-spec dd { margin: 0; color: #8b949e; }
+  .msg-spec dd .opt { color: #6e7681; font-style: italic; }
+  @media (max-width: 480px) { .msg-spec dl { grid-template-columns: 100px 1fr; } }
+  .verify-note {
+    background: #10331c; border: 1px solid #2ea043; border-radius: 6px;
+    padding: 12px 14px; margin: 0 0 14px 0; font-size: 12px; line-height: 1.6;
+    color: #9be6a4;
+  }
+  .verify-note .verify-title {
+    color: #7ee787; font-weight: 700; font-size: 12px; margin-bottom: 6px;
+  }
+  .verify-note p { margin: 0 0 6px 0; }
+  .verify-note b { color: #d4f5c9; font-weight: 600; }
+  .verify-note ol { margin: 4px 0 6px 18px; padding: 0; }
+  .verify-note li { margin-bottom: 4px; }
+  .verify-note code {
+    font-family: ui-monospace, Consolas, monospace; font-size: 11px;
+    background: #04240f; padding: 0 4px; border-radius: 3px; color: #b9f0c2;
+  }
+  .verify-note .verify-foot { color: #6ea97a; margin-top: 8px; margin-bottom: 0; }
+  /* Sequence diagram theming + active-phase highlight */
+  .seq-lane { fill: #1c2333; stroke: #4d5566; stroke-width: 1; }
+  .seq-lane-label { fill: #e6edf3; font-size: 11px; font-weight: 600; }
+  .seq-life { stroke: #3d4457; stroke-dasharray: 3 3; }
+  .seq-msg { stroke-width: 1.6; }
+  .seq-msg-label { font-size: 10px; font-weight: 500; }
+  .seq-phase-box { fill: none; stroke-width: 1.4; stroke-dasharray: 5 3; }
+  .seq-phase-label { font-size: 10px; font-weight: 700; }
+  .seq-node-label { font-size: 10px; font-weight: 500; }
+
+  /* Phase 1 — Generate key pair: purple */
+  #seq-phase-keygen .seq-phase-box { stroke: #a371f7; }
+  #seq-phase-keygen .seq-phase-label { fill: #c8a9ff; }
+  #seq-phase-keygen .seq-msg { stroke: #a371f7; }
+  #seq-phase-keygen .seq-arrowhead { fill: #a371f7; }
+  #seq-phase-keygen .seq-msg-label { fill: #c8a9ff; }
+  #seq-phase-keygen .seq-node { fill: #2a1e4d; stroke: #7c5cc4; stroke-width: 1.2; }
+  #seq-phase-keygen .seq-node-label { fill: #d6c4ff; }
+
+  /* Phase 2 — NHP-OTP: blue */
+  #seq-phase-otp .seq-phase-box { stroke: #58a6ff; }
+  #seq-phase-otp .seq-phase-label { fill: #96c8ff; }
+  #seq-phase-otp .seq-msg { stroke: #58a6ff; }
+  #seq-phase-otp .seq-arrowhead { fill: #58a6ff; }
+  #seq-phase-otp .seq-msg-label { fill: #a9d3ff; }
+
+  /* Phase 3 — NHP-REG: green */
+  #seq-phase-reg .seq-phase-box { stroke: #3fb950; }
+  #seq-phase-reg .seq-phase-label { fill: #7ee787; }
+  #seq-phase-reg .seq-msg { stroke: #3fb950; }
+  #seq-phase-reg .seq-arrowhead { fill: #3fb950; }
+  #seq-phase-reg .seq-msg-label { fill: #9be6a4; }
+  #seq-phase-reg .seq-node { fill: #10331c; stroke: #2ea043; stroke-width: 1.2; }
+  #seq-phase-reg .seq-node-label { fill: #9be6a4; }
+
+  /* Active phase gets a tinted fill + thicker border so it stands out */
+  .seq-phase.active .seq-phase-box { stroke-width: 2.4; stroke-dasharray: none; }
+  #seq-phase-keygen.active .seq-phase-box { fill: rgba(163,113,247,0.10); }
+  #seq-phase-otp.active .seq-phase-box    { fill: rgba(88,166,255,0.10); }
+  #seq-phase-reg.active .seq-phase-box    { fill: rgba(63,185,80,0.10); }
+  /* Completed phases dim slightly to read as "done" */
+  .seq-phase.done { opacity: 0.75; }
   .card h1 { color: #58a6ff; font-size: 22px; margin-bottom: 4px; }
   .card .sub { color: #8b949e; font-size: 13px; margin-bottom: 20px; }
   .step { display: none; }
   .step.active { display: block; }
+  .step-tag {
+    display: inline-block; font-size: 11px; font-weight: 600; color: #58a6ff;
+    background: #0d2b5e; border: 1px solid #1f3a5f; border-radius: 3px;
+    padding: 1px 8px; margin-bottom: 10px;
+  }
+  .step-title { font-size: 16px; color: #c9d1d9; margin-bottom: 4px; }
+  .step-desc { font-size: 12px; color: #8b949e; line-height: 1.5; margin-bottom: 16px; }
   .field { margin-bottom: 14px; }
   .field label { display: block; font-size: 12px; color: #8b949e; margin-bottom: 4px; }
   .field input, .field select {
@@ -82,6 +221,7 @@
   .badge-gmsm { background: #2b1e0d; color: #d29922; }
   hr { border: none; border-top: 1px solid #30363d; margin: 18px 0; }
   .footer { font-size: 11px; color: #484f58; text-align: center; margin-top: 18px; }
+  .page-footer { max-width: 1200px; width: 100%; margin-top: 0; }
   .footer a { color: #58a6ff; text-decoration: none; }
   .footer a:hover { text-decoration: underline; }
   .back-link { font-size: 12px; color: #58a6ff; text-decoration: none; }
@@ -90,21 +230,57 @@
 </head>
 <body>
 
+<div id="alert-container"></div>
+
+<header class="page-header">
+  <h1>NHP-Agent Key Registration Workflow Demo</h1>
+  <p>Register a new user/device key over the NHP-OTP / NHP-REG protocol</p>
+</header>
+
+<div class="layout">
 <div class="card">
-  <h1>Agent Registration</h1>
-  <p class="sub">Register your device to access protected resources</p>
+  <h1>Registration Steps</h1>
 
-  <div id="alert-container"></div>
+  <!-- Steps 1 & 2 are shown together -->
+  <div id="step-form" class="step active">
+    <!-- Step 1: Generate a local key pair -->
+    <h3 class="step-title">Step 1: Generate key pair</h3>
+    <p class="step-desc">Create a device key pair locally in your browser. The private key never leaves your device.</p>
+    <div class="field">
+      <label for="cipher-select">Cipher Scheme</label>
+      <select id="cipher-select">
+        <option value="curve25519">Curve25519 (X25519 + AES-256-GCM + BLAKE2s)</option>
+        <option value="gmsm">GMSM / SM2 (SM2 + SM4-GCM + SM3)</option>
+      </select>
+      <div class="hint">Must match the target server's scheme (Step 2).</div>
+    </div>
+    <button class="btn btn-primary" id="btn-keygen" onclick="doGenerateKeyPair()">Generate Key Pair</button>
 
-  <!-- Step 1: Identity + Server selection -->
-  <div id="step-identity" class="step active">
+    <div id="keygen-result" style="display:none;margin-top:16px">
+      <div class="field">
+        <label>Public Key <span class="hint">(registered with the server)</span></label>
+        <div class="key-display" id="keygen-pubkey"></div>
+      </div>
+      <div class="field">
+        <label>Private Key <span class="hint">(stays on this device — keep it safe)</span></label>
+        <div class="key-display" id="keygen-privkey"></div>
+      </div>
+    </div>
+
+    <!-- Step 2: revealed after the key pair is generated -->
+    <div id="step2-block" style="display:none">
+    <hr>
+
+    <!-- Step 2: Server + identity + send NHP-OTP -->
+    <h3 class="step-title">Step 2: Get verification code via NHP-OTP</h3>
+    <p class="step-desc">Choose the target server and identify yourself. The server binds your public key to this identity and emails a one-time code over the NHP-OTP message.</p>
     <div class="field">
       <label for="relay-url">Relay URL</label>
       <input type="text" id="relay-url" placeholder="https://relay.opennhp.org/relay" autocomplete="url">
       <div class="hint">Auto-discovers available servers on change</div>
     </div>
     <div class="field">
-      <label for="server-select">Target Server <span id="server-count"></span></label>
+      <label for="server-select">NHP-Server <span id="server-count"></span></label>
       <select id="server-select" disabled>
         <option value="">Enter relay URL first...</option>
       </select>
@@ -114,7 +290,6 @@
       <label for="asp-id">Auth Service Provider ID</label>
       <input type="text" id="asp-id" value="example" placeholder="example">
     </div>
-    <hr>
     <div class="field">
       <label for="email">Email <span style="font-weight:400;color:#8b949e">(used as User ID — the OTP code is sent here)</span></label>
       <input type="email" id="email" placeholder="alice@example.com" autocomplete="email" required>
@@ -129,11 +304,13 @@
       <label for="org-id">Organization ID <span style="font-weight:400;color:#484f58">(optional)</span></label>
       <input type="text" id="org-id" placeholder="opennhp.org">
     </div>
-    <button class="btn btn-primary" id="btn-next" onclick="goToOtpStep()" style="margin-top:14px">Send Verification Code (NHP-OTP)</button>
+    <button class="btn btn-primary" id="btn-next" onclick="goToOtpStep()">Get Verification Code (NHP-OTP)</button>
+    </div>
   </div>
 
-  <!-- Step 2: OTP -->
+  <!-- OTP entry -->
   <div id="step-otp" class="step">
+    <h3 class="step-title">Step 3: Register Agent Key via NHP-REG</h3>
     <div class="status-row">
       <div class="spinner" id="spinner-otp"></div>
       <span id="otp-status-text">Sending verification code...</span>
@@ -147,11 +324,11 @@
       <input type="text" id="otp-input" placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
     </div>
     <div class="btn-row">
-      <button class="btn btn-secondary" onclick="goToIdentityStep()">Back</button>
+      <button class="btn btn-secondary" onclick="goToFormStep()">Back</button>
       <button class="btn btn-primary" id="btn-register" onclick="doRegister()">Register</button>
     </div>
     <p style="font-size:11px;color:#484f58;text-align:center;margin-top:8px">
-      No code? <a href="#" onclick="goToIdentityStep();return false" class="back-link">Go back</a> and send a new one.
+      No code? <a href="#" onclick="goToFormStep();return false" class="back-link">Go back</a> and send a new one.
     </p>
   </div>
 
@@ -159,12 +336,127 @@
   <div id="step-done" class="step">
     <div id="done-content"></div>
   </div>
-
-  <p class="footer">
-    OpenNHP Agent SDK v<span id="sdk-version">—</span> &middot;
-    <a href="https://opennhp.org" target="_blank" rel="noopener">opennhp.org</a>
-  </p>
 </div>
+
+<aside class="protocol">
+  <h2>How registration works</h2>
+  <svg viewBox="0 0 400 400" role="img" aria-labelledby="seq-title seq-desc">
+    <title id="seq-title">Key generation, NHP-OTP and NHP-REG protocol workflow</title>
+    <desc id="seq-desc">First your browser generates a key pair locally. Then it requests a one-time password over NHP-OTP and the server emails you the code. Finally your browser proves possession of its key over NHP-REG and the server acknowledges with NHP-RAK.</desc>
+
+    <!-- Lane headers -->
+    <rect class="seq-lane" x="10" y="4" width="90" height="26" rx="4"/>
+    <text class="seq-lane-label" x="55" y="21" text-anchor="middle">You</text>
+    <rect class="seq-lane" x="155" y="4" width="90" height="26" rx="4"/>
+    <text class="seq-lane-label" x="200" y="21" text-anchor="middle">Server</text>
+    <rect class="seq-lane" x="300" y="4" width="90" height="26" rx="4"/>
+    <text class="seq-lane-label" x="345" y="21" text-anchor="middle">Email</text>
+
+    <!-- Lifelines -->
+    <line class="seq-life" x1="55" y1="30" x2="55" y2="392"/>
+    <line class="seq-life" x1="200" y1="30" x2="200" y2="392"/>
+    <line class="seq-life" x1="345" y1="30" x2="345" y2="392"/>
+
+    <!-- Phase 1: Generate key pair (local, Step 1) -->
+    <g class="seq-phase" id="seq-phase-keygen">
+      <rect class="seq-phase-box" x="8" y="42" width="384" height="52" rx="5"/>
+      <text class="seq-phase-label" x="16" y="56">Step 1 · Generate key pair (local)</text>
+
+      <rect class="seq-node" x="18" y="62" width="130" height="24" rx="4"/>
+      <text class="seq-node-label" x="83" y="77" text-anchor="middle">key pair created</text>
+    </g>
+
+    <!-- Phase 2: NHP-OTP (Step 2) -->
+    <g class="seq-phase" id="seq-phase-otp">
+      <rect class="seq-phase-box" x="8" y="106" width="384" height="112" rx="5"/>
+      <text class="seq-phase-label" x="16" y="120">Step 2 · NHP-OTP  (request code)</text>
+
+      <line class="seq-msg" x1="55" y1="144" x2="200" y2="144"/>
+      <polygon class="seq-arrowhead" points="200,144 194,141 194,147"/>
+      <text class="seq-msg-label" x="127" y="140" text-anchor="middle">NHP-OTP: usrId + devId + pubKey</text>
+
+      <line class="seq-msg" x1="200" y1="174" x2="345" y2="174"/>
+      <polygon class="seq-arrowhead" points="345,174 339,171 339,177"/>
+      <text class="seq-msg-label" x="272" y="170" text-anchor="middle">send OTP code</text>
+
+      <line class="seq-msg" x1="345" y1="204" x2="55" y2="204" stroke-dasharray="4 3"/>
+      <polygon class="seq-arrowhead" points="55,204 61,201 61,207"/>
+      <text class="seq-msg-label" x="200" y="200" text-anchor="middle">6-digit code (out-of-band)</text>
+    </g>
+
+    <!-- Phase 3: NHP-REG -->
+    <g class="seq-phase" id="seq-phase-reg">
+      <rect class="seq-phase-box" x="8" y="230" width="384" height="128" rx="5"/>
+      <text class="seq-phase-label" x="16" y="244">NHP-REG  (prove &amp; register)</text>
+
+      <line class="seq-msg" x1="55" y1="268" x2="200" y2="268"/>
+      <polygon class="seq-arrowhead" points="200,268 194,265 194,271"/>
+      <text class="seq-msg-label" x="127" y="264" text-anchor="middle">NHP-REG: OTP + signature</text>
+
+      <rect class="seq-node" x="168" y="284" width="64" height="30" rx="4"/>
+      <text class="seq-node-label" x="200" y="296" text-anchor="middle">verify OTP</text>
+      <text class="seq-node-label" x="200" y="308" text-anchor="middle">+ key</text>
+
+      <line class="seq-msg" x1="200" y1="340" x2="55" y2="340"/>
+      <polygon class="seq-arrowhead" points="55,340 61,337 61,343"/>
+      <text class="seq-msg-label" x="127" y="336" text-anchor="middle">NHP-RAK: success</text>
+    </g>
+  </svg>
+  <div class="msg-spec">
+    <h3><span class="tag tag-otp">NHP-OTP</span> <span class="dir">Agent &rarr; Server</span></h3>
+    <dl>
+      <dt>usrId</dt><dd>user identity (the email the code is sent to)</dd>
+      <dt>devId</dt><dd>device identifier</dd>
+      <dt>aspId</dt><dd>auth service provider that issues the code</dd>
+      <dt>pubKey</dt><dd>the public key generated in Step 1 — bound to this OTP at issuance</dd>
+      <dt>orgId</dt><dd><span class="opt">optional</span> organization</dd>
+      <dt>usrData</dt><dd><span class="opt">optional</span> extra fields (e.g. <code>phone</code>)</dd>
+    </dl>
+
+    <h3><span class="tag tag-reg">NHP-REG</span> <span class="dir">Agent &rarr; Server</span></h3>
+    <dl>
+      <dt>usrId</dt><dd>same identity as the OTP request</dd>
+      <dt>devId</dt><dd>same device identifier</dd>
+      <dt>aspId</dt><dd>auth service provider</dd>
+      <dt>otp</dt><dd>the 6-digit code received by email</dd>
+      <dt>pubKey</dt><dd>public key to register — must match the one bound at OTP time and the Noise handshake key</dd>
+      <dt>orgId</dt><dd><span class="opt">optional</span> organization</dd>
+    </dl>
+
+    <div class="verify-note">
+      <div class="verify-title">Signature &amp; verification</div>
+      <p>NHP-REG is sent inside a <b>Noise handshake</b> keyed with the agent's Step-1
+      private key. Completing that handshake is the signature — it cryptographically
+      proves the sender holds the private key for <code>pubKey</code>, without ever
+      transmitting the private key or a separate signature field.</p>
+      <p>On receipt the server verifies, in order:</p>
+      <ol>
+        <li><b>OTP</b> is valid, unused, unexpired, and was issued for this
+        <code>usrId</code> / <code>devId</code>.</li>
+        <li><b>Key binding</b> — <code>pubKey</code> equals the key committed in the
+        NHP-OTP request <em>and</em> the static key proven in the Noise handshake
+        (mismatch → rejected).</li>
+        <li>Only then is the key registered and <b>NHP-RAK</b> returned.</li>
+      </ol>
+      <p class="verify-foot">A stolen OTP alone is useless: without the matching
+      private key the handshake fails, and a different key fails the binding check.</p>
+    </div>
+
+    <h3><span class="tag tag-rak">NHP-RAK</span> <span class="dir">Server &rarr; Agent</span></h3>
+    <dl>
+      <dt>errCode</dt><dd><code>0</code> on success, otherwise an error code</dd>
+      <dt>errMsg</dt><dd>human-readable reason when <code>errCode</code> &ne; 0</dd>
+      <dt>aspId</dt><dd>auth service provider that handled registration</dd>
+      <dt>expiresAt</dt><dd><span class="opt">optional</span> when the registered key expires (unix seconds); omitted if it never expires</dd>
+    </dl>
+  </div>
+</aside>
+</div>
+
+<p class="footer page-footer">
+  OpenNHP Agent SDK v<span id="sdk-version">—</span> &middot;
+  <a href="https://opennhp.org" target="_blank" rel="noopener">opennhp.org</a>
+</p>
 
 <script type="importmap">
 {
@@ -185,7 +477,7 @@ import { encode as cborEncode } from 'cbor-x';
 let agent = null;
 let servers = [];          // populated from config.json clusters
 let selectedServer = null;
-let cipherScheme = 'gmsm';
+let cipherScheme = 'curve25519';
 let configClusters = [];   // clusters from config.json
 
 const $ = (sel) => document.querySelector(sel);
@@ -197,19 +489,71 @@ function showStep(name) {
   $('#alert-container').innerHTML = '';
 }
 
-window.goToIdentityStep = () => showStep('identity');
+// Sync the sequence diagram with the current form step so users can see
+// which phase of the workflow the page is performing right now.
+function highlightProtocolPhase(name) {
+  const keygen = $('#seq-phase-keygen');
+  const otp = $('#seq-phase-otp');
+  const reg = $('#seq-phase-reg');
+  if (!keygen || !otp || !reg) return;
+  [keygen, otp, reg].forEach(p => p.classList.remove('active', 'done'));
+  if (name === 'keygen') {
+    keygen.classList.add('active');         // generating key pair locally
+  } else if (name === 'identity') {
+    keygen.classList.add('done');           // key pair created
+    otp.classList.add('active');            // about to send NHP-OTP
+  } else if (name === 'otp') {
+    keygen.classList.add('done');
+    otp.classList.add('done');              // OTP sent + code delivered
+    reg.classList.add('active');            // entering code → NHP-REG next
+  } else if (name === 'done') {
+    keygen.classList.add('done');
+    otp.classList.add('done');
+    reg.classList.add('done');              // NHP-RAK received
+  }
+}
+
+// Return to the combined Step 1 + Step 2 form.
+window.goToFormStep = () => { showStep('form'); highlightProtocolPhase(keygenScheme ? 'identity' : 'keygen'); };
+
+// ── Cipher scheme selector (Step 1) ──
+$('#cipher-select').addEventListener('change', () => {
+  cipherScheme = $('#cipher-select').value;
+  // A previously generated key is for the old scheme — force regenerate.
+  if (keygenScheme && keygenScheme !== cipherScheme) {
+    agent = null;
+    keygenScheme = null;
+    $('#keygen-result').style.display = 'none';
+    $('#step2-block').style.display = 'none';
+    $('#btn-keygen').textContent = 'Generate Key Pair';
+    highlightProtocolPhase('keygen');
+  }
+});
+
+function schemeBadge(scheme) {
+  return scheme === 'curve25519'
+    ? '<span class="badge badge-curve">Curve25519</span>'
+    : '<span class="badge badge-gmsm">GMSM/SM2</span>';
+}
+
+// keygenScheme records the cipher scheme the current key pair was generated
+// for, so we can detect a scheme change (rare — the demo config is single
+// scheme) and force a regenerate.
+let keygenScheme = null;
 
 // ── Server list ──
 $('#server-select').addEventListener('change', () => {
   const idx = parseInt($('#server-select').value);
   if (!isNaN(idx) && servers[idx]) {
     selectedServer = servers[idx];
-    cipherScheme = selectedServer.cipherScheme === 0 ? 'curve25519' : 'gmsm';
-    const badge = cipherScheme === 'curve25519'
-      ? '<span class="badge badge-curve">Curve25519</span>'
-      : '<span class="badge badge-gmsm">GMSM/SM2</span>';
-    $('#server-detail').innerHTML = `Fingerprint: ${escapeHtml(selectedServer.id)} ${badge}`;
-    agent = null; // reset so initAgent() re-creates with the new server
+    const serverScheme = selectedServer.cipherScheme === 0 ? 'curve25519' : 'gmsm';
+    let detail = `Fingerprint: ${escapeHtml(selectedServer.id)} ${schemeBadge(serverScheme)}`;
+    // The cipher scheme is chosen by the user in Step 1. Warn if the picked
+    // server expects a different scheme than the generated key.
+    if (keygenScheme && keygenScheme !== serverScheme) {
+      detail += ' <span style="color:#f85149">— scheme mismatch, regenerate in Step 1</span>';
+    }
+    $('#server-detail').innerHTML = detail;
   }
 });
 
@@ -240,21 +584,53 @@ function populateServers() {
   sel.dispatchEvent(new Event('change'));
 }
 
-// ── Registration flow ──
+// ── Step 1: generate key pair locally ──
+window.doGenerateKeyPair = async () => {
+  const btn = $('#btn-keygen');
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  try {
+    await initAgent();  // creates the agent and generates the key pair
+    keygenScheme = cipherScheme;
+    $('#keygen-pubkey').textContent = agent.getPublicKey();
+    $('#keygen-privkey').textContent = agent.getPrivateKey();
+    $('#keygen-result').style.display = 'block';
+    $('#step2-block').style.display = 'block';  // reveal Step 2
+    btn.textContent = 'Regenerate Key Pair';
+    highlightProtocolPhase('identity');  // key pair done → NHP-OTP is next
+  } catch (err) {
+    showAlert('Key generation failed: ' + (err.message || 'Unknown'), 'error');
+    btn.textContent = 'Generate Key Pair';
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// ── Step 2: identify + send NHP-OTP ──
 window.goToOtpStep = async () => {
   const email = $('#email').value.trim();
   if (!email) { showAlert('Please enter your email (used as both user ID and OTP address)', 'error'); return; }
   if (!selectedServer) { showAlert('Please select a target server', 'error'); return; }
+  if (!agent || !agent.getPublicKey()) { showAlert('Please generate a key pair first (Step 1)', 'error'); return; }
+
+  // Point the agent at the chosen server and bind the identity fields to
+  // the already-generated key pair.
+  agent.addServer({ publicKey: selectedServer.publicKeyBase64 });
+  const deviceId = $('#device-id').value.trim() || generateDeviceId();
+  if (!$('#device-id').value.trim()) $('#device-id').value = deviceId;
+  agent.setIdentity({
+    userId: email,
+    deviceId: deviceId,
+    organizationId: $('#org-id').value.trim() || undefined,
+  });
 
   showStep('otp');
+  highlightProtocolPhase('otp');  // OTP sent → NHP-REG is next
   $('#otp-email-display').textContent = email;
   $('#spinner-otp').classList.add('visible');
-  $('#otp-status-text').textContent = 'Initializing agent...';
+  $('#otp-status-text').textContent = 'Sending verification code...';
 
   try {
-    await initAgent();
-    $('#otp-status-text').textContent = 'Sending verification code...';
-
     const result = await agent.requestOtp($('#asp-id').value.trim() || 'example', { email });
     $('#spinner-otp').classList.remove('visible');
     if (result.success) {
@@ -294,6 +670,7 @@ window.doRegister = async () => {
       try { localStorage.setItem('nhp-reg-data', JSON.stringify(regData)); } catch (_) {}
 
       showStep('done');
+      highlightProtocolPhase('done');  // NHP-RAK received
       $('#done-content').innerHTML = `
         <div class="alert alert-success">
           <strong>&check; Registration Successful</strong><br>
@@ -419,25 +796,18 @@ window.downloadKey = () => {
 };
 
 // ── Helpers ──
+// Creates a fresh agent and generates its key pair (Step 1). No server or
+// identity is bound here — those are set in Step 2. Called on every
+// (re)generate so each click yields a new key pair.
 async function initAgent() {
-  if (agent && agent.getPublicKey()) return;
-  if (!selectedServer) throw new Error('No server selected');
   agent = new NHPAgent({
     cipherScheme: cipherScheme,
     logLevel: 'info',
     transport: 'relay',
     relayUrl: $('#relay-url').value.trim() || undefined,
   });
-  await agent.init();
+  await agent.init();  // generates the Curve25519 / SM2 key pair
   try { $('#sdk-version').textContent = NHPAgent.version || '—'; } catch (_) {}
-  const deviceId = $('#device-id').value.trim() || generateDeviceId();
-  if (!$('#device-id').value.trim()) $('#device-id').value = deviceId;
-  agent.setIdentity({
-    userId: $('#email').value.trim(),
-    deviceId: deviceId,
-    organizationId: $('#org-id').value.trim() || undefined,
-  });
-  agent.addServer({ publicKey: selectedServer.publicKeyBase64 });
 }
 
 function escapeHtml(s) {
@@ -446,8 +816,13 @@ function escapeHtml(s) {
 
 function showAlert(msg, type) {
   const cls = { info: 'alert-info', success: 'alert-success', error: 'alert-error' };
-  $('#alert-container').innerHTML = `<div class="alert ${cls[type] || 'alert-info'}">${escapeHtml(msg)}</div>`;
+  $('#alert-container').innerHTML =
+    `<div class="alert ${cls[type] || 'alert-info'}">` +
+    `<span>${escapeHtml(msg)}</span>` +
+    `<button class="alert-close" onclick="dismissAlert()" aria-label="Dismiss">&times;</button>` +
+    `</div>`;
 }
+window.dismissAlert = () => { $('#alert-container').innerHTML = ''; };
 
 function generateDeviceId() {
   const chars = 'abcdef0123456789';
@@ -464,7 +839,8 @@ function generateDeviceId() {
       const cfg = await resp.json();
       if (cfg.relayUrl) $('#relay-url').value = cfg.relayUrl;
       if (cfg.serviceId) $('#asp-id').value = cfg.serviceId;
-      if (cfg.cipherScheme) cipherScheme = cfg.cipherScheme;
+      // Cipher scheme defaults to Curve25519 (the dropdown default); the
+      // user selects it in Step 1 rather than inheriting it from config.
       if (Array.isArray(cfg.clusters)) {
         const cs = cfg.cipherScheme === 'curve25519' ? 0 : 1;
         configClusters = cfg.clusters.map(c => ({
@@ -477,6 +853,7 @@ function generateDeviceId() {
     }
   } catch (_) {}
   populateServers();
+  highlightProtocolPhase('keygen');
 })();
 </script>
 </body>

@@ -1,6 +1,6 @@
 {
   "_comment":        "LOCAL DEV CONFIG - docker compose via relay transport. relayUrl matches docker-compose.yaml relay mapping (8080). For multicluster, change to 8081.",
-  "cipherScheme":    "gmsm",
+  "cipherScheme":    "curve25519",
   "transport":       "relay",
   "relayUrl":        "http://localhost:8080/relay",
   "serverHost":      "server.opennhp.org",

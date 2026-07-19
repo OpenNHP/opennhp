@@ -4,7 +4,7 @@ FROM --platform=$BUILDPLATFORM ubuntu:22.04 AS builder
 ARG TARGETARCH
 ARG TARGETOS
 ARG GOPROXY=https://proxy.golang.org,direct
-ARG GO_VERSION=1.25.6
+ARG GO_VERSION=1.26.5
 ARG APT_MIRROR=
 
 # Set Proxy
@@ -60,8 +60,8 @@ ENV PATH="${GOPATH}/bin:${PATH}"
 ENV GOOS=${TARGETOS}
 ENV GOARCH=${TARGETARCH}
 ENV CGO_ENABLED=1
-# Force all builds to use go1.25.6 to ensure plugin compatibility
-ENV GOTOOLCHAIN=go1.25.6
+# Force all builds to use go1.26.5 to ensure plugin compatibility
+ENV GOTOOLCHAIN=go1.26.5
 
 # Verify installations
 RUN go version && \

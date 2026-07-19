@@ -156,7 +156,7 @@ func (a *UdpAgent) RegisterPublicKey(otp string, target *KnockTarget) (rakMsg *c
 
 	if rakMsg.ErrCode != common.ErrSuccess.ErrorCode() {
 		log.Error("agent(%s#%d)[RegisterPublicKey] response error: %s", regMsg.UserId, regMd.TransactionId, rakMsg.ErrMsg)
-		err = common.ErrorCodeToError(rakMsg.ErrCode)
+		err = common.ErrorFromResponse(rakMsg.ErrCode, rakMsg.ErrMsg)
 		return rakMsg, err
 	}
 
@@ -243,7 +243,7 @@ func (a *UdpAgent) ListResource(target *KnockTarget) (lrtMsg *common.ServerListR
 
 	if lrtMsg.ErrCode != common.ErrSuccess.ErrorCode() {
 		log.Error("agent(%s#%d)[ListResource] list response error: %s", lstMsg.UserId, lstMd.TransactionId, lrtMsg.ErrMsg)
-		err = common.ErrorCodeToError(lrtMsg.ErrCode)
+		err = common.ErrorFromResponse(lrtMsg.ErrCode, lrtMsg.ErrMsg)
 		return lrtMsg, err
 	}
 

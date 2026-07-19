@@ -21,6 +21,33 @@ const (
 	FailureRetryInterval   = 10 // second
 )
 
+// staleness floor (#1464) — the maximum age, in seconds, that a
+// received packet's AEAD-authenticated send timestamp may lag the
+// local receive time before the packet is rejected as stale in
+// nhp/core/responder.go. See recvStalenessFloor for the dispatch.
+const (
+	// DefaultRecvStalenessFloorSeconds is the historical, generous
+	// floor applied to every (deviceType, peerType, msgType) the
+	// AOP-specific override below does not match. Kept at 600 s so
+	// agent→server knocks (which may traverse the public internet
+	// with looser clock-calibration assumptions) are byte-for-byte
+	// unchanged by #1464.
+	DefaultRecvStalenessFloorSeconds = 600
+
+	// AOPRecvStalenessFloorSeconds is the tighter floor for NHP_AOP
+	// (server→AC). recvStalenessFloor documents WHY AOP gets one (the
+	// cross-restart replay window); this constant is the canonical home
+	// for the value. AOP is normally exchanged between infrastructure
+	// components with synchronized clocks, so 120 s provides margin for
+	// wall-clock skew while still shrinking the replay window documented in
+	// endpoints/ac/aop_replay_cache.go — comfortable margin against
+	// clock-step-at-boot and receive-queue-delay false rejects, which for
+	// AOP drop the packet but do NOT block the connection (see
+	// shouldEscalateStale) — while still shrinking the replay window 5×
+	// versus the 600 s default.
+	AOPRecvStalenessFloorSeconds = 120
+)
+
 // transaction
 const (
 	AgentLocalTransactionResponseTimeoutMs  = 5 * 1000                                     // millisecond

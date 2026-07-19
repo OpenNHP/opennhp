@@ -3,6 +3,7 @@ package ac
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -45,6 +46,9 @@ type UdpAC struct {
 	serverPeerMap   map[string]*core.UdpPeer // indexed by server's public key
 
 	tokenStore *common.TokenStore[*AccessEntry]
+	// aopReplay rejects a byte-identical NHP_AOP replay even when it arrives on
+	// a fresh UDP connection, where per-connection timestamp state is empty.
+	aopReplay *aopReplayCache
 
 	device     *core.Device
 	httpServer *HttpAC
@@ -145,6 +149,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	a.remoteConnectionMap = make(map[string]*UdpConn)
 	a.serverPeerMap = make(map[string]*core.UdpPeer)
 	a.tokenStore = common.NewTokenStore[*AccessEntry]()
+	a.aopReplay = newAOPReplayCache()
 
 	if a.etcdConn != nil {
 		_ = a.loadRemoteConfig()
@@ -525,7 +530,11 @@ func (a *UdpAC) recvMessageRoutine() {
 				// deal with NHP_AOP message
 				a.wg.Add(1)
 				go func(p *core.PacketParserData) {
-					_ = a.HandleUdpACOperations(p)
+					if err := a.HandleUdpACOperations(p); err != nil &&
+						!errors.Is(err, common.ErrACDuplicateTransaction) &&
+						!errors.Is(err, common.ErrACMissingPeerPubkey) {
+						log.Error("HandleUdpACOperations failed: %v", err)
+					}
 				}(ppd)
 			}
 		}

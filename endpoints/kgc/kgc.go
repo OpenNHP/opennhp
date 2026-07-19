@@ -100,7 +100,7 @@ func (k *KGCImpl) GenerateMasterKey() error {
 	pubKeyBytes = append(pubKeyBytes, masterKey.PpubY.Bytes()...)
 	content = []byte(updateValueWithKey(string(content), "MasterPublicKeyBase64", base64.StdEncoding.EncodeToString(pubKeyBytes)))
 
-	err = os.WriteFile(configFilePath, content, 0600)
+	err = os.WriteFile(configFilePath, content, 0600) //nolint:gosec // G703: configFilePath is built from GetExeDirPath() joined with fixed literals, not user input
 	if err != nil {
 		return err
 	}

@@ -22,7 +22,7 @@ func (a *UdpAgent) RequestOtp(target *KnockTarget) error {
 		UserData:       a.knockUser.UserData,
 	}
 	a.knockUserMutex.RUnlock()
-	otpBytes, _ := json.Marshal(otpMsg)
+	otpBytes, _ := json.Marshal(otpMsg) //nolint:gosec // G117: Passcode is unset here (this builds the OTP *request*, not a response) and the message is sent over the encrypted NHP channel, not logged
 
 	serverPeer := target.GetServerPeer()
 	if serverPeer == nil {

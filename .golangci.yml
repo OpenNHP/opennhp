@@ -29,6 +29,7 @@ linters:
         - G115  # Integer overflow - safe conversions: WASM bit extraction, timestamps, bounded lengths
         - G204  # Command injection - uses exec.CommandContext with args array, not shell strings
         - G304  # File path traversal - all paths are admin-controlled (config files, CLI args)
+        - G703  # Path traversal via taint analysis - same admin-controlled paths as G304
         - G401  # MD5 weak crypto - used for checksums/deduplication, not cryptographic security
         - G501  # Import blocklist md5 - used for checksums, not security
         - G505  # Import blocklist sha1 - used for checksums, not security

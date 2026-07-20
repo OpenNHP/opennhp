@@ -19,6 +19,10 @@ services:
         - APT_MIRROR=${APT_MIRROR:-}
     container_name: nhp-server
     restart: always
+    # The server requests this socket size and warns if the host kernel clamps
+    # it. net.core.rmem_max must be raised on the host, not from Compose.
+    environment:
+      NHP_UDP_RECV_BUFFER_BYTES: "${NHP_UDP_RECV_BUFFER_BYTES:-8388608}"
     networks:
       network_default:
         ipv4_address: 177.7.0.9
@@ -50,6 +54,8 @@ services:
         - APT_MIRROR=${APT_MIRROR:-}
     container_name: nhp-server-2
     restart: always
+    environment:
+      NHP_UDP_RECV_BUFFER_BYTES: "${NHP_UDP_RECV_BUFFER_BYTES:-8388608}"
     networks:
       network_default:
         ipv4_address: 177.7.0.14

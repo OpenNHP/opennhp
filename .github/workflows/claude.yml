@@ -89,6 +89,10 @@ jobs:
           # review branch protection. A later app-token step clears stale
           # older-commit bot requests only after Claude posts successfully.
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Allow fork contributors (read-only actors) to trigger this review.
+          # Safe here because tools are restricted to read-only gh pr subcommands
+          # and the checkout is pinned to the base commit (never the PR head).
+          allowed_non_write_users: '*'
           # Restrict tools to safe GitHub CLI operations for PR review
           claude_args: '--allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Bash(gh pr checks:*)"'
           prompt: |

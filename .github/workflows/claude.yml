@@ -99,6 +99,8 @@ jobs:
           # Safe here because tools are restricted to read-only gh pr subcommands
           # and the checkout is pinned to the base commit (never the PR head).
           allowed_non_write_users: '*'
+          # Show full output to diagnose is_error:true failures; remove once stable.
+          show_full_output: 'true'
           # Restrict tools to safe GitHub CLI operations for PR review
           claude_args: '--allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Bash(gh pr checks:*)"'
           prompt: |

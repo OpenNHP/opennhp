@@ -8,12 +8,20 @@ PubKeyBase64 = "${NHP_AGENT_PUBLIC_KEY}"
 ExpireTime = 1924991999
 
 [[Agents]]
-# PUBLIC DEMO js-agent for CLUSTER 2 (browser-side). This is an INDEPENDENT
-# key pair from cluster 1's js-agent: cluster 2 trusts only its own demo
-# identity, so the cluster 1 demo key cannot knock this cluster (and vice
-# versa). The matching private key is served per-cluster in
+# PUBLIC DEMO js-agent for CLUSTER 2 (browser-side). Curve25519 public key
+# — matched when the agent knocks using the curve25519 cipher scheme.
+# This is an INDEPENDENT key pair from cluster 1's js-agent: cluster 2 trusts
+# only its own demo identity, so the cluster 1 demo key cannot knock this
+# cluster (and vice versa). The matching private key is served per-cluster in
 # https://${DOMAIN_AGENT}/config.json (clusters[].agentPrivateKey) and the
 # demo page swaps to it when cluster 2 is selected. Scope is demo-only (see
 # the basic plugin resource.toml for cluster 2).
 PubKeyBase64 = "${NHP_JSAGENT2_PUBLIC_KEY}"
+ExpireTime = 1924991999
+
+[[Agents]]
+# PUBLIC DEMO js-agent for CLUSTER 2 (browser-side). SM2 public key
+# — matched when the agent knocks using the gmsm cipher scheme.
+# Derived from the same private key as the Curve25519 entry above.
+PubKeyBase64 = "${NHP_JSAGENT2_SM2_PUBLIC_KEY}"
 ExpireTime = 1924991999

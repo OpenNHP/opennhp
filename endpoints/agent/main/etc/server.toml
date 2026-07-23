@@ -14,17 +14,20 @@
 # knock, StickyInstance keeps the KNK/RKN pair on the same replica.
 #
 # Per-field reference:
-#   Name           — cluster identifier, referenced from resource.toml's
-#                    Cluster = "..." field. Allowed chars: [a-zA-Z0-9._-],
-#                    max 64. REQUIRED for nhp-agent.
-#   PubKeyBase64   — the cluster's nhp-server public key (base64)
-#   ExpireTime     — epoch seconds; peer-key validation fails after this
-#   LoadBalance    — "weighted-random" (default), "random", "round-robin"
-#   StickyInstance — bool; default true. When true, a KnockTarget that
-#                    picks instance X for its KNK reuses X for the
-#                    follow-up RKN, so cookie verification stays put.
-#                    Setting false spreads retries across the cluster's
-#                    instances (only safe with stateless cookies).
+#   Name                   — cluster identifier, referenced from resource.toml's
+#                            Cluster = "..." field. Allowed chars: [a-zA-Z0-9._-],
+#                            max 64. REQUIRED for nhp-agent.
+#   PubKeyBase64           — the server's public key, matching the cipher scheme
+#                            configured in config.toml's DefaultCipherScheme:
+#                              DefaultCipherScheme = 0  →  Curve25519 key (32-byte base64)
+#                              DefaultCipherScheme = 1  →  SM2 key (64-byte base64)
+#   ExpireTime             — epoch seconds; peer-key validation fails after this
+#   LoadBalance            — "weighted-random" (default), "random", "round-robin"
+#   StickyInstance         — bool; default true. When true, a KnockTarget that
+#                            picks instance X for its KNK reuses X for the
+#                            follow-up RKN, so cookie verification stays put.
+#                            Setting false spreads retries across the cluster's
+#                            instances (only safe with stateless cookies).
 #
 # Per-instance fields (under [[Servers.Instances]]):
 #   Host           — DNS name (preferred); resolves at send time
@@ -32,28 +35,14 @@
 #   Port           — UDP port (required, > 0)
 #   Weight         — relative weight for weighted-random; default 1
 #
-# ─── Cluster form (recommended) ──────────────────────────────────────
+# ─── Local docker environment ─────────────────────────────────────────
 [[Servers]]
 Name = "default"
-PubKeyBase64 = "WqJxe+Z4+wLen3VRgZx6YnbjvJFmptz99zkONCt/7gc="
+PubKeyBase64 = "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA=="
+#PubKeyBase64 = "UuUPfVS2iBKf3OKluBIhQsbz2Yi81+/s+Yeh5MBC8Sg="
 ExpireTime = 1924991999
 LoadBalance = "weighted-random"
 
   [[Servers.Instances]]
-  Ip   = "192.168.80.35"
+  Ip   = "127.0.0.1"
   Port = 62206
-
-# ─── Legacy flat form (auto-upgraded, deprecated) ────────────────────
-# Kept for backwards compatibility with pre-cluster server.toml files;
-# existing single-server entries are auto-promoted to a single-instance
-# cluster on load with a deprecation warning. Don't mix this form with
-# [[Servers.Instances]] in the same entry — the loader refuses to guess
-# which one wins.
-#
-# [[Servers]]
-# Name = "default"
-# Hostname = ""
-# Ip = "192.168.80.35"
-# Port = 62206
-# PubKeyBase64 = "WqJxe+Z4+wLen3VRgZx6YnbjvJFmptz99zkONCt/7gc="
-# ExpireTime = 1924991999

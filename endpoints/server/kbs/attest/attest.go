@@ -65,8 +65,8 @@ func Attest(c *gin.Context) {
 	}
 
 	var req AttestRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, kbsError.InvalidRequest(err))
+	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
+		c.JSON(http.StatusBadRequest, kbsError.InvalidRequest(bindErr))
 		return
 	}
 

@@ -138,6 +138,23 @@ func (kt *KnockTarget) GetServerPeer() *core.UdpPeer {
 	return kt.ServerPeer
 }
 
+// GetServerPeerForScheme returns the cluster's representative peer (via
+// ServerCluster.PeerForCipherScheme), or the legacy ServerPeer when no
+// cluster is bound. The cipherScheme argument is currently advisory: the
+// cluster exposes a single peer whose PubKeyBase64 already matches its
+// DefaultCipherScheme, so there is no per-scheme selection yet. The
+// parameter is kept so a future per-scheme peer table can be threaded
+// through without touching call sites.
+func (kt *KnockTarget) GetServerPeerForScheme(cipherScheme int) *core.UdpPeer {
+	kt.Lock()
+	defer kt.Unlock()
+
+	if kt.ServerCluster != nil {
+		return kt.ServerCluster.PeerForCipherScheme(cipherScheme)
+	}
+	return kt.ServerPeer
+}
+
 // SetServerCluster binds this target to a cluster. Idempotent; calling
 // it again with a different cluster (e.g. on resource-config reload
 // after the operator rehomed a resource to a new server identity)
@@ -158,6 +175,14 @@ func (kt *KnockTarget) SetServerCluster(sc *ServerCluster) {
 		kt.pendingCookie = nil
 	}
 	kt.ServerCluster = sc
+}
+
+// GetServerCluster returns the cluster this target is bound to.
+func (kt *KnockTarget) GetServerCluster() *ServerCluster {
+	kt.Lock()
+	defer kt.Unlock()
+
+	return kt.ServerCluster
 }
 
 // PickInstance returns the instance this target should send to next.
@@ -244,6 +269,15 @@ type UdpAgent struct {
 	config *Config
 	log    *log.Logger
 
+	// allowMissingConfig, when true, lets Start proceed even if
+	// etc/config.toml is absent — it uses an empty config and mints a
+	// throwaway key that the caller replaces via ReinitWithKey. This is
+	// scoped to the interactive `register` flow (which bootstraps an agent
+	// before any config exists). It stays false for `run`/`dhp`, so those
+	// commands still fail loudly on a genuinely missing config rather than
+	// silently starting with a random key and empty identity.
+	allowMissingConfig bool
+
 	remoteConnectionMutex sync.Mutex
 	remoteConnectionMap   map[string]*UdpConn // indexed by remote UDP address
 
@@ -263,9 +297,14 @@ type UdpAgent struct {
 	serverClusterMap    map[string]*ServerCluster // indexed by PublicKeyBase64
 	serverClusterByName map[string]*ServerCluster // indexed by ClusterConfig.Name; shares the same *ServerCluster values
 
-	device  *core.Device
-	wg      sync.WaitGroup
-	running atomic.Bool
+	// deviceMutex guards device and recvMsgCh across ReinitWithKey, which
+	// hot-swaps the device (and its DecryptedMsgQueue) after registration
+	// generates a fresh key pair. Writers take Lock; the receive routine
+	// takes RLock once to capture its channel at spawn time.
+	deviceMutex sync.RWMutex
+	device      *core.Device
+	wg          sync.WaitGroup
+	running     atomic.Bool
 
 	signals struct {
 		stop                  chan struct{}
@@ -334,10 +373,24 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 		return err
 	}
 
-	prk, err := base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
-	if err != nil {
-		log.Error("private key parse error %v\n", err)
-		return fmt.Errorf("private key parse error %v", err)
+	var prk []byte
+	if a.config.PrivateKeyBase64 == "" {
+		// An empty private key is only acceptable in the register bootstrap
+		// flow (allowMissingConfig): use a throwaway key that ReinitWithKey
+		// replaces immediately after Start returns. For run/dhp this is a
+		// real misconfiguration — fail loudly instead of silently starting
+		// with a random key and empty identity.
+		if !a.allowMissingConfig {
+			log.Error("no private key configured in etc/config.toml")
+			return fmt.Errorf("no private key configured; check etc/config.toml")
+		}
+		prk = core.NewECDH(core.ECC_CURVE25519).PrivateKey()
+	} else {
+		prk, err = base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
+		if err != nil {
+			log.Error("private key parse error %v\n", err)
+			return fmt.Errorf("private key parse error %v", err)
+		}
 	}
 
 	a.device = core.NewDevice(core.NHP_AGENT, prk, nil)
@@ -452,6 +505,13 @@ func (a *UdpAgent) SetKnockUser(usrId string, orgId string, userData map[string]
 	a.knockUserMutex.Unlock()
 }
 
+// SetAllowMissingConfig opts the agent into tolerating a missing
+// etc/config.toml at Start (empty config + throwaway key). Call it before
+// Start. Intended only for the interactive `register` bootstrap flow.
+func (a *UdpAgent) SetAllowMissingConfig(allow bool) {
+	a.allowMissingConfig = allow
+}
+
 func (a *UdpAgent) SetDeviceId(devId string) {
 	a.deviceId = devId
 }
@@ -488,6 +548,120 @@ func (a *UdpAgent) Stop() {
 
 func (a *UdpAgent) IsRunning() bool {
 	return a.running.Load()
+}
+
+// PublicKeyBase64 returns the agent's curve25519 public key in base64 encoding.
+func (a *UdpAgent) PublicKeyBase64() string {
+	return a.device.PublicKeyBase64()
+}
+
+// PublicKeyBase64ByCipherScheme returns the public key matching the active
+// cipher scheme: SM2 for CIPHER_SCHEME_GMSM, curve25519 for CIPHER_SCHEME_CURVE.
+func (a *UdpAgent) PublicKeyBase64ByCipherScheme() string {
+	if a.config.DefaultCipherScheme == common.CIPHER_SCHEME_GMSM {
+		return a.device.PublicKeyExBase64()
+	}
+	return a.device.PublicKeyBase64()
+}
+
+// PrivateKeyBase64 returns the agent's private key in base64 encoding.
+func (a *UdpAgent) PrivateKeyBase64() string {
+	return a.config.PrivateKeyBase64
+}
+
+// ReinitWithKey stops the current device, creates a new one from the given
+// private key bytes, and re-adds all known server peers. Call this after
+// Start() when a fresh key pair has been generated for registration.
+func (a *UdpAgent) ReinitWithKey(privKeyBytes []byte, cipherScheme int) error {
+	newDev := core.NewDevice(core.NHP_AGENT, privKeyBytes, nil)
+	if newDev == nil {
+		return fmt.Errorf("failed to create device from new key")
+	}
+	newDev.Start()
+
+	// Swap in the new device and repoint the receive channel atomically.
+	// Without repointing recvMsgCh, the old routine keeps reading the old
+	// (about-to-be-closed) DecryptedMsgQueue and nothing drains the new
+	// device's queue — cookie challenges and generic replies would be
+	// silently dropped after a reinit.
+	//
+	// Scope note: deviceMutex only synchronizes this swap window and the
+	// receive routine's channel capture. The send/knock/request paths and
+	// packetReceiveRoutine read a.device WITHOUT the lock. That is safe for
+	// the current one-shot register flow — ReinitWithKey runs right after
+	// Start() while senders are idle, and a.device is never rewritten
+	// afterward. If ReinitWithKey is ever called with active traffic, those
+	// readers must also take deviceMutex.
+	a.deviceMutex.Lock()
+	oldDev := a.device
+	a.device = newDev
+	a.recvMsgCh = newDev.DecryptedMsgQueue
+	a.deviceMutex.Unlock()
+
+	a.config.PrivateKeyBase64 = base64.StdEncoding.EncodeToString(privKeyBytes)
+	a.config.DefaultCipherScheme = cipherScheme
+
+	// Stopping the old device closes its DecryptedMsgQueue, so the
+	// existing recvMessageRoutine (blocked on the old channel) observes a
+	// closed channel and exits. Spawn a fresh routine bound to the new
+	// queue to replace it.
+	oldDev.Stop()
+	a.wg.Add(1)
+	go a.recvMessageRoutine()
+
+	// Re-register all known server peers with the new device so outgoing
+	// packets are encrypted to their public keys.
+	a.serverPeerMutex.Lock()
+	defer a.serverPeerMutex.Unlock()
+	for _, sc := range a.serverClusterMap {
+		newDev.AddPeer(sc.RepresentativePeer())
+	}
+	return nil
+}
+
+// OrganizationId returns the organization ID from the loaded config.
+func (a *UdpAgent) OrganizationId() string {
+	a.knockUserMutex.RLock()
+	defer a.knockUserMutex.RUnlock()
+	if a.knockUser == nil {
+		return ""
+	}
+	return a.knockUser.OrganizationId
+}
+
+// FindKnockTarget looks up the KnockTarget for (aspId, resId) from the
+// loaded resource.toml entries. Returns nil if not found.
+func (a *UdpAgent) FindKnockTarget(aspId, resId string) *KnockTarget {
+	key := aspId + "/" + resId
+	a.knockTargetMapMutex.Lock()
+	defer a.knockTargetMapMutex.Unlock()
+	return a.knockTargetMap[key]
+}
+
+// FirstKnockTarget returns any one KnockTarget from the loaded resource.toml
+// entries, or nil if none are loaded. Used to suggest a default asp-id when
+// the user has not supplied one on the command line.
+func (a *UdpAgent) FirstKnockTarget() *KnockTarget {
+	a.knockTargetMapMutex.Lock()
+	defer a.knockTargetMapMutex.Unlock()
+	for _, kt := range a.knockTargetMap {
+		return kt
+	}
+	return nil
+}
+
+// FindKnockTargetByAspId returns the first KnockTarget whose AuthServiceId
+// matches aspId, regardless of ResourceId. Used during registration where
+// ResourceId is not required.
+func (a *UdpAgent) FindKnockTargetByAspId(aspId string) *KnockTarget {
+	a.knockTargetMapMutex.Lock()
+	defer a.knockTargetMapMutex.Unlock()
+	for _, kt := range a.knockTargetMap {
+		if kt.AuthServiceId == aspId {
+			return kt
+		}
+	}
+	return nil
 }
 
 func (a *UdpAgent) newConnection(addr *net.UDPAddr) (conn *UdpConn) {
@@ -747,12 +921,19 @@ func (a *UdpAgent) recvMessageRoutine() {
 
 	log.Info("recvMessageRoutine started")
 
+	// Bind to the current receive channel once. ReinitWithKey repoints
+	// a.recvMsgCh and spawns a fresh routine, so each routine instance
+	// stays bound to the device that was current when it started.
+	a.deviceMutex.RLock()
+	ch := a.recvMsgCh
+	a.deviceMutex.RUnlock()
+
 	for {
 		select {
 		case <-a.signals.stop:
 			return
 
-		case ppd, ok := <-a.recvMsgCh:
+		case ppd, ok := <-ch:
 			if !ok {
 				return
 			}
@@ -1193,9 +1374,9 @@ func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOut
 				return "", fmt.Errorf("failed to download ztdo: %v", err)
 			}
 
-			if err := ztdo.ParseHeader(ztdoPath); err != nil {
-				fmt.Printf("Error: failed to parse ztdo header:%s\n", err)
-				return "", fmt.Errorf("failed to parse ztdo header:%s", err)
+			if parseErr := ztdo.ParseHeader(ztdoPath); parseErr != nil {
+				fmt.Printf("Error: failed to parse ztdo header:%s\n", parseErr)
+				return "", fmt.Errorf("failed to parse ztdo header:%s", parseErr)
 			}
 
 			if ztdoId != ztdo.GetObjectID() {

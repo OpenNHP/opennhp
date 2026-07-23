@@ -117,8 +117,8 @@ func GetResource(c *gin.Context) {
 	}
 
 	contentKey := make([]byte, 32)
-	if _, err := rand.Read(contentKey); err != nil {
-		c.JSON(http.StatusInternalServerError, kbsError.KeyGenerationFailed(err))
+	if _, randErr := rand.Read(contentKey); randErr != nil {
+		c.JSON(http.StatusInternalServerError, kbsError.KeyGenerationFailed(randErr))
 		return
 	}
 
@@ -173,11 +173,11 @@ func loadResource(resourceID string) ([]byte, error) {
 		return nil, errors.New("invalid resource ID: potential path traversal attack")
 	}
 
-	if _, err := os.Stat(absFullPath); err != nil {
-		if os.IsNotExist(err) {
+	if _, statErr := os.Stat(absFullPath); statErr != nil {
+		if os.IsNotExist(statErr) {
 			return nil, errors.New("resource not found")
 		}
-		return nil, fmt.Errorf("fail to check resource: %w", err)
+		return nil, fmt.Errorf("fail to check resource: %w", statErr)
 	}
 
 	data, err := os.ReadFile(absFullPath)

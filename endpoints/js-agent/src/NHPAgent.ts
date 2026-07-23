@@ -402,7 +402,12 @@ export class NHPAgent {
       // OTP is fire-and-forget — the server does not send an NHP response.
       // Use a direct fetch to the relay without waiting for a response body
       // (the relay will time out waiting for a non-existent server reply).
-      const serverId = await pubKeyFingerprintFromBase64(server.publicKey);
+      // When the server has a separate relayPublicKey (Curve25519, used for
+      // relay registration) and publicKey (SM2, used for packet encryption),
+      // derive the relay URL fingerprint from relayPublicKey so the request
+      // reaches the correct relay entry.
+      const routingKey = server.relayPublicKey ?? server.publicKey;
+      const serverId = await pubKeyFingerprintFromBase64(routingKey);
       const url = `${this.config.relayUrl}/${serverId}`;
       // Note: Uint8Array is not a valid fetch body; wrap in Blob.
       fetch(url, { method: 'POST', body: new Blob([packet as BlobPart]) }).catch(() => {
@@ -523,7 +528,7 @@ export class NHPAgent {
     const serverId = server.id!;
     let transport = this.transports.get(serverId);
     if (!transport) {
-      transport = await this.createTransport(server.host ?? '', server.port ?? 0, server.publicKey);
+      transport = await this.createTransport(server.host ?? '', server.port ?? 0, server.publicKey, server.relayPublicKey);
       this.transports.set(serverId, transport);
     }
     return transport;
@@ -586,7 +591,7 @@ export class NHPAgent {
     const serverId = server.id!;
     let transport = this.transports.get(serverId);
     if (!transport) {
-      transport = await this.createTransport(server.host ?? '', server.port ?? 0, server.publicKey);
+      transport = await this.createTransport(server.host ?? '', server.port ?? 0, server.publicKey, server.relayPublicKey);
       this.transports.set(serverId, transport);
     }
 
@@ -636,7 +641,8 @@ export class NHPAgent {
   private async createTransport(
     host: string,
     port: number,
-    serverPublicKey: string
+    serverPublicKey: string,
+    relayPublicKey?: string
   ): Promise<Transport> {
     const transportType = this.config.transport;
 
@@ -665,8 +671,11 @@ export class NHPAgent {
         // the agent can address any server on a multi-server relay
         // without explicit configuration. The same algorithm runs in Go
         // (utils.PubKeyFingerprint), keeping the routing identifier
-        // canonical on both sides.
-        const serverId = await pubKeyFingerprintFromBase64(serverPublicKey);
+        // canonical on both sides. When the server uses GMSM (SM2 publicKey)
+        // use relayPublicKey (Curve25519) for fingerprint derivation, as the
+        // relay registers servers by their Curve25519 key.
+        const routingKey = relayPublicKey ?? serverPublicKey;
+        const serverId = await pubKeyFingerprintFromBase64(routingKey);
         this.log('debug', `Creating HTTP relay transport via ${relayUrl}/${serverId}`);
         return new HttpRelayTransport({
           relayUrl,

@@ -108,32 +108,32 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 	}
 
 	var objs bpfObjects
-	if err := spec.LoadAndAssign(&objs, &ebpf.CollectionOptions{
+	if loadErr := spec.LoadAndAssign(&objs, &ebpf.CollectionOptions{
 		Maps: ebpf.MapOptions{
 			PinPath: "/sys/fs/bpf/", // automatically mounted to
 		},
-	}); err != nil {
+	}); loadErr != nil {
 		log.Error("Failed to load and assign eBPF objects")
-		return err
+		return loadErr
 	}
 
 	var tcObjs tcBpfObjects
-	if err := tcSpec.LoadAndAssign(&tcObjs, &ebpf.CollectionOptions{
+	if tcLoadErr := tcSpec.LoadAndAssign(&tcObjs, &ebpf.CollectionOptions{
 		Maps: ebpf.MapOptions{
 			PinPath: "/sys/fs/bpf/", // automatically mounted to
 		},
-	}); err != nil {
+	}); tcLoadErr != nil {
 		log.Error("Failed to load and assign tc eBPF objects")
-		return err
+		return tcLoadErr
 	}
 
-	if err := objs.XdpProg.Pin("/sys/fs/bpf/xdp_white_prog"); err != nil {
+	if pinErr := objs.XdpProg.Pin("/sys/fs/bpf/xdp_white_prog"); pinErr != nil {
 		log.Error("failed to pin XDP program xdp_white_prog to /sys/fs/bpf/")
-		return err
+		return pinErr
 	}
-	if err := tcObjs.TcEgressProg.Pin("/sys/fs/bpf/tc_egress_prog"); err != nil {
+	if tcPinErr := tcObjs.TcEgressProg.Pin("/sys/fs/bpf/tc_egress_prog"); tcPinErr != nil {
 		log.Error("failed to pin TC egress program tc_egress_prog to /sys/fs/bpf/")
-		return err
+		return tcPinErr
 	}
 
 	ifaceName, err := getDefaultRouteInterface()

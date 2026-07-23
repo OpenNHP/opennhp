@@ -67,6 +67,12 @@ jobs:
       # Claude itself cannot call `gh pr comment` in this job's tool allow-list.
       issues: write
       actions: read
+    env:
+      # allowed_non_write_users='*' sets CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 inside
+      # the action, stripping GH_TOKEN from subprocesses and breaking gh commands.
+      # Override at job level (step-level env is not visible to action's inner env
+      # expressions). The tool allow-list and base-commit checkout bound blast radius.
+      CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "0"
     steps:
       # SECURITY: pull_request_target exposes repository secrets and a write token.
       # Pin the checkout to the BASE commit so untrusted PR-head code is never placed
@@ -89,6 +95,10 @@ jobs:
           # review branch protection. A later app-token step clears stale
           # older-commit bot requests only after Claude posts successfully.
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Allow fork contributors (read-only actors) to trigger this review.
+          # Safe here because tools are restricted to read-only gh pr subcommands
+          # and the checkout is pinned to the base commit (never the PR head).
+          allowed_non_write_users: '*'
           # Restrict tools to safe GitHub CLI operations for PR review
           claude_args: '--allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Bash(gh pr checks:*)"'
           prompt: |

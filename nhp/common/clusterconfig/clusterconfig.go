@@ -53,7 +53,7 @@ const NameMaxLen = 64
 type ClusterConfig struct {
 	// Cluster-level fields.
 	Name           string             `toml:"Name"`
-	PubKeyBase64   string             `toml:"PubKeyBase64"`
+	PubKeyBase64   string             `toml:"PubKeyBase64"` // server public key matching the agent's DefaultCipherScheme (SM2 64-byte or Curve25519 32-byte)
 	LoadBalance    loadbalance.Scheme `toml:"LoadBalance"`
 	StickyInstance *bool              `toml:"StickyInstance"`
 	ExpireTime     int64              `toml:"ExpireTime"`

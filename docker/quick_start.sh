@@ -21,16 +21,19 @@ USE_CHINA_MIRROR=false
 GOPROXY_DEFAULT="https://proxy.golang.org,direct"
 GOPROXY_CHINA="https://goproxy.cn,direct"
 APT_MIRROR_CHINA="mirrors.aliyun.com"
+GO_DOWNLOAD_MIRROR_CHINA="https://mirrors.aliyun.com/golang"
 
 # Export environment variables
 export_env() {
     if [ "$USE_CHINA_MIRROR" = true ]; then
         export GOPROXY="$GOPROXY_CHINA"
         export APT_MIRROR="$APT_MIRROR_CHINA"
+        export GO_DOWNLOAD_MIRROR="$GO_DOWNLOAD_MIRROR_CHINA"
         echo -e "${GREEN}Using China mirrors: GOPROXY=$GOPROXY, APT_MIRROR=$APT_MIRROR${NC}"
     else
         export GOPROXY="$GOPROXY_DEFAULT"
         export APT_MIRROR=""
+        export GO_DOWNLOAD_MIRROR=""
         echo -e "${GREEN}Using default mirrors: GOPROXY=$GOPROXY${NC}"
     fi
 }
@@ -78,7 +81,7 @@ build_base() {
 
     local build_args=(--no-cache -t opennhp-base:latest -f Dockerfile.base)
     if [ "$USE_CHINA_MIRROR" = true ]; then
-        build_args+=(--build-arg "GOPROXY=$GOPROXY" --build-arg "APT_MIRROR=$APT_MIRROR")
+        build_args+=(--build-arg "GOPROXY=$GOPROXY" --build-arg "APT_MIRROR=$APT_MIRROR" --build-arg "GO_DOWNLOAD_MIRROR=$GO_DOWNLOAD_MIRROR")
     fi
 
     docker build "${build_args[@]}" ..

@@ -1259,10 +1259,20 @@ if (result.success) {
         const el = document.getElementById(id);
         if (el && v != null) el.value = v;
       };
-      apply('serverPubKey', cfg.serverPublicKey);
       apply('agentPrivKey', cfg.agentPrivateKey);
       apply('relayUrl',     cfg.relayUrl);
       apply('cipherScheme', cfg.cipherScheme);
+      // Pick the server public key that matches the configured cipher scheme.
+      // Default is Curve25519 (serverPublicKey); fall back to SM2 key only
+      // when cfg.cipherScheme is explicitly 'gmsm' and SM2 key is present.
+      const serverPub = (cfg.cipherScheme === 'gmsm' && cfg.serverPublicKeySM2)
+        ? cfg.serverPublicKeySM2
+        : cfg.serverPublicKey;
+      apply('serverPubKey', serverPub);
+      // Store the Curve25519 key in dataset so doKnock can pass it as
+      // relayPublicKey regardless of the active cipher scheme.
+      const spEl = document.getElementById('serverPubKey');
+      if (spEl && cfg.serverPublicKey) spEl.dataset.curveKey = cfg.serverPublicKey;
       apply('userId',       cfg.userId);
       apply('deviceId',     cfg.deviceId);
       apply('orgId',        cfg.orgId);
@@ -1370,6 +1380,10 @@ if (result.success) {
   // INDEPENDENT agent identity — the two nhp-servers trust different agent keys
   // — so selecting a cluster rewrites BOTH the serverPubKey and the agent
   // private key fields. The relayUrl and user/device identity stay shared.
+  //
+  // Each cluster may carry both serverPublicKey (Curve25519) and
+  // serverPublicKeySM2. The active server public key is chosen based on the
+  // current cipherScheme selector so switching algorithms updates the key.
   function populateClusters(clusters) {
     const row = document.getElementById('clusterRow');
     const sel = document.getElementById('clusterSelect');
@@ -1385,17 +1399,31 @@ if (result.success) {
       const cs = (c.cipherScheme === 'curve25519' || c.cipherScheme === 0) ? 'Curve' : 'GMSM';
       const host = c.serverHost ? ` — ${c.serverHost}` : '';
       opt.textContent = `${c.name || ('Cluster ' + (i + 1))} (${cs})${host}`;
-      opt.dataset.pubkey = c.serverPublicKey || '';
-      opt.dataset.agentkey = c.agentPrivateKey || '';
+      opt.dataset.pubkey    = c.serverPublicKey    || '';
+      opt.dataset.pubkeySm2 = c.serverPublicKeySM2 || '';
+      opt.dataset.agentkey  = c.agentPrivateKey    || '';
       sel.appendChild(opt);
     });
-    sel.onchange = () => {
+
+    // Returns the correct server public key for the currently selected cipher.
+    function activeServerPubKey(opt) {
+      const scheme = document.getElementById('cipherScheme')?.value;
+      if (scheme === 'gmsm' && opt.dataset.pubkeySm2) return opt.dataset.pubkeySm2;
+      return opt.dataset.pubkey;
+    }
+
+    function applyCluster() {
       const opt = sel.options[sel.selectedIndex];
       if (!opt) return;
-      const pk = opt.dataset.pubkey;
+      const pk = activeServerPubKey(opt);
       if (pk) {
         const el = document.getElementById('serverPubKey');
-        if (el) el.value = pk;
+        if (el) {
+          el.value = pk;
+          // Always store the Curve25519 key alongside so doKnock can pass it
+          // as relayPublicKey for relay URL fingerprint derivation.
+          el.dataset.curveKey = opt.dataset.pubkey || '';
+        }
       }
       const ak = opt.dataset.agentkey;
       if (ak) {
@@ -1403,7 +1431,14 @@ if (result.success) {
         if (el) el.value = ak;
       }
       log('info', t('log.clusterSelected', { name: opt.textContent }));
-    };
+    }
+
+    sel.onchange = applyCluster;
+
+    // Re-apply when the user switches cipher scheme so serverPubKey updates.
+    const csEl = document.getElementById('cipherScheme');
+    if (csEl) csEl.addEventListener('change', applyCluster);
+
     row.style.display = '';
     // This picker is slaved to the Protected Server picker (each AC maps to
     // one cluster), so it is read-only — disabled to prevent a selection that
@@ -1789,7 +1824,13 @@ if (result.success) {
       agent.setIdentity({ userId, deviceId, organizationId: orgId });
       log('info', t('log.identity', { userId, deviceId }));
 
-      agent.addServer({ publicKey: serverPubKey });
+      agent.addServer({
+        publicKey: serverPubKey,
+        // When GMSM is selected, serverPubKey is the SM2 key (used for
+        // encryption). The relay registers servers by Curve25519 fingerprint,
+        // so supply the Curve25519 key separately for relay URL derivation.
+        relayPublicKey: document.getElementById('serverPubKey')?.dataset.curveKey || undefined,
+      });
       log('info', t('log.serverPubKey', { key: serverPubKey.substring(0, 20) }));
       setStep('identity', 'done');
 

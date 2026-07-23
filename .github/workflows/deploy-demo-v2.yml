@@ -47,7 +47,7 @@ on:
 
 env:
   AWS_REGION: us-east-2
-  GO_VERSION: '1.25'
+  GO_VERSION: '1.26'
   GOMODULE: github.com/OpenNHP/opennhp/nhp
   DEPLOY_USER: ec2-user
   CONFIRM: ${{ github.event.inputs.confirm }}
@@ -89,7 +89,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -1260,7 +1260,7 @@ jobs:
           path: opennhp
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: npm
@@ -1304,25 +1304,33 @@ jobs:
 
           # Scalar fields that travel through step outputs can safely go through bash.
           SERVER_PUB=$(echo "$SECRETS" | jq -r '.nhp_server_public_key')
+          SERVER_SM2_PUB=$(echo "$SECRETS" | jq -r '.nhp_server_sm2_public_key')
           SERVER2_PUB=$(echo "$SECRETS" | jq -r '.nhp_server2_public_key')
+          SERVER2_SM2_PUB=$(echo "$SECRETS" | jq -r '.nhp_server2_sm2_public_key')
           JS_PRIV=$(echo "$SECRETS" | jq -r '.nhp_jsagent_private_key')
           JS_PUB=$(echo "$SECRETS" | jq -r '.nhp_jsagent_public_key')
+          JS_SM2_PUB=$(echo "$SECRETS" | jq -r '.nhp_jsagent_sm2_public_key')
           # Cluster 2 has its own js-agent identity (trusted only by server2).
           JS2_PRIV=$(echo "$SECRETS" | jq -r '.nhp_jsagent2_private_key')
           JS2_PUB=$(echo "$SECRETS" | jq -r '.nhp_jsagent2_public_key')
+          JS2_SM2_PUB=$(echo "$SECRETS" | jq -r '.nhp_jsagent2_sm2_public_key')
           CF_TOKEN=$(echo "$SECRETS" | jq -r '.cloudflare_api_token')
 
           echo "::add-mask::$JS_PRIV"
           echo "::add-mask::$JS2_PRIV"
           echo "::add-mask::$CF_TOKEN"
 
-          echo "server_pub=$SERVER_PUB"   >> $GITHUB_OUTPUT
-          echo "server2_pub=$SERVER2_PUB" >> $GITHUB_OUTPUT
-          echo "js_priv=$JS_PRIV"         >> $GITHUB_OUTPUT
-          echo "js_pub=$JS_PUB"           >> $GITHUB_OUTPUT
-          echo "js2_priv=$JS2_PRIV"       >> $GITHUB_OUTPUT
-          echo "js2_pub=$JS2_PUB"         >> $GITHUB_OUTPUT
-          echo "cf_token=$CF_TOKEN"       >> $GITHUB_OUTPUT
+          echo "server_pub=$SERVER_PUB"         >> $GITHUB_OUTPUT
+          echo "server_sm2_pub=$SERVER_SM2_PUB" >> $GITHUB_OUTPUT
+          echo "server2_pub=$SERVER2_PUB"       >> $GITHUB_OUTPUT
+          echo "server2_sm2_pub=$SERVER2_SM2_PUB" >> $GITHUB_OUTPUT
+          echo "js_priv=$JS_PRIV"               >> $GITHUB_OUTPUT
+          echo "js_pub=$JS_PUB"                 >> $GITHUB_OUTPUT
+          echo "js_sm2_pub=$JS_SM2_PUB"         >> $GITHUB_OUTPUT
+          echo "js2_priv=$JS2_PRIV"             >> $GITHUB_OUTPUT
+          echo "js2_pub=$JS2_PUB"               >> $GITHUB_OUTPUT
+          echo "js2_sm2_pub=$JS2_SM2_PUB"       >> $GITHUB_OUTPUT
+          echo "cf_token=$CF_TOKEN"             >> $GITHUB_OUTPUT
 
       - name: Assemble deploy bundle
         run: |
@@ -1381,6 +1389,7 @@ jobs:
             "acHost":          "${{ env.DOMAIN_AC }}",
             "serverPort":      443,
             "serverPublicKey": "${{ steps.secrets.outputs.server_pub }}",
+            "serverPublicKeySM2": "${{ steps.secrets.outputs.server_sm2_pub }}",
             "agentPrivateKey": "${{ steps.secrets.outputs.js_priv }}",
             "agentPublicKey":  "${{ steps.secrets.outputs.js_pub }}",
             "userId":          "demo browser agent",
@@ -1390,20 +1399,22 @@ jobs:
             "serviceId":       "example",
             "clusters": [
               {
-                "name":            "Cluster 1",
-                "serverHost":      "${{ env.DOMAIN_SERVER_ALIAS }}",
-                "acHost":          "${{ env.DOMAIN_AC }}",
-                "serverPublicKey": "${{ steps.secrets.outputs.server_pub }}",
-                "agentPrivateKey": "${{ steps.secrets.outputs.js_priv }}",
-                "agentPublicKey":  "${{ steps.secrets.outputs.js_pub }}"
+                "name":               "Cluster 1",
+                "serverHost":         "${{ env.DOMAIN_SERVER_ALIAS }}",
+                "acHost":             "${{ env.DOMAIN_AC }}",
+                "serverPublicKey":    "${{ steps.secrets.outputs.server_pub }}",
+                "serverPublicKeySM2": "${{ steps.secrets.outputs.server_sm2_pub }}",
+                "agentPrivateKey":    "${{ steps.secrets.outputs.js_priv }}",
+                "agentPublicKey":     "${{ steps.secrets.outputs.js_pub }}"
               },
               {
-                "name":            "Cluster 2",
-                "serverHost":      "${{ env.DOMAIN_SERVER2 }}",
-                "acHost":          "${{ env.DOMAIN_AC2 }}",
-                "serverPublicKey": "${{ steps.secrets.outputs.server2_pub }}",
-                "agentPrivateKey": "${{ steps.secrets.outputs.js2_priv }}",
-                "agentPublicKey":  "${{ steps.secrets.outputs.js2_pub }}"
+                "name":               "Cluster 2",
+                "serverHost":         "${{ env.DOMAIN_SERVER2 }}",
+                "acHost":             "${{ env.DOMAIN_AC2 }}",
+                "serverPublicKey":    "${{ steps.secrets.outputs.server2_pub }}",
+                "serverPublicKeySM2": "${{ steps.secrets.outputs.server2_sm2_pub }}",
+                "agentPrivateKey":    "${{ steps.secrets.outputs.js2_priv }}",
+                "agentPublicKey":     "${{ steps.secrets.outputs.js2_pub }}"
               }
             ]
           }

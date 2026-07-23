@@ -177,15 +177,15 @@ func LoadFilesRecursively(g *gin.Engine, dir string) {
 			}
 
 			absPath := filepath.Join(cleanRootDir, path)
-			content, err := os.ReadFile(absPath)
-			if err != nil {
-				return err
+			content, fileErr := os.ReadFile(absPath)
+			if fileErr != nil {
+				return fileErr
 			}
 
 			t := rootTmpl.New(path) // template name is relative path separated by slash on all platforms
-			_, err = t.Parse(string(content))
-			if err != nil {
-				return err
+			_, fileErr = t.Parse(string(content))
+			if fileErr != nil {
+				return fileErr
 			}
 			log.Info("gin load file %s from %s", path, cleanRootDir)
 			g.SetHTMLTemplate(t)
@@ -403,10 +403,10 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 			if knkMsg.HeaderType == core.NHP_EXT {
 				openTime = 1 // timeout in 1 second
 			}
-			artMsg, err := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
+			artMsg, opErr := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
 			artMsgsMutex.Lock()
 			artMsgs[name] = artMsg
-			if err == nil {
+			if opErr == nil {
 				ackMsg.ResourceHost[name] = info.DestHost()
 				ackMsg.ACTokens[name] = artMsg.ACToken
 				ackMsg.PreAccessActions[name] = artMsg.PreAccessAction

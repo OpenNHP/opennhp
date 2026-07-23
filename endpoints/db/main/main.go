@@ -279,24 +279,24 @@ func runApp(params db.AppParams) error {
 			var metadata string
 
 			if smartPolicy.Embedded {
-				structMetadata, err := params.LoadMetadataAsStruct()
-				if err != nil {
-					log.Error("failed to load metadata:%s\n", err)
-					return err
+				structMetadata, metaErr := params.LoadMetadataAsStruct()
+				if metaErr != nil {
+					log.Error("failed to load metadata:%s\n", metaErr)
+					return metaErr
 				}
 
-				wasmBytes, err := smartPolicy.GetPolicy()
-				if err != nil {
-					log.Error("failed to get policy:%s\n", err)
-					return err
+				wasmBytes, metaErr := smartPolicy.GetPolicy()
+				if metaErr != nil {
+					log.Error("failed to get policy:%s\n", metaErr)
+					return metaErr
 				}
 
 				structMetadata["smartPolicy"] = base64.StdEncoding.EncodeToString(wasmBytes)
 
-				metadataBytes, err := json.Marshal(structMetadata)
-				if err != nil {
-					log.Error("failed to marshal metadata:%s\n", err)
-					return err
+				metadataBytes, metaErr := json.Marshal(structMetadata)
+				if metaErr != nil {
+					log.Error("failed to marshal metadata:%s\n", metaErr)
+					return metaErr
 				}
 
 				metadata = string(metadataBytes)
@@ -339,9 +339,9 @@ func runApp(params db.AppParams) error {
 
 				log.Info("Encrypt ztdo file(file name: %s and ztdo id: %s) with cipher settings: ECC mode(%s) and Symmetric Cipher Mode(%s)\n", params.Source, ztdoId, dataKeyPairEccMode, symmetricCipherMode)
 
-				if err := ztdo.EncryptZtdoFile(params.Source, outputFilePath, gcmKey[:], ad); err != nil {
-					log.Error("failed to encrypt ztdo file: %s\n", err)
-					return err
+				if encErr := ztdo.EncryptZtdoFile(params.Source, outputFilePath, gcmKey[:], ad); encErr != nil {
+					log.Error("failed to encrypt ztdo file: %s\n", encErr)
+					return encErr
 				}
 
 				if params.AccessUrl == "" {

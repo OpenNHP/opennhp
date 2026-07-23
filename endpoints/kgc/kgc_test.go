@@ -18,8 +18,8 @@ func TestConfigFilePermissions(t *testing.T) {
 
 	// Write with the same permissions used in GenerateMasterKey
 	testContent := []byte("test = \"value\"")
-	if err := os.WriteFile(tempFile.Name(), testContent, 0600); err != nil {
-		t.Fatalf("Failed to write file: %v", err)
+	if writeErr := os.WriteFile(tempFile.Name(), testContent, 0600); writeErr != nil {
+		t.Fatalf("Failed to write file: %v", writeErr)
 	}
 
 	// Verify permissions

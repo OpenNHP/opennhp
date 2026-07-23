@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -51,17 +52,42 @@ func main() {
 		Name:  "keygen",
 		Usage: "generate key pairs for NHP devices",
 		Flags: []cli.Flag{
-			&cli.BoolFlag{Name: "curve", Value: false, DisableDefaultText: true, Usage: "generate curve25519 keys"},
-			&cli.BoolFlag{Name: "sm2", Value: false, DisableDefaultText: true, Usage: "generate sm2 keys (default)"},
+			&cli.BoolFlag{Name: "curve", Value: false, DisableDefaultText: true, Usage: "generate curve25519 keys only"},
+			&cli.BoolFlag{Name: "sm2", Value: false, DisableDefaultText: true, Usage: "generate sm2 keys only (default)"},
+			&cli.BoolFlag{Name: "both", Value: false, DisableDefaultText: true, Usage: "generate both SM2 and Curve25519 keys from one private key"},
 			&cli.BoolFlag{Name: "json", Value: false, DisableDefaultText: true, Usage: "output in JSON format"},
 		},
 		Action: func(c *cli.Context) error {
-			var e core.Ecdh
+			bothSchemes := c.Bool("both")
+			curveOnly := c.Bool("curve") && !bothSchemes
+
+			if bothSchemes {
+				// Generate one private key and derive both public keys from it.
+				e := core.NewECDH(core.ECC_SM2)
+				priv := e.PrivateKeyBase64()
+				sm2Pub := e.PublicKeyBase64()
+				privBytes := e.PrivateKey()
+				curvePub := core.ECDHFromKey(core.ECC_CURVE25519, privBytes).PublicKeyBase64()
+				if c.Bool("json") {
+					output := map[string]string{
+						"privateKey":          priv,
+						"sm2PublicKey":        sm2Pub,
+						"curve25519PublicKey": curvePub,
+					}
+					json.NewEncoder(os.Stdout).Encode(output)
+				} else {
+					fmt.Println("Private key:          ", priv)
+					fmt.Println("SM2 public key:       ", sm2Pub)
+					fmt.Println("Curve25519 public key:", curvePub)
+				}
+				return nil
+			}
+
 			eccType := core.ECC_SM2
-			if c.Bool("curve") {
+			if curveOnly {
 				eccType = core.ECC_CURVE25519
 			}
-			e = core.NewECDH(eccType)
+			e := core.NewECDH(eccType)
 			pub := e.PublicKeyBase64()
 			priv := e.PrivateKeyBase64()
 			if c.Bool("json") {
@@ -78,9 +104,72 @@ func main() {
 		},
 	}
 
+	// pubkey derives public keys from an EXISTING private key. Used by
+	// scripts/generate-nhp-keys.sh to backfill the SM2/Curve25519 public
+	// keys for a legacy secret that only stored one of them, WITHOUT
+	// rotating the (scheme-agnostic) private key — the same 32 bytes yield
+	// both an SM2 and a Curve25519 public key.
+	pubkeyCmd := &cli.Command{
+		Name:  "pubkey",
+		Usage: "derive public key(s) from an existing base64 private key",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{Name: "curve", Value: false, DisableDefaultText: true, Usage: "output curve25519 public key"},
+			&cli.BoolFlag{Name: "sm2", Value: false, DisableDefaultText: true, Usage: "output sm2 public key (default)"},
+			&cli.BoolFlag{Name: "both", Value: false, DisableDefaultText: true, Usage: "output both SM2 and Curve25519 public keys"},
+			&cli.BoolFlag{Name: "json", Value: false, DisableDefaultText: true, Usage: "output in JSON format"},
+		},
+		Action: func(c *cli.Context) error {
+			emitErr := func(err error) error {
+				if c.Bool("json") {
+					json.NewEncoder(os.Stdout).Encode(map[string]string{"error": err.Error()})
+					return nil
+				}
+				return err
+			}
+			privBytes, err := base64.StdEncoding.DecodeString(c.Args().First())
+			if err != nil {
+				return emitErr(fmt.Errorf("decode private key: %w", err))
+			}
+
+			if c.Bool("both") {
+				sm2 := core.ECDHFromKey(core.ECC_SM2, privBytes)
+				curve := core.ECDHFromKey(core.ECC_CURVE25519, privBytes)
+				if sm2 == nil || curve == nil {
+					return emitErr(fmt.Errorf("invalid input key"))
+				}
+				if c.Bool("json") {
+					json.NewEncoder(os.Stdout).Encode(map[string]string{
+						"sm2PublicKey":        sm2.PublicKeyBase64(),
+						"curve25519PublicKey": curve.PublicKeyBase64(),
+					})
+				} else {
+					fmt.Println("SM2 public key:       ", sm2.PublicKeyBase64())
+					fmt.Println("Curve25519 public key:", curve.PublicKeyBase64())
+				}
+				return nil
+			}
+
+			eccType := core.ECC_SM2
+			if c.Bool("curve") {
+				eccType = core.ECC_CURVE25519
+			}
+			e := core.ECDHFromKey(eccType, privBytes)
+			if e == nil {
+				return emitErr(fmt.Errorf("invalid input key"))
+			}
+			if c.Bool("json") {
+				json.NewEncoder(os.Stdout).Encode(map[string]string{"publicKey": e.PublicKeyBase64()})
+			} else {
+				fmt.Println("Public key: ", e.PublicKeyBase64())
+			}
+			return nil
+		},
+	}
+
 	app.Commands = []*cli.Command{
 		runCmd,
 		keygenCmd,
+		pubkeyCmd,
 	}
 
 	if err := app.Run(os.Args); err != nil {
@@ -150,8 +239,8 @@ func runApp(enableProfiling bool) error {
 
 	if enableProfiling {
 		// Start profiling
-		f, err := os.Create(filepath.Join(exeDirPath, "cpu.prf"))
-		if err == nil {
+		f, createErr := os.Create(filepath.Join(exeDirPath, "cpu.prf"))
+		if createErr == nil {
 			_ = pprof.StartCPUProfile(f)
 			defer pprof.StopCPUProfile()
 		}

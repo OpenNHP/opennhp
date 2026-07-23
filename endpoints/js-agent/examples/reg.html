@@ -890,6 +890,8 @@ $('#cipher-select').addEventListener('change', () => {
     $('#btn-keygen').textContent = t('btn.keygen');
     highlightProtocolPhase('keygen');
   }
+  // Rebuild server list so the correct public key (Curve25519 vs SM2) is shown.
+  populateServers();
 });
 
 function schemeBadge(scheme) {
@@ -927,13 +929,25 @@ window.__serverDetailRender = renderServerDetail;
 
 function populateServers() {
   const sel = $('#server-select');
-  servers = configClusters.filter(c => c.publicKeyBase64).map((c, i) => ({
-    id: c.publicKeyBase64.substring(0, 11),
-    name: c.name || `Server ${i + 1}`,
-    serverHost: c.serverHost || '',
-    publicKeyBase64: c.publicKeyBase64,
-    cipherScheme: c.cipherScheme ?? 1,
-  }));
+  const currentScheme = cipherScheme === 'gmsm' ? 1 : 0;
+  servers = configClusters.filter(c => c.publicKeyBase64).map((c, i) => {
+    // Use the SM2 public key for encryption when GMSM is selected and one is
+    // available; otherwise fall back to the Curve25519 key.
+    // relayPublicKeyBase64 always holds the Curve25519 key so the relay URL
+    // fingerprint (computed from the Curve25519 key) stays stable regardless
+    // of the selected cipher scheme.
+    const pubKey = (currentScheme === 1 && c.publicKeyBase64SM2)
+      ? c.publicKeyBase64SM2
+      : c.publicKeyBase64;
+    return {
+      id: pubKey.substring(0, 11),
+      name: c.name || `Server ${i + 1}`,
+      serverHost: c.serverHost || '',
+      publicKeyBase64: pubKey,
+      relayPublicKeyBase64: c.publicKeyBase64,  // always Curve25519 for relay routing
+      cipherScheme: currentScheme,
+    };
+  });
 
   if (servers.length === 0) {
     sel.innerHTML = `<option value="">${t('server.none')}</option>`;
@@ -983,7 +997,12 @@ window.goToOtpStep = async () => {
 
   // Point the agent at the chosen server and bind the identity fields to
   // the already-generated key pair.
-  agent.addServer({ publicKey: selectedServer.publicKeyBase64 });
+  // relayPublicKeyBase64 is always the Curve25519 key so the relay URL
+  // fingerprint matches the server entry registered in the relay config.
+  agent.addServer({
+    publicKey: selectedServer.publicKeyBase64,
+    relayPublicKey: selectedServer.relayPublicKeyBase64,
+  });
   const deviceId = $('#device-id').value.trim() || generateDeviceId();
   if (!$('#device-id').value.trim()) $('#device-id').value = deviceId;
   agent.setIdentity({
@@ -1205,12 +1224,12 @@ function generateDeviceId() {
       // Cipher scheme defaults to Curve25519 (the dropdown default); the
       // user selects it in Step 1 rather than inheriting it from config.
       if (Array.isArray(cfg.clusters)) {
-        const cs = cfg.cipherScheme === 'curve25519' ? 0 : 1;
         configClusters = cfg.clusters.map(c => ({
           name: c.name || '',
           serverHost: c.serverHost || '',
-          publicKeyBase64: c.serverPublicKey || '',
-          cipherScheme: cs,
+          publicKeyBase64:    c.serverPublicKey    || '',
+          publicKeyBase64SM2: c.serverPublicKeySM2 || '',
+          cipherScheme: 0,
         }));
       }
     }

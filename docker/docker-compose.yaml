@@ -19,6 +19,8 @@ services:
         - APT_MIRROR=${APT_MIRROR:-}
     container_name: nhp-server
     restart: always
+    ports:
+      - "62206:62206/udp"
     networks:
       network_default:
         ipv4_address: 177.7.0.9

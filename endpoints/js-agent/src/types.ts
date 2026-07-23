@@ -43,8 +43,16 @@ export interface NHPAgentConfig {
 export interface ServerConfig {
   /** Unique identifier for the server (auto-generated from host:port if omitted) */
   id?: string;
-  /** Base64-encoded public key of the server */
+  /** Base64-encoded public key of the server (used for NHP packet encryption) */
   publicKey: string;
+  /**
+   * Base64-encoded Curve25519 public key used solely to compute the relay URL
+   * fingerprint (POST /relay/<fingerprint>). Set this when publicKey is an SM2
+   * key (GMSM cipher scheme) so that relay routing uses the server's Curve25519
+   * fingerprint, which the relay instance was registered with. When omitted,
+   * the fingerprint is derived from publicKey.
+   */
+  relayPublicKey?: string;
   /** Server hostname or IP address (required for udp/websocket, optional for relay) */
   host?: string;
   /** Server port number (required for udp/websocket, optional for relay) */

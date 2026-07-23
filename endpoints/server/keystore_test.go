@@ -28,7 +28,7 @@ func newTestStore(t *testing.T) (*AgentKeyStore, string, string) {
 
 func TestRegisterAgentKey_TTLZeroStoresNull(t *testing.T) {
 	s, pkA, _ := newTestStore(t)
-	if err := s.RegisterAgentKey("alice", "dev1", pkA, 0); err != nil {
+	if err := s.RegisterAgentKey("alice", "dev1", pkA, 0, 0); err != nil {
 		t.Fatalf("RegisterAgentKey: %v", err)
 	}
 
@@ -52,7 +52,7 @@ func TestRegisterAgentKey_TTLZeroStoresNull(t *testing.T) {
 func TestRegisterAgentKey_TTLPositiveSetsFutureExpiry(t *testing.T) {
 	s, pkA, _ := newTestStore(t)
 	before := time.Now().Unix()
-	if err := s.RegisterAgentKey("alice", "dev1", pkA, 60); err != nil {
+	if err := s.RegisterAgentKey("alice", "dev1", pkA, 0, 60); err != nil {
 		t.Fatalf("RegisterAgentKey: %v", err)
 	}
 	after := time.Now().Unix()
@@ -72,7 +72,7 @@ func TestRegisterAgentKey_TTLPositiveSetsFutureExpiry(t *testing.T) {
 
 func TestRegisterAgentKey_TTLNegativeTreatedAsZero(t *testing.T) {
 	s, pkA, _ := newTestStore(t)
-	if err := s.RegisterAgentKey("alice", "dev1", pkA, -42); err != nil {
+	if err := s.RegisterAgentKey("alice", "dev1", pkA, 0, -42); err != nil {
 		t.Fatalf("RegisterAgentKey: %v", err)
 	}
 	_, exp, err := s.GetAgentKeyExpiry("alice", "dev1")
@@ -88,7 +88,7 @@ func TestRegisterAgentKey_TTLNegativeTreatedAsZero(t *testing.T) {
 // so the noise-layer peer validation fallback rejects the knock.
 func TestFindAgentByPublicKey_ExpiredKeyHidden(t *testing.T) {
 	s, pkA, _ := newTestStore(t)
-	if err := s.RegisterAgentKey("alice", "dev1", pkA, 1); err != nil {
+	if err := s.RegisterAgentKey("alice", "dev1", pkA, 0, 1); err != nil {
 		t.Fatalf("RegisterAgentKey: %v", err)
 	}
 	// Wait past expiry.
@@ -121,7 +121,7 @@ func TestFindAgentByPublicKey_ExpiredKeyHidden(t *testing.T) {
 
 func TestGetAgentKeyExpiry_ExpiredReturnsFalse(t *testing.T) {
 	s, pkA, _ := newTestStore(t)
-	if err := s.RegisterAgentKey("alice", "dev1", pkA, 1); err != nil {
+	if err := s.RegisterAgentKey("alice", "dev1", pkA, 0, 1); err != nil {
 		t.Fatalf("RegisterAgentKey: %v", err)
 	}
 	time.Sleep(2500 * time.Millisecond)
@@ -138,11 +138,11 @@ func TestGetAgentKeyExpiry_ExpiredReturnsFalse(t *testing.T) {
 // Key rotation (same user+device, different pubkey) MUST reset the clock.
 func TestRegisterAgentKey_RotationResetsClock(t *testing.T) {
 	s, pkA, pkB := newTestStore(t)
-	if err := s.RegisterAgentKey("alice", "dev1", pkA, 60); err != nil {
+	if err := s.RegisterAgentKey("alice", "dev1", pkA, 0, 60); err != nil {
 		t.Fatalf("RegisterAgentKey: %v", err)
 	}
 	time.Sleep(1100 * time.Millisecond)
-	if err := s.RegisterAgentKey("alice", "dev1", pkB, 60); err != nil {
+	if err := s.RegisterAgentKey("alice", "dev1", pkB, 0, 60); err != nil {
 		t.Fatalf("RegisterAgentKey (rotation): %v", err)
 	}
 
@@ -167,7 +167,7 @@ func TestRegisterAgentKey_RotationResetsClock(t *testing.T) {
 // extend a key's validity.
 func TestRegisterAgentKey_SameKeyNoOpDoesNotResetClock(t *testing.T) {
 	s, pkA, _ := newTestStore(t)
-	if err := s.RegisterAgentKey("alice", "dev1", pkA, 60); err != nil {
+	if err := s.RegisterAgentKey("alice", "dev1", pkA, 0, 60); err != nil {
 		t.Fatalf("RegisterAgentKey: %v", err)
 	}
 	_, firstExp, err := s.GetAgentKeyExpiry("alice", "dev1")
@@ -177,8 +177,8 @@ func TestRegisterAgentKey_SameKeyNoOpDoesNotResetClock(t *testing.T) {
 	time.Sleep(1100 * time.Millisecond)
 
 	// Re-register with the SAME key — should be a no-op.
-	if err := s.RegisterAgentKey("alice", "dev1", pkA, 60); err != nil {
-		t.Fatalf("RegisterAgentKey (idempotent): %v", err)
+	if regErr := s.RegisterAgentKey("alice", "dev1", pkA, 0, 60); regErr != nil {
+		t.Fatalf("RegisterAgentKey (idempotent): %v", regErr)
 	}
 	_, secondExp, err := s.GetAgentKeyExpiry("alice", "dev1")
 	if err != nil || secondExp == nil {
@@ -191,10 +191,10 @@ func TestRegisterAgentKey_SameKeyNoOpDoesNotResetClock(t *testing.T) {
 
 func TestRegisterAgentKey_PublicKeyConflictAcrossUsers(t *testing.T) {
 	s, pkA, _ := newTestStore(t)
-	if err := s.RegisterAgentKey("alice", "dev1", pkA, 60); err != nil {
+	if err := s.RegisterAgentKey("alice", "dev1", pkA, 0, 60); err != nil {
 		t.Fatalf("RegisterAgentKey alice: %v", err)
 	}
-	err := s.RegisterAgentKey("bob", "dev1", pkA, 60)
+	err := s.RegisterAgentKey("bob", "dev1", pkA, 0, 60)
 	if !errors.Is(err, common.ErrPublicKeyAlreadyRegistered) {
 		t.Fatalf("expected ErrPublicKeyAlreadyRegistered, got %v", err)
 	}
@@ -203,10 +203,10 @@ func TestRegisterAgentKey_PublicKeyConflictAcrossUsers(t *testing.T) {
 func TestSweepExpiredDeactivates_ExpiresExpiredOnly(t *testing.T) {
 	s, pkA, pkB := newTestStore(t)
 	// Two keys: one that will expire, one with no expiry (TTL=0).
-	if err := s.RegisterAgentKey("alice", "dev1", pkA, 1); err != nil {
+	if err := s.RegisterAgentKey("alice", "dev1", pkA, 0, 1); err != nil {
 		t.Fatalf("RegisterAgentKey: %v", err)
 	}
-	if err := s.RegisterAgentKey("alice", "dev2", pkB, 0); err != nil {
+	if err := s.RegisterAgentKey("alice", "dev2", pkB, 0, 0); err != nil {
 		t.Fatalf("RegisterAgentKey: %v", err)
 	}
 
@@ -300,8 +300,8 @@ func TestValidateOTP_AlreadyUsed(t *testing.T) {
 		t.Fatalf("GenerateOTP: %v", err)
 	}
 
-	if err := s.ValidateOTP("alice", "dev1", code, ""); err != nil {
-		t.Fatalf("first ValidateOTP: %v", err)
+	if valErr := s.ValidateOTP("alice", "dev1", code, ""); valErr != nil {
+		t.Fatalf("first ValidateOTP: %v", valErr)
 	}
 
 	// Second use must return ErrOTPAlreadyUsed.
@@ -480,8 +480,8 @@ func TestSweepStaleOTPs_DeletesUsedAndExpired(t *testing.T) {
 	}
 
 	// Use code1 (marks used=1).
-	if err := s.ValidateOTP("alice", "dev1", code1, ""); err != nil {
-		t.Fatalf("ValidateOTP code1: %v", err)
+	if valErr := s.ValidateOTP("alice", "dev1", code1, ""); valErr != nil {
+		t.Fatalf("ValidateOTP code1: %v", valErr)
 	}
 
 	// Wait for code2 to expire.

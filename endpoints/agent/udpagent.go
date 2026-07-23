@@ -314,17 +314,8 @@ dirPath: the path of app or shared library entry point
 logLevel: 0: silent, 1: error, 2: info, 3: debug, 4: verbose
 */
 func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
-	common.ExeDirPath = dirPath
-	ExeDirPath = dirPath
-	// init logger
-	a.log = log.NewLogger("NHP-Agent", logLevel, filepath.Join(ExeDirPath, "logs"), "agent")
-	log.SetGlobalLogger(a.log)
+	a.initializeStart(dirPath, logLevel)
 
-	log.Info("=========================================================")
-	log.Info("=== NHP-Agent %s started                           ===", version.Version)
-	log.Info("=== REVISION %s ===", version.CommitId)
-	log.Info("=== RELEASE %s                       ===", version.BuildTime)
-	log.Info("=========================================================")
 	err = a.loadBaseConfig()
 	if err != nil {
 		return err
@@ -339,11 +330,52 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 		log.Error("private key parse error %v\n", err)
 		return fmt.Errorf("private key parse error %v", err)
 	}
+	return a.startWithPrivateKey(prk, true)
+}
 
+// StartWithPrivateKey starts an agent from an in-memory Curve25519 private key.
+// It deliberately does not read or watch config.toml, dhp.toml, server.toml, or
+// resource.toml. Embedders that keep identity keys in an OS keystore can use
+// this entry point without materializing the key in a plaintext config file,
+// then register peers and resources through AddServer and AddResource.
+//
+// dirPath remains the non-secret runtime root for logs. The caller retains
+// ownership of privateKey and may zero its buffer after this method returns;
+// core.NewDevice copies the key into its own ECDH state before returning.
+func (a *UdpAgent) StartWithPrivateKey(dirPath string, logLevel int, privateKey []byte) error {
+	if len(privateKey) != 32 {
+		return fmt.Errorf("private key has unexpected size %d (want 32)", len(privateKey))
+	}
+	a.initializeStart(dirPath, logLevel)
+	a.config = &Config{
+		LogLevel:            logLevel,
+		DefaultCipherScheme: common.CIPHER_SCHEME_CURVE,
+		DHPConfig:           &DHPConfig{},
+	}
+	a.knockUser = &KnockUser{}
+	a.knockTargetMap = make(map[string]*KnockTarget)
+	return a.startWithPrivateKey(privateKey, false)
+}
+
+func (a *UdpAgent) initializeStart(dirPath string, logLevel int) {
+	common.ExeDirPath = dirPath
+	ExeDirPath = dirPath
+	// init logger
+	a.log = log.NewLogger("NHP-Agent", logLevel, filepath.Join(ExeDirPath, "logs"), "agent")
+	log.SetGlobalLogger(a.log)
+
+	log.Info("=========================================================")
+	log.Info("=== NHP-Agent %s started                           ===", version.Version)
+	log.Info("=== REVISION %s ===", version.CommitId)
+	log.Info("=== RELEASE %s                       ===", version.BuildTime)
+	log.Info("=========================================================")
+}
+
+func (a *UdpAgent) startWithPrivateKey(prk []byte, loadConfigFiles bool) error {
 	a.device = core.NewDevice(core.NHP_AGENT, prk, nil)
 	if a.device == nil {
-		log.Critical("failed to create device %v\n", err)
-		return fmt.Errorf("failed to create device %v", err)
+		log.Critical("failed to create device")
+		return fmt.Errorf("failed to create device")
 	}
 
 	// start device routines
@@ -356,8 +388,10 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	a.serverClusterMap = make(map[string]*ServerCluster)
 	a.serverClusterByName = make(map[string]*ServerCluster)
 
-	// load peers
-	_ = a.loadPeers()
+	if loadConfigFiles {
+		// load peers
+		_ = a.loadPeers()
+	}
 
 	a.remoteConnectionMap = make(map[string]*UdpConn)
 
@@ -375,8 +409,10 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 	a.knockTargetStopOnce = sync.Once{}
 	a.signals.knockTargetMapUpdated = make(chan struct{}, 1)
 
-	// load knock resources
-	_ = a.loadResources()
+	if loadConfigFiles {
+		// load knock resources
+		_ = a.loadResources()
+	}
 
 	a.recvMsgCh = a.device.DecryptedMsgQueue
 	a.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)

@@ -36,13 +36,21 @@
 #   Weight         — relative weight for weighted-random; default 1
 #
 # ─── Public demo (server.opennhp.org) ─────────────────────────────────
-# The default targets the public demo with its Curve25519 key — matching
+# NOTE: the shipped default now targets the project-operated public demo
+# server, NOT localhost. A fresh `nhp-agentd run`/`register` will send UDP
+# (with your UserId / OrganizationId / DeviceId) to server.opennhp.org.
+# For a self-hosted deployment, replace this with your own server — see the
+# commented "Local / self-hosted" block at the bottom of this section.
+#
+# This "default" block uses the demo server's Curve25519 key, matching
 # `nhp-agentd register`, which defaults to cipher scheme [1] Curve25519.
 #
-# If you pick [2] GMSM / SM2 at the register prompt, comment out this
-# "default" block and uncomment the "default-gmsm" block below instead —
-# the same server is trusted under its SM2 key. (Do not enable both: they
-# are the same physical server, so leaving both active double-lists it.)
+# To use [2] GMSM / SM2 instead: comment out this Curve block and uncomment
+# the GMSM block below (also named "default", since `register` resolves the
+# cluster name "default"). They are mutually exclusive — only one "default"
+# may be active (duplicate Names are rejected). If you already have a
+# config.toml, also set DefaultCipherScheme = 1 there, or every subsequent
+# knock keeps using Curve25519 and fails against the SM2 key.
 [[Servers]]
 Name = "default"
 PubKeyBase64 = "eVr33jqYo2nt5llEUeDu6gJNHxpnhfY0TRJ4iVIFniM="
@@ -53,14 +61,27 @@ LoadBalance = "weighted-random"
   Host = "server.opennhp.org"
   Port = 62206
 
-# GMSM / SM2 alternative for the same demo server. Uncomment (and comment
-# out the "default" block above) when registering/knocking in gmsm mode.
+# GMSM / SM2 variant of the same demo server (see note above).
 #[[Servers]]
-#Name = "default-gmsm"
+#Name = "default"
 #PubKeyBase64 = "WQbz2fOE5hCG9fE6mCH5XzXDq/ATosMwlvcs9DAaJixt4lBz3gGWbjTFXj3OQgBO62zf6TVwxbB+bLH2ZjB30g=="
 #ExpireTime = 1924991999
 #LoadBalance = "weighted-random"
 #
 #  [[Servers.Instances]]
 #  Host = "server.opennhp.org"
+#  Port = 62206
+
+# ─── Local / self-hosted ──────────────────────────────────────────────
+# Uncomment (and comment out the demo block above) to target a server you
+# run yourself — e.g. the docker-compose stack on localhost. Replace the
+# key with your server's PubKeyBase64.
+#[[Servers]]
+#Name = "default"
+#PubKeyBase64 = "<your-server-public-key-base64>"
+#ExpireTime = 1924991999
+#LoadBalance = "weighted-random"
+#
+#  [[Servers.Instances]]
+#  Ip   = "127.0.0.1"
 #  Port = 62206

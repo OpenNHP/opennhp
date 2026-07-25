@@ -499,13 +499,18 @@ func sendOTPEmail(to, code string) error {
 	if subject == "" {
 		subject = "Your OpenNHP Verification Code"
 	}
+	// Include the code in the subject too, so it's visible from the inbox
+	// preview without opening the message.
+	subject = fmt.Sprintf("%s: %s", subject, code)
 
 	body := fmt.Sprintf("Subject: %s\r\n", subject)
 	body += "MIME-Version: 1.0\r\n"
 	body += "Content-Type: text/plain; charset=\"UTF-8\"\r\n"
 	body += "\r\n"
 	body += fmt.Sprintf("Your verification code is: %s\r\n", code)
-	body += fmt.Sprintf("This code will expire in 5 minutes.\r\n")
+	body += "This code will expire in 5 minutes.\r\n"
+	body += "\r\n"
+	body += "Learn more about OpenNHP at https://opennhp.org\r\n"
 
 	port, err := strconv.Atoi(baseConf.SMTPPort)
 	if err != nil || port <= 0 {

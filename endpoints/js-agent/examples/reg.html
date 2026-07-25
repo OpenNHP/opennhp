@@ -441,6 +441,7 @@
     <div class="tab-bar">
       <button class="tab-btn active" onclick="switchTab(event,'tab-js')">JavaScript SDK</button>
       <button class="tab-btn" onclick="switchTab(event,'tab-ts')">TypeScript</button>
+      <button class="tab-btn" onclick="switchTab(event,'tab-cli')">CLI</button>
       <button class="tab-btn" onclick="switchTab(event,'tab-curl')">curl / HTTP</button>
     </div>
 
@@ -515,38 +516,53 @@
       <p class="api-note" data-i18n-html="api.note.ts">Full type definitions are shipped with the package. <code>OtpResult</code> and <code>RegisterResult</code> are both exported from <code>@opennhp/agent</code>.</p>
     </div>
 
+    <!-- CLI (nhp-agentd register) tab -->
+    <div id="tab-cli" class="tab-panel">
+      <pre class="code-block"><span class="c-comment"># Interactive: prompts in order for email, cipher scheme, ASP id,
+# resource id, cluster, device and org, then the emailed OTP.
+# Reads the target server from etc/server.toml.</span>
+nhp-agentd register
+
+<span class="c-comment"># Supply the identity up front to skip those prompts. The cipher
+# scheme is always prompted (no flag), and cluster / device / org
+# are prompted only when their flags are omitted.</span>
+nhp-agentd register \
+  --email     <span class="c-str">alice@example.com</span> \
+  --asp-id    <span class="c-str">example</span> \
+  --res-id    <span class="c-str">demo</span> \
+  --device-id <span class="c-str">my-laptop-01</span> \
+  --org-id    <span class="c-str">opennhp.org</span>
+
+<span class="c-comment"># --otp skips the NHP-OTP request round-trip when you already have
+# a code (the cipher-scheme prompt still appears).</span>
+nhp-agentd register \
+  --email   <span class="c-str">alice@example.com</span> \
+  --asp-id  <span class="c-str">example</span> \
+  --res-id  <span class="c-str">demo</span> \
+  --otp     <span class="c-str">123456</span>
+
+<span class="c-comment"># On success the command offers to write etc/config.toml +
+# etc/resource.toml; if they exist it prompts before overwriting
+# and keeps a .bak, so `nhp-agentd run` can reuse the key.</span></pre>
+      <p class="api-note" data-i18n-html="api.note.cli">The <code>register</code> command generates a key pair locally, self-registers its public key over NHP-OTP / NHP-REG, and offers to save the result to <code>config.toml</code> / <code>resource.toml</code> (prompting before overwriting an existing file, keeping a <code>.bak</code>). Flags: <code>--email</code>, <code>--asp-id</code>, <code>--res-id</code>, <code>--server</code> (cluster name from <code>server.toml</code>), <code>--device-id</code>, <code>--org-id</code>, <code>--otp</code>. The cipher scheme is always prompted; other omitted fields are prompted only when their flag is absent.</p>
+    </div>
+
     <!-- curl / HTTP tab -->
     <div id="tab-curl" class="tab-panel">
-      <div class="step-divider" data-i18n="api.divider.otp">Step 2 — NHP-OTP (request code)</div>
-      <pre class="code-block"><span class="c-comment"># The NHP-OTP packet is binary (Noise-encrypted UDP/relay).
-# Use the JS SDK above, or any language binding.
-# Example via the HTTP relay endpoint:</span>
+      <pre class="code-block"><span class="c-comment"># NHP-OTP and NHP-REG packets are binary, Noise-encrypted and sent
+# over UDP (or bridged through the HTTPS relay). There is no plain
+# JSON/HTTP endpoint to curl directly — the relay forwards opaque
+# encrypted frames:</span>
 
 curl -X POST https://relay.opennhp.org/relay/<span class="c-str">&lt;server-fingerprint&gt;</span> \
   -H <span class="c-str">"Content-Type: application/octet-stream"</span> \
-  --data-binary @nhp-otp-packet.bin
+  --data-binary @nhp-packet.bin
 
-<span class="c-comment"># Build nhp-otp-packet.bin with the CLI tool:</span>
-nhp-agentd otp \
-  --server  <span class="c-str">&lt;server-public-key-base64&gt;</span> \
-  --user    alice@example.com \
-  --device  my-laptop-01 \
-  --asp     example \
-  --relay   https://relay.opennhp.org/relay</pre>
-
-      <div class="step-divider" data-i18n="api.divider.reg">Step 3 — NHP-REG (register key)</div>
-      <pre class="code-block"><span class="c-comment"># After receiving the 6-digit code by email:</span>
-nhp-agentd register \
-  --server  <span class="c-str">&lt;server-public-key-base64&gt;</span> \
-  --user    alice@example.com \
-  --device  my-laptop-01 \
-  --asp     example \
-  --otp     <span class="c-str">123456</span> \
-  --relay   https://relay.opennhp.org/relay
-
-<span class="c-comment"># On success the server responds with NHP-RAK:
+<span class="c-comment"># The packet must be built by a binding that speaks the NHP Noise
+# handshake — use the JavaScript SDK or the CLI tabs above, or the
+# Go endpoints/agent package. On success NHP-REG returns NHP-RAK:
 # { "errCode": "0", "aspId": "example", "expiresAt": 1234567890 }</span></pre>
-      <p class="api-note" data-i18n-html="api.note.curl">The CLI tool ships with OpenNHP (<code>nhp-agentd</code>). For Go applications use the <code>endpoints/agent</code> package directly; for other languages implement the Noise handshake and wrap the JSON payload per the NHP-OTP / NHP-REG message spec.</p>
+      <p class="api-note" data-i18n-html="api.note.curl">There is no language-agnostic HTTP API for registration — the payload is a Noise-encrypted binary frame. Use the <strong>CLI</strong> tab (<code>nhp-agentd register</code>), the JavaScript SDK, or the Go <code>endpoints/agent</code> package; for other languages implement the Noise handshake per the NHP-OTP / NHP-REG message spec.</p>
     </div>
   </div>
 </aside>
@@ -649,7 +665,8 @@ const I18N = {
     'api.note.ts': 'Full type definitions are shipped with the package. <code>OtpResult</code> and <code>RegisterResult</code> are both exported from <code>@opennhp/agent</code>.',
     'api.divider.otp': 'Step 2 — NHP-OTP (request code)',
     'api.divider.reg': 'Step 3 — NHP-REG (register key)',
-    'api.note.curl': 'The CLI tool ships with OpenNHP (<code>nhp-agentd</code>). For Go applications use the <code>endpoints/agent</code> package directly; for other languages implement the Noise handshake and wrap the JSON payload per the NHP-OTP / NHP-REG message spec.',
+    'api.note.cli': 'The <code>register</code> command generates a key pair locally, self-registers its public key over NHP-OTP / NHP-REG, and offers to save the result to <code>config.toml</code> / <code>resource.toml</code> (prompting before overwriting an existing file, keeping a <code>.bak</code>). Flags: <code>--email</code>, <code>--asp-id</code>, <code>--res-id</code>, <code>--server</code> (cluster name from <code>server.toml</code>), <code>--device-id</code>, <code>--org-id</code>, <code>--otp</code>. The cipher scheme is always prompted; other omitted fields are prompted only when their flag is absent.',
+    'api.note.curl': 'There is no language-agnostic HTTP API for registration — the payload is a Noise-encrypted binary frame. Use the <strong>CLI</strong> tab (<code>nhp-agentd register</code>), the JavaScript SDK, or the Go <code>endpoints/agent</code> package; for other languages implement the Noise handshake per the NHP-OTP / NHP-REG message spec.',
     'footer.agentDemo': 'agent demo →',
     // dynamic
     'msg.enterEmail': 'Please enter your email (used as both user ID and OTP address)',
@@ -734,7 +751,8 @@ const I18N = {
     'api.note.ts': '完整类型定义随包一起提供。<code>OtpResult</code> 和 <code>RegisterResult</code> 均从 <code>@opennhp/agent</code> 导出。',
     'api.divider.otp': '步骤 2 — NHP-OTP（请求验证码）',
     'api.divider.reg': '步骤 3 — NHP-REG（注册密钥）',
-    'api.note.curl': 'CLI 工具随 OpenNHP 一起提供（<code>nhp-agentd</code>）。Go 应用可直接使用 <code>endpoints/agent</code> 包；其他语言请实现 Noise 握手并按 NHP-OTP / NHP-REG 消息规范封装 JSON 负载。',
+    'api.note.cli': '<code>register</code> 命令在本地生成密钥对，通过 NHP-OTP / NHP-REG 自助注册其公钥，并询问是否将结果保存到 <code>config.toml</code> / <code>resource.toml</code>（若文件已存在会在覆盖前提示，并保留 <code>.bak</code> 备份）。参数：<code>--email</code>、<code>--asp-id</code>、<code>--res-id</code>、<code>--server</code>（<code>server.toml</code> 中的集群名）、<code>--device-id</code>、<code>--org-id</code>、<code>--otp</code>。加密方案始终会提示选择；其他项仅在未提供对应参数时才提示输入。',
+    'api.note.curl': '注册没有与语言无关的 HTTP API —— 负载是经 Noise 加密的二进制帧。请使用 <strong>CLI</strong> 标签页（<code>nhp-agentd register</code>）、JavaScript SDK 或 Go 的 <code>endpoints/agent</code> 包；其他语言请按 NHP-OTP / NHP-REG 消息规范实现 Noise 握手。',
     'footer.agentDemo': '代理演示 →',
     // dynamic
     'msg.enterEmail': '请输入您的邮箱（同时用作用户 ID 和验证码地址）',

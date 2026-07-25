@@ -36,15 +36,31 @@
 #   Weight         — relative weight for weighted-random; default 1
 #
 # ─── Public demo (server.opennhp.org) ─────────────────────────────────
-# Curve25519 public key is the default; the commented SM2 key targets the
-# same server in gmsm mode.
+# The default targets the public demo with its Curve25519 key — matching
+# `nhp-agentd register`, which defaults to cipher scheme [1] Curve25519.
+#
+# If you pick [2] GMSM / SM2 at the register prompt, comment out this
+# "default" block and uncomment the "default-gmsm" block below instead —
+# the same server is trusted under its SM2 key. (Do not enable both: they
+# are the same physical server, so leaving both active double-lists it.)
 [[Servers]]
 Name = "default"
 PubKeyBase64 = "eVr33jqYo2nt5llEUeDu6gJNHxpnhfY0TRJ4iVIFniM="
-#PubKeyBase64 = "WQbz2fOE5hCG9fE6mCH5XzXDq/ATosMwlvcs9DAaJixt4lBz3gGWbjTFXj3OQgBO62zf6TVwxbB+bLH2ZjB30g=="
 ExpireTime = 1924991999
 LoadBalance = "weighted-random"
 
   [[Servers.Instances]]
   Host = "server.opennhp.org"
   Port = 62206
+
+# GMSM / SM2 alternative for the same demo server. Uncomment (and comment
+# out the "default" block above) when registering/knocking in gmsm mode.
+#[[Servers]]
+#Name = "default-gmsm"
+#PubKeyBase64 = "WQbz2fOE5hCG9fE6mCH5XzXDq/ATosMwlvcs9DAaJixt4lBz3gGWbjTFXj3OQgBO62zf6TVwxbB+bLH2ZjB30g=="
+#ExpireTime = 1924991999
+#LoadBalance = "weighted-random"
+#
+#  [[Servers.Instances]]
+#  Host = "server.opennhp.org"
+#  Port = 62206

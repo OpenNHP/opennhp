@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	nhplog "github.com/OpenNHP/opennhp/nhp/log"
@@ -496,14 +497,38 @@ func sendOTPEmail(to, code string) error {
 	}
 
 	subject := baseConf.SMTPSubject
-	if subject == "" {
+	// Treat an unsubstituted envsubst placeholder (e.g. "${SMTP_SUBJECT}")
+	// as unset, mirroring the SMTPHost guard above.
+	if subject == "" || strings.HasPrefix(subject, "${") {
 		subject = "Your OpenNHP Verification Code"
 	}
 	// Include the code in the subject too, so it's visible from the inbox
 	// preview without opening the message.
 	subject = fmt.Sprintf("%s: %s", subject, code)
 
-	body := fmt.Sprintf("Subject: %s\r\n", subject)
+	from := baseConf.SMTPFrom
+	if from == "" || strings.HasPrefix(from, "${") {
+		from = "noreply@opennhp.org"
+	}
+
+	// Header fields are interpolated straight into the raw SMTP message;
+	// strip CR/LF from config/caller-sourced values so a stray newline
+	// cannot inject extra headers or body content.
+	headerSafe := strings.NewReplacer("\r", "", "\n", "").Replace
+	subject = headerSafe(subject)
+	from = headerSafe(from)
+	toHeader := headerSafe(to)
+
+	// A message with only Subject/MIME/Content-Type headers scores toward
+	// Junk on many receivers — which is exactly where the subject preview
+	// this change adds would not be seen. Include From/To/Date/Message-ID.
+	now := time.Now()
+	msgID := fmt.Sprintf("<%d.%d@opennhp.org>", now.UnixNano(), os.Getpid())
+	body := fmt.Sprintf("From: %s\r\n", from)
+	body += fmt.Sprintf("To: %s\r\n", toHeader)
+	body += fmt.Sprintf("Subject: %s\r\n", subject)
+	body += fmt.Sprintf("Date: %s\r\n", now.Format(time.RFC1123Z))
+	body += fmt.Sprintf("Message-ID: %s\r\n", msgID)
 	body += "MIME-Version: 1.0\r\n"
 	body += "Content-Type: text/plain; charset=\"UTF-8\"\r\n"
 	body += "\r\n"
@@ -521,11 +546,6 @@ func sendOTPEmail(to, code string) error {
 	var auth smtp.Auth
 	if baseConf.SMTPUsername != "" {
 		auth = smtp.PlainAuth("", baseConf.SMTPUsername, baseConf.SMTPPassword, baseConf.SMTPHost)
-	}
-
-	from := baseConf.SMTPFrom
-	if from == "" {
-		from = "noreply@opennhp.org"
 	}
 
 	return smtp.SendMail(addr, auth, from, []string{to}, []byte(body))

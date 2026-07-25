@@ -441,6 +441,7 @@
     <div class="tab-bar">
       <button class="tab-btn active" onclick="switchTab(event,'tab-js')">JavaScript SDK</button>
       <button class="tab-btn" onclick="switchTab(event,'tab-ts')">TypeScript</button>
+      <button class="tab-btn" onclick="switchTab(event,'tab-cli')">CLI</button>
       <button class="tab-btn" onclick="switchTab(event,'tab-curl')">curl / HTTP</button>
     </div>
 
@@ -513,6 +514,32 @@
   <span class="c-kw">const</span> expiresAt: <span class="c-type">number</span> | <span class="c-type">undefined</span> = reg.expiresAt;
 }</pre>
       <p class="api-note" data-i18n-html="api.note.ts">Full type definitions are shipped with the package. <code>OtpResult</code> and <code>RegisterResult</code> are both exported from <code>@opennhp/agent</code>.</p>
+    </div>
+
+    <!-- curl / HTTP tab -->
+    <!-- CLI (nhp-agentd register) tab -->
+    <div id="tab-cli" class="tab-panel">
+      <pre class="code-block"><span class="c-comment"># Interactive: prompts for email, ASP id, cipher scheme, then the
+# emailed OTP. Reads the target server from etc/server.toml.</span>
+nhp-agentd register
+
+<span class="c-comment"># Non-interactive: supply the identity up front; the command
+# requests an OTP and prompts only for the 6-digit code.</span>
+nhp-agentd register \
+  --email   <span class="c-str">alice@example.com</span> \
+  --asp-id  <span class="c-str">example</span> \
+  --res-id  <span class="c-str">demo</span>
+
+<span class="c-comment"># Fully scripted: skip the OTP prompt by passing a code you
+# already received by email.</span>
+nhp-agentd register \
+  --email   <span class="c-str">alice@example.com</span> \
+  --asp-id  <span class="c-str">example</span> \
+  --otp     <span class="c-str">123456</span>
+
+<span class="c-comment"># On success the agent writes etc/config.toml + etc/resource.toml
+# with the newly registered key, so `nhp-agentd run` uses it next.</span></pre>
+      <p class="api-note" data-i18n-html="api.note.cli">The <code>register</code> command generates a key pair locally, self-registers its public key over NHP-OTP / NHP-REG, and saves the result to <code>config.toml</code>. Flags: <code>--email</code>, <code>--asp-id</code>, <code>--res-id</code>, <code>--server</code> (cluster name from <code>server.toml</code>), <code>--device-id</code>, <code>--org-id</code>, <code>--otp</code>. Any omitted required field is prompted for.</p>
     </div>
 
     <!-- curl / HTTP tab -->
@@ -649,6 +676,7 @@ const I18N = {
     'api.note.ts': 'Full type definitions are shipped with the package. <code>OtpResult</code> and <code>RegisterResult</code> are both exported from <code>@opennhp/agent</code>.',
     'api.divider.otp': 'Step 2 — NHP-OTP (request code)',
     'api.divider.reg': 'Step 3 — NHP-REG (register key)',
+    'api.note.cli': 'The <code>register</code> command generates a key pair locally, self-registers its public key over NHP-OTP / NHP-REG, and saves the result to <code>config.toml</code>. Flags: <code>--email</code>, <code>--asp-id</code>, <code>--res-id</code>, <code>--server</code> (cluster name from <code>server.toml</code>), <code>--device-id</code>, <code>--org-id</code>, <code>--otp</code>. Any omitted required field is prompted for.',
     'api.note.curl': 'The CLI tool ships with OpenNHP (<code>nhp-agentd</code>). For Go applications use the <code>endpoints/agent</code> package directly; for other languages implement the Noise handshake and wrap the JSON payload per the NHP-OTP / NHP-REG message spec.',
     'footer.agentDemo': 'agent demo →',
     // dynamic
@@ -734,6 +762,7 @@ const I18N = {
     'api.note.ts': '完整类型定义随包一起提供。<code>OtpResult</code> 和 <code>RegisterResult</code> 均从 <code>@opennhp/agent</code> 导出。',
     'api.divider.otp': '步骤 2 — NHP-OTP（请求验证码）',
     'api.divider.reg': '步骤 3 — NHP-REG（注册密钥）',
+    'api.note.cli': '<code>register</code> 命令在本地生成密钥对，通过 NHP-OTP / NHP-REG 自助注册其公钥，并将结果保存到 <code>config.toml</code>。参数：<code>--email</code>、<code>--asp-id</code>、<code>--res-id</code>、<code>--server</code>（<code>server.toml</code> 中的集群名）、<code>--device-id</code>、<code>--org-id</code>、<code>--otp</code>。未提供的必填项会交互式提示输入。',
     'api.note.curl': 'CLI 工具随 OpenNHP 一起提供（<code>nhp-agentd</code>）。Go 应用可直接使用 <code>endpoints/agent</code> 包；其他语言请实现 Noise 握手并按 NHP-OTP / NHP-REG 消息规范封装 JSON 负载。',
     'footer.agentDemo': '代理演示 →',
     // dynamic

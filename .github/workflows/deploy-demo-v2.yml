@@ -1332,6 +1332,31 @@ jobs:
           echo "js2_sm2_pub=$JS2_SM2_PUB"       >> $GITHUB_OUTPUT
           echo "cf_token=$CF_TOKEN"             >> $GITHUB_OUTPUT
 
+      - name: Guard against server.toml demo-key drift
+        run: |
+          # Unlike the deploy-time-rendered configs, the committed default
+          # agent config (endpoints/agent/main/etc/server.toml) hard-codes
+          # the demo server's public keys and ships verbatim in the release
+          # archive (Makefile copies it into release/nhp-agent/etc/). If the
+          # demo server keys are rotated in Secrets Manager without updating
+          # that file, a fresh `nhp-agentd register`/knock from a release
+          # tarball silently fails the Noise handshake. Fail the deploy if
+          # the file no longer contains the live public keys.
+          f=opennhp/endpoints/agent/main/etc/server.toml
+          curve='${{ steps.secrets.outputs.server_pub }}'
+          sm2='${{ steps.secrets.outputs.server_sm2_pub }}'
+          fail=0
+          if ! grep -qF "$curve" "$f"; then
+            echo "::error file=$f::Curve25519 key drift: file does not contain the live nhp_server_public_key. Update the active default [[Servers]] PubKeyBase64 to $curve."
+            fail=1
+          fi
+          if ! grep -qF "$sm2" "$f"; then
+            echo "::error file=$f::SM2 key drift: file does not contain the live nhp_server_sm2_public_key. Update the commented GMSM PubKeyBase64 to $sm2."
+            fail=1
+          fi
+          if [ "$fail" -ne 0 ]; then exit 1; fi
+          echo "server.toml demo keys match the live opennhp/demo secret."
+
       - name: Assemble deploy bundle
         run: |
           mkdir -p bundle/nhp-js/dist

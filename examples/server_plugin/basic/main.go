@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"net/url"
 	"os"
@@ -488,7 +490,7 @@ func sendOTPEmail(to, code string) error {
 		smtpHost = baseConf.SMTPHost
 	}
 	// Treat unsubstituted envsubst placeholders as unconfigured.
-	if smtpHost == "" || strings.HasPrefix(smtpHost, "${") {
+	if smtpHost == "" || hasEnvPlaceholder(smtpHost) {
 		// SMTP not configured — succeed silently so local dev can complete
 		// registration without an email server. The OTP code is printed at
 		// Info level so it is visible in default log configurations.
@@ -496,46 +498,67 @@ func sendOTPEmail(to, code string) error {
 		return nil
 	}
 
+	// Validate the recipient up front: this keeps the To: header and the
+	// SMTP envelope recipient in lockstep, and turns a bad/injected address
+	// into a clear error instead of an opaque net/smtp failure deep in the
+	// stdlib. `to` is caller-controlled (UserData["email"] / UserId).
+	toAddr, err := mail.ParseAddress(to)
+	if err != nil {
+		return fmt.Errorf("invalid recipient address %q: %w", to, err)
+	}
+
 	subject := baseConf.SMTPSubject
-	// Treat an unsubstituted envsubst placeholder (e.g. "${SMTP_SUBJECT}")
-	// as unset, mirroring the SMTPHost guard above.
-	if subject == "" || strings.HasPrefix(subject, "${") {
+	// Treat an unsubstituted envsubst placeholder as unset.
+	if subject == "" || hasEnvPlaceholder(subject) {
 		subject = "Your OpenNHP Verification Code"
 	}
 	// Include the code in the subject too, so it's visible from the inbox
 	// preview without opening the message.
 	subject = fmt.Sprintf("%s: %s", subject, code)
 
-	from := baseConf.SMTPFrom
-	if from == "" || strings.HasPrefix(from, "${") {
-		from = "noreply@opennhp.org"
+	fromRaw := baseConf.SMTPFrom
+	if fromRaw == "" || hasEnvPlaceholder(fromRaw) {
+		fromRaw = "noreply@opennhp.org"
 	}
-
-	// Header fields are interpolated straight into the raw SMTP message;
-	// strip CR/LF from config/caller-sourced values so a stray newline
-	// cannot inject extra headers or body content.
-	headerSafe := strings.NewReplacer("\r", "", "\n", "").Replace
-	subject = headerSafe(subject)
-	from = headerSafe(from)
-	toHeader := headerSafe(to)
+	// Parse once: the header keeps the full form (display name allowed),
+	// while the envelope MAIL FROM uses the bare address — most servers
+	// reject the "Name <addr>" form as an envelope argument with a 501.
+	fromAddr, err := mail.ParseAddress(fromRaw)
+	if err != nil {
+		return fmt.Errorf("invalid smtp_from %q: %w", fromRaw, err)
+	}
 
 	// A message with only Subject/MIME/Content-Type headers scores toward
 	// Junk on many receivers — which is exactly where the subject preview
 	// this change adds would not be seen. Include From/To/Date/Message-ID.
+	// The Message-ID domain must match the From domain, or it trips a
+	// common spam heuristic and defeats the purpose of these headers.
+	domain := "opennhp.org"
+	if at := strings.LastIndex(fromAddr.Address, "@"); at >= 0 && at+1 < len(fromAddr.Address) {
+		domain = fromAddr.Address[at+1:]
+	}
 	now := time.Now()
-	msgID := fmt.Sprintf("<%d.%d@opennhp.org>", now.UnixNano(), os.Getpid())
-	body := fmt.Sprintf("From: %s\r\n", from)
-	body += fmt.Sprintf("To: %s\r\n", toHeader)
-	body += fmt.Sprintf("Subject: %s\r\n", subject)
-	body += fmt.Sprintf("Date: %s\r\n", now.Format(time.RFC1123Z))
-	body += fmt.Sprintf("Message-ID: %s\r\n", msgID)
-	body += "MIME-Version: 1.0\r\n"
-	body += "Content-Type: text/plain; charset=\"UTF-8\"\r\n"
-	body += "\r\n"
-	body += fmt.Sprintf("Your verification code is: %s\r\n", code)
-	body += "This code will expire in 5 minutes.\r\n"
-	body += "\r\n"
-	body += "Learn more about OpenNHP at https://opennhp.org\r\n"
+	msgID := fmt.Sprintf("<%d.%d@%s>", now.UnixNano(), os.Getpid(), domain)
+
+	// Header field bodies must be US-ASCII — net/smtp submits a plain DATA
+	// command and never negotiates SMTPUTF8/8BITMIME. RFC 2047-encode the
+	// free-form/caller values so a non-ASCII subject or address does not
+	// yield a non-conformant message. Address.String() also handles the
+	// CR/LF-injection concern (mail.ParseAddress rejects CR/LF); QEncoding
+	// is a no-op for pure-ASCII subjects.
+	var b strings.Builder
+	fmt.Fprintf(&b, "From: %s\r\n", fromAddr.String())
+	fmt.Fprintf(&b, "To: %s\r\n", toAddr.String())
+	fmt.Fprintf(&b, "Subject: %s\r\n", mime.QEncoding.Encode("UTF-8", subject))
+	fmt.Fprintf(&b, "Date: %s\r\n", now.Format(time.RFC1123Z))
+	fmt.Fprintf(&b, "Message-ID: %s\r\n", msgID)
+	b.WriteString("MIME-Version: 1.0\r\n")
+	b.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
+	b.WriteString("\r\n")
+	fmt.Fprintf(&b, "Your verification code is: %s\r\n", code)
+	b.WriteString("This code will expire in 5 minutes.\r\n")
+	b.WriteString("\r\n")
+	b.WriteString("Learn more about OpenNHP at https://opennhp.org\r\n")
 
 	port, err := strconv.Atoi(baseConf.SMTPPort)
 	if err != nil || port <= 0 {
@@ -548,7 +571,26 @@ func sendOTPEmail(to, code string) error {
 		auth = smtp.PlainAuth("", baseConf.SMTPUsername, baseConf.SMTPPassword, baseConf.SMTPHost)
 	}
 
-	return smtp.SendMail(addr, auth, from, []string{to}, []byte(body))
+	return smtp.SendMail(addr, auth, fromAddr.Address, []string{toAddr.Address}, []byte(b.String()))
+}
+
+// hasEnvPlaceholder reports whether s still contains an un-expanded
+// envsubst variable — "${VAR}", a bare "$VAR", or one embedded in a larger
+// string (e.g. "OpenNHP ${SMTP_SUBJECT}"). Used to treat a config that was
+// not run through envsubst as unset. A literal "$5.00" is not matched.
+func hasEnvPlaceholder(s string) bool {
+	if strings.Contains(s, "${") {
+		return true
+	}
+	for i := 0; i+1 < len(s); i++ {
+		if s[i] == '$' {
+			c := s[i+1]
+			if c == '_' || (c >= 'A' && c <= 'Z') {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func corsMiddleware(ctx *gin.Context) {

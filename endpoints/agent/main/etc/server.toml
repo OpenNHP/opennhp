@@ -35,14 +35,16 @@
 #   Port           — UDP port (required, > 0)
 #   Weight         — relative weight for weighted-random; default 1
 #
-# ─── Local docker environment ─────────────────────────────────────────
+# ─── Public demo (server.opennhp.org) ─────────────────────────────────
+# Curve25519 public key is the default; the commented SM2 key targets the
+# same server in gmsm mode.
 [[Servers]]
 Name = "default"
-PubKeyBase64 = "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA=="
-#PubKeyBase64 = "UuUPfVS2iBKf3OKluBIhQsbz2Yi81+/s+Yeh5MBC8Sg="
+PubKeyBase64 = "eVr33jqYo2nt5llEUeDu6gJNHxpnhfY0TRJ4iVIFniM="
+#PubKeyBase64 = "WQbz2fOE5hCG9fE6mCH5XzXDq/ATosMwlvcs9DAaJixt4lBz3gGWbjTFXj3OQgBO62zf6TVwxbB+bLH2ZjB30g=="
 ExpireTime = 1924991999
 LoadBalance = "weighted-random"
 
   [[Servers.Instances]]
-  Ip   = "127.0.0.1"
+  Host = "server.opennhp.org"
   Port = 62206

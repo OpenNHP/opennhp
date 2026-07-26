@@ -284,6 +284,52 @@ jobs:
           name: nhp-demo-build
           path: ./artifact
 
+      - name: Guard against server.toml demo-key drift
+        env:
+          SERVER_TOML: endpoints/agent/main/etc/server.toml
+        run: |
+          # The committed default agent config (endpoints/agent/main/etc/
+          # server.toml) hard-codes the demo server's public keys and ships
+          # verbatim in the release archive (Makefile copies it into
+          # release/nhp-agent/etc/) — unlike the deploy-time-rendered
+          # configs. A key rotation that forgets this file silently breaks a
+          # fresh `nhp-agentd register`/knock from a release tarball.
+          #
+          # This runs BEFORE `Generate keys and render configs`: on a
+          # --regenerate run that step rotates the secret, so guarding after
+          # it would compare the just-rotated keys against the still-old file
+          # and deadlock the deploy. Running first checks the CURRENT live
+          # keys (which the committed file must already match); a rotation
+          # then completes and only the NEXT deploy is gated.
+          #
+          # `configure` is a needs: of every deploy job, so a failure here
+          # gates the whole deploy. Note deploy-demo-v2 is workflow_dispatch
+          # only, so this does not run on PRs (see PR discussion).
+          SECRET=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo --region "${{ env.AWS_REGION }}" \
+            --query SecretString --output text)
+          CURVE=$(echo "$SECRET" | jq -r '.nhp_server_public_key // empty')
+          SM2=$(echo "$SECRET" | jq -r '.nhp_server_sm2_public_key // empty')
+          if [ -z "$CURVE" ] || [ -z "$SM2" ]; then
+            echo "::error::nhp_server_public_key / nhp_server_sm2_public_key missing from opennhp/demo; cannot verify $SERVER_TOML."
+            exit 1
+          fi
+          # ERE-escape '+' in the base64 keys (the only ERE metachar that
+          # occurs in base64; '/' and '=' are literal). Match a whole line,
+          # tolerating leading whitespace and "# " spacing, so the check is
+          # about active-vs-commented, not exact indentation.
+          esc() { printf '%s' "$1" | sed 's/[+]/\\&/g'; }
+          CURVE_RE=$(esc "$CURVE"); SM2_RE=$(esc "$SM2")
+          if ! grep -qE "^[[:space:]]*PubKeyBase64 = \"$CURVE_RE\"[[:space:]]*$" "$SERVER_TOML"; then
+            echo "::error file=$SERVER_TOML::Curve25519 drift: the ACTIVE default [[Servers]] PubKeyBase64 must be \"$CURVE\" (live nhp_server_public_key)."
+            exit 1
+          fi
+          if ! grep -qE "^[[:space:]]*#[[:space:]]*PubKeyBase64 = \"$SM2_RE\"[[:space:]]*$" "$SERVER_TOML"; then
+            echo "::error file=$SERVER_TOML::SM2 drift: the commented GMSM PubKeyBase64 must be \"$SM2\" (live nhp_server_sm2_public_key)."
+            exit 1
+          fi
+          echo "server.toml demo keys match the live opennhp/demo secret."
+
       - name: Generate keys and render configs
         run: |
           chmod +x ./scripts/generate-nhp-keys.sh
@@ -315,41 +361,6 @@ jobs:
           echo "Generated configs:"
           find ./artifact/configs -type f | sort
 
-      - name: Guard against server.toml demo-key drift
-        env:
-          # Env indirection (not ${{ }} splicing) keeps a secret value from
-          # breaking out of the shell if it ever contained a quote.
-          SERVER_TOML: endpoints/agent/main/etc/server.toml
-        run: |
-          # The committed default agent config (endpoints/agent/main/etc/
-          # server.toml) hard-codes the demo server's public keys and ships
-          # verbatim in the release archive (Makefile copies it into
-          # release/nhp-agent/etc/) — unlike the deploy-time-rendered
-          # configs. A key rotation that forgets this file silently breaks a
-          # fresh `nhp-agentd register`/knock from a release tarball. This
-          # runs in `configure` (a needs: of every deploy job, and the job
-          # that just (re)generated the keys), so it gates the deploy rather
-          # than racing it. Requires the just-generated opennhp/demo secret.
-          SECRET=$(aws secretsmanager get-secret-value \
-            --secret-id opennhp/demo --region "${{ env.AWS_REGION }}" \
-            --query SecretString --output text)
-          CURVE=$(echo "$SECRET" | jq -r '.nhp_server_public_key // empty')
-          SM2=$(echo "$SECRET" | jq -r '.nhp_server_sm2_public_key // empty')
-          if [ -z "$CURVE" ] || [ -z "$SM2" ]; then
-            echo "::error::nhp_server_public_key / nhp_server_sm2_public_key missing from opennhp/demo; cannot verify $SERVER_TOML."
-            exit 1
-          fi
-          # Anchor on whole lines (grep -x) so a key that only appears inside
-          # a commented block does not count. -F because base64 has + and /.
-          if ! grep -qxF "PubKeyBase64 = \"$CURVE\"" "$SERVER_TOML"; then
-            echo "::error file=$SERVER_TOML::Curve25519 drift: the ACTIVE default [[Servers]] PubKeyBase64 must be \"$CURVE\" (live nhp_server_public_key)."
-            exit 1
-          fi
-          if ! grep -qxF "#PubKeyBase64 = \"$SM2\"" "$SERVER_TOML"; then
-            echo "::error file=$SERVER_TOML::SM2 drift: the commented GMSM PubKeyBase64 must be \"$SM2\" (live nhp_server_sm2_public_key)."
-            exit 1
-          fi
-          echo "server.toml demo keys match the live opennhp/demo secret."
 
       - name: Upload configs
         uses: actions/upload-artifact@v7

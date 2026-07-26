@@ -74,15 +74,16 @@ LoadBalance = "weighted-random"
 #  Port = 62206
 
 # ─── Local / self-hosted ──────────────────────────────────────────────
-# Uncomment (and comment out the demo block above) to target a server you
-# run yourself — e.g. the docker-compose stack on localhost. Two keys for
-# the compose server are shown: the SM2 key is active (needs
-# DefaultCipherScheme = 1, or pick [2] at the register prompt); uncomment
-# the Curve25519 line instead for the default scheme [1].
+# Uncomment this block (and comment out the demo block above) to target a
+# server you run yourself — e.g. the docker-compose stack on localhost.
+# The key below is the compose stack's SM2 key, so also set
+# DefaultCipherScheme = 1 in config.toml (or pick [2] at the register
+# prompt). For the default scheme [1] Curve25519, swap in the compose
+# stack's Curve25519 key instead:
+#   UuUPfVS2iBKf3OKluBIhQsbz2Yi81+/s+Yeh5MBC8Sg=
 #[[Servers]]
 #Name = "default"
 #PubKeyBase64 = "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA=="
-#PubKeyBase64 = "UuUPfVS2iBKf3OKluBIhQsbz2Yi81+/s+Yeh5MBC8Sg="
 #ExpireTime = 1924991999
 #LoadBalance = "weighted-random"
 #

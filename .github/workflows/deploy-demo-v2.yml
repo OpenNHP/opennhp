@@ -315,6 +315,42 @@ jobs:
           echo "Generated configs:"
           find ./artifact/configs -type f | sort
 
+      - name: Guard against server.toml demo-key drift
+        env:
+          # Env indirection (not ${{ }} splicing) keeps a secret value from
+          # breaking out of the shell if it ever contained a quote.
+          SERVER_TOML: endpoints/agent/main/etc/server.toml
+        run: |
+          # The committed default agent config (endpoints/agent/main/etc/
+          # server.toml) hard-codes the demo server's public keys and ships
+          # verbatim in the release archive (Makefile copies it into
+          # release/nhp-agent/etc/) — unlike the deploy-time-rendered
+          # configs. A key rotation that forgets this file silently breaks a
+          # fresh `nhp-agentd register`/knock from a release tarball. This
+          # runs in `configure` (a needs: of every deploy job, and the job
+          # that just (re)generated the keys), so it gates the deploy rather
+          # than racing it. Requires the just-generated opennhp/demo secret.
+          SECRET=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo --region "${{ env.AWS_REGION }}" \
+            --query SecretString --output text)
+          CURVE=$(echo "$SECRET" | jq -r '.nhp_server_public_key // empty')
+          SM2=$(echo "$SECRET" | jq -r '.nhp_server_sm2_public_key // empty')
+          if [ -z "$CURVE" ] || [ -z "$SM2" ]; then
+            echo "::error::nhp_server_public_key / nhp_server_sm2_public_key missing from opennhp/demo; cannot verify $SERVER_TOML."
+            exit 1
+          fi
+          # Anchor on whole lines (grep -x) so a key that only appears inside
+          # a commented block does not count. -F because base64 has + and /.
+          if ! grep -qxF "PubKeyBase64 = \"$CURVE\"" "$SERVER_TOML"; then
+            echo "::error file=$SERVER_TOML::Curve25519 drift: the ACTIVE default [[Servers]] PubKeyBase64 must be \"$CURVE\" (live nhp_server_public_key)."
+            exit 1
+          fi
+          if ! grep -qxF "#PubKeyBase64 = \"$SM2\"" "$SERVER_TOML"; then
+            echo "::error file=$SERVER_TOML::SM2 drift: the commented GMSM PubKeyBase64 must be \"$SM2\" (live nhp_server_sm2_public_key)."
+            exit 1
+          fi
+          echo "server.toml demo keys match the live opennhp/demo secret."
+
       - name: Upload configs
         uses: actions/upload-artifact@v7
         with:
@@ -1331,29 +1367,6 @@ jobs:
           echo "js2_pub=$JS2_PUB"               >> $GITHUB_OUTPUT
           echo "js2_sm2_pub=$JS2_SM2_PUB"       >> $GITHUB_OUTPUT
           echo "cf_token=$CF_TOKEN"             >> $GITHUB_OUTPUT
-
-      - name: Guard against server.toml demo-key drift
-        run: |
-          # Unlike the deploy-time-rendered configs, the committed default
-          # agent config (endpoints/agent/main/etc/server.toml) hard-codes
-          # the demo server's Curve25519 public key and ships verbatim in
-          # the release archive (Makefile copies it into
-          # release/nhp-agent/etc/). If the demo server key is rotated in
-          # Secrets Manager without updating that file, a fresh
-          # `nhp-agentd register`/knock from a release tarball silently
-          # fails the Noise handshake. Fail the deploy if the file no longer
-          # contains the live nhp_server_public_key.
-          f=opennhp/endpoints/agent/main/etc/server.toml
-          curve='${{ steps.secrets.outputs.server_pub }}'
-          if [ -z "$curve" ] || [ "$curve" = "null" ]; then
-            echo "::error::nhp_server_public_key missing from opennhp/demo secret; cannot verify server.toml."
-            exit 1
-          fi
-          if ! grep -qF "$curve" "$f"; then
-            echo "::error file=$f::Curve25519 key drift: the active default [[Servers]] PubKeyBase64 does not match the live nhp_server_public_key. Update it to $curve."
-            exit 1
-          fi
-          echo "server.toml demo key matches the live opennhp/demo secret."
 
       - name: Assemble deploy bundle
         run: |

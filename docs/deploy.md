@@ -148,9 +148,8 @@ Copy the *nhp-agent* directory from the *release* folder to the target machine. 
 
 #### 2.5.3 NHP-Agent Configuration Files
 
-- Base configuration: [config.toml](https://github.com/OpenNHP/opennhp/tree/main/endpoints/agent/main/etc/config.toml)
-- Knock target configuration: [resource.toml](https://github.com/OpenNHP/opennhp/tree/main/endpoints/agent/main/etc/resource.toml)
-- Server peer list: [server.toml](https://github.com/OpenNHP/opennhp/tree/main/endpoints/agent/main/etc/server.toml)
+- Server peer list: [server.toml](https://github.com/OpenNHP/opennhp/tree/main/endpoints/agent/main/etc/server.toml) — the only config shipped in the release archive.
+- Base configuration `config.toml` and knock targets `resource.toml` are **not** shipped for the agent; `nhp-agentd register` generates them, or copy the worked examples from [docker/nhp-agent/etc/](https://github.com/OpenNHP/opennhp/tree/main/docker/nhp-agent/etc).
 
 > **Note on the shipped default target.** Out of the box, `server.toml` points the agent at the project-operated **public demo** server (`server.opennhp.org`), so `nhp-agentd register` / knock work immediately for evaluation. A released `nhp-agent` therefore sends its knock (carrying `UserId` / `OrganizationId` / `DeviceId`) to that host by default. For a self-hosted deployment, edit `server.toml` to point at your own NHP-Server — the file ships a commented **Local / self-hosted** block for exactly this.
 

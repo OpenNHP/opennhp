@@ -42,10 +42,16 @@
 # For a self-hosted deployment, use the commented "Local / self-hosted"
 # block below instead.
 #
-# The demo server is registered under its Curve25519 key, matching
-# `nhp-agentd register`'s default cipher scheme [1] Curve25519 — so pick
-# [1] at the register prompt. GMSM / SM2 [2] is not offered by the demo;
-# use it only with a self-hosted server whose SM2 key you provide below.
+# The demo server is derived from one private key, so it is trusted under
+# BOTH a Curve25519 and an SM2 public key. The active block below uses the
+# Curve25519 key, matching `nhp-agentd register`'s default cipher scheme
+# [1] Curve25519 — so pick [1] at the register prompt.
+#
+# To use [2] GMSM / SM2 instead: comment out this Curve block and uncomment
+# the GMSM block below (also named "default", since `register` resolves the
+# cluster name "default"; only one may be active — duplicate Names are
+# rejected). With an existing config.toml, also set DefaultCipherScheme = 1
+# there, or subsequent knocks keep using Curve25519 against the SM2 key.
 [[Servers]]
 Name = "default"
 PubKeyBase64 = "eVr33jqYo2nt5llEUeDu6gJNHxpnhfY0TRJ4iVIFniM="
@@ -56,14 +62,27 @@ LoadBalance = "weighted-random"
   Host = "server.opennhp.org"
   Port = 62206
 
+# GMSM / SM2 variant of the same demo server (see note above).
+#[[Servers]]
+#Name = "default"
+#PubKeyBase64 = "WQbz2fOE5hCG9fE6mCH5XzXDq/ATosMwlvcs9DAaJixt4lBz3gGWbjTFXj3OQgBO62zf6TVwxbB+bLH2ZjB30g=="
+#ExpireTime = 1924991999
+#LoadBalance = "weighted-random"
+#
+#  [[Servers.Instances]]
+#  Host = "server.opennhp.org"
+#  Port = 62206
+
 # ─── Local / self-hosted ──────────────────────────────────────────────
 # Uncomment (and comment out the demo block above) to target a server you
-# run yourself. The key below is the docker-compose stack's SM2 server key
-# — because it is SM2, also set DefaultCipherScheme = 1 in config.toml (or
-# pick [2] GMSM / SM2 at the register prompt). Replace it for your own.
+# run yourself — e.g. the docker-compose stack on localhost. Two keys for
+# the compose server are shown: the SM2 key is active (needs
+# DefaultCipherScheme = 1, or pick [2] at the register prompt); uncomment
+# the Curve25519 line instead for the default scheme [1].
 #[[Servers]]
 #Name = "default"
 #PubKeyBase64 = "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA=="
+#PubKeyBase64 = "UuUPfVS2iBKf3OKluBIhQsbz2Yi81+/s+Yeh5MBC8Sg="
 #ExpireTime = 1924991999
 #LoadBalance = "weighted-random"
 #

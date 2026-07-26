@@ -590,6 +590,16 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 		ServerCluster: sc,
 	}
 
+	// Disclose the resolved egress before any packet leaves the host. The
+	// shipped etc/server.toml defaults to the public OpenNHP demo
+	// (server.opennhp.org), so registration phones home with the operator's
+	// UserId / OrganizationId / DeviceId unless server.toml is edited. Print
+	// the actual destination so this is never a surprise.
+	if inst := target.PickInstance(); inst != nil {
+		fmt.Printf("  %sTarget:%s %s%s%s  %s(edit etc/server.toml to point at your own server)%s\n\n",
+			colorYellow, colorReset, colorCyan, inst.HostPort(), colorReset, colorDim, colorReset)
+	}
+
 	// Step 1: OTP request (skipped when --otp is provided).
 	if otpCode == "" {
 		fmt.Printf("  %sStep 1/2:%s Requesting OTP from server...\n", colorBlue, colorReset)

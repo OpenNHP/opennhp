@@ -34,6 +34,11 @@ type config struct {
 	SMTPPassword string `toml:"smtp_password"`
 	SMTPFrom     string `toml:"smtp_from"`
 	SMTPSubject  string `toml:"smtp_subject"`
+	// SMTPCodeInSubject, when true (the default when unset), appends the
+	// 6-digit OTP to the email subject for inbox-preview visibility. Set to
+	// false to keep the code out of the Subject header (it is always in the
+	// body); the subject is the least-protected part of a message.
+	SMTPCodeInSubject *bool `toml:"smtp_code_in_subject"`
 	// RequireEmailMatch, when true, enforces that the email address
 	// supplied in UserData matches the claimed userId. This is the
 	// minimum identity-binding check for a demo deployment.
@@ -513,8 +518,14 @@ func sendOTPEmail(to, code string) error {
 		subject = "Your OpenNHP Verification Code"
 	}
 	// Include the code in the subject too, so it's visible from the inbox
-	// preview without opening the message.
-	subject = fmt.Sprintf("%s: %s", subject, code)
+	// preview without opening the message. Opt out via smtp_code_in_subject
+	// = false (default true) to keep it out of the least-protected header.
+	codeInSubject := baseConf.SMTPCodeInSubject == nil || *baseConf.SMTPCodeInSubject
+	if codeInSubject {
+		// Trim a trailing ": " so an operator subject like "Your code:"
+		// doesn't render as "Your code:: 186617".
+		subject = fmt.Sprintf("%s: %s", strings.TrimRight(subject, ": "), code)
+	}
 
 	fromRaw := baseConf.SMTPFrom
 	if fromRaw == "" || hasEnvPlaceholder(fromRaw) {
@@ -542,10 +553,10 @@ func sendOTPEmail(to, code string) error {
 
 	// Header field bodies must be US-ASCII — net/smtp submits a plain DATA
 	// command and never negotiates SMTPUTF8/8BITMIME. RFC 2047-encode the
-	// free-form/caller values so a non-ASCII subject or address does not
-	// yield a non-conformant message. Address.String() also handles the
-	// CR/LF-injection concern (mail.ParseAddress rejects CR/LF); QEncoding
-	// is a no-op for pure-ASCII subjects.
+	// subject (QEncoding, a no-op for pure ASCII) so a non-ASCII subject is
+	// still conformant. Address.String() encodes the display name and
+	// handles CR/LF quoting (mail.ParseAddress already rejects CR/LF); note
+	// a non-ASCII addr-spec would still need SMTPUTF8, which is out of scope.
 	var b strings.Builder
 	fmt.Fprintf(&b, "From: %s\r\n", fromAddr.String())
 	fmt.Fprintf(&b, "To: %s\r\n", toAddr.String())
@@ -574,23 +585,29 @@ func sendOTPEmail(to, code string) error {
 	return smtp.SendMail(addr, auth, fromAddr.Address, []string{toAddr.Address}, []byte(b.String()))
 }
 
-// hasEnvPlaceholder reports whether s still contains an un-expanded
-// envsubst variable — "${VAR}", a bare "$VAR", or one embedded in a larger
-// string (e.g. "OpenNHP ${SMTP_SUBJECT}"). Used to treat a config that was
-// not run through envsubst as unset. A literal "$5.00" is not matched.
+// hasEnvPlaceholder reports whether s is *entirely* an un-expanded envsubst
+// variable — "${VAR}" or a bare "$VAR" — which is what envsubst leaves
+// behind when the config was not rendered. It deliberately matches the
+// whole string only, so free-form operator text that merely contains a '$'
+// ("Code $5.00", "ACME $CORP verification") is NOT treated as a placeholder.
 func hasEnvPlaceholder(s string) bool {
-	if strings.Contains(s, "${") {
-		return true
+	if !strings.HasPrefix(s, "$") {
+		return false
 	}
-	for i := 0; i+1 < len(s); i++ {
-		if s[i] == '$' {
-			c := s[i+1]
-			if c == '_' || (c >= 'A' && c <= 'Z') {
-				return true
-			}
+	name := s[1:]
+	if strings.HasPrefix(name, "{") && strings.HasSuffix(name, "}") {
+		name = name[1 : len(name)-1]
+	}
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c != '_' && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 func corsMiddleware(ctx *gin.Context) {

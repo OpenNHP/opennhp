@@ -144,7 +144,7 @@ permalink: /zh-cn/deploy/
 #### 2.5.3 NHP-Agent的配置文件
 
 - 服务器 peer 列表：[server.toml](https://github.com/OpenNHP/opennhp/tree/main/endpoints/agent/main/etc/server.toml) —— 发布包中随附的唯一配置文件。
-- 基础配置 `config.toml` 与敲门目标 `resource.toml` **不随** agent 发布包提供；由 `nhp-agentd register` 生成，或从 [docker/nhp-agent/etc/](https://github.com/OpenNHP/opennhp/tree/main/docker/nhp-agent/etc) 复制示例。
+- 基础配置 `config.toml` 与敲门目标 `resource.toml` **不随** agent 发布包提供 —— 由 `nhp-agentd register` 根据你注册的身份生成。（请勿将 `docker/nhp-agent/etc/` 里的示例文件复制到真实部署：它们包含公开共享的 agent 私钥、使用 GMSM 加密方案，且绑定的 `demo-cluster` 名称与默认 `server.toml` 不匹配。）
 
 > **关于默认目标的说明。** 默认情况下，`server.toml` 将 agent 指向由项目运营的**公共演示**服务器（`server.opennhp.org`），因此 `nhp-agentd register` / 敲门可开箱即用地用于评估。发布版 `nhp-agent` 因此会默认将敲门请求（携带 `UserId` / `OrganizationId` / `DeviceId`）发送到该主机。若为自托管部署，请编辑 `server.toml` 指向你自己的 NHP-Server —— 文件中已附带注释掉的 **Local / self-hosted** 配置块。
 

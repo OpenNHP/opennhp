@@ -218,6 +218,8 @@ run (triggered by the `deploy-demo-v2` workflow).
 | Field | Populated by | Used by |
 | --- | --- | --- |
 | `nhp_server_private_key` / `_public_key` | `scripts/generate-nhp-keys.sh` | server `config.toml`; peer tables on ac/relay |
+| `nhp_server_sm2_public_key` | same (derived via `--both` from the server private key) | SM2 form of the cluster 1 server key; drift-checked against `endpoints/agent/main/etc/server.toml`'s commented GMSM block |
+| `nhp_server2_sm2_public_key` | same (derived via `--both` from the server2 private key) | SM2 form of the cluster 2 server key |
 | `nhp_ac_private_key` / `_public_key` | same | ac `config.toml`; peer table on server |
 | `nhp_relay_private_key` / `_public_key` | same | relay `config.toml`; peer table on server |
 | `nhp_agent_private_key` / `_public_key` | same | native nhp-agent clients; `agent.toml` on server |

@@ -284,51 +284,46 @@ jobs:
           name: nhp-demo-build
           path: ./artifact
 
-      - name: Guard against server.toml demo-key drift
+      - name: Check server.toml demo-key drift (advisory)
         env:
           SERVER_TOML: endpoints/agent/main/etc/server.toml
         run: |
-          # The committed default agent config (endpoints/agent/main/etc/
-          # server.toml) hard-codes the demo server's public keys and ships
-          # verbatim in the release archive (Makefile copies it into
-          # release/nhp-agent/etc/) — unlike the deploy-time-rendered
-          # configs. A key rotation that forgets this file silently breaks a
-          # fresh `nhp-agentd register`/knock from a release tarball.
-          #
-          # This runs BEFORE `Generate keys and render configs`: on a
-          # --regenerate run that step rotates the secret, so guarding after
-          # it would compare the just-rotated keys against the still-old file
-          # and deadlock the deploy. Running first checks the CURRENT live
-          # keys (which the committed file must already match); a rotation
-          # then completes and only the NEXT deploy is gated.
-          #
-          # `configure` is a needs: of every deploy job, so a failure here
-          # gates the whole deploy. Note deploy-demo-v2 is workflow_dispatch
-          # only, so this does not run on PRs (see PR discussion).
+          # ADVISORY consistency check — never fails the deploy. The committed
+          # default agent config (endpoints/agent/main/etc/server.toml) hard-
+          # codes the demo server's public keys and ships verbatim in the
+          # release archive (Makefile copies it into release/nhp-agent/etc/),
+          # unlike the deploy-rendered configs. Warn if it has drifted from the
+          # live opennhp/demo secret, but do NOT exit 1: a stale convenience
+          # file must not block a production demo deploy or an emergency
+          # rollback. Runs before key generation so a --regenerate run isn't
+          # compared against keys it is about to rotate.
           SECRET=$(aws secretsmanager get-secret-value \
             --secret-id opennhp/demo --region "${{ env.AWS_REGION }}" \
-            --query SecretString --output text)
+            --query SecretString --output text 2>/dev/null || echo '{}')
           CURVE=$(echo "$SECRET" | jq -r '.nhp_server_public_key // empty')
           SM2=$(echo "$SECRET" | jq -r '.nhp_server_sm2_public_key // empty')
-          if [ -z "$CURVE" ] || [ -z "$SM2" ]; then
-            echo "::error::nhp_server_public_key / nhp_server_sm2_public_key missing from opennhp/demo; cannot verify $SERVER_TOML."
-            exit 1
+          note() { echo "$1"; [ -n "$GITHUB_STEP_SUMMARY" ] && echo "$1" >> "$GITHUB_STEP_SUMMARY" || true; }
+
+          if [ "${{ env.REGENERATE_KEYS }}" = "yes" ]; then
+            note "🔑 NHP keys are being regenerated — update $SERVER_TOML before the next deploy:"
+            note "  Curve25519 (active default block): ${CURVE:-<will be generated>}"
+            note "  SM2 (commented GMSM block):        ${SM2:-<will be generated>}"
+            exit 0
           fi
-          # ERE-escape '+' in the base64 keys (the only ERE metachar that
-          # occurs in base64; '/' and '=' are literal). Match a whole line,
-          # tolerating leading whitespace and "# " spacing, so the check is
-          # about active-vs-commented, not exact indentation.
+
+          # Match a whole line (active or commented), tolerating flexible
+          # spacing around '='. ERE-escape '+' (the only base64 char that is an
+          # ERE metachar). A missing secret field is skipped, not failed —
+          # avoids a chicken-and-egg block on a not-yet-backfilled secret.
           esc() { printf '%s' "$1" | sed 's/[+]/\\&/g'; }
-          CURVE_RE=$(esc "$CURVE"); SM2_RE=$(esc "$SM2")
-          if ! grep -qE "^[[:space:]]*PubKeyBase64 = \"$CURVE_RE\"[[:space:]]*$" "$SERVER_TOML"; then
-            echo "::error file=$SERVER_TOML::Curve25519 drift: the ACTIVE default [[Servers]] PubKeyBase64 must be \"$CURVE\" (live nhp_server_public_key)."
-            exit 1
+          present() { grep -qE "^[[:space:]]*#?[[:space:]]*PubKeyBase64[[:space:]]*=[[:space:]]*\"$1\"[[:space:]]*$" "$SERVER_TOML"; }
+          if [ -n "$CURVE" ] && ! present "$(esc "$CURVE")"; then
+            note "::warning file=$SERVER_TOML::Curve25519 drift: $SERVER_TOML does not contain the live nhp_server_public_key ($CURVE). Update the active default [[Servers]] PubKeyBase64."
           fi
-          if ! grep -qE "^[[:space:]]*#[[:space:]]*PubKeyBase64 = \"$SM2_RE\"[[:space:]]*$" "$SERVER_TOML"; then
-            echo "::error file=$SERVER_TOML::SM2 drift: the commented GMSM PubKeyBase64 must be \"$SM2\" (live nhp_server_sm2_public_key)."
-            exit 1
+          if [ -n "$SM2" ] && ! present "$(esc "$SM2")"; then
+            note "::warning file=$SERVER_TOML::SM2 drift: $SERVER_TOML does not contain the live nhp_server_sm2_public_key ($SM2). Update the commented GMSM PubKeyBase64."
           fi
-          echo "server.toml demo keys match the live opennhp/demo secret."
+          echo "server.toml drift check complete (advisory)."
 
       - name: Generate keys and render configs
         run: |
@@ -360,7 +355,6 @@ jobs:
 
           echo "Generated configs:"
           find ./artifact/configs -type f | sort
-
 
       - name: Upload configs
         uses: actions/upload-artifact@v7

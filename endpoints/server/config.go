@@ -184,6 +184,16 @@ type AuditConfig struct {
 	Enabled bool `json:"enabled"`
 	// FilePath is where the ledger is written. Relative paths resolve
 	// against <exe_dir>. Defaults to "<exe_dir>/logs/audit-ledger.jsonl".
+	//
+	// Do NOT point an external log-rotation tool at this file while the
+	// server is running. The ledger holds one append handle for the process
+	// lifetime and does not reopen: a rename+create rotation sends every
+	// later entry to the rotated-away inode (auditing silently stops until
+	// restart), and a copytruncate resets the file to offset 0 while the
+	// in-memory seq/hash keep advancing, so `audit verify` then reports a
+	// chain break — the wording for tampering — for a routine cron job.
+	// Rotate only while the server is stopped, or archive whole segments
+	// out of band and let this file keep growing.
 	FilePath string `json:"filePath"`
 	// Fsync flushes each entry to disk before returning. Note that entries
 	// are written synchronously on the request path, so audit volume tracks
@@ -192,17 +202,27 @@ type AuditConfig struct {
 	// on a normal gateway, but turn it off if the ledger becomes a
 	// bottleneck under load — the hash chain stays intact either way.
 	Fsync bool `json:"fsync"`
-	// SigningKeyBase64 is an optional base64 HMAC key. When set, each entry
-	// is additionally signed so the chain is bound to a secret the log file
-	// does not contain — an attacker who rewrites the whole file still
-	// cannot forge a chain that verifies. Without it, the hash chain alone
-	// still detects local edits, deletions and reordering.
+	// SigningKeyBase64 is an optional base64 HMAC key (at least 32 bytes
+	// after decoding; a shorter value is rejected at startup). When set,
+	// each entry is additionally signed so the chain is bound to a secret
+	// the log file does not contain. Without it, the hash chain alone still
+	// detects local edits, deletions and reordering.
 	//
-	// Even with a key, one attack is not detectable from the file alone:
+	// Be precise about what the signature buys you. The key lives in this
+	// config file, so an attacker who has taken over the server process
+	// (running as its uid, or root) can read the key, rewrite the ledger,
+	// and re-sign it — the signature does NOT survive a full host
+	// compromise. What it does defend against is an attacker who can write
+	// the log but not read this config: a compromised log-shipping account,
+	// or offline tampering with an archived copy. For protection against a
+	// host compromise the key has to live off the host (an append-only sink
+	// the server can write but not rewrite).
+	//
+	// One attack is undetectable from the file alone even with a key:
 	// truncating entries off the END leaves a shorter chain that still
 	// verifies, because a hash chain cannot prove it was not shortened.
-	// Detecting rollback needs an external anchor — periodically record
-	// the latest seq+hash off-host and compare against it.
+	// Detecting rollback needs an external anchor — periodically record the
+	// latest seq+hash off-host and compare against it.
 	SigningKeyBase64 string `json:"signingKey"`
 }
 

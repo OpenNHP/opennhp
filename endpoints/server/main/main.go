@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -180,6 +182,7 @@ func main() {
 				ArgsUsage: "<ledgerFile>",
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "key", Usage: "base64 HMAC signing key, if the ledger was signed"},
+					&cli.BoolFlag{Name: "strict", Usage: "exit non-zero (2) if verification is incomplete: damaged (skipped) lines, or signed entries left unchecked because no --key was given"},
 				},
 				Action: func(c *cli.Context) error {
 					path := c.Args().First()
@@ -222,7 +225,17 @@ func main() {
 						// no committed entry was altered or removed. Say so
 						// explicitly rather than leaving it to look like a
 						// clean bill of health.
-						fmt.Printf("note: skipped %d unparseable line(s) — likely a torn write from an unclean shutdown, not tampering.\n", res.Skipped)
+						fmt.Printf("note: skipped %d unparseable line(s)%s — likely a torn write from an unclean shutdown, not tampering.\n",
+							res.Skipped, formatSkippedLines(res.SkippedLines, res.Skipped))
+					}
+					// In --strict mode an incomplete verification is a failure
+					// for gating purposes (CI/cron): a keyless check of a
+					// signed ledger, or a file with damaged lines, is not the
+					// same as a full clean pass. Distinct exit code 2 so a
+					// caller can tell it apart from a chain break (1).
+					if c.Bool("strict") && (res.Skipped > 0 || res.UncheckedSigs > 0) {
+						fmt.Println("strict: verification incomplete (see warnings above).")
+						os.Exit(2)
 					}
 					return nil
 				},
@@ -260,6 +273,32 @@ func plural(n uint64) string {
 		return "y"
 	}
 	return "ies"
+}
+
+// formatSkippedLines renders the line numbers of skipped lines for the note,
+// e.g. " (lines 3, 7)". It returns "" when none were captured, and marks the
+// list as partial when the reported slice is shorter than the total skipped.
+func formatSkippedLines(lines []uint64, total uint64) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	parts := make([]string, len(lines))
+	for i, ln := range lines {
+		parts[i] = strconv.FormatUint(ln, 10)
+	}
+	list := strings.Join(parts, ", ")
+	if uint64(len(lines)) < total {
+		list += ", …"
+	}
+	return " (line" + plural2(len(lines)) + " " + list + ")"
+}
+
+// plural2 returns "" for one item and "s" otherwise, for "line"/"lines".
+func plural2(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func printBanner() {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"testing"
@@ -96,4 +97,58 @@ func TestAuditDisabledIsNoOp(t *testing.T) {
 	// Must not panic.
 	s.auditEvent("knock", audit.SeverityInfo, map[string]string{"user": "x"})
 	s.closeAuditLedger()
+}
+
+// A too-short signing key must be rejected at init rather than silently
+// enabling signed=true with trivially forgeable protection.
+func TestAuditShortSigningKeyRejected(t *testing.T) {
+	dir := t.TempDir()
+	s := &UdpServer{
+		config: &Config{
+			Audit: AuditConfig{
+				Enabled:  true,
+				FilePath: filepath.Join(dir, "audit.jsonl"),
+				// "AAAA" decodes to 3 bytes — well under the 32-byte floor.
+				SigningKeyBase64: "AAAA",
+			},
+		},
+	}
+	if err := s.initAuditLedger(); err == nil {
+		t.Fatal("initAuditLedger accepted a 3-byte signing key")
+	}
+	if s.auditLedger != nil {
+		t.Fatal("auditLedger must stay nil when the key is rejected")
+	}
+}
+
+// A full-length key is accepted and produces a signed, verifiable chain.
+func TestAuditValidSigningKeyAccepted(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	s := &UdpServer{
+		config: &Config{
+			Audit: AuditConfig{
+				Enabled:          true,
+				FilePath:         path,
+				SigningKeyBase64: base64.StdEncoding.EncodeToString(key),
+			},
+		},
+	}
+	if err := s.initAuditLedger(); err != nil {
+		t.Fatalf("initAuditLedger with a 32-byte key: %v", err)
+	}
+	s.auditEvent("knock", audit.SeverityInfo, map[string]string{"user": "alice"})
+	s.closeAuditLedger()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := audit.VerifyChain(bytes.NewReader(data), key); res.Err != nil {
+		t.Fatalf("signed chain failed to verify: %v", res.Err)
+	}
 }

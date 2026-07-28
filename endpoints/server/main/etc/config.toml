@@ -39,8 +39,14 @@ ForceOverload = false
 #   Without SigningKeyBase64 the chain detects accidental corruption and
 #   casual edits, but NOT a determined attacker: anyone who can write the
 #   file can recompute the whole SHA-256 chain and produce a file that
-#   verifies clean. Set SigningKeyBase64 (and keep the key off this host)
-#   for tamper-evidence that survives an attacker with write access.
+#   verifies clean.
+#   SigningKeyBase64 binds the chain to a secret, but the key is read from
+#   THIS config file, so it does not survive an attacker who has taken over
+#   the server (that attacker can read the key and re-sign). What it does
+#   defend: an attacker who can write the log but not read this config (a
+#   compromised log-shipping account, or offline edits to an archived copy).
+#   For host-compromise resistance the key must live off-host in an
+#   append-only sink the server can write but not rewrite.
 #   One limit remains even with a key: dropping entries from the END of
 #   the file leaves a shorter chain that still verifies. A hash chain
 #   cannot prove it has not been shortened. To catch truncation/rollback,
@@ -48,13 +54,17 @@ ForceOverload = false
 #   the count / last hash back against it.
 # FilePath: ledger path; relative paths resolve against the exe dir.
 #   Defaults to logs/audit-ledger.jsonl.
+#   Do NOT rotate this file with logrotate/copytruncate while the server
+#   runs: it keeps one append handle open and never reopens, so rename
+#   rotation silently drops later entries and copytruncate makes
+#   `audit verify` cry tampering. Rotate only while stopped.
 # Fsync: flush each entry to disk before the request continues. Entries are
 #   written on the request path, so audit volume tracks knock volume: this
 #   costs a disk flush per access decision and serializes audit writes. Keep
 #   it on for durability; turn it off if it becomes a bottleneck under load.
 # SigningKeyBase64: optional base64 HMAC key binding the chain to a secret
-#   the log file does not contain. Generate one with:
-#   head -c 32 /dev/urandom | base64
+#   the log file does not contain (must be >= 32 bytes; shorter is rejected
+#   at startup). Generate one with:  head -c 32 /dev/urandom | base64
 [Audit]
 Enabled = false
 FilePath = ""

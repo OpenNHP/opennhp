@@ -50,7 +50,7 @@ type VerifyResult struct {
 //   - Sig matches when a key is supplied (chain bound to the secret).
 func VerifyChain(r io.Reader, hmacKey []byte) VerifyResult {
 	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	sc.Buffer(make([]byte, 0, scanBufLen), maxLineLen)
 
 	var count uint64
 	var skipped uint64

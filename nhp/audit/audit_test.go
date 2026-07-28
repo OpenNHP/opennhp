@@ -4,11 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func writeN(t *testing.T, l *Ledger, n int) {
@@ -188,6 +192,105 @@ func TestUnsignedLedgerReportsNoUncheckedSigs(t *testing.T) {
 	}
 	if res.UncheckedSigs != 0 {
 		t.Fatalf("UncheckedSigs=%d, want 0 for an unsigned ledger", res.UncheckedSigs)
+	}
+}
+
+// An unbounded free-text field must not be able to produce a line that
+// cannot be read back. Without the write-side bounds, a multi-megabyte
+// value would exceed the scanner's per-line cap and the entry would be
+// unreadable — which would silently disable auditing on the next restart.
+func TestOversizedFieldStaysReadable(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{})
+
+	huge := strings.Repeat("A", 4*maxLineLen)
+	if err := l.Log("knock", SeverityWarn, map[string]string{"reason": huge}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Log("knock", SeverityInfo, map[string]string{"reason": "ok"}); err != nil {
+		t.Fatal(err)
+	}
+
+	for i, line := range splitLines(buf.Bytes()) {
+		if len(line) > maxLineLen {
+			t.Fatalf("line %d is %d bytes, over the %d cap", i, len(line), maxLineLen)
+		}
+	}
+
+	// Both entries must verify — the chain is intact and nothing was skipped.
+	res := VerifyChain(bytes.NewReader(buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("chain with a truncated field failed: %v", res.Err)
+	}
+	if res.Count != 2 || res.Skipped != 0 {
+		t.Fatalf("Count=%d Skipped=%d, want 2/0", res.Count, res.Skipped)
+	}
+
+	// The value was kept, just cut, and is marked as such.
+	var e Event
+	if err := json.Unmarshal(splitLines(buf.Bytes())[0], &e); err != nil {
+		t.Fatal(err)
+	}
+	got := e.Fields["reason"]
+	if !strings.HasSuffix(got, truncMarker) {
+		t.Fatalf("truncated value not marked: %q", got[max(0, len(got)-40):])
+	}
+	if !strings.HasPrefix(got, "AAAA") {
+		t.Fatal("truncated value lost its content")
+	}
+}
+
+// Too many fields must also be bounded, and the surviving set has to be
+// deterministic — picking by map order would make the entry's hash depend
+// on Go's randomized map iteration.
+func TestTooManyFieldsBoundedDeterministically(t *testing.T) {
+	fields := make(map[string]string)
+	for i := 0; i < maxFields*3; i++ {
+		fields[fmt.Sprintf("k%03d", i)] = "v"
+	}
+
+	render := func() map[string]string {
+		var buf bytes.Buffer
+		l := NewLedger(&buf, Options{})
+		if err := l.Log("knock", SeverityInfo, fields); err != nil {
+			t.Fatal(err)
+		}
+		var e Event
+		if err := json.Unmarshal(splitLines(buf.Bytes())[0], &e); err != nil {
+			t.Fatal(err)
+		}
+		return e.Fields
+	}
+
+	first := render()
+	// maxFields kept plus the _droppedFields marker.
+	if len(first) != maxFields+1 {
+		t.Fatalf("kept %d fields, want %d", len(first), maxFields+1)
+	}
+	if first["_droppedFields"] != strconv.Itoa(maxFields*3-maxFields) {
+		t.Fatalf("_droppedFields=%q", first["_droppedFields"])
+	}
+
+	// Same input, same surviving fields, every time.
+	for i := 0; i < 5; i++ {
+		if !reflect.DeepEqual(first, render()) {
+			t.Fatal("field selection is not deterministic across runs")
+		}
+	}
+}
+
+// Truncation must not split a multi-byte rune, or the entry would carry
+// mojibake and json.Marshal would silently substitute U+FFFD.
+func TestTruncationRespectsRuneBoundaries(t *testing.T) {
+	// "€" is 3 bytes, so a cut at maxFieldValueLen lands mid-rune for some
+	// repeat counts — walk a few offsets to hit that case.
+	for pad := 0; pad < 4; pad++ {
+		v := strings.Repeat("x", pad) + strings.Repeat("€", maxFieldValueLen)
+		got := truncate(v, maxFieldValueLen)
+		body := strings.TrimSuffix(got, truncMarker)
+		if !utf8.ValidString(body) {
+			t.Fatalf("pad=%d: truncation produced invalid UTF-8", pad)
+		}
 	}
 }
 

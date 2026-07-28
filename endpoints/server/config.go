@@ -197,6 +197,12 @@ type AuditConfig struct {
 	// does not contain — an attacker who rewrites the whole file still
 	// cannot forge a chain that verifies. Without it, the hash chain alone
 	// still detects local edits, deletions and reordering.
+	//
+	// Even with a key, one attack is not detectable from the file alone:
+	// truncating entries off the END leaves a shorter chain that still
+	// verifies, because a hash chain cannot prove it was not shortened.
+	// Detecting rollback needs an external anchor — periodically record
+	// the latest seq+hash off-host and compare against it.
 	SigningKeyBase64 string `json:"signingKey"`
 }
 

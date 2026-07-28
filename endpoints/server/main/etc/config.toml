@@ -41,6 +41,11 @@ ForceOverload = false
 #   file can recompute the whole SHA-256 chain and produce a file that
 #   verifies clean. Set SigningKeyBase64 (and keep the key off this host)
 #   for tamper-evidence that survives an attacker with write access.
+#   One limit remains even with a key: dropping entries from the END of
+#   the file leaves a shorter chain that still verifies. A hash chain
+#   cannot prove it has not been shortened. To catch truncation/rollback,
+#   periodically copy the latest seq+hash somewhere off-host and compare
+#   the count / last hash back against it.
 # FilePath: ledger path; relative paths resolve against the exe dir.
 #   Defaults to logs/audit-ledger.jsonl.
 # Fsync: flush each entry to disk before the request continues. Entries are

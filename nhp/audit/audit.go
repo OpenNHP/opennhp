@@ -28,8 +28,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // Severity levels for an event, ordered from least to most urgent.
@@ -38,6 +41,36 @@ const (
 	SeverityNotice = "notice"
 	SeverityWarn   = "warn"
 	SeverityAlert  = "alert"
+)
+
+// Bounds on the free-text parts of an entry.
+//
+// Entries are read back with a bufio.Scanner capped at maxLineLen per
+// line. A field carrying an unbounded string — an error message, a peer-
+// supplied reason — could produce a line longer than that cap, and such a
+// line cannot be scanned afterwards: Open would count it as damage and
+// VerifyChain would skip it. One oversized value would therefore disable
+// auditing on the next restart, which is a bad outcome for a log whose
+// job is to still be there after something goes wrong.
+//
+// Values and keys are truncated and the field count is capped, so a line
+// is bounded by roughly maxFields * (maxFieldKeyLen + maxFieldValueLen)
+// plus a small envelope — comfortably under maxLineLen no matter what a
+// caller passes in. Truncating loses detail; dropping the ledger loses
+// everything.
+const (
+	// maxLineLen is the per-line cap used when reading the ledger back.
+	// The write-side bounds below are sized against it.
+	maxLineLen = 1024 * 1024
+	// scanBufLen is the initial (growable) scanner buffer.
+	scanBufLen = 64 * 1024
+
+	maxFieldValueLen = 4096
+	maxFieldKeyLen   = 128
+	maxFields        = 64
+	// truncMarker is appended to a value that was cut, so a reader can
+	// tell a truncated value from one that happened to be that long.
+	truncMarker = "…[truncated]"
 )
 
 // Event is one record in the ledger. Fields are ordered so the JSON
@@ -289,7 +322,7 @@ func truncatePartialLine(path string) (bool, error) {
 // exactly that. Only a genuine I/O failure returns an error here.
 func scanTail(r io.Reader) (uint64, string, int, error) {
 	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	sc.Buffer(make([]byte, 0, scanBufLen), maxLineLen)
 	var seq uint64
 	var hash string
 	malformed := 0
@@ -311,9 +344,74 @@ func scanTail(r io.Reader) (uint64, string, int, error) {
 	return seq, hash, malformed, nil
 }
 
+// truncate cuts s to at most max bytes, stepping back to a UTF-8 rune
+// boundary so the result is still valid text, and marks that it was cut.
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	cut := max
+	// Back off any partial rune at the cut point. A rune is at most 4
+	// bytes, so at most 3 steps.
+	for cut > 0 && !utf8.ValidString(s[:cut]) {
+		cut--
+	}
+	return s[:cut] + truncMarker
+}
+
+// boundFields caps field count, key length and value length so a single
+// entry can never exceed the line size the reader can scan back. It
+// returns the input untouched when everything already fits, so the common
+// path allocates nothing and the caller's map is never mutated.
+func boundFields(fields map[string]string) map[string]string {
+	if len(fields) == 0 {
+		return fields
+	}
+	needsWork := len(fields) > maxFields
+	if !needsWork {
+		for k, v := range fields {
+			if len(k) > maxFieldKeyLen || len(v) > maxFieldValueLen {
+				needsWork = true
+				break
+			}
+		}
+	}
+	if !needsWork {
+		return fields
+	}
+
+	// Deterministic selection when there are too many fields: sort the
+	// keys and keep the first maxFields. An arbitrary map-order pick would
+	// make the entry (and so its hash) depend on Go's map iteration.
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	dropped := 0
+	if len(keys) > maxFields {
+		dropped = len(keys) - maxFields
+		keys = keys[:maxFields]
+	}
+
+	out := make(map[string]string, len(keys)+1)
+	for _, k := range keys {
+		out[truncate(k, maxFieldKeyLen)] = truncate(fields[k], maxFieldValueLen)
+	}
+	if dropped > 0 {
+		out["_droppedFields"] = strconv.Itoa(dropped)
+	}
+	return out
+}
+
 // Log appends one event of the given type/severity with optional key/value
 // fields. It is safe for concurrent use. The written entry links to the
 // previous one via its hash.
+//
+// Oversized fields are truncated rather than rejected: an entry that
+// records slightly less detail is far better than one that cannot be read
+// back, which is what an unbounded free-text value would produce.
 func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -322,9 +420,9 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 	e := Event{
 		Seq:      l.seq,
 		Time:     time.Now().UTC().Format(time.RFC3339Nano),
-		Type:     evType,
-		Severity: severity,
-		Fields:   fields,
+		Type:     truncate(evType, maxFieldKeyLen),
+		Severity: truncate(severity, maxFieldKeyLen),
+		Fields:   boundFields(fields),
 		PrevHash: l.lastHash,
 	}
 

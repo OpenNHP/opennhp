@@ -45,32 +45,41 @@ const (
 
 // Bounds on the free-text parts of an entry.
 //
-// Entries are read back with a bufio.Scanner capped at maxLineLen per
-// line. A field carrying an unbounded string — an error message, a peer-
-// supplied reason — could produce a line longer than that cap, and such a
-// line cannot be scanned afterwards: Open would count it as damage and
-// VerifyChain would skip it. One oversized value would therefore disable
-// auditing on the next restart, which is a bad outcome for a log whose
-// job is to still be there after something goes wrong.
+// A field carrying an unbounded string — an error message, a peer-supplied
+// reason — could otherwise produce a line longer than the reader can scan
+// back. One such line would count as damage on the next Open and disable
+// the resume, a bad outcome for a log whose job is to still be there after
+// something goes wrong. So keys and values are truncated and the field
+// count is capped.
 //
-// Values and keys are truncated and the field count is capped, so a line
-// is bounded by roughly maxFields * (maxFieldKeyLen + maxFieldValueLen)
-// plus a small envelope — comfortably under maxLineLen no matter what a
-// caller passes in. Truncating loses detail; dropping the ledger loses
+// The bound must hold on the *marshaled* line, not the raw inputs: JSON
+// escapes bytes < 0x20 and <, >, & as \u00XX, up to a 6x expansion. The
+// values below are sized so the worst case still fits under maxLineLen:
+//
+//	maxFields * (6*maxFieldKeyLen + 6*maxFieldValueLen + perFieldPunct)
+//	  = 64 * (6*128 + 6*2048 + ~8)  ≈ 836 KB
+//
+// plus a fixed envelope (seq, time, two 64-hex hashes, field labels; the
+// 6x-escaped Type/Severity add ~1.5 KB) — well under the 1 MiB cap with
+// room to spare. Truncating loses detail; dropping the ledger loses
 // everything.
 const (
 	// maxLineLen is the per-line cap used when reading the ledger back.
-	// The write-side bounds below are sized against it.
+	// The write-side bounds above are sized against it.
 	maxLineLen = 1024 * 1024
-	// scanBufLen is the initial (growable) scanner buffer.
+	// scanBufLen is the initial (growable) reader buffer.
 	scanBufLen = 64 * 1024
 
-	maxFieldValueLen = 4096
+	maxFieldValueLen = 2048
 	maxFieldKeyLen   = 128
 	maxFields        = 64
 	// truncMarker is appended to a value that was cut, so a reader can
 	// tell a truncated value from one that happened to be that long.
 	truncMarker = "…[truncated]"
+	// droppedFieldsKey records how many fields boundFields removed. It is
+	// reserved: a caller-supplied field of the same name is treated as a
+	// collision (see boundFields) rather than silently overwritten.
+	droppedFieldsKey = "_droppedFields"
 )
 
 // Event is one record in the ledger. Fields are ordered so the JSON
@@ -145,12 +154,19 @@ const genesisHash = "00000000000000000000000000000000000000000000000000000000000
 
 // Ledger is a concurrency-safe, append-only, hash-chained event writer.
 type Ledger struct {
-	// MalformedOnOpen is how many unparseable lines Open skipped while
-	// resuming an existing ledger (a torn trailing write after a crash is
-	// the usual cause). Non-zero means the file deserves an `audit verify`
-	// and an operator's attention; it is not fatal and the chain simply
+	// MalformedOnOpen is how many unparseable lines REMAIN in the file after
+	// Open resumed the chain (the torn trailing fragment a crash leaves is
+	// repaired first and is NOT counted here — see RepairedOnOpen). Non-zero
+	// means damage that persists mid-file and deserves an `audit verify` and
+	// an operator's attention; it is not fatal and the chain simply
 	// continues from the last good entry. Read-only after Open.
 	MalformedOnOpen int
+
+	// RepairedOnOpen is true when Open fixed a torn trailing write (dropped
+	// an unterminated fragment, or re-terminated a last line whose newline
+	// was lost). Routine after an unclean shutdown and self-healing, so it
+	// warrants an informational note, not an alarm. Read-only after Open.
+	RepairedOnOpen bool
 
 	mu       sync.Mutex
 	w        io.Writer
@@ -197,9 +213,29 @@ func Open(path string, opts Options) (*Ledger, error) {
 		return nil, fmt.Errorf("audit: create dir: %w", err)
 	}
 
+	// Refuse to touch a non-empty file that is not one of our ledgers. A
+	// mistyped FilePath pointing at another existing file would otherwise be
+	// appended to, or truncated by the torn-tail repair below. A ledger's
+	// first line is always a complete Event, so that is the cheapest
+	// reliable signal.
+	if err := ensureLedgerFile(path); err != nil {
+		return nil, err
+	}
+
+	// Repair a torn trailing write (a fragment left by a crash mid-append)
+	// BEFORE counting, so the malformed count below reflects only damage
+	// that actually remains in the file — a fragment that was repaired must
+	// not later drive a Critical "run audit verify" that comes back clean.
+	// Done before the append handle is opened: on Windows, truncating a file
+	// opened with O_APPEND is refused.
+	repaired, err := repairTornTail(path)
+	if err != nil {
+		return nil, err
+	}
+
 	seq, last := uint64(0), genesisHash
 	malformed := 0
-	if f, err := os.Open(filepath.Clean(path)); err == nil {
+	if f, openErr := os.Open(filepath.Clean(path)); openErr == nil {
 		lastSeq, lastHash, bad, scanErr := scanTail(f)
 		f.Close()
 		if scanErr != nil {
@@ -211,25 +247,8 @@ func Open(path string, opts Options) (*Ledger, error) {
 		if lastHash != "" {
 			seq, last = lastSeq, lastHash
 		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("audit: open %q: %w", path, err)
-	}
-
-	// If the file does not end in a newline, a previous append was torn
-	// mid-write. Drop that fragment. Two reasons it is dropped rather than
-	// newline-terminated: appending after it would concatenate the next
-	// entry onto the fragment (turning one damaged line into two), and
-	// leaving it in place would make `audit verify` report FAILED forever
-	// for what is really a benign crash — training operators to ignore the
-	// one signal the ledger exists to give. A torn tail was never a
-	// complete committed record, so nothing durable is lost.
-	//
-	// Done before the append handle is opened: on Windows, truncating a
-	// file opened with O_APPEND is refused.
-	// scanTail has already counted the fragment in `malformed`, so this
-	// only removes it — it does not count it again.
-	if _, err := truncatePartialLine(path); err != nil {
-		return nil, err
+	} else if !errors.Is(openErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("audit: open %q: %w", path, openErr)
 	}
 
 	f, err := os.OpenFile(filepath.Clean(path), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
@@ -242,19 +261,54 @@ func Open(path string, opts Options) (*Ledger, error) {
 	l.seq = seq
 	l.lastHash = last
 	l.MalformedOnOpen = malformed
+	l.RepairedOnOpen = repaired
 	return l, nil
 }
 
-// truncatePartialLine drops a trailing fragment that has no terminating
-// newline, leaving the file ending on the last complete line. It reports
-// whether anything was removed.
+// ensureLedgerFile refuses to modify a non-empty file whose first line is
+// not a complete audit Event, so a mistyped FilePath pointing at some other
+// file is reported loudly instead of being appended to or (via the torn-tail
+// repair) truncated. A missing or empty file is fine — that is a fresh
+// ledger.
+func ensureLedgerFile(path string) error {
+	f, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("audit: open %q: %w", path, err)
+	}
+	defer f.Close()
+
+	line, tooLong, rerr := readLine(bufio.NewReaderSize(f, scanBufLen))
+	if rerr != nil && rerr != io.EOF {
+		return fmt.Errorf("audit: read %q: %w", path, rerr)
+	}
+	if len(line) == 0 && !tooLong {
+		return nil // empty file
+	}
+	var e Event
+	if tooLong || json.Unmarshal(line, &e) != nil || e.Seq == 0 {
+		return fmt.Errorf("audit: %q does not look like an audit ledger (its first line is not an event); refusing to modify it — check the [Audit] FilePath setting", path)
+	}
+	return nil
+}
+
+// repairTornTail fixes a trailing write cut off mid-append (a fragment with
+// no terminating newline, left by a crash or power loss). It reports whether
+// it changed the file.
 //
-// Only the unterminated tail is ever removed: a fragment with no newline
-// after it cannot be a complete record (Log writes the newline as part of
-// the same append), so it was never durably committed. Complete lines are
-// never touched, whatever their content — deleting those would be exactly
-// the tampering this package exists to detect.
-func truncatePartialLine(path string) (bool, error) {
+// A fragment sitting after an earlier complete line is dropped: Log writes
+// an entry and its newline in one append, so a fragment with no newline
+// after it was never a fully committed record, and dropping it keeps it from
+// being concatenated onto the next entry.
+//
+// If the WHOLE file is one line with no newline, it is NOT truncated to
+// zero — that would erase the file. By the time we reach here Open's guard
+// has confirmed the first line is a complete Event, so this is a committed
+// entry whose terminating newline was lost; the newline is added back rather
+// than the entry deleted.
+func repairTornTail(path string) (bool, error) {
 	rf, err := os.OpenFile(filepath.Clean(path), os.O_RDWR, 0600)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -284,7 +338,7 @@ func truncatePartialLine(path string) (bool, error) {
 	// Walk backwards to the newline that ends the last complete line.
 	const chunk = 4096
 	buf := make([]byte, chunk)
-	keep := int64(0) // bytes to retain; 0 means the whole file is one fragment
+	keep := int64(-1) // -1 => no newline found anywhere yet
 	pos := size
 	for pos > 0 {
 		n := int64(chunk)
@@ -302,10 +356,50 @@ func truncatePartialLine(path string) (bool, error) {
 		pos = start
 	}
 
+	if keep < 0 {
+		// No newline anywhere: the whole file is one line. The guard has
+		// confirmed it is a complete Event, so terminate it rather than
+		// erase it (Truncate(0) here would zero the file).
+		if _, err := rf.WriteAt([]byte{'\n'}, size); err != nil {
+			return false, fmt.Errorf("audit: terminate line in %q: %w", path, err)
+		}
+		return true, nil
+	}
+
 	if err := rf.Truncate(keep); err != nil {
 		return false, fmt.Errorf("audit: truncate partial line in %q: %w", path, err)
 	}
 	return true, nil
+}
+
+// readLine reads one newline-terminated line from br, returning it without
+// the trailing '\n'. A line longer than maxLineLen is not buffered: its
+// bytes up to and including the next newline are discarded and tooLong is
+// true, so a caller can count it as damage and keep going. This is why the
+// ledger readers do not use bufio.Scanner — Scanner returns bufio.ErrTooLong
+// and *stops*, turning one oversized line into a fatal read, which is
+// exactly the failure the write-side bounds and this reader together avoid.
+//
+// err is io.EOF once the input is exhausted (with any final unterminated
+// bytes returned alongside it), or a real I/O error.
+func readLine(br *bufio.Reader) (line []byte, tooLong bool, err error) {
+	for {
+		frag, e := br.ReadSlice('\n')
+		if !tooLong && len(line)+len(frag) > maxLineLen {
+			tooLong = true
+			line = nil // drop what we had; we will not return an oversized line
+		}
+		if !tooLong {
+			line = append(line, frag...) // frag aliases br's buffer, so copy
+		}
+		if e == bufio.ErrBufferFull {
+			continue // same line continues past the reader's buffer
+		}
+		if len(line) > 0 && line[len(line)-1] == '\n' {
+			line = line[:len(line)-1]
+		}
+		return line, tooLong, e
+	}
 }
 
 // scanTail reads every line and returns the last parseable entry's seq and
@@ -313,47 +407,54 @@ func truncatePartialLine(path string) (bool, error) {
 // parse. It parses only the fields it needs.
 //
 // Unparseable content is deliberately NOT an error. A crash or power loss
-// mid-append leaves a torn trailing line, and a log-rotation tool can drop
-// a stray line in; refusing to open the ledger in those cases would take
-// the whole daemon down over a cosmetic log problem. Instead the chain
-// resumes from the last good entry and the caller is told how many lines
-// were skipped so it can log loudly. Detecting real tampering remains the
-// job of VerifyChain / `audit verify`, which is the out-of-band tool for
-// exactly that. Only a genuine I/O failure returns an error here.
+// mid-append leaves a torn trailing line, a log-rotation tool can drop a
+// stray line in, and a corrupt/oversized line can appear; refusing to open
+// the ledger in those cases would take the whole daemon down over a
+// cosmetic log problem. Instead the chain resumes from the last good entry
+// and the caller is told how many lines were skipped so it can log loudly.
+// Detecting real tampering remains the job of VerifyChain / `audit verify`.
+// Only a genuine I/O failure returns an error here.
 func scanTail(r io.Reader) (uint64, string, int, error) {
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, scanBufLen), maxLineLen)
+	br := bufio.NewReaderSize(r, scanBufLen)
 	var seq uint64
 	var hash string
 	malformed := 0
-	for sc.Scan() {
-		line := sc.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var e Event
-		if err := json.Unmarshal(line, &e); err != nil {
+	for {
+		line, tooLong, err := readLine(br)
+		if tooLong {
 			malformed++
-			continue
+		} else if len(line) > 0 {
+			var e Event
+			if json.Unmarshal(line, &e) != nil {
+				malformed++
+			} else {
+				seq, hash = e.Seq, e.Hash
+			}
 		}
-		seq, hash = e.Seq, e.Hash
+		if err != nil {
+			if err == io.EOF {
+				return seq, hash, malformed, nil
+			}
+			return 0, "", malformed, err
+		}
 	}
-	if err := sc.Err(); err != nil {
-		return 0, "", malformed, err
-	}
-	return seq, hash, malformed, nil
 }
 
-// truncate cuts s to at most max bytes, stepping back to a UTF-8 rune
-// boundary so the result is still valid text, and marks that it was cut.
+// truncate cuts s to at most max bytes without splitting a multi-byte rune
+// at the cut point, and marks that it was cut.
 func truncate(s string, max int) string {
 	if len(s) <= max {
 		return s
 	}
 	cut := max
-	// Back off any partial rune at the cut point. A rune is at most 4
-	// bytes, so at most 3 steps.
-	for cut > 0 && !utf8.ValidString(s[:cut]) {
+	// If the cut lands inside a rune, step back to that rune's start.
+	// utf8.RuneStart is false only for a continuation byte (0x80..0xBF),
+	// and a rune has at most three of those, so this backs up at most
+	// three bytes regardless of what the rest of s contains. (The earlier
+	// utf8.ValidString(s[:cut]) form was wrong: a single invalid byte
+	// anywhere before the cut made every prefix invalid, so the loop ran
+	// to cut==0 and discarded the whole value.)
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
 		cut--
 	}
 	return s[:cut] + truncMarker
@@ -397,10 +498,19 @@ func boundFields(fields map[string]string) map[string]string {
 
 	out := make(map[string]string, len(keys)+1)
 	for _, k := range keys {
-		out[truncate(k, maxFieldKeyLen)] = truncate(fields[k], maxFieldValueLen)
+		tk := truncate(k, maxFieldKeyLen)
+		// Two distinct keys can collapse to the same truncated key, or a
+		// caller can pass the reserved marker key itself. Either way, count
+		// the loser as dropped rather than silently overwriting — the entry
+		// stays honest about how many fields it is not showing.
+		if _, taken := out[tk]; taken || tk == droppedFieldsKey {
+			dropped++
+			continue
+		}
+		out[tk] = truncate(fields[k], maxFieldValueLen)
 	}
 	if dropped > 0 {
-		out["_droppedFields"] = strconv.Itoa(dropped)
+		out[droppedFieldsKey] = strconv.Itoa(dropped)
 	}
 	return out
 }

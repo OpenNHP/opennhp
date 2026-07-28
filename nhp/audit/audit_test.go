@@ -294,6 +294,162 @@ func TestTruncationRespectsRuneBoundaries(t *testing.T) {
 	}
 }
 
+// Regression for the truncate() prefix bug: an invalid byte anywhere before
+// the cut must not cause the whole value to be discarded. The earlier
+// utf8.ValidString(s[:cut]) form walked cut down to 0 whenever any earlier
+// byte was invalid, returning just the marker.
+func TestTruncateKeepsContentDespiteEarlierInvalidBytes(t *testing.T) {
+	// One invalid byte up front, then a long ASCII run past the cap.
+	v := "\xff" + strings.Repeat("Z", maxFieldValueLen*2)
+	got := truncate(v, maxFieldValueLen)
+	if !strings.HasSuffix(got, truncMarker) {
+		t.Fatal("value was not marked as truncated")
+	}
+	body := strings.TrimSuffix(got, truncMarker)
+	// Most of the cap's worth of content must survive — not just the marker.
+	if len(body) < maxFieldValueLen-4 {
+		t.Fatalf("kept only %d bytes; the invalid leading byte swallowed the value", len(body))
+	}
+	if !strings.Contains(body, "ZZZZ") {
+		t.Fatal("truncated value lost its content")
+	}
+}
+
+// A line longer than the read cap must be tolerated as damage by both the
+// resume path (scanTail via Open) and VerifyChain, never turned into a fatal
+// read that would disable auditing or read as tampering.
+func TestOverlongLineIsSkippedNotFatal(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	l, err := Open(path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 2)
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	// Splice a raw over-cap line between the committed entries. It is not a
+	// valid entry; it stands in for external corruption.
+	orig, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := splitLines(orig)
+	giant := append(bytes.Repeat([]byte("x"), maxLineLen+16), '\n')
+	var spliced []byte
+	spliced = append(spliced, lines[0]...)
+	spliced = append(spliced, '\n')
+	spliced = append(spliced, giant...)
+	spliced = append(spliced, lines[1]...)
+	spliced = append(spliced, '\n')
+	if writeErr := os.WriteFile(path, spliced, 0600); writeErr != nil {
+		t.Fatal(writeErr)
+	}
+
+	// Open must not fail on the over-long line.
+	l2, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open must tolerate an over-long line, got: %v", err)
+	}
+	_ = l2.Close()
+
+	// VerifyChain treats it as a break, because the giant line sits between
+	// seq 1 and seq 2, so seq 2's prevHash no longer follows seq 1 — that is
+	// correct (a line really was inserted). The point of this test is only
+	// that it does not fail with a fatal read error.
+	res := VerifyChain(bytes.NewReader(spliced), nil)
+	if res.Err != nil && strings.Contains(res.Err.Error(), "read ledger") {
+		t.Fatalf("over-long line caused a fatal read: %v", res.Err)
+	}
+
+	// A trailing over-long line with no following entry is pure damage: the
+	// chain still verifies and it is counted as skipped.
+	var buf bytes.Buffer
+	lg := NewLedger(&buf, Options{})
+	writeN(t, lg, 2)
+	tail := append(bytes.Repeat([]byte("y"), maxLineLen+16), '\n')
+	full := append(buf.Bytes(), tail...)
+	res = VerifyChain(bytes.NewReader(full), nil)
+	if res.Err != nil {
+		t.Fatalf("trailing over-long line should be damage, not a break: %v", res.Err)
+	}
+	if res.Count != 2 || res.Skipped != 1 {
+		t.Fatalf("Count=%d Skipped=%d, want 2/1", res.Count, res.Skipped)
+	}
+	if len(res.SkippedLines) != 1 || res.SkippedLines[0] != 3 {
+		t.Fatalf("SkippedLines=%v, want [3]", res.SkippedLines)
+	}
+}
+
+// Open must refuse to modify a non-empty file that is not one of our
+// ledgers, so a mistyped FilePath cannot get appended to or truncated.
+func TestOpenRefusesNonLedgerFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "not-a-ledger.log")
+	content := []byte("2026-07-28 12:00:00 some other app's log line\nand another\n")
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Open(path, Options{}); err == nil {
+		t.Fatal("Open should refuse a file whose first line is not an event")
+	}
+	// The file must be left exactly as it was — not appended to, not zeroed.
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, content) {
+		t.Fatalf("refused file was modified: %q", after)
+	}
+}
+
+// A single complete entry whose terminating newline was lost must be
+// re-terminated, never truncated to zero.
+func TestOpenTerminatesLastLineInsteadOfZeroing(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	// Produce one valid entry, then strip its trailing newline.
+	var buf bytes.Buffer
+	lg := NewLedger(&buf, Options{})
+	writeN(t, lg, 1)
+	oneLine := bytes.TrimRight(buf.Bytes(), "\n")
+	if err := os.WriteFile(path, oneLine, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	l, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open should re-terminate a lone unterminated entry, got: %v", err)
+	}
+	if !l.RepairedOnOpen {
+		t.Error("RepairedOnOpen = false, want true")
+	}
+	// The entry must survive (file not zeroed) and the chain must continue
+	// from it, not restart at seq 1.
+	if logErr := l.Log("knock", SeverityInfo, nil); logErr != nil {
+		t.Fatal(logErr)
+	}
+	_ = l.Close()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := splitLines(data)
+	if len(got) != 2 {
+		t.Fatalf("want 2 lines (preserved + appended), got %d: %q", len(got), data)
+	}
+	res := VerifyChain(bytes.NewReader(data), nil)
+	if res.Err != nil || res.Count != 2 {
+		t.Fatalf("chain broken after re-terminate: err=%v count=%d", res.Err, res.Count)
+	}
+}
+
 func TestOpenResumesChainAcrossRestart(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sub", "audit.log")
@@ -372,8 +528,14 @@ func TestOpenToleratesTornTrailingLine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open must tolerate a torn trailing line, got: %v", err)
 	}
-	if l2.MalformedOnOpen != 1 {
-		t.Errorf("MalformedOnOpen = %d, want 1", l2.MalformedOnOpen)
+	// A torn tail is repaired, not counted as persistent damage: the
+	// fragment is dropped before the malformed count is taken, so this
+	// reports RepairedOnOpen and leaves MalformedOnOpen at zero.
+	if l2.MalformedOnOpen != 0 {
+		t.Errorf("MalformedOnOpen = %d, want 0 (torn tail is repaired, not persistent damage)", l2.MalformedOnOpen)
+	}
+	if !l2.RepairedOnOpen {
+		t.Error("RepairedOnOpen = false, want true after a torn trailing write")
 	}
 	// The fragment must be gone: leaving it in place would make
 	// `audit verify` report FAILED forever for a benign crash.

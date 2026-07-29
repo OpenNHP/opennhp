@@ -204,21 +204,21 @@ func main() {
 
 					if res.Err != nil {
 						fmt.Printf("FAILED: %v\n", res.Err)
-						fmt.Printf("%d entr%s verified before the break.\n", res.Count, plural(res.Count))
+						fmt.Printf("%d %s verified before the break.\n", res.Count, pluralize(res.Count, "entry", "entries"))
 						// Exit non-zero with a clean message rather than a
 						// panic stack trace — this is a verification tool and
 						// a failed check is an expected, reportable outcome.
 						os.Exit(1)
 					}
-					fmt.Printf("OK: %d entr%s, hash chain intact.\n", res.Count, plural(res.Count))
+					fmt.Printf("OK: %d %s, hash chain intact.\n", res.Count, pluralize(res.Count, "entry", "entries"))
 					if res.UncheckedSigs > 0 {
 						// Do not let a signed ledger checked without its key
 						// read as fully verified. The hash chain alone is
 						// forgeable by anyone who can rewrite the file; the
 						// signatures are the part that isn't, and they were
 						// not checked here.
-						fmt.Printf("warning: %d signed entr%s NOT verified — no --key given, so only the hash chain was checked.\n",
-							res.UncheckedSigs, plural(res.UncheckedSigs))
+						fmt.Printf("warning: %d signed %s NOT verified — no --key given, so only the hash chain was checked.\n",
+							res.UncheckedSigs, pluralize(res.UncheckedSigs, "entry", "entries"))
 					}
 					if res.Skipped > 0 {
 						// Damage, not tampering: the chain still links up, so
@@ -267,12 +267,12 @@ func verifyLedgerFile(path string, hmacKey []byte) (audit.VerifyResult, error) {
 	return audit.VerifyChain(f, hmacKey), nil
 }
 
-// plural returns the English plural suffix for "entry"/"entries" counts.
-func plural(n uint64) string {
+// pluralize returns singular when n == 1 and plural otherwise.
+func pluralize(n uint64, singular, plural string) string {
 	if n == 1 {
-		return "y"
+		return singular
 	}
-	return "ies"
+	return plural
 }
 
 // formatSkippedLines renders the line numbers of skipped lines for the note,
@@ -290,15 +290,7 @@ func formatSkippedLines(lines []uint64, total uint64) string {
 	if uint64(len(lines)) < total {
 		list += ", …"
 	}
-	return " (line" + plural2(len(lines)) + " " + list + ")"
-}
-
-// plural2 returns "" for one item and "s" otherwise, for "line"/"lines".
-func plural2(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "s"
+	return " (" + pluralize(uint64(len(lines)), "line", "lines") + " " + list + ")"
 }
 
 func printBanner() {

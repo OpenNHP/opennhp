@@ -380,11 +380,19 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 	s.keyStore = ks
 
-	// Initialize the tamper-evident audit ledger if enabled. A failure here
-	// is logged but never blocks startup: refusing to boot the gateway
-	// because an audit file can't be opened would turn a logging problem
-	// into an outage. The server continues with auditing disabled.
+	// Initialize the tamper-evident audit ledger if enabled. By default a
+	// failure here is logged but never blocks startup: refusing to boot the
+	// gateway because an audit file can't be opened would turn a logging
+	// problem into an outage, and initAuditLedger already recovers a corrupt
+	// file by quarantining it and starting a fresh chain. The server then
+	// continues with auditing disabled only for a failure it could not
+	// recover (e.g. an unwritable directory). An operator who requires an
+	// uninterrupted trail sets [Audit] FailClosed, which turns any such
+	// failure into a hard startup error instead.
 	if auditErr := s.initAuditLedger(); auditErr != nil {
+		if s.config != nil && s.config.Audit.FailClosed {
+			return fmt.Errorf("audit ledger unavailable and [Audit] FailClosed is set — refusing to start: %w", auditErr)
+		}
 		log.Critical("audit ledger disabled — failed to open: %v", auditErr)
 	}
 

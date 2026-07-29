@@ -32,9 +32,11 @@ AllowPrivateRelaySource = false
 ForceOverload = false
 
 # Tamper-evident security audit ledger (optional, disabled by default).
-# When Enabled, security decisions (knock granted/denied, OTP issued/failed,
-# agent registered) are appended as hash-chained JSON lines. Verify with:
-#   nhp-serverd audit verify <FilePath> [--key <SigningKeyBase64>]
+# When Enabled, security decisions (knock granted/denied over both the UDP
+# and HTTP paths, agent registered) are appended as hash-chained JSON lines.
+# When on, this is the server's structured audit trail (the log "[Audit]"
+# stream is unused). Verify with:
+#   nhp-serverd audit verify <FilePath> [--key <SigningKeyBase64>] [--strict]
 # IMPORTANT — what the chain does and does not protect against:
 #   Without SigningKeyBase64 the chain detects accidental corruption and
 #   casual edits, but NOT a determined attacker: anyone who can write the
@@ -65,8 +67,17 @@ ForceOverload = false
 # SigningKeyBase64: optional base64 HMAC key binding the chain to a secret
 #   the log file does not contain (must be >= 32 bytes; shorter is rejected
 #   at startup). Generate one with:  head -c 32 /dev/urandom | base64
+# FailClosed: what to do when the ledger can't be opened at startup.
+#   false (default): fail SAFE — a corrupt/foreign file at FilePath is moved
+#     aside to "<path>.corrupt-<timestamp>" and a fresh chain is started, so
+#     the gateway keeps producing a trail (a lone junk byte can't silently
+#     switch auditing off). Other failures leave auditing disabled with a
+#     Critical log, but the server still serves.
+#   true: fail CLOSED — any open failure aborts startup. Use when an
+#     uninterrupted trail matters more than availability.
 [Audit]
 Enabled = false
 FilePath = ""
 Fsync = true
 SigningKeyBase64 = ""
+FailClosed = false

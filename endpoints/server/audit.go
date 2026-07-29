@@ -2,8 +2,11 @@ package server
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -52,11 +55,23 @@ func (s *UdpServer) initAuditLedger() error {
 		hmacKey = key
 	}
 
-	ledger, err := audit.Open(path, audit.Options{
-		HMACKey: hmacKey,
-		Fsync:   s.config.Audit.Fsync,
-	})
+	opts := audit.Options{HMACKey: hmacKey, Fsync: s.config.Audit.Fsync}
+	ledger, err := audit.Open(path, opts)
 	if err != nil {
+		// A file that is not a ledger (a mistyped path, or an attacker who
+		// corrupted the first line to disable auditing) is recoverable: move
+		// it aside and start a fresh chain, so the gateway does not end up
+		// serving with no audit trail at all. FailClosed operators opt out of
+		// this and take a boot failure instead (handled by the caller).
+		if errors.Is(err, audit.ErrNotALedger) && !s.config.Audit.FailClosed {
+			fresh, qErr := quarantineAndReopen(path, opts)
+			if qErr != nil {
+				return fmt.Errorf("audit ledger at %s is not a ledger and could not be quarantined: %w", path, qErr)
+			}
+			s.auditLedger = fresh
+			log.Critical("audit ledger %s could not be opened (%v); moved it aside and started a fresh chain — investigate the original file", path, err)
+			return nil
+		}
 		return err
 	}
 	s.auditLedger = ledger
@@ -77,6 +92,18 @@ func (s *UdpServer) initAuditLedger() error {
 			path, ledger.MalformedOnOpen)
 	}
 	return nil
+}
+
+// quarantineAndReopen renames a file that could not be opened as a ledger to
+// a timestamped ".corrupt-<ns>" sibling and opens a fresh ledger at the
+// original path. The rename preserves the original bytes for forensics; a
+// timestamp keeps repeated failures from colliding.
+func quarantineAndReopen(path string, opts audit.Options) (*audit.Ledger, error) {
+	aside := fmt.Sprintf("%s.corrupt-%d", path, time.Now().UnixNano())
+	if err := os.Rename(path, aside); err != nil {
+		return nil, fmt.Errorf("move %q aside: %w", path, err)
+	}
+	return audit.Open(path, opts)
 }
 
 // auditEvent appends one security event to the ledger. It is safe to call

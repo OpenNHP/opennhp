@@ -175,10 +175,11 @@ type Config struct {
 }
 
 // AuditConfig controls the hash-chained security audit ledger. When
-// enabled, security-relevant decisions (knock accepted/denied, OTP
-// validated/failed, agent registered) are appended as JSON lines linked
-// into a hash chain that makes after-the-fact tampering detectable. It is
-// separate from — and complementary to — the free-text [Audit] log stream.
+// enabled, security-relevant decisions (knock granted/denied over UDP and
+// HTTP, agent registered) are appended as JSON lines linked into a hash
+// chain that makes after-the-fact tampering detectable. When enabled it is
+// the server's structured audit trail — the nhp/log "[Audit]" stream is an
+// unused API, so this does not duplicate an existing log.
 type AuditConfig struct {
 	// Enabled turns the ledger on. Off by default.
 	Enabled bool `json:"enabled"`
@@ -224,6 +225,24 @@ type AuditConfig struct {
 	// Detecting rollback needs an external anchor — periodically record the
 	// latest seq+hash off-host and compare against it.
 	SigningKeyBase64 string `json:"signingKey"`
+
+	// FailClosed controls what happens when the ledger cannot be opened at
+	// startup (a corrupt or foreign file at FilePath, a permission problem).
+	//
+	// Default (false): fail SAFE. A file that does not look like a ledger is
+	// moved aside to "<path>.corrupt-<timestamp>" and a fresh chain is
+	// started, so the gateway keeps producing an audit trail. This matters
+	// because the alternative is fail-OPEN — an attacker who can write the
+	// log (the very actor signing defends against) could otherwise disable
+	// the recorder for good with one junk byte, while the server keeps
+	// serving. A chain that restarts at seq 1 next to a .corrupt sibling is a
+	// loud, detectable signal; a silently missing ledger is not.
+	//
+	// true: fail CLOSED. Any open failure aborts startup instead. Choose this
+	// when a verifiable, uninterrupted trail is a hard requirement and you
+	// would rather the gateway not serve at all than serve unaudited. The
+	// offending file is left untouched for inspection.
+	FailClosed bool `json:"failClosed"`
 }
 
 type RemoteConfig struct {

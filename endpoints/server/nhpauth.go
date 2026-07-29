@@ -123,25 +123,37 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 	// authorization outcome is what an audit trail must capture, and the
 	// agent simply retries when an ACK is lost.
 	if s.auditLedger != nil && ppd.HeaderType != core.DHP_KNK {
-		granted := err == nil && ackMsg != nil && ackMsg.ErrCode == common.ErrSuccess.ErrorCode()
+		// Derive the outcome from err alone, matching the "succeed"/"failed"
+		// branch logged above, so the trail never disagrees with the
+		// operational log. The plugin's raw ErrCode is recorded as its own
+		// field regardless, so a soft denial (nil error, non-"0" code) is
+		// still visible instead of silently flipping the recorded result.
+		granted := err == nil
 		severity, result := audit.SeverityWarn, "denied"
 		if granted {
 			severity, result = audit.SeverityInfo, "granted"
 		}
 		fields := map[string]string{
-			"user":    knkMsg.UserId,
-			"src":     addrStr,
-			"aspId":   knkMsg.AuthServiceId,
+			"user":   knkMsg.UserId,
+			"device": knkMsg.DeviceId,
+			"src":    addrStr,
+			"aspId":  knkMsg.AuthServiceId,
+			"resId":  knkMsg.ResourceId,
+			// op distinguishes an open from a close: NHP_KNK, NHP_RKN and
+			// NHP_EXT all dispatch through this handler, and NHP_EXT closes
+			// access. Without it, a close reads as a granted knock. HeaderType
+			// is the AEAD-authenticated body value validated against the wire
+			// type by verifyKnockHeaderType above.
+			"op":      core.HeaderTypeToString(knkMsg.HeaderType),
+			"via":     "udp",
 			"peerKey": shortKey(base64.StdEncoding.EncodeToString(ppd.RemotePubKey)),
 			"result":  result,
 		}
-		if !granted {
-			if ackMsg != nil {
-				fields["errCode"] = ackMsg.ErrCode
-			}
-			if err != nil {
-				fields["reason"] = err.Error()
-			}
+		if ackMsg != nil {
+			fields["errCode"] = ackMsg.ErrCode
+		}
+		if err != nil {
+			fields["reason"] = err.Error()
 		}
 		s.auditEvent("knock", severity, fields)
 	}

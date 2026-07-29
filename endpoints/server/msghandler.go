@@ -309,25 +309,27 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 
 	// Record the registration outcome in the audit ledger.
 	if s.auditLedger != nil {
-		granted := err == nil && rakMsg != nil && rakMsg.ErrCode == common.ErrSuccess.ErrorCode()
+		// Match the "succeeded"/"error" branch logged above (err == nil), and
+		// record the raw ErrCode as its own field so the recorded result can
+		// never disagree with the operational log.
+		granted := err == nil
 		severity, result := audit.SeverityWarn, "denied"
 		if granted {
 			severity, result = audit.SeverityNotice, "registered"
 		}
 		fields := map[string]string{
 			"user":    regMsg.UserId,
+			"device":  regMsg.DeviceId,
 			"src":     addrStr,
 			"aspId":   regMsg.AuthServiceId,
 			"peerKey": shortKey(base64.StdEncoding.EncodeToString(ppd.RemotePubKey)),
 			"result":  result,
 		}
-		if !granted {
-			if rakMsg != nil {
-				fields["errCode"] = rakMsg.ErrCode
-			}
-			if err != nil {
-				fields["reason"] = err.Error()
-			}
+		if rakMsg != nil {
+			fields["errCode"] = rakMsg.ErrCode
+		}
+		if err != nil {
+			fields["reason"] = err.Error()
 		}
 		s.auditEvent("agent_register", severity, fields)
 	}

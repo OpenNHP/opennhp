@@ -17,6 +17,7 @@ import (
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 
+	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -338,6 +339,43 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 	if req.Command == "exit" {
 		knkMsg.HeaderType = core.NHP_EXT
 	}
+
+	// Record the HTTP access decision in the same ledger as the UDP knock
+	// path — the browser / js-agent flow opens AC rules too, so leaving it
+	// out would give the trail a blind spot exactly where the demo stack
+	// operates. Deferred so every return path (resource-not-found, no AC
+	// connection, all-AC-failed, success) is covered from the final err/ack.
+	defer func() {
+		if s.auditLedger == nil {
+			return
+		}
+		granted := err == nil
+		severity, result := audit.SeverityWarn, "denied"
+		if granted {
+			severity, result = audit.SeverityInfo, "granted"
+		}
+		op := "open"
+		if knkMsg.HeaderType == core.NHP_EXT {
+			op = "close"
+		}
+		fields := map[string]string{
+			"user":   knkMsg.UserId,
+			"device": knkMsg.DeviceId,
+			"src":    srcIp,
+			"aspId":  knkMsg.AuthServiceId,
+			"resId":  knkMsg.ResourceId,
+			"op":     op,
+			"via":    "http",
+			"result": result,
+		}
+		if ack != nil {
+			fields["errCode"] = ack.ErrCode
+		}
+		if err != nil {
+			fields["reason"] = err.Error()
+		}
+		s.auditEvent("knock", severity, fields)
+	}()
 
 	ackMsg := &common.ServerKnockAckMsg{
 		AuthProviderToken: req.Token,

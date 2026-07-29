@@ -181,21 +181,18 @@ func main() {
 				Usage:     "verify the hash chain of an audit ledger file",
 				ArgsUsage: "<ledgerFile>",
 				Flags: []cli.Flag{
-					&cli.StringFlag{Name: "key", Usage: "base64 HMAC signing key, if the ledger was signed"},
-					&cli.BoolFlag{Name: "strict", Usage: "exit non-zero (2) if verification is incomplete: damaged (skipped) lines, or signed entries left unchecked because no --key was given"},
+					&cli.StringFlag{Name: "key", Usage: "base64 HMAC signing key, if the ledger was signed (exposes the secret in ps/shell history — prefer --key-file or NHP_AUDIT_KEY)"},
+					&cli.StringFlag{Name: "key-file", Usage: "path to a file holding the base64 HMAC signing key (whitespace trimmed); avoids leaking the key via argv"},
+					&cli.BoolFlag{Name: "strict", Usage: "exit non-zero (2) if verification is incomplete: damaged (skipped) lines, or signed entries left unchecked because no key was given"},
 				},
 				Action: func(c *cli.Context) error {
 					path := c.Args().First()
 					if path == "" {
 						return fmt.Errorf("usage: audit verify <ledgerFile>")
 					}
-					var hmacKey []byte
-					if k := c.String("key"); k != "" {
-						decoded, err := base64.StdEncoding.DecodeString(k)
-						if err != nil {
-							return fmt.Errorf("decode --key: %w", err)
-						}
-						hmacKey = decoded
+					hmacKey, err := resolveVerifyKey(c)
+					if err != nil {
+						return err
 					}
 					res, err := verifyLedgerFile(path, hmacKey)
 					if err != nil {
@@ -217,7 +214,7 @@ func main() {
 						// forgeable by anyone who can rewrite the file; the
 						// signatures are the part that isn't, and they were
 						// not checked here.
-						fmt.Printf("warning: %d signed %s NOT verified — no --key given, so only the hash chain was checked.\n",
+						fmt.Printf("warning: %d signed %s NOT verified — no key given, so only the hash chain was checked.\n",
 							res.UncheckedSigs, pluralize(res.UncheckedSigs, "entry", "entries"))
 					}
 					if res.Skipped > 0 {
@@ -265,6 +262,38 @@ func verifyLedgerFile(path string, hmacKey []byte) (audit.VerifyResult, error) {
 	}
 	defer f.Close()
 	return audit.VerifyChain(f, hmacKey), nil
+}
+
+// resolveVerifyKey obtains the base64 HMAC key for `audit verify` from, in
+// precedence order, --key, --key-file, then the NHP_AUDIT_KEY environment
+// variable. The signing key is the one secret that makes the chain
+// unforgeable by someone who can write the log, so --key-file and the env var
+// exist to keep it out of argv (visible in ps / /proc/<pid>/cmdline) and out
+// of shell history — the leak channels that matter most for the offline-copy
+// case the signature is meant to protect. An empty result means "no key":
+// the chain is checked but signatures are not.
+func resolveVerifyKey(c *cli.Context) ([]byte, error) {
+	raw := c.String("key")
+	source := "--key"
+	if raw == "" {
+		if kf := c.String("key-file"); kf != "" {
+			b, err := os.ReadFile(filepath.Clean(kf))
+			if err != nil {
+				return nil, fmt.Errorf("read --key-file: %w", err)
+			}
+			raw, source = strings.TrimSpace(string(b)), "--key-file"
+		} else if env := os.Getenv("NHP_AUDIT_KEY"); env != "" {
+			raw, source = strings.TrimSpace(env), "NHP_AUDIT_KEY"
+		}
+	}
+	if raw == "" {
+		return nil, nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("decode %s: %w", source, err)
+	}
+	return decoded, nil
 }
 
 // pluralize returns singular when n == 1 and plural otherwise.

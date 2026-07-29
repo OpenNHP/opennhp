@@ -123,14 +123,17 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 	// authorization outcome is what an audit trail must capture, and the
 	// agent simply retries when an ACK is lost.
 	if s.auditLedger != nil && ppd.HeaderType != core.DHP_KNK {
-		// Derive the outcome from err alone, matching the "succeed"/"failed"
-		// branch logged above, so the trail never disagrees with the
-		// operational log. The plugin's raw ErrCode is recorded as its own
-		// field regardless, so a soft denial (nil error, non-"0" code) is
-		// still visible instead of silently flipping the recorded result.
-		granted := err == nil
+		// Grant means a nil error AND an ack code that is not a failure: a
+		// plugin may return a failure ErrCode with a nil error (a soft denial),
+		// and recording that as "granted" would hide it from a SIEM rule keyed
+		// on result. The raw code is kept in errCode regardless. See
+		// decisionGranted.
+		ackCode := ""
+		if ackMsg != nil {
+			ackCode = ackMsg.ErrCode
+		}
 		severity, result := audit.SeverityWarn, "denied"
-		if granted {
+		if decisionGranted(err, ackCode) {
 			severity, result = audit.SeverityInfo, "granted"
 		}
 		fields := map[string]string{
@@ -144,8 +147,8 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 			"peerKey": shortKey(base64.StdEncoding.EncodeToString(ppd.RemotePubKey)),
 			"result":  result,
 		}
-		if ackMsg != nil {
-			fields["errCode"] = ackMsg.ErrCode
+		if ackCode != "" {
+			fields["errCode"] = ackCode
 		}
 		if err != nil {
 			fields["reason"] = err.Error()

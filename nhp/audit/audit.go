@@ -36,12 +36,13 @@ import (
 	"unicode/utf8"
 )
 
-// Severity levels for an event, ordered from least to most urgent.
+// Severity levels for an event, ordered from least to most urgent. These are
+// the levels actually emitted today; add a higher one only alongside a call
+// site that uses it, so the set never drifts ahead of the code.
 const (
 	SeverityInfo   = "info"
 	SeverityNotice = "notice"
 	SeverityWarn   = "warn"
-	SeverityAlert  = "alert"
 )
 
 // Bounds on the free-text parts of an entry.
@@ -393,6 +394,10 @@ func repairTornTail(path string) (bool, error) {
 func readLine(br *bufio.Reader) (line []byte, tooLong bool, err error) {
 	for {
 		frag, e := br.ReadSlice('\n')
+		// The terminating '\n' is still part of frag here, so the effective
+		// content budget is maxLineLen-1. Unreachable given the ~847 KB write
+		// ceiling, but worth stating so the cap isn't read as maxLineLen bytes
+		// of content.
 		if !tooLong && len(line)+len(frag) > maxLineLen {
 			tooLong = true
 			line = nil // drop what we had; we will not return an oversized line

@@ -9,12 +9,17 @@ import (
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/audit"
+	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
-// defaultAuditLedgerFile is the ledger path used when [Audit] is enabled
-// but FilePath is left blank. Resolved against the executable directory.
-const defaultAuditLedgerFile = "logs/audit-ledger.jsonl"
+// defaultAuditLedgerFile is the ledger path used when [Audit] is enabled but
+// FilePath is left blank. Resolved against the executable directory. It sits
+// in its own audit/ directory rather than logs/ so a logrotate rule pointed
+// at logs/ cannot rename or truncate the ledger out from under the open
+// append handle (which would drop entries or make `audit verify` cry
+// tampering — see the FilePath rotation note).
+const defaultAuditLedgerFile = "audit/audit-ledger.jsonl"
 
 // minSigningKeyLen is the smallest accepted HMAC signing key, in bytes. A
 // shorter key is rejected rather than silently used, so an operator cannot
@@ -145,6 +150,21 @@ func (s *UdpServer) closeAuditLedger() {
 		_ = s.auditLedger.Close()
 		s.auditLedger = nil
 	}
+}
+
+// decisionGranted reports whether an access/registration decision counts as
+// granted for the audit trail. A nil error is the handler's success criterion
+// and matches the operational log, but the plugin extension point may legally
+// return a failure ErrCode alongside a nil error — a soft denial. Recording
+// that as "granted" would let a SIEM rule keyed on result=="denied" miss a
+// whole class of rejections, the opposite of what a tamper-evident trail is
+// for, so a non-success code denies. An empty or "0" (ErrSuccess) code with no
+// error is a grant. The raw code is still kept in its own errCode field either
+// way. The bundled plugins always pair a failure code with a non-nil error, so
+// this only matters for a misbehaving third-party plugin — which is exactly
+// the case the ledger should surface rather than hide.
+func decisionGranted(err error, errCode string) bool {
+	return err == nil && (errCode == "" || errCode == common.ErrSuccess.ErrorCode())
 }
 
 // shortKey returns a compact, log-safe fingerprint of a base64 public key

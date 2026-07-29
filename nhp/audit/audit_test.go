@@ -315,6 +315,27 @@ func TestTruncateKeepsContentDespiteEarlierInvalidBytes(t *testing.T) {
 	}
 }
 
+// A run of continuation bytes straddling the cut must not walk the cut down
+// to zero. This is the case the first fix missed: !utf8.RuneStart is true for
+// every 0x80..0xBF byte, so an unbounded step-back over a long run discards
+// the whole value. The step-back is capped at three.
+func TestTruncateBoundedOnContinuationByteRun(t *testing.T) {
+	// A long ASCII prefix, then many continuation bytes ending exactly at
+	// the cap so the step-back starts on one.
+	head := strings.Repeat("Q", maxFieldValueLen-64)
+	run := strings.Repeat("\x80", 128) // 128 raw continuation bytes
+	v := head + run
+	got := truncate(v, maxFieldValueLen)
+	body := strings.TrimSuffix(got, truncMarker)
+	// The ASCII head must survive; at most three bytes are stepped back.
+	if len(body) < len(head)-3 {
+		t.Fatalf("kept only %d bytes; a continuation-byte run swallowed the value (head=%d)", len(body), len(head))
+	}
+	if !strings.HasPrefix(body, "QQQQ") {
+		t.Fatal("truncated value lost its content")
+	}
+}
+
 // A line longer than the read cap must be tolerated as damage by both the
 // resume path (scanTail via Open) and VerifyChain, never turned into a fatal
 // read that would disable auditing or read as tampering.
@@ -712,6 +733,52 @@ func TestShortWriteKeepsDamageOnOneLine(t *testing.T) {
 	}
 	if res.Count != 2 {
 		t.Errorf("Count = %d, want 2 (both entries written after the failure)", res.Count)
+	}
+}
+
+// dropNewlineWriter commits an entry's full JSON but fails to write the
+// trailing newline on its first Write, returning io.ErrShortWrite — the
+// ENOSPC-on-the-last-byte case.
+type dropNewlineWriter struct {
+	buf    bytes.Buffer
+	failed bool
+}
+
+func (w *dropNewlineWriter) Write(p []byte) (int, error) {
+	if !w.failed && len(p) > 0 && p[len(p)-1] == '\n' {
+		w.failed = true
+		n, _ := w.buf.Write(p[:len(p)-1]) // everything but the newline
+		return n, io.ErrShortWrite
+	}
+	return w.buf.Write(p)
+}
+
+// When a write lands the whole entry but loses only the trailing newline,
+// the entry is durably committed. The chain must advance (not roll the seq
+// back), or the next entry would reuse the seq and VerifyChain would report
+// a break — a disk-full masquerading as tampering.
+func TestShortWriteThatCommittedTheEntryKeepsChainIntact(t *testing.T) {
+	w := &dropNewlineWriter{}
+	l := NewLedger(w, Options{})
+
+	// First write commits the JSON but reports an error for the lost newline.
+	if err := l.Log("knock", SeverityInfo, map[string]string{"user": "alice"}); err == nil {
+		t.Fatal("expected the short write to report an error")
+	}
+	// Next entry must be seq 2, continuing the chain, on its own line.
+	if err := l.Log("knock", SeverityWarn, map[string]string{"user": "bob"}); err != nil {
+		t.Fatal(err)
+	}
+
+	res := VerifyChain(bytes.NewReader(w.buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("a committed entry missing only its newline must not read as a break: %v", res.Err)
+	}
+	if res.Count != 2 {
+		t.Errorf("Count = %d, want 2", res.Count)
+	}
+	if res.Skipped != 0 {
+		t.Errorf("Skipped = %d, want 0 (nothing was damaged)", res.Skipped)
 	}
 }
 

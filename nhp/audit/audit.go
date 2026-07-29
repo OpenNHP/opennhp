@@ -12,8 +12,9 @@
 // cannot forge a chain that verifies.
 //
 // The ledger is opt-in and off by default; enabling it is a config choice
-// on the server. It runs alongside — not in place of — the existing text
-// audit log.
+// on the server. When enabled it is the server's structured audit output —
+// the nhp/log "[Audit]" stream exists as an API but has no callers, so this
+// is not a redundant second copy of an existing trail.
 package audit
 
 import (
@@ -85,6 +86,13 @@ const (
 // Event is one record in the ledger. Fields are ordered so the JSON
 // encoding is deterministic (encoding/json emits struct fields in
 // declaration order and map keys sorted), which is what makes the hash
+// ErrNotALedger is returned by Open (via ensureLedgerFile) when the target
+// path holds a non-empty file whose first line is not an audit Event. It is
+// a distinct, inspectable error so a caller can tell "this is the wrong file"
+// apart from a real I/O failure and react accordingly (e.g. quarantine it and
+// start a fresh chain rather than run with no audit trail).
+var ErrNotALedger = errors.New("audit: file does not look like an audit ledger")
+
 // reproducible during verification.
 type Event struct {
 	Seq      uint64            `json:"seq"`
@@ -289,7 +297,7 @@ func ensureLedgerFile(path string) error {
 	}
 	var e Event
 	if tooLong || json.Unmarshal(line, &e) != nil || e.Seq == 0 {
-		return fmt.Errorf("audit: %q does not look like an audit ledger (its first line is not an event); refusing to modify it — check the [Audit] FilePath setting", path)
+		return fmt.Errorf("%w: %q (its first line is not an event); check the [Audit] FilePath setting", ErrNotALedger, path)
 	}
 	return nil
 }
@@ -447,14 +455,15 @@ func truncate(s string, max int) string {
 		return s
 	}
 	cut := max
-	// If the cut lands inside a rune, step back to that rune's start.
-	// utf8.RuneStart is false only for a continuation byte (0x80..0xBF),
-	// and a rune has at most three of those, so this backs up at most
-	// three bytes regardless of what the rest of s contains. (The earlier
-	// utf8.ValidString(s[:cut]) form was wrong: a single invalid byte
-	// anywhere before the cut made every prefix invalid, so the loop ran
-	// to cut==0 and discarded the whole value.)
-	for cut > 0 && !utf8.RuneStart(s[cut]) {
+	// If the cut lands inside a rune, step back to that rune's start so a
+	// valid multi-byte rune is not split. A well-formed rune has at most
+	// three continuation bytes, so cap the step-back at three: past that the
+	// bytes are malformed anyway (a run of continuation bytes with no lead
+	// byte), and walking further would march down to zero and discard the
+	// whole value — the very bug the plain utf8.ValidString(s[:cut]) form
+	// had. Keeping the cut where it is leaves invalid bytes that json.Marshal
+	// renders as U+FFFD, which is fine; losing the content is not.
+	for steps := 0; steps < 3 && cut > 0 && !utf8.RuneStart(s[cut]); steps++ {
 		cut--
 	}
 	return s[:cut] + truncMarker
@@ -555,21 +564,33 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 		return err
 	}
 	line = append(line, '\n')
-	if n, err := l.w.Write(line); err != nil {
+	if n, werr := l.w.Write(line); werr != nil {
+		// The entry's JSON is everything but the trailing newline.
+		jsonLen := len(line) - 1
+		// If the whole JSON reached the file and only the newline was lost
+		// (e.g. ENOSPC on the last byte), the entry IS durably committed.
+		// Terminate it and advance the chain as on success — rolling back
+		// seq here would make the NEXT entry reuse this seq, which
+		// VerifyChain reports as a chain break: a disk-full would then read
+		// as tampering. Report the write error, but keep the chain state
+		// consistent with what is actually on disk.
+		if n >= jsonLen {
+			if _, termErr := l.w.Write([]byte{'\n'}); termErr == nil {
+				l.lastHash = e.Hash
+				return werr
+			}
+		}
+		// The entry itself is incomplete (or we could not even terminate a
+		// complete one): roll back so the seq is not skipped, and close off
+		// the fragment so the next entry does not merge onto it and turn one
+		// damaged line into two. Open's repair handles it on the next
+		// restart if this terminating write also fails.
 		l.seq--
-		// A short write leaves a fragment with no terminating newline. If
-		// it is left that way, the next entry is appended onto it and the
-		// two merge into a single unparseable line — which swallows a
-		// committed entry and makes the chain read as BROKEN (FAILED)
-		// rather than merely damaged (Skipped). Close the fragment off so
-		// the damage stays confined to its own line. Best effort: if this
-		// write fails too there is nothing further to do, and Open's
-		// truncate handles it on the next restart.
 		// n is at most len(line) by the io.Writer contract, so the index is safe.
 		if n > 0 && line[n-1] != '\n' {
 			_, _ = l.w.Write([]byte{'\n'})
 		}
-		return err
+		return werr
 	}
 	if l.fsync {
 		if f, ok := l.w.(*os.File); ok {

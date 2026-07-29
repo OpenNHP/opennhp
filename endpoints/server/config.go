@@ -184,7 +184,9 @@ type AuditConfig struct {
 	// Enabled turns the ledger on. Off by default.
 	Enabled bool `json:"enabled"`
 	// FilePath is where the ledger is written. Relative paths resolve
-	// against <exe_dir>. Defaults to "<exe_dir>/logs/audit-ledger.jsonl".
+	// against <exe_dir>. Defaults to "<exe_dir>/audit/audit-ledger.jsonl"
+	// (its own directory, not logs/, so a logrotate rule aimed at logs/ can't
+	// reach it).
 	//
 	// Do NOT point an external log-rotation tool at this file while the
 	// server is running. The ledger holds one append handle for the process
@@ -195,6 +197,14 @@ type AuditConfig struct {
 	// chain break — the wording for tampering — for a routine cron job.
 	// Rotate only while the server is stopped, or archive whole segments
 	// out of band and let this file keep growing.
+	//
+	// Do NOT point two processes at the same FilePath either. Each writer
+	// keeps its own in-memory seq/lastHash, so interleaved appends produce
+	// duplicate seq values and broken prevHash links that verify reports as
+	// tampering; worse, one process's torn-tail repair (an O_RDWR truncate
+	// back to the last newline) can delete an entry the other just committed.
+	// There is no cross-process lock, so give each instance its own ledger —
+	// this matters for the bundled server/server2 two-cluster demo.
 	FilePath string `json:"filePath"`
 	// Fsync flushes each entry to disk before returning. Note that entries
 	// are written synchronously on the request path, so audit volume tracks

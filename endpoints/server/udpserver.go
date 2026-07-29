@@ -127,8 +127,10 @@ type UdpServer struct {
 	keyStore *AgentKeyStore
 
 	// auditLedger is the tamper-evident security audit ledger. nil when
-	// auditing is disabled (the default); all emission goes through the
-	// nil-safe auditEvent helper so call sites need no guard.
+	// auditing is disabled (the default). Emission goes through the nil-safe
+	// auditEvent helper, so a bare call is always safe; the handlers still
+	// wrap their whole build-the-fields block in an `if s.auditLedger != nil`
+	// to skip that work entirely when auditing is off.
 	auditLedger *audit.Ledger
 
 	// auditWriteFails counts CONSECUTIVE ledger write failures so a sustained

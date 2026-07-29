@@ -55,11 +55,16 @@ ForceOverload = false
 #   periodically copy the latest seq+hash somewhere off-host and compare
 #   the count / last hash back against it.
 # FilePath: ledger path; relative paths resolve against the exe dir.
-#   Defaults to logs/audit-ledger.jsonl.
+#   Defaults to audit/audit-ledger.jsonl (its own dir, not logs/, so a
+#   logrotate rule aimed at logs/ can't reach it).
 #   Do NOT rotate this file with logrotate/copytruncate while the server
 #   runs: it keeps one append handle open and never reopens, so rename
 #   rotation silently drops later entries and copytruncate makes
 #   `audit verify` cry tampering. Rotate only while stopped.
+#   Do NOT point two processes at one ledger (e.g. server + server2 in the
+#   demo): there is no cross-process lock, so interleaved appends break the
+#   chain and one process's tail repair can delete the other's entries. Give
+#   each instance its own file.
 # Fsync: flush each entry to disk before the request continues. Entries are
 #   written on the request path, so audit volume tracks knock volume: this
 #   costs a disk flush per access decision and serializes audit writes. Left

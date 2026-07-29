@@ -41,7 +41,7 @@ func (s *UdpServer) initAuditLedger() error {
 	if s.config.Audit.SigningKeyBase64 != "" {
 		key, err := base64.StdEncoding.DecodeString(s.config.Audit.SigningKeyBase64)
 		if err != nil {
-			return err
+			return fmt.Errorf("audit SigningKeyBase64 is not valid base64: %w", err)
 		}
 		// A short key is almost always a placeholder or a fat-fingered
 		// value; accepting it would log signed=true while offering trivially
@@ -96,8 +96,10 @@ func (s *UdpServer) initAuditLedger() error {
 
 // quarantineAndReopen renames a file that could not be opened as a ledger to
 // a timestamped ".corrupt-<ns>" sibling and opens a fresh ledger at the
-// original path. The rename preserves the original bytes for forensics; a
-// timestamp keeps repeated failures from colliding.
+// original path. The rename keeps the original bytes around against accidents
+// and casual edits — not against someone with write access to the directory,
+// who can delete the sibling just as easily; a timestamp keeps repeated
+// failures from colliding.
 func quarantineAndReopen(path string, opts audit.Options) (*audit.Ledger, error) {
 	aside := fmt.Sprintf("%s.corrupt-%d", path, time.Now().UnixNano())
 	if err := os.Rename(path, aside); err != nil {
@@ -106,16 +108,34 @@ func quarantineAndReopen(path string, opts audit.Options) (*audit.Ledger, error)
 	return audit.Open(path, opts)
 }
 
+// auditWriteFailLogEvery rate-limits the Critical emitted while ledger
+// writes keep failing: the first failure and every Nth after it escalate,
+// the rest stay at Error so a sustained outage neither scrolls away behind a
+// single line nor floods the log.
+const auditWriteFailLogEvery = 100
+
 // auditEvent appends one security event to the ledger. It is safe to call
 // when auditing is disabled (nil ledger) — it simply does nothing. A write
-// failure is logged but never propagated: an audit-log hiccup must not
-// break the request being served.
+// failure is logged but never propagated: an audit-log hiccup must not break
+// the request being served. A PERSISTENT failure is different, though — the
+// gateway would keep granting access with no trail, exactly what the signed
+// ledger is meant to guard against — so a run of consecutive failures is
+// escalated to a rate-limited Critical rather than left as one Error.
 func (s *UdpServer) auditEvent(evType, severity string, fields map[string]string) {
 	if s == nil || s.auditLedger == nil {
 		return
 	}
 	if err := s.auditLedger.Log(evType, severity, fields); err != nil {
-		log.Error("audit ledger write failed: %v", err)
+		n := s.auditWriteFails.Add(1)
+		if n == 1 || n%auditWriteFailLogEvery == 0 {
+			log.Critical("audit ledger write failing (%d consecutive): %v — access decisions are no longer being recorded", n, err)
+		} else {
+			log.Error("audit ledger write failed: %v", err)
+		}
+		return
+	}
+	if prev := s.auditWriteFails.Swap(0); prev > 0 {
+		log.Warning("audit ledger writes recovered after %d consecutive failure(s)", prev)
 	}
 }
 

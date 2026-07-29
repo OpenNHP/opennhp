@@ -131,6 +131,12 @@ type UdpServer struct {
 	// nil-safe auditEvent helper so call sites need no guard.
 	auditLedger *audit.Ledger
 
+	// auditWriteFails counts CONSECUTIVE ledger write failures so a sustained
+	// outage (disk full, file made unwritable) escalates to a rate-limited
+	// Critical instead of scrolling past as a single Error line. Reset to 0 on
+	// the next successful write.
+	auditWriteFails atomic.Uint64
+
 	//NHP-DB
 	dbPeerMapMutex sync.Mutex
 	dbPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string

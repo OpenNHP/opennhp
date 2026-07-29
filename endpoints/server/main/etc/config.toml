@@ -62,8 +62,10 @@ ForceOverload = false
 #   `audit verify` cry tampering. Rotate only while stopped.
 # Fsync: flush each entry to disk before the request continues. Entries are
 #   written on the request path, so audit volume tracks knock volume: this
-#   costs a disk flush per access decision and serializes audit writes. Keep
-#   it on for durability; turn it off if it becomes a bottleneck under load.
+#   costs a disk flush per access decision and serializes audit writes. Left
+#   off in this sample so the first operator to enable auditing doesn't
+#   silently inherit a per-knock flush on the UDP path; turn it on when
+#   losing the last few entries to a crash is unacceptable.
 # SigningKeyBase64: optional base64 HMAC key binding the chain to a secret
 #   the log file does not contain (must be >= 32 bytes; shorter is rejected
 #   at startup). Generate one with:  head -c 32 /dev/urandom | base64
@@ -75,9 +77,12 @@ ForceOverload = false
 #     Critical log, but the server still serves.
 #   true: fail CLOSED — any open failure aborts startup. Use when an
 #     uninterrupted trail matters more than availability.
+#   Either way this governs STARTUP only. A write that fails once the server
+#     is running (disk full, file made unwritable) is logged but never blocks
+#     the request; a sustained run escalates to a rate-limited Critical.
 [Audit]
 Enabled = false
 FilePath = ""
-Fsync = true
+Fsync = false
 SigningKeyBase64 = ""
 FailClosed = false

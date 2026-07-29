@@ -236,12 +236,22 @@ type AuditConfig struct {
 	// log (the very actor signing defends against) could otherwise disable
 	// the recorder for good with one junk byte, while the server keeps
 	// serving. A chain that restarts at seq 1 next to a .corrupt sibling is a
-	// loud, detectable signal; a silently missing ledger is not.
+	// loud, detectable signal; a silently missing ledger is not. The moved
+	// aside copy guards against accidents and casual edits, not against
+	// someone with write access to the directory, who can delete it too.
 	//
 	// true: fail CLOSED. Any open failure aborts startup instead. Choose this
 	// when a verifiable, uninterrupted trail is a hard requirement and you
 	// would rather the gateway not serve at all than serve unaudited. The
 	// offending file is left untouched for inspection.
+	//
+	// Either way, this only governs STARTUP. A write that fails while the
+	// server is already running (disk full, the file made unwritable) is
+	// logged but never blocks the request, so access decisions keep flowing
+	// while the trail is blind. A sustained run of such failures escalates to
+	// a rate-limited Critical (see auditEvent) so it cannot pass unnoticed,
+	// but there is deliberately no runtime fail-closed: an audit hiccup must
+	// not take the gateway down mid-flight.
 	FailClosed bool `json:"failClosed"`
 }
 

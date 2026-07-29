@@ -83,9 +83,6 @@ const (
 	droppedFieldsKey = "_droppedFields"
 )
 
-// Event is one record in the ledger. Fields are ordered so the JSON
-// encoding is deterministic (encoding/json emits struct fields in
-// declaration order and map keys sorted), which is what makes the hash
 // ErrNotALedger is returned by Open (via ensureLedgerFile) when the target
 // path holds a non-empty file whose first line is not an audit Event. It is
 // a distinct, inspectable error so a caller can tell "this is the wrong file"
@@ -93,6 +90,9 @@ const (
 // start a fresh chain rather than run with no audit trail).
 var ErrNotALedger = errors.New("audit: file does not look like an audit ledger")
 
+// Event is one record in the ledger. Fields are ordered so the JSON
+// encoding is deterministic (encoding/json emits struct fields in
+// declaration order and map keys sorted), which is what makes the hash
 // reproducible during verification.
 type Event struct {
 	Seq      uint64            `json:"seq"`

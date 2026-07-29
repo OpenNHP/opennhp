@@ -134,17 +134,12 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 			severity, result = audit.SeverityInfo, "granted"
 		}
 		fields := map[string]string{
-			"user":   knkMsg.UserId,
-			"device": knkMsg.DeviceId,
-			"src":    addrStr,
-			"aspId":  knkMsg.AuthServiceId,
-			"resId":  knkMsg.ResourceId,
-			// op distinguishes an open from a close: NHP_KNK, NHP_RKN and
-			// NHP_EXT all dispatch through this handler, and NHP_EXT closes
-			// access. Without it, a close reads as a granted knock. HeaderType
-			// is the AEAD-authenticated body value validated against the wire
-			// type by verifyKnockHeaderType above.
-			"op":      core.HeaderTypeToString(knkMsg.HeaderType),
+			"user":    knkMsg.UserId,
+			"device":  knkMsg.DeviceId,
+			"src":     addrStr,
+			"aspId":   knkMsg.AuthServiceId,
+			"resId":   knkMsg.ResourceId,
+			"op":      auditKnockOp(knkMsg.HeaderType),
 			"via":     "udp",
 			"peerKey": shortKey(base64.StdEncoding.EncodeToString(ppd.RemotePubKey)),
 			"result":  result,
@@ -184,4 +179,22 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 
 	transaction.NextMsgCh <- ackMd
 	return nil
+}
+
+// auditKnockOp names the knock operation for the audit trail. NHP_KNK,
+// NHP_RKN and NHP_EXT all dispatch through HandleKnockRequest, and NHP_EXT
+// closes access, so recording the type keeps a close from reading as a
+// granted open. On the granted path knkMsg.HeaderType is the
+// AEAD-authenticated body value (verifyKnockHeaderType confirmed it matches
+// the wire type). On a denial it can be zero — a body that failed to
+// unmarshal, or a legacy agent rejected by that same gate — and
+// core.HeaderTypeToString(0) is NHP_KPL (keepalive), which would mislabel a
+// whole class of rejected knocks as keepalives. An unset type is reported as
+// "unknown" so the trail never claims a type the decision did not
+// authenticate.
+func auditKnockOp(headerType int) string {
+	if headerType == core.NHP_KPL {
+		return "unknown"
+	}
+	return core.HeaderTypeToString(headerType)
 }

@@ -12,7 +12,30 @@ import (
 
 	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
+	"github.com/OpenNHP/opennhp/nhp/core"
 )
+
+// A rejected knock whose body never populated HeaderType (parse failure, or a
+// legacy agent) must not be recorded as a keepalive: HeaderTypeToString(0) is
+// NHP_KPL, so an unset type is reported as "unknown" instead.
+func TestAuditKnockOp(t *testing.T) {
+	cases := []struct {
+		name       string
+		headerType int
+		want       string
+	}{
+		{"unset/parse-failed", core.NHP_KPL, "unknown"},
+		{"open", core.NHP_KNK, core.HeaderTypeToString(core.NHP_KNK)},
+		{"close", core.NHP_EXT, core.HeaderTypeToString(core.NHP_EXT)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := auditKnockOp(tc.headerType); got != tc.want {
+				t.Fatalf("auditKnockOp(%d) = %q, want %q", tc.headerType, got, tc.want)
+			}
+		})
+	}
+}
 
 // TestAuditConfigParsesFromTOML guards the field-name match between the
 // [Audit] TOML section and the AuditConfig struct — go-toml matches by Go
@@ -156,9 +179,13 @@ func TestAuditHTTPOpenResourceDenied(t *testing.T) {
 	if res := audit.VerifyChain(bytes.NewReader(data), nil); res.Err != nil || res.Count != 1 {
 		t.Fatalf("ledger not written for HTTP denial: err=%v count=%d", res.Err, res.Count)
 	}
-	// Confirm the entry carries the HTTP tag and the resource.
+	// Confirm the entry carries the HTTP tag, the resource, and the error
+	// code from the denial. errCode must be read off the local ackMsg, not
+	// the named return (which is nil on the naked return here); asserting the
+	// exact ErrResourceNotFound code guards that fix from regressing.
 	s2 := string(data)
-	for _, want := range []string{`"via":"http"`, `"result":"denied"`, `"resId":"res-1"`, `"user":"alice"`} {
+	wantCode := `"errCode":"` + common.ErrResourceNotFound.ErrorCode() + `"`
+	for _, want := range []string{`"via":"http"`, `"result":"denied"`, `"resId":"res-1"`, `"user":"alice"`, wantCode} {
 		if !strings.Contains(s2, want) {
 			t.Errorf("audit entry missing %s in: %s", want, s2)
 		}

@@ -340,13 +340,23 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 		knkMsg.HeaderType = core.NHP_EXT
 	}
 
+	// Declared before the audit defer below so the closure can read the
+	// populated error code off it. The named return `ack` stays nil on every
+	// naked `return` (resource-not-found, all-AC-failed), so reading `ack`
+	// there would drop errCode on exactly the denials that carry it.
+	ackMsg := &common.ServerKnockAckMsg{
+		AuthProviderToken: req.Token,
+		AgentAddr:         srcIp,
+		OpenTime:          res.OpenTime,
+	}
+
 	// Record the HTTP access decision in the same ledger as the UDP knock
 	// path — the browser / js-agent flow opens AC rules too, so leaving it
 	// out would give the trail a blind spot exactly where the demo stack
 	// operates. Deferred so every return path (resource-not-found, no AC
 	// connection, all-AC-failed, success) is covered from the final err/ack.
 	defer func() {
-		if s.auditLedger == nil {
+		if s == nil || s.auditLedger == nil {
 			return
 		}
 		granted := err == nil
@@ -368,20 +378,16 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 			"via":    "http",
 			"result": result,
 		}
-		if ack != nil {
-			fields["errCode"] = ack.ErrCode
+		// ackMsg always carries the code set on the failure paths; the named
+		// return ack only mirrors it on success (return ackMsg, nil).
+		if ackMsg.ErrCode != "" {
+			fields["errCode"] = ackMsg.ErrCode
 		}
 		if err != nil {
 			fields["reason"] = err.Error()
 		}
 		s.auditEvent("knock", severity, fields)
 	}()
-
-	ackMsg := &common.ServerKnockAckMsg{
-		AuthProviderToken: req.Token,
-		AgentAddr:         srcIp,
-		OpenTime:          res.OpenTime,
-	}
 
 	if len(res.Resources) == 0 {
 		err = common.ErrResourceNotFound

@@ -248,6 +248,28 @@
   .footer a:hover { text-decoration: underline; }
   .back-link { font-size: 12px; color: #58a6ff; text-decoration: none; }
   .back-link:hover { text-decoration: underline; }
+  /* Full-width "Demo nhp-server configuration" panel below the layout.
+     Same max-width as .layout / .page-footer so it lines up with the
+     columns above. */
+  .server-config {
+    max-width: 1200px; width: 100%;
+    background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+    padding: 24px; box-sizing: border-box;
+  }
+  .server-config h2 { color: #58a6ff; font-size: 16px; margin-bottom: 4px; }
+  .server-config .sub { color: #8b949e; font-size: 12px; margin-bottom: 16px; }
+  .server-config .sc-row {
+    display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .server-config .sc-row .field { flex: 0 0 320px; margin-bottom: 0; }
+  .server-config .sc-scheme { font-size: 13px; color: #c9d1d9; padding-bottom: 8px; }
+  .server-config .code-block { margin-bottom: 12px; }
+  .server-config .sc-note {
+    font-size: 11px; color: #8b949e; line-height: 1.6; margin-top: 6px;
+    padding: 8px 10px; background: #0d1f38; border-left: 3px solid #1f4f8f;
+    border-radius: 0 4px 4px 0;
+  }
 </style>
 </head>
 <body>
@@ -568,6 +590,23 @@ curl -X POST https://relay.opennhp.org/relay/<span class="c-str">&lt;server-fing
 </aside>
 </div>
 
+<section class="server-config">
+  <h2 data-i18n="serverToml.heading">Demo nhp-server configuration</h2>
+  <p class="sub" data-i18n-html="serverToml.sub">Agent server-peer (server.toml) for each demo cluster — copy into your nhp-agentd etc/server.toml.</p>
+  <div class="sc-row">
+    <div class="field">
+      <label for="toml-cluster-select" data-i18n="serverToml.cluster">Cluster</label>
+      <select id="toml-cluster-select"></select>
+    </div>
+    <div class="sc-scheme" id="toml-scheme-badge"></div>
+  </div>
+  <pre class="code-block" id="toml-output"></pre>
+  <div class="btn-row" style="max-width:200px">
+    <button class="btn btn-secondary" id="btn-copy-toml" onclick="copyServerToml()" data-i18n="serverToml.copy">Copy</button>
+  </div>
+  <p class="sc-note" data-i18n-html="serverToml.note"></p>
+</section>
+
 <p class="footer page-footer">
   OpenNHP Agent SDK v<span id="sdk-version">—</span> &middot;
   <a href="https://agent.opennhp.org/" target="_blank" rel="noopener" data-i18n="footer.agentDemo">agent demo &rarr;</a> &middot;
@@ -668,6 +707,13 @@ const I18N = {
     'api.note.cli': 'The <code>register</code> command generates a key pair locally, self-registers its public key over NHP-OTP / NHP-REG, and offers to save the result to <code>config.toml</code> / <code>resource.toml</code> (prompting before overwriting an existing file, keeping a <code>.bak</code>). Flags: <code>--email</code>, <code>--asp-id</code>, <code>--res-id</code>, <code>--server</code> (cluster name from <code>server.toml</code>), <code>--device-id</code>, <code>--org-id</code>, <code>--otp</code>. The cipher scheme is always prompted; other omitted fields are prompted only when their flag is absent.',
     'api.note.curl': 'There is no language-agnostic HTTP API for registration — the payload is a Noise-encrypted binary frame. Use the <strong>CLI</strong> tab (<code>nhp-agentd register</code>), the JavaScript SDK, or the Go <code>endpoints/agent</code> package; for other languages implement the Noise handshake per the NHP-OTP / NHP-REG message spec.',
     'footer.agentDemo': 'agent demo →',
+    'serverToml.heading': 'Demo nhp-server configuration',
+    'serverToml.sub': 'Agent server-peer (<code>server.toml</code>) for each demo cluster — copy into your <code>nhp-agentd</code> <code>etc/server.toml</code>.',
+    'serverToml.cluster': 'Cluster',
+    'serverToml.copy': 'Copy',
+    'serverToml.copied': 'server.toml block copied to clipboard.',
+    'serverToml.clipboardBlocked': 'Clipboard blocked — select the block and press Cmd/Ctrl+C.',
+    'serverToml.note': 'Native <code>nhp-agentd</code> is UDP-direct only (no relay transport) and the demo\'s <code>62206/udp</code> is not exposed to the public internet — the browser demo reaches the server via the <code>443/TLS</code> relay. This TOML is usable as-is from within the demo VPC, or when the server\'s UDP port is otherwise reachable. For local development, use the docker-compose peer that ships with <code>make agentd</code> (<code>127.0.0.1:62206</code>). The demo keys are re-generated on some deploys — this page always shows the current key (fetched with <code>cache: no-store</code>); if knocking fails peer validation, reload and re-copy.',
     // dynamic
     'msg.enterEmail': 'Please enter your email (used as both user ID and OTP address)',
     'msg.selectServer': 'Please select a target server',
@@ -754,6 +800,13 @@ const I18N = {
     'api.note.cli': '<code>register</code> 命令在本地生成密钥对，通过 NHP-OTP / NHP-REG 自助注册其公钥，并询问是否将结果保存到 <code>config.toml</code> / <code>resource.toml</code>（若文件已存在会在覆盖前提示，并保留 <code>.bak</code> 备份）。参数：<code>--email</code>、<code>--asp-id</code>、<code>--res-id</code>、<code>--server</code>（<code>server.toml</code> 中的集群名）、<code>--device-id</code>、<code>--org-id</code>、<code>--otp</code>。加密方案始终会提示选择；其他项仅在未提供对应参数时才提示输入。',
     'api.note.curl': '注册没有与语言无关的 HTTP API —— 负载是经 Noise 加密的二进制帧。请使用 <strong>CLI</strong> 标签页（<code>nhp-agentd register</code>）、JavaScript SDK 或 Go 的 <code>endpoints/agent</code> 包；其他语言请按 NHP-OTP / NHP-REG 消息规范实现 Noise 握手。',
     'footer.agentDemo': '代理演示 →',
+    'serverToml.heading': 'Demo nhp-server 配置',
+    'serverToml.sub': '各 demo 集群对应的 agent 服务端 peer（<code>server.toml</code>）— 可复制到 <code>nhp-agentd</code> 的 <code>etc/server.toml</code>。',
+    'serverToml.cluster': '集群',
+    'serverToml.copy': '复制',
+    'serverToml.copied': 'server.toml 块已复制到剪贴板。',
+    'serverToml.clipboardBlocked': '剪贴板被阻止 — 请选中代码块后按 Cmd/Ctrl+C。',
+    'serverToml.note': '原生 <code>nhp-agentd</code> 仅支持 UDP 直连（无中继传输），且 demo 的 <code>62206/udp</code> 未对公网开放 — 浏览器 demo 通过 <code>443/TLS</code> 中继访问服务器。此 TOML 仅在 demo VPC 内部、或服务器 UDP 端口可达时可直接使用。本地开发请使用 <code>make agentd</code> 附带的 docker-compose peer（<code>127.0.0.1:62206</code>）。demo 密钥在某些部署时会被重新生成 — 本页面始终展示当前密钥（以 <code>cache: no-store</code> 拉取）；若敲门时密钥校验失败，请刷新页面重新复制。',
     // dynamic
     'msg.enterEmail': '请输入您的邮箱（同时用作用户 ID 和验证码地址）',
     'msg.selectServer': '请选择目标服务器',
@@ -817,6 +870,7 @@ function applyI18n() {
   // Re-render dynamic areas that were built in the previous language.
   if ($('#otp-email-display') && window.__otpEmail) $('#otp-email-display').textContent = window.__otpEmail;
   if (window.__serverDetailRender) window.__serverDetailRender();
+  if (window.__serverTomlRender) window.__serverTomlRender();
   if (Array.isArray(servers) && servers.length > 0) {
     $('#server-count').textContent = t('server.count', { n: servers.length });
   }
@@ -910,6 +964,8 @@ $('#cipher-select').addEventListener('change', () => {
   }
   // Rebuild server list so the correct public key (Curve25519 vs SM2) is shown.
   populateServers();
+  // Re-render the demo server-config TOML with the newly selected scheme.
+  renderServerToml();
 });
 
 function schemeBadge(scheme) {
@@ -931,6 +987,8 @@ $('#server-select').addEventListener('change', () => {
     renderServerDetail();
   }
 });
+
+$('#toml-cluster-select').addEventListener('change', renderServerToml);
 
 // Rebuilds the server-detail line; stored so applyI18n() can re-render it
 // after a language switch.
@@ -983,6 +1041,76 @@ function populateServers() {
   sel.value = '0';
   sel.dispatchEvent(new Event('change'));
 }
+
+// ── Demo nhp-server configuration panel ──
+// Renders the agent-side [[Servers]] peer block for the cluster picked
+// in #toml-cluster-select, using the pubkey that matches the Step-1
+// cipher scheme (same SM2-vs-Curve rule as populateServers). The TOML
+// is language-neutral, so applyI18n() only needs to re-render the
+// translatable note/sub text (handled via data-i18n-html).
+function buildServerToml() {
+  const sel = $('#toml-cluster-select');
+  const idx = sel ? parseInt(sel.value, 10) : NaN;
+  const c = configClusters[idx];
+  if (!c || !c.publicKeyBase64) return '';
+  const useSm2 = cipherScheme === 'gmsm';
+  const pubKey = (useSm2 && c.publicKeyBase64SM2) ? c.publicKeyBase64SM2 : c.publicKeyBase64;
+  const schemeLabel = useSm2 ? 'gmsm/SM2' : 'curve25519';
+  const name = c.name || `Cluster ${idx + 1}`;
+  const host = c.serverHost || '';
+  // Both demo clusters listen on NHP UDP 62206 (deploy/config-templates
+  // /server{,2}/config.toml ListenPort = 62206).
+  const port = 62206;
+  return `# Agent server-peer for ${name} (demo)
+# Cipher: ${schemeLabel}. Native nhp-agentd is UDP-direct; the demo's
+# 62206/udp is NOT public — use from the demo VPC or local docker env.
+# Browser demo reaches the server via the 443/TLS relay.
+[[Servers]]
+Name = "${name}"
+PubKeyBase64 = "${pubKey}"
+ExpireTime = 1924991999
+LoadBalance = "weighted-random"
+
+  [[Servers.Instances]]
+  Host = "${host}"
+  Port = ${port}`;
+}
+
+function renderServerToml() {
+  const out = $('#toml-output');
+  if (out) out.textContent = buildServerToml();
+  const badge = $('#toml-scheme-badge');
+  if (badge) badge.innerHTML = schemeBadge(cipherScheme);
+}
+window.__serverTomlRender = renderServerToml;
+
+function populateTomlClusterSelect() {
+  const sel = $('#toml-cluster-select');
+  if (!sel) return;
+  const list = configClusters.filter(c => c.publicKeyBase64);
+  sel.innerHTML = list.map((c, i) => {
+    const orig = configClusters.indexOf(c);
+    return `<option value="${orig}">${escapeHtml(c.name || `Cluster ${i + 1}`)}</option>`;
+  }).join('') || `<option value="">${t('server.none')}</option>`;
+  sel.value = list.length ? String(configClusters.indexOf(list[0])) : '';
+  renderServerToml();
+}
+
+window.copyServerToml = async () => {
+  const text = buildServerToml();
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    showAlert(t('serverToml.copied'), 'success');
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:90%;height:160px;z-index:9999';
+    document.body.appendChild(ta);
+    ta.select();
+    showAlert(t('serverToml.clipboardBlocked'), 'info');
+  }
+};
 
 // ── Step 1: generate key pair locally ──
 window.doGenerateKeyPair = async () => {
@@ -1255,6 +1383,7 @@ function generateDeviceId() {
   setupLangSwitcher();
   applyI18n();
   populateServers();
+  populateTomlClusterSelect();
   highlightProtocolPhase('keygen');
 })();
 </script>

@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/cilium/ebpf v0.22.0
 	github.com/coocood/freecache v1.2.7
-	github.com/emmansun/gmsm v0.44.0
+	github.com/emmansun/gmsm v0.44.1
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0

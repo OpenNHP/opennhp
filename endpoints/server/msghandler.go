@@ -391,6 +391,10 @@ func (s *UdpServer) HandleACOnline(ppd *core.PacketParserData) (err error) {
 		ServiceId:      aolMsg.AuthServiceId,
 		Apps:           aolMsg.ResourceIds,
 	}
+	if !s.promoteControlConnection(ppd.ConnData, controlConnectionAC) {
+		log.Warning("server-ac(@%s@%s)[HandleACOnline] authenticated connection is no longer current", acId, addrStr)
+		return fmt.Errorf("authenticated AC connection is no longer current")
+	}
 
 	s.acConnectionMapMutex.Lock()
 	s.acConnectionMap[acId] = acConn
@@ -448,6 +452,10 @@ func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
 		DBPeer:         dbPeer,
 		DBCipherScheme: ppd.CipherScheme,
 		DBId:           dbId,
+	}
+	if !s.promoteControlConnection(ppd.ConnData, controlConnectionDB) {
+		log.Warning("server-db(@%s@%s)[HandleDBOnline] authenticated connection is no longer current", dbId, addrStr)
+		return fmt.Errorf("authenticated DB connection is no longer current")
 	}
 
 	s.dbConnectionMapMutex.Lock()

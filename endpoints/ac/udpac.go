@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -523,12 +524,33 @@ func (a *UdpAC) recvMessageRoutine() {
 			switch ppd.HeaderType {
 			case core.NHP_AOP:
 				// deal with NHP_AOP message
+				p := ppd
 				a.wg.Add(1)
-				go func(p *core.PacketParserData) {
+				go a.runUDPHandler(p.HeaderType, func() {
 					_ = a.HandleUdpACOperations(p)
-				}(ppd)
+				})
 			}
 		}
+	}
+}
+
+// runUDPHandler contains panics from input-driven handler goroutines. A
+// malformed packet or an unexpected nil in one handler must drop that request,
+// not terminate the entire access-controller process.
+func (a *UdpAC) runUDPHandler(headerType int, handler func()) {
+	defer a.wg.Done()
+	defer a.recoverUDPHandler(headerType)
+	handler()
+}
+
+func (a *UdpAC) recoverUDPHandler(headerType int) {
+	if recovered := recover(); recovered != nil {
+		acID := "unknown"
+		if a != nil && a.config != nil && a.config.ACId != "" {
+			acID = a.config.ACId
+		}
+		log.Error("ac(%s)[%s] UDP handler panic recovered: %v\n%s",
+			acID, core.HeaderTypeToString(headerType), recovered, debug.Stack())
 	}
 }
 

@@ -563,12 +563,23 @@ func (rs *RelayServer) connectionRoutine(cr *serverRuntime, inst *serverInstance
 		conn.Close()
 	}()
 
+	idleTimeout := time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+	idleTimer := time.NewTimer(idleTimeout)
+	defer idleTimer.Stop()
+
 	for {
 		select {
 		case <-rs.stopCh:
 			return
 
-		case <-time.After(time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond):
+		case <-conn.ConnData.SetTimeoutSignal:
+			if conn.ConnData.TimeoutMs <= 0 {
+				return
+			}
+			idleTimeout = time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+			idleTimer.Reset(idleTimeout)
+
+		case <-idleTimer.C:
 			log.Info("[Relay] connection idle timeout (server %s)", cr.id)
 			return
 
@@ -576,6 +587,7 @@ func (rs *RelayServer) connectionRoutine(cr *serverRuntime, inst *serverInstance
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -585,6 +597,7 @@ func (rs *RelayServer) connectionRoutine(cr *serverRuntime, inst *serverInstance
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}

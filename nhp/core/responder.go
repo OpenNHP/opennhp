@@ -501,20 +501,20 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			}
 			log.Error("validatePeer: %s peer not found in peer pool, pubkey=%s",
 				peerDeviceTypeName, peerPkBase64)
-			err = fmt.Errorf("peer not found in peer pool (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
+			err = ErrPeerNotFound
 			return err
 		}
 
 		if peer.IsExpired() {
 			log.Error("validatePeer: %s peer expired, pubkey=%s", peerDeviceTypeName, peerPkBase64)
-			err = fmt.Errorf("peer expired (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
+			err = ErrPeerExpired
 			return err
 		}
 
 		if !ppd.ConnData.CheckRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr) {
 			log.Error("validatePeer: %s peer address mismatch on connection, pubkey=%s, remoteAddr=%s",
 				peerDeviceTypeName, peerPkBase64, ppd.ConnData.RemoteAddr)
-			err = fmt.Errorf("peer does not match its previous address on this connection (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
+			err = ErrPeerAddressMismatch
 			return err
 		}
 		ppd.ConnData.UpdateRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr)
@@ -577,7 +577,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 				// block source address
 				ppd.ConnData.SendBlockSignal()
 			}
-			err = fmt.Errorf("received replay packet")
+			err = ErrReplayPacketReceived
 			return err
 		}
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) {
@@ -591,7 +591,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 				// block source address
 				ppd.ConnData.SendBlockSignal()
 			}
-			err = fmt.Errorf("received flood packet")
+			err = ErrFloodPacketReceived
 			return err
 		}
 	}
@@ -606,7 +606,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			// block source address
 			ppd.ConnData.SendBlockSignal()
 		}
-		err = fmt.Errorf("received stale packet")
+		err = ErrStalePacketReceived
 		return err
 	}
 

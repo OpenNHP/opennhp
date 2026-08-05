@@ -135,6 +135,9 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 		return err
 	}
 
-	transaction.NextMsgCh <- ackMd
+	if sendErr := transaction.SendMessage(ackMd); sendErr != nil {
+		log.Error("server-agent(%s#%d@%s)[HandleKnockRequest] transaction closed before forward: %v", knkMsg.UserId, transactionId, addrStr, sendErr)
+		return sendErr
+	}
 	return nil
 }

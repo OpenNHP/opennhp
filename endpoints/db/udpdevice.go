@@ -14,6 +14,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/version"
 )
@@ -72,8 +73,9 @@ type UdpDevice struct {
 		totalSendBytes uint64
 	}
 
-	config *Config
-	log    *log.Logger
+	config     *Config
+	privateKey []byte // resolved once at Start (plain or unsealed)
+	log        *log.Logger
 
 	remoteConnectionMutex sync.Mutex
 	remoteConnectionMap   map[string]*UdpConn // indexed by remote UDP address
@@ -133,11 +135,19 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 		return err
 	}
 
-	prk, err := base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
+	keyPass, err := keystore.PassphraseFromEnv()
+	if err != nil {
+		log.Error("private key passphrase error %v\n", err)
+		return fmt.Errorf("private key passphrase error %v", err)
+	}
+	prk, err := keystore.ResolvePrivateKey(a.config.PrivateKeyBase64, keyPass)
 	if err != nil {
 		log.Error("private key parse error %v\n", err)
 		return fmt.Errorf("private key parse error %v", err)
 	}
+	// Cache the resolved key so GetOwnEcdh does not re-run the (expensive)
+	// unseal KDF on every call.
+	a.privateKey = prk
 
 	a.device = core.NewDevice(core.NHP_DB, prk, nil)
 	if a.device == nil {
@@ -796,13 +806,21 @@ func (a *UdpDevice) GetDataBrokerId() string {
 }
 
 func (a *UdpDevice) GetOwnEcdh() core.Ecdh {
-	prk, _ := base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
 	eccMode := core.ECC_CURVE25519
 	if a.config.DefaultCipherScheme == 0 {
 		eccMode = core.ECC_SM2
 	}
 
-	return core.ECDHFromKey(eccMode, prk)
+	// Start resolves the private key and returns an error if it cannot, so
+	// the device never reaches a serving state with an empty a.privateKey
+	// and this cannot hand a nil Ecdh to callers that dereference it.
+	//
+	// There is deliberately no resolve-on-demand fallback here. Callers of
+	// this method feed the key straight into key agreement, so a fallback
+	// that quietly failed would be worse than not having one: it would
+	// return an Ecdh built from a nil key and the failure would surface as
+	// a bad shared secret rather than as a startup error.
+	return core.ECDHFromKey(eccMode, a.privateKey)
 }
 
 func (a *UdpDevice) isTEEAuthorized(teePbkBase64 string) bool {

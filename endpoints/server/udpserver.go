@@ -16,6 +16,7 @@ import (
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/plugins"
 	"github.com/OpenNHP/opennhp/nhp/utils"
@@ -260,7 +261,12 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		return fmt.Errorf("resolve UDPAddr error %v", err)
 	}
 
-	prk, err := base64.StdEncoding.DecodeString(s.config.PrivateKeyBase64)
+	keyPass, err := keystore.PassphraseFromEnv()
+	if err != nil {
+		log.Error("private key passphrase error: %v", err)
+		return fmt.Errorf("private key passphrase error %v", err)
+	}
+	prk, err := keystore.ResolvePrivateKey(s.config.PrivateKeyBase64, keyPass)
 	if err != nil {
 		log.Error("private key parse error: %v", err)
 		return fmt.Errorf("private key parse error %v", err)

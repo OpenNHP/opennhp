@@ -805,6 +805,10 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		return fmt.Errorf("%s relay source address", reason)
 	}
 	realAddr := &net.UDPAddr{IP: realIP, Port: rlyMsg.SourceAddr.Port}
+	if s.IsBlockAddr(realAddr) {
+		log.Warning("server-relay[HandleRelayForward] real client %s is temporarily blocked", realAddr)
+		return fmt.Errorf("relay client is blocked")
+	}
 
 	relayAddrStr := ppd.ConnData.RemoteAddr.String()
 	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",
@@ -828,6 +832,14 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		return err
 	}
 	innerPkt.HeaderType = innerType
+	// Account relayed traffic by the real client IP. Charging the relay's
+	// outer UDP address would make many legitimate clients behind one relay
+	// consume a shared bucket and would regress relay fan-out behavior.
+	if !s.allowPacketFromIP(realIP.String(), time.Now().UnixNano()) {
+		s.device.ReleasePoolPacket(innerPkt)
+		s.logPacketRateLimitDrop(realIP.String())
+		return fmt.Errorf("packet rate limit exceeded")
+	}
 	log.Info("server-relay[HandleRelayForward] inner [%s] from real client %s via relay %s",
 		core.HeaderTypeToString(innerType), realAddr, relayAddrStr)
 

@@ -241,9 +241,18 @@ func (d *Device) msgToPacketRoutine(id int) {
 
 				var mad *MsgAssemblerData
 				var err error
+				var outboundPacket *Packet
+				var outboundPacketOwned bool
 
 				// error handling
 				defer func() {
+					// ForwardOutboundPacket owns the sender copy only after it returns.
+					// Release a transaction clone if a pre-transfer panic unwinds this
+					// routine; the local transaction remains the assembler owner.
+					if outboundPacketOwned {
+						d.ReleasePoolPacket(outboundPacket)
+						outboundPacketOwned = false
+					}
 					if err != nil {
 						mad.Error = err
 						mad.Destroy()
@@ -298,9 +307,18 @@ func (d *Device) msgToPacketRoutine(id int) {
 
 				// create local transaction if needed
 				log.Debug("msgToPacketRoutine IsTransactionRequest:deviceType:%d HeaderType:%d", d.deviceType, mad.HeaderType)
+				outboundPacket = mad.BasePacket
 				if d.IsTransactionRequest(mad.HeaderType) {
+					// The transaction retains mad.BasePacket for response crypto. Give
+					// the asynchronous physical sender an independent pool packet so
+					// transaction completion cannot recycle bytes still being sent.
+					outboundPacket, err = d.clonePacketForSend(mad.BasePacket)
+					if err != nil {
+						return
+					}
+					outboundPacketOwned = true
+
 					// save initiator transaction
-					mad.BasePacket.KeepAfterSend = true // packet is kept after sending and deleted at transaction level
 					t := &LocalTransaction{
 						transactionId: mad.header.Counter(),
 						connData:      mad.connData,
@@ -313,7 +331,8 @@ func (d *Device) msgToPacketRoutine(id int) {
 				}
 
 				// send out fully encrypted packet
-				mad.connData.ForwardOutboundPacket(mad.BasePacket)
+				mad.connData.ForwardOutboundPacket(outboundPacket)
+				outboundPacketOwned = false
 			}()
 		}
 	}

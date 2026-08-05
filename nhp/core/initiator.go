@@ -102,7 +102,6 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 		mad.bodyMessage = md.Message
 		mad.TransactionId = md.TransactionId
 		mad.connData = md.ConnData
-		mad.encryptedPktCh = md.EncryptedPktCh
 
 		// init packet buffer
 		if md.ExternalPacket != nil {
@@ -129,6 +128,11 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 		// init header counter
 		mad.header.SetCounter(mad.TransactionId)
 	}
+	// EncryptedPktCh applies equally to new initiator packets and responses
+	// derived from PrevParserData. Keeping this outside the branch lets
+	// response-side callers divert encrypted bytes instead of silently falling
+	// through to the connection's socket SendQueue.
+	mad.encryptedPktCh = md.EncryptedPktCh
 
 	// init chain hash -> ChainHash0
 	mad.chainHash, err = NewHash(mad.ciphers.HashType)

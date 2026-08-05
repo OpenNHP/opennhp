@@ -626,7 +626,10 @@ func (rs *RelayServer) connectionRoutine(cr *serverRuntime, inst *serverInstance
 			}
 			rs.device.RecvPacketToMsg(pd)
 
-		case <-conn.ConnData.BlockSignal:
+		case _, ok := <-conn.ConnData.BlockSignal:
+			if !ok {
+				return
+			}
 			log.Warning("[Relay] connection blocked %s (server %s)", addrStr, cr.id)
 			return
 		}

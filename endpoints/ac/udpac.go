@@ -441,7 +441,10 @@ func (a *UdpAC) connectionRoutine(conn *UdpConn) {
 		case <-a.signals.stop:
 			return
 
-		case <-conn.ConnData.SetTimeoutSignal:
+		case _, ok := <-conn.ConnData.SetTimeoutSignal:
+			if !ok {
+				return
+			}
 			if conn.ConnData.TimeoutMs <= 0 {
 				log.Debug("Connection routine closed immediately")
 				return
@@ -494,7 +497,10 @@ func (a *UdpAC) connectionRoutine(conn *UdpConn) {
 			// generic receive
 			a.device.RecvPacketToMsg(pd)
 
-		case <-conn.ConnData.BlockSignal:
+		case _, ok := <-conn.ConnData.BlockSignal:
+			if !ok {
+				return
+			}
 			log.Critical("blocking address %s", addrStr)
 			return
 		}

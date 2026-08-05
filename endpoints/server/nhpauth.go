@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 
+	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -111,6 +112,50 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 		log.Info("server-agent(%s#%d@%s)[HandleKnockRequest] succeed: %+v", knkMsg.UserId, transactionId, addrStr)
 	}()
 
+	// Record the access decision in the tamper-evident audit ledger. Only
+	// the NHP knock path is a per-resource access decision; the DHP path
+	// (evidence appraisal) is audited elsewhere. The ledger nil-guards, so
+	// this whole block is skipped cheaply when auditing is off.
+	//
+	// This deliberately records the DECISION, not its delivery: it is
+	// emitted before the ACK is handed to the transaction, so a later send
+	// failure still leaves a "granted" entry. That is the intent — the
+	// authorization outcome is what an audit trail must capture, and the
+	// agent simply retries when an ACK is lost.
+	if s.auditLedger != nil && ppd.HeaderType != core.DHP_KNK {
+		// Grant means a nil error AND an ack code that is not a failure: a
+		// plugin may return a failure ErrCode with a nil error (a soft denial),
+		// and recording that as "granted" would hide it from a SIEM rule keyed
+		// on result. The raw code is kept in errCode regardless. See
+		// decisionGranted.
+		ackCode := ""
+		if ackMsg != nil {
+			ackCode = ackMsg.ErrCode
+		}
+		severity, result := audit.SeverityWarn, "denied"
+		if decisionGranted(err, ackCode) {
+			severity, result = audit.SeverityInfo, "granted"
+		}
+		fields := map[string]string{
+			"user":    knkMsg.UserId,
+			"device":  knkMsg.DeviceId,
+			"src":     addrStr,
+			"aspId":   knkMsg.AuthServiceId,
+			"resId":   knkMsg.ResourceId,
+			"op":      auditKnockOp(knkMsg.HeaderType),
+			"via":     "udp",
+			"peerKey": shortKey(base64.StdEncoding.EncodeToString(ppd.RemotePubKey)),
+			"result":  result,
+		}
+		if ackCode != "" {
+			fields["errCode"] = ackCode
+		}
+		if err != nil {
+			fields["reason"] = err.Error()
+		}
+		s.auditEvent("knock", severity, fields)
+	}
+
 	// send back knock ack response
 	ackBytes, _ := json.Marshal(ackMsg)
 
@@ -137,4 +182,22 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 
 	transaction.NextMsgCh <- ackMd
 	return nil
+}
+
+// auditKnockOp names the knock operation for the audit trail. NHP_KNK,
+// NHP_RKN and NHP_EXT all dispatch through HandleKnockRequest, and NHP_EXT
+// closes access, so recording the type keeps a close from reading as a
+// granted open. On the granted path knkMsg.HeaderType is the
+// AEAD-authenticated body value (verifyKnockHeaderType confirmed it matches
+// the wire type). On a denial it can be zero — a body that failed to
+// unmarshal, or a legacy agent rejected by that same gate — and
+// core.HeaderTypeToString(0) is NHP_KPL (keepalive), which would mislabel a
+// whole class of rejected knocks as keepalives. An unset type is reported as
+// "unknown" so the trail never claims a type the decision did not
+// authenticate.
+func auditKnockOp(headerType int) string {
+	if headerType == core.NHP_KPL {
+		return "unknown"
+	}
+	return core.HeaderTypeToString(headerType)
 }

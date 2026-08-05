@@ -17,6 +17,7 @@ import (
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 
+	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -339,11 +340,55 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 		knkMsg.HeaderType = core.NHP_EXT
 	}
 
+	// Declared before the audit defer below so the closure can read the
+	// populated error code off it. The named return `ack` stays nil on every
+	// naked `return` (resource-not-found, all-AC-failed), so reading `ack`
+	// there would drop errCode on exactly the denials that carry it.
 	ackMsg := &common.ServerKnockAckMsg{
 		AuthProviderToken: req.Token,
 		AgentAddr:         srcIp,
 		OpenTime:          res.OpenTime,
 	}
+
+	// Record the HTTP access decision in the same ledger as the UDP knock
+	// path — the browser / js-agent flow opens AC rules too, so leaving it
+	// out would give the trail a blind spot exactly where the demo stack
+	// operates. Deferred so every return path (resource-not-found, no AC
+	// connection, all-AC-failed, success) is covered from the final err/ack.
+	defer func() {
+		if s == nil || s.auditLedger == nil {
+			return
+		}
+		// Grant means a nil error AND an ack code that is not a failure, so a
+		// soft denial does not read as "granted". See decisionGranted.
+		severity, result := audit.SeverityWarn, "denied"
+		if decisionGranted(err, ackMsg.ErrCode) {
+			severity, result = audit.SeverityInfo, "granted"
+		}
+		op := "open"
+		if knkMsg.HeaderType == core.NHP_EXT {
+			op = "close"
+		}
+		fields := map[string]string{
+			"user":   knkMsg.UserId,
+			"device": knkMsg.DeviceId,
+			"src":    srcIp,
+			"aspId":  knkMsg.AuthServiceId,
+			"resId":  knkMsg.ResourceId,
+			"op":     op,
+			"via":    "http",
+			"result": result,
+		}
+		// ackMsg always carries the code set on the failure paths; the named
+		// return ack only mirrors it on success (return ackMsg, nil).
+		if ackMsg.ErrCode != "" {
+			fields["errCode"] = ackMsg.ErrCode
+		}
+		if err != nil {
+			fields["reason"] = err.Error()
+		}
+		s.auditEvent("knock", severity, fields)
+	}()
 
 	if len(res.Resources) == 0 {
 		err = common.ErrResourceNotFound

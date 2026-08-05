@@ -87,3 +87,15 @@ CookieSigningKeyBase64 = "w62S2G1P5GOG66Y5tIv3WlfBv8CNBdDe2JJDFr9Q+h0="
 # if unset / non-positive, giving an agent [60, 120) seconds to redeem.
 CookieTimeWindowSeconds = 60
 
+
+# [Audit]: tamper-evident, hash-chained security audit ledger. Off by
+# default; see endpoints/server/main/etc/config.toml for the full field
+# docs and threat model. This is the second instance — if you enable
+# auditing and it shares a volume with the first, set a distinct FilePath
+# here (there is no cross-process lock on the ledger).
+[Audit]
+Enabled = false
+FilePath = ""
+Fsync = false
+SigningKeyBase64 = ""
+FailClosed = false

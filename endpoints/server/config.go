@@ -168,6 +168,101 @@ type Config struct {
 	// validation will reject the key and knocks will fail as if the
 	// agent were never registered. Default 86400 (24h) if unset / zero.
 	AgentKeyTTLSeconds int `json:"agentKeyTTLSeconds"`
+
+	// Audit configures the tamper-evident security audit ledger. Disabled
+	// by default; see AuditConfig.
+	Audit AuditConfig `json:"audit"`
+}
+
+// AuditConfig controls the hash-chained security audit ledger. When
+// enabled, security-relevant decisions (knock granted/denied over UDP and
+// HTTP, agent registered) are appended as JSON lines linked into a hash
+// chain that makes after-the-fact tampering detectable. When enabled it is
+// the server's structured audit trail — the nhp/log "[Audit]" stream is an
+// unused API, so this does not duplicate an existing log.
+type AuditConfig struct {
+	// Enabled turns the ledger on. Off by default.
+	Enabled bool `json:"enabled"`
+	// FilePath is where the ledger is written. Relative paths resolve
+	// against <exe_dir>. Defaults to "<exe_dir>/audit/audit-ledger.jsonl"
+	// (its own directory, not logs/, so a logrotate rule aimed at logs/ can't
+	// reach it).
+	//
+	// Do NOT point an external log-rotation tool at this file while the
+	// server is running. The ledger holds one append handle for the process
+	// lifetime and does not reopen: a rename+create rotation sends every
+	// later entry to the rotated-away inode (auditing silently stops until
+	// restart), and a copytruncate resets the file to offset 0 while the
+	// in-memory seq/hash keep advancing, so `audit verify` then reports a
+	// chain break — the wording for tampering — for a routine cron job.
+	// Rotate only while the server is stopped, or archive whole segments
+	// out of band and let this file keep growing.
+	//
+	// Do NOT point two processes at the same FilePath either. Each writer
+	// keeps its own in-memory seq/lastHash, so interleaved appends produce
+	// duplicate seq values and broken prevHash links that verify reports as
+	// tampering; worse, one process's torn-tail repair (an O_RDWR truncate
+	// back to the last newline) can delete an entry the other just committed.
+	// There is no cross-process lock, so give each instance its own ledger —
+	// this matters for the bundled server/server2 two-cluster demo.
+	FilePath string `json:"filePath"`
+	// Fsync flushes each entry to disk before returning. Note that entries
+	// are written synchronously on the request path, so audit volume tracks
+	// knock volume: with this on, every access decision costs a disk flush
+	// and all audit writes serialize behind one mutex. Worth the durability
+	// on a normal gateway, but turn it off if the ledger becomes a
+	// bottleneck under load — the hash chain stays intact either way.
+	Fsync bool `json:"fsync"`
+	// SigningKeyBase64 is an optional base64 HMAC key (at least 32 bytes
+	// after decoding; a shorter value is rejected at startup). When set,
+	// each entry is additionally signed so the chain is bound to a secret
+	// the log file does not contain. Without it, the hash chain alone still
+	// detects local edits, deletions and reordering.
+	//
+	// Be precise about what the signature buys you. The key lives in this
+	// config file, so an attacker who has taken over the server process
+	// (running as its uid, or root) can read the key, rewrite the ledger,
+	// and re-sign it — the signature does NOT survive a full host
+	// compromise. What it does defend against is an attacker who can write
+	// the log but not read this config: a compromised log-shipping account,
+	// or offline tampering with an archived copy. For protection against a
+	// host compromise the key has to live off the host (an append-only sink
+	// the server can write but not rewrite).
+	//
+	// One attack is undetectable from the file alone even with a key:
+	// truncating entries off the END leaves a shorter chain that still
+	// verifies, because a hash chain cannot prove it was not shortened.
+	// Detecting rollback needs an external anchor — periodically record the
+	// latest seq+hash off-host and compare against it.
+	SigningKeyBase64 string `json:"signingKey"`
+
+	// FailClosed controls what happens when the ledger cannot be opened at
+	// startup (a corrupt or foreign file at FilePath, a permission problem).
+	//
+	// Default (false): fail SAFE. A file that does not look like a ledger is
+	// moved aside to "<path>.corrupt-<timestamp>" and a fresh chain is
+	// started, so the gateway keeps producing an audit trail. This matters
+	// because the alternative is fail-OPEN — an attacker who can write the
+	// log (the very actor signing defends against) could otherwise disable
+	// the recorder for good with one junk byte, while the server keeps
+	// serving. A chain that restarts at seq 1 next to a .corrupt sibling is a
+	// loud, detectable signal; a silently missing ledger is not. The moved
+	// aside copy guards against accidents and casual edits, not against
+	// someone with write access to the directory, who can delete it too.
+	//
+	// true: fail CLOSED. Any open failure aborts startup instead. Choose this
+	// when a verifiable, uninterrupted trail is a hard requirement and you
+	// would rather the gateway not serve at all than serve unaudited. The
+	// offending file is left untouched for inspection.
+	//
+	// Either way, this only governs STARTUP. A write that fails while the
+	// server is already running (disk full, the file made unwritable) is
+	// logged but never blocks the request, so access decisions keep flowing
+	// while the trail is blind. A sustained run of such failures escalates to
+	// a rate-limited Critical (see auditEvent) so it cannot pass unnoticed,
+	// but there is deliberately no runtime fail-closed: an audit hiccup must
+	// not take the gateway down mid-flight.
+	FailClosed bool `json:"failClosed"`
 }
 
 type RemoteConfig struct {

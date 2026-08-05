@@ -16,3 +16,14 @@ DisableAgentValidation = false
 # for the multi-replica rationale).
 CookieSigningKeyBase64 = "${NHP_SERVER2_COOKIE_SIGNING_KEY}"
 CookieTimeWindowSeconds = 60
+
+# [Audit]: tamper-evident, hash-chained security audit ledger. Off by
+# default; see endpoints/server/main/etc/config.toml for the full field
+# docs and threat model. Cluster 2 runs on its own host, so the default
+# per-exe-dir ledger path does not collide with cluster 1.
+[Audit]
+Enabled = false
+FilePath = ""
+Fsync = false
+SigningKeyBase64 = ""
+FailClosed = false

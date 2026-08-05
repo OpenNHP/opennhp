@@ -14,6 +14,7 @@ import (
 
 	"github.com/OpenNHP/opennhp/nhp/etcd"
 
+	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -124,6 +125,19 @@ type UdpServer struct {
 
 	// keyStore persists agent public keys and OTP records in SQLite.
 	keyStore *AgentKeyStore
+
+	// auditLedger is the tamper-evident security audit ledger. nil when
+	// auditing is disabled (the default). Emission goes through the nil-safe
+	// auditEvent helper, so a bare call is always safe; the handlers still
+	// wrap their whole build-the-fields block in an `if s.auditLedger != nil`
+	// to skip that work entirely when auditing is off.
+	auditLedger *audit.Ledger
+
+	// auditWriteFails counts CONSECUTIVE ledger write failures so a sustained
+	// outage (disk full, file made unwritable) escalates to a rate-limited
+	// Critical instead of scrolling past as a single Error line. Reset to 0 on
+	// the next successful write.
+	auditWriteFails atomic.Uint64
 
 	//NHP-DB
 	dbPeerMapMutex sync.Mutex
@@ -374,6 +388,22 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 	s.keyStore = ks
 
+	// Initialize the tamper-evident audit ledger if enabled. By default a
+	// failure here is logged but never blocks startup: refusing to boot the
+	// gateway because an audit file can't be opened would turn a logging
+	// problem into an outage, and initAuditLedger already recovers a corrupt
+	// file by quarantining it and starting a fresh chain. The server then
+	// continues with auditing disabled only for a failure it could not
+	// recover (e.g. an unwritable directory). An operator who requires an
+	// uninterrupted trail sets [Audit] FailClosed, which turns any such
+	// failure into a hard startup error instead.
+	if auditErr := s.initAuditLedger(); auditErr != nil {
+		if s.config != nil && s.config.Audit.FailClosed {
+			return fmt.Errorf("audit ledger unavailable and [Audit] FailClosed is set — refusing to start: %w", auditErr)
+		}
+		log.Critical("audit ledger disabled — failed to open: %v", auditErr)
+	}
+
 	s.remoteConnectionMap = make(map[string]*UdpConn)
 	s.relayConnCount = make(map[string]int)
 	s.acConnectionMap = make(map[string]*ACConn)
@@ -480,6 +510,8 @@ func (s *UdpServer) Stop() {
 	if s.keyStore != nil {
 		s.keyStore.Close()
 	}
+
+	s.closeAuditLedger()
 
 	log.Info("==========================")
 	log.Info("=== NHP-Server stopped ===")

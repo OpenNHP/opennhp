@@ -83,6 +83,8 @@ generate-version-and-build:
 	@$(MAKE) serverd
 	@$(MAKE) db
 	@$(MAKE) kgc
+	@$(MAKE) relayd
+	@$(MAKE) demo-app
 	@$(MAKE) linuxagentsdk
 	@$(MAKE) androidagentsdk
 	@$(MAKE) macosagentsdk
@@ -110,6 +112,11 @@ init:
 			done \
 		fi \
 	done
+	# demo-app-plugin is a top-level example, not nested under server_plugin/.
+	@if [ -f ./examples/demo-app-plugin/go.mod ]; then \
+		echo "$(COLOUR_BLUE)[Plugin-demo-app] Running go mod download... $(END_COLOUR)"; \
+		cd ./examples/demo-app-plugin && go mod download && go mod tidy && cd - > /dev/null; \
+	fi
 
 # Use this target when you need to update dependencies (will modify go.sum)
 tidy:
@@ -129,6 +136,10 @@ tidy:
 			done \
 		fi \
 	done
+	@if [ -f ./examples/demo-app-plugin/go.mod ]; then \
+		echo "$(COLOUR_BLUE)[Plugin-demo-app] Running go mod tidy... $(END_COLOUR)"; \
+		cd ./examples/demo-app-plugin && go mod tidy && cd - > /dev/null; \
+	fi
 	@echo "$(COLOUR_GREEN)[OpenNHP] go mod tidy complete. Remember to commit go.sum files!$(END_COLOUR)"
 
 agentd:
@@ -171,6 +182,43 @@ relayd:
 	go build -trimpath -ldflags ${LD_FLAGS} -v -o ../release/nhp-relay/nhp-relayd ./relay/main/main.go && \
 	mkdir -p ../release/nhp-relay/etc; \
 	cp ./relay/main/etc/*.toml ../release/nhp-relay/etc/
+
+# Build the standalone Demo App binary. The //go:embed directive in
+# endpoints/demo-app/main/main.go pulls web/ templates + static assets
+# into the binary, so we don't have to copy them afterwards. The
+# browser-side JS Agent bundle is built first and copied into web/static/
+# so the //go:embed picks it up.
+demo-app:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Building demo-app... $(END_COLOUR)"
+	cd endpoints/js-agent && \
+	[ -d node_modules ] || (echo "$(COLOUR_BLUE)[demo-app] Installing js-agent deps...$(END_COLOUR)" && npm ci --silent || npm install --silent)
+	cd endpoints/js-agent && npm run build --silent
+	# Each recipe line is a fresh subshell, so cd above doesn't carry
+	# over — but mixing bare `mkdir -p endpoints/...` with a later
+	# `cd endpoints &&` would put mkdir inside the wrong root if it
+	# did. Pin this line explicitly to the repo root:
+	$(MAKE) -s --no-print-directory copy-js-agent-bundle
+	cd endpoints && \
+	go build -trimpath -ldflags ${LD_FLAGS} -v -o ../release/demo-app/demo-appd ./demo-app/main/main.go && \
+	mkdir -p ../release/demo-app/etc; \
+	cp ./demo-app/main/etc/*.toml ../release/demo-app/etc/
+
+# Internal helper — invoked by the demo-app target to drop the bundle
+# next to the //go:embed source. Kept separate so the path handling is
+# explicit (no inherited cwd from prior cd commands).
+copy-js-agent-bundle:
+	@mkdir -p endpoints/demo-app/main/web/static
+	@cp endpoints/js-agent/dist/nhp-agent.esm.js endpoints/demo-app/main/web/static/
+
+# Build the demo-app-plugin (.so) that nhp-server loads. Output lands
+# in release/nhp-server/plugins/demo-app/ alongside the example plugin.
+demo-app-plugin:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Building demo-app-plugin... $(END_COLOUR)"
+	cd examples/demo-app-plugin && \
+	go build -buildmode=plugin -trimpath -ldflags "${CUSTOM_LD_FLAGS} -s -w" -v \
+	    -o ../../release/nhp-server/plugins/demo-app/demo-app.so ./main.go && \
+	mkdir -p ../../release/nhp-server/plugins/demo-app/etc && \
+	cp ./etc/*.toml ../../release/nhp-server/plugins/demo-app/etc/
 
 linuxagentsdk:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building Linux agent SDK... $(END_COLOUR)"
@@ -254,6 +302,11 @@ plugins: check-plugin-deps
 			done \
 		fi \
 	done
+	# demo-app-plugin lives outside server_plugin/; build it explicitly.
+	@if [ -f ./examples/demo-app-plugin/Makefile ]; then \
+		echo "$(COLOUR_BLUE)[Plugin-demo-app] Building... $(END_COLOUR)"; \
+		$(MAKE) -C ./examples/demo-app-plugin || exit 1; \
+	fi
 # Development build (faster, no version injection)
 dev:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Development build...$(END_COLOUR)"
@@ -322,6 +375,8 @@ help:
 	@echo "  make db         - Build nhp-db"
 	@echo "  make kgc        - Build nhp-kgc"
 	@echo "  make relayd     - Build nhp-relay"
+	@echo "  make demo-app   - Build the standalone Demo App"
+	@echo "  make demo-app-plugin - Build the demo-app nhp-server plugin"
 	@echo "  make plugins    - Build server plugins"
 	@echo ""
 	@echo "$(COLOUR_GREEN)SDK:$(END_COLOUR)"
@@ -373,4 +428,4 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins check-plugin-deps dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf clean_ebpf
+.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd demo-app demo-app-plugin linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins check-plugin-deps dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf clean_ebpf

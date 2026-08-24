@@ -1,0 +1,29 @@
+# demo-app-plugin runtime config — bind-mounted into the nhp-server
+# container at /nhp-server/plugins/demo-app/etc/config.toml.
+#
+# DemoAppBaseUrl: where the standalone Demo App listens on the docker
+# network. The plugin POSTs OTP delivery + mark-registered callbacks
+# here. We use the service name (not 127.0.0.1) because nhp-relay and
+# nhp-server can resolve each container by its compose service name.
+DemoAppBaseUrl = "http://demo-app:8088"
+
+# InternalApiKey: shared secret matching demo-app/etc/config.toml's
+# internalApiKey. Sent as the X-Plugin-Api-Key header.
+InternalApiKey = "${DEMO_APP_INTERNAL_API_KEY}"
+
+# AuthServiceId: must match the ASP name in
+# nhp-server/etc/resource.toml ("demo-app") and the
+# nhp.authServiceId in demo-app/etc/config.toml.
+AuthServiceId = "demo-app"
+
+# Resources mirrors resource.toml on the server. The plugin returns
+# this list verbatim in response to NHP_LST so the dashboard can
+# render one card per resource.
+[[Resources]]
+ResId = "demo"
+OpenTime = 30
+SkipAuth = true
+  [Resources.NHP]
+  ResId = "demo"
+  ACId = "demo-ac"
+  Hostname = "web-app"

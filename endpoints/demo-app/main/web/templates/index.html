@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>OpenNHP Demo</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="topnav">
+        <div class="brand">OpenNHP Demo</div>
+        <nav>
+            {{ if .OIDCEnabled }}<a href="/auth/oidc/start">Single Sign-On</a>{{ end }}
+            <a href="/login">Sign in</a>
+            <a class="primary" href="/register">Create account</a>
+        </nav>
+    </header>
+    <main class="hero">
+        <h1>Zero-trust access via NHP</h1>
+        <p>This demo registers your account with the nhp-server using a Noise-protocol keypair generated in your browser. Once registered, you can knock on hidden resources without ever exposing their ports.</p>
+        <div class="cta">
+            <a class="btn primary" href="/register">Get started</a>
+            <a class="btn" href="/login">I already have an account</a>
+        </div>
+    </main>
+</body>
+</html>

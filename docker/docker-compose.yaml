@@ -29,6 +29,10 @@ services:
       - ./nhp-server/logs/:/nhp-server/logs/:rw
       - ./nhp-server/templates/:/nhp-server/templates/:rw
       - ./nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
+      # demo-app-plugin lives next to the example plugin; bind its etc/
+      # so operators can tweak DemoAppBaseUrl / InternalApiKey without
+      # rebuilding the server image.
+      - ./nhp-server/plugins/demo-app/etc/:/nhp-server/plugins/demo-app/etc/:rw
 
   # Second nhp-server instance sharing the same ECDH keypair (one logical
   # cluster identity, two reachable endpoints). Both instances mount the same
@@ -60,6 +64,7 @@ services:
       - ./nhp-server/logs-2/:/nhp-server/logs/:rw
       - ./nhp-server/templates/:/nhp-server/templates/:rw
       - ./nhp-server/plugins/example/etc/:/nhp-server/plugins/example/etc/:rw
+      - ./nhp-server/plugins/demo-app/etc/:/nhp-server/plugins/demo-app/etc/:rw
     depends_on:
       - nhp-server
 
@@ -101,6 +106,39 @@ services:
     networks:
       network_default:
         ipv4_address: 177.7.0.11
+
+  # Standalone Demo App: hosts user accounts (username/password or OIDC)
+  # and brokers the NHP key registration flow through js-agent in the
+  # browser. Private keys never leave the browser; the Demo App only
+  # stores the encrypted blob. The plugin running inside nhp-server
+  # talks back to this service over HTTP via /internal/nhp/*.
+  demo-app:
+    image: opennhp-demo-app
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile.demo-app
+      args:
+        - GOPROXY=${GOPROXY:-}
+        - APT_MIRROR=${APT_MIRROR:-}
+    container_name: demo-app
+    restart: always
+    # Browser-facing port. Mapped to the host so a developer can hit
+    # http://localhost:8088 from outside the stack.
+    ports:
+      - "8088:8088"
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.20
+    environment:
+      - DEMO_APP_DB_PATH=/demo-app/data/demo.db
+      - DEMO_APP_LISTEN_ADDR=:8088
+    depends_on:
+      - nhp-server
+      - nhp-relay
+    volumes:
+      - ./demo-app/etc/:/demo-app/etc/:rw
+      - ./demo-app/data/:/demo-app/data/:rw
+      - ./demo-app/logs/:/demo-app/logs/:rw
 
   nhp-relay:
     image: opennhp-relay

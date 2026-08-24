@@ -1,0 +1,47 @@
+FROM opennhp-base:latest AS builder
+
+WORKDIR /workdir
+
+COPY . .
+
+RUN echo "Building for architecture: ${TARGETARCH}"
+
+# Build the js-agent browser bundle first — the demo-app binary embeds
+# it via //go:embed, so this step has to finish before `go build` runs.
+# We only ship the ESM build (the only one the browser loads); the .cjs
+# variant stays in js-agent/dist/ for Node consumers but is dropped to
+# keep the runtime image small.
+WORKDIR /workdir/endpoints/js-agent
+RUN [ -d node_modules ] || (echo "Installing js-agent deps..." && npm ci --silent || npm install --silent)
+RUN npm run build --silent && \
+    mkdir -p /workdir/endpoints/demo-app/main/web/static && \
+    cp dist/nhp-agent.esm.js /workdir/endpoints/demo-app/main/web/static/
+
+# Now build the Go binary with the bundle in place.
+WORKDIR /workdir
+RUN make init demo-app
+
+FROM ubuntu:22.04 AS runtime
+
+ARG APT_MIRROR=
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Switch APT mirror if specified
+RUN if [ -n "$APT_MIRROR" ]; then \
+    sed -i "s|ports.ubuntu.com|${APT_MIRROR}|g" /etc/apt/sources.list && \
+    sed -i "s|archive.ubuntu.com|${APT_MIRROR}|g" /etc/apt/sources.list && \
+    sed -i "s|security.ubuntu.com|${APT_MIRROR}|g" /etc/apt/sources.list; \
+    fi
+
+RUN apt-get update && \
+    apt-get install -y \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /workdir/release/demo-app /demo-app
+
+# Persistent volume mounts (etc/, data/, logs/) are wired by docker-compose;
+# this CMD just runs the binary in foreground.
+ENTRYPOINT ["/demo-app/demo-appd"]
+CMD ["--config", "/demo-app/etc/config.toml"]

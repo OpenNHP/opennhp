@@ -1,0 +1,44 @@
+# Demo App sample config — copied to release/demo-app/etc/ by the
+# `make demo-app` target. Edit for your environment, or point
+# --config at this file directly when running `go run`.
+#
+# Important: in docker-compose this file is NOT used; that stack uses
+# docker/demo-app/etc/config.toml (bind-mounted into the container).
+
+listenAddr = ":8088"
+dbPath = "./data/demo.db"
+# Override in real deployments — the value below is the dev fallback
+# baked into LoadConfig, kept here as a comment marker.
+# sessionSecret = "please-rotate-me-with-32-random-bytes"
+internalApiKey = "change-me-in-production"
+otpTTLMinutes = 5
+logLevel = 5
+
+[smtp]
+mode = "console"
+host = ""
+port = 587
+username = ""
+password = ""
+from = "noreply@opennhp.demo"
+subject = "Your OpenNHP Demo verification code"
+codeInSubject = true
+
+[oidc]
+enabled = false
+issuerUrl = ""
+clientId = ""
+clientSecret = ""
+redirectUrl = ""
+scopes = "openid email profile"
+
+[ nhp ]
+# When running locally outside docker, point at nhp-relay's host port.
+relayUrl = "http://localhost:8080"
+# Paste your nhp-server's base64 Curve25519 public key here. Use
+# `./nhp-serverd keygen --curve --json` to extract it from the
+# matching private key, or read PrivateKeyBase64's counterpart from
+# nhp-server/etc/agent.toml.
+serverPublicKey = ""
+authServiceId = "demo-app"
+cipherScheme = "curve25519"

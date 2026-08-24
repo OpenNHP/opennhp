@@ -4,14 +4,14 @@
   "private": true,
   "description": "OpenNHP JavaScript/TypeScript SDK for zero-trust network security",
   "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/nhp-agent.cjs",
+  "module": "./dist/nhp-agent.esm.js",
+  "types": "./dist/nhp-agent.esm.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "types": "./dist/nhp-agent.esm.d.ts",
+      "import": "./dist/nhp-agent.esm.js",
+      "require": "./dist/nhp-agent.cjs"
     }
   },
   "files": [

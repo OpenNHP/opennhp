@@ -18,9 +18,12 @@ import type {
   AgentIdentity,
   AgentOTPMsg,
   AgentRegisterMsg,
+  AgentListMsg,
   ServerRegisterAckMsg,
+  ServerListResultMsg,
   OtpResult,
   RegisterResult,
+  ListResult,
   ParsedPacket,
   WebAuthnCredential,
   WebAuthnAssertion,
@@ -506,6 +509,85 @@ export class NHPAgent {
     } catch (err) {
       const error = err instanceof Error ? err.message : 'Unknown error';
       this.log('error', `Registration failed: ${error}`);
+      return { success: false, error, errorCode: '5' };
+    }
+  }
+
+  /**
+   * List resources/services the agent is authorized to access.
+   *
+   * Sends an NHP_LST packet to the server; the ASP plugin responds with
+   * an NHP_LRT carrying a free-form list payload. Like registration, LST
+   * starts a fresh Noise chain — there is no KNK to extend.
+   *
+   * @param serviceId - Auth Service Provider ID
+   * @param userData - Optional user data passed to the ASP plugin
+   * @returns List result with the plugin-defined payload
+   */
+  async listServices(
+    serviceId: string,
+    userData?: Record<string, unknown>,
+  ): Promise<ListResult> {
+    if (!this.initialized || !this.keyPair) {
+      return { success: false, error: 'Agent not initialized', errorCode: '1' };
+    }
+    if (!this.identity) {
+      return { success: false, error: 'Identity not set. Call setIdentity() first.', errorCode: '2' };
+    }
+
+    const server = this.getDefaultServer();
+    if (!server) {
+      return { success: false, error: 'No server configured. Call addServer() first.', errorCode: '3' };
+    }
+
+    try {
+      const lstMsg: AgentListMsg = {
+        usrId: this.identity.userId,
+        devId: this.identity.deviceId,
+        orgId: this.identity.organizationId,
+        aspId: serviceId,
+        usrData: userData,
+      };
+
+      const message = JSON.stringify(lstMsg);
+      const packet = await buildNHPPacket(
+        NHP_PACKET_TYPES.LST,
+        this.keyPair.privateKey,
+        this.keyPair.publicKey,
+        server.publicKey,
+        message,
+        true, // compress
+        this.config.cipherScheme,
+        this.packetContext,
+      );
+
+      const transport = await this.getOrCreateTransport(server);
+      const zeroChainKey = new Uint8Array(32);
+      const response = await this.sendAndWaitForResponse(transport, packet, server.publicKey, zeroChainKey);
+
+      if (response.type !== (NHP_PACKET_TYPES.LRT as number)) {
+        return {
+          success: false,
+          error: `Unexpected response type: ${response.type}`,
+          errorCode: '4',
+        };
+      }
+
+      const lrt: ServerListResultMsg = JSON.parse(response.message);
+
+      if (lrt.errCode && lrt.errCode !== '' && lrt.errCode !== '0') {
+        return {
+          success: false,
+          error: lrt.errMsg || `List failed: ${lrt.errCode}`,
+          errorCode: lrt.errCode,
+        };
+      }
+
+      this.log('info', `List successful for user=${this.identity.userId}`);
+      return { success: true, list: lrt.list };
+    } catch (err) {
+      const error = err instanceof Error ? err.message : 'Unknown error';
+      this.log('error', `List failed: ${error}`);
       return { success: false, error, errorCode: '5' };
     }
   }

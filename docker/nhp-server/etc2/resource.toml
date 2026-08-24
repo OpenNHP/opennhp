@@ -5,3 +5,10 @@
 # PluginPath: path of plugin to implement auth logic.
 ["example"]
 PluginPath = "example/example.so"
+
+# demo-app ASP — backed by demo-app-plugin. Mirrors etc/resource.toml so
+# nhp-server-2 (the cluster peer) advertises the same AuthServiceId and
+# the agent's NHP_LST returns the same resource catalog regardless of
+# which instance it lands on.
+["demo-app"]
+PluginPath = "demo-app/demo-app.so"

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Create account — OpenNHP Demo</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script>
+        // Inlined server-side NHP configuration so the wizard can construct
+        // js-agent without an extra round-trip.
+        window.__NHP__ = {
+            authServiceId: {{ .AuthServiceId | printf "%q" }},
+            cipherScheme: {{ .CipherScheme | printf "%q" }}
+        };
+    </script>
+</head>
+<body>
+    <main class="card wide">
+        <h1>Create your demo account</h1>
+
+        <!-- Step 1: account details -->
+        <section id="step-account" class="step active">
+            <h2>1. Account</h2>
+            <form id="register-form">
+                <label>Username <input type="text" name="username" autocomplete="username" required minlength="3" maxlength="64"></label>
+                <label>Email <input type="email" name="email" autocomplete="email" required></label>
+                <label>Password
+                    <input type="password" name="password" autocomplete="new-password" required minlength="8">
+                    <small>Used both for login and for encrypting your NHP private key in the browser.</small>
+                </label>
+                <button type="submit" class="btn primary">Generate NHP keypair &amp; request OTP</button>
+                <p id="step1-error" class="error" hidden></p>
+            </form>
+        </section>
+
+        <!-- Step 2: OTP input -->
+        <section id="step-otp" class="step">
+            <h2>2. Verification code</h2>
+            <p>We sent a 6-digit code to your email. Enter it below to register your NHP public key with the server.</p>
+            <form id="otp-form">
+                <label>OTP code <input type="text" name="otp" pattern="\d{6}" maxlength="6" required></label>
+                <button type="submit" class="btn primary">Complete registration</button>
+                <p id="step2-error" class="error" hidden></p>
+            </form>
+        </section>
+
+        <!-- Step 3: success -->
+        <section id="step-done" class="step">
+            <h2>3. Registration complete</h2>
+            <p>Your account and NHP public key are both registered. You can now sign in and access hidden resources.</p>
+            <a class="btn primary" href="/dashboard">Open dashboard</a>
+        </section>
+    </main>
+    <script type="module" src="/static/register.js"></script>
+</body>
+</html>

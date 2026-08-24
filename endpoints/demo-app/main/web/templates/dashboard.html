@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Dashboard — OpenNHP Demo</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script>
+        window.__NHP__ = {
+            authServiceId: {{ .AuthServiceId | printf "%q" }},
+            cipherScheme: {{ .CipherScheme | printf "%q" }}
+        };
+    </script>
+</head>
+<body>
+    <header class="topnav">
+        <div class="brand">OpenNHP Demo — Dashboard</div>
+        <nav>
+            <span class="user">{{ .Username }}{{ if .OIDCProvider }} <small>(via {{ .OIDCProvider }})</small>{{ end }}</span>
+            <button id="logout-btn" class="btn">Sign out</button>
+        </nav>
+    </header>
+
+    <main class="dashboard">
+        <section id="key-prompt" class="card">
+            <h2>Unlock your NHP key</h2>
+            <p>Enter your password to decrypt your NHP private key. We don't store it in plaintext.</p>
+            <form id="unlock-form">
+                <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+                <button type="submit" class="btn primary">Unlock</button>
+            </form>
+        </section>
+
+        <section id="resources" class="card" hidden>
+            <h2>Protected resources</h2>
+            <p id="resources-status">Loading…</p>
+            <ul id="resource-list"></ul>
+        </section>
+
+        <section id="knock-result" class="card" hidden>
+            <h2>Access granted</h2>
+            <p id="knock-host"></p>
+            <p>Open until: <code id="knock-expires"></code></p>
+        </section>
+
+        <p id="dashboard-error" class="error" hidden></p>
+    </main>
+    <script type="module" src="/static/dashboard.js"></script>
+</body>
+</html>

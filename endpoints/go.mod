@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/OpenNHP/opennhp/nhp v0.6.0
 	github.com/cilium/ebpf v0.22.0
+	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/emmansun/gmsm v0.44.1
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gin-contrib/sessions v1.1.0
@@ -16,7 +17,9 @@ require (
 	github.com/sigstore/cosign/v2 v2.6.5
 	github.com/spf13/viper v1.21.0
 	github.com/urfave/cli/v2 v2.27.7
+	golang.org/x/crypto v0.54.0
 	golang.org/x/mobile v0.0.0-20190719004257-d2bd2a29d028
+	golang.org/x/oauth2 v0.36.0
 	modernc.org/sqlite v1.56.0
 )
 
@@ -31,7 +34,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/coocood/freecache v1.2.7 // indirect
-	github.com/coreos/go-oidc/v3 v3.17.0 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
@@ -152,10 +154,8 @@ require (
 	go.uber.org/zap v1.28.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.23.0 // indirect
-	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
-	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/term v0.45.0 // indirect

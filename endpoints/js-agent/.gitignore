@@ -3,3 +3,9 @@ docs/
 coverage/
 *.log
 .DS_Store
+
+# js-agent bundle copied into the demo-app's embedded static dir by
+# `make demo-app`. Re-generated on every build; keeping the artifact out
+# of git avoids constant churn in `git diff --stat`.
+../demo-app/main/web/static/nhp-agent.esm.js
+../demo-app/main/web/static/nhp-agent.esm.js.map

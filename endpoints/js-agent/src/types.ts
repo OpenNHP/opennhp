@@ -314,6 +314,37 @@ export interface AgentRegisterMsg {
 }
 
 /**
+ * Agent List Message - matches Go AgentListMsg
+ * Sent by agent to query resources it is permitted to access.
+ */
+export interface AgentListMsg {
+  /** User ID */
+  usrId: string;
+  /** Device ID */
+  devId: string;
+  /** Organization ID (optional) */
+  orgId?: string;
+  /** Auth Service Provider ID */
+  aspId: string;
+  /** User data map (optional) */
+  usrData?: Record<string, unknown>;
+}
+
+/**
+ * Server List Result Message - matches Go ServerListResultMsg
+ * Response to a list request, holding service/resource entries produced
+ * by the ASP plugin.
+ */
+export interface ServerListResultMsg {
+  /** Error code ("0" means success) */
+  errCode: string;
+  /** Error message (if errCode is not "0") */
+  errMsg?: string;
+  /** Free-form list results: typically a map keyed by resId or aspId */
+  list?: Record<string, unknown>;
+}
+
+/**
  * Server Register Acknowledge Message - matches Go ServerRegisterAckMsg
  * Sent by server to confirm registration.
  */
@@ -360,4 +391,18 @@ export interface RegisterResult {
    * unit of KnockResult.expiresAt / ServerConfig.expiresAt.
    */
   expiresAt?: number;
+}
+
+/**
+ * Result of a resource-list query.
+ */
+export interface ListResult {
+  /** Whether the list request succeeded */
+  success: boolean;
+  /** Free-form list payload returned by the ASP plugin */
+  list?: Record<string, unknown>;
+  /** Error message if the request failed */
+  error?: string;
+  /** Error code if the request failed */
+  errorCode?: string;
 }

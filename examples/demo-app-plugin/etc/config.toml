@@ -1,0 +1,27 @@
+# demo-app-plugin configuration. Loaded from the plugin's working
+# directory at runtime; paths are interpreted relative to it.
+
+# Base URL of the Demo App, used for internal callbacks.
+# In docker-compose this points at the demo-app service.
+DemoAppBaseUrl = "http://demo-app:8088"
+
+# Shared secret matching Demo App's internalApiKey. The plugin sends it
+# as the X-Plugin-Api-Key header. Rotate in lockstep on both sides.
+InternalApiKey = "${DEMO_APP_INTERNAL_API_KEY}"
+
+# AuthServiceId this plugin serves. Must match the aspId in
+# nhp-server's resource.toml and the AuthServiceId field issued by
+# the js-agent at registration / knock time.
+AuthServiceId = "demo-app"
+
+# Resources this plugin advertises. They mirror the entries in
+# nhp-server/etc/resource.toml and are returned by ListService.
+# Each entry has: resId -> { acId, hostname, openTime, resources }
+[[Resources]]
+ResId = "demo"
+OpenTime = 30
+SkipAuth = true
+  [Resources.NHP]
+  ResId = "demo"
+  ACId = "demo-ac"
+  Hostname = "web-app"

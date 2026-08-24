@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Sign in — OpenNHP Demo</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <main class="card">
+        <h1>Sign in</h1>
+        <form id="login-form">
+            <label>Username <input type="text" name="username" autocomplete="username" required></label>
+            <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+            <button type="submit" class="btn primary">Sign in</button>
+            <p id="login-error" class="error" hidden></p>
+        </form>
+        <div class="card-footer">
+            <a href="/register">Create account</a>
+            {{ if .OIDCEnabled }}<a href="/auth/oidc/start">Single Sign-On</a>{{ end }}
+        </div>
+    </main>
+    <script type="module" src="/static/login.js"></script>
+</body>
+</html>

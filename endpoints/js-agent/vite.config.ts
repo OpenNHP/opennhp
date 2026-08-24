@@ -30,11 +30,17 @@ export default defineConfig({
       entry: resolve(__dirname, 'src/index.ts'),
       name: 'NHPAgent',
       formats: ['es', 'cjs'],
-      fileName: (format) => `index.${format === 'es' ? 'js' : 'cjs'}`,
+      fileName: (format) => (format === 'es' ? 'nhp-agent.esm.js' : 'nhp-agent.cjs'),
     },
     rollupOptions: {
       external: ['@noble/ciphers', '@noble/curves', '@noble/hashes'],
       output: {
+        // Mirror the file names above so each format ships under the
+        // matching secondary entry.
+        entryFileNames: (chunk) =>
+          chunk.name === 'NHPAgent' && (chunk as any).facadeModuleId?.endsWith('cjs')
+            ? 'nhp-agent.cjs'
+            : 'nhp-agent.esm.js',
         globals: {
           '@noble/ciphers': 'NobleCiphers',
           '@noble/curves': 'NobleCurves',

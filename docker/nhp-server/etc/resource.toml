@@ -5,3 +5,9 @@
 # PluginPath: path of plugin to implement auth logic.
 ["example"]
 PluginPath = "example/example.so"
+
+# demo-app ASP — backed by demo-app-plugin. AuthServiceId MUST match
+# the `nhp.authServiceId` configured in demo-app/etc/config.toml and the
+# `AuthServiceId` field in plugins/demo-app/etc/config.toml.
+["demo-app"]
+PluginPath = "demo-app/demo-app.so"

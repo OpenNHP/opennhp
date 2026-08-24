@@ -1,6 +1,7 @@
 package server
 
 import (
+	"container/list"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -58,7 +59,9 @@ type UdpServer struct {
 	// connection and remote transaction management
 
 	remoteConnectionMapMutex sync.Mutex
-	remoteConnectionMap      map[string]*UdpConn // indexed by remote UDP address
+	remoteConnectionMap      map[string]*UdpConn   // indexed by remote UDP address or relay compound key
+	connectionsByIP          map[string]*list.List // direct agent connections, oldest first
+	perIPEvictions           atomic.Int64
 
 	// relayConnCount tracks how many relay-forwarded client connections
 	// each NHP_RLY peer currently has open in remoteConnectionMap. Used
@@ -144,8 +147,8 @@ type BlockAddr struct {
 
 type UdpConn struct {
 	ConnData       *core.ConnectionData
-	isACConnection bool // Immutable. Don't change it after creation. Conn object is also stored in acConnectionMap which is indexed by ACId
-	isDBConnection bool // Immutable. Don't change it after creation. Conn object is also stored in dbConnectionMap which is indexed by DBId
+	isACConnection atomic.Bool // promoted only after HandleACOnline authenticates the peer
+	isDBConnection atomic.Bool // promoted only after HandleDBOnline authenticates the peer
 
 	// mapKey is the exact key under which this conn was inserted into
 	// remoteConnectionMap. For direct UDP clients it equals
@@ -168,6 +171,19 @@ type UdpConn struct {
 	// away from the true live-connection count and either tightening
 	// or relaxing MaxConnectionsPerRelay over time.
 	replaced atomic.Bool
+
+	// perIPElem links direct agent connections into connectionsByIP. AC, DB,
+	// and relay-forwarded connections leave it nil.
+	perIPElem *list.Element
+	// evictSignal is closed when this direct connection is the oldest entry
+	// displaced by the per-IP cap. It is nil for relay-forwarded connections,
+	// which have their own per-relay cap and therefore disable this select case.
+	evictSignal chan struct{}
+	// timeoutMs/timeoutUpdate let authenticated promotion extend a direct
+	// connection's timeout without racing ConnectionData.TimeoutMs or sending on
+	// a lifecycle channel that connection teardown closes.
+	timeoutMs     atomic.Int64
+	timeoutUpdate chan struct{}
 }
 
 type ACConn struct {
@@ -375,6 +391,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.keyStore = ks
 
 	s.remoteConnectionMap = make(map[string]*UdpConn)
+	s.connectionsByIP = make(map[string]*list.List)
 	s.relayConnCount = make(map[string]int)
 	s.acConnectionMap = make(map[string]*ACConn)
 	s.dbConnectionMap = make(map[string]*DBConn)
@@ -650,13 +667,12 @@ func (s *UdpServer) recvPacketRoutine() {
 			}
 			s.remoteConnectionMapMutex.Unlock()
 
-			isACConn := pkt.HeaderType == core.NHP_AOL
-			isDBConn := pkt.HeaderType == core.NHP_DOL
 			conn = &UdpConn{
-				isACConnection: isACConn,
-				isDBConnection: isDBConn,
-				mapKey:         addrStr,
+				mapKey:        addrStr,
+				evictSignal:   make(chan struct{}),
+				timeoutUpdate: make(chan struct{}, 1),
 			}
+			conn.timeoutMs.Store(DefaultAgentConnectionTimeoutMs)
 			// setup new routine for connection
 			conn.ConnData = &core.ConnectionData{
 				InitTime:          recvTime,
@@ -676,17 +692,7 @@ func (s *UdpServer) recvPacketRoutine() {
 				StopSignal:           make(chan struct{}),
 			}
 
-			if conn.isACConnection {
-				conn.ConnData.TimeoutMs = DefaultACConnectionTimeoutMs
-				log.Debug("Received new ac connection from %s", addrStr)
-			}
-			if conn.isDBConnection {
-				conn.ConnData.TimeoutMs = DefaultDBConnectionTimeoutMs
-				log.Debug("Received new db connection from %s", addrStr)
-			}
-			s.remoteConnectionMapMutex.Lock()
-			s.remoteConnectionMap[addrStr] = conn
-			s.remoteConnectionMapMutex.Unlock()
+			s.admitDirectConnection(conn, addrStr)
 
 			conn.ConnData.RecvQueue <- pkt
 
@@ -697,6 +703,102 @@ func (s *UdpServer) recvPacketRoutine() {
 			go s.connectionRoutine(conn)
 		}
 	}
+}
+
+// admitDirectConnection preserves the full remote UDP tuple in the global
+// map while keeping a separate IP-only FIFO for fairness. When the per-IP cap
+// is full, the oldest unauthenticated/agent routine is signaled to exit. AC and
+// DB connections enter this bucket initially and are promoted out only after
+// their online handlers authenticate the peer.
+func (s *UdpServer) admitDirectConnection(conn *UdpConn, mapKey string) {
+	s.remoteConnectionMapMutex.Lock()
+	s.remoteConnectionMap[mapKey] = conn
+
+	ip := conn.ConnData.RemoteAddr.IP.String()
+	bucket := s.connectionsByIP[ip]
+	if bucket == nil {
+		bucket = list.New()
+		s.connectionsByIP[ip] = bucket
+	}
+	var evicted *UdpConn
+	if bucket.Len() >= MaxAgentConnectionsPerIP {
+		oldestElem := bucket.Front()
+		evicted = oldestElem.Value.(*UdpConn)
+		bucket.Remove(oldestElem)
+		evicted.perIPElem = nil
+		close(evicted.evictSignal)
+	}
+	conn.perIPElem = bucket.PushBack(conn)
+	s.remoteConnectionMapMutex.Unlock()
+
+	if evicted != nil {
+		n := s.perIPEvictions.Add(1)
+		if n == 1 || n%1000 == 0 {
+			log.Warning("Per-IP agent connection cap (%d) reached for %s; evicting oldest tuple %s (total evictions: %d)",
+				MaxAgentConnectionsPerIP, ip, evicted.ConnData.RemoteAddr.String(), n)
+		}
+	}
+}
+
+type controlConnectionKind int
+
+const (
+	controlConnectionAC controlConnectionKind = iota
+	controlConnectionDB
+)
+
+// promoteControlConnection removes an authenticated AC/DB tuple from the
+// direct-agent fairness bucket and applies its longer infrastructure timeout.
+// Promotion is keyed by ConnectionData identity, so a stale handler cannot
+// promote a replacement that reused the same UDP tuple.
+func (s *UdpServer) promoteControlConnection(connData *core.ConnectionData, kind controlConnectionKind) bool {
+	if connData == nil || connData.RemoteAddr == nil {
+		return false
+	}
+	if kind != controlConnectionAC && kind != controlConnectionDB {
+		return false
+	}
+	mapKey := connData.RemoteAddr.String()
+	s.remoteConnectionMapMutex.Lock()
+	conn := s.remoteConnectionMap[mapKey]
+	if conn == nil || conn.ConnData != connData {
+		s.remoteConnectionMapMutex.Unlock()
+		return false
+	}
+	if conn.perIPElem != nil {
+		ip := connData.RemoteAddr.IP.String()
+		if bucket := s.connectionsByIP[ip]; bucket != nil {
+			bucket.Remove(conn.perIPElem)
+			if bucket.Len() == 0 {
+				delete(s.connectionsByIP, ip)
+			}
+		}
+		conn.perIPElem = nil
+	}
+	var timeout int
+	switch kind {
+	case controlConnectionAC:
+		conn.isACConnection.Store(true)
+		timeout = DefaultACConnectionTimeoutMs
+	case controlConnectionDB:
+		conn.isDBConnection.Store(true)
+		timeout = DefaultDBConnectionTimeoutMs
+	}
+	s.remoteConnectionMapMutex.Unlock()
+
+	conn.timeoutMs.Store(int64(timeout))
+	select {
+	case conn.timeoutUpdate <- struct{}{}:
+	default:
+	}
+	return true
+}
+
+func (c *UdpConn) timeout() int {
+	if timeout := c.timeoutMs.Load(); timeout > 0 {
+		return int(timeout)
+	}
+	return c.ConnData.TimeoutMs
 }
 
 func (s *UdpServer) connectionRoutine(conn *UdpConn) {
@@ -713,7 +815,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		// Note on server side, before an old ac connection times out, the very ac can send new connections (due to restart or deemed connection failure)
 		// and it may come with the same remote ip but a different remote port
 		// so make sure the timeout removal here does not delete newer ac connections
-		if conn.isACConnection {
+		if conn.isACConnection.Load() {
 			var acToDelete string
 			s.acConnectionMapMutex.Lock()
 			for acId, acConn := range s.acConnectionMap {
@@ -726,7 +828,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			s.acConnectionMapMutex.Unlock()
 		}
 
-		if conn.isDBConnection {
+		if conn.isDBConnection.Load() {
 			var dbToDelete string
 			s.dbConnectionMapMutex.Lock()
 			for dbId, dbConn := range s.dbConnectionMap {
@@ -768,6 +870,16 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		if stillPresent {
 			delete(s.remoteConnectionMap, mapKey)
 		}
+		if conn.perIPElem != nil {
+			ip := conn.ConnData.RemoteAddr.IP.String()
+			if bucket := s.connectionsByIP[ip]; bucket != nil {
+				bucket.Remove(conn.perIPElem)
+				if bucket.Len() == 0 {
+					delete(s.connectionsByIP, ip)
+				}
+			}
+			conn.perIPElem = nil
+		}
 		// ForceOverload (debug only) keeps Overload pinned ON for the
 		// lifetime of the process, so a quiet local demo can still
 		// exercise the cookie path. Honor it here — without this guard,
@@ -798,13 +910,22 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		case <-s.signals.stop:
 			return
 
+		case <-conn.evictSignal:
+			log.Debug("Connection routine: %s evicted by per-IP cap", addrStr)
+			return
+
 		case <-conn.ConnData.SetTimeoutSignal:
-			if conn.ConnData.TimeoutMs <= 0 {
+			if conn.timeout() <= 0 {
 				log.Debug("Connection routine closed immediately")
 				return
 			}
 
-		case <-time.After(time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond):
+		case <-conn.timeoutUpdate:
+			if conn.timeout() <= 0 {
+				return
+			}
+
+		case <-time.After(time.Duration(conn.timeout()) * time.Millisecond):
 			// timeout, quit routine
 			log.Debug("Connection routine idle timeout")
 			return

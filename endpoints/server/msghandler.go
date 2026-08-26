@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	wasmEngine "github.com/OpenNHP/opennhp/nhp/core/wasm/engine"
@@ -177,11 +178,30 @@ func (s *UdpServer) HandleOTPRequest(ppd *core.PacketParserData) (err error) {
 	err = json.Unmarshal(ppd.BodyMessage, otpMsg)
 	if err != nil {
 		log.Error("server-agent(#%d@%s)[HandleOTPRequest] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
+		// Audit the rejected request too: a burst of unparseable OTP
+		// requests from one source is exactly the kind of thing the ledger
+		// should carry. The user is unknown at this point.
+		if s.auditLedger != nil {
+			s.auditEvent("otp_request", audit.SeverityWarn, map[string]string{
+				"src":    addrStr,
+				"result": "rejected",
+				"reason": "malformed request",
+			})
+		}
 		return err
 	}
 
 	handler := s.FindPluginHandler(otpMsg.AuthServiceId)
 	if handler == nil {
+		if s.auditLedger != nil {
+			s.auditEvent("otp_request", audit.SeverityWarn, map[string]string{
+				"user":   otpMsg.UserId,
+				"src":    addrStr,
+				"aspId":  otpMsg.AuthServiceId,
+				"result": "rejected",
+				"reason": common.ErrAuthHandlerNotFound.Error(),
+			})
+		}
 		return common.ErrAuthHandlerNotFound
 	}
 
@@ -197,10 +217,27 @@ func (s *UdpServer) HandleOTPRequest(ppd *core.PacketParserData) (err error) {
 	err = handler.RequestOTP(otpReq, s.NewNhpServerHelper(ppd))
 	if err != nil {
 		log.Error("server-agent(%s#%d@%s)[HandleOTPRequest] error: %v", otpMsg.UserId, transactionId, addrStr, err)
+		if s.auditLedger != nil {
+			s.auditEvent("otp_request", audit.SeverityWarn, map[string]string{
+				"user":   otpMsg.UserId,
+				"src":    addrStr,
+				"aspId":  otpMsg.AuthServiceId,
+				"result": "failed",
+				"reason": err.Error(),
+			})
+		}
 		return err
 	}
 
 	log.Info("server-agent(%s#%d@%s)[HandleOTPRequest] succeeded", otpMsg.UserId, transactionId, addrStr)
+	if s.auditLedger != nil {
+		s.auditEvent("otp_request", audit.SeverityInfo, map[string]string{
+			"user":   otpMsg.UserId,
+			"src":    addrStr,
+			"aspId":  otpMsg.AuthServiceId,
+			"result": "issued",
+		})
+	}
 	return nil
 }
 
@@ -269,6 +306,37 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 
 		log.Info("server-agent(%s#%d@%s)[HandleRegisterRequest] succeeded", regMsg.UserId, transactionId, addrStr)
 	}()
+
+	// Record the registration outcome in the audit ledger.
+	if s.auditLedger != nil {
+		// Registered means a nil error AND an ack code that is not a failure:
+		// the RegisterAgent plugin point may return a failure ErrCode with a
+		// nil error (a soft denial), which must not read as "registered". The
+		// raw code is kept in errCode regardless. See decisionGranted.
+		rakCode := ""
+		if rakMsg != nil {
+			rakCode = rakMsg.ErrCode
+		}
+		severity, result := audit.SeverityWarn, "denied"
+		if decisionGranted(err, rakCode) {
+			severity, result = audit.SeverityNotice, "registered"
+		}
+		fields := map[string]string{
+			"user":    regMsg.UserId,
+			"device":  regMsg.DeviceId,
+			"src":     addrStr,
+			"aspId":   regMsg.AuthServiceId,
+			"peerKey": shortKey(base64.StdEncoding.EncodeToString(ppd.RemotePubKey)),
+			"result":  result,
+		}
+		if rakCode != "" {
+			fields["errCode"] = rakCode
+		}
+		if err != nil {
+			fields["reason"] = err.Error()
+		}
+		s.auditEvent("agent_register", severity, fields)
+	}
 
 	// send NHP_RAK message
 	rakBytes, _ := json.Marshal(rakMsg)

@@ -32,3 +32,13 @@ CookieSigningKeyBase64 = "${NHP_SERVER_COOKIE_SIGNING_KEY}"
 # and previous window are both accepted on verify (so an agent has
 # [N, 2N) seconds to redeem a cookie). Default 60s if unset.
 CookieTimeWindowSeconds = 60
+
+# [Audit]: tamper-evident, hash-chained security audit ledger. Off by
+# default; see endpoints/server/main/etc/config.toml for the full field
+# docs (Fsync, SigningKeyBase64, FailClosed) and the threat model.
+[Audit]
+Enabled = false
+FilePath = ""
+Fsync = false
+SigningKeyBase64 = ""
+FailClosed = false

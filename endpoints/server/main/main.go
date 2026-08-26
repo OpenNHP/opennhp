@@ -9,12 +9,15 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/urfave/cli/v2"
 
 	"github.com/OpenNHP/opennhp/endpoints/server"
+	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/version"
 )
@@ -166,15 +169,157 @@ func main() {
 		},
 	}
 
+	// audit verifies the integrity of a security audit ledger produced by
+	// the server's tamper-evident audit log. It walks the hash chain and
+	// reports the first break, if any.
+	auditCmd := &cli.Command{
+		Name:  "audit",
+		Usage: "tools for the tamper-evident security audit ledger",
+		Subcommands: []*cli.Command{
+			{
+				Name:      "verify",
+				Usage:     "verify the hash chain of an audit ledger file",
+				ArgsUsage: "<ledgerFile>",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "key", Usage: "base64 HMAC signing key, if the ledger was signed (exposes the secret in ps/shell history — prefer --key-file or NHP_AUDIT_KEY)"},
+					&cli.StringFlag{Name: "key-file", Usage: "path to a file holding the base64 HMAC signing key (whitespace trimmed); avoids leaking the key via argv"},
+					&cli.BoolFlag{Name: "strict", Usage: "exit non-zero (2) if verification is incomplete: damaged (skipped) lines, or signed entries left unchecked because no key was given"},
+				},
+				Action: func(c *cli.Context) error {
+					path := c.Args().First()
+					if path == "" {
+						return fmt.Errorf("usage: audit verify <ledgerFile>")
+					}
+					hmacKey, err := resolveVerifyKey(c)
+					if err != nil {
+						return err
+					}
+					res, err := verifyLedgerFile(path, hmacKey)
+					if err != nil {
+						return err
+					}
+
+					if res.Err != nil {
+						fmt.Printf("FAILED: %v\n", res.Err)
+						fmt.Printf("%d %s verified before the break.\n", res.Count, pluralize(res.Count, "entry", "entries"))
+						// Exit non-zero with a clean message rather than a
+						// panic stack trace — this is a verification tool and
+						// a failed check is an expected, reportable outcome.
+						os.Exit(1)
+					}
+					fmt.Printf("OK: %d %s, hash chain intact.\n", res.Count, pluralize(res.Count, "entry", "entries"))
+					if res.UncheckedSigs > 0 {
+						// Do not let a signed ledger checked without its key
+						// read as fully verified. The hash chain alone is
+						// forgeable by anyone who can rewrite the file; the
+						// signatures are the part that isn't, and they were
+						// not checked here.
+						fmt.Printf("warning: %d signed %s NOT verified — no key given, so only the hash chain was checked.\n",
+							res.UncheckedSigs, pluralize(res.UncheckedSigs, "entry", "entries"))
+					}
+					if res.Skipped > 0 {
+						// Damage, not tampering: the chain still links up, so
+						// no committed entry was altered or removed. Say so
+						// explicitly rather than leaving it to look like a
+						// clean bill of health.
+						fmt.Printf("note: skipped %d unparseable line(s)%s — likely a torn write from an unclean shutdown, not tampering.\n",
+							res.Skipped, formatSkippedLines(res.SkippedLines, res.Skipped))
+					}
+					// In --strict mode an incomplete verification is a failure
+					// for gating purposes (CI/cron): a keyless check of a
+					// signed ledger, or a file with damaged lines, is not the
+					// same as a full clean pass. Distinct exit code 2 so a
+					// caller can tell it apart from a chain break (1).
+					if c.Bool("strict") && (res.Skipped > 0 || res.UncheckedSigs > 0) {
+						fmt.Println("strict: verification incomplete (see warnings above).")
+						os.Exit(2)
+					}
+					return nil
+				},
+			},
+		},
+	}
+
 	app.Commands = []*cli.Command{
 		runCmd,
 		keygenCmd,
 		pubkeyCmd,
+		auditCmd,
 	}
 
 	if err := app.Run(os.Args); err != nil {
 		panic(err)
 	}
+}
+
+// verifyLedgerFile opens the ledger and walks its chain. It exists so the
+// file handle is closed before the caller decides whether to exit — a
+// deferred Close in the command action would never run on the os.Exit path.
+func verifyLedgerFile(path string, hmacKey []byte) (audit.VerifyResult, error) {
+	f, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		return audit.VerifyResult{}, err
+	}
+	defer f.Close()
+	return audit.VerifyChain(f, hmacKey), nil
+}
+
+// resolveVerifyKey obtains the base64 HMAC key for `audit verify` from, in
+// precedence order, --key, --key-file, then the NHP_AUDIT_KEY environment
+// variable. The signing key is the one secret that makes the chain
+// unforgeable by someone who can write the log, so --key-file and the env var
+// exist to keep it out of argv (visible in ps / /proc/<pid>/cmdline) and out
+// of shell history — the leak channels that matter most for the offline-copy
+// case the signature is meant to protect. An empty result means "no key":
+// the chain is checked but signatures are not.
+func resolveVerifyKey(c *cli.Context) ([]byte, error) {
+	raw := c.String("key")
+	source := "--key"
+	if raw == "" {
+		if kf := c.String("key-file"); kf != "" {
+			b, err := os.ReadFile(filepath.Clean(kf))
+			if err != nil {
+				return nil, fmt.Errorf("read --key-file: %w", err)
+			}
+			raw, source = strings.TrimSpace(string(b)), "--key-file"
+		} else if env := os.Getenv("NHP_AUDIT_KEY"); env != "" {
+			raw, source = strings.TrimSpace(env), "NHP_AUDIT_KEY"
+		}
+	}
+	if raw == "" {
+		return nil, nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("decode %s: %w", source, err)
+	}
+	return decoded, nil
+}
+
+// pluralize returns singular when n == 1 and plural otherwise.
+func pluralize(n uint64, singular, plural string) string {
+	if n == 1 {
+		return singular
+	}
+	return plural
+}
+
+// formatSkippedLines renders the line numbers of skipped lines for the note,
+// e.g. " (lines 3, 7)". It returns "" when none were captured, and marks the
+// list as partial when the reported slice is shorter than the total skipped.
+func formatSkippedLines(lines []uint64, total uint64) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	parts := make([]string, len(lines))
+	for i, ln := range lines {
+		parts[i] = strconv.FormatUint(ln, 10)
+	}
+	list := strings.Join(parts, ", ")
+	if uint64(len(lines)) < total {
+		list += ", …"
+	}
+	return " (" + pluralize(uint64(len(lines)), "line", "lines") + " " + list + ")"
 }
 
 func printBanner() {

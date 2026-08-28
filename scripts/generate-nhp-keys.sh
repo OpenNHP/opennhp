@@ -73,6 +73,7 @@ mkdir -p "$OUTPUT_DIR/ac"
 mkdir -p "$OUTPUT_DIR/relay"
 mkdir -p "$OUTPUT_DIR/server2"
 mkdir -p "$OUTPUT_DIR/ac2"
+mkdir -p "$OUTPUT_DIR/demoapp"
 
 # --- Fetch existing keys from AWS Secrets Manager ---
 echo "Fetching secrets from AWS Secrets Manager..."
@@ -338,7 +339,9 @@ export DOMAIN="$DOMAIN"
 
 # Render all templates. cluster 2 (server2/ac2) reuses the same key/IP
 # env vars exported above; the relay config references both clusters.
-for component in server ac relay server2 ac2; do
+# demoapp reuses the server public keys (both clusters) — it owns no
+# private key, only per-user keys generated at registration time.
+for component in server ac relay server2 ac2 demoapp; do
   echo "  Rendering $component configs..."
   for template in "$TEMPLATE_DIR/$component"/*.toml; do
     filename=$(basename "$template")

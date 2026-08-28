@@ -62,6 +62,9 @@ env:
   DOMAIN_RELAY: relay.opennhp.org
   DOMAIN_AGENT: agent.opennhp.org
   DOMAIN_REG: reg.opennhp.org
+  # Integrated demo app (Gin backend + embedded SPA). Shares the relay
+  # host; nginx proxies demo.opennhp.org → 127.0.0.1:8081.
+  DOMAIN_DEMO: demo.opennhp.org
   # Server cluster 2: both the nhp-server (server2) and its AC (ac2) have
   # domains.
   DOMAIN_SERVER2: server2.opennhp.org
@@ -172,6 +175,25 @@ jobs:
           [ -d release/nhp-server/templates ] && cp -r release/nhp-server/templates artifact/
 
           find artifact -type f | sort
+
+      - name: Build demoapp binary (via Docker)
+        # The demoapp is a separate Go module that embeds a Vite SPA via the
+        # `webdist` build tag. Reusing docker/Dockerfile.demoapp guarantees
+        # the embedded SPA matches the local/docker build (Node + Go stages,
+        # @opennhp/agent SDK aliasing) without duplicating those steps here.
+        # The runner has Docker; we build the image and extract the binary.
+        run: |
+          echo "Building demoapp image (multi-stage: SPA + Go backend)..."
+          docker build -f docker/Dockerfile.demoapp -t opennhp-demoapp:ci .
+
+          mkdir -p artifact/demoapp
+          id=$(docker create opennhp-demoapp:ci)
+          docker cp "$id:/usr/local/bin/demoapp" artifact/demoapp/demoapp
+          docker rm "$id"
+          chmod +x artifact/demoapp/demoapp
+
+          echo "demoapp binary:"
+          ls -la artifact/demoapp/
 
       - name: Inject plugin secrets
         env:
@@ -1493,10 +1515,137 @@ jobs:
         run: rm -rf ~/.ssh
 
   # ─────────────────────────────────────────────────────────────
+  # Job 6b: Deploy demoapp (on the relay host, demo.opennhp.org)
+  # ─────────────────────────────────────────────────────────────
+  deploy-demoapp:
+    needs: [configure, deploy-relay]
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch SSH credentials + CF token from AWS Secrets Manager
+        run: |
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' --output text)
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          HOST_KEYS=$(echo "$SECRETS" | jq -r '.ssh_host_keys // empty')
+          if [ -z "$HOST_KEYS" ]; then
+            echo "ERROR: ssh_host_keys missing in opennhp/demo Secrets Manager."
+            echo "Run the infra-demo workflow with action=apply to capture and"
+            echo "persist the EC2 host keys before deploying."
+            exit 1
+          fi
+          echo "$SECRETS" | jq -r '.ssh_host_keys' > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          CF_TOKEN=$(echo "$SECRETS" | jq -r '.cloudflare_api_token')
+          echo "::add-mask::$CF_TOKEN"
+          echo "cf_token=$CF_TOKEN" >> "$GITHUB_ENV"
+
+      - name: Download build + configs
+        uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-build
+          path: ./artifact
+      - uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-configs
+          path: ./configs
+
+      - name: Checkout code (for nginx + bootstrap scripts + systemd unit)
+        uses: actions/checkout@v7
+        with:
+          path: repo
+
+      - name: Install nginx vhost + expand cert for demo.opennhp.org
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+
+          export DOMAIN_DEMO='${{ env.DOMAIN_DEMO }}' DOMAIN_RELAY='${{ env.DOMAIN_RELAY }}'
+          envsubst '$DOMAIN_DEMO $DOMAIN_RELAY' \
+            < repo/deploy/nginx/demoapp.conf.template > /tmp/demoapp-nginx.conf
+
+          scp $SSH_OPTS repo/deploy/scripts/bootstrap-tls.sh $TARGET:/tmp/bootstrap-tls.sh
+          scp $SSH_OPTS /tmp/demoapp-nginx.conf $TARGET:/tmp/demoapp-nginx.conf
+          ssh $SSH_OPTS $TARGET "chmod +x /tmp/bootstrap-tls.sh"
+
+          printf '%s' "${{ env.cf_token }}" | ssh $SSH_OPTS $TARGET \
+            "umask 077 && cat > /tmp/cf_token && chmod 600 /tmp/cf_token"
+
+          # PRIMARY_DOMAIN is the relay domain so certbot reuses the existing
+          # SAN certificate (relay.* + agent.* + reg.*) and --expands it to
+          # also cover demo.opennhp.org. Subsequent runs are a no-op (the
+          # script skips when the SAN is already present).
+          ssh $SSH_OPTS $TARGET \
+            "COMPONENT=demoapp \
+             PRIMARY_DOMAIN='${{ env.DOMAIN_RELAY }}' \
+             EXTRA_DOMAINS='${{ env.DOMAIN_DEMO }}' \
+             CF_API_TOKEN_FILE=/tmp/cf_token \
+             ACME_EMAIL='${{ env.ACME_EMAIL }}' \
+             NGINX_CONF='/tmp/demoapp-nginx.conf' \
+             /tmp/bootstrap-tls.sh"
+
+      - name: Deploy demoapp binary + config + systemd unit
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-demoapp"
+
+          # Prepare the install tree (binary + etc + persistent data dir).
+          ssh $SSH_OPTS $TARGET "mkdir -p $REMOTE_DIR/etc $REMOTE_DIR/data"
+
+          echo "Uploading demoapp binary..."
+          scp $SSH_OPTS ./artifact/demoapp/demoapp $TARGET:$REMOTE_DIR/demoapp
+          ssh $SSH_OPTS $TARGET "chmod +x $REMOTE_DIR/demoapp"
+
+          echo "Uploading demoapp config..."
+          scp $SSH_OPTS ./configs/demoapp/config.toml $TARGET:$REMOTE_DIR/etc/config.toml
+
+          echo "Uploading systemd unit..."
+          scp $SSH_OPTS repo/deploy/scripts/demoapp.service $TARGET:/tmp/demoapp.service
+          ssh $SSH_OPTS $TARGET "sudo cp /tmp/demoapp.service /etc/systemd/system/demoapp.service"
+
+          echo "(Re)starting demoapp..."
+          ssh $SSH_OPTS $TARGET "sudo systemctl daemon-reload && sudo systemctl enable demoapp && sudo systemctl restart demoapp"
+          sleep 2
+
+          STATUS=$(ssh $SSH_OPTS $TARGET "sudo systemctl is-active demoapp" || true)
+          if [ "$STATUS" != "active" ]; then
+            ssh $SSH_OPTS $TARGET "sudo journalctl -u demoapp -n 40 --no-pager"
+            echo "ERROR: demoapp failed to start"
+            exit 1
+          fi
+          echo "demoapp deployed successfully"
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh
+
+  # ─────────────────────────────────────────────────────────────
   # Job 7: Summary
   # ─────────────────────────────────────────────────────────────
   summary:
-    needs: [deploy-relay, deploy-server, deploy-ac, deploy-server2, deploy-ac2, deploy-jsagent]
+    needs: [deploy-relay, deploy-server, deploy-ac, deploy-server2, deploy-ac2, deploy-jsagent, deploy-demoapp]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -1512,6 +1661,7 @@ jobs:
           echo "| Server (c2)  | ${{ needs.deploy-server2.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| AC (c2)      | ${{ needs.deploy-ac2.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| js-agent     | ${{ needs.deploy-jsagent.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| demoapp      | ${{ needs.deploy-demoapp.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Binaries?    | ${{ env.DEPLOY_BINARIES }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Regen keys?  | ${{ env.REGENERATE_KEYS }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Branch       | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY

@@ -94,7 +94,14 @@ generate-version-and-build:
 
 init:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Initializing... $(END_COLOUR)"
-	git clean -df release
+	@# `git clean` only works in a real checkout. Container builds (and
+	@# git worktrees whose .git pointer targets a host path not present
+	@# in the image) have no usable repo, so fall back to rm -rf release.
+	@if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then \
+		git clean -df release; \
+	else \
+		rm -rf release; \
+	fi
 	cd nhp && go mod download && go mod tidy
 	cd endpoints && go mod download && go mod tidy
 	@for dir in ./examples/server_plugin/*/; do \

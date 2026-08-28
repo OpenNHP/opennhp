@@ -361,3 +361,60 @@ export interface RegisterResult {
    */
   expiresAt?: number;
 }
+
+/**
+ * Agent List Message - matches Go AgentListMsg
+ * Sent by agent to request the list of resources/services accessible to it.
+ */
+export interface AgentListMsg {
+  /** User ID */
+  usrId: string;
+  /** Device ID */
+  devId: string;
+  /** Organization ID (optional) */
+  orgId?: string;
+  /** Auth Service Provider ID */
+  aspId: string;
+  /** User data map (optional) — e.g. email address under "email" key */
+  usrData?: Record<string, unknown>;
+}
+
+/**
+ * A single entry in the server list-result. The Go server returns
+ * `map[string]any` for `ListResults`, so each entry is a resId whose
+ * value (when present) carries any server-side metadata. The SDK
+ * currently exposes only the keys; UI metadata (title, url, acHost)
+ * comes from the Demo backend `/api/config.resources` and the UI
+ * intersects that catalog with this resource-id list.
+ */
+export type ListResult = string;
+
+/**
+ * Server List Result Message - matches Go ServerListResultMsg
+ * Sent by server in response to a list request.
+ */
+export interface ServerListResultMsg {
+  /** Error code (empty string means success) */
+  errCode: string;
+  /** Error message (if errCode is not empty) */
+  errMsg?: string;
+  /** Resource IDs the agent can access */
+  list?: Record<string, unknown>;
+}
+
+/**
+ * Result of a list-services query.
+ */
+export interface ListServicesResult {
+  /** Whether the list request was successful */
+  success: boolean;
+  /** Error message if request failed */
+  error?: string;
+  /** Error code if request failed */
+  errorCode?: string;
+  /**
+   * Resource IDs the agent can access under the queried ASP.
+   * Empty when the server returns no list (e.g. agent not registered).
+   */
+  resources: string[];
+}

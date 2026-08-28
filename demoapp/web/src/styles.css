@@ -1,0 +1,113 @@
+/* OpenNHP Demo App styles. Mirrors the dark palette of relay-test.html so
+   the two demos feel like one product surface. */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+  background: #0d1117;
+  color: #c9d1d9;
+  padding: 20px;
+  min-height: 100vh;
+}
+
+.container { max-width: 720px; margin: 0 auto; }
+
+h1 { color: #58a6ff; font-size: 24px; margin-bottom: 8px; }
+h2 { color: #58a6ff; font-size: 16px; margin-bottom: 12px; }
+p { line-height: 1.5; }
+a { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.subtitle { color: #8b949e; font-size: 14px; margin-bottom: 20px; }
+
+.panel {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.field { margin-bottom: 12px; }
+.field label {
+  display: block;
+  font-size: 12px;
+  color: #8b949e;
+  margin-bottom: 4px;
+}
+.field input, .field select {
+  width: 100%;
+  padding: 8px 10px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  color: #c9d1d9;
+  font-size: 13px;
+  font-family: inherit;
+}
+.field input:focus, .field select:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  margin-right: 8px;
+}
+.btn-primary { background: #238636; color: #fff; }
+.btn-primary:hover { background: #2ea043; }
+.btn-primary:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+.btn-secondary {
+  background: #21262d;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+}
+.btn-secondary:hover { background: #30363d; }
+
+.alert {
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.alert-error { background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.4); color: #f85149; }
+.alert-success { background: rgba(63,185,80,0.1); border: 1px solid rgba(63,185,80,0.4); color: #3fb950; }
+.alert-info { background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.4); color: #58a6ff; }
+
+.resource-list { list-style: none; padding: 0; }
+.resource-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+.resource-item:hover { border-color: #58a6ff; }
+.resource-title { color: #c9d1d9; font-size: 14px; font-weight: 600; }
+.resource-id { color: #8b949e; font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.toolbar .user { color: #c9d1d9; }
+.toolbar .user span { color: #8b949e; }
+
+.note { color: #8b949e; font-size: 12px; margin-top: 8px; line-height: 1.5; }

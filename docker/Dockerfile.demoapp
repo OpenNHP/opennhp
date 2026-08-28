@@ -1,0 +1,109 @@
+# OpenNHP demoapp: a Gin-based Go backend serving an SPA that integrates
+# js-agent + relay to register users' NHP keys and knock on hidden resources.
+#
+# Two-stage build:
+#   1. Build the SPA (Vite) with node:20 and bundle @opennhp/agent locally.
+#   2. Build the Go backend, embedding the bundled SPA as a Go embed.FS so
+#      the resulting image only needs the binary + etc/ + data/.
+
+# ────────────────────────────────────────────────────────────────────────────
+# Stage 1 — SPA build
+# ────────────────────────────────────────────────────────────────────────────
+FROM --platform=$BUILDPLATFORM node:20-bookworm-slim AS spa
+
+WORKDIR /spa
+
+# Install SPA deps first for better layer caching. Note that the SPA's
+# package.json no longer declares @opennhp/agent as a file: dep — the SDK
+# is wired in via vite's resolve.alias to a prebuilt dist we COPY below.
+# Avoiding file: deps sidesteps npm's "Cannot read properties of undefined
+# (reading 'extraneous')" failure on private packages.
+COPY ./demoapp/web/package.json ./demoapp/web/package-lock.json* ./demoapp/web/tsconfig.json ./demoapp/web/vite.config.ts ./
+
+# Build the local js-agent SDK first so we can alias it into the SPA.
+COPY ./endpoints/js-agent ../endpoints/js-agent
+# js-agent's vite.config.ts reads its version from /nhp/version/VERSION
+# (the same single-source-of-truth the Go binaries use). Stage the file
+# at the path resolve(__dirname, '../../nhp/version/VERSION') expects —
+# `__dirname` is /endpoints/js-agent, so `../../nhp` resolves to /nhp.
+COPY ./nhp/version /nhp/version
+# Build js-agent (produces ../endpoints/js-agent/dist with index.js + index.cjs + index.d.ts).
+RUN cd ../endpoints/js-agent && npm ci --no-audit --no-fund && npm run build
+
+# Install the SPA's own deps (vite + typescript only — no SDK).
+RUN npm install --no-audit --no-fund
+
+# Copy the SPA source and the prebuilt SDK into node_modules so vite's
+# resolve.alias for "@opennhp/agent" lands on a real ESM bundle. We keep
+# the SDK's package.json so its "exports" map (./dist/index.js) still
+# drives the resolver.
+COPY ./demoapp/web ./
+RUN mkdir -p node_modules/@opennhp/agent && \
+    cp -r ../endpoints/js-agent/dist node_modules/@opennhp/agent/dist && \
+    cp ../endpoints/js-agent/package.json node_modules/@opennhp/agent/package.json
+
+RUN npm run build
+
+# ────────────────────────────────────────────────────────────────────────────
+# Stage 2 — Go backend with embedded SPA
+# ────────────────────────────────────────────────────────────────────────────
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS backend
+
+ARG TARGETARCH
+ARG TARGETOS
+ARG GOPROXY=
+
+ENV GOOS=${TARGETOS} \
+    GOARCH=${TARGETARCH} \
+    CGO_ENABLED=0
+
+WORKDIR /src
+
+# Copy the demoapp module first so the dependency graph is cached across
+# source-only changes.
+COPY ./demoapp/go.mod ./demoapp/go.sum* ./
+RUN go mod download
+
+# Copy the rest of the demoapp source + the SPA build artifact.
+COPY ./demoapp ./
+COPY --from=spa /spa/dist ./web/dist
+
+# Build the binary with the bundled SPA embedded via demoapp_web.go (a
+# build-tag-gated file in the demoapp module). The `webdist` build tag
+# turns on the //go:embed for web/dist so the SPA ships inside the
+# binary. Without the tag, demoapp falls back to disk serving and the
+# runtime image returns "UI not built" because web/dist isn't copied
+# into the runtime stage.
+RUN go build -tags webdist -ldflags="-s -w" -o /out/demoapp .
+
+# ────────────────────────────────────────────────────────────────────────────
+# Stage 3 — Runtime image
+# ────────────────────────────────────────────────────────────────────────────
+FROM ubuntu:22.04
+
+ARG APT_MIRROR=
+
+RUN if [ -n "$APT_MIRROR" ]; then \
+        sed -i "s|ports.ubuntu.com|${APT_MIRROR}|g" /etc/apt/sources.list && \
+        sed -i "s|archive.ubuntu.com|${APT_MIRROR}|g" /etc/apt/sources.list && \
+        sed -i "s|security.ubuntu.com|${APT_MIRROR}|g" /etc/apt/sources.list; \
+    fi
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the binary and default config + data dirs.
+COPY --from=backend /out/demoapp /usr/local/bin/demoapp
+COPY ./demoapp/etc/ /app/etc/
+
+# Persist the SQLite database (volume mount in compose).
+RUN mkdir -p /app/data
+
+EXPOSE 8081
+
+# The container reads /app/etc/config.toml; an operator can override the
+# config path via -c or by mounting a custom file at /app/etc/config.toml.
+ENTRYPOINT ["/usr/local/bin/demoapp", "-c", "/app/etc/config.toml"]

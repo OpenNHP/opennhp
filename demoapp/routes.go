@@ -1,0 +1,245 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
+	"github.com/gin-gonic/gin"
+)
+
+// Session keys. Names are short to keep cookie payloads small.
+const (
+	sessKeyUserID      = "uid"
+	sessKeyUsername    = "uname"
+	sessKeyOIDCState   = "ostate"
+	sessKeyOIDCNonce   = "ononce"
+	sessKeyOIDCSubject = "osub"
+	sessKeyRegToken    = "regtok"
+)
+
+// SessionName is the cookie name the demo uses (mirrors nhp-server's
+// "nhpsessions" so the two daemons can co-exist if reverse-proxied).
+const SessionName = "demosessions"
+
+// App bundles everything a route handler needs: config, store, the master
+// key bytes (so we don't decode on every request), and an optional OIDC
+// verifier (nil if OIDC isn't enabled).
+type App struct {
+	Cfg          *Config
+	Store        *UserStore
+	MasterKey    []byte
+	OIDCVefifier *OIDCRelyingParty // nil when OIDC is disabled
+	WebFS        fs.FS             // optional embedded web/dist
+}
+
+// Register wires all HTTP routes onto the given gin engine. The order
+// matters: public endpoints (register/login/oidc/health) come first,
+// then session-gated endpoints, then the static-file fallback.
+func (a *App) Register(r *gin.Engine) error {
+	// Cookie-based session store keyed by Cfg.SessionKey. 32 bytes is the
+	// minimum recommended by gin-contrib/sessions/cookie.
+	if len(a.Cfg.SessionKey) < 16 {
+		return errors.New("SessionKey must be at least 16 bytes")
+	}
+	store := cookie.NewStore([]byte(a.Cfg.SessionKey))
+	store.Options(sessions.Options{
+		Path:     "/",
+		MaxAge:   60 * 60 * 24 * 7, // 1 week
+		HttpOnly: true,
+		Secure:   false, // Demo runs on http behind localhost; flip on for HTTPS prod
+		SameSite: http.SameSiteLaxMode,
+	})
+	r.Use(sessions.Sessions(SessionName, store))
+
+	// Security headers — small but important for a demo that ships a
+	// private key to the browser. The CSP connect-src must allow the
+	// relay origin in addition to 'self', because the SPA (served from
+	// :8081) opens an HTTP fetch to the relay (typically :8080) to drive
+	// NHP-OTP / NHP-REG. Without it the browser blocks the knock with a
+	// CSP violation.
+	connectSrc := "'self'"
+	if origin := relayOrigin(a.Cfg.PublicRelayURL); origin != "" {
+		connectSrc += " " + origin
+	}
+	r.Use(func(c *gin.Context) {
+		c.Header("Content-Security-Policy",
+			fmt.Sprintf("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src %s; object-src 'none'; frame-ancestors 'none'", connectSrc))
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("Referrer-Policy", "no-referrer")
+		c.Next()
+	})
+
+	pub := r.Group("/api")
+	{
+		pub.GET("/health", a.handleHealth)
+		pub.POST("/register", a.handleRegister)
+		pub.POST("/register/retry", a.handleRegisterRetry)
+		pub.POST("/register/confirm", a.handleRegisterConfirm)
+		pub.POST("/login", a.handleLogin)
+		pub.POST("/logout", a.handleLogout)
+
+		// OIDC routes are mounted even when disabled — the handlers
+		// return 503 so the SPA can show a friendly message instead of
+		// 404-ing on the link click.
+		pub.GET("/auth/oidc/login", a.handleOIDCLogin)
+		pub.GET("/auth/oidc/callback", a.handleOIDCCallback)
+	}
+
+	auth := r.Group("/api")
+	auth.Use(a.requireSession)
+	{
+		auth.GET("/config", a.handleGetConfig)
+		auth.GET("/credentials", a.handleGetCredentials)
+		auth.GET("/me", a.handleMe)
+	}
+
+	// Static SPA fallback. Serve from disk if WebDistDir is configured
+	// (dev), else from the embedded fs (release build).
+	if a.WebFS != nil {
+		r.NoRoute(func(c *gin.Context) {
+			if !strings.HasPrefix(c.Request.URL.Path, "/api/") {
+				a.serveSPA(c, a.WebFS)
+				return
+			}
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		})
+		return nil
+	}
+	// Fallback: serve from disk if WebDistDir exists; otherwise a tiny
+	// index page so the server still boots before `npm run build`.
+	r.NoRoute(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+		dir := a.Cfg.WebDistDir
+		if dir == "" {
+			c.JSON(http.StatusOK, gin.H{"message": "OpenNHP demoapp (no UI built)"})
+			return
+		}
+		indexPath := dir + "/index.html"
+		if _, err := os.Stat(indexPath); err == nil {
+			c.File(indexPath)
+			return
+		}
+		c.JSON(http.StatusNotFound, gin.H{"error": "UI not built; run `cd web && npm run build`"})
+	})
+	return nil
+}
+
+// requireSession is the middleware used by /api/config and /api/credentials
+// — any handler that returns the user's private key MUST run after this.
+func (a *App) requireSession(c *gin.Context) {
+	s := sessions.Default(c)
+	uidRaw := s.Get(sessKeyUserID)
+	if uidRaw == nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "login required"})
+		return
+	}
+	uid, ok := uidRaw.(int64)
+	if !ok {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "login required"})
+		return
+	}
+	user, err := a.Store.GetUserByID(c.Request.Context(), uid)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+		return
+	}
+	c.Set("user", user)
+	c.Next()
+}
+
+// handleHealth is a quick readiness probe — no DB hit, no secrets.
+func (a *App) handleHealth(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// serveSPA streams the bundled SPA. Falls back to index.html for client-
+// side routes that don't have a matching static file.
+func (a *App) serveSPA(c *gin.Context, fsys fs.FS) {
+	path := strings.TrimPrefix(c.Request.URL.Path, "/")
+	if path == "" {
+		path = "index.html"
+	}
+	f, err := fsys.Open(path)
+	if err != nil {
+		// SPA fallback for client-side routes.
+		f, err = fsys.Open("index.html")
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "asset not found"})
+			return
+		}
+	}
+	defer f.Close()
+	stat, err := f.Stat()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "stat failed"})
+		return
+	}
+	// http.ServeContent handles MIME sniffing, Range, If-Modified-Since.
+	http.ServeContent(c.Writer, c.Request, path, stat.ModTime(), readSeeker(f))
+}
+
+// readSeeker opens a *fs.File into the io.ReadSeiser interface that
+// http.ServeContent needs. embed.FS uses fs.File which already implements
+// Read/Seek/Stat/Close, so this is just a type assertion helper.
+func readSeeker(f fs.File) interface {
+	Read(p []byte) (int, error)
+	Seek(offset int64, whence int) (int64, error)
+} {
+	return f.(interface {
+		Read(p []byte) (int, error)
+		Seek(offset int64, whence int) (int64, error)
+	})
+}
+
+// appFromContext returns the *App stored on the gin context. Used by
+// handlers in auth_*.go that don't have it as a receiver.
+func appFromContext(c *gin.Context) *App {
+	v, ok := c.Get("app")
+	if !ok {
+		return nil
+	}
+	a, _ := v.(*App)
+	return a
+}
+
+// contextOf is a tiny helper to avoid repeating context.TODO() at every
+// call site; it prefers the request context when available.
+func contextOf(c *gin.Context) context.Context {
+	if c != nil && c.Request != nil && c.Request.Context() != nil {
+		return c.Request.Context()
+	}
+	return context.TODO()
+}
+
+// relayOrigin extracts the scheme://host[:port] of the browser-facing relay
+// URL so it can be added to the CSP connect-src directive. Returns "" for
+// empty or unparseable input (the CSP then falls back to 'self' only).
+func relayOrigin(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// MustLogger returns a *log.Logger that's safe to use even before the gin
+// engine exists (used in main during startup).
+func MustLogger() *log.Logger {
+	return log.New(os.Stdout, "[demoapp] ", log.LstdFlags|log.Lmicroseconds)
+}

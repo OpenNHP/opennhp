@@ -1,0 +1,68 @@
+# OpenNHP demoapp configuration (local dev).
+#
+# Auto-generated secrets: KeyEnvelopeKey, SessionKey, and ServerPublicKey
+# are filled in by the demoapp on first boot when they carry the
+# placeholder marker ("REPLACE_*" or "CHANGE_ME"). Generated values
+# persist in demoapp/etc/.demoapp-autogen.json so restarts keep the same
+# master key (re-generating would orphan every stored NHP private key).
+
+# Address the gin HTTP server binds to.
+ListenAddr = ":8081"
+
+# Path to the SQLite database file (created on first run).
+DBPath = "data/demo.db"
+
+# 32+ byte random key used to sign the session cookie. Auto-generated.
+SessionKey = "REPLACE_WITH_RANDOM_32_BYTES"
+
+# 32-byte AES-256 master key (base64-encoded). Auto-generated. Keep this
+# safe — losing it bricks all user accounts.
+KeyEnvelopeKey = "REPLACE_WITH_32_BYTE_BASE64"
+
+# Cipher scheme used for NHP. Must match the nhp-server ASP plugin.
+CipherScheme = "curve25519"
+
+# HTTP relay endpoint the demoapp SERVER uses to talk to the relay
+# (e.g. to fetch /servers during config autogen). For local dev this is
+# just localhost on whatever port you bound the relay to.
+RelayUrl = "http://localhost:8080/relay"
+
+# HTTP relay endpoint the SPA's BROWSER uses. Usually the same as
+# RelayUrl in local dev. In docker compose you may want to set this
+# explicitly to http://localhost:8080/relay so the browser (running on
+# the host, not inside docker) can reach the relay port that compose
+# mapped to the host. Leave blank to default to RelayUrl.
+PublicRelayUrl = ""
+
+# Base64-encoded public key of the nhp-server instance. Auto-fetched
+# from <RelayUrl>/servers on first boot when the placeholder marker is
+# present.
+ServerPublicKey = "REPLACE_WITH_NHP_SERVER_PUBLIC_KEY_BASE64"
+
+# ASP service id (basic plugin identifier).
+ServiceId = "example"
+
+# Organization id surfaced as the agent's orgId in NHP packets.
+OrganizationId = "opennhp.org"
+
+# Directory containing the bundled SPA. When the SPA hasn't been built
+# yet, the server returns a small JSON message instead.
+WebDistDir = "web/dist"
+
+# Application-side OIDC Relying Party. Independent of the nhp-server
+# ASP plugin (which stays on the basic plugin for NHP-side flows).
+[[OIDC]]
+Enabled = false
+IssuerURL    = "https://accounts.google.com"
+ClientID     = "demoapp-client-id"
+ClientSecret = "demoapp-client-secret"
+RedirectURL  = "http://localhost:8081/api/auth/oidc/callback"
+
+# Catalog of protected resources the SPA can show. The id MUST match what
+# the nhp-server basic plugin returns from ListService; the rest is UI
+# metadata only.
+[[Resources]]
+Id    = "demo"
+Title = "OpenNHP Protected Demo"
+URL   = "https://localhost"
+ACHost = "localhost"

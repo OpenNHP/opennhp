@@ -1,0 +1,132 @@
+// Resources view — main app screen. Fetches credentials, builds the
+// NHPAgent, intersects the dynamic list from listServices with the
+// backend's catalog, and renders a knock button per resource.
+
+import { api, ApiError, type ConfigResponse, type ResourceMeta } from '../api.js';
+import { createAgent, listResources, knockResource } from '../nhp.js';
+
+export interface ResourcesViewProps {
+  username: string;
+  email: string;
+  onSignOut: () => void;
+}
+
+export function renderResources(root: HTMLElement, props: ResourcesViewProps): void {
+  root.innerHTML = `
+    <div class="container">
+      <div class="toolbar">
+        <div class="user">Signed in as <span>${escape(props.username)}</span> (${escape(props.email)})</div>
+        <button id="signout-btn" class="btn btn-secondary">Sign out</button>
+      </div>
+      <h1>Protected Resources</h1>
+      <p class="subtitle">Click "Access" to knock nhp-server. The protected resource is hidden until the knock opens the door.</p>
+
+      <div id="alert"></div>
+      <div id="resource-area">
+        <p class="note">Loading…</p>
+      </div>
+    </div>
+  `;
+
+  const alert = root.querySelector<HTMLDivElement>('#alert')!;
+  const area = root.querySelector<HTMLDivElement>('#resource-area')!;
+  const signoutBtn = root.querySelector<HTMLButtonElement>('#signout-btn')!;
+
+  function showAlert(level: 'error' | 'success' | 'info', message: string): void {
+    alert.innerHTML = `<div class="alert alert-${level}">${escape(message)}</div>`;
+  }
+
+  function escape(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  signoutBtn.addEventListener('click', async () => {
+    await api.logout();
+    props.onSignOut();
+  });
+
+  void bootstrap();
+
+  async function bootstrap(): Promise<void> {
+    showAlert('info', 'Fetching credentials from server…');
+    let cfg: ConfigResponse;
+    let creds;
+    try {
+      const [c, cr] = await Promise.all([api.config(), api.credentials()]);
+      cfg = c;
+      creds = cr;
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : String(err);
+      showAlert('error', `Failed to load: ${msg}`);
+      return;
+    }
+
+    showAlert('info', 'Initializing NHP agent and listing services…');
+    const handle = await createAgent(creds.privateKey, creds.nhp, creds.deviceId, 'error');
+    try {
+      const ids = await listResources(handle, creds.nhp);
+      handle.dispose();
+
+      // Intersect with backend catalog; backend is the source of UI metadata.
+      const byId = new Map<string, ResourceMeta>();
+      cfg.resources.forEach((r) => byId.set(r.id, r));
+      const visible = ids
+        .map((id) => byId.get(id))
+        .filter((r): r is ResourceMeta => Boolean(r));
+
+      if (visible.length === 0) {
+        area.innerHTML = `<p class="note">No accessible resources. Confirm registration completed and that the nhp-server basic plugin allows your user.</p>`;
+        return;
+      }
+
+      alert.innerHTML = '';
+      area.innerHTML = `
+        <ul class="resource-list">
+          ${visible.map((r) => `
+            <li class="resource-item" data-resid="${escape(r.id)}" data-url="${escape(r.url)}">
+              <div>
+                <div class="resource-title">${escape(r.title)}</div>
+                <div class="resource-id">id: ${escape(r.id)} &middot; ${escape(r.url)}</div>
+              </div>
+              <button class="btn btn-primary knock-btn" data-resid="${escape(r.id)}">Access</button>
+            </li>
+          `).join('')}
+        </ul>
+      `;
+      area.querySelectorAll<HTMLButtonElement>('.knock-btn').forEach((btn) => {
+        btn.addEventListener('click', () => void doKnock(btn.dataset.resid || ''));
+      });
+    } catch (err) {
+      handle.dispose();
+      const msg = err instanceof Error ? err.message : String(err);
+      showAlert('error', `listServices failed: ${msg}`);
+    }
+  }
+
+  async function doKnock(resourceId: string): Promise<void> {
+    const item = area.querySelector<HTMLLIElement>(`li.resource-item[data-resid="${resourceId}"]`);
+    const btn = item?.querySelector<HTMLButtonElement>('.knock-btn');
+    if (btn) btn.disabled = true;
+    showAlert('info', `Knocking ${resourceId}…`);
+    try {
+      const creds = await api.credentials();
+      const handle = await createAgent(creds.privateKey, creds.nhp, creds.deviceId, 'error');
+      const outcome = await knockResource(handle, creds.nhp, resourceId);
+      handle.dispose();
+      if (outcome.success && outcome.resourceHost) {
+        showAlert('success', `Knock successful — redirecting to ${outcome.resourceHost}`);
+        const url = /^https?:\/\//.test(outcome.resourceHost)
+          ? outcome.resourceHost
+          : `https://${outcome.resourceHost}`;
+        window.location.href = url;
+      } else {
+        showAlert('error', `Knock failed: ${outcome.error ?? 'unknown'}`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showAlert('error', `Knock failed: ${msg}`);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+}

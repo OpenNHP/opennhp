@@ -3,16 +3,13 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/ecdh"
-	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 
-	"github.com/emmansun/gmsm/sm2"
+	"github.com/OpenNHP/opennhp/nhp/core"
 )
 
 // KeyPair is a freshly generated NHP key pair. The private key is base64-
@@ -24,81 +21,64 @@ type KeyPair struct {
 	PublicKey  string // base64-encoded raw public key bytes
 }
 
-// GenerateKeyPair creates a new key pair for the given cipher scheme. The
-// result is ready to be sent to the browser (privateKey) and persisted
-// (publicKey, plus the wrapped privateKey).
+// eccTypeFor maps a demoapp CipherScheme to the nhp/core EccTypeEnum used by
+// ECDHFromKey. This is the single place the two enums are bridged.
+func eccTypeFor(scheme CipherScheme) core.EccTypeEnum {
+	if scheme == CipherSchemeGMSM {
+		return core.ECC_SM2
+	}
+	return core.ECC_CURVE25519
+}
+
+// GenerateSchemeAgnosticPrivateKey generates a single 32-byte NHP private
+// key that is valid under BOTH cipher schemes. It mirrors nhp-server's
+// `keygen --both` path (endpoints/server/main/main.go:64-83): an SM2
+// scalar is produced first (it must lie in [1, N-1] for SM2), and the same
+// 32 bytes are a legal X25519 private key (X25519 clamps internally).
+//
+// The scheme is NOT chosen here — the private key is scheme-agnostic. The
+// matching public key is derived later via DerivePublicKey once the user
+// picks a scheme at registration. js-agent derives the same public key in
+// the browser from this private key + cipherScheme, so both sides agree.
+func GenerateSchemeAgnosticPrivateKey() (string, error) {
+	e := core.NewECDH(core.ECC_SM2)
+	if e == nil {
+		return "", errors.New("core.NewECDH(ECC_SM2) returned nil")
+	}
+	return e.PrivateKeyBase64(), nil
+}
+
+// DerivePublicKey computes the public key for the given scheme from a
+// scheme-agnostic base64 private key. Uses core.ECDHFromKey — the same
+// primitive nhp-server's `pubkey --both` and `keygen --both` use, so the
+// derived public key is byte-identical to what the server and js-agent
+// produce from the same private key.
+func DerivePublicKey(privKeyB64 string, scheme CipherScheme) (string, error) {
+	privBytes, err := base64.StdEncoding.DecodeString(privKeyB64)
+	if err != nil {
+		return "", fmt.Errorf("decode private key: %w", err)
+	}
+	e := core.ECDHFromKey(eccTypeFor(scheme), privBytes)
+	if e == nil {
+		return "", fmt.Errorf("ECDHFromKey returned nil for scheme %s", scheme)
+	}
+	return e.PublicKeyBase64(), nil
+}
+
+// GenerateKeyPair creates a new key pair for the given cipher scheme. It is
+// a compatibility wrapper over GenerateSchemeAgnosticPrivateKey +
+// DerivePublicKey, retained for callers (e.g. the OIDC default path) that
+// still want a ready-made (priv, pub) pair in one call.
 func GenerateKeyPair(scheme CipherScheme) (*KeyPair, error) {
-	switch scheme {
-	case CipherSchemeCurve25519:
-		return generateX25519KeyPair()
-	case CipherSchemeGMSM:
-		return generateSM2KeyPair()
-	default:
-		return nil, fmt.Errorf("unsupported cipher scheme: %s", scheme)
-	}
-}
-
-// generateX25519KeyPair uses Go's stdlib crypto/ecdh (X25519) and emits
-// raw 32-byte keys in base64 — exactly what js-agent's derivePublicKey
-// and crypto/ecdh modules expect on the browser side.
-func generateX25519KeyPair() (*KeyPair, error) {
-	priv, err := ecdh.X25519().GenerateKey(rand.Reader)
+	priv, err := GenerateSchemeAgnosticPrivateKey()
 	if err != nil {
-		return nil, fmt.Errorf("x25519 keygen: %w", err)
+		return nil, fmt.Errorf("keygen: %w", err)
 	}
-	return &KeyPair{
-		PrivateKey: base64.StdEncoding.EncodeToString(priv.Bytes()),
-		PublicKey:  base64.StdEncoding.EncodeToString(priv.PublicKey().Bytes()),
-	}, nil
-}
-
-// generateSM2KeyPair produces a SM2 key pair using github.com/emmansun/gmsm
-// and emits raw 32-byte private scalar + 64-byte (X||Y, no 04 prefix) public
-// key in base64 — the format js-agent's sm2.ts expects.
-func generateSM2KeyPair() (*KeyPair, error) {
-	priv, err := sm2.GenerateKey(rand.Reader)
+	pub, err := DerivePublicKey(priv, scheme)
 	if err != nil {
-		return nil, fmt.Errorf("sm2 keygen: %w", err)
+		return nil, fmt.Errorf("derive public key: %w", err)
 	}
-	pub := priv.Public()
-	ecPub, ok := pub.(*ecdsa.PublicKey)
-	if !ok || ecPub == nil {
-		return nil, errors.New("sm2: unexpected public key type")
-	}
-	pubBytes := sm2PublicKeyXY(ecPub.X, ecPub.Y)
-	return &KeyPair{
-		PrivateKey: base64.StdEncoding.EncodeToString(padLeft32(priv.D.Bytes())),
-		PublicKey:  base64.StdEncoding.EncodeToString(pubBytes),
-	}, nil
-}
-
-// sm2PublicKeyXY packs the affine coordinates X || Y into 64 raw bytes
-// without the SEC1 04 prefix byte — the format js-agent's sm2ECDH uses.
-// Coordinates are left-padded to 32 bytes each (big-endian, fixed width).
-func sm2PublicKeyXY(x, y *big.Int) []byte {
-	out := make([]byte, 64)
-	xb := x.Bytes()
-	yb := y.Bytes()
-	copy(out[32-len(xb):32], xb)
-	copy(out[64-len(yb):64], yb)
-	return out
-}
-
-// padLeft32 pads a big-endian byte slice to exactly 32 bytes (left-padded
-// with zeros). SM2 scalars are always 32 bytes; big.Int.Bytes() drops the
-// leading zeros, so we re-add them to match js-agent's strict length check.
-func padLeft32(b []byte) []byte {
-	if len(b) == 32 {
-		return b
-	}
-	out := make([]byte, 32)
-	if len(b) > 32 {
-		// Should not happen for a valid SM2 scalar; truncate defensively.
-		copy(out, b[len(b)-32:])
-		return out
-	}
-	copy(out[32-len(b):], b)
-	return out
+	return &KeyPair{PrivateKey: priv, PublicKey: pub}, nil
 }
 
 // sealKey wraps a base64-encoded private key under the configured AES-256

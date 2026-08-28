@@ -44,28 +44,153 @@ type OIDCConfig struct {
 // after a successful listServices. The id must match what the nhp-server
 // basic plugin's ListService returns; the rest (title, URL, acHost) is UI
 // metadata that the JS Agent does not know about.
+//
+// ServerName optionally scopes the resource to one configured [[Servers]]
+// entry (matched by Name). When empty the resource is shown to every user;
+// when set it is filtered to users registered against that server.
 type ResourceConfig struct {
-	ID     string `toml:"Id"`
-	Title  string `toml:"Title"`
-	URL    string `toml:"URL"`
-	ACHost string `toml:"ACHost"`
+	ID         string `toml:"Id"`
+	Title      string `toml:"Title"`
+	URL        string `toml:"URL"`
+	ACHost     string `toml:"ACHost"`
+	ServerName string `toml:"ServerName"`
+}
+
+// ServerEntry describes one nhp-server the demo can register against. The
+// registration page lists these (via ServerList) so the user picks a
+// server AND a cipher scheme independently.
+//
+// A single nhp-server identity derives BOTH public keys from one private
+// key (nhp-server `keygen --both`), so both Sm2PublicKey and
+// Curve25519PublicKey are declared here. RelayRegisteredScheme names which
+// of the two keys the relay registered the server under — that key drives
+// the relay routing fingerprint (see nhp.ts addServer relayPublicKey).
+type ServerEntry struct {
+	Name                  string       `toml:"Name"`
+	ServiceID             string       `toml:"ServiceId"`
+	OrganizationID        string       `toml:"OrganizationId"`
+	Sm2PublicKey          string       `toml:"Sm2PublicKey"`
+	Curve25519PublicKey   string       `toml:"Curve25519PublicKey"`
+	RelayRegisteredScheme CipherScheme `toml:"RelayRegisteredScheme"`
+}
+
+// publicKeyFor returns the server's public key matching scheme, or "" when
+// that scheme's key is not configured for this server (cross-scheme knock
+// is then unavailable — the caller surfaces this to the user).
+func (s *ServerEntry) publicKeyFor(scheme CipherScheme) string {
+	if scheme == CipherSchemeGMSM {
+		return s.Sm2PublicKey
+	}
+	return s.Curve25519PublicKey
+}
+
+// relayPublicKeyFor returns the key the relay registered this server with,
+// regardless of the knock scheme. It is "" when scheme matches the
+// relay-registered scheme (the ECDH key itself already produces the right
+// fingerprint, so js-agent needs no separate relayPublicKey).
+func (s *ServerEntry) relayPublicKeyFor(scheme CipherScheme) string {
+	if scheme == s.RelayRegisteredScheme {
+		return ""
+	}
+	return s.publicKeyFor(s.RelayRegisteredScheme)
 }
 
 // Config is the full TOML-loaded configuration for the demoapp daemon.
 type Config struct {
-	ListenAddr      string           `toml:"ListenAddr"`
-	DBPath          string           `toml:"DBPath"`
-	SessionKey      string           `toml:"SessionKey"`
-	KeyEnvelopeKey  string           `toml:"KeyEnvelopeKey"` // base64, 32 bytes
-	CipherScheme    CipherScheme     `toml:"CipherScheme"`
-	RelayURL        string           `toml:"RelayUrl"`       // server-side: demoapp → relay
-	PublicRelayURL  string           `toml:"PublicRelayUrl"` // browser-side: SPA → relay
-	ServerPublicKey string           `toml:"ServerPublicKey"`
-	ServiceID       string           `toml:"ServiceId"`
-	OrganizationID  string           `toml:"OrganizationId"`
-	WebDistDir      string           `toml:"WebDistDir"`
-	OIDCs           []OIDCConfig     `toml:"OIDC"`
-	Resources       []ResourceConfig `toml:"Resources"`
+	ListenAddr     string `toml:"ListenAddr"`
+	DBPath         string `toml:"DBPath"`
+	SessionKey     string `toml:"SessionKey"`
+	KeyEnvelopeKey string `toml:"KeyEnvelopeKey"` // base64, 32 bytes
+	// CipherScheme is the DEFAULT scheme used when a path has no interactive
+	// scheme choice (e.g. OIDC upsert before the user reaches the
+	// complete-registration view). Interactive registration overrides it.
+	CipherScheme   CipherScheme     `toml:"CipherScheme"`
+	RelayURL       string           `toml:"RelayUrl"`       // server-side: demoapp → relay
+	PublicRelayURL string           `toml:"PublicRelayUrl"` // browser-side: SPA → relay
+	WebDistDir     string           `toml:"WebDistDir"`
+	Servers        []ServerEntry    `toml:"Servers"`
+	OIDCs          []OIDCConfig     `toml:"OIDC"`
+	Resources      []ResourceConfig `toml:"Resources"`
+
+	// Legacy single-server fields. When [[Servers]] is empty, LoadConfig
+	// promotes these into Servers[0] so existing single-cluster configs
+	// keep working unchanged. When [[Servers]] is also present they are
+	// ignored. Slated for removal.
+	ServerPublicKey string `toml:"ServerPublicKey"`
+	ServiceID       string `toml:"ServiceId"`
+	OrganizationID  string `toml:"OrganizationId"`
+}
+
+// FindServer returns the configured server by Name (case-sensitive), or nil.
+func (c *Config) FindServer(name string) *ServerEntry {
+	for i := range c.Servers {
+		if c.Servers[i].Name == name {
+			return &c.Servers[i]
+		}
+	}
+	return nil
+}
+
+// DefaultServer returns the first configured server, or nil when none. Used
+// as the fallback for legacy/OIDC users that have no server_name stored.
+func (c *Config) DefaultServer() *ServerEntry {
+	if len(c.Servers) == 0 {
+		return nil
+	}
+	return &c.Servers[0]
+}
+
+// ServerInfo is the public, key-free shape GET /api/servers returns so the
+// registration page can render the server + scheme dropdowns without
+// leaking any public keys.
+type ServerInfo struct {
+	Name                  string   `json:"name"`
+	ServiceID             string   `json:"serviceId"`
+	OrganizationID        string   `json:"organizationId"`
+	Schemes               []string `json:"schemes"`
+	RelayRegisteredScheme string   `json:"relayRegisteredScheme"`
+}
+
+// schemesFor returns the schemes a server can actually serve (those whose
+// public key is configured). A server with both keys offers both; one with
+// only the SM2 key (the common docker case) offers gmsm only.
+func (s *ServerEntry) schemesFor() []string {
+	out := make([]string, 0, 2)
+	if s.Sm2PublicKey != "" {
+		out = append(out, string(CipherSchemeGMSM))
+	}
+	if s.Curve25519PublicKey != "" {
+		out = append(out, string(CipherSchemeCurve25519))
+	}
+	return out
+}
+
+// ServerList returns the key-free server catalog for the registration page.
+func (c *Config) ServerList() []ServerInfo {
+	out := make([]ServerInfo, 0, len(c.Servers))
+	for i := range c.Servers {
+		s := &c.Servers[i]
+		out = append(out, ServerInfo{
+			Name:                  s.Name,
+			ServiceID:             s.ServiceID,
+			OrganizationID:        s.OrganizationID,
+			Schemes:               s.schemesFor(),
+			RelayRegisteredScheme: string(s.RelayRegisteredScheme),
+		})
+	}
+	return out
+}
+
+// ResourcesFor returns the resource catalog filtered to the given server's
+// Name. Resources with an empty ServerName are global (shown to all).
+func (c *Config) ResourcesFor(serverName string) []ResourceConfig {
+	out := make([]ResourceConfig, 0, len(c.Resources))
+	for _, r := range c.Resources {
+		if r.ServerName == "" || r.ServerName == serverName {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // KeyEnvelopeKeyBytes decodes the base64-encoded 32-byte AES-256 master key
@@ -150,6 +275,38 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.CipherScheme != CipherSchemeGMSM {
 		return nil, fmt.Errorf("unsupported CipherScheme %q (expected curve25519 or gmsm)", cfg.CipherScheme)
 	}
+
+	// Back-compat: when no [[Servers]] block is present but the legacy
+	// single-server fields are, promote them into Servers[0] so the rest of
+	// the app only has to look at Config.Servers. The legacy CipherScheme
+	// becomes both the server's RelayRegisteredScheme and the default
+	// scheme. Only the matching public key is populated — the other
+	// scheme's key stays empty, so cross-scheme knock is unavailable for
+	// promoted (legacy) servers unless the operator migrates to [[Servers]]
+	// and fills both keys.
+	if len(cfg.Servers) == 0 {
+		scheme := cfg.CipherScheme
+		if scheme == "" {
+			scheme = CipherSchemeCurve25519
+		}
+		se := ServerEntry{
+			Name:                  "default",
+			ServiceID:             cfg.ServiceID,
+			OrganizationID:        cfg.OrganizationID,
+			RelayRegisteredScheme: scheme,
+		}
+		if scheme == CipherSchemeGMSM {
+			se.Sm2PublicKey = cfg.ServerPublicKey
+		} else {
+			se.Curve25519PublicKey = cfg.ServerPublicKey
+		}
+		cfg.Servers = []ServerEntry{se}
+		// Default scheme for non-interactive paths follows the (legacy)
+		// server's registered scheme when the operator left it empty.
+		if cfg.CipherScheme == "" {
+			cfg.CipherScheme = scheme
+		}
+	}
 	return cfg, nil
 }
 
@@ -158,8 +315,22 @@ func LoadConfig(path string) (*Config, error) {
 // Run this AFTER autoFillConfig so placeholders filled in by sidecar /
 // random generation pass.
 func (c *Config) Validate() error {
+	// CipherScheme is the DEFAULT for non-interactive paths. It may be left
+	// empty in a [[Servers]] config where each server declares its own
+	// scheme; default it to the first server's registered scheme (or
+	// curve25519) so OIDC upsert etc. always have something to fall back to.
+	if c.CipherScheme == "" {
+		if s := c.DefaultServer(); s != nil && s.RelayRegisteredScheme != "" {
+			c.CipherScheme = s.RelayRegisteredScheme
+		} else {
+			c.CipherScheme = CipherSchemeCurve25519
+		}
+	}
 	if c.CipherScheme != CipherSchemeCurve25519 && c.CipherScheme != CipherSchemeGMSM {
-		return fmt.Errorf("CipherScheme must be %q or %q (got empty or unknown — set it explicitly or let autoFillConfig detect from /servers)", CipherSchemeCurve25519, CipherSchemeGMSM)
+		return fmt.Errorf("CipherScheme must be %q or %q (got %q)", CipherSchemeCurve25519, CipherSchemeGMSM, c.CipherScheme)
+	}
+	if len(c.Servers) == 0 {
+		return errors.New("no [[Servers]] configured and no legacy ServerPublicKey to promote")
 	}
 	if c.KeyEnvelopeKey == "" {
 		return errors.New("KeyEnvelopeKey is required (32 bytes, base64-encoded)")

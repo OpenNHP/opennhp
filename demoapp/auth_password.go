@@ -20,10 +20,18 @@ import (
 // Username is the local identifier; email is what we hand to NHP as userId
 // and what OIDC subjects are linked by. Password is required only when the
 // user is creating a password-based account; OIDC users skip this endpoint.
+//
+// ServerName + CipherScheme select which nhp-server identity to register
+// against and which cipher scheme to derive the public key under. The
+// private key itself is scheme-agnostic; only the derived public key +
+// the server/scheme binding are fixed at registration. Both are optional
+// and default to the first server + its relay-registered scheme.
 type registerRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Email    string `json:"email"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`
+	Email        string `json:"email"`
+	ServerName   string `json:"serverName"`
+	CipherScheme string `json:"cipherScheme"`
 }
 
 // registerResponse is the JSON body returned from /api/register. The
@@ -41,13 +49,72 @@ type registerResponse struct {
 
 // nhpEndpointConfig is the relay/server config the SPA needs to build a
 // NHPAgent instance — service id, server public key, relay URL, scheme.
+//
+// ServerPubKey is the server's public key under the chosen CipherScheme
+// (used for ECDH). RelayPubKey is the key the relay registered the server
+// under; js-agent fingerprints it for the /relay/<id> route. It is empty
+// when the chosen scheme matches the relay-registered scheme (the ECDH
+// key already produces the right fingerprint), and set otherwise so a
+// cross-scheme knock still routes to the correct server.
 type nhpEndpointConfig struct {
 	ServiceID      string `json:"serviceId"`
 	ServerPubKey   string `json:"serverPublicKey"`
+	RelayPubKey    string `json:"relayPublicKey,omitempty"`
 	RelayURL       string `json:"relayUrl"`
 	CipherScheme   string `json:"cipherScheme"`
 	UserID         string `json:"userId"`
 	OrganizationID string `json:"organizationId"`
+	ServerName     string `json:"serverName"`
+}
+
+// nhpEndpointFor builds the nhpEndpointConfig the SPA needs for a given
+// (server, scheme) binding. It assembles ServerPubKey + RelayPubKey per
+// the rule on ServerEntry.relayPublicKeyFor. Returns an error when the
+// chosen scheme's public key is not configured for the server (i.e. the
+// operator didn't fill both keys, so cross-scheme knock is unavailable).
+func (a *App) nhpEndpointFor(srv *ServerEntry, scheme CipherScheme, userID string) (nhpEndpointConfig, error) {
+	pub := srv.publicKeyFor(scheme)
+	if pub == "" {
+		return nhpEndpointConfig{}, fmt.Errorf("server %q has no %s public key configured", srv.Name, scheme)
+	}
+	return nhpEndpointConfig{
+		ServiceID:      srv.ServiceID,
+		ServerPubKey:   pub,
+		RelayPubKey:    srv.relayPublicKeyFor(scheme),
+		RelayURL:       a.Cfg.PublicRelayURL,
+		CipherScheme:   string(scheme),
+		UserID:         userID,
+		OrganizationID: srv.OrganizationID,
+		ServerName:     srv.Name,
+	}, nil
+}
+
+// resolveServerScheme normalizes a (serverName, scheme) pair from a request
+// against the configured servers, applying defaults when either is empty.
+// Returns the resolved server + scheme, or an error when the named server
+// doesn't exist or the scheme is unsupported.
+func (a *App) resolveServerScheme(serverName, schemeStr string) (*ServerEntry, CipherScheme, error) {
+	srv := a.Cfg.FindServer(serverName)
+	if srv == nil {
+		srv = a.Cfg.DefaultServer()
+		if srv == nil {
+			return nil, "", errors.New("no [[Servers]] configured")
+		}
+	}
+	scheme := CipherScheme(schemeStr)
+	if scheme == "" {
+		scheme = srv.RelayRegisteredScheme
+	}
+	if scheme == "" {
+		scheme = a.Cfg.CipherScheme
+	}
+	if scheme != CipherSchemeCurve25519 && scheme != CipherSchemeGMSM {
+		return nil, "", fmt.Errorf("unsupported cipherScheme %q (expected curve25519 or gmsm)", scheme)
+	}
+	if srv.publicKeyFor(scheme) == "" {
+		return nil, "", fmt.Errorf("server %q does not support scheme %q (missing public key)", srv.Name, scheme)
+	}
+	return srv, scheme, nil
 }
 
 // handleRegister is the entry point for the two-phase registration flow.
@@ -99,9 +166,23 @@ func (a *App) handleRegister(c *gin.Context) {
 		return
 	}
 
-	kp, err := GenerateKeyPair(a.Cfg.CipherScheme)
+	// Resolve the target server + scheme BEFORE keygen so the public key is
+	// derived under the scheme the user actually chose. The private key is
+	// scheme-agnostic; only the derived public key + binding are persisted.
+	srv, scheme, err := a.resolveServerScheme(req.ServerName, req.CipherScheme)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	priv, err := GenerateSchemeAgnosticPrivateKey()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "key generation failed"})
+		return
+	}
+	pub, err := DerivePublicKey(priv, scheme)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "public key derivation failed"})
 		return
 	}
 	deviceID, err := randomDeviceID()
@@ -109,7 +190,7 @@ func (a *App) handleRegister(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "device id generation failed"})
 		return
 	}
-	privEnc, err := sealKey(a.MasterKey, kp.PrivateKey)
+	privEnc, err := sealKey(a.MasterKey, priv)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "key sealing failed"})
 		return
@@ -119,9 +200,11 @@ func (a *App) handleRegister(c *gin.Context) {
 		Username:         req.Username,
 		PasswordHash:     string(hash),
 		Email:            req.Email,
-		NHPPublicKey:     kp.PublicKey,
+		NHPPublicKey:     pub,
 		NHPPrivateKeyEnc: privEnc,
 		NHPDeviceID:      deviceID,
+		ServerName:       srv.Name,
+		CipherScheme:     string(scheme),
 		Status:           UserStatusPending,
 	}
 	if err := a.Store.CreateUser(ctx, u); err != nil {
@@ -151,19 +234,17 @@ func (a *App) handleRegister(c *gin.Context) {
 	s.Set(sessKeyUsername, u.Username)
 	_ = s.Save()
 
+	nhp, err := a.nhpEndpointFor(srv, scheme, u.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, registerResponse{
 		RegToken:   regToken,
-		PrivateKey: kp.PrivateKey,
-		PublicKey:  kp.PublicKey,
+		PrivateKey: priv,
+		PublicKey:  pub,
 		DeviceID:   deviceID,
-		NHP: nhpEndpointConfig{
-			ServiceID:      a.Cfg.ServiceID,
-			ServerPubKey:   a.Cfg.ServerPublicKey,
-			RelayURL:       a.Cfg.PublicRelayURL,
-			CipherScheme:   string(a.Cfg.CipherScheme),
-			UserID:         u.Email,
-			OrganizationID: a.Cfg.OrganizationID,
-		},
+		NHP:        nhp,
 	})
 }
 
@@ -198,20 +279,48 @@ func (a *App) handleRegisterRetry(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "key unseal failed"})
 		return
 	}
+	srv, scheme, err := a.userServerScheme(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	nhp, err := a.nhpEndpointFor(srv, scheme, user.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, registerResponse{
 		RegToken:   req.RegToken,
 		PrivateKey: priv,
 		PublicKey:  user.NHPPublicKey,
 		DeviceID:   user.NHPDeviceID,
-		NHP: nhpEndpointConfig{
-			ServiceID:      a.Cfg.ServiceID,
-			ServerPubKey:   a.Cfg.ServerPublicKey,
-			RelayURL:       a.Cfg.PublicRelayURL,
-			CipherScheme:   string(a.Cfg.CipherScheme),
-			UserID:         user.Email,
-			OrganizationID: a.Cfg.OrganizationID,
-		},
+		NHP:        nhp,
 	})
+}
+
+// userServerScheme resolves a user's stored (server_name, cipher_scheme)
+// binding to a configured ServerEntry + CipherScheme. Legacy users with
+// empty bindings fall back to the default server + its registered scheme.
+// Returns an error only when no servers are configured at all.
+func (a *App) userServerScheme(u *User) (*ServerEntry, CipherScheme, error) {
+	srv := a.Cfg.FindServer(u.ServerName)
+	if srv == nil {
+		srv = a.Cfg.DefaultServer()
+	}
+	if srv == nil {
+		return nil, "", errors.New("no [[Servers]] configured")
+	}
+	scheme := CipherScheme(u.CipherScheme)
+	if scheme == "" {
+		scheme = srv.RelayRegisteredScheme
+	}
+	if scheme == "" {
+		scheme = a.Cfg.CipherScheme
+	}
+	if scheme == "" {
+		scheme = CipherSchemeCurve25519
+	}
+	return srv, scheme, nil
 }
 
 // registerConfirmRequest is the JSON body for POST /api/register/confirm.
@@ -393,37 +502,55 @@ func (a *App) handleGetCredentials(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "credential unseal failed"})
 		return
 	}
+	srv, scheme, err := a.userServerScheme(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	nhp, err := a.nhpEndpointFor(srv, scheme, user.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"privateKey": priv,
 		"publicKey":  user.NHPPublicKey,
 		"deviceId":   user.NHPDeviceID,
 		"userId":     user.Email,
-		"nhp": nhpEndpointConfig{
-			ServiceID:      a.Cfg.ServiceID,
-			ServerPubKey:   a.Cfg.ServerPublicKey,
-			RelayURL:       a.Cfg.PublicRelayURL,
-			CipherScheme:   string(a.Cfg.CipherScheme),
-			UserID:         user.Email,
-			OrganizationID: a.Cfg.OrganizationID,
-		},
+		"nhp":        nhp,
 	})
 }
 
 // handleGetConfig returns the catalog of resources the SPA can show
 // alongside the dynamic list from listServices. The SPA intersects
 // the list with this catalog so it can render titles/URLs/AC hosts.
+// Resources are filtered to the user's registered server (global ones
+// with no ServerName are shown to all).
 func (a *App) handleGetConfig(c *gin.Context) {
 	user := c.MustGet("user").(*User)
-	out := gin.H{
-		"serviceId":      a.Cfg.ServiceID,
-		"serverPubKey":   a.Cfg.ServerPublicKey,
-		"relayUrl":       a.Cfg.PublicRelayURL,
-		"cipherScheme":   string(a.Cfg.CipherScheme),
-		"organizationId": a.Cfg.OrganizationID,
-		"userId":         user.Email,
-		"resources":      make([]gin.H, 0, len(a.Cfg.Resources)),
+	srv, scheme, err := a.userServerScheme(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
-	for _, r := range a.Cfg.Resources {
+	nhp, err := a.nhpEndpointFor(srv, scheme, user.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	resources := a.Cfg.ResourcesFor(srv.Name)
+	out := gin.H{
+		"serviceId":      nhp.ServiceID,
+		"serverPubKey":   nhp.ServerPubKey,
+		"relayPubKey":    nhp.RelayPubKey,
+		"relayUrl":       nhp.RelayURL,
+		"cipherScheme":   nhp.CipherScheme,
+		"organizationId": nhp.OrganizationID,
+		"serverName":     nhp.ServerName,
+		"userId":         user.Email,
+		"resources":      make([]gin.H, 0, len(resources)),
+	}
+	for _, r := range resources {
 		out["resources"] = append(out["resources"].([]gin.H), gin.H{
 			"id":     r.ID,
 			"title":  r.Title,

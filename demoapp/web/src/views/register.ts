@@ -1,8 +1,8 @@
-// Register view — collect username/password/email, POST /api/register,
-// then drive the NHP registration flow (requestOtp → registerPublicKey →
-// confirm) via the shared NHP reg panel.
+// Register view — collect username/password/email, pick a nhp-server and
+// cipher scheme, POST /api/register, then drive the NHP registration flow
+// (requestOtp → registerPublicKey → confirm) via the shared NHP reg panel.
 
-import { api, ApiError, type RegisterResponse } from '../api.js';
+import { api, ApiError, type RegisterResponse, type ServerInfo } from '../api.js';
 import { mountNhpRegPanel } from '../nhp-reg-panel.js';
 
 export interface RegisterViewProps {
@@ -32,6 +32,16 @@ export function renderRegister(root: HTMLElement, props: RegisterViewProps): voi
           <label for="reg-password">Password (min 8 chars)</label>
           <input id="reg-password" type="password" autocomplete="new-password" />
         </div>
+        <div class="field">
+          <label for="reg-server">NHP server</label>
+          <select id="reg-server" disabled></select>
+        </div>
+        <div class="field">
+          <label for="reg-scheme">Cipher scheme</label>
+          <select id="reg-scheme" disabled>
+            <option value="">Loading…</option>
+          </select>
+        </div>
         <button id="reg-submit" class="btn btn-primary">Create account &amp; request OTP</button>
         <button id="reg-switch-login" class="btn btn-secondary">Already have an account? Sign in</button>
       </div>
@@ -44,6 +54,8 @@ export function renderRegister(root: HTMLElement, props: RegisterViewProps): voi
   const submitBtn = root.querySelector<HTMLButtonElement>('#reg-submit')!;
   const switchBtn = root.querySelector<HTMLButtonElement>('#reg-switch-login')!;
   const otpPanel = root.querySelector<HTMLDivElement>('#otp-panel')!;
+  const serverSelect = root.querySelector<HTMLSelectElement>('#reg-server')!;
+  const schemeSelect = root.querySelector<HTMLSelectElement>('#reg-scheme')!;
 
   function showAlert(level: 'error' | 'success' | 'info', message: string): void {
     alert.innerHTML = `<div class="alert alert-${level}">${escape(message)}</div>`;
@@ -53,21 +65,63 @@ export function renderRegister(root: HTMLElement, props: RegisterViewProps): voi
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // Populate the server + scheme dropdowns from GET /api/servers.
+  let servers: ServerInfo[] = [];
+  void (async () => {
+    try {
+      const res = await api.servers();
+      servers = res.servers;
+    } catch {
+      servers = [];
+    }
+    if (servers.length === 0) {
+      serverSelect.innerHTML = `<option value="">No servers configured</option>`;
+      return;
+    }
+    serverSelect.innerHTML = servers
+      .map((s) => `<option value="${escape(s.name)}">${escape(s.name)}</option>`)
+      .join('');
+    serverSelect.disabled = false;
+    syncSchemeOptions();
+  })();
+
+  // Rebuild the scheme dropdown from the selected server's available
+  // schemes, defaulting to its relay-registered scheme.
+  function syncSchemeOptions(): void {
+    const srv = servers.find((s) => s.name === serverSelect.value);
+    if (!srv) {
+      schemeSelect.innerHTML = `<option value="">—</option>`;
+      return;
+    }
+    const schemes = srv.schemes.length > 0 ? srv.schemes : [srv.relayRegisteredScheme];
+    schemeSelect.innerHTML = schemes
+      .map((sc) => `<option value="${escape(sc)}" ${sc === srv.relayRegisteredScheme ? 'selected' : ''}>${escape(sc)}</option>`)
+      .join('');
+    schemeSelect.disabled = schemes.length === 0;
+  }
+  serverSelect.addEventListener('change', syncSchemeOptions);
+
   let disposePanel: (() => void) | undefined;
 
   submitBtn.addEventListener('click', async () => {
     const username = (root.querySelector<HTMLInputElement>('#reg-username')!).value.trim();
     const email = (root.querySelector<HTMLInputElement>('#reg-email')!).value.trim();
-    const password = (root.querySelector<HTMLInputElement>('#reg-password')!).value;
+    const password = (root.querySelector<HTMLInputElement>('#reg-password')!.value);
+    const serverName = serverSelect.value;
+    const cipherScheme = schemeSelect.value;
     if (!username || !email || !password) {
       showAlert('error', 'All fields are required.');
+      return;
+    }
+    if (!serverName || !cipherScheme) {
+      showAlert('error', 'Select an NHP server and cipher scheme.');
       return;
     }
     submitBtn.disabled = true;
     showAlert('info', 'Creating account and generating NHP key pair…');
     let reg: RegisterResponse;
     try {
-      reg = await api.register(username, password, email);
+      reg = await api.register(username, password, email, serverName, cipherScheme);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : String(err);
       showAlert('error', `Registration failed: ${msg}`);

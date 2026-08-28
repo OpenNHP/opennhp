@@ -25,12 +25,12 @@ SessionKey = "REPLACE_WITH_RANDOM_32_BYTES"
 # serious deployment, source it from a secret manager.
 KeyEnvelopeKey = "REPLACE_WITH_32_BYTE_BASE64"
 
-# Cipher scheme used for NHP. Must match the nhp-server ASP plugin.
+# Cipher scheme used for NHP. This is the DEFAULT scheme used when a path
+# has no interactive scheme choice (e.g. OIDC upsert). The registration
+# page lets the user pick per-server per-scheme, overriding this.
 # The bundled docker stack ships nhp-relay at GMSM (cipherScheme=1 in
 # relay's config.toml) and nhp-server keys are SM2 64-byte X||Y, so the
-# demoapp must also use gmsm or the SPA will hand a 64-byte key to the
-# X25519 path and every packet will fail with "uCoordinate expected
-# Uint8Array of length 32, got length=64".
+# default scheme is gmsm.
 CipherScheme = "gmsm"
 
 # HTTP relay endpoint the demoapp SERVER uses to talk to the relay.
@@ -44,20 +44,20 @@ RelayUrl = "http://nhp-relay:8080/relay"
 # "http://localhost:8080/relay" works from any browser on the host.
 PublicRelayUrl = "http://localhost:8080/relay"
 
-# Base64-encoded public key of the nhp-server instance. This mirrors
-# the [[Servers]] PubKeyBase64 entry in docker/nhp-relay/etc/config.toml
-# verbatim — the relay registers the same key and forwards all packets
-# to nhp-server using it for ECDH. Pre-populated here so demoapp boots
-# without an HTTP probe to /servers, and so the cipher scheme stays in
-# sync with whatever the relay was actually configured with.
-ServerPublicKey = "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA=="
-
-# ASP service id (basic plugin identifier). Must match the ASP plugin
-# the nhp-server is running.
-ServiceId = "example"
-
-# Organization id surfaced as the agent's orgId in NHP packets.
-OrganizationId = "opennhp.org"
+# Upstream nhp-server entries. Each server declares BOTH public keys
+# (derived from the nhp-server's single private key via `keygen --both`)
+# so the registration page can offer either cipher scheme independently.
+# RelayRegisteredScheme names which key the relay registered the server
+# under — that key drives the relay routing fingerprint. The docker relay
+# registers the SM2 key (see docker/nhp-relay/etc/config.toml), so a
+# curve25519 knock routes via relayPublicKey = the SM2 key.
+[[Servers]]
+Name                  = "demo"
+ServiceId             = "example"
+OrganizationId        = "opennhp.org"
+Sm2PublicKey          = "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA=="
+Curve25519PublicKey   = "UuUPfVS2iBKf3OKluBIhQsbz2Yi81+/s+Yeh5MBC8Sg="
+RelayRegisteredScheme = "gmsm"
 
 # web/dist is embedded in the binary at build time; this field is unused
 # in the Docker image but kept so operators can override.
@@ -80,3 +80,4 @@ Id     = "demo"
 Title  = "OpenNHP Protected Demo"
 URL    = "https://localhost"
 ACHost = "localhost"
+ServerName = "demo"

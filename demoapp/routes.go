@@ -81,6 +81,7 @@ func (a *App) Register(r *gin.Engine) error {
 	pub := r.Group("/api")
 	{
 		pub.GET("/health", a.handleHealth)
+		pub.GET("/servers", a.handleServers)
 		pub.POST("/register", a.handleRegister)
 		pub.POST("/register/retry", a.handleRegisterRetry)
 		pub.POST("/register/confirm", a.handleRegisterConfirm)
@@ -162,6 +163,14 @@ func (a *App) requireSession(c *gin.Context) {
 // handleHealth is a quick readiness probe — no DB hit, no secrets.
 func (a *App) handleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// handleServers returns the key-free server catalog so the registration
+// page can render the server + cipher-scheme dropdowns. No public keys are
+// exposed here — those are delivered per-user via /api/credentials and
+// /api/config only after authentication.
+func (a *App) handleServers(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"servers": a.Cfg.ServerList()})
 }
 
 // serveSPA streams the bundled SPA. Falls back to index.html for client-

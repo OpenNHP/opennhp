@@ -38,7 +38,13 @@ type User struct {
 	NHPPrivateKeyEnc string // base64(nonce||ct||tag) — AES-GCM-wrapped
 	NHPDeviceID      string
 	Status           UserStatus
-	CreatedAt        time.Time
+	// ServerName + CipherScheme bind the user to the nhp-server and scheme
+	// chosen at registration. The private key is scheme-agnostic, so a
+	// scheme switch re-derives the public key (and re-runs NHP_REG) without
+	// rotating the stored private key.
+	ServerName   string
+	CipherScheme string
+	CreatedAt    time.Time
 }
 
 // RegToken associates an in-flight registration with a user, so a refresh /
@@ -100,8 +106,9 @@ func (s *UserStore) Close() error {
 	return err
 }
 
-// migrate creates the users + reg_tokens tables if they don't yet exist.
-// Both are kept minimal so an operator can inspect them with `sqlite3`.
+// migrate creates the users + reg_tokens tables if they don't yet exist,
+// and idempotently adds columns introduced after the initial schema. Both
+// are kept minimal so an operator can inspect them with `sqlite3`.
 func (s *UserStore) migrate() error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS users (
@@ -128,6 +135,23 @@ func (s *UserStore) migrate() error {
 			return fmt.Errorf("migrate: %w (stmt=%s)", err, q)
 		}
 	}
+	// Idempotent column additions for existing databases. SQLite raises
+	// "duplicate column name" when the column already exists; treat that as
+	// success. Each new column ships with a default so old rows survive.
+	addColumns := []struct {
+		col, def string
+	}{
+		{"server_name", "TEXT DEFAULT ''"},
+		{"cipher_scheme", "TEXT DEFAULT ''"},
+	}
+	for _, c := range addColumns {
+		stmt := fmt.Sprintf("ALTER TABLE users ADD COLUMN %s %s", c.col, c.def)
+		if _, err := s.db.Exec(stmt); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column name") {
+				return fmt.Errorf("migrate: add column %s: %w", c.col, err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -145,11 +169,11 @@ func (s *UserStore) CreateUser(ctx context.Context, u *User) error {
 		INSERT INTO users
 			(username, password_hash, email, oidc_subject,
 			 nhp_public_key, nhp_private_key_enc, nhp_device_id,
-			 status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 status, created_at, server_name, cipher_scheme)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		u.Username, u.PasswordHash, u.Email, nullIfEmpty(u.OIDCSubject),
 		nullIfEmpty(u.NHPPublicKey), nullIfEmpty(u.NHPPrivateKeyEnc), nullIfEmpty(u.NHPDeviceID),
-		string(u.Status), u.CreatedAt.Unix(),
+		string(u.Status), u.CreatedAt.Unix(), u.ServerName, u.CipherScheme,
 	)
 	if err != nil {
 		return fmt.Errorf("insert user: %w", err)
@@ -164,13 +188,17 @@ func (s *UserStore) CreateUser(ctx context.Context, u *User) error {
 
 // UpdateUserKeys overwrites the NHP material on a user row (used for OIDC
 // users who didn't have keys at password-less creation time, and for retry
-// paths where the operator regenerates the key pair).
-func (s *UserStore) UpdateUserKeys(ctx context.Context, userID int64, pub, privEnc, deviceID string) error {
+// paths where the operator regenerates the key pair). It also rebinds the
+// server/scheme so the complete-registration view can switch scheme: the
+// private key is scheme-agnostic so it is NOT rotated here, only the
+// derived public key + the chosen server/scheme binding.
+func (s *UserStore) UpdateUserKeys(ctx context.Context, userID int64, pub, privEnc, deviceID, serverName, cipherScheme string) error {
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE users
-		   SET nhp_public_key = ?, nhp_private_key_enc = ?, nhp_device_id = ?
+		   SET nhp_public_key = ?, nhp_private_key_enc = ?, nhp_device_id = ?,
+		       server_name = ?, cipher_scheme = ?
 		 WHERE id = ?`,
-		pub, privEnc, deviceID, userID)
+		pub, privEnc, deviceID, serverName, cipherScheme, userID)
 	if err != nil {
 		return fmt.Errorf("update keys: %w", err)
 	}
@@ -300,17 +328,20 @@ func (s *UserStore) queryOne(ctx context.Context, q string, args ...any) (*User,
 	row := s.db.QueryRowContext(ctx, q, args...)
 	u := &User{}
 	var (
-		pwdHash   sql.NullString
-		oidcSub   sql.NullString
-		pub       sql.NullString
-		privEnc   sql.NullString
-		devID     sql.NullString
-		statusStr string
-		createdAt int64
+		pwdHash    sql.NullString
+		oidcSub    sql.NullString
+		pub        sql.NullString
+		privEnc    sql.NullString
+		devID      sql.NullString
+		statusStr  string
+		createdAt  int64
+		serverName sql.NullString
+		cipherSch  sql.NullString
 	)
 	if err := row.Scan(
 		&u.ID, &u.Username, &pwdHash, &u.Email, &oidcSub,
 		&pub, &privEnc, &devID, &statusStr, &createdAt,
+		&serverName, &cipherSch,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrUserNotFound
@@ -323,6 +354,8 @@ func (s *UserStore) queryOne(ctx context.Context, q string, args ...any) (*User,
 	u.NHPPrivateKeyEnc = privEnc.String
 	u.NHPDeviceID = devID.String
 	u.Status = UserStatus(statusStr)
+	u.ServerName = serverName.String
+	u.CipherScheme = cipherSch.String
 	u.CreatedAt = time.Unix(createdAt, 0).UTC()
 	return u, nil
 }

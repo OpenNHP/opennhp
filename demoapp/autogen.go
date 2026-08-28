@@ -120,26 +120,13 @@ type relayServerInfo struct {
 	CipherScheme    int    `json:"cipherScheme"`
 }
 
-// relayServerSnapshot bundles the per-server fields demoapp needs from
-// /servers: the public key AND the cipher scheme. Together they let us
-// detect a Curve25519 vs GMSM relay and pick the matching scheme.
-type relayServerSnapshot struct {
-	PublicKeyBase64 string
-	CipherScheme    int
-}
-
-// fetchServerSnapshotFromRelay hits GET <relayURL>/servers on the local
-// relay and returns the first server's publicKeyBase64 + cipherScheme.
-// The endpoint is intentionally unauthenticated (see relay.go:handleServers).
-//
-// Retries with a short backoff: in docker compose the relay container may
-// not have finished registering the nhp-server yet when demoapp first
-// starts, so a single 3s probe often catches "0 servers" before the
-// relay has anything to report. We retry until either we get a non-empty
-// list or ctx (caller's deadline) elapses.
-func fetchServerSnapshotFromRelay(ctx context.Context, relayURL string) (relayServerSnapshot, error) {
+// fetchServerListFromRelay hits GET <relayURL>/servers and returns the full
+// server list the relay reports. Retries with a short backoff so a demoapp
+// that boots before the relay has registered any nhp-server eventually sees
+// a non-empty list (or times out via ctx).
+func fetchServerListFromRelay(ctx context.Context, relayURL string) ([]relayServerInfo, error) {
 	if relayURL == "" {
-		return relayServerSnapshot{}, errors.New("RelayUrl is empty")
+		return nil, errors.New("RelayUrl is empty")
 	}
 	url := strings.TrimRight(relayURL, "/") + "/servers"
 
@@ -147,9 +134,9 @@ func fetchServerSnapshotFromRelay(ctx context.Context, relayURL string) (relaySe
 	const backoff = 1 * time.Second
 	const maxAttempts = 30 // ~30s total: long enough for relay to register server
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		snap, err := probeRelayOnce(ctx, url, probeTimeout)
+		servers, err := probeRelayListOnce(ctx, url, probeTimeout)
 		if err == nil {
-			return snap, nil
+			return servers, nil
 		}
 		// Log every few attempts so an operator tailing docker logs sees
 		// the relay-bringing-up dance.
@@ -158,40 +145,37 @@ func fetchServerSnapshotFromRelay(ctx context.Context, relayURL string) (relaySe
 		}
 		select {
 		case <-ctx.Done():
-			return relayServerSnapshot{}, fmt.Errorf("relay /servers never returned a server after %d attempts: %w", attempt, ctx.Err())
+			return nil, fmt.Errorf("relay /servers never returned a server after %d attempts: %w", attempt, ctx.Err())
 		case <-time.After(backoff):
 		}
 	}
-	return relayServerSnapshot{}, fmt.Errorf("relay /servers never returned a server after %d attempts", maxAttempts)
+	return nil, fmt.Errorf("relay /servers never returned a server after %d attempts", maxAttempts)
 }
 
-// probeRelayOnce is the single-shot helper behind fetchServerSnapshotFromRelay.
-func probeRelayOnce(ctx context.Context, url string, timeout time.Duration) (relayServerSnapshot, error) {
+// probeRelayListOnce is the single-shot helper behind fetchServerListFromRelay.
+func probeRelayListOnce(ctx context.Context, url string, timeout time.Duration) ([]relayServerInfo, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, url, nil)
 	if err != nil {
-		return relayServerSnapshot{}, fmt.Errorf("build request: %w", err)
+		return nil, fmt.Errorf("build request: %w", err)
 	}
 	r, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return relayServerSnapshot{}, err
+		return nil, err
 	}
 	defer r.Body.Close()
 	if r.StatusCode != http.StatusOK {
-		return relayServerSnapshot{}, fmt.Errorf("HTTP %d", r.StatusCode)
+		return nil, fmt.Errorf("HTTP %d", r.StatusCode)
 	}
 	var servers []relayServerInfo
 	if err := json.NewDecoder(r.Body).Decode(&servers); err != nil {
-		return relayServerSnapshot{}, fmt.Errorf("decode: %w", err)
+		return nil, fmt.Errorf("decode: %w", err)
 	}
 	if len(servers) == 0 || servers[0].PublicKeyBase64 == "" {
-		return relayServerSnapshot{}, fmt.Errorf("relay has no servers yet")
+		return nil, fmt.Errorf("relay has no servers yet")
 	}
-	return relayServerSnapshot{
-		PublicKeyBase64: servers[0].PublicKeyBase64,
-		CipherScheme:    servers[0].CipherScheme,
-	}, nil
+	return servers, nil
 }
 
 // relaySchemeToString maps the relay's int scheme to our CipherScheme
@@ -205,6 +189,19 @@ func relaySchemeToString(n int) CipherScheme {
 		return CipherSchemeGMSM
 	default:
 		return ""
+	}
+}
+
+// fillServerPubKey sets the public key matching the server's
+// RelayRegisteredScheme. The cross-scheme key is left untouched — it cannot
+// be derived from the relay's registered key (that requires the server's
+// private key), so cross-scheme knock stays unavailable until the operator
+// fills the other key by hand. This is a documented limitation.
+func fillServerPubKey(se *ServerEntry, pubKeyBase64 string) {
+	if se.RelayRegisteredScheme == CipherSchemeGMSM {
+		se.Sm2PublicKey = pubKeyBase64
+	} else {
+		se.Curve25519PublicKey = pubKeyBase64
 	}
 }
 
@@ -258,54 +255,61 @@ func autoFillConfig(cfg *Config, etcDir string, relayProbeCtx context.Context) (
 		}
 	}
 
-	// ServerPublicKey + CipherScheme: fetch from the relay's /servers only
-	// when ServerPublicKey is the placeholder. We do NOT probe when the
-	// operator (or a shipped docker config) has already provided a real
-	// key — the nhp-server public key is committed in
-	// docker/nhp-relay/etc/config.toml alongside this repo and can be
-	// mirrored into docker/demoapp/etc/config.toml without a runtime
-	// network call. The /servers auto-fetch is a local-dev convenience
-	// for someone running `demoapp` outside docker, not a docker boot
-	// path.
+	// Server public keys + scheme: auto-fill from the relay's /servers when
+	// the configured servers carry placeholder keys. This is a local-dev
+	// convenience for someone running `demoapp` outside docker; the shipped
+	// docker configs commit real keys and skip the probe.
 	//
-	// CipherScheme detection piggybacks on the same probe: if we DO end
-	// up probing (because ServerPublicKey is unset), adopt the relay's
-	// scheme. Otherwise leave the operator's explicit choice alone.
-	if isPlaceholder(cfg.ServerPublicKey) {
-		snap, err := func() (relayServerSnapshot, error) {
-			if values.ServerPublicKey != "" {
-				// Sidecar has the key already from a previous boot;
-				// reuse the persisted cipher scheme if present.
-				return relayServerSnapshot{
+	// Single-server case (the promoted-legacy config or one [[Servers]]
+	// entry with a placeholder key): probe /servers, fill the entry's
+	// relay-registered-scheme public key + set RelayRegisteredScheme. The
+	// sidecar caches that one key across restarts.
+	//
+	// Multi-server case: the operator is expected to hand-fill real keys
+	// in [[Servers]] (the relay's /servers exposes only the
+	// relay-registered key per server, NOT the cross-scheme key, so we
+	// cannot reliably auto-derive a full multi-server catalog). We still
+	// probe and fill any placeholder entry we can match by Name.
+	defaultSrv := cfg.DefaultServer()
+	needProbe := defaultSrv == nil ||
+		isPlaceholder(defaultSrv.publicKeyFor(defaultSrv.RelayRegisteredScheme))
+	if needProbe {
+		servers, err := func() ([]relayServerInfo, error) {
+			if values.ServerPublicKey != "" && len(cfg.Servers) <= 1 {
+				// Sidecar has the single server's key from a previous boot.
+				return []relayServerInfo{{
 					PublicKeyBase64: values.ServerPublicKey,
 					CipherScheme:    values.CipherSchemeNum,
-				}, nil
+				}}, nil
 			}
 			if cfg.RelayURL == "" {
-				return relayServerSnapshot{}, errors.New("RelayUrl is empty; cannot probe relay")
+				return nil, errors.New("RelayUrl is empty; cannot probe relay")
 			}
-			return fetchServerSnapshotFromRelay(relayProbeCtx, cfg.RelayURL)
+			return fetchServerListFromRelay(relayProbeCtx, cfg.RelayURL)
 		}()
 		if err != nil {
 			// Non-fatal: log and continue with the placeholder.
-			// The operator can edit config.toml later.
 			fmt.Fprintf(os.Stderr, "[demoapp] could not auto-fill from relay: %v\n", err)
-		} else {
-			if snap.PublicKeyBase64 != "" {
-				cfg.ServerPublicKey = snap.PublicKeyBase64
-				values.ServerPublicKey = snap.PublicKeyBase64
-				changed = true
-			}
-			// Adopt the relay's scheme only when the operator left it
-			// empty in config.toml. AllowPlaceholder covers both "" and
-			// the canonical REPLACE_/CHANGE_ME markers so an operator
-			// who copies the auto-fill template still benefits.
-			if isPlaceholder(string(cfg.CipherScheme)) {
-				if s := relaySchemeToString(snap.CipherScheme); s != "" {
-					cfg.CipherScheme = s
-					values.CipherSchemeNum = snap.CipherScheme
+		} else if len(servers) > 0 {
+			relayed := relaySchemeToString(servers[0].CipherScheme)
+			// Single configured server: fill its relay-registered-scheme key.
+			if len(cfg.Servers) == 1 {
+				se := &cfg.Servers[0]
+				if relayed != "" && isPlaceholder(string(se.RelayRegisteredScheme)) {
+					se.RelayRegisteredScheme = relayed
+				}
+				if pub := se.publicKeyFor(se.RelayRegisteredScheme); isPlaceholder(pub) {
+					fillServerPubKey(se, servers[0].PublicKeyBase64)
+					values.ServerPublicKey = servers[0].PublicKeyBase64
+					values.CipherSchemeNum = servers[0].CipherScheme
 					changed = true
 				}
+			}
+			// Adopt the relay's scheme as the global default when the
+			// operator left CipherScheme empty.
+			if isPlaceholder(string(cfg.CipherScheme)) && relayed != "" {
+				cfg.CipherScheme = relayed
+				changed = true
 			}
 		}
 	}

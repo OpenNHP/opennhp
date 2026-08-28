@@ -192,8 +192,12 @@ func (a *App) upsertOIDCUser(ctx context.Context, subject, email string) (*User,
 		return nil, err
 	}
 
-	// New OIDC user — no password, freshly generated NHP keys.
-	kp, err := GenerateKeyPair(a.Cfg.CipherScheme)
+	// New OIDC user — no password, freshly generated NHP keys. OIDC has no
+	// interactive scheme/server selection at callback time, so bind to the
+	// default server (Servers[0]) under its relay-registered scheme. The
+	// user can still switch via the complete-registration view later
+	// (private key is scheme-agnostic, only the public key is re-derived).
+	priv, pub, serverName, scheme, err := a.generateDefaultNHPKeyMaterial()
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +205,7 @@ func (a *App) upsertOIDCUser(ctx context.Context, subject, email string) (*User,
 	if err != nil {
 		return nil, err
 	}
-	privEnc, err := sealKey(a.MasterKey, kp.PrivateKey)
+	privEnc, err := sealKey(a.MasterKey, priv)
 	if err != nil {
 		return nil, err
 	}
@@ -209,9 +213,11 @@ func (a *App) upsertOIDCUser(ctx context.Context, subject, email string) (*User,
 		Username:         email, // OIDC users identify by email
 		Email:            email,
 		OIDCSubject:      subject,
-		NHPPublicKey:     kp.PublicKey,
+		NHPPublicKey:     pub,
 		NHPPrivateKeyEnc: privEnc,
 		NHPDeviceID:      deviceID,
+		ServerName:       serverName,
+		CipherScheme:     scheme,
 		Status:           UserStatusActive, // OIDC users skip the manual confirm step
 	}
 	if err := a.Store.CreateUser(ctx, u); err != nil {
@@ -220,11 +226,35 @@ func (a *App) upsertOIDCUser(ctx context.Context, subject, email string) (*User,
 	return u, nil
 }
 
+// generateDefaultNHPKeyMaterial produces a scheme-agnostic private key plus
+// the public key derived under the default server's relay-registered scheme.
+// Shared by the OIDC upsert paths that have no interactive scheme choice.
+// Returns (privB64, pubB64, serverName, scheme, err).
+func (a *App) generateDefaultNHPKeyMaterial() (priv, pub, serverName, scheme string, err error) {
+	srv := a.Cfg.DefaultServer()
+	if srv == nil {
+		return "", "", "", "", errors.New("no [[Servers]] configured")
+	}
+	s := string(srv.RelayRegisteredScheme)
+	if s == "" {
+		s = string(a.Cfg.CipherScheme)
+	}
+	priv, err = GenerateSchemeAgnosticPrivateKey()
+	if err != nil {
+		return "", "", "", "", err
+	}
+	pub, err = DerivePublicKey(priv, CipherScheme(s))
+	if err != nil {
+		return "", "", "", "", err
+	}
+	return priv, pub, srv.Name, s, nil
+}
+
 // generateAndStoreNHPKeys fills in the NHP material on an existing user
 // (currently only used for OIDC-linked password users). Caller must
 // have already verified the user exists.
 func (a *App) generateAndStoreNHPKeys(ctx context.Context, u *User) error {
-	kp, err := GenerateKeyPair(a.Cfg.CipherScheme)
+	priv, pub, serverName, scheme, err := a.generateDefaultNHPKeyMaterial()
 	if err != nil {
 		return err
 	}
@@ -232,9 +262,9 @@ func (a *App) generateAndStoreNHPKeys(ctx context.Context, u *User) error {
 	if err != nil {
 		return err
 	}
-	privEnc, err := sealKey(a.MasterKey, kp.PrivateKey)
+	privEnc, err := sealKey(a.MasterKey, priv)
 	if err != nil {
 		return err
 	}
-	return a.Store.UpdateUserKeys(ctx, u.ID, kp.PublicKey, privEnc, deviceID)
+	return a.Store.UpdateUserKeys(ctx, u.ID, pub, privEnc, deviceID, serverName, scheme)
 }

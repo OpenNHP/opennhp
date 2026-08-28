@@ -47,7 +47,17 @@ export async function createAgent(
     deviceId,
     organizationId: cfg.organizationId,
   });
-  agent.addServer({ publicKey: cfg.serverPublicKey });
+  // relayPublicKey routes the knock to the fingerprint the relay registered
+  // the server under. When the chosen scheme differs from the relay's
+  // registered scheme, the ECDH publicKey is the other-scheme key but the
+  // routing fingerprint must still match — relayPublicKey supplies it.
+  const serverCfg: { publicKey: string; relayPublicKey?: string } = {
+    publicKey: cfg.serverPublicKey,
+  };
+  if (cfg.relayPublicKey) {
+    serverCfg.relayPublicKey = cfg.relayPublicKey;
+  }
+  agent.addServer(serverCfg);
   return {
     agent,
     dispose: () => {

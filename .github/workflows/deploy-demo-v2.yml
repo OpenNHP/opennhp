@@ -1517,8 +1517,16 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   # Job 6b: Deploy demoapp (on the relay host, demo.opennhp.org)
   # ─────────────────────────────────────────────────────────────
+  # Depends on deploy-jsagent (not just deploy-relay) because both this
+  # job and deploy-jsagent run bootstrap-tls.sh → certbot on the SAME
+  # relay host. Certbot holds an exclusive lock and refuses to run
+  # concurrently ("Another instance of Certbot is already running"), and
+  # both jobs also write+shred the shared /tmp/cf_token. Running them in
+  # parallel (both only needs: [configure, deploy-relay]) raced. Chaining
+  # keeps relay-host certbot strictly serial:
+  #   deploy-relay → deploy-jsagent → deploy-demoapp.
   deploy-demoapp:
-    needs: [configure, deploy-relay]
+    needs: [configure, deploy-relay, deploy-jsagent]
     if: github.event.inputs.confirm == 'deploy'
     runs-on: ubuntu-latest
     permissions:

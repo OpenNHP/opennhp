@@ -94,7 +94,13 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
         </ul>
       `;
       area.querySelectorAll<HTMLButtonElement>('.knock-btn').forEach((btn) => {
-        btn.addEventListener('click', () => void doKnock(btn.dataset.resid || ''));
+        btn.addEventListener('click', () => {
+          // Open the blank window synchronously inside the user gesture so
+          // popup blockers don't suppress it; we set its location only after
+          // the (async) knock succeeds.
+          const popup = window.open('', '_blank');
+          void doKnock(btn.dataset.resid || '', popup);
+        });
       });
     } catch (err) {
       handle.dispose();
@@ -103,7 +109,7 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
     }
   }
 
-  async function doKnock(resourceId: string): Promise<void> {
+  async function doKnock(resourceId: string, popup: Window | null): Promise<void> {
     const item = area.querySelector<HTMLLIElement>(`li.resource-item[data-resid="${resourceId}"]`);
     const btn = item?.querySelector<HTMLButtonElement>('.knock-btn');
     if (btn) btn.disabled = true;
@@ -114,17 +120,25 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
       const outcome = await knockResource(handle, creds.nhp, resourceId);
       handle.dispose();
       if (outcome.success && outcome.resourceHost) {
-        showAlert('success', `Knock successful — redirecting to ${outcome.resourceHost}`);
+        showAlert('success', `Knock successful — opening ${outcome.resourceHost}`);
         const url = /^https?:\/\//.test(outcome.resourceHost)
           ? outcome.resourceHost
           : `https://${outcome.resourceHost}`;
-        window.location.href = url;
+        if (popup && !popup.closed) {
+          popup.location.href = url;
+        } else {
+          // Popup was blocked or already closed — fall back to navigating the
+          // current tab so the knock isn't wasted.
+          window.location.href = url;
+        }
       } else {
         showAlert('error', `Knock failed: ${outcome.error ?? 'unknown'}`);
+        popup?.close();
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       showAlert('error', `Knock failed: ${msg}`);
+      popup?.close();
     } finally {
       if (btn) btn.disabled = false;
     }

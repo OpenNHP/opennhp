@@ -47,7 +47,7 @@ RUN npm run build
 # ────────────────────────────────────────────────────────────────────────────
 # Stage 2 — Go backend with embedded SPA
 # ────────────────────────────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS backend
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS backend
 
 ARG TARGETARCH
 ARG TARGETOS
@@ -60,12 +60,19 @@ ENV GOOS=${TARGETOS} \
 WORKDIR /src
 
 # Copy the demoapp module first so the dependency graph is cached across
-# source-only changes.
+# source-only changes. demoapp's go.mod replaces nhp with ../nhp (a local
+# path), so the nhp module's go.mod/go.sum must be present at /nhp before
+# `go mod download` can resolve the replacement — otherwise it fails with
+# "reading /nhp/go.mod: no such file or directory".
 COPY ./demoapp/go.mod ./demoapp/go.sum* ./
+COPY ./nhp/go.mod ./nhp/go.sum* /nhp/
 RUN go mod download
 
-# Copy the rest of the demoapp source + the SPA build artifact.
+# Copy the rest of the demoapp source + the SPA build artifact. Also copy
+# the full nhp module source (the local replace target) so the build can
+# compile the nhp/core packages demoapp imports.
 COPY ./demoapp ./
+COPY ./nhp /nhp
 COPY --from=spa /spa/dist ./web/dist
 
 # Build the binary with the bundled SPA embedded via demoapp_web.go (a

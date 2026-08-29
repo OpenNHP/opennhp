@@ -13,6 +13,7 @@ type LocalTransaction struct {
 	mad           *MsgAssemblerData
 	NextPacketCh  chan *Packet           // higher level entities should redirect packet to this channel
 	ExternalMsgCh chan *PacketParserData // a channel to receive an external msg to complete the transaction
+	done          chan struct{}          // closed by Run on exit; prevents sends to an exited transaction
 	timeout       int
 }
 
@@ -21,8 +22,71 @@ type RemoteTransaction struct {
 	connData      *ConnectionData
 	parserData    *PacketParserData
 	NextMsgCh     chan *MsgData // higher level entities should redirect message to this channel
+	done          chan struct{} // closed by Run on exit; prevents sends to an exited transaction
 	timeout       int
 }
+
+func newLocalTransaction(id uint64, connData *ConnectionData, mad *MsgAssemblerData, timeout int) *LocalTransaction {
+	return &LocalTransaction{
+		transactionId: id,
+		connData:      connData,
+		mad:           mad,
+		NextPacketCh:  make(chan *Packet),
+		ExternalMsgCh: make(chan *PacketParserData),
+		done:          make(chan struct{}),
+		timeout:       timeout,
+	}
+}
+
+func newRemoteTransaction(id uint64, connData *ConnectionData, parserData *PacketParserData, timeout int) *RemoteTransaction {
+	return &RemoteTransaction{
+		transactionId: id,
+		connData:      connData,
+		parserData:    parserData,
+		NextMsgCh:     make(chan *MsgData),
+		done:          make(chan struct{}),
+		timeout:       timeout,
+	}
+}
+
+// SendMessage forwards md to the transaction, or returns
+// common.ErrTransactionClosed if the transaction has already exited.
+func (t *RemoteTransaction) SendMessage(md *MsgData) error {
+	select {
+	case t.NextMsgCh <- md:
+		return nil
+	case <-t.done:
+		return common.ErrTransactionClosed
+	}
+}
+
+// Done is closed when the remote transaction exits.
+func (t *RemoteTransaction) Done() <-chan struct{} { return t.done }
+
+// SendPacket forwards pkt to the transaction, or returns
+// common.ErrTransactionClosed if the transaction has already exited.
+func (t *LocalTransaction) SendPacket(pkt *Packet) error {
+	select {
+	case t.NextPacketCh <- pkt:
+		return nil
+	case <-t.done:
+		return common.ErrTransactionClosed
+	}
+}
+
+// SendExternalMsg forwards ppd to the transaction, or returns
+// common.ErrTransactionClosed if the transaction has already exited.
+func (t *LocalTransaction) SendExternalMsg(ppd *PacketParserData) error {
+	select {
+	case t.ExternalMsgCh <- ppd:
+		return nil
+	case <-t.done:
+		return common.ErrTransactionClosed
+	}
+}
+
+// Done is closed when the local transaction exits.
+func (t *LocalTransaction) Done() <-chan struct{} { return t.done }
 
 func (d *Device) IsTransactionRequest(t int) bool {
 
@@ -142,16 +206,13 @@ func (t *LocalTransaction) Run() {
 	device := t.mad.device
 	var err error
 
-	t.ExternalMsgCh = make(chan *PacketParserData)
-
 	// clear up
 	defer func() {
 		t.mad.Destroy()
-		close(t.NextPacketCh)
-		close(t.ExternalMsgCh)
 
 		device.localTransactionMutex.Lock()
 		delete(device.localTransactionMap, t.transactionId)
+		close(t.done)
 		device.localTransactionMutex.Unlock()
 
 		// if local transaction is expecting a response, return an error
@@ -234,10 +295,10 @@ func (t *RemoteTransaction) Run() {
 
 	defer func() {
 		t.parserData.Destroy()
-		close(t.NextMsgCh)
 
 		conn.RemoteTransactionMutex.Lock()
 		delete(conn.RemoteTransactionMap, t.transactionId)
+		close(t.done)
 		conn.RemoteTransactionMutex.Unlock()
 
 		conn.Done()

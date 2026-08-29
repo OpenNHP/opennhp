@@ -45,6 +45,12 @@ type UdpServer struct {
 	wg         sync.WaitGroup
 	running    atomic.Bool
 
+	// observability: metrics are always collected; metricsServer is the
+	// opt-in /metrics + /healthz listener (nil when disabled).
+	startTime     time.Time
+	metrics       *serverMetrics
+	metricsServer *metricsServer
+
 	// Atomic mirrors of Config bool fields that are read on hot paths
 	// (per-packet handlers, per-connection teardown) while updateBaseConfig
 	// may concurrently write s.config from the file-watch goroutine. Reading
@@ -393,6 +399,18 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
 	s.handlerSem = make(chan struct{}, MaxConcurrentHandlers)
 
+	// observability: always collect metrics; the /metrics + /healthz listener
+	// is opt-in via [Metrics] in config.toml and binds locally by default.
+	s.startTime = time.Now()
+	s.metrics = newServerMetrics(s, s.startTime)
+	if s.config.Metrics.Enabled {
+		s.metricsServer = newMetricsServer(s)
+		if startErr := s.metricsServer.start(); startErr != nil {
+			log.Error("[Metrics] endpoint failed to start: %v", startErr)
+			s.metricsServer = nil
+		}
+	}
+
 	// Register keystore-backed peer lookup fallback so dynamically
 	// registered agents (via NHP-REG) are accepted even though they
 	// are not in the static agent.toml peer pool.
@@ -465,6 +483,9 @@ func (s *UdpServer) Stop() {
 	// stop http server first
 	if s.httpServer != nil {
 		s.httpServer.Stop()
+	}
+	if s.metricsServer != nil {
+		s.metricsServer.stop()
 	}
 	if s.etcdConn != nil {
 		s.etcdConn.Close()
@@ -892,6 +913,12 @@ func (s *UdpServer) AddBlockAddr(addr *net.UDPAddr) {
 	log.Critical("add blocking address %s", addrStr)
 
 	if len(s.blockAddrMap) < MaxConcurrentConnection {
+		// Count only newly blocked sources; re-blocking an address that is
+		// already in the pool just refreshes its expiry and shouldn't inflate
+		// the counter.
+		if _, already := s.blockAddrMap[addrStr]; !already {
+			s.metrics.recordBlockedAddr()
+		}
 		s.blockAddrMap[addrStr] = &BlockAddr{addr, time.Now().Add(BlockAddrExpireTime * time.Second)}
 	} else {
 		log.Warning("block address pool is full")
@@ -992,6 +1019,8 @@ func (s *UdpServer) recvMessageRoutine() {
 				// recvMsgCh is closed
 				continue
 			}
+
+			s.metrics.recordMessageReceived(core.HeaderTypeToString(ppd.HeaderType))
 
 			switch ppd.HeaderType {
 			case core.NHP_KNK, core.NHP_RKN, core.NHP_EXT, core.DHP_KNK:
@@ -1246,6 +1275,15 @@ func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACCon
 		artMsg.ErrMsg = err.Error()
 		return
 	}
+
+	// Only now do we actually attempt the server→AC round trip, so arm the
+	// duration/outcome metric here — the early "should not happen" and
+	// not-running guards above returned without touching the AC and
+	// shouldn't show up as AC operations.
+	start := time.Now()
+	defer func() {
+		s.metrics.recordACOperation(err == nil, time.Since(start).Seconds())
+	}()
 
 	s.sendMsgCh <- aopMd
 

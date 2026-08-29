@@ -87,12 +87,18 @@ type UdpServer struct {
 
 	// block address management
 	blockAddrMapMutex sync.Mutex
-	blockAddrMap      map[string]*BlockAddr // indexed by remote UDP address, need lock for dynamic change
+	blockAddrMap      map[string]*BlockAddr // indexed by source IP, need lock for dynamic change
 
 	// rknLimiter gates the cookie-verify ECDH for RKN-under-overload per
 	// source IP. Shared (internally locked) between the direct-UDP receive
 	// loop and the relay-forward handlers. See rknRateLimiter.
 	rknLimiter *rknRateLimiter
+
+	// packetLimiter is the general valid-packet gate. It deliberately lives
+	// alongside (and does not replace) rknLimiter: overload RKNs still need the
+	// tighter pre-ECDH budget enforced by the existing limiter.
+	packetLimiter        *ipRateLimiter
+	packetRateLimitDrops atomic.Int64
 
 	// address association map
 	srcIpAssociatedAddrMapMutex sync.Mutex
@@ -387,6 +393,12 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		OverloadRknLimiterMaxEntries,
 		OverloadRknLimiterIdleSeconds*int64(time.Second),
 	)
+	s.packetLimiter = newIPRateLimiter(
+		PacketRatePerSecondPerIP,
+		PacketRateBurstPerIP,
+		PacketRateMaxEntries,
+		PacketRateIdleSeconds*int64(time.Second),
+	)
 	s.signals.stop = make(chan struct{})
 
 	s.recvMsgCh = s.device.DecryptedMsgQueue
@@ -545,7 +557,10 @@ func (s *UdpServer) recvPacketRoutine() {
 
 	log.Debug("recvPacketRoutine started")
 
-	preCheckThreats := make(map[string]int32)
+	preCheckThreats := newPreCheckThreatCache(
+		PreCheckThreatCacheMaxEntries,
+		PreCheckThreatCacheIdleSeconds*int64(time.Second),
+	)
 
 	for {
 		select {
@@ -570,6 +585,7 @@ func (s *UdpServer) recvPacketRoutine() {
 			continue
 		}
 		addrStr := remoteAddr.String()
+		ipStr := remoteAddr.IP.String()
 
 		// add total recv bytes
 		atomic.AddUint64(&s.stats.totalRecvBytes, uint64(n))
@@ -594,12 +610,9 @@ func (s *UdpServer) recvPacketRoutine() {
 
 		typ, _, err := s.device.RecvPrecheck(pkt) // this check also records packet header type
 		msgType := core.HeaderTypeToString(typ)
-		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
-		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
 		if err != nil {
 			// threat plus 1
-			preCheckThreats[addrStr]++
-			if preCheckThreats[addrStr] > PreCheckThreatCountBeforeBlock {
+			if preCheckThreats.increment(ipStr, recvTime) > PreCheckThreatCountBeforeBlock {
 				s.AddBlockAddr(remoteAddr)
 			}
 			s.device.ReleasePoolPacket(pkt)
@@ -608,7 +621,19 @@ func (s *UdpServer) recvPacketRoutine() {
 			continue
 		}
 		// clear threat
-		delete(preCheckThreats, addrStr)
+		preCheckThreats.clear(ipStr)
+
+		// Apply the general application-layer packet budget after the cheap
+		// structural precheck. Relay envelopes are accounted by their real client
+		// IP in HandleRelayForward. AC/DB tuples bypass the budget only after their
+		// authenticated online handlers have registered the connection.
+		isTrustedRelayEnvelope := pkt.HeaderType == core.NHP_RLY && s.isKnownRelayPeerIP(ipStr)
+		isAuthenticatedControlPlane := s.isAuthenticatedControlPlaneAddr(remoteAddr)
+		if !isTrustedRelayEnvelope && !isAuthenticatedControlPlane && !s.allowPacketFromIP(ipStr, recvTime) {
+			s.device.ReleasePoolPacket(pkt)
+			s.logPacketRateLimitDrop(ipStr)
+			continue
+		}
 
 		// Rate-limit RKN-under-overload per source IP BEFORE the packet
 		// reaches the connection routine (and thus before the cookie-
@@ -627,6 +652,11 @@ func (s *UdpServer) recvPacketRoutine() {
 				continue
 			}
 		}
+
+		// Keep per-packet info/evaluation logging after the cheap drop gates so
+		// an over-limit source cannot turn a packet flood into a logging flood.
+		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
+		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
 
 		s.remoteConnectionMapMutex.Lock()
 		conn, found := s.remoteConnectionMap[addrStr]
@@ -810,7 +840,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			return
 
 		case <-conn.ConnData.BlockSignal:
-			s.AddBlockAddr(conn.ConnData.RemoteAddr)
+			s.AddBlockAddr(blockAddressForConnection(conn))
 			return
 
 		case pkt, ok := <-conn.ConnData.RecvQueue:
@@ -880,7 +910,7 @@ func (s *UdpServer) IsBlockAddr(addr *net.UDPAddr) bool {
 	s.blockAddrMapMutex.Lock()
 	defer s.blockAddrMapMutex.Unlock()
 
-	_, found := s.blockAddrMap[addr.String()]
+	_, found := s.blockAddrMap[blockIPKey(addr)]
 	return found
 }
 
@@ -888,11 +918,14 @@ func (s *UdpServer) AddBlockAddr(addr *net.UDPAddr) {
 	s.blockAddrMapMutex.Lock()
 	defer s.blockAddrMapMutex.Unlock()
 
-	addrStr := addr.String()
-	log.Critical("add blocking address %s", addrStr)
+	ipStr := blockIPKey(addr)
+	if ipStr == "" {
+		return
+	}
+	log.Critical("add blocking source IP %s", ipStr)
 
 	if len(s.blockAddrMap) < MaxConcurrentConnection {
-		s.blockAddrMap[addrStr] = &BlockAddr{addr, time.Now().Add(BlockAddrExpireTime * time.Second)}
+		s.blockAddrMap[ipStr] = &BlockAddr{addr, time.Now().Add(BlockAddrExpireTime * time.Second)}
 	} else {
 		log.Warning("block address pool is full")
 	}

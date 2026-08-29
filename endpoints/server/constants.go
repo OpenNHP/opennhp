@@ -28,6 +28,19 @@ const (
 	PacketQueueSizePerConnection    = 256
 )
 
+// UDP source-state limits. These tables are keyed by IP rather than IP:port so
+// rotating source ports cannot multiply either the packet budget or the
+// precheck-failure budget.
+const (
+	PacketRatePerSecondPerIP = 100
+	PacketRateBurstPerIP     = 50
+	PacketRateMaxEntries     = 10_000
+	PacketRateIdleSeconds    = 120
+
+	PreCheckThreatCacheMaxEntries  = 10_000
+	PreCheckThreatCacheIdleSeconds = 300
+)
+
 // http APIs
 const (
 	DefaultHttpRequestReadTimeoutMs   = 4500 // millisecond

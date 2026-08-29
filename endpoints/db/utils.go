@@ -14,6 +14,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
+	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
 
@@ -31,24 +32,34 @@ func NewDataPrivateKeyStore(providerPublicKeyBase64 string) *DataPrivateKeyStore
 
 // NewDataPrivateKeyStoreWith create a new DataPrivateKeyStore with doId
 func NewDataPrivateKeyStoreWith(doId string) (d *DataPrivateKeyStore, err error) {
-	etcDir := "etc/ztdo"
-	fileName := "data-key-" + doId + ".json"
+	if err := common.ValidateDoID(doId); err != nil {
+		log.Warning("db[NewDataPrivateKeyStoreWith] rejected DoId=%q: %v", doId, err)
+		return nil, err
+	}
 
-	fullPath := filepath.Join(common.ExeDirPath, etcDir, fileName)
+	etcDir := filepath.Join(common.ExeDirPath, "etc", "ztdo")
+	fileName := "data-key-" + doId + ".json"
+	fullPath := filepath.Join(etcDir, fileName)
 
 	// open and read all the content in file
 	file, err := os.Open(fullPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %v", err)
+		log.Error("db[NewDataPrivateKeyStoreWith] DoId=%q open: %v", doId, err)
+		return nil, common.ErrDataPrivateKeyStore
 	}
+	defer func() { _ = file.Close() }()
 
 	fileContentByte, err := io.ReadAll(file)
 	if err != nil {
-		return nil, fmt.Errorf("error reading file: %v", err)
+		log.Error("db[NewDataPrivateKeyStoreWith] DoId=%q read: %v", doId, err)
+		return nil, common.ErrDataPrivateKeyStore
 	}
 
 	d = &DataPrivateKeyStore{}
-	_ = d.fromJson(fileContentByte)
+	if err := d.fromJson(fileContentByte); err != nil {
+		log.Error("db[NewDataPrivateKeyStoreWith] DoId=%q unmarshal: %v", doId, err)
+		return nil, common.ErrDataPrivateKeyStore
+	}
 
 	return
 }
@@ -62,37 +73,53 @@ func (d *DataPrivateKeyStore) Generate(mode ztdolib.DataKeyPairECCMode) (private
 // Save saves the dataPrivateKeyBase64 to a file, the format of file name is data-<doId>.json
 // Notes: this default way to store data private key is not safe. In the wild environment, need to use a secure way to store data private key.
 func (d *DataPrivateKeyStore) Save(doId string) error {
+	if err := common.ValidateDoID(doId); err != nil {
+		log.Warning("db[DataPrivateKeyStore.Save] rejected DoId=%q: %v", doId, err)
+		return err
+	}
+
 	// Make sure the etc directory exists
-	etcDir := "etc/ztdo"
+	etcDir := filepath.Join(common.ExeDirPath, "etc", "ztdo")
 	if err := os.MkdirAll(etcDir, 0755); err != nil {
-		return fmt.Errorf("failed to create etc directory: %v", err)
+		log.Error("db[DataPrivateKeyStore.Save] DoId=%q mkdir: %v", doId, err)
+		return common.ErrDataPrivateKeyStore
 	}
 
 	fileName := "data-key-" + doId + ".json"
-	fullPath := filepath.Join(common.ExeDirPath, etcDir, fileName)
+	fullPath := filepath.Join(etcDir, fileName)
 	if _, err := os.Stat(fullPath); err == nil {
-		return fmt.Errorf("%v already exists, please delete it first", fullPath)
+		log.Error("db[DataPrivateKeyStore.Save] DoId=%q already exists at %s", doId, fullPath)
+		return common.ErrDataPrivateKeyStore
 	}
 
 	file, err := os.Create(fullPath)
 	if err != nil {
-		return fmt.Errorf("failed to create file: %v", err)
+		log.Error("db[DataPrivateKeyStore.Save] DoId=%q create: %v", doId, err)
+		return common.ErrDataPrivateKeyStore
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
-	_, err = file.Write(d.toJson())
-	return err
+	if _, err := file.Write(d.toJson()); err != nil {
+		log.Error("db[DataPrivateKeyStore.Save] DoId=%q write: %v", doId, err)
+		return common.ErrDataPrivateKeyStore
+	}
+	return nil
 }
 
 func (d *DataPrivateKeyStore) Delete(doId string) error {
-	etcDir := "etc/ztdo"
+	if err := common.ValidateDoID(doId); err != nil {
+		log.Warning("db[DataPrivateKeyStore.Delete] rejected DoId=%q: %v", doId, err)
+		return err
+	}
+
+	etcDir := filepath.Join(common.ExeDirPath, "etc", "ztdo")
 	fileName := "data-key-" + doId + ".json"
-	fullPath := filepath.Join(common.ExeDirPath, etcDir, fileName)
+	fullPath := filepath.Join(etcDir, fileName)
 
 	// delete the file
-	err := os.Remove(fullPath)
-	if err != nil {
-		return fmt.Errorf("failed to delete file: %v", err)
+	if err := os.Remove(fullPath); err != nil {
+		log.Error("db[DataPrivateKeyStore.Delete] DoId=%q remove: %v", doId, err)
+		return common.ErrDataPrivateKeyStore
 	}
 	return nil
 }

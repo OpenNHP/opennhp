@@ -111,6 +111,9 @@ const (
 	errNHPReplayPacketReceived
 	errNHPFloodPacketReceived
 	errNHPStalePacketReceived
+	errNHPPeerNotFound
+	errNHPPeerExpired
+	errNHPPeerAddressMismatch
 )
 
 // device sdk errors
@@ -149,4 +152,7 @@ var (
 	ErrReplayPacketReceived           = newError(errNHPReplayPacketReceived, "received replay packet, drop")
 	ErrFloodPacketReceived            = newError(errNHPFloodPacketReceived, "received flood packet, drop")
 	ErrStalePacketReceived            = newError(errNHPStalePacketReceived, "received stale packet, drop")
+	ErrPeerNotFound                   = newError(errNHPPeerNotFound, "peer not found in peer pool")
+	ErrPeerExpired                    = newError(errNHPPeerExpired, "peer expired")
+	ErrPeerAddressMismatch            = newError(errNHPPeerAddressMismatch, "peer does not match its previous address on this connection")
 )

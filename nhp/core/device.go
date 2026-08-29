@@ -232,12 +232,8 @@ func (d *Device) msgToPacketRoutine(id int) {
 			// message encryption workflow: raw message -> encryption -> raw packet -> connection.SendQueue
 			func() {
 				msgType := HeaderTypeToString(md.HeaderType)
-				var msgStr string
-				if md.Message != nil {
-					msgStr = string(md.Message)
-				}
-				log.Debug("msgToPacketRoutine %d: encrypting [%s] raw message: %s", id, msgType, msgStr)
-				log.Evaluate("msgToPacketRoutine %d: encrypting [%s] raw message: %s", id, msgType, msgStr)
+				log.Debug("msgToPacketRoutine %d: encrypting [%s] raw message: %s", id, msgType, md.Message)
+				log.Evaluate("msgToPacketRoutine %d: encrypting [%s] raw message: %s", id, msgType, md.Message)
 
 				var mad *MsgAssemblerData
 				var err error
@@ -432,12 +428,8 @@ func (d *Device) packetToMsgRoutine(id int) {
 					return
 				}
 
-				var msgStr string
-				if ppd.BodyMessage != nil {
-					msgStr = string(ppd.BodyMessage)
-				}
-				log.Debug("packetToMsgRoutine: %d: complete decrypting [%s] message: %s", id, msgType, msgStr)
-				log.Evaluate("packetToMsgRoutine: %d: complete decrypting [%s] message: %s", id, msgType, msgStr)
+				log.Debug("packetToMsgRoutine: %d: complete decrypting [%s] message: %s", id, msgType, ppd.BodyMessage)
+				log.Evaluate("packetToMsgRoutine: %d: complete decrypting [%s] message: %s", id, msgType, ppd.BodyMessage)
 				log.Debug("packetToMsgRoutine: complete decrypting feedbackMsgCh:%d,headerType:%s", d.deviceType, HeaderTypeToString(ppd.HeaderType))
 				// deliver decrypted message to specific channel
 				if ppd.decryptedMsgCh != nil {

@@ -251,6 +251,9 @@ type PacketParserData struct {
 
 	LocalInitTime int64
 	SenderTrxId   uint64
+	// RemoteSendTime is the authenticated sender timestamp. It is populated
+	// after replay/flood/staleness validation for endpoint replay caches.
+	RemoteSendTime int64
 
 	noise        NoiseFactory // int
 	HeaderType   int
@@ -392,7 +395,18 @@ func shouldCheckRecvAttack(deviceType int, peerType int, msgType int) bool {
 		(deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP) {
 		return false
 	}
+	return true
+}
 
+// shouldCheckFlood is separate from the replay predicate because legitimate
+// AOP/ART bursts can arrive less than MinimalRecvIntervalMs apart.
+func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
+	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
+		return false
+	}
+	if deviceType == NHP_SERVER && peerType == NHP_AC && msgType == NHP_ART {
+		return false
+	}
 	return true
 }
 
@@ -564,22 +578,19 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	remoteSendTime := int64(binary.BigEndian.Uint64(tsBytes[:]))
 
 	if shouldCheckRecvAttack(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
-		// block remote if threat level is reached
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime {
 			// replay packet, drop
 			log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
-			// threat plus 1
 			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
-			// with high queue number, the device may use ConnData channels when conn is already closed
 			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
-				// clamp threat count to avoid overflow
 				atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, ThreatCountBeforeBlock)
-				// block source address
 				ppd.ConnData.SendBlockSignal()
 			}
 			err = fmt.Errorf("received replay packet")
 			return err
 		}
+	}
+	if shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) {
 			// flood packet, drop
 			log.Critical("received flood packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
@@ -612,6 +623,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 
 	// update remote last send time
 	atomic.StoreInt64(&ppd.ConnData.LastRemoteSendTime, remoteSendTime)
+	ppd.RemoteSendTime = remoteSendTime
 	// clear threat
 	atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)
 

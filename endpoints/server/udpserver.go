@@ -85,6 +85,10 @@ type UdpServer struct {
 
 	tokenStore *common.TokenStore[*ACTokenEntry]
 
+	// artReplay rejects an authenticated ART packet seen on an earlier UDP
+	// connection. It is installed as a post-validation core hook in Start.
+	artReplay *artReplayCache
+
 	// block address management
 	blockAddrMapMutex sync.Mutex
 	blockAddrMap      map[string]*BlockAddr // indexed by remote UDP address, need lock for dynamic change
@@ -274,6 +278,9 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		log.Critical("failed to create device: %v", err)
 		return fmt.Errorf("failed to create device %v", err)
 	}
+
+	s.artReplay = newARTReplayCache()
+	s.device.SetRecvReplayDedupe(s.dedupeRecvART)
 
 	// Stateless cookie signing key. In a multi-instance cluster all
 	// nhp-server replicas must share the same value so any of them can
@@ -1182,6 +1189,24 @@ func (s *UdpServer) FindAuthSvcProvider(aspId string) *common.AuthServiceProvide
 		return aspData
 	}
 
+	return nil
+}
+
+// dedupeRecvART runs after peer and timestamp authentication but before body
+// decryption. This is the common point for matched and unmatched ART packets,
+// so a replay cannot evade the cache by missing transaction correlation.
+func (s *UdpServer) dedupeRecvART(ppd *core.PacketParserData) error {
+	if ppd.HeaderType != core.NHP_ART {
+		return nil
+	}
+	if l := len(ppd.RemotePubKey); l != core.PublicKeySize && l != core.PublicKeySizeEx {
+		log.Critical("server[dedupeRecvART] invalid peer pubkey length %d for txid=%d (want %d or %d)", l, ppd.SenderTrxId, core.PublicKeySize, core.PublicKeySizeEx)
+		return common.ErrServerMissingPeerPubkey
+	}
+	if !s.artReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime) {
+		log.Warning("server[dedupeRecvART] dropped replayed ART (txid=%d, pubkey=%s, sendTime=%d)", ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
+		return common.ErrServerDuplicateTransaction
+	}
 	return nil
 }
 

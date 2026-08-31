@@ -171,7 +171,11 @@ func (a *App) handleOIDCCallback(c *gin.Context) {
 //     no NHP keys yet, generate them now so the user can still use the
 //     demo.
 //  3. Otherwise create a new password-less user with the external
-//     subject and freshly generated NHP keys.
+//     subject and freshly generated NHP keys, in the pending state.
+//     External-IdP users skip the password step but NOT the NHP_REG
+//     handshake — the public key must still be registered with
+//     nhp-server. They land on the complete-registration view, which
+//     runs the handshake via /api/credentials and flips them active.
 func (a *App) upsertExternalUser(ctx context.Context, subject, email string) (*User, error) {
 	if u, err := a.Store.GetUserByOIDCSubject(ctx, subject); err == nil {
 		return u, nil
@@ -220,7 +224,7 @@ func (a *App) upsertExternalUser(ctx context.Context, subject, email string) (*U
 		NHPDeviceID:      deviceID,
 		ServerName:       serverName,
 		CipherScheme:     scheme,
-		Status:           UserStatusActive, // OIDC users skip the manual confirm step
+		Status:           UserStatusPending, // complete NHP_REG via the resume view before activating
 	}
 	if err := a.Store.CreateUser(ctx, u); err != nil {
 		return nil, err

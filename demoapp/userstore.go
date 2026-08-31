@@ -157,7 +157,8 @@ func (s *UserStore) migrate() error {
 
 // CreateUser inserts a new user row. Status defaults to pending; the
 // caller flips it to active via ActivateUser once the NHP_REG handshake
-// completes (or for OIDC users where the server-side step is skipped).
+// completes. External-IdP (OIDC/GitHub) users are also created pending and
+// follow the same handshake via the complete-registration view.
 func (s *UserStore) CreateUser(ctx context.Context, u *User) error {
 	if u.Status == "" {
 		u.Status = UserStatusPending

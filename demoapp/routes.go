@@ -101,6 +101,7 @@ func (a *App) Register(r *gin.Engine) error {
 		auth.GET("/config", a.handleGetConfig)
 		auth.GET("/credentials", a.handleGetCredentials)
 		auth.GET("/me", a.handleMe)
+		auth.DELETE("/account", a.handleDeleteAccount)
 	}
 
 	// Static SPA fallback. Serve from disk if WebDistDir is configured

@@ -127,6 +127,14 @@ export const api = {
       method: 'POST',
     }),
 
+  /** Permanently delete the signed-in user's local account (credentials,
+   * sealed NHP private key, deviceId). The session is cleared server-side.
+   * The NHP-server public key is left to expire via the server TTL. */
+  deleteAccount: () =>
+    jsonFetch<{ success: boolean }>('/api/account', {
+      method: 'DELETE',
+    }),
+
   me: () => jsonFetch<{ username: string; email: string; status: string }>('/api/me'),
 
   credentials: () => jsonFetch<CredentialsResponse>('/api/credentials'),

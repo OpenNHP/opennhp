@@ -17,6 +17,7 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
       <div class="toolbar">
         <div class="user">Signed in as <span>${escape(props.username)}</span> (${escape(props.email)})</div>
         <button id="signout-btn" class="btn btn-secondary">Sign out</button>
+        <button id="delete-account-btn" class="btn btn-danger">Delete account</button>
       </div>
       <h1>Protected Resources</h1>
       <p class="subtitle">Click "Access" to knock nhp-server. The protected resource is hidden until the knock opens the door.</p>
@@ -31,6 +32,7 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
   const alert = root.querySelector<HTMLDivElement>('#alert')!;
   const area = root.querySelector<HTMLDivElement>('#resource-area')!;
   const signoutBtn = root.querySelector<HTMLButtonElement>('#signout-btn')!;
+  const deleteAccountBtn = root.querySelector<HTMLButtonElement>('#delete-account-btn')!;
 
   function showAlert(level: 'error' | 'success' | 'info', message: string): void {
     alert.innerHTML = `<div class="alert alert-${level}">${escape(message)}</div>`;
@@ -43,6 +45,24 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
   signoutBtn.addEventListener('click', async () => {
     await api.logout();
     props.onSignOut();
+  });
+
+  deleteAccountBtn.addEventListener('click', async () => {
+    // Irreversible: the sealed NHP private key is deleted from the backend,
+    // so the account (and its registered identity) cannot be recovered. The
+    // nhp-server public key is left to expire via the server TTL.
+    const ok = window.confirm(
+      'Delete your account? This permanently removes your credentials and NHP ' +
+      'key material from this demo. You can re-register afterward. This cannot be undone.',
+    );
+    if (!ok) return;
+    try {
+      await api.deleteAccount();
+      props.onSignOut();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : String(err);
+      showAlert('error', `Failed to delete account: ${msg}`);
+    }
   });
 
   void bootstrap();

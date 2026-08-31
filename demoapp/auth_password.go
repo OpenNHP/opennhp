@@ -473,6 +473,45 @@ func (a *App) handleLogout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
+// handleDeleteAccount deregisters the signed-in user: deletes their local
+// row (username, password hash, sealed NHP private key, deviceId, etc.) and
+// clears the session. reg_tokens cascade via the FK on the reg_tokens table.
+//
+// The NHP-server-side agent public key is NOT removed here — it is left to
+// expire via the server's AgentKeyTTLSeconds (24h default). The deleted
+// private key is gone, so the orphaned server key is unusable; and
+// FindAgentByPublicKey already filters on expires_at. Re-registration mints a
+// fresh keypair + deviceId, so it never collides with the orphaned row.
+//
+// Identity is proven by the requireSession middleware, which loaded the user
+// into the context. A 404 here means a concurrent delete already removed the
+// row — clear the session and report success so the SPA routes to login.
+func (a *App) handleDeleteAccount(c *gin.Context) {
+	user, ok := c.MustGet("user").(*User)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "user context missing"})
+		return
+	}
+	ctx := contextOf(c)
+	if err := a.Store.DeleteUser(ctx, user.ID); err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			// Row already gone (concurrent delete). Still clear the session
+			// so the client ends logged out and can re-register.
+			s := sessions.Default(c)
+			s.Clear()
+			_ = s.Save()
+			c.JSON(http.StatusOK, gin.H{"success": true})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "delete failed"})
+		return
+	}
+	s := sessions.Default(c)
+	s.Clear()
+	_ = s.Save()
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
 // handleMe returns the current user's basic profile (no secrets).
 func (a *App) handleMe(c *gin.Context) {
 	user, ok := c.MustGet("user").(*User)

@@ -69,6 +69,8 @@ a:hover { text-decoration: underline; }
   border: 1px solid #30363d;
 }
 .btn-secondary:hover { background: #30363d; }
+.btn-danger { background: #da3633; color: #fff; }
+.btn-danger:hover { background: #f85149; }
 
 .alert {
   padding: 10px 14px;

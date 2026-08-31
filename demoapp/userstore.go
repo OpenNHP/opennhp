@@ -209,6 +209,23 @@ func (s *UserStore) UpdateUserKeys(ctx context.Context, userID int64, pub, privE
 	return nil
 }
 
+// DeleteUser removes a user row by primary key. The reg_tokens rows cascade
+// automatically via the FOREIGN KEY ... ON DELETE CASCADE on the reg_tokens
+// table, so in-flight registration tokens for the user are cleaned up too.
+// Returns ErrUserNotFound when no row matched (the caller already proved
+// identity via the session, so a miss here means a concurrent delete).
+func (s *UserStore) DeleteUser(ctx context.Context, id int64) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("user %d not found: %w", id, ErrUserNotFound)
+	}
+	return nil
+}
+
 // ActivateUser marks a user active. It does NOT verify the NHP server
 // side — the caller already received a successful RAK from the agent. We
 // trust the caller because /api/register/confirm is gated on the session

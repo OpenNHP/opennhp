@@ -32,11 +32,13 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
   root.innerHTML = `
     <div class="container">
       <div class="toolbar">
-        <div class="user">Signed in as <span>${escape(props.username)}</span> (${escape(props.email)})</div>
-        <div class="badges">
-          <span class="badge">${escape(provider)}</span>
-          <span class="badge badge-mono">${escape(scheme)}</span>
-          <span class="badge">${escape(server)}</span>
+        <div class="toolbar-id">
+          <div class="user">Signed in as <span>${escape(props.username)}</span></div>
+          <div class="badges">
+            <span class="badge"><span class="badge-k">Auth</span>${escape(provider)}</span>
+            <span class="badge badge-mono"><span class="badge-k">Alg</span>${escape(scheme)}</span>
+            <span class="badge"><span class="badge-k">Server</span>${escape(server)}</span>
+          </div>
         </div>
         <div class="toolbar-actions">
           <button id="signout-btn" class="btn btn-secondary">Sign out</button>

@@ -26,7 +26,7 @@ export function renderCompleteRegistration(root: HTMLElement, props: CompleteReg
   root.innerHTML = `
     <div class="container">
       <div class="toolbar">
-        <div class="user">Signed in as <span>${escape(props.username)}</span> (${escape(props.email)})</div>
+        <div class="user">Signed in as <span>${escape(props.username)}</span></div>
         <button id="signout-btn" class="btn btn-secondary">Sign out</button>
       </div>
       <h1>Complete NHP Registration</h1>

@@ -205,6 +205,7 @@ func (a *App) handleRegister(c *gin.Context) {
 		NHPDeviceID:      deviceID,
 		ServerName:       srv.Name,
 		CipherScheme:     string(scheme),
+		AuthProvider:     "password",
 		Status:           UserStatusPending,
 	}
 	if err := a.Store.CreateUser(ctx, u); err != nil {
@@ -617,9 +618,12 @@ func (a *App) handleMe(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"username": user.Username,
-		"email":    user.Email,
-		"status":   string(user.Status),
+		"username":     user.Username,
+		"email":        user.Email,
+		"status":       string(user.Status),
+		"cipherScheme": user.CipherScheme,
+		"serverName":   user.ServerName,
+		"authProvider": user.AuthProvider,
 	})
 }
 

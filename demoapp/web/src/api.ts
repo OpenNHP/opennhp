@@ -145,7 +145,14 @@ export const api = {
       method: 'DELETE',
     }),
 
-  me: () => jsonFetch<{ username: string; email: string; status: string }>('/api/me'),
+  me: () => jsonFetch<{
+    username: string;
+    email: string;
+    status: string;
+    cipherScheme: string;
+    serverName: string;
+    authProvider: string;
+  }>('/api/me'),
 
   credentials: () => jsonFetch<CredentialsResponse>('/api/credentials'),
 

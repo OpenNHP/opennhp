@@ -44,6 +44,10 @@ type User struct {
 	// rotating the stored private key.
 	ServerName   string
 	CipherScheme string
+	// AuthProvider records how the account was created: "password" for
+	// local username/password sign-up, "github" / "oidc" for an external
+	// IdP. Shown on the post-login screen so the user knows their origin.
+	AuthProvider string
 	CreatedAt    time.Time
 }
 
@@ -143,6 +147,7 @@ func (s *UserStore) migrate() error {
 	}{
 		{"server_name", "TEXT DEFAULT ''"},
 		{"cipher_scheme", "TEXT DEFAULT ''"},
+		{"auth_provider", "TEXT DEFAULT ''"},
 	}
 	for _, c := range addColumns {
 		stmt := fmt.Sprintf("ALTER TABLE users ADD COLUMN %s %s", c.col, c.def)
@@ -170,11 +175,11 @@ func (s *UserStore) CreateUser(ctx context.Context, u *User) error {
 		INSERT INTO users
 			(username, password_hash, email, oidc_subject,
 			 nhp_public_key, nhp_private_key_enc, nhp_device_id,
-			 status, created_at, server_name, cipher_scheme)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 status, created_at, server_name, cipher_scheme, auth_provider)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		u.Username, u.PasswordHash, u.Email, nullIfEmpty(u.OIDCSubject),
 		nullIfEmpty(u.NHPPublicKey), nullIfEmpty(u.NHPPrivateKeyEnc), nullIfEmpty(u.NHPDeviceID),
-		string(u.Status), u.CreatedAt.Unix(), u.ServerName, u.CipherScheme,
+		string(u.Status), u.CreatedAt.Unix(), u.ServerName, u.CipherScheme, u.AuthProvider,
 	)
 	if err != nil {
 		return fmt.Errorf("insert user: %w", err)
@@ -346,20 +351,21 @@ func (s *UserStore) queryOne(ctx context.Context, q string, args ...any) (*User,
 	row := s.db.QueryRowContext(ctx, q, args...)
 	u := &User{}
 	var (
-		pwdHash    sql.NullString
-		oidcSub    sql.NullString
-		pub        sql.NullString
-		privEnc    sql.NullString
-		devID      sql.NullString
-		statusStr  string
-		createdAt  int64
-		serverName sql.NullString
-		cipherSch  sql.NullString
+		pwdHash     sql.NullString
+		oidcSub     sql.NullString
+		pub         sql.NullString
+		privEnc     sql.NullString
+		devID       sql.NullString
+		statusStr   string
+		createdAt   int64
+		serverName  sql.NullString
+		cipherSch   sql.NullString
+		authProvide sql.NullString
 	)
 	if err := row.Scan(
 		&u.ID, &u.Username, &pwdHash, &u.Email, &oidcSub,
 		&pub, &privEnc, &devID, &statusStr, &createdAt,
-		&serverName, &cipherSch,
+		&serverName, &cipherSch, &authProvide,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrUserNotFound
@@ -374,6 +380,7 @@ func (s *UserStore) queryOne(ctx context.Context, q string, args ...any) (*User,
 	u.Status = UserStatus(statusStr)
 	u.ServerName = serverName.String
 	u.CipherScheme = cipherSch.String
+	u.AuthProvider = authProvide.String
 	u.CreatedAt = time.Unix(createdAt, 0).UTC()
 	return u, nil
 }

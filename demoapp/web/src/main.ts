@@ -13,7 +13,7 @@ type View = 'loading' | 'login' | 'register' | 'resources' | 'complete-registrat
 const root = document.querySelector<HTMLElement>('#app')!;
 let current: View = 'loading';
 
-async function detectSession(): Promise<{ username: string; email: string; status: string } | null> {
+async function detectSession(): Promise<{ username: string; email: string; status: string; cipherScheme: string; serverName: string; authProvider: string } | null> {
   try {
     return await api.me();
   } catch (err) {
@@ -82,6 +82,9 @@ function show(view: View): void {
         renderResources(root, {
           username: me.username,
           email: me.email,
+          cipherScheme: me.cipherScheme,
+          serverName: me.serverName,
+          authProvider: me.authProvider,
           onSignOut: () => show('login'),
         });
       });

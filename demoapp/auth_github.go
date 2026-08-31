@@ -145,7 +145,7 @@ func (a *App) handleGitHubCallback(c *gin.Context) {
 		return
 	}
 
-	user, err := a.upsertExternalUser(ctx, subject, email)
+	user, err := a.upsertExternalUser(ctx, subject, email, "github")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "user upsert failed: " + err.Error()})
 		return

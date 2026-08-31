@@ -8,16 +8,40 @@ import { createAgent, listResources, knockResource } from '../nhp.js';
 export interface ResourcesViewProps {
   username: string;
   email: string;
+  cipherScheme: string;
+  serverName: string;
+  authProvider: string;
   onSignOut: () => void;
 }
 
+// authProviderLabel turns the raw auth_provider value into a friendly
+// badge label. Empty (legacy rows pre-dating the column) reads as local.
+function authProviderLabel(p: string): string {
+  switch (p) {
+    case 'github': return 'GitHub';
+    case 'oidc': return 'OIDC';
+    case 'password': return 'Local';
+    default: return 'Local';
+  }
+}
+
 export function renderResources(root: HTMLElement, props: ResourcesViewProps): void {
+  const scheme = props.cipherScheme || '—';
+  const server = props.serverName || '—';
+  const provider = authProviderLabel(props.authProvider);
   root.innerHTML = `
     <div class="container">
       <div class="toolbar">
         <div class="user">Signed in as <span>${escape(props.username)}</span> (${escape(props.email)})</div>
-        <button id="signout-btn" class="btn btn-secondary">Sign out</button>
-        <button id="delete-account-btn" class="btn btn-danger">Delete account</button>
+        <div class="badges">
+          <span class="badge">${escape(provider)}</span>
+          <span class="badge badge-mono">${escape(scheme)}</span>
+          <span class="badge">${escape(server)}</span>
+        </div>
+        <div class="toolbar-actions">
+          <button id="signout-btn" class="btn btn-secondary">Sign out</button>
+          <button id="delete-account-btn" class="btn btn-danger">Delete account</button>
+        </div>
       </div>
       <h1>Protected Resources</h1>
       <p class="subtitle">Click "Access" to knock nhp-server. The protected resource is hidden until the knock opens the door.</p>

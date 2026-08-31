@@ -110,6 +110,16 @@ export const api = {
       body: JSON.stringify({ regToken }),
     }),
 
+  /** Re-pick nhp-server cluster + cipher scheme (session-gated). Used by
+   * the complete-registration view to let GitHub/OIDC users — who land with
+   * a default binding — choose before driving NHP_REG. Returns the reg
+   * material under the chosen binding. */
+  registerBind: (serverName: string, cipherScheme: string) =>
+    jsonFetch<RegisterResponse>('/api/register/bind', {
+      method: 'POST',
+      body: JSON.stringify({ serverName, cipherScheme }),
+    }),
+
   registerConfirm: (regToken: string, deviceId: string, expiresAt: number, rakOk: boolean) =>
     jsonFetch<{ success: boolean }>('/api/register/confirm', {
       method: 'POST',

@@ -2,6 +2,7 @@
 // with OIDC" button that just navigates to the backend's /api/auth/oidc/login.
 
 import { api, ApiError } from '../api.js';
+import { renderArchDiagram } from './arch-diagram.js';
 
 export interface LoginViewProps {
   onSignedIn: () => void;
@@ -38,6 +39,8 @@ export function renderLogin(root: HTMLElement, props: LoginViewProps): void {
         </a>
         <button id="login-switch-register" class="btn btn-secondary">New here? Create an account</button>
       </div>
+
+      <div id="arch-diagram" class="arch-diagram"></div>
     </div>
   `;
 
@@ -74,4 +77,7 @@ export function renderLogin(root: HTMLElement, props: LoginViewProps): void {
   });
 
   switchBtn.addEventListener('click', () => props.onSwitchToRegister());
+
+  const diagramRoot = root.querySelector<HTMLElement>('#arch-diagram')!;
+  renderArchDiagram(diagramRoot);
 }

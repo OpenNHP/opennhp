@@ -323,6 +323,103 @@ func (a *App) userServerScheme(u *User) (*ServerEntry, CipherScheme, error) {
 	return srv, scheme, nil
 }
 
+// bindRequest is the JSON body for POST /api/register/bind. It lets a
+// signed-in pending user (re)pick their nhp-server cluster + cipher
+// scheme before completing NHP_REG. Used by the complete-registration
+// view, where external-IdP (GitHub/OIDC) users land with a default
+// binding they never chose and password users may want to change.
+type bindRequest struct {
+	ServerName   string `json:"serverName"`
+	CipherScheme string `json:"cipherScheme"`
+}
+
+// handleRebind re-derives the user's NHP public key under the chosen
+// server + scheme and persists the new binding, returning the reg
+// material the SPA needs to drive NHP_REG. The private key is
+// scheme-agnostic, so it is NOT rotated — only the derived public key
+// + the server/scheme binding change. If the user somehow has no key
+// yet (edge case), one is generated here. The deviceId is kept so a
+// resumed registration keeps the same device identity.
+//
+// Identity is proven by the requireSession middleware (the caller is
+// already logged in); this is the session counterpart to the
+// regToken-gated /api/register/retry path.
+func (a *App) handleRebind(c *gin.Context) {
+	user, ok := c.MustGet("user").(*User)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "user context missing"})
+		return
+	}
+	var req bindRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	srv, scheme, err := a.resolveServerScheme(req.ServerName, req.CipherScheme)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx := contextOf(c)
+
+	// Unseal the existing private key, or generate one if none exists.
+	var priv string
+	if user.NHPPrivateKeyEnc != "" {
+		priv, err = openKey(a.MasterKey, user.NHPPrivateKeyEnc)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "key unseal failed"})
+			return
+		}
+	} else {
+		priv, err = GenerateSchemeAgnosticPrivateKey()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "key generation failed"})
+			return
+		}
+	}
+	pub, err := DerivePublicKey(priv, scheme)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "public key derivation failed"})
+		return
+	}
+
+	// Keep the existing deviceId so a resumed registration does not
+	// change device identity mid-flow; mint one only if absent.
+	deviceID := user.NHPDeviceID
+	if deviceID == "" {
+		deviceID, err = randomDeviceID()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "device id generation failed"})
+			return
+		}
+	}
+	privEnc, err := sealKey(a.MasterKey, priv)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "key sealing failed"})
+		return
+	}
+	if err := a.Store.UpdateUserKeys(ctx, user.ID, pub, privEnc, deviceID, srv.Name, string(scheme)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "update binding failed"})
+		return
+	}
+
+	nhp, err := a.nhpEndpointFor(srv, scheme, user.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	// No regToken: the caller is already in a session and completes via
+	// the session path in /api/register/confirm.
+	c.JSON(http.StatusOK, registerResponse{
+		RegToken:   "",
+		PrivateKey: priv,
+		PublicKey:  pub,
+		DeviceID:   deviceID,
+		NHP:        nhp,
+	})
+}
+
 // registerConfirmRequest is the JSON body for POST /api/register/confirm.
 // RegToken is required for the fresh-registration flow but may be empty
 // when the caller is already signed in (the resume path proves identity

@@ -89,7 +89,6 @@ func (a *App) Register(r *gin.Engine) error {
 		pub.POST("/register/confirm", a.handleRegisterConfirm)
 		pub.POST("/login", a.handleLogin)
 		pub.POST("/logout", a.handleLogout)
-
 		// OIDC routes are mounted even when disabled — the handlers
 		// return 503 so the SPA can show a friendly message instead of
 		// 404-ing on the link click.
@@ -109,6 +108,10 @@ func (a *App) Register(r *gin.Engine) error {
 		auth.GET("/credentials", a.handleGetCredentials)
 		auth.GET("/me", a.handleMe)
 		auth.DELETE("/account", a.handleDeleteAccount)
+		// Re-pick nhp-server cluster + cipher scheme before completing
+		// NHP_REG (session-gated). Used by the complete-registration
+		// view, where GitHub/OIDC users land with a default binding.
+		auth.POST("/register/bind", a.handleRebind)
 	}
 
 	// Static SPA fallback. Serve from disk if WebDistDir is configured

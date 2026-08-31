@@ -10,7 +10,7 @@ body {
   min-height: 100vh;
 }
 
-.container { max-width: 720px; margin: 0 auto; }
+.container { max-width: 960px; margin: 0 auto; }
 
 h1 { color: #58a6ff; font-size: 24px; margin-bottom: 8px; }
 h2 { color: #58a6ff; font-size: 16px; margin-bottom: 12px; }
@@ -127,7 +127,7 @@ a:hover { text-decoration: underline; }
 }
 .toolbar .user { color: #c9d1d9; white-space: nowrap; }
 .toolbar .user span { color: #8b949e; }
-.toolbar-actions { display: flex; gap: 8px; margin-left: auto; }
+.toolbar-actions { display: flex; gap: 8px; margin-left: auto; flex-shrink: 0; }
 .badges { display: flex; gap: 6px; flex-wrap: wrap; }
 .badge {
   font-size: 11px;

@@ -142,4 +142,6 @@ export const api = {
   config: () => jsonFetch<ConfigResponse>('/api/config'),
 
   oidcLoginUrl: () => '/api/auth/oidc/login',
+
+  githubLoginUrl: () => '/api/auth/github/login',
 };

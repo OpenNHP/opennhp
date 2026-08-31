@@ -27,6 +27,7 @@ export function renderLogin(root: HTMLElement, props: LoginViewProps): void {
         </div>
         <button id="login-submit" class="btn btn-primary">Sign in</button>
         <a id="login-oidc" class="btn btn-secondary" href="/api/auth/oidc/login">Sign in with OIDC</a>
+        <a id="login-github" class="btn btn-secondary" href="/api/auth/github/login">Sign in with GitHub</a>
         <button id="login-switch-register" class="btn btn-secondary">New here? Create an account</button>
       </div>
     </div>

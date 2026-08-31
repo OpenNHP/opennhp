@@ -40,6 +40,22 @@ type OIDCConfig struct {
 	RedirectURL  string `toml:"RedirectURL"`
 }
 
+// OAuthConfig holds settings for a plain OAuth 2.0 login provider. This is
+// separate from OIDCConfig because some providers (notably GitHub) do not
+// implement OIDC — no /.well-known/openid-configuration and no id_token — so
+// they cannot go through the go-oidc discovery path. GitHub uses a fixed set
+// of endpoints (see auth_github.go) and the /user API to obtain identity.
+//
+// Provider names which OAuth handler to use; only "github" is supported today.
+// As with OIDC, the user's email becomes their NHP userId.
+type OAuthConfig struct {
+	Enabled      bool   `toml:"Enabled"`
+	Provider     string `toml:"Provider"`
+	ClientID     string `toml:"ClientID"`
+	ClientSecret string `toml:"ClientSecret"`
+	RedirectURL  string `toml:"RedirectURL"`
+}
+
 // ResourceConfig describes a single protected resource the Demo UI shows
 // after a successful listServices. The id must match what the nhp-server
 // basic plugin's ListService returns; the rest (title, URL, acHost) is UI
@@ -110,6 +126,7 @@ type Config struct {
 	WebDistDir     string           `toml:"WebDistDir"`
 	Servers        []ServerEntry    `toml:"Servers"`
 	OIDCs          []OIDCConfig     `toml:"OIDC"`
+	OAuths         []OAuthConfig    `toml:"OAuth"`
 	Resources      []ResourceConfig `toml:"Resources"`
 
 	// Legacy single-server fields. When [[Servers]] is empty, LoadConfig
@@ -230,6 +247,16 @@ func (c *Config) EnabledOIDC() (*OIDCConfig, bool) {
 	for i := range c.OIDCs {
 		if c.OIDCs[i].Enabled {
 			return &c.OIDCs[i], true
+		}
+	}
+	return nil, false
+}
+
+// EnabledOAuth returns the first enabled OAuth config block, if any.
+func (c *Config) EnabledOAuth() (*OAuthConfig, bool) {
+	for i := range c.OAuths {
+		if c.OAuths[i].Enabled {
+			return &c.OAuths[i], true
 		}
 	}
 	return nil, false

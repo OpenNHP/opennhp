@@ -307,6 +307,16 @@ jobs:
           path: ./artifact
 
       - name: Generate keys and render configs
+        env:
+          # GitHub OAuth for the demoapp login flow. ClientID/RedirectURL/
+          # Enabled are non-secret (Actions Variables); ClientSecret is
+          # secret. They flow into the rendered demoapp config.toml via
+          # envsubst in generate-nhp-keys.sh (same on-disk exposure model
+          # as the Auth0 plugin secret in artifact/plugins/oidc).
+          GH_OAUTH_ENABLED: ${{ vars.GH_OAUTH_ENABLED }}
+          GH_OAUTH_CLIENT_ID: ${{ vars.GH_OAUTH_CLIENT_ID }}
+          GH_OAUTH_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+          GH_OAUTH_REDIRECT_URL: ${{ vars.GH_OAUTH_REDIRECT_URL }}
         run: |
           chmod +x ./scripts/generate-nhp-keys.sh
 

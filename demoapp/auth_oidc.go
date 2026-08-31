@@ -142,7 +142,7 @@ func (a *App) handleOIDCCallback(c *gin.Context) {
 		return
 	}
 
-	user, err := a.upsertOIDCUser(ctx, claims.Sub, email)
+	user, err := a.upsertExternalUser(ctx, claims.Sub, email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "user upsert failed: " + err.Error()})
 		return
@@ -161,16 +161,18 @@ func (a *App) handleOIDCCallback(c *gin.Context) {
 	c.Redirect(http.StatusTemporaryRedirect, "/")
 }
 
-// upsertOIDCUser implements the OIDC-to-password user merge logic:
+// upsertExternalUser implements the external-IdP (OIDC or OAuth) to
+// password user merge logic. It is called from the OIDC callback and
+// the GitHub OAuth callback with the IdP's stable subject + email:
 //
-//  1. If a user already has this OIDC subject, return it.
-//  2. If a password user has the same email, link this OIDC subject to
-//     that user (we treat them as the same person). If the linked user
-//     has no NHP keys yet, generate them now so the user can still use
-//     the demo.
-//  3. Otherwise create a new password-less user with OIDC subject and
-//     freshly generated NHP keys.
-func (a *App) upsertOIDCUser(ctx context.Context, subject, email string) (*User, error) {
+//  1. If a user already has this external subject, return it.
+//  2. If a password user has the same email, link this subject to that
+//     user (we treat them as the same person). If the linked user has
+//     no NHP keys yet, generate them now so the user can still use the
+//     demo.
+//  3. Otherwise create a new password-less user with the external
+//     subject and freshly generated NHP keys.
+func (a *App) upsertExternalUser(ctx context.Context, subject, email string) (*User, error) {
 	if u, err := a.Store.GetUserByOIDCSubject(ctx, subject); err == nil {
 		return u, nil
 	} else if !errors.Is(err, ErrUserNotFound) {

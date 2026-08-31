@@ -337,6 +337,16 @@ export SERVER2_PRIVATE_IP="$SERVER2_PRIVATE_IP"
 export AC2_PRIVATE_IP="$AC2_PRIVATE_IP"
 export DOMAIN="$DOMAIN"
 
+# GitHub OAuth (application-side login). These come from GitHub Actions
+# Variables / Secrets set on the deploy-demo-v2 workflow, not from the
+# AWS Secrets Manager secret. Default GH_OAUTH_ENABLED to false so an
+# unconfigured render still produces a valid (disabled) [[OAuth]] block;
+# empty client fields are ignored by the demoapp when Enabled is false.
+export GH_OAUTH_ENABLED="${GH_OAUTH_ENABLED:-false}"
+export GH_OAUTH_CLIENT_ID="${GH_OAUTH_CLIENT_ID:-}"
+export GH_OAUTH_CLIENT_SECRET="${GH_OAUTH_CLIENT_SECRET:-}"
+export GH_OAUTH_REDIRECT_URL="${GH_OAUTH_REDIRECT_URL:-}"
+
 # Render all templates. cluster 2 (server2/ac2) reuses the same key/IP
 # env vars exported above; the relay config references both clusters.
 # demoapp reuses the server public keys (both clusters) — it owns no

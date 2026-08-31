@@ -90,11 +90,17 @@ func run() error {
 		return fmt.Errorf("init OIDC: %w", err)
 	}
 
+	gh, err := maybeBuildGitHubProvider(cfg)
+	if err != nil {
+		return fmt.Errorf("init GitHub OAuth: %w", err)
+	}
+
 	app := &App{
 		Cfg:          cfg,
 		Store:        store,
 		MasterKey:    masterKey,
 		OIDCVefifier: oidcRP,
+		GitHub:       gh,
 		WebFS:        webFS,
 	}
 
@@ -107,8 +113,8 @@ func run() error {
 		return fmt.Errorf("register routes: %w", err)
 	}
 
-	logger.Printf("listening on %s (db=%s, scheme=%s, oidc=%t)",
-		cfg.ListenAddr, cfg.DBPath, cfg.CipherScheme, oidcRP != nil)
+	logger.Printf("listening on %s (db=%s, scheme=%s, oidc=%t, github=%t)",
+		cfg.ListenAddr, cfg.DBPath, cfg.CipherScheme, oidcRP != nil, gh != nil)
 	if err := engine.Run(cfg.ListenAddr); err != nil {
 		return fmt.Errorf("http listen: %w", err)
 	}
@@ -127,6 +133,17 @@ func maybeBuildOIDCRP(cfg *Config) (*OIDCRelyingParty, error) {
 		return nil, errors.New("OIDC block is Enabled but missing required fields")
 	}
 	return NewOIDCRelyingParty(oc)
+}
+
+// maybeBuildGitHubProvider initializes the GitHub OAuth client when an
+// enabled [[OAuth]] block is present. Returns (nil, nil) when none is
+// enabled so callers use a simple nil check, mirroring maybeBuildOIDCRP.
+func maybeBuildGitHubProvider(cfg *Config) (*GitHubProvider, error) {
+	oc, ok := cfg.EnabledOAuth()
+	if !ok {
+		return nil, nil
+	}
+	return NewGitHubProvider(oc)
 }
 
 // GenerateSessionKey returns a random 32-byte key base64-encoded. Operators

@@ -72,6 +72,18 @@ ClientID     = "demoapp-client-id"
 ClientSecret = "demoapp-client-secret"
 RedirectURL  = "http://localhost:8081/api/auth/oidc/callback"
 
+# Application-side GitHub OAuth login. GitHub is plain OAuth 2.0 (no
+# OIDC discovery / id_token), so it has its own handler. Disabled for
+# the bundled docker stack; enable by registering a GitHub OAuth App
+# (callback http://localhost:8081/api/auth/github/callback) and filling
+# the fields.
+[[OAuth]]
+Enabled      = false
+Provider     = "github"
+ClientID     = "demoapp-github-client-id"
+ClientSecret = "demoapp-github-client-secret"
+RedirectURL  = "http://localhost:8081/api/auth/github/callback"
+
 # Catalog of protected resources the SPA can show. The id MUST match what
 # the nhp-server basic plugin returns from ListService; the rest is UI
 # metadata only.

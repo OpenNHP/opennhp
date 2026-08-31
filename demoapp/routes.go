@@ -23,6 +23,7 @@ const (
 	sessKeyOIDCState   = "ostate"
 	sessKeyOIDCNonce   = "ononce"
 	sessKeyOIDCSubject = "osub"
+	sessKeyOAuthState  = "gstate"
 	sessKeyRegToken    = "regtok"
 )
 
@@ -38,6 +39,7 @@ type App struct {
 	Store        *UserStore
 	MasterKey    []byte
 	OIDCVefifier *OIDCRelyingParty // nil when OIDC is disabled
+	GitHub       *GitHubProvider   // nil when GitHub OAuth is disabled
 	WebFS        fs.FS             // optional embedded web/dist
 }
 
@@ -93,6 +95,11 @@ func (a *App) Register(r *gin.Engine) error {
 		// 404-ing on the link click.
 		pub.GET("/auth/oidc/login", a.handleOIDCLogin)
 		pub.GET("/auth/oidc/callback", a.handleOIDCCallback)
+
+		// GitHub OAuth routes follow the same always-mounted pattern so
+		// the SPA link does not 404 when the provider is not configured.
+		pub.GET("/auth/github/login", a.handleGitHubLogin)
+		pub.GET("/auth/github/callback", a.handleGitHubCallback)
 	}
 
 	auth := r.Group("/api")

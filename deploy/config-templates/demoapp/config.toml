@@ -81,6 +81,19 @@ ClientID     = "demoapp-client-id"
 ClientSecret = "demoapp-client-secret"
 RedirectURL  = "https://demo.opennhp.org/api/auth/oidc/callback"
 
+# Application-side OAuth 2.0 login provider (GitHub). GitHub does not
+# implement OIDC (no discovery endpoint, no id_token), so it has its own
+# handler (demoapp/auth_github.go) that uses the /user API for identity.
+# Disabled by default; set Enabled = true and fill the placeholders via
+# the deploy pipeline. ClientID/RedirectURL render from GitHub Actions
+# Variables; ClientSecret renders from a GitHub Actions Secret.
+[[OAuth]]
+Enabled      = ${GH_OAUTH_ENABLED}
+Provider     = "github"
+ClientID     = "${GH_OAUTH_CLIENT_ID}"
+ClientSecret = "${GH_OAUTH_CLIENT_SECRET}"
+RedirectURL  = "${GH_OAUTH_REDIRECT_URL}"
+
 # Catalog of protected resources the SPA can show. The id MUST match what
 # the nhp-server basic plugin returns from ListService; the rest is UI
 # metadata only. ServerName scopes each resource to its cluster.

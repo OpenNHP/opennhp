@@ -1632,6 +1632,12 @@ jobs:
           # Prepare the install tree (binary + etc + persistent data dir).
           ssh $SSH_OPTS $TARGET "mkdir -p $REMOTE_DIR/etc $REMOTE_DIR/data"
 
+          # Stop the running instance before overwriting the binary — scp
+          # opens the dest for writing, which fails with ETXTBSY ("dest
+          # open ... Failure") when the previous binary is still executing.
+          # Matches the stop-before-upload pattern used by nhp-serverd/acd/relayd.
+          ssh $SSH_OPTS $TARGET "sudo systemctl stop demoapp || true"
+
           echo "Uploading demoapp binary..."
           scp $SSH_OPTS ./artifact/demoapp/demoapp $TARGET:$REMOTE_DIR/demoapp
           ssh $SSH_OPTS $TARGET "chmod +x $REMOTE_DIR/demoapp"
@@ -1644,7 +1650,7 @@ jobs:
           ssh $SSH_OPTS $TARGET "sudo cp /tmp/demoapp.service /etc/systemd/system/demoapp.service"
 
           echo "(Re)starting demoapp..."
-          ssh $SSH_OPTS $TARGET "sudo systemctl daemon-reload && sudo systemctl enable demoapp && sudo systemctl restart demoapp"
+          ssh $SSH_OPTS $TARGET "sudo systemctl daemon-reload && sudo systemctl enable demoapp && sudo systemctl start demoapp"
           sleep 2
 
           STATUS=$(ssh $SSH_OPTS $TARGET "sudo systemctl is-active demoapp" || true)

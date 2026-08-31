@@ -69,6 +69,13 @@ a:hover { text-decoration: underline; }
   border: 1px solid #30363d;
 }
 .btn-secondary:hover { background: #30363d; }
+
+/* Inline brand icon on OAuth login buttons (e.g. GitHub mark). Inline SVG
+   keeps it CSP-safe (no external img/font fetch) — 'self' + data: only. */
+.oauth-icon {
+  vertical-align: middle;
+  margin-right: 8px;
+}
 .btn-danger { background: #da3633; color: #fff; }
 .btn-danger:hover { background: #f85149; }
 

@@ -13,8 +13,8 @@ export interface RegisterViewProps {
 export function renderRegister(root: HTMLElement, props: RegisterViewProps): void {
   root.innerHTML = `
     <div class="container">
-      <h1>OpenNHP Demo App</h1>
-      <p class="subtitle">Create an account, then complete NHP registration to access protected resources.</p>
+      <h1>OpenNHP Integration Demo</h1>
+      <p class="subtitle">A working example of adding the OpenNHP to an existing web application</p>
 
       <div id="alert"></div>
 

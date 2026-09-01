@@ -20,6 +20,12 @@ DBPath = "data/demo.db"
 # first boot when the placeholder marker is present.
 SessionKey = "REPLACE_WITH_RANDOM_32_BYTES"
 
+# Mark the session cookie Secure so the browser only sends it over TLS.
+# The public demo is HTTPS-only (demo.opennhp.org), so this is true in
+# prod. Local dev over http://localhost leaves it unset (false) so the
+# browser still attaches the cookie.
+SecureCookies = true
+
 # 32-byte AES-256 master key (base64-encoded) used to wrap each user's
 # NHP private key at rest. Auto-generated on first boot.
 KeyEnvelopeKey = "REPLACE_WITH_32_BYTE_BASE64"

@@ -351,6 +351,17 @@ func (a *App) handleRebind(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "user context missing"})
 		return
 	}
+	// An active user re-deriving their public key under a new scheme would
+	// persist a key the nhp-server never saw in NHP_REG, so every
+	// subsequent knock/listServices fails against the stale server-side
+	// key while /api/me still reports active — bricking the account with
+	// no UI path to re-register. Only pending users (mid-registration)
+	// may rebind; they re-run NHP_REG before /api/register/confirm flips
+	// them active.
+	if user.Status != UserStatusPending {
+		c.JSON(http.StatusConflict, gin.H{"error": "account already active; rebinding requires re-registration"})
+		return
+	}
 	var req bindRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})

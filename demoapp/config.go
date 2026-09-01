@@ -113,9 +113,14 @@ func (s *ServerEntry) relayPublicKeyFor(scheme CipherScheme) string {
 
 // Config is the full TOML-loaded configuration for the demoapp daemon.
 type Config struct {
-	ListenAddr     string `toml:"ListenAddr"`
-	DBPath         string `toml:"DBPath"`
-	SessionKey     string `toml:"SessionKey"`
+	ListenAddr string `toml:"ListenAddr"`
+	DBPath     string `toml:"DBPath"`
+	SessionKey string `toml:"SessionKey"`
+	// SecureCookies sets the Secure flag on the session cookie. Must be
+	// true when the app is served over HTTPS (the public demo at
+	// demo.opennhp.org). Left false for local HTTP dev so the browser
+	// still sends the cookie on http://localhost.
+	SecureCookies  bool   `toml:"SecureCookies"`
 	KeyEnvelopeKey string `toml:"KeyEnvelopeKey"` // base64, 32 bytes
 	// CipherScheme is the DEFAULT scheme used when a path has no interactive
 	// scheme choice (e.g. OIDC upsert before the user reaches the

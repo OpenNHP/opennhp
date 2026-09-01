@@ -90,7 +90,7 @@ func (a *App) handleOIDCCallback(c *gin.Context) {
 	s := sessions.Default(c)
 	stateRaw := s.Get(sessKeyOIDCState)
 	nonceRaw := s.Get(sessKeyOIDCNonce)
-	s.Clear() // always clear OIDC session bits, even on error
+	clearSession(s) // always clear OIDC session bits, even on error
 	if stateRaw == nil || nonceRaw == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing OIDC state"})
 		return
@@ -113,7 +113,14 @@ func (a *App) handleOIDCCallback(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "token exchange failed: " + err.Error()})
 		return
 	}
-	idTok, err := a.OIDCVefifier.Verifier.Verify(ctx, tok.Extra("id_token").(string))
+	// Extra returns any; a token response without id_token must not panic
+	// the (unauthenticated) callback. Use the comma-ok form and 401.
+	idTokStr, ok := tok.Extra("id_token").(string)
+	if !ok || idTokStr == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "token response missing id_token"})
+		return
+	}
+	idTok, err := a.OIDCVefifier.Verifier.Verify(ctx, idTokStr)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "id token verification failed: " + err.Error()})
 		return

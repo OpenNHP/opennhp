@@ -31,6 +31,17 @@ const (
 // "nhpsessions" so the two daemons can co-exist if reverse-proxied).
 const SessionName = "demosessions"
 
+// clearSession clears and persists the session. gin-contrib/sessions
+// only writes the cookie on Save() (every success path calls it
+// explicitly), so a bare s.Clear() on an error return leaves the old
+// state — including a replayable OAuth/OIDC state/nonce — in the
+// cookie until expiry. Call this on every error branch of the IdP
+// callbacks so the state bit is actually invalidated.
+func clearSession(s sessions.Session) {
+	s.Clear()
+	_ = s.Save()
+}
+
 // App bundles everything a route handler needs: config, store, the master
 // key bytes (so we don't decode on every request), and an optional OIDC
 // verifier (nil if OIDC isn't enabled).
@@ -57,7 +68,7 @@ func (a *App) Register(r *gin.Engine) error {
 		Path:     "/",
 		MaxAge:   60 * 60 * 24 * 7, // 1 week
 		HttpOnly: true,
-		Secure:   false, // Demo runs on http behind localhost; flip on for HTTPS prod
+		Secure:   a.Cfg.SecureCookies, // prod (HTTPS): true; local HTTP dev: false
 		SameSite: http.SameSiteLaxMode,
 	})
 	r.Use(sessions.Sessions(SessionName, store))

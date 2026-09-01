@@ -106,7 +106,7 @@ func (a *App) handleGitHubCallback(c *gin.Context) {
 	}
 	s := sessions.Default(c)
 	stateRaw := s.Get(sessKeyOAuthState)
-	s.Clear() // always clear the OAuth state bit, even on error
+	clearSession(s) // always clear the OAuth state bit, even on error
 	if stateRaw == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing OAuth state"})
 		return

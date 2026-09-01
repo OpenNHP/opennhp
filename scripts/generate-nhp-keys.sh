@@ -342,10 +342,30 @@ export DOMAIN="$DOMAIN"
 # AWS Secrets Manager secret. Default GH_OAUTH_ENABLED to false so an
 # unconfigured render still produces a valid (disabled) [[OAuth]] block;
 # empty client fields are ignored by the demoapp when Enabled is false.
-export GH_OAUTH_ENABLED="${GH_OAUTH_ENABLED:-false}"
-export GH_OAUTH_CLIENT_ID="${GH_OAUTH_CLIENT_ID:-}"
-export GH_OAUTH_CLIENT_SECRET="${GH_OAUTH_CLIENT_SECRET:-}"
-export GH_OAUTH_REDIRECT_URL="${GH_OAUTH_REDIRECT_URL:-}"
+#
+# Normalize the enabled flag: an Actions Variable of True/TRUE/1/yes
+# would otherwise render `Enabled = True`, which is invalid TOML (bools
+# must be lowercase) and makes LoadConfig fail — demoapp.service never
+# starts. Map any truthy spelling to lowercase `true`, else `false`.
+case "${GH_OAUTH_ENABLED:-}" in
+  [Tt][Rr][Uu][Ee]|1|[Yy][Ee][Ss]|[Oo][Nn]) GH_OAUTH_ENABLED=true ;;
+  *)                                            GH_OAUTH_ENABLED=false ;;
+esac
+export GH_OAUTH_ENABLED
+
+# TOML basic-string-escape the client fields. The template renders them
+# inside double quotes (ClientSecret = "${GH_OAUTH_CLIENT_SECRET}"); a
+# secret containing " or \ would break the TOML otherwise. Backslash
+# must be escaped first so we do not double-escape the ones we add.
+toml_escape() {
+  local s=${1-}
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  printf '%s' "$s"
+}
+export GH_OAUTH_CLIENT_ID="$(toml_escape "${GH_OAUTH_CLIENT_ID:-}")"
+export GH_OAUTH_CLIENT_SECRET="$(toml_escape "${GH_OAUTH_CLIENT_SECRET:-}")"
+export GH_OAUTH_REDIRECT_URL="$(toml_escape "${GH_OAUTH_REDIRECT_URL:-}")"
 
 # Render all templates. cluster 2 (server2/ac2) reuses the same key/IP
 # env vars exported above; the relay config references both clusters.

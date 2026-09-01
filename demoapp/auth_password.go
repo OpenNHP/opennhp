@@ -94,11 +94,22 @@ func (a *App) nhpEndpointFor(srv *ServerEntry, scheme CipherScheme, userID strin
 // Returns the resolved server + scheme, or an error when the named server
 // doesn't exist or the scheme is unsupported.
 func (a *App) resolveServerScheme(serverName, schemeStr string) (*ServerEntry, CipherScheme, error) {
-	srv := a.Cfg.FindServer(serverName)
-	if srv == nil {
+	var srv *ServerEntry
+	if serverName == "" {
+		// No choice made — fall back to the default cluster.
 		srv = a.Cfg.DefaultServer()
 		if srv == nil {
 			return nil, "", errors.New("no [[Servers]] configured")
+		}
+	} else {
+		// A non-empty name must match a configured server exactly.
+		// FindServer is case-sensitive, so "cluster 2" vs "Cluster 2"
+		// is a real difference; silently falling back to DefaultServer
+		// here would register the user against the wrong cluster with
+		// no signal (the doc comment promised an error — now it holds).
+		srv = a.Cfg.FindServer(serverName)
+		if srv == nil {
+			return nil, "", fmt.Errorf("unknown serverName %q (no such [[Servers]] entry)", serverName)
 		}
 	}
 	scheme := CipherScheme(schemeStr)

@@ -9,6 +9,7 @@ examples/server_plugin/basic/basic
 .*
 !.vitepress/
 !.github/
+!.dockerignore
 # Test binary, build with `go test -c`
 *.test
 

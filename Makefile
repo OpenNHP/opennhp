@@ -104,6 +104,7 @@ init:
 	fi
 	cd nhp && go mod download && go mod tidy
 	cd endpoints && go mod download && go mod tidy
+	cd demoapp && go mod download && go mod tidy
 	@for dir in ./examples/server_plugin/*/; do \
 		if [ -f "$$dir/go.mod" ]; then \
 			echo "$(COLOUR_BLUE)[Plugin-$$(basename $$dir)] Running go mod download... $(END_COLOUR)"; \
@@ -123,6 +124,7 @@ tidy:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Running go mod tidy... $(END_COLOUR)"
 	cd nhp && go mod tidy
 	cd endpoints && go mod tidy
+	cd demoapp && go mod tidy
 	@for dir in ./examples/server_plugin/*/; do \
 		if [ -f "$$dir/go.mod" ]; then \
 			echo "$(COLOUR_BLUE)[Plugin-$$(basename $$dir)] Running go mod tidy... $(END_COLOUR)"; \
@@ -178,6 +180,15 @@ relayd:
 	go build -trimpath -ldflags ${LD_FLAGS} -v -o ../release/nhp-relay/nhp-relayd ./relay/main/main.go && \
 	mkdir -p ../release/nhp-relay/etc; \
 	cp ./relay/main/etc/*.toml ../release/nhp-relay/etc/
+
+# demoapp is a separate Go module (depends on nhp via a local replace).
+# Build the backend only; the bundled SPA ship-in-binary path uses the
+# docker build (Dockerfile.demoapp). `go build ./...` is enough for CI
+# to catch compile errors, vet failures, and missing deps.
+demoapp:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Building demoapp... $(END_COLOUR)"
+	cd demoapp && go build ./...
+	@echo "$(COLOUR_GREEN)[OpenNHP] demoapp build complete$(END_COLOUR)"
 
 linuxagentsdk:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building Linux agent SDK... $(END_COLOUR)"
@@ -266,6 +277,7 @@ dev:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Development build...$(END_COLOUR)"
 	cd nhp && go build ./...
 	cd endpoints && go build ./...
+	cd demoapp && go build ./...
 	@echo "$(COLOUR_GREEN)[OpenNHP] Development build complete$(END_COLOUR)"
 
 # Run all tests (excludes wasm/policy which requires WASM build tags)
@@ -273,6 +285,7 @@ test:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Running tests...$(END_COLOUR)"
 	cd nhp && go test -v $$(go list ./... | grep -v /wasm/policy)
 	cd endpoints && go test -v ./...
+	cd demoapp && go test -v ./...
 	@echo "$(COLOUR_GREEN)[OpenNHP] All tests passed!$(END_COLOUR)"
 
 # Run tests with race detection
@@ -280,6 +293,7 @@ test-race:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Running tests with race detection...$(END_COLOUR)"
 	cd nhp && go test -race -v $$(go list ./... | grep -v /wasm/policy)
 	cd endpoints && go test -race -v ./...
+	cd demoapp && go test -race -v ./...
 	@echo "$(COLOUR_GREEN)[OpenNHP] Race detection tests passed!$(END_COLOUR)"
 
 # Format code
@@ -287,6 +301,7 @@ fmt:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Formatting code...$(END_COLOUR)"
 	cd nhp && go fmt ./...
 	cd endpoints && go fmt ./...
+	cd demoapp && go fmt ./...
 	cd examples/server_plugin/basic && go fmt ./...
 	@echo "$(COLOUR_GREEN)[OpenNHP] Code formatted$(END_COLOUR)"
 
@@ -329,6 +344,7 @@ help:
 	@echo "  make db         - Build nhp-db"
 	@echo "  make kgc        - Build nhp-kgc"
 	@echo "  make relayd     - Build nhp-relay"
+	@echo "  make demoapp    - Build the demo app backend (separate module)"
 	@echo "  make plugins    - Build server plugins"
 	@echo ""
 	@echo "$(COLOUR_GREEN)SDK:$(END_COLOUR)"
@@ -380,4 +396,4 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins check-plugin-deps dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf clean_ebpf
+.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd demoapp linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins check-plugin-deps dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf clean_ebpf

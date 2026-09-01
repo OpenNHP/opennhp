@@ -26,9 +26,31 @@ jobs:
         cache-dependency-path: |
           nhp/go.sum
           endpoints/go.sum
+          demoapp/go.sum
 
     - name: Build
       run: make
+
+    # The demoapp module is not built by `make` (it ships via the docker
+    # image), so gate it explicitly: a compile / vet / gofmt failure here
+    # is caught before merge instead of at deploy time.
+    - name: Build demoapp
+      working-directory: demoapp
+      run: |
+        go mod download
+        go build ./...
+
+    - name: Vet + format + test demoapp
+      working-directory: demoapp
+      run: |
+        go vet ./...
+        unformatted="$(gofmt -l .)"
+        if [ -n "$unformatted" ]; then
+          echo "::error::gofmt found unformatted files:"
+          echo "$unformatted"
+          exit 1
+        fi
+        go test ./...
 
     - name: Lint nhp
       uses: golangci/golangci-lint-action@v9

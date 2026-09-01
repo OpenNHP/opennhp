@@ -131,8 +131,9 @@ func (a *App) handleOIDCCallback(c *gin.Context) {
 	}
 
 	var claims struct {
-		Sub   string `json:"sub"`
-		Email string `json:"email"`
+		Sub           string `json:"sub"`
+		Email         string `json:"email"`
+		EmailVerified bool   `json:"email_verified"`
 	}
 	if err := idTok.Claims(&claims); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "id token claims parse failed"})
@@ -148,9 +149,23 @@ func (a *App) handleOIDCCallback(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "id token missing email claim"})
 		return
 	}
+	// Require a verified email before we trust it for account merge.
+	// Some IdPs permit an arbitrary/unverified email claim; feeding such
+	// a claim into upsertExternalUser's email-merge path lets an attacker
+	// take over a victim's local account. GitHub filters on verified
+	// upstream; the OIDC path must do the same here. Absent claim is
+	// treated as unverified (safe default).
+	if !claims.EmailVerified {
+		c.JSON(http.StatusForbidden, gin.H{"error": "id token email not verified"})
+		return
+	}
 
 	user, err := a.upsertExternalUser(ctx, claims.Sub, email, "oidc")
 	if err != nil {
+		if errors.Is(err, errEmailHeldByPasswordAccount) || errors.Is(err, errEmailLinkedToDifferentSubject) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "user upsert failed: " + err.Error()})
 		return
 	}
@@ -177,11 +192,16 @@ func (a *App) handleOIDCCallback(c *gin.Context) {
 //  1. If a user already has this external subject, return it. Its
 //     auth_provider is left untouched (it reflects how the account was
 //     originally created).
-//  2. If a password user has the same email, link this subject to that
-//     user (we treat them as the same person). If the linked user has
-//     no NHP keys yet, generate them now so the user can still use the
-//     demo. The auth_provider stays "password" — the account was a
-//     local sign-up, just signed into via the IdP.
+//  2. If a user has the same email AND that account has no password
+//     (i.e. it was itself created by an external IdP that proved the
+//     email), link this subject to that user. We DO NOT auto-link a
+//     password account: /api/register performs no email verification,
+//     so a password account's email is unproven, and auto-absorbing it
+//     would enable pre-hijacking (attacker pre-registers
+//     victim@example.com, victim later signs in with the IdP, the
+//     merge hands the attacker a server-registered key via the row
+//     they still hold the password for). If the linked user has no NHP
+//     keys yet, generate them now. The auth_provider stays as-is.
 //  3. Otherwise create a new password-less user with the external
 //     subject, the given provider, and freshly generated NHP keys, in
 //     the pending state. External-IdP users skip the password step but
@@ -189,6 +209,12 @@ func (a *App) handleOIDCCallback(c *gin.Context) {
 //     registered with nhp-server. They land on the complete-registration
 //     view, which runs the handshake via /api/credentials and flips
 //     them active.
+//
+// Sentinel errors (callers map these to 409, not 500):
+//   - errEmailHeldByPasswordAccount: email matches a password account
+//     that may not be silently absorbed (see #2 above).
+//   - errEmailLinkedToDifferentSubject: email matches an IdP-only
+//     account already bound to a different subject — refuse to overwrite.
 func (a *App) upsertExternalUser(ctx context.Context, subject, email, provider string) (*User, error) {
 	if u, err := a.Store.GetUserByOIDCSubject(ctx, subject); err == nil {
 		return u, nil
@@ -197,6 +223,21 @@ func (a *App) upsertExternalUser(ctx context.Context, subject, email, provider s
 	}
 
 	if u, err := a.Store.GetUserByEmail(ctx, email); err == nil {
+		// Pre-hijack guard: only auto-link when the existing account
+		// has no password. A password account's email is unproven
+		// (no verification on /api/register); absorbing an external
+		// subject onto it would let the password holder harvest a key
+		// the IdP user later registers. Require an explicit,
+		// password-authenticated link action for password accounts.
+		if u.PasswordHash != "" {
+			return nil, errEmailHeldByPasswordAccount
+		}
+		// Don't silently overwrite an existing different subject
+		// (partial fix for review #3c; full (provider, subject)
+		// namespacing is deferred).
+		if u.OIDCSubject != "" && u.OIDCSubject != subject {
+			return nil, errEmailLinkedToDifferentSubject
+		}
 		u.OIDCSubject = subject
 		if u.NHPPrivateKeyEnc == "" || u.NHPPublicKey == "" {
 			if err := a.generateAndStoreNHPKeys(ctx, u); err != nil {
@@ -288,3 +329,12 @@ func (a *App) generateAndStoreNHPKeys(ctx context.Context, u *User) error {
 	}
 	return a.Store.UpdateUserKeys(ctx, u.ID, pub, privEnc, deviceID, serverName, scheme)
 }
+
+// Sentinel errors for upsertExternalUser. Callers (the OIDC and GitHub
+// callbacks) surface these as 409 Conflict rather than 500, so a user
+// who hits the pre-hijack / relink guard gets a meaningful message
+// instead of an opaque server error.
+var (
+	errEmailHeldByPasswordAccount    = errors.New("email already registered with a password; sign in with that password to link your IdP")
+	errEmailLinkedToDifferentSubject = errors.New("email already linked to a different IdP identity")
+)

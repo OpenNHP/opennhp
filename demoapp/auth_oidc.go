@@ -216,7 +216,11 @@ func (a *App) handleOIDCCallback(c *gin.Context) {
 //   - errEmailLinkedToDifferentSubject: email matches an IdP-only
 //     account already bound to a different subject — refuse to overwrite.
 func (a *App) upsertExternalUser(ctx context.Context, subject, email, provider string) (*User, error) {
-	if u, err := a.Store.GetUserByOIDCSubject(ctx, subject); err == nil {
+	// Namespace the subject by provider so a GitHub numeric id and an
+	// OIDC sub that happen to share the same string cannot resolve to
+	// the same row (cross-provider takeover — review #5).
+	key := externalSubjectKey(provider, subject)
+	if u, err := a.Store.GetUserByOIDCSubject(ctx, provider, subject); err == nil {
 		return u, nil
 	} else if !errors.Is(err, ErrUserNotFound) {
 		return nil, err
@@ -233,18 +237,17 @@ func (a *App) upsertExternalUser(ctx context.Context, subject, email, provider s
 			return nil, errEmailHeldByPasswordAccount
 		}
 		// Don't silently overwrite an existing different subject
-		// (partial fix for review #3c; full (provider, subject)
-		// namespacing is deferred).
-		if u.OIDCSubject != "" && u.OIDCSubject != subject {
+		// (partial fix for review #3c).
+		if u.OIDCSubject != "" && u.OIDCSubject != key {
 			return nil, errEmailLinkedToDifferentSubject
 		}
-		u.OIDCSubject = subject
+		u.OIDCSubject = key
 		if u.NHPPrivateKeyEnc == "" || u.NHPPublicKey == "" {
 			if err := a.generateAndStoreNHPKeys(ctx, u); err != nil {
 				return nil, err
 			}
 		}
-		if err := a.Store.UpdateUserOIDCSubject(ctx, u.ID, subject); err != nil {
+		if err := a.Store.UpdateUserOIDCSubject(ctx, u.ID, provider, subject); err != nil {
 			return nil, err
 		}
 		return u, nil
@@ -272,7 +275,7 @@ func (a *App) upsertExternalUser(ctx context.Context, subject, email, provider s
 	u := &User{
 		Username:         email, // OIDC users identify by email
 		Email:            email,
-		OIDCSubject:      subject,
+		OIDCSubject:      key, // provider-namespaced (review #5)
 		NHPPublicKey:     pub,
 		NHPPrivateKeyEnc: privEnc,
 		NHPDeviceID:      deviceID,

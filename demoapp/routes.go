@@ -95,10 +95,14 @@ func (a *App) Register(r *gin.Engine) error {
 	{
 		pub.GET("/health", a.handleHealth)
 		pub.GET("/servers", a.handleServers)
-		pub.POST("/register", a.handleRegister)
+		// Rate-limit the unauthenticated work endpoints (bcrypt, keygen,
+		// row insert, and the registration → requestOtp → nhp-server
+		// email chain) so a public caller cannot turn them into a CPU/DB
+		// sink or an email-amplification primitive (review #6).
+		pub.POST("/register", rateLimit(registerLimiter), a.handleRegister)
 		pub.POST("/register/retry", a.handleRegisterRetry)
 		pub.POST("/register/confirm", a.handleRegisterConfirm)
-		pub.POST("/login", a.handleLogin)
+		pub.POST("/login", rateLimit(loginLimiter), a.handleLogin)
 		pub.POST("/logout", a.handleLogout)
 		// OIDC routes are mounted even when disabled — the handlers
 		// return 503 so the SPA can show a friendly message instead of

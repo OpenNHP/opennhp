@@ -97,7 +97,12 @@ RedirectURL  = "https://demo.opennhp.org/api/auth/oidc/callback"
 Enabled      = ${GH_OAUTH_ENABLED}
 Provider     = "github"
 ClientID     = "${GH_OAUTH_CLIENT_ID}"
-ClientSecret = "${GH_OAUTH_CLIENT_SECRET}"
+# Secret is NOT envsubst'd here. The configure job renders a literal
+# marker into the uploaded nhp-demo-configs artifact (which lives on a
+# public repo for 1 day); the deploy-demoapp job substitutes the real
+# value from GitHub Actions secrets AFTER downloading the artifact, so
+# the secret never enters the artifact blast radius.
+ClientSecret = "__GH_OAUTH_CLIENT_SECRET__"
 RedirectURL  = "${GH_OAUTH_REDIRECT_URL}"
 
 # Catalog of protected resources the SPA can show. The id MUST match what

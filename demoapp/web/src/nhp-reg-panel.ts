@@ -81,7 +81,35 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
     // Resend re-fires requestOtp on the existing agent — no account
     // re-creation, so it avoids the 409 you'd hit by clicking "Create
     // account" again on the fresh-registration view.
+    //
+    // Cooldown: the OTP is sent directly browser → relay → nhp-server
+    // (NOT through the demoapp, so the server-side /api/register rate
+    // limit does not cover it). To blunt the email-amplification
+    // primitive flagged in review #6 we disable Resend for a cooldown
+    // after each click. This is client-side friction only; a hard
+    // per-IP/per-email OTP-send limit belongs in nhp-server's basic
+    // plugin (tracked as a follow-up).
+    const RESEND_COOLDOWN_SECONDS = 30;
+    let resendTimer: ReturnType<typeof setInterval> | null = null;
+    const startResendCooldown = () => {
+      if (resendTimer) clearInterval(resendTimer);
+      let remaining = RESEND_COOLDOWN_SECONDS;
+      resendBtn.disabled = true;
+      resendBtn.textContent = `Resend code (${remaining}s)`;
+      resendTimer = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          if (resendTimer) clearInterval(resendTimer);
+          resendTimer = null;
+          resendBtn.disabled = false;
+          resendBtn.textContent = 'Resend code';
+        } else {
+          resendBtn.textContent = `Resend code (${remaining}s)`;
+        }
+      }, 1000);
+    };
     resendBtn.addEventListener('click', async () => {
+      if (resendBtn.disabled) return;
       if (!handle) {
         showAlert('error', 'Agent not ready. Go back and try again.');
         return;
@@ -99,7 +127,9 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
         const msg = err instanceof Error ? err.message : String(err);
         showAlert('error', `NHP-OTP request failed: ${msg}`);
       } finally {
-        resendBtn.disabled = false;
+        // Apply the cooldown whether the request succeeded or failed so
+        // a caller cannot bypass the throttle by inducing errors.
+        startResendCooldown();
       }
     });
 

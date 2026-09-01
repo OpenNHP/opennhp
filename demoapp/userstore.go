@@ -157,6 +157,26 @@ func (s *UserStore) migrate() error {
 			}
 		}
 	}
+	// Backfill oidc_subject to the provider-namespaced form
+	// ("github|<id>" / "oidc|<sub>"). Rows created before this migration
+	// stored the raw subject; without a provider prefix a GitHub numeric
+	// id could collide with a numeric OIDC sub in the same UNIQUE column
+	// (cross-provider account takeover — see review #5). The guard
+	// (`NOT LIKE 'github|%' AND NOT LIKE 'oidc|%'`) makes it idempotent
+	// so re-runs and already-migrated rows are left untouched. auth_provider
+	// records which IdP originally created the row, so we can prefix
+	// unambiguously; rows with an unknown/empty auth_provider are skipped
+	// rather than guessed.
+	if _, err := s.db.Exec(`
+		UPDATE users
+		   SET oidc_subject = auth_provider || '|' || oidc_subject
+		 WHERE oidc_subject IS NOT NULL
+		   AND oidc_subject != ''
+		   AND auth_provider IN ('github', 'oidc')
+		   AND oidc_subject NOT LIKE 'github|%'
+		   AND oidc_subject NOT LIKE 'oidc|%'`); err != nil {
+		return fmt.Errorf("migrate: namespace oidc_subject: %w", err)
+	}
 	return nil
 }
 
@@ -259,16 +279,29 @@ func (s *UserStore) GetUserByEmail(ctx context.Context, email string) (*User, er
 	return s.queryOne(ctx, `SELECT * FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1`, strings.TrimSpace(email))
 }
 
-// GetUserByOIDCSubject looks up by the IdP `sub` claim.
-func (s *UserStore) GetUserByOIDCSubject(ctx context.Context, subject string) (*User, error) {
-	return s.queryOne(ctx, `SELECT * FROM users WHERE oidc_subject = ? LIMIT 1`, subject)
+// externalSubjectKey namespaces an IdP subject by provider so that a
+// GitHub numeric id and an OIDC sub sharing the same string (e.g. a
+// numeric sub colliding with a GitHub account id) cannot land on the
+// same oidc_subject row. The provider prefix is stored verbatim in the
+// unique oidc_subject column, so the existing UNIQUE constraint now
+// effectively enforces uniqueness on (provider, subject) without a
+// schema rebuild. "|" is chosen as the separator because GitHub ids are
+// numeric and OIDC subs are alphanumeric/hyphen — neither contains "|"
+// in practice.
+func externalSubjectKey(provider, subject string) string {
+	return provider + "|" + subject
 }
 
-// UpdateUserOIDCSubject attaches an OIDC `sub` claim to an existing user
-// row. Used by the merge logic when an OIDC user signs in with the same
-// email as a password user.
-func (s *UserStore) UpdateUserOIDCSubject(ctx context.Context, userID int64, subject string) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE users SET oidc_subject = ? WHERE id = ?`, subject, userID)
+// GetUserByOIDCSubject looks up by the namespaced (provider, subject) key.
+func (s *UserStore) GetUserByOIDCSubject(ctx context.Context, provider, subject string) (*User, error) {
+	return s.queryOne(ctx, `SELECT * FROM users WHERE oidc_subject = ? LIMIT 1`, externalSubjectKey(provider, subject))
+}
+
+// UpdateUserOIDCSubject attaches an external subject to an existing user
+// row, namespaced by provider. Used by the merge logic when an external
+// IdP user signs in with the same email as an existing IdP-only account.
+func (s *UserStore) UpdateUserOIDCSubject(ctx context.Context, userID int64, provider, subject string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE users SET oidc_subject = ? WHERE id = ?`, externalSubjectKey(provider, subject), userID)
 	if err != nil {
 		return fmt.Errorf("update oidc subject: %w", err)
 	}

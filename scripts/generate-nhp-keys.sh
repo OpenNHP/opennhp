@@ -354,9 +354,15 @@ esac
 export GH_OAUTH_ENABLED
 
 # TOML basic-string-escape the client fields. The template renders them
-# inside double quotes (ClientSecret = "${GH_OAUTH_CLIENT_SECRET}"); a
-# secret containing " or \ would break the TOML otherwise. Backslash
-# must be escaped first so we do not double-escape the ones we add.
+# inside double quotes (ClientID = "${GH_OAUTH_CLIENT_ID}"); a value
+# containing " or \ would break the TOML otherwise. Backslash must be
+# escaped first so we do not double-escape the ones we add.
+#
+# ClientSecret is intentionally NOT exported here: the template carries
+# a literal __GH_OAUTH_CLIENT_SECRET__ marker that envsubst leaves
+# untouched, so the rendered config in the nhp-demo-configs artifact
+# never contains the secret. The deploy-demoapp job substitutes the
+# marker from GitHub Actions secrets after the artifact boundary.
 toml_escape() {
   local s=${1-}
   s=${s//\\/\\\\}
@@ -364,7 +370,6 @@ toml_escape() {
   printf '%s' "$s"
 }
 export GH_OAUTH_CLIENT_ID="$(toml_escape "${GH_OAUTH_CLIENT_ID:-}")"
-export GH_OAUTH_CLIENT_SECRET="$(toml_escape "${GH_OAUTH_CLIENT_SECRET:-}")"
 export GH_OAUTH_REDIRECT_URL="$(toml_escape "${GH_OAUTH_REDIRECT_URL:-}")"
 
 # Render all templates. cluster 2 (server2/ac2) reuses the same key/IP

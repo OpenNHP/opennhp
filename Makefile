@@ -17,9 +17,11 @@ XCODE_SELECT = $(shell xcode-select -p 2>/dev/null | grep -q Xcode.app && echo f
 # Version number auto increment
 TIMESTAMP=$(shell date +%y%m%d%H%M%S)
 VERSION = $(shell cat nhp/version/VERSION).$(TIMESTAMP)
-# Other version settings
-COMMIT_ID = $(shell git show -s --format=%H)
-COMMIT_TIME = $(shell git show -s --format=%cd --date=format:'%Y-%m-%d %H:%M:%S')
+# Other version settings. Fall back to "unknown" when .git is absent
+# (e.g. a docker build whose context excludes .git via .dockerignore) so
+# the daemon reports a visible "unknown" instead of an empty commit id.
+COMMIT_ID = $(shell git show -s --format=%H 2>/dev/null || echo unknown)
+COMMIT_TIME = $(shell git show -s --format=%cd --date=format:'%Y-%m-%d %H:%M:%S' 2>/dev/null || echo unknown)
 BUILD_TIME = $(shell date "+%Y-%m-%d %H:%M:%S")
 # Built Package File Name
 PACKAGE_FILE = opennhp-$(VERSION).tar.gz
@@ -104,7 +106,6 @@ init:
 	fi
 	cd nhp && go mod download && go mod tidy
 	cd endpoints && go mod download && go mod tidy
-	cd demoapp && go mod download && go mod tidy
 	@for dir in ./examples/server_plugin/*/; do \
 		if [ -f "$$dir/go.mod" ]; then \
 			echo "$(COLOUR_BLUE)[Plugin-$$(basename $$dir)] Running go mod download... $(END_COLOUR)"; \
@@ -124,7 +125,6 @@ tidy:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Running go mod tidy... $(END_COLOUR)"
 	cd nhp && go mod tidy
 	cd endpoints && go mod tidy
-	cd demoapp && go mod tidy
 	@for dir in ./examples/server_plugin/*/; do \
 		if [ -f "$$dir/go.mod" ]; then \
 			echo "$(COLOUR_BLUE)[Plugin-$$(basename $$dir)] Running go mod tidy... $(END_COLOUR)"; \
@@ -189,6 +189,24 @@ demoapp:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building demoapp... $(END_COLOUR)"
 	cd demoapp && go build ./...
 	@echo "$(COLOUR_GREEN)[OpenNHP] demoapp build complete$(END_COLOUR)"
+
+# init-demoapp / test-demoapp keep the demoapp module's dependency
+# download + test suite OUT of the shared init/test targets. The shared
+# targets are invoked by the daemon Dockerfiles (Dockerfile.server/.ac/
+# .relay/.db/.agent run `make init` / `make test`), so pulling demoapp
+# in there would drag gin/go-oidc/oauth2/modernc-sqlite/bcrypt into
+# every daemon image and run the demoapp test suite during an nhp-db
+# image build. Demoapp is built + tested via these targets and the CI
+# workflow instead.
+init-demoapp:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Initializing demoapp module... $(END_COLOUR)"
+	cd demoapp && go mod download && go mod tidy
+	@echo "$(COLOUR_GREEN)[OpenNHP] demoapp module initialized$(END_COLOUR)"
+
+test-demoapp:
+	@echo "$(COLOUR_BLUE)[OpenNHP] Running demoapp tests... $(END_COLOUR)"
+	cd demoapp && go test -v ./...
+	@echo "$(COLOUR_GREEN)[OpenNHP] demoapp tests passed!$(END_COLOUR)"
 
 linuxagentsdk:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building Linux agent SDK... $(END_COLOUR)"
@@ -277,7 +295,6 @@ dev:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Development build...$(END_COLOUR)"
 	cd nhp && go build ./...
 	cd endpoints && go build ./...
-	cd demoapp && go build ./...
 	@echo "$(COLOUR_GREEN)[OpenNHP] Development build complete$(END_COLOUR)"
 
 # Run all tests (excludes wasm/policy which requires WASM build tags)
@@ -285,7 +302,6 @@ test:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Running tests...$(END_COLOUR)"
 	cd nhp && go test -v $$(go list ./... | grep -v /wasm/policy)
 	cd endpoints && go test -v ./...
-	cd demoapp && go test -v ./...
 	@echo "$(COLOUR_GREEN)[OpenNHP] All tests passed!$(END_COLOUR)"
 
 # Run tests with race detection
@@ -293,7 +309,6 @@ test-race:
 	@echo "$(COLOUR_BLUE)[OpenNHP] Running tests with race detection...$(END_COLOUR)"
 	cd nhp && go test -race -v $$(go list ./... | grep -v /wasm/policy)
 	cd endpoints && go test -race -v ./...
-	cd demoapp && go test -race -v ./...
 	@echo "$(COLOUR_GREEN)[OpenNHP] Race detection tests passed!$(END_COLOUR)"
 
 # Format code
@@ -345,6 +360,8 @@ help:
 	@echo "  make kgc        - Build nhp-kgc"
 	@echo "  make relayd     - Build nhp-relay"
 	@echo "  make demoapp    - Build the demo app backend (separate module)"
+	@echo "  make init-demoapp - Download + tidy the demoapp module deps"
+	@echo "  make test-demoapp - Run the demoapp test suite"
 	@echo "  make plugins    - Build server plugins"
 	@echo ""
 	@echo "$(COLOUR_GREEN)SDK:$(END_COLOUR)"
@@ -396,4 +413,4 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd demoapp linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins check-plugin-deps dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf clean_ebpf
+.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd demoapp init-demoapp test-demoapp linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins check-plugin-deps dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf clean_ebpf

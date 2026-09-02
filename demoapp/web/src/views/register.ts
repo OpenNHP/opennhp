@@ -142,11 +142,26 @@ export function renderRegister(root: HTMLElement, props: RegisterViewProps): voi
       onComplete: (rakOk) => {
         if (rakOk) setTimeout(() => props.onRegistered(), 600);
       },
+      // The account already exists, so re-POSTing /api/register would 409
+      // (review #6). The credentials from the first /api/register call
+      // are still in memory here, so "Back" just re-mounts the reg panel
+      // with the same material and re-drives requestOtp — no backend
+      // call, no 409. (If the user refreshed instead, the pending
+      // session routes them to the complete-registration view, which
+      // recovers via the session-gated /api/register/bind.) The retry
+      // panel drops its own onBack so the user cannot loop the re-mount.
       onBack: () => {
         disposePanel?.();
-        disposePanel = undefined;
-        otpPanel.innerHTML = '';
-        showAlert('info', 'Account created. Click "Create account & request OTP" again to retry.');
+        disposePanel = mountNhpRegPanel(otpPanel, {
+          privateKey: reg.privateKey,
+          deviceId: reg.deviceId,
+          email: reg.nhp.userId,
+          nhp: reg.nhp,
+          regToken: reg.regToken,
+          onComplete: (rakOk) => {
+            if (rakOk) setTimeout(() => props.onRegistered(), 600);
+          },
+        });
       },
     });
   });

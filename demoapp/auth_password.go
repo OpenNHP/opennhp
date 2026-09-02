@@ -160,6 +160,14 @@ func (a *App) handleRegister(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "password too short (min 8 chars)"})
 		return
 	}
+	// "|" is reserved as the separator for provider-namespaced external-IdP
+	// usernames (externalSubjectKey: "github|<id>", "oidc|<sub>"). A password
+	// user registering a username like "oidc|<sub>" could otherwise squat the
+	// external namespace and collide on a later IdP sign-in (review #3).
+	if strings.Contains(req.Username, "|") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "username may not contain '|'"})
+		return
+	}
 
 	ctx := contextOf(c)
 	if _, err := a.Store.GetUserByUsername(ctx, req.Username); err == nil {
@@ -220,6 +228,21 @@ func (a *App) handleRegister(c *gin.Context) {
 		Status:           UserStatusPending,
 	}
 	if err := a.Store.CreateUser(ctx, u); err != nil {
+		// The pre-check above is a UX fast-path; the UNIQUE index on
+		// LOWER(username) plus the email UNIQUE are authoritative, so a
+		// race that slips past the pre-check lands here as a typed 409
+		// instead of 500 (review #4).
+		switch {
+		case errors.Is(err, ErrUsernameTaken):
+			c.JSON(http.StatusConflict, gin.H{"error": "username already exists"})
+			return
+		case errors.Is(err, ErrEmailTaken):
+			c.JSON(http.StatusConflict, gin.H{"error": "email already exists"})
+			return
+		case errors.Is(err, ErrSubjectTaken):
+			c.JSON(http.StatusConflict, gin.H{"error": "external identity already linked to an account"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "user create failed"})
 		return
 	}
@@ -256,56 +279,6 @@ func (a *App) handleRegister(c *gin.Context) {
 		PrivateKey: priv,
 		PublicKey:  pub,
 		DeviceID:   deviceID,
-		NHP:        nhp,
-	})
-}
-
-// registerRetryRequest is the JSON body for POST /api/register/retry.
-type registerRetryRequest struct {
-	RegToken string `json:"regToken"`
-}
-
-// handleRegisterRetry returns the same registration material as the
-// original /api/register call (private key, deviceId, NHP config) so a
-// user who lost their browser session can re-drive the NHP_REG flow
-// without re-typing their password. Gated by the reg_token to avoid
-// trivially exposing private keys.
-func (a *App) handleRegisterRetry(c *gin.Context) {
-	var req registerRetryRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
-		return
-	}
-	ctx := contextOf(c)
-	_, user, err := a.Store.LookupRegToken(ctx, req.RegToken)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if user.NHPPrivateKeyEnc == "" || user.NHPPublicKey == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user has no NHP keys; restart registration"})
-		return
-	}
-	priv, err := openKey(a.MasterKey, user.NHPPrivateKeyEnc)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "key unseal failed"})
-		return
-	}
-	srv, scheme, err := a.userServerScheme(user)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	nhp, err := a.nhpEndpointFor(srv, scheme, user.Email)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, registerResponse{
-		RegToken:   req.RegToken,
-		PrivateKey: priv,
-		PublicKey:  user.NHPPublicKey,
-		DeviceID:   user.NHPDeviceID,
 		NHP:        nhp,
 	})
 }
@@ -743,6 +716,3 @@ func randomToken() (string, error) {
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
-
-// errInvalidSession is used by handlers that need to return 401 cleanly.
-var errInvalidSession = errors.New("invalid session")

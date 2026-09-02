@@ -157,6 +157,21 @@ func (s *UserStore) migrate() error {
 			}
 		}
 	}
+	// Case-insensitive username uniqueness. The username column is a plain
+	// TEXT UNIQUE, which SQLite collates case-sensitively on write, while
+	// GetUserByUsername compares with LOWER() (case-insensitive read).
+	// Without enforcement on the write side, "alice" and "Alice" can both
+	// insert; afterwards LOWER() returns whichever row scans first, so one
+	// account can never log in — its bcrypt hash is never the one compared.
+	// A unique index on the LOWER(username) expression makes the constraint
+	// match the lookup, closing the read/write mismatch. CREATE ... IF NOT
+	// EXISTS keeps it idempotent across re-opens. If a legacy database
+	// already holds case-variant duplicates, this CREATE fails loudly at
+	// startup so the operator cleans them up rather than silently keeping
+	// the race open.
+	if _, err := s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_ci ON users(LOWER(username))`); err != nil {
+		return fmt.Errorf("migrate: username ci index: %w", err)
+	}
 	// Backfill oidc_subject to the provider-namespaced form
 	// ("github|<id>" / "oidc|<sub>"). Rows created before this migration
 	// stored the raw subject; without a provider prefix a GitHub numeric
@@ -202,6 +217,27 @@ func (s *UserStore) CreateUser(ctx context.Context, u *User) error {
 		string(u.Status), u.CreatedAt.Unix(), u.ServerName, u.CipherScheme, u.AuthProvider,
 	)
 	if err != nil {
+		// Translate SQLite UNIQUE violations into typed sentinel errors
+		// so callers can map them to 409 Conflict instead of 500. The
+		// check-then-insert in handleRegister is a fast-path UX hint; this
+		// insert is the authoritative check, so a race that slips past the
+		// pre-check surfaces as a clean 409 rather than an opaque 500
+		// (review #4).
+		if isUniqueViolation(err) {
+			msg := err.Error()
+			// A violation on the LOWER(username) expression index is
+			// reported against the index name, not the column, so match
+			// both forms. Email / oidc_subject fire against the column.
+			if strings.Contains(msg, "users.username") || strings.Contains(msg, "idx_users_username_ci") {
+				return ErrUsernameTaken
+			}
+			if strings.Contains(msg, "users.email") {
+				return ErrEmailTaken
+			}
+			if strings.Contains(msg, "users.oidc_subject") {
+				return ErrSubjectTaken
+			}
+		}
 		return fmt.Errorf("insert user: %w", err)
 	}
 	id, err := res.LastInsertId()
@@ -354,6 +390,10 @@ func (s *UserStore) LookupRegToken(ctx context.Context, token string) (*RegToken
 	rt.Token = tokenS
 	rt.ExpiresAt = time.Unix(expiresUnix, 0).UTC()
 	if time.Now().UTC().After(rt.ExpiresAt) {
+		// Reap the expired row so the reg_tokens table does not accumulate
+		// dead tokens (review #2). A failed delete is non-fatal — the row
+		// just gets reaped on the next lookup or never matched again.
+		_ = s.DeleteRegToken(ctx, rt.Token)
 		return nil, nil, ErrRegTokenExpired
 	}
 	user, err := s.GetUserByID(ctx, uid)
@@ -372,12 +412,26 @@ func (s *UserStore) DeleteRegToken(ctx context.Context, token string) error {
 	return nil
 }
 
-// Errors surfaced by UserStore lookups. Routes translate these to 400/404.
+// Errors surfaced by UserStore lookups. Routes translate these to 400/404/409.
 var (
 	ErrUserNotFound     = errors.New("user not found")
 	ErrRegTokenNotFound = errors.New("registration token not found")
 	ErrRegTokenExpired  = errors.New("registration token expired")
+	// ErrUsernameTaken / ErrEmailTaken / ErrSubjectTaken are returned by
+	// CreateUser when the corresponding UNIQUE constraint fires. Callers
+	// map them to 409 Conflict (review #4).
+	ErrUsernameTaken = errors.New("username already exists")
+	ErrEmailTaken    = errors.New("email already exists")
+	ErrSubjectTaken  = errors.New("external subject already linked to an account")
 )
+
+// isUniqueViolation reports whether err is a SQLite UNIQUE constraint
+// violation. modernc.org/sqlite surfaces these as errors whose message
+// contains "UNIQUE constraint failed" (extended result code 2067). Used by
+// CreateUser to translate constraint fires into typed sentinels.
+func isUniqueViolation(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
 
 // queryOne is the shared scanner for single-row lookups.
 func (s *UserStore) queryOne(ctx context.Context, q string, args ...any) (*User, error) {

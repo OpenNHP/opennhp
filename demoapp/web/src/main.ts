@@ -11,7 +11,6 @@ import { renderCompleteRegistration } from './views/complete-registration.js';
 type View = 'loading' | 'login' | 'register' | 'resources' | 'complete-registration';
 
 const root = document.querySelector<HTMLElement>('#app')!;
-let current: View = 'loading';
 
 async function detectSession(): Promise<{ username: string; email: string; status: string; cipherScheme: string; serverName: string; authProvider: string } | null> {
   try {
@@ -34,7 +33,6 @@ async function route(): Promise<void> {
 }
 
 function show(view: View): void {
-  current = view;
   switch (view) {
     case 'login':
       renderLogin(root, {

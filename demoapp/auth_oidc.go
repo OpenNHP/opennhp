@@ -162,7 +162,7 @@ func (a *App) handleOIDCCallback(c *gin.Context) {
 
 	user, err := a.upsertExternalUser(ctx, claims.Sub, email, "oidc")
 	if err != nil {
-		if errors.Is(err, errEmailHeldByPasswordAccount) || errors.Is(err, errEmailLinkedToDifferentSubject) {
+		if isUpsertConflict(err) {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}
@@ -273,7 +273,16 @@ func (a *App) upsertExternalUser(ctx context.Context, subject, email, provider s
 		return nil, err
 	}
 	u := &User{
-		Username:         email, // OIDC users identify by email
+		// External users identify by email, but email is a free-form value
+		// a password user can register as their username. Setting the
+		// password-style Username to the victim's email would collide
+		// with such a squatter on the UNIQUE username column and 500 the
+		// IdP sign-in — a trivially-triggered lockout (review #3). Use
+		// the provider-namespaced subject as the username instead: it is
+		// unique by construction, "|" is reserved for external identities
+		// (handleRegister rejects it for password users), and the IdP
+		// subject is unknowable to a squatter so it cannot be targeted.
+		Username:         key,
 		Email:            email,
 		OIDCSubject:      key, // provider-namespaced (review #5)
 		NHPPublicKey:     pub,
@@ -341,3 +350,15 @@ var (
 	errEmailHeldByPasswordAccount    = errors.New("email already registered with a password; sign in with that password to link your IdP")
 	errEmailLinkedToDifferentSubject = errors.New("email already linked to a different IdP identity")
 )
+
+// isUpsertConflict reports whether an upsertExternalUser error should map
+// to 409 Conflict rather than 500. Covers the pre-hijack / relink guards
+// and the UNIQUE-constraint sentinels (ErrUsernameTaken / ErrSubjectTaken)
+// that fire when a namespaced external username or oidc_subject already
+// belongs to another account (review #3/#4).
+func isUpsertConflict(err error) bool {
+	return errors.Is(err, errEmailHeldByPasswordAccount) ||
+		errors.Is(err, errEmailLinkedToDifferentSubject) ||
+		errors.Is(err, ErrUsernameTaken) ||
+		errors.Is(err, ErrSubjectTaken)
+}

@@ -104,12 +104,6 @@ export const api = {
       body: JSON.stringify({ username, password, email, serverName, cipherScheme }),
     }),
 
-  registerRetry: (regToken: string) =>
-    jsonFetch<RegisterResponse>('/api/register/retry', {
-      method: 'POST',
-      body: JSON.stringify({ regToken }),
-    }),
-
   /** Re-pick nhp-server cluster + cipher scheme (session-gated). Used by
    * the complete-registration view to let GitHub/OIDC users — who land with
    * a default binding — choose before driving NHP_REG. Returns the reg

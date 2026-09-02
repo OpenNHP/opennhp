@@ -9,7 +9,14 @@
 # Restarting reuses the sidecar; losing it bricks every stored user key.
 # The data/ dir (SQLite DB) is persistent on the EC2 host.
 
-ListenAddr = ":8081"
+# Bind loopback only. nginx (demoapp.conf.template) proxies
+# demo.opennhp.org → 127.0.0.1:8081, so binding 0.0.0.0 would expose the
+# app — and its X-Real-IP-trusting rate limiter — to anything that can
+# reach the port directly (a co-located process, or a security-group
+# edit). Loopback makes the header non-spoofable in prod by construction
+# (review #5). Local dev / docker uses demoapp/etc/config.toml (:8081)
+# because the container publishes the port via its own interface.
+ListenAddr = "127.0.0.1:8081"
 
 # SQLite database path. Relative to the service WorkingDirectory
 # (/home/ec2-user/nhp-demoapp), so data/ sits next to the binary and

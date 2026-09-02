@@ -100,7 +100,6 @@ func (a *App) Register(r *gin.Engine) error {
 		// email chain) so a public caller cannot turn them into a CPU/DB
 		// sink or an email-amplification primitive (review #6).
 		pub.POST("/register", rateLimit(registerLimiter), a.handleRegister)
-		pub.POST("/register/retry", a.handleRegisterRetry)
 		pub.POST("/register/confirm", a.handleRegisterConfirm)
 		pub.POST("/login", rateLimit(loginLimiter), a.handleLogin)
 		pub.POST("/logout", a.handleLogout)
@@ -236,17 +235,6 @@ func readSeeker(f fs.File) interface {
 		Read(p []byte) (int, error)
 		Seek(offset int64, whence int) (int64, error)
 	})
-}
-
-// appFromContext returns the *App stored on the gin context. Used by
-// handlers in auth_*.go that don't have it as a receiver.
-func appFromContext(c *gin.Context) *App {
-	v, ok := c.Get("app")
-	if !ok {
-		return nil
-	}
-	a, _ := v.(*App)
-	return a
 }
 
 // contextOf is a tiny helper to avoid repeating context.TODO() at every

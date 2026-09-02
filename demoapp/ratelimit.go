@@ -57,8 +57,11 @@ func (l *ipLimiter) Allow(ip string) bool {
 
 // clientIP returns the request's originating IP. nginx (demoapp.conf
 // .template) sets X-Real-IP to $remote_addr with replace, not append,
-// so the header is non-spoofable in prod. We fall back to the TCP
-// remote address when the header is absent (local dev without nginx).
+// so the header is non-spoofable in prod — and the prod config binds
+// ListenAddr = 127.0.0.1:8081, so only the local nginx can reach the
+// app at all (review #5). The loopback bind is the primary defense;
+// this header trust is secondary. We fall back to the TCP remote
+// address when the header is absent (local dev without nginx).
 func clientIP(c *gin.Context) string {
 	if v := c.GetHeader("X-Real-IP"); v != "" {
 		return v

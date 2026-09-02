@@ -278,7 +278,7 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("read config %s: %w", path, err)
 	}
 	cfg := &Config{
-		ListenAddr:     ":8081",
+		ListenAddr:     "127.0.0.1:8081",
 		DBPath:         "data/demo.db",
 		RelayURL:       "http://localhost:8080/relay",
 		ServiceID:      "example",

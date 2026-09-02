@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // openTestStore creates a UserStore backed by a fresh temp SQLite file.
@@ -173,4 +175,119 @@ func errorIsUserNotFound(err error) bool {
 		e = u.Unwrap()
 	}
 	return false
+}
+
+// TestUsernameCaseInsensitiveUnique verifies the unique index on
+// LOWER(username) prevents case-variant duplicates: "alice" and "Alice"
+// cannot both exist, so GetUserByUsername (which lowercases) never
+// compares a victim's password against the wrong row's bcrypt hash
+// (review #4).
+func TestUsernameCaseInsensitiveUnique(t *testing.T) {
+	s, cleanup := openTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	if err := s.CreateUser(ctx, &User{Username: "alice", Email: "a1@x.com", Status: UserStatusActive}); err != nil {
+		t.Fatalf("create alice: %v", err)
+	}
+	err := s.CreateUser(ctx, &User{Username: "Alice", Email: "a2@x.com", Status: UserStatusActive})
+	if err == nil {
+		t.Fatal("Alice insert succeeded; case-variant duplicate not prevented")
+	}
+	if !errors.Is(err, ErrUsernameTaken) {
+		t.Fatalf("Alice insert returned %v, want ErrUsernameTaken", err)
+	}
+}
+
+// TestEmailDuplicateMapsToSentinel verifies an email UNIQUE violation
+// surfaces as ErrEmailTaken (so handleRegister maps it to 409, not 500)
+// — review #4.
+func TestEmailDuplicateMapsToSentinel(t *testing.T) {
+	s, cleanup := openTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	if err := s.CreateUser(ctx, &User{Username: "u1", Email: "dup@x.com", Status: UserStatusActive}); err != nil {
+		t.Fatalf("create u1: %v", err)
+	}
+	// handleRegister lowercases email before insert, so the column UNIQUE
+	// (which is case-sensitive) is effectively case-insensitive in
+	// production; mirror that here by using the same case.
+	err := s.CreateUser(ctx, &User{Username: "u2", Email: "dup@x.com", Status: UserStatusActive})
+	if err == nil {
+		t.Fatal("duplicate email insert succeeded")
+	}
+	if !errors.Is(err, ErrEmailTaken) {
+		t.Fatalf("duplicate email returned %v, want ErrEmailTaken", err)
+	}
+}
+
+// TestExternalUsernameDisambiguation verifies that external-IdP users
+// whose email matches a squatter's password username do NOT collide on
+// the UNIQUE username column — because external users use the
+// provider-namespaced subject as their username, not the email. A
+// squatter registering username "victim@example.com" must not block a
+// later external user with that email (review #3).
+func TestExternalUsernameDisambiguation(t *testing.T) {
+	s, cleanup := openTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Squatter registers a password account using the victim's email as
+	// their (free-form) username.
+	squatter := &User{
+		Username:     "victim@example.com",
+		Email:        "squatter@evil.com",
+		PasswordHash: "pwhash",
+		Status:       UserStatusActive,
+		AuthProvider: "password",
+	}
+	if err := s.CreateUser(ctx, squatter); err != nil {
+		t.Fatalf("create squatter: %v", err)
+	}
+
+	// The real victim signs in with an external IdP; upsert would set
+	// Username = externalSubjectKey("oidc", sub), which must NOT collide
+	// with the squatter's "victim@example.com" username.
+	victim := &User{
+		Username:     externalSubjectKey("oidc", "victim-sub"),
+		Email:        "victim@example.com",
+		OIDCSubject:  externalSubjectKey("oidc", "victim-sub"),
+		Status:       UserStatusPending,
+		AuthProvider: "oidc",
+	}
+	if err := s.CreateUser(ctx, victim); err != nil {
+		t.Fatalf("create victim external user: %v (should not collide with squatter username)", err)
+	}
+}
+
+// TestExpiredRegTokenReaped verifies that looking up an expired
+// reg_token deletes the row so the table does not accumulate dead tokens
+// (review #2).
+func TestExpiredRegTokenReaped(t *testing.T) {
+	s, cleanup := openTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	if err := s.CreateUser(ctx, &User{Username: "u", Email: "u@x.com", Status: UserStatusActive}); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	expiredTok := "expired-token-xyz"
+	// Insert a token whose expiry is already in the past.
+	past := time.Now().UTC().Add(-1 * time.Minute).Unix()
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO reg_tokens (token, user_id, expires_at) VALUES (?, ?, ?)`, expiredTok, 1, past); err != nil {
+		t.Fatalf("insert expired token: %v", err)
+	}
+
+	if _, _, err := s.LookupRegToken(ctx, expiredTok); !errors.Is(err, ErrRegTokenExpired) {
+		t.Fatalf("LookupRegToken expired = %v, want ErrRegTokenExpired", err)
+	}
+	// Row should have been reaped.
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM reg_tokens WHERE token = ?`, expiredTok).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expired reg_token row was not reaped (count=%d)", n)
+	}
 }

@@ -1,13 +1,20 @@
 package main
 
 import (
-	"net"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+// trustedLoopbackProxies is the set of network origins the rate limiter
+// honors X-Real-IP / X-Forwarded-For from. Loopback only: the deploy
+// config binds 127.0.0.1:8081 behind a same-host nginx, and local-dev
+// binds 0.0.0.0 (or :8081) with no proxy at all. Anything that can
+// connect from outside loopback sets the headers itself, so trusting a
+// non-loopback CIDR here would let any client spoof its IP.
+var trustedLoopbackProxies = []string{"127.0.0.1", "::1"}
 
 // ipLimiter is a per-IP fixed-window rate limiter. The demoapp runs as a
 // single instance on the relay host, so an in-memory map is sufficient
@@ -55,22 +62,28 @@ func (l *ipLimiter) Allow(ip string) bool {
 	return b.count <= l.max
 }
 
-// clientIP returns the request's originating IP. nginx (demoapp.conf
-// .template) sets X-Real-IP to $remote_addr with replace, not append,
-// so the header is non-spoofable in prod — and the prod config binds
-// ListenAddr = 127.0.0.1:8081, so only the local nginx can reach the
-// app at all (review #5). The loopback bind is the primary defense;
-// this header trust is secondary. We fall back to the TCP remote
-// address when the header is absent (local dev without nginx).
+// clientIP returns the request's originating IP. With TrustProxyHeaders
+// enabled and a loopback-only trusted-proxy set (applyTrustedProxies),
+// gin's c.ClientIP() honors X-Real-IP / X-Forwarded-For from the
+// reverse proxy and falls back to the TCP remote address otherwise.
+// Without TrustProxyHeaders, the trusted-proxy set is empty and
+// c.ClientIP() returns the TCP remote address unconditionally — so a
+// docker / local-dev deployment that publishes :8081 directly cannot be
+// defeated by varying X-Real-IP (review follow-up to #5).
 func clientIP(c *gin.Context) string {
-	if v := c.GetHeader("X-Real-IP"); v != "" {
-		return v
+	return c.ClientIP()
+}
+
+// applyTrustedProxies configures gin's proxy-header trust to match
+// cfg.TrustProxyHeaders. Call this once after gin.New() and before any
+// handler runs. When TrustProxyHeaders is false we pass nil to disable
+// proxy-header parsing entirely; gin otherwise defaults to trusting
+// every origin (and warns about it).
+func applyTrustedProxies(engine *gin.Engine, trust bool) error {
+	if trust {
+		return engine.SetTrustedProxies(trustedLoopbackProxies)
 	}
-	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-	if err != nil {
-		return c.Request.RemoteAddr
-	}
-	return host
+	return engine.SetTrustedProxies(nil)
 }
 
 // rateLimit is a gin middleware that applies an ipLimiter. Over the

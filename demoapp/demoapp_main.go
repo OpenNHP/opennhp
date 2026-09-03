@@ -106,6 +106,9 @@ func run() error {
 
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
+	if err := applyTrustedProxies(engine, cfg.TrustProxyHeaders); err != nil {
+		return fmt.Errorf("set trusted proxies: %w", err)
+	}
 	engine.Use(gin.LoggerWithWriter(logger.Writer()))
 	engine.Use(gin.Recovery())
 

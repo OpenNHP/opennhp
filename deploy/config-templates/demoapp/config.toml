@@ -18,6 +18,14 @@
 # because the container publishes the port via its own interface.
 ListenAddr = "127.0.0.1:8081"
 
+# Trust X-Real-IP / X-Forwarded-For from the local nginx only. nginx
+# overwrites (does not append) X-Real-IP with $remote_addr and the only
+# legitimate source is 127.0.0.1 (see deploy/nginx/demoapp.conf.template),
+# so the loopback-only trust set is non-spoofable in prod. The bundled
+# docker + local-dev configs leave this false because they publish :8081
+# directly with no reverse proxy in front.
+TrustProxyHeaders = true
+
 # SQLite database path. Relative to the service WorkingDirectory
 # (/home/ec2-user/nhp-demoapp), so data/ sits next to the binary and
 # survives restarts.

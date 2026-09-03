@@ -122,6 +122,17 @@ type Config struct {
 	// still sends the cookie on http://localhost.
 	SecureCookies  bool   `toml:"SecureCookies"`
 	KeyEnvelopeKey string `toml:"KeyEnvelopeKey"` // base64, 32 bytes
+	// TrustProxyHeaders, when true, makes the rate limiter (and gin in
+	// general) honor X-Real-IP / X-Forwarded-For from a loopback reverse
+	// proxy. Default false: the bundled docker + local-dev configs publish
+	// :8081 directly, so honoring X-Real-IP would let any client spoof
+	// their IP and bypass registerLimiter / loginLimiter entirely (which
+	// in turn re-opens the password brute-force and registration →
+	// requestOtp → nhp-server email-amplification paths). Only enable when
+	// the app is bound to 127.0.0.1:8081 behind a same-host nginx that
+	// overwrites (not appends) X-Real-IP — i.e. deploy/config-templates/
+	// demoapp/config.toml. See demoapp/ratelimit.go.
+	TrustProxyHeaders bool `toml:"TrustProxyHeaders"`
 	// CipherScheme is the DEFAULT scheme used when a path has no interactive
 	// scheme choice (e.g. OIDC upsert before the user reaches the
 	// complete-registration view). Interactive registration overrides it.

@@ -11,6 +11,13 @@
 
 ListenAddr = ":8081"
 
+# TrustProxyHeaders is intentionally left false. The compose service
+# publishes 8081:8081 with no reverse proxy in front, so honoring
+# X-Real-IP would let any client spoof its IP and bypass the
+# registerLimiter / loginLimiter entirely. Only set true when the app
+# sits behind a same-host reverse proxy that overwrites (not appends)
+# X-Real-IP — see deploy/config-templates/demoapp/config.toml.
+
 # Path to the SQLite database file (created on first run).
 DBPath = "/app/data/demo.db"
 

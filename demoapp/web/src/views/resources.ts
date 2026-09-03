@@ -153,7 +153,20 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
   }
 
   async function doKnock(resourceId: string, popup: Window | null): Promise<void> {
-    const item = area.querySelector<HTMLLIElement>(`li.resource-item[data-resid="${resourceId}"]`);
+    // Match the list item by walking the rendered DOM rather than via a
+    // querySelector with resourceId interpolated into the selector string.
+    // The Id is the operator-authored [[Resources]] Id and is escaped for
+    // HTML attribute output, but querySelector is a separate parser — a " or
+    // \ in the value would throw SyntaxError before this function can
+    // wrap it in try/catch, leaving the button enabled and the already-
+    // opened about:blank popup orphaned.
+    let item: HTMLLIElement | undefined;
+    for (const li of Array.from(area.querySelectorAll<HTMLLIElement>('li.resource-item'))) {
+      if (li.dataset.resid === resourceId) {
+        item = li;
+        break;
+      }
+    }
     const btn = item?.querySelector<HTMLButtonElement>('.knock-btn');
     if (btn) btn.disabled = true;
     showAlert('info', `Knocking ${resourceId}…`);

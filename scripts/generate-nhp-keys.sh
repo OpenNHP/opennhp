@@ -109,6 +109,16 @@ EXISTING_AC2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_ac2_public_key // empty')
 # These are populated from existing data when reusing keys, or derived after keygen --both.
 EXISTING_SERVER_SM2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_server_sm2_public_key // empty')
 EXISTING_SERVER2_SM2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_server2_sm2_public_key // empty')
+# demoapp master keys. KeyEnvelopeKey is the AES-256 master that wraps
+# every user's NHP private key at rest; SessionKey signs the session
+# cookie. Sourced from AWS SM (review #4) so they live alongside the
+# data they protect in a single secret and survive host replacement
+# (the auto-generated sidecar lived next to data/demo.db, so anything
+# with DB read access trivially had the wrapping key, and a host
+# replacement silently bricked every account with "credential unseal
+# failed"). Generate with openssl on first run; reuse on subsequent.
+EXISTING_DEMOAPP_KEY_ENVELOPE_KEY=$(echo "$SECRETS_JSON" | jq -r '.demoapp_key_envelope_key // empty')
+EXISTING_DEMOAPP_SESSION_KEY=$(echo "$SECRETS_JSON" | jq -r '.demoapp_session_key // empty')
 
 # --- Generate or reuse keys ---
 generate_keys() {
@@ -248,6 +258,26 @@ AC2_KEYS=$(generate_keys "$BINARY_DIR/nhp-ac/nhp-acd" "ac2" "$EXISTING_AC2_PRIV"
 NHP_AC2_PRIVATE_KEY=$(echo "$AC2_KEYS" | cut -d'|' -f1)
 NHP_AC2_PUBLIC_KEY=$(echo "$AC2_KEYS" | cut -d'|' -f2)
 
+# demoapp master keys. Idempotent: reuse from AWS SM when present,
+# otherwise generate. Regeneration only happens on --regenerate. Use
+# openssl rand -base64 so the values match the demoapp's expected
+# format (base64 std alphabet, 32 raw bytes for KeyEnvelopeKey, 32 raw
+# bytes for SessionKey).
+if [[ "$REGENERATE" == "true" || -z "$EXISTING_DEMOAPP_KEY_ENVELOPE_KEY" ]]; then
+  echo "  Generating new demoapp KeyEnvelopeKey..." >&2
+  DEMOAPP_KEY_ENVELOPE_KEY=$(openssl rand -base64 32)
+else
+  echo "  Reusing existing demoapp KeyEnvelopeKey from AWS SM" >&2
+  DEMOAPP_KEY_ENVELOPE_KEY="$EXISTING_DEMOAPP_KEY_ENVELOPE_KEY"
+fi
+if [[ "$REGENERATE" == "true" || -z "$EXISTING_DEMOAPP_SESSION_KEY" ]]; then
+  echo "  Generating new demoapp SessionKey..." >&2
+  DEMOAPP_SESSION_KEY=$(openssl rand -base64 32)
+else
+  echo "  Reusing existing demoapp SessionKey from AWS SM" >&2
+  DEMOAPP_SESSION_KEY="$EXISTING_DEMOAPP_SESSION_KEY"
+fi
+
 echo ""
 echo "--- Key summary ---"
 echo "  Server public key (Curve25519): ${NHP_SERVER_PUBLIC_KEY:0:20}..."
@@ -262,6 +292,8 @@ echo "  js-agent2 public key (SM2):        ${NHP_JSAGENT2_SM2_PUBLIC_KEY:0:20}..
 echo "  Server2 public key (Curve25519): ${NHP_SERVER2_PUBLIC_KEY:0:20}..."
 echo "  Server2 public key (SM2):        ${NHP_SERVER2_SM2_PUBLIC_KEY:0:20}..."
 echo "  AC2 public key:      ${NHP_AC2_PUBLIC_KEY:0:20}..."
+echo "  Demoapp KeyEnvelopeKey: ${DEMOAPP_KEY_ENVELOPE_KEY:0:20}..."
+echo "  Demoapp SessionKey:     ${DEMOAPP_SESSION_KEY:0:20}..."
 echo ""
 
 # --- Save keys to AWS Secrets Manager ---
@@ -289,6 +321,8 @@ UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
   --arg s2sp "$NHP_SERVER2_SM2_PUBLIC_KEY" \
   --arg a2k "$NHP_AC2_PRIVATE_KEY" \
   --arg a2p "$NHP_AC2_PUBLIC_KEY" \
+  --arg dek "$DEMOAPP_KEY_ENVELOPE_KEY" \
+  --arg dsk "$DEMOAPP_SESSION_KEY" \
   '. + {
     nhp_server_private_key: $sk,
     nhp_server_public_key: $sp,
@@ -309,7 +343,9 @@ UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
     nhp_server2_public_key: $s2p,
     nhp_server2_sm2_public_key: $s2sp,
     nhp_ac2_private_key: $a2k,
-    nhp_ac2_public_key: $a2p
+    nhp_ac2_public_key: $a2p,
+    demoapp_key_envelope_key: $dek,
+    demoapp_session_key: $dsk
   }')
 
 aws secretsmanager put-secret-value \
@@ -331,6 +367,8 @@ export NHP_JSAGENT_PRIVATE_KEY NHP_JSAGENT_PUBLIC_KEY NHP_JSAGENT_SM2_PUBLIC_KEY
 export NHP_JSAGENT2_PRIVATE_KEY NHP_JSAGENT2_PUBLIC_KEY NHP_JSAGENT2_SM2_PUBLIC_KEY
 export NHP_SERVER2_PRIVATE_KEY NHP_SERVER2_PUBLIC_KEY NHP_SERVER2_SM2_PUBLIC_KEY
 export NHP_AC2_PRIVATE_KEY NHP_AC2_PUBLIC_KEY
+export DEMOAPP_KEY_ENVELOPE_KEY="$DEMOAPP_KEY_ENVELOPE_KEY"
+export DEMOAPP_SESSION_KEY="$DEMOAPP_SESSION_KEY"
 export SERVER_PRIVATE_IP="$SERVER_PRIVATE_IP"
 export AC_PRIVATE_IP="$AC_PRIVATE_IP"
 export SERVER2_PRIVATE_IP="$SERVER2_PRIVATE_IP"

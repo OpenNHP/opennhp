@@ -3,11 +3,19 @@
 # Deployed to the relay host alongside nhp-relayd. nginx proxies
 # demo.opennhp.org → 127.0.0.1:8081 (see deploy/nginx/demoapp.conf.template).
 #
-# Auto-generated secrets: KeyEnvelopeKey and SessionKey carry the
-# placeholder marker, so the demoapp fills them on first boot and persists
-# the values to etc/.demoapp-autogen.json (see demoapp/autogen.go).
-# Restarting reuses the sidecar; losing it bricks every stored user key.
-# The data/ dir (SQLite DB) is persistent on the EC2 host.
+# Auto-generated secrets: KeyEnvelopeKey and SessionKey are sourced from
+# AWS Secrets Manager (opennhp/demo fields demoapp_key_envelope_key and
+# demoapp_session_key) by scripts/generate-nhp-keys.sh, then rendered into
+# this template via envsubst. They live in the same secret as the data
+# they protect (review #4) instead of being auto-minted into
+# etc/.demoapp-autogen.json next to data/demo.db — the sidecar placement
+# made the envelope close to a no-op defense (anything with DB read
+# access trivially had the wrapping key) and a host replacement silently
+# bricked every account with "credential unseal failed".
+#
+# Local-dev configs (docker/demoapp/etc/config.toml) keep the REPLACE_*
+# placeholders so `docker compose up` still Just Works without operator
+# intervention; autogen.go fills them on first boot.
 
 # Bind loopback only. nginx (demoapp.conf.template) proxies
 # demo.opennhp.org → 127.0.0.1:8081, so binding 0.0.0.0 would expose the
@@ -31,9 +39,9 @@ TrustProxyHeaders = true
 # survives restarts.
 DBPath = "data/demo.db"
 
-# 32+ byte random key used to sign the session cookie. Auto-generated on
-# first boot when the placeholder marker is present.
-SessionKey = "REPLACE_WITH_RANDOM_32_BYTES"
+# 32+ byte random key used to sign the session cookie. Sourced from
+# AWS Secrets Manager via generate-nhp-keys.sh → ${DEMOAPP_SESSION_KEY}.
+SessionKey = "${DEMOAPP_SESSION_KEY}"
 
 # Mark the session cookie Secure so the browser only sends it over TLS.
 # The public demo is HTTPS-only (demo.opennhp.org), so this is true in
@@ -42,8 +50,9 @@ SessionKey = "REPLACE_WITH_RANDOM_32_BYTES"
 SecureCookies = true
 
 # 32-byte AES-256 master key (base64-encoded) used to wrap each user's
-# NHP private key at rest. Auto-generated on first boot.
-KeyEnvelopeKey = "REPLACE_WITH_32_BYTE_BASE64"
+# NHP private key at rest. Sourced from AWS Secrets Manager via
+# generate-nhp-keys.sh → ${DEMOAPP_KEY_ENVELOPE_KEY}.
+KeyEnvelopeKey = "${DEMOAPP_KEY_ENVELOPE_KEY}"
 
 # Default cipher scheme for non-interactive paths (e.g. OIDC upsert
 # before the user reaches the complete-registration view). Interactive

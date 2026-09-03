@@ -99,8 +99,14 @@ func (a *App) Register(r *gin.Engine) error {
 		// row insert, and the registration → requestOtp → nhp-server
 		// email chain) so a public caller cannot turn them into a CPU/DB
 		// sink or an email-amplification primitive (review #6).
+		//
+		// /register/confirm is gated on the same limiter as /register: an
+		// attacker who pre-registered an arbitrary email via /register can
+		// otherwise activate the row with one follow-up call and a
+		// client-attested rakOk:true flag, locking the address into a
+		// status=active account without ever proving the OTP (review #3).
 		pub.POST("/register", rateLimit(registerLimiter), a.handleRegister)
-		pub.POST("/register/confirm", a.handleRegisterConfirm)
+		pub.POST("/register/confirm", rateLimit(registerLimiter), a.handleRegisterConfirm)
 		pub.POST("/login", rateLimit(loginLimiter), a.handleLogin)
 		pub.POST("/logout", a.handleLogout)
 		// OIDC routes are mounted even when disabled — the handlers
@@ -205,15 +211,32 @@ func (a *App) handleServers(c *gin.Context) {
 
 // serveSPA streams the bundled SPA. Falls back to index.html for client-
 // side routes that don't have a matching static file.
+//
+// The fallback is restricted to extension-less paths so a stale cached
+// request for /assets/index-OLD.js (or any other named asset that no
+// longer exists) returns a real 404 instead of index.html with a
+// text/javascript Content-Type — without that guard, http.ServeContent
+// sniffs the MIME type from the original (missing) extension and
+// browsers with X-Content-Type-Options: nosniff fail the SPA load with
+// an opaque parse error on every cache miss after a redeploy.
 func (a *App) serveSPA(c *gin.Context, fsys fs.FS) {
 	path := strings.TrimPrefix(c.Request.URL.Path, "/")
 	if path == "" {
 		path = "index.html"
 	}
+	name := path
 	f, err := fsys.Open(path)
 	if err != nil {
-		// SPA fallback for client-side routes.
-		f, err = fsys.Open("index.html")
+		// Only fall back to index.html for extension-less paths (i.e.
+		// SPA client-side routes like /login, /register, /dashboard).
+		// Anything with an extension is a concrete asset request — if it
+		// is missing, return 404 so caches do not pin a wrong MIME type.
+		if strings.Contains(path, ".") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "asset not found"})
+			return
+		}
+		name = "index.html"
+		f, err = fsys.Open(name)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "asset not found"})
 			return
@@ -243,7 +266,10 @@ func (a *App) serveSPA(c *gin.Context, fsys fs.FS) {
 		return
 	}
 	// http.ServeContent handles MIME sniffing, Range, If-Modified-Since.
-	http.ServeContent(c.Writer, c.Request, path, stat.ModTime(), rs)
+	// `name` (not `path`) is the third argument so the fallback branch
+	// picks Content-Type from "index.html" (text/html) rather than from
+	// the missing asset name (e.g. text/javascript for /assets/OLD.js).
+	http.ServeContent(c.Writer, c.Request, name, stat.ModTime(), rs)
 }
 
 // contextOf is a tiny helper to avoid repeating context.TODO() at every

@@ -277,6 +277,13 @@ else
   echo "  Reusing existing demoapp SessionKey from AWS SM" >&2
   DEMOAPP_SESSION_KEY="$EXISTING_DEMOAPP_SESSION_KEY"
 fi
+# Mask both values at their source. The repo is public and Actions logs
+# are world-readable for 90 days; GitHub can't auto-mask these because
+# they're generated (or fetched) inside the script rather than passed
+# in via ${{ secrets.* }}. Registering the mask here defends against a
+# future `set -x` or accidental echo elsewhere in this run.
+echo "::add-mask::$DEMOAPP_KEY_ENVELOPE_KEY"
+echo "::add-mask::$DEMOAPP_SESSION_KEY"
 
 echo ""
 echo "--- Key summary ---"
@@ -292,8 +299,11 @@ echo "  js-agent2 public key (SM2):        ${NHP_JSAGENT2_SM2_PUBLIC_KEY:0:20}..
 echo "  Server2 public key (Curve25519): ${NHP_SERVER2_PUBLIC_KEY:0:20}..."
 echo "  Server2 public key (SM2):        ${NHP_SERVER2_SM2_PUBLIC_KEY:0:20}..."
 echo "  AC2 public key:      ${NHP_AC2_PUBLIC_KEY:0:20}..."
-echo "  Demoapp KeyEnvelopeKey: ${DEMOAPP_KEY_ENVELOPE_KEY:0:20}..."
-echo "  Demoapp SessionKey:     ${DEMOAPP_SESSION_KEY:0:20}..."
+# Demoapp KeyEnvelopeKey / SessionKey are secret material (AES-256
+# wrapping master + session cookie signer), not public keys — the
+# generation/reuse status is already logged above, so we drop the
+# prefix echo from this public-key summary. Values are ::add-mask::'d
+# at assignment so any future echo is redacted.
 echo ""
 
 # --- Save keys to AWS Secrets Manager ---

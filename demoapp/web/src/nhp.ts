@@ -78,16 +78,24 @@ export async function requestOtp(
   handle: AgentHandle,
   cfg: NhpEndpointConfig,
   email: string,
+  debug: boolean = false,
 ): Promise<{ success: boolean; error?: string }> {
-  console.log('[demoapp/nhp] requestOtp →', {
-    relayUrl: cfg.relayUrl,
-    serverPubKey: cfg.serverPublicKey.slice(0, 12) + '…',
-    cipherScheme: cfg.cipherScheme,
-    serviceId: cfg.serviceId,
-    email,
-  });
+  if (debug) {
+    // Pre-call log. Email + relay URL + first 12 chars of the server
+    // public key are not secrets, but they're PII and infra-shape
+    // details that should not show up in a production browser console.
+    console.log('[demoapp/nhp] requestOtp →', {
+      relayUrl: cfg.relayUrl,
+      serverPubKey: cfg.serverPublicKey.slice(0, 12) + '…',
+      cipherScheme: cfg.cipherScheme,
+      serviceId: cfg.serviceId,
+      email,
+    });
+  }
   const otpRes = await handle.agent.requestOtp(cfg.serviceId, { email });
-  console.log('[demoapp/nhp] requestOtp result →', otpRes);
+  if (debug) {
+    console.log('[demoapp/nhp] requestOtp result →', otpRes);
+  }
   return { success: otpRes.success, error: otpRes.error };
 }
 
@@ -100,10 +108,15 @@ export async function registerPublicKey(
   cfg: NhpEndpointConfig,
   email: string,
   otp: string,
+  debug: boolean = false,
 ): Promise<RegistrationResult> {
-  console.log('[demoapp/nhp] registerPublicKey →', { serviceId: cfg.serviceId, otpLen: otp.length });
+  if (debug) {
+    console.log('[demoapp/nhp] registerPublicKey →', { serviceId: cfg.serviceId, otpLen: otp.length });
+  }
   const regRes = await handle.agent.registerPublicKey(cfg.serviceId, otp, { email });
-  console.log('[demoapp/nhp] registerPublicKey result →', regRes);
+  if (debug) {
+    console.log('[demoapp/nhp] registerPublicKey result →', regRes);
+  }
   return {
     rakOk: regRes.success,
     expiresAt: regRes.expiresAt,

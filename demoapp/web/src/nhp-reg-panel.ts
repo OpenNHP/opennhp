@@ -34,6 +34,13 @@ export interface NhpRegPanelOpts {
 export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts): () => void {
   let handle: AgentHandle | undefined;
   let disposed = false;
+  // logLevel defaults to 'error' (silent for info / debug). Production
+  // never opts into debug; the demo console was previously drowned in
+  // requestOtp / registerPublicKey noise that included the user's email
+  // + relay URL + serviceId + full OTP result objects (review follow-up
+  // to #6).
+  const logLevel = opts.logLevel ?? 'error';
+  const debug = logLevel === 'debug';
 
   function renderWaiting(message: string): void {
     container.innerHTML = `
@@ -114,7 +121,7 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
       resendBtn.disabled = true;
       showAlert('info', 'Requesting a new OTP…');
       try {
-        const otp = await requestOtp(handle, opts.nhp, opts.email);
+        const otp = await requestOtp(handle, opts.nhp, opts.email, debug);
         if (otp.success) {
           showAlert('info', `A new OTP has been sent to ${opts.email}.`);
         } else {
@@ -143,7 +150,7 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
       registerBtn.disabled = true;
       showAlert('info', 'Driving NHP-REG handshake…');
       try {
-        const result = await registerPublicKey(handle, opts.nhp, opts.email, otp);
+        const result = await registerPublicKey(handle, opts.nhp, opts.email, otp, debug);
         if (!result.rakOk) {
           showAlert('error', 'NHP registration failed — check the OTP and try again.');
           return;
@@ -175,8 +182,8 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
   (async () => {
     renderWaiting('Creating NHP agent and requesting OTP…');
     try {
-      handle = await createAgent(opts.privateKey, opts.nhp, opts.deviceId, opts.logLevel ?? 'debug');
-      const otp = await requestOtp(handle, opts.nhp, opts.email);
+      handle = await createAgent(opts.privateKey, opts.nhp, opts.deviceId, logLevel);
+      const otp = await requestOtp(handle, opts.nhp, opts.email, debug);
       if (disposed) return;
       if (!otp.success) {
         renderError(`NHP-OTP request failed${otp.error ? ': ' + otp.error : ''}.`);

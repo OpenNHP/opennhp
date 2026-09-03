@@ -140,8 +140,13 @@ func (a *App) Register(r *gin.Engine) error {
 		})
 		return nil
 	}
-	// Fallback: serve from disk if WebDistDir exists; otherwise a tiny
-	// index page so the server still boots before `npm run build`.
+	// Fallback: serve from disk if WebDistDir is configured (a default
+	// build, e.g. `go run`, with no -tags webdist). serveSPA handles
+	// index.html fallback, the dir guard, and the seekable type
+	// assertion, which makes the previous c.File(indexPath) shortcut —
+	// which answered EVERY non-/api/ path with index.html and left
+	// /assets/index-XYZ.js, /assets/index-XYZ.css and /demoapp.jpg as
+	// text/html — disappear (review follow-up to demoapp_main.go:23).
 	r.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
@@ -153,11 +158,11 @@ func (a *App) Register(r *gin.Engine) error {
 			return
 		}
 		indexPath := dir + "/index.html"
-		if _, err := os.Stat(indexPath); err == nil {
-			c.File(indexPath)
+		if _, err := os.Stat(indexPath); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "UI not built; run `cd web && npm run build`"})
 			return
 		}
-		c.JSON(http.StatusNotFound, gin.H{"error": "UI not built; run `cd web && npm run build`"})
+		a.serveSPA(c, os.DirFS(dir))
 	})
 	return nil
 }

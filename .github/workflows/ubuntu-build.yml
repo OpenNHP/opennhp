@@ -74,10 +74,14 @@ jobs:
         npm ci --no-audit --no-fund
         npm run build
         cd -
+        # Install SPA deps FIRST. `npm ci` wipes node_modules, so the
+        # SDK copy has to land after it — otherwise the aliased import
+        # in vite.config.ts has nothing to resolve to during `npm run
+        # build` (which runs `tsc --noEmit && vite build`).
+        npm ci --no-audit --no-fund
         mkdir -p node_modules/@opennhp/agent
         cp -r ../../endpoints/js-agent/dist node_modules/@opennhp/agent/dist
         cp ../../endpoints/js-agent/package.json node_modules/@opennhp/agent/package.json
-        npm ci --no-audit --no-fund
         npm run build
 
     # govulncheck scans the demoapp module's dependency graph for known

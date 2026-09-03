@@ -17,14 +17,21 @@ import (
 )
 
 // Session keys. Names are short to keep cookie payloads small.
+//
+// Only keys that are READ by the server live here — cookie.NewStore
+// uses a single auth-only key, so anything written with s.Set()
+// is plain base64 in a 7-day cookie. Earlier revisions also wrote
+// sessKeyRegToken, sessKeyUsername, and sessKeyOIDCSubject for
+// "convenience", but no server-side handler ever read them: the reg
+// token is a bearer credential for /api/register/confirm and the
+// /api/credentials gate, so leaving it lying around in cleartext in
+// a long-lived cookie was both pointless and unsafe (review #8).
+// The SPA does not read these from JS either.
 const (
-	sessKeyUserID      = "uid"
-	sessKeyUsername    = "uname"
-	sessKeyOIDCState   = "ostate"
-	sessKeyOIDCNonce   = "ononce"
-	sessKeyOIDCSubject = "osub"
-	sessKeyOAuthState  = "gstate"
-	sessKeyRegToken    = "regtok"
+	sessKeyUserID     = "uid"
+	sessKeyOIDCState  = "ostate"
+	sessKeyOIDCNonce  = "ononce"
+	sessKeyOAuthState = "gstate"
 )
 
 // SessionName is the cookie name the demo uses (mirrors nhp-server's

@@ -261,12 +261,14 @@ func (a *App) handleRegister(c *gin.Context) {
 		return
 	}
 
-	// Persist the reg_token in the session too, so /api/register/confirm
-	// can be called without the SPA having to round-trip the token.
+	// Set a fresh session so /api/register/confirm can identify the user
+	// via the reg_token JSON body (handleRegisterConfirm takes the
+	// regToken from the body, not the session; review #8 — the
+	// earlier sessKeyRegToken / sessKeyUsername writes were dropped
+	// because no server-side handler ever read them and cookie.NewStore
+	// stores values in cleartext base64).
 	s := sessions.Default(c)
-	s.Set(sessKeyRegToken, regToken)
 	s.Set(sessKeyUserID, u.ID)
-	s.Set(sessKeyUsername, u.Username)
 	_ = s.Save()
 
 	nhp, err := a.nhpEndpointFor(srv, scheme, u.Email)
@@ -517,7 +519,6 @@ func (a *App) handleRegisterConfirm(c *gin.Context) {
 	// Set a fresh session so the SPA can immediately fetch /api/credentials.
 	s := sessions.Default(c)
 	s.Set(sessKeyUserID, user.ID)
-	s.Set(sessKeyUsername, user.Username)
 	_ = s.Save()
 
 	c.JSON(http.StatusOK, gin.H{
@@ -569,7 +570,6 @@ func (a *App) handleLogin(c *gin.Context) {
 
 	s := sessions.Default(c)
 	s.Set(sessKeyUserID, user.ID)
-	s.Set(sessKeyUsername, user.Username)
 	if err := s.Save(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "session save failed"})
 		return

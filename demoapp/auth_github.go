@@ -156,8 +156,6 @@ func (a *App) handleGitHubCallback(c *gin.Context) {
 	}
 
 	s.Set(sessKeyUserID, user.ID)
-	s.Set(sessKeyUsername, user.Username)
-	s.Set(sessKeyOIDCSubject, user.OIDCSubject)
 	if err := s.Save(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "session save failed"})
 		return

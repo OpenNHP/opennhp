@@ -427,9 +427,25 @@ type registerConfirmRequest struct {
 	RakOK     bool   `json:"rakOk"`
 }
 
-// handleRegisterConfirm finalizes registration. We trust RakOK here
-// because the SPA already received the RAK from nhp-server in the
-// browser session. Identity is proven one of two ways:
+// handleRegisterConfirm finalizes registration.
+//
+// SECURITY NOTE — CLIENT-ATTESTED RAK. We trust the RakOK flag here
+// without consulting nhp-server's keystore: the SPA already received
+// the RAK over its browser-side NHP-REG session, and the demoapp
+// server is intentionally stateless about the protocol. Anyone
+// holding a valid regToken (or a pending session) can flip
+// themselves to "active" without actually completing the Noise
+// handshake, but every subsequent knock still has to satisfy
+// nhp-server's peer validation — so the worst-case impact is a
+// user who can list services but cannot open any resource. This is
+// a demo affordance, not a real authn boundary; do NOT replicate the
+// pattern outside the demo.
+//
+// The response explicitly sets `clientAttested: true` so callers (and
+// reviewers) can see at a glance that this endpoint did not reach
+// nhp-server to verify the RAK.
+//
+// Identity is proven one of two ways:
 //   - regToken: the token issued by /api/register (ties the call to the
 //     original account creation; used by the fresh-registration flow).
 //   - session: when regToken is empty, the caller is already logged in
@@ -504,7 +520,14 @@ func (a *App) handleRegisterConfirm(c *gin.Context) {
 	s.Set(sessKeyUsername, user.Username)
 	_ = s.Save()
 
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		// Surface the client-attested caveat so the SPA / log readers see
+		// it (handleRegisterConfirm never reaches nhp-server to verify
+		// the RAK). Knocks still fail at nhp-server if the handshake did
+		// not actually complete, but the activation itself is local.
+		"clientAttested": true,
+	})
 }
 
 // loginRequest is the JSON body for POST /api/login.

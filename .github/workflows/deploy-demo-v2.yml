@@ -1623,6 +1623,53 @@ jobs:
               print("GitHub OAuth client secret injected into demoapp config")
           PY
 
+      - name: Inject demoapp master keys from opennhp/demo
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          # SessionKey / KeyEnvelopeKey are rendered as
+          # __DEMOAPP_SESSION_KEY__ / __DEMOAPP_KEY_ENVELOPE_KEY__
+          # markers in deploy/config-templates/demoapp/config.toml and
+          # NOT exported by generate-nhp-keys.sh, so envsubst leaves
+          # the markers untouched in the nhp-demo-configs artifact
+          # (review #7). Substitute the real values here from the
+          # opennhp/demo Secrets Manager entry, AFTER the artifact
+          # boundary, so the AES master (which unwraps every stored
+          # NHP private key) and the session-signing key (which
+          # forges /api/credentials cookies) never enter the
+          # public-readable artifact.
+          CFG="./configs/demoapp/config.toml"
+          if [ ! -f "$CFG" ]; then
+            echo "ERROR: $CFG not found in downloaded configs artifact"
+            exit 1
+          fi
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region "$AWS_REGION" \
+            --query 'SecretString' --output text)
+          python3 - "$CFG" <<'PY'
+          import json, os, sys
+          path = sys.argv[1]
+          secrets = json.loads(os.environ["SECRETS"])
+          dek = secrets.get("demoapp_key_envelope_key", "")
+          dsk = secrets.get("demoapp_session_key", "")
+          if not dek or not dsk:
+              sys.exit("ERROR: opennhp/demo is missing demoapp_key_envelope_key and/or demoapp_session_key; "
+                       "run scripts/generate-nhp-keys.sh to backfill them.")
+          with open(path) as f:
+              content = f.read()
+          for marker, value in (
+              ("__DEMOAPP_KEY_ENVELOPE_KEY__", dek),
+              ("__DEMOAPP_SESSION_KEY__", dsk),
+          ):
+              if marker not in content:
+                  sys.exit(f"ERROR: {marker} not present in {path}")
+              content = content.replace(marker, value)
+          with open(path, "w") as f:
+              f.write(content)
+          print("demoapp master keys injected into demoapp config (post-artifact)")
+          PY
+
       - name: Install nginx vhost + expand cert for demo.opennhp.org
         env:
           RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}

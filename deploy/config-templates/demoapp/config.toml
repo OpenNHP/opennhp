@@ -3,19 +3,18 @@
 # Deployed to the relay host alongside nhp-relayd. nginx proxies
 # demo.opennhp.org → 127.0.0.1:8081 (see deploy/nginx/demoapp.conf.template).
 #
-# Auto-generated secrets: KeyEnvelopeKey and SessionKey are sourced from
-# AWS Secrets Manager (opennhp/demo fields demoapp_key_envelope_key and
-# demoapp_session_key) by scripts/generate-nhp-keys.sh, then rendered into
-# this template via envsubst. They live in the same secret as the data
-# they protect (review #4) instead of being auto-minted into
-# etc/.demoapp-autogen.json next to data/demo.db — the sidecar placement
-# made the envelope close to a no-op defense (anything with DB read
-# access trivially had the wrapping key) and a host replacement silently
-# bricked every account with "credential unseal failed".
-#
-# Local-dev configs (docker/demoapp/etc/config.toml) keep the REPLACE_*
-# placeholders so `docker compose up` still Just Works without operator
-# intervention; autogen.go fills them on first boot.
+# Secrets policy. KeyEnvelopeKey unwraps every user's NHP private key
+# at rest; SessionKey forges any session cookie (the sole gate on
+# /api/credentials). They are sourced from opennhp/demo via
+# scripts/generate-nhp-keys.sh, but unlike the NHP daemon keys they
+# never reach the public-readable nhp-demo-configs artifact
+# (retention-days: 1). The configure job renders literal
+# __DEMOAPP_*__ markers here, and the deploy-demoapp job substitutes
+# the real values from GitHub Actions secrets AFTER the artifact
+# boundary — the same pattern used for __GH_OAUTH_CLIENT_SECRET__
+# below. Local-dev configs (docker/demoapp/etc/config.toml) keep
+# REPLACE_* placeholders so autogen.go fills them on first boot.
+# Review #7.
 
 # Bind loopback only. nginx (demoapp.conf.template) proxies
 # demo.opennhp.org → 127.0.0.1:8081, so binding 0.0.0.0 would expose the
@@ -39,9 +38,11 @@ TrustProxyHeaders = true
 # survives restarts.
 DBPath = "data/demo.db"
 
-# 32+ byte random key used to sign the session cookie. Sourced from
-# AWS Secrets Manager via generate-nhp-keys.sh → ${DEMOAPP_SESSION_KEY}.
-SessionKey = "${DEMOAPP_SESSION_KEY}"
+# 32+ byte random key used to sign the session cookie. Held back from
+# the nhp-demo-configs artifact as the __DEMOAPP_SESSION_KEY__ marker;
+# the deploy-demoapp job substitutes the real value from opennhp/demo
+# AFTER downloading the artifact (see comment block above).
+SessionKey = "__DEMOAPP_SESSION_KEY__"
 
 # Mark the session cookie Secure so the browser only sends it over TLS.
 # The public demo is HTTPS-only (demo.opennhp.org), so this is true in
@@ -50,9 +51,11 @@ SessionKey = "${DEMOAPP_SESSION_KEY}"
 SecureCookies = true
 
 # 32-byte AES-256 master key (base64-encoded) used to wrap each user's
-# NHP private key at rest. Sourced from AWS Secrets Manager via
-# generate-nhp-keys.sh → ${DEMOAPP_KEY_ENVELOPE_KEY}.
-KeyEnvelopeKey = "${DEMOAPP_KEY_ENVELOPE_KEY}"
+# NHP private key at rest. Held back from the nhp-demo-configs artifact
+# as the __DEMOAPP_KEY_ENVELOPE_KEY__ marker; the deploy-demoapp job
+# substitutes the real value from opennhp/demo AFTER downloading the
+# artifact (see comment block above).
+KeyEnvelopeKey = "__DEMOAPP_KEY_ENVELOPE_KEY__"
 
 # Default cipher scheme for non-interactive paths (e.g. OIDC upsert
 # before the user reaches the complete-registration view). Interactive

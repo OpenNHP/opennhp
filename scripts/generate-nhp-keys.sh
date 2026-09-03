@@ -367,8 +367,13 @@ export NHP_JSAGENT_PRIVATE_KEY NHP_JSAGENT_PUBLIC_KEY NHP_JSAGENT_SM2_PUBLIC_KEY
 export NHP_JSAGENT2_PRIVATE_KEY NHP_JSAGENT2_PUBLIC_KEY NHP_JSAGENT2_SM2_PUBLIC_KEY
 export NHP_SERVER2_PRIVATE_KEY NHP_SERVER2_PUBLIC_KEY NHP_SERVER2_SM2_PUBLIC_KEY
 export NHP_AC2_PRIVATE_KEY NHP_AC2_PUBLIC_KEY
-export DEMOAPP_KEY_ENVELOPE_KEY="$DEMOAPP_KEY_ENVELOPE_KEY"
-export DEMOAPP_SESSION_KEY="$DEMOAPP_SESSION_KEY"
+# DEMOAPP_KEY_ENVELOPE_KEY and DEMOAPP_SESSION_KEY are NOT exported here:
+# the demoapp config template carries them as literal __DEMOAPP_*__
+# markers, and the deploy-demoapp job substitutes the real values
+# from opennhp/demo AFTER the nhp-demo-configs artifact boundary
+# (review #7). Exporting them would let envsubst render the real
+# values into the public-readable artifact, defeating the marker
+# pattern.
 export SERVER_PRIVATE_IP="$SERVER_PRIVATE_IP"
 export AC_PRIVATE_IP="$AC_PRIVATE_IP"
 export SERVER2_PRIVATE_IP="$SERVER2_PRIVATE_IP"

@@ -44,14 +44,12 @@ func (l *ipLimiter) Allow(ip string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
-	b, ok := l.hits[ip]
-	if !ok || now.After(b.expiry) {
-		l.hits[ip] = &ipBucket{count: 1, expiry: now.Add(l.window)}
-		return 1 <= l.max
-	}
-	b.count++
-	// Opportunistic GC: if the map has grown past a soft cap, drop
-	// expired entries so a flood of distinct IPs does not bloat memory.
+	// Opportunistic GC: drop expired entries whenever the map has grown
+	// past a soft cap, BEFORE the new-bucket branch. A flood of distinct
+	// IPs takes the new-bucket path exclusively, so putting the sweep
+	// only on the increment branch left it unreachable for the very case
+	// it exists to handle. Each sweep is bounded by the map size, and it
+	// only runs past 4096 entries, so the steady-state cost is zero.
 	if len(l.hits) > 4096 {
 		for k, bb := range l.hits {
 			if now.After(bb.expiry) {
@@ -59,6 +57,12 @@ func (l *ipLimiter) Allow(ip string) bool {
 			}
 		}
 	}
+	b, ok := l.hits[ip]
+	if !ok || now.After(b.expiry) {
+		l.hits[ip] = &ipBucket{count: 1, expiry: now.Add(l.window)}
+		return 1 <= l.max
+	}
+	b.count++
 	return b.count <= l.max
 }
 

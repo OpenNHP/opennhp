@@ -220,21 +220,25 @@ func (a *App) serveSPA(c *gin.Context, fsys fs.FS) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "stat failed"})
 		return
 	}
-	// http.ServeContent handles MIME sniffing, Range, If-Modified-Since.
-	http.ServeContent(c.Writer, c.Request, path, stat.ModTime(), readSeeker(f))
-}
-
-// readSeeker opens a *fs.File into the io.ReadSeiser interface that
-// http.ServeContent needs. embed.FS uses fs.File which already implements
-// Read/Seek/Stat/Close, so this is just a type assertion helper.
-func readSeeker(f fs.File) interface {
-	Read(p []byte) (int, error)
-	Seek(offset int64, whence int) (int64, error)
-} {
-	return f.(interface {
+	// embed.FS opens a directory successfully (returning a *fs.File that
+	// implements Read/Stat/Close/ReadDir only — no Seek). The unchecked
+	// type assertion below would panic on those; treat directories as
+	// not-found so vite's dist/assets/ doesn't 500 the public demo on
+	// GET /assets.
+	if stat.IsDir() {
+		c.JSON(http.StatusNotFound, gin.H{"error": "asset not found"})
+		return
+	}
+	rs, ok := f.(interface {
 		Read(p []byte) (int, error)
 		Seek(offset int64, whence int) (int64, error)
 	})
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "asset not seekable"})
+		return
+	}
+	// http.ServeContent handles MIME sniffing, Range, If-Modified-Since.
+	http.ServeContent(c.Writer, c.Request, path, stat.ModTime(), rs)
 }
 
 // contextOf is a tiny helper to avoid repeating context.TODO() at every

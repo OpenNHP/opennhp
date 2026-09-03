@@ -13,6 +13,7 @@
 // path, regToken omitted).
 
 import { api, ApiError, type ServerInfo } from '../api.js';
+import { escapeHtml } from '../escape.js';
 import { mountNhpRegPanel } from '../nhp-reg-panel.js';
 
 export interface CompleteRegistrationViewProps {
@@ -26,7 +27,7 @@ export function renderCompleteRegistration(root: HTMLElement, props: CompleteReg
   root.innerHTML = `
     <div class="container">
       <div class="toolbar">
-        <div class="user">Signed in as <span>${escape(props.username)}</span></div>
+        <div class="user">Signed in as <span>${escapeHtml(props.username)}</span></div>
         <button id="signout-btn" class="btn btn-secondary">Sign out</button>
       </div>
       <h1>Complete NHP Registration</h1>
@@ -46,11 +47,7 @@ export function renderCompleteRegistration(root: HTMLElement, props: CompleteReg
   const signoutBtn = root.querySelector<HTMLButtonElement>('#signout-btn')!;
 
   function showAlert(level: 'error' | 'info' | 'success', message: string): void {
-    alert.innerHTML = `<div class="alert alert-${level}">${escape(message)}</div>`;
-  }
-
-  function escape(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    alert.innerHTML = `<div class="alert alert-${level}">${escapeHtml(message)}</div>`;
   }
 
   signoutBtn.addEventListener('click', async () => {
@@ -98,7 +95,7 @@ export function renderCompleteRegistration(root: HTMLElement, props: CompleteReg
         <div class="field">
           <label for="cr-server">NHP server cluster</label>
           <select id="cr-server">
-            ${servers.map((s) => `<option value="${escape(s.name)}" ${s.name === selName ? 'selected' : ''}>${escape(s.name)}</option>`).join('')}
+            ${servers.map((s) => `<option value="${escapeHtml(s.name)}" ${s.name === selName ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
           </select>
         </div>
         <div class="field">
@@ -122,7 +119,7 @@ export function renderCompleteRegistration(root: HTMLElement, props: CompleteReg
       const schemes = srv.schemes.length > 0 ? srv.schemes : [srv.relayRegisteredScheme];
       const preferred = serverSelect.value === curServer && curScheme ? curScheme : srv.relayRegisteredScheme;
       schemeSelect.innerHTML = schemes
-        .map((sc) => `<option value="${escape(sc)}" ${sc === preferred ? 'selected' : ''}>${escape(sc)}</option>`)
+        .map((sc) => `<option value="${escapeHtml(sc)}" ${sc === preferred ? 'selected' : ''}>${escapeHtml(sc)}</option>`)
         .join('');
     }
     serverSelect.addEventListener('change', syncSchemes);

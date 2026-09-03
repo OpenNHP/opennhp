@@ -9,6 +9,7 @@
 // /api/register/confirm to flip the account to active.
 
 import { api, ApiError, type NhpEndpointConfig } from './api.js';
+import { escapeHtml } from './escape.js';
 import { createAgent, requestOtp, registerPublicKey, type AgentHandle } from './nhp.js';
 
 export interface NhpRegPanelOpts {
@@ -34,16 +35,12 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
   let handle: AgentHandle | undefined;
   let disposed = false;
 
-  function escape(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
   function renderWaiting(message: string): void {
     container.innerHTML = `
       <div class="panel">
         <h2>NHP registration</h2>
         <div class="spinner"></div>
-        <p class="note">${escape(message)}</p>
+        <p class="note">${escapeHtml(message)}</p>
         ${opts.onBack ? '<button class="btn btn-secondary" id="nhp-back">Back</button>' : ''}
       </div>
     `;
@@ -54,7 +51,7 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
     container.innerHTML = `
       <div class="panel">
         <h2>NHP registration</h2>
-        <p class="note">An OTP has been sent to <strong>${escape(opts.email)}</strong>.
+        <p class="note">An OTP has been sent to <strong>${escapeHtml(opts.email)}</strong>.
           In docker environments, check the nhp-server logs for the OTP fallback.</p>
         <div id="nhp-alert"></div>
         <div class="field">
@@ -73,7 +70,7 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
     const resendBtn = container.querySelector<HTMLButtonElement>('#nhp-resend')!;
 
     const showAlert = (level: 'error' | 'info' | 'success', msg: string) => {
-      alert.innerHTML = `<div class="alert alert-${level}">${escape(msg)}</div>`;
+      alert.innerHTML = `<div class="alert alert-${level}">${escapeHtml(msg)}</div>`;
     };
 
     container.querySelector<HTMLButtonElement>('#nhp-back')?.addEventListener('click', () => opts.onBack?.());
@@ -167,7 +164,7 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
     container.innerHTML = `
       <div class="panel">
         <h2>NHP registration</h2>
-        <div class="alert alert-error">${escape(message)}</div>
+        <div class="alert alert-error">${escapeHtml(message)}</div>
         ${opts.onBack ? '<button class="btn btn-secondary" id="nhp-back">Back</button>' : ''}
       </div>
     `;

@@ -2,6 +2,7 @@
 // with OIDC" button that just navigates to the backend's /api/auth/oidc/login.
 
 import { api, ApiError } from '../api.js';
+import { escapeHtml } from '../escape.js';
 import { renderArchDiagram } from './arch-diagram.js';
 
 export interface LoginViewProps {
@@ -49,11 +50,7 @@ export function renderLogin(root: HTMLElement, props: LoginViewProps): void {
   const switchBtn = root.querySelector<HTMLButtonElement>('#login-switch-register')!;
 
   function showAlert(level: 'error' | 'success' | 'info', message: string): void {
-    alert.innerHTML = `<div class="alert alert-${level}">${escape(message)}</div>`;
-  }
-
-  function escape(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    alert.innerHTML = `<div class="alert alert-${level}">${escapeHtml(message)}</div>`;
   }
 
   submitBtn.addEventListener('click', async () => {

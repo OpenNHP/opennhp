@@ -3,6 +3,7 @@
 // (requestOtp → registerPublicKey → confirm) via the shared NHP reg panel.
 
 import { api, ApiError, type RegisterResponse, type ServerInfo } from '../api.js';
+import { escapeHtml } from '../escape.js';
 import { mountNhpRegPanel } from '../nhp-reg-panel.js';
 
 export interface RegisterViewProps {
@@ -58,11 +59,7 @@ export function renderRegister(root: HTMLElement, props: RegisterViewProps): voi
   const schemeSelect = root.querySelector<HTMLSelectElement>('#reg-scheme')!;
 
   function showAlert(level: 'error' | 'success' | 'info', message: string): void {
-    alert.innerHTML = `<div class="alert alert-${level}">${escape(message)}</div>`;
-  }
-
-  function escape(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    alert.innerHTML = `<div class="alert alert-${level}">${escapeHtml(message)}</div>`;
   }
 
   // Populate the server + scheme dropdowns from GET /api/servers.
@@ -79,7 +76,7 @@ export function renderRegister(root: HTMLElement, props: RegisterViewProps): voi
       return;
     }
     serverSelect.innerHTML = servers
-      .map((s) => `<option value="${escape(s.name)}">${escape(s.name)}</option>`)
+      .map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`)
       .join('');
     serverSelect.disabled = false;
     syncSchemeOptions();
@@ -95,7 +92,7 @@ export function renderRegister(root: HTMLElement, props: RegisterViewProps): voi
     }
     const schemes = srv.schemes.length > 0 ? srv.schemes : [srv.relayRegisteredScheme];
     schemeSelect.innerHTML = schemes
-      .map((sc) => `<option value="${escape(sc)}" ${sc === srv.relayRegisteredScheme ? 'selected' : ''}>${escape(sc)}</option>`)
+      .map((sc) => `<option value="${escapeHtml(sc)}" ${sc === srv.relayRegisteredScheme ? 'selected' : ''}>${escapeHtml(sc)}</option>`)
       .join('');
     schemeSelect.disabled = schemes.length === 0;
   }

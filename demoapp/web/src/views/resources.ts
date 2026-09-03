@@ -3,6 +3,7 @@
 // backend's catalog, and renders a knock button per resource.
 
 import { api, ApiError, type ConfigResponse, type ResourceMeta } from '../api.js';
+import { escapeHtml } from '../escape.js';
 import { createAgent, listResources, knockResource } from '../nhp.js';
 
 export interface ResourcesViewProps {
@@ -33,11 +34,11 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
     <div class="container">
       <div class="toolbar">
         <div class="toolbar-id">
-          <div class="user">Signed in as <span>${escape(props.username)}</span></div>
+          <div class="user">Signed in as <span>${escapeHtml(props.username)}</span></div>
           <div class="badges">
-            <span class="badge"><span class="badge-k">Auth</span>${escape(provider)}</span>
-            <span class="badge badge-mono"><span class="badge-k">Alg</span>${escape(scheme)}</span>
-            <span class="badge"><span class="badge-k">Server</span>${escape(server)}</span>
+            <span class="badge"><span class="badge-k">Auth</span>${escapeHtml(provider)}</span>
+            <span class="badge badge-mono"><span class="badge-k">Alg</span>${escapeHtml(scheme)}</span>
+            <span class="badge"><span class="badge-k">Server</span>${escapeHtml(server)}</span>
           </div>
         </div>
         <div class="toolbar-actions">
@@ -61,11 +62,7 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
   const deleteAccountBtn = root.querySelector<HTMLButtonElement>('#delete-account-btn')!;
 
   function showAlert(level: 'error' | 'success' | 'info', message: string): void {
-    alert.innerHTML = `<div class="alert alert-${level}">${escape(message)}</div>`;
-  }
-
-  function escape(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    alert.innerHTML = `<div class="alert alert-${level}">${escapeHtml(message)}</div>`;
   }
 
   signoutBtn.addEventListener('click', async () => {
@@ -129,12 +126,12 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
       area.innerHTML = `
         <ul class="resource-list">
           ${visible.map((r) => `
-            <li class="resource-item" data-resid="${escape(r.id)}" data-url="${escape(r.url)}">
+            <li class="resource-item" data-resid="${escapeHtml(r.id)}" data-url="${escapeHtml(r.url)}">
               <div>
-                <div class="resource-title">${escape(r.title)}</div>
-                <div class="resource-id">id: ${escape(r.id)} &middot; ${escape(r.url)}</div>
+                <div class="resource-title">${escapeHtml(r.title)}</div>
+                <div class="resource-id">id: ${escapeHtml(r.id)} &middot; ${escapeHtml(r.url)}</div>
               </div>
-              <button class="btn btn-primary knock-btn" data-resid="${escape(r.id)}">Access</button>
+              <button class="btn btn-primary knock-btn" data-resid="${escapeHtml(r.id)}">Access</button>
             </li>
           `).join('')}
         </ul>

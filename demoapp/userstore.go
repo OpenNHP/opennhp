@@ -25,6 +25,22 @@ const (
 	UserStatusActive  UserStatus = "active"
 )
 
+// usersColumns is the canonical column list for the users table, in the
+// order both INSERT and SELECT bind to. Centralized here so a schema
+// change forces every caller to update — `SELECT *` would silently
+// mis-bind Scan targets if a future column is added out of order
+// (password_hash landing in email, etc.). The order MUST match the
+// migrate() CREATE TABLE statement plus the ALTER TABLE ADD COLUMN
+// statements in the same order they run.
+const usersColumns = "id, username, password_hash, email, oidc_subject, nhp_public_key, nhp_private_key_enc, nhp_device_id, status, created_at, server_name, cipher_scheme, auth_provider"
+
+// usersColumnsMinusID is the same list without `id` (AUTOINCREMENT, so
+// the INSERT omits the placeholder too). Kept in lock-step with
+// usersColumns so any future column addition must update both — the
+// alternative would be `usersColumns` minus its first token, which would
+// silently miscount if `id` is renamed.
+const usersColumnsMinusID = "username, password_hash, email, oidc_subject, nhp_public_key, nhp_private_key_enc, nhp_device_id, status, created_at, server_name, cipher_scheme, auth_provider"
+
 // User is the in-memory representation of a row in the users table. It
 // holds both application credentials (username, bcrypt hash) and the NHP
 // material (public key, AES-wrapped private key, deviceId).
@@ -206,12 +222,8 @@ func (s *UserStore) CreateUser(ctx context.Context, u *User) error {
 	if u.CreatedAt.IsZero() {
 		u.CreatedAt = time.Now().UTC()
 	}
-	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO users
-			(username, password_hash, email, oidc_subject,
-			 nhp_public_key, nhp_private_key_enc, nhp_device_id,
-			 status, created_at, server_name, cipher_scheme, auth_provider)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO users (`+usersColumnsMinusID+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		u.Username, u.PasswordHash, u.Email, nullIfEmpty(u.OIDCSubject),
 		nullIfEmpty(u.NHPPublicKey), nullIfEmpty(u.NHPPrivateKeyEnc), nullIfEmpty(u.NHPDeviceID),
 		string(u.Status), u.CreatedAt.Unix(), u.ServerName, u.CipherScheme, u.AuthProvider,
@@ -306,13 +318,13 @@ func (s *UserStore) ActivateUser(ctx context.Context, userID int64) error {
 
 // GetUserByUsername looks up a user by username (case-insensitive trim).
 func (s *UserStore) GetUserByUsername(ctx context.Context, username string) (*User, error) {
-	return s.queryOne(ctx, `SELECT * FROM users WHERE LOWER(username) = LOWER(?) LIMIT 1`, strings.TrimSpace(username))
+	return s.queryOne(ctx, `SELECT `+usersColumns+` FROM users WHERE LOWER(username) = LOWER(?) LIMIT 1`, strings.TrimSpace(username))
 }
 
 // GetUserByEmail looks up by email — used by OIDC to detect a password user
 // with a matching email so the OIDC subject is linked rather than duplicating.
 func (s *UserStore) GetUserByEmail(ctx context.Context, email string) (*User, error) {
-	return s.queryOne(ctx, `SELECT * FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1`, strings.TrimSpace(email))
+	return s.queryOne(ctx, `SELECT `+usersColumns+` FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1`, strings.TrimSpace(email))
 }
 
 // externalSubjectKey namespaces an IdP subject by provider so that a
@@ -330,7 +342,7 @@ func externalSubjectKey(provider, subject string) string {
 
 // GetUserByOIDCSubject looks up by the namespaced (provider, subject) key.
 func (s *UserStore) GetUserByOIDCSubject(ctx context.Context, provider, subject string) (*User, error) {
-	return s.queryOne(ctx, `SELECT * FROM users WHERE oidc_subject = ? LIMIT 1`, externalSubjectKey(provider, subject))
+	return s.queryOne(ctx, `SELECT `+usersColumns+` FROM users WHERE oidc_subject = ? LIMIT 1`, externalSubjectKey(provider, subject))
 }
 
 // UpdateUserOIDCSubject attaches an external subject to an existing user
@@ -351,7 +363,7 @@ func (s *UserStore) UpdateUserOIDCSubject(ctx context.Context, userID int64, pro
 // GetUserByID is the primary-key lookup. Used by /api/register/confirm and
 // /api/register/retry after they resolve the reg token.
 func (s *UserStore) GetUserByID(ctx context.Context, id int64) (*User, error) {
-	return s.queryOne(ctx, `SELECT * FROM users WHERE id = ? LIMIT 1`, id)
+	return s.queryOne(ctx, `SELECT `+usersColumns+` FROM users WHERE id = ? LIMIT 1`, id)
 }
 
 // SaveRegToken records a pending registration token so a browser-clear

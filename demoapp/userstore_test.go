@@ -199,10 +199,13 @@ func TestUsernameCaseInsensitiveUnique(t *testing.T) {
 	}
 }
 
-// TestEmailDuplicateMapsToSentinel verifies an email UNIQUE violation
-// surfaces as ErrEmailTaken (so handleRegister maps it to 409, not 500)
-// — review #4.
-func TestEmailDuplicateMapsToSentinel(t *testing.T) {
+// TestEmailNoLongerUnique verifies the schema no longer enforces UNIQUE
+// on email (review #2 — relaxed so IdP sign-in can coexist with a
+// password-squat row). The application-level pre-check in
+// handleRegister still rejects duplicate password registrations on
+// the email match, and the rate limiter (5 / 10min / IP) bounds the
+// duplicate-insert race in practice.
+func TestEmailNoLongerUnique(t *testing.T) {
 	s, cleanup := openTestStore(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -210,15 +213,51 @@ func TestEmailDuplicateMapsToSentinel(t *testing.T) {
 	if err := s.CreateUser(ctx, &User{Username: "u1", Email: "dup@x.com", Status: UserStatusActive}); err != nil {
 		t.Fatalf("create u1: %v", err)
 	}
-	// handleRegister lowercases email before insert, so the column UNIQUE
-	// (which is case-sensitive) is effectively case-insensitive in
-	// production; mirror that here by using the same case.
+	// A second row with the same email must now succeed at the schema
+	// level. The application pre-check is what gates duplicate password
+	// registrations, not the column constraint.
 	err := s.CreateUser(ctx, &User{Username: "u2", Email: "dup@x.com", Status: UserStatusActive})
-	if err == nil {
-		t.Fatal("duplicate email insert succeeded")
+	if err != nil {
+		t.Fatalf("duplicate email insert now fails: %v (column UNIQUE on email should have been removed)", err)
 	}
-	if !errors.Is(err, ErrEmailTaken) {
-		t.Fatalf("duplicate email returned %v, want ErrEmailTaken", err)
+	// Both rows are queryable.
+	if _, err := s.GetUserByEmail(ctx, "dup@x.com"); err != nil {
+		t.Fatalf("GetUserByEmail after duplicate insert: %v", err)
+	}
+}
+
+// TestDropEmailUniqueMigration verifies dropEmailUnique is idempotent:
+// re-opening a fresh DB is a no-op and preserves existing rows
+// (review #2).
+func TestDropEmailUniqueMigration(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "demo.db")
+
+	// Fresh DB: dropEmailUnique should be a no-op.
+	s, err := OpenUserStore(path)
+	if err != nil {
+		t.Fatalf("first open: %v", err)
+	}
+	ctx := context.Background()
+	if err := s.CreateUser(ctx, &User{Username: "u1", Email: "u1@x.com", Status: UserStatusActive, AuthProvider: "password", PasswordHash: "pwhash"}); err != nil {
+		t.Fatalf("create u1: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	// Re-open: idempotent migration should not blow away u1.
+	s, err = OpenUserStore(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer s.Close()
+	u, err := s.GetUserByUsername(ctx, "u1")
+	if err != nil {
+		t.Fatalf("u1 lookup after reopen: %v", err)
+	}
+	if u.Email != "u1@x.com" {
+		t.Errorf("u1.Email = %q, want u1@x.com", u.Email)
 	}
 }
 

@@ -41,6 +41,29 @@ const usersColumns = "id, username, password_hash, email, oidc_subject, nhp_publ
 // silently miscount if `id` is renamed.
 const usersColumnsMinusID = "username, password_hash, email, oidc_subject, nhp_public_key, nhp_private_key_enc, nhp_device_id, status, created_at, server_name, cipher_scheme, auth_provider"
 
+// usersRebuildSchema is the post-migration users table definition used by
+// dropEmailUnique to rebuild the table without the email column UNIQUE.
+// Mirrors the CREATE TABLE in migrate() minus the email UNIQUE; new
+// columns added by ALTER TABLE in migrate() are listed here too so the
+// copy step captures them. Keep in lock-step with the CREATE TABLE in
+// migrate() — if you add a column there, add it here as well.
+const usersRebuildSchema = `
+CREATE TABLE users_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    password_hash TEXT,
+    email TEXT NOT NULL,
+    oidc_subject TEXT UNIQUE,
+    nhp_public_key TEXT,
+    nhp_private_key_enc TEXT,
+    nhp_device_id TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at INTEGER NOT NULL,
+    server_name TEXT DEFAULT '',
+    cipher_scheme TEXT DEFAULT '',
+    auth_provider TEXT DEFAULT ''
+)`
+
 // User is the in-memory representation of a row in the users table. It
 // holds both application credentials (username, bcrypt hash) and the NHP
 // material (public key, AES-wrapped private key, deviceId).
@@ -131,11 +154,19 @@ func (s *UserStore) Close() error {
 // are kept minimal so an operator can inspect them with `sqlite3`.
 func (s *UserStore) migrate() error {
 	stmts := []string{
+		// email is intentionally NOT UNIQUE: an external-IdP sign-in
+		// must be able to create a separate row for a victim whose
+		// address was pre-registered by a password-squatting attacker
+		// (review #2). The pre-check in handleRegister still rejects
+		// duplicate password registrations on the email match, and
+		// the rate limiter (5 / 10min / IP) bounds the duplicate-
+		// insert race. Existing databases that DID carry the column
+		// UNIQUE are migrated by dropEmailUnique below.
 		`CREATE TABLE IF NOT EXISTS users (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			username TEXT UNIQUE NOT NULL,
 			password_hash TEXT,
-			email TEXT UNIQUE NOT NULL,
+			email TEXT NOT NULL,
 			oidc_subject TEXT UNIQUE,
 			nhp_public_key TEXT,
 			nhp_private_key_enc TEXT,
@@ -208,6 +239,107 @@ func (s *UserStore) migrate() error {
 		   AND oidc_subject NOT LIKE 'oidc|%'`); err != nil {
 		return fmt.Errorf("migrate: namespace oidc_subject: %w", err)
 	}
+	// Drop the column-level UNIQUE on email (added in fresh CREATE TABLE
+	// only; legacy databases that pre-date review #2 still have it).
+	// See dropEmailUnique for the rationale and the rebuild mechanics.
+	if err := s.dropEmailUnique(); err != nil {
+		return fmt.Errorf("migrate: drop email unique: %w", err)
+	}
+	return nil
+}
+
+// dropEmailUnique rebuilds the users table without the column-level
+// UNIQUE on email. Idempotent: detects the auto-generated UNIQUE index
+// in sqlite_master and rebuilds only when present. Required so an
+// external-IdP sign-in can create a separate IdP-only row for a user
+// whose email was pre-registered (squat) by a password account —
+// otherwise upsertExternalUser's "skip password-holder, create
+// separate IdP-only row" branch (review #2) would collide on INSERT
+// with the squat row's email.
+//
+// The rebuild runs inside a single transaction; on failure the original
+// table is left intact (the DROP happens after the copy succeeds). The
+// custom idx_users_username_ci index is recreated by CREATE UNIQUE INDEX
+// IF NOT EXISTS after the rename — the auto-generated UNIQUE indexes
+// on username / oidc_subject re-attach via the new CREATE TABLE
+// statements embedded in usersRebuildSchema.
+func (s *UserStore) dropEmailUnique() error {
+	// SQLite names the auto-generated UNIQUE indexes that back a column
+	// UNIQUE constraint as sqlite_autoindex_users_N. We scan their SQL
+	// for "email" to find the one bound to the email column. Other
+	// auto-indexes (username, oidc_subject) don't match this check.
+	// Note: sqlite_master.sql is nullable for some entries (e.g.
+	// internal auto-indexes without an explicit CREATE statement),
+	// hence the NullString scan target.
+	rows, err := s.db.Query(`
+		SELECT name, sql FROM sqlite_master
+		 WHERE type = 'index' AND tbl_name = 'users'
+		   AND name LIKE 'sqlite_autoindex_users_%'`)
+	if err != nil {
+		return fmt.Errorf("query users indexes: %w", err)
+	}
+	var emailIdxName string
+	for rows.Next() {
+		var name string
+		var sqlStr sql.NullString
+		if err := rows.Scan(&name, &sqlStr); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan index row: %w", err)
+		}
+		if sqlStr.Valid && strings.Contains(sqlStr.String, "(email)") {
+			emailIdxName = name
+			break
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate indexes: %w", err)
+	}
+	if emailIdxName == "" {
+		// No email UNIQUE index — fresh DB or already migrated.
+		return nil
+	}
+
+	// Rebuild under a transaction so a failed COPY / DROP leaves the
+	// original table intact.
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() {
+		// On any error below, roll back so the original users table
+		// is preserved. A deferred rollback after a successful commit
+		// is a no-op.
+		_ = tx.Rollback()
+	}()
+	if _, err := tx.Exec(usersRebuildSchema); err != nil {
+		return fmt.Errorf("create users_new: %w", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO users_new
+		    (id, username, password_hash, email, oidc_subject,
+		     nhp_public_key, nhp_private_key_enc, nhp_device_id,
+		     status, created_at, server_name, cipher_scheme, auth_provider)
+		SELECT id, username, password_hash, email, oidc_subject,
+		       nhp_public_key, nhp_private_key_enc, nhp_device_id,
+		       status, created_at, server_name, cipher_scheme, auth_provider
+		  FROM users`); err != nil {
+		return fmt.Errorf("copy users to users_new: %w", err)
+	}
+	if _, err := tx.Exec(`DROP TABLE users`); err != nil {
+		return fmt.Errorf("drop old users: %w", err)
+	}
+	if _, err := tx.Exec(`ALTER TABLE users_new RENAME TO users`); err != nil {
+		return fmt.Errorf("rename users_new: %w", err)
+	}
+	// Reattach the custom case-insensitive username index; the column
+	// UNIQUE indexes re-attach automatically via usersRebuildSchema.
+	if _, err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_ci ON users(LOWER(username))`); err != nil {
+		return fmt.Errorf("recreate username ci index: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
 	return nil
 }
 
@@ -235,6 +367,11 @@ func (s *UserStore) CreateUser(ctx context.Context, u *User) error {
 		// insert is the authoritative check, so a race that slips past the
 		// pre-check surfaces as a clean 409 rather than an opaque 500
 		// (review #4).
+		//
+		// Email is no longer UNIQUE on the column (review #2: relaxed
+		// so IdP sign-in can coexist with a password-squat row), but the
+		// match is kept for any database still carrying the constraint
+		// during a transitional period.
 		if isUniqueViolation(err) {
 			msg := err.Error()
 			// A violation on the LOWER(username) expression index is

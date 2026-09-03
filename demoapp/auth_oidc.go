@@ -192,27 +192,27 @@ func (a *App) handleOIDCCallback(c *gin.Context) {
 //  1. If a user already has this external subject, return it. Its
 //     auth_provider is left untouched (it reflects how the account was
 //     originally created).
-//  2. If a user has the same email AND that account has no password
-//     (i.e. it was itself created by an external IdP that proved the
-//     email), link this subject to that user. We DO NOT auto-link a
-//     password account: /api/register performs no email verification,
-//     so a password account's email is unproven, and auto-absorbing it
-//     would enable pre-hijacking (attacker pre-registers
-//     victim@example.com, victim later signs in with the IdP, the
-//     merge hands the attacker a server-registered key via the row
-//     they still hold the password for). If the linked user has no NHP
-//     keys yet, generate them now. The auth_provider stays as-is.
-//  3. Otherwise create a new password-less user with the external
-//     subject, the given provider, and freshly generated NHP keys, in
-//     the pending state. External-IdP users skip the password step but
-//     NOT the NHP_REG handshake — the public key must still be
-//     registered with nhp-server. They land on the complete-registration
-//     view, which runs the handshake via /api/credentials and flips
-//     them active.
+//  2. If an IdP-only user has the same email, link this subject to that
+//     user. We do NOT auto-link a password account: /api/register
+//     performs no email verification, so a password account's email is
+//     unproven. Pre-review-#2 the function refused the IdP sign-in
+//     entirely in that case (errEmailHeldByPasswordAccount), which let
+//     an attacker who pre-registered victim@example.com permanently
+//     lock the victim out of GitHub sign-in (no link UI existed).
+//     Instead, we now SKIP the password-holder row and create a
+//     SEPARATE IdP-only account for the genuine IdP user. The email
+//     UNIQUE constraint has been relaxed in userstore.dropEmailUnique so
+//     the two rows can coexist. The squatter's row is untouched.
+//  3. Otherwise (no email match, or the only match was a password
+//     holder that we skipped in step 2) create a new password-less
+//     user with the external subject, the given provider, and freshly
+//     generated NHP keys, in the pending state. External-IdP users
+//     skip the password step but NOT the NHP_REG handshake — the
+//     public key must still be registered with nhp-server. They land
+//     on the complete-registration view, which runs the handshake via
+//     /api/credentials and flips them active.
 //
 // Sentinel errors (callers map these to 409, not 500):
-//   - errEmailHeldByPasswordAccount: email matches a password account
-//     that may not be silently absorbed (see #2 above).
 //   - errEmailLinkedToDifferentSubject: email matches an IdP-only
 //     account already bound to a different subject — refuse to overwrite.
 func (a *App) upsertExternalUser(ctx context.Context, subject, email, provider string) (*User, error) {
@@ -226,31 +226,35 @@ func (a *App) upsertExternalUser(ctx context.Context, subject, email, provider s
 		return nil, err
 	}
 
+	// Step 2: if an IdP-only user already has this email, merge onto
+	// that row. Password-holding rows are skipped (not merged, not
+	// rejected) — the new-user branch below creates a separate
+	// IdP-only account so the genuine IdP user is not locked out by a
+	// password squat. Review #2.
 	if u, err := a.Store.GetUserByEmail(ctx, email); err == nil {
-		// Pre-hijack guard: only auto-link when the existing account
-		// has no password. A password account's email is unproven
-		// (no verification on /api/register); absorbing an external
-		// subject onto it would let the password holder harvest a key
-		// the IdP user later registers. Require an explicit,
-		// password-authenticated link action for password accounts.
-		if u.PasswordHash != "" {
-			return nil, errEmailHeldByPasswordAccount
-		}
-		// Don't silently overwrite an existing different subject
-		// (partial fix for review #3c).
-		if u.OIDCSubject != "" && u.OIDCSubject != key {
-			return nil, errEmailLinkedToDifferentSubject
-		}
-		u.OIDCSubject = key
-		if u.NHPPrivateKeyEnc == "" || u.NHPPublicKey == "" {
-			if err := a.generateAndStoreNHPKeys(ctx, u); err != nil {
+		if u.PasswordHash == "" {
+			// IdP-only row — safe to merge.
+			// Don't silently overwrite an existing different subject.
+			if u.OIDCSubject != "" && u.OIDCSubject != key {
+				return nil, errEmailLinkedToDifferentSubject
+			}
+			u.OIDCSubject = key
+			if u.NHPPrivateKeyEnc == "" || u.NHPPublicKey == "" {
+				if err := a.generateAndStoreNHPKeys(ctx, u); err != nil {
+					return nil, err
+				}
+			}
+			if err := a.Store.UpdateUserOIDCSubject(ctx, u.ID, provider, subject); err != nil {
 				return nil, err
 			}
+			return u, nil
 		}
-		if err := a.Store.UpdateUserOIDCSubject(ctx, u.ID, provider, subject); err != nil {
-			return nil, err
-		}
-		return u, nil
+		// Password-holding row: fall through to create a separate
+		// IdP-only account. The squatter's row is left intact; we do
+		// not absorb its identity (which would let the password
+		// holder harvest a key the genuine user later registers) and
+		// we do not reject the sign-in (which would lock the genuine
+		// user out indefinitely).
 	} else if !errors.Is(err, ErrUserNotFound) {
 		return nil, err
 	}
@@ -344,21 +348,27 @@ func (a *App) generateAndStoreNHPKeys(ctx context.Context, u *User) error {
 
 // Sentinel errors for upsertExternalUser. Callers (the OIDC and GitHub
 // callbacks) surface these as 409 Conflict rather than 500, so a user
-// who hits the pre-hijack / relink guard gets a meaningful message
-// instead of an opaque server error.
+// who hits the relink guard gets a meaningful message instead of an
+// opaque server error.
+//
+// errEmailHeldByPasswordAccount was removed in review #2: the pre-hijack
+// guard no longer rejects IdP sign-ins on a password-holder email match
+// — it now SKIPS the squat row and creates a separate IdP-only account.
+// The IdP-only branch still raises errEmailLinkedToDifferentSubject when
+// the email match is itself an IdP-only account bound to a different
+// subject.
 var (
-	errEmailHeldByPasswordAccount    = errors.New("email already registered with a password; sign in with that password to link your IdP")
 	errEmailLinkedToDifferentSubject = errors.New("email already linked to a different IdP identity")
 )
 
 // isUpsertConflict reports whether an upsertExternalUser error should map
-// to 409 Conflict rather than 500. Covers the pre-hijack / relink guards
-// and the UNIQUE-constraint sentinels (ErrUsernameTaken / ErrSubjectTaken)
-// that fire when a namespaced external username or oidc_subject already
-// belongs to another account (review #3/#4).
+// to 409 Conflict rather than 500. Covers the relink guard
+// (errEmailLinkedToDifferentSubject) and the UNIQUE-constraint sentinels
+// (ErrUsernameTaken / ErrSubjectTaken) that fire when a namespaced
+// external username or oidc_subject already belongs to another account
+// (review #3/#4).
 func isUpsertConflict(err error) bool {
-	return errors.Is(err, errEmailHeldByPasswordAccount) ||
-		errors.Is(err, errEmailLinkedToDifferentSubject) ||
+	return errors.Is(err, errEmailLinkedToDifferentSubject) ||
 		errors.Is(err, ErrUsernameTaken) ||
 		errors.Is(err, ErrSubjectTaken)
 }

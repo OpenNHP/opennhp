@@ -173,6 +173,12 @@ a:hover { text-decoration: underline; }
 .arch > summary::before { content: "▸ "; color: #8b949e; }
 .arch[open] > summary::before { content: "▾ "; color: #8b949e; }
 .arch-body { margin-top: 14px; }
+.arch-diagram-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
 .arch-nodes {
   display: flex;
   align-items: stretch;

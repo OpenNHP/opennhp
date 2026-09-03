@@ -1,76 +1,21 @@
-// Architecture diagram for the login page. Renders a compact, CSP-safe
-// (no external assets) flow showing how a knock travels from the browser
-// through nhp-relay and nhp-server to nhp-ac, and back as access info.
+// Architecture overview for the login page.
 //
-// The NHP protocol has two client-driven phases the demo exercises:
-//   - Register: the agent's public key is sent to nhp-server (NHP_REG) so
-//     the server can authenticate later knocks.
-//   - Knock: an encrypted NHP_KNK proves the agent owns the registered key;
-//     the server authorizes and asks nhp-ac to open the hidden port.
-//
-// Numbered steps below the node strip trace one knock end-to-end.
+// Replaces an earlier inline text breakdown with the screenshot shipped at
+// docs/images/demoapp/demoapp.png. Vite serves anything under web/public/
+// from the site root, which lets the embedded binary (built with the
+// `webdist` tag) include it via the same embed.FS that holds the rest of
+// the SPA — no extra fetch, no CSP hole for cross-origin assets.
 
 export function renderArchDiagram(root: HTMLElement): void {
   root.innerHTML = `
     <details class="arch" open>
       <summary>How the OpenNHP demo works</summary>
       <div class="arch-body">
-        <div class="arch-nodes">
-          <div class="arch-node">
-            <div class="arch-node-title">Browser</div>
-            <div class="arch-node-sub">SPA + js-agent</div>
-          </div>
-          <div class="arch-arrow">&rarr;</div>
-          <div class="arch-node">
-            <div class="arch-node-title">nhp-relay</div>
-            <div class="arch-node-sub">routes packets</div>
-          </div>
-          <div class="arch-arrow">&rarr;</div>
-          <div class="arch-node arch-node-key">
-            <div class="arch-node-title">nhp-server</div>
-            <div class="arch-node-sub">auth &amp; authz</div>
-          </div>
-          <div class="arch-arrow">&rarr;</div>
-          <div class="arch-node">
-            <div class="arch-node-title">nhp-ac</div>
-            <div class="arch-node-sub">firewall</div>
-          </div>
-          <div class="arch-arrow">&rarr;</div>
-          <div class="arch-node">
-            <div class="arch-node-title">Resource</div>
-            <div class="arch-node-sub">hidden service</div>
-          </div>
-        </div>
-
-        <ol class="arch-steps">
-          <li>
-            <strong>NHP-REG</strong> (once, at sign-up): the browser's js-agent
-            sends the user's public key to nhp-server via the relay, so later
-            knocks can be authenticated.
-          </li>
-          <li>
-            <strong>NHP_KNK</strong>: the agent encrypts a knock and sends it to
-            nhp-server through nhp-relay. The relay only routes opaque packets,
-            so it learns nothing about the request.
-          </li>
-          <li>
-            <strong>NHP_AOP</strong>: nhp-server validates the knock and asks
-            nhp-ac to open the hidden port for this agent.
-          </li>
-          <li>
-            <strong>NHP_ART</strong>: nhp-ac opens the firewall rule and reports
-            the result back to nhp-server.
-          </li>
-          <li>
-            <strong>NHP_ACK</strong>: nhp-server returns the access info (host,
-            port, TTL) to the agent through the relay.
-          </li>
-          <li>
-            The browser now reaches the protected resource directly through
-            nhp-ac's opened port &mdash; until the rule expires, the service
-            stays invisible to everyone else.
-          </li>
-        </ol>
+        <img
+          class="arch-diagram-image"
+          src="/demoapp.png"
+          alt="OpenNHP demo architecture: browser, nhp-relay, nhp-server, nhp-ac, and the protected resource, with the NHP-REG / NHP_KNK / NHP_AOP / NHP_ART / NHP_ACK message flow"
+        />
       </div>
     </details>
   `;

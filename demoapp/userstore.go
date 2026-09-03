@@ -534,8 +534,20 @@ func (s *UserStore) GetUserByUsername(ctx context.Context, username string) (*Us
 
 // GetUserByEmail looks up by email — used by OIDC to detect a password user
 // with a matching email so the OIDC subject is linked rather than duplicating.
+//
+// Multiple rows may share an email since the column UNIQUE was dropped
+// (a password-squat row plus one or more IdP-only rows for the same
+// verified address). The lookup is therefore deterministic: an IdP-only
+// row (PasswordHash IS NULL OR ”) wins over a password-holder row so
+// upsertExternalUser's merge branch always reaches the IdP row; ties
+// break by id ASC so a fresh database returns the same row across
+// reopens. Password users sign in via /api/login (Username lookup), not
+// this one, so the preference never affects them.
 func (s *UserStore) GetUserByEmail(ctx context.Context, email string) (*User, error) {
-	return s.queryOne(ctx, `SELECT `+usersColumns+` FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1`, strings.TrimSpace(email))
+	return s.queryOne(ctx,
+		`SELECT `+usersColumns+` FROM users WHERE LOWER(email) = LOWER(?) `+
+			`ORDER BY (password_hash IS NULL OR password_hash = '') DESC, id ASC LIMIT 1`,
+		strings.TrimSpace(email))
 }
 
 // externalSubjectKey namespaces an IdP subject by provider so that a

@@ -14,7 +14,6 @@ import (
 	"io/fs"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -57,7 +56,11 @@ func run() error {
 	// land in a sidecar next to config.toml so the operator's file stays
 	// pristine across rebuilds — and so the demo works out of the box in
 	// local docker without an editor step.
-	probeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Bound the relay probe loop generously — see relayProbeTotal in
+	// autogen.go. A short budget here only lets ~1-2 attempts complete
+	// before ctx.Done() fires; the retry loop is sized for ~30s of relay
+	// boot + register dance and must be allowed to run to completion.
+	probeCtx, cancel := context.WithTimeout(context.Background(), relayProbeTotal)
 	defer cancel()
 	filled, err := autoFillConfig(cfg, EtcDirOf(*cfgPath), probeCtx)
 	if err != nil {

@@ -114,6 +114,12 @@ func (a *App) Register(r *gin.Engine) error {
 		// status=active account without ever proving the OTP (review #3).
 		pub.POST("/register", rateLimit(registerLimiter), a.handleRegister)
 		pub.POST("/register/confirm", rateLimit(registerLimiter), a.handleRegisterConfirm)
+		// /register/retry re-emits the original registerResponse given a
+		// valid reg_token, so a user who clears their browser between
+		// /api/register and /api/register/confirm can resume without
+		// re-typing their password (auth_password.go: handleRegisterRetry).
+		// Shares the registerLimiter with /register + /register/confirm.
+		pub.POST("/register/retry", rateLimit(registerLimiter), a.handleRegisterRetry)
 		pub.POST("/login", rateLimit(loginLimiter), a.handleLogin)
 		pub.POST("/logout", a.handleLogout)
 		// OIDC routes are mounted even when disabled — the handlers

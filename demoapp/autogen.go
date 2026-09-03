@@ -120,6 +120,24 @@ type relayServerInfo struct {
 	CipherScheme    int    `json:"cipherScheme"`
 }
 
+// Relay probe loop budget. The constants here are read by both
+// fetchServerListFromRelay (which runs the per-probe attempt loop) and
+// run() in demoapp_main.go (which builds the parent ctx that bounds it).
+//
+// relayProbeTotal MUST be at least maxAttempts * (probeTimeout + backoff);
+// a shorter budget only lets ~1-2 attempts complete before ctx.Done()
+// fires and the loop always exits without ever satisfying
+// maxAttempts. autoFillConfig keeps the placeholder key and the SPA is
+// handed a REPLACE_… server key it cannot knock against. The +5s safety
+// margin absorbs a probe that overruns its 3s budget so the final
+// attempt is not truncated.
+const (
+	probeTimeout    = 3 * time.Second
+	backoff         = 1 * time.Second
+	maxAttempts     = 30 // ~30s total: long enough for relay to register server
+	relayProbeTotal = maxAttempts*(probeTimeout+backoff) + 5*time.Second
+)
+
 // fetchServerListFromRelay hits GET <relayURL>/servers and returns the full
 // server list the relay reports. Retries with a short backoff so a demoapp
 // that boots before the relay has registered any nhp-server eventually sees
@@ -130,9 +148,6 @@ func fetchServerListFromRelay(ctx context.Context, relayURL string) ([]relayServ
 	}
 	url := strings.TrimRight(relayURL, "/") + "/servers"
 
-	const probeTimeout = 3 * time.Second
-	const backoff = 1 * time.Second
-	const maxAttempts = 30 // ~30s total: long enough for relay to register server
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		servers, err := probeRelayListOnce(ctx, url, probeTimeout)
 		if err == nil {

@@ -160,6 +160,16 @@ func (a *App) handleRegister(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "password too short (min 8 chars)"})
 		return
 	}
+	// bcrypt's input limit is 72 bytes; bcrypt.GenerateFromPassword
+	// returns ErrPasswordTooLong on overflow (current golang.org/x/crypto)
+	// or silently truncates and stores a weaker hash than the caller
+	// typed on older builds. Either way the behavior is undefined from
+	// the caller's side — surface it as a clean 400 with a clear upper
+	// bound instead of letting it 500 as "password hashing failed".
+	if len(req.Password) > 72 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password too long (max 72 bytes)"})
+		return
+	}
 	// "|" is reserved as the separator for provider-namespaced external-IdP
 	// usernames (externalSubjectKey: "github|<id>", "oidc|<sub>"). A password
 	// user registering a username like "oidc|<sub>" could otherwise squat the
@@ -281,6 +291,76 @@ func (a *App) handleRegister(c *gin.Context) {
 		PrivateKey: priv,
 		PublicKey:  pub,
 		DeviceID:   deviceID,
+		NHP:        nhp,
+	})
+}
+
+// registerRetryRequest is the JSON body for POST /api/register/retry.
+// RegToken is a bearer credential: whoever presents a valid (not
+// expired) reg_token gets the original registration's private key back,
+// so a user who clears their browser can resume the NHP_REG handshake
+// without re-doing the password flow (see handleRegister).
+type registerRetryRequest struct {
+	RegToken string `json:"regToken"`
+}
+
+// handleRegisterRetry re-emits the original registerResponse for a
+// pending registration given a valid reg_token. Used by the SPA when
+// the user clears their browser between /api/register and
+// /api/register/confirm — the reg_token survives in the SPA's local
+// state (and was persisted server-side in reg_tokens) so they can
+// recover the same private key + deviceId + NHP endpoint config.
+//
+// Identity is proven solely by the reg_token: anyone holding it can
+// call this endpoint, so it shares the registerLimiter with
+// /api/register (defense in depth — a brute-force attack on a 256-bit
+// token is computationally infeasible).
+func (a *App) handleRegisterRetry(c *gin.Context) {
+	var req registerRetryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	if req.RegToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "regToken required"})
+		return
+	}
+	ctx := contextOf(c)
+	rt, u, err := a.Store.LookupRegToken(ctx, req.RegToken)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if u.NHPPrivateKeyEnc == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "user has no sealed private key"})
+		return
+	}
+	priv, err := openKey(a.MasterKey, u.NHPPrivateKeyEnc)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "credential unseal failed"})
+		return
+	}
+	srv, scheme, err := a.userServerScheme(u)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	nhp, err := a.nhpEndpointFor(srv, scheme, u.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	// Refresh the session so a subsequent /api/register/confirm can use
+	// the resume path (empty regToken) without re-authenticating.
+	s := sessions.Default(c)
+	s.Set(sessKeyUserID, u.ID)
+	_ = s.Save()
+
+	c.JSON(http.StatusOK, registerResponse{
+		RegToken:   rt.Token,
+		PrivateKey: priv,
+		PublicKey:  u.NHPPublicKey,
+		DeviceID:   u.NHPDeviceID,
 		NHP:        nhp,
 	})
 }

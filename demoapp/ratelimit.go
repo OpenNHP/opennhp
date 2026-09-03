@@ -13,8 +13,19 @@ import (
 // config binds 127.0.0.1:8081 behind a same-host nginx, and local-dev
 // binds 0.0.0.0 (or :8081) with no proxy at all. Anything that can
 // connect from outside loopback sets the headers itself, so trusting a
-// non-loopback CIDR here would let any client spoof its IP.
+// non-loopback CIDR here would let any client spoof their IP.
 var trustedLoopbackProxies = []string{"127.0.0.1", "::1"}
+
+// Rate-limiter bounds. softCap is where the GC is allowed to start
+// trimming (once per window, time-throttled); hardCap is the absolute
+// ceiling — beyond it, new distinct IPs cause a random existing bucket
+// to be evicted so the map cannot grow unbounded. Both are sized so
+// a single attacker pumping fresh IPs cannot amplify the limiter into the
+// DoS it was added to prevent (review follow-up to #6).
+const (
+	limiterSoftCap = 4096
+	limiterHardCap = 4096
+)
 
 // ipLimiter is a per-IP fixed-window rate limiter. The demoapp runs as a
 // single instance on the relay host, so an in-memory map is sufficient
@@ -26,6 +37,7 @@ type ipLimiter struct {
 	window time.Duration
 	max    int
 	hits   map[string]*ipBucket
+	lastGC time.Time
 }
 
 type ipBucket struct {
@@ -40,30 +52,68 @@ func newIPLimiter(max int, window time.Duration) *ipLimiter {
 // Allow reports whether one more request from ip is permitted. The first
 // request in a window starts the window; subsequent requests increment
 // until max, after which the window rejects until it expires.
+//
+// Steady-state cost is O(1) per request: the GC sweep is time-throttled
+// to at most one pass per window, and the soft / hard caps bound the
+// map size so a flood of distinct IPs cannot grow it without bound.
 func (l *ipLimiter) Allow(ip string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
-	// Opportunistic GC: drop expired entries whenever the map has grown
-	// past a soft cap, BEFORE the new-bucket branch. A flood of distinct
-	// IPs takes the new-bucket path exclusively, so putting the sweep
-	// only on the increment branch left it unreachable for the very case
-	// it exists to handle. Each sweep is bounded by the map size, and it
-	// only runs past 4096 entries, so the steady-state cost is zero.
-	if len(l.hits) > 4096 {
-		for k, bb := range l.hits {
-			if now.After(bb.expiry) {
-				delete(l.hits, k)
-			}
+
+	// Periodic GC: at most once per window. Triggered when the map has
+	// grown past softCap. The map walk runs at most once per window, so
+	// the amortized cost per request is O(1).
+	if len(l.hits) > limiterSoftCap && now.Sub(l.lastGC) >= l.window {
+		l.sweepExpired(now)
+		// Sweep only deletes buckets whose window has elapsed. An
+		// attacker pumping fresh distinct IPs never causes expiry, so the
+		// map can stay at the cap forever after a single sweep deletes
+		// nothing. When we're still over the hard cap after one pass, the
+		// limiter has already failed its job; bound the map by evicting
+		// a random existing bucket (Go map iteration order is randomized
+		// per the spec) so the next fresh IP has somewhere to land.
+		for len(l.hits) > limiterHardCap {
+			l.evictOne()
 		}
+		l.lastGC = now
 	}
+
 	b, ok := l.hits[ip]
 	if !ok || now.After(b.expiry) {
+		// Insert path: if we're at the hard cap with a brand-new IP
+		// (no existing bucket), drop an existing bucket to make room.
+		// Without this a sustained flood of distinct IPs would either
+		// OOM the process or amplify the DoS by serializing all
+		// login/register traffic behind a full map walk.
+		if !ok && len(l.hits) >= limiterHardCap {
+			l.evictOne()
+		}
 		l.hits[ip] = &ipBucket{count: 1, expiry: now.Add(l.window)}
 		return 1 <= l.max
 	}
 	b.count++
 	return b.count <= l.max
+}
+
+// sweepExpired deletes every bucket whose window has elapsed. O(N) in the
+// map size; only invoked from Allow() at the throttled GC boundary.
+func (l *ipLimiter) sweepExpired(now time.Time) {
+	for k, bb := range l.hits {
+		if now.After(bb.expiry) {
+			delete(l.hits, k)
+		}
+	}
+}
+
+// evictOne deletes one bucket chosen at random. Go's map iteration is
+// randomized by spec, so the first key we see is a uniform random pick.
+// math/rand would be equivalent but pulls in a global we don't need.
+func (l *ipLimiter) evictOne() {
+	for k := range l.hits {
+		delete(l.hits, k)
+		return
+	}
 }
 
 // clientIP returns the request's originating IP. With TrustProxyHeaders

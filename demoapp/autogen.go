@@ -319,6 +319,21 @@ func autoFillConfig(cfg *Config, etcDir string, relayProbeCtx context.Context) (
 							relayed, se.RelayRegisteredScheme)
 						se.RelayRegisteredScheme = relayed
 					} else {
+						// Persist any keys this call already generated
+						// before returning the validation error. Without
+						// this, a first boot against a relay whose
+						// scheme disagrees with a non-placeholder
+						// configured pubkey would mint a fresh KeyEnvelopeKey
+						// + SessionKey, error out, and on the next boot
+						// (after the operator fixes the config) generate
+						// DIFFERENT keys — silently rotating the AES-256
+						// master that wraps their NHP private key at rest
+						// (review follow-up to #2).
+						if changed {
+							if err := saveAutogen(etcDir, values); err != nil {
+								return false, fmt.Errorf("persist autogen before validation error: %w (validation: server %q declares %q but relay %s reports %q)", err, se.Name, se.RelayRegisteredScheme, cfg.RelayURL, relayed)
+							}
+						}
 						return false, fmt.Errorf(
 							"server %q declares %q but relay %s reports %q; the relay-registered scheme must match the configured public key. "+
 								"Update RelayRegisteredScheme (or CipherScheme, for legacy single-server configs) to %q, or replace the placeholder marker on the configured key",

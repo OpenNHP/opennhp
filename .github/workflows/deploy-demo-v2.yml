@@ -1552,6 +1552,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Fetch SSH credentials + CF token from AWS Secrets Manager
+        id: fetch_secrets
         run: |
           SECRETS=$(aws secretsmanager get-secret-value \
             --secret-id opennhp/demo \
@@ -1575,6 +1576,20 @@ jobs:
           CF_TOKEN=$(echo "$SECRETS" | jq -r '.cloudflare_api_token')
           echo "::add-mask::$CF_TOKEN"
           echo "cf_token=$CF_TOKEN" >> "$GITHUB_ENV"
+
+          # Expose the full Secrets Manager blob as a step output so the
+          # "Inject demoapp master keys" step below can read it via env:
+          # rather than re-fetching. That step needs
+          # demoapp_key_envelope_key / demoapp_session_key out of the
+          # same blob; previously it re-fetched SECRETS as a shell-only
+          # variable, which the heredoc python child couldn't see —
+          # KeyError on every deploy-demoapp run.
+          echo "::add-mask::$SECRETS"
+          {
+            echo "secrets<<EOF"
+            echo "$SECRETS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Download build + configs
         uses: actions/download-artifact@v8
@@ -1626,6 +1641,13 @@ jobs:
       - name: Inject demoapp master keys from opennhp/demo
         env:
           AWS_REGION: ${{ env.AWS_REGION }}
+          # Pulled from the fetch_secrets step above via env: rather than
+          # re-fetched here. The blob carries fields this step doesn't
+          # need (SSH keys, CF token) but that's harmless and avoids a
+          # second Secrets Manager round-trip + the previous KeyError
+          # bug (SECRETS= was a shell variable the heredoc python child
+          # couldn't see).
+          SECRETS: ${{ steps.fetch_secrets.outputs.secrets }}
         run: |
           # SessionKey / KeyEnvelopeKey are rendered as
           # __DEMOAPP_SESSION_KEY__ / __DEMOAPP_KEY_ENVELOPE_KEY__
@@ -1643,10 +1665,6 @@ jobs:
             echo "ERROR: $CFG not found in downloaded configs artifact"
             exit 1
           fi
-          SECRETS=$(aws secretsmanager get-secret-value \
-            --secret-id opennhp/demo \
-            --region "$AWS_REGION" \
-            --query 'SecretString' --output text)
           python3 - "$CFG" <<'PY'
           import json, os, sys
           path = sys.argv[1]

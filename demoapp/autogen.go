@@ -292,11 +292,38 @@ func autoFillConfig(cfg *Config, etcDir string, relayProbeCtx context.Context) (
 			fmt.Fprintf(os.Stderr, "[demoapp] could not auto-fill from relay: %v\n", err)
 		} else if len(servers) > 0 {
 			relayed := relaySchemeToString(servers[0].CipherScheme)
-			// Single configured server: fill its relay-registered-scheme key.
-			if len(cfg.Servers) == 1 {
+			if relayed == "" {
+				fmt.Fprintf(os.Stderr, "[demoapp] relay reported unknown cipher scheme %d; not auto-filling\n", servers[0].CipherScheme)
+			} else if len(cfg.Servers) == 1 {
 				se := &cfg.Servers[0]
-				if relayed != "" && isPlaceholder(string(se.RelayRegisteredScheme)) {
-					se.RelayRegisteredScheme = relayed
+				// The configured scheme and the relay's scheme must agree
+				// on which public key to use — the relay's routing key is
+				// the key the nhp-server registered with the relay under.
+				//
+				// LoadConfig's legacy single-server promotion writes
+				// CipherScheme into RelayRegisteredScheme, so by the time
+				// we get here RelayRegisteredScheme is almost never a
+				// literal "REPLACE_*" placeholder — the previous version
+				// of this branch therefore never fired, and the key ended
+				// up persisted into the wrong slot (a GMSM key into
+				// Curve25519PublicKey when CipherScheme="curve25519" but
+				// the relay registered GMSM). Adopt the relay's scheme
+				// whenever the matching key slot is still a placeholder:
+				// the operator never filled this key by hand, so the
+				// relay is authoritative.
+				if relayed != se.RelayRegisteredScheme {
+					matchKey := se.publicKeyFor(se.RelayRegisteredScheme)
+					if isPlaceholder(matchKey) {
+						fmt.Fprintf(os.Stderr,
+							"[demoapp] auto-fill: adopting relay scheme %q (was %q) because the configured public key is still a placeholder\n",
+							relayed, se.RelayRegisteredScheme)
+						se.RelayRegisteredScheme = relayed
+					} else {
+						return false, fmt.Errorf(
+							"server %q declares %q but relay %s reports %q; the relay-registered scheme must match the configured public key. "+
+								"Update RelayRegisteredScheme (or CipherScheme, for legacy single-server configs) to %q, or replace the placeholder marker on the configured key",
+							se.Name, se.RelayRegisteredScheme, cfg.RelayURL, relayed, relayed)
+					}
 				}
 				if pub := se.publicKeyFor(se.RelayRegisteredScheme); isPlaceholder(pub) {
 					fillServerPubKey(se, servers[0].PublicKeyBase64)

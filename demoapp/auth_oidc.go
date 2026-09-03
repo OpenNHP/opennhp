@@ -171,8 +171,6 @@ func (a *App) handleOIDCCallback(c *gin.Context) {
 	}
 
 	s.Set(sessKeyUserID, user.ID)
-	s.Set(sessKeyUsername, user.Username)
-	s.Set(sessKeyOIDCSubject, user.OIDCSubject)
 	if err := s.Save(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "session save failed"})
 		return
@@ -364,11 +362,20 @@ var (
 // isUpsertConflict reports whether an upsertExternalUser error should map
 // to 409 Conflict rather than 500. Covers the relink guard
 // (errEmailLinkedToDifferentSubject) and the UNIQUE-constraint sentinels
-// (ErrUsernameTaken / ErrSubjectTaken) that fire when a namespaced
-// external username or oidc_subject already belongs to another account
-// (review #3/#4).
+// (ErrUsernameTaken / ErrSubjectTaken / ErrEmailTaken) that fire when a
+// namespaced external username, oidc_subject, or email already belongs
+// to another account.
+//
+// ErrEmailTaken is included for the case where the demoapp is still
+// running against a pre-review-#2 database — the email column UNIQUE
+// is dropped by UserStore.migrate on re-open, but on a DB created
+// before this fix landed the column UNIQUE survives and a duplicate
+// email INSERT surfaces as ErrEmailTaken. Surfacing it as 500 "user
+// upsert failed" is the exact lockout review #2 set out to remove
+// (review #6).
 func isUpsertConflict(err error) bool {
 	return errors.Is(err, errEmailLinkedToDifferentSubject) ||
 		errors.Is(err, ErrUsernameTaken) ||
-		errors.Is(err, ErrSubjectTaken)
+		errors.Is(err, ErrSubjectTaken) ||
+		errors.Is(err, ErrEmailTaken)
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -250,55 +251,55 @@ func (s *UserStore) migrate() error {
 
 // dropEmailUnique rebuilds the users table without the column-level
 // UNIQUE on email. Idempotent: detects the auto-generated UNIQUE index
-// in sqlite_master and rebuilds only when present. Required so an
-// external-IdP sign-in can create a separate IdP-only row for a user
-// whose email was pre-registered (squat) by a password account —
-// otherwise upsertExternalUser's "skip password-holder, create
-// separate IdP-only row" branch (review #2) would collide on INSERT
-// with the squat row's email.
+// via PRAGMA index_list / index_info and rebuilds only when present.
+// Required so an external-IdP sign-in can create a separate IdP-only
+// row for a user whose email was pre-registered (squat) by a password
+// account — otherwise upsertExternalUser's "skip password-holder,
+// create separate IdP-only row" branch (review #2) would collide on
+// INSERT with the squat row's email.
 //
-// The rebuild runs inside a single transaction; on failure the original
-// table is left intact (the DROP happens after the copy succeeds). The
-// custom idx_users_username_ci index is recreated by CREATE UNIQUE INDEX
-// IF NOT EXISTS after the rename — the auto-generated UNIQUE indexes
-// on username / oidc_subject re-attach via the new CREATE TABLE
-// statements embedded in usersRebuildSchema.
+// Detection has to come from the pragmas: sqlite_schema.sql is NULL
+// for every implicitly-created index (the very property that
+// distinguishes sqlite_autoindex_* rows from user-created ones in
+// sqlite_master), so scanning sqlite_master always reports "no email
+// UNIQUE index" on a fresh legacy DB and the migration never fires.
+// PRAGMA index_list returns origin='u' for indexes that back a
+// column UNIQUE, and PRAGMA index_info returns the columns each one
+// covers — that is the supported way to enumerate them.
+//
+// The rebuild runs inside a single transaction; on failure the
+// original table is left intact (the DROP happens after the copy
+// succeeds). PRAGMA foreign_keys=OFF is set OUTSIDE the transaction
+// because the pragma is a no-op inside a tx — with foreign_keys=ON,
+// DROP TABLE users would fire the ON DELETE CASCADE on reg_tokens and
+// silently wipe every in-flight registration token. The original
+// value is restored after the rebuild commits.
 func (s *UserStore) dropEmailUnique() error {
-	// SQLite names the auto-generated UNIQUE indexes that back a column
-	// UNIQUE constraint as sqlite_autoindex_users_N. We scan their SQL
-	// for "email" to find the one bound to the email column. Other
-	// auto-indexes (username, oidc_subject) don't match this check.
-	// Note: sqlite_master.sql is nullable for some entries (e.g.
-	// internal auto-indexes without an explicit CREATE statement),
-	// hence the NullString scan target.
-	rows, err := s.db.Query(`
-		SELECT name, sql FROM sqlite_master
-		 WHERE type = 'index' AND tbl_name = 'users'
-		   AND name LIKE 'sqlite_autoindex_users_%'`)
+	has, err := s.hasEmailUniqueIndex()
 	if err != nil {
-		return fmt.Errorf("query users indexes: %w", err)
+		return fmt.Errorf("detect email unique: %w", err)
 	}
-	var emailIdxName string
-	for rows.Next() {
-		var name string
-		var sqlStr sql.NullString
-		if err := rows.Scan(&name, &sqlStr); err != nil {
-			rows.Close()
-			return fmt.Errorf("scan index row: %w", err)
-		}
-		if sqlStr.Valid && strings.Contains(sqlStr.String, "(email)") {
-			emailIdxName = name
-			break
-		}
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate indexes: %w", err)
-	}
-	if emailIdxName == "" {
+	if !has {
 		// No email UNIQUE index — fresh DB or already migrated.
 		return nil
 	}
+
+	// Save the prior value of foreign_keys so the rebuild can disable
+	// cascades for the DROP TABLE on users and restore the operator's
+	// setting afterwards. The pragma is connection-level (not
+	// transaction-local) and is a no-op inside a tx.
+	prevFK, err := s.currentForeignKeys()
+	if err != nil {
+		return fmt.Errorf("read foreign_keys: %w", err)
+	}
+	if _, err := s.db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+		return fmt.Errorf("disable foreign_keys: %w", err)
+	}
+	defer func() {
+		if _, err := s.db.Exec(fmt.Sprintf(`PRAGMA foreign_keys = %d`, prevFK)); err != nil {
+			fmt.Fprintf(os.Stderr, "[demoapp] restore foreign_keys=%d failed: %v\n", prevFK, err)
+		}
+	}()
 
 	// Rebuild under a transaction so a failed COPY / DROP leaves the
 	// original table intact.
@@ -341,6 +342,79 @@ func (s *UserStore) dropEmailUnique() error {
 		return fmt.Errorf("commit: %w", err)
 	}
 	return nil
+}
+
+// hasEmailUniqueIndex reports whether a UNIQUE-constraint-backed index
+// covers the email column. PRAGMA index_list returns origin='u' for
+// indexes that back a column UNIQUE; we then look up the index_info
+// for any matching index and check whether email is among the columns.
+//
+// PRAGMA index_info is the supported way to enumerate the columns of
+// an index — sqlite_schema.sql is NULL for every implicitly-created
+// index (a property, not a bug — that is what distinguishes
+// sqlite_autoindex_* rows from user-created ones), so a sqlite_master
+// scan always reports "no email UNIQUE index" on a fresh legacy DB
+// and the migration would never fire.
+func (s *UserStore) hasEmailUniqueIndex() (bool, error) {
+	rows, err := s.db.Query(`SELECT name, origin FROM pragma_index_list('users')`)
+	if err != nil {
+		return false, fmt.Errorf("pragma_index_list: %w", err)
+	}
+	defer rows.Close()
+	type idx struct {
+		name   string
+		origin string
+	}
+	var uniqueIdxs []idx
+	for rows.Next() {
+		var i idx
+		if err := rows.Scan(&i.name, &i.origin); err != nil {
+			return false, fmt.Errorf("scan index list: %w", err)
+		}
+		// origin 'u' = UNIQUE-constraint-backed, 'pk' = PRIMARY KEY,
+		// 'c' = user-created index, 'f' = FOREIGN KEY. We only care
+		// about UNIQUE-backed ones — user-created indexes like
+		// idx_users_username_ci have origin 'c' and can be ignored.
+		if i.origin == "u" {
+			uniqueIdxs = append(uniqueIdxs, i)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("iterate index list: %w", err)
+	}
+	for _, i := range uniqueIdxs {
+		infoRows, err := s.db.Query(fmt.Sprintf(`SELECT name FROM pragma_index_info(%q)`, i.name))
+		if err != nil {
+			return false, fmt.Errorf("pragma_index_info(%s): %w", i.name, err)
+		}
+		var cols []string
+		for infoRows.Next() {
+			var c string
+			if err := infoRows.Scan(&c); err != nil {
+				infoRows.Close()
+				return false, fmt.Errorf("scan index info: %w", err)
+			}
+			cols = append(cols, c)
+		}
+		infoRows.Close()
+		if err := infoRows.Err(); err != nil {
+			return false, fmt.Errorf("iterate index info: %w", err)
+		}
+		if slices.Contains(cols, "email") {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// currentForeignKeys reads the current PRAGMA foreign_keys value. The
+// pragma returns 0/1 in modernc.org/sqlite.
+func (s *UserStore) currentForeignKeys() (int, error) {
+	var v int
+	if err := s.db.QueryRow(`PRAGMA foreign_keys`).Scan(&v); err != nil {
+		return 0, err
+	}
+	return v, nil
 }
 
 // CreateUser inserts a new user row. Status defaults to pending; the

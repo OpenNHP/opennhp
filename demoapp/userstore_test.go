@@ -261,6 +261,106 @@ func TestDropEmailUniqueMigration(t *testing.T) {
 	}
 }
 
+// TestDropEmailUniqueMigrationLegacyDB exercises the actual rebuild
+// path: a database created with the legacy schema (email TEXT UNIQUE)
+// must have the column UNIQUE removed on re-open, and a subsequent
+// duplicate-email insert must succeed (review #6).
+//
+// The legacy schema is hand-rolled here rather than pulled from a
+// fixture so the test reads cleanly without binary files. We replicate
+// the original CREATE TABLE byte-for-byte (email UNIQUE) plus the
+// reg_tokens table + custom index that OpenUserStore.migrate expects
+// to find after the rebuild.
+func TestDropEmailUniqueMigrationLegacyDB(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "demo.db")
+
+	// Hand-roll a DB with the legacy column UNIQUE on email. We do
+	// NOT call OpenUserStore here because OpenUserStore's CREATE
+	// TABLE no longer carries the UNIQUE (review #2). To exercise
+	// the migration we have to manufacture the legacy shape directly.
+	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatalf("open legacy raw: %v", err)
+	}
+	if _, err := raw.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password_hash TEXT,
+			email TEXT UNIQUE NOT NULL,
+			oidc_subject TEXT UNIQUE,
+			nhp_public_key TEXT,
+			nhp_private_key_enc TEXT,
+			nhp_device_id TEXT,
+			status TEXT NOT NULL DEFAULT 'pending',
+			created_at INTEGER NOT NULL
+		)`); err != nil {
+		t.Fatalf("create legacy users: %v", err)
+	}
+	if _, err := raw.Exec(`
+		CREATE TABLE reg_tokens (
+			token TEXT PRIMARY KEY,
+			user_id INTEGER NOT NULL,
+			expires_at INTEGER NOT NULL,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`); err != nil {
+		t.Fatalf("create legacy reg_tokens: %v", err)
+	}
+	if _, err := raw.Exec(`INSERT INTO users (username, email, status, created_at) VALUES ('u1', 'dup@x.com', 'pending', 0)`); err != nil {
+		t.Fatalf("insert legacy u1: %v", err)
+	}
+	if _, err := raw.Exec(`INSERT INTO reg_tokens (token, user_id, expires_at) VALUES ('tok1', 1, 9999999999)`); err != nil {
+		t.Fatalf("insert legacy reg_token: %v", err)
+	}
+	// Confirm the legacy DB really carries the email UNIQUE — this
+	// is what the migration is supposed to detect and remove.
+	if _, err := raw.Exec(`INSERT INTO users (username, email, status, created_at) VALUES ('u2', 'dup@x.com', 'pending', 0)`); err == nil {
+		t.Fatal("legacy DB accepted duplicate email — UNIQUE on email is missing; migration test is invalid")
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close legacy raw: %v", err)
+	}
+
+	// Re-open via OpenUserStore: dropEmailUnique must rebuild the
+	// table, remove the email UNIQUE, and preserve u1 + the in-flight
+	// reg_token (foreign_keys=ON; the rebuild must disable cascades
+	// during DROP TABLE so the token survives).
+	s, err := OpenUserStore(path)
+	if err != nil {
+		t.Fatalf("open via OpenUserStore: %v", err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+
+	u, err := s.GetUserByUsername(ctx, "u1")
+	if err != nil {
+		t.Fatalf("u1 lookup after migration: %v", err)
+	}
+	if u.Email != "dup@x.com" {
+		t.Errorf("u1.Email = %q, want dup@x.com", u.Email)
+	}
+	var tokCount int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM reg_tokens`).Scan(&tokCount); err != nil {
+		t.Fatalf("count reg_tokens: %v", err)
+	}
+	if tokCount != 1 {
+		t.Errorf("reg_tokens after migration = %d, want 1 (DROP TABLE on users must not cascade)", tokCount)
+	}
+
+	// Duplicate email insert must now succeed at the schema level —
+	// this is the exact behavior the legacy-DB migration unlocks.
+	if err := s.CreateUser(ctx, &User{
+		Username:     "u2",
+		Email:        "dup@x.com",
+		Status:       UserStatusActive,
+		AuthProvider: "password",
+		PasswordHash: "pwhash",
+	}); err != nil {
+		t.Fatalf("duplicate email insert after migration failed: %v (UNIQUE on email should be gone)", err)
+	}
+}
+
 // TestExternalUsernameDisambiguation verifies that external-IdP users
 // whose email matches a squatter's password username do NOT collide on
 // the UNIQUE username column — because external users use the

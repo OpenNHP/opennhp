@@ -91,9 +91,10 @@ type User struct {
 	CreatedAt    time.Time
 }
 
-// RegToken associates an in-flight registration with a user, so a refresh /
-// browser-clear can call /api/register/retry to recover the credentials and
-// re-attempt the NHP_REG handshake.
+// RegToken associates an in-flight registration with a user. The reg_token
+// is a one-shot bearer credential consumed by /api/register/confirm when
+// the browser session does not yet exist (the resume path uses an
+// authenticated session instead).
 type RegToken struct {
 	Token     string
 	UserID    int64
@@ -583,8 +584,8 @@ func (s *UserStore) UpdateUserOIDCSubject(ctx context.Context, userID int64, pro
 	return nil
 }
 
-// GetUserByID is the primary-key lookup. Used by /api/register/confirm and
-// /api/register/retry after they resolve the reg token.
+// GetUserByID is the primary-key lookup. Used by /api/register/confirm
+// (and by requireSession) after they resolve the reg token or session uid.
 func (s *UserStore) GetUserByID(ctx context.Context, id int64) (*User, error) {
 	return s.queryOne(ctx, `SELECT `+usersColumns+` FROM users WHERE id = ? LIMIT 1`, id)
 }

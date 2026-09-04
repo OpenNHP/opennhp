@@ -23,9 +23,11 @@ import (
 // is plain base64 in a 7-day cookie. Earlier revisions also wrote
 // sessKeyRegToken, sessKeyUsername, and sessKeyOIDCSubject for
 // "convenience", but no server-side handler ever read them: the reg
-// token is a bearer credential for /api/register/confirm and the
-// /api/credentials gate, so leaving it lying around in cleartext in
-// a long-lived cookie was both pointless and unsafe (review #8).
+// token is a one-shot bearer credential for /api/register/confirm
+// (the /api/register/retry path that used the same bearer semantics
+// to return the unsealed private key is gone — review #2 of the
+// demoapp review), so leaving it lying around in cleartext in a
+// long-lived cookie was both pointless and unsafe (review #8).
 // The SPA does not read these from JS either.
 const (
 	sessKeyUserID     = "uid"
@@ -114,12 +116,10 @@ func (a *App) Register(r *gin.Engine) error {
 		// status=active account without ever proving the OTP (review #3).
 		pub.POST("/register", rateLimit(registerLimiter), a.handleRegister)
 		pub.POST("/register/confirm", rateLimit(registerLimiter), a.handleRegisterConfirm)
-		// /register/retry re-emits the original registerResponse given a
-		// valid reg_token, so a user who clears their browser between
-		// /api/register and /api/register/confirm can resume without
-		// re-typing their password (auth_password.go: handleRegisterRetry).
-		// Shares the registerLimiter with /register + /register/confirm.
-		pub.POST("/register/retry", rateLimit(registerLimiter), a.handleRegisterRetry)
+		// (No /register/retry: the regToken-bearer path that used to
+		// return the unsealed private key on a token alone is removed.
+		// The browser-clear recovery flow is /api/login (or an IdP
+		// callback) → session → /api/register/bind.)
 		pub.POST("/login", rateLimit(loginLimiter), a.handleLogin)
 		pub.POST("/logout", a.handleLogout)
 		// OIDC routes are mounted even when disabled — the handlers

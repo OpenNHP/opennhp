@@ -142,8 +142,10 @@ func (a *App) resolveServerScheme(serverName, schemeStr string) (*ServerEntry, C
 //
 // The browser then runs requestOtp -> registerPublicKey -> RAK, and calls
 // /api/register/confirm to flip status=active. If the user clears their
-// browser before confirm, they hit /api/register/retry with the reg_token
-// to get the same private key back without re-typing a password.
+// browser before confirm, they re-authenticate via /api/login (or one of
+// the IdP callbacks) — the pending session resumes and the
+// complete-registration view calls /api/register/bind to re-issue the
+// private key + NHP endpoint.
 func (a *App) handleRegister(c *gin.Context) {
 	var req registerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -295,76 +297,6 @@ func (a *App) handleRegister(c *gin.Context) {
 	})
 }
 
-// registerRetryRequest is the JSON body for POST /api/register/retry.
-// RegToken is a bearer credential: whoever presents a valid (not
-// expired) reg_token gets the original registration's private key back,
-// so a user who clears their browser can resume the NHP_REG handshake
-// without re-doing the password flow (see handleRegister).
-type registerRetryRequest struct {
-	RegToken string `json:"regToken"`
-}
-
-// handleRegisterRetry re-emits the original registerResponse for a
-// pending registration given a valid reg_token. Used by the SPA when
-// the user clears their browser between /api/register and
-// /api/register/confirm — the reg_token survives in the SPA's local
-// state (and was persisted server-side in reg_tokens) so they can
-// recover the same private key + deviceId + NHP endpoint config.
-//
-// Identity is proven solely by the reg_token: anyone holding it can
-// call this endpoint, so it shares the registerLimiter with
-// /api/register (defense in depth — a brute-force attack on a 256-bit
-// token is computationally infeasible).
-func (a *App) handleRegisterRetry(c *gin.Context) {
-	var req registerRetryRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
-		return
-	}
-	if req.RegToken == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "regToken required"})
-		return
-	}
-	ctx := contextOf(c)
-	rt, u, err := a.Store.LookupRegToken(ctx, req.RegToken)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if u.NHPPrivateKeyEnc == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "user has no sealed private key"})
-		return
-	}
-	priv, err := openKey(a.MasterKey, u.NHPPrivateKeyEnc)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "credential unseal failed"})
-		return
-	}
-	srv, scheme, err := a.userServerScheme(u)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	nhp, err := a.nhpEndpointFor(srv, scheme, u.Email)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	// Refresh the session so a subsequent /api/register/confirm can use
-	// the resume path (empty regToken) without re-authenticating.
-	s := sessions.Default(c)
-	s.Set(sessKeyUserID, u.ID)
-	_ = s.Save()
-
-	c.JSON(http.StatusOK, registerResponse{
-		RegToken:   rt.Token,
-		PrivateKey: priv,
-		PublicKey:  u.NHPPublicKey,
-		DeviceID:   u.NHPDeviceID,
-		NHP:        nhp,
-	})
-}
-
 // userServerScheme resolves a user's stored (server_name, cipher_scheme)
 // binding to a configured ServerEntry + CipherScheme. Legacy users with
 // empty bindings fall back to the default server + its registered scheme.
@@ -409,8 +341,10 @@ type bindRequest struct {
 // resumed registration keeps the same device identity.
 //
 // Identity is proven by the requireSession middleware (the caller is
-// already logged in); this is the session counterpart to the
-// regToken-gated /api/register/retry path.
+// already logged in) — the regToken-gated retry path that used to sit
+// here was removed (review #2 of the demoapp review): the browser-clear
+// recovery flow now re-authenticates via /api/login or an IdP callback
+// and lands on this endpoint.
 func (a *App) handleRebind(c *gin.Context) {
 	user, ok := c.MustGet("user").(*User)
 	if !ok {

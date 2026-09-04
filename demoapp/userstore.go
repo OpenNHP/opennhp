@@ -285,26 +285,46 @@ func (s *UserStore) dropEmailUnique() error {
 		return nil
 	}
 
+	// Pin a single *sql.Conn from the pool for the entire rebuild. The
+	// pragma + transaction MUST run on the same connection: PRAGMA
+	// foreign_keys is connection-scoped (a no-op inside a tx) and
+	// s.db is configured with SetMaxOpenConns(1), so the *db.Conn pin
+	// is a defense-in-depth guarantee against the ErrBadConn reopen
+	// path — a stale connection can be silently replaced with a fresh
+	// one built from the DSN, which carries _pragma=foreign_keys(ON).
+	// If that fresh conn lands on the Begin, DROP TABLE users fires
+	// the ON DELETE CASCADE on reg_tokens and silently wipes every
+	// in-flight registration token (review #4 of the demoapp review).
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("pin conn: %w", err)
+	}
+	defer conn.Close()
+
 	// Save the prior value of foreign_keys so the rebuild can disable
 	// cascades for the DROP TABLE on users and restore the operator's
-	// setting afterwards. The pragma is connection-level (not
-	// transaction-local) and is a no-op inside a tx.
-	prevFK, err := s.currentForeignKeys()
+	// setting afterwards. Both the read and the restore run on the
+	// pinned conn, so a pool rotation cannot leave foreign_keys=OFF
+	// dangling after the migration completes.
+	prevFK, err := currentForeignKeysOnConn(ctx, conn)
 	if err != nil {
 		return fmt.Errorf("read foreign_keys: %w", err)
 	}
-	if _, err := s.db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
 		return fmt.Errorf("disable foreign_keys: %w", err)
 	}
 	defer func() {
-		if _, err := s.db.Exec(fmt.Sprintf(`PRAGMA foreign_keys = %d`, prevFK)); err != nil {
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf(`PRAGMA foreign_keys = %d`, prevFK)); err != nil {
 			fmt.Fprintf(os.Stderr, "[demoapp] restore foreign_keys=%d failed: %v\n", prevFK, err)
 		}
 	}()
 
 	// Rebuild under a transaction so a failed COPY / DROP leaves the
-	// original table intact.
-	tx, err := s.db.Begin()
+	// original table intact. BeginTx on a *sql.Conn uses the same
+	// underlying connection (the pin survives), so the pragma set
+	// above is still in effect for the DROP TABLE.
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
@@ -314,10 +334,10 @@ func (s *UserStore) dropEmailUnique() error {
 		// is a no-op.
 		_ = tx.Rollback()
 	}()
-	if _, err := tx.Exec(usersRebuildSchema); err != nil {
+	if _, err := tx.ExecContext(ctx, usersRebuildSchema); err != nil {
 		return fmt.Errorf("create users_new: %w", err)
 	}
-	if _, err := tx.Exec(`
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO users_new
 		    (id, username, password_hash, email, oidc_subject,
 		     nhp_public_key, nhp_private_key_enc, nhp_device_id,
@@ -328,15 +348,15 @@ func (s *UserStore) dropEmailUnique() error {
 		  FROM users`); err != nil {
 		return fmt.Errorf("copy users to users_new: %w", err)
 	}
-	if _, err := tx.Exec(`DROP TABLE users`); err != nil {
+	if _, err := tx.ExecContext(ctx, `DROP TABLE users`); err != nil {
 		return fmt.Errorf("drop old users: %w", err)
 	}
-	if _, err := tx.Exec(`ALTER TABLE users_new RENAME TO users`); err != nil {
+	if _, err := tx.ExecContext(ctx, `ALTER TABLE users_new RENAME TO users`); err != nil {
 		return fmt.Errorf("rename users_new: %w", err)
 	}
 	// Reattach the custom case-insensitive username index; the column
 	// UNIQUE indexes re-attach automatically via usersRebuildSchema.
-	if _, err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_ci ON users(LOWER(username))`); err != nil {
+	if _, err := tx.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_ci ON users(LOWER(username))`); err != nil {
 		return fmt.Errorf("recreate username ci index: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -408,11 +428,15 @@ func (s *UserStore) hasEmailUniqueIndex() (bool, error) {
 	return false, nil
 }
 
-// currentForeignKeys reads the current PRAGMA foreign_keys value. The
-// pragma returns 0/1 in modernc.org/sqlite.
-func (s *UserStore) currentForeignKeys() (int, error) {
+// currentForeignKeysOnConn reads the current PRAGMA foreign_keys value on
+// the given pinned connection. The pragma returns 0/1 in
+// modernc.org/sqlite. Taking an explicit *sql.Conn (rather than going
+// through *sql.DB) is required by dropEmailUnique — the pragma is
+// connection-scoped, so reading it from a different connection than the
+// one we're about to set OFF on would silently disagree.
+func currentForeignKeysOnConn(ctx context.Context, conn *sql.Conn) (int, error) {
 	var v int
-	if err := s.db.QueryRow(`PRAGMA foreign_keys`).Scan(&v); err != nil {
+	if err := conn.QueryRowContext(ctx, `PRAGMA foreign_keys`).Scan(&v); err != nil {
 		return 0, err
 	}
 	return v, nil

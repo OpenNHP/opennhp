@@ -7,7 +7,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.11.0
 	github.com/gin-contrib/sessions v1.1.0
 	github.com/gin-gonic/gin v1.12.0
-	github.com/pelletier/go-toml/v2 v2.2.4
+	github.com/pelletier/go-toml/v2 v2.4.3
 	golang.org/x/crypto v0.55.0
 	golang.org/x/oauth2 v0.36.0
 	modernc.org/sqlite v1.34.5

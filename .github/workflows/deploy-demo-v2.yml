@@ -1802,6 +1802,13 @@ jobs:
           if [ "${{ env.DEPLOY_BINARIES }}" = "yes" ]; then
             if [ "$REMOTE_BIN_MD5" != "$LOCAL_BIN_MD5" ]; then
               BINARY_CHANGED=true
+              # Stop before upload — scp opens the dest for writing and
+              # fails with ETXTBSY ("dest open ... Failure") while the
+              # previous binary is still executing under systemd.
+              # Matches the stop-before-upload pattern used by
+              # nhp-serverd/acd/relayd. `|| true` is a no-op when the
+              # service is already stopped (e.g., first deploy).
+              ssh $SSH_OPTS $TARGET "sudo systemctl stop demoapp || true"
               echo "Uploading demoapp binary..."
               scp $SSH_OPTS "$LOCAL_BIN" $TARGET:$REMOTE_DIR/demoapp
               ssh $SSH_OPTS $TARGET "chmod +x $REMOTE_DIR/demoapp"
@@ -1846,7 +1853,9 @@ jobs:
           # so reaching this point means a restart will succeed.
           if [ "$BINARY_CHANGED" = true ] || [ "$REMOTE_CFG_MD5" != "$LOCAL_CFG_MD5" ] || [ "$UNIT_CHANGED" = true ]; then
             echo "Restarting demoapp (binary/config/unit changed)..."
-            ssh $SSH_OPTS $TARGET "sudo systemctl stop demoapp || true"
+            # demoapp is already stopped above when BINARY_CHANGED=true (to
+            # avoid ETXTBSY on the scp); config- and unit-only changes don't
+            # need a stop — neither file is being executed.
             ssh $SSH_OPTS $TARGET "sudo systemctl daemon-reload && sudo systemctl enable demoapp && sudo systemctl start demoapp"
             sleep 2
 

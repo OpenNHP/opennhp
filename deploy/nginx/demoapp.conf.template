@@ -27,6 +27,16 @@ server {
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
+    # HSTS — the session cookie is the sole gate on /api/credentials
+    # (which returns the user's raw NHP private key), so the very first
+    # request to this origin MUST be over TLS. Without HSTS, a hostile
+    # network could 302 the user onto http:// and read the cookie in
+    # transit on the one request before the cookie itself triggers an
+    # upgrade. 1-year max-age covers the lifetime of typical browser
+    # trust stores; includeSubDomains so a future subdomain doesn't
+    # accidentally downgrade.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
     location / {
         proxy_pass http://127.0.0.1:8081;
         proxy_http_version 1.1;

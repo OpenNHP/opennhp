@@ -181,6 +181,13 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
           ? outcome.resourceHost
           : `https://${outcome.resourceHost}`;
         if (popup && !popup.closed) {
+          // Break window.opener on the popup before navigating so the
+          // AC page cannot reach back into this origin via tabnabbing.
+          // Without this, a hostile AC could script a redirect on the
+          // opener tab and harvest a fresh login state from the user
+          // (the session cookie was just minted with a raw NHP private
+          // key in flight, so the impact is not hypothetical).
+          popup.opener = null;
           popup.location.href = url;
         } else {
           // Popup was blocked or already closed — fall back to navigating the

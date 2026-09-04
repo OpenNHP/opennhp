@@ -166,10 +166,17 @@ func (a *App) handleGitHubCallback(c *gin.Context) {
 	c.Redirect(http.StatusTemporaryRedirect, "/")
 }
 
-// fetchGitHubUser calls GET /user with the access token and, when the
-// primary email is absent (private email), falls back to GET /user/emails
-// to pick the primary+verified address. A 10s timeout guards both calls so
-// a stalled GitHub API does not hang the callback.
+// fetchGitHubUser calls GET /user with the access token to get the
+// stable numeric id, then calls GET /user/emails to pick a verified
+// primary address. The /user endpoint returns an email field, but
+// does NOT mark it verified — only /user/emails carries the verified
+// flag — so trusting the /user field directly lets a GitHub user with
+// an unverified email take over an account whose merge key (email)
+// they happened to guess. The OIDC path requires email_verified on the
+// id_token claim; the GitHub path must mirror that.
+//
+// A 10s timeout guards both calls so a stalled GitHub API does not
+// hang the callback.
 func fetchGitHubUser(ctx context.Context, tok *oauth2.Token) (*githubUser, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -197,11 +204,11 @@ func fetchGitHubUser(ctx context.Context, tok *oauth2.Token) (*githubUser, error
 	if u.ID == 0 {
 		return nil, errors.New("github user response missing id")
 	}
-	if u.Email != "" {
-		return &u, nil
-	}
 
-	// Primary email is private — fall back to /user/emails.
+	// /user/emails is the only endpoint that carries the verified flag.
+	// It is also the only endpoint that exposes the address when the
+	// user has set their primary email to private (in which case
+	// /user.Email == ""). Always consult it; never trust u.Email.
 	req, err = http.NewRequestWithContext(reqCtx, http.MethodGet, githubEmailsURL, nil)
 	if err != nil {
 		return nil, err
@@ -226,14 +233,16 @@ func fetchGitHubUser(ctx context.Context, tok *oauth2.Token) (*githubUser, error
 			return &u, nil
 		}
 	}
-	// No primary+verified address; accept any verified one as a last resort
-	// so the user is not blocked, but surface the compromise via the missing
-	// email check at the call site.
+	// No primary+verified address — fall back to any verified one so
+	// the user is not blocked by GitHub's "no primary" state, but
+	// never accept an unverified address: the OIDC callback already
+	// enforces email_verified, and the GitHub path has the same
+	// merge-key semantics.
 	for _, e := range emails {
 		if e.Verified {
 			u.Email = e.Email
 			return &u, nil
 		}
 	}
-	return &u, nil
+	return nil, errors.New("github account has no verified email")
 }

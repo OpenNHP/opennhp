@@ -18,12 +18,19 @@ var trustedLoopbackProxies = []string{"127.0.0.1", "::1"}
 
 // Rate-limiter bounds. softCap is where the GC is allowed to start
 // trimming (once per window, time-throttled); hardCap is the absolute
-// ceiling — beyond it, new distinct IPs cause a random existing bucket
-// to be evicted so the map cannot grow unbounded. Both are sized so
-// a single attacker pumping fresh IPs cannot amplify the limiter into the
-// DoS it was added to prevent (review follow-up to #6).
+// ceiling — beyond it, new distinct IPs cause an existing bucket to
+// be evicted so the map cannot grow unbounded. softCap MUST be
+// strictly less than hardCap, otherwise the GC branch (gated on
+// len(hits) > softCap) is unreachable: the insert path evicts at the
+// hard cap and so the map can never exceed it (review follow-up to
+// #6 + ipLimiter sweep fix). On eviction we prefer a bucket whose
+// window has already expired; the random fallback only fires when
+// every bucket is still live — without that preference, an attacker
+// pumping fresh IPs past the hard cap would evict their own (live)
+// bucket on the next insert and reset their own throttle. With the
+// preference, the eviction always takes the cheapest path.
 const (
-	limiterSoftCap = 4096
+	limiterSoftCap = 2048
 	limiterHardCap = 4096
 )
 
@@ -61,20 +68,11 @@ func (l *ipLimiter) Allow(ip string) bool {
 	defer l.mu.Unlock()
 	now := time.Now()
 
-	// Periodic GC: at most once per window. Triggered when the map has
-	// grown past softCap. The map walk runs at most once per window, so
-	// the amortized cost per request is O(1).
-	if len(l.hits) > limiterSoftCap && now.Sub(l.lastGC) >= l.window {
-		l.sweepExpired(now)
-		// Sweep only deletes buckets whose window has elapsed. An
-		// attacker pumping fresh distinct IPs never causes expiry, so the
-		// map can stay at the cap forever after a single sweep deletes
-		// nothing. When we're still over the hard cap after one pass, the
-		// limiter has already failed its job; bound the map by evicting
-		// a random existing bucket (Go map iteration order is randomized
-		// per the spec) so the next fresh IP has somewhere to land.
-		for len(l.hits) > limiterHardCap {
-			l.evictOne()
+	// Periodic GC: at most once per window. The map walk runs at most
+	// once per window, so the amortized cost per request is O(1).
+	if now.Sub(l.lastGC) >= l.window {
+		if len(l.hits) >= limiterSoftCap {
+			l.sweepExpired(now)
 		}
 		l.lastGC = now
 	}
@@ -83,11 +81,14 @@ func (l *ipLimiter) Allow(ip string) bool {
 	if !ok || now.After(b.expiry) {
 		// Insert path: if we're at the hard cap with a brand-new IP
 		// (no existing bucket), drop an existing bucket to make room.
-		// Without this a sustained flood of distinct IPs would either
-		// OOM the process or amplify the DoS by serializing all
-		// login/register traffic behind a full map walk.
+		// Prefer an expired bucket (cheap cleanup) over a random one
+		// (would let a fresh-IP flood evict its own live bucket on
+		// the next insert and reset its own throttle). Random is
+		// the fallback only when every bucket is still live.
 		if !ok && len(l.hits) >= limiterHardCap {
-			l.evictOne()
+			if !l.evictExpired(now) {
+				l.evictOne()
+			}
 		}
 		l.hits[ip] = &ipBucket{count: 1, expiry: now.Add(l.window)}
 		return 1 <= l.max
@@ -106,9 +107,27 @@ func (l *ipLimiter) sweepExpired(now time.Time) {
 	}
 }
 
+// evictExpired deletes one bucket whose window has elapsed and returns
+// true, or returns false when every bucket is still live. Preferred
+// over evictOne: an eviction that picks a live one lets a fresh-IP flood
+// reset its own throttle on the next insert. Returns false (not panics)
+// on an empty map so the caller can fall through to evictOne if it
+// really wants a non-expired pick.
+func (l *ipLimiter) evictExpired(now time.Time) bool {
+	for k, bb := range l.hits {
+		if now.After(bb.expiry) {
+			delete(l.hits, k)
+			return true
+		}
+	}
+	return false
+}
+
 // evictOne deletes one bucket chosen at random. Go's map iteration is
 // randomized by spec, so the first key we see is a uniform random pick.
 // math/rand would be equivalent but pulls in a global we don't need.
+// Only used when every bucket is still live and we have to drop one
+// anyway to make room (evictExpired prefers and usually wins).
 func (l *ipLimiter) evictOne() {
 	for k := range l.hits {
 		delete(l.hits, k)

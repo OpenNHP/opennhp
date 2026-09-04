@@ -31,7 +31,11 @@ COPY ./nhp/version /nhp/version
 RUN cd ../endpoints/js-agent && npm ci --no-audit --no-fund && npm run build
 
 # Install the SPA's own deps (vite + typescript only — no SDK).
-RUN npm install --no-audit --no-fund
+# Use `npm ci` (not `npm install`) so the shipped SPA matches what
+# ubuntu-build.yml validated against package-lock.json: `npm install`
+# would silently allow the lockfile to drift and could ship a
+# different tree than the one CI tested.
+RUN npm ci --no-audit --no-fund
 
 # Copy the SPA source and the prebuilt SDK into node_modules so vite's
 # resolve.alias for "@opennhp/agent" lands on a real ESM bundle. We keep
@@ -102,12 +106,31 @@ RUN apt-get update && \
 
 WORKDIR /app
 
+# Create an unprivileged user to run the binary. The SQLite database
+# (/app/data) holds bcrypt hashes of every user's password and the
+# AES-wrapped NHP private key that derives the keypair bound to their
+# registered identity — both must never be readable by a process that
+# does not need them, and a root-owned binary means any container
+# escape trivially yields full read access. The binary is static and
+# binds 127.0.0.1:8081, so dropping root costs nothing.
+RUN groupadd --system --gid 8081 demoapp \
+ && useradd  --system --uid 8081 --gid demoapp --no-create-home --shell shell demoapp
+
 # Copy the binary and default config + data dirs.
 COPY --from=backend /out/demoapp /usr/local/bin/demoapp
 COPY ./demoapp/etc/ /app/etc/
 
-# Persist the SQLite database (volume mount in compose).
-RUN mkdir -p /app/data
+# Persist the SQLite database (volume mount in compose) and hand the
+# writable subtrees to demoapp so it can write the journal/-wal/-shm
+# siblings and any future log/artifact.
+RUN mkdir -p /app/data /app/logs \
+ && chown -R demoapp:demoapp /app/data /app/logs /app/etc
+
+# demoapp itself only needs to READ /app/etc/config.toml at startup,
+# but the SPA fallback serves index.html from disk when WebDistDir is
+# configured (dev path); chown covers that case too.
+
+USER demoapp
 
 EXPOSE 8081
 

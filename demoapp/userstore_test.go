@@ -430,3 +430,115 @@ func TestExpiredRegTokenReaped(t *testing.T) {
 		t.Errorf("expired reg_token row was not reaped (count=%d)", n)
 	}
 }
+
+// TestExpiredRegTokenReapsPendingUser covers the second half of review
+// #3's fix: when LookupRegToken finds an expired token it must also
+// reap the corresponding status=pending user row, so an attacker who
+// registers victim@example.com, walks away, and never re-looks up the
+// token cannot leave a permanent reservation on the address.
+func TestExpiredRegTokenReapsPendingUser(t *testing.T) {
+	s, cleanup := openTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	if err := s.CreateUser(ctx, &User{
+		Username: "squat", Email: "victim@x.com", Status: UserStatusPending,
+	}); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	expiredTok := "expired-squat-token"
+	past := time.Now().UTC().Add(-1 * time.Minute).Unix()
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO reg_tokens (token, user_id, expires_at) VALUES (?, ?, ?)`,
+		expiredTok, 1, past); err != nil {
+		t.Fatalf("insert expired token: %v", err)
+	}
+
+	if _, _, err := s.LookupRegToken(ctx, expiredTok); !errors.Is(err, ErrRegTokenExpired) {
+		t.Fatalf("LookupRegToken expired = %v, want ErrRegTokenExpired", err)
+	}
+	// Both the token AND the corresponding pending user must be gone.
+	if _, err := s.GetUserByID(ctx, 1); !errors.Is(err, ErrUserNotFound) {
+		t.Errorf("status=pending user row was not reaped with its expired token: get err=%v", err)
+	}
+}
+
+// TestReapExpiredPendingUsers covers the bulk counterpart (the startup
+// sweep): a password-created status=pending row whose reg_token has
+// expired is reaped, but an external-IdP status=pending row with no
+// reg_token (the normal state for upsertExternalUser) is NOT reaped
+// — the IdP user is still mid-handshake and the next call into the
+// complete-registration view is the only thing that should flip them
+// active. Active rows are never reaped.
+func TestReapExpiredPendingUsers(t *testing.T) {
+	s, cleanup := openTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	now := time.Now().UTC().Unix()
+	past := now - 60
+	future := now + 3600
+
+	// Password pending user with an EXPIRED reg_token — must be reaped.
+	if err := s.CreateUser(ctx, &User{
+		Username: "p_expired", Email: "p_expired@x.com", Status: UserStatusPending,
+	}); err != nil {
+		t.Fatalf("create password expired: %v", err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO reg_tokens (token, user_id, expires_at) VALUES (?, ?, ?)`,
+		"tok-p-expired", 1, past); err != nil {
+		t.Fatalf("insert reg_token: %v", err)
+	}
+
+	// Password pending user with a LIVE reg_token — must NOT be reaped.
+	if err := s.CreateUser(ctx, &User{
+		Username: "p_live", Email: "p_live@x.com", Status: UserStatusPending,
+	}); err != nil {
+		t.Fatalf("create password live: %v", err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO reg_tokens (token, user_id, expires_at) VALUES (?, ?, ?)`,
+		"tok-p-live", 2, future); err != nil {
+		t.Fatalf("insert reg_token: %v", err)
+	}
+
+	// IdP pending user with NO reg_token — must NOT be reaped (this is
+	// the row that distinguishes the bulk-reap from a "delete all
+	// status=pending rows" shortcut).
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO users (username, email, oidc_subject, status, created_at, auth_provider)
+		VALUES (?, ?, ?, 'pending', ?, 'oidc')`,
+		"idp_pending", "idp_pending@x.com", "oidc|sub-1", now); err != nil {
+		t.Fatalf("insert idp pending: %v", err)
+	}
+
+	// Active user — must NOT be reaped under any circumstance.
+	if err := s.CreateUser(ctx, &User{
+		Username: "active", Email: "active@x.com", Status: UserStatusActive,
+	}); err != nil {
+		t.Fatalf("create active: %v", err)
+	}
+
+	n, err := s.ReapExpiredPendingUsers(ctx)
+	if err != nil {
+		t.Fatalf("reap: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("reaped %d rows, want 1 (only the password expired one)", n)
+	}
+
+	// Active and live-token rows survive; expired-token row is gone.
+	if _, err := s.GetUserByID(ctx, 1); !errors.Is(err, ErrUserNotFound) {
+		t.Errorf("password expired user still present: err=%v", err)
+	}
+	if _, err := s.GetUserByID(ctx, 2); err != nil {
+		t.Errorf("password live user unexpectedly reaped: err=%v", err)
+	}
+	if _, err := s.GetUserByID(ctx, 3); err != nil {
+		t.Errorf("idp pending user unexpectedly reaped: err=%v", err)
+	}
+	if _, err := s.GetUserByID(ctx, 4); err != nil {
+		t.Errorf("active user unexpectedly reaped: err=%v", err)
+	}
+}

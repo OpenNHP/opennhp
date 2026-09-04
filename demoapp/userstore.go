@@ -138,6 +138,16 @@ func OpenUserStore(path string) (*UserStore, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	// Best-effort startup reap of stale status=pending rows whose
+	// reg_token has expired (or which were never paired with one). The
+	// in-lookup path in LookupRegToken handles per-row cleanup when a
+	// caller happens to ask, but a registration that nobody looks up
+	// again would otherwise pin the email indefinitely (review #3).
+	// Errors are intentionally swallowed: a failed reap is a soft
+	// "rows will be cleaned on the next lookups" fallback.
+	if _, err := s.ReapExpiredPendingUsers(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "[demoapp] startup reap of expired pending users: %v\n", err)
+	}
 	return s, nil
 }
 
@@ -575,6 +585,20 @@ func (s *UserStore) GetUserByEmail(ctx context.Context, email string) (*User, er
 		strings.TrimSpace(email))
 }
 
+// GetActiveUserByEmail is the status=active counterpart of
+// GetUserByEmail — used by handleRegister's pre-check to gate a fresh
+// password registration on an existing active holder, without rejecting
+// the real owner whose address was previously squatted by an attacker
+// who never reached /api/register/confirm (review #3 of the demoapp
+// review). The pending row(s) get reaped via LookupRegToken /
+// ReapExpiredPendingUsers.
+func (s *UserStore) GetActiveUserByEmail(ctx context.Context, email string) (*User, error) {
+	return s.queryOne(ctx,
+		`SELECT `+usersColumns+` FROM users WHERE LOWER(email) = LOWER(?) AND status = ? `+
+			`ORDER BY id ASC LIMIT 1`,
+		strings.TrimSpace(email), string(UserStatusActive))
+}
+
 // externalSubjectKey namespaces an IdP subject by provider so that a
 // GitHub numeric id and an OIDC sub sharing the same string (e.g. a
 // numeric sub colliding with a GitHub account id) cannot land on the
@@ -654,6 +678,13 @@ func (s *UserStore) LookupRegToken(ctx context.Context, token string) (*RegToken
 		// dead tokens (review #2). A failed delete is non-fatal — the row
 		// just gets reaped on the next lookup or never matched again.
 		_ = s.DeleteRegToken(ctx, rt.Token)
+		// Opportunistically reap the corresponding status=pending user row
+		// too, so a squatter who abandons a registration cannot leave a
+		// permanent reservation on someone else's email (review #3). Best-
+		// effort: a failed delete is non-fatal — the user row gets reaped
+		// on the next LookupRegToken / ReapExpiredPendingUsers call.
+		_, _ = s.db.ExecContext(ctx,
+			`DELETE FROM users WHERE id = ? AND status = ?`, rt.UserID, string(UserStatusPending))
 		return nil, nil, ErrRegTokenExpired
 	}
 	user, err := s.GetUserByID(ctx, uid)
@@ -661,6 +692,45 @@ func (s *UserStore) LookupRegToken(ctx context.Context, token string) (*RegToken
 		return nil, nil, err
 	}
 	return &rt, user, nil
+}
+
+// ReapExpiredPendingUsers deletes every status=pending user that once
+// held a reg_token (so they were created via the password /api/register
+// path, which always pairs a CreateUser with a SaveRegToken) and whose
+// every reg_token has now expired. This is the bulk counterpart to the
+// opportunistic single-row reap in LookupRegToken — the opportunistic
+// path only fires for the specific user the caller happened to look up,
+// so an attacker who abandons a registration never to be looked up again
+// would otherwise pin the address until the row is manually cleaned.
+//
+// Crucially, the SQL only matches rows that have a reg_token AT ALL.
+// External-IdP pending users (OIDC/GitHub — created via
+// upsertExternalUser, no reg_token) are NOT reaped here: their reg-token
+// absence is a normal state, not a sign of an abandoned registration,
+// and the complete-registration view (rather than a reg-token lookup)
+// drives their activation. Reaping them would silently drop pending
+// IdP users before they finish the NHP_REG handshake.
+//
+// Best-effort: errors are returned for logging only.
+func (s *UserStore) ReapExpiredPendingUsers(ctx context.Context) (int64, error) {
+	now := time.Now().UTC().Unix()
+	res, err := s.db.ExecContext(ctx, `
+		DELETE FROM users
+		 WHERE status = ?
+		   AND EXISTS (
+		       SELECT 1 FROM reg_tokens t
+		        WHERE t.user_id = users.id
+		   )
+		   AND NOT EXISTS (
+		       SELECT 1 FROM reg_tokens t
+		        WHERE t.user_id = users.id
+		          AND t.expires_at > ?
+		   )`, string(UserStatusPending), now)
+	if err != nil {
+		return 0, fmt.Errorf("reap expired pending users: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
 }
 
 // DeleteRegToken clears a registration token, used after confirm or on expiry.

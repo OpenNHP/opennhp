@@ -186,7 +186,16 @@ func (a *App) handleRegister(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "username already exists"})
 		return
 	}
-	if _, err := a.Store.GetUserByEmail(ctx, req.Email); err == nil {
+	// Only a status=active row blocks a fresh password registration. A
+	// status=pending row (someone who started but never confirmed
+	// /api/register/confirm) does not — that row is reaped
+	// opportunistically by LookupRegToken and en masse by
+	// ReapExpiredPendingUsers (review #3 of the demoapp review). The
+	// status=active gate still prevents an active password holder from
+	// being silently shadowed by a fresh registration under the same
+	// email; OIDC/GitHub sign-in can still merge into the existing
+	// active row via upsertExternalUser.
+	if existing, err := a.Store.GetActiveUserByEmail(ctx, req.Email); err == nil && existing != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "email already exists"})
 		return
 	}

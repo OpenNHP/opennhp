@@ -9,7 +9,7 @@
 export function renderArchDiagram(root: HTMLElement): void {
   root.innerHTML = `
     <details class="arch" open>
-      <summary>How the OpenNHP demo works</summary>
+      <summary>How the OpenNHP Integration Demo works</summary>
       <div class="arch-body">
         <img
           class="arch-diagram-image"

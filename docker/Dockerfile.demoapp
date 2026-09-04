@@ -101,8 +101,13 @@ RUN if [ -n "$APT_MIRROR" ]; then \
     fi
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        # gosu drops from the entrypoint's root context to the
+        # unprivileged demoapp user without spinning up a PAM session,
+        # so the binary stays as PID 1 and signal handling is intact.
+        gosu \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -130,10 +135,19 @@ RUN mkdir -p /app/data /app/logs \
 # but the SPA fallback serves index.html from disk when WebDistDir is
 # configured (dev path); chown covers that case too.
 
-USER demoapp
+# The entrypoint runs as root for ONE chown pass, then drops to
+# demoapp via gosu. Plain `USER demoapp` does not work here:
+# docker-compose bind-mounts the host's ./demoapp/etc and
+# ./demoapp/data onto /app/etc and /app/data, which shadows the
+# RUN chown above and leaves the bind-mounted paths owned by the
+# host user. A root entrypoint fixes that on every start (review #1
+# of the demoapp review). Docker Desktop hides the original bug
+# because virtiofs fakes ownership.
+COPY ./docker/demoapp/entrypoint.sh /usr/local/bin/demoapp-entrypoint.sh
+RUN chmod 755 /usr/local/bin/demoapp-entrypoint.sh
 
 EXPOSE 8081
 
 # The container reads /app/etc/config.toml; an operator can override the
-# config path via -c or by mounting a custom file at /app/etc/config.toml.
-ENTRYPOINT ["/usr/local/bin/demoapp", "-c", "/app/etc/config.toml"]
+# config path via -c by mounting a custom file at /app/etc/config.toml.
+ENTRYPOINT ["/usr/local/bin/demoapp-entrypoint.sh"]

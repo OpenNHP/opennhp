@@ -114,7 +114,7 @@ WORKDIR /app
 # escape trivially yields full read access. The binary is static and
 # binds 127.0.0.1:8081, so dropping root costs nothing.
 RUN groupadd --system --gid 8081 demoapp \
- && useradd  --system --uid 8081 --gid demoapp --no-create-home --shell shell demoapp
+ && useradd  --system --uid 8081 --gid demoapp --no-create-home --shell /usr/sbin/nologin demoapp
 
 # Copy the binary and default config + data dirs.
 COPY --from=backend /out/demoapp /usr/local/bin/demoapp

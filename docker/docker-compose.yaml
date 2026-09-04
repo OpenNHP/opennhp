@@ -149,3 +149,28 @@ services:
       - ./certs/server.key:/key.pem:r
       - ./nhp-agent/etc:/nhp-agent/etc:rw
       - ./nhp-agent/logs:/nhp-agent/logs:rw
+
+  # OpenNHP integrated demo app: SPA that drives js-agent + relay to
+  # register users' NHP keys with nhp-server and knock on hidden resources.
+  # Independent deployment from nhp-agent; the demo owns user identity.
+  demoapp:
+    image: opennhp-demoapp
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile.demoapp
+      args:
+        - GOPROXY=${GOPROXY:-}
+        - APT_MIRROR=${APT_MIRROR:-}
+    container_name: demoapp
+    restart: always
+    ports:
+      - "8081:8081"
+    networks:
+      network_default:
+        ipv4_address: 177.7.0.13
+    depends_on:
+      - nhp-server
+      - nhp-relay
+    volumes:
+      - ./demoapp/etc/:/app/etc/:rw
+      - ./demoapp/data/:/app/data/:rw

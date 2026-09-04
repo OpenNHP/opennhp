@@ -1,0 +1,35 @@
+# Build context is the repo root for every service image
+# (docker-compose context: .. ; CI `docker build -f docker/Dockerfile.demoapp .`).
+# Keep local secrets / artifacts out of the image so a developer who ran
+# demoapp locally — or `docker compose up` (which bind-mounts
+# ./demoapp/etc/:/app/etc/:rw) — does not bake their auto-generated
+# KeyEnvelopeKey (AES-256 master key), SessionKey, bcrypt hashes, or
+# sealed private keys into a shipped image.
+
+# VCS metadata — not needed by any build, large.
+.git
+.gitignore
+.github
+
+# Go / JS build artifacts and caches.
+release/
+**/node_modules/
+**/dist/
+**/.vite/
+**/cache/
+
+# Node-only: a local demoapp/web/node_modules would otherwise overwrite
+# the SDK the Dockerfile installs in stage 1 (npm install then COPY).
+demoapp/web/node_modules/
+demoapp/web/dist/
+
+# Local runtime secrets / state that must never ship.
+**/.demoapp-autogen.json
+**/data/
+demoapp/data/
+demoapp/logs/
+
+# Editor / OS cruft.
+**/.DS_Store
+**/*.swp
+**/*~

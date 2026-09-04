@@ -196,7 +196,7 @@ describe('Error cases', () => {
 
     await expect(
       parseNHPPacket(packet, server.privateKey, server.publicKey, agent.publicKey)
-    ).rejects.toThrow('Not an ACK, COK, or RAK packet');
+    ).rejects.toThrow('Not an ACK, COK, RAK, or LRT packet');
   });
 
   it('throws on HMAC tampering', async () => {

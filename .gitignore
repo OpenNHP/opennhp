@@ -9,6 +9,7 @@ examples/server_plugin/basic/basic
 .*
 !.vitepress/
 !.github/
+!.dockerignore
 # Test binary, build with `go test -c`
 *.test
 
@@ -39,3 +40,5 @@ crash.*.log
 # Generated configs (rendered by CI, contain secrets)
 deploy/configs/
 *.log
+# demoapp runtime (local dev run from repo root)
+/data/

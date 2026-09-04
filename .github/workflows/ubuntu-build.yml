@@ -26,9 +26,77 @@ jobs:
         cache-dependency-path: |
           nhp/go.sum
           endpoints/go.sum
+          demoapp/go.sum
 
     - name: Build
       run: make
+
+    # The demoapp module is not built by `make` (it ships via the docker
+    # image), so gate it explicitly: a compile / vet / gofmt failure here
+    # is caught before merge instead of at deploy time.
+    - name: Build demoapp
+      working-directory: demoapp
+      run: |
+        go mod download
+        go build ./...
+
+    - name: Vet + format + test demoapp
+      working-directory: demoapp
+      run: |
+        go vet ./...
+        unformatted="$(gofmt -l .)"
+        if [ -n "$unformatted" ]; then
+          echo "::error::gofmt found unformatted files:"
+          echo "$unformatted"
+          exit 1
+        fi
+        go test ./...
+
+    # Type-check + build the SPA so a TypeScript regression (e.g. an unused
+    # local under noUnusedLocals, or a broken @opennhp/agent import) is
+    # caught at PR time rather than at docker-image build time. The build
+    # script runs `tsc --noEmit && vite build` (review #7).
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: |
+          demoapp/web/package-lock.json
+          endpoints/js-agent/package-lock.json
+
+    - name: Build SPA (demoapp web)
+      working-directory: demoapp/web
+      run: |
+        # Build the local js-agent SDK so the @opennhp/agent import resolves
+        # for both tsc and vite (mirrors Dockerfile.demoapp stage 1).
+        cd ../../endpoints/js-agent
+        npm ci --no-audit --no-fund
+        npm run build
+        cd -
+        # Install SPA deps FIRST. `npm ci` wipes node_modules, so the
+        # SDK copy has to land after it — otherwise the aliased import
+        # in vite.config.ts has nothing to resolve to during `npm run
+        # build` (which runs `tsc --noEmit && vite build`).
+        npm ci --no-audit --no-fund
+        mkdir -p node_modules/@opennhp/agent
+        cp -r ../../endpoints/js-agent/dist node_modules/@opennhp/agent/dist
+        cp ../../endpoints/js-agent/package.json node_modules/@opennhp/agent/package.json
+        npm run build
+
+    # govulncheck scans the demoapp module's dependency graph for known
+    # advisories (e.g. the go-jose CVE-2025-27144 that prompted the
+    # v4.0.5 bump in review #1). Advisory only (continue-on-error):
+    # govulncheck also reports Go standard-library advisories that track
+    # the runner's Go patch version, not this PR's code, so a hard gate
+    # would block unrelated PRs on toolchain churn.
+    - name: Govulncheck demoapp (advisory)
+      continue-on-error: true
+      working-directory: demoapp
+      run: |
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        "$(go env GOPATH)/bin/govulncheck" ./... || true
+
 
     - name: Lint nhp
       uses: golangci/golangci-lint-action@v9

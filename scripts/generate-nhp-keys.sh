@@ -73,6 +73,7 @@ mkdir -p "$OUTPUT_DIR/ac"
 mkdir -p "$OUTPUT_DIR/relay"
 mkdir -p "$OUTPUT_DIR/server2"
 mkdir -p "$OUTPUT_DIR/ac2"
+mkdir -p "$OUTPUT_DIR/demoapp"
 
 # --- Fetch existing keys from AWS Secrets Manager ---
 echo "Fetching secrets from AWS Secrets Manager..."
@@ -108,6 +109,16 @@ EXISTING_AC2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_ac2_public_key // empty')
 # These are populated from existing data when reusing keys, or derived after keygen --both.
 EXISTING_SERVER_SM2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_server_sm2_public_key // empty')
 EXISTING_SERVER2_SM2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_server2_sm2_public_key // empty')
+# demoapp master keys. KeyEnvelopeKey is the AES-256 master that wraps
+# every user's NHP private key at rest; SessionKey signs the session
+# cookie. Sourced from AWS SM (review #4) so they live alongside the
+# data they protect in a single secret and survive host replacement
+# (the auto-generated sidecar lived next to data/demo.db, so anything
+# with DB read access trivially had the wrapping key, and a host
+# replacement silently bricked every account with "credential unseal
+# failed"). Generate with openssl on first run; reuse on subsequent.
+EXISTING_DEMOAPP_KEY_ENVELOPE_KEY=$(echo "$SECRETS_JSON" | jq -r '.demoapp_key_envelope_key // empty')
+EXISTING_DEMOAPP_SESSION_KEY=$(echo "$SECRETS_JSON" | jq -r '.demoapp_session_key // empty')
 
 # --- Generate or reuse keys ---
 generate_keys() {
@@ -247,6 +258,33 @@ AC2_KEYS=$(generate_keys "$BINARY_DIR/nhp-ac/nhp-acd" "ac2" "$EXISTING_AC2_PRIV"
 NHP_AC2_PRIVATE_KEY=$(echo "$AC2_KEYS" | cut -d'|' -f1)
 NHP_AC2_PUBLIC_KEY=$(echo "$AC2_KEYS" | cut -d'|' -f2)
 
+# demoapp master keys. Idempotent: reuse from AWS SM when present,
+# otherwise generate. Regeneration only happens on --regenerate. Use
+# openssl rand -base64 so the values match the demoapp's expected
+# format (base64 std alphabet, 32 raw bytes for KeyEnvelopeKey, 32 raw
+# bytes for SessionKey).
+if [[ "$REGENERATE" == "true" || -z "$EXISTING_DEMOAPP_KEY_ENVELOPE_KEY" ]]; then
+  echo "  Generating new demoapp KeyEnvelopeKey..." >&2
+  DEMOAPP_KEY_ENVELOPE_KEY=$(openssl rand -base64 32)
+else
+  echo "  Reusing existing demoapp KeyEnvelopeKey from AWS SM" >&2
+  DEMOAPP_KEY_ENVELOPE_KEY="$EXISTING_DEMOAPP_KEY_ENVELOPE_KEY"
+fi
+if [[ "$REGENERATE" == "true" || -z "$EXISTING_DEMOAPP_SESSION_KEY" ]]; then
+  echo "  Generating new demoapp SessionKey..." >&2
+  DEMOAPP_SESSION_KEY=$(openssl rand -base64 32)
+else
+  echo "  Reusing existing demoapp SessionKey from AWS SM" >&2
+  DEMOAPP_SESSION_KEY="$EXISTING_DEMOAPP_SESSION_KEY"
+fi
+# Mask both values at their source. The repo is public and Actions logs
+# are world-readable for 90 days; GitHub can't auto-mask these because
+# they're generated (or fetched) inside the script rather than passed
+# in via ${{ secrets.* }}. Registering the mask here defends against a
+# future `set -x` or accidental echo elsewhere in this run.
+echo "::add-mask::$DEMOAPP_KEY_ENVELOPE_KEY"
+echo "::add-mask::$DEMOAPP_SESSION_KEY"
+
 echo ""
 echo "--- Key summary ---"
 echo "  Server public key (Curve25519): ${NHP_SERVER_PUBLIC_KEY:0:20}..."
@@ -261,6 +299,11 @@ echo "  js-agent2 public key (SM2):        ${NHP_JSAGENT2_SM2_PUBLIC_KEY:0:20}..
 echo "  Server2 public key (Curve25519): ${NHP_SERVER2_PUBLIC_KEY:0:20}..."
 echo "  Server2 public key (SM2):        ${NHP_SERVER2_SM2_PUBLIC_KEY:0:20}..."
 echo "  AC2 public key:      ${NHP_AC2_PUBLIC_KEY:0:20}..."
+# Demoapp KeyEnvelopeKey / SessionKey are secret material (AES-256
+# wrapping master + session cookie signer), not public keys — the
+# generation/reuse status is already logged above, so we drop the
+# prefix echo from this public-key summary. Values are ::add-mask::'d
+# at assignment so any future echo is redacted.
 echo ""
 
 # --- Save keys to AWS Secrets Manager ---
@@ -288,6 +331,8 @@ UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
   --arg s2sp "$NHP_SERVER2_SM2_PUBLIC_KEY" \
   --arg a2k "$NHP_AC2_PRIVATE_KEY" \
   --arg a2p "$NHP_AC2_PUBLIC_KEY" \
+  --arg dek "$DEMOAPP_KEY_ENVELOPE_KEY" \
+  --arg dsk "$DEMOAPP_SESSION_KEY" \
   '. + {
     nhp_server_private_key: $sk,
     nhp_server_public_key: $sp,
@@ -308,7 +353,9 @@ UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
     nhp_server2_public_key: $s2p,
     nhp_server2_sm2_public_key: $s2sp,
     nhp_ac2_private_key: $a2k,
-    nhp_ac2_public_key: $a2p
+    nhp_ac2_public_key: $a2p,
+    demoapp_key_envelope_key: $dek,
+    demoapp_session_key: $dsk
   }')
 
 aws secretsmanager put-secret-value \
@@ -330,15 +377,59 @@ export NHP_JSAGENT_PRIVATE_KEY NHP_JSAGENT_PUBLIC_KEY NHP_JSAGENT_SM2_PUBLIC_KEY
 export NHP_JSAGENT2_PRIVATE_KEY NHP_JSAGENT2_PUBLIC_KEY NHP_JSAGENT2_SM2_PUBLIC_KEY
 export NHP_SERVER2_PRIVATE_KEY NHP_SERVER2_PUBLIC_KEY NHP_SERVER2_SM2_PUBLIC_KEY
 export NHP_AC2_PRIVATE_KEY NHP_AC2_PUBLIC_KEY
+# DEMOAPP_KEY_ENVELOPE_KEY and DEMOAPP_SESSION_KEY are NOT exported here:
+# the demoapp config template carries them as literal __DEMOAPP_*__
+# markers, and the deploy-demoapp job substitutes the real values
+# from opennhp/demo AFTER the nhp-demo-configs artifact boundary
+# (review #7). Exporting them would let envsubst render the real
+# values into the public-readable artifact, defeating the marker
+# pattern.
 export SERVER_PRIVATE_IP="$SERVER_PRIVATE_IP"
 export AC_PRIVATE_IP="$AC_PRIVATE_IP"
 export SERVER2_PRIVATE_IP="$SERVER2_PRIVATE_IP"
 export AC2_PRIVATE_IP="$AC2_PRIVATE_IP"
 export DOMAIN="$DOMAIN"
 
+# GitHub OAuth (application-side login). These come from GitHub Actions
+# Variables / Secrets set on the deploy-demo-v2 workflow, not from the
+# AWS Secrets Manager secret. Default GH_OAUTH_ENABLED to false so an
+# unconfigured render still produces a valid (disabled) [[OAuth]] block;
+# empty client fields are ignored by the demoapp when Enabled is false.
+#
+# Normalize the enabled flag: an Actions Variable of True/TRUE/1/yes
+# would otherwise render `Enabled = True`, which is invalid TOML (bools
+# must be lowercase) and makes LoadConfig fail — demoapp.service never
+# starts. Map any truthy spelling to lowercase `true`, else `false`.
+case "${GH_OAUTH_ENABLED:-}" in
+  [Tt][Rr][Uu][Ee]|1|[Yy][Ee][Ss]|[Oo][Nn]) GH_OAUTH_ENABLED=true ;;
+  *)                                            GH_OAUTH_ENABLED=false ;;
+esac
+export GH_OAUTH_ENABLED
+
+# TOML basic-string-escape the client fields. The template renders them
+# inside double quotes (ClientID = "${GH_OAUTH_CLIENT_ID}"); a value
+# containing " or \ would break the TOML otherwise. Backslash must be
+# escaped first so we do not double-escape the ones we add.
+#
+# ClientSecret is intentionally NOT exported here: the template carries
+# a literal __GH_OAUTH_CLIENT_SECRET__ marker that envsubst leaves
+# untouched, so the rendered config in the nhp-demo-configs artifact
+# never contains the secret. The deploy-demoapp job substitutes the
+# marker from GitHub Actions secrets after the artifact boundary.
+toml_escape() {
+  local s=${1-}
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  printf '%s' "$s"
+}
+export GH_OAUTH_CLIENT_ID="$(toml_escape "${GH_OAUTH_CLIENT_ID:-}")"
+export GH_OAUTH_REDIRECT_URL="$(toml_escape "${GH_OAUTH_REDIRECT_URL:-}")"
+
 # Render all templates. cluster 2 (server2/ac2) reuses the same key/IP
 # env vars exported above; the relay config references both clusters.
-for component in server ac relay server2 ac2; do
+# demoapp reuses the server public keys (both clusters) — it owns no
+# private key, only per-user keys generated at registration time.
+for component in server ac relay server2 ac2 demoapp; do
   echo "  Rendering $component configs..."
   for template in "$TEMPLATE_DIR/$component"/*.toml; do
     filename=$(basename "$template")

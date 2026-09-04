@@ -58,18 +58,20 @@ print_menu() {
     echo "  [5] Build NHP-Agent"
     echo "  [6] Build Web-App"
     echo "  [7] Build NHP-Relay"
-    echo "  [8] Start All Services"
-    echo "  [9] Stop All Services"
-    echo "  [10] Restart All Services"
-    echo "  [11] View Logs (nhp-server)"
-    echo "  [12] View Logs (nhp-server-2)"
-    echo "  [13] View Logs (nhp-ac)"
-    echo "  [14] View Logs (nhp-agent)"
-    echo "  [15] View Logs (nhp-relay)"
-    echo "  [16] Clean Docker Images"
-    echo "  [17] Clean ALL (images + volumes + networks)"
-    echo "  [18] Generate Keypair"
-    echo "  [19] Toggle China Mirror (current: $([ "$USE_CHINA_MIRROR" = true ] && echo "ON" || echo "OFF"))"
+    echo "  [8] Build DemoApp (integrated NHP demo SPA + Go backend)"
+    echo "  [9] Start All Services"
+    echo "  [10] Stop All Services"
+    echo "  [11] Restart All Services"
+    echo "  [12] View Logs (nhp-server)"
+    echo "  [13] View Logs (nhp-server-2)"
+    echo "  [14] View Logs (nhp-ac)"
+    echo "  [15] View Logs (nhp-agent)"
+    echo "  [16] View Logs (nhp-relay)"
+    echo "  [17] View Logs (demoapp)"
+    echo "  [18] Clean Docker Images"
+    echo "  [19] Clean ALL (images + volumes + networks)"
+    echo "  [20] Generate Keypair"
+    echo "  [21] Toggle China Mirror (current: $([ "$USE_CHINA_MIRROR" = true ] && echo "ON" || echo "OFF"))"
     echo "  [0] Exit"
     echo ""
 }
@@ -120,6 +122,11 @@ build_all_and_start() {
 
     echo -e "${GREEN}All services are running!${NC}"
     docker compose ps
+    echo ""
+    echo -e "${YELLOW}Tip:${NC} Open the demo SPA at ${GREEN}http://localhost:8081${NC}."
+    echo -e "      The dashboard auto-fills KeyEnvelopeKey / SessionKey on first boot;"
+    echo -e "      nhp-server public key is fetched from nhp-relay's /servers endpoint."
+    echo -e "      Auto-generated secrets persist in ${GREEN}docker/demoapp/etc/.demoapp-autogen.json${NC}."
 }
 
 # Start services
@@ -167,6 +174,7 @@ clean_images() {
         docker rmi opennhp-agent:latest 2>/dev/null || true
         docker rmi opennhp-relay:latest 2>/dev/null || true
         docker rmi web-app:latest 2>/dev/null || true
+        docker rmi opennhp-demoapp:latest 2>/dev/null || true
 
         # Also remove by compose project name
         docker images | grep -E "^(opennhp|docker)" | awk '{print $3}' | xargs -r docker rmi 2>/dev/null || true
@@ -190,7 +198,9 @@ clean_all() {
         docker rmi opennhp-server:latest 2>/dev/null || true
         docker rmi opennhp-ac:latest 2>/dev/null || true
         docker rmi opennhp-agent:latest 2>/dev/null || true
+        docker rmi opennhp-relay:latest 2>/dev/null || true
         docker rmi web-app:latest 2>/dev/null || true
+        docker rmi opennhp-demoapp:latest 2>/dev/null || true
         docker images | grep -E "^(opennhp|docker)" | awk '{print $3}' | xargs -r docker rmi 2>/dev/null || true
 
         echo -e "${BLUE}Removing volumes...${NC}"
@@ -331,7 +341,7 @@ main() {
         print_header
         print_menu
 
-        read -p "Enter your choice [0-19]: " choice
+        read -p "Enter your choice [0-21]: " choice
         echo ""
 
         case $choice in
@@ -359,39 +369,47 @@ main() {
                 rebuild_and_restart_service "nhp-relay"
                 ;;
             8)
-                start_services
+                # DemoApp depends on nhp-server + nhp-relay; build both first
+                # so the JS-agent handshake in the SPA has somewhere to land.
+                rebuild_and_restart_service "demoapp"
                 ;;
             9)
-                stop_services
+                start_services
                 ;;
             10)
-                restart_services
+                stop_services
                 ;;
             11)
-                view_logs "nhp-server"
+                restart_services
                 ;;
             12)
-                view_logs "nhp-server-2"
+                view_logs "nhp-server"
                 ;;
             13)
-                view_logs "nhp-ac"
+                view_logs "nhp-server-2"
                 ;;
             14)
-                view_logs "nhp-agent"
+                view_logs "nhp-ac"
                 ;;
             15)
-                view_logs "nhp-relay"
+                view_logs "nhp-agent"
                 ;;
             16)
-                clean_images
+                view_logs "nhp-relay"
                 ;;
             17)
-                clean_all
+                view_logs "demoapp"
                 ;;
             18)
-                generate_keypair
+                clean_images
                 ;;
             19)
+                clean_all
+                ;;
+            20)
+                generate_keypair
+                ;;
+            21)
                 toggle_china_mirror
                 ;;
             0)

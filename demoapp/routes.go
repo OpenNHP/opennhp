@@ -92,6 +92,9 @@ func (a *App) Register(r *gin.Engine) error {
 	if origin := relayOrigin(a.Cfg.PublicRelayURL); origin != "" {
 		connectSrc += " " + origin
 	}
+	// The footer shows the visitor's public IP, fetched client-side from
+	// ipify (same pattern as the js-agent demo at agent.opennhp.org).
+	connectSrc += " https://api.ipify.org https://api6.ipify.org"
 	r.Use(func(c *gin.Context) {
 		c.Header("Content-Security-Policy",
 			fmt.Sprintf("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src %s; object-src 'none'; frame-ancestors 'none'", connectSrc))

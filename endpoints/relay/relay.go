@@ -39,6 +39,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/common/loadbalance"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	log "github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
@@ -190,8 +191,13 @@ type RelayServer struct {
 
 // New creates a RelayServer from the given configuration.
 func New(cfg *Config) (*RelayServer, error) {
-	// Decode relay private key.
-	prk, err := base64.StdEncoding.DecodeString(cfg.PrivateKeyBase64)
+	// Decode relay private key (plain base64 or a sealed blob unsealed
+	// with the passphrase from the environment).
+	keyPass, err := keystore.PassphraseFromEnv()
+	if err != nil {
+		return nil, fmt.Errorf("relay: private key passphrase error: %w", err)
+	}
+	prk, err := keystore.ResolvePrivateKey(cfg.PrivateKeyBase64, keyPass)
 	if err != nil {
 		return nil, fmt.Errorf("relay: invalid privateKeyBase64: %w", err)
 	}

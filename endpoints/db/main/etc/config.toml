@@ -1,7 +1,16 @@
 # NHP-Db base config
 # field with (-) does not support dynamic update
 
-# PrivateKeyBase64 (-): db private key in base64 format.
+# PrivateKeyBase64 (-): db private key. Either a plain base64 key (default)
+#   or a sealed blob (starts with "v1$") produced by `nhp-serverd seal`.
+#   A sealed key is decrypted at startup with a passphrase. Prefer
+#   NHP_KEY_PASSPHRASE_FILE (a file, mode 0600) over NHP_KEY_PASSPHRASE:
+#   an env var is readable from the process environment, ends up in unit
+#   files and crash dumps, and is inherited by child processes.
+#   NOTE: both variables are read on every startup, including for plain
+#   base64 keys — if NHP_KEY_PASSPHRASE_FILE is exported globally and
+#   points at a missing or empty file, even a daemon with an unsealed key
+#   will refuse to start. Unset it on hosts that do not use sealed keys.
 # SymmetricCipherMode: default mode is AES-256-GCM-128, supported modes:
 #   AES-256-GCM-64, AES-256-GCM-96, AES-256-GCM-104, AES-256-GCM-112, AES-256-GCM-120, AES-256-GCM-128, SM4-GCM-64, SM4-GCM-128.
 # UserId: specify the user id this agent represents.

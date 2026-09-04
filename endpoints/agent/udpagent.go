@@ -16,6 +16,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/core"
 	wasmEngine "github.com/OpenNHP/opennhp/nhp/core/wasm/engine"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	utils "github.com/OpenNHP/opennhp/nhp/utils"
 	"github.com/OpenNHP/opennhp/nhp/version"
@@ -386,12 +387,22 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 		}
 		prk = core.NewECDH(core.ECC_CURVE25519).PrivateKey()
 	} else {
-		prk, err = base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
+		keyPass, passErr := keystore.PassphraseFromEnv()
+		if passErr != nil {
+			log.Error("private key passphrase error %v\n", passErr)
+			return fmt.Errorf("private key passphrase error %v", passErr)
+		}
+		prk, err = keystore.ResolvePrivateKey(a.config.PrivateKeyBase64, keyPass)
 		if err != nil {
 			log.Error("private key parse error %v\n", err)
 			return fmt.Errorf("private key parse error %v", err)
 		}
 	}
+
+	// Cache the resolved key so GetAgentEcdh (the /publicKey handler) reports
+	// the real device key without re-decoding — important when the config
+	// holds a sealed blob that a plain base64 decode would reject.
+	a.config.SetResolvedPrivateKey(prk)
 
 	a.device = core.NewDevice(core.NHP_AGENT, prk, nil)
 	if a.device == nil {
@@ -599,6 +610,7 @@ func (a *UdpAgent) ReinitWithKey(privKeyBytes []byte, cipherScheme int) error {
 	a.deviceMutex.Unlock()
 
 	a.config.PrivateKeyBase64 = base64.StdEncoding.EncodeToString(privKeyBytes)
+	a.config.SetResolvedPrivateKey(privKeyBytes)
 	a.config.DefaultCipherScheme = cipherScheme
 
 	// Stopping the old device closes its DecryptedMsgQueue, so the

@@ -1,7 +1,6 @@
 package ac
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -15,6 +14,7 @@ import (
 	ebpflocal "github.com/OpenNHP/opennhp/endpoints/ac/ebpf"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 	"github.com/OpenNHP/opennhp/nhp/utils/ebpf"
@@ -130,7 +130,12 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 		return
 	}
 
-	prk, err := base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
+	keyPass, err := keystore.PassphraseFromEnv()
+	if err != nil {
+		log.Error("private key passphrase error %v\n", err)
+		return fmt.Errorf("private key passphrase error %v", err)
+	}
+	prk, err := keystore.ResolvePrivateKey(a.config.PrivateKeyBase64, keyPass)
 	if err != nil {
 		log.Error("private key parse error %v\n", err)
 		return fmt.Errorf("private key parse error %v", err)

@@ -6,11 +6,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 
 	toml "github.com/pelletier/go-toml/v2"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
@@ -32,6 +34,35 @@ type Config struct {
 	PrivateKeyBase64    string `json:"privateKey"`
 	KnockUser           `mapstructure:",squash"`
 	*DHPConfig
+
+	// resolvedPrivateKey caches the raw private key after PrivateKeyBase64
+	// has been resolved once at startup (plain base64 or an unsealed blob).
+	// GetAgentEcdh reads it so it does not re-run the unseal KDF on every
+	// call and does not silently mis-handle a sealed key. Populated by the
+	// agent's Start (and refreshed by ReinitWithKey). Unexported, so it is
+	// already skipped by encoding/json and mapstructure — no tag needed.
+	//
+	// Guarded by keyMu: ReinitWithKey rewrites it during a rekey while an
+	// in-flight /publicKey request may be reading it, so the slice header
+	// must not be touched lock-free. Use SetResolvedPrivateKey /
+	// resolvedKey rather than the field directly.
+	keyMu              sync.RWMutex
+	resolvedPrivateKey []byte
+}
+
+// SetResolvedPrivateKey stores the raw private key resolved at startup (or
+// swapped in by a rekey). Safe for concurrent use with GetAgentEcdh.
+func (c *Config) SetResolvedPrivateKey(prk []byte) {
+	c.keyMu.Lock()
+	c.resolvedPrivateKey = prk
+	c.keyMu.Unlock()
+}
+
+// resolvedKey returns the cached raw private key, or nil if none is cached.
+func (c *Config) resolvedKey() []byte {
+	c.keyMu.RLock()
+	defer c.keyMu.RUnlock()
+	return c.resolvedPrivateKey
 }
 
 type DHPConfig struct {
@@ -43,8 +74,25 @@ func (c *Config) GetAgentEcdh() core.Ecdh {
 	if c.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
 		eccType = core.ECC_CURVE25519
 	}
-	teePrk, _ := base64.StdEncoding.DecodeString(c.PrivateKeyBase64)
-	return core.ECDHFromKey(eccType, teePrk)
+	// Prefer the key resolved at startup. Fall back to resolving on demand
+	// (which correctly handles a sealed PrivateKeyBase64) so a caller that
+	// reaches this before Start still gets the right key rather than a
+	// broken decode of the "v1$..." blob.
+	prk := c.resolvedKey()
+	if prk == nil {
+		pass, passErr := keystore.PassphraseFromEnv()
+		if passErr == nil {
+			prk, passErr = keystore.ResolvePrivateKey(c.PrivateKeyBase64, pass)
+		}
+		// This path is normally unreachable — Start populates the cache
+		// before the HTTP service accepts requests — so a failure here
+		// means the key is sealed and the passphrase is missing/wrong.
+		// Log it instead of silently returning a wrong public key.
+		if passErr != nil {
+			log.Error("GetAgentEcdh: cannot resolve private key (sealed key without a valid passphrase?): %v", passErr)
+		}
+	}
+	return core.ECDHFromKey(eccType, prk)
 }
 
 func (c *Config) GetTeeEcdh() core.Ecdh {

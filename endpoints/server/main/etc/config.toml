@@ -1,7 +1,23 @@
 # NHP-Server base config
 # field with (-) does not support dynamic update
 
-# PrivateKeyBase64 (-): server private key in base64 format.
+# PrivateKeyBase64 (-): server private key. Accepts either a plain base64
+#   key (default) or a sealed blob (starts with "v1$") produced by
+#   `echo "$KEY" | nhp-serverd seal`. A sealed key is decrypted at startup
+#   with a passphrase. The passphrase is never stored in this file.
+#   Prefer NHP_KEY_PASSPHRASE_FILE (a file, mode 0600) over
+#   NHP_KEY_PASSPHRASE: an env var is readable from the process
+#   environment, is commonly baked into systemd units and orchestrator
+#   manifests, shows up in crash dumps, and is inherited by child
+#   processes — roughly the same exposure this feature exists to avoid.
+#   Use NHP_KEY_PASSPHRASE for interactive/testing use.
+#   NOTE: these variables are read on every startup, including for plain
+#   base64 keys. If NHP_KEY_PASSPHRASE_FILE is exported globally (shared
+#   profile, systemd drop-in) and points at a missing or empty file, the
+#   daemon fails to start even when its key is not sealed. That is
+#   deliberate — a passphrase that was meant to be there and isn't is
+#   worth stopping for — but unset the variable on hosts that do not use
+#   sealed keys.
 # DefaultCipherScheme: 0: curve25519, 1: gmsm.
 # MIGRATION: Values changed in v2.x. If upgrading: old 0(gmsm)->new 1, old 1(curve)->new 0.
 # ListenIp (-): udp listening address.

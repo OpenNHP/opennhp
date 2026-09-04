@@ -4,11 +4,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 
 	"github.com/OpenNHP/opennhp/endpoints/server"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/version"
 )
 
@@ -166,10 +169,85 @@ func main() {
 		},
 	}
 
+	// seal encrypts an existing base64 private key into a sealed blob for
+	// storing in config.toml in place of the plain key. The passphrase is
+	// taken from the environment (NHP_KEY_PASSPHRASE or
+	// NHP_KEY_PASSPHRASE_FILE) so it never appears on the command line.
+	//
+	// The key itself is read from STDIN rather than argv: an argv value is
+	// visible in the shell history and to anyone who can read /proc while
+	// the process runs, which would undo much of the point of sealing it.
+	//   nhp-serverd keygen --curve --json | jq -r .privateKey | nhp-serverd seal
+	sealCmd := &cli.Command{
+		Name:  "seal",
+		Usage: "encrypt a base64 private key (read from stdin) into a sealed blob for config.toml",
+		Action: func(c *cli.Context) error {
+			if c.Args().Len() > 0 {
+				return fmt.Errorf("seal reads the private key from stdin, not from an argument " +
+					"(an argv key leaks into shell history and /proc); try: echo \"$KEY\" | nhp-serverd seal")
+			}
+			input, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				return fmt.Errorf("read private key from stdin: %w", err)
+			}
+			priv := strings.TrimSpace(string(input))
+			if priv == "" {
+				return fmt.Errorf("no private key on stdin; usage: echo \"$KEY\" | nhp-serverd seal")
+			}
+			raw, err := base64.StdEncoding.DecodeString(priv)
+			if err != nil {
+				return fmt.Errorf("decode private key: %w", err)
+			}
+			pass, err := keystore.PassphraseFromEnv()
+			if err != nil {
+				return err
+			}
+			if len(pass) == 0 {
+				return fmt.Errorf("no passphrase set: export %s or %s before sealing", keystore.EnvPassphrase, keystore.EnvPassphraseFile)
+			}
+			blob, err := keystore.Seal(raw, pass)
+			if err != nil {
+				return err
+			}
+			fmt.Println(blob)
+			return nil
+		},
+	}
+
+	// unseal decrypts a sealed blob back to a plain base64 private key
+	// (for debugging or key rotation). The passphrase comes from the
+	// environment, as with seal. The blob is not secret on its own, so it
+	// is fine as an argument — the recovered key it prints is not, hence
+	// the warning on stderr.
+	unsealCmd := &cli.Command{
+		Name:      "unseal",
+		Usage:     "decrypt a sealed key blob back to a base64 private key (output is secret)",
+		ArgsUsage: "<sealedBlob>",
+		Action: func(c *cli.Context) error {
+			blob := c.Args().First()
+			if blob == "" {
+				return fmt.Errorf("usage: unseal <sealedBlob>")
+			}
+			pass, err := keystore.PassphraseFromEnv()
+			if err != nil {
+				return err
+			}
+			raw, err := keystore.Open(blob, pass)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(os.Stderr, "warning: the private key below is plaintext — keep it out of logs and scrollback")
+			fmt.Println(base64.StdEncoding.EncodeToString(raw))
+			return nil
+		},
+	}
+
 	app.Commands = []*cli.Command{
 		runCmd,
 		keygenCmd,
 		pubkeyCmd,
+		sealCmd,
+		unsealCmd,
 	}
 
 	if err := app.Run(os.Args); err != nil {

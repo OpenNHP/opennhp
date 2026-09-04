@@ -12,7 +12,16 @@ tlsKeyFile  = ""
 # Cipher scheme: 0 = Curve25519 (default), 1 = SM2/GMSM.
 cipherScheme = 0
 
-# Relay identity key — generate with: nhp-relayd keygen --curve (or --sm2)
+# Relay identity key — generate with: nhp-relayd keygen --curve (or --sm2).
+# Accepts a plain base64 key or a sealed blob (starts with "v1$") produced
+# by `nhp-serverd seal`; a sealed key is decrypted at startup with a
+# passphrase. Prefer NHP_KEY_PASSPHRASE_FILE (a file, mode 0600) over
+# NHP_KEY_PASSPHRASE: an env var is readable from the process environment,
+# ends up in unit files and crash dumps, and is inherited by children.
+# NOTE: both variables are read on every startup, including for plain
+# base64 keys — if NHP_KEY_PASSPHRASE_FILE is exported globally and points
+# at a missing or empty file, even a daemon with an unsealed key will
+# refuse to start. Unset it on hosts that do not use sealed keys.
 privateKeyBase64 = ""
 
 # Keepalive interval in seconds

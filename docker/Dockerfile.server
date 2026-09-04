@@ -1,5 +1,12 @@
 FROM opennhp-base:latest  AS builder
 
+# The base image may ship an older Go than go.mod declares (the worktree's
+# go.mod requires go 1.26; a stale opennhp-base:latest still has 1.25.6 with
+# GOTOOLCHAIN pinned to 1.25.6). Override to "auto" so Go fetches the exact
+# toolchain go.mod asks for instead of hard-failing. If you rebuild the base
+# image from the current Dockerfile.base (Go 1.26.5) this line is a no-op.
+ENV GOTOOLCHAIN=auto
+
 WORKDIR /nhp-server
 
 COPY . .

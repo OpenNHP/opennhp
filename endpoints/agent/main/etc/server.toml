@@ -35,7 +35,42 @@
 #   Port           — UDP port (required, > 0)
 #   Weight         — relative weight for weighted-random; default 1
 #
-# ─── Local docker environment ─────────────────────────────────────────
+# ─── Local docker environment (default) ───────────────────────────────
+# This is the peer table shipped by `make agentd` into
+# release/nhp-agent/etc/server.toml. It targets the LOCAL docker-compose
+# environment: the agent binary runs on the host and knocks the
+# containerized nhp-server, whose UDP port is published to the host by
+# docker/docker-compose.yaml as "62206:62206/udp". Hence Ip = 127.0.0.1
+# and Port = 62206 below.
+#
+# Start the matching server stack with:
+#   cd docker && docker-compose up -d nhp-server nhp-ac nhp-relay
+# then run:
+#   ./release/nhp-agent/nhp-agentd register
+# (the register / run commands read etc/server.toml for the peer table).
+#
+# The PubKeyBase64 below is the SM2 (gmsm) public key of the server in
+# docker/nhp-server/etc/config.toml (DefaultCipherScheme = 1). The
+# commented Curve25519 line immediately after it is the SAME key in
+# curve form — uncomment it and comment the SM2 line if you flip the
+# server's DefaultCipherScheme to 0 (curve25519).
+#
+# Public demo: for the live demo cluster peer blocks (server.opennhp.org
+# / server2.opennhp.org) see the "Demo nhp-server configuration" panel at
+# https://reg.opennhp.org/. Note that native nhp-agentd is UDP-direct
+# only (no relay transport) and the demo's 62206/udp is NOT exposed to
+# the public internet — the browser demo reaches the server via the
+# 443/TLS relay. So this local-docker peer is the one to use for local
+# development; the public-demo TOML is reference material unless your
+# network can reach the server's UDP port.
+#
+# Key rotation: the demo nhp-server keys are re-generated whenever the
+# deploy-demo-v2 workflow runs with regenerate_keys=yes (and may otherwise
+# change between deploys). A stale PubKeyBase64 will fail peer validation
+# at the server. Always re-fetch the [[Servers]] block from
+# https://reg.opennhp.org/ before pointing a native agent at the demo;
+# do NOT cache an old copy. (This local-docker peer is unaffected — its
+# key is tied to docker/nhp-server/etc/config.toml, not the demo deploy.)
 [[Servers]]
 Name = "default"
 PubKeyBase64 = "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA=="

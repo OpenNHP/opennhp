@@ -62,6 +62,9 @@ env:
   DOMAIN_RELAY: relay.opennhp.org
   DOMAIN_AGENT: agent.opennhp.org
   DOMAIN_REG: reg.opennhp.org
+  # Integrated demo app (Gin backend + embedded SPA). Shares the relay
+  # host; nginx proxies demo.opennhp.org → 127.0.0.1:8081.
+  DOMAIN_DEMO: demo.opennhp.org
   # Server cluster 2: both the nhp-server (server2) and its AC (ac2) have
   # domains.
   DOMAIN_SERVER2: server2.opennhp.org
@@ -172,6 +175,25 @@ jobs:
           [ -d release/nhp-server/templates ] && cp -r release/nhp-server/templates artifact/
 
           find artifact -type f | sort
+
+      - name: Build demoapp binary (via Docker)
+        # The demoapp is a separate Go module that embeds a Vite SPA via the
+        # `webdist` build tag. Reusing docker/Dockerfile.demoapp guarantees
+        # the embedded SPA matches the local/docker build (Node + Go stages,
+        # @opennhp/agent SDK aliasing) without duplicating those steps here.
+        # The runner has Docker; we build the image and extract the binary.
+        run: |
+          echo "Building demoapp image (multi-stage: SPA + Go backend)..."
+          docker build -f docker/Dockerfile.demoapp -t opennhp-demoapp:ci .
+
+          mkdir -p artifact/demoapp
+          id=$(docker create opennhp-demoapp:ci)
+          docker cp "$id:/usr/local/bin/demoapp" artifact/demoapp/demoapp
+          docker rm "$id"
+          chmod +x artifact/demoapp/demoapp
+
+          echo "demoapp binary:"
+          ls -la artifact/demoapp/
 
       - name: Inject plugin secrets
         env:
@@ -285,6 +307,17 @@ jobs:
           path: ./artifact
 
       - name: Generate keys and render configs
+        env:
+          # GitHub OAuth for the demoapp login flow. ClientID/RedirectURL/
+          # Enabled are non-secret (Actions Variables) and render into the
+          # uploaded config artifact. ClientSecret is intentionally NOT
+          # passed here — the template carries a __GH_OAUTH_CLIENT_SECRET__
+          # marker, and deploy-demoapp substitutes the real value from
+          # secrets AFTER the artifact boundary so the secret never lands
+          # in the public-readable nhp-demo-configs artifact.
+          GH_OAUTH_ENABLED: ${{ vars.GH_OAUTH_ENABLED }}
+          GH_OAUTH_CLIENT_ID: ${{ vars.GH_OAUTH_CLIENT_ID }}
+          GH_OAUTH_REDIRECT_URL: ${{ vars.GH_OAUTH_REDIRECT_URL }}
         run: |
           chmod +x ./scripts/generate-nhp-keys.sh
 
@@ -1493,10 +1526,359 @@ jobs:
         run: rm -rf ~/.ssh
 
   # ─────────────────────────────────────────────────────────────
+  # Job 6b: Deploy demoapp (on the relay host, demo.opennhp.org)
+  # ─────────────────────────────────────────────────────────────
+  # Depends on deploy-jsagent (not just deploy-relay) because both this
+  # job and deploy-jsagent run bootstrap-tls.sh → certbot on the SAME
+  # relay host. Certbot holds an exclusive lock and refuses to run
+  # concurrently ("Another instance of Certbot is already running"), and
+  # both jobs also write+shred the shared /tmp/cf_token. Running them in
+  # parallel (both only needs: [configure, deploy-relay]) raced. Chaining
+  # keeps relay-host certbot strictly serial:
+  #   deploy-relay → deploy-jsagent → deploy-demoapp.
+  deploy-demoapp:
+    needs: [configure, deploy-relay, deploy-jsagent]
+    if: github.event.inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch SSH credentials + CF token from AWS Secrets Manager
+        id: fetch_secrets
+        run: |
+          SECRETS=$(aws secretsmanager get-secret-value \
+            --secret-id opennhp/demo \
+            --region ${{ env.AWS_REGION }} \
+            --query 'SecretString' --output text)
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          HOST_KEYS=$(echo "$SECRETS" | jq -r '.ssh_host_keys // empty')
+          if [ -z "$HOST_KEYS" ]; then
+            echo "ERROR: ssh_host_keys missing in opennhp/demo Secrets Manager."
+            echo "Run the infra-demo workflow with action=apply to capture and"
+            echo "persist the EC2 host keys before deploying."
+            exit 1
+          fi
+          echo "$SECRETS" | jq -r '.ssh_host_keys' > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          # CF_TOKEN: keep strictly step-local. Writing it to $GITHUB_ENV
+          # would expose it to every later step's argv (envsubst, printf,
+          # etc.) and to `ps` / process audit logs on the runner. Pipe
+          # it directly into the consuming step via stdin and only mask
+          # it once (per-value, not the whole blob — a multi-line JSON
+          # value won't be masked as a single unit by ::add-mask::).
+          CF_TOKEN=$(echo "$SECRETS" | jq -r '.cloudflare_api_token')
+          echo "::add-mask::$CF_TOKEN"
+          {
+            echo "cf_token<<EOF"
+            echo "$CF_TOKEN"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          # demoapp master keys as per-value step outputs (masked
+          # individually). Exposing the whole SECRETS blob as a step
+          # output would leak every other field (ssh_deploy_private_key,
+          # cloudflare_api_token, every server/ac/relay/agent private
+          # key) into $GITHUB_OUTPUT, which is also persisted on the
+          # workflow run for later inspection. The inject step only
+          # needs these two fields.
+          DEK=$(echo "$SECRETS" | jq -r '.demoapp_key_envelope_key // empty')
+          DSK=$(echo "$SECRETS" | jq -r '.demoapp_session_key // empty')
+          echo "::add-mask::$DEK"
+          echo "::add-mask::$DSK"
+          {
+            echo "demoapp_key_envelope_key<<EOF"
+            echo "$DEK"
+            echo "EOF"
+            echo "demoapp_session_key<<EOF"
+            echo "$DSK"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download build + configs
+        uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-build
+          path: ./artifact
+      - uses: actions/download-artifact@v8
+        with:
+          name: nhp-demo-configs
+          path: ./configs
+
+      - name: Checkout code (for nginx + bootstrap scripts + systemd unit)
+        uses: actions/checkout@v7
+        with:
+          path: repo
+
+      - name: Inject GitHub OAuth client secret
+        env:
+          GH_OAUTH_ENABLED: ${{ vars.GH_OAUTH_ENABLED }}
+          GH_OAUTH_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+        run: |
+          # The rendered demoapp config carries a literal
+          # __GH_OAUTH_CLIENT_SECRET__ marker (see
+          # deploy/config-templates/demoapp/config.toml). Substitute it
+          # here, AFTER the nhp-demo-configs artifact boundary, so the
+          # secret never enters the public-readable artifact. Use python
+          # so a secret containing /, \, &, or newlines is substituted
+          # verbatim without corrupting a sed expression.
+          #
+          # Validate non-empty BEFORE anything is stopped: the deploy
+          # step below runs `sudo systemctl stop demoapp`. If the secret
+          # is empty AND the operator enabled GitHub OAuth,
+          # NewGitHubProvider would fail at startup and demo.opennhp.org
+          # would stay down until the operator manually fixed the
+          # secret + restarted. Fail fast here so the operator sees the
+          # error in this step rather than after the outage.
+          CFG="./configs/demoapp/config.toml"
+          if [ ! -f "$CFG" ]; then
+            echo "ERROR: $CFG not found in downloaded configs artifact"
+            exit 1
+          fi
+          if [ "$GH_OAUTH_ENABLED" = "true" ] && [ -z "$GH_OAUTH_CLIENT_SECRET" ]; then
+            echo "ERROR: GH_OAUTH_ENABLED=true but GH_OAUTH_CLIENT_SECRET is empty."
+            echo "Configure the GitHub OAuth client secret under Settings -> Secrets -> Actions"
+            echo "before re-running, or set GH_OAUTH_ENABLED=false to skip GitHub OAuth."
+            exit 1
+          fi
+          python3 - "$CFG" <<'PY'
+          import os, sys
+          path = sys.argv[1]
+          secret = os.environ.get("GH_OAUTH_CLIENT_SECRET", "")
+          with open(path) as f:
+              content = f.read()
+          if "__GH_OAUTH_CLIENT_SECRET__" not in content:
+              print("WARNING: __GH_OAUTH_CLIENT_SECRET__ marker not present in config "
+                    "(GitHub OAuth likely disabled); leaving as-is")
+          else:
+              if not secret:
+                  # GH_OAUTH_ENABLED was already validated above when
+                  # set to "true"; reaching here with an empty secret
+                  # means the operator disabled GH_OAUTH but left the
+                  # marker in the template. Strip the marker so the
+                  # deployed config doesn't carry an obvious
+                  # placeholder token.
+                  print("WARNING: stripping __GH_OAUTH_CLIENT_SECRET__ marker "
+                        "(secret empty + marker present)")
+                  content = content.replace("__GH_OAUTH_CLIENT_SECRET__", "")
+              else:
+                  content = content.replace("__GH_OAUTH_CLIENT_SECRET__", secret)
+                  print("GitHub OAuth client secret injected into demoapp config")
+          with open(path, "w") as f:
+              f.write(content)
+          PY
+
+      - name: Inject demoapp master keys from opennhp/demo
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          # Per-value step outputs from fetch_secrets (each masked
+          # individually). Avoids re-fetching the whole Secrets Manager
+          # blob and avoids leaking SSH keys / agent private keys /
+          # cloudflare_api_token into this step's env via $GITHUB_ENV
+          # or the persisted $GITHUB_OUTPUT blob.
+          DEK: ${{ steps.fetch_secrets.outputs.demoapp_key_envelope_key }}
+          DSK: ${{ steps.fetch_secrets.outputs.demoapp_session_key }}
+        run: |
+          # SessionKey / KeyEnvelopeKey are rendered as
+          # __DEMOAPP_SESSION_KEY__ / __DEMOAPP_KEY_ENVELOPE_KEY__
+          # markers in deploy/config-templates/demoapp/config.toml and
+          # NOT exported by generate-nhp-keys.sh, so envsubst leaves
+          # the markers untouched in the nhp-demo-configs artifact
+          # (review #7). Substitute the real values here from the
+          # opennhp/demo Secrets Manager entry, AFTER the artifact
+          # boundary, so the AES master (which unwraps every stored
+          # NHP private key) and the session-signing key (which
+          # forges /api/credentials cookies) never enter the
+          # public-readable artifact.
+          CFG="./configs/demoapp/config.toml"
+          if [ ! -f "$CFG" ]; then
+            echo "ERROR: $CFG not found in downloaded configs artifact"
+            exit 1
+          fi
+          python3 - "$CFG" <<'PY'
+          import os, sys
+          path = sys.argv[1]
+          dek = os.environ.get("DEK", "")
+          dsk = os.environ.get("DSK", "")
+          if not dek or not dsk:
+              sys.exit("ERROR: opennhp/demo is missing demoapp_key_envelope_key and/or demoapp_session_key; "
+                       "run scripts/generate-nhp-keys.sh to backfill them.")
+          with open(path) as f:
+              content = f.read()
+          for marker, value in (
+              ("__DEMOAPP_KEY_ENVELOPE_KEY__", dek),
+              ("__DEMOAPP_SESSION_KEY__", dsk),
+          ):
+              if marker not in content:
+                  sys.exit(f"ERROR: {marker} not present in {path}")
+              content = content.replace(marker, value)
+          with open(path, "w") as f:
+              f.write(content)
+          print("demoapp master keys injected into demoapp config (post-artifact)")
+          PY
+
+      - name: Install nginx vhost + expand cert for demo.opennhp.org
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+          CF_TOKEN: ${{ steps.fetch_secrets.outputs.cf_token }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+
+          export DOMAIN_DEMO='${{ env.DOMAIN_DEMO }}' DOMAIN_RELAY='${{ env.DOMAIN_RELAY }}'
+          envsubst '$DOMAIN_DEMO $DOMAIN_RELAY' \
+            < repo/deploy/nginx/demoapp.conf.template > /tmp/demoapp-nginx.conf
+
+          scp $SSH_OPTS repo/deploy/scripts/bootstrap-tls.sh $TARGET:/tmp/bootstrap-tls.sh
+          scp $SSH_OPTS /tmp/demoapp-nginx.conf $TARGET:/tmp/demoapp-nginx.conf
+          ssh $SSH_OPTS $TARGET "chmod +x /tmp/bootstrap-tls.sh"
+
+          # CF token is consumed inline via env+stdin so it never lands on
+          # any command line (it would otherwise appear in `ps` on the
+          # runner and in shell history). Per-value ::add-mask:: in
+          # fetch_secrets handles log suppression; the masking covers
+          # this step's printf as well.
+          printf '%s' "$CF_TOKEN" | ssh $SSH_OPTS $TARGET \
+            "umask 077 && cat > /tmp/cf_token && chmod 600 /tmp/cf_token"
+
+          # PRIMARY_DOMAIN is the relay domain so certbot reuses the existing
+          # SAN certificate (relay.* + agent.* + reg.*) and --expands it to
+          # also cover demo.opennhp.org. Subsequent runs are a no-op (the
+          # script skips when the SAN is already present).
+          ssh $SSH_OPTS $TARGET \
+            "COMPONENT=demoapp \
+             PRIMARY_DOMAIN='${{ env.DOMAIN_RELAY }}' \
+             EXTRA_DOMAINS='${{ env.DOMAIN_DEMO }}' \
+             CF_API_TOKEN_FILE=/tmp/cf_token \
+             ACME_EMAIL='${{ env.ACME_EMAIL }}' \
+             NGINX_CONF='/tmp/demoapp-nginx.conf' \
+             /tmp/bootstrap-tls.sh"
+
+      - name: Deploy demoapp binary + config + systemd unit
+        env:
+          RELAY_IP: ${{ needs.configure.outputs.relay_public_ip }}
+        run: |
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes"
+          TARGET="${{ env.DEPLOY_USER }}@$RELAY_IP"
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-demoapp"
+          LOCAL_BIN="./artifact/demoapp/demoapp"
+          LOCAL_CFG="./configs/demoapp/config.toml"
+          LOCAL_UNIT="repo/deploy/scripts/demoapp.service"
+
+          # Prepare the install tree (binary + etc + persistent data dir).
+          ssh $SSH_OPTS $TARGET "mkdir -p $REMOTE_DIR/etc $REMOTE_DIR/data"
+
+          # Snapshot the remote checksums BEFORE uploading. Any of these
+          # differing after upload means we actually need to restart the
+          # service; an unchanged checksum means we can leave demoapp
+          # running and demo.opennhp.org stays up (review follow-up: the
+          # previous code claimed "config-only redeploy does not take
+          # demo.opennhp.org down" but stopped+restarted unconditionally,
+          # so the comment was a lie and every run was a brief outage).
+          REMOTE_BIN_MD5=$(ssh $SSH_OPTS $TARGET "md5sum $REMOTE_DIR/demoapp 2>/dev/null | cut -d' ' -f1" || echo "")
+          REMOTE_CFG_MD5=$(ssh $SSH_OPTS $TARGET "md5sum $REMOTE_DIR/etc/config.toml 2>/dev/null | cut -d' ' -f1" || echo "")
+          REMOTE_UNIT_MD5=$(ssh $SSH_OPTS $TARGET "sudo md5sum /etc/systemd/system/demoapp.service 2>/dev/null | cut -d' ' -f1" || echo "")
+
+          LOCAL_BIN_MD5=$(md5sum "$LOCAL_BIN" | cut -d' ' -f1)
+          LOCAL_CFG_MD5=$(md5sum "$LOCAL_CFG" | cut -d' ' -f1)
+          LOCAL_UNIT_MD5=$(md5sum "$LOCAL_UNIT" | cut -d' ' -f1)
+
+          # Binary swap is gated on deploy_binaries (same as every other
+          # deploy job). The skip-when-unchanged logic below further
+          # guards against a no-op redeploy wasting a restart cycle.
+          BINARY_CHANGED=false
+          if [ "${{ env.DEPLOY_BINARIES }}" = "yes" ]; then
+            if [ "$REMOTE_BIN_MD5" != "$LOCAL_BIN_MD5" ]; then
+              BINARY_CHANGED=true
+              # Stop before upload — scp opens the dest for writing and
+              # fails with ETXTBSY ("dest open ... Failure") while the
+              # previous binary is still executing under systemd.
+              # Matches the stop-before-upload pattern used by
+              # nhp-serverd/acd/relayd. `|| true` is a no-op when the
+              # service is already stopped (e.g., first deploy).
+              ssh $SSH_OPTS $TARGET "sudo systemctl stop demoapp || true"
+              echo "Uploading demoapp binary..."
+              scp $SSH_OPTS "$LOCAL_BIN" $TARGET:$REMOTE_DIR/demoapp
+              ssh $SSH_OPTS $TARGET "chmod +x $REMOTE_DIR/demoapp"
+            else
+              echo "Binary unchanged; skipping upload"
+            fi
+          else
+            echo "deploy_binaries=no; not uploading binary"
+          fi
+
+          echo "Uploading demoapp config..."
+          scp $SSH_OPTS "$LOCAL_CFG" $TARGET:$REMOTE_DIR/etc/config.toml
+          # 0600 — this file holds KeyEnvelopeKey (unwraps every stored
+          # user NHP private key), SessionKey (mints a session for any
+          # uid — the sole gate on /api/credentials), and the GH OAuth
+          # client secret. Default scp umask is 0644, which leaves the
+          # file world-readable on the host (review follow-up).
+          ssh $SSH_OPTS $TARGET "chmod 600 $REMOTE_DIR/etc/config.toml"
+
+          echo "Uploading systemd unit..."
+          UNIT_CHANGED=false
+          if [ "$REMOTE_UNIT_MD5" != "$LOCAL_UNIT_MD5" ]; then
+            UNIT_CHANGED=true
+            scp $SSH_OPTS "$LOCAL_UNIT" $TARGET:/tmp/demoapp.service
+            ssh $SSH_OPTS $TARGET "sudo cp /tmp/demoapp.service /etc/systemd/system/demoapp.service"
+          else
+            echo "Systemd unit unchanged; skipping upload"
+          fi
+
+          # data/ holds the SQLite database (bcrypt hashes of every
+          # user's password + AES-wrapped NHP private keys). Default
+          # scp does not create data/, but the deploy creates it via
+          # `mkdir -p` and the binary owns the file — set 0700 so a
+          # local user on the host cannot read it without being the
+          # service account.
+          ssh $SSH_OPTS $TARGET "chmod 700 $REMOTE_DIR/data && \
+            find $REMOTE_DIR/data -type f -name '*.db*' -exec chmod 600 {} +"
+
+          # Restart ONLY when at least one of the three actually changed.
+          # The validate-empty-secret guard in the inject step above
+          # already failed fast if the config was going to be unusable,
+          # so reaching this point means a restart will succeed.
+          if [ "$BINARY_CHANGED" = true ] || [ "$REMOTE_CFG_MD5" != "$LOCAL_CFG_MD5" ] || [ "$UNIT_CHANGED" = true ]; then
+            echo "Restarting demoapp (binary/config/unit changed)..."
+            # demoapp is already stopped above when BINARY_CHANGED=true (to
+            # avoid ETXTBSY on the scp); config- and unit-only changes don't
+            # need a stop — neither file is being executed.
+            ssh $SSH_OPTS $TARGET "sudo systemctl daemon-reload && sudo systemctl enable demoapp && sudo systemctl start demoapp"
+            sleep 2
+
+            STATUS=$(ssh $SSH_OPTS $TARGET "sudo systemctl is-active demoapp" || true)
+            if [ "$STATUS" != "active" ]; then
+              ssh $SSH_OPTS $TARGET "sudo journalctl -u demoapp -n 40 --no-pager"
+              echo "ERROR: demoapp failed to start"
+              exit 1
+            fi
+            echo "demoapp deployed successfully"
+          else
+            echo "Binary, config, and systemd unit all unchanged; leaving demoapp running (no outage)"
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh
+
+  # ─────────────────────────────────────────────────────────────
   # Job 7: Summary
   # ─────────────────────────────────────────────────────────────
   summary:
-    needs: [deploy-relay, deploy-server, deploy-ac, deploy-server2, deploy-ac2, deploy-jsagent]
+    needs: [deploy-relay, deploy-server, deploy-ac, deploy-server2, deploy-ac2, deploy-jsagent, deploy-demoapp]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -1512,6 +1894,7 @@ jobs:
           echo "| Server (c2)  | ${{ needs.deploy-server2.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| AC (c2)      | ${{ needs.deploy-ac2.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| js-agent     | ${{ needs.deploy-jsagent.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| demoapp      | ${{ needs.deploy-demoapp.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Binaries?    | ${{ env.DEPLOY_BINARIES }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Regen keys?  | ${{ env.REGENERATE_KEYS }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Branch       | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY

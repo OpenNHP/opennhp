@@ -604,8 +604,13 @@ func (rs *RelayServer) connectionRoutine(cr *serverRuntime, inst *serverInstance
 
 			// Check if this is a response for a pending relay request on this
 			// instance. NHP_RAK (register acknowledge) is included so the
-			// agent registration flow works through the relay.
-			if pkt.HeaderType == core.NHP_ACK || pkt.HeaderType == core.NHP_COK || pkt.HeaderType == core.NHP_RAK {
+			// agent registration flow works through the relay; NHP_LRT (list
+			// result) so listServices works; NHP_ACK covers knock/reknock and
+			// NHP_COK the cookie challenge. Every type here must carry the
+			// agent's inbound counter (via PrevParserData on the server side,
+			// see msghandler.go) or dispatch() never matches it and the browser
+			// times out with 504.
+			if pkt.HeaderType == core.NHP_ACK || pkt.HeaderType == core.NHP_COK || pkt.HeaderType == core.NHP_RAK || pkt.HeaderType == core.NHP_LRT {
 				counter := pkt.Counter()
 				// Copy raw bytes before releasing the pool packet — dispatch
 				// sends them into a handler channel.

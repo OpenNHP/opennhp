@@ -284,8 +284,13 @@ export async function parseNHPPacket(
 
   const { type, size } = header.typeAndPayloadSize;
 
-  if (type !== NHP_PACKET_TYPES.ACK && type !== NHP_PACKET_TYPES.COK && type !== NHP_PACKET_TYPES.RAK) {
-    throw new Error('Not an ACK, COK, or RAK packet');
+  if (
+    type !== NHP_PACKET_TYPES.ACK &&
+    type !== NHP_PACKET_TYPES.COK &&
+    type !== NHP_PACKET_TYPES.RAK &&
+    type !== NHP_PACKET_TYPES.LRT
+  ) {
+    throw new Error('Not an ACK, COK, RAK, or LRT packet');
   }
 
   if (packet.length !== header.size + size) {
@@ -563,8 +568,13 @@ async function parseNHPPacketGMSM(
 
   const { type, size } = header.typeAndPayloadSize;
 
-  if (type !== NHP_PACKET_TYPES.ACK && type !== NHP_PACKET_TYPES.COK && type !== NHP_PACKET_TYPES.RAK) {
-    throw new Error('Not an ACK, COK, or RAK packet');
+  if (
+    type !== NHP_PACKET_TYPES.ACK &&
+    type !== NHP_PACKET_TYPES.COK &&
+    type !== NHP_PACKET_TYPES.RAK &&
+    type !== NHP_PACKET_TYPES.LRT
+  ) {
+    throw new Error('Not an ACK, COK, RAK, or LRT packet');
   }
 
   if (packet.length !== header.size + size) {

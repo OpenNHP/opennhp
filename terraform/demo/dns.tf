@@ -106,3 +106,16 @@ resource "cloudflare_record" "reg" {
   ttl     = 300
   comment = "NHP Agent Registration page (hosted on relay) - managed by Terraform"
 }
+
+# Integrated demo app (Gin backend + embedded SPA). Shares the relay host;
+# nginx proxies demo.opennhp.org → 127.0.0.1:8081. Same cert lineage as
+# relay/agent/reg (SAN expanded by bootstrap-tls.sh).
+resource "cloudflare_record" "demo" {
+  zone_id = var.cloudflare_zone_id
+  name    = "demo"
+  content = aws_eip.relay.public_ip
+  type    = "A"
+  proxied = false
+  ttl     = 300
+  comment = "OpenNHP integrated demo app (hosted on relay) - managed by Terraform"
+}

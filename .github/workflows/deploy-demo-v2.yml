@@ -65,10 +65,6 @@ env:
   # Integrated demo app (Gin backend + embedded SPA). Shares the relay
   # host; nginx proxies demo.opennhp.org → 127.0.0.1:8081.
   DOMAIN_DEMO: demo.opennhp.org
-  # Server cluster 2: both the nhp-server (server2) and its AC (ac2) have
-  # domains.
-  DOMAIN_SERVER2: server2.opennhp.org
-  DOMAIN_AC2: ac2.opennhp.org
   # Legacy hostnames retained as DNS CNAMEs to the new primaries; included
   # as TLS SANs and as nginx server_name aliases so existing agents and
   # bookmarks continue to work.
@@ -241,10 +237,6 @@ jobs:
       ac_public_ip: ${{ steps.tf_outputs.outputs.ac_public_ip }}
       ac_private_ip: ${{ steps.tf_outputs.outputs.ac_private_ip }}
       relay_public_ip: ${{ steps.tf_outputs.outputs.relay_public_ip }}
-      server2_public_ip: ${{ steps.tf_outputs.outputs.server2_public_ip }}
-      server2_private_ip: ${{ steps.tf_outputs.outputs.server2_private_ip }}
-      ac2_public_ip: ${{ steps.tf_outputs.outputs.ac2_public_ip }}
-      ac2_private_ip: ${{ steps.tf_outputs.outputs.ac2_private_ip }}
 
     steps:
       - name: Checkout code
@@ -279,26 +271,16 @@ jobs:
           AC_PUB=$(terraform output -raw ac_public_ip)
           AC_PRIV=$(terraform output -raw ac_private_ip)
           RELAY_PUB=$(terraform output -raw relay_public_ip)
-          SERVER2_PUB=$(terraform output -raw server2_public_ip)
-          SERVER2_PRIV=$(terraform output -raw server2_private_ip)
-          AC2_PUB=$(terraform output -raw ac2_public_ip)
-          AC2_PRIV=$(terraform output -raw ac2_private_ip)
 
           echo "server_public_ip=$SERVER_PUB"     >> $GITHUB_OUTPUT
           echo "server_private_ip=$SERVER_PRIV"   >> $GITHUB_OUTPUT
           echo "ac_public_ip=$AC_PUB"             >> $GITHUB_OUTPUT
           echo "ac_private_ip=$AC_PRIV"           >> $GITHUB_OUTPUT
           echo "relay_public_ip=$RELAY_PUB"       >> $GITHUB_OUTPUT
-          echo "server2_public_ip=$SERVER2_PUB"   >> $GITHUB_OUTPUT
-          echo "server2_private_ip=$SERVER2_PRIV" >> $GITHUB_OUTPUT
-          echo "ac2_public_ip=$AC2_PUB"           >> $GITHUB_OUTPUT
-          echo "ac2_private_ip=$AC2_PRIV"         >> $GITHUB_OUTPUT
 
           echo "Server public/private:   $SERVER_PUB / $SERVER_PRIV"
           echo "AC public/private:       $AC_PUB / $AC_PRIV"
           echo "Relay public:            $RELAY_PUB"
-          echo "Server2 public/private:  $SERVER2_PUB / $SERVER2_PRIV"
-          echo "AC2 public/private:      $AC2_PUB / $AC2_PRIV"
 
       - name: Download build artifact
         uses: actions/download-artifact@v8
@@ -340,8 +322,6 @@ jobs:
             --output-dir ./artifact/configs \
             --server-private-ip "${{ steps.tf_outputs.outputs.server_private_ip }}" \
             --ac-private-ip "${{ steps.tf_outputs.outputs.ac_private_ip }}" \
-            --server2-private-ip "${{ steps.tf_outputs.outputs.server2_private_ip }}" \
-            --ac2-private-ip "${{ steps.tf_outputs.outputs.ac2_private_ip }}" \
             --domain opennhp.org \
             $REGEN_FLAG
 
@@ -945,337 +925,6 @@ jobs:
         run: rm -rf ~/.ssh
 
   # ─────────────────────────────────────────────────────────────
-  # Job 5b: Deploy server cluster 2 (pure NHP — no TLS/nginx)
-  # ─────────────────────────────────────────────────────────────
-  deploy-server2:
-    needs: [configure, deploy-relay]
-    if: github.event.inputs.confirm == 'deploy'
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Setup SSH with ProxyJump
-        run: |
-          SECRETS=$(aws secretsmanager get-secret-value \
-            --secret-id opennhp/demo \
-            --region ${{ env.AWS_REGION }} \
-            --query 'SecretString' --output text)
-
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          echo "$SECRETS" | jq -r '.ssh_host_keys' > ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
-
-          cat > ~/.ssh/config <<EOF
-          Host relay-jump
-            HostName ${{ needs.configure.outputs.relay_public_ip }}
-            User ${{ env.DEPLOY_USER }}
-            IdentityFile ~/.ssh/deploy_key
-            StrictHostKeyChecking yes
-            UserKnownHostsFile ~/.ssh/known_hosts
-
-          Host nhp-server2
-            HostName ${{ needs.configure.outputs.server2_private_ip }}
-            User ${{ env.DEPLOY_USER }}
-            IdentityFile ~/.ssh/deploy_key
-            ProxyJump relay-jump
-            StrictHostKeyChecking yes
-            UserKnownHostsFile ~/.ssh/known_hosts
-          EOF
-          chmod 600 ~/.ssh/config
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: nhp-demo-build
-          path: ./artifact
-      - uses: actions/download-artifact@v8
-        with:
-          name: nhp-demo-configs
-          path: ./configs
-
-      - name: Load SMTP credentials for OTP email
-        run: |
-          SECRET_JSON=$(aws secretsmanager get-secret-value \
-            --secret-id nhp-agent/ses-smtp \
-            --region us-east-2 \
-            --query 'SecretString' --output text)
-
-          SMTP_HOST=$(echo "$SECRET_JSON" | jq -r '.smtp_host // empty')
-          SMTP_PORT=$(echo "$SECRET_JSON" | jq -r '.smtp_port // empty')
-          SMTP_USERNAME=$(echo "$SECRET_JSON" | jq -r '.smtp_username // empty')
-          SMTP_PASSWORD=$(echo "$SECRET_JSON" | jq -r '.smtp_password // empty')
-          SMTP_FROM=$(echo "$SECRET_JSON" | jq -r '.from_address // empty')
-
-          if [ -z "$SMTP_HOST" ] || [ -z "$SMTP_USERNAME" ]; then
-            echo "SMTP not configured — OTP emails will be printed to server log"
-            echo "SMTP_HOST=" >> $GITHUB_ENV
-            echo "SMTP_PORT=" >> $GITHUB_ENV
-            echo "SMTP_USERNAME=" >> $GITHUB_ENV
-            echo "SMTP_PASSWORD=" >> $GITHUB_ENV
-            echo "SMTP_FROM=" >> $GITHUB_ENV
-            echo "SMTP_SUBJECT=" >> $GITHUB_ENV
-          else
-            echo "SMTP_HOST=$SMTP_HOST" >> $GITHUB_ENV
-            echo "SMTP_PORT=${SMTP_PORT:-587}" >> $GITHUB_ENV
-            echo "SMTP_USERNAME=$SMTP_USERNAME" >> $GITHUB_ENV
-            echo "::add-mask::$SMTP_PASSWORD"
-            echo "SMTP_PASSWORD=$SMTP_PASSWORD" >> $GITHUB_ENV
-            echo "SMTP_FROM=${SMTP_FROM:-noreply@opennhp.org}" >> $GITHUB_ENV
-            echo "SMTP_SUBJECT=Your OpenNHP Verification Code" >> $GITHUB_ENV
-          fi
-
-      - name: Deploy nhp-serverd and plugins (cluster 2)
-        run: |
-          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-server"
-
-          # nhp-serverd's KBS init() writes to /opt/confidential-containers;
-          # create it up-front with correct ownership (same as cluster 1).
-          ssh nhp-server2 "sudo mkdir -p /opt/confidential-containers/kbs/repository/default/cosign-key && \
-            sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} /opt/confidential-containers"
-
-          echo "Stopping nhp-serverd..."
-          ssh nhp-server2 "sudo systemctl stop nhp-serverd || true"
-
-          if [ "${{ env.DEPLOY_BINARIES }}" = "yes" ]; then
-            echo "Uploading nhp-serverd..."
-            scp ./artifact/server/nhp-serverd nhp-server2:$REMOTE_DIR/
-            ssh nhp-server2 "chmod +x $REMOTE_DIR/nhp-serverd"
-
-            echo "Uploading plugin binaries..."
-            for plugin_dir in ./artifact/plugins/*/; do
-              name=$(basename "$plugin_dir")
-              ssh nhp-server2 "mkdir -p $REMOTE_DIR/plugins/$name"
-              scp "${plugin_dir}${name}.so" "nhp-server2:$REMOTE_DIR/plugins/$name/"
-            done
-
-            if [ -d ./artifact/templates ]; then
-              rsync -avz --delete -e ssh ./artifact/templates/ nhp-server2:$REMOTE_DIR/templates/
-            fi
-          fi
-
-          echo "Uploading plugin configs (always, so envsubst placeholders are rendered)..."
-          export AC_PRIVATE_IP='${{ needs.configure.outputs.ac_private_ip }}'
-          for plugin_dir in ./artifact/plugins/*/; do
-            name=$(basename "$plugin_dir")
-            if [ -d "${plugin_dir}etc" ]; then
-              rendered_etc=$(mktemp -d)
-              cp -r "${plugin_dir}etc/." "$rendered_etc/"
-              for f in "$rendered_etc"/*.toml; do
-                [ -f "$f" ] || continue
-                envsubst '$AC_PRIVATE_IP $SMTP_HOST $SMTP_PORT $SMTP_USERNAME $SMTP_PASSWORD $SMTP_FROM $SMTP_SUBJECT' < "$f" > "$f.rendered"
-                mv "$f.rendered" "$f"
-              done
-              # For the basic/example plugin, swap in the cluster 2 resource mapping.
-              if [ "$name" = "basic" ] || [ "$name" = "example" ]; then
-                if [ -f ./configs/server2/plugin-resource.toml ]; then
-                  cp ./configs/server2/plugin-resource.toml "$rendered_etc/resource.toml"
-                fi
-              fi
-              ssh nhp-server2 "mkdir -p $REMOTE_DIR/plugins/$name/etc"
-              scp -r "$rendered_etc/." "nhp-server2:$REMOTE_DIR/plugins/$name/etc/"
-              rm -rf "$rendered_etc"
-            fi
-          done
-
-          echo "Uploading server configs (cluster 2)..."
-          # plugin-resource.toml is for the plugin etc dir, not the server etc
-          # dir — upload only the server's own configs.
-          for f in config.toml ac.toml relay.toml agent.toml resource.toml; do
-            scp "./configs/server2/$f" "nhp-server2:$REMOTE_DIR/etc/"
-          done
-
-          # nhp-serverd writes to $REMOTE_DIR/logs (plural). Ensure it exists and
-          # is owned by the service user; older userdata created "log" (singular).
-          ssh nhp-server2 "mkdir -p $REMOTE_DIR/logs && sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} $REMOTE_DIR/logs"
-
-          echo "Starting nhp-serverd..."
-          ssh nhp-server2 "sudo systemctl start nhp-serverd"
-          sleep 2
-
-          STATUS=$(ssh nhp-server2 "sudo systemctl is-active nhp-serverd" || true)
-          if [ "$STATUS" != "active" ]; then
-            ssh nhp-server2 "sudo journalctl -u nhp-serverd -n 30 --no-pager"
-            exit 1
-          fi
-          echo "nhp-serverd (cluster 2) deployed successfully"
-
-      - name: Cleanup
-        if: always()
-        run: rm -rf ~/.ssh
-
-  # ─────────────────────────────────────────────────────────────
-  # Job 5c: Deploy AC cluster 2 (ac2.opennhp.org)
-  # ─────────────────────────────────────────────────────────────
-  deploy-ac2:
-    needs: [configure, deploy-relay]
-    if: github.event.inputs.confirm == 'deploy'
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Setup SSH with ProxyJump
-        run: |
-          SECRETS=$(aws secretsmanager get-secret-value \
-            --secret-id opennhp/demo \
-            --region ${{ env.AWS_REGION }} \
-            --query 'SecretString' --output text)
-
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          echo "$SECRETS" | jq -r '.ssh_deploy_private_key' > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          echo "$SECRETS" | jq -r '.ssh_host_keys' > ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
-
-          cat > ~/.ssh/config <<EOF
-          Host relay-jump
-            HostName ${{ needs.configure.outputs.relay_public_ip }}
-            User ${{ env.DEPLOY_USER }}
-            IdentityFile ~/.ssh/deploy_key
-            StrictHostKeyChecking yes
-            UserKnownHostsFile ~/.ssh/known_hosts
-
-          Host nhp-ac2
-            HostName ${{ needs.configure.outputs.ac2_private_ip }}
-            User ${{ env.DEPLOY_USER }}
-            IdentityFile ~/.ssh/deploy_key
-            ProxyJump relay-jump
-            StrictHostKeyChecking yes
-            UserKnownHostsFile ~/.ssh/known_hosts
-          EOF
-          chmod 600 ~/.ssh/config
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: nhp-demo-build
-          path: ./artifact
-      - uses: actions/download-artifact@v8
-        with:
-          name: nhp-demo-configs
-          path: ./configs
-
-      - name: Checkout code (for nginx + bootstrap scripts)
-        uses: actions/checkout@v7
-        with:
-          path: repo
-
-      - name: Ensure TLS certificate + nginx on ac2
-        run: |
-          CF_TOKEN=$(aws secretsmanager get-secret-value \
-            --secret-id opennhp/demo --region ${{ env.AWS_REGION }} \
-            --query SecretString --output text \
-            | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['cloudflare_api_token'])")
-
-          # cluster 2 AC has a single hostname (no legacy alias).
-          export DOMAIN_AC2='${{ env.DOMAIN_AC2 }}'
-          envsubst '$DOMAIN_AC2' \
-            < repo/deploy/nginx/ac2.conf.template > /tmp/ac2-nginx.conf
-
-          scp repo/deploy/scripts/bootstrap-tls.sh nhp-ac2:/tmp/bootstrap-tls.sh
-          scp /tmp/ac2-nginx.conf nhp-ac2:/tmp/ac2-nginx.conf
-          ssh nhp-ac2 "chmod +x /tmp/bootstrap-tls.sh"
-
-          printf '%s' "$CF_TOKEN" | ssh nhp-ac2 \
-            "umask 077 && cat > /tmp/cf_token && chmod 600 /tmp/cf_token"
-
-          ssh nhp-ac2 \
-            "COMPONENT=ac \
-             PRIMARY_DOMAIN='${{ env.DOMAIN_AC2 }}' \
-             EXTRA_DOMAINS='' \
-             LEGACY_CERT_NAME='' \
-             CF_API_TOKEN_FILE=/tmp/cf_token \
-             ACME_EMAIL='${{ env.ACME_EMAIL }}' \
-             NGINX_CONF='/tmp/ac2-nginx.conf' \
-             /tmp/bootstrap-tls.sh"
-
-      - name: Deploy nhp-acd (cluster 2)
-        run: |
-          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-ac"
-
-          # nhp-acd shells out to iptables/ipset; Amazon Linux 2023 doesn't ship them.
-          ssh nhp-ac2 "for pkg in iptables ipset; do command -v \$pkg >/dev/null || sudo dnf install -y \$pkg; done"
-
-          echo "Stopping nhp-acd..."
-          ssh nhp-ac2 "sudo systemctl stop nhp-acd || true"
-
-          if [ "${{ env.DEPLOY_BINARIES }}" = "yes" ]; then
-            echo "Uploading nhp-acd..."
-            scp ./artifact/ac/nhp-acd nhp-ac2:$REMOTE_DIR/
-            ssh nhp-ac2 "chmod +x $REMOTE_DIR/nhp-acd"
-          fi
-
-          echo "Installing firewall bootstrap script..."
-          scp ./artifact/ac/iptables_default.sh nhp-ac2:$REMOTE_DIR/
-          ssh nhp-ac2 "chmod +x $REMOTE_DIR/iptables_default.sh"
-
-          echo "Applying default firewall rules..."
-          ssh nhp-ac2 "sudo bash $REMOTE_DIR/iptables_default.sh -f || true"
-
-          # cluster 2 serves the same protected demo page, but rewritten for
-          # this AC: the first server card points at ${DOMAIN_AC2}, and the
-          # demo.nhp card (a cluster-1 internal alias with no ac2 equivalent)
-          # is stripped between its CI anchors.
-          if [ -f ./artifact/templates/example/example_acdemo.html ]; then
-            sed -e "s|ac\.opennhp\.org|${DOMAIN_AC2}|g" \
-                -e "/demo.nhp-card:begin/,/demo.nhp-card:end/d" \
-              ./artifact/templates/example/example_acdemo.html > /tmp/acdemo_ac2.html
-            scp /tmp/acdemo_ac2.html nhp-ac2:/tmp/example_acdemo.html
-            ssh nhp-ac2 "sudo mkdir -p /var/www/acdemo && \
-              sudo cp /tmp/example_acdemo.html /var/www/acdemo/index.html && \
-              sudo chmod 644 /var/www/acdemo/index.html && \
-              rm /tmp/example_acdemo.html"
-            rm -f /tmp/acdemo_ac2.html
-          fi
-
-          echo "Uploading AC configs (cluster 2)..."
-          scp ./configs/ac2/*.toml nhp-ac2:$REMOTE_DIR/etc/
-
-          # nhp-acd writes to $REMOTE_DIR/logs (plural). Ensure it exists and is
-          # owned by the service user; older userdata created "log" (singular).
-          ssh nhp-ac2 "mkdir -p $REMOTE_DIR/logs && sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} $REMOTE_DIR/logs"
-
-          # nhp-acd runs as ec2-user and shells out to iptables/ipset. On
-          # Amazon Linux 2023 (iptables-nft) it needs CAP_NET_RAW and
-          # CAP_DAC_OVERRIDE in addition to CAP_NET_ADMIN, or `iptables -L` at
-          # startup fails with "exit status 1". userdata only runs at instance
-          # creation, so patch the live unit here for already-running hosts.
-          ssh nhp-ac2 "sudo sed -i \
-            -e 's/^AmbientCapabilities=.*/AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE/' \
-            -e 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE/' \
-            /etc/systemd/system/nhp-acd.service && sudo systemctl daemon-reload"
-
-          echo "Starting nhp-acd..."
-          ssh nhp-ac2 "sudo systemctl start nhp-acd"
-          sleep 2
-
-          STATUS=$(ssh nhp-ac2 "sudo systemctl is-active nhp-acd" || true)
-          if [ "$STATUS" != "active" ]; then
-            ssh nhp-ac2 "sudo journalctl -u nhp-acd -n 30 --no-pager"
-            exit 1
-          fi
-          echo "nhp-acd (cluster 2) deployed successfully"
-
-      - name: Cleanup
-        if: always()
-        run: rm -rf ~/.ssh
-
-  # ─────────────────────────────────────────────────────────────
   # Job 6: Deploy js-agent demo page (static) to relay host
   # ─────────────────────────────────────────────────────────────
   deploy-jsagent:
@@ -1338,31 +987,19 @@ jobs:
           # Scalar fields that travel through step outputs can safely go through bash.
           SERVER_PUB=$(echo "$SECRETS" | jq -r '.nhp_server_public_key')
           SERVER_SM2_PUB=$(echo "$SECRETS" | jq -r '.nhp_server_sm2_public_key')
-          SERVER2_PUB=$(echo "$SECRETS" | jq -r '.nhp_server2_public_key')
-          SERVER2_SM2_PUB=$(echo "$SECRETS" | jq -r '.nhp_server2_sm2_public_key')
           JS_PRIV=$(echo "$SECRETS" | jq -r '.nhp_jsagent_private_key')
           JS_PUB=$(echo "$SECRETS" | jq -r '.nhp_jsagent_public_key')
           JS_SM2_PUB=$(echo "$SECRETS" | jq -r '.nhp_jsagent_sm2_public_key')
-          # Cluster 2 has its own js-agent identity (trusted only by server2).
-          JS2_PRIV=$(echo "$SECRETS" | jq -r '.nhp_jsagent2_private_key')
-          JS2_PUB=$(echo "$SECRETS" | jq -r '.nhp_jsagent2_public_key')
-          JS2_SM2_PUB=$(echo "$SECRETS" | jq -r '.nhp_jsagent2_sm2_public_key')
           CF_TOKEN=$(echo "$SECRETS" | jq -r '.cloudflare_api_token')
 
           echo "::add-mask::$JS_PRIV"
-          echo "::add-mask::$JS2_PRIV"
           echo "::add-mask::$CF_TOKEN"
 
           echo "server_pub=$SERVER_PUB"         >> $GITHUB_OUTPUT
           echo "server_sm2_pub=$SERVER_SM2_PUB" >> $GITHUB_OUTPUT
-          echo "server2_pub=$SERVER2_PUB"       >> $GITHUB_OUTPUT
-          echo "server2_sm2_pub=$SERVER2_SM2_PUB" >> $GITHUB_OUTPUT
           echo "js_priv=$JS_PRIV"               >> $GITHUB_OUTPUT
           echo "js_pub=$JS_PUB"                 >> $GITHUB_OUTPUT
           echo "js_sm2_pub=$JS_SM2_PUB"         >> $GITHUB_OUTPUT
-          echo "js2_priv=$JS2_PRIV"             >> $GITHUB_OUTPUT
-          echo "js2_pub=$JS2_PUB"               >> $GITHUB_OUTPUT
-          echo "js2_sm2_pub=$JS2_SM2_PUB"       >> $GITHUB_OUTPUT
           echo "cf_token=$CF_TOKEN"             >> $GITHUB_OUTPUT
 
       - name: Assemble deploy bundle
@@ -1397,21 +1034,23 @@ jobs:
           # on the NHP server (see agent.toml / resource.toml). Treat it as
           # public; do NOT reuse these key pair for anything else.
           # The "clusters" array drives the cluster picker on the demo page.
-          # Both clusters share the same relay and the same public js-agent
-          # identity; only the target nhp-server (serverPublicKey) differs.
-          # The relay routes by the fingerprint of serverPublicKey, which the
-          # SDK derives client-side — so no per-cluster relay path is needed.
-          # The flat serverHost/acHost/serverPublicKey fields are kept for
-          # backward compatibility and mirror clusters[0] (cluster 1).
+          # Currently the demo has only one cluster (cluster 1); the array is
+          # retained so the picker UI stays consistent with the source template
+          # but only contains that single entry. The relay routes by the
+          # fingerprint of serverPublicKey, which the SDK derives client-side,
+          # so no per-cluster relay path is needed. The flat
+          # serverHost/acHost/serverPublicKey fields mirror clusters[0] and are
+          # kept for backward compatibility with older SPA bundles.
           #
           # Per cluster: "serverHost" is the nhp-server hostname shown in the
           # cluster picker; "acHost" is the protected AC hostname shown (and
           # port-scanned) in the "Protected Server" picker;
           # "agentPrivateKey"/"agentPublicKey" is that cluster's OWN browser-demo
-          # identity. Cluster 1 and cluster 2 use INDEPENDENT agent keys — each
-          # nhp-server trusts only its own — so selecting a cluster swaps the
-          # agent key too. Both private keys are intentionally public demo keys
-          # scoped to demo-only resources.
+          # identity. With a single cluster today, these all reference the same
+          # js-agent key pair, but the per-cluster shape is preserved so adding
+          # a second cluster later does not require a template change. The
+          # agentPrivateKey is intentionally a public demo key scoped to the
+          # "demo" resource only.
           cat > bundle/config.json <<EOF
           {
             "_comment":        "PUBLIC DEMO CONFIG - agentPrivateKey is intentionally public; see deploy-demo-v2.yml.",
@@ -1439,15 +1078,6 @@ jobs:
                 "serverPublicKeySM2": "${{ steps.secrets.outputs.server_sm2_pub }}",
                 "agentPrivateKey":    "${{ steps.secrets.outputs.js_priv }}",
                 "agentPublicKey":     "${{ steps.secrets.outputs.js_pub }}"
-              },
-              {
-                "name":               "Cluster 2",
-                "serverHost":         "${{ env.DOMAIN_SERVER2 }}",
-                "acHost":             "${{ env.DOMAIN_AC2 }}",
-                "serverPublicKey":    "${{ steps.secrets.outputs.server2_pub }}",
-                "serverPublicKeySM2": "${{ steps.secrets.outputs.server2_sm2_pub }}",
-                "agentPrivateKey":    "${{ steps.secrets.outputs.js2_priv }}",
-                "agentPublicKey":     "${{ steps.secrets.outputs.js2_pub }}"
               }
             ]
           }
@@ -1878,7 +1508,7 @@ jobs:
   # Job 7: Summary
   # ─────────────────────────────────────────────────────────────
   summary:
-    needs: [deploy-relay, deploy-server, deploy-ac, deploy-server2, deploy-ac2, deploy-jsagent, deploy-demoapp]
+    needs: [deploy-relay, deploy-server, deploy-ac, deploy-jsagent, deploy-demoapp]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -1891,8 +1521,6 @@ jobs:
           echo "| Relay        | ${{ needs.deploy-relay.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Server       | ${{ needs.deploy-server.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| AC           | ${{ needs.deploy-ac.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Server (c2)  | ${{ needs.deploy-server2.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| AC (c2)      | ${{ needs.deploy-ac2.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| js-agent     | ${{ needs.deploy-jsagent.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| demoapp      | ${{ needs.deploy-demoapp.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Binaries?    | ${{ env.DEPLOY_BINARIES }} |" >> $GITHUB_STEP_SUMMARY

@@ -169,9 +169,10 @@ func UpdateTomlConfig(filePath string, key string, value any) error {
 	switch value := value.(type) {
 	case string:
 		replacement := fmt.Sprintf("%s = \"%s\"", key, value)
-		// Match the assignment line whatever its current value (including
-		// an empty ""), so a re-seal over `key = ""` still lands.
-		lineRe := regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(key) + `[ \t]*=.*$`)
+		// Match ONLY a single-line string assignment (`key = "…"`, empty value
+		// included), never `key = [` of a multi-line array or a bare number,
+		// so a general caller can't mangle those.
+		lineRe := regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(key) + `[ \t]*=[ \t]*"[^"]*"[ \t]*$`)
 		switch {
 		case lineRe.MatchString(string(content)):
 			// ReplaceAllLiteralString, not ReplaceAllString: the replacement
@@ -187,24 +188,44 @@ func UpdateTomlConfig(filePath string, key string, value any) error {
 			}
 			newContent = base + replacement + "\n"
 		default:
-			return fmt.Errorf("key %q not found in %s and the file has [table] sections; add the line under the root table by hand", key, filePath)
+			return fmt.Errorf("key %q (string) not found in %s and the file has [table] sections; add the line under the root table by hand", key, filePath)
 		}
 	default:
 		return fmt.Errorf("unsupported type: %T", value)
 	}
 
-	// Write atomically: RotateAgentKey now persists a re-SEALED key through
-	// this path, and a plain os.WriteFile truncates first — a crash mid-write
-	// would destroy a key that (unlike the old plaintext case) exists nowhere
-	// else. Write a temp file in the same dir, fsync, then rename over.
+	return atomicWriteFile(filePath, []byte(newContent))
+}
+
+// atomicWriteFile replaces filePath's contents via a same-dir temp file +
+// rename, so a crash mid-write cannot leave a truncated file — RotateAgentKey
+// now persists a re-SEALED key through this path, and that key exists nowhere
+// else. The existing file's permission bits are preserved (a new file gets
+// 0600, the CreateTemp default), so a rotation never widens a mode-0600
+// config to world-readable. Falls back to an in-place write when the
+// directory is not writable (a hardened root-owned etc/).
+func atomicWriteFile(filePath string, data []byte) error {
+	mode := os.FileMode(0o600)
+	if fi, statErr := os.Stat(filePath); statErr == nil {
+		mode = fi.Mode().Perm() // keep whatever the operator set
+	}
+
 	dir := filepath.Dir(filePath)
 	tmp, err := os.CreateTemp(dir, ".toml-*")
 	if err != nil {
+		if os.IsPermission(err) {
+			// Can't create a sibling temp file (root-owned etc/). Fall back to
+			// a plain in-place write, which only needs +w on the file itself;
+			// WriteFile's perm arg is ignored for an existing file, so the
+			// mode is preserved here too.
+			return os.WriteFile(filePath, data, mode)
+		}
 		return err
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) // no-op after a successful rename
-	if _, err = tmp.Write([]byte(newContent)); err != nil {
+
+	if _, err = tmp.Write(data); err != nil {
 		tmp.Close()
 		return err
 	}
@@ -215,9 +236,17 @@ func UpdateTomlConfig(filePath string, key string, value any) error {
 	if err = tmp.Close(); err != nil {
 		return err
 	}
-	//nolint:gosec // G302: config files are conventionally world-readable
-	if err = os.Chmod(tmpName, 0644); err != nil {
+	if err = os.Chmod(tmpName, mode); err != nil {
 		return err
 	}
-	return os.Rename(tmpName, filePath)
+	if err = os.Rename(tmpName, filePath); err != nil {
+		return err
+	}
+	// fsync the directory so the rename itself survives a crash, not just the
+	// temp file's contents. Best-effort: some filesystems disallow it.
+	if d, dErr := os.Open(dir); dErr == nil {
+		_ = d.Sync()
+		_ = d.Close()
+	}
+	return nil
 }

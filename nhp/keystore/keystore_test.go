@@ -256,6 +256,49 @@ func TestResolvePrivateKeyInvalidPlain(t *testing.T) {
 	}
 }
 
+// TestResolvePrivateKeyAuto pins the decoupling guarantee every daemon relies
+// on: a PLAIN base64 key never touches the passphrase env vars (so a stray
+// exported NHP_KEY_PASSPHRASE_FILE cannot wedge an unsealed daemon), while a
+// SEALED value does consult them.
+func TestResolvePrivateKeyAuto(t *testing.T) {
+	raw := randKey(t, 32)
+	plain := base64.StdEncoding.EncodeToString(raw)
+	pass := []byte("test-passphrase")
+	blob, err := Seal(raw, pass)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A bogus passphrase file is set. The plain path must ignore it entirely.
+	t.Setenv(EnvPassphrase, "")
+	t.Setenv(EnvPassphraseFile, filepath.Join(t.TempDir(), "does-not-exist"))
+
+	got, sealed, err := ResolvePrivateKeyAuto(plain)
+	if err != nil || sealed {
+		t.Fatalf("plain: got (sealed=%v, err=%v), want (false, nil) despite the bad passphrase file", sealed, err)
+	}
+	if !bytes.Equal(got, raw) {
+		t.Fatalf("plain resolve mismatch: %x vs %x", got, raw)
+	}
+
+	// The sealed path DOES consult the env — with the bad file still set it
+	// must fail closed, not fall through.
+	if _, sealedBad, badErr := ResolvePrivateKeyAuto(blob); badErr == nil || !sealedBad {
+		t.Fatalf("sealed with an unreadable passphrase file: got (sealed=%v, err=%v), want (true, error)", sealedBad, badErr)
+	}
+
+	// With a real passphrase the sealed path round-trips.
+	fp := filepath.Join(t.TempDir(), "pass")
+	if wErr := os.WriteFile(fp, pass, 0o600); wErr != nil {
+		t.Fatal(wErr)
+	}
+	t.Setenv(EnvPassphraseFile, fp)
+	got, sealed, err = ResolvePrivateKeyAuto(blob)
+	if err != nil || !sealed || !bytes.Equal(got, raw) {
+		t.Fatalf("sealed resolve: got (sealed=%v, err=%v, key match=%v)", sealed, err, bytes.Equal(got, raw))
+	}
+}
+
 func TestPassphraseFromEnv(t *testing.T) {
 	t.Setenv(EnvPassphrase, "")
 	t.Setenv(EnvPassphraseFile, "")

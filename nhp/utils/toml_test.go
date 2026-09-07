@@ -3,9 +3,34 @@ package utils
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+// TestUpdateTomlConfigPreservesMode: an update must NOT widen a mode-0600
+// config to world-readable — RotateAgentKey/RotateTeeKey write key-bearing
+// files through this path.
+func TestUpdateTomlConfigPreservesMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows does not enforce unix file modes")
+	}
+	dir := t.TempDir()
+	fp := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(fp, []byte("PrivateKeyBase64 = \"old\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateTomlConfig(fp, "PrivateKeyBase64", "v1$new"); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(fp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := fi.Mode().Perm(); perm != 0o600 {
+		t.Fatalf("mode widened to %o, want 0600", perm)
+	}
+}
 
 // TestUpdateTomlConfigWritesValueLiterally guards against the replacement
 // being interpreted as a regexp template. A sealed key blob is full of '$'

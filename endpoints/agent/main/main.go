@@ -725,27 +725,28 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 	// still have the blob to paste. The new public key is already on file
 	// with the server, so losing this private key locks the agent out.
 	if existingKeySealed {
-		pass, passErr := keystore.PassphraseFromEnv()
-		if passErr != nil || len(pass) == 0 {
-			// No passphrase: we cannot seal. Do NOT lose the key — fall back
-			// to showing the plaintext with a loud warning, and treat the
-			// rest of the flow as the plain-key case.
-			retErr := passErr
-			if retErr == nil {
-				retErr = keystore.ErrNoPassphrase
+		// reason is set whenever we cannot produce a sealed blob (no
+		// passphrase, or Seal itself fails). In every such case we MUST NOT
+		// return — the new public key is already on file with the server, so
+		// losing this private key locks the agent out. Fall back to showing
+		// the plaintext, loudly, and continue as the plain-key case.
+		var reason error
+		if pass, passErr := keystore.PassphraseFromEnv(); passErr != nil || len(pass) == 0 {
+			reason = passErr
+			if reason == nil {
+				reason = keystore.ErrNoPassphrase
 			}
-			fmt.Printf("\n  %s⚠  The existing config.toml is SEALED but no passphrase is available (%v).%s\n"+
-				"     The newly registered key is shown IN THE CLEAR below so you are not locked\n"+
-				"     out — seal it yourself with `nhp-agentd seal` and set %s before start.\n\n",
-				colorYellow, retErr, colorReset, keystore.EnvPassphraseFile)
-			existingKeySealed = false
+		} else if blob, sealErr := keystore.Seal(privKeyBytes, pass); sealErr != nil {
+			reason = sealErr
 		} else {
-			blob, sealErr := keystore.Seal(privKeyBytes, pass)
-			if sealErr != nil {
-				fmt.Printf("\n  %s❌ Failed to re-seal the registered key:%s %v\n\n", colorYellow, colorReset, sealErr)
-				return sealErr
-			}
 			privKey = blob
+		}
+		if reason != nil {
+			fmt.Printf("\n  %s⚠  Could not re-seal the registered key (%v).%s\n"+
+				"     It is shown IN THE CLEAR below so you are not locked out — seal it\n"+
+				"     yourself with `nhp-agentd seal` and set %s before starting the agent.\n\n",
+				colorYellow, reason, colorReset, keystore.EnvPassphraseFile)
+			existingKeySealed = false
 		}
 	}
 

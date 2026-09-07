@@ -1338,20 +1338,20 @@ func TestVerifyLedgerAnchorsOnArchivedSegments(t *testing.T) {
 }
 
 // TestAsyncWriterBoundedPendingOnPersistentFailure: a writer that never
-// recovers must not grow the retry buffer without bound. Once past
-// maxPendingBytes the oldest buffered lines are dropped and counted.
+// recovers must not grow memory without bound. Once pending reaches
+// maxPendingBytes the drain blocks (stops draining the queue), the queue
+// fills, and Log's queue-full path drops + rolls the chain state back — so
+// no already-chained line is discarded and the on-disk chain stays
+// contiguous.
 func TestAsyncWriterBoundedPendingOnPersistentFailure(t *testing.T) {
 	dw := &deadWriter{}
-	l := NewLedger(nopCloser{dw}, Options{Async: true, QueueSize: 1 << 16})
+	l := NewLedger(nopCloser{dw}, Options{Async: true, QueueSize: 8})
 
-	// ~2 KiB per line, so a few thousand entries blow well past the 8 MiB cap
-	// without the test having to log tens of thousands of tiny records.
-	filler := strings.Repeat("x", 2000)
-	entries := (maxPendingBytes/2100)*3 + 200
+	filler := strings.Repeat("x", 2000) // ~2 KiB per line
+	entries := (maxPendingBytes / 2100) * 4
 	for i := 0; i < entries; i++ {
 		_ = l.Log("knock", SeverityInfo, map[string]string{"reason": filler})
 	}
-	// Give the drain goroutine time to chew through the queue.
 	deadline := time.Now().Add(5 * time.Second)
 	for l.Dropped() == 0 && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
@@ -1359,13 +1359,12 @@ func TestAsyncWriterBoundedPendingOnPersistentFailure(t *testing.T) {
 	_ = l.Close()
 
 	if l.Dropped() == 0 {
-		t.Fatal("a persistent write failure never dropped anything — the pending buffer is unbounded")
+		t.Fatal("a persistent write failure never dropped anything — no backpressure reached Log")
 	}
-	if dw.peak > 4*maxPendingBytes {
-		t.Fatalf("pending buffer peaked at %d bytes, well over the %d cap", dw.peak, maxPendingBytes)
-	}
-	if l.loadAsyncErr() == nil {
-		t.Fatal("asyncErr should still be set while writes are failing")
+	// The largest buffer the writer ever saw is ~one line over the cap, not
+	// the whole accumulation.
+	if dw.peak > maxPendingBytes+64*1024 {
+		t.Fatalf("pending buffer peaked at %d bytes, over the %d cap", dw.peak, maxPendingBytes)
 	}
 }
 
@@ -1377,4 +1376,53 @@ func (d *deadWriter) Write(p []byte) (int, error) {
 		d.peak = len(p)
 	}
 	return 0, errors.New("dead writer: permanent failure")
+}
+
+// TestSegmentRetentionPrunesOldest: MaxSegments caps how many "<path>.<n>"
+// files survive; older ones are deleted after a rotation.
+func TestSegmentRetentionPrunesOldest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{MaxSizeBytes: 1024, MaxSegments: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 120) // many rotations
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	segs, err := numberedSegments(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(segs) != 3 {
+		names := make([]string, len(segs))
+		for i, s := range segs {
+			names[i] = filepath.Base(s.name)
+		}
+		t.Fatalf("kept %d numbered segments, want 3: %v", len(segs), names)
+	}
+	// The surviving set no longer starts at seq 1 — VerifyLedger must anchor,
+	// not report a break.
+	if res := VerifyLedger(path, nil); res.Err != nil {
+		t.Fatalf("retained set failed to verify: %v", res.Err)
+	} else if res.AnchoredAtSeq == 0 {
+		t.Fatal("expected an anchored verify after retention pruning")
+	}
+}
+
+// TestVerifyLedgerErrorsWhenNothingToRead: a deleted/renamed ledger with only
+// a non-numeric sibling (".corrupt-<ns>") next to it must NOT verify clean.
+func TestVerifyLedgerErrorsWhenNothingToRead(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+	if err := os.WriteFile(path+".corrupt-123", []byte("junk\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	res := VerifyLedger(path, nil)
+	if res.Err == nil {
+		t.Fatal("VerifyLedger on a missing ledger returned a clean result")
+	}
 }

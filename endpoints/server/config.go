@@ -283,9 +283,20 @@ type AuditConfig struct {
 	// in a fresh file. The hash chain spans the segments, and `audit verify`
 	// picks the siblings up automatically, so rotation no longer means the
 	// choice between downtime and an ever-growing file that the FilePath
-	// note above describes. 0 keeps the single-file behavior. Archive or
-	// delete whole ".<seq>" segments out of band once verified.
+	// note above describes. 0 keeps the single-file behavior. Archive
+	// whole ".<seq>" segments out of band once verified.
 	MaxSizeBytes int64 `json:"maxSizeBytes"`
+
+	// MaxSegments, when > 0, is a retention cap: after a rotation the oldest
+	// "<FilePath>.<n>" files beyond this count are deleted. Combined with
+	// MaxSizeBytes this bounds total ledger disk use at roughly
+	// MaxSizeBytes*(MaxSegments+1) — important because NHP_OTP / NHP_REG are
+	// audited before the peer is validated, so a party that knows the
+	// server's public key can otherwise drive the ledger to fill the disk.
+	// 0 (default) keeps every segment; use it only if you archive segments
+	// off-box. Deleting segments means `audit verify` can no longer walk
+	// from seq 1 — it anchors on the first surviving entry and says so.
+	MaxSegments int `json:"maxSegments"`
 }
 
 type RemoteConfig struct {

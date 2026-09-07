@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -258,6 +259,13 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	// would still have served requests in the gap. initAuditLedger depends
 	// only on s.config.Audit and ExeDirPath, both already set.
 	if auditErr := s.initAuditLedger(); auditErr != nil {
+		// A pure [Audit] config mistake (bad base64 / too-short signing key)
+		// is always fatal — running on with no trail because of a typo is
+		// worse than the weak key the check protects against. Only an I/O
+		// failure honors the fail-safe / fail-closed trade-off below.
+		if errors.Is(auditErr, errAuditConfig) {
+			return fmt.Errorf("invalid [Audit] configuration: %w", auditErr)
+		}
 		if s.config != nil && s.config.Audit.FailClosed {
 			return fmt.Errorf("audit ledger unavailable and [Audit] FailClosed is set — refusing to start: %w", auditErr)
 		}

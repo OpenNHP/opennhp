@@ -69,7 +69,10 @@ func VerifyLedger(path string, hmacKey []byte) VerifyResult {
 	}
 
 	if len(segs) == 0 {
-		return VerifyResult{}
+		// Nothing to read is NOT a clean pass — the ledger was deleted,
+		// renamed, or the path is wrong. Returning a zero result here would
+		// print "OK: 0 entries" and exit 0.
+		return VerifyResult{Err: fmt.Errorf("audit: no ledger file or numbered segment found at %q", path)}
 	}
 
 	// If the first available entry is not seq 1, earlier segments were

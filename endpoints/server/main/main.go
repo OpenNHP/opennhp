@@ -274,24 +274,28 @@ func main() {
 func verifyLedgerFile(path string, hmacKey []byte) (audit.VerifyResult, error) {
 	clean := filepath.Clean(path)
 	if _, err := os.Stat(clean); err != nil {
-		// Allow the case where only rotated segments exist and the live file
-		// was archived away. A literal prefix scan (not filepath.Glob) so a
-		// path containing glob metacharacters still works.
-		if !hasSegmentSibling(clean) {
+		// Allow the case where only rotated "<path>.<n>" segments exist and
+		// the live file was archived away. Only a NUMERIC suffix counts — a
+		// stray ".corrupt-<ns>" / ".quarantined-<ns>" / ".bak" next to a
+		// deleted ledger must NOT make this look present.
+		if !hasNumberedSegment(clean) {
 			return audit.VerifyResult{}, err
 		}
 	}
 	return audit.VerifyLedger(clean, hmacKey), nil
 }
 
-func hasSegmentSibling(path string) bool {
+func hasNumberedSegment(path string) bool {
 	ents, err := os.ReadDir(filepath.Dir(path))
 	if err != nil {
 		return false
 	}
 	prefix := filepath.Base(path) + "."
 	for _, e := range ents {
-		if !e.IsDir() && strings.HasPrefix(e.Name(), prefix) {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), prefix) {
+			continue
+		}
+		if _, convErr := strconv.ParseUint(strings.TrimPrefix(e.Name(), prefix), 10, 64); convErr == nil {
 			return true
 		}
 	}

@@ -43,5 +43,6 @@ Fsync = false
 Async = false
 AsyncQueueSize = 0
 MaxSizeBytes = 0
+MaxSegments = 0
 SigningKeyBase64 = ""
 FailClosed = false

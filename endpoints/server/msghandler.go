@@ -178,30 +178,19 @@ func (s *UdpServer) HandleOTPRequest(ppd *core.PacketParserData) (err error) {
 	err = json.Unmarshal(ppd.BodyMessage, otpMsg)
 	if err != nil {
 		log.Error("server-agent(#%d@%s)[HandleOTPRequest] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
-		// Audit the rejected request too: a burst of unparseable OTP
-		// requests from one source is exactly the kind of thing the ledger
-		// should carry. The user is unknown at this point.
-		if s.auditLedger != nil {
-			s.auditEvent("otp_request", audit.SeverityWarn, map[string]string{
-				"src":    addrStr,
-				"result": "rejected",
-				"reason": "malformed request",
-			})
-		}
+		// Not audited: NHP_OTP skips peer validation (new agents), so a
+		// garbage-packet flood would append here at packet rate with no
+		// UserId to attribute it to and no retention bound. The parse
+		// failure is still logged; the ledger records real OTP attempts
+		// only (below).
 		return err
 	}
 
 	handler := s.FindPluginHandler(otpMsg.AuthServiceId)
 	if handler == nil {
-		if s.auditLedger != nil {
-			s.auditEvent("otp_request", audit.SeverityWarn, map[string]string{
-				"user":   otpMsg.UserId,
-				"src":    addrStr,
-				"aspId":  otpMsg.AuthServiceId,
-				"result": "rejected",
-				"reason": common.ErrAuthHandlerNotFound.Error(),
-			})
-		}
+		// Same reasoning — a wrong/spoofed aspId is a cheap way to spam
+		// entries. The RequestOTP attempt below (which reaches a real ASP)
+		// is the first point worth recording.
 		return common.ErrAuthHandlerNotFound
 	}
 

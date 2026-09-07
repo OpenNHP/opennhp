@@ -191,10 +191,11 @@ type Ledger struct {
 	// file is renamed to "<path>.<lastSegSeq>" and a fresh one is opened.
 	// Every entry already carries prevHash + seq, so the chain stays
 	// continuous across the split with no special boundary record.
-	path       string
-	maxSize    int64
-	curSize    int64
-	lastSegSeq uint64
+	path        string
+	maxSize     int64
+	maxSegments int // retention: keep at most this many "<path>.<n>" files (0 = all)
+	curSize     int64
+	lastSegSeq  uint64
 
 	// Async mode: Log computes the entry (seq/hash/sig) under mu and hands
 	// the marshaled line to a single background writer via queue, so the
@@ -204,6 +205,7 @@ type Ledger struct {
 	queue   chan queuedLine
 	drainWG sync.WaitGroup
 	dropped atomic.Uint64
+	closing atomic.Bool // set by Close before it closes the queue
 	// asyncErr holds the most recent background write/rotation failure, or
 	// nil once a subsequent write succeeds. A pointer wrapper (not a bare
 	// error in an atomic.Value) is required: the drain goroutine stores
@@ -262,6 +264,13 @@ type Options struct {
 	// honored when the ledger was opened via Open (a path is required to
 	// rename); ignored for a bare io.Writer.
 	MaxSizeBytes int64
+	// MaxSegments, when > 0, is a retention bound: after a rotation the
+	// oldest "<path>.<n>" files are deleted so at most this many remain.
+	// With MaxSizeBytes this caps disk use at ~MaxSizeBytes*(MaxSegments+1);
+	// 0 keeps every segment (archive them out of band). Deleting a segment
+	// makes the chain no longer verifiable from seq 1 — `audit verify` then
+	// anchors on the first surviving entry and says so.
+	MaxSegments int
 }
 
 // defaultAsyncQueueSize is the async write queue depth when QueueSize is 0.
@@ -307,50 +316,54 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 		}
 	}()
 
-	// pending holds bytes a previous Write did not accept, so a TRANSIENT
-	// failure (ENOSPC, then the operator frees space) does not lose committed
-	// entries or gap the chain: the next successful write flushes them ahead
-	// of the newest line. It is bounded by maxPendingBytes — on a PERSISTENT
-	// failure the oldest buffered lines are discarded (counted in Dropped,
-	// surfaced via asyncErr so auditEvent's rate-limited Critical fires),
-	// rather than growing until the process is OOM-killed.
+	// pending holds bytes a previous Write did not accept. A TRANSIENT
+	// failure (ENOSPC, then the operator frees space) is retried without
+	// losing committed entries or gapping the chain. Once pending reaches
+	// maxPendingBytes the drain STOPS reading the queue and just retries in
+	// place: the queue then backpressures Log, whose queue-full path rolls
+	// l.seq/l.lastHash back so the on-disk chain stays contiguous. Memory is
+	// bounded at maxPendingBytes + the queue. Nothing already chained is
+	// ever discarded here.
 	var pending []byte
+	retry := time.Millisecond
 	for it := range q {
-		if len(pending) > 0 {
-			pending = append(pending, it.line...)
-		} else {
-			pending = append(pending[:0], it.line...)
-		}
+		pending = append(pending, it.line...)
 		if l.shouldRotate(len(pending)) {
 			if rErr := l.rollSegment(); rErr != nil {
 				l.asyncErr.Store(&asyncFailure{err: rErr})
 				// keep going on the current segment
 			}
 		}
-		if _, err := l.w.Write(pending); err != nil {
-			// Drop the oldest buffered lines once the retry buffer is full,
-			// so a persistent failure cannot grow the process without bound.
-			// The newest entry is the one most worth keeping.
-			if len(pending) > maxPendingBytes {
-				cut := lineBoundaryAtLeast(pending, len(pending)-maxPendingBytes)
-				droppedLines := bytesNewlineCount(pending[:cut])
-				pending = append(pending[:0], pending[cut:]...)
-				total := l.dropped.Add(droppedLines)
-				l.asyncErr.Store(&asyncFailure{err: fmt.Errorf("audit: async writes failing; dropped %d buffered entries (%d total): %w", droppedLines, total, err)})
-			} else {
+
+		wrote := false
+		for !wrote {
+			if _, err := l.w.Write(pending); err != nil {
 				l.asyncErr.Store(&asyncFailure{err: err})
+				if len(pending) < maxPendingBytes {
+					break // accept more from the queue; retry the whole buffer later
+				}
+				if l.closing.Load() {
+					return
+				}
+				time.Sleep(retry)
+				if retry < time.Second {
+					retry *= 2
+				}
+				continue
 			}
-			continue
+			wrote = true
 		}
-		l.curSize += int64(len(pending))
-		l.lastSegSeq = it.seq
-		pending = pending[:0]
-		// A write succeeded: clear any prior failure so Log stops surfacing
-		// it and auditEvent's "writes recovered" path can fire.
-		l.asyncErr.Store(nil)
-		if l.fsync {
-			if f, ok := l.w.(*os.File); ok {
-				_ = f.Sync()
+
+		if wrote {
+			l.curSize += int64(len(pending))
+			l.lastSegSeq = it.seq
+			pending = pending[:0]
+			retry = time.Millisecond
+			l.asyncErr.Store(nil) // recovered; auditEvent can log "writes recovered"
+			if l.fsync {
+				if f, ok := l.w.(*os.File); ok {
+					_ = f.Sync()
+				}
 			}
 		}
 	}
@@ -361,31 +374,12 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 	}
 }
 
-// maxPendingBytes caps the async retry buffer. Past this, the oldest
-// buffered lines are dropped (and counted) rather than growing until the
-// process is OOM-killed by a persistent write failure.
+// maxPendingBytes is the point at which the async drain stops reading its
+// queue and just retries the pending write in place. Memory is then bounded
+// at maxPendingBytes + the queue, and the queue backpressures Log (whose
+// queue-full path rolls the chain state back, so nothing is written with a
+// gap). No already-chained entry is ever discarded.
 const maxPendingBytes = 8 * 1024 * 1024
-
-// lineBoundaryAtLeast returns the smallest index >= min that falls just after
-// a '\n' in b (so b[:i] is a whole number of lines), or len(b) if there is
-// no newline at or after min.
-func lineBoundaryAtLeast(b []byte, min int) int {
-	if min <= 0 {
-		return 0
-	}
-	if min >= len(b) {
-		return len(b)
-	}
-	if i := bytes.IndexByte(b[min:], '\n'); i >= 0 {
-		return min + i + 1
-	}
-	return len(b)
-}
-
-// bytesNewlineCount counts '\n' in b — the number of complete lines.
-func bytesNewlineCount(b []byte) uint64 {
-	return uint64(bytes.Count(b, []byte{'\n'}))
-}
 
 // shouldRotate reports whether appending nextLen bytes would push the live
 // segment past maxSize. curSize > 0 keeps a single over-large entry from
@@ -492,6 +486,7 @@ func Open(path string, opts Options) (*Ledger, error) {
 	l.RepairedOnOpen = repaired
 	l.path = path
 	l.maxSize = opts.MaxSizeBytes
+	l.maxSegments = opts.MaxSegments
 	l.curSize = curSize
 	l.lastSegSeq = seq
 	return l, nil
@@ -551,7 +546,26 @@ func (l *Ledger) rollSegment() error {
 	}
 	l.w, l.closer = f, f
 	l.curSize = 0
+	l.pruneSegments()
 	return nil
+}
+
+// pruneSegments enforces maxSegments: after a rotation, delete the
+// lowest-numbered "<path>.<n>" files so at most maxSegments of them remain.
+// With MaxSizeBytes this caps total disk use at roughly
+// MaxSizeBytes*(maxSegments+1). maxSegments <= 0 keeps everything (archive
+// out of band). Best-effort: a delete failure is not fatal.
+func (l *Ledger) pruneSegments() {
+	if l.maxSegments <= 0 {
+		return
+	}
+	segs, err := numberedSegments(l.path)
+	if err != nil || len(segs) <= l.maxSegments {
+		return
+	}
+	for _, s := range segs[:len(segs)-l.maxSegments] {
+		_ = os.Remove(s.name)
+	}
 }
 
 // ensureLedgerFile refuses to modify a non-empty file whose first line is
@@ -1018,13 +1032,15 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 		}
 	}
 
+	var rotErr error
 	if l.shouldRotate(len(line)) {
 		if rErr := l.rollSegment(); rErr != nil {
 			// A rotation hiccup must not drop the entry: rollSegment leaves
 			// l.w writable, so fall through and append to the current
-			// segment. A persistent problem resurfaces as curSize keeps
-			// growing past maxSize.
-			_ = rErr
+			// segment. Remember it so it is surfaced through Log's return
+			// (auditEvent escalates a persistent failure) instead of the
+			// file just silently growing past maxSize.
+			rotErr = fmt.Errorf("audit: segment rotation failed (entry still written): %w", rErr)
 		}
 	}
 
@@ -1077,7 +1093,7 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 	l.curSize += int64(len(line))
 	l.lastSegSeq = e.Seq
 	l.lastHash = e.Hash
-	return nil
+	return rotErr // nil unless rotation failed above (the entry was still written)
 }
 
 // Close flushes any queued async writes and closes the underlying file if
@@ -1085,6 +1101,7 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 // error rather than panicking on the closed queue.
 func (l *Ledger) Close() error {
 	if l.async {
+		l.closing.Store(true) // let a drain blocked on a dead writer bail out
 		l.mu.Lock()
 		q := l.queue
 		l.queue = nil // further Log calls see "closed" instead of sending

@@ -26,6 +26,11 @@ const defaultAuditLedgerFile = "audit/audit-ledger.jsonl"
 // end up with signed=true and a placeholder key.
 const minSigningKeyLen = 32
 
+// errAuditConfig marks an [Audit] configuration error (bad base64, short
+// signing key) as opposed to an I/O failure. Start treats it as always
+// fatal — a config typo must not silently leave the gateway unaudited.
+var errAuditConfig = errors.New("audit: invalid configuration")
+
 // initAuditLedger opens the audit ledger when enabled in config. It is a
 // no-op (leaving s.auditLedger nil) when auditing is off, so the rest of
 // the server can call auditEvent unconditionally.
@@ -46,7 +51,7 @@ func (s *UdpServer) initAuditLedger() error {
 	if s.config.Audit.SigningKeyBase64 != "" {
 		key, err := base64.StdEncoding.DecodeString(s.config.Audit.SigningKeyBase64)
 		if err != nil {
-			return fmt.Errorf("audit SigningKeyBase64 is not valid base64: %w", err)
+			return fmt.Errorf("%w: SigningKeyBase64 is not valid base64: %v", errAuditConfig, err)
 		}
 		// A short key is almost always a placeholder or a fat-fingered
 		// value; accepting it would log signed=true while offering trivially
@@ -54,8 +59,8 @@ func (s *UdpServer) initAuditLedger() error {
 		// 32-byte (256-bit) minimum is the accepted floor and matches the
 		// key `head -c 32 /dev/urandom | base64` in the docs.
 		if len(key) < minSigningKeyLen {
-			return fmt.Errorf("audit SigningKeyBase64 decodes to %d bytes; need at least %d (generate with: head -c 32 /dev/urandom | base64)",
-				len(key), minSigningKeyLen)
+			return fmt.Errorf("%w: SigningKeyBase64 decodes to %d bytes; need at least %d (generate with: head -c 32 /dev/urandom | base64)",
+				errAuditConfig, len(key), minSigningKeyLen)
 		}
 		hmacKey = key
 	}
@@ -66,6 +71,7 @@ func (s *UdpServer) initAuditLedger() error {
 		Async:        s.config.Audit.Async,
 		QueueSize:    s.config.Audit.AsyncQueueSize,
 		MaxSizeBytes: s.config.Audit.MaxSizeBytes,
+		MaxSegments:  s.config.Audit.MaxSegments,
 	}
 	ledger, err := audit.Open(path, opts)
 	if err != nil {

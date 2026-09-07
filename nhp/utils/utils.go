@@ -193,10 +193,31 @@ func UpdateTomlConfig(filePath string, key string, value any) error {
 		return fmt.Errorf("unsupported type: %T", value)
 	}
 
-	err = os.WriteFile(filePath, []byte(newContent), 0644) //nolint:gosec // G306: Config files are typically world-readable
+	// Write atomically: RotateAgentKey now persists a re-SEALED key through
+	// this path, and a plain os.WriteFile truncates first — a crash mid-write
+	// would destroy a key that (unlike the old plaintext case) exists nowhere
+	// else. Write a temp file in the same dir, fsync, then rename over.
+	dir := filepath.Dir(filePath)
+	tmp, err := os.CreateTemp(dir, ".toml-*")
 	if err != nil {
 		return err
 	}
-
-	return nil
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op after a successful rename
+	if _, err = tmp.Write([]byte(newContent)); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err = tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	//nolint:gosec // G302: config files are conventionally world-readable
+	if err = os.Chmod(tmpName, 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, filePath)
 }

@@ -17,16 +17,6 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/keystore"
 )
 
-// rawKeyLen is the fixed length of an NHP device private key (Curve25519 and
-// SM2 scalars are both 32 bytes). A mistyped or truncated key is caught here
-// rather than much later at device init.
-const rawKeyLen = 32
-
-// minPassphraseLen is a floor enforced by the CLI only (not the library, so
-// unit tests stay cheap). Argon2id does not rescue a two-character
-// passphrase against a stolen config.toml.
-const minPassphraseLen = 8
-
 // SealCommand returns the `seal` subcommand: read a base64 private key from
 // stdin and print a sealed blob for config.toml. The passphrase comes from
 // the environment (NHP_KEY_PASSPHRASE / NHP_KEY_PASSPHRASE_FILE) so it never
@@ -53,12 +43,15 @@ func SealCommand() *cli.Command {
 			if priv == "" {
 				return fmt.Errorf("no private key on stdin; usage: echo \"$KEY\" | %s seal", bin)
 			}
+			if keystore.IsSealed(priv) {
+				return fmt.Errorf("that value is already a sealed blob — use `%s unseal` to recover the key, not `seal`", bin)
+			}
 			raw, err := base64.StdEncoding.DecodeString(priv)
 			if err != nil {
 				return fmt.Errorf("decode private key: %w", err)
 			}
-			if len(raw) != rawKeyLen {
-				return fmt.Errorf("private key decodes to %d bytes, expected %d — is it the right value?", len(raw), rawKeyLen)
+			if len(raw) != keystore.DeviceKeyLen {
+				return fmt.Errorf("private key decodes to %d bytes, expected %d — is it the right value?", len(raw), keystore.DeviceKeyLen)
 			}
 			pass, source, err := passphraseFromEnv()
 			if err != nil {
@@ -67,8 +60,8 @@ func SealCommand() *cli.Command {
 			if len(pass) == 0 {
 				return fmt.Errorf("no passphrase set: export %s or %s before sealing", keystore.EnvPassphrase, keystore.EnvPassphraseFile)
 			}
-			if len(pass) < minPassphraseLen {
-				return fmt.Errorf("passphrase is %d bytes; use at least %d — Argon2id does not make a short passphrase safe against a stolen config", len(pass), minPassphraseLen)
+			if len(pass) < keystore.MinPassphraseLen {
+				return fmt.Errorf("passphrase is %d bytes; use at least %d — Argon2id does not make a short passphrase safe against a stolen config", len(pass), keystore.MinPassphraseLen)
 			}
 			warnIfPassphraseFilePermissive(source)
 			blob, err := keystore.Seal(raw, pass)

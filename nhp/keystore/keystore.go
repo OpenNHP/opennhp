@@ -47,12 +47,19 @@ const (
 	argonThreads = 4
 	argonKeyLen  = 32 // AES-256 derived-key size
 
-	// deviceKeyLen is the length of an NHP device private scalar
+	// DeviceKeyLen is the length of an NHP device private scalar
 	// (Curve25519 / SM2). It happens to equal argonKeyLen, but the two are
 	// unrelated: this one is what Seal accepts and Open must recover, so a
 	// truncated or mistyped key is caught at seal time rather than surfacing
-	// much later at device creation.
-	deviceKeyLen = 32
+	// much later at device creation. Exported so CLI wrappers don't keep
+	// their own copy.
+	DeviceKeyLen = 32
+
+	// MinPassphraseLen is the shortest passphrase Seal accepts. A short
+	// passphrase makes the Argon2id work factor moot; enforced in the
+	// library so every producer (the seal CLI, RotateAgentKey, the register
+	// re-seal) agrees instead of only the CLI.
+	MinPassphraseLen = 8
 
 	// Upper bounds on the KDF cost parsed out of a blob. The blob comes
 	// from operator-controlled config (an attacker who can edit it can
@@ -134,17 +141,20 @@ func sealedVersion(value string) (token string, ok bool) {
 // Seal encrypts raw private-key bytes into a self-describing blob string
 // suitable for storing in config.toml in place of the plain base64 key.
 func Seal(privKeyRaw, passphrase []byte) (string, error) {
-	if len(privKeyRaw) != deviceKeyLen {
+	if len(privKeyRaw) != DeviceKeyLen {
 		// Mirror the length check Open applies to the recovered plaintext, so
 		// the library can never mint a blob it would later refuse to open. An
 		// empty key is just the most common way to hit this.
 		if len(privKeyRaw) == 0 {
 			return "", errors.New("keystore: refusing to seal an empty key")
 		}
-		return "", fmt.Errorf("keystore: refusing to seal a %d-byte key, expected %d", len(privKeyRaw), deviceKeyLen)
+		return "", fmt.Errorf("keystore: refusing to seal a %d-byte key, expected %d", len(privKeyRaw), DeviceKeyLen)
 	}
-	if len(passphrase) == 0 {
-		return "", errors.New("keystore: refusing to seal with an empty passphrase")
+	if len(passphrase) < MinPassphraseLen {
+		if len(passphrase) == 0 {
+			return "", errors.New("keystore: refusing to seal with an empty passphrase")
+		}
+		return "", fmt.Errorf("keystore: passphrase is %d bytes; use at least %d", len(passphrase), MinPassphraseLen)
 	}
 
 	salt := make([]byte, saltLen)
@@ -252,10 +262,10 @@ func Open(blob string, passphrase []byte) ([]byte, error) {
 	}
 	// The AEAD proved integrity, so this is a real recovered key — but a
 	// blob sealed from a truncated/mistyped key would only fail much later
-	// at device creation. NHP device scalars are deviceKeyLen bytes; mirror
+	// at device creation. NHP device scalars are DeviceKeyLen bytes; mirror
 	// the check Seal applies on the way in.
-	if len(plain) != deviceKeyLen {
-		return nil, fmt.Errorf("%w: recovered key is %d bytes, expected %d", ErrMalformedBlob, len(plain), deviceKeyLen)
+	if len(plain) != DeviceKeyLen {
+		return nil, fmt.Errorf("%w: recovered key is %d bytes, expected %d", ErrMalformedBlob, len(plain), DeviceKeyLen)
 	}
 	return plain, nil
 }

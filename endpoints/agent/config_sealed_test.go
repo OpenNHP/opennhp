@@ -55,7 +55,7 @@ func TestGetAgentEcdhWithSealedKey(t *testing.T) {
 	raw := e.PrivateKey()
 	wantPub := core.ECDHFromKey(core.ECC_CURVE25519, raw).PublicKeyBase64()
 
-	blob, err := keystore.Seal(raw, []byte("pw"))
+	blob, err := keystore.Seal(raw, []byte("test-passphrase"))
 	if err != nil {
 		t.Fatal(err)
 	}

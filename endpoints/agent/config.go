@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	toml "github.com/pelletier/go-toml/v2"
 
@@ -48,6 +49,12 @@ type Config struct {
 	// resolvedKey rather than the field directly.
 	keyMu              sync.RWMutex
 	resolvedPrivateKey []byte
+
+	// sealedMissLogged rate-limits the "sealed key not yet resolved" error to
+	// once per process: the /publicKey handler reaches GetAgentEcdh, so a
+	// client polling it while the cache is (wrongly) empty could otherwise
+	// grow the error log without bound.
+	sealedMissLogged atomic.Bool
 }
 
 // SetResolvedPrivateKey stores the raw private key resolved at startup (or
@@ -83,7 +90,9 @@ func (c *Config) GetAgentEcdh() core.Ecdh {
 	prk := c.resolvedKey()
 	if prk == nil {
 		if keystore.IsSealed(c.PrivateKeyBase64) {
-			log.Error("GetAgentEcdh: sealed private key not yet resolved — caller ran before Start")
+			if c.sealedMissLogged.CompareAndSwap(false, true) {
+				log.Error("GetAgentEcdh: sealed private key not yet resolved — caller ran before Start (logged once)")
+			}
 		} else {
 			prk, _ = base64.StdEncoding.DecodeString(c.PrivateKeyBase64)
 		}

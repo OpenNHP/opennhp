@@ -469,10 +469,10 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 	privKeyBytes := ecdh.PrivateKey()
 	fmt.Printf("  %sGenerated key pair:%s\n", colorYellow, colorReset)
 	if existingKeySealed {
-		// The existing config keeps its key sealed, so this one will be
-		// re-sealed into config.toml too — don't echo the plaintext scalar
-		// into scrollback / CI logs.
-		fmt.Printf("    Private key:       %s(hidden — will be re-sealed into config.toml)%s\n", colorDim, colorReset)
+		// The existing config keeps its key sealed — don't echo the plaintext
+		// scalar into scrollback / CI logs here; the sealed blob is shown in
+		// the summary below once registration succeeds.
+		fmt.Printf("    Private key:       %s(shown sealed in the summary below)%s\n", colorDim, colorReset)
 	} else {
 		fmt.Printf("    Private key:       %s%s%s\n", colorDim, ecdh.PrivateKeyBase64(), colorReset)
 	}
@@ -717,6 +717,38 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 	// Registration succeeded — print results.
 	pubKey := a.PublicKeyBase64ByCipherScheme()
 	privKey := a.PrivateKeyBase64()
+
+	// If the existing config held a sealed key, re-seal the freshly
+	// registered one NOW — before the summary and the overwrite prompt — so
+	// (a) the summary can show the sealed blob (safe to display) instead of a
+	// bare "(hidden)", and (b) if the operator declines the config write they
+	// still have the blob to paste. The new public key is already on file
+	// with the server, so losing this private key locks the agent out.
+	if existingKeySealed {
+		pass, passErr := keystore.PassphraseFromEnv()
+		if passErr != nil || len(pass) == 0 {
+			// No passphrase: we cannot seal. Do NOT lose the key — fall back
+			// to showing the plaintext with a loud warning, and treat the
+			// rest of the flow as the plain-key case.
+			retErr := passErr
+			if retErr == nil {
+				retErr = keystore.ErrNoPassphrase
+			}
+			fmt.Printf("\n  %s⚠  The existing config.toml is SEALED but no passphrase is available (%v).%s\n"+
+				"     The newly registered key is shown IN THE CLEAR below so you are not locked\n"+
+				"     out — seal it yourself with `nhp-agentd seal` and set %s before start.\n\n",
+				colorYellow, retErr, colorReset, keystore.EnvPassphraseFile)
+			existingKeySealed = false
+		} else {
+			blob, sealErr := keystore.Seal(privKeyBytes, pass)
+			if sealErr != nil {
+				fmt.Printf("\n  %s❌ Failed to re-seal the registered key:%s %v\n\n", colorYellow, colorReset, sealErr)
+				return sealErr
+			}
+			privKey = blob
+		}
+	}
+
 	fmt.Println()
 	fmt.Printf("  %s✅ Registration successful!%s\n", colorGreen, colorReset)
 	fmt.Println()
@@ -735,11 +767,9 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 		return "Curve25519"
 	}())
 	if existingKeySealed {
-		// The existing config keeps its key sealed, so this one will be
-		// re-sealed into config.toml below. Don't echo the plaintext scalar
-		// into scrollback / CI logs — the very exposure sealing exists to
-		// reduce. `nhp-agentd pubkey` / `keygen` can reproduce it if needed.
-		fmt.Printf("  %sPrivate key:%s      %s(hidden — will be sealed into config.toml)%s\n", colorYellow, colorReset, colorDim, colorReset)
+		// privKey is the SEALED blob (re-sealed just above). Safe to display,
+		// and the operator needs it if they decline the config write.
+		fmt.Printf("  %sPrivate key (sealed):%s %s%s%s\n", colorYellow, colorReset, colorDim, privKey, colorReset)
 	} else {
 		fmt.Printf("  %sPrivate key:%s      %s%s%s\n", colorYellow, colorReset, colorDim, privKey, colorReset)
 	}
@@ -782,31 +812,11 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 
 	confirmed := (choice == "y" || choice == "yes") || (defaultYes && choice == "")
 	if confirmed {
-		// Preserve encryption-at-rest: if the config we are about to
-		// overwrite held a sealed key, re-seal the freshly registered one
-		// rather than writing it in the clear.
+		// privKey is already the sealed blob when existingKeySealed (re-sealed
+		// right after registration), or plain base64 otherwise — write it
+		// as-is.
 		if existingKeySealed {
-			pass, passErr := keystore.PassphraseFromEnv()
-			if passErr != nil || len(pass) == 0 {
-				fmt.Printf("\n  %s❌ The existing config.toml has a SEALED private key but no passphrase is available%s\n"+
-					"     (set %s or %s). Refusing to overwrite it with a plaintext key.\n\n",
-					colorYellow, colorReset, keystore.EnvPassphrase, keystore.EnvPassphraseFile)
-				// PassphraseFromEnv returns (nil, nil) when neither variable
-				// is set, so fall back to a concrete sentinel instead of
-				// wrapping a nil error (which renders as %!w(<nil>)).
-				retErr := passErr
-				if retErr == nil {
-					retErr = keystore.ErrNoPassphrase
-				}
-				return fmt.Errorf("cannot re-seal the registered key: %w", retErr)
-			}
-			sealed, sealErr := keystore.Seal(privKeyBytes, pass)
-			if sealErr != nil {
-				fmt.Printf("\n  %s❌ Failed to re-seal the registered key:%s %v\n\n", colorYellow, colorReset, sealErr)
-				return sealErr
-			}
-			privKey = sealed
-			fmt.Printf("  %s✔  registered key re-sealed with the configured passphrase%s\n", colorGreen, colorReset)
+			fmt.Printf("  %s✔  registered key sealed with the configured passphrase%s\n", colorGreen, colorReset)
 		}
 		if err := writeRegistrationConfig(exeDirPath, privKey, email, orgId, cipherScheme, existingKeySealed); err != nil {
 			fmt.Printf("  %s⚠  Failed to write config.toml:%s %v\n\n", colorYellow, colorReset, err)

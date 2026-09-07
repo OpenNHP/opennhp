@@ -46,7 +46,7 @@ func TestSealOpenRoundTrip(t *testing.T) {
 
 func TestSealIsRandomized(t *testing.T) {
 	key := randKey(t, 32)
-	pass := []byte("pw")
+	pass := []byte("test-passphrase")
 	a, err := Seal(key, pass)
 	if err != nil {
 		t.Fatal(err)
@@ -62,18 +62,18 @@ func TestSealIsRandomized(t *testing.T) {
 
 func TestOpenWrongPassphrase(t *testing.T) {
 	key := randKey(t, 32)
-	blob, err := Seal(key, []byte("right"))
+	blob, err := Seal(key, []byte("right-passphrase"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Open(blob, []byte("wrong")); err != ErrBadPassphrase {
+	if _, err := Open(blob, []byte("wrong-passphrase")); err != ErrBadPassphrase {
 		t.Fatalf("wrong passphrase: got %v want ErrBadPassphrase", err)
 	}
 }
 
 func TestOpenTamperedCiphertext(t *testing.T) {
 	key := randKey(t, 32)
-	pass := []byte("pw")
+	pass := []byte("test-passphrase")
 	blob, err := Seal(key, pass)
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestOpenTamperedCiphertext(t *testing.T) {
 }
 
 func TestOpenNoPassphrase(t *testing.T) {
-	blob, err := Seal(randKey(t, 32), []byte("pw"))
+	blob, err := Seal(randKey(t, 32), []byte("test-passphrase"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestOpenMalformed(t *testing.T) {
 		"v1$argon2id$3$65536$4$!!!!$BBBB$CCCC",
 	}
 	for _, blob := range cases {
-		if _, err := Open(blob, []byte("pw")); err == nil {
+		if _, err := Open(blob, []byte("test-passphrase")); err == nil {
 			t.Fatalf("expected error for malformed blob %q", blob)
 		}
 	}
@@ -123,19 +123,19 @@ func TestOpenMalformed(t *testing.T) {
 // malformed before the KDF runs.
 func TestOpenRejectsOversizedKDFParams(t *testing.T) {
 	// Build a structurally valid blob but swap in an absurd memory cost.
-	blob, err := Seal(randKey(t, 32), []byte("pw"))
+	blob, err := Seal(randKey(t, 32), []byte("test-passphrase"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	parts := strings.Split(blob, "$")
 	parts[3] = "999999999" // memory KiB, far above maxArgonMemory
-	if _, err := Open(strings.Join(parts, "$"), []byte("pw")); err != ErrMalformedBlob {
+	if _, err := Open(strings.Join(parts, "$"), []byte("test-passphrase")); err != ErrMalformedBlob {
 		t.Fatalf("oversized memory: got %v want ErrMalformedBlob", err)
 	}
 
 	parts = strings.Split(blob, "$")
 	parts[2] = "9999" // time, far above maxArgonTime
-	if _, err := Open(strings.Join(parts, "$"), []byte("pw")); err != ErrMalformedBlob {
+	if _, err := Open(strings.Join(parts, "$"), []byte("test-passphrase")); err != ErrMalformedBlob {
 		t.Fatalf("oversized time: got %v want ErrMalformedBlob", err)
 	}
 }
@@ -143,13 +143,13 @@ func TestOpenRejectsOversizedKDFParams(t *testing.T) {
 // TestOpenRejectsBadNonceLength ensures a wrong-length nonce is rejected as
 // malformed (fast-fail before the KDF).
 func TestOpenRejectsBadNonceLength(t *testing.T) {
-	blob, err := Seal(randKey(t, 32), []byte("pw"))
+	blob, err := Seal(randKey(t, 32), []byte("test-passphrase"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	parts := strings.Split(blob, "$")
 	parts[6] = base64.RawStdEncoding.EncodeToString([]byte("shortnonce")) // != 12 bytes
-	if _, err := Open(strings.Join(parts, "$"), []byte("pw")); err != ErrMalformedBlob {
+	if _, err := Open(strings.Join(parts, "$"), []byte("test-passphrase")); err != ErrMalformedBlob {
 		t.Fatalf("bad nonce length: got %v want ErrMalformedBlob", err)
 	}
 }
@@ -198,11 +198,24 @@ func TestPassphraseTrimSymmetry(t *testing.T) {
 }
 
 func TestSealRejectsEmpty(t *testing.T) {
-	if _, err := Seal(nil, []byte("pw")); err == nil {
+	if _, err := Seal(nil, []byte("test-passphrase")); err == nil {
 		t.Fatal("expected error sealing empty key")
 	}
 	if _, err := Seal(randKey(t, 32), nil); err == nil {
 		t.Fatal("expected error sealing with empty passphrase")
+	}
+}
+
+// TestSealEnforcesPassphraseFloor: the MinPassphraseLen floor lives in the
+// library now, so RotateAgentKey / the register re-seal can't slip a short
+// passphrase past the CLI check.
+func TestSealEnforcesPassphraseFloor(t *testing.T) {
+	key := randKey(t, 32)
+	if _, err := Seal(key, []byte("short")); err == nil {
+		t.Fatal("Seal accepted a 5-byte passphrase")
+	}
+	if _, err := Seal(key, []byte("12345678")); err != nil { // exactly MinPassphraseLen
+		t.Fatalf("Seal rejected an 8-byte passphrase: %v", err)
 	}
 }
 
@@ -223,7 +236,7 @@ func TestResolvePrivateKeyPlainBackwardCompat(t *testing.T) {
 
 func TestResolvePrivateKeySealed(t *testing.T) {
 	raw := randKey(t, 32)
-	pass := []byte("pw")
+	pass := []byte("test-passphrase")
 	blob, err := Seal(raw, pass)
 	if err != nil {
 		t.Fatal(err)
@@ -308,13 +321,13 @@ func TestOpenRejectsHeaderTampering(t *testing.T) {
 // TestOpenRejectsBadSaltLength ensures a wrong-length salt is rejected as
 // malformed before the KDF runs, matching the existing nonce-length guard.
 func TestOpenRejectsBadSaltLength(t *testing.T) {
-	blob, err := Seal(randKey(t, 32), []byte("pw"))
+	blob, err := Seal(randKey(t, 32), []byte("test-passphrase"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	parts := strings.Split(blob, "$")
 	parts[5] = base64.RawStdEncoding.EncodeToString([]byte("short")) // != 16 bytes
-	if _, err := Open(strings.Join(parts, "$"), []byte("pw")); err != ErrMalformedBlob {
+	if _, err := Open(strings.Join(parts, "$"), []byte("test-passphrase")); err != ErrMalformedBlob {
 		t.Fatalf("bad salt length: got %v want ErrMalformedBlob", err)
 	}
 }
@@ -373,13 +386,13 @@ func TestOpenRejectsWrongLengthRecoveredKey(t *testing.T) {
 // 32-byte device scalar, mirroring Open, so the library cannot mint a blob
 // it would later refuse to open.
 func TestSealRejectsWrongLengthKey(t *testing.T) {
-	if _, err := Seal([]byte("too short"), []byte("pw")); err == nil {
+	if _, err := Seal([]byte("too short"), []byte("test-passphrase")); err == nil {
 		t.Fatal("Seal accepted a short key")
 	}
-	if _, err := Seal(randKey(t, 33), []byte("pw")); err == nil {
+	if _, err := Seal(randKey(t, 33), []byte("test-passphrase")); err == nil {
 		t.Fatal("Seal accepted an over-length key")
 	}
-	if _, err := Seal(randKey(t, 32), []byte("pw")); err != nil {
+	if _, err := Seal(randKey(t, 32), []byte("test-passphrase")); err != nil {
 		t.Fatalf("Seal rejected a valid 32-byte key: %v", err)
 	}
 }
@@ -388,7 +401,7 @@ func TestSealRejectsWrongLengthKey(t *testing.T) {
 // version reports ErrUnsupportedVersion, not ErrMalformedBlob, so the
 // operator is told to upgrade rather than to hunt for corruption.
 func TestOpenUnknownVersionIsDistinctError(t *testing.T) {
-	_, err := Open("v2$argon2id$3$65536$4$AAAA$BBBB$CCCC", []byte("pw"))
+	_, err := Open("v2$argon2id$3$65536$4$AAAA$BBBB$CCCC", []byte("test-passphrase"))
 	if !errors.Is(err, ErrUnsupportedVersion) {
 		t.Fatalf("unknown version: got %v want ErrUnsupportedVersion", err)
 	}

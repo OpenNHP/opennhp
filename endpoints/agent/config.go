@@ -482,6 +482,9 @@ func (a *UdpAgent) NewEcdhFromConfigFile() (core.Ecdh, error) {
 	return core.NewECDH(conf.GetEccType()), nil
 }
 
+// RotateTeeKey rewrites TEEPrivateKeyBase64 in dhp.toml. The TEE key is
+// intentionally out of scope for encryption-at-rest (`seal`): it is always
+// written and read as plain base64, unlike the agent's own PrivateKeyBase64.
 func (a *UdpAgent) RotateTeeKey() error {
 	fileName := filepath.Join(ExeDirPath, "etc", "dhp.toml")
 

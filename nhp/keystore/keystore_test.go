@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/argon2"
 )
 
 func randKey(t *testing.T, n int) []byte {
@@ -338,14 +342,57 @@ func TestIsSealedRecognizesAnyVersion(t *testing.T) {
 
 // TestOpenRejectsWrongLengthRecoveredKey: a blob that unseals to something
 // other than a 32-byte scalar is rejected at Open, not much later at device
-// creation.
+// creation. Seal now enforces the length on the way in, so the blob is
+// hand-crafted here to exercise Open's guard directly.
 func TestOpenRejectsWrongLengthRecoveredKey(t *testing.T) {
 	pass := []byte("correct horse battery staple")
-	blob, err := Seal([]byte("only-eight"), pass) // 10 bytes, not 32
+
+	salt := randKey(t, saltLen)
+	dk := argon2.IDKey(pass, salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	aead, err := newAEAD(dk)
 	if err != nil {
 		t.Fatal(err)
 	}
+	nonce := randKey(t, gcmNonceSize)
+	aad := headerAAD(strconv.Itoa(argonTime), strconv.Itoa(argonMemory), strconv.Itoa(argonThreads))
+	ct := aead.Seal(nil, nonce, []byte("only-eight"), aad) // 10-byte plaintext
+
+	enc := base64.RawStdEncoding.EncodeToString
+	blob := strings.Join([]string{
+		blobVersion, blobKDF,
+		strconv.Itoa(argonTime), strconv.Itoa(argonMemory), strconv.Itoa(argonThreads),
+		enc(salt), enc(nonce), enc(ct),
+	}, "$")
+
 	if _, err := Open(blob, pass); err == nil {
 		t.Fatal("Open accepted a blob that unseals to a non-32-byte key")
+	}
+}
+
+// TestSealRejectsWrongLengthKey: Seal must refuse a key that is not a
+// 32-byte device scalar, mirroring Open, so the library cannot mint a blob
+// it would later refuse to open.
+func TestSealRejectsWrongLengthKey(t *testing.T) {
+	if _, err := Seal([]byte("too short"), []byte("pw")); err == nil {
+		t.Fatal("Seal accepted a short key")
+	}
+	if _, err := Seal(randKey(t, 33), []byte("pw")); err == nil {
+		t.Fatal("Seal accepted an over-length key")
+	}
+	if _, err := Seal(randKey(t, 32), []byte("pw")); err != nil {
+		t.Fatalf("Seal rejected a valid 32-byte key: %v", err)
+	}
+}
+
+// TestOpenUnknownVersionIsDistinctError: a well-formed blob of an unknown
+// version reports ErrUnsupportedVersion, not ErrMalformedBlob, so the
+// operator is told to upgrade rather than to hunt for corruption.
+func TestOpenUnknownVersionIsDistinctError(t *testing.T) {
+	_, err := Open("v2$argon2id$3$65536$4$AAAA$BBBB$CCCC", []byte("pw"))
+	if !errors.Is(err, ErrUnsupportedVersion) {
+		t.Fatalf("unknown version: got %v want ErrUnsupportedVersion", err)
+	}
+	if errors.Is(err, ErrMalformedBlob) {
+		t.Fatal("unknown version should not also be ErrMalformedBlob")
 	}
 }

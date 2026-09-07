@@ -82,7 +82,11 @@ func main() {
 	}, keystorecli.Commands()...)
 
 	if err := app.Run(os.Args); err != nil {
+		// keystorecli errors are plain fmt.Errorf, not cli.ExitCoder, so
+		// app.Run does not exit non-zero on its own — do it here or a
+		// provisioning script cannot detect a failed `seal`.
 		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 

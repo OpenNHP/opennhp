@@ -45,7 +45,14 @@ const (
 	argonTime    = 3
 	argonMemory  = 64 * 1024 // KiB => 64 MiB
 	argonThreads = 4
-	argonKeyLen  = 32 // AES-256
+	argonKeyLen  = 32 // AES-256 derived-key size
+
+	// deviceKeyLen is the length of an NHP device private scalar
+	// (Curve25519 / SM2). It happens to equal argonKeyLen, but the two are
+	// unrelated: this one is what Seal accepts and Open must recover, so a
+	// truncated or mistyped key is caught at seal time rather than surfacing
+	// much later at device creation.
+	deviceKeyLen = 32
 
 	// Upper bounds on the KDF cost parsed out of a blob. The blob comes
 	// from operator-controlled config (an attacker who can edit it can
@@ -90,6 +97,11 @@ var (
 	// ErrMalformedBlob means the value carried the sealed prefix but did
 	// not parse as a valid blob.
 	ErrMalformedBlob = errors.New("keystore: malformed sealed key blob")
+	// ErrUnsupportedVersion means the value is a well-formed sealed blob of a
+	// format version this build does not understand — typically written by a
+	// newer daemon. It is distinct from ErrMalformedBlob so the operator is
+	// told to upgrade rather than to hunt for corruption.
+	ErrUnsupportedVersion = errors.New("keystore: unsupported sealed-key format version")
 )
 
 // IsSealed reports whether a config value is a sealed blob rather than a
@@ -98,22 +110,38 @@ var (
 // Open then rejects it with a clear error) instead of being fed to a base64
 // decoder or — worse — rotated to plaintext by RotateAgentKey.
 func IsSealed(value string) bool {
-	rest, ok := strings.CutPrefix(value, "v")
-	if !ok {
-		return false
+	_, ok := sealedVersion(value)
+	return ok
+}
+
+// sealedVersion extracts the "v<N>" version token from a sealed blob. ok is
+// false when value is not a sealed blob at all (no "v<digits>$" prefix).
+func sealedVersion(value string) (token string, ok bool) {
+	rest, cut := strings.CutPrefix(value, "v")
+	if !cut {
+		return "", false
 	}
 	i := 0
 	for i < len(rest) && rest[i] >= '0' && rest[i] <= '9' {
 		i++
 	}
-	return i > 0 && i < len(rest) && rest[i] == '$'
+	if i == 0 || i >= len(rest) || rest[i] != '$' {
+		return "", false
+	}
+	return "v" + rest[:i], true
 }
 
 // Seal encrypts raw private-key bytes into a self-describing blob string
 // suitable for storing in config.toml in place of the plain base64 key.
 func Seal(privKeyRaw, passphrase []byte) (string, error) {
-	if len(privKeyRaw) == 0 {
-		return "", errors.New("keystore: refusing to seal an empty key")
+	if len(privKeyRaw) != deviceKeyLen {
+		// Mirror the length check Open applies to the recovered plaintext, so
+		// the library can never mint a blob it would later refuse to open. An
+		// empty key is just the most common way to hit this.
+		if len(privKeyRaw) == 0 {
+			return "", errors.New("keystore: refusing to seal an empty key")
+		}
+		return "", fmt.Errorf("keystore: refusing to seal a %d-byte key, expected %d", len(privKeyRaw), deviceKeyLen)
 	}
 	if len(passphrase) == 0 {
 		return "", errors.New("keystore: refusing to seal with an empty passphrase")
@@ -168,6 +196,14 @@ func headerAAD(t, m, p string) []byte {
 func Open(blob string, passphrase []byte) ([]byte, error) {
 	if len(passphrase) == 0 {
 		return nil, ErrNoPassphrase
+	}
+
+	// A well-formed "v<N>$" prefix of a version we don't know is an upgrade
+	// problem, not corruption — report it as such rather than folding it into
+	// ErrMalformedBlob. This is the reason IsSealed recognizes forward
+	// versions in the first place.
+	if token, ok := sealedVersion(blob); ok && token != blobVersion {
+		return nil, fmt.Errorf("%w: blob is %s, this build understands %s — upgrade the daemon", ErrUnsupportedVersion, token, blobVersion)
 	}
 
 	parts := strings.Split(blob, "$")

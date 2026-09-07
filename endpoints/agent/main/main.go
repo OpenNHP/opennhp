@@ -19,8 +19,31 @@ import (
 	"github.com/OpenNHP/opennhp/endpoints/keystorecli"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/version"
 )
+
+// currentConfigKeySealed reports whether etc/config.toml currently holds a
+// sealed ("v1$...") PrivateKeyBase64. Best-effort: a missing/unreadable file
+// (the register bootstrap case) reads as not sealed.
+func currentConfigKeySealed(exeDirPath string) bool {
+	data, err := os.ReadFile(filepath.Join(exeDirPath, "etc", "config.toml"))
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "PrivateKeyBase64") {
+			continue
+		}
+		if i := strings.Index(line, "\""); i >= 0 {
+			if j := strings.LastIndex(line, "\""); j > i {
+				return keystore.IsSealed(line[i+1 : j])
+			}
+		}
+	}
+	return false
+}
 
 // ANSI color codes
 const (
@@ -377,6 +400,11 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 	}
 	exeDirPath := filepath.Dir(exeFilePath)
 
+	// Capture whether the CURRENT on-disk key is sealed, before a.Start below
+	// resolves it and ReinitWithKey overwrites the in-memory value with a
+	// plain key. If it was sealed, the rewritten config.toml must stay sealed.
+	existingKeySealed := currentConfigKeySealed(exeDirPath)
+
 	printBanner()
 
 	fmt.Println(colorGreen + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" + colorReset)
@@ -715,6 +743,25 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 
 	confirmed := (choice == "y" || choice == "yes") || (defaultYes && choice == "")
 	if confirmed {
+		// Preserve encryption-at-rest: if the config we are about to
+		// overwrite held a sealed key, re-seal the freshly registered one
+		// rather than writing it in the clear.
+		if existingKeySealed {
+			pass, passErr := keystore.PassphraseFromEnv()
+			if passErr != nil || len(pass) == 0 {
+				fmt.Printf("\n  %s❌ The existing config.toml has a SEALED private key but no passphrase is available%s\n"+
+					"     (set %s or %s). Refusing to overwrite it with a plaintext key.\n\n",
+					colorYellow, colorReset, keystore.EnvPassphrase, keystore.EnvPassphraseFile)
+				return fmt.Errorf("cannot re-seal the registered key: %w", passErr)
+			}
+			sealed, sealErr := keystore.Seal(privKeyBytes, pass)
+			if sealErr != nil {
+				fmt.Printf("\n  %s❌ Failed to re-seal the registered key:%s %v\n\n", colorYellow, colorReset, sealErr)
+				return sealErr
+			}
+			privKey = sealed
+			fmt.Printf("  %s✔  registered key re-sealed with the configured passphrase%s\n", colorGreen, colorReset)
+		}
 		if err := writeRegistrationConfig(exeDirPath, privKey, email, orgId, cipherScheme); err != nil {
 			fmt.Printf("  %s⚠  Failed to write config.toml:%s %v\n\n", colorYellow, colorReset, err)
 		} else {

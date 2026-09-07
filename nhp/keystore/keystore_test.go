@@ -314,3 +314,38 @@ func TestOpenRejectsBadSaltLength(t *testing.T) {
 		t.Fatalf("bad salt length: got %v want ErrMalformedBlob", err)
 	}
 }
+
+// TestIsSealedRecognizesAnyVersion: a future "v2$..." blob must still be
+// recognized as sealed (so it is not base64-decoded or rotated to plaintext),
+// while plain keys and near-misses are not.
+func TestIsSealedRecognizesAnyVersion(t *testing.T) {
+	sealed := []string{"v1$argon2id$3$65536$4$a$b$c", "v2$whatever", "v10$x"}
+	for _, s := range sealed {
+		if !IsSealed(s) {
+			t.Errorf("IsSealed(%q) = false, want true", s)
+		}
+	}
+	plain := []string{
+		"eHdyRHKJy/YZJsResCt5XTAZgtcwvLpSXAiZ8DBc0V4=", // real base64 key
+		"v$nodigits", "vabc$x", "version1$x", "", "v1", "v1noDelim",
+	}
+	for _, s := range plain {
+		if IsSealed(s) {
+			t.Errorf("IsSealed(%q) = true, want false", s)
+		}
+	}
+}
+
+// TestOpenRejectsWrongLengthRecoveredKey: a blob that unseals to something
+// other than a 32-byte scalar is rejected at Open, not much later at device
+// creation.
+func TestOpenRejectsWrongLengthRecoveredKey(t *testing.T) {
+	pass := []byte("correct horse battery staple")
+	blob, err := Seal([]byte("only-eight"), pass) // 10 bytes, not 32
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(blob, pass); err == nil {
+		t.Fatal("Open accepted a blob that unseals to a non-32-byte key")
+	}
+}

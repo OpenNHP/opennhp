@@ -37,7 +37,6 @@ import (
 const (
 	blobVersion = "v1"
 	blobKDF     = "argon2id"
-	blobPrefix  = blobVersion + "$"
 
 	// Argon2id parameters. 64 MiB / 3 passes / 4 lanes is the reference
 	// "interactive" profile from the argon2 RFC draft — strong enough for
@@ -94,9 +93,20 @@ var (
 )
 
 // IsSealed reports whether a config value is a sealed blob rather than a
-// plain base64 key.
+// plain base64 key. It matches any "v<N>$" prefix, not just the current
+// version, so a blob from a newer format is still recognized as sealed (and
+// Open then rejects it with a clear error) instead of being fed to a base64
+// decoder or — worse — rotated to plaintext by RotateAgentKey.
 func IsSealed(value string) bool {
-	return strings.HasPrefix(value, blobPrefix)
+	rest, ok := strings.CutPrefix(value, "v")
+	if !ok {
+		return false
+	}
+	i := 0
+	for i < len(rest) && rest[i] >= '0' && rest[i] <= '9' {
+		i++
+	}
+	return i > 0 && i < len(rest) && rest[i] == '$'
 }
 
 // Seal encrypts raw private-key bytes into a self-describing blob string
@@ -202,6 +212,12 @@ func Open(blob string, passphrase []byte) ([]byte, error) {
 		// A wrong passphrase and a tampered blob both surface here as an
 		// authentication failure; keep them indistinguishable.
 		return nil, ErrBadPassphrase
+	}
+	// The AEAD proved integrity, so this is a real recovered key — but a
+	// blob sealed from a truncated/mistyped key would only fail much later
+	// at device creation. NHP device scalars are 32 bytes.
+	if len(plain) != argonKeyLen {
+		return nil, fmt.Errorf("%w: recovered key is %d bytes, expected %d", ErrMalformedBlob, len(plain), argonKeyLen)
 	}
 	return plain, nil
 }

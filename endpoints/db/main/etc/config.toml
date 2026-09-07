@@ -3,7 +3,7 @@
 
 # PrivateKeyBase64 (-): db private key. Either a plain base64 key (default)
 #   or a sealed blob (starts with "v1$") produced by:
-#     echo "$KEY" | nhp-dbd seal
+#     echo "$KEY" | nhp-db seal
 #   A sealed key is decrypted at startup with a passphrase supplied out of
 #   band. Prefer NHP_KEY_PASSPHRASE_FILE (a file, mode 0600) over
 #   NHP_KEY_PASSPHRASE: an env var is readable from the process environment,

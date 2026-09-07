@@ -81,7 +81,10 @@ func main() {
 		keygenCmd,
 	}, keystorecli.Commands()...)
 	if err := app.Run(os.Args); err != nil {
-		panic(err)
+		// Clean operator-facing error, not a panic stack trace (matters for
+		// the seal/unseal usage messages).
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 

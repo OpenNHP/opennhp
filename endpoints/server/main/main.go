@@ -177,7 +177,10 @@ func main() {
 	}, keystorecli.Commands()...)
 
 	if err := app.Run(os.Args); err != nil {
-		panic(err)
+		// Print the (operator-facing) error cleanly rather than a panic
+		// stack trace — matters for the seal/unseal usage messages.
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 

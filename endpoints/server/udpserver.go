@@ -1244,6 +1244,10 @@ func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACCon
 		err = common.ErrACEmptyPassAddress
 		artMsg.ErrCode = common.ErrACEmptyPassAddress.ErrorCode()
 		artMsg.ErrMsg = err.Error()
+		// A resource misconfiguration (not an internal "should not happen"),
+		// so it belongs in the error series — but no server→AC round trip
+		// happened, so record the outcome only, not a duration sample.
+		s.metrics.recordACOutcome(false)
 		return
 	}
 
@@ -1293,9 +1297,9 @@ func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACCon
 	}
 
 	// Only now do we actually attempt the server→AC round trip, so arm the
-	// duration/outcome metric here — the early "should not happen" and
-	// not-running guards above returned without touching the AC and
-	// shouldn't show up as AC operations.
+	// duration/outcome metric here — the early not-running guard above
+	// returned without touching the AC and shouldn't show up as an AC
+	// operation.
 	start := time.Now()
 	defer func() {
 		s.metrics.recordACOperation(err == nil, time.Since(start).Seconds())

@@ -189,6 +189,7 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 		ep, mErr := metrics.StartEndpoint(a.config.Metrics, metrics.EndpointOptions{
 			Registry:      a.metrics.registry,
 			Uptime:        func() time.Duration { return time.Since(a.startTime) },
+			IsRunning:     a.running.Load,
 			DefaultPort:   defaultDBMetricsPort,
 			OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
 			OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },

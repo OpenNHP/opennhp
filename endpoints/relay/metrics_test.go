@@ -35,3 +35,18 @@ func TestRelayMetricsNilSafe(t *testing.T) {
 	m.recordMessageReceived("NHP-RKN")
 	m.recordDroppedPacket("parse")
 }
+
+func TestRelayByteCountersAreCounters(t *testing.T) {
+	rs := &RelayServer{servers: map[string]*serverRuntime{}}
+	m := newRelayMetrics(rs, time.Unix(1000, 0))
+	var b strings.Builder
+	if err := m.registry.WriteText(&b); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, name := range []string{"nhp_relay_received_bytes_total", "nhp_relay_sent_bytes_total"} {
+		if !strings.Contains(out, "# TYPE "+name+" counter") {
+			t.Errorf("%s must render as a counter (it is a monotonic total):\n%s", name, out)
+		}
+	}
+}

@@ -203,6 +203,32 @@ func (gf *GaugeFunc) writeTo(w *bufio.Writer) {
 	writeSample(w, gf.metricName, "", nil, nil, gf.fn())
 }
 
+// CounterFunc is a monotonically-increasing value read from a function at
+// scrape time — the counter counterpart of GaugeFunc, for a running total the
+// daemon already keeps (bytes transferred, say). It renders with TYPE
+// "counter" so rate()/increase() apply and a process restart reads as a
+// reset rather than a negative jump.
+type CounterFunc struct {
+	metricName string
+	help       string
+	fn         func() float64
+}
+
+// NewCounterFunc registers a counter backed by fn, evaluated on every scrape.
+// fn must be safe to call concurrently and must not decrease.
+func (r *Registry) NewCounterFunc(name, help string, fn func() float64) *CounterFunc {
+	cf := &CounterFunc{metricName: name, help: help, fn: fn}
+	r.register(cf)
+	return cf
+}
+
+func (cf *CounterFunc) name() string { return cf.metricName }
+
+func (cf *CounterFunc) writeTo(w *bufio.Writer) {
+	writeHeader(w, cf.metricName, cf.help, "counter")
+	writeSample(w, cf.metricName, "", nil, nil, cf.fn())
+}
+
 // ---- shared rendering helpers ----
 
 func writeHeader(w *bufio.Writer, name, help, typ string) {

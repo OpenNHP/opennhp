@@ -177,6 +177,12 @@ type Config struct {
 }
 
 // MetricsConfig configures the observability endpoint exposed by nhp-server.
+//
+// TODO: this duplicates nhp/metrics.Config (same three fields, same
+// defaults) and endpoints/server/metricsserver.go duplicates
+// nhp/metrics.Endpoint. nhp-ac/relay/db already use the shared types;
+// migrating nhp-server to metrics.StartEndpoint would delete ~110 lines and
+// leave one implementation. Kept separate here only to bound this PR's churn.
 type MetricsConfig struct {
 	// Enabled turns the /metrics + /healthz listener on. Off by default.
 	Enabled bool `json:"enabled"`
@@ -603,9 +609,13 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 
 	if s.config.DisableAgentValidation != conf.DisableAgentValidation {
 		if s.device != nil {
-			s.device.SetOption(core.DeviceOptions{
-				DisableAgentPeerValidation: conf.DisableAgentValidation,
-			})
+			// Read-modify-write: SetOption replaces the whole options struct,
+			// so building a fresh one here would wipe OnPacketDropped and
+			// PeerLookupFallback (both installed in udpserver.Start). Mutate
+			// only the field that changed — same pattern as Start uses.
+			opt := s.device.GetOption()
+			opt.DisableAgentPeerValidation = conf.DisableAgentValidation
+			s.device.SetOption(opt)
 		}
 		s.config.DisableAgentValidation = conf.DisableAgentValidation
 	}

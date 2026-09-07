@@ -102,12 +102,22 @@ func (m *serverMetrics) recordACOperation(ok bool, seconds float64) {
 	if m == nil {
 		return
 	}
+	m.recordACOutcome(ok)
+	m.acOpDuration.Observe(seconds)
+}
+
+// recordACOutcome bumps the ok/error counter WITHOUT a duration sample, for
+// a failure that returned before any server→AC round trip (timing it would
+// just add a ~0s outlier to the histogram).
+func (m *serverMetrics) recordACOutcome(ok bool) {
+	if m == nil {
+		return
+	}
 	result := "error"
 	if ok {
 		result = "ok"
 	}
 	m.acOperations.With(result).Inc()
-	m.acOpDuration.Observe(seconds)
 }
 
 func (m *serverMetrics) recordBlockedAddr() {

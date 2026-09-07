@@ -98,11 +98,17 @@ func (ms *metricsServer) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	// address, an unauthenticated probe can't fingerprint the exact build —
 	// this is a network-hiding product, and a liveness check doesn't need
 	// to leak that.
+	status, code := "ok", http.StatusOK
+	if !ms.us.running.Load() {
+		// Report 503 once shutdown has begun so the probe is usable as a
+		// real container liveness/readiness check, not just "process alive".
+		status, code = "stopping", http.StatusServiceUnavailable
+	}
 	body := map[string]any{
-		"status":   "ok",
+		"status":   status,
 		"uptime_s": int64(time.Since(ms.us.startTime).Seconds()),
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(body)
 }

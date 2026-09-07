@@ -144,20 +144,18 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 
 	a.metrics = newACMetrics(a, a.startTime)
 
-	a.device = core.NewDevice(core.NHP_AC, prk, &core.DeviceOptions{
-		// NHP_AC does not validate or store agent peers (matches
-		// defaultDeviceOptions(NHP_AC), which we replace by passing an
-		// explicit options struct here).
-		DisableAgentPeerValidation: true,
-		// Count packets dropped before decryption — the pre-decryption seam
-		// the message counter can't see. a.metrics is set just above and
-		// recordDroppedPacket is nil-safe.
-		OnPacketDropped: func(stage string) { a.metrics.recordDroppedPacket(stage) },
-	})
+	// Keep NewDevice(t, prk, nil) so defaultDeviceOptions(NHP_AC) stays the
+	// single source of truth for the device's security posture (it disables
+	// agent peer validation for AC), then layer the dropped-packet
+	// observation hook on top via read-modify-write.
+	a.device = core.NewDevice(core.NHP_AC, prk, nil)
 	if a.device == nil {
 		log.Critical("failed to create device %v\n", err)
 		return fmt.Errorf("failed to create device %v", err)
 	}
+	acOpt := a.device.GetOption()
+	acOpt.OnPacketDropped = func(stage string) { a.metrics.recordDroppedPacket(stage) }
+	a.device.SetOption(acOpt)
 
 	a.remoteConnectionMap = make(map[string]*UdpConn)
 	a.serverPeerMap = make(map[string]*core.UdpPeer)
@@ -241,6 +239,7 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 		ep, mErr := metrics.StartEndpoint(a.config.Metrics, metrics.EndpointOptions{
 			Registry:      a.metrics.registry,
 			Uptime:        func() time.Duration { return time.Since(a.startTime) },
+			IsRunning:     a.running.Load,
 			DefaultPort:   defaultACMetricsPort,
 			OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
 			OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },

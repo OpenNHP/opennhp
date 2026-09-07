@@ -35,3 +35,18 @@ func TestDBMetricsNilSafe(t *testing.T) {
 	m.recordMessageReceived("DHP-DAK")
 	m.recordDroppedPacket("parse")
 }
+
+func TestDBByteCountersAreCounters(t *testing.T) {
+	a := &UdpDevice{remoteConnectionMap: map[string]*UdpConn{}}
+	m := newDBMetrics(a, time.Unix(1000, 0))
+	var b strings.Builder
+	if err := m.registry.WriteText(&b); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, name := range []string{"nhp_db_received_bytes_total", "nhp_db_sent_bytes_total"} {
+		if !strings.Contains(out, "# TYPE "+name+" counter") {
+			t.Errorf("%s must render as a counter:\n%s", name, out)
+		}
+	}
+}

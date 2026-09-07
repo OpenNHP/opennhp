@@ -163,3 +163,16 @@ func TestConcurrentUse(t *testing.T) {
 		t.Errorf("expected 10000 increments:\n%s", got)
 	}
 }
+
+func TestCounterFuncRendersAsCounter(t *testing.T) {
+	r := NewRegistry()
+	v := int64(7)
+	r.NewCounterFunc("nhp_test_bytes_total", "bytes seen", func() float64 { return float64(v) })
+	out := render(t, r)
+	if !strings.Contains(out, "# TYPE nhp_test_bytes_total counter") {
+		t.Fatalf("CounterFunc must render TYPE counter:\n%s", out)
+	}
+	if !strings.Contains(out, "nhp_test_bytes_total 7") {
+		t.Fatalf("value missing:\n%s", out)
+	}
+}

@@ -30,10 +30,10 @@ func newRelayMetrics(rs *RelayServer, startTime time.Time) *relayMetrics {
 		"Configured upstream nhp-server identities.",
 		func() float64 { return float64(len(rs.servers)) })
 
-	reg.NewGaugeFunc("nhp_relay_received_bytes_total",
+	reg.NewCounterFunc("nhp_relay_received_bytes_total",
 		"Total UDP payload bytes received on the relay data path.",
 		func() float64 { return float64(atomic.LoadUint64(&rs.stats.totalRecvBytes)) })
-	reg.NewGaugeFunc("nhp_relay_sent_bytes_total",
+	reg.NewCounterFunc("nhp_relay_sent_bytes_total",
 		"Total UDP payload bytes sent on the relay data path.",
 		func() float64 { return float64(atomic.LoadUint64(&rs.stats.totalSendBytes)) })
 

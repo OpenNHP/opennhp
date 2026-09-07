@@ -29,6 +29,10 @@ type EndpointOptions struct {
 	Registry *Registry
 	// Uptime is reported by GET /healthz. Optional; a nil func reports 0.
 	Uptime func() time.Duration
+	// IsRunning, when set, gates GET /healthz: it returns 503 (not 200) once
+	// it reports false, so the endpoint is usable as a real container
+	// liveness/readiness probe rather than staying green through shutdown.
+	IsRunning func() bool
 	// DefaultPort is used when Config.ListenPort is 0. Each daemon passes its
 	// own so a host running several daemons does not collide on one port.
 	DefaultPort int
@@ -84,9 +88,13 @@ func StartEndpoint(cfg Config, opts EndpointOptions) (*Endpoint, error) {
 		if opts.Uptime != nil {
 			up = int64(opts.Uptime().Seconds())
 		}
+		status, code := "ok", http.StatusOK
+		if opts.IsRunning != nil && !opts.IsRunning() {
+			status, code = "stopping", http.StatusServiceUnavailable
+		}
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "uptime_s": up})
+		w.WriteHeader(code)
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": status, "uptime_s": up})
 	})
 
 	srv := &http.Server{

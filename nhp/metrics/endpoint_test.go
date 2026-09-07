@@ -67,3 +67,30 @@ func httpGet(t *testing.T, url string) string {
 	t.Fatalf("GET %s failed: %v", url, lastErr)
 	return ""
 }
+
+func TestHealthzReports503WhenNotRunning(t *testing.T) {
+	running := true
+	ep, err := StartEndpoint(
+		Config{Enabled: true, ListenIp: "127.0.0.1", ListenPort: 59109},
+		EndpointOptions{Registry: NewRegistry(), IsRunning: func() bool { return running }},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ep.Stop()
+
+	base := "http://127.0.0.1:59109"
+	if hz := httpGet(t, base+"/healthz"); !strings.Contains(hz, `"status":"ok"`) {
+		t.Fatalf("running: %s", hz)
+	}
+	running = false
+	resp, err := http.Get(base + "/healthz") //nolint:gosec // test-only localhost URL
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(body), `"status":"stopping"`) {
+		t.Fatalf("stopping: got %d %s", resp.StatusCode, body)
+	}
+}

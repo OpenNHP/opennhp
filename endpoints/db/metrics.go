@@ -35,10 +35,10 @@ func newDBMetrics(a *UdpDevice, startTime time.Time) *dbMetrics {
 			return float64(n)
 		})
 
-	reg.NewGaugeFunc("nhp_db_received_bytes_total",
+	reg.NewCounterFunc("nhp_db_received_bytes_total",
 		"Total UDP payload bytes received.",
 		func() float64 { return float64(atomic.LoadUint64(&a.stats.totalRecvBytes)) })
-	reg.NewGaugeFunc("nhp_db_sent_bytes_total",
+	reg.NewCounterFunc("nhp_db_sent_bytes_total",
 		"Total UDP payload bytes sent.",
 		func() float64 { return float64(atomic.LoadUint64(&a.stats.totalSendBytes)) })
 

@@ -17,6 +17,7 @@ func newTestServerWithMetrics() *UdpServer {
 	s := &UdpServer{}
 	s.remoteConnectionMap = make(map[string]*UdpConn)
 	s.startTime = time.Now()
+	s.running.Store(true) // /healthz reports 503 unless the server is running
 	s.metrics = newServerMetrics(s, s.startTime)
 	return s
 }

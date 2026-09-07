@@ -208,18 +208,43 @@ func New(cfg *Config) (*RelayServer, error) {
 		stopCh:    make(chan struct{}),
 	}
 
-	// Create NHP device with relay identity. defaultDeviceOptions(NHP_RELAY)
-	// is the zero value, so passing an explicit struct only adds the
-	// dropped-packet observation hook (rs.metrics is set in Start, and
-	// recordDroppedPacket is nil-safe).
-	device := core.NewDevice(core.NHP_RELAY, prk, &core.DeviceOptions{
-		OnPacketDropped: func(stage string) { rs.metrics.recordDroppedPacket(stage) },
-	})
+	// Build the metrics collectors here (in New, before rs is shared with any
+	// goroutine) rather than in Start — Start runs on its own goroutine while
+	// Stop is called from main, so writing these fields in Start would race
+	// the read in Stop.
+	rs.startTime = time.Now()
+	rs.metrics = newRelayMetrics(rs, rs.startTime)
+
+	// Create NHP device with relay identity. Keep NewDevice(t, prk, nil) so
+	// defaultDeviceOptions(NHP_RELAY) stays the single source of truth for
+	// security posture, then layer the observation hook on top.
+	device := core.NewDevice(core.NHP_RELAY, prk, nil)
 	if device == nil {
 		return nil, fmt.Errorf("relay: failed to create NHP device")
 	}
+	opt := device.GetOption()
+	opt.OnPacketDropped = func(stage string) { rs.metrics.recordDroppedPacket(stage) }
+	device.SetOption(opt)
 	rs.device = device
 	rs.recvMsgCh = device.DecryptedMsgQueue
+
+	// opt-in Prometheus /metrics + /healthz endpoint, loopback by default.
+	if cfg.Metrics.Enabled {
+		ep, mErr := metrics.StartEndpoint(cfg.Metrics, metrics.EndpointOptions{
+			Registry:      rs.metrics.registry,
+			Uptime:        func() time.Duration { return time.Since(rs.startTime) },
+			IsRunning:     rs.running.Load,
+			DefaultPort:   defaultRelayMetricsPort,
+			OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
+			OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
+			OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
+		})
+		if mErr != nil {
+			log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
+		} else {
+			rs.metricsEndpoint = ep
+		}
+	}
 
 	for i := range cfg.Servers {
 		c := &cfg.Servers[i]
@@ -321,28 +346,9 @@ func (rs *RelayServer) buildServer(c *Server) (*serverRuntime, error) {
 }
 
 // Start starts the device, UDP connections, keepalives, and HTTP server.
+// The metrics endpoint is already running (started in New).
 func (rs *RelayServer) Start() error {
 	rs.running.Store(true)
-	rs.startTime = time.Now()
-	rs.metrics = newRelayMetrics(rs, rs.startTime)
-
-	// opt-in Prometheus /metrics + /healthz endpoint, loopback by default.
-	// Started before the blocking ListenAndServe below.
-	if rs.config.Metrics.Enabled {
-		ep, mErr := metrics.StartEndpoint(rs.config.Metrics, metrics.EndpointOptions{
-			Registry:      rs.metrics.registry,
-			Uptime:        func() time.Duration { return time.Since(rs.startTime) },
-			DefaultPort:   defaultRelayMetricsPort,
-			OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
-			OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
-			OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
-		})
-		if mErr != nil {
-			log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
-		} else {
-			rs.metricsEndpoint = ep
-		}
-	}
 
 	// Start NHP device (encryption/decryption workers).
 	rs.device.Start()

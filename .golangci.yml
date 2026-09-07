@@ -65,6 +65,7 @@ linters:
       - "third_party/"
       - "builtin/"
       - "examples/"
+      - "node_modules/"  # JS dependencies that incidentally ship Go sources (e.g. flatted's golang/ subdir)
 issues:
   max-issues-per-linter: 50
   max-same-issues: 10
@@ -83,3 +84,4 @@ formatters:
       - "third_party/"
       - "builtin/"
       - "examples/"
+      - "node_modules/"

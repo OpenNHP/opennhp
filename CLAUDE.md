@@ -227,6 +227,8 @@ run (triggered by the `deploy-demo-v2` workflow).
 | `nhp_jsagent2_sm2_public_key` | same (derived via `--both`) | SM2 peer entry in `server2/agent.toml`; lets cluster 2 js-agent knock in gmsm mode |
 | `nhp_server2_private_key` / `_public_key` | same | cluster 2 server `config.toml`; peer tables on ac2/relay |
 | `nhp_ac2_private_key` / `_public_key` | same | cluster 2 ac `config.toml`; peer table on server2 |
+| `demoapp_key_envelope_key` | `scripts/generate-nhp-keys.sh` (idempotent; generated via `openssl rand -base64 32` on first run) | demoapp `config.toml` `KeyEnvelopeKey`; AES-256 master that wraps each user's NHP private key at rest |
+| `demoapp_session_key` | same | demoapp `config.toml` `SessionKey`; signs the session cookie |
 | `cloudflare_api_token` | manually provisioned once | Terraform + certbot DNS-01 (`Zone:DNS:Edit` + `Zone:Zone:Read`) |
 | `cloudflare_zone_id` | same | Terraform DNS records for `opennhp.org` |
 | `stealth_ca_cert` | `infra-demo` workflow (from GitHub Secrets `STEALTH_CA_CERT`) | `tls_locally_signed_cert.demo_nhp` |

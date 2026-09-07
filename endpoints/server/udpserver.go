@@ -399,7 +399,15 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	if s.keyStore != nil {
 		opt := s.device.GetOption()
 		opt.PeerLookupFallback = func(pubKey []byte, headerType int) bool {
-			if headerType != core.NHP_KNK && headerType != core.NHP_RKN && headerType != core.NHP_EXT {
+			// Agent-initiated packet types a dynamically-registered
+			// agent (not in agent.toml) can legitimately send after a
+			// successful NHP-REG. NHP_OTP / NHP_REG skip peer
+			// validation entirely (see responder.validatePeer), so
+			// they aren't listed here. NHP_LST must be included or a
+			// freshly-registered agent's listServices call is rejected
+			// with "peer not found in peer pool" → relay 504.
+			if headerType != core.NHP_KNK && headerType != core.NHP_LST &&
+				headerType != core.NHP_RKN && headerType != core.NHP_EXT {
 				return false
 			}
 			pk := base64.StdEncoding.EncodeToString(pubKey)

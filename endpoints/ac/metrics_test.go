@@ -21,7 +21,8 @@ func TestACMetricsRenderAndRecord(t *testing.T) {
 
 	// Closed-set series export 0 before any event.
 	if body := renderAC(t, m); !strings.Contains(body, `nhp_ac_operations_total{result="ok"} 0`) ||
-		!strings.Contains(body, `nhp_ac_packets_dropped_total{stage="decrypt"} 0`) {
+		!strings.Contains(body, `nhp_ac_packets_dropped_total{stage="decrypt"} 0`) ||
+		!strings.Contains(body, `nhp_ac_packets_dropped_total{stage="too_short"} 0`) {
 		t.Fatalf("missing pre-initialized series:\n%s", body)
 	}
 
@@ -29,6 +30,7 @@ func TestACMetricsRenderAndRecord(t *testing.T) {
 	m.recordACOperation(true, 0.01)
 	m.recordACOperation(false, 0.2)
 	m.recordDroppedPacket("decrypt")
+	m.recordDroppedPacket("too_short")
 
 	body := renderAC(t, m)
 	for _, want := range []string{
@@ -36,6 +38,9 @@ func TestACMetricsRenderAndRecord(t *testing.T) {
 		`nhp_ac_operations_total{result="ok"} 1`,
 		`nhp_ac_operations_total{result="error"} 1`,
 		`nhp_ac_packets_dropped_total{stage="decrypt"} 1`,
+		`nhp_ac_packets_dropped_total{stage="too_short"} 1`,
+		`nhp_ac_received_bytes_total`,
+		`nhp_ac_sent_bytes_total`,
 		`nhp_ac_active_connections 1`,
 		`nhp_ac_operation_duration_seconds_count 2`,
 	} {

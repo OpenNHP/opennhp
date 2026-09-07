@@ -110,11 +110,17 @@ func TestClosedSetSeriesPreInitializedToZero(t *testing.T) {
 		`nhp_server_knock_auth_total{result="denied"} 0`,
 		`nhp_server_ac_operations_total{result="ok"} 0`,
 		`nhp_server_ac_operations_total{result="error"} 0`,
+		`nhp_server_packets_dropped_total{stage="too_short"} 0`,
+		`nhp_server_packets_dropped_total{stage="blocked"} 0`,
 		`nhp_server_packets_dropped_total{stage="precheck"} 0`,
+		`nhp_server_packets_dropped_total{stage="rate_limited"} 0`,
+		`nhp_server_packets_dropped_total{stage="conn_limit"} 0`,
 		`nhp_server_packets_dropped_total{stage="parse"} 0`,
 		`nhp_server_packets_dropped_total{stage="validate"} 0`,
 		`nhp_server_packets_dropped_total{stage="decrypt"} 0`,
 		`nhp_server_packets_dropped_total{stage="queue_full"} 0`,
+		`nhp_server_received_bytes_total`,
+		`nhp_server_sent_bytes_total`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("expected pre-initialized series %q\n---\n%s", want, body)

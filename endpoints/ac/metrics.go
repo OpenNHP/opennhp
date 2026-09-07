@@ -1,6 +1,7 @@
 package ac
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/metrics"
@@ -20,7 +21,7 @@ type acMetrics struct {
 	messagesReceived *metrics.CounterVec // type=NHP-AOP|...
 	acOperations     *metrics.CounterVec // result=ok|error
 	acOpDuration     *metrics.Histogram  // server->AC operation handling, seconds
-	packetsDropped   *metrics.CounterVec // stage=parse|validate|decrypt|queue_full
+	packetsDropped   *metrics.CounterVec // stage=too_short|precheck|parse|validate|decrypt|queue_full
 }
 
 func newACMetrics(a *UdpAC, startTime time.Time) *acMetrics {
@@ -39,6 +40,15 @@ func newACMetrics(a *UdpAC, startTime time.Time) *acMetrics {
 			return float64(n)
 		})
 
+	// Byte totals already accumulate on the UDP path; expose them for free,
+	// matching nhp_relay_* / nhp_db_*.
+	reg.NewCounterFunc("nhp_ac_received_bytes_total",
+		"Total UDP payload bytes received.",
+		func() float64 { return float64(atomic.LoadUint64(&a.stats.totalRecvBytes)) })
+	reg.NewCounterFunc("nhp_ac_sent_bytes_total",
+		"Total UDP payload bytes sent.",
+		func() float64 { return float64(atomic.LoadUint64(&a.stats.totalSendBytes)) })
+
 	m := &acMetrics{
 		registry: reg,
 		messagesReceived: reg.NewCounter("nhp_ac_messages_received_total",
@@ -48,14 +58,14 @@ func newACMetrics(a *UdpAC, startTime time.Time) *acMetrics {
 		acOpDuration: reg.NewHistogram("nhp_ac_operation_duration_seconds",
 			"Time to apply one server access-control operation, in seconds.", nil).With(),
 		packetsDropped: reg.NewCounter("nhp_ac_packets_dropped_total",
-			"Inbound packets discarded before becoming a decrypted message, by stage (precheck, parse, validate, decrypt, queue_full).", "stage"),
+			"Inbound packets discarded before becoming a decrypted message, by stage (too_short, precheck, parse, validate, decrypt, queue_full).", "stage"),
 	}
 
 	// Pre-create the closed-set label series so a fresh scrape shows an
 	// explicit 0 rather than a missing series.
 	m.acOperations.With("ok")
 	m.acOperations.With("error")
-	for _, s := range []string{"precheck", "parse", "validate", "decrypt", "queue_full"} {
+	for _, s := range []string{"too_short", "precheck", "parse", "validate", "decrypt", "queue_full"} {
 		m.packetsDropped.With(s)
 	}
 

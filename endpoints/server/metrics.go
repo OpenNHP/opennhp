@@ -1,6 +1,7 @@
 package server
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/metrics"
@@ -19,7 +20,7 @@ type serverMetrics struct {
 	acOperations     *metrics.CounterVec // result=ok|error
 	acOpDuration     *metrics.Histogram  // server->AC round trip, seconds
 	blockedAddrs     *metrics.Counter    // sources blocked past the threat threshold
-	packetsDropped   *metrics.CounterVec // stage=parse|validate|decrypt|queue_full
+	packetsDropped   *metrics.CounterVec // stage=too_short|blocked|precheck|rate_limited|conn_limit|parse|validate|decrypt|queue_full
 }
 
 func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
@@ -47,6 +48,15 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			return 0
 		})
 
+	// The byte totals already accumulate on the UDP path (s.stats.*); expose
+	// them for free, matching nhp_relay_* / nhp_db_*.
+	reg.NewCounterFunc("nhp_server_received_bytes_total",
+		"Total UDP payload bytes received.",
+		func() float64 { return float64(atomic.LoadUint64(&s.stats.totalRecvBytes)) })
+	reg.NewCounterFunc("nhp_server_sent_bytes_total",
+		"Total UDP payload bytes sent.",
+		func() float64 { return float64(atomic.LoadUint64(&s.stats.totalSendBytes)) })
+
 	sm := &serverMetrics{
 		registry: reg,
 		messagesReceived: reg.NewCounter("nhp_server_messages_received_total",
@@ -60,7 +70,8 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 		blockedAddrs: reg.NewCounter("nhp_server_blocked_source_addresses_total",
 			"Source addresses blocked after exceeding the threat threshold.").With(),
 		packetsDropped: reg.NewCounter("nhp_server_packets_dropped_total",
-			"Inbound packets discarded before becoming a decrypted message, by stage (precheck, parse, validate, decrypt, queue_full).", "stage"),
+			"Inbound packets discarded before becoming a decrypted message, by stage "+
+				"(too_short, blocked, precheck, rate_limited, conn_limit, parse, validate, decrypt, queue_full).", "stage"),
 	}
 
 	// Pre-create the closed-set label series so they export an explicit 0
@@ -72,11 +83,12 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 	sm.knockAuth.With("denied")
 	sm.acOperations.With("ok")
 	sm.acOperations.With("error")
-	sm.packetsDropped.With("precheck")
-	sm.packetsDropped.With("parse")
-	sm.packetsDropped.With("validate")
-	sm.packetsDropped.With("decrypt")
-	sm.packetsDropped.With("queue_full")
+	for _, stage := range []string{
+		"too_short", "blocked", "precheck", "rate_limited", "conn_limit", // recvPacketRoutine, pre-decryption
+		"parse", "validate", "decrypt", "queue_full", // packetToMsgRoutine, via OnPacketDropped
+	} {
+		sm.packetsDropped.With(stage)
+	}
 
 	return sm
 }
@@ -129,9 +141,12 @@ func (m *serverMetrics) recordBlockedAddr() {
 }
 
 // recordDroppedPacket counts an inbound packet discarded before decryption.
-// stage is one of the fixed set "parse", "validate", "decrypt",
-// "queue_full" (from core.DeviceOptions.OnPacketDropped) — a bounded label,
-// never attacker-controlled. Safe on a nil receiver.
+// stage is one of the fixed set seeded in newServerMetrics: the
+// recvPacketRoutine pre-decryption drops ("too_short", "blocked",
+// "precheck", "rate_limited", "conn_limit") and the packetToMsgRoutine
+// drops delivered via core.DeviceOptions.OnPacketDropped ("parse",
+// "validate", "decrypt", "queue_full"). A bounded label, never
+// attacker-controlled. Safe on a nil receiver.
 func (m *serverMetrics) recordDroppedPacket(stage string) {
 	if m == nil {
 		return

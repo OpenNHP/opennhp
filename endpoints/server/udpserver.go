@@ -620,6 +620,7 @@ func (s *UdpServer) recvPacketRoutine() {
 		// check minimal length
 		if n < pkt.MinimalLength() {
 			s.device.ReleasePoolPacket(pkt)
+			s.metrics.recordDroppedPacket("too_short")
 			log.Error("Received UDP packet from %s is too short, discard", addrStr)
 			continue
 		}
@@ -627,6 +628,10 @@ func (s *UdpServer) recvPacketRoutine() {
 		// check if it is from blocked address
 		if s.IsBlockAddr(remoteAddr) {
 			s.device.ReleasePoolPacket(pkt)
+			// Counted so a flood stays visible AFTER the source is
+			// block-listed — otherwise rate(...dropped_total) falls exactly
+			// when an attack escalates past the threat threshold.
+			s.metrics.recordDroppedPacket("blocked")
 			log.Critical("Remote address %s is being blocked at the moment, discard.", addrStr)
 			continue
 		}
@@ -670,6 +675,7 @@ func (s *UdpServer) recvPacketRoutine() {
 		if pkt.HeaderType == core.NHP_RKN && s.device.IsOverload() {
 			if !s.rknLimiter.allow(remoteAddr, recvTime) {
 				s.device.ReleasePoolPacket(pkt)
+				s.metrics.recordDroppedPacket("rate_limited")
 				log.Warning("RKN from %s dropped: per-IP rate limit exceeded under overload", addrStr)
 				continue
 			}
@@ -693,6 +699,7 @@ func (s *UdpServer) recvPacketRoutine() {
 				s.remoteConnectionMapMutex.Unlock()
 				log.Critical("Reached maximum concurrent connection, discarding packet from: %s", addrStr)
 				s.device.ReleasePoolPacket(pkt)
+				s.metrics.recordDroppedPacket("conn_limit")
 				continue
 			}
 			s.remoteConnectionMapMutex.Unlock()

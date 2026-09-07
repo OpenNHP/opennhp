@@ -432,6 +432,7 @@ func (a *UdpAC) recvPacketRoutine(conn *UdpConn) {
 		// check minimal length
 		if n < pkt.MinimalLength() {
 			a.device.ReleasePoolPacket(pkt)
+			a.metrics.recordDroppedPacket("too_short")
 			log.Error("Received UDP packet from %s is too short, discard", addrStr)
 			continue
 		}

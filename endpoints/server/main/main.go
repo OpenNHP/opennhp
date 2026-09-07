@@ -208,6 +208,12 @@ func main() {
 						os.Exit(1)
 					}
 					fmt.Printf("OK: %d %s, hash chain intact.\n", res.Count, pluralize(res.Count, "entry", "entries"))
+					if res.Count == 0 {
+						// An empty ledger is the cheapest form of the truncation
+						// attack a hash chain can't detect ("replace the whole
+						// file with nothing"). Do not let it read as a clean pass.
+						fmt.Println("warning: the ledger contains no entries — if it should not be empty, it may have been truncated or replaced. Compare against your off-host anchor.")
+					}
 					if res.AnchoredAtSeq > 0 {
 						// The set does not start at seq 1 — earlier segments were
 						// archived away. The first entry's own prevHash is trusted
@@ -240,7 +246,7 @@ func main() {
 					// signed ledger, or a file with damaged lines, is not the
 					// same as a full clean pass. Distinct exit code 2 so a
 					// caller can tell it apart from a chain break (1).
-					if c.Bool("strict") && (res.Skipped > 0 || res.UncheckedSigs > 0 || res.AnchoredAtSeq > 0) {
+					if c.Bool("strict") && (res.Count == 0 || res.Skipped > 0 || res.UncheckedSigs > 0 || res.AnchoredAtSeq > 0) {
 						fmt.Println("strict: verification incomplete (see warnings above).")
 						os.Exit(2)
 					}

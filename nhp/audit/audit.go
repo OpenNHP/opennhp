@@ -307,31 +307,44 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 		}
 	}()
 
-	// pending holds bytes a previous Write did not accept, so a transient
+	// pending holds bytes a previous Write did not accept, so a TRANSIENT
 	// failure (ENOSPC, then the operator frees space) does not lose committed
 	// entries or gap the chain: the next successful write flushes them ahead
-	// of the newest line. If the writer never recovers, Close's final flush
-	// tries once more and gives up — genuine unrecoverable loss.
+	// of the newest line. It is bounded by maxPendingBytes — on a PERSISTENT
+	// failure the oldest buffered lines are discarded (counted in Dropped,
+	// surfaced via asyncErr so auditEvent's rate-limited Critical fires),
+	// rather than growing until the process is OOM-killed.
 	var pending []byte
 	for it := range q {
-		buf := it.line
 		if len(pending) > 0 {
-			buf = append(pending, it.line...)
-			pending = nil
+			pending = append(pending, it.line...)
+		} else {
+			pending = append(pending[:0], it.line...)
 		}
-		if l.shouldRotate(len(buf)) {
+		if l.shouldRotate(len(pending)) {
 			if rErr := l.rollSegment(); rErr != nil {
 				l.asyncErr.Store(&asyncFailure{err: rErr})
 				// keep going on the current segment
 			}
 		}
-		if _, err := l.w.Write(buf); err != nil {
-			l.asyncErr.Store(&asyncFailure{err: err})
-			pending = append([]byte(nil), buf...) // retry the whole buffer next time
+		if _, err := l.w.Write(pending); err != nil {
+			// Drop the oldest buffered lines once the retry buffer is full,
+			// so a persistent failure cannot grow the process without bound.
+			// The newest entry is the one most worth keeping.
+			if len(pending) > maxPendingBytes {
+				cut := lineBoundaryAtLeast(pending, len(pending)-maxPendingBytes)
+				droppedLines := bytesNewlineCount(pending[:cut])
+				pending = append(pending[:0], pending[cut:]...)
+				total := l.dropped.Add(droppedLines)
+				l.asyncErr.Store(&asyncFailure{err: fmt.Errorf("audit: async writes failing; dropped %d buffered entries (%d total): %w", droppedLines, total, err)})
+			} else {
+				l.asyncErr.Store(&asyncFailure{err: err})
+			}
 			continue
 		}
-		l.curSize += int64(len(buf))
+		l.curSize += int64(len(pending))
 		l.lastSegSeq = it.seq
+		pending = pending[:0]
 		// A write succeeded: clear any prior failure so Log stops surfacing
 		// it and auditEvent's "writes recovered" path can fire.
 		l.asyncErr.Store(nil)
@@ -346,6 +359,32 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 			l.asyncErr.Store(&asyncFailure{err: err})
 		}
 	}
+}
+
+// maxPendingBytes caps the async retry buffer. Past this, the oldest
+// buffered lines are dropped (and counted) rather than growing until the
+// process is OOM-killed by a persistent write failure.
+const maxPendingBytes = 8 * 1024 * 1024
+
+// lineBoundaryAtLeast returns the smallest index >= min that falls just after
+// a '\n' in b (so b[:i] is a whole number of lines), or len(b) if there is
+// no newline at or after min.
+func lineBoundaryAtLeast(b []byte, min int) int {
+	if min <= 0 {
+		return 0
+	}
+	if min >= len(b) {
+		return len(b)
+	}
+	if i := bytes.IndexByte(b[min:], '\n'); i >= 0 {
+		return min + i + 1
+	}
+	return len(b)
+}
+
+// bytesNewlineCount counts '\n' in b — the number of complete lines.
+func bytesNewlineCount(b []byte) uint64 {
+	return uint64(bytes.Count(b, []byte{'\n'}))
 }
 
 // shouldRotate reports whether appending nextLen bytes would push the live
@@ -446,8 +485,7 @@ func Open(path string, opts Options) (*Ledger, error) {
 		curSize = info.Size()
 	}
 
-	l := NewLedger(f, opts)
-	l.closer = f
+	l := NewLedger(f, opts) // NewLedger already sets l.closer from the io.Closer
 	l.seq = seq
 	l.lastHash = last
 	l.MalformedOnOpen = malformed
@@ -543,6 +581,34 @@ func ensureLedgerFile(path string) error {
 		return fmt.Errorf("%w: %q (its first line is not an event); check the [Audit] FilePath setting", ErrNotALedger, path)
 	}
 	return nil
+}
+
+// LooksLikeLedger reports whether any of the first maxScanForEntry lines of
+// the file at path parses as an audit Event. It lets a caller tell "this is
+// our ledger, its header just got corrupted" (worth quarantining) from "this
+// is some unrelated file the operator mistyped into FilePath" (leave it
+// alone). A missing or empty file returns false.
+func LooksLikeLedger(path string) bool {
+	const maxScanForEntry = 64
+	f, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	br := bufio.NewReaderSize(f, scanBufLen)
+	for i := 0; i < maxScanForEntry; i++ {
+		line, tooLong, rerr := readLine(br)
+		if !tooLong && len(line) > 0 {
+			var e Event
+			if json.Unmarshal(line, &e) == nil && e.Seq > 0 && e.Hash != "" {
+				return true
+			}
+		}
+		if rerr != nil {
+			return false
+		}
+	}
+	return false
 }
 
 // repairTornTail fixes a trailing write cut off mid-append (a fragment with
@@ -737,8 +803,10 @@ func resumeFromTail(path string) (seq uint64, hash string, skipped int, ok bool,
 	// write access appending garbage) cannot make startup read the whole
 	// file backwards into memory. maxLineLen per inspected line is generous.
 	maxScan := int64(maxTailResumeLines+2) * maxLineLen
-	buf := make([]byte, 0, chunk)
-	tmp := make([]byte, chunk)
+	// Collect chunks oldest-first, then join once — appending each new chunk
+	// in front of a growing buffer would re-copy the whole accumulation
+	// every 8 KiB (O(n^2)).
+	var chunks [][]byte
 	pos := size
 	newlines := 0         // '\n' seen so far while scanning back
 	reachedStart := false // read all the way to offset 0
@@ -758,15 +826,12 @@ func resumeFromTail(path string) (seq uint64, hash string, skipped int, ok bool,
 			n = pos
 		}
 		start := pos - n
-		if _, rErr := f.ReadAt(tmp[:n], start); rErr != nil {
+		c := make([]byte, n)
+		if _, rErr := f.ReadAt(c, start); rErr != nil {
 			return 0, "", 0, false, fmt.Errorf("audit: read tail of %q: %w", path, rErr)
 		}
-		buf = append(append([]byte(nil), tmp[:n]...), buf...)
-		for _, b := range tmp[:n] {
-			if b == '\n' {
-				newlines++
-			}
-		}
+		chunks = append(chunks, c)
+		newlines += bytes.Count(c, []byte{'\n'})
 		pos = start
 	}
 	if truncated {
@@ -774,6 +839,11 @@ func resumeFromTail(path string) (seq uint64, hash string, skipped int, ok bool,
 		// caller do the O(file) forward scan (or fall back to a segment).
 		return 0, "", 0, false, nil
 	}
+	// chunks were appended newest-first; reverse into read order before join.
+	for i, j := 0, len(chunks)-1; i < j; i, j = i+1, j-1 {
+		chunks[i], chunks[j] = chunks[j], chunks[i]
+	}
+	buf := bytes.Join(chunks, nil)
 
 	// Split the collected bytes into complete lines. The file ends in '\n'
 	// (repairTornTail guaranteed it), so the trailing split element is "".

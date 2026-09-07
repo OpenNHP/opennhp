@@ -1336,3 +1336,45 @@ func TestVerifyLedgerAnchorsOnArchivedSegments(t *testing.T) {
 		t.Fatal("AnchoredAtSeq should be set when the set does not start at seq 1")
 	}
 }
+
+// TestAsyncWriterBoundedPendingOnPersistentFailure: a writer that never
+// recovers must not grow the retry buffer without bound. Once past
+// maxPendingBytes the oldest buffered lines are dropped and counted.
+func TestAsyncWriterBoundedPendingOnPersistentFailure(t *testing.T) {
+	dw := &deadWriter{}
+	l := NewLedger(nopCloser{dw}, Options{Async: true, QueueSize: 1 << 16})
+
+	// ~2 KiB per line, so a few thousand entries blow well past the 8 MiB cap
+	// without the test having to log tens of thousands of tiny records.
+	filler := strings.Repeat("x", 2000)
+	entries := (maxPendingBytes/2100)*3 + 200
+	for i := 0; i < entries; i++ {
+		_ = l.Log("knock", SeverityInfo, map[string]string{"reason": filler})
+	}
+	// Give the drain goroutine time to chew through the queue.
+	deadline := time.Now().Add(5 * time.Second)
+	for l.Dropped() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	_ = l.Close()
+
+	if l.Dropped() == 0 {
+		t.Fatal("a persistent write failure never dropped anything — the pending buffer is unbounded")
+	}
+	if dw.peak > 4*maxPendingBytes {
+		t.Fatalf("pending buffer peaked at %d bytes, well over the %d cap", dw.peak, maxPendingBytes)
+	}
+	if l.loadAsyncErr() == nil {
+		t.Fatal("asyncErr should still be set while writes are failing")
+	}
+}
+
+// deadWriter always fails and records the largest buffer it was handed.
+type deadWriter struct{ peak int }
+
+func (d *deadWriter) Write(p []byte) (int, error) {
+	if len(p) > d.peak {
+		d.peak = len(p)
+	}
+	return 0, errors.New("dead writer: permanent failure")
+}

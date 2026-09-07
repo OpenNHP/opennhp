@@ -222,10 +222,11 @@ func TestAuditHTTPOpenResourceDenied(t *testing.T) {
 
 // A corrupt/foreign file at the ledger path must not silently disable
 // auditing: it is quarantined and a fresh chain starts, so the recorder
-// keeps running (fail-safe, not fail-open).
-func TestAuditQuarantinesNonLedgerAndContinues(t *testing.T) {
+// keeps running (fail-safe, not fail-open) — WITHOUT renaming the operator's
+// file, which the server (often privileged) must not do to an unrelated path.
+func TestAuditForeignFileLeftUntouchedAndContinuesAtSibling(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "audit.jsonl")
+	path := filepath.Join(dir, "some-other.log")
 	junk := []byte("\x00 not a ledger\nmore junk\n")
 	if err := os.WriteFile(path, junk, 0600); err != nil {
 		t.Fatal(err)
@@ -235,39 +236,78 @@ func TestAuditQuarantinesNonLedgerAndContinues(t *testing.T) {
 		config: &Config{Audit: AuditConfig{Enabled: true, FilePath: path}},
 	}
 	if err := s.initAuditLedger(); err != nil {
-		t.Fatalf("initAuditLedger should recover a non-ledger file, got: %v", err)
+		t.Fatalf("initAuditLedger should continue past a foreign file, got: %v", err)
 	}
 	if s.auditLedger == nil {
-		t.Fatal("auditLedger is nil — auditing was disabled instead of quarantined")
+		t.Fatal("auditLedger is nil — auditing was disabled instead of continuing at a sibling")
 	}
+	t.Cleanup(s.closeAuditLedger)
 
-	// The original bytes must be preserved in a .corrupt-* sibling.
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
+	// The operator's file must be exactly as it was — not renamed, not touched.
+	if got, _ := os.ReadFile(path); !bytes.Equal(got, junk) {
+		t.Fatal("the foreign file was modified — the server must leave it alone")
 	}
-	var quarantined string
+	entries, _ := os.ReadDir(dir)
+	var sibling string
 	for _, e := range entries {
 		if strings.Contains(e.Name(), ".corrupt-") {
-			quarantined = filepath.Join(dir, e.Name())
+			t.Fatalf("a .corrupt-* rename happened on a foreign file: %s", e.Name())
+		}
+		if strings.Contains(e.Name(), ".quarantined-") {
+			sibling = filepath.Join(dir, e.Name())
 		}
 	}
-	if quarantined == "" {
-		t.Fatal("no .corrupt-* quarantine file was created")
-	}
-	if got, _ := os.ReadFile(quarantined); !bytes.Equal(got, junk) {
-		t.Fatal("quarantined file does not hold the original bytes")
+	if sibling == "" {
+		t.Fatal("no .quarantined-*.jsonl sibling ledger was created")
 	}
 
-	// The fresh chain works and verifies.
+	// The fresh chain at the sibling works and verifies.
 	s.auditEvent("knock", audit.SeverityInfo, map[string]string{"user": "alice"})
 	s.closeAuditLedger()
-	data, err := os.ReadFile(path)
+	if data, _ := os.ReadFile(sibling); audit.VerifyChain(bytes.NewReader(data), nil).Err != nil {
+		t.Fatal("sibling chain failed to verify")
+	}
+}
+
+// A file that IS our ledger but whose first line got corrupted (an attacker
+// prepending junk to disable auditing) is still quarantined to .corrupt-*
+// and a fresh chain started — that path is a loud, detectable signal.
+func TestAuditCorruptedLedgerHeaderIsQuarantined(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	// Build a real 3-entry ledger, then prepend a junk byte to its first line.
+	l, err := audit.Open(path, audit.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res := audit.VerifyChain(bytes.NewReader(data), nil); res.Err != nil {
-		t.Fatalf("fresh chain failed to verify: %v", res.Err)
+	for i := 0; i < 3; i++ {
+		_ = l.Log("knock", audit.SeverityInfo, nil)
+	}
+	l.Close()
+	orig, _ := os.ReadFile(path)
+	if err := os.WriteFile(path, append([]byte("x"), orig...), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &UdpServer{config: &Config{Audit: AuditConfig{Enabled: true, FilePath: path}}}
+	if err := s.initAuditLedger(); err != nil {
+		t.Fatalf("initAuditLedger: %v", err)
+	}
+	t.Cleanup(s.closeAuditLedger)
+
+	entries, _ := os.ReadDir(dir)
+	var corrupt string
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".corrupt-") {
+			corrupt = filepath.Join(dir, e.Name())
+		}
+	}
+	if corrupt == "" {
+		t.Fatal("a corrupted ledger header should be quarantined to .corrupt-*")
+	}
+	if got, _ := os.ReadFile(corrupt); !bytes.Equal(got, append([]byte("x"), orig...)) {
+		t.Fatal("quarantined file does not hold the original (corrupted) bytes")
 	}
 }
 

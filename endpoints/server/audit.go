@@ -69,18 +69,37 @@ func (s *UdpServer) initAuditLedger() error {
 	}
 	ledger, err := audit.Open(path, opts)
 	if err != nil {
-		// A file that is not a ledger (a mistyped path, or an attacker who
-		// corrupted the first line to disable auditing) is recoverable: move
-		// it aside and start a fresh chain, so the gateway does not end up
-		// serving with no audit trail at all. FailClosed operators opt out of
-		// this and take a boot failure instead (handled by the caller).
 		if errors.Is(err, audit.ErrNotALedger) && !s.config.Audit.FailClosed {
-			fresh, qErr := quarantineAndReopen(path, opts)
+			// The file at FilePath is not one of our ledgers. Two cases:
+			//
+			//  - It IS our ledger but its first line got corrupted (an
+			//    attacker prepending junk to disable auditing, say). Move it
+			//    aside to a ".corrupt-<ns>" sibling and start fresh, so the
+			//    trail is not silently lost — a chain that restarts at seq 1
+			//    next to a .corrupt file is a loud, detectable signal.
+			//
+			//  - It is a FOREIGN file (a mistyped FilePath pointing at
+			//    another log, a config, a shared-volume file). Renaming that
+			//    is exactly what ensureLedgerFile exists to prevent — the
+			//    server, often privileged, must not move an operator's
+			//    unrelated file around. Leave it untouched and continue at a
+			//    ".quarantined-<ns>" sibling instead, logging loudly.
+			if audit.LooksLikeLedger(path) {
+				fresh, qErr := quarantineAndReopen(path, opts)
+				if qErr != nil {
+					return fmt.Errorf("audit ledger at %s is not readable and could not be quarantined: %w", path, qErr)
+				}
+				s.auditLedger = fresh
+				log.Critical("audit ledger %s has a corrupted header (%v); moved it aside and started a fresh chain — investigate the original file", path, err)
+				return nil
+			}
+			sibling := fmt.Sprintf("%s.quarantined-%d.jsonl", path, time.Now().UnixNano())
+			fresh, qErr := audit.Open(sibling, opts)
 			if qErr != nil {
-				return fmt.Errorf("audit ledger at %s is not a ledger and could not be quarantined: %w", path, qErr)
+				return fmt.Errorf("audit: %s is not a ledger file and a sibling ledger could not be opened: %w", path, qErr)
 			}
 			s.auditLedger = fresh
-			log.Critical("audit ledger %s could not be opened (%v); moved it aside and started a fresh chain — investigate the original file", path, err)
+			log.Critical("audit [Audit] FilePath %s is not an audit ledger (%v) and was left untouched — auditing to %s instead; fix FilePath", path, err, sibling)
 			return nil
 		}
 		return err

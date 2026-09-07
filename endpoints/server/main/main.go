@@ -208,6 +208,13 @@ func main() {
 						os.Exit(1)
 					}
 					fmt.Printf("OK: %d %s, hash chain intact.\n", res.Count, pluralize(res.Count, "entry", "entries"))
+					if res.AnchoredAtSeq > 0 {
+						// The set does not start at seq 1 — earlier segments were
+						// archived away. The first entry's own prevHash is trusted
+						// as the anchor, so nothing before it can be checked here.
+						fmt.Printf("note: verification started at seq %d (earlier segments not present); a break before that seq is not visible from these files — compare against your off-host anchor.\n",
+							res.AnchoredAtSeq)
+					}
 					if res.UncheckedSigs > 0 {
 						// Do not let a signed ledger checked without its key
 						// read as fully verified. The hash chain alone is
@@ -233,7 +240,7 @@ func main() {
 					// signed ledger, or a file with damaged lines, is not the
 					// same as a full clean pass. Distinct exit code 2 so a
 					// caller can tell it apart from a chain break (1).
-					if c.Bool("strict") && (res.Skipped > 0 || res.UncheckedSigs > 0) {
+					if c.Bool("strict") && (res.Skipped > 0 || res.UncheckedSigs > 0 || res.AnchoredAtSeq > 0) {
 						fmt.Println("strict: verification incomplete (see warnings above).")
 						os.Exit(2)
 					}
@@ -259,14 +266,30 @@ func main() {
 // numbered "<path>.<n>" segments left by size-based rotation. A quick
 // existence check keeps the error message helpful when the path is wrong.
 func verifyLedgerFile(path string, hmacKey []byte) (audit.VerifyResult, error) {
-	if _, err := os.Stat(filepath.Clean(path)); err != nil {
+	clean := filepath.Clean(path)
+	if _, err := os.Stat(clean); err != nil {
 		// Allow the case where only rotated segments exist and the live file
-		// was removed; audit.VerifyLedger still handles that.
-		if matches, _ := filepath.Glob(filepath.Clean(path) + ".*"); len(matches) == 0 {
+		// was archived away. A literal prefix scan (not filepath.Glob) so a
+		// path containing glob metacharacters still works.
+		if !hasSegmentSibling(clean) {
 			return audit.VerifyResult{}, err
 		}
 	}
-	return audit.VerifyLedger(filepath.Clean(path), hmacKey), nil
+	return audit.VerifyLedger(clean, hmacKey), nil
+}
+
+func hasSegmentSibling(path string) bool {
+	ents, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		return false
+	}
+	prefix := filepath.Base(path) + "."
+	for _, e := range ents {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveVerifyKey obtains the base64 HMAC key for `audit verify` from, in

@@ -45,6 +45,12 @@ type VerifyResult struct {
 	// unbounded slice. Which lines are bad is more actionable than a bare
 	// count when an operator goes to inspect the file.
 	SkippedLines []uint64
+	// AnchoredAtSeq is non-zero when verification did not start from the
+	// genesis entry (seq 1) — e.g. VerifyLedger over a segment set whose
+	// earliest segments were archived away. The first entry's own prevHash
+	// is trusted as the anchor, so a break BEFORE AnchoredAtSeq cannot be
+	// seen from these bytes alone; compare against an off-host anchor.
+	AnchoredAtSeq uint64
 }
 
 // maxReportedSkips bounds the SkippedLines slice; Skipped still counts them
@@ -62,6 +68,20 @@ func VerifyLedger(path string, hmacKey []byte) VerifyResult {
 		return VerifyResult{Err: fmt.Errorf("audit: list segments of %q: %w", path, err)}
 	}
 
+	if len(segs) == 0 {
+		return VerifyResult{}
+	}
+
+	// If the first available entry is not seq 1, earlier segments were
+	// archived away (a documented workflow). Anchor the walk on that entry's
+	// own prevHash instead of failing on a "chain broken" against genesis.
+	startPrevHash, startPrevSeq, anchoredAt := genesisHash, uint64(0), uint64(0)
+	if first, fErr := firstEntry(segs[0]); fErr != nil {
+		return VerifyResult{Err: fmt.Errorf("audit: read segment %q: %w", segs[0], fErr)}
+	} else if first != nil && first.Seq > 1 {
+		startPrevHash, startPrevSeq, anchoredAt = first.PrevHash, first.Seq-1, first.Seq
+	}
+
 	var readers []io.Reader
 	var openFiles []io.Closer
 	defer func() {
@@ -77,33 +97,43 @@ func VerifyLedger(path string, hmacKey []byte) VerifyResult {
 		openFiles = append(openFiles, f)
 		readers = append(readers, f)
 	}
-	return VerifyChain(io.MultiReader(readers...), hmacKey)
+	return verifyChainFrom(io.MultiReader(readers...), hmacKey, startPrevHash, startPrevSeq, anchoredAt)
+}
+
+// firstEntry returns the first parseable Event in the file, or nil if the
+// file has no parseable line (empty / all damage).
+func firstEntry(path string) (*Event, error) {
+	f, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	br := bufio.NewReaderSize(f, scanBufLen)
+	for {
+		line, tooLong, rErr := readLine(br)
+		if !tooLong && len(line) > 0 {
+			var e Event
+			if json.Unmarshal(line, &e) == nil && e.Seq > 0 {
+				return &e, nil
+			}
+		}
+		if rErr != nil {
+			if rErr == io.EOF {
+				return nil, nil
+			}
+			return nil, rErr
+		}
+	}
 }
 
 // segmentFiles returns the ordered list of files that make up a possibly
 // rotated ledger: every "<path>.<n>" sibling (n a decimal integer) sorted by
 // n ascending, followed by "<path>" itself if it exists.
 func segmentFiles(path string) ([]string, error) {
-	matches, err := filepath.Glob(path + ".*")
+	numbered, err := numberedSegments(path)
 	if err != nil {
 		return nil, err
 	}
-	type seg struct {
-		name string
-		n    uint64
-	}
-	var numbered []seg
-	prefix := filepath.Base(path) + "."
-	for _, m := range matches {
-		suffix := strings.TrimPrefix(filepath.Base(m), prefix)
-		n, convErr := strconv.ParseUint(suffix, 10, 64)
-		if convErr != nil {
-			continue // ".corrupt-<ns>" and other non-numeric siblings
-		}
-		numbered = append(numbered, seg{m, n})
-	}
-	sort.Slice(numbered, func(i, j int) bool { return numbered[i].n < numbered[j].n })
-
 	out := make([]string, 0, len(numbered)+1)
 	for _, s := range numbered {
 		out = append(out, s.name)
@@ -112,6 +142,40 @@ func segmentFiles(path string) ([]string, error) {
 		out = append(out, path)
 	}
 	return out, nil
+}
+
+type numberedSegment struct {
+	name string
+	n    uint64
+}
+
+// numberedSegments lists the "<path>.<n>" siblings (n a decimal integer),
+// ascending by n. It uses os.ReadDir + a literal prefix match rather than
+// filepath.Glob so a FilePath containing glob metacharacters ('*', '?', '[')
+// does not silently miss segments.
+func numberedSegments(path string) ([]numberedSegment, error) {
+	dir := filepath.Dir(path)
+	prefix := filepath.Base(path) + "."
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var segs []numberedSegment
+	for _, e := range ents {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), prefix) {
+			continue
+		}
+		n, convErr := strconv.ParseUint(strings.TrimPrefix(e.Name(), prefix), 10, 64)
+		if convErr != nil {
+			continue // ".corrupt-<ns>" and other non-numeric siblings
+		}
+		segs = append(segs, numberedSegment{filepath.Join(dir, e.Name()), n})
+	}
+	sort.Slice(segs, func(i, j int) bool { return segs[i].n < segs[j].n })
+	return segs, nil
 }
 
 // VerifyChain walks the ledger read from r and confirms every entry's hash
@@ -127,14 +191,22 @@ func segmentFiles(path string) ([]string, error) {
 //   - Seq increments by one (nothing dropped);
 //   - Sig matches when a key is supplied (chain bound to the secret).
 func VerifyChain(r io.Reader, hmacKey []byte) VerifyResult {
+	return verifyChainFrom(r, hmacKey, genesisHash, 0, 0)
+}
+
+// verifyChainFrom is VerifyChain with an explicit starting anchor. startPrev*
+// are genesisHash/0 for a full chain; VerifyLedger passes the first entry's
+// own prevHash / seq-1 when the earliest segments have been archived away, in
+// which case anchoredAt records where the walk actually began.
+func verifyChainFrom(r io.Reader, hmacKey []byte, startPrevHash string, startPrevSeq, anchoredAt uint64) VerifyResult {
 	br := bufio.NewReaderSize(r, scanBufLen)
 
 	var count uint64
 	var skipped uint64
 	var unchecked uint64
 	var skippedLines []uint64
-	prevHash := genesisHash
-	var prevSeq uint64
+	prevHash := startPrevHash
+	prevSeq := startPrevSeq
 	lineNo := uint64(0)
 
 	// skip records a damaged line: an unparseable or over-long line is
@@ -159,15 +231,18 @@ func VerifyChain(r io.Reader, hmacKey []byte) VerifyResult {
 			if json.Unmarshal(line, &e) != nil {
 				skip()
 			} else if res, ok := verifyEntry(&e, line, hmacKey, &prevHash, &prevSeq, &count, &unchecked, skipped, skippedLines); !ok {
+				res.AnchoredAtSeq = anchoredAt
 				return res
 			}
 		}
 
 		if readErr != nil {
+			res := VerifyResult{Count: count, Skipped: skipped, UncheckedSigs: unchecked, SkippedLines: skippedLines, AnchoredAtSeq: anchoredAt}
 			if readErr == io.EOF {
-				return VerifyResult{Count: count, Skipped: skipped, UncheckedSigs: unchecked, SkippedLines: skippedLines}
+				return res
 			}
-			return VerifyResult{Count: count, Skipped: skipped, UncheckedSigs: unchecked, SkippedLines: skippedLines, Err: fmt.Errorf("read ledger: %w", readErr)}
+			res.Err = fmt.Errorf("read ledger: %w", readErr)
+			return res
 		}
 	}
 }

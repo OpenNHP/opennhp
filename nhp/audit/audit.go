@@ -200,12 +200,21 @@ type Ledger struct {
 	// the marshaled line to a single background writer via queue, so the
 	// request path never blocks on the disk write or fsync. queue is nil in
 	// the default synchronous mode.
-	async    bool
-	queue    chan queuedLine
-	drainWG  sync.WaitGroup
-	dropped  atomic.Uint64
-	asyncErr atomic.Value // holds error: the last background write failure
+	async   bool
+	queue   chan queuedLine
+	drainWG sync.WaitGroup
+	dropped atomic.Uint64
+	// asyncErr holds the most recent background write/rotation failure, or
+	// nil once a subsequent write succeeds. A pointer wrapper (not a bare
+	// error in an atomic.Value) is required: the drain goroutine stores
+	// several distinct concrete error types (*fs.PathError, *fmt.wrapError,
+	// …) and atomic.Value panics on a type change.
+	asyncErr atomic.Pointer[asyncFailure]
 }
+
+// asyncFailure wraps the last background failure so it can be stored/cleared
+// atomically regardless of the concrete error type.
+type asyncFailure struct{ err error }
 
 // queuedLine is one prepared entry waiting for the async writer. seq is
 // carried alongside so the writer can name a rotated segment without racing
@@ -213,6 +222,14 @@ type Ledger struct {
 type queuedLine struct {
 	line []byte
 	seq  uint64
+}
+
+// loadAsyncErr returns the last unrecovered background failure, or nil.
+func (l *Ledger) loadAsyncErr() error {
+	if f := l.asyncErr.Load(); f != nil {
+		return f.err
+	}
+	return nil
 }
 
 // Options configures a Ledger.
@@ -280,26 +297,53 @@ func NewLedger(w io.Writer, opts Options) *Ledger {
 
 // drain is the single background writer for async mode. It is the only
 // goroutine that touches l.w / the segment fields while async, so no lock is
-// needed around the write or the rotation.
+// needed around the write or the rotation. A panic here (unlike an ordinary
+// write error) would kill the process, so recover and record it.
 func (l *Ledger) drain(q <-chan queuedLine) {
 	defer l.drainWG.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			l.asyncErr.Store(&asyncFailure{err: fmt.Errorf("audit: async writer panicked: %v", r)})
+		}
+	}()
+
+	// pending holds bytes a previous Write did not accept, so a transient
+	// failure (ENOSPC, then the operator frees space) does not lose committed
+	// entries or gap the chain: the next successful write flushes them ahead
+	// of the newest line. If the writer never recovers, Close's final flush
+	// tries once more and gives up — genuine unrecoverable loss.
+	var pending []byte
 	for it := range q {
-		if l.shouldRotate(len(it.line)) {
+		buf := it.line
+		if len(pending) > 0 {
+			buf = append(pending, it.line...)
+			pending = nil
+		}
+		if l.shouldRotate(len(buf)) {
 			if rErr := l.rollSegment(); rErr != nil {
-				l.asyncErr.Store(rErr)
+				l.asyncErr.Store(&asyncFailure{err: rErr})
 				// keep going on the current segment
 			}
 		}
-		if _, err := l.w.Write(it.line); err != nil {
-			l.asyncErr.Store(err)
+		if _, err := l.w.Write(buf); err != nil {
+			l.asyncErr.Store(&asyncFailure{err: err})
+			pending = append([]byte(nil), buf...) // retry the whole buffer next time
 			continue
 		}
-		l.curSize += int64(len(it.line))
+		l.curSize += int64(len(buf))
 		l.lastSegSeq = it.seq
+		// A write succeeded: clear any prior failure so Log stops surfacing
+		// it and auditEvent's "writes recovered" path can fire.
+		l.asyncErr.Store(nil)
 		if l.fsync {
 			if f, ok := l.w.(*os.File); ok {
 				_ = f.Sync()
 			}
+		}
+	}
+	if len(pending) > 0 {
+		if _, err := l.w.Write(pending); err != nil {
+			l.asyncErr.Store(&asyncFailure{err: err})
 		}
 	}
 }
@@ -378,6 +422,20 @@ func Open(path string, opts Options) (*Ledger, error) {
 		return nil, fmt.Errorf("audit: open %q: %w", path, openErr)
 	}
 
+	// If the live file yielded no entry (missing, empty, or a crash between
+	// rollSegment's rename and the first write to the fresh file), resume
+	// from the highest-numbered "<path>.<n>" segment instead. Without this
+	// the chain would restart at seq 1 next to a full segment — a spurious
+	// "chain broken" for VerifyLedger — and lastSegSeq would be 0, so the
+	// next rotation would create "<path>.0" and break segment ordering.
+	if last == genesisHash {
+		if segSeq, segHash, sErr := lastSegmentTip(path); sErr != nil {
+			return nil, fmt.Errorf("audit: read rotated segment of %q: %w", path, sErr)
+		} else if segHash != "" {
+			seq, last = segSeq, segHash
+		}
+	}
+
 	f, err := os.OpenFile(filepath.Clean(path), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("audit: open for append: %w", err)
@@ -399,6 +457,31 @@ func Open(path string, opts Options) (*Ledger, error) {
 	l.curSize = curSize
 	l.lastSegSeq = seq
 	return l, nil
+}
+
+// lastSegmentTip returns the seq and hash of the last committed entry in the
+// highest-numbered "<path>.<n>" segment, or ("", 0, nil) when there are no
+// numbered segments. Used by Open to resume when the live file has no entry.
+func lastSegmentTip(path string) (seq uint64, hash string, err error) {
+	segs, err := numberedSegments(path)
+	if err != nil || len(segs) == 0 {
+		return 0, "", err
+	}
+	last := segs[len(segs)-1]
+	s, h, _, ok, rErr := resumeFromTail(last.name)
+	if rErr != nil {
+		return 0, "", rErr
+	}
+	if !ok {
+		if f, oErr := os.Open(filepath.Clean(last.name)); oErr == nil {
+			s, h, _, rErr = scanTail(f)
+			f.Close()
+			if rErr != nil {
+				return 0, "", rErr
+			}
+		}
+	}
+	return s, h, nil
 }
 
 // rollSegment closes the live file, renames it to "<path>.<lastSegSeq>" and
@@ -649,15 +732,25 @@ func resumeFromTail(path string) (seq uint64, hash string, skipped int, ok bool,
 	}
 
 	const chunk = 8192
+	// Cap the backward walk by bytes as well as by newline count, so a tail
+	// with a long newline-free stretch (corruption, or an attacker with
+	// write access appending garbage) cannot make startup read the whole
+	// file backwards into memory. maxLineLen per inspected line is generous.
+	maxScan := int64(maxTailResumeLines+2) * maxLineLen
 	buf := make([]byte, 0, chunk)
 	tmp := make([]byte, chunk)
 	pos := size
 	newlines := 0         // '\n' seen so far while scanning back
 	reachedStart := false // read all the way to offset 0
+	truncated := false    // hit the byte cap before enough newlines
 	// We need one more newline than lines we want, to bound the oldest line.
 	for newlines <= maxTailResumeLines+1 {
 		if pos == 0 {
 			reachedStart = true
+			break
+		}
+		if size-pos >= maxScan {
+			truncated = true
 			break
 		}
 		n := int64(chunk)
@@ -675,6 +768,11 @@ func resumeFromTail(path string) (seq uint64, hash string, skipped int, ok bool,
 			}
 		}
 		pos = start
+	}
+	if truncated {
+		// The tail is not usably structured within the byte budget; let the
+		// caller do the O(file) forward scan (or fall back to a segment).
+		return 0, "", 0, false, nil
 	}
 
 	// Split the collected bytes into complete lines. The file ends in '\n'
@@ -793,15 +891,8 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	// Surface a background write failure so a caller's failure counter still
-	// trips on a persistent async I/O problem (auditEvent escalates it).
-	if l.async {
-		if v := l.asyncErr.Load(); v != nil {
-			return v.(error)
-		}
-		if l.queue == nil {
-			return errors.New("audit: ledger is closed")
-		}
+	if l.async && l.queue == nil {
+		return errors.New("audit: ledger is closed")
 	}
 
 	l.seq++
@@ -839,7 +930,12 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 		select {
 		case l.queue <- queuedLine{line: line, seq: e.Seq}:
 			l.lastHash = e.Hash
-			return nil
+			// Still surface the most recent background failure (if any) so
+			// auditEvent keeps escalating a genuine, ongoing I/O problem —
+			// but the new entry HAS been enqueued, so a transient error that
+			// the drain goroutine has since cleared does not permanently
+			// stop the trail.
+			return l.loadAsyncErr()
 		default:
 			// Queue full: discard this entry whole and roll the chain state
 			// back to before it, so there is no seq gap — the entry simply
@@ -870,6 +966,8 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 		// chain and report the write error. Do NOT write another newline
 		// here: that would leave a blank line in the file.
 		if n >= len(line) {
+			l.curSize += int64(len(line))
+			l.lastSegSeq = e.Seq
 			l.lastHash = e.Hash
 			return werr
 		}
@@ -882,6 +980,8 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 		// consistent with what is actually on disk.
 		if n == jsonLen {
 			if _, termErr := l.w.Write([]byte{'\n'}); termErr == nil {
+				l.curSize += int64(len(line))
+				l.lastSegSeq = e.Seq
 				l.lastHash = e.Hash
 				return werr
 			}

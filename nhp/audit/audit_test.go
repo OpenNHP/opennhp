@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -1169,4 +1171,168 @@ func mustReadFile(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// TestAsyncWriterMixedErrorTypesNoPanic feeds the drain goroutine two
+// different concrete error types in succession. With the old
+// `atomic.Value`-of-`error` store, the second Store panicked with
+// "inconsistently typed value" and killed the process (no recover in
+// drain). The pointer-wrapper store must not.
+func TestAsyncWriterMixedErrorTypesNoPanic(t *testing.T) {
+	fw := &twoErrWriter{}
+	l := NewLedger(nopCloser{fw}, Options{Async: true, QueueSize: 64})
+
+	for i := 0; i < 20; i++ {
+		_ = l.Log("knock", SeverityInfo, nil)
+		time.Sleep(time.Millisecond)
+	}
+	if err := l.Close(); err != nil { // would hang / the process would be dead on a panic
+		t.Fatalf("Close after mixed async error types: %v", err)
+	}
+	// The two failing writes were retried (pending buffer), so the chain is
+	// intact once the writer stopped failing.
+	if res := VerifyChain(bytes.NewReader(fw.buf.Bytes()), nil); res.Err != nil {
+		t.Fatalf("chain broken after mixed async error types: %v", res.Err)
+	}
+}
+
+// twoErrWriter fails its first two Writes with two DIFFERENT concrete error
+// types, then behaves.
+type twoErrWriter struct {
+	buf bytes.Buffer
+	n   int
+}
+
+func (w *twoErrWriter) Write(p []byte) (int, error) {
+	w.n++
+	switch w.n {
+	case 1:
+		return 0, errors.New("plain errorString") // *errors.errorString
+	case 2:
+		return 0, fmt.Errorf("wrapped: %w", io.ErrClosedPipe) // *fmt.wrapError
+	default:
+		return w.buf.Write(p)
+	}
+}
+
+// TestAsyncWriterRecoversFromTransientError: a single failed background write
+// must not permanently stop the trail — once the writer succeeds again, Log
+// keeps enqueueing and the error clears.
+func TestAsyncWriterRecoversFromTransientError(t *testing.T) {
+	fw := &flakyWriter{failNext: 1}
+	l := NewLedger(nopCloser{fw}, Options{Async: true, QueueSize: 64})
+
+	for i := 0; i < 30; i++ {
+		_ = l.Log("knock", SeverityInfo, nil)
+		time.Sleep(time.Millisecond)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// The failed write's line was held in the drain's pending buffer and
+	// flushed ahead of the next line, so no entry is lost and the chain is
+	// fully intact once the writer recovered.
+	res := VerifyChain(bytes.NewReader(fw.buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("chain not recoverable after transient error: %v", res.Err)
+	}
+	if res.Count != 30 {
+		t.Fatalf("Count=%d, want 30 — a transient failure must not lose an entry", res.Count)
+	}
+}
+
+type flakyWriter struct {
+	buf      bytes.Buffer
+	failNext int
+}
+
+func (f *flakyWriter) Write(p []byte) (int, error) {
+	if f.failNext > 0 {
+		f.failNext--
+		return 0, fmt.Errorf("flaky: transient write error")
+	}
+	return f.buf.Write(p)
+}
+
+// TestOpenResumesFromSegmentWhenLiveFileEmpty simulates a crash between
+// rollSegment's rename and the first write to the fresh live file: the live
+// file is empty but a numbered segment holds the chain. Open must resume from
+// the segment, not restart at seq 1.
+func TestOpenResumesFromSegmentWhenLiveFileEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 10)
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	// Emulate a rotation that renamed the live file away and crashed before
+	// writing the first entry of the new one.
+	if rnErr := os.Rename(path, path+".10"); rnErr != nil {
+		t.Fatal(rnErr)
+	}
+	if wErr := os.WriteFile(path, nil, 0600); wErr != nil { // empty live file
+		t.Fatal(wErr)
+	}
+
+	l2, err := Open(path, Options{MaxSizeBytes: 1 << 20})
+	if err != nil {
+		t.Fatalf("Open with empty live file + segment: %v", err)
+	}
+	if l2.seq != 10 {
+		t.Fatalf("resumed seq=%d, want 10 (from segment .10)", l2.seq)
+	}
+	if l2.lastSegSeq != 10 {
+		t.Fatalf("lastSegSeq=%d, want 10 — next rotation would misname the segment", l2.lastSegSeq)
+	}
+	writeN(t, l2, 3)
+	l2.Close()
+	if res := VerifyLedger(path, nil); res.Err != nil || res.Count != 13 {
+		t.Fatalf("post-resume verify: err=%v count=%d want 13", res.Err, res.Count)
+	}
+}
+
+// TestVerifyLedgerAnchorsOnArchivedSegments: after archiving the earliest
+// segments (a documented workflow), verifying the remainder must NOT report a
+// chain break — it anchors on the first surviving entry and says so.
+func TestVerifyLedgerAnchorsOnArchivedSegments(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{MaxSizeBytes: 1024})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 60)
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	segs, err := segmentFiles(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(segs) < 3 {
+		t.Fatalf("need several segments, got %v", segs)
+	}
+	// Archive (delete) the first two numbered segments.
+	if err := os.Remove(segs[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(segs[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	res := VerifyLedger(path, nil)
+	if res.Err != nil {
+		t.Fatalf("archived-remainder verify reported a break: %v", res.Err)
+	}
+	if res.AnchoredAtSeq == 0 {
+		t.Fatal("AnchoredAtSeq should be set when the set does not start at seq 1")
+	}
 }

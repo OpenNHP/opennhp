@@ -5,6 +5,7 @@
 import { api, ApiError, type RegisterResponse, type ServerInfo } from '../api.js';
 import { escapeHtml } from '../escape.js';
 import { mountNhpRegPanel } from '../nhp-reg-panel.js';
+import { renderSourceSection, renderFooter } from './footer.js';
 
 export interface RegisterViewProps {
   onRegistered: () => void;
@@ -14,7 +15,7 @@ export interface RegisterViewProps {
 export function renderRegister(root: HTMLElement, props: RegisterViewProps): void {
   root.innerHTML = `
     <div class="container">
-      <h1>OpenNHP Integration Demo</h1>
+      <h1>OpenNHP Integration Demo App</h1>
       <p class="subtitle">A working example of adding the OpenNHP to an existing web application</p>
 
       <div id="alert"></div>
@@ -167,4 +168,8 @@ export function renderRegister(root: HTMLElement, props: RegisterViewProps): voi
     disposePanel?.();
     props.onSwitchToLogin();
   });
+
+  const container = root.querySelector<HTMLElement>('.container')!;
+  renderSourceSection(container);
+  renderFooter(container);
 }

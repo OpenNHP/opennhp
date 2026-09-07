@@ -42,3 +42,7 @@ deploy/configs/
 *.log
 # demoapp runtime (local dev run from repo root)
 /data/
+# demoapp local dev: runtime DB / autogen secrets + Vite build output
+# (web/dist is embedded by the Docker/CI build, not committed)
+demoapp/data/
+demoapp/web/dist/

@@ -28,6 +28,64 @@ a:hover { text-decoration: underline; }
   margin-bottom: 16px;
 }
 
+/* Two-column auth layout: user credentials | OAuth/SAML. Collapses to a
+   single column on narrow viewports. */
+.auth-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+  margin-bottom: 16px;
+}
+.auth-grid .panel { margin-bottom: 0; }
+@media (max-width: 640px) {
+  .auth-grid { grid-template-columns: 1fr; }
+}
+.auth-section {
+  display: flex;
+  flex-direction: column;
+}
+/* Sign-in and create-account actions share one row. */
+.cred-actions {
+  display: flex;
+  gap: 8px;
+}
+.cred-actions .btn { margin-right: 0; }
+.auth-section .auth-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #c9d1d9;
+  margin: 0 0 4px;
+}
+/* Fill the OAuth panel's spare height (it has fewer controls than the
+   credentials panel) by vertically centering its button block. */
+.oauth-cta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+/* The OAuth panel carries a single action, so give its button more
+   presence — larger icon and padding — to balance the credentials panel. */
+.oauth-cta .btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 16px;
+  font-size: 16px;
+  margin-right: 0;
+}
+.oauth-cta .oauth-icon {
+  width: 22px;
+  height: 22px;
+  margin-right: 10px;
+}
+.auth-section .auth-hint {
+  color: #8b949e;
+  font-size: 12px;
+  margin: 0 0 16px;
+}
+
 .field { margin-bottom: 12px; }
 .field label {
   display: block;
@@ -78,6 +136,50 @@ a:hover { text-decoration: underline; }
 }
 .btn-danger { background: #da3633; color: #fff; }
 .btn-danger:hover { background: #f85149; }
+
+/* Source-code call-out section, sitting above the footer. */
+.source-section {
+  text-align: center;
+  margin-top: 16px;
+}
+.source-section a {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  color: #c9d1d9;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+.source-section a:hover {
+  background: #30363d;
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+
+/* Page footer, mirrored from https://agent.opennhp.org/. */
+.footer {
+  margin-top: 32px;
+  padding: 20px 0;
+  border-top: 1px solid #30363d;
+  text-align: center;
+  color: #8b949e;
+  font-size: 12.5px;
+  line-height: 1.8;
+}
+.footer strong { color: #c9d1d9; font-weight: 600; }
+.footer a { color: #58a6ff; text-decoration: none; }
+.footer a:hover { text-decoration: underline; }
+.footer .ip-display {
+  color: #6e7681;
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  font-size: 12px;
+  margin-bottom: 8px;
+  letter-spacing: 0.2px;
+}
 
 .alert {
   padding: 10px 14px;

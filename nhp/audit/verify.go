@@ -152,6 +152,16 @@ type numberedSegment struct {
 	n    uint64
 }
 
+// HasNumberedSegment reports whether at least one "<path>.<n>" segment (n a
+// decimal integer) exists next to path. Callers use it to tell "the ledger
+// was rotated and the live file archived away" from "the path is simply
+// wrong" — a ".corrupt-<ns>" / ".quarantined.jsonl" / ".bak" sibling does
+// NOT count. Keeps the "<path>.<n>" naming convention defined in one place.
+func HasNumberedSegment(path string) bool {
+	segs, err := numberedSegments(path)
+	return err == nil && len(segs) > 0
+}
+
 // numberedSegments lists the "<path>.<n>" siblings (n a decimal integer),
 // ascending by n. It uses os.ReadDir + a literal prefix match rather than
 // filepath.Glob so a FilePath containing glob metacharacters ('*', '?', '[')

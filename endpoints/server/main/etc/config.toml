@@ -81,30 +81,37 @@ ForceOverload = false
 #   dropped entry is discarded whole so the chain stays contiguous. Off by
 #   default (the synchronous write is the strongest "on disk before we
 #   answered" guarantee).
-# MaxSizeBytes: roll the ledger to "<FilePath>.<seq>" once it would grow past
-#   this many bytes and continue in a fresh file. The hash chain spans the
-#   segments and `audit verify` walks them automatically, so this is the safe
-#   way to bound ledger growth without downtime.
-#     0  = a built-in default (256 MiB) — auditing is NOT unbounded by default
-#     -1 = truly unbounded; only for operators who archive segments off-box
-# MaxSegments: keep at most this many "<FilePath>.<n>" files — after each
-#   rotation the oldest are deleted. With MaxSizeBytes this bounds total
-#   ledger disk to ~MaxSizeBytes*(MaxSegments+1). This matters because
-#   NHP_OTP / NHP_REG requests are audited BEFORE the peer is validated, so a
-#   party that knows the server's public key could otherwise fill the disk.
-#     0  = a built-in default (20)
-#     -1 = keep every segment (unbounded)
-#   Deleting segments means `audit verify` can no longer start from seq 1;
-#   it anchors on the first surviving entry and says so.
+# MaxSizeBytes: size-based rotation. Once the live file would grow past this,
+#   it is renamed to "<FilePath>.<seq>" and a fresh file continues the chain.
+#   `audit verify` walks the segments automatically. Rotation alone deletes
+#   nothing.
+#     0  = built-in default, 256 MiB per segment
+#     -1 = never rotate; one file that grows without bound
+#     >0 = rotate at that many bytes
+# MaxSegments: retention cap on "<FilePath>.<n>" files. DELETING audit
+#   records is opt-in:
+#     0 (default) = keep every segment forever; nothing is ever deleted
+#     -1          = same as 0 (keep everything)
+#     >0          = after a rotation, delete the oldest segments beyond this
+#                   count (bounds disk to ~MaxSizeBytes*(N+1)). Every deletion
+#                   is logged Critical and `audit verify` can then no longer
+#                   start from seq 1 — it anchors on the first surviving entry.
+#   NHP_OTP / NHP_REG are audited BEFORE the peer is validated, so a party
+#   that knows the server's public key can drive ledger volume; handle that
+#   with off-box archival and a disk-pressure alarm, not silent deletion.
 # SigningKeyBase64: optional base64 HMAC key binding the chain to a secret
 #   the log file does not contain (must be >= 32 bytes; shorter is rejected
 #   at startup). Generate one with:  head -c 32 /dev/urandom | base64
 # FailClosed: what to do when the ledger can't be opened at startup.
-#   false (default): fail SAFE — a corrupt/foreign file at FilePath is moved
-#     aside to "<path>.corrupt-<timestamp>" and a fresh chain is started, so
-#     the gateway keeps producing a trail (a lone junk byte can't silently
-#     switch auditing off). Other failures leave auditing disabled with a
-#     Critical log, but the server still serves.
+#   false (default): fail SAFE — the gateway keeps producing a trail:
+#     - a file that still looks like our ledger (corrupted first line) is
+#       renamed to "<FilePath>.corrupt-<nanos>" and a fresh chain starts at
+#       FilePath (seq 1 next to a .corrupt-* file is a loud signal);
+#     - a FOREIGN file (FilePath typo'd onto another file) is LEFT UNTOUCHED
+#       and auditing continues in "<FilePath>.quarantined.jsonl". Point
+#       `audit verify` at that sibling, not FilePath, in this case.
+#     Other failures leave auditing disabled with a Critical log; the server
+#     still serves.
 #   true: fail CLOSED — any open failure aborts startup. Use when an
 #     uninterrupted trail matters more than availability.
 #   Either way this governs STARTUP only. A write that fails once the server

@@ -193,19 +193,28 @@ type Ledger struct {
 	// continuous across the split with no special boundary record.
 	path        string
 	maxSize     int64
-	maxSegments int // retention: keep at most this many "<path>.<n>" files (0 = all)
+	maxSegments int // retention: keep at most this many "<path>.<n>" files (<=0 = keep all)
 	curSize     int64
 	lastSegSeq  uint64
+
+	// onPrune, when set, is called with the paths of rotated segments that
+	// pruneSegments deleted. Runs on whichever goroutine rotated (the
+	// caller's under mu in sync mode, the drain goroutine in async mode), so
+	// it must not block or re-enter the Ledger. segmentsPruned is the
+	// running total for a Close-time summary.
+	onPrune        func(removed []string)
+	segmentsPruned atomic.Uint64
 
 	// Async mode: Log computes the entry (seq/hash/sig) under mu and hands
 	// the marshaled line to a single background writer via queue, so the
 	// request path never blocks on the disk write or fsync. queue is nil in
 	// the default synchronous mode.
-	async   bool
-	queue   chan queuedLine
-	drainWG sync.WaitGroup
-	dropped atomic.Uint64
-	closing atomic.Bool // set by Close before it closes the queue
+	async        bool
+	drainStarted bool // startAsync spawned the drain goroutine (set once, before any concurrency)
+	queue        chan queuedLine
+	drainWG      sync.WaitGroup
+	dropped      atomic.Uint64
+	closing      atomic.Bool // set by Close before it closes the queue
 	// asyncErr holds the most recent background write/rotation failure, or
 	// nil once a subsequent write succeeds. A pointer wrapper (not a bare
 	// error in an atomic.Value) is required: the drain goroutine stores
@@ -266,11 +275,20 @@ type Options struct {
 	MaxSizeBytes int64
 	// MaxSegments, when > 0, is a retention bound: after a rotation the
 	// oldest "<path>.<n>" files are deleted so at most this many remain.
-	// With MaxSizeBytes this caps disk use at ~MaxSizeBytes*(MaxSegments+1);
-	// 0 keeps every segment (archive them out of band). Deleting a segment
-	// makes the chain no longer verifiable from seq 1 — `audit verify` then
-	// anchors on the first surviving entry and says so.
+	// With MaxSizeBytes this caps disk use at ~MaxSizeBytes*(MaxSegments+1).
+	// A value <= 0 keeps EVERY segment — deleting audit evidence is opt-in.
+	// Deleting a segment makes the chain no longer verifiable from seq 1 —
+	// `audit verify` then anchors on the first surviving entry and says so —
+	// so every prune fires OnPrune.
 	MaxSegments int
+
+	// OnPrune, when set, is called after pruneSegments deletes rotated
+	// segment files, with the paths removed. It runs on whichever goroutine
+	// performed the rotation (the caller's in sync mode, the background
+	// writer in async mode), so it must not block or re-enter the Ledger.
+	// Deleting audit records is security-relevant; the server wires this to
+	// a Critical log line.
+	OnPrune func(removed []string)
 }
 
 // defaultAsyncQueueSize is the async write queue depth when QueueSize is 0.
@@ -280,11 +298,23 @@ const defaultAsyncQueueSize = 4096
 // callers that manage their own file handle; production servers use
 // Open, which resumes an existing chain across restarts.
 func NewLedger(w io.Writer, opts Options) *Ledger {
+	l := newLedger(w, opts)
+	l.startAsync()
+	return l
+}
+
+// newLedger builds a Ledger WITHOUT starting the async drain goroutine, so a
+// caller (Open) can finish populating the fields the drain reads —
+// path/maxSize/curSize/lastSegSeq — before the goroutine that reads them
+// exists. Any caller that uses newLedger directly must call startAsync once
+// those fields are set.
+func newLedger(w io.Writer, opts Options) *Ledger {
 	l := &Ledger{
 		w:        w,
 		hmacKey:  opts.HMACKey,
 		fsync:    opts.Fsync,
 		lastHash: genesisHash,
+		onPrune:  opts.OnPrune,
 	}
 	if c, ok := w.(io.Closer); ok {
 		l.closer = c
@@ -296,12 +326,22 @@ func NewLedger(w io.Writer, opts Options) *Ledger {
 		}
 		l.async = true
 		l.queue = make(chan queuedLine, size)
-		l.drainWG.Add(1)
-		// Pass the channel in rather than letting drain read l.queue, which
-		// Close nils out under the lock — drain must not touch that field.
-		go l.drain(l.queue)
 	}
 	return l
+}
+
+// startAsync launches the background writer when the ledger is in async mode.
+// It must be called exactly once, after every field drain reads is set. A
+// no-op in synchronous mode or if already started.
+func (l *Ledger) startAsync() {
+	if !l.async || l.queue == nil || l.drainStarted {
+		return
+	}
+	l.drainStarted = true
+	l.drainWG.Add(1)
+	// Pass the channel in rather than letting drain read l.queue, which
+	// Close nils out under the lock — drain must not touch that field.
+	go l.drain(l.queue)
 }
 
 // drain is the single background writer for async mode. It is the only
@@ -496,7 +536,11 @@ func Open(path string, opts Options) (*Ledger, error) {
 		curSize = info.Size()
 	}
 
-	l := NewLedger(f, opts) // NewLedger already sets l.closer from the io.Closer
+	// newLedger, not NewLedger: the async drain must not start until every
+	// field it reads (path/maxSize/curSize/lastSegSeq) is populated below,
+	// otherwise `go test -race` flags a write-after-goroutine-start the
+	// moment Log is called from a goroutine not ordered against this return.
+	l := newLedger(f, opts) // newLedger already sets l.closer from the io.Closer
 	l.seq = seq
 	l.lastHash = last
 	l.MalformedOnOpen = malformed
@@ -506,6 +550,7 @@ func Open(path string, opts Options) (*Ledger, error) {
 	l.maxSegments = opts.MaxSegments
 	l.curSize = curSize
 	l.lastSegSeq = seq
+	l.startAsync()
 	return l, nil
 }
 
@@ -590,8 +635,11 @@ func (l *Ledger) rollSegment() (err error) {
 // pruneSegments enforces maxSegments: after a rotation, delete the
 // lowest-numbered "<path>.<n>" files so at most maxSegments of them remain.
 // With MaxSizeBytes this caps total disk use at roughly
-// MaxSizeBytes*(maxSegments+1). maxSegments <= 0 keeps everything (archive
-// out of band). Best-effort: a delete failure is not fatal.
+// MaxSizeBytes*(maxSegments+1). maxSegments <= 0 keeps everything (the
+// default — deleting audit evidence is opt-in). Best-effort: a delete
+// failure is not fatal. Every actual deletion is counted and reported
+// through onPrune, because a silent drop of audit records is exactly the
+// failure mode this feature must not have.
 func (l *Ledger) pruneSegments() {
 	if l.maxSegments <= 0 {
 		return
@@ -600,10 +648,24 @@ func (l *Ledger) pruneSegments() {
 	if err != nil || len(segs) <= l.maxSegments {
 		return
 	}
+	var removed []string
 	for _, s := range segs[:len(segs)-l.maxSegments] {
-		_ = os.Remove(s.name)
+		if rmErr := os.Remove(s.name); rmErr == nil {
+			removed = append(removed, s.name)
+		}
+	}
+	if len(removed) == 0 {
+		return
+	}
+	l.segmentsPruned.Add(uint64(len(removed)))
+	if l.onPrune != nil {
+		l.onPrune(removed)
 	}
 }
+
+// SegmentsPruned reports how many rotated segment files retention has
+// deleted over this ledger's lifetime. Always 0 unless MaxSegments > 0.
+func (l *Ledger) SegmentsPruned() uint64 { return l.segmentsPruned.Load() }
 
 // ensureLedgerFile refuses to modify a non-empty file whose first line is
 // not a complete audit Event, so a mistyped FilePath pointing at some other

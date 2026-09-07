@@ -276,30 +276,14 @@ func verifyLedgerFile(path string, hmacKey []byte) (audit.VerifyResult, error) {
 	if _, err := os.Stat(clean); err != nil {
 		// Allow the case where only rotated "<path>.<n>" segments exist and
 		// the live file was archived away. Only a NUMERIC suffix counts — a
-		// stray ".corrupt-<ns>" / ".quarantined-<ns>" / ".bak" next to a
-		// deleted ledger must NOT make this look present.
-		if !hasNumberedSegment(clean) {
+		// stray ".corrupt-<ns>" / ".quarantined.jsonl" / ".bak" next to a
+		// deleted ledger must NOT make this look present. audit owns the
+		// "<path>.<n>" naming convention, so ask it.
+		if !audit.HasNumberedSegment(clean) {
 			return audit.VerifyResult{}, err
 		}
 	}
 	return audit.VerifyLedger(clean, hmacKey), nil
-}
-
-func hasNumberedSegment(path string) bool {
-	ents, err := os.ReadDir(filepath.Dir(path))
-	if err != nil {
-		return false
-	}
-	prefix := filepath.Base(path) + "."
-	for _, e := range ents {
-		if e.IsDir() || !strings.HasPrefix(e.Name(), prefix) {
-			continue
-		}
-		if _, convErr := strconv.ParseUint(strings.TrimPrefix(e.Name(), prefix), 10, 64); convErr == nil {
-			return true
-		}
-	}
-	return false
 }
 
 // resolveVerifyKey obtains the base64 HMAC key for `audit verify` from, in

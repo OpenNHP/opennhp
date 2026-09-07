@@ -1413,6 +1413,118 @@ func TestSegmentRetentionPrunesOldest(t *testing.T) {
 	}
 }
 
+// TestSegmentRetentionOptInKeepsEverything: rotation is on (MaxSizeBytes) but
+// MaxSegments is left at 0 / negative — no segment may be deleted, and the
+// chain must still verify from seq 1.
+func TestSegmentRetentionOptInKeepsEverything(t *testing.T) {
+	for _, maxSegs := range []int{0, -1} {
+		t.Run(fmt.Sprintf("MaxSegments=%d", maxSegs), func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "audit.jsonl")
+
+			var pruned [][]string
+			l, err := Open(path, Options{
+				MaxSizeBytes: 512,
+				MaxSegments:  maxSegs,
+				OnPrune:      func(removed []string) { pruned = append(pruned, removed) },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeN(t, l, 150) // many rotations
+			if closeErr := l.Close(); closeErr != nil {
+				t.Fatal(closeErr)
+			}
+
+			if len(pruned) != 0 {
+				t.Fatalf("OnPrune fired %d time(s) with MaxSegments=%d", len(pruned), maxSegs)
+			}
+			if l.SegmentsPruned() != 0 {
+				t.Fatalf("SegmentsPruned()=%d, want 0", l.SegmentsPruned())
+			}
+			segs, err := numberedSegments(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(segs) < 2 {
+				t.Fatalf("expected several retained segments, got %d", len(segs))
+			}
+			if res := VerifyLedger(path, nil); res.Err != nil {
+				t.Fatalf("kept-everything set failed to verify: %v", res.Err)
+			} else if res.AnchoredAtSeq != 0 {
+				t.Fatalf("nothing was deleted, so verify must not anchor (got AnchoredAtSeq=%d)", res.AnchoredAtSeq)
+			}
+		})
+	}
+}
+
+// TestSegmentRetentionReportsDeletions: with MaxSegments > 0, every pruned
+// segment is handed to OnPrune and counted by SegmentsPruned.
+func TestSegmentRetentionReportsDeletions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	var got []string
+	l, err := Open(path, Options{
+		MaxSizeBytes: 512,
+		MaxSegments:  2,
+		OnPrune:      func(removed []string) { got = append(got, removed...) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 150)
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	if len(got) == 0 {
+		t.Fatal("OnPrune never fired despite MaxSegments=2 and many rotations")
+	}
+	if uint64(len(got)) != l.SegmentsPruned() {
+		t.Fatalf("OnPrune saw %d deletions, SegmentsPruned()=%d", len(got), l.SegmentsPruned())
+	}
+	for _, name := range got {
+		if _, statErr := os.Stat(name); statErr == nil {
+			t.Fatalf("OnPrune reported %q as deleted but it still exists", name)
+		}
+		if !strings.HasPrefix(filepath.Base(name), "audit.jsonl.") {
+			t.Fatalf("OnPrune reported a non-segment path: %q", name)
+		}
+	}
+}
+
+// TestOpenAsyncNoRaceWithImmediateLog exercises the ordering fix: Open must
+// finish populating the segment/seq fields before startAsync spawns the
+// drain goroutine that reads them. Run under `go test -race`.
+func TestOpenAsyncNoRaceWithImmediateLog(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{Async: true, QueueSize: 64, MaxSizeBytes: 256})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	for g := 0; g < 4; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 50; i++ {
+				_ = l.Log("knock_denied", SeverityWarn, map[string]string{"srcIp": "1.2.3.4"})
+			}
+		}()
+	}
+	wg.Wait()
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	if res := VerifyLedger(path, nil); res.Err != nil {
+		t.Fatalf("async ledger failed to verify: %v", res.Err)
+	}
+}
+
 // TestVerifyLedgerErrorsWhenNothingToRead: a deleted/renamed ledger with only
 // a non-numeric sibling (".corrupt-<ns>") next to it must NOT verify clean.
 func TestVerifyLedgerErrorsWhenNothingToRead(t *testing.T) {

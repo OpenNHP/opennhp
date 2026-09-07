@@ -239,16 +239,20 @@ type AuditConfig struct {
 	// FailClosed controls what happens when the ledger cannot be opened at
 	// startup (a corrupt or foreign file at FilePath, a permission problem).
 	//
-	// Default (false): fail SAFE. A file that does not look like a ledger is
-	// moved aside to "<path>.corrupt-<timestamp>" and a fresh chain is
-	// started, so the gateway keeps producing an audit trail. This matters
-	// because the alternative is fail-OPEN — an attacker who can write the
-	// log (the very actor signing defends against) could otherwise disable
-	// the recorder for good with one junk byte, while the server keeps
-	// serving. A chain that restarts at seq 1 next to a .corrupt sibling is a
-	// loud, detectable signal; a silently missing ledger is not. The moved
-	// aside copy guards against accidents and casual edits, not against
-	// someone with write access to the directory, who can delete it too.
+	// Default (false): fail SAFE — the gateway keeps producing a trail. The
+	// unreadable file at FilePath is handled one of two ways:
+	//   - It still looks like one of our ledgers (a corrupted first line, an
+	//     attacker prepending junk): it is renamed to "<FilePath>.corrupt-
+	//     <nanos>" and a fresh chain starts at FilePath. A chain restarting
+	//     at seq 1 next to a .corrupt-* sibling is a loud, detectable signal.
+	//   - It is a FOREIGN file (a mistyped FilePath pointing at another log,
+	//     a config, a shared-volume file): it is LEFT UNTOUCHED — a
+	//     privileged server must not move an operator's unrelated file — and
+	//     auditing continues in a fixed sibling, "<FilePath>.quarantined.jsonl".
+	//     Note `audit verify <FilePath>` then verifies the foreign file, not
+	//     the quarantined ledger; point it at the .quarantined.jsonl path.
+	// The rename/sibling guards accidents and casual edits, not someone with
+	// write access to the directory, who can delete the file too.
 	//
 	// true: fail CLOSED. Any open failure aborts startup instead. Choose this
 	// when a verifiable, uninterrupted trail is a hard requirement and you
@@ -278,24 +282,30 @@ type AuditConfig struct {
 	// 0 uses a sensible default. Ignored unless Async.
 	AsyncQueueSize int `json:"asyncQueueSize"`
 
-	// MaxSizeBytes, when > 0, rolls the ledger to a numbered segment
-	// ("<FilePath>.<seq>") once it would grow past this size and continues
-	// in a fresh file. The hash chain spans the segments, and `audit verify`
-	// picks the siblings up automatically, so rotation no longer means the
-	// choice between downtime and an ever-growing file that the FilePath
-	// note above describes. 0 keeps the single-file behavior. Archive
-	// whole ".<seq>" segments out of band once verified.
+	// MaxSizeBytes controls size-based rotation: once the live file would
+	// grow past it, the ledger is renamed to a numbered segment
+	// ("<FilePath>.<seq>") and a fresh file continues the chain. The chain
+	// spans the segments and `audit verify` picks the siblings up
+	// automatically. Config-file semantics:
+	//   0        - use the built-in default (256 MiB per segment).
+	//   negative - never rotate; one file that grows without bound.
+	//   positive - rotate at that many bytes.
+	// Rotation on its own deletes nothing; see MaxSegments for retention.
 	MaxSizeBytes int64 `json:"maxSizeBytes"`
 
-	// MaxSegments, when > 0, is a retention cap: after a rotation the oldest
-	// "<FilePath>.<n>" files beyond this count are deleted. Combined with
-	// MaxSizeBytes this bounds total ledger disk use at roughly
-	// MaxSizeBytes*(MaxSegments+1) — important because NHP_OTP / NHP_REG are
-	// audited before the peer is validated, so a party that knows the
-	// server's public key can otherwise drive the ledger to fill the disk.
-	// 0 (default) keeps every segment; use it only if you archive segments
-	// off-box. Deleting segments means `audit verify` can no longer walk
-	// from seq 1 — it anchors on the first surviving entry and says so.
+	// MaxSegments is the retention cap on rotated "<FilePath>.<n>" files.
+	// DELETING audit records is opt-in — config-file semantics:
+	//   0 (default) - keep every segment forever. Nothing is ever deleted.
+	//   negative    - same as 0 (keep everything).
+	//   positive    - after a rotation, delete the oldest segments beyond
+	//                 this count, bounding disk use at ~MaxSizeBytes*(N+1).
+	//                 Each deletion is logged Critical, because it drops
+	//                 evidence and `audit verify` can then no longer walk
+	//                 from seq 1 (it anchors on the first surviving entry).
+	// NHP_OTP / NHP_REG are audited before the peer is validated, so a party
+	// that knows the server's public key can drive ledger volume; the answer
+	// is off-box archival plus a disk-pressure alarm, not silent deletion —
+	// hence the conservative default.
 	MaxSegments int `json:"maxSegments"`
 }
 

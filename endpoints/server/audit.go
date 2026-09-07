@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/audit"
@@ -31,13 +32,11 @@ const minSigningKeyLen = 32
 // fatal — a config typo must not silently leave the gateway unaudited.
 var errAuditConfig = errors.New("audit: invalid configuration")
 
-// Default disk bounds applied when [Audit] MaxSizeBytes / MaxSegments are
-// left at 0. ~256 MiB per segment * 20 kept ≈ 5 GiB. A negative config
-// value disables the respective cap.
-const (
-	defaultAuditMaxSizeBytes = 256 * 1024 * 1024
-	defaultAuditMaxSegments  = 20
-)
+// defaultAuditMaxSizeBytes is the segment size applied when [Audit]
+// MaxSizeBytes is left at 0. Rotating at ~256 MiB keeps the live file
+// manageable; rotation on its own deletes nothing, so a default here is
+// safe. A negative MaxSizeBytes means "never rotate, one growing file".
+const defaultAuditMaxSizeBytes = 256 * 1024 * 1024
 
 // initAuditLedger opens the audit ledger when enabled in config. It is a
 // no-op (leaving s.auditLedger nil) when auditing is off, so the rest of
@@ -73,19 +72,24 @@ func (s *UdpServer) initAuditLedger() error {
 		hmacKey = key
 	}
 
-	// Bound disk use by default. NHP_OTP / NHP_REG are audited before the
-	// peer is validated, so "keep everything, forever" (0/0) hands the first
-	// operator who enables auditing a disk-exhaustion vector. A negative
-	// value is the explicit "I archive segments off-box, don't cap me" opt-out.
-	maxSize, maxSegs := s.config.Audit.MaxSizeBytes, s.config.Audit.MaxSegments
+	// Size-based rotation is on by default (it destroys nothing); a negative
+	// MaxSizeBytes turns it off and keeps one growing file.
+	maxSize := s.config.Audit.MaxSizeBytes
 	if maxSize == 0 {
 		maxSize = defaultAuditMaxSizeBytes
 	} else if maxSize < 0 {
 		maxSize = 0
 	}
-	if maxSegs == 0 {
-		maxSegs = defaultAuditMaxSegments
-	} else if maxSegs < 0 {
+	// Retention (segment DELETION) is strictly opt-in. The shipped default
+	// MaxSegments = 0 — and any negative value — keeps every rotated segment.
+	// Only a positive value lets the oldest segments be deleted, and every
+	// such deletion is logged Critical via OnPrune below. Deleting audit
+	// evidence must never be the silent default, even though NHP_OTP /
+	// NHP_REG volume is partly adversary-influenced (flood the log and disk
+	// fills) — the answer to that is an alarm and off-box archival, not
+	// quietly dropping the oldest records.
+	maxSegs := s.config.Audit.MaxSegments
+	if maxSegs < 0 {
 		maxSegs = 0
 	}
 
@@ -96,6 +100,10 @@ func (s *UdpServer) initAuditLedger() error {
 		QueueSize:    s.config.Audit.AsyncQueueSize,
 		MaxSizeBytes: maxSize,
 		MaxSegments:  maxSegs,
+		OnPrune: func(removed []string) {
+			log.Critical("audit retention DELETED %d rotated segment(s): %s — those audit records are gone; the chain no longer verifies from seq 1. Raise [Audit] MaxSegments or archive segments off-box instead.",
+				len(removed), strings.Join(removed, ", "))
+		},
 	}
 	ledger, err := audit.Open(path, opts)
 	if err != nil {
@@ -212,9 +220,16 @@ func (s *UdpServer) auditEvent(evType, severity string, fields map[string]string
 // this races a check-then-use on a nil write, and Ledger.Log already returns
 // an error (not a panic) once the ledger is closed.
 func (s *UdpServer) closeAuditLedger() {
-	if s.auditLedger != nil {
-		_ = s.auditLedger.Close()
+	if s.auditLedger == nil {
+		return
 	}
+	if dropped := s.auditLedger.Dropped(); dropped > 0 {
+		log.Warning("audit: %d entries were dropped by the async writer over this run (queue full); increase [Audit] AsyncQueueSize or disable Async", dropped)
+	}
+	if pruned := s.auditLedger.SegmentsPruned(); pruned > 0 {
+		log.Warning("audit: retention deleted %d rotated segment(s) over this run — see the Critical lines above for the file names", pruned)
+	}
+	_ = s.auditLedger.Close()
 }
 
 // decisionGranted reports whether an access/registration decision counts as

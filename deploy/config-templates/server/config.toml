@@ -35,7 +35,9 @@ CookieTimeWindowSeconds = 60
 
 # [Audit]: tamper-evident, hash-chained security audit ledger. Off by
 # default; see endpoints/server/main/etc/config.toml for the full field
-# docs (Fsync, Async, MaxSizeBytes, SigningKeyBase64, FailClosed) and the threat model.
+# docs (Fsync, Async, MaxSizeBytes, MaxSegments, SigningKeyBase64, FailClosed)
+# and the threat model. Note MaxSizeBytes=0 rotates at a 256 MiB default and
+# MaxSegments=0 keeps every rotated segment (deletion is opt-in, MaxSegments>0).
 [Audit]
 Enabled = false
 FilePath = ""

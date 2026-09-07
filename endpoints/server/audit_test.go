@@ -138,6 +138,71 @@ func TestAuditLedgerEmissionAndVerify(t *testing.T) {
 	}
 }
 
+// TestAuditDefaultRetentionKeepsEverySegment pins the reviewed policy: with
+// the shipped [Audit] defaults (MaxSegments = 0) the server rotates by size
+// but never DELETES a rotated segment, so enabling auditing cannot silently
+// discard the oldest records.
+func TestAuditDefaultRetentionKeepsEverySegment(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	s := &UdpServer{
+		config: &Config{
+			Audit: AuditConfig{
+				Enabled:      true,
+				FilePath:     path,
+				MaxSizeBytes: 400, // force many rotations
+				MaxSegments:  0,   // shipped default
+			},
+		},
+	}
+	if err := s.initAuditLedger(); err != nil {
+		t.Fatalf("initAuditLedger: %v", err)
+	}
+	for i := 0; i < 60; i++ {
+		s.auditEvent("knock", audit.SeverityInfo, map[string]string{"user": "alice", "result": "granted"})
+	}
+	pruned := s.auditLedger.SegmentsPruned()
+	s.closeAuditLedger()
+
+	if pruned != 0 {
+		t.Fatalf("default retention deleted %d segment(s); it must keep everything", pruned)
+	}
+	if res := audit.VerifyLedger(path, nil); res.Err != nil {
+		t.Fatalf("kept-everything ledger failed to verify: %v", res.Err)
+	} else if res.AnchoredAtSeq != 0 {
+		t.Fatalf("nothing deleted, so verify must reach seq 1 (AnchoredAtSeq=%d)", res.AnchoredAtSeq)
+	}
+}
+
+// TestAuditNegativeMaxSizeDisablesRotation: MaxSizeBytes < 0 means "one file,
+// no rotation" — no numbered segments are ever created.
+func TestAuditNegativeMaxSizeDisablesRotation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	s := &UdpServer{
+		config: &Config{
+			Audit: AuditConfig{
+				Enabled:      true,
+				FilePath:     path,
+				MaxSizeBytes: -1,
+			},
+		},
+	}
+	if err := s.initAuditLedger(); err != nil {
+		t.Fatalf("initAuditLedger: %v", err)
+	}
+	for i := 0; i < 40; i++ {
+		s.auditEvent("knock", audit.SeverityInfo, map[string]string{"user": "alice"})
+	}
+	s.closeAuditLedger()
+
+	if matches, _ := filepath.Glob(path + ".*"); len(matches) != 0 {
+		t.Fatalf("MaxSizeBytes=-1 still produced rotated segments: %v", matches)
+	}
+}
+
 // TestAuditDisabledIsNoOp confirms auditEvent is safe when auditing is off.
 func TestAuditDisabledIsNoOp(t *testing.T) {
 	s := &UdpServer{config: &Config{Audit: AuditConfig{Enabled: false}}}

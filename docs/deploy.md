@@ -246,7 +246,7 @@ Key configuration parameters across components:
 
 | Parameter | Component | Description |
 |-----------|-----------|-------------|
-| `PrivateKeyBase64` | All | Base64-encoded private key (static, requires restart) |
+| `PrivateKeyBase64` | All | Private key (static, requires restart). Either a plain base64 key or a sealed blob (`v1$…`) produced by `<daemon> seal`; a sealed blob is decrypted at startup with a passphrase from `NHP_KEY_PASSPHRASE_FILE` (preferred) or `NHP_KEY_PASSPHRASE`. See the per-daemon `config.toml` comments. |
 | `ListenPort` | Server | UDP listening port, default 62206 (static) |
 | `LogLevel` | All | 0=silent, 1=error, 2=info, 3=audit, 4=debug, 5=trace |
 | `DefaultCipherScheme` | All | 0=Curve25519, 1=SM2 |

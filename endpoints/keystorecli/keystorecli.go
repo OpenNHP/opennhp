@@ -70,7 +70,7 @@ func SealCommand() *cli.Command {
 			if len(pass) < minPassphraseLen {
 				return fmt.Errorf("passphrase is %d bytes; use at least %d — Argon2id does not make a short passphrase safe against a stolen config", len(pass), minPassphraseLen)
 			}
-			warnIfWorldReadable(source)
+			warnIfPassphraseFilePermissive(source)
 			blob, err := keystore.Seal(raw, pass)
 			if err != nil {
 				return err
@@ -127,9 +127,9 @@ func passphraseFromEnv() (pass []byte, source string, err error) {
 	return pass, source, err
 }
 
-// warnIfWorldReadable prints a warning when the passphrase file is readable
+// warnIfPassphraseFilePermissive prints a warning when the passphrase file is readable
 // by group or other. The docs recommend mode 0600; nothing enforced it.
-func warnIfWorldReadable(source string) {
+func warnIfPassphraseFilePermissive(source string) {
 	if source == "" || strings.HasPrefix(source, "env:") {
 		return
 	}

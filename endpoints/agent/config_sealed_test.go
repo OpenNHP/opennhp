@@ -66,20 +66,18 @@ func TestGetAgentEcdhWithSealedKey(t *testing.T) {
 	}
 
 	// Cached path (as populated by Start / ReinitWithKey): the resolved key
-	// is used directly.
-	cfg.resolvedPrivateKey = raw
+	// is used directly, NOT a broken base64 decode of the "v1$..." blob.
+	cfg.SetResolvedPrivateKey(raw)
 	if got := cfg.GetAgentEcdh().PublicKeyBase64(); got != wantPub {
 		t.Fatalf("cached path: got %q want %q", got, wantPub)
 	}
 
-	// Fallback path (cache empty, sealed blob in config): resolving on
-	// demand from the env passphrase must yield the same public key. The
-	// old code base64-decoded the blob directly and returned a wrong key.
+	// Empty cache: there is deliberately no resolve-on-demand fallback (it
+	// would run a 64 MiB Argon2 in an HTTP handler). GetAgentEcdh returns
+	// nil and getAgentPublicKey answers 500.
 	cfg.SetResolvedPrivateKey(nil)
-	clearPassphraseFileEnv(t)
-	t.Setenv(keystore.EnvPassphrase, "pw")
-	if got := cfg.GetAgentEcdh().PublicKeyBase64(); got != wantPub {
-		t.Fatalf("fallback path: got %q want %q", got, wantPub)
+	if got := cfg.GetAgentEcdh(); got != nil {
+		t.Fatalf("empty cache: expected nil Ecdh, got %v", got)
 	}
 }
 

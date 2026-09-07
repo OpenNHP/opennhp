@@ -74,21 +74,19 @@ func (c *Config) GetAgentEcdh() core.Ecdh {
 	if c.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
 		eccType = core.ECC_CURVE25519
 	}
-	// Prefer the key resolved at startup. Fall back to resolving on demand
-	// (which correctly handles a sealed PrivateKeyBase64) so a caller that
-	// reaches this before Start still gets the right key rather than a
-	// broken decode of the "v1$..." blob.
+	// Prefer the key resolved once at startup. If the cache is empty, fall
+	// back to a plain base64 decode ONLY — never re-run keystore resolution
+	// for a sealed key here, which would mean a 64 MiB Argon2id pass inside
+	// an HTTP handler (Start/ReinitWithKey populate the cache before the HTTP
+	// service is up, so the sealed case is unreachable anyway). A sealed key
+	// with an empty cache yields nil, and getAgentPublicKey answers 500.
 	prk := c.resolvedKey()
 	if prk == nil {
-		// This path is normally unreachable — Start populates the cache
-		// before the HTTP service accepts requests — so a failure here
-		// means the key is sealed and the passphrase is missing/wrong.
-		// Log it instead of silently returning a wrong public key.
-		resolved, _, resErr := keystore.ResolvePrivateKeyAuto(c.PrivateKeyBase64)
-		if resErr != nil {
-			log.Error("GetAgentEcdh: cannot resolve private key (sealed key without a valid passphrase?): %v", resErr)
+		if keystore.IsSealed(c.PrivateKeyBase64) {
+			log.Error("GetAgentEcdh: sealed private key not yet resolved — caller ran before Start")
+		} else {
+			prk, _ = base64.StdEncoding.DecodeString(c.PrivateKeyBase64)
 		}
-		prk = resolved
 	}
 	return core.ECDHFromKey(eccType, prk)
 }

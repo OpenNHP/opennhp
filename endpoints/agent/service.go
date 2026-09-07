@@ -244,7 +244,17 @@ func (a *UdpAgent) getAgentPublicKey(c *gin.Context) {
 }
 
 func (a *UdpAgent) getTeePublicKey(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"publicKey": a.config.GetTeeEcdh().PublicKeyBase64()})
+	// GetTeeEcdh returns nil when TEEPrivateKeyBase64 is empty/unset — and
+	// unlike the agent key that is genuinely reachable: updateDHPConfig
+	// tolerates a missing dhp.toml, so a DHP agent that has never had
+	// RotateTeeKey run hits this with no TEE key. Guard rather than deref nil.
+	ecdh := a.config.GetTeeEcdh()
+	if ecdh == nil {
+		log.Error("getTeePublicKey: TEE private key is unavailable (run the DHP secret init)")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "TEE private key unavailable"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"publicKey": ecdh.PublicKeyBase64()})
 }
 
 func (a *UdpAgent) configServer(c *gin.Context) {

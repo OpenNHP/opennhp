@@ -1047,12 +1047,86 @@ func TestAsyncWriterDropsWhenQueueFull(t *testing.T) {
 	if err := l.Close(); err != nil {
 		t.Fatal(err)
 	}
-	res := VerifyChain(bytes.NewReader(bw.buf.Bytes()), nil)
+	bw.mu.Lock()
+	data := append([]byte(nil), bw.buf.Bytes()...)
+	bw.mu.Unlock()
+	res := VerifyChain(bytes.NewReader(data), nil)
 	if res.Err != nil {
 		t.Fatalf("chain after drops failed to verify: %v", res.Err)
 	}
-	if int(res.Count)+dropped != 20 {
-		t.Fatalf("verified %d + dropped %d != 20", res.Count, dropped)
+	// The chain may also carry "audit_gap" recovery markers; count only the
+	// real "knock" entries against the 20 we logged.
+	real := 0
+	sc := bufio.NewScanner(bytes.NewReader(data))
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		var e Event
+		if json.Unmarshal(sc.Bytes(), &e) == nil && e.Type == "knock" {
+			real++
+		}
+	}
+	if real+dropped != 20 {
+		t.Fatalf("verified %d real + dropped %d != 20", real, dropped)
+	}
+}
+
+// TestAsyncDropRecordsGapMarkerInChain: entries dropped on queue-full leave a
+// chained "audit_gap" marker once the writer recovers, so a verified copy of
+// the ledger still shows that records were lost.
+func TestAsyncDropRecordsGapMarkerInChain(t *testing.T) {
+	bw := &blockingWriter{release: make(chan struct{})}
+	l := NewLedger(nopCloser{bw}, Options{Async: true, QueueSize: 2})
+
+	drops := 0
+	for i := 0; i < 40; i++ {
+		if err := l.Log("knock", SeverityInfo, map[string]string{"n": strconv.Itoa(i)}); err != nil {
+			drops++
+		}
+	}
+	if drops == 0 {
+		t.Fatal("expected drops while the writer was stalled")
+	}
+
+	// Recover the writer and give the drain time to empty the queue, then log
+	// a run of further entries — recordGapLocked chains the "audit_gap"
+	// marker on the first of them that can enqueue after the drops.
+	close(bw.release)
+	time.Sleep(100 * time.Millisecond)
+	for i := 0; i < 30; i++ {
+		_ = l.Log("knock", SeverityInfo, map[string]string{"post": strconv.Itoa(i)})
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	bw.mu.Lock()
+	data := append([]byte(nil), bw.buf.Bytes()...)
+	bw.mu.Unlock()
+
+	if res := VerifyChain(bytes.NewReader(data), nil); res.Err != nil {
+		t.Fatalf("chain with gap marker failed to verify: %v", res.Err)
+	}
+
+	var gapDropped uint64
+	sc := bufio.NewScanner(bytes.NewReader(data))
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		var e Event
+		if json.Unmarshal(sc.Bytes(), &e) != nil {
+			continue
+		}
+		if e.Type == "audit_gap" {
+			if n, _ := strconv.ParseUint(e.Fields["dropped"], 10, 64); n > gapDropped {
+				gapDropped = n
+			}
+		}
+	}
+	if gapDropped == 0 {
+		t.Fatalf("no audit_gap marker found in the chain:\n%s", data)
+	}
+	if gapDropped < uint64(drops) {
+		t.Fatalf("gap marker reports %d dropped, but %d Log calls failed", gapDropped, drops)
 	}
 }
 

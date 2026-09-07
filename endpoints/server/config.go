@@ -243,8 +243,10 @@ type AuditConfig struct {
 	// unreadable file at FilePath is handled one of two ways:
 	//   - It still looks like one of our ledgers (a corrupted first line, an
 	//     attacker prepending junk): it is renamed to "<FilePath>.corrupt-
-	//     <nanos>" and a fresh chain starts at FilePath. A chain restarting
-	//     at seq 1 next to a .corrupt-* sibling is a loud, detectable signal.
+	//     <nanos>" and a fresh chain starts at FilePath — from seq 1, or, if
+	//     numbered "<FilePath>.<n>" segments from size rotation are present,
+	//     continuing from the highest one. Either way the .corrupt-* sibling
+	//     next to a re-created live file is the loud, detectable signal.
 	//   - It is a FOREIGN file (a mistyped FilePath pointing at another log,
 	//     a config, a shared-volume file): it is LEFT UNTOUCHED — a
 	//     privileged server must not move an operator's unrelated file — and

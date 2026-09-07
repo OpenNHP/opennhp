@@ -183,7 +183,7 @@ func main() {
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "key", Usage: "base64 HMAC signing key, if the ledger was signed (exposes the secret in ps/shell history — prefer --key-file or NHP_AUDIT_KEY)"},
 					&cli.StringFlag{Name: "key-file", Usage: "path to a file holding the base64 HMAC signing key (whitespace trimmed); avoids leaking the key via argv"},
-					&cli.BoolFlag{Name: "strict", Usage: "exit non-zero (2) if verification is incomplete: damaged (skipped) lines, or signed entries left unchecked because no key was given"},
+					&cli.BoolFlag{Name: "strict", Usage: "exit non-zero (2) if verification is incomplete: no signing key given, damaged (skipped) lines, unchecked signatures, or a partial segment set"},
 				},
 				Action: func(c *cli.Context) error {
 					path := c.Args().First()
@@ -194,6 +194,13 @@ func main() {
 					if err != nil {
 						return err
 					}
+					// Whether a key was supplied at all — independent of what
+					// the file contains. An attacker who can write the log can
+					// strip every "sig" field and recompute the keyless SHA-256
+					// chain, so UncheckedSigs (which only counts entries that
+					// STILL carry a sig) cannot be trusted to flag a keyless
+					// check of a ledger that was signed.
+					keyless := len(hmacKey) == 0
 					res, err := verifyLedgerFile(path, hmacKey)
 					if err != nil {
 						return err
@@ -221,14 +228,17 @@ func main() {
 						fmt.Printf("note: verification started at seq %d (earlier segments not present); a break before that seq is not visible from these files — compare against your off-host anchor.\n",
 							res.AnchoredAtSeq)
 					}
-					if res.UncheckedSigs > 0 {
-						// Do not let a signed ledger checked without its key
-						// read as fully verified. The hash chain alone is
-						// forgeable by anyone who can rewrite the file; the
-						// signatures are the part that isn't, and they were
-						// not checked here.
-						fmt.Printf("warning: %d signed %s NOT verified — no key given, so only the hash chain was checked.\n",
-							res.UncheckedSigs, pluralize(res.UncheckedSigs, "entry", "entries"))
+					if keyless {
+						// No key given at all: only the (keyless-forgeable)
+						// hash chain was checked. Warn unconditionally — a
+						// signature-stripped ledger has UncheckedSigs == 0 and
+						// would otherwise print a clean pass.
+						if res.UncheckedSigs > 0 {
+							fmt.Printf("warning: %d signed %s NOT verified — no key given, so only the hash chain was checked.\n",
+								res.UncheckedSigs, pluralize(res.UncheckedSigs, "entry", "entries"))
+						} else {
+							fmt.Println("warning: no signing key given (--key / --key-file / NHP_AUDIT_KEY) — only the hash chain was checked. If this ledger was signed, a rewrite that also stripped the signatures cannot be told apart from an unsigned ledger. Verify with the key.")
+						}
 					}
 					if res.Skipped > 0 {
 						// The chain still links up, so no committed entry was
@@ -242,11 +252,12 @@ func main() {
 							res.Skipped, formatSkippedLines(res.SkippedLines, res.Skipped))
 					}
 					// In --strict mode an incomplete verification is a failure
-					// for gating purposes (CI/cron): a keyless check of a
-					// signed ledger, or a file with damaged lines, is not the
-					// same as a full clean pass. Distinct exit code 2 so a
-					// caller can tell it apart from a chain break (1).
-					if c.Bool("strict") && (res.Count == 0 || res.Skipped > 0 || res.UncheckedSigs > 0 || res.AnchoredAtSeq > 0) {
+					// for gating purposes (CI/cron): no key given at all, a
+					// keyless check of a signed ledger, damaged lines, or a
+					// partial (anchored) segment set is not the same as a full
+					// clean pass. Distinct exit code 2 so a caller can tell it
+					// apart from a chain break (1).
+					if c.Bool("strict") && (keyless || res.Count == 0 || res.Skipped > 0 || res.UncheckedSigs > 0 || res.AnchoredAtSeq > 0) {
 						fmt.Println("strict: verification incomplete (see warnings above).")
 						os.Exit(2)
 					}

@@ -92,6 +92,10 @@ const (
 // start a fresh chain rather than run with no audit trail).
 var ErrNotALedger = errors.New("audit: file does not look like an audit ledger")
 
+// errAsyncQueueFull is the internal signal that a synthetic "audit_gap"
+// marker could not be enqueued; recordGapLocked retries it on the next Log.
+var errAsyncQueueFull = errors.New("audit: async queue full (gap marker deferred)")
+
 // Event is one record in the ledger. Fields are ordered so the JSON
 // encoding is deterministic (encoding/json emits struct fields in
 // declaration order and map keys sorted), which is what makes the hash
@@ -214,6 +218,7 @@ type Ledger struct {
 	queue        chan queuedLine
 	drainWG      sync.WaitGroup
 	dropped      atomic.Uint64
+	gapReported  uint64      // dropped count already recorded by an in-chain "audit_gap" marker (guarded by mu)
 	closing      atomic.Bool // set by Close before it closes the queue
 	// asyncErr holds the most recent background write/rotation failure, or
 	// nil once a subsequent write succeeds. A pointer wrapper (not a bare
@@ -393,6 +398,10 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 				break // accept more from the queue; retry the remainder later
 			}
 			if l.closing.Load() {
+				// Shutting down onto a dead writer: the pending (already
+				// chained) entries are lost. Count them so the shutdown
+				// summary in closeAuditLedger reports the loss.
+				l.dropped.Add(uint64(bytes.Count(pending, []byte{'\n'})))
 				return
 			}
 			time.Sleep(retry)
@@ -914,8 +923,14 @@ func resumeFromTail(path string) (seq uint64, hash string, skipped int, ok bool,
 	// Cap the backward walk by bytes as well as by newline count, so a tail
 	// with a long newline-free stretch (corruption, or an attacker with
 	// write access appending garbage) cannot make startup read the whole
-	// file backwards into memory. maxLineLen per inspected line is generous.
-	maxScan := int64(maxTailResumeLines+2) * maxLineLen
+	// file backwards into memory. A typical committed entry is a few hundred
+	// bytes; budget a generous 64 KiB per inspected line rather than the
+	// 1 MiB read-back ceiling, keeping the scan (and the bytes.Join that
+	// follows) to a few MiB. A ledger whose genuine tail entries are larger
+	// than this simply falls through to the O(file) forward scan below —
+	// slower on that one restart, never wrong.
+	const maxTailBytesPerLine = 64 * 1024
+	maxScan := int64(maxTailResumeLines+2) * maxTailBytesPerLine
 	// Collect chunks oldest-first, then join once — appending each new chunk
 	// in front of a growing buffer would re-copy the whole accumulation
 	// every 8 KiB (O(n^2)).
@@ -1078,6 +1093,38 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 		return errors.New("audit: ledger is closed")
 	}
 
+	// If the async writer dropped entries since we last managed to record it,
+	// chain an "audit_gap" marker FIRST so the loss is visible to
+	// `audit verify` and a SIEM, not only to the runtime log.
+	l.recordGapLocked()
+
+	return l.logLocked(evType, severity, fields, false)
+}
+
+// recordGapLocked appends a chained "audit_gap" marker when the async queue
+// has dropped entries not yet reflected in the chain, so a verified copy of
+// the ledger still shows that N records were lost. Best effort: if the
+// marker itself cannot be written (queue still full, disk still bad),
+// gapReported is left behind and the next Log retries. l.mu must be held.
+func (l *Ledger) recordGapLocked() {
+	d := l.dropped.Load()
+	if d <= l.gapReported {
+		return
+	}
+	before := l.seq
+	_ = l.logLocked("audit_gap", SeverityWarn, map[string]string{
+		"dropped": strconv.FormatUint(d, 10),
+	}, true)
+	if l.seq > before { // the marker made it into the chain
+		l.gapReported = d
+	}
+}
+
+// logLocked builds, chains and writes (or enqueues) one event. l.mu must be
+// held. gapMarker is true only for the synthetic "audit_gap" entry: when the
+// async queue is full it is rolled back WITHOUT bumping the dropped counter
+// (it carries no audit data of its own and recordGapLocked retries it).
+func (l *Ledger) logLocked(evType, severity string, fields map[string]string, gapMarker bool) error {
 	l.seq++
 	prevHash := l.lastHash
 	e := Event{
@@ -1126,6 +1173,11 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 			// the signal.
 			l.seq--
 			l.lastHash = prevHash
+			if gapMarker {
+				// Synthetic marker; not a real audit event lost. Leave the
+				// counter alone so recordGapLocked retries next Log.
+				return errAsyncQueueFull
+			}
 			n := l.dropped.Add(1)
 			return fmt.Errorf("audit: async queue full — dropped entry (%d dropped in total)", n)
 		}

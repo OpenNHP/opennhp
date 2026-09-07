@@ -194,16 +194,17 @@ func headerAAD(t, m, p string) []byte {
 
 // Open decrypts a sealed blob back into raw private-key bytes.
 func Open(blob string, passphrase []byte) ([]byte, error) {
-	if len(passphrase) == 0 {
-		return nil, ErrNoPassphrase
-	}
-
-	// A well-formed "v<N>$" prefix of a version we don't know is an upgrade
-	// problem, not corruption — report it as such rather than folding it into
-	// ErrMalformedBlob. This is the reason IsSealed recognizes forward
-	// versions in the first place.
+	// Check the version BEFORE the passphrase: a well-formed "v<N>$" prefix
+	// of a version we don't know is an upgrade problem, and no passphrase can
+	// ever help — reporting "set NHP_KEY_PASSPHRASE" first would send the
+	// operator down the wrong path. This is the reason IsSealed recognizes
+	// forward versions in the first place.
 	if token, ok := sealedVersion(blob); ok && token != blobVersion {
 		return nil, fmt.Errorf("%w: blob is %s, this build understands %s — upgrade the daemon", ErrUnsupportedVersion, token, blobVersion)
+	}
+
+	if len(passphrase) == 0 {
+		return nil, ErrNoPassphrase
 	}
 
 	parts := strings.Split(blob, "$")
@@ -251,9 +252,10 @@ func Open(blob string, passphrase []byte) ([]byte, error) {
 	}
 	// The AEAD proved integrity, so this is a real recovered key — but a
 	// blob sealed from a truncated/mistyped key would only fail much later
-	// at device creation. NHP device scalars are 32 bytes.
-	if len(plain) != argonKeyLen {
-		return nil, fmt.Errorf("%w: recovered key is %d bytes, expected %d", ErrMalformedBlob, len(plain), argonKeyLen)
+	// at device creation. NHP device scalars are deviceKeyLen bytes; mirror
+	// the check Seal applies on the way in.
+	if len(plain) != deviceKeyLen {
+		return nil, fmt.Errorf("%w: recovered key is %d bytes, expected %d", ErrMalformedBlob, len(plain), deviceKeyLen)
 	}
 	return plain, nil
 }

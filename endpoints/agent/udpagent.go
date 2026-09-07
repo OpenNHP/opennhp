@@ -1340,7 +1340,14 @@ func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOut
 	ztdo := ztdolib.NewZtdo()
 
 	consumerEphemeralEcdh := core.NewECDH(a.config.GetEccType())
+
+	// GetTeeEcdh returns nil when TEEPrivateKeyBase64 is empty/unset (a DHP
+	// agent that has never had RotateTeeKey run). Same guard as
+	// getTeePublicKey — this path has no gin panic-recovery net.
 	teeEcdh := a.config.GetTeeEcdh()
+	if teeEcdh == nil {
+		return "", fmt.Errorf("RefreshDataAccess: TEE private key is unavailable (run the DHP secret init)")
+	}
 
 	darMsg := common.DARMsg{
 		DoId:                       ztdoId,

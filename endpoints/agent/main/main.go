@@ -713,7 +713,15 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 		}
 		return "Curve25519"
 	}())
-	fmt.Printf("  %sPrivate key:%s      %s%s%s\n", colorYellow, colorReset, colorDim, privKey, colorReset)
+	if existingKeySealed {
+		// The existing config keeps its key sealed, so this one will be
+		// re-sealed into config.toml below. Don't echo the plaintext scalar
+		// into scrollback / CI logs — the very exposure sealing exists to
+		// reduce. `nhp-agentd pubkey` / `keygen` can reproduce it if needed.
+		fmt.Printf("  %sPrivate key:%s      %s(hidden — will be sealed into config.toml)%s\n", colorYellow, colorReset, colorDim, colorReset)
+	} else {
+		fmt.Printf("  %sPrivate key:%s      %s%s%s\n", colorYellow, colorReset, colorDim, privKey, colorReset)
+	}
 	fmt.Printf("  %sPublic key:%s       %s\n", colorYellow, colorReset, pubKey)
 	if rakMsg != nil && rakMsg.ExpiresAt != nil {
 		expTime := time.Unix(*rakMsg.ExpiresAt, 0)

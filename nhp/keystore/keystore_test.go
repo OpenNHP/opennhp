@@ -395,4 +395,10 @@ func TestOpenUnknownVersionIsDistinctError(t *testing.T) {
 	if errors.Is(err, ErrMalformedBlob) {
 		t.Fatal("unknown version should not also be ErrMalformedBlob")
 	}
+	// The version is reported even with no passphrase — no passphrase can
+	// ever open a forward-version blob, so "upgrade" must win over "set a
+	// passphrase".
+	if _, noPassErr := Open("v2$argon2id$3$65536$4$AAAA$BBBB$CCCC", nil); !errors.Is(noPassErr, ErrUnsupportedVersion) {
+		t.Fatalf("unknown version with no passphrase: got %v want ErrUnsupportedVersion", noPassErr)
+	}
 }

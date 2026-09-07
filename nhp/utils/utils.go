@@ -160,6 +160,12 @@ func UpdateTomlConfig(filePath string, key string, value any) error {
 	switch value := value.(type) {
 	case string:
 		re := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(key) + `\s*=\s*".+"\s*$`)
+		if !re.MatchString(string(content)) {
+			// No non-empty `key = "..."` line to replace. Silently writing the
+			// file back unchanged would let a caller (RotateAgentKey re-sealing
+			// a key) report success while config.toml keeps the old value.
+			return fmt.Errorf("key %q not found (or has an empty value) in %s", key, filePath)
+		}
 		// ReplaceAllLiteralString, not ReplaceAllString: the replacement is a
 		// verbatim value, and a sealed key blob ("v1$argon2id$...") contains
 		// '$' sequences that ReplaceAllString would interpret as capture-group

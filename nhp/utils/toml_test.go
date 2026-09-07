@@ -37,6 +37,29 @@ func TestUpdateTomlConfigWritesValueLiterally(t *testing.T) {
 	}
 }
 
+// TestUpdateTomlConfigErrorsWhenKeyMissing: a no-match must be reported, not
+// swallowed — RotateAgentKey relies on the write actually persisting the
+// re-sealed blob.
+func TestUpdateTomlConfigErrorsWhenKeyMissing(t *testing.T) {
+	dir := t.TempDir()
+	fp := filepath.Join(dir, "config.toml")
+	// Key present but empty, plus a wholly absent key.
+	if err := os.WriteFile(fp, []byte("PrivateKeyBase64 = \"\"\nOther = 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateTomlConfig(fp, "PrivateKeyBase64", "x"); err == nil {
+		t.Fatal("expected an error updating an empty-valued key")
+	}
+	if err := UpdateTomlConfig(fp, "NoSuchKey", "x"); err == nil {
+		t.Fatal("expected an error updating an absent key")
+	}
+	// The file must be left untouched on the error path.
+	got, _ := os.ReadFile(fp)
+	if string(got) != "PrivateKeyBase64 = \"\"\nOther = 1\n" {
+		t.Fatalf("file was modified despite the no-match error:\n%s", got)
+	}
+}
+
 // TestUpdateTomlConfigRoundTripsPlainKey confirms the ordinary path is
 // unaffected.
 func TestUpdateTomlConfigRoundTripsPlainKey(t *testing.T) {

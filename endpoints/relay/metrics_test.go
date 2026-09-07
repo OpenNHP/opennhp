@@ -80,15 +80,15 @@ func TestNewMetricsEndpointNoLeakOnError(t *testing.T) {
 			LoadBalance:  "weighted-random",
 		}},
 	}
-	if _, err := New(bad); err == nil {
+	if _, nerr := New(bad); nerr == nil {
 		t.Fatal("New with a bad server key should fail")
 	}
 
 	// The port must be free — New must not have started the metrics listener
 	// before the buildServer loop that returned the error.
-	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		t.Fatalf("metrics port %d still bound after New() failed: %v", port, err)
+	l, lerr := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if lerr != nil {
+		t.Fatalf("metrics port %d still bound after New() failed: %v", port, lerr)
 	}
 	l.Close()
 }

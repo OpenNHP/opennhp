@@ -275,13 +275,16 @@ type AuditConfig struct {
 	// the hash chain under the lock, so ordering and linkage are unchanged;
 	// only the write is deferred. This keeps Fsync usable on a busy gateway.
 	// If the writer falls far enough behind that the queue fills, entries are
-	// DROPPED (counted, and a Critical is logged) rather than blocking the
-	// knock — a dropped entry is discarded whole, so the chain stays
-	// contiguous. Off by default: the synchronous write is simplest and
-	// gives the strongest "it's on disk before we answered" guarantee.
+	// DROPPED rather than blocking the knock — discarded whole so the chain
+	// stays contiguous, counted in the shutdown summary and a runtime
+	// Critical, and once the writer recovers the next Log chains an
+	// "audit_gap" marker (fields.dropped=N) so a verified copy of the ledger
+	// still shows the loss. Under Async, chain integrity holds but
+	// completeness does not. Off by default.
 	Async bool `json:"async"`
 	// AsyncQueueSize bounds the pending-write queue when Async is set.
-	// 0 uses a sensible default. Ignored unless Async.
+	// 0 uses a sensible default; a value over ~1M is rejected at startup
+	// (it would allocate gigabytes). Ignored unless Async.
 	AsyncQueueSize int `json:"asyncQueueSize"`
 
 	// MaxSizeBytes controls size-based rotation: once the live file would

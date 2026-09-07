@@ -93,11 +93,20 @@ func (s *UdpServer) initAuditLedger() error {
 		maxSegs = 0
 	}
 
+	// AsyncQueueSize goes straight into make(chan …, n); a mistyped
+	// "100000000" would allocate gigabytes at startup before any listener
+	// binds. <= 0 means "use the default"; cap the top end.
+	queueSize := s.config.Audit.AsyncQueueSize
+	const maxAuditQueueSize = 1 << 20 // 1,048,576 pending entries is already absurd
+	if queueSize > maxAuditQueueSize {
+		return fmt.Errorf("%w: [Audit] AsyncQueueSize %d is too large (max %d)", errAuditConfig, queueSize, maxAuditQueueSize)
+	}
+
 	opts := audit.Options{
 		HMACKey:      hmacKey,
 		Fsync:        s.config.Audit.Fsync,
 		Async:        s.config.Audit.Async,
-		QueueSize:    s.config.Audit.AsyncQueueSize,
+		QueueSize:    queueSize,
 		MaxSizeBytes: maxSize,
 		MaxSegments:  maxSegs,
 		OnPrune: func(removed []string) {
@@ -113,8 +122,10 @@ func (s *UdpServer) initAuditLedger() error {
 			//  - It IS our ledger but its first line got corrupted (an
 			//    attacker prepending junk to disable auditing, say). Move it
 			//    aside to a ".corrupt-<ns>" sibling and start fresh, so the
-			//    trail is not silently lost — a chain that restarts at seq 1
-			//    next to a .corrupt file is a loud, detectable signal.
+			//    trail is not silently lost — the .corrupt sibling next to a
+			//    re-created live file is the loud signal (the new chain
+			//    restarts at seq 1, or continues from the highest existing
+			//    "<path>.<n>" segment when size rotation has produced any).
 			//
 			//  - It is a FOREIGN file (a mistyped FilePath pointing at
 			//    another log, a config, a shared-volume file). Renaming that
@@ -223,13 +234,17 @@ func (s *UdpServer) closeAuditLedger() {
 	if s.auditLedger == nil {
 		return
 	}
+	// Close() FIRST: it drains the async queue, and drain's shutdown bail-out
+	// onto a dead writer adds the abandoned (already-chained) entries to the
+	// dropped count. A rotation during that final flush can also prune
+	// segments. Reading the counters before Close would miss both.
+	_ = s.auditLedger.Close()
 	if dropped := s.auditLedger.Dropped(); dropped > 0 {
-		log.Warning("audit: %d entries were dropped by the async writer over this run (queue full); increase [Audit] AsyncQueueSize or disable Async", dropped)
+		log.Warning("audit: %d entries were dropped/abandoned by the async writer over this run; increase [Audit] AsyncQueueSize or disable Async", dropped)
 	}
 	if pruned := s.auditLedger.SegmentsPruned(); pruned > 0 {
 		log.Warning("audit: retention deleted %d rotated segment(s) over this run — see the Critical lines above for the file names", pruned)
 	}
-	_ = s.auditLedger.Close()
 }
 
 // decisionGranted reports whether an access/registration decision counts as

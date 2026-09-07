@@ -75,12 +75,15 @@ ForceOverload = false
 #   losing the last few entries to a crash is unacceptable.
 # Async: move the disk write (and Fsync) onto a single background writer.
 #   Log still computes seq + the hash chain synchronously, so ordering and
-#   integrity are unchanged; only the write is deferred. If the writer falls
+#   linkage are unchanged; only the write is deferred. If the writer falls
 #   far enough behind that the queue (AsyncQueueSize, default 4096) fills,
-#   entries are DROPPED and counted rather than blocking the knock — a
-#   dropped entry is discarded whole so the chain stays contiguous. Off by
-#   default (the synchronous write is the strongest "on disk before we
-#   answered" guarantee).
+#   entries are DROPPED rather than blocking the knock — discarded whole so
+#   the chain stays contiguous, counted in the shutdown summary, and once the
+#   writer recovers the next entry is preceded by a chained "audit_gap"
+#   record (fields.dropped=N) so `audit verify` and a SIEM see the loss too.
+#   Completeness is therefore NOT guaranteed under Async, only chain
+#   integrity. Off by default (the synchronous write is the strongest "on
+#   disk before we answered" guarantee).
 # MaxSizeBytes: size-based rotation. Once the live file would grow past this,
 #   it is renamed to "<FilePath>.<seq>" and a fresh file continues the chain.
 #   `audit verify` walks the segments automatically. Rotation alone deletes

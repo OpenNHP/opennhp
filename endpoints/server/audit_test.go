@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -172,6 +173,29 @@ func TestAuditDefaultRetentionKeepsEverySegment(t *testing.T) {
 		t.Fatalf("kept-everything ledger failed to verify: %v", res.Err)
 	} else if res.AnchoredAtSeq != 0 {
 		t.Fatalf("nothing deleted, so verify must reach seq 1 (AnchoredAtSeq=%d)", res.AnchoredAtSeq)
+	}
+}
+
+// TestAuditRejectsAbsurdQueueSize: a mistyped AsyncQueueSize must be caught
+// at init (it feeds make(chan …, n)) rather than allocating gigabytes.
+func TestAuditRejectsAbsurdQueueSize(t *testing.T) {
+	dir := t.TempDir()
+	s := &UdpServer{
+		config: &Config{
+			Audit: AuditConfig{
+				Enabled:        true,
+				FilePath:       filepath.Join(dir, "audit.jsonl"),
+				Async:          true,
+				AsyncQueueSize: 1 << 30,
+			},
+		},
+	}
+	err := s.initAuditLedger()
+	if err == nil {
+		t.Fatal("initAuditLedger accepted an absurd AsyncQueueSize")
+	}
+	if !errors.Is(err, errAuditConfig) {
+		t.Fatalf("want errAuditConfig, got %v", err)
 	}
 }
 

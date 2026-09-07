@@ -474,6 +474,120 @@ func TestOpenTerminatesLastLineInsteadOfZeroing(t *testing.T) {
 	}
 }
 
+// TestOpenResetsTornFirstAppend: a crash during the very first append leaves
+// a single unterminated fragment that does NOT parse. Open must reset it to
+// a fresh chain, not fail with ErrNotALedger forever.
+func TestOpenResetsTornFirstAppend(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+	// Truncated JSON, no trailing newline — a torn first write.
+	if err := os.WriteFile(path, []byte(`{"seq":1,"time":"2026-01-01T00:00:00Z","typ`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	l, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open must reset a torn first append, got: %v", err)
+	}
+	if l.MalformedOnOpen != 0 {
+		t.Errorf("MalformedOnOpen = %d, want 0", l.MalformedOnOpen)
+	}
+	writeN(t, l, 3)
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	res := VerifyChain(bytes.NewReader(data), nil)
+	if res.Err != nil || res.Count != 3 {
+		t.Fatalf("fresh chain after reset: err=%v count=%d", res.Err, res.Count)
+	}
+	if got := splitLines(data); len(got) != 3 {
+		t.Fatalf("want 3 lines, got %d: %q", len(got), data)
+	}
+}
+
+// TestOpenResetsTornFirstAppendIntoFreshSegment: the same torn-first-append,
+// but rotated "<path>.<n>" segments already hold history. The reset live
+// file must reconnect to the highest segment, not restart at seq 1.
+func TestOpenResetsTornFirstAppendIntoFreshSegment(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{MaxSizeBytes: 512})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 40) // forces rotations -> <path>.<n> segments
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	segs, _ := numberedSegments(path)
+	if len(segs) == 0 {
+		t.Fatal("expected rotated segments")
+	}
+	// Simulate a crash right after rollSegment: live file is a torn fragment.
+	if wErr := os.WriteFile(path, []byte(`{"seq":999,"tim`), 0600); wErr != nil {
+		t.Fatal(wErr)
+	}
+
+	l2, err := Open(path, Options{MaxSizeBytes: 512})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := l2.Log("knock", SeverityInfo, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := l2.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// VerifyLedger walks segments + live file; the chain must be continuous
+	// (no anchor, no break) across the reset boundary.
+	if res := VerifyLedger(path, nil); res.Err != nil {
+		t.Fatalf("cross-segment verify after torn-first-append reset: %v", res.Err)
+	} else if res.AnchoredAtSeq != 0 {
+		t.Fatalf("chain should be continuous from seq 1, got anchor at %d", res.AnchoredAtSeq)
+	}
+}
+
+// TestOpenIgnoresBlankTailLine: drain's final flush can leave a bare '\n'.
+// resumeFromTail must not count it as damage (scanTail / verify don't).
+func TestOpenIgnoresBlankTailLine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 5)
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	// Append a stray blank line, as an exact-boundary async stop would.
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.Write([]byte{'\n'})
+	f.Close()
+
+	l2, err := Open(path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l2.MalformedOnOpen != 0 {
+		t.Fatalf("MalformedOnOpen = %d, want 0 — a blank line is not damage", l2.MalformedOnOpen)
+	}
+	if err := l2.Log("knock", SeverityInfo, nil); err != nil {
+		t.Fatal(err)
+	}
+	_ = l2.Close()
+	data, _ := os.ReadFile(path)
+	if res := VerifyChain(bytes.NewReader(data), nil); res.Err != nil {
+		t.Fatalf("chain broke after resuming past a blank line: %v", res.Err)
+	}
+}
+
 func TestOpenResumesChainAcrossRestart(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sub", "audit.log")

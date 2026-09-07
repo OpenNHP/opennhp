@@ -700,6 +700,15 @@ func ensureLedgerFile(path string) error {
 	}
 	var e Event
 	if tooLong || json.Unmarshal(line, &e) != nil || e.Seq == 0 {
+		// rerr == io.EOF here means the first line reached end-of-file with NO
+		// terminating newline: a single unterminated fragment. That is a torn
+		// FIRST append (a crash during the first write to a new file or a
+		// fresh segment after rollSegment), not a foreign file — an unrelated
+		// log or config practically always ends in '\n'. Let it through;
+		// repairTornTail resets it to a fresh chain.
+		if rerr == io.EOF && !tooLong {
+			return nil
+		}
 		return fmt.Errorf("%w: %q (its first line is not an event); check the [Audit] FilePath setting", ErrNotALedger, path)
 	}
 	return nil
@@ -742,11 +751,11 @@ func LooksLikeLedger(path string) bool {
 // after it was never a fully committed record, and dropping it keeps it from
 // being concatenated onto the next entry.
 //
-// If the WHOLE file is one line with no newline, it is NOT truncated to
-// zero — that would erase the file. By the time we reach here Open's guard
-// has confirmed the first line is a complete Event, so this is a committed
-// entry whose terminating newline was lost; the newline is added back rather
-// than the entry deleted.
+// If the WHOLE file is one line with no newline, there are two cases: a
+// complete Event whose terminating newline was lost (add it back), or a
+// fragment that does not parse — a torn FIRST append that ensureLedgerFile
+// let through. The latter is reset to an empty file (a fresh chain) rather
+// than left as an unrepairable fragment that would forever fail Open.
 func repairTornTail(path string) (bool, error) {
 	rf, err := os.OpenFile(filepath.Clean(path), os.O_RDWR, 0600)
 	if err != nil {
@@ -796,11 +805,23 @@ func repairTornTail(path string) (bool, error) {
 	}
 
 	if keep < 0 {
-		// No newline anywhere: the whole file is one line. The guard has
-		// confirmed it is a complete Event, so terminate it rather than
-		// erase it (Truncate(0) here would zero the file).
-		if _, err := rf.WriteAt([]byte{'\n'}, size); err != nil {
-			return false, fmt.Errorf("audit: terminate line in %q: %w", path, err)
+		// No newline anywhere: the whole file is one line. If it parses as a
+		// complete Event its terminator was just lost — add it back. If it
+		// does not parse it is a torn first append; reset to a fresh chain
+		// (segments, if any, are reconnected by Open via lastSegmentTip).
+		whole := make([]byte, size)
+		if _, err := rf.ReadAt(whole, 0); err != nil && err != io.EOF {
+			return false, fmt.Errorf("audit: read %q for repair: %w", path, err)
+		}
+		var e Event
+		if json.Unmarshal(bytes.TrimRight(whole, "\n"), &e) == nil && e.Seq > 0 {
+			if _, err := rf.WriteAt([]byte{'\n'}, size); err != nil {
+				return false, fmt.Errorf("audit: terminate line in %q: %w", path, err)
+			}
+			return true, nil
+		}
+		if err := rf.Truncate(0); err != nil {
+			return false, fmt.Errorf("audit: reset torn first append in %q: %w", path, err)
 		}
 		return true, nil
 	}
@@ -987,6 +1008,13 @@ func resumeFromTail(path string) (seq uint64, hash string, skipped int, ok bool,
 
 	skip := 0
 	for i := len(parts) - 1; i >= 0 && skip <= maxTailResumeLines; i-- {
+		if len(parts[i]) == 0 {
+			// A blank line is not damage: drain's final flush can emit a bare
+			// '\n', and scanTail / verifyChainFrom both ignore empty lines.
+			// Counting it here would make initAuditLedger cry "run audit
+			// verify" over something `audit verify` then reports as clean.
+			continue
+		}
 		var e Event
 		if json.Unmarshal(parts[i], &e) == nil && e.Seq > 0 && e.Hash != "" {
 			return e.Seq, e.Hash, skip, true, nil

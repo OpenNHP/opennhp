@@ -63,7 +63,14 @@ func TestRelayByteCountersAreCounters(t *testing.T) {
 //     gauge is readable without racing the (already-finished) buildServer
 //     loop — covered by -race on the whole package.
 func TestNewMetricsEndpointNoLeakOnError(t *testing.T) {
-	port := 59230
+	// Reserve an ephemeral port, note it, release it — New() must not bind it.
+	rl, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := rl.Addr().(*net.TCPAddr).Port
+	rl.Close()
+
 	bad := &Config{
 		PrivateKeyBase64: core.NewECDH(core.ECC_CURVE25519).PrivateKeyBase64(),
 		Metrics:          metrics.Config{Enabled: true, ListenIp: "127.0.0.1", ListenPort: port},

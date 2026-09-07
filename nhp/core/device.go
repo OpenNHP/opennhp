@@ -165,7 +165,11 @@ func (d *Device) notifyPacketDropped(stage string) {
 	if hook == nil {
 		return
 	}
-	defer func() { _ = recover() }()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("OnPacketDropped hook panicked (stage=%s): %v", stage, r)
+		}
+	}()
 	hook(stage)
 }
 

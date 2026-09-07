@@ -148,16 +148,18 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 
 	a.metrics = newDBMetrics(a, a.startTime)
 
-	// defaultDeviceOptions(NHP_DB) is the zero value, so the explicit struct
-	// only adds the pre-decryption dropped-packet hook (a.metrics is set
-	// above; recordDroppedPacket is nil-safe).
-	a.device = core.NewDevice(core.NHP_DB, prk, &core.DeviceOptions{
-		OnPacketDropped: func(stage string) { a.metrics.recordDroppedPacket(stage) },
-	})
+	// Keep NewDevice(t, prk, nil) so defaultDeviceOptions(NHP_DB) stays the
+	// single source of truth for the device's security posture, then layer
+	// the pre-decryption dropped-packet hook on via read-modify-write (same
+	// pattern as ac/relay).
+	a.device = core.NewDevice(core.NHP_DB, prk, nil)
 	if a.device == nil {
 		log.Critical("failed to create device %v\n", err)
 		return fmt.Errorf("failed to create device %v", err)
 	}
+	dbOpt := a.device.GetOption()
+	dbOpt.OnPacketDropped = func(stage string) { a.metrics.recordDroppedPacket(stage) }
+	a.device.SetOption(dbOpt)
 
 	a.remoteConnectionMap = make(map[string]*UdpConn)
 	a.serverPeerMap = make(map[string]*core.UdpPeer)

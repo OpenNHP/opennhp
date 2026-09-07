@@ -22,8 +22,8 @@ resource "cloudflare_record" "ac" {
 }
 
 # Canonical alias for the cluster 1 nhp-server. Points at auth-plugin so the
-# two names resolve to the same host; lets the demo refer to clusters
-# uniformly as server.opennhp.org / server2.opennhp.org.
+# two names resolve to the same host; lets the demo refer to the cluster
+# as server.opennhp.org.
 resource "cloudflare_record" "server" {
   zone_id = var.cloudflare_zone_id
   name    = "server"
@@ -55,26 +55,6 @@ resource "cloudflare_record" "acdemo" {
   proxied = false
   ttl     = 300
   comment = "Legacy alias for ac.opennhp.org - managed by Terraform"
-}
-
-resource "cloudflare_record" "server2" {
-  zone_id = var.cloudflare_zone_id
-  name    = "server2"
-  content = aws_eip.server2.public_ip
-  type    = "A"
-  proxied = false
-  ttl     = 300
-  comment = "NHP Server cluster 2 - managed by Terraform"
-}
-
-resource "cloudflare_record" "ac2" {
-  zone_id = var.cloudflare_zone_id
-  name    = "ac2"
-  content = aws_eip.ac2.public_ip
-  type    = "A"
-  proxied = false
-  ttl     = 300
-  comment = "NHP AC cluster 2 - managed by Terraform"
 }
 
 resource "cloudflare_record" "relay" {

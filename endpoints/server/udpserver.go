@@ -246,6 +246,24 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		return err
 	}
 
+	// Initialize the tamper-evident audit ledger if enabled, BEFORE any
+	// listener binds. By default a failure here is logged but never blocks
+	// startup: refusing to boot the gateway because an audit file can't be
+	// opened would turn a logging problem into an outage, and initAuditLedger
+	// already recovers a corrupt file by quarantining it and starting a fresh
+	// chain. An operator who requires an uninterrupted trail sets [Audit]
+	// FailClosed, which turns any such failure into a hard startup error —
+	// and that has to happen here, before loadHttpConfig() starts the HTTP
+	// knock listener and before the UDP socket is opened, or "fail closed"
+	// would still have served requests in the gap. initAuditLedger depends
+	// only on s.config.Audit and ExeDirPath, both already set.
+	if auditErr := s.initAuditLedger(); auditErr != nil {
+		if s.config != nil && s.config.Audit.FailClosed {
+			return fmt.Errorf("audit ledger unavailable and [Audit] FailClosed is set — refusing to start: %w", auditErr)
+		}
+		log.Critical("audit ledger disabled — failed to open: %v", auditErr)
+	}
+
 	var netIP net.IP
 	if len(s.config.ListenIp) > 0 {
 		netIP = net.ParseIP(s.config.ListenIp)
@@ -387,22 +405,6 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		return err
 	}
 	s.keyStore = ks
-
-	// Initialize the tamper-evident audit ledger if enabled. By default a
-	// failure here is logged but never blocks startup: refusing to boot the
-	// gateway because an audit file can't be opened would turn a logging
-	// problem into an outage, and initAuditLedger already recovers a corrupt
-	// file by quarantining it and starting a fresh chain. The server then
-	// continues with auditing disabled only for a failure it could not
-	// recover (e.g. an unwritable directory). An operator who requires an
-	// uninterrupted trail sets [Audit] FailClosed, which turns any such
-	// failure into a hard startup error instead.
-	if auditErr := s.initAuditLedger(); auditErr != nil {
-		if s.config != nil && s.config.Audit.FailClosed {
-			return fmt.Errorf("audit ledger unavailable and [Audit] FailClosed is set — refusing to start: %w", auditErr)
-		}
-		log.Critical("audit ledger disabled — failed to open: %v", auditErr)
-	}
 
 	s.remoteConnectionMap = make(map[string]*UdpConn)
 	s.relayConnCount = make(map[string]int)

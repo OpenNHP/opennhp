@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -290,6 +291,41 @@ func TestAuditFailClosedReturnsError(t *testing.T) {
 	// The file must be left untouched for inspection.
 	if got, _ := os.ReadFile(path); !bytes.Equal(got, []byte("not a ledger\n")) {
 		t.Fatal("FailClosed must not modify the offending file")
+	}
+}
+
+// TestAuditInitRunsBeforeListeners guards the fix for the FailClosed gap:
+// initAuditLedger must be called before loadHttpConfig (which starts the
+// HTTP knock listener) and before the UDP socket is opened, or "fail
+// closed" would still have served requests in the window between bind and
+// the error return. Pinned by scanning Start's source so a future reorder
+// trips this test.
+func TestAuditInitRunsBeforeListeners(t *testing.T) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Skip("cannot locate source file")
+	}
+	src, err := os.ReadFile(filepath.Join(filepath.Dir(thisFile), "udpserver.go"))
+	if err != nil {
+		t.Fatalf("read udpserver.go: %v", err)
+	}
+	body := string(src)
+	start := strings.Index(body, "func (s *UdpServer) Start(")
+	if start < 0 {
+		t.Fatal("Start not found")
+	}
+	seg := body[start:]
+	iAudit := strings.Index(seg, "s.initAuditLedger()")
+	iHTTP := strings.Index(seg, "s.loadHttpConfig()")
+	iListen := strings.Index(seg, "net.ListenUDP(")
+	if iAudit < 0 || iHTTP < 0 || iListen < 0 {
+		t.Fatalf("markers not found (audit=%d http=%d listen=%d)", iAudit, iHTTP, iListen)
+	}
+	if iAudit > iHTTP {
+		t.Fatal("initAuditLedger() must precede loadHttpConfig() in Start()")
+	}
+	if iAudit > iListen {
+		t.Fatal("initAuditLedger() must precede net.ListenUDP() in Start()")
 	}
 }
 

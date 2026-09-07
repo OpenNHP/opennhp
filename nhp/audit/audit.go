@@ -32,6 +32,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 )
@@ -184,6 +185,34 @@ type Ledger struct {
 	fsync    bool
 	seq      uint64
 	lastHash string
+
+	// Segment rotation (only when opened via Open with MaxSizeBytes > 0).
+	// path is the live segment; when curSize would cross maxSize the live
+	// file is renamed to "<path>.<lastSegSeq>" and a fresh one is opened.
+	// Every entry already carries prevHash + seq, so the chain stays
+	// continuous across the split with no special boundary record.
+	path       string
+	maxSize    int64
+	curSize    int64
+	lastSegSeq uint64
+
+	// Async mode: Log computes the entry (seq/hash/sig) under mu and hands
+	// the marshaled line to a single background writer via queue, so the
+	// request path never blocks on the disk write or fsync. queue is nil in
+	// the default synchronous mode.
+	async    bool
+	queue    chan queuedLine
+	drainWG  sync.WaitGroup
+	dropped  atomic.Uint64
+	asyncErr atomic.Value // holds error: the last background write failure
+}
+
+// queuedLine is one prepared entry waiting for the async writer. seq is
+// carried alongside so the writer can name a rotated segment without racing
+// on l.seq.
+type queuedLine struct {
+	line []byte
+	seq  uint64
 }
 
 // Options configures a Ledger.
@@ -191,11 +220,35 @@ type Options struct {
 	// HMACKey, when non-empty, adds an HMAC signature to every entry that
 	// binds the chain to this secret.
 	HMACKey []byte
-	// Fsync flushes each entry to stable storage before returning. Safer
-	// against crash/power loss at the cost of throughput; audit logs are
-	// low-volume so this is usually worth enabling.
+	// Fsync flushes each entry to stable storage before returning, holding
+	// the ledger mutex across the flush. Safer against crash/power loss, but
+	// on a gateway "audit volume" tracks knock volume and each access
+	// decision then costs a synchronous disk flush that serializes the other
+	// audit writers — see the server-side config docs. Weigh it for the
+	// workload rather than assuming the log is low-volume.
 	Fsync bool
+	// Async, when true, moves the actual disk write (and fsync) off the
+	// caller's goroutine: Log prepares the entry under the lock — so seq and
+	// the hash chain stay strictly ordered — then enqueues it for a single
+	// background writer. Keeps Fsync usable on the knock path. If the queue
+	// is full the entry is DROPPED (and counted, see Dropped) rather than
+	// blocking the request; a dropped entry is discarded whole, so the chain
+	// stays contiguous with no gap. Close drains the queue before returning.
+	Async bool
+	// QueueSize bounds the async queue; <= 0 uses defaultAsyncQueueSize.
+	// Ignored unless Async.
+	QueueSize int
+	// MaxSizeBytes, when > 0, rolls the ledger to a numbered segment
+	// ("<path>.<seq>") once it would exceed this size, and continues in a
+	// fresh file. The hash chain spans the segments (verify with
+	// VerifyLedger / `audit verify`, which pick up the siblings). Only
+	// honored when the ledger was opened via Open (a path is required to
+	// rename); ignored for a bare io.Writer.
+	MaxSizeBytes int64
 }
+
+// defaultAsyncQueueSize is the async write queue depth when QueueSize is 0.
+const defaultAsyncQueueSize = 4096
 
 // NewLedger writes to w with no restart continuity. Mainly for tests and
 // callers that manage their own file handle; production servers use
@@ -210,8 +263,57 @@ func NewLedger(w io.Writer, opts Options) *Ledger {
 	if c, ok := w.(io.Closer); ok {
 		l.closer = c
 	}
+	if opts.Async {
+		size := opts.QueueSize
+		if size <= 0 {
+			size = defaultAsyncQueueSize
+		}
+		l.async = true
+		l.queue = make(chan queuedLine, size)
+		l.drainWG.Add(1)
+		// Pass the channel in rather than letting drain read l.queue, which
+		// Close nils out under the lock — drain must not touch that field.
+		go l.drain(l.queue)
+	}
 	return l
 }
+
+// drain is the single background writer for async mode. It is the only
+// goroutine that touches l.w / the segment fields while async, so no lock is
+// needed around the write or the rotation.
+func (l *Ledger) drain(q <-chan queuedLine) {
+	defer l.drainWG.Done()
+	for it := range q {
+		if l.shouldRotate(len(it.line)) {
+			if rErr := l.rollSegment(); rErr != nil {
+				l.asyncErr.Store(rErr)
+				// keep going on the current segment
+			}
+		}
+		if _, err := l.w.Write(it.line); err != nil {
+			l.asyncErr.Store(err)
+			continue
+		}
+		l.curSize += int64(len(it.line))
+		l.lastSegSeq = it.seq
+		if l.fsync {
+			if f, ok := l.w.(*os.File); ok {
+				_ = f.Sync()
+			}
+		}
+	}
+}
+
+// shouldRotate reports whether appending nextLen bytes would push the live
+// segment past maxSize. curSize > 0 keeps a single over-large entry from
+// rotating an empty file forever.
+func (l *Ledger) shouldRotate(nextLen int) bool {
+	return l.maxSize > 0 && l.curSize > 0 && l.curSize+int64(nextLen) > l.maxSize
+}
+
+// Dropped reports how many entries the async writer discarded because the
+// queue was full. Always 0 in synchronous mode.
+func (l *Ledger) Dropped() uint64 { return l.dropped.Load() }
 
 // Open opens (creating parent dirs as needed) the ledger file at path for
 // append. If the file already exists its chain is scanned so new entries
@@ -244,7 +346,23 @@ func Open(path string, opts Options) (*Ledger, error) {
 
 	seq, last := uint64(0), genesisHash
 	malformed := 0
-	if f, openErr := os.Open(filepath.Clean(path)); openErr == nil {
+
+	// Resume from the tail without reading the whole file: on a long-lived
+	// gateway the ledger can be gigabytes, and all a restart needs is the
+	// last committed entry's seq + hash. resumeFromTail seeks backwards over
+	// the last few lines; only if none of them parse (damage deeper than the
+	// window) does it hand back ok=false and we do the O(file) forward scan.
+	// One consequence of not reading the whole file: mid-file damage is no
+	// longer counted at Open. `audit verify` is the full-integrity pass and
+	// reports it precisely.
+	if rSeq, rHash, rSkip, rOK, rErr := resumeFromTail(path); rErr != nil {
+		return nil, fmt.Errorf("audit: existing ledger %q is unreadable: %w", path, rErr)
+	} else if rOK {
+		malformed = rSkip
+		if rHash != "" {
+			seq, last = rSeq, rHash
+		}
+	} else if f, openErr := os.Open(filepath.Clean(path)); openErr == nil {
 		lastSeq, lastHash, bad, scanErr := scanTail(f)
 		f.Close()
 		if scanErr != nil {
@@ -265,13 +383,54 @@ func Open(path string, opts Options) (*Ledger, error) {
 		return nil, fmt.Errorf("audit: open for append: %w", err)
 	}
 
+	var curSize int64
+	if info, statErr := f.Stat(); statErr == nil {
+		curSize = info.Size()
+	}
+
 	l := NewLedger(f, opts)
 	l.closer = f
 	l.seq = seq
 	l.lastHash = last
 	l.MalformedOnOpen = malformed
 	l.RepairedOnOpen = repaired
+	l.path = path
+	l.maxSize = opts.MaxSizeBytes
+	l.curSize = curSize
+	l.lastSegSeq = seq
 	return l, nil
+}
+
+// rollSegment closes the live file, renames it to "<path>.<lastSegSeq>" and
+// opens a fresh live file. The caller must own the writer (hold l.mu in sync
+// mode, or be the drain goroutine in async mode). On any error the live file
+// is left in place and rotation is skipped — the ledger keeps growing but
+// stays valid.
+func (l *Ledger) rollSegment() error {
+	if l.path == "" || l.closer == nil {
+		return nil // bare io.Writer: nothing to roll
+	}
+	seg := l.path + "." + strconv.FormatUint(l.lastSegSeq, 10)
+	if _, statErr := os.Stat(seg); statErr == nil {
+		return fmt.Errorf("audit: segment %q already exists; not rotating", seg)
+	}
+	if err := l.closer.Close(); err != nil {
+		return fmt.Errorf("audit: close live segment: %w", err)
+	}
+	if err := os.Rename(l.path, seg); err != nil {
+		// Try to reopen the (un-renamed) live file so the ledger keeps working.
+		if f, reopenErr := os.OpenFile(filepath.Clean(l.path), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); reopenErr == nil {
+			l.w, l.closer = f, f
+		}
+		return fmt.Errorf("audit: rename live segment to %q: %w", seg, err)
+	}
+	f, err := os.OpenFile(filepath.Clean(l.path), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return fmt.Errorf("audit: open fresh segment: %w", err)
+	}
+	l.w, l.closer = f, f
+	l.curSize = 0
+	return nil
 }
 
 // ensureLedgerFile refuses to modify a non-empty file whose first line is
@@ -453,6 +612,100 @@ func scanTail(r io.Reader) (uint64, string, int, error) {
 	}
 }
 
+// maxTailResumeLines is how many trailing lines resumeFromTail will inspect
+// before giving up and letting Open fall back to a full forward scan. A
+// crash leaves at most one torn line; anything past a handful of unparseable
+// trailing lines is damage deep enough that the O(file) scan (and then
+// `audit verify`) is the right tool.
+const maxTailResumeLines = 64
+
+// resumeFromTail recovers the last committed entry's seq and hash by reading
+// only the end of the file, so Open does not cost O(file) on every restart.
+//
+// It walks backwards collecting up to maxTailResumeLines complete
+// (newline-terminated) lines, then parses them newest-first and returns the
+// first that is a valid Event, with skipped counting the unparseable trailing
+// lines above it. ok is false when none of the inspected lines parse AND the
+// window did not reach the start of the file — that is damage deeper than the
+// tail, and the caller should fall back to scanTail. A missing or empty file
+// returns (0, "", 0, true, nil): a fresh chain.
+func resumeFromTail(path string) (seq uint64, hash string, skipped int, ok bool, err error) {
+	f, oErr := os.OpenFile(filepath.Clean(path), os.O_RDONLY, 0)
+	if oErr != nil {
+		if errors.Is(oErr, os.ErrNotExist) {
+			return 0, "", 0, true, nil
+		}
+		return 0, "", 0, false, fmt.Errorf("audit: open %q: %w", path, oErr)
+	}
+	defer f.Close()
+
+	info, sErr := f.Stat()
+	if sErr != nil {
+		return 0, "", 0, false, fmt.Errorf("audit: stat %q: %w", path, sErr)
+	}
+	size := info.Size()
+	if size == 0 {
+		return 0, "", 0, true, nil
+	}
+
+	const chunk = 8192
+	buf := make([]byte, 0, chunk)
+	tmp := make([]byte, chunk)
+	pos := size
+	newlines := 0         // '\n' seen so far while scanning back
+	reachedStart := false // read all the way to offset 0
+	// We need one more newline than lines we want, to bound the oldest line.
+	for newlines <= maxTailResumeLines+1 {
+		if pos == 0 {
+			reachedStart = true
+			break
+		}
+		n := int64(chunk)
+		if pos < n {
+			n = pos
+		}
+		start := pos - n
+		if _, rErr := f.ReadAt(tmp[:n], start); rErr != nil {
+			return 0, "", 0, false, fmt.Errorf("audit: read tail of %q: %w", path, rErr)
+		}
+		buf = append(append([]byte(nil), tmp[:n]...), buf...)
+		for _, b := range tmp[:n] {
+			if b == '\n' {
+				newlines++
+			}
+		}
+		pos = start
+	}
+
+	// Split the collected bytes into complete lines. The file ends in '\n'
+	// (repairTornTail guaranteed it), so the trailing split element is "".
+	parts := bytes.Split(buf, []byte{'\n'})
+	if len(parts) > 0 && len(parts[len(parts)-1]) == 0 {
+		parts = parts[:len(parts)-1]
+	}
+	// If we didn't reach the start, the oldest element may be a partial line
+	// from the middle of the chunk window — drop it.
+	if !reachedStart && len(parts) > 0 {
+		parts = parts[1:]
+	}
+
+	skip := 0
+	for i := len(parts) - 1; i >= 0 && skip <= maxTailResumeLines; i-- {
+		var e Event
+		if json.Unmarshal(parts[i], &e) == nil && e.Seq > 0 && e.Hash != "" {
+			return e.Seq, e.Hash, skip, true, nil
+		}
+		skip++
+	}
+	if reachedStart {
+		// The whole file fit in the window and nothing parsed. ensureLedgerFile
+		// already vouched for line 1, so this should be unreachable, but treat
+		// it as a fresh chain rather than erroring.
+		return 0, "", skip, true, nil
+	}
+	return 0, "", 0, false, nil
+}
+
 // truncate cuts s to at most max bytes without splitting a multi-byte rune
 // at the cut point, and marks that it was cut.
 func truncate(s string, max int) string {
@@ -540,7 +793,19 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	// Surface a background write failure so a caller's failure counter still
+	// trips on a persistent async I/O problem (auditEvent escalates it).
+	if l.async {
+		if v := l.asyncErr.Load(); v != nil {
+			return v.(error)
+		}
+		if l.queue == nil {
+			return errors.New("audit: ledger is closed")
+		}
+	}
+
 	l.seq++
+	prevHash := l.lastHash
 	e := Event{
 		Seq:      l.seq,
 		Time:     time.Now().UTC().Format(time.RFC3339Nano),
@@ -569,17 +834,53 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 		return err
 	}
 	line = append(line, '\n')
+
+	if l.async {
+		select {
+		case l.queue <- queuedLine{line: line, seq: e.Seq}:
+			l.lastHash = e.Hash
+			return nil
+		default:
+			// Queue full: discard this entry whole and roll the chain state
+			// back to before it, so there is no seq gap — the entry simply
+			// never happened. The Dropped counter and the returned error are
+			// the signal.
+			l.seq--
+			l.lastHash = prevHash
+			n := l.dropped.Add(1)
+			return fmt.Errorf("audit: async queue full — dropped entry (%d dropped in total)", n)
+		}
+	}
+
+	if l.shouldRotate(len(line)) {
+		if rErr := l.rollSegment(); rErr != nil {
+			// A rotation hiccup must not drop the entry: rollSegment leaves
+			// l.w writable, so fall through and append to the current
+			// segment. A persistent problem resurfaces as curSize keeps
+			// growing past maxSize.
+			_ = rErr
+		}
+	}
+
 	if n, werr := l.w.Write(line); werr != nil {
 		// The entry's JSON is everything but the trailing newline.
 		jsonLen := len(line) - 1
-		// If the whole JSON reached the file and only the newline was lost
+		// If the whole line (JSON + newline) actually landed, the entry is
+		// durably committed and correctly terminated — just advance the
+		// chain and report the write error. Do NOT write another newline
+		// here: that would leave a blank line in the file.
+		if n >= len(line) {
+			l.lastHash = e.Hash
+			return werr
+		}
+		// If the JSON reached the file but only the newline was lost
 		// (e.g. ENOSPC on the last byte), the entry IS durably committed.
 		// Terminate it and advance the chain as on success — rolling back
 		// seq here would make the NEXT entry reuse this seq, which
 		// VerifyChain reports as a chain break: a disk-full would then read
 		// as tampering. Report the write error, but keep the chain state
 		// consistent with what is actually on disk.
-		if n >= jsonLen {
+		if n == jsonLen {
 			if _, termErr := l.w.Write([]byte{'\n'}); termErr == nil {
 				l.lastHash = e.Hash
 				return werr
@@ -603,12 +904,27 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 		}
 	}
 
+	l.curSize += int64(len(line))
+	l.lastSegSeq = e.Seq
 	l.lastHash = e.Hash
 	return nil
 }
 
-// Close closes the underlying file if the ledger owns one.
+// Close flushes any queued async writes and closes the underlying file if
+// the ledger owns one. It is safe to call once; a Log after Close returns an
+// error rather than panicking on the closed queue.
 func (l *Ledger) Close() error {
+	if l.async {
+		l.mu.Lock()
+		q := l.queue
+		l.queue = nil // further Log calls see "closed" instead of sending
+		l.mu.Unlock()
+		if q != nil {
+			close(q)
+			l.drainWG.Wait()
+		}
+	}
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.closer != nil {

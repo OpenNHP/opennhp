@@ -90,12 +90,15 @@ CookieTimeWindowSeconds = 60
 
 # [Audit]: tamper-evident, hash-chained security audit ledger. Off by
 # default; see endpoints/server/main/etc/config.toml for the full field
-# docs (Fsync, SigningKeyBase64, FailClosed) and the threat model. If you
+# docs (Fsync, Async, MaxSizeBytes, SigningKeyBase64, FailClosed) and the threat model. If you
 # enable it on two instances sharing a volume, give each its own FilePath —
 # there is no cross-process lock.
 [Audit]
 Enabled = false
 FilePath = ""
 Fsync = false
+Async = false
+AsyncQueueSize = 0
+MaxSizeBytes = 0
 SigningKeyBase64 = ""
 FailClosed = false

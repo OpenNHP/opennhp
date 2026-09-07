@@ -263,6 +263,29 @@ type AuditConfig struct {
 	// but there is deliberately no runtime fail-closed: an audit hiccup must
 	// not take the gateway down mid-flight.
 	FailClosed bool `json:"failClosed"`
+
+	// Async moves the disk write (and fsync) for each entry off the request
+	// goroutine onto a single background writer. Log still computes seq and
+	// the hash chain under the lock, so ordering and linkage are unchanged;
+	// only the write is deferred. This keeps Fsync usable on a busy gateway.
+	// If the writer falls far enough behind that the queue fills, entries are
+	// DROPPED (counted, and a Critical is logged) rather than blocking the
+	// knock — a dropped entry is discarded whole, so the chain stays
+	// contiguous. Off by default: the synchronous write is simplest and
+	// gives the strongest "it's on disk before we answered" guarantee.
+	Async bool `json:"async"`
+	// AsyncQueueSize bounds the pending-write queue when Async is set.
+	// 0 uses a sensible default. Ignored unless Async.
+	AsyncQueueSize int `json:"asyncQueueSize"`
+
+	// MaxSizeBytes, when > 0, rolls the ledger to a numbered segment
+	// ("<FilePath>.<seq>") once it would grow past this size and continues
+	// in a fresh file. The hash chain spans the segments, and `audit verify`
+	// picks the siblings up automatically, so rotation no longer means the
+	// choice between downtime and an ever-growing file that the FilePath
+	// note above describes. 0 keeps the single-file behavior. Archive or
+	// delete whole ".<seq>" segments out of band once verified.
+	MaxSizeBytes int64 `json:"maxSizeBytes"`
 }
 
 type RemoteConfig struct {
@@ -721,6 +744,18 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 		// false → true → false; only the teardown predicate observes
 		// the new value.
 		s.forceOverload.Store(conf.ForceOverload)
+	}
+
+	// [Audit]: the ledger handle is opened once at startup (initAuditLedger)
+	// and never re-opened on reload — changing FilePath, SigningKeyBase64,
+	// Fsync, FailClosed or MaxSizeBytes at runtime does nothing until a
+	// restart. Silently dropping the new value would leave s.config
+	// disagreeing with config.toml, so adopt it for read-consistency and
+	// warn, exactly as ForceOverload above. Editing SigningKeyBase64 and
+	// believing it took effect is the bad outcome this warning prevents.
+	if s.config.Audit != conf.Audit {
+		log.Warning("[Audit] config changed on reload; the ledger is opened once at startup — restart to apply the new settings")
+		s.config.Audit = conf.Audit
 	}
 
 	// Cookie signing key / window: only re-apply when the operator

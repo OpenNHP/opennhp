@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"unicode/utf8"
 )
@@ -818,6 +819,352 @@ func join(lines [][]byte) []byte {
 func mustMarshal(t *testing.T, e *Event) []byte {
 	t.Helper()
 	b, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// TestDetectsExtraKeyInSignedEntry proves a committed, signed record cannot
+// be extended in place. encoding/json silently ignores unknown object keys,
+// so an attacker who can write the file could append fields a downstream
+// SIEM would read as authentic while the recomputed hash/HMAC still match.
+// The canonical-bytes check makes that a FAILED verification.
+func TestDetectsExtraKeyInSignedEntry(t *testing.T) {
+	key := []byte("audit-signing-key")
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{HMACKey: key})
+	writeN(t, l, 3)
+
+	lines := splitLines(buf.Bytes())
+	// Inject a top-level key just before the closing brace of entry seq=2.
+	orig := lines[1]
+	if orig[len(orig)-1] != '}' {
+		t.Fatalf("entry does not end in '}': %s", orig)
+	}
+	forged := append(append([]byte{}, orig[:len(orig)-1]...), []byte(`,"msg":"looks legit"}`)...)
+	lines[1] = forged
+
+	res := VerifyChain(bytes.NewReader(join(lines)), key)
+	if res.Err == nil {
+		t.Fatal("expected FAILED verification for an entry with an injected extra key")
+	}
+	if res.BadSeq != 2 {
+		t.Fatalf("BadSeq=%d, want 2", res.BadSeq)
+	}
+	if !strings.Contains(res.Err.Error(), "non-canonical") {
+		t.Fatalf("error should name the non-canonical encoding, got: %v", res.Err)
+	}
+}
+
+// TestDetectsDuplicateKeyInSignedEntry covers the duplicate-key variant:
+// Go keeps the last occurrence, so hash/HMAC verify while a first-wins
+// reader downstream sees a different value.
+func TestDetectsDuplicateKeyInSignedEntry(t *testing.T) {
+	key := []byte("audit-signing-key")
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{HMACKey: key})
+	writeN(t, l, 3)
+
+	lines := splitLines(buf.Bytes())
+	orig := lines[1]
+	// Duplicate the "type" key with a different value. Go's decoder keeps
+	// the last one, so the parsed struct (and its hash) are unchanged.
+	forged := append(append([]byte{}, orig[:1]...), []byte(`"type":"benign",`)...)
+	forged = append(forged, orig[1:]...)
+	lines[1] = forged
+
+	// Sanity: the parsed struct still hashes the same (the attack premise).
+	var e Event
+	if err := json.Unmarshal(forged, &e); err != nil {
+		t.Fatalf("forged line does not parse: %v", err)
+	}
+
+	res := VerifyChain(bytes.NewReader(join(lines)), key)
+	if res.Err == nil {
+		t.Fatal("expected FAILED verification for an entry with a duplicated key")
+	}
+}
+
+// TestOpenResumesFromTailOnLargeLedger exercises the O(1) tail resume: a
+// ledger with many entries reopens and continues the chain without a full
+// forward scan.
+func TestOpenResumesFromTailOnLargeLedger(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	l1, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open #1: %v", err)
+	}
+	writeN(t, l1, 500)
+	if closeErr := l1.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	l2, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open #2: %v", err)
+	}
+	if l2.seq != 500 {
+		t.Fatalf("resumed seq=%d, want 500", l2.seq)
+	}
+	if l2.MalformedOnOpen != 0 {
+		t.Fatalf("MalformedOnOpen=%d, want 0 on a clean ledger", l2.MalformedOnOpen)
+	}
+	writeN(t, l2, 3)
+	if closeErr := l2.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	data, _ := os.ReadFile(path)
+	res := VerifyChain(bytes.NewReader(data), nil)
+	if res.Err != nil {
+		t.Fatalf("resumed chain failed to verify: %v", res.Err)
+	}
+	if res.Count != 503 {
+		t.Fatalf("Count=%d, want 503", res.Count)
+	}
+}
+
+// TestOpenResumesPastDamagedTrailingLines confirms resumeFromTail steps back
+// over unparseable trailing lines to the last good entry and reports how many
+// it skipped.
+func TestOpenResumesPastDamagedTrailingLines(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	l1, err := Open(path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l1, 4)
+	if closeErr := l1.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	// Append two complete-but-garbage lines (each newline-terminated, so the
+	// torn-tail repair leaves them in place).
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, wErr := f.WriteString("{not a valid event}\n\xff\xfe garbage\n"); wErr != nil {
+		t.Fatal(wErr)
+	}
+	f.Close()
+
+	l2, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open past damage: %v", err)
+	}
+	if l2.seq != 4 {
+		t.Fatalf("resumed seq=%d, want 4 (last good entry)", l2.seq)
+	}
+	if l2.MalformedOnOpen != 2 {
+		t.Fatalf("MalformedOnOpen=%d, want 2", l2.MalformedOnOpen)
+	}
+	// The next append must continue the chain from entry 4, and the
+	// good-entries chain (ignoring the 2 garbage lines) stays verifiable.
+	writeN(t, l2, 1)
+	l2.Close()
+}
+
+// blockingWriter blocks every Write until release is signaled, then behaves
+// like the wrapped buffer. Used to stall the async drain goroutine.
+type blockingWriter struct {
+	mu      sync.Mutex
+	buf     bytes.Buffer
+	release chan struct{}
+	writes  int
+}
+
+func (b *blockingWriter) Write(p []byte) (int, error) {
+	<-b.release
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.writes++
+	return b.buf.Write(p)
+}
+
+func TestAsyncWriterPreservesOrderAndChain(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLedger(nopCloser{&buf}, Options{Async: true, QueueSize: 256})
+
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 50; i++ {
+				if err := l.Log("knock", SeverityInfo, map[string]string{"i": "x"}); err != nil {
+					t.Errorf("Log: %v", err)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if err := l.Close(); err != nil { // drains
+		t.Fatal(err)
+	}
+
+	res := VerifyChain(bytes.NewReader(buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("async-written chain failed to verify: %v", res.Err)
+	}
+	if res.Count != 400 {
+		t.Fatalf("Count=%d, want 400", res.Count)
+	}
+	if l.Dropped() != 0 {
+		t.Fatalf("Dropped=%d, want 0 (queue was large enough)", l.Dropped())
+	}
+}
+
+func TestAsyncWriterDropsWhenQueueFull(t *testing.T) {
+	bw := &blockingWriter{release: make(chan struct{})}
+	l := NewLedger(nopCloser{bw}, Options{Async: true, QueueSize: 2})
+
+	// Drain goroutine takes one line and blocks in Write; queue then holds 2.
+	// Subsequent Logs must drop rather than block.
+	dropped := 0
+	for i := 0; i < 20; i++ {
+		if err := l.Log("knock", SeverityInfo, nil); err != nil {
+			dropped++
+		}
+	}
+	if dropped == 0 {
+		t.Fatal("expected some entries to be dropped while the writer is stalled")
+	}
+	if l.Dropped() != uint64(dropped) {
+		t.Fatalf("Dropped()=%d but %d Log calls reported a drop", l.Dropped(), dropped)
+	}
+
+	// Release the writer and close; whatever made it through must verify as a
+	// contiguous chain (dropped entries left no gap).
+	close(bw.release)
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	res := VerifyChain(bytes.NewReader(bw.buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("chain after drops failed to verify: %v", res.Err)
+	}
+	if int(res.Count)+dropped != 20 {
+		t.Fatalf("verified %d + dropped %d != 20", res.Count, dropped)
+	}
+}
+
+func TestAsyncLogAfterCloseReturnsError(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLedger(nopCloser{&buf}, Options{Async: true})
+	if err := l.Log("knock", SeverityInfo, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Log("knock", SeverityInfo, nil); err == nil {
+		t.Fatal("Log after Close should return an error, not panic")
+	}
+}
+
+type nopCloser struct{ io.Writer }
+
+func (nopCloser) Close() error { return nil }
+
+// TestSegmentRotationSpansChain drives the ledger past MaxSizeBytes several
+// times and confirms VerifyLedger walks every "<path>.<n>" segment plus the
+// live file as one continuous chain.
+func TestSegmentRotationSpansChain(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	// One writeN entry is a few hundred bytes; a ~1 KiB cap rotates every
+	// few entries.
+	l, err := Open(path, Options{MaxSizeBytes: 1024})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 60)
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	segs, err := segmentFiles(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(segs) < 3 {
+		t.Fatalf("expected several segments, got %d: %v", len(segs), segs)
+	}
+	// Numbered siblings must be in ascending seq order, live file last.
+	if segs[len(segs)-1] != path {
+		t.Fatalf("last segment should be the live file, got %s", segs[len(segs)-1])
+	}
+
+	res := VerifyLedger(path, nil)
+	if res.Err != nil {
+		t.Fatalf("rotated ledger failed to verify: %v", res.Err)
+	}
+	if res.Count != 60 {
+		t.Fatalf("verified %d entries across segments, want 60", res.Count)
+	}
+
+	// Reopen and append: the chain must continue from the last live entry.
+	l2, err := Open(path, Options{MaxSizeBytes: 1024})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l2.seq != 60 {
+		t.Fatalf("resumed seq=%d, want 60", l2.seq)
+	}
+	writeN(t, l2, 5)
+	l2.Close()
+	res = VerifyLedger(path, nil)
+	if res.Err != nil || res.Count != 65 {
+		t.Fatalf("after resume: err=%v count=%d want 65", res.Err, res.Count)
+	}
+}
+
+// TestSegmentRotationDetectsCrossSegmentTamper confirms editing a committed
+// entry in an already-rotated segment still FAILS verification (the next
+// entry's prevHash no longer matches across the boundary).
+func TestSegmentRotationDetectsCrossSegmentTamper(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{MaxSizeBytes: 1024, HMACKey: []byte("k")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 40)
+	l.Close()
+
+	segs, _ := segmentFiles(path)
+	if len(segs) < 2 {
+		t.Fatalf("need at least one rotated segment, got %v", segs)
+	}
+	// Tamper with the first entry of the first rotated segment.
+	first := segs[0]
+	lines := splitLines(mustReadFile(t, first))
+	var e Event
+	if err := json.Unmarshal(lines[0], &e); err != nil {
+		t.Fatal(err)
+	}
+	e.Fields["reason"] = "tampered"
+	lines[0] = mustMarshal(t, &e)
+	if err := os.WriteFile(first, join(lines), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if res := VerifyLedger(path, []byte("k")); res.Err == nil {
+		t.Fatal("expected FAILED verification for a tampered rotated segment")
+	}
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}

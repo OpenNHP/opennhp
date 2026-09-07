@@ -57,20 +57,36 @@ ForceOverload = false
 # FilePath: ledger path; relative paths resolve against the exe dir.
 #   Defaults to audit/audit-ledger.jsonl (its own dir, not logs/, so a
 #   logrotate rule aimed at logs/ can't reach it).
-#   Do NOT rotate this file with logrotate/copytruncate while the server
-#   runs: it keeps one append handle open and never reopens, so rename
-#   rotation silently drops later entries and copytruncate makes
-#   `audit verify` cry tampering. Rotate only while stopped.
+#   Do NOT rotate this file with an EXTERNAL tool (logrotate/copytruncate)
+#   while the server runs: it keeps one append handle open and never reopens,
+#   so rename rotation silently drops later entries and copytruncate makes
+#   `audit verify` cry tampering. Use MaxSizeBytes below for built-in,
+#   chain-safe rotation instead, or rotate externally only while stopped.
 #   Do NOT point two processes at one ledger (e.g. server + server2 in the
 #   demo): there is no cross-process lock, so interleaved appends break the
 #   chain and one process's tail repair can delete the other's entries. Give
 #   each instance its own file.
 # Fsync: flush each entry to disk before the request continues. Entries are
 #   written on the request path, so audit volume tracks knock volume: this
-#   costs a disk flush per access decision and serializes audit writes. Left
+#   costs a disk flush per access decision and serializes audit writes.
+#   Pair it with Async below to keep the flush off the knock goroutine. Left
 #   off in this sample so the first operator to enable auditing doesn't
 #   silently inherit a per-knock flush on the UDP path; turn it on when
 #   losing the last few entries to a crash is unacceptable.
+# Async: move the disk write (and Fsync) onto a single background writer.
+#   Log still computes seq + the hash chain synchronously, so ordering and
+#   integrity are unchanged; only the write is deferred. If the writer falls
+#   far enough behind that the queue (AsyncQueueSize, default 4096) fills,
+#   entries are DROPPED and counted rather than blocking the knock — a
+#   dropped entry is discarded whole so the chain stays contiguous. Off by
+#   default (the synchronous write is the strongest "on disk before we
+#   answered" guarantee).
+# MaxSizeBytes: when > 0, roll the ledger to "<FilePath>.<seq>" once it would
+#   grow past this many bytes and continue in a fresh file. The hash chain
+#   spans the segments and `audit verify` walks them automatically, so this
+#   is the safe way to bound ledger growth without downtime. 0 = single file
+#   that grows forever (archive it out of band). Archive or delete whole
+#   ".<seq>" segments once you have verified them.
 # SigningKeyBase64: optional base64 HMAC key binding the chain to a secret
 #   the log file does not contain (must be >= 32 bytes; shorter is rejected
 #   at startup). Generate one with:  head -c 32 /dev/urandom | base64
@@ -89,5 +105,8 @@ ForceOverload = false
 Enabled = false
 FilePath = ""
 Fsync = false
+Async = false
+AsyncQueueSize = 0
+MaxSizeBytes = 0
 SigningKeyBase64 = ""
 FailClosed = false

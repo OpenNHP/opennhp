@@ -60,7 +60,13 @@ func (s *UdpServer) initAuditLedger() error {
 		hmacKey = key
 	}
 
-	opts := audit.Options{HMACKey: hmacKey, Fsync: s.config.Audit.Fsync}
+	opts := audit.Options{
+		HMACKey:      hmacKey,
+		Fsync:        s.config.Audit.Fsync,
+		Async:        s.config.Audit.Async,
+		QueueSize:    s.config.Audit.AsyncQueueSize,
+		MaxSizeBytes: s.config.Audit.MaxSizeBytes,
+	}
 	ledger, err := audit.Open(path, opts)
 	if err != nil {
 		// A file that is not a ledger (a mistyped path, or an attacker who

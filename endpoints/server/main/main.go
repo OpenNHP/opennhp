@@ -218,11 +218,14 @@ func main() {
 							res.UncheckedSigs, pluralize(res.UncheckedSigs, "entry", "entries"))
 					}
 					if res.Skipped > 0 {
-						// Damage, not tampering: the chain still links up, so
-						// no committed entry was altered or removed. Say so
-						// explicitly rather than leaving it to look like a
-						// clean bill of health.
-						fmt.Printf("note: skipped %d unparseable line(s)%s — likely a torn write from an unclean shutdown, not tampering.\n",
+						// The chain still links up, so no committed entry was
+						// altered or removed — most likely a torn write from an
+						// unclean shutdown. But garbled trailing entries look
+						// the same from the file alone, and that is exactly the
+						// deletion primitive a write-access attacker has, so do
+						// not call it "not tampering": compare against an
+						// off-host anchor of the latest seq+hash if one exists.
+						fmt.Printf("note: skipped %d unparseable line(s)%s — likely a torn write from an unclean shutdown; cannot be distinguished from tampering from the file alone. Compare against your off-host anchor.\n",
 							res.Skipped, formatSkippedLines(res.SkippedLines, res.Skipped))
 					}
 					// In --strict mode an incomplete verification is a failure
@@ -252,16 +255,18 @@ func main() {
 	}
 }
 
-// verifyLedgerFile opens the ledger and walks its chain. It exists so the
-// file handle is closed before the caller decides whether to exit — a
-// deferred Close in the command action would never run on the os.Exit path.
+// verifyLedgerFile walks the ledger's chain, transparently spanning any
+// numbered "<path>.<n>" segments left by size-based rotation. A quick
+// existence check keeps the error message helpful when the path is wrong.
 func verifyLedgerFile(path string, hmacKey []byte) (audit.VerifyResult, error) {
-	f, err := os.Open(filepath.Clean(path))
-	if err != nil {
-		return audit.VerifyResult{}, err
+	if _, err := os.Stat(filepath.Clean(path)); err != nil {
+		// Allow the case where only rotated segments exist and the live file
+		// was removed; audit.VerifyLedger still handles that.
+		if matches, _ := filepath.Glob(filepath.Clean(path) + ".*"); len(matches) == 0 {
+			return audit.VerifyResult{}, err
+		}
 	}
-	defer f.Close()
-	return audit.VerifyChain(f, hmacKey), nil
+	return audit.VerifyLedger(filepath.Clean(path), hmacKey), nil
 }
 
 // resolveVerifyKey obtains the base64 HMAC key for `audit verify` from, in

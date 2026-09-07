@@ -2,10 +2,16 @@ package audit
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/hmac"
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 )
 
 // VerifyResult reports the outcome of walking a ledger's hash chain.
@@ -44,6 +50,69 @@ type VerifyResult struct {
 // maxReportedSkips bounds the SkippedLines slice; Skipped still counts them
 // all.
 const maxReportedSkips = 20
+
+// VerifyLedger verifies a ledger that may have been rolled into numbered
+// segments by MaxSizeBytes. It walks "<path>.<n>" siblings in ascending
+// numeric order and then the live "<path>" as one continuous chain, so a
+// rotated ledger verifies exactly as an unrotated one would. With no
+// siblings it is just VerifyChain over the single file.
+func VerifyLedger(path string, hmacKey []byte) VerifyResult {
+	segs, err := segmentFiles(path)
+	if err != nil {
+		return VerifyResult{Err: fmt.Errorf("audit: list segments of %q: %w", path, err)}
+	}
+
+	var readers []io.Reader
+	var openFiles []io.Closer
+	defer func() {
+		for _, f := range openFiles {
+			_ = f.Close()
+		}
+	}()
+	for _, s := range segs {
+		f, oErr := os.Open(filepath.Clean(s))
+		if oErr != nil {
+			return VerifyResult{Err: fmt.Errorf("audit: open segment %q: %w", s, oErr)}
+		}
+		openFiles = append(openFiles, f)
+		readers = append(readers, f)
+	}
+	return VerifyChain(io.MultiReader(readers...), hmacKey)
+}
+
+// segmentFiles returns the ordered list of files that make up a possibly
+// rotated ledger: every "<path>.<n>" sibling (n a decimal integer) sorted by
+// n ascending, followed by "<path>" itself if it exists.
+func segmentFiles(path string) ([]string, error) {
+	matches, err := filepath.Glob(path + ".*")
+	if err != nil {
+		return nil, err
+	}
+	type seg struct {
+		name string
+		n    uint64
+	}
+	var numbered []seg
+	prefix := filepath.Base(path) + "."
+	for _, m := range matches {
+		suffix := strings.TrimPrefix(filepath.Base(m), prefix)
+		n, convErr := strconv.ParseUint(suffix, 10, 64)
+		if convErr != nil {
+			continue // ".corrupt-<ns>" and other non-numeric siblings
+		}
+		numbered = append(numbered, seg{m, n})
+	}
+	sort.Slice(numbered, func(i, j int) bool { return numbered[i].n < numbered[j].n })
+
+	out := make([]string, 0, len(numbered)+1)
+	for _, s := range numbered {
+		out = append(out, s.name)
+	}
+	if _, statErr := os.Stat(path); statErr == nil {
+		out = append(out, path)
+	}
+	return out, nil
+}
 
 // VerifyChain walks the ledger read from r and confirms every entry's hash
 // is correct and links to the previous one. If hmacKey is non-empty each
@@ -89,7 +158,7 @@ func VerifyChain(r io.Reader, hmacKey []byte) VerifyResult {
 			var e Event
 			if json.Unmarshal(line, &e) != nil {
 				skip()
-			} else if res, ok := verifyEntry(&e, hmacKey, &prevHash, &prevSeq, &count, &unchecked, skipped, skippedLines); !ok {
+			} else if res, ok := verifyEntry(&e, line, hmacKey, &prevHash, &prevSeq, &count, &unchecked, skipped, skippedLines); !ok {
 				return res
 			}
 		}
@@ -105,9 +174,10 @@ func VerifyChain(r io.Reader, hmacKey []byte) VerifyResult {
 
 // verifyEntry checks one parsed entry against the running chain state,
 // advancing it on success. ok is false when the entry breaks the chain, in
-// which case res carries the failure. The pointer arguments are the running
+// which case res carries the failure. rawLine is the exact bytes the entry
+// was read from (newline stripped). The pointer arguments are the running
 // state threaded through the scan.
-func verifyEntry(e *Event, hmacKey []byte, prevHash *string, prevSeq, count, unchecked *uint64, skipped uint64, skippedLines []uint64) (res VerifyResult, ok bool) {
+func verifyEntry(e *Event, rawLine, hmacKey []byte, prevHash *string, prevSeq, count, unchecked *uint64, skipped uint64, skippedLines []uint64) (res VerifyResult, ok bool) {
 	fail := func(err error) VerifyResult {
 		return VerifyResult{Count: *count, Skipped: skipped, UncheckedSigs: *unchecked, SkippedLines: skippedLines, BadSeq: e.Seq, Err: err}
 	}
@@ -125,6 +195,17 @@ func verifyEntry(e *Event, hmacKey []byte, prevHash *string, prevSeq, count, unc
 	}
 	if wantHash != e.Hash {
 		return fail(fmt.Errorf("entry seq=%d: hash mismatch (this entry was altered)", e.Seq)), false
+	}
+
+	// The hash and signature are computed from the parsed struct, so they
+	// still verify if the on-disk line carries extra, duplicate or reordered
+	// keys that encoding/json silently drops or last-wins. Re-marshal the
+	// parsed event and require it to equal the raw line byte for byte: Log
+	// writes exactly json.Marshal(&e) and Go's encoder is deterministic
+	// (declaration-order fields, sorted map keys), so an untampered entry
+	// round-trips exactly. Anything else is a forged or mangled record.
+	if canon, cErr := json.Marshal(e); cErr == nil && !bytes.Equal(canon, rawLine) {
+		return fail(fmt.Errorf("entry seq=%d: non-canonical JSON encoding (extra, duplicate or reordered keys — the record on disk is not what was signed)", e.Seq)), false
 	}
 
 	if len(hmacKey) > 0 {

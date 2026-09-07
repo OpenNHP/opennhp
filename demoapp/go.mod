@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/OpenNHP/opennhp/nhp v0.6.0
-	github.com/coreos/go-oidc/v3 v3.20.0
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/gin-contrib/sessions v1.1.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/pelletier/go-toml/v2 v2.4.3

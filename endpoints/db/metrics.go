@@ -47,9 +47,9 @@ func newDBMetrics(a *UdpDevice, startTime time.Time) *dbMetrics {
 		messagesReceived: reg.NewCounter("nhp_db_messages_received_total",
 			"Decrypted protocol messages received, by message type.", "type"),
 		packetsDropped: reg.NewCounter("nhp_db_packets_dropped_total",
-			"Inbound packets discarded before becoming a decrypted message, by stage.", "stage"),
+			"Inbound packets discarded before becoming a decrypted message, by stage (precheck, parse, validate, decrypt, queue_full).", "stage"),
 	}
-	for _, s := range []string{"parse", "validate", "decrypt", "queue_full"} {
+	for _, s := range []string{"precheck", "parse", "validate", "decrypt", "queue_full"} {
 		m.packetsDropped.With(s)
 	}
 	return m

@@ -30,19 +30,23 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 	artMsg := &common.ACOpsResultMsg{}
 	transactionId := ppd.SenderTrxId
 
-	opStart := time.Now()
-	defer func() {
-		ok := err == nil && (artMsg == nil || artMsg.ErrCode == "" || artMsg.ErrCode == common.ErrSuccess.ErrorCode())
-		a.metrics.recordACOperation(ok, time.Since(opStart).Seconds())
-	}()
-
 	err = json.Unmarshal(ppd.BodyMessage, dopMsg)
 	if err != nil {
 		log.Error("ac(%s#%d)[HandleUdpACOperations] failed to parse %s message: %v", acId, transactionId, core.HeaderTypeToString(ppd.HeaderType), err)
 		artMsg.ErrCode = common.ErrJsonParseFailed.ErrorCode()
 		artMsg.ErrMsg = err.Error()
+		// A malformed body is not access-control work — count it, but do not
+		// feed a ~0s sample into the latency histogram.
+		a.metrics.recordACOutcome(false)
 		return
 	}
+
+	// From here on this is a real access-control operation: time it.
+	opStart := time.Now()
+	defer func() {
+		ok := err == nil && (artMsg.ErrCode == "" || artMsg.ErrCode == common.ErrSuccess.ErrorCode())
+		a.metrics.recordACOperation(ok, time.Since(opStart).Seconds())
+	}()
 
 	srcAddrs := dopMsg.SourceAddrs
 	dstAddrs := dopMsg.DestinationAddrs

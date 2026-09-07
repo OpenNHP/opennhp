@@ -99,9 +99,11 @@ func (ms *metricsServer) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	// this is a network-hiding product, and a liveness check doesn't need
 	// to leak that.
 	status, code := "ok", http.StatusOK
-	if !ms.us.running.Load() {
+	if !ms.us.healthy.Load() {
 		// Report 503 once shutdown has begun so the probe is usable as a
 		// real container liveness/readiness check, not just "process alive".
+		// healthy (not running) is set before this listener starts, so a
+		// probe during startup is not falsely told "stopping".
 		status, code = "stopping", http.StatusServiceUnavailable
 	}
 	body := map[string]any{

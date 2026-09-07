@@ -55,6 +55,7 @@ type UdpAC struct {
 	startTime       time.Time
 	metrics         *acMetrics
 	metricsEndpoint *metrics.Endpoint
+	healthy         atomic.Bool // gates /healthz: true from Start until Stop
 
 	signals struct {
 		stop             chan struct{}
@@ -234,35 +235,32 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	go a.recvMessageRoutine()
 	go a.maintainServerConnectionRoutine()
 
-	// opt-in Prometheus /metrics + /healthz endpoint, loopback by default
-	if a.config.Metrics.Enabled {
-		ep, mErr := metrics.StartEndpoint(a.config.Metrics, metrics.EndpointOptions{
-			Registry:      a.metrics.registry,
-			Uptime:        func() time.Duration { return time.Since(a.startTime) },
-			IsRunning:     a.running.Load,
-			DefaultPort:   defaultACMetricsPort,
-			OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
-			OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
-			OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
-		})
-		if mErr != nil {
-			log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
-		} else {
-			a.metricsEndpoint = ep
-		}
-	}
-
 	a.running.Store(true)
+
+	// opt-in Prometheus /metrics + /healthz endpoint, loopback by default.
+	// Started after running=true so /healthz never reports "stopping" while
+	// the daemon is coming up. StartEndpoint returns (nil,nil) when disabled.
+	a.healthy.Store(true)
+	ep, mErr := metrics.StartEndpoint(a.config.Metrics, metrics.EndpointOptions{
+		Registry:      a.metrics.registry,
+		Uptime:        func() time.Duration { return time.Since(a.startTime) },
+		IsRunning:     a.healthy.Load,
+		DefaultPort:   defaultACMetricsPort,
+		OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
+		OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
+		OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
+	})
+	if mErr != nil {
+		log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
+	}
+	a.metricsEndpoint = ep
+
 	return nil
 }
 
-// defaultACMetricsPort is the metrics endpoint port when [Metrics] ListenPort
-// is 0. Distinct from the server's 9100 so a host running several daemons
-// does not collide.
-const defaultACMetricsPort = 9101
-
 func (ac *UdpAC) Stop() {
 	ac.running.Store(false)
+	ac.healthy.Store(false)
 	close(ac.signals.stop)
 	ac.metricsEndpoint.Stop()
 	if ac.etcdConn != nil {
@@ -447,6 +445,7 @@ func (a *UdpAC) recvPacketRoutine(conn *UdpConn) {
 		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, conn.ConnData.LocalAddr.String(), n)
 		if err != nil {
 			a.device.ReleasePoolPacket(pkt)
+			a.metrics.recordDroppedPacket("precheck")
 			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			continue

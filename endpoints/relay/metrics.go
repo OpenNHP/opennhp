@@ -42,9 +42,9 @@ func newRelayMetrics(rs *RelayServer, startTime time.Time) *relayMetrics {
 		messagesReceived: reg.NewCounter("nhp_relay_messages_received_total",
 			"Decrypted protocol messages received, by message type.", "type"),
 		packetsDropped: reg.NewCounter("nhp_relay_packets_dropped_total",
-			"Inbound packets discarded before becoming a decrypted message, by stage.", "stage"),
+			"Inbound packets discarded before becoming a decrypted message, by stage (precheck, parse, validate, decrypt, queue_full).", "stage"),
 	}
-	for _, s := range []string{"parse", "validate", "decrypt", "queue_full"} {
+	for _, s := range []string{"precheck", "parse", "validate", "decrypt", "queue_full"} {
 		m.packetsDropped.With(s)
 	}
 	return m

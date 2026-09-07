@@ -47,12 +47,26 @@ type EndpointOptions struct {
 // /healthz on its own socket.
 type Endpoint struct {
 	http *http.Server
+	addr string
 }
 
-// StartEndpoint binds and serves the metrics endpoint. The bind happens
-// before returning, so a bad address or a port already in use is reported to
-// the caller rather than failing silently in the serve goroutine.
+// Addr is the "host:port" the endpoint bound. Useful when Config.ListenPort
+// was 0 (ephemeral). Empty on a nil Endpoint.
+func (e *Endpoint) Addr() string {
+	if e == nil {
+		return ""
+	}
+	return e.addr
+}
+
+// StartEndpoint binds and serves the metrics endpoint. It returns (nil, nil)
+// when cfg.Enabled is false, so callers do not each repeat that check. The
+// bind happens before returning, so a bad address or a port already in use is
+// reported to the caller rather than failing silently in the serve goroutine.
 func StartEndpoint(cfg Config, opts EndpointOptions) (*Endpoint, error) {
+	if !cfg.Enabled {
+		return nil, nil
+	}
 	ip := cfg.ListenIp
 	if ip == "" {
 		ip = DefaultListenIP
@@ -67,9 +81,14 @@ func StartEndpoint(cfg Config, opts EndpointOptions) (*Endpoint, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listen %s: %w", addr, err)
 	}
+	addr = ln.Addr().String() // resolves an ephemeral :0 to the real port
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		if opts.Registry == nil {
 			http.Error(w, "metrics not initialized", http.StatusServiceUnavailable)
 			return
@@ -80,6 +99,10 @@ func StartEndpoint(cfg Config, opts EndpointOptions) (*Endpoint, error) {
 		}
 	})
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		// Deliberately minimal: status + uptime only. No version/commit, so
 		// an unauthenticated probe cannot fingerprint the exact build if the
 		// endpoint is ever bound off-loopback — this is a network-hiding
@@ -112,7 +135,7 @@ func StartEndpoint(cfg Config, opts EndpointOptions) (*Endpoint, error) {
 			opts.OnServeError(serveErr)
 		}
 	}()
-	return &Endpoint{http: srv}, nil
+	return &Endpoint{http: srv, addr: addr}, nil
 }
 
 // Stop gracefully shuts the endpoint down. Safe on a nil Endpoint.

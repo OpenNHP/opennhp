@@ -44,6 +44,10 @@ type UdpServer struct {
 	httpServer *HttpServer
 	wg         sync.WaitGroup
 	running    atomic.Bool
+	// healthy gates /healthz: set true just before the metrics endpoint
+	// starts (so a probe in the startup window is not told "stopping") and
+	// false at the top of Stop.
+	healthy atomic.Bool
 
 	// observability: metrics are always collected; metricsServer is the
 	// opt-in /metrics + /healthz listener (nil when disabled).
@@ -412,6 +416,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.startTime = time.Now()
 	s.metrics = newServerMetrics(s, s.startTime)
 	if s.config.Metrics.Enabled {
+		s.healthy.Store(true) // /healthz answers "ok" from here until Stop
 		s.metricsServer = newMetricsServer(s)
 		if startErr := s.metricsServer.start(); startErr != nil {
 			log.Error("[Metrics] endpoint failed to start: %v", startErr)
@@ -496,6 +501,7 @@ func (s *UdpServer) Stop() {
 		return
 	}
 	s.running.Store(false)
+	s.healthy.Store(false)
 	// stop http server first
 	if s.httpServer != nil {
 		s.httpServer.Stop()
@@ -640,6 +646,10 @@ func (s *UdpServer) recvPacketRoutine() {
 				s.AddBlockAddr(remoteAddr)
 			}
 			s.device.ReleasePoolPacket(pkt)
+			// The outermost drop — malformed magic/version, background scan
+			// traffic. It never reaches the OnPacketDropped hook (that fires
+			// inside packetToMsgRoutine), so record it here.
+			s.metrics.recordDroppedPacket("precheck")
 			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, s.listenAddr.String(), err)
 			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, s.listenAddr.String(), err)
 			continue

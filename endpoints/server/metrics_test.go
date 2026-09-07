@@ -17,7 +17,7 @@ func newTestServerWithMetrics() *UdpServer {
 	s := &UdpServer{}
 	s.remoteConnectionMap = make(map[string]*UdpConn)
 	s.startTime = time.Now()
-	s.running.Store(true) // /healthz reports 503 unless the server is running
+	s.healthy.Store(true) // /healthz reports 503 unless healthy
 	s.metrics = newServerMetrics(s, s.startTime)
 	return s
 }
@@ -110,6 +110,7 @@ func TestClosedSetSeriesPreInitializedToZero(t *testing.T) {
 		`nhp_server_knock_auth_total{result="denied"} 0`,
 		`nhp_server_ac_operations_total{result="ok"} 0`,
 		`nhp_server_ac_operations_total{result="error"} 0`,
+		`nhp_server_packets_dropped_total{stage="precheck"} 0`,
 		`nhp_server_packets_dropped_total{stage="parse"} 0`,
 		`nhp_server_packets_dropped_total{stage="validate"} 0`,
 		`nhp_server_packets_dropped_total{stage="decrypt"} 0`,

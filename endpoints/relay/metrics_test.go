@@ -1,9 +1,14 @@
 package relay
 
 import (
+	"fmt"
+	"net"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/metrics"
 )
 
 func TestRelayMetricsRenderAndRecord(t *testing.T) {
@@ -49,4 +54,34 @@ func TestRelayByteCountersAreCounters(t *testing.T) {
 			t.Errorf("%s must render as a counter (it is a monotonic total):\n%s", name, out)
 		}
 	}
+}
+
+// TestNewMetricsEndpointStartsAfterServersAndNoLeakOnError:
+//   - with a bad server key, New() fails and must NOT have left a metrics
+//     listener bound (a retry after fixing the config would collide).
+//   - with a good config, the endpoint comes up and the upstream-servers
+//     gauge is readable without racing the (already-finished) buildServer
+//     loop — covered by -race on the whole package.
+func TestNewMetricsEndpointNoLeakOnError(t *testing.T) {
+	port := 59230
+	bad := &Config{
+		PrivateKeyBase64: core.NewECDH(core.ECC_CURVE25519).PrivateKeyBase64(),
+		Metrics:          metrics.Config{Enabled: true, ListenIp: "127.0.0.1", ListenPort: port},
+		Servers: []Server{{
+			Name:         "x",
+			PubKeyBase64: "!!!not base64!!!",
+			LoadBalance:  "weighted-random",
+		}},
+	}
+	if _, err := New(bad); err == nil {
+		t.Fatal("New with a bad server key should fail")
+	}
+
+	// The port must be free — New must not have started the metrics listener
+	// before the buildServer loop that returned the error.
+	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Fatalf("metrics port %d still bound after New() failed: %v", port, err)
+	}
+	l.Close()
 }

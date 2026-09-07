@@ -186,6 +186,7 @@ type RelayServer struct {
 	startTime       time.Time
 	metrics         *relayMetrics
 	metricsEndpoint *metrics.Endpoint
+	healthy         atomic.Bool // gates /healthz: true from New until Stop
 
 	stats struct {
 		totalRecvBytes uint64
@@ -228,24 +229,6 @@ func New(cfg *Config) (*RelayServer, error) {
 	rs.device = device
 	rs.recvMsgCh = device.DecryptedMsgQueue
 
-	// opt-in Prometheus /metrics + /healthz endpoint, loopback by default.
-	if cfg.Metrics.Enabled {
-		ep, mErr := metrics.StartEndpoint(cfg.Metrics, metrics.EndpointOptions{
-			Registry:      rs.metrics.registry,
-			Uptime:        func() time.Duration { return time.Since(rs.startTime) },
-			IsRunning:     rs.running.Load,
-			DefaultPort:   defaultRelayMetricsPort,
-			OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
-			OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
-			OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
-		})
-		if mErr != nil {
-			log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
-		} else {
-			rs.metricsEndpoint = ep
-		}
-	}
-
 	for i := range cfg.Servers {
 		c := &cfg.Servers[i]
 		cr, err := rs.buildServer(c)
@@ -281,6 +264,28 @@ func New(cfg *Config) (*RelayServer, error) {
 				inst.host, inst.port, inst.weight)
 		}
 	}
+
+	// opt-in Prometheus /metrics + /healthz endpoint, loopback by default.
+	// Started LAST — after rs.servers is fully populated (the
+	// nhp_relay_upstream_servers gauge reads it from the serve goroutine)
+	// and after every "return nil, err" above (so a config error cannot
+	// leak a bound listener). rs.healthy gates /healthz so a probe in the
+	// New()->Start() gap sees "ok", not "stopping".
+	rs.healthy.Store(true)
+	ep, mErr := metrics.StartEndpoint(cfg.Metrics, metrics.EndpointOptions{
+		Registry:      rs.metrics.registry,
+		Uptime:        func() time.Duration { return time.Since(rs.startTime) },
+		IsRunning:     rs.healthy.Load,
+		DefaultPort:   defaultRelayMetricsPort,
+		OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
+		OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
+		OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
+	})
+	if mErr != nil {
+		log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
+	}
+	rs.metricsEndpoint = ep
+
 	return rs, nil
 }
 
@@ -381,6 +386,7 @@ func (rs *RelayServer) Start() error {
 // Stop gracefully shuts down the relay service.
 func (rs *RelayServer) Stop(ctx context.Context) error {
 	rs.running.Store(false)
+	rs.healthy.Store(false)
 	close(rs.stopCh)
 	rs.metricsEndpoint.Stop()
 
@@ -526,6 +532,7 @@ func (rs *RelayServer) recvPacketRoutine(cr *serverRuntime, inst *serverInstance
 			msgType, addrStr, conn.ConnData.LocalAddr, n)
 		if err != nil {
 			rs.device.ReleasePoolPacket(pkt)
+			rs.metrics.recordDroppedPacket("precheck")
 			log.Warning("[Relay] recv [%s] precheck error: %v", msgType, err)
 			continue
 		}

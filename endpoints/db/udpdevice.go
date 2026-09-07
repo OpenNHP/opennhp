@@ -92,6 +92,7 @@ type UdpDevice struct {
 	startTime       time.Time
 	metrics         *dbMetrics
 	metricsEndpoint *metrics.Endpoint
+	healthy         atomic.Bool // gates /healthz: true from Start until Stop
 
 	signals struct {
 		stop             chan struct{}
@@ -185,31 +186,32 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 		go a.maintainServerConnectionRoutine()
 	}
 
-	if a.config.Metrics.Enabled {
-		ep, mErr := metrics.StartEndpoint(a.config.Metrics, metrics.EndpointOptions{
-			Registry:      a.metrics.registry,
-			Uptime:        func() time.Duration { return time.Since(a.startTime) },
-			IsRunning:     a.running.Load,
-			DefaultPort:   defaultDBMetricsPort,
-			OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
-			OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
-			OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
-		})
-		if mErr != nil {
-			log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
-		} else {
-			a.metricsEndpoint = ep
-		}
-	}
-
 	a.running.Store(true)
-	// time.Sleep(1000 * time.Millisecond)
+
+	// opt-in Prometheus /metrics + /healthz endpoint, loopback by default.
+	// Started after running=true; StartEndpoint returns (nil,nil) when off.
+	a.healthy.Store(true)
+	ep, mErr := metrics.StartEndpoint(a.config.Metrics, metrics.EndpointOptions{
+		Registry:      a.metrics.registry,
+		Uptime:        func() time.Duration { return time.Since(a.startTime) },
+		IsRunning:     a.healthy.Load,
+		DefaultPort:   defaultDBMetricsPort,
+		OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
+		OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
+		OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
+	})
+	if mErr != nil {
+		log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
+	}
+	a.metricsEndpoint = ep
+
 	return nil
 }
 
 // export Stop
 func (a *UdpDevice) Stop() {
 	a.running.Store(false)
+	a.healthy.Store(false)
 	close(a.signals.stop)
 	a.metricsEndpoint.Stop()
 	a.device.Stop()
@@ -385,6 +387,7 @@ func (a *UdpDevice) recvPacketRoutine(conn *UdpConn) {
 		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, conn.ConnData.LocalAddr.String(), n)
 		if err != nil {
 			a.device.ReleasePoolPacket(pkt)
+			a.metrics.recordDroppedPacket("precheck")
 			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			continue

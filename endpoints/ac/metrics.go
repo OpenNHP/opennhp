@@ -6,6 +6,10 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/metrics"
 )
 
+// defaultACMetricsPort is the metrics endpoint port when [Metrics] ListenPort
+// is 0. Distinct from server (9100), relay (9102) and db (9103).
+const defaultACMetricsPort = 9101
+
 // acMetrics holds the collectors nhp-ac updates. Collection is always on
 // (cheap atomics); only the HTTP endpoint that exposes them is opt-in.
 // Every method is safe on a nil receiver so partially-built ACs (tests,
@@ -44,14 +48,14 @@ func newACMetrics(a *UdpAC, startTime time.Time) *acMetrics {
 		acOpDuration: reg.NewHistogram("nhp_ac_operation_duration_seconds",
 			"Time to apply one server access-control operation, in seconds.", nil).With(),
 		packetsDropped: reg.NewCounter("nhp_ac_packets_dropped_total",
-			"Inbound packets discarded before becoming a decrypted message, by stage.", "stage"),
+			"Inbound packets discarded before becoming a decrypted message, by stage (precheck, parse, validate, decrypt, queue_full).", "stage"),
 	}
 
 	// Pre-create the closed-set label series so a fresh scrape shows an
 	// explicit 0 rather than a missing series.
 	m.acOperations.With("ok")
 	m.acOperations.With("error")
-	for _, s := range []string{"parse", "validate", "decrypt", "queue_full"} {
+	for _, s := range []string{"precheck", "parse", "validate", "decrypt", "queue_full"} {
 		m.packetsDropped.With(s)
 	}
 
@@ -69,12 +73,22 @@ func (m *acMetrics) recordACOperation(ok bool, seconds float64) {
 	if m == nil {
 		return
 	}
+	m.recordACOutcome(ok)
+	m.acOpDuration.Observe(seconds)
+}
+
+// recordACOutcome bumps the ok/error counter WITHOUT a duration sample, for
+// a failure (e.g. a malformed AOP body) that returned before any real
+// access-control work — so timing it would just add a ~0s outlier.
+func (m *acMetrics) recordACOutcome(ok bool) {
+	if m == nil {
+		return
+	}
 	result := "error"
 	if ok {
 		result = "ok"
 	}
 	m.acOperations.With(result).Inc()
-	m.acOpDuration.Observe(seconds)
 }
 
 func (m *acMetrics) recordDroppedPacket(stage string) {

@@ -21,6 +21,9 @@ import type {
   ServerRegisterAckMsg,
   OtpResult,
   RegisterResult,
+  AgentListMsg,
+  ServerListResultMsg,
+  ListServicesResult,
   ParsedPacket,
   WebAuthnCredential,
   WebAuthnAssertion,
@@ -507,6 +510,113 @@ export class NHPAgent {
       const error = err instanceof Error ? err.message : 'Unknown error';
       this.log('error', `Registration failed: ${error}`);
       return { success: false, error, errorCode: '5' };
+    }
+  }
+
+  /**
+   * Query the server for the list of resource IDs the agent can access
+   * under a given ASP. Returns only the IDs — UI metadata (title, url,
+   * acHost) is owned by the caller (typically the Demo backend
+   * `/api/config.resources`).
+   *
+   * Mirrors `registerPublicKey`: builds an NHP_LST packet, sends it
+   * through the configured transport, awaits the NHP_LRT reply, and
+   * parses the JSON body as `ServerListResultMsg`. The Noise chain
+   * continues from the chain key saved by `buildNHPPacket`, so the
+   * same `prevChainKey` zero-buffer pattern as ACK/RAK applies.
+   *
+   * @param serviceId - Auth Service Provider ID (the ASP plugin to query)
+   * @param userData - Optional user data map (e.g. email under "email")
+   * @returns List of resource IDs the agent is authorized to access
+   */
+  async listServices(
+    serviceId: string,
+    userData?: Record<string, unknown>
+  ): Promise<ListServicesResult> {
+    if (!this.initialized || !this.keyPair) {
+      return { success: false, error: 'Agent not initialized', errorCode: '1', resources: [] };
+    }
+    if (!this.identity) {
+      return { success: false, error: 'Identity not set. Call setIdentity() first.', errorCode: '2', resources: [] };
+    }
+
+    const server = this.getDefaultServer();
+    if (!server) {
+      return { success: false, error: 'No server configured. Call addServer() first.', errorCode: '3', resources: [] };
+    }
+
+    try {
+      const listMsg: AgentListMsg = {
+        usrId: this.identity.userId,
+        devId: this.identity.deviceId,
+        orgId: this.identity.organizationId,
+        aspId: serviceId,
+        usrData: userData,
+      };
+
+      const message = JSON.stringify(listMsg);
+      const packet = await buildNHPPacket(
+        NHP_PACKET_TYPES.LST,
+        this.keyPair.privateKey,
+        this.keyPair.publicKey,
+        server.publicKey,
+        message,
+        true, // compress
+        this.config.cipherScheme,
+        this.packetContext
+      );
+
+      const transport = await this.getOrCreateTransport(server);
+      // LRT continues the Noise chain from the chain key saved by
+      // buildNHPPacket, exactly like ACK does on KNK. The Go server's
+      // encryptBody clears chainKey via defer, so both sides of the
+      // chain effectively restart from all-zeros at this layer.
+      const zeroChainKey = new Uint8Array(32);
+      const response = await this.sendAndWaitForResponse(transport, packet, server.publicKey, zeroChainKey);
+
+      if (response.type !== (NHP_PACKET_TYPES.LRT as number)) {
+        return {
+          success: false,
+          error: `Unexpected response type: ${response.type}`,
+          errorCode: '4',
+          resources: [],
+        };
+      }
+
+      let body: ServerListResultMsg;
+      try {
+        body = JSON.parse(response.message);
+      } catch (parseErr) {
+        const detail = parseErr instanceof Error ? parseErr.message : String(parseErr);
+        return {
+          success: false,
+          error: `Failed to parse server list response: ${detail}`,
+          errorCode: '6',
+          resources: [],
+        };
+      }
+
+      if (body.errCode && body.errCode !== '' && body.errCode !== '0') {
+        return {
+          success: false,
+          error: body.errMsg || `List failed: ${body.errCode}`,
+          errorCode: body.errCode,
+          resources: [],
+        };
+      }
+
+      // The Go server returns `map[string]any` for ListResults. We expose
+      // only the keys (resource IDs); the server doesn't carry UI
+      // metadata (title/url/acHost), so any caller needing that should
+      // intersect with its own catalog.
+      const resources = body.list ? Object.keys(body.list) : [];
+
+      this.log('info', `List services successful for user=${this.identity.userId} count=${resources.length}`);
+      return { success: true, resources };
+    } catch (err) {
+      const error = err instanceof Error ? err.message : 'Unknown error';
+      this.log('error', `List services failed: ${error}`);
+      return { success: false, error, errorCode: '5', resources: [] };
     }
   }
 

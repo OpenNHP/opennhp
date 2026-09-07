@@ -240,6 +240,11 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 	addrStr := ppd.ConnData.RemoteAddr.String()
 	regMsg := &common.AgentRegisterMsg{}
 	rakMsg := &common.ServerRegisterAckMsg{}
+	// NHP_REG skips peer validation (new agents), so a garbage-packet flood
+	// could otherwise append a ledger entry per packet — with attacker-shaped
+	// text in `reason`. Don't audit a pre-validation reject; record only from
+	// the point RegisterAgent was actually reached (same policy as OTP).
+	preValidationReject := false
 
 	func() {
 		err = json.Unmarshal(ppd.BodyMessage, regMsg)
@@ -247,6 +252,7 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 			log.Error("server-agent(#%d@%s)[HandleRegisterRequest] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
 			rakMsg.ErrCode = common.ErrJsonParseFailed.ErrorCode()
 			rakMsg.ErrMsg = err.Error()
+			preValidationReject = true
 			return
 		}
 
@@ -255,6 +261,7 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 			err = common.ErrAuthHandlerNotFound
 			rakMsg.ErrCode = common.ErrAuthHandlerNotFound.ErrorCode()
 			rakMsg.ErrMsg = err.Error()
+			preValidationReject = true
 			return
 		}
 
@@ -297,7 +304,7 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 	}()
 
 	// Record the registration outcome in the audit ledger.
-	if s.auditLedger != nil {
+	if s.auditLedger != nil && !preValidationReject {
 		// Registered means a nil error AND an ack code that is not a failure:
 		// the RegisterAgent plugin point may return a failure ErrCode with a
 		// nil error (a soft denial), which must not read as "registered". The

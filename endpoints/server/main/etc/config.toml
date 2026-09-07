@@ -81,19 +81,21 @@ ForceOverload = false
 #   dropped entry is discarded whole so the chain stays contiguous. Off by
 #   default (the synchronous write is the strongest "on disk before we
 #   answered" guarantee).
-# MaxSizeBytes: when > 0, roll the ledger to "<FilePath>.<seq>" once it would
-#   grow past this many bytes and continue in a fresh file. The hash chain
-#   spans the segments and `audit verify` walks them automatically, so this
-#   is the safe way to bound ledger growth without downtime. 0 = single file
-#   that grows forever (archive it out of band).
-# MaxSegments: when > 0, keep at most this many "<FilePath>.<n>" files —
-#   after each rotation the oldest are deleted. With MaxSizeBytes this bounds
-#   total ledger disk to ~MaxSizeBytes*(MaxSegments+1). This matters because
+# MaxSizeBytes: roll the ledger to "<FilePath>.<seq>" once it would grow past
+#   this many bytes and continue in a fresh file. The hash chain spans the
+#   segments and `audit verify` walks them automatically, so this is the safe
+#   way to bound ledger growth without downtime.
+#     0  = a built-in default (256 MiB) — auditing is NOT unbounded by default
+#     -1 = truly unbounded; only for operators who archive segments off-box
+# MaxSegments: keep at most this many "<FilePath>.<n>" files — after each
+#   rotation the oldest are deleted. With MaxSizeBytes this bounds total
+#   ledger disk to ~MaxSizeBytes*(MaxSegments+1). This matters because
 #   NHP_OTP / NHP_REG requests are audited BEFORE the peer is validated, so a
 #   party that knows the server's public key could otherwise fill the disk.
-#   0 (default) keeps every segment — only use that if you archive segments
-#   off-box. Deleting segments means `audit verify` can no longer start from
-#   seq 1; it anchors on the first surviving entry and says so.
+#     0  = a built-in default (20)
+#     -1 = keep every segment (unbounded)
+#   Deleting segments means `audit verify` can no longer start from seq 1;
+#   it anchors on the first surviving entry and says so.
 # SigningKeyBase64: optional base64 HMAC key binding the chain to a secret
 #   the log file does not contain (must be >= 32 bytes; shorter is rejected
 #   at startup). Generate one with:  head -c 32 /dev/urandom | base64

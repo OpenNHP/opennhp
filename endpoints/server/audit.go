@@ -31,6 +31,14 @@ const minSigningKeyLen = 32
 // fatal — a config typo must not silently leave the gateway unaudited.
 var errAuditConfig = errors.New("audit: invalid configuration")
 
+// Default disk bounds applied when [Audit] MaxSizeBytes / MaxSegments are
+// left at 0. ~256 MiB per segment * 20 kept ≈ 5 GiB. A negative config
+// value disables the respective cap.
+const (
+	defaultAuditMaxSizeBytes = 256 * 1024 * 1024
+	defaultAuditMaxSegments  = 20
+)
+
 // initAuditLedger opens the audit ledger when enabled in config. It is a
 // no-op (leaving s.auditLedger nil) when auditing is off, so the rest of
 // the server can call auditEvent unconditionally.
@@ -65,13 +73,29 @@ func (s *UdpServer) initAuditLedger() error {
 		hmacKey = key
 	}
 
+	// Bound disk use by default. NHP_OTP / NHP_REG are audited before the
+	// peer is validated, so "keep everything, forever" (0/0) hands the first
+	// operator who enables auditing a disk-exhaustion vector. A negative
+	// value is the explicit "I archive segments off-box, don't cap me" opt-out.
+	maxSize, maxSegs := s.config.Audit.MaxSizeBytes, s.config.Audit.MaxSegments
+	if maxSize == 0 {
+		maxSize = defaultAuditMaxSizeBytes
+	} else if maxSize < 0 {
+		maxSize = 0
+	}
+	if maxSegs == 0 {
+		maxSegs = defaultAuditMaxSegments
+	} else if maxSegs < 0 {
+		maxSegs = 0
+	}
+
 	opts := audit.Options{
 		HMACKey:      hmacKey,
 		Fsync:        s.config.Audit.Fsync,
 		Async:        s.config.Audit.Async,
 		QueueSize:    s.config.Audit.AsyncQueueSize,
-		MaxSizeBytes: s.config.Audit.MaxSizeBytes,
-		MaxSegments:  s.config.Audit.MaxSegments,
+		MaxSizeBytes: maxSize,
+		MaxSegments:  maxSegs,
 	}
 	ledger, err := audit.Open(path, opts)
 	if err != nil {
@@ -89,7 +113,9 @@ func (s *UdpServer) initAuditLedger() error {
 			//    is exactly what ensureLedgerFile exists to prevent — the
 			//    server, often privileged, must not move an operator's
 			//    unrelated file around. Leave it untouched and continue at a
-			//    ".quarantined-<ns>" sibling instead, logging loudly.
+			//    FIXED ".quarantined.jsonl" sibling — a fixed name so a
+			//    flapping service with a typo'd FilePath resumes one
+			//    continuous trail instead of piling up seq-1 files.
 			if audit.LooksLikeLedger(path) {
 				fresh, qErr := quarantineAndReopen(path, opts)
 				if qErr != nil {
@@ -99,7 +125,7 @@ func (s *UdpServer) initAuditLedger() error {
 				log.Critical("audit ledger %s has a corrupted header (%v); moved it aside and started a fresh chain — investigate the original file", path, err)
 				return nil
 			}
-			sibling := fmt.Sprintf("%s.quarantined-%d.jsonl", path, time.Now().UnixNano())
+			sibling := path + ".quarantined.jsonl"
 			fresh, qErr := audit.Open(sibling, opts)
 			if qErr != nil {
 				return fmt.Errorf("audit: %s is not a ledger file and a sibling ledger could not be opened: %w", path, qErr)
@@ -158,10 +184,16 @@ const auditWriteFailLogEvery = 100
 // ledger is meant to guard against — so a run of consecutive failures is
 // escalated to a rate-limited Critical rather than left as one Error.
 func (s *UdpServer) auditEvent(evType, severity string, fields map[string]string) {
-	if s == nil || s.auditLedger == nil {
+	if s == nil {
 		return
 	}
-	if err := s.auditLedger.Log(evType, severity, fields); err != nil {
+	// Load once: closeAuditLedger no longer nils the field, but a single
+	// read still keeps this off any check-then-use hazard.
+	ledger := s.auditLedger
+	if ledger == nil {
+		return
+	}
+	if err := ledger.Log(evType, severity, fields); err != nil {
 		n := s.auditWriteFails.Add(1)
 		if n == 1 || n%auditWriteFailLogEvery == 0 {
 			log.Critical("audit ledger write failing (%d consecutive): %v — access decisions are no longer being recorded", n, err)
@@ -175,11 +207,13 @@ func (s *UdpServer) auditEvent(evType, severity string, fields map[string]string
 	}
 }
 
-// closeAuditLedger flushes and closes the ledger on shutdown.
+// closeAuditLedger flushes and closes the ledger on shutdown. The field is
+// deliberately NOT nil-ed: a late in-flight handler calling auditEvent after
+// this races a check-then-use on a nil write, and Ledger.Log already returns
+// an error (not a panic) once the ledger is closed.
 func (s *UdpServer) closeAuditLedger() {
 	if s.auditLedger != nil {
 		_ = s.auditLedger.Close()
-		s.auditLedger = nil
 	}
 }
 

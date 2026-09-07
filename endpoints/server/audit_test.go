@@ -253,12 +253,12 @@ func TestAuditForeignFileLeftUntouchedAndContinuesAtSibling(t *testing.T) {
 		if strings.Contains(e.Name(), ".corrupt-") {
 			t.Fatalf("a .corrupt-* rename happened on a foreign file: %s", e.Name())
 		}
-		if strings.Contains(e.Name(), ".quarantined-") {
+		if strings.Contains(e.Name(), ".quarantined.") {
 			sibling = filepath.Join(dir, e.Name())
 		}
 	}
 	if sibling == "" {
-		t.Fatal("no .quarantined-*.jsonl sibling ledger was created")
+		t.Fatal("no .quarantined.jsonl sibling ledger was created")
 	}
 
 	// The fresh chain at the sibling works and verifies.

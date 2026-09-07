@@ -1426,3 +1426,32 @@ func TestVerifyLedgerErrorsWhenNothingToRead(t *testing.T) {
 		t.Fatal("VerifyLedger on a missing ledger returned a clean result")
 	}
 }
+
+// TestAsyncWriterPartialWriteNoByteDuplication: an async partial write (n>0
+// with an error, as *os.File returns on ENOSPC mid-buffer) must not re-send
+// the bytes that landed — doing so used to duplicate a fragment and break
+// the chain. After the writer recovers, everything must verify.
+func TestAsyncWriterPartialWriteNoByteDuplication(t *testing.T) {
+	sw := &shortWriter{limit: 40}
+	l := NewLedger(nopCloser{&sw.buf}, Options{Async: true, QueueSize: 64})
+	// swap the plain buffer target for one that short-writes once
+	l.w = sw
+
+	for i := 0; i < 20; i++ {
+		_ = l.Log("knock", SeverityInfo, map[string]string{"user": "u"})
+		time.Sleep(time.Millisecond)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	res := VerifyChain(bytes.NewReader(sw.buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("async partial write must not break the chain: %v", res.Err)
+	}
+	// The one short-written entry becomes damage (Skipped), never a
+	// duplicated fragment + a chain break.
+	if res.Count < 18 {
+		t.Fatalf("only %d entries survived one partial write: %v", res.Count, res)
+	}
+}

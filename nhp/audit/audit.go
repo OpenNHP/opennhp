@@ -324,10 +324,12 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 	// l.seq/l.lastHash back so the on-disk chain stays contiguous. Memory is
 	// bounded at maxPendingBytes + the queue. Nothing already chained is
 	// ever discarded here.
-	var pending []byte
+	var pending []byte // unflushed bytes, always a suffix of the byte stream
+	var pendingLastSeq uint64
 	retry := time.Millisecond
 	for it := range q {
 		pending = append(pending, it.line...)
+		pendingLastSeq = it.seq
 		if l.shouldRotate(len(pending)) {
 			if rErr := l.rollSegment(); rErr != nil {
 				l.asyncErr.Store(&asyncFailure{err: rErr})
@@ -335,29 +337,32 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 			}
 		}
 
-		wrote := false
-		for !wrote {
-			if _, err := l.w.Write(pending); err != nil {
-				l.asyncErr.Store(&asyncFailure{err: err})
-				if len(pending) < maxPendingBytes {
-					break // accept more from the queue; retry the whole buffer later
-				}
-				if l.closing.Load() {
-					return
-				}
-				time.Sleep(retry)
-				if retry < time.Second {
-					retry *= 2
-				}
-				continue
+		for len(pending) > 0 {
+			n, err := l.w.Write(pending)
+			if n > 0 {
+				// Bytes that landed must never be re-sent (a partial write on
+				// ENOSPC returns n>0 with an error); drop them from pending.
+				l.curSize += int64(n)
+				pending = pending[n:]
 			}
-			wrote = true
+			if err == nil {
+				break
+			}
+			l.asyncErr.Store(&asyncFailure{err: err})
+			if len(pending) < maxPendingBytes {
+				break // accept more from the queue; retry the remainder later
+			}
+			if l.closing.Load() {
+				return
+			}
+			time.Sleep(retry)
+			if retry < time.Second {
+				retry *= 2
+			}
 		}
 
-		if wrote {
-			l.curSize += int64(len(pending))
-			l.lastSegSeq = it.seq
-			pending = pending[:0]
+		if len(pending) == 0 {
+			l.lastSegSeq = pendingLastSeq
 			retry = time.Millisecond
 			l.asyncErr.Store(nil) // recovered; auditEvent can log "writes recovered"
 			if l.fsync {
@@ -367,9 +372,21 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 			}
 		}
 	}
+	// Final flush on Close. If a fragment cannot be written, terminate what
+	// did land with a newline so it does not merge with a future entry after
+	// a restart (Open's torn-tail repair also handles this; a stray blank
+	// line from an exact-boundary stop is harmless — readers skip it).
 	if len(pending) > 0 {
-		if _, err := l.w.Write(pending); err != nil {
+		n, err := l.w.Write(pending)
+		if n > 0 {
+			l.curSize += int64(n)
+			pending = pending[n:]
+		}
+		if err != nil {
 			l.asyncErr.Store(&asyncFailure{err: err})
+			if len(pending) > 0 {
+				_, _ = l.w.Write([]byte{'\n'})
+			}
 		}
 	}
 }
@@ -519,10 +536,12 @@ func lastSegmentTip(path string) (seq uint64, hash string, err error) {
 
 // rollSegment closes the live file, renames it to "<path>.<lastSegSeq>" and
 // opens a fresh live file. The caller must own the writer (hold l.mu in sync
-// mode, or be the drain goroutine in async mode). On any error the live file
-// is left in place and rotation is skipped — the ledger keeps growing but
-// stays valid.
-func (l *Ledger) rollSegment() error {
+// mode, or be the drain goroutine in async mode). On any error the ledger is
+// left with a WRITABLE handle to l.path (reopened if the close already
+// happened) and rotation is skipped — the file keeps growing but stays
+// valid. Only if even that reopen fails does l.w stay a closed file, and
+// then the returned error names it.
+func (l *Ledger) rollSegment() (err error) {
 	if l.path == "" || l.closer == nil {
 		return nil // bare io.Writer: nothing to roll
 	}
@@ -530,19 +549,37 @@ func (l *Ledger) rollSegment() error {
 	if _, statErr := os.Stat(seg); statErr == nil {
 		return fmt.Errorf("audit: segment %q already exists; not rotating", seg)
 	}
-	if err := l.closer.Close(); err != nil {
-		return fmt.Errorf("audit: close live segment: %w", err)
-	}
-	if err := os.Rename(l.path, seg); err != nil {
-		// Try to reopen the (un-renamed) live file so the ledger keeps working.
-		if f, reopenErr := os.OpenFile(filepath.Clean(l.path), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); reopenErr == nil {
-			l.w, l.closer = f, f
+
+	// After we close the live handle, every early return must leave l.w
+	// pointing at a writable handle to l.path or say it could not. rotated
+	// is true once the old data is safely in seg (l.path is then a fresh
+	// file and curSize resets); false means we are still on the old file.
+	reopenLive := func(cause error, rotated bool) error {
+		f, rErr := os.OpenFile(filepath.Clean(l.path), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+		if rErr != nil {
+			return fmt.Errorf("audit: rotation failed AND the live ledger could not be reopened (auditing is now dead until restart): %w; reopen: %v", cause, rErr)
 		}
-		return fmt.Errorf("audit: rename live segment to %q: %w", seg, err)
+		l.w, l.closer = f, f
+		if rotated {
+			l.curSize = 0
+			l.pruneSegments()
+		}
+		return fmt.Errorf("audit: rotation degraded, still writable: %w", cause)
+	}
+
+	closeErr := l.closer.Close() // the fd is gone whether or not this errors
+
+	if renameErr := os.Rename(l.path, seg); renameErr != nil {
+		return reopenLive(renameErr, false)
+	}
+	// Rename succeeded — l.path no longer exists, so any failure from here
+	// re-creates it (O_CREATE) as the fresh segment.
+	if closeErr != nil {
+		return reopenLive(fmt.Errorf("close live segment: %w", closeErr), true)
 	}
 	f, err := os.OpenFile(filepath.Clean(l.path), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
-		return fmt.Errorf("audit: open fresh segment: %w", err)
+		return reopenLive(fmt.Errorf("open fresh segment: %w", err), true)
 	}
 	l.w, l.closer = f, f
 	l.curSize = 0
@@ -1078,9 +1115,15 @@ func (l *Ledger) Log(evType, severity string, fields map[string]string) error {
 		// damaged line into two. Open's repair handles it on the next
 		// restart if this terminating write also fails.
 		l.seq--
-		// n is at most len(line) by the io.Writer contract, so the index is safe.
-		if n > 0 && line[n-1] != '\n' {
-			_, _ = l.w.Write([]byte{'\n'})
+		// Whatever DID land is on disk — count it so rotation accounting
+		// doesn't drift. n is at most len(line) by the io.Writer contract.
+		if n > 0 {
+			l.curSize += int64(n)
+			if line[n-1] != '\n' {
+				if tn, _ := l.w.Write([]byte{'\n'}); tn > 0 {
+					l.curSize += int64(tn)
+				}
+			}
 		}
 		return werr
 	}

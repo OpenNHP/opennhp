@@ -92,12 +92,20 @@ func VerifyLedger(path string, hmacKey []byte) VerifyResult {
 			_ = f.Close()
 		}
 	}()
-	for _, s := range segs {
+	for i, s := range segs {
 		f, oErr := os.Open(filepath.Clean(s))
 		if oErr != nil {
 			return VerifyResult{Err: fmt.Errorf("audit: open segment %q: %w", s, oErr)}
 		}
 		openFiles = append(openFiles, f)
+		if i > 0 {
+			// A segment left unterminated by a torn write (sync partial-write
+			// only writes the final '\n' best-effort, and repairTornTail runs
+			// on the live file only) would otherwise merge its last line onto
+			// the next segment's first line. A separator '\n' is free —
+			// verifyChainFrom skips empty lines.
+			readers = append(readers, bytes.NewReader([]byte{'\n'}))
+		}
 		readers = append(readers, f)
 	}
 	return verifyChainFrom(io.MultiReader(readers...), hmacKey, startPrevHash, startPrevSeq, anchoredAt)

@@ -96,6 +96,12 @@ var ErrNotALedger = errors.New("audit: file does not look like an audit ledger")
 // marker could not be enqueued; recordGapLocked retries it on the next Log.
 var errAsyncQueueFull = errors.New("audit: async queue full (gap marker deferred)")
 
+// eventPrefix is the leading bytes of every marshaled Event: Seq is the
+// first struct field with no omitempty, so json.Marshal always starts with
+// `{"seq":`. A torn append is a prefix of that, which is how ensureLedgerFile
+// tells a torn first write from a foreign single-line file.
+var eventPrefix = []byte(`{"seq":`)
+
 // Event is one record in the ledger. Fields are ordered so the JSON
 // encoding is deterministic (encoding/json emits struct fields in
 // declaration order and map keys sorted), which is what makes the hash
@@ -700,13 +706,14 @@ func ensureLedgerFile(path string) error {
 	}
 	var e Event
 	if tooLong || json.Unmarshal(line, &e) != nil || e.Seq == 0 {
-		// rerr == io.EOF here means the first line reached end-of-file with NO
-		// terminating newline: a single unterminated fragment. That is a torn
-		// FIRST append (a crash during the first write to a new file or a
-		// fresh segment after rollSegment), not a foreign file — an unrelated
-		// log or config practically always ends in '\n'. Let it through;
-		// repairTornTail resets it to a fresh chain.
-		if rerr == io.EOF && !tooLong {
+		// A torn FIRST append (a crash during the first write to a new file
+		// or a fresh segment after rollSegment) is a *prefix* of a marshaled
+		// Event, which always starts with `{"seq":` (Seq is the first field,
+		// no omitempty). Only that exact shape — unterminated AND starting
+		// with the event prefix — is let through for repairTornTail to reset;
+		// anything else is a foreign file and is refused. A single-line JSON
+		// blob with no "seq" (Seq == 0) does NOT match and stays protected.
+		if rerr == io.EOF && !tooLong && bytes.HasPrefix(line, eventPrefix) {
 			return nil
 		}
 		return fmt.Errorf("%w: %q (its first line is not an event); check the [Audit] FilePath setting", ErrNotALedger, path)
@@ -806,9 +813,12 @@ func repairTornTail(path string) (bool, error) {
 
 	if keep < 0 {
 		// No newline anywhere: the whole file is one line. If it parses as a
-		// complete Event its terminator was just lost — add it back. If it
-		// does not parse it is a torn first append; reset to a fresh chain
-		// (segments, if any, are reconnected by Open via lastSegmentTip).
+		// complete Event its terminator was just lost — add it back. If it is
+		// an unterminated PREFIX of an Event (starts with `{"seq":`) it is a
+		// torn first append; reset to a fresh chain (segments, if any, are
+		// reconnected by Open via lastSegmentTip). Anything else reached here
+		// only because ensureLedgerFile's prefix check let it through, so this
+		// is defensive: refuse rather than truncate.
 		whole := make([]byte, size)
 		if _, err := rf.ReadAt(whole, 0); err != nil && err != io.EOF {
 			return false, fmt.Errorf("audit: read %q for repair: %w", path, err)
@@ -819,6 +829,9 @@ func repairTornTail(path string) (bool, error) {
 				return false, fmt.Errorf("audit: terminate line in %q: %w", path, err)
 			}
 			return true, nil
+		}
+		if !bytes.HasPrefix(whole, eventPrefix) {
+			return false, fmt.Errorf("%w: %q (single unterminated line, not an event prefix); check the [Audit] FilePath setting", ErrNotALedger, path)
 		}
 		if err := rf.Truncate(0); err != nil {
 			return false, fmt.Errorf("audit: reset torn first append in %q: %w", path, err)

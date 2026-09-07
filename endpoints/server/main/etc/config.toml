@@ -109,7 +109,9 @@ ForceOverload = false
 #   false (default): fail SAFE — the gateway keeps producing a trail:
 #     - a file that still looks like our ledger (corrupted first line) is
 #       renamed to "<FilePath>.corrupt-<nanos>" and a fresh chain starts at
-#       FilePath (seq 1 next to a .corrupt-* file is a loud signal);
+#       FilePath — from seq 1, or continuing from the highest "<FilePath>.<n>"
+#       segment if size rotation has produced any; the .corrupt-* sibling is
+#       the loud signal either way;
 #     - a FOREIGN file (FilePath typo'd onto another file) is LEFT UNTOUCHED
 #       and auditing continues in "<FilePath>.quarantined.jsonl". Point
 #       `audit verify` at that sibling, not FilePath, in this case.

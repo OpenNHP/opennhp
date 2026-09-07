@@ -431,6 +431,30 @@ func TestOpenRefusesNonLedgerFile(t *testing.T) {
 	}
 }
 
+// TestOpenRefusesSingleLineNewlineFreeForeignFile: the torn-first-append
+// recovery must NOT fire for a foreign file that just happens to be one line
+// with no trailing '\n' (minified JSON, a token file, printf output). Only a
+// prefix of a real Event ({"seq":…) is treated as a torn write.
+func TestOpenRefusesSingleLineNewlineFreeForeignFile(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"minified.json": `{"kind":"Config","spec":{"a":1,"b":2}}`, // valid JSON, no seq, no newline
+		"token":         "b3RoZXItYXBwLXNlY3JldA",                 // not JSON at all, no newline
+	} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Open(path, Options{}); err == nil {
+			t.Fatalf("%s: Open should refuse a single-line newline-free foreign file", name)
+		}
+		after, _ := os.ReadFile(path)
+		if string(after) != content {
+			t.Fatalf("%s: foreign file was modified: %q", name, after)
+		}
+	}
+}
+
 // A single complete entry whose terminating newline was lost must be
 // re-terminated, never truncated to zero.
 func TestOpenTerminatesLastLineInsteadOfZeroing(t *testing.T) {

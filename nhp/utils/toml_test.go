@@ -37,26 +37,56 @@ func TestUpdateTomlConfigWritesValueLiterally(t *testing.T) {
 	}
 }
 
-// TestUpdateTomlConfigErrorsWhenKeyMissing: a no-match must be reported, not
-// swallowed — RotateAgentKey relies on the write actually persisting the
-// re-sealed blob.
-func TestUpdateTomlConfigErrorsWhenKeyMissing(t *testing.T) {
+// TestUpdateTomlConfigReplacesEmptyValue: a currently-empty `key = ""` must
+// be filled in, not skipped — RotateAgentKey relies on the write persisting
+// the re-sealed blob.
+func TestUpdateTomlConfigReplacesEmptyValue(t *testing.T) {
 	dir := t.TempDir()
 	fp := filepath.Join(dir, "config.toml")
-	// Key present but empty, plus a wholly absent key.
 	if err := os.WriteFile(fp, []byte("PrivateKeyBase64 = \"\"\nOther = 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := UpdateTomlConfig(fp, "PrivateKeyBase64", "x"); err == nil {
-		t.Fatal("expected an error updating an empty-valued key")
+	if err := UpdateTomlConfig(fp, "PrivateKeyBase64", "v1$x"); err != nil {
+		t.Fatalf("UpdateTomlConfig over an empty value: %v", err)
 	}
-	if err := UpdateTomlConfig(fp, "NoSuchKey", "x"); err == nil {
-		t.Fatal("expected an error updating an absent key")
-	}
-	// The file must be left untouched on the error path.
 	got, _ := os.ReadFile(fp)
-	if string(got) != "PrivateKeyBase64 = \"\"\nOther = 1\n" {
-		t.Fatalf("file was modified despite the no-match error:\n%s", got)
+	if !strings.Contains(string(got), `PrivateKeyBase64 = "v1$x"`) || !strings.Contains(string(got), "Other = 1") {
+		t.Fatalf("empty value not replaced in place:\n%s", got)
+	}
+}
+
+// TestUpdateTomlConfigAppendsWhenAbsentAndNoTables: a bootstrap/partial file
+// (no [table] headers) self-heals by appending the missing root key.
+func TestUpdateTomlConfigAppendsWhenAbsentAndNoTables(t *testing.T) {
+	dir := t.TempDir()
+	fp := filepath.Join(dir, "dhp.toml")
+	if err := os.WriteFile(fp, []byte("# generated\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateTomlConfig(fp, "TEEPrivateKeyBase64", "AAAA"); err != nil {
+		t.Fatalf("UpdateTomlConfig append: %v", err)
+	}
+	got, _ := os.ReadFile(fp)
+	if !strings.Contains(string(got), `TEEPrivateKeyBase64 = "AAAA"`) {
+		t.Fatalf("missing key not appended:\n%s", got)
+	}
+}
+
+// TestUpdateTomlConfigErrorsWhenAbsentWithTables: appending a bare key at EOF
+// would land it inside the last [table], so that case is refused instead.
+func TestUpdateTomlConfigErrorsWhenAbsentWithTables(t *testing.T) {
+	dir := t.TempDir()
+	fp := filepath.Join(dir, "config.toml")
+	orig := "Name = \"x\"\n[UserData]\n\"k\" = \"v\"\n"
+	if err := os.WriteFile(fp, []byte(orig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateTomlConfig(fp, "PrivateKeyBase64", "x"); err == nil {
+		t.Fatal("expected an error: absent key + [table] sections present")
+	}
+	got, _ := os.ReadFile(fp)
+	if string(got) != orig {
+		t.Fatalf("file was modified despite the refusal:\n%s", got)
 	}
 }
 

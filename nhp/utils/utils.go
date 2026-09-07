@@ -149,6 +149,15 @@ func LoadJsonFileAsStruct(filePath string) (any, error) {
 	return data, nil
 }
 
+// UpdateTomlConfig sets a top-level string key in a TOML file.
+//
+// If a `key = "…"` assignment exists (empty value included) it is replaced
+// in place. If the key is ABSENT and the file has no `[table]` headers, the
+// assignment is appended so a bootstrap/partial config self-heals rather
+// than the update silently doing nothing. If the key is absent but the file
+// DOES have table headers, appending a bare key at EOF would land it inside
+// the last table, so this returns an error instead — the caller must add the
+// root-table line by hand.
 func UpdateTomlConfig(filePath string, key string, value any) error {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
@@ -159,18 +168,27 @@ func UpdateTomlConfig(filePath string, key string, value any) error {
 
 	switch value := value.(type) {
 	case string:
-		re := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(key) + `\s*=\s*".+"\s*$`)
-		if !re.MatchString(string(content)) {
-			// No non-empty `key = "..."` line to replace. Silently writing the
-			// file back unchanged would let a caller (RotateAgentKey re-sealing
-			// a key) report success while config.toml keeps the old value.
-			return fmt.Errorf("key %q not found (or has an empty value) in %s", key, filePath)
+		replacement := fmt.Sprintf("%s = \"%s\"", key, value)
+		// Match the assignment line whatever its current value (including
+		// an empty ""), so a re-seal over `key = ""` still lands.
+		lineRe := regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(key) + `[ \t]*=.*$`)
+		switch {
+		case lineRe.MatchString(string(content)):
+			// ReplaceAllLiteralString, not ReplaceAllString: the replacement
+			// is a verbatim value, and a sealed key blob ("v1$argon2id$...")
+			// contains '$' sequences that ReplaceAllString would interpret as
+			// capture-group references and mangle.
+			newContent = lineRe.ReplaceAllLiteralString(string(content), replacement)
+		case !regexp.MustCompile(`(?m)^\s*\[`).MatchString(string(content)):
+			// Key absent, no tables: safe to append as a root-table key.
+			base := string(content)
+			if len(base) > 0 && !strings.HasSuffix(base, "\n") {
+				base += "\n"
+			}
+			newContent = base + replacement + "\n"
+		default:
+			return fmt.Errorf("key %q not found in %s and the file has [table] sections; add the line under the root table by hand", key, filePath)
 		}
-		// ReplaceAllLiteralString, not ReplaceAllString: the replacement is a
-		// verbatim value, and a sealed key blob ("v1$argon2id$...") contains
-		// '$' sequences that ReplaceAllString would interpret as capture-group
-		// references and mangle.
-		newContent = re.ReplaceAllLiteralString(string(content), fmt.Sprintf("%s = \"%s\"", key, value))
 	default:
 		return fmt.Errorf("unsupported type: %T", value)
 	}

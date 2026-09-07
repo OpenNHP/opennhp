@@ -24,20 +24,26 @@ import (
 )
 
 // currentConfigKeySealed reports whether etc/config.toml currently holds a
-// sealed ("v1$...") PrivateKeyBase64. Best-effort: a missing/unreadable or
-// unparseable file (the register bootstrap case) reads as not sealed.
-func currentConfigKeySealed(exeDirPath string) bool {
+// sealed ("v1$...") PrivateKeyBase64. A MISSING file is the register
+// bootstrap case and returns (false, nil). A file that exists but cannot be
+// read or parsed returns an error: treating that as "not sealed" would let
+// register silently overwrite a sealed key with a plaintext one — the exact
+// downgrade the rest of this flow fails loudly to prevent.
+func currentConfigKeySealed(exeDirPath string) (bool, error) {
 	data, err := os.ReadFile(filepath.Join(exeDirPath, "etc", "config.toml"))
 	if err != nil {
-		return false
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read config.toml: %w", err)
 	}
 	var cfg struct {
 		PrivateKeyBase64 string `toml:"PrivateKeyBase64"`
 	}
 	if err := toml.Unmarshal(data, &cfg); err != nil {
-		return false
+		return false, fmt.Errorf("parse config.toml: %w", err)
 	}
-	return keystore.IsSealed(cfg.PrivateKeyBase64)
+	return keystore.IsSealed(cfg.PrivateKeyBase64), nil
 }
 
 // ANSI color codes
@@ -404,7 +410,15 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 	// Capture whether the CURRENT on-disk key is sealed, before a.Start below
 	// resolves it and ReinitWithKey overwrites the in-memory value with a
 	// plain key. If it was sealed, the rewritten config.toml must stay sealed.
-	existingKeySealed := currentConfigKeySealed(exeDirPath)
+	// An unreadable/unparseable existing config is fatal here: guessing "not
+	// sealed" would risk writing a plaintext key over a sealed one.
+	existingKeySealed, keySealedErr := currentConfigKeySealed(exeDirPath)
+	if keySealedErr != nil {
+		fmt.Printf("\n  %s❌ Cannot tell whether etc/config.toml holds a sealed key:%s %v\n"+
+			"     Refusing to register — fix or move config.toml aside first so a sealed key\n"+
+			"     is not silently replaced with a plaintext one.\n\n", colorYellow, colorReset, keySealedErr)
+		return fmt.Errorf("register: %w", keySealedErr)
+	}
 
 	printBanner()
 
@@ -454,7 +468,14 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 	ecdh := core.NewECDH(eccType)
 	privKeyBytes := ecdh.PrivateKey()
 	fmt.Printf("  %sGenerated key pair:%s\n", colorYellow, colorReset)
-	fmt.Printf("    Private key:       %s%s%s\n", colorDim, ecdh.PrivateKeyBase64(), colorReset)
+	if existingKeySealed {
+		// The existing config keeps its key sealed, so this one will be
+		// re-sealed into config.toml too — don't echo the plaintext scalar
+		// into scrollback / CI logs.
+		fmt.Printf("    Private key:       %s(hidden — will be re-sealed into config.toml)%s\n", colorDim, colorReset)
+	} else {
+		fmt.Printf("    Private key:       %s%s%s\n", colorDim, ecdh.PrivateKeyBase64(), colorReset)
+	}
 	// The private key is scheme-agnostic: the same bytes derive both an SM2
 	// and a Curve25519 public key. Show both regardless of the selected
 	// scheme (the one matching the selection is registered), so it's clear

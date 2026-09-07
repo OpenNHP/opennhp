@@ -7,6 +7,39 @@ import (
 	"testing"
 )
 
+// TestCurrentConfigKeySealed covers the three cases: no config (bootstrap),
+// a sealed key, and an unparseable file (must error, not read as "not
+// sealed" — that would let register overwrite a sealed key with plaintext).
+func TestCurrentConfigKeySealed(t *testing.T) {
+	dir := t.TempDir()
+	etc := filepath.Join(dir, "etc")
+	if err := os.MkdirAll(etc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// No config yet — bootstrap, not an error.
+	if sealed, err := currentConfigKeySealed(dir); err != nil || sealed {
+		t.Fatalf("missing config: got (%v, %v), want (false, nil)", sealed, err)
+	}
+
+	// Sealed key.
+	cfg := filepath.Join(etc, "config.toml")
+	if err := os.WriteFile(cfg, []byte("PrivateKeyBase64 = \"v1$argon2id$3$65536$4$a$b$c\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if sealed, err := currentConfigKeySealed(dir); err != nil || !sealed {
+		t.Fatalf("sealed config: got (%v, %v), want (true, nil)", sealed, err)
+	}
+
+	// Unparseable file — must surface an error.
+	if err := os.WriteFile(cfg, []byte("PrivateKeyBase64 = \"oops\n[Broken\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if sealed, err := currentConfigKeySealed(dir); err == nil {
+		t.Fatalf("unparseable config: got (%v, nil), want an error", sealed)
+	}
+}
+
 // TestWriteResourceConfig verifies the generated resource.toml binds the
 // asp-id/res-id to the named cluster and is written under etc/.
 func TestWriteResourceConfig(t *testing.T) {

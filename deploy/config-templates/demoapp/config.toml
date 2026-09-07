@@ -76,17 +76,16 @@ PublicRelayUrl = "https://relay.opennhp.org/relay"
 # field is unused in the deployed binary but kept for operator overrides.
 WebDistDir = "web/dist"
 
-# Upstream nhp-server clusters. Each entry declares BOTH public keys
-# (derived from the nhp-server's single private key via `keygen --both`)
-# so the registration page can offer either cipher scheme independently.
+# Upstream nhp-server. Declares BOTH public keys (derived from the
+# nhp-server's single private key via `keygen --both`) so the
+# registration page can offer either cipher scheme independently.
 # RelayRegisteredScheme names which key the relay registered the server
 # under — that key drives the relay routing fingerprint. The production
 # relay registers the Curve25519 key (relay/config.toml cipherScheme=0,
 # PubKeyBase64=${NHP_SERVER_PUBLIC_KEY}), so a gmsm knock routes via
 # relayPublicKey = the Curve25519 key.
 #
-# Cluster 1 and cluster 2 are independent nhp-server identities; the
-# demoapp registers each user's key against the server they pick.
+# The demoapp registers each user's key against this single nhp-server.
 
 [[Servers]]
 Name                  = "Cluster 1"
@@ -94,14 +93,6 @@ ServiceId             = "example"
 OrganizationId        = "opennhp.org"
 Sm2PublicKey          = "${NHP_SERVER_SM2_PUBLIC_KEY}"
 Curve25519PublicKey   = "${NHP_SERVER_PUBLIC_KEY}"
-RelayRegisteredScheme = "curve25519"
-
-[[Servers]]
-Name                  = "Cluster 2"
-ServiceId             = "example"
-OrganizationId        = "opennhp.org"
-Sm2PublicKey          = "${NHP_SERVER2_SM2_PUBLIC_KEY}"
-Curve25519PublicKey   = "${NHP_SERVER2_PUBLIC_KEY}"
 RelayRegisteredScheme = "curve25519"
 
 # Application-side OIDC Relying Party. Independent of the nhp-server
@@ -141,10 +132,3 @@ Title      = "OpenNHP Protected Demo (Cluster 1)"
 URL        = "https://ac.opennhp.org"
 ACHost     = "ac.opennhp.org"
 ServerName = "Cluster 1"
-
-[[Resources]]
-Id         = "demo"
-Title      = "OpenNHP Protected Demo (Cluster 2)"
-URL        = "https://ac2.opennhp.org"
-ACHost     = "ac2.opennhp.org"
-ServerName = "Cluster 2"

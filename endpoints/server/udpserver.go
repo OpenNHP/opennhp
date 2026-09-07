@@ -274,6 +274,14 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 
 	option := &core.DeviceOptions{
 		DisableAgentPeerValidation: s.config.DisableAgentValidation,
+		// Count packets dropped before they become a decrypted message —
+		// the most interesting attack signal for a network-hiding product,
+		// and the one seam the rest of the metrics wiring doesn't see
+		// (everything else is instrumented post-decryption). s.metrics is
+		// assigned below before s.device.Start() launches the packet
+		// routines, and recordDroppedPacket is nil-receiver safe, so the
+		// closure is safe to install here.
+		OnPacketDropped: func(stage string) { s.metrics.recordDroppedPacket(stage) },
 	}
 	s.device = core.NewDevice(core.NHP_SERVER, prk, option)
 	if s.device == nil {

@@ -40,6 +40,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common/loadbalance"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	log "github.com/OpenNHP/opennhp/nhp/log"
+	"github.com/OpenNHP/opennhp/nhp/metrics"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
 
@@ -182,6 +183,10 @@ type RelayServer struct {
 	running atomic.Bool
 	stopCh  chan struct{}
 
+	startTime       time.Time
+	metrics         *relayMetrics
+	metricsEndpoint *metrics.Endpoint
+
 	stats struct {
 		totalRecvBytes uint64
 		totalSendBytes uint64
@@ -196,19 +201,24 @@ func New(cfg *Config) (*RelayServer, error) {
 		return nil, fmt.Errorf("relay: invalid privateKeyBase64: %w", err)
 	}
 
-	// Create NHP device with relay identity.
-	device := core.NewDevice(core.NHP_RELAY, prk, nil)
-	if device == nil {
-		return nil, fmt.Errorf("relay: failed to create NHP device")
-	}
-
 	rs := &RelayServer{
 		config:    cfg,
-		device:    device,
 		servers:   make(map[string]*serverRuntime, len(cfg.Servers)),
 		sendMsgCh: make(chan *core.MsgData, PacketQueueSizePerConnection),
 		stopCh:    make(chan struct{}),
 	}
+
+	// Create NHP device with relay identity. defaultDeviceOptions(NHP_RELAY)
+	// is the zero value, so passing an explicit struct only adds the
+	// dropped-packet observation hook (rs.metrics is set in Start, and
+	// recordDroppedPacket is nil-safe).
+	device := core.NewDevice(core.NHP_RELAY, prk, &core.DeviceOptions{
+		OnPacketDropped: func(stage string) { rs.metrics.recordDroppedPacket(stage) },
+	})
+	if device == nil {
+		return nil, fmt.Errorf("relay: failed to create NHP device")
+	}
+	rs.device = device
 	rs.recvMsgCh = device.DecryptedMsgQueue
 
 	for i := range cfg.Servers {
@@ -313,6 +323,26 @@ func (rs *RelayServer) buildServer(c *Server) (*serverRuntime, error) {
 // Start starts the device, UDP connections, keepalives, and HTTP server.
 func (rs *RelayServer) Start() error {
 	rs.running.Store(true)
+	rs.startTime = time.Now()
+	rs.metrics = newRelayMetrics(rs, rs.startTime)
+
+	// opt-in Prometheus /metrics + /healthz endpoint, loopback by default.
+	// Started before the blocking ListenAndServe below.
+	if rs.config.Metrics.Enabled {
+		ep, mErr := metrics.StartEndpoint(rs.config.Metrics, metrics.EndpointOptions{
+			Registry:      rs.metrics.registry,
+			Uptime:        func() time.Duration { return time.Since(rs.startTime) },
+			DefaultPort:   defaultRelayMetricsPort,
+			OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
+			OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
+			OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
+		})
+		if mErr != nil {
+			log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
+		} else {
+			rs.metricsEndpoint = ep
+		}
+	}
 
 	// Start NHP device (encryption/decryption workers).
 	rs.device.Start()
@@ -346,6 +376,7 @@ func (rs *RelayServer) Start() error {
 func (rs *RelayServer) Stop(ctx context.Context) error {
 	rs.running.Store(false)
 	close(rs.stopCh)
+	rs.metricsEndpoint.Stop()
 
 	// Shut down HTTP server.
 	err := rs.httpServer.Shutdown(ctx)
@@ -757,6 +788,7 @@ func (rs *RelayServer) recvMessageRoutine() {
 				continue
 			}
 
+			rs.metrics.recordMessageReceived(core.HeaderTypeToString(ppd.HeaderType))
 			log.Info("[Relay] recv decrypted message type [%s]",
 				core.HeaderTypeToString(ppd.HeaderType))
 			// Relay doesn't expect messages from server in the current design.

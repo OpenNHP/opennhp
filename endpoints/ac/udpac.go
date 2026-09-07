@@ -16,6 +16,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
+	"github.com/OpenNHP/opennhp/nhp/metrics"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 	"github.com/OpenNHP/opennhp/nhp/utils/ebpf"
 	"github.com/OpenNHP/opennhp/nhp/version"
@@ -51,6 +52,10 @@ type UdpAC struct {
 	wg         sync.WaitGroup
 	running    atomic.Bool
 
+	startTime       time.Time
+	metrics         *acMetrics
+	metricsEndpoint *metrics.Endpoint
+
 	signals struct {
 		stop             chan struct{}
 		serverMapUpdated chan struct{}
@@ -82,6 +87,7 @@ dirPath: the path of app or shared library entry point
 logLevel: 0: silent, 1: error, 2: info, 3: debug, 4: verbose
 */
 func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
+	a.startTime = time.Now()
 	common.ExeDirPath = dirPath
 	ExeDirPath = dirPath
 	// init logger
@@ -136,7 +142,18 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 		return fmt.Errorf("private key parse error %v", err)
 	}
 
-	a.device = core.NewDevice(core.NHP_AC, prk, nil)
+	a.metrics = newACMetrics(a, a.startTime)
+
+	a.device = core.NewDevice(core.NHP_AC, prk, &core.DeviceOptions{
+		// NHP_AC does not validate or store agent peers (matches
+		// defaultDeviceOptions(NHP_AC), which we replace by passing an
+		// explicit options struct here).
+		DisableAgentPeerValidation: true,
+		// Count packets dropped before decryption — the pre-decryption seam
+		// the message counter can't see. a.metrics is set just above and
+		// recordDroppedPacket is nil-safe.
+		OnPacketDropped: func(stage string) { a.metrics.recordDroppedPacket(stage) },
+	})
 	if a.device == nil {
 		log.Critical("failed to create device %v\n", err)
 		return fmt.Errorf("failed to create device %v", err)
@@ -219,13 +236,36 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	go a.recvMessageRoutine()
 	go a.maintainServerConnectionRoutine()
 
+	// opt-in Prometheus /metrics + /healthz endpoint, loopback by default
+	if a.config.Metrics.Enabled {
+		ep, mErr := metrics.StartEndpoint(a.config.Metrics, metrics.EndpointOptions{
+			Registry:      a.metrics.registry,
+			Uptime:        func() time.Duration { return time.Since(a.startTime) },
+			DefaultPort:   defaultACMetricsPort,
+			OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
+			OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
+			OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
+		})
+		if mErr != nil {
+			log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
+		} else {
+			a.metricsEndpoint = ep
+		}
+	}
+
 	a.running.Store(true)
 	return nil
 }
 
+// defaultACMetricsPort is the metrics endpoint port when [Metrics] ListenPort
+// is 0. Distinct from the server's 9100 so a host running several daemons
+// does not collide.
+const defaultACMetricsPort = 9101
+
 func (ac *UdpAC) Stop() {
 	ac.running.Store(false)
 	close(ac.signals.stop)
+	ac.metricsEndpoint.Stop()
 	if ac.etcdConn != nil {
 		ac.etcdConn.Close()
 	}
@@ -519,6 +559,8 @@ func (a *UdpAC) recvMessageRoutine() {
 			if ppd == nil {
 				continue
 			}
+
+			a.metrics.recordMessageReceived(core.HeaderTypeToString(ppd.HeaderType))
 
 			switch ppd.HeaderType {
 			case core.NHP_AOP:

@@ -15,6 +15,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/core"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
 	"github.com/OpenNHP/opennhp/nhp/log"
+	"github.com/OpenNHP/opennhp/nhp/metrics"
 	"github.com/OpenNHP/opennhp/nhp/version"
 )
 
@@ -88,6 +89,10 @@ type UdpDevice struct {
 	wg      sync.WaitGroup
 	running atomic.Bool
 
+	startTime       time.Time
+	metrics         *dbMetrics
+	metricsEndpoint *metrics.Endpoint
+
 	signals struct {
 		stop             chan struct{}
 		serverMapUpdated chan struct{}
@@ -116,6 +121,7 @@ dirPath: the path of app or shared library entry point
 logLevel: 0: silent, 1: error, 2: info, 3: debug, 4: verbose
 */
 func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
+	a.startTime = time.Now()
 	common.ExeDirPath = dirPath
 	ExeDirPath = dirPath
 	// init logger
@@ -139,7 +145,14 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 		return fmt.Errorf("private key parse error %v", err)
 	}
 
-	a.device = core.NewDevice(core.NHP_DB, prk, nil)
+	a.metrics = newDBMetrics(a, a.startTime)
+
+	// defaultDeviceOptions(NHP_DB) is the zero value, so the explicit struct
+	// only adds the pre-decryption dropped-packet hook (a.metrics is set
+	// above; recordDroppedPacket is nil-safe).
+	a.device = core.NewDevice(core.NHP_DB, prk, &core.DeviceOptions{
+		OnPacketDropped: func(stage string) { a.metrics.recordDroppedPacket(stage) },
+	})
 	if a.device == nil {
 		log.Critical("failed to create device %v\n", err)
 		return fmt.Errorf("failed to create device %v", err)
@@ -171,6 +184,23 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 		a.wg.Add(1)
 		go a.maintainServerConnectionRoutine()
 	}
+
+	if a.config.Metrics.Enabled {
+		ep, mErr := metrics.StartEndpoint(a.config.Metrics, metrics.EndpointOptions{
+			Registry:      a.metrics.registry,
+			Uptime:        func() time.Duration { return time.Since(a.startTime) },
+			DefaultPort:   defaultDBMetricsPort,
+			OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
+			OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
+			OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
+		})
+		if mErr != nil {
+			log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
+		} else {
+			a.metricsEndpoint = ep
+		}
+	}
+
 	a.running.Store(true)
 	// time.Sleep(1000 * time.Millisecond)
 	return nil
@@ -180,6 +210,7 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 func (a *UdpDevice) Stop() {
 	a.running.Store(false)
 	close(a.signals.stop)
+	a.metricsEndpoint.Stop()
 	a.device.Stop()
 	a.StopConfigWatch()
 	a.wg.Wait()
@@ -463,6 +494,7 @@ func (a *UdpDevice) recvMessageRoutine() {
 			if ppd == nil {
 				continue
 			}
+			a.metrics.recordMessageReceived(core.HeaderTypeToString(ppd.HeaderType))
 
 			switch ppd.HeaderType {
 			case core.NHP_DWR:

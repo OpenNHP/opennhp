@@ -19,6 +19,7 @@ type serverMetrics struct {
 	acOperations     *metrics.CounterVec // result=ok|error
 	acOpDuration     *metrics.Histogram  // server->AC round trip, seconds
 	blockedAddrs     *metrics.Counter    // sources blocked past the threat threshold
+	packetsDropped   *metrics.CounterVec // stage=parse|validate|decrypt|queue_full
 }
 
 func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
@@ -58,6 +59,8 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			"Latency of server-to-AC operations, in seconds.", nil).With(),
 		blockedAddrs: reg.NewCounter("nhp_server_blocked_source_addresses_total",
 			"Source addresses blocked after exceeding the threat threshold.").With(),
+		packetsDropped: reg.NewCounter("nhp_server_packets_dropped_total",
+			"Inbound packets discarded before becoming a decrypted message, by stage.", "stage"),
 	}
 
 	// Pre-create the closed-set label series so they export an explicit 0
@@ -69,6 +72,10 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 	sm.knockAuth.With("denied")
 	sm.acOperations.With("ok")
 	sm.acOperations.With("error")
+	sm.packetsDropped.With("parse")
+	sm.packetsDropped.With("validate")
+	sm.packetsDropped.With("decrypt")
+	sm.packetsDropped.With("queue_full")
 
 	return sm
 }
@@ -108,4 +115,15 @@ func (m *serverMetrics) recordBlockedAddr() {
 		return
 	}
 	m.blockedAddrs.Inc()
+}
+
+// recordDroppedPacket counts an inbound packet discarded before decryption.
+// stage is one of the fixed set "parse", "validate", "decrypt",
+// "queue_full" (from core.DeviceOptions.OnPacketDropped) — a bounded label,
+// never attacker-controlled. Safe on a nil receiver.
+func (m *serverMetrics) recordDroppedPacket(stage string) {
+	if m == nil {
+		return
+	}
+	m.packetsDropped.With(stage).Inc()
 }

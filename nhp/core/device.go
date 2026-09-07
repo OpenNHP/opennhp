@@ -37,6 +37,15 @@ type DeviceOptions struct {
 	DisableRelayPeerValidation  bool
 	DisableDePeerValidation     bool
 	PeerLookupFallback          PeerLookupFallbackFunc
+
+	// OnPacketDropped, when set, is called whenever an inbound packet is
+	// discarded before it becomes a decrypted message: a precheck/parse
+	// failure ("parse"), a peer-validation failure ("validate"), a body
+	// decryption failure ("decrypt"), or the decrypted-message queue being
+	// full ("queue_full"). It is a pure observation hook for metrics — the
+	// crypto path is unchanged — and must be cheap and non-blocking. It runs
+	// on the packet routine goroutine; a panic in it is recovered.
+	OnPacketDropped func(stage string)
 }
 
 type NhpError interface {
@@ -144,6 +153,20 @@ func (d *Device) GetOption() DeviceOptions {
 	defer d.optionMutex.Unlock()
 
 	return d.option
+}
+
+// notifyPacketDropped invokes the OnPacketDropped observation hook if one is
+// configured. Only reached on a drop, so the per-call lock is off the hot
+// path; a panicking hook cannot take down the packet routine.
+func (d *Device) notifyPacketDropped(stage string) {
+	d.optionMutex.Lock()
+	hook := d.option.OnPacketDropped
+	d.optionMutex.Unlock()
+	if hook == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+	hook(stage)
 }
 
 // SetStatelessCookieParams installs the cluster-wide cookie HMAC key and the
@@ -415,6 +438,7 @@ func (d *Device) packetToMsgRoutine(id int) {
 				if err != nil {
 					log.Debug("packetToMsgRoutine %d: [%s] packet precheck failed: %v", id, msgType, err)
 					log.Evaluate("packetToMsgRoutine %d: [%s] packet precheck failed: %v", id, msgType, err)
+					d.notifyPacketDropped("parse")
 					return
 				}
 
@@ -422,6 +446,7 @@ func (d *Device) packetToMsgRoutine(id int) {
 				if err != nil {
 					log.Debug("packetToMsgRoutine %d: [%s] packet validation failed: %v", id, msgType, err)
 					log.Evaluate("packetToMsgRoutine %d: [%s] packet validation failed: %v", id, msgType, err)
+					d.notifyPacketDropped("validate")
 					return
 				}
 
@@ -429,6 +454,7 @@ func (d *Device) packetToMsgRoutine(id int) {
 				if err != nil {
 					log.Error("packetToMsgRoutine: %d: [%s] packet decryption failed: %v", id, msgType, err)
 					log.Evaluate("packetToMsgRoutine: %d: [%s] packet decryption failed: %v", id, msgType, err)
+					d.notifyPacketDropped("decrypt")
 					return
 				}
 
@@ -476,6 +502,7 @@ func (d *Device) packetToMsgRoutine(id int) {
 				default:
 					// ppd not delivered, set error to destroy the ppd
 					log.Critical("packetToMsgRoutine: %d: decryptedMessageCh is full, discarding message", id)
+					d.notifyPacketDropped("queue_full")
 				}
 			}()
 		}

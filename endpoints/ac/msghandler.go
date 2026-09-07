@@ -30,6 +30,12 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 	artMsg := &common.ACOpsResultMsg{}
 	transactionId := ppd.SenderTrxId
 
+	opStart := time.Now()
+	defer func() {
+		ok := err == nil && (artMsg == nil || artMsg.ErrCode == "" || artMsg.ErrCode == common.ErrSuccess.ErrorCode())
+		a.metrics.recordACOperation(ok, time.Since(opStart).Seconds())
+	}()
+
 	err = json.Unmarshal(ppd.BodyMessage, dopMsg)
 	if err != nil {
 		log.Error("ac(%s#%d)[HandleUdpACOperations] failed to parse %s message: %v", acId, transactionId, core.HeaderTypeToString(ppd.HeaderType), err)

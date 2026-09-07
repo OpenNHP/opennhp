@@ -30,6 +30,9 @@ func TestMetricsEndpointExposesInstrumentedValues(t *testing.T) {
 	s.metrics.recordACOperation(true, 0.02)
 	s.metrics.recordACOperation(false, 0.5)
 	s.metrics.recordBlockedAddr()
+	s.metrics.recordDroppedPacket("decrypt")
+	s.metrics.recordDroppedPacket("decrypt")
+	s.metrics.recordDroppedPacket("validate")
 
 	ms := &metricsServer{us: s}
 	rec := httptest.NewRecorder()
@@ -46,6 +49,8 @@ func TestMetricsEndpointExposesInstrumentedValues(t *testing.T) {
 		`nhp_server_ac_operations_total{result="ok"} 1`,
 		`nhp_server_ac_operations_total{result="error"} 1`,
 		`nhp_server_blocked_source_addresses_total 1`,
+		`nhp_server_packets_dropped_total{stage="decrypt"} 2`,
+		`nhp_server_packets_dropped_total{stage="validate"} 1`,
 		`nhp_server_active_connections 0`,
 		`nhp_server_overloaded 0`,
 		`nhp_server_ac_operation_duration_seconds_count 2`,
@@ -104,6 +109,10 @@ func TestClosedSetSeriesPreInitializedToZero(t *testing.T) {
 		`nhp_server_knock_auth_total{result="denied"} 0`,
 		`nhp_server_ac_operations_total{result="ok"} 0`,
 		`nhp_server_ac_operations_total{result="error"} 0`,
+		`nhp_server_packets_dropped_total{stage="parse"} 0`,
+		`nhp_server_packets_dropped_total{stage="validate"} 0`,
+		`nhp_server_packets_dropped_total{stage="decrypt"} 0`,
+		`nhp_server_packets_dropped_total{stage="queue_full"} 0`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("expected pre-initialized series %q\n---\n%s", want, body)
@@ -118,6 +127,7 @@ func TestServerMetricsNilSafe(t *testing.T) {
 	m.recordKnockAuth(true)
 	m.recordACOperation(false, 1.0)
 	m.recordBlockedAddr()
+	m.recordDroppedPacket("decrypt")
 }
 
 func TestMetricsConfigParsing(t *testing.T) {

@@ -264,3 +264,53 @@ func TestPassphraseFromEnv(t *testing.T) {
 		t.Fatalf("file env: got (%q, %v) want file-secret", got, err)
 	}
 }
+
+// TestOpenRejectsHeaderTampering checks that the version/KDF/cost fields are
+// authenticated: editing any of parts[:5] to a still-in-range value makes
+// Open fail rather than silently deriving a different key.
+func TestOpenRejectsHeaderTampering(t *testing.T) {
+	pass := []byte("correct horse battery staple")
+	blob, err := Seal(randKey(t, 32), pass)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Sanity: the untouched blob opens.
+	if _, err := Open(blob, pass); err != nil {
+		t.Fatalf("baseline Open: %v", err)
+	}
+
+	// Drop the time cost from 3 to 1 (still within bounds). Without AAD this
+	// would just derive a different key and surface as ErrBadPassphrase; with
+	// AAD it is an authentication failure either way, but the point is Open
+	// must NOT succeed.
+	parts := strings.Split(blob, "$")
+	if parts[2] != "3" {
+		t.Fatalf("unexpected time cost %q", parts[2])
+	}
+	parts[2] = "1"
+	if _, err := Open(strings.Join(parts, "$"), pass); err == nil {
+		t.Fatal("Open accepted a blob with an altered time cost")
+	}
+
+	// Same for the memory cost.
+	parts = strings.Split(blob, "$")
+	parts[3] = "32768"
+	if _, err := Open(strings.Join(parts, "$"), pass); err == nil {
+		t.Fatal("Open accepted a blob with an altered memory cost")
+	}
+}
+
+// TestOpenRejectsBadSaltLength ensures a wrong-length salt is rejected as
+// malformed before the KDF runs, matching the existing nonce-length guard.
+func TestOpenRejectsBadSaltLength(t *testing.T) {
+	blob, err := Seal(randKey(t, 32), []byte("pw"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(blob, "$")
+	parts[5] = base64.RawStdEncoding.EncodeToString([]byte("short")) // != 16 bytes
+	if _, err := Open(strings.Join(parts, "$"), []byte("pw")); err != ErrMalformedBlob {
+		t.Fatalf("bad salt length: got %v want ErrMalformedBlob", err)
+	}
+}

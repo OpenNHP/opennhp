@@ -191,15 +191,14 @@ type RelayServer struct {
 
 // New creates a RelayServer from the given configuration.
 func New(cfg *Config) (*RelayServer, error) {
-	// Decode relay private key (plain base64 or a sealed blob unsealed
-	// with the passphrase from the environment).
-	keyPass, err := keystore.PassphraseFromEnv()
-	if err != nil {
-		return nil, fmt.Errorf("relay: private key passphrase error: %w", err)
-	}
-	prk, err := keystore.ResolvePrivateKey(cfg.PrivateKeyBase64, keyPass)
+	// Decode relay private key. A plain base64 key is used as-is; only a
+	// sealed blob ("v1$...") consults the environment for a passphrase.
+	prk, sealed, err := keystore.ResolvePrivateKeyAuto(cfg.PrivateKeyBase64)
 	if err != nil {
 		return nil, fmt.Errorf("relay: invalid privateKeyBase64: %w", err)
+	}
+	if sealed {
+		log.Info("relay private key is sealed; unsealed at startup with the configured passphrase")
 	}
 
 	// Create NHP device with relay identity.

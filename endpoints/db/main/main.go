@@ -14,6 +14,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"github.com/OpenNHP/opennhp/endpoints/db"
+	"github.com/OpenNHP/opennhp/endpoints/keystorecli"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
@@ -201,11 +202,11 @@ func initApp() {
 		},
 	}
 
-	app.Commands = []*cli.Command{
+	app.Commands = append([]*cli.Command{
 		runCmd,
 		keygenCmd,
 		pubkeyCmd,
-	}
+	}, keystorecli.Commands()...)
 
 	if err := app.Run(os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)

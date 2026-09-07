@@ -130,15 +130,13 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 		return
 	}
 
-	keyPass, err := keystore.PassphraseFromEnv()
-	if err != nil {
-		log.Error("private key passphrase error %v\n", err)
-		return fmt.Errorf("private key passphrase error %v", err)
-	}
-	prk, err := keystore.ResolvePrivateKey(a.config.PrivateKeyBase64, keyPass)
+	prk, sealed, err := keystore.ResolvePrivateKeyAuto(a.config.PrivateKeyBase64)
 	if err != nil {
 		log.Error("private key parse error %v\n", err)
 		return fmt.Errorf("private key parse error %v", err)
+	}
+	if sealed {
+		log.Info("AC private key is sealed; unsealed at startup with the configured passphrase")
 	}
 
 	a.device = core.NewDevice(core.NHP_AC, prk, nil)

@@ -261,15 +261,13 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		return fmt.Errorf("resolve UDPAddr error %v", err)
 	}
 
-	keyPass, err := keystore.PassphraseFromEnv()
-	if err != nil {
-		log.Error("private key passphrase error: %v", err)
-		return fmt.Errorf("private key passphrase error %v", err)
-	}
-	prk, err := keystore.ResolvePrivateKey(s.config.PrivateKeyBase64, keyPass)
+	prk, sealed, err := keystore.ResolvePrivateKeyAuto(s.config.PrivateKeyBase64)
 	if err != nil {
 		log.Error("private key parse error: %v", err)
 		return fmt.Errorf("private key parse error %v", err)
+	}
+	if sealed {
+		log.Info("server private key is sealed; unsealed at startup with the configured passphrase")
 	}
 
 	option := &core.DeviceOptions{

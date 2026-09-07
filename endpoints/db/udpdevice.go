@@ -135,15 +135,13 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 		return err
 	}
 
-	keyPass, err := keystore.PassphraseFromEnv()
-	if err != nil {
-		log.Error("private key passphrase error %v\n", err)
-		return fmt.Errorf("private key passphrase error %v", err)
-	}
-	prk, err := keystore.ResolvePrivateKey(a.config.PrivateKeyBase64, keyPass)
+	prk, sealed, err := keystore.ResolvePrivateKeyAuto(a.config.PrivateKeyBase64)
 	if err != nil {
 		log.Error("private key parse error %v\n", err)
 		return fmt.Errorf("private key parse error %v", err)
+	}
+	if sealed {
+		log.Info("DB private key is sealed; unsealed at startup with the configured passphrase")
 	}
 	// Cache the resolved key so GetOwnEcdh does not re-run the (expensive)
 	// unseal KDF on every call.

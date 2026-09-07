@@ -159,8 +159,12 @@ func UpdateTomlConfig(filePath string, key string, value any) error {
 
 	switch value := value.(type) {
 	case string:
-		re := regexp.MustCompile(`(?m)^\s*` + key + `\s*=\s*".+"\s*$`)
-		newContent = re.ReplaceAllString(string(content), fmt.Sprintf("%s = \"%s\"", key, value))
+		re := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(key) + `\s*=\s*".+"\s*$`)
+		// ReplaceAllLiteralString, not ReplaceAllString: the replacement is a
+		// verbatim value, and a sealed key blob ("v1$argon2id$...") contains
+		// '$' sequences that ReplaceAllString would interpret as capture-group
+		// references and mangle.
+		newContent = re.ReplaceAllLiteralString(string(content), fmt.Sprintf("%s = \"%s\"", key, value))
 	default:
 		return fmt.Errorf("unsupported type: %T", value)
 	}

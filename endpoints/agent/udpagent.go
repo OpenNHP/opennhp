@@ -387,15 +387,14 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 		}
 		prk = core.NewECDH(core.ECC_CURVE25519).PrivateKey()
 	} else {
-		keyPass, passErr := keystore.PassphraseFromEnv()
-		if passErr != nil {
-			log.Error("private key passphrase error %v\n", passErr)
-			return fmt.Errorf("private key passphrase error %v", passErr)
-		}
-		prk, err = keystore.ResolvePrivateKey(a.config.PrivateKeyBase64, keyPass)
+		var sealed bool
+		prk, sealed, err = keystore.ResolvePrivateKeyAuto(a.config.PrivateKeyBase64)
 		if err != nil {
 			log.Error("private key parse error %v\n", err)
 			return fmt.Errorf("private key parse error %v", err)
+		}
+		if sealed {
+			log.Info("agent private key is sealed; unsealed at startup with the configured passphrase")
 		}
 	}
 

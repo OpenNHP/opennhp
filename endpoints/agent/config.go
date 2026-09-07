@@ -80,17 +80,15 @@ func (c *Config) GetAgentEcdh() core.Ecdh {
 	// broken decode of the "v1$..." blob.
 	prk := c.resolvedKey()
 	if prk == nil {
-		pass, passErr := keystore.PassphraseFromEnv()
-		if passErr == nil {
-			prk, passErr = keystore.ResolvePrivateKey(c.PrivateKeyBase64, pass)
-		}
 		// This path is normally unreachable — Start populates the cache
 		// before the HTTP service accepts requests — so a failure here
 		// means the key is sealed and the passphrase is missing/wrong.
 		// Log it instead of silently returning a wrong public key.
-		if passErr != nil {
-			log.Error("GetAgentEcdh: cannot resolve private key (sealed key without a valid passphrase?): %v", passErr)
+		resolved, _, resErr := keystore.ResolvePrivateKeyAuto(c.PrivateKeyBase64)
+		if resErr != nil {
+			log.Error("GetAgentEcdh: cannot resolve private key (sealed key without a valid passphrase?): %v", resErr)
 		}
+		prk = resolved
 	}
 	return core.ECDHFromKey(eccType, prk)
 }
@@ -504,12 +502,40 @@ func (a *UdpAgent) RotateTeeKey() error {
 func (a *UdpAgent) RotateAgentKey() error {
 	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
 
-	ecdh, err := a.NewEcdhFromConfigFile()
+	content, err := os.ReadFile(fileName)
 	if err != nil {
 		return err
 	}
+	var conf Config
+	if err := toml.Unmarshal(content, &conf); err != nil {
+		return err
+	}
 
-	if err := utils.UpdateTomlConfig(fileName, "PrivateKeyBase64", ecdh.PrivateKeyBase64()); err != nil {
+	ecdh := core.NewECDH(conf.GetEccType())
+
+	// Preserve encryption-at-rest across rotation. If the current key is a
+	// sealed blob, the replacement must be sealed too — writing a plain
+	// base64 key here would silently disable the very protection the operator
+	// opted into (and land a readable key on disk). A sealed key without a
+	// usable passphrase is a hard error, never a downgrade.
+	value := ecdh.PrivateKeyBase64()
+	if keystore.IsSealed(conf.PrivateKeyBase64) {
+		pass, passErr := keystore.PassphraseFromEnv()
+		if passErr != nil {
+			return fmt.Errorf("cannot rotate a sealed agent key: %w", passErr)
+		}
+		if len(pass) == 0 {
+			return fmt.Errorf("cannot rotate a sealed agent key: no passphrase configured (set %s or %s)",
+				keystore.EnvPassphrase, keystore.EnvPassphraseFile)
+		}
+		sealed, sealErr := keystore.Seal(ecdh.PrivateKey(), pass)
+		if sealErr != nil {
+			return fmt.Errorf("re-seal rotated agent key: %w", sealErr)
+		}
+		value = sealed
+	}
+
+	if err := utils.UpdateTomlConfig(fileName, "PrivateKeyBase64", value); err != nil {
 		return err
 	}
 

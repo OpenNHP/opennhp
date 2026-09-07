@@ -14,6 +14,7 @@ import (
 
 	"github.com/OpenNHP/opennhp/endpoints/ac"
 	"github.com/OpenNHP/opennhp/endpoints/ac/ebpf"
+	"github.com/OpenNHP/opennhp/endpoints/keystorecli"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/version"
 )
@@ -75,10 +76,10 @@ func main() {
 		},
 	}
 
-	app.Commands = []*cli.Command{
+	app.Commands = append([]*cli.Command{
 		runCmd,
 		keygenCmd,
-	}
+	}, keystorecli.Commands()...)
 	if err := app.Run(os.Args); err != nil {
 		panic(err)
 	}

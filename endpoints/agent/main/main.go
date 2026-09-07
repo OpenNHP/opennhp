@@ -16,6 +16,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"github.com/OpenNHP/opennhp/endpoints/agent"
+	"github.com/OpenNHP/opennhp/endpoints/keystorecli"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/version"
@@ -183,13 +184,13 @@ func main() {
 		},
 	}
 
-	app.Commands = []*cli.Command{
+	app.Commands = append([]*cli.Command{
 		runCmd,
 		keygenCmd,
 		pubkeyCmd,
 		dhpCmd,
 		registerCmd,
-	}
+	}, keystorecli.Commands()...)
 
 	if err := app.Run(os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)

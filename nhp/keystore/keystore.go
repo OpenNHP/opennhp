@@ -125,7 +125,13 @@ func Seal(privKeyRaw, passphrase []byte) (string, error) {
 	if _, err := rand.Read(nonce); err != nil {
 		return "", fmt.Errorf("keystore: nonce generation failed: %w", err)
 	}
-	ct := aead.Seal(nil, nonce, privKeyRaw, nil)
+	// Bind the header (version, KDF name and cost parameters) into the AEAD as
+	// additional authenticated data. Without this the params are parsed but
+	// unauthenticated, so an attacker with write access could rewrite them
+	// (or the version) and the only symptom would be a derived-key mismatch.
+	// With it, any edit to parts[:5] makes Open fail authentication.
+	aad := headerAAD(strconv.Itoa(argonTime), strconv.Itoa(argonMemory), strconv.Itoa(argonThreads))
+	ct := aead.Seal(nil, nonce, privKeyRaw, aad)
 
 	enc := base64.RawStdEncoding.EncodeToString
 	blob := strings.Join([]string{
@@ -139,6 +145,13 @@ func Seal(privKeyRaw, passphrase []byte) (string, error) {
 		enc(ct),
 	}, "$")
 	return blob, nil
+}
+
+// headerAAD is the additional-authenticated-data bound into every sealed
+// blob: "v1$argon2id$<t>$<m>$<p>". It ties the ciphertext to the version and
+// KDF cost so those fields cannot be altered without failing authentication.
+func headerAAD(t, m, p string) []byte {
+	return []byte(strings.Join([]string{blobVersion, blobKDF, t, m, p}, "$"))
 }
 
 // Open decrypts a sealed blob back into raw private-key bytes.
@@ -169,9 +182,9 @@ func Open(blob string, passphrase []byte) ([]byte, error) {
 	if err1 != nil || err2 != nil || err3 != nil {
 		return nil, ErrMalformedBlob
 	}
-	// Validate the nonce length before spending the KDF — a malformed blob
-	// should fail fast, not after a 64 MiB argon2 pass.
-	if len(nonce) != gcmNonceSize {
+	// Validate the salt and nonce lengths before spending the KDF — a
+	// malformed blob should fail fast, not after a 64 MiB argon2 pass.
+	if len(salt) != saltLen || len(nonce) != gcmNonceSize {
 		return nil, ErrMalformedBlob
 	}
 
@@ -181,7 +194,10 @@ func Open(blob string, passphrase []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	plain, err := aead.Open(nil, nonce, ct, nil)
+	// The AAD must match exactly what Seal bound in; parts[2:5] are the
+	// same strings Seal joined, so pass them through verbatim rather than
+	// re-formatting the parsed ints.
+	plain, err := aead.Open(nil, nonce, ct, headerAAD(parts[2], parts[3], parts[4]))
 	if err != nil {
 		// A wrong passphrase and a tampered blob both surface here as an
 		// authentication failure; keep them indistinguishable.
@@ -208,6 +224,28 @@ func ResolvePrivateKey(cfgValue string, passphrase []byte) ([]byte, error) {
 		return Open(cfgValue, passphrase)
 	}
 	return base64.StdEncoding.DecodeString(cfgValue)
+}
+
+// ResolvePrivateKeyAuto resolves cfgValue, consulting the environment for an
+// unseal passphrase ONLY when the value is actually a sealed blob. A plain
+// base64 key never triggers passphrase resolution, so a daemon whose key is
+// not sealed is unaffected by a stray NHP_KEY_PASSPHRASE / _FILE exported in
+// a shared profile or systemd unit. When the key IS sealed, a missing or
+// unreadable passphrase is still a hard error (fail closed).
+//
+// The second return value is true when cfgValue was a sealed blob, so a
+// caller can log that encryption-at-rest is actually in effect.
+func ResolvePrivateKeyAuto(cfgValue string) (key []byte, sealed bool, err error) {
+	if !IsSealed(cfgValue) {
+		raw, decErr := base64.StdEncoding.DecodeString(cfgValue)
+		return raw, false, decErr
+	}
+	pass, passErr := PassphraseFromEnv()
+	if passErr != nil {
+		return nil, true, passErr
+	}
+	raw, openErr := Open(cfgValue, pass)
+	return raw, true, openErr
 }
 
 // PassphraseFromEnv resolves the unseal passphrase from the environment.

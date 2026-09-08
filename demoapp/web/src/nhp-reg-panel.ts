@@ -10,6 +10,7 @@
 
 import { api, ApiError, type NhpEndpointConfig } from './api.js';
 import { escapeHtml } from './escape.js';
+import { t } from './i18n.js';
 import { createAgent, requestOtp, registerPublicKey, type AgentHandle } from './nhp.js';
 
 export interface NhpRegPanelOpts {
@@ -45,10 +46,10 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
   function renderWaiting(message: string): void {
     container.innerHTML = `
       <div class="panel">
-        <h2>NHP registration</h2>
+        <h2>${t('nhp.title')}</h2>
         <div class="spinner"></div>
         <p class="note">${escapeHtml(message)}</p>
-        ${opts.onBack ? '<button class="btn btn-secondary" id="nhp-back">Back</button>' : ''}
+        ${opts.onBack ? `<button class="btn btn-secondary" id="nhp-back">${t('nhp.back')}</button>` : ''}
       </div>
     `;
     container.querySelector<HTMLButtonElement>('#nhp-back')?.addEventListener('click', () => opts.onBack?.());
@@ -57,18 +58,17 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
   function renderOtpEntry(): void {
     container.innerHTML = `
       <div class="panel">
-        <h2>NHP registration</h2>
-        <p class="note">An OTP has been sent to <strong>${escapeHtml(opts.email)}</strong>.
-          In docker environments, check the nhp-server logs for the OTP fallback.</p>
+        <h2>${t('nhp.title')}</h2>
+        <p class="note">${t('nhp.otpSentTo', { email: escapeHtml(opts.email) })}</p>
         <div id="nhp-alert"></div>
         <div class="field">
-          <label for="nhp-otp">OTP</label>
+          <label for="nhp-otp">${t('nhp.otpLabel')}</label>
           <input id="nhp-otp" type="text" autocomplete="one-time-code" inputmode="numeric"
                  placeholder="000000" maxlength="6" />
         </div>
-        <button id="nhp-register" class="btn btn-primary">Register public key with nhp-server</button>
-        <button id="nhp-resend" class="btn btn-secondary">Resend code</button>
-        ${opts.onBack ? '<button class="btn btn-secondary" id="nhp-back">Back</button>' : ''}
+        <button id="nhp-register" class="btn btn-primary">${t('nhp.registerBtn')}</button>
+        <button id="nhp-resend" class="btn btn-secondary">${t('nhp.resend')}</button>
+        ${opts.onBack ? `<button class="btn btn-secondary" id="nhp-back">${t('nhp.back')}</button>` : ''}
       </div>
     `;
     const alert = container.querySelector<HTMLDivElement>('#nhp-alert')!;
@@ -99,37 +99,37 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
       if (resendTimer) clearInterval(resendTimer);
       let remaining = RESEND_COOLDOWN_SECONDS;
       resendBtn.disabled = true;
-      resendBtn.textContent = `Resend code (${remaining}s)`;
+      resendBtn.textContent = t('nhp.resendCooldown', { n: remaining });
       resendTimer = setInterval(() => {
         remaining -= 1;
         if (remaining <= 0) {
           if (resendTimer) clearInterval(resendTimer);
           resendTimer = null;
           resendBtn.disabled = false;
-          resendBtn.textContent = 'Resend code';
+          resendBtn.textContent = t('nhp.resend');
         } else {
-          resendBtn.textContent = `Resend code (${remaining}s)`;
+          resendBtn.textContent = t('nhp.resendCooldown', { n: remaining });
         }
       }, 1000);
     };
     resendBtn.addEventListener('click', async () => {
       if (resendBtn.disabled) return;
       if (!handle) {
-        showAlert('error', 'Agent not ready. Go back and try again.');
+        showAlert('error', t('nhp.agentNotReady'));
         return;
       }
       resendBtn.disabled = true;
-      showAlert('info', 'Requesting a new OTP…');
+      showAlert('info', t('nhp.requestingNew'));
       try {
         const otp = await requestOtp(handle, opts.nhp, opts.email, debug);
         if (otp.success) {
-          showAlert('info', `A new OTP has been sent to ${opts.email}.`);
+          showAlert('info', t('nhp.newOtpSent', { email: opts.email }));
         } else {
-          showAlert('error', `NHP-OTP request failed${otp.error ? ': ' + otp.error : ''}.`);
+          showAlert('error', t('nhp.otpReqFailed', { suffix: otp.error ? ': ' + otp.error : '' }));
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        showAlert('error', `NHP-OTP request failed: ${msg}`);
+        showAlert('error', t('nhp.otpReqFailed', { suffix: ': ' + msg }));
       } finally {
         // Apply the cooldown whether the request succeeded or failed so
         // a caller cannot bypass the throttle by inducing errors.
@@ -140,27 +140,27 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
     registerBtn.addEventListener('click', async () => {
       const otp = otpInput.value.trim();
       if (!otp) {
-        showAlert('error', 'Enter the OTP from your email.');
+        showAlert('error', t('nhp.enterOtp'));
         return;
       }
       if (!handle) {
-        showAlert('error', 'Agent not ready. Go back and try again.');
+        showAlert('error', t('nhp.agentNotReady'));
         return;
       }
       registerBtn.disabled = true;
-      showAlert('info', 'Driving NHP-REG handshake…');
+      showAlert('info', t('nhp.driving'));
       try {
         const result = await registerPublicKey(handle, opts.nhp, opts.email, otp, debug);
         if (!result.rakOk) {
-          showAlert('error', 'NHP registration failed — check the OTP and try again.');
+          showAlert('error', t('nhp.regFailedCheck'));
           return;
         }
         await api.registerConfirm(opts.regToken ?? '', opts.deviceId, result.expiresAt ?? 0, true);
-        showAlert('success', 'Registration complete.');
+        showAlert('success', t('nhp.complete'));
         opts.onComplete(true);
       } catch (err) {
         const msg = err instanceof ApiError || err instanceof Error ? err.message : String(err);
-        showAlert('error', `NHP handshake failed: ${msg}`);
+        showAlert('error', t('nhp.handshakeFailed', { msg }));
       } finally {
         registerBtn.disabled = false;
       }
@@ -170,9 +170,9 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
   function renderError(message: string): void {
     container.innerHTML = `
       <div class="panel">
-        <h2>NHP registration</h2>
+        <h2>${t('nhp.title')}</h2>
         <div class="alert alert-error">${escapeHtml(message)}</div>
-        ${opts.onBack ? '<button class="btn btn-secondary" id="nhp-back">Back</button>' : ''}
+        ${opts.onBack ? `<button class="btn btn-secondary" id="nhp-back">${t('nhp.back')}</button>` : ''}
       </div>
     `;
     container.querySelector<HTMLButtonElement>('#nhp-back')?.addEventListener('click', () => opts.onBack?.());
@@ -180,20 +180,20 @@ export function mountNhpRegPanel(container: HTMLElement, opts: NhpRegPanelOpts):
 
   // Kick off requestOtp on mount.
   (async () => {
-    renderWaiting('Creating NHP agent and requesting OTP…');
+    renderWaiting(t('nhp.creatingAgent'));
     try {
       handle = await createAgent(opts.privateKey, opts.nhp, opts.deviceId, logLevel);
       const otp = await requestOtp(handle, opts.nhp, opts.email, debug);
       if (disposed) return;
       if (!otp.success) {
-        renderError(`NHP-OTP request failed${otp.error ? ': ' + otp.error : ''}.`);
+        renderError(t('nhp.otpReqFailed', { suffix: otp.error ? ': ' + otp.error : '' }));
         return;
       }
       renderOtpEntry();
     } catch (err) {
       if (disposed) return;
       const msg = err instanceof Error ? err.message : String(err);
-      renderError(`NHP-OTP request failed: ${msg}`);
+      renderError(t('nhp.otpReqFailed', { suffix: ': ' + msg }));
     }
   })();
 

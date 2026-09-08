@@ -3,6 +3,7 @@
 // complete-registration (resume) form accordingly.
 
 import { api, ApiError } from './api.js';
+import { getLang, setLang, t, type Lang } from './i18n.js';
 import { renderLogin } from './views/login.js';
 import { renderRegister } from './views/register.js';
 import { renderResources } from './views/resources.js';
@@ -11,6 +12,31 @@ import { renderCompleteRegistration } from './views/complete-registration.js';
 type View = 'loading' | 'login' | 'register' | 'resources' | 'complete-registration';
 
 const root = document.querySelector<HTMLElement>('#app')!;
+
+// Fixed language switcher (EN | 中文). Switching persists the choice and
+// reloads so every view re-renders in the chosen language from scratch.
+function mountLangSwitcher(): void {
+  if (document.getElementById('lang-switcher')) return;
+  const bar = document.createElement('div');
+  bar.id = 'lang-switcher';
+  const langs: Lang[] = ['en', 'zh-cn'];
+  const labels: Record<Lang, string> = { en: 'English', 'zh-cn': '中文' };
+  bar.innerHTML = langs
+    .map((l) => `<button type="button" data-lang="${l}" class="${getLang() === l ? 'active' : ''}">${labels[l]}</button>`)
+    .join('');
+  bar.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-lang]');
+    if (!btn) return;
+    const lang = btn.dataset.lang as Lang;
+    if (lang === getLang()) return;
+    setLang(lang);
+    location.reload();
+  });
+  document.body.appendChild(bar);
+}
+mountLangSwitcher();
+setLang(getLang()); // stamp <html lang> on first load
+document.title = t('login.title');
 
 async function detectSession(): Promise<{ username: string; email: string; status: string; cipherScheme: string; serverName: string; authProvider: string } | null> {
   try {
@@ -88,7 +114,7 @@ function show(view: View): void {
       });
       return;
     case 'loading':
-      root.innerHTML = '<div class="container"><p class="note">Loading…</p></div>';
+      root.innerHTML = `<div class="container"><p class="note">${t('common.loading')}</p></div>`;
       return;
   }
 }

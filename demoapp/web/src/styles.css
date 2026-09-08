@@ -137,6 +137,36 @@ a:hover { text-decoration: underline; }
 .btn-danger { background: #da3633; color: #fff; }
 .btn-danger:hover { background: #f85149; }
 
+/* Fixed language switcher (top-right). */
+#lang-switcher {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 100;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+}
+#lang-switcher button {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #8b949e;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+#lang-switcher button:hover { color: #c9d1d9; }
+#lang-switcher button.active {
+  background: #21262d;
+  color: #58a6ff;
+}
+
 /* Source-code call-out section, sitting above the footer. */
 .source-section {
   text-align: center;
@@ -146,18 +176,18 @@ a:hover { text-decoration: underline; }
   display: inline-flex;
   align-items: center;
   padding: 8px 16px;
-  background: #21262d;
-  border: 1px solid #30363d;
+  background: #238636;
+  border: 1px solid #2ea043;
   border-radius: 4px;
-  color: #c9d1d9;
+  color: #fff;
   text-decoration: none;
   font-size: 14px;
   font-weight: 600;
 }
 .source-section a:hover {
-  background: #30363d;
-  border-color: #58a6ff;
-  color: #58a6ff;
+  background: #2ea043;
+  border-color: #3fb950;
+  color: #fff;
 }
 
 /* Page footer, mirrored from https://agent.opennhp.org/. */

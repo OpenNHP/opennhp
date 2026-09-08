@@ -4,6 +4,7 @@
 
 import { api, ApiError, type ConfigResponse, type ResourceMeta } from '../api.js';
 import { escapeHtml } from '../escape.js';
+import { t } from '../i18n.js';
 import { createAgent, listResources, knockResource } from '../nhp.js';
 
 export interface ResourcesViewProps {
@@ -21,8 +22,8 @@ function authProviderLabel(p: string): string {
   switch (p) {
     case 'github': return 'GitHub';
     case 'oidc': return 'OIDC';
-    case 'password': return 'Local';
-    default: return 'Local';
+    case 'password': return t('res.providerLocal');
+    default: return t('res.providerLocal');
   }
 }
 
@@ -34,24 +35,24 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
     <div class="container">
       <div class="toolbar">
         <div class="toolbar-id">
-          <div class="user">Signed in as <span>${escapeHtml(props.username)}</span></div>
+          <div class="user">${t('common.signedInAs')} <span>${escapeHtml(props.username)}</span></div>
           <div class="badges">
-            <span class="badge"><span class="badge-k">Auth</span>${escapeHtml(provider)}</span>
-            <span class="badge badge-mono"><span class="badge-k">Alg</span>${escapeHtml(scheme)}</span>
-            <span class="badge"><span class="badge-k">Server</span>${escapeHtml(server)}</span>
+            <span class="badge"><span class="badge-k">${t('res.badgeAuth')}</span>${escapeHtml(provider)}</span>
+            <span class="badge badge-mono"><span class="badge-k">${t('res.badgeAlg')}</span>${escapeHtml(scheme)}</span>
+            <span class="badge"><span class="badge-k">${t('res.badgeServer')}</span>${escapeHtml(server)}</span>
           </div>
         </div>
         <div class="toolbar-actions">
-          <button id="signout-btn" class="btn btn-secondary">Sign out</button>
-          <button id="delete-account-btn" class="btn btn-danger">Delete account</button>
+          <button id="signout-btn" class="btn btn-secondary">${t('common.signOut')}</button>
+          <button id="delete-account-btn" class="btn btn-danger">${t('res.deleteAccount')}</button>
         </div>
       </div>
-      <h1>Protected Resources</h1>
-      <p class="subtitle">Click "Access" to knock nhp-server. The protected resource is hidden until the knock opens the door.</p>
+      <h1>${t('res.title')}</h1>
+      <p class="subtitle">${t('res.subtitle')}</p>
 
       <div id="alert"></div>
       <div id="resource-area">
-        <p class="note">Loading…</p>
+        <p class="note">${t('common.loading')}</p>
       </div>
     </div>
   `;
@@ -74,24 +75,21 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
     // Irreversible: the sealed NHP private key is deleted from the backend,
     // so the account (and its registered identity) cannot be recovered. The
     // nhp-server public key is left to expire via the server TTL.
-    const ok = window.confirm(
-      'Delete your account? This permanently removes your credentials and NHP ' +
-      'key material from this demo. You can re-register afterward. This cannot be undone.',
-    );
+    const ok = window.confirm(t('res.deleteConfirm'));
     if (!ok) return;
     try {
       await api.deleteAccount();
       props.onSignOut();
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : String(err);
-      showAlert('error', `Failed to delete account: ${msg}`);
+      showAlert('error', t('res.deleteFailed', { msg }));
     }
   });
 
   void bootstrap();
 
   async function bootstrap(): Promise<void> {
-    showAlert('info', 'Fetching credentials from server…');
+    showAlert('info', t('res.fetchingCreds'));
     let cfg: ConfigResponse;
     let creds;
     try {
@@ -100,11 +98,11 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
       creds = cr;
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : String(err);
-      showAlert('error', `Failed to load: ${msg}`);
+      showAlert('error', t('res.loadFailed', { msg }));
       return;
     }
 
-    showAlert('info', 'Initializing NHP agent and listing services…');
+    showAlert('info', t('res.initAgent'));
     const handle = await createAgent(creds.privateKey, creds.nhp, creds.deviceId, 'error');
     try {
       const ids = await listResources(handle, creds.nhp);
@@ -118,7 +116,7 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
         .filter((r): r is ResourceMeta => Boolean(r));
 
       if (visible.length === 0) {
-        area.innerHTML = `<p class="note">No accessible resources. Confirm registration completed and that the nhp-server basic plugin allows your user.</p>`;
+        area.innerHTML = `<p class="note">${t('res.none')}</p>`;
         return;
       }
 
@@ -129,9 +127,9 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
             <li class="resource-item" data-resid="${escapeHtml(r.id)}" data-url="${escapeHtml(r.url)}">
               <div>
                 <div class="resource-title">${escapeHtml(r.title)}</div>
-                <div class="resource-id">id: ${escapeHtml(r.id)} &middot; ${escapeHtml(r.url)}</div>
+                <div class="resource-id">${t('res.idPrefix')}: ${escapeHtml(r.id)} &middot; ${escapeHtml(r.url)}</div>
               </div>
-              <button class="btn btn-primary knock-btn" data-resid="${escapeHtml(r.id)}">Access</button>
+              <button class="btn btn-primary knock-btn" data-resid="${escapeHtml(r.id)}">${t('res.access')}</button>
             </li>
           `).join('')}
         </ul>
@@ -148,7 +146,7 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
     } catch (err) {
       handle.dispose();
       const msg = err instanceof Error ? err.message : String(err);
-      showAlert('error', `listServices failed: ${msg}`);
+      showAlert('error', t('res.listFailed', { msg }));
     }
   }
 
@@ -169,14 +167,14 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
     }
     const btn = item?.querySelector<HTMLButtonElement>('.knock-btn');
     if (btn) btn.disabled = true;
-    showAlert('info', `Knocking ${resourceId}…`);
+    showAlert('info', t('res.knocking', { id: resourceId }));
     try {
       const creds = await api.credentials();
       const handle = await createAgent(creds.privateKey, creds.nhp, creds.deviceId, 'error');
       const outcome = await knockResource(handle, creds.nhp, resourceId);
       handle.dispose();
       if (outcome.success && outcome.resourceHost) {
-        showAlert('success', `Knock successful — opening ${outcome.resourceHost}`);
+        showAlert('success', t('res.knockSuccess', { host: outcome.resourceHost }));
         const url = /^https?:\/\//.test(outcome.resourceHost)
           ? outcome.resourceHost
           : `https://${outcome.resourceHost}`;
@@ -195,12 +193,12 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
           window.location.href = url;
         }
       } else {
-        showAlert('error', `Knock failed: ${outcome.error ?? 'unknown'}`);
+        showAlert('error', t('res.knockFailed', { err: outcome.error ?? 'unknown' }));
         popup?.close();
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      showAlert('error', `Knock failed: ${msg}`);
+      showAlert('error', t('res.knockFailed', { err: msg }));
       popup?.close();
     } finally {
       if (btn) btn.disabled = false;

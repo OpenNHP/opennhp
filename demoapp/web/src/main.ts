@@ -3,6 +3,7 @@
 // complete-registration (resume) form accordingly.
 
 import { api, ApiError } from './api.js';
+import { getLang, setLang, t } from './i18n.js';
 import { renderLogin } from './views/login.js';
 import { renderRegister } from './views/register.js';
 import { renderResources } from './views/resources.js';
@@ -11,6 +12,11 @@ import { renderCompleteRegistration } from './views/complete-registration.js';
 type View = 'loading' | 'login' | 'register' | 'resources' | 'complete-registration';
 
 const root = document.querySelector<HTMLElement>('#app')!;
+
+// The language dropdown is rendered inside each view's .container (see
+// renderLangSwitcher). Here we just stamp <html lang> and the tab title.
+setLang(getLang());
+document.title = t('login.title');
 
 async function detectSession(): Promise<{ username: string; email: string; status: string; cipherScheme: string; serverName: string; authProvider: string } | null> {
   try {
@@ -88,7 +94,7 @@ function show(view: View): void {
       });
       return;
     case 'loading':
-      root.innerHTML = '<div class="container"><p class="note">Loading…</p></div>';
+      root.innerHTML = `<div class="container"><p class="note">${t('common.loading')}</p></div>`;
       return;
   }
 }

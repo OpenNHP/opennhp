@@ -1,6 +1,6 @@
 module github.com/OpenNHP/opennhp/nhp
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/cilium/ebpf v0.22.0
@@ -11,7 +11,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/tetratelabs/wazero v1.12.0
 	go.etcd.io/etcd/client/v3 v3.7.1
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/sys v0.47.0
 )
 

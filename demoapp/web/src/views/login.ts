@@ -3,7 +3,7 @@
 
 import { api, ApiError } from '../api.js';
 import { escapeHtml } from '../escape.js';
-import { t } from '../i18n.js';
+import { t, renderLangSwitcher } from '../i18n.js';
 import { renderArchDiagram } from './arch-diagram.js';
 import { renderSourceSection, renderFooter } from './footer.js';
 
@@ -94,6 +94,7 @@ export function renderLogin(root: HTMLElement, props: LoginViewProps): void {
   renderArchDiagram(diagramRoot);
 
   const container = root.querySelector<HTMLElement>('.container')!;
+  renderLangSwitcher(container);
   renderSourceSection(container);
   renderFooter(container);
 }

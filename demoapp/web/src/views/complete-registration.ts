@@ -14,7 +14,7 @@
 
 import { api, ApiError, type ServerInfo } from '../api.js';
 import { escapeHtml } from '../escape.js';
-import { t } from '../i18n.js';
+import { t, renderLangSwitcher } from '../i18n.js';
 import { mountNhpRegPanel } from '../nhp-reg-panel.js';
 
 export interface CompleteRegistrationViewProps {
@@ -41,6 +41,8 @@ export function renderCompleteRegistration(root: HTMLElement, props: CompleteReg
       <div id="reg-area"></div>
     </div>
   `;
+
+  renderLangSwitcher(root.querySelector<HTMLElement>('.container')!);
 
   const alert = root.querySelector<HTMLDivElement>('#alert')!;
   const bindArea = root.querySelector<HTMLDivElement>('#bind-area')!;

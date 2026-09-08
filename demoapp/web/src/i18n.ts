@@ -256,3 +256,59 @@ export function t(key: string, vars?: Record<string, string | number>): string {
     name in vars ? String(vars[name]) : `{${name}}`,
   );
 }
+
+// Render the globe-icon language dropdown (EN ▾ / 中文 ▾) into `container`
+// (a view's .container). Mirrors the switcher on agent.opennhp.org.
+// Picking a language persists it and reloads so every view re-renders in
+// the chosen language.
+export function renderLangSwitcher(container: HTMLElement): void {
+  const langs: { code: Lang; short: string; name: string }[] = [
+    { code: 'en', short: 'EN', name: 'English' },
+    { code: 'zh-cn', short: '中文', name: '简体中文' },
+  ];
+  const cur = getLang();
+  const shortLabel = langs.find((l) => l.code === cur)?.short ?? 'EN';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'lang-switcher';
+  wrap.innerHTML = `
+    <button id="langButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Language">
+      <svg class="lang-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3a14 14 0 0 1 0 18"></path><path d="M12 3a14 14 0 0 0 0 18"></path></svg>
+      <span id="langButtonLabel">${shortLabel}</span><span class="caret">▾</span>
+    </button>
+    <ul id="langMenu" class="lang-menu" role="menu" hidden>
+      ${langs.map((l) => `<li role="menuitem" data-lang="${l.code}" class="${l.code === cur ? 'active' : ''}">${l.name}</li>`).join('')}
+    </ul>
+  `;
+  // Prepend so it anchors to the container's top-right regardless of view.
+  container.insertBefore(wrap, container.firstChild);
+
+  const button = wrap.querySelector<HTMLButtonElement>('#langButton')!;
+  const menu = wrap.querySelector<HTMLUListElement>('#langMenu')!;
+
+  const closeMenu = (): void => {
+    menu.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+  };
+  button.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = menu.hidden;
+    menu.hidden = !open;
+    button.setAttribute('aria-expanded', String(open));
+  });
+  menu.addEventListener('click', (e) => {
+    const li = (e.target as HTMLElement).closest<HTMLLIElement>('li[data-lang]');
+    if (!li) return;
+    const lang = li.dataset.lang as Lang;
+    if (lang === getLang()) {
+      closeMenu();
+      return;
+    }
+    setLang(lang);
+    location.reload();
+  });
+  document.addEventListener('click', closeMenu);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMenu();
+  });
+}

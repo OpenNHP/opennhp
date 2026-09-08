@@ -4,7 +4,7 @@
 
 import { api, ApiError, type RegisterResponse, type ServerInfo } from '../api.js';
 import { escapeHtml } from '../escape.js';
-import { t } from '../i18n.js';
+import { t, renderLangSwitcher } from '../i18n.js';
 import { mountNhpRegPanel } from '../nhp-reg-panel.js';
 import { renderSourceSection, renderFooter } from './footer.js';
 
@@ -171,6 +171,7 @@ export function renderRegister(root: HTMLElement, props: RegisterViewProps): voi
   });
 
   const container = root.querySelector<HTMLElement>('.container')!;
+  renderLangSwitcher(container);
   renderSourceSection(container);
   renderFooter(container);
 }

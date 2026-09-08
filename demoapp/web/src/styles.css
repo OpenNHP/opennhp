@@ -10,7 +10,7 @@ body {
   min-height: 100vh;
 }
 
-.container { max-width: 960px; margin: 0 auto; }
+.container { max-width: 960px; margin: 0 auto; position: relative; }
 
 h1 { color: #58a6ff; font-size: 24px; margin-bottom: 8px; }
 h2 { color: #58a6ff; font-size: 16px; margin-bottom: 12px; }
@@ -138,11 +138,12 @@ a:hover { text-decoration: underline; }
 .btn-danger:hover { background: #f85149; }
 
 /* Language switcher — globe-icon dropdown, mirrored from
-   agent.opennhp.org and pinned to the top-right of the viewport. */
+   agent.opennhp.org and anchored to the top-right of the centered
+   container. */
 .lang-switcher {
-  position: fixed;
-  top: 12px;
-  right: 12px;
+  position: absolute;
+  top: 0;
+  right: 0;
   z-index: 100;
 }
 .lang-switcher button {

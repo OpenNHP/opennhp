@@ -4,7 +4,7 @@
 
 import { api, ApiError, type ConfigResponse, type ResourceMeta } from '../api.js';
 import { escapeHtml } from '../escape.js';
-import { t } from '../i18n.js';
+import { t, renderLangSwitcher } from '../i18n.js';
 import { createAgent, listResources, knockResource } from '../nhp.js';
 
 export interface ResourcesViewProps {
@@ -56,6 +56,8 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
       </div>
     </div>
   `;
+
+  renderLangSwitcher(root.querySelector<HTMLElement>('.container')!);
 
   const alert = root.querySelector<HTMLDivElement>('#alert')!;
   const area = root.querySelector<HTMLDivElement>('#resource-area')!;

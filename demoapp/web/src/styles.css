@@ -137,35 +137,52 @@ a:hover { text-decoration: underline; }
 .btn-danger { background: #da3633; color: #fff; }
 .btn-danger:hover { background: #f85149; }
 
-/* Fixed language switcher (top-right). */
-#lang-switcher {
+/* Language switcher — globe-icon dropdown, mirrored from
+   agent.opennhp.org and pinned to the top-right of the viewport. */
+.lang-switcher {
   position: fixed;
   top: 12px;
   right: 12px;
   z-index: 100;
+}
+.lang-switcher button {
+  background: #21262d;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
   display: inline-flex;
-  gap: 2px;
-  padding: 2px;
+  align-items: center;
+  gap: 4px;
+}
+.lang-switcher button:hover { background: #30363d; }
+.lang-switcher button .caret { font-size: 9px; color: #8b949e; }
+.lang-switcher button .lang-icon { width: 14px; height: 14px; flex-shrink: 0; color: #8b949e; }
+.lang-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
   background: #161b22;
   border: 1px solid #30363d;
-  border-radius: 6px;
-}
-#lang-switcher button {
-  padding: 4px 10px;
-  border: none;
   border-radius: 4px;
-  background: transparent;
-  color: #8b949e;
-  font-size: 12px;
-  font-weight: 600;
-  font-family: inherit;
+  list-style: none;
+  padding: 4px 0;
+  margin: 0;
+  min-width: 140px;
+  z-index: 10;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.lang-menu li {
+  padding: 6px 12px;
   cursor: pointer;
+  font-size: 13px;
+  color: #c9d1d9;
 }
-#lang-switcher button:hover { color: #c9d1d9; }
-#lang-switcher button.active {
-  background: #21262d;
-  color: #58a6ff;
-}
+.lang-menu li:hover { background: #21262d; }
+.lang-menu li.active { color: #58a6ff; font-weight: 600; }
 
 /* Source-code call-out section, sitting above the footer. */
 .source-section {

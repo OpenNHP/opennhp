@@ -4,6 +4,7 @@
 
 import { api, ApiError, type RegisterResponse, type ServerInfo } from '../api.js';
 import { escapeHtml } from '../escape.js';
+import { t } from '../i18n.js';
 import { mountNhpRegPanel } from '../nhp-reg-panel.js';
 import { renderSourceSection, renderFooter } from './footer.js';
 
@@ -15,37 +16,37 @@ export interface RegisterViewProps {
 export function renderRegister(root: HTMLElement, props: RegisterViewProps): void {
   root.innerHTML = `
     <div class="container">
-      <h1>OpenNHP Login Integration Demo App</h1>
-      <p class="subtitle">A working example of adding the OpenNHP to an existing web application</p>
+      <h1>${t('login.title')}</h1>
+      <p class="subtitle">${t('common.subtitle')}</p>
 
       <div id="alert"></div>
 
       <div class="panel">
-        <h2>1. Account credentials</h2>
+        <h2>${t('reg.accountCreds')}</h2>
         <div class="field">
-          <label for="reg-username">Username</label>
+          <label for="reg-username">${t('reg.username')}</label>
           <input id="reg-username" type="text" autocomplete="username" />
         </div>
         <div class="field">
-          <label for="reg-email">Email</label>
+          <label for="reg-email">${t('reg.email')}</label>
           <input id="reg-email" type="email" autocomplete="email" />
         </div>
         <div class="field">
-          <label for="reg-password">Password (min 8 chars)</label>
+          <label for="reg-password">${t('reg.password')}</label>
           <input id="reg-password" type="password" autocomplete="new-password" />
         </div>
         <div class="field">
-          <label for="reg-server">NHP server</label>
+          <label for="reg-server">${t('reg.nhpServer')}</label>
           <select id="reg-server" disabled></select>
         </div>
         <div class="field">
-          <label for="reg-scheme">Cipher scheme</label>
+          <label for="reg-scheme">${t('reg.cipherScheme')}</label>
           <select id="reg-scheme" disabled>
-            <option value="">Loading…</option>
+            <option value="">${t('reg.loadingScheme')}</option>
           </select>
         </div>
-        <button id="reg-submit" class="btn btn-primary">Create account &amp; request OTP</button>
-        <button id="reg-switch-login" class="btn btn-secondary">Already have an account? Sign in</button>
+        <button id="reg-submit" class="btn btn-primary">${t('reg.submit')}</button>
+        <button id="reg-switch-login" class="btn btn-secondary">${t('reg.switchLogin')}</button>
       </div>
 
       <div id="otp-panel"></div>
@@ -73,7 +74,7 @@ export function renderRegister(root: HTMLElement, props: RegisterViewProps): voi
       servers = [];
     }
     if (servers.length === 0) {
-      serverSelect.innerHTML = `<option value="">No servers configured</option>`;
+      serverSelect.innerHTML = `<option value="">${t('reg.noServers')}</option>`;
       return;
     }
     serverSelect.innerHTML = servers
@@ -108,21 +109,21 @@ export function renderRegister(root: HTMLElement, props: RegisterViewProps): voi
     const serverName = serverSelect.value;
     const cipherScheme = schemeSelect.value;
     if (!username || !email || !password) {
-      showAlert('error', 'All fields are required.');
+      showAlert('error', t('reg.allRequired'));
       return;
     }
     if (!serverName || !cipherScheme) {
-      showAlert('error', 'Select an NHP server and cipher scheme.');
+      showAlert('error', t('reg.selectServerScheme'));
       return;
     }
     submitBtn.disabled = true;
-    showAlert('info', 'Creating account and generating NHP key pair…');
+    showAlert('info', t('reg.creating'));
     let reg: RegisterResponse;
     try {
       reg = await api.register(username, password, email, serverName, cipherScheme);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : String(err);
-      showAlert('error', `Registration failed: ${msg}`);
+      showAlert('error', t('reg.failed', { msg }));
       return;
     } finally {
       submitBtn.disabled = false;

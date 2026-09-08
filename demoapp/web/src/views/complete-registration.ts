@@ -14,6 +14,7 @@
 
 import { api, ApiError, type ServerInfo } from '../api.js';
 import { escapeHtml } from '../escape.js';
+import { t } from '../i18n.js';
 import { mountNhpRegPanel } from '../nhp-reg-panel.js';
 
 export interface CompleteRegistrationViewProps {
@@ -27,15 +28,15 @@ export function renderCompleteRegistration(root: HTMLElement, props: CompleteReg
   root.innerHTML = `
     <div class="container">
       <div class="toolbar">
-        <div class="user">Signed in as <span>${escapeHtml(props.username)}</span></div>
-        <button id="signout-btn" class="btn btn-secondary">Sign out</button>
+        <div class="user">${t('common.signedInAs')} <span>${escapeHtml(props.username)}</span></div>
+        <button id="signout-btn" class="btn btn-secondary">${t('common.signOut')}</button>
       </div>
-      <h1>Complete NHP Registration</h1>
-      <p class="subtitle">Your account exists but the NHP key was never registered with nhp-server. Pick your cluster and cipher scheme, then complete the handshake to activate your account.</p>
+      <h1>${t('cr.title')}</h1>
+      <p class="subtitle">${t('cr.subtitle')}</p>
 
       <div id="alert"></div>
       <div id="bind-area">
-        <p class="note">Loading…</p>
+        <p class="note">${t('common.loading')}</p>
       </div>
       <div id="reg-area"></div>
     </div>
@@ -70,7 +71,7 @@ export function renderCompleteRegistration(root: HTMLElement, props: CompleteReg
       }
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : String(err);
-      showAlert('error', `Failed to load server catalog: ${msg}`);
+      showAlert('error', t('cr.loadCatalogFailed', { msg }));
       return;
     }
     renderChooser(servers, curServer, curScheme);
@@ -82,7 +83,7 @@ export function renderCompleteRegistration(root: HTMLElement, props: CompleteReg
     curScheme: string,
   ): void {
     if (servers.length === 0) {
-      bindArea.innerHTML = `<div class="alert alert-error">No nhp-server clusters are configured.</div>`;
+      bindArea.innerHTML = `<div class="alert alert-error">${t('cr.noClusters')}</div>`;
       return;
     }
     // Default the selection to the current binding, else the first server.
@@ -91,18 +92,18 @@ export function renderCompleteRegistration(root: HTMLElement, props: CompleteReg
 
     bindArea.innerHTML = `
       <div class="panel">
-        <h2>NHP binding</h2>
+        <h2>${t('cr.binding')}</h2>
         <div class="field">
-          <label for="cr-server">NHP server cluster</label>
+          <label for="cr-server">${t('cr.cluster')}</label>
           <select id="cr-server">
             ${servers.map((s) => `<option value="${escapeHtml(s.name)}" ${s.name === selName ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
           </select>
         </div>
         <div class="field">
-          <label for="cr-scheme">Cipher scheme</label>
+          <label for="cr-scheme">${t('cr.cipherScheme')}</label>
           <select id="cr-scheme"></select>
         </div>
-        <button id="cr-confirm" class="btn btn-primary">Confirm &amp; request OTP</button>
+        <button id="cr-confirm" class="btn btn-primary">${t('cr.confirm')}</button>
       </div>
     `;
 
@@ -129,11 +130,11 @@ export function renderCompleteRegistration(root: HTMLElement, props: CompleteReg
       const serverName = serverSelect.value;
       const cipherScheme = schemeSelect.value;
       if (!serverName || !cipherScheme) {
-        showAlert('error', 'Select an NHP server cluster and cipher scheme.');
+        showAlert('error', t('cr.selectClusterScheme'));
         return;
       }
       confirmBtn.disabled = true;
-      showAlert('info', 'Generating NHP key material under the selected binding…');
+      showAlert('info', t('cr.generating'));
       try {
         const reg = await api.registerBind(serverName, cipherScheme);
         // Hide the chooser once the panel is mounted.
@@ -153,12 +154,12 @@ export function renderCompleteRegistration(root: HTMLElement, props: CompleteReg
             disposePanel = undefined;
             regArea.innerHTML = '';
             renderChooser(servers, serverName, cipherScheme);
-            showAlert('info', 'Click "Confirm & request OTP" to retry.');
+            showAlert('info', t('cr.clickRetry'));
           },
         });
       } catch (err) {
         const msg = err instanceof ApiError ? err.message : String(err);
-        showAlert('error', `Binding failed: ${msg}`);
+        showAlert('error', t('cr.bindingFailed', { msg }));
       } finally {
         confirmBtn.disabled = false;
       }

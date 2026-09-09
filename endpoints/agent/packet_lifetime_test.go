@@ -129,8 +129,8 @@ func TestTransactionCompletionCannotRecyclePacketWhileUDPSendIsBlocked(t *testin
 	udpAgent := &UdpAgent{device: agentDevice}
 	go func() {
 		defer close(senderDone)
-		n, err := udpAgent.SendPacket(wirePacket, &UdpConn{ConnData: connection, netConn: sender})
-		sendResultCh <- sendResult{n: n, err: err}
+		n, sendErr := udpAgent.SendPacket(wirePacket, &UdpConn{ConnData: connection, netConn: sender})
+		sendResultCh <- sendResult{n: n, err: sendErr}
 	}()
 	t.Cleanup(func() {
 		releaseOnce.Do(func() { close(releaseSend) })
@@ -178,8 +178,8 @@ func TestTransactionCompletionCannotRecyclePacketWhileUDPSendIsBlocked(t *testin
 		t.Fatal("SendPacket did not release its independently owned pool packet")
 	}
 
-	if err := receiver.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
-		t.Fatalf("SetReadDeadline: %v", err)
+	if deadlineErr := receiver.SetReadDeadline(time.Now().Add(2 * time.Second)); deadlineErr != nil {
+		t.Fatalf("SetReadDeadline: %v", deadlineErr)
 	}
 	gotWire := make([]byte, core.PacketBufferSize)
 	n, _, err := receiver.ReadFromUDP(gotWire)

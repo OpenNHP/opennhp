@@ -9,6 +9,8 @@ examples/server_plugin/basic/basic
 .*
 !.vitepress/
 !.github/
+!.dockerignore
+!.release-please-manifest.json
 # Test binary, build with `go test -c`
 *.test
 
@@ -39,3 +41,9 @@ crash.*.log
 # Generated configs (rendered by CI, contain secrets)
 deploy/configs/
 *.log
+# demoapp runtime (local dev run from repo root)
+/data/
+# demoapp local dev: runtime DB / autogen secrets + Vite build output
+# (web/dist is embedded by the Docker/CI build, not committed)
+demoapp/data/
+demoapp/web/dist/

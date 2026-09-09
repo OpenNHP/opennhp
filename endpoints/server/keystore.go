@@ -354,10 +354,10 @@ type AgentKeyRecord struct {
 	Active    bool
 }
 
-// RegisterAgentKey stores an agent's public key. ttlSeconds == 0 stores
-// the row with expires_at = NULL (treated as never-expiring by the
-// read paths); any positive value sets expires_at = now + ttlSeconds.
-// Negative values are clamped to 0.
+// RegisterAgentKey stores an agent's public key and cipher scheme.
+// ttlSeconds == 0 stores the row with expires_at = NULL (treated as
+// never-expiring by the read paths); any positive value sets
+// expires_at = now + ttlSeconds. Negative values are clamped to 0.
 //
 // Returns a specific error:
 //
@@ -365,9 +365,9 @@ type AgentKeyRecord struct {
 //
 // If (userId, deviceId) already exists with the SAME public key, this
 // is an idempotent no-op (the existing expires_at is preserved). With
-// a DIFFERENT public key, the row is updated and the clock is reset
-// to a fresh expires_at.
-func (s *AgentKeyStore) RegisterAgentKey(userId, deviceId, pubKey string, ttlSeconds int64) error {
+// a DIFFERENT public key (e.g. cipher scheme switch), the row is
+// updated and the clock is reset to a fresh expires_at.
+func (s *AgentKeyStore) RegisterAgentKey(userId, deviceId, pubKey string, cipherScheme int, ttlSeconds int64) error {
 	if ttlSeconds < 0 {
 		ttlSeconds = 0
 	}
@@ -399,23 +399,24 @@ func (s *AgentKeyStore) RegisterAgentKey(userId, deviceId, pubKey string, ttlSec
 	}
 
 	// Upsert: insert or update on (usr_id, dev_id) conflict. Both fresh
-	// inserts and key rotations reset the clock.
+	// inserts and key rotations (including cipher scheme switches) reset
+	// the clock.
 	_, err = s.db.Exec(
 		`INSERT INTO agent_keys (usr_id, dev_id, public_key, cipher, created_at, expires_at, active)
-		 VALUES (?, ?, ?, 0, ?, ?, 1)
+		 VALUES (?, ?, ?, ?, ?, ?, 1)
 		 ON CONFLICT(usr_id, dev_id) DO UPDATE SET
 		   public_key = excluded.public_key,
 		   cipher     = excluded.cipher,
 		   created_at = excluded.created_at,
 		   expires_at = excluded.expires_at,
 		   active     = 1`,
-		userId, deviceId, pubKey, now, expiresAt,
+		userId, deviceId, pubKey, cipherScheme, now, expiresAt,
 	)
 	if err != nil {
 		return fmt.Errorf("keystore: insert agent key: %w", err)
 	}
 
-	log.Info("keystore: agent key registered for user=%s device=%s ttl=%ds", userId, deviceId, ttlSeconds)
+	log.Info("keystore: agent key registered for user=%s device=%s cipher=%d ttl=%ds", userId, deviceId, cipherScheme, ttlSeconds)
 	return nil
 }
 

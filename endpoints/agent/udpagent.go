@@ -768,6 +768,8 @@ func (a *UdpAgent) SendPacket(pkt *core.Packet, conn *UdpConn) (n int, err error
 
 	pktType := core.HeaderTypeToString(pkt.HeaderType)
 	//log.Debug("Send [%s] packet (%s -> %s): %+v", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), pkt.Content)
+	// The "Send [" prefix is load-bearing: packet_lifetime_test.go hooks this call
+	// as its pre-write seam. Reword it and that regression stops fencing anything.
 	log.Info("Send [%s] packet (%s -> %s), %d bytes", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
 	log.Evaluate("Send [%s] packet (%s -> %s), %d bytes", pktType, conn.ConnData.LocalAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
 	return conn.netConn.Write(pkt.Content)

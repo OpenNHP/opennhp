@@ -113,8 +113,8 @@ func (a *UdpDevice) updateBaseConfig(file string) (err error) {
 	}
 
 	var conf Config
-	if err := toml.Unmarshal(content, &conf); err != nil {
-		log.Error("failed to unmarshal base config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &conf); unmarshalErr != nil {
+		log.Error("failed to unmarshal base config: %v", unmarshalErr)
 	}
 	if a.config == nil {
 		a.config = &conf
@@ -149,8 +149,8 @@ func (a *UdpDevice) updateServerPeers(file string) (err error) {
 
 	// update
 	var peers Peers
-	if err := toml.Unmarshal(content, &peers); err != nil {
-		log.Error("failed to unmarshal server config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &peers); unmarshalErr != nil {
+		log.Error("failed to unmarshal server config: %v", unmarshalErr)
 	}
 	// Normalize first so legacy single-server entries (Ip/Port at the
 	// top level) auto-upgrade to a single-instance cluster. nhp-db

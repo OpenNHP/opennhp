@@ -10,7 +10,7 @@ body {
   min-height: 100vh;
 }
 
-.container { max-width: 960px; margin: 0 auto; }
+.container { max-width: 960px; margin: 0 auto; position: relative; }
 
 h1 { color: #58a6ff; font-size: 24px; margin-bottom: 8px; }
 h2 { color: #58a6ff; font-size: 16px; margin-bottom: 12px; }
@@ -137,6 +137,54 @@ a:hover { text-decoration: underline; }
 .btn-danger { background: #da3633; color: #fff; }
 .btn-danger:hover { background: #f85149; }
 
+/* Language switcher — globe-icon dropdown, mirrored from
+   agent.opennhp.org and anchored to the top-right of the centered
+   container. */
+.lang-switcher {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 100;
+}
+.lang-switcher button {
+  background: #21262d;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.lang-switcher button:hover { background: #30363d; }
+.lang-switcher button .caret { font-size: 9px; color: #8b949e; }
+.lang-switcher button .lang-icon { width: 14px; height: 14px; flex-shrink: 0; color: #8b949e; }
+.lang-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  list-style: none;
+  padding: 4px 0;
+  margin: 0;
+  min-width: 140px;
+  z-index: 10;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.lang-menu li {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #c9d1d9;
+}
+.lang-menu li:hover { background: #21262d; }
+.lang-menu li.active { color: #58a6ff; font-weight: 600; }
+
 /* Source-code call-out section, sitting above the footer. */
 .source-section {
   text-align: center;
@@ -146,18 +194,18 @@ a:hover { text-decoration: underline; }
   display: inline-flex;
   align-items: center;
   padding: 8px 16px;
-  background: #21262d;
-  border: 1px solid #30363d;
+  background: #238636;
+  border: 1px solid #2ea043;
   border-radius: 4px;
-  color: #c9d1d9;
+  color: #fff;
   text-decoration: none;
   font-size: 14px;
   font-weight: 600;
 }
 .source-section a:hover {
-  background: #30363d;
-  border-color: #58a6ff;
-  color: #58a6ff;
+  background: #2ea043;
+  border-color: #3fb950;
+  color: #fff;
 }
 
 /* Page footer, mirrored from https://agent.opennhp.org/. */

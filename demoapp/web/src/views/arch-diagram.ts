@@ -6,10 +6,12 @@
 // `webdist` tag) include it via the same embed.FS that holds the rest of
 // the SPA — no extra fetch, no CSP hole for cross-origin assets.
 
+import { t } from '../i18n.js';
+
 export function renderArchDiagram(root: HTMLElement): void {
   root.innerHTML = `
     <details class="arch" open>
-      <summary>How the OpenNHP Integration Demo works</summary>
+      <summary>${t('arch.summary')}</summary>
       <div class="arch-body">
         <img
           class="arch-diagram-image"

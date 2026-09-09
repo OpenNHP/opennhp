@@ -129,6 +129,14 @@ type Packet struct {
 	Buf           *PacketBuffer
 	HeaderType    int
 	PoolAllocated bool
+	// KeepAfterSend is no longer written anywhere in this repository. It marked
+	// a packet the physical sender must not release because a local transaction
+	// also owned it; msgToPacketRoutine now hands the sender an independent
+	// clone instead (see Device.clonePacketForSend). Do not set it true again:
+	// ConnectionData.Close and ForwardOutboundPacket's discard paths release
+	// queued packets without consulting this flag, so shared ownership comes
+	// back as a double free, not a leak. Kept (always false) because Packet is
+	// exported and out-of-tree senders still read it.
 	KeepAfterSend bool // only applicable for sending
 	Content       []byte
 }
@@ -273,8 +281,11 @@ func (d *Device) AllocatePoolPacket() *Packet {
 // sharing that packet with an asynchronous sender lets either owner recycle
 // the buffer while the other still uses it.
 func (d *Device) clonePacketForSend(pkt *Packet) (*Packet, error) {
-	if pkt == nil || len(pkt.Content) == 0 || len(pkt.Content) > PacketBufferSize {
-		return nil, errors.New("invalid outbound transaction packet")
+	if pkt == nil {
+		return nil, errors.New("invalid outbound transaction packet: no packet")
+	}
+	if len(pkt.Content) == 0 || len(pkt.Content) > PacketBufferSize {
+		return nil, fmt.Errorf("invalid outbound transaction packet: type %d carries %d content bytes", pkt.HeaderType, len(pkt.Content))
 	}
 
 	clone := d.AllocatePoolPacket()

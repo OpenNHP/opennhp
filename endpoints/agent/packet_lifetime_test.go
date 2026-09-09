@@ -38,6 +38,13 @@ func TestTransactionCompletionCannotRecyclePacketWhileUDPSendIsBlocked(t *testin
 	enteredSend := make(chan struct{})
 	releaseSend := make(chan struct{})
 	var enteredOnce, releaseOnce sync.Once
+	// The hook below is process-global. Register the restore before every other
+	// cleanup so it runs last (t.Cleanup is LIFO and agentDevice.Stop, registered
+	// further down, joins the routines that read Info), leaving no blocked seam
+	// behind for the rest of the package. The silent global logger itself stays
+	// installed: nhp/log exposes no way to read back the previous one.
+	realInfo := packetLifetimeLogger.Info
+	t.Cleanup(func() { packetLifetimeLogger.Info = realInfo })
 	packetLifetimeLogger.Info = func(format string, _ ...any) {
 		if strings.HasPrefix(format, "Send [") {
 			enteredOnce.Do(func() { close(enteredSend) })

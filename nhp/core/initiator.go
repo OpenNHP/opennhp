@@ -34,6 +34,12 @@ type MsgData struct {
 	ExternalCookie *[CookieSize]byte
 	Message        []byte
 	PeerPk         []byte
+	// EncryptedPktCh diverts the encrypted packet to the caller instead of the
+	// connection's socket queue. When set, nothing reaches the wire, no
+	// LocalTransaction is created (the hand-off returns before the transaction
+	// request check), and the caller owns the delivered MsgAssemblerData and
+	// must Destroy() it. This holds for responses derived from PrevParserData
+	// as well as for new initiator messages.
 	EncryptedPktCh chan *MsgAssemblerData
 	ResponseMsgCh  chan *PacketParserData
 }

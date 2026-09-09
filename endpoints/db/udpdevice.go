@@ -831,8 +831,8 @@ func (a *UdpDevice) HandleUdpDataKeyWrappingOperations(ppd *core.PacketParserDat
 			dwaMsg.ErrCode = errCode
 			dwaMsg.ErrMsg = common.ErrTEENotAuthorized.Error()
 		} else {
-			dataPrkStore, err := NewDataPrivateKeyStoreWith(dwrMsg.DoId)
-			if err != nil {
+			dataPrkStore, storeErr := NewDataPrivateKeyStoreWith(dwrMsg.DoId)
+			if storeErr != nil {
 				errCode, _ := strconv.Atoi(common.ErrDataPrivateKeyStore.ErrorCode())
 				dwaMsg.ErrCode = errCode
 				dwaMsg.ErrMsg = common.ErrDataPrivateKeyStore.Error()

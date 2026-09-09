@@ -10,6 +10,12 @@ smtp_username = "${SMTP_USERNAME}"
 smtp_password = "${SMTP_PASSWORD}"
 smtp_from = "${SMTP_FROM}"
 smtp_subject = "${SMTP_SUBJECT}"
+# By default the 6-digit OTP is appended to the subject line for inbox-
+# preview visibility. The subject is the least-protected part of a message
+# (reflected into bounce/auto-reply mail, retained in gateway logs, shown on
+# lock-screen previews where the body is not). Set false to keep the code
+# out of the Subject header — it is always present in the body regardless.
+# smtp_code_in_subject = true
 
 # Require the OTP recipient email to match the claimed userId.
 # When true, RequestOTP rejects requests where UserData["email"] != userId,

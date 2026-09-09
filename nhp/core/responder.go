@@ -201,13 +201,6 @@ func extractInitiatorStaticPubKey(device *Device, ciphers *CipherSuite, header H
 	return peerPk, nil
 }
 
-type ResponderScheme interface {
-	CreatePacketParserData(d *Device, pd *PacketData) (ppd *PacketParserData, err error)
-	DerivePacketParserDataFromPrevAssemblerData(mad *MsgAssemblerData, pkt *Packet, initTime int64) (ppd *PacketParserData)
-	validatePeer(d *Device, ppd *PacketParserData) (err error)
-	decryptBody(d *Device, ppd *PacketParserData) (err error)
-}
-
 type CookieStore struct {
 	CurrCookie     [CookieSize]byte
 	PrevCookie     [CookieSize]byte

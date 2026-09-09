@@ -304,6 +304,20 @@
       background: #2ea043;
       border-color: #2ea043;
     }
+    .details-panel > summary .reg-agent-btn {
+      margin-left: 12px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      background: #1f6feb;
+      border: 1px solid #1f6feb;
+      color: #fff;
+      text-decoration: none;
+    }
+    .details-panel > summary .reg-agent-btn:hover {
+      background: #388bfd;
+      border-color: #388bfd;
+    }
     .details-panel > summary .summary-hint {
       margin-left: auto;
       font-weight: 400;
@@ -565,7 +579,6 @@
     </div>
   </div>
   <p class="subtitle" data-i18n-html="page.subtitle">The OpenNHP JavaScript SDK lets a browser app &ldquo;knock&rdquo; an nhp-server for zero-trust access before redirecting the user to a protected resource. Click <strong>Request Access</strong> button below to run the exact integration flow you'd add to your own web app &mdash; then peek at the right column for the equivalent code. SDK source on <a href="https://github.com/OpenNHP/opennhp/tree/main/endpoints/js-agent" target="_blank" rel="noopener">GitHub</a>.</p>
-  <p class="subtitle" id="reg-link" style="margin-top:-10px;margin-bottom:16px">&#128274; Need to register a new agent? <a href="reg.html" style="color:#58a6ff;font-weight:600">Open Registration Page</a> &mdash; keys are saved automatically and imported below.</p>
   <div class="panel" id="reg-banner" style="display:none;margin-bottom:16px;border-color:#238636">
     <div class="panel-title" style="color:#3fb950">&#x2705; Registered Agent Key Loaded</div>
     <div style="font-size:13px;line-height:1.6">
@@ -664,7 +677,7 @@
   <!-- NHP-Agent parameters (collapsed; opens automatically if keys are missing).
        These map 1:1 to the SDK calls: NHPAgent({...}) / setIdentity / addServer / knockResource. -->
   <details class="panel details-panel" id="keys-details">
-    <summary class="panel-title">&#9881; <span data-i18n="panel.parameters">NHP-Agent Parameters</span><button type="button" class="btn btn-secondary load-token-btn" id="loadFromTokenBtn" data-i18n="btn.loadFromToken">Load from Token</button><span class="summary-hint" data-i18n="summary.editHint">click to view / edit</span></summary>
+    <summary class="panel-title">&#9881; <span data-i18n="panel.parameters">NHP-Agent Parameters</span><a href="reg.html" class="btn btn-secondary reg-agent-btn" id="registerAgentBtn" onclick="event.stopPropagation()" data-i18n="btn.registerAgent">Register New Agent</a><button type="button" class="btn btn-secondary load-token-btn" id="loadFromTokenBtn" data-i18n="btn.loadFromToken">Load from Token</button><span class="summary-hint" data-i18n="summary.editHint">click to view / edit</span></summary>
     <div class="details-content">
       <!-- Server cluster picker. Populated from config.json "clusters"; hidden
            when only one cluster is configured. Selecting a cluster swaps the
@@ -903,6 +916,7 @@ if (result.success) {
       'btn.knock': 'Request Access',
       'btn.clear': 'Clear Log',
       'btn.loadFromToken': 'Load from Token',
+      'btn.registerAgent': 'Register New Agent',
 
       'panel.runtimeFlow': 'Runtime Flow',
       'panel.eventLog': 'SDK Event Log',
@@ -1014,6 +1028,7 @@ if (result.success) {
       'btn.knock': '请求访问',
       'btn.clear': '清空日志',
       'btn.loadFromToken': '从令牌加载',
+      'btn.registerAgent': '注册新代理',
 
       'panel.runtimeFlow': '运行时流程',
       'panel.eventLog': 'SDK 事件日志',
@@ -1244,10 +1259,20 @@ if (result.success) {
         const el = document.getElementById(id);
         if (el && v != null) el.value = v;
       };
-      apply('serverPubKey', cfg.serverPublicKey);
       apply('agentPrivKey', cfg.agentPrivateKey);
       apply('relayUrl',     cfg.relayUrl);
       apply('cipherScheme', cfg.cipherScheme);
+      // Pick the server public key that matches the configured cipher scheme.
+      // Default is Curve25519 (serverPublicKey); fall back to SM2 key only
+      // when cfg.cipherScheme is explicitly 'gmsm' and SM2 key is present.
+      const serverPub = (cfg.cipherScheme === 'gmsm' && cfg.serverPublicKeySM2)
+        ? cfg.serverPublicKeySM2
+        : cfg.serverPublicKey;
+      apply('serverPubKey', serverPub);
+      // Store the Curve25519 key in dataset so doKnock can pass it as
+      // relayPublicKey regardless of the active cipher scheme.
+      const spEl = document.getElementById('serverPubKey');
+      if (spEl && cfg.serverPublicKey) spEl.dataset.curveKey = cfg.serverPublicKey;
       apply('userId',       cfg.userId);
       apply('deviceId',     cfg.deviceId);
       apply('orgId',        cfg.orgId);
@@ -1326,7 +1351,6 @@ if (result.success) {
 
       // Show the registration banner.
       const banner = document.getElementById('reg-banner');
-      const link = document.getElementById('reg-link');
       if (banner) {
         const u = document.getElementById('reg-banner-user');
         const dev = document.getElementById('reg-banner-device');
@@ -1336,7 +1360,6 @@ if (result.success) {
         if (srv) srv.textContent = d.serverName || d.serverId || '—';
         banner.style.display = '';
       }
-      if (link) link.style.display = 'none';
 
       log('ok', `\u{1F510} Imported registered key for ${d.userId} (device ${d.deviceId}) from reg.html`);
     } catch (_) { /* ignore */ }
@@ -1346,7 +1369,6 @@ if (result.success) {
   window.clearRegData = () => {
     try { localStorage.removeItem('nhp-reg-data'); } catch (_) {}
     document.getElementById('reg-banner').style.display = 'none';
-    document.getElementById('reg-link').style.display = '';
     loadDefaultsFromConfig().then(() => {
       log('info', '\u{1F504} Reverted to demo keys from config.json');
     });
@@ -1358,6 +1380,10 @@ if (result.success) {
   // INDEPENDENT agent identity — the two nhp-servers trust different agent keys
   // — so selecting a cluster rewrites BOTH the serverPubKey and the agent
   // private key fields. The relayUrl and user/device identity stay shared.
+  //
+  // Each cluster may carry both serverPublicKey (Curve25519) and
+  // serverPublicKeySM2. The active server public key is chosen based on the
+  // current cipherScheme selector so switching algorithms updates the key.
   function populateClusters(clusters) {
     const row = document.getElementById('clusterRow');
     const sel = document.getElementById('clusterSelect');
@@ -1373,17 +1399,31 @@ if (result.success) {
       const cs = (c.cipherScheme === 'curve25519' || c.cipherScheme === 0) ? 'Curve' : 'GMSM';
       const host = c.serverHost ? ` — ${c.serverHost}` : '';
       opt.textContent = `${c.name || ('Cluster ' + (i + 1))} (${cs})${host}`;
-      opt.dataset.pubkey = c.serverPublicKey || '';
-      opt.dataset.agentkey = c.agentPrivateKey || '';
+      opt.dataset.pubkey    = c.serverPublicKey    || '';
+      opt.dataset.pubkeySm2 = c.serverPublicKeySM2 || '';
+      opt.dataset.agentkey  = c.agentPrivateKey    || '';
       sel.appendChild(opt);
     });
-    sel.onchange = () => {
+
+    // Returns the correct server public key for the currently selected cipher.
+    function activeServerPubKey(opt) {
+      const scheme = document.getElementById('cipherScheme')?.value;
+      if (scheme === 'gmsm' && opt.dataset.pubkeySm2) return opt.dataset.pubkeySm2;
+      return opt.dataset.pubkey;
+    }
+
+    function applyCluster() {
       const opt = sel.options[sel.selectedIndex];
       if (!opt) return;
-      const pk = opt.dataset.pubkey;
+      const pk = activeServerPubKey(opt);
       if (pk) {
         const el = document.getElementById('serverPubKey');
-        if (el) el.value = pk;
+        if (el) {
+          el.value = pk;
+          // Always store the Curve25519 key alongside so doKnock can pass it
+          // as relayPublicKey for relay URL fingerprint derivation.
+          el.dataset.curveKey = opt.dataset.pubkey || '';
+        }
       }
       const ak = opt.dataset.agentkey;
       if (ak) {
@@ -1391,7 +1431,14 @@ if (result.success) {
         if (el) el.value = ak;
       }
       log('info', t('log.clusterSelected', { name: opt.textContent }));
-    };
+    }
+
+    sel.onchange = applyCluster;
+
+    // Re-apply when the user switches cipher scheme so serverPubKey updates.
+    const csEl = document.getElementById('cipherScheme');
+    if (csEl) csEl.addEventListener('change', applyCluster);
+
     row.style.display = '';
     // This picker is slaved to the Protected Server picker (each AC maps to
     // one cluster), so it is read-only — disabled to prevent a selection that
@@ -1777,7 +1824,13 @@ if (result.success) {
       agent.setIdentity({ userId, deviceId, organizationId: orgId });
       log('info', t('log.identity', { userId, deviceId }));
 
-      agent.addServer({ publicKey: serverPubKey });
+      agent.addServer({
+        publicKey: serverPubKey,
+        // When GMSM is selected, serverPubKey is the SM2 key (used for
+        // encryption). The relay registers servers by Curve25519 fingerprint,
+        // so supply the Curve25519 key separately for relay URL derivation.
+        relayPublicKey: document.getElementById('serverPubKey')?.dataset.curveKey || undefined,
+      });
       log('info', t('log.serverPubKey', { key: serverPubKey.substring(0, 20) }));
       setStep('identity', 'done');
 

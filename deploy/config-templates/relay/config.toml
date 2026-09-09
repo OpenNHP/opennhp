@@ -18,7 +18,7 @@ udpTimeoutMs   = 5000
 
 logLevel = 3
 
-# Two server clusters behind one relay. Clients address a specific server
+# One nhp-server cluster behind the relay. Clients address the server
 # explicitly via POST /relay/<fingerprint> (see GET /servers). Schema
 # aligns with the [[Servers]] block used by nhp-agent / nhp-ac / nhp-db —
 # see nhp/common/clusterconfig.
@@ -29,16 +29,5 @@ LoadBalance  = "weighted-random"
 
   [[Servers.Instances]]
   Host   = "${SERVER_PRIVATE_IP}"
-  Port   = 62206
-  Weight = 1
-
-# Server cluster 2 — independent nhp-server identity (pure NHP, no domain).
-[[Servers]]
-Name         = "demo-cluster2"
-PubKeyBase64 = "${NHP_SERVER2_PUBLIC_KEY}"
-LoadBalance  = "weighted-random"
-
-  [[Servers.Instances]]
-  Host   = "${SERVER2_PRIVATE_IP}"
   Port   = 62206
   Weight = 1

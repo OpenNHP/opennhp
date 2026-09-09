@@ -90,6 +90,22 @@ async function makeRakPacket(
   );
 }
 
+async function makeLrtPacket(
+  serverPrivKey: string,
+  serverPubKey: string,
+  agentPubKey: string,
+  payload: object
+) {
+  return buildNHPPacket(
+    NHP_PACKET_TYPES.LRT,
+    serverPrivKey, serverPubKey,
+    agentPubKey,
+    JSON.stringify(payload),
+    true,
+    'curve25519'
+  );
+}
+
 const SUCCESS_ACK = {
   errCode: '',
   resHost: { 'my-service': '10.0.0.1:8080' },
@@ -683,6 +699,129 @@ describe('registerPublicKey — expiresAt passthrough', () => {
 
     expect(result.success).toBe(true);
     expect(result.expiresAt).toBeUndefined();
+    await agent.close();
+  });
+});
+
+// ─── listServices ─────────────────────────────────────────────────────────────
+
+describe('listServices', () => {
+  it('returns resource ids from a successful LRT', async () => {
+    const server = generateX25519KeyPairBase64();
+    const agent = new NHPAgent({ transport: 'websocket' });
+    await agent.init();
+
+    const lrtPacket = await makeLrtPacket(
+      server.privateKey, server.publicKey,
+      agent.getPublicKey(),
+      { errCode: '', list: { 'res-a': null, 'res-b': null, 'res-c': null } }
+    );
+
+    agent.setIdentity({ userId: 'user@example.com', deviceId: 'device-001' });
+    agent.addServer({ publicKey: server.publicKey, host: 'nhp.example.com', port: 62206 });
+    injectMockTransport(agent, lrtPacket);
+
+    const result = await agent.listServices('example');
+
+    expect(result.success).toBe(true);
+    expect(result.resources.sort()).toEqual(['res-a', 'res-b', 'res-c']);
+    await agent.close();
+  });
+
+  it('returns empty resources list when server returns no list map', async () => {
+    const server = generateX25519KeyPairBase64();
+    const agent = new NHPAgent({ transport: 'websocket' });
+    await agent.init();
+
+    const lrtPacket = await makeLrtPacket(
+      server.privateKey, server.publicKey,
+      agent.getPublicKey(),
+      { errCode: '' }
+    );
+
+    agent.setIdentity({ userId: 'u', deviceId: 'd' });
+    agent.addServer({ publicKey: server.publicKey, host: 'nhp.example.com', port: 62206 });
+    injectMockTransport(agent, lrtPacket);
+
+    const result = await agent.listServices('example');
+
+    expect(result.success).toBe(true);
+    expect(result.resources).toEqual([]);
+    await agent.close();
+  });
+
+  it('surfaces server-side errCode in the result', async () => {
+    const server = generateX25519KeyPairBase64();
+    const agent = new NHPAgent({ transport: 'websocket' });
+    await agent.init();
+
+    const lrtPacket = await makeLrtPacket(
+      server.privateKey, server.publicKey,
+      agent.getPublicKey(),
+      { errCode: '403', errMsg: 'Not authorized' }
+    );
+
+    agent.setIdentity({ userId: 'u', deviceId: 'd' });
+    agent.addServer({ publicKey: server.publicKey, host: 'nhp.example.com', port: 62206 });
+    injectMockTransport(agent, lrtPacket);
+
+    const result = await agent.listServices('example');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Not authorized');
+    expect(result.errorCode).toBe('403');
+    expect(result.resources).toEqual([]);
+    await agent.close();
+  });
+
+  it('returns errorCode 1 when agent not initialized', async () => {
+    const agent = new NHPAgent();
+    const result = await agent.listServices('example');
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe('1');
+    expect(result.resources).toEqual([]);
+  });
+
+  it('returns errorCode 2 when identity not set', async () => {
+    const agent = new NHPAgent();
+    await agent.init();
+    const result = await agent.listServices('example');
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe('2');
+    await agent.close();
+  });
+
+  it('returns errorCode 3 when no server configured', async () => {
+    const agent = new NHPAgent();
+    await agent.init();
+    agent.setIdentity({ userId: 'u', deviceId: 'd' });
+    const result = await agent.listServices('example');
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe('3');
+    await agent.close();
+  });
+
+  it('returns errorCode 4 when server replies with wrong packet type', async () => {
+    const server = generateX25519KeyPairBase64();
+    const agent = new NHPAgent({ transport: 'websocket' });
+    await agent.init();
+
+    // Build a RAK packet — wrong response type for a list query.
+    const wrongTypePacket = await makeRakPacket(
+      server.privateKey, server.publicKey,
+      agent.getPublicKey(),
+      { errCode: '', aspId: 'example' }
+    );
+
+    agent.setIdentity({ userId: 'u', deviceId: 'd' });
+    agent.addServer({ publicKey: server.publicKey, host: 'nhp.example.com', port: 62206 });
+    injectMockTransport(agent, wrongTypePacket);
+
+    const result = await agent.listServices('example');
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe('4');
+    expect(result.resources).toEqual([]);
     await agent.close();
   });
 });

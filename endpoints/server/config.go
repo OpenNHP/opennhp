@@ -214,8 +214,8 @@ func (s *UdpServer) loadBaseConfig() error {
 	}
 
 	var config Config
-	if err := toml.Unmarshal(content, &config); err != nil {
-		log.Error("failed to unmarshal base config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &config); unmarshalErr != nil {
+		log.Error("failed to unmarshal base config: %v", unmarshalErr)
 	}
 	if err = s.updateBaseConfig(config); err != nil {
 		// report base config error
@@ -243,8 +243,8 @@ func (s *UdpServer) loadHttpConfig() error {
 		return err
 	}
 	var httpConf HttpConfig
-	if err := toml.Unmarshal(content, &httpConf); err != nil {
-		log.Error("failed to unmarshal http config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &httpConf); unmarshalErr != nil {
+		log.Error("failed to unmarshal http config: %v", unmarshalErr)
 	}
 	if err = s.updateHttpConfig(httpConf); err != nil {
 		// ignore error
@@ -273,13 +273,13 @@ func (s *UdpServer) loadPeers() error {
 		return err
 	}
 	var acPeers Peers
-	if err := toml.Unmarshal(contentAC, &acPeers); err != nil {
-		log.Error("failed to unmarshal ac peers config: %v", err)
+	if unmarshalErr := toml.Unmarshal(contentAC, &acPeers); unmarshalErr != nil {
+		log.Error("failed to unmarshal ac peers config: %v", unmarshalErr)
 	}
 
-	if err := s.updateACPeers(acPeers.ACs); err != nil {
+	if updateErr := s.updateACPeers(acPeers.ACs); updateErr != nil {
 		// ignore error
-		_ = err
+		_ = updateErr
 	}
 
 	acConfigWatch = utils.WatchFile(fileNameAC, func() {
@@ -299,12 +299,12 @@ func (s *UdpServer) loadPeers() error {
 		return err
 	}
 	var agentPeers Peers
-	if err := toml.Unmarshal(contentAgent, &agentPeers); err != nil {
-		log.Error("failed to unmarshal agent peers config: %v", err)
+	if unmarshalErr := toml.Unmarshal(contentAgent, &agentPeers); unmarshalErr != nil {
+		log.Error("failed to unmarshal agent peers config: %v", unmarshalErr)
 	}
-	if err := s.updateAgentPeers(agentPeers.Agents); err != nil {
+	if updateErr := s.updateAgentPeers(agentPeers.Agents); updateErr != nil {
 		// ignore error
-		_ = err
+		_ = updateErr
 	}
 
 	agentConfigWatch = utils.WatchFile(fileNameAgent, func() {
@@ -323,12 +323,12 @@ func (s *UdpServer) loadPeers() error {
 		log.Warning("load db peer config err (optional): %v", err)
 	} else {
 		var dePeers Peers
-		if err := toml.Unmarshal(contentDE, &dePeers); err != nil {
-			log.Error("failed to unmarshal db peers config: %v", err)
+		if unmarshalErr := toml.Unmarshal(contentDE, &dePeers); unmarshalErr != nil {
+			log.Error("failed to unmarshal db peers config: %v", unmarshalErr)
 		}
-		if err := s.updateDePeers(dePeers.DBs); err != nil {
+		if updateErr := s.updateDePeers(dePeers.DBs); updateErr != nil {
 			// ignore error
-			_ = err
+			_ = updateErr
 		}
 		dbConfigWatch = utils.WatchFile(fileNameDE, func() {
 			log.Info("device peer config: %s has been updated", fileNameDE)
@@ -347,11 +347,11 @@ func (s *UdpServer) loadPeers() error {
 		log.Warning("load relay peer config err (optional): %v", err)
 	} else {
 		var relayPeers Peers
-		if err := toml.Unmarshal(contentRelay, &relayPeers); err != nil {
-			log.Error("failed to unmarshal relay peers config: %v", err)
+		if unmarshalErr := toml.Unmarshal(contentRelay, &relayPeers); unmarshalErr != nil {
+			log.Error("failed to unmarshal relay peers config: %v", unmarshalErr)
 		}
-		if err := s.updateRelayPeers(relayPeers.Relays); err != nil {
-			_ = err
+		if updateErr := s.updateRelayPeers(relayPeers.Relays); updateErr != nil {
+			_ = updateErr
 		}
 		relayConfigWatch = utils.WatchFile(fileNameRelay, func() {
 			log.Info("relay peer config: %s has been updated", fileNameRelay)
@@ -387,12 +387,12 @@ func (s *UdpServer) loadResources() error {
 	}
 	aspMap := make(common.AuthSvcProviderMap)
 	// update
-	if err := toml.Unmarshal(content, &aspMap); err != nil {
-		log.Error("failed to unmarshal resource config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &aspMap); unmarshalErr != nil {
+		log.Error("failed to unmarshal resource config: %v", unmarshalErr)
 	}
-	if err := s.updateResources(aspMap); err != nil {
+	if updateErr := s.updateResources(aspMap); updateErr != nil {
 		// ignore error
-		_ = err
+		_ = updateErr
 	}
 
 	resConfigWatch = utils.WatchFile(fileName, func() {
@@ -417,12 +417,12 @@ func (s *UdpServer) loadSourceIps() error {
 
 	// update
 	srcIpMap := make(map[string][]*common.NetAddress)
-	if err := toml.Unmarshal(content, &srcIpMap); err != nil {
-		log.Error("failed to unmarshal src ip config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &srcIpMap); unmarshalErr != nil {
+		log.Error("failed to unmarshal src ip config: %v", unmarshalErr)
 	}
-	if err := s.updateSourceIps(srcIpMap); err != nil {
+	if updateErr := s.updateSourceIps(srcIpMap); updateErr != nil {
 		// ignore error
-		_ = err
+		_ = updateErr
 	}
 
 	srcipConfigWatch = utils.WatchFile(fileName, func() {
@@ -636,9 +636,9 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 	keyChanged := s.config.CookieSigningKeyBase64 != conf.CookieSigningKeyBase64
 	windowChanged := s.config.CookieTimeWindowSeconds != conf.CookieTimeWindowSeconds
 	if (keyChanged || windowChanged) && s.device != nil {
-		newKey, err := decodeCookieSigningKey(conf.CookieSigningKeyBase64)
-		if err != nil {
-			log.Warning("ignoring CookieSigningKeyBase64 change: %v (keeping running key)", err)
+		newKey, decodeErr := decodeCookieSigningKey(conf.CookieSigningKeyBase64)
+		if decodeErr != nil {
+			log.Warning("ignoring CookieSigningKeyBase64 change: %v (keeping running key)", decodeErr)
 		} else {
 			// Mirror the startup demo-key guard in udpserver.Start: a
 			// hot-reload that swaps in the committed docker-compose demo
@@ -689,7 +689,7 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 		// key" / "ignoring CookieSigningKeyBase64 change" warning even
 		// though the divergence persists. Window is always written
 		// back since it's plain numeric and re-validated each reload.
-		if err == nil && conf.CookieSigningKeyBase64 != "" {
+		if decodeErr == nil && conf.CookieSigningKeyBase64 != "" {
 			s.config.CookieSigningKeyBase64 = conf.CookieSigningKeyBase64
 		}
 		s.config.CookieTimeWindowSeconds = conf.CookieTimeWindowSeconds
@@ -936,8 +936,8 @@ func (s *UdpServer) updateTee(file string) (err error) {
 
 	var tees TeeAttestationReports
 	teeMap := make(map[string]*TeeAttestationReport)
-	if err := toml.Unmarshal(content, &tees); err != nil {
-		log.Error("failed to unmarshal device peer config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &tees); unmarshalErr != nil {
+		log.Error("failed to unmarshal device peer config: %v", unmarshalErr)
 	}
 	for _, tee := range tees.TEEs {
 		teeMap[tee.Measure] = tee

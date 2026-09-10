@@ -381,6 +381,10 @@ func (a *UdpDevice) connectionRoutine(conn *UdpConn) {
 		conn.Close()
 	}()
 
+	idleTimeout := time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+	idleTimer := time.NewTimer(idleTimeout)
+	defer idleTimer.Stop()
+
 	for {
 		select {
 		case <-a.signals.stop:
@@ -394,8 +398,10 @@ func (a *UdpDevice) connectionRoutine(conn *UdpConn) {
 				log.Debug("Connection routine closed immediately")
 				return
 			}
+			idleTimeout = time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+			idleTimer.Reset(idleTimeout)
 
-		case <-time.After(time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond):
+		case <-idleTimer.C:
 			// timeout, quit routine
 			log.Debug("Connection routine idle timeout")
 			return
@@ -404,6 +410,7 @@ func (a *UdpDevice) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -413,6 +420,7 @@ func (a *UdpDevice) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -837,8 +845,8 @@ func (a *UdpDevice) HandleUdpDataKeyWrappingOperations(ppd *core.PacketParserDat
 			dwaMsg.ErrCode = errCode
 			dwaMsg.ErrMsg = common.ErrTEENotAuthorized.Error()
 		} else {
-			dataPrkStore, err := NewDataPrivateKeyStoreWith(dwrMsg.DoId)
-			if err != nil {
+			dataPrkStore, storeErr := NewDataPrivateKeyStoreWith(dwrMsg.DoId)
+			if storeErr != nil {
 				errCode, _ := strconv.Atoi(common.ErrDataPrivateKeyStore.ErrorCode())
 				dwaMsg.ErrCode = errCode
 				dwaMsg.ErrMsg = common.ErrDataPrivateKeyStore.Error()

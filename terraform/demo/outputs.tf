@@ -18,26 +18,6 @@ output "ac_private_ip" {
   value       = aws_instance.ac.private_ip
 }
 
-output "server2_public_ip" {
-  description = "NHP Server cluster 2 public IP (server2.opennhp.org)"
-  value       = aws_eip.server2.public_ip
-}
-
-output "server2_private_ip" {
-  description = "NHP Server cluster 2 private IP (for inter-service communication)"
-  value       = aws_instance.server2.private_ip
-}
-
-output "ac2_public_ip" {
-  description = "NHP AC cluster 2 public IP (ac2.opennhp.org)"
-  value       = aws_eip.ac2.public_ip
-}
-
-output "ac2_private_ip" {
-  description = "NHP AC cluster 2 private IP (for inter-service communication)"
-  value       = aws_instance.ac2.private_ip
-}
-
 output "relay_public_ip" {
   description = "NHP Relay public IP (relay.opennhp.org + agent.opennhp.org)"
   value       = aws_eip.relay.public_ip
@@ -56,8 +36,6 @@ output "dns_records" {
     ac          = "ac.${var.domain} -> ${aws_eip.ac.public_ip}"
     demologin   = "demologin.${var.domain} -> CNAME auth-plugin.${var.domain} (legacy)"
     acdemo      = "acdemo.${var.domain} -> CNAME ac.${var.domain} (legacy)"
-    server2     = "server2.${var.domain} -> ${aws_eip.server2.public_ip}"
-    ac2         = "ac2.${var.domain} -> ${aws_eip.ac2.public_ip}"
     relay       = "relay.${var.domain} -> ${aws_eip.relay.public_ip}"
     agent       = "agent.${var.domain} -> ${aws_eip.relay.public_ip}"
   }
@@ -69,8 +47,6 @@ output "ssh_jump_command" {
     relay   = "ssh ec2-user@${aws_eip.relay.public_ip}"
     server  = "ssh -J ec2-user@${aws_eip.relay.public_ip} ec2-user@${aws_instance.server.private_ip}"
     ac      = "ssh -J ec2-user@${aws_eip.relay.public_ip} ec2-user@${aws_instance.ac.private_ip}"
-    server2 = "ssh -J ec2-user@${aws_eip.relay.public_ip} ec2-user@${aws_instance.server2.private_ip}"
-    ac2     = "ssh -J ec2-user@${aws_eip.relay.public_ip} ec2-user@${aws_instance.ac2.private_ip}"
   }
 }
 

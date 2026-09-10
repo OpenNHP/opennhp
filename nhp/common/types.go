@@ -51,10 +51,11 @@ type NhpOTPRequest struct {
 }
 
 type NhpRegisterRequest struct {
-	Msg       *AgentRegisterMsg     `json:"msg"`
-	Ack       *ServerRegisterAckMsg `json:"ack"`
-	PublicKey string                `json:"pubKey"`
-	SrcAddr   *NetAddress           `json:"srcAddr"`
+	Msg          *AgentRegisterMsg     `json:"msg"`
+	Ack          *ServerRegisterAckMsg `json:"ack"`
+	PublicKey    string                `json:"pubKey"`
+	CipherScheme int                   `json:"cipherScheme"`
+	SrcAddr      *NetAddress           `json:"srcAddr"`
 }
 
 type NhpAuthRequest struct {

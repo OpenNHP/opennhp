@@ -23,8 +23,6 @@ const (
 )
 
 func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
-	defer a.wg.Done()
-
 	acId := a.config.ACId
 	dopMsg := &common.ServerACOpsMsg{}
 	artMsg := &common.ACOpsResultMsg{}
@@ -614,6 +612,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 
 func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, dstAddrs []*common.NetAddress, openTimeSec int) {
 	defer a.wg.Done()
+	defer a.recoverUDPHandler(core.NHP_ACC)
 	defer listener.Close()
 
 	// accept only the first incoming tcp connection
@@ -748,6 +747,7 @@ func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, 
 
 func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs []*common.NetAddress, openTimeSec int) {
 	defer a.wg.Done()
+	defer a.recoverUDPHandler(core.NHP_ACC)
 	defer conn.Close()
 	// listen to accept and handle only one incoming connection
 	startTime := time.Now()
@@ -911,6 +911,7 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 }
 
 func (a *UdpAC) tempConnTerminator(conn net.Conn, ctx context.Context) {
+	defer a.recoverUDPHandler(core.NHP_ACC)
 	select {
 	case <-a.signals.stop:
 		conn.Close()

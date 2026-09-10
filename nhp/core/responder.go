@@ -201,13 +201,6 @@ func extractInitiatorStaticPubKey(device *Device, ciphers *CipherSuite, header H
 	return peerPk, nil
 }
 
-type ResponderScheme interface {
-	CreatePacketParserData(d *Device, pd *PacketData) (ppd *PacketParserData, err error)
-	DerivePacketParserDataFromPrevAssemblerData(mad *MsgAssemblerData, pkt *Packet, initTime int64) (ppd *PacketParserData)
-	validatePeer(d *Device, ppd *PacketParserData) (err error)
-	decryptBody(d *Device, ppd *PacketParserData) (err error)
-}
-
 type CookieStore struct {
 	CurrCookie     [CookieSize]byte
 	PrevCookie     [CookieSize]byte
@@ -502,20 +495,20 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			}
 			log.Error("validatePeer: %s peer not found in peer pool, pubkey=%s",
 				peerDeviceTypeName, peerPkBase64)
-			err = fmt.Errorf("peer not found in peer pool (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
+			err = ErrPeerNotFound
 			return err
 		}
 
 		if peer.IsExpired() {
 			log.Error("validatePeer: %s peer expired, pubkey=%s", peerDeviceTypeName, peerPkBase64)
-			err = fmt.Errorf("peer expired (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
+			err = ErrPeerExpired
 			return err
 		}
 
 		if !ppd.ConnData.CheckRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr) {
 			log.Error("validatePeer: %s peer address mismatch on connection, pubkey=%s, remoteAddr=%s",
 				peerDeviceTypeName, peerPkBase64, ppd.ConnData.RemoteAddr)
-			err = fmt.Errorf("peer does not match its previous address on this connection (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
+			err = ErrPeerAddressMismatch
 			return err
 		}
 		ppd.ConnData.UpdateRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr)
@@ -578,7 +571,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 				// block source address
 				ppd.ConnData.SendBlockSignal()
 			}
-			err = fmt.Errorf("received replay packet")
+			err = ErrReplayPacketReceived
 			return err
 		}
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) {
@@ -592,7 +585,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 				// block source address
 				ppd.ConnData.SendBlockSignal()
 			}
-			err = fmt.Errorf("received flood packet")
+			err = ErrFloodPacketReceived
 			return err
 		}
 	}
@@ -607,7 +600,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			// block source address
 			ppd.ConnData.SendBlockSignal()
 		}
-		err = fmt.Errorf("received stale packet")
+		err = ErrStalePacketReceived
 		return err
 	}
 
@@ -640,6 +633,33 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	return nil
 }
 
+var lastDecompressWarnNano atomic.Int64
+
+const decompressWarnInterval = int64(time.Minute)
+
+func decompressWarnAllowed(nowNano int64) bool {
+	last := lastDecompressWarnNano.Load()
+	return nowNano-last >= decompressWarnInterval && lastDecompressWarnNano.CompareAndSwap(last, nowNano)
+}
+
+func inflateBody(body []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	r, err := zlib.NewReader(bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("invalid compressed data: %w", err)
+	}
+	defer func() { _ = r.Close() }()
+
+	n, err := io.Copy(&buf, io.LimitReader(r, MaxDecompressedBodySize+1))
+	if err != nil {
+		return nil, fmt.Errorf("decompress message body: %w", err)
+	}
+	if n > MaxDecompressedBodySize {
+		return nil, fmt.Errorf("decompressed size %d exceeds limit %d", n, MaxDecompressedBodySize)
+	}
+	return buf.Bytes(), nil
+}
+
 func (ppd *PacketParserData) decryptBody() (err error) {
 	defer func() {
 		// clear secrets
@@ -667,33 +687,16 @@ func (ppd *PacketParserData) decryptBody() (err error) {
 
 	// Note: ppd.BodyMessage must be a separate []byte slice because ppd.BasePacket.Buf will be released later
 	if ppd.BodyCompress {
-		// decompress with size limit to prevent decompression bombs
-		var buf bytes.Buffer
-		br := bytes.NewReader(body)
-		r, err := zlib.NewReader(br)
-		if err != nil {
-			log.Critical("invalid compressed data: %v", err)
-			ErrDataDecompressionFailed.SetExtraError(err)
-			return ErrDataDecompressionFailed
-		}
-		defer r.Close()
-
-		// Limit decompressed size to 10MB to prevent DoS via decompression bomb
-		const maxDecompressedSize = 10 * 1024 * 1024
-		limitedReader := io.LimitReader(r, maxDecompressedSize+1) // +1 to detect overflow
-		n, err := io.Copy(&buf, limitedReader)
+		ppd.BodyMessage, err = inflateBody(body)
 		if err != nil {
 			log.Critical("message decompression failed: %v", err)
 			ErrDataDecompressionFailed.SetExtraError(err)
 			return ErrDataDecompressionFailed
 		}
-		if n > maxDecompressedSize {
-			log.Critical("decompressed data exceeds maximum size limit (%d bytes)", maxDecompressedSize)
-			ErrDataDecompressionFailed.SetExtraError(fmt.Errorf("decompressed size %d exceeds limit %d", n, maxDecompressedSize))
-			return ErrDataDecompressionFailed
+		if len(ppd.BodyMessage) >= MaxDecompressedBodyWarnSize && decompressWarnAllowed(time.Now().UnixNano()) {
+			log.Warning("decompressed body %d B reached the %d-byte warn threshold near the %d-byte ceiling",
+				len(ppd.BodyMessage), MaxDecompressedBodyWarnSize, MaxDecompressedBodySize)
 		}
-
-		ppd.BodyMessage = buf.Bytes() // separately allocated memory
 		//log.Debug("message decompressed %v -> %v", body, ppd.BodyMessage)
 	} else {
 		ppd.BodyMessage = append(ppd.BodyMessage, body...) // deep copy

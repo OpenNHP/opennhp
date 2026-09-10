@@ -14,13 +14,6 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
-type InitiatorScheme interface {
-	CreateMsgAssemblerData(d *Device, md *MsgData) (mad *MsgAssemblerData, err error)
-	DeriveMsgAssemblerDataFromPrevParserData(ppd *PacketParserData, t int, message []byte) (mad *MsgAssemblerData)
-	SetPeerPublicKey(d *Device, mad *MsgAssemblerData, peerPk []byte) (err error)
-	EncryptBody(d *Device, mad *MsgAssemblerData) (err error)
-}
-
 type MsgData struct {
 	RemoteAddr     *net.UDPAddr      // used by agent and ac create a new connection or pick an existing connection for msg sending
 	ConnData       *ConnectionData   // used by server to pick an existing connection for msg sending
@@ -34,6 +27,12 @@ type MsgData struct {
 	ExternalCookie *[CookieSize]byte
 	Message        []byte
 	PeerPk         []byte
+	// EncryptedPktCh diverts the encrypted packet to the caller instead of the
+	// connection's socket queue. When set, nothing reaches the wire, no
+	// LocalTransaction is created (the hand-off returns before the transaction
+	// request check), and the caller owns the delivered MsgAssemblerData and
+	// must Destroy() it. This holds for responses derived from PrevParserData
+	// as well as for new initiator messages.
 	EncryptedPktCh chan *MsgAssemblerData
 	ResponseMsgCh  chan *PacketParserData
 }
@@ -103,7 +102,6 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 		mad.bodyMessage = md.Message
 		mad.TransactionId = md.TransactionId
 		mad.connData = md.ConnData
-		mad.encryptedPktCh = md.EncryptedPktCh
 
 		// init packet buffer
 		if md.ExternalPacket != nil {
@@ -130,6 +128,11 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 		// init header counter
 		mad.header.SetCounter(mad.TransactionId)
 	}
+	// EncryptedPktCh applies equally to new initiator packets and responses
+	// derived from PrevParserData. Keeping this outside the branch lets
+	// response-side callers divert encrypted bytes instead of silently falling
+	// through to the connection's socket SendQueue.
+	mad.encryptedPktCh = md.EncryptedPktCh
 
 	// init chain hash -> ChainHash0
 	mad.chainHash, err = NewHash(mad.ciphers.HashType)

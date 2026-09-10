@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -436,18 +437,27 @@ func (a *UdpAC) connectionRoutine(conn *UdpConn) {
 		conn.Close()
 	}()
 
+	idleTimeout := time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+	idleTimer := time.NewTimer(idleTimeout)
+	defer idleTimer.Stop()
+
 	for {
 		select {
 		case <-a.signals.stop:
 			return
 
-		case <-conn.ConnData.SetTimeoutSignal:
+		case _, ok := <-conn.ConnData.SetTimeoutSignal:
+			if !ok {
+				return
+			}
 			if conn.ConnData.TimeoutMs <= 0 {
 				log.Debug("Connection routine closed immediately")
 				return
 			}
+			idleTimeout = time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+			idleTimer.Reset(idleTimeout)
 
-		case <-time.After(time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond):
+		case <-idleTimer.C:
 			// timeout, quit routine
 			log.Debug("Connection routine idle timeout")
 			return
@@ -456,6 +466,7 @@ func (a *UdpAC) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -465,6 +476,7 @@ func (a *UdpAC) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -494,7 +506,10 @@ func (a *UdpAC) connectionRoutine(conn *UdpConn) {
 			// generic receive
 			a.device.RecvPacketToMsg(pd)
 
-		case <-conn.ConnData.BlockSignal:
+		case _, ok := <-conn.ConnData.BlockSignal:
+			if !ok {
+				return
+			}
 			log.Critical("blocking address %s", addrStr)
 			return
 		}
@@ -523,12 +538,33 @@ func (a *UdpAC) recvMessageRoutine() {
 			switch ppd.HeaderType {
 			case core.NHP_AOP:
 				// deal with NHP_AOP message
+				p := ppd
 				a.wg.Add(1)
-				go func(p *core.PacketParserData) {
+				go a.runUDPHandler(p.HeaderType, func() {
 					_ = a.HandleUdpACOperations(p)
-				}(ppd)
+				})
 			}
 		}
+	}
+}
+
+// runUDPHandler contains panics from input-driven handler goroutines. A
+// malformed packet or an unexpected nil in one handler must drop that request,
+// not terminate the entire access-controller process.
+func (a *UdpAC) runUDPHandler(headerType int, handler func()) {
+	defer a.wg.Done()
+	defer a.recoverUDPHandler(headerType)
+	handler()
+}
+
+func (a *UdpAC) recoverUDPHandler(headerType int) {
+	if recovered := recover(); recovered != nil {
+		acID := "unknown"
+		if a != nil && a.config != nil && a.config.ACId != "" {
+			acID = a.config.ACId
+		}
+		log.Error("ac(%s)[%s] UDP handler panic recovered: %v\n%s",
+			acID, core.HeaderTypeToString(headerType), recovered, debug.Stack())
 	}
 }
 

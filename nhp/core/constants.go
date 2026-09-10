@@ -14,6 +14,20 @@ const (
 	RecvQueueSize          = 10240
 )
 
+// decompression
+const (
+	// MaxDecompressedBodySize caps plaintext produced from one compressed NHP
+	// packet. The wire packet itself is limited to PacketBufferSize, so this is
+	// a defense-in-depth ceiling sized for highly compressible legitimate
+	// resource lists while keeping a crafted packet well below the previous
+	// 10 MiB allocation limit.
+	MaxDecompressedBodySize = 256 * PacketBufferSize // 1 MiB
+
+	// MaxDecompressedBodyWarnSize marks an anomalous compression ratio close to
+	// the hard ceiling. Warnings are throttled in decryptBody.
+	MaxDecompressedBodyWarnSize = MaxDecompressedBodySize * 4 / 5
+)
+
 // session
 const (
 	MinimalRecvIntervalMs  = 20 // millisecond

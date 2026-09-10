@@ -10,6 +10,8 @@ examples/server_plugin/basic/basic
 !.vitepress/
 !.github/
 !.dockerignore
+# release-please tracks the released-version baseline here; must be committed
+!.release-please-manifest.json
 # Test binary, build with `go test -c`
 *.test
 

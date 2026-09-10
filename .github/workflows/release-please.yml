@@ -25,5 +25,10 @@ jobs:
       - name: Release Please
         uses: googleapis/release-please-action@v5
         with:
-          release-type: go
+          # Manifest mode: baseline version is tracked in
+          # .release-please-manifest.json so release-please computes the *next*
+          # version instead of recomputing from an old tag and re-proposing an
+          # already-released, immutable tag (e.g. v1.0.0).
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
           token: ${{ steps.app-token.outputs.token }}

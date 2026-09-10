@@ -1,0 +1,36 @@
+# systemd unit for the OpenNHP integrated demo app.
+#
+# Installed on the relay host (shared with nhp-relayd) by the
+# deploy-demoapp job in .github/workflows/deploy-demo-v2.yml.
+# Installed to /etc/systemd/system/demoapp.service.
+#
+# The binary embeds the SPA (webdist build tag), so no web/dist on disk.
+# WorkingDirectory is the install dir so DBPath=data/demo.db and the
+# auto-generated sidecar etc/.demoapp-autogen.json persist next to it.
+
+[Unit]
+Description=OpenNHP integrated demo app (demo.opennhp.org)
+After=network-online.target nhp-relayd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/home/ec2-user/nhp-demoapp
+ExecStart=/home/ec2-user/nhp-demoapp/demoapp -c /home/ec2-user/nhp-demoapp/etc/config.toml
+Restart=on-failure
+RestartSec=5
+
+# Keep the install dir writable so the demoapp can create data/demo.db
+# and persist the auto-generated key sidecar at etc/.demoapp-autogen.json.
+ReadWritePaths=/home/ec2-user/nhp-demoapp
+
+# Hardening: the demoapp only needs loopback (relay on 127.0.0.1:8443)
+# and outbound to the nhp-server / AC via the relay. No privileged caps.
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

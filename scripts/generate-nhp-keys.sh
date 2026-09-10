@@ -11,8 +11,6 @@
 #     --output-dir ./deploy/configs \
 #     --server-private-ip 10.0.1.10 \
 #     --ac-private-ip 10.0.1.20 \
-#     --server2-private-ip 10.0.1.30 \
-#     --ac2-private-ip 10.0.1.40 \
 #     --domain opennhp.org \
 #     [--regenerate]
 #
@@ -26,8 +24,6 @@ TEMPLATE_DIR=""
 OUTPUT_DIR=""
 SERVER_PRIVATE_IP=""
 AC_PRIVATE_IP=""
-SERVER2_PRIVATE_IP=""
-AC2_PRIVATE_IP=""
 DOMAIN="opennhp.org"
 REGENERATE=false
 AWS_SECRET_ID="opennhp/demo"
@@ -39,8 +35,6 @@ while [[ $# -gt 0 ]]; do
     --output-dir)     OUTPUT_DIR="$2"; shift 2 ;;
     --server-private-ip) SERVER_PRIVATE_IP="$2"; shift 2 ;;
     --ac-private-ip)  AC_PRIVATE_IP="$2"; shift 2 ;;
-    --server2-private-ip) SERVER2_PRIVATE_IP="$2"; shift 2 ;;
-    --ac2-private-ip) AC2_PRIVATE_IP="$2"; shift 2 ;;
     --domain)         DOMAIN="$2"; shift 2 ;;
     --regenerate)     REGENERATE=true; shift ;;
     *) echo "Unknown option: $1"; exit 1 ;;
@@ -48,7 +42,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate required args
-for var in BINARY_DIR TEMPLATE_DIR OUTPUT_DIR SERVER_PRIVATE_IP AC_PRIVATE_IP SERVER2_PRIVATE_IP AC2_PRIVATE_IP; do
+for var in BINARY_DIR TEMPLATE_DIR OUTPUT_DIR SERVER_PRIVATE_IP AC_PRIVATE_IP; do
   if [[ -z "${!var}" ]]; then
     echo "ERROR: --$(echo $var | tr '[:upper:]' '[:lower:]' | tr '_' '-') is required"
     exit 1
@@ -61,8 +55,6 @@ echo "  Template dir:   $TEMPLATE_DIR"
 echo "  Output dir:     $OUTPUT_DIR"
 echo "  Server IP:      $SERVER_PRIVATE_IP"
 echo "  AC IP:          $AC_PRIVATE_IP"
-echo "  Server2 IP:     $SERVER2_PRIVATE_IP"
-echo "  AC2 IP:         $AC2_PRIVATE_IP"
 echo "  Domain:         $DOMAIN"
 echo "  Regenerate:     $REGENERATE"
 echo ""
@@ -71,8 +63,7 @@ echo ""
 mkdir -p "$OUTPUT_DIR/server"
 mkdir -p "$OUTPUT_DIR/ac"
 mkdir -p "$OUTPUT_DIR/relay"
-mkdir -p "$OUTPUT_DIR/server2"
-mkdir -p "$OUTPUT_DIR/ac2"
+mkdir -p "$OUTPUT_DIR/demoapp"
 
 # --- Fetch existing keys from AWS Secrets Manager ---
 echo "Fetching secrets from AWS Secrets Manager..."
@@ -93,15 +84,20 @@ EXISTING_AGENT_PRIV=$(echo "$SECRETS_JSON" | jq -r '.nhp_agent_private_key // em
 EXISTING_AGENT_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_agent_public_key // empty')
 EXISTING_JSAGENT_PRIV=$(echo "$SECRETS_JSON" | jq -r '.nhp_jsagent_private_key // empty')
 EXISTING_JSAGENT_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_jsagent_public_key // empty')
-# Cluster 2 js-agent: independent browser-demo identity so cluster 1 and
-# cluster 2 do not share an agent key (each nhp-server trusts only its own).
-EXISTING_JSAGENT2_PRIV=$(echo "$SECRETS_JSON" | jq -r '.nhp_jsagent2_private_key // empty')
-EXISTING_JSAGENT2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_jsagent2_public_key // empty')
-# Server cluster 2 (independent key pairs; see CLAUDE.md opennhp/demo schema)
-EXISTING_SERVER2_PRIV=$(echo "$SECRETS_JSON" | jq -r '.nhp_server2_private_key // empty')
-EXISTING_SERVER2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_server2_public_key // empty')
-EXISTING_AC2_PRIV=$(echo "$SECRETS_JSON" | jq -r '.nhp_ac2_private_key // empty')
-EXISTING_AC2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_ac2_public_key // empty')
+EXISTING_JSAGENT_SM2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_jsagent_sm2_public_key // empty')
+# SM2 public keys derived from server private keys (one private key → two public keys).
+# These are populated from existing data when reusing keys, or derived after keygen --both.
+EXISTING_SERVER_SM2_PUB=$(echo "$SECRETS_JSON" | jq -r '.nhp_server_sm2_public_key // empty')
+# demoapp master keys. KeyEnvelopeKey is the AES-256 master that wraps
+# every user's NHP private key at rest; SessionKey signs the session
+# cookie. Sourced from AWS SM (review #4) so they live alongside the
+# data they protect in a single secret and survive host replacement
+# (the auto-generated sidecar lived next to data/demo.db, so anything
+# with DB read access trivially had the wrapping key, and a host
+# replacement silently bricked every account with "credential unseal
+# failed"). Generate with openssl on first run; reuse on subsequent.
+EXISTING_DEMOAPP_KEY_ENVELOPE_KEY=$(echo "$SECRETS_JSON" | jq -r '.demoapp_key_envelope_key // empty')
+EXISTING_DEMOAPP_SESSION_KEY=$(echo "$SECRETS_JSON" | jq -r '.demoapp_session_key // empty')
 
 # --- Generate or reuse keys ---
 generate_keys() {
@@ -133,12 +129,73 @@ generate_keys() {
   echo "$priv|$pub"
 }
 
+# generate_server_keys: uses --both to derive SM2 and Curve25519 public keys
+# from a single SM2 private key. Returns priv|curve25519_pub|sm2_pub.
+#
+# Legacy secrets (created before dual-cipher support) store the private key
+# and one public key but NOT the SM2 public key. The private key is
+# scheme-agnostic — the same 32 bytes yield both an SM2 and a Curve25519
+# public key — so when only the SM2 public key is missing we DERIVE it from
+# the existing private key with `pubkey --both` rather than regenerating.
+# Regenerating would mint a brand-new private key and silently rotate the
+# server identity (breaking every pinned peer), which must only happen on an
+# explicit --regenerate.
+generate_server_keys() {
+  local binary="$1"
+  local name="$2"
+  local existing_priv="$3"
+  local existing_curve_pub="$4"
+  local existing_sm2_pub="$5"
+
+  if [[ "$REGENERATE" == "false" && -n "$existing_priv" && -n "$existing_curve_pub" && -n "$existing_sm2_pub" ]]; then
+    echo "  Reusing existing $name keys from AWS SM" >&2
+    echo "$existing_priv|$existing_curve_pub|$existing_sm2_pub"
+    return
+  fi
+
+  # Backfill path: private key present but SM2 (and/or Curve25519) public key
+  # missing. Derive the public keys from the STABLE existing private key.
+  if [[ "$REGENERATE" == "false" && -n "$existing_priv" ]]; then
+    echo "  Backfilling $name public keys from existing private key (no rotation)..." >&2
+    local pub_raw pub_json curve_pub sm2_pub
+    pub_raw=$("$binary" pubkey --both --json "$existing_priv")
+    pub_json=$(echo "$pub_raw" | grep -E '^\{.*"sm2PublicKey".*\}$' | tail -1)
+    if [ -n "$pub_json" ]; then
+      curve_pub=$(echo "$pub_json" | jq -r '.curve25519PublicKey')
+      sm2_pub=$(echo "$pub_json" | jq -r '.sm2PublicKey')
+      if [[ -n "$curve_pub" && "$curve_pub" != "null" && -n "$sm2_pub" && "$sm2_pub" != "null" ]]; then
+        echo "$existing_priv|$curve_pub|$sm2_pub"
+        return
+      fi
+    fi
+    echo "  WARNING: could not derive $name public keys from existing private key; raw output was:" >&2
+    echo "$pub_raw" >&2
+    echo "  Falling back to key generation (this ROTATES the $name private key)." >&2
+  fi
+
+  echo "  Generating new $name keys (--both)..." >&2
+  local raw_output keys_json
+  raw_output=$("$binary" keygen --both --json)
+  keys_json=$(echo "$raw_output" | grep -E '^\{.*"privateKey".*\}$' | tail -1)
+  if [ -z "$keys_json" ]; then
+    echo "  ERROR: no JSON output from $name keygen --both; raw output was:" >&2
+    echo "$raw_output" >&2
+    return 1
+  fi
+  local priv curve_pub sm2_pub
+  priv=$(echo "$keys_json" | jq -r '.privateKey')
+  curve_pub=$(echo "$keys_json" | jq -r '.curve25519PublicKey')
+  sm2_pub=$(echo "$keys_json" | jq -r '.sm2PublicKey')
+  echo "$priv|$curve_pub|$sm2_pub"
+}
+
 echo "--- Generating/loading keys ---"
 
-# Server keys
-SERVER_KEYS=$(generate_keys "$BINARY_DIR/nhp-server/nhp-serverd" "server" "$EXISTING_SERVER_PRIV" "$EXISTING_SERVER_PUB")
+# Server keys: one SM2 private key → Curve25519 public key + SM2 public key
+SERVER_KEYS=$(generate_server_keys "$BINARY_DIR/nhp-server/nhp-serverd" "server" "$EXISTING_SERVER_PRIV" "$EXISTING_SERVER_PUB" "$EXISTING_SERVER_SM2_PUB")
 NHP_SERVER_PRIVATE_KEY=$(echo "$SERVER_KEYS" | cut -d'|' -f1)
 NHP_SERVER_PUBLIC_KEY=$(echo "$SERVER_KEYS" | cut -d'|' -f2)
+NHP_SERVER_SM2_PUBLIC_KEY=$(echo "$SERVER_KEYS" | cut -d'|' -f3)
 
 # AC keys
 AC_KEYS=$(generate_keys "$BINARY_DIR/nhp-ac/nhp-acd" "ac" "$EXISTING_AC_PRIV" "$EXISTING_AC_PUB")
@@ -156,35 +213,54 @@ NHP_AGENT_PRIVATE_KEY=$(echo "$AGENT_KEYS" | cut -d'|' -f1)
 NHP_AGENT_PUBLIC_KEY=$(echo "$AGENT_KEYS" | cut -d'|' -f2)
 
 # js-agent keys (browser-side client; private key consumed from AWS SM by the js-agent repo)
-JSAGENT_KEYS=$(generate_keys "$BINARY_DIR/nhp-server/nhp-serverd" "js-agent" "$EXISTING_JSAGENT_PRIV" "$EXISTING_JSAGENT_PUB")
+# Uses --both so both Curve25519 and SM2 public keys are derived from the same private key.
+# Both public keys are registered in server/agent.toml so the agent can knock in either cipher scheme.
+JSAGENT_KEYS=$(generate_server_keys "$BINARY_DIR/nhp-server/nhp-serverd" "js-agent" "$EXISTING_JSAGENT_PRIV" "$EXISTING_JSAGENT_PUB" "$EXISTING_JSAGENT_SM2_PUB")
 NHP_JSAGENT_PRIVATE_KEY=$(echo "$JSAGENT_KEYS" | cut -d'|' -f1)
 NHP_JSAGENT_PUBLIC_KEY=$(echo "$JSAGENT_KEYS" | cut -d'|' -f2)
+NHP_JSAGENT_SM2_PUBLIC_KEY=$(echo "$JSAGENT_KEYS" | cut -d'|' -f3)
 
-# Cluster 2 js-agent keys (independent browser-demo identity; trusted only by
-# server cluster 2, so the cluster 1 and cluster 2 demo agents are isolated)
-JSAGENT2_KEYS=$(generate_keys "$BINARY_DIR/nhp-server/nhp-serverd" "js-agent2" "$EXISTING_JSAGENT2_PRIV" "$EXISTING_JSAGENT2_PUB")
-NHP_JSAGENT2_PRIVATE_KEY=$(echo "$JSAGENT2_KEYS" | cut -d'|' -f1)
-NHP_JSAGENT2_PUBLIC_KEY=$(echo "$JSAGENT2_KEYS" | cut -d'|' -f2)
-
-# Server cluster 2 keys (independent identity, isolated from cluster 1)
-SERVER2_KEYS=$(generate_keys "$BINARY_DIR/nhp-server/nhp-serverd" "server2" "$EXISTING_SERVER2_PRIV" "$EXISTING_SERVER2_PUB")
-NHP_SERVER2_PRIVATE_KEY=$(echo "$SERVER2_KEYS" | cut -d'|' -f1)
-NHP_SERVER2_PUBLIC_KEY=$(echo "$SERVER2_KEYS" | cut -d'|' -f2)
-
-AC2_KEYS=$(generate_keys "$BINARY_DIR/nhp-ac/nhp-acd" "ac2" "$EXISTING_AC2_PRIV" "$EXISTING_AC2_PUB")
-NHP_AC2_PRIVATE_KEY=$(echo "$AC2_KEYS" | cut -d'|' -f1)
-NHP_AC2_PUBLIC_KEY=$(echo "$AC2_KEYS" | cut -d'|' -f2)
+# demoapp master keys. Idempotent: reuse from AWS SM when present,
+# otherwise generate. Regeneration only happens on --regenerate. Use
+# openssl rand -base64 so the values match the demoapp's expected
+# format (base64 std alphabet, 32 raw bytes for KeyEnvelopeKey, 32 raw
+# bytes for SessionKey).
+if [[ "$REGENERATE" == "true" || -z "$EXISTING_DEMOAPP_KEY_ENVELOPE_KEY" ]]; then
+  echo "  Generating new demoapp KeyEnvelopeKey..." >&2
+  DEMOAPP_KEY_ENVELOPE_KEY=$(openssl rand -base64 32)
+else
+  echo "  Reusing existing demoapp KeyEnvelopeKey from AWS SM" >&2
+  DEMOAPP_KEY_ENVELOPE_KEY="$EXISTING_DEMOAPP_KEY_ENVELOPE_KEY"
+fi
+if [[ "$REGENERATE" == "true" || -z "$EXISTING_DEMOAPP_SESSION_KEY" ]]; then
+  echo "  Generating new demoapp SessionKey..." >&2
+  DEMOAPP_SESSION_KEY=$(openssl rand -base64 32)
+else
+  echo "  Reusing existing demoapp SessionKey from AWS SM" >&2
+  DEMOAPP_SESSION_KEY="$EXISTING_DEMOAPP_SESSION_KEY"
+fi
+# Mask both values at their source. The repo is public and Actions logs
+# are world-readable for 90 days; GitHub can't auto-mask these because
+# they're generated (or fetched) inside the script rather than passed
+# in via ${{ secrets.* }}. Registering the mask here defends against a
+# future `set -x` or accidental echo elsewhere in this run.
+echo "::add-mask::$DEMOAPP_KEY_ENVELOPE_KEY"
+echo "::add-mask::$DEMOAPP_SESSION_KEY"
 
 echo ""
 echo "--- Key summary ---"
-echo "  Server public key: ${NHP_SERVER_PUBLIC_KEY:0:20}..."
+echo "  Server public key (Curve25519): ${NHP_SERVER_PUBLIC_KEY:0:20}..."
+echo "  Server public key (SM2):        ${NHP_SERVER_SM2_PUBLIC_KEY:0:20}..."
 echo "  AC public key:     ${NHP_AC_PUBLIC_KEY:0:20}..."
 echo "  Relay public key:  ${NHP_RELAY_PUBLIC_KEY:0:20}..."
 echo "  Agent public key:    ${NHP_AGENT_PUBLIC_KEY:0:20}..."
-echo "  js-agent public key:  ${NHP_JSAGENT_PUBLIC_KEY:0:20}..."
-echo "  js-agent2 public key: ${NHP_JSAGENT2_PUBLIC_KEY:0:20}..."
-echo "  Server2 public key:  ${NHP_SERVER2_PUBLIC_KEY:0:20}..."
-echo "  AC2 public key:      ${NHP_AC2_PUBLIC_KEY:0:20}..."
+echo "  js-agent public key (Curve25519):  ${NHP_JSAGENT_PUBLIC_KEY:0:20}..."
+echo "  js-agent public key (SM2):         ${NHP_JSAGENT_SM2_PUBLIC_KEY:0:20}..."
+# Demoapp KeyEnvelopeKey / SessionKey are secret material (AES-256
+# wrapping master + session cookie signer), not public keys — the
+# generation/reuse status is already logged above, so we drop the
+# prefix echo from this public-key summary. Values are ::add-mask::'d
+# at assignment so any future echo is redacted.
 echo ""
 
 # --- Save keys to AWS Secrets Manager ---
@@ -194,6 +270,7 @@ echo "--- Saving keys to AWS Secrets Manager ---"
 UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
   --arg sk "$NHP_SERVER_PRIVATE_KEY" \
   --arg sp "$NHP_SERVER_PUBLIC_KEY" \
+  --arg ssp "$NHP_SERVER_SM2_PUBLIC_KEY" \
   --arg ak "$NHP_AC_PRIVATE_KEY" \
   --arg ap "$NHP_AC_PUBLIC_KEY" \
   --arg rk "$NHP_RELAY_PRIVATE_KEY" \
@@ -202,15 +279,13 @@ UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
   --arg agp "$NHP_AGENT_PUBLIC_KEY" \
   --arg jk "$NHP_JSAGENT_PRIVATE_KEY" \
   --arg jp "$NHP_JSAGENT_PUBLIC_KEY" \
-  --arg j2k "$NHP_JSAGENT2_PRIVATE_KEY" \
-  --arg j2p "$NHP_JSAGENT2_PUBLIC_KEY" \
-  --arg s2k "$NHP_SERVER2_PRIVATE_KEY" \
-  --arg s2p "$NHP_SERVER2_PUBLIC_KEY" \
-  --arg a2k "$NHP_AC2_PRIVATE_KEY" \
-  --arg a2p "$NHP_AC2_PUBLIC_KEY" \
+  --arg jsp "$NHP_JSAGENT_SM2_PUBLIC_KEY" \
+  --arg dek "$DEMOAPP_KEY_ENVELOPE_KEY" \
+  --arg dsk "$DEMOAPP_SESSION_KEY" \
   '. + {
     nhp_server_private_key: $sk,
     nhp_server_public_key: $sp,
+    nhp_server_sm2_public_key: $ssp,
     nhp_ac_private_key: $ak,
     nhp_ac_public_key: $ap,
     nhp_relay_private_key: $rk,
@@ -219,12 +294,9 @@ UPDATED_SECRETS=$(echo "$SECRETS_JSON" | jq \
     nhp_agent_public_key: $agp,
     nhp_jsagent_private_key: $jk,
     nhp_jsagent_public_key: $jp,
-    nhp_jsagent2_private_key: $j2k,
-    nhp_jsagent2_public_key: $j2p,
-    nhp_server2_private_key: $s2k,
-    nhp_server2_public_key: $s2p,
-    nhp_ac2_private_key: $a2k,
-    nhp_ac2_public_key: $a2p
+    nhp_jsagent_sm2_public_key: $jsp,
+    demoapp_key_envelope_key: $dek,
+    demoapp_session_key: $dsk
   }')
 
 aws secretsmanager put-secret-value \
@@ -238,23 +310,61 @@ echo ""
 # --- Render config templates ---
 echo "--- Rendering config templates ---"
 
-export NHP_SERVER_PRIVATE_KEY NHP_SERVER_PUBLIC_KEY
+export NHP_SERVER_PRIVATE_KEY NHP_SERVER_PUBLIC_KEY NHP_SERVER_SM2_PUBLIC_KEY
 export NHP_AC_PRIVATE_KEY NHP_AC_PUBLIC_KEY
 export NHP_RELAY_PRIVATE_KEY NHP_RELAY_PUBLIC_KEY
 export NHP_AGENT_PRIVATE_KEY NHP_AGENT_PUBLIC_KEY
-export NHP_JSAGENT_PRIVATE_KEY NHP_JSAGENT_PUBLIC_KEY
-export NHP_JSAGENT2_PRIVATE_KEY NHP_JSAGENT2_PUBLIC_KEY
-export NHP_SERVER2_PRIVATE_KEY NHP_SERVER2_PUBLIC_KEY
-export NHP_AC2_PRIVATE_KEY NHP_AC2_PUBLIC_KEY
+export NHP_JSAGENT_PRIVATE_KEY NHP_JSAGENT_PUBLIC_KEY NHP_JSAGENT_SM2_PUBLIC_KEY
+# DEMOAPP_KEY_ENVELOPE_KEY and DEMOAPP_SESSION_KEY are NOT exported here:
+# the demoapp config template carries them as literal __DEMOAPP_*__
+# markers, and the deploy-demoapp job substitutes the real values
+# from opennhp/demo AFTER the nhp-demo-configs artifact boundary
+# (review #7). Exporting them would let envsubst render the real
+# values into the public-readable artifact, defeating the marker
+# pattern.
 export SERVER_PRIVATE_IP="$SERVER_PRIVATE_IP"
 export AC_PRIVATE_IP="$AC_PRIVATE_IP"
-export SERVER2_PRIVATE_IP="$SERVER2_PRIVATE_IP"
-export AC2_PRIVATE_IP="$AC2_PRIVATE_IP"
 export DOMAIN="$DOMAIN"
 
-# Render all templates. cluster 2 (server2/ac2) reuses the same key/IP
-# env vars exported above; the relay config references both clusters.
-for component in server ac relay server2 ac2; do
+# GitHub OAuth (application-side login). These come from GitHub Actions
+# Variables / Secrets set on the deploy-demo-v2 workflow, not from the
+# AWS Secrets Manager secret. Default GH_OAUTH_ENABLED to false so an
+# unconfigured render still produces a valid (disabled) [[OAuth]] block;
+# empty client fields are ignored by the demoapp when Enabled is false.
+#
+# Normalize the enabled flag: an Actions Variable of True/TRUE/1/yes
+# would otherwise render `Enabled = True`, which is invalid TOML (bools
+# must be lowercase) and makes LoadConfig fail — demoapp.service never
+# starts. Map any truthy spelling to lowercase `true`, else `false`.
+case "${GH_OAUTH_ENABLED:-}" in
+  [Tt][Rr][Uu][Ee]|1|[Yy][Ee][Ss]|[Oo][Nn]) GH_OAUTH_ENABLED=true ;;
+  *)                                            GH_OAUTH_ENABLED=false ;;
+esac
+export GH_OAUTH_ENABLED
+
+# TOML basic-string-escape the client fields. The template renders them
+# inside double quotes (ClientID = "${GH_OAUTH_CLIENT_ID}"); a value
+# containing " or \ would break the TOML otherwise. Backslash must be
+# escaped first so we do not double-escape the ones we add.
+#
+# ClientSecret is intentionally NOT exported here: the template carries
+# a literal __GH_OAUTH_CLIENT_SECRET__ marker that envsubst leaves
+# untouched, so the rendered config in the nhp-demo-configs artifact
+# never contains the secret. The deploy-demoapp job substitutes the
+# marker from GitHub Actions secrets after the artifact boundary.
+toml_escape() {
+  local s=${1-}
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  printf '%s' "$s"
+}
+export GH_OAUTH_CLIENT_ID="$(toml_escape "${GH_OAUTH_CLIENT_ID:-}")"
+export GH_OAUTH_REDIRECT_URL="$(toml_escape "${GH_OAUTH_REDIRECT_URL:-}")"
+
+# Render all templates. The relay config references the cluster 1
+# nhp-server; demoapp reuses the cluster 1 server public key — it owns
+# no private key, only per-user keys generated at registration time.
+for component in server ac relay demoapp; do
   echo "  Rendering $component configs..."
   for template in "$TEMPLATE_DIR/$component"/*.toml; do
     filename=$(basename "$template")

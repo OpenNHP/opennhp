@@ -301,9 +301,9 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 	if len(cookieKey) == 0 {
 		cookieKey = make([]byte, 32)
-		if _, err := rand.Read(cookieKey); err != nil {
-			log.Critical("failed to generate random cookie signing key: %v", err)
-			return fmt.Errorf("failed to generate random cookie signing key: %v", err)
+		if _, readErr := rand.Read(cookieKey); readErr != nil {
+			log.Critical("failed to generate random cookie signing key: %v", readErr)
+			return fmt.Errorf("failed to generate random cookie signing key: %v", readErr)
 		}
 		log.Info("CookieSigningKeyBase64 not set; using a random per-process key (single-instance only — clusters must share an operator-supplied key)")
 	} else {
@@ -407,7 +407,15 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	if s.keyStore != nil {
 		opt := s.device.GetOption()
 		opt.PeerLookupFallback = func(pubKey []byte, headerType int) bool {
-			if headerType != core.NHP_KNK && headerType != core.NHP_RKN && headerType != core.NHP_EXT {
+			// Agent-initiated packet types a dynamically-registered
+			// agent (not in agent.toml) can legitimately send after a
+			// successful NHP-REG. NHP_OTP / NHP_REG skip peer
+			// validation entirely (see responder.validatePeer), so
+			// they aren't listed here. NHP_LST must be included or a
+			// freshly-registered agent's listServices call is rejected
+			// with "peer not found in peer pool" → relay 504.
+			if headerType != core.NHP_KNK && headerType != core.NHP_LST &&
+				headerType != core.NHP_RKN && headerType != core.NHP_EXT {
 				return false
 			}
 			pk := base64.StdEncoding.EncodeToString(pubKey)
@@ -801,6 +809,10 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		conn.Close()
 	}()
 
+	idleTimeout := time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+	idleTimer := time.NewTimer(idleTimeout)
+	defer idleTimer.Stop()
+
 	for {
 		select {
 		case <-s.signals.stop:
@@ -811,8 +823,10 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 				log.Debug("Connection routine closed immediately")
 				return
 			}
+			idleTimeout = time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+			idleTimer.Reset(idleTimeout)
 
-		case <-time.After(time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond):
+		case <-idleTimer.C:
 			// timeout, quit routine
 			log.Debug("Connection routine idle timeout")
 			return
@@ -825,6 +839,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -859,6 +874,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -1349,10 +1365,10 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 			if knkMsg.HeaderType == core.NHP_EXT {
 				openTime = 1 // timeout in 1 second
 			}
-			artMsg, err := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
+			artMsg, opErr := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
 			artMsgsMutex.Lock()
 			artMsgs[name] = artMsg
-			if err == nil {
+			if opErr == nil {
 				ackMsg.ResourceHost[name] = info.DestHost()
 				ackMsg.ACTokens[name] = artMsg.ACToken
 				ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
@@ -1417,8 +1433,8 @@ func (us *UdpServer) NewNhpServerHelper(ppd *core.PacketParserData) *plugins.Nhp
 			})
 		}
 		h.ValidateOTPFunc = us.keyStore.ValidateOTP
-		h.RegisterKeyFunc = func(userId, deviceId, pubKeyBase64 string) error {
-			return us.keyStore.RegisterAgentKey(userId, deviceId, pubKeyBase64, keyTTL)
+		h.RegisterKeyFunc = func(userId, deviceId, pubKeyBase64 string, cipherScheme int) error {
+			return us.keyStore.RegisterAgentKey(userId, deviceId, pubKeyBase64, cipherScheme, keyTTL)
 		}
 		h.IsRegisteredFunc = us.keyStore.IsAgentRegistered
 		h.GetAgentKeyExpiryFunc = us.keyStore.GetAgentKeyExpiry

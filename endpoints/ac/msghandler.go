@@ -52,14 +52,14 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 		log.Error("ac(%s#%d)[HandleUdpACOperations] HandleAccessControl failed, err: %v", acId, transactionId, err)
 	}
 
-	// generate ac token and save user and access information
-	entry := &AccessEntry{
+	// Generate a bearer token only after HandleAccessControl has recorded an
+	// explicit success result. Error results can be logged by the server.
+	a.IssueACTokenIfSuccess(artMsg, &AccessEntry{
 		User:     agentUser,
 		SrcAddrs: srcAddrs,
 		DstAddrs: dstAddrs,
 		OpenTime: openTimeSec,
-	}
-	artMsg.ACToken = a.GenerateAccessToken(entry)
+	})
 	//log.Info("generate knock token: %s", artMsg.ACToken)
 
 	// send ac result
@@ -583,6 +583,9 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 			DstAddrs: dstAddrs,
 			OpenTime: tempOpenTimeSec,
 		}
+		// This issuance is safe because every error path above returns, and the
+		// function marks the result successful immediately after this block.
+		// Keep token issuance paired with that invariant if this code changes.
 		artMsg.PreAccessAction = &common.PreAccessInfo{
 			AccessPort:     strconv.Itoa(pickedPort),
 			ACPubKey:       a.device.PublicKeyExBase64(),

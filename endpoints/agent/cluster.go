@@ -54,8 +54,8 @@ func (si *ServerInstance) Weight() int { return si.weight }
 // except the Picker's internal round-robin counter (which is itself
 // concurrency-safe).
 type ServerCluster struct {
-	// PublicKeyBase64 is the common pubkey of every instance in the
-	// cluster — the value the device's peer map keys on.
+	// PublicKeyBase64 is the server public key configured in server.toml,
+	// matching the agent's DefaultCipherScheme (SM2 or Curve25519).
 	PublicKeyBase64 string
 
 	// Name is an optional human-readable label echoed in logs.
@@ -88,6 +88,12 @@ func (sc *ServerCluster) Instances() []*ServerInstance { return sc.instances }
 // Callers that need only a pubkey/identity can use this; callers that
 // need an address must Pick an instance.
 func (sc *ServerCluster) RepresentativePeer() *core.UdpPeer { return sc.representativePeer }
+
+// PeerForCipherScheme returns the representative peer regardless of cipher
+// scheme; PubKeyBase64 already holds the key matching DefaultCipherScheme.
+func (sc *ServerCluster) PeerForCipherScheme(cipherScheme int) *core.UdpPeer {
+	return sc.representativePeer
+}
 
 // Pick selects an instance according to the cluster's load-balance
 // scheme. Returns nil on an empty cluster (caller logs + errors).
@@ -178,5 +184,6 @@ func buildCluster(cfg *ClusterConfig) (*ServerCluster, error) {
 	// determinism (so logs / debugging show a stable choice).
 	sc.representativePeer = sc.instances[0].peer
 	sc.picker = loadbalance.NewPicker(cfg.LoadBalance, sc.instances)
+
 	return sc, nil
 }

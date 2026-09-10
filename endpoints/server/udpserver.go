@@ -696,7 +696,7 @@ func (s *UdpServer) recvPacketRoutine() {
 			s.remoteConnectionMap[addrStr] = conn
 			s.remoteConnectionMapMutex.Unlock()
 
-			conn.ConnData.RecvQueue <- pkt
+			conn.ConnData.ForwardInboundPacket(pkt)
 
 			log.Info("Accept new UDP connection from %s to %s", addrStr, s.listenAddr.String())
 
@@ -810,7 +810,10 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		case <-s.signals.stop:
 			return
 
-		case <-conn.ConnData.SetTimeoutSignal:
+		case _, ok := <-conn.ConnData.SetTimeoutSignal:
+			if !ok {
+				return
+			}
 			if conn.ConnData.TimeoutMs <= 0 {
 				log.Debug("Connection routine closed immediately")
 				return
@@ -823,7 +826,10 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			log.Debug("Connection routine idle timeout")
 			return
 
-		case <-conn.ConnData.BlockSignal:
+		case _, ok := <-conn.ConnData.BlockSignal:
+			if !ok {
+				return
+			}
 			s.AddBlockAddr(conn.ConnData.RemoteAddr)
 			return
 

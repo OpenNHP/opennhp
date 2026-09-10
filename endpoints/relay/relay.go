@@ -563,12 +563,23 @@ func (rs *RelayServer) connectionRoutine(cr *serverRuntime, inst *serverInstance
 		conn.Close()
 	}()
 
+	idleTimeout := time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+	idleTimer := time.NewTimer(idleTimeout)
+	defer idleTimer.Stop()
+
 	for {
 		select {
 		case <-rs.stopCh:
 			return
 
-		case <-time.After(time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond):
+		case <-conn.ConnData.SetTimeoutSignal:
+			if conn.ConnData.TimeoutMs <= 0 {
+				return
+			}
+			idleTimeout = time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+			idleTimer.Reset(idleTimeout)
+
+		case <-idleTimer.C:
 			log.Info("[Relay] connection idle timeout (server %s)", cr.id)
 			return
 
@@ -576,6 +587,7 @@ func (rs *RelayServer) connectionRoutine(cr *serverRuntime, inst *serverInstance
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -585,6 +597,7 @@ func (rs *RelayServer) connectionRoutine(cr *serverRuntime, inst *serverInstance
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -598,8 +611,13 @@ func (rs *RelayServer) connectionRoutine(cr *serverRuntime, inst *serverInstance
 
 			// Check if this is a response for a pending relay request on this
 			// instance. NHP_RAK (register acknowledge) is included so the
-			// agent registration flow works through the relay.
-			if pkt.HeaderType == core.NHP_ACK || pkt.HeaderType == core.NHP_COK || pkt.HeaderType == core.NHP_RAK {
+			// agent registration flow works through the relay; NHP_LRT (list
+			// result) so listServices works; NHP_ACK covers knock/reknock and
+			// NHP_COK the cookie challenge. Every type here must carry the
+			// agent's inbound counter (via PrevParserData on the server side,
+			// see msghandler.go) or dispatch() never matches it and the browser
+			// times out with 504.
+			if pkt.HeaderType == core.NHP_ACK || pkt.HeaderType == core.NHP_COK || pkt.HeaderType == core.NHP_RAK || pkt.HeaderType == core.NHP_LRT {
 				counter := pkt.Counter()
 				// Copy raw bytes before releasing the pool packet — dispatch
 				// sends them into a handler channel.
@@ -626,7 +644,10 @@ func (rs *RelayServer) connectionRoutine(cr *serverRuntime, inst *serverInstance
 			}
 			rs.device.RecvPacketToMsg(pd)
 
-		case <-conn.ConnData.BlockSignal:
+		case _, ok := <-conn.ConnData.BlockSignal:
+			if !ok {
+				return
+			}
 			log.Warning("[Relay] connection blocked %s (server %s)", addrStr, cr.id)
 			return
 		}

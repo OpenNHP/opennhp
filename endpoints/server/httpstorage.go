@@ -63,7 +63,7 @@ func (hs *HttpServer) initStorageRouter() {
 		// generate UUID and file path
 		fileUUID := uuid.New().String()
 		fileDir := filepath.Join(ExeDirPath, uploadDir, fileUUID)
-		if err := os.MkdirAll(fileDir, os.ModePerm); err != nil {
+		if mkdirErr := os.MkdirAll(fileDir, os.ModePerm); mkdirErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "create storage directory failed"})
 			return
 		}

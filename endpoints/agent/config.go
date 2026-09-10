@@ -146,12 +146,19 @@ func (a *UdpAgent) updateBaseConfig(file string) (err error) {
 
 	content, err := os.ReadFile(file)
 	if err != nil {
-		log.Error("failed to read base config: %v", err)
+		if os.IsNotExist(err) && a.allowMissingConfig {
+			// config.toml not yet created (first-time `register` bootstrap);
+			// tolerate it and use an empty config. For run/dhp this branch is
+			// not taken, so a missing config surfaces as an error below.
+			err = nil
+		} else {
+			log.Error("failed to read base config: %v", err)
+		}
 	}
 
 	var conf Config
-	if err := toml.Unmarshal(content, &conf); err != nil {
-		log.Error("failed to unmarshal base config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &conf); unmarshalErr != nil {
+		log.Error("failed to unmarshal base config: %v", unmarshalErr)
 	}
 
 	a.knockUserMutex.Lock()
@@ -194,8 +201,8 @@ func (a *UdpAgent) updateDHPConfig(file string) (err error) {
 	}
 
 	var conf DHPConfig
-	if err := toml.Unmarshal(content, &conf); err != nil {
-		log.Error("failed to unmarshal DHP config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &conf); unmarshalErr != nil {
+		log.Error("failed to unmarshal DHP config: %v", unmarshalErr)
 	}
 
 	if a.config.DHPConfig == nil {
@@ -218,16 +225,16 @@ func (a *UdpAgent) updateServerPeers(file string) (err error) {
 	}
 
 	var peers Peers
-	if err := toml.Unmarshal(content, &peers); err != nil {
-		log.Error("failed to unmarshal server config: %v", err)
-		return err
+	if unmarshalErr := toml.Unmarshal(content, &peers); unmarshalErr != nil {
+		log.Error("failed to unmarshal server config: %v", unmarshalErr)
+		return unmarshalErr
 	}
 	// Validate + auto-upgrade legacy flat form to cluster form.
 	// Deprecation warnings go through log.Warning so operators see
 	// them in the running daemon's logs, not just at first load.
-	if err := normalizeClusters(peers.Servers, log.Warning); err != nil {
-		log.Error("invalid server.toml: %v", err)
-		return err
+	if normErr := normalizeClusters(peers.Servers, log.Warning); normErr != nil {
+		log.Error("invalid server.toml: %v", normErr)
+		return normErr
 	}
 
 	newMap := make(map[string]*ServerCluster, len(peers.Servers))
@@ -353,16 +360,16 @@ func (a *UdpAgent) updateResources(file string) (err error) {
 
 	var resources Resources
 	targetMap := make(map[string]*KnockTarget)
-	if err := toml.Unmarshal(content, &resources); err != nil {
-		log.Error("failed to unmarshal resource config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &resources); unmarshalErr != nil {
+		log.Error("failed to unmarshal resource config: %v", unmarshalErr)
 	}
 	for _, res := range resources.Resources {
-		sc, err := a.FindServerClusterFromResource(res)
+		sc, findErr := a.FindServerClusterFromResource(res)
 		if sc == nil {
-			// err is already specific (the function logs the
+			// findErr is already specific (the function logs the
 			// failure mode); skip this entry and move on so a
 			// single bad resource doesn't block the rest.
-			log.Error("skipping resource %s: %v", res.Id(), err)
+			log.Error("skipping resource %s: %v", res.Id(), findErr)
 			continue
 		}
 		targetMap[res.Id()] = &KnockTarget{

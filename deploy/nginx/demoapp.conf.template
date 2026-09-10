@@ -1,0 +1,52 @@
+# nginx vhost for the integrated demo app (demo.opennhp.org).
+#
+# Shares the relay host and the single relay.opennhp.org Let's Encrypt
+# cert (SAN expanded by bootstrap-tls.sh to cover demo.opennhp.org).
+# Proxies to the demoapp Gin backend, which serves the embedded SPA on
+# :8081 and terminates no TLS itself.
+
+# HTTP -> HTTPS redirect. The session cookie is the sole credential
+# gating /api/credentials (which returns the user's NHP private key),
+# so plaintext HTTP must never serve the app — otherwise an http://
+# link on a hostile network leaks the cookie. Catch port 80 here
+# instead of letting it fall through to nginx's default server.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN_DEMO};
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${DOMAIN_DEMO};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN_RELAY}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_RELAY}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    # HSTS — the session cookie is the sole gate on /api/credentials
+    # (which returns the user's raw NHP private key), so the very first
+    # request to this origin MUST be over TLS. Without HSTS, a hostile
+    # network could 302 the user onto http:// and read the cookie in
+    # transit on the one request before the cookie itself triggers an
+    # upgrade. 1-year max-age covers the lifetime of typical browser
+    # trust stores; includeSubDomains so a future subdomain doesn't
+    # accidentally downgrade.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:8081;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        # Replace, do not append: the demoapp trusts X-Real-IP for
+        # per-user rate limiting / audit; $proxy_add_x_forwarded_for
+        # would let a client prepend a spoofed entry.
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+}

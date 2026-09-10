@@ -140,7 +140,6 @@ func (ha *HttpAC) initRouter() {
 	refreshGrp.GET("/:token", func(ctx *gin.Context) {
 		var err error
 		token := ctx.Param("token")
-		log.Info("get refresh request. token: %s, query: %v", token, ctx.Request.URL.RawQuery)
 
 		if len(token) == 0 {
 			err = common.ErrUrlPathInvalid
@@ -155,6 +154,10 @@ func (ha *HttpAC) initRouter() {
 			ctx.String(http.StatusOK, "{\"errMsg\": \"token error: %v\"}", err)
 			return
 		}
+
+		// Access tokens are bearer credentials. Log only a short correlation
+		// prefix after URL decoding so percent escapes do not dilute the prefix.
+		log.Info("get refresh request. token: %s, query: %v", common.RedactToken(token), ctx.Request.URL.RawQuery)
 
 		req := &common.HttpRefreshRequest{
 			Token: token,

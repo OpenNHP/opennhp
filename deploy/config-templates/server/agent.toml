@@ -10,10 +10,18 @@ PubKeyBase64 = "${NHP_AGENT_PUBLIC_KEY}"
 ExpireTime = 1924991999
 
 [[Agents]]
-# PUBLIC DEMO js-agent (browser-side, OpenNHP/js-agent). The matching
-# private key is served as part of https://${DOMAIN_AGENT}/config.json
+# PUBLIC DEMO js-agent (browser-side, OpenNHP/js-agent). Curve25519 public key
+# — matched when the agent knocks using the curve25519 cipher scheme.
+# The matching private key is served as part of https://${DOMAIN_AGENT}/config.json
 # so any browser can use it. Scope this peer's access to demo-only
 # resources in resource.toml — anyone with this pubkey can authenticate
 # as "demo browser agent".
 PubKeyBase64 = "${NHP_JSAGENT_PUBLIC_KEY}"
+ExpireTime = 1924991999
+
+[[Agents]]
+# PUBLIC DEMO js-agent (browser-side, OpenNHP/js-agent). SM2 public key
+# — matched when the agent knocks using the gmsm cipher scheme.
+# Derived from the same private key as the Curve25519 entry above.
+PubKeyBase64 = "${NHP_JSAGENT_SM2_PUBLIC_KEY}"
 ExpireTime = 1924991999

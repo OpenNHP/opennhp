@@ -15,6 +15,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # A GitHub App token (not the default GITHUB_TOKEN) is required so that
+      # release-please can create the release tag. The App identity must be added
+      # to the "bypass" list of any repository/organization ruleset that
+      # "Restrict creations" for tags matching v* — otherwise tag creation fails
+      # with: "Cannot create ref due to creations being restricted." (pre_receive).
       - name: Generate GitHub App token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
@@ -22,8 +27,15 @@ jobs:
           app-id: ${{ vars.RELEASE_PLEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
 
+      # Manifest mode: release-please-config.json + .release-please-manifest.json
+      # persist the last released version (1.0.0). Without a manifest the action
+      # re-derives the version from scratch on every run, which made it re-attempt
+      # an already-published tag and fail with:
+      #   "tag_name was used by an immutable release" /
+      #   "Published releases must have a valid tag".
       - name: Release Please
         uses: googleapis/release-please-action@v5
         with:
-          release-type: go
           token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

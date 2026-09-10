@@ -117,8 +117,8 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 	}
 
 	taDir := filepath.Join(ExeDirPath, "etc", "ta")
-	if err := os.MkdirAll(taDir, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if mkdirErr := os.MkdirAll(taDir, 0755); mkdirErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": mkdirErr.Error()})
 		return
 	}
 
@@ -129,13 +129,13 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 	}
 
 	fullFilePath := filepath.Join(taDir, fileUuid, file.Filename)
-	if err := c.SaveUploadedFile(file, fullFilePath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if saveErr := c.SaveUploadedFile(file, fullFilePath); saveErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": saveErr.Error()})
 		return
 	}
 
-	if err := os.Chmod(fullFilePath, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if chmodErr := os.Chmod(fullFilePath, 0755); chmodErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": chmodErr.Error()})
 		return
 	}
 
@@ -151,16 +151,16 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 		os.Remove(fullFilePath)
 		os.Remove(filepath.Join(taDir, fileUuid))
 
-		fileInfo, err := utils.LoadJsonFileAsStruct(filepath.Join(taDir, md5sum))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		fileInfo, loadErr := utils.LoadJsonFileAsStruct(filepath.Join(taDir, md5sum))
+		if loadErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": loadErr.Error()})
 			return
 		}
 		fileUuid = fileInfo.(map[string]any)["uuid"].(string)
 	}
 
 	// save file information into the file which name is md5sum, no matter the file exists or not.
-	if err := utils.SaveStructAsJsonFile(filepath.Join(taDir, md5sum), map[string]any{
+	if writeErr := utils.SaveStructAsJsonFile(filepath.Join(taDir, md5sum), map[string]any{
 		"fileName":    file.Filename,
 		"name":        taName,
 		"uuid":        fileUuid,
@@ -168,8 +168,8 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 		"description": description,
 		"language":    language,
 		"entry":       entry,
-	}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	}); writeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": writeErr.Error()})
 		return
 	}
 

@@ -95,10 +95,13 @@ func TestRouting_MissingServerIdReturns400(t *testing.T) {
 // TestRouting_LegacyBarePathRedirects documents the post-legacy behavior
 // of bare POST /relay (no id, no trailing slash). The relay only registers
 // "/relay/" with ServeMux, so a bare "/relay" gets the standard library's
-// 301 redirect to "/relay/" — which then hits handleRelay and 400s on the
-// missing id. Either response makes "use the legacy URL" loud, so this is
-// the desired contract; the test pins it so a future change can't silently
-// re-introduce a fallback to a default server.
+// redirect to "/relay/" — which then hits handleRelay and 400s on the
+// missing id. Go 1.26 changed ServeMux's trailing-slash redirect from 301
+// to 307 for non-GET/HEAD methods (301 let user agents downgrade POST to
+// GET; 307 preserves the method), so both codes can appear depending on
+// toolchain. Any of these responses makes "use the legacy URL" loud, so
+// this is the desired contract; the test pins it so a future change can't
+// silently re-introduce a fallback to a default server.
 func TestRouting_LegacyBarePathRedirects(t *testing.T) {
 	rs := newRoutingTestServer("good-id")
 	mux := http.NewServeMux()
@@ -108,9 +111,9 @@ func TestRouting_LegacyBarePathRedirects(t *testing.T) {
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, newRelayRequest(http.MethodPost, "/relay", validInnerPacket))
 
-	// 301 (ServeMux redirect) or 400 (handler missing-id) are both acceptable.
+	// 301/307 (ServeMux redirect) or 400 (handler missing-id) are all acceptable.
 	// 200 / 2xx would mean some default-server path snuck back in — fail loudly.
-	if w.Code == http.StatusMovedPermanently {
+	if w.Code == http.StatusMovedPermanently || w.Code == http.StatusTemporaryRedirect {
 		loc := w.Header().Get("Location")
 		if loc != "/relay/" {
 			t.Errorf("expected redirect to /relay/, got Location=%q", loc)
@@ -120,7 +123,7 @@ func TestRouting_LegacyBarePathRedirects(t *testing.T) {
 	if w.Code == http.StatusBadRequest {
 		return
 	}
-	t.Fatalf("legacy POST /relay should 301 or 400, got %d (body: %s)", w.Code, w.Body.String())
+	t.Fatalf("legacy POST /relay should 301, 307, or 400, got %d (body: %s)", w.Code, w.Body.String())
 }
 
 // TestRouting_NonPostMethodReturns405 makes sure GET/PUT/DELETE on the

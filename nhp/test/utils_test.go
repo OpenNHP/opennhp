@@ -30,6 +30,24 @@ func TestGenerateUUIDv4(t *testing.T) {
 	fmt.Println("uuid: ", uuid)
 }
 
+func TestGetRandomUint32(t *testing.T) {
+	const draws = 1000
+	seen := make(map[uint32]struct{}, draws)
+	for i := 0; i < draws; i++ {
+		value := utils.GetRandomUint32()
+		if value == 0 {
+			t.Fatal("GetRandomUint32 returned zero")
+		}
+		seen[value] = struct{}{}
+	}
+	// One collision is allowed to keep this statistical test comfortably
+	// below the birthday-bound flake probability while still detecting a
+	// stuck or low-entropy source.
+	if len(seen) < draws-1 {
+		t.Fatalf("GetRandomUint32 produced %d unique values across %d draws", len(seen), draws)
+	}
+}
+
 func TestIPTables(t *testing.T) {
 	iptables, err := utils.NewIPTables()
 

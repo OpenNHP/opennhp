@@ -33,13 +33,14 @@ type UdpServer struct {
 		totalSendBytes uint64
 	}
 
-	config     *Config
-	httpConfig *HttpConfig
-	log        *log.Logger
-	listenAddr *net.UDPAddr
-	listenConn *net.UDPConn
-	localIp    string
-	localMac   string
+	config        *Config
+	httpConfig    *HttpConfig
+	log           *log.Logger
+	listenAddr    *net.UDPAddr
+	listenAddrStr string
+	listenConn    *net.UDPConn
+	localIp       string
+	localMac      string
 
 	device     *core.Device
 	httpServer *HttpServer
@@ -267,6 +268,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		log.Error("resolve local UDPAddr error: %v", err)
 		return fmt.Errorf("resolve UDPAddr error %v", err)
 	}
+	s.listenAddrStr = s.listenAddr.String()
 
 	prk, err := base64.StdEncoding.DecodeString(s.config.PrivateKeyBase64)
 	if err != nil {
@@ -549,8 +551,8 @@ func (s *UdpServer) SendPacket(pkt *core.Packet, conn *UdpConn) (n int, err erro
 	}()
 
 	pktType := core.HeaderTypeToString(pkt.HeaderType)
-	log.Info("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
-	log.Evaluate("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
+	log.Info("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddrStr, conn.ConnData.RemoteAddr.String(), len(pkt.Content))
+	log.Evaluate("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddrStr, conn.ConnData.RemoteAddr.String(), len(pkt.Content))
 
 	return s.listenConn.WriteToUDP(pkt.Content, conn.ConnData.RemoteAddr)
 }
@@ -606,12 +608,12 @@ func (s *UdpServer) recvPacketRoutine() {
 
 		recvTime := time.Now().UnixNano()
 		pkt.Content = pkt.Buf[:n]
-		//log.Trace("receive udp packet (%s -> %s): %+v", addrStr, s.listenAddr.String(), pkt.Content)
+		//log.Trace("receive udp packet (%s -> %s): %+v", addrStr, s.listenAddrStr, pkt.Content)
 
 		typ, _, err := s.device.RecvPrecheck(pkt) // this check also records packet header type
 		msgType := core.HeaderTypeToString(typ)
-		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
-		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
+		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddrStr, n)
+		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddrStr, n)
 		if err != nil {
 			// threat plus 1
 			preCheckThreats[addrStr]++
@@ -619,8 +621,8 @@ func (s *UdpServer) recvPacketRoutine() {
 				s.AddBlockAddr(remoteAddr)
 			}
 			s.device.ReleasePoolPacket(pkt)
-			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, s.listenAddr.String(), err)
-			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, s.listenAddr.String(), err)
+			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, s.listenAddrStr, err)
+			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, s.listenAddrStr, err)
 			continue
 		}
 		// clear threat
@@ -655,16 +657,11 @@ func (s *UdpServer) recvPacketRoutine() {
 
 		} else {
 			// create new connection if there is room
-			s.remoteConnectionMapMutex.Lock()
-			if len(s.remoteConnectionMap) > OverloadConnectionThreshold {
-				s.device.SetOverload(true)
-			} else if len(s.remoteConnectionMap) >= MaxConcurrentConnection {
-				s.remoteConnectionMapMutex.Unlock()
+			if !s.globalCapAdmits() {
 				log.Critical("Reached maximum concurrent connection, discarding packet from: %s", addrStr)
 				s.device.ReleasePoolPacket(pkt)
 				continue
 			}
-			s.remoteConnectionMapMutex.Unlock()
 
 			isACConn := pkt.HeaderType == core.NHP_AOL
 			isDBConn := pkt.HeaderType == core.NHP_DOL
@@ -704,15 +701,30 @@ func (s *UdpServer) recvPacketRoutine() {
 			s.remoteConnectionMap[addrStr] = conn
 			s.remoteConnectionMapMutex.Unlock()
 
-			conn.ConnData.RecvQueue <- pkt
+			conn.ConnData.ForwardInboundPacket(pkt)
 
-			log.Info("Accept new UDP connection from %s to %s", addrStr, s.listenAddr.String())
+			log.Info("Accept new UDP connection from %s to %s", addrStr, s.listenAddrStr)
 
 			// launch connection routine
 			s.wg.Add(1)
 			go s.connectionRoutine(conn)
 		}
 	}
+}
+
+// globalCapAdmits reports whether a new direct UDP connection fits under the
+// global connection-table cap. Overload mode and the hard cap are independent
+// conditions: using an else-if makes the cap unreachable once the lower
+// overload threshold has been crossed.
+func (s *UdpServer) globalCapAdmits() bool {
+	s.remoteConnectionMapMutex.Lock()
+	defer s.remoteConnectionMapMutex.Unlock()
+
+	n := len(s.remoteConnectionMap)
+	if n > OverloadConnectionThreshold {
+		s.device.SetOverload(true)
+	}
+	return n < MaxConcurrentConnection
 }
 
 func (s *UdpServer) connectionRoutine(conn *UdpConn) {
@@ -793,9 +805,9 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		// CONCURRENCY: this whole len + SetOverload(false) lives
 		// inside remoteConnectionMapMutex (locked at the top of this
 		// deferred block, unlocked immediately after). Every other
-		// SetOverload(true) call site — udpserver.go:540 and
-		// msghandler.go:875 — also runs under the same mutex while
-		// checking len > threshold, so the three call sites are
+		// SetOverload(true) path — globalCapAdmits and relay admission in
+		// msghandler.HandleRelayForward — also runs under the same mutex
+		// while checking len > threshold, so the three call sites are
 		// serialized and the len() observed here is the post-delete
 		// authoritative size. No TOCTOU window between the size
 		// check and the SetOverload call.
@@ -818,7 +830,10 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		case <-s.signals.stop:
 			return
 
-		case <-conn.ConnData.SetTimeoutSignal:
+		case _, ok := <-conn.ConnData.SetTimeoutSignal:
+			if !ok {
+				return
+			}
 			if conn.ConnData.TimeoutMs <= 0 {
 				log.Debug("Connection routine closed immediately")
 				return
@@ -831,7 +846,10 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			log.Debug("Connection routine idle timeout")
 			return
 
-		case <-conn.ConnData.BlockSignal:
+		case _, ok := <-conn.ConnData.BlockSignal:
+			if !ok {
+				return
+			}
 			s.AddBlockAddr(conn.ConnData.RemoteAddr)
 			return
 
@@ -848,7 +866,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			// process keepalive packet
 			if pkt.HeaderType == core.NHP_KPL {
 				s.device.ReleasePoolPacket(pkt)
-				log.Info("Receive [NHP_KPL] message (%s -> %s)", addrStr, s.listenAddr.String())
+				log.Info("Receive [NHP_KPL] message (%s -> %s)", addrStr, s.listenAddrStr)
 				continue
 			}
 

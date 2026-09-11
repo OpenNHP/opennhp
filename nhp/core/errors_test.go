@@ -45,6 +45,9 @@ func TestNHPErrorCodesMatchCHeader(t *testing.T) {
 		{name: "ERR_NHP_REPLAY_PACKET_RECEIVED", goCode: errNHPReplayPacketReceived},
 		{name: "ERR_NHP_FLOOD_PACKET_RECEIVED", goCode: errNHPFloodPacketReceived},
 		{name: "ERR_NHP_STALE_PACKET_RECEIVED", goCode: errNHPStalePacketReceived},
+		{name: "ERR_NHP_PEER_NOT_FOUND", goCode: errNHPPeerNotFound},
+		{name: "ERR_NHP_PEER_EXPIRED", goCode: errNHPPeerExpired},
+		{name: "ERR_NHP_PEER_ADDRESS_MISMATCH", goCode: errNHPPeerAddressMismatch},
 	}
 
 	for _, tt := range tests {
@@ -55,6 +58,32 @@ func TestNHPErrorCodesMatchCHeader(t *testing.T) {
 		if tt.goCode != headerCode {
 			t.Fatalf("%s = %d, want header value %d", tt.name, tt.goCode, headerCode)
 		}
+	}
+}
+
+func TestPeerValidationSentinelErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		err  *Error
+		code int
+	}{
+		{name: "not found", err: ErrPeerNotFound, code: errNHPPeerNotFound},
+		{name: "expired", err: ErrPeerExpired, code: errNHPPeerExpired},
+		{name: "address mismatch", err: ErrPeerAddressMismatch, code: errNHPPeerAddressMismatch},
+		{name: "replay", err: ErrReplayPacketReceived, code: errNHPReplayPacketReceived},
+		{name: "flood", err: ErrFloodPacketReceived, code: errNHPFloodPacketReceived},
+		{name: "stale", err: ErrStalePacketReceived, code: errNHPStalePacketReceived},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := ErrorToErrorNumber(test.err); got != test.code {
+				t.Fatalf("ErrorToErrorNumber(%v) = %d, want %d", test.err, got, test.code)
+			}
+			if got := ErrorCodeToError(test.code); got != test.err {
+				t.Fatalf("ErrorCodeToError(%d) = %p, want %p", test.code, got, test.err)
+			}
+		})
 	}
 }
 

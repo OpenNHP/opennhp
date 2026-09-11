@@ -1026,6 +1026,34 @@ func TestDetectsDuplicateKeyInSignedEntry(t *testing.T) {
 	}
 }
 
+// TestVerifyToleratesInvalidUTF8InField pins the write/verify round-trip
+// for a field value that is not valid UTF-8 (e.g. a raw byte off an HTTP
+// User-Agent header, which net/http does not validate). Before sanitizeUTF8,
+// json.Marshal's own write-time coercion of the invalid byte to U+FFFD was
+// not a fixed point across unmarshal+remarshal, so this entry — and every
+// entry chained after it — permanently failed verification with the exact
+// wording reserved for real tampering.
+func TestVerifyToleratesInvalidUTF8InField(t *testing.T) {
+	key := []byte("audit-signing-key")
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{HMACKey: key})
+
+	if err := l.Log("knock", "info", map[string]string{"device": "curl/8.0\xff\xfeagent"}); err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	// A few ordinary entries after it, so a chain break shows up as more
+	// than just the one bad entry going unverified.
+	writeN(t, l, 3)
+
+	res := VerifyChain(bytes.NewReader(buf.Bytes()), key)
+	if res.Err != nil {
+		t.Fatalf("expected clean verification, got: %v (result: %+v)", res.Err, res)
+	}
+	if res.Count != 4 {
+		t.Fatalf("expected all 4 entries verified, got Count=%d", res.Count)
+	}
+}
+
 // TestOpenResumesFromTailOnLargeLedger exercises the O(1) tail resume: a
 // ledger with many entries reopens and continues the chain without a full
 // forward scan.
@@ -1376,6 +1404,51 @@ func TestSegmentRotationDetectsCrossSegmentTamper(t *testing.T) {
 	}
 }
 
+// TestVerifyLedgerDoesNotLeakFdsOnEarlyFailure pins lazyFileReader's cleanup:
+// VerifyLedger opens each segment only as io.MultiReader reaches it, and
+// verifyChainFrom returns as soon as it hits the first broken entry — so
+// most segments here are never drained to EOF, the path that closes a
+// lazyFileReader on its own. Without VerifyLedger's own deferred cleanup,
+// every segment after the tampered one leaks its fd. On Windows a leaked fd
+// is a delete-pending lock, so the most direct sign of a regression here is
+// t.TempDir()'s own cleanup failing after the test body returns — this
+// tamper is placed in the FIRST of many segments so as many readers as
+// possible are left unopened/undrained by the early return.
+func TestVerifyLedgerDoesNotLeakFdsOnEarlyFailure(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{MaxSizeBytes: 512, HMACKey: []byte("k")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 200)
+	l.Close()
+
+	segs, _ := segmentFiles(path)
+	if len(segs) < 5 {
+		t.Fatalf("need several rotated segments to exercise this, got %d", len(segs))
+	}
+
+	first := segs[0]
+	lines := splitLines(mustReadFile(t, first))
+	var e Event
+	if err := json.Unmarshal(lines[0], &e); err != nil {
+		t.Fatal(err)
+	}
+	e.Fields["reason"] = "tampered"
+	lines[0] = mustMarshal(t, &e)
+	if err := os.WriteFile(first, join(lines), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if res := VerifyLedger(path, []byte("k")); res.Err == nil {
+		t.Fatal("expected FAILED verification for a tampered first segment")
+	}
+	// t.TempDir's cleanup (registered via t.Cleanup) runs after this
+	// function returns and fails the test if any file in dir is still open.
+}
+
 func mustReadFile(t *testing.T, path string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -1453,12 +1526,47 @@ func TestAsyncWriterRecoversFromTransientError(t *testing.T) {
 	}
 }
 
+// TestAsyncWriterRetriesPendingWithoutNewLogCalls pins the idle retryTimer:
+// a transient write failure on an otherwise quiet ledger (no further Log
+// calls) must still get flushed on its own, not sit in the drain
+// goroutine's memory until some future Log or Close happens to trigger
+// another Write.
+func TestAsyncWriterRetriesPendingWithoutNewLogCalls(t *testing.T) {
+	fw := &flakyWriter{failNext: 1}
+	l := NewLedger(nopCloser{fw}, Options{Async: true, QueueSize: 64})
+	defer l.Close()
+
+	if err := l.Log("knock", SeverityInfo, nil); err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+
+	// Nothing else calls Write from here. The first retry backoff starts at
+	// 1ms and doubles; give it generous headroom rather than pin the exact
+	// schedule.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		fw.mu.Lock()
+		n := fw.buf.Len()
+		fw.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("pending write was never retried without a further Log call")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 type flakyWriter struct {
+	mu       sync.Mutex
 	buf      bytes.Buffer
 	failNext int
 }
 
 func (f *flakyWriter) Write(p []byte) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.failNext > 0 {
 		f.failNext--
 		return 0, fmt.Errorf("flaky: transient write error")
@@ -1577,6 +1685,37 @@ func TestAsyncWriterBoundedPendingOnPersistentFailure(t *testing.T) {
 	// the whole accumulation.
 	if dw.peak > maxPendingBytes+64*1024 {
 		t.Fatalf("pending buffer peaked at %d bytes, over the %d cap", dw.peak, maxPendingBytes)
+	}
+}
+
+// TestAsyncCloseCountsQueuedEntriesNotJustPending pins that the shutdown
+// bail-out (drain giving up on a dead writer once Close is called) counts
+// EVERYTHING abandoned, not only the newlines in `pending`. QueueSize is
+// sized so every Log call below enqueues successfully — none are ever
+// queue-full-rejected, which both (a) means every one of them is only ever
+// counted as dropped via the bail-out under test, and (b) keeps l.dropped
+// at 0 throughout the loop, so the audit_gap retry (recordGapLocked) never
+// fires and chains an extra entry of its own to confuse the count. Since
+// deadWriter never completes a single write, most of these entries are
+// still sitting unread in the channel — not merged into `pending` — when
+// Close runs, so a fix that only scanned `pending` would silently
+// under-report almost all of the loss.
+func TestAsyncCloseCountsQueuedEntriesNotJustPending(t *testing.T) {
+	dw := &deadWriter{}
+	filler := strings.Repeat("x", 2000)
+	entries := (maxPendingBytes / 2100) * 4
+	l := NewLedger(nopCloser{dw}, Options{Async: true, QueueSize: entries + 8})
+
+	for i := 0; i < entries; i++ {
+		_ = l.Log("knock", SeverityInfo, map[string]string{"reason": filler})
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := l.Dropped(), uint64(entries); got != want {
+		t.Fatalf("Dropped()=%d, want %d — some abandoned entries (queued but never "+
+			"reached by the bail-out's pending scan) went uncounted", got, want)
 	}
 }
 

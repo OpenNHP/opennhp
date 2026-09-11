@@ -22,10 +22,14 @@ import (
 // tampering — see the FilePath rotation note).
 const defaultAuditLedgerFile = "audit/audit-ledger.jsonl"
 
-// minSigningKeyLen is the smallest accepted HMAC signing key, in bytes. A
+// MinSigningKeyLen is the smallest accepted HMAC signing key, in bytes. A
 // shorter key is rejected rather than silently used, so an operator cannot
-// end up with signed=true and a placeholder key.
-const minSigningKeyLen = 32
+// end up with signed=true and a placeholder key. Exported so `audit verify`
+// (endpoints/server/main) can enforce the identical floor on --key/--key-file/
+// NHP_AUDIT_KEY — a key too short to satisfy the server would otherwise
+// produce a verify-time "hash mismatch" indistinguishable from real
+// tampering, rather than a clear "key too short" error.
+const MinSigningKeyLen = 32
 
 // errAuditConfig marks an [Audit] configuration error (bad base64, short
 // signing key) as opposed to an I/O failure. Start treats it as always
@@ -65,9 +69,9 @@ func (s *UdpServer) initAuditLedger() error {
 		// forgeable protection. HMAC-SHA256's block size is 64 bytes, but a
 		// 32-byte (256-bit) minimum is the accepted floor and matches the
 		// key `head -c 32 /dev/urandom | base64` in the docs.
-		if len(key) < minSigningKeyLen {
+		if len(key) < MinSigningKeyLen {
 			return fmt.Errorf("%w: SigningKeyBase64 decodes to %d bytes; need at least %d (generate with: head -c 32 /dev/urandom | base64)",
-				errAuditConfig, len(key), minSigningKeyLen)
+				errAuditConfig, len(key), MinSigningKeyLen)
 		}
 		hmacKey = key
 	}

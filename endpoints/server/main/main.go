@@ -315,8 +315,15 @@ func resolveVerifyKey(c *cli.Context) ([]byte, error) {
 				return nil, fmt.Errorf("read --key-file: %w", err)
 			}
 			raw, source = strings.TrimSpace(string(b)), "--key-file"
-		} else if env := os.Getenv("NHP_AUDIT_KEY"); env != "" {
-			raw, source = strings.TrimSpace(env), "NHP_AUDIT_KEY"
+		}
+		// An empty --key-file (a placeholder, or one the operator forgot to
+		// fill in) falls through to NHP_AUDIT_KEY rather than silently
+		// resolving to "no key" — the same "try the next source" behavior
+		// an unset --key already gets, one branch up.
+		if raw == "" {
+			if env := os.Getenv("NHP_AUDIT_KEY"); env != "" {
+				raw, source = strings.TrimSpace(env), "NHP_AUDIT_KEY"
+			}
 		}
 	}
 	if raw == "" {
@@ -325,6 +332,15 @@ func resolveVerifyKey(c *cli.Context) ([]byte, error) {
 	decoded, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
 		return nil, fmt.Errorf("decode %s: %w", source, err)
+	}
+	// Enforce the same floor initAuditLedger applies to SigningKeyBase64:
+	// without it, a truncated or fat-fingered key here does not report as
+	// "key too short" — it produces an "HMAC signature mismatch (wrong key
+	// or forged entry)" on every entry, indistinguishable from the operator
+	// having actually found tampering.
+	if len(decoded) < server.MinSigningKeyLen {
+		return nil, fmt.Errorf("%s decodes to %d bytes; need at least %d (generate with: head -c 32 /dev/urandom | base64)",
+			source, len(decoded), server.MinSigningKeyLen)
 	}
 	return decoded, nil
 }

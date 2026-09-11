@@ -272,6 +272,22 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		}
 		log.Critical("audit ledger disabled — failed to open: %v", auditErr)
 	}
+	if s.auditLedger != nil {
+		// Stop() is a no-op until s.running is set, which only happens at
+		// the very end of a successful Start — so an error returned by
+		// anything below this point (a bad listen address, a config load
+		// failure further down, ...) would otherwise leak the ledger's file
+		// handle and, in Async mode, its drain goroutine, with no code path
+		// left that ever closes it. Guarded on the named return `err`, so
+		// this is a no-op on the ordinary success path, where Stop's own
+		// call to closeAuditLedger (on the later, real shutdown) is what
+		// closes it.
+		defer func() {
+			if err != nil {
+				s.closeAuditLedger()
+			}
+		}()
+	}
 
 	var netIP net.IP
 	if len(s.config.ListenIp) > 0 {

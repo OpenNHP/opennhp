@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -378,7 +379,75 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 	var pending []byte // unflushed bytes, always a suffix of the byte stream
 	var pendingLastSeq uint64
 	retry := time.Millisecond
-	for it := range q {
+
+	// attemptFlush makes one Write of pending and folds the result back into
+	// pending/l.curSize/l.asyncErr, resetting retry and stamping
+	// l.lastSegSeq on full success. Shared by the per-item retry loop below
+	// and the idle retryTimer, so both apply the exact same bookkeeping.
+	attemptFlush := func() (drained bool) {
+		n, err := l.w.Write(pending)
+		if n > 0 {
+			// Bytes that landed must never be re-sent (a partial write on
+			// ENOSPC returns n>0 with an error); drop them from pending.
+			l.curSize += int64(n)
+			pending = pending[n:]
+		}
+		if err != nil {
+			l.asyncErr.Store(&asyncFailure{err: err})
+			return false
+		}
+		l.lastSegSeq = pendingLastSeq
+		retry = time.Millisecond
+		l.asyncErr.Store(nil) // recovered; auditEvent can log "writes recovered"
+		if l.fsync {
+			if f, ok := l.w.(*os.File); ok {
+				_ = f.Sync()
+			}
+		}
+		return true
+	}
+
+	// retryTimer re-attempts a flush of `pending` on a timeout even when no
+	// new item has arrived to trigger one. Without it, a transient failure
+	// on an otherwise quiet gateway (few knocks) left the failed bytes
+	// sitting in this goroutine's memory — durable in the caller's mind,
+	// since Log had already returned nil — until the next Log call or
+	// Close, however long that took. Only armed while pending > 0.
+	var retryTimer *time.Timer
+	defer func() {
+		if retryTimer != nil {
+			retryTimer.Stop()
+		}
+	}()
+
+	for {
+		var it queuedLine
+		var ok bool
+		if len(pending) == 0 {
+			it, ok = <-q
+		} else {
+			if retryTimer == nil {
+				retryTimer = time.NewTimer(retry)
+			}
+			select {
+			case it, ok = <-q:
+				if !retryTimer.Stop() {
+					<-retryTimer.C
+				}
+				retryTimer = nil
+			case <-retryTimer.C:
+				retryTimer = nil
+				attemptFlush()
+				if retry < time.Second {
+					retry *= 2
+				}
+				continue
+			}
+		}
+		if !ok {
+			break // queue closed: fall through to the final flush below
+		}
+
 		pending = append(pending, it.line...)
 		pendingLastSeq = it.seq
 		if l.shouldRotate(len(pending)) {
@@ -389,25 +458,26 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 		}
 
 		for len(pending) > 0 {
-			n, err := l.w.Write(pending)
-			if n > 0 {
-				// Bytes that landed must never be re-sent (a partial write on
-				// ENOSPC returns n>0 with an error); drop them from pending.
-				l.curSize += int64(n)
-				pending = pending[n:]
-			}
-			if err == nil {
+			if attemptFlush() {
 				break
 			}
-			l.asyncErr.Store(&asyncFailure{err: err})
 			if len(pending) < maxPendingBytes {
-				break // accept more from the queue; retry the remainder later
+				break // accept more from the queue; retryTimer covers the rest
 			}
 			if l.closing.Load() {
 				// Shutting down onto a dead writer: the pending (already
-				// chained) entries are lost. Count them so the shutdown
-				// summary in closeAuditLedger reports the loss.
-				l.dropped.Add(uint64(bytes.Count(pending, []byte{'\n'})))
+				// chained) entries are lost, and so is everything still
+				// sitting in q. Close sets closing THEN closes q, so seeing
+				// closing here means q is already closed — safe to drain
+				// to completion without blocking. Count both: closeAuditLedger's
+				// shutdown summary is documented as including abandoned
+				// queued entries, not just the ones already merged into
+				// pending.
+				lost := bytes.Count(pending, []byte{'\n'})
+				for range q {
+					lost++
+				}
+				l.dropped.Add(uint64(lost))
 				return
 			}
 			time.Sleep(retry)
@@ -415,34 +485,13 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 				retry *= 2
 			}
 		}
-
-		if len(pending) == 0 {
-			l.lastSegSeq = pendingLastSeq
-			retry = time.Millisecond
-			l.asyncErr.Store(nil) // recovered; auditEvent can log "writes recovered"
-			if l.fsync {
-				if f, ok := l.w.(*os.File); ok {
-					_ = f.Sync()
-				}
-			}
-		}
 	}
 	// Final flush on Close. If a fragment cannot be written, terminate what
 	// did land with a newline so it does not merge with a future entry after
 	// a restart (Open's torn-tail repair also handles this; a stray blank
 	// line from an exact-boundary stop is harmless — readers skip it).
-	if len(pending) > 0 {
-		n, err := l.w.Write(pending)
-		if n > 0 {
-			l.curSize += int64(n)
-			pending = pending[n:]
-		}
-		if err != nil {
-			l.asyncErr.Store(&asyncFailure{err: err})
-			if len(pending) > 0 {
-				_, _ = l.w.Write([]byte{'\n'})
-			}
-		}
+	if len(pending) > 0 && !attemptFlush() && len(pending) > 0 {
+		_, _ = l.w.Write([]byte{'\n'})
 	}
 }
 
@@ -1043,9 +1092,30 @@ func resumeFromTail(path string) (seq uint64, hash string, skipped int, ok bool,
 	return 0, "", 0, false, nil
 }
 
+// sanitizeUTF8 replaces any invalid UTF-8 byte sequence in s with U+FFFD so
+// the string is valid UTF-8 going in to json.Marshal. Without this,
+// encoding/json's own write-time coercion of an invalid byte to the escape
+// sequence "�" is not a fixed point: unmarshaling that escape produces
+// the literal rune U+FFFD (valid UTF-8), and re-marshaling it on verify
+// emits the raw 3-byte rune rather than the original escape. computeHash is
+// called on both sides of that round-trip (once on the in-memory event at
+// write time, once on the JSON-decoded event at verify time), so a field
+// with invalid UTF-8 hashes differently each time and VerifyChain reports a
+// permanent, false "this entry was altered" on it and every entry after.
+// Sanitizing before either hash runs makes the two sides agree. Fields can
+// carry attacker- or plugin-supplied bytes that are not valid UTF-8 (an
+// HTTP User-Agent header, for one — net/http does not validate it), so this
+// is reachable, not theoretical.
+func sanitizeUTF8(s string) string {
+	return strings.ToValidUTF8(s, "�")
+}
+
 // truncate cuts s to at most max bytes without splitting a multi-byte rune
-// at the cut point, and marks that it was cut.
+// at the cut point, and marks that it was cut. Always sanitizes first (see
+// sanitizeUTF8) so a value short enough to skip truncation is still safe to
+// hash and verify.
 func truncate(s string, max int) string {
+	s = sanitizeUTF8(s)
 	if len(s) <= max {
 		return s
 	}
@@ -1075,7 +1145,14 @@ func boundFields(fields map[string]string) map[string]string {
 	needsWork := len(fields) > maxFields
 	if !needsWork {
 		for k, v := range fields {
-			if len(k) > maxFieldKeyLen || len(v) > maxFieldValueLen {
+			// A key/value within the length limits still needs the slow
+			// (sanitizing) path below if it is not valid UTF-8 — see
+			// sanitizeUTF8. Checking validity here, not just length, is
+			// what makes truncate's sanitization actually reachable: it
+			// otherwise only runs when something is already being rebuilt
+			// for an unrelated reason (too many fields, or one too long).
+			if len(k) > maxFieldKeyLen || len(v) > maxFieldValueLen ||
+				!utf8.ValidString(k) || !utf8.ValidString(v) {
 				needsWork = true
 				break
 			}

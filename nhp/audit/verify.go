@@ -85,19 +85,22 @@ func VerifyLedger(path string, hmacKey []byte) VerifyResult {
 		startPrevHash, startPrevSeq, anchoredAt = first.PrevHash, first.Seq-1, first.Seq
 	}
 
-	var readers []io.Reader
-	var openFiles []io.Closer
-	defer func() {
-		for _, f := range openFiles {
-			_ = f.Close()
-		}
-	}()
+	// Each segment is wrapped in a lazyFileReader rather than os.Open'd here:
+	// the shipped default (MaxSegments = 0) keeps every rotated segment
+	// forever, so a long-lived ledger can accumulate far more segments than
+	// the process's fd limit allows open at once. Opening one at a time as
+	// io.MultiReader advances keeps this to (at most) one or two open fds
+	// regardless of segment count. lazyFileReader closes itself once
+	// io.MultiReader has fully drained it, but verifyChainFrom returns as
+	// soon as it hits the first broken entry — mid-ledger, on a tampered
+	// segment, most of the time — so whichever reader was mid-read (and
+	// every one after it) is never drained and never gets that chance. The
+	// defer below closes any still-open ones so a failed verification does
+	// not leak an fd (or, on Windows, a delete-pending file lock) for the
+	// life of the process.
+	lazyReaders := make([]*lazyFileReader, len(segs))
+	readers := make([]io.Reader, 0, 2*len(segs)-1)
 	for i, s := range segs {
-		f, oErr := os.Open(filepath.Clean(s))
-		if oErr != nil {
-			return VerifyResult{Err: fmt.Errorf("audit: open segment %q: %w", s, oErr)}
-		}
-		openFiles = append(openFiles, f)
 		if i > 0 {
 			// A segment left unterminated by a torn write (sync partial-write
 			// only writes the final '\n' best-effort, and repairTornTail runs
@@ -106,9 +109,55 @@ func VerifyLedger(path string, hmacKey []byte) VerifyResult {
 			// verifyChainFrom skips empty lines.
 			readers = append(readers, bytes.NewReader([]byte{'\n'}))
 		}
-		readers = append(readers, f)
+		lr := &lazyFileReader{path: s}
+		lazyReaders[i] = lr
+		readers = append(readers, lr)
 	}
+	defer func() {
+		for _, lr := range lazyReaders {
+			lr.closeIfOpen()
+		}
+	}()
 	return verifyChainFrom(io.MultiReader(readers...), hmacKey, startPrevHash, startPrevSeq, anchoredAt)
+}
+
+// lazyFileReader defers opening its file until the first Read and closes it
+// as soon as a Read reports it exhausted (or failed) — see VerifyLedger for
+// why that matters here. Safe to use exactly once, in sequence, as one
+// reader inside an io.MultiReader: MultiReader never calls Read again on a
+// reader once it has returned a non-nil error, so the close-on-error here
+// cannot race a later Read on the same file. A reader io.MultiReader never
+// reaches at all (verification stopped on an earlier segment) is closed by
+// VerifyLedger's own deferred cleanup instead — see closeIfOpen.
+type lazyFileReader struct {
+	path string
+	f    *os.File
+}
+
+// closeIfOpen closes the underlying file if Read ever opened one and Read
+// itself has not already closed it (the ordinary end-of-segment / error
+// path). Safe to call whether or not Read was ever called.
+func (r *lazyFileReader) closeIfOpen() {
+	if r.f != nil {
+		_ = r.f.Close()
+		r.f = nil
+	}
+}
+
+func (r *lazyFileReader) Read(p []byte) (int, error) {
+	if r.f == nil {
+		f, err := os.Open(filepath.Clean(r.path))
+		if err != nil {
+			return 0, fmt.Errorf("audit: open segment %q: %w", r.path, err)
+		}
+		r.f = f
+	}
+	n, err := r.f.Read(p)
+	if err != nil {
+		_ = r.f.Close()
+		r.f = nil
+	}
+	return n, err
 }
 
 // firstEntry returns the first parseable Event in the file, or nil if the

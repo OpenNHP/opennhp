@@ -149,6 +149,9 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 	}
 	if sealed {
 		log.Info("DB private key is sealed; unsealed at startup with the configured passphrase")
+		if path, mode, permissive := keystore.PassphraseFilePermissive(); permissive {
+			log.Warning("passphrase file %s is mode %o — restrict it to 0600", path, mode)
+		}
 	}
 	// Cache the resolved key so GetOwnEcdh does not re-run the (expensive)
 	// unseal KDF on every call.

@@ -53,9 +53,6 @@ func SealCommand() *cli.Command {
 			if len(raw) != keystore.DeviceKeyLen {
 				return fmt.Errorf("private key decodes to %d bytes, expected %d — is it the right value?", len(raw), keystore.DeviceKeyLen)
 			}
-			// PassphraseFromEnv itself warns if NHP_KEY_PASSPHRASE_FILE points
-			// at a world/group-readable file — covers every consumer, not
-			// just this command.
 			pass, err := keystore.PassphraseFromEnv()
 			if err != nil {
 				return err
@@ -66,6 +63,12 @@ func SealCommand() *cli.Command {
 			if len(pass) < keystore.MinPassphraseLen {
 				return fmt.Errorf("passphrase is %d bytes; use at least %d — Argon2id does not make a short passphrase safe against a stolen config", len(pass), keystore.MinPassphraseLen)
 			}
+			// stderr, not log.Warning: this command's stdout is the sealed
+			// blob itself, and nhp/log's package-default logger (installed
+			// until a daemon's Start replaces it, which never happens here)
+			// writes to stdout too — a warning ahead of the blob would
+			// corrupt whatever this command's output gets piped or > into.
+			warnIfPassphraseFilePermissive()
 			blob, err := keystore.Seal(raw, pass)
 			if err != nil {
 				return err
@@ -94,6 +97,7 @@ func UnsealCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
+			warnIfPassphraseFilePermissive()
 			raw, err := keystore.Open(blob, pass)
 			if err != nil {
 				return err
@@ -108,4 +112,13 @@ func UnsealCommand() *cli.Command {
 // Commands returns both subcommands, ready to append to app.Commands.
 func Commands() []*cli.Command {
 	return []*cli.Command{SealCommand(), UnsealCommand()}
+}
+
+// warnIfPassphraseFilePermissive prints to stderr — never stdout, which this
+// package's two commands use for the sealed blob / recovered plaintext key
+// — when NHP_KEY_PASSPHRASE_FILE points at a world/group-readable file.
+func warnIfPassphraseFilePermissive() {
+	if path, mode, permissive := keystore.PassphraseFilePermissive(); permissive {
+		fmt.Fprintf(os.Stderr, "warning: passphrase file %s is mode %o — restrict it to 0600\n", path, mode)
+	}
 }

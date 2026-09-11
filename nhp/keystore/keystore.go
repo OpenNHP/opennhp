@@ -25,8 +25,6 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/argon2"
-
-	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 // Sealed-blob format (fields separated by '$', binary fields base64 RawStd):
@@ -338,6 +336,12 @@ func ResolvePrivateKeyAuto(cfgValue string) (key []byte, sealed bool, err error)
 // secret resolves identically whether it is exported inline or read from a
 // file written with `echo`/an editor. A passphrase that legitimately ends
 // in a newline is not supportable this way — an unlikely case for a secret.
+// PassphraseFromEnv itself has no logging side effect: it may run from an
+// interactive CLI (seal/unseal/register) with no logger installed yet, where
+// nhp/log's package default writes to stdout — right next to the sealed
+// blob or recovered plaintext key these commands print. A caller that wants
+// to warn about a permissive passphrase file (see PassphraseFilePermissive)
+// must do so itself, through whatever channel is safe in its own context.
 func PassphraseFromEnv() ([]byte, error) {
 	if path := os.Getenv(EnvPassphraseFile); path != "" {
 		// The path is an operator-supplied config input by design.
@@ -349,7 +353,6 @@ func PassphraseFromEnv() ([]byte, error) {
 			// passphrase file should surface loudly, not be ignored.
 			return nil, fmt.Errorf("keystore: cannot read %s=%q: %w", EnvPassphraseFile, path, err)
 		}
-		warnIfPassphraseFilePermissive(path)
 		pass := trimTrailingNewline(string(data))
 		if pass == "" {
 			// Distinguish "you pointed me at an empty file" from "no
@@ -365,19 +368,24 @@ func PassphraseFromEnv() ([]byte, error) {
 	return nil, nil
 }
 
-// warnIfPassphraseFilePermissive logs (never fails) when the passphrase file
-// is readable by group or other. Checked here, in PassphraseFromEnv itself,
-// so every consumer — every daemon's startup, RotateAgentKey, the register
-// re-seal — gets the warning, not just the seal CLI, which is where this
-// file spends most of its life being read from.
-func warnIfPassphraseFilePermissive(path string) {
+// PassphraseFilePermissive reports whether NHP_KEY_PASSPHRASE_FILE is set
+// and the file it names is readable by group or other (the docs recommend
+// 0600). Pure — no logging, no error return for "file not found" — so any
+// caller can report it however fits its context: log.Warning for a daemon
+// (already running its own file-backed logger by the time it resolves a
+// key), stderr for an interactive command. ok is false whenever there is
+// nothing to warn about, including "no file configured" and "can't stat it".
+func PassphraseFilePermissive() (path string, mode os.FileMode, ok bool) {
+	path = os.Getenv(EnvPassphraseFile)
+	if path == "" {
+		return "", 0, false
+	}
 	fi, err := os.Stat(path)
 	if err != nil {
-		return
+		return path, 0, false
 	}
-	if fi.Mode().Perm()&0o077 != 0 {
-		log.Warning("keystore: passphrase file %s is mode %o — restrict it to 0600", path, fi.Mode().Perm())
-	}
+	mode = fi.Mode().Perm()
+	return path, mode, mode&0o077 != 0
 }
 
 // trimTrailingNewline removes one trailing "\n" or "\r\n" and nothing else,

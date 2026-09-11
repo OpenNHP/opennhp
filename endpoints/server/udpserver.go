@@ -280,6 +280,9 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 	if sealed {
 		log.Info("server private key is sealed; unsealed at startup with the configured passphrase")
+		if path, mode, permissive := keystore.PassphraseFilePermissive(); permissive {
+			log.Warning("passphrase file %s is mode %o — restrict it to 0600", path, mode)
+		}
 	}
 
 	option := &core.DeviceOptions{

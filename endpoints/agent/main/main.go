@@ -744,7 +744,9 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 		if reason != nil {
 			fmt.Printf("\n  %s⚠  Could not re-seal the registered key (%v).%s\n"+
 				"     It is shown IN THE CLEAR below so you are not locked out — seal it\n"+
-				"     yourself with `nhp-agentd seal` and set %s before starting the agent.\n\n",
+				"     yourself with `nhp-agentd seal` and set %s before starting the agent.\n"+
+				"     If you accept the config write below, it REPLACES the sealed key\n"+
+				"     already in config.toml with this plaintext one.\n\n",
 				colorYellow, reason, colorReset, keystore.EnvPassphraseFile)
 			existingKeySealed = false
 		}

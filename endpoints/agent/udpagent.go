@@ -608,9 +608,7 @@ func (a *UdpAgent) ReinitWithKey(privKeyBytes []byte, cipherScheme int) error {
 	a.recvMsgCh = newDev.DecryptedMsgQueue
 	a.deviceMutex.Unlock()
 
-	a.config.PrivateKeyBase64 = base64.StdEncoding.EncodeToString(privKeyBytes)
-	a.config.SetResolvedPrivateKey(privKeyBytes)
-	a.config.DefaultCipherScheme = cipherScheme
+	a.config.SetPrivateKeyMaterial(base64.StdEncoding.EncodeToString(privKeyBytes), cipherScheme, privKeyBytes)
 
 	// Stopping the old device closes its DecryptedMsgQueue, so the
 	// existing recvMessageRoutine (blocked on the old channel) observes a

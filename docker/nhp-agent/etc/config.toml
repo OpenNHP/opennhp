@@ -7,6 +7,9 @@
 #   NHP_KEY_PASSPHRASE_FILE (a file, mode 0600; preferred) or
 #   NHP_KEY_PASSPHRASE. Those env vars are consulted ONLY when the value is
 #   sealed, so an unsealed agent is unaffected by a stray exported var.
+#   "At startup" also covers a later restart/rotate over HTTP (both re-run
+#   the same unseal), so the passphrase must stay resolvable for the whole
+#   process lifetime, not just the first boot.
 # DefaultCipherScheme: 0: curve25519, 1: gmsm.
 # MIGRATION: Values changed in v2.x. If upgrading: old 0(gmsm)->new 1, old 1(curve)->new 0.
 # UserId: specify the user id this agent represents.

@@ -115,6 +115,53 @@ func TestUpdateTomlConfigErrorsWhenAbsentWithTables(t *testing.T) {
 	}
 }
 
+// TestUpdateTomlConfigReplacesCRLFLine: a \r\n-terminated line (checked out
+// with core.autocrlf=true, or saved by a Windows editor) must still hit the
+// in-place replace branch. Before [ \t\r]*$ this fell through to "absent",
+// and combined with the old regex-miss-means-absent heuristic it produced a
+// second, duplicate key rather than editing the existing line.
+func TestUpdateTomlConfigReplacesCRLFLine(t *testing.T) {
+	dir := t.TempDir()
+	fp := filepath.Join(dir, "dhp.toml")
+	// No [table] header — this is exactly the shape of
+	// docker/nhp-agent/etc/dhp.toml, the file the CRLF regression bit.
+	orig := "# generated\r\nTEEPrivateKeyBase64 = \"old\"\r\n"
+	if err := os.WriteFile(fp, []byte(orig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateTomlConfig(fp, "TEEPrivateKeyBase64", "new"); err != nil {
+		t.Fatalf("UpdateTomlConfig over a CRLF file: %v", err)
+	}
+	got, _ := os.ReadFile(fp)
+	if n := strings.Count(string(got), "TEEPrivateKeyBase64"); n != 1 {
+		t.Fatalf("expected exactly one TEEPrivateKeyBase64 line, got %d:\n%s", n, got)
+	}
+	if !strings.Contains(string(got), `TEEPrivateKeyBase64 = "new"`) {
+		t.Fatalf("value not replaced in place:\n%s", got)
+	}
+}
+
+// TestUpdateTomlConfigErrorsRatherThanDuplicatesOnUnrecognizedForm: a value
+// form the line regex does not match (here, a trailing comment) must not be
+// silently treated as "key absent" and appended — go-toml/v2 rejects the
+// resulting duplicate key outright, and the caller that only logs the parse
+// error (updateDHPConfig) would carry on with an empty config.
+func TestUpdateTomlConfigErrorsRatherThanDuplicatesOnUnrecognizedForm(t *testing.T) {
+	dir := t.TempDir()
+	fp := filepath.Join(dir, "dhp.toml")
+	orig := "TEEPrivateKeyBase64 = \"old\" # rotated 2026-01-01\n"
+	if err := os.WriteFile(fp, []byte(orig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateTomlConfig(fp, "TEEPrivateKeyBase64", "new"); err == nil {
+		t.Fatal("expected an error: the existing line has a trailing comment the regex does not match")
+	}
+	got, _ := os.ReadFile(fp)
+	if string(got) != orig {
+		t.Fatalf("file was modified despite the refusal:\n%s", got)
+	}
+}
+
 // TestUpdateTomlConfigRoundTripsPlainKey confirms the ordinary path is
 // unaffected.
 func TestUpdateTomlConfigRoundTripsPlainKey(t *testing.T) {

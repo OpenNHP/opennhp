@@ -43,10 +43,12 @@ type Config struct {
 	// agent's Start (and refreshed by ReinitWithKey). Unexported, so it is
 	// already skipped by encoding/json and mapstructure — no tag needed.
 	//
-	// Guarded by keyMu: ReinitWithKey rewrites it during a rekey while an
-	// in-flight /publicKey request may be reading it, so the slice header
-	// must not be touched lock-free. Use SetResolvedPrivateKey /
-	// resolvedKey rather than the field directly.
+	// Guarded by keyMu: ReinitWithKey rewrites PrivateKeyBase64,
+	// DefaultCipherScheme and resolvedPrivateKey together during a rekey,
+	// while an in-flight /publicKey request may be reading any of the
+	// three (GetAgentEcdh) — none of them may be touched lock-free. Use
+	// SetResolvedPrivateKey / SetPrivateKeyMaterial to write and
+	// GetAgentEcdh's own locking to read, rather than the fields directly.
 	keyMu              sync.RWMutex
 	resolvedPrivateKey []byte
 
@@ -65,11 +67,17 @@ func (c *Config) SetResolvedPrivateKey(prk []byte) {
 	c.keyMu.Unlock()
 }
 
-// resolvedKey returns the cached raw private key, or nil if none is cached.
-func (c *Config) resolvedKey() []byte {
-	c.keyMu.RLock()
-	defer c.keyMu.RUnlock()
-	return c.resolvedPrivateKey
+// SetPrivateKeyMaterial atomically replaces the base64 config value, cipher
+// scheme, and resolved raw key together. ReinitWithKey rewrites all three
+// on a rekey; setting them one field at a time (as ordinary assignment
+// would) lets a concurrently-running GetAgentEcdh read a torn mix of the
+// old and new key.
+func (c *Config) SetPrivateKeyMaterial(base64Key string, cipherScheme int, raw []byte) {
+	c.keyMu.Lock()
+	c.PrivateKeyBase64 = base64Key
+	c.DefaultCipherScheme = cipherScheme
+	c.resolvedPrivateKey = raw
+	c.keyMu.Unlock()
 }
 
 type DHPConfig struct {
@@ -77,8 +85,18 @@ type DHPConfig struct {
 }
 
 func (c *Config) GetAgentEcdh() core.Ecdh {
+	// Read the whole key triple under one lock — DefaultCipherScheme and
+	// PrivateKeyBase64 are rewritten together with resolvedPrivateKey by
+	// ReinitWithKey (see SetPrivateKeyMaterial), and reading them
+	// separately could observe a torn mix of the old and new key.
+	c.keyMu.RLock()
+	cipherScheme := c.DefaultCipherScheme
+	privB64 := c.PrivateKeyBase64
+	prk := c.resolvedPrivateKey
+	c.keyMu.RUnlock()
+
 	eccType := core.ECC_SM2
-	if c.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
+	if cipherScheme == common.CIPHER_SCHEME_CURVE {
 		eccType = core.ECC_CURVE25519
 	}
 	// Prefer the key resolved once at startup. If the cache is empty, fall
@@ -87,14 +105,13 @@ func (c *Config) GetAgentEcdh() core.Ecdh {
 	// an HTTP handler (Start/ReinitWithKey populate the cache before the HTTP
 	// service is up, so the sealed case is unreachable anyway). A sealed key
 	// with an empty cache yields nil, and getAgentPublicKey answers 500.
-	prk := c.resolvedKey()
 	if prk == nil {
-		if keystore.IsSealed(c.PrivateKeyBase64) {
+		if keystore.IsSealed(privB64) {
 			if c.sealedMissLogged.CompareAndSwap(false, true) {
 				log.Error("GetAgentEcdh: sealed private key not yet resolved — caller ran before Start (logged once)")
 			}
 		} else {
-			prk, _ = base64.StdEncoding.DecodeString(c.PrivateKeyBase64)
+			prk, _ = base64.StdEncoding.DecodeString(privB64)
 		}
 	}
 	return core.ECDHFromKey(eccType, prk)
@@ -475,20 +492,25 @@ func (a *UdpAgent) StopConfigWatch() {
 	}
 }
 
-func (a *UdpAgent) NewEcdhFromConfigFile() (core.Ecdh, error) {
+// NewEcdhFromConfigFile reads and parses etc/config.toml, returning both a
+// fresh ECDH keypair derived from its cipher scheme and the parsed Config
+// itself — RotateAgentKey needs the latter to check whether the current key
+// is sealed, and returning it here keeps that from re-reading and
+// re-unmarshaling the same file NewEcdhFromConfigFile just read.
+func (a *UdpAgent) NewEcdhFromConfigFile() (core.Ecdh, *Config, error) {
 	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
 
 	content, err := os.ReadFile(fileName)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var conf Config
 	if err := toml.Unmarshal(content, &conf); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return core.NewECDH(conf.GetEccType()), nil
+	return core.NewECDH(conf.GetEccType()), &conf, nil
 }
 
 // RotateTeeKey rewrites TEEPrivateKeyBase64 in dhp.toml. The TEE key is
@@ -497,7 +519,7 @@ func (a *UdpAgent) NewEcdhFromConfigFile() (core.Ecdh, error) {
 func (a *UdpAgent) RotateTeeKey() error {
 	fileName := filepath.Join(ExeDirPath, "etc", "dhp.toml")
 
-	ecdh, err := a.NewEcdhFromConfigFile()
+	ecdh, _, err := a.NewEcdhFromConfigFile()
 	if err != nil {
 		return err
 	}
@@ -512,16 +534,10 @@ func (a *UdpAgent) RotateTeeKey() error {
 func (a *UdpAgent) RotateAgentKey() error {
 	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
 
-	content, err := os.ReadFile(fileName)
+	ecdh, conf, err := a.NewEcdhFromConfigFile()
 	if err != nil {
 		return err
 	}
-	var conf Config
-	if err := toml.Unmarshal(content, &conf); err != nil {
-		return err
-	}
-
-	ecdh := core.NewECDH(conf.GetEccType())
 
 	// Preserve encryption-at-rest across rotation. If the current key is a
 	// sealed blob, the replacement must be sealed too — writing a plain

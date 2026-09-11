@@ -279,10 +279,16 @@ func zero(b []byte) {
 	}
 }
 
-// ResolvePrivateKey is the single entry point the daemons call in place of
-// base64.StdEncoding.DecodeString(cfg.PrivateKeyBase64). If the value is a
-// sealed blob it is unsealed with passphrase; otherwise it is treated as a
-// plain base64 key exactly as before, so existing configs are unaffected.
+// ResolvePrivateKey replaces base64.StdEncoding.DecodeString(cfg.PrivateKeyBase64)
+// with a passphrase supplied by the caller. If the value is a sealed blob it
+// is unsealed with that passphrase; otherwise it is treated as a plain
+// base64 key exactly as before, so existing configs are unaffected.
+//
+// Every daemon in this repo calls ResolvePrivateKeyAuto instead, which reads
+// the passphrase from the environment for you — this function is not the
+// recommended entry point for that case. It exists for an embedder that
+// sources the passphrase some other way (an OS keychain, an operator
+// prompt, ...) and needs to hand it in directly.
 func ResolvePrivateKey(cfgValue string, passphrase []byte) ([]byte, error) {
 	if IsSealed(cfgValue) {
 		return Open(cfgValue, passphrase)

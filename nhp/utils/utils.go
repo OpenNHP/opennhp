@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	toml "github.com/pelletier/go-toml/v2"
+
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
@@ -173,7 +175,11 @@ func UpdateTomlConfig(filePath string, key string, value any) error {
 		// Match ONLY a single-line string assignment (`key = "…"`, empty value
 		// included), never `key = [` of a multi-line array or a bare number,
 		// so a general caller can't mangle those.
-		lineRe := regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(key) + `[ \t]*=[ \t]*"[^"]*"[ \t]*$`)
+		// [ \t\r]*$: (?m) makes $ match immediately before \n, not consume
+		// it, and — unlike the \s*$ this replaced — \r is not implied, so a
+		// CRLF file needs it spelled out or the regex stops matching a line
+		// it used to match on Unix-checked-out content.
+		lineRe := regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(key) + `[ \t]*=[ \t]*"[^"]*"[ \t\r]*$`)
 		switch {
 		case lineRe.MatchString(string(content)):
 			// ReplaceAllLiteralString, not ReplaceAllString: the replacement
@@ -181,15 +187,33 @@ func UpdateTomlConfig(filePath string, key string, value any) error {
 			// contains '$' sequences that ReplaceAllString would interpret as
 			// capture-group references and mangle.
 			newContent = lineRe.ReplaceAllLiteralString(string(content), replacement)
-		case !regexp.MustCompile(`(?m)^\s*\[`).MatchString(string(content)):
-			// Key absent, no tables: safe to append as a root-table key.
+		default:
+			// The regex found no single-line "key = \"...\"" assignment. That
+			// can mean the key is genuinely absent — or it can mean the
+			// existing value just doesn't look like one (a trailing comment,
+			// a single-quoted literal, CRLF the regex still doesn't cover,
+			// ...). Telling those apart by parsing the file, rather than by
+			// the regex missing, matters: append-on-no-match used to fire
+			// either way, so a value the regex could not see produced a
+			// second "key = ..." line next to the first one, a file go-toml
+			// then refuses to parse at all.
+			var doc map[string]any
+			if uerr := toml.Unmarshal(content, &doc); uerr != nil {
+				return fmt.Errorf("key %q (string) not found via pattern match in %s, and the file does not parse as TOML to check for real: %w", key, filePath, uerr)
+			}
+			if _, exists := doc[key]; exists {
+				return fmt.Errorf("key %q already exists in %s in a form UpdateTomlConfig does not rewrite (not a single-line \"...\" assignment); edit it by hand", key, filePath)
+			}
+			if regexp.MustCompile(`(?m)^\s*\[`).MatchString(string(content)) {
+				return fmt.Errorf("key %q (string) not found in %s and the file has [table] sections; add the line under the root table by hand", key, filePath)
+			}
+			// Key is confirmed absent at the root, and there are no [table]
+			// sections it could be silently appended after: safe to append.
 			base := string(content)
 			if len(base) > 0 && !strings.HasSuffix(base, "\n") {
 				base += "\n"
 			}
 			newContent = base + replacement + "\n"
-		default:
-			return fmt.Errorf("key %q (string) not found in %s and the file has [table] sections; add the line under the root table by hand", key, filePath)
 		}
 	default:
 		return fmt.Errorf("unsupported type: %T", value)
@@ -203,8 +227,13 @@ func UpdateTomlConfig(filePath string, key string, value any) error {
 // now persists a re-SEALED key through this path, and that key exists nowhere
 // else. The existing file's permission bits are preserved (a new file gets
 // 0600, the CreateTemp default), so a rotation never widens a mode-0600
-// config to world-readable. Falls back to an in-place write when the
-// directory is not writable (a hardened root-owned etc/).
+// config to world-readable; ownership is NOT preserved (Rename does not
+// chown), and a rename onto a path that was a symlink replaces the symlink
+// with a regular file rather than writing through it. Falls back to a
+// non-atomic in-place write when the directory is not writable (a hardened
+// root-owned etc/) — that fallback is logged, since it silently drops the
+// crash-safety this function otherwise provides, on the one file that may
+// hold the only copy of a freshly re-sealed key.
 func atomicWriteFile(filePath string, data []byte) error {
 	mode := os.FileMode(0o600)
 	if fi, statErr := os.Stat(filePath); statErr == nil {
@@ -219,6 +248,8 @@ func atomicWriteFile(filePath string, data []byte) error {
 			// a plain in-place write, which only needs +w on the file itself;
 			// WriteFile's perm arg is ignored for an existing file, so the
 			// mode is preserved here too.
+			log.Warning("atomicWriteFile: %s directory is not writable; falling back to a "+
+				"non-atomic in-place write of %s (a crash mid-write can now truncate it)", dir, filePath)
 			return os.WriteFile(filePath, data, mode)
 		}
 		return err

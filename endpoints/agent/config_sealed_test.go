@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
@@ -187,4 +189,81 @@ func TestGetAgentEcdhPlainKeyUnchanged(t *testing.T) {
 	if got := cfg.GetAgentEcdh().PublicKeyBase64(); got != wantPub {
 		t.Fatalf("plain path: got %q want %q", got, wantPub)
 	}
+}
+
+// TestConfigKeyMuCoversCipherSchemeAndPrivateKeyReads: run with -race. The
+// config-reload watcher (updateBaseConfig) writes DefaultCipherScheme via
+// SetCipherScheme, and ReinitWithKey writes both PrivateKeyBase64 and
+// DefaultCipherScheme via SetPrivateKeyMaterial — both under keyMu. A
+// concurrent /publicKey request reads them via GetAgentEcdh, and
+// UdpAgent.PrivateKeyBase64() reads PrivateKeyBase64 via
+// GetPrivateKeyBase64. Every read and write here must go through one of
+// those, or this test races.
+func TestConfigKeyMuCoversCipherSchemeAndPrivateKeyReads(t *testing.T) {
+	e := core.NewECDH(core.ECC_CURVE25519)
+	cfg := &Config{
+		DefaultCipherScheme: common.CIPHER_SCHEME_CURVE,
+		PrivateKeyBase64:    base64.StdEncoding.EncodeToString(e.PrivateKey()),
+	}
+	cfg.SetResolvedPrivateKey(e.PrivateKey())
+
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// Writers: the config-reload watcher (SetCipherScheme alone) and a
+	// rekey (SetPrivateKeyMaterial, all three fields together).
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; ; i++ {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			cfg.SetCipherScheme(i % 2)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		raw := e.PrivateKey()
+		b64 := base64.StdEncoding.EncodeToString(raw)
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			cfg.SetPrivateKeyMaterial(b64, common.CIPHER_SCHEME_CURVE, raw)
+		}
+	}()
+
+	// Readers: the two paths the review flagged.
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			cfg.GetAgentEcdh()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			_ = cfg.GetPrivateKeyBase64()
+		}
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+	close(done)
+	wg.Wait()
 }

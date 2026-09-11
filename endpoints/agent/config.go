@@ -80,6 +80,35 @@ func (c *Config) SetPrivateKeyMaterial(base64Key string, cipherScheme int, raw [
 	c.keyMu.Unlock()
 }
 
+// SetCipherScheme updates DefaultCipherScheme alone, under keyMu. The
+// config-reload watcher (updateBaseConfig) is the one writer that changes
+// this field outside a full rekey; GetAgentEcdh reads it under the same
+// lock, so an unsynchronized bare assignment here would race a concurrent
+// /publicKey request — go test -race flags exactly that.
+func (c *Config) SetCipherScheme(scheme int) {
+	c.keyMu.Lock()
+	c.DefaultCipherScheme = scheme
+	c.keyMu.Unlock()
+}
+
+// GetCipherScheme reads DefaultCipherScheme under keyMu — the read-side
+// counterpart callers outside Start (single-threaded, so safe to touch the
+// field directly) must use instead of the field, matching SetCipherScheme.
+func (c *Config) GetCipherScheme() int {
+	c.keyMu.RLock()
+	defer c.keyMu.RUnlock()
+	return c.DefaultCipherScheme
+}
+
+// GetPrivateKeyBase64 reads PrivateKeyBase64 under keyMu, matching how
+// SetPrivateKeyMaterial writes it. Prefer this over the field directly from
+// any caller that cannot rule out running concurrently with a rekey.
+func (c *Config) GetPrivateKeyBase64() string {
+	c.keyMu.RLock()
+	defer c.keyMu.RUnlock()
+	return c.PrivateKeyBase64
+}
+
 type DHPConfig struct {
 	TEEPrivateKeyBase64 string `json:"teePrivateKeyBase64"`
 }
@@ -252,9 +281,12 @@ func (a *UdpAgent) updateBaseConfig(file string) (err error) {
 		a.config.LogLevel = conf.LogLevel
 	}
 
-	if a.config.DefaultCipherScheme != conf.DefaultCipherScheme {
+	if a.config.GetCipherScheme() != conf.DefaultCipherScheme {
 		log.Info("set default cipher scheme to %d", conf.DefaultCipherScheme)
-		a.config.DefaultCipherScheme = conf.DefaultCipherScheme
+		// GetAgentEcdh reads DefaultCipherScheme under keyMu (see
+		// SetPrivateKeyMaterial's doc comment); this watcher goroutine must
+		// write it under the same lock, not as a bare assignment.
+		a.config.SetCipherScheme(conf.DefaultCipherScheme)
 	}
 
 	return err

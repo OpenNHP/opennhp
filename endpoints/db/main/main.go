@@ -28,7 +28,7 @@ func main() {
 }
 func initApp() {
 	app := cli.NewApp()
-	app.Name = "nhp-device"
+	app.Name = "nhp-db"
 	app.Usage = "device entity for NHP protocol"
 	app.Version = version.Version
 

@@ -576,7 +576,7 @@ func (a *UdpAgent) PublicKeyBase64ByCipherScheme() string {
 
 // PrivateKeyBase64 returns the agent's private key in base64 encoding.
 func (a *UdpAgent) PrivateKeyBase64() string {
-	return a.config.PrivateKeyBase64
+	return a.config.GetPrivateKeyBase64()
 }
 
 // ReinitWithKey stops the current device, creates a new one from the given

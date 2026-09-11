@@ -193,10 +193,13 @@ func UpdateTomlConfig(filePath string, key string, value any) error {
 			// existing value just doesn't look like one (a trailing comment,
 			// a single-quoted literal, CRLF the regex still doesn't cover,
 			// ...). Telling those apart by parsing the file, rather than by
-			// the regex missing, matters: append-on-no-match used to fire
-			// either way, so a value the regex could not see produced a
-			// second "key = ..." line next to the first one, a file go-toml
-			// then refuses to parse at all.
+			// the regex missing, matters: an earlier version of this append
+			// branch fired on either case alike, so a value the regex could
+			// not see got a second "key = ..." line appended next to the
+			// first one — a file go-toml then refuses to parse at all. (On
+			// unmodified main, before this PR, a regex miss was a silent
+			// no-op instead; this failure mode is specific to that earlier,
+			// already-fixed version of this branch, not to main.)
 			var doc map[string]any
 			if uerr := toml.Unmarshal(content, &doc); uerr != nil {
 				return fmt.Errorf("key %q (string) not found via pattern match in %s, and the file does not parse as TOML to check for real: %w", key, filePath, uerr)

@@ -53,7 +53,10 @@ func SealCommand() *cli.Command {
 			if len(raw) != keystore.DeviceKeyLen {
 				return fmt.Errorf("private key decodes to %d bytes, expected %d — is it the right value?", len(raw), keystore.DeviceKeyLen)
 			}
-			pass, source, err := passphraseFromEnv()
+			// PassphraseFromEnv itself warns if NHP_KEY_PASSPHRASE_FILE points
+			// at a world/group-readable file — covers every consumer, not
+			// just this command.
+			pass, err := keystore.PassphraseFromEnv()
 			if err != nil {
 				return err
 			}
@@ -63,7 +66,6 @@ func SealCommand() *cli.Command {
 			if len(pass) < keystore.MinPassphraseLen {
 				return fmt.Errorf("passphrase is %d bytes; use at least %d — Argon2id does not make a short passphrase safe against a stolen config", len(pass), keystore.MinPassphraseLen)
 			}
-			warnIfPassphraseFilePermissive(source)
 			blob, err := keystore.Seal(raw, pass)
 			if err != nil {
 				return err
@@ -88,7 +90,7 @@ func UnsealCommand() *cli.Command {
 			if blob == "" {
 				return fmt.Errorf("usage: %s unseal <sealedBlob>", c.App.Name)
 			}
-			pass, _, err := passphraseFromEnv()
+			pass, err := keystore.PassphraseFromEnv()
 			if err != nil {
 				return err
 			}
@@ -106,31 +108,4 @@ func UnsealCommand() *cli.Command {
 // Commands returns both subcommands, ready to append to app.Commands.
 func Commands() []*cli.Command {
 	return []*cli.Command{SealCommand(), UnsealCommand()}
-}
-
-// passphraseFromEnv wraps keystore.PassphraseFromEnv and also reports which
-// source it came from, so seal can warn about a world-readable file.
-func passphraseFromEnv() (pass []byte, source string, err error) {
-	if path := os.Getenv(keystore.EnvPassphraseFile); path != "" {
-		source = path
-	} else if os.Getenv(keystore.EnvPassphrase) != "" {
-		source = "env:" + keystore.EnvPassphrase
-	}
-	pass, err = keystore.PassphraseFromEnv()
-	return pass, source, err
-}
-
-// warnIfPassphraseFilePermissive prints a warning when the passphrase file is readable
-// by group or other. The docs recommend mode 0600; nothing enforced it.
-func warnIfPassphraseFilePermissive(source string) {
-	if source == "" || strings.HasPrefix(source, "env:") {
-		return
-	}
-	fi, err := os.Stat(source)
-	if err != nil {
-		return
-	}
-	if fi.Mode().Perm()&0o077 != 0 {
-		fmt.Fprintf(os.Stderr, "warning: passphrase file %s is mode %o — restrict it to 0600\n", source, fi.Mode().Perm())
-	}
 }

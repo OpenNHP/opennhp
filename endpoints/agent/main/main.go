@@ -420,6 +420,34 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 		return fmt.Errorf("register: %w", keySealedErr)
 	}
 
+	// If the existing config keeps its key sealed, confirm the passphrase to
+	// re-seal the NEW key with is actually usable now, before OTP/email/
+	// registration — not after. The re-seal step near the end of this flow
+	// cannot abort on a bad passphrase (the new public key is already on the
+	// server by then; see the "reason != nil" fallback below), so a missing
+	// or too-short passphrase used to only surface as a post-registration
+	// "could not re-seal, plaintext shown" warning the operator could not act
+	// on except by choosing between a plaintext config write and a manual
+	// `seal` afterward. Checking early lets them fix it and just re-run.
+	if existingKeySealed {
+		if pass, passErr := keystore.PassphraseFromEnv(); passErr != nil {
+			fmt.Printf("\n  %s❌ etc/config.toml has a SEALED private key, but the unseal passphrase "+
+				"is not usable:%s %v\n     Fix %s (or %s) and re-run `register`.\n\n",
+				colorYellow, colorReset, passErr, keystore.EnvPassphraseFile, keystore.EnvPassphrase)
+			return fmt.Errorf("register: %w", passErr)
+		} else if len(pass) == 0 {
+			fmt.Printf("\n  %s❌ etc/config.toml has a SEALED private key. Set %s (or %s) to the "+
+				"unseal passphrase and re-run `register`.%s\n\n",
+				colorYellow, keystore.EnvPassphraseFile, keystore.EnvPassphrase, colorReset)
+			return fmt.Errorf("register: sealed config but no unseal passphrase configured")
+		} else if len(pass) < keystore.MinPassphraseLen {
+			fmt.Printf("\n  %s❌ The configured unseal passphrase (%s / %s) is %d bytes; the keystore "+
+				"requires at least %d.%s\n     Fix it and re-run `register`.\n\n",
+				colorYellow, keystore.EnvPassphraseFile, keystore.EnvPassphrase, len(pass), keystore.MinPassphraseLen, colorReset)
+			return fmt.Errorf("register: passphrase is %d bytes, need at least %d", len(pass), keystore.MinPassphraseLen)
+		}
+	}
+
 	printBanner()
 
 	fmt.Println(colorGreen + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" + colorReset)

@@ -25,6 +25,8 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/argon2"
+
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 // Sealed-blob format (fields separated by '$', binary fields base64 RawStd):
@@ -55,11 +57,19 @@ const (
 	// their own copy.
 	DeviceKeyLen = 32
 
-	// MinPassphraseLen is the shortest passphrase Seal accepts. A short
-	// passphrase makes the Argon2id work factor moot; enforced in the
-	// library so every producer (the seal CLI, RotateAgentKey, the register
-	// re-seal) agrees instead of only the CLI.
-	MinPassphraseLen = 8
+	// MinPassphraseLen is the shortest passphrase Seal accepts. Enforced in
+	// the library so every producer (the seal CLI, RotateAgentKey, the
+	// register re-seal) agrees instead of only the CLI.
+	//
+	// The threat this blob format defends against is someone getting a
+	// static copy of the sealed value (a config file backup, a leaked
+	// secret, an offline disk image) and brute-forcing it at leisure — no
+	// rate limit, no lockout, however long they want to spend. Argon2id at
+	// this package's cost parameters raises the per-guess price a lot, but
+	// it does not change the size of the space being searched: a floor
+	// picked for "annoying to type over SSH" rather than "expensive to
+	// exhaust" undersells what the KDF cost is there to buy.
+	MinPassphraseLen = 12
 
 	// Upper bounds on the KDF cost parsed out of a blob. The blob comes
 	// from operator-controlled config (an attacker who can edit it can
@@ -339,6 +349,7 @@ func PassphraseFromEnv() ([]byte, error) {
 			// passphrase file should surface loudly, not be ignored.
 			return nil, fmt.Errorf("keystore: cannot read %s=%q: %w", EnvPassphraseFile, path, err)
 		}
+		warnIfPassphraseFilePermissive(path)
 		pass := trimTrailingNewline(string(data))
 		if pass == "" {
 			// Distinguish "you pointed me at an empty file" from "no
@@ -352,6 +363,21 @@ func PassphraseFromEnv() ([]byte, error) {
 		return []byte(trimTrailingNewline(pass)), nil
 	}
 	return nil, nil
+}
+
+// warnIfPassphraseFilePermissive logs (never fails) when the passphrase file
+// is readable by group or other. Checked here, in PassphraseFromEnv itself,
+// so every consumer — every daemon's startup, RotateAgentKey, the register
+// re-seal — gets the warning, not just the seal CLI, which is where this
+// file spends most of its life being read from.
+func warnIfPassphraseFilePermissive(path string) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	if fi.Mode().Perm()&0o077 != 0 {
+		log.Warning("keystore: passphrase file %s is mode %o — restrict it to 0600", path, fi.Mode().Perm())
+	}
 }
 
 // trimTrailingNewline removes one trailing "\n" or "\r\n" and nothing else,

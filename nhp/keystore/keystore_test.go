@@ -214,8 +214,8 @@ func TestSealEnforcesPassphraseFloor(t *testing.T) {
 	if _, err := Seal(key, []byte("short")); err == nil {
 		t.Fatal("Seal accepted a 5-byte passphrase")
 	}
-	if _, err := Seal(key, []byte("12345678")); err != nil { // exactly MinPassphraseLen
-		t.Fatalf("Seal rejected an 8-byte passphrase: %v", err)
+	if _, err := Seal(key, []byte("123456789012")); err != nil { // exactly MinPassphraseLen
+		t.Fatalf("Seal rejected a 12-byte passphrase: %v", err)
 	}
 }
 

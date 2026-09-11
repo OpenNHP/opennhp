@@ -251,13 +251,24 @@ func main() {
 						fmt.Printf("note: skipped %d unparseable line(s)%s — likely a torn write from an unclean shutdown; cannot be distinguished from tampering from the file alone. Compare against your off-host anchor.\n",
 							res.Skipped, formatSkippedLines(res.SkippedLines, res.Skipped))
 					}
+					if res.UnsignedEntries > 0 && !keyless {
+						// A key WAS given and the chain still verified — these
+						// entries just predate SigningKeyBase64 being set (or a
+						// key rotation), which Open resuming the same file makes
+						// routine. Worth a note, not a warning: it is not
+						// evidence of anything wrong, just of when the key was
+						// introduced.
+						fmt.Printf("note: %d %s %s no signature at all (logged before a signing key was configured or rotated), not counted against the key.\n",
+							res.UnsignedEntries, pluralize(res.UnsignedEntries, "entry", "entries"), pluralize(res.UnsignedEntries, "carries", "carry"))
+					}
 					// In --strict mode an incomplete verification is a failure
 					// for gating purposes (CI/cron): no key given at all, a
-					// keyless check of a signed ledger, damaged lines, or a
-					// partial (anchored) segment set is not the same as a full
-					// clean pass. Distinct exit code 2 so a caller can tell it
-					// apart from a chain break (1).
-					if c.Bool("strict") && (keyless || res.Count == 0 || res.Skipped > 0 || res.UncheckedSigs > 0 || res.AnchoredAtSeq > 0) {
+					// keyless check of a signed ledger, damaged lines, an
+					// unsigned prefix predating the key, or a partial
+					// (anchored) segment set is not the same as a full clean
+					// pass. Distinct exit code 2 so a caller can tell it apart
+					// from a chain break (1).
+					if c.Bool("strict") && (keyless || res.Count == 0 || res.Skipped > 0 || res.UncheckedSigs > 0 || res.UnsignedEntries > 0 || res.AnchoredAtSeq > 0) {
 						fmt.Println("strict: verification incomplete (see warnings above).")
 						os.Exit(2)
 					}

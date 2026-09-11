@@ -234,6 +234,12 @@ type AuditConfig struct {
 	// verifies, because a hash chain cannot prove it was not shortened.
 	// Detecting rollback needs an external anchor — periodically record the
 	// latest seq+hash off-host and compare against it.
+	//
+	// Setting or rotating this on an EXISTING ledger is fine: Open resumes
+	// the same file, so it ends up with an unsigned prefix (entries logged
+	// before the key existed) and a signed suffix. `audit verify --key`
+	// treats that prefix as UnsignedEntries, not a signature mismatch — it
+	// does not read as tampering.
 	SigningKeyBase64 string `json:"signingKey"`
 
 	// FailClosed controls what happens when the ledger cannot be opened at

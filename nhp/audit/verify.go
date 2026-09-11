@@ -40,6 +40,15 @@ type VerifyResult struct {
 	// signature-checked one. Callers must surface this rather than let a
 	// signed ledger verified without its key look fully verified.
 	UncheckedSigs uint64
+	// UnsignedEntries counts entries with no Sig at all (Sig == "") found
+	// while a key WAS supplied — an entry logged before SigningKeyBase64
+	// was configured, or before a key rotation, not a forged one:
+	// computeSig only ever produces "" when its own key argument is empty,
+	// so an entry that predates the key cannot carry one. Checked
+	// separately from UncheckedSigs (no key given at all) so the caller can
+	// still flag it under --strict without the "HMAC signature mismatch"
+	// wording, which reads as tampering.
+	UnsignedEntries uint64
 	// SkippedLines lists the 1-based line numbers skipped as damage, capped
 	// at maxReportedSkips so a wholly garbled file cannot produce an
 	// unbounded slice. Which lines are bad is more actionable than a bare
@@ -274,6 +283,7 @@ func verifyChainFrom(r io.Reader, hmacKey []byte, startPrevHash string, startPre
 	var count uint64
 	var skipped uint64
 	var unchecked uint64
+	var unsigned uint64
 	var skippedLines []uint64
 	prevHash := startPrevHash
 	prevSeq := startPrevSeq
@@ -300,14 +310,14 @@ func verifyChainFrom(r io.Reader, hmacKey []byte, startPrevHash string, startPre
 			var e Event
 			if json.Unmarshal(line, &e) != nil {
 				skip()
-			} else if res, ok := verifyEntry(&e, line, hmacKey, &prevHash, &prevSeq, &count, &unchecked, skipped, skippedLines); !ok {
+			} else if res, ok := verifyEntry(&e, line, hmacKey, &prevHash, &prevSeq, &count, &unchecked, &unsigned, skipped, skippedLines); !ok {
 				res.AnchoredAtSeq = anchoredAt
 				return res
 			}
 		}
 
 		if readErr != nil {
-			res := VerifyResult{Count: count, Skipped: skipped, UncheckedSigs: unchecked, SkippedLines: skippedLines, AnchoredAtSeq: anchoredAt}
+			res := VerifyResult{Count: count, Skipped: skipped, UncheckedSigs: unchecked, UnsignedEntries: unsigned, SkippedLines: skippedLines, AnchoredAtSeq: anchoredAt}
 			if readErr == io.EOF {
 				return res
 			}
@@ -322,9 +332,9 @@ func verifyChainFrom(r io.Reader, hmacKey []byte, startPrevHash string, startPre
 // which case res carries the failure. rawLine is the exact bytes the entry
 // was read from (newline stripped). The pointer arguments are the running
 // state threaded through the scan.
-func verifyEntry(e *Event, rawLine, hmacKey []byte, prevHash *string, prevSeq, count, unchecked *uint64, skipped uint64, skippedLines []uint64) (res VerifyResult, ok bool) {
+func verifyEntry(e *Event, rawLine, hmacKey []byte, prevHash *string, prevSeq, count, unchecked, unsigned *uint64, skipped uint64, skippedLines []uint64) (res VerifyResult, ok bool) {
 	fail := func(err error) VerifyResult {
-		return VerifyResult{Count: *count, Skipped: skipped, UncheckedSigs: *unchecked, SkippedLines: skippedLines, BadSeq: e.Seq, Err: err}
+		return VerifyResult{Count: *count, Skipped: skipped, UncheckedSigs: *unchecked, UnsignedEntries: *unsigned, SkippedLines: skippedLines, BadSeq: e.Seq, Err: err}
 	}
 
 	if e.PrevHash != *prevHash {
@@ -354,12 +364,22 @@ func verifyEntry(e *Event, rawLine, hmacKey []byte, prevHash *string, prevSeq, c
 	}
 
 	if len(hmacKey) > 0 {
-		wantSig, err := computeSig(e, hmacKey)
-		if err != nil {
-			return fail(fmt.Errorf("entry seq=%d: %w", e.Seq, err)), false
-		}
-		if !hmac.Equal([]byte(wantSig), []byte(e.Sig)) {
-			return fail(fmt.Errorf("entry seq=%d: HMAC signature mismatch (wrong key or forged entry)", e.Seq)), false
+		if e.Sig == "" {
+			// computeSig only ever returns "" when ITS OWN key argument is
+			// empty — this entry was logged before SigningKeyBase64 was
+			// configured (or before a rotation), not forged. Resuming the
+			// same ledger file across that config change is exactly what
+			// Open does, so this is a routine, expected shape, not damage:
+			// count it rather than fail the chain on it.
+			*unsigned++
+		} else {
+			wantSig, err := computeSig(e, hmacKey)
+			if err != nil {
+				return fail(fmt.Errorf("entry seq=%d: %w", e.Seq, err)), false
+			}
+			if !hmac.Equal([]byte(wantSig), []byte(e.Sig)) {
+				return fail(fmt.Errorf("entry seq=%d: HMAC signature mismatch (wrong key or forged entry)", e.Seq)), false
+			}
 		}
 	} else if e.Sig != "" {
 		// Signed but we have no key to check it with. Record it so the

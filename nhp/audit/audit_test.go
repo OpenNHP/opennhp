@@ -431,6 +431,33 @@ func TestOpenRefusesNonLedgerFile(t *testing.T) {
 	}
 }
 
+// TestOpenRefusesForeignFileStartingWithBlankLine: a foreign file whose
+// FIRST BYTE is '\n' must not slip past ensureLedgerFile's guard. Before
+// gating "empty file" on the actual file size, readLine's first call on
+// such a file returns an empty, unterminated-looking line indistinguishable
+// from a genuinely empty file, and the guard let it straight through —
+// after which repairTornTail could truncate the operator's trailing line
+// and Open would start writing audit JSON into the middle of the file.
+func TestOpenRefusesForeignFileStartingWithBlankLine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "not-a-ledger.conf")
+	content := []byte("\n# some other app's config, that happens to start blank\nkey = \"value\"\n")
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Open(path, Options{}); err == nil {
+		t.Fatal("Open should refuse a file that starts with a blank line but is not a ledger")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, content) {
+		t.Fatalf("refused file was modified: %q", after)
+	}
+}
+
 // TestOpenRefusesSingleLineNewlineFreeForeignFile: the torn-first-append
 // recovery must NOT fire for a foreign file that just happens to be one line
 // with no trailing '\n' (minified JSON, a token file, printf output). Only a
@@ -824,6 +851,78 @@ func TestVerifyStillCatchesReplacedEntry(t *testing.T) {
 	}
 	if res.BadSeq != 3 {
 		t.Errorf("BadSeq = %d, want 3 (the entry whose prevHash no longer matches)", res.BadSeq)
+	}
+}
+
+// TestVerifyToleratesUnsignedPrefixAfterKeyIntroduced: a ledger started
+// without SigningKeyBase64, then resumed (same file, Open again) after the
+// operator sets one, must still verify cleanly with --key. The unsigned
+// prefix is counted via UnsignedEntries, not reported as a signature
+// mismatch — introducing or rotating the key on an existing ledger is a
+// routine config change, not tampering.
+func TestVerifyToleratesUnsignedPrefixAfterKeyIntroduced(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l1, err := Open(path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l1, 3)
+	if err := l1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	key := []byte("a-signing-key-introduced-later!!")
+	l2, err := Open(path, Options{HMACKey: key})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l2, 3)
+	if err := l2.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	res := VerifyLedger(path, key)
+	if res.Err != nil {
+		t.Fatalf("expected a clean pass across the unsigned->signed boundary, got: %v", res.Err)
+	}
+	if res.Count != 6 {
+		t.Fatalf("Count=%d, want 6", res.Count)
+	}
+	if res.UnsignedEntries != 3 {
+		t.Fatalf("UnsignedEntries=%d, want 3 (the entries logged before the key existed)", res.UnsignedEntries)
+	}
+}
+
+// TestVerifyStillCatchesForgedSigOnUnsignedEntry: the UnsignedEntries
+// tolerance must not become a way to sneak a forged entry past HMAC
+// checking — a non-empty Sig that does not match the key is still a hard
+// failure, exactly as before.
+func TestVerifyStillCatchesForgedSigOnUnsignedEntry(t *testing.T) {
+	key := []byte("a-signing-key-for-this-test-1234")
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{HMACKey: key})
+	writeN(t, l, 2)
+
+	lines := splitLines(buf.Bytes())
+	var e Event
+	if err := json.Unmarshal(lines[0], &e); err != nil {
+		t.Fatal(err)
+	}
+	e.Sig = "not-the-real-signature"
+	// Hash must still match (only Sig is forged) so the failure we are
+	// pinning is specifically the signature check, not the hash check.
+	h, err := computeHash(&e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Hash = h
+	lines[0] = mustMarshal(t, &e)
+
+	res := VerifyChain(bytes.NewReader(join(lines)), key)
+	if res.Err == nil {
+		t.Fatal("a forged (non-empty, wrong) signature must still fail verification")
 	}
 }
 

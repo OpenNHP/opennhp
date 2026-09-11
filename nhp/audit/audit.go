@@ -746,12 +746,34 @@ func ensureLedgerFile(path string) error {
 	}
 	defer f.Close()
 
-	line, tooLong, rerr := readLine(bufio.NewReaderSize(f, scanBufLen))
-	if rerr != nil && rerr != io.EOF {
-		return fmt.Errorf("audit: read %q: %w", path, rerr)
+	// "Empty" must be decided from the file's actual size, not from its
+	// first LINE being blank: a file whose first byte is '\n' (not unusual
+	// in a hand-edited file an operator mistyped into FilePath) reads as an
+	// empty first line via readLine below, even though the file has real
+	// content after it. Falling through to "empty file" for that case used
+	// to skip this guard entirely — the rest of Open would then proceed to
+	// repairTornTail (which can Truncate the file) and start appending
+	// audit JSON into the middle of an unrelated file.
+	if fi, statErr := f.Stat(); statErr == nil && fi.Size() == 0 {
+		return nil
 	}
-	if len(line) == 0 && !tooLong {
-		return nil // empty file
+
+	br := bufio.NewReaderSize(f, scanBufLen)
+	var line []byte
+	var tooLong bool
+	var rerr error
+	// Skip leading blank lines — the guard cares about the first REAL
+	// content, not literally the first byte — until one is found or the
+	// file turns out to hold nothing but blank lines (rerr reaches EOF with
+	// line still empty; the check below then correctly refuses it).
+	for {
+		line, tooLong, rerr = readLine(br)
+		if rerr != nil && rerr != io.EOF {
+			return fmt.Errorf("audit: read %q: %w", path, rerr)
+		}
+		if len(line) > 0 || tooLong || rerr == io.EOF {
+			break
+		}
 	}
 	var e Event
 	if tooLong || json.Unmarshal(line, &e) != nil || e.Seq == 0 {
@@ -765,7 +787,7 @@ func ensureLedgerFile(path string) error {
 		if rerr == io.EOF && !tooLong && bytes.HasPrefix(line, eventPrefix) {
 			return nil
 		}
-		return fmt.Errorf("%w: %q (its first line is not an event); check the [Audit] FilePath setting", ErrNotALedger, path)
+		return fmt.Errorf("%w: %q (its first non-blank line is not an event); check the [Audit] FilePath setting", ErrNotALedger, path)
 	}
 	return nil
 }

@@ -47,17 +47,42 @@ func (n *NoiseFactory) KeyGen1(dst0 *[HashSize]byte, key, input []byte) {
 func (n *NoiseFactory) KeyGen2(dst0, dst1 *[HashSize]byte, key, input []byte) {
 	var prk [HashSize]byte
 	n.HMAC1(&prk, key, input)
-	n.HMAC1(dst0, prk[:], []byte{0x1})
-	n.HMAC2(dst1, prk[:], dst0[:], []byte{0x2})
+	mac := hmac.New(func() hash.Hash {
+		h, err := NewHash(n.HashType)
+		if err != nil {
+			panic("failed to create hash for HMAC: " + err.Error())
+		}
+		return h
+	}, prk[:])
+	mac.Write([]byte{0x1})
+	mac.Sum(dst0[:0])
+	mac.Reset()
+	mac.Write(dst0[:])
+	mac.Write([]byte{0x2})
+	mac.Sum(dst1[:0])
 	SetZero(prk[:])
 }
 
 func (n *NoiseFactory) KeyGen3(dst0, dst1, dst2 *[HashSize]byte, key, input []byte) {
 	var prk [HashSize]byte
 	n.HMAC1(&prk, key, input)
-	n.HMAC1(dst0, prk[:], []byte{0x1})
-	n.HMAC2(dst1, prk[:], dst0[:], []byte{0x2})
-	n.HMAC2(dst2, prk[:], dst1[:], []byte{0x3})
+	mac := hmac.New(func() hash.Hash {
+		h, err := NewHash(n.HashType)
+		if err != nil {
+			panic("failed to create hash for HMAC: " + err.Error())
+		}
+		return h
+	}, prk[:])
+	mac.Write([]byte{0x1})
+	mac.Sum(dst0[:0])
+	mac.Reset()
+	mac.Write(dst0[:])
+	mac.Write([]byte{0x2})
+	mac.Sum(dst1[:0])
+	mac.Reset()
+	mac.Write(dst1[:])
+	mac.Write([]byte{0x3})
+	mac.Sum(dst2[:0])
 	SetZero(prk[:])
 }
 

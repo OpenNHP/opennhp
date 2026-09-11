@@ -66,6 +66,7 @@ type MsgAssemblerData struct {
 	chainHash      hash.Hash
 	bodyAead       cipher.AEAD
 	chainKey       [SymmetricKeySize]byte
+	hashBuf        [HashSize]byte
 
 	LocalInitTime int64
 	TransactionId uint64
@@ -142,7 +143,7 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 
 	// init chain key -> ChainKey0
 	mad.noise.HashType = mad.ciphers.HashType
-	mad.noise.MixKey(&mad.chainKey, mad.chainHash.Sum(nil), []byte(InitialChainKeyString))
+	mad.noise.MixKey(&mad.chainKey, mad.chainHash.Sum(mad.hashBuf[:0]), []byte(InitialChainKeyString))
 
 	// init timestamp
 	mad.LocalInitTime = time.Now().UnixNano()
@@ -289,7 +290,7 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 			log.Error("failed to create AEAD for static encryption: %v", err)
 			return err
 		}
-		static = aead.Seal(mad.header.StaticBytes()[:0], mad.header.NonceBytes(), mad.deviceEcdh.PublicKey(), mad.chainHash.Sum(nil))
+		static = aead.Seal(mad.header.StaticBytes()[:0], mad.header.NonceBytes(), mad.deviceEcdh.PublicKey(), mad.chainHash.Sum(mad.hashBuf[:0]))
 	}
 
 	//log.Debug("encrypted pubkey: %v, output: %v", mad.deviceEcdh.PublicKey(), static)
@@ -324,7 +325,7 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 			log.Error("failed to create AEAD for timestamp encryption: %v", err)
 			return err
 		}
-		ts = aead.Seal(mad.header.TimestampBytes()[:0], mad.header.NonceBytes(), tsBytes[:], mad.chainHash.Sum(nil))
+		ts = aead.Seal(mad.header.TimestampBytes()[:0], mad.header.NonceBytes(), tsBytes[:], mad.chainHash.Sum(mad.hashBuf[:0]))
 	}
 
 	// evolve chainhash ChainHash2 -> ChainHash3
@@ -347,6 +348,7 @@ func (mad *MsgAssemblerData) encryptBody() (err error) {
 		mad.chainHash.Reset()
 		mad.chainHash = nil
 		SetZero(mad.chainKey[:])
+		SetZero(mad.hashBuf[:])
 	}()
 
 	// message body is empty, skip encryption. Set header and calculate HMAC
@@ -410,7 +412,7 @@ func (mad *MsgAssemblerData) encryptBody() (err error) {
 	mad.addHMAC(mad.HeaderType == NHP_RKN)
 
 	// encrypt body and write into mad.BasePacket.Buf space
-	ciphertext := mad.bodyAead.Seal(mad.BasePacket.Buf[mad.header.Size():mad.header.Size()], mad.header.NonceBytes(), body, mad.chainHash.Sum(nil))
+	ciphertext := mad.bodyAead.Seal(mad.BasePacket.Buf[mad.header.Size():mad.header.Size()], mad.header.NonceBytes(), body, mad.chainHash.Sum(mad.hashBuf[:0]))
 	_ = ciphertext
 	//log.Debug("encrypted body: %v, output: %v", body, ciphertext)
 
@@ -453,4 +455,5 @@ func (mad *MsgAssemblerData) Destroy() {
 		mad.chainHash.Reset()
 		mad.chainHash = nil
 	}
+	SetZero(mad.hashBuf[:])
 }

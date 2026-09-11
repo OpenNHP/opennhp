@@ -380,8 +380,24 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 	var pendingLastSeq uint64
 	retry := time.Millisecond
 
+	// partial is true exactly when the FRONT of pending is the unwritten
+	// tail of an entry whose earlier bytes already landed in the CURRENT
+	// live file — the aftermath of a Write returning n>0 with an error
+	// (ENOSPC mid-buffer, for one). rollSegment renames whatever bytes are
+	// already on disk to a numbered segment and starts a fresh live file;
+	// it does not touch pending. So rotating while partial is true would
+	// send that entry's remaining bytes into the NEW file while its
+	// earlier bytes are stuck in the just-renamed OLD one — the entry ends
+	// up split across two segments, unparseable on both sides, and the
+	// entry after it fails verification with "prevHash mismatch" — a
+	// transient disk hiccup reading as tampering. The shouldRotate check
+	// below is gated on !partial for exactly this reason; delaying a
+	// rotation until the partial write clears is free, since shouldRotate
+	// is already a soft bound, not a hard limit.
+	var partial bool
+
 	// attemptFlush makes one Write of pending and folds the result back into
-	// pending/l.curSize/l.asyncErr, resetting retry and stamping
+	// pending/l.curSize/l.asyncErr/partial, resetting retry and stamping
 	// l.lastSegSeq on full success. Shared by the per-item retry loop below
 	// and the idle retryTimer, so both apply the exact same bookkeeping.
 	attemptFlush := func() (drained bool) {
@@ -394,8 +410,15 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 		}
 		if err != nil {
 			l.asyncErr.Store(&asyncFailure{err: err})
+			if n > 0 {
+				partial = true
+			}
 			return false
 		}
+		// Go's io.Writer contract requires n == len(p) whenever err == nil,
+		// so a successful Write always drains pending completely: there is
+		// no partial remainder left to protect a rotation from splitting.
+		partial = false
 		l.lastSegSeq = pendingLastSeq
 		retry = time.Millisecond
 		l.asyncErr.Store(nil) // recovered; auditEvent can log "writes recovered"
@@ -455,7 +478,7 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 
 		pending = append(pending, it.line...)
 		pendingLastSeq = it.seq
-		if l.shouldRotate(len(pending)) {
+		if !partial && l.shouldRotate(len(pending)) {
 			if rErr := l.rollSegment(); rErr != nil {
 				l.asyncErr.Store(&asyncFailure{err: rErr})
 				// keep going on the current segment
@@ -495,7 +518,12 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 	// did land with a newline so it does not merge with a future entry after
 	// a restart (Open's torn-tail repair also handles this; a stray blank
 	// line from an exact-boundary stop is harmless — readers skip it).
+	// Whatever is still in pending at this point is lost — Close is not
+	// going to retry again — so count it, matching the "closing" bail-out
+	// above and closeAuditLedger's documented claim that the shutdown
+	// summary includes it.
 	if len(pending) > 0 && !attemptFlush() && len(pending) > 0 {
+		l.dropped.Add(uint64(bytes.Count(pending, []byte{'\n'})))
 		_, _ = l.w.Write([]byte{'\n'})
 	}
 }
@@ -517,6 +545,68 @@ func (l *Ledger) shouldRotate(nextLen int) bool {
 // Dropped reports how many entries the async writer discarded because the
 // queue was full. Always 0 in synchronous mode.
 func (l *Ledger) Dropped() uint64 { return l.dropped.Load() }
+
+// ResolveTail returns the chain tip (seq + hash of the last committed
+// entry) that Open would resume from at path, without opening path for
+// writing — the read-only half of Open's own resume logic, exported so a
+// caller can resolve it for a file Open itself will not read (the
+// motivating case: endpoints/server's quarantine path needs the tip of a
+// ledger whose HEADER is corrupt — Open refuses that file outright via
+// ensureLedgerFile — to record it in the "audit_quarantine" marker it
+// chains onto the fresh replacement; see quarantineAndReopen).
+//
+// Resume is from the tail without reading the whole file: on a long-lived
+// gateway the ledger can be gigabytes, and all a restart needs is the last
+// committed entry's seq + hash. resumeFromTail seeks backwards over the
+// last few lines; only if none of them parse (damage deeper than the
+// window) does it fall back to the O(file) forward scan. One consequence of
+// not reading the whole file: mid-file damage is not counted here — `audit
+// verify` is the full-integrity pass and reports it precisely.
+//
+// Returns (0, genesisHash, 0, nil) — Open's own "fresh chain" starting
+// point — when path does not exist or holds no parseable entry anywhere,
+// including in a rotated "<path>.<n>" segment.
+func ResolveTail(path string) (seq uint64, hash string, malformed int, err error) {
+	seq, hash = 0, genesisHash
+
+	if rSeq, rHash, rSkip, rOK, rErr := resumeFromTail(path); rErr != nil {
+		return 0, "", 0, fmt.Errorf("audit: existing ledger %q is unreadable: %w", path, rErr)
+	} else if rOK {
+		malformed = rSkip
+		if rHash != "" {
+			seq, hash = rSeq, rHash
+		}
+	} else if f, openErr := os.Open(filepath.Clean(path)); openErr == nil {
+		lastSeq, lastHash, bad, scanErr := scanTail(f)
+		f.Close()
+		if scanErr != nil {
+			// Only a real I/O failure gets here; unparseable content is
+			// tolerated by scanTail (see below).
+			return 0, "", 0, fmt.Errorf("audit: existing ledger %q is unreadable: %w", path, scanErr)
+		}
+		malformed = bad
+		if lastHash != "" {
+			seq, hash = lastSeq, lastHash
+		}
+	} else if !errors.Is(openErr, os.ErrNotExist) {
+		return 0, "", 0, fmt.Errorf("audit: open %q: %w", path, openErr)
+	}
+
+	// If the live file yielded no entry (missing, empty, or a crash between
+	// rollSegment's rename and the first write to the fresh file), resume
+	// from the highest-numbered "<path>.<n>" segment instead. Without this
+	// the chain would restart at seq 1 next to a full segment — a spurious
+	// "chain broken" for VerifyLedger — and lastSegSeq would be 0, so the
+	// next rotation would create "<path>.0" and break segment ordering.
+	if hash == genesisHash {
+		if segSeq, segHash, sErr := lastSegmentTip(path); sErr != nil {
+			return 0, "", 0, fmt.Errorf("audit: read rotated segment of %q: %w", path, sErr)
+		} else if segHash != "" {
+			seq, hash = segSeq, segHash
+		}
+	}
+	return seq, hash, malformed, nil
+}
 
 // Open opens (creating parent dirs as needed) the ledger file at path for
 // append. If the file already exists its chain is scanned so new entries
@@ -547,52 +637,12 @@ func Open(path string, opts Options) (*Ledger, error) {
 		return nil, err
 	}
 
-	seq, last := uint64(0), genesisHash
-	malformed := 0
-
-	// Resume from the tail without reading the whole file: on a long-lived
-	// gateway the ledger can be gigabytes, and all a restart needs is the
-	// last committed entry's seq + hash. resumeFromTail seeks backwards over
-	// the last few lines; only if none of them parse (damage deeper than the
-	// window) does it hand back ok=false and we do the O(file) forward scan.
-	// One consequence of not reading the whole file: mid-file damage is no
-	// longer counted at Open. `audit verify` is the full-integrity pass and
-	// reports it precisely.
-	if rSeq, rHash, rSkip, rOK, rErr := resumeFromTail(path); rErr != nil {
-		return nil, fmt.Errorf("audit: existing ledger %q is unreadable: %w", path, rErr)
-	} else if rOK {
-		malformed = rSkip
-		if rHash != "" {
-			seq, last = rSeq, rHash
-		}
-	} else if f, openErr := os.Open(filepath.Clean(path)); openErr == nil {
-		lastSeq, lastHash, bad, scanErr := scanTail(f)
-		f.Close()
-		if scanErr != nil {
-			// Only a real I/O failure gets here; unparseable content is
-			// tolerated by scanTail (see below).
-			return nil, fmt.Errorf("audit: existing ledger %q is unreadable: %w", path, scanErr)
-		}
-		malformed = bad
-		if lastHash != "" {
-			seq, last = lastSeq, lastHash
-		}
-	} else if !errors.Is(openErr, os.ErrNotExist) {
-		return nil, fmt.Errorf("audit: open %q: %w", path, openErr)
-	}
-
-	// If the live file yielded no entry (missing, empty, or a crash between
-	// rollSegment's rename and the first write to the fresh file), resume
-	// from the highest-numbered "<path>.<n>" segment instead. Without this
-	// the chain would restart at seq 1 next to a full segment — a spurious
-	// "chain broken" for VerifyLedger — and lastSegSeq would be 0, so the
-	// next rotation would create "<path>.0" and break segment ordering.
-	if last == genesisHash {
-		if segSeq, segHash, sErr := lastSegmentTip(path); sErr != nil {
-			return nil, fmt.Errorf("audit: read rotated segment of %q: %w", path, sErr)
-		} else if segHash != "" {
-			seq, last = segSeq, segHash
-		}
+	var seq uint64
+	var last string
+	var malformed int
+	seq, last, malformed, err = ResolveTail(path)
+	if err != nil {
+		return nil, err
 	}
 
 	f, err := os.OpenFile(filepath.Clean(path), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)

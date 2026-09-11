@@ -87,6 +87,9 @@ func TestResolveVerifyKeyAcceptsMinimumLength(t *testing.T) {
 // TestResolveVerifyKeyNoSourceIsNilNotError: absent from every source is
 // the documented "verify without signature checking" mode, not an error.
 func TestResolveVerifyKeyNoSourceIsNilNotError(t *testing.T) {
+	// Otherwise this test depends on the ambient environment: it fails on
+	// any machine/CI runner where NHP_AUDIT_KEY happens to be exported.
+	t.Setenv("NHP_AUDIT_KEY", "")
 	got, err := resolveVerifyKey(verifyKeyContext(t, "", ""))
 	if err != nil {
 		t.Fatalf("no key configured should not error: %v", err)

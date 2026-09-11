@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -145,7 +146,7 @@ func (s *UdpServer) initAuditLedger() error {
 					return fmt.Errorf("audit ledger at %s is not readable and could not be quarantined: %w", path, qErr)
 				}
 				s.auditLedger = fresh
-				log.Critical("audit ledger %s has a corrupted header (%v); moved it aside and started a fresh chain — investigate the original file", path, err)
+				log.Critical("audit ledger %s has a corrupted header (%v); moved it aside and started a fresh chain, recording the reset in a chained audit_quarantine entry — investigate the original file", path, err)
 				return nil
 			}
 			sibling := path + ".quarantined.jsonl"
@@ -185,12 +186,43 @@ func (s *UdpServer) initAuditLedger() error {
 // and casual edits — not against someone with write access to the directory,
 // who can delete the sibling just as easily; a timestamp keeps repeated
 // failures from colliding.
+//
+// The fresh chain's FIRST entry is a chained "audit_quarantine" marker
+// naming the aside path and the last seq/hash ResolveTail could still read
+// from the corrupted file (only its header is damaged — LooksLikeLedger
+// already confirmed the file parses as one of ours somewhere, so
+// ResolveTail's damage-tolerant tail scan works on it same as Open's own
+// resume logic would on an intact file). Without this the reset was only
+// visible from OUTSIDE the chain — a Critical log line and a same-directory
+// sibling, both erasable by the same attacker who corrupted the header —
+// and `audit verify --key` on the fresh file alone reported a full clean
+// pass with nothing to say a prior chain ever existed, let alone how far it
+// got. The marker makes the reset part of the signed record itself:
+// deleting or editing it now breaks the very chain it is trying to hide.
 func quarantineAndReopen(path string, opts audit.Options) (*audit.Ledger, error) {
+	// Best-effort: an unresolvable tail must not block quarantining — that
+	// would defeat the whole point of this path, staying available — the
+	// marker just carries less detail (seq/hash come back zero/empty).
+	lastSeq, lastHash, _, _ := audit.ResolveTail(path)
+
 	aside := fmt.Sprintf("%s.corrupt-%d", path, time.Now().UnixNano())
 	if err := os.Rename(path, aside); err != nil {
 		return nil, fmt.Errorf("move %q aside: %w", path, err)
 	}
-	return audit.Open(path, opts)
+	fresh, err := audit.Open(path, opts)
+	if err != nil {
+		return nil, err
+	}
+	if logErr := fresh.Log("audit_quarantine", audit.SeverityWarn, map[string]string{
+		"asidePath": aside,
+		"lastSeq":   strconv.FormatUint(lastSeq, 10),
+		"lastHash":  lastHash,
+	}); logErr != nil {
+		// The fresh ledger itself is fine (Open already succeeded) — losing
+		// just this one marker write must not fail the whole reopen.
+		log.Error("audit: could not chain the audit_quarantine marker onto %s: %v", path, logErr)
+	}
+	return fresh, nil
 }
 
 // auditWriteFailLogEvery rate-limits the Critical emitted while ledger
@@ -268,17 +300,20 @@ func (s *UdpServer) closeAuditLedger() {
 // return a failure ErrCode alongside a nil error — a soft denial. Recording
 // that as "granted" would let a SIEM rule keyed on result=="denied" miss a
 // whole class of rejections, the opposite of what a tamper-evident trail is
-// for, so a non-success code denies. An empty or "0" (ErrSuccess) code with no
-// error is a grant. The raw code is still kept in its own errCode field either
-// way. The bundled plugins always pair a failure code with a non-nil error
-// (and a real ack), so this only matters for a misbehaving third-party
-// plugin — which is exactly the case the ledger should surface rather than
-// hide.
+// for, so only the explicit success code grants — same strict comparison
+// knockAuthorized (the metrics counterpart) already uses, so the two report
+// the same outcome for the same event rather than an empty ErrCode reading
+// as "granted" here and "not authorized" there. The raw code is still kept
+// in its own errCode field either way. The bundled plugins always set
+// ErrSuccess explicitly on success and pair any failure code with a non-nil
+// error (and a real ack), so this only matters for a misbehaving
+// third-party plugin — which is exactly the case the ledger should surface
+// rather than hide.
 func decisionGranted(err error, ackIsNil bool, errCode string) bool {
 	if err != nil || ackIsNil {
 		return false
 	}
-	return errCode == "" || errCode == common.ErrSuccess.ErrorCode()
+	return errCode == common.ErrSuccess.ErrorCode()
 }
 
 // shortKey returns a compact, log-safe fingerprint of a base64 public key

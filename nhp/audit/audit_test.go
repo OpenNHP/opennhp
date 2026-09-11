@@ -1357,14 +1357,25 @@ func TestAsyncDropRecordsGapMarkerInChain(t *testing.T) {
 		t.Fatal("expected drops while the writer was stalled")
 	}
 
-	// Recover the writer and give the drain time to empty the queue, then log
-	// a run of further entries — recordGapLocked chains the "audit_gap"
-	// marker on the first of them that can enqueue after the drops.
+	// Recover the writer, then keep logging until the "audit_gap" marker
+	// recordGapLocked chains on the first post-recovery entry that can
+	// enqueue actually shows up in the written bytes, polling rather than
+	// hardcoding a settle time + fixed iteration count — the previous fixed
+	// 100ms-then-30*5ms schedule could flake on a contended CI runner.
 	close(bw.release)
-	time.Sleep(100 * time.Millisecond)
-	for i := 0; i < 30; i++ {
+	deadline := time.Now().Add(10 * time.Second)
+	foundGap := false
+	for i := 0; !foundGap && time.Now().Before(deadline); i++ {
 		_ = l.Log("knock", SeverityInfo, map[string]string{"post": strconv.Itoa(i)})
-		time.Sleep(5 * time.Millisecond)
+		bw.mu.Lock()
+		foundGap = bytes.Contains(bw.buf.Bytes(), []byte(`"audit_gap"`))
+		bw.mu.Unlock()
+		if !foundGap {
+			time.Sleep(2 * time.Millisecond)
+		}
+	}
+	if !foundGap {
+		t.Fatal("audit_gap marker never appeared in the chain within the deadline")
 	}
 	if err := l.Close(); err != nil {
 		t.Fatal(err)
@@ -1417,6 +1428,66 @@ func TestAsyncLogAfterCloseReturnsError(t *testing.T) {
 type nopCloser struct{ io.Writer }
 
 func (nopCloser) Close() error { return nil }
+
+// partialOnceWriter forwards to a real underlying writer, except the FIRST
+// call whose payload exceeds splitAt: that one writes only splitAt bytes and
+// returns an error — the same (n>0, err!=nil) shape *os.File.Write returns
+// on ENOSPC mid-buffer. Every later call goes straight through.
+type partialOnceWriter struct {
+	real    io.Writer
+	splitAt int
+	done    bool
+}
+
+func (w *partialOnceWriter) Write(p []byte) (int, error) {
+	if !w.done && len(p) > w.splitAt {
+		w.done = true
+		n, werr := w.real.Write(p[:w.splitAt])
+		if werr != nil {
+			return n, werr
+		}
+		return n, errors.New("partialOnceWriter: simulated short write")
+	}
+	return w.real.Write(p)
+}
+
+// TestAsyncRotationDoesNotSplitEntryAcrossSegments pins the fix for a
+// partial async write racing rotation: a Write landing only part of an
+// entry must not let rollSegment fire while that remainder is still
+// sitting at the front of pending. Rotating there would rename the
+// half-written entry's first bytes into a numbered segment and send its
+// remaining bytes to the fresh live file — split across both, unparseable
+// on either side, and the entry after it fails verification with a false
+// "prevHash mismatch": a transient disk hiccup reading as tampering.
+func TestAsyncRotationDoesNotSplitEntryAcrossSegments(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	// MaxSizeBytes: 1 makes shouldRotate true on essentially every append
+	// once curSize is non-zero, so rotation is eligible to fire immediately
+	// after the injected partial write — exactly the race being guarded
+	// against.
+	l, err := Open(path, Options{Async: true, QueueSize: 64, MaxSizeBytes: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.w = &partialOnceWriter{real: l.w, splitAt: 10}
+
+	for i := 0; i < 20; i++ {
+		_ = l.Log("knock", SeverityInfo, map[string]string{"i": strconv.Itoa(i)})
+	}
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	res := VerifyLedger(path, nil)
+	if res.Err != nil {
+		t.Fatalf("a partial async write during rotation must not corrupt the chain: %v (BadSeq=%d, Skipped=%d)", res.Err, res.BadSeq, res.Skipped)
+	}
+	if res.Count != 20 {
+		t.Fatalf("Count=%d, want 20", res.Count)
+	}
+}
 
 // TestSegmentRotationSpansChain drives the ledger past MaxSizeBytes several
 // times and confirms VerifyLedger walks every "<path>.<n>" segment plus the

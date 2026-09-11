@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -19,11 +20,14 @@ import (
 
 // A plugin may legally return a failure ErrCode with a nil error (a soft
 // denial). That must record as denied, not granted, or a SIEM rule keyed on
-// result misses it. An empty or success ("0") code with no error is a grant.
-// A nil ack — what a recovered plugin panic under utils.CatchPanic's unnamed
+// result misses it. Only the explicit success ("0") code with no error is a
+// grant — same strict comparison knockAuthorized uses, so the two never
+// disagree about the same event; an empty code is NOT a grant (a plugin
+// that sets no code at all did not affirmatively report success). A nil
+// ack — what a recovered plugin panic under utils.CatchPanic's unnamed
 // return values produces alongside a nil error — must also deny: it reads
-// exactly like the "empty code, no error" grant shape unless checked
-// separately, and nothing was actually granted.
+// exactly like the "empty code, no error" shape unless checked separately,
+// and nothing was actually granted.
 func TestDecisionGranted(t *testing.T) {
 	success := common.ErrSuccess.ErrorCode()
 	fail := common.ErrResourceNotFound.ErrorCode()
@@ -34,7 +38,7 @@ func TestDecisionGranted(t *testing.T) {
 		code     string
 		want     bool
 	}{
-		{"nil err, empty code", nil, false, "", true},
+		{"nil err, empty code (no code set is not an affirmative grant)", nil, false, "", false},
 		{"nil err, success code", nil, false, success, true},
 		{"nil err, failure code (soft denial)", nil, false, fail, false},
 		{"error, empty code", common.ErrResourceNotFound, false, "", false},
@@ -404,6 +408,76 @@ func TestAuditCorruptedLedgerHeaderIsQuarantined(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(corrupt); !bytes.Equal(got, append([]byte("x"), orig...)) {
 		t.Fatal("quarantined file does not hold the original (corrupted) bytes")
+	}
+}
+
+// TestAuditQuarantineChainsAMarkerNamingWhatWasLost: the fresh chain after a
+// header-corruption quarantine must record WHAT was reset — the aside path
+// and the last seq/hash still readable from the corrupted file — as part of
+// the signed chain itself, not only in a Critical log line and a
+// same-directory ".corrupt-*" sibling, both erasable by the same attacker
+// who corrupted the header in the first place. Without an in-chain record,
+// `audit verify --key` on the fresh file alone reports a full clean pass
+// with nothing to say a prior chain ever existed — exactly what an attacker
+// who can write the log but not read SigningKeyBase64 (the config doc's own
+// stated threat model for the signature) would want.
+func TestAuditQuarantineChainsAMarkerNamingWhatWasLost(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := audit.Open(path, audit.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if logErr := l.Log("knock", audit.SeverityInfo, nil); logErr != nil {
+			t.Fatal(logErr)
+		}
+	}
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	orig, _ := os.ReadFile(path)
+	if writeErr := os.WriteFile(path, append([]byte("x"), orig...), 0600); writeErr != nil {
+		t.Fatal(writeErr)
+	}
+
+	s := &UdpServer{config: &Config{Audit: AuditConfig{Enabled: true, FilePath: path}}}
+	if initErr := s.initAuditLedger(); initErr != nil {
+		t.Fatalf("initAuditLedger: %v", initErr)
+	}
+	s.closeAuditLedger()
+
+	res := audit.VerifyLedger(path, nil)
+	if res.Err != nil {
+		t.Fatalf("the fresh chain (marker + nothing else) must still verify clean: %v", res.Err)
+	}
+	if res.Count != 1 {
+		t.Fatalf("Count=%d, want 1 (just the audit_quarantine marker)", res.Count)
+	}
+
+	lines, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var e struct {
+		Type   string            `json:"type"`
+		Fields map[string]string `json:"fields"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(lines), &e); err != nil {
+		t.Fatalf("fresh ledger's first line does not parse: %v", err)
+	}
+	if e.Type != "audit_quarantine" {
+		t.Fatalf("first entry type = %q, want audit_quarantine", e.Type)
+	}
+	if e.Fields["lastSeq"] != "3" {
+		t.Fatalf("marker lastSeq = %q, want \"3\" (the quarantined file had 3 entries)", e.Fields["lastSeq"])
+	}
+	if e.Fields["lastHash"] == "" {
+		t.Fatal("marker lastHash is empty — the quarantined file's tail hash was not recorded")
+	}
+	if !strings.Contains(e.Fields["asidePath"], ".corrupt-") {
+		t.Fatalf("marker asidePath = %q, does not name the quarantined sibling", e.Fields["asidePath"])
 	}
 }
 

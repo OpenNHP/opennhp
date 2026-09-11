@@ -359,8 +359,8 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 		if s == nil || s.auditLedger == nil {
 			return
 		}
-		// Grant means a nil error AND an ack code that is not a failure, so a
-		// soft denial does not read as "granted". See decisionGranted.
+		// Grant means a nil error AND the explicit success code, so neither a
+		// soft denial nor an unset code reads as "granted". See decisionGranted.
 		severity, result := audit.SeverityWarn, "denied"
 		if decisionGranted(err, ackMsg == nil, ackMsg.ErrCode) {
 			severity, result = audit.SeverityInfo, "granted"

@@ -86,11 +86,21 @@ func VerifyLedger(path string, hmacKey []byte) VerifyResult {
 
 	// If the first available entry is not seq 1, earlier segments were
 	// archived away (a documented workflow). Anchor the walk on that entry's
-	// own prevHash instead of failing on a "chain broken" against genesis.
+	// own prevHash instead of failing on a "chain broken" against genesis —
+	// but ONLY when segs[0] is an actual numbered segment ("<path>.<n>"),
+	// never the bare live file. segmentFiles lists numbered segments before
+	// the live path, so segs[0] == path exactly when no rotation history
+	// (numbered segments) survives at all. A live, unrotated file that
+	// starts beyond seq 1 with nothing beside it to show WHY is at least as
+	// consistent with an attacker deleting the file's own earlier lines
+	// (head-truncation, undetectable by the hash chain alone by design) as
+	// with any archival workflow — anchoring it anyway would turn that into
+	// a clean `OK` instead of the `FAILED: prevHash mismatch` the missing
+	// evidence deserves.
 	startPrevHash, startPrevSeq, anchoredAt := genesisHash, uint64(0), uint64(0)
 	if first, fErr := firstEntry(segs[0]); fErr != nil {
 		return VerifyResult{Err: fmt.Errorf("audit: read segment %q: %w", segs[0], fErr)}
-	} else if first != nil && first.Seq > 1 {
+	} else if first != nil && first.Seq > 1 && segs[0] != path {
 		startPrevHash, startPrevSeq, anchoredAt = first.PrevHash, first.Seq-1, first.Seq
 	}
 

@@ -431,9 +431,14 @@ func (l *Ledger) drain(q <-chan queuedLine) {
 			}
 			select {
 			case it, ok = <-q:
-				if !retryTimer.Stop() {
-					<-retryTimer.C
-				}
+				// Both modules declare go 1.26.0, so Go 1.23+'s newer timer
+				// semantics apply: Stop's documentation now guarantees the
+				// channel carries no stale value after Stop returns, whether
+				// it returns true or false, and says a program must NOT then
+				// receive from the channel to "drain" it — unlike the
+				// pre-1.23 idiom, that receive is no longer guaranteed to
+				// ever complete. Just stop; there is nothing to drain.
+				retryTimer.Stop()
 				retryTimer = nil
 			case <-retryTimer.C:
 				retryTimer = nil

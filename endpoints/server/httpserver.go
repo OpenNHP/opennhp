@@ -362,7 +362,7 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 		// Grant means a nil error AND an ack code that is not a failure, so a
 		// soft denial does not read as "granted". See decisionGranted.
 		severity, result := audit.SeverityWarn, "denied"
-		if decisionGranted(err, ackMsg.ErrCode) {
+		if decisionGranted(err, ackMsg == nil, ackMsg.ErrCode) {
 			severity, result = audit.SeverityInfo, "granted"
 		}
 		op := "open"

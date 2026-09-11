@@ -214,19 +214,29 @@ func main() {
 						// a failed check is an expected, reportable outcome.
 						os.Exit(1)
 					}
-					fmt.Printf("OK: %d %s, hash chain intact.\n", res.Count, pluralize(res.Count, "entry", "entries"))
+					if res.AnchoredAtSeq > 0 {
+						// The set does not start at seq 1 — earlier segments are
+						// not present, whether archived by hand, pruned by
+						// [Audit] MaxSegments, or (indistinguishably, from the
+						// file alone) deleted by an attacker erasing their own
+						// earlier knocks. The first entry's own prevHash is
+						// trusted as the anchor, so nothing before it is
+						// checked — the plain "OK, hash chain intact" headline
+						// a cron wrapper or a quick glance keys on would
+						// otherwise read as a full clean pass. Folding the
+						// caveat into the headline itself, as a warning: not a
+						// note:, keeps that from happening.
+						fmt.Printf("OK: %d %s, hash chain intact FROM SEQ %d ONWARD.\n", res.Count, pluralize(res.Count, "entry", "entries"), res.AnchoredAtSeq)
+						fmt.Printf("warning: earlier segments (before seq %d) are not present — a break before that seq is not visible from these files. Compare against your off-host anchor.\n",
+							res.AnchoredAtSeq)
+					} else {
+						fmt.Printf("OK: %d %s, hash chain intact.\n", res.Count, pluralize(res.Count, "entry", "entries"))
+					}
 					if res.Count == 0 {
 						// An empty ledger is the cheapest form of the truncation
 						// attack a hash chain can't detect ("replace the whole
 						// file with nothing"). Do not let it read as a clean pass.
 						fmt.Println("warning: the ledger contains no entries — if it should not be empty, it may have been truncated or replaced. Compare against your off-host anchor.")
-					}
-					if res.AnchoredAtSeq > 0 {
-						// The set does not start at seq 1 — earlier segments were
-						// archived away. The first entry's own prevHash is trusted
-						// as the anchor, so nothing before it can be checked here.
-						fmt.Printf("note: verification started at seq %d (earlier segments not present); a break before that seq is not visible from these files — compare against your off-host anchor.\n",
-							res.AnchoredAtSeq)
 					}
 					if keyless {
 						// No key given at all: only the (keyless-forgeable)

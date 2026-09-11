@@ -252,18 +252,33 @@ func (s *UdpServer) closeAuditLedger() {
 }
 
 // decisionGranted reports whether an access/registration decision counts as
-// granted for the audit trail. A nil error is the handler's success criterion
-// and matches the operational log, but the plugin extension point may legally
+// granted for the audit trail. ackIsNil must be true when the ack pointer
+// itself is nil — pass it separately rather than folding it into errCode,
+// because a nil ack and an ack with an empty ErrCode are NOT the same event:
+// PluginHandlerSymbol.AuthWithNHP / RegisterAgent both run under
+// utils.CatchPanic with unnamed return values (nhp/plugins/serverpluginhandler.go),
+// so a recovered plugin panic returns (nil ack, nil error) — nothing was ever
+// granted, but errCode alone reads exactly like the "empty code, no error"
+// success shape. knockAuthorized (the metrics counterpart, right below this
+// call's caller) already treats a nil ack as unauthorized; decisionGranted
+// must not disagree with it about the same event.
+//
+// With ackIsNil false, a nil error is the handler's success criterion and
+// matches the operational log, but the plugin extension point may legally
 // return a failure ErrCode alongside a nil error — a soft denial. Recording
 // that as "granted" would let a SIEM rule keyed on result=="denied" miss a
 // whole class of rejections, the opposite of what a tamper-evident trail is
 // for, so a non-success code denies. An empty or "0" (ErrSuccess) code with no
 // error is a grant. The raw code is still kept in its own errCode field either
-// way. The bundled plugins always pair a failure code with a non-nil error, so
-// this only matters for a misbehaving third-party plugin — which is exactly
-// the case the ledger should surface rather than hide.
-func decisionGranted(err error, errCode string) bool {
-	return err == nil && (errCode == "" || errCode == common.ErrSuccess.ErrorCode())
+// way. The bundled plugins always pair a failure code with a non-nil error
+// (and a real ack), so this only matters for a misbehaving third-party
+// plugin — which is exactly the case the ledger should surface rather than
+// hide.
+func decisionGranted(err error, ackIsNil bool, errCode string) bool {
+	if err != nil || ackIsNil {
+		return false
+	}
+	return errCode == "" || errCode == common.ErrSuccess.ErrorCode()
 }
 
 // shortKey returns a compact, log-safe fingerprint of a base64 public key

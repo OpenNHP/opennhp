@@ -20,25 +20,32 @@ import (
 // A plugin may legally return a failure ErrCode with a nil error (a soft
 // denial). That must record as denied, not granted, or a SIEM rule keyed on
 // result misses it. An empty or success ("0") code with no error is a grant.
+// A nil ack — what a recovered plugin panic under utils.CatchPanic's unnamed
+// return values produces alongside a nil error — must also deny: it reads
+// exactly like the "empty code, no error" grant shape unless checked
+// separately, and nothing was actually granted.
 func TestDecisionGranted(t *testing.T) {
 	success := common.ErrSuccess.ErrorCode()
 	fail := common.ErrResourceNotFound.ErrorCode()
 	cases := []struct {
-		name string
-		err  error
-		code string
-		want bool
+		name     string
+		err      error
+		ackIsNil bool
+		code     string
+		want     bool
 	}{
-		{"nil err, empty code", nil, "", true},
-		{"nil err, success code", nil, success, true},
-		{"nil err, failure code (soft denial)", nil, fail, false},
-		{"error, empty code", common.ErrResourceNotFound, "", false},
-		{"error, success code", common.ErrResourceNotFound, success, false},
+		{"nil err, empty code", nil, false, "", true},
+		{"nil err, success code", nil, false, success, true},
+		{"nil err, failure code (soft denial)", nil, false, fail, false},
+		{"error, empty code", common.ErrResourceNotFound, false, "", false},
+		{"error, success code", common.ErrResourceNotFound, false, success, false},
+		{"nil err, nil ack (recovered plugin panic)", nil, true, "", false},
+		{"error, nil ack", common.ErrResourceNotFound, true, "", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := decisionGranted(tc.err, tc.code); got != tc.want {
-				t.Fatalf("decisionGranted(%v, %q) = %v, want %v", tc.err, tc.code, got, tc.want)
+			if got := decisionGranted(tc.err, tc.ackIsNil, tc.code); got != tc.want {
+				t.Fatalf("decisionGranted(%v, %v, %q) = %v, want %v", tc.err, tc.ackIsNil, tc.code, got, tc.want)
 			}
 		})
 	}

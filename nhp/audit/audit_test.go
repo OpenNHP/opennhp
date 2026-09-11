@@ -1662,6 +1662,63 @@ func TestAsyncWriterRetriesPendingWithoutNewLogCalls(t *testing.T) {
 	}
 }
 
+// TestDrainRetryTimerDoesNotDeadlock stresses the exact race Go 1.23+'s
+// timer semantics changed: the drain's select racing <-q against its
+// retryTimer firing. Under the pre-1.23 idiom this branch drained a
+// "stale" value from retryTimer.C whenever Stop() returned false; under the
+// current semantics that receive is no longer guaranteed to ever complete,
+// so <-q winning right as the timer had already fired hung the drain
+// goroutine forever — losing every subsequent entry and making Close (and
+// so UdpServer.Stop) hang too. Both goroutines below are watched with a
+// bounded wait instead of relying on `go test -timeout` alone, so a
+// regression fails fast and clearly rather than hanging the whole binary.
+func TestDrainRetryTimerDoesNotDeadlock(t *testing.T) {
+	iw := &intermittentWriter{}
+	l := NewLedger(nopCloser{iw}, Options{Async: true, QueueSize: 256})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 2000; i++ {
+			_ = l.Log("knock", SeverityInfo, nil)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("Log calls did not complete — drain goroutine likely deadlocked on retryTimer.C")
+	}
+
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- l.Close() }()
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close did not return — drain goroutine deadlocked")
+	}
+}
+
+// intermittentWriter fails every other Write, forcing the drain's
+// retryTimer to arm and race against incoming queue items repeatedly.
+type intermittentWriter struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+	n   int
+}
+
+func (w *intermittentWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.n++
+	if w.n%2 == 0 {
+		return 0, errors.New("intermittent: simulated transient error")
+	}
+	return w.buf.Write(p)
+}
+
 type flakyWriter struct {
 	mu       sync.Mutex
 	buf      bytes.Buffer
@@ -1758,6 +1815,43 @@ func TestVerifyLedgerAnchorsOnArchivedSegments(t *testing.T) {
 	}
 	if res.AnchoredAtSeq == 0 {
 		t.Fatal("AnchoredAtSeq should be set when the set does not start at seq 1")
+	}
+}
+
+// TestVerifyLedgerRefusesToAnchorOnBareLiveFile: anchoring past seq 1 is only
+// legitimate evidence of archival when segs[0] is an actual numbered segment
+// ("<path>.<n>") — a bare, unrotated live file that starts at seq > 1, with
+// NO numbered segment beside it at all, has no such evidence and is at least
+// as consistent with an attacker deleting the file's own earlier lines
+// (head-truncation) as with any documented archival workflow. Before this
+// was gated on segs[0] != path, VerifyLedger anchored on it anyway, turning
+// a hard `FAILED: prevHash mismatch` into `OK` plus an easy-to-miss note.
+func TestVerifyLedgerRefusesToAnchorOnBareLiveFile(t *testing.T) {
+	dir := t.TempDir()
+	buildPath := filepath.Join(dir, "build.jsonl")
+	l, err := Open(buildPath, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 3)
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	lines := splitLines(mustReadFile(t, buildPath))
+	if len(lines) < 3 {
+		t.Fatalf("need at least 3 entries, got %d", len(lines))
+	}
+
+	// A "live" file consisting of just the LAST entry, as if the two before
+	// it had been deleted from the front — no numbered segment anywhere.
+	path := filepath.Join(dir, "audit.jsonl")
+	if err := os.WriteFile(path, append(lines[len(lines)-1], '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	res := VerifyLedger(path, nil)
+	if res.Err == nil {
+		t.Fatalf("expected FAILED for a bare live file with no seq-1 evidence, got OK (AnchoredAtSeq=%d)", res.AnchoredAtSeq)
 	}
 }
 

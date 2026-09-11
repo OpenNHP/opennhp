@@ -305,16 +305,18 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 
 	// Record the registration outcome in the audit ledger.
 	if s.auditLedger != nil && !preValidationReject {
-		// Registered means a nil error AND an ack code that is not a failure:
-		// the RegisterAgent plugin point may return a failure ErrCode with a
-		// nil error (a soft denial), which must not read as "registered". The
-		// raw code is kept in errCode regardless. See decisionGranted.
+		// Registered means a non-nil ack, a nil error, AND an ack code that is
+		// not a failure: the RegisterAgent plugin point may return a failure
+		// ErrCode with a nil error (a soft denial), and a recovered plugin
+		// panic returns a nil ack with a nil error too — neither may read as
+		// "registered". The raw code is kept in errCode regardless. See
+		// decisionGranted.
 		rakCode := ""
 		if rakMsg != nil {
 			rakCode = rakMsg.ErrCode
 		}
 		severity, result := audit.SeverityWarn, "denied"
-		if decisionGranted(err, rakCode) {
+		if decisionGranted(err, rakMsg == nil, rakCode) {
 			severity, result = audit.SeverityNotice, "registered"
 		}
 		fields := map[string]string{

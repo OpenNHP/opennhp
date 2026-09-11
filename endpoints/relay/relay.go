@@ -186,7 +186,8 @@ type RelayServer struct {
 	startTime       time.Time
 	metrics         *relayMetrics
 	metricsEndpoint *metrics.Endpoint
-	healthy         atomic.Bool // gates /healthz: true from New until Stop
+	healthy         atomic.Bool // true from New until Stop: process is alive
+	ready           atomic.Bool // true once Start has finished setup and is about to serve; false again on Stop or if Start fails to reach that point
 
 	stats struct {
 		totalRecvBytes uint64
@@ -269,17 +270,22 @@ func New(cfg *Config) (*RelayServer, error) {
 	// Started LAST — after rs.servers is fully populated (the
 	// nhp_relay_upstream_servers gauge reads it from the serve goroutine)
 	// and after every "return nil, err" above (so a config error cannot
-	// leak a bound listener). rs.healthy gates /healthz so a probe in the
-	// New()->Start() gap sees "ok", not "stopping".
+	// leak a bound listener). /healthz is gated on rs.healthy (process is
+	// alive) AND rs.ready (Start finished setup and is about to serve), so
+	// a probe during the New()->Start() gap — or a Start() that fails before
+	// reaching the serve call — correctly reports "stopping", not "ok".
 	rs.healthy.Store(true)
 	ep, mErr := metrics.StartEndpoint(cfg.Metrics, metrics.EndpointOptions{
 		Registry:      rs.metrics.registry,
 		Uptime:        func() time.Duration { return time.Since(rs.startTime) },
-		IsRunning:     rs.healthy.Load,
+		IsRunning:     func() bool { return rs.healthy.Load() && rs.ready.Load() },
 		DefaultPort:   defaultRelayMetricsPort,
 		OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
 		OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
 		OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
+		OnInsecureBind: func(ip string) {
+			log.Critical("[Metrics] ListenIp %s is not loopback — /metrics and /healthz will be reachable off-host, unauthenticated, and self-identifying via the nhp_relay_* series", ip)
+		},
 	})
 	if mErr != nil {
 		log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
@@ -373,6 +379,10 @@ func (rs *RelayServer) Start() error {
 	}
 
 	addr := rs.httpServer.Addr
+	// Setup that can still fail (device/routines above are best-effort
+	// starts) is done; the only thing left is the blocking serve call, so
+	// this is the accurate "ready" point for the /healthz readiness gate.
+	rs.ready.Store(true)
 	if rs.config.EnableTLS {
 		log.Info("[Relay] starting HTTPS relay on %s", addr)
 		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
@@ -387,6 +397,7 @@ func (rs *RelayServer) Start() error {
 func (rs *RelayServer) Stop(ctx context.Context) error {
 	rs.running.Store(false)
 	rs.healthy.Store(false)
+	rs.ready.Store(false)
 	close(rs.stopCh)
 	rs.metricsEndpoint.Stop()
 
@@ -520,6 +531,7 @@ func (rs *RelayServer) recvPacketRoutine(cr *serverRuntime, inst *serverInstance
 
 		if n < pkt.MinimalLength() {
 			rs.device.ReleasePoolPacket(pkt)
+			rs.metrics.recordDroppedPacket("too_short")
 			log.Error("[Relay] packet from %s too short, discard", addrStr)
 			continue
 		}

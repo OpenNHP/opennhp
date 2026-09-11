@@ -21,6 +21,7 @@ type serverMetrics struct {
 	acOpDuration     *metrics.Histogram  // server->AC round trip, seconds
 	blockedAddrs     *metrics.Counter    // sources blocked past the threat threshold
 	packetsDropped   *metrics.CounterVec // stage=too_short|blocked|precheck|rate_limited|conn_limit|parse|validate|decrypt|queue_full
+	handlerDropped   *metrics.CounterVec // by protocol message type; post-decryption load-shedding
 }
 
 func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
@@ -62,7 +63,7 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 		messagesReceived: reg.NewCounter("nhp_server_messages_received_total",
 			"Decrypted protocol messages received, by message type.", "type"),
 		knockAuth: reg.NewCounter("nhp_server_knock_auth_total",
-			"Knock authentication outcomes.", "result"),
+			"Authentication outcomes for the whole knock family (KNK, RKN, EXT, DHP_KNK), by result.", "result"),
 		acOperations: reg.NewCounter("nhp_server_ac_operations_total",
 			"Server-to-AC operations, by result.", "result"),
 		acOpDuration: reg.NewHistogram("nhp_server_ac_operation_duration_seconds",
@@ -72,6 +73,10 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 		packetsDropped: reg.NewCounter("nhp_server_packets_dropped_total",
 			"Inbound packets discarded before becoming a decrypted message, by stage "+
 				"(too_short, blocked, precheck, rate_limited, conn_limit, parse, validate, decrypt, queue_full).", "stage"),
+		handlerDropped: reg.NewCounter("nhp_server_handler_dropped_total",
+			"Decrypted messages dropped because the handler goroutine budget "+
+				"(MaxConcurrentHandlers) was exhausted, by message type. Distinct "+
+				"from nhp_server_packets_dropped_total, which is pre-decryption only.", "type"),
 	}
 
 	// Pre-create the closed-set label series so they export an explicit 0
@@ -152,4 +157,14 @@ func (m *serverMetrics) recordDroppedPacket(stage string) {
 		return
 	}
 	m.packetsDropped.With(stage).Inc()
+}
+
+// recordHandlerDropped counts a decrypted message dropped by dispatchHandler
+// because the handler goroutine budget was exhausted. msgType is bounded
+// (core.HeaderTypeToString of a known header type). Safe on a nil receiver.
+func (m *serverMetrics) recordHandlerDropped(msgType string) {
+	if m == nil {
+		return
+	}
+	m.handlerDropped.With(msgType).Inc()
 }

@@ -41,6 +41,12 @@ type EndpointOptions struct {
 	OnListening   func(addr string)
 	OnServeError  func(err error)
 	OnRenderError func(err error)
+	// OnInsecureBind, when set, is called with the resolved bind IP before
+	// listening if that IP is not loopback. Nothing here stops an operator
+	// from setting ListenIp to a routable address; for a port-hiding product
+	// that turns /metrics and /healthz into an unauthenticated, self-
+	// identifying TCP port, so the caller gets a chance to log it loudly.
+	OnInsecureBind func(ip string)
 }
 
 // Endpoint is a running metrics HTTP listener serving /metrics and a minimal
@@ -74,6 +80,11 @@ func StartEndpoint(cfg Config, opts EndpointOptions) (*Endpoint, error) {
 	port := cfg.ListenPort
 	if port == 0 {
 		port = opts.DefaultPort
+	}
+	if opts.OnInsecureBind != nil {
+		if parsed := net.ParseIP(ip); parsed == nil || !parsed.IsLoopback() {
+			opts.OnInsecureBind(ip)
+		}
 	}
 	addr := net.JoinHostPort(ip, strconv.Itoa(port))
 

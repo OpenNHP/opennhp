@@ -41,6 +41,9 @@ func (ms *metricsServer) start() error {
 	if port == 0 {
 		port = defaultMetricsListenPort
 	}
+	if parsed := net.ParseIP(ip); parsed == nil || !parsed.IsLoopback() {
+		log.Critical("[Metrics] ListenIp %s is not loopback — /metrics and /healthz will be reachable off-host, unauthenticated, and self-identifying via the nhp_server_* series", ip)
+	}
 	addr := net.JoinHostPort(ip, strconv.Itoa(port))
 
 	// Bind before returning so a bad address / port-in-use surfaces to the
@@ -81,6 +84,10 @@ func (ms *metricsServer) stop() {
 }
 
 func (ms *metricsServer) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	reg := ms.us.metrics
 	if reg == nil || reg.registry == nil {
 		http.Error(w, "metrics not initialized", http.StatusServiceUnavailable)
@@ -93,6 +100,10 @@ func (ms *metricsServer) handleMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ms *metricsServer) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	// Deliberately minimal: status + uptime only. Version/commit are
 	// omitted so that if an operator ever binds this endpoint to a routable
 	// address, an unauthenticated probe can't fingerprint the exact build —

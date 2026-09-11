@@ -201,6 +201,9 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 		OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
 		OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
 		OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
+		OnInsecureBind: func(ip string) {
+			log.Critical("[Metrics] ListenIp %s is not loopback — /metrics and /healthz will be reachable off-host, unauthenticated, and self-identifying via the nhp_db_* series", ip)
+		},
 	})
 	if mErr != nil {
 		log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
@@ -376,6 +379,7 @@ func (a *UdpDevice) recvPacketRoutine(conn *UdpConn) {
 		// check minimal length
 		if n < pkt.MinimalLength() {
 			a.device.ReleasePoolPacket(pkt)
+			a.metrics.recordDroppedPacket("too_short")
 			log.Error("Received UDP packet from %s is too short, discard", addrStr)
 			continue
 		}

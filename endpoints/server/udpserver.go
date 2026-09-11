@@ -1038,9 +1038,10 @@ func (s *UdpServer) dispatchHandler(ppd *core.PacketParserData, fn func(*core.Pa
 	select {
 	case s.handlerSem <- struct{}{}:
 	default:
+		msgType := core.HeaderTypeToString(ppd.HeaderType)
+		s.metrics.recordHandlerDropped(msgType)
 		log.Warning("handler goroutine budget (%d) exhausted, dropping %s from %s",
-			MaxConcurrentHandlers, core.HeaderTypeToString(ppd.HeaderType),
-			ppd.ConnData.RemoteAddr.String())
+			MaxConcurrentHandlers, msgType, ppd.ConnData.RemoteAddr.String())
 		return
 	}
 	go func(p *core.PacketParserData) {

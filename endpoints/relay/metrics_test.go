@@ -17,6 +17,7 @@ func TestRelayMetricsRenderAndRecord(t *testing.T) {
 
 	m.recordMessageReceived("NHP-RKN")
 	m.recordDroppedPacket("decrypt")
+	m.recordDroppedPacket("too_short")
 
 	var b strings.Builder
 	if err := m.registry.WriteText(&b); err != nil {
@@ -26,6 +27,7 @@ func TestRelayMetricsRenderAndRecord(t *testing.T) {
 	for _, want := range []string{
 		`nhp_relay_messages_received_total{type="NHP-RKN"} 1`,
 		`nhp_relay_packets_dropped_total{stage="decrypt"} 1`,
+		`nhp_relay_packets_dropped_total{stage="too_short"} 1`,
 		`nhp_relay_packets_dropped_total{stage="parse"} 0`,
 		`nhp_relay_upstream_servers 2`,
 	} {

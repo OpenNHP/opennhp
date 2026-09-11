@@ -34,6 +34,7 @@ func TestMetricsEndpointExposesInstrumentedValues(t *testing.T) {
 	s.metrics.recordDroppedPacket("decrypt")
 	s.metrics.recordDroppedPacket("decrypt")
 	s.metrics.recordDroppedPacket("validate")
+	s.metrics.recordHandlerDropped("NHP-KNK")
 
 	ms := &metricsServer{us: s}
 	rec := httptest.NewRecorder()
@@ -52,6 +53,7 @@ func TestMetricsEndpointExposesInstrumentedValues(t *testing.T) {
 		`nhp_server_blocked_source_addresses_total 1`,
 		`nhp_server_packets_dropped_total{stage="decrypt"} 2`,
 		`nhp_server_packets_dropped_total{stage="validate"} 1`,
+		`nhp_server_handler_dropped_total{type="NHP-KNK"} 1`,
 		`nhp_server_active_connections 0`,
 		`nhp_server_overloaded 0`,
 		`nhp_server_ac_operation_duration_seconds_count 2`,
@@ -136,6 +138,7 @@ func TestServerMetricsNilSafe(t *testing.T) {
 	m.recordACOperation(false, 1.0)
 	m.recordBlockedAddr()
 	m.recordDroppedPacket("decrypt")
+	m.recordHandlerDropped("NHP-KNK")
 }
 
 func TestMetricsConfigParsing(t *testing.T) {

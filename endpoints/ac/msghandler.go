@@ -42,7 +42,7 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 	// From here on this is a real access-control operation: time it.
 	opStart := time.Now()
 	defer func() {
-		ok := err == nil && (artMsg.ErrCode == "" || artMsg.ErrCode == common.ErrSuccess.ErrorCode())
+		ok := err == nil && artMsg.ErrCode == common.ErrSuccess.ErrorCode()
 		a.metrics.recordACOperation(ok, time.Since(opStart).Seconds())
 	}()
 

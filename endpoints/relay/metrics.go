@@ -16,7 +16,7 @@ type relayMetrics struct {
 	registry *metrics.Registry
 
 	messagesReceived *metrics.CounterVec // type=NHP-RKN|...
-	packetsDropped   *metrics.CounterVec // stage=parse|validate|decrypt|queue_full
+	packetsDropped   *metrics.CounterVec // stage=too_short|precheck|parse|validate|decrypt|queue_full
 }
 
 func newRelayMetrics(rs *RelayServer, startTime time.Time) *relayMetrics {
@@ -42,9 +42,9 @@ func newRelayMetrics(rs *RelayServer, startTime time.Time) *relayMetrics {
 		messagesReceived: reg.NewCounter("nhp_relay_messages_received_total",
 			"Decrypted protocol messages received, by message type.", "type"),
 		packetsDropped: reg.NewCounter("nhp_relay_packets_dropped_total",
-			"Inbound packets discarded before becoming a decrypted message, by stage (precheck, parse, validate, decrypt, queue_full).", "stage"),
+			"Inbound packets discarded before becoming a decrypted message, by stage (too_short, precheck, parse, validate, decrypt, queue_full).", "stage"),
 	}
-	for _, s := range []string{"precheck", "parse", "validate", "decrypt", "queue_full"} {
+	for _, s := range []string{"too_short", "precheck", "parse", "validate", "decrypt", "queue_full"} {
 		m.packetsDropped.With(s)
 	}
 	return m

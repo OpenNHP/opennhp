@@ -12,6 +12,7 @@ func TestDBMetricsRenderAndRecord(t *testing.T) {
 
 	m.recordMessageReceived("DHP-DAK")
 	m.recordDroppedPacket("validate")
+	m.recordDroppedPacket("too_short")
 
 	var b strings.Builder
 	if err := m.registry.WriteText(&b); err != nil {
@@ -21,6 +22,7 @@ func TestDBMetricsRenderAndRecord(t *testing.T) {
 	for _, want := range []string{
 		`nhp_db_messages_received_total{type="DHP-DAK"} 1`,
 		`nhp_db_packets_dropped_total{stage="validate"} 1`,
+		`nhp_db_packets_dropped_total{stage="too_short"} 1`,
 		`nhp_db_packets_dropped_total{stage="decrypt"} 0`,
 		`nhp_db_active_connections 1`,
 	} {

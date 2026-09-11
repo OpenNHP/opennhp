@@ -103,6 +103,37 @@ func TestEndpointRejectsNonGET(t *testing.T) {
 	}
 }
 
+// TestStartEndpointWarnsOnNonLoopbackBind: OnInsecureBind fires for any
+// ListenIp that does not resolve to loopback, and does not fire for
+// loopback (the default) or the empty ListenIp (which resolves to
+// DefaultListenIP, itself loopback).
+func TestStartEndpointWarnsOnNonLoopbackBind(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ip   string
+		want bool
+	}{
+		{"empty resolves to loopback default", "", false},
+		{"explicit loopback", "127.0.0.1", false},
+		{"routable address", "0.0.0.0", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var fired string
+			ep, err := StartEndpoint(
+				Config{Enabled: true, ListenIp: tc.ip, ListenPort: 0},
+				EndpointOptions{Registry: NewRegistry(), OnInsecureBind: func(ip string) { fired = ip }},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ep.Stop()
+			if got := fired != ""; got != tc.want {
+				t.Fatalf("OnInsecureBind fired=%v (ip=%q), want fired=%v", got, fired, tc.want)
+			}
+		})
+	}
+}
+
 func httpGet(t *testing.T, url string) string {
 	t.Helper()
 	var lastErr error

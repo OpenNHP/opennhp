@@ -851,18 +851,27 @@ func (a *UdpAgent) connectionRoutine(conn *UdpConn) {
 		conn.Close()
 	}()
 
+	idleTimeout := time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+	idleTimer := time.NewTimer(idleTimeout)
+	defer idleTimer.Stop()
+
 	for {
 		select {
 		case <-a.signals.stop:
 			return
 
-		case <-conn.ConnData.SetTimeoutSignal:
+		case _, ok := <-conn.ConnData.SetTimeoutSignal:
+			if !ok {
+				return
+			}
 			if conn.ConnData.TimeoutMs <= 0 {
 				log.Debug("Connection routine closed immediately")
 				return
 			}
+			idleTimeout = time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+			idleTimer.Reset(idleTimeout)
 
-		case <-time.After(time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond):
+		case <-idleTimer.C:
 			// timeout, quit routine
 			log.Debug("Connection routine idle timeout")
 			return
@@ -871,6 +880,7 @@ func (a *UdpAgent) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -880,6 +890,7 @@ func (a *UdpAgent) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -910,7 +921,10 @@ func (a *UdpAgent) connectionRoutine(conn *UdpConn) {
 			// generic receive
 			a.device.RecvPacketToMsg(pd)
 
-		case <-conn.ConnData.BlockSignal:
+		case _, ok := <-conn.ConnData.BlockSignal:
+			if !ok {
+				return
+			}
 			log.Critical("blocking address %s", addrStr)
 			return
 		}

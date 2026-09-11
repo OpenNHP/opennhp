@@ -6,7 +6,6 @@ import (
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -124,6 +123,7 @@ func deriveStatelessCookie(signingKey []byte, remoteKey string, peerPk []byte, w
 // (and untouchable from this helper, which only takes a *Device, the
 // cipher suite, and the header).
 func extractInitiatorStaticPubKey(device *Device, ciphers *CipherSuite, header Header) ([]byte, error) {
+	var hashBuf [HashSize]byte
 	deviceEcdh := device.GetEcdhByCipherScheme(header.CipherScheme())
 
 	ess := deviceEcdh.SharedSecret(header.EphermeralBytes())
@@ -155,7 +155,7 @@ func extractInitiatorStaticPubKey(device *Device, ciphers *CipherSuite, header H
 		return nil, fmt.Errorf("extractInitiatorStaticPubKey: init hash: %w", err)
 	}
 	initHash.Write([]byte(InitialHashString))
-	noise.MixKey(&chainKey, initHash.Sum(nil), []byte(InitialChainKeyString))
+	noise.MixKey(&chainKey, initHash.Sum(hashBuf[:0]), []byte(InitialChainKeyString))
 	// ChainKey0 → ChainKey1
 	noise.MixKey(&chainKey, chainKey[:], header.EphermeralBytes())
 
@@ -182,7 +182,7 @@ func extractInitiatorStaticPubKey(device *Device, ciphers *CipherSuite, header H
 	// breakage manifests as an error here, not as cookie failures
 	// further down. Pass nil for the dst so Open allocates exactly
 	// the right size.
-	peerPk, err := aead.Open(nil, header.NonceBytes(), header.StaticBytes(), chainHash.Sum(nil))
+	peerPk, err := aead.Open(nil, header.NonceBytes(), header.StaticBytes(), chainHash.Sum(hashBuf[:0]))
 	if err != nil {
 		return nil, fmt.Errorf("extractInitiatorStaticPubKey: open: %w", err)
 	}
@@ -199,13 +199,6 @@ func extractInitiatorStaticPubKey(device *Device, ciphers *CipherSuite, header H
 		return nil, fmt.Errorf("extractInitiatorStaticPubKey: unknown cipher scheme %d (pubkey length %d)", header.CipherScheme(), len(peerPk))
 	}
 	return peerPk, nil
-}
-
-type ResponderScheme interface {
-	CreatePacketParserData(d *Device, pd *PacketData) (ppd *PacketParserData, err error)
-	DerivePacketParserDataFromPrevAssemblerData(mad *MsgAssemblerData, pkt *Packet, initTime int64) (ppd *PacketParserData)
-	validatePeer(d *Device, ppd *PacketParserData) (err error)
-	decryptBody(d *Device, ppd *PacketParserData) (err error)
 }
 
 type CookieStore struct {
@@ -248,6 +241,7 @@ type PacketParserData struct {
 	chainHash  hash.Hash
 	bodyAead   cipher.AEAD
 	chainKey   [SymmetricKeySize]byte
+	hashBuf    [HashSize]byte
 
 	LocalInitTime int64
 	SenderTrxId   uint64
@@ -304,7 +298,7 @@ func (d *Device) createPacketParserData(pd *PacketData) (ppd *PacketParserData, 
 
 	// init chain key -> ChainKey0
 	ppd.noise.HashType = ppd.Ciphers.HashType
-	ppd.noise.MixKey(&ppd.chainKey, ppd.chainHash.Sum(nil), []byte(InitialChainKeyString))
+	ppd.noise.MixKey(&ppd.chainKey, ppd.chainHash.Sum(ppd.hashBuf[:0]), []byte(InitialChainKeyString))
 
 	ppd.HeaderType, ppd.BodySize = ppd.header.TypeAndPayloadSize()
 
@@ -431,7 +425,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			log.Error("failed to create AEAD for peer pubkey decryption: %v", err)
 			return err
 		}
-		_, err = aead.Open(peerPk[:0], ppd.header.NonceBytes(), ppd.header.StaticBytes(), ppd.chainHash.Sum(nil))
+		_, err = aead.Open(peerPk[:0], ppd.header.NonceBytes(), ppd.header.StaticBytes(), ppd.chainHash.Sum(ppd.hashBuf[:0]))
 		if err != nil {
 			log.Error("failed to decrypt peer pubkey")
 			return err
@@ -501,20 +495,20 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			}
 			log.Error("validatePeer: %s peer not found in peer pool, pubkey=%s",
 				peerDeviceTypeName, peerPkBase64)
-			err = fmt.Errorf("peer not found in peer pool (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
+			err = ErrPeerNotFound
 			return err
 		}
 
 		if peer.IsExpired() {
 			log.Error("validatePeer: %s peer expired, pubkey=%s", peerDeviceTypeName, peerPkBase64)
-			err = fmt.Errorf("peer expired (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
+			err = ErrPeerExpired
 			return err
 		}
 
 		if !ppd.ConnData.CheckRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr) {
 			log.Error("validatePeer: %s peer address mismatch on connection, pubkey=%s, remoteAddr=%s",
 				peerDeviceTypeName, peerPkBase64, ppd.ConnData.RemoteAddr)
-			err = fmt.Errorf("peer does not match its previous address on this connection (type=%s, pubkey=%s)", peerDeviceTypeName, peerPkBase64)
+			err = ErrPeerAddressMismatch
 			return err
 		}
 		ppd.ConnData.UpdateRecvAddress(ppd.LocalInitTime, ppd.ConnData.RemoteAddr)
@@ -554,7 +548,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			log.Error("failed to create AEAD for timestamp decryption: %v", err)
 			return err
 		}
-		_, err = aead.Open(tsBytes[:0], ppd.header.NonceBytes(), ppd.header.TimestampBytes(), ppd.chainHash.Sum(nil))
+		_, err = aead.Open(tsBytes[:0], ppd.header.NonceBytes(), ppd.header.TimestampBytes(), ppd.chainHash.Sum(ppd.hashBuf[:0]))
 		if err != nil {
 			log.Error("failed to decrypt timestamp")
 			return err
@@ -577,7 +571,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 				// block source address
 				ppd.ConnData.SendBlockSignal()
 			}
-			err = fmt.Errorf("received replay packet")
+			err = ErrReplayPacketReceived
 			return err
 		}
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) {
@@ -591,7 +585,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 				// block source address
 				ppd.ConnData.SendBlockSignal()
 			}
-			err = fmt.Errorf("received flood packet")
+			err = ErrFloodPacketReceived
 			return err
 		}
 	}
@@ -606,7 +600,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			// block source address
 			ppd.ConnData.SendBlockSignal()
 		}
-		err = fmt.Errorf("received stale packet")
+		err = ErrStalePacketReceived
 		return err
 	}
 
@@ -639,12 +633,40 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	return nil
 }
 
+var lastDecompressWarnNano atomic.Int64
+
+const decompressWarnInterval = int64(time.Minute)
+
+func decompressWarnAllowed(nowNano int64) bool {
+	last := lastDecompressWarnNano.Load()
+	return nowNano-last >= decompressWarnInterval && lastDecompressWarnNano.CompareAndSwap(last, nowNano)
+}
+
+func inflateBody(body []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	r, err := zlib.NewReader(bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("invalid compressed data: %w", err)
+	}
+	defer func() { _ = r.Close() }()
+
+	n, err := io.Copy(&buf, io.LimitReader(r, MaxDecompressedBodySize+1))
+	if err != nil {
+		return nil, fmt.Errorf("decompress message body: %w", err)
+	}
+	if n > MaxDecompressedBodySize {
+		return nil, fmt.Errorf("decompressed size %d exceeds limit %d", n, MaxDecompressedBodySize)
+	}
+	return buf.Bytes(), nil
+}
+
 func (ppd *PacketParserData) decryptBody() (err error) {
 	defer func() {
 		// clear secrets
 		ppd.chainHash.Reset()
 		ppd.chainHash = nil
 		SetZero(ppd.chainKey[:])
+		SetZero(ppd.hashBuf[:])
 	}()
 
 	// message body is empty, skip decryption
@@ -653,7 +675,7 @@ func (ppd *PacketParserData) decryptBody() (err error) {
 	}
 
 	// decrypt body and reuse ppd.BasePacket.Content space
-	body, err := ppd.bodyAead.Open(ppd.basePacket.Content[ppd.header.Size():ppd.header.Size()], ppd.header.NonceBytes(), ppd.basePacket.Content[ppd.header.Size():], ppd.chainHash.Sum(nil))
+	body, err := ppd.bodyAead.Open(ppd.basePacket.Content[ppd.header.Size():ppd.header.Size()], ppd.header.NonceBytes(), ppd.basePacket.Content[ppd.header.Size():], ppd.chainHash.Sum(ppd.hashBuf[:0]))
 	if err != nil {
 		log.Critical("decrypt body failed: %v", err)
 		ErrAEADDecryptionFailed.SetExtraError(err)
@@ -665,33 +687,16 @@ func (ppd *PacketParserData) decryptBody() (err error) {
 
 	// Note: ppd.BodyMessage must be a separate []byte slice because ppd.BasePacket.Buf will be released later
 	if ppd.BodyCompress {
-		// decompress with size limit to prevent decompression bombs
-		var buf bytes.Buffer
-		br := bytes.NewReader(body)
-		r, err := zlib.NewReader(br)
-		if err != nil {
-			log.Critical("invalid compressed data: %v", err)
-			ErrDataDecompressionFailed.SetExtraError(err)
-			return ErrDataDecompressionFailed
-		}
-		defer r.Close()
-
-		// Limit decompressed size to 10MB to prevent DoS via decompression bomb
-		const maxDecompressedSize = 10 * 1024 * 1024
-		limitedReader := io.LimitReader(r, maxDecompressedSize+1) // +1 to detect overflow
-		n, err := io.Copy(&buf, limitedReader)
+		ppd.BodyMessage, err = inflateBody(body)
 		if err != nil {
 			log.Critical("message decompression failed: %v", err)
 			ErrDataDecompressionFailed.SetExtraError(err)
 			return ErrDataDecompressionFailed
 		}
-		if n > maxDecompressedSize {
-			log.Critical("decompressed data exceeds maximum size limit (%d bytes)", maxDecompressedSize)
-			ErrDataDecompressionFailed.SetExtraError(fmt.Errorf("decompressed size %d exceeds limit %d", n, maxDecompressedSize))
-			return ErrDataDecompressionFailed
+		if len(ppd.BodyMessage) >= MaxDecompressedBodyWarnSize && decompressWarnAllowed(time.Now().UnixNano()) {
+			log.Warning("decompressed body %d B reached the %d-byte warn threshold near the %d-byte ceiling",
+				len(ppd.BodyMessage), MaxDecompressedBodyWarnSize, MaxDecompressedBodySize)
 		}
-
-		ppd.BodyMessage = buf.Bytes() // separately allocated memory
 		//log.Debug("message decompressed %v -> %v", body, ppd.BodyMessage)
 	} else {
 		ppd.BodyMessage = append(ppd.BodyMessage, body...) // deep copy
@@ -826,6 +831,7 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 		headerPrefix := ppd.header.Bytes()[0:headerPrefixLen]
 		remote := cookieRemoteKey(ppd.ConnData)
 		currWindow := time.Now().Unix() / win
+		var candidateHashBuf [HashSize]byte
 		for _, w := range [2]int64{currWindow, currWindow - 1} {
 			cookie := deriveStatelessCookie(key, remote, peerPk, w)
 			h, err := NewHash(ppd.Ciphers.HashType)
@@ -841,7 +847,7 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 			// already needed authenticated noise-channel access to
 			// reach this path) but the cost is one helper call, so
 			// take it.
-			if subtle.ConstantTimeCompare(h.Sum(nil), headerHmac) == 1 {
+			if hmac.Equal(h.Sum(candidateHashBuf[:0]), headerHmac) {
 				return true
 			}
 		}
@@ -859,9 +865,9 @@ func (ppd *PacketParserData) checkHMAC(sumCookie bool) bool {
 			ppd.hmacHash = nil
 		}()
 		ppd.hmacHash.Write(ppd.header.Bytes()[0:headerPrefixLen])
-		calculatedHmac := ppd.hmacHash.Sum(nil)
+		calculatedHmac := ppd.hmacHash.Sum(ppd.hashBuf[:0])
 		headerHmac := ppd.header.HMACBytes()
-		if !bytes.Equal(calculatedHmac, headerHmac) {
+		if !hmac.Equal(calculatedHmac, headerHmac) {
 			log.Debug("checkHMAC: mismatch, calculated=%x, header=%x, headerSize=%d, cipherScheme=%d",
 				calculatedHmac[:8], headerHmac[:8], ppd.header.Size(), ppd.CipherScheme)
 			return false
@@ -880,6 +886,7 @@ func (ppd *PacketParserData) Destroy() {
 		ppd.chainHash.Reset()
 		ppd.chainHash = nil
 	}
+	SetZero(ppd.hashBuf[:])
 }
 
 func (ppd *PacketParserData) IsAllowedAtOverload() bool {

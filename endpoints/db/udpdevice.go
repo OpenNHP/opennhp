@@ -863,9 +863,16 @@ func (a *UdpDevice) GetDataBrokerId() string {
 }
 
 func (a *UdpDevice) GetOwnEcdh() core.Ecdh {
-	eccMode := core.ECC_CURVE25519
-	if a.config.DefaultCipherScheme == 0 {
-		eccMode = core.ECC_SM2
+	// common.CIPHER_SCHEME_CURVE == 0, not SM2 — the same comparison
+	// GetOwnEcdh's own caller below (the ztdo static key pair setup) makes
+	// a few lines later. This used to read "== 0 → SM2", inverted: with the
+	// shipped default DefaultCipherScheme = 0, the symmetric agreement
+	// selected CURVE25519 while this handed it an SM2 static key pair —
+	// mismatched curves in the same handshake, deriving a wrong shared
+	// secret for DHP data-key wrapping.
+	eccMode := core.ECC_SM2
+	if a.config.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
+		eccMode = core.ECC_CURVE25519
 	}
 
 	// Start resolves the private key and returns an error if it cannot, so

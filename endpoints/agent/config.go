@@ -147,20 +147,20 @@ func (c *Config) GetAgentEcdh() core.Ecdh {
 }
 
 func (c *Config) GetTeeEcdh() core.Ecdh {
-	eccType := core.ECC_SM2
-	if c.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
-		eccType = core.ECC_CURVE25519
-	}
 	teePrk, _ := base64.StdEncoding.DecodeString(c.TEEPrivateKeyBase64)
-	return core.ECDHFromKey(eccType, teePrk)
+	return core.ECDHFromKey(c.GetEccType(), teePrk)
 }
 
+// GetEccType reads DefaultCipherScheme under keyMu (see
+// SetPrivateKeyMaterial's doc comment) — this and GetTeeEcdh are reached
+// from goroutines (a gin handler via getTeePublicKey, RefreshDataAccess)
+// that run concurrently with the fsnotify config-reload watcher's
+// SetCipherScheme, same as GetAgentEcdh.
 func (c *Config) GetEccType() core.EccTypeEnum {
-	eccType := core.ECC_SM2
-	if c.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
-		eccType = core.ECC_CURVE25519
+	if c.GetCipherScheme() == common.CIPHER_SCHEME_CURVE {
+		return core.ECC_CURVE25519
 	}
-	return eccType
+	return core.ECC_SM2
 }
 
 // Peers is the top-level shape of server.toml. Each entry is one

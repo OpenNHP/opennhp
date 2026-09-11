@@ -195,15 +195,19 @@ func TestGetAgentEcdhPlainKeyUnchanged(t *testing.T) {
 // config-reload watcher (updateBaseConfig) writes DefaultCipherScheme via
 // SetCipherScheme, and ReinitWithKey writes both PrivateKeyBase64 and
 // DefaultCipherScheme via SetPrivateKeyMaterial — both under keyMu. A
-// concurrent /publicKey request reads them via GetAgentEcdh, and
-// UdpAgent.PrivateKeyBase64() reads PrivateKeyBase64 via
-// GetPrivateKeyBase64. Every read and write here must go through one of
-// those, or this test races.
+// concurrent /publicKey request reads them via GetAgentEcdh, /teePublicKey
+// via GetTeeEcdh, and RefreshDataAccess via GetEccType; UdpAgent.PrivateKeyBase64()
+// reads PrivateKeyBase64 via GetPrivateKeyBase64. Every read and write here
+// must go through one of those, or this test races.
 func TestConfigKeyMuCoversCipherSchemeAndPrivateKeyReads(t *testing.T) {
 	e := core.NewECDH(core.ECC_CURVE25519)
 	cfg := &Config{
 		DefaultCipherScheme: common.CIPHER_SCHEME_CURVE,
 		PrivateKeyBase64:    base64.StdEncoding.EncodeToString(e.PrivateKey()),
+		// GetTeeEcdh reads TEEPrivateKeyBase64 through the embedded
+		// *DHPConfig pointer; leaving it nil would panic on that read,
+		// unrelated to the keyMu race this test targets.
+		DHPConfig: &DHPConfig{TEEPrivateKeyBase64: base64.StdEncoding.EncodeToString(e.PrivateKey())},
 	}
 	cfg.SetResolvedPrivateKey(e.PrivateKey())
 
@@ -238,8 +242,11 @@ func TestConfigKeyMuCoversCipherSchemeAndPrivateKeyReads(t *testing.T) {
 		}
 	}()
 
-	// Readers: the two paths the review flagged.
-	wg.Add(2)
+	// Readers: GetAgentEcdh/GetPrivateKeyBase64 from the first review round,
+	// plus GetTeeEcdh/GetEccType (getTeePublicKey, RefreshDataAccess) from
+	// the follow-up round that found those two still reading
+	// DefaultCipherScheme bare.
+	wg.Add(4)
 	go func() {
 		defer wg.Done()
 		for {
@@ -260,6 +267,28 @@ func TestConfigKeyMuCoversCipherSchemeAndPrivateKeyReads(t *testing.T) {
 			default:
 			}
 			_ = cfg.GetPrivateKeyBase64()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			cfg.GetTeeEcdh()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			_ = cfg.GetEccType()
 		}
 	}()
 

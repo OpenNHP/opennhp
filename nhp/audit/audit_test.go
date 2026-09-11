@@ -1256,7 +1256,12 @@ func (b *blockingWriter) Write(p []byte) (int, error) {
 
 func TestAsyncWriterPreservesOrderAndChain(t *testing.T) {
 	var buf bytes.Buffer
-	l := NewLedger(nopCloser{&buf}, Options{Async: true, QueueSize: 256})
+	// QueueSize must be >= the 8*50=400 entries this test can ever have
+	// in flight at once, or "Dropped() == 0" below is a race against how
+	// fast the drain goroutine gets scheduled relative to the 8 producers
+	// — 256 was under that bound and flaked under CI's coverage-instrumented
+	// run (queue-full drops, Count < 400) despite passing locally every time.
+	l := NewLedger(nopCloser{&buf}, Options{Async: true, QueueSize: 512})
 
 	var wg sync.WaitGroup
 	for g := 0; g < 8; g++ {

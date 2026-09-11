@@ -32,13 +32,14 @@ type UdpServer struct {
 		totalSendBytes uint64
 	}
 
-	config     *Config
-	httpConfig *HttpConfig
-	log        *log.Logger
-	listenAddr *net.UDPAddr
-	listenConn *net.UDPConn
-	localIp    string
-	localMac   string
+	config        *Config
+	httpConfig    *HttpConfig
+	log           *log.Logger
+	listenAddr    *net.UDPAddr
+	listenAddrStr string
+	listenConn    *net.UDPConn
+	localIp       string
+	localMac      string
 
 	device     *core.Device
 	httpServer *HttpServer
@@ -263,6 +264,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		log.Error("resolve local UDPAddr error: %v", err)
 		return fmt.Errorf("resolve UDPAddr error %v", err)
 	}
+	s.listenAddrStr = s.listenAddr.String()
 
 	prk, err := base64.StdEncoding.DecodeString(s.config.PrivateKeyBase64)
 	if err != nil {
@@ -300,9 +302,9 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 	if len(cookieKey) == 0 {
 		cookieKey = make([]byte, 32)
-		if _, err := rand.Read(cookieKey); err != nil {
-			log.Critical("failed to generate random cookie signing key: %v", err)
-			return fmt.Errorf("failed to generate random cookie signing key: %v", err)
+		if _, readErr := rand.Read(cookieKey); readErr != nil {
+			log.Critical("failed to generate random cookie signing key: %v", readErr)
+			return fmt.Errorf("failed to generate random cookie signing key: %v", readErr)
 		}
 		log.Info("CookieSigningKeyBase64 not set; using a random per-process key (single-instance only — clusters must share an operator-supplied key)")
 	} else {
@@ -406,7 +408,15 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	if s.keyStore != nil {
 		opt := s.device.GetOption()
 		opt.PeerLookupFallback = func(pubKey []byte, headerType int) bool {
-			if headerType != core.NHP_KNK && headerType != core.NHP_RKN && headerType != core.NHP_EXT {
+			// Agent-initiated packet types a dynamically-registered
+			// agent (not in agent.toml) can legitimately send after a
+			// successful NHP-REG. NHP_OTP / NHP_REG skip peer
+			// validation entirely (see responder.validatePeer), so
+			// they aren't listed here. NHP_LST must be included or a
+			// freshly-registered agent's listServices call is rejected
+			// with "peer not found in peer pool" → relay 504.
+			if headerType != core.NHP_KNK && headerType != core.NHP_LST &&
+				headerType != core.NHP_RKN && headerType != core.NHP_EXT {
 				return false
 			}
 			pk := base64.StdEncoding.EncodeToString(pubKey)
@@ -540,8 +550,8 @@ func (s *UdpServer) SendPacket(pkt *core.Packet, conn *UdpConn) (n int, err erro
 	}()
 
 	pktType := core.HeaderTypeToString(pkt.HeaderType)
-	log.Info("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
-	log.Evaluate("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddr.String(), conn.ConnData.RemoteAddr.String(), len(pkt.Content))
+	log.Info("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddrStr, conn.ConnData.RemoteAddr.String(), len(pkt.Content))
+	log.Evaluate("Send [%s] packet (%s -> %s), %d bytes", pktType, s.listenAddrStr, conn.ConnData.RemoteAddr.String(), len(pkt.Content))
 
 	return s.listenConn.WriteToUDP(pkt.Content, conn.ConnData.RemoteAddr)
 }
@@ -597,12 +607,12 @@ func (s *UdpServer) recvPacketRoutine() {
 
 		recvTime := time.Now().UnixNano()
 		pkt.Content = pkt.Buf[:n]
-		//log.Trace("receive udp packet (%s -> %s): %+v", addrStr, s.listenAddr.String(), pkt.Content)
+		//log.Trace("receive udp packet (%s -> %s): %+v", addrStr, s.listenAddrStr, pkt.Content)
 
 		typ, _, err := s.device.RecvPrecheck(pkt) // this check also records packet header type
 		msgType := core.HeaderTypeToString(typ)
-		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
-		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
+		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddrStr, n)
+		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddrStr, n)
 		if err != nil {
 			// threat plus 1
 			preCheckThreats[addrStr]++
@@ -610,8 +620,8 @@ func (s *UdpServer) recvPacketRoutine() {
 				s.AddBlockAddr(remoteAddr)
 			}
 			s.device.ReleasePoolPacket(pkt)
-			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, s.listenAddr.String(), err)
-			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, s.listenAddr.String(), err)
+			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, s.listenAddrStr, err)
+			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, s.listenAddrStr, err)
 			continue
 		}
 		// clear threat
@@ -646,16 +656,11 @@ func (s *UdpServer) recvPacketRoutine() {
 
 		} else {
 			// create new connection if there is room
-			s.remoteConnectionMapMutex.Lock()
-			if len(s.remoteConnectionMap) > OverloadConnectionThreshold {
-				s.device.SetOverload(true)
-			} else if len(s.remoteConnectionMap) >= MaxConcurrentConnection {
-				s.remoteConnectionMapMutex.Unlock()
+			if !s.globalCapAdmits() {
 				log.Critical("Reached maximum concurrent connection, discarding packet from: %s", addrStr)
 				s.device.ReleasePoolPacket(pkt)
 				continue
 			}
-			s.remoteConnectionMapMutex.Unlock()
 
 			isACConn := pkt.HeaderType == core.NHP_AOL
 			isDBConn := pkt.HeaderType == core.NHP_DOL
@@ -695,15 +700,30 @@ func (s *UdpServer) recvPacketRoutine() {
 			s.remoteConnectionMap[addrStr] = conn
 			s.remoteConnectionMapMutex.Unlock()
 
-			conn.ConnData.RecvQueue <- pkt
+			conn.ConnData.ForwardInboundPacket(pkt)
 
-			log.Info("Accept new UDP connection from %s to %s", addrStr, s.listenAddr.String())
+			log.Info("Accept new UDP connection from %s to %s", addrStr, s.listenAddrStr)
 
 			// launch connection routine
 			s.wg.Add(1)
 			go s.connectionRoutine(conn)
 		}
 	}
+}
+
+// globalCapAdmits reports whether a new direct UDP connection fits under the
+// global connection-table cap. Overload mode and the hard cap are independent
+// conditions: using an else-if makes the cap unreachable once the lower
+// overload threshold has been crossed.
+func (s *UdpServer) globalCapAdmits() bool {
+	s.remoteConnectionMapMutex.Lock()
+	defer s.remoteConnectionMapMutex.Unlock()
+
+	n := len(s.remoteConnectionMap)
+	if n > OverloadConnectionThreshold {
+		s.device.SetOverload(true)
+	}
+	return n < MaxConcurrentConnection
 }
 
 func (s *UdpServer) connectionRoutine(conn *UdpConn) {
@@ -784,9 +804,9 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		// CONCURRENCY: this whole len + SetOverload(false) lives
 		// inside remoteConnectionMapMutex (locked at the top of this
 		// deferred block, unlocked immediately after). Every other
-		// SetOverload(true) call site — udpserver.go:540 and
-		// msghandler.go:875 — also runs under the same mutex while
-		// checking len > threshold, so the three call sites are
+		// SetOverload(true) path — globalCapAdmits and relay admission in
+		// msghandler.HandleRelayForward — also runs under the same mutex
+		// while checking len > threshold, so the three call sites are
 		// serialized and the len() observed here is the post-delete
 		// authoritative size. No TOCTOU window between the size
 		// check and the SetOverload call.
@@ -800,23 +820,35 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		conn.Close()
 	}()
 
+	idleTimeout := time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+	idleTimer := time.NewTimer(idleTimeout)
+	defer idleTimer.Stop()
+
 	for {
 		select {
 		case <-s.signals.stop:
 			return
 
-		case <-conn.ConnData.SetTimeoutSignal:
+		case _, ok := <-conn.ConnData.SetTimeoutSignal:
+			if !ok {
+				return
+			}
 			if conn.ConnData.TimeoutMs <= 0 {
 				log.Debug("Connection routine closed immediately")
 				return
 			}
+			idleTimeout = time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+			idleTimer.Reset(idleTimeout)
 
-		case <-time.After(time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond):
+		case <-idleTimer.C:
 			// timeout, quit routine
 			log.Debug("Connection routine idle timeout")
 			return
 
-		case <-conn.ConnData.BlockSignal:
+		case _, ok := <-conn.ConnData.BlockSignal:
+			if !ok {
+				return
+			}
 			s.AddBlockAddr(conn.ConnData.RemoteAddr)
 			return
 
@@ -824,6 +856,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -832,7 +865,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			// process keepalive packet
 			if pkt.HeaderType == core.NHP_KPL {
 				s.device.ReleasePoolPacket(pkt)
-				log.Info("Receive [NHP_KPL] message (%s -> %s)", addrStr, s.listenAddr.String())
+				log.Info("Receive [NHP_KPL] message (%s -> %s)", addrStr, s.listenAddrStr)
 				continue
 			}
 
@@ -858,6 +891,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -1366,10 +1400,10 @@ func (s *UdpServer) handleNhpOpenResource(req *common.NhpAuthRequest, res *commo
 			if knkMsg.HeaderType == core.NHP_EXT {
 				openTime = 1 // timeout in 1 second
 			}
-			artMsg, err := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
+			artMsg, opErr := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
 			artMsgsMutex.Lock()
 			artMsgs[name] = artMsg
-			if err == nil {
+			if opErr == nil {
 				ackMsg.ResourceHost[name] = info.DestHost()
 				ackMsg.ACTokens[name] = artMsg.ACToken
 				ackMsg.PreAccessActions[name] = artMsg.PreAccessAction
@@ -1434,8 +1468,8 @@ func (us *UdpServer) NewNhpServerHelper(ppd *core.PacketParserData) *plugins.Nhp
 			})
 		}
 		h.ValidateOTPFunc = us.keyStore.ValidateOTP
-		h.RegisterKeyFunc = func(userId, deviceId, pubKeyBase64 string) error {
-			return us.keyStore.RegisterAgentKey(userId, deviceId, pubKeyBase64, keyTTL)
+		h.RegisterKeyFunc = func(userId, deviceId, pubKeyBase64 string, cipherScheme int) error {
+			return us.keyStore.RegisterAgentKey(userId, deviceId, pubKeyBase64, cipherScheme, keyTTL)
 		}
 		h.IsRegisteredFunc = us.keyStore.IsAgentRegistered
 		h.GetAgentKeyExpiryFunc = us.keyStore.GetAgentKeyExpiry

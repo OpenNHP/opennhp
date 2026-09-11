@@ -34,6 +34,14 @@ const (
 	HASH_SHA256
 )
 
+// HashSize-backed scratch buffers must fit every digest NewHash can return.
+// Keep this list in sync with the supported cases in NewHash.
+var (
+	_ [HashSize - blake2s.Size]byte
+	_ [HashSize - sm3.Size]byte
+	_ [HashSize - sha256.Size]byte
+)
+
 type EccTypeEnum int
 
 const (

@@ -59,10 +59,10 @@ func NewTrustApplication(tadId string, language string, entry string) (*TrustedA
 	stdioTransport := transport.NewStdio(entry, nil)
 	c = client.NewClient(stdioTransport)
 
-	if err := c.Start(ctx); err != nil {
-		log.Error("Failed to start trusted application: %v", err)
+	if startErr := c.Start(ctx); startErr != nil {
+		log.Error("Failed to start trusted application: %v", startErr)
 		cancel()
-		return nil, err
+		return nil, startErr
 	}
 
 	initRequest := mcp.InitializeRequest{}

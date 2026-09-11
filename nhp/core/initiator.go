@@ -14,13 +14,6 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
-type InitiatorScheme interface {
-	CreateMsgAssemblerData(d *Device, md *MsgData) (mad *MsgAssemblerData, err error)
-	DeriveMsgAssemblerDataFromPrevParserData(ppd *PacketParserData, t int, message []byte) (mad *MsgAssemblerData)
-	SetPeerPublicKey(d *Device, mad *MsgAssemblerData, peerPk []byte) (err error)
-	EncryptBody(d *Device, mad *MsgAssemblerData) (err error)
-}
-
 type MsgData struct {
 	RemoteAddr     *net.UDPAddr      // used by agent and ac create a new connection or pick an existing connection for msg sending
 	ConnData       *ConnectionData   // used by server to pick an existing connection for msg sending
@@ -34,6 +27,12 @@ type MsgData struct {
 	ExternalCookie *[CookieSize]byte
 	Message        []byte
 	PeerPk         []byte
+	// EncryptedPktCh diverts the encrypted packet to the caller instead of the
+	// connection's socket queue. When set, nothing reaches the wire, no
+	// LocalTransaction is created (the hand-off returns before the transaction
+	// request check), and the caller owns the delivered MsgAssemblerData and
+	// must Destroy() it. This holds for responses derived from PrevParserData
+	// as well as for new initiator messages.
 	EncryptedPktCh chan *MsgAssemblerData
 	ResponseMsgCh  chan *PacketParserData
 }
@@ -67,6 +66,7 @@ type MsgAssemblerData struct {
 	chainHash      hash.Hash
 	bodyAead       cipher.AEAD
 	chainKey       [SymmetricKeySize]byte
+	hashBuf        [HashSize]byte
 
 	LocalInitTime int64
 	TransactionId uint64
@@ -102,7 +102,6 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 		mad.bodyMessage = md.Message
 		mad.TransactionId = md.TransactionId
 		mad.connData = md.ConnData
-		mad.encryptedPktCh = md.EncryptedPktCh
 
 		// init packet buffer
 		if md.ExternalPacket != nil {
@@ -129,6 +128,11 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 		// init header counter
 		mad.header.SetCounter(mad.TransactionId)
 	}
+	// EncryptedPktCh applies equally to new initiator packets and responses
+	// derived from PrevParserData. Keeping this outside the branch lets
+	// response-side callers divert encrypted bytes instead of silently falling
+	// through to the connection's socket SendQueue.
+	mad.encryptedPktCh = md.EncryptedPktCh
 
 	// init chain hash -> ChainHash0
 	mad.chainHash, err = NewHash(mad.ciphers.HashType)
@@ -139,7 +143,7 @@ func (d *Device) createMsgAssemblerData(md *MsgData) (mad *MsgAssemblerData, err
 
 	// init chain key -> ChainKey0
 	mad.noise.HashType = mad.ciphers.HashType
-	mad.noise.MixKey(&mad.chainKey, mad.chainHash.Sum(nil), []byte(InitialChainKeyString))
+	mad.noise.MixKey(&mad.chainKey, mad.chainHash.Sum(mad.hashBuf[:0]), []byte(InitialChainKeyString))
 
 	// init timestamp
 	mad.LocalInitTime = time.Now().UnixNano()
@@ -286,7 +290,7 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 			log.Error("failed to create AEAD for static encryption: %v", err)
 			return err
 		}
-		static = aead.Seal(mad.header.StaticBytes()[:0], mad.header.NonceBytes(), mad.deviceEcdh.PublicKey(), mad.chainHash.Sum(nil))
+		static = aead.Seal(mad.header.StaticBytes()[:0], mad.header.NonceBytes(), mad.deviceEcdh.PublicKey(), mad.chainHash.Sum(mad.hashBuf[:0]))
 	}
 
 	//log.Debug("encrypted pubkey: %v, output: %v", mad.deviceEcdh.PublicKey(), static)
@@ -321,7 +325,7 @@ func (mad *MsgAssemblerData) setPeerPublicKey(peerPk []byte) (err error) {
 			log.Error("failed to create AEAD for timestamp encryption: %v", err)
 			return err
 		}
-		ts = aead.Seal(mad.header.TimestampBytes()[:0], mad.header.NonceBytes(), tsBytes[:], mad.chainHash.Sum(nil))
+		ts = aead.Seal(mad.header.TimestampBytes()[:0], mad.header.NonceBytes(), tsBytes[:], mad.chainHash.Sum(mad.hashBuf[:0]))
 	}
 
 	// evolve chainhash ChainHash2 -> ChainHash3
@@ -344,6 +348,7 @@ func (mad *MsgAssemblerData) encryptBody() (err error) {
 		mad.chainHash.Reset()
 		mad.chainHash = nil
 		SetZero(mad.chainKey[:])
+		SetZero(mad.hashBuf[:])
 	}()
 
 	// message body is empty, skip encryption. Set header and calculate HMAC
@@ -407,7 +412,7 @@ func (mad *MsgAssemblerData) encryptBody() (err error) {
 	mad.addHMAC(mad.HeaderType == NHP_RKN)
 
 	// encrypt body and write into mad.BasePacket.Buf space
-	ciphertext := mad.bodyAead.Seal(mad.BasePacket.Buf[mad.header.Size():mad.header.Size()], mad.header.NonceBytes(), body, mad.chainHash.Sum(nil))
+	ciphertext := mad.bodyAead.Seal(mad.BasePacket.Buf[mad.header.Size():mad.header.Size()], mad.header.NonceBytes(), body, mad.chainHash.Sum(mad.hashBuf[:0]))
 	_ = ciphertext
 	//log.Debug("encrypted body: %v, output: %v", body, ciphertext)
 
@@ -450,4 +455,5 @@ func (mad *MsgAssemblerData) Destroy() {
 		mad.chainHash.Reset()
 		mad.chainHash = nil
 	}
+	SetZero(mad.hashBuf[:])
 }

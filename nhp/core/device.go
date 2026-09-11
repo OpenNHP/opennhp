@@ -243,15 +243,12 @@ func (d *Device) msgToPacketRoutine(id int) {
 			// message encryption workflow: raw message -> encryption -> raw packet -> connection.SendQueue
 			func() {
 				msgType := HeaderTypeToString(md.HeaderType)
-				var msgStr string
-				if md.Message != nil {
-					msgStr = string(md.Message)
-				}
-				log.Debug("msgToPacketRoutine %d: encrypting [%s] raw message: %s", id, msgType, msgStr)
-				log.Evaluate("msgToPacketRoutine %d: encrypting [%s] raw message: %s", id, msgType, msgStr)
+				log.Debug("msgToPacketRoutine %d: encrypting [%s] raw message: %s", id, msgType, md.Message)
+				log.Evaluate("msgToPacketRoutine %d: encrypting [%s] raw message: %s", id, msgType, md.Message)
 
 				var mad *MsgAssemblerData
 				var err error
+				var outboundPacket *Packet
 
 				// error handling
 				defer func() {
@@ -309,9 +306,19 @@ func (d *Device) msgToPacketRoutine(id int) {
 
 				// create local transaction if needed
 				log.Debug("msgToPacketRoutine IsTransactionRequest:deviceType:%d HeaderType:%d", d.deviceType, mad.HeaderType)
+				outboundPacket = mad.BasePacket
 				if d.IsTransactionRequest(mad.HeaderType) {
+					// The transaction retains mad.BasePacket for response crypto. Give
+					// the asynchronous physical sender an independent pool packet so
+					// transaction completion cannot recycle bytes still being sent.
+					outboundPacket, err = d.clonePacketForSend(mad.BasePacket)
+					if err != nil {
+						log.Error("msgToPacketRoutine %d: [%s] sender packet clone failed: %v", id, msgType, err)
+						log.Evaluate("msgToPacketRoutine %d: [%s] sender packet clone failed: %v", id, msgType, err)
+						return
+					}
+
 					// save initiator transaction
-					mad.BasePacket.KeepAfterSend = true // packet is kept after sending and deleted at transaction level
 					t := &LocalTransaction{
 						transactionId: mad.header.Counter(),
 						connData:      mad.connData,
@@ -324,7 +331,7 @@ func (d *Device) msgToPacketRoutine(id int) {
 				}
 
 				// send out fully encrypted packet
-				mad.connData.ForwardOutboundPacket(mad.BasePacket)
+				mad.connData.ForwardOutboundPacket(outboundPacket)
 			}()
 		}
 	}
@@ -451,12 +458,8 @@ func (d *Device) packetToMsgRoutine(id int) {
 					return
 				}
 
-				var msgStr string
-				if ppd.BodyMessage != nil {
-					msgStr = string(ppd.BodyMessage)
-				}
-				log.Debug("packetToMsgRoutine: %d: complete decrypting [%s] message: %s", id, msgType, msgStr)
-				log.Evaluate("packetToMsgRoutine: %d: complete decrypting [%s] message: %s", id, msgType, msgStr)
+				log.Debug("packetToMsgRoutine: %d: complete decrypting [%s] message: %s", id, msgType, ppd.BodyMessage)
+				log.Evaluate("packetToMsgRoutine: %d: complete decrypting [%s] message: %s", id, msgType, ppd.BodyMessage)
 				log.Debug("packetToMsgRoutine: complete decrypting feedbackMsgCh:%d,headerType:%s", d.deviceType, HeaderTypeToString(ppd.HeaderType))
 				// deliver decrypted message to specific channel
 				if ppd.decryptedMsgCh != nil {

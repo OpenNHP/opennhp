@@ -62,14 +62,20 @@ func GetCurrentDate() (date string) {
 	return date
 }
 
-func DownloadFileToTemp(fileUrl string, pattern string) (string, error) {
+func DownloadFileToTemp(fileUrl string, pattern string) (tempFilePath string, err error) {
 	tempDir, err := os.MkdirTemp("", pattern)
 	if err != nil {
 		return "", err
 	}
+	keepTempDir := false
+	defer func() {
+		if !keepTempDir {
+			_ = os.RemoveAll(tempDir)
+		}
+	}()
 
 	fileName := filepath.Base(fileUrl)
-	tempFilePath := filepath.Join(tempDir, fileName)
+	tempFilePath = filepath.Join(tempDir, fileName)
 
 	outFile, err := os.Create(tempFilePath)
 	if err != nil {
@@ -92,6 +98,7 @@ func DownloadFileToTemp(fileUrl string, pattern string) (string, error) {
 		return "", err
 	}
 
+	keepTempDir = true
 	return tempFilePath, nil
 }
 

@@ -695,9 +695,8 @@ func (s *UdpServer) onAttestationVerify(spo *common.SmartPolicy, attestation str
 	}
 
 	engine := wasmEngine.NewEngine()
-	err = engine.LoadWasm(wasmBytes)
 	defer engine.Close()
-	if err != nil {
+	if err = engine.LoadWasm(wasmBytes); err != nil {
 		return err
 	}
 

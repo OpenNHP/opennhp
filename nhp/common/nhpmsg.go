@@ -291,11 +291,11 @@ func (spo *SmartPolicy) GetPolicy() ([]byte, error) {
 	wasmBytes, err := base64.StdEncoding.DecodeString(spo.Policy)
 	if err != nil {
 		wasmPath, err := utils.DownloadFileToTemp(spo.Policy, "wasm-")
-		defer os.Remove(filepath.Dir(wasmPath))
-		defer os.Remove(wasmPath)
 		if err != nil {
 			return nil, err
 		}
+		defer func() { _ = os.Remove(filepath.Dir(wasmPath)) }()
+		defer func() { _ = os.Remove(wasmPath) }()
 		wasmBytes, err = os.ReadFile(wasmPath)
 		if err != nil {
 			return nil, err

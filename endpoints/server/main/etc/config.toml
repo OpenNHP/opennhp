@@ -30,3 +30,16 @@ LogLevel = 4
 DisableAgentValidation = false
 AllowPrivateRelaySource = false
 ForceOverload = false
+
+# [Metrics]: optional Prometheus /metrics + JSON /healthz endpoint.
+#   Enabled: off by default. When true, a separate HTTP listener is started.
+#   ListenIp: bind address. Empty defaults to 127.0.0.1 so telemetry is not
+#     reachable off-host; set an explicit IP only if a scraper needs remote
+#     access (put it behind your own firewall / network policy in that case).
+#   ListenPort: TCP port, defaults to 9100 when empty/zero.
+#   Note: this section is read once at startup; toggling it or changing the
+#   bind on a config hot-reload requires a restart to take effect.
+[Metrics]
+Enabled = false
+ListenIp = "127.0.0.1"
+ListenPort = 9100

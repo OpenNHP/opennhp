@@ -11,6 +11,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common/clusterconfig"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
+	"github.com/OpenNHP/opennhp/nhp/metrics"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
 
@@ -26,9 +27,10 @@ var (
 type Config struct {
 	LogLevel            int
 	PrivateKeyBase64    string
-	DefaultCipherScheme int    `json:"defaultCipherScheme"`
-	SymmetricCipherMode string `json:"symmetricCipherMode"`
-	DbId                string `json:"dbId"`
+	DefaultCipherScheme int            `json:"defaultCipherScheme"`
+	SymmetricCipherMode string         `json:"symmetricCipherMode"`
+	DbId                string         `json:"dbId"`
+	Metrics             metrics.Config `json:"metrics"`
 }
 
 // Peers is the top-level shape of server.toml. Each entry is one

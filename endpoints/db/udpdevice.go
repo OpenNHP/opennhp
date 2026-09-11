@@ -15,6 +15,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/core"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
 	"github.com/OpenNHP/opennhp/nhp/log"
+	"github.com/OpenNHP/opennhp/nhp/metrics"
 	"github.com/OpenNHP/opennhp/nhp/version"
 )
 
@@ -88,6 +89,11 @@ type UdpDevice struct {
 	wg      sync.WaitGroup
 	running atomic.Bool
 
+	startTime       time.Time
+	metrics         *dbMetrics
+	metricsEndpoint *metrics.Endpoint
+	healthy         atomic.Bool // gates /healthz: true from Start until Stop
+
 	signals struct {
 		stop             chan struct{}
 		serverMapUpdated chan struct{}
@@ -116,6 +122,7 @@ dirPath: the path of app or shared library entry point
 logLevel: 0: silent, 1: error, 2: info, 3: debug, 4: verbose
 */
 func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
+	a.startTime = time.Now()
 	common.ExeDirPath = dirPath
 	ExeDirPath = dirPath
 	// init logger
@@ -139,11 +146,20 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 		return fmt.Errorf("private key parse error %v", err)
 	}
 
+	a.metrics = newDBMetrics(a, a.startTime)
+
+	// Keep NewDevice(t, prk, nil) so defaultDeviceOptions(NHP_DB) stays the
+	// single source of truth for the device's security posture, then layer
+	// the pre-decryption dropped-packet hook on via read-modify-write (same
+	// pattern as ac/relay).
 	a.device = core.NewDevice(core.NHP_DB, prk, nil)
 	if a.device == nil {
 		log.Critical("failed to create device %v\n", err)
 		return fmt.Errorf("failed to create device %v", err)
 	}
+	dbOpt := a.device.GetOption()
+	dbOpt.OnPacketDropped = func(stage string) { a.metrics.recordDroppedPacket(stage) }
+	a.device.SetOption(dbOpt)
 
 	a.remoteConnectionMap = make(map[string]*UdpConn)
 	a.serverPeerMap = make(map[string]*core.UdpPeer)
@@ -171,15 +187,38 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 		a.wg.Add(1)
 		go a.maintainServerConnectionRoutine()
 	}
+
 	a.running.Store(true)
-	// time.Sleep(1000 * time.Millisecond)
+
+	// opt-in Prometheus /metrics + /healthz endpoint, loopback by default.
+	// Started after running=true; StartEndpoint returns (nil,nil) when off.
+	a.healthy.Store(true)
+	ep, mErr := metrics.StartEndpoint(a.config.Metrics, metrics.EndpointOptions{
+		Registry:      a.metrics.registry,
+		Uptime:        func() time.Duration { return time.Since(a.startTime) },
+		IsRunning:     a.healthy.Load,
+		DefaultPort:   defaultDBMetricsPort,
+		OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
+		OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
+		OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
+		OnInsecureBind: func(ip string) {
+			log.Critical("[Metrics] ListenIp %s is not loopback — /metrics and /healthz will be reachable off-host, unauthenticated, and self-identifying via the nhp_db_* series", ip)
+		},
+	})
+	if mErr != nil {
+		log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
+	}
+	a.metricsEndpoint = ep
+
 	return nil
 }
 
 // export Stop
 func (a *UdpDevice) Stop() {
 	a.running.Store(false)
+	a.healthy.Store(false)
 	close(a.signals.stop)
+	a.metricsEndpoint.Stop()
 	a.device.Stop()
 	a.StopConfigWatch()
 	a.wg.Wait()
@@ -340,6 +379,7 @@ func (a *UdpDevice) recvPacketRoutine(conn *UdpConn) {
 		// check minimal length
 		if n < pkt.MinimalLength() {
 			a.device.ReleasePoolPacket(pkt)
+			a.metrics.recordDroppedPacket("too_short")
 			log.Error("Received UDP packet from %s is too short, discard", addrStr)
 			continue
 		}
@@ -353,6 +393,7 @@ func (a *UdpDevice) recvPacketRoutine(conn *UdpConn) {
 		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, conn.ConnData.LocalAddr.String(), n)
 		if err != nil {
 			a.device.ReleasePoolPacket(pkt)
+			a.metrics.recordDroppedPacket("precheck")
 			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			continue
@@ -477,6 +518,7 @@ func (a *UdpDevice) recvMessageRoutine() {
 			if ppd == nil {
 				continue
 			}
+			a.metrics.recordMessageReceived(core.HeaderTypeToString(ppd.HeaderType))
 
 			switch ppd.HeaderType {
 			case core.NHP_DWR:

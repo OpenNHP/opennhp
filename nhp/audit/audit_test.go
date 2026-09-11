@@ -869,8 +869,8 @@ func TestVerifyToleratesUnsignedPrefixAfterKeyIntroduced(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeN(t, l1, 3)
-	if err := l1.Close(); err != nil {
-		t.Fatal(err)
+	if closeErr := l1.Close(); closeErr != nil {
+		t.Fatal(closeErr)
 	}
 
 	key := []byte("a-signing-key-introduced-later!!")
@@ -879,8 +879,8 @@ func TestVerifyToleratesUnsignedPrefixAfterKeyIntroduced(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeN(t, l2, 3)
-	if err := l2.Close(); err != nil {
-		t.Fatal(err)
+	if closeErr := l2.Close(); closeErr != nil {
+		t.Fatal(closeErr)
 	}
 
 	res := VerifyLedger(path, key)

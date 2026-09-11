@@ -172,6 +172,29 @@ type Config struct {
 	// Audit configures the tamper-evident security audit ledger. Disabled
 	// by default; see AuditConfig.
 	Audit AuditConfig `json:"audit"`
+
+	// Metrics controls the optional Prometheus metrics / health endpoint.
+	// Disabled by default; when enabled it binds a separate, local-by-default
+	// HTTP listener so operational telemetry never rides on the public knock
+	// surface.
+	Metrics MetricsConfig `json:"metrics"`
+}
+
+// MetricsConfig configures the observability endpoint exposed by nhp-server.
+//
+// TODO: this duplicates nhp/metrics.Config (same three fields, same
+// defaults) and endpoints/server/metricsserver.go duplicates
+// nhp/metrics.Endpoint. nhp-ac/relay/db already use the shared types;
+// migrating nhp-server to metrics.StartEndpoint would delete ~110 lines and
+// leave one implementation. Kept separate here only to bound this PR's churn.
+type MetricsConfig struct {
+	// Enabled turns the /metrics + /healthz listener on. Off by default.
+	Enabled bool `json:"enabled"`
+	// ListenIp is the bind address. Empty defaults to 127.0.0.1 so metrics are
+	// not exposed off-host unless the operator explicitly opts in.
+	ListenIp string `json:"listenIp"`
+	// ListenPort is the TCP port for the endpoint. Empty/zero defaults to 9100.
+	ListenPort int `json:"listenPort"`
 }
 
 // AuditConfig controls the hash-chained security audit ledger. When
@@ -736,9 +759,13 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 
 	if s.config.DisableAgentValidation != conf.DisableAgentValidation {
 		if s.device != nil {
-			s.device.SetOption(core.DeviceOptions{
-				DisableAgentPeerValidation: conf.DisableAgentValidation,
-			})
+			// Read-modify-write: SetOption replaces the whole options struct,
+			// so building a fresh one here would wipe OnPacketDropped and
+			// PeerLookupFallback (both installed in udpserver.Start). Mutate
+			// only the field that changed — same pattern as Start uses.
+			opt := s.device.GetOption()
+			opt.DisableAgentPeerValidation = conf.DisableAgentValidation
+			s.device.SetOption(opt)
 		}
 		s.config.DisableAgentValidation = conf.DisableAgentValidation
 	}

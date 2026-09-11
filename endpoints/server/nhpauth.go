@@ -156,6 +156,12 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 		s.auditEvent("knock", severity, fields)
 	}
 
+	// Record the auth outcome. Reads the ack defensively (see knockAuthorized):
+	// AuthWithNHP can legitimately return a nil ackMsg, and HandleKnockRequest
+	// runs in a handler goroutine with no recover(), so a nil dereference here
+	// would take down the whole server.
+	s.metrics.recordKnockAuth(knockAuthorized(ppd.HeaderType, ackMsg, dhpAckMsg))
+
 	// send back knock ack response
 	ackBytes, _ := json.Marshal(ackMsg)
 
@@ -200,4 +206,21 @@ func auditKnockOp(headerType int) string {
 		return "unknown"
 	}
 	return core.HeaderTypeToString(headerType)
+}
+
+// knockAuthorized reports whether a knock ended in a successful authorization,
+// for metrics. It tolerates a nil ack: AuthWithNHP may return (nil, ...) when a
+// plugin doesn't implement it or panics and is recovered, and a nil deref in
+// the caller's handler goroutine (no recover) would crash the server. A missing
+// ack is treated as "not authorized". This covers the whole knock family
+// (KNK/RKN/EXT/DHP_KNK), not just first-time KNK auth.
+func knockAuthorized(headerType int, ackMsg *common.ServerKnockAckMsg, dhpAckMsg *common.ServerDHPKnockAckMsg) bool {
+	switch {
+	case headerType == core.DHP_KNK:
+		return dhpAckMsg != nil && dhpAckMsg.ErrCode == common.ErrSuccess.ErrorCode()
+	case ackMsg != nil:
+		return ackMsg.ErrCode == common.ErrSuccess.ErrorCode()
+	default:
+		return false
+	}
 }

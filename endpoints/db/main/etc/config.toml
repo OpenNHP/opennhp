@@ -14,6 +14,19 @@ DbId = "device-0"
 OrganizationId = "opennhp.org"
 LogLevel = 4
 
+# [Metrics]: optional Prometheus /metrics + JSON /healthz endpoint.
+#   Enabled: off by default. When true, a separate HTTP listener is started.
+#   ListenIp: bind address. Empty defaults to 127.0.0.1 so telemetry is not
+#     reachable off-host; set an explicit IP only if a scraper needs remote
+#     access (firewall it in that case).
+#   ListenPort: TCP port, defaults to 9103 when empty/zero (distinct from
+#     nhp-server 9100, nhp-ac 9101 and nhp-relay 9102).
+#   Read once at startup; changing it needs a restart.
+[Metrics]
+Enabled = false
+ListenIp = "127.0.0.1"
+ListenPort = 9103
+
 # UserData: a customized user entry for flexibility.
 # Its key-value pairs will be send to server along with knock message.
 [UserData]

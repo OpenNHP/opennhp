@@ -19,6 +19,12 @@ type ConnectionData struct {
 	sync.Mutex
 	sync.WaitGroup
 
+	// channelSendMu serializes channelSendWg.Add with Close's transition to
+	// closed, so Close can wait for every in-flight channel send before it
+	// closes the queues and signals.
+	channelSendMu sync.Mutex
+	channelSendWg sync.WaitGroup
+
 	// common
 	Device           *Device
 	LocalAddr        *net.UDPAddr
@@ -59,19 +65,34 @@ func (c *ConnectionData) Equal(other *ConnectionData) bool {
 }
 
 func (c *ConnectionData) SetTimeout(ms int) {
+	if !c.beginChannelSend() {
+		log.Warning("connection %s is closed, discard timeout update", c.RemoteAddr.String())
+		return
+	}
+	defer c.channelSendWg.Done()
+
 	c.TimeoutMs = ms
-	c.SetTimeoutSignal <- struct{}{}
+	select {
+	case c.SetTimeoutSignal <- struct{}{}:
+	case <-c.StopSignal:
+		log.Warning("connection %s stopped, discard timeout update", c.RemoteAddr.String())
+	}
 }
 
 func (c *ConnectionData) Close() {
-	if c.IsClosed() {
+	c.channelSendMu.Lock()
+	if !c.closed.CompareAndSwap(false, true) {
+		c.channelSendMu.Unlock()
 		return
 	}
 
 	// close all running transactions
 	close(c.StopSignal)
+	c.channelSendMu.Unlock()
 
-	c.closed.Store(true)
+	// No sender can start after closed becomes true. Wait for senders that
+	// started before that transition to leave their channel select.
+	c.channelSendWg.Wait()
 
 	// flush connection remaining packet and close connection thread channels
 flush:
@@ -91,10 +112,6 @@ flush:
 	close(c.RecvQueue)
 	close(c.BlockSignal)
 	close(c.SetTimeoutSignal)
-	c.SendQueue = nil
-	c.RecvQueue = nil
-	c.BlockSignal = nil
-	c.SetTimeoutSignal = nil
 
 	c.Wait()
 }
@@ -103,12 +120,23 @@ func (c *ConnectionData) IsClosed() bool {
 	return c.closed.Load()
 }
 
+func (c *ConnectionData) beginChannelSend() bool {
+	c.channelSendMu.Lock()
+	defer c.channelSendMu.Unlock()
+	if c.closed.Load() {
+		return false
+	}
+	c.channelSendWg.Add(1)
+	return true
+}
+
 func (c *ConnectionData) ForwardOutboundPacket(pkt *Packet) {
-	if c.IsClosed() {
+	if !c.beginChannelSend() {
 		log.Warning("connection %s is closed, discard outbound packet", c.RemoteAddr.String())
 		c.Device.ReleasePoolPacket(pkt)
 		return
 	}
+	defer c.channelSendWg.Done()
 
 	select {
 	case c.SendQueue <- pkt:
@@ -122,11 +150,12 @@ func (c *ConnectionData) ForwardOutboundPacket(pkt *Packet) {
 }
 
 func (c *ConnectionData) ForwardInboundPacket(pkt *Packet) {
-	if c.IsClosed() {
+	if !c.beginChannelSend() {
 		log.Warning("connection %s is closed, discard inbound packet", c.RemoteAddr.String())
 		c.Device.ReleasePoolPacket(pkt)
 		return
 	}
+	defer c.channelSendWg.Done()
 
 	select {
 	case c.RecvQueue <- pkt:
@@ -170,10 +199,11 @@ func (c *ConnectionData) UpdateRecvAddress(currTime int64, currAddr net.Addr) {
 }
 
 func (c *ConnectionData) SendBlockSignal() {
-	if c.IsClosed() {
+	if !c.beginChannelSend() {
 		log.Warning("connection is closed, discard block signal")
 		return
 	}
+	defer c.channelSendWg.Done()
 
 	select {
 	case c.BlockSignal <- struct{}{}:

@@ -1,10 +1,11 @@
 package utils
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,19 +17,19 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
-// GetRandomUint32 returns a non-zero random uint32 for packet preamble obfuscation.
-// Uses math/rand which is sufficient for this non-cryptographic use case.
-//
-//nolint:gosec // G404: math/rand is intentional - used for packet obfuscation, not security
-func GetRandomUint32() (r uint32) {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+// GetRandomUint32 returns a uniformly random non-zero uint32 from the system
+// CSPRNG. Zero is excluded so callers can use the result directly as an XOR
+// mask without a degenerate all-zero preamble.
+func GetRandomUint32() uint32 {
+	var b [4]byte
 	for {
-		r = rng.Uint32()
-		if r != 0 {
-			break
+		if _, err := rand.Read(b[:]); err != nil {
+			panic(fmt.Sprintf("utils.GetRandomUint32: crypto/rand failed: %v", err))
+		}
+		if value := binary.BigEndian.Uint32(b[:]); value != 0 {
+			return value
 		}
 	}
-	return r
 }
 
 func CatchPanic() {

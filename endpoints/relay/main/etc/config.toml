@@ -36,6 +36,19 @@ udpTimeoutMs   = 5000
 # Log level: 0=silent, 1=error, 2=info, 3=debug
 logLevel = 2
 
+# [Metrics]: optional Prometheus /metrics + JSON /healthz endpoint.
+#   Enabled: off by default. When true, a separate HTTP listener is started.
+#   ListenIp: bind address. Empty defaults to 127.0.0.1 so telemetry is not
+#     reachable off-host; set an explicit IP only if a scraper needs remote
+#     access (firewall it in that case).
+#   ListenPort: TCP port, defaults to 9102 when empty/zero (distinct from
+#     nhp-server 9100 and nhp-ac 9101).
+#   Read once at startup; changing it needs a restart.
+[Metrics]
+Enabled = false
+ListenIp = "127.0.0.1"
+ListenPort = 9102
+
 # ────────────────────────────────────────────────────────────────────────
 # Upstream NHP-Server entries
 # ────────────────────────────────────────────────────────────────────────

@@ -32,3 +32,15 @@ LogLevel = 4
 AuthServiceId = "example"
 ResourceIds = ["demo"]
 FilterMode = 0
+# [Metrics]: optional Prometheus /metrics + JSON /healthz endpoint.
+#   Enabled: off by default. When true, a separate HTTP listener is started.
+#   ListenIp: bind address. Empty defaults to 127.0.0.1 so telemetry is not
+#     reachable off-host; set an explicit IP only if a scraper needs remote
+#     access (put it behind your own firewall / network policy in that case).
+#   ListenPort: TCP port, defaults to 9101 when empty/zero (distinct from the
+#     nhp-server default 9100 so a shared host does not collide).
+#   Note: read once at startup; changing it needs a restart.
+[Metrics]
+Enabled = false
+ListenIp = "127.0.0.1"
+ListenPort = 9101

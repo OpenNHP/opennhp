@@ -41,6 +41,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/keystore"
 	log "github.com/OpenNHP/opennhp/nhp/log"
+	"github.com/OpenNHP/opennhp/nhp/metrics"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
 
@@ -183,6 +184,12 @@ type RelayServer struct {
 	running atomic.Bool
 	stopCh  chan struct{}
 
+	startTime       time.Time
+	metrics         *relayMetrics
+	metricsEndpoint *metrics.Endpoint
+	healthy         atomic.Bool // true from New until Stop: process is alive
+	ready           atomic.Bool // true once Start has finished setup and is about to serve; false again on Stop or if Start fails to reach that point
+
 	stats struct {
 		totalRecvBytes uint64
 		totalSendBytes uint64
@@ -201,19 +208,31 @@ func New(cfg *Config) (*RelayServer, error) {
 		log.Info("relay private key is sealed; unsealed at startup with the configured passphrase")
 	}
 
-	// Create NHP device with relay identity.
-	device := core.NewDevice(core.NHP_RELAY, prk, nil)
-	if device == nil {
-		return nil, fmt.Errorf("relay: failed to create NHP device")
-	}
-
 	rs := &RelayServer{
 		config:    cfg,
-		device:    device,
 		servers:   make(map[string]*serverRuntime, len(cfg.Servers)),
 		sendMsgCh: make(chan *core.MsgData, PacketQueueSizePerConnection),
 		stopCh:    make(chan struct{}),
 	}
+
+	// Build the metrics collectors here (in New, before rs is shared with any
+	// goroutine) rather than in Start — Start runs on its own goroutine while
+	// Stop is called from main, so writing these fields in Start would race
+	// the read in Stop.
+	rs.startTime = time.Now()
+	rs.metrics = newRelayMetrics(rs, rs.startTime)
+
+	// Create NHP device with relay identity. Keep NewDevice(t, prk, nil) so
+	// defaultDeviceOptions(NHP_RELAY) stays the single source of truth for
+	// security posture, then layer the observation hook on top.
+	device := core.NewDevice(core.NHP_RELAY, prk, nil)
+	if device == nil {
+		return nil, fmt.Errorf("relay: failed to create NHP device")
+	}
+	opt := device.GetOption()
+	opt.OnPacketDropped = func(stage string) { rs.metrics.recordDroppedPacket(stage) }
+	device.SetOption(opt)
+	rs.device = device
 	rs.recvMsgCh = device.DecryptedMsgQueue
 
 	for i := range cfg.Servers {
@@ -251,6 +270,33 @@ func New(cfg *Config) (*RelayServer, error) {
 				inst.host, inst.port, inst.weight)
 		}
 	}
+
+	// opt-in Prometheus /metrics + /healthz endpoint, loopback by default.
+	// Started LAST — after rs.servers is fully populated (the
+	// nhp_relay_upstream_servers gauge reads it from the serve goroutine)
+	// and after every "return nil, err" above (so a config error cannot
+	// leak a bound listener). /healthz is gated on rs.healthy (process is
+	// alive) AND rs.ready (Start finished setup and is about to serve), so
+	// a probe during the New()->Start() gap — or a Start() that fails before
+	// reaching the serve call — correctly reports "stopping", not "ok".
+	rs.healthy.Store(true)
+	ep, mErr := metrics.StartEndpoint(cfg.Metrics, metrics.EndpointOptions{
+		Registry:      rs.metrics.registry,
+		Uptime:        func() time.Duration { return time.Since(rs.startTime) },
+		IsRunning:     func() bool { return rs.healthy.Load() && rs.ready.Load() },
+		DefaultPort:   defaultRelayMetricsPort,
+		OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
+		OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
+		OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
+		OnInsecureBind: func(ip string) {
+			log.Critical("[Metrics] ListenIp %s is not loopback — /metrics and /healthz will be reachable off-host, unauthenticated, and self-identifying via the nhp_relay_* series", ip)
+		},
+	})
+	if mErr != nil {
+		log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
+	}
+	rs.metricsEndpoint = ep
+
 	return rs, nil
 }
 
@@ -316,6 +362,7 @@ func (rs *RelayServer) buildServer(c *Server) (*serverRuntime, error) {
 }
 
 // Start starts the device, UDP connections, keepalives, and HTTP server.
+// The metrics endpoint is already running (started in New).
 func (rs *RelayServer) Start() error {
 	rs.running.Store(true)
 
@@ -337,6 +384,10 @@ func (rs *RelayServer) Start() error {
 	}
 
 	addr := rs.httpServer.Addr
+	// Setup that can still fail (device/routines above are best-effort
+	// starts) is done; the only thing left is the blocking serve call, so
+	// this is the accurate "ready" point for the /healthz readiness gate.
+	rs.ready.Store(true)
 	if rs.config.EnableTLS {
 		log.Info("[Relay] starting HTTPS relay on %s", addr)
 		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
@@ -350,7 +401,10 @@ func (rs *RelayServer) Start() error {
 // Stop gracefully shuts down the relay service.
 func (rs *RelayServer) Stop(ctx context.Context) error {
 	rs.running.Store(false)
+	rs.healthy.Store(false)
+	rs.ready.Store(false)
 	close(rs.stopCh)
+	rs.metricsEndpoint.Stop()
 
 	// Shut down HTTP server.
 	err := rs.httpServer.Shutdown(ctx)
@@ -482,6 +536,7 @@ func (rs *RelayServer) recvPacketRoutine(cr *serverRuntime, inst *serverInstance
 
 		if n < pkt.MinimalLength() {
 			rs.device.ReleasePoolPacket(pkt)
+			rs.metrics.recordDroppedPacket("too_short")
 			log.Error("[Relay] packet from %s too short, discard", addrStr)
 			continue
 		}
@@ -494,6 +549,7 @@ func (rs *RelayServer) recvPacketRoutine(cr *serverRuntime, inst *serverInstance
 			msgType, addrStr, conn.ConnData.LocalAddr, n)
 		if err != nil {
 			rs.device.ReleasePoolPacket(pkt)
+			rs.metrics.recordDroppedPacket("precheck")
 			log.Warning("[Relay] recv [%s] precheck error: %v", msgType, err)
 			continue
 		}
@@ -778,6 +834,7 @@ func (rs *RelayServer) recvMessageRoutine() {
 				continue
 			}
 
+			rs.metrics.recordMessageReceived(core.HeaderTypeToString(ppd.HeaderType))
 			log.Info("[Relay] recv decrypted message type [%s]",
 				core.HeaderTypeToString(ppd.HeaderType))
 			// Relay doesn't expect messages from server in the current design.

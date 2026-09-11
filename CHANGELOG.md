@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2](https://github.com/OpenNHP/opennhp/compare/v1.0.1...v1.0.2) (2026-09-11)
+
+
+### Bug Fixes
+
+* **ac:** recover UDP handler panics ([4ef22b8](https://github.com/OpenNHP/opennhp/commit/4ef22b867c313de5beeb13251533155f528bfbe5))
+* prevent connection sends from racing close ([6428e3a](https://github.com/OpenNHP/opennhp/commit/6428e3a2e17ea153207b5d7c66b2550fa0b8e1e9))
+* **server:** enforce global UDP connection cap ([66a52e6](https://github.com/OpenNHP/opennhp/commit/66a52e68d37eba4b8835fc13220d48f366435bf7))
+
+
+### Performance Improvements
+
+* **core:** avoid packet hash result allocations ([ab1f7f7](https://github.com/OpenNHP/opennhp/commit/ab1f7f72da2dd3454d2f02a3f71c483688a3a8fb))
+* **core:** avoid packet log string copies ([1f20950](https://github.com/OpenNHP/opennhp/commit/1f209508aeac386c80a5043db294786373ebf83b))
+* **core:** reuse HMAC in multi-output KDF ([325d6e7](https://github.com/OpenNHP/opennhp/commit/325d6e7abe4d9baf9455c48357a1c97aae37a003))
+* **core:** stop transaction timers on early exit ([5a555ce](https://github.com/OpenNHP/opennhp/commit/5a555ce9d286bed0d66c20624989ed75a5b2fa0f))
+* **server:** cache UDP listen address string ([de7ff3b](https://github.com/OpenNHP/opennhp/commit/de7ff3bdd9540cac3b41bbf25dbf152a0e2107d8))
+
 ## 1.0.0 (2026-09-09)
 
 

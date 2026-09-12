@@ -1,7 +1,15 @@
 # NHP-Agent base config
 # field with (-) does not support dynamic update
 
-# PrivateKeyBase64 (-): agent private key in base64 format.
+# PrivateKeyBase64 (-): agent private key. Accepts either a plain base64 key
+#   or a sealed blob (starts with "v1$") produced by `nhp-agentd seal`. A
+#   sealed key is decrypted at startup with a passphrase from
+#   NHP_KEY_PASSPHRASE_FILE (a file, mode 0600; preferred) or
+#   NHP_KEY_PASSPHRASE. Those env vars are consulted ONLY when the value is
+#   sealed, so an unsealed agent is unaffected by a stray exported var.
+#   "At startup" also covers a later restart/rotate over HTTP (both re-run
+#   the same unseal), so the passphrase must stay resolvable for the whole
+#   process lifetime, not just the first boot.
 # DefaultCipherScheme: 0: curve25519, 1: gmsm.
 # MIGRATION: Values changed in v2.x. If upgrading: old 0(gmsm)->new 1, old 1(curve)->new 0.
 # UserId: specify the user id this agent represents.

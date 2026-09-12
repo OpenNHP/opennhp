@@ -14,9 +14,11 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"github.com/OpenNHP/opennhp/endpoints/db"
+	"github.com/OpenNHP/opennhp/endpoints/keystorecli"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/version"
 )
@@ -26,7 +28,7 @@ func main() {
 }
 func initApp() {
 	app := cli.NewApp()
-	app.Name = "nhp-device"
+	app.Name = "nhp-db"
 	app.Usage = "device entity for NHP protocol"
 	app.Version = version.Version
 
@@ -164,7 +166,10 @@ func initApp() {
 			&cli.BoolFlag{Name: "json", Value: false, DisableDefaultText: true, Usage: "output in JSON format"},
 		},
 		Action: func(c *cli.Context) error {
-			privKey, err := base64.StdEncoding.DecodeString(c.Args().First())
+			// Accept either a plain base64 key or a sealed "v1$…" blob so an
+			// operator on a sealed host does not have to pipe the plaintext
+			// key through their shell just to read its public half.
+			privKey, sealed, err := keystore.ResolvePrivateKeyAuto(c.Args().First())
 			if err != nil {
 				if c.Bool("json") {
 					json.NewEncoder(os.Stdout).Encode(map[string]interface{}{
@@ -173,6 +178,9 @@ func initApp() {
 					return nil
 				}
 				return err
+			}
+			if sealed && !c.Bool("json") {
+				fmt.Fprintln(os.Stderr, "note: input was a sealed blob; unsealed with the configured passphrase")
 			}
 			cipherType := core.ECC_SM2
 			if c.Bool("curve") {
@@ -201,14 +209,18 @@ func initApp() {
 		},
 	}
 
-	app.Commands = []*cli.Command{
+	app.Commands = append([]*cli.Command{
 		runCmd,
 		keygenCmd,
 		pubkeyCmd,
-	}
+	}, keystorecli.Commands()...)
 
 	if err := app.Run(os.Args); err != nil {
+		// keystorecli errors are plain fmt.Errorf, not cli.ExitCoder, so
+		// app.Run does not exit non-zero on its own — do it here or a
+		// provisioning script cannot detect a failed `seal`.
 		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/metrics"
 	"github.com/OpenNHP/opennhp/nhp/version"
@@ -73,8 +74,9 @@ type UdpDevice struct {
 		totalSendBytes uint64
 	}
 
-	config *Config
-	log    *log.Logger
+	config     *Config
+	privateKey []byte // resolved once at Start (plain or unsealed)
+	log        *log.Logger
 
 	remoteConnectionMutex sync.Mutex
 	remoteConnectionMap   map[string]*UdpConn // indexed by remote UDP address
@@ -140,11 +142,20 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 		return err
 	}
 
-	prk, err := base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
+	prk, sealed, err := keystore.ResolvePrivateKeyAuto(a.config.PrivateKeyBase64)
 	if err != nil {
 		log.Error("private key parse error %v\n", err)
 		return fmt.Errorf("private key parse error %v", err)
 	}
+	if sealed {
+		log.Info("DB private key is sealed; unsealed at startup with the configured passphrase")
+		if path, mode, permissive := keystore.PassphraseFilePermissive(); permissive {
+			log.Warning("passphrase file %s is mode %o — restrict it to 0600", path, mode)
+		}
+	}
+	// Cache the resolved key so GetOwnEcdh does not re-run the (expensive)
+	// unseal KDF on every call.
+	a.privateKey = prk
 
 	a.metrics = newDBMetrics(a, a.startTime)
 
@@ -852,13 +863,28 @@ func (a *UdpDevice) GetDataBrokerId() string {
 }
 
 func (a *UdpDevice) GetOwnEcdh() core.Ecdh {
-	prk, _ := base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
-	eccMode := core.ECC_CURVE25519
-	if a.config.DefaultCipherScheme == 0 {
-		eccMode = core.ECC_SM2
+	// common.CIPHER_SCHEME_CURVE == 0, not SM2 — the same comparison
+	// GetOwnEcdh's own caller below (the ztdo static key pair setup) makes
+	// a few lines later. This used to read "== 0 → SM2", inverted: with the
+	// shipped default DefaultCipherScheme = 0, the symmetric agreement
+	// selected CURVE25519 while this handed it an SM2 static key pair —
+	// mismatched curves in the same handshake, deriving a wrong shared
+	// secret for DHP data-key wrapping.
+	eccMode := core.ECC_SM2
+	if a.config.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
+		eccMode = core.ECC_CURVE25519
 	}
 
-	return core.ECDHFromKey(eccMode, prk)
+	// Start resolves the private key and returns an error if it cannot, so
+	// the device never reaches a serving state with an empty a.privateKey
+	// and this cannot hand a nil Ecdh to callers that dereference it.
+	//
+	// There is deliberately no resolve-on-demand fallback here. Callers of
+	// this method feed the key straight into key agreement, so a fallback
+	// that quietly failed would be worse than not having one: it would
+	// return an Ecdh built from a nil key and the failure would surface as
+	// a bad shared secret rather than as a startup error.
+	return core.ECDHFromKey(eccMode, a.privateKey)
 }
 
 func (a *UdpDevice) isTEEAuthorized(teePbkBase64 string) bool {

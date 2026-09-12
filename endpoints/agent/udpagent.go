@@ -16,6 +16,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/core"
 	wasmEngine "github.com/OpenNHP/opennhp/nhp/core/wasm/engine"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	utils "github.com/OpenNHP/opennhp/nhp/utils"
 	"github.com/OpenNHP/opennhp/nhp/version"
@@ -386,12 +387,24 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 		}
 		prk = core.NewECDH(core.ECC_CURVE25519).PrivateKey()
 	} else {
-		prk, err = base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
+		var sealed bool
+		prk, sealed, err = keystore.ResolvePrivateKeyAuto(a.config.PrivateKeyBase64)
 		if err != nil {
 			log.Error("private key parse error %v\n", err)
 			return fmt.Errorf("private key parse error %v", err)
 		}
+		if sealed {
+			log.Info("agent private key is sealed; unsealed at startup with the configured passphrase")
+			if path, mode, permissive := keystore.PassphraseFilePermissive(); permissive {
+				log.Warning("passphrase file %s is mode %o — restrict it to 0600", path, mode)
+			}
+		}
 	}
+
+	// Cache the resolved key so GetAgentEcdh (the /publicKey handler) reports
+	// the real device key without re-decoding — important when the config
+	// holds a sealed blob that a plain base64 decode would reject.
+	a.config.SetResolvedPrivateKey(prk)
 
 	a.device = core.NewDevice(core.NHP_AGENT, prk, nil)
 	if a.device == nil {
@@ -566,7 +579,7 @@ func (a *UdpAgent) PublicKeyBase64ByCipherScheme() string {
 
 // PrivateKeyBase64 returns the agent's private key in base64 encoding.
 func (a *UdpAgent) PrivateKeyBase64() string {
-	return a.config.PrivateKeyBase64
+	return a.config.GetPrivateKeyBase64()
 }
 
 // ReinitWithKey stops the current device, creates a new one from the given
@@ -598,8 +611,7 @@ func (a *UdpAgent) ReinitWithKey(privKeyBytes []byte, cipherScheme int) error {
 	a.recvMsgCh = newDev.DecryptedMsgQueue
 	a.deviceMutex.Unlock()
 
-	a.config.PrivateKeyBase64 = base64.StdEncoding.EncodeToString(privKeyBytes)
-	a.config.DefaultCipherScheme = cipherScheme
+	a.config.SetPrivateKeyMaterial(base64.StdEncoding.EncodeToString(privKeyBytes), cipherScheme, privKeyBytes)
 
 	// Stopping the old device closes its DecryptedMsgQueue, so the
 	// existing recvMessageRoutine (blocked on the old channel) observes a
@@ -1345,7 +1357,14 @@ func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOut
 	ztdo := ztdolib.NewZtdo()
 
 	consumerEphemeralEcdh := core.NewECDH(a.config.GetEccType())
+
+	// GetTeeEcdh returns nil when TEEPrivateKeyBase64 is empty/unset (a DHP
+	// agent that has never had RotateTeeKey run). Same guard as
+	// getTeePublicKey — this path has no gin panic-recovery net.
 	teeEcdh := a.config.GetTeeEcdh()
+	if teeEcdh == nil {
+		return "", fmt.Errorf("RefreshDataAccess: TEE private key is unavailable (run the DHP secret init)")
+	}
 
 	darMsg := common.DARMsg{
 		DoId:                       ztdoId,

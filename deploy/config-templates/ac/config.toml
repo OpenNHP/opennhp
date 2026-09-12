@@ -2,6 +2,10 @@
 
 ACId = "demo-ac"
 DefaultIp = "${AC_PRIVATE_IP}"
+# PrivateKeyBase64 accepts a plain base64 key or a sealed "v1$" blob from
+# `nhp-acd seal` (decrypted at startup via NHP_KEY_PASSPHRASE_FILE /
+# NHP_KEY_PASSPHRASE — consulted only when the value is sealed). CI renders a
+# plain key here.
 PrivateKeyBase64 = "${NHP_AC_PRIVATE_KEY}"
 DefaultCipherScheme = 0
 IpPassMode = 0

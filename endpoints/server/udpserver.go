@@ -16,6 +16,7 @@ import (
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/plugins"
 	"github.com/OpenNHP/opennhp/nhp/utils"
@@ -272,10 +273,16 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 	s.listenAddrStr = s.listenAddr.String()
 
-	prk, err := base64.StdEncoding.DecodeString(s.config.PrivateKeyBase64)
+	prk, sealed, err := keystore.ResolvePrivateKeyAuto(s.config.PrivateKeyBase64)
 	if err != nil {
 		log.Error("private key parse error: %v", err)
 		return fmt.Errorf("private key parse error %v", err)
+	}
+	if sealed {
+		log.Info("server private key is sealed; unsealed at startup with the configured passphrase")
+		if path, mode, permissive := keystore.PassphraseFilePermissive(); permissive {
+			log.Warning("passphrase file %s is mode %o — restrict it to 0600", path, mode)
+		}
 	}
 
 	option := &core.DeviceOptions{

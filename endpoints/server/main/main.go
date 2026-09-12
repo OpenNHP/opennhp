@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,8 +13,10 @@ import (
 
 	"github.com/urfave/cli/v2"
 
+	"github.com/OpenNHP/opennhp/endpoints/keystorecli"
 	"github.com/OpenNHP/opennhp/endpoints/server"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/version"
 )
 
@@ -126,9 +127,15 @@ func main() {
 				}
 				return err
 			}
-			privBytes, err := base64.StdEncoding.DecodeString(c.Args().First())
+			// Accept either a plain base64 key or a sealed "v1$…" blob so an
+			// operator on a sealed host does not have to pipe the plaintext
+			// key through their shell just to backfill a public key.
+			privBytes, sealed, err := keystore.ResolvePrivateKeyAuto(c.Args().First())
 			if err != nil {
-				return emitErr(fmt.Errorf("decode private key: %w", err))
+				return emitErr(fmt.Errorf("read private key: %w", err))
+			}
+			if sealed && !c.Bool("json") {
+				fmt.Fprintln(os.Stderr, "note: input was a sealed blob; unsealed with the configured passphrase")
 			}
 
 			if c.Bool("both") {
@@ -166,14 +173,20 @@ func main() {
 		},
 	}
 
-	app.Commands = []*cli.Command{
+	// seal / unseal are shared across every daemon (see endpoints/keystorecli):
+	// sealed blobs are consumed by server, ac, db, relay and agent alike, so
+	// the tooling to produce one ships on each binary.
+	app.Commands = append([]*cli.Command{
 		runCmd,
 		keygenCmd,
 		pubkeyCmd,
-	}
+	}, keystorecli.Commands()...)
 
 	if err := app.Run(os.Args); err != nil {
-		panic(err)
+		// Print the (operator-facing) error cleanly rather than a panic
+		// stack trace — matters for the seal/unseal usage messages.
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 

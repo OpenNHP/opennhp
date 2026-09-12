@@ -7,6 +7,39 @@ import (
 	"testing"
 )
 
+// TestCurrentConfigKeySealed covers the three cases: no config (bootstrap),
+// a sealed key, and an unparseable file (must error, not read as "not
+// sealed" — that would let register overwrite a sealed key with plaintext).
+func TestCurrentConfigKeySealed(t *testing.T) {
+	dir := t.TempDir()
+	etc := filepath.Join(dir, "etc")
+	if err := os.MkdirAll(etc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// No config yet — bootstrap, not an error.
+	if sealed, err := currentConfigKeySealed(dir); err != nil || sealed {
+		t.Fatalf("missing config: got (%v, %v), want (false, nil)", sealed, err)
+	}
+
+	// Sealed key.
+	cfg := filepath.Join(etc, "config.toml")
+	if err := os.WriteFile(cfg, []byte("PrivateKeyBase64 = \"v1$argon2id$3$65536$4$a$b$c\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if sealed, err := currentConfigKeySealed(dir); err != nil || !sealed {
+		t.Fatalf("sealed config: got (%v, %v), want (true, nil)", sealed, err)
+	}
+
+	// Unparseable file — must surface an error.
+	if err := os.WriteFile(cfg, []byte("PrivateKeyBase64 = \"oops\n[Broken\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if sealed, err := currentConfigKeySealed(dir); err == nil {
+		t.Fatalf("unparseable config: got (%v, nil), want an error", sealed)
+	}
+}
+
 // TestWriteResourceConfig verifies the generated resource.toml binds the
 // asp-id/res-id to the named cluster and is written under etc/.
 func TestWriteResourceConfig(t *testing.T) {
@@ -35,7 +68,7 @@ func TestWriteResourceConfig(t *testing.T) {
 // the registered identity, private key, and the selected cipher scheme.
 func TestWriteRegistrationConfig(t *testing.T) {
 	dir := t.TempDir()
-	if err := writeRegistrationConfig(dir, "PRIVKEYB64", "alice@example.com", "opennhp.org", 1); err != nil {
+	if err := writeRegistrationConfig(dir, "PRIVKEYB64", "alice@example.com", "opennhp.org", 1, false); err != nil {
 		t.Fatalf("writeRegistrationConfig: %v", err)
 	}
 
@@ -54,12 +87,32 @@ func TestWriteRegistrationConfig(t *testing.T) {
 			t.Fatalf("config.toml missing %q in:\n%s", want, s)
 		}
 	}
+	if strings.Contains(s, "SEALED") {
+		t.Fatalf("plain-key config.toml should not mention a passphrase:\n%s", s)
+	}
+}
+
+// TestWriteRegistrationConfig_SealedNote verifies that when the registered
+// key is sealed the generated config.toml tells the operator a passphrase is
+// now required at startup.
+func TestWriteRegistrationConfig_SealedNote(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeRegistrationConfig(dir, "v1$argon2id$3$65536$4$a$b$c", "u", "", 1, true); err != nil {
+		t.Fatalf("writeRegistrationConfig: %v", err)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "etc", "config.toml"))
+	s := string(data)
+	for _, want := range []string{"sealed blob", "NHP_KEY_PASSPHRASE_FILE"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("sealed config.toml missing %q in:\n%s", want, s)
+		}
+	}
 }
 
 // TestWriteRegistrationConfig_CurveScheme pins the curve25519 scheme code (0).
 func TestWriteRegistrationConfig_CurveScheme(t *testing.T) {
 	dir := t.TempDir()
-	if err := writeRegistrationConfig(dir, "K", "u", "", 0); err != nil {
+	if err := writeRegistrationConfig(dir, "K", "u", "", 0, false); err != nil {
 		t.Fatalf("writeRegistrationConfig: %v", err)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "etc", "config.toml"))
@@ -82,7 +135,7 @@ func TestWriteConfig_BacksUpExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := writeRegistrationConfig(dir, "NEWKEY", "new@user", "", 1); err != nil {
+	if err := writeRegistrationConfig(dir, "NEWKEY", "new@user", "", 1, false); err != nil {
 		t.Fatalf("writeRegistrationConfig: %v", err)
 	}
 

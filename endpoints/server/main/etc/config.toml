@@ -45,6 +45,108 @@ DisableAgentValidation = false
 AllowPrivateRelaySource = false
 ForceOverload = false
 
+# Tamper-evident security audit ledger (optional, disabled by default).
+# When Enabled, security decisions (knock granted/denied over both the UDP
+# and HTTP paths, agent registered) are appended as hash-chained JSON lines.
+# When on, this is the server's structured audit trail (the log "[Audit]"
+# stream is unused). Verify with:
+#   nhp-serverd audit verify <FilePath> [--key <SigningKeyBase64>] [--strict]
+# IMPORTANT — what the chain does and does not protect against:
+#   Without SigningKeyBase64 the chain detects accidental corruption and
+#   casual edits, but NOT a determined attacker: anyone who can write the
+#   file can recompute the whole SHA-256 chain and produce a file that
+#   verifies clean.
+#   SigningKeyBase64 binds the chain to a secret, but the key is read from
+#   THIS config file, so it does not survive an attacker who has taken over
+#   the server (that attacker can read the key and re-sign). What it does
+#   defend: an attacker who can write the log but not read this config (a
+#   compromised log-shipping account, or offline edits to an archived copy).
+#   For host-compromise resistance the key must live off-host in an
+#   append-only sink the server can write but not rewrite.
+#   One limit remains even with a key: dropping entries from the END of
+#   the file leaves a shorter chain that still verifies. A hash chain
+#   cannot prove it has not been shortened. To catch truncation/rollback,
+#   periodically copy the latest seq+hash somewhere off-host and compare
+#   the count / last hash back against it.
+# FilePath: ledger path; relative paths resolve against the exe dir.
+#   Defaults to audit/audit-ledger.jsonl (its own dir, not logs/, so a
+#   logrotate rule aimed at logs/ can't reach it).
+#   Do NOT rotate this file with an EXTERNAL tool (logrotate/copytruncate)
+#   while the server runs: it keeps one append handle open and never reopens,
+#   so rename rotation silently drops later entries and copytruncate makes
+#   `audit verify` cry tampering. Use MaxSizeBytes below for built-in,
+#   chain-safe rotation instead, or rotate externally only while stopped.
+#   Do NOT point two processes at one ledger (e.g. server + server2 in the
+#   demo): there is no cross-process lock, so interleaved appends break the
+#   chain and one process's tail repair can delete the other's entries. Give
+#   each instance its own file.
+# Fsync: flush each entry to disk before the request continues. Entries are
+#   written on the request path, so audit volume tracks knock volume: this
+#   costs a disk flush per access decision and serializes audit writes.
+#   Pair it with Async below to keep the flush off the knock goroutine. Left
+#   off in this sample so the first operator to enable auditing doesn't
+#   silently inherit a per-knock flush on the UDP path; turn it on when
+#   losing the last few entries to a crash is unacceptable.
+# Async: move the disk write (and Fsync) onto a single background writer.
+#   Log still computes seq + the hash chain synchronously, so ordering and
+#   linkage are unchanged; only the write is deferred. If the writer falls
+#   far enough behind that the queue (AsyncQueueSize, default 4096) fills,
+#   entries are DROPPED rather than blocking the knock — discarded whole so
+#   the chain stays contiguous, counted in the shutdown summary, and once the
+#   writer recovers the next entry is preceded by a chained "audit_gap"
+#   record (fields.dropped=N) so `audit verify` and a SIEM see the loss too.
+#   Completeness is therefore NOT guaranteed under Async, only chain
+#   integrity. Off by default (the synchronous write is the strongest "on
+#   disk before we answered" guarantee).
+# MaxSizeBytes: size-based rotation. Once the live file would grow past this,
+#   it is renamed to "<FilePath>.<seq>" and a fresh file continues the chain.
+#   `audit verify` walks the segments automatically. Rotation alone deletes
+#   nothing.
+#     0  = built-in default, 256 MiB per segment
+#     -1 = never rotate; one file that grows without bound
+#     >0 = rotate at that many bytes
+# MaxSegments: retention cap on "<FilePath>.<n>" files. DELETING audit
+#   records is opt-in:
+#     0 (default) = keep every segment forever; nothing is ever deleted
+#     -1          = same as 0 (keep everything)
+#     >0          = after a rotation, delete the oldest segments beyond this
+#                   count (bounds disk to ~MaxSizeBytes*(N+1)). Every deletion
+#                   is logged Critical and `audit verify` can then no longer
+#                   start from seq 1 — it anchors on the first surviving entry.
+#   NHP_OTP / NHP_REG are audited BEFORE the peer is validated, so a party
+#   that knows the server's public key can drive ledger volume; handle that
+#   with off-box archival and a disk-pressure alarm, not silent deletion.
+# SigningKeyBase64: optional base64 HMAC key binding the chain to a secret
+#   the log file does not contain (must be >= 32 bytes; shorter is rejected
+#   at startup). Generate one with:  head -c 32 /dev/urandom | base64
+# FailClosed: what to do when the ledger can't be opened at startup.
+#   false (default): fail SAFE — the gateway keeps producing a trail:
+#     - a file that still looks like our ledger (corrupted first line) is
+#       renamed to "<FilePath>.corrupt-<nanos>" and a fresh chain starts at
+#       FilePath — from seq 1, or continuing from the highest "<FilePath>.<n>"
+#       segment if size rotation has produced any; the .corrupt-* sibling is
+#       the loud signal either way;
+#     - a FOREIGN file (FilePath typo'd onto another file) is LEFT UNTOUCHED
+#       and auditing continues in "<FilePath>.quarantined.jsonl". Point
+#       `audit verify` at that sibling, not FilePath, in this case.
+#     Other failures leave auditing disabled with a Critical log; the server
+#     still serves.
+#   true: fail CLOSED — any open failure aborts startup. Use when an
+#     uninterrupted trail matters more than availability.
+#   Either way this governs STARTUP only. A write that fails once the server
+#     is running (disk full, file made unwritable) is logged but never blocks
+#     the request; a sustained run escalates to a rate-limited Critical.
+[Audit]
+Enabled = false
+FilePath = ""
+Fsync = false
+Async = false
+AsyncQueueSize = 0
+MaxSizeBytes = 0
+MaxSegments = 0
+SigningKeyBase64 = ""
+FailClosed = false
+
 # [Metrics]: optional Prometheus /metrics + JSON /healthz endpoint.
 #   Enabled: off by default. When true, a separate HTTP listener is started.
 #   ListenIp: bind address. Empty defaults to 127.0.0.1 so telemetry is not

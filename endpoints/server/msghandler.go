@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	wasmEngine "github.com/OpenNHP/opennhp/nhp/core/wasm/engine"
@@ -177,11 +178,19 @@ func (s *UdpServer) HandleOTPRequest(ppd *core.PacketParserData) (err error) {
 	err = json.Unmarshal(ppd.BodyMessage, otpMsg)
 	if err != nil {
 		log.Error("server-agent(#%d@%s)[HandleOTPRequest] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
+		// Not audited: NHP_OTP skips peer validation (new agents), so a
+		// garbage-packet flood would append here at packet rate with no
+		// UserId to attribute it to and no retention bound. The parse
+		// failure is still logged; the ledger records real OTP attempts
+		// only (below).
 		return err
 	}
 
 	handler := s.FindPluginHandler(otpMsg.AuthServiceId)
 	if handler == nil {
+		// Same reasoning — a wrong/spoofed aspId is a cheap way to spam
+		// entries. The RequestOTP attempt below (which reaches a real ASP)
+		// is the first point worth recording.
 		return common.ErrAuthHandlerNotFound
 	}
 
@@ -197,10 +206,27 @@ func (s *UdpServer) HandleOTPRequest(ppd *core.PacketParserData) (err error) {
 	err = handler.RequestOTP(otpReq, s.NewNhpServerHelper(ppd))
 	if err != nil {
 		log.Error("server-agent(%s#%d@%s)[HandleOTPRequest] error: %v", otpMsg.UserId, transactionId, addrStr, err)
+		if s.auditLedger != nil {
+			s.auditEvent("otp_request", audit.SeverityWarn, map[string]string{
+				"user":   otpMsg.UserId,
+				"src":    addrStr,
+				"aspId":  otpMsg.AuthServiceId,
+				"result": "failed",
+				"reason": err.Error(),
+			})
+		}
 		return err
 	}
 
 	log.Info("server-agent(%s#%d@%s)[HandleOTPRequest] succeeded", otpMsg.UserId, transactionId, addrStr)
+	if s.auditLedger != nil {
+		s.auditEvent("otp_request", audit.SeverityInfo, map[string]string{
+			"user":   otpMsg.UserId,
+			"src":    addrStr,
+			"aspId":  otpMsg.AuthServiceId,
+			"result": "issued",
+		})
+	}
 	return nil
 }
 
@@ -214,6 +240,11 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 	addrStr := ppd.ConnData.RemoteAddr.String()
 	regMsg := &common.AgentRegisterMsg{}
 	rakMsg := &common.ServerRegisterAckMsg{}
+	// NHP_REG skips peer validation (new agents), so a garbage-packet flood
+	// could otherwise append a ledger entry per packet — with attacker-shaped
+	// text in `reason`. Don't audit a pre-validation reject; record only from
+	// the point RegisterAgent was actually reached (same policy as OTP).
+	preValidationReject := false
 
 	func() {
 		err = json.Unmarshal(ppd.BodyMessage, regMsg)
@@ -221,6 +252,7 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 			log.Error("server-agent(#%d@%s)[HandleRegisterRequest] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
 			rakMsg.ErrCode = common.ErrJsonParseFailed.ErrorCode()
 			rakMsg.ErrMsg = err.Error()
+			preValidationReject = true
 			return
 		}
 
@@ -229,6 +261,7 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 			err = common.ErrAuthHandlerNotFound
 			rakMsg.ErrCode = common.ErrAuthHandlerNotFound.ErrorCode()
 			rakMsg.ErrMsg = err.Error()
+			preValidationReject = true
 			return
 		}
 
@@ -269,6 +302,40 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 
 		log.Info("server-agent(%s#%d@%s)[HandleRegisterRequest] succeeded", regMsg.UserId, transactionId, addrStr)
 	}()
+
+	// Record the registration outcome in the audit ledger.
+	if s.auditLedger != nil && !preValidationReject {
+		// Registered means a non-nil ack, a nil error, AND the explicit
+		// success code: the RegisterAgent plugin point may return a failure
+		// ErrCode with a nil error (a soft denial), a recovered plugin panic
+		// returns a nil ack with a nil error too, and a plugin that sets no
+		// code at all did not affirmatively report success — none of those
+		// may read as "registered". The raw code is kept in errCode
+		// regardless. See decisionGranted.
+		rakCode := ""
+		if rakMsg != nil {
+			rakCode = rakMsg.ErrCode
+		}
+		severity, result := audit.SeverityWarn, "denied"
+		if decisionGranted(err, rakMsg == nil, rakCode) {
+			severity, result = audit.SeverityNotice, "registered"
+		}
+		fields := map[string]string{
+			"user":    regMsg.UserId,
+			"device":  regMsg.DeviceId,
+			"src":     addrStr,
+			"aspId":   regMsg.AuthServiceId,
+			"peerKey": shortKey(base64.StdEncoding.EncodeToString(ppd.RemotePubKey)),
+			"result":  result,
+		}
+		if rakCode != "" {
+			fields["errCode"] = rakCode
+		}
+		if err != nil {
+			fields["reason"] = err.Error()
+		}
+		s.auditEvent("agent_register", severity, fields)
+	}
 
 	// send NHP_RAK message
 	rakBytes, _ := json.Marshal(rakMsg)

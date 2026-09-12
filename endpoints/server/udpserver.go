@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/OpenNHP/opennhp/nhp/etcd"
 
+	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/keystore"
@@ -137,6 +139,19 @@ type UdpServer struct {
 	// keyStore persists agent public keys and OTP records in SQLite.
 	keyStore *AgentKeyStore
 
+	// auditLedger is the tamper-evident security audit ledger. nil when
+	// auditing is disabled (the default). Emission goes through the nil-safe
+	// auditEvent helper, so a bare call is always safe; the handlers still
+	// wrap their whole build-the-fields block in an `if s.auditLedger != nil`
+	// to skip that work entirely when auditing is off.
+	auditLedger *audit.Ledger
+
+	// auditWriteFails counts CONSECUTIVE ledger write failures so a sustained
+	// outage (disk full, file made unwritable) escalates to a rate-limited
+	// Critical instead of scrolling past as a single Error line. Reset to 0 on
+	// the next successful write.
+	auditWriteFails atomic.Uint64
+
 	//NHP-DB
 	dbPeerMapMutex sync.Mutex
 	dbPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
@@ -242,6 +257,47 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 	if err != nil {
 		return err
+	}
+
+	// Initialize the tamper-evident audit ledger if enabled, BEFORE any
+	// listener binds. By default a failure here is logged but never blocks
+	// startup: refusing to boot the gateway because an audit file can't be
+	// opened would turn a logging problem into an outage, and initAuditLedger
+	// already recovers a corrupt file by quarantining it and starting a fresh
+	// chain. An operator who requires an uninterrupted trail sets [Audit]
+	// FailClosed, which turns any such failure into a hard startup error —
+	// and that has to happen here, before loadHttpConfig() starts the HTTP
+	// knock listener and before the UDP socket is opened, or "fail closed"
+	// would still have served requests in the gap. initAuditLedger depends
+	// only on s.config.Audit and ExeDirPath, both already set.
+	if auditErr := s.initAuditLedger(); auditErr != nil {
+		// A pure [Audit] config mistake (bad base64 / too-short signing key)
+		// is always fatal — running on with no trail because of a typo is
+		// worse than the weak key the check protects against. Only an I/O
+		// failure honors the fail-safe / fail-closed trade-off below.
+		if errors.Is(auditErr, errAuditConfig) {
+			return fmt.Errorf("invalid [Audit] configuration: %w", auditErr)
+		}
+		if s.config != nil && s.config.Audit.FailClosed {
+			return fmt.Errorf("audit ledger unavailable and [Audit] FailClosed is set — refusing to start: %w", auditErr)
+		}
+		log.Critical("audit ledger disabled — failed to open: %v", auditErr)
+	}
+	if s.auditLedger != nil {
+		// Stop() is a no-op until s.running is set, which only happens at
+		// the very end of a successful Start — so an error returned by
+		// anything below this point (a bad listen address, a config load
+		// failure further down, ...) would otherwise leak the ledger's file
+		// handle and, in Async mode, its drain goroutine, with no code path
+		// left that ever closes it. Guarded on the named return `err`, so
+		// this is a no-op on the ordinary success path, where Stop's own
+		// call to closeAuditLedger (on the later, real shutdown) is what
+		// closes it.
+		defer func() {
+			if err != nil {
+				s.closeAuditLedger()
+			}
+		}()
 	}
 
 	var netIP net.IP
@@ -532,6 +588,8 @@ func (s *UdpServer) Stop() {
 	if s.keyStore != nil {
 		s.keyStore.Close()
 	}
+
+	s.closeAuditLedger()
 
 	log.Info("==========================")
 	log.Info("=== NHP-Server stopped ===")

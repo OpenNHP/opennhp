@@ -1,0 +1,2189 @@
+package audit
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+	"unicode/utf8"
+)
+
+func writeN(t *testing.T, l *Ledger, n int) {
+	t.Helper()
+	for i := 0; i < n; i++ {
+		if err := l.Log("knock_denied", SeverityWarn, map[string]string{
+			"srcIp":  "1.2.3.4",
+			"reason": "peer_not_found",
+		}); err != nil {
+			t.Fatalf("Log #%d: %v", i, err)
+		}
+	}
+}
+
+func TestChainVerifiesIntact(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{})
+	writeN(t, l, 5)
+
+	res := VerifyChain(bytes.NewReader(buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("expected intact chain, got err: %v", res.Err)
+	}
+	if res.Count != 5 {
+		t.Fatalf("verified %d entries, want 5", res.Count)
+	}
+}
+
+func TestDetectsAlteredField(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{})
+	writeN(t, l, 5)
+
+	lines := splitLines(buf.Bytes())
+	// Tamper with the "reason" field inside entry seq=3 while leaving its
+	// stored hash untouched.
+	var e Event
+	if err := json.Unmarshal(lines[2], &e); err != nil {
+		t.Fatal(err)
+	}
+	e.Fields["reason"] = "totally_fine"
+	lines[2] = mustMarshal(t, &e)
+
+	res := VerifyChain(bytes.NewReader(join(lines)), nil)
+	if res.Err == nil {
+		t.Fatal("expected verification failure for altered field")
+	}
+	if res.BadSeq != 3 {
+		t.Fatalf("BadSeq=%d, want 3", res.BadSeq)
+	}
+}
+
+func TestDetectsDeletedEntry(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{})
+	writeN(t, l, 5)
+
+	lines := splitLines(buf.Bytes())
+	// Remove entry seq=3; seq=4's prevHash now points at a hash that is
+	// no longer the previous line.
+	lines = append(lines[:2], lines[3:]...)
+
+	res := VerifyChain(bytes.NewReader(join(lines)), nil)
+	if res.Err == nil {
+		t.Fatal("expected verification failure for deleted entry")
+	}
+	if res.BadSeq != 4 {
+		t.Fatalf("BadSeq=%d, want 4", res.BadSeq)
+	}
+}
+
+func TestDetectsTruncatedTail(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{})
+	writeN(t, l, 5)
+
+	lines := splitLines(buf.Bytes())
+	lines = lines[:4] // drop the last entry
+
+	// Truncation alone still verifies as a valid (shorter) chain — that is
+	// expected, hash chains detect edits/reorders, not a clean tail cut.
+	// The count is what reveals the truncation to a caller who knows how
+	// many entries there should be.
+	res := VerifyChain(bytes.NewReader(join(lines)), nil)
+	if res.Err != nil {
+		t.Fatalf("truncated-but-consistent chain should verify, got: %v", res.Err)
+	}
+	if res.Count != 4 {
+		t.Fatalf("Count=%d, want 4", res.Count)
+	}
+}
+
+func TestHMACDetectsForgery(t *testing.T) {
+	key := []byte("audit-signing-key")
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{HMACKey: key})
+	writeN(t, l, 4)
+
+	// A verifier with the right key accepts it.
+	if res := VerifyChain(bytes.NewReader(buf.Bytes()), key); res.Err != nil {
+		t.Fatalf("valid signed chain rejected: %v", res.Err)
+	}
+
+	// An attacker who rewrites an entry AND recomputes its plain hash (but
+	// lacks the key) still fails the HMAC check.
+	lines := splitLines(buf.Bytes())
+	var e Event
+	if err := json.Unmarshal(lines[1], &e); err != nil {
+		t.Fatal(err)
+	}
+	e.Fields["srcIp"] = "9.9.9.9"
+	h, err := computeHash(&e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Hash = h // recompute the public hash to keep the chain internally consistent
+	// but Sig is left stale (attacker cannot recompute without the key)
+	lines[1] = mustMarshal(t, &e)
+
+	res := VerifyChain(bytes.NewReader(join(lines)), key)
+	if res.Err == nil {
+		t.Fatal("expected HMAC verification failure for forged entry")
+	}
+	if res.BadSeq != 2 {
+		t.Fatalf("BadSeq=%d, want 2", res.BadSeq)
+	}
+}
+
+func TestWrongHMACKeyRejected(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{HMACKey: []byte("right")})
+	writeN(t, l, 3)
+
+	res := VerifyChain(bytes.NewReader(buf.Bytes()), []byte("wrong"))
+	if res.Err == nil {
+		t.Fatal("expected failure verifying with the wrong key")
+	}
+}
+
+// A signed ledger verified without the key must not look fully verified.
+// The hash chain alone is forgeable by anyone who can rewrite the file, so
+// the result has to say the signatures went unchecked.
+func TestSignedLedgerVerifiedWithoutKeyIsReported(t *testing.T) {
+	key := []byte("audit-signing-key")
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{HMACKey: key})
+	writeN(t, l, 3)
+
+	res := VerifyChain(bytes.NewReader(buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("chain should still verify without the key: %v", res.Err)
+	}
+	if res.UncheckedSigs != 3 {
+		t.Fatalf("UncheckedSigs=%d, want 3", res.UncheckedSigs)
+	}
+
+	// With the key, nothing is left unchecked.
+	res = VerifyChain(bytes.NewReader(buf.Bytes()), key)
+	if res.Err != nil {
+		t.Fatalf("signed chain rejected with the right key: %v", res.Err)
+	}
+	if res.UncheckedSigs != 0 {
+		t.Fatalf("UncheckedSigs=%d, want 0 when the key is supplied", res.UncheckedSigs)
+	}
+}
+
+// An unsigned ledger has nothing to leave unchecked, so a keyless verify of
+// it is a genuinely clean result and must not warn.
+func TestUnsignedLedgerReportsNoUncheckedSigs(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{})
+	writeN(t, l, 3)
+
+	res := VerifyChain(bytes.NewReader(buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("unsigned chain rejected: %v", res.Err)
+	}
+	if res.UncheckedSigs != 0 {
+		t.Fatalf("UncheckedSigs=%d, want 0 for an unsigned ledger", res.UncheckedSigs)
+	}
+}
+
+// An unbounded free-text field must not be able to produce a line that
+// cannot be read back. Without the write-side bounds, a multi-megabyte
+// value would exceed the scanner's per-line cap and the entry would be
+// unreadable — which would silently disable auditing on the next restart.
+func TestOversizedFieldStaysReadable(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{})
+
+	huge := strings.Repeat("A", 4*maxLineLen)
+	if err := l.Log("knock", SeverityWarn, map[string]string{"reason": huge}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Log("knock", SeverityInfo, map[string]string{"reason": "ok"}); err != nil {
+		t.Fatal(err)
+	}
+
+	for i, line := range splitLines(buf.Bytes()) {
+		if len(line) > maxLineLen {
+			t.Fatalf("line %d is %d bytes, over the %d cap", i, len(line), maxLineLen)
+		}
+	}
+
+	// Both entries must verify — the chain is intact and nothing was skipped.
+	res := VerifyChain(bytes.NewReader(buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("chain with a truncated field failed: %v", res.Err)
+	}
+	if res.Count != 2 || res.Skipped != 0 {
+		t.Fatalf("Count=%d Skipped=%d, want 2/0", res.Count, res.Skipped)
+	}
+
+	// The value was kept, just cut, and is marked as such.
+	var e Event
+	if err := json.Unmarshal(splitLines(buf.Bytes())[0], &e); err != nil {
+		t.Fatal(err)
+	}
+	got := e.Fields["reason"]
+	if !strings.HasSuffix(got, truncMarker) {
+		t.Fatalf("truncated value not marked: %q", got[max(0, len(got)-40):])
+	}
+	if !strings.HasPrefix(got, "AAAA") {
+		t.Fatal("truncated value lost its content")
+	}
+}
+
+// Too many fields must also be bounded, and the surviving set has to be
+// deterministic — picking by map order would make the entry's hash depend
+// on Go's randomized map iteration.
+func TestTooManyFieldsBoundedDeterministically(t *testing.T) {
+	fields := make(map[string]string)
+	for i := 0; i < maxFields*3; i++ {
+		fields[fmt.Sprintf("k%03d", i)] = "v"
+	}
+
+	render := func() map[string]string {
+		var buf bytes.Buffer
+		l := NewLedger(&buf, Options{})
+		if err := l.Log("knock", SeverityInfo, fields); err != nil {
+			t.Fatal(err)
+		}
+		var e Event
+		if err := json.Unmarshal(splitLines(buf.Bytes())[0], &e); err != nil {
+			t.Fatal(err)
+		}
+		return e.Fields
+	}
+
+	first := render()
+	// maxFields kept plus the _droppedFields marker.
+	if len(first) != maxFields+1 {
+		t.Fatalf("kept %d fields, want %d", len(first), maxFields+1)
+	}
+	if first["_droppedFields"] != strconv.Itoa(maxFields*3-maxFields) {
+		t.Fatalf("_droppedFields=%q", first["_droppedFields"])
+	}
+
+	// Same input, same surviving fields, every time.
+	for i := 0; i < 5; i++ {
+		if !reflect.DeepEqual(first, render()) {
+			t.Fatal("field selection is not deterministic across runs")
+		}
+	}
+}
+
+// Truncation must not split a multi-byte rune, or the entry would carry
+// mojibake and json.Marshal would silently substitute U+FFFD.
+func TestTruncationRespectsRuneBoundaries(t *testing.T) {
+	// "€" is 3 bytes, so a cut at maxFieldValueLen lands mid-rune for some
+	// repeat counts — walk a few offsets to hit that case.
+	for pad := 0; pad < 4; pad++ {
+		v := strings.Repeat("x", pad) + strings.Repeat("€", maxFieldValueLen)
+		got := truncate(v, maxFieldValueLen)
+		body := strings.TrimSuffix(got, truncMarker)
+		if !utf8.ValidString(body) {
+			t.Fatalf("pad=%d: truncation produced invalid UTF-8", pad)
+		}
+	}
+}
+
+// Regression for the truncate() prefix bug: an invalid byte anywhere before
+// the cut must not cause the whole value to be discarded. The earlier
+// utf8.ValidString(s[:cut]) form walked cut down to 0 whenever any earlier
+// byte was invalid, returning just the marker.
+func TestTruncateKeepsContentDespiteEarlierInvalidBytes(t *testing.T) {
+	// One invalid byte up front, then a long ASCII run past the cap.
+	v := "\xff" + strings.Repeat("Z", maxFieldValueLen*2)
+	got := truncate(v, maxFieldValueLen)
+	if !strings.HasSuffix(got, truncMarker) {
+		t.Fatal("value was not marked as truncated")
+	}
+	body := strings.TrimSuffix(got, truncMarker)
+	// Most of the cap's worth of content must survive — not just the marker.
+	if len(body) < maxFieldValueLen-4 {
+		t.Fatalf("kept only %d bytes; the invalid leading byte swallowed the value", len(body))
+	}
+	if !strings.Contains(body, "ZZZZ") {
+		t.Fatal("truncated value lost its content")
+	}
+}
+
+// A run of continuation bytes straddling the cut must not walk the cut down
+// to zero. This is the case the first fix missed: !utf8.RuneStart is true for
+// every 0x80..0xBF byte, so an unbounded step-back over a long run discards
+// the whole value. The step-back is capped at three.
+func TestTruncateBoundedOnContinuationByteRun(t *testing.T) {
+	// A long ASCII prefix, then many continuation bytes ending exactly at
+	// the cap so the step-back starts on one.
+	head := strings.Repeat("Q", maxFieldValueLen-64)
+	run := strings.Repeat("\x80", 128) // 128 raw continuation bytes
+	v := head + run
+	got := truncate(v, maxFieldValueLen)
+	body := strings.TrimSuffix(got, truncMarker)
+	// The ASCII head must survive; at most three bytes are stepped back.
+	if len(body) < len(head)-3 {
+		t.Fatalf("kept only %d bytes; a continuation-byte run swallowed the value (head=%d)", len(body), len(head))
+	}
+	if !strings.HasPrefix(body, "QQQQ") {
+		t.Fatal("truncated value lost its content")
+	}
+}
+
+// A line longer than the read cap must be tolerated as damage by both the
+// resume path (scanTail via Open) and VerifyChain, never turned into a fatal
+// read that would disable auditing or read as tampering.
+func TestOverlongLineIsSkippedNotFatal(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	l, err := Open(path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 2)
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	// Splice a raw over-cap line between the committed entries. It is not a
+	// valid entry; it stands in for external corruption.
+	orig, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := splitLines(orig)
+	giant := append(bytes.Repeat([]byte("x"), maxLineLen+16), '\n')
+	var spliced []byte
+	spliced = append(spliced, lines[0]...)
+	spliced = append(spliced, '\n')
+	spliced = append(spliced, giant...)
+	spliced = append(spliced, lines[1]...)
+	spliced = append(spliced, '\n')
+	if writeErr := os.WriteFile(path, spliced, 0600); writeErr != nil {
+		t.Fatal(writeErr)
+	}
+
+	// Open must not fail on the over-long line.
+	l2, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open must tolerate an over-long line, got: %v", err)
+	}
+	_ = l2.Close()
+
+	// VerifyChain treats it as a break, because the giant line sits between
+	// seq 1 and seq 2, so seq 2's prevHash no longer follows seq 1 — that is
+	// correct (a line really was inserted). The point of this test is only
+	// that it does not fail with a fatal read error.
+	res := VerifyChain(bytes.NewReader(spliced), nil)
+	if res.Err != nil && strings.Contains(res.Err.Error(), "read ledger") {
+		t.Fatalf("over-long line caused a fatal read: %v", res.Err)
+	}
+
+	// A trailing over-long line with no following entry is pure damage: the
+	// chain still verifies and it is counted as skipped.
+	var buf bytes.Buffer
+	lg := NewLedger(&buf, Options{})
+	writeN(t, lg, 2)
+	tail := append(bytes.Repeat([]byte("y"), maxLineLen+16), '\n')
+	full := append(buf.Bytes(), tail...)
+	res = VerifyChain(bytes.NewReader(full), nil)
+	if res.Err != nil {
+		t.Fatalf("trailing over-long line should be damage, not a break: %v", res.Err)
+	}
+	if res.Count != 2 || res.Skipped != 1 {
+		t.Fatalf("Count=%d Skipped=%d, want 2/1", res.Count, res.Skipped)
+	}
+	if len(res.SkippedLines) != 1 || res.SkippedLines[0] != 3 {
+		t.Fatalf("SkippedLines=%v, want [3]", res.SkippedLines)
+	}
+}
+
+// Open must refuse to modify a non-empty file that is not one of our
+// ledgers, so a mistyped FilePath cannot get appended to or truncated.
+func TestOpenRefusesNonLedgerFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "not-a-ledger.log")
+	content := []byte("2026-07-28 12:00:00 some other app's log line\nand another\n")
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Open(path, Options{}); err == nil {
+		t.Fatal("Open should refuse a file whose first line is not an event")
+	}
+	// The file must be left exactly as it was — not appended to, not zeroed.
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, content) {
+		t.Fatalf("refused file was modified: %q", after)
+	}
+}
+
+// TestOpenRefusesForeignFileStartingWithBlankLine: a foreign file whose
+// FIRST BYTE is '\n' must not slip past ensureLedgerFile's guard. Before
+// gating "empty file" on the actual file size, readLine's first call on
+// such a file returns an empty, unterminated-looking line indistinguishable
+// from a genuinely empty file, and the guard let it straight through —
+// after which repairTornTail could truncate the operator's trailing line
+// and Open would start writing audit JSON into the middle of the file.
+func TestOpenRefusesForeignFileStartingWithBlankLine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "not-a-ledger.conf")
+	content := []byte("\n# some other app's config, that happens to start blank\nkey = \"value\"\n")
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Open(path, Options{}); err == nil {
+		t.Fatal("Open should refuse a file that starts with a blank line but is not a ledger")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, content) {
+		t.Fatalf("refused file was modified: %q", after)
+	}
+}
+
+// TestOpenRefusesSingleLineNewlineFreeForeignFile: the torn-first-append
+// recovery must NOT fire for a foreign file that just happens to be one line
+// with no trailing '\n' (minified JSON, a token file, printf output). Only a
+// prefix of a real Event ({"seq":…) is treated as a torn write.
+func TestOpenRefusesSingleLineNewlineFreeForeignFile(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"minified.json": `{"kind":"Config","spec":{"a":1,"b":2}}`, // valid JSON, no seq, no newline
+		"token":         "b3RoZXItYXBwLXNlY3JldA",                 // not JSON at all, no newline
+	} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Open(path, Options{}); err == nil {
+			t.Fatalf("%s: Open should refuse a single-line newline-free foreign file", name)
+		}
+		after, _ := os.ReadFile(path)
+		if string(after) != content {
+			t.Fatalf("%s: foreign file was modified: %q", name, after)
+		}
+	}
+}
+
+// A single complete entry whose terminating newline was lost must be
+// re-terminated, never truncated to zero.
+func TestOpenTerminatesLastLineInsteadOfZeroing(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	// Produce one valid entry, then strip its trailing newline.
+	var buf bytes.Buffer
+	lg := NewLedger(&buf, Options{})
+	writeN(t, lg, 1)
+	oneLine := bytes.TrimRight(buf.Bytes(), "\n")
+	if err := os.WriteFile(path, oneLine, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	l, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open should re-terminate a lone unterminated entry, got: %v", err)
+	}
+	if !l.RepairedOnOpen {
+		t.Error("RepairedOnOpen = false, want true")
+	}
+	// The entry must survive (file not zeroed) and the chain must continue
+	// from it, not restart at seq 1.
+	if logErr := l.Log("knock", SeverityInfo, nil); logErr != nil {
+		t.Fatal(logErr)
+	}
+	_ = l.Close()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := splitLines(data)
+	if len(got) != 2 {
+		t.Fatalf("want 2 lines (preserved + appended), got %d: %q", len(got), data)
+	}
+	res := VerifyChain(bytes.NewReader(data), nil)
+	if res.Err != nil || res.Count != 2 {
+		t.Fatalf("chain broken after re-terminate: err=%v count=%d", res.Err, res.Count)
+	}
+}
+
+// TestOpenResetsTornFirstAppend: a crash during the very first append leaves
+// a single unterminated fragment that does NOT parse. Open must reset it to
+// a fresh chain, not fail with ErrNotALedger forever.
+func TestOpenResetsTornFirstAppend(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+	// Truncated JSON, no trailing newline — a torn first write.
+	if err := os.WriteFile(path, []byte(`{"seq":1,"time":"2026-01-01T00:00:00Z","typ`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	l, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open must reset a torn first append, got: %v", err)
+	}
+	if l.MalformedOnOpen != 0 {
+		t.Errorf("MalformedOnOpen = %d, want 0", l.MalformedOnOpen)
+	}
+	writeN(t, l, 3)
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	res := VerifyChain(bytes.NewReader(data), nil)
+	if res.Err != nil || res.Count != 3 {
+		t.Fatalf("fresh chain after reset: err=%v count=%d", res.Err, res.Count)
+	}
+	if got := splitLines(data); len(got) != 3 {
+		t.Fatalf("want 3 lines, got %d: %q", len(got), data)
+	}
+}
+
+// TestOpenResetsTornFirstAppendIntoFreshSegment: the same torn-first-append,
+// but rotated "<path>.<n>" segments already hold history. The reset live
+// file must reconnect to the highest segment, not restart at seq 1.
+func TestOpenResetsTornFirstAppendIntoFreshSegment(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{MaxSizeBytes: 512})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 40) // forces rotations -> <path>.<n> segments
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	segs, _ := numberedSegments(path)
+	if len(segs) == 0 {
+		t.Fatal("expected rotated segments")
+	}
+	// Simulate a crash right after rollSegment: live file is a torn fragment.
+	if wErr := os.WriteFile(path, []byte(`{"seq":999,"tim`), 0600); wErr != nil {
+		t.Fatal(wErr)
+	}
+
+	l2, err := Open(path, Options{MaxSizeBytes: 512})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := l2.Log("knock", SeverityInfo, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := l2.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// VerifyLedger walks segments + live file; the chain must be continuous
+	// (no anchor, no break) across the reset boundary.
+	if res := VerifyLedger(path, nil); res.Err != nil {
+		t.Fatalf("cross-segment verify after torn-first-append reset: %v", res.Err)
+	} else if res.AnchoredAtSeq != 0 {
+		t.Fatalf("chain should be continuous from seq 1, got anchor at %d", res.AnchoredAtSeq)
+	}
+}
+
+// TestOpenIgnoresBlankTailLine: drain's final flush can leave a bare '\n'.
+// resumeFromTail must not count it as damage (scanTail / verify don't).
+func TestOpenIgnoresBlankTailLine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 5)
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	// Append a stray blank line, as an exact-boundary async stop would.
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.Write([]byte{'\n'})
+	f.Close()
+
+	l2, err := Open(path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l2.MalformedOnOpen != 0 {
+		t.Fatalf("MalformedOnOpen = %d, want 0 — a blank line is not damage", l2.MalformedOnOpen)
+	}
+	if err := l2.Log("knock", SeverityInfo, nil); err != nil {
+		t.Fatal(err)
+	}
+	_ = l2.Close()
+	data, _ := os.ReadFile(path)
+	if res := VerifyChain(bytes.NewReader(data), nil); res.Err != nil {
+		t.Fatalf("chain broke after resuming past a blank line: %v", res.Err)
+	}
+}
+
+func TestOpenResumesChainAcrossRestart(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sub", "audit.log")
+
+	l1, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open #1: %v", err)
+	}
+	writeN(t, l1, 3)
+	if closeErr := l1.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	// Reopen and append more — the chain must continue, not restart.
+	l2, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open #2: %v", err)
+	}
+	writeN(t, l2, 2)
+	if closeErr := l2.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := VerifyChain(bytes.NewReader(data), nil)
+	if res.Err != nil {
+		t.Fatalf("resumed chain failed to verify: %v", res.Err)
+	}
+	if res.Count != 5 {
+		t.Fatalf("Count=%d, want 5 (3 before restart + 2 after)", res.Count)
+	}
+
+	// Confirm seq numbering is continuous 1..5.
+	lines := splitLines(data)
+	for i, ln := range lines {
+		var e Event
+		if err := json.Unmarshal(ln, &e); err != nil {
+			t.Fatal(err)
+		}
+		if e.Seq != uint64(i+1) {
+			t.Fatalf("entry %d has seq=%d, want %d", i, e.Seq, i+1)
+		}
+	}
+}
+
+// TestOpenToleratesTornTrailingLine covers the crash/power-loss case: a
+// partial trailing line must not stop the ledger from opening. The chain
+// resumes from the last good entry and the damage is reported, not fatal.
+func TestOpenToleratesTornTrailingLine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	l1, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open #1: %v", err)
+	}
+	writeN(t, l1, 3)
+	if closeErr := l1.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	// Simulate a torn append: a truncated JSON fragment with no newline.
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, werr := f.WriteString(`{"seq":4,"time":"2026-01-0`); werr != nil {
+		t.Fatal(werr)
+	}
+	f.Close()
+
+	l2, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open must tolerate a torn trailing line, got: %v", err)
+	}
+	// A torn tail is repaired, not counted as persistent damage: the
+	// fragment is dropped before the malformed count is taken, so this
+	// reports RepairedOnOpen and leaves MalformedOnOpen at zero.
+	if l2.MalformedOnOpen != 0 {
+		t.Errorf("MalformedOnOpen = %d, want 0 (torn tail is repaired, not persistent damage)", l2.MalformedOnOpen)
+	}
+	if !l2.RepairedOnOpen {
+		t.Error("RepairedOnOpen = false, want true after a torn trailing write")
+	}
+	// The fragment must be gone: leaving it in place would make
+	// `audit verify` report FAILED forever for a benign crash.
+	afterOpen, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(afterOpen, []byte(`"time":"2026-01-0`)) {
+		t.Error("torn fragment should have been truncated on Open")
+	}
+	// The chain must continue from entry 3, not restart at 1.
+	if logErr := l2.Log("knock", SeverityInfo, nil); logErr != nil {
+		t.Fatal(logErr)
+	}
+	if closeErr := l2.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := splitLines(data)
+	var lastEvt Event
+	if uerr := json.Unmarshal(lines[len(lines)-1], &lastEvt); uerr != nil {
+		t.Fatalf("last line should be a valid entry: %v", uerr)
+	}
+	if lastEvt.Seq != 4 {
+		t.Errorf("resumed seq = %d, want 4 (continuing after the 3 good entries)", lastEvt.Seq)
+	}
+}
+
+// TestTornLedgerStillVerifiesAfterReopen is the end-to-end version of the
+// guarantee: a crash-damaged ledger, once reopened by the server, must
+// verify clean rather than reporting FAILED forever. Operators who get a
+// FAILED after every crash stop trusting FAILED at all.
+func TestTornLedgerStillVerifiesAfterReopen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	l1, err := Open(path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l1, 3)
+	if closeErr := l1.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, werr := f.WriteString(`{"seq":4,"ti`); werr != nil {
+		t.Fatal(werr)
+	}
+	f.Close()
+
+	l2, err := Open(path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l2, 1)
+	if closeErr := l2.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := VerifyChain(bytes.NewReader(data), nil)
+	if res.Err != nil {
+		t.Fatalf("a reopened torn ledger must verify clean, got: %v", res.Err)
+	}
+	if res.Skipped != 0 {
+		t.Errorf("Skipped = %d, want 0 (the fragment was truncated on reopen)", res.Skipped)
+	}
+	if res.Count != 4 {
+		t.Errorf("Count = %d, want 4", res.Count)
+	}
+}
+
+// TestVerifyReportsUnparseableAsDamageNotTampering covers a ledger that
+// still contains an unparseable line (e.g. one a rotation tool inserted,
+// which Open would not truncate because it is not the trailing fragment):
+// it is counted, not treated as a chain break, as long as the committed
+// entries still link up.
+func TestVerifyReportsUnparseableAsDamageNotTampering(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{})
+	writeN(t, l, 3)
+
+	lines := splitLines(buf.Bytes())
+	// Insert a junk line between two good entries without touching them.
+	withJunk := [][]byte{lines[0], []byte("not json at all"), lines[1], lines[2]}
+
+	res := VerifyChain(bytes.NewReader(join(withJunk)), nil)
+	if res.Err != nil {
+		t.Fatalf("junk line should not fail the chain, got: %v", res.Err)
+	}
+	if res.Skipped != 1 {
+		t.Errorf("Skipped = %d, want 1", res.Skipped)
+	}
+	if res.Count != 3 {
+		t.Errorf("Count = %d, want 3", res.Count)
+	}
+}
+
+// TestVerifyStillCatchesReplacedEntry is the security counterpart: tolerating
+// unparseable lines must NOT let an attacker hide a removed/rewritten entry.
+// Replacing a committed entry with junk breaks the next entry's prevHash.
+func TestVerifyStillCatchesReplacedEntry(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{})
+	writeN(t, l, 4)
+
+	lines := splitLines(buf.Bytes())
+	lines[1] = []byte("garbage that replaced a real entry")
+
+	res := VerifyChain(bytes.NewReader(join(lines)), nil)
+	if res.Err == nil {
+		t.Fatal("replacing a committed entry with junk must still FAIL verification")
+	}
+	if res.BadSeq != 3 {
+		t.Errorf("BadSeq = %d, want 3 (the entry whose prevHash no longer matches)", res.BadSeq)
+	}
+}
+
+// TestVerifyToleratesUnsignedPrefixAfterKeyIntroduced: a ledger started
+// without SigningKeyBase64, then resumed (same file, Open again) after the
+// operator sets one, must still verify cleanly with --key. The unsigned
+// prefix is counted via UnsignedEntries, not reported as a signature
+// mismatch — introducing or rotating the key on an existing ledger is a
+// routine config change, not tampering.
+func TestVerifyToleratesUnsignedPrefixAfterKeyIntroduced(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l1, err := Open(path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l1, 3)
+	if closeErr := l1.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	key := []byte("a-signing-key-introduced-later!!")
+	l2, err := Open(path, Options{HMACKey: key})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l2, 3)
+	if closeErr := l2.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	res := VerifyLedger(path, key)
+	if res.Err != nil {
+		t.Fatalf("expected a clean pass across the unsigned->signed boundary, got: %v", res.Err)
+	}
+	if res.Count != 6 {
+		t.Fatalf("Count=%d, want 6", res.Count)
+	}
+	if res.UnsignedEntries != 3 {
+		t.Fatalf("UnsignedEntries=%d, want 3 (the entries logged before the key existed)", res.UnsignedEntries)
+	}
+}
+
+// TestVerifyStillCatchesForgedSigOnUnsignedEntry: the UnsignedEntries
+// tolerance must not become a way to sneak a forged entry past HMAC
+// checking — a non-empty Sig that does not match the key is still a hard
+// failure, exactly as before.
+func TestVerifyStillCatchesForgedSigOnUnsignedEntry(t *testing.T) {
+	key := []byte("a-signing-key-for-this-test-1234")
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{HMACKey: key})
+	writeN(t, l, 2)
+
+	lines := splitLines(buf.Bytes())
+	var e Event
+	if err := json.Unmarshal(lines[0], &e); err != nil {
+		t.Fatal(err)
+	}
+	e.Sig = "not-the-real-signature"
+	// Hash must still match (only Sig is forged) so the failure we are
+	// pinning is specifically the signature check, not the hash check.
+	h, err := computeHash(&e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Hash = h
+	lines[0] = mustMarshal(t, &e)
+
+	res := VerifyChain(bytes.NewReader(join(lines)), key)
+	if res.Err == nil {
+		t.Fatal("a forged (non-empty, wrong) signature must still fail verification")
+	}
+}
+
+// shortWriter writes only the first `limit` bytes of the next Write and
+// then reports an error, simulating a partial in-process write.
+type shortWriter struct {
+	buf    bytes.Buffer
+	limit  int
+	failed bool
+}
+
+func (w *shortWriter) Write(p []byte) (int, error) {
+	if !w.failed && w.limit > 0 && len(p) > w.limit {
+		w.failed = true
+		n, _ := w.buf.Write(p[:w.limit])
+		return n, io.ErrShortWrite
+	}
+	return w.buf.Write(p)
+}
+
+// TestShortWriteKeepsDamageOnOneLine covers the in-process torn write: a
+// failed partial write must not swallow the entry that follows it. The
+// fragment is closed off so verification reports damage (Skipped) rather
+// than a chain break, which is what an operator needs to tell a disk
+// hiccup apart from tampering.
+func TestShortWriteKeepsDamageOnOneLine(t *testing.T) {
+	w := &shortWriter{limit: 40}
+	l := NewLedger(w, Options{})
+
+	// First write is cut short and must return an error.
+	if err := l.Log("knock", SeverityInfo, map[string]string{"user": "alice"}); err == nil {
+		t.Fatal("expected the short write to report an error")
+	}
+	// Subsequent writes succeed and must land on their own lines.
+	if err := l.Log("knock", SeverityWarn, map[string]string{"user": "bob"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Log("knock", SeverityInfo, map[string]string{"user": "carol"}); err != nil {
+		t.Fatal(err)
+	}
+
+	res := VerifyChain(bytes.NewReader(w.buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("a short write should degrade to skipped damage, not a chain break: %v", res.Err)
+	}
+	if res.Skipped != 1 {
+		t.Errorf("Skipped = %d, want 1 (the truncated fragment)", res.Skipped)
+	}
+	if res.Count != 2 {
+		t.Errorf("Count = %d, want 2 (both entries written after the failure)", res.Count)
+	}
+}
+
+// dropNewlineWriter commits an entry's full JSON but fails to write the
+// trailing newline on its first Write, returning io.ErrShortWrite — the
+// ENOSPC-on-the-last-byte case.
+type dropNewlineWriter struct {
+	buf    bytes.Buffer
+	failed bool
+}
+
+func (w *dropNewlineWriter) Write(p []byte) (int, error) {
+	if !w.failed && len(p) > 0 && p[len(p)-1] == '\n' {
+		w.failed = true
+		n, _ := w.buf.Write(p[:len(p)-1]) // everything but the newline
+		return n, io.ErrShortWrite
+	}
+	return w.buf.Write(p)
+}
+
+// When a write lands the whole entry but loses only the trailing newline,
+// the entry is durably committed. The chain must advance (not roll the seq
+// back), or the next entry would reuse the seq and VerifyChain would report
+// a break — a disk-full masquerading as tampering.
+func TestShortWriteThatCommittedTheEntryKeepsChainIntact(t *testing.T) {
+	w := &dropNewlineWriter{}
+	l := NewLedger(w, Options{})
+
+	// First write commits the JSON but reports an error for the lost newline.
+	if err := l.Log("knock", SeverityInfo, map[string]string{"user": "alice"}); err == nil {
+		t.Fatal("expected the short write to report an error")
+	}
+	// Next entry must be seq 2, continuing the chain, on its own line.
+	if err := l.Log("knock", SeverityWarn, map[string]string{"user": "bob"}); err != nil {
+		t.Fatal(err)
+	}
+
+	res := VerifyChain(bytes.NewReader(w.buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("a committed entry missing only its newline must not read as a break: %v", res.Err)
+	}
+	if res.Count != 2 {
+		t.Errorf("Count = %d, want 2", res.Count)
+	}
+	if res.Skipped != 0 {
+		t.Errorf("Skipped = %d, want 0 (nothing was damaged)", res.Skipped)
+	}
+}
+
+func TestEmptyLedgerVerifies(t *testing.T) {
+	res := VerifyChain(strings.NewReader(""), nil)
+	if res.Err != nil || res.Count != 0 {
+		t.Fatalf("empty ledger: got (count=%d, err=%v), want (0, nil)", res.Count, res.Err)
+	}
+}
+
+// helpers
+
+func splitLines(b []byte) [][]byte {
+	var out [][]byte
+	sc := bufio.NewScanner(bytes.NewReader(b))
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		if len(sc.Bytes()) == 0 {
+			continue
+		}
+		cp := make([]byte, len(sc.Bytes()))
+		copy(cp, sc.Bytes())
+		out = append(out, cp)
+	}
+	return out
+}
+
+func join(lines [][]byte) []byte {
+	var buf bytes.Buffer
+	for _, l := range lines {
+		buf.Write(l)
+		buf.WriteByte('\n')
+	}
+	return buf.Bytes()
+}
+
+func mustMarshal(t *testing.T, e *Event) []byte {
+	t.Helper()
+	b, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// TestDetectsExtraKeyInSignedEntry proves a committed, signed record cannot
+// be extended in place. encoding/json silently ignores unknown object keys,
+// so an attacker who can write the file could append fields a downstream
+// SIEM would read as authentic while the recomputed hash/HMAC still match.
+// The canonical-bytes check makes that a FAILED verification.
+func TestDetectsExtraKeyInSignedEntry(t *testing.T) {
+	key := []byte("audit-signing-key")
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{HMACKey: key})
+	writeN(t, l, 3)
+
+	lines := splitLines(buf.Bytes())
+	// Inject a top-level key just before the closing brace of entry seq=2.
+	orig := lines[1]
+	if orig[len(orig)-1] != '}' {
+		t.Fatalf("entry does not end in '}': %s", orig)
+	}
+	forged := append(append([]byte{}, orig[:len(orig)-1]...), []byte(`,"msg":"looks legit"}`)...)
+	lines[1] = forged
+
+	res := VerifyChain(bytes.NewReader(join(lines)), key)
+	if res.Err == nil {
+		t.Fatal("expected FAILED verification for an entry with an injected extra key")
+	}
+	if res.BadSeq != 2 {
+		t.Fatalf("BadSeq=%d, want 2", res.BadSeq)
+	}
+	if !strings.Contains(res.Err.Error(), "non-canonical") {
+		t.Fatalf("error should name the non-canonical encoding, got: %v", res.Err)
+	}
+}
+
+// TestDetectsDuplicateKeyInSignedEntry covers the duplicate-key variant:
+// Go keeps the last occurrence, so hash/HMAC verify while a first-wins
+// reader downstream sees a different value.
+func TestDetectsDuplicateKeyInSignedEntry(t *testing.T) {
+	key := []byte("audit-signing-key")
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{HMACKey: key})
+	writeN(t, l, 3)
+
+	lines := splitLines(buf.Bytes())
+	orig := lines[1]
+	// Duplicate the "type" key with a different value. Go's decoder keeps
+	// the last one, so the parsed struct (and its hash) are unchanged.
+	forged := append(append([]byte{}, orig[:1]...), []byte(`"type":"benign",`)...)
+	forged = append(forged, orig[1:]...)
+	lines[1] = forged
+
+	// Sanity: the parsed struct still hashes the same (the attack premise).
+	var e Event
+	if err := json.Unmarshal(forged, &e); err != nil {
+		t.Fatalf("forged line does not parse: %v", err)
+	}
+
+	res := VerifyChain(bytes.NewReader(join(lines)), key)
+	if res.Err == nil {
+		t.Fatal("expected FAILED verification for an entry with a duplicated key")
+	}
+}
+
+// TestVerifyToleratesInvalidUTF8InField pins the write/verify round-trip
+// for a field value that is not valid UTF-8 (e.g. a raw byte off an HTTP
+// User-Agent header, which net/http does not validate). Before sanitizeUTF8,
+// json.Marshal's own write-time coercion of the invalid byte to U+FFFD was
+// not a fixed point across unmarshal+remarshal, so this entry — and every
+// entry chained after it — permanently failed verification with the exact
+// wording reserved for real tampering.
+func TestVerifyToleratesInvalidUTF8InField(t *testing.T) {
+	key := []byte("audit-signing-key")
+	var buf bytes.Buffer
+	l := NewLedger(&buf, Options{HMACKey: key})
+
+	if err := l.Log("knock", "info", map[string]string{"device": "curl/8.0\xff\xfeagent"}); err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	// A few ordinary entries after it, so a chain break shows up as more
+	// than just the one bad entry going unverified.
+	writeN(t, l, 3)
+
+	res := VerifyChain(bytes.NewReader(buf.Bytes()), key)
+	if res.Err != nil {
+		t.Fatalf("expected clean verification, got: %v (result: %+v)", res.Err, res)
+	}
+	if res.Count != 4 {
+		t.Fatalf("expected all 4 entries verified, got Count=%d", res.Count)
+	}
+}
+
+// TestOpenResumesFromTailOnLargeLedger exercises the O(1) tail resume: a
+// ledger with many entries reopens and continues the chain without a full
+// forward scan.
+func TestOpenResumesFromTailOnLargeLedger(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	l1, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open #1: %v", err)
+	}
+	writeN(t, l1, 500)
+	if closeErr := l1.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	l2, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open #2: %v", err)
+	}
+	if l2.seq != 500 {
+		t.Fatalf("resumed seq=%d, want 500", l2.seq)
+	}
+	if l2.MalformedOnOpen != 0 {
+		t.Fatalf("MalformedOnOpen=%d, want 0 on a clean ledger", l2.MalformedOnOpen)
+	}
+	writeN(t, l2, 3)
+	if closeErr := l2.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	data, _ := os.ReadFile(path)
+	res := VerifyChain(bytes.NewReader(data), nil)
+	if res.Err != nil {
+		t.Fatalf("resumed chain failed to verify: %v", res.Err)
+	}
+	if res.Count != 503 {
+		t.Fatalf("Count=%d, want 503", res.Count)
+	}
+}
+
+// TestOpenResumesPastDamagedTrailingLines confirms resumeFromTail steps back
+// over unparseable trailing lines to the last good entry and reports how many
+// it skipped.
+func TestOpenResumesPastDamagedTrailingLines(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	l1, err := Open(path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l1, 4)
+	if closeErr := l1.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	// Append two complete-but-garbage lines (each newline-terminated, so the
+	// torn-tail repair leaves them in place).
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, wErr := f.WriteString("{not a valid event}\n\xff\xfe garbage\n"); wErr != nil {
+		t.Fatal(wErr)
+	}
+	f.Close()
+
+	l2, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("Open past damage: %v", err)
+	}
+	if l2.seq != 4 {
+		t.Fatalf("resumed seq=%d, want 4 (last good entry)", l2.seq)
+	}
+	if l2.MalformedOnOpen != 2 {
+		t.Fatalf("MalformedOnOpen=%d, want 2", l2.MalformedOnOpen)
+	}
+	// The next append must continue the chain from entry 4, and the
+	// good-entries chain (ignoring the 2 garbage lines) stays verifiable.
+	writeN(t, l2, 1)
+	l2.Close()
+}
+
+// blockingWriter blocks every Write until release is signaled, then behaves
+// like the wrapped buffer. Used to stall the async drain goroutine.
+type blockingWriter struct {
+	mu      sync.Mutex
+	buf     bytes.Buffer
+	release chan struct{}
+	writes  int
+}
+
+func (b *blockingWriter) Write(p []byte) (int, error) {
+	<-b.release
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.writes++
+	return b.buf.Write(p)
+}
+
+func TestAsyncWriterPreservesOrderAndChain(t *testing.T) {
+	var buf bytes.Buffer
+	// QueueSize must be >= the 8*50=400 entries this test can ever have
+	// in flight at once, or "Dropped() == 0" below is a race against how
+	// fast the drain goroutine gets scheduled relative to the 8 producers
+	// — 256 was under that bound and flaked under CI's coverage-instrumented
+	// run (queue-full drops, Count < 400) despite passing locally every time.
+	l := NewLedger(nopCloser{&buf}, Options{Async: true, QueueSize: 512})
+
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 50; i++ {
+				if err := l.Log("knock", SeverityInfo, map[string]string{"i": "x"}); err != nil {
+					t.Errorf("Log: %v", err)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if err := l.Close(); err != nil { // drains
+		t.Fatal(err)
+	}
+
+	res := VerifyChain(bytes.NewReader(buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("async-written chain failed to verify: %v", res.Err)
+	}
+	if res.Count != 400 {
+		t.Fatalf("Count=%d, want 400", res.Count)
+	}
+	if l.Dropped() != 0 {
+		t.Fatalf("Dropped=%d, want 0 (queue was large enough)", l.Dropped())
+	}
+}
+
+func TestAsyncWriterDropsWhenQueueFull(t *testing.T) {
+	bw := &blockingWriter{release: make(chan struct{})}
+	l := NewLedger(nopCloser{bw}, Options{Async: true, QueueSize: 2})
+
+	// Drain goroutine takes one line and blocks in Write; queue then holds 2.
+	// Subsequent Logs must drop rather than block.
+	dropped := 0
+	for i := 0; i < 20; i++ {
+		if err := l.Log("knock", SeverityInfo, nil); err != nil {
+			dropped++
+		}
+	}
+	if dropped == 0 {
+		t.Fatal("expected some entries to be dropped while the writer is stalled")
+	}
+	if l.Dropped() != uint64(dropped) {
+		t.Fatalf("Dropped()=%d but %d Log calls reported a drop", l.Dropped(), dropped)
+	}
+
+	// Release the writer and close; whatever made it through must verify as a
+	// contiguous chain (dropped entries left no gap).
+	close(bw.release)
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	bw.mu.Lock()
+	data := append([]byte(nil), bw.buf.Bytes()...)
+	bw.mu.Unlock()
+	res := VerifyChain(bytes.NewReader(data), nil)
+	if res.Err != nil {
+		t.Fatalf("chain after drops failed to verify: %v", res.Err)
+	}
+	// The chain may also carry "audit_gap" recovery markers; count only the
+	// real "knock" entries against the 20 we logged.
+	real := 0
+	sc := bufio.NewScanner(bytes.NewReader(data))
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		var e Event
+		if json.Unmarshal(sc.Bytes(), &e) == nil && e.Type == "knock" {
+			real++
+		}
+	}
+	if real+dropped != 20 {
+		t.Fatalf("verified %d real + dropped %d != 20", real, dropped)
+	}
+}
+
+// TestAsyncDropRecordsGapMarkerInChain: entries dropped on queue-full leave a
+// chained "audit_gap" marker once the writer recovers, so a verified copy of
+// the ledger still shows that records were lost.
+func TestAsyncDropRecordsGapMarkerInChain(t *testing.T) {
+	bw := &blockingWriter{release: make(chan struct{})}
+	l := NewLedger(nopCloser{bw}, Options{Async: true, QueueSize: 2})
+
+	drops := 0
+	for i := 0; i < 40; i++ {
+		if err := l.Log("knock", SeverityInfo, map[string]string{"n": strconv.Itoa(i)}); err != nil {
+			drops++
+		}
+	}
+	if drops == 0 {
+		t.Fatal("expected drops while the writer was stalled")
+	}
+
+	// Recover the writer, then keep logging until the "audit_gap" marker
+	// recordGapLocked chains on the first post-recovery entry that can
+	// enqueue actually shows up in the written bytes, polling rather than
+	// hardcoding a settle time + fixed iteration count — the previous fixed
+	// 100ms-then-30*5ms schedule could flake on a contended CI runner.
+	close(bw.release)
+	deadline := time.Now().Add(10 * time.Second)
+	foundGap := false
+	for i := 0; !foundGap && time.Now().Before(deadline); i++ {
+		_ = l.Log("knock", SeverityInfo, map[string]string{"post": strconv.Itoa(i)})
+		bw.mu.Lock()
+		foundGap = bytes.Contains(bw.buf.Bytes(), []byte(`"audit_gap"`))
+		bw.mu.Unlock()
+		if !foundGap {
+			time.Sleep(2 * time.Millisecond)
+		}
+	}
+	if !foundGap {
+		t.Fatal("audit_gap marker never appeared in the chain within the deadline")
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	bw.mu.Lock()
+	data := append([]byte(nil), bw.buf.Bytes()...)
+	bw.mu.Unlock()
+
+	if res := VerifyChain(bytes.NewReader(data), nil); res.Err != nil {
+		t.Fatalf("chain with gap marker failed to verify: %v", res.Err)
+	}
+
+	var gapDropped uint64
+	sc := bufio.NewScanner(bytes.NewReader(data))
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		var e Event
+		if json.Unmarshal(sc.Bytes(), &e) != nil {
+			continue
+		}
+		if e.Type == "audit_gap" {
+			if n, _ := strconv.ParseUint(e.Fields["dropped"], 10, 64); n > gapDropped {
+				gapDropped = n
+			}
+		}
+	}
+	if gapDropped == 0 {
+		t.Fatalf("no audit_gap marker found in the chain:\n%s", data)
+	}
+	if gapDropped < uint64(drops) {
+		t.Fatalf("gap marker reports %d dropped, but %d Log calls failed", gapDropped, drops)
+	}
+}
+
+func TestAsyncLogAfterCloseReturnsError(t *testing.T) {
+	var buf bytes.Buffer
+	l := NewLedger(nopCloser{&buf}, Options{Async: true})
+	if err := l.Log("knock", SeverityInfo, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Log("knock", SeverityInfo, nil); err == nil {
+		t.Fatal("Log after Close should return an error, not panic")
+	}
+}
+
+type nopCloser struct{ io.Writer }
+
+func (nopCloser) Close() error { return nil }
+
+// partialOnceWriter forwards to a real underlying writer, except the FIRST
+// call whose payload exceeds splitAt: that one writes only splitAt bytes and
+// returns an error — the same (n>0, err!=nil) shape *os.File.Write returns
+// on ENOSPC mid-buffer. Every later call goes straight through.
+type partialOnceWriter struct {
+	real    io.Writer
+	splitAt int
+	done    bool
+}
+
+func (w *partialOnceWriter) Write(p []byte) (int, error) {
+	if !w.done && len(p) > w.splitAt {
+		w.done = true
+		n, werr := w.real.Write(p[:w.splitAt])
+		if werr != nil {
+			return n, werr
+		}
+		return n, errors.New("partialOnceWriter: simulated short write")
+	}
+	return w.real.Write(p)
+}
+
+// TestAsyncRotationDoesNotSplitEntryAcrossSegments pins the fix for a
+// partial async write racing rotation: a Write landing only part of an
+// entry must not let rollSegment fire while that remainder is still
+// sitting at the front of pending. Rotating there would rename the
+// half-written entry's first bytes into a numbered segment and send its
+// remaining bytes to the fresh live file — split across both, unparseable
+// on either side, and the entry after it fails verification with a false
+// "prevHash mismatch": a transient disk hiccup reading as tampering.
+func TestAsyncRotationDoesNotSplitEntryAcrossSegments(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	// MaxSizeBytes: 1 makes shouldRotate true on essentially every append
+	// once curSize is non-zero, so rotation is eligible to fire immediately
+	// after the injected partial write — exactly the race being guarded
+	// against.
+	l, err := Open(path, Options{Async: true, QueueSize: 64, MaxSizeBytes: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.w = &partialOnceWriter{real: l.w, splitAt: 10}
+
+	for i := 0; i < 20; i++ {
+		_ = l.Log("knock", SeverityInfo, map[string]string{"i": strconv.Itoa(i)})
+	}
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	res := VerifyLedger(path, nil)
+	if res.Err != nil {
+		t.Fatalf("a partial async write during rotation must not corrupt the chain: %v (BadSeq=%d, Skipped=%d)", res.Err, res.BadSeq, res.Skipped)
+	}
+	if res.Count != 20 {
+		t.Fatalf("Count=%d, want 20", res.Count)
+	}
+}
+
+// TestSegmentRotationSpansChain drives the ledger past MaxSizeBytes several
+// times and confirms VerifyLedger walks every "<path>.<n>" segment plus the
+// live file as one continuous chain.
+func TestSegmentRotationSpansChain(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	// One writeN entry is a few hundred bytes; a ~1 KiB cap rotates every
+	// few entries.
+	l, err := Open(path, Options{MaxSizeBytes: 1024})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 60)
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	segs, err := segmentFiles(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(segs) < 3 {
+		t.Fatalf("expected several segments, got %d: %v", len(segs), segs)
+	}
+	// Numbered siblings must be in ascending seq order, live file last.
+	if segs[len(segs)-1] != path {
+		t.Fatalf("last segment should be the live file, got %s", segs[len(segs)-1])
+	}
+
+	res := VerifyLedger(path, nil)
+	if res.Err != nil {
+		t.Fatalf("rotated ledger failed to verify: %v", res.Err)
+	}
+	if res.Count != 60 {
+		t.Fatalf("verified %d entries across segments, want 60", res.Count)
+	}
+
+	// Reopen and append: the chain must continue from the last live entry.
+	l2, err := Open(path, Options{MaxSizeBytes: 1024})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l2.seq != 60 {
+		t.Fatalf("resumed seq=%d, want 60", l2.seq)
+	}
+	writeN(t, l2, 5)
+	l2.Close()
+	res = VerifyLedger(path, nil)
+	if res.Err != nil || res.Count != 65 {
+		t.Fatalf("after resume: err=%v count=%d want 65", res.Err, res.Count)
+	}
+}
+
+// TestSegmentRotationDetectsCrossSegmentTamper confirms editing a committed
+// entry in an already-rotated segment still FAILS verification (the next
+// entry's prevHash no longer matches across the boundary).
+func TestSegmentRotationDetectsCrossSegmentTamper(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{MaxSizeBytes: 1024, HMACKey: []byte("k")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 40)
+	l.Close()
+
+	segs, _ := segmentFiles(path)
+	if len(segs) < 2 {
+		t.Fatalf("need at least one rotated segment, got %v", segs)
+	}
+	// Tamper with the first entry of the first rotated segment.
+	first := segs[0]
+	lines := splitLines(mustReadFile(t, first))
+	var e Event
+	if err := json.Unmarshal(lines[0], &e); err != nil {
+		t.Fatal(err)
+	}
+	e.Fields["reason"] = "tampered"
+	lines[0] = mustMarshal(t, &e)
+	if err := os.WriteFile(first, join(lines), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if res := VerifyLedger(path, []byte("k")); res.Err == nil {
+		t.Fatal("expected FAILED verification for a tampered rotated segment")
+	}
+}
+
+// TestVerifyLedgerDoesNotLeakFdsOnEarlyFailure pins lazyFileReader's cleanup:
+// VerifyLedger opens each segment only as io.MultiReader reaches it, and
+// verifyChainFrom returns as soon as it hits the first broken entry — so
+// most segments here are never drained to EOF, the path that closes a
+// lazyFileReader on its own. Without VerifyLedger's own deferred cleanup,
+// every segment after the tampered one leaks its fd. On Windows a leaked fd
+// is a delete-pending lock, so the most direct sign of a regression here is
+// t.TempDir()'s own cleanup failing after the test body returns — this
+// tamper is placed in the FIRST of many segments so as many readers as
+// possible are left unopened/undrained by the early return.
+func TestVerifyLedgerDoesNotLeakFdsOnEarlyFailure(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{MaxSizeBytes: 512, HMACKey: []byte("k")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 200)
+	l.Close()
+
+	segs, _ := segmentFiles(path)
+	if len(segs) < 5 {
+		t.Fatalf("need several rotated segments to exercise this, got %d", len(segs))
+	}
+
+	first := segs[0]
+	lines := splitLines(mustReadFile(t, first))
+	var e Event
+	if err := json.Unmarshal(lines[0], &e); err != nil {
+		t.Fatal(err)
+	}
+	e.Fields["reason"] = "tampered"
+	lines[0] = mustMarshal(t, &e)
+	if err := os.WriteFile(first, join(lines), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if res := VerifyLedger(path, []byte("k")); res.Err == nil {
+		t.Fatal("expected FAILED verification for a tampered first segment")
+	}
+	// t.TempDir's cleanup (registered via t.Cleanup) runs after this
+	// function returns and fails the test if any file in dir is still open.
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// TestAsyncWriterMixedErrorTypesNoPanic feeds the drain goroutine two
+// different concrete error types in succession. With the old
+// `atomic.Value`-of-`error` store, the second Store panicked with
+// "inconsistently typed value" and killed the process (no recover in
+// drain). The pointer-wrapper store must not.
+func TestAsyncWriterMixedErrorTypesNoPanic(t *testing.T) {
+	fw := &twoErrWriter{}
+	l := NewLedger(nopCloser{fw}, Options{Async: true, QueueSize: 64})
+
+	for i := 0; i < 20; i++ {
+		_ = l.Log("knock", SeverityInfo, nil)
+		time.Sleep(time.Millisecond)
+	}
+	if err := l.Close(); err != nil { // would hang / the process would be dead on a panic
+		t.Fatalf("Close after mixed async error types: %v", err)
+	}
+	// The two failing writes were retried (pending buffer), so the chain is
+	// intact once the writer stopped failing.
+	if res := VerifyChain(bytes.NewReader(fw.buf.Bytes()), nil); res.Err != nil {
+		t.Fatalf("chain broken after mixed async error types: %v", res.Err)
+	}
+}
+
+// twoErrWriter fails its first two Writes with two DIFFERENT concrete error
+// types, then behaves.
+type twoErrWriter struct {
+	buf bytes.Buffer
+	n   int
+}
+
+func (w *twoErrWriter) Write(p []byte) (int, error) {
+	w.n++
+	switch w.n {
+	case 1:
+		return 0, errors.New("plain errorString") // *errors.errorString
+	case 2:
+		return 0, fmt.Errorf("wrapped: %w", io.ErrClosedPipe) // *fmt.wrapError
+	default:
+		return w.buf.Write(p)
+	}
+}
+
+// TestAsyncWriterRecoversFromTransientError: a single failed background write
+// must not permanently stop the trail — once the writer succeeds again, Log
+// keeps enqueueing and the error clears.
+func TestAsyncWriterRecoversFromTransientError(t *testing.T) {
+	fw := &flakyWriter{failNext: 1}
+	l := NewLedger(nopCloser{fw}, Options{Async: true, QueueSize: 64})
+
+	for i := 0; i < 30; i++ {
+		_ = l.Log("knock", SeverityInfo, nil)
+		time.Sleep(time.Millisecond)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// The failed write's line was held in the drain's pending buffer and
+	// flushed ahead of the next line, so no entry is lost and the chain is
+	// fully intact once the writer recovered.
+	res := VerifyChain(bytes.NewReader(fw.buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("chain not recoverable after transient error: %v", res.Err)
+	}
+	if res.Count != 30 {
+		t.Fatalf("Count=%d, want 30 — a transient failure must not lose an entry", res.Count)
+	}
+}
+
+// TestAsyncWriterRetriesPendingWithoutNewLogCalls pins the idle retryTimer:
+// a transient write failure on an otherwise quiet ledger (no further Log
+// calls) must still get flushed on its own, not sit in the drain
+// goroutine's memory until some future Log or Close happens to trigger
+// another Write.
+func TestAsyncWriterRetriesPendingWithoutNewLogCalls(t *testing.T) {
+	fw := &flakyWriter{failNext: 1}
+	l := NewLedger(nopCloser{fw}, Options{Async: true, QueueSize: 64})
+	defer l.Close()
+
+	if err := l.Log("knock", SeverityInfo, nil); err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+
+	// Nothing else calls Write from here. The first retry backoff starts at
+	// 1ms and doubles; give it generous headroom rather than pin the exact
+	// schedule.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		fw.mu.Lock()
+		n := fw.buf.Len()
+		fw.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("pending write was never retried without a further Log call")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestDrainRetryTimerDoesNotDeadlock stresses the exact race Go 1.23+'s
+// timer semantics changed: the drain's select racing <-q against its
+// retryTimer firing. Under the pre-1.23 idiom this branch drained a
+// "stale" value from retryTimer.C whenever Stop() returned false; under the
+// current semantics that receive is no longer guaranteed to ever complete,
+// so <-q winning right as the timer had already fired hung the drain
+// goroutine forever — losing every subsequent entry and making Close (and
+// so UdpServer.Stop) hang too. Both goroutines below are watched with a
+// bounded wait instead of relying on `go test -timeout` alone, so a
+// regression fails fast and clearly rather than hanging the whole binary.
+func TestDrainRetryTimerDoesNotDeadlock(t *testing.T) {
+	iw := &intermittentWriter{}
+	l := NewLedger(nopCloser{iw}, Options{Async: true, QueueSize: 256})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 2000; i++ {
+			_ = l.Log("knock", SeverityInfo, nil)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("Log calls did not complete — drain goroutine likely deadlocked on retryTimer.C")
+	}
+
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- l.Close() }()
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close did not return — drain goroutine deadlocked")
+	}
+}
+
+// intermittentWriter fails every other Write, forcing the drain's
+// retryTimer to arm and race against incoming queue items repeatedly.
+type intermittentWriter struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+	n   int
+}
+
+func (w *intermittentWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.n++
+	if w.n%2 == 0 {
+		return 0, errors.New("intermittent: simulated transient error")
+	}
+	return w.buf.Write(p)
+}
+
+type flakyWriter struct {
+	mu       sync.Mutex
+	buf      bytes.Buffer
+	failNext int
+}
+
+func (f *flakyWriter) Write(p []byte) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.failNext > 0 {
+		f.failNext--
+		return 0, fmt.Errorf("flaky: transient write error")
+	}
+	return f.buf.Write(p)
+}
+
+// TestOpenResumesFromSegmentWhenLiveFileEmpty simulates a crash between
+// rollSegment's rename and the first write to the fresh live file: the live
+// file is empty but a numbered segment holds the chain. Open must resume from
+// the segment, not restart at seq 1.
+func TestOpenResumesFromSegmentWhenLiveFileEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 10)
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	// Emulate a rotation that renamed the live file away and crashed before
+	// writing the first entry of the new one.
+	if rnErr := os.Rename(path, path+".10"); rnErr != nil {
+		t.Fatal(rnErr)
+	}
+	if wErr := os.WriteFile(path, nil, 0600); wErr != nil { // empty live file
+		t.Fatal(wErr)
+	}
+
+	l2, err := Open(path, Options{MaxSizeBytes: 1 << 20})
+	if err != nil {
+		t.Fatalf("Open with empty live file + segment: %v", err)
+	}
+	if l2.seq != 10 {
+		t.Fatalf("resumed seq=%d, want 10 (from segment .10)", l2.seq)
+	}
+	if l2.lastSegSeq != 10 {
+		t.Fatalf("lastSegSeq=%d, want 10 — next rotation would misname the segment", l2.lastSegSeq)
+	}
+	writeN(t, l2, 3)
+	l2.Close()
+	if res := VerifyLedger(path, nil); res.Err != nil || res.Count != 13 {
+		t.Fatalf("post-resume verify: err=%v count=%d want 13", res.Err, res.Count)
+	}
+}
+
+// TestVerifyLedgerAnchorsOnArchivedSegments: after archiving the earliest
+// segments (a documented workflow), verifying the remainder must NOT report a
+// chain break — it anchors on the first surviving entry and says so.
+func TestVerifyLedgerAnchorsOnArchivedSegments(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{MaxSizeBytes: 1024})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 60)
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	segs, err := segmentFiles(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(segs) < 3 {
+		t.Fatalf("need several segments, got %v", segs)
+	}
+	// Archive (delete) the first two numbered segments.
+	if err := os.Remove(segs[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(segs[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	res := VerifyLedger(path, nil)
+	if res.Err != nil {
+		t.Fatalf("archived-remainder verify reported a break: %v", res.Err)
+	}
+	if res.AnchoredAtSeq == 0 {
+		t.Fatal("AnchoredAtSeq should be set when the set does not start at seq 1")
+	}
+}
+
+// TestVerifyLedgerRefusesToAnchorOnBareLiveFile: anchoring past seq 1 is only
+// legitimate evidence of archival when segs[0] is an actual numbered segment
+// ("<path>.<n>") — a bare, unrotated live file that starts at seq > 1, with
+// NO numbered segment beside it at all, has no such evidence and is at least
+// as consistent with an attacker deleting the file's own earlier lines
+// (head-truncation) as with any documented archival workflow. Before this
+// was gated on segs[0] != path, VerifyLedger anchored on it anyway, turning
+// a hard `FAILED: prevHash mismatch` into `OK` plus an easy-to-miss note.
+func TestVerifyLedgerRefusesToAnchorOnBareLiveFile(t *testing.T) {
+	dir := t.TempDir()
+	buildPath := filepath.Join(dir, "build.jsonl")
+	l, err := Open(buildPath, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 3)
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	lines := splitLines(mustReadFile(t, buildPath))
+	if len(lines) < 3 {
+		t.Fatalf("need at least 3 entries, got %d", len(lines))
+	}
+
+	// A "live" file consisting of just the LAST entry, as if the two before
+	// it had been deleted from the front — no numbered segment anywhere.
+	path := filepath.Join(dir, "audit.jsonl")
+	if err := os.WriteFile(path, append(lines[len(lines)-1], '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	res := VerifyLedger(path, nil)
+	if res.Err == nil {
+		t.Fatalf("expected FAILED for a bare live file with no seq-1 evidence, got OK (AnchoredAtSeq=%d)", res.AnchoredAtSeq)
+	}
+}
+
+// TestAsyncWriterBoundedPendingOnPersistentFailure: a writer that never
+// recovers must not grow memory without bound. Once pending reaches
+// maxPendingBytes the drain blocks (stops draining the queue), the queue
+// fills, and Log's queue-full path drops + rolls the chain state back — so
+// no already-chained line is discarded and the on-disk chain stays
+// contiguous.
+func TestAsyncWriterBoundedPendingOnPersistentFailure(t *testing.T) {
+	dw := &deadWriter{}
+	l := NewLedger(nopCloser{dw}, Options{Async: true, QueueSize: 8})
+
+	filler := strings.Repeat("x", 2000) // ~2 KiB per line
+	entries := (maxPendingBytes / 2100) * 4
+	for i := 0; i < entries; i++ {
+		_ = l.Log("knock", SeverityInfo, map[string]string{"reason": filler})
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for l.Dropped() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	_ = l.Close()
+
+	if l.Dropped() == 0 {
+		t.Fatal("a persistent write failure never dropped anything — no backpressure reached Log")
+	}
+	// The largest buffer the writer ever saw is ~one line over the cap, not
+	// the whole accumulation.
+	if dw.peak > maxPendingBytes+64*1024 {
+		t.Fatalf("pending buffer peaked at %d bytes, over the %d cap", dw.peak, maxPendingBytes)
+	}
+}
+
+// TestAsyncCloseCountsQueuedEntriesNotJustPending pins that the shutdown
+// bail-out (drain giving up on a dead writer once Close is called) counts
+// EVERYTHING abandoned, not only the newlines in `pending`. QueueSize is
+// sized so every Log call below enqueues successfully — none are ever
+// queue-full-rejected, which both (a) means every one of them is only ever
+// counted as dropped via the bail-out under test, and (b) keeps l.dropped
+// at 0 throughout the loop, so the audit_gap retry (recordGapLocked) never
+// fires and chains an extra entry of its own to confuse the count. Since
+// deadWriter never completes a single write, most of these entries are
+// still sitting unread in the channel — not merged into `pending` — when
+// Close runs, so a fix that only scanned `pending` would silently
+// under-report almost all of the loss.
+func TestAsyncCloseCountsQueuedEntriesNotJustPending(t *testing.T) {
+	dw := &deadWriter{}
+	filler := strings.Repeat("x", 2000)
+	entries := (maxPendingBytes / 2100) * 4
+	l := NewLedger(nopCloser{dw}, Options{Async: true, QueueSize: entries + 8})
+
+	for i := 0; i < entries; i++ {
+		_ = l.Log("knock", SeverityInfo, map[string]string{"reason": filler})
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := l.Dropped(), uint64(entries); got != want {
+		t.Fatalf("Dropped()=%d, want %d — some abandoned entries (queued but never "+
+			"reached by the bail-out's pending scan) went uncounted", got, want)
+	}
+}
+
+// deadWriter always fails and records the largest buffer it was handed.
+type deadWriter struct{ peak int }
+
+func (d *deadWriter) Write(p []byte) (int, error) {
+	if len(p) > d.peak {
+		d.peak = len(p)
+	}
+	return 0, errors.New("dead writer: permanent failure")
+}
+
+// TestSegmentRetentionPrunesOldest: MaxSegments caps how many "<path>.<n>"
+// files survive; older ones are deleted after a rotation.
+func TestSegmentRetentionPrunesOldest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{MaxSizeBytes: 1024, MaxSegments: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 120) // many rotations
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	segs, err := numberedSegments(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(segs) != 3 {
+		names := make([]string, len(segs))
+		for i, s := range segs {
+			names[i] = filepath.Base(s.name)
+		}
+		t.Fatalf("kept %d numbered segments, want 3: %v", len(segs), names)
+	}
+	// The surviving set no longer starts at seq 1 — VerifyLedger must anchor,
+	// not report a break.
+	if res := VerifyLedger(path, nil); res.Err != nil {
+		t.Fatalf("retained set failed to verify: %v", res.Err)
+	} else if res.AnchoredAtSeq == 0 {
+		t.Fatal("expected an anchored verify after retention pruning")
+	}
+}
+
+// TestSegmentRetentionOptInKeepsEverything: rotation is on (MaxSizeBytes) but
+// MaxSegments is left at 0 / negative — no segment may be deleted, and the
+// chain must still verify from seq 1.
+func TestSegmentRetentionOptInKeepsEverything(t *testing.T) {
+	for _, maxSegs := range []int{0, -1} {
+		t.Run(fmt.Sprintf("MaxSegments=%d", maxSegs), func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "audit.jsonl")
+
+			var pruned [][]string
+			l, err := Open(path, Options{
+				MaxSizeBytes: 512,
+				MaxSegments:  maxSegs,
+				OnPrune:      func(removed []string) { pruned = append(pruned, removed) },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeN(t, l, 150) // many rotations
+			if closeErr := l.Close(); closeErr != nil {
+				t.Fatal(closeErr)
+			}
+
+			if len(pruned) != 0 {
+				t.Fatalf("OnPrune fired %d time(s) with MaxSegments=%d", len(pruned), maxSegs)
+			}
+			if l.SegmentsPruned() != 0 {
+				t.Fatalf("SegmentsPruned()=%d, want 0", l.SegmentsPruned())
+			}
+			segs, err := numberedSegments(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(segs) < 2 {
+				t.Fatalf("expected several retained segments, got %d", len(segs))
+			}
+			if res := VerifyLedger(path, nil); res.Err != nil {
+				t.Fatalf("kept-everything set failed to verify: %v", res.Err)
+			} else if res.AnchoredAtSeq != 0 {
+				t.Fatalf("nothing was deleted, so verify must not anchor (got AnchoredAtSeq=%d)", res.AnchoredAtSeq)
+			}
+		})
+	}
+}
+
+// TestSegmentRetentionReportsDeletions: with MaxSegments > 0, every pruned
+// segment is handed to OnPrune and counted by SegmentsPruned.
+func TestSegmentRetentionReportsDeletions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	var got []string
+	l, err := Open(path, Options{
+		MaxSizeBytes: 512,
+		MaxSegments:  2,
+		OnPrune:      func(removed []string) { got = append(got, removed...) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeN(t, l, 150)
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+
+	if len(got) == 0 {
+		t.Fatal("OnPrune never fired despite MaxSegments=2 and many rotations")
+	}
+	if uint64(len(got)) != l.SegmentsPruned() {
+		t.Fatalf("OnPrune saw %d deletions, SegmentsPruned()=%d", len(got), l.SegmentsPruned())
+	}
+	for _, name := range got {
+		if _, statErr := os.Stat(name); statErr == nil {
+			t.Fatalf("OnPrune reported %q as deleted but it still exists", name)
+		}
+		if !strings.HasPrefix(filepath.Base(name), "audit.jsonl.") {
+			t.Fatalf("OnPrune reported a non-segment path: %q", name)
+		}
+	}
+}
+
+// TestOpenAsyncNoRaceWithImmediateLog exercises the ordering fix: Open must
+// finish populating the segment/seq fields before startAsync spawns the
+// drain goroutine that reads them. Run under `go test -race`.
+func TestOpenAsyncNoRaceWithImmediateLog(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	l, err := Open(path, Options{Async: true, QueueSize: 64, MaxSizeBytes: 256})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	for g := 0; g < 4; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 50; i++ {
+				_ = l.Log("knock_denied", SeverityWarn, map[string]string{"srcIp": "1.2.3.4"})
+			}
+		}()
+	}
+	wg.Wait()
+	if closeErr := l.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	if res := VerifyLedger(path, nil); res.Err != nil {
+		t.Fatalf("async ledger failed to verify: %v", res.Err)
+	}
+}
+
+// TestVerifyLedgerErrorsWhenNothingToRead: a deleted/renamed ledger with only
+// a non-numeric sibling (".corrupt-<ns>") next to it must NOT verify clean.
+func TestVerifyLedgerErrorsWhenNothingToRead(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+	if err := os.WriteFile(path+".corrupt-123", []byte("junk\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	res := VerifyLedger(path, nil)
+	if res.Err == nil {
+		t.Fatal("VerifyLedger on a missing ledger returned a clean result")
+	}
+}
+
+// TestAsyncWriterPartialWriteNoByteDuplication: an async partial write (n>0
+// with an error, as *os.File returns on ENOSPC mid-buffer) must not re-send
+// the bytes that landed — doing so used to duplicate a fragment and break
+// the chain. After the writer recovers, everything must verify.
+func TestAsyncWriterPartialWriteNoByteDuplication(t *testing.T) {
+	sw := &shortWriter{limit: 40}
+	l := NewLedger(nopCloser{&sw.buf}, Options{Async: true, QueueSize: 64})
+	// swap the plain buffer target for one that short-writes once
+	l.w = sw
+
+	for i := 0; i < 20; i++ {
+		_ = l.Log("knock", SeverityInfo, map[string]string{"user": "u"})
+		time.Sleep(time.Millisecond)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	res := VerifyChain(bytes.NewReader(sw.buf.Bytes()), nil)
+	if res.Err != nil {
+		t.Fatalf("async partial write must not break the chain: %v", res.Err)
+	}
+	// The one short-written entry becomes damage (Skipped), never a
+	// duplicated fragment + a chain break.
+	if res.Count < 18 {
+		t.Fatalf("only %d entries survived one partial write: %v", res.Count, res)
+	}
+}

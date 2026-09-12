@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,6 +18,7 @@ import (
 
 	"github.com/OpenNHP/opennhp/endpoints/keystorecli"
 	"github.com/OpenNHP/opennhp/endpoints/server"
+	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/version"
@@ -173,6 +177,125 @@ func main() {
 		},
 	}
 
+	// audit verifies the integrity of a security audit ledger produced by
+	// the server's tamper-evident audit log. It walks the hash chain and
+	// reports the first break, if any.
+	auditCmd := &cli.Command{
+		Name:  "audit",
+		Usage: "tools for the tamper-evident security audit ledger",
+		Subcommands: []*cli.Command{
+			{
+				Name:      "verify",
+				Usage:     "verify the hash chain of an audit ledger file",
+				ArgsUsage: "<ledgerFile>",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "key", Usage: "base64 HMAC signing key, if the ledger was signed (exposes the secret in ps/shell history — prefer --key-file or NHP_AUDIT_KEY)"},
+					&cli.StringFlag{Name: "key-file", Usage: "path to a file holding the base64 HMAC signing key (whitespace trimmed); avoids leaking the key via argv"},
+					&cli.BoolFlag{Name: "strict", Usage: "exit non-zero (2) if verification is incomplete: no signing key given, damaged (skipped) lines, unchecked signatures, or a partial segment set"},
+				},
+				Action: func(c *cli.Context) error {
+					path := c.Args().First()
+					if path == "" {
+						return fmt.Errorf("usage: audit verify <ledgerFile>")
+					}
+					hmacKey, err := resolveVerifyKey(c)
+					if err != nil {
+						return err
+					}
+					// Whether a key was supplied at all — independent of what
+					// the file contains. An attacker who can write the log can
+					// strip every "sig" field and recompute the keyless SHA-256
+					// chain, so UncheckedSigs (which only counts entries that
+					// STILL carry a sig) cannot be trusted to flag a keyless
+					// check of a ledger that was signed.
+					keyless := len(hmacKey) == 0
+					res, err := verifyLedgerFile(path, hmacKey)
+					if err != nil {
+						return err
+					}
+
+					if res.Err != nil {
+						fmt.Printf("FAILED: %v\n", res.Err)
+						fmt.Printf("%d %s verified before the break.\n", res.Count, pluralize(res.Count, "entry", "entries"))
+						// Exit non-zero with a clean message rather than a
+						// panic stack trace — this is a verification tool and
+						// a failed check is an expected, reportable outcome.
+						os.Exit(1)
+					}
+					if res.AnchoredAtSeq > 0 {
+						// The set does not start at seq 1 — earlier segments are
+						// not present, whether archived by hand, pruned by
+						// [Audit] MaxSegments, or (indistinguishably, from the
+						// file alone) deleted by an attacker erasing their own
+						// earlier knocks. The first entry's own prevHash is
+						// trusted as the anchor, so nothing before it is
+						// checked — the plain "OK, hash chain intact" headline
+						// a cron wrapper or a quick glance keys on would
+						// otherwise read as a full clean pass. Folding the
+						// caveat into the headline itself, as a warning: not a
+						// note:, keeps that from happening.
+						fmt.Printf("OK: %d %s, hash chain intact FROM SEQ %d ONWARD.\n", res.Count, pluralize(res.Count, "entry", "entries"), res.AnchoredAtSeq)
+						fmt.Printf("warning: earlier segments (before seq %d) are not present — a break before that seq is not visible from these files. Compare against your off-host anchor.\n",
+							res.AnchoredAtSeq)
+					} else {
+						fmt.Printf("OK: %d %s, hash chain intact.\n", res.Count, pluralize(res.Count, "entry", "entries"))
+					}
+					if res.Count == 0 {
+						// An empty ledger is the cheapest form of the truncation
+						// attack a hash chain can't detect ("replace the whole
+						// file with nothing"). Do not let it read as a clean pass.
+						fmt.Println("warning: the ledger contains no entries — if it should not be empty, it may have been truncated or replaced. Compare against your off-host anchor.")
+					}
+					if keyless {
+						// No key given at all: only the (keyless-forgeable)
+						// hash chain was checked. Warn unconditionally — a
+						// signature-stripped ledger has UncheckedSigs == 0 and
+						// would otherwise print a clean pass.
+						if res.UncheckedSigs > 0 {
+							fmt.Printf("warning: %d signed %s NOT verified — no key given, so only the hash chain was checked.\n",
+								res.UncheckedSigs, pluralize(res.UncheckedSigs, "entry", "entries"))
+						} else {
+							fmt.Println("warning: no signing key given (--key / --key-file / NHP_AUDIT_KEY) — only the hash chain was checked. If this ledger was signed, a rewrite that also stripped the signatures cannot be told apart from an unsigned ledger. Verify with the key.")
+						}
+					}
+					if res.Skipped > 0 {
+						// The chain still links up, so no committed entry was
+						// altered or removed — most likely a torn write from an
+						// unclean shutdown. But garbled trailing entries look
+						// the same from the file alone, and that is exactly the
+						// deletion primitive a write-access attacker has, so do
+						// not call it "not tampering": compare against an
+						// off-host anchor of the latest seq+hash if one exists.
+						fmt.Printf("note: skipped %d unparseable line(s)%s — likely a torn write from an unclean shutdown; cannot be distinguished from tampering from the file alone. Compare against your off-host anchor.\n",
+							res.Skipped, formatSkippedLines(res.SkippedLines, res.Skipped))
+					}
+					if res.UnsignedEntries > 0 && !keyless {
+						// A key WAS given and the chain still verified — these
+						// entries just predate SigningKeyBase64 being set (or a
+						// key rotation), which Open resuming the same file makes
+						// routine. Worth a note, not a warning: it is not
+						// evidence of anything wrong, just of when the key was
+						// introduced.
+						fmt.Printf("note: %d %s %s no signature at all (logged before a signing key was configured or rotated), not counted against the key.\n",
+							res.UnsignedEntries, pluralize(res.UnsignedEntries, "entry", "entries"), pluralize(res.UnsignedEntries, "carries", "carry"))
+					}
+					// In --strict mode an incomplete verification is a failure
+					// for gating purposes (CI/cron): no key given at all, a
+					// keyless check of a signed ledger, damaged lines, an
+					// unsigned prefix predating the key, or a partial
+					// (anchored) segment set is not the same as a full clean
+					// pass. Distinct exit code 2 so a caller can tell it apart
+					// from a chain break (1).
+					if c.Bool("strict") && (keyless || res.Count == 0 || res.Skipped > 0 || res.UncheckedSigs > 0 || res.UnsignedEntries > 0 || res.AnchoredAtSeq > 0) {
+						fmt.Println("strict: verification incomplete (see warnings above).")
+						os.Exit(2)
+					}
+					return nil
+				},
+			},
+		},
+	}
+
 	// seal / unseal are shared across every daemon (see endpoints/keystorecli):
 	// sealed blobs are consumed by server, ac, db, relay and agent alike, so
 	// the tooling to produce one ships on each binary.
@@ -180,6 +303,7 @@ func main() {
 		runCmd,
 		keygenCmd,
 		pubkeyCmd,
+		auditCmd,
 	}, keystorecli.Commands()...)
 
 	if err := app.Run(os.Args); err != nil {
@@ -188,6 +312,98 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// verifyLedgerFile walks the ledger's chain, transparently spanning any
+// numbered "<path>.<n>" segments left by size-based rotation. A quick
+// existence check keeps the error message helpful when the path is wrong.
+func verifyLedgerFile(path string, hmacKey []byte) (audit.VerifyResult, error) {
+	clean := filepath.Clean(path)
+	if _, err := os.Stat(clean); err != nil {
+		// Allow the case where only rotated "<path>.<n>" segments exist and
+		// the live file was archived away. Only a NUMERIC suffix counts — a
+		// stray ".corrupt-<ns>" / ".quarantined.jsonl" / ".bak" next to a
+		// deleted ledger must NOT make this look present. audit owns the
+		// "<path>.<n>" naming convention, so ask it.
+		if !audit.HasNumberedSegment(clean) {
+			return audit.VerifyResult{}, err
+		}
+	}
+	return audit.VerifyLedger(clean, hmacKey), nil
+}
+
+// resolveVerifyKey obtains the base64 HMAC key for `audit verify` from, in
+// precedence order, --key, --key-file, then the NHP_AUDIT_KEY environment
+// variable. The signing key is the one secret that makes the chain
+// unforgeable by someone who can write the log, so --key-file and the env var
+// exist to keep it out of argv (visible in ps / /proc/<pid>/cmdline) and out
+// of shell history — the leak channels that matter most for the offline-copy
+// case the signature is meant to protect. An empty result means "no key":
+// the chain is checked but signatures are not.
+func resolveVerifyKey(c *cli.Context) ([]byte, error) {
+	raw := c.String("key")
+	source := "--key"
+	if raw == "" {
+		if kf := c.String("key-file"); kf != "" {
+			b, err := os.ReadFile(filepath.Clean(kf))
+			if err != nil {
+				return nil, fmt.Errorf("read --key-file: %w", err)
+			}
+			raw, source = strings.TrimSpace(string(b)), "--key-file"
+		}
+		// An empty --key-file (a placeholder, or one the operator forgot to
+		// fill in) falls through to NHP_AUDIT_KEY rather than silently
+		// resolving to "no key" — the same "try the next source" behavior
+		// an unset --key already gets, one branch up.
+		if raw == "" {
+			if env := os.Getenv("NHP_AUDIT_KEY"); env != "" {
+				raw, source = strings.TrimSpace(env), "NHP_AUDIT_KEY"
+			}
+		}
+	}
+	if raw == "" {
+		return nil, nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("decode %s: %w", source, err)
+	}
+	// Enforce the same floor initAuditLedger applies to SigningKeyBase64:
+	// without it, a truncated or fat-fingered key here does not report as
+	// "key too short" — it produces an "HMAC signature mismatch (wrong key
+	// or forged entry)" on every entry, indistinguishable from the operator
+	// having actually found tampering.
+	if len(decoded) < server.MinSigningKeyLen {
+		return nil, fmt.Errorf("%s decodes to %d bytes; need at least %d (generate with: head -c 32 /dev/urandom | base64)",
+			source, len(decoded), server.MinSigningKeyLen)
+	}
+	return decoded, nil
+}
+
+// pluralize returns singular when n == 1 and plural otherwise.
+func pluralize(n uint64, singular, plural string) string {
+	if n == 1 {
+		return singular
+	}
+	return plural
+}
+
+// formatSkippedLines renders the line numbers of skipped lines for the note,
+// e.g. " (lines 3, 7)". It returns "" when none were captured, and marks the
+// list as partial when the reported slice is shorter than the total skipped.
+func formatSkippedLines(lines []uint64, total uint64) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	parts := make([]string, len(lines))
+	for i, ln := range lines {
+		parts[i] = strconv.FormatUint(ln, 10)
+	}
+	list := strings.Join(parts, ", ")
+	if uint64(len(lines)) < total {
+		list += ", …"
+	}
+	return " (" + pluralize(uint64(len(lines)), "line", "lines") + " " + list + ")"
 }
 
 func printBanner() {

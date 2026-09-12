@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/OpenNHP/opennhp/compare/v1.0.2...v1.1.0) (2026-09-12)
+
+
+### Features
+
+* **keystore:** encrypted private keys at rest (sealed keystore) ([e15fc75](https://github.com/OpenNHP/opennhp/commit/e15fc759bebff678e1414670ae933f355eb7168e))
+
+
+### Bug Fixes
+
+* **agent,db:** keyMu gap in two more readers; inverted cipher-scheme mapping ([e7dde78](https://github.com/OpenNHP/opennhp/commit/e7dde78eb0b3ea065be3807a3cce9b9cc2020faf))
+* **keystore:** keyMu writer gap in config-reload watcher; passphrase hardening ([220501a](https://github.com/OpenNHP/opennhp/commit/220501ae3fa17e5ab2860650794e621360c63acd))
+* **keystore:** passphrase-file warning was landing on stdout for seal/unseal ([74ea66d](https://github.com/OpenNHP/opennhp/commit/74ea66d29593eb069a5c2c2379bc054ecddb06cc))
+* **keystore:** UpdateTomlConfig CRLF/duplicate-key bug; keyMu race; docs ([e40133e](https://github.com/OpenNHP/opennhp/commit/e40133e28ae914f6bcc1966978b60e41dbfbe528))
+* **metrics:** AC ok-counter false positives, too_short blind spot on relay/db ([61d20ce](https://github.com/OpenNHP/opennhp/commit/61d20ce50a751ae7c60515c3c9e86ec5afb0c4db))
+
 ## [1.0.2](https://github.com/OpenNHP/opennhp/compare/v1.0.1...v1.0.2) (2026-09-11)
 
 

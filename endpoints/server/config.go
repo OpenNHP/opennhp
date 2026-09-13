@@ -169,6 +169,10 @@ type Config struct {
 	// agent were never registered. Default 86400 (24h) if unset / zero.
 	AgentKeyTTLSeconds int `json:"agentKeyTTLSeconds"`
 
+	// Audit configures the tamper-evident security audit ledger. Disabled
+	// by default; see AuditConfig.
+	Audit AuditConfig `json:"audit"`
+
 	// Metrics controls the optional Prometheus metrics / health endpoint.
 	// Disabled by default; when enabled it binds a separate, local-by-default
 	// HTTP listener so operational telemetry never rides on the public knock
@@ -191,6 +195,152 @@ type MetricsConfig struct {
 	ListenIp string `json:"listenIp"`
 	// ListenPort is the TCP port for the endpoint. Empty/zero defaults to 9100.
 	ListenPort int `json:"listenPort"`
+}
+
+// AuditConfig controls the hash-chained security audit ledger. When
+// enabled, security-relevant decisions (knock granted/denied over UDP and
+// HTTP, agent registered) are appended as JSON lines linked into a hash
+// chain that makes after-the-fact tampering detectable. When enabled it is
+// the server's structured audit trail — the nhp/log "[Audit]" stream is an
+// unused API, so this does not duplicate an existing log.
+type AuditConfig struct {
+	// Enabled turns the ledger on. Off by default.
+	Enabled bool `json:"enabled"`
+	// FilePath is where the ledger is written. Relative paths resolve
+	// against <exe_dir>. Defaults to "<exe_dir>/audit/audit-ledger.jsonl"
+	// (its own directory, not logs/, so a logrotate rule aimed at logs/ can't
+	// reach it).
+	//
+	// Do NOT point an external log-rotation tool at this file while the
+	// server is running. The ledger holds one append handle for the process
+	// lifetime and does not reopen: a rename+create rotation sends every
+	// later entry to the rotated-away inode (auditing silently stops until
+	// restart), and a copytruncate resets the file to offset 0 while the
+	// in-memory seq/hash keep advancing, so `audit verify` then reports a
+	// chain break — the wording for tampering — for a routine cron job.
+	// Rotate only while the server is stopped, or archive whole segments
+	// out of band and let this file keep growing.
+	//
+	// Do NOT point two processes at the same FilePath either. Each writer
+	// keeps its own in-memory seq/lastHash, so interleaved appends produce
+	// duplicate seq values and broken prevHash links that verify reports as
+	// tampering; worse, one process's torn-tail repair (an O_RDWR truncate
+	// back to the last newline) can delete an entry the other just committed.
+	// There is no cross-process lock, so give each instance its own ledger —
+	// this matters for the bundled server/server2 two-cluster demo.
+	FilePath string `json:"filePath"`
+	// Fsync flushes each entry to disk before returning. Note that entries
+	// are written synchronously on the request path, so audit volume tracks
+	// knock volume: with this on, every access decision costs a disk flush
+	// and all audit writes serialize behind one mutex. Worth the durability
+	// on a normal gateway, but turn it off if the ledger becomes a
+	// bottleneck under load — the hash chain stays intact either way.
+	Fsync bool `json:"fsync"`
+	// SigningKeyBase64 is an optional base64 HMAC key (at least 32 bytes
+	// after decoding; a shorter value is rejected at startup). When set,
+	// each entry is additionally signed so the chain is bound to a secret
+	// the log file does not contain. Without it, the hash chain alone still
+	// detects local edits, deletions and reordering.
+	//
+	// Be precise about what the signature buys you. The key lives in this
+	// config file, so an attacker who has taken over the server process
+	// (running as its uid, or root) can read the key, rewrite the ledger,
+	// and re-sign it — the signature does NOT survive a full host
+	// compromise. What it does defend against is an attacker who can write
+	// the log but not read this config: a compromised log-shipping account,
+	// or offline tampering with an archived copy. For protection against a
+	// host compromise the key has to live off the host (an append-only sink
+	// the server can write but not rewrite).
+	//
+	// One attack is undetectable from the file alone even with a key:
+	// truncating entries off the END leaves a shorter chain that still
+	// verifies, because a hash chain cannot prove it was not shortened.
+	// Detecting rollback needs an external anchor — periodically record the
+	// latest seq+hash off-host and compare against it.
+	//
+	// Setting or rotating this on an EXISTING ledger is fine: Open resumes
+	// the same file, so it ends up with an unsigned prefix (entries logged
+	// before the key existed) and a signed suffix. `audit verify --key`
+	// treats that prefix as UnsignedEntries, not a signature mismatch — it
+	// does not read as tampering.
+	SigningKeyBase64 string `json:"signingKey"`
+
+	// FailClosed controls what happens when the ledger cannot be opened at
+	// startup (a corrupt or foreign file at FilePath, a permission problem).
+	//
+	// Default (false): fail SAFE — the gateway keeps producing a trail. The
+	// unreadable file at FilePath is handled one of two ways:
+	//   - It still looks like one of our ledgers (a corrupted first line, an
+	//     attacker prepending junk): it is renamed to "<FilePath>.corrupt-
+	//     <nanos>" and a fresh chain starts at FilePath — from seq 1, or, if
+	//     numbered "<FilePath>.<n>" segments from size rotation are present,
+	//     continuing from the highest one. Either way the .corrupt-* sibling
+	//     next to a re-created live file is the loud, detectable signal.
+	//   - It is a FOREIGN file (a mistyped FilePath pointing at another log,
+	//     a config, a shared-volume file): it is LEFT UNTOUCHED — a
+	//     privileged server must not move an operator's unrelated file — and
+	//     auditing continues in a fixed sibling, "<FilePath>.quarantined.jsonl".
+	//     Note `audit verify <FilePath>` then verifies the foreign file, not
+	//     the quarantined ledger; point it at the .quarantined.jsonl path.
+	// The rename/sibling guards accidents and casual edits, not someone with
+	// write access to the directory, who can delete the file too.
+	//
+	// true: fail CLOSED. Any open failure aborts startup instead. Choose this
+	// when a verifiable, uninterrupted trail is a hard requirement and you
+	// would rather the gateway not serve at all than serve unaudited. The
+	// offending file is left untouched for inspection.
+	//
+	// Either way, this only governs STARTUP. A write that fails while the
+	// server is already running (disk full, the file made unwritable) is
+	// logged but never blocks the request, so access decisions keep flowing
+	// while the trail is blind. A sustained run of such failures escalates to
+	// a rate-limited Critical (see auditEvent) so it cannot pass unnoticed,
+	// but there is deliberately no runtime fail-closed: an audit hiccup must
+	// not take the gateway down mid-flight.
+	FailClosed bool `json:"failClosed"`
+
+	// Async moves the disk write (and fsync) for each entry off the request
+	// goroutine onto a single background writer. Log still computes seq and
+	// the hash chain under the lock, so ordering and linkage are unchanged;
+	// only the write is deferred. This keeps Fsync usable on a busy gateway.
+	// If the writer falls far enough behind that the queue fills, entries are
+	// DROPPED rather than blocking the knock — discarded whole so the chain
+	// stays contiguous, counted in the shutdown summary and a runtime
+	// Critical, and once the writer recovers the next Log chains an
+	// "audit_gap" marker (fields.dropped=N) so a verified copy of the ledger
+	// still shows the loss. Under Async, chain integrity holds but
+	// completeness does not. Off by default.
+	Async bool `json:"async"`
+	// AsyncQueueSize bounds the pending-write queue when Async is set.
+	// 0 uses a sensible default; a value over ~1M is rejected at startup
+	// (it would allocate gigabytes). Ignored unless Async.
+	AsyncQueueSize int `json:"asyncQueueSize"`
+
+	// MaxSizeBytes controls size-based rotation: once the live file would
+	// grow past it, the ledger is renamed to a numbered segment
+	// ("<FilePath>.<seq>") and a fresh file continues the chain. The chain
+	// spans the segments and `audit verify` picks the siblings up
+	// automatically. Config-file semantics:
+	//   0        - use the built-in default (256 MiB per segment).
+	//   negative - never rotate; one file that grows without bound.
+	//   positive - rotate at that many bytes.
+	// Rotation on its own deletes nothing; see MaxSegments for retention.
+	MaxSizeBytes int64 `json:"maxSizeBytes"`
+
+	// MaxSegments is the retention cap on rotated "<FilePath>.<n>" files.
+	// DELETING audit records is opt-in — config-file semantics:
+	//   0 (default) - keep every segment forever. Nothing is ever deleted.
+	//   negative    - same as 0 (keep everything).
+	//   positive    - after a rotation, delete the oldest segments beyond
+	//                 this count, bounding disk use at ~MaxSizeBytes*(N+1).
+	//                 Each deletion is logged Critical, because it drops
+	//                 evidence and `audit verify` can then no longer walk
+	//                 from seq 1 (it anchors on the first surviving entry).
+	// NHP_OTP / NHP_REG are audited before the peer is validated, so a party
+	// that knows the server's public key can drive ledger volume; the answer
+	// is off-box archival plus a disk-pressure alarm, not silent deletion —
+	// hence the conservative default.
+	MaxSegments int `json:"maxSegments"`
 }
 
 type RemoteConfig struct {
@@ -653,6 +803,18 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 		// false → true → false; only the teardown predicate observes
 		// the new value.
 		s.forceOverload.Store(conf.ForceOverload)
+	}
+
+	// [Audit]: the ledger handle is opened once at startup (initAuditLedger)
+	// and never re-opened on reload — changing FilePath, SigningKeyBase64,
+	// Fsync, FailClosed or MaxSizeBytes at runtime does nothing until a
+	// restart. Silently dropping the new value would leave s.config
+	// disagreeing with config.toml, so adopt it for read-consistency and
+	// warn, exactly as ForceOverload above. Editing SigningKeyBase64 and
+	// believing it took effect is the bad outcome this warning prevents.
+	if s.config.Audit != conf.Audit {
+		log.Warning("[Audit] config changed on reload; the ledger is opened once at startup — restart to apply the new settings")
+		s.config.Audit = conf.Audit
 	}
 
 	// Cookie signing key / window: only re-apply when the operator

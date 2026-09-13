@@ -87,3 +87,21 @@ CookieSigningKeyBase64 = "w62S2G1P5GOG66Y5tIv3WlfBv8CNBdDe2JJDFr9Q+h0="
 # if unset / non-positive, giving an agent [60, 120) seconds to redeem.
 CookieTimeWindowSeconds = 60
 
+
+# [Audit]: tamper-evident, hash-chained security audit ledger. Off by
+# default; see endpoints/server/main/etc/config.toml for the full field
+# docs (Fsync, Async, MaxSizeBytes, MaxSegments, SigningKeyBase64, FailClosed)
+# and the threat model. MaxSizeBytes=0 rotates at a 256 MiB default;
+# MaxSegments=0 keeps every rotated segment (deletion is opt-in, MaxSegments>0).
+# If you enable it on two instances sharing a volume, give each its own
+# FilePath — there is no cross-process lock.
+[Audit]
+Enabled = false
+FilePath = ""
+Fsync = false
+Async = false
+AsyncQueueSize = 0
+MaxSizeBytes = 0
+MaxSegments = 0
+SigningKeyBase64 = ""
+FailClosed = false

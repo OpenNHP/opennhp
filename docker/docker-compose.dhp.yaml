@@ -18,6 +18,8 @@ services:
         - GOPROXY=${GOPROXY:-}
     container_name: nhp-server
     restart: always
+    environment:
+      NHP_UDP_RECV_BUFFER_BYTES: "${NHP_UDP_RECV_BUFFER_BYTES:-8388608}"
     networks:
       network_default:
         ipv4_address: 177.7.0.9

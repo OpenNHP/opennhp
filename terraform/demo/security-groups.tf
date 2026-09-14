@@ -50,7 +50,7 @@ resource "aws_security_group" "relay" {
 # No public SSH, only SSH from relay SG
 resource "aws_security_group" "server" {
   name_prefix = "opennhp-demo-server-"
-  description = "NHP Server - UDP knocking + HTTPS auth"
+  description = "NHP Server - UDP knocking only (HTTP/HTTPS surface retired)"
   vpc_id      = aws_vpc.demo.id
 
   # NHP protocol (UDP) from anywhere
@@ -62,14 +62,20 @@ resource "aws_security_group" "server" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # HTTPS auth endpoint from anywhere
-  ingress {
-    description = "HTTPS"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  # NOTE: there is deliberately NO tcp/443 (or tcp/80) ingress here.
+  #
+  # The nhp-server used to expose an HTTP "demo login" page
+  # (/plugins/example?action=login&resid=demo) via an nginx vhost on 443,
+  # reachable as auth-plugin.opennhp.org and the legacy alias
+  # demologin.opennhp.org. That surface has been retired: the vhost is torn
+  # down by the deploy-server job and nhp-serverd runs with EnableHttp=false
+  # (deploy/config-templates/server/http.toml). Closing the SG rule here is
+  # the authoritative, internet-facing control -- do not re-add it without
+  # also re-enabling those two layers.
+  #
+  # The UDP rule above is the NHP protocol itself and must stay open. The
+  # browser knock demo reaches this host through the relay (HTTPS -> UDP),
+  # not through any TCP port on this security group.
 
   # SSH only from relay (jump host)
   ingress {

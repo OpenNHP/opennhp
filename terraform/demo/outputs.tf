@@ -1,5 +1,5 @@
 output "server_public_ip" {
-  description = "NHP Server public IP (auth-plugin.opennhp.org; legacy: demologin.opennhp.org)"
+  description = "NHP Server public IP (auth-plugin.opennhp.org; NHP UDP only, no public HTTP/HTTPS)"
   value       = aws_eip.server.public_ip
 }
 
@@ -34,7 +34,6 @@ output "dns_records" {
     auth_plugin = "auth-plugin.${var.domain} -> ${aws_eip.server.public_ip}"
     server      = "server.${var.domain} -> CNAME auth-plugin.${var.domain}"
     ac          = "ac.${var.domain} -> ${aws_eip.ac.public_ip}"
-    demologin   = "demologin.${var.domain} -> CNAME auth-plugin.${var.domain} (legacy)"
     acdemo      = "acdemo.${var.domain} -> CNAME ac.${var.domain} (legacy)"
     relay       = "relay.${var.domain} -> ${aws_eip.relay.public_ip}"
     agent       = "agent.${var.domain} -> ${aws_eip.relay.public_ip}"

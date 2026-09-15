@@ -800,12 +800,12 @@ func (s *UdpServer) recvPacketRoutine() {
 				StopSignal:           make(chan struct{}),
 			}
 
-			if !s.admitDirectConnection(conn, addrStr) {
+			if reason := s.admitDirectConnection(conn, addrStr); reason != "" {
 				s.device.ReleasePoolPacket(pkt)
-				s.metrics.recordDroppedPacket("per_ip_conn_limit")
+				s.metrics.recordDroppedPacket(reason)
 				drops := s.perIPRejections.Add(1)
 				if drops == 1 || drops%1000 == 0 {
-					log.Warning("Direct connection admission limit reached (drops: %d)", drops)
+					log.Warning("Direct connection from %s refused: %s (drops: %d)", addrStr, reason, drops)
 				}
 				continue
 			}
@@ -823,7 +823,7 @@ func (s *UdpServer) recvPacketRoutine() {
 
 // admitDirectConnection refuses excess new tuples without terminating existing
 // connections. Counts and the global table change under one lock.
-func (s *UdpServer) admitDirectConnection(conn *UdpConn, mapKey string) bool {
+func (s *UdpServer) admitDirectConnection(conn *UdpConn, mapKey string) string {
 	s.remoteConnectionMapMutex.Lock()
 	defer s.remoteConnectionMapMutex.Unlock()
 	limit := MaxAgentConnectionsPerIP
@@ -831,16 +831,21 @@ func (s *UdpServer) admitDirectConnection(conn *UdpConn, mapKey string) bool {
 		limit = s.config.MaxAgentConnectionsPerIP
 	}
 	ip := conn.ConnData.RemoteAddr.IP.String()
-	if s.connectionsByIP[ip] >= limit || len(s.remoteConnectionMap) >= MaxConcurrentConnection {
-		return false
+	if len(s.remoteConnectionMap) >= MaxConcurrentConnection {
+		return "conn_limit"
+	}
+	// Per-source fairness applies only under global pressure. Otherwise a
+	// small spoofed flood could prevent a healthy NAT or AC from reconnecting.
+	if s.device != nil && s.device.IsOverload() && s.connectionsByIP[ip] >= limit {
+		return "per_ip_conn_limit"
 	}
 	if _, exists := s.remoteConnectionMap[mapKey]; exists {
-		return false
+		return "conn_limit"
 	}
 	s.remoteConnectionMap[mapKey] = conn
 	s.connectionsByIP[ip]++
 	conn.perIPCounted = true
-	return true
+	return ""
 }
 
 // releasePerIPCount requires remoteConnectionMapMutex.

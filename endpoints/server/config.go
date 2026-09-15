@@ -80,7 +80,7 @@ type SrcIpMap struct {
 }
 
 type Config struct {
-	MaxAgentConnectionsPerIP int    // Zero selects the default of 256; tune for shared NAT.
+	MaxAgentConnectionsPerIP int    `json:"maxAgentConnectionsPerIP"` // Restart-only; zero selects 256.
 	PrivateKeyBase64         string `json:"privateKey"`
 	Hostname                 string `json:"hostname"`
 	ListenIp                 string `json:"listenIp"`

@@ -20,7 +20,7 @@ type serverMetrics struct {
 	acOperations     *metrics.CounterVec // result=ok|error
 	acOpDuration     *metrics.Histogram  // server->AC round trip, seconds
 	blockedAddrs     *metrics.Counter    // sources blocked past the threat threshold
-	packetsDropped   *metrics.CounterVec // stage=too_short|blocked|precheck|rate_limited|conn_limit|parse|validate|decrypt|queue_full
+	packetsDropped   *metrics.CounterVec // stage=too_short|blocked|precheck|rate_limited|per_ip_conn_limit|conn_limit|parse|validate|decrypt|queue_full
 	handlerDropped   *metrics.CounterVec // by protocol message type; post-decryption load-shedding
 }
 
@@ -72,7 +72,7 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			"Source addresses blocked after exceeding the threat threshold.").With(),
 		packetsDropped: reg.NewCounter("nhp_server_packets_dropped_total",
 			"Inbound packets discarded before becoming a decrypted message, by stage "+
-				"(too_short, blocked, precheck, rate_limited, conn_limit, parse, validate, decrypt, queue_full).", "stage"),
+				"(too_short, blocked, precheck, rate_limited, per_ip_conn_limit, conn_limit, parse, validate, decrypt, queue_full).", "stage"),
 		handlerDropped: reg.NewCounter("nhp_server_handler_dropped_total",
 			"Decrypted messages dropped because the handler goroutine budget "+
 				"(MaxConcurrentHandlers) was exhausted, by message type. Distinct "+
@@ -89,7 +89,7 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 	sm.acOperations.With("ok")
 	sm.acOperations.With("error")
 	for _, stage := range []string{
-		"too_short", "blocked", "precheck", "rate_limited", "conn_limit", // recvPacketRoutine, pre-decryption
+		"too_short", "blocked", "precheck", "rate_limited", "per_ip_conn_limit", "conn_limit", // recvPacketRoutine, pre-decryption
 		"parse", "validate", "decrypt", "queue_full", // packetToMsgRoutine, via OnPacketDropped
 	} {
 		sm.packetsDropped.With(stage)
@@ -148,7 +148,7 @@ func (m *serverMetrics) recordBlockedAddr() {
 // recordDroppedPacket counts an inbound packet discarded before decryption.
 // stage is one of the fixed set seeded in newServerMetrics: the
 // recvPacketRoutine pre-decryption drops ("too_short", "blocked",
-// "precheck", "rate_limited", "conn_limit") and the packetToMsgRoutine
+// "precheck", "rate_limited", "per_ip_conn_limit", "conn_limit") and the packetToMsgRoutine
 // drops delivered via core.DeviceOptions.OnPacketDropped ("parse",
 // "validate", "decrypt", "queue_full"). A bounded label, never
 // attacker-controlled. Safe on a nil receiver.

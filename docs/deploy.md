@@ -330,7 +330,10 @@ Log levels:
 ### Direct connection admission
 
 `MaxAgentConnectionsPerIP` in server config sets the maximum number of direct
-non-control UDP tuples per source (zero: 256). Tune it for shared NAT egress.
+unauthenticated/agent UDP tuples per source during overload (zero: 256).
+Requires restart. Tune it for shared NAT egress. Below overload, this cap is
+inactive so spoofed tuples cannot cheaply deny a chosen source. Under overload,
+a spoofed source can still consume its budget; deploy network anti-spoofing.
 Excess new tuples are dropped without evicting existing sessions; the metric
 stage is `per_ip_conn_limit`. Only configured AC/DB keys gain a control-peer
 exemption after authentication. The global connection cap still applies.

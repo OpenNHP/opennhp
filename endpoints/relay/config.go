@@ -10,6 +10,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/common/loadbalance"
 	log "github.com/OpenNHP/opennhp/nhp/log"
+	"github.com/OpenNHP/opennhp/nhp/metrics"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
 
@@ -123,6 +124,10 @@ type Config struct {
 
 	// Logging
 	LogLevel int `toml:"logLevel"`
+
+	// Optional Prometheus /metrics + /healthz endpoint (off by default,
+	// loopback-bound). Default port 9102 when ListenPort is 0.
+	Metrics metrics.Config `toml:"Metrics"`
 }
 
 // DefaultConfig returns a Config with sensible defaults.

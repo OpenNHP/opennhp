@@ -23,7 +23,17 @@ jobs:
           private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
 
       - name: Release Please
-        uses: googleapis/release-please-action@v5
+        # Pin to the dist rebuild that bundles release-please v17.6.1+, which
+        # contains the dynamic batch size backoff fix for the GraphQL pagination
+        # bug seen in release-please v17.6.0 (Fetch merge commits failing with
+        # GitHub GraphQL trace 57C1:30C732:7F3477:9462FB:6AA167F8 on 2026-09-09).
+        # The floating @v5 tag still resolves to action v5.0.0, which ships
+        # the broken release-please v17.6.0, so we must pin a concrete ref
+        # instead. SHA 0b6b3fc is the "chore: build dist" commit on main
+        # (#1208) that re-bundles the dist after the v17.6.1 package.json bump
+        # (dependabot PR #1207). Revisit when upstream publishes a v5.x.x tag
+        # that includes this fix.
+        uses: googleapis/release-please-action@0b6b3fc0186a2f7118bfd88fab9ea481e1839504
         with:
           release-type: go
           token: ${{ steps.app-token.outputs.token }}

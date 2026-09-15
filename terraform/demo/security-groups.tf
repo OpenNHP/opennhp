@@ -50,6 +50,13 @@ resource "aws_security_group" "relay" {
 # No public SSH, only SSH from relay SG
 resource "aws_security_group" "server" {
   name_prefix = "opennhp-demo-server-"
+  # NOTE: keep this description string unchanged. aws_security_group.description
+  # is ForceNew in the AWS provider, so editing it would replace the whole SG
+  # (churning its id and forcing aws_security_group.ac's inline reference to be
+  # rewritten before the old SG can be deleted -- a DependencyViolation-prone
+  # replace on a live demo SG). Removing the 443 ingress below is an in-place
+  # rule change; the retirement of the HTTP/HTTPS surface is documented in the
+  # comment block where that rule used to be.
   description = "NHP Server - UDP knocking + HTTPS auth"
   vpc_id      = aws_vpc.demo.id
 
@@ -62,14 +69,20 @@ resource "aws_security_group" "server" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # HTTPS auth endpoint from anywhere
-  ingress {
-    description = "HTTPS"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  # NOTE: there is deliberately NO tcp/443 (or tcp/80) ingress here.
+  #
+  # The nhp-server used to expose an HTTP "demo login" page
+  # (/plugins/example?action=login&resid=demo) via an nginx vhost on 443,
+  # reachable as auth-plugin.opennhp.org and the legacy alias
+  # demologin.opennhp.org. That surface has been retired: the vhost is torn
+  # down by the deploy-server job and nhp-serverd runs with EnableHttp=false
+  # (deploy/config-templates/server/http.toml). Closing the SG rule here is
+  # the authoritative, internet-facing control -- do not re-add it without
+  # also re-enabling those two layers.
+  #
+  # The UDP rule above is the NHP protocol itself and must stay open. The
+  # browser knock demo reaches this host through the relay (HTTPS -> UDP),
+  # not through any TCP port on this security group.
 
   # SSH only from relay (jump host)
   ingress {
@@ -88,94 +101,6 @@ resource "aws_security_group" "server" {
   }
 
   tags = { Name = "opennhp-demo-server-sg" }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-# --- nhp-server cluster 2 Security Group ---
-# Pure NHP: UDP knocking only. No HTTPS/HTTP (no plugin web endpoint, no
-# domain). SSH from relay (jump host) only.
-resource "aws_security_group" "server2" {
-  name_prefix = "opennhp-demo-server2-"
-  description = "NHP Server cluster 2 - UDP knocking only (no HTTPS)"
-  vpc_id      = aws_vpc.demo.id
-
-  # NHP protocol (UDP) from anywhere
-  ingress {
-    description = "NHP UDP"
-    from_port   = var.nhp_listen_port
-    to_port     = var.nhp_listen_port
-    protocol    = "udp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # SSH only from relay (jump host)
-  ingress {
-    description     = "SSH from relay"
-    from_port       = 22
-    to_port         = 22
-    protocol        = "tcp"
-    security_groups = [aws_security_group.relay.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = { Name = "opennhp-demo-server2-sg" }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-# --- nhp-ac cluster 2 Security Group ---
-# Same shape as cluster 1 ac, but NHP UDP is accepted from server2.
-resource "aws_security_group" "ac2" {
-  name_prefix = "opennhp-demo-ac2-"
-  description = "NHP AC cluster 2 - access controller with protected resources"
-  vpc_id      = aws_vpc.demo.id
-
-  # Protected resource HTTPS from anywhere (ac2.opennhp.org)
-  ingress {
-    description = "HTTPS protected resource"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # NHP AOP from cluster 2 server (UDP)
-  ingress {
-    description     = "NHP UDP from server2"
-    from_port       = var.nhp_listen_port
-    to_port         = var.nhp_listen_port
-    protocol        = "udp"
-    security_groups = [aws_security_group.server2.id]
-  }
-
-  # SSH only from relay (jump host)
-  ingress {
-    description     = "SSH from relay"
-    from_port       = 22
-    to_port         = 22
-    protocol        = "tcp"
-    security_groups = [aws_security_group.relay.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = { Name = "opennhp-demo-ac2-sg" }
 
   lifecycle {
     create_before_destroy = true

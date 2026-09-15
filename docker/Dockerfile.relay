@@ -1,5 +1,10 @@
 FROM opennhp-base:latest AS builder
 
+# See Dockerfile.server: a stale opennhp-base:latest may pin an older Go than
+# go.mod (1.26) declares. "auto" lets Go fetch the exact toolchain instead of
+# hard-failing; a no-op when the base is current.
+ENV GOTOOLCHAIN=auto
+
 WORKDIR /workdir
 
 COPY . .

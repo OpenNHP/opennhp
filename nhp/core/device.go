@@ -37,6 +37,15 @@ type DeviceOptions struct {
 	DisableRelayPeerValidation  bool
 	DisableDePeerValidation     bool
 	PeerLookupFallback          PeerLookupFallbackFunc
+
+	// OnPacketDropped, when set, is called whenever an inbound packet is
+	// discarded before it becomes a decrypted message: a precheck/parse
+	// failure ("parse"), a peer-validation failure ("validate"), a body
+	// decryption failure ("decrypt"), or the decrypted-message queue being
+	// full ("queue_full"). It is a pure observation hook for metrics — the
+	// crypto path is unchanged — and must be cheap and non-blocking. It runs
+	// on the packet routine goroutine; a panic in it is recovered.
+	OnPacketDropped func(stage string)
 }
 
 type NhpError interface {
@@ -146,6 +155,24 @@ func (d *Device) GetOption() DeviceOptions {
 	return d.option
 }
 
+// notifyPacketDropped invokes the OnPacketDropped observation hook if one is
+// configured. Only reached on a drop, so the per-call lock is off the hot
+// path; a panicking hook cannot take down the packet routine.
+func (d *Device) notifyPacketDropped(stage string) {
+	d.optionMutex.Lock()
+	hook := d.option.OnPacketDropped
+	d.optionMutex.Unlock()
+	if hook == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("OnPacketDropped hook panicked (stage=%s): %v", stage, r)
+		}
+	}()
+	hook(stage)
+}
+
 // SetStatelessCookieParams installs the cluster-wide cookie HMAC key and the
 // time window (in seconds) used for derivation. Passing a nil/zero-length key
 // or non-positive window disables the stateless path; the device falls back
@@ -232,15 +259,12 @@ func (d *Device) msgToPacketRoutine(id int) {
 			// message encryption workflow: raw message -> encryption -> raw packet -> connection.SendQueue
 			func() {
 				msgType := HeaderTypeToString(md.HeaderType)
-				var msgStr string
-				if md.Message != nil {
-					msgStr = string(md.Message)
-				}
-				log.Debug("msgToPacketRoutine %d: encrypting [%s] raw message: %s", id, msgType, msgStr)
-				log.Evaluate("msgToPacketRoutine %d: encrypting [%s] raw message: %s", id, msgType, msgStr)
+				log.Debug("msgToPacketRoutine %d: encrypting [%s] raw message: %s", id, msgType, md.Message)
+				log.Evaluate("msgToPacketRoutine %d: encrypting [%s] raw message: %s", id, msgType, md.Message)
 
 				var mad *MsgAssemblerData
 				var err error
+				var outboundPacket *Packet
 
 				// error handling
 				defer func() {
@@ -298,16 +322,26 @@ func (d *Device) msgToPacketRoutine(id int) {
 
 				// create local transaction if needed
 				log.Debug("msgToPacketRoutine IsTransactionRequest:deviceType:%d HeaderType:%d", d.deviceType, mad.HeaderType)
+				outboundPacket = mad.BasePacket
 				if d.IsTransactionRequest(mad.HeaderType) {
+					// The transaction retains mad.BasePacket for response crypto. Give
+					// the asynchronous physical sender an independent pool packet so
+					// transaction completion cannot recycle bytes still being sent.
+					outboundPacket, err = d.clonePacketForSend(mad.BasePacket)
+					if err != nil {
+						log.Error("msgToPacketRoutine %d: [%s] sender packet clone failed: %v", id, msgType, err)
+						log.Evaluate("msgToPacketRoutine %d: [%s] sender packet clone failed: %v", id, msgType, err)
+						return
+					}
+
 					// save initiator transaction
-					mad.BasePacket.KeepAfterSend = true // packet is kept after sending and deleted at transaction level
 					t := newLocalTransaction(mad.header.Counter(), mad.connData, mad, d.LocalTransactionTimeout())
 					d.AddLocalTransaction(t)
 					log.Debug("AddLocalTransaction:deviceType=%d,HeaderType=%d", d.deviceType, mad.HeaderType)
 				}
 
 				// send out fully encrypted packet
-				mad.connData.ForwardOutboundPacket(mad.BasePacket)
+				mad.connData.ForwardOutboundPacket(outboundPacket)
 			}()
 		}
 	}
@@ -409,6 +443,7 @@ func (d *Device) packetToMsgRoutine(id int) {
 				if err != nil {
 					log.Debug("packetToMsgRoutine %d: [%s] packet precheck failed: %v", id, msgType, err)
 					log.Evaluate("packetToMsgRoutine %d: [%s] packet precheck failed: %v", id, msgType, err)
+					d.notifyPacketDropped("parse")
 					return
 				}
 
@@ -416,6 +451,7 @@ func (d *Device) packetToMsgRoutine(id int) {
 				if err != nil {
 					log.Debug("packetToMsgRoutine %d: [%s] packet validation failed: %v", id, msgType, err)
 					log.Evaluate("packetToMsgRoutine %d: [%s] packet validation failed: %v", id, msgType, err)
+					d.notifyPacketDropped("validate")
 					return
 				}
 
@@ -423,15 +459,12 @@ func (d *Device) packetToMsgRoutine(id int) {
 				if err != nil {
 					log.Error("packetToMsgRoutine: %d: [%s] packet decryption failed: %v", id, msgType, err)
 					log.Evaluate("packetToMsgRoutine: %d: [%s] packet decryption failed: %v", id, msgType, err)
+					d.notifyPacketDropped("decrypt")
 					return
 				}
 
-				var msgStr string
-				if ppd.BodyMessage != nil {
-					msgStr = string(ppd.BodyMessage)
-				}
-				log.Debug("packetToMsgRoutine: %d: complete decrypting [%s] message: %s", id, msgType, msgStr)
-				log.Evaluate("packetToMsgRoutine: %d: complete decrypting [%s] message: %s", id, msgType, msgStr)
+				log.Debug("packetToMsgRoutine: %d: complete decrypting [%s] message: %s", id, msgType, ppd.BodyMessage)
+				log.Evaluate("packetToMsgRoutine: %d: complete decrypting [%s] message: %s", id, msgType, ppd.BodyMessage)
 				log.Debug("packetToMsgRoutine: complete decrypting feedbackMsgCh:%d,headerType:%s", d.deviceType, HeaderTypeToString(ppd.HeaderType))
 				// deliver decrypted message to specific channel
 				if ppd.decryptedMsgCh != nil {
@@ -464,6 +497,7 @@ func (d *Device) packetToMsgRoutine(id int) {
 				default:
 					// ppd not delivered, set error to destroy the ppd
 					log.Critical("packetToMsgRoutine: %d: decryptedMessageCh is full, discarding message", id)
+					d.notifyPacketDropped("queue_full")
 				}
 			}()
 		}

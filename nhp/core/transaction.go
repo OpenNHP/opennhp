@@ -223,6 +223,9 @@ func (t *LocalTransaction) Run() {
 		device.wg.Done()
 	}()
 
+	timer := time.NewTimer(time.Duration(t.timeout) * time.Millisecond)
+	defer timer.Stop()
+
 	select {
 	case pkt := <-t.NextPacketCh:
 		pd := &PacketData{
@@ -252,7 +255,7 @@ func (t *LocalTransaction) Run() {
 		err = common.ErrTransactionFailedByClosedDevice
 		return
 
-	case <-time.After(time.Duration(t.timeout) * time.Millisecond):
+	case <-timer.C:
 		log.Warning("Local transaction %d stopped due to timeout", t.transactionId)
 		err = common.ErrTransactionFailedByTimeout
 		return
@@ -304,6 +307,9 @@ func (t *RemoteTransaction) Run() {
 		conn.Done()
 	}()
 
+	timer := time.NewTimer(time.Duration(t.timeout) * time.Millisecond)
+	defer timer.Stop()
+
 	select {
 	case md := <-t.NextMsgCh:
 		md.PrevParserData = t.parserData
@@ -314,7 +320,7 @@ func (t *RemoteTransaction) Run() {
 		log.Warning("Remote transaction %d stopped due to closed connection", t.transactionId)
 		return
 
-	case <-time.After(time.Duration(t.timeout) * time.Millisecond):
+	case <-timer.C:
 		log.Warning("Remote transaction %d stopped due to timeout", t.transactionId)
 		return
 	}

@@ -209,6 +209,20 @@ account. The state bucket is configured at `terraform init` time via
 `TF_STATE_BUCKET` repo variable) so the account ID is not committed in source.
 All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 
+> **The nhp-server has no public HTTP/HTTPS surface.** It used to serve a demo
+> login page (`/plugins/example?action=login&resid=demo`) on 443 via nginx,
+> reachable as `auth-plugin.opennhp.org` and the legacy alias
+> `demologin.opennhp.org`. That surface is retired at three layers: the
+> `tcp/443` ingress is gone from `aws_security_group.server`
+> (`terraform/demo/security-groups.tf`), the `demologin` CNAME is gone from
+> `terraform/demo/dns.tf`, and `deploy/config-templates/server/http.toml` sets
+> `EnableHttp = false` so `nhp-serverd` never binds `127.0.0.1:8443`. The
+> `deploy-server` job tears down any leftover `/etc/nginx/conf.d/server.conf`.
+> The server host is reachable only over the NHP UDP knock port (plus SSH from
+> the relay jump host); `deploy/nginx/server.conf.template` is kept for
+> reference but is no longer deployed. Re-enabling the login page requires
+> undoing all of these together.
+
 ### `opennhp/demo` schema
 
 The secret is JSON; fields are added idempotently by scripts and workflows.
@@ -222,9 +236,9 @@ run (triggered by the `deploy-demo-v2` workflow).
 | `nhp_relay_private_key` / `_public_key` | same | relay `config.toml`; peer table on server |
 | `nhp_agent_private_key` / `_public_key` | same | native nhp-agent clients; `agent.toml` on server |
 | `nhp_jsagent_private_key` / `_public_key` | same | cluster 1 `endpoints/js-agent/` demo identity (rendered into `config.json` `clusters[0]` at deploy time); trusted by server cluster 1 only |
-| `nhp_jsagent2_private_key` / `_public_key` | same | cluster 2 js-agent demo identity (rendered into `config.json` `clusters[1]`); trusted by server cluster 2 only, so the two clusters use independent agent keys |
-| `nhp_server2_private_key` / `_public_key` | same | cluster 2 server `config.toml`; peer tables on ac2/relay |
-| `nhp_ac2_private_key` / `_public_key` | same | cluster 2 ac `config.toml`; peer table on server2 |
+| `nhp_jsagent_sm2_public_key` | same (derived via `--both`) | SM2 peer entry in `server/agent.toml`; lets cluster 1 js-agent knock in gmsm mode |
+| `demoapp_key_envelope_key` | `scripts/generate-nhp-keys.sh` (idempotent; generated via `openssl rand -base64 32` on first run) | demoapp `config.toml` `KeyEnvelopeKey`; AES-256 master that wraps each user's NHP private key at rest |
+| `demoapp_session_key` | same | demoapp `config.toml` `SessionKey`; signs the session cookie |
 | `cloudflare_api_token` | manually provisioned once | Terraform + certbot DNS-01 (`Zone:DNS:Edit` + `Zone:Zone:Read`) |
 | `cloudflare_zone_id` | same | Terraform DNS records for `opennhp.org` |
 | `stealth_ca_cert` | `infra-demo` workflow (from GitHub Secrets `STEALTH_CA_CERT`) | `tls_locally_signed_cert.demo_nhp` |
@@ -232,6 +246,15 @@ run (triggered by the `deploy-demo-v2` workflow).
 | `ssh_deploy_private_key` | manually bootstrapped (see `terraform/demo/RUNBOOK.md`); never enters Terraform state | CI SSH into EC2 hosts |
 | `ssh_deploy_public_key` | derived in CI via `ssh-keygen -y` and passed as `TF_VAR_deploy_public_key` | `aws_key_pair.deploy` → `ec2-user` authorized keys |
 | `ssh_host_keys` | `infra-demo` workflow on `apply` | CI `known_hosts` for strict host key checking |
+
+> Cluster 2 has been decommissioned. The corresponding fields
+> (`nhp_jsagent2_*`, `nhp_server2_*`, `nhp_ac2_*`) used to be listed here
+> alongside `nhp_jsagent_sm2_public_key`. Legacy values may still be
+> present in `opennhp/demo` for backwards compatibility but the
+> deploy pipeline no longer reads or writes these keys, no Terraform
+> resources reference them, and no config templates render them. Safe to
+> delete from `opennhp/demo` if desired (does not affect any running
+> cluster 1 host); the deploy script tolerates the field being absent.
 
 ### Key-generation flow
 

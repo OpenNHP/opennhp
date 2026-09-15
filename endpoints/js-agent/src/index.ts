@@ -68,6 +68,10 @@ export type {
   ServerRegisterAckMsg,
   OtpResult,
   RegisterResult,
+  AgentListMsg,
+  ServerListResultMsg,
+  ListResult,
+  ListServicesResult,
 } from './types.js';
 
 // Crypto utilities (for advanced usage)

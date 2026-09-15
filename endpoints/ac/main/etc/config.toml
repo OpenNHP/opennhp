@@ -2,7 +2,16 @@
 # field with (-) does not support dynamic update
 
 # ACId (-): specify the id of this AC.
-# PrivateKeyBase64 (-): AC private key in base64 format.
+# PrivateKeyBase64 (-): AC private key. Either a plain base64 key (default)
+#   or a sealed blob (starts with "v1$") produced by:
+#     echo "$KEY" | nhp-acd seal
+#   A sealed key is decrypted at startup with a passphrase supplied out of
+#   band. Prefer NHP_KEY_PASSPHRASE_FILE (a file, mode 0600) over
+#   NHP_KEY_PASSPHRASE: an env var is readable from the process environment,
+#   ends up in unit files and crash dumps, and is inherited by child
+#   processes. The passphrase env vars are consulted only when this value is
+#   a sealed blob, so a plain base64 key is unaffected by a stray
+#   NHP_KEY_PASSPHRASE_FILE left exported on the host.
 # DefaultCipherScheme: 0: curve25519, 1: gmsm.
 # MIGRATION: Values changed in v2.x. If upgrading: old 0(gmsm)->new 1, old 1(curve)->new 0.
 # IpPassMode:
@@ -23,3 +32,15 @@ LogLevel = 4
 AuthServiceId = "example"
 ResourceIds = ["demo"]
 FilterMode = 0
+# [Metrics]: optional Prometheus /metrics + JSON /healthz endpoint.
+#   Enabled: off by default. When true, a separate HTTP listener is started.
+#   ListenIp: bind address. Empty defaults to 127.0.0.1 so telemetry is not
+#     reachable off-host; set an explicit IP only if a scraper needs remote
+#     access (put it behind your own firewall / network policy in that case).
+#   ListenPort: TCP port, defaults to 9101 when empty/zero (distinct from the
+#     nhp-server default 9100 so a shared host does not collide).
+#   Note: read once at startup; changing it needs a restart.
+[Metrics]
+Enabled = false
+ListenIp = "127.0.0.1"
+ListenPort = 9101

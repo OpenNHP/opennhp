@@ -1,11 +1,7 @@
 package server
 
 import (
-	"encoding/base64"
-	"encoding/binary"
 	"time"
-
-	"github.com/emmansun/gmsm/sm3"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 )
@@ -24,22 +20,14 @@ func (e *ACTokenEntry) GetExpireTime() time.Time {
 	return e.ExpireTime
 }
 
-// GenerateAccessToken creates a new access token for the given entry.
+// GenerateAccessToken issues an opaque random access token for the entry.
+// The previous SM3 digest was computed from public metadata plus UnixNano,
+// which made the bearer credential susceptible to offline guessing when an
+// attacker had a timing signal.
 func (s *UdpServer) GenerateAccessToken(entry *ACTokenEntry) string {
-	var tsBytes [8]byte
-	currTime := time.Now().UnixNano()
-
-	hash := sm3.New()
-	binary.BigEndian.PutUint64(tsBytes[:], uint64(currTime))
-	au := entry.User
-	hash.Write([]byte(s.config.Hostname + au.UserId + au.DeviceId + au.OrganizationId + au.AuthServiceId))
-	hash.Write(tsBytes[:])
-	token := base64.StdEncoding.EncodeToString(hash.Sum(nil))
-	hash.Reset()
-
+	token := common.GenerateOpaqueToken()
 	entry.ExpireTime = time.Now().Add(time.Duration(entry.OpenTime) * time.Second)
 	s.tokenStore.Store(token, entry)
-
 	return token
 }
 

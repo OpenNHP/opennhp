@@ -22,6 +22,36 @@ updates:
       - "dependencies"
       - "go"
 
+  # Go modules - demoapp
+  # The demoapp module stores bcrypt hashes, terminates OAuth/OIDC, and
+  # hands out NHP private keys to authenticated users, so it is the
+  # highest-value target for missed dependency bumps. Without this entry
+  # it was the only Go module in the repo without Dependabot coverage
+  # (review follow-up to #1).
+  - package-ecosystem: "gomod"
+    directory: "/demoapp"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "go"
+
+  # npm - demoapp SPA
+  # js-agent (the browser-side NHP SDK) is bundled in via web/public/,
+  # not through demoapp/web/package.json, so Dependabot on this
+  # directory only covers the SPA's own deps (vite, typescript).
+  - package-ecosystem: "npm"
+    directory: "/demoapp/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "spa"
+
   # Go modules - examples
   - package-ecosystem: "gomod"
     directory: "/examples/server_plugin"

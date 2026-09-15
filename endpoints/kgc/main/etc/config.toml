@@ -1,6 +1,8 @@
 # KGC base config
 
 # MasterPrivateKeyBase64: base64 encoded master private key of KGC
+# NOTE: KGC keys are NOT covered by the `seal` command that the other daemons
+# ship — MasterPrivateKeyBase64 is always stored as plain base64 here.
 # MasterPublicKeyBase64: base64 encoded master public key of KGC
 # DefaultCipherScheme: 0: curve25519, 1: gmsm.
 # MIGRATION: Values changed in v2.x. If upgrading: old 0(gmsm)->new 1, old 1(curve)->new 0.

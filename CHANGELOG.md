@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/OpenNHP/opennhp/compare/v1.0.2...v1.1.0) (2026-09-15)
+
+
+### Features
+
+* **audit:** tamper-evident security audit ledger ([2f70729](https://github.com/OpenNHP/opennhp/commit/2f70729ea02ab5302393a4eae97f2e6442f53721))
+* **demo:** close nhp-server HTTP/HTTPS surface and demologin access ([0dfdbeb](https://github.com/OpenNHP/opennhp/commit/0dfdbeb451157bd7aabd19a9a1bc4a09dbb92de7))
+* **demo:** close nhp-server HTTP/HTTPS surface and demologin access ([7a42f89](https://github.com/OpenNHP/opennhp/commit/7a42f89103dd14df07f636a1235b2b7ebcbe5240))
+* **keystore:** encrypted private keys at rest (sealed keystore) ([e15fc75](https://github.com/OpenNHP/opennhp/commit/e15fc759bebff678e1414670ae933f355eb7168e))
+
+
+### Bug Fixes
+
+* **agent,db:** keyMu gap in two more readers; inverted cipher-scheme mapping ([e7dde78](https://github.com/OpenNHP/opennhp/commit/e7dde78eb0b3ea065be3807a3cce9b9cc2020faf))
+* **audit:** async rotation can split an entry; quarantine loses chain history ([9d2b68d](https://github.com/OpenNHP/opennhp/commit/9d2b68de4348a245ceaa28c6d22999c18ead34f1))
+* **audit:** drain timer deadlock; nil-ack recorded as granted; anchoring ([7183dce](https://github.com/OpenNHP/opennhp/commit/7183dcee406854dc41e13bb0ac2f3a080b12abee))
+* **audit:** foreign-file bypass on leading blank line; key-rotation false positive ([2682dc6](https://github.com/OpenNHP/opennhp/commit/2682dc63d8e313798e94c1e92ae4de16d5137f8b))
+* **audit:** govet shadow in new key-rotation test ([afc4967](https://github.com/OpenNHP/opennhp/commit/afc4967e4f27d8055d2309721c67226e37fa209a))
+* **audit:** invalid-UTF-8 false tampering verdict; fd leak; other review items ([154481a](https://github.com/OpenNHP/opennhp/commit/154481af4b00ba345998e1ea6b822990174ccc5e))
+* **demoapp:** realign demoapp go.sum with nhp x/crypto bump ([b83e351](https://github.com/OpenNHP/opennhp/commit/b83e351df721b27b95d5a5dbaadecd1eaef4a193))
+* **demoapp:** sync go.sum with bumped golang.org/x/crypto ([7d0894d](https://github.com/OpenNHP/opennhp/commit/7d0894da2de6dedfd403109e41323ffaad44bf19))
+* **demoapp:** sync go.sum with nhp's x/crypto bump ([88b3357](https://github.com/OpenNHP/opennhp/commit/88b3357a32a77345223dec7087bf86d2c0150539))
+* **deps:** re-sync endpoints/plugins after merge reverted the fix ([66ad28d](https://github.com/OpenNHP/opennhp/commit/66ad28d87b53a43b0c3fd69b50da19124bab2300))
+* **deps:** re-sync endpoints/plugins after repeated merge revert ([f73e810](https://github.com/OpenNHP/opennhp/commit/f73e8108d86d8f1f7f32817194c62b62611ba071))
+* **deps:** sync endpoints and plugin modules with nhp x/crypto bump ([83f78cf](https://github.com/OpenNHP/opennhp/commit/83f78cfdffcfdd691fd6454b47639148e2973fb8))
+* **keystore:** keyMu writer gap in config-reload watcher; passphrase hardening ([220501a](https://github.com/OpenNHP/opennhp/commit/220501ae3fa17e5ab2860650794e621360c63acd))
+* **keystore:** passphrase-file warning was landing on stdout for seal/unseal ([74ea66d](https://github.com/OpenNHP/opennhp/commit/74ea66d29593eb069a5c2c2379bc054ecddb06cc))
+* **keystore:** UpdateTomlConfig CRLF/duplicate-key bug; keyMu race; docs ([e40133e](https://github.com/OpenNHP/opennhp/commit/e40133e28ae914f6bcc1966978b60e41dbfbe528))
+* **metrics:** AC ok-counter false positives, too_short blind spot on relay/db ([61d20ce](https://github.com/OpenNHP/opennhp/commit/61d20ce50a751ae7c60515c3c9e86ec5afb0c4db))
+* **plugins:** realign plugin go.mod deps with endpoints bump ([4c92bae](https://github.com/OpenNHP/opennhp/commit/4c92bae61c536d14eb644ad98a71975c30ae73c4))
+
 ## [1.0.2](https://github.com/OpenNHP/opennhp/compare/v1.0.1...v1.0.2) (2026-09-11)
 
 

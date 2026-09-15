@@ -65,7 +65,7 @@ func TestIPRateLimiterConcurrentAccess(t *testing.T) {
 
 func TestPreCheckThreatCacheIsIPKeyedAndBounded(t *testing.T) {
 	c := newPreCheckThreatCache(4, int64(time.Minute))
-	for i := 0; i <= PreCheckThreatCountBeforeBlock; i++ {
+	for i := 0; i < 6; i++ {
 		if got := c.increment("203.0.113.10", int64(i)); got != int32(i+1) {
 			t.Fatalf("increment %d returned %d", i, got)
 		}
@@ -117,5 +117,34 @@ func TestRelayCannotBlockClaimedClient(t *testing.T) {
 	client := &net.UDPAddr{IP: net.ParseIP("198.51.100.90"), Port: 40000}
 	if blockAddressForConnection(&UdpConn{ConnData: &core.ConnectionData{RemoteAddr: relay, RealRemoteAddr: client}}) != nil {
 		t.Fatal("relay can block third-party address")
+	}
+}
+
+func TestIPRateLimiterRetainsDrainedBudgetAtCapacity(t *testing.T) {
+	r := newIPRateLimiter(1, 2, 1, int64(time.Minute))
+	if !r.allow("192.0.2.1", 0) {
+		t.Fatal("first packet rejected")
+	}
+	if r.allow("192.0.2.2", 0) {
+		t.Fatal("new source evicted drained budget")
+	}
+	if r.allow("192.0.2.1", 0) {
+		t.Fatal("drained source regained budget")
+	}
+	if !r.allow("192.0.2.2", int64(2*time.Second)) {
+		t.Fatal("replenished entry was not reused")
+	}
+}
+
+func TestIPRateLimiterSkipsDrainedEntryForReplenishedEntry(t *testing.T) {
+	r := newIPRateLimiter(1, 4, 2, int64(time.Minute))
+	r.allow("192.0.2.1", 0)
+	r.allow("192.0.2.1", 0)
+	r.allow("192.0.2.2", 0)
+	if !r.allow("192.0.2.3", int64(3*time.Second)) {
+		t.Fatal("replenished entry behind drained entry was not reused")
+	}
+	if _, ok := r.buckets["192.0.2.1"]; !ok {
+		t.Fatal("drained entry was evicted")
 	}
 }

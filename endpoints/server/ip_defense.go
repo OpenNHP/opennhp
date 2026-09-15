@@ -68,9 +68,18 @@ func (r *ipRateLimiter) allow(ip string, nowNanos int64) bool {
 	}
 	if b == nil {
 		if len(r.buckets) >= r.maxEntries {
-			oldest := r.lru.Back()
-			if oldest != nil {
-				r.remove(oldest.Value.(*ipRateBucket))
+			// Reuse only a fully replenished bucket. Keeping drained budgets
+			// prevents source rotation from resetting an active limit. Scan a
+			// fixed number of old entries to bound work under table pressure.
+			for e, checked := r.lru.Back(), 0; e != nil && checked < 8; e, checked = e.Prev(), checked+1 {
+				candidate := e.Value.(*ipRateBucket)
+				if nowNanos-candidate.lastSeenNanos >= r.burstNanos-candidate.allowanceNanos {
+					r.remove(candidate)
+					break
+				}
+			}
+			if len(r.buckets) >= r.maxEntries {
+				return false
 			}
 		}
 		// A fresh IP starts at half burst. This admits normal knock bursts while

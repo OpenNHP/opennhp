@@ -21,7 +21,6 @@ const (
 	MaxConcurrentHandlers           = 4096
 	BlockAddrRefreshRate            = 20                                   // 20 seconds
 	BlockAddrExpireTime             = 90                                   // 90 seconds
-	PreCheckThreatCountBeforeBlock  = 5                                    // block source address if packet precheck errors exceeds this count
 	DefaultAgentConnectionTimeoutMs = common.ClientSideConnectionTimeoutMs // 30 seconds to delete idle connection
 	DefaultACConnectionTimeoutMs    = common.ServerSideConnectionTimeoutMs // 300 seconds to delete idle connection
 	DefaultDBConnectionTimeoutMs    = common.ServerSideConnectionTimeoutMs // 300 seconds to delete idle connection
@@ -34,7 +33,7 @@ const (
 const (
 	PacketRatePerSecondPerIP = 100
 	PacketRateBurstPerIP     = 50
-	PacketRateMaxEntries     = 10_000
+	PacketRateMaxEntries     = 65_536
 	PacketRateIdleSeconds    = 120
 
 	PreCheckThreatCacheMaxEntries  = 10_000

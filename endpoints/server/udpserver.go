@@ -101,7 +101,7 @@ type UdpServer struct {
 
 	// block address management
 	blockAddrMapMutex sync.Mutex
-	blockAddrMap      map[string]*BlockAddr // indexed by source IP, need lock for dynamic change
+	blockAddrMap      map[string]*BlockAddr // indexed by remote UDP address, need lock for dynamic change
 
 	// rknLimiter gates the cookie-verify ECDH for RKN-under-overload per
 	// source IP. Shared (internally locked) between the direct-UDP receive

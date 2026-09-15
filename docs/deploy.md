@@ -338,7 +338,7 @@ Log levels:
 For a host-network or bare-metal server, run:
 
 ```sh
-sudo env NHP_TRUSTED_PEERS="192.0.2.10 2001:db8::10" docker/harden_nhp_server_udp.sh
+sudo env NHP_TRUSTED_PEERS="192.0.2.10 2001:db8::10" NHP_UDP_RECV_BUFFER_BYTES=8388608 docker/harden_nhp_server_udp.sh
 ```
 
 Replace these example addresses with the AC, relay, and peer-server addresses
@@ -363,3 +363,12 @@ socket. The script's sysctl and firewall changes do not survive reboot unless
 your host configuration manager persists them. Inspect drop counters with
 `sudo iptables -vnL NHP_KNOCK_GUARD` and
 `sudo ip6tables -vnL NHP_KNOCK_GUARD`.
+
+The helper only raises `rmem_max`; it never lowers an existing host ceiling.
+Pass `NHP_UDP_RECV_BUFFER_BYTES` explicitly through `sudo env` if the server
+uses an override (including a Compose `.env` value). Trusted CIDRs must have
+no host bits and must be at least /24 (IPv4) or /64 (IPv6). Rules are tested
+before each family is committed atomically with `iptables-restore --noflush`.
+The limit module quantizes rates; use divisors of 10,000 for exact nominal
+rates. The helper accepts at most 10,000 pps and a burst of at most 60 seconds
+of traffic. Larger deployments need an independently sized upstream filter.

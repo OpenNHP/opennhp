@@ -13,7 +13,8 @@ for value in "$PORT" "$GLOBAL_RATE" "$GLOBAL_BURST" "$RECV_BUFFER"; do
 done
 (( PORT <= 65535 )) || { echo "NHP_KNOCK_PORT must be <= 65535" >&2; exit 2; }
 (( RECV_BUFFER >= 65536 && RECV_BUFFER <= 1073741823 )) || { echo "receive buffer must be 65536..1073741823" >&2; exit 2; }
-for tool in iptables ip6tables sysctl python3; do
+(( GLOBAL_RATE <= 10000 && GLOBAL_BURST <= GLOBAL_RATE * 60 )) || { echo "rate must be <= 10000 pps and burst <= 60 seconds of traffic" >&2; exit 2; }
+for tool in iptables ip6tables iptables-restore ip6tables-restore sysctl python3; do
   command -v "$tool" >/dev/null || { echo "$tool is required (both IP families must be protected)" >&2; exit 1; }
 done
 # Validate every peer before changing either firewall. Hostnames are not allowed.
@@ -24,32 +25,49 @@ if not peers:
     sys.exit("set NHP_TRUSTED_PEERS to the AC, relay and peer-server IPs/CIDRs before enabling limits")
 try:
     for peer in peers:
-        net = ipaddress.ip_network(peer, strict=False)
-        if net.prefixlen == 0:
-            raise ValueError("a default route would exempt all traffic")
+        if "." not in peer and ":" not in peer:
+            raise ValueError("peer must be an explicit IP address or CIDR")
+        net = ipaddress.ip_network(peer, strict=True)
+        if net.prefixlen < (24 if net.version == 4 else 64):
+            raise ValueError("trusted CIDRs must be /24 or narrower for IPv4, /64 or narrower for IPv6")
         print(net.version, net)
 except ValueError as error:
     sys.exit(str(error))
 PYCODE
 )
 
-sysctl -w "net.core.rmem_max=$RECV_BUFFER"
+current=$(sysctl -n net.core.rmem_max)
+[[ "$current" =~ ^[0-9]{1,10}$ ]] || { echo "invalid current rmem_max" >&2; exit 1; }
+if (( current < RECV_BUFFER )); then
+  sysctl -w "net.core.rmem_max=$RECV_BUFFER"
+fi
+
+rules_dir=$(mktemp -d)
+trap 'rm -rf "$rules_dir"' EXIT
 for ipt in iptables ip6tables; do
   family=4
   [[ "$ipt" == ip6tables ]] && family=6
-  "$ipt" -w -N "$CHAIN" 2>/dev/null || "$ipt" -w -S "$CHAIN" >/dev/null
-  "$ipt" -w -F "$CHAIN"
-  while read -r peer_family peer; do
-    if [[ "$peer_family" == "$family" ]]; then
-      "$ipt" -w -A "$CHAIN" -s "$peer" -j RETURN
+  {
+    echo '*filter'
+    echo ":$CHAIN - [0:0]"
+    while read -r peer_family peer; do
+      if [[ "$peer_family" == "$family" ]]; then
+        echo "-A $CHAIN -s $peer -j RETURN"
+      fi
+    done <<< "$PEERS"
+    echo "-A $CHAIN -m limit --limit $GLOBAL_RATE/second --limit-burst $GLOBAL_BURST -j RETURN"
+    echo "-A $CHAIN -j DROP"
+    if ! "$ipt" -w -C INPUT -p udp --dport "$PORT" -j "$CHAIN" 2>/dev/null; then
+      echo "-I INPUT 1 -p udp --dport $PORT -j $CHAIN"
     fi
-  done <<< "$PEERS"
-  # One fixed-size bucket per family: no spoofable per-source allocation table.
-  # RETURN preserves the host's remaining INPUT rules; it does not grant access.
-  "$ipt" -w -A "$CHAIN" -m limit --limit "$GLOBAL_RATE/second" --limit-burst "$GLOBAL_BURST" -j RETURN
-  "$ipt" -w -A "$CHAIN" -j DROP
-  "$ipt" -w -C INPUT -p udp --dport "$PORT" -j "$CHAIN" 2>/dev/null || \
-    "$ipt" -w -I INPUT 1 -p udp --dport "$PORT" -j "$CHAIN"
+    echo COMMIT
+  } > "$rules_dir/$ipt"
+  "$ipt-restore" --test --noflush < "$rules_dir/$ipt"
+done
+# Each restore replaces only this chain atomically. A failed restore leaves
+# the previous rules active; never flush a chain that INPUT already uses.
+for ipt in iptables ip6tables; do
+  "$ipt-restore" --wait --noflush < "$rules_dir/$ipt"
 done
 
 echo "UDP $PORT protected in IPv4 and IPv6; untrusted aggregate=${GLOBAL_RATE}/s per family, burst=$GLOBAL_BURST."

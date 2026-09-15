@@ -351,7 +351,7 @@ Docker bridge deployments need equivalent rules in their own packet path.
 The fixed-size aggregate bucket defaults to 5,000 packets/s and a 10,000-packet
 burst **per IP family**, shared by all untrusted clients. Set
 `NHP_KNOCK_GLOBAL_RATE_PPS` and `NHP_KNOCK_GLOBAL_RATE_BURST` from measured host
-capacity and expected peak traffic. Saturation can drop legitimate untrusted
+capacity and expected peak traffic. A single source sending at the configured rate can deny all new untrusted
 traffic. There is no kernel per-source table to exhaust and no separate small
 per-IP cap that penalizes NAT clients. Authenticated peer separation and the
 server's userspace limits remain necessary.
@@ -372,3 +372,11 @@ before each family is committed atomically with `iptables-restore --noflush`.
 The limit module quantizes rates; use divisors of 10,000 for exact nominal
 rates. The helper accepts at most 10,000 pps and a burst of at most 60 seconds
 of traffic. Larger deployments need an independently sized upstream filter.
+
+The optional aggregate firewall guard sets a ceiling on host packet work; it is
+not per-client fairness. A single source can consume that ceiling and deny all
+new agent knocks until the flood stops. Leave this helper disabled if upstream
+DDoS filtering does not control that risk; the server cookie and overload checks
+remain available. Loopback traffic is exempt before rate checks, as are the
+configured infrastructure peers. Firewall replacement is atomic per IP family,
+not across IPv4 and IPv6; an apply failure reports which family was updated.

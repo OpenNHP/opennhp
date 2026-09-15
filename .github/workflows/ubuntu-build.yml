@@ -28,6 +28,11 @@ jobs:
           endpoints/go.sum
           demoapp/go.sum
 
+    - name: Test optional firewall helper
+      run: |
+        bash -n docker/harden_nhp_server_udp.sh
+        python3 docker/test_harden_nhp_server_udp.py
+
     - name: Build
       run: make
 

@@ -50,6 +50,7 @@ for ipt in iptables ip6tables; do
   {
     echo '*filter'
     echo ":$CHAIN - [0:0]"
+    echo "-A $CHAIN -i lo -j RETURN"
     while read -r peer_family peer; do
       if [[ "$peer_family" == "$family" ]]; then
         echo "-A $CHAIN -s $peer -j RETURN"
@@ -57,17 +58,25 @@ for ipt in iptables ip6tables; do
     done <<< "$PEERS"
     echo "-A $CHAIN -m limit --limit $GLOBAL_RATE/second --limit-burst $GLOBAL_BURST -j RETURN"
     echo "-A $CHAIN -j DROP"
-    if ! "$ipt" -w -C INPUT -p udp --dport "$PORT" -j "$CHAIN" 2>/dev/null; then
+    if ! "$ipt" -w -C INPUT -p udp --dport "$PORT" -j "$CHAIN" >/dev/null 2>&1; then
       echo "-I INPUT 1 -p udp --dport $PORT -j $CHAIN"
     fi
     echo COMMIT
   } > "$rules_dir/$ipt"
   "$ipt-restore" --test --noflush < "$rules_dir/$ipt"
 done
-# Each restore replaces only this chain atomically. A failed restore leaves
-# the previous rules active; never flush a chain that INPUT already uses.
+# Each restore replaces only this chain atomically within one IP family.
+# The two families cannot commit together. Report partial application clearly.
 for ipt in iptables ip6tables; do
-  "$ipt-restore" --wait --noflush < "$rules_dir/$ipt"
+  if ! "$ipt-restore" --wait --noflush < "$rules_dir/$ipt"; then
+    if [[ "$ipt" == ip6tables ]]; then
+      echo "IPv4 applied, IPv6 FAILED: host is in a mixed firewall state. Correct the IPv6 error and rerun this helper." >&2
+    else
+      echo "IPv4 FAILED: neither family updated. Correct the error and rerun this helper." >&2
+    fi
+    echo "The receive-buffer sysctl may already have been raised." >&2
+    exit 1
+  fi
 done
 
 echo "UDP $PORT protected in IPv4 and IPv6; untrusted aggregate=${GLOBAL_RATE}/s per family, burst=$GLOBAL_BURST."

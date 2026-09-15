@@ -44,6 +44,7 @@ type ACEtcdConfig struct {
 }
 
 type Config struct {
+	AOPReplayCacheEntries   int             `json:"aopReplayCacheEntries"`   // Restart-only; zero selects 100000.
 	AOPRecvStalenessSeconds int             `json:"aopRecvStalenessSeconds"` // Zero uses 120 seconds; configurable up to 600.
 	PrivateKeyBase64        string          `json:"privateKey"`
 	ACId                    string          `json:"acId"`

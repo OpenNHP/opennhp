@@ -172,13 +172,20 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	a.remoteConnectionMap = make(map[string]*UdpConn)
 	a.serverPeerMap = make(map[string]*core.UdpPeer)
 	a.tokenStore = common.NewTokenStore[*AccessEntry]()
-	if a.config.AOPRecvStalenessSeconds < 0 || a.config.AOPRecvStalenessSeconds > 600 {
-		return fmt.Errorf("AOPRecvStalenessSeconds must be between 0 and 600")
+	if a.config.AOPRecvStalenessSeconds < 0 || a.config.AOPRecvStalenessSeconds > core.DefaultRecvStalenessFloorSeconds {
+		return fmt.Errorf("AOPRecvStalenessSeconds must be between 0 and %d, got %d", core.DefaultRecvStalenessFloorSeconds, a.config.AOPRecvStalenessSeconds)
 	}
 	options := a.device.GetOption()
 	options.AOPRecvStalenessSeconds = a.config.AOPRecvStalenessSeconds
 	a.device.SetOption(options)
-	a.aopReplay = newAOPReplayCache()
+	if a.config.AOPReplayCacheEntries < 0 || a.config.AOPReplayCacheEntries > 1_000_000 {
+		return fmt.Errorf("AOPReplayCacheEntries must be between 0 and 1000000, got %d", a.config.AOPReplayCacheEntries)
+	}
+	entries := a.config.AOPReplayCacheEntries
+	if entries == 0 {
+		entries = aopReplayCacheSize
+	}
+	a.aopReplay = newAOPReplayCacheWithParams(entries, aopReplayCacheTTL)
 
 	if a.etcdConn != nil {
 		_ = a.loadRemoteConfig()

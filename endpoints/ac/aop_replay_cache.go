@@ -4,9 +4,10 @@ import (
 	"encoding/base64"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/hashicorp/golang-lru/v2/expirable"
+	"github.com/hashicorp/golang-lru/v2/simplelru"
 
 	"github.com/OpenNHP/opennhp/nhp/core"
 )
@@ -17,8 +18,8 @@ import (
 // State is process-local: a restart clears it; the AOP staleness check limits
 // the remaining replay window. Entries can also be lost under capacity pressure.
 const (
-	aopReplayCacheSize = 10_000
-	aopReplayCacheTTL  = 11 * time.Minute
+	aopReplayCacheSize = 100_000
+	aopReplayCacheTTL  = (core.DefaultRecvStalenessFloorSeconds + 60) * time.Second
 	// pubkeyFingerprintLen is the truncation budget for the
 	// log-line fingerprint emitted on duplicate-drops. 12 base64
 	// chars ≈ 9 bytes (~72 bits) of pubkey entropy — enough to
@@ -32,32 +33,32 @@ const (
 	pubkeyFingerprintLen = 12
 )
 
-// aopReplayCache is a bounded, TTL-expiring set of recently
-// observed (sender_pubkey, txid, send_time) triples.
-//
-// recvMessageRoutine dispatches each NHP_AOP to a fresh goroutine
-// (`go a.HandleUdpACOperations(ppd)` in udpac.go), so MarkSeen
-// must be safe under concurrent invocation. expirable.LRU is
-// internally thread-safe but the natural Contains-then-Add idiom
-// has a TOCTOU window where two replays of the same packet both
-// observe "not seen" and both pass; the mutex closes that.
+// aopReplayCache is a bounded set with lazy expiry. It owns no goroutine.
+// The outer mutex makes lookup and insertion one operation.
 type aopReplayCache struct {
-	mu  sync.Mutex
-	lru *expirable.LRU[string, struct{}]
+	mu                sync.Mutex
+	lru               *simplelru.LRU[string, time.Time]
+	ttl               time.Duration
+	capacityEvictions atomic.Uint64
 }
 
 func newAOPReplayCache() *aopReplayCache {
 	return newAOPReplayCacheWithParams(aopReplayCacheSize, aopReplayCacheTTL)
 }
 
-// newAOPReplayCacheWithParams builds a cache with caller-supplied
-// size and TTL. Production wires the constants via
-// newAOPReplayCache; tests pass short values so TTL-eviction paths
-// run without 5-minute waits.
+// newAOPReplayCacheWithParams allows short TTLs and small capacities in tests.
 func newAOPReplayCacheWithParams(size int, ttl time.Duration) *aopReplayCache {
-	return &aopReplayCache{
-		lru: expirable.NewLRU[string, struct{}](size, nil, ttl),
-	}
+	c := &aopReplayCache{ttl: ttl}
+	var err error
+	c.lru, err = simplelru.NewLRU[string, time.Time](size, func(_ string, expires time.Time) {
+		if time.Now().Before(expires) {
+			c.capacityEvictions.Add(1)
+		}
+	})
+	if err != nil {
+		panic(err)
+	} // sizes are validated at startup; tests use positive sizes.
+	return c
 }
 
 // MarkSeen records the (peerPubkey, txid, sendTime) triple and
@@ -67,7 +68,7 @@ func newAOPReplayCacheWithParams(size int, ttl time.Duration) *aopReplayCache {
 // Caller contract — peerPubkey and sendTime must both be the
 // AEAD-authenticated values from PacketParserData
 // (ppd.RemotePubKey and ppd.RemoteSendTime). The handler-level
-// `len(ppd.RemotePubKey) == 0` guard in HandleUdpACOperations is
+// public-key length guard in HandleUdpACOperations is
 // the canonical place to reject upstream-invariant violations
 // (validatePeer should always populate RemotePubKey); MarkSeen
 // returning false on an empty pubkey is fail-closed insurance, not
@@ -87,10 +88,11 @@ func (c *aopReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if _, exists := c.lru.Get(key); exists {
+	now := time.Now()
+	if expires, exists := c.lru.Get(key); exists && now.Before(expires) {
 		return false
 	}
-	c.lru.Add(key, struct{}{})
+	c.lru.Add(key, now.Add(c.ttl))
 	return true
 }
 

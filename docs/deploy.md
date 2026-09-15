@@ -336,3 +336,11 @@ configuration to 1..600 seconds if a deployment needs more tolerance; zero
 selects 120. Restart the AC after changes. A larger limit also widens the
 post-restart replay window. Replay and missing-key drops have metric stages
 `aop_replay` and `no_peer_pubkey`.
+
+AOP replay-cache capacity is configured with `AOPReplayCacheEntries` on the AC
+(restart required; zero selects 100,000; maximum 1,000,000). Size it for peak
+AOP packets/s times 660 seconds. Alert on
+`nhp_ac_aop_replay_cache_evictions_total`: unexpired capacity evictions shorten
+replay coverage. Expiry is lazy and memory remains bounded without a cleanup
+goroutine. TTL derives from the maximum accepted staleness plus 60 seconds.
+AOP future timestamps remain unbounded; synchronize infrastructure clocks.

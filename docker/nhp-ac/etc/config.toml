@@ -1,3 +1,5 @@
+# AOPRecvStalenessSeconds (-): 0 selects 120 seconds, maximum 600; restart required.
+# AOPReplayCacheEntries (-): 0 selects 100000, maximum 1000000; restart required.
 # NHP-Agent base config
 # field with (-) does not support dynamic update
 

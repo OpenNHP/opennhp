@@ -308,3 +308,18 @@ func TestPubkeyFingerprint_StableAndTruncated(t *testing.T) {
 		t.Errorf("pubkeyFingerprint not stable: %q vs %q", got, again)
 	}
 }
+
+func TestAOPReplayCapacityEvictionsExcludeExpiry(t *testing.T) {
+	c := newAOPReplayCacheWithParams(1, time.Hour)
+	c.MarkSeen(pubkeyN('A'), 1, testSendTime)
+	c.MarkSeen(pubkeyN('A'), 2, testSendTime)
+	if got := c.capacityEvictions.Load(); got != 1 {
+		t.Fatalf("evictions = %d", got)
+	}
+	expired := newAOPReplayCacheWithParams(1, -time.Second)
+	expired.MarkSeen(pubkeyN('A'), 1, testSendTime)
+	expired.MarkSeen(pubkeyN('A'), 2, testSendTime)
+	if got := expired.capacityEvictions.Load(); got != 0 {
+		t.Fatalf("expired entry counted: %d", got)
+	}
+}

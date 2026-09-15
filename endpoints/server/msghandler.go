@@ -21,6 +21,11 @@ import (
 	utils "github.com/OpenNHP/opennhp/nhp/utils"
 )
 
+var (
+	errReadConfigFailed = errors.New("ztdo config read failed")
+	errSaveConfigFailed = errors.New("ztdo config save failed")
+)
+
 // relayConnKeyPrefix is what every relay-forwarded connection's mapKey
 // begins with (see HandleRelayForward). Used by helpers below to
 // distinguish relay-forwarded entries from direct UDP entries.
@@ -43,11 +48,6 @@ const relayConnKeySep = "|"
 // The map key is in-memory only (never persisted, never wire-
 // serialized), so the '|' separator is a free invariant — see
 // relayConnKeySep for why we picked it over ':'.
-var (
-	errReadConfigFailed = errors.New("ztdo config read failed")
-	errSaveConfigFailed = errors.New("ztdo config save failed")
-)
-
 func relayAddrFromConnKey(mapKey string) string {
 	if !strings.HasPrefix(mapKey, relayConnKeyPrefix) {
 		return ""
@@ -637,7 +637,7 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 		dagMsg.ErrCode = 1
 		dagMsg.ErrMsg = err.Error()
 	} else if attErr := s.onAttestationVerify(&config.Spo, davMsg.Evidence); attErr != nil {
-		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attesation: %s with error: %s", transactionId, addrStr, davMsg.Evidence, attErr.Error())
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attestation: %s", transactionId, addrStr, attErr.Error())
 		return attErr
 	} else {
 		dagMsg.DoId = doId

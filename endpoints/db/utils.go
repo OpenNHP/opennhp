@@ -92,12 +92,23 @@ func (d *DataPrivateKeyStore) Save(doId string) error {
 		log.Error("db[DataPrivateKeyStore.Save] DoId=%q create: %v", common.TruncateDoIDForLog(doId), err)
 		return common.ErrDataPrivateKeyStore
 	}
-	defer func() { _ = file.Close() }()
+	saved := false
+	defer func() {
+		_ = file.Close()
+		if !saved {
+			_ = os.Remove(fullPath)
+		}
+	}()
 
 	if _, err := file.Write(d.toJson()); err != nil {
 		log.Error("db[DataPrivateKeyStore.Save] DoId=%q write: %v", common.TruncateDoIDForLog(doId), err)
 		return common.ErrDataPrivateKeyStore
 	}
+	if err := file.Close(); err != nil {
+		return common.ErrDataPrivateKeyStore
+	}
+	saved = true
+
 	return nil
 }
 

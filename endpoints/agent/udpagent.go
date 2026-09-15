@@ -1380,7 +1380,7 @@ func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOut
 		// update smart data policy refresh time
 		a.smartDataPolicyRefreshTime[ztdoId] = time.Now().UnixNano()
 
-		log.Info("[StartConfidentialComputing] Refresh smart data policy for data object which id is %s", common.TruncateDoIDForLog(ztdoId))
+		log.Info("[StartConfidentialComputing] Refresh smart data policy for data object which id is %q", common.TruncateDoIDForLog(ztdoId))
 
 		if !decrypted {
 			output, err = utils.GenerateTempFilePath("plaintext-*")

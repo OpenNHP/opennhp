@@ -11,6 +11,8 @@ import (
 func TestDownloadFileToTempCleansPartialDownloadOnError(t *testing.T) {
 	tempRoot := t.TempDir()
 	t.Setenv("TMPDIR", tempRoot)
+	t.Setenv("TMP", tempRoot)
+	t.Setenv("TEMP", tempRoot)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "nope", http.StatusInternalServerError)
@@ -33,6 +35,8 @@ func TestDownloadFileToTempCleansPartialDownloadOnError(t *testing.T) {
 func TestDownloadFileToTempKeepsSuccessfulDownload(t *testing.T) {
 	tempRoot := t.TempDir()
 	t.Setenv("TMPDIR", tempRoot)
+	t.Setenv("TMP", tempRoot)
+	t.Setenv("TEMP", tempRoot)
 
 	const body = "valid wasm placeholder"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

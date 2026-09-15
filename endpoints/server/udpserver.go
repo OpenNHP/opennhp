@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -14,8 +15,10 @@ import (
 
 	"github.com/OpenNHP/opennhp/nhp/etcd"
 
+	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/plugins"
 	"github.com/OpenNHP/opennhp/nhp/utils"
@@ -45,6 +48,16 @@ type UdpServer struct {
 	httpServer *HttpServer
 	wg         sync.WaitGroup
 	running    atomic.Bool
+	// healthy gates /healthz: set true just before the metrics endpoint
+	// starts (so a probe in the startup window is not told "stopping") and
+	// false at the top of Stop.
+	healthy atomic.Bool
+
+	// observability: metrics are always collected; metricsServer is the
+	// opt-in /metrics + /healthz listener (nil when disabled).
+	startTime     time.Time
+	metrics       *serverMetrics
+	metricsServer *metricsServer
 
 	// Atomic mirrors of Config bool fields that are read on hot paths
 	// (per-packet handlers, per-connection teardown) while updateBaseConfig
@@ -125,6 +138,19 @@ type UdpServer struct {
 
 	// keyStore persists agent public keys and OTP records in SQLite.
 	keyStore *AgentKeyStore
+
+	// auditLedger is the tamper-evident security audit ledger. nil when
+	// auditing is disabled (the default). Emission goes through the nil-safe
+	// auditEvent helper, so a bare call is always safe; the handlers still
+	// wrap their whole build-the-fields block in an `if s.auditLedger != nil`
+	// to skip that work entirely when auditing is off.
+	auditLedger *audit.Ledger
+
+	// auditWriteFails counts CONSECUTIVE ledger write failures so a sustained
+	// outage (disk full, file made unwritable) escalates to a rate-limited
+	// Critical instead of scrolling past as a single Error line. Reset to 0 on
+	// the next successful write.
+	auditWriteFails atomic.Uint64
 
 	//NHP-DB
 	dbPeerMapMutex sync.Mutex
@@ -233,6 +259,47 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		return err
 	}
 
+	// Initialize the tamper-evident audit ledger if enabled, BEFORE any
+	// listener binds. By default a failure here is logged but never blocks
+	// startup: refusing to boot the gateway because an audit file can't be
+	// opened would turn a logging problem into an outage, and initAuditLedger
+	// already recovers a corrupt file by quarantining it and starting a fresh
+	// chain. An operator who requires an uninterrupted trail sets [Audit]
+	// FailClosed, which turns any such failure into a hard startup error —
+	// and that has to happen here, before loadHttpConfig() starts the HTTP
+	// knock listener and before the UDP socket is opened, or "fail closed"
+	// would still have served requests in the gap. initAuditLedger depends
+	// only on s.config.Audit and ExeDirPath, both already set.
+	if auditErr := s.initAuditLedger(); auditErr != nil {
+		// A pure [Audit] config mistake (bad base64 / too-short signing key)
+		// is always fatal — running on with no trail because of a typo is
+		// worse than the weak key the check protects against. Only an I/O
+		// failure honors the fail-safe / fail-closed trade-off below.
+		if errors.Is(auditErr, errAuditConfig) {
+			return fmt.Errorf("invalid [Audit] configuration: %w", auditErr)
+		}
+		if s.config != nil && s.config.Audit.FailClosed {
+			return fmt.Errorf("audit ledger unavailable and [Audit] FailClosed is set — refusing to start: %w", auditErr)
+		}
+		log.Critical("audit ledger disabled — failed to open: %v", auditErr)
+	}
+	if s.auditLedger != nil {
+		// Stop() is a no-op until s.running is set, which only happens at
+		// the very end of a successful Start — so an error returned by
+		// anything below this point (a bad listen address, a config load
+		// failure further down, ...) would otherwise leak the ledger's file
+		// handle and, in Async mode, its drain goroutine, with no code path
+		// left that ever closes it. Guarded on the named return `err`, so
+		// this is a no-op on the ordinary success path, where Stop's own
+		// call to closeAuditLedger (on the later, real shutdown) is what
+		// closes it.
+		defer func() {
+			if err != nil {
+				s.closeAuditLedger()
+			}
+		}()
+	}
+
 	var netIP net.IP
 	if len(s.config.ListenIp) > 0 {
 		netIP = net.ParseIP(s.config.ListenIp)
@@ -262,14 +329,28 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 	s.listenAddrStr = s.listenAddr.String()
 
-	prk, err := base64.StdEncoding.DecodeString(s.config.PrivateKeyBase64)
+	prk, sealed, err := keystore.ResolvePrivateKeyAuto(s.config.PrivateKeyBase64)
 	if err != nil {
 		log.Error("private key parse error: %v", err)
 		return fmt.Errorf("private key parse error %v", err)
 	}
+	if sealed {
+		log.Info("server private key is sealed; unsealed at startup with the configured passphrase")
+		if path, mode, permissive := keystore.PassphraseFilePermissive(); permissive {
+			log.Warning("passphrase file %s is mode %o — restrict it to 0600", path, mode)
+		}
+	}
 
 	option := &core.DeviceOptions{
 		DisableAgentPeerValidation: s.config.DisableAgentValidation,
+		// Count packets dropped before they become a decrypted message —
+		// the most interesting attack signal for a network-hiding product,
+		// and the one seam the rest of the metrics wiring doesn't see
+		// (everything else is instrumented post-decryption). s.metrics is
+		// assigned below before s.device.Start() launches the packet
+		// routines, and recordDroppedPacket is nil-receiver safe, so the
+		// closure is safe to install here.
+		OnPacketDropped: func(stage string) { s.metrics.recordDroppedPacket(stage) },
 	}
 	s.device = core.NewDevice(core.NHP_SERVER, prk, option)
 	if s.device == nil {
@@ -395,6 +476,19 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.sendMsgCh = make(chan *core.MsgData, core.SendQueueSize)
 	s.handlerSem = make(chan struct{}, MaxConcurrentHandlers)
 
+	// observability: always collect metrics; the /metrics + /healthz listener
+	// is opt-in via [Metrics] in config.toml and binds locally by default.
+	s.startTime = time.Now()
+	s.metrics = newServerMetrics(s, s.startTime)
+	if s.config.Metrics.Enabled {
+		s.healthy.Store(true) // /healthz answers "ok" from here until Stop
+		s.metricsServer = newMetricsServer(s)
+		if startErr := s.metricsServer.start(); startErr != nil {
+			log.Error("[Metrics] endpoint failed to start: %v", startErr)
+			s.metricsServer = nil
+		}
+	}
+
 	// Register keystore-backed peer lookup fallback so dynamically
 	// registered agents (via NHP-REG) are accepted even though they
 	// are not in the static agent.toml peer pool.
@@ -472,9 +566,13 @@ func (s *UdpServer) Stop() {
 		return
 	}
 	s.running.Store(false)
+	s.healthy.Store(false)
 	// stop http server first
 	if s.httpServer != nil {
 		s.httpServer.Stop()
+	}
+	if s.metricsServer != nil {
+		s.metricsServer.stop()
 	}
 	if s.etcdConn != nil {
 		s.etcdConn.Close()
@@ -490,6 +588,8 @@ func (s *UdpServer) Stop() {
 	if s.keyStore != nil {
 		s.keyStore.Close()
 	}
+
+	s.closeAuditLedger()
 
 	log.Info("==========================")
 	log.Info("=== NHP-Server stopped ===")
@@ -587,6 +687,7 @@ func (s *UdpServer) recvPacketRoutine() {
 		// check minimal length
 		if n < pkt.MinimalLength() {
 			s.device.ReleasePoolPacket(pkt)
+			s.metrics.recordDroppedPacket("too_short")
 			log.Error("Received UDP packet from %s is too short, discard", addrStr)
 			continue
 		}
@@ -594,6 +695,10 @@ func (s *UdpServer) recvPacketRoutine() {
 		// check if it is from blocked address
 		if s.IsBlockAddr(remoteAddr) {
 			s.device.ReleasePoolPacket(pkt)
+			// Counted so a flood stays visible AFTER the source is
+			// block-listed — otherwise rate(...dropped_total) falls exactly
+			// when an attack escalates past the threat threshold.
+			s.metrics.recordDroppedPacket("blocked")
 			log.Critical("Remote address %s is being blocked at the moment, discard.", addrStr)
 			continue
 		}
@@ -613,6 +718,10 @@ func (s *UdpServer) recvPacketRoutine() {
 				s.AddBlockAddr(remoteAddr)
 			}
 			s.device.ReleasePoolPacket(pkt)
+			// The outermost drop — malformed magic/version, background scan
+			// traffic. It never reaches the OnPacketDropped hook (that fires
+			// inside packetToMsgRoutine), so record it here.
+			s.metrics.recordDroppedPacket("precheck")
 			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, s.listenAddrStr, err)
 			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, s.listenAddrStr, err)
 			continue
@@ -633,6 +742,7 @@ func (s *UdpServer) recvPacketRoutine() {
 		if pkt.HeaderType == core.NHP_RKN && s.device.IsOverload() {
 			if !s.rknLimiter.allow(remoteAddr, recvTime) {
 				s.device.ReleasePoolPacket(pkt)
+				s.metrics.recordDroppedPacket("rate_limited")
 				log.Warning("RKN from %s dropped: per-IP rate limit exceeded under overload", addrStr)
 				continue
 			}
@@ -652,6 +762,7 @@ func (s *UdpServer) recvPacketRoutine() {
 			if !s.globalCapAdmits() {
 				log.Critical("Reached maximum concurrent connection, discarding packet from: %s", addrStr)
 				s.device.ReleasePoolPacket(pkt)
+				s.metrics.recordDroppedPacket("conn_limit")
 				continue
 			}
 
@@ -926,6 +1037,12 @@ func (s *UdpServer) AddBlockAddr(addr *net.UDPAddr) {
 	log.Critical("add blocking address %s", addrStr)
 
 	if len(s.blockAddrMap) < MaxConcurrentConnection {
+		// Count only newly blocked sources; re-blocking an address that is
+		// already in the pool just refreshes its expiry and shouldn't inflate
+		// the counter.
+		if _, already := s.blockAddrMap[addrStr]; !already {
+			s.metrics.recordBlockedAddr()
+		}
 		s.blockAddrMap[addrStr] = &BlockAddr{addr, time.Now().Add(BlockAddrExpireTime * time.Second)}
 	} else {
 		log.Warning("block address pool is full")
@@ -986,9 +1103,10 @@ func (s *UdpServer) dispatchHandler(ppd *core.PacketParserData, fn func(*core.Pa
 	select {
 	case s.handlerSem <- struct{}{}:
 	default:
+		msgType := core.HeaderTypeToString(ppd.HeaderType)
+		s.metrics.recordHandlerDropped(msgType)
 		log.Warning("handler goroutine budget (%d) exhausted, dropping %s from %s",
-			MaxConcurrentHandlers, core.HeaderTypeToString(ppd.HeaderType),
-			ppd.ConnData.RemoteAddr.String())
+			MaxConcurrentHandlers, msgType, ppd.ConnData.RemoteAddr.String())
 		return
 	}
 	go func(p *core.PacketParserData) {
@@ -1026,6 +1144,8 @@ func (s *UdpServer) recvMessageRoutine() {
 				// recvMsgCh is closed
 				continue
 			}
+
+			s.metrics.recordMessageReceived(core.HeaderTypeToString(ppd.HeaderType))
 
 			switch ppd.HeaderType {
 			case core.NHP_KNK, core.NHP_RKN, core.NHP_EXT, core.DHP_KNK:
@@ -1233,6 +1353,10 @@ func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACCon
 		err = common.ErrACEmptyPassAddress
 		artMsg.ErrCode = common.ErrACEmptyPassAddress.ErrorCode()
 		artMsg.ErrMsg = err.Error()
+		// A resource misconfiguration (not an internal "should not happen"),
+		// so it belongs in the error series — but no server→AC round trip
+		// happened, so record the outcome only, not a duration sample.
+		s.metrics.recordACOutcome(false)
 		return
 	}
 
@@ -1280,6 +1404,15 @@ func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACCon
 		artMsg.ErrMsg = err.Error()
 		return
 	}
+
+	// Only now do we actually attempt the server→AC round trip, so arm the
+	// duration/outcome metric here — the early not-running guard above
+	// returned without touching the AC and shouldn't show up as an AC
+	// operation.
+	start := time.Now()
+	defer func() {
+		s.metrics.recordACOperation(err == nil, time.Since(start).Seconds())
+	}()
 
 	s.sendMsgCh <- aopMd
 

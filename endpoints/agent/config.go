@@ -6,11 +6,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 
 	toml "github.com/pelletier/go-toml/v2"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
@@ -32,6 +35,78 @@ type Config struct {
 	PrivateKeyBase64    string `json:"privateKey"`
 	KnockUser           `mapstructure:",squash"`
 	*DHPConfig
+
+	// resolvedPrivateKey caches the raw private key after PrivateKeyBase64
+	// has been resolved once at startup (plain base64 or an unsealed blob).
+	// GetAgentEcdh reads it so it does not re-run the unseal KDF on every
+	// call and does not silently mis-handle a sealed key. Populated by the
+	// agent's Start (and refreshed by ReinitWithKey). Unexported, so it is
+	// already skipped by encoding/json and mapstructure — no tag needed.
+	//
+	// Guarded by keyMu: ReinitWithKey rewrites PrivateKeyBase64,
+	// DefaultCipherScheme and resolvedPrivateKey together during a rekey,
+	// while an in-flight /publicKey request may be reading any of the
+	// three (GetAgentEcdh) — none of them may be touched lock-free. Use
+	// SetResolvedPrivateKey / SetPrivateKeyMaterial to write and
+	// GetAgentEcdh's own locking to read, rather than the fields directly.
+	keyMu              sync.RWMutex
+	resolvedPrivateKey []byte
+
+	// sealedMissLogged rate-limits the "sealed key not yet resolved" error to
+	// once per process: the /publicKey handler reaches GetAgentEcdh, so a
+	// client polling it while the cache is (wrongly) empty could otherwise
+	// grow the error log without bound.
+	sealedMissLogged atomic.Bool
+}
+
+// SetResolvedPrivateKey stores the raw private key resolved at startup (or
+// swapped in by a rekey). Safe for concurrent use with GetAgentEcdh.
+func (c *Config) SetResolvedPrivateKey(prk []byte) {
+	c.keyMu.Lock()
+	c.resolvedPrivateKey = prk
+	c.keyMu.Unlock()
+}
+
+// SetPrivateKeyMaterial atomically replaces the base64 config value, cipher
+// scheme, and resolved raw key together. ReinitWithKey rewrites all three
+// on a rekey; setting them one field at a time (as ordinary assignment
+// would) lets a concurrently-running GetAgentEcdh read a torn mix of the
+// old and new key.
+func (c *Config) SetPrivateKeyMaterial(base64Key string, cipherScheme int, raw []byte) {
+	c.keyMu.Lock()
+	c.PrivateKeyBase64 = base64Key
+	c.DefaultCipherScheme = cipherScheme
+	c.resolvedPrivateKey = raw
+	c.keyMu.Unlock()
+}
+
+// SetCipherScheme updates DefaultCipherScheme alone, under keyMu. The
+// config-reload watcher (updateBaseConfig) is the one writer that changes
+// this field outside a full rekey; GetAgentEcdh reads it under the same
+// lock, so an unsynchronized bare assignment here would race a concurrent
+// /publicKey request — go test -race flags exactly that.
+func (c *Config) SetCipherScheme(scheme int) {
+	c.keyMu.Lock()
+	c.DefaultCipherScheme = scheme
+	c.keyMu.Unlock()
+}
+
+// GetCipherScheme reads DefaultCipherScheme under keyMu — the read-side
+// counterpart callers outside Start (single-threaded, so safe to touch the
+// field directly) must use instead of the field, matching SetCipherScheme.
+func (c *Config) GetCipherScheme() int {
+	c.keyMu.RLock()
+	defer c.keyMu.RUnlock()
+	return c.DefaultCipherScheme
+}
+
+// GetPrivateKeyBase64 reads PrivateKeyBase64 under keyMu, matching how
+// SetPrivateKeyMaterial writes it. Prefer this over the field directly from
+// any caller that cannot rule out running concurrently with a rekey.
+func (c *Config) GetPrivateKeyBase64() string {
+	c.keyMu.RLock()
+	defer c.keyMu.RUnlock()
+	return c.PrivateKeyBase64
 }
 
 type DHPConfig struct {
@@ -39,29 +114,53 @@ type DHPConfig struct {
 }
 
 func (c *Config) GetAgentEcdh() core.Ecdh {
+	// Read the whole key triple under one lock — DefaultCipherScheme and
+	// PrivateKeyBase64 are rewritten together with resolvedPrivateKey by
+	// ReinitWithKey (see SetPrivateKeyMaterial), and reading them
+	// separately could observe a torn mix of the old and new key.
+	c.keyMu.RLock()
+	cipherScheme := c.DefaultCipherScheme
+	privB64 := c.PrivateKeyBase64
+	prk := c.resolvedPrivateKey
+	c.keyMu.RUnlock()
+
 	eccType := core.ECC_SM2
-	if c.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
+	if cipherScheme == common.CIPHER_SCHEME_CURVE {
 		eccType = core.ECC_CURVE25519
 	}
-	teePrk, _ := base64.StdEncoding.DecodeString(c.PrivateKeyBase64)
-	return core.ECDHFromKey(eccType, teePrk)
+	// Prefer the key resolved once at startup. If the cache is empty, fall
+	// back to a plain base64 decode ONLY — never re-run keystore resolution
+	// for a sealed key here, which would mean a 64 MiB Argon2id pass inside
+	// an HTTP handler (Start/ReinitWithKey populate the cache before the HTTP
+	// service is up, so the sealed case is unreachable anyway). A sealed key
+	// with an empty cache yields nil, and getAgentPublicKey answers 500.
+	if prk == nil {
+		if keystore.IsSealed(privB64) {
+			if c.sealedMissLogged.CompareAndSwap(false, true) {
+				log.Error("GetAgentEcdh: sealed private key not yet resolved — caller ran before Start (logged once)")
+			}
+		} else {
+			prk, _ = base64.StdEncoding.DecodeString(privB64)
+		}
+	}
+	return core.ECDHFromKey(eccType, prk)
 }
 
 func (c *Config) GetTeeEcdh() core.Ecdh {
-	eccType := core.ECC_SM2
-	if c.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
-		eccType = core.ECC_CURVE25519
-	}
 	teePrk, _ := base64.StdEncoding.DecodeString(c.TEEPrivateKeyBase64)
-	return core.ECDHFromKey(eccType, teePrk)
+	return core.ECDHFromKey(c.GetEccType(), teePrk)
 }
 
+// GetEccType reads DefaultCipherScheme under keyMu (see
+// SetPrivateKeyMaterial's doc comment) — this and GetTeeEcdh are reached
+// from goroutines (a gin handler via getTeePublicKey, RefreshDataAccess)
+// that run concurrently with the fsnotify config-reload watcher's
+// SetCipherScheme, same as GetAgentEcdh.
 func (c *Config) GetEccType() core.EccTypeEnum {
-	eccType := core.ECC_SM2
-	if c.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
-		eccType = core.ECC_CURVE25519
+	if c.GetCipherScheme() == common.CIPHER_SCHEME_CURVE {
+		return core.ECC_CURVE25519
 	}
-	return eccType
+	return core.ECC_SM2
 }
 
 // Peers is the top-level shape of server.toml. Each entry is one
@@ -182,9 +281,12 @@ func (a *UdpAgent) updateBaseConfig(file string) (err error) {
 		a.config.LogLevel = conf.LogLevel
 	}
 
-	if a.config.DefaultCipherScheme != conf.DefaultCipherScheme {
+	if a.config.GetCipherScheme() != conf.DefaultCipherScheme {
 		log.Info("set default cipher scheme to %d", conf.DefaultCipherScheme)
-		a.config.DefaultCipherScheme = conf.DefaultCipherScheme
+		// GetAgentEcdh reads DefaultCipherScheme under keyMu (see
+		// SetPrivateKeyMaterial's doc comment); this watcher goroutine must
+		// write it under the same lock, not as a bare assignment.
+		a.config.SetCipherScheme(conf.DefaultCipherScheme)
 	}
 
 	return err
@@ -422,26 +524,34 @@ func (a *UdpAgent) StopConfigWatch() {
 	}
 }
 
-func (a *UdpAgent) NewEcdhFromConfigFile() (core.Ecdh, error) {
+// NewEcdhFromConfigFile reads and parses etc/config.toml, returning both a
+// fresh ECDH keypair derived from its cipher scheme and the parsed Config
+// itself — RotateAgentKey needs the latter to check whether the current key
+// is sealed, and returning it here keeps that from re-reading and
+// re-unmarshaling the same file NewEcdhFromConfigFile just read.
+func (a *UdpAgent) NewEcdhFromConfigFile() (core.Ecdh, *Config, error) {
 	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
 
 	content, err := os.ReadFile(fileName)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var conf Config
 	if err := toml.Unmarshal(content, &conf); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return core.NewECDH(conf.GetEccType()), nil
+	return core.NewECDH(conf.GetEccType()), &conf, nil
 }
 
+// RotateTeeKey rewrites TEEPrivateKeyBase64 in dhp.toml. The TEE key is
+// intentionally out of scope for encryption-at-rest (`seal`): it is always
+// written and read as plain base64, unlike the agent's own PrivateKeyBase64.
 func (a *UdpAgent) RotateTeeKey() error {
 	fileName := filepath.Join(ExeDirPath, "etc", "dhp.toml")
 
-	ecdh, err := a.NewEcdhFromConfigFile()
+	ecdh, _, err := a.NewEcdhFromConfigFile()
 	if err != nil {
 		return err
 	}
@@ -456,12 +566,34 @@ func (a *UdpAgent) RotateTeeKey() error {
 func (a *UdpAgent) RotateAgentKey() error {
 	fileName := filepath.Join(ExeDirPath, "etc", "config.toml")
 
-	ecdh, err := a.NewEcdhFromConfigFile()
+	ecdh, conf, err := a.NewEcdhFromConfigFile()
 	if err != nil {
 		return err
 	}
 
-	if err := utils.UpdateTomlConfig(fileName, "PrivateKeyBase64", ecdh.PrivateKeyBase64()); err != nil {
+	// Preserve encryption-at-rest across rotation. If the current key is a
+	// sealed blob, the replacement must be sealed too — writing a plain
+	// base64 key here would silently disable the very protection the operator
+	// opted into (and land a readable key on disk). A sealed key without a
+	// usable passphrase is a hard error, never a downgrade.
+	value := ecdh.PrivateKeyBase64()
+	if keystore.IsSealed(conf.PrivateKeyBase64) {
+		pass, passErr := keystore.PassphraseFromEnv()
+		if passErr != nil {
+			return fmt.Errorf("cannot rotate a sealed agent key: %w", passErr)
+		}
+		if len(pass) == 0 {
+			return fmt.Errorf("cannot rotate a sealed agent key: no passphrase configured (set %s or %s)",
+				keystore.EnvPassphrase, keystore.EnvPassphraseFile)
+		}
+		sealed, sealErr := keystore.Seal(ecdh.PrivateKey(), pass)
+		if sealErr != nil {
+			return fmt.Errorf("re-seal rotated agent key: %w", sealErr)
+		}
+		value = sealed
+	}
+
+	if err := utils.UpdateTomlConfig(fileName, "PrivateKeyBase64", value); err != nil {
 		return err
 	}
 

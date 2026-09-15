@@ -7,6 +7,10 @@ enableTLS   = false
 
 cipherScheme = 0
 
+# privateKeyBase64 accepts a plain base64 key or a sealed "v1$" blob from
+# `nhp-relayd seal` (decrypted at startup via NHP_KEY_PASSPHRASE_FILE /
+# NHP_KEY_PASSPHRASE — consulted only when the value is sealed). CI renders a
+# plain key here.
 privateKeyBase64 = "${NHP_RELAY_PRIVATE_KEY}"
 
 keepaliveIntervalS = 20

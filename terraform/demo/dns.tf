@@ -37,15 +37,13 @@ resource "cloudflare_record" "server" {
 # Legacy aliases. Kept as CNAMEs to the new primary names so existing
 # agents, bookmarks, and shipped plugin configs that still reference the
 # old hostnames continue to work.
-resource "cloudflare_record" "demologin" {
-  zone_id = var.cloudflare_zone_id
-  name    = "demologin"
-  content = "auth-plugin.opennhp.org"
-  type    = "CNAME"
-  proxied = false
-  ttl     = 300
-  comment = "Legacy alias for auth-plugin.opennhp.org - managed by Terraform"
-}
+#
+# The "demologin" CNAME (demologin.opennhp.org -> auth-plugin.opennhp.org)
+# was removed deliberately. It aliased the nhp-server's HTTP demo login
+# page, which has been retired along with the server's public HTTP/HTTPS
+# surface (see security-groups.tf). Removing the record here stops the
+# hostname resolving at all. Re-adding it would only produce a dead name
+# unless the nginx vhost and the tcp/443 SG rule are restored too.
 
 resource "cloudflare_record" "acdemo" {
   zone_id = var.cloudflare_zone_id

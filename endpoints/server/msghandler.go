@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	wasmEngine "github.com/OpenNHP/opennhp/nhp/core/wasm/engine"
@@ -42,6 +43,11 @@ const relayConnKeySep = "|"
 // The map key is in-memory only (never persisted, never wire-
 // serialized), so the '|' separator is a free invariant — see
 // relayConnKeySep for why we picked it over ':'.
+var (
+	errReadConfigFailed = errors.New("ztdo config read failed")
+	errSaveConfigFailed = errors.New("ztdo config save failed")
+)
+
 func relayAddrFromConnKey(mapKey string) string {
 	if !strings.HasPrefix(mapKey, relayConnKeyPrefix) {
 		return ""
@@ -178,11 +184,19 @@ func (s *UdpServer) HandleOTPRequest(ppd *core.PacketParserData) (err error) {
 	err = json.Unmarshal(ppd.BodyMessage, otpMsg)
 	if err != nil {
 		log.Error("server-agent(#%d@%s)[HandleOTPRequest] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
+		// Not audited: NHP_OTP skips peer validation (new agents), so a
+		// garbage-packet flood would append here at packet rate with no
+		// UserId to attribute it to and no retention bound. The parse
+		// failure is still logged; the ledger records real OTP attempts
+		// only (below).
 		return err
 	}
 
 	handler := s.FindPluginHandler(otpMsg.AuthServiceId)
 	if handler == nil {
+		// Same reasoning — a wrong/spoofed aspId is a cheap way to spam
+		// entries. The RequestOTP attempt below (which reaches a real ASP)
+		// is the first point worth recording.
 		return common.ErrAuthHandlerNotFound
 	}
 
@@ -198,10 +212,27 @@ func (s *UdpServer) HandleOTPRequest(ppd *core.PacketParserData) (err error) {
 	err = handler.RequestOTP(otpReq, s.NewNhpServerHelper(ppd))
 	if err != nil {
 		log.Error("server-agent(%s#%d@%s)[HandleOTPRequest] error: %v", otpMsg.UserId, transactionId, addrStr, err)
+		if s.auditLedger != nil {
+			s.auditEvent("otp_request", audit.SeverityWarn, map[string]string{
+				"user":   otpMsg.UserId,
+				"src":    addrStr,
+				"aspId":  otpMsg.AuthServiceId,
+				"result": "failed",
+				"reason": err.Error(),
+			})
+		}
 		return err
 	}
 
 	log.Info("server-agent(%s#%d@%s)[HandleOTPRequest] succeeded", otpMsg.UserId, transactionId, addrStr)
+	if s.auditLedger != nil {
+		s.auditEvent("otp_request", audit.SeverityInfo, map[string]string{
+			"user":   otpMsg.UserId,
+			"src":    addrStr,
+			"aspId":  otpMsg.AuthServiceId,
+			"result": "issued",
+		})
+	}
 	return nil
 }
 
@@ -215,6 +246,11 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 	addrStr := ppd.ConnData.RemoteAddr.String()
 	regMsg := &common.AgentRegisterMsg{}
 	rakMsg := &common.ServerRegisterAckMsg{}
+	// NHP_REG skips peer validation (new agents), so a garbage-packet flood
+	// could otherwise append a ledger entry per packet — with attacker-shaped
+	// text in `reason`. Don't audit a pre-validation reject; record only from
+	// the point RegisterAgent was actually reached (same policy as OTP).
+	preValidationReject := false
 
 	func() {
 		err = json.Unmarshal(ppd.BodyMessage, regMsg)
@@ -222,6 +258,7 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 			log.Error("server-agent(#%d@%s)[HandleRegisterRequest] failed to parse %s message: %v", transactionId, addrStr, core.HeaderTypeToString(ppd.HeaderType), err)
 			rakMsg.ErrCode = common.ErrJsonParseFailed.ErrorCode()
 			rakMsg.ErrMsg = err.Error()
+			preValidationReject = true
 			return
 		}
 
@@ -230,6 +267,7 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 			err = common.ErrAuthHandlerNotFound
 			rakMsg.ErrCode = common.ErrAuthHandlerNotFound.ErrorCode()
 			rakMsg.ErrMsg = err.Error()
+			preValidationReject = true
 			return
 		}
 
@@ -270,6 +308,40 @@ func (s *UdpServer) HandleRegisterRequest(ppd *core.PacketParserData) (err error
 
 		log.Info("server-agent(%s#%d@%s)[HandleRegisterRequest] succeeded", regMsg.UserId, transactionId, addrStr)
 	}()
+
+	// Record the registration outcome in the audit ledger.
+	if s.auditLedger != nil && !preValidationReject {
+		// Registered means a non-nil ack, a nil error, AND the explicit
+		// success code: the RegisterAgent plugin point may return a failure
+		// ErrCode with a nil error (a soft denial), a recovered plugin panic
+		// returns a nil ack with a nil error too, and a plugin that sets no
+		// code at all did not affirmatively report success — none of those
+		// may read as "registered". The raw code is kept in errCode
+		// regardless. See decisionGranted.
+		rakCode := ""
+		if rakMsg != nil {
+			rakCode = rakMsg.ErrCode
+		}
+		severity, result := audit.SeverityWarn, "denied"
+		if decisionGranted(err, rakMsg == nil, rakCode) {
+			severity, result = audit.SeverityNotice, "registered"
+		}
+		fields := map[string]string{
+			"user":    regMsg.UserId,
+			"device":  regMsg.DeviceId,
+			"src":     addrStr,
+			"aspId":   regMsg.AuthServiceId,
+			"peerKey": shortKey(base64.StdEncoding.EncodeToString(ppd.RemotePubKey)),
+			"result":  result,
+		}
+		if rakCode != "" {
+			fields["errCode"] = rakCode
+		}
+		if err != nil {
+			fields["reason"] = err.Error()
+		}
+		s.auditEvent("agent_register", severity, fields)
+	}
 
 	// send NHP_RAK message
 	rakBytes, _ := json.Marshal(rakMsg)
@@ -523,7 +595,7 @@ func (s *UdpServer) HandleDHPDARMessage(ppd *core.PacketParserData) (err error) 
 	// forward to a specific transaction
 	transaction := ppd.ConnData.FindRemoteTransaction(transactionId)
 	if transaction == nil {
-		log.Error("server-agent(DoId=%q,trx=#%d@%s)[HandleDHPDARMessage] transaction is not available", doId, transactionId, addrStr)
+		log.Error("server-agent(DoId=%q,trx=#%d@%s)[HandleDHPDARMessage] transaction is not available", common.TruncateDoIDForLog(doId), transactionId, addrStr)
 		err = common.ErrTransactionIdNotFound
 		return err
 	}
@@ -560,7 +632,7 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 		// config-read failure to the agent and skip attestation
 		// entirely. Attestation must never be evaluated against a
 		// policy we couldn't load.
-		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] ReadZdtoConfig(%q) failed: %v", transactionId, addrStr, doId, err)
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] ReadZdtoConfig(%q) failed: %v", transactionId, addrStr, common.TruncateDoIDForLog(doId), err)
 		dagMsg.DoId = doId
 		dagMsg.ErrCode = 1
 		dagMsg.ErrMsg = err.Error()
@@ -612,7 +684,7 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 	// forward to a specific transaction
 	transaction := ppd.ConnData.FindRemoteTransaction(transactionId)
 	if transaction == nil {
-		log.Error("server-agent(DoId=%q,trx=#%d@%s)[HandleDHPDAVMessage] transaction is not available", doId, transactionId, addrStr)
+		log.Error("server-agent(DoId=%q,trx=#%d@%s)[HandleDHPDAVMessage] transaction is not available", common.TruncateDoIDForLog(doId), transactionId, addrStr)
 		err = common.ErrTransactionIdNotFound
 		return err
 	}
@@ -668,7 +740,7 @@ func (s *UdpServer) HandleDHPDRGMessage(ppd *core.PacketParserData) (err error) 
 
 	transaction := ppd.ConnData.FindRemoteTransaction(transactionId)
 	if transaction == nil {
-		log.Error("server-db(DoId=%q,trx=#%d@%s)[HandleDHPDRGMessage] transaction is not available", doId, transactionId, addrStr)
+		log.Error("server-db(DoId=%q,trx=#%d@%s)[HandleDHPDRGMessage] transaction is not available", common.TruncateDoIDForLog(doId), transactionId, addrStr)
 		err = common.ErrTransactionIdNotFound
 		return err
 	}
@@ -712,7 +784,7 @@ func (s *UdpServer) onAttestationVerify(spo *common.SmartPolicy, attestation str
 func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 	objectId := drgMsg.DoId
 	if err := common.ValidateDoID(objectId); err != nil {
-		log.Warning("server[SaveZdtoConfig] rejected DoId=%q: %v", objectId, err)
+		log.Warning("server[SaveZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(objectId), err)
 		return err
 	}
 	configFileName := "data-" + objectId + ".json"
@@ -733,18 +805,13 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 
 	// Make sure the etc directory exists
 	if err := os.MkdirAll(etcDir, 0755); err != nil {
-		log.Error("server[SaveZdtoConfig] DoId=%q mkdir: %v", objectId, err)
+		log.Error("server[SaveZdtoConfig] DoId=%q mkdir: %v", common.TruncateDoIDForLog(objectId), err)
 		return errSaveConfigFailed
 	}
 
-	if _, err := os.Stat(configPath); err == nil {
-		log.Error("server[SaveZdtoConfig] DoId=%q already exists at %s", objectId, configPath)
-		return errSaveConfigFailed
-	}
-
-	file, err := os.Create(configPath)
+	file, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
-		log.Error("server[SaveZdtoConfig] DoId=%q create: %v", objectId, err)
+		log.Error("server[SaveZdtoConfig] DoId=%q create: %v", common.TruncateDoIDForLog(objectId), err)
 		return errSaveConfigFailed
 	}
 	defer func() { _ = file.Close() }()
@@ -752,21 +819,16 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(drgMsg); err != nil {
-		log.Error("server[SaveZdtoConfig] DoId=%q encode: %v", objectId, err)
+		log.Error("server[SaveZdtoConfig] DoId=%q encode: %v", common.TruncateDoIDForLog(objectId), err)
 		return errSaveConfigFailed
 	}
 	return nil
 }
 
-var (
-	errReadConfigFailed = errors.New("ztdo config read failed")
-	errSaveConfigFailed = errors.New("ztdo config save failed")
-)
-
 // read data-<doId>.json to DRGMsg Object
 func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
 	if err := common.ValidateDoID(doId); err != nil {
-		log.Warning("server[ReadZdtoConfig] rejected DoId=%q: %v", doId, err)
+		log.Warning("server[ReadZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(doId), err)
 		return common.DRGMsg{}, err
 	}
 
@@ -775,9 +837,9 @@ func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
 	file, err := os.Open(configFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Debug("server[ReadZdtoConfig] DoId=%q not found: %v", doId, err)
+			log.Debug("server[ReadZdtoConfig] DoId=%q not found: %v", common.TruncateDoIDForLog(doId), err)
 		} else {
-			log.Error("server[ReadZdtoConfig] DoId=%q open: %v", doId, err)
+			log.Error("server[ReadZdtoConfig] DoId=%q open: %v", common.TruncateDoIDForLog(doId), err)
 		}
 		return common.DRGMsg{}, errReadConfigFailed
 	}
@@ -785,14 +847,14 @@ func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
 
 	fileContentByte, err := io.ReadAll(file)
 	if err != nil {
-		log.Error("server[ReadZdtoConfig] DoId=%q read: %v", doId, err)
+		log.Error("server[ReadZdtoConfig] DoId=%q read: %v", common.TruncateDoIDForLog(doId), err)
 		return common.DRGMsg{}, errReadConfigFailed
 	}
 
 	var config common.DRGMsg
 
 	if err := json.Unmarshal(fileContentByte, &config); err != nil {
-		log.Error("server[ReadZdtoConfig] DoId=%q unmarshal: %v", doId, err)
+		log.Error("server[ReadZdtoConfig] DoId=%q unmarshal: %v", common.TruncateDoIDForLog(doId), err)
 		return common.DRGMsg{}, errReadConfigFailed
 	}
 	return config, nil

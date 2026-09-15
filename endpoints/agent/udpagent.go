@@ -16,6 +16,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/core"
 	wasmEngine "github.com/OpenNHP/opennhp/nhp/core/wasm/engine"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	utils "github.com/OpenNHP/opennhp/nhp/utils"
 	"github.com/OpenNHP/opennhp/nhp/version"
@@ -386,12 +387,24 @@ func (a *UdpAgent) Start(dirPath string, logLevel int) (err error) {
 		}
 		prk = core.NewECDH(core.ECC_CURVE25519).PrivateKey()
 	} else {
-		prk, err = base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
+		var sealed bool
+		prk, sealed, err = keystore.ResolvePrivateKeyAuto(a.config.PrivateKeyBase64)
 		if err != nil {
 			log.Error("private key parse error %v\n", err)
 			return fmt.Errorf("private key parse error %v", err)
 		}
+		if sealed {
+			log.Info("agent private key is sealed; unsealed at startup with the configured passphrase")
+			if path, mode, permissive := keystore.PassphraseFilePermissive(); permissive {
+				log.Warning("passphrase file %s is mode %o — restrict it to 0600", path, mode)
+			}
+		}
 	}
+
+	// Cache the resolved key so GetAgentEcdh (the /publicKey handler) reports
+	// the real device key without re-decoding — important when the config
+	// holds a sealed blob that a plain base64 decode would reject.
+	a.config.SetResolvedPrivateKey(prk)
 
 	a.device = core.NewDevice(core.NHP_AGENT, prk, nil)
 	if a.device == nil {
@@ -566,7 +579,7 @@ func (a *UdpAgent) PublicKeyBase64ByCipherScheme() string {
 
 // PrivateKeyBase64 returns the agent's private key in base64 encoding.
 func (a *UdpAgent) PrivateKeyBase64() string {
-	return a.config.PrivateKeyBase64
+	return a.config.GetPrivateKeyBase64()
 }
 
 // ReinitWithKey stops the current device, creates a new one from the given
@@ -598,8 +611,7 @@ func (a *UdpAgent) ReinitWithKey(privKeyBytes []byte, cipherScheme int) error {
 	a.recvMsgCh = newDev.DecryptedMsgQueue
 	a.deviceMutex.Unlock()
 
-	a.config.PrivateKeyBase64 = base64.StdEncoding.EncodeToString(privKeyBytes)
-	a.config.DefaultCipherScheme = cipherScheme
+	a.config.SetPrivateKeyMaterial(base64.StdEncoding.EncodeToString(privKeyBytes), cipherScheme, privKeyBytes)
 
 	// Stopping the old device closes its DecryptedMsgQueue, so the
 	// existing recvMessageRoutine (blocked on the old channel) observes a
@@ -1345,7 +1357,14 @@ func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOut
 	ztdo := ztdolib.NewZtdo()
 
 	consumerEphemeralEcdh := core.NewECDH(a.config.GetEccType())
+
+	// GetTeeEcdh returns nil when TEEPrivateKeyBase64 is empty/unset (a DHP
+	// agent that has never had RotateTeeKey run). Same guard as
+	// getTeePublicKey — this path has no gin panic-recovery net.
 	teeEcdh := a.config.GetTeeEcdh()
+	if teeEcdh == nil {
+		return "", fmt.Errorf("RefreshDataAccess: TEE private key is unavailable (run the DHP secret init)")
+	}
 
 	darMsg := common.DARMsg{
 		DoId:                       ztdoId,
@@ -1361,7 +1380,7 @@ func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOut
 		// update smart data policy refresh time
 		a.smartDataPolicyRefreshTime[ztdoId] = time.Now().UnixNano()
 
-		log.Info("[StartConfidentialComputing] Refresh smart data policy for data object which id is %s", ztdoId)
+		log.Info("[StartConfidentialComputing] Refresh smart data policy for data object which id is %s", common.TruncateDoIDForLog(ztdoId))
 
 		if !decrypted {
 			output, err = utils.GenerateTempFilePath("plaintext-*")
@@ -1529,25 +1548,25 @@ func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg) (
 	result, dsaMsg := func() (bool, *common.DSAMsg) {
 		dsaMsg := &common.DSAMsg{}
 		if serverPpd.Error != nil {
-			log.Error("Agent(%s#%d)[SendDARMsgToServer] failed to receive response from server %s: %v", drgMsg.DoId, drgMd.TransactionId, server.Ip, serverPpd.Error)
+			log.Error("Agent(%q#%d)[SendDARMsgToServer] failed to receive response from server %s: %v", common.TruncateDoIDForLog(drgMsg.DoId), drgMd.TransactionId, server.Ip, serverPpd.Error)
 			err = serverPpd.Error
 			return false, dsaMsg
 		}
 
 		if serverPpd.HeaderType != core.NHP_DSA {
-			log.Error("DB(%s#%d)[SendDARMsgToServer] response from server %s has wrong type: %s", drgMsg.DoId, drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
+			log.Error("DB(%q#%d)[SendDARMsgToServer] response from server %s has wrong type: %s", common.TruncateDoIDForLog(drgMsg.DoId), drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
 			err = common.ErrTransactionRepliedWithWrongType
 			return false, dsaMsg
 		}
 		//message []byte to DSAMSg Object
 		err = json.Unmarshal(serverPpd.BodyMessage, dsaMsg)
 		if err != nil {
-			log.Error("Agent(%s#%d)[HandleDHPDAGMessage] failed to parse %s message: %v", drgMsg.DoId, serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
+			log.Error("Agent(%q#%d)[HandleDHPDAGMessage] failed to parse %s message: %v", common.TruncateDoIDForLog(drgMsg.DoId), serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
 			return false, dsaMsg
 		}
 		dsaMsgString, err := json.Marshal(dsaMsg)
 		if err != nil {
-			log.Error("Agent(%s) DSAMsg failed to parse message: %v", dsaMsg.DoId, err)
+			log.Error("Agent(%q) DSAMsg failed to parse message: %v", common.TruncateDoIDForLog(dsaMsg.DoId), err)
 			return false, dsaMsg
 		}
 		log.Info("SendDARMsgToServer response result: %v", dsaMsgString)
@@ -1635,25 +1654,25 @@ func (a *UdpAgent) SendDAVMsgToServer(server *core.UdpPeer, msg common.DAVMsg) (
 	result, dagMsg := func() (bool, *common.DAGMsg) {
 		dagMsg := &common.DAGMsg{}
 		if serverPpd.Error != nil {
-			log.Error("Agent(%s#%d)[SendDAVMsgToServer] failed to receive response from server %s: %v", davMsg.DoId, davMd.TransactionId, server.Ip, serverPpd.Error)
+			log.Error("Agent(%q#%d)[SendDAVMsgToServer] failed to receive response from server %s: %v", common.TruncateDoIDForLog(davMsg.DoId), davMd.TransactionId, server.Ip, serverPpd.Error)
 			err = serverPpd.Error
 			return false, dagMsg
 		}
 
 		if serverPpd.HeaderType != core.NHP_DAG {
-			log.Error("DB(%s#%d)[SendDAVMsgToServer] response from server %s has wrong type: %s", davMsg.DoId, davMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
+			log.Error("DB(%q#%d)[SendDAVMsgToServer] response from server %s has wrong type: %s", common.TruncateDoIDForLog(davMsg.DoId), davMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
 			err = common.ErrTransactionRepliedWithWrongType
 			return false, dagMsg
 		}
 		//message []byte to DAGMSg Object
 		err = json.Unmarshal(serverPpd.BodyMessage, dagMsg)
 		if err != nil {
-			log.Error("Agent(%s#%d)[HandleDHPDAVMessage] failed to parse %s message: %v", davMsg.DoId, serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
+			log.Error("Agent(%q#%d)[HandleDHPDAVMessage] failed to parse %s message: %v", common.TruncateDoIDForLog(davMsg.DoId), serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
 			return false, dagMsg
 		}
 		dagMsgString, err := json.Marshal(dagMsg)
 		if err != nil {
-			log.Error("Agent(%s) DAKMsg failed to parse message: %v", dagMsg.DoId, err)
+			log.Error("Agent(%q) DAKMsg failed to parse message: %v", common.TruncateDoIDForLog(dagMsg.DoId), err)
 			return false, dagMsg
 		}
 		log.Info("SendDAVMsgToServer response result: %v", dagMsgString)

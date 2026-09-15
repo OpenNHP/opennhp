@@ -41,3 +41,12 @@ func TestValidateDoID(t *testing.T) {
 		})
 	}
 }
+
+func TestDoIDLogBound(t *testing.T) {
+	if got := TruncateDoIDForLog(string(make([]byte, 1<<20))); len(got) != 67 {
+		t.Fatalf("log length = %d", len(got))
+	}
+	if got := TruncateDoIDForLog("valid-id"); got != "valid-id" {
+		t.Fatal(got)
+	}
+}

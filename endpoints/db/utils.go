@@ -31,9 +31,9 @@ func NewDataPrivateKeyStore(providerPublicKeyBase64 string) *DataPrivateKeyStore
 }
 
 // NewDataPrivateKeyStoreWith create a new DataPrivateKeyStore with doId
-func NewDataPrivateKeyStoreWith(doId string) (d *DataPrivateKeyStore, err error) {
+func NewDataPrivateKeyStoreWith(doId string) (*DataPrivateKeyStore, error) {
 	if err := common.ValidateDoID(doId); err != nil {
-		log.Warning("db[NewDataPrivateKeyStoreWith] rejected DoId=%q: %v", doId, err)
+		log.Warning("db[NewDataPrivateKeyStoreWith] rejected DoId=%q: %v", common.TruncateDoIDForLog(doId), err)
 		return nil, err
 	}
 
@@ -44,24 +44,24 @@ func NewDataPrivateKeyStoreWith(doId string) (d *DataPrivateKeyStore, err error)
 	// open and read all the content in file
 	file, err := os.Open(fullPath)
 	if err != nil {
-		log.Error("db[NewDataPrivateKeyStoreWith] DoId=%q open: %v", doId, err)
+		log.Error("db[NewDataPrivateKeyStoreWith] DoId=%q open: %v", common.TruncateDoIDForLog(doId), err)
 		return nil, common.ErrDataPrivateKeyStore
 	}
 	defer func() { _ = file.Close() }()
 
 	fileContentByte, err := io.ReadAll(file)
 	if err != nil {
-		log.Error("db[NewDataPrivateKeyStoreWith] DoId=%q read: %v", doId, err)
+		log.Error("db[NewDataPrivateKeyStoreWith] DoId=%q read: %v", common.TruncateDoIDForLog(doId), err)
 		return nil, common.ErrDataPrivateKeyStore
 	}
 
-	d = &DataPrivateKeyStore{}
+	d := &DataPrivateKeyStore{}
 	if err := d.fromJson(fileContentByte); err != nil {
-		log.Error("db[NewDataPrivateKeyStoreWith] DoId=%q unmarshal: %v", doId, err)
+		log.Error("db[NewDataPrivateKeyStoreWith] DoId=%q unmarshal: %v", common.TruncateDoIDForLog(doId), err)
 		return nil, common.ErrDataPrivateKeyStore
 	}
 
-	return
+	return d, nil
 }
 
 func (d *DataPrivateKeyStore) Generate(mode ztdolib.DataKeyPairECCMode) (privateKey []byte) {
@@ -74,33 +74,28 @@ func (d *DataPrivateKeyStore) Generate(mode ztdolib.DataKeyPairECCMode) (private
 // Notes: this default way to store data private key is not safe. In the wild environment, need to use a secure way to store data private key.
 func (d *DataPrivateKeyStore) Save(doId string) error {
 	if err := common.ValidateDoID(doId); err != nil {
-		log.Warning("db[DataPrivateKeyStore.Save] rejected DoId=%q: %v", doId, err)
+		log.Warning("db[DataPrivateKeyStore.Save] rejected DoId=%q: %v", common.TruncateDoIDForLog(doId), err)
 		return err
 	}
 
 	// Make sure the etc directory exists
 	etcDir := filepath.Join(common.ExeDirPath, "etc", "ztdo")
-	if err := os.MkdirAll(etcDir, 0755); err != nil {
-		log.Error("db[DataPrivateKeyStore.Save] DoId=%q mkdir: %v", doId, err)
+	if err := os.MkdirAll(etcDir, 0700); err != nil {
+		log.Error("db[DataPrivateKeyStore.Save] DoId=%q mkdir: %v", common.TruncateDoIDForLog(doId), err)
 		return common.ErrDataPrivateKeyStore
 	}
 
 	fileName := "data-key-" + doId + ".json"
 	fullPath := filepath.Join(etcDir, fileName)
-	if _, err := os.Stat(fullPath); err == nil {
-		log.Error("db[DataPrivateKeyStore.Save] DoId=%q already exists at %s", doId, fullPath)
-		return common.ErrDataPrivateKeyStore
-	}
-
-	file, err := os.Create(fullPath)
+	file, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
-		log.Error("db[DataPrivateKeyStore.Save] DoId=%q create: %v", doId, err)
+		log.Error("db[DataPrivateKeyStore.Save] DoId=%q create: %v", common.TruncateDoIDForLog(doId), err)
 		return common.ErrDataPrivateKeyStore
 	}
 	defer func() { _ = file.Close() }()
 
 	if _, err := file.Write(d.toJson()); err != nil {
-		log.Error("db[DataPrivateKeyStore.Save] DoId=%q write: %v", doId, err)
+		log.Error("db[DataPrivateKeyStore.Save] DoId=%q write: %v", common.TruncateDoIDForLog(doId), err)
 		return common.ErrDataPrivateKeyStore
 	}
 	return nil
@@ -108,7 +103,7 @@ func (d *DataPrivateKeyStore) Save(doId string) error {
 
 func (d *DataPrivateKeyStore) Delete(doId string) error {
 	if err := common.ValidateDoID(doId); err != nil {
-		log.Warning("db[DataPrivateKeyStore.Delete] rejected DoId=%q: %v", doId, err)
+		log.Warning("db[DataPrivateKeyStore.Delete] rejected DoId=%q: %v", common.TruncateDoIDForLog(doId), err)
 		return err
 	}
 
@@ -118,7 +113,7 @@ func (d *DataPrivateKeyStore) Delete(doId string) error {
 
 	// delete the file
 	if err := os.Remove(fullPath); err != nil {
-		log.Error("db[DataPrivateKeyStore.Delete] DoId=%q remove: %v", doId, err)
+		log.Error("db[DataPrivateKeyStore.Delete] DoId=%q remove: %v", common.TruncateDoIDForLog(doId), err)
 		return common.ErrDataPrivateKeyStore
 	}
 	return nil

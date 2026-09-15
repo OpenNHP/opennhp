@@ -14,7 +14,9 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	ztdolib "github.com/OpenNHP/opennhp/nhp/core/ztdo"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
+	"github.com/OpenNHP/opennhp/nhp/metrics"
 	"github.com/OpenNHP/opennhp/nhp/version"
 )
 
@@ -72,8 +74,9 @@ type UdpDevice struct {
 		totalSendBytes uint64
 	}
 
-	config *Config
-	log    *log.Logger
+	config     *Config
+	privateKey []byte // resolved once at Start (plain or unsealed)
+	log        *log.Logger
 
 	remoteConnectionMutex sync.Mutex
 	remoteConnectionMap   map[string]*UdpConn // indexed by remote UDP address
@@ -87,6 +90,11 @@ type UdpDevice struct {
 	device  *core.Device
 	wg      sync.WaitGroup
 	running atomic.Bool
+
+	startTime       time.Time
+	metrics         *dbMetrics
+	metricsEndpoint *metrics.Endpoint
+	healthy         atomic.Bool // gates /healthz: true from Start until Stop
 
 	signals struct {
 		stop             chan struct{}
@@ -116,6 +124,7 @@ dirPath: the path of app or shared library entry point
 logLevel: 0: silent, 1: error, 2: info, 3: debug, 4: verbose
 */
 func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
+	a.startTime = time.Now()
 	common.ExeDirPath = dirPath
 	ExeDirPath = dirPath
 	// init logger
@@ -133,17 +142,35 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 		return err
 	}
 
-	prk, err := base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
+	prk, sealed, err := keystore.ResolvePrivateKeyAuto(a.config.PrivateKeyBase64)
 	if err != nil {
 		log.Error("private key parse error %v\n", err)
 		return fmt.Errorf("private key parse error %v", err)
 	}
+	if sealed {
+		log.Info("DB private key is sealed; unsealed at startup with the configured passphrase")
+		if path, mode, permissive := keystore.PassphraseFilePermissive(); permissive {
+			log.Warning("passphrase file %s is mode %o — restrict it to 0600", path, mode)
+		}
+	}
+	// Cache the resolved key so GetOwnEcdh does not re-run the (expensive)
+	// unseal KDF on every call.
+	a.privateKey = prk
 
+	a.metrics = newDBMetrics(a, a.startTime)
+
+	// Keep NewDevice(t, prk, nil) so defaultDeviceOptions(NHP_DB) stays the
+	// single source of truth for the device's security posture, then layer
+	// the pre-decryption dropped-packet hook on via read-modify-write (same
+	// pattern as ac/relay).
 	a.device = core.NewDevice(core.NHP_DB, prk, nil)
 	if a.device == nil {
 		log.Critical("failed to create device %v\n", err)
 		return fmt.Errorf("failed to create device %v", err)
 	}
+	dbOpt := a.device.GetOption()
+	dbOpt.OnPacketDropped = func(stage string) { a.metrics.recordDroppedPacket(stage) }
+	a.device.SetOption(dbOpt)
 
 	a.remoteConnectionMap = make(map[string]*UdpConn)
 	a.serverPeerMap = make(map[string]*core.UdpPeer)
@@ -171,15 +198,38 @@ func (a *UdpDevice) Start(dirPath string, logLevel int) (err error) {
 		a.wg.Add(1)
 		go a.maintainServerConnectionRoutine()
 	}
+
 	a.running.Store(true)
-	// time.Sleep(1000 * time.Millisecond)
+
+	// opt-in Prometheus /metrics + /healthz endpoint, loopback by default.
+	// Started after running=true; StartEndpoint returns (nil,nil) when off.
+	a.healthy.Store(true)
+	ep, mErr := metrics.StartEndpoint(a.config.Metrics, metrics.EndpointOptions{
+		Registry:      a.metrics.registry,
+		Uptime:        func() time.Duration { return time.Since(a.startTime) },
+		IsRunning:     a.healthy.Load,
+		DefaultPort:   defaultDBMetricsPort,
+		OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
+		OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
+		OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
+		OnInsecureBind: func(ip string) {
+			log.Critical("[Metrics] ListenIp %s is not loopback — /metrics and /healthz will be reachable off-host, unauthenticated, and self-identifying via the nhp_db_* series", ip)
+		},
+	})
+	if mErr != nil {
+		log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
+	}
+	a.metricsEndpoint = ep
+
 	return nil
 }
 
 // export Stop
 func (a *UdpDevice) Stop() {
 	a.running.Store(false)
+	a.healthy.Store(false)
 	close(a.signals.stop)
+	a.metricsEndpoint.Stop()
 	a.device.Stop()
 	a.StopConfigWatch()
 	a.wg.Wait()
@@ -340,6 +390,7 @@ func (a *UdpDevice) recvPacketRoutine(conn *UdpConn) {
 		// check minimal length
 		if n < pkt.MinimalLength() {
 			a.device.ReleasePoolPacket(pkt)
+			a.metrics.recordDroppedPacket("too_short")
 			log.Error("Received UDP packet from %s is too short, discard", addrStr)
 			continue
 		}
@@ -353,6 +404,7 @@ func (a *UdpDevice) recvPacketRoutine(conn *UdpConn) {
 		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, conn.ConnData.LocalAddr.String(), n)
 		if err != nil {
 			a.device.ReleasePoolPacket(pkt)
+			a.metrics.recordDroppedPacket("precheck")
 			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			continue
@@ -477,6 +529,7 @@ func (a *UdpDevice) recvMessageRoutine() {
 			if ppd == nil {
 				continue
 			}
+			a.metrics.recordMessageReceived(core.HeaderTypeToString(ppd.HeaderType))
 
 			switch ppd.HeaderType {
 			case core.NHP_DWR:
@@ -763,13 +816,13 @@ func (a *UdpDevice) SendNHPDRG(server *core.UdpPeer, msg common.DRGMsg) bool {
 	result = func() bool {
 
 		if serverPpd.Error != nil {
-			log.Error("DB(%s#%d)[SendNHPDRG] failed to receive response from server %s: %v", drgMsg.DoId, drgMd.TransactionId, server.Ip, serverPpd.Error)
+			log.Error("DB(%q#%d)[SendNHPDRG] failed to receive response from server %s: %v", common.TruncateDoIDForLog(drgMsg.DoId), drgMd.TransactionId, server.Ip, serverPpd.Error)
 			err = serverPpd.Error
 			return false
 		}
 
 		if serverPpd.HeaderType != core.NHP_DAK {
-			log.Error("DB(%s#%d)[SendNHPDRG] response from server %s has wrong type: %s", drgMsg.DoId, drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
+			log.Error("DB(%q#%d)[SendNHPDRG] response from server %s has wrong type: %s", common.TruncateDoIDForLog(drgMsg.DoId), drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
 			err = common.ErrTransactionRepliedWithWrongType
 			return false
 		}
@@ -778,12 +831,12 @@ func (a *UdpDevice) SendNHPDRG(server *core.UdpPeer, msg common.DRGMsg) bool {
 		//json string to DAKMsg Object
 		err = json.Unmarshal(serverPpd.BodyMessage, dakMsg)
 		if err != nil {
-			log.Error("DB(%s#%d)[HandleDHPDRGMessage] failed to parse %s message: %v", drgMsg.DoId, serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
+			log.Error("DB(%q#%d)[HandleDHPDRGMessage] failed to parse %s message: %v", common.TruncateDoIDForLog(drgMsg.DoId), serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
 			return false
 		}
 		dakMsgString, err := json.Marshal(dakMsg)
 		if err != nil {
-			log.Error("DB(%s) DAKMsg failed to parse message: %v", dakMsg.DoId, err)
+			log.Error("DB(%q) DAKMsg failed to parse message: %v", common.TruncateDoIDForLog(dakMsg.DoId), err)
 			return false
 		}
 		log.Info("SendNHPDRG result：%v", string(dakMsgString))
@@ -810,13 +863,28 @@ func (a *UdpDevice) GetDataBrokerId() string {
 }
 
 func (a *UdpDevice) GetOwnEcdh() core.Ecdh {
-	prk, _ := base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
-	eccMode := core.ECC_CURVE25519
-	if a.config.DefaultCipherScheme == 0 {
-		eccMode = core.ECC_SM2
+	// common.CIPHER_SCHEME_CURVE == 0, not SM2 — the same comparison
+	// GetOwnEcdh's own caller below (the ztdo static key pair setup) makes
+	// a few lines later. This used to read "== 0 → SM2", inverted: with the
+	// shipped default DefaultCipherScheme = 0, the symmetric agreement
+	// selected CURVE25519 while this handed it an SM2 static key pair —
+	// mismatched curves in the same handshake, deriving a wrong shared
+	// secret for DHP data-key wrapping.
+	eccMode := core.ECC_SM2
+	if a.config.DefaultCipherScheme == common.CIPHER_SCHEME_CURVE {
+		eccMode = core.ECC_CURVE25519
 	}
 
-	return core.ECDHFromKey(eccMode, prk)
+	// Start resolves the private key and returns an error if it cannot, so
+	// the device never reaches a serving state with an empty a.privateKey
+	// and this cannot hand a nil Ecdh to callers that dereference it.
+	//
+	// There is deliberately no resolve-on-demand fallback here. Callers of
+	// this method feed the key straight into key agreement, so a fallback
+	// that quietly failed would be worse than not having one: it would
+	// return an Ecdh built from a nil key and the failure would surface as
+	// a bad shared secret rather than as a startup error.
+	return core.ECDHFromKey(eccMode, a.privateKey)
 }
 
 func (a *UdpDevice) isTEEAuthorized(teePbkBase64 string) bool {

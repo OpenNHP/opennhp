@@ -1,4 +1,6 @@
 # Configuration that is related to data content hiding protocol in agent side.
 
 # TEEPrivateKeyBase64: base64 encoded private key of TEE (Trusted Execution Environment).
+# NOTE: this key is NOT covered by `nhp-agentd seal` — it is always stored as
+# plain base64 here even when config.toml's PrivateKeyBase64 is sealed.
 TEEPrivateKeyBase64 = "j20JfF3rjoRtz2m+KP+agYjDBPdQwC9Dwfcasn83yAQ="

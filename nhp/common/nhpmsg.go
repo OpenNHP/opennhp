@@ -294,8 +294,7 @@ func (spo *SmartPolicy) GetPolicy() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer func() { _ = os.Remove(filepath.Dir(wasmPath)) }()
-		defer func() { _ = os.Remove(wasmPath) }()
+		defer func() { _ = os.RemoveAll(filepath.Dir(wasmPath)) }()
 		wasmBytes, err = os.ReadFile(wasmPath)
 		if err != nil {
 			return nil, err

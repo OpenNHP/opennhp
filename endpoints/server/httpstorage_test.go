@@ -1,6 +1,7 @@
 package server
 
 import (
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,7 +27,7 @@ func TestStorageDownloadServesOpenedRegularFile(t *testing.T) {
 
 	const (
 		uuid     = "download-id"
-		filename = "report.txt"
+		filename = "报告.txt"
 		body     = "descriptor-backed response"
 	)
 	fileDir := filepath.Join(ExeDirPath, uploadDir, uuid)
@@ -47,8 +48,8 @@ func TestStorageDownloadServesOpenedRegularFile(t *testing.T) {
 	if response.Body.String() != body {
 		t.Fatalf("body = %q, want %q", response.Body.String(), body)
 	}
-	if got := response.Header().Get("Content-Disposition"); got != `attachment; filename="report.txt"` {
-		t.Fatalf("Content-Disposition = %q", got)
+	if media, params, err := mime.ParseMediaType(response.Header().Get("Content-Disposition")); err != nil || media != "attachment" || params["filename"] != filename {
+		t.Fatalf("Content-Disposition = %q (%v)", response.Header().Get("Content-Disposition"), err)
 	}
 }
 
@@ -82,5 +83,27 @@ func TestStorageDownloadReportsMissingFile(t *testing.T) {
 
 	if response.Code != http.StatusNotFound || !strings.Contains(response.Body.String(), "file not exists") {
 		t.Fatalf("status=%d body=%q, want 404 file not exists", response.Code, response.Body.String())
+	}
+}
+
+func TestStorageDownloadRejectsEscapingSymlink(t *testing.T) {
+	old := ExeDirPath
+	ExeDirPath = t.TempDir()
+	t.Cleanup(func() { ExeDirPath = old })
+	dir := filepath.Join(ExeDirPath, uploadDir, "id")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(outside, []byte("secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "secret")); err != nil {
+		t.Skip(err)
+	}
+	response := httptest.NewRecorder()
+	newStorageTestServer(t).ginEngine.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/storage/download/id/secret", nil))
+	if response.Code == http.StatusOK || response.Body.String() == "secret" {
+		t.Fatal("served escaped symlink")
 	}
 }

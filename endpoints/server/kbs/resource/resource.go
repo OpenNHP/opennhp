@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -156,24 +157,15 @@ func GetResource(c *gin.Context) {
 }
 
 func loadResource(resourceID string) ([]byte, error) {
-	absBaseDir, err := filepath.Abs(baseDir)
-	if err != nil {
-		return nil, fmt.Errorf("fail to get base directory absolute path: %w", err)
-	}
-
-	fullPath := filepath.Join(absBaseDir, resourceID)
-
-	absFullPath, err := filepath.Abs(fullPath)
-	if err != nil {
-		return nil, fmt.Errorf("fail to get resource absolute path: %w", err)
-	}
-
-	// Check if the path is within the base directory to avoid path traversal attack.
-	if !strings.HasPrefix(absFullPath, absBaseDir+string(os.PathSeparator)) {
+	if !filepath.IsLocal(resourceID) {
 		return nil, errors.New("invalid resource ID: potential path traversal attack")
 	}
-
-	f, err := os.Open(absFullPath) //nolint:gosec // G304: absFullPath is restricted to baseDir above
+	root, err := os.OpenRoot(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("fail to open resource directory: %w", err)
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.OpenFile(resourceID, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, errors.New("resource not found")

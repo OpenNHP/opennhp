@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -198,31 +200,19 @@ func (hs *HttpServer) initStorageRouter() {
 			return
 		}
 
-		filePath := filepath.Join(ExeDirPath, uploadDir, uuid, filename)
-
-		safeDir := filepath.Join(ExeDirPath, uploadDir)
-		safeDirAbs, err := filepath.Abs(safeDir)
+		root, err := os.OpenRoot(filepath.Join(ExeDirPath, uploadDir))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			if os.IsNotExist(err) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "file not exists"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			}
 			return
 		}
-
-		absPath, err := filepath.Abs(filePath)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file name"})
-			return
-		}
-
-		// ensure that the resolved path is within the safe directory
-		if !strings.HasPrefix(absPath, safeDirAbs+string(os.PathSeparator)) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file name"})
-			return
-		}
-
-		// Open the file before inspecting it so validation and serving use the
-		// same file descriptor. This removes the window where the path could be
-		// replaced between os.Stat and gin.Context.File.
-		f, err := os.Open(absPath) //nolint:gosec // G304: absPath is restricted to safeDir above
+		defer func() { _ = root.Close() }()
+		// Root.OpenFile keeps resolution inside uploads even through symlinks.
+		// Nonblocking open prevents a planted FIFO from holding the request.
+		f, err := root.OpenFile(filepath.Join(uuid, filename), os.O_RDONLY|syscall.O_NONBLOCK, 0)
 		if err != nil {
 			if os.IsNotExist(err) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "file not exists"})
@@ -245,8 +235,7 @@ func (hs *HttpServer) initStorageRouter() {
 
 		// provide file download
 		c.Header("Content-Description", "File Transfer")
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"",
-			strings.ReplaceAll(filename, "\"", "\\\"")))
+		c.Header("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
 		c.Header("Content-Type", "application/octet-stream")
 		http.ServeContent(c.Writer, c.Request, filename, fileInfo.ModTime(), f)
 	})

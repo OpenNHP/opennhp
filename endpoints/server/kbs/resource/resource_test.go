@@ -70,3 +70,19 @@ func TestLoadResourceReportsMissingFile(t *testing.T) {
 		t.Fatalf("loadResource error = %v, want resource not found", err)
 	}
 }
+
+func TestLoadResourceRejectsEscapingSymlink(t *testing.T) {
+	old := baseDir
+	baseDir = t.TempDir()
+	t.Cleanup(func() { baseDir = old })
+	outside := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(outside, []byte("secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(baseDir, "link")); err != nil {
+		t.Skip(err)
+	}
+	if data, err := loadResource("link"); err == nil {
+		t.Fatalf("escaped root: %q", data)
+	}
+}

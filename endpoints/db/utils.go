@@ -105,6 +105,7 @@ func (d *DataPrivateKeyStore) Save(doId string) error {
 		return common.ErrDataPrivateKeyStore
 	}
 	if err := file.Close(); err != nil {
+		log.Error("db[DataPrivateKeyStore.Save] DoId=%q close: %v", common.TruncateDoIDForLog(doId), err)
 		return common.ErrDataPrivateKeyStore
 	}
 	saved = true

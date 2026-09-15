@@ -815,8 +815,10 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 		log.Error("server[SaveZdtoConfig] DoId=%q create: %v", common.TruncateDoIDForLog(objectId), err)
 		return errSaveConfigFailed
 	}
-	defer func() { _ = file.Close() }()
-	defer func() { _ = os.Remove(file.Name()) }()
+	defer func() {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+	}()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
@@ -825,9 +827,11 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 		return errSaveConfigFailed
 	}
 	if err := file.Close(); err != nil {
+		log.Error("server[SaveZdtoConfig] DoId=%q close: %v", common.TruncateDoIDForLog(objectId), err)
 		return errSaveConfigFailed
 	}
 	if err := os.Rename(file.Name(), configPath); err != nil {
+		log.Error("server[SaveZdtoConfig] DoId=%q rename: %v", common.TruncateDoIDForLog(objectId), err)
 		return errSaveConfigFailed
 	}
 

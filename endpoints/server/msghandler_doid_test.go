@@ -100,3 +100,20 @@ func TestZdtoConfigConcurrentUpdatesRemainReadable(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestZdtoConfigRenameFailureRemovesTemporaryFile(t *testing.T) {
+	old := ExeDirPath
+	ExeDirPath = t.TempDir()
+	t.Cleanup(func() { ExeDirPath = old })
+	dir := filepath.Join(ExeDirPath, "etc", "ztdo")
+	if err := os.MkdirAll(filepath.Join(dir, "data-object.json"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveZdtoConfig(&common.DRGMsg{DoId: "object"}); !errors.Is(err, errSaveConfigFailed) {
+		t.Fatalf("save error = %v", err)
+	}
+	files, err := filepath.Glob(filepath.Join(dir, ".data-*.json"))
+	if err != nil || len(files) != 0 {
+		t.Fatalf("temporary files = %v, error = %v", files, err)
+	}
+}

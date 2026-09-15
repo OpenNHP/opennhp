@@ -155,7 +155,7 @@ func sentinelConnection(device *Device, localPort, remotePort int) *ConnectionDa
 }
 
 func TestARTFutureTimestampBound(t *testing.T) {
-	for _, delta := range []time.Duration{60 * time.Second, 60*time.Second + 1, 5 * time.Minute} {
+	for _, delta := range []time.Duration{ARTRecvFutureSkewSeconds * time.Second, ARTRecvFutureSkewSeconds*time.Second + 1, 10 * time.Minute} {
 		fixture := newValidatePeerSentinelFixture(t)
 		fixture.receiver.AddPeer(fixture.senderPeer)
 		packet := &Packet{Content: append([]byte(nil), fixture.packet...), HeaderType: NHP_AOL}
@@ -167,10 +167,10 @@ func TestARTFutureTimestampBound(t *testing.T) {
 		ppd.HeaderType = NHP_ART
 		got := ppd.validatePeer()
 		ppd.Destroy()
-		if delta > 60*time.Second && got != ErrStalePacketReceived {
+		if delta > ARTRecvFutureSkewSeconds*time.Second && got != ErrStalePacketReceived {
 			t.Fatalf("skew %v accepted: %v", delta, got)
 		}
-		if delta == 60*time.Second && got != nil {
+		if delta == ARTRecvFutureSkewSeconds*time.Second && got != nil {
 			t.Fatalf("allowed skew rejected: %v", got)
 		}
 	}
@@ -206,5 +206,14 @@ func TestDeviceTransactionSequenceChangesOnRestart(t *testing.T) {
 	}
 	if first.NextCounterIndex() != a+1 {
 		t.Fatal("counter lost monotonicity")
+	}
+}
+
+func TestARTSkewWarningIsRateLimited(t *testing.T) {
+	lastARTSkewWarnNano.Store(0)
+	t.Cleanup(func() { lastARTSkewWarnNano.Store(0) })
+	now := int64(2 * time.Minute)
+	if !artSkewWarnAllowed(now) || artSkewWarnAllowed(now+1) || !artSkewWarnAllowed(now+int64(time.Minute)) {
+		t.Fatal("clock skew warning rate limit failed")
 	}
 }

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	artReplayCacheSize = 10_000
+	artReplayCacheSize = 100_000
 	artReplayCacheTTL  = (core.DefaultRecvStalenessFloorSeconds + core.ARTRecvFutureSkewSeconds + 60) * time.Second
 )
 
@@ -49,7 +49,7 @@ func newARTReplayCache() *artReplayCache {
 
 func newARTReplayCacheWithParams(maxEntries int, ttl time.Duration, now func() time.Time) *artReplayCache {
 	return &artReplayCache{
-		entries:    make(map[artReplayKey]struct{}, maxEntries),
+		entries:    make(map[artReplayKey]struct{}),
 		order:      list.New(),
 		maxEntries: maxEntries,
 		ttl:        ttl,
@@ -74,8 +74,15 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 	key.txid = txid
 	key.sendTime = sendTime
 
+	var warn bool
+	var evictions uint64
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	defer func() {
+		c.mu.Unlock()
+		if warn {
+			log.Warning("ART replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.maxEntries, evictions)
+		}
+	}()
 
 	now := c.now()
 	c.evictExpired(now)
@@ -85,7 +92,8 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 	if len(c.entries) >= c.maxEntries {
 		c.capacityEvictions++
 		if c.lastWarning.IsZero() || now.Sub(c.lastWarning) >= time.Minute {
-			log.Warning("ART replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.maxEntries, c.capacityEvictions)
+			warn = true
+			evictions = c.capacityEvictions
 			c.lastWarning = now
 		}
 		c.removeOldest()

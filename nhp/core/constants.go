@@ -80,5 +80,5 @@ const (
 // Replay acceptance bounds also size endpoint dedupe retention.
 const (
 	DefaultRecvStalenessFloorSeconds = 600
-	ARTRecvFutureSkewSeconds         = 60
+	ARTRecvFutureSkewSeconds         = 300
 )

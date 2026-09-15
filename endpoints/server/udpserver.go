@@ -365,10 +365,11 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	if s.config.ARTReplayCacheEntries < 0 || s.config.ARTReplayCacheEntries > 1_000_000 {
 		return fmt.Errorf("ARTReplayCacheEntries must be between 0 and 1000000")
 	}
-	s.artReplay = newARTReplayCache()
-	if s.config.ARTReplayCacheEntries > 0 {
-		s.artReplay = newARTReplayCacheWithParams(s.config.ARTReplayCacheEntries, artReplayCacheTTL, time.Now)
+	entries := s.config.ARTReplayCacheEntries
+	if entries == 0 {
+		entries = artReplayCacheSize
 	}
+	s.artReplay = newARTReplayCacheWithParams(entries, artReplayCacheTTL, time.Now)
 	s.device.SetRecvReplayDedupe(s.dedupeRecvART)
 
 	// Stateless cookie signing key. In a multi-instance cluster all
@@ -1352,6 +1353,8 @@ func (s *UdpServer) FindAuthSvcProvider(aspId string) *common.AuthServiceProvide
 	return nil
 }
 
+var lastARTReplayWarn atomic.Int64
+
 // dedupeRecvART runs after peer and timestamp authentication but before body
 // decryption. This is the common point for matched and unmatched ART packets,
 // so a replay cannot evade the cache by missing transaction correlation.
@@ -1364,7 +1367,11 @@ func (s *UdpServer) dedupeRecvART(ppd *core.PacketParserData) error {
 		return common.ErrServerMissingPeerPubkey
 	}
 	if !s.artReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime) {
-		log.Warning("server[dedupeRecvART] dropped replayed ART (txid=%d, pubkey=%s, sendTime=%d)", ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
+		now := time.Now().UnixNano()
+		last := lastARTReplayWarn.Load()
+		if now-last >= int64(time.Minute) && lastARTReplayWarn.CompareAndSwap(last, now) {
+			log.Warning("server[dedupeRecvART] dropped replayed ART (txid=%d, pubkey=%s, sendTime=%d)", ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
+		}
 		return common.ErrServerDuplicateTransaction
 	}
 	return nil

@@ -329,19 +329,27 @@ Log levels:
 
 ### ART replay cache
 
-The server accepts ART responses up to 600 seconds old and at most 60 seconds
+The server accepts ART responses up to 600 seconds old and at most 300 seconds
 in the future. Keep AC and server clocks synchronized. The replay cache retains
-entries for 720 seconds. Set `ARTReplayCacheEntries` in server `config.toml` to
-at least peak ART responses per second × 720, with room for bursts. Zero uses
-10,000 entries. Memory grows with this value (several hundred bytes per entry).
+entries for 960 seconds. Set `ARTReplayCacheEntries` in server `config.toml` to
+at least peak ART responses per second × 960, with room for bursts. Zero uses
+100,000 entries. Memory grows with this value (several hundred bytes per entry).
 A warning, limited to once per minute, reports live capacity evictions and the
 cumulative count; these evictions shorten replay coverage. A process restart
 also clears the cache. This process-local cache does not guarantee replay
 protection across restarts or sustained traffic above its configured capacity.
 
 ART future-skew rejection tightens the previous unbounded behavior: AC clocks
-more than 60 seconds ahead now cause rejected responses with a clock-sync log.
+more than 300 seconds ahead now cause rejected responses with a clock-sync log.
 Cache capacity changes require restart and accept 0..1,000,000 entries. Captured
 first-seen packets can also churn the cache. Transaction counters now start from
 a cryptographically random 64-bit seed per device, making cross-restart ID
 reuse improbable; the cache is additional duplicate-delivery protection.
+
+ART future clock skew is bounded at five minutes. Larger skew rejects the
+packet; synchronize the AC and server clocks. The detailed clock-skew and
+replay warnings are limited to once per minute. Replay retention is 960 seconds
+(600-second staleness plus 300-second future skew plus 60-second margin).
+Alert on `nhp_server_art_replay_cache_evictions_total` and size
+`ARTReplayCacheEntries` for peak ART packets/s times 960. This PR covers ART;
+AOP replay protection is supplied separately by PR #1636.

@@ -603,7 +603,9 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// Bound ART clock skew so cache entries outlive every accepted replay.
 	if ppd.device.deviceType == NHP_SERVER && peerDeviceType == NHP_AC && ppd.HeaderType == NHP_ART &&
 		remoteSendTime > ppd.LocalInitTime+ARTRecvFutureSkewSeconds*int64(time.Second) {
-		log.Critical("ART from %s is %d ns ahead of local time (limit %d seconds); check AC/server clock synchronization", ppd.ConnData.RemoteAddr.String(), remoteSendTime-ppd.LocalInitTime, ARTRecvFutureSkewSeconds)
+		if artSkewWarnAllowed(time.Now().UnixNano()) {
+			log.Critical("ART from %s is %v ahead of local time (limit %d seconds); check AC/server clock synchronization", ppd.ConnData.RemoteAddr.String(), time.Duration(remoteSendTime-ppd.LocalInitTime), ARTRecvFutureSkewSeconds)
+		}
 		return ErrStalePacketReceived
 	}
 	if remoteSendTime < (ppd.LocalInitTime - DefaultRecvStalenessFloorSeconds*int64(time.Second)) {
@@ -649,6 +651,13 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	}
 
 	return nil
+}
+
+var lastARTSkewWarnNano atomic.Int64
+
+func artSkewWarnAllowed(nowNano int64) bool {
+	last := lastARTSkewWarnNano.Load()
+	return nowNano-last >= int64(time.Minute) && lastARTSkewWarnNano.CompareAndSwap(last, nowNano)
 }
 
 var lastDecompressWarnNano atomic.Int64

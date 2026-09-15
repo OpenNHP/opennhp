@@ -108,6 +108,13 @@ type UdpServer struct {
 	// loop and the relay-forward handlers. See rknRateLimiter.
 	rknLimiter *rknRateLimiter
 
+	// packetLimiter is the general valid-packet gate. It deliberately lives
+	// alongside (and does not replace) rknLimiter: overload RKNs still need the
+	// tighter pre-ECDH budget enforced by the existing limiter.
+	packetLimiter        *ipRateLimiter
+	packetRateLimitDrops atomic.Int64
+	malformedPacketDrops atomic.Int64
+
 	// address association map
 	srcIpAssociatedAddrMapMutex sync.Mutex
 	srcIpAssociatedAddrMap      map[string][]*common.NetAddress // indexed by source ip
@@ -170,6 +177,7 @@ type BlockAddr struct {
 }
 
 type UdpConn struct {
+	rateExempt     atomic.Bool // set only after a configured infrastructure peer authenticates
 	ConnData       *core.ConnectionData
 	isACConnection bool // Immutable. Don't change it after creation. Conn object is also stored in acConnectionMap which is indexed by ACId
 	isDBConnection bool // Immutable. Don't change it after creation. Conn object is also stored in dbConnectionMap which is indexed by DBId
@@ -470,6 +478,12 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		OverloadRknLimiterMaxEntries,
 		OverloadRknLimiterIdleSeconds*int64(time.Second),
 	)
+	s.packetLimiter = newIPRateLimiter(
+		PacketRatePerSecondPerIP,
+		PacketRateBurstPerIP,
+		PacketRateMaxEntries,
+		PacketRateIdleSeconds*int64(time.Second),
+	)
 	s.signals.stop = make(chan struct{})
 
 	s.recvMsgCh = s.device.DecryptedMsgQueue
@@ -655,8 +669,6 @@ func (s *UdpServer) recvPacketRoutine() {
 
 	log.Debug("recvPacketRoutine started")
 
-	preCheckThreats := make(map[string]int32)
-
 	for {
 		select {
 		case <-s.signals.stop:
@@ -680,15 +692,27 @@ func (s *UdpServer) recvPacketRoutine() {
 			continue
 		}
 		addrStr := remoteAddr.String()
+		ipStr := keyForAddr(remoteAddr)
 
 		// add total recv bytes
 		atomic.AddUint64(&s.stats.totalRecvBytes, uint64(n))
+
+		recvTime := time.Now().UnixNano()
+		// Charge every datagram, including malformed and undersized packets.
+		if !s.allowPacketFromIP(ipStr, recvTime) && !s.isAuthenticatedControlPlaneAddr(remoteAddr) {
+			s.device.ReleasePoolPacket(pkt)
+			s.logPacketRateLimitDrop(ipStr)
+			s.metrics.recordDroppedPacket("rate_limited")
+			continue
+		}
 
 		// check minimal length
 		if n < pkt.MinimalLength() {
 			s.device.ReleasePoolPacket(pkt)
 			s.metrics.recordDroppedPacket("too_short")
-			log.Error("Received UDP packet from %s is too short, discard", addrStr)
+			if count := s.malformedPacketDrops.Add(1); count == 1 || count%1000 == 0 {
+				log.Warning("Received short UDP packet from %s (malformed drops: %d)", addrStr, count)
+			}
 			continue
 		}
 
@@ -703,31 +727,23 @@ func (s *UdpServer) recvPacketRoutine() {
 			continue
 		}
 
-		recvTime := time.Now().UnixNano()
 		pkt.Content = pkt.Buf[:n]
 		//log.Trace("receive udp packet (%s -> %s): %+v", addrStr, s.listenAddrStr, pkt.Content)
 
 		typ, _, err := s.device.RecvPrecheck(pkt) // this check also records packet header type
 		msgType := core.HeaderTypeToString(typ)
-		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddrStr, n)
-		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddrStr, n)
 		if err != nil {
-			// threat plus 1
-			preCheckThreats[addrStr]++
-			if preCheckThreats[addrStr] > PreCheckThreatCountBeforeBlock {
-				s.AddBlockAddr(remoteAddr)
-			}
+			count := s.malformedPacketDrops.Add(1)
 			s.device.ReleasePoolPacket(pkt)
 			// The outermost drop — malformed magic/version, background scan
 			// traffic. It never reaches the OnPacketDropped hook (that fires
 			// inside packetToMsgRoutine), so record it here.
 			s.metrics.recordDroppedPacket("precheck")
-			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, s.listenAddrStr, err)
-			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, s.listenAddrStr, err)
+			if count == 1 || count%1000 == 0 {
+				log.Warning("Precheck rejected packets from %s (count %d): %v", addrStr, count, err)
+			}
 			continue
 		}
-		// clear threat
-		delete(preCheckThreats, addrStr)
 
 		// Rate-limit RKN-under-overload per source IP BEFORE the packet
 		// reaches the connection routine (and thus before the cookie-
@@ -747,6 +763,11 @@ func (s *UdpServer) recvPacketRoutine() {
 				continue
 			}
 		}
+
+		// Keep per-packet info/evaluation logging after the cheap drop gates so
+		// an over-limit source cannot turn a packet flood into a logging flood.
+		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddrStr, n)
+		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddrStr, n)
 
 		s.remoteConnectionMapMutex.Lock()
 		conn, found := s.remoteConnectionMap[addrStr]
@@ -953,7 +974,9 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
-			s.AddBlockAddr(conn.ConnData.RemoteAddr)
+			if addr := blockAddressForConnection(conn); addr != nil {
+				s.AddBlockAddr(addr)
+			}
 			return
 
 		case pkt, ok := <-conn.ConnData.RecvQueue:

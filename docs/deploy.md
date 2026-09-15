@@ -326,3 +326,12 @@ Log levels:
   ```
 
   **Solution:** Configure the correct IP in `nhp-server/plugins/example/etc/resource.toml` under `Addr.Ip`.
+
+The packet rate budget applies before structural validation, including short
+and malformed datagrams. Malformed log sampling is process-wide. Relay client
+budgets use a relay-specific namespace and cannot drain a direct client's
+budget. The 65,536-entry table prefers fully replenished entries for reuse;
+under extreme source churn it evicts the oldest entry to keep admitting new
+sources. This reduces per-source coverage: alert on
+`nhp_server_packet_rate_cache_evictions_total`. Upstream anti-spoofing and flood
+filtering remain necessary; a bounded table cannot retain unlimited identities.

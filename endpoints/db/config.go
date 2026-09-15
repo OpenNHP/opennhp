@@ -11,6 +11,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/common/clusterconfig"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
+	"github.com/OpenNHP/opennhp/nhp/metrics"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
 
@@ -26,9 +27,10 @@ var (
 type Config struct {
 	LogLevel            int
 	PrivateKeyBase64    string
-	DefaultCipherScheme int    `json:"defaultCipherScheme"`
-	SymmetricCipherMode string `json:"symmetricCipherMode"`
-	DbId                string `json:"dbId"`
+	DefaultCipherScheme int            `json:"defaultCipherScheme"`
+	SymmetricCipherMode string         `json:"symmetricCipherMode"`
+	DbId                string         `json:"dbId"`
+	Metrics             metrics.Config `json:"metrics"`
 }
 
 // Peers is the top-level shape of server.toml. Each entry is one
@@ -113,8 +115,8 @@ func (a *UdpDevice) updateBaseConfig(file string) (err error) {
 	}
 
 	var conf Config
-	if err := toml.Unmarshal(content, &conf); err != nil {
-		log.Error("failed to unmarshal base config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &conf); unmarshalErr != nil {
+		log.Error("failed to unmarshal base config: %v", unmarshalErr)
 	}
 	if a.config == nil {
 		a.config = &conf
@@ -149,8 +151,8 @@ func (a *UdpDevice) updateServerPeers(file string) (err error) {
 
 	// update
 	var peers Peers
-	if err := toml.Unmarshal(content, &peers); err != nil {
-		log.Error("failed to unmarshal server config: %v", err)
+	if unmarshalErr := toml.Unmarshal(content, &peers); unmarshalErr != nil {
+		log.Error("failed to unmarshal server config: %v", unmarshalErr)
 	}
 	// Normalize first so legacy single-server entries (Ip/Port at the
 	// top level) auto-upgrade to a single-instance cluster. nhp-db

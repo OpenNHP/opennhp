@@ -12,7 +12,16 @@ tlsKeyFile  = ""
 # Cipher scheme: 0 = Curve25519 (default), 1 = SM2/GMSM.
 cipherScheme = 0
 
-# Relay identity key — generate with: nhp-relayd keygen --curve (or --sm2)
+# Relay identity key — generate with: nhp-relayd keygen --curve (or --sm2).
+# Accepts a plain base64 key or a sealed blob (starts with "v1$") produced
+# by:  echo "$KEY" | nhp-relayd seal
+# A sealed key is decrypted at startup with a passphrase supplied out of
+# band. Prefer NHP_KEY_PASSPHRASE_FILE (a file, mode 0600) over
+# NHP_KEY_PASSPHRASE: an env var is readable from the process environment,
+# ends up in unit files and crash dumps, and is inherited by children.
+# The passphrase env vars are consulted only when this value is a sealed
+# blob, so a plain base64 key is unaffected by a stray NHP_KEY_PASSPHRASE_FILE
+# left exported on the host.
 privateKeyBase64 = ""
 
 # Keepalive interval in seconds
@@ -26,6 +35,19 @@ udpTimeoutMs   = 5000
 
 # Log level: 0=silent, 1=error, 2=info, 3=debug
 logLevel = 2
+
+# [Metrics]: optional Prometheus /metrics + JSON /healthz endpoint.
+#   Enabled: off by default. When true, a separate HTTP listener is started.
+#   ListenIp: bind address. Empty defaults to 127.0.0.1 so telemetry is not
+#     reachable off-host; set an explicit IP only if a scraper needs remote
+#     access (firewall it in that case).
+#   ListenPort: TCP port, defaults to 9102 when empty/zero (distinct from
+#     nhp-server 9100 and nhp-ac 9101).
+#   Read once at startup; changing it needs a restart.
+[Metrics]
+Enabled = false
+ListenIp = "127.0.0.1"
+ListenPort = 9102
 
 # ────────────────────────────────────────────────────────────────────────
 # Upstream NHP-Server entries

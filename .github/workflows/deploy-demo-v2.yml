@@ -550,38 +550,53 @@ jobs:
         # tcp/443 is already closed at the security group
         # (terraform/demo/security-groups.tf), so this is host-level cleanup;
         # nhp-serverd itself no longer opens 8443 (EnableHttp=false).
+        #
+        # The teardown is written to converge on every run rather than to react
+        # to what changed this run: removing the vhost file and shutting nginx
+        # down are independent, so a run that deleted server.conf but failed
+        # before stopping nginx cannot leave the loaded 443 vhost being served
+        # forever. Likewise a host where server.conf was removed out of band
+        # (manual cleanup, AMI refresh) still gets nginx stopped.
         run: |
           set -euo pipefail
 
           ssh nhp-server '
             set -eu
-            changed=0
 
             if sudo test -f /etc/nginx/conf.d/server.conf; then
               echo "Removing retired nhp-server nginx vhost..."
               sudo rm -f /etc/nginx/conf.d/server.conf
-              changed=1
             else
               echo "nhp-server nginx vhost already absent."
             fi
 
-            if [ "$changed" = "1" ]; then
-              # Only reload when the remaining config is valid, so a bad
-              # unrelated vhost cannot take nginx down as a side effect.
-              if sudo nginx -t; then
-                sudo systemctl reload nginx || sudo systemctl restart nginx
-                echo "nginx reloaded without the server vhost."
+            # The server host has no vhost of its own left: terraform/demo/
+            # userdata/server.sh never installs nginx, only the (now unused)
+            # bootstrap-tls.sh did. So stop and disable the unit outright
+            # instead of reloading it — a reload would keep a listener alive
+            # (at minimum the distro default :80 server block), which is
+            # exactly what this step exists to remove. Never start nginx as a
+            # fallback here.
+            if systemctl list-unit-files --no-legend nginx.service 2>/dev/null \
+               | grep -q nginx; then
+              if systemctl is-active --quiet nginx \
+                 || systemctl is-enabled --quiet nginx 2>/dev/null; then
+                echo "Stopping and disabling nginx on the server host..."
+                sudo systemctl disable --now nginx
               else
-                echo "ERROR: nginx -t failed after removing server.conf" >&2
-                exit 1
+                echo "nginx already stopped and disabled."
               fi
+            else
+              echo "nginx is not installed on the server host."
             fi
 
-            # Report anything still listening on the HTTP/HTTPS ports so a
-            # regression is visible in the deploy log.
-            echo "Listeners on :80/:443/:8443 (expect none):"
+            # Report anything still listening on the HTTP/HTTPS ports. This is
+            # informational here because the old nhp-serverd (EnableHttp=true)
+            # may still hold 127.0.0.1:8443 until it is restarted further down;
+            # the fatal assertion runs after that restart.
+            echo "Listeners on :80/:443/:8443 (expect none once nhp-serverd restarts):"
             sudo ss -ltnp 2>/dev/null \
-              | grep -E ":(80|443|8443)\s" || echo "  none"
+              | grep -E ":(80|443|8443)[[:space:]]" || echo "  none"
           '
 
       - name: Load SMTP credentials for OTP email
@@ -687,6 +702,24 @@ jobs:
             exit 1
           fi
           echo "nhp-serverd deployed successfully"
+
+      - name: Verify no HTTP/HTTPS listener remains on server
+        # Fail the deploy loudly if the retired HTTP surface came back: nginx
+        # holding :80/:443, or nhp-serverd binding :8443 because http.toml was
+        # deployed with EnableHttp=true. Runs after nhp-serverd restarts so the
+        # old process is no longer holding 8443.
+        run: |
+          set -euo pipefail
+
+          ssh nhp-server '
+            set -eu
+            echo "Listeners on :80/:443/:8443 (expect none):"
+            if sudo ss -ltnp 2>/dev/null | grep -E ":(80|443|8443)[[:space:]]"; then
+              echo "ERROR: nhp-server still exposes an HTTP/HTTPS listener" >&2
+              exit 1
+            fi
+            echo "  none"
+          '
 
       - name: Cleanup
         if: always()

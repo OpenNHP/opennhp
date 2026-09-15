@@ -161,8 +161,10 @@ func TestMalformedDatagramsConsumeSourceBudget(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer sender.Close()
+			payload := bytes.Repeat([]byte{0xff}, size)
+			payload[0] = 0 // XOR header words now encode an unsupported message type.
 			for i := 0; i < 2; i++ {
-				if _, err := sender.Write(bytes.Repeat([]byte{0xff}, size)); err != nil {
+				if _, err := sender.Write(payload); err != nil {
 					t.Fatal(err)
 				}
 			}

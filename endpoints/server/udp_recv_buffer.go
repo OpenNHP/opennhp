@@ -12,6 +12,8 @@ import (
 )
 
 const (
+	MinUDPRecvBufferBytes     = 64 * 1024
+	MaxUDPRecvBufferBytes     = (1 << 30) - 1
 	DefaultUDPRecvBufferBytes = 8 * 1024 * 1024
 	UDPRecvBufferEnvVar       = "NHP_UDP_RECV_BUFFER_BYTES"
 )
@@ -27,8 +29,8 @@ func parseUDPRecvBufferSize(raw string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("%s: invalid integer %q: %w", UDPRecvBufferEnvVar, raw, err)
 	}
-	if size <= 0 {
-		return 0, fmt.Errorf("%s: must be positive, got %d", UDPRecvBufferEnvVar, size)
+	if size < MinUDPRecvBufferBytes || size > MaxUDPRecvBufferBytes {
+		return 0, fmt.Errorf("%s: must be between %d and %d, got %d", UDPRecvBufferEnvVar, MinUDPRecvBufferBytes, MaxUDPRecvBufferBytes, size)
 	}
 	return size, nil
 }
@@ -67,11 +69,11 @@ func verifyUDPRecvBuffer(conn *net.UDPConn, target int) (effective int, err erro
 	if socketErr != nil {
 		return 0, fmt.Errorf("getsockopt SO_RCVBUF: %w", socketErr)
 	}
-	threshold := target
+	threshold := int64(target)
 	if runtime.GOOS == "linux" {
 		threshold *= 2 // Linux reports its internal doubled accounting value.
 	}
-	if effective < threshold {
+	if int64(effective) < threshold {
 		return effective, errUDPRecvBufferClamped
 	}
 	return effective, nil

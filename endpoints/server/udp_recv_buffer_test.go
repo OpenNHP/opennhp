@@ -16,6 +16,11 @@ func TestParseUDPRecvBufferSize(t *testing.T) {
 		{want: DefaultUDPRecvBufferBytes},
 		{raw: " 16777216\n", want: 16 * 1024 * 1024},
 		{raw: "0", wantErr: true},
+		{raw: "8388", wantErr: true},
+		{raw: "4294967296", wantErr: true},
+		{raw: "1073741824", wantErr: true},
+		{raw: "65536", want: MinUDPRecvBufferBytes},
+		{raw: "1073741823", want: MaxUDPRecvBufferBytes},
 		{raw: "-1", wantErr: true},
 		{raw: "eight-megs", wantErr: true},
 	}
@@ -51,8 +56,11 @@ func TestVerifyUDPRecvBufferDetectsClamp(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	const target = 1 << 30
-	_ = conn.SetReadBuffer(target)
+	effective, readErr := verifyUDPRecvBuffer(conn, 1)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	target := effective + 1
 	_, err = verifyUDPRecvBuffer(conn, target)
 	if !errors.Is(err, errUDPRecvBufferClamped) {
 		t.Fatalf("verifyUDPRecvBuffer error = %v, want clamp sentinel", err)

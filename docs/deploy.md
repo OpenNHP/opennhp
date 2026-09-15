@@ -236,8 +236,9 @@ For high-availability deployments, consider:
 **Post-deployment:**
 - [ ] Verify NHP-Server is listening on UDP 62206
 - [ ] For a host-network or bare-metal server, run
-  `sudo docker/harden_nhp_server_udp.sh` to raise `rmem_max` and install
-  aggregate plus per-source kernel rate limits. Docker Compose passes the
+  `sudo env NHP_TRUSTED_PEERS="<AC-IP> <relay-IP>" docker/harden_nhp_server_udp.sh` to raise `rmem_max` and install
+  aggregate kernel rate limits for both IP families after trusted-peer exemptions.
+  Restart nhp-server after raising the ceiling. Docker Compose passes the
   requested socket size to the server, which warns if the host ceiling clamps
   it; Compose does not mutate the host's non-namespaced `net.core.rmem_max`.
 - [ ] Verify NHP-AC iptables rules are active (`iptables -L`)
@@ -251,7 +252,7 @@ Key configuration parameters across components:
 
 | Parameter | Component | Description |
 |-----------|-----------|-------------|
-| `PrivateKeyBase64` | All | Base64-encoded private key (static, requires restart) |
+| `PrivateKeyBase64` | All | Private key (static, requires restart). Either a plain base64 key or a sealed blob (`v1$…`) produced by `<daemon> seal`; a sealed blob is decrypted at startup with a passphrase from `NHP_KEY_PASSPHRASE_FILE` (preferred) or `NHP_KEY_PASSPHRASE`. On nhp-agent specifically, "startup" also covers `RestartAgent`/`rotate` (both re-run `Start` in the same process), so the passphrase must stay resolvable for the whole process lifetime, not just its first boot — a passphrase file that disappears after the initial start still yields an agent that starts fine but can never restart or rotate. See the per-daemon `config.toml` comments. |
 | `ListenPort` | Server | UDP listening port, default 62206 (static) |
 | `LogLevel` | All | 0=silent, 1=error, 2=info, 3=audit, 4=debug, 5=trace |
 | `DefaultCipherScheme` | All | 0=Curve25519, 1=SM2 |
@@ -331,3 +332,34 @@ Log levels:
   ```
 
   **Solution:** Configure the correct IP in `nhp-server/plugins/example/etc/resource.toml` under `Addr.Ip`.
+
+### UDP host firewall sizing
+
+For a host-network or bare-metal server, run:
+
+```sh
+sudo env NHP_TRUSTED_PEERS="192.0.2.10 2001:db8::10" docker/harden_nhp_server_udp.sh
+```
+
+Replace these example addresses with the AC, relay, and peer-server addresses
+(or narrow CIDRs) before use. These peers bypass the rate bucket in both IP
+families, but still pass through the remaining host INPUT rules. Protect these
+source addresses with network anti-spoofing rules. The script requires iptables,
+ip6tables, sysctl, and Python 3, and refuses to run without a trusted peer list.
+Docker bridge deployments need equivalent rules in their own packet path.
+
+The fixed-size aggregate bucket defaults to 5,000 packets/s and a 10,000-packet
+burst **per IP family**, shared by all untrusted clients. Set
+`NHP_KNOCK_GLOBAL_RATE_PPS` and `NHP_KNOCK_GLOBAL_RATE_BURST` from measured host
+capacity and expected peak traffic. Saturation can drop legitimate untrusted
+traffic. There is no kernel per-source table to exhaust and no separate small
+per-IP cap that penalizes NAT clients. Authenticated peer separation and the
+server's userspace limits remain necessary.
+
+`NHP_UDP_RECV_BUFFER_BYTES` sets the server receive-buffer request (default
+8 MiB; range 65,536 to 1,073,741,823 bytes). Run the script before starting or
+restarting nhp-server: changing `net.core.rmem_max` does not resize an open
+socket. The script's sysctl and firewall changes do not survive reboot unless
+your host configuration manager persists them. Inspect drop counters with
+`sudo iptables -vnL NHP_KNOCK_GUARD` and
+`sudo ip6tables -vnL NHP_KNOCK_GUARD`.

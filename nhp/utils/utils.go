@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	toml "github.com/pelletier/go-toml/v2"
+
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
@@ -150,6 +152,15 @@ func LoadJsonFileAsStruct(filePath string) (any, error) {
 	return data, nil
 }
 
+// UpdateTomlConfig sets a top-level string key in a TOML file.
+//
+// If a `key = "…"` assignment exists (empty value included) it is replaced
+// in place. If the key is ABSENT and the file has no `[table]` headers, the
+// assignment is appended so a bootstrap/partial config self-heals rather
+// than the update silently doing nothing. If the key is absent but the file
+// DOES have table headers, appending a bare key at EOF would land it inside
+// the last table, so this returns an error instead — the caller must add the
+// root-table line by hand.
 func UpdateTomlConfig(filePath string, key string, value any) error {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
@@ -160,16 +171,117 @@ func UpdateTomlConfig(filePath string, key string, value any) error {
 
 	switch value := value.(type) {
 	case string:
-		re := regexp.MustCompile(`(?m)^\s*` + key + `\s*=\s*".+"\s*$`)
-		newContent = re.ReplaceAllString(string(content), fmt.Sprintf("%s = \"%s\"", key, value))
+		replacement := fmt.Sprintf("%s = \"%s\"", key, value)
+		// Match ONLY a single-line string assignment (`key = "…"`, empty value
+		// included), never `key = [` of a multi-line array or a bare number,
+		// so a general caller can't mangle those.
+		// [ \t\r]*$: (?m) makes $ match immediately before \n, not consume
+		// it, and — unlike the \s*$ this replaced — \r is not implied, so a
+		// CRLF file needs it spelled out or the regex stops matching a line
+		// it used to match on Unix-checked-out content.
+		lineRe := regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(key) + `[ \t]*=[ \t]*"[^"]*"[ \t\r]*$`)
+		switch {
+		case lineRe.MatchString(string(content)):
+			// ReplaceAllLiteralString, not ReplaceAllString: the replacement
+			// is a verbatim value, and a sealed key blob ("v1$argon2id$...")
+			// contains '$' sequences that ReplaceAllString would interpret as
+			// capture-group references and mangle.
+			newContent = lineRe.ReplaceAllLiteralString(string(content), replacement)
+		default:
+			// The regex found no single-line "key = \"...\"" assignment. That
+			// can mean the key is genuinely absent — or it can mean the
+			// existing value just doesn't look like one (a trailing comment,
+			// a single-quoted literal, CRLF the regex still doesn't cover,
+			// ...). Telling those apart by parsing the file, rather than by
+			// the regex missing, matters: an earlier version of this append
+			// branch fired on either case alike, so a value the regex could
+			// not see got a second "key = ..." line appended next to the
+			// first one — a file go-toml then refuses to parse at all. (On
+			// unmodified main, before this PR, a regex miss was a silent
+			// no-op instead; this failure mode is specific to that earlier,
+			// already-fixed version of this branch, not to main.)
+			var doc map[string]any
+			if uerr := toml.Unmarshal(content, &doc); uerr != nil {
+				return fmt.Errorf("key %q (string) not found via pattern match in %s, and the file does not parse as TOML to check for real: %w", key, filePath, uerr)
+			}
+			if _, exists := doc[key]; exists {
+				return fmt.Errorf("key %q already exists in %s in a form UpdateTomlConfig does not rewrite (not a single-line \"...\" assignment); edit it by hand", key, filePath)
+			}
+			if regexp.MustCompile(`(?m)^\s*\[`).MatchString(string(content)) {
+				return fmt.Errorf("key %q (string) not found in %s and the file has [table] sections; add the line under the root table by hand", key, filePath)
+			}
+			// Key is confirmed absent at the root, and there are no [table]
+			// sections it could be silently appended after: safe to append.
+			base := string(content)
+			if len(base) > 0 && !strings.HasSuffix(base, "\n") {
+				base += "\n"
+			}
+			newContent = base + replacement + "\n"
+		}
 	default:
 		return fmt.Errorf("unsupported type: %T", value)
 	}
 
-	err = os.WriteFile(filePath, []byte(newContent), 0644) //nolint:gosec // G306: Config files are typically world-readable
-	if err != nil {
-		return err
+	return atomicWriteFile(filePath, []byte(newContent))
+}
+
+// atomicWriteFile replaces filePath's contents via a same-dir temp file +
+// rename, so a crash mid-write cannot leave a truncated file — RotateAgentKey
+// now persists a re-SEALED key through this path, and that key exists nowhere
+// else. The existing file's permission bits are preserved (a new file gets
+// 0600, the CreateTemp default), so a rotation never widens a mode-0600
+// config to world-readable; ownership is NOT preserved (Rename does not
+// chown), and a rename onto a path that was a symlink replaces the symlink
+// with a regular file rather than writing through it. Falls back to a
+// non-atomic in-place write when the directory is not writable (a hardened
+// root-owned etc/) — that fallback is logged, since it silently drops the
+// crash-safety this function otherwise provides, on the one file that may
+// hold the only copy of a freshly re-sealed key.
+func atomicWriteFile(filePath string, data []byte) error {
+	mode := os.FileMode(0o600)
+	if fi, statErr := os.Stat(filePath); statErr == nil {
+		mode = fi.Mode().Perm() // keep whatever the operator set
 	}
 
+	dir := filepath.Dir(filePath)
+	tmp, err := os.CreateTemp(dir, ".toml-*")
+	if err != nil {
+		if os.IsPermission(err) {
+			// Can't create a sibling temp file (root-owned etc/). Fall back to
+			// a plain in-place write, which only needs +w on the file itself;
+			// WriteFile's perm arg is ignored for an existing file, so the
+			// mode is preserved here too.
+			log.Warning("atomicWriteFile: %s directory is not writable; falling back to a "+
+				"non-atomic in-place write of %s (a crash mid-write can now truncate it)", dir, filePath)
+			return os.WriteFile(filePath, data, mode)
+		}
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op after a successful rename
+
+	if _, err = tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err = tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	if err = os.Chmod(tmpName, mode); err != nil {
+		return err
+	}
+	if err = os.Rename(tmpName, filePath); err != nil {
+		return err
+	}
+	// fsync the directory so the rename itself survives a crash, not just the
+	// temp file's contents. Best-effort: some filesystems disallow it.
+	if d, dErr := os.Open(dir); dErr == nil {
+		_ = d.Sync()
+		_ = d.Close()
+	}
 	return nil
 }

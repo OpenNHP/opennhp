@@ -2,6 +2,7 @@ package ac
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -47,6 +48,9 @@ type UdpAC struct {
 	serverPeerMap   map[string]*core.UdpPeer // indexed by server's public key
 
 	tokenStore *common.TokenStore[*AccessEntry]
+	// aopReplay rejects a byte-identical NHP_AOP replay even when it arrives on
+	// a fresh UDP connection, where per-connection timestamp state is empty.
+	aopReplay *aopReplayCache
 
 	device     *core.Device
 	httpServer *HttpAC
@@ -168,6 +172,20 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	a.remoteConnectionMap = make(map[string]*UdpConn)
 	a.serverPeerMap = make(map[string]*core.UdpPeer)
 	a.tokenStore = common.NewTokenStore[*AccessEntry]()
+	if a.config.AOPRecvStalenessSeconds < 0 || a.config.AOPRecvStalenessSeconds > core.DefaultRecvStalenessFloorSeconds {
+		return fmt.Errorf("AOPRecvStalenessSeconds must be between 0 and %d, got %d", core.DefaultRecvStalenessFloorSeconds, a.config.AOPRecvStalenessSeconds)
+	}
+	options := a.device.GetOption()
+	options.AOPRecvStalenessSeconds = a.config.AOPRecvStalenessSeconds
+	a.device.SetOption(options)
+	if a.config.AOPReplayCacheEntries < 0 || a.config.AOPReplayCacheEntries > 1_000_000 {
+		return fmt.Errorf("AOPReplayCacheEntries must be between 0 and 1000000, got %d", a.config.AOPReplayCacheEntries)
+	}
+	entries := a.config.AOPReplayCacheEntries
+	if entries == 0 {
+		entries = aopReplayCacheSize
+	}
+	a.aopReplay = newAOPReplayCacheWithParams(entries, aopReplayCacheTTL)
 
 	if a.etcdConn != nil {
 		_ = a.loadRemoteConfig()
@@ -591,7 +609,11 @@ func (a *UdpAC) recvMessageRoutine() {
 				p := ppd
 				a.wg.Add(1)
 				go a.runUDPHandler(p.HeaderType, func() {
-					_ = a.HandleUdpACOperations(p)
+					if err := a.HandleUdpACOperations(p); err != nil &&
+						!errors.Is(err, common.ErrACDuplicateTransaction) &&
+						!errors.Is(err, common.ErrACMissingPeerPubkey) {
+						log.Error("HandleUdpACOperations failed: %v", err)
+					}
 				})
 			}
 		}

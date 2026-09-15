@@ -245,6 +245,18 @@ type PacketParserData struct {
 
 	LocalInitTime int64
 	SenderTrxId   uint64
+	// RemoteSendTime is the AEAD-authenticated wall-clock send time
+	// the sender stamped into the packet header (nanos), populated
+	// after the timestamp passes the staleness floor and the
+	// per-connection LastRemoteSendTime gate. Downstream handlers
+	// (e.g., AC AOP dedupe in endpoints/ac/aop_replay_cache.go) use
+	// it to distinguish a captured-and-replayed packet (same
+	// timestamp) from a fresh post-restart packet that happens to
+	// reuse the sender's in-memory counter (different timestamp).
+	// Zero value means "not populated" (e.g., AEAD failed before the
+	// timestamp gate); callers that key on it must not invoke before
+	// AEAD verification has succeeded.
+	RemoteSendTime int64
 
 	noise        NoiseFactory // int
 	HeaderType   int
@@ -381,12 +393,58 @@ func (ppd *PacketParserData) deriveMsgAssemblerData(t int, compress bool, messag
 	return mad
 }
 
+// shouldCheckRecvAttack applies the monotonic timestamp gate to client traffic.
+// AOP and ART can arrive out of order because packet workers run concurrently.
+// AOP duplicate rejection is handled by the AC's authenticated packet cache.
 func shouldCheckRecvAttack(deviceType int, peerType int, msgType int) bool {
-	if (deviceType == NHP_SERVER && peerType == NHP_AC && msgType == NHP_ART) ||
-		(deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP) {
+	if deviceType == NHP_SERVER && peerType == NHP_AC && msgType == NHP_ART {
 		return false
 	}
+	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
+		return false
+	}
+	return true
+}
 
+// shouldCheckFlood gates the per-connection MinimalRecvIntervalMs
+// flood check (two consecutive packets within 20 ms trip
+// RecvThreatCount and, past ThreatCountBeforeBlock, fire
+// SendBlockSignal on the connection).
+//
+// NHP_AOP (server → AC) is exempt because the server legitimately
+// emits AOPs in tight succession to the same AC during knock
+// bursts: each successful agent knock against the server produces
+// one AOP per AC that needs an ipset entry, and timestamps on
+// back-to-back sends differ by µs. Subjecting AOP to the 20 ms
+// floor would false-flood-block a connection during routine burst
+// load. The packet cache rejects duplicates without rejecting reordered AOPs.
+//
+// NHP_ART (AC → server) keeps the same exemption it has from the
+// replay gate — same legitimate-latency rationale.
+func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
+	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
+		return false
+	}
+	if deviceType == NHP_SERVER && peerType == NHP_AC && msgType == NHP_ART {
+		return false
+	}
+	return true
+}
+
+// recvStalenessFloor is the default accepted packet age in nanoseconds.
+func recvStalenessFloor(deviceType int, peerType int, msgType int) int64 {
+	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
+		return AOPRecvStalenessFloorSeconds * int64(time.Second)
+	}
+	return DefaultRecvStalenessFloorSeconds * int64(time.Second)
+}
+
+// AOP skips monotonic replay and flood checks; the packet cache rejects
+// duplicates. Stale AOPs are dropped without blocking the server connection.
+func shouldEscalateStale(deviceType int, peerType int, msgType int) bool {
+	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
+		return false
+	}
 	return true
 }
 
@@ -560,20 +618,18 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	if shouldCheckRecvAttack(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
 		// block remote if threat level is reached
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime {
-			// replay packet, drop
 			log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
-			// threat plus 1
 			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
-			// with high queue number, the device may use ConnData channels when conn is already closed
 			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
-				// clamp threat count to avoid overflow
 				atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, ThreatCountBeforeBlock)
-				// block source address
 				ppd.ConnData.SendBlockSignal()
 			}
+
 			err = ErrReplayPacketReceived
 			return err
 		}
+	}
+	if shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) {
 			// flood packet, drop
 			log.Critical("received flood packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
@@ -589,16 +645,30 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 	}
-	if remoteSendTime < (ppd.LocalInitTime - 600*int64(time.Second)) {
+	staleness := recvStalenessFloor(ppd.device.deviceType, peerDeviceType, ppd.HeaderType)
+	if ppd.device.deviceType == NHP_AC && peerDeviceType == NHP_SERVER && ppd.HeaderType == NHP_AOP && option.AOPRecvStalenessSeconds > 0 {
+		staleness = int64(option.AOPRecvStalenessSeconds) * int64(time.Second)
+	}
+	if remoteSendTime < ppd.LocalInitTime-staleness {
 		// send remote timestamp is too old than receive local time, drop
-		// note there might be time calibration error between remote and local devices
-		log.Critical("received stale packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
-		threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
-		if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
-			// clamp threat count to avoid overflow
-			atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, ThreatCountBeforeBlock)
-			// block source address
-			ppd.ConnData.SendBlockSignal()
+		// note there might be time calibration error between remote and local devices.
+		// AOP (server→AC) uses a tighter floor than the 600 s default to
+		// bound the cross-restart replay window (#1464) — see
+		// recvStalenessFloor.
+		log.Critical("received stale %s from %s: age %d ns exceeds %d ns; check clock synchronization", HeaderTypeToString(ppd.HeaderType), ppd.ConnData.RemoteAddr.String(), ppd.LocalInitTime-remoteSendTime, staleness)
+		// Escalate to threat/block only for message types where a stale
+		// packet is an attack signal rather than a likely clock-skew
+		// artifact. AOP (server→AC) is exempt (#1464) so a benign
+		// skew/boot-clock false-reject is a recoverable drop, not a
+		// connection block — see shouldEscalateStale.
+		if shouldEscalateStale(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
+			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
+			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
+				// clamp threat count to avoid overflow
+				atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, ThreatCountBeforeBlock)
+				// block source address
+				ppd.ConnData.SendBlockSignal()
+			}
 		}
 		err = ErrStalePacketReceived
 		return err
@@ -606,6 +676,19 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 
 	// update remote last send time
 	atomic.StoreInt64(&ppd.ConnData.LastRemoteSendTime, remoteSendTime)
+	// Surface the AEAD-authenticated per-packet timestamp to
+	// downstream handlers — set here (not inside the
+	// shouldCheckRecvAttack branch) so the AC AOP dedupe and any
+	// future replay-cache consumer gets a populated value on every accepted
+	// packet, including replay/flood-exempt paths.
+	//
+	// Cross-package contract: the AC AOP replay cache in
+	// endpoints/ac/aop_replay_cache.go keys on this field. A
+	// refactor that moves or skips this assignment silently
+	// degrades the AC dedupe to (pubkey, txid, 0) keying — the
+	// responder_test.go drives authenticated packets through validatePeer to
+	// fence this cross-package contract.
+	ppd.RemoteSendTime = remoteSendTime
 	// clear threat
 	atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)
 

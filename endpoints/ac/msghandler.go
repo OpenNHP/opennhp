@@ -28,6 +28,47 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 	artMsg := &common.ACOpsResultMsg{}
 	transactionId := ppd.SenderTrxId
 
+	// Fail-closed on missing-or-wrong-length peer pubkey: the
+	// dedupe key is scoped per pubkey AND per the fixed-size
+	// invariant the cache key construction relies on, so any
+	// RemotePubKey that is neither a Curve nor GMSM key means
+	// core.responder.validatePeer either didn't run or didn't
+	// populate ppd correctly. The threat model treats both
+	// zero-length and wrong-length identically — both are
+	// upstream invariant violations, not duplicate transactions —
+	// so they share the same Critical log + ErrACMissingPeerPubkey
+	// return. This branch should never fire in production;
+	// returning the distinct error ensures an oncall chasing a
+	// duplicate-spike alert isn't misled. Without this match, a
+	// hypothetical wrong-length pubkey from a parser
+	// scheme regression / parser bug / fuzz harness would fall
+	// through to MarkSeen, get rejected by its
+	// key-length guard, and silently surface as
+	// ErrACDuplicateTransaction — exactly the masquerade that
+	// adding ErrACMissingPeerPubkey was supposed to prevent.
+	if l := len(ppd.RemotePubKey); l != core.PublicKeySize && l != core.PublicKeySizeEx {
+		log.Critical("ac(%s#%d)[HandleUdpACOperations] missing or wrong-length peer pubkey (len=%d, want %d or %d), drop %s packet", acId, transactionId, l, core.PublicKeySize, core.PublicKeySizeEx, core.HeaderTypeToString(ppd.HeaderType))
+		a.metrics.recordDroppedPacket("no_peer_pubkey")
+		return common.ErrACMissingPeerPubkey
+	}
+
+	// AOP skips monotonic timestamp checks to permit reordering. This cache
+	// rejects exact authenticated duplicates without blocking the connection.
+	if !a.aopReplay.MarkSeen(ppd.RemotePubKey, transactionId, ppd.RemoteSendTime) {
+		// Warning, not Critical: this fires both on replay attempts
+		// (the security signal we care about) and on benign in-flight
+		// AOPs that hit the AC after a server restart / AC failover /
+		// NAT-table flush (where the same packet is genuinely retried
+		// and arrives twice). The log is an operational breadcrumb
+		// that tells the operator which (acId, txid, pubkey, ts) saw
+		// it. The pubkey fingerprint is base64-truncated to keep the
+		// line short while remaining sufficient to distinguish one
+		// misbehaving server from a deployment-wide signal.
+		log.Warning("ac(%s#%d)[HandleUdpACOperations] duplicate transaction id, drop replayed %s packet (pubkey=%s, sendTime=%d)", acId, transactionId, core.HeaderTypeToString(ppd.HeaderType), pubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
+		a.metrics.recordDroppedPacket("aop_replay")
+		return common.ErrACDuplicateTransaction
+	}
+
 	err = json.Unmarshal(ppd.BodyMessage, dopMsg)
 	if err != nil {
 		log.Error("ac(%s#%d)[HandleUdpACOperations] failed to parse %s message: %v", acId, transactionId, core.HeaderTypeToString(ppd.HeaderType), err)

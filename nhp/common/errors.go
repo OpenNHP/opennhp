@@ -143,6 +143,8 @@ var (
 	ErrACIPSetOperationFailed  = newError("53004", "ipset operation failed", "ipset操作失败")
 	ErrACTempPortListenFailed  = newError("53005", "temporary port listening failed", "临时端口监听失败")
 	ErrACResolveTempPortFailed = newError("53006", "resolve temporary port failed", "解析临时端口失败")
+	ErrACDuplicateTransaction  = newError("53007", "ac duplicate transaction (replayed packet)", "门禁重复交互（重放报文）")
+	ErrACMissingPeerPubkey     = newError("53008", "missing peer pubkey on ac transaction", "门禁交互缺少对端公钥")
 
 	// api
 	ErrHttpRequestFailed           = newError("54001", "http request failed", "http请求失败")

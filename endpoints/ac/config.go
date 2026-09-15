@@ -44,17 +44,19 @@ type ACEtcdConfig struct {
 }
 
 type Config struct {
-	PrivateKeyBase64    string          `json:"privateKey"`
-	ACId                string          `json:"acId"`
-	DefaultIp           string          `json:"defaultIp"`
-	AuthServiceId       string          `json:"aspId"`
-	ResourceIds         []string        `json:"resIds"`
-	Servers             []*core.UdpPeer `json:"servers"`
-	IpPassMode          int             `json:"ipPassMode"` // 0: pass the knock source IP, 1: use pre-access mode and release the access source IP
-	LogLevel            int             `json:"logLevel"`
-	DefaultCipherScheme int             `json:"defaultCipherScheme"`
-	FilterMode          int             `json:"filterMode"`
-	Metrics             metrics.Config  `json:"metrics"`
+	AOPReplayCacheEntries   int             `json:"aopReplayCacheEntries"`   // Restart-only; zero selects 100000.
+	AOPRecvStalenessSeconds int             `json:"aopRecvStalenessSeconds"` // Zero uses 120 seconds; configurable up to 600.
+	PrivateKeyBase64        string          `json:"privateKey"`
+	ACId                    string          `json:"acId"`
+	DefaultIp               string          `json:"defaultIp"`
+	AuthServiceId           string          `json:"aspId"`
+	ResourceIds             []string        `json:"resIds"`
+	Servers                 []*core.UdpPeer `json:"servers"`
+	IpPassMode              int             `json:"ipPassMode"` // 0: pass the knock source IP, 1: use pre-access mode and release the access source IP
+	LogLevel                int             `json:"logLevel"`
+	DefaultCipherScheme     int             `json:"defaultCipherScheme"`
+	FilterMode              int             `json:"filterMode"`
+	Metrics                 metrics.Config  `json:"metrics"`
 }
 
 type RemoteConfig struct {

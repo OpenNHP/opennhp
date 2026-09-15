@@ -176,6 +176,7 @@ type BlockAddr struct {
 }
 
 type UdpConn struct {
+	rateExempt     atomic.Bool // set only after a configured infrastructure peer authenticates
 	ConnData       *core.ConnectionData
 	isACConnection bool // Immutable. Don't change it after creation. Conn object is also stored in acConnectionMap which is indexed by ACId
 	isDBConnection bool // Immutable. Don't change it after creation. Conn object is also stored in dbConnectionMap which is indexed by DBId
@@ -726,17 +727,15 @@ func (s *UdpServer) recvPacketRoutine() {
 		typ, _, err := s.device.RecvPrecheck(pkt) // this check also records packet header type
 		msgType := core.HeaderTypeToString(typ)
 		if err != nil {
-			// threat plus 1
-			if preCheckThreats.increment(ipStr, recvTime) > PreCheckThreatCountBeforeBlock {
-				s.AddBlockAddr(remoteAddr)
-			}
+			count := preCheckThreats.increment(ipStr, recvTime)
 			s.device.ReleasePoolPacket(pkt)
 			// The outermost drop — malformed magic/version, background scan
 			// traffic. It never reaches the OnPacketDropped hook (that fires
 			// inside packetToMsgRoutine), so record it here.
 			s.metrics.recordDroppedPacket("precheck")
-			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, s.listenAddrStr, err)
-			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, s.listenAddrStr, err)
+			if count == 1 || count%1000 == 0 {
+				log.Warning("Precheck rejected packets from %s (count %d): %v", addrStr, count, err)
+			}
 			continue
 		}
 		// clear threat
@@ -746,11 +745,10 @@ func (s *UdpServer) recvPacketRoutine() {
 		// structural precheck. Relay envelopes are accounted by their real client
 		// IP in HandleRelayForward. AC/DB tuples bypass the budget only after their
 		// authenticated online handlers have registered the connection.
-		isTrustedRelayEnvelope := pkt.HeaderType == core.NHP_RLY && s.isKnownRelayPeerIP(ipStr)
-		isAuthenticatedControlPlane := s.isAuthenticatedControlPlaneAddr(remoteAddr)
-		if !isTrustedRelayEnvelope && !isAuthenticatedControlPlane && !s.allowPacketFromIP(ipStr, recvTime) {
+		if !s.allowPacketFromIP(ipStr, recvTime) && !s.isAuthenticatedControlPlaneAddr(remoteAddr) {
 			s.device.ReleasePoolPacket(pkt)
 			s.logPacketRateLimitDrop(ipStr)
+			s.metrics.recordDroppedPacket("rate_limited")
 			continue
 		}
 
@@ -983,7 +981,9 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
-			s.AddBlockAddr(blockAddressForConnection(conn))
+			if addr := blockAddressForConnection(conn); addr != nil {
+				s.AddBlockAddr(addr)
+			}
 			return
 
 		case pkt, ok := <-conn.ConnData.RecvQueue:
@@ -1055,7 +1055,7 @@ func (s *UdpServer) IsBlockAddr(addr *net.UDPAddr) bool {
 	s.blockAddrMapMutex.Lock()
 	defer s.blockAddrMapMutex.Unlock()
 
-	_, found := s.blockAddrMap[blockIPKey(addr)]
+	_, found := s.blockAddrMap[addr.String()]
 	return found
 }
 
@@ -1063,20 +1063,17 @@ func (s *UdpServer) AddBlockAddr(addr *net.UDPAddr) {
 	s.blockAddrMapMutex.Lock()
 	defer s.blockAddrMapMutex.Unlock()
 
-	ipStr := blockIPKey(addr)
-	if ipStr == "" {
-		return
-	}
-	log.Critical("add blocking source IP %s", ipStr)
+	addrStr := addr.String()
+	log.Critical("add blocking address %s", addrStr)
 
 	if len(s.blockAddrMap) < MaxConcurrentConnection {
 		// Count only newly blocked sources; re-blocking an address that is
 		// already in the pool just refreshes its expiry and shouldn't inflate
 		// the counter.
-		if _, already := s.blockAddrMap[ipStr]; !already {
+		if _, already := s.blockAddrMap[addrStr]; !already {
 			s.metrics.recordBlockedAddr()
 		}
-		s.blockAddrMap[ipStr] = &BlockAddr{addr, time.Now().Add(BlockAddrExpireTime * time.Second)}
+		s.blockAddrMap[addrStr] = &BlockAddr{addr, time.Now().Add(BlockAddrExpireTime * time.Second)}
 	} else {
 		log.Warning("block address pool is full")
 	}

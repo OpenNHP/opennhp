@@ -6,6 +6,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
@@ -194,58 +195,29 @@ func (s *UdpServer) allowPacketFromIP(ip string, nowNanos int64) bool {
 	return s.packetLimiter == nil || s.packetLimiter.allow(ip, nowNanos)
 }
 
-// isKnownRelayPeerIP prevents a busy configured relay from sharing one outer
-// transport bucket across all of its clients. Unknown sources cannot claim an
-// NHP_RLY header to bypass the general limiter; their packets remain charged
-// to the source IP until cryptographic relay identity validation.
-func (s *UdpServer) isKnownRelayPeerIP(ip string) bool {
-	s.relayPeerMapMutex.Lock()
-	defer s.relayPeerMapMutex.Unlock()
-	for _, peer := range s.relayPeerMap {
-		if peer.Ip == ip {
-			return true
-		}
-		for _, resolved := range peer.ResolvedIps() {
-			if resolved == ip {
-				return true
-			}
-		}
+// markRateExempt is called only after role-specific configured-key lookup.
+func (s *UdpServer) markRateExempt(data *core.ConnectionData) {
+	s.remoteConnectionMapMutex.Lock()
+	defer s.remoteConnectionMapMutex.Unlock()
+	if conn := s.remoteConnectionMap[data.RemoteAddr.String()]; conn != nil && conn.ConnData == data {
+		conn.rateExempt.Store(true)
 	}
-	return false
 }
 
-// isAuthenticatedControlPlaneAddr recognizes an AC/DB transport tuple only
-// after HandleACOnline/HandleDBOnline has validated its cryptographic identity
-// and registered it. This avoids throttling high-fan-in control traffic without
-// trusting attacker-controlled AOL/DOL header bytes or requiring IPs in the
-// shipped public-key-only peer configuration.
+// O(1) lookup, consulted only after the ordinary source bucket is exhausted.
 func (s *UdpServer) isAuthenticatedControlPlaneAddr(addr *net.UDPAddr) bool {
 	if addr == nil {
 		return false
 	}
-	key := addr.String()
-	s.acConnectionMapMutex.Lock()
-	for _, conn := range s.acConnectionMap {
-		if conn != nil && conn.ConnData != nil && conn.ConnData.RemoteAddr != nil && conn.ConnData.RemoteAddr.String() == key {
-			s.acConnectionMapMutex.Unlock()
-			return true
-		}
-	}
-	s.acConnectionMapMutex.Unlock()
-
-	s.dbConnectionMapMutex.Lock()
-	defer s.dbConnectionMapMutex.Unlock()
-	for _, conn := range s.dbConnectionMap {
-		if conn != nil && conn.ConnData != nil && conn.ConnData.RemoteAddr != nil && conn.ConnData.RemoteAddr.String() == key {
-			return true
-		}
-	}
-	return false
+	s.remoteConnectionMapMutex.Lock()
+	conn := s.remoteConnectionMap[addr.String()]
+	s.remoteConnectionMapMutex.Unlock()
+	return conn != nil && conn.rateExempt.Load()
 }
 
 func blockAddressForConnection(conn *UdpConn) *net.UDPAddr {
 	if conn != nil && conn.ConnData != nil && conn.ConnData.RealRemoteAddr != nil {
-		return conn.ConnData.RealRemoteAddr
+		return nil // A relay assertion must not block another client or the relay.
 	}
 	if conn == nil || conn.ConnData == nil {
 		return nil
@@ -258,11 +230,4 @@ func (s *UdpServer) logPacketRateLimitDrop(ip string) {
 	if drops == 1 || drops%1000 == 0 {
 		log.Warning("packet from %s dropped: per-IP rate limit exceeded (total drops: %d)", ip, drops)
 	}
-}
-
-func blockIPKey(addr *net.UDPAddr) string {
-	if addr == nil || addr.IP == nil {
-		return ""
-	}
-	return addr.IP.String()
 }

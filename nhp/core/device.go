@@ -1,7 +1,9 @@
 package core
 
 import (
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"runtime"
 	"runtime/debug"
@@ -102,6 +104,11 @@ type Device struct {
 	DecryptedMsgQueue chan *PacketParserData
 	packetToMsgQueue  chan *PacketData
 	msgToPacketQueue  chan *MsgData
+
+	// recvReplayDedupeFn runs after peer/timestamp authentication and before
+	// body decryption. Endpoints can use this chokepoint to reject a response
+	// replay whether or not transaction correlation matched it.
+	recvReplayDedupeFn func(*PacketParserData) error
 }
 
 func NewDevice(t int, prk []byte, option *DeviceOptions) *Device {
@@ -126,6 +133,14 @@ func NewDevice(t int, prk []byte, option *DeviceOptions) *Device {
 		return nil
 	}
 
+	// Randomize the transaction sequence across process/device replacement.
+	var seed [8]byte
+	if _, err := rand.Read(seed[:]); err != nil {
+		log.Critical("Failed to initialize transaction sequence: %v", err)
+		return nil
+	}
+	d.counterIndex = binary.BigEndian.Uint64(seed[:])
+
 	d.pool = &PacketBufferPool{}
 	d.pool.Init(PacketBufferPoolSize)
 
@@ -145,6 +160,12 @@ func (d *Device) SetOption(option DeviceOptions) {
 	defer d.optionMutex.Unlock()
 
 	d.option = option
+}
+
+// SetRecvReplayDedupe installs an endpoint-owned replay check. It must be
+// called before Start so worker goroutines can read the hook without locking.
+func (d *Device) SetRecvReplayDedupe(fn func(*PacketParserData) error) {
+	d.recvReplayDedupeFn = fn
 }
 
 // GetOption returns a copy of the current device options.
@@ -461,6 +482,16 @@ func (d *Device) packetToMsgRoutine(id int) {
 					return
 				}
 
+				if d.recvReplayDedupeFn != nil {
+					err = d.recvReplayDedupeFn(ppd)
+					if err != nil {
+						log.Debug("packetToMsgRoutine %d: [%s] packet replay rejected: %v", id, msgType, err)
+						log.Evaluate("packetToMsgRoutine %d: [%s] packet replay rejected: %v", id, msgType, err)
+						d.notifyPacketDropped("replay")
+						return
+					}
+				}
+
 				err = ppd.decryptBody()
 				if err != nil {
 					log.Error("packetToMsgRoutine: %d: [%s] packet decryption failed: %v", id, msgType, err)
@@ -546,6 +577,12 @@ func (d *Device) PacketToMsg(pd *PacketData) (ppd *PacketParserData, err error) 
 	err = ppd.validatePeer()
 	if err != nil {
 		return nil, err
+	}
+	if d.recvReplayDedupeFn != nil {
+		if err = d.recvReplayDedupeFn(ppd); err != nil {
+			d.notifyPacketDropped("replay")
+			return nil, err
+		}
 	}
 	err = ppd.decryptBody()
 	if err != nil {

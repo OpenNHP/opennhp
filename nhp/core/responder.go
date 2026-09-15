@@ -245,6 +245,9 @@ type PacketParserData struct {
 
 	LocalInitTime int64
 	SenderTrxId   uint64
+	// RemoteSendTime is the authenticated sender timestamp. It is populated
+	// after replay/flood/staleness validation for endpoint replay caches.
+	RemoteSendTime int64
 
 	noise        NoiseFactory // int
 	HeaderType   int
@@ -386,7 +389,18 @@ func shouldCheckRecvAttack(deviceType int, peerType int, msgType int) bool {
 		(deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP) {
 		return false
 	}
+	return true
+}
 
+// shouldCheckFlood uses the same exemptions as the monotonic gate: AOP/ART
+// bursts and reordered responses are valid. Packet dedupe handles ART replays.
+func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
+	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
+		return false
+	}
+	if deviceType == NHP_SERVER && peerType == NHP_AC && msgType == NHP_ART {
+		return false
+	}
 	return true
 }
 
@@ -558,22 +572,19 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	remoteSendTime := int64(binary.BigEndian.Uint64(tsBytes[:]))
 
 	if shouldCheckRecvAttack(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
-		// block remote if threat level is reached
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime {
 			// replay packet, drop
 			log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
-			// threat plus 1
 			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
-			// with high queue number, the device may use ConnData channels when conn is already closed
 			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
-				// clamp threat count to avoid overflow
 				atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, ThreatCountBeforeBlock)
-				// block source address
 				ppd.ConnData.SendBlockSignal()
 			}
 			err = ErrReplayPacketReceived
 			return err
 		}
+	}
+	if shouldCheckFlood(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime+MinimalRecvIntervalMs*int64(time.Millisecond) {
 			// flood packet, drop
 			log.Critical("received flood packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
@@ -589,7 +600,15 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 	}
-	if remoteSendTime < (ppd.LocalInitTime - 600*int64(time.Second)) {
+	// Bound ART clock skew so cache entries outlive every accepted replay.
+	if ppd.device.deviceType == NHP_SERVER && peerDeviceType == NHP_AC && ppd.HeaderType == NHP_ART &&
+		remoteSendTime > ppd.LocalInitTime+ARTRecvFutureSkewSeconds*int64(time.Second) {
+		if artSkewWarnAllowed(time.Now().UnixNano()) {
+			log.Critical("ART from %s is %v ahead of local time (limit %d seconds); check AC/server clock synchronization", ppd.ConnData.RemoteAddr.String(), time.Duration(remoteSendTime-ppd.LocalInitTime), ARTRecvFutureSkewSeconds)
+		}
+		return ErrStalePacketReceived
+	}
+	if remoteSendTime < (ppd.LocalInitTime - DefaultRecvStalenessFloorSeconds*int64(time.Second)) {
 		// send remote timestamp is too old than receive local time, drop
 		// note there might be time calibration error between remote and local devices
 		log.Critical("received stale packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
@@ -604,10 +623,13 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		return err
 	}
 
-	// update remote last send time
-	atomic.StoreInt64(&ppd.ConnData.LastRemoteSendTime, remoteSendTime)
-	// clear threat
-	atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)
+	ppd.RemoteSendTime = remoteSendTime
+	// ART is deduplicated after this function. It must not rewind the shared
+	// AOL watermark or clear threat state before a replay is rejected.
+	if !(ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_ART) {
+		atomic.StoreInt64(&ppd.ConnData.LastRemoteSendTime, remoteSendTime)
+		atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)
+	}
 
 	// handle knock packet at overload before going into body decryption.
 	// sendCookie derives the cookie statelessly from the device's signing
@@ -631,6 +653,13 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	}
 
 	return nil
+}
+
+var lastARTSkewWarnNano atomic.Int64
+
+func artSkewWarnAllowed(nowNano int64) bool {
+	last := lastARTSkewWarnNano.Load()
+	return nowNano-last >= int64(time.Minute) && lastARTSkewWarnNano.CompareAndSwap(last, nowNano)
 }
 
 var lastDecompressWarnNano atomic.Int64

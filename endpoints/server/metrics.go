@@ -20,7 +20,7 @@ type serverMetrics struct {
 	acOperations     *metrics.CounterVec // result=ok|error
 	acOpDuration     *metrics.Histogram  // server->AC round trip, seconds
 	blockedAddrs     *metrics.Counter    // sources blocked past the threat threshold
-	packetsDropped   *metrics.CounterVec // stage=too_short|blocked|precheck|rate_limited|conn_limit|parse|validate|decrypt|queue_full
+	packetsDropped   *metrics.CounterVec // stage=replay|too_short|blocked|precheck|rate_limited|conn_limit|parse|validate|decrypt|queue_full
 	handlerDropped   *metrics.CounterVec // by protocol message type; post-decryption load-shedding
 }
 
@@ -58,6 +58,17 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 		"Total UDP payload bytes sent.",
 		func() float64 { return float64(atomic.LoadUint64(&s.stats.totalSendBytes)) })
 
+	reg.NewCounterFunc("nhp_server_art_replay_cache_evictions_total",
+		"Unexpired ART replay entries removed by capacity pressure; replay coverage is reduced.",
+		func() float64 {
+			if s.artReplay == nil {
+				return 0
+			}
+			s.artReplay.mu.Lock()
+			defer s.artReplay.mu.Unlock()
+			return float64(s.artReplay.capacityEvictions)
+		})
+
 	sm := &serverMetrics{
 		registry: reg,
 		messagesReceived: reg.NewCounter("nhp_server_messages_received_total",
@@ -72,7 +83,7 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			"Source addresses blocked after exceeding the threat threshold.").With(),
 		packetsDropped: reg.NewCounter("nhp_server_packets_dropped_total",
 			"Inbound packets discarded before becoming a decrypted message, by stage "+
-				"(too_short, blocked, precheck, rate_limited, conn_limit, parse, validate, decrypt, queue_full).", "stage"),
+				"(replay, too_short, blocked, precheck, rate_limited, conn_limit, parse, validate, decrypt, queue_full).", "stage"),
 		handlerDropped: reg.NewCounter("nhp_server_handler_dropped_total",
 			"Decrypted messages dropped because the handler goroutine budget "+
 				"(MaxConcurrentHandlers) was exhausted, by message type. Distinct "+
@@ -90,7 +101,7 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 	sm.acOperations.With("error")
 	for _, stage := range []string{
 		"too_short", "blocked", "precheck", "rate_limited", "conn_limit", // recvPacketRoutine, pre-decryption
-		"parse", "validate", "decrypt", "queue_full", // packetToMsgRoutine, via OnPacketDropped
+		"replay", "parse", "validate", "decrypt", "queue_full", // packetToMsgRoutine, via OnPacketDropped
 	} {
 		sm.packetsDropped.With(stage)
 	}
@@ -149,7 +160,7 @@ func (m *serverMetrics) recordBlockedAddr() {
 // stage is one of the fixed set seeded in newServerMetrics: the
 // recvPacketRoutine pre-decryption drops ("too_short", "blocked",
 // "precheck", "rate_limited", "conn_limit") and the packetToMsgRoutine
-// drops delivered via core.DeviceOptions.OnPacketDropped ("parse",
+// drops delivered via core.DeviceOptions.OnPacketDropped ("replay", "parse",
 // "validate", "decrypt", "queue_full"). A bounded label, never
 // attacker-controlled. Safe on a nil receiver.
 func (m *serverMetrics) recordDroppedPacket(stage string) {

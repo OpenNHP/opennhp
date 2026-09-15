@@ -157,6 +157,9 @@ func GetResource(c *gin.Context) {
 }
 
 func loadResource(resourceID string) ([]byte, error) {
+	// Gin catch-all parameters include one leading slash. Keep the remainder
+	// relative so os.Root still rejects traversal and escaping symlinks.
+	resourceID = strings.TrimPrefix(resourceID, "/")
 	if !filepath.IsLocal(resourceID) {
 		return nil, errors.New("invalid resource ID: potential path traversal attack")
 	}

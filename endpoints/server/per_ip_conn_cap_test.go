@@ -1,10 +1,10 @@
 package server
 
 import (
-	"container/list"
 	"net"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/core"
 )
@@ -12,7 +12,7 @@ import (
 func newPerIPCapTestServer() *UdpServer {
 	return &UdpServer{
 		remoteConnectionMap: make(map[string]*UdpConn),
-		connectionsByIP:     make(map[string]*list.List),
+		connectionsByIP:     make(map[string]int),
 	}
 }
 
@@ -21,7 +21,6 @@ func newPerIPCapTestConn(ip string, port int) *UdpConn {
 		ConnData: &core.ConnectionData{
 			RemoteAddr: &net.UDPAddr{IP: net.ParseIP(ip), Port: port},
 		},
-		evictSignal:   make(chan struct{}),
 		timeoutUpdate: make(chan struct{}, 1),
 	}
 }
@@ -36,23 +35,18 @@ func TestAdmitDirectConnectionCapsOneIPAndPreservesTuples(t *testing.T) {
 		s.admitDirectConnection(conn, conn.ConnData.RemoteAddr.String())
 	}
 
-	bucket := s.connectionsByIP[ip]
-	if bucket == nil || bucket.Len() != MaxAgentConnectionsPerIP {
-		t.Fatalf("bucket size = %v, want %d", bucket, MaxAgentConnectionsPerIP)
+	if got := s.connectionsByIP[ip]; got != MaxAgentConnectionsPerIP {
+		t.Fatalf("count = %d", got)
 	}
-	for i := 0; i < 4; i++ {
-		select {
-		case <-conns[i].evictSignal:
-		default:
-			t.Fatalf("oldest connection %d was not evicted", i)
+	if len(s.remoteConnectionMap) != MaxAgentConnectionsPerIP {
+		t.Fatal("global table exceeded per-IP cap")
+	}
+	for i := 0; i < MaxAgentConnectionsPerIP; i++ {
+		if s.remoteConnectionMap[conns[i].ConnData.RemoteAddr.String()] != conns[i] {
+			t.Fatal("existing tuple displaced")
 		}
 	}
-	for i := 4; i < len(conns); i++ {
-		key := conns[i].ConnData.RemoteAddr.String()
-		if s.remoteConnectionMap[key] != conns[i] {
-			t.Fatalf("NAT reply tuple %s was not preserved in global map", key)
-		}
-	}
+
 }
 
 func TestAdmitDirectConnectionIPsAreIndependent(t *testing.T) {
@@ -62,7 +56,7 @@ func TestAdmitDirectConnectionIPsAreIndependent(t *testing.T) {
 			conn := newPerIPCapTestConn(ip, 40000+i)
 			s.admitDirectConnection(conn, conn.ConnData.RemoteAddr.String())
 		}
-		if got := s.connectionsByIP[ip].Len(); got != MaxAgentConnectionsPerIP {
+		if got := s.connectionsByIP[ip]; got != MaxAgentConnectionsPerIP {
 			t.Fatalf("bucket %s size = %d", ip, got)
 		}
 	}
@@ -118,7 +112,7 @@ func TestPromoteControlConnectionRejectsStaleTuple(t *testing.T) {
 
 func TestAdmitDirectConnectionConcurrentCap(t *testing.T) {
 	s := newPerIPCapTestServer()
-	const attempts = 128
+	const attempts = MaxAgentConnectionsPerIP * 2
 	var wg sync.WaitGroup
 	for i := 0; i < attempts; i++ {
 		wg.Add(1)
@@ -129,10 +123,76 @@ func TestAdmitDirectConnectionConcurrentCap(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	if got := s.connectionsByIP["198.51.100.90"].Len(); got != MaxAgentConnectionsPerIP {
+	if got := s.connectionsByIP["198.51.100.90"]; got != MaxAgentConnectionsPerIP {
 		t.Fatalf("concurrent bucket size = %d, want %d", got, MaxAgentConnectionsPerIP)
 	}
-	if got := len(s.remoteConnectionMap); got != attempts {
-		t.Fatalf("global tuple map size = %d, want %d pending asynchronous cleanup", got, attempts)
+	if got := len(s.remoteConnectionMap); got != MaxAgentConnectionsPerIP {
+		t.Fatalf("global tuple map size = %d, want %d", got, MaxAgentConnectionsPerIP)
+	}
+}
+
+func TestConfiguredPerIPCapAndRelease(t *testing.T) {
+	s := newPerIPCapTestServer()
+	s.config = &Config{MaxAgentConnectionsPerIP: 1}
+	first := newPerIPCapTestConn("192.0.2.1", 1000)
+	second := newPerIPCapTestConn("192.0.2.1", 1001)
+	if !s.admitDirectConnection(first, first.ConnData.RemoteAddr.String()) {
+		t.Fatal("first refused")
+	}
+	if s.admitDirectConnection(second, second.ConnData.RemoteAddr.String()) {
+		t.Fatal("excess admitted")
+	}
+	s.remoteConnectionMapMutex.Lock()
+	s.releasePerIPCount(first)
+	s.remoteConnectionMapMutex.Unlock()
+	if !s.admitDirectConnection(second, second.ConnData.RemoteAddr.String()) {
+		t.Fatal("released slot not reused")
+	}
+}
+
+func TestOnlineHandlerRejectsWrongPeerRole(t *testing.T) {
+	for _, handler := range []string{"AC", "DB"} {
+		s := newPerIPCapTestServer()
+		conn := newPerIPCapTestConn("192.0.2.1", 1234)
+		s.admitDirectConnection(conn, conn.ConnData.RemoteAddr.String())
+		ppd := &core.PacketParserData{ConnData: conn.ConnData, BodyMessage: []byte(`{}`), RemotePubKey: make([]byte, core.PublicKeySize)}
+		var err error
+		if handler == "AC" {
+			err = s.HandleACOnline(ppd)
+		} else {
+			err = s.HandleDBOnline(ppd)
+		}
+		if err == nil || !conn.perIPCounted {
+			t.Fatalf("%s gained a control exemption", handler)
+		}
+	}
+}
+
+func TestDirectConnectionHonorsSetTimeout(t *testing.T) {
+	for _, timeout := range []int{0, 20} {
+		s := newGlobalCapTestServer(t)
+		s.connectionsByIP = make(map[string]int)
+		s.signals.stop = make(chan struct{})
+		conn := newPerIPCapTestConn("192.0.2.1", 1234)
+		conn.ConnData.Device = s.device
+		conn.ConnData.TimeoutMs = 30000
+		conn.timeoutMs.Store(30000)
+		conn.ConnData.SendQueue = make(chan *core.Packet)
+		conn.ConnData.RecvQueue = make(chan *core.Packet)
+		conn.ConnData.BlockSignal = make(chan struct{})
+		conn.ConnData.StopSignal = make(chan struct{})
+		conn.ConnData.SetTimeoutSignal = make(chan struct{})
+		s.admitDirectConnection(conn, conn.ConnData.RemoteAddr.String())
+		done := make(chan struct{})
+		s.wg.Add(1)
+		go func() { s.connectionRoutine(conn); close(done) }()
+		conn.ConnData.SetTimeout(timeout)
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			close(s.signals.stop)
+			<-done
+			t.Fatalf("SetTimeout(%d) ignored", timeout)
+		}
 	}
 }

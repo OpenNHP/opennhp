@@ -80,13 +80,14 @@ type SrcIpMap struct {
 }
 
 type Config struct {
-	PrivateKeyBase64       string `json:"privateKey"`
-	Hostname               string `json:"hostname"`
-	ListenIp               string `json:"listenIp"`
-	ListenPort             int    `json:"listenPort"`
-	LogLevel               int    `json:"logLevel"`
-	DefaultCipherScheme    int    `json:"defaultCipherScheme"`
-	DisableAgentValidation bool   `json:"disableAgentValidation"`
+	MaxAgentConnectionsPerIP int    // Zero selects the default of 256; tune for shared NAT.
+	PrivateKeyBase64         string `json:"privateKey"`
+	Hostname                 string `json:"hostname"`
+	ListenIp                 string `json:"listenIp"`
+	ListenPort               int    `json:"listenPort"`
+	LogLevel                 int    `json:"logLevel"`
+	DefaultCipherScheme      int    `json:"defaultCipherScheme"`
+	DisableAgentValidation   bool   `json:"disableAgentValidation"`
 
 	// AllowPrivateRelaySource relaxes the SourceAddr public-routability check
 	// that HandleRelayForward applies to inner KNK packets arriving via a

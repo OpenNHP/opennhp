@@ -326,3 +326,11 @@ Log levels:
   ```
 
   **Solution:** Configure the correct IP in `nhp-server/plugins/example/etc/resource.toml` under `Addr.Ip`.
+
+### Direct connection admission
+
+`MaxAgentConnectionsPerIP` in server config sets the maximum number of direct
+non-control UDP tuples per source (zero: 256). Tune it for shared NAT egress.
+Excess new tuples are dropped without evicting existing sessions; the metric
+stage is `per_ip_conn_limit`. Only configured AC/DB keys gain a control-peer
+exemption after authentication. The global connection cap still applies.

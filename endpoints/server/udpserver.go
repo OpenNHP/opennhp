@@ -1,7 +1,6 @@
 package server
 
 import (
-	"container/list"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -73,9 +72,9 @@ type UdpServer struct {
 	// connection and remote transaction management
 
 	remoteConnectionMapMutex sync.Mutex
-	remoteConnectionMap      map[string]*UdpConn   // indexed by remote UDP address or relay compound key
-	connectionsByIP          map[string]*list.List // direct agent connections, oldest first
-	perIPEvictions           atomic.Int64
+	remoteConnectionMap      map[string]*UdpConn // indexed by remote UDP address or relay compound key
+	connectionsByIP          map[string]int      // direct connections per source IP
+	perIPRejections          atomic.Int64
 
 	// relayConnCount tracks how many relay-forwarded client connections
 	// each NHP_RLY peer currently has open in remoteConnectionMap. Used
@@ -199,13 +198,7 @@ type UdpConn struct {
 	// or relaxing MaxConnectionsPerRelay over time.
 	replaced atomic.Bool
 
-	// perIPElem links direct agent connections into connectionsByIP. AC, DB,
-	// and relay-forwarded connections leave it nil.
-	perIPElem *list.Element
-	// evictSignal is closed when this direct connection is the oldest entry
-	// displaced by the per-IP cap. It is nil for relay-forwarded connections,
-	// which have their own per-relay cap and therefore disable this select case.
-	evictSignal chan struct{}
+	perIPCounted bool // protected by remoteConnectionMapMutex
 	// timeoutMs/timeoutUpdate let authenticated promotion extend a direct
 	// connection's timeout without racing ConnectionData.TimeoutMs or sending on
 	// a lifecycle channel that connection teardown closes.
@@ -474,7 +467,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.keyStore = ks
 
 	s.remoteConnectionMap = make(map[string]*UdpConn)
-	s.connectionsByIP = make(map[string]*list.List)
+	s.connectionsByIP = make(map[string]int)
 	s.relayConnCount = make(map[string]int)
 	s.acConnectionMap = make(map[string]*ACConn)
 	s.dbConnectionMap = make(map[string]*DBConn)
@@ -785,7 +778,6 @@ func (s *UdpServer) recvPacketRoutine() {
 
 			conn = &UdpConn{
 				mapKey:        addrStr,
-				evictSignal:   make(chan struct{}),
 				timeoutUpdate: make(chan struct{}, 1),
 			}
 			conn.timeoutMs.Store(DefaultAgentConnectionTimeoutMs)
@@ -808,7 +800,15 @@ func (s *UdpServer) recvPacketRoutine() {
 				StopSignal:           make(chan struct{}),
 			}
 
-			s.admitDirectConnection(conn, addrStr)
+			if !s.admitDirectConnection(conn, addrStr) {
+				s.device.ReleasePoolPacket(pkt)
+				s.metrics.recordDroppedPacket("per_ip_conn_limit")
+				drops := s.perIPRejections.Add(1)
+				if drops == 1 || drops%1000 == 0 {
+					log.Warning("Direct connection admission limit reached (drops: %d)", drops)
+				}
+				continue
+			}
 
 			conn.ConnData.ForwardInboundPacket(pkt)
 
@@ -821,39 +821,39 @@ func (s *UdpServer) recvPacketRoutine() {
 	}
 }
 
-// admitDirectConnection preserves the full remote UDP tuple in the global
-// map while keeping a separate IP-only FIFO for fairness. When the per-IP cap
-// is full, the oldest unauthenticated/agent routine is signaled to exit. AC and
-// DB connections enter this bucket initially and are promoted out only after
-// their online handlers authenticate the peer.
-func (s *UdpServer) admitDirectConnection(conn *UdpConn, mapKey string) {
+// admitDirectConnection refuses excess new tuples without terminating existing
+// connections. Counts and the global table change under one lock.
+func (s *UdpServer) admitDirectConnection(conn *UdpConn, mapKey string) bool {
 	s.remoteConnectionMapMutex.Lock()
-	s.remoteConnectionMap[mapKey] = conn
-
+	defer s.remoteConnectionMapMutex.Unlock()
+	limit := MaxAgentConnectionsPerIP
+	if s.config != nil && s.config.MaxAgentConnectionsPerIP > 0 {
+		limit = s.config.MaxAgentConnectionsPerIP
+	}
 	ip := conn.ConnData.RemoteAddr.IP.String()
-	bucket := s.connectionsByIP[ip]
-	if bucket == nil {
-		bucket = list.New()
-		s.connectionsByIP[ip] = bucket
+	if s.connectionsByIP[ip] >= limit || len(s.remoteConnectionMap) >= MaxConcurrentConnection {
+		return false
 	}
-	var evicted *UdpConn
-	if bucket.Len() >= MaxAgentConnectionsPerIP {
-		oldestElem := bucket.Front()
-		evicted = oldestElem.Value.(*UdpConn)
-		bucket.Remove(oldestElem)
-		evicted.perIPElem = nil
-		close(evicted.evictSignal)
+	if _, exists := s.remoteConnectionMap[mapKey]; exists {
+		return false
 	}
-	conn.perIPElem = bucket.PushBack(conn)
-	s.remoteConnectionMapMutex.Unlock()
+	s.remoteConnectionMap[mapKey] = conn
+	s.connectionsByIP[ip]++
+	conn.perIPCounted = true
+	return true
+}
 
-	if evicted != nil {
-		n := s.perIPEvictions.Add(1)
-		if n == 1 || n%1000 == 0 {
-			log.Warning("Per-IP agent connection cap (%d) reached for %s; evicting oldest tuple %s (total evictions: %d)",
-				MaxAgentConnectionsPerIP, ip, evicted.ConnData.RemoteAddr.String(), n)
-		}
+// releasePerIPCount requires remoteConnectionMapMutex.
+func (s *UdpServer) releasePerIPCount(conn *UdpConn) {
+	if !conn.perIPCounted {
+		return
 	}
+	ip := conn.ConnData.RemoteAddr.IP.String()
+	s.connectionsByIP[ip]--
+	if s.connectionsByIP[ip] <= 0 {
+		delete(s.connectionsByIP, ip)
+	}
+	conn.perIPCounted = false
 }
 
 type controlConnectionKind int
@@ -881,16 +881,7 @@ func (s *UdpServer) promoteControlConnection(connData *core.ConnectionData, kind
 		s.remoteConnectionMapMutex.Unlock()
 		return false
 	}
-	if conn.perIPElem != nil {
-		ip := connData.RemoteAddr.IP.String()
-		if bucket := s.connectionsByIP[ip]; bucket != nil {
-			bucket.Remove(conn.perIPElem)
-			if bucket.Len() == 0 {
-				delete(s.connectionsByIP, ip)
-			}
-		}
-		conn.perIPElem = nil
-	}
+	s.releasePerIPCount(conn)
 	var timeout int
 	switch kind {
 	case controlConnectionAC:
@@ -902,6 +893,7 @@ func (s *UdpServer) promoteControlConnection(connData *core.ConnectionData, kind
 	}
 	s.remoteConnectionMapMutex.Unlock()
 
+	log.Debug("Authenticated control connection %s promoted with timeout %d ms", mapKey, timeout)
 	conn.timeoutMs.Store(int64(timeout))
 	select {
 	case conn.timeoutUpdate <- struct{}{}:
@@ -1001,16 +993,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		if stillPresent {
 			delete(s.remoteConnectionMap, mapKey)
 		}
-		if conn.perIPElem != nil {
-			ip := conn.ConnData.RemoteAddr.IP.String()
-			if bucket := s.connectionsByIP[ip]; bucket != nil {
-				bucket.Remove(conn.perIPElem)
-				if bucket.Len() == 0 {
-					delete(s.connectionsByIP, ip)
-				}
-			}
-			conn.perIPElem = nil
-		}
+		s.releasePerIPCount(conn)
 		// ForceOverload (debug only) keeps Overload pinned ON for the
 		// lifetime of the process, so a quiet local demo can still
 		// exercise the cookie path. Honor it here — without this guard,
@@ -1045,14 +1028,11 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 		case <-s.signals.stop:
 			return
 
-		case <-conn.evictSignal:
-			log.Debug("Connection routine: %s evicted by per-IP cap", addrStr)
-			return
-
 		case _, ok := <-conn.ConnData.SetTimeoutSignal:
 			if !ok {
 				return
 			}
+			conn.timeoutMs.Store(int64(conn.ConnData.TimeoutMs))
 			if conn.timeout() <= 0 {
 				log.Debug("Connection routine closed immediately")
 				return

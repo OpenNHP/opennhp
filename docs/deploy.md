@@ -235,7 +235,7 @@ For high-availability deployments, consider:
 
 **Post-deployment:**
 - [ ] Verify NHP-Server is listening on UDP 62206
-- [ ] For a host-network or bare-metal server, run
+- [ ] **Optional**, only after assessing the flood trade-off below: for a host-network or bare-metal server, run
   `sudo env NHP_TRUSTED_PEERS="<AC-IP> <relay-IP>" docker/harden_nhp_server_udp.sh` to raise `rmem_max` and install
   aggregate kernel rate limits for both IP families after trusted-peer exemptions.
   Restart nhp-server after raising the ceiling. Docker Compose passes the
@@ -370,7 +370,7 @@ uses an override (including a Compose `.env` value). Trusted CIDRs must have
 no host bits and must be at least /24 (IPv4) or /64 (IPv6). Rules are tested
 before each family is committed atomically with `iptables-restore --noflush`.
 The limit module quantizes rates; use divisors of 10,000 for exact nominal
-rates. The helper accepts at most 10,000 pps and a burst of at most 60 seconds
+rates. The helper accepts at most 10,000 pps and a burst of at most 10,000 packets and at most 60 seconds
 of traffic. Larger deployments need an independently sized upstream filter.
 
 The optional aggregate firewall guard sets a ceiling on host packet work; it is
@@ -380,3 +380,9 @@ DDoS filtering does not control that risk; the server cookie and overload checks
 remain available. Loopback traffic is exempt before rate checks, as are the
 configured infrastructure peers. Firewall replacement is atomic per IP family,
 not across IPv4 and IPv6; an apply failure reports which family was updated.
+
+A trusted relay exemption also bypasses the kernel bucket for all agent traffic
+forwarded by that relay. Apply ingress flood control at the relay/upstream
+network and retain server-side per-client limits. The helper does not inspect
+encapsulated client identities. Only enable it after sizing and accepting both
+this relay bypass and the aggregate direct-client denial threshold.

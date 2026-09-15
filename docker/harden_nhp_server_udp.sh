@@ -13,7 +13,7 @@ for value in "$PORT" "$GLOBAL_RATE" "$GLOBAL_BURST" "$RECV_BUFFER"; do
 done
 (( PORT <= 65535 )) || { echo "NHP_KNOCK_PORT must be <= 65535" >&2; exit 2; }
 (( RECV_BUFFER >= 65536 && RECV_BUFFER <= 1073741823 )) || { echo "receive buffer must be 65536..1073741823" >&2; exit 2; }
-(( GLOBAL_RATE <= 10000 && GLOBAL_BURST <= GLOBAL_RATE * 60 )) || { echo "rate must be <= 10000 pps and burst <= 60 seconds of traffic" >&2; exit 2; }
+(( GLOBAL_RATE <= 10000 && GLOBAL_BURST <= 10000 && GLOBAL_BURST <= GLOBAL_RATE * 60 )) || { echo "rate must be <= 10000 pps and burst <= 10000 and <= 60 seconds of traffic" >&2; exit 2; }
 for tool in iptables ip6tables iptables-restore ip6tables-restore sysctl python3; do
   command -v "$tool" >/dev/null || { echo "$tool is required (both IP families must be protected)" >&2; exit 1; }
 done
@@ -36,12 +36,6 @@ except ValueError as error:
 PYCODE
 )
 
-current=$(sysctl -n net.core.rmem_max)
-[[ "$current" =~ ^[0-9]{1,10}$ ]] || { echo "invalid current rmem_max" >&2; exit 1; }
-if (( current < RECV_BUFFER )); then
-  sysctl -w "net.core.rmem_max=$RECV_BUFFER"
-fi
-
 rules_dir=$(mktemp -d)
 trap 'rm -rf "$rules_dir"' EXIT
 for ipt in iptables ip6tables; do
@@ -63,8 +57,14 @@ for ipt in iptables ip6tables; do
     fi
     echo COMMIT
   } > "$rules_dir/$ipt"
-  "$ipt-restore" --test --noflush < "$rules_dir/$ipt"
+  "$ipt-restore" --test --wait --noflush < "$rules_dir/$ipt"
 done
+current=$(sysctl -n net.core.rmem_max)
+[[ "$current" =~ ^[0-9]{1,10}$ ]] || { echo "invalid current rmem_max" >&2; exit 1; }
+if (( current < RECV_BUFFER )); then
+  sysctl -w "net.core.rmem_max=$RECV_BUFFER"
+fi
+
 # Each restore replaces only this chain atomically within one IP family.
 # The two families cannot commit together. Report partial application clearly.
 for ipt in iptables ip6tables; do

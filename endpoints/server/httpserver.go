@@ -17,6 +17,7 @@ import (
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 
+	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -177,15 +178,15 @@ func LoadFilesRecursively(g *gin.Engine, dir string) {
 			}
 
 			absPath := filepath.Join(cleanRootDir, path)
-			content, err := os.ReadFile(absPath)
-			if err != nil {
-				return err
+			content, fileErr := os.ReadFile(absPath)
+			if fileErr != nil {
+				return fileErr
 			}
 
 			t := rootTmpl.New(path) // template name is relative path separated by slash on all platforms
-			_, err = t.Parse(string(content))
-			if err != nil {
-				return err
+			_, fileErr = t.Parse(string(content))
+			if fileErr != nil {
+				return fileErr
 			}
 			log.Info("gin load file %s from %s", path, cleanRootDir)
 			g.SetHTMLTemplate(t)
@@ -339,11 +340,55 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 		knkMsg.HeaderType = core.NHP_EXT
 	}
 
+	// Declared before the audit defer below so the closure can read the
+	// populated error code off it. The named return `ack` stays nil on every
+	// naked `return` (resource-not-found, all-AC-failed), so reading `ack`
+	// there would drop errCode on exactly the denials that carry it.
 	ackMsg := &common.ServerKnockAckMsg{
 		AuthProviderToken: req.Token,
 		AgentAddr:         srcIp,
 		OpenTime:          res.OpenTime,
 	}
+
+	// Record the HTTP access decision in the same ledger as the UDP knock
+	// path — the browser / js-agent flow opens AC rules too, so leaving it
+	// out would give the trail a blind spot exactly where the demo stack
+	// operates. Deferred so every return path (resource-not-found, no AC
+	// connection, all-AC-failed, success) is covered from the final err/ack.
+	defer func() {
+		if s == nil || s.auditLedger == nil {
+			return
+		}
+		// Grant means a nil error AND the explicit success code, so neither a
+		// soft denial nor an unset code reads as "granted". See decisionGranted.
+		severity, result := audit.SeverityWarn, "denied"
+		if decisionGranted(err, ackMsg == nil, ackMsg.ErrCode) {
+			severity, result = audit.SeverityInfo, "granted"
+		}
+		op := "open"
+		if knkMsg.HeaderType == core.NHP_EXT {
+			op = "close"
+		}
+		fields := map[string]string{
+			"user":   knkMsg.UserId,
+			"device": knkMsg.DeviceId,
+			"src":    srcIp,
+			"aspId":  knkMsg.AuthServiceId,
+			"resId":  knkMsg.ResourceId,
+			"op":     op,
+			"via":    "http",
+			"result": result,
+		}
+		// ackMsg always carries the code set on the failure paths; the named
+		// return ack only mirrors it on success (return ackMsg, nil).
+		if ackMsg.ErrCode != "" {
+			fields["errCode"] = ackMsg.ErrCode
+		}
+		if err != nil {
+			fields["reason"] = err.Error()
+		}
+		s.auditEvent("knock", severity, fields)
+	}()
 
 	if len(res.Resources) == 0 {
 		err = common.ErrResourceNotFound
@@ -403,10 +448,10 @@ func (hs *HttpServer) handleHttpOpenResource(req *common.HttpKnockRequest, res *
 			if knkMsg.HeaderType == core.NHP_EXT {
 				openTime = 1 // timeout in 1 second
 			}
-			artMsg, err := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
+			artMsg, opErr := s.processACOperation(knkMsg, acConn, srcAddr, dstAddrs, openTime)
 			artMsgsMutex.Lock()
 			artMsgs[name] = artMsg
-			if err == nil {
+			if opErr == nil {
 				ackMsg.ResourceHost[name] = info.DestHost()
 				ackMsg.ACTokens[name] = artMsg.ACToken
 				ackMsg.PreAccessActions[name] = artMsg.PreAccessAction

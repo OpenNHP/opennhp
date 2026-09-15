@@ -1,12 +1,12 @@
 package ac
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,7 +16,9 @@ import (
 	ebpflocal "github.com/OpenNHP/opennhp/endpoints/ac/ebpf"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
+	"github.com/OpenNHP/opennhp/nhp/metrics"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 	"github.com/OpenNHP/opennhp/nhp/utils/ebpf"
 	"github.com/OpenNHP/opennhp/nhp/version"
@@ -55,6 +57,11 @@ type UdpAC struct {
 	wg         sync.WaitGroup
 	running    atomic.Bool
 
+	startTime       time.Time
+	metrics         *acMetrics
+	metricsEndpoint *metrics.Endpoint
+	healthy         atomic.Bool // gates /healthz: true from Start until Stop
+
 	signals struct {
 		stop             chan struct{}
 		serverMapUpdated chan struct{}
@@ -86,6 +93,7 @@ dirPath: the path of app or shared library entry point
 logLevel: 0: silent, 1: error, 2: info, 3: debug, 4: verbose
 */
 func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
+	a.startTime = time.Now()
 	common.ExeDirPath = dirPath
 	ExeDirPath = dirPath
 	// init logger
@@ -134,17 +142,32 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 		return
 	}
 
-	prk, err := base64.StdEncoding.DecodeString(a.config.PrivateKeyBase64)
+	prk, sealed, err := keystore.ResolvePrivateKeyAuto(a.config.PrivateKeyBase64)
 	if err != nil {
 		log.Error("private key parse error %v\n", err)
 		return fmt.Errorf("private key parse error %v", err)
 	}
+	if sealed {
+		log.Info("AC private key is sealed; unsealed at startup with the configured passphrase")
+		if path, mode, permissive := keystore.PassphraseFilePermissive(); permissive {
+			log.Warning("passphrase file %s is mode %o — restrict it to 0600", path, mode)
+		}
+	}
 
+	a.metrics = newACMetrics(a, a.startTime)
+
+	// Keep NewDevice(t, prk, nil) so defaultDeviceOptions(NHP_AC) stays the
+	// single source of truth for the device's security posture (it disables
+	// agent peer validation for AC), then layer the dropped-packet
+	// observation hook on top via read-modify-write.
 	a.device = core.NewDevice(core.NHP_AC, prk, nil)
 	if a.device == nil {
 		log.Critical("failed to create device %v\n", err)
 		return fmt.Errorf("failed to create device %v", err)
 	}
+	acOpt := a.device.GetOption()
+	acOpt.OnPacketDropped = func(stage string) { a.metrics.recordDroppedPacket(stage) }
+	a.device.SetOption(acOpt)
 
 	a.remoteConnectionMap = make(map[string]*UdpConn)
 	a.serverPeerMap = make(map[string]*core.UdpPeer)
@@ -225,12 +248,36 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	go a.maintainServerConnectionRoutine()
 
 	a.running.Store(true)
+
+	// opt-in Prometheus /metrics + /healthz endpoint, loopback by default.
+	// Started after running=true so /healthz never reports "stopping" while
+	// the daemon is coming up. StartEndpoint returns (nil,nil) when disabled.
+	a.healthy.Store(true)
+	ep, mErr := metrics.StartEndpoint(a.config.Metrics, metrics.EndpointOptions{
+		Registry:      a.metrics.registry,
+		Uptime:        func() time.Duration { return time.Since(a.startTime) },
+		IsRunning:     a.healthy.Load,
+		DefaultPort:   defaultACMetricsPort,
+		OnListening:   func(addr string) { log.Info("[Metrics] endpoint listening on http://%s (/metrics, /healthz)", addr) },
+		OnServeError:  func(e error) { log.Error("[Metrics] endpoint stopped unexpectedly: %v", e) },
+		OnRenderError: func(e error) { log.Error("[Metrics] failed to render exposition: %v", e) },
+		OnInsecureBind: func(ip string) {
+			log.Critical("[Metrics] ListenIp %s is not loopback — /metrics and /healthz will be reachable off-host, unauthenticated, and self-identifying via the nhp_ac_* series", ip)
+		},
+	})
+	if mErr != nil {
+		log.Error("[Metrics] endpoint disabled — failed to start: %v", mErr)
+	}
+	a.metricsEndpoint = ep
+
 	return nil
 }
 
 func (ac *UdpAC) Stop() {
 	ac.running.Store(false)
+	ac.healthy.Store(false)
 	close(ac.signals.stop)
+	ac.metricsEndpoint.Stop()
 	if ac.etcdConn != nil {
 		ac.etcdConn.Close()
 	}
@@ -400,6 +447,7 @@ func (a *UdpAC) recvPacketRoutine(conn *UdpConn) {
 		// check minimal length
 		if n < pkt.MinimalLength() {
 			a.device.ReleasePoolPacket(pkt)
+			a.metrics.recordDroppedPacket("too_short")
 			log.Error("Received UDP packet from %s is too short, discard", addrStr)
 			continue
 		}
@@ -413,6 +461,7 @@ func (a *UdpAC) recvPacketRoutine(conn *UdpConn) {
 		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, conn.ConnData.LocalAddr.String(), n)
 		if err != nil {
 			a.device.ReleasePoolPacket(pkt)
+			a.metrics.recordDroppedPacket("precheck")
 			log.Warning("Receive [%s] packet (%s -> %s), precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			log.Evaluate("Receive [%s] packet (%s -> %s) precheck error: %v", msgType, addrStr, conn.ConnData.LocalAddr.String(), err)
 			continue
@@ -441,18 +490,27 @@ func (a *UdpAC) connectionRoutine(conn *UdpConn) {
 		conn.Close()
 	}()
 
+	idleTimeout := time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+	idleTimer := time.NewTimer(idleTimeout)
+	defer idleTimer.Stop()
+
 	for {
 		select {
 		case <-a.signals.stop:
 			return
 
-		case <-conn.ConnData.SetTimeoutSignal:
+		case _, ok := <-conn.ConnData.SetTimeoutSignal:
+			if !ok {
+				return
+			}
 			if conn.ConnData.TimeoutMs <= 0 {
 				log.Debug("Connection routine closed immediately")
 				return
 			}
+			idleTimeout = time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond
+			idleTimer.Reset(idleTimeout)
 
-		case <-time.After(time.Duration(conn.ConnData.TimeoutMs) * time.Millisecond):
+		case <-idleTimer.C:
 			// timeout, quit routine
 			log.Debug("Connection routine idle timeout")
 			return
@@ -461,6 +519,7 @@ func (a *UdpAC) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -470,6 +529,7 @@ func (a *UdpAC) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
+			idleTimer.Reset(idleTimeout)
 			if pkt == nil {
 				continue
 			}
@@ -499,7 +559,10 @@ func (a *UdpAC) connectionRoutine(conn *UdpConn) {
 			// generic receive
 			a.device.RecvPacketToMsg(pd)
 
-		case <-conn.ConnData.BlockSignal:
+		case _, ok := <-conn.ConnData.BlockSignal:
+			if !ok {
+				return
+			}
 			log.Critical("blocking address %s", addrStr)
 			return
 		}
@@ -525,19 +588,42 @@ func (a *UdpAC) recvMessageRoutine() {
 				continue
 			}
 
+			a.metrics.recordMessageReceived(core.HeaderTypeToString(ppd.HeaderType))
+
 			switch ppd.HeaderType {
 			case core.NHP_AOP:
 				// deal with NHP_AOP message
+				p := ppd
 				a.wg.Add(1)
-				go func(p *core.PacketParserData) {
+				go a.runUDPHandler(p.HeaderType, func() {
 					if err := a.HandleUdpACOperations(p); err != nil &&
 						!errors.Is(err, common.ErrACDuplicateTransaction) &&
 						!errors.Is(err, common.ErrACMissingPeerPubkey) {
 						log.Error("HandleUdpACOperations failed: %v", err)
 					}
-				}(ppd)
+				})
 			}
 		}
+	}
+}
+
+// runUDPHandler contains panics from input-driven handler goroutines. A
+// malformed packet or an unexpected nil in one handler must drop that request,
+// not terminate the entire access-controller process.
+func (a *UdpAC) runUDPHandler(headerType int, handler func()) {
+	defer a.wg.Done()
+	defer a.recoverUDPHandler(headerType)
+	handler()
+}
+
+func (a *UdpAC) recoverUDPHandler(headerType int) {
+	if recovered := recover(); recovered != nil {
+		acID := "unknown"
+		if a != nil && a.config != nil && a.config.ACId != "" {
+			acID = a.config.ACId
+		}
+		log.Error("ac(%s)[%s] UDP handler panic recovered: %v\n%s",
+			acID, core.HeaderTypeToString(headerType), recovered, debug.Stack())
 	}
 }
 

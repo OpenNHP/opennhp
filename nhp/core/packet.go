@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"unsafe"
 
@@ -128,6 +129,14 @@ type Packet struct {
 	Buf           *PacketBuffer
 	HeaderType    int
 	PoolAllocated bool
+	// KeepAfterSend is no longer written anywhere in this repository. It marked
+	// a packet the physical sender must not release because a local transaction
+	// also owned it; msgToPacketRoutine now hands the sender an independent
+	// clone instead (see Device.clonePacketForSend). Do not set it true again:
+	// ConnectionData.Close and ForwardOutboundPacket's discard paths release
+	// queued packets without consulting this flag, so shared ownership comes
+	// back as a double free, not a leak. Kept (always false) because Packet is
+	// exported and out-of-tree senders still read it.
 	KeepAfterSend bool // only applicable for sending
 	Content       []byte
 }
@@ -264,6 +273,29 @@ func (d *Device) RecvPrecheck(pkt *Packet) (int, int, error) {
 func (d *Device) AllocatePoolPacket() *Packet {
 	buf := d.pool.Get()
 	return &Packet{Buf: buf, Content: buf[:], PoolAllocated: true}
+}
+
+// clonePacketForSend gives the physical sender independent ownership of a
+// transaction packet. The local transaction must retain the assembler's
+// packet until its response, timeout, or connection-close path completes;
+// sharing that packet with an asynchronous sender lets either owner recycle
+// the buffer while the other still uses it.
+func (d *Device) clonePacketForSend(pkt *Packet) (*Packet, error) {
+	if pkt == nil {
+		return nil, errors.New("invalid outbound transaction packet: no packet")
+	}
+	if len(pkt.Content) == 0 || len(pkt.Content) > PacketBufferSize {
+		return nil, fmt.Errorf("invalid outbound transaction packet: type %d carries %d content bytes", pkt.HeaderType, len(pkt.Content))
+	}
+
+	clone := d.AllocatePoolPacket()
+	// Endpoint senders consume HeaderType and Content; AllocatePoolPacket
+	// supplies their Buf/PoolAllocated ownership fields. KeepAfterSend must stay
+	// false so the physical sender releases this copy after the socket write.
+	clone.HeaderType = pkt.HeaderType
+	clone.Content = clone.Buf[:len(pkt.Content)]
+	copy(clone.Content, pkt.Content)
+	return clone, nil
 }
 
 func (d *Device) ReleasePoolPacket(pkt *Packet) {

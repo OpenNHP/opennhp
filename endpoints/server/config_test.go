@@ -314,3 +314,46 @@ func TestShippedDemoCookieSigningKey_MatchesCommittedConfig(t *testing.T) {
 		})
 	}
 }
+
+// TestUpdateBaseConfig_ToggleValidationKeepsDeviceHooks fences the
+// hot-reload clobber: toggling DisableAgentValidation must not wipe the
+// OnPacketDropped hook (or PeerLookupFallback) that Start installed on the
+// device. SetOption replaces the whole struct, so updateBaseConfig has to
+// read-modify-write.
+func TestUpdateBaseConfig_ToggleValidationKeepsDeviceHooks(t *testing.T) {
+	devPriv := make([]byte, 32)
+	for i := range devPriv {
+		devPriv[i] = byte(i + 1)
+	}
+	dev := core.NewDevice(core.NHP_SERVER, devPriv, nil)
+	if dev == nil {
+		t.Fatal("NewDevice returned nil")
+	}
+	t.Cleanup(dev.Stop)
+
+	dropped := 0
+	opt := dev.GetOption()
+	opt.OnPacketDropped = func(string) { dropped++ }
+	dev.SetOption(opt)
+
+	s := &UdpServer{
+		device: dev,
+		config: &Config{DisableAgentValidation: false},
+	}
+
+	if err := s.updateBaseConfig(Config{DisableAgentValidation: true}); err != nil {
+		t.Fatalf("updateBaseConfig: %v", err)
+	}
+
+	got := dev.GetOption()
+	if !got.DisableAgentPeerValidation {
+		t.Fatal("DisableAgentPeerValidation was not applied on reload")
+	}
+	if got.OnPacketDropped == nil {
+		t.Fatal("OnPacketDropped hook was wiped by the reload")
+	}
+	got.OnPacketDropped("decrypt")
+	if dropped != 1 {
+		t.Fatalf("surviving hook did not fire: dropped=%d", dropped)
+	}
+}

@@ -3,11 +3,13 @@
 # and install an nginx vhost. Idempotent: safe to re-run.
 #
 # Expected env vars (set by caller):
-#   COMPONENT         = "server" | "ac" | "relay"
-#   PRIMARY_DOMAIN    = e.g. "auth-plugin.opennhp.org"
+#   COMPONENT         = "ac" | "relay" | "demoapp"
+#                       (no longer "server": the nhp-server's HTTP surface was
+#                       retired, so that host gets no vhost and no certificate)
+#   PRIMARY_DOMAIN    = e.g. "ac.opennhp.org"
 #   EXTRA_DOMAINS     = space-separated additional SANs (may be empty)
 #   LEGACY_CERT_NAME  = optional. Old certbot lineage name to migrate from
-#                       (e.g. "demologin.opennhp.org"). When the host has
+#                       (e.g. "acdemo.opennhp.org"). When the host has
 #                       /etc/letsencrypt/renewal/$LEGACY_CERT_NAME.conf but no
 #                       lineage at $PRIMARY_DOMAIN yet, the old lineage is
 #                       reissued with --cert-name $PRIMARY_DOMAIN --expand so

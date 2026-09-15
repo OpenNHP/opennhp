@@ -1,6 +1,7 @@
 package test
 
 import (
+	"encoding/base64"
 	"sync"
 	"testing"
 	"time"
@@ -189,5 +190,73 @@ func TestTokenStore_TwoLevelIndexing(t *testing.T) {
 	_, found = ts.Load("Atoken5")
 	if !found {
 		t.Error("expected Atoken5 to still exist")
+	}
+}
+
+func TestGenerateOpaqueToken(t *testing.T) {
+	const count = 10_000
+	seen := make(map[string]struct{}, count)
+	for i := 0; i < count; i++ {
+		token := common.GenerateOpaqueToken()
+		if len(token) != 44 || token[43] != '=' {
+			t.Fatalf("token %d has unexpected encoded shape: %q", i, token)
+		}
+		raw, err := base64.StdEncoding.DecodeString(token)
+		if err != nil || len(raw) != 32 {
+			t.Fatalf("token %d does not decode to 32 bytes: len=%d err=%v", i, len(raw), err)
+		}
+		if _, duplicate := seen[token]; duplicate {
+			t.Fatalf("duplicate token after %d generations", i)
+		}
+		seen[token] = struct{}{}
+	}
+}
+
+func TestGenerateOpaqueTokenConcurrent(t *testing.T) {
+	const goroutines = 16
+	const tokensPerGoroutine = 1_000
+
+	results := make([][]string, goroutines)
+	var wg sync.WaitGroup
+	for i := range results {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			batch := make([]string, tokensPerGoroutine)
+			for j := range batch {
+				batch[j] = common.GenerateOpaqueToken()
+			}
+			results[index] = batch
+		}(i)
+	}
+	wg.Wait()
+
+	seen := make(map[string]struct{}, goroutines*tokensPerGoroutine)
+	for _, batch := range results {
+		for _, token := range batch {
+			if _, duplicate := seen[token]; duplicate {
+				t.Fatalf("duplicate token generated concurrently: %q", token)
+			}
+			seen[token] = struct{}{}
+		}
+	}
+}
+
+func TestRedactToken(t *testing.T) {
+	tests := []struct {
+		token string
+		want  string
+	}{
+		{token: "", want: ""},
+		{token: "abc", want: "abc"},
+		{token: "abcdefgh", want: "abcdefgh"},
+		{token: "abcdefghij", want: "abcdefgh..."},
+		{token: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH", want: "abcdefgh..."},
+	}
+
+	for _, test := range tests {
+		if got := common.RedactToken(test.token); got != test.want {
+			t.Errorf("RedactToken(%q) = %q, want %q", test.token, got, test.want)
+		}
 	}
 }

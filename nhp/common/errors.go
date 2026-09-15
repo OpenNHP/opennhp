@@ -72,6 +72,20 @@ func ErrorCodeToError(code string) *Error {
 	return nil // should not happen
 }
 
+// ErrorFromResponse maps a protocol response's code to a concrete error. Known
+// NHP codes retain their canonical, localized error. Extension codes emitted by
+// an auth service or AC retain the authenticated response message instead of
+// becoming a nil *Error inside a non-nil error interface.
+func ErrorFromResponse(code, message string) *Error {
+	if e := ErrorCodeToError(code); e != nil {
+		return e
+	}
+	if message == "" {
+		message = "unknown NHP error code " + code
+	}
+	return &Error{code: code, msgEN: message, msgCH: message}
+}
+
 // application errors
 var (
 	// generic

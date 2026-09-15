@@ -1060,7 +1060,8 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		}
 		s.relayConnCountMutex.Unlock()
 
-		conn = &UdpConn{mapKey: connKey}
+		conn = &UdpConn{mapKey: connKey, timeoutUpdate: make(chan struct{}, 1)}
+		conn.timeoutMs.Store(DefaultAgentConnectionTimeoutMs)
 		conn.ConnData = &core.ConnectionData{
 			InitTime:          recvTime,
 			LastLocalRecvTime: recvTime,

@@ -6,10 +6,10 @@ const (
 	MaxConcurrentConnection     = 20480
 	OverloadConnectionThreshold = MaxConcurrentConnection * 4 / 5 // 80%
 	MaxConnectionsPerRelay      = 1024                            // per-relay-peer cap on forwarded-client fan-out
-	// MaxAgentConnectionsPerIP limits direct agent connection tuples from
+	// OverloadMaxAgentConnectionsPerIP limits direct agent connection tuples from
 	// one source IP. Entries remain keyed by the full UDP address so replies
 	// still use the correct NAT-assigned source port.
-	MaxAgentConnectionsPerIP = 256
+	OverloadMaxAgentConnectionsPerIP = 256
 
 	// MaxConcurrentHandlers bounds in-flight handler goroutines spawned
 	// per inbound NHP packet (KNK, RKN, EXT, RLY, OTP, REG, LST, DAR,

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,14 +81,14 @@ type SrcIpMap struct {
 }
 
 type Config struct {
-	MaxAgentConnectionsPerIP int    `json:"maxAgentConnectionsPerIP"` // Restart-only; zero selects 256.
-	PrivateKeyBase64         string `json:"privateKey"`
-	Hostname                 string `json:"hostname"`
-	ListenIp                 string `json:"listenIp"`
-	ListenPort               int    `json:"listenPort"`
-	LogLevel                 int    `json:"logLevel"`
-	DefaultCipherScheme      int    `json:"defaultCipherScheme"`
-	DisableAgentValidation   bool   `json:"disableAgentValidation"`
+	OverloadMaxAgentConnectionsPerIP int    `json:"overloadMaxAgentConnectionsPerIP"` // Restart-only; zero selects 256.
+	PrivateKeyBase64                 string `json:"privateKey"`
+	Hostname                         string `json:"hostname"`
+	ListenIp                         string `json:"listenIp"`
+	ListenPort                       int    `json:"listenPort"`
+	LogLevel                         int    `json:"logLevel"`
+	DefaultCipherScheme              int    `json:"defaultCipherScheme"`
+	DisableAgentValidation           bool   `json:"disableAgentValidation"`
 
 	// AllowPrivateRelaySource relaxes the SourceAddr public-routability check
 	// that HandleRelayForward applies to inner KNK packets arriving via a
@@ -964,6 +965,12 @@ func (s *UdpServer) updateACPeers(peers []*core.UdpPeer) (err error) {
 		}
 	}
 	s.acPeerMap = acPeerMap
+	s.acPeerIPs = make(map[string]struct{})
+	for _, peer := range acPeerMap {
+		if ip := net.ParseIP(peer.Ip); ip != nil {
+			s.acPeerIPs[ip.String()] = struct{}{}
+		}
+	}
 
 	return err
 }
@@ -1013,6 +1020,12 @@ func (s *UdpServer) updateRelayPeers(peers []*core.UdpPeer) (err error) {
 		}
 	}
 	s.relayPeerMap = relayPeerMap
+	s.relayPeerIPs = make(map[string]struct{})
+	for _, peer := range relayPeerMap {
+		if ip := net.ParseIP(peer.Ip); ip != nil {
+			s.relayPeerIPs[ip.String()] = struct{}{}
+		}
+	}
 
 	return err
 }
@@ -1110,6 +1123,12 @@ func (s *UdpServer) updateDePeers(peers []*core.UdpPeer) (err error) {
 		}
 	}
 	s.dbPeerMap = dbPeerMap
+	s.dbPeerIPs = make(map[string]struct{})
+	for _, peer := range dbPeerMap {
+		if ip := net.ParseIP(peer.Ip); ip != nil {
+			s.dbPeerIPs[ip.String()] = struct{}{}
+		}
+	}
 	return err
 }
 

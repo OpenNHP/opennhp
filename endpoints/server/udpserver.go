@@ -74,7 +74,7 @@ type UdpServer struct {
 	remoteConnectionMapMutex sync.Mutex
 	remoteConnectionMap      map[string]*UdpConn // indexed by remote UDP address or relay compound key
 	connectionsByIP          map[string]int      // direct connections per source IP
-	perIPRejections          atomic.Int64
+	admissionRejections      atomic.Int64
 
 	// relayConnCount tracks how many relay-forwarded client connections
 	// each NHP_RLY peer currently has open in remoteConnectionMap. Used
@@ -91,9 +91,11 @@ type UdpServer struct {
 	acConnectionMap      map[string]*ACConn // ac connection is indexed by remote IP address
 
 	acPeerMapMutex sync.Mutex
+	acPeerIPs      map[string]struct{}      // configured static IPs, protected by acPeerMapMutex
 	acPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
 	relayPeerMapMutex sync.Mutex
+	relayPeerIPs      map[string]struct{}      // configured static IPs, protected by relayPeerMapMutex
 	relayPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
 	dbConnectionMapMutex sync.Mutex
@@ -156,6 +158,7 @@ type UdpServer struct {
 
 	//NHP-DB
 	dbPeerMapMutex sync.Mutex
+	dbPeerIPs      map[string]struct{}      // configured static IPs, protected by dbPeerMapMutex
 	dbPeerMap      map[string]*core.UdpPeer // indexed by peer's public key base64 string
 
 	teeMapMutex sync.Mutex
@@ -769,10 +772,9 @@ func (s *UdpServer) recvPacketRoutine() {
 
 		} else {
 			// create new connection if there is room
-			if !s.globalCapAdmits() {
-				log.Critical("Reached maximum concurrent connection, discarding packet from: %s", addrStr)
+			if reason := s.directAdmissionReason(remoteAddr, addrStr); reason != "" {
 				s.device.ReleasePoolPacket(pkt)
-				s.metrics.recordDroppedPacket("conn_limit")
+				s.recordAdmissionRefusal(reason, addrStr)
 				continue
 			}
 
@@ -802,11 +804,7 @@ func (s *UdpServer) recvPacketRoutine() {
 
 			if reason := s.admitDirectConnection(conn, addrStr); reason != "" {
 				s.device.ReleasePoolPacket(pkt)
-				s.metrics.recordDroppedPacket(reason)
-				drops := s.perIPRejections.Add(1)
-				if drops == 1 || drops%1000 == 0 {
-					log.Warning("Direct connection from %s refused: %s (drops: %d)", addrStr, reason, drops)
-				}
+				s.recordAdmissionRefusal(reason, addrStr)
 				continue
 			}
 
@@ -826,26 +824,71 @@ func (s *UdpServer) recvPacketRoutine() {
 func (s *UdpServer) admitDirectConnection(conn *UdpConn, mapKey string) string {
 	s.remoteConnectionMapMutex.Lock()
 	defer s.remoteConnectionMapMutex.Unlock()
-	limit := MaxAgentConnectionsPerIP
-	if s.config != nil && s.config.MaxAgentConnectionsPerIP > 0 {
-		limit = s.config.MaxAgentConnectionsPerIP
+	if reason := s.directAdmissionReasonLocked(conn.ConnData.RemoteAddr, mapKey); reason != "" {
+		return reason
 	}
-	ip := conn.ConnData.RemoteAddr.IP.String()
-	if len(s.remoteConnectionMap) >= MaxConcurrentConnection {
-		return "conn_limit"
+	if s.connectionsByIP == nil {
+		s.connectionsByIP = make(map[string]int)
 	}
-	// Per-source fairness applies only under global pressure. Otherwise a
-	// small spoofed flood could prevent a healthy NAT or AC from reconnecting.
-	if s.device != nil && s.device.IsOverload() && s.connectionsByIP[ip] >= limit {
-		return "per_ip_conn_limit"
-	}
-	if _, exists := s.remoteConnectionMap[mapKey]; exists {
-		return "conn_limit"
-	}
+	conn.mapKey = mapKey
 	s.remoteConnectionMap[mapKey] = conn
-	s.connectionsByIP[ip]++
+	s.connectionsByIP[conn.ConnData.RemoteAddr.IP.String()]++
 	conn.perIPCounted = true
 	return ""
+}
+
+// Preflight avoids allocating packet queues for refused traffic. Admission
+// repeats this check under the insertion lock to preserve concurrent bounds.
+func (s *UdpServer) directAdmissionReason(addr *net.UDPAddr, mapKey string) string {
+	s.remoteConnectionMapMutex.Lock()
+	defer s.remoteConnectionMapMutex.Unlock()
+	return s.directAdmissionReasonLocked(addr, mapKey)
+}
+
+func (s *UdpServer) directAdmissionReasonLocked(addr *net.UDPAddr, mapKey string) string {
+	n := len(s.remoteConnectionMap)
+	if s.device != nil && n > OverloadConnectionThreshold {
+		s.device.SetOverload(true)
+	}
+	if n >= MaxConcurrentConnection {
+		return "conn_limit"
+	}
+	if _, exists := s.remoteConnectionMap[mapKey]; exists {
+		return "conn_duplicate"
+	}
+	limit := OverloadMaxAgentConnectionsPerIP
+	if s.config != nil && s.config.OverloadMaxAgentConnectionsPerIP > 0 {
+		limit = s.config.OverloadMaxAgentConnectionsPerIP
+	}
+	ip := addr.IP.String()
+	if s.device != nil && s.device.IsOverload() && s.connectionsByIP[ip] >= limit && !s.isConfiguredInfrastructureIP(ip) {
+		return "per_ip_conn_limit"
+	}
+	return ""
+}
+
+// Configured static infrastructure IPs retain reconnect admission. This is an
+// availability exemption only: packets still require peer authentication and
+// the global connection cap applies. Spoofed traffic can also claim these IPs.
+func (s *UdpServer) isConfiguredInfrastructureIP(ip string) bool {
+	s.acPeerMapMutex.Lock()
+	_, ac := s.acPeerIPs[ip]
+	s.acPeerMapMutex.Unlock()
+	s.dbPeerMapMutex.Lock()
+	_, db := s.dbPeerIPs[ip]
+	s.dbPeerMapMutex.Unlock()
+	s.relayPeerMapMutex.Lock()
+	_, relay := s.relayPeerIPs[ip]
+	s.relayPeerMapMutex.Unlock()
+	return ac || db || relay
+}
+
+func (s *UdpServer) recordAdmissionRefusal(reason, addr string) {
+	s.metrics.recordDroppedPacket(reason)
+	drops := s.admissionRejections.Add(1)
+	if drops == 1 || drops%1000 == 0 {
+		log.Warning("Direct connection from %s refused: %s (drops: %d)", addr, reason, drops)
+	}
 }
 
 // releasePerIPCount requires remoteConnectionMapMutex.
@@ -880,6 +923,9 @@ func (s *UdpServer) promoteControlConnection(connData *core.ConnectionData, kind
 		return false
 	}
 	mapKey := connData.RemoteAddr.String()
+	if connData.RealRemoteAddr != nil {
+		mapKey = relayConnKeyPrefix + mapKey + relayConnKeySep + connData.RealRemoteAddr.String()
+	}
 	s.remoteConnectionMapMutex.Lock()
 	conn := s.remoteConnectionMap[mapKey]
 	if conn == nil || conn.ConnData != connData {

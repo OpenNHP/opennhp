@@ -217,3 +217,27 @@ func TestARTSkewWarningIsRateLimited(t *testing.T) {
 		t.Fatal("clock skew warning rate limit failed")
 	}
 }
+
+func TestARTDoesNotResetSharedConnectionReplayState(t *testing.T) {
+	f := newValidatePeerSentinelFixture(t)
+	f.receiver.AddPeer(f.senderPeer)
+	watermark := f.sendTime + int64(time.Second)
+	f.receiverConn.LastRemoteSendTime = watermark
+	f.receiverConn.RecvThreatCount = 2
+	packet := &Packet{Content: append([]byte(nil), f.packet...), HeaderType: NHP_AOL}
+	ppd, err := f.receiver.createPacketParserData(&PacketData{BasePacket: packet, ConnData: f.receiverConn, InitTime: f.initTime})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ppd.Destroy()
+	ppd.HeaderType = NHP_ART
+	if err := ppd.validatePeer(); err != nil {
+		t.Fatal(err)
+	}
+	if f.receiverConn.LastRemoteSendTime != watermark || f.receiverConn.RecvThreatCount != 2 {
+		t.Fatal("ART changed shared replay/threat state")
+	}
+	if ppd.RemoteSendTime != f.sendTime {
+		t.Fatal("authenticated timestamp not forwarded to dedupe")
+	}
+}

@@ -327,29 +327,18 @@ Log levels:
 
   **Solution:** Configure the correct IP in `nhp-server/plugins/example/etc/resource.toml` under `Addr.Ip`.
 
-### ART replay cache
+### ART replay protection
 
-The server accepts ART responses up to 600 seconds old and at most 300 seconds
-in the future. Keep AC and server clocks synchronized. The replay cache retains
-entries for 960 seconds. Set `ARTReplayCacheEntries` in server `config.toml` to
-at least peak ART responses per second × 960, with room for bursts. Zero uses
-100,000 entries. Memory grows with this value (several hundred bytes per entry).
-A warning, limited to once per minute, reports live capacity evictions and the
-cumulative count; these evictions shorten replay coverage. A process restart
-also clears the cache. This process-local cache does not guarantee replay
-protection across restarts or sustained traffic above its configured capacity.
+Keep AC and server clocks synchronized: ART responses may be up to 600 seconds
+old or 300 seconds in the future. The cache retains authenticated AC tuples for
+960 seconds. Set `ARTReplayCacheEntries` to peak ART/s times 960 plus burst
+headroom (0 selects 100,000; maximum 1,000,000; restart required). Memory grows
+with usage up to that cap, at several hundred bytes per entry. Alert on
+`nhp_server_art_replay_cache_evictions_total`; unexpired eviction shortens replay
+coverage. Detailed clock-skew and replay warnings are limited to once per minute.
 
-ART future-skew rejection tightens the previous unbounded behavior: AC clocks
-more than 300 seconds ahead now cause rejected responses with a clock-sync log.
-Cache capacity changes require restart and accept 0..1,000,000 entries. Captured
-first-seen packets can also churn the cache. Transaction counters now start from
-a cryptographically random 64-bit seed per device, making cross-restart ID
-reuse improbable; the cache is additional duplicate-delivery protection.
-
-ART future clock skew is bounded at five minutes. Larger skew rejects the
-packet; synchronize the AC and server clocks. The detailed clock-skew and
-replay warnings are limited to once per minute. Replay retention is 960 seconds
-(600-second staleness plus 300-second future skew plus 60-second margin).
-Alert on `nhp_server_art_replay_cache_evictions_total` and size
-`ARTReplayCacheEntries` for peak ART packets/s times 960. This PR covers ART;
-AOP replay protection is supplied separately by PR #1636.
+Only configured AC keys can populate this cache. ART validation does not change
+the shared AOL timestamp watermark or clear connection threat state. Cache state
+is process-local and clears on restart. Random transaction sequences make ID
+reuse unlikely; the cache is additional duplicate-delivery protection. AOP
+protection must be configured on the AC separately.

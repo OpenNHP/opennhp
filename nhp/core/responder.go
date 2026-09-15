@@ -623,11 +623,13 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 		return err
 	}
 
-	// update remote last send time
-	atomic.StoreInt64(&ppd.ConnData.LastRemoteSendTime, remoteSendTime)
 	ppd.RemoteSendTime = remoteSendTime
-	// clear threat
-	atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)
+	// ART is deduplicated after this function. It must not rewind the shared
+	// AOL watermark or clear threat state before a replay is rejected.
+	if !(ppd.device.deviceType == NHP_SERVER && ppd.HeaderType == NHP_ART) {
+		atomic.StoreInt64(&ppd.ConnData.LastRemoteSendTime, remoteSendTime)
+		atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, 0)
+	}
 
 	// handle knock packet at overload before going into body decryption.
 	// sendCookie derives the cookie statelessly from the device's signing

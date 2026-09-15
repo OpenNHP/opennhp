@@ -136,6 +136,7 @@ func NewDevice(t int, prk []byte, option *DeviceOptions) *Device {
 	// Randomize the transaction sequence across process/device replacement.
 	var seed [8]byte
 	if _, err := rand.Read(seed[:]); err != nil {
+		log.Critical("Failed to initialize transaction sequence: %v", err)
 		return nil
 	}
 	d.counterIndex = binary.BigEndian.Uint64(seed[:])

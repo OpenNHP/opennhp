@@ -1366,6 +1366,12 @@ func (s *UdpServer) dedupeRecvART(ppd *core.PacketParserData) error {
 		log.Critical("server[dedupeRecvART] invalid peer pubkey length %d for txid=%d (want %d or %d)", l, ppd.SenderTrxId, core.PublicKeySize, core.PublicKeySizeEx)
 		return common.ErrServerMissingPeerPubkey
 	}
+	s.acPeerMapMutex.Lock()
+	peer := s.acPeerMap[base64.StdEncoding.EncodeToString(ppd.RemotePubKey)]
+	s.acPeerMapMutex.Unlock()
+	if peer == nil || peer.DeviceType() != core.NHP_AC {
+		return common.ErrServerMissingPeerPubkey
+	}
 	if !s.artReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime) {
 		now := time.Now().UnixNano()
 		last := lastARTReplayWarn.Load()

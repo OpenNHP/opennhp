@@ -326,3 +326,23 @@ Log levels:
   ```
 
   **Solution:** Configure the correct IP in `nhp-server/plugins/example/etc/resource.toml` under `Addr.Ip`.
+
+### Direct connection admission
+
+`OverloadMaxAgentConnectionsPerIP` in server config sets the maximum number of direct
+unauthenticated/agent UDP tuples per source during overload (zero: 256).
+Requires restart. Tune it for shared NAT egress. Below overload, this cap is
+inactive so spoofed tuples cannot cheaply deny a chosen source. Under overload,
+a spoofed source can still consume its budget; deploy network anti-spoofing.
+Excess new tuples are dropped without evicting existing sessions; the metric
+stage is `per_ip_conn_limit`. Only configured AC/DB keys gain a control-peer
+exemption after authentication. The global connection cap still applies.
+
+`OverloadMaxAgentConnectionsPerIP` limits new admissions only after overload
+begins; it does not reclaim existing tuples. A source that connects before
+pressure can retain more than that value, up to the global cap. ForceOverload
+keeps this admission limit active continuously. IPv6 keys are individual IPs,
+not /64 networks. Static IPs in configured AC, DB and relay peers bypass only
+this per-source admission check so infrastructure can reconnect under pressure.
+Spoofed traffic can claim those addresses too; authentication and the global
+cap still apply. Peers configured only by key or hostname have no IP exemption.

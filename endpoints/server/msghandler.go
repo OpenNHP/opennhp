@@ -889,6 +889,14 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",
 		relayAddrStr, realAddr, len(innerBytes))
 
+	// Relay assertions must not drain a direct client's source budget.
+	rateKey := "rly|" + relayAddrStr + "|" + realIP.String()
+	if !s.allowPacketFromIP(rateKey, time.Now().UnixNano()) {
+		s.logPacketRateLimitDrop(rateKey)
+		s.metrics.recordDroppedPacket("rate_limited")
+		return fmt.Errorf("packet rate limit exceeded")
+	}
+
 	// Allocate a pool packet for the inner bytes.
 	innerPkt := s.device.AllocatePoolPacket()
 	if len(innerBytes) > len(innerPkt.Buf) {
@@ -907,15 +915,6 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		return err
 	}
 	innerPkt.HeaderType = innerType
-	// Account relayed traffic by the real client IP. Charging the relay's
-	// outer UDP address would make many legitimate clients behind one relay
-	// consume a shared bucket and would regress relay fan-out behavior.
-	if !s.allowPacketFromIP(realIP.String(), time.Now().UnixNano()) {
-		s.device.ReleasePoolPacket(innerPkt)
-		s.logPacketRateLimitDrop(realIP.String())
-		s.metrics.recordDroppedPacket("rate_limited")
-		return fmt.Errorf("packet rate limit exceeded")
-	}
 	log.Info("server-relay[HandleRelayForward] inner [%s] from real client %s via relay %s",
 		core.HeaderTypeToString(innerType), realAddr, relayAddrStr)
 

@@ -27,17 +27,13 @@ const (
 	PacketQueueSizePerConnection    = 256
 )
 
-// UDP source-state limits. These tables are keyed by IP rather than IP:port so
-// rotating source ports cannot multiply either the packet budget or the
-// precheck-failure budget.
+// Source budgets use IP keys (relay-prefixed for relay clients), so rotating
+// source ports cannot multiply the packet budget.
 const (
 	PacketRatePerSecondPerIP = 100
 	PacketRateBurstPerIP     = 50
 	PacketRateMaxEntries     = 65_536
 	PacketRateIdleSeconds    = 120
-
-	PreCheckThreatCacheMaxEntries  = 10_000
-	PreCheckThreatCacheIdleSeconds = 300
 )
 
 // http APIs

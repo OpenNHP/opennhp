@@ -113,6 +113,7 @@ type UdpServer struct {
 	// tighter pre-ECDH budget enforced by the existing limiter.
 	packetLimiter        *ipRateLimiter
 	packetRateLimitDrops atomic.Int64
+	malformedPacketDrops atomic.Int64
 
 	// address association map
 	srcIpAssociatedAddrMapMutex sync.Mutex
@@ -668,11 +669,6 @@ func (s *UdpServer) recvPacketRoutine() {
 
 	log.Debug("recvPacketRoutine started")
 
-	preCheckThreats := newPreCheckThreatCache(
-		PreCheckThreatCacheMaxEntries,
-		PreCheckThreatCacheIdleSeconds*int64(time.Second),
-	)
-
 	for {
 		select {
 		case <-s.signals.stop:
@@ -696,16 +692,27 @@ func (s *UdpServer) recvPacketRoutine() {
 			continue
 		}
 		addrStr := remoteAddr.String()
-		ipStr := remoteAddr.IP.String()
+		ipStr := keyForAddr(remoteAddr)
 
 		// add total recv bytes
 		atomic.AddUint64(&s.stats.totalRecvBytes, uint64(n))
+
+		recvTime := time.Now().UnixNano()
+		// Charge every datagram, including malformed and undersized packets.
+		if !s.allowPacketFromIP(ipStr, recvTime) && !s.isAuthenticatedControlPlaneAddr(remoteAddr) {
+			s.device.ReleasePoolPacket(pkt)
+			s.logPacketRateLimitDrop(ipStr)
+			s.metrics.recordDroppedPacket("rate_limited")
+			continue
+		}
 
 		// check minimal length
 		if n < pkt.MinimalLength() {
 			s.device.ReleasePoolPacket(pkt)
 			s.metrics.recordDroppedPacket("too_short")
-			log.Error("Received UDP packet from %s is too short, discard", addrStr)
+			if count := s.malformedPacketDrops.Add(1); count == 1 || count%1000 == 0 {
+				log.Warning("Received short UDP packet from %s (malformed drops: %d)", addrStr, count)
+			}
 			continue
 		}
 
@@ -720,14 +727,13 @@ func (s *UdpServer) recvPacketRoutine() {
 			continue
 		}
 
-		recvTime := time.Now().UnixNano()
 		pkt.Content = pkt.Buf[:n]
 		//log.Trace("receive udp packet (%s -> %s): %+v", addrStr, s.listenAddrStr, pkt.Content)
 
 		typ, _, err := s.device.RecvPrecheck(pkt) // this check also records packet header type
 		msgType := core.HeaderTypeToString(typ)
 		if err != nil {
-			count := preCheckThreats.increment(ipStr, recvTime)
+			count := s.malformedPacketDrops.Add(1)
 			s.device.ReleasePoolPacket(pkt)
 			// The outermost drop — malformed magic/version, background scan
 			// traffic. It never reaches the OnPacketDropped hook (that fires
@@ -736,19 +742,6 @@ func (s *UdpServer) recvPacketRoutine() {
 			if count == 1 || count%1000 == 0 {
 				log.Warning("Precheck rejected packets from %s (count %d): %v", addrStr, count, err)
 			}
-			continue
-		}
-		// clear threat
-		preCheckThreats.clear(ipStr)
-
-		// Apply the general application-layer packet budget after the cheap
-		// structural precheck. Relay envelopes are accounted by their real client
-		// IP in HandleRelayForward. AC/DB tuples bypass the budget only after their
-		// authenticated online handlers have registered the connection.
-		if !s.allowPacketFromIP(ipStr, recvTime) && !s.isAuthenticatedControlPlaneAddr(remoteAddr) {
-			s.device.ReleasePoolPacket(pkt)
-			s.logPacketRateLimitDrop(ipStr)
-			s.metrics.recordDroppedPacket("rate_limited")
 			continue
 		}
 
@@ -773,8 +766,8 @@ func (s *UdpServer) recvPacketRoutine() {
 
 		// Keep per-packet info/evaluation logging after the cheap drop gates so
 		// an over-limit source cannot turn a packet flood into a logging flood.
-		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
-		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddr.String(), n)
+		log.Info("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddrStr, n)
+		log.Evaluate("Receive [%s] packet (%s -> %s), %d bytes", msgType, addrStr, s.listenAddrStr, n)
 
 		s.remoteConnectionMapMutex.Lock()
 		conn, found := s.remoteConnectionMap[addrStr]

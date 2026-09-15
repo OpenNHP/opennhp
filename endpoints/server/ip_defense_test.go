@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"sync"
@@ -63,21 +64,6 @@ func TestIPRateLimiterConcurrentAccess(t *testing.T) {
 	}
 }
 
-func TestPreCheckThreatCacheIsIPKeyedAndBounded(t *testing.T) {
-	c := newPreCheckThreatCache(4, int64(time.Minute))
-	for i := 0; i < 6; i++ {
-		if got := c.increment("203.0.113.10", int64(i)); got != int32(i+1) {
-			t.Fatalf("increment %d returned %d", i, got)
-		}
-	}
-	for i := 0; i < 20; i++ {
-		c.increment(fmt.Sprintf("192.0.2.%d", i), int64(i))
-	}
-	if got := c.len(); got != 4 {
-		t.Fatalf("cache has %d entries, want hard cap 4", got)
-	}
-}
-
 func TestBlockAddrDoesNotBlockOtherPorts(t *testing.T) {
 	s := &UdpServer{blockAddrMap: make(map[string]*BlockAddr)}
 	addr := &net.UDPAddr{IP: net.ParseIP("192.0.2.1"), Port: 1000}
@@ -120,19 +106,13 @@ func TestRelayCannotBlockClaimedClient(t *testing.T) {
 	}
 }
 
-func TestIPRateLimiterRetainsDrainedBudgetAtCapacity(t *testing.T) {
+func TestIPRateLimiterAdmitsAtCapacityAndReportsBudgetLoss(t *testing.T) {
 	r := newIPRateLimiter(1, 2, 1, int64(time.Minute))
-	if !r.allow("192.0.2.1", 0) {
-		t.Fatal("first packet rejected")
+	if !r.allow("192.0.2.1", 0) || !r.allow("192.0.2.2", 0) {
+		t.Fatal("source admission failed")
 	}
-	if r.allow("192.0.2.2", 0) {
-		t.Fatal("new source evicted drained budget")
-	}
-	if r.allow("192.0.2.1", 0) {
-		t.Fatal("drained source regained budget")
-	}
-	if !r.allow("192.0.2.2", int64(2*time.Second)) {
-		t.Fatal("replenished entry was not reused")
+	if r.len() != 1 || r.capacityEvictions.Load() != 1 {
+		t.Fatal("capacity or eviction count incorrect")
 	}
 }
 
@@ -146,5 +126,53 @@ func TestIPRateLimiterSkipsDrainedEntryForReplenishedEntry(t *testing.T) {
 	}
 	if _, ok := r.buckets["192.0.2.1"]; !ok {
 		t.Fatal("drained entry was evicted")
+	}
+}
+
+func TestRelayRateNamespaceDoesNotDrainDirectSource(t *testing.T) {
+	r := newIPRateLimiter(1, 2, 8, int64(time.Minute))
+	relay := "rly|198.51.100.1:62206|192.0.2.1"
+	if !r.allow(relay, 0) || r.allow(relay, 0) {
+		t.Fatal("relay budget incorrect")
+	}
+	if !r.allow("192.0.2.1", 0) {
+		t.Fatal("relay drained direct source")
+	}
+}
+
+func TestMalformedDatagramsConsumeSourceBudget(t *testing.T) {
+	for _, size := range []int{1, 256} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			s := newGlobalCapTestServer(t)
+			listener, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.listenConn = listener
+			s.listenAddr = listener.LocalAddr().(*net.UDPAddr)
+			s.packetLimiter = newIPRateLimiter(1, 2, 8, int64(time.Hour))
+			s.packetLimiter.nanosPerToken = int64(time.Hour)
+			s.packetLimiter.burstNanos = int64(2 * time.Hour)
+			s.wg.Add(1)
+			go s.recvPacketRoutine()
+			t.Cleanup(func() { listener.Close(); s.wg.Wait() })
+			sender, err := net.DialUDP("udp4", nil, s.listenAddr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer sender.Close()
+			for i := 0; i < 2; i++ {
+				if _, err := sender.Write(bytes.Repeat([]byte{0xff}, size)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			deadline := time.Now().Add(3 * time.Second)
+			for s.packetRateLimitDrops.Load() == 0 && time.Now().Before(deadline) {
+				time.Sleep(time.Millisecond)
+			}
+			if s.packetRateLimitDrops.Load() != 1 || s.malformedPacketDrops.Load() != 1 {
+				t.Fatalf("rate drops=%d malformed=%d", s.packetRateLimitDrops.Load(), s.malformedPacketDrops.Load())
+			}
+		})
 	}
 }

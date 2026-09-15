@@ -2,9 +2,9 @@ package server
 
 import (
 	"container/list"
-	"math"
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -16,12 +16,13 @@ import (
 type ipRateLimiter struct {
 	mu sync.Mutex
 
-	nanosPerToken int64
-	burstNanos    int64
-	idleNanos     int64
-	maxEntries    int
-	buckets       map[string]*ipRateBucket
-	lru           list.List
+	nanosPerToken     int64
+	burstNanos        int64
+	idleNanos         int64
+	maxEntries        int
+	buckets           map[string]*ipRateBucket
+	lru               list.List
+	capacityEvictions atomic.Uint64
 }
 
 type ipRateBucket struct {
@@ -69,7 +70,7 @@ func (r *ipRateLimiter) allow(ip string, nowNanos int64) bool {
 	if b == nil {
 		if len(r.buckets) >= r.maxEntries {
 			// Reuse only a fully replenished bucket. Keeping drained budgets
-			// prevents source rotation from resetting an active limit. Scan a
+			// reduces source-rotation budget resets. Scan a
 			// fixed number of old entries to bound work under table pressure.
 			for e, checked := r.lru.Back(), 0; e != nil && checked < 8; e, checked = e.Prev(), checked+1 {
 				candidate := e.Value.(*ipRateBucket)
@@ -79,7 +80,10 @@ func (r *ipRateLimiter) allow(ip string, nowNanos int64) bool {
 				}
 			}
 			if len(r.buckets) >= r.maxEntries {
-				return false
+				// Preserve admission under extreme source churn. This may reset
+				// an old budget; expose it as reduced per-source coverage.
+				r.capacityEvictions.Add(1)
+				r.remove(r.lru.Back().Value.(*ipRateBucket))
 			}
 		}
 		// A fresh IP starts at half burst. This admits normal knock bursts while
@@ -119,82 +123,6 @@ func (r *ipRateLimiter) len() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return len(r.buckets)
-}
-
-// preCheckThreatCache bounds malformed-packet counters and collapses source
-// port rotation into one IP entry. It uses opportunistic TTL expiration and
-// strict LRU eviction, so no background goroutine is required.
-type preCheckThreatCache struct {
-	mu         sync.Mutex
-	maxEntries int
-	idleNanos  int64
-	entries    map[string]*preCheckThreat
-	lru        list.List
-}
-
-type preCheckThreat struct {
-	ip            string
-	count         int32
-	lastSeenNanos int64
-	elem          *list.Element
-}
-
-func newPreCheckThreatCache(maxEntries int, idleNanos int64) *preCheckThreatCache {
-	if maxEntries <= 0 {
-		maxEntries = 1
-	}
-	return &preCheckThreatCache{
-		maxEntries: maxEntries,
-		idleNanos:  idleNanos,
-		entries:    make(map[string]*preCheckThreat),
-	}
-}
-
-func (c *preCheckThreatCache) increment(ip string, nowNanos int64) int32 {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	e := c.entries[ip]
-	if e != nil && c.idleNanos > 0 && nowNanos-e.lastSeenNanos > c.idleNanos {
-		c.remove(e)
-		e = nil
-	}
-	if e == nil {
-		if len(c.entries) >= c.maxEntries {
-			if oldest := c.lru.Back(); oldest != nil {
-				c.remove(oldest.Value.(*preCheckThreat))
-			}
-		}
-		e = &preCheckThreat{ip: ip}
-		e.elem = c.lru.PushFront(e)
-		c.entries[ip] = e
-	} else {
-		c.lru.MoveToFront(e.elem)
-	}
-	if e.count < math.MaxInt32 {
-		e.count++
-	}
-	e.lastSeenNanos = nowNanos
-	return e.count
-}
-
-func (c *preCheckThreatCache) clear(ip string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if e := c.entries[ip]; e != nil {
-		c.remove(e)
-	}
-}
-
-func (c *preCheckThreatCache) remove(e *preCheckThreat) {
-	delete(c.entries, e.ip)
-	c.lru.Remove(e.elem)
-}
-
-func (c *preCheckThreatCache) len() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return len(c.entries)
 }
 
 func (s *UdpServer) allowPacketFromIP(ip string, nowNanos int64) bool {

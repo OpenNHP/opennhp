@@ -406,17 +406,6 @@ func shouldCheckRecvAttack(deviceType int, peerType int, msgType int) bool {
 	return true
 }
 
-// shouldEscalateReplay controls only punitive threat/block escalation. A
-// replay packet is dropped regardless. AOP is drop-only because benign burst
-// reordering can regress its timestamp; cross-connection duplicate rejection
-// is provided by the AC replay cache.
-func shouldEscalateReplay(deviceType int, peerType int, msgType int) bool {
-	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
-		return false
-	}
-	return true
-}
-
 // shouldCheckFlood gates the per-connection MinimalRecvIntervalMs
 // flood check (two consecutive packets within 20 ms trip
 // RecvThreatCount and, past ThreatCountBeforeBlock, fire
@@ -442,38 +431,7 @@ func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
 	return true
 }
 
-// recvStalenessFloor returns the maximum age (as a nanosecond
-// duration) a received packet's AEAD-authenticated send timestamp
-// may lag the local receive time before it is rejected as stale.
-//
-// NHP_AOP (server → AC) gets a tighter floor than the historical
-// 600 s default (#1464). The AC's in-process AOP dedupe cache
-// (endpoints/ac/aop_replay_cache.go) catches replays within a single
-// process lifetime, but an AC restart — process restart, blue/green
-// deploy, or failover — wipes that cache, so a captured AOP whose
-// timestamp is still inside the staleness floor can replay against a
-// fresh-cache AC and re-open the original (src,dst) ipset entry. The
-// staleness floor is the only replay gate that survives a cache wipe,
-// so tightening it for AOP shrinks that window uniformly across every
-// restart class. Every other (deviceType, peerType, msgType) keeps
-// the default floor, so agent→server knock paths are unchanged. The
-// chosen value and its clock-skew budget live on the
-// AOPRecvStalenessFloorSeconds constant — tune there.
-//
-// Re-tuning caution — for a stale drop that DOES escalate (see
-// shouldEscalateStale), the branch also bumps ConnData.RecvThreatCount
-// and, past ThreatCountBeforeBlock, fires SendBlockSignal, blocking
-// the whole connection rather than dropping one packet. AOP is exempt
-// from that escalation (shouldEscalateStale returns false), so a
-// clock-skew false-reject of a legitimate AOP is a recoverable drop,
-// not a connection block — but AOPRecvStalenessFloorSeconds is still
-// kept well above realistic NTP skew so legitimate AOPs are not
-// dropped at all in steady state.
-//
-// Co-located with shouldCheckRecvAttack / shouldCheckFlood so the
-// AOP-specific responder gates stay in one place; a future refactor
-// that widens this floor for AOP must revisit the cross-restart
-// replay analysis in aop_replay_cache.go.
+// recvStalenessFloor is the default accepted packet age in nanoseconds.
 func recvStalenessFloor(deviceType int, peerType int, msgType int) int64 {
 	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
 		return AOPRecvStalenessFloorSeconds * int64(time.Second)
@@ -481,51 +439,8 @@ func recvStalenessFloor(deviceType int, peerType int, msgType int) int64 {
 	return DefaultRecvStalenessFloorSeconds * int64(time.Second)
 }
 
-// shouldEscalateStale reports whether dropping a stale packet should
-// also escalate it as a threat — bump ConnData.RecvThreatCount and,
-// past ThreatCountBeforeBlock, fire SendBlockSignal to close and block
-// the connection. The stale packet is dropped either way; this only
-// gates the punitive escalation.
-//
-// NHP_AOP (server → AC) is exempt (#1464). It mirrors the existing
-// shouldCheckFlood exemption: AOP already does NOT escalate on the
-// 20 ms flood gate, precisely so a legitimate server's bursty AOPs
-// cannot self-inflict a connection block. The staleness gate is the
-// only block-trigger AOP was still subject to, and tightening the AOP
-// floor (recvStalenessFloor) makes a benign clock-skew false-reject
-// more reachable — so a stale AOP, which on a fresh/post-restart
-// connection is far more likely a clock-skew artifact than an attack,
-// must not be allowed to sever the trusted, AEAD-authenticated
-// server→AC connection. It also removes a small DoS lever: an in-VPC
-// attacker replaying one captured AOP after it ages past the floor
-// could otherwise trip the block on a fresh connection. The packet is
-// still dropped with a stale-packet error and genuine in-connection
-// timestamp regressions are still caught + escalated by the replay
-// gate (shouldCheckRecvAttack, which AOP remains subject to), and a
-// replayed AOP is independently dropped by the AC dedupe cache
-// (endpoints/ac/aop_replay_cache.go), so the lost escalation is only a
-// weak rate-limit on a low-payoff stale-AOP flood — already largely
-// forgone by the flood-gate exemption.
-//
-// Accepted residual — AOP is exempt from the flood gate
-// (shouldCheckFlood) and the stale gate (this predicate), and now also
-// from the replay-gate escalation (shouldEscalateReplay, #2518), so AOP
-// has NO remaining per-connection auto-block trigger: the replay gate
-// (shouldCheckRecvAttack) still DROPS an in-connection timestamp
-// regression, but no longer escalates it. An in-connection regression or
-// a replay flood on a *fresh* connection (LastRemoteSendTime == 0, no
-// regression) therefore can no longer be source-blocked by any gate —
-// but every such packet is still dropped with a replay error (no
-// authz bypass), the attacker is bounded by their finite captured
-// packets (each costing one already-required AEAD decrypt), and the
-// cross-connection AC dedupe cache (endpoints/ac/aop_replay_cache.go)
-// remains AOP's real replay defense. This is a deliberate trade, not a
-// side effect.
-//
-// NHP_ART (AC → server) keeps the default escalation: it is exempt
-// from the replay/flood gates but a genuinely stale ART is not an
-// expected legitimate event, so there is no false-reject motivation to
-// suppress the block.
+// AOP skips monotonic replay and flood checks; the packet cache rejects
+// duplicates. Stale AOPs are dropped without blocking the server connection.
 func shouldEscalateStale(deviceType int, peerType int, msgType int) bool {
 	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
 		return false
@@ -703,23 +618,13 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	if shouldCheckRecvAttack(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) {
 		// block remote if threat level is reached
 		if remoteSendTime < ppd.ConnData.LastRemoteSendTime {
-			// Drop every replay. Escalate only when the regression is an attack
-			// signal rather than plausible benign burst reordering.
-			escalate := shouldEscalateReplay(ppd.device.deviceType, peerDeviceType, ppd.HeaderType)
-			if escalate {
-				log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
-				// threat plus 1
-				threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
-				// with high queue number, the device may use ConnData channels when conn is already closed
-				if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
-					// clamp threat count to avoid overflow
-					atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, ThreatCountBeforeBlock)
-					// block source address
-					ppd.ConnData.SendBlockSignal()
-				}
-			} else {
-				log.Warning("received replay packet from %s, drop packet (drop-only type, not escalated)", ppd.ConnData.RemoteAddr.String())
+			log.Critical("received replay packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
+			threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
+			if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {
+				atomic.StoreInt32(&ppd.ConnData.RecvThreatCount, ThreatCountBeforeBlock)
+				ppd.ConnData.SendBlockSignal()
 			}
+
 			err = ErrReplayPacketReceived
 			return err
 		}
@@ -740,13 +645,17 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 	}
-	if remoteSendTime < (ppd.LocalInitTime - recvStalenessFloor(ppd.device.deviceType, peerDeviceType, ppd.HeaderType)) {
+	staleness := recvStalenessFloor(ppd.device.deviceType, peerDeviceType, ppd.HeaderType)
+	if ppd.device.deviceType == NHP_AC && peerDeviceType == NHP_SERVER && ppd.HeaderType == NHP_AOP && option.AOPRecvStalenessSeconds > 0 {
+		staleness = int64(option.AOPRecvStalenessSeconds) * int64(time.Second)
+	}
+	if remoteSendTime < ppd.LocalInitTime-staleness {
 		// send remote timestamp is too old than receive local time, drop
 		// note there might be time calibration error between remote and local devices.
 		// AOP (server→AC) uses a tighter floor than the 600 s default to
 		// bound the cross-restart replay window (#1464) — see
 		// recvStalenessFloor.
-		log.Critical("received stale packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
+		log.Critical("received stale %s from %s: age %d ns exceeds %d ns; check clock synchronization", HeaderTypeToString(ppd.HeaderType), ppd.ConnData.RemoteAddr.String(), ppd.LocalInitTime-remoteSendTime, staleness)
 		// Escalate to threat/block only for message types where a stale
 		// packet is an attack signal rather than a likely clock-skew
 		// artifact. AOP (server→AC) is exempt (#1464) so a benign

@@ -48,20 +48,12 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 	// adding ErrACMissingPeerPubkey was supposed to prevent.
 	if l := len(ppd.RemotePubKey); l != core.PublicKeySize && l != core.PublicKeySizeEx {
 		log.Critical("ac(%s#%d)[HandleUdpACOperations] missing or wrong-length peer pubkey (len=%d, want %d or %d), drop %s packet", acId, transactionId, l, core.PublicKeySize, core.PublicKeySizeEx, core.HeaderTypeToString(ppd.HeaderType))
+		a.metrics.recordDroppedPacket("no_peer_pubkey")
 		return common.ErrACMissingPeerPubkey
 	}
 
-	// Reject replays of (sender_pubkey, txid, send_time) triples
-	// already processed within the cache TTL. Drop without sending
-	// NHP_ART so the response channel cannot be used as a
-	// replay-success oracle. No RecvThreatCount bump or SendBlockSignal
-	// here — the threat counter lives on ConnData and is meaningless
-	// across the connections this cache exists to span. (For AOP the
-	// per-connection gate in core.responder is now drop-only too:
-	// flood-exempt #1123, stale-escalation-exempt #1464,
-	// replay-escalation-exempt #2518 — so this cache is AOP's sole
-	// cross-connection replay defense.) See aop_replay_cache.go for the
-	// threat model (#1123).
+	// AOP skips monotonic timestamp checks to permit reordering. This cache
+	// rejects exact authenticated duplicates without blocking the connection.
 	if !a.aopReplay.MarkSeen(ppd.RemotePubKey, transactionId, ppd.RemoteSendTime) {
 		// Warning, not Critical: this fires both on replay attempts
 		// (the security signal we care about) and on benign in-flight
@@ -73,6 +65,7 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 		// line short while remaining sufficient to distinguish one
 		// misbehaving server from a deployment-wide signal.
 		log.Warning("ac(%s#%d)[HandleUdpACOperations] duplicate transaction id, drop replayed %s packet (pubkey=%s, sendTime=%d)", acId, transactionId, core.HeaderTypeToString(ppd.HeaderType), pubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
+		a.metrics.recordDroppedPacket("aop_replay")
 		return common.ErrACDuplicateTransaction
 	}
 

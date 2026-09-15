@@ -172,6 +172,12 @@ func (a *UdpAC) Start(dirPath string, logLevel int) (err error) {
 	a.remoteConnectionMap = make(map[string]*UdpConn)
 	a.serverPeerMap = make(map[string]*core.UdpPeer)
 	a.tokenStore = common.NewTokenStore[*AccessEntry]()
+	if a.config.AOPRecvStalenessSeconds < 0 || a.config.AOPRecvStalenessSeconds > 600 {
+		return fmt.Errorf("AOPRecvStalenessSeconds must be between 0 and 600")
+	}
+	options := a.device.GetOption()
+	options.AOPRecvStalenessSeconds = a.config.AOPRecvStalenessSeconds
+	a.device.SetOption(options)
 	a.aopReplay = newAOPReplayCache()
 
 	if a.etcdConn != nil {

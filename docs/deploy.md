@@ -326,3 +326,13 @@ Log levels:
   ```
 
   **Solution:** Configure the correct IP in `nhp-server/plugins/example/etc/resource.toml` under `Addr.Ip`.
+
+### AOP clock tolerance
+
+AOP requests now default to a 120-second maximum age, down from 600 seconds.
+Keep server and AC clocks synchronized. A stale drop reports message type,
+measured age, and the configured limit. Set `AOPRecvStalenessSeconds` in the AC
+configuration to 1..600 seconds if a deployment needs more tolerance; zero
+selects 120. Restart the AC after changes. A larger limit also widens the
+post-restart replay window. Replay and missing-key drops have metric stages
+`aop_replay` and `no_peer_pubkey`.

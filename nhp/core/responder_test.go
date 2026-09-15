@@ -44,26 +44,6 @@ func TestShouldCheckFlood(t *testing.T) {
 	}
 }
 
-func TestShouldEscalateReplay(t *testing.T) {
-	tests := []struct {
-		name                          string
-		deviceType, peerType, msgType int
-		want                          bool
-	}{
-		{"AOP is drop-only", NHP_AC, NHP_SERVER, NHP_AOP, false},
-		{"ART unchanged", NHP_SERVER, NHP_AC, NHP_ART, true},
-		{"AOP wrong scope", NHP_SERVER, NHP_SERVER, NHP_AOP, true},
-		{"default", NHP_SERVER, NHP_AGENT, NHP_KNK, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := shouldEscalateReplay(tt.deviceType, tt.peerType, tt.msgType); got != tt.want {
-				t.Fatalf("shouldEscalateReplay() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestShouldEscalateStale(t *testing.T) {
 	tests := []struct {
 		name                          string
@@ -119,5 +99,39 @@ func TestAuthenticatedAOPAllowsTimestampReordering(t *testing.T) {
 	defer ppd.Destroy()
 	if err := ppd.validatePeer(); err != nil {
 		t.Fatalf("reordered authenticated AOP rejected: %v", err)
+	}
+	if ppd.RemoteSendTime != mad.LocalInitTime {
+		t.Fatal("authenticated timestamp not exposed")
+	}
+}
+
+func TestConfiguredAOPStaleness(t *testing.T) {
+	sender := NewDevice(NHP_SERVER, sentinelPrivateKey(1), nil)
+	receiver := NewDevice(NHP_AC, sentinelPrivateKey(33), nil)
+	t.Cleanup(sender.Stop)
+	t.Cleanup(receiver.Stop)
+	peer := &UdpPeer{PubKeyBase64: receiver.PublicKeyBase64(), Ip: "127.0.0.1", Port: 12346, Type: NHP_AC}
+	sender.AddPeer(peer)
+	receiver.AddPeer(&UdpPeer{PubKeyBase64: sender.PublicKeyBase64(), Ip: "127.0.0.1", Port: 12345, Type: NHP_SERVER})
+	mad, err := sender.MsgToPacket(&MsgData{ConnData: sentinelConnection(sender, 12345, 12346), PeerPk: peer.PublicKey(), HeaderType: NHP_AOP, TransactionId: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, limit := range []int{0, 300} {
+		options := receiver.GetOption()
+		options.AOPRecvStalenessSeconds = limit
+		receiver.SetOption(options)
+		ppd, err := receiver.createPacketParserData(&PacketData{BasePacket: &Packet{Content: append([]byte(nil), mad.BasePacket.Content...), HeaderType: NHP_AOP}, ConnData: sentinelConnection(receiver, 12346, 12345), InitTime: mad.LocalInitTime + int64(180*time.Second)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := ppd.validatePeer()
+		ppd.Destroy()
+		if limit == 0 && got != ErrStalePacketReceived {
+			t.Fatalf("default accepted old AOP: %v", got)
+		}
+		if limit == 300 && got != nil {
+			t.Fatalf("configured age rejected: %v", got)
+		}
 	}
 }

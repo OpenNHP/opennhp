@@ -1,0 +1,102 @@
+# Docker demoapp config. The container runs the binary against this file
+# (see docker/Dockerfile.demoapp).
+#
+# Auto-generated secrets: KeyEnvelopeKey, SessionKey, and ServerPublicKey
+# are filled in by the demoapp on first boot when they carry the
+# placeholder marker ("REPLACE_*" or "CHANGE_ME"). Generated values
+# persist in the sidecar file etc/.demoapp-autogen.json so restarts keep
+# the same master key (re-generating would orphan every stored NHP
+# private key). For production, pre-generate the sidecar in your CI
+# pipeline and mount it read-only.
+
+ListenAddr = ":8081"
+
+# TrustProxyHeaders is intentionally left false. The compose service
+# publishes 8081:8081 with no reverse proxy in front, so honoring
+# X-Real-IP would let any client spoof its IP and bypass the
+# registerLimiter / loginLimiter entirely. Only set true when the app
+# sits behind a same-host reverse proxy that overwrites (not appends)
+# X-Real-IP — see deploy/config-templates/demoapp/config.toml.
+
+# Path to the SQLite database file (created on first run).
+DBPath = "/app/data/demo.db"
+
+# 32+ byte random key used to sign the session cookie. Auto-generated on
+# first boot when the placeholder marker is present.
+SessionKey = "REPLACE_WITH_RANDOM_32_BYTES"
+
+# 32-byte AES-256 master key (base64-encoded) used to wrap each user's
+# NHP private key at rest. Auto-generated on first boot. Losing this key
+# (or the sidecar that stores it) bricks every user account. For local
+# docker, the auto-generated sidecar under ./demoapp/etc/ is fine; for any
+# serious deployment, source it from a secret manager.
+KeyEnvelopeKey = "REPLACE_WITH_32_BYTE_BASE64"
+
+# Cipher scheme used for NHP. This is the DEFAULT scheme used when a path
+# has no interactive scheme choice (e.g. OIDC upsert). The registration
+# page lets the user pick per-server per-scheme, overriding this.
+# The bundled docker stack ships nhp-relay at GMSM (cipherScheme=1 in
+# relay's config.toml) and nhp-server keys are SM2 64-byte X||Y, so the
+# default scheme is gmsm.
+CipherScheme = "gmsm"
+
+# HTTP relay endpoint the demoapp SERVER uses to talk to the relay.
+# Inside docker compose the relay is reachable by its service name.
+RelayUrl = "http://nhp-relay:8080/relay"
+
+# HTTP relay endpoint the SPA's BROWSER uses to talk to the relay. The
+# SPA runs inside the demoapp container but the browser is on the host,
+# so it can't resolve "nhp-relay" — it must use a host-reachable URL.
+# In docker compose the relay's port 8080 is mapped to host:8080, so
+# "http://localhost:8080/relay" works from any browser on the host.
+PublicRelayUrl = "http://localhost:8080/relay"
+
+# Upstream nhp-server entries. Each server declares BOTH public keys
+# (derived from the nhp-server's single private key via `keygen --both`)
+# so the registration page can offer either cipher scheme independently.
+# RelayRegisteredScheme names which key the relay registered the server
+# under — that key drives the relay routing fingerprint. The docker relay
+# registers the SM2 key (see docker/nhp-relay/etc/config.toml), so a
+# curve25519 knock routes via relayPublicKey = the SM2 key.
+[[Servers]]
+Name                  = "demo"
+ServiceId             = "example"
+OrganizationId        = "opennhp.org"
+Sm2PublicKey          = "4/p0mIknwmVIMocRLQKil7xIthgEdZNncv9UagiBaK2kpcH7i4hEtZjpcHox+Bn7xdV+rBKNbKlV9ye6V1VCLA=="
+Curve25519PublicKey   = "UuUPfVS2iBKf3OKluBIhQsbz2Yi81+/s+Yeh5MBC8Sg="
+RelayRegisteredScheme = "gmsm"
+
+# web/dist is embedded in the binary at build time; this field is unused
+# in the Docker image but kept so operators can override.
+WebDistDir = "/app/web/dist"
+
+# Application-side OIDC Relying Party. Independent of the nhp-server
+# ASP plugin (which stays on the basic plugin for NHP-side flows).
+[[OIDC]]
+Enabled = false
+IssuerURL    = "https://accounts.google.com"
+ClientID     = "demoapp-client-id"
+ClientSecret = "demoapp-client-secret"
+RedirectURL  = "http://localhost:8081/api/auth/oidc/callback"
+
+# Application-side GitHub OAuth login. GitHub is plain OAuth 2.0 (no
+# OIDC discovery / id_token), so it has its own handler. Disabled for
+# the bundled docker stack; enable by registering a GitHub OAuth App
+# (callback http://localhost:8081/api/auth/github/callback) and filling
+# the fields.
+[[OAuth]]
+Enabled      = false
+Provider     = "github"
+ClientID     = "demoapp-github-client-id"
+ClientSecret = "demoapp-github-client-secret"
+RedirectURL  = "http://localhost:8081/api/auth/github/callback"
+
+# Catalog of protected resources the SPA can show. The id MUST match what
+# the nhp-server basic plugin returns from ListService; the rest is UI
+# metadata only.
+[[Resources]]
+Id     = "demo"
+Title  = "OpenNHP Protected Demo"
+URL    = "https://localhost"
+ACHost = "localhost"
+ServerName = "demo"

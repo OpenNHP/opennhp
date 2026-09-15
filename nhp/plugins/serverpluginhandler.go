@@ -186,7 +186,16 @@ type SessionClearFunc func(ctx *gin.Context)
 // (stolen-OTP defense). Pass "" when the agent did not supply a key.
 type PluginOTPGenerateFunc func(userId, deviceId, pubKey string, ttlSeconds int64) (otpCode string, err error)
 type PluginOTPValidateFunc func(userId, deviceId, otpCode, pubKey string) error
-type PluginRegisterKeyFunc func(userId, deviceId, pubKeyBase64 string) error
+
+// PluginRegisterKeyFunc registers an agent public key.
+//
+// BREAKING CHANGE (dual-cipher support): a trailing cipherScheme int
+// parameter was added so the server records which scheme (0 = Curve25519,
+// 1 = GMSM/SM2) the registered key belongs to. Out-of-tree plugins that
+// call helper.RegisterKeyFunc(userId, deviceId, pubKey) MUST update their
+// call site to pass the scheme, e.g.
+// helper.RegisterKeyFunc(userId, deviceId, pubKey, req.CipherScheme).
+type PluginRegisterKeyFunc func(userId, deviceId, pubKeyBase64 string, cipherScheme int) error
 type PluginIsRegisteredFunc func(userId, deviceId string) (bool, error)
 
 // PluginGetAgentKeyExpiryFunc returns whether the user+device has an

@@ -14,6 +14,12 @@ coverage:
       default:
         target: auto
         threshold: 1%
+        # Report patch coverage but do not fail the PR check on it. Much of
+        # this codebase is interactive CLI, live network protocol flows, and
+        # deploy plumbing that is exercised by integration/e2e rather than
+        # unit tests, so a low patch number on such changes should not block
+        # merges. The project status (above) still gates overall coverage.
+        informational: true
 
 parsers:
   gcov:

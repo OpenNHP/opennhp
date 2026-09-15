@@ -117,8 +117,8 @@ func GetResource(c *gin.Context) {
 	}
 
 	contentKey := make([]byte, 32)
-	if _, err := rand.Read(contentKey); err != nil {
-		c.JSON(http.StatusInternalServerError, kbsError.KeyGenerationFailed(err))
+	if _, randErr := rand.Read(contentKey); randErr != nil {
+		c.JSON(http.StatusInternalServerError, kbsError.KeyGenerationFailed(randErr))
 		return
 	}
 

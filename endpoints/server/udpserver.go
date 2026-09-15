@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -319,6 +320,13 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		log.Error("listen error: %v", err)
 		return fmt.Errorf("listen error %v", err)
 	}
+
+	recvBufferTarget, err := parseUDPRecvBufferSize(os.Getenv(UDPRecvBufferEnvVar))
+	if err != nil {
+		_ = s.listenConn.Close()
+		return err
+	}
+	tuneUDPRecvBuffer(s.listenConn, recvBufferTarget)
 
 	// retrieve local port
 	laddr := s.listenConn.LocalAddr()

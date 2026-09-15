@@ -22,8 +22,8 @@ resource "cloudflare_record" "ac" {
 }
 
 # Canonical alias for the cluster 1 nhp-server. Points at auth-plugin so the
-# two names resolve to the same host; lets the demo refer to clusters
-# uniformly as server.opennhp.org / server2.opennhp.org.
+# two names resolve to the same host; lets the demo refer to the cluster
+# as server.opennhp.org.
 resource "cloudflare_record" "server" {
   zone_id = var.cloudflare_zone_id
   name    = "server"
@@ -37,15 +37,13 @@ resource "cloudflare_record" "server" {
 # Legacy aliases. Kept as CNAMEs to the new primary names so existing
 # agents, bookmarks, and shipped plugin configs that still reference the
 # old hostnames continue to work.
-resource "cloudflare_record" "demologin" {
-  zone_id = var.cloudflare_zone_id
-  name    = "demologin"
-  content = "auth-plugin.opennhp.org"
-  type    = "CNAME"
-  proxied = false
-  ttl     = 300
-  comment = "Legacy alias for auth-plugin.opennhp.org - managed by Terraform"
-}
+#
+# The "demologin" CNAME (demologin.opennhp.org -> auth-plugin.opennhp.org)
+# was removed deliberately. It aliased the nhp-server's HTTP demo login
+# page, which has been retired along with the server's public HTTP/HTTPS
+# surface (see security-groups.tf). Removing the record here stops the
+# hostname resolving at all. Re-adding it would only produce a dead name
+# unless the nginx vhost and the tcp/443 SG rule are restored too.
 
 resource "cloudflare_record" "acdemo" {
   zone_id = var.cloudflare_zone_id
@@ -55,26 +53,6 @@ resource "cloudflare_record" "acdemo" {
   proxied = false
   ttl     = 300
   comment = "Legacy alias for ac.opennhp.org - managed by Terraform"
-}
-
-resource "cloudflare_record" "server2" {
-  zone_id = var.cloudflare_zone_id
-  name    = "server2"
-  content = aws_eip.server2.public_ip
-  type    = "A"
-  proxied = false
-  ttl     = 300
-  comment = "NHP Server cluster 2 - managed by Terraform"
-}
-
-resource "cloudflare_record" "ac2" {
-  zone_id = var.cloudflare_zone_id
-  name    = "ac2"
-  content = aws_eip.ac2.public_ip
-  type    = "A"
-  proxied = false
-  ttl     = 300
-  comment = "NHP AC cluster 2 - managed by Terraform"
 }
 
 resource "cloudflare_record" "relay" {
@@ -105,4 +83,17 @@ resource "cloudflare_record" "reg" {
   proxied = false
   ttl     = 300
   comment = "NHP Agent Registration page (hosted on relay) - managed by Terraform"
+}
+
+# Integrated demo app (Gin backend + embedded SPA). Shares the relay host;
+# nginx proxies demo.opennhp.org → 127.0.0.1:8081. Same cert lineage as
+# relay/agent/reg (SAN expanded by bootstrap-tls.sh).
+resource "cloudflare_record" "demo" {
+  zone_id = var.cloudflare_zone_id
+  name    = "demo"
+  content = aws_eip.relay.public_ip
+  type    = "A"
+  proxied = false
+  ttl     = 300
+  comment = "OpenNHP integrated demo app (hosted on relay) - managed by Terraform"
 }

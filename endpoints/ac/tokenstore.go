@@ -1,14 +1,15 @@
 package ac
 
 import (
-	"encoding/base64"
-	"encoding/binary"
 	"time"
-
-	"github.com/emmansun/gmsm/sm3"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
 )
+
+// accessTokenLatePacketBufferSeconds keeps AC tokens valid briefly beyond the
+// requested open window for packets that arrive while enforcement state is
+// being torn down.
+const accessTokenLatePacketBufferSeconds = 5
 
 // AccessEntry represents an access token entry with user and access information.
 type AccessEntry struct {
@@ -24,25 +25,26 @@ func (e *AccessEntry) GetExpireTime() time.Time {
 	return e.ExpireTime
 }
 
-// GenerateAccessToken creates a new access token for the given entry.
-// The token is stored with an additional 5-second buffer to handle late requests.
+// GenerateAccessToken issues an opaque random access token for the entry.
+// The previous SM3 digest was computed from public metadata plus UnixNano,
+// which made the bearer credential susceptible to offline guessing when an
+// attacker had a timing signal.
 func (a *UdpAC) GenerateAccessToken(entry *AccessEntry) string {
-	var tsBytes [8]byte
-	currTime := time.Now().UnixNano()
-
-	hash := sm3.New()
-	binary.BigEndian.PutUint64(tsBytes[:], uint64(currTime))
-	au := entry.User
-	hash.Write([]byte(a.config.ACId + au.UserId + au.DeviceId + au.OrganizationId + au.AuthServiceId))
-	hash.Write(tsBytes[:])
-	token := base64.StdEncoding.EncodeToString(hash.Sum(nil))
-	hash.Reset()
-
-	// Keep token for additional 5 seconds in case a request is received late
-	entry.ExpireTime = time.Now().Add(time.Duration(entry.OpenTime+5) * time.Second)
+	token := common.GenerateOpaqueToken()
+	entry.ExpireTime = time.Now().Add(time.Duration(entry.OpenTime+accessTokenLatePacketBufferSeconds) * time.Second)
 	a.tokenStore.Store(token, entry)
-
 	return token
+}
+
+// IssueACTokenIfSuccess issues a bearer token only for an explicitly
+// successful AC operation. Failed operation results are logged by the server;
+// including a valid token in those results would expose the credential to log
+// readers without providing any legitimate client benefit.
+func (a *UdpAC) IssueACTokenIfSuccess(artMsg *common.ACOpsResultMsg, entry *AccessEntry) {
+	if artMsg.ErrCode != common.ErrSuccess.ErrorCode() {
+		return
+	}
+	artMsg.ACToken = a.GenerateAccessToken(entry)
 }
 
 // VerifyAccessToken validates a token and extends its expiry time if valid.

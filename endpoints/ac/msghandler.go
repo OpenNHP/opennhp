@@ -23,8 +23,6 @@ const (
 )
 
 func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
-	defer a.wg.Done()
-
 	acId := a.config.ACId
 	dopMsg := &common.ServerACOpsMsg{}
 	artMsg := &common.ACOpsResultMsg{}
@@ -35,8 +33,18 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 		log.Error("ac(%s#%d)[HandleUdpACOperations] failed to parse %s message: %v", acId, transactionId, core.HeaderTypeToString(ppd.HeaderType), err)
 		artMsg.ErrCode = common.ErrJsonParseFailed.ErrorCode()
 		artMsg.ErrMsg = err.Error()
+		// A malformed body is not access-control work — count it, but do not
+		// feed a ~0s sample into the latency histogram.
+		a.metrics.recordACOutcome(false)
 		return
 	}
+
+	// From here on this is a real access-control operation: time it.
+	opStart := time.Now()
+	defer func() {
+		ok := err == nil && artMsg.ErrCode == common.ErrSuccess.ErrorCode()
+		a.metrics.recordACOperation(ok, time.Since(opStart).Seconds())
+	}()
 
 	srcAddrs := dopMsg.SourceAddrs
 	dstAddrs := dopMsg.DestinationAddrs
@@ -52,14 +60,14 @@ func (a *UdpAC) HandleUdpACOperations(ppd *core.PacketParserData) (err error) {
 		log.Error("ac(%s#%d)[HandleUdpACOperations] HandleAccessControl failed, err: %v", acId, transactionId, err)
 	}
 
-	// generate ac token and save user and access information
-	entry := &AccessEntry{
+	// Generate a bearer token only after HandleAccessControl has recorded an
+	// explicit success result. Error results can be logged by the server.
+	a.IssueACTokenIfSuccess(artMsg, &AccessEntry{
 		User:     agentUser,
 		SrcAddrs: srcAddrs,
 		DstAddrs: dstAddrs,
 		OpenTime: openTimeSec,
-	}
-	artMsg.ACToken = a.GenerateAccessToken(entry)
+	})
 	//log.Info("generate knock token: %s", artMsg.ACToken)
 
 	// send ac result
@@ -583,6 +591,9 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 			DstAddrs: dstAddrs,
 			OpenTime: tempOpenTimeSec,
 		}
+		// This issuance is safe because every error path above returns, and the
+		// function marks the result successful immediately after this block.
+		// Keep token issuance paired with that invariant if this code changes.
 		artMsg.PreAccessAction = &common.PreAccessInfo{
 			AccessPort:     strconv.Itoa(pickedPort),
 			ACPubKey:       a.device.PublicKeyExBase64(),
@@ -611,6 +622,7 @@ func (a *UdpAC) HandleAccessControl(au *common.AgentUser, srcAddrs []*common.Net
 
 func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, dstAddrs []*common.NetAddress, openTimeSec int) {
 	defer a.wg.Done()
+	defer a.recoverUDPHandler(core.NHP_ACC)
 	defer listener.Close()
 
 	// accept only the first incoming tcp connection
@@ -745,6 +757,7 @@ func (a *UdpAC) tcpTempAccessHandler(listener *net.TCPListener, timeoutSec int, 
 
 func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs []*common.NetAddress, openTimeSec int) {
 	defer a.wg.Done()
+	defer a.recoverUDPHandler(core.NHP_ACC)
 	defer conn.Close()
 	// listen to accept and handle only one incoming connection
 	startTime := time.Now()
@@ -908,6 +921,7 @@ func (a *UdpAC) udpTempAccessHandler(conn *net.UDPConn, timeoutSec int, dstAddrs
 }
 
 func (a *UdpAC) tempConnTerminator(conn net.Conn, ctx context.Context) {
+	defer a.recoverUDPHandler(core.NHP_ACC)
 	select {
 	case <-a.signals.stop:
 		conn.Close()

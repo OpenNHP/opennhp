@@ -117,8 +117,8 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 	}
 
 	taDir := filepath.Join(ExeDirPath, "etc", "ta")
-	if err := os.MkdirAll(taDir, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if mkdirErr := os.MkdirAll(taDir, 0755); mkdirErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": mkdirErr.Error()})
 		return
 	}
 
@@ -129,13 +129,13 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 	}
 
 	fullFilePath := filepath.Join(taDir, fileUuid, file.Filename)
-	if err := c.SaveUploadedFile(file, fullFilePath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if saveErr := c.SaveUploadedFile(file, fullFilePath); saveErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": saveErr.Error()})
 		return
 	}
 
-	if err := os.Chmod(fullFilePath, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if chmodErr := os.Chmod(fullFilePath, 0755); chmodErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": chmodErr.Error()})
 		return
 	}
 
@@ -151,16 +151,16 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 		os.Remove(fullFilePath)
 		os.Remove(filepath.Join(taDir, fileUuid))
 
-		fileInfo, err := utils.LoadJsonFileAsStruct(filepath.Join(taDir, md5sum))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		fileInfo, loadErr := utils.LoadJsonFileAsStruct(filepath.Join(taDir, md5sum))
+		if loadErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": loadErr.Error()})
 			return
 		}
 		fileUuid = fileInfo.(map[string]any)["uuid"].(string)
 	}
 
 	// save file information into the file which name is md5sum, no matter the file exists or not.
-	if err := utils.SaveStructAsJsonFile(filepath.Join(taDir, md5sum), map[string]any{
+	if writeErr := utils.SaveStructAsJsonFile(filepath.Join(taDir, md5sum), map[string]any{
 		"fileName":    file.Filename,
 		"name":        taName,
 		"uuid":        fileUuid,
@@ -168,8 +168,8 @@ func (a *UdpAgent) registerTAService(c *gin.Context) {
 		"description": description,
 		"language":    language,
 		"entry":       entry,
-	}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	}); writeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": writeErr.Error()})
 		return
 	}
 
@@ -229,11 +229,32 @@ func (a *UdpAgent) callFunction(c *gin.Context) {
 }
 
 func (a *UdpAgent) getAgentPublicKey(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"publicKey": a.config.GetAgentEcdh().PublicKeyBase64()})
+	// GetAgentEcdh returns nil if the private key could not be resolved
+	// (a sealed key with no usable passphrase). Start populates the cache
+	// before this endpoint is served, so this should be unreachable — but
+	// report it rather than dereferencing nil and relying on the handler
+	// panic being recovered.
+	ecdh := a.config.GetAgentEcdh()
+	if ecdh == nil {
+		log.Error("getAgentPublicKey: agent private key is unavailable")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "agent private key unavailable"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"publicKey": ecdh.PublicKeyBase64()})
 }
 
 func (a *UdpAgent) getTeePublicKey(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"publicKey": a.config.GetTeeEcdh().PublicKeyBase64()})
+	// GetTeeEcdh returns nil when TEEPrivateKeyBase64 is empty/unset — and
+	// unlike the agent key that is genuinely reachable: updateDHPConfig
+	// tolerates a missing dhp.toml, so a DHP agent that has never had
+	// RotateTeeKey run hits this with no TEE key. Guard rather than deref nil.
+	ecdh := a.config.GetTeeEcdh()
+	if ecdh == nil {
+		log.Error("getTeePublicKey: TEE private key is unavailable (run the DHP secret init)")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "TEE private key unavailable"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"publicKey": ecdh.PublicKeyBase64()})
 }
 
 func (a *UdpAgent) configServer(c *gin.Context) {

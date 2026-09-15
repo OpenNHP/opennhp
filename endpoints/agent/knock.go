@@ -60,8 +60,8 @@ func (a *UdpAgent) Knock(res *KnockTarget) (ackMsg *common.ServerKnockAckMsg, er
 
 	// deal with ac PASS_ACCESS_IP mode
 	if len(ackMsg.PreAccessActions) > 0 {
-		if err := a.preAccessRequest(ackMsg); err != nil {
-			log.Warning("agent(%s)[KnockRequest] pre-access request failed: %v", a.knockUser.UserId, err)
+		if preErr := a.preAccessRequest(ackMsg); preErr != nil {
+			log.Warning("agent(%s)[KnockRequest] pre-access request failed: %v", a.knockUser.UserId, preErr)
 		}
 	}
 	res.LastKnockSuccessTime = time.Now()
@@ -214,7 +214,7 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 
 	if ackMsg.ErrCode != common.ErrSuccess.ErrorCode() {
 		log.Error("agent(%s#%d)[KnockRequest] response error: %s", knkMsg.UserId, knkMd.TransactionId, ackMsg.ErrMsg)
-		err = common.ErrorCodeToError(ackMsg.ErrCode)
+		err = common.ErrorFromResponse(ackMsg.ErrCode, ackMsg.ErrMsg)
 		return ackMsg, err
 	}
 
@@ -338,7 +338,7 @@ func (a *UdpAgent) ExitKnockRequest(res *KnockTarget) (ackMsg *common.ServerKnoc
 
 	if ackMsg.ErrCode != common.ErrSuccess.ErrorCode() {
 		log.Error("agent(%s#%d)[ExitKnockRequest] response error: %s", knkMsg.UserId, knkMd.TransactionId, ackMsg.ErrMsg)
-		err = common.ErrorCodeToError(ackMsg.ErrCode)
+		err = common.ErrorFromResponse(ackMsg.ErrCode, ackMsg.ErrMsg)
 		return ackMsg, err
 	}
 
@@ -579,7 +579,7 @@ func (a *UdpAgent) KnockDHP() (ackMsg *common.ServerDHPKnockAckMsg, err error) {
 
 	if ackMsg.ErrCode != common.ErrSuccess.ErrorCode() {
 		log.Error("agent(%s#%d)[KnockDHP] response error: %s", knkMsg.UserId, knkMd.TransactionId, ackMsg.ErrMsg)
-		err = common.ErrorCodeToError(ackMsg.ErrCode)
+		err = common.ErrorFromResponse(ackMsg.ErrCode, ackMsg.ErrMsg)
 		return ackMsg, err
 	}
 

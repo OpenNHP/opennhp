@@ -1,11 +1,40 @@
 package common
 
 import (
+	"crypto/rand"
+	"encoding/base64"
+	"io"
 	"sync"
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/log"
 )
+
+const (
+	opaqueTokenBytes  = 32
+	tokenLogPrefixLen = 8
+)
+
+// GenerateOpaqueToken returns 32 bytes of OS-provided cryptographic randomness
+// using the same padded base64 wire shape as the previous hash-derived tokens.
+// It panics if the entropy source fails because issuing a predictable fallback
+// token would be a security failure.
+func GenerateOpaqueToken() string {
+	var buf [opaqueTokenBytes]byte
+	if _, err := io.ReadFull(rand.Reader, buf[:]); err != nil {
+		panic("nhp: crypto/rand entropy unavailable: " + err.Error())
+	}
+	return base64.StdEncoding.EncodeToString(buf[:])
+}
+
+// RedactToken returns a log-safe token prefix. Eight base64 characters retain
+// enough information to correlate log lines without exposing the bearer token.
+func RedactToken(token string) string {
+	if len(token) <= tokenLogPrefixLen {
+		return token
+	}
+	return token[:tokenLogPrefixLen] + "..."
+}
 
 // TokenEntry is an interface for token entries that have an expiration time.
 // Both AccessEntry (AC) and ACTokenEntry (Server) implement this interface.
@@ -88,7 +117,7 @@ func (ts *TokenStore[E]) CleanExpired() int {
 	for prefix, tokenMap := range ts.store {
 		for token, entry := range tokenMap {
 			if now.After(entry.GetExpireTime()) {
-				log.Info("[TokenStore] token %s expired, remove", token)
+				log.Info("[TokenStore] token %s expired, remove", RedactToken(token))
 				delete(tokenMap, token)
 				removed++
 			}

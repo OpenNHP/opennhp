@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 
+	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/log"
@@ -111,6 +112,58 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 		log.Info("server-agent(%s#%d@%s)[HandleKnockRequest] succeed: %+v", knkMsg.UserId, transactionId, addrStr)
 	}()
 
+	// Record the access decision in the tamper-evident audit ledger. Only
+	// the NHP knock path is a per-resource access decision; the DHP path
+	// (evidence appraisal) is audited elsewhere. The ledger nil-guards, so
+	// this whole block is skipped cheaply when auditing is off.
+	//
+	// This deliberately records the DECISION, not its delivery: it is
+	// emitted before the ACK is handed to the transaction, so a later send
+	// failure still leaves a "granted" entry. That is the intent — the
+	// authorization outcome is what an audit trail must capture, and the
+	// agent simply retries when an ACK is lost.
+	if s.auditLedger != nil && ppd.HeaderType != core.DHP_KNK {
+		// Grant means a non-nil ack, a nil error, AND the explicit success
+		// code: a plugin may return a failure ErrCode with a nil error (a
+		// soft denial), a recovered plugin panic returns a nil ack with a
+		// nil error too, and a plugin that sets no code at all did not
+		// affirmatively report success — any of those recorded as "granted"
+		// would hide it from a SIEM rule keyed on result. The raw code is
+		// kept in errCode regardless. See decisionGranted.
+		ackCode := ""
+		if ackMsg != nil {
+			ackCode = ackMsg.ErrCode
+		}
+		severity, result := audit.SeverityWarn, "denied"
+		if decisionGranted(err, ackMsg == nil, ackCode) {
+			severity, result = audit.SeverityInfo, "granted"
+		}
+		fields := map[string]string{
+			"user":    knkMsg.UserId,
+			"device":  knkMsg.DeviceId,
+			"src":     addrStr,
+			"aspId":   knkMsg.AuthServiceId,
+			"resId":   knkMsg.ResourceId,
+			"op":      auditKnockOp(knkMsg.HeaderType),
+			"via":     "udp",
+			"peerKey": shortKey(base64.StdEncoding.EncodeToString(ppd.RemotePubKey)),
+			"result":  result,
+		}
+		if ackCode != "" {
+			fields["errCode"] = ackCode
+		}
+		if err != nil {
+			fields["reason"] = err.Error()
+		}
+		s.auditEvent("knock", severity, fields)
+	}
+
+	// Record the auth outcome. Reads the ack defensively (see knockAuthorized):
+	// AuthWithNHP can legitimately return a nil ackMsg, and HandleKnockRequest
+	// runs in a handler goroutine with no recover(), so a nil dereference here
+	// would take down the whole server.
+	s.metrics.recordKnockAuth(knockAuthorized(ppd.HeaderType, ackMsg, dhpAckMsg))
+
 	// send back knock ack response
 	ackBytes, _ := json.Marshal(ackMsg)
 
@@ -137,4 +190,39 @@ func (s *UdpServer) HandleKnockRequest(ppd *core.PacketParserData) (err error) {
 
 	transaction.NextMsgCh <- ackMd
 	return nil
+}
+
+// auditKnockOp names the knock operation for the audit trail. NHP_KNK,
+// NHP_RKN and NHP_EXT all dispatch through HandleKnockRequest, and NHP_EXT
+// closes access, so recording the type keeps a close from reading as a
+// granted open. On the granted path knkMsg.HeaderType is the
+// AEAD-authenticated body value (verifyKnockHeaderType confirmed it matches
+// the wire type). On a denial it can be zero — a body that failed to
+// unmarshal, or a legacy agent rejected by that same gate — and
+// core.HeaderTypeToString(0) is NHP_KPL (keepalive), which would mislabel a
+// whole class of rejected knocks as keepalives. An unset type is reported as
+// "unknown" so the trail never claims a type the decision did not
+// authenticate.
+func auditKnockOp(headerType int) string {
+	if headerType == core.NHP_KPL {
+		return "unknown"
+	}
+	return core.HeaderTypeToString(headerType)
+}
+
+// knockAuthorized reports whether a knock ended in a successful authorization,
+// for metrics. It tolerates a nil ack: AuthWithNHP may return (nil, ...) when a
+// plugin doesn't implement it or panics and is recovered, and a nil deref in
+// the caller's handler goroutine (no recover) would crash the server. A missing
+// ack is treated as "not authorized". This covers the whole knock family
+// (KNK/RKN/EXT/DHP_KNK), not just first-time KNK auth.
+func knockAuthorized(headerType int, ackMsg *common.ServerKnockAckMsg, dhpAckMsg *common.ServerDHPKnockAckMsg) bool {
+	switch {
+	case headerType == core.DHP_KNK:
+		return dhpAckMsg != nil && dhpAckMsg.ErrCode == common.ErrSuccess.ErrorCode()
+	case ackMsg != nil:
+		return ackMsg.ErrCode == common.ErrSuccess.ErrorCode()
+	default:
+		return false
+	}
 }

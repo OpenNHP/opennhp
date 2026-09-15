@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/OpenNHP/opennhp/nhp/common"
@@ -71,4 +72,31 @@ func TestReadZdtoConfigScrubsFilesystemPath(t *testing.T) {
 			t.Errorf("ReadZdtoConfig error %q leaked %q", err, leaked)
 		}
 	}
+}
+
+func TestZdtoConfigConcurrentUpdatesRemainReadable(t *testing.T) {
+	old := ExeDirPath
+	ExeDirPath = t.TempDir()
+	t.Cleanup(func() { ExeDirPath = old })
+	const id = "concurrent-update"
+	if err := SaveZdtoConfig(&common.DRGMsg{DoId: id, AccessUrl: "original"}); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			for range 10 {
+				if err := SaveZdtoConfig(&common.DRGMsg{DoId: id}); err != nil {
+					t.Error(err)
+					return
+				}
+				got, err := ReadZdtoConfig(id)
+				if err != nil || got.AccessUrl != "original" {
+					t.Errorf("read during update = %+v, %v", got, err)
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
 }

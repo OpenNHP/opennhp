@@ -800,7 +800,6 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 			drgMsg.AccessUrl = existingDrgMsg.AccessUrl
 		}
 
-		os.Remove(configPath)
 	}
 
 	// Make sure the etc directory exists
@@ -809,12 +808,15 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 		return errSaveConfigFailed
 	}
 
-	file, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	// Write a complete replacement before publishing it, so readers never see
+	// a missing or partially encoded config during an update.
+	file, err := os.CreateTemp(etcDir, ".data-*.json")
 	if err != nil {
 		log.Error("server[SaveZdtoConfig] DoId=%q create: %v", common.TruncateDoIDForLog(objectId), err)
 		return errSaveConfigFailed
 	}
 	defer func() { _ = file.Close() }()
+	defer func() { _ = os.Remove(file.Name()) }()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
@@ -822,6 +824,13 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 		log.Error("server[SaveZdtoConfig] DoId=%q encode: %v", common.TruncateDoIDForLog(objectId), err)
 		return errSaveConfigFailed
 	}
+	if err := file.Close(); err != nil {
+		return errSaveConfigFailed
+	}
+	if err := os.Rename(file.Name(), configPath); err != nil {
+		return errSaveConfigFailed
+	}
+
 	return nil
 }
 

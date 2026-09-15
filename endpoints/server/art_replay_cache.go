@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 const (
 	artReplayCacheSize = 10_000
-	artReplayCacheTTL  = 11 * time.Minute
+	artReplayCacheTTL  = (core.DefaultRecvStalenessFloorSeconds + core.ARTRecvFutureSkewSeconds + 60) * time.Second
 )
 
 // artReplayKey identifies one authenticated ART packet. The sender timestamp
@@ -32,12 +33,14 @@ type artReplayEntry struct {
 // artReplayCache is a bounded, concurrency-safe TTL set. Entries are appended
 // in expiry order, so expiration and capacity eviction are O(1).
 type artReplayCache struct {
-	mu         sync.Mutex
-	entries    map[artReplayKey]*list.Element
-	order      *list.List
-	maxEntries int
-	ttl        time.Duration
-	now        func() time.Time
+	mu                sync.Mutex
+	capacityEvictions uint64
+	lastWarning       time.Time
+	entries           map[artReplayKey]*list.Element
+	order             *list.List
+	maxEntries        int
+	ttl               time.Duration
+	now               func() time.Time
 }
 
 func newARTReplayCache() *artReplayCache {
@@ -80,6 +83,11 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 		return false
 	}
 	if len(c.entries) >= c.maxEntries {
+		c.capacityEvictions++
+		if c.lastWarning.IsZero() || now.Sub(c.lastWarning) >= time.Minute {
+			log.Warning("ART replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.maxEntries, c.capacityEvictions)
+			c.lastWarning = now
+		}
 		c.removeOldest()
 	}
 	elem := c.order.PushBack(artReplayEntry{key: key, expiresAt: now.Add(c.ttl)})

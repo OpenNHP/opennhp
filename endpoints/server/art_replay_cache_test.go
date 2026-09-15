@@ -77,6 +77,9 @@ func TestARTReplayCacheExpiresAndEvicts(t *testing.T) {
 	cache.MarkSeen(key, 1, 1)
 	cache.MarkSeen(key, 2, 2)
 	cache.MarkSeen(key, 3, 3)
+	if cache.capacityEvictions != 1 || cache.lastWarning.IsZero() {
+		t.Fatal("live eviction was not reported")
+	}
 	if !cache.MarkSeen(key, 1, 1) {
 		t.Fatal("capacity eviction did not release oldest key")
 	}

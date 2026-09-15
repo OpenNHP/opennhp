@@ -15,6 +15,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/etcd"
 	"github.com/OpenNHP/opennhp/nhp/log"
+	"github.com/OpenNHP/opennhp/nhp/metrics"
 	"github.com/OpenNHP/opennhp/nhp/utils"
 )
 
@@ -53,6 +54,7 @@ type Config struct {
 	LogLevel            int             `json:"logLevel"`
 	DefaultCipherScheme int             `json:"defaultCipherScheme"`
 	FilterMode          int             `json:"filterMode"`
+	Metrics             metrics.Config  `json:"metrics"`
 }
 
 type RemoteConfig struct {

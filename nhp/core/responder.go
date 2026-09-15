@@ -392,8 +392,8 @@ func shouldCheckRecvAttack(deviceType int, peerType int, msgType int) bool {
 	return true
 }
 
-// shouldCheckFlood is separate from the replay predicate because legitimate
-// AOP/ART bursts can arrive less than MinimalRecvIntervalMs apart.
+// shouldCheckFlood uses the same exemptions as the monotonic gate: AOP/ART
+// bursts and reordered responses are valid. Packet dedupe handles ART replays.
 func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
 	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
 		return false
@@ -600,7 +600,12 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 	}
-	if remoteSendTime < (ppd.LocalInitTime - 600*int64(time.Second)) {
+	// Bound ART clock skew so cache entries outlive every accepted replay.
+	if ppd.device.deviceType == NHP_SERVER && peerDeviceType == NHP_AC && ppd.HeaderType == NHP_ART &&
+		remoteSendTime > ppd.LocalInitTime+ARTRecvFutureSkewSeconds*int64(time.Second) {
+		return ErrStalePacketReceived
+	}
+	if remoteSendTime < (ppd.LocalInitTime - DefaultRecvStalenessFloorSeconds*int64(time.Second)) {
 		// send remote timestamp is too old than receive local time, drop
 		// note there might be time calibration error between remote and local devices
 		log.Critical("received stale packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())

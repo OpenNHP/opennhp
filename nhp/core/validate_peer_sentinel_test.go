@@ -153,3 +153,36 @@ func sentinelConnection(device *Device, localPort, remotePort int) *ConnectionDa
 		StopSignal:       make(chan struct{}),
 	}
 }
+
+func TestARTFutureTimestampBound(t *testing.T) {
+	for _, delta := range []time.Duration{60 * time.Second, 60*time.Second + 1, 5 * time.Minute} {
+		fixture := newValidatePeerSentinelFixture(t)
+		fixture.receiver.AddPeer(fixture.senderPeer)
+		packet := &Packet{Content: append([]byte(nil), fixture.packet...), HeaderType: NHP_AOL}
+		ppd, err := fixture.receiver.createPacketParserData(&PacketData{BasePacket: packet, ConnData: fixture.receiverConn, InitTime: fixture.sendTime - int64(delta)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Exercise ART's timestamp policy with a genuinely authenticated timestamp.
+		ppd.HeaderType = NHP_ART
+		got := ppd.validatePeer()
+		ppd.Destroy()
+		if delta > 60*time.Second && got != ErrStalePacketReceived {
+			t.Fatalf("skew %v accepted: %v", delta, got)
+		}
+		if delta == 60*time.Second && got != nil {
+			t.Fatalf("allowed skew rejected: %v", got)
+		}
+	}
+}
+
+func TestPacketToMsgRunsReplayHook(t *testing.T) {
+	fixture := newValidatePeerSentinelFixture(t)
+	fixture.receiver.AddPeer(fixture.senderPeer)
+	called := false
+	fixture.receiver.SetRecvReplayDedupe(func(*PacketParserData) error { called = true; return ErrReplayPacketReceived })
+	_, err := fixture.receiver.PacketToMsg(&PacketData{BasePacket: &Packet{Content: append([]byte(nil), fixture.packet...)}, ConnData: fixture.receiverConn})
+	if !called || err != ErrReplayPacketReceived {
+		t.Fatalf("hook called=%v, err=%v", called, err)
+	}
+}

@@ -76,3 +76,9 @@ const (
 	InitialChainKeyString = "NHP keygen v.20230421@clouddeep.cn"
 	InitialHashString     = "NHP hashgen v.20230421@deepcloudsdp.com"
 )
+
+// Replay acceptance bounds also size endpoint dedupe retention.
+const (
+	DefaultRecvStalenessFloorSeconds = 600
+	ARTRecvFutureSkewSeconds         = 60
+)

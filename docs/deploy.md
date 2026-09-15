@@ -246,7 +246,7 @@ Key configuration parameters across components:
 
 | Parameter | Component | Description |
 |-----------|-----------|-------------|
-| `PrivateKeyBase64` | All | Base64-encoded private key (static, requires restart) |
+| `PrivateKeyBase64` | All | Private key (static, requires restart). Either a plain base64 key or a sealed blob (`v1$…`) produced by `<daemon> seal`; a sealed blob is decrypted at startup with a passphrase from `NHP_KEY_PASSPHRASE_FILE` (preferred) or `NHP_KEY_PASSPHRASE`. On nhp-agent specifically, "startup" also covers `RestartAgent`/`rotate` (both re-run `Start` in the same process), so the passphrase must stay resolvable for the whole process lifetime, not just its first boot — a passphrase file that disappears after the initial start still yields an agent that starts fine but can never restart or rotate. See the per-daemon `config.toml` comments. |
 | `ListenPort` | Server | UDP listening port, default 62206 (static) |
 | `LogLevel` | All | 0=silent, 1=error, 2=info, 3=audit, 4=debug, 5=trace |
 | `DefaultCipherScheme` | All | 0=Curve25519, 1=SM2 |
@@ -326,3 +326,15 @@ Log levels:
   ```
 
   **Solution:** Configure the correct IP in `nhp-server/plugins/example/etc/resource.toml` under `Addr.Ip`.
+
+### ART replay cache
+
+The server accepts ART responses up to 600 seconds old and at most 60 seconds
+in the future. Keep AC and server clocks synchronized. The replay cache retains
+entries for 720 seconds. Set `ARTReplayCacheEntries` in server `config.toml` to
+at least peak ART responses per second × 720, with room for bursts. Zero uses
+10,000 entries. Memory grows with this value (several hundred bytes per entry).
+A warning, limited to once per minute, reports live capacity evictions and the
+cumulative count; these evictions shorten replay coverage. A process restart
+also clears the cache. This process-local cache does not guarantee replay
+protection across restarts or sustained traffic above its configured capacity.

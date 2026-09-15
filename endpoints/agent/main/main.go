@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,13 +12,39 @@ import (
 	"syscall"
 	"time"
 
+	toml "github.com/pelletier/go-toml/v2"
 	"github.com/urfave/cli/v2"
 
 	"github.com/OpenNHP/opennhp/endpoints/agent"
+	"github.com/OpenNHP/opennhp/endpoints/keystorecli"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/version"
 )
+
+// currentConfigKeySealed reports whether etc/config.toml currently holds a
+// sealed ("v1$...") PrivateKeyBase64. A MISSING file is the register
+// bootstrap case and returns (false, nil). A file that exists but cannot be
+// read or parsed returns an error: treating that as "not sealed" would let
+// register silently overwrite a sealed key with a plaintext one — the exact
+// downgrade the rest of this flow fails loudly to prevent.
+func currentConfigKeySealed(exeDirPath string) (bool, error) {
+	data, err := os.ReadFile(filepath.Join(exeDirPath, "etc", "config.toml"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read config.toml: %w", err)
+	}
+	var cfg struct {
+		PrivateKeyBase64 string `toml:"PrivateKeyBase64"`
+	}
+	if err := toml.Unmarshal(data, &cfg); err != nil {
+		return false, fmt.Errorf("parse config.toml: %w", err)
+	}
+	return keystore.IsSealed(cfg.PrivateKeyBase64), nil
+}
 
 // ANSI color codes
 const (
@@ -86,7 +111,10 @@ func main() {
 			&cli.BoolFlag{Name: "json", Value: false, DisableDefaultText: true, Usage: "output in JSON format"},
 		},
 		Action: func(c *cli.Context) error {
-			privKey, err := base64.StdEncoding.DecodeString(c.Args().First())
+			// Accept either a plain base64 key or a sealed "v1$…" blob so an
+			// operator on a sealed host does not have to pipe the plaintext
+			// key through their shell just to read its public half.
+			privKey, sealed, err := keystore.ResolvePrivateKeyAuto(c.Args().First())
 			if err != nil {
 				if c.Bool("json") {
 					json.NewEncoder(os.Stdout).Encode(map[string]interface{}{
@@ -95,6 +123,9 @@ func main() {
 					return nil
 				}
 				return err
+			}
+			if sealed && !c.Bool("json") {
+				fmt.Fprintln(os.Stderr, "note: input was a sealed blob; unsealed with the configured passphrase")
 			}
 			eccType := core.ECC_SM2
 			if c.Bool("curve") {
@@ -183,13 +214,13 @@ func main() {
 		},
 	}
 
-	app.Commands = []*cli.Command{
+	app.Commands = append([]*cli.Command{
 		runCmd,
 		keygenCmd,
 		pubkeyCmd,
 		dhpCmd,
 		registerCmd,
-	}
+	}, keystorecli.Commands()...)
 
 	if err := app.Run(os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -376,6 +407,47 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 	}
 	exeDirPath := filepath.Dir(exeFilePath)
 
+	// Capture whether the CURRENT on-disk key is sealed, before a.Start below
+	// resolves it and ReinitWithKey overwrites the in-memory value with a
+	// plain key. If it was sealed, the rewritten config.toml must stay sealed.
+	// An unreadable/unparseable existing config is fatal here: guessing "not
+	// sealed" would risk writing a plaintext key over a sealed one.
+	existingKeySealed, keySealedErr := currentConfigKeySealed(exeDirPath)
+	if keySealedErr != nil {
+		fmt.Printf("\n  %s❌ Cannot tell whether etc/config.toml holds a sealed key:%s %v\n"+
+			"     Refusing to register — fix or move config.toml aside first so a sealed key\n"+
+			"     is not silently replaced with a plaintext one.\n\n", colorYellow, colorReset, keySealedErr)
+		return fmt.Errorf("register: %w", keySealedErr)
+	}
+
+	// If the existing config keeps its key sealed, confirm the passphrase to
+	// re-seal the NEW key with is actually usable now, before OTP/email/
+	// registration — not after. The re-seal step near the end of this flow
+	// cannot abort on a bad passphrase (the new public key is already on the
+	// server by then; see the "reason != nil" fallback below), so a missing
+	// or too-short passphrase used to only surface as a post-registration
+	// "could not re-seal, plaintext shown" warning the operator could not act
+	// on except by choosing between a plaintext config write and a manual
+	// `seal` afterward. Checking early lets them fix it and just re-run.
+	if existingKeySealed {
+		if pass, passErr := keystore.PassphraseFromEnv(); passErr != nil {
+			fmt.Printf("\n  %s❌ etc/config.toml has a SEALED private key, but the unseal passphrase "+
+				"is not usable:%s %v\n     Fix %s (or %s) and re-run `register`.\n\n",
+				colorYellow, colorReset, passErr, keystore.EnvPassphraseFile, keystore.EnvPassphrase)
+			return fmt.Errorf("register: %w", passErr)
+		} else if len(pass) == 0 {
+			fmt.Printf("\n  %s❌ etc/config.toml has a SEALED private key. Set %s (or %s) to the "+
+				"unseal passphrase and re-run `register`.%s\n\n",
+				colorYellow, keystore.EnvPassphraseFile, keystore.EnvPassphrase, colorReset)
+			return fmt.Errorf("register: sealed config but no unseal passphrase configured")
+		} else if len(pass) < keystore.MinPassphraseLen {
+			fmt.Printf("\n  %s❌ The configured unseal passphrase (%s / %s) is %d bytes; the keystore "+
+				"requires at least %d.%s\n     Fix it and re-run `register`.\n\n",
+				colorYellow, keystore.EnvPassphraseFile, keystore.EnvPassphrase, len(pass), keystore.MinPassphraseLen, colorReset)
+			return fmt.Errorf("register: passphrase is %d bytes, need at least %d", len(pass), keystore.MinPassphraseLen)
+		}
+	}
+
 	printBanner()
 
 	fmt.Println(colorGreen + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" + colorReset)
@@ -424,7 +496,14 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 	ecdh := core.NewECDH(eccType)
 	privKeyBytes := ecdh.PrivateKey()
 	fmt.Printf("  %sGenerated key pair:%s\n", colorYellow, colorReset)
-	fmt.Printf("    Private key:       %s%s%s\n", colorDim, ecdh.PrivateKeyBase64(), colorReset)
+	if existingKeySealed {
+		// The existing config keeps its key sealed — don't echo the plaintext
+		// scalar into scrollback / CI logs here; the sealed blob is shown in
+		// the summary below once registration succeeds.
+		fmt.Printf("    Private key:       %s(shown sealed in the summary below)%s\n", colorDim, colorReset)
+	} else {
+		fmt.Printf("    Private key:       %s%s%s\n", colorDim, ecdh.PrivateKeyBase64(), colorReset)
+	}
 	// The private key is scheme-agnostic: the same bytes derive both an SM2
 	// and a Curve25519 public key. Show both regardless of the selected
 	// scheme (the one matching the selection is registered), so it's clear
@@ -451,6 +530,15 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 	a.SetAllowMissingConfig(true)
 	if err = a.Start(exeDirPath, 2); err != nil {
 		fmt.Printf("\n  %s❌ Failed to start agent:%s %v\n\n", colorYellow, colorReset, err)
+		if existingKeySealed {
+			// a.Start resolves the existing (sealed) key before ReinitWithKey
+			// discards it, so on a sealed host without a passphrase this is
+			// where the flow dies — name the cause rather than leaving a bare
+			// "private key parse error".
+			fmt.Printf("  %sThe existing config.toml has a SEALED private key. Set %s (or %s)\n"+
+				"  to the unseal passphrase and re-run `register`.%s\n\n",
+				colorYellow, keystore.EnvPassphraseFile, keystore.EnvPassphrase, colorReset)
+		}
 		return err
 	}
 	defer a.Stop()
@@ -657,6 +745,41 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 	// Registration succeeded — print results.
 	pubKey := a.PublicKeyBase64ByCipherScheme()
 	privKey := a.PrivateKeyBase64()
+
+	// If the existing config held a sealed key, re-seal the freshly
+	// registered one NOW — before the summary and the overwrite prompt — so
+	// (a) the summary can show the sealed blob (safe to display) instead of a
+	// bare "(hidden)", and (b) if the operator declines the config write they
+	// still have the blob to paste. The new public key is already on file
+	// with the server, so losing this private key locks the agent out.
+	if existingKeySealed {
+		// reason is set whenever we cannot produce a sealed blob (no
+		// passphrase, or Seal itself fails). In every such case we MUST NOT
+		// return — the new public key is already on file with the server, so
+		// losing this private key locks the agent out. Fall back to showing
+		// the plaintext, loudly, and continue as the plain-key case.
+		var reason error
+		if pass, passErr := keystore.PassphraseFromEnv(); passErr != nil || len(pass) == 0 {
+			reason = passErr
+			if reason == nil {
+				reason = keystore.ErrNoPassphrase
+			}
+		} else if blob, sealErr := keystore.Seal(privKeyBytes, pass); sealErr != nil {
+			reason = sealErr
+		} else {
+			privKey = blob
+		}
+		if reason != nil {
+			fmt.Printf("\n  %s⚠  Could not re-seal the registered key (%v).%s\n"+
+				"     It is shown IN THE CLEAR below so you are not locked out — seal it\n"+
+				"     yourself with `nhp-agentd seal` and set %s before starting the agent.\n"+
+				"     If you accept the config write below, it REPLACES the sealed key\n"+
+				"     already in config.toml with this plaintext one.\n\n",
+				colorYellow, reason, colorReset, keystore.EnvPassphraseFile)
+			existingKeySealed = false
+		}
+	}
+
 	fmt.Println()
 	fmt.Printf("  %s✅ Registration successful!%s\n", colorGreen, colorReset)
 	fmt.Println()
@@ -674,7 +797,13 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 		}
 		return "Curve25519"
 	}())
-	fmt.Printf("  %sPrivate key:%s      %s%s%s\n", colorYellow, colorReset, colorDim, privKey, colorReset)
+	if existingKeySealed {
+		// privKey is the SEALED blob (re-sealed just above). Safe to display,
+		// and the operator needs it if they decline the config write.
+		fmt.Printf("  %sPrivate key (sealed):%s %s%s%s\n", colorYellow, colorReset, colorDim, privKey, colorReset)
+	} else {
+		fmt.Printf("  %sPrivate key:%s      %s%s%s\n", colorYellow, colorReset, colorDim, privKey, colorReset)
+	}
 	fmt.Printf("  %sPublic key:%s       %s\n", colorYellow, colorReset, pubKey)
 	if rakMsg != nil && rakMsg.ExpiresAt != nil {
 		expTime := time.Unix(*rakMsg.ExpiresAt, 0)
@@ -714,7 +843,13 @@ func runRegisterApp(email, aspId, resId, serverCluster, deviceId, orgId, otpCode
 
 	confirmed := (choice == "y" || choice == "yes") || (defaultYes && choice == "")
 	if confirmed {
-		if err := writeRegistrationConfig(exeDirPath, privKey, email, orgId, cipherScheme); err != nil {
+		// privKey is already the sealed blob when existingKeySealed (re-sealed
+		// right after registration), or plain base64 otherwise — write it
+		// as-is.
+		if existingKeySealed {
+			fmt.Printf("  %s✔  registered key sealed with the configured passphrase%s\n", colorGreen, colorReset)
+		}
+		if err := writeRegistrationConfig(exeDirPath, privKey, email, orgId, cipherScheme, existingKeySealed); err != nil {
 			fmt.Printf("  %s⚠  Failed to write config.toml:%s %v\n\n", colorYellow, colorReset, err)
 		} else {
 			fmt.Printf("  %s✔  config.toml written to:%s %s\n\n", colorGreen, colorReset, cfgPath)
@@ -768,22 +903,31 @@ Cluster       = %q
 	return os.WriteFile(resPath, []byte(content), 0o600)
 }
 
-// writeRegistrationConfig writes a minimal config.toml using the registered identity.
-func writeRegistrationConfig(exeDirPath, privKey, userId, orgId string, cipherScheme int) error {
+// writeRegistrationConfig writes a minimal config.toml using the registered
+// identity. When keySealed is true the PrivateKeyBase64 value is a sealed
+// blob, so the generated file carries a note that a passphrase
+// (NHP_KEY_PASSPHRASE_FILE / NHP_KEY_PASSPHRASE) is now required at startup.
+func writeRegistrationConfig(exeDirPath, privKey, userId, orgId string, cipherScheme int, keySealed bool) error {
 	etcDir := filepath.Join(exeDirPath, "etc")
 	if err := os.MkdirAll(etcDir, 0o755); err != nil {
 		return err
 	}
 	cfgPath := filepath.Join(etcDir, "config.toml")
 
+	keyNote := "# PrivateKeyBase64: plain base64. Run `nhp-agentd seal` to encrypt it at rest.\n"
+	if keySealed {
+		keyNote = "# PrivateKeyBase64: sealed blob. Set NHP_KEY_PASSPHRASE_FILE (or NHP_KEY_PASSPHRASE)\n" +
+			"# before starting the agent, or it will fail to unseal this key.\n"
+	}
+
 	content := fmt.Sprintf(`# NHP-Agent config — generated by nhp-agentd register
 # DefaultCipherScheme: 0 = curve25519, 1 = gmsm
-PrivateKeyBase64 = %q
+%sPrivateKeyBase64 = %q
 DefaultCipherScheme = %d
 UserId = %q
 OrganizationId = %q
 LogLevel = 2
-`, privKey, cipherScheme, userId, orgId)
+`, keyNote, privKey, cipherScheme, userId, orgId)
 
 	if err := backupIfExists(cfgPath); err != nil {
 		return err

@@ -209,6 +209,20 @@ account. The state bucket is configured at `terraform init` time via
 `TF_STATE_BUCKET` repo variable) so the account ID is not committed in source.
 All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 
+> **The nhp-server has no public HTTP/HTTPS surface.** It used to serve a demo
+> login page (`/plugins/example?action=login&resid=demo`) on 443 via nginx,
+> reachable as `auth-plugin.opennhp.org` and the legacy alias
+> `demologin.opennhp.org`. That surface is retired at three layers: the
+> `tcp/443` ingress is gone from `aws_security_group.server`
+> (`terraform/demo/security-groups.tf`), the `demologin` CNAME is gone from
+> `terraform/demo/dns.tf`, and `deploy/config-templates/server/http.toml` sets
+> `EnableHttp = false` so `nhp-serverd` never binds `127.0.0.1:8443`. The
+> `deploy-server` job tears down any leftover `/etc/nginx/conf.d/server.conf`.
+> The server host is reachable only over the NHP UDP knock port (plus SSH from
+> the relay jump host); `deploy/nginx/server.conf.template` is kept for
+> reference but is no longer deployed. Re-enabling the login page requires
+> undoing all of these together.
+
 ### `opennhp/demo` schema
 
 The secret is JSON; fields are added idempotently by scripts and workflows.

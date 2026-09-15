@@ -54,7 +54,11 @@ env:
   DEPLOY_BINARIES: ${{ github.event.inputs.deploy_binaries }}
   REGENERATE_KEYS: ${{ github.event.inputs.regenerate_keys }}
   ACME_EMAIL: dev@layerv.ai
-  DOMAIN_SERVER: auth-plugin.opennhp.org
+  # NOTE: there is no DOMAIN_SERVER / LEGACY_DOMAIN_SERVER here any more. The
+  # nhp-server's HTTP demo login page was retired, so the server host no
+  # longer gets an nginx vhost or a Let's Encrypt certificate and has no
+  # hostname to render into one. auth-plugin.opennhp.org still resolves to the
+  # host (NHP UDP), but demologin.opennhp.org has been removed from DNS.
   # Canonical cluster 1 nhp-server alias (CNAME -> auth-plugin), used for
   # display in the demo cluster picker.
   DOMAIN_SERVER_ALIAS: server.opennhp.org
@@ -68,7 +72,6 @@ env:
   # Legacy hostnames retained as DNS CNAMEs to the new primaries; included
   # as TLS SANs and as nginx server_name aliases so existing agents and
   # bookmarks continue to work.
-  LEGACY_DOMAIN_SERVER: demologin.opennhp.org
   LEGACY_DOMAIN_AC: acdemo.opennhp.org
 
 jobs:
@@ -529,39 +532,72 @@ jobs:
           name: nhp-demo-configs
           path: ./configs
 
-      - name: Checkout code (for nginx + bootstrap scripts)
-        uses: actions/checkout@v7
-        with:
-          path: repo
+      # No repo checkout here: the server host no longer receives an nginx
+      # vhost or the bootstrap-tls.sh certificate script, so there is nothing
+      # to render from the working tree in this job.
 
-      - name: Ensure TLS certificate + nginx on server
+      - name: Tear down nginx HTTP/HTTPS surface on server
+        # The nhp-server's public HTTP surface (the demo login page at
+        # /plugins/example?action=login&resid=demo, served on 443 as
+        # auth-plugin.opennhp.org and the legacy demologin.opennhp.org alias)
+        # has been retired. This step replaces the former "Ensure TLS
+        # certificate + nginx on server" step: instead of issuing a Let's
+        # Encrypt cert and installing the vhost, it removes any vhost left over
+        # from a previous deploy. The EC2 host is long-lived, so simply no
+        # longer rendering the template would leave /etc/nginx/conf.d/server.conf
+        # in place and nginx still listening on 443.
+        #
+        # tcp/443 is already closed at the security group
+        # (terraform/demo/security-groups.tf), so this is host-level cleanup;
+        # nhp-serverd itself no longer opens 8443 (EnableHttp=false).
+        #
+        # The teardown is written to converge on every run rather than to react
+        # to what changed this run: removing the vhost file and shutting nginx
+        # down are independent, so a run that deleted server.conf but failed
+        # before stopping nginx cannot leave the loaded 443 vhost being served
+        # forever. Likewise a host where server.conf was removed out of band
+        # (manual cleanup, AMI refresh) still gets nginx stopped.
         run: |
-          CF_TOKEN=$(aws secretsmanager get-secret-value \
-            --secret-id opennhp/demo --region ${{ env.AWS_REGION }} \
-            --query SecretString --output text \
-            | python3 -c "import sys,json; print(json.loads(sys.stdin.read(), strict=False)['cloudflare_api_token'])")
+          set -euo pipefail
 
-          export DOMAIN_SERVER='${{ env.DOMAIN_SERVER }}' \
-                 LEGACY_DOMAIN_SERVER='${{ env.LEGACY_DOMAIN_SERVER }}'
-          envsubst '$DOMAIN_SERVER $LEGACY_DOMAIN_SERVER' \
-            < repo/deploy/nginx/server.conf.template > /tmp/server-nginx.conf
+          ssh nhp-server '
+            set -eu
 
-          scp repo/deploy/scripts/bootstrap-tls.sh nhp-server:/tmp/bootstrap-tls.sh
-          scp /tmp/server-nginx.conf nhp-server:/tmp/server-nginx.conf
-          ssh nhp-server "chmod +x /tmp/bootstrap-tls.sh"
+            if sudo test -f /etc/nginx/conf.d/server.conf; then
+              echo "Removing retired nhp-server nginx vhost..."
+              sudo rm -f /etc/nginx/conf.d/server.conf
+            else
+              echo "nhp-server nginx vhost already absent."
+            fi
 
-          printf '%s' "$CF_TOKEN" | ssh nhp-server \
-            "umask 077 && cat > /tmp/cf_token && chmod 600 /tmp/cf_token"
+            # The server host has no vhost of its own left: terraform/demo/
+            # userdata/server.sh never installs nginx, only the (now unused)
+            # bootstrap-tls.sh did. So stop and disable the unit outright
+            # instead of reloading it — a reload would keep a listener alive
+            # (at minimum the distro default :80 server block), which is
+            # exactly what this step exists to remove. Never start nginx as a
+            # fallback here.
+            if systemctl list-unit-files --no-legend nginx.service 2>/dev/null \
+               | grep -q nginx; then
+              if systemctl is-active --quiet nginx \
+                 || systemctl is-enabled --quiet nginx 2>/dev/null; then
+                echo "Stopping and disabling nginx on the server host..."
+                sudo systemctl disable --now nginx
+              else
+                echo "nginx already stopped and disabled."
+              fi
+            else
+              echo "nginx is not installed on the server host."
+            fi
 
-          ssh nhp-server \
-            "COMPONENT=server \
-             PRIMARY_DOMAIN='${{ env.DOMAIN_SERVER }}' \
-             EXTRA_DOMAINS='${{ env.LEGACY_DOMAIN_SERVER }}' \
-             LEGACY_CERT_NAME='${{ env.LEGACY_DOMAIN_SERVER }}' \
-             CF_API_TOKEN_FILE=/tmp/cf_token \
-             ACME_EMAIL='${{ env.ACME_EMAIL }}' \
-             NGINX_CONF='/tmp/server-nginx.conf' \
-             /tmp/bootstrap-tls.sh"
+            # Report anything still listening on the HTTP/HTTPS ports. This is
+            # informational here because the old nhp-serverd (EnableHttp=true)
+            # may still hold 127.0.0.1:8443 until it is restarted further down;
+            # the fatal assertion runs after that restart.
+            echo "Listeners on :80/:443/:8443 (expect none once nhp-serverd restarts):"
+            sudo ss -ltnp 2>/dev/null \
+              | grep -E ":(80|443|8443)[[:space:]]" || echo "  none"
+          '
 
       - name: Load SMTP credentials for OTP email
         run: |
@@ -666,6 +702,24 @@ jobs:
             exit 1
           fi
           echo "nhp-serverd deployed successfully"
+
+      - name: Verify no HTTP/HTTPS listener remains on server
+        # Fail the deploy loudly if the retired HTTP surface came back: nginx
+        # holding :80/:443, or nhp-serverd binding :8443 because http.toml was
+        # deployed with EnableHttp=true. Runs after nhp-serverd restarts so the
+        # old process is no longer holding 8443.
+        run: |
+          set -euo pipefail
+
+          ssh nhp-server '
+            set -eu
+            echo "Listeners on :80/:443/:8443 (expect none):"
+            if sudo ss -ltnp 2>/dev/null | grep -E ":(80|443|8443)[[:space:]]"; then
+              echo "ERROR: nhp-server still exposes an HTTP/HTTPS listener" >&2
+              exit 1
+            fi
+            echo "  none"
+          '
 
       - name: Cleanup
         if: always()

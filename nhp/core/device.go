@@ -1,7 +1,9 @@
 package core
 
 import (
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"runtime"
 	"runtime/debug"
@@ -130,6 +132,13 @@ func NewDevice(t int, prk []byte, option *DeviceOptions) *Device {
 		log.Critical("Failed to set private key ex")
 		return nil
 	}
+
+	// Randomize the transaction sequence across process/device replacement.
+	var seed [8]byte
+	if _, err := rand.Read(seed[:]); err != nil {
+		return nil
+	}
+	d.counterIndex = binary.BigEndian.Uint64(seed[:])
 
 	d.pool = &PacketBufferPool{}
 	d.pool.Init(PacketBufferPoolSize)
@@ -476,6 +485,8 @@ func (d *Device) packetToMsgRoutine(id int) {
 					err = d.recvReplayDedupeFn(ppd)
 					if err != nil {
 						log.Debug("packetToMsgRoutine %d: [%s] packet replay rejected: %v", id, msgType, err)
+						log.Evaluate("packetToMsgRoutine %d: [%s] packet replay rejected: %v", id, msgType, err)
+						d.notifyPacketDropped("replay")
 						return
 					}
 				}
@@ -568,6 +579,7 @@ func (d *Device) PacketToMsg(pd *PacketData) (ppd *PacketParserData, err error) 
 	}
 	if d.recvReplayDedupeFn != nil {
 		if err = d.recvReplayDedupeFn(ppd); err != nil {
+			d.notifyPacketDropped("replay")
 			return nil, err
 		}
 	}

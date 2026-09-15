@@ -603,6 +603,7 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	// Bound ART clock skew so cache entries outlive every accepted replay.
 	if ppd.device.deviceType == NHP_SERVER && peerDeviceType == NHP_AC && ppd.HeaderType == NHP_ART &&
 		remoteSendTime > ppd.LocalInitTime+ARTRecvFutureSkewSeconds*int64(time.Second) {
+		log.Critical("ART from %s is %d ns ahead of local time (limit %d seconds); check AC/server clock synchronization", ppd.ConnData.RemoteAddr.String(), remoteSendTime-ppd.LocalInitTime, ARTRecvFutureSkewSeconds)
 		return ErrStalePacketReceived
 	}
 	if remoteSendTime < (ppd.LocalInitTime - DefaultRecvStalenessFloorSeconds*int64(time.Second)) {

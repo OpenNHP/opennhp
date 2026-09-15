@@ -338,3 +338,10 @@ A warning, limited to once per minute, reports live capacity evictions and the
 cumulative count; these evictions shorten replay coverage. A process restart
 also clears the cache. This process-local cache does not guarantee replay
 protection across restarts or sustained traffic above its configured capacity.
+
+ART future-skew rejection tightens the previous unbounded behavior: AC clocks
+more than 60 seconds ahead now cause rejected responses with a clock-sync log.
+Cache capacity changes require restart and accept 0..1,000,000 entries. Captured
+first-seen packets can also churn the cache. Transaction counters now start from
+a cryptographically random 64-bit seed per device, making cross-restart ID
+reuse improbable; the cache is additional duplicate-delivery protection.

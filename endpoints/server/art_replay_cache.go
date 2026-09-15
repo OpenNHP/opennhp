@@ -36,7 +36,7 @@ type artReplayCache struct {
 	mu                sync.Mutex
 	capacityEvictions uint64
 	lastWarning       time.Time
-	entries           map[artReplayKey]*list.Element
+	entries           map[artReplayKey]struct{}
 	order             *list.List
 	maxEntries        int
 	ttl               time.Duration
@@ -49,7 +49,7 @@ func newARTReplayCache() *artReplayCache {
 
 func newARTReplayCacheWithParams(maxEntries int, ttl time.Duration, now func() time.Time) *artReplayCache {
 	return &artReplayCache{
-		entries:    make(map[artReplayKey]*list.Element, maxEntries),
+		entries:    make(map[artReplayKey]struct{}, maxEntries),
 		order:      list.New(),
 		maxEntries: maxEntries,
 		ttl:        ttl,
@@ -90,8 +90,8 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 		}
 		c.removeOldest()
 	}
-	elem := c.order.PushBack(artReplayEntry{key: key, expiresAt: now.Add(c.ttl)})
-	c.entries[key] = elem
+	c.order.PushBack(artReplayEntry{key: key, expiresAt: now.Add(c.ttl)})
+	c.entries[key] = struct{}{}
 	return true
 }
 

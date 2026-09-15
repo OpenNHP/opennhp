@@ -180,9 +180,31 @@ func TestPacketToMsgRunsReplayHook(t *testing.T) {
 	fixture := newValidatePeerSentinelFixture(t)
 	fixture.receiver.AddPeer(fixture.senderPeer)
 	called := false
+	drops := 0
+	options := fixture.receiver.GetOption()
+	options.OnPacketDropped = func(stage string) {
+		if stage == "replay" {
+			drops++
+		}
+	}
+	fixture.receiver.SetOption(options)
 	fixture.receiver.SetRecvReplayDedupe(func(*PacketParserData) error { called = true; return ErrReplayPacketReceived })
 	_, err := fixture.receiver.PacketToMsg(&PacketData{BasePacket: &Packet{Content: append([]byte(nil), fixture.packet...)}, ConnData: fixture.receiverConn})
-	if !called || err != ErrReplayPacketReceived {
+	if !called || err != ErrReplayPacketReceived || drops != 1 {
 		t.Fatalf("hook called=%v, err=%v", called, err)
+	}
+}
+
+func TestDeviceTransactionSequenceChangesOnRestart(t *testing.T) {
+	first := NewDevice(NHP_SERVER, sentinelPrivateKey(1), nil)
+	second := NewDevice(NHP_SERVER, sentinelPrivateKey(1), nil)
+	t.Cleanup(first.Stop)
+	t.Cleanup(second.Stop)
+	a, b := first.NextCounterIndex(), second.NextCounterIndex()
+	if a == b {
+		t.Fatal("device replacement reused transaction sequence")
+	}
+	if first.NextCounterIndex() != a+1 {
+		t.Fatal("counter lost monotonicity")
 	}
 }

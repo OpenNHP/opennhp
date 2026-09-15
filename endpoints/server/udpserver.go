@@ -362,6 +362,9 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		return fmt.Errorf("failed to create device %v", err)
 	}
 
+	if s.config.ARTReplayCacheEntries < 0 || s.config.ARTReplayCacheEntries > 1_000_000 {
+		return fmt.Errorf("ARTReplayCacheEntries must be between 0 and 1000000")
+	}
 	s.artReplay = newARTReplayCache()
 	if s.config.ARTReplayCacheEntries > 0 {
 		s.artReplay = newARTReplayCacheWithParams(s.config.ARTReplayCacheEntries, artReplayCacheTTL, time.Now)

@@ -17,7 +17,6 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/core"
 	wasmEngine "github.com/OpenNHP/opennhp/nhp/core/wasm/engine"
 	"github.com/OpenNHP/opennhp/nhp/log"
-	utils "github.com/OpenNHP/opennhp/nhp/utils"
 )
 
 // relayConnKeyPrefix is what every relay-forwarded connection's mapKey
@@ -747,24 +746,14 @@ func (s *UdpServer) onAttestationVerify(spo *common.SmartPolicy, attestation str
 		return nil
 	}
 
-	wasmBytes, err := base64.StdEncoding.DecodeString(spo.Policy)
+	wasmBytes, err := spo.GetPolicy()
 	if err != nil {
-		wasmPath, downloadErr := utils.DownloadFileToTemp(spo.Policy, "wasm-")
-		defer os.Remove(filepath.Dir(wasmPath))
-		defer os.Remove(wasmPath)
-		if downloadErr != nil {
-			return downloadErr
-		}
-		wasmBytes, downloadErr = os.ReadFile(wasmPath)
-		if downloadErr != nil {
-			return downloadErr
-		}
+		return err
 	}
 
 	engine := wasmEngine.NewEngine()
-	err = engine.LoadWasm(wasmBytes)
 	defer engine.Close()
-	if err != nil {
+	if err = engine.LoadWasm(wasmBytes); err != nil {
 		return err
 	}
 

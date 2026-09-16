@@ -80,6 +80,7 @@ type SrcIpMap struct {
 }
 
 type Config struct {
+	ARTReplayCacheEntries  int    `json:"artReplayCacheEntries"` // Restart-only; zero selects 100000.
 	PrivateKeyBase64       string `json:"privateKey"`
 	Hostname               string `json:"hostname"`
 	ListenIp               string `json:"listenIp"`

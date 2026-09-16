@@ -153,3 +153,91 @@ func sentinelConnection(device *Device, localPort, remotePort int) *ConnectionDa
 		StopSignal:       make(chan struct{}),
 	}
 }
+
+func TestARTFutureTimestampBound(t *testing.T) {
+	for _, delta := range []time.Duration{ARTRecvFutureSkewSeconds * time.Second, ARTRecvFutureSkewSeconds*time.Second + 1, 10 * time.Minute} {
+		fixture := newValidatePeerSentinelFixture(t)
+		fixture.receiver.AddPeer(fixture.senderPeer)
+		packet := &Packet{Content: append([]byte(nil), fixture.packet...), HeaderType: NHP_AOL}
+		ppd, err := fixture.receiver.createPacketParserData(&PacketData{BasePacket: packet, ConnData: fixture.receiverConn, InitTime: fixture.sendTime - int64(delta)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Exercise ART's timestamp policy with a genuinely authenticated timestamp.
+		ppd.HeaderType = NHP_ART
+		got := ppd.validatePeer()
+		ppd.Destroy()
+		if delta > ARTRecvFutureSkewSeconds*time.Second && got != ErrStalePacketReceived {
+			t.Fatalf("skew %v accepted: %v", delta, got)
+		}
+		if delta == ARTRecvFutureSkewSeconds*time.Second && got != nil {
+			t.Fatalf("allowed skew rejected: %v", got)
+		}
+	}
+}
+
+func TestPacketToMsgRunsReplayHook(t *testing.T) {
+	fixture := newValidatePeerSentinelFixture(t)
+	fixture.receiver.AddPeer(fixture.senderPeer)
+	called := false
+	drops := 0
+	options := fixture.receiver.GetOption()
+	options.OnPacketDropped = func(stage string) {
+		if stage == "replay" {
+			drops++
+		}
+	}
+	fixture.receiver.SetOption(options)
+	fixture.receiver.SetRecvReplayDedupe(func(*PacketParserData) error { called = true; return ErrReplayPacketReceived })
+	_, err := fixture.receiver.PacketToMsg(&PacketData{BasePacket: &Packet{Content: append([]byte(nil), fixture.packet...)}, ConnData: fixture.receiverConn})
+	if !called || err != ErrReplayPacketReceived || drops != 1 {
+		t.Fatalf("hook called=%v, err=%v", called, err)
+	}
+}
+
+func TestDeviceTransactionSequenceChangesOnRestart(t *testing.T) {
+	first := NewDevice(NHP_SERVER, sentinelPrivateKey(1), nil)
+	second := NewDevice(NHP_SERVER, sentinelPrivateKey(1), nil)
+	t.Cleanup(first.Stop)
+	t.Cleanup(second.Stop)
+	a, b := first.NextCounterIndex(), second.NextCounterIndex()
+	if a == b {
+		t.Fatal("device replacement reused transaction sequence")
+	}
+	if first.NextCounterIndex() != a+1 {
+		t.Fatal("counter lost monotonicity")
+	}
+}
+
+func TestARTSkewWarningIsRateLimited(t *testing.T) {
+	lastARTSkewWarnNano.Store(0)
+	t.Cleanup(func() { lastARTSkewWarnNano.Store(0) })
+	now := int64(2 * time.Minute)
+	if !artSkewWarnAllowed(now) || artSkewWarnAllowed(now+1) || !artSkewWarnAllowed(now+int64(time.Minute)) {
+		t.Fatal("clock skew warning rate limit failed")
+	}
+}
+
+func TestARTDoesNotResetSharedConnectionReplayState(t *testing.T) {
+	f := newValidatePeerSentinelFixture(t)
+	f.receiver.AddPeer(f.senderPeer)
+	watermark := f.sendTime + int64(time.Second)
+	f.receiverConn.LastRemoteSendTime = watermark
+	f.receiverConn.RecvThreatCount = 2
+	packet := &Packet{Content: append([]byte(nil), f.packet...), HeaderType: NHP_AOL}
+	ppd, err := f.receiver.createPacketParserData(&PacketData{BasePacket: packet, ConnData: f.receiverConn, InitTime: f.initTime})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ppd.Destroy()
+	ppd.HeaderType = NHP_ART
+	if err := ppd.validatePeer(); err != nil {
+		t.Fatal(err)
+	}
+	if f.receiverConn.LastRemoteSendTime != watermark || f.receiverConn.RecvThreatCount != 2 {
+		t.Fatal("ART changed shared replay/threat state")
+	}
+	if ppd.RemoteSendTime != f.sendTime {
+		t.Fatal("authenticated timestamp not forwarded to dedupe")
+	}
+}

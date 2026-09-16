@@ -326,3 +326,19 @@ Log levels:
   ```
 
   **Solution:** Configure the correct IP in `nhp-server/plugins/example/etc/resource.toml` under `Addr.Ip`.
+
+### ART replay protection
+
+Keep AC and server clocks synchronized: ART responses may be up to 600 seconds
+old or 300 seconds in the future. The cache retains authenticated AC tuples for
+960 seconds. Set `ARTReplayCacheEntries` to peak ART/s times 960 plus burst
+headroom (0 selects 100,000; maximum 1,000,000; restart required). Memory grows
+with usage up to that cap, at several hundred bytes per entry. Alert on
+`nhp_server_art_replay_cache_evictions_total`; unexpired eviction shortens replay
+coverage. Detailed clock-skew and replay warnings are limited to once per minute.
+
+Only configured AC keys can populate this cache. ART validation does not change
+the shared AOL timestamp watermark or clear connection threat state. Cache state
+is process-local and clears on restart. Random transaction sequences make ID
+reuse unlikely; the cache is additional duplicate-delivery protection. AOP
+protection must be configured on the AC separately.

@@ -235,6 +235,12 @@ For high-availability deployments, consider:
 
 **Post-deployment:**
 - [ ] Verify NHP-Server is listening on UDP 62206
+- [ ] **Optional**, only after assessing the flood trade-off below: for a host-network or bare-metal server, run
+  `sudo env NHP_TRUSTED_PEERS="<AC-IP> <relay-IP>" docker/harden_nhp_server_udp.sh` to raise `rmem_max` and install
+  aggregate kernel rate limits for both IP families after trusted-peer exemptions.
+  Restart nhp-server after raising the ceiling. Docker Compose passes the
+  requested socket size to the server, which warns if the host ceiling clamps
+  it; Compose does not mutate the host's non-namespaced `net.core.rmem_max`.
 - [ ] Verify NHP-AC iptables rules are active (`iptables -L`)
 - [ ] Test knock sequence from NHP-Agent
 - [ ] Verify stealth with nmap from unauthorized host
@@ -335,3 +341,79 @@ under extreme source churn it evicts the oldest entry to keep admitting new
 sources. This reduces per-source coverage: alert on
 `nhp_server_packet_rate_cache_evictions_total`. Upstream anti-spoofing and flood
 filtering remain necessary; a bounded table cannot retain unlimited identities.
+### Data object identifiers and key files
+
+DoIds must be 1..64 ASCII letters, digits, underscores, or hyphens. UUIDs
+remain valid. Rename or migrate objects that used other identifiers before
+upgrading; unsupported IDs are rejected before filesystem access. Newly
+created private-key files use mode 0600 and new key directories use 0700.
+Existing key files retain their old permissions; restrict those permissions
+as part of the host upgrade.
+### UDP host firewall sizing
+
+For a host-network or bare-metal server, run:
+
+```sh
+sudo env NHP_TRUSTED_PEERS="192.0.2.10 2001:db8::10" NHP_UDP_RECV_BUFFER_BYTES=8388608 docker/harden_nhp_server_udp.sh
+```
+
+Replace these example addresses with the AC, relay, and peer-server addresses
+(or narrow CIDRs) before use. These peers bypass the rate bucket in both IP
+families, but still pass through the remaining host INPUT rules. Protect these
+source addresses with network anti-spoofing rules. The script requires iptables,
+ip6tables, sysctl, and Python 3, and refuses to run without a trusted peer list.
+Docker bridge deployments need equivalent rules in their own packet path.
+
+The fixed-size aggregate bucket defaults to 5,000 packets/s and a 10,000-packet
+burst **per IP family**, shared by all untrusted clients. Set
+`NHP_KNOCK_GLOBAL_RATE_PPS` and `NHP_KNOCK_GLOBAL_RATE_BURST` from measured host
+capacity and expected peak traffic. A single source sending at the configured rate can deny all new untrusted
+traffic. There is no kernel per-source table to exhaust and no separate small
+per-IP cap that penalizes NAT clients. Authenticated peer separation and the
+server's userspace limits remain necessary.
+
+`NHP_UDP_RECV_BUFFER_BYTES` sets the server receive-buffer request (default
+8 MiB; range 65,536 to 1,073,741,823 bytes). Run the script before starting or
+restarting nhp-server: changing `net.core.rmem_max` does not resize an open
+socket. The script's sysctl and firewall changes do not survive reboot unless
+your host configuration manager persists them. Inspect drop counters with
+`sudo iptables -vnL NHP_KNOCK_GUARD` and
+`sudo ip6tables -vnL NHP_KNOCK_GUARD`.
+
+The helper only raises `rmem_max`; it never lowers an existing host ceiling.
+Pass `NHP_UDP_RECV_BUFFER_BYTES` explicitly through `sudo env` if the server
+uses an override (including a Compose `.env` value). Trusted CIDRs must have
+no host bits and must be at least /24 (IPv4) or /64 (IPv6). Rules are tested
+before each family is committed atomically with `iptables-restore --noflush`.
+The limit module quantizes rates; use divisors of 10,000 for exact nominal
+rates. The helper accepts at most 10,000 pps and a burst of at most 10,000 packets and at most 60 seconds
+of traffic. Larger deployments need an independently sized upstream filter.
+
+The optional aggregate firewall guard sets a ceiling on host packet work; it is
+not per-client fairness. A single source can consume that ceiling and deny all
+new agent knocks until the flood stops. Leave this helper disabled if upstream
+DDoS filtering does not control that risk; the server cookie and overload checks
+remain available. Loopback traffic is exempt before rate checks, as are the
+configured infrastructure peers. Firewall replacement is atomic per IP family,
+not across IPv4 and IPv6; an apply failure reports which family was updated.
+
+A trusted relay exemption also bypasses the kernel bucket for all agent traffic
+forwarded by that relay. Apply ingress flood control at the relay/upstream
+network and retain server-side per-client limits. The helper does not inspect
+encapsulated client identities. Only enable it after sizing and accepting both
+this relay bypass and the aggregate direct-client denial threshold.
+### ART replay protection
+
+Keep AC and server clocks synchronized: ART responses may be up to 600 seconds
+old or 300 seconds in the future. The cache retains authenticated AC tuples for
+960 seconds. Set `ARTReplayCacheEntries` to peak ART/s times 960 plus burst
+headroom (0 selects 100,000; maximum 1,000,000; restart required). Memory grows
+with usage up to that cap, at several hundred bytes per entry. Alert on
+`nhp_server_art_replay_cache_evictions_total`; unexpired eviction shortens replay
+coverage. Detailed clock-skew and replay warnings are limited to once per minute.
+
+Only configured AC keys can populate this cache. ART validation does not change
+the shared AOL timestamp watermark or clear connection threat state. Cache state
+is process-local and clears on restart. Random transaction sequences make ID
+reuse unlikely; the cache is additional duplicate-delivery protection. AOP
+protection must be configured on the AC separately.

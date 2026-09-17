@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -17,6 +18,11 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/core"
 	wasmEngine "github.com/OpenNHP/opennhp/nhp/core/wasm/engine"
 	"github.com/OpenNHP/opennhp/nhp/log"
+)
+
+var (
+	errReadConfigFailed = errors.New("ztdo config read failed")
+	errSaveConfigFailed = errors.New("ztdo config save failed")
 )
 
 // relayConnKeyPrefix is what every relay-forwarded connection's mapKey
@@ -600,7 +606,7 @@ func (s *UdpServer) HandleDHPDARMessage(ppd *core.PacketParserData) (err error) 
 	// forward to a specific transaction
 	transaction := ppd.ConnData.FindRemoteTransaction(transactionId)
 	if transaction == nil {
-		log.Error("server-agent(@%s#%d@%s)[HandleDHPDARMessage] transaction is not available", doId, transactionId, addrStr)
+		log.Error("server-agent(DoId=%q,trx=#%d@%s)[HandleDHPDARMessage] transaction is not available", common.TruncateDoIDForLog(doId), transactionId, addrStr)
 		err = common.ErrTransactionIdNotFound
 		return err
 	}
@@ -640,12 +646,12 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 		// config-read failure to the agent and skip attestation
 		// entirely. Attestation must never be evaluated against a
 		// policy we couldn't load.
-		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] ReadZdtoConfig(%s) failed: %v", transactionId, addrStr, doId, err)
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] ReadZdtoConfig(%q) failed: %v", transactionId, addrStr, common.TruncateDoIDForLog(doId), err)
 		dagMsg.DoId = doId
 		dagMsg.ErrCode = 1
 		dagMsg.ErrMsg = err.Error()
 	} else if attErr := s.onAttestationVerify(&config.Spo, davMsg.Evidence); attErr != nil {
-		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attesation: %s with error: %s", transactionId, addrStr, davMsg.Evidence, attErr.Error())
+		log.Error("server-agent(#%d@%s)[HandleDHPDAVMessage] failed to verify attestation: %s", transactionId, addrStr, attErr.Error())
 		return attErr
 	} else {
 		dagMsg.DoId = doId
@@ -692,7 +698,7 @@ func (s *UdpServer) HandleDHPDAVMessage(ppd *core.PacketParserData) (err error) 
 	// forward to a specific transaction
 	transaction := ppd.ConnData.FindRemoteTransaction(transactionId)
 	if transaction == nil {
-		log.Error("server-agent(@%s#%d@%s)[HandleDHPDARMessage] transaction is not available", doId, transactionId, addrStr)
+		log.Error("server-agent(DoId=%q,trx=#%d@%s)[HandleDHPDAVMessage] transaction is not available", common.TruncateDoIDForLog(doId), transactionId, addrStr)
 		err = common.ErrTransactionIdNotFound
 		return err
 	}
@@ -751,7 +757,7 @@ func (s *UdpServer) HandleDHPDRGMessage(ppd *core.PacketParserData) (err error) 
 
 	transaction := ppd.ConnData.FindRemoteTransaction(transactionId)
 	if transaction == nil {
-		log.Error("server-DB(@%s#%d@%s)[HandleDHPDRGMessage] transaction is not available", doId, transactionId, addrStr)
+		log.Error("server-db(DoId=%q,trx=#%d@%s)[HandleDHPDRGMessage] transaction is not available", common.TruncateDoIDForLog(doId), transactionId, addrStr)
 		err = common.ErrTransactionIdNotFound
 		return err
 	}
@@ -787,6 +793,10 @@ func (s *UdpServer) onAttestationVerify(spo *common.SmartPolicy, attestation str
 
 func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 	objectId := drgMsg.DoId
+	if err := common.ValidateDoID(objectId); err != nil {
+		log.Warning("server[SaveZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(objectId), err)
+		return err
+	}
 	configFileName := "data-" + objectId + ".json"
 
 	etcDir := filepath.Join(ExeDirPath, "etc", "ztdo")
@@ -800,49 +810,75 @@ func SaveZdtoConfig(drgMsg *common.DRGMsg) error {
 			drgMsg.AccessUrl = existingDrgMsg.AccessUrl
 		}
 
-		os.Remove(configPath)
 	}
 
 	// Make sure the etc directory exists
 	if err := os.MkdirAll(etcDir, 0755); err != nil {
-		return fmt.Errorf("failed to create etc directory: %v", err)
+		log.Error("server[SaveZdtoConfig] DoId=%q mkdir: %v", common.TruncateDoIDForLog(objectId), err)
+		return errSaveConfigFailed
 	}
 
-	if _, err := os.Stat(configPath); err == nil {
-		return fmt.Errorf("%v already exists, please delete it first", configFileName)
-	}
-
-	file, err := os.Create(configPath)
+	// Write a complete replacement before publishing it, so readers never see
+	// a missing or partially encoded config during an update.
+	file, err := os.CreateTemp(etcDir, ".data-*.json")
 	if err != nil {
-		return fmt.Errorf("failed to create config.json: %v", err)
+		log.Error("server[SaveZdtoConfig] DoId=%q create: %v", common.TruncateDoIDForLog(objectId), err)
+		return errSaveConfigFailed
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+	}()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(drgMsg)
+	if err := encoder.Encode(drgMsg); err != nil {
+		log.Error("server[SaveZdtoConfig] DoId=%q encode: %v", common.TruncateDoIDForLog(objectId), err)
+		return errSaveConfigFailed
+	}
+	if err := file.Close(); err != nil {
+		log.Error("server[SaveZdtoConfig] DoId=%q close: %v", common.TruncateDoIDForLog(objectId), err)
+		return errSaveConfigFailed
+	}
+	if err := os.Rename(file.Name(), configPath); err != nil {
+		log.Error("server[SaveZdtoConfig] DoId=%q rename: %v", common.TruncateDoIDForLog(objectId), err)
+		return errSaveConfigFailed
+	}
+
+	return nil
 }
 
 // read data-<doId>.json to DRGMsg Object
 func ReadZdtoConfig(doId string) (common.DRGMsg, error) {
+	if err := common.ValidateDoID(doId); err != nil {
+		log.Warning("server[ReadZdtoConfig] rejected DoId=%q: %v", common.TruncateDoIDForLog(doId), err)
+		return common.DRGMsg{}, err
+	}
+
 	etcDir := filepath.Join(ExeDirPath, "etc", "ztdo")
 	configFilePath := filepath.Join(etcDir, "data-"+doId+".json")
 	file, err := os.Open(configFilePath)
 	if err != nil {
-		return common.DRGMsg{}, fmt.Errorf("could not open file: %v", err)
+		if os.IsNotExist(err) {
+			log.Debug("server[ReadZdtoConfig] DoId=%q not found: %v", common.TruncateDoIDForLog(doId), err)
+		} else {
+			log.Error("server[ReadZdtoConfig] DoId=%q open: %v", common.TruncateDoIDForLog(doId), err)
+		}
+		return common.DRGMsg{}, errReadConfigFailed
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	fileContentByte, err := io.ReadAll(file)
 	if err != nil {
-		return common.DRGMsg{}, fmt.Errorf("error reading file: %v", err)
+		log.Error("server[ReadZdtoConfig] DoId=%q read: %v", common.TruncateDoIDForLog(doId), err)
+		return common.DRGMsg{}, errReadConfigFailed
 	}
 
 	var config common.DRGMsg
 
-	err = json.Unmarshal(fileContentByte, &config)
-	if err != nil {
-		return common.DRGMsg{}, fmt.Errorf("json parsing error: %s", err)
+	if err := json.Unmarshal(fileContentByte, &config); err != nil {
+		log.Error("server[ReadZdtoConfig] DoId=%q unmarshal: %v", common.TruncateDoIDForLog(doId), err)
+		return common.DRGMsg{}, errReadConfigFailed
 	}
 	return config, nil
 }

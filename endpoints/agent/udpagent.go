@@ -1384,7 +1384,7 @@ func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOut
 		// update smart data policy refresh time
 		a.smartDataPolicyRefreshTime[ztdoId] = time.Now().UnixNano()
 
-		log.Info("[StartConfidentialComputing] Refresh smart data policy for data object which id is %s", ztdoId)
+		log.Info("[StartConfidentialComputing] Refresh smart data policy for data object which id is %q", common.TruncateDoIDForLog(ztdoId))
 
 		if !decrypted {
 			output, err = utils.GenerateTempFilePath("plaintext-*")
@@ -1553,25 +1553,25 @@ func (a *UdpAgent) SendDARMsgToServer(server *core.UdpPeer, msg common.DARMsg) (
 	result, dsaMsg := func() (bool, *common.DSAMsg) {
 		dsaMsg := &common.DSAMsg{}
 		if serverPpd.Error != nil {
-			log.Error("Agent(%s#%d)[SendDARMsgToServer] failed to receive response from server %s: %v", drgMsg.DoId, drgMd.TransactionId, server.Ip, serverPpd.Error)
+			log.Error("Agent(%q#%d)[SendDARMsgToServer] failed to receive response from server %s: %v", common.TruncateDoIDForLog(drgMsg.DoId), drgMd.TransactionId, server.Ip, serverPpd.Error)
 			err = serverPpd.Error
 			return false, dsaMsg
 		}
 
 		if serverPpd.HeaderType != core.NHP_DSA {
-			log.Error("DB(%s#%d)[SendDARMsgToServer] response from server %s has wrong type: %s", drgMsg.DoId, drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
+			log.Error("DB(%q#%d)[SendDARMsgToServer] response from server %s has wrong type: %s", common.TruncateDoIDForLog(drgMsg.DoId), drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
 			err = common.ErrTransactionRepliedWithWrongType
 			return false, dsaMsg
 		}
 		//message []byte to DSAMSg Object
 		err = json.Unmarshal(serverPpd.BodyMessage, dsaMsg)
 		if err != nil {
-			log.Error("Agent(%s#%d)[HandleDHPDAGMessage] failed to parse %s message: %v", drgMsg.DoId, serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
+			log.Error("Agent(%q#%d)[HandleDHPDAGMessage] failed to parse %s message: %v", common.TruncateDoIDForLog(drgMsg.DoId), serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
 			return false, dsaMsg
 		}
 		dsaMsgString, err := json.Marshal(dsaMsg)
 		if err != nil {
-			log.Error("Agent(%s) DSAMsg failed to parse message: %v", dsaMsg.DoId, err)
+			log.Error("Agent(%q) DSAMsg failed to parse message: %v", common.TruncateDoIDForLog(dsaMsg.DoId), err)
 			return false, dsaMsg
 		}
 		log.Info("SendDARMsgToServer response result: %v", dsaMsgString)
@@ -1659,25 +1659,25 @@ func (a *UdpAgent) SendDAVMsgToServer(server *core.UdpPeer, msg common.DAVMsg) (
 	result, dagMsg := func() (bool, *common.DAGMsg) {
 		dagMsg := &common.DAGMsg{}
 		if serverPpd.Error != nil {
-			log.Error("Agent(%s#%d)[SendDAVMsgToServer] failed to receive response from server %s: %v", davMsg.DoId, davMd.TransactionId, server.Ip, serverPpd.Error)
+			log.Error("Agent(%q#%d)[SendDAVMsgToServer] failed to receive response from server %s: %v", common.TruncateDoIDForLog(davMsg.DoId), davMd.TransactionId, server.Ip, serverPpd.Error)
 			err = serverPpd.Error
 			return false, dagMsg
 		}
 
 		if serverPpd.HeaderType != core.NHP_DAG {
-			log.Error("DB(%s#%d)[SendDAVMsgToServer] response from server %s has wrong type: %s", davMsg.DoId, davMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
+			log.Error("DB(%q#%d)[SendDAVMsgToServer] response from server %s has wrong type: %s", common.TruncateDoIDForLog(davMsg.DoId), davMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
 			err = common.ErrTransactionRepliedWithWrongType
 			return false, dagMsg
 		}
 		//message []byte to DAGMSg Object
 		err = json.Unmarshal(serverPpd.BodyMessage, dagMsg)
 		if err != nil {
-			log.Error("Agent(%s#%d)[HandleDHPDAVMessage] failed to parse %s message: %v", davMsg.DoId, serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
+			log.Error("Agent(%q#%d)[HandleDHPDAVMessage] failed to parse %s message: %v", common.TruncateDoIDForLog(davMsg.DoId), serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
 			return false, dagMsg
 		}
 		dagMsgString, err := json.Marshal(dagMsg)
 		if err != nil {
-			log.Error("Agent(%s) DAKMsg failed to parse message: %v", dagMsg.DoId, err)
+			log.Error("Agent(%q) DAKMsg failed to parse message: %v", common.TruncateDoIDForLog(dagMsg.DoId), err)
 			return false, dagMsg
 		}
 		log.Info("SendDAVMsgToServer response result: %v", dagMsgString)

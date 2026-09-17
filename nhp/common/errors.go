@@ -173,3 +173,6 @@ var (
 	ErrEvidenceGetFailed       = newError("55004", "failed to get evidence", "无法获取远程证明")
 	ErrDBOffline               = newError("55005", "data broker offline", "数据经纪件离线")
 )
+
+// ErrInvalidDoID never reflects rejected wire input.
+var ErrInvalidDoID = newError("55006", "invalid data object identifier", "数据对象标识符无效")

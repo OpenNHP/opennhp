@@ -333,6 +333,14 @@ Log levels:
 
   **Solution:** Configure the correct IP in `nhp-server/plugins/example/etc/resource.toml` under `Addr.Ip`.
 
+### Data object identifiers and key files
+
+DoIds must be 1..64 ASCII letters, digits, underscores, or hyphens. UUIDs
+remain valid. Rename or migrate objects that used other identifiers before
+upgrading; unsupported IDs are rejected before filesystem access. Newly
+created private-key files use mode 0600 and new key directories use 0700.
+Existing key files retain their old permissions; restrict those permissions
+as part of the host upgrade.
 ### UDP host firewall sizing
 
 For a host-network or bare-metal server, run:

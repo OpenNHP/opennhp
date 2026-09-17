@@ -819,13 +819,13 @@ func (a *UdpDevice) SendNHPDRG(server *core.UdpPeer, msg common.DRGMsg) bool {
 	result = func() bool {
 
 		if serverPpd.Error != nil {
-			log.Error("DB(%s#%d)[SendNHPDRG] failed to receive response from server %s: %v", drgMsg.DoId, drgMd.TransactionId, server.Ip, serverPpd.Error)
+			log.Error("DB(%q#%d)[SendNHPDRG] failed to receive response from server %s: %v", common.TruncateDoIDForLog(drgMsg.DoId), drgMd.TransactionId, server.Ip, serverPpd.Error)
 			err = serverPpd.Error
 			return false
 		}
 
 		if serverPpd.HeaderType != core.NHP_DAK {
-			log.Error("DB(%s#%d)[SendNHPDRG] response from server %s has wrong type: %s", drgMsg.DoId, drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
+			log.Error("DB(%q#%d)[SendNHPDRG] response from server %s has wrong type: %s", common.TruncateDoIDForLog(drgMsg.DoId), drgMd.TransactionId, server.Ip, core.HeaderTypeToString(serverPpd.HeaderType))
 			err = common.ErrTransactionRepliedWithWrongType
 			return false
 		}
@@ -834,12 +834,12 @@ func (a *UdpDevice) SendNHPDRG(server *core.UdpPeer, msg common.DRGMsg) bool {
 		//json string to DAKMsg Object
 		err = json.Unmarshal(serverPpd.BodyMessage, dakMsg)
 		if err != nil {
-			log.Error("DB(%s#%d)[HandleDHPDRGMessage] failed to parse %s message: %v", drgMsg.DoId, serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
+			log.Error("DB(%q#%d)[HandleDHPDRGMessage] failed to parse %s message: %v", common.TruncateDoIDForLog(drgMsg.DoId), serverPpd.SenderTrxId, core.HeaderTypeToString(serverPpd.HeaderType), err)
 			return false
 		}
 		dakMsgString, err := json.Marshal(dakMsg)
 		if err != nil {
-			log.Error("DB(%s) DAKMsg failed to parse message: %v", dakMsg.DoId, err)
+			log.Error("DB(%q) DAKMsg failed to parse message: %v", common.TruncateDoIDForLog(dakMsg.DoId), err)
 			return false
 		}
 		log.Info("SendNHPDRG result：%v", string(dakMsgString))

@@ -100,6 +100,7 @@ var (
 	ErrPacketToMessageRoutineStopped       = newError("50007", "packet to message routine stopped", "消息处理线程已停止")
 	ErrInvalidIpAddress                    = newError("50008", "invalid ip address", "ip地址无效")
 	ErrPacketEncryptionFailed              = newError("50009", "packet encryption failed", "报文加密失败")
+	ErrTransactionClosed                   = newError("50010", "transaction is closed", "交互已关闭")
 
 	// agent
 	ErrKnockUserNotSpecified   = newError("51001", "knock user not specified", "没有指定敲门用户")

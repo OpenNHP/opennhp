@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -1411,6 +1412,7 @@ func (a *UdpAgent) RefreshDataAccess(ztdoId string, decrypted bool, decryptedOut
 				log.Error("failed to download ztdo: %v\n", err)
 				return "", fmt.Errorf("failed to download ztdo: %v", err)
 			}
+			defer func() { _ = os.RemoveAll(filepath.Dir(ztdoPath)) }()
 
 			if parseErr := ztdo.ParseHeader(ztdoPath); parseErr != nil {
 				fmt.Printf("Error: failed to parse ztdo header:%s\n", parseErr)

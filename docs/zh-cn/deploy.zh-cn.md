@@ -88,19 +88,29 @@ permalink: /zh-cn/deploy/
 
 #### 2.4.1 NHP-AC系统要求
 
-- Linux服务器，内核需支持**ipset**。可通过以下命令查看ipset支持情况
+NHP-AC 支持两种数据包过滤后端，由 `config.toml` 中的 `FilterMode` 决定：
 
-   ```bash
-   lsmod | grep ip_set 
-   ```
+- **`FilterMode = 0`（iptables/ipset）**——遗留模式，要求：
+  - Linux 内核支持 `ip_set`：`lsmod | grep ip_set`
+  - 主机上已安装 `iptables` 和 `ipset` 二进制（Amazon Linux 2023 下执行 `dnf install iptables ipset`）。
+
+- **`FilterMode = 1`（eBPF / XDP + TC egress）**——demo 流水线默认模式，要求：
+  - Linux 内核 **>= 5.6**（XDP generic 模式最低要求）。推荐 **>= 5.8**，否则无法识别 `CAP_BPF` capability，需要授予 `CAP_SYS_ADMIN`。
+  - 主机已安装 `bpftool`（`dnf install bpftool kernel-tools`）用于排障。`nhp-acd` 本身不调用 `bpftool`，但工具缺失通常说明 kernel-tools 也缺失。
+  - 已挂载 `bpf` 文件系统到 `/sys/fs/bpf`（幂等命令：`mount -t bpf bpf /sys/fs/bpf`）。
+  - `nhp-acd` 的 systemd unit 已授予 `CAP_NET_ADMIN` + `CAP_BPF`（参见内置 unit 中的 `AmbientCapabilities=` 行）。
+
+> **说明：** `deploy-demo-v2` GitHub Actions 流水线只使用 eBPF 后端（`FilterMode = 1`）。若您在 demo 流水线之外自行部署 AC，两种模式均可。
 
 #### 2.4.2 NHP-AC运行
 
-将*release*目录下*nhp-ac*目录复制到目标机器上。配置好*etc*目录下 `toml`文件(详细参数见下一章)，运行`iptables_default.sh`，添加防火墙规则，此时外部连接将无法建立。再运行`nhp-acd run`。
+将 *release* 目录下 *nhp-ac* 目录复制到目标机器上。配置好 *etc* 目录下 `toml` 文件（详细参数见下一章），再启动 `nhp-acd`。后续步骤取决于 `FilterMode`：
 
-**【注意】** `nhp-acd` 以及 `iptables_default.sh` 需要在**root**权限下运行。
+- **`FilterMode = 0`：** 先运行 `iptables_default.sh` 添加防火墙规则——此时外部连接将被全部拒绝。再启动守护进程。**【注意】** `nhp-acd` 与 `iptables_default.sh` 均需在 **root** 权限下运行。
 
-- Linux环境：
+- **`FilterMode = 1`：** 确认 `/sys/fs/bpf` 已挂载（参见上文前置条件），直接启动守护进程即可。`nhp-acd` 会将 XDP/TC 程序与 maps pin 到 `/sys/fs/bpf`，并在默认路由出口网卡上以 XDP generic 模式挂载。
+
+- Linux（iptables 模式）：
 
    ```bash
    su
@@ -108,7 +118,14 @@ permalink: /zh-cn/deploy/
    nohup ./nhp-acd run 2>&1 &
    ```
 
-如果想恢复`iptables_default.sh`对iptables的改动，可以运行以下命令来清除：
+- Linux（eBPF 模式）：
+
+   ```bash
+   mount -t bpf bpf /sys/fs/bpf      # 若尚未挂载
+   nohup ./nhp-acd run 2>&1 &
+   ```
+
+如果想清除旧 iptables 模式下残留的规则，可以运行 `deploy/scripts/cleanup-ac-iptables.sh`（幂等），或者：
 
    ```bash
    iptables -F

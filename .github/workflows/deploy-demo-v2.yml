@@ -128,13 +128,23 @@ jobs:
         env:
           CUSTOM_LD_FLAGS: ${{ steps.version.outputs.ldflags }}
         run: |
+          echo "Installing eBPF build dependencies (clang/llvm/libbpf/linux-headers)..."
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libbpf-dev linux-headers-"$(uname -r)"
+
           echo "Building all NHP daemons..."
           make init
+          # `acd` Makefile target depends on the eBPF object files, so
+          # `make acd` transitively triggers `make ebpf` (clang -> *.o).
+          # Building `ebpf` first also surfaces clang failures with a
+          # clearer error path than burying them inside `acd`.
+          make ebpf
           make serverd acd relayd plugins
 
           echo ""
           echo "Build output:"
           ls -la release/nhp-server/ release/nhp-ac/ release/nhp-relay/ 2>/dev/null || true
+          ls -la release/nhp-ac/etc/*.o 2>/dev/null || true
 
       - name: Package artifacts
         run: |
@@ -144,11 +154,16 @@ jobs:
           cp release/nhp-server/nhp-serverd artifact/server/
           chmod +x artifact/server/nhp-serverd
 
-          # AC (binary + firewall bootstrap script)
+          # AC (binary + eBPF objects). The demo deploys AC in
+          # FilterMode = 1, so nhp-acd needs both *.o files at startup
+          # (see endpoints/ac/ebpf/ebpfegine.go::EbpfEngineLoad).
+          # iptables_default.sh is NOT packaged here — the eBPF path
+          # doesn't use it, and we don't want a stale script on the
+          # host tempting an operator back into iptables mode.
           cp release/nhp-ac/nhp-acd artifact/ac/
           chmod +x artifact/ac/nhp-acd
-          cp release/nhp-ac/iptables_default.sh artifact/ac/
-          chmod +x artifact/ac/iptables_default.sh
+          cp release/nhp-ac/etc/nhp_ebpf_xdp.o artifact/ac/
+          cp release/nhp-ac/etc/tc_egress.o artifact/ac/
 
           # Relay
           cp release/nhp-relay/nhp-relayd artifact/relay/
@@ -858,8 +873,16 @@ jobs:
         run: |
           REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-ac"
 
-          # nhp-acd shells out to iptables/ipset; Amazon Linux 2023 doesn't ship them.
-          ssh nhp-ac "for pkg in iptables ipset; do command -v \$pkg >/dev/null || sudo dnf install -y \$pkg; done"
+          # Demo deploys AC in FilterMode = 1 (eBPF/XDP), so we no
+          # longer need iptables/ipset on the host. Install bpftool so
+          # operators can run `bpftool prog show`/`bpftool map dump`
+          # for live diagnostics instead of reading kernel dmesg.
+          ssh nhp-ac "if ! command -v bpftool >/dev/null; then sudo dnf install -y bpftool kernel-tools || true; fi"
+
+          # Mount bpffs (idempotent — userdata should have already done
+          # this, but be defensive in case the host was provisioned by
+          # an older image).
+          ssh nhp-ac "if ! mountpoint -q /sys/fs/bpf; then sudo mkdir -p /sys/fs/bpf && sudo mount -t bpf bpf /sys/fs/bpf || true; fi"
 
           echo "Stopping nhp-acd..."
           ssh nhp-ac "sudo systemctl stop nhp-acd || true"
@@ -868,14 +891,33 @@ jobs:
             echo "Uploading nhp-acd..."
             scp ./artifact/ac/nhp-acd nhp-ac:$REMOTE_DIR/
             ssh nhp-ac "chmod +x $REMOTE_DIR/nhp-acd"
+
+            # Upload the eBPF objects alongside nhp-acd. They live in
+            # $REMOTE_DIR/etc/ so EbpfEngineLoad's filepath.Join finds
+            # them via the existing etc/ dir on the deploy process.
+            echo "Uploading eBPF objects..."
+            ssh nhp-ac "mkdir -p $REMOTE_DIR/etc"
+            scp ./artifact/ac/nhp_ebpf_xdp.o nhp-ac:$REMOTE_DIR/etc/
+            scp ./artifact/ac/tc_egress.o     nhp-ac:$REMOTE_DIR/etc/
           fi
 
-          echo "Installing firewall bootstrap script..."
-          scp ./artifact/ac/iptables_default.sh nhp-ac:$REMOTE_DIR/
-          ssh nhp-ac "chmod +x $REMOTE_DIR/iptables_default.sh"
+          # Always (re-)upload the eBPF helper scripts even on
+          # config-only deploys so the operator can rerun them
+          # manually if needed.
+          echo "Uploading eBPF helper scripts..."
+          ssh nhp-ac "mkdir -p $REMOTE_DIR/bin"
+          scp ./deploy/scripts/cleanup-ac-iptables.sh nhp-ac:$REMOTE_DIR/bin/
+          scp ./deploy/scripts/check-ac-ebpf-ready.sh nhp-ac:$REMOTE_DIR/bin/
+          ssh nhp-ac "chmod +x $REMOTE_DIR/bin/cleanup-ac-iptables.sh $REMOTE_DIR/bin/check-ac-ebpf-ready.sh"
 
-          echo "Applying default firewall rules..."
-          ssh nhp-ac "sudo bash $REMOTE_DIR/iptables_default.sh -f || true"
+          # Tear down any iptables/ipset state left over from a
+          # previous iptables-mode install. Done BEFORE nhp-acd starts
+          # so XDP DROP and iptables ACCEPT can never coexist.
+          echo "Cleaning up old iptables/ipset state..."
+          ssh nhp-ac "sudo bash $REMOTE_DIR/bin/cleanup-ac-iptables.sh || true"
+
+          echo "Verifying eBPF readiness..."
+          ssh nhp-ac "sudo bash $REMOTE_DIR/bin/check-ac-ebpf-ready.sh"
 
           # Deploy acdemo static page to nginx root. The template ships with
           # the cluster-1 hostnames hard-coded; rewrite the first server card
@@ -899,14 +941,15 @@ jobs:
           # owned by the service user; older userdata created "log" (singular).
           ssh nhp-ac "mkdir -p $REMOTE_DIR/logs && sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} $REMOTE_DIR/logs"
 
-          # nhp-acd runs as ec2-user and shells out to iptables/ipset. On
-          # Amazon Linux 2023 (iptables-nft) it needs CAP_NET_RAW and
-          # CAP_DAC_OVERRIDE in addition to CAP_NET_ADMIN, or `iptables -L` at
-          # startup fails with "exit status 1". userdata only runs at instance
-          # creation, so patch the live unit here for already-running hosts.
+          # nhp-acd in FilterMode = 1 needs CAP_NET_ADMIN (attach XDP/TC) and
+          # CAP_BPF (load BPF progs/maps on kernel >= 5.8). The previous
+          # capability set (CAP_NET_RAW / CAP_DAC_OVERRIDE) was for the
+          # iptables/ipset path and is no longer required. userdata
+          # only runs at instance creation, so patch the live unit
+          # here for already-running hosts.
           ssh nhp-ac "sudo sed -i \
-            -e 's/^AmbientCapabilities=.*/AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE/' \
-            -e 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE/' \
+            -e 's/^AmbientCapabilities=.*/AmbientCapabilities=CAP_NET_ADMIN CAP_BPF/' \
+            -e 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=CAP_NET_ADMIN CAP_BPF/' \
             /etc/systemd/system/nhp-acd.service && sudo systemctl daemon-reload"
 
           echo "Starting nhp-acd..."

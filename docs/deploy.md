@@ -93,19 +93,48 @@ Copy the *nhp-server* directory from the *release* folder to the target machine.
 
 #### 2.4.1 NHP-AC System Requirements
 
-- Linux server with kernel support for **ipset**. Check ipset support with:
+NHP-AC supports two packet-filter backends selected by `FilterMode`
+in `config.toml`:
 
-   ```bash
-   lsmod | grep ip_set
-   ```
+- **`FilterMode = 0` (iptables/ipset)** — the legacy path. Requires:
+  - Linux kernel with `ip_set` support: `lsmod | grep ip_set`
+  - `iptables` and `ipset` binaries on the host (`dnf install iptables ipset` on Amazon Linux 2023)
+
+- **`FilterMode = 1` (eBPF / XDP + TC egress)** — the default for the
+  demo deploy. Requires:
+  - Linux kernel **>= 5.6** (XDP generic mode). **>= 5.8** recommended so the
+    `CAP_BPF` capability is recognized; on 5.6/5.7 hosts grant `CAP_SYS_ADMIN`
+    instead.
+  - `bpftool` on the host for diagnostics (`dnf install bpftool kernel-tools`).
+    nhp-acd itself does not shell out to bpftool, but its absence usually
+    indicates kernel-tools are missing too.
+  - The `bpf` filesystem mounted at `/sys/fs/bpf` (idempotent):
+    `mount -t bpf bpf /sys/fs/bpf`
+  - `CAP_NET_ADMIN` + `CAP_BPF` granted to the `nhp-acd` systemd unit
+    (see the `AmbientCapabilities=` line in the bundled unit).
+
+> **Note:** the eBPF backend (`FilterMode = 1`) is the only mode used
+> by the `deploy-demo-v2` GitHub Actions workflow. If you are
+> self-hosting AC outside the demo pipeline, either mode works.
 
 #### 2.4.2 Running NHP-AC
 
-Copy the *nhp-ac* directory from the *release* folder to the target machine. Configure the `toml` files in the *etc* directory (see next section for detailed parameters). Run `iptables_default.sh` to add firewall rules—at this point, external connections will be blocked. Then run `nhp-acd run`.
+Copy the *nhp-ac* directory from the *release* folder to the target
+machine. Configure the `toml` files in the *etc* directory (see next
+section for detailed parameters), then start `nhp-acd`. What happens
+next depends on `FilterMode`:
 
-**Note:** Both `nhp-acd` and `iptables_default.sh` require **root** privileges.
+- **`FilterMode = 0`:** run `iptables_default.sh` to add firewall
+  rules — at this point, external connections will be blocked. Then
+  start the daemon. **Note:** Both `nhp-acd` and `iptables_default.sh`
+  require **root** privileges.
 
-- Linux:
+- **`FilterMode = 1`:** make sure `/sys/fs/bpf` is mounted (see
+  prerequisites above), then just start the daemon. nhp-acd will
+  pin its XDP/TC programs and maps under `/sys/fs/bpf` and attach
+  XDP generic mode to the default-route egress interface.
+
+- Linux (iptables mode):
 
    ```bash
    su
@@ -113,7 +142,16 @@ Copy the *nhp-ac* directory from the *release* folder to the target machine. Con
    nohup ./nhp-acd run 2>&1 &
    ```
 
-To revert the iptables changes made by `iptables_default.sh`, run:
+- Linux (eBPF mode):
+
+   ```bash
+   mount -t bpf bpf /sys/fs/bpf      # if not already mounted
+   nohup ./nhp-acd run 2>&1 &
+   ```
+
+To revert iptables rules left over from a previous iptables-mode
+install, run `deploy/scripts/cleanup-ac-iptables.sh` (idempotent)
+or, manually:
 
    ```bash
    iptables -F
@@ -235,7 +273,11 @@ For high-availability deployments, consider:
 
 **Post-deployment:**
 - [ ] Verify NHP-Server is listening on UDP 62206
-- [ ] Verify NHP-AC iptables rules are active (`iptables -L`)
+- [ ] Verify NHP-AC access control is active. For `FilterMode = 0`
+      (iptables) check `iptables -L NHP_BLOCK`; for `FilterMode = 1`
+      (eBPF) check `sudo bpftool prog show` (look for
+      `xdp_white_prog`) and `sudo bpftool map show` (look for
+      `spp` / `conn_track` / `events`).
 - [ ] Test knock sequence from NHP-Agent
 - [ ] Verify stealth with nmap from unauthorized host
 - [ ] Check log files for errors

@@ -8,4 +8,9 @@ IpPassMode = 0
 LogLevel = 3
 AuthServiceId = "example"
 ResourceIds = ["demo"]
-FilterMode = 0
+# AC access control mode:
+#   0 = iptables/ipset (legacy)
+#   1 = eBPF / XDP + TC egress (default for demo deploy)
+# The demo pipeline ships this value as 1; the iptables mode is retained
+# as a fallback for non-demo deployments.
+FilterMode = 1

@@ -147,7 +147,7 @@ agentd:
 	cp ./agent/main/etc/*.toml ../release/nhp-agent/etc/ && \
 	cp -rf ./agent/main/etc/certs ../release/nhp-agent/etc/
 
-acd:
+acd: $(EBPF_OBJ_XDP) $(EBPF_OBJ_TC_EGRESS)
 	@echo "$(COLOUR_BLUE)[OpenNHP] Building nhp-ac... $(END_COLOUR)"
 	cd endpoints && \
 	go build -trimpath -ldflags ${LD_FLAGS} -v -o ../release/nhp-ac/nhp-acd ./ac/main/main.go && \

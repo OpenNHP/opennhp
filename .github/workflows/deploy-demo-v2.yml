@@ -127,6 +127,18 @@ jobs:
           echo "       See deploy-demo.yml at commit 6b764b5~1 for the v1 implementation."
           exit 1
 
+      # The demo AC runs in eBPF/XDP mode (FilterMode = 1), so the build has to
+      # compile nhp_ebpf_xdp.o / tc_egress.o with clang. libbpf-dev is required,
+      # not optional: the sources #include <bpf/bpf_helpers.h>,
+      # <bpf/bpf_core_read.h> and <bpf/bpf_endian.h>, which are NOT vendored in
+      # the repo (only vmlinux.h is). Without it clang fails with
+      # "fatal error: bpf/bpf_helpers.h: No such file or directory".
+      - name: Install eBPF build toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libbpf-dev
+          clang --version
+
       - name: Build serverd, acd, relayd, and plugins
         env:
           CUSTOM_LD_FLAGS: ${{ steps.version.outputs.ldflags }}
@@ -135,9 +147,23 @@ jobs:
           make init
           make serverd acd relayd plugins
 
+          # Compile the two eBPF objects the AC loads at startup in FilterMode=1.
+          # `ebpf-objs` (not `ebpf`) so we don't trigger the full
+          # generate-version-and-build rebuild of agentd/db/kgc/SDKs. Must run
+          # from the repo root: CLANG_OPTS carries -I. and vmlinux.h is resolved
+          # relative to the source. Run after `make acd` — acd's
+          # `cp ac/main/etc/*.toml` only touches .toml, so ordering is safe
+          # either way, but this keeps the objects as the freshest artifact.
+          make ebpf-objs
+
+          # nhp-acd refuses to start if either object is missing, so fail the
+          # build here rather than at deploy time on the live host.
+          test -s release/nhp-ac/etc/nhp_ebpf_xdp.o
+          test -s release/nhp-ac/etc/tc_egress.o
+
           echo ""
           echo "Build output:"
-          ls -la release/nhp-server/ release/nhp-ac/ release/nhp-relay/ 2>/dev/null || true
+          ls -la release/nhp-server/ release/nhp-ac/ release/nhp-ac/etc/ release/nhp-relay/ 2>/dev/null || true
 
       - name: Package artifacts
         run: |
@@ -150,8 +176,16 @@ jobs:
           # AC (binary + firewall bootstrap script)
           cp release/nhp-ac/nhp-acd artifact/ac/
           chmod +x artifact/ac/nhp-acd
+          # Kept for the FilterMode=0 rollback path; not applied during a
+          # normal eBPF deploy (see the deploy-ac job).
           cp release/nhp-ac/iptables_default.sh artifact/ac/
           chmod +x artifact/ac/iptables_default.sh
+
+          # eBPF objects loaded by nhp-acd at startup in FilterMode=1. They must
+          # land in etc/ next to the binary on the AC host.
+          mkdir -p artifact/ac/etc
+          cp release/nhp-ac/etc/nhp_ebpf_xdp.o artifact/ac/etc/
+          cp release/nhp-ac/etc/tc_egress.o artifact/ac/etc/
 
           # Relay
           cp release/nhp-relay/nhp-relayd artifact/relay/
@@ -912,7 +946,10 @@ jobs:
         run: |
           REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-ac"
 
-          # nhp-acd shells out to iptables/ipset; Amazon Linux 2023 doesn't ship them.
+          # The AC runs in eBPF/XDP mode (FilterMode = 1), so nhp-acd no longer
+          # shells out to iptables/ipset. The packages are still installed
+          # because the cutover flush below uses them to tear down any netfilter
+          # baseline left by previous iptables-mode deploys.
           ssh nhp-ac "for pkg in iptables ipset; do command -v \$pkg >/dev/null || sudo dnf install -y \$pkg; done"
 
           echo "Stopping nhp-acd..."
@@ -924,12 +961,39 @@ jobs:
             ssh nhp-ac "chmod +x $REMOTE_DIR/nhp-acd"
           fi
 
-          echo "Installing firewall bootstrap script..."
+          # eBPF objects. Uploaded unconditionally (not gated on
+          # DEPLOY_BINARIES): a config-only deploy still needs them present, or
+          # nhp-acd hard-fails at startup with "eBPF object file not found".
+          # The later `scp ./configs/ac/*.toml` only matches .toml, so it cannot
+          # clobber these.
+          echo "Uploading eBPF objects..."
+          ssh nhp-ac "mkdir -p $REMOTE_DIR/etc"
+          scp ./artifact/ac/etc/nhp_ebpf_xdp.o nhp-ac:$REMOTE_DIR/etc/
+          scp ./artifact/ac/etc/tc_egress.o nhp-ac:$REMOTE_DIR/etc/
+
+          # Keep the iptables bootstrap script on the host for the FilterMode=0
+          # rollback path, but do NOT apply it: in eBPF mode nhp-acd never
+          # programs netfilter, so the script's default-DROP baseline would
+          # silently block traffic that XDP is supposed to allow.
+          echo "Installing firewall bootstrap script (rollback only, not applied)..."
           scp ./artifact/ac/iptables_default.sh nhp-ac:$REMOTE_DIR/
           ssh nhp-ac "chmod +x $REMOTE_DIR/iptables_default.sh"
 
-          echo "Applying default firewall rules..."
-          ssh nhp-ac "sudo bash $REMOTE_DIR/iptables_default.sh -f || true"
+          # Cutover: tear down any netfilter/ipset state a previous
+          # iptables-mode deploy left behind. Runs while nhp-acd is stopped.
+          # The sets and the NHP_DENY chain are what iptables_default.sh creates.
+          # ip6tables is flushed too: the script sets `-P INPUT/FORWARD DROP` on
+          # the IPv6 side as well whenever ip6tables is present, and the XDP
+          # program would not undo that.
+          echo "Flushing legacy iptables/ipset state (eBPF cutover)..."
+          ssh nhp-ac 'for cmd in iptables ip6tables; do \
+              command -v "$cmd" >/dev/null || continue; \
+              sudo "$cmd" -P INPUT ACCEPT; sudo "$cmd" -P FORWARD ACCEPT; sudo "$cmd" -P OUTPUT ACCEPT; \
+              sudo "$cmd" -F; sudo "$cmd" -X; \
+            done; \
+            for s in defaultset defaultset_down tempset defaultset_v6 defaultset_down_v6 tempset_v6; do \
+              sudo ipset flush "$s" 2>/dev/null || true; sudo ipset destroy "$s" 2>/dev/null || true; \
+            done; true'
 
           # Deploy acdemo static page to nginx root. The template ships with
           # the cluster-1 hostnames hard-coded; rewrite the first server card
@@ -953,14 +1017,26 @@ jobs:
           # owned by the service user; older userdata created "log" (singular).
           ssh nhp-ac "mkdir -p $REMOTE_DIR/logs && sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} $REMOTE_DIR/logs"
 
-          # nhp-acd runs as ec2-user and shells out to iptables/ipset. On
-          # Amazon Linux 2023 (iptables-nft) it needs CAP_NET_RAW and
-          # CAP_DAC_OVERRIDE in addition to CAP_NET_ADMIN, or `iptables -L` at
-          # startup fails with "exit status 1". userdata only runs at instance
-          # creation, so patch the live unit here for already-running hosts.
+          # nhp-acd runs as ec2-user and in eBPF mode needs the BPF capability
+          # set, not the old iptables one:
+          #   CAP_BPF          load the XDP/TCX programs and create their maps
+          #   CAP_NET_ADMIN    attach XDP (generic mode) and the TCX egress hook
+          #   CAP_PERFMON      open the "events" perf ring buffer. NOTE: the perf
+          #                    reader runs in a goroutine and only logs on error,
+          #                    so a missing CAP_PERFMON does NOT fail startup —
+          #                    it silently kills accept/deny audit logging.
+          #   CAP_DAC_OVERRIDE pin programs/maps under /sys/fs/bpf (systemd mounts
+          #                    it 0700 root:root; CAP_SYS_ADMIN does not bypass
+          #                    DAC file permission checks, so this is required)
+          #   CAP_SYS_ADMIN / CAP_SYS_RESOURCE are carried for the initial
+          #   cutover as a safety margin (BPF/perf superset, RemoveMemlock on
+          #   older kernels). Tighten to the first four once verified.
+          # userdata only runs at instance creation, so patch the live unit here
+          # for already-running hosts; keep it in sync with
+          # terraform/demo/userdata/ac.sh.
           ssh nhp-ac "sudo sed -i \
-            -e 's/^AmbientCapabilities=.*/AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE/' \
-            -e 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE/' \
+            -e 's/^AmbientCapabilities=.*/AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_PERFMON CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_DAC_OVERRIDE/' \
+            -e 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_PERFMON CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_DAC_OVERRIDE/' \
             /etc/systemd/system/nhp-acd.service && sudo systemctl daemon-reload"
 
           echo "Starting nhp-acd..."
@@ -972,7 +1048,26 @@ jobs:
             ssh nhp-ac "sudo journalctl -u nhp-acd -n 30 --no-pager"
             exit 1
           fi
-          echo "nhp-acd deployed successfully"
+
+          # `is-active` alone does not prove the eBPF path came up: a failed
+          # perf-buffer open only logs, and the daemon stays active. Verify the
+          # programs actually pinned, and surface the startup log either way.
+          # Both checks go through sudo: systemd mounts /sys/fs/bpf mode 0700
+          # root:root, so ec2-user cannot even stat inside it (nhp-acd can only
+          # pin there because of CAP_DAC_OVERRIDE).
+          echo "Verifying eBPF/XDP attachment..."
+          if ! ssh nhp-ac "sudo test -e /sys/fs/bpf/xdp_white_prog && sudo test -e /sys/fs/bpf/tc_egress_prog"; then
+            echo "ERROR: eBPF programs are not pinned under /sys/fs/bpf - XDP did not attach."
+            ssh nhp-ac "sudo journalctl -u nhp-acd -n 50 --no-pager"
+            exit 1
+          fi
+          ssh nhp-ac "sudo ls -1 /sys/fs/bpf/ 2>/dev/null || true"
+          # Non-fatal: flags a missing CAP_PERFMON, which would silently disable
+          # the accept/deny audit logs without stopping the daemon.
+          ssh nhp-ac "sudo journalctl -u nhp-acd -n 50 --no-pager | grep -i 'perf\|Default route interface' || \
+            echo 'WARNING: no perf-buffer/interface log line found; check audit logging'"
+
+          echo "nhp-acd deployed successfully (eBPF/XDP mode)"
 
       - name: Cleanup
         if: always()

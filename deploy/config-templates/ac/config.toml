@@ -12,4 +12,12 @@ IpPassMode = 0
 LogLevel = 3
 AuthServiceId = "example"
 ResourceIds = ["demo"]
-FilterMode = 0
+# FilterMode 1 = eBPF/XDP (0 = iptables+ipset). The demo AC enforces its
+# per-knock whitelist with XDP ingress + TC egress instead of iptables. This
+# requires etc/nhp_ebpf_xdp.o and etc/tc_egress.o to be present next to the
+# binary (both are compiled by `make ebpf-objs` and uploaded by the
+# deploy-ac job) — nhp-acd refuses to start if either object is missing.
+# The systemd unit must also grant the BPF capability set; see
+# terraform/demo/userdata/ac.sh. To roll back, set this to 0 and restore the
+# iptables capability set + iptables_default.sh bootstrap.
+FilterMode = 1

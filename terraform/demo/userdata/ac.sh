@@ -29,15 +29,26 @@ ExecStart=/home/ec2-user/nhp-ac/nhp-acd run
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536
-# nhp-acd shells out to iptables/ipset. On Amazon Linux 2023 (iptables-nft
-# backend) the unprivileged user needs more than CAP_NET_ADMIN: CAP_NET_RAW
-# for the raw sockets iptables opens, and CAP_DAC_OVERRIDE so it can take the
-# /run/xtables.lock file lock. Without these, `iptables -L` at startup fails
-# with "exit status 1" and the daemon never starts. Granted as ambient caps so
-# the unprivileged user inherits them across exec; bounded so the process
-# cannot acquire additional capabilities at runtime.
-AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE
+# nhp-acd runs in eBPF/XDP mode (FilterMode = 1 in etc/config.toml), so the
+# unprivileged user needs the BPF capability set rather than the iptables one:
+#   CAP_BPF          load the XDP + TCX programs and create their maps
+#   CAP_NET_ADMIN    attach XDP (generic mode) and the TCX egress hook
+#   CAP_PERFMON      open the "events" perf ring buffer used for the
+#                    accept/deny audit logs. Missing this does NOT stop the
+#                    daemon - the perf reader only logs - it just silently
+#                    disables audit logging.
+#   CAP_DAC_OVERRIDE pin programs/maps under /sys/fs/bpf, which systemd mounts
+#                    0700 root:root. CAP_SYS_ADMIN does not bypass DAC file
+#                    permission checks, so this one is required regardless.
+# CAP_SYS_ADMIN and CAP_SYS_RESOURCE are carried as a safety margin for the
+# initial cutover (BPF/perf superset; RemoveMemlock on older kernels) and can
+# be dropped once the deployment is verified. Granted as ambient caps so the
+# unprivileged user inherits them across exec; bounded so the process cannot
+# acquire additional capabilities at runtime. Keep this in sync with the
+# live-unit sed patch in .github/workflows/deploy-demo-v2.yml (userdata only
+# runs at instance creation).
+AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_PERFMON CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_DAC_OVERRIDE
+CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_PERFMON CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_DAC_OVERRIDE
 NoNewPrivileges=true
 
 [Install]

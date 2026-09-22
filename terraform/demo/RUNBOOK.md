@@ -279,3 +279,65 @@ done
 ```
 
 Verify CI still works by running the `deploy-demo-v2` workflow.
+
+## nhp-ac in eBPF/XDP mode
+
+`deploy/config-templates/ac/config.toml` ships `FilterMode = 1`, so the demo AC
+enforces its per-knock whitelist with XDP ingress + TC egress instead of
+iptables+ipset. Two operational consequences.
+
+### Kernel prerequisite: >= 6.6
+
+`endpoints/ac/ebpf/ebpfegine.go` attaches the egress program with
+`link.AttachTCX`, i.e. the kernel TCX / `bpf_mprog` API added in Linux 6.6, and
+there is no fallback. AL2023 AMIs still boot 6.1 by default, so the `deploy-ac`
+job checks `uname -r` **before** it changes anything on the host and aborts if
+the kernel is older — the previous baseline stays intact. Fresh instances get
+the newer kernel from `terraform/demo/userdata/ac.sh` (it installs
+`kernel6.12` and reboots at the end of first boot). Upgrade a long-lived host
+by hand:
+
+```bash
+ssh nhp-ac   # via the relay jump host
+sudo dnf install -y kernel6.12
+uname -r     # confirm the running kernel afterwards
+sudo reboot
+```
+
+Then re-run `deploy-demo-v2`.
+
+### Fail-closed backstop
+
+The XDP and TCX links are held in the daemon's memory only (package variables
+in `ebpfegine.go`); only the *programs* are pinned under `/sys/fs/bpf`, which
+keeps the objects alive but attaches nothing. Enforcement therefore ends the
+moment nhp-acd exits, and `tcp/443` is open to the world in the AC security
+group. `deploy/scripts/nhp-ac-backstop.sh` covers that gap with a small
+netfilter chain, wired into the unit by the deploy job as
+`/etc/systemd/system/nhp-acd.service.d/10-ebpf-backstop.conf`:
+
+| hook | action |
+| --- | --- |
+| `ExecStartPre` | `up` — close tcp/443 before the daemon starts |
+| `ExecStartPost` | `wait-attach` — lift it only once the XDP program is attached; fail the unit otherwise |
+| `ExecStopPost` | `up` — close it again when the daemon exits (stop, crash, restart backoff) |
+
+So a stopped or crashed nhp-acd means the protected port is *closed*, not open.
+Inspect or drive it by hand on the host:
+
+```bash
+sudo /usr/local/sbin/nhp-ac-backstop.sh status
+sudo /usr/local/sbin/nhp-ac-backstop.sh up     # close now
+sudo /usr/local/sbin/nhp-ac-backstop.sh down   # lift the IPv4 chain
+```
+
+The IPv6 chain installed by `up` is deliberately permanent: the XDP program
+returns `XDP_PASS` for every IPv6 frame, so it does not filter IPv6 at all.
+
+### Rolling back to iptables
+
+Set `FilterMode = 0` in `deploy/config-templates/ac/config.toml` and re-run
+`deploy-demo-v2`. The `deploy-ac` job reads the rendered value and derives
+everything from it: it re-applies `iptables_default.sh -f` as the baseline,
+restores the `CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE` capability set and
+removes the backstop drop-in. No workflow edit and no manual host cleanup.

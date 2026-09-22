@@ -945,12 +945,148 @@ jobs:
       - name: Deploy nhp-acd
         run: |
           REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-ac"
+          BACKSTOP_SCRIPT="/usr/local/sbin/nhp-ac-backstop.sh"
+          DROPIN_DIR="/etc/systemd/system/nhp-acd.service.d"
+          DROPIN="$DROPIN_DIR/10-ebpf-backstop.conf"
+          # tcp/443 is the only world-reachable protected port in the AC
+          # security group (terraform/demo/security-groups.tf).
+          BACKSTOP_PORTS="443"
 
-          # The AC runs in eBPF/XDP mode (FilterMode = 1), so nhp-acd no longer
-          # shells out to iptables/ipset. The packages are still installed
-          # because the cutover flush below uses them to tear down any netfilter
-          # baseline left by previous iptables-mode deploys.
+          # Everything below branches on the *rendered* FilterMode rather than
+          # assuming eBPF, so a rollback is a one-line change in
+          # deploy/config-templates/ac/config.toml (FilterMode = 0) and needs no
+          # workflow edit: the netfilter baseline, the capability set and the
+          # backstop wiring all follow from it.
+          FILTER_MODE=$(sed -n 's/^[[:space:]]*FilterMode[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' ./configs/ac/config.toml | tail -1)
+          if [ -z "$FILTER_MODE" ]; then
+            echo "ERROR: could not read FilterMode from ./configs/ac/config.toml"
+            exit 1
+          fi
+          echo "Rendered FilterMode = $FILTER_MODE (0 = iptables+ipset, 1 = eBPF/XDP)"
+
+          if [ "$FILTER_MODE" = "1" ]; then
+            # Minimal set for the BPF path: load the programs and create their
+            # maps (CAP_BPF), attach XDP + the TCX egress hook (CAP_NET_ADMIN),
+            # open the "events" perf ring buffer (CAP_PERFMON) and pin under
+            # /sys/fs/bpf, which systemd mounts 0700 root:root
+            # (CAP_DAC_OVERRIDE). Deliberately no CAP_SYS_ADMIN: as an ambient
+            # capability on an internet-facing daemon it is root-equivalent and
+            # NoNewPrivileges= does not mitigate it. No CAP_SYS_RESOURCE either:
+            # BPF memory is memcg-accounted since 5.11, so on every AL2023
+            # kernel rlimit.RemoveMemlock() is a no-op (and ebpfegine.go only
+            # logs when it fails).
+            CAPS="CAP_BPF CAP_NET_ADMIN CAP_PERFMON CAP_DAC_OVERRIDE"
+          else
+            # iptables-nft needs CAP_NET_RAW for the raw sockets iptables opens
+            # and CAP_DAC_OVERRIDE to take the /run/xtables.lock file lock, or
+            # `iptables -L` at startup fails with "exit status 1".
+            CAPS="CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE"
+          fi
+
+          # Precondition, checked before anything on the host is touched:
+          # ebpfegine.go attaches the egress program with link.AttachTCX, i.e.
+          # the kernel TCX / bpf_mprog API added in Linux 6.6, and there is no
+          # fallback path. AL2023 AMIs still boot 6.1 by default (6.12 is opt-in
+          # via `dnf install kernel6.12`), where the attach fails,
+          # EbpfEngineLoad returns the error and nhp-acd refuses to start.
+          # Aborting here leaves the old baseline intact instead of failing
+          # halfway through the cutover.
+          if [ "$FILTER_MODE" = "1" ]; then
+            KREL=$(ssh nhp-ac "uname -r")
+            echo "AC kernel: $KREL"
+            case "$KREL" in
+              [0-9]*.[0-9]*) ;;
+              *) echo "ERROR: cannot parse kernel release '$KREL'"; exit 1 ;;
+            esac
+            KMAJ=${KREL%%.*}
+            KMIN=${KREL#*.}
+            KMIN=${KMIN%%.*}
+            if [ "$KMAJ" -lt 6 ] || { [ "$KMAJ" -eq 6 ] && [ "$KMIN" -lt 6 ]; }; then
+              echo "ERROR: kernel $KREL is too old for FilterMode = 1; link.AttachTCX needs >= 6.6."
+              echo "       Upgrade the host:  sudo dnf install -y kernel6.12 && sudo reboot"
+              echo "                          (fresh instances get this from terraform/demo/userdata/ac.sh)"
+              echo "       Or roll back:      FilterMode = 0 in deploy/config-templates/ac/config.toml"
+              exit 1
+            fi
+          fi
+
+          # nhp-acd shells out to iptables/ipset in FilterMode 0. In eBPF mode it
+          # does not, but the packages are still required: the fail-closed
+          # backstop and the legacy-baseline cleanup below both use them.
           ssh nhp-ac "for pkg in iptables ipset; do command -v \$pkg >/dev/null || sudo dnf install -y \$pkg; done"
+
+          if [ "$FILTER_MODE" = "1" ]; then
+            # Fail-closed backstop. The XDP/TCX links live only in the daemon's
+            # memory (ebpfegine.go keeps them in package variables; only the
+            # programs are pinned, which keeps the objects alive but attaches
+            # nothing), so nothing enforces anything while nhp-acd is down -
+            # and tcp/443 is open to the world in the AC security group. The
+            # old iptables mode was fail-closed here: iptables_default.sh left
+            # a default-DROP baseline behind that outlived the process.
+            # deploy/scripts/nhp-ac-backstop.sh restores that property, wired
+            # into the unit so it also covers crashes, the Restart=on-failure
+            # backoff and failed starts:
+            #   ExecStartPre  -> up           closed before the daemon starts
+            #   ExecStartPost -> wait-attach  lifted only once the XDP program
+            #                                 is attached; fails the unit
+            #                                 otherwise (so it stays closed)
+            #   ExecStopPost  -> up           closed again when it exits
+            echo "Installing the fail-closed backstop..."
+            scp repo/deploy/scripts/nhp-ac-backstop.sh nhp-ac:/tmp/nhp-ac-backstop.sh
+            ssh nhp-ac "sudo install -m 0755 -o root -g root /tmp/nhp-ac-backstop.sh $BACKSTOP_SCRIPT && rm -f /tmp/nhp-ac-backstop.sh"
+
+            # The rate limit matters here: a wait-attach failure makes the unit
+            # fail, and with Restart=on-failure each retry takes longer than
+            # the default 10s StartLimitIntervalSec, so it would retry forever.
+            # Three attempts per 10 minutes, then it stays failed - with the
+            # backstop installed, which is the state we want to be noticed in.
+            cat > /tmp/10-ebpf-backstop.conf <<EOF
+          [Unit]
+          StartLimitIntervalSec=600
+          StartLimitBurst=3
+
+          [Service]
+          Environment=NHP_BACKSTOP_PORTS=$BACKSTOP_PORTS
+          ExecStartPre=+$BACKSTOP_SCRIPT up
+          ExecStartPost=+$BACKSTOP_SCRIPT wait-attach
+          ExecStopPost=+$BACKSTOP_SCRIPT up
+          EOF
+            scp /tmp/10-ebpf-backstop.conf nhp-ac:/tmp/10-ebpf-backstop.conf
+            ssh nhp-ac "sudo mkdir -p $DROPIN_DIR && sudo install -m 0644 -o root -g root /tmp/10-ebpf-backstop.conf $DROPIN && rm -f /tmp/10-ebpf-backstop.conf"
+            rm -f /tmp/10-ebpf-backstop.conf
+
+            # Close the protected port before stopping the daemon, so the
+            # cutover window (stop -> clear baseline -> start) is never open.
+            echo "Closing tcp/$BACKSTOP_PORTS for the cutover window..."
+            ssh nhp-ac "sudo $BACKSTOP_SCRIPT up"
+          else
+            # FilterMode 0: nhp-acd programs netfilter itself and
+            # iptables_default.sh supplies the default-deny baseline, so the
+            # backstop would double-block the protected port - and wait-attach
+            # would never see an XDP program, failing every start. Remove the
+            # wiring if a previous eBPF deploy left it behind. `down` keeps the
+            # IPv6 chain on purpose (see the script), so drop that explicitly
+            # too: ip6tables is iptables_default.sh's job again from here.
+            echo "iptables mode: removing any eBPF backstop wiring..."
+            ssh nhp-ac "sudo rm -f $DROPIN; \
+              if [ -x $BACKSTOP_SCRIPT ]; then sudo $BACKSTOP_SCRIPT down || true; fi; \
+              sudo ip6tables -D INPUT -j NHP_BACKSTOP 2>/dev/null || true; \
+              sudo ip6tables -F NHP_BACKSTOP 2>/dev/null || true; \
+              sudo ip6tables -X NHP_BACKSTOP 2>/dev/null || true"
+          fi
+          ssh nhp-ac "sudo systemctl daemon-reload"
+
+          # Restore the fail-closed state on any failure below. systemd's
+          # ExecStopPost already does this whenever the unit itself fails; this
+          # covers the paths where the deploy aborts without the unit changing
+          # state.
+          fail_closed() {
+            if [ "$FILTER_MODE" = "1" ]; then
+              echo "Restoring the fail-closed backstop before aborting..."
+              ssh nhp-ac "sudo $BACKSTOP_SCRIPT up" || \
+                echo "WARNING: could not reinstall the backstop - tcp/$BACKSTOP_PORTS may be open"
+            fi
+          }
 
           echo "Stopping nhp-acd..."
           ssh nhp-ac "sudo systemctl stop nhp-acd || true"
@@ -961,39 +1097,38 @@ jobs:
             ssh nhp-ac "chmod +x $REMOTE_DIR/nhp-acd"
           fi
 
-          # eBPF objects. Uploaded unconditionally (not gated on
-          # DEPLOY_BINARIES): a config-only deploy still needs them present, or
-          # nhp-acd hard-fails at startup with "eBPF object file not found".
-          # The later `scp ./configs/ac/*.toml` only matches .toml, so it cannot
-          # clobber these.
+          # eBPF objects. Uploaded unconditionally - not gated on
+          # DEPLOY_BINARIES, because a config-only deploy that flips FilterMode
+          # to 1 still needs them present or nhp-acd hard-fails at startup with
+          # "eBPF object file not found", and not gated on FILTER_MODE either,
+          # so switching back and forth never needs a binary deploy. Unused in
+          # FilterMode 0. The later `scp ./configs/ac/*.toml` only matches
+          # .toml, so it cannot clobber these.
           echo "Uploading eBPF objects..."
           ssh nhp-ac "mkdir -p $REMOTE_DIR/etc"
           scp ./artifact/ac/etc/nhp_ebpf_xdp.o nhp-ac:$REMOTE_DIR/etc/
           scp ./artifact/ac/etc/tc_egress.o nhp-ac:$REMOTE_DIR/etc/
 
-          # Keep the iptables bootstrap script on the host for the FilterMode=0
-          # rollback path, but do NOT apply it: in eBPF mode nhp-acd never
-          # programs netfilter, so the script's default-DROP baseline would
-          # silently block traffic that XDP is supposed to allow.
-          echo "Installing firewall bootstrap script (rollback only, not applied)..."
+          # The iptables bootstrap script is always shipped: it is the baseline
+          # in FilterMode 0 and the rollback path out of eBPF mode.
+          echo "Installing firewall bootstrap script..."
           scp ./artifact/ac/iptables_default.sh nhp-ac:$REMOTE_DIR/
           ssh nhp-ac "chmod +x $REMOTE_DIR/iptables_default.sh"
 
-          # Cutover: tear down any netfilter/ipset state a previous
-          # iptables-mode deploy left behind. Runs while nhp-acd is stopped.
-          # The sets and the NHP_DENY chain are what iptables_default.sh creates.
-          # ip6tables is flushed too: the script sets `-P INPUT/FORWARD DROP` on
-          # the IPv6 side as well whenever ip6tables is present, and the XDP
-          # program would not undo that.
-          echo "Flushing legacy iptables/ipset state (eBPF cutover)..."
-          ssh nhp-ac 'for cmd in iptables ip6tables; do \
-              command -v "$cmd" >/dev/null || continue; \
-              sudo "$cmd" -P INPUT ACCEPT; sudo "$cmd" -P FORWARD ACCEPT; sudo "$cmd" -P OUTPUT ACCEPT; \
-              sudo "$cmd" -F; sudo "$cmd" -X; \
-            done; \
-            for s in defaultset defaultset_down tempset defaultset_v6 defaultset_down_v6 tempset_v6; do \
-              sudo ipset flush "$s" 2>/dev/null || true; sudo ipset destroy "$s" 2>/dev/null || true; \
-            done; true'
+          if [ "$FILTER_MODE" = "1" ]; then
+            # Cutover: remove the netfilter/ipset baseline a previous
+            # iptables-mode deploy left behind. In eBPF mode nhp-acd never
+            # programs netfilter, so a leftover default-DROP would silently
+            # block traffic XDP is supposed to allow. `flush-legacy` deletes
+            # exactly what iptables_default.sh created - v4 and v6, since it
+            # sets a DROP policy on both - and keeps the backstop chains; a
+            # blanket -F/-X would take the backstop down with them.
+            echo "Clearing the legacy iptables/ipset baseline (eBPF cutover)..."
+            ssh nhp-ac "sudo $BACKSTOP_SCRIPT flush-legacy"
+          else
+            echo "Applying default firewall rules (FilterMode = 0)..."
+            ssh nhp-ac "sudo bash $REMOTE_DIR/iptables_default.sh -f || true"
+          fi
 
           # Deploy acdemo static page to nginx root. The template ships with
           # the cluster-1 hostnames hard-coded; rewrite the first server card
@@ -1017,57 +1152,67 @@ jobs:
           # owned by the service user; older userdata created "log" (singular).
           ssh nhp-ac "mkdir -p $REMOTE_DIR/logs && sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} $REMOTE_DIR/logs"
 
-          # nhp-acd runs as ec2-user and in eBPF mode needs the BPF capability
-          # set, not the old iptables one:
-          #   CAP_BPF          load the XDP/TCX programs and create their maps
-          #   CAP_NET_ADMIN    attach XDP (generic mode) and the TCX egress hook
-          #   CAP_PERFMON      open the "events" perf ring buffer. NOTE: the perf
-          #                    reader runs in a goroutine and only logs on error,
-          #                    so a missing CAP_PERFMON does NOT fail startup —
-          #                    it silently kills accept/deny audit logging.
-          #   CAP_DAC_OVERRIDE pin programs/maps under /sys/fs/bpf (systemd mounts
-          #                    it 0700 root:root; CAP_SYS_ADMIN does not bypass
-          #                    DAC file permission checks, so this is required)
-          #   CAP_SYS_ADMIN / CAP_SYS_RESOURCE are carried for the initial
-          #   cutover as a safety margin (BPF/perf superset, RemoveMemlock on
-          #   older kernels). Tighten to the first four once verified.
+          # Capability set follows the rendered FilterMode (see $CAPS above).
           # userdata only runs at instance creation, so patch the live unit here
-          # for already-running hosts; keep it in sync with
+          # for already-running hosts; keep the eBPF set in sync with
           # terraform/demo/userdata/ac.sh.
+          echo "Setting unit capabilities: $CAPS"
           ssh nhp-ac "sudo sed -i \
-            -e 's/^AmbientCapabilities=.*/AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_PERFMON CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_DAC_OVERRIDE/' \
-            -e 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_PERFMON CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_DAC_OVERRIDE/' \
+            -e 's/^AmbientCapabilities=.*/AmbientCapabilities=$CAPS/' \
+            -e 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=$CAPS/' \
             /etc/systemd/system/nhp-acd.service && sudo systemctl daemon-reload"
 
           echo "Starting nhp-acd..."
-          ssh nhp-ac "sudo systemctl start nhp-acd"
+          # In eBPF mode `systemctl start` also waits for ExecStartPost, i.e.
+          # the backstop's wait-attach: it lifts the backstop once the XDP
+          # program is attached and fails the unit if it never shows up, which
+          # keeps the protected port closed on a bad cutover.
+          if ! ssh nhp-ac "sudo systemctl start nhp-acd"; then
+            echo "ERROR: nhp-acd failed to start"
+            ssh nhp-ac "sudo journalctl -u nhp-acd -n 50 --no-pager"
+            fail_closed
+            exit 1
+          fi
           sleep 2
 
           STATUS=$(ssh nhp-ac "sudo systemctl is-active nhp-acd" || true)
           if [ "$STATUS" != "active" ]; then
             ssh nhp-ac "sudo journalctl -u nhp-acd -n 30 --no-pager"
+            fail_closed
             exit 1
           fi
 
-          # `is-active` alone does not prove the eBPF path came up: a failed
-          # perf-buffer open only logs, and the daemon stays active. Verify the
-          # programs actually pinned, and surface the startup log either way.
-          # Both checks go through sudo: systemd mounts /sys/fs/bpf mode 0700
-          # root:root, so ec2-user cannot even stat inside it (nhp-acd can only
-          # pin there because of CAP_DAC_OVERRIDE).
-          echo "Verifying eBPF/XDP attachment..."
-          if ! ssh nhp-ac "sudo test -e /sys/fs/bpf/xdp_white_prog && sudo test -e /sys/fs/bpf/tc_egress_prog"; then
-            echo "ERROR: eBPF programs are not pinned under /sys/fs/bpf - XDP did not attach."
-            ssh nhp-ac "sudo journalctl -u nhp-acd -n 50 --no-pager"
-            exit 1
-          fi
-          ssh nhp-ac "sudo ls -1 /sys/fs/bpf/ 2>/dev/null || true"
-          # Non-fatal: flags a missing CAP_PERFMON, which would silently disable
-          # the accept/deny audit logs without stopping the daemon.
-          ssh nhp-ac "sudo journalctl -u nhp-acd -n 50 --no-pager | grep -i 'perf\|Default route interface' || \
-            echo 'WARNING: no perf-buffer/interface log line found; check audit logging'"
+          if [ "$FILTER_MODE" = "1" ]; then
+            # `is-active` alone does not prove the eBPF path came up. Verify the
+            # programs actually pinned, and surface the startup log either way.
+            # Both checks go through sudo: systemd mounts /sys/fs/bpf mode 0700
+            # root:root, so ec2-user cannot even stat inside it (nhp-acd can
+            # only pin there because of CAP_DAC_OVERRIDE).
+            echo "Verifying eBPF/XDP attachment..."
+            if ! ssh nhp-ac "sudo test -e /sys/fs/bpf/xdp_white_prog && sudo test -e /sys/fs/bpf/tc_egress_prog"; then
+              echo "ERROR: eBPF programs are not pinned under /sys/fs/bpf - XDP did not attach."
+              ssh nhp-ac "sudo journalctl -u nhp-acd -n 50 --no-pager"
+              fail_closed
+              exit 1
+            fi
+            ssh nhp-ac "sudo ls -1 /sys/fs/bpf/ 2>/dev/null || true"
+            ssh nhp-ac "sudo $BACKSTOP_SCRIPT status || true"
 
-          echo "nhp-acd deployed successfully (eBPF/XDP mode)"
+            # Match the line the perf reader logs *after* a successful open
+            # (ebpfegine.go: "Start listening for eBPF events (PERF BUFFER)").
+            # Grepping for "perf" would also match its failure line, and
+            # "Default route interface" is printed before the reader even
+            # starts, so neither can tell a missing CAP_PERFMON from success.
+            # Non-fatal: the daemon stays active either way, it just loses the
+            # accept/deny audit logs.
+            if ! ssh nhp-ac "sudo journalctl -u nhp-acd -n 200 --no-pager | grep -q 'Start listening for eBPF events'"; then
+              echo "WARNING: the perf buffer never opened - accept/deny audit logging is disabled (check CAP_PERFMON)"
+            fi
+
+            echo "nhp-acd deployed successfully (eBPF/XDP mode)"
+          else
+            echo "nhp-acd deployed successfully (iptables mode)"
+          fi
 
       - name: Cleanup
         if: always()

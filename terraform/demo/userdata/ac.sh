@@ -56,25 +56,32 @@ LimitNOFILE=65536
 #                    accept/deny audit logs. Missing this does NOT stop the
 #                    daemon - the perf reader only logs - it just silently
 #                    disables audit logging, which is why the deploy job greps
-#                    for the "Start listening for eBPF events" line.
-#   CAP_DAC_OVERRIDE pin programs/maps under /sys/fs/bpf, which systemd mounts
-#                    0700 root:root.
-# This is the whole set: no CAP_SYS_ADMIN (as an ambient capability on an
+#                    the daemon's log for "Start listening for eBPF events".
+# This is the whole set. No CAP_SYS_ADMIN: as an ambient capability on an
 # internet-facing daemon it is root-equivalent, and NoNewPrivileges= does not
-# mitigate it) and no CAP_SYS_RESOURCE (BPF memory has been memcg-accounted
-# since 5.11, so rlimit.RemoveMemlock() is a no-op here and ebpfegine.go only
-# logs if it fails). Granted as ambient caps so the unprivileged user inherits
-# them across exec; bounded so the process cannot acquire additional
-# capabilities at runtime. Keep in sync with the live-unit sed patch in
-# .github/workflows/deploy-demo-v2.yml (userdata only runs at instance
-# creation). That job also drops in
+# mitigate it. No CAP_DAC_OVERRIDE either, for the same reason by a shorter
+# path - it bypasses every DAC file permission check, so a compromised nhp-acd
+# could write /etc/cron.d/*, ~root/.ssh/authorized_keys or this unit file.
+# It used to be here so the daemon could pin programs/maps under /sys/fs/bpf,
+# which systemd's sys-fs-bpf.mount leaves 0700 root:root; the backstop drop-in
+# described further down now runs "nhp-ac-backstop.sh bpffs-prep" from a root
+# ExecStartPre instead, which chgrp/chmods that one directory to 0770 ec2-user. And no CAP_SYS_RESOURCE (BPF memory has been
+# memcg-accounted since 5.11, so rlimit.RemoveMemlock() is a no-op here and
+# ebpfegine.go only logs if it fails). Granted as ambient caps so the
+# unprivileged user inherits them across exec; bounded so the process cannot
+# acquire additional capabilities at runtime. Keep in sync with the live-unit
+# sed patch in .github/workflows/deploy-demo-v2.yml (userdata only runs at
+# instance creation). That job also drops in
 # nhp-acd.service.d/10-ebpf-backstop.conf, which adds the ExecStartPre/
 # ExecStartPost/ExecStopPost hooks for deploy/scripts/nhp-ac-backstop.sh - the
 # netfilter default-deny that keeps the protected port closed while nhp-acd is
-# not enforcing (the XDP links die with the process). Those hooks use systemd's
-# "+" prefix, so they run as root and are exempt from the sets below.
-AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_PERFMON CAP_DAC_OVERRIDE
-CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_PERFMON CAP_DAC_OVERRIDE
+# not enforcing (the XDP links die with the process) - plus the /sys/fs/bpf
+# preparation above. Those hooks use systemd's "+" prefix, so they run as root
+# and are exempt from the sets below. Starting this unit in FilterMode = 1
+# *without* that drop-in therefore fails at the pin step: the first deploy-ac
+# run installs both, and the binary is not on the host before it anyway.
+AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_PERFMON
+CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_PERFMON
 NoNewPrivileges=true
 
 [Install]

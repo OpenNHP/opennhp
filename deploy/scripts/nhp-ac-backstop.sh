@@ -49,9 +49,26 @@
 #   down          lift the IPv4 backstop, keep the IPv6 one (idempotent).
 #                 Non-zero if the jump is still there afterwards, i.e. the
 #                 protected ports are still closed.
+#   flush-guard-up   park a DROP for the protected ports in the *raw* table.
+#                 The backstop chain above lives in the filter table, so
+#                 anything that runs `iptables -F` (release/nhp-ac/iptables_default.sh
+#                 opens with exactly that) takes it down together with the
+#                 INPUT jump. The raw table is untouched by a filter-table
+#                 flush, so a DROP parked there keeps the ports shut across
+#                 the seconds iptables_default.sh spends between its flush and
+#                 its closing `iptables -P INPUT DROP`. Verifies and exits
+#                 non-zero if the rule is not in the kernel.
+#   flush-guard-down remove the raw-table guard (idempotent). Non-zero if any
+#                 rule survived: a forgotten raw DROP takes the protected
+#                 ports down for good, which is fail-closed but broken.
 #   wait-attach   wait for the XDP program, then `down`. Non-zero exit on
 #                 timeout, which makes systemd fail the unit with the backstop
 #                 still in place (fail closed, and the deploy notices).
+#   bpffs-prep    make /sys/fs/bpf writable by the service group, so the
+#                 unprivileged daemon can pin without ambient
+#                 CAP_DAC_OVERRIDE. Verifies and exits non-zero otherwise.
+#                 Lives in this script because the unit already runs it as
+#                 root from ExecStartPre; see the block above cmd_bpffs_prep.
 #   flush-legacy  remove the iptables_default.sh baseline (chains, ipset rules,
 #                 IPv4 DROP policies) while preserving the backstop chains and
 #                 the IPv6 default-deny. Re-reads the kernel afterwards and
@@ -65,6 +82,8 @@
 #                         (default: 443 - the only world-reachable protected
 #                         port in the demo AC security group)
 #   NHP_BACKSTOP_TIMEOUT  wait-attach timeout in seconds (default: 30)
+#   NHP_BPFFS_GROUP       group that owns /sys/fs/bpf after bpffs-prep
+#                         (default: ec2-user, the demo service user)
 #
 # Must run as root; the systemd unit lines use the "+" prefix for that.
 
@@ -73,8 +92,10 @@ set -uo pipefail
 CHAIN="NHP_BACKSTOP"
 PORTS="${NHP_BACKSTOP_PORTS:-443}"
 TIMEOUT="${NHP_BACKSTOP_TIMEOUT:-30}"
-PIN_XDP="/sys/fs/bpf/xdp_white_prog"
-PIN_TC="/sys/fs/bpf/tc_egress_prog"
+BPFFS="/sys/fs/bpf"
+BPFFS_GROUP="${NHP_BPFFS_GROUP:-ec2-user}"
+PIN_XDP="$BPFFS/xdp_white_prog"
+PIN_TC="$BPFFS/tc_egress_prog"
 
 # ipsets created by iptables_default.sh (both families).
 LEGACY_SETS="defaultset defaultset_down tempset defaultset_v6 defaultset_down_v6 tempset_v6"
@@ -208,6 +229,73 @@ remove_chain() {
 	! ipt "$cmd" -C INPUT -j "$CHAIN" 2>/dev/null
 }
 
+# --- flush-proof raw-table guard -------------------------------------------
+#
+# Same DROP, different table. install_chain/verify_chain/remove_chain above
+# work in the filter table, which is where iptables_default.sh's opening
+# `iptables -F; iptables -X` hits: it deletes the INPUT jump and the
+# NHP_BACKSTOP chain, and the default-DROP policy only comes back ~170 lines
+# later, after six ipset creates and the whole NHP_DENY/INPUT/FORWARD setup.
+# On an eBPF host mid-rollback that gap is an ACCEPT policy, an empty filter
+# table and no XDP - i.e. tcp/443 open to the internet. These three functions
+# park the DROP in the raw table for the duration; PREROUTING in raw runs
+# before conntrack, so it also covers already-established flows.
+#
+# IPv4 only, on purpose: the filter-table IPv6 chain survives
+# `iptables -F` (that flush is IPv4) and stays up until the caller removes it.
+install_raw_guard() {
+	if ! have iptables; then
+		log "ERROR: iptables not found - cannot park the flush-proof guard (dnf install -y iptables)"
+		return 1
+	fi
+
+	local port
+	for port in $(port_list); do
+		ipt iptables -t raw -C PREROUTING -p tcp --dport "$port" -j DROP 2>/dev/null ||
+			ipt iptables -t raw -I PREROUTING 1 -p tcp --dport "$port" -j DROP || return 1
+	done
+	return 0
+}
+
+verify_raw_guard() {
+	have iptables || return 1
+
+	local port
+	for port in $(port_list); do
+		ipt iptables -t raw -C PREROUTING -p tcp --dport "$port" -j DROP >/dev/null 2>&1 || return 1
+	done
+	return 0
+}
+
+remove_raw_guard() {
+	have iptables || return 0
+
+	local port guard
+	for port in $(port_list); do
+		guard=0
+		while ipt iptables -t raw -C PREROUTING -p tcp --dport "$port" -j DROP 2>/dev/null &&
+			[ "$guard" -lt 20 ]; do
+			ipt iptables -t raw -D PREROUTING -p tcp --dport "$port" -j DROP || return 1
+			guard=$((guard + 1))
+		done
+		# Re-read: a rule still matching here means the port stays dark.
+		if ipt iptables -t raw -C PREROUTING -p tcp --dport "$port" -j DROP 2>/dev/null; then
+			return 1
+		fi
+	done
+	return 0
+}
+
+raw_guard_present() {
+	have iptables || return 1
+
+	local port
+	for port in $(port_list); do
+		ipt iptables -t raw -C PREROUTING -p tcp --dport "$port" -j DROP >/dev/null 2>&1 && return 0
+	done
+	return 1
+}
+
 default_iface() {
 	# Same "default via <gw> dev <iface>" shape that
 	# ebpfegine.go:getDefaultRouteInterface() parses, so both agree on which
@@ -260,6 +348,70 @@ cmd_down() {
 		return 1
 	fi
 	log "IPv4 backstop lifted; XDP is now the only IPv4 ingress filter"
+}
+
+cmd_flush_guard_up() {
+	require_root
+
+	if ! install_raw_guard || ! verify_raw_guard; then
+		log "ERROR: the raw-table guard is not in place - tcp/$(port_list | tr ' ' ',') would be OPEN while the filter table is flushed"
+		return 1
+	fi
+	log "raw-table guard parked: tcp/$(port_list | tr ' ' ',') dropped in raw/PREROUTING (survives 'iptables -F')"
+}
+
+cmd_flush_guard_down() {
+	require_root
+
+	if ! remove_raw_guard; then
+		log "ERROR: could not remove the raw-table guard - tcp/$(port_list | tr ' ' ',') stays dropped before conntrack"
+		return 1
+	fi
+	log "raw-table guard removed"
+}
+
+# ebpfegine.go pins its programs and maps straight into /sys/fs/bpf, which
+# systemd's sys-fs-bpf.mount leaves 0700 root:root, and nhp-acd runs as an
+# unprivileged user. The obvious way in - ambient CAP_DAC_OVERRIDE - is
+# root-equivalent by the same argument that keeps CAP_SYS_ADMIN off the unit:
+# it bypasses every DAC file permission check, so a compromised daemon could
+# write /etc/cron.d/*, ~root/.ssh/authorized_keys or the unit file itself, and
+# NoNewPrivileges= does not mitigate that. Group-owning this one directory is
+# a far narrower grant, so the unit does that from a root ("+") ExecStartPre
+# instead - ordered after `up`, so a failure here leaves the protected ports
+# closed and the daemon simply never starts.
+cmd_bpffs_prep() {
+	require_root
+
+	if ! grep -q " $BPFFS bpf " /proc/self/mounts; then
+		log "ERROR: $BPFFS is not a mounted bpffs - nhp-acd cannot pin (try: systemctl start sys-fs-bpf.mount)"
+		return 1
+	fi
+
+	if ! getent group "$BPFFS_GROUP" >/dev/null 2>&1; then
+		log "ERROR: group $BPFFS_GROUP does not exist (set NHP_BPFFS_GROUP)"
+		return 1
+	fi
+
+	if ! chgrp "$BPFFS_GROUP" "$BPFFS" 2>/dev/null || ! chmod 0770 "$BPFFS" 2>/dev/null; then
+		# bpffs inodes normally accept setattr, but if this kernel refuses
+		# it the mount options do the same job. Both paths are checked
+		# against the kernel below, so a silent failure here is caught.
+		local gid
+		gid=$(getent group "$BPFFS_GROUP" | cut -d: -f3)
+		log "chgrp/chmod on $BPFFS failed; retrying as a remount (gid=$gid)"
+		mount -o "remount,mode=0770,gid=$gid" "$BPFFS" 2>/dev/null || true
+	fi
+
+	local mode group
+	mode=$(stat -c '%a' "$BPFFS" 2>/dev/null)
+	group=$(stat -c '%G' "$BPFFS" 2>/dev/null)
+	if [ -z "$mode" ] || [ "$group" != "$BPFFS_GROUP" ] || [ $((0$mode & 070)) -ne $((070)) ]; then
+		log "ERROR: $BPFFS is ${mode:-?} ${group:-?}, need group $BPFFS_GROUP with rwx - the daemon cannot pin there without CAP_DAC_OVERRIDE"
+		return 1
+	fi
+
+	log "$BPFFS prepared: mode $mode, group $group"
 }
 
 cmd_wait_attach() {
@@ -493,6 +645,15 @@ cmd_status() {
 			echo "$cmd: backstop NOT installed"
 		fi
 	done
+	if [ -d "$BPFFS" ]; then
+		echo "$BPFFS: $(stat -c '%A %U:%G' "$BPFFS" 2>/dev/null || echo unknown) (want group $BPFFS_GROUP with rwx)"
+	fi
+	if raw_guard_present; then
+		echo "raw-table guard: parked (tcp/$(port_list | tr ' ' ',') dropped in raw/PREROUTING)"
+		ipt iptables -t raw -S PREROUTING
+	else
+		echo "raw-table guard: not parked"
+	fi
 }
 
 case "${1:-}" in
@@ -500,9 +661,12 @@ up) cmd_up ;;
 down) cmd_down ;;
 wait-attach) cmd_wait_attach ;;
 flush-legacy) cmd_flush_legacy ;;
+flush-guard-up) cmd_flush_guard_up ;;
+flush-guard-down) cmd_flush_guard_down ;;
+bpffs-prep) cmd_bpffs_prep ;;
 status) cmd_status ;;
 *)
-	echo "usage: $0 {up|down|wait-attach|flush-legacy|status}" >&2
+	echo "usage: $0 {up|down|wait-attach|flush-legacy|flush-guard-up|flush-guard-down|bpffs-prep|status}" >&2
 	exit 2
 	;;
 esac

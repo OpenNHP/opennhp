@@ -952,6 +952,40 @@ jobs:
           # security group (terraform/demo/security-groups.tf).
           BACKSTOP_PORTS="443"
 
+          # nhp-acd does NOT log to journald. endpoints/ac/udpac.go calls
+          # log.NewLogger("NHP-AC", ..., filepath.Join(ExeDirPath, "logs"),
+          # "ac") + log.SetGlobalLogger(), and nhp/log/logger.go only writes to
+          # stdout when both DirPath and Name are empty - here both are set, so
+          # from that line on everything (including everything EbpfEngineLoad
+          # logs) lands in $REMOTE_DIR/logs/ac-<YYYY-MM-DD>.log. journalctl
+          # therefore only ever shows the pre-SetGlobalLogger init line, systemd
+          # messages and Go panics on stderr, which is why every check and dump
+          # below reads the daemon's own log instead.
+          #
+          # The glob is deliberately ac-<digits>, i.e. the dated main log only:
+          # log.NewLogger also creates "ac-evaluate" and "ac-audit" writers, and
+          # ac-evaluate-<date>.log sorts *after* ac-<date>.log, so including
+          # them would make the line offset below point into the wrong file as
+          # soon as the main log grows.
+          AC_LOG_GLOB="$REMOTE_DIR/logs/ac-[0-9]*.log"
+          # Line count of those files immediately before `systemctl start`, so
+          # the checks only see what this start produced: the file is appended
+          # to across restarts, and a "Start listening for eBPF events" left by
+          # the previous run would otherwise make a broken deploy look healthy.
+          # A day rollover only adds a later-sorting file, which lands after the
+          # counted lines, so the offset stays valid.
+          LOG_MARK=0
+
+          # Diagnostics for every abort path: systemd's view (unit state,
+          # panics) plus the daemon log lines this start actually wrote.
+          dump_ac_logs() {
+            echo "--- journalctl -u nhp-acd (systemd + stderr only) ---"
+            ssh nhp-ac "sudo journalctl -u nhp-acd -n 50 --no-pager" || true
+            echo "--- $AC_LOG_GLOB (lines written since this start) ---"
+            ssh nhp-ac "cat $AC_LOG_GLOB 2>/dev/null | tail -n +$((LOG_MARK + 1)) | tail -n 120" || \
+              echo "(no nhp-acd log file yet)"
+          }
+
           # Everything below branches on the *rendered* FilterMode rather than
           # assuming eBPF, so a rollback is a one-line change in
           # deploy/config-templates/ac/config.toml (FilterMode = 0) and needs no
@@ -966,16 +1000,24 @@ jobs:
 
           if [ "$FILTER_MODE" = "1" ]; then
             # Minimal set for the BPF path: load the programs and create their
-            # maps (CAP_BPF), attach XDP + the TCX egress hook (CAP_NET_ADMIN),
-            # open the "events" perf ring buffer (CAP_PERFMON) and pin under
-            # /sys/fs/bpf, which systemd mounts 0700 root:root
-            # (CAP_DAC_OVERRIDE). Deliberately no CAP_SYS_ADMIN: as an ambient
-            # capability on an internet-facing daemon it is root-equivalent and
-            # NoNewPrivileges= does not mitigate it. No CAP_SYS_RESOURCE either:
-            # BPF memory is memcg-accounted since 5.11, so on every AL2023
-            # kernel rlimit.RemoveMemlock() is a no-op (and ebpfegine.go only
-            # logs when it fails).
-            CAPS="CAP_BPF CAP_NET_ADMIN CAP_PERFMON CAP_DAC_OVERRIDE"
+            # maps (CAP_BPF), attach XDP + the TCX egress hook (CAP_NET_ADMIN)
+            # and open the "events" perf ring buffer (CAP_PERFMON).
+            #
+            # Deliberately no CAP_SYS_ADMIN: as an ambient capability on an
+            # internet-facing daemon it is root-equivalent and NoNewPrivileges=
+            # does not mitigate it. Deliberately no CAP_DAC_OVERRIDE either, by
+            # the same argument and a shorter path - it bypasses every DAC file
+            # permission check, so a compromised nhp-acd could write
+            # /etc/cron.d/*, ~root/.ssh/authorized_keys or this unit file. Its
+            # only job here was pinning under /sys/fs/bpf, which systemd mounts
+            # 0700 root:root; the drop-in below relaxes that one directory to
+            # 0770 ${{ env.DEPLOY_USER }} from a root (+) ExecStartPre
+            # (`nhp-ac-backstop.sh bpffs-prep`) instead, which is a far
+            # narrower grant than DAC override everywhere.
+            # No CAP_SYS_RESOURCE either: BPF memory is memcg-accounted since
+            # 5.11, so on every AL2023 kernel rlimit.RemoveMemlock() is a no-op
+            # (and ebpfegine.go only logs when it fails).
+            CAPS="CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
           else
             # iptables-nft needs CAP_NET_RAW for the raw sockets iptables opens
             # and CAP_DAC_OVERRIDE to take the /run/xtables.lock file lock, or
@@ -1037,10 +1079,22 @@ jobs:
             # Wired into the unit so the backstop also covers crashes, the
             # Restart=on-failure backoff and failed starts:
             #   ExecStartPre  -> up           closed before the daemon starts
+            #   ExecStartPre  -> bpffs-prep   /sys/fs/bpf writable by the
+            #                                 service group (see below)
             #   ExecStartPost -> wait-attach  lifted only once the XDP program
             #                                 is attached; fails the unit
             #                                 otherwise (so it stays closed)
             #   ExecStopPost  -> up           closed again when it exits
+            #
+            # bpffs-prep is what replaces CAP_DAC_OVERRIDE: ebpfegine.go pins
+            # programs and maps straight into /sys/fs/bpf, which systemd's
+            # sys-fs-bpf.mount leaves 0700 root:root, so the unprivileged
+            # daemon needs *some* way in. chgrp ${{ env.DEPLOY_USER }} +
+            # chmod 0770 on that single directory is a much smaller grant than
+            # a capability that bypasses file permissions everywhere. It is
+            # ordered after `up`, so if it fails the port is already closed and
+            # the unit simply never starts; it re-reads the mode from the
+            # kernel and exits non-zero if the daemon still could not pin.
             #
             # The rate limit matters here: a wait-attach failure makes the unit
             # fail, and with Restart=on-failure each retry takes longer than
@@ -1054,7 +1108,9 @@ jobs:
 
           [Service]
           Environment=NHP_BACKSTOP_PORTS=$BACKSTOP_PORTS
+          Environment=NHP_BPFFS_GROUP=${{ env.DEPLOY_USER }}
           ExecStartPre=+$BACKSTOP_SCRIPT up
+          ExecStartPre=+$BACKSTOP_SCRIPT bpffs-prep
           ExecStartPost=+$BACKSTOP_SCRIPT wait-attach
           ExecStopPost=+$BACKSTOP_SCRIPT up
           EOF
@@ -1198,6 +1254,23 @@ jobs:
               fail_closed
               exit 1
             fi
+
+            # A FilterMode 0 rollback that aborted mid-flush can have left the
+            # raw-table guard parked (deliberately - it is fail-closed). It
+            # lives in the raw table, so nothing above touches it, and once
+            # wait-attach lifts the filter backstop it would keep tcp/443 dark
+            # behind a "deployed successfully" log line. Clear it now, while
+            # the backstop is still what holds the port shut. A no-op when
+            # nothing is parked.
+            if ! ssh nhp-ac "sudo $BACKSTOP_SCRIPT flush-guard-down"; then
+              echo "ERROR: a raw-table DROP for tcp/$BACKSTOP_PORTS is parked and could not be removed."
+              echo "       Cutting over would hand XDP a port that netfilter drops before"
+              echo "       conntrack. Clear it by hand and re-run:"
+              echo "         sudo $BACKSTOP_SCRIPT flush-guard-down"
+              ssh nhp-ac "sudo $BACKSTOP_SCRIPT status || true"
+              fail_closed
+              exit 1
+            fi
           else
             # Rollback: put the netfilter baseline back. Not best-effort - the
             # backstop installed above is the only thing keeping tcp/443 closed
@@ -1205,6 +1278,32 @@ jobs:
             # iptables_default.sh's `-f` flush takes that backstop with it. A
             # swallowed failure here would leave the port open to the world and
             # still report a successful deploy.
+            #
+            # The flush is not only a problem when the script fails: its first
+            # two commands are `iptables -F; iptables -X` (filter table), which
+            # delete the INPUT jump and the NHP_BACKSTOP chain, and the policy
+            # does not go back to DROP until the very end of the script, after
+            # six ipset creates and the whole NHP_DENY/INPUT/FORWARD setup. For
+            # those seconds the host would sit on an empty filter table with an
+            # ACCEPT policy and no XDP - tcp/443 reachable from 0.0.0.0/0 with
+            # no knock. Pre-setting `-P INPUT DROP` is not an option (the -F
+            # removes the --dport 22 ACCEPT and would cut this SSH session), so
+            # park the DROP in the raw table instead: iptables_default.sh never
+            # touches it, and raw/PREROUTING runs before conntrack so
+            # established flows are covered too.
+            echo "Parking the flush-proof raw-table guard on tcp/$BACKSTOP_PORTS..."
+            if ! ssh nhp-ac "sudo $BACKSTOP_SCRIPT flush-guard-up"; then
+              echo "ERROR: could not park the raw-table guard for tcp/$BACKSTOP_PORTS."
+              echo "       Aborting before the flush: iptables_default.sh would take the"
+              echo "       filter-table backstop down and leave the port open until its"
+              echo "       final 'iptables -P INPUT DROP'. The backstop is still up, so"
+              echo "       the port stays closed - fix netfilter and re-run this deploy."
+              ssh nhp-ac "sudo $BACKSTOP_SCRIPT up" || \
+                echo "WARNING: could not reinstall the backstop - tcp/$BACKSTOP_PORTS may be open"
+              ssh nhp-ac "sudo $BACKSTOP_SCRIPT status || true"
+              exit 1
+            fi
+
             echo "Applying default firewall rules (FilterMode = 0)..."
             if ! ssh nhp-ac "sudo bash $REMOTE_DIR/iptables_default.sh -f"; then
               echo "ERROR: the netfilter baseline failed to install."
@@ -1236,6 +1335,29 @@ jobs:
                 sudo \$f -w 5 -F NHP_BACKSTOP 2>/dev/null || true; \
                 sudo \$f -w 5 -X NHP_BACKSTOP 2>/dev/null || true; \
               done"
+
+            # And the raw-table guard: the default-DROP baseline is verified
+            # back in place, so it has done its job. Fatal if it cannot be
+            # removed - a forgotten raw/PREROUTING DROP keeps tcp/443 dark
+            # before conntrack no matter what the filter table says, which is
+            # exactly the "hard down behind a successful deploy" failure the
+            # rest of this job is built to avoid.
+            if ! ssh nhp-ac "sudo $BACKSTOP_SCRIPT flush-guard-down"; then
+              echo "ERROR: the raw-table guard for tcp/$BACKSTOP_PORTS could not be removed."
+              echo "       The netfilter baseline is back, so this is fail-closed, but the"
+              echo "       port stays unreachable until it is cleared by hand:"
+              echo "         sudo $BACKSTOP_SCRIPT flush-guard-down"
+              ssh nhp-ac "sudo $BACKSTOP_SCRIPT status || true"
+              exit 1
+            fi
+
+            # The drop-in that relaxed /sys/fs/bpf to 0770 is gone and nothing
+            # pins there in iptables mode, so put the mount back the way
+            # systemd mounts it. Best-effort: an empty bpffs directory
+            # group-owned by the service user is not worth failing a rollback
+            # over, and a reboot restores it anyway.
+            ssh nhp-ac "sudo chgrp root /sys/fs/bpf && sudo chmod 0700 /sys/fs/bpf" || \
+              echo "NOTE: could not restore /sys/fs/bpf to 0700 root:root"
           fi
 
           # Deploy acdemo static page to nginx root. The template ships with
@@ -1270,6 +1392,17 @@ jobs:
             -e 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=$CAPS/' \
             /etc/systemd/system/nhp-acd.service && sudo systemctl daemon-reload"
 
+          # Everything the daemon logs from here on is new (see AC_LOG_GLOB).
+          LOG_MARK=$(ssh nhp-ac "cat $AC_LOG_GLOB 2>/dev/null | wc -l" || echo 0)
+          case "$LOG_MARK" in
+            ''|*[!0-9]*)
+              echo "NOTE: could not count the existing nhp-acd log lines ('$LOG_MARK');"
+              echo "      the checks below read the whole file, so a line from an"
+              echo "      earlier run could satisfy them."
+              LOG_MARK=0
+              ;;
+          esac
+
           echo "Starting nhp-acd..."
           # In eBPF mode `systemctl start` also waits for ExecStartPost, i.e.
           # the backstop's wait-attach: it lifts the backstop once the XDP
@@ -1277,7 +1410,7 @@ jobs:
           # keeps the protected port closed on a bad cutover.
           if ! ssh nhp-ac "sudo systemctl start nhp-acd"; then
             echo "ERROR: nhp-acd failed to start"
-            ssh nhp-ac "sudo journalctl -u nhp-acd -n 50 --no-pager"
+            dump_ac_logs
             fail_closed
             exit 1
           fi
@@ -1285,7 +1418,8 @@ jobs:
 
           STATUS=$(ssh nhp-ac "sudo systemctl is-active nhp-acd" || true)
           if [ "$STATUS" != "active" ]; then
-            ssh nhp-ac "sudo journalctl -u nhp-acd -n 30 --no-pager"
+            echo "ERROR: nhp-acd is '$STATUS', not active"
+            dump_ac_logs
             fail_closed
             exit 1
           fi
@@ -1293,13 +1427,14 @@ jobs:
           if [ "$FILTER_MODE" = "1" ]; then
             # `is-active` alone does not prove the eBPF path came up. Verify the
             # programs actually pinned, and surface the startup log either way.
-            # Both checks go through sudo: systemd mounts /sys/fs/bpf mode 0700
-            # root:root, so ec2-user cannot even stat inside it (nhp-acd can
-            # only pin there because of CAP_DAC_OVERRIDE).
+            # Both checks go through sudo: the drop-in's ExecStartPre relaxes
+            # /sys/fs/bpf to 0770 ${{ env.DEPLOY_USER }} (systemd mounts it 0700
+            # root:root) so nhp-acd can pin, but the login shell here is not in
+            # that group session, and root reads it regardless.
             echo "Verifying eBPF/XDP attachment..."
             if ! ssh nhp-ac "sudo test -e /sys/fs/bpf/xdp_white_prog && sudo test -e /sys/fs/bpf/tc_egress_prog"; then
               echo "ERROR: eBPF programs are not pinned under /sys/fs/bpf - XDP did not attach."
-              ssh nhp-ac "sudo journalctl -u nhp-acd -n 50 --no-pager"
+              dump_ac_logs
               fail_closed
               exit 1
             fi
@@ -1311,10 +1446,27 @@ jobs:
             # Grepping for "perf" would also match its failure line, and
             # "Default route interface" is printed before the reader even
             # starts, so neither can tell a missing CAP_PERFMON from success.
-            # Non-fatal: the daemon stays active either way, it just loses the
-            # accept/deny audit logs.
-            if ! ssh nhp-ac "sudo journalctl -u nhp-acd -n 200 --no-pager | grep -q 'Start listening for eBPF events'"; then
+            # Read from the daemon's log file, not journald - see AC_LOG_GLOB:
+            # by the time EbpfEngineLoad runs, log.SetGlobalLogger() has already
+            # redirected everything to $REMOTE_DIR/logs, so this line never
+            # reaches the journal on a perfectly healthy host.
+            #
+            # Retried: the perf reader runs in a goroutine started after the
+            # XDP/TCX attach and the async writer flushes on a 100ms tick
+            # (nhp/log/logger.go), so a single read right after `start` can race
+            # it. Non-fatal: the daemon stays active either way, it just loses
+            # the accept/deny audit logs.
+            PERF_OK=no
+            for attempt in 1 2 3 4 5; do
+              if ssh nhp-ac "cat $AC_LOG_GLOB 2>/dev/null | tail -n +$((LOG_MARK + 1)) | grep -q 'Start listening for eBPF events'"; then
+                PERF_OK=yes
+                break
+              fi
+              sleep 2
+            done
+            if [ "$PERF_OK" != "yes" ]; then
               echo "WARNING: the perf buffer never opened - accept/deny audit logging is disabled (check CAP_PERFMON)"
+              dump_ac_logs
             fi
 
             echo "nhp-acd deployed successfully (eBPF/XDP mode)"

@@ -319,6 +319,7 @@ netfilter chain, wired into the unit by the deploy job as
 | hook | action |
 | --- | --- |
 | `ExecStartPre` | `up` — close tcp/443 before the daemon starts |
+| `ExecStartPre` | `bpffs-prep` — `chgrp ec2-user` + `chmod 0770 /sys/fs/bpf` so the unprivileged daemon can pin (see below) |
 | `ExecStartPost` | `wait-attach` — lift it only once the XDP program is attached; fail the unit otherwise |
 | `ExecStopPost` | `up` — close it again when the daemon exits (stop, crash, restart backoff) |
 
@@ -327,8 +328,10 @@ Inspect or drive it by hand on the host:
 
 ```bash
 sudo /usr/local/sbin/nhp-ac-backstop.sh status
-sudo /usr/local/sbin/nhp-ac-backstop.sh up     # close now
-sudo /usr/local/sbin/nhp-ac-backstop.sh down   # lift the IPv4 chain
+sudo /usr/local/sbin/nhp-ac-backstop.sh up               # close now
+sudo /usr/local/sbin/nhp-ac-backstop.sh down             # lift the IPv4 chain
+sudo /usr/local/sbin/nhp-ac-backstop.sh flush-guard-up   # park the raw-table DROP
+sudo /usr/local/sbin/nhp-ac-backstop.sh flush-guard-down # remove it
 ```
 
 The IPv6 chain installed by `up` is deliberately permanent: the XDP program
@@ -340,6 +343,43 @@ an `ExecStartPre` failure aborts the start instead of letting the daemon come
 up behind a backstop that was never installed. Never read "backstop active"
 from anything but a zero exit status.
 
+### Capabilities: no CAP_DAC_OVERRIDE
+
+In eBPF mode the unit runs with `CAP_BPF CAP_NET_ADMIN CAP_PERFMON` and nothing
+else — no `CAP_SYS_ADMIN` and no `CAP_DAC_OVERRIDE`. Both are root-equivalent
+as *ambient* capabilities on an internet-facing daemon and `NoNewPrivileges=`
+does not mitigate either: `CAP_DAC_OVERRIDE` bypasses every file permission
+check, so a compromised nhp-acd could write `/etc/cron.d/*`,
+`~root/.ssh/authorized_keys` or the unit file itself. Its only job was pinning
+into `/sys/fs/bpf` (systemd mounts it `0700 root:root`), which the drop-in's
+second `ExecStartPre` — `nhp-ac-backstop.sh bpffs-prep` — now handles by
+group-owning that one directory (falling back to a `mount -o remount` if the
+kernel refuses `chgrp`/`chmod` on bpffs, and verifying the result either way).
+If pins stop appearing under `/sys/fs/bpf` after a manual unit edit, check that
+hook first:
+
+```bash
+stat -c '%A %U:%G' /sys/fs/bpf                            # want drwxrwx--- root:ec2-user
+sudo NHP_BPFFS_GROUP=ec2-user /usr/local/sbin/nhp-ac-backstop.sh bpffs-prep
+```
+
+### Where nhp-acd logs
+
+**Not journald.** `endpoints/ac/udpac.go` installs a file logger
+(`log.NewLogger("NHP-AC", ..., <exe dir>/logs, "ac")`) as the global logger
+before anything interesting happens, and `nhp/log/logger.go` only writes to
+stdout when both the directory and the name are empty. So `journalctl -u
+nhp-acd` shows systemd messages, one init line and Go panics — nothing else.
+The real log is on the host:
+
+```bash
+ls -lt /home/ec2-user/nhp-ac/logs/          # ac-<date>.log, plus nhp_accept / nhp_deny
+tail -f /home/ec2-user/nhp-ac/logs/ac-$(date -u +%F).log
+```
+
+The `deploy-ac` job reads that file (not the journal) to confirm the perf ring
+buffer opened, and dumps both it and `journalctl` on every abort.
+
 ### Rolling back to iptables
 
 Set `FilterMode = 0` in `deploy/config-templates/ac/config.toml` and re-run
@@ -348,11 +388,30 @@ everything from it: it re-applies `iptables_default.sh -f` as the baseline,
 restores the `CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE` capability set and
 removes the backstop drop-in. No workflow edit and no manual host cleanup.
 
-The rollback keeps the backstop *chain* up across the whole window even though
-it removes the drop-in: on an eBPF host the IPv4 INPUT policy is `ACCEPT` and
-XDP is the only filter, so `systemctl stop nhp-acd` would otherwise leave
-tcp/443 open to the world until the netfilter baseline returns several steps
-later. `iptables_default.sh -f` removes the IPv4 chain as a side effect of its
-own `iptables -F`/`-X`; the job then checks that the baseline really left
-`INPUT` at policy `DROP`, deletes the IPv6 chain by hand (the `-f` flush is
-IPv4 only), and aborts with the port still closed if any of that fails.
+The rollback keeps tcp/443 closed across the whole window even though it
+removes the drop-in: on an eBPF host the IPv4 INPUT policy is `ACCEPT` and XDP
+is the only filter, so `systemctl stop nhp-acd` would otherwise leave the port
+open to the world until the netfilter baseline returns several steps later.
+
+That takes two rules, because the backstop chain alone does not survive the
+baseline script. `iptables_default.sh -f` opens with `iptables -F; iptables -X`
+— filter table — which deletes the `NHP_BACKSTOP` chain and its INPUT jump, and
+the policy only goes back to `DROP` at the very end of the script, after the
+ipset creates and the whole `NHP_DENY`/INPUT/FORWARD setup. Pre-setting
+`-P INPUT DROP` is not an option: the same `-F` removes the `--dport 22` ACCEPT
+and would cut the deploy's own SSH session. So the job parks a second DROP in
+the **raw** table (`flush-guard-up`) — a table the script never touches, and
+`raw/PREROUTING` runs before conntrack, so established flows are covered too —
+runs the script, checks the baseline really left `INPUT` at policy `DROP`,
+deletes the IPv6 chain by hand (the `-f` flush is IPv4 only) and only then
+removes the raw guard (`flush-guard-down`). Any failure aborts with the port
+still closed.
+
+An aborted rollback can therefore leave a raw/PREROUTING DROP behind on
+purpose. It is invisible to `iptables -S` (filter) and survives `flush-legacy`,
+so the eBPF cutover path clears it before starting the daemon; by hand:
+
+```bash
+sudo /usr/local/sbin/nhp-ac-backstop.sh status            # reports the raw guard too
+sudo /usr/local/sbin/nhp-ac-backstop.sh flush-guard-down
+```

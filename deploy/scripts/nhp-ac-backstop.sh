@@ -26,14 +26,26 @@
 #
 # IPv6 is a special case: the XDP program returns XDP_PASS for every
 # ETH_P_IPV6 frame (nhp/ebpf/xdp/nhp_ebpf_xdp.c), i.e. it does not filter IPv6
-# at all. So the v6 backstop is *permanent* - `up` installs it and `down`
-# deliberately leaves it in place.
+# at all. Nothing takes over v6 filtering after the cutover, so this script
+# treats v6 as "stays closed by default":
+#   * the v6 backstop chain is *permanent* - `up` installs it and `down`
+#     deliberately leaves it in place;
+#   * `flush-legacy` clears the v6 ipset/NHP_DENY rules but keeps the
+#     ip6tables INPUT/FORWARD DROP policy that iptables_default.sh left
+#     behind, after making sure the lo / tcp22 / ESTABLISHED ACCEPTs that
+#     keep SSH working are present.
+# The v6 backstop is best-effort, though: a host booted with ipv6.disable=1
+# has no ip6tables at all, and turning that into a permanent nhp-acd outage
+# (ExecStartPre fails -> the daemon never starts) is a far worse trade than
+# running with IPv4-only enforcement, which is all the demo VPC has anyway.
+# So `up` hard-fails on IPv4 and only warns on IPv6.
 #
 # Commands:
 #   up            install the backstop (idempotent). Verifies the rules are
-#                 really in the kernel afterwards and exits non-zero if not,
-#                 so ExecStartPre aborts the start rather than letting the
-#                 daemon come up behind a backstop that was never installed.
+#                 really in the kernel afterwards and exits non-zero if the
+#                 IPv4 one is not there, so ExecStartPre aborts the start
+#                 rather than letting the daemon come up behind a backstop
+#                 that was never installed. IPv6 failures only warn.
 #   down          lift the IPv4 backstop, keep the IPv6 one (idempotent).
 #                 Non-zero if the jump is still there afterwards, i.e. the
 #                 protected ports are still closed.
@@ -41,7 +53,11 @@
 #                 timeout, which makes systemd fail the unit with the backstop
 #                 still in place (fail closed, and the deploy notices).
 #   flush-legacy  remove the iptables_default.sh baseline (chains, ipset rules,
-#                 DROP policies) while preserving the backstop chains
+#                 IPv4 DROP policies) while preserving the backstop chains and
+#                 the IPv6 default-deny. Re-reads the kernel afterwards and
+#                 exits non-zero if anything survived: the caller lifts the
+#                 backstop right after this, so a half-done flush means
+#                 netfilter silently dropping traffic XDP is passing.
 #   status        print the current state
 #
 # Environment:
@@ -91,6 +107,19 @@ require_root() {
 		log "must run as root"
 		exit 1
 	fi
+}
+
+# True when ip6tables can actually be used. Three separate ways it cannot:
+# the binary is missing, the kernel was booted with ipv6.disable=1 (no
+# /proc/net/if_inet6, and every ip6tables call then fails with "can't
+# initialize ip6tables table filter: Address family not supported by
+# protocol"), or ip6_tables is simply not loadable. The -L probe covers the
+# last two; checking it up front is what lets callers tell "no IPv6 on this
+# host" apart from "the IPv6 backstop failed to install".
+ipv6_usable() {
+	have ip6tables || return 1
+	[ -e /proc/net/if_inet6 ] || return 1
+	ipt ip6tables -n -L INPUT >/dev/null 2>&1
 }
 
 port_list() {
@@ -198,17 +227,25 @@ xdp_attached() {
 cmd_up() {
 	require_root
 
-	local rc=0 cmd
-	for cmd in iptables ip6tables; do
-		if ! install_chain "$cmd" || ! verify_chain "$cmd"; then
-			log "ERROR: the $cmd backstop is not in place - tcp/$(port_list | tr ' ' ',') may be OPEN for this family"
-			rc=1
-		fi
-	done
-
-	if [ "$rc" -ne 0 ]; then
+	# IPv4 is the family the cutover actually hands over to XDP, and the
+	# family the security group exposes to the world, so a missing v4
+	# backstop is fatal: ExecStartPre aborts the start and the port stays
+	# shut behind whatever was enforcing before.
+	if ! install_chain iptables || ! verify_chain iptables; then
+		log "ERROR: the IPv4 backstop is not in place - tcp/$(port_list | tr ' ' ',') may be OPEN"
 		log "ERROR: the fail-closed backstop is NOT in place; do not treat the protected ports as closed"
 		return 1
+	fi
+
+	# IPv6 is best-effort on purpose - see the ipv6_usable comment. Losing
+	# it costs a defense-in-depth layer on a VPC that has no IPv6 at all
+	# (terraform/demo/security-groups.tf is cidr_blocks only); making it
+	# fatal costs the whole access controller.
+	if ! ipv6_usable; then
+		log "IPv6 netfilter is unavailable on this host (no ip6tables, or IPv6 disabled in the kernel); skipping the IPv6 backstop"
+	elif ! install_chain ip6tables || ! verify_chain ip6tables; then
+		log "WARNING: the IPv6 backstop is not in place - tcp/$(port_list | tr ' ' ',') may be reachable over IPv6"
+		log "WARNING: continuing anyway; the IPv4 backstop is up and XDP does not filter IPv6 either way"
 	fi
 
 	log "backstop active: tcp/$(port_list | tr ' ' ',') dropped until XDP is attached (IPv6 permanently)"
@@ -252,50 +289,181 @@ cmd_wait_attach() {
 	return 1
 }
 
+# Delete every LEGACY_RULE_RE rule from one chain of one family. Non-zero on
+# the first failed deletion: a rule we meant to remove but did not is a rule
+# that will drop traffic XDP is passing, so the caller must not keep going as
+# if the chain were clean.
+strip_legacy_rules() {
+	local cmd="$1" chain="$2"
+	local guard=0 idx rule_no
+
+	while [ "$guard" -lt 100 ]; do
+		# `-S <chain>` prints the policy line first, so the Nth printed
+		# line is rule number N-1. Deleting by number avoids re-quoting
+		# rules with --log-prefix "[NHP-...] ".
+		idx=$(ipt "$cmd" -S "$chain" | grep -nE "$LEGACY_RULE_RE" | head -1 | cut -d: -f1)
+		[ -n "$idx" ] || return 0
+		rule_no=$((idx - 1))
+		if [ "$rule_no" -lt 1 ]; then
+			# Only reachable if the policy line itself matched, which
+			# none of these patterns can do. Bail rather than pass 0
+			# to -D.
+			log "ERROR: $cmd $chain policy line matched the legacy rule pattern; refusing to guess"
+			return 1
+		fi
+		if ! ipt "$cmd" -D "$chain" "$rule_no"; then
+			log "ERROR: could not delete $cmd $chain rule $rule_no (legacy baseline)"
+			return 1
+		fi
+		guard=$((guard + 1))
+	done
+
+	log "ERROR: $cmd $chain still has legacy rules after $guard deletions; giving up"
+	return 1
+}
+
+# Re-read the kernel and confirm flush-legacy actually achieved its contract
+# for this family. Same reasoning as verify_chain: "the commands exited 0" is
+# not the guarantee the caller needs.
+verify_flushed() {
+	local cmd="$1" rc=0 chain residual
+
+	for chain in INPUT FORWARD OUTPUT; do
+		residual=$(ipt "$cmd" -S "$chain" | grep -E "$LEGACY_RULE_RE" || true)
+		if [ -n "$residual" ]; then
+			log "ERROR: legacy rules still present in $cmd $chain:"
+			echo "$residual"
+			rc=1
+		fi
+	done
+
+	if ipt "$cmd" -n -L NHP_DENY >/dev/null 2>&1; then
+		log "ERROR: the $cmd NHP_DENY chain still exists"
+		rc=1
+	fi
+
+	return $rc
+}
+
+# The v6 INPUT policy stays at DROP after the flush (XDP passes every IPv6
+# frame, so nothing else would filter v6), which means the ACCEPTs that keep
+# this host administrable have to be there. iptables_default.sh leaves them
+# behind - the strip only removes ipset/NHP_DENY rules - but do not rely on
+# that: locking ourselves out over a rule that was never installed is exactly
+# the failure this whole script exists to avoid.
+# Appended, not inserted: after the strip the only DROP left in v6 INPUT is the
+# backstop jump, which matches the guarded tcp ports only, so position does not
+# matter - and -A keeps that jump in INPUT 1 where install_chain wants it.
+ensure_v6_admin_rules() {
+	local rc=0
+
+	ipt ip6tables -C INPUT -i lo -j ACCEPT >/dev/null 2>&1 ||
+		ipt ip6tables -A INPUT -i lo -j ACCEPT || rc=1
+	ipt ip6tables -C INPUT -p tcp --dport 22 -j ACCEPT >/dev/null 2>&1 ||
+		ipt ip6tables -A INPUT -p tcp --dport 22 -j ACCEPT || rc=1
+	ipt ip6tables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT >/dev/null 2>&1 ||
+		ipt ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT || rc=1
+
+	return $rc
+}
+
 # Remove the iptables_default.sh baseline without touching the backstop.
 # A blanket -F/-X would take the backstop chain with it and reopen the
 # protected port for the rest of the deploy.
+#
+# Non-zero exit means the host is NOT ready for the cutover. The caller lifts
+# the IPv4 backstop immediately after this (wait-attach, once XDP attaches), so
+# a residual `-A INPUT -j NHP_DENY` or a leftover `-P INPUT DROP` would then
+# drop exactly the traffic XDP is busy passing - tcp/443 hard down, with the
+# deploy reporting success.
 cmd_flush_legacy() {
 	require_root
 
-	local cmd chain guard idx rule_no
-	for cmd in iptables ip6tables; do
-		have "$cmd" || continue
+	local rc=0 chain
 
-		ipt "$cmd" -P INPUT ACCEPT
-		ipt "$cmd" -P FORWARD ACCEPT
-		ipt "$cmd" -P OUTPUT ACCEPT
-
-		for chain in INPUT FORWARD OUTPUT; do
-			guard=0
-			while [ "$guard" -lt 100 ]; do
-				# `-S <chain>` prints the policy line first, so the Nth
-				# printed rule is rule number N-1. Deleting by number
-				# avoids re-quoting rules with --log-prefix "[NHP-...] ".
-				idx=$(ipt "$cmd" -S "$chain" | grep -nE "$LEGACY_RULE_RE" | head -1 | cut -d: -f1)
-				[ -n "$idx" ] || break
-				rule_no=$((idx - 1))
-				[ "$rule_no" -ge 1 ] || break
-				ipt "$cmd" -D "$chain" "$rule_no" || break
-				guard=$((guard + 1))
-			done
-		done
-
-		if ipt "$cmd" -n -L NHP_DENY >/dev/null 2>&1; then
-			ipt "$cmd" -F NHP_DENY
-			ipt "$cmd" -X NHP_DENY
-		fi
+	# IPv4: XDP takes over, so netfilter has to get out of the way
+	# completely - ACCEPT policies and no legacy rules.
+	for chain in INPUT FORWARD OUTPUT; do
+		strip_legacy_rules iptables "$chain" || rc=1
 	done
+	if ipt iptables -n -L NHP_DENY >/dev/null 2>&1; then
+		ipt iptables -F NHP_DENY || rc=1
+		ipt iptables -X NHP_DENY || rc=1
+	fi
+	# Policies last, and only if the rules really went: an ACCEPT policy in
+	# front of rules we failed to remove is the worst of both worlds, while
+	# a surviving DROP policy at least stays fail-closed for the abort the
+	# non-zero return below triggers.
+	if [ "$rc" -eq 0 ]; then
+		ipt iptables -P INPUT ACCEPT || rc=1
+		ipt iptables -P FORWARD ACCEPT || rc=1
+		ipt iptables -P OUTPUT ACCEPT || rc=1
+	fi
+
+	# IPv6: same rule cleanup, but the DROP policy deliberately stays. XDP
+	# does not look at IPv6 at all (nhp_ebpf_xdp.c XDP_PASSes every
+	# ETH_P_IPV6 frame) and the permanent v6 backstop only covers the
+	# guarded tcp ports, so dropping the policy here would leave sshd and
+	# the NHP UDP listener on :: with no ingress filtering whatsoever.
+	# OUTPUT is set ACCEPT because iptables_default.sh sets it ACCEPT too.
+	if ! ipv6_usable; then
+		log "IPv6 netfilter is unavailable on this host; nothing to flush for IPv6"
+	else
+		ipt ip6tables -P OUTPUT ACCEPT || rc=1
+		for chain in INPUT FORWARD OUTPUT; do
+			strip_legacy_rules ip6tables "$chain" || rc=1
+		done
+		if ipt ip6tables -n -L NHP_DENY >/dev/null 2>&1; then
+			ipt ip6tables -F NHP_DENY || rc=1
+			ipt ip6tables -X NHP_DENY || rc=1
+		fi
+		if [ "$(ipt ip6tables -S INPUT | head -1)" = "-P INPUT DROP" ]; then
+			ensure_v6_admin_rules || rc=1
+		fi
+	fi
 
 	if command -v ipset >/dev/null 2>&1; then
 		local set_name
 		for set_name in $LEGACY_SETS; do
+			ipset list "$set_name" >/dev/null 2>&1 || continue
 			ipset flush "$set_name" 2>/dev/null || true
-			ipset destroy "$set_name" 2>/dev/null || true
+			# Best-effort: a set that survives is harmless once nothing
+			# references it, and a set that survives *because* something
+			# still references it is caught by verify_flushed below.
+			if ! ipset destroy "$set_name" 2>/dev/null; then
+				log "WARNING: could not destroy ipset $set_name (still referenced?)"
+			fi
 		done
 	fi
 
-	log "legacy iptables/ipset baseline removed (backstop preserved)"
+	# Nothing above is trusted on its own: re-read the kernel.
+	verify_flushed iptables || rc=1
+	if [ "$(ipt iptables -S INPUT | head -1)" != "-P INPUT ACCEPT" ]; then
+		log "ERROR: the IPv4 INPUT policy is still $(ipt iptables -S INPUT | head -1) - XDP-passed traffic would be dropped by it"
+		rc=1
+	fi
+	if [ "$(ipt iptables -S FORWARD | head -1)" != "-P FORWARD ACCEPT" ]; then
+		log "ERROR: the IPv4 FORWARD policy is still $(ipt iptables -S FORWARD | head -1)"
+		rc=1
+	fi
+	if ipv6_usable; then
+		verify_flushed ip6tables || rc=1
+	fi
+
+	# The flush just set the IPv4 INPUT policy to ACCEPT, so the backstop
+	# chain is now the only thing keeping the guarded ports shut until XDP
+	# attaches. If the strip took it with it, say so loudly.
+	if ! verify_chain iptables; then
+		log "ERROR: the IPv4 backstop did not survive the flush - tcp/$(port_list | tr ' ' ',') is OPEN with an ACCEPT policy"
+		rc=1
+	fi
+
+	if [ "$rc" -ne 0 ]; then
+		log "ERROR: the legacy baseline was NOT fully removed; do not cut over to eBPF mode on this host"
+		return 1
+	fi
+
+	log "legacy iptables/ipset baseline removed (backstop preserved, IPv6 default-deny kept)"
 }
 
 cmd_status() {
@@ -309,10 +477,15 @@ cmd_status() {
 	fi
 	local cmd
 	for cmd in iptables ip6tables; do
+		if [ "$cmd" = ip6tables ] && ! ipv6_usable; then
+			echo "ip6tables: unusable (missing, or IPv6 disabled in the kernel) - no IPv6 backstop"
+			continue
+		fi
 		if ! have "$cmd"; then
 			echo "$cmd: not installed (no backstop possible for this family)"
 			continue
 		fi
+		echo "$cmd INPUT policy: $(ipt "$cmd" -S INPUT | head -1)"
 		if verify_chain "$cmd"; then
 			echo "$cmd: backstop active"
 			ipt "$cmd" -n -L "$CHAIN"

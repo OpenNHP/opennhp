@@ -1160,11 +1160,44 @@ jobs:
             # iptables-mode deploy left behind. In eBPF mode nhp-acd never
             # programs netfilter, so a leftover default-DROP would silently
             # block traffic XDP is supposed to allow. `flush-legacy` deletes
-            # exactly what iptables_default.sh created - v4 and v6, since it
-            # sets a DROP policy on both - and keeps the backstop chains; a
-            # blanket -F/-X would take the backstop down with them.
+            # exactly what iptables_default.sh created (both families' ipset
+            # and NHP_DENY rules, and the IPv4 DROP policies) while keeping
+            # the backstop chains - a blanket -F/-X would take those down with
+            # them - and keeping the IPv6 DROP policy, because XDP passes
+            # every IPv6 frame and nothing else would filter v6.
+            #
+            # Not best-effort. The script re-reads the kernel and exits
+            # non-zero if anything survived; a swallowed failure here means
+            # wait-attach lifts the IPv4 backstop, XDP starts passing
+            # whitelisted traffic, and netfilter drops it on the residual
+            # NHP_DENY jump or DROP policy - tcp/443 hard down behind a
+            # "deployed successfully" log line.
             echo "Clearing the legacy iptables/ipset baseline (eBPF cutover)..."
-            ssh nhp-ac "sudo $BACKSTOP_SCRIPT flush-legacy"
+            if ! ssh nhp-ac "sudo $BACKSTOP_SCRIPT flush-legacy"; then
+              echo "ERROR: the legacy netfilter baseline was not fully removed."
+              echo "       Aborting the cutover: with it still in place XDP would"
+              echo "       pass traffic that netfilter then drops."
+              ssh nhp-ac "sudo $BACKSTOP_SCRIPT status || true"
+              fail_closed
+              exit 1
+            fi
+
+            # Independent of the script's own verification, on the same
+            # principle as the FilterMode 0 branch below: confirm the two
+            # things that make the host safe to hand to XDP - an ACCEPT IPv4
+            # INPUT policy, and no legacy rules left to drop passed traffic.
+            INPUT_POLICY=$(ssh nhp-ac "sudo iptables -w 5 -S INPUT | head -1")
+            RESIDUAL=$(ssh nhp-ac "sudo iptables -w 5 -S INPUT; sudo iptables -w 5 -S FORWARD" | grep -E 'match-set|NHP_DENY' || true)
+            if [ "$INPUT_POLICY" != "-P INPUT ACCEPT" ] || [ -n "$RESIDUAL" ]; then
+              echo "ERROR: the host is not ready for the eBPF cutover."
+              echo "       IPv4 INPUT policy: '${INPUT_POLICY:-<empty>}' (want '-P INPUT ACCEPT')"
+              if [ -n "$RESIDUAL" ]; then
+                printf '       residual legacy rules:\n%s\n' "$RESIDUAL"
+              fi
+              ssh nhp-ac "sudo $BACKSTOP_SCRIPT status || true"
+              fail_closed
+              exit 1
+            fi
           else
             # Rollback: put the netfilter baseline back. Not best-effort - the
             # backstop installed above is the only thing keeping tcp/443 closed

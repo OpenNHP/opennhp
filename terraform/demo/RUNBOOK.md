@@ -334,6 +334,12 @@ sudo /usr/local/sbin/nhp-ac-backstop.sh down   # lift the IPv4 chain
 The IPv6 chain installed by `up` is deliberately permanent: the XDP program
 returns `XDP_PASS` for every IPv6 frame, so it does not filter IPv6 at all.
 
+`up` re-reads the rules afterwards and exits non-zero if they are not actually
+in the kernel (missing `iptables` binary, a lost `/run/xtables.lock` race), so
+an `ExecStartPre` failure aborts the start instead of letting the daemon come
+up behind a backstop that was never installed. Never read "backstop active"
+from anything but a zero exit status.
+
 ### Rolling back to iptables
 
 Set `FilterMode = 0` in `deploy/config-templates/ac/config.toml` and re-run
@@ -341,3 +347,12 @@ Set `FilterMode = 0` in `deploy/config-templates/ac/config.toml` and re-run
 everything from it: it re-applies `iptables_default.sh -f` as the baseline,
 restores the `CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE` capability set and
 removes the backstop drop-in. No workflow edit and no manual host cleanup.
+
+The rollback keeps the backstop *chain* up across the whole window even though
+it removes the drop-in: on an eBPF host the IPv4 INPUT policy is `ACCEPT` and
+XDP is the only filter, so `systemctl stop nhp-acd` would otherwise leave
+tcp/443 open to the world until the netfilter baseline returns several steps
+later. `iptables_default.sh -f` removes the IPv4 chain as a side effect of its
+own `iptables -F`/`-X`; the job then checks that the baseline really left
+`INPUT` at policy `DROP`, deletes the IPv6 chain by hand (the `-f` flush is
+IPv4 only), and aborts with the port still closed if any of that fails.

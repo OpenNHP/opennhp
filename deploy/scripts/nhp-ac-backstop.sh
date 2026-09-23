@@ -30,8 +30,13 @@
 # deliberately leaves it in place.
 #
 # Commands:
-#   up            install the backstop (idempotent)
-#   down          lift the IPv4 backstop, keep the IPv6 one (idempotent)
+#   up            install the backstop (idempotent). Verifies the rules are
+#                 really in the kernel afterwards and exits non-zero if not,
+#                 so ExecStartPre aborts the start rather than letting the
+#                 daemon come up behind a backstop that was never installed.
+#   down          lift the IPv4 backstop, keep the IPv6 one (idempotent).
+#                 Non-zero if the jump is still there afterwards, i.e. the
+#                 protected ports are still closed.
 #   wait-attach   wait for the XDP program, then `down`. Non-zero exit on
 #                 timeout, which makes systemd fail the unit with the backstop
 #                 still in place (fail closed, and the deploy notices).
@@ -65,6 +70,22 @@ log() {
 	echo "[nhp-ac-backstop] $*"
 }
 
+have() {
+	command -v "$1" >/dev/null 2>&1
+}
+
+# Every netfilter call goes through here, for the -w: without it a concurrent
+# iptables user makes the call fail on /run/xtables.lock instead of waiting.
+# That collision is not hypothetical - nhp-acd shells out to iptables itself in
+# FilterMode 0 (nhp/utils/iptables.go, also without -w) and the deploy runs
+# `up` while that daemon is still running - and a failed -N/-A/-I here means
+# the protected port is open.
+ipt() {
+	local cmd="$1"
+	shift
+	"$cmd" -w 5 "$@"
+}
+
 require_root() {
 	if [ "$(id -u)" -ne 0 ]; then
 		log "must run as root"
@@ -79,45 +100,83 @@ port_list() {
 # Install the DROP chain and put its jump first in INPUT. It has to be first:
 # an ACCEPT rule left over from an earlier iptables-mode baseline would
 # otherwise short-circuit it.
+#
+# Returns non-zero on any failure. The caller must not report success without
+# also calling verify_chain: the whole point of this script is a guarantee
+# about the kernel state, and "the commands exited 0" is not that guarantee.
 install_chain() {
 	local cmd="$1"
 
-	command -v "$cmd" >/dev/null 2>&1 || return 0
+	if ! have "$cmd"; then
+		# Not a no-op to be shrugged off: with no binary for this family
+		# there is no backstop for it either. ExecStartPre at boot has no
+		# equivalent of the deploy's `dnf install iptables`.
+		log "ERROR: $cmd not found - cannot install the backstop for this family (dnf install -y iptables)"
+		return 1
+	fi
 
-	"$cmd" -n -L "$CHAIN" >/dev/null 2>&1 || "$cmd" -N "$CHAIN"
+	ipt "$cmd" -n -L "$CHAIN" >/dev/null 2>&1 || ipt "$cmd" -N "$CHAIN" || return 1
 	local port
 	for port in $(port_list); do
-		"$cmd" -C "$CHAIN" -p tcp --dport "$port" -j DROP 2>/dev/null ||
-			"$cmd" -A "$CHAIN" -p tcp --dport "$port" -j DROP
+		ipt "$cmd" -C "$CHAIN" -p tcp --dport "$port" -j DROP 2>/dev/null ||
+			ipt "$cmd" -A "$CHAIN" -p tcp --dport "$port" -j DROP || return 1
 	done
 
-	if [ "$("$cmd" -S INPUT | sed -n '2p')" != "-A INPUT -j $CHAIN" ]; then
-		"$cmd" -I INPUT 1 -j "$CHAIN"
+	if [ "$(ipt "$cmd" -S INPUT | sed -n '2p')" != "-A INPUT -j $CHAIN" ]; then
+		ipt "$cmd" -I INPUT 1 -j "$CHAIN" || return 1
 	fi
 	# Drop duplicate jumps a previous run may have left further down the chain.
 	local guard=0 idx
-	while [ "$("$cmd" -S INPUT | grep -c -- "-j $CHAIN")" -gt 1 ] && [ "$guard" -lt 20 ]; do
-		idx=$("$cmd" -L INPUT --line-numbers -n | awk -v c="$CHAIN" '$2 == c { print $1 }' | tail -1)
+	while [ "$(ipt "$cmd" -S INPUT | grep -c -- "-j $CHAIN")" -gt 1 ] && [ "$guard" -lt 20 ]; do
+		idx=$(ipt "$cmd" -L INPUT --line-numbers -n | awk -v c="$CHAIN" '$2 == c { print $1 }' | tail -1)
 		[ -n "$idx" ] || break
-		"$cmd" -D INPUT "$idx"
+		ipt "$cmd" -D INPUT "$idx" || break
 		guard=$((guard + 1))
 	done
+	return 0
+}
+
+# Re-read the rules install_chain claims to have made. Cheap, and it is the
+# only thing that actually establishes the fail-closed property for callers
+# (ExecStartPre, ExecStopPost, the deploy's fail_closed()).
+verify_chain() {
+	local cmd="$1"
+
+	have "$cmd" || return 1
+
+	ipt "$cmd" -C INPUT -j "$CHAIN" >/dev/null 2>&1 || return 1
+	local port
+	for port in $(port_list); do
+		ipt "$cmd" -C "$CHAIN" -p tcp --dport "$port" -j DROP >/dev/null 2>&1 || return 1
+	done
+
+	# Position is a warning, not a failure: install_chain puts the jump at
+	# INPUT 1, but both iptables_default.sh and nhp-acd insert their own
+	# rules there (`-I INPUT ...`), so losing the first slot to them is
+	# normal and only matters if what got in front ACCEPTs a guarded port.
+	if [ "$(ipt "$cmd" -S INPUT | sed -n '2p')" != "-A INPUT -j $CHAIN" ]; then
+		log "WARNING: the $cmd jump to $CHAIN is not the first INPUT rule; an earlier ACCEPT could bypass it"
+	fi
+	return 0
 }
 
 remove_chain() {
 	local cmd="$1"
 
-	command -v "$cmd" >/dev/null 2>&1 || return 0
+	have "$cmd" || return 0
 
 	local guard=0
-	while "$cmd" -C INPUT -j "$CHAIN" 2>/dev/null && [ "$guard" -lt 20 ]; do
-		"$cmd" -D INPUT -j "$CHAIN"
+	while ipt "$cmd" -C INPUT -j "$CHAIN" 2>/dev/null && [ "$guard" -lt 20 ]; do
+		ipt "$cmd" -D INPUT -j "$CHAIN" || return 1
 		guard=$((guard + 1))
 	done
-	if "$cmd" -n -L "$CHAIN" >/dev/null 2>&1; then
-		"$cmd" -F "$CHAIN"
-		"$cmd" -X "$CHAIN"
+	if ipt "$cmd" -n -L "$CHAIN" >/dev/null 2>&1; then
+		ipt "$cmd" -F "$CHAIN" || return 1
+		ipt "$cmd" -X "$CHAIN" || return 1
 	fi
+	# The jump is what enforces the DROP, so that is what `down` has to have
+	# got rid of; a leftover empty chain would be harmless but is a bug.
+	! ipt "$cmd" -C INPUT -j "$CHAIN" 2>/dev/null
 }
 
 default_iface() {
@@ -138,8 +197,20 @@ xdp_attached() {
 
 cmd_up() {
 	require_root
-	install_chain iptables
-	install_chain ip6tables
+
+	local rc=0 cmd
+	for cmd in iptables ip6tables; do
+		if ! install_chain "$cmd" || ! verify_chain "$cmd"; then
+			log "ERROR: the $cmd backstop is not in place - tcp/$(port_list | tr ' ' ',') may be OPEN for this family"
+			rc=1
+		fi
+	done
+
+	if [ "$rc" -ne 0 ]; then
+		log "ERROR: the fail-closed backstop is NOT in place; do not treat the protected ports as closed"
+		return 1
+	fi
+
 	log "backstop active: tcp/$(port_list | tr ' ' ',') dropped until XDP is attached (IPv6 permanently)"
 }
 
@@ -147,7 +218,10 @@ cmd_down() {
 	require_root
 	# IPv4 only: the XDP program takes over ingress filtering for v4, but it
 	# passes all IPv6, so the v6 chain stays.
-	remove_chain iptables
+	if ! remove_chain iptables; then
+		log "ERROR: could not lift the IPv4 backstop - tcp/$(port_list | tr ' ' ',') stays closed"
+		return 1
+	fi
 	log "IPv4 backstop lifted; XDP is now the only IPv4 ingress filter"
 }
 
@@ -165,7 +239,9 @@ cmd_wait_attach() {
 	while [ "$(date +%s)" -lt "$deadline" ]; do
 		if xdp_attached "$iface"; then
 			log "XDP program attached on $iface"
-			cmd_down
+			# A failed `down` leaves the port closed with XDP up, which
+			# is safe but broken; fail the unit so the deploy sees it.
+			cmd_down || return 1
 			return 0
 		fi
 		sleep 1
@@ -184,11 +260,11 @@ cmd_flush_legacy() {
 
 	local cmd chain guard idx rule_no
 	for cmd in iptables ip6tables; do
-		command -v "$cmd" >/dev/null 2>&1 || continue
+		have "$cmd" || continue
 
-		"$cmd" -P INPUT ACCEPT
-		"$cmd" -P FORWARD ACCEPT
-		"$cmd" -P OUTPUT ACCEPT
+		ipt "$cmd" -P INPUT ACCEPT
+		ipt "$cmd" -P FORWARD ACCEPT
+		ipt "$cmd" -P OUTPUT ACCEPT
 
 		for chain in INPUT FORWARD OUTPUT; do
 			guard=0
@@ -196,18 +272,18 @@ cmd_flush_legacy() {
 				# `-S <chain>` prints the policy line first, so the Nth
 				# printed rule is rule number N-1. Deleting by number
 				# avoids re-quoting rules with --log-prefix "[NHP-...] ".
-				idx=$("$cmd" -S "$chain" | grep -nE "$LEGACY_RULE_RE" | head -1 | cut -d: -f1)
+				idx=$(ipt "$cmd" -S "$chain" | grep -nE "$LEGACY_RULE_RE" | head -1 | cut -d: -f1)
 				[ -n "$idx" ] || break
 				rule_no=$((idx - 1))
 				[ "$rule_no" -ge 1 ] || break
-				"$cmd" -D "$chain" "$rule_no" || break
+				ipt "$cmd" -D "$chain" "$rule_no" || break
 				guard=$((guard + 1))
 			done
 		done
 
-		if "$cmd" -n -L NHP_DENY >/dev/null 2>&1; then
-			"$cmd" -F NHP_DENY
-			"$cmd" -X NHP_DENY
+		if ipt "$cmd" -n -L NHP_DENY >/dev/null 2>&1; then
+			ipt "$cmd" -F NHP_DENY
+			ipt "$cmd" -X NHP_DENY
 		fi
 	done
 
@@ -233,12 +309,15 @@ cmd_status() {
 	fi
 	local cmd
 	for cmd in iptables ip6tables; do
-		command -v "$cmd" >/dev/null 2>&1 || continue
-		if "$cmd" -C INPUT -j "$CHAIN" 2>/dev/null; then
+		if ! have "$cmd"; then
+			echo "$cmd: not installed (no backstop possible for this family)"
+			continue
+		fi
+		if verify_chain "$cmd"; then
 			echo "$cmd: backstop active"
-			"$cmd" -n -L "$CHAIN"
+			ipt "$cmd" -n -L "$CHAIN"
 		else
-			echo "$cmd: backstop not installed"
+			echo "$cmd: backstop NOT installed"
 		fi
 	done
 }

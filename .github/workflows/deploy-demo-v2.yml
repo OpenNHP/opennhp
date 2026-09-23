@@ -1015,26 +1015,33 @@ jobs:
           # backstop and the legacy-baseline cleanup below both use them.
           ssh nhp-ac "for pkg in iptables ipset; do command -v \$pkg >/dev/null || sudo dnf install -y \$pkg; done"
 
+          # Fail-closed backstop. The XDP/TCX links live only in the daemon's
+          # memory (ebpfegine.go keeps them in package variables; only the
+          # programs are pinned, which keeps the objects alive but attaches
+          # nothing), so nothing enforces anything while nhp-acd is down - and
+          # tcp/443 is open to the world in the AC security group. The old
+          # iptables mode was fail-closed here: iptables_default.sh left a
+          # default-DROP baseline behind that outlived the process.
+          # deploy/scripts/nhp-ac-backstop.sh restores that property.
+          #
+          # Installed in *both* modes: FilterMode 1 wires it into the unit, and
+          # FilterMode 0 is the rollback out of eBPF mode, where the host may
+          # still be in eBPF steady state (IPv4 INPUT policy ACCEPT, XDP the
+          # only enforcement) and needs the backstop to cover the window
+          # between `systemctl stop` and the netfilter baseline coming back.
+          echo "Installing the fail-closed backstop script..."
+          scp repo/deploy/scripts/nhp-ac-backstop.sh nhp-ac:/tmp/nhp-ac-backstop.sh
+          ssh nhp-ac "sudo install -m 0755 -o root -g root /tmp/nhp-ac-backstop.sh $BACKSTOP_SCRIPT && rm -f /tmp/nhp-ac-backstop.sh"
+
           if [ "$FILTER_MODE" = "1" ]; then
-            # Fail-closed backstop. The XDP/TCX links live only in the daemon's
-            # memory (ebpfegine.go keeps them in package variables; only the
-            # programs are pinned, which keeps the objects alive but attaches
-            # nothing), so nothing enforces anything while nhp-acd is down -
-            # and tcp/443 is open to the world in the AC security group. The
-            # old iptables mode was fail-closed here: iptables_default.sh left
-            # a default-DROP baseline behind that outlived the process.
-            # deploy/scripts/nhp-ac-backstop.sh restores that property, wired
-            # into the unit so it also covers crashes, the Restart=on-failure
-            # backoff and failed starts:
+            # Wired into the unit so the backstop also covers crashes, the
+            # Restart=on-failure backoff and failed starts:
             #   ExecStartPre  -> up           closed before the daemon starts
             #   ExecStartPost -> wait-attach  lifted only once the XDP program
             #                                 is attached; fails the unit
             #                                 otherwise (so it stays closed)
             #   ExecStopPost  -> up           closed again when it exits
-            echo "Installing the fail-closed backstop..."
-            scp repo/deploy/scripts/nhp-ac-backstop.sh nhp-ac:/tmp/nhp-ac-backstop.sh
-            ssh nhp-ac "sudo install -m 0755 -o root -g root /tmp/nhp-ac-backstop.sh $BACKSTOP_SCRIPT && rm -f /tmp/nhp-ac-backstop.sh"
-
+            #
             # The rate limit matters here: a wait-attach failure makes the unit
             # fail, and with Restart=on-failure each retry takes longer than
             # the default 10s StartLimitIntervalSec, so it would retry forever.
@@ -1057,22 +1064,49 @@ jobs:
 
             # Close the protected port before stopping the daemon, so the
             # cutover window (stop -> clear baseline -> start) is never open.
+            # `up` verifies the rules landed and exits non-zero otherwise, so a
+            # failure here aborts before anything is stopped: the running
+            # daemon keeps enforcing whatever it was enforcing.
             echo "Closing tcp/$BACKSTOP_PORTS for the cutover window..."
-            ssh nhp-ac "sudo $BACKSTOP_SCRIPT up"
+            if ! ssh nhp-ac "sudo $BACKSTOP_SCRIPT up"; then
+              echo "ERROR: could not close tcp/$BACKSTOP_PORTS; aborting before the cutover."
+              ssh nhp-ac "sudo $BACKSTOP_SCRIPT status || true"
+              exit 1
+            fi
           else
             # FilterMode 0: nhp-acd programs netfilter itself and
             # iptables_default.sh supplies the default-deny baseline, so the
-            # backstop would double-block the protected port - and wait-attach
-            # would never see an XDP program, failing every start. Remove the
-            # wiring if a previous eBPF deploy left it behind. `down` keeps the
-            # IPv6 chain on purpose (see the script), so drop that explicitly
-            # too: ip6tables is iptables_default.sh's job again from here.
-            echo "iptables mode: removing any eBPF backstop wiring..."
-            ssh nhp-ac "sudo rm -f $DROPIN; \
-              if [ -x $BACKSTOP_SCRIPT ]; then sudo $BACKSTOP_SCRIPT down || true; fi; \
-              sudo ip6tables -D INPUT -j NHP_BACKSTOP 2>/dev/null || true; \
-              sudo ip6tables -F NHP_BACKSTOP 2>/dev/null || true; \
-              sudo ip6tables -X NHP_BACKSTOP 2>/dev/null || true"
+            # unit wiring has to go - wait-attach would never see an XDP
+            # program and would fail every start.
+            #
+            # Unwiring is not the same as tearing the chain down, though. This
+            # is the rollback path, taken when eBPF mode is already
+            # misbehaving, and the host is then in eBPF steady state: IPv4
+            # INPUT policy is ACCEPT (the previous deploy's `flush-legacy`) and
+            # XDP is the only thing filtering. `systemctl stop nhp-acd` below
+            # detaches XDP, and the netfilter baseline only returns several
+            # round-trips later (binary upload, eBPF objects, script scp), so
+            # dropping the backstop here would leave tcp/443 open to the world
+            # for that whole window. Instead: remove the drop-in and raise the
+            # backstop, leaving it up across the stop.
+            #
+            # iptables_default.sh -f takes the IPv4 chain down for us - its
+            # `iptables -F` flushes every chain (so the INPUT jump goes and the
+            # backstop chain is emptied) and the following `iptables -X`
+            # deletes it. Its -f block is IPv4 only, so the IPv6 chain is
+            # removed by hand after the baseline is back (`down` keeps it on
+            # purpose - see the script - because XDP passes all IPv6).
+            echo "iptables mode: unwiring the eBPF backstop and closing tcp/$BACKSTOP_PORTS for the rollback window..."
+            ssh nhp-ac "sudo rm -f $DROPIN"
+            if ! ssh nhp-ac "sudo $BACKSTOP_SCRIPT up"; then
+              echo "ERROR: could not close tcp/$BACKSTOP_PORTS before the rollback."
+              echo "       Aborting before 'systemctl stop' detaches XDP and leaves"
+              echo "       IPv4 unfiltered. The drop-in is already gone, so the running"
+              echo "       daemon no longer re-closes the port when it exits - fix"
+              echo "       netfilter on the host and re-run this deploy."
+              ssh nhp-ac "sudo $BACKSTOP_SCRIPT status || true"
+              exit 1
+            fi
           fi
           ssh nhp-ac "sudo systemctl daemon-reload"
 
@@ -1080,6 +1114,12 @@ jobs:
           # ExecStopPost already does this whenever the unit itself fails; this
           # covers the paths where the deploy aborts without the unit changing
           # state.
+          #
+          # FilterMode 0 needs nothing here: by the time anything below can
+          # fail, iptables_default.sh has put the default-DROP baseline back
+          # (and the deploy aborts outright if it did not), and that baseline
+          # outlives the process - which is the whole reason the backstop only
+          # exists for the eBPF path.
           fail_closed() {
             if [ "$FILTER_MODE" = "1" ]; then
               echo "Restoring the fail-closed backstop before aborting..."
@@ -1126,8 +1166,43 @@ jobs:
             echo "Clearing the legacy iptables/ipset baseline (eBPF cutover)..."
             ssh nhp-ac "sudo $BACKSTOP_SCRIPT flush-legacy"
           else
+            # Rollback: put the netfilter baseline back. Not best-effort - the
+            # backstop installed above is the only thing keeping tcp/443 closed
+            # right now (nhp-acd is stopped, so XDP is detached), and
+            # iptables_default.sh's `-f` flush takes that backstop with it. A
+            # swallowed failure here would leave the port open to the world and
+            # still report a successful deploy.
             echo "Applying default firewall rules (FilterMode = 0)..."
-            ssh nhp-ac "sudo bash $REMOTE_DIR/iptables_default.sh -f || true"
+            if ! ssh nhp-ac "sudo bash $REMOTE_DIR/iptables_default.sh -f"; then
+              echo "ERROR: the netfilter baseline failed to install."
+              echo "       Re-closing tcp/$BACKSTOP_PORTS and aborting."
+              ssh nhp-ac "sudo $BACKSTOP_SCRIPT up" || \
+                echo "WARNING: could not reinstall the backstop - tcp/$BACKSTOP_PORTS may be open"
+              exit 1
+            fi
+
+            # The script exits 0 regardless of what it managed to do (no
+            # set -e, and it ends in an echo), so confirm the one thing that
+            # makes the host fail-closed again: a default-DROP INPUT policy.
+            INPUT_POLICY=$(ssh nhp-ac "sudo iptables -w 5 -S INPUT | head -1")
+            if [ "$INPUT_POLICY" != "-P INPUT DROP" ]; then
+              echo "ERROR: expected iptables_default.sh to leave the INPUT policy at DROP, got '${INPUT_POLICY:-<empty>}'."
+              echo "       Re-closing tcp/$BACKSTOP_PORTS and aborting."
+              ssh nhp-ac "sudo $BACKSTOP_SCRIPT up" || \
+                echo "WARNING: could not reinstall the backstop - tcp/$BACKSTOP_PORTS may be open"
+              exit 1
+            fi
+
+            # Baseline is back, so the backstop can go. The IPv4 chain is
+            # already gone (iptables -F/-X in the -f block); the IPv6 one
+            # survives that, and ip6tables is iptables_default.sh's job again
+            # from here, so remove it explicitly.
+            echo "Netfilter baseline restored; removing the remaining backstop chains..."
+            ssh nhp-ac "for f in iptables ip6tables; do \
+                sudo \$f -w 5 -D INPUT -j NHP_BACKSTOP 2>/dev/null || true; \
+                sudo \$f -w 5 -F NHP_BACKSTOP 2>/dev/null || true; \
+                sudo \$f -w 5 -X NHP_BACKSTOP 2>/dev/null || true; \
+              done"
           fi
 
           # Deploy acdemo static page to nginx root. The template ships with

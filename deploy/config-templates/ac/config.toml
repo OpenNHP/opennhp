@@ -19,7 +19,8 @@ ResourceIds = ["demo"]
 # deploy-ac job) — nhp-acd refuses to start if either object is missing — and
 # a host kernel >= 6.6, because the TC egress program is attached with
 # link.AttachTCX. The deploy-ac job checks the kernel before it touches
-# anything and aborts if it is too old.
+# anything and, on an older host, installs kernel6.12 and reboots into it
+# (behind the fail-closed backstop) before cutting over.
 #
 # This value is the single switch: the deploy-ac job reads the rendered
 # FilterMode and derives everything else from it — the systemd capability set

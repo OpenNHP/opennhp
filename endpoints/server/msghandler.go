@@ -454,6 +454,9 @@ func (s *UdpServer) HandleACOnline(ppd *core.PacketParserData) (err error) {
 	s.acPeerMapMutex.Lock()
 	acPeer := s.acPeerMap[acPubkeyBase64] // ac peer's recvAddr has already been updated by nhp packet parser
 	s.acPeerMapMutex.Unlock()
+	if acPeer != nil {
+		s.markRateExempt(ppd.ConnData)
+	}
 
 	acConn := &ACConn{
 		ConnData:       ppd.ConnData,
@@ -514,6 +517,9 @@ func (s *UdpServer) HandleDBOnline(ppd *core.PacketParserData) (err error) {
 	s.dbPeerMapMutex.Lock()
 	dbPeer := s.dbPeerMap[dbPubkeyBase64] // ac peer's recvAddr has already been updated by nhp packet parser
 	s.dbPeerMapMutex.Unlock()
+	if dbPeer != nil {
+		s.markRateExempt(ppd.ConnData)
+	}
 
 	dbConn := &DBConn{
 		ConnData:       ppd.ConnData,
@@ -897,10 +903,24 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		return fmt.Errorf("%s relay source address", reason)
 	}
 	realAddr := &net.UDPAddr{IP: realIP, Port: rlyMsg.SourceAddr.Port}
+	s.relayPeerMapMutex.Lock()
+	relayPeer := s.relayPeerMap[base64.StdEncoding.EncodeToString(ppd.RemotePubKey)]
+	s.relayPeerMapMutex.Unlock()
+	if relayPeer != nil {
+		s.markRateExempt(ppd.ConnData)
+	}
 
 	relayAddrStr := ppd.ConnData.RemoteAddr.String()
 	log.Info("server-relay[HandleRelayForward] from relay %s, real client %s, inner %d bytes",
 		relayAddrStr, realAddr, len(innerBytes))
+
+	// Relay assertions must not drain a direct client's source budget.
+	rateKey := "rly|" + relayAddrStr + "|" + realIP.String()
+	if !s.allowPacketFromIP(rateKey, time.Now().UnixNano()) {
+		s.logPacketRateLimitDrop(rateKey)
+		s.metrics.recordDroppedPacket("rate_limited")
+		return fmt.Errorf("packet rate limit exceeded")
+	}
 
 	// Allocate a pool packet for the inner bytes.
 	innerPkt := s.device.AllocatePoolPacket()

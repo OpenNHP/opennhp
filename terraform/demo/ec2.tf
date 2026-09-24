@@ -50,6 +50,21 @@ resource "aws_instance" "ac" {
   vpc_security_group_ids = [aws_security_group.ac.id]
   key_name               = aws_key_pair.deploy.key_name
 
+  # This is a long-lived pet holding an EIP association, a Let's Encrypt
+  # account and the deployed AC state, so userdata edits must not disturb it.
+  # Two separate settings are needed for that, and only one of them is a
+  # default:
+  #   - user_data_replace_on_change stays at its default (false), so an edit
+  #     never destroys and recreates the instance.
+  #   - ignore_changes = [user_data] below is what keeps a *running* host
+  #     untouched. Without it the AWS provider still applies the change in
+  #     place, and an in-place user_data update stops and starts the instance
+  #     (the userdata itself does not re-run - cloud-init executes it once per
+  #     instance - so the reboot buys nothing and costs an AC outage).
+  # The consequence of both is that edits to userdata/ac.sh only reach *new*
+  # instances - anything a running host needs (the >= 6.6 kernel for
+  # eBPF/TCX, the unit's capability set) is applied by the deploy-ac job in
+  # .github/workflows/deploy-demo-v2.yml instead.
   user_data = templatefile("${path.module}/userdata/ac.sh", {
     deploy_path = "/home/ec2-user/nhp-ac"
   })
@@ -60,6 +75,13 @@ resource "aws_instance" "ac" {
   }
 
   tags = { Name = "opennhp-demo-ac" }
+
+  lifecycle {
+    # See the user_data comment above. To roll a userdata change onto this
+    # host deliberately, replace the instance (taint / -replace) rather than
+    # removing this - and be ready to re-associate the EIP and re-deploy.
+    ignore_changes = [user_data]
+  }
 }
 
 resource "aws_eip_association" "ac" {

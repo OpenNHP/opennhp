@@ -60,6 +60,17 @@ CLANG_OPTS = -O2 -target bpf -g -Wall -I.
 ebpf: $(EBPF_OBJ_XDP) $(EBPF_OBJ_TC_EGRESS) generate-version-and-build
 	@echo "$(COLOUR_GREEN)[eBPF] Full build completed$(END_COLOUR)"
 
+# Compile only the two eBPF object files, without the full
+# generate-version-and-build rebuild that the `ebpf` target pulls in.
+# Used by the demo pipeline, which builds the daemons with `make serverd acd
+# relayd plugins` and only needs the objects on top. The clang guard above
+# keys on the substring "ebpf" in MAKECMDGOALS, so this target is covered too.
+# Requires libbpf-dev: the sources #include <bpf/bpf_helpers.h> etc., which
+# are not vendored (vmlinux.h is).
+.PHONY: ebpf-objs
+ebpf-objs: $(EBPF_OBJ_XDP) $(EBPF_OBJ_TC_EGRESS)
+	@echo "$(COLOUR_GREEN)[eBPF] Object files compiled$(END_COLOUR)"
+
 $(EBPF_OBJ_XDP): $(EBPF_SRC_XDP)
 	@mkdir -p $(@D)
 	@echo "$(COLOUR_BLUE)[eBPF] Compiling: $< -> $@ $(END_COLOUR)"
@@ -373,6 +384,7 @@ help:
 	@echo ""
 	@echo "$(COLOUR_GREEN)Other:$(END_COLOUR)"
 	@echo "  make ebpf       - Compile eBPF programs (requires clang)"
+	@echo "  make ebpf-objs  - Compile only the eBPF object files (requires clang + libbpf-dev)"
 	@echo "  make archive    - Package binaries for distribution"
 	@echo "  make help       - Show this help message"
 	@echo ""
@@ -413,4 +425,4 @@ archive:
 	@cd release && mkdir -p archive && tar -czvf ./archive/$(PACKAGE_FILE) nhp-agent nhp-ac nhp-db nhp-server
 	@echo "$(COLOUR_GREEN)[OpenNHP] Package ${PACKAGE_FILE} archived!$(END_COLOUR)"
 
-.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd demoapp init-demoapp test-demoapp linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins check-plugin-deps dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf clean_ebpf
+.PHONY: all generate-version-and-build init tidy agentd acd serverd db kgc relayd demoapp init-demoapp test-demoapp linuxagentsdk androidagentsdk macosagentsdk iosagentsdk devicesdk plugins check-plugin-deps dev test test-race fmt lint clean help fuzz fuzz-quick coverage coverage-html archive ebpf ebpf-objs clean_ebpf

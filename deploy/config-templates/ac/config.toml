@@ -12,4 +12,22 @@ IpPassMode = 0
 LogLevel = 3
 AuthServiceId = "example"
 ResourceIds = ["demo"]
-FilterMode = 0
+# FilterMode 1 = eBPF/XDP (0 = iptables+ipset). The demo AC enforces its
+# per-knock whitelist with XDP ingress + TC egress instead of iptables. This
+# requires etc/nhp_ebpf_xdp.o and etc/tc_egress.o to be present next to the
+# binary (both are compiled by `make ebpf-objs` and uploaded by the
+# deploy-ac job) — nhp-acd refuses to start if either object is missing — and
+# a host kernel >= 6.6, because the TC egress program is attached with
+# link.AttachTCX. The deploy-ac job checks the kernel before it touches
+# anything and, on an older host, installs kernel6.12 and reboots into it
+# (behind the fail-closed backstop) before cutting over.
+#
+# This value is the single switch: the deploy-ac job reads the rendered
+# FilterMode and derives everything else from it — the systemd capability set
+# (BPF caps vs. the iptables ones), whether iptables_default.sh is applied as
+# the netfilter baseline, and whether the fail-closed backstop
+# (deploy/scripts/nhp-ac-backstop.sh, needed because the XDP links only live
+# as long as the nhp-acd process) is wired into the unit. So rolling back is
+# just setting this to 0 and re-running the workflow; no workflow edit and no
+# manual host cleanup.
+FilterMode = 1

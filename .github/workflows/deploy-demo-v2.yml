@@ -1043,10 +1043,19 @@ jobs:
           # user_data_replace_on_change, so a `terraform apply` updates the
           # attribute in state and leaves the running AC on its old kernel.
           # Rather than red-lining every deploy until someone SSHes in through
-          # the relay, this job upgrades the host itself - further down, once
-          # the fail-closed backstop is in place, because the upgrade needs a
-          # reboot. Only *detect* here: nothing on the host has been touched
-          # yet, so a host we cannot even parse aborts cleanly.
+          # the relay, this job upgrades the host itself: `dnf install` right
+          # here, and the reboot further down, once the fail-closed backstop is
+          # in place.
+          #
+          # The install deliberately runs *before* this job touches anything
+          # else on the host. It only adds a boot entry - nothing about what is
+          # currently enforcing changes - so if the mirrors are unreachable the
+          # job aborts with the host exactly as it was. Running it later, after
+          # the drop-in, the boot unit and `up`, would strand the host on a
+          # failed install with tcp/443 closed in front of a still-running
+          # FilterMode 0 daemon that the new unit wiring can no longer start:
+          # recovery would need a full FilterMode 0 rollback deploy, not a
+          # retry.
           #
           # Echoes "ok" or "old" for a kernel release; non-zero if unparseable.
           ac_kernel_state() {
@@ -1065,18 +1074,99 @@ jobs:
             fi
           }
 
+          # Echoes the release grub will boot next, e.g. 6.12.0-0.amzn2023.x86_64.
+          ac_default_kernel() {
+            ssh nhp-ac "sudo grubby --default-kernel" 2>/dev/null | sed 's#^.*/vmlinuz-##'
+          }
+
+          # Points the default boot entry at the newest installed kernel6.12,
+          # the way AWS's own AL2023 6.12 procedure does.
+          ac_pin_kernel612() {
+            ssh nhp-ac 'set -e
+              k=$(rpm -q --qf "%{version}-%{release}.%{arch}\n" kernel6.12 2>/dev/null | sort -V | tail -1)
+              case "$k" in
+                ""|*"not installed"*) echo "kernel6.12 is not installed" >&2; exit 1 ;;
+              esac
+              sudo grubby --set-default "/boot/vmlinuz-$k"'
+          }
+
+          # Removes the 6.1 `kernel` package once the host is running 6.12.
+          # Without this, a routine `dnf upgrade` pulls a newer 6.1 build and
+          # /etc/sysconfig/kernel's UPDATEDEFAULT=yes hands it the grub default
+          # again: the running host stays healthy, so nothing notices, and the
+          # *next* reboot - maintenance, an EC2 retirement event, a crash -
+          # comes up on 6.1 where link.AttachTCX fails, wait-attach keeps the
+          # backstop up and the demo AC is dark. Skipped if `kernel` is not
+          # installed, or if it is the kernel currently running (a future
+          # AL2023 could ship 6.12 as plain `kernel`) - dnf would refuse that
+          # anyway (protect_running_kernel), and the point here is to remove
+          # the unused 6.1 build, not to fight the package manager.
+          # Best-effort: the pin and the per-deploy default check below are the
+          # actual guarantee.
+          ac_drop_legacy_kernel() {
+            ssh nhp-ac 'rpm -q kernel >/dev/null 2>&1 || exit 0
+              rpm -q --qf "%{version}-%{release}.%{arch}\n" kernel | grep -qxF "$(uname -r)" && exit 0
+              echo "Removing the unused 6.1 kernel package so dnf cannot hand it the boot default..."
+              sudo dnf remove -y kernel' || \
+              echo "NOTE: could not remove the 6.1 'kernel' package - the grub default is re-checked on every deploy"
+          }
+
           KERNEL_UPGRADE=no
           if [ "$FILTER_MODE" = "1" ]; then
             KREL=$(ssh nhp-ac "uname -r")
-            echo "AC kernel: $KREL"
+            echo "AC kernel: $KREL (running)"
             if ! KSTATE=$(ac_kernel_state "$KREL"); then
               echo "ERROR: cannot parse kernel release '$KREL'"
               exit 1
             fi
+
             if [ "$KSTATE" = "old" ]; then
-              echo "Kernel $KREL is older than 6.6 (link.AttachTCX); this job will"
-              echo "install kernel6.12 and reboot the host before the cutover."
+              echo "Kernel $KREL is older than 6.6 (link.AttachTCX); installing kernel6.12."
+              if ! ssh nhp-ac "sudo dnf install -y kernel6.12"; then
+                echo "ERROR: kernel6.12 could not be installed; FilterMode = 1 needs >= 6.6."
+                echo "       Nothing on the host has been touched - the running daemon is"
+                echo "       still enforcing and tcp/$BACKSTOP_PORTS is as it was - so this"
+                echo "       is safe to retry. To give up, roll back with FilterMode = 0 in"
+                echo "       deploy/config-templates/ac/config.toml."
+                exit 1
+              fi
               KERNEL_UPGRADE=yes
+            fi
+
+            # Installing kernel6.12 is only half the job: it does not reliably
+            # make 6.12 the default boot entry, and even when it does, the
+            # default can be taken back later (see ac_drop_legacy_kernel). So
+            # check and repair the boot default on *every* eBPF-mode deploy,
+            # not just when upgrading - a flipped default is invisible in
+            # `uname -r` and only bites at the next reboot, with the demo down
+            # and no deploy running to explain why.
+            KDEF=$(ac_default_kernel || true)
+            KDEFSTATE=$(ac_kernel_state "$KDEF" 2>/dev/null || echo unparseable)
+            if [ "$KERNEL_UPGRADE" = "yes" ] || [ "$KDEFSTATE" != "ok" ]; then
+              echo "Pinning the grub default to kernel6.12 (currently '${KDEF:-unknown}')..."
+              if ! ac_pin_kernel612; then
+                echo "ERROR: could not point the default boot entry at kernel6.12."
+                echo "       Refusing to continue: the host would run eBPF mode now and"
+                echo "       come back on a kernel without TCX at the next reboot."
+                if [ "$KERNEL_UPGRADE" = "yes" ]; then
+                  echo "       Only the kernel package was installed; nothing else on the"
+                  echo "       host has been touched, so this is safe to retry."
+                fi
+                exit 1
+              fi
+              KDEF=$(ac_default_kernel || true)
+              KDEFSTATE=$(ac_kernel_state "$KDEF" 2>/dev/null || echo unparseable)
+              if [ "$KDEFSTATE" != "ok" ]; then
+                echo "ERROR: grub still defaults to '${KDEF:-unknown}' after --set-default."
+                exit 1
+              fi
+            fi
+            echo "AC kernel: $KDEF (grub default)"
+
+            # Safe now if the reboot is not pending: the running kernel is
+            # already >= 6.6, so the 6.1 package is unused.
+            if [ "$KERNEL_UPGRADE" = "no" ]; then
+              ac_drop_legacy_kernel
             fi
           fi
 
@@ -1126,13 +1216,25 @@ jobs:
             #
             # The rate limit matters here: a wait-attach failure makes the unit
             # fail, and with Restart=on-failure each retry takes longer than
-            # the default 10s StartLimitIntervalSec, so it would retry forever.
-            # Three attempts per 10 minutes, then it stays failed - with the
-            # backstop installed, which is the state we want to be noticed in.
+            # the default 10s StartLimitIntervalSec, so the default limit can
+            # never trigger and the unit would retry the hopeless attach
+            # forever.
+            #
+            # The burst is deliberately not tight. This drop-in applies to the
+            # steady-state service, not just to the cutover, and a unit that
+            # has hit its start limit stays failed - with tcp/$BACKSTOP_PORTS
+            # closed - until someone runs `systemctl reset-failed` or another
+            # deploy. At 3 attempts that turns any transient fault into a
+            # permanent outage, and on an internet-facing daemon it also means
+            # three crashes on a malformed packet take the protected resource
+            # down for good. 10 per 10 minutes still stops the hot loop it is
+            # here for - a wait-attach failure costs NHP_BACKSTOP_TIMEOUT (30s)
+            # plus RestartSec (5s), so the loop burns its budget in ~6 minutes
+            # and stops - while leaving room to ride out sporadic crashes.
             cat > /tmp/10-ebpf-backstop.conf <<EOF
           [Unit]
           StartLimitIntervalSec=600
-          StartLimitBurst=3
+          StartLimitBurst=10
 
           [Service]
           Environment=NHP_BACKSTOP_PORTS=$BACKSTOP_PORTS
@@ -1238,24 +1340,16 @@ jobs:
           fi
           ssh nhp-ac "sudo systemctl daemon-reload"
 
-          # Self-healing kernel upgrade for the TCX attach (detected above).
-          # Deliberately here and not at the top of the job: it needs a
-          # reboot, and a reboot is only safe once the host is fail-closed -
-          # the backstop script, the boot unit and the drop-in are installed
-          # and `up` has already closed tcp/$BACKSTOP_PORTS. On the other side
-          # of the reboot nhp-ac-backstop-boot.service re-closes it before the
-          # network comes up, so the port is never open while this job is not
-          # looking.
+          # Second half of the self-healing kernel upgrade: kernel6.12 is
+          # already installed and pinned as the boot default (at the top of
+          # this job, before anything on the host was touched), so all that is
+          # left is the reboot. It waits until here because a reboot is only
+          # safe once the host is fail-closed - the backstop script, the boot
+          # unit and the drop-in are installed and `up` has already closed
+          # tcp/$BACKSTOP_PORTS. On the other side of the reboot
+          # nhp-ac-backstop-boot.service re-closes it before the network comes
+          # up, so the port is never open while this job is not looking.
           if [ "$KERNEL_UPGRADE" = "yes" ]; then
-            echo "Installing kernel6.12 on the AC host (needed for link.AttachTCX)..."
-            if ! ssh nhp-ac "sudo dnf install -y kernel6.12"; then
-              echo "ERROR: kernel6.12 could not be installed; FilterMode = 1 needs >= 6.6."
-              echo "       Nothing has been cut over and tcp/$BACKSTOP_PORTS is closed."
-              echo "       Roll back with FilterMode = 0 in deploy/config-templates/ac/config.toml."
-              ssh nhp-ac "sudo $BACKSTOP_SCRIPT status || true"
-              exit 1
-            fi
-
             # Reboot detached: a plain `sudo systemctl reboot` tears the
             # connection down while ssh is still talking to it, so the exit
             # status is meaningless. systemd-run schedules it two seconds out
@@ -1289,10 +1383,16 @@ jobs:
               echo "       It is fail-closed - nhp-ac-backstop-boot.service closes"
               echo "       tcp/$BACKSTOP_PORTS before the network comes up - but the deploy"
               echo "       cannot continue. Check the host through the relay jump box:"
-              echo "         ssh nhp-ac 'uname -r; sudo systemctl status $BOOT_UNIT_NAME nhp-acd'"
+              echo "         ssh nhp-ac 'uname -r; sudo grubby --default-kernel'"
+              echo "         ssh nhp-ac 'sudo systemctl status $BOOT_UNIT_NAME nhp-acd'"
               exit 1
             fi
             echo "AC kernel after reboot: $KREL"
+
+            # Running 6.12 now, so the 6.1 package is unused and can go - see
+            # ac_drop_legacy_kernel for why leaving it around eventually takes
+            # the grub default back.
+            ac_drop_legacy_kernel
 
             # The boot also started nhp-acd (it is systemctl-enabled) with the
             # eBPF drop-in already wired in but the new config and objects not
@@ -1547,7 +1647,7 @@ jobs:
 
           echo "Starting nhp-acd..."
           # Clear any rate limit first. The eBPF drop-in sets
-          # StartLimitBurst=3 / StartLimitIntervalSec=600, and a previously
+          # StartLimitBurst=10 / StartLimitIntervalSec=600, and a previously
           # failed deploy - or the automatic start after the kernel reboot
           # above, which runs before the new config and objects are on the
           # host - can have spent those attempts, in which case `start` fails

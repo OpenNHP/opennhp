@@ -295,27 +295,46 @@ there is no fallback. AL2023 AMIs still boot 6.1 by default.
 Both paths onto a new enough kernel are automated; **no manual step is needed
 for the cutover**:
 
-* **Fresh instances** — `terraform/demo/userdata/ac.sh` installs `kernel6.12`
-  and reboots at the end of first boot.
+* **Fresh instances** — `terraform/demo/userdata/ac.sh` installs `kernel6.12`,
+  points the default boot entry at it with `grubby --set-default` and reboots
+  at the end of first boot.
 * **The long-lived AC** — userdata runs once per instance and
   `aws_instance.ac` deliberately does not set `user_data_replace_on_change`
   (replacing that host would drop its EIP association and deployed state), so
   `terraform apply` never re-runs it. The `deploy-ac` job therefore does the
   upgrade itself: it reads `uname -r` before touching the host, and if the
-  kernel is older than 6.6 it runs `dnf install -y kernel6.12`, reboots, waits
-  up to 10 minutes for the host to come back **on a >= 6.6 kernel**, and only
-  then continues with the cutover. The reboot happens *after* the fail-closed
-  backstop is installed and `tcp/443` is closed, and
-  `nhp-ac-backstop-boot.service` (below) re-closes it before the network comes
-  up on the other side.
+  kernel is older than 6.6 it runs `dnf install -y kernel6.12` and pins it with
+  `grubby --set-default` — both *before* anything else on the host is touched,
+  so a failed install aborts the deploy with the host exactly as it was. The
+  reboot follows later, once the fail-closed backstop is installed and
+  `tcp/443` is closed; the job then waits up to 10 minutes for the host to come
+  back **on a >= 6.6 kernel**, and `nhp-ac-backstop-boot.service` (below)
+  re-closes the port before the network comes up on the other side.
 
-If `kernel6.12` cannot be installed, or the host does not come back on a new
-enough kernel, the job aborts with `tcp/443` closed and nothing cut over. To
-recover by hand:
+Installing 6.12 is not enough on its own — it has to stay the **default boot
+entry**, or the host keeps running fine until the next reboot (maintenance, an
+EC2 retirement event, a crash) and then comes up on 6.1 with the TCX attach
+failing and the backstop holding `tcp/443` shut, with no deploy running to
+explain it. Two things keep that from happening:
+
+* Every eBPF-mode deploy checks `grubby --default-kernel`, not just
+  `uname -r`, and re-pins 6.12 if something moved it. A default that cannot be
+  repaired fails the deploy.
+* Once the host is running 6.12, the job removes the 6.1 `kernel` package
+  (best-effort), because `/etc/sysconfig/kernel` ships `UPDATEDEFAULT=yes`: a
+  routine `dnf upgrade` that pulls a newer 6.1 build would otherwise hand it
+  the default again. `dnf` refuses to remove the running kernel, so this can
+  only ever take the unused one.
+
+If `kernel6.12` cannot be installed or pinned, or the host does not come back
+on a new enough kernel, the job aborts with `tcp/443` closed and nothing cut
+over. To recover by hand:
 
 ```bash
 ssh nhp-ac   # via the relay jump host
 sudo dnf install -y kernel6.12
+sudo grubby --set-default "/boot/vmlinuz-$(rpm -q --qf '%{version}-%{release}.%{arch}\n' kernel6.12 | sort -V | tail -1)"
+sudo grubby --default-kernel   # confirm it points at 6.12 before rebooting
 sudo reboot
 uname -r     # confirm the running kernel afterwards
 ```
@@ -341,6 +360,21 @@ netfilter chain, wired into the unit by the deploy job as
 | `ExecStopPost` | `up` — close it again when the daemon exits (stop, crash, restart backoff) |
 
 So a stopped or crashed nhp-acd means the protected port is *closed*, not open.
+
+The drop-in also sets `StartLimitIntervalSec=600` / `StartLimitBurst=10`. A
+`wait-attach` failure fails the unit, and each retry (30s timeout + 5s
+`RestartSec`) outlasts systemd's default 10s start-limit window, so without
+this the daemon would retry a hopeless attach forever. The burst is
+deliberately generous: a unit that hits its start limit stays `failed` — with
+443 closed — until someone runs `systemctl reset-failed` or another deploy, so
+a tight limit would turn a handful of transient crashes on an internet-facing
+daemon into a standing outage. Ten attempts still burns the hot loop's budget
+in about six minutes. If you do find the unit stuck there:
+
+```bash
+ssh nhp-ac
+sudo systemctl reset-failed nhp-acd && sudo systemctl start nhp-acd
+```
 
 Netfilter rules do not survive a reboot, though, and the drop-in only runs when
 the unit does — between the network coming up and nhp-acd's `ExecStartPre`,

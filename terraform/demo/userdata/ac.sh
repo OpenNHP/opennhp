@@ -20,21 +20,37 @@ dnf install -y certbot nginx
 # reboot into it, so a fresh instance is ready for FilterMode = 1 from first
 # boot.
 #
+# Installing the package is not enough: it does not reliably become the
+# default boot entry, so the host would reboot straight back into 6.1. AWS's
+# documented 6.12 procedure pins it with grubby, which is what the
+# --set-default below does. The 6.1 `kernel` package stays installed here
+# (dnf will not remove the running kernel), so a later `dnf upgrade` pulling a
+# newer 6.1 build could take the default back via UPDATEDEFAULT=yes; the
+# deploy-ac job removes that package on its first run and re-checks
+# `grubby --default-kernel` on every eBPF-mode deploy.
+#
 # This covers fresh instances only: userdata runs once per instance and
 # aws_instance.ac does not set user_data_replace_on_change (see ec2.tf), so
 # editing this file does not touch a running host. Long-lived hosts are
 # upgraded by the deploy-ac job in .github/workflows/deploy-demo-v2.yml, which
-# runs the same dnf install, reboots and waits for the host to come back -
-# behind its fail-closed backstop. Keep the two in step.
+# runs the same dnf install and grubby pin, reboots and waits for the host to
+# come back - behind its fail-closed backstop. Keep the two in step.
 #
 # Avoid $${...} shell syntax in this file: it is rendered through Terraform
-# templatefile(), which would read it as an interpolation.
+# templatefile(), which would read it as an interpolation. Same for rpm's
+# %%{...} query tags below - templatefile() reads a bare %%{ as the start of a
+# directive and fails to render, so it has to be doubled.
 NEED_REBOOT=0
 KVER_MAJOR=$(uname -r | cut -d. -f1)
 KVER_MINOR=$(uname -r | cut -d. -f2)
 if [ "$KVER_MAJOR" -lt 6 ] || { [ "$KVER_MAJOR" -eq 6 ] && [ "$KVER_MINOR" -lt 6 ]; }; then
   if dnf install -y kernel6.12; then
-    NEED_REBOOT=1
+    KVER_612=$(rpm -q --qf '%%{version}-%%{release}.%%{arch}\n' kernel6.12 2>/dev/null | sort -V | tail -1) || KVER_612=""
+    if [ -n "$KVER_612" ] && grubby --set-default "/boot/vmlinuz-$KVER_612"; then
+      NEED_REBOOT=1
+    else
+      echo "WARNING: could not make kernel6.12 the default boot entry; not rebooting into it" >&2
+    fi
   else
     echo "WARNING: kernel6.12 unavailable; staying on $(uname -r), eBPF mode will not deploy" >&2
   fi

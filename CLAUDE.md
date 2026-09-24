@@ -34,6 +34,11 @@ make serverd     # Build nhp-server daemon
 make acd         # Build nhp-ac (access controller) daemon
 make db          # Build nhp-db daemon
 make kgc         # Build nhp-kgc (key generation center)
+make relayd      # Build nhp-relay daemon
+make demoapp     # Build demoapp module (go build ./... only)
+
+# Fast compile check of nhp + endpoints (no release artifacts)
+make dev
 
 # Build with eBPF support (requires clang)
 make ebpf
@@ -48,18 +53,28 @@ make init
 ## Running Tests
 
 ```bash
-# Run tests in the nhp module
-cd nhp && go test ./...
+# nhp + endpoints (what CI runs); nhp/core/wasm/policy is excluded from the nhp run
+make test
+make test-race
+make test-demoapp        # demoapp is a separate module, not covered by `make test`
 
-# Run tests in the endpoints module
-cd endpoints && go test ./...
+# Single test (tests for nhp live mostly in nhp/test/, package-level)
+cd nhp && go test -v -run TestName ./test/
 
-# Run specific test file
-cd nhp && go test -v ./test/packet_test.go
-
-# Run benchmark tests
+# Benchmarks
 cd nhp && go test -bench=. ./core/benchmark/
+
+# Fuzz targets in nhp/test/ (make fuzz = 60s each, fuzz-quick = 10s)
+make fuzz-quick
+cd nhp && go test -fuzz=FuzzAgentKnockMsg -fuzztime=30s ./test/
+
+# Lint (golangci-lint v2, config in .golangci.yml; runs on nhp + endpoints)
+make lint
 ```
+
+TypeScript packages have their own npm scripts: `endpoints/js-agent/`
+(`npm test`, `npm run lint`, vitest + eslint) and `demoapp/web/`
+(`npm run build` = `tsc --noEmit && vite build`).
 
 ## Code Formatting
 
@@ -135,7 +150,12 @@ docker-compose up nhp-agent
 
 ### Module Structure
 
-The codebase uses two separate Go modules with a local replace directive:
+There is no `go.work`; each Go module is built from its own directory. `endpoints/`
+and `demoapp/` both depend on `nhp/` via `replace github.com/OpenNHP/opennhp/nhp => ../nhp`,
+so changes in `nhp/` are picked up without a version bump. Other modules:
+`examples/server_plugin/*` (built by `make plugins`) and `docker/web-app`.
+
+The two core modules:
 
 - **`nhp/`**: Core protocol library
   - `core/`: Packet handling, cryptography, device management, Noise Protocol implementation
@@ -152,6 +172,11 @@ The codebase uses two separate Go modules with a local replace directive:
   - `db/`: NHP-DB - Data Broker for DHP
   - `kgc/`: Key Generation Center for IBC (Identity-Based Cryptography)
   - `relay/`: TCP relay functionality
+  - `js-agent/`: TypeScript/browser NHP agent (npm package, not Go)
+
+- **`demoapp/`**: Public demo web app (Go + gin backend, Vite/TS SPA in `web/`).
+  Default builds serve `web/dist` from disk; `go build -tags webdist` embeds it
+  (`demoapp_web.go`), which is what `docker/Dockerfile.demoapp` does.
 
 ### Core Concepts
 

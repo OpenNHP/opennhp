@@ -47,3 +47,5 @@ deploy/configs/
 # (web/dist is embedded by the Docker/CI build, not committed)
 demoapp/data/
 demoapp/web/dist/
+
+*.iml

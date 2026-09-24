@@ -279,3 +279,213 @@ done
 ```
 
 Verify CI still works by running the `deploy-demo-v2` workflow.
+
+## nhp-ac in eBPF/XDP mode
+
+`deploy/config-templates/ac/config.toml` ships `FilterMode = 1`, so the demo AC
+enforces its per-knock whitelist with XDP ingress + TC egress instead of
+iptables+ipset. Two operational consequences.
+
+### Kernel prerequisite: >= 6.6
+
+`endpoints/ac/ebpf/ebpfegine.go` attaches the egress program with
+`link.AttachTCX`, i.e. the kernel TCX / `bpf_mprog` API added in Linux 6.6, and
+there is no fallback. AL2023 AMIs still boot 6.1 by default.
+
+Both paths onto a new enough kernel are automated; **no manual step is needed
+for the cutover**:
+
+* **Fresh instances** — `terraform/demo/userdata/ac.sh` installs `kernel6.12`,
+  points the default boot entry at it with `grubby --set-default` and reboots
+  at the end of first boot.
+* **The long-lived AC** — userdata runs once per instance, and
+  `aws_instance.ac` is pinned twice over so an edit to `userdata/ac.sh` cannot
+  disturb the running host: it leaves `user_data_replace_on_change` at its
+  default `false` (replacing that host would drop its EIP association and
+  deployed state) **and** carries `lifecycle { ignore_changes = [user_data] }`.
+  Both are load-bearing — without the `ignore_changes`, the AWS provider
+  applies a `user_data` change in place, which stops and starts the instance
+  for no benefit (cloud-init still will not re-run the script). With them,
+  `terraform apply` neither re-runs userdata nor bounces the AC. The
+  `deploy-ac` job therefore does the upgrade itself: it reads `uname -r` before
+  touching the host, and if the kernel is older than 6.6 it runs
+  `dnf install -y kernel6.12` and pins it with `grubby --set-default` — both
+  *before* anything else on the host is touched, so a failed install aborts the
+  deploy with the host exactly as it was. The
+  reboot follows later, once the fail-closed backstop is installed and
+  `tcp/443` is closed; the job then waits up to 10 minutes for the host to come
+  back **on a >= 6.6 kernel**, and `nhp-ac-backstop-boot.service` (below)
+  re-closes the port before the network comes up on the other side.
+
+Installing 6.12 is not enough on its own — it has to stay the **default boot
+entry**, or the host keeps running fine until the next reboot (maintenance, an
+EC2 retirement event, a crash) and then comes up on 6.1 with the TCX attach
+failing and the backstop holding `tcp/443` shut, with no deploy running to
+explain it. Two things keep that from happening:
+
+* Every eBPF-mode deploy checks `grubby --default-kernel`, not just
+  `uname -r`, and re-pins 6.12 if something moved it. A default that cannot be
+  repaired fails the deploy.
+* Once the host is running 6.12, the job removes the 6.1 `kernel` package
+  (best-effort), because `/etc/sysconfig/kernel` ships `UPDATEDEFAULT=yes`: a
+  routine `dnf upgrade` that pulls a newer 6.1 build would otherwise hand it
+  the default again. `dnf` refuses to remove the running kernel, so this can
+  only ever take the unused one.
+
+If `kernel6.12` cannot be installed or pinned, or the host does not come back
+on a new enough kernel, the job aborts with `tcp/443` closed and nothing cut
+over. To recover by hand:
+
+```bash
+ssh nhp-ac   # via the relay jump host
+sudo dnf install -y kernel6.12
+sudo grubby --set-default "/boot/vmlinuz-$(rpm -q --qf '%{version}-%{release}.%{arch}\n' kernel6.12 | sort -V | tail -1)"
+sudo grubby --default-kernel   # confirm it points at 6.12 before rebooting
+sudo reboot
+uname -r     # confirm the running kernel afterwards
+```
+
+Then re-run `deploy-demo-v2`. The alternative is to roll back: set
+`FilterMode = 0` in `deploy/config-templates/ac/config.toml` and re-run.
+
+### Fail-closed backstop
+
+The XDP and TCX links are held in the daemon's memory only (package variables
+in `ebpfegine.go`); only the *programs* are pinned under `/sys/fs/bpf`, which
+keeps the objects alive but attaches nothing. Enforcement therefore ends the
+moment nhp-acd exits, and `tcp/443` is open to the world in the AC security
+group. `deploy/scripts/nhp-ac-backstop.sh` covers that gap with a small
+netfilter chain, wired into the unit by the deploy job as
+`/etc/systemd/system/nhp-acd.service.d/10-ebpf-backstop.conf`:
+
+| hook | action |
+| --- | --- |
+| `ExecStartPre` | `up` — close tcp/443 before the daemon starts |
+| `ExecStartPre` | `bpffs-prep` — `chgrp ec2-user` + `chmod 0770 /sys/fs/bpf` so the unprivileged daemon can pin (see below) |
+| `ExecStartPost` | `wait-attach` — lift it only once the XDP program is attached; fail the unit otherwise |
+| `ExecStopPost` | `up` — close it again when the daemon exits (stop, crash, restart backoff) |
+
+So a stopped or crashed nhp-acd means the protected port is *closed*, not open.
+
+The drop-in also sets `StartLimitIntervalSec=600` / `StartLimitBurst=10`. A
+`wait-attach` failure fails the unit, and each retry (30s timeout + 5s
+`RestartSec`) outlasts systemd's default 10s start-limit window, so without
+this the daemon would retry a hopeless attach forever. The burst is
+deliberately generous: a unit that hits its start limit stays `failed` — with
+443 closed — until someone runs `systemctl reset-failed` or another deploy, so
+a tight limit would turn a handful of transient crashes on an internet-facing
+daemon into a standing outage. Ten attempts still burns the hot loop's budget
+in about six minutes. If you do find the unit stuck there:
+
+```bash
+ssh nhp-ac
+sudo systemctl reset-failed nhp-acd && sudo systemctl start nhp-acd
+```
+
+Netfilter rules do not survive a reboot, though, and the drop-in only runs when
+the unit does — between the network coming up and nhp-acd's `ExecStartPre`,
+nothing would hold the port. nginx (what actually listens on 443) starts in
+parallel with nhp-acd and can win that race, and the kernel upgrade above
+reboots the host from inside the deploy. The same job therefore also installs
+`/etc/systemd/system/nhp-ac-backstop-boot.service`, a `oneshot` that runs
+`nhp-ac-backstop.sh up` with `DefaultDependencies=no` and
+`Before=network-pre.target`, i.e. before any interface is configured. It is
+enabled in FilterMode 1 and **disabled and removed in FilterMode 0**: iptables
+mode never calls `down`, so its unconditional DROP would sit in front of the
+per-knock ACCEPTs and keep 443 dark after the next reboot.
+
+```bash
+systemctl status nhp-ac-backstop-boot.service   # "active (exited)" is the healthy state
+```
+
+Inspect or drive the backstop by hand on the host:
+
+```bash
+sudo /usr/local/sbin/nhp-ac-backstop.sh status
+sudo /usr/local/sbin/nhp-ac-backstop.sh up               # close now
+sudo /usr/local/sbin/nhp-ac-backstop.sh down             # lift the IPv4 chain
+sudo /usr/local/sbin/nhp-ac-backstop.sh flush-guard-up   # park the raw-table DROP
+sudo /usr/local/sbin/nhp-ac-backstop.sh flush-guard-down # remove it
+```
+
+The IPv6 chain installed by `up` is deliberately permanent: the XDP program
+returns `XDP_PASS` for every IPv6 frame, so it does not filter IPv6 at all.
+
+`up` re-reads the rules afterwards and exits non-zero if they are not actually
+in the kernel (missing `iptables` binary, a lost `/run/xtables.lock` race), so
+an `ExecStartPre` failure aborts the start instead of letting the daemon come
+up behind a backstop that was never installed. Never read "backstop active"
+from anything but a zero exit status.
+
+### Capabilities: no CAP_DAC_OVERRIDE
+
+In eBPF mode the unit runs with `CAP_BPF CAP_NET_ADMIN CAP_PERFMON` and nothing
+else — no `CAP_SYS_ADMIN` and no `CAP_DAC_OVERRIDE`. Both are root-equivalent
+as *ambient* capabilities on an internet-facing daemon and `NoNewPrivileges=`
+does not mitigate either: `CAP_DAC_OVERRIDE` bypasses every file permission
+check, so a compromised nhp-acd could write `/etc/cron.d/*`,
+`~root/.ssh/authorized_keys` or the unit file itself. Its only job was pinning
+into `/sys/fs/bpf` (systemd mounts it `0700 root:root`), which the drop-in's
+second `ExecStartPre` — `nhp-ac-backstop.sh bpffs-prep` — now handles by
+group-owning that one directory (falling back to a `mount -o remount` if the
+kernel refuses `chgrp`/`chmod` on bpffs, and verifying the result either way).
+If pins stop appearing under `/sys/fs/bpf` after a manual unit edit, check that
+hook first:
+
+```bash
+stat -c '%A %U:%G' /sys/fs/bpf                            # want drwxrwx--- root:ec2-user
+sudo NHP_BPFFS_GROUP=ec2-user /usr/local/sbin/nhp-ac-backstop.sh bpffs-prep
+```
+
+### Where nhp-acd logs
+
+**Not journald.** `endpoints/ac/udpac.go` installs a file logger
+(`log.NewLogger("NHP-AC", ..., <exe dir>/logs, "ac")`) as the global logger
+before anything interesting happens, and `nhp/log/logger.go` only writes to
+stdout when both the directory and the name are empty. So `journalctl -u
+nhp-acd` shows systemd messages, one init line and Go panics — nothing else.
+The real log is on the host:
+
+```bash
+ls -lt /home/ec2-user/nhp-ac/logs/          # ac-<date>.log, plus nhp_accept / nhp_deny
+tail -f /home/ec2-user/nhp-ac/logs/ac-$(date -u +%F).log
+```
+
+The `deploy-ac` job reads that file (not the journal) to confirm the perf ring
+buffer opened, and dumps both it and `journalctl` on every abort.
+
+### Rolling back to iptables
+
+Set `FilterMode = 0` in `deploy/config-templates/ac/config.toml` and re-run
+`deploy-demo-v2`. The `deploy-ac` job reads the rendered value and derives
+everything from it: it re-applies `iptables_default.sh -f` as the baseline,
+restores the `CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE` capability set and
+removes the backstop drop-in. No workflow edit and no manual host cleanup.
+
+The rollback keeps tcp/443 closed across the whole window even though it
+removes the drop-in: on an eBPF host the IPv4 INPUT policy is `ACCEPT` and XDP
+is the only filter, so `systemctl stop nhp-acd` would otherwise leave the port
+open to the world until the netfilter baseline returns several steps later.
+
+That takes two rules, because the backstop chain alone does not survive the
+baseline script. `iptables_default.sh -f` opens with `iptables -F; iptables -X`
+— filter table — which deletes the `NHP_BACKSTOP` chain and its INPUT jump, and
+the policy only goes back to `DROP` at the very end of the script, after the
+ipset creates and the whole `NHP_DENY`/INPUT/FORWARD setup. Pre-setting
+`-P INPUT DROP` is not an option: the same `-F` removes the `--dport 22` ACCEPT
+and would cut the deploy's own SSH session. So the job parks a second DROP in
+the **raw** table (`flush-guard-up`) — a table the script never touches, and
+`raw/PREROUTING` runs before conntrack, so established flows are covered too —
+runs the script, checks the baseline really left `INPUT` at policy `DROP`,
+deletes the IPv6 chain by hand (the `-f` flush is IPv4 only) and only then
+removes the raw guard (`flush-guard-down`). Any failure aborts with the port
+still closed.
+
+An aborted rollback can therefore leave a raw/PREROUTING DROP behind on
+purpose. It is invisible to `iptables -S` (filter) and survives `flush-legacy`,
+so the eBPF cutover path clears it before starting the daemon; by hand:
+
+```bash
+sudo /usr/local/sbin/nhp-ac-backstop.sh status            # reports the raw guard too
+sudo /usr/local/sbin/nhp-ac-backstop.sh flush-guard-down
+```

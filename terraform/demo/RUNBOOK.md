@@ -298,14 +298,20 @@ for the cutover**:
 * **Fresh instances** — `terraform/demo/userdata/ac.sh` installs `kernel6.12`,
   points the default boot entry at it with `grubby --set-default` and reboots
   at the end of first boot.
-* **The long-lived AC** — userdata runs once per instance and
-  `aws_instance.ac` deliberately does not set `user_data_replace_on_change`
-  (replacing that host would drop its EIP association and deployed state), so
-  `terraform apply` never re-runs it. The `deploy-ac` job therefore does the
-  upgrade itself: it reads `uname -r` before touching the host, and if the
-  kernel is older than 6.6 it runs `dnf install -y kernel6.12` and pins it with
-  `grubby --set-default` — both *before* anything else on the host is touched,
-  so a failed install aborts the deploy with the host exactly as it was. The
+* **The long-lived AC** — userdata runs once per instance, and
+  `aws_instance.ac` is pinned twice over so an edit to `userdata/ac.sh` cannot
+  disturb the running host: it leaves `user_data_replace_on_change` at its
+  default `false` (replacing that host would drop its EIP association and
+  deployed state) **and** carries `lifecycle { ignore_changes = [user_data] }`.
+  Both are load-bearing — without the `ignore_changes`, the AWS provider
+  applies a `user_data` change in place, which stops and starts the instance
+  for no benefit (cloud-init still will not re-run the script). With them,
+  `terraform apply` neither re-runs userdata nor bounces the AC. The
+  `deploy-ac` job therefore does the upgrade itself: it reads `uname -r` before
+  touching the host, and if the kernel is older than 6.6 it runs
+  `dnf install -y kernel6.12` and pins it with `grubby --set-default` — both
+  *before* anything else on the host is touched, so a failed install aborts the
+  deploy with the host exactly as it was. The
   reboot follows later, once the fail-closed backstop is installed and
   `tcp/443` is closed; the job then waits up to 10 minutes for the host to come
   back **on a >= 6.6 kernel**, and `nhp-ac-backstop-boot.service` (below)

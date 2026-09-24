@@ -29,9 +29,10 @@ dnf install -y certbot nginx
 # deploy-ac job removes that package on its first run and re-checks
 # `grubby --default-kernel` on every eBPF-mode deploy.
 #
-# This covers fresh instances only: userdata runs once per instance and
-# aws_instance.ac does not set user_data_replace_on_change (see ec2.tf), so
-# editing this file does not touch a running host. Long-lived hosts are
+# This covers fresh instances only: userdata runs once per instance, and
+# aws_instance.ac both leaves user_data_replace_on_change at false and ignores
+# user_data changes in its lifecycle block (see ec2.tf), so editing this file
+# neither recreates nor restarts a running host. Long-lived hosts are
 # upgraded by the deploy-ac job in .github/workflows/deploy-demo-v2.yml, which
 # runs the same dnf install and grubby pin, reboots and waits for the host to
 # come back - behind its fail-closed backstop. Keep the two in step.

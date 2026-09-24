@@ -944,7 +944,15 @@ jobs:
 
       - name: Deploy nhp-acd
         run: |
-          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-ac"
+          # NOTE: keep this step free of GitHub Actions expression syntax.
+          # A run: block that contains even one expression is compiled as a
+          # single expression template, and those are capped at 21000
+          # characters. This script is ~45k, so one env interpolation makes the
+          # entire workflow file invalid ("Exceeded max expression length
+          # 21000") before any job runs. The workflow-level env: block is
+          # already exported into this shell, so reference $DEPLOY_USER /
+          # $DEPLOY_BINARIES as plain shell variables instead.
+          REMOTE_DIR="/home/$DEPLOY_USER/nhp-ac"
           BACKSTOP_SCRIPT="/usr/local/sbin/nhp-ac-backstop.sh"
           DROPIN_DIR="/etc/systemd/system/nhp-acd.service.d"
           DROPIN="$DROPIN_DIR/10-ebpf-backstop.conf"
@@ -1016,7 +1024,7 @@ jobs:
             # /etc/cron.d/*, ~root/.ssh/authorized_keys or this unit file. Its
             # only job here was pinning under /sys/fs/bpf, which systemd mounts
             # 0700 root:root; the drop-in below relaxes that one directory to
-            # 0770 ${{ env.DEPLOY_USER }} from a root (+) ExecStartPre
+            # 0770 $DEPLOY_USER from a root (+) ExecStartPre
             # (`nhp-ac-backstop.sh bpffs-prep`) instead, which is a far
             # narrower grant than DAC override everywhere.
             # No CAP_SYS_RESOURCE either: BPF memory is memcg-accounted since
@@ -1207,7 +1215,7 @@ jobs:
             # bpffs-prep is what replaces CAP_DAC_OVERRIDE: ebpfegine.go pins
             # programs and maps straight into /sys/fs/bpf, which systemd's
             # sys-fs-bpf.mount leaves 0700 root:root, so the unprivileged
-            # daemon needs *some* way in. chgrp ${{ env.DEPLOY_USER }} +
+            # daemon needs *some* way in. chgrp $DEPLOY_USER +
             # chmod 0770 on that single directory is a much smaller grant than
             # a capability that bypasses file permissions everywhere. It is
             # ordered after `up`, so if it fails the port is already closed and
@@ -1238,7 +1246,7 @@ jobs:
 
           [Service]
           Environment=NHP_BACKSTOP_PORTS=$BACKSTOP_PORTS
-          Environment=NHP_BPFFS_GROUP=${{ env.DEPLOY_USER }}
+          Environment=NHP_BPFFS_GROUP=$DEPLOY_USER
           ExecStartPre=+$BACKSTOP_SCRIPT up
           ExecStartPre=+$BACKSTOP_SCRIPT bpffs-prep
           ExecStartPost=+$BACKSTOP_SCRIPT wait-attach
@@ -1429,7 +1437,7 @@ jobs:
           echo "Stopping nhp-acd..."
           ssh nhp-ac "sudo systemctl stop nhp-acd || true"
 
-          if [ "${{ env.DEPLOY_BINARIES }}" = "yes" ]; then
+          if [ "$DEPLOY_BINARIES" = "yes" ]; then
             echo "Uploading nhp-acd..."
             scp ./artifact/ac/nhp-acd nhp-ac:$REMOTE_DIR/
             ssh nhp-ac "chmod +x $REMOTE_DIR/nhp-acd"
@@ -1622,7 +1630,7 @@ jobs:
 
           # nhp-acd writes to $REMOTE_DIR/logs (plural). Ensure it exists and is
           # owned by the service user; older userdata created "log" (singular).
-          ssh nhp-ac "mkdir -p $REMOTE_DIR/logs && sudo chown -R ${{ env.DEPLOY_USER }}:${{ env.DEPLOY_USER }} $REMOTE_DIR/logs"
+          ssh nhp-ac "mkdir -p $REMOTE_DIR/logs && sudo chown -R $DEPLOY_USER:$DEPLOY_USER $REMOTE_DIR/logs"
 
           # Capability set follows the rendered FilterMode (see $CAPS above).
           # userdata only runs at instance creation, so patch the live unit here
@@ -1679,7 +1687,7 @@ jobs:
             # `is-active` alone does not prove the eBPF path came up. Verify the
             # programs actually pinned, and surface the startup log either way.
             # Both checks go through sudo: the drop-in's ExecStartPre relaxes
-            # /sys/fs/bpf to 0770 ${{ env.DEPLOY_USER }} (systemd mounts it 0700
+            # /sys/fs/bpf to 0770 $DEPLOY_USER (systemd mounts it 0700
             # root:root) so nhp-acd can pin, but the login shell here is not in
             # that group session, and root reads it regardless.
             echo "Verifying eBPF/XDP attachment..."

@@ -290,21 +290,38 @@ iptables+ipset. Two operational consequences.
 
 `endpoints/ac/ebpf/ebpfegine.go` attaches the egress program with
 `link.AttachTCX`, i.e. the kernel TCX / `bpf_mprog` API added in Linux 6.6, and
-there is no fallback. AL2023 AMIs still boot 6.1 by default, so the `deploy-ac`
-job checks `uname -r` **before** it changes anything on the host and aborts if
-the kernel is older — the previous baseline stays intact. Fresh instances get
-the newer kernel from `terraform/demo/userdata/ac.sh` (it installs
-`kernel6.12` and reboots at the end of first boot). Upgrade a long-lived host
-by hand:
+there is no fallback. AL2023 AMIs still boot 6.1 by default.
+
+Both paths onto a new enough kernel are automated; **no manual step is needed
+for the cutover**:
+
+* **Fresh instances** — `terraform/demo/userdata/ac.sh` installs `kernel6.12`
+  and reboots at the end of first boot.
+* **The long-lived AC** — userdata runs once per instance and
+  `aws_instance.ac` deliberately does not set `user_data_replace_on_change`
+  (replacing that host would drop its EIP association and deployed state), so
+  `terraform apply` never re-runs it. The `deploy-ac` job therefore does the
+  upgrade itself: it reads `uname -r` before touching the host, and if the
+  kernel is older than 6.6 it runs `dnf install -y kernel6.12`, reboots, waits
+  up to 10 minutes for the host to come back **on a >= 6.6 kernel**, and only
+  then continues with the cutover. The reboot happens *after* the fail-closed
+  backstop is installed and `tcp/443` is closed, and
+  `nhp-ac-backstop-boot.service` (below) re-closes it before the network comes
+  up on the other side.
+
+If `kernel6.12` cannot be installed, or the host does not come back on a new
+enough kernel, the job aborts with `tcp/443` closed and nothing cut over. To
+recover by hand:
 
 ```bash
 ssh nhp-ac   # via the relay jump host
 sudo dnf install -y kernel6.12
-uname -r     # confirm the running kernel afterwards
 sudo reboot
+uname -r     # confirm the running kernel afterwards
 ```
 
-Then re-run `deploy-demo-v2`.
+Then re-run `deploy-demo-v2`. The alternative is to roll back: set
+`FilterMode = 0` in `deploy/config-templates/ac/config.toml` and re-run.
 
 ### Fail-closed backstop
 
@@ -324,7 +341,24 @@ netfilter chain, wired into the unit by the deploy job as
 | `ExecStopPost` | `up` — close it again when the daemon exits (stop, crash, restart backoff) |
 
 So a stopped or crashed nhp-acd means the protected port is *closed*, not open.
-Inspect or drive it by hand on the host:
+
+Netfilter rules do not survive a reboot, though, and the drop-in only runs when
+the unit does — between the network coming up and nhp-acd's `ExecStartPre`,
+nothing would hold the port. nginx (what actually listens on 443) starts in
+parallel with nhp-acd and can win that race, and the kernel upgrade above
+reboots the host from inside the deploy. The same job therefore also installs
+`/etc/systemd/system/nhp-ac-backstop-boot.service`, a `oneshot` that runs
+`nhp-ac-backstop.sh up` with `DefaultDependencies=no` and
+`Before=network-pre.target`, i.e. before any interface is configured. It is
+enabled in FilterMode 1 and **disabled and removed in FilterMode 0**: iptables
+mode never calls `down`, so its unconditional DROP would sit in front of the
+per-knock ACCEPTs and keep 443 dark after the next reboot.
+
+```bash
+systemctl status nhp-ac-backstop-boot.service   # "active (exited)" is the healthy state
+```
+
+Inspect or drive the backstop by hand on the host:
 
 ```bash
 sudo /usr/local/sbin/nhp-ac-backstop.sh status

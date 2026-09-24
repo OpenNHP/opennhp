@@ -50,6 +50,13 @@ resource "aws_instance" "ac" {
   vpc_security_group_ids = [aws_security_group.ac.id]
   key_name               = aws_key_pair.deploy.key_name
 
+  # user_data_replace_on_change is deliberately left at its default (false):
+  # this is a long-lived pet holding an EIP association, a Let's Encrypt
+  # account and the deployed AC state, and replacing it on every userdata edit
+  # would tear all of that down. The consequence is that edits to
+  # userdata/ac.sh only reach *new* instances - anything a running host needs
+  # (the >= 6.6 kernel for eBPF/TCX, the unit's capability set) is applied by
+  # the deploy-ac job in .github/workflows/deploy-demo-v2.yml instead.
   user_data = templatefile("${path.module}/userdata/ac.sh", {
     deploy_path = "/home/ec2-user/nhp-ac"
   })

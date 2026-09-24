@@ -17,10 +17,18 @@ dnf install -y certbot nginx
 # egress program with link.AttachTCX - the kernel TCX / bpf_mprog API added in
 # Linux 6.6, with no fallback path. AL2023 AMIs still boot 6.1 by default, where
 # the attach fails and nhp-acd refuses to start, so pull in the 6.12 kernel and
-# reboot into it. The deploy-ac job refuses to deploy FilterMode = 1 onto
-# anything older, so without this a fresh instance could only run in iptables
-# mode. Avoid $${...} shell syntax in this file: it is rendered through
-# Terraform templatefile(), which would read it as an interpolation.
+# reboot into it, so a fresh instance is ready for FilterMode = 1 from first
+# boot.
+#
+# This covers fresh instances only: userdata runs once per instance and
+# aws_instance.ac does not set user_data_replace_on_change (see ec2.tf), so
+# editing this file does not touch a running host. Long-lived hosts are
+# upgraded by the deploy-ac job in .github/workflows/deploy-demo-v2.yml, which
+# runs the same dnf install, reboots and waits for the host to come back -
+# behind its fail-closed backstop. Keep the two in step.
+#
+# Avoid $${...} shell syntax in this file: it is rendered through Terraform
+# templatefile(), which would read it as an interpolation.
 NEED_REBOOT=0
 KVER_MAJOR=$(uname -r | cut -d. -f1)
 KVER_MINOR=$(uname -r | cut -d. -f2)

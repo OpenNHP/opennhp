@@ -948,6 +948,11 @@ jobs:
           BACKSTOP_SCRIPT="/usr/local/sbin/nhp-ac-backstop.sh"
           DROPIN_DIR="/etc/systemd/system/nhp-acd.service.d"
           DROPIN="$DROPIN_DIR/10-ebpf-backstop.conf"
+          # Boot-time counterpart of the drop-in: netfilter rules do not
+          # survive a reboot, and this job reboots the host itself when the
+          # kernel is too old for TCX (see below).
+          BOOT_UNIT_NAME="nhp-ac-backstop-boot.service"
+          BOOT_UNIT="/etc/systemd/system/$BOOT_UNIT_NAME"
           # tcp/443 is the only world-reachable protected port in the AC
           # security group (terraform/demo/security-groups.tf).
           BACKSTOP_PORTS="443"
@@ -1025,30 +1030,53 @@ jobs:
             CAPS="CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE"
           fi
 
-          # Precondition, checked before anything on the host is touched:
-          # ebpfegine.go attaches the egress program with link.AttachTCX, i.e.
-          # the kernel TCX / bpf_mprog API added in Linux 6.6, and there is no
-          # fallback path. AL2023 AMIs still boot 6.1 by default (6.12 is opt-in
-          # via `dnf install kernel6.12`), where the attach fails,
-          # EbpfEngineLoad returns the error and nhp-acd refuses to start.
-          # Aborting here leaves the old baseline intact instead of failing
-          # halfway through the cutover.
+          # Kernel precondition for FilterMode = 1: ebpfegine.go attaches the
+          # egress program with link.AttachTCX, i.e. the kernel TCX / bpf_mprog
+          # API added in Linux 6.6, and there is no fallback path. AL2023 AMIs
+          # still boot 6.1 by default (6.12 is opt-in via
+          # `dnf install kernel6.12`), where the attach fails, EbpfEngineLoad
+          # returns the error and nhp-acd refuses to start.
+          #
+          # terraform/demo/userdata/ac.sh installs 6.12 and reboots, but that
+          # only covers *fresh* instances: userdata runs once per instance and
+          # aws_instance.ac (terraform/demo/ec2.tf) deliberately does not set
+          # user_data_replace_on_change, so a `terraform apply` updates the
+          # attribute in state and leaves the running AC on its old kernel.
+          # Rather than red-lining every deploy until someone SSHes in through
+          # the relay, this job upgrades the host itself - further down, once
+          # the fail-closed backstop is in place, because the upgrade needs a
+          # reboot. Only *detect* here: nothing on the host has been touched
+          # yet, so a host we cannot even parse aborts cleanly.
+          #
+          # Echoes "ok" or "old" for a kernel release; non-zero if unparseable.
+          ac_kernel_state() {
+            local rel="$1" maj min
+            case "$rel" in
+              [0-9]*.[0-9]*) ;;
+              *) return 1 ;;
+            esac
+            maj=${rel%%.*}
+            min=${rel#*.}
+            min=${min%%.*}
+            if [ "$maj" -lt 6 ] || { [ "$maj" -eq 6 ] && [ "$min" -lt 6 ]; }; then
+              echo old
+            else
+              echo ok
+            fi
+          }
+
+          KERNEL_UPGRADE=no
           if [ "$FILTER_MODE" = "1" ]; then
             KREL=$(ssh nhp-ac "uname -r")
             echo "AC kernel: $KREL"
-            case "$KREL" in
-              [0-9]*.[0-9]*) ;;
-              *) echo "ERROR: cannot parse kernel release '$KREL'"; exit 1 ;;
-            esac
-            KMAJ=${KREL%%.*}
-            KMIN=${KREL#*.}
-            KMIN=${KMIN%%.*}
-            if [ "$KMAJ" -lt 6 ] || { [ "$KMAJ" -eq 6 ] && [ "$KMIN" -lt 6 ]; }; then
-              echo "ERROR: kernel $KREL is too old for FilterMode = 1; link.AttachTCX needs >= 6.6."
-              echo "       Upgrade the host:  sudo dnf install -y kernel6.12 && sudo reboot"
-              echo "                          (fresh instances get this from terraform/demo/userdata/ac.sh)"
-              echo "       Or roll back:      FilterMode = 0 in deploy/config-templates/ac/config.toml"
+            if ! KSTATE=$(ac_kernel_state "$KREL"); then
+              echo "ERROR: cannot parse kernel release '$KREL'"
               exit 1
+            fi
+            if [ "$KSTATE" = "old" ]; then
+              echo "Kernel $KREL is older than 6.6 (link.AttachTCX); this job will"
+              echo "install kernel6.12 and reboot the host before the cutover."
+              KERNEL_UPGRADE=yes
             fi
           fi
 
@@ -1118,6 +1146,44 @@ jobs:
             ssh nhp-ac "sudo mkdir -p $DROPIN_DIR && sudo install -m 0644 -o root -g root /tmp/10-ebpf-backstop.conf $DROPIN && rm -f /tmp/10-ebpf-backstop.conf"
             rm -f /tmp/10-ebpf-backstop.conf
 
+            # The drop-in above covers the daemon's lifecycle, but not a
+            # reboot: netfilter rules live in the kernel and die with it, so
+            # from the moment the network comes up until nhp-acd's
+            # ExecStartPre runs, nothing closes tcp/$BACKSTOP_PORTS - and
+            # nginx (which is what listens there) starts in parallel with
+            # nhp-acd, so it can win that race. That window is not
+            # hypothetical any more: the kernel upgrade below reboots the
+            # host from inside this job.
+            #
+            # Before=network-pre.target with DefaultDependencies=no is the
+            # standard ordering for a firewall unit - it runs before any
+            # interface is configured, so the ports are already shut when the
+            # first packet could arrive. Nothing Requires= it: if `up` fails
+            # at boot the unit fails on its own, and nhp-acd's ExecStartPre
+            # tries again and refuses to start the daemon if it still cannot.
+            cat > /tmp/$BOOT_UNIT_NAME <<EOF
+          [Unit]
+          Description=Fail-closed netfilter backstop for nhp-acd (boot)
+          Documentation=https://github.com/OpenNHP/opennhp/blob/main/deploy/scripts/nhp-ac-backstop.sh
+          DefaultDependencies=no
+          After=local-fs.target
+          Wants=network-pre.target
+          Before=network-pre.target shutdown.target
+          Conflicts=shutdown.target
+
+          [Service]
+          Type=oneshot
+          RemainAfterExit=yes
+          Environment=NHP_BACKSTOP_PORTS=$BACKSTOP_PORTS
+          ExecStart=$BACKSTOP_SCRIPT up
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+            scp /tmp/$BOOT_UNIT_NAME nhp-ac:/tmp/$BOOT_UNIT_NAME
+            ssh nhp-ac "sudo install -m 0644 -o root -g root /tmp/$BOOT_UNIT_NAME $BOOT_UNIT && rm -f /tmp/$BOOT_UNIT_NAME && sudo systemctl daemon-reload && sudo systemctl enable $BOOT_UNIT_NAME"
+            rm -f /tmp/$BOOT_UNIT_NAME
+
             # Close the protected port before stopping the daemon, so the
             # cutover window (stop -> clear baseline -> start) is never open.
             # `up` verifies the rules landed and exits non-zero otherwise, so a
@@ -1154,6 +1220,12 @@ jobs:
             # purpose - see the script - because XDP passes all IPv6).
             echo "iptables mode: unwiring the eBPF backstop and closing tcp/$BACKSTOP_PORTS for the rollback window..."
             ssh nhp-ac "sudo rm -f $DROPIN"
+            # The boot unit has to go too, and not only because it is
+            # unnecessary in iptables mode: in FilterMode 0 nothing ever calls
+            # `down`, so after the next reboot its unconditional DROP for
+            # tcp/$BACKSTOP_PORTS would sit in front of the per-knock ACCEPTs
+            # nhp-acd adds and keep the port dark for good.
+            ssh nhp-ac "sudo systemctl disable $BOOT_UNIT_NAME 2>/dev/null || true; sudo rm -f $BOOT_UNIT"
             if ! ssh nhp-ac "sudo $BACKSTOP_SCRIPT up"; then
               echo "ERROR: could not close tcp/$BACKSTOP_PORTS before the rollback."
               echo "       Aborting before 'systemctl stop' detaches XDP and leaves"
@@ -1165,6 +1237,76 @@ jobs:
             fi
           fi
           ssh nhp-ac "sudo systemctl daemon-reload"
+
+          # Self-healing kernel upgrade for the TCX attach (detected above).
+          # Deliberately here and not at the top of the job: it needs a
+          # reboot, and a reboot is only safe once the host is fail-closed -
+          # the backstop script, the boot unit and the drop-in are installed
+          # and `up` has already closed tcp/$BACKSTOP_PORTS. On the other side
+          # of the reboot nhp-ac-backstop-boot.service re-closes it before the
+          # network comes up, so the port is never open while this job is not
+          # looking.
+          if [ "$KERNEL_UPGRADE" = "yes" ]; then
+            echo "Installing kernel6.12 on the AC host (needed for link.AttachTCX)..."
+            if ! ssh nhp-ac "sudo dnf install -y kernel6.12"; then
+              echo "ERROR: kernel6.12 could not be installed; FilterMode = 1 needs >= 6.6."
+              echo "       Nothing has been cut over and tcp/$BACKSTOP_PORTS is closed."
+              echo "       Roll back with FilterMode = 0 in deploy/config-templates/ac/config.toml."
+              ssh nhp-ac "sudo $BACKSTOP_SCRIPT status || true"
+              exit 1
+            fi
+
+            # Reboot detached: a plain `sudo systemctl reboot` tears the
+            # connection down while ssh is still talking to it, so the exit
+            # status is meaningless. systemd-run schedules it two seconds out
+            # and lets this command return first; `shutdown -r +1` is the
+            # fallback if systemd-run is unavailable.
+            echo "Rebooting the AC host into the new kernel..."
+            ssh nhp-ac "sudo systemd-run --on-active=2 --unit=nhp-ac-kernel-reboot --collect systemctl reboot" || \
+              ssh nhp-ac "sudo shutdown -r +1" || \
+              { echo "ERROR: could not schedule the reboot on the AC host."; exit 1; }
+
+            # Wait for it to come back *on a new enough kernel*: sshd can
+            # answer before the scheduled reboot has even started, so "the
+            # host is reachable" is not the condition - "the host is
+            # reachable and reports >= 6.6" is. 60 x 10s = 10 minutes.
+            echo "Waiting for the AC host to come back..."
+            BOOTED=no
+            for attempt in $(seq 1 60); do
+              sleep 10
+              KREL=$(ssh -o ConnectTimeout=10 -o BatchMode=yes nhp-ac "uname -r" 2>/dev/null || true)
+              [ -n "$KREL" ] || continue
+              KSTATE=$(ac_kernel_state "$KREL" || echo unparseable)
+              if [ "$KSTATE" = "ok" ]; then
+                BOOTED=yes
+                break
+              fi
+              echo "  ... reachable but still on $KREL (attempt $attempt)"
+            done
+
+            if [ "$BOOTED" != "yes" ]; then
+              echo "ERROR: the AC host did not come back on a >= 6.6 kernel within 10 minutes."
+              echo "       It is fail-closed - nhp-ac-backstop-boot.service closes"
+              echo "       tcp/$BACKSTOP_PORTS before the network comes up - but the deploy"
+              echo "       cannot continue. Check the host through the relay jump box:"
+              echo "         ssh nhp-ac 'uname -r; sudo systemctl status $BOOT_UNIT_NAME nhp-acd'"
+              exit 1
+            fi
+            echo "AC kernel after reboot: $KREL"
+
+            # The boot also started nhp-acd (it is systemctl-enabled) with the
+            # eBPF drop-in already wired in but the new config and objects not
+            # uploaded yet, so that start can legitimately have failed -
+            # ExecStopPost keeps the port closed either way. What it must not
+            # do is leave a stale, lifted backstop behind, so re-assert it
+            # before continuing. The `reset-failed` that clears any burnt
+            # StartLimitBurst happens further down, right before the real start.
+            if ! ssh nhp-ac "sudo $BACKSTOP_SCRIPT up"; then
+              echo "ERROR: could not re-close tcp/$BACKSTOP_PORTS after the reboot."
+              ssh nhp-ac "sudo $BACKSTOP_SCRIPT status || true"
+              exit 1
+            fi
+          fi
 
           # Restore the fail-closed state on any failure below. systemd's
           # ExecStopPost already does this whenever the unit itself fails; this
@@ -1404,6 +1546,15 @@ jobs:
           esac
 
           echo "Starting nhp-acd..."
+          # Clear any rate limit first. The eBPF drop-in sets
+          # StartLimitBurst=3 / StartLimitIntervalSec=600, and a previously
+          # failed deploy - or the automatic start after the kernel reboot
+          # above, which runs before the new config and objects are on the
+          # host - can have spent those attempts, in which case `start` fails
+          # with "start request repeated too quickly" and never even reaches
+          # the daemon. The unit is stopped at this point, so this only
+          # touches the counter.
+          ssh nhp-ac "sudo systemctl reset-failed nhp-acd || true"
           # In eBPF mode `systemctl start` also waits for ExecStartPost, i.e.
           # the backstop's wait-attach: it lifts the backstop once the XDP
           # program is attached and fails the unit if it never shows up, which

@@ -356,13 +356,7 @@ func (d *Device) msgToPacketRoutine(id int) {
 					}
 
 					// save initiator transaction
-					t := &LocalTransaction{
-						transactionId: mad.header.Counter(),
-						connData:      mad.connData,
-						mad:           mad,
-						NextPacketCh:  make(chan *Packet),
-						timeout:       d.LocalTransactionTimeout(),
-					}
+					t := newLocalTransaction(mad.header.Counter(), mad.connData, mad, d.LocalTransactionTimeout())
 					d.AddLocalTransaction(t)
 					log.Debug("AddLocalTransaction:deviceType=%d,HeaderType=%d", d.deviceType, mad.HeaderType)
 				}
@@ -520,13 +514,7 @@ func (d *Device) packetToMsgRoutine(id int) {
 				log.Debug("packetToMsgRoutine: complete decrypting start IsTransactionRequest:deviceType:%d,headerType:%s", d.deviceType, HeaderTypeToString(ppd.HeaderType))
 				// start and save responder transaction
 				if d.IsTransactionRequest(ppd.HeaderType) {
-					t := &RemoteTransaction{
-						transactionId: ppd.SenderTrxId,
-						connData:      ppd.ConnData,
-						parserData:    ppd, // ppd is owned and to be destroyed by transaction
-						NextMsgCh:     make(chan *MsgData),
-						timeout:       d.RemoteTransactionTimeout(),
-					}
+					t := newRemoteTransaction(ppd.SenderTrxId, ppd.ConnData, ppd, d.RemoteTransactionTimeout())
 					ppd.ConnData.AddRemoteTransaction(t)
 					log.Debug("IsTransactionRequest:true")
 				}

@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/OpenNHP/opennhp/compare/v1.0.2...v1.1.0) (2026-09-26)
+
+
+### Features
+
+* **audit:** tamper-evident security audit ledger ([2f70729](https://github.com/OpenNHP/opennhp/commit/2f70729ea02ab5302393a4eae97f2e6442f53721))
+* **demo:** close nhp-server HTTP/HTTPS surface and demologin access ([0dfdbeb](https://github.com/OpenNHP/opennhp/commit/0dfdbeb451157bd7aabd19a9a1bc4a09dbb92de7))
+* **demo:** close nhp-server HTTP/HTTPS surface and demologin access ([7a42f89](https://github.com/OpenNHP/opennhp/commit/7a42f89103dd14df07f636a1235b2b7ebcbe5240))
+* **keystore:** encrypted private keys at rest (sealed keystore) ([e15fc75](https://github.com/OpenNHP/opennhp/commit/e15fc759bebff678e1414670ae933f355eb7168e))
+* **server:** harden UDP socket and host firewall ([290163d](https://github.com/OpenNHP/opennhp/commit/290163d371a014c30ed86ac1250e39b3004c0028))
+
+
+### Bug Fixes
+
+* address DoId review findings and sync main ([a460521](https://github.com/OpenNHP/opennhp/commit/a46052198776239f2408f0eee8c8d1e84751d5ec))
+* **agent,db:** keyMu gap in two more readers; inverted cipher-scheme mapping ([e7dde78](https://github.com/OpenNHP/opennhp/commit/e7dde78eb0b3ea065be3807a3cce9b9cc2020faf))
+* **audit:** async rotation can split an entry; quarantine loses chain history ([9d2b68d](https://github.com/OpenNHP/opennhp/commit/9d2b68de4348a245ceaa28c6d22999c18ead34f1))
+* **audit:** drain timer deadlock; nil-ack recorded as granted; anchoring ([7183dce](https://github.com/OpenNHP/opennhp/commit/7183dcee406854dc41e13bb0ac2f3a080b12abee))
+* **audit:** foreign-file bypass on leading blank line; key-rotation false positive ([2682dc6](https://github.com/OpenNHP/opennhp/commit/2682dc63d8e313798e94c1e92ae4de16d5137f8b))
+* **audit:** govet shadow in new key-rotation test ([afc4967](https://github.com/OpenNHP/opennhp/commit/afc4967e4f27d8055d2309721c67226e37fa209a))
+* **audit:** invalid-UTF-8 false tampering verdict; fd leak; other review items ([154481a](https://github.com/OpenNHP/opennhp/commit/154481af4b00ba345998e1ea6b822990174ccc5e))
+* **core:** randomize transaction counters and expose replay drops ([e7bca66](https://github.com/OpenNHP/opennhp/commit/e7bca66936ab780222752139ceb68da1129533a4))
+* **demoapp:** realign demoapp go.sum with nhp x/crypto bump ([b83e351](https://github.com/OpenNHP/opennhp/commit/b83e351df721b27b95d5a5dbaadecd1eaef4a193))
+* **demoapp:** sync go.sum with bumped golang.org/x/crypto ([7d0894d](https://github.com/OpenNHP/opennhp/commit/7d0894da2de6dedfd403109e41323ffaad44bf19))
+* **demoapp:** sync go.sum with nhp's x/crypto bump ([88b3357](https://github.com/OpenNHP/opennhp/commit/88b3357a32a77345223dec7087bf86d2c0150539))
+* **deps:** re-sync endpoints/plugins after merge reverted the fix ([66ad28d](https://github.com/OpenNHP/opennhp/commit/66ad28d87b53a43b0c3fd69b50da19124bab2300))
+* **deps:** re-sync endpoints/plugins after repeated merge revert ([f73e810](https://github.com/OpenNHP/opennhp/commit/f73e8108d86d8f1f7f32817194c62b62611ba071))
+* **deps:** sync endpoints and plugin modules with nhp x/crypto bump ([83f78cf](https://github.com/OpenNHP/opennhp/commit/83f78cfdffcfdd691fd6454b47639148e2973fb8))
+* **dhp:** clean partial key writes and keep identifier errors together ([cf12404](https://github.com/OpenNHP/opennhp/commit/cf12404bdce967a358ca3f021b3749806a862054))
+* **firewall:** preserve host limits and replace rules atomically ([986e438](https://github.com/OpenNHP/opennhp/commit/986e4387b53ee8eff7420d0c198643c3f62ae7e3))
+* **kbs:** normalize catch-all resource paths before confined reads ([8cf3c16](https://github.com/OpenNHP/opennhp/commit/8cf3c1646e77f2f4e6d605b3eab988ead93b5e90))
+* **keystore:** keyMu writer gap in config-reload watcher; passphrase hardening ([220501a](https://github.com/OpenNHP/opennhp/commit/220501ae3fa17e5ab2860650794e621360c63acd))
+* **keystore:** passphrase-file warning was landing on stdout for seal/unseal ([74ea66d](https://github.com/OpenNHP/opennhp/commit/74ea66d29593eb069a5c2c2379bc054ecddb06cc))
+* **keystore:** UpdateTomlConfig CRLF/duplicate-key bug; keyMu race; docs ([e40133e](https://github.com/OpenNHP/opennhp/commit/e40133e28ae914f6bcc1966978b60e41dbfbe528))
+* **metrics:** AC ok-counter false positives, too_short blind spot on relay/db ([61d20ce](https://github.com/OpenNHP/opennhp/commit/61d20ce50a751ae7c60515c3c9e86ec5afb0c4db))
+* **plugins:** realign plugin go.mod deps with endpoints bump ([4c92bae](https://github.com/OpenNHP/opennhp/commit/4c92bae61c536d14eb644ad98a71975c30ae73c4))
+* prevent transaction sends from racing teardown ([6e61943](https://github.com/OpenNHP/opennhp/commit/6e619438242477dcb631d5a8ed6ab3b7af17c15e))
+* **server:** bound ART clock skew and report replay cache pressure ([5f8aeb4](https://github.com/OpenNHP/opennhp/commit/5f8aeb40ead16df104c4f38a91b86295fca66a2e))
+* **server:** protect peer traffic and bound UDP buffer overrides ([7375249](https://github.com/OpenNHP/opennhp/commit/7375249973472aab6fa6a6669fd10862579551c0))
+* **server:** publish complete DoId config updates atomically ([3eee0a8](https://github.com/OpenNHP/opennhp/commit/3eee0a8f26d941cff2f3f784ab1c9c5afe043e22))
+* **server:** reject replayed ART responses ([bb69421](https://github.com/OpenNHP/opennhp/commit/bb69421844eedd9b5872c91c2623ef5565b5568e))
+* **storage:** confine file reads and encode download filenames safely ([5afafdc](https://github.com/OpenNHP/opennhp/commit/5afafdc1db64eb0f4e95a778a548fe1967a79a24))
+* **wasm:** clean failed policy downloads safely ([b5fab0e](https://github.com/OpenNHP/opennhp/commit/b5fab0e1c60a7b31a42d0dbd499d70b99066503f))
+* **wasm:** close failed runtimes and reuse policy loading ([212a5dc](https://github.com/OpenNHP/opennhp/commit/212a5dcb42a4b24278ce2a07b12a614bf95dc0f1))
+* **wasm:** retain safe runtime close semantics and clean agent downloads ([71b1b6c](https://github.com/OpenNHP/opennhp/commit/71b1b6c3b87e4b9603dc087962439d7a31d2eb05))
+
 ## [1.0.2](https://github.com/OpenNHP/opennhp/compare/v1.0.1...v1.0.2) (2026-09-11)
 
 

@@ -39,7 +39,7 @@ type bpfObjects struct {
 
 type tcBpfObjects struct {
 	TcEgressProg *ebpf.Program `ebpf:"tc_egress_prog"`
-	Whitelist    *ebpf.Map     `ebpf:"spp"`
+	Conntrack    *ebpf.Map     `ebpf:"conn_track"`
 }
 
 var (

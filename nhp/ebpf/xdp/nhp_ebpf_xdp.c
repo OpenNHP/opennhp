@@ -296,6 +296,9 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         struct conn_value new_val = *existing_val;
         new_val.tx_packets++;
         new_val.last_timestamp = bpf_ktime_get_ns();
+        // Forward (INGRESS) lookup — knocker flow. Do NOT refresh
+        // .timestamp here; that would slide the knock TTL forward and
+        // re-introduce the "放行超时未关闭" bug.
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_EXIST);
         return XDP_PASS;
     }
@@ -310,6 +313,13 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         struct conn_value new_val = *existing_val;
         new_val.rx_packets++;
         new_val.last_timestamp = bpf_ktime_get_ns();
+        // Refresh timestamp too: this is an AC-initiated egress flow's return
+        // packet. Idle-window refresh lets long-running AC outbound downloads
+        // (e.g. dnf, certbot) survive past the hard 180s egress TTL.
+        // NOTE: do NOT mirror this in the forward (INGRESS) branch above —
+        // forward entries are created by the knocker path and must be
+        // hard-bound to the knock TTL, otherwise access never expires.
+        new_val.timestamp = bpf_ktime_get_ns();
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_EXIST);
         reverseTuple(&ct_key);
         return XDP_PASS;

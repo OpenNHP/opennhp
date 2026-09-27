@@ -2,6 +2,7 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_endian.h>
+#include "nhp_maps.h"
 
 #define ETH_P_ARP 0x0806
 #define ETH_P_IP    0x0800
@@ -17,24 +18,6 @@
 #define DNS_PORT 53
 #define DHCP_PORT_R 67
 #define DHCP_PORT_O 68
-
-enum {
-    CT_NEW,
-    CT_ESTABLISHED,
-};
-
-enum {
-    CT_FLAG_NONE = 0,
-    CT_FLAG_SYN = 1 << 0,
-    CT_FLAG_FIN = 1 << 1,
-    CT_FLAG_RST = 1 << 2,
-    CT_FLAG_ACK = 1 << 3,
-};
-
-enum {
-    CT_DIR_INGRESS = 0,
-    CT_DIR_EGRESS = 1,
-};
 
 struct whitelist_key {
     __be32 src_ip;
@@ -146,33 +129,6 @@ struct {
     __uint(max_entries, MAX_ENTRIES);
     __uint(pinning, LIBBPF_PIN_BY_NAME);
 } protocol_port SEC(".maps");
-
-struct ipv4_ct_tuple {
-    __be32 daddr;
-    __be32 saddr;
-    __be16 dport;
-    __be16 sport;
-    __u8 nexthdr;
-    __u8 flags;
-} __packed;
-
-struct conn_value {
-    __u64 timestamp;
-    __u64 last_timestamp;
-    __u64 ttl_ns;   
-    __u8 state;
-    __u8 flags;
-    __u32 rx_packets;
-    __u32 tx_packets;
-};
-
-struct {
-    __uint(type, BPF_MAP_TYPE_LRU_HASH);
-    __uint(max_entries, MAX_ENTRIES);
-    __type(key, struct ipv4_ct_tuple);
-    __type(value, struct conn_value);
-    __uint(pinning, LIBBPF_PIN_BY_NAME);
-} conn_track SEC(".maps");
 
 struct event_t {
     __u64 timestamp;    

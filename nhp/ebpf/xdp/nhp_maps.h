@@ -194,7 +194,10 @@ struct conn_value {
  *
  * tc_egress.c reads `spp`, `src_port` and `sdwhitelist` (never writes any of
  * them) to recognise a peer that is talking to a knock-protected service, see
- * gate 4 there for why those three and not the remaining two.
+ * gate 4 there for why those three and not the remaining two. Because XDP
+ * deletes an entry the moment a packet finds it expired, those lookups only
+ * cover a peer whose knock is still on file; `knock_peers` below is what covers
+ * it afterwards.
  */
 struct whitelist_key {
     __be32 src_ip;
@@ -229,6 +232,29 @@ struct sdwhitelist_key {
     __be32 dst_ip;
 } __attribute__((packed));
 
+/*
+ * `knock_peers` key: "this peer has, at some point, been admitted to this
+ * service port by a knock".
+ *
+ * The whitelist maps cannot answer that question on their own. Their entries
+ * are deleted by xdp_white_prog() as soon as a packet finds them expired, and
+ * they are keyed five different ways -- `protocol_port` does not carry the
+ * peer's address at all, `port_list` carries it with a wildcard port range. So
+ * the record tc_egress.c's gate 4 needs is written here instead, from the
+ * packet that a whitelist admitted: peer address + the port on the AC it was
+ * admitted to + protocol. That covers every knock shape, and it survives the
+ * whitelist entry it came from.
+ *
+ * Only non-TCP admissions are recorded, because only the UDP gates need it
+ * (TCP's pure-SYN gate is exact). `protocol` is part of the key so a UDP knock
+ * cannot suppress anything on the TCP side.
+ */
+struct knock_peer_key {
+    __be32 src_ip;   /* the peer's address                     */
+    __be16 dst_port; /* the port on the AC it knocked          */
+    __u8 protocol;
+} __attribute__((packed));
+
 struct whitelist_value {
     __u8 allowed;
     __u64 expire_time;
@@ -258,6 +284,13 @@ struct protocol_port_value {
     __u8 allowed;
     __u64 expire_time;
 } __attribute__((packed));
+
+/* Expiry of the whitelist entry that last admitted this peer to this port.
+ * Recorded for diagnostics only -- every reader tests existence, never
+ * liveness, see nhp_peer_knocked(). */
+struct knock_peer_value {
+    __u64 expire_time;
+};
 
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
@@ -314,6 +347,68 @@ struct {
     __uint(max_entries, MAX_ENTRIES);
     __uint(pinning, LIBBPF_PIN_BY_NAME);
 } protocol_port SEC(".maps");
+
+/*
+ * Peers a knock has admitted, and to which port on the AC. Written by
+ * xdp_white_prog() when a whitelist admits a non-TCP packet, read by
+ * tc_egress.c (gate 4) and by xdp_white_prog()'s reverse branch.
+ *
+ * Unlike the whitelists this is *not* a permission: nothing is ever admitted
+ * because of an entry here, so no expiry is enforced on it and a stale entry
+ * can only ever make the egress gates stricter. It is deliberately never
+ * deleted -- an entry that aged out would let the hole it closes reopen, since
+ * the AC answering a peer long after the knock ran out is exactly the case gate
+ * 4 guards against. The map is an LRU so it stays bounded regardless, and
+ * nhp-acd drops the pin at startup.
+ */
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __type(key, struct knock_peer_key);
+    __type(value, struct knock_peer_value);
+    __uint(max_entries, MAX_ENTRIES);
+    __uint(pinning, LIBBPF_PIN_BY_NAME);
+} knock_peers SEC(".maps");
+
+/*
+ * Has `peer_ip` been admitted to `service_port` on the AC by a knock?
+ *
+ * Existence, not liveness: the whole point is to still answer yes once the
+ * knock has expired. `service_port` is the port on the *AC* -- the destination
+ * port of the peer's packets, i.e. the source port of the AC's replies.
+ */
+static __always_inline bool nhp_peer_knocked(__be32 peer_ip, __be16 service_port,
+                                             __u8 protocol)
+{
+    struct knock_peer_key key = {
+        .src_ip = peer_ip,
+        .dst_port = service_port,
+        .protocol = protocol,
+    };
+
+    return bpf_map_lookup_elem(&knock_peers, &key) != NULL;
+}
+
+/* Record a non-TCP packet that a whitelist just admitted. TCP is skipped: no
+ * reader consults the map for it. */
+static __always_inline void nhp_record_knocked_peer(__be32 peer_ip,
+                                                    __be16 service_port,
+                                                    __u8 protocol,
+                                                    __u64 expire_time)
+{
+    struct knock_peer_key key = {
+        .src_ip = peer_ip,
+        .dst_port = service_port,
+        .protocol = protocol,
+    };
+    struct knock_peer_value val = {
+        .expire_time = expire_time,
+    };
+
+    if (protocol == 6 /* IPPROTO_TCP */)
+        return;
+
+    bpf_map_update_elem(&knock_peers, &key, &val, BPF_ANY);
+}
 
 /*
  * Runtime knobs the programs cannot read for themselves, one __u32 per slot.

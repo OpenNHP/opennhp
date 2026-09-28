@@ -457,7 +457,8 @@ buffer opened, and dumps both it and `journalctl` on every abort.
 ### eBPF map pin mismatch at startup
 
 `nhp-acd` loads two objects — `nhp_ebpf_xdp.o` and `tc_egress.o` — that share
-pinned maps by name (`conn_track`, `nhp_config`, the whitelists). The loader
+pinned maps by name (`conn_track`, `nhp_config`, `knock_peers`, the
+whitelists). The loader
 validates map type, key size, value size and `max_entries` when the second
 object reuses a pin, so a pin left over from a different build stops the AC
 from starting with an error naming the map:
@@ -481,7 +482,7 @@ ssh nhp-ac 'sudo systemctl restart nhp-acd'
 # if something else still holds them (an orphaned tc filter or xdp link):
 ssh nhp-ac 'sudo tc qdisc del dev $(ip route | awk "/default/ {print \$5; exit}") clsact; \
             sudo ip link set dev $(ip route | awk "/default/ {print \$5; exit}") xdpgeneric off; \
-            sudo rm -f /sys/fs/bpf/{conn_track,nhp_config,spp,src_port,sdwhitelist,port_list,protocol_port,icmpwhitelist,xdp_white_prog,tc_egress_prog}'
+            sudo rm -f /sys/fs/bpf/{conn_track,nhp_config,spp,src_port,sdwhitelist,port_list,protocol_port,icmpwhitelist,knock_peers,xdp_white_prog,tc_egress_prog}'
 ```
 
 ### What the knock window covers (and checking that it closes)
@@ -542,8 +543,20 @@ In eBPF mode the rule is enforced by `conn_track` (`nhp/ebpf/xdp/`):
   host's `net.ipv4.ip_local_port_range` (read at load time into the
   `nhp_config` map, and logged at startup) or one of the well-known client
   ports listed in `is_wellknown_client_port()`, and a UDP check that the peer
-  holds no knock entry in `spp`, `src_port` or `sdwhitelist`. It never writes
-  the whitelist maps.
+  holds — or has ever held — a knock for the port we are sending from. It never
+  writes the whitelist maps.
+* **`knock_peers` is what makes that last gate hold after expiry.** The gate
+  cannot rely on the whitelist maps alone: XDP *deletes* a whitelist entry the
+  moment a packet finds it expired, so by the time the AC answers a peer whose
+  knock ran out there is nothing left in `spp` / `src_port` / `sdwhitelist` to
+  find. The XDP program therefore records every non-TCP packet a whitelist
+  admits in `knock_peers`, keyed on **peer address + the port on the AC +
+  protocol**, and that record is never deleted (it is an LRU, and `nhp-acd`
+  drops the pin at startup). It grants nothing — no packet is ever admitted
+  because of it — so a stale entry can only make the egress gates stricter. It
+  also covers the two knock shapes the whitelist lookups cannot be asked about
+  (`port_list`, whose key wildcards the port range, and `protocol_port`, whose
+  key has no peer address at all).
 * An **egress** entry (`NHP_CT_EGRESS_IDLE_TTL_NS`, 180s) is refreshed by the
   AC's **own outgoing packets** only. For UDP, XDP deliberately does not
   refresh it from an inbound packet, so a peer cannot slide the window forward
@@ -551,8 +564,9 @@ In eBPF mode the rule is enforced by `conn_track` (`nhp/ebpf/xdp/`):
   AC-initiated UDP flow therefore lives 180s past the moment the AC last spoke
   on it, which is what keeps the long-lived AC↔nhp-server channel up (see the
   next case). XDP also refuses to serve the reverse (egress) lookup at all to a
-  peer that holds a **live `sdwhitelist` entry**, so an egress entry can never
-  become a second way in for a knocking peer.
+  peer that holds a **live `sdwhitelist` entry** or — for non-TCP — a
+  **`knock_peers` record for the port**, so an egress entry that pre-dates the
+  knock, or that the gates missed, can never become a second way in.
 
 So "the door is shut" means *a fresh connection is refused*. Test it that way.
 
@@ -599,21 +613,57 @@ The failure mode this also guards against, and the reason the egress gates
 matter: the knock expires, XDP drops the peer's next datagram, the service then
 answers anyway (a retransmit, a keepalive, a queued reply) — and if that answer
 created an egress entry, the peer's datagrams would be admitted through the
-reverse lookup with no live knock at all. Worth exercising against a UDP
-service on a port **inside** the ephemeral range (WireGuard 51820, QUIC, a game
-server) behind an `any`-protocol resource, which is the shape that hits every
-gate at once.
+reverse lookup with no live knock at all.
 
-Then confirm no egress entry was created for that flow — the peer's address
+##### The AC-answers-first case (run this against a service inside the ephemeral range)
+
+This is the ordering that has to be exercised explicitly, because **the AC
+sends first** and the peer's own packets are what would otherwise be dropped.
+Use a UDP service on a port **inside** the ephemeral range — WireGuard 51820,
+QUIC, a game server — behind an `any`-protocol resource (`Protocol` empty or
+`"any"`, `Port = 0`, which is the default resource shape and the one that hits
+every gate at once):
+
+```bash
+# 1. knock, and get datagrams flowing both ways — a WireGuard handshake, or
+#    just `nc -u <ac> 51820` against a listener on the AC
+sleep $((OpenTime + 10))
+
+# 2. the peer goes quiet, but the AC's service keeps sending: a WireGuard
+#    PersistentKeepalive (25s), a QUIC PTO, a reply to an already-queued
+#    datagram. Do NOT send anything from the peer during this step.
+ssh nhp-ac 'sudo tcpdump -ni any -c 5 "udp and port 51820 and src host <ac>"'
+
+# 3. now the peer sends again. It must be dropped.
+nc -u <ac> 51820           # no reply; the peer's address lands in the deny log
+ssh nhp-ac 'tail -f /home/ec2-user/nhp-ac/logs/nhp_deny-*.log'
+```
+
+Step 2 is the regression: if the AC's outgoing keepalive is allowed to create
+an egress `conn_track` entry, step 3 succeeds and each further reply refreshes
+that entry, so the peer keeps the 4-tuple admitted indefinitely with no live
+knock. Confirm no egress entry was created for that flow — the peer's address
 must not appear on the `flags: 01` (CT_DIR_EGRESS) side:
 
 ```bash
 ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/conn_track | head -40'
 sudo bpftool map dump pinned /sys/fs/bpf/spp   # knock entries only, and expired ones are gone
+
+# and that the peer is on record as having knocked that port — this is the map
+# the gate reads once the whitelist entry above has been deleted
+sudo bpftool map dump pinned /sys/fs/bpf/knock_peers
 ```
 
 If `spp` keeps gaining entries while nobody is knocking, something is writing
-the whitelist from the data path again — that was the original bug.
+the whitelist from the data path again — that was the original bug. If
+`knock_peers` is *empty* after a UDP knock has passed traffic, the gate has
+nothing to read after expiry and this whole case is open again.
+
+> `knock_peers` is per (peer, port, protocol) and is never expired, so if the
+> AC also needs to talk to that peer **as a UDP client** from that same port
+> number, its replies get no permit. In practice the AC's client sockets take a
+> random ephemeral port, so a collision needs the peer to have knocked exactly
+> that port; restarting `nhp-acd` clears the map.
 
 #### The AC's own channel to the nhp-server (run this one every time)
 

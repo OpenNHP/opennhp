@@ -108,6 +108,29 @@ static __always_inline void new_ingress_conn(struct ipv4_ct_tuple *ct_key, __u8 
     bpf_map_update_elem(&conn_track, ct_key, &new_val, BPF_ANY);
 }
 
+/* Everything a whitelist branch does once it has decided to admit the packet.
+ *
+ * Besides the event and the conn_track entry it records the peer in
+ * `knock_peers` -- peer address, the port on us it was admitted to, protocol --
+ * which is the lasting record tc_egress.c's gate 4 needs. The whitelist entry
+ * that admitted this packet is deleted by the cascade below the moment a later
+ * packet finds it expired, so without this there would be nothing left to say
+ * this peer was ever knock-gated by the time the AC answers it with the knock
+ * gone; the AC's reply would then get an egress conn_track entry and the peer
+ * an indefinitely refreshable way back in. See nhp_record_knocked_peer(), which
+ * ignores TCP (its egress gate is exact and needs no record).
+ *
+ * Every branch that admits a packet must go through here: one that does not is
+ * one whose knock shape reopens that hole. */
+static __always_inline int admit_ingress(void *ctx, struct iphdr *iph,
+                                         struct ipv4_ct_tuple *ct_key, __u64 now,
+                                         bool track, __u64 expire_time) {
+    submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key->sport, ct_key->dport, iph->protocol, iph->tot_len);
+    nhp_record_knocked_peer(iph->saddr, ct_key->dport, iph->protocol, expire_time);
+    new_ingress_conn(ct_key, iph->protocol, now, track, expire_time);
+    return XDP_PASS;
+}
+
 /* Apply the TCP close semantics to an entry an inbound packet is refreshing: a
  * FIN or a RST cuts it down to the close window so it dies with the connection
  * rather than lingering for the full idle TTL, and the next packet of a flow
@@ -244,6 +267,16 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     bool peer_has_live_knock = sd_val && sd_val->allowed == 1 &&
                                sd_val->expire_time >= now;
 
+    /* Has this peer ever been admitted to this port of ours by a knock? Unlike
+     * `peer_has_live_knock` this survives the knock, and it is what keeps the
+     * reverse branch below from serving a peer whose knock has expired. Only
+     * non-TCP: the TCP egress gate is exact, so an EGRESS entry for a TCP flow
+     * really is a connection the AC opened, and `knock_peers` holds nothing for
+     * TCP anyway. Read here, before reverseTuple(), while ct_key.dport is still
+     * the port on us. */
+    bool peer_knocked_port = iph->protocol != IPPROTO_TCP &&
+                             nhp_peer_knocked(iph->saddr, ct_key.dport, iph->protocol);
+
     /*
      * Forward (CT_DIR_INGRESS) hit: a flow the peer opened and that we admitted
      * via one of the whitelists while its knock was valid.
@@ -333,16 +366,18 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
      * packet on its own merits.
      *
      * A peer that holds a live "any"-protocol knock is never served from here
-     * either. Gate 4 in tc_egress.c already refuses to create an EGRESS entry
-     * for such a peer, and this is the other half of that: an entry that
-     * pre-dates the knock, or that the gates missed, must not become a second
-     * way in. Nothing is lost by skipping the branch -- the sdwhitelist lookup
-     * below admits the packet if the knock really is live.
+     * either, nor -- for non-TCP -- is one that `knock_peers` says has been
+     * admitted to this port of ours at any point. Gate 4 in tc_egress.c already
+     * refuses to create an EGRESS entry for such a peer, and this is the other
+     * half of that: an entry that pre-dates the knock, or that the gates
+     * missed, must not become a second way in. Nothing is lost by skipping the
+     * branch -- the whitelist lookups below admit the packet if a knock really
+     * is live, and they are the only thing that may.
      */
     reverseTuple(&ct_key);
     existing_val = bpf_map_lookup_elem(&conn_track, &ct_key);
     int reverse_verdict = -1;
-    if (existing_val && !is_syn && !peer_has_live_knock) {
+    if (existing_val && !is_syn && !peer_has_live_knock && !peer_knocked_port) {
         if (check_conn_expiry(existing_val)) {
             bpf_map_delete_elem(&conn_track, &ct_key);
         } else {
@@ -406,9 +441,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             return XDP_DROP;
         }
         if (w_val->allowed == 1) {
-            submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
-            new_ingress_conn(&ct_key, iph->protocol, now, track_new_conn, expire_time);
-            return XDP_PASS;
+            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, expire_time);
         }
     }
     if (sd_val) {
@@ -418,10 +451,8 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             return XDP_DROP;
         }
         if (sd_val->allowed == 1) {
-            submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
-            new_ingress_conn(&ct_key, iph->protocol, now, track_new_conn, expire_time);
-            return XDP_PASS;
-        }       
+            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, expire_time);
+        }
     }
 
     if (sp_val) {
@@ -431,9 +462,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             return XDP_DROP;
         }
         if (sp_val->allowed == 1) {
-            submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
-            new_ingress_conn(&ct_key, iph->protocol, now, track_new_conn, expire_time);
-            return XDP_PASS;
+            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, expire_time);
         }
     }
 
@@ -444,9 +473,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             return XDP_DROP;
         }
         if (pl_val->allowed == 1) {
-            submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
-            new_ingress_conn(&ct_key, iph->protocol, now, track_new_conn, expire_time);
-            return XDP_PASS;
+            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, expire_time);
         }
     }
     if (pp_val) {
@@ -456,9 +483,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             return XDP_DROP;
         }
         if (pp_val->allowed == 1) {
-            submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
-            new_ingress_conn(&ct_key, iph->protocol, now, track_new_conn, expire_time);
-            return XDP_PASS;
+            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, expire_time);
         }
     }
     submit_event(ctx, 0, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);

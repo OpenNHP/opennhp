@@ -37,6 +37,12 @@ type bpfObjects struct {
 	Protocolport  *ebpf.Map     `ebpf:"protocol_port"`
 	Conntrack     *ebpf.Map     `ebpf:"conn_track"`
 	Events        *ebpf.Map     `ebpf:"events"`
+	// Peers a knock has admitted, and to which port. Written by the XDP
+	// program, read by the TC egress program's gate 4 — see `knock_peers` in
+	// nhp/ebpf/xdp/nhp_maps.h. Nothing in user space drives it; it is
+	// assigned here only so that a pin left over from an incompatible build
+	// fails the load by name, the same reason Conntrack is assigned below.
+	KnockPeers *ebpf.Map `ebpf:"knock_peers"`
 }
 
 type tcBpfObjects struct {
@@ -44,10 +50,11 @@ type tcBpfObjects struct {
 	// The TC egress program records the AC's own outbound connections in
 	// conn_track (shared with the XDP program through its pin) so their
 	// replies get back in. It no longer writes the knock whitelist `spp`; it
-	// only reads the whitelist maps, to tell a peer that holds a knock apart
-	// from a host the AC itself connected to. Those maps are not listed here
-	// because nothing in user space drives them through this object — the XDP
-	// collection above is loaded first and creates every pin.
+	// only reads the whitelist maps and `knock_peers`, to tell a peer that
+	// holds — or once held — a knock apart from a host the AC itself connected
+	// to. Those maps are not listed here because nothing in user space drives
+	// them through this object — the XDP collection above is loaded first and
+	// creates every pin.
 	//
 	// Conntrack is not used after the load, but keeping it assigned means a
 	// pin left over from an incompatible build fails here, at startup, with a
@@ -386,6 +393,7 @@ func CleanupBPFFiles() {
 		"/sys/fs/bpf/sdwhitelist",
 		"/sys/fs/bpf/src_port",
 		"/sys/fs/bpf/spp",
+		"/sys/fs/bpf/knock_peers",
 		"/sys/fs/bpf/nhp_config",
 		"/sys/fs/bpf/tc_egress_prog",
 	}

@@ -16,16 +16,34 @@
 #define IPPROTO_UDP 17
 
 /*
- * Does the peer we are sending to hold a knock entry that covers this packet?
- * If so, this packet is the reply side of a service the AC is serving, not a
- * connection the AC opened, and its lifetime belongs to the knock TTL alone.
+ * Does the peer we are sending to hold -- or has it ever held -- a knock that
+ * covers this packet? If so, this packet is the reply side of a service the AC
+ * is serving, not a connection the AC opened, and its lifetime belongs to the
+ * knock TTL alone.
+ *
+ * Two questions, and both have to be asked:
+ *
+ * `knock_peers` answers "has this peer ever been admitted to this port of ours"
+ * and is the one that holds after the knock has gone. xdp_white_prog() writes
+ * it from every non-TCP packet a whitelist admits, so it covers all five knock
+ * shapes -- including `port_list` and `protocol_port`, which the whitelist
+ * lookups below cannot be asked about (see the bottom of this comment) -- and,
+ * crucially, it is never deleted. It has to be that way round: XDP deletes a
+ * whitelist entry as soon as a packet finds it expired, so by the time the AC
+ * answers a peer whose knock ran out, the whitelist lookups below have nothing
+ * left to find. Without this map the first datagram after expiry -- dropped,
+ * and taking the whitelist entry with it -- would hand the peer an egress
+ * entry on the AC's next reply and an indefinitely refreshable way back in.
+ *
+ * The whitelist lookups answer "does the peer hold a knock right now", which
+ * `knock_peers` cannot yet know about: nothing is recorded there until the peer
+ * actually sends something. They cover the peer that has knocked and not spoken
+ * yet, with the AC's service sending first.
  *
  * `src_ip`/`dst_ip` are this egress packet's, so the whitelist keys -- which
  * are written for the peer -> AC direction -- are built the other way round,
  * with our source port as the peer's destination port. Expiry is not checked on
- * purpose: an entry that exists at all, live or stale, marks the peer. Checking
- * it would reopen the hole, since the case this guards against is exactly the
- * AC answering a peer *after* its knock ran out.
+ * purpose: an entry that exists at all, live or stale, marks the peer.
  *
  * The three maps consulted are the ones whose key carries the peer's address:
  * `spp` and `src_port` (address + port) and `sdwhitelist` (the address pair a
@@ -48,12 +66,17 @@
  * flows -- including nhp-acd's own UDP channel to the nhp-server, whose replies
  * only get back in because of the entry written below. Losing that would take
  * the AC off the air, which is a far worse failure than the narrow case those
- * lookups would cover, and gate 3 plus an idle window that only the AC's own
- * sending refreshes already bound it.
+ * lookups would cover. Those two shapes are instead covered by `knock_peers`,
+ * whose key is per port and per peer and so cannot spill onto an unrelated
+ * flow.
  */
 static __always_inline bool peer_is_knocking(__be32 src_ip, __be32 dst_ip,
                                              __be16 sport, __u8 protocol)
 {
+    /* dst_ip is the peer; sport is the port on the AC it was admitted to. */
+    if (nhp_peer_knocked(dst_ip, sport, protocol))
+        return true;
+
     struct whitelist_key wl_key = {
         .src_ip = dst_ip,
         .dst_ip = src_ip,
@@ -285,15 +308,17 @@ int tc_egress_prog(struct __sk_buff *ctx)
          * Gate 4, UDP: and in case a knock-protected service does listen on a
          * port the AC can also send from -- one inside the ephemeral range
          * (QUIC/HTTP3, WireGuard, a game server) or one of the well-known
-         * client ports above -- skip any peer that holds a knock entry for it.
+         * client ports above -- skip any peer that holds, or has ever held, a
+         * knock for it. `knock_peers` is what makes that hold once the knock
+         * has expired; see peer_is_knocking().
          *
          * Gates 3 and 4 are heuristics where gate 2 is exact, so the XDP side
          * backs them up twice over: it never refreshes a non-TCP EGRESS entry
          * from an inbound packet, and it refuses to serve the reverse lookup at
-         * all for a peer with a live sdwhitelist entry. One that slips through
-         * therefore lives on the AC's own sending and dies
-         * NHP_CT_EGRESS_IDLE_TTL_NS after the AC last spoke, instead of being
-         * slid forward by the peer.
+         * all for a peer that holds a live sdwhitelist entry or a `knock_peers`
+         * record for the port. One that slips through therefore lives on the
+         * AC's own sending and dies NHP_CT_EGRESS_IDLE_TTL_NS after the AC last
+         * spoke, instead of being slid forward by the peer.
          */
         if (peer_is_knocking(src_ip, dst_ip, sport, protocol))
             return TC_ACT_OK;

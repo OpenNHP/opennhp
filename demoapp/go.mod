@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/OpenNHP/opennhp/nhp v0.6.0
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/gin-contrib/sessions v1.1.1
+	github.com/gin-contrib/sessions v1.1.2
 	github.com/gin-gonic/gin v1.12.0
 	github.com/pelletier/go-toml/v2 v2.4.3
 	golang.org/x/crypto v0.57.0

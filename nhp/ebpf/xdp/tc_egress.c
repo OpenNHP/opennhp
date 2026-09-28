@@ -166,6 +166,14 @@ int tc_egress_prog(struct __sk_buff *ctx)
      * the peer -> AC direction and look it up. A hit means the peer opened this
      * flow (knock, SSH, ...), so its lifetime belongs to the knock TTL alone --
      * do not create or refresh anything here.
+     *
+     * The one thing that is recorded is a FIN the AC itself sends on such a
+     * flow. XDP cannot tell a genuine inbound FIN from a spoofed one, so it
+     * only cuts the entry's window for as long as the flow stays quiet; the cut
+     * becomes permanent once both ends have closed, and CT_FLAG_FIN_LOCAL --
+     * which nothing but this program writes -- is how XDP knows our half of
+     * that happened. Neither `timestamp` nor `ttl_ns` grows here: the flag can
+     * only ever shorten the entry's life.
      */
     struct ipv4_ct_tuple ingress_key;
     __builtin_memset(&ingress_key, 0, sizeof(ingress_key));
@@ -176,8 +184,16 @@ int tc_egress_prog(struct __sk_buff *ctx)
     ingress_key.nexthdr = protocol;
     ingress_key.flags = CT_DIR_INGRESS;
 
-    if (bpf_map_lookup_elem(&conn_track, &ingress_key))
+    struct conn_value *ingress_val = bpf_map_lookup_elem(&conn_track, &ingress_key);
+    if (ingress_val) {
+        if (is_tcp && is_fin) {
+            ingress_val->flags |= CT_FLAG_FIN_LOCAL;
+            if ((ingress_val->flags & CT_FLAG_FIN_BOTH) == CT_FLAG_FIN_BOTH &&
+                ingress_val->ttl_ns > NHP_CT_CLOSE_TTL_NS)
+                ingress_val->ttl_ns = NHP_CT_CLOSE_TTL_NS;
+        }
         return TC_ACT_OK;
+    }
 
     struct ipv4_ct_tuple egress_key;
     __builtin_memset(&egress_key, 0, sizeof(egress_key));
@@ -218,10 +234,15 @@ int tc_egress_prog(struct __sk_buff *ctx)
         existing->timestamp = now;
         existing->last_timestamp = now;
         existing->tx_packets++;
-        if (is_fin || (existing->flags & CT_FLAG_FIN)) {
-            existing->flags |= CT_FLAG_FIN;
-            existing->ttl_ns = NHP_CT_CLOSE_TTL_NS;
-        }
+        /* Our own FIN cuts the window and, together with the peer's, makes the
+         * cut permanent. Any other packet restores the full reply window --
+         * which is what undoes the cut an unverifiable inbound FIN or RST made
+         * on the XDP side. Non-TCP has no close flags, and nothing ever cuts
+         * such an entry, so it is left alone. */
+        if (is_tcp)
+            nhp_ct_close_ttl_refresh(existing, is_fin, false /* RST deleted above */,
+                                     true /* the AC's own packet */,
+                                     NHP_CT_EGRESS_IDLE_TTL_NS);
         return TC_ACT_OK;
     }
 

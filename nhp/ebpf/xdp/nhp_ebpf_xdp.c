@@ -108,32 +108,21 @@ static __always_inline void new_ingress_conn(struct ipv4_ct_tuple *ct_key, __u8 
     bpf_map_update_elem(&conn_track, ct_key, &new_val, BPF_ANY);
 }
 
-/* Apply the TCP close semantics to an entry that is being refreshed: a FIN or
- * an inbound RST cuts it down to the close window so it dies with the
- * connection rather than lingering for the full idle TTL, and it stays cut down
- * for the rest of the handshake.
+/* Apply the TCP close semantics to an entry an inbound packet is refreshing: a
+ * FIN or a RST cuts it down to the close window so it dies with the connection
+ * rather than lingering for the full idle TTL, and the next packet of a flow
+ * that is still running puts the full window (`idle_ttl_ns`) back.
  *
- * Neither deletes the entry. XDP cannot validate an inbound RST -- no sequence
- * check here, and the kernel's RFC 5961 check runs after us -- so deleting
- * would hand any off-path host that guesses the 4-tuple a way to cut an
- * admitted session whose knock has since expired, or to blackhole the replies
- * of a connection the AC itself opened. A RST the AC *sends* is a different
- * matter and tc_egress.c does delete on it.
- *
- * Unlike the FIN cut, the RST cut is not sticky: a genuine RST ends the flow,
- * so nothing refreshes the entry and it ages out within the close window, while
- * a session that is still exchanging packets after a spoofed one gets its full
- * window back on the next packet. */
-static __always_inline void apply_close_ttl(struct conn_value *val, bool is_fin, bool is_rst) {
-    if (is_rst) {
-        val->flags |= CT_FLAG_RST;
-        val->ttl_ns = NHP_CT_CLOSE_TTL_NS;
-        return;
-    }
-    if (is_fin || (val->flags & CT_FLAG_FIN)) {
-        val->flags |= CT_FLAG_FIN;
-        val->ttl_ns = NHP_CT_CLOSE_TTL_NS;
-    }
+ * Neither flag deletes the entry, and neither cut is permanent, because XDP can
+ * validate neither of them -- no sequence check here, and the kernel's RFC 5961
+ * check runs after us. Deleting, or cutting for good, would hand any off-path
+ * host that guesses the 4-tuple a way to cut an admitted session whose knock has
+ * since expired, or to blackhole the replies of a connection the AC itself
+ * opened. A FIN or RST the AC *sends* is a different matter: tc_egress.c
+ * deletes on the RST, and its FIN is what makes the cut stick. See
+ * nhp_ct_close_ttl_refresh(). */
+static __always_inline void apply_close_ttl(struct conn_value *val, bool is_fin, bool is_rst, __u64 idle_ttl_ns) {
+    nhp_ct_close_ttl_refresh(val, is_fin, is_rst, false /* from the peer */, idle_ttl_ns);
 }
 
 SEC("xdp")
@@ -276,8 +265,10 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
      *     NEW, so `--state ESTABLISHED` does not match it either). Re-using a
      *     source port therefore buys the peer nothing;
      *   - a FIN or a RST cuts the entry down to NHP_CT_CLOSE_TTL_NS, enough for
-     *     the rest of the close handshake and no more. See apply_close_ttl()
-     *     for why an inbound RST does not delete the entry outright.
+     *     the rest of the close handshake and no more, and the next packet of a
+     *     flow that is still running restores the full window. See
+     *     apply_close_ttl() for why an inbound RST neither deletes the entry
+     *     outright nor cuts it for good.
      *
      * Non-TCP has no handshake to bind an entry to one exchange, so it is not
      * refreshed here at all: its window was capped at the knock's remaining
@@ -300,7 +291,10 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             new_val.last_timestamp = now;
             if (is_tcp) {
                 new_val.timestamp = now;
-                apply_close_ttl(&new_val, is_fin, is_rst);
+                /* The window a TCP ingress entry was created with
+                 * (nhp_ct_ingress_ttl_ns), i.e. what a packet that is not a
+                 * close restores. */
+                apply_close_ttl(&new_val, is_fin, is_rst, NHP_CT_TCP_IDLE_TTL_NS);
             }
             bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_EXIST);
             return XDP_PASS;
@@ -330,8 +324,10 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
      *           NHP_CT_EGRESS_IDLE_TTL_NS after the AC last spoke on it.
      *
      * As in the forward branch a pure SYN is never answered from here, and a
-     * FIN or RST cuts the entry down to the close window instead of deleting it
-     * (apply_close_ttl). An entry that has idled out falls through to the
+     * FIN or RST cuts the entry down to the close window -- non-permanently and
+     * without deleting it -- instead of removing it (apply_close_ttl); the
+     * window it restores is the egress one the entry was created with, since
+     * tc_egress.c wrote it. An entry that has idled out falls through to the
      * whitelist lookups rather than dropping the packet outright -- the same
      * treatment the forward branch gives, and it lets a live knock admit the
      * packet on its own merits.
@@ -354,7 +350,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             new_val.rx_packets++;
             if (is_tcp) {
                 new_val.timestamp = now;
-                apply_close_ttl(&new_val, is_fin, is_rst);
+                apply_close_ttl(&new_val, is_fin, is_rst, NHP_CT_EGRESS_IDLE_TTL_NS);
             }
             new_val.last_timestamp = now;
             bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_EXIST);

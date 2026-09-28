@@ -24,13 +24,25 @@ enum {
     CT_ESTABLISHED,
 };
 
+/*
+ * conn_value.flags.
+ *
+ * The two FIN bits are direction-tagged on purpose. XDP sees only what the peer
+ * sends and can validate none of it, so a flag that shortens an entry's window
+ * for good must be one the AC itself sent -- CT_FLAG_FIN_LOCAL is written by
+ * tc_egress.c alone. See nhp_ct_close_ttl_refresh().
+ */
 enum {
     CT_FLAG_NONE = 0,
     CT_FLAG_SYN = 1 << 0,
-    CT_FLAG_FIN = 1 << 1,
-    CT_FLAG_RST = 1 << 2,
+    CT_FLAG_FIN_PEER = 1 << 1,  /* FIN seen from the peer (XDP ingress)      */
+    CT_FLAG_RST = 1 << 2,       /* RST seen from the peer; recorded only     */
     CT_FLAG_ACK = 1 << 3,
+    CT_FLAG_FIN_LOCAL = 1 << 4, /* FIN the AC itself sent (TC egress)        */
 };
+
+/* Both ends have closed, i.e. one of the FINs is ours. */
+#define CT_FLAG_FIN_BOTH (CT_FLAG_FIN_PEER | CT_FLAG_FIN_LOCAL)
 
 enum {
     CT_DIR_INGRESS = 0,
@@ -66,7 +78,10 @@ enum {
  *   - a pure SYN never matches an existing entry -- every new connection goes
  *     through the whitelist lookups, so re-using a source port buys nothing;
  *   - a FIN or an inbound RST cuts the entry down to NHP_CT_CLOSE_TTL_NS, so it
- *     dies with the connection instead of lingering for an hour.
+ *     dies with the connection instead of lingering for an hour. That cut is
+ *     undone by the next packet of a flow that is still running, and only a
+ *     close the AC took part in makes it permanent -- see
+ *     nhp_ct_close_ttl_refresh().
  *
  * Non-TCP has no handshake to key off, so there is nothing to bind the entry to
  * one exchange and nothing to close it: a refreshable window would let a peer
@@ -82,9 +97,9 @@ enum {
 #define NHP_CT_OTHER_IDLE_TTL_NS (120ULL * 1000000000ULL)   /* nf: udp_stream  */
 
 /*
- * Window a TCP entry keeps after the first FIN or an inbound RST, long enough
- * for the rest of the close handshake and any straggling retransmit.
- * nf_conntrack uses 60s for CLOSE_WAIT and 120s for TIME_WAIT.
+ * Window a TCP entry keeps after a FIN or an inbound RST, long enough for the
+ * rest of the close handshake and any straggling retransmit. nf_conntrack uses
+ * 60s for CLOSE_WAIT and 120s for TIME_WAIT.
  *
  * An inbound RST is cut down to this rather than deleting the entry outright:
  * nothing in XDP can tell a genuine RST from a spoofed one (there is no
@@ -92,9 +107,11 @@ enum {
  * deleting would let any off-path host that guesses the 4-tuple -- three
  * quarters of which it usually knows -- cut an admitted session whose knock has
  * since expired, or blackhole the replies of a connection the AC itself opened.
- * Cutting the window instead costs a spoofer nothing it did not already have:
- * a live flow keeps refreshing the entry, and a genuinely reset connection
- * stops sending and ages out.
+ * Cutting the window instead costs a spoofer nothing it did not already have,
+ * *provided the cut is undone* once the flow proves it is still alive; that is
+ * what nhp_ct_close_ttl_refresh() is for. A live flow gets its full window back
+ * on its next packet, and a genuinely reset connection stops sending and ages
+ * out inside this window.
  */
 #define NHP_CT_CLOSE_TTL_NS (60ULL * 1000000000ULL)
 
@@ -365,6 +382,49 @@ static __always_inline __u64 nhp_ct_ingress_ttl_ns(__u8 protocol, __u64 now,
 
     knock_left = expire_time > now ? expire_time - now : 0;
     return knock_left < ttl ? knock_left : ttl;
+}
+
+/*
+ * Recompute a *TCP* entry's window as it is refreshed by a packet of the flow,
+ * and record that packet's close flags. `idle_ttl_ns` is the full window the
+ * entry's direction was created with -- NHP_CT_TCP_IDLE_TTL_NS for an ingress
+ * entry, NHP_CT_EGRESS_IDLE_TTL_NS for one tc_egress.c created -- and
+ * `from_local` says whether the packet is one the AC sent (TC) or one it
+ * received (XDP).
+ *
+ * A FIN or an inbound RST cuts the window to NHP_CT_CLOSE_TTL_NS so the entry
+ * dies with the connection. The cut is deliberately *not* sticky, because XDP
+ * can validate neither flag: there is no sequence check here and the kernel's
+ * RFC 5961 check runs after us. Were it sticky, an off-path host that guesses
+ * the 4-tuple could drop an admitted session from an hour (or 180s for an
+ * AC-initiated flow) to 60s with one spoofed packet and kill it on the first
+ * idle gap after that -- precisely the attack that not deleting the entry on an
+ * inbound RST was meant to rule out. So the next packet of a flow that is still
+ * running puts the full window back, and a flow that really has ended sends
+ * nothing more and ages out inside the close window.
+ *
+ * The one sticky case is a close the AC took part in: CT_FLAG_FIN_LOCAL comes
+ * only from a FIN tc_egress.c saw the AC send, so once FINs have been seen in
+ * both directions the connection is being torn down for real and the entry
+ * stays on the close window whatever else arrives. A peer cannot fake its half
+ * of that, because the half that matters is ours.
+ */
+static __always_inline void nhp_ct_close_ttl_refresh(struct conn_value *val,
+                                                     bool is_fin, bool is_rst,
+                                                     bool from_local,
+                                                     __u64 idle_ttl_ns)
+{
+    if (is_fin)
+        val->flags |= from_local ? CT_FLAG_FIN_LOCAL : CT_FLAG_FIN_PEER;
+    if (is_rst)
+        val->flags |= CT_FLAG_RST;
+
+    if ((val->flags & CT_FLAG_FIN_BOTH) == CT_FLAG_FIN_BOTH) {
+        val->ttl_ns = NHP_CT_CLOSE_TTL_NS;
+        return;
+    }
+
+    val->ttl_ns = (is_fin || is_rst) ? NHP_CT_CLOSE_TTL_NS : idle_ttl_ns;
 }
 
 #endif /* __NHP_MAPS_H__ */

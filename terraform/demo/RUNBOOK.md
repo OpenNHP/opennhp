@@ -515,6 +515,16 @@ In eBPF mode the rule is enforced by `conn_track` (`nhp/ebpf/xdp/`):
   XDP cannot tell a genuine RST from a spoofed one (no sequence check, and the
   kernel's RFC 5961 check runs after XDP), and deleting would let any off-path
   host that guesses the 4-tuple cut the session.
+* **The close cut is not permanent, for the same reason.** An inbound FIN is as
+  unverifiable as an inbound RST, so neither may shorten a session's window for
+  the rest of its life — otherwise one spoofed packet would drop an SSH,
+  WebSocket or long-poll session from 1h (or 180s for an AC-initiated flow) to
+  60s and kill it on the first idle gap after that. The next packet of a flow
+  that is still running restores its full window
+  (`nhp_ct_close_ttl_refresh()`). The cut becomes permanent only once FINs have
+  been seen in **both** directions, and the AC's own half is recorded by the TC
+  egress program (`CT_FLAG_FIN_LOCAL`), which a peer cannot fake — so a real
+  close still dies in 60s rather than lingering for an hour.
 * **A UDP (or other non-TCP) entry is capped at the knock's remaining
   lifetime** — `min(NHP_CT_OTHER_IDLE_TTL_NS (120s), time left on the knock)` —
   and is **never refreshed** by an inbound packet. There is no handshake to

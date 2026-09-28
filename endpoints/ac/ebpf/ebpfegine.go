@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -35,12 +37,41 @@ type bpfObjects struct {
 	Protocolport  *ebpf.Map     `ebpf:"protocol_port"`
 	Conntrack     *ebpf.Map     `ebpf:"conn_track"`
 	Events        *ebpf.Map     `ebpf:"events"`
+	// Peers a knock has admitted, and to which port. Written by the XDP
+	// program, read by the TC egress program's gate 4 — see `knock_peers` in
+	// nhp/ebpf/xdp/nhp_maps.h. Nothing in user space drives it; it is
+	// assigned here only so that a pin left over from an incompatible build
+	// fails the load by name, the same reason Conntrack is assigned below.
+	KnockPeers *ebpf.Map `ebpf:"knock_peers"`
 }
 
 type tcBpfObjects struct {
 	TcEgressProg *ebpf.Program `ebpf:"tc_egress_prog"`
-	Whitelist    *ebpf.Map     `ebpf:"spp"`
+	// The TC egress program records the AC's own outbound connections in
+	// conn_track (shared with the XDP program through its pin) so their
+	// replies get back in. It no longer writes the knock whitelist `spp`; it
+	// only reads the whitelist maps and `knock_peers`, to tell a peer that
+	// holds — or once held — a knock apart from a host the AC itself connected
+	// to. Those maps are not listed here because nothing in user space drives
+	// them through this object — the XDP collection above is loaded first and
+	// creates every pin.
+	//
+	// Conntrack is not used after the load, but keeping it assigned means a
+	// pin left over from an incompatible build fails here, at startup, with a
+	// `conn_track` error naming the map — see "eBPF map pin mismatch" in
+	// terraform/demo/RUNBOOK.md.
+	Conntrack *ebpf.Map `ebpf:"conn_track"`
+	// Runtime knobs for the TC program, filled in by setEbpfConfig below.
+	Config *ebpf.Map `ebpf:"nhp_config"`
 }
+
+// Config slots in the `nhp_config` map. Keep in sync with the enum in
+// nhp/ebpf/xdp/nhp_maps.h.
+const cfgEphemeralPortMin uint32 = 0
+
+// defaultEphemeralPortMin mirrors NHP_EPHEMERAL_PORT_MIN, the fallback the eBPF
+// program uses when the slot is unset.
+const defaultEphemeralPortMin uint32 = 32768
 
 var (
 	DenyLogger *log.Logger
@@ -125,6 +156,11 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 	}); tcLoadErr != nil {
 		log.Error("Failed to load and assign tc eBPF objects")
 		return tcLoadErr
+	}
+
+	if cfgErr := setEbpfConfig(&tcObjs); cfgErr != nil {
+		log.Error("Failed to configure tc eBPF program")
+		return cfgErr
 	}
 
 	if pinErr := objs.XdpProg.Pin("/sys/fs/bpf/xdp_white_prog"); pinErr != nil {
@@ -256,6 +292,62 @@ func EbpfEngineLoad(dirPath string, logLevel int, acId string) error {
 	return nil
 }
 
+// setEbpfConfig fills the `nhp_config` map the TC egress program reads.
+//
+// The only knob so far is the low bound of the host's ephemeral port range. The
+// TC program uses it to tell a socket the AC opened as a client (which binds a
+// port from that range) from a service it listens on, and that decides whether
+// the flow gets a conn_track entry letting the replies back in. Hard-coding the
+// Linux default would silently drop the replies to the AC's own UDP flows on
+// any host that lowers net.ipv4.ip_local_port_range — including nhp-acd's
+// channel to the nhp-server, which would take the AC off the air.
+func setEbpfConfig(tcObjs *tcBpfObjects) error {
+	if tcObjs.Config == nil {
+		return fmt.Errorf("'nhp_config' map not found")
+	}
+
+	portMin, err := localEphemeralPortMin()
+	if err != nil {
+		// Not fatal: the eBPF side falls back to the same default when the
+		// slot is left at 0, so a host that hides the sysctl still works as
+		// long as it has not moved the range.
+		log.Error("failed to read net.ipv4.ip_local_port_range, assuming %d: %v", defaultEphemeralPortMin, err)
+		portMin = defaultEphemeralPortMin
+	}
+	log.Info("eBPF egress tracking treats source ports >= %d as the AC's own (net.ipv4.ip_local_port_range), plus the well-known client ports listed in is_wellknown_client_port()", portMin)
+
+	if err := tcObjs.Config.Put(cfgEphemeralPortMin, portMin); err != nil {
+		log.Error("failed to write 'nhp_config' map: %v", err)
+		return err
+	}
+	return nil
+}
+
+// localEphemeralPortMin reads the low bound of net.ipv4.ip_local_port_range,
+// whose format is "<low>\t<high>".
+func localEphemeralPortMin() (uint32, error) {
+	const sysctlPath = "/proc/sys/net/ipv4/ip_local_port_range"
+
+	content, err := os.ReadFile(sysctlPath)
+	if err != nil {
+		return 0, err
+	}
+
+	fields := strings.Fields(string(content))
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("%s is empty", sysctlPath)
+	}
+
+	portMin, err := strconv.ParseUint(fields[0], 10, 16)
+	if err != nil {
+		return 0, fmt.Errorf("%s: unparsable low bound %q: %v", sysctlPath, fields[0], err)
+	}
+	if portMin == 0 {
+		return 0, fmt.Errorf("%s: low bound is 0", sysctlPath)
+	}
+	return uint32(portMin), nil
+}
+
 func uint32ToIPv4(ip uint32) string {
 	return fmt.Sprintf("%d.%d.%d.%d",
 		(ip>>24)&0xff,
@@ -301,6 +393,8 @@ func CleanupBPFFiles() {
 		"/sys/fs/bpf/sdwhitelist",
 		"/sys/fs/bpf/src_port",
 		"/sys/fs/bpf/spp",
+		"/sys/fs/bpf/knock_peers",
+		"/sys/fs/bpf/nhp_config",
 		"/sys/fs/bpf/tc_egress_prog",
 	}
 

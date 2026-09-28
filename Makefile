@@ -52,6 +52,8 @@ endif
 
 EBPF_SRC_XDP = ./nhp/ebpf/xdp/nhp_ebpf_xdp.c
 EBPF_SRC_TC_EGRESS = ./nhp/ebpf/xdp/tc_egress.c
+# Shared map definitions included by both sources; a change here must rebuild both.
+EBPF_HDR_MAPS = ./nhp/ebpf/xdp/nhp_maps.h
 EBPF_OBJ_XDP = ./release/nhp-ac/etc/nhp_ebpf_xdp.o
 EBPF_OBJ_TC_EGRESS = ./release/nhp-ac/etc/tc_egress.o
 CLANG_OPTS = -O2 -target bpf -g -Wall -I.
@@ -71,11 +73,11 @@ ebpf: $(EBPF_OBJ_XDP) $(EBPF_OBJ_TC_EGRESS) generate-version-and-build
 ebpf-objs: $(EBPF_OBJ_XDP) $(EBPF_OBJ_TC_EGRESS)
 	@echo "$(COLOUR_GREEN)[eBPF] Object files compiled$(END_COLOUR)"
 
-$(EBPF_OBJ_XDP): $(EBPF_SRC_XDP)
+$(EBPF_OBJ_XDP): $(EBPF_SRC_XDP) $(EBPF_HDR_MAPS)
 	@mkdir -p $(@D)
 	@echo "$(COLOUR_BLUE)[eBPF] Compiling: $< -> $@ $(END_COLOUR)"
 	$(CLANG) $(CLANG_OPTS) -c $(EBPF_SRC_XDP) -o $(EBPF_OBJ_XDP)
-$(EBPF_OBJ_TC_EGRESS): $(EBPF_SRC_TC_EGRESS)
+$(EBPF_OBJ_TC_EGRESS): $(EBPF_SRC_TC_EGRESS) $(EBPF_HDR_MAPS)
 	@mkdir -p $(@D)
 	@echo "$(COLOUR_BLUE)[eBPF] Compiling: $< -> $@ $(END_COLOUR)"
 	$(CLANG) $(CLANG_OPTS) -c $(EBPF_SRC_TC_EGRESS) -o $(EBPF_OBJ_TC_EGRESS)

@@ -566,7 +566,11 @@ In eBPF mode the rule is enforced by `conn_track` (`nhp/ebpf/xdp/`):
   next case). XDP also refuses to serve the reverse (egress) lookup at all to a
   peer that holds a **live `sdwhitelist` entry** or — for non-TCP — a
   **`knock_peers` record for the port**, so an egress entry that pre-dates the
-  knock, or that the gates missed, can never become a second way in.
+  knock, or that the gates missed, can never become a second way in. In the
+  `knock_peers` case the entry is **deleted** rather than just skipped: that
+  record never lapses, so the entry could never serve anything again, and the
+  AC's own sending would otherwise keep resurrecting it (the TC refresh path
+  does not test expiry) as a permanent passenger in the `conn_track` dump.
 
 So "the door is shut" means *a fresh connection is refused*. Test it that way.
 

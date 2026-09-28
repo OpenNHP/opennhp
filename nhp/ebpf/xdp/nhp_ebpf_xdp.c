@@ -267,16 +267,6 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     bool peer_has_live_knock = sd_val && sd_val->allowed == 1 &&
                                sd_val->expire_time >= now;
 
-    /* Has this peer ever been admitted to this port of ours by a knock? Unlike
-     * `peer_has_live_knock` this survives the knock, and it is what keeps the
-     * reverse branch below from serving a peer whose knock has expired. Only
-     * non-TCP: the TCP egress gate is exact, so an EGRESS entry for a TCP flow
-     * really is a connection the AC opened, and `knock_peers` holds nothing for
-     * TCP anyway. Read here, before reverseTuple(), while ct_key.dport is still
-     * the port on us. */
-    bool peer_knocked_port = iph->protocol != IPPROTO_TCP &&
-                             nhp_peer_knocked(iph->saddr, ct_key.dport, iph->protocol);
-
     /*
      * Forward (CT_DIR_INGRESS) hit: a flow the peer opened and that we admitted
      * via one of the whitelists while its knock was valid.
@@ -334,6 +324,19 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         }
     }
 
+    /* Has this peer ever been admitted to this port of ours by a knock? Unlike
+     * `peer_has_live_knock` the answer survives the knock, which is what keeps
+     * the reverse branch below from serving a peer whose knock has expired.
+     *
+     * Read here rather than with the sdwhitelist lookup above so that the
+     * forward branch -- the path every packet of an already-admitted flow takes
+     * -- does not pay for a map lookup only the reverse branch uses, and before
+     * reverseTuple() while ct_key.dport is still the port on us. Non-TCP only:
+     * the TCP egress gate is exact, so an EGRESS entry for a TCP flow really is
+     * a connection the AC opened, and nothing is recorded for TCP anyway. */
+    bool peer_knocked_port = iph->protocol != IPPROTO_TCP &&
+                             nhp_peer_knocked(iph->saddr, ct_key.dport, iph->protocol);
+
     /*
      * Reverse (CT_DIR_EGRESS) hit: the reply to a connection the AC itself
      * opened, whose entry was created by tc_egress.c. The gates there are what
@@ -373,12 +376,23 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
      * missed, must not become a second way in. Nothing is lost by skipping the
      * branch -- the whitelist lookups below admit the packet if a knock really
      * is live, and they are the only thing that may.
+     *
+     * The two differ in what happens to the entry. A live knock is temporary,
+     * so the entry is only skipped: once the knock lapses it may serve the AC's
+     * own flow again. A `knock_peers` record never lapses, so an entry it
+     * blocks can never serve anything again -- and leaving it would strand it,
+     * because tc_egress.c's refresh path does not test expiry, so the AC's own
+     * sending would keep resurrecting an entry no inbound packet is allowed to
+     * reach the delete for. It would sit in the LRU for the life of the daemon
+     * and show up in the conn_track dump operators are told to check after a
+     * knock expires (see the UDP case in terraform/demo/RUNBOOK.md). Delete it
+     * instead; gate 4 makes sure it is not created again.
      */
     reverseTuple(&ct_key);
     existing_val = bpf_map_lookup_elem(&conn_track, &ct_key);
     int reverse_verdict = -1;
-    if (existing_val && !is_syn && !peer_has_live_knock && !peer_knocked_port) {
-        if (check_conn_expiry(existing_val)) {
+    if (existing_val && !is_syn && !peer_has_live_knock) {
+        if (peer_knocked_port || check_conn_expiry(existing_val)) {
             bpf_map_delete_elem(&conn_track, &ct_key);
         } else {
             struct conn_value new_val = *existing_val;

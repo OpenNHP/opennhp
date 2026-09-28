@@ -31,6 +31,10 @@ enum {
  * sends and can validate none of it, so a flag that shortens an entry's window
  * for good must be one the AC itself sent -- CT_FLAG_FIN_LOCAL is written by
  * tc_egress.c alone. See nhp_ct_close_ttl_refresh().
+ *
+ * CT_FLAG_AC_CLIENT is the AC's claim on a 4-tuple, written by tc_egress.c when
+ * it creates an EGRESS entry and nothing at that moment said the peer was
+ * knock-gated on the port the AC is sending from. See nhp_ct_is_ac_client().
  */
 enum {
     CT_FLAG_NONE = 0,
@@ -39,6 +43,7 @@ enum {
     CT_FLAG_RST = 1 << 2,       /* RST seen from the peer; recorded only     */
     CT_FLAG_ACK = 1 << 3,
     CT_FLAG_FIN_LOCAL = 1 << 4, /* FIN the AC itself sent (TC egress)        */
+    CT_FLAG_AC_CLIENT = 1 << 5, /* flow the AC opened as a client (TC egress)*/
 };
 
 /* Both ends have closed, i.e. one of the FINs is ours. */
@@ -354,12 +359,20 @@ struct {
  * tc_egress.c (gate 4) and by xdp_white_prog()'s reverse branch.
  *
  * Unlike the whitelists this is *not* a permission: nothing is ever admitted
- * because of an entry here, so no expiry is enforced on it and a stale entry
- * can only ever make the egress gates stricter. It is deliberately never
- * deleted -- an entry that aged out would let the hole it closes reopen, since
- * the AC answering a peer long after the knock ran out is exactly the case gate
- * 4 guards against. The map is an LRU so it stays bounded regardless, and
- * nhp-acd drops the pin at startup.
+ * because of an entry here. No expiry is enforced on it, and it is deliberately
+ * never deleted -- an entry that aged out would let the hole it closes reopen,
+ * since the AC answering a peer long after the knock ran out is exactly the
+ * case gate 4 guards against. The map is an LRU so it stays bounded regardless,
+ * and nhp-acd drops the pin at startup.
+ *
+ * Because it never lapses, a record here is not merely "stricter": it shuts the
+ * egress gate on its (peer, port, protocol) triple for the life of the daemon,
+ * and xdp_white_prog()'s reverse branch deletes the EGRESS entry it blocks. So
+ * a triple the AC itself uses as a client must never end up in here, or the AC
+ * loses that flow permanently -- an agent knocking from the nhp-server's own
+ * address would otherwise take down the AC's control channel. That is what
+ * CT_FLAG_AC_CLIENT below is for: whichever side claims a triple first owns it,
+ * and a claimed one is never recorded here.
  */
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
@@ -408,6 +421,31 @@ static __always_inline void nhp_record_knocked_peer(__be32 peer_ip,
         return;
 
     bpf_map_update_elem(&knock_peers, &key, &val, BPF_ANY);
+}
+
+/*
+ * Is this conn_track entry the AC's claim on a 4-tuple it opened as a client?
+ *
+ * tc_egress.c sets CT_FLAG_AC_CLIENT on an EGRESS entry it creates when nothing
+ * at that moment said the peer was knock-gated on the port the AC is sending
+ * from: for TCP the pure-SYN gate is proof on its own (a listening socket never
+ * sends one), for UDP it takes all five whitelist shapes and `knock_peers`
+ * coming up empty. It is the mirror image of a `knock_peers` record -- the same
+ * "who claimed this (peer, port, protocol) first" question, answered for the
+ * other side -- and the two are mutually exclusive by construction.
+ *
+ * The flag is a claim, not a permission, and it outlives the entry's reply
+ * window on purpose: an expired AC-client entry admits nothing
+ * (xdp_white_prog() falls through to the whitelists) but is *kept*, because it
+ * is the only record that the port belongs to the AC. Deleting it would let the
+ * next packet a whitelist admits on that tuple write the `knock_peers` record
+ * that shuts the egress gate on the AC's own flow for good. The next packet the
+ * AC itself sends revives it -- tc_egress.c's refresh path does not test expiry
+ * -- which is how the channel comes back on its own once the knock lapses.
+ */
+static __always_inline bool nhp_ct_is_ac_client(const struct conn_value *val)
+{
+    return val && (val->flags & CT_FLAG_AC_CLIENT);
 }
 
 /*

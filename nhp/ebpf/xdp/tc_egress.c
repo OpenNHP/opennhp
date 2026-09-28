@@ -51,14 +51,23 @@
  * endpoints/ac/msghandler.go, which is the default resource shape, so leaving
  * it out meant this gate never fired for the most common knock).
  *
- * The cost of including `sdwhitelist` is that a stale entry for a host the AC
- * also talks to as a client would suppress tracking for that host until the
- * entry is evicted (XDP deletes it on the next packet from that peer, and
- * nhp-acd drops every pin at startup). That needs the peer address and the
- * AC's address to be the same pair in both directions -- an agent knocking
- * from the nhp-server's own address, say -- which a normal deployment does not
- * produce, and it is the price of having the gate work at all for the default
- * resource shape.
+ * The cost of including `sdwhitelist` is that an entry for a host the AC also
+ * talks to as a client suppresses tracking for that host for as long as the
+ * entry exists (XDP deletes it on the first packet from that peer that finds it
+ * expired, and nhp-acd drops every pin at startup). That needs the peer address
+ * and the AC's address to be the same pair in both directions -- an agent
+ * knocking from the nhp-server's own address, which NAT, a small office running
+ * both, or testing the agent on the server host all produce -- and it is the
+ * price of having the gate work at all for the default resource shape.
+ *
+ * Suppressing *tracking* is recoverable: the flow's replies are admitted by the
+ * live knock in the meantime, and the entry is created as soon as the knock
+ * lapses. What must not happen is for that peer to end up in `knock_peers` for
+ * a port the AC sends from, because that record never lapses and would shut
+ * this gate on the AC's own flow permanently. CT_FLAG_AC_CLIENT below is what
+ * keeps the two apart, and it is why a flow the AC opened *before* any knock
+ * appeared is never suppressed at all -- the entry already exists, so the
+ * refresh path above takes it and this gate is never reached.
  *
  * `port_list` and `protocol_port` are deliberately not consulted: the former is
  * keyed on the peer address with a wildcard port range and the latter on the
@@ -98,6 +107,45 @@ static __always_inline bool peer_is_knocking(__be32 src_ip, __be32 dst_ip,
         .dst_ip = src_ip,
     };
     if (bpf_map_lookup_elem(&sdwhitelist, &sd_key))
+        return true;
+
+    return false;
+}
+
+/*
+ * The two knock shapes peer_is_knocking() deliberately leaves out: `port_list`
+ * (peer address plus a wildcard port range) and `protocol_port` (port and
+ * protocol, with no peer address at all).
+ *
+ * Consulting them to *suppress* an egress entry is what the comment above
+ * rules out -- one entry would spill onto unrelated flows, the AC's own
+ * channel to the nhp-server included, and take the AC off the air. Asking them
+ * whether the AC may *claim* the flow as its own is a different question with a
+ * different cost: a false positive loses nothing but the claim, and the entry
+ * is still created and still refreshed. So the broad keys are safe here, and
+ * the claim ends up resting on all five whitelist shapes rather than three.
+ *
+ * The keys are built exactly as xdp_white_prog() builds the ones it admits on,
+ * wildcard range included, so a shape that could admit the peer is a shape that
+ * blocks the claim.
+ */
+static __always_inline bool peer_holds_wildcard_knock(__be32 dst_ip,
+                                                      __be16 sport,
+                                                      __u8 protocol)
+{
+    struct port_list_key pl_key = {
+        .src_ip = dst_ip,
+        .min_port = 0,
+        .max_port = 65535,
+    };
+    if (bpf_map_lookup_elem(&port_list, &pl_key))
+        return true;
+
+    struct protocol_port_key pp_key = {
+        .dst_port = sport,
+        .protocol = protocol,
+    };
+    if (bpf_map_lookup_elem(&protocol_port, &pp_key))
         return true;
 
     return false;
@@ -197,6 +245,15 @@ int tc_egress_prog(struct __sk_buff *ctx)
      * which nothing but this program writes -- is how XDP knows our half of
      * that happened. Neither `timestamp` nor `ttl_ns` grows here: the flag can
      * only ever shorten the entry's life.
+     *
+     * Returning early would be wrong for a flow the AC opened itself, because
+     * it is the refresh below that keeps such a flow's reply window open. That
+     * cannot happen: xdp_white_prog() creates no INGRESS entry for a 4-tuple
+     * the AC has claimed (CT_FLAG_AC_CLIENT), so a hit here is always the
+     * peer's flow. Before that it could -- an agent knocking from the server's
+     * address gave the AC's control channel an INGRESS entry, this gate then
+     * matched every keepalive the AC sent, and the channel's egress entry
+     * expired underneath it.
      */
     struct ipv4_ct_tuple ingress_key;
     __builtin_memset(&ingress_key, 0, sizeof(ingress_key));
@@ -277,15 +334,33 @@ int tc_egress_prog(struct __sk_buff *ctx)
      * an EGRESS entry for a knock-protected flow, and the peer's datagrams
      * would then be admitted by the reverse lookup in XDP for as long as that
      * entry lives -- long after the knock closed.
+     *
+     * They also decide whether the entry about to be created carries the AC's
+     * claim on this 4-tuple as a client (CT_FLAG_AC_CLIENT, see
+     * nhp_ct_is_ac_client()), because they are asked the same question the flag
+     * answers -- "does anything say the peer is knock-gated on the port we are
+     * sending from?" -- so passing them with nothing found is the claim.
+     *
+     * The flag is what lets xdp_white_prog() tell the AC's own flows apart
+     * from an entry its heuristics let through, and it is read there for two
+     * things: such a flow is served from the reverse lookup even while the
+     * peer's address holds a live knock, and -- crucially -- no `knock_peers`
+     * record is ever written for its port. Without that a single knock from an
+     * address the AC also talks to (the nhp-server's own, an NTP server's)
+     * would shut gate 4 on the AC's flow for the life of the daemon.
      */
+    __u8 egress_flags = CT_FLAG_NONE;
+
     if (is_tcp) {
         /*
          * Gate 2, TCP: only a pure SYN creates an entry. The AC acting as a
          * server never sends a pure SYN from a listening port, so this alone
-         * is enough for TCP.
+         * is enough for TCP -- and by the same token it is proof on its own
+         * that the AC is the client here, so the flow is claimed.
          */
         if (!is_syn)
             return TC_ACT_OK;
+        egress_flags = CT_FLAG_AC_CLIENT;
     } else {
         /*
          * Gate 3, UDP: there is no SYN to key off, so use the source port. A
@@ -314,14 +389,25 @@ int tc_egress_prog(struct __sk_buff *ctx)
          *
          * Gates 3 and 4 are heuristics where gate 2 is exact, so the XDP side
          * backs them up twice over: it never refreshes a non-TCP EGRESS entry
-         * from an inbound packet, and it refuses to serve the reverse lookup at
-         * all for a peer that holds a live sdwhitelist entry or a `knock_peers`
-         * record for the port. One that slips through therefore lives on the
-         * AC's own sending and dies NHP_CT_EGRESS_IDLE_TTL_NS after the AC last
-         * spoke, instead of being slid forward by the peer.
+         * from an inbound packet, and -- for an entry that carries no claim
+         * (see below) -- it refuses to serve the reverse lookup at all for a
+         * peer that holds a live sdwhitelist entry or a `knock_peers` record
+         * for the port. One that slips through therefore lives on the AC's own
+         * sending and dies NHP_CT_EGRESS_IDLE_TTL_NS after the AC last spoke,
+         * instead of being slid forward by the peer.
          */
         if (peer_is_knocking(src_ip, dst_ip, sport, protocol))
             return TC_ACT_OK;
+
+        /*
+         * Gates 3 and 4 are satisfied, so this looks like the AC acting as a
+         * client. Before claiming the flow, ask the two knock shapes gate 4
+         * leaves out as well -- a false positive there only withholds the
+         * claim, so unlike gate 4 they cost nothing. See
+         * peer_holds_wildcard_knock().
+         */
+        if (!peer_holds_wildcard_knock(dst_ip, sport, protocol))
+            egress_flags = CT_FLAG_AC_CLIENT;
     }
 
     struct conn_value egress_val = {
@@ -329,7 +415,7 @@ int tc_egress_prog(struct __sk_buff *ctx)
         .last_timestamp = now,
         .ttl_ns = NHP_CT_EGRESS_IDLE_TTL_NS,
         .state = CT_NEW,
-        .flags = CT_FLAG_NONE,
+        .flags = egress_flags,
         .rx_packets = 0,
         .tx_packets = 1,
     };

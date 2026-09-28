@@ -121,11 +121,31 @@ static __always_inline void new_ingress_conn(struct ipv4_ct_tuple *ct_key, __u8 
  * ignores TCP (its egress gate is exact and needs no record).
  *
  * Every branch that admits a packet must go through here: one that does not is
- * one whose knock shape reopens that hole. */
+ * one whose knock shape reopens that hole.
+ *
+ * `ac_owns_flow` is the one case where nothing is recorded at all: the reverse
+ * lookup below found this 4-tuple already claimed by the AC as a client
+ * (CT_FLAG_AC_CLIENT), so the packet is the reply side of a flow the AC opened
+ * and it only reached the whitelists because the peer's address also happens to
+ * hold a knock -- an agent knocking from the nhp-server's own address, an NTP
+ * server behind the same NAT. Recording either thing would break that flow:
+ *
+ *   - a `knock_peers` record never lapses, so it would shut gate 4 in
+ *     tc_egress.c on the AC's own port for the life of the daemon, and have
+ *     the reverse branch delete the entry the AC depends on;
+ *   - an INGRESS entry would make tc_egress.c's gate 1 match the AC's own
+ *     outgoing packets, which stops the EGRESS entry from being refreshed and
+ *     lets it expire under a live flow.
+ *
+ * Nothing is lost by staying quiet: the peer gets no access it did not already
+ * have from the AC's own flow, whose window only the AC's sending refreshes. */
 static __always_inline int admit_ingress(void *ctx, struct iphdr *iph,
                                          struct ipv4_ct_tuple *ct_key, __u64 now,
-                                         bool track, __u64 expire_time) {
+                                         bool track, bool ac_owns_flow,
+                                         __u64 expire_time) {
     submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key->sport, ct_key->dport, iph->protocol, iph->tot_len);
+    if (ac_owns_flow)
+        return XDP_PASS;
     nhp_record_knocked_peer(iph->saddr, ct_key->dport, iph->protocol, expire_time);
     new_ingress_conn(ct_key, iph->protocol, now, track, expire_time);
     return XDP_PASS;
@@ -326,7 +346,9 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
 
     /* Has this peer ever been admitted to this port of ours by a knock? Unlike
      * `peer_has_live_knock` the answer survives the knock, which is what keeps
-     * the reverse branch below from serving a peer whose knock has expired.
+     * the reverse branch below from serving a peer whose knock has expired. It
+     * is never asked about a port the AC has claimed as its own client socket,
+     * because no record is written for one -- see admit_ingress().
      *
      * Read here rather than with the sdwhitelist lookup above so that the
      * forward branch -- the path every packet of an already-admitted flow takes
@@ -368,7 +390,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
      * treatment the forward branch gives, and it lets a live knock admit the
      * packet on its own merits.
      *
-     * A peer that holds a live "any"-protocol knock is never served from here
+     * A peer that holds a live "any"-protocol knock is not served from here
      * either, nor -- for non-TCP -- is one that `knock_peers` says has been
      * admitted to this port of ours at any point. Gate 4 in tc_egress.c already
      * refuses to create an EGRESS entry for such a peer, and this is the other
@@ -387,12 +409,42 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
      * and show up in the conn_track dump operators are told to check after a
      * knock expires (see the UDP case in terraform/demo/RUNBOOK.md). Delete it
      * instead; gate 4 makes sure it is not created again.
+     *
+     * Both of those give way to an entry the AC has claimed as its own client
+     * flow (CT_FLAG_AC_CLIENT, see nhp_ct_is_ac_client()). Such an entry was
+     * created while nothing said the peer was knock-gated on this port, so it
+     * is not "an entry the gates missed" -- it is the AC talking to a host that
+     * has since acquired a knock, which happens as soon as an agent knocks from
+     * an address the AC also talks to: the nhp-server's own address (shared by
+     * NAT, or a small office running both), an NTP server, a resolver. Skipping
+     * the branch there would be harmless on its own, but what follows is not:
+     * the whitelists would admit the packet, record the AC's own port in
+     * `knock_peers` and give the flow an INGRESS entry, and the pair of those
+     * takes the flow down for good once the knock expires -- gate 1 stops the
+     * EGRESS entry from being refreshed, this branch then deletes it on the
+     * `knock_peers` record, and gate 4 refuses to create it again. For the AC's
+     * channel to the nhp-server that means every NHP_AOP dropped until nhp-acd
+     * restarts. So a claimed entry is served here while its window is open and
+     * is exempt from the `knock_peers` delete, and admit_ingress() records
+     * nothing for it.
+     *
+     * An expired claimed entry still admits nothing -- the packet falls through
+     * to the whitelists like any other -- but it is kept rather than deleted,
+     * because it is the AC's standing claim on the tuple and dropping it would
+     * let the very next admitted packet write that `knock_peers` record. The
+     * AC's next outgoing packet revives it.
      */
     reverseTuple(&ct_key);
     existing_val = bpf_map_lookup_elem(&conn_track, &ct_key);
+    bool ac_owns_flow = nhp_ct_is_ac_client(existing_val);
     int reverse_verdict = -1;
-    if (existing_val && !is_syn && !peer_has_live_knock) {
-        if (peer_knocked_port || check_conn_expiry(existing_val)) {
+    if (existing_val && !is_syn && (ac_owns_flow || !peer_has_live_knock)) {
+        if (check_conn_expiry(existing_val)) {
+            /* Idled out. A claimed entry is kept as the AC's standing claim on
+             * the tuple; either way the packet goes on to the whitelists. */
+            if (!ac_owns_flow)
+                bpf_map_delete_elem(&conn_track, &ct_key);
+        } else if (peer_knocked_port && !ac_owns_flow) {
             bpf_map_delete_elem(&conn_track, &ct_key);
         } else {
             struct conn_value new_val = *existing_val;
@@ -413,7 +465,8 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         return reverse_verdict;
 
     /* A TCP flow is tracked from the packet that opens it and from no other.
-     * See new_ingress_conn(). */
+     * See new_ingress_conn(). A tuple the AC owns as a client is not tracked at
+     * all -- admit_ingress() short-circuits on `ac_owns_flow`. */
     bool track_new_conn = !is_tcp || is_syn;
 
     struct whitelist_key key = {
@@ -455,7 +508,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             return XDP_DROP;
         }
         if (w_val->allowed == 1) {
-            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, expire_time);
+            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, ac_owns_flow, expire_time);
         }
     }
     if (sd_val) {
@@ -465,7 +518,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             return XDP_DROP;
         }
         if (sd_val->allowed == 1) {
-            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, expire_time);
+            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, ac_owns_flow, expire_time);
         }
     }
 
@@ -476,7 +529,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             return XDP_DROP;
         }
         if (sp_val->allowed == 1) {
-            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, expire_time);
+            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, ac_owns_flow, expire_time);
         }
     }
 
@@ -487,7 +540,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             return XDP_DROP;
         }
         if (pl_val->allowed == 1) {
-            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, expire_time);
+            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, ac_owns_flow, expire_time);
         }
     }
     if (pp_val) {
@@ -497,7 +550,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
             return XDP_DROP;
         }
         if (pp_val->allowed == 1) {
-            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, expire_time);
+            return admit_ingress(ctx, iph, &ct_key, now, track_new_conn, ac_owns_flow, expire_time);
         }
     }
     submit_event(ctx, 0, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);

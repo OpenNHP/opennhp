@@ -553,10 +553,22 @@ In eBPF mode the rule is enforced by `conn_track` (`nhp/ebpf/xdp/`):
   admits in `knock_peers`, keyed on **peer address + the port on the AC +
   protocol**, and that record is never deleted (it is an LRU, and `nhp-acd`
   drops the pin at startup). It grants nothing — no packet is ever admitted
-  because of it — so a stale entry can only make the egress gates stricter. It
-  also covers the two knock shapes the whitelist lookups cannot be asked about
-  (`port_list`, whose key wildcards the port range, and `protocol_port`, whose
-  key has no peer address at all).
+  because of it. It also covers the two knock shapes the whitelist lookups
+  cannot be asked about (`port_list`, whose key wildcards the port range, and
+  `protocol_port`, whose key has no peer address at all).
+* **A record is never written for a port the AC owns as a client**, and that
+  matters because the record never lapses: one written for, say, the source port
+  of the AC's channel to the nhp-server would shut the egress gate on that
+  channel for the life of the daemon. The TC program marks each entry it creates
+  for a flow the AC opened with **`CT_FLAG_AC_CLIENT`** (`0x20`) when nothing at
+  that moment said the peer was knock-gated on the port being sent from — for
+  TCP the pure-SYN gate is proof by itself, for UDP it takes all five whitelist
+  shapes and `knock_peers` coming up empty. XDP serves such a flow from the
+  reverse lookup even while the peer's address holds a live knock, never
+  deletes it on a `knock_peers` record, and records nothing when a whitelist
+  admits a packet on that 4-tuple. So the two claims on a (peer, port,
+  protocol) triple — the knock's and the AC's — are mutually exclusive, and
+  whichever side got there first keeps it.
 * An **egress** entry (`NHP_CT_EGRESS_IDLE_TTL_NS`, 180s) is refreshed by the
   AC's **own outgoing packets** only. For UDP, XDP deliberately does not
   refresh it from an inbound packet, so a peer cannot slide the window forward
@@ -565,12 +577,16 @@ In eBPF mode the rule is enforced by `conn_track` (`nhp/ebpf/xdp/`):
   on it, which is what keeps the long-lived AC↔nhp-server channel up (see the
   next case). XDP also refuses to serve the reverse (egress) lookup at all to a
   peer that holds a **live `sdwhitelist` entry** or — for non-TCP — a
-  **`knock_peers` record for the port**, so an egress entry that pre-dates the
-  knock, or that the gates missed, can never become a second way in. In the
-  `knock_peers` case the entry is **deleted** rather than just skipped: that
-  record never lapses, so the entry could never serve anything again, and the
-  AC's own sending would otherwise keep resurrecting it (the TC refresh path
-  does not test expiry) as a permanent passenger in the `conn_track` dump.
+  **`knock_peers` record for the port**, so an egress entry that the gates
+  missed can never become a second way in. In the `knock_peers` case the entry
+  is **deleted** rather than just skipped: that record never lapses, so the
+  entry could never serve anything again, and the AC's own sending would
+  otherwise keep resurrecting it (the TC refresh path does not test expiry) as a
+  permanent passenger in the `conn_track` dump. Both of those step aside for an
+  entry carrying `CT_FLAG_AC_CLIENT` — that one *does* pre-date the knock by
+  construction, so it is the AC's own flow and is served and kept. An expired
+  claimed entry admits nothing but is still kept, because it is the only record
+  that the port is the AC's; the AC's next outgoing packet revives it.
 
 So "the door is shut" means *a fresh connection is refused*. Test it that way.
 
@@ -665,9 +681,16 @@ nothing to read after expiry and this whole case is open again.
 
 > `knock_peers` is per (peer, port, protocol) and is never expired, so if the
 > AC also needs to talk to that peer **as a UDP client** from that same port
-> number, its replies get no permit. In practice the AC's client sockets take a
-> random ephemeral port, so a collision needs the peer to have knocked exactly
-> that port; restarting `nhp-acd` clears the map.
+> number, its replies get no permit. A flow the AC had already opened when the
+> knock arrived is exempt — it carries `CT_FLAG_AC_CLIENT` and no record is
+> written for its port, see the case below. The collision that remains is the
+> other order: the peer knocks first, and the AC then opens a client socket on
+> exactly that port number. The port is not claimable while the knock is on
+> file, so the socket gets no reply permit until the knock lapses — and if the
+> peer's datagrams reach that port in the meantime, the record is written and
+> the permit is withheld for good. In practice the AC's client sockets take a
+> random ephemeral port, so this needs the peer to have knocked exactly that
+> port; restarting `nhp-acd` clears the map.
 
 #### The AC's own channel to the nhp-server (run this one every time)
 
@@ -721,6 +744,71 @@ If the two disagree, the AC's own UDP flows from below the logged bound get no
 reply permit at all. The value is read from the host at load time and written
 to the `nhp_config` map, so a mismatch means the sysctl was changed after
 `nhp-acd` started — restart it.
+
+##### A knock from the nhp-server's own address (run this after changing any egress gate)
+
+The variant of the case above that a plain knock never reaches, and the one
+that used to take the AC off the air **permanently**. It needs an agent whose
+source address, as the AC sees it, is the **nhp-server's** — which happens
+whenever the two sit behind one NAT, when a small office runs both, or simply
+when someone tests `nhp-agentd` on the server host — plus an `any`-protocol
+resource (`Protocol` empty or `"any"`, `Port = 0`, the default resource shape),
+because that writes `sdwhitelist`, keyed on the address pair alone and so
+matching every port including the AC's client socket.
+
+On the demo stack the cheapest way to get that address is to knock from the
+server host itself:
+
+```bash
+# 1. baseline: the channel's egress entry exists and is claimed.
+#    flags: 32 (0x20 CT_FLAG_AC_CLIENT) on a "flags": 1 (CT_DIR_EGRESS) key
+ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/conn_track' \
+  | grep -B 8 -A 14 '"nexthdr": 17'
+
+# 2. knock from the nhp-server host for an any-protocol resource, and note the
+#    AC's OpenTime for it (deploy/config-templates/ac/resource.toml). Any agent
+#    running there will do — nhp-agentd knocks for whatever is in its
+#    etc/resource.toml — the point is only that the AC sees the server's address
+#    as the knocking peer.
+ssh nhp-server 'cd /home/ec2-user/nhp-agent && ./nhp-agentd run'
+
+# 3. the knock must NOT have given the AC's own channel an ingress entry, and
+#    must NOT have put the channel's source port on record. The server's
+#    address may appear in knock_peers only for the resource's port(s) — never
+#    for the ephemeral port the AC dials from (step 1's "sport" on the
+#    "flags": 1 key).
+ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/knock_peers'
+ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/conn_track' \
+  | grep -B 8 -A 14 '"nexthdr": 17'
+
+# 4. wait the knock out, then knock again — from anywhere — and expect it to
+#    open on the first attempt
+sleep $((OpenTime + 10))
+```
+
+Step 4 is the regression. If the channel was cut, the knock fails with an AOP
+timeout on the server and nothing at all on the AC (the AOP never arrives), and
+it stays that way for every later knock until `nhp-acd` is restarted:
+
+```bash
+ssh nhp-server 'grep -E "AOP|timeout" /home/ec2-user/nhp-server/logs/server-$(date -u +%F).log | tail'
+ssh nhp-ac     'grep -E "AOP|AOL"     /home/ec2-user/nhp-ac/logs/ac-$(date -u +%F).log | tail'
+
+# and the fingerprints of the failure, in this order:
+#  - knock_peers holds a record whose dst_port is the AC's dial port
+#  - the channel's egress entry is gone from conn_track, and the AC's
+#    keepalives do not bring it back (tx_packets never reappears)
+ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/knock_peers'
+ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/conn_track | grep -c "\"flags\": 1,"'
+```
+
+The same test applies to any other UDP host the AC talks to **as a client** —
+an NTP server, a resolver — if an agent ever knocks from its address: knock
+from it, wait out `OpenTime`, then check the AC still gets replies
+(`chronyc sources`, `dig @<resolver>`). A flow the AC had already opened at the
+time of the knock is claimed and survives; one it opens *while* the knock is
+live is not, and comes back only once the knock lapses — see the note under the
+`knock_peers` dump above.
 
 #### Known limitation: fixed low UDP source ports
 

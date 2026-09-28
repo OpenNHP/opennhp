@@ -20,15 +20,21 @@
 # FilterMode:
 #  0: iptables (default)
 #  1: ebpf xdp (requires Linux kernel >= 5.6 and XDP-capable network interface)
-#  Either way the resource's OpenTime governs *new* connections: a session
+#  Either way the resource's OpenTime governs *new* TCP connections: a session
 #  opened while the knock was valid keeps running until it goes idle, it is
 #  not cut mid-stream when the window closes. Mode 0 gets that from the
 #  iptables baseline's `-m state --state ESTABLISHED` accept, mode 1 from the
-#  eBPF connection tracking (idle window: 1h TCP, 120s otherwise).
+#  eBPF connection tracking (1h idle window, refreshed by every packet).
 #  In mode 1 a TCP session is tracked from the SYN that the knock admitted
-#  and is dropped on FIN/RST, and a new SYN is always re-checked against the
-#  knock - re-using a source port does not inherit the old session's
-#  permission.
+#  and is cut down to a 60s close window on FIN/RST, and a new SYN is always
+#  re-checked against the knock - re-using a source port does not inherit the
+#  old session's permission.
+#  UDP differs between the modes: mode 1 caps a UDP flow at the time left on
+#  the knock (at most a 120s window, never extended by the peer), so a UDP
+#  session *is* cut when OpenTime runs out. UDP has no handshake to bind the
+#  entry to one exchange, so an extendable window would let a peer that
+#  knocked once hold a 4-tuple open indefinitely. Mode 0, using
+#  nf_conntrack, keeps such a flow up instead.
 # LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.
 # AuthServiceId (-): id for authentication and authorization service provider this AC belongs to.
 # ResourceIds (-): resource group ids that this AC protects.

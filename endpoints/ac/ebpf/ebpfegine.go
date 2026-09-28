@@ -307,7 +307,7 @@ func setEbpfConfig(tcObjs *tcBpfObjects) error {
 		log.Error("failed to read net.ipv4.ip_local_port_range, assuming %d: %v", defaultEphemeralPortMin, err)
 		portMin = defaultEphemeralPortMin
 	}
-	log.Info("eBPF egress tracking treats source ports >= %d as the AC's own (net.ipv4.ip_local_port_range)", portMin)
+	log.Info("eBPF egress tracking treats source ports >= %d as the AC's own (net.ipv4.ip_local_port_range), plus the well-known client ports listed in is_wellknown_client_port()", portMin)
 
 	if err := tcObjs.Config.Put(cfgEphemeralPortMin, portMin); err != nil {
 		log.Error("failed to write 'nhp_config' map: %v", err)

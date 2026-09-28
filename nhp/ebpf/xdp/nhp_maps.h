@@ -41,40 +41,60 @@ enum {
  * Lifetimes for conn_track entries. None of them is the knock TTL -- that lives
  * in the whitelist maps below and governs which *new* flows may be created.
  *
- * These two are the windows an admitted inbound flow gets, and both are idle
- * windows: the entry's `timestamp` is pushed forward by every packet of that
- * flow, so it lives for as long as it keeps moving and dies once it stops.
+ * These two are the upper bound on the window an admitted inbound flow gets.
+ * How the bound is applied differs by protocol, and the difference is the whole
+ * security argument:
  *
- * The values follow netfilter's conntrack defaults closely enough that
- * FilterMode 1 (eBPF) and FilterMode 0 (iptables + ipset, whose baseline
- * accepts `-m state --state ESTABLISHED`) behave the same way for an
- * established session. nf_conntrack's tcp_timeout_established is five days; an
- * hour is the deliberate difference, since these entries sit in a pinned LRU
- * map with no netfilter to garbage-collect them.
+ * TCP is a true idle window: the entry's `timestamp` is pushed forward by every
+ * packet of the flow, so an established session lives for as long as it keeps
+ * moving -- including past the knock's expiry -- and dies once it stops. That
+ * is what FilterMode 0 does too, where the AC's iptables baseline accepts
+ * `-m state --state ESTABLISHED` ahead of the per-knock ipset, so expiry blocks
+ * new connections only. The value follows nf_conntrack's defaults closely
+ * enough for the two modes to behave the same; tcp_timeout_established is five
+ * days, and an hour is the deliberate difference, since these entries sit in a
+ * pinned LRU map with no netfilter to garbage-collect them.
  *
- * For TCP the idle window is not the only thing that bounds the entry, and it
- * must not be -- the peer picks its own source port, so an idle window alone
- * would let a peer that knocked once pin a 4-tuple open forever by sending one
- * packet an hour. xdp_white_prog() therefore tracks the connection's state the
- * way netfilter does:
+ * Refreshing is only safe because the entry tracks the *connection*, not the
+ * bare 4-tuple -- the peer picks its own source port, so a refreshable window
+ * on a tuple alone would let a peer that knocked once pin it open forever by
+ * sending one packet an hour. xdp_white_prog() therefore follows netfilter's
+ * state machine:
  *
  *   - only a pure SYN that a whitelist admits creates an entry, so the entry
  *     exists exactly for the connection that the knock authorised;
  *   - a pure SYN never matches an existing entry -- every new connection goes
  *     through the whitelist lookups, so re-using a source port buys nothing;
- *   - a RST deletes the entry, and a FIN cuts it down to NHP_CT_CLOSE_TTL_NS,
- *     so the entry dies with the connection instead of lingering for an hour.
+ *   - a FIN or an inbound RST cuts the entry down to NHP_CT_CLOSE_TTL_NS, so it
+ *     dies with the connection instead of lingering for an hour.
  *
- * Non-TCP has no handshake to key off, so a UDP entry stays a plain idle
- * window, which is exactly what nf_conntrack gives FilterMode 0.
+ * Non-TCP has no handshake to key off, so there is nothing to bind the entry to
+ * one exchange and nothing to close it: a refreshable window would let a peer
+ * that knocked once keep a 4-tuple admitted forever by sending one datagram
+ * every NHP_CT_OTHER_IDLE_TTL_NS, "any"-protocol resources (every port)
+ * included. A non-TCP entry is therefore capped at the knock's remaining
+ * lifetime (see nhp_ct_ingress_ttl_ns) and is never refreshed by an inbound
+ * packet, so non-TCP admission always dies with the knock. A flow that is still
+ * running when the entry ages out simply falls back through the whitelist
+ * lookups and is re-admitted for as long as the knock is still valid.
  */
 #define NHP_CT_TCP_IDLE_TTL_NS   (3600ULL * 1000000000ULL)  /* nf: 5 days      */
 #define NHP_CT_OTHER_IDLE_TTL_NS (120ULL * 1000000000ULL)   /* nf: udp_stream  */
 
 /*
- * Window a TCP entry keeps after the first FIN, long enough for the rest of the
- * close handshake and any straggling retransmit. nf_conntrack uses 60s for
- * CLOSE_WAIT and 120s for TIME_WAIT.
+ * Window a TCP entry keeps after the first FIN or an inbound RST, long enough
+ * for the rest of the close handshake and any straggling retransmit.
+ * nf_conntrack uses 60s for CLOSE_WAIT and 120s for TIME_WAIT.
+ *
+ * An inbound RST is cut down to this rather than deleting the entry outright:
+ * nothing in XDP can tell a genuine RST from a spoofed one (there is no
+ * sequence check here, and the kernel's RFC 5961 check happens after XDP), so
+ * deleting would let any off-path host that guesses the 4-tuple -- three
+ * quarters of which it usually knows -- cut an admitted session whose knock has
+ * since expired, or blackhole the replies of a connection the AC itself opened.
+ * Cutting the window instead costs a spoofer nothing it did not already have:
+ * a live flow keeps refreshing the entry, and a genuinely reset connection
+ * stops sending and ages out.
  */
 #define NHP_CT_CLOSE_TTL_NS (60ULL * 1000000000ULL)
 
@@ -92,6 +112,10 @@ enum {
  * heuristics, xdp_white_prog() deliberately does not refresh, so a peer can
  * never slide the window forward on its own. That is strictly tighter than
  * netfilter, which refreshes on traffic in either direction.
+ *
+ * NOTE that this *is* a refreshed window, unlike a non-TCP ingress entry: the
+ * flows it covers are the AC's own and have no knock to be bound to, and the
+ * AC's UDP channel to the nhp-server is one socket for the life of the process.
  */
 #define NHP_CT_EGRESS_IDLE_TTL_NS (180ULL * 1000000000ULL)
 
@@ -151,9 +175,9 @@ struct conn_value {
  * Neither eBPF program may write them -- tc_egress.c used to write `spp` for
  * every outgoing packet, which kept the door open long past OpenTime.
  *
- * tc_egress.c reads `spp` and `src_port` (never writes any of them) to
- * recognise a peer that is talking to a knock-protected service, see gate 4
- * there for why only those two.
+ * tc_egress.c reads `spp`, `src_port` and `sdwhitelist` (never writes any of
+ * them) to recognise a peer that is talking to a knock-protected service, see
+ * gate 4 there for why those three and not the remaining two.
  */
 struct whitelist_key {
     __be32 src_ip;
@@ -307,14 +331,40 @@ static __always_inline __u32 nhp_ephemeral_port_min(void)
 }
 
 /*
- * Idle window an admitted flow gets, by L4 protocol. TCP sessions are
- * long-lived by nature (SSH, WebSockets, long-polling, a slow download);
+ * Upper bound on the window an admitted flow gets, by L4 protocol. TCP sessions
+ * are long-lived by nature (SSH, WebSockets, long-polling, a slow download);
  * everything else gets the shorter datagram window.
  */
 static __always_inline __u64 nhp_ct_idle_ttl_ns(__u8 protocol)
 {
     return protocol == 6 /* IPPROTO_TCP */ ? NHP_CT_TCP_IDLE_TTL_NS
                                            : NHP_CT_OTHER_IDLE_TTL_NS;
+}
+
+/*
+ * Window a freshly admitted *ingress* flow gets, given the `expire_time` of the
+ * whitelist entry that admitted it.
+ *
+ * TCP gets the full idle window and is refreshed from then on: the entry is
+ * bound to one connection by the pure-SYN gate, so an established session
+ * outliving the knock is the FilterMode 0 behaviour and no more.
+ *
+ * Non-TCP gets min(idle window, time left on the knock) and is never refreshed
+ * by an inbound packet, so a datagram flow can never outlive its knock -- there
+ * is no handshake to bind such an entry to a single exchange, so without the
+ * cap one datagram every window would keep the 4-tuple admitted indefinitely.
+ */
+static __always_inline __u64 nhp_ct_ingress_ttl_ns(__u8 protocol, __u64 now,
+                                                   __u64 expire_time)
+{
+    __u64 ttl = nhp_ct_idle_ttl_ns(protocol);
+    __u64 knock_left;
+
+    if (protocol == 6 /* IPPROTO_TCP */)
+        return ttl;
+
+    knock_left = expire_time > now ? expire_time - now : 0;
+    return knock_left < ttl ? knock_left : ttl;
 }
 
 #endif /* __NHP_MAPS_H__ */

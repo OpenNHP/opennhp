@@ -16,25 +16,40 @@
 #define IPPROTO_UDP 17
 
 /*
- * Does the peer we are sending to hold a knock entry for this exact port and
- * protocol? If so, this packet is the reply side of a service the AC is
- * serving, not a connection the AC opened, and its lifetime belongs to the
- * knock TTL alone.
+ * Does the peer we are sending to hold a knock entry that covers this packet?
+ * If so, this packet is the reply side of a service the AC is serving, not a
+ * connection the AC opened, and its lifetime belongs to the knock TTL alone.
  *
  * `src_ip`/`dst_ip` are this egress packet's, so the whitelist keys -- which
  * are written for the peer -> AC direction -- are built the other way round,
  * with our source port as the peer's destination port. Expiry is not checked on
- * purpose: an entry that exists at all, live or stale, marks the peer.
+ * purpose: an entry that exists at all, live or stale, marks the peer. Checking
+ * it would reopen the hole, since the case this guards against is exactly the
+ * AC answering a peer *after* its knock ran out.
  *
- * Only the two maps whose key carries *both* the peer address and the port are
- * consulted. `sdwhitelist` and `port_list` are keyed on the address alone and
- * `protocol_port` on the port alone, so a single stale entry in any of them
- * would suppress tracking for unrelated flows -- including nhp-acd's own UDP
- * channel to the nhp-server, whose replies only get back in because of the
- * entry written below. Losing that would take the AC off the air, which is a
- * far worse failure than the narrow case those lookups would cover, and gate 3
- * plus an idle window that only the AC's own sending refreshes already bound
- * it.
+ * The three maps consulted are the ones whose key carries the peer's address:
+ * `spp` and `src_port` (address + port) and `sdwhitelist` (the address pair a
+ * knock writes when the resource's protocol is empty or "any" -- see
+ * endpoints/ac/msghandler.go, which is the default resource shape, so leaving
+ * it out meant this gate never fired for the most common knock).
+ *
+ * The cost of including `sdwhitelist` is that a stale entry for a host the AC
+ * also talks to as a client would suppress tracking for that host until the
+ * entry is evicted (XDP deletes it on the next packet from that peer, and
+ * nhp-acd drops every pin at startup). That needs the peer address and the
+ * AC's address to be the same pair in both directions -- an agent knocking
+ * from the nhp-server's own address, say -- which a normal deployment does not
+ * produce, and it is the price of having the gate work at all for the default
+ * resource shape.
+ *
+ * `port_list` and `protocol_port` are deliberately not consulted: the former is
+ * keyed on the peer address with a wildcard port range and the latter on the
+ * port alone, so a single stale entry would suppress tracking for unrelated
+ * flows -- including nhp-acd's own UDP channel to the nhp-server, whose replies
+ * only get back in because of the entry written below. Losing that would take
+ * the AC off the air, which is a far worse failure than the narrow case those
+ * lookups would cover, and gate 3 plus an idle window that only the AC's own
+ * sending refreshes already bound it.
  */
 static __always_inline bool peer_is_knocking(__be32 src_ip, __be32 dst_ip,
                                              __be16 sport, __u8 protocol)
@@ -55,7 +70,41 @@ static __always_inline bool peer_is_knocking(__be32 src_ip, __be32 dst_ip,
     if (bpf_map_lookup_elem(&src_port, &sp_key))
         return true;
 
+    struct sdwhitelist_key sd_key = {
+        .src_ip = dst_ip,
+        .dst_ip = src_ip,
+    };
+    if (bpf_map_lookup_elem(&sdwhitelist, &sd_key))
+        return true;
+
     return false;
+}
+
+/*
+ * Well-known source ports that belong to the AC acting as a *client*, i.e. the
+ * exceptions to gate 3's "a client binds an ephemeral port" rule.
+ *
+ * ntpd (unlike chrony's default, which acquires a random port) sends from 123,
+ * and an IKE daemon sends from 500/4500; their replies come back to that same
+ * fixed port, so without this they would get no reply permit at all. They are
+ * safe to list because every one of them is a port the AC does not serve to
+ * knocking peers, and gates 1 and 4 still cover the case where it does.
+ *
+ * This list is not exhaustive. Any other socket the AC binds to a fixed port
+ * below the ephemeral range -- an explicit bind, something inside
+ * net.ipv4.ip_local_reserved_ports -- gets no reply permit; see "Known
+ * limitation: fixed low UDP source ports" in terraform/demo/RUNBOOK.md.
+ */
+static __always_inline bool is_wellknown_client_port(__u16 sport_host)
+{
+    switch (sport_host) {
+    case 123:   /* NTP    */
+    case 500:   /* IKE    */
+    case 4500:  /* IKE NAT-T */
+        return true;
+    default:
+        return false;
+    }
 }
 
 SEC("tc/egress")
@@ -202,21 +251,28 @@ int tc_egress_prog(struct __sk_buff *ctx)
          *
          * The bound is the host's own net.ipv4.ip_local_port_range, read at
          * load time -- hard-coding the Linux default would drop the AC's own
-         * replies on any host that lowers the range.
+         * replies on any host that lowers the range. The daemons that send
+         * from a fixed well-known port instead are listed explicitly, see
+         * is_wellknown_client_port().
          */
-        if (bpf_ntohs(sport) < nhp_ephemeral_port_min())
+        __u16 sport_host = bpf_ntohs(sport);
+        if (sport_host < nhp_ephemeral_port_min() &&
+            !is_wellknown_client_port(sport_host))
             return TC_ACT_OK;
 
         /*
          * Gate 4, UDP: and in case a knock-protected service does listen on a
-         * port inside the ephemeral range (QUIC/HTTP3, WireGuard, a game
-         * server), skip any peer that holds a knock entry for it.
+         * port the AC can also send from -- one inside the ephemeral range
+         * (QUIC/HTTP3, WireGuard, a game server) or one of the well-known
+         * client ports above -- skip any peer that holds a knock entry for it.
          *
          * Gates 3 and 4 are heuristics where gate 2 is exact, so the XDP side
-         * backs them up: it never refreshes a non-TCP EGRESS entry from an
-         * inbound packet. One that slips through therefore lives on the AC's
-         * own sending and dies NHP_CT_EGRESS_IDLE_TTL_NS after the AC last
-         * spoke, instead of being slid forward by the peer.
+         * backs them up twice over: it never refreshes a non-TCP EGRESS entry
+         * from an inbound packet, and it refuses to serve the reverse lookup at
+         * all for a peer with a live sdwhitelist entry. One that slips through
+         * therefore lives on the AC's own sending and dies
+         * NHP_CT_EGRESS_IDLE_TTL_NS after the AC last spoke, instead of being
+         * slid forward by the peer.
          */
         if (peer_is_knocking(src_ip, dst_ip, sport, protocol))
             return TC_ACT_OK;

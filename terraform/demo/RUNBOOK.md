@@ -486,45 +486,63 @@ ssh nhp-ac 'sudo tc qdisc del dev $(ip route | awk "/default/ {print \$5; exit}"
 
 ### What the knock window covers (and checking that it closes)
 
-The knock's `OpenTime` governs **new flows**. A session that was opened while
-the knock was valid keeps running until it goes idle — a large download, a
-WebSocket, a long-poll is not cut mid-stream when the window closes. That is
+The knock's `OpenTime` governs **new flows**. A TCP session that was opened
+while the knock was valid keeps running until it goes idle — a large download,
+a WebSocket, a long-poll is not cut mid-stream when the window closes. That is
 deliberate, and it is what `FilterMode = 0` does as well: the iptables baseline
 (`docker/iptables_defaults_*.sh`) accepts `-m state --state ESTABLISHED` ahead
 of the per-knock ipset, so expiry there blocks new connections only.
 
-In eBPF mode the same rule is enforced by `conn_track` (`nhp/ebpf/xdp/`):
+**UDP is not treated that way, and the difference is deliberate** — see the
+UDP bullet below.
+
+In eBPF mode the rule is enforced by `conn_track` (`nhp/ebpf/xdp/`):
 
 * An admitted flow gets an entry keyed on the **full 4-tuple, including the
-  peer's source port**, with an idle window (`NHP_CT_TCP_IDLE_TTL_NS`, 1h for
-  TCP; `NHP_CT_OTHER_IDLE_TTL_NS`, 120s for everything else). Every packet
-  pushes it forward, so refreshing can only keep *that one* connection alive.
-* A new connection uses a new source port, misses `conn_track`, and has to
-  satisfy the whitelist maps — which only user space writes, from the knock.
-* **A TCP entry tracks the connection, not just the tuple.** The peer picks its
-  own source port, so an idle window alone would let a peer that knocked once
-  pin a 4-tuple open forever and keep opening connections on it. So: only a
-  **pure SYN** admitted by a whitelist creates an entry; a pure SYN never
-  matches an existing entry and always goes back through the whitelists (this
-  is what netfilter does — a SYN on a closed/TIME_WAIT conntrack becomes NEW,
-  which `--state ESTABLISHED` does not match); a **RST** deletes the entry and
-  a **FIN** cuts it down to `NHP_CT_CLOSE_TTL_NS` (60s). UDP has no handshake
-  to key off and keeps the plain 120s idle window, the same as nf_conntrack
-  gives `FilterMode = 0`.
+  peer's source port**. A new connection uses a new source port, misses
+  `conn_track`, and has to satisfy the whitelist maps — which only user space
+  writes, from the knock.
+* **A TCP entry tracks the connection, not just the tuple**, and gets a
+  refreshed idle window (`NHP_CT_TCP_IDLE_TTL_NS`, 1h) that every packet pushes
+  forward. The peer picks its own source port, so a refreshed window alone
+  would let a peer that knocked once pin a 4-tuple open forever and keep
+  opening connections on it. So: only a **pure SYN** admitted by a whitelist
+  creates an entry; a pure SYN never matches an existing entry and always goes
+  back through the whitelists (this is what netfilter does — a SYN on a
+  closed/TIME_WAIT conntrack becomes NEW, which `--state ESTABLISHED` does not
+  match); a **FIN or an inbound RST** cuts the entry down to
+  `NHP_CT_CLOSE_TTL_NS` (60s). An inbound RST does *not* delete the entry —
+  XDP cannot tell a genuine RST from a spoofed one (no sequence check, and the
+  kernel's RFC 5961 check runs after XDP), and deleting would let any off-path
+  host that guesses the 4-tuple cut the session.
+* **A UDP (or other non-TCP) entry is capped at the knock's remaining
+  lifetime** — `min(NHP_CT_OTHER_IDLE_TTL_NS (120s), time left on the knock)` —
+  and is **never refreshed** by an inbound packet. There is no handshake to
+  bind such an entry to a single exchange, so a refreshed window would let a
+  peer that knocked once keep a 4-tuple admitted indefinitely by sending one
+  datagram every 120s, "any"-protocol resources (every port) included. Instead
+  the entry ages out and the flow falls back through the whitelist lookups: it
+  keeps going while the knock is live and dies with it. A long UDP session is
+  therefore cut when `OpenTime` runs out, unlike a TCP one and unlike
+  `FilterMode = 0`, where nf_conntrack keeps it up.
 * The TC egress program writes `conn_track` only for connections the **AC
   itself** opens (dnf, certbot, NTP, its UDP channel to the nhp-server), and
   four gates keep it off knock flows: a reverse lookup of the ingress
   direction, TCP pure-SYN only, a UDP source port that must be inside the
   host's `net.ipv4.ip_local_port_range` (read at load time into the
-  `nhp_config` map, and logged at startup), and a UDP check that the peer
-  holds no knock entry. It never writes the whitelist maps.
+  `nhp_config` map, and logged at startup) or one of the well-known client
+  ports listed in `is_wellknown_client_port()`, and a UDP check that the peer
+  holds no knock entry in `spp`, `src_port` or `sdwhitelist`. It never writes
+  the whitelist maps.
 * An **egress** entry (`NHP_CT_EGRESS_IDLE_TTL_NS`, 180s) is refreshed by the
   AC's **own outgoing packets** only. For UDP, XDP deliberately does not
   refresh it from an inbound packet, so a peer cannot slide the window forward
   by itself — tighter than netfilter, which refreshes on either direction. An
   AC-initiated UDP flow therefore lives 180s past the moment the AC last spoke
   on it, which is what keeps the long-lived AC↔nhp-server channel up (see the
-  next case).
+  next case). XDP also refuses to serve the reverse (egress) lookup at all to a
+  peer that holds a **live `sdwhitelist` entry**, so an egress entry can never
+  become a second way in for a knocking peer.
 
 So "the door is shut" means *a fresh connection is refused*. Test it that way.
 
@@ -552,11 +570,9 @@ and start a second one after expiry: the first keeps flowing, the second hangs.
 #### UDP
 
 A knock-protected UDP service needs its own case, because UDP has no SYN for
-the TC egress program to gate on. The failure mode this guards against: the
-knock expires, XDP deletes the ingress entry and drops the peer's next
-datagram, the service then answers (a retransmit, a keepalive, a queued reply)
-— and if that answer created an egress entry, the peer's datagrams would slide
-the window forward indefinitely.
+the TC egress program to gate on. Unlike TCP, **a UDP flow is cut when the
+knock expires** even if it never went idle — its `conn_track` entry is capped
+at the time left on the knock — so the test is simply that traffic stops:
 
 ```bash
 # knock for a UDP resource, then during the window:
@@ -564,10 +580,19 @@ nc -u <ac> <udp-port>     # datagrams get through
 
 sleep $((OpenTime + 10))
 
-# after the window, with the service still sending: a fresh datagram must be
-# dropped. Watch the AC's deny log while sending.
+# after the window, with datagrams still flowing in both directions, the
+# peer's datagrams must be dropped. Watch the AC's deny log while sending.
 ssh nhp-ac 'tail -f /home/ec2-user/nhp-ac/logs/nhp_deny-*.log'
 ```
+
+The failure mode this also guards against, and the reason the egress gates
+matter: the knock expires, XDP drops the peer's next datagram, the service then
+answers anyway (a retransmit, a keepalive, a queued reply) — and if that answer
+created an egress entry, the peer's datagrams would be admitted through the
+reverse lookup with no live knock at all. Worth exercising against a UDP
+service on a port **inside** the ephemeral range (WireGuard 51820, QUIC, a game
+server) behind an `any`-protocol resource, which is the shape that hits every
+gate at once.
 
 Then confirm no egress entry was created for that flow — the peer's address
 must not appear on the `flags: 01` (CT_DIR_EGRESS) side:
@@ -632,6 +657,38 @@ If the two disagree, the AC's own UDP flows from below the logged bound get no
 reply permit at all. The value is read from the host at load time and written
 to the `nhp_config` map, so a mismatch means the sysctl was changed after
 `nhp-acd` started — restart it.
+
+#### Known limitation: fixed low UDP source ports
+
+Gate 3 recognises the AC's own UDP client sockets by their source port being
+inside the host's ephemeral range, plus the fixed well-known client ports
+listed in `is_wellknown_client_port()` (`nhp/ebpf/xdp/tc_egress.c`): **123**
+(NTP, which classic `ntpd` sends from — chrony's default random acquisition
+port is covered by the range anyway), **500** and **4500** (IKE / IKE NAT-T).
+
+Any *other* UDP socket the AC binds to a fixed port below the ephemeral range
+gets **no reply permit**, and its replies are dropped by XDP unless a knock
+whitelists the peer. In practice that means a daemon with an explicit low
+`bind()`, or anything put in `net.ipv4.ip_local_reserved_ports`. One-way
+senders (syslog to 514, SNMP traps) are unaffected because they expect no
+reply.
+
+Symptom: the AC's outbound UDP request is on the wire (`tcpdump -ni any udp`
+shows it leaving) but the reply never reaches the process, and the peer's
+address shows up in the deny log. Fixes, in order of preference:
+
+1. let the daemon use an ephemeral source port (chrony rather than `ntpd`,
+   drop the explicit `bind()`);
+2. add the port to `is_wellknown_client_port()` and redeploy the eBPF objects
+   (`make ebpf-objs`), if it is a port the AC does not also serve to knocking
+   peers;
+3. fall back to `FilterMode = 0`, where nf_conntrack tracks it regardless.
+
+```bash
+# which local UDP ports does the AC actually hold open, and from where?
+ssh nhp-ac 'sudo ss -unap'
+ssh nhp-ac 'cat /proc/sys/net/ipv4/ip_local_reserved_ports'
+```
 
 ### Rolling back to iptables
 

@@ -39,7 +39,10 @@ type bpfObjects struct {
 
 type tcBpfObjects struct {
 	TcEgressProg *ebpf.Program `ebpf:"tc_egress_prog"`
-	Whitelist    *ebpf.Map     `ebpf:"spp"`
+	// The TC egress program records the AC's own outbound connections in
+	// conn_track (shared with the XDP program through its pin) so their
+	// replies get back in. It no longer writes the knock whitelist `spp`.
+	Conntrack *ebpf.Map `ebpf:"conn_track"`
 }
 
 var (

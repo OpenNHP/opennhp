@@ -3,6 +3,8 @@
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_endian.h>
 
+#include "nhp_maps.h"
+
 #define ETH_P_ARP 0x0806
 #define ETH_P_IP    0x0800
 #define IPPROTO_ICMP 1
@@ -11,30 +13,11 @@
 #define ICMP_ECHOREPLY 0
 #define ETH_P_IPV6   0x86DD
 #define IPPROTO_UDP 17
-#define MAX_ENTRIES 1000000
 #define MIN_PORT 0
 #define MAX_PORT 65535
 #define DNS_PORT 53
 #define DHCP_PORT_R 67
 #define DHCP_PORT_O 68
-
-enum {
-    CT_NEW,
-    CT_ESTABLISHED,
-};
-
-enum {
-    CT_FLAG_NONE = 0,
-    CT_FLAG_SYN = 1 << 0,
-    CT_FLAG_FIN = 1 << 1,
-    CT_FLAG_RST = 1 << 2,
-    CT_FLAG_ACK = 1 << 3,
-};
-
-enum {
-    CT_DIR_INGRESS = 0,
-    CT_DIR_EGRESS = 1,
-};
 
 struct whitelist_key {
     __be32 src_ip;
@@ -147,32 +130,8 @@ struct {
     __uint(pinning, LIBBPF_PIN_BY_NAME);
 } protocol_port SEC(".maps");
 
-struct ipv4_ct_tuple {
-    __be32 daddr;
-    __be32 saddr;
-    __be16 dport;
-    __be16 sport;
-    __u8 nexthdr;
-    __u8 flags;
-} __packed;
-
-struct conn_value {
-    __u64 timestamp;
-    __u64 last_timestamp;
-    __u64 ttl_ns;   
-    __u8 state;
-    __u8 flags;
-    __u32 rx_packets;
-    __u32 tx_packets;
-};
-
-struct {
-    __uint(type, BPF_MAP_TYPE_LRU_HASH);
-    __uint(max_entries, MAX_ENTRIES);
-    __type(key, struct ipv4_ct_tuple);
-    __type(value, struct conn_value);
-    __uint(pinning, LIBBPF_PIN_BY_NAME);
-} conn_track SEC(".maps");
+/* struct ipv4_ct_tuple, struct conn_value and the conn_track map live in
+ * nhp_maps.h -- they are shared with tc_egress.c through the pinned map. */
 
 struct event_t {
     __u64 timestamp;    
@@ -331,6 +290,15 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
     ct_key.flags = CT_DIR_INGRESS;
     struct conn_value *existing_val;
 
+    /*
+     * Forward (CT_DIR_INGRESS) hit: a flow the peer opened and that we
+     * admitted via one of the whitelists. `timestamp` -- the base of the
+     * expiry check -- is deliberately NOT refreshed here: the entry's ttl_ns
+     * was derived from the knock's expiry, so the flow must die exactly when
+     * the knock does. Refreshing it would keep the door open for as long as
+     * traffic keeps arriving, which is the bug this asymmetry exists to
+     * prevent. Only last_timestamp (bookkeeping) is updated.
+     */
     existing_val = bpf_map_lookup_elem(&conn_track, &ct_key);
     if (existing_val) {
         if (check_conn_expiry(existing_val)) {
@@ -344,6 +312,18 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         return XDP_PASS;
     }
     reverseTuple(&ct_key);
+    /*
+     * Reverse (CT_DIR_EGRESS) hit: the reply to a connection the AC itself
+     * opened, whose entry was created by tc_egress.c. Here `timestamp` IS
+     * refreshed, turning EGRESS_CONN_TTL_NS into a sliding idle window rather
+     * than a hard cap -- tc_egress.c only writes the entry once (on the SYN),
+     * so without this a download longer than the TTL would be cut off.
+     *
+     * This cannot extend a knock: reaching this branch means the forward
+     * lookup above missed, and a knock-authorised flow never has an EGRESS
+     * entry at all -- the two gates in tc_egress_prog() keep it from being
+     * created.
+     */
     existing_val = bpf_map_lookup_elem(&conn_track, &ct_key);
     if (existing_val) {
         if (check_conn_expiry(existing_val)) {
@@ -353,7 +333,8 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         }
         struct conn_value new_val = *existing_val;
         new_val.rx_packets++;
-        new_val.last_timestamp = bpf_ktime_get_ns();
+        new_val.timestamp = bpf_ktime_get_ns();
+        new_val.last_timestamp = new_val.timestamp;
         bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_EXIST);
         reverseTuple(&ct_key);
         return XDP_PASS;

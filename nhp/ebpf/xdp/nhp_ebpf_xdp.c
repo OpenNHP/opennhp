@@ -72,10 +72,25 @@ static __always_inline bool check_conn_expiry(struct conn_value *val) {
 /* Build the conn_track entry for a flow the whitelists just admitted. `ttl_ns`
  * is an idle window, not the knock's remaining lifetime: once a flow exists it
  * is governed by activity, the way netfilter's `--state ESTABLISHED` accept
- * governs it in FilterMode 0. The knock TTL still decides which *new* flows may
- * be created, and this entry's key carries the peer's source port, so keeping
- * it alive can only ever keep this one connection alive. */
-static __always_inline void new_ingress_conn(struct ipv4_ct_tuple *ct_key, __u8 protocol, __u64 now) {
+ * governs it in FilterMode 0, so an established session is not cut mid-stream
+ * when the knock expires.
+ *
+ * `track` is what keeps that from becoming an open door for TCP. The peer picks
+ * its own source port, so an idle window on a bare 4-tuple would let a peer
+ * that knocked once hold the tuple open forever and open fresh connections on
+ * it. For TCP the caller therefore passes `track` only for a pure SYN, i.e.
+ * only the packet that opens the connection the knock authorised creates an
+ * entry; every later SYN on the same tuple bypasses conn_track and has to
+ * satisfy the whitelists again. A mid-stream TCP packet admitted by a
+ * whitelist (its entry was evicted from the LRU, say) is passed without
+ * re-creating one -- fail-closed: it keeps needing a live knock.
+ *
+ * Non-TCP has no handshake to gate on and keeps the plain idle window, which is
+ * what nf_conntrack gives FilterMode 0 for the same flow. */
+static __always_inline void new_ingress_conn(struct ipv4_ct_tuple *ct_key, __u8 protocol, __u64 now, bool track) {
+    if (!track)
+        return;
+
     struct conn_value new_val = {
         .timestamp = now,
         .last_timestamp = now,
@@ -86,6 +101,17 @@ static __always_inline void new_ingress_conn(struct ipv4_ct_tuple *ct_key, __u8 
         .tx_packets = 0,
     };
     bpf_map_update_elem(&conn_track, ct_key, &new_val, BPF_ANY);
+}
+
+/* Apply the TCP close semantics to an entry that is being refreshed: a FIN cuts
+ * it down to the close window so it dies with the connection rather than
+ * lingering for the full idle TTL, and stays cut down for the rest of the
+ * handshake. RST is handled by the callers, which delete the entry outright. */
+static __always_inline void apply_close_ttl(struct conn_value *val, bool is_fin) {
+    if (is_fin || (val->flags & CT_FLAG_FIN)) {
+        val->flags |= CT_FLAG_FIN;
+        val->ttl_ns = NHP_CT_CLOSE_TTL_NS;
+    }
 }
 
 SEC("xdp")
@@ -121,6 +147,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
      * conn_track keys built here have to line up byte for byte with the ones
      * tc_egress.c builds (it reads ihl * 4 too), or the gates there miss. */
     ct_key.nexthdr = iph->protocol;
+    bool is_tcp = false, is_syn = false, is_fin = false, is_rst = false;
     if (iph->protocol == IPPROTO_TCP) {
         struct tcphdr *tcp = (void *)iph + (iph->ihl * 4);
         if ((void *)(tcp + 1) > data_end) {
@@ -128,6 +155,13 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         }
         ct_key.sport = tcp->source;
         ct_key.dport = tcp->dest;
+        is_tcp = true;
+        /* A pure SYN (no ACK) is a peer asking to open a *new* connection, so
+         * it must always be decided by the whitelists -- never by a conn_track
+         * entry left over from an earlier one on the same 4-tuple. */
+        is_syn = tcp->syn && !tcp->ack;
+        is_fin = tcp->fin;
+        is_rst = tcp->rst;
 
         if (tcp->dest == bpf_htons(22)) {
             return XDP_PASS;
@@ -188,76 +222,111 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
 
     /*
      * Forward (CT_DIR_INGRESS) hit: a flow the peer opened and that we admitted
-     * via one of the whitelists while its knock was valid. It now lives on its
-     * idle window -- `timestamp` is pushed forward by every packet -- so an
+     * via one of the whitelists while its knock was valid. It lives on an idle
+     * window -- `timestamp` is pushed forward by every packet -- so an
      * established session is not cut mid-stream when the knock expires. That is
      * what FilterMode 0 does too: the AC's iptables baseline accepts
      * `-m state --state ESTABLISHED` ahead of the per-knock ipset, so expiry
      * there blocks new connections only.
      *
-     * This does not hold the door open, because the key includes the peer's
-     * source port: refreshing keeps this one connection alive and nothing else.
-     * A new connection gets a new source port, misses here, and has to satisfy
-     * the whitelist lookups below -- which only user space writes.
+     * An idle window on the 4-tuple alone would not be safe, because the peer
+     * chooses its own source port: it could bind a fixed one, keep the entry
+     * alive with one packet per window, and open new connections on it long
+     * after the knock closed. So for TCP the entry tracks the connection, not
+     * just the tuple, exactly where netfilter draws the line:
+     *
+     *   - a pure SYN skips this branch entirely and goes to the whitelists
+     *     below (netfilter turns a SYN on a closed/TIME_WAIT entry back into
+     *     NEW, so `--state ESTABLISHED` does not match it either). Re-using a
+     *     source port therefore buys the peer nothing;
+     *   - a RST deletes the entry -- the connection is over;
+     *   - a FIN cuts the entry down to NHP_CT_CLOSE_TTL_NS, enough for the rest
+     *     of the close handshake and no more.
+     *
+     * Non-TCP keeps the plain idle window; a datagram flow has no handshake to
+     * key off and nf_conntrack does the same for FilterMode 0.
      *
      * Once idle past its window the entry is dropped and the packet falls
      * through to those lookups, so a flow that goes quiet and comes back needs
      * a knock that is still valid.
      */
     existing_val = bpf_map_lookup_elem(&conn_track, &ct_key);
-    if (existing_val) {
+    if (existing_val && !is_syn) {
         if (check_conn_expiry(existing_val)) {
             /* Idle out. Fall through to the whitelist lookups below: if the
              * knock is still valid the flow is simply admitted again. */
             bpf_map_delete_elem(&conn_track, &ct_key);
+        } else if (is_rst) {
+            bpf_map_delete_elem(&conn_track, &ct_key);
+            return XDP_PASS;
         } else {
             struct conn_value new_val = *existing_val;
             new_val.tx_packets++;
             new_val.timestamp = now;
             new_val.last_timestamp = now;
+            apply_close_ttl(&new_val, is_fin);
             bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_EXIST);
             return XDP_PASS;
         }
     }
-    reverseTuple(&ct_key);
+
     /*
      * Reverse (CT_DIR_EGRESS) hit: the reply to a connection the AC itself
      * opened, whose entry was created by tc_egress.c. The gates there are what
      * keep a knock-authorised flow from ever having an EGRESS entry, so this
-     * branch is not supposed to see one -- and how long it may live is decided
-     * by how much the gates can be trusted for that protocol:
+     * branch is not supposed to see one -- and how much an inbound packet may
+     * do to it is decided by how far the gates can be trusted for that
+     * protocol:
      *
      *   TCP  -- the pure-SYN gate is exact (a listening socket never sends
-     *           one), so `timestamp` is refreshed and the TTL becomes a sliding
-     *           idle window. tc_egress.c writes the entry once, on the SYN, so
-     *           without this a download longer than the TTL would be cut off.
+     *           one), so `timestamp` is refreshed here and the TTL is a sliding
+     *           idle window, which a long download needs when the AC is only
+     *           receiving.
      *   else -- the UDP gates are heuristics (ephemeral source port, peer holds
      *           no knock entry). Refreshing would let a peer slide the window
      *           forward for as long as it keeps sending, so it is deliberately
-     *           not done: an entry that slips through the gates still dies
-     *           NHP_CT_EGRESS_IDLE_TTL_NS after it was created. The AC's own
-     *           outbound datagram flows (NTP, its UDP channel to the
-     *           nhp-server) are short enough not to notice, and tc_egress.c
-     *           writes them with BPF_NOEXIST so an outgoing packet cannot push
-     *           the cap out either.
+     *           not done. Such an entry lives on the AC's own sending alone:
+     *           tc_egress.c pushes it forward on each outgoing packet, which is
+     *           what keeps nhp-acd's long-lived UDP channel to the nhp-server
+     *           (one socket, NHP_KPL every 20s) answerable, and it dies
+     *           NHP_CT_EGRESS_IDLE_TTL_NS after the AC last spoke on it.
+     *
+     * As in the forward branch a pure SYN is never answered from here, a RST
+     * ends the entry and a FIN cuts it down to the close window. An entry that
+     * has idled out falls through to the whitelist lookups rather than dropping
+     * the packet outright -- the same treatment the forward branch gives, and
+     * it lets a live knock admit the packet on its own merits.
      */
+    reverseTuple(&ct_key);
     existing_val = bpf_map_lookup_elem(&conn_track, &ct_key);
-    if (existing_val) {
+    int reverse_verdict = -1;
+    if (existing_val && !is_syn) {
         if (check_conn_expiry(existing_val)) {
             bpf_map_delete_elem(&conn_track, &ct_key);
-            reverseTuple(&ct_key);
-            return XDP_DROP;
+        } else if (is_rst) {
+            bpf_map_delete_elem(&conn_track, &ct_key);
+            reverse_verdict = XDP_PASS;
+        } else {
+            struct conn_value new_val = *existing_val;
+            new_val.rx_packets++;
+            if (is_tcp) {
+                new_val.timestamp = now;
+                apply_close_ttl(&new_val, is_fin);
+            }
+            new_val.last_timestamp = now;
+            bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_EXIST);
+            reverse_verdict = XDP_PASS;
         }
-        struct conn_value new_val = *existing_val;
-        new_val.rx_packets++;
-        if (ct_key.nexthdr == IPPROTO_TCP)
-            new_val.timestamp = now;
-        new_val.last_timestamp = now;
-        bpf_map_update_elem(&conn_track, &ct_key, &new_val, BPF_EXIST);
-        reverseTuple(&ct_key);
-        return XDP_PASS;
     }
+    /* Back to the ingress orientation: the whitelist lookups below and
+     * new_ingress_conn() both read ct_key. */
     reverseTuple(&ct_key);
+    if (reverse_verdict >= 0)
+        return reverse_verdict;
+
+    /* A TCP flow is tracked from the packet that opens it and from no other.
+     * See new_ingress_conn(). */
+    bool track_new_conn = !is_tcp || is_syn;
 
     struct whitelist_key key = {
         .src_ip = iph->saddr,
@@ -305,7 +374,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         }
         if (w_val->allowed == 1) {
             submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
-            new_ingress_conn(&ct_key, iph->protocol, now);
+            new_ingress_conn(&ct_key, iph->protocol, now, track_new_conn);
             return XDP_PASS;
         }
     }
@@ -317,7 +386,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         }
         if (sd_val->allowed == 1) {
             submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
-            new_ingress_conn(&ct_key, iph->protocol, now);
+            new_ingress_conn(&ct_key, iph->protocol, now, track_new_conn);
             return XDP_PASS;
         }       
     }
@@ -330,7 +399,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         }
         if (sp_val->allowed == 1) {
             submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
-            new_ingress_conn(&ct_key, iph->protocol, now);
+            new_ingress_conn(&ct_key, iph->protocol, now, track_new_conn);
             return XDP_PASS;
         }
     }
@@ -343,7 +412,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         }
         if (pl_val->allowed == 1) {
             submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
-            new_ingress_conn(&ct_key, iph->protocol, now);
+            new_ingress_conn(&ct_key, iph->protocol, now, track_new_conn);
             return XDP_PASS;
         }
     }
@@ -355,7 +424,7 @@ static __always_inline int xdp_white_prog(struct xdp_md *ctx) {
         }
         if (pp_val->allowed == 1) {
             submit_event(ctx, 1, iph->saddr, iph->daddr, ct_key.sport, ct_key.dport, iph->protocol, iph->tot_len);
-            new_ingress_conn(&ct_key, iph->protocol, now);
+            new_ingress_conn(&ct_key, iph->protocol, now, track_new_conn);
             return XDP_PASS;
         }
     }

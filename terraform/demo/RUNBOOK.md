@@ -454,6 +454,36 @@ tail -f /home/ec2-user/nhp-ac/logs/ac-$(date -u +%F).log
 The `deploy-ac` job reads that file (not the journal) to confirm the perf ring
 buffer opened, and dumps both it and `journalctl` on every abort.
 
+### eBPF map pin mismatch at startup
+
+`nhp-acd` loads two objects — `nhp_ebpf_xdp.o` and `tc_egress.o` — that share
+pinned maps by name (`conn_track`, `nhp_config`, the whitelists). The loader
+validates map type, key size, value size and `max_entries` when the second
+object reuses a pin, so a pin left over from a different build stops the AC
+from starting with an error naming the map:
+
+```
+Failed to load and assign tc eBPF objects
+... map "conn_track": ... incompatible with pinned map ...
+```
+
+Previously the map most likely to be named here was `spp`, because the TC
+program wrote it; now that TC only reads the whitelists and writes
+`conn_track`, the same class of failure shows up as a **`conn_track`** (or
+`nhp_config`) error instead. It means the same thing and has the same fix —
+the pins are stale:
+
+```bash
+ssh nhp-ac 'systemctl stop nhp-acd; ls -l /sys/fs/bpf/'
+# nhp-acd calls CleanupBPFFiles() on start, which removes every pin it owns,
+# so a plain restart normally clears it:
+ssh nhp-ac 'sudo systemctl restart nhp-acd'
+# if something else still holds them (an orphaned tc filter or xdp link):
+ssh nhp-ac 'sudo tc qdisc del dev $(ip route | awk "/default/ {print \$5; exit}") clsact; \
+            sudo ip link set dev $(ip route | awk "/default/ {print \$5; exit}") xdpgeneric off; \
+            sudo rm -f /sys/fs/bpf/{conn_track,nhp_config,spp,src_port,sdwhitelist,port_list,protocol_port,icmpwhitelist,xdp_white_prog,tc_egress_prog}'
+```
+
 ### What the knock window covers (and checking that it closes)
 
 The knock's `OpenTime` governs **new flows**. A session that was opened while
@@ -471,14 +501,30 @@ In eBPF mode the same rule is enforced by `conn_track` (`nhp/ebpf/xdp/`):
   pushes it forward, so refreshing can only keep *that one* connection alive.
 * A new connection uses a new source port, misses `conn_track`, and has to
   satisfy the whitelist maps — which only user space writes, from the knock.
+* **A TCP entry tracks the connection, not just the tuple.** The peer picks its
+  own source port, so an idle window alone would let a peer that knocked once
+  pin a 4-tuple open forever and keep opening connections on it. So: only a
+  **pure SYN** admitted by a whitelist creates an entry; a pure SYN never
+  matches an existing entry and always goes back through the whitelists (this
+  is what netfilter does — a SYN on a closed/TIME_WAIT conntrack becomes NEW,
+  which `--state ESTABLISHED` does not match); a **RST** deletes the entry and
+  a **FIN** cuts it down to `NHP_CT_CLOSE_TTL_NS` (60s). UDP has no handshake
+  to key off and keeps the plain 120s idle window, the same as nf_conntrack
+  gives `FilterMode = 0`.
 * The TC egress program writes `conn_track` only for connections the **AC
-  itself** opens (dnf, certbot, NTP), and four gates keep it off knock flows:
-  a reverse lookup of the ingress direction, TCP pure-SYN only, a UDP source
-  port that must be ephemeral, and a UDP check that the peer holds no knock
-  entry. It never writes the whitelist maps. Because the last two are
-  heuristics, XDP never refreshes a non-TCP egress entry: one that slips
-  through the gates dies 180s after it was created rather than sliding
-  forward. AC-initiated **UDP** flows are therefore capped at 180s.
+  itself** opens (dnf, certbot, NTP, its UDP channel to the nhp-server), and
+  four gates keep it off knock flows: a reverse lookup of the ingress
+  direction, TCP pure-SYN only, a UDP source port that must be inside the
+  host's `net.ipv4.ip_local_port_range` (read at load time into the
+  `nhp_config` map, and logged at startup), and a UDP check that the peer
+  holds no knock entry. It never writes the whitelist maps.
+* An **egress** entry (`NHP_CT_EGRESS_IDLE_TTL_NS`, 180s) is refreshed by the
+  AC's **own outgoing packets** only. For UDP, XDP deliberately does not
+  refresh it from an inbound packet, so a peer cannot slide the window forward
+  by itself — tighter than netfilter, which refreshes on either direction. An
+  AC-initiated UDP flow therefore lives 180s past the moment the AC last spoke
+  on it, which is what keeps the long-lived AC↔nhp-server channel up (see the
+  next case).
 
 So "the door is shut" means *a fresh connection is refused*. Test it that way.
 
@@ -533,6 +579,59 @@ sudo bpftool map dump pinned /sys/fs/bpf/spp   # knock entries only, and expired
 
 If `spp` keeps gaining entries while nobody is knocking, something is writing
 the whitelist from the data path again — that was the original bug.
+
+#### The AC's own channel to the nhp-server (run this one every time)
+
+The case that the two tests above miss, and the one that breaks knocks for
+everybody rather than for one peer. `nhp-acd` reaches the server over a single
+`net.DialUDP` socket held for the life of the process
+(`endpoints/ac/udpac.go`), kept busy by `NHP_KPL` every 20s. Nothing in user
+space whitelists the server, so the server's datagrams — `NHP_AOP` among them —
+get back in **only** through the egress `conn_track` entry the TC program
+writes. If that entry is ever allowed to hard-expire under the AC, every
+inbound server packet is dropped until the next keepalive re-creates it, and
+knocks fail intermittently for as long as the AC is up.
+
+It only shows up after the AC has been running longer than
+`NHP_CT_EGRESS_IDLE_TTL_NS` (180s), so **knock again once the AC has been up
+more than 5 minutes** — a fresh deploy plus an immediate knock will not catch
+it:
+
+```bash
+# how long has nhp-acd been up? needs to be > 5 min for this to prove anything
+ssh nhp-ac 'systemctl show nhp-acd -p ActiveEnterTimestamp'
+
+# knock, and expect the resource to open on the first attempt
+# (a knock that needs a retry, or an AOP timeout in the server log, is the
+#  symptom — the AC drops the AOP and the server gives up)
+```
+
+Then confirm the channel's egress entry is alive and being refreshed, rather
+than being re-created from scratch each time. `nexthdr: 17`, `flags: 1`
+(CT_DIR_EGRESS), the server's address, and a `tx_packets` that keeps climbing
+across two dumps a minute apart:
+
+```bash
+ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/conn_track' \
+  | grep -A 14 '"nexthdr": 17'
+# the AC logs to a file, not journald — see "Where nhp-acd logs" above
+ssh nhp-ac 'grep -E "AOP|AOL" /home/ec2-user/nhp-ac/logs/ac-$(date -u +%F).log | tail'
+```
+
+A `tx_packets` that resets to 1 every few minutes means the entry is being
+re-created, i.e. it expired — that is the regression. While you are there,
+check the range the egress gate is using; it is logged once at load:
+
+```bash
+ssh nhp-ac 'grep ip_local_port_range /home/ec2-user/nhp-ac/logs/ac-$(date -u +%F).log'
+# -> "eBPF egress tracking treats source ports >= 32768 as the AC's own"
+ssh nhp-ac 'cat /proc/sys/net/ipv4/ip_local_port_range'   # must agree
+```
+
+If the two disagree, the AC's own UDP flows from below the logged bound get no
+reply permit at all. The value is read from the host at load time and written
+to the `nhp_config` map, so a mismatch means the sysctl was changed after
+`nhp-acd` started — restart it.
 
 ### Rolling back to iptables
 

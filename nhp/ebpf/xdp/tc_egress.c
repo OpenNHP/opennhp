@@ -33,7 +33,8 @@
  * channel to the nhp-server, whose replies only get back in because of the
  * entry written below. Losing that would take the AC off the air, which is a
  * far worse failure than the narrow case those lookups would cover, and gate 3
- * plus the hard cap on datagram entries already bound it.
+ * plus an idle window that only the AC's own sending refreshes already bound
+ * it.
  */
 static __always_inline bool peer_is_knocking(__be32 src_ip, __be32 dst_ip,
                                              __be16 sport, __u8 protocol)
@@ -83,7 +84,7 @@ int tc_egress_prog(struct __sk_buff *ctx)
     __u8 protocol = iph->protocol;
 
     __be16 sport = 0, dport = 0;
-    bool is_tcp = false, is_syn = false;
+    bool is_tcp = false, is_syn = false, is_fin = false, is_rst = false;
 
     /* Only TCP and UDP are tracked. ICMP needs nothing from here: XDP passes
      * echo replies unconditionally, and it never puts IPPROTO_ICMP in a
@@ -96,8 +97,10 @@ int tc_egress_prog(struct __sk_buff *ctx)
         dport = tcp->dest;
         is_tcp = true;
         /* A pure SYN (no ACK) is the only packet that opens a connection the
-         * AC itself initiates. */
+         * AC itself initiates. FIN/RST end one. */
         is_syn = tcp->syn && !tcp->ack;
+        is_fin = tcp->fin;
+        is_rst = tcp->rst;
     } else if (protocol == IPPROTO_UDP) {
         struct udphdr *udp = (void *)iph + (iph->ihl * 4);
         if ((void *)(udp + 1) > data_end)
@@ -127,6 +130,52 @@ int tc_egress_prog(struct __sk_buff *ctx)
     if (bpf_map_lookup_elem(&conn_track, &ingress_key))
         return TC_ACT_OK;
 
+    struct ipv4_ct_tuple egress_key;
+    __builtin_memset(&egress_key, 0, sizeof(egress_key));
+    egress_key.saddr = src_ip;
+    egress_key.daddr = dst_ip;
+    egress_key.sport = sport;
+    egress_key.dport = dport;
+    egress_key.nexthdr = protocol;
+    egress_key.flags = CT_DIR_EGRESS;
+
+    __u64 now = bpf_ktime_get_ns();
+
+    /*
+     * An entry that already exists is one this program created, i.e. a flow the
+     * AC itself opened, so every outgoing packet on it pushes the reply window
+     * forward. Refreshing here, before the creation gates below, is what keeps
+     * a *long-lived* AC-initiated flow on the air: nhp-acd's UDP channel to the
+     * nhp-server (endpoints/ac/udpac.go, net.DialUDP) is one socket for the
+     * life of the process, kept busy by NHP_KPL every 20s, and the server's
+     * datagrams -- NHP_AOP among them -- get back in only through this entry.
+     * Nothing in user space whitelists the server, so a hard cap here dropped
+     * every inbound server packet for up to a keepalive interval, every
+     * NHP_CT_EGRESS_IDLE_TTL_NS, and knocks failed with it.
+     *
+     * Only the AC's own sending refreshes the entry. xdp_white_prog() still
+     * never refreshes a non-TCP one from an inbound packet, so a peer cannot
+     * slide the window forward by itself -- which is tighter than netfilter,
+     * where a reply refreshes the conntrack entry too.
+     */
+    struct conn_value *existing = bpf_map_lookup_elem(&conn_track, &egress_key);
+    if (existing) {
+        /* The AC is tearing the connection down: drop the entry with it rather
+         * than leaving it in the LRU for the full window. */
+        if (is_rst) {
+            bpf_map_delete_elem(&conn_track, &egress_key);
+            return TC_ACT_OK;
+        }
+        existing->timestamp = now;
+        existing->last_timestamp = now;
+        existing->tx_packets++;
+        if (is_fin || (existing->flags & CT_FLAG_FIN)) {
+            existing->flags |= CT_FLAG_FIN;
+            existing->ttl_ns = NHP_CT_CLOSE_TTL_NS;
+        }
+        return TC_ACT_OK;
+    }
+
     /*
      * Gates 2-4 catch what gate 1 cannot: its ingress entry may already have
      * been expired and deleted by XDP, or evicted from the LRU map, and the AC
@@ -147,11 +196,15 @@ int tc_egress_prog(struct __sk_buff *ctx)
     } else {
         /*
          * Gate 3, UDP: there is no SYN to key off, so use the source port. A
-         * socket the AC opens as a client (dnf, chrony, a resolver) binds an
-         * ephemeral port; a service it listens on does not. This is the UDP
-         * equivalent of "servers don't originate".
+         * socket the AC opens as a client (dnf, chrony, a resolver, the
+         * nhp-server channel) binds an ephemeral port; a service it listens on
+         * does not. This is the UDP equivalent of "servers don't originate".
+         *
+         * The bound is the host's own net.ipv4.ip_local_port_range, read at
+         * load time -- hard-coding the Linux default would drop the AC's own
+         * replies on any host that lowers the range.
          */
-        if (bpf_ntohs(sport) < NHP_EPHEMERAL_PORT_MIN)
+        if (bpf_ntohs(sport) < nhp_ephemeral_port_min())
             return TC_ACT_OK;
 
         /*
@@ -160,24 +213,15 @@ int tc_egress_prog(struct __sk_buff *ctx)
          * server), skip any peer that holds a knock entry for it.
          *
          * Gates 3 and 4 are heuristics where gate 2 is exact, so the XDP side
-         * backs them up: it never refreshes a non-TCP EGRESS entry, and one
-         * that does slip through therefore dies NHP_CT_EGRESS_IDLE_TTL_NS
-         * after it was created instead of sliding forward indefinitely.
+         * backs them up: it never refreshes a non-TCP EGRESS entry from an
+         * inbound packet. One that slips through therefore lives on the AC's
+         * own sending and dies NHP_CT_EGRESS_IDLE_TTL_NS after the AC last
+         * spoke, instead of being slid forward by the peer.
          */
         if (peer_is_knocking(src_ip, dst_ip, sport, protocol))
             return TC_ACT_OK;
     }
 
-    struct ipv4_ct_tuple egress_key;
-    __builtin_memset(&egress_key, 0, sizeof(egress_key));
-    egress_key.saddr = src_ip;
-    egress_key.daddr = dst_ip;
-    egress_key.sport = sport;
-    egress_key.dport = dport;
-    egress_key.nexthdr = protocol;
-    egress_key.flags = CT_DIR_EGRESS;
-
-    __u64 now = bpf_ktime_get_ns();
     struct conn_value egress_val = {
         .timestamp = now,
         .last_timestamp = now,
@@ -188,14 +232,9 @@ int tc_egress_prog(struct __sk_buff *ctx)
         .tx_packets = 1,
     };
 
-    /*
-     * TCP: BPF_ANY, a retransmitted SYN legitimately restarts the window.
-     * UDP: BPF_NOEXIST, so an outgoing packet cannot push an existing entry's
-     * expiry out. Together with XDP not refreshing non-TCP EGRESS entries this
-     * makes NHP_CT_EGRESS_IDLE_TTL_NS a hard cap for datagram flows.
-     */
-    bpf_map_update_elem(&conn_track, &egress_key, &egress_val,
-                        is_tcp ? BPF_ANY : BPF_NOEXIST);
+    /* BPF_NOEXIST: the refresh above already handled the entry that exists,
+     * so this call only ever creates. */
+    bpf_map_update_elem(&conn_track, &egress_key, &egress_val, BPF_NOEXIST);
 
     return TC_ACT_OK;
 }

@@ -25,6 +25,10 @@
 #  not cut mid-stream when the window closes. Mode 0 gets that from the
 #  iptables baseline's `-m state --state ESTABLISHED` accept, mode 1 from the
 #  eBPF connection tracking (idle window: 1h TCP, 120s otherwise).
+#  In mode 1 a TCP session is tracked from the SYN that the knock admitted
+#  and is dropped on FIN/RST, and a new SYN is always re-checked against the
+#  knock - re-using a source port does not inherit the old session's
+#  permission.
 # LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.
 # AuthServiceId (-): id for authentication and authorization service provider this AC belongs to.
 # ResourceIds (-): resource group ids that this AC protects.

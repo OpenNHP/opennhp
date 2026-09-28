@@ -33,6 +33,9 @@ ResourceIds = ["demo"]
 #
 # Both modes close the door the same way: OpenTime governs *new* connections,
 # and a session opened while the knock was valid runs until it goes idle rather
-# than being cut mid-stream. See "What the knock window covers" in
-# terraform/demo/RUNBOOK.md for how to verify that, for TCP and for UDP.
+# than being cut mid-stream. In mode 1 a TCP session is tracked from the SYN
+# the knock admitted and dropped on FIN/RST, so a new connection — including
+# one that re-uses a source port — is always re-checked against the knock.
+# See "What the knock window covers" in terraform/demo/RUNBOOK.md for how to
+# verify that, for TCP, for UDP, and for the AC's own channel to the server.
 FilterMode = 1

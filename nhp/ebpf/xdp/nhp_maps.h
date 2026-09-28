@@ -51,32 +51,63 @@ enum {
  * established session. nf_conntrack's tcp_timeout_established is five days; an
  * hour is the deliberate difference, since these entries sit in a pinned LRU
  * map with no netfilter to garbage-collect them.
+ *
+ * For TCP the idle window is not the only thing that bounds the entry, and it
+ * must not be -- the peer picks its own source port, so an idle window alone
+ * would let a peer that knocked once pin a 4-tuple open forever by sending one
+ * packet an hour. xdp_white_prog() therefore tracks the connection's state the
+ * way netfilter does:
+ *
+ *   - only a pure SYN that a whitelist admits creates an entry, so the entry
+ *     exists exactly for the connection that the knock authorised;
+ *   - a pure SYN never matches an existing entry -- every new connection goes
+ *     through the whitelist lookups, so re-using a source port buys nothing;
+ *   - a RST deletes the entry, and a FIN cuts it down to NHP_CT_CLOSE_TTL_NS,
+ *     so the entry dies with the connection instead of lingering for an hour.
+ *
+ * Non-TCP has no handshake to key off, so a UDP entry stays a plain idle
+ * window, which is exactly what nf_conntrack gives FilterMode 0.
  */
 #define NHP_CT_TCP_IDLE_TTL_NS   (3600ULL * 1000000000ULL)  /* nf: 5 days      */
 #define NHP_CT_OTHER_IDLE_TTL_NS (120ULL * 1000000000ULL)   /* nf: udp_stream  */
 
 /*
- * Reply window for connections the AC itself initiates (dnf, certbot, NTP,
- * ...), written by tc_egress.c. The XDP program drops everything that is not
- * whitelisted, so outbound flows need their replies let back in -- the
- * equivalent of iptables' `--ctstate ESTABLISHED,RELATED -j ACCEPT`.
+ * Window a TCP entry keeps after the first FIN, long enough for the rest of the
+ * close handshake and any straggling retransmit. nf_conntrack uses 60s for
+ * CLOSE_WAIT and 120s for TIME_WAIT.
+ */
+#define NHP_CT_CLOSE_TTL_NS (60ULL * 1000000000ULL)
+
+/*
+ * Reply window for connections the AC itself initiates (dnf, certbot, NTP, its
+ * UDP channel to the nhp-server, ...), written by tc_egress.c. The XDP program
+ * drops everything that is not whitelisted, so outbound flows need their
+ * replies let back in -- the equivalent of iptables'
+ * `--ctstate ESTABLISHED,RELATED -j ACCEPT`.
  *
- * It is an idle window for TCP and a hard cap for everything else, because the
- * gates that keep tc_egress.c off knock-authorised flows are exact for TCP and
- * heuristic for UDP. See the reverse-hit branch of xdp_white_prog().
+ * It is an idle window driven by the AC's *own* sending: tc_egress.c pushes
+ * `timestamp` forward on every outgoing packet of the flow. An inbound packet
+ * refreshes it only for TCP, where the gate that creates the entry (pure SYN
+ * from a non-listening socket) is exact; for UDP, where the gates are
+ * heuristics, xdp_white_prog() deliberately does not refresh, so a peer can
+ * never slide the window forward on its own. That is strictly tighter than
+ * netfilter, which refreshes on traffic in either direction.
  */
 #define NHP_CT_EGRESS_IDLE_TTL_NS (180ULL * 1000000000ULL)
 
 /*
- * Lower bound of the local ephemeral port range (Linux default
+ * Fallback lower bound of the local ephemeral port range (Linux default
  * net.ipv4.ip_local_port_range = "32768 60999"). A socket the AC opens as a
  * *client* binds a port from this range; a socket it *listens* on does not.
  * tc_egress.c uses that to tell its own outbound connections apart from the
  * reply side of a service it is serving -- see gate 3 there.
  *
- * Lowering net.ipv4.ip_local_port_range below this on an AC host would leave
- * replies to its own UDP flows outside the range unmatched; raise this constant
- * to match if that is ever done.
+ * Distros and hardened images do change ip_local_port_range, and a host whose
+ * range starts below this would leave the AC's own UDP flows from the lower
+ * ports (a resolver, chrony, the nhp-server channel) untracked and therefore
+ * unanswerable. So the real bound is read from the host at load time and put in
+ * `nhp_config` by endpoints/ac/ebpf/ebpfegine.go; this constant is only what
+ * the program falls back to if that slot is unset.
  */
 #define NHP_EPHEMERAL_PORT_MIN 32768
 
@@ -242,6 +273,38 @@ struct {
     __uint(max_entries, MAX_ENTRIES);
     __uint(pinning, LIBBPF_PIN_BY_NAME);
 } protocol_port SEC(".maps");
+
+/*
+ * Runtime knobs the programs cannot read for themselves, one __u32 per slot.
+ * Written once by user space when the objects are loaded
+ * (endpoints/ac/ebpf/ebpfegine.go); the eBPF side only reads it, and treats an
+ * unset slot as "use the compiled-in default", so a stale or empty map degrades
+ * to the previous behaviour rather than to an open door.
+ */
+enum {
+    NHP_CFG_EPHEMERAL_PORT_MIN = 0,
+    NHP_CFG_SLOTS,
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __type(key, __u32);
+    __type(value, __u32);
+    __uint(max_entries, NHP_CFG_SLOTS);
+    __uint(pinning, LIBBPF_PIN_BY_NAME);
+} nhp_config SEC(".maps");
+
+/* Host's net.ipv4.ip_local_port_range low bound, or the default if user space
+ * has not filled it in. See NHP_EPHEMERAL_PORT_MIN. */
+static __always_inline __u32 nhp_ephemeral_port_min(void)
+{
+    __u32 idx = NHP_CFG_EPHEMERAL_PORT_MIN;
+    __u32 *val = bpf_map_lookup_elem(&nhp_config, &idx);
+
+    if (!val || *val == 0 || *val > 65535)
+        return NHP_EPHEMERAL_PORT_MIN;
+    return *val;
+}
 
 /*
  * Idle window an admitted flow gets, by L4 protocol. TCP sessions are

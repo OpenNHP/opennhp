@@ -34,6 +34,9 @@ func (a *UdpAgent) HandleCookieMessage(ppd *core.PacketParserData) bool {
 	}
 
 	log.Info("agent(#%d)[HandleCookieMessage] redirect cookie message to original knock transaction", transactionId)
-	transaction.ExternalMsgCh <- ppd
+	if err := transaction.SendExternalMsg(ppd); err != nil {
+		log.Error("agent(#%d)[HandleCookieMessage] transaction closed before forward: %v", transactionId, err)
+		return false
+	}
 	return true
 }

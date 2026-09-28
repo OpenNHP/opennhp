@@ -17,9 +17,14 @@
 # IpPassMode:
 #  0: (default) immediately pass traffic with the agent source ip,
 #  1: process pre-access to determine actual agent source ip then pass.
-# FilterMode: 
+# FilterMode:
 #  0: iptables (default)
 #  1: ebpf xdp (requires Linux kernel >= 5.6 and XDP-capable network interface)
+#  Either way the resource's OpenTime governs *new* connections: a session
+#  opened while the knock was valid keeps running until it goes idle, it is
+#  not cut mid-stream when the window closes. Mode 0 gets that from the
+#  iptables baseline's `-m state --state ESTABLISHED` accept, mode 1 from the
+#  eBPF connection tracking (idle window: 1h TCP, 120s otherwise).
 # LogLevel: 0: silent, 1: error, 2: info, 3: audit, 4: debug, 5: trace.
 # AuthServiceId (-): id for authentication and authorization service provider this AC belongs to.
 # ResourceIds (-): resource group ids that this AC protects.

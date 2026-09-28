@@ -30,4 +30,9 @@ ResourceIds = ["demo"]
 # as long as the nhp-acd process) is wired into the unit. So rolling back is
 # just setting this to 0 and re-running the workflow; no workflow edit and no
 # manual host cleanup.
+#
+# Both modes close the door the same way: OpenTime governs *new* connections,
+# and a session opened while the knock was valid runs until it goes idle rather
+# than being cut mid-stream. See "What the knock window covers" in
+# terraform/demo/RUNBOOK.md for how to verify that, for TCP and for UDP.
 FilterMode = 1

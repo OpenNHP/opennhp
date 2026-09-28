@@ -454,6 +454,86 @@ tail -f /home/ec2-user/nhp-ac/logs/ac-$(date -u +%F).log
 The `deploy-ac` job reads that file (not the journal) to confirm the perf ring
 buffer opened, and dumps both it and `journalctl` on every abort.
 
+### What the knock window covers (and checking that it closes)
+
+The knock's `OpenTime` governs **new flows**. A session that was opened while
+the knock was valid keeps running until it goes idle — a large download, a
+WebSocket, a long-poll is not cut mid-stream when the window closes. That is
+deliberate, and it is what `FilterMode = 0` does as well: the iptables baseline
+(`docker/iptables_defaults_*.sh`) accepts `-m state --state ESTABLISHED` ahead
+of the per-knock ipset, so expiry there blocks new connections only.
+
+In eBPF mode the same rule is enforced by `conn_track` (`nhp/ebpf/xdp/`):
+
+* An admitted flow gets an entry keyed on the **full 4-tuple, including the
+  peer's source port**, with an idle window (`NHP_CT_TCP_IDLE_TTL_NS`, 1h for
+  TCP; `NHP_CT_OTHER_IDLE_TTL_NS`, 120s for everything else). Every packet
+  pushes it forward, so refreshing can only keep *that one* connection alive.
+* A new connection uses a new source port, misses `conn_track`, and has to
+  satisfy the whitelist maps — which only user space writes, from the knock.
+* The TC egress program writes `conn_track` only for connections the **AC
+  itself** opens (dnf, certbot, NTP), and four gates keep it off knock flows:
+  a reverse lookup of the ingress direction, TCP pure-SYN only, a UDP source
+  port that must be ephemeral, and a UDP check that the peer holds no knock
+  entry. It never writes the whitelist maps. Because the last two are
+  heuristics, XDP never refreshes a non-TCP egress entry: one that slips
+  through the gates dies 180s after it was created rather than sliding
+  forward. AC-initiated **UDP** flows are therefore capped at 180s.
+
+So "the door is shut" means *a fresh connection is refused*. Test it that way.
+
+#### TCP
+
+Knock, then wait out `OpenTime` (+ the deploy's compensation) and open a
+**fresh** connection. `curl` reuses a live connection, so force a new one:
+
+```bash
+# during the window — succeeds
+curl -sS --max-time 5 https://<resource> -o /dev/null && echo open
+
+sleep $((OpenTime + 10))
+
+# after the window — must fail to connect (not 4xx/5xx: no TCP handshake)
+curl -sS --max-time 5 --no-keepalive https://<resource> -o /dev/null \
+  || echo "closed (expected)"
+```
+
+An existing connection staying alive across the boundary is **not** a
+regression — verify with a long transfer started inside the window, which
+should complete. To see the difference, keep a connection open (`nc <ac> 443`)
+and start a second one after expiry: the first keeps flowing, the second hangs.
+
+#### UDP
+
+A knock-protected UDP service needs its own case, because UDP has no SYN for
+the TC egress program to gate on. The failure mode this guards against: the
+knock expires, XDP deletes the ingress entry and drops the peer's next
+datagram, the service then answers (a retransmit, a keepalive, a queued reply)
+— and if that answer created an egress entry, the peer's datagrams would slide
+the window forward indefinitely.
+
+```bash
+# knock for a UDP resource, then during the window:
+nc -u <ac> <udp-port>     # datagrams get through
+
+sleep $((OpenTime + 10))
+
+# after the window, with the service still sending: a fresh datagram must be
+# dropped. Watch the AC's deny log while sending.
+ssh nhp-ac 'tail -f /home/ec2-user/nhp-ac/logs/nhp_deny-*.log'
+```
+
+Then confirm no egress entry was created for that flow — the peer's address
+must not appear on the `flags: 01` (CT_DIR_EGRESS) side:
+
+```bash
+ssh nhp-ac 'sudo bpftool map dump pinned /sys/fs/bpf/conn_track | head -40'
+sudo bpftool map dump pinned /sys/fs/bpf/spp   # knock entries only, and expired ones are gone
+```
+
+If `spp` keeps gaining entries while nobody is knocking, something is writing
+the whitelist from the data path again — that was the original bug.
+
 ### Rolling back to iptables
 
 Set `FilterMode = 0` in `deploy/config-templates/ac/config.toml` and re-run

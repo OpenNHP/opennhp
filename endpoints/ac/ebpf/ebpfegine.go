@@ -41,7 +41,11 @@ type tcBpfObjects struct {
 	TcEgressProg *ebpf.Program `ebpf:"tc_egress_prog"`
 	// The TC egress program records the AC's own outbound connections in
 	// conn_track (shared with the XDP program through its pin) so their
-	// replies get back in. It no longer writes the knock whitelist `spp`.
+	// replies get back in. It no longer writes the knock whitelist `spp`; it
+	// only reads the whitelist maps, to tell a peer that holds a knock apart
+	// from a host the AC itself connected to. Those maps are not listed here
+	// because nothing in user space drives them through this object — the XDP
+	// collection above is loaded first and creates every pin.
 	Conntrack *ebpf.Map `ebpf:"conn_track"`
 }
 

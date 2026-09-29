@@ -4,7 +4,7 @@
 
 import { api, ApiError, type ConfigResponse, type ResourceMeta } from '../api.js';
 import { escapeHtml } from '../escape.js';
-import { t, renderLangSwitcher } from '../i18n.js';
+import { t, appHeaderHtml, renderLangSwitcher } from '../i18n.js';
 import { createAgent, listResources, knockResource } from '../nhp.js';
 
 export interface ResourcesViewProps {
@@ -32,7 +32,7 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
   const server = props.serverName || '—';
   const provider = authProviderLabel(props.authProvider);
   root.innerHTML = `
-    <div class="container">
+    <div class="container">${appHeaderHtml()}
       <div class="toolbar">
         <div class="toolbar-id">
           <div class="user">${t('common.signedInAs')} <span>${escapeHtml(props.username)}</span></div>
@@ -47,7 +47,7 @@ export function renderResources(root: HTMLElement, props: ResourcesViewProps): v
           <button id="delete-account-btn" class="btn btn-danger">${t('res.deleteAccount')}</button>
         </div>
       </div>
-      <h1>${t('res.title')}</h1>
+      <h2>${t('res.title')}</h2>
       <p class="subtitle">${t('res.subtitle')}</p>
 
       <div id="alert"></div>

@@ -82,7 +82,25 @@ type EngineLoadParams struct {
 	// into LogDirPath/logs.
 	LogDirPath string
 	LogLevel   int
+
+	// NhpPort is the UDP port the daemon actually listens on, and
+	// NhpMinFrameBytes the shortest datagram it will accept there. VariantServer
+	// rewrites both into the object's .rodata before it is verified, so the
+	// filter's idea of "the knock port" is the daemon's ListenPort rather than
+	// a compile-time 62206 — a server configured anywhere else would otherwise
+	// have every knock dropped at the driver. Zero leaves the object's own
+	// defaults in place. Ignored by VariantAC, which opens ports per knock.
+	NhpPort          uint16
+	NhpMinFrameBytes uint16
 }
+
+// Names of the .rodata constants in nhp/ebpf/xdp/nhp_server_xdp.c that
+// EngineLoadParams.NhpPort / NhpMinFrameBytes are written into. Keep in sync
+// with the declarations there.
+const (
+	varNhpListenPort = "nhp_listen_port"
+	varNhpMinUdpLen  = "nhp_min_udp_len"
+)
 
 // EngineHandle is what the caller keeps: the maps it drives from user space and
 // the links it must close on shutdown. Objs is the variant's loaded object
@@ -238,7 +256,7 @@ func EngineLoad(params EngineLoadParams) (*EngineHandle, error) {
 	}
 }
 
-func loadAcEngine(params EngineLoadParams, pinDir string) (*EngineHandle, error) {
+func loadAcEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retErr error) {
 	specPath := params.ProgObjPath
 	tcSpecPath := params.TcProgObjPath
 
@@ -282,6 +300,16 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (*EngineHandle, error)
 		log.Error("Failed to load and assign tc eBPF objects")
 		return nil, tcLoadErr
 	}
+	// Past the loads, a failure leaves state behind: LoadAndAssign has created
+	// the map pins under bpffs, and once the attaches below start, a
+	// half-attached pair of programs (XDP filtering ingress with no TC egress to
+	// record the AC's own flows, which drops the replies to them). The caller
+	// only ever sees an error, so nothing else would take that down.
+	defer func() {
+		if retErr != nil {
+			CleanupBPFFiles(VariantAC)
+		}
+	}()
 
 	if cfgErr := setEbpfConfig(&tcObjs); cfgErr != nil {
 		log.Error("Failed to configure tc eBPF program")
@@ -330,7 +358,7 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (*EngineHandle, error)
 		return nil, fmt.Errorf("'events' map not found")
 	}
 
-	h := &EngineHandle{
+	h = &EngineHandle{
 		Variant:   VariantAC,
 		Objs:      &objs,
 		IfaceName: iface.Name,
@@ -424,7 +452,61 @@ func readAcEvents(eventsMap *ebpf.Map, acId string, denyLogger, acLogger *log.Lo
 	}
 }
 
-func loadServerEngine(params EngineLoadParams, pinDir string) (*EngineHandle, error) {
+// setServerConstants writes the daemon's listen port and datagram floor into
+// the server object's .rodata, so the filter enforces the configuration the
+// daemon is actually running with.
+//
+// Refusing rather than warning when the constants are absent is deliberate.
+// Attaching an object whose knock port is a compile-time 62206 to a server
+// listening somewhere else drops every knock at the driver, which looks exactly
+// like the server being down and is not visible anywhere in user space — far
+// worse than not attaching at all, which is a state the daemon already handles
+// (fail-open, logged). An object that predates the constants is a stale
+// nhp_server_xdp.o next to a new binary; rebuilding it is the fix.
+func setServerConstants(spec *ebpf.CollectionSpec, params EngineLoadParams) error {
+	consts := []struct {
+		name  string
+		value uint16
+	}{
+		{varNhpListenPort, params.NhpPort},
+		{varNhpMinUdpLen, params.NhpMinFrameBytes},
+	}
+
+	for _, c := range consts {
+		if c.value == 0 {
+			// Caller did not care; leave the object's own default.
+			continue
+		}
+		v, ok := spec.Variables[c.name]
+		if !ok {
+			log.Error("server eBPF object has no '%s' constant — it is older than the loader; rebuild it with `make ebpf-objs`", c.name)
+			return fmt.Errorf("server eBPF object has no %q constant", c.name)
+		}
+		if err := v.Set(c.value); err != nil {
+			log.Error("failed to set server eBPF constant '%s' to %d: %v", c.name, c.value, err)
+			return err
+		}
+	}
+
+	if params.NhpPort != 0 || params.NhpMinFrameBytes != 0 {
+		log.Info("server XDP filter configured for udp/%d with a %d-byte datagram floor (0 = the object's own default)",
+			params.NhpPort, params.NhpMinFrameBytes)
+	}
+	return nil
+}
+
+// loadServerEngine is ordered so that everything that can fail happens *before*
+// the program is attached, and so that any failure after it still leaves the
+// host unfiltered.
+//
+// That ordering is the whole contract the caller relies on: nhp-serverd treats
+// a returned error as "fail-open, no ingress filter" and logs it as such, and
+// it never gets an EngineHandle back — so a filter that stayed attached behind a
+// returned error would be enforcing with an empty SSH whitelist that user space
+// no longer has a handle to fix. On a host whose only way in is that whitelist
+// that is unrecoverable, so the deferred cleanup below detaches and unpins on
+// every error path past the load.
+func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retErr error) {
 	specPath := params.ProgObjPath
 	if _, err := os.Stat(specPath); err != nil {
 		log.Error("server eBPF object file not found: %s", specPath)
@@ -437,6 +519,13 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (*EngineHandle, er
 		return nil, err
 	}
 
+	// Rewrite the .rodata constants before LoadAndAssign: after the collection
+	// is loaded the verifier has already folded them, so this is the only
+	// moment the knock port and the length floor can still be set.
+	if err := setServerConstants(spec, params); err != nil {
+		return nil, err
+	}
+
 	var objs serverBpfObjects
 	if loadErr := spec.LoadAndAssign(&objs, &ebpf.CollectionOptions{
 		Maps: ebpf.MapOptions{
@@ -445,6 +534,28 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (*EngineHandle, er
 	}); loadErr != nil {
 		log.Error("Failed to load and assign server eBPF objects: %v", loadErr)
 		return nil, loadErr
+	}
+	// From here on a failure has left state on the host: LoadAndAssign has
+	// already created the map pins under bpffs, and past the attach below there
+	// is a live filter. Unwind both, or the daemon runs "fail-open" while the
+	// driver is still dropping everything — and with no handle, nothing in user
+	// space could fix the whitelist it is enforcing.
+	defer func() {
+		if retErr != nil {
+			CleanupBPFFiles(VariantServer)
+		}
+	}()
+
+	// Checked here rather than after the attach: a missing map means user space
+	// cannot drive the whitelist, and attaching first would filter the host with
+	// an empty one and no way to correct it.
+	if objs.NhpEvents == nil {
+		log.Error("failed to load 'nhp_events' map from server eBPF object (nil)")
+		return nil, fmt.Errorf("'nhp_events' map not found")
+	}
+	if objs.RelayIPs == nil {
+		log.Error("failed to load 'nhp_relay_ips' map from server eBPF object (nil)")
+		return nil, fmt.Errorf("'nhp_relay_ips' map not found")
 	}
 
 	if pinErr := objs.XdpProg.Pin(filepath.Join(pinDir, "xdp_server_prog")); pinErr != nil {
@@ -467,16 +578,7 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (*EngineHandle, er
 		return nil, err
 	}
 
-	if objs.NhpEvents == nil {
-		log.Error("failed to load 'nhp_events' map from server eBPF object (nil)")
-		return nil, fmt.Errorf("'nhp_events' map not found")
-	}
-	if objs.RelayIPs == nil {
-		log.Error("failed to load 'nhp_relay_ips' map from server eBPF object (nil)")
-		return nil, fmt.Errorf("'nhp_relay_ips' map not found")
-	}
-
-	h := &EngineHandle{
+	h = &EngineHandle{
 		Variant:     VariantServer,
 		Objs:        &objs,
 		IfaceName:   iface.Name,
@@ -768,7 +870,61 @@ func sweepServerEventLogs(logDir string, now time.Time, retainDays int, maxBytes
 	}
 }
 
+// RelayPrefixKey is the key of the `nhp_relay_ips` LPM trie in
+// nhp/ebpf/xdp/nhp_server_xdp.c: struct relay_prefix_key.
+//
+// PrefixLen is a plain __u32 the kernel reads in host order; Addr is the
+// network-order address, which is also the order an LPM trie compares prefixes
+// in, so the eBPF side looks iph->saddr up with no byte swapping.
+type RelayPrefixKey struct {
+	PrefixLen uint32
+	Addr      [4]byte
+}
+
+func (k RelayPrefixKey) String() string {
+	return fmt.Sprintf("%s/%d", uint32ToIPv4(binary.BigEndian.Uint32(k.Addr[:])), k.PrefixLen)
+}
+
+// ParseRelayPrefix turns one xdp.toml whitelist entry into a trie key. A bare
+// address is a /32; "10.0.1.0/24" is the subnet form that lets the whitelist
+// survive the relay being replaced with a new private address.
+//
+// Host bits below the prefix are masked off so the key is canonical: the trie
+// ignores them when matching, but a key that kept them would not compare equal
+// to the same prefix written differently, and the stale-entry sweep below would
+// then never recognise its own entries.
+func ParseRelayPrefix(s string) (RelayPrefixKey, error) {
+	s = strings.TrimSpace(s)
+
+	if strings.Contains(s, "/") {
+		_, ipNet, err := net.ParseCIDR(s)
+		if err != nil {
+			return RelayPrefixKey{}, fmt.Errorf("invalid CIDR %q: %w", s, err)
+		}
+		ip4 := ipNet.IP.To4()
+		if ip4 == nil {
+			return RelayPrefixKey{}, fmt.Errorf("only IPv4 prefixes are supported, got %q", s)
+		}
+		ones, _ := ipNet.Mask.Size()
+		return RelayPrefixKey{PrefixLen: uint32(ones), Addr: [4]byte(ip4)}, nil
+	}
+
+	ip := net.ParseIP(s)
+	if ip == nil {
+		return RelayPrefixKey{}, fmt.Errorf("invalid IP address %q", s)
+	}
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return RelayPrefixKey{}, fmt.Errorf("only IPv4 addresses are supported, got %q", s)
+	}
+	return RelayPrefixKey{PrefixLen: 32, Addr: [4]byte(ip4)}, nil
+}
+
 // ReplaceRelayIPs makes the pinned `nhp_relay_ips` map hold exactly ipStrs.
+//
+// Entries are host addresses ("10.0.1.4") or prefixes ("10.0.1.0/24"); see
+// ParseRelayPrefix and the map's comment in nhp/ebpf/xdp/nhp_server_xdp.c for
+// why the subnet form exists.
 //
 // New entries go in before stale ones come out, so an address that is on both
 // the old and the new list is never momentarily absent: a delete-then-insert
@@ -784,42 +940,33 @@ func ReplaceRelayIPs(relayMap *ebpf.Map, ipStrs []string) error {
 		return fmt.Errorf("relay ip map is not loaded")
 	}
 
-	want := make(map[[4]byte]struct{}, len(ipStrs))
+	want := make(map[RelayPrefixKey]struct{}, len(ipStrs))
 	for _, s := range ipStrs {
-		s = strings.TrimSpace(s)
-		if s == "" {
+		if strings.TrimSpace(s) == "" {
 			continue
 		}
-		ip := net.ParseIP(s)
-		if ip == nil {
-			log.Error("relay whitelist: invalid IP address %q, skipped", s)
+		key, err := ParseRelayPrefix(s)
+		if err != nil {
+			log.Error("relay whitelist: %v, skipped", err)
 			continue
 		}
-		ip4 := ip.To4()
-		if ip4 == nil {
-			log.Error("relay whitelist: only IPv4 addresses are supported, %q skipped", s)
-			continue
-		}
-		// The eBPF key is __be32, i.e. the four bytes exactly as they appear
-		// on the wire, so the key is written as raw bytes and never passes
-		// through a host-order uint32.
-		want[[4]byte(ip4)] = struct{}{}
+		want[key] = struct{}{}
 	}
 
 	var firstErr error
 	allowed := uint8(1)
 	for key := range want {
 		k := key
-		if err := relayMap.Update(k[:], &allowed, ebpf.UpdateAny); err != nil {
-			log.Error("relay whitelist: failed to add %s: %v", uint32ToIPv4(binary.BigEndian.Uint32(k[:])), err)
+		if err := relayMap.Update(&k, &allowed, ebpf.UpdateAny); err != nil {
+			log.Error("relay whitelist: failed to add %s: %v", k, err)
 			if firstErr == nil {
 				firstErr = err
 			}
 		}
 	}
 
-	var stale [][4]byte
-	var key [4]byte
+	var stale []RelayPrefixKey
+	var key RelayPrefixKey
 	var value uint8
 	iter := relayMap.Iterate()
 	for iter.Next(&key, &value) {
@@ -835,15 +982,15 @@ func ReplaceRelayIPs(relayMap *ebpf.Map, ipStrs []string) error {
 	}
 	for _, k := range stale {
 		key := k
-		if err := relayMap.Delete(key[:]); err != nil && !errors.Is(err, ebpf.ErrKeyNotExist) {
-			log.Error("relay whitelist: failed to remove %s: %v", uint32ToIPv4(binary.BigEndian.Uint32(key[:])), err)
+		if err := relayMap.Delete(&key); err != nil && !errors.Is(err, ebpf.ErrKeyNotExist) {
+			log.Error("relay whitelist: failed to remove %s: %v", key, err)
 			if firstErr == nil {
 				firstErr = err
 			}
 		}
 	}
 
-	log.Info("relay whitelist applied: %d address(es) active, %d removed", len(want), len(stale))
+	log.Info("relay whitelist applied: %d prefix(es) active, %d removed", len(want), len(stale))
 	return firstErr
 }
 
@@ -984,12 +1131,17 @@ func CleanupBPFFiles(variant EngineVariant) {
 		return
 	}
 
+	// Cleared as well as closed, the same as the server's link above: this can
+	// run twice (an error path inside loadAcEngine, then the caller's shutdown)
+	// and closing a link a second time is an error on an already-freed handle.
 	if acXdpLink != nil {
 		acXdpLink.Close()
+		acXdpLink = nil
 		log.Info("XDP link detached and closed")
 	}
 	if acTcLink != nil {
 		acTcLink.Close()
+		acTcLink = nil
 		log.Info("TCX link detached and closed")
 	}
 }

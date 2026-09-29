@@ -11,6 +11,8 @@ import (
 
 	"github.com/OpenNHP/opennhp/nhp/etcd"
 
+	ebpflocal "github.com/OpenNHP/opennhp/endpoints/server/ebpf"
+
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
 	"github.com/OpenNHP/opennhp/nhp/core/verifier"
@@ -60,6 +62,7 @@ var (
 	srcipConfigWatch io.Closer
 	dbConfigWatch    io.Closer
 	relayConfigWatch io.Closer
+	xdpConfigWatch   io.Closer
 	teeWatch         io.Closer
 	errLoadConfig    = fmt.Errorf("config load error")
 )
@@ -179,7 +182,35 @@ type Config struct {
 	// HTTP listener so operational telemetry never rides on the public knock
 	// surface.
 	Metrics MetricsConfig `json:"metrics"`
+
+	// XdpConfigPath points at the eBPF/XDP ingress policy file, relative to
+	// the exe directory (or absolute). Empty uses "etc/xdp.toml". The file is
+	// optional: without it the XDP filter keeps whatever whitelist it was
+	// loaded with, which on a fresh start is none.
+	XdpConfigPath string `json:"xdpConfigPath"`
 }
+
+// XdpTomlConfig is etc/xdp.toml, the ingress policy the XDP program enforces.
+//
+// Only RelayIPs is actually pushed into the kernel. Enabled and
+// NhpMinFrameBytes are declared so the deployed file is self-describing and so
+// a future change can act on them, but today the program is attached whenever
+// the object loads and the length floor is the compile-time NHP_MIN_UDP_LEN in
+// nhp/ebpf/xdp/nhp_server_xdp.c — a value in the TOML that disagrees with the
+// object is reported at load rather than silently ignored.
+type XdpTomlConfig struct {
+	Enabled bool
+	// RelayIPs are the source addresses allowed to reach SSH, and allowed to
+	// reach the NHP port without meeting the length floor.
+	RelayIPs []string
+	// NhpMinFrameBytes is the UDP length floor on the knock port.
+	NhpMinFrameBytes int
+}
+
+// DefaultNhpMinFrameBytes mirrors NHP_MIN_UDP_LEN in
+// nhp/ebpf/xdp/nhp_server_xdp.c: the 240-byte NHP_KPL header of the curve
+// cipher suite, the shortest datagram that can be a knock.
+const DefaultNhpMinFrameBytes = 240
 
 // MetricsConfig configures the observability endpoint exposed by nhp-server.
 //
@@ -550,6 +581,92 @@ func (s *UdpServer) loadPeers() error {
 	})
 
 	return nil
+}
+
+// xdpConfigFileName resolves the configured xdp.toml path against the exe
+// directory. An absolute XdpConfigPath is honoured as-is.
+func (s *UdpServer) xdpConfigFileName() string {
+	path := "etc/xdp.toml"
+	if s.config != nil && s.config.XdpConfigPath != "" {
+		path = s.config.XdpConfigPath
+	}
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(ExeDirPath, path)
+}
+
+// loadXdpConfig reads etc/xdp.toml, applies it to the attached XDP program and
+// keeps watching the file.
+//
+// The file is optional at both layers. If it is missing or unparsable, nothing
+// is applied and the kernel keeps the whitelist it already had: on a fresh
+// start that is an empty one, and on a reload it is the last list that did
+// parse. Overwriting a working whitelist with the contents of a truncated or
+// half-written file is the failure that locks the operator out of SSH, so a
+// reload only ever takes effect once toml.Unmarshal has succeeded.
+func (s *UdpServer) loadXdpConfig() error {
+	fileName := s.xdpConfigFileName()
+
+	content, err := s.loadConfigFile(fileName)
+	if err != nil {
+		log.Warning("load xdp config err (optional): %v", err)
+		return err
+	}
+
+	var xdpConf XdpTomlConfig
+	if unmarshalErr := toml.Unmarshal(content, &xdpConf); unmarshalErr != nil {
+		log.Error("failed to unmarshal xdp config: %v", unmarshalErr)
+		return unmarshalErr
+	}
+	s.applyXdpConfig(&xdpConf)
+
+	xdpConfigWatch = utils.WatchFile(fileName, func() {
+		log.Info("xdp config: %s has been updated", fileName)
+		content, err := s.loadConfigFile(fileName)
+		if err != nil {
+			log.Error("failed to reread xdp config, keeping the active whitelist: %v", err)
+			return
+		}
+		var xdpConf XdpTomlConfig
+		if err := toml.Unmarshal(content, &xdpConf); err != nil {
+			log.Error("failed to unmarshal xdp config, keeping the active whitelist: %v", err)
+			return
+		}
+		s.applyXdpConfig(&xdpConf)
+	})
+
+	return nil
+}
+
+// applyXdpConfig pushes a parsed xdp.toml into the kernel-side maps.
+func (s *UdpServer) applyXdpConfig(conf *XdpTomlConfig) {
+	minBytes := conf.NhpMinFrameBytes
+	if minBytes == 0 {
+		minBytes = DefaultNhpMinFrameBytes
+	}
+	if minBytes != DefaultNhpMinFrameBytes {
+		// The floor is compiled into the XDP object, so a different value
+		// here is not enforced. Say so rather than let the deployed config
+		// claim a policy the kernel is not applying.
+		log.Warning("xdp config: NhpMinFrameBytes=%d is not applied — the XDP object enforces the compile-time floor of %d bytes",
+			minBytes, DefaultNhpMinFrameBytes)
+	}
+	if !conf.Enabled {
+		// The program is attached by EngineLoad, not by this flag; an
+		// operator who set Enabled=false expecting the filter to be off
+		// needs to know it is still enforcing.
+		log.Warning("xdp config: Enabled=false has no effect — the XDP program is attached at startup; remove %s and restart to run unfiltered",
+			s.xdpConfigFileName())
+	}
+
+	if err := ebpflocal.UpdateRelayIPs(conf.RelayIPs); err != nil {
+		log.Error("failed to apply xdp relay whitelist: %v", err)
+		return
+	}
+	if ebpflocal.Loaded() {
+		log.Info("xdp relay whitelist applied: %v", conf.RelayIPs)
+	}
 }
 
 func (s *UdpServer) loadResources() error {
@@ -1082,6 +1199,9 @@ func (s *UdpServer) StopConfigWatch() {
 	}
 	if relayConfigWatch != nil {
 		relayConfigWatch.Close()
+	}
+	if xdpConfigWatch != nil {
+		xdpConfigWatch.Close()
 	}
 	if teeWatch != nil {
 		teeWatch.Close()

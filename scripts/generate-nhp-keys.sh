@@ -326,6 +326,21 @@ export SERVER_PRIVATE_IP="$SERVER_PRIVATE_IP"
 export AC_PRIVATE_IP="$AC_PRIVATE_IP"
 export DOMAIN="$DOMAIN"
 
+# nhp-server eBPF/XDP ingress policy (server/xdp.toml). RELAY_IPS is the
+# whitelist that decides who may reach tcp/22 on the server host, so an empty
+# render is a lockout: the deploy pipeline resolves nhp-relay.opennhp.org and
+# fails the run before reaching this script if it gets no answer. Warn here
+# too, because this script is also run by hand.
+export XDP_ENABLED="${XDP_ENABLED:-true}"
+# Keep in sync with NHP_MIN_UDP_LEN in nhp/ebpf/xdp/nhp_server_xdp.c.
+export XDP_NHP_MIN_FRAME_BYTES="${XDP_NHP_MIN_FRAME_BYTES:-240}"
+export RELAY_IPS="${RELAY_IPS:-}"
+if [ -z "$RELAY_IPS" ]; then
+  echo "  WARNING: RELAY_IPS is empty — server/xdp.toml will render an empty" >&2
+  echo "           SSH whitelist. Deploying it would close tcp/22 on the" >&2
+  echo "           nhp-server host with no way back in short of rebuilding it." >&2
+fi
+
 # GitHub OAuth (application-side login). These come from GitHub Actions
 # Variables / Secrets set on the deploy-demo-v2 workflow, not from the
 # AWS Secrets Manager secret. Default GH_OAUTH_ENABLED to false so an

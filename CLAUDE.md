@@ -223,6 +223,33 @@ All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 > reference but is no longer deployed. Re-enabling the login page requires
 > undoing all of these together.
 
+#### nhp-server eBPF/XDP ingress filter
+
+`nhp-serverd` attaches `nhp/ebpf/xdp/nhp_server_xdp.c` at startup and enforces
+that same shape at the driver: UDP on the knock port (≥240 bytes, the curve
+`NHP_KPL` header size — gmsm's 304 clears it too), SSH only from the relay's
+address, everything else dropped. It parses no NHP protocol; identity is still
+decided by the Noise handshake in user space. The AC's per-knock XDP program
+and the shared loader (`nhp/utils/ebpf/engine_linux.go`) are the same code
+path selected by `EngineLoadParams.Variant`.
+
+The whitelist lives in `etc/xdp.toml` (`deploy/config-templates/server/xdp.toml`),
+rendered from `$RELAY_IPS` and hot-reloaded. **There is no break-glass SSH
+path**: if the list is rendered empty and the daemon restarts, the only way
+back in is to rebuild the instance. The `configure` job therefore resolves
+`nhp-relay.opennhp.org` and fails the whole run before anything is rendered,
+scp'd or restarted if it does not get exactly one A record — a red run with the
+demo still up is the intended outcome.
+
+Loading is **fail-open**: a missing object, an old kernel or a missing
+capability leaves the daemon running with no filter and a `Warning` in the log.
+The `Verify the XDP ingress filter attached` step in `deploy-server` is what
+turns that silent loss of protection into a failed deploy. Capabilities
+(`CAP_BPF CAP_NET_ADMIN CAP_PERFMON`) plus a root `ExecStartPre` that prepares
+`/sys/fs/bpf` come from `terraform/demo/userdata/server.sh` on new hosts and
+from a systemd drop-in installed by `deploy-server` on existing ones — keep the
+two in sync.
+
 ### `opennhp/demo` schema
 
 The secret is JSON; fields are added idempotently by scripts and workflows.

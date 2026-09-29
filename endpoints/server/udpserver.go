@@ -16,6 +16,8 @@ import (
 
 	"github.com/OpenNHP/opennhp/nhp/etcd"
 
+	ebpflocal "github.com/OpenNHP/opennhp/endpoints/server/ebpf"
+
 	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
@@ -332,6 +334,19 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 	tuneUDPRecvBuffer(s.listenConn, recvBufferTarget)
 
+	// Attach the XDP ingress filter, which narrows the host down to the knock
+	// port plus SSH from the relay. Deliberately fail-open: a kernel too old
+	// for XDP, a missing CAP_BPF, an unreadable object file or an unmounted
+	// bpffs must not take the gateway off the air, so a failure is logged and
+	// the daemon runs with no ingress filter — the same exposure it had before
+	// this existed. The whitelist itself is loaded later, by loadXdpConfig();
+	// until then the map is empty, which closes SSH rather than opening it.
+	if ebpfErr := ebpflocal.EngineLoad(ExeDirPath, logLevel, s.config.Hostname); ebpfErr != nil {
+		log.Warning("server eBPF engine load failed, fail-open (no XDP ingress filter): %v", ebpfErr)
+	} else {
+		log.Info("server XDP engine loaded")
+	}
+
 	// retrieve local port
 	laddr := s.listenConn.LocalAddr()
 	s.listenAddr, err = net.ResolveUDPAddr(laddr.Network(), laddr.String())
@@ -470,6 +485,13 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 
 		_ = s.loadResources()
 	}
+
+	// Load the XDP ingress policy (etc/xdp.toml). Outside the etcd branch on
+	// purpose: the XDP program is attached on both paths, and etcd does not
+	// carry this file. Skipping it here would leave an etcd-configured server
+	// enforcing an empty SSH whitelist — filtering with nobody allowed in.
+	// Optional, and a no-op when the engine above did not attach.
+	_ = s.loadXdpConfig()
 
 	// Initialize agent key store (SQLite).
 	ks, err := NewAgentKeyStore(s.config.DatabasePath)
@@ -612,6 +634,11 @@ func (s *UdpServer) Stop() {
 	}
 
 	s.closeAuditLedger()
+
+	// Detach XDP and remove the pins. The links die with the process anyway,
+	// but leaving the pins behind makes the next start's LoadAndAssign fail
+	// against a stale map if the object ever changes shape.
+	ebpflocal.CleanupBPFFiles()
 
 	log.Info("==========================")
 	log.Info("=== NHP-Server stopped ===")

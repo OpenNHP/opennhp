@@ -160,6 +160,10 @@ jobs:
           # build here rather than at deploy time on the live host.
           test -s release/nhp-ac/etc/nhp_ebpf_xdp.o
           test -s release/nhp-ac/etc/tc_egress.o
+          # nhp-serverd falls open (no ingress filter) if its object is
+          # missing, which is a silent loss of protection rather than a
+          # startup failure — so it has to be caught here.
+          test -s release/nhp-server/etc/nhp_server_xdp.o
 
           echo ""
           echo "Build output:"
@@ -169,9 +173,12 @@ jobs:
         run: |
           mkdir -p artifact/server artifact/ac artifact/relay artifact/plugins
 
-          # Server
+          # Server (binary + the XDP ingress filter it attaches at startup,
+          # which must land in etc/ next to the binary on the server host).
           cp release/nhp-server/nhp-serverd artifact/server/
           chmod +x artifact/server/nhp-serverd
+          mkdir -p artifact/server/etc
+          cp release/nhp-server/etc/nhp_server_xdp.o artifact/server/etc/
 
           # AC (binary + firewall bootstrap script)
           cp release/nhp-ac/nhp-acd artifact/ac/
@@ -324,6 +331,49 @@ jobs:
         with:
           name: nhp-demo-build
           path: ./artifact
+
+      - name: Resolve relay IPs via DNS
+        # RELAY_IPS becomes the nhp-server's XDP whitelist: the only source
+        # addresses allowed to reach tcp/22 on that host. There is no
+        # break-glass SSH path by design, so rendering an empty or wrong list
+        # and restarting the daemon would lock every operator out and leave
+        # rebuilding the instance as the only recovery.
+        #
+        # So this is a hard gate, placed BEFORE the configs are rendered and
+        # therefore before anything is scp'd or restarted: an empty answer, a
+        # SERVFAIL, or more than one A record all fail the job here. The
+        # deploy-* jobs depend on this one, so they never run, the live
+        # nhp-serverd is not touched, and the xdp.toml already on the host
+        # keeps working. A red run with the demo still up is the intended
+        # outcome; investigate Cloudflare, then re-run.
+        run: |
+          set -euo pipefail
+
+          command -v dig >/dev/null || sudo apt-get install -y --no-install-recommends dnsutils
+
+          RELAY_FQDN="nhp-relay.opennhp.org"
+          RESOLVED=$(dig +short "$RELAY_FQDN" @1.1.1.1 \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || true)
+
+          if [ -z "$RESOLVED" ]; then
+            echo "[!] DNS resolution returned no records for $RELAY_FQDN"
+            echo "    Refusing to render an empty SSH whitelist for nhp-server."
+            exit 1
+          fi
+
+          COUNT=$(printf '%s\n' "$RESOLVED" | wc -l)
+          if [ "$COUNT" -ne 1 ]; then
+            echo "[!] Expected exactly one A record for $RELAY_FQDN, got $COUNT:"
+            printf '      %s\n' $RESOLVED
+            echo "    The whitelist template renders a single address; fix DNS first."
+            exit 1
+          fi
+
+          echo "Relay source address for the nhp-server XDP whitelist: $RESOLVED"
+          echo "RELAY_IPS=$RESOLVED" >> $GITHUB_ENV
+          echo "XDP_ENABLED=true" >> $GITHUB_ENV
+          # Keep in sync with NHP_MIN_UDP_LEN in nhp/ebpf/xdp/nhp_server_xdp.c.
+          echo "XDP_NHP_MIN_FRAME_BYTES=240" >> $GITHUB_ENV
 
       - name: Generate keys and render configs
         env:
@@ -719,8 +769,47 @@ jobs:
             fi
           done
 
+          echo "Uploading server eBPF object..."
+          scp ./artifact/server/etc/nhp_server_xdp.o nhp-server:$REMOTE_DIR/etc/
+
           echo "Uploading server configs..."
+          # Includes xdp.toml, rendered in the configure job from the DNS
+          # lookup of nhp-relay.opennhp.org. That job is a hard gate: if it
+          # could not resolve a single A record, this job never runs and the
+          # whitelist already on the host is left alone.
           scp ./configs/server/*.toml nhp-server:$REMOTE_DIR/etc/
+
+          # Capabilities and bpffs for the XDP filter. userdata only runs at
+          # instance creation, so already-running hosts are patched here; keep
+          # in sync with terraform/demo/userdata/server.sh.
+          #
+          # A drop-in rather than a sed over the unit: the shipped
+          # nhp-serverd.service has no AmbientCapabilities= line to rewrite,
+          # so a substitution would silently do nothing and the daemon would
+          # fail to attach and fall open — protection lost with a green
+          # deploy. The ExecStartPre carries systemd's "+" prefix so it runs
+          # as root: systemd's sys-fs-bpf.mount leaves /sys/fs/bpf 0700
+          # root:root, which the unprivileged daemon cannot pin into.
+          #
+          # CAP_BPF loads the program and maps, CAP_NET_ADMIN attaches it to
+          # the interface, CAP_PERFMON opens the perf ring the event log
+          # reads. No CAP_SYS_ADMIN and no CAP_DAC_OVERRIDE — as ambient caps
+          # on an internet-facing daemon both are effectively root.
+          echo "Installing eBPF capability drop-in..."
+          BPFFS_PREP="mountpoint -q /sys/fs/bpf || mount -t bpf bpf /sys/fs/bpf; chgrp ${{ env.DEPLOY_USER }} /sys/fs/bpf; chmod 0770 /sys/fs/bpf"
+          {
+            echo "[Service]"
+            echo "ExecStartPre=+/bin/sh -c '$BPFFS_PREP'"
+            echo "AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
+            echo "CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
+          } > /tmp/10-ebpf.conf
+          scp /tmp/10-ebpf.conf nhp-server:/tmp/10-ebpf.conf
+          ssh nhp-server "sudo mkdir -p /etc/systemd/system/nhp-serverd.service.d && \
+            sudo mv /tmp/10-ebpf.conf /etc/systemd/system/nhp-serverd.service.d/10-ebpf.conf && \
+            sudo chown root:root /etc/systemd/system/nhp-serverd.service.d/10-ebpf.conf && \
+            sudo chmod 0644 /etc/systemd/system/nhp-serverd.service.d/10-ebpf.conf && \
+            sudo systemctl daemon-reload"
+          rm -f /tmp/10-ebpf.conf
 
           # nhp-serverd writes to $REMOTE_DIR/logs (plural). Ensure it exists and
           # is owned by the service user; older userdata created "log" (singular).
@@ -736,6 +825,38 @@ jobs:
             exit 1
           fi
           echo "nhp-serverd deployed successfully"
+
+      - name: Verify the XDP ingress filter attached
+        # nhp-serverd falls open when the engine cannot load: it logs a
+        # warning and serves on with no ingress filter. That is the right
+        # runtime behaviour — a kernel or capability problem must not take
+        # the gateway down — but it means a broken deploy looks identical to
+        # a healthy one from `systemctl is-active`, and the host silently
+        # goes back to having SSH and the knock port open to the internet.
+        # So the CI check is the thing that has to be strict.
+        #
+        # Asks the kernel rather than the log: the daemon appends to one file
+        # across restarts, so a "loaded" line from an earlier deploy would
+        # make a broken one look fine. An attached generic-mode XDP program
+        # shows up on the interface itself. The log is only read for
+        # diagnostics when the check fails.
+        run: |
+          set -euo pipefail
+
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-server"
+
+          if ! ssh nhp-server "ip -details link show | grep -q xdpgeneric"; then
+            echo "ERROR: no XDP program attached — nhp-serverd is running fail-open," >&2
+            echo "       i.e. SSH and the knock port are open to the internet again." >&2
+            ssh nhp-server "grep -h -i 'ebpf\|xdp' $REMOTE_DIR/logs/server-[0-9]*.log 2>/dev/null | tail -n 30" || true
+            exit 1
+          fi
+
+          echo "XDP ingress filter attached:"
+          ssh nhp-server "ip -details link show | grep -B2 xdpgeneric" || true
+          echo "Active relay whitelist (last applied):"
+          ssh nhp-server "grep -h 'xdp relay whitelist applied' $REMOTE_DIR/logs/server-[0-9]*.log 2>/dev/null | tail -n 1" || \
+            echo "  (no whitelist line yet)"
 
       - name: Verify no HTTP/HTTPS listener remains on server
         # Fail the deploy loudly if the retired HTTP surface came back: nginx

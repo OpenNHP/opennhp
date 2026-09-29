@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cilium/ebpf"
 )
@@ -246,6 +247,152 @@ func TestServerActionNamesCoverTheProgramsActionCodes(t *testing.T) {
 			t.Errorf("%s (%d) logs verdict %q", m[1], code, verdict)
 		}
 	}
+}
+
+// The bulk classes must stay unreported.
+//
+// TCP_ESTABLISHED, UDP_ESTABLISHED and post-SYN SSH_RELAY are the verdicts
+// whose rate is the host's *throughput*, not its event rate: one release scp
+// or one `dnf update` is tens of thousands of them, all saying the same thing
+// about the same already-decided flow. They were logged per packet once, and
+// the fix was to count them instead (record_packet's `report` argument). A
+// well-meaning edit that hands one of them `true` again would look harmless in
+// review and quietly turn the event log back into a disk-filler, so the shape
+// of those call sites is asserted here rather than left to memory.
+func TestBulkPassClassesAreCountedNotLogged(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_server_xdp.c"))
+	if err != nil {
+		t.Fatalf("read nhp_server_xdp.c: %v", err)
+	}
+
+	// The last argument of each record_packet() call, by action.
+	re := regexp.MustCompile(`record_packet\(ctx,\s*(ACT_\w+),[^;]*?,\s*([a-z_]+)\);`)
+	matches := re.FindAllStringSubmatch(string(src), -1)
+	if len(matches) == 0 {
+		t.Fatal("no record_packet() call sites found; has the program been restructured?")
+	}
+
+	report := make(map[string]string, len(matches))
+	for _, m := range matches {
+		report[m[1]] = m[2]
+	}
+
+	// Counted only, never a line per packet.
+	for _, action := range []string{"ACT_TCP_ESTABLISHED", "ACT_UDP_ESTABLISHED"} {
+		got, ok := report[action]
+		if !ok {
+			t.Errorf("%s is no longer recorded at all", action)
+			continue
+		}
+		if got != "false" {
+			t.Errorf("%s is reported with report=%s; bulk flow traffic must be counted only", action, got)
+		}
+	}
+
+	// One line per SSH session, not per segment.
+	if got := report["ACT_SSH_RELAY"]; got != "is_syn" {
+		t.Errorf("ACT_SSH_RELAY is reported with report=%s; want the SYN-only guard is_syn", got)
+	}
+
+	// Every drop stays on the ring (the token bucket, not the call site, is
+	// what bounds those) -- a silent drop class is a blind spot.
+	for action, got := range report {
+		if strings.HasPrefix(action, "ACT_DROP_") && got != "true" {
+			t.Errorf("%s is reported with report=%s; drops must stay visible", action, got)
+		}
+	}
+
+	// The old unconditional emitter must be gone, or half the call sites
+	// would bypass the counters entirely.
+	if strings.Contains(string(src), "submit_event(") {
+		t.Error("submit_event() still present; all call sites should go through record_packet()")
+	}
+}
+
+// NHP_EVENT_ACTIONS sizes the per-action arrays on the C side and the summary
+// loop on this one. If the C grew a slot and this did not, the extra classes
+// would simply never be summarised.
+func TestServerEventActionsMatchesTheProgram(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_server_xdp.c"))
+	if err != nil {
+		t.Fatalf("read nhp_server_xdp.c: %v", err)
+	}
+
+	m := regexp.MustCompile(`(?m)^#define\s+NHP_EVENT_ACTIONS\s+(\d+)`).FindStringSubmatch(string(src))
+	if m == nil {
+		t.Fatal("NHP_EVENT_ACTIONS not found in nhp_server_xdp.c")
+	}
+	want, err := strconv.Atoi(m[1])
+	if err != nil {
+		t.Fatalf("NHP_EVENT_ACTIONS = %q: %v", m[1], err)
+	}
+	if serverEventActions != want {
+		t.Errorf("serverEventActions = %d, NHP_EVENT_ACTIONS = %d", serverEventActions, want)
+	}
+}
+
+// Retention is the other half of keeping the log bounded: the rate limiter
+// caps how fast it grows, this caps how much of it survives. nhp/log rotates
+// by date and prunes nothing, so without a sweep a long-lived host accumulates
+// every day it has ever seen.
+func TestSweepServerEventLogsKeepsTodayAndForeignFiles(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+
+	today := writeLogFile(t, dir, "nhp_server_xdp-2026-09-29.log", now, 10)
+	recent := writeLogFile(t, dir, "nhp_server_xdp-2026-09-27.log", now.AddDate(0, 0, -2), 10)
+	stale := writeLogFile(t, dir, "nhp_server_xdp-2026-09-01.log", now.AddDate(0, 0, -28), 10)
+	// The daemon's own log lives in the same directory and is not ours to
+	// delete.
+	foreign := writeLogFile(t, dir, "server-2026-09-01.log", now.AddDate(0, 0, -28), 10)
+
+	sweepServerEventLogs(dir, now, 14, 1<<30)
+
+	// Today's file is open and being appended to, so it is exempt; `recent`
+	// is inside the age bound; `foreign` is another logger's.
+	for _, path := range []string{today, recent, foreign} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("%s should have survived: %v", filepath.Base(path), err)
+		}
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("%s should have been pruned (err=%v)", filepath.Base(stale), err)
+	}
+}
+
+func TestSweepServerEventLogsEnforcesTheByteBudget(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+
+	// Three days well inside the age bound, together over a 250-byte budget:
+	// a flood can blow the budget in a day, which is exactly when the age
+	// bound is no help.
+	oldest := writeLogFile(t, dir, "nhp_server_xdp-2026-09-26.log", now.AddDate(0, 0, -3), 100)
+	middle := writeLogFile(t, dir, "nhp_server_xdp-2026-09-27.log", now.AddDate(0, 0, -2), 100)
+	newest := writeLogFile(t, dir, "nhp_server_xdp-2026-09-28.log", now.AddDate(0, 0, -1), 100)
+
+	sweepServerEventLogs(dir, now, 14, 250)
+
+	if _, err := os.Stat(oldest); !os.IsNotExist(err) {
+		t.Errorf("the oldest file should go first (err=%v)", err)
+	}
+	for _, path := range []string{middle, newest} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("%s is inside the budget once the oldest is gone: %v", filepath.Base(path), err)
+		}
+	}
+}
+
+func writeLogFile(t *testing.T, dir, name string, mod time.Time, size int) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, make([]byte, size), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, mod, mod); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func equal(a, b []string) bool {

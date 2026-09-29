@@ -58,8 +58,9 @@
  * header + payload. */
 #define NHP_MIN_UDP_LEN 240
 
-/* action codes reported to user space; see serverengine.go, which formats
- * them, and the table in the design doc. */
+/* action codes reported to user space; see serverActionName() in
+ * nhp/utils/ebpf/engine_linux.go, which formats them, and the decision table
+ * in terraform/demo/VERIFY-server-xdp.zh-cn.md. */
 #define ACT_DROP_OTHER          0
 #define ACT_SSH_RELAY           1
 #define ACT_NHP_RELAY           2
@@ -125,7 +126,7 @@ struct {
  * which is ample for diagnosis and bounded regardless of offered load. */
 #define NHP_EVENT_ACTIONS 16
 #define NHP_EVENT_WINDOW_NS 1000000000ULL
-#define NHP_EVENT_BURST 64
+#define NHP_EVENT_BURST 16
 
 struct nhp_rate_state {
     __u64 window_start;
@@ -138,6 +139,31 @@ struct {
     __type(key, __u32);
     __type(value, struct nhp_rate_state);
 } nhp_event_rate SEC(".maps");
+
+/* What the budget above throws away, kept as numbers.
+ *
+ * A token bucket alone makes the log lie by omission: over budget, a flood and
+ * a trickle look the same, and "how much of this is there" -- the first
+ * question anyone asks of an ingress filter -- is unanswerable. These counters
+ * are incremented for *every* packet, budget or no, so user space can print one
+ * summary line per window per class (see reportServerStats in
+ * nhp/utils/ebpf/engine_linux.go) and the total is never wrong no matter how
+ * much reporting was dropped. `logged` is the subset that reached the ring, so
+ * the difference is the suppressed count, stated rather than guessed at.
+ *
+ * Per-CPU, so ++ needs no atomics; user space sums the slices. Not pinned: only
+ * this process reads them, same as nhp_events. */
+struct nhp_action_stat {
+    __u64 packets;
+    __u64 logged;
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, NHP_EVENT_ACTIONS);
+    __type(key, __u32);
+    __type(value, struct nhp_action_stat);
+} nhp_action_stats SEC(".maps");
 
 static __always_inline bool event_budget_available(__u8 action, __u64 now) {
     __u32 slot = action;
@@ -160,14 +186,42 @@ static __always_inline bool event_budget_available(__u8 action, __u64 now) {
     return true;
 }
 
-static __always_inline void submit_event(void *ctx, __u8 action, struct iphdr *iph,
-                                         __be16 src_port, __be16 dst_port, __u8 relay_hit) {
+/* Count the packet against its action, and put an event on the perf ring if
+ * the class is worth a line and has budget left.
+ *
+ * `report` is what keeps the log readable. A verdict is worth a line when it
+ * says something the previous lines did not: a knock admitted, an SSH attempt
+ * from an address that is not the relay, a scan. It is worth nothing when it is
+ * the four-thousandth data segment of a connection whose one real decision --
+ * "the host opened this flow" -- was already logged, or was never a decision at
+ * all because the kernel's socket table answered it. Those bulk classes
+ * (TCP_ESTABLISHED, UDP_ESTABLISHED, and every SSH_RELAY packet after the SYN)
+ * are passed report=false: they scale with *bytes transferred*, not with
+ * events, so one `dnf update` or one CI scp of the release tarball would
+ * otherwise write more log than a month of knocks. They are still counted, and
+ * the per-window summary reports them.
+ *
+ * The verdict never depends on this argument -- only the telemetry does. */
+static __always_inline void record_packet(void *ctx, __u8 action, struct iphdr *iph,
+                                          __be16 src_port, __be16 dst_port,
+                                          __u8 relay_hit, bool report) {
+    __u32 slot = action;
+    struct nhp_action_stat *stat = NULL;
+
+    if (slot < NHP_EVENT_ACTIONS)
+        stat = bpf_map_lookup_elem(&nhp_action_stats, &slot);
+    if (stat)
+        stat->packets++;
+
+    if (!report)
+        return;
+
     __u64 now = bpf_ktime_get_ns();
     if (!event_budget_available(action, now))
         return;
 
     struct nhp_event_t ev = {};
-    ev.timestamp = bpf_ktime_get_ns();
+    ev.timestamp = now;
     ev.action = action;
     ev.src_ip = iph->saddr;
     ev.dst_ip = iph->daddr;
@@ -177,7 +231,8 @@ static __always_inline void submit_event(void *ctx, __u8 action, struct iphdr *i
     ev.pkt_len = iph->tot_len;
     ev.relay_hit = relay_hit;
 
-    bpf_perf_event_output(ctx, &nhp_events, BPF_F_CURRENT_CPU, &ev, sizeof(ev));
+    if (bpf_perf_event_output(ctx, &nhp_events, BPF_F_CURRENT_CPU, &ev, sizeof(ev)) == 0 && stat)
+        stat->logged++;
 }
 
 static __always_inline bool is_relay_src(__be32 saddr) {
@@ -280,17 +335,21 @@ int xdp_server_prog(struct xdp_md *ctx) {
 
         if (tcp->dest == bpf_htons(SSH_PORT)) {
             if (is_relay_src(iph->saddr)) {
-                submit_event(ctx, ACT_SSH_RELAY, iph, tcp->source, tcp->dest, 1);
+                /* One line per session, on the SYN: an operator wants to know
+                 * that the relay opened an SSH connection and when, not to
+                 * read every packet of the scp that follows. */
+                bool is_syn = tcp->syn && !tcp->ack;
+                record_packet(ctx, ACT_SSH_RELAY, iph, tcp->source, tcp->dest, 1, is_syn);
                 return XDP_PASS;
             }
-            submit_event(ctx, ACT_DROP_TCP_SSH_OTHER, iph, tcp->source, tcp->dest, 0);
+            record_packet(ctx, ACT_DROP_TCP_SSH_OTHER, iph, tcp->source, tcp->dest, 0, true);
             return XDP_DROP;
         }
         /* NHP is UDP-only, so a TCP connect to the knock port is a scanner
          * fingerprinting the host. Reported under its own action so that
          * traffic is countable separately from ordinary port scans. */
         if (tcp->dest == bpf_htons(NHP_PORT)) {
-            submit_event(ctx, ACT_DROP_TCP_NHP, iph, tcp->source, tcp->dest, 0);
+            record_packet(ctx, ACT_DROP_TCP_NHP, iph, tcp->source, tcp->dest, 0, true);
             return XDP_DROP;
         }
         /* Anything left is either the reply side of a connection this host
@@ -300,10 +359,10 @@ int xdp_server_prog(struct xdp_md *ctx) {
          * those stays a pure function of the address -- a socket can never
          * re-open tcp/22 to a non-relay source. */
         if (has_local_flow(ctx, iph, tcp->source, tcp->dest, true)) {
-            submit_event(ctx, ACT_TCP_ESTABLISHED, iph, tcp->source, tcp->dest, 0);
+            record_packet(ctx, ACT_TCP_ESTABLISHED, iph, tcp->source, tcp->dest, 0, false);
             return XDP_PASS;
         }
-        submit_event(ctx, ACT_DROP_TCP_OTHER, iph, tcp->source, tcp->dest, 0);
+        record_packet(ctx, ACT_DROP_TCP_OTHER, iph, tcp->source, tcp->dest, 0, true);
         return XDP_DROP;
     }
 
@@ -317,23 +376,27 @@ int xdp_server_prog(struct xdp_md *ctx) {
              * reply above all, which is what nhp-serverd needs before it can
              * reach SES at all. Connected sockets only, see has_local_flow(). */
             if (has_local_flow(ctx, iph, udp->source, udp->dest, false)) {
-                submit_event(ctx, ACT_UDP_ESTABLISHED, iph, udp->source, udp->dest, 0);
+                record_packet(ctx, ACT_UDP_ESTABLISHED, iph, udp->source, udp->dest, 0, false);
                 return XDP_PASS;
             }
-            submit_event(ctx, ACT_DROP_UDP_OTHER, iph, udp->source, udp->dest, 0);
+            record_packet(ctx, ACT_DROP_UDP_OTHER, iph, udp->source, udp->dest, 0, true);
             return XDP_DROP;
         }
         /* The relay forwards agent knocks, including the short control
          * packets of the handshake, so it is exempt from the length floor. */
         if (is_relay_src(iph->saddr)) {
-            submit_event(ctx, ACT_NHP_RELAY, iph, udp->source, udp->dest, 1);
+            record_packet(ctx, ACT_NHP_RELAY, iph, udp->source, udp->dest, 1, true);
             return XDP_PASS;
         }
         if (bpf_ntohs(udp->len) < NHP_MIN_UDP_LEN) {
-            submit_event(ctx, ACT_DROP_UDP_SHORT, iph, udp->source, udp->dest, 0);
+            record_packet(ctx, ACT_DROP_UDP_SHORT, iph, udp->source, udp->dest, 0, true);
             return XDP_DROP;
         }
-        submit_event(ctx, ACT_NHP_DEFAULT, iph, udp->source, udp->dest, 0);
+        /* Reported: a knock is a handful of datagrams and the one packet class
+         * the whole daemon exists for. A flood of knock-shaped datagrams is
+         * capped by the budget like any other class, and shows up in full in
+         * the per-window summary. */
+        record_packet(ctx, ACT_NHP_DEFAULT, iph, udp->source, udp->dest, 0, true);
         return XDP_PASS;
     }
 
@@ -360,12 +423,12 @@ int xdp_server_prog(struct xdp_md *ctx) {
             return XDP_DROP;
 
         if (icmp->type == ICMP_DEST_UNREACH && icmp->code == ICMP_FRAG_NEEDED) {
-            submit_event(ctx, ACT_ICMP_FRAG_NEEDED, iph, 0, 0, 0);
+            record_packet(ctx, ACT_ICMP_FRAG_NEEDED, iph, 0, 0, 0, true);
             return XDP_PASS;
         }
     }
 
-    submit_event(ctx, ACT_DROP_NONUDP, iph, 0, 0, 0);
+    record_packet(ctx, ACT_DROP_NONUDP, iph, 0, 0, 0, true);
     return XDP_DROP;
 }
 

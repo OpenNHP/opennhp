@@ -19,21 +19,41 @@
 
 决策树与 action 编码（`nhp_server_xdp.c`，日志里的 `REASON=`）：
 
-| 条件 | 结果 | 日志 REASON |
-| --- | --- | --- |
-| TCP/22，src ∈ 白名单 | PASS | `SSH_RELAY` |
-| TCP/22，src ∉ 白名单 | DROP | `TCP_SSH_OTHER` |
-| TCP/62206 | DROP | `TCP_NHP_PORT` |
-| TCP 其它端口，本机有**非 LISTEN** 的 socket | PASS | `TCP_ESTABLISHED` |
-| TCP 其它端口 | DROP | `TCP_OTHER` |
-| UDP/62206，src ∈ 白名单 | PASS（跳过长度校验） | `NHP_RELAY` |
-| UDP/62206，长度 ≥ 240 | PASS | `NHP_DEFAULT` |
-| UDP/62206，长度 < 240 | DROP | `UDP_SHORT` |
-| UDP 其它端口，本机有 **connected** socket | PASS | `UDP_ESTABLISHED` |
-| UDP 其它端口 | DROP | `UDP_OTHER` |
-| ICMP type 3 code 4（需要分片） | PASS | `ICMP_FRAG_NEEDED` |
-| 非 TCP/UDP（含其余 ICMP） | DROP | `NON_TCP_UDP` |
-| ARP / IPv6 | PASS | 不上报（避免邻居流量刷屏） |
+| 条件 | 结果 | 日志 REASON | 逐包写日志？ |
+| --- | --- | --- | --- |
+| TCP/22，src ∈ 白名单 | PASS | `SSH_RELAY` | 仅 SYN（每会话一行） |
+| TCP/22，src ∉ 白名单 | DROP | `TCP_SSH_OTHER` | 是（限速） |
+| TCP/62206 | DROP | `TCP_NHP_PORT` | 是（限速） |
+| TCP 其它端口，本机有**非 LISTEN** 的 socket | PASS | `TCP_ESTABLISHED` | **否，只计数** |
+| TCP 其它端口 | DROP | `TCP_OTHER` | 是（限速） |
+| UDP/62206，src ∈ 白名单 | PASS（跳过长度校验） | `NHP_RELAY` | 是（限速） |
+| UDP/62206，长度 ≥ 240 | PASS | `NHP_DEFAULT` | 是（限速） |
+| UDP/62206，长度 < 240 | DROP | `UDP_SHORT` | 是（限速） |
+| UDP 其它端口，本机有 **connected** socket | PASS | `UDP_ESTABLISHED` | **否，只计数** |
+| UDP 其它端口 | DROP | `UDP_OTHER` | 是（限速） |
+| ICMP type 3 code 4（需要分片） | PASS | `ICMP_FRAG_NEEDED` | 是（限速） |
+| 非 TCP/UDP（含其余 ICMP） | DROP | `NON_TCP_UDP` | 是（限速） |
+| ARP / IPv6 | PASS | 不上报（避免邻居流量刷屏） | 否，也不计数 |
+
+**日志体量是有上界的**，这一列就是上界的来源（`record_packet()` 的 `report`
+参数）。事件日志里每一行都对应一个「别人决定发过来」的包，所以无节制地写就等于
+把磁盘写满的开关交给扫描者 —— 而磁盘写满会打死它本来要保护的那个守护进程。三
+道闸：
+
+1. **逐包但限速**：每个 action 一个 per-CPU 令牌桶，`NHP_EVENT_BURST`（16）
+   条/秒/CPU/类。按类分桶，所以一轮端口扫描刷不掉同期 `SSH_RELAY` 的记录。
+2. **批量类只计数**：`TCP_ESTABLISHED` / `UDP_ESTABLISHED` / SYN 之后的
+   `SSH_RELAY` 是**本机流量的字节数**，不是事件数 —— 一次 `dnf update`、一次
+   CI scp 就是几万个包，而它们说的是同一件事（这条流早就判过了）。这些包只进
+   计数器。
+3. **每分钟一行汇总**：`nhp_action_stats`（per-CPU array）对**每一个**包计数，
+   与限速无关，用户态每 60s 把有变化的 action 各打一行
+   `[NHP-STAT]`（`reportServerStats`）。所以「被限速丢掉多少」「静默类有多少」
+   都是**准确数字**而不是估算。
+
+再加上保留策略（`pruneServerEventLogs`，每小时扫一次）：`nhp_server_xdp-*.log`
+超过 14 天或总量超过 256 MiB 就从最旧的删起，当天的文件永不删。`nhp/log` 只按
+日期切分、从不清理，没有这一步的话主机活多久日志就攒多久。
 
 `TCP_ESTABLISHED` / `UDP_ESTABLISHED` 两行是**本机自己发起的连接的回包**
 （`has_local_flow()`，用 `bpf_sk_lookup_{tcp,udp}` 查内核 socket 表）。AC 用
@@ -225,13 +245,17 @@ A udp-reply: b'PONG:PING'
 B tcp-connect: b'HELLO\n'
 ```
 
-判决日志里应出现对应的两类 PASS，形如（`SPT` 是外部服务端口，`DPT` 是本机的
-临时端口，与上面 DROP 分支里 `DPT` 恒为服务端口正好相反）：
+这两类回包**不逐包写日志**（见上表第 4 列：它们的量等于本机的吞吐量），验证
+要看每分钟一次的汇总行 —— 等最多 60 秒：
 
 ```
-<时间> test-server [NHP-PASS] REASON=UDP_ESTABLISHED SRC=10.99.0.1 DST=10.99.0.2 ... SPT=5353 DPT=<ephemeral>
-<时间> test-server [NHP-PASS] REASON=TCP_ESTABLISHED SRC=10.99.0.1 DST=10.99.0.2 ... SPT=8080 DPT=<ephemeral>
+<时间> test-server [NHP-STAT] VERDICT=PASS REASON=UDP_ESTABLISHED WINDOW=60s PKTS=1 LOGGED=0 TOTAL=1
+<时间> test-server [NHP-STAT] VERDICT=PASS REASON=TCP_ESTABLISHED WINDOW=60s PKTS=3 LOGGED=0 TOTAL=3
 ```
+
+`PKTS` 是本窗口的增量，`LOGGED` 是其中进了事件流的条数（这两类恒为 0），
+`TOTAL` 是 attach 以来的累计。判断「回包通了」看 `PKTS > 0`；判断「回包被丢
+了」看同期有没有 `[NHP-DROP] REASON=UDP_OTHER ... SPT=5353`。
 
 **反向确认（最重要的一条）**：回包通路不等于开放端口。在 netns 里 `bind` 一个
 tcp/8080 的 **listener**，从 host 侧连它，必须仍然被丢 —— 放行只认
@@ -256,6 +280,9 @@ python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.se
 20:25:13 test-server [NHP-PASS] REASON=SSH_RELAY SRC=10.99.0.1 ... DPT=22    RELAY=1
 20:25:13 test-server [NHP-PASS] REASON=NHP_RELAY SRC=10.99.0.1 ... DPT=62206 RELAY=1
 ```
+
+`SSH_RELAY` 只在 SYN 上出现一行；这条连接后续的包（scp 的数据段等）只进计数
+器，一分钟后体现在 `[NHP-STAT] ... REASON=SSH_RELAY PKTS=<很大> LOGGED=1` 里。
 
 > 「超时（rc=124）」= 被 XDP 丢；「Connection refused（毫秒级）」= 被放行、内核回了
 > RST。这一对差异就是后面线上 before/after 对比要用的信号。
@@ -487,10 +514,14 @@ grep 'xdp relay whitelist applied' /home/ec2-user/nhp-server/logs/server-$(date 
 ```bash
 LOG=/home/ec2-user/nhp-server/logs/nhp_server_xdp-$(date +%F).log
 tail -f $LOG
-# 按 REASON 汇总，看扫描噪声被挡在哪里
-grep -o 'REASON=[A-Z_]*' $LOG | sort | uniq -c | sort -rn
-# 确认 relay 的 SSH/转发走的是 PASS 分支
+# 按 REASON 汇总，看扫描噪声被挡在哪里（注意：这是被限速后的样本数，不是真实包数）
+grep -o 'REASON=[A-Z_]*' $LOG | grep -v NHP-STAT | sort | uniq -c | sort -rn
+# 真实包数看每分钟的汇总行：TOTAL 是 attach 以来的累计，PKTS 是本窗口增量
+grep NHP-STAT $LOG | tail -20
+# 确认 relay 的 SSH/转发走的是 PASS 分支（SSH_RELAY 每会话一行，在 SYN 上）
 grep -E 'SSH_RELAY|NHP_RELAY' $LOG | tail -5
+# 日志占用（保留策略：>14 天或总量 >256 MiB 从最旧删起，当天的不删）
+du -sh $(dirname $LOG) && ls -lt $(dirname $LOG)/nhp_server_xdp-*.log | head
 ```
 
 > **抓不到包是正常的**：generic XDP 在 AF_PACKET tap 之前执行，被丢弃的包
@@ -526,7 +557,8 @@ their replies`；两条都必须过，否则 OTP 邮件一定发不出去：
 ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
   getent ahostsv4 email-smtp.us-east-2.amazonaws.com | head -1   # udp/53 应答回得来
   timeout 8 bash -c "exec 3<>/dev/tcp/email-smtp.us-east-2.amazonaws.com/587" && echo "smtp ok"
-  grep -c "REASON=UDP_ESTABLISHED" ~/nhp-server/logs/nhp_server_xdp-$(date +%F).log'
+  # 回包只计数不逐包记日志，所以看汇总行的 TOTAL（最多等 60s 刷新一次）
+  grep "REASON=UDP_ESTABLISHED" ~/nhp-server/logs/nhp_server_xdp-$(date +%F).log | tail -1'
 ```
 
 DNS 挂了会在事件日志里表现为 `REASON=UDP_OTHER ... SPT=53`（应答被丢），
@@ -563,14 +595,14 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$(cd terraform/demo && terraform output -raw
 | `etc/` | 无 `xdp.toml` / `nhp_server_xdp.o` | 两者都在 |
 | unit 能力集 | 无 `AmbientCapabilities` | `CAP_BPF CAP_NET_ADMIN CAP_PERFMON` + `ExecStartPre` 挂 bpffs |
 | server 日志 | 无 eBPF 相关行 | `server XDP engine loaded`、`xdp relay whitelist applied: [...]` |
-| `logs/nhp_server_xdp-*.log` | 不存在 | 持续写入 PASS/DROP 判决 |
+| `logs/nhp_server_xdp-*.log` | 不存在 | 持续写入 PASS/DROP 判决（限速）+ 每分钟 `[NHP-STAT]` 汇总；>14 天或 >256 MiB 自动清理 |
 | relay → server ICMP | 通 | 全丢（`NON_TCP_UDP`） |
 | relay → server tcp/443 | 立即 refused（rc=1） | 超时（rc=124，`TCP_OTHER`） |
 | relay → server tcp/22 | 连上 | 连上（`SSH_RELAY`，前提：白名单正确） |
 | 公网 → UDP/62206 <240B | 进 user space 由 `RecvPrecheck` 丢 | 内核丢（`UDP_SHORT`），不消耗用户态 |
 | 公网 → UDP/62206 ≥240B | 通 | 通（`NHP_DEFAULT`）——NHP 语义不变 |
-| server 自己的 DNS 查询 | 通 | 通（应答 `UDP_ESTABLISHED`）——**这一条曾经是坏的** |
-| server 自己的 SMTP/HTTPS 出站 | 通 | 通（`TCP_ESTABLISHED`） |
+| server 自己的 DNS 查询 | 通 | 通（应答 `UDP_ESTABLISHED`，见 `[NHP-STAT]`）——**这一条曾经是坏的** |
+| server 自己的 SMTP/HTTPS 出站 | 通 | 通（`TCP_ESTABLISHED`，见 `[NHP-STAT]`） |
 | 公网 → server 上任意 LISTEN 端口 | 由安全组决定 | 一律丢（socket 是 LISTEN，不构成回包） |
 | `nmap` 公网扫描结果 | — | 基本不变（安全组本就挡住 TCP） |
 

@@ -29,6 +29,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -142,13 +143,16 @@ type tcBpfObjects struct {
 	Config *ebpf.Map `ebpf:"nhp_config"`
 }
 
-// serverBpfObjects mirrors nhp/ebpf/xdp/nhp_server_xdp.c. Both maps are
+// serverBpfObjects mirrors nhp/ebpf/xdp/nhp_server_xdp.c. Every map is
 // assigned so that a pin left over from an incompatible build fails the load by
 // name rather than at first use, the same reason the AC assigns Conntrack.
 type serverBpfObjects struct {
 	XdpProg   *ebpf.Program `ebpf:"xdp_server_prog"`
 	RelayIPs  *ebpf.Map     `ebpf:"nhp_relay_ips"`
 	NhpEvents *ebpf.Map     `ebpf:"nhp_events"`
+	// Per-action packet counters, the complete accounting the rate-limited
+	// event stream is a sample of. See reportServerStats.
+	ActionStats *ebpf.Map `ebpf:"nhp_action_stats"`
 }
 
 // Config slots in the `nhp_config` map. Keep in sync with the enum in
@@ -474,18 +478,28 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (*EngineHandle, er
 	// One log file, not the AC's accept/deny pair: the server's actions say
 	// *why* a packet was passed or dropped (relay SSH, short datagram, TCP on
 	// the knock port), and splitting them by verdict would throw that away.
+	logDir := filepath.Join(params.LogDirPath, "logs")
 	h.ServerLogger = log.NewLoggerDefine(
 		"",
 		params.LogLevel,
-		filepath.Join(params.LogDirPath, "logs"),
-		"nhp_server_xdp",
+		logDir,
+		serverEventLogName,
 	)
 	h.ServerLogger.SetFlags(stdlog.Lmsgprefix)
 
 	go readServerEvents(objs.NhpEvents, params.ComponentId, h.ServerLogger)
+	if objs.ActionStats != nil {
+		go reportServerStats(objs.ActionStats, params.ComponentId, h.ServerLogger)
+	}
+	go pruneServerEventLogs(logDir)
 
 	return h, nil
 }
+
+// serverEventLogName is the log.Logger name, i.e. the file is
+// <logdir>/nhp_server_xdp-<date>.log. pruneServerEventLogs deletes by the same
+// prefix, so the two must not drift apart.
+const serverEventLogName = "nhp_server_xdp"
 
 // Action codes reported by nhp/ebpf/xdp/nhp_server_xdp.c. Keep in sync.
 const (
@@ -503,6 +517,9 @@ const (
 	ActDropUdpShort     uint8 = 14
 	ActDropNonUdp       uint8 = 15
 	serverEventByteSize       = 25
+	// serverEventActions mirrors NHP_EVENT_ACTIONS, the size of the
+	// per-action counter and rate-limit arrays.
+	serverEventActions = 16
 )
 
 func serverActionName(action uint8) (verdict, reason string) {
@@ -584,6 +601,154 @@ func readServerEvents(eventsMap *ebpf.Map, serverId string, logger *log.Logger) 
 			dstPort,
 			relayHit,
 		)
+	}
+}
+
+// serverStatsInterval is how often the per-action counters are summarised into
+// the event log. A minute is short enough to localise an incident to the right
+// window and long enough that a permanently scanned host writes one line per
+// class per minute -- a few kB a day -- instead of one per packet.
+const serverStatsInterval = time.Minute
+
+// serverActionStat mirrors `struct nhp_action_stat` in nhp_server_xdp.c. The
+// map is per-CPU, so a lookup yields one of these per CPU and they are summed.
+type serverActionStat struct {
+	Packets uint64
+	Logged  uint64
+}
+
+// reportServerStats turns the counters the XDP program keeps for every packet
+// into one summary line per action per window.
+//
+// It exists because the event stream is deliberately incomplete. Two things
+// hold its volume down -- the per-action token bucket, and the bulk classes
+// that are counted but never reported at all (see record_packet in the C) --
+// and both of them lose information: without this, a host under a 100k pps
+// scan and a host with one visitor an hour write the same number of DROP lines
+// per second, and the reply traffic that keeps the daemon working
+// (TCP_ESTABLISHED, UDP_ESTABLISHED) leaves no trace whatsoever. The counters
+// are exact regardless of either, so the summary is what makes the log
+// quantitative again, at a cost that does not depend on offered load.
+//
+// PKTS is the delta over the window, LOGGED how many of those reached the
+// event stream (0 for the bulk classes, less than PKTS whenever the bucket
+// ran dry), TOTAL the count since the filter was attached. Actions that saw
+// nothing print nothing: a quiet host writes a quiet log.
+func reportServerStats(statsMap *ebpf.Map, serverId string, logger *log.Logger) {
+	prev := make([]serverActionStat, serverEventActions)
+
+	ticker := time.NewTicker(serverStatsInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		for action := 0; action < serverEventActions; action++ {
+			var perCPU []serverActionStat
+			key := uint32(action)
+			if err := statsMap.Lookup(&key, &perCPU); err != nil {
+				// A closed map (shutdown) or a transient failure: the
+				// next tick re-reads absolute counters, so nothing is
+				// lost by skipping this one.
+				continue
+			}
+
+			var total serverActionStat
+			for _, c := range perCPU {
+				total.Packets += c.Packets
+				total.Logged += c.Logged
+			}
+
+			delta := total.Packets - prev[action].Packets
+			if delta == 0 {
+				continue
+			}
+			logged := total.Logged - prev[action].Logged
+			prev[action] = total
+
+			verdict, reason := serverActionName(uint8(action))
+			logger.Info("%s %s [NHP-STAT] VERDICT=%s REASON=%s WINDOW=%ds PKTS=%d LOGGED=%d TOTAL=%d",
+				time.Now().Format("15:04:05"),
+				serverId,
+				verdict,
+				reason,
+				int(serverStatsInterval.Seconds()),
+				delta,
+				logged,
+				total.Packets,
+			)
+		}
+	}
+}
+
+// Retention for the event log. nhp/log rotates by date and prunes nothing, so
+// without this the directory grows for as long as the host lives -- slowly on a
+// quiet host, and fastest exactly when the filter matters most, because every
+// line is a packet somebody else chose to send. The daemon filling its own root
+// volume would be a denial of service delivered through the defence.
+//
+// Both bounds apply, whichever bites first: age for the ordinary case (a
+// fortnight is more history than any incident review here has wanted), size for
+// the pathological one (a sustained flood, where a single day can outweigh the
+// budget on its own). Oldest files go first, and the current day's file is
+// never removed -- it is open and being appended to.
+const (
+	serverLogRetentionDays  = 14
+	serverLogRetentionBytes = 256 << 20 // 256 MiB
+	serverLogSweepInterval  = time.Hour
+)
+
+func pruneServerEventLogs(logDir string) {
+	for {
+		sweepServerEventLogs(logDir, time.Now(), serverLogRetentionDays, serverLogRetentionBytes)
+		time.Sleep(serverLogSweepInterval)
+	}
+}
+
+// sweepServerEventLogs is the body of one sweep. The bounds are arguments
+// rather than the constants above so a test can exercise the size path without
+// writing a quarter of a gigabyte.
+func sweepServerEventLogs(logDir string, now time.Time, retainDays int, maxBytes int64) {
+	matches, err := filepath.Glob(filepath.Join(logDir, serverEventLogName+"-*.log"))
+	if err != nil {
+		log.Error("xdp event log retention: cannot list %s: %v", logDir, err)
+		return
+	}
+
+	type logFile struct {
+		path string
+		mod  time.Time
+		size int64
+	}
+
+	current := filepath.Join(logDir, fmt.Sprintf("%s-%s.log", serverEventLogName, now.Format("2006-01-02")))
+	files := make([]logFile, 0, len(matches))
+	var totalBytes int64
+	for _, path := range matches {
+		if path == current {
+			continue
+		}
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			continue
+		}
+		files = append(files, logFile{path: path, mod: info.ModTime(), size: info.Size()})
+		totalBytes += info.Size()
+	}
+
+	sort.Slice(files, func(i, j int) bool { return files[i].mod.Before(files[j].mod) })
+
+	cutoff := now.AddDate(0, 0, -retainDays)
+	for _, f := range files {
+		overAge := f.mod.Before(cutoff)
+		overSize := totalBytes > maxBytes
+		if !overAge && !overSize {
+			break // sorted oldest first: nothing later can be over either bound
+		}
+		if err := os.Remove(f.path); err != nil {
+			log.Error("xdp event log retention: cannot remove %s: %v", f.path, err)
+			continue
+		}
+		totalBytes -= f.size
+		log.Info("xdp event log retention: removed %s (%d bytes)", f.path, f.size)
 	}
 }
 

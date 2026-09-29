@@ -245,6 +245,19 @@ fragmentation-needed (type 3 code 4) passes for the same reason; the rest of
 ICMP stays dropped. `deploy-server` probes udp/53 and tcp/587 from the host
 after every restart so this cannot regress silently again.
 
+**The event log is bounded on purpose**, because every line in it is a packet
+somebody else chose to send and `nhp/log` rotates by date without ever pruning:
+letting it grow hands a scanner the ability to fill the root volume and kill
+the daemon the filter protects. Three limits, in `record_packet()` and
+`reportServerStats`: a per-action per-CPU token bucket (`NHP_EVENT_BURST`);
+bulk classes that are counted but never written per packet — `TCP_ESTABLISHED`,
+`UDP_ESTABLISHED` and every `SSH_RELAY` packet after the SYN, whose rate is the
+host's throughput rather than its event rate; and a `[NHP-STAT]` summary line
+per action per minute, fed by the `nhp_action_stats` counters that tick for
+*every* packet, so the totals stay exact however much reporting was dropped.
+`pruneServerEventLogs` then caps retention at 14 days / 256 MiB, oldest first,
+never today's file.
+
 The whitelist lives in `etc/xdp.toml` (`deploy/config-templates/server/xdp.toml`),
 rendered from `$RELAY_IPS` (comma-separated; `scripts/generate-nhp-keys.sh`
 quotes it into the TOML array) and hot-reloaded. It must carry **both** of the

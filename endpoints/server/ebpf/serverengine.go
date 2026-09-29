@@ -32,20 +32,41 @@ var (
 	handle *utilsebpf.EngineHandle
 )
 
-// EngineLoad attaches the server's XDP filter. dirPath is the daemon's exe
-// directory: the object is read from dirPath/etc and the perf-event log is
-// written to dirPath/logs.
-func EngineLoad(dirPath string, logLevel int, serverId string) error {
+// LoadParams is what the daemon has to tell the filter about itself. The two
+// ports are not policy the operator can get wrong in one place and right in
+// another: they are rewritten into the object's .rodata at load time, so the
+// filter passes the port nhp-serverd is actually bound to.
+type LoadParams struct {
+	// DirPath is the daemon's exe directory: the object is read from
+	// DirPath/etc and the perf-event log is written to DirPath/logs.
+	DirPath  string
+	LogLevel int
+	ServerId string
+
+	// NhpPort is the daemon's UDP ListenPort and MinFrameBytes the shortest
+	// datagram accepted on it (xdp.toml's NhpMinFrameBytes).
+	NhpPort       uint16
+	MinFrameBytes uint16
+}
+
+// EngineLoad attaches the server's XDP filter.
+//
+// Callers must have decided to filter before getting here — see
+// (*UdpServer).loadXdpConfig, which attaches only for a host whose etc/xdp.toml
+// asks for it. This function does not second-guess that; it only loads.
+func EngineLoad(p LoadParams) error {
 	mu.Lock()
 	defer mu.Unlock()
 
 	h, err := utilsebpf.EngineLoad(utilsebpf.EngineLoadParams{
-		Variant:     utilsebpf.VariantServer,
-		ProgObjPath: filepath.Join(dirPath, "etc", ObjFileName),
-		PinDir:      utilsebpf.DefaultPinDir,
-		ComponentId: serverId,
-		LogDirPath:  dirPath,
-		LogLevel:    logLevel,
+		Variant:          utilsebpf.VariantServer,
+		ProgObjPath:      filepath.Join(p.DirPath, "etc", ObjFileName),
+		PinDir:           utilsebpf.DefaultPinDir,
+		ComponentId:      p.ServerId,
+		LogDirPath:       p.DirPath,
+		LogLevel:         p.LogLevel,
+		NhpPort:          p.NhpPort,
+		NhpMinFrameBytes: p.MinFrameBytes,
 	})
 	if err != nil {
 		return err

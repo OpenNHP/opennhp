@@ -22,14 +22,16 @@ const (
 const DefaultPinDir = "/sys/fs/bpf/"
 
 type EngineLoadParams struct {
-	Variant       EngineVariant
-	IfaceName     string
-	ProgObjPath   string
-	TcProgObjPath string
-	PinDir        string
-	ComponentId   string
-	LogDirPath    string
-	LogLevel      int
+	Variant          EngineVariant
+	IfaceName        string
+	ProgObjPath      string
+	TcProgObjPath    string
+	PinDir           string
+	ComponentId      string
+	LogDirPath       string
+	LogLevel         int
+	NhpPort          uint16
+	NhpMinFrameBytes uint16
 }
 
 type EngineHandle struct {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -192,22 +193,26 @@ type Config struct {
 
 // XdpTomlConfig is etc/xdp.toml, the ingress policy the XDP program enforces.
 //
-// Only RelayIPs is actually pushed into the kernel. Enabled and
-// NhpMinFrameBytes are declared so the deployed file is self-describing and so
-// a future change can act on them, but today the program is attached whenever
-// the object loads and the length floor is the compile-time NHP_MIN_UDP_LEN in
-// nhp/ebpf/xdp/nhp_server_xdp.c — a value in the TOML that disagrees with the
-// object is reported at load rather than silently ignored.
+// The presence of this file is what opts a host into being filtered at all —
+// see (*UdpServer).loadXdpConfig. Every field reaches the kernel: Enabled and
+// RelayIPs decide whether the program is attached, and NhpMinFrameBytes is
+// written into its .rodata at load time. Enabled and NhpMinFrameBytes are read
+// once, at startup; only RelayIPs is hot-reloadable.
 type XdpTomlConfig struct {
+	// Enabled attaches the filter. False (or a missing file) leaves the host
+	// with the exposure it had before the filter existed.
 	Enabled bool
-	// RelayIPs are the source addresses allowed to reach SSH, and allowed to
-	// reach the NHP port without meeting the length floor.
+	// RelayIPs are the sources allowed to reach SSH, and allowed to reach the
+	// NHP port without meeting the length floor. Entries are host addresses
+	// ("10.0.1.4") or prefixes ("10.0.1.0/24"). Empty refuses to attach: it
+	// would close tcp/22 for every source.
 	RelayIPs []string
-	// NhpMinFrameBytes is the UDP length floor on the knock port.
+	// NhpMinFrameBytes is the UDP length floor on the knock port. Zero uses
+	// DefaultNhpMinFrameBytes.
 	NhpMinFrameBytes int
 }
 
-// DefaultNhpMinFrameBytes mirrors NHP_MIN_UDP_LEN in
+// DefaultNhpMinFrameBytes mirrors the nhp_min_udp_len default in
 // nhp/ebpf/xdp/nhp_server_xdp.c: the 240-byte NHP_KPL header of the curve
 // cipher suite, the shortest datagram that can be a knock.
 const DefaultNhpMinFrameBytes = 240
@@ -596,29 +601,45 @@ func (s *UdpServer) xdpConfigFileName() string {
 	return filepath.Join(ExeDirPath, path)
 }
 
-// loadXdpConfig reads etc/xdp.toml, applies it to the attached XDP program and
-// keeps watching the file.
+// loadXdpConfig reads etc/xdp.toml, attaches the XDP ingress filter if the file
+// asks for one, and keeps watching the file for whitelist changes.
 //
-// The file is optional at both layers. If it is missing or unparsable, nothing
-// is applied and the kernel keeps the whitelist it already had: on a fresh
-// start that is an empty one, and on a reload it is the last list that did
-// parse. Overwriting a working whitelist with the contents of a truncated or
-// half-written file is the failure that locks the operator out of SSH, so a
-// reload only ever takes effect once toml.Unmarshal has succeeded.
-func (s *UdpServer) loadXdpConfig() error {
+// **The file is what opts a host in.** The filter is not a hardening tweak: it
+// drops everything at the driver except UDP on the knock port and SSH from the
+// listed sources, which on a host with no other way in is one bad whitelist away
+// from being unreachable for good. So a server that has not been configured for
+// it — no xdp.toml, an unparsable one, Enabled = false, or an empty RelayIPs —
+// runs exactly as it did before the filter existed. Only a file that says all
+// three things (present, Enabled, non-empty whitelist) attaches anything.
+//
+// If the file is missing or unparsable on a *reload*, nothing is applied and the
+// kernel keeps the whitelist it already had. Overwriting a working whitelist
+// with the contents of a truncated or half-written file is the failure that
+// locks the operator out of SSH, so a reload only ever takes effect once
+// toml.Unmarshal has succeeded.
+func (s *UdpServer) loadXdpConfig(logLevel int) error {
 	fileName := s.xdpConfigFileName()
 
 	content, err := s.loadConfigFile(fileName)
 	if err != nil {
-		log.Warning("load xdp config err (optional): %v", err)
+		log.Info("no %s: the XDP ingress filter is not attached (%v)", fileName, err)
 		return err
 	}
 
 	var xdpConf XdpTomlConfig
 	if unmarshalErr := toml.Unmarshal(content, &xdpConf); unmarshalErr != nil {
-		log.Error("failed to unmarshal xdp config: %v", unmarshalErr)
+		log.Error("failed to unmarshal xdp config, the XDP ingress filter is not attached: %v", unmarshalErr)
 		return unmarshalErr
 	}
+
+	if !s.startXdpFilter(&xdpConf, logLevel) {
+		// Not attached: there is no map to mirror the file into, and no point
+		// watching a file whose only effect is on a filter that is not running.
+		// A later edit takes effect on the next restart, which is also when the
+		// operator gets to see the decision logged again.
+		return nil
+	}
+
 	s.applyXdpConfig(&xdpConf)
 
 	xdpConfigWatch = utils.WatchFile(fileName, func() {
@@ -639,37 +660,146 @@ func (s *UdpServer) loadXdpConfig() error {
 	return nil
 }
 
-// applyXdpConfig pushes a parsed xdp.toml into the kernel-side maps. An empty
-// whitelist is refused — see the comment on that branch.
-func (s *UdpServer) applyXdpConfig(conf *XdpTomlConfig) {
+// startXdpFilter decides whether to attach the ingress filter and, if so,
+// attaches it. It reports whether the filter is now running.
+//
+// Every refusal below leaves the host exactly as it was without the filter,
+// which is a state the daemon has always supported. The failure this guards
+// against is the opposite one — attaching a filter whose policy does not match
+// the daemon it is protecting — because that drops the host's own traffic with
+// nothing in user space to say so, and on a host reachable only through the
+// whitelist it cannot be undone remotely.
+func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
+	fileName := s.xdpConfigFileName()
+
+	if !conf.Enabled {
+		log.Info("xdp config: %s has Enabled = false; the XDP ingress filter is not attached", fileName)
+		return false
+	}
+	// An empty list is never a policy anyone wants: the whitelist is the only
+	// thing that reaches tcp/22 on a filtered host, so attaching with one
+	// closes SSH for everybody with no break-glass path. It is, on the other
+	// hand, exactly what a config rendered with an unset RELAY_IPS produces,
+	// and what a truncated or half-written file parses to (TOML with no
+	// RelayIPs key is valid TOML).
+	if len(conf.RelayIPs) == 0 {
+		log.Critical("xdp config: %s lists no RelayIPs — refusing to attach the XDP ingress filter rather than closing tcp/22 for every source. Fix RELAY_IPS in the deploy pipeline",
+			fileName)
+		return false
+	}
+
 	minBytes := conf.NhpMinFrameBytes
 	if minBytes == 0 {
 		minBytes = DefaultNhpMinFrameBytes
 	}
-	if minBytes != DefaultNhpMinFrameBytes {
-		// The floor is compiled into the XDP object, so a different value
-		// here is not enforced. Say so rather than let the deployed config
-		// claim a policy the kernel is not applying.
-		log.Warning("xdp config: NhpMinFrameBytes=%d is not applied — the XDP object enforces the compile-time floor of %d bytes",
-			minBytes, DefaultNhpMinFrameBytes)
-	}
-	if !conf.Enabled {
-		// The program is attached by EngineLoad, not by this flag; an
-		// operator who set Enabled=false expecting the filter to be off
-		// needs to know it is still enforcing.
-		log.Warning("xdp config: Enabled=false has no effect — the XDP program is attached at startup; remove %s and restart to run unfiltered",
-			s.xdpConfigFileName())
+	if minBytes < 0 || minBytes > 65535 {
+		log.Error("xdp config: NhpMinFrameBytes=%d is out of range; refusing to attach the XDP ingress filter", minBytes)
+		return false
 	}
 
-	// An empty list is never a policy anyone wants: the whitelist is the only
-	// thing that reaches tcp/22 on this host, so applying it closes SSH for
-	// everybody with no break-glass path. It is, on the other hand, exactly
-	// what a config rendered with an unset RELAY_IPS produces, and what a
-	// truncated or half-written file parses to (TOML with no RelayIPs key is
-	// valid TOML). loadXdpConfig already refuses to apply a file that fails to
-	// parse; this refuses the one that parses to nothing. Keeping the active
-	// list is always the safer of the two outcomes — the filter carries on
-	// enforcing the last list an operator actually chose.
+	listenPort := s.GetListenPort()
+	if listenPort <= 0 || listenPort > 65535 {
+		log.Error("xdp config: cannot filter for UDP listen port %d; refusing to attach the XDP ingress filter", listenPort)
+		return false
+	}
+
+	// The filter admits UDP on the knock port and SSH from the whitelist, and
+	// drops every other packet that would start a new flow — including a SYN to
+	// a TCP port this daemon is listening on. Attaching in front of a listener
+	// would make that service look dead from everywhere, so refuse instead and
+	// say which listener is in the way. An operator who wants both needs a
+	// filter that knows about the service ports, which this one deliberately
+	// does not (see nhp/ebpf/xdp/nhp_server_xdp.c).
+	if reason := s.xdpServiceConflict(); reason != "" {
+		log.Critical("xdp config: refusing to attach the XDP ingress filter because %s — the filter drops inbound TCP other than SSH from RelayIPs, so that service would be unreachable. Disable it, bind it to 127.0.0.1, or set Enabled = false in %s",
+			reason, fileName)
+		return false
+	}
+
+	// Fail-open past this point: a kernel too old for XDP, a missing CAP_BPF, an
+	// unreadable object file or an unmounted bpffs must not take the gateway off
+	// the air, so a failure is logged and the daemon runs with no ingress
+	// filter — the same exposure it had before this existed.
+	var serverId string
+	if s.config != nil {
+		serverId = s.config.Hostname
+	}
+	if err := ebpflocal.EngineLoad(ebpflocal.LoadParams{
+		DirPath:       ExeDirPath,
+		LogLevel:      logLevel,
+		ServerId:      serverId,
+		NhpPort:       uint16(listenPort),
+		MinFrameBytes: uint16(minBytes),
+	}); err != nil {
+		log.Warning("server eBPF engine load failed, fail-open (no XDP ingress filter): %v", err)
+		return false
+	}
+	s.xdpActiveMinFrameBytes.Store(int32(minBytes))
+	log.Info("server XDP engine loaded: filtering udp/%d with a %d-byte floor", listenPort, minBytes)
+	return true
+}
+
+// xdpServiceConflict names a TCP listener of this daemon that the ingress
+// filter would black-hole, or "" when there is none.
+//
+// Loopback binds are not a conflict: the program is attached to the host's
+// default-route interface, so traffic to 127.0.0.1 never reaches it.
+func (s *UdpServer) xdpServiceConflict() string {
+	if port, enabled := s.GetHttpPort(); enabled {
+		if !isLoopbackListenAddr(s.httpConfig.HttpListenIp) {
+			return fmt.Sprintf("the HTTP knock listener is enabled on %s:%d",
+				listenAddrForLog(s.httpConfig.HttpListenIp), port)
+		}
+	}
+	if s.config != nil && s.config.Metrics.Enabled && !isLoopbackListenAddr(s.config.Metrics.ListenIp) {
+		port := s.config.Metrics.ListenPort
+		if port == 0 {
+			port = defaultMetricsListenPort
+		}
+		return fmt.Sprintf("the metrics endpoint is enabled on %s:%d",
+			listenAddrForLog(s.config.Metrics.ListenIp), port)
+	}
+	return ""
+}
+
+// isLoopbackListenAddr reports whether a bind address reaches only this host.
+// An empty address is a wildcard bind (all interfaces), not loopback.
+func isLoopbackListenAddr(addr string) bool {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return false
+	}
+	ip := net.ParseIP(addr)
+	return ip != nil && ip.IsLoopback()
+}
+
+func listenAddrForLog(addr string) string {
+	if strings.TrimSpace(addr) == "" {
+		return "0.0.0.0"
+	}
+	return addr
+}
+
+// applyXdpConfig mirrors a parsed xdp.toml's whitelist into the kernel-side map.
+// Only ever called with the filter attached (see loadXdpConfig).
+func (s *UdpServer) applyXdpConfig(conf *XdpTomlConfig) {
+	if !conf.Enabled {
+		// Attachment is decided once, at startup; the flag cannot turn a live
+		// filter off. Say so rather than leave an operator believing an edit
+		// they made took effect.
+		log.Warning("xdp config: Enabled=false has no effect on a running filter — the XDP program is attached at startup; set it before a restart to run unfiltered")
+	}
+	if conf.NhpMinFrameBytes != 0 && conf.NhpMinFrameBytes != int(s.xdpMinFrameBytes()) {
+		// The floor is written into the object at load time, so an edit after
+		// that is not enforced until the next restart.
+		log.Warning("xdp config: NhpMinFrameBytes=%d is not applied — the attached program is enforcing %d bytes; restart nhp-serverd to change it",
+			conf.NhpMinFrameBytes, s.xdpMinFrameBytes())
+	}
+
+	// See the same guard in startXdpFilter: an empty list closes tcp/22 for
+	// every source. Here it is a *reload* refusing to overwrite a working
+	// whitelist, which is always the safer of the two outcomes — the filter
+	// carries on enforcing the last list an operator actually chose.
 	if len(conf.RelayIPs) == 0 {
 		log.Critical("xdp config: %s lists no RelayIPs — keeping the active whitelist rather than closing tcp/22 for every source. Fix RELAY_IPS in the deploy pipeline",
 			s.xdpConfigFileName())
@@ -683,6 +813,15 @@ func (s *UdpServer) applyXdpConfig(conf *XdpTomlConfig) {
 	if ebpflocal.Loaded() {
 		log.Info("xdp relay whitelist applied: %v", conf.RelayIPs)
 	}
+}
+
+// xdpMinFrameBytes is the floor the attached program is enforcing, i.e. the
+// value startXdpFilter passed to the loader.
+func (s *UdpServer) xdpMinFrameBytes() int {
+	if v := s.xdpActiveMinFrameBytes.Load(); v != 0 {
+		return int(v)
+	}
+	return DefaultNhpMinFrameBytes
 }
 
 func (s *UdpServer) loadResources() error {

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf"
+	"golang.org/x/sys/unix"
 )
 
 // serverObjPath is where `make ebpf-objs` puts the server's XDP object.
@@ -39,10 +40,11 @@ func newRelayMap(t *testing.T) *ebpf.Map {
 	t.Helper()
 	m, err := ebpf.NewMap(&ebpf.MapSpec{
 		Name:       "test_relay_ips",
-		Type:       ebpf.LRUHash,
-		KeySize:    4,
+		Type:       ebpf.LPMTrie,
+		KeySize:    8, // __u32 prefixlen + __be32 addr
 		ValueSize:  1,
 		MaxEntries: 4096,
+		Flags:      unix.BPF_F_NO_PREALLOC,
 	})
 	if err != nil {
 		t.Skipf("cannot create BPF map (needs CAP_BPF): %v", err)
@@ -54,17 +56,24 @@ func newRelayMap(t *testing.T) *ebpf.Map {
 func relayMapContents(t *testing.T, m *ebpf.Map) []string {
 	t.Helper()
 	var out []string
-	var key [4]byte
+	var key RelayPrefixKey
 	var value uint8
 	iter := m.Iterate()
 	for iter.Next(&key, &value) {
-		out = append(out, net.IPv4(key[0], key[1], key[2], key[3]).String())
+		out = append(out, key.String())
 	}
 	if err := iter.Err(); err != nil {
 		t.Fatalf("iterate: %v", err)
 	}
 	sort.Strings(out)
 	return out
+}
+
+// hostKey is the key the eBPF side looks an incoming packet up with: a /32 of
+// the source address. Matching one against a stored /24 is the whole point of
+// the trie.
+func hostKey(a, b, c, d byte) RelayPrefixKey {
+	return RelayPrefixKey{PrefixLen: 32, Addr: [4]byte{a, b, c, d}}
 }
 
 func TestReplaceRelayIPsKeysAreWireOrder(t *testing.T) {
@@ -74,24 +83,26 @@ func TestReplaceRelayIPsKeysAreWireOrder(t *testing.T) {
 		t.Fatalf("ReplaceRelayIPs: %v", err)
 	}
 
-	// The eBPF side compares the key against iph->saddr directly, so the key
-	// must be the four bytes as they appear on the wire. Looking it up by
+	// The eBPF side builds the key straight from iph->saddr, so the address
+	// half must be the four bytes as they appear on the wire. Looking it up by
 	// those exact bytes is the check that matters: a host-order key would
 	// still round-trip through our own iterator but would never match a
 	// packet.
 	var value uint8
-	if err := m.Lookup([]byte{1, 2, 3, 4}, &value); err != nil {
+	key := hostKey(1, 2, 3, 4)
+	if err := m.Lookup(&key, &value); err != nil {
 		t.Fatalf("lookup by wire-order key failed: %v", err)
 	}
 	if value != 1 {
 		t.Errorf("value = %d, want 1", value)
 	}
 
-	// Guard the same property from the other direction: the byte-swapped key
-	// must NOT be present.
+	// Guard the same property from the other direction: the byte-swapped
+	// address must NOT match.
 	var swapped [4]byte
 	binary.LittleEndian.PutUint32(swapped[:], binary.BigEndian.Uint32([]byte{1, 2, 3, 4}))
-	if err := m.Lookup(swapped[:], &value); err == nil {
+	swappedKey := RelayPrefixKey{PrefixLen: 32, Addr: swapped}
+	if err := m.Lookup(&swappedKey, &value); err == nil {
 		t.Error("byte-swapped key is present; keys are being written in host order")
 	}
 }
@@ -102,7 +113,7 @@ func TestReplaceRelayIPsIsAFullReplacement(t *testing.T) {
 	if err := ReplaceRelayIPs(m, []string{"10.0.0.1", "10.0.0.2", "10.0.0.3"}); err != nil {
 		t.Fatalf("initial: %v", err)
 	}
-	if got, want := relayMapContents(t, m), []string{"10.0.0.1", "10.0.0.2", "10.0.0.3"}; !equal(got, want) {
+	if got, want := relayMapContents(t, m), []string{"10.0.0.1/32", "10.0.0.2/32", "10.0.0.3/32"}; !equal(got, want) {
 		t.Fatalf("after initial = %v, want %v", got, want)
 	}
 
@@ -110,14 +121,15 @@ func TestReplaceRelayIPsIsAFullReplacement(t *testing.T) {
 	if err := ReplaceRelayIPs(m, []string{"10.0.0.2", "10.0.0.9"}); err != nil {
 		t.Fatalf("replace: %v", err)
 	}
-	if got, want := relayMapContents(t, m), []string{"10.0.0.2", "10.0.0.9"}; !equal(got, want) {
+	if got, want := relayMapContents(t, m), []string{"10.0.0.2/32", "10.0.0.9/32"}; !equal(got, want) {
 		t.Fatalf("after replace = %v, want %v", got, want)
 	}
 
 	// An address carried across a reload must never blink out of the map:
 	// the relay's own SSH session rides on it.
 	var value uint8
-	if err := m.Lookup([]byte{10, 0, 0, 2}, &value); err != nil {
+	key := hostKey(10, 0, 0, 2)
+	if err := m.Lookup(&key, &value); err != nil {
 		t.Errorf("carried-over address is missing: %v", err)
 	}
 
@@ -129,16 +141,89 @@ func TestReplaceRelayIPsIsAFullReplacement(t *testing.T) {
 	}
 }
 
+// A prefix entry covers every host in it, which is what keeps the server
+// reachable when the relay is replaced and comes back with a different private
+// address out of the same subnet. Without it the live whitelist names an
+// address nothing has any more, SSH from the new relay is dropped, and the only
+// path CI has for pushing a corrected whitelist is the one that just closed.
+func TestReplaceRelayIPsAcceptsPrefixes(t *testing.T) {
+	m := newRelayMap(t)
+
+	if err := ReplaceRelayIPs(m, []string{"10.0.1.0/24", "203.0.113.7"}); err != nil {
+		t.Fatalf("ReplaceRelayIPs: %v", err)
+	}
+
+	var value uint8
+	for _, host := range [][4]byte{{10, 0, 1, 4}, {10, 0, 1, 250}} {
+		key := RelayPrefixKey{PrefixLen: 32, Addr: host}
+		if err := m.Lookup(&key, &value); err != nil {
+			t.Errorf("%v is not matched by 10.0.1.0/24: %v", net.IP(host[:]), err)
+		}
+	}
+
+	// The prefix must not reach beyond itself.
+	outside := hostKey(10, 0, 2, 4)
+	if err := m.Lookup(&outside, &value); err == nil {
+		t.Error("10.0.2.4 matched 10.0.1.0/24; the prefix length is not being honoured")
+	}
+
+	// Host bits below the prefix are masked off, so a prefix written with them
+	// set is the same entry — otherwise the stale sweep would not recognise its
+	// own keys and a reload would leave both behind.
+	if err := ReplaceRelayIPs(m, []string{"10.0.1.99/24", "203.0.113.7"}); err != nil {
+		t.Fatalf("re-apply: %v", err)
+	}
+	if got, want := relayMapContents(t, m), []string{"10.0.1.0/24", "203.0.113.7/32"}; !equal(got, want) {
+		t.Errorf("contents = %v, want %v", got, want)
+	}
+}
+
 // A malformed entry is skipped, not fatal — one typo in xdp.toml should not
 // decide the whole whitelist.
 func TestReplaceRelayIPsSkipsInvalidEntries(t *testing.T) {
 	m := newRelayMap(t)
 
-	if err := ReplaceRelayIPs(m, []string{"10.0.0.1", "", "  ", "not-an-ip", "2001:db8::1", " 10.0.0.2 "}); err != nil {
+	if err := ReplaceRelayIPs(m, []string{"10.0.0.1", "", "  ", "not-an-ip", "2001:db8::1", "10.0.0.0/33", "2001:db8::/32", " 10.0.0.2 "}); err != nil {
 		t.Fatalf("ReplaceRelayIPs: %v", err)
 	}
-	if got, want := relayMapContents(t, m), []string{"10.0.0.1", "10.0.0.2"}; !equal(got, want) {
+	if got, want := relayMapContents(t, m), []string{"10.0.0.1/32", "10.0.0.2/32"}; !equal(got, want) {
 		t.Errorf("contents = %v, want %v", got, want)
+	}
+}
+
+func TestParseRelayPrefix(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    RelayPrefixKey
+		wantErr bool
+	}{
+		{in: "1.2.3.4", want: RelayPrefixKey{PrefixLen: 32, Addr: [4]byte{1, 2, 3, 4}}},
+		{in: " 10.0.1.7 ", want: RelayPrefixKey{PrefixLen: 32, Addr: [4]byte{10, 0, 1, 7}}},
+		{in: "10.0.1.0/24", want: RelayPrefixKey{PrefixLen: 24, Addr: [4]byte{10, 0, 1, 0}}},
+		{in: "10.0.1.200/24", want: RelayPrefixKey{PrefixLen: 24, Addr: [4]byte{10, 0, 1, 0}}},
+		{in: "0.0.0.0/0", want: RelayPrefixKey{PrefixLen: 0, Addr: [4]byte{0, 0, 0, 0}}},
+		{in: "not-an-ip", wantErr: true},
+		{in: "2001:db8::1", wantErr: true},
+		{in: "2001:db8::/32", wantErr: true},
+		{in: "10.0.0.0/33", wantErr: true},
+		{in: "", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		got, err := ParseRelayPrefix(tc.in)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("ParseRelayPrefix(%q) = %v, want an error", tc.in, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("ParseRelayPrefix(%q): %v", tc.in, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("ParseRelayPrefix(%q) = %+v, want %+v", tc.in, got, tc.want)
+		}
 	}
 }
 
@@ -156,12 +241,14 @@ func TestServerEngineLoadAttachesToLoopback(t *testing.T) {
 	objPath := serverObjPath(t)
 
 	h, err := EngineLoad(EngineLoadParams{
-		Variant:     VariantServer,
-		IfaceName:   "lo",
-		ProgObjPath: objPath,
-		ComponentId: "test",
-		LogDirPath:  t.TempDir(),
-		LogLevel:    1,
+		Variant:          VariantServer,
+		IfaceName:        "lo",
+		ProgObjPath:      objPath,
+		ComponentId:      "test",
+		LogDirPath:       t.TempDir(),
+		LogLevel:         1,
+		NhpPort:          62206,
+		NhpMinFrameBytes: 240,
 	})
 	if err != nil {
 		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
@@ -187,7 +274,8 @@ func TestServerEngineLoadAttachesToLoopback(t *testing.T) {
 		t.Fatalf("ReplaceRelayIPs on the live map: %v", err)
 	}
 	var value uint8
-	if err := h.RelayIPsMap.Lookup([]byte{127, 0, 0, 1}, &value); err != nil {
+	liveKey := hostKey(127, 0, 0, 1)
+	if err := h.RelayIPsMap.Lookup(&liveKey, &value); err != nil {
 		t.Errorf("lookup on the live map: %v", err)
 	}
 
@@ -226,12 +314,14 @@ func TestServerFilterPassesClientRepliesAndDropsUnsolicited(t *testing.T) {
 	objPath := serverObjPath(t)
 
 	_, err := EngineLoad(EngineLoadParams{
-		Variant:     VariantServer,
-		IfaceName:   "lo",
-		ProgObjPath: objPath,
-		ComponentId: "test",
-		LogDirPath:  t.TempDir(),
-		LogLevel:    1,
+		Variant:          VariantServer,
+		IfaceName:        "lo",
+		ProgObjPath:      objPath,
+		ComponentId:      "test",
+		LogDirPath:       t.TempDir(),
+		LogLevel:         1,
+		NhpPort:          62206,
+		NhpMinFrameBytes: 240,
 	})
 	if err != nil {
 		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
@@ -297,6 +387,193 @@ func TestServerFilterPassesClientRepliesAndDropsUnsolicited(t *testing.T) {
 					tc.serverPort, tc.clientPort, n)
 			}
 		})
+	}
+}
+
+// The knock port is not a property of the object file.
+//
+// It used to be: nhp_server_xdp.c hard-coded 62206, so attaching the filter on
+// a server whose ListenPort is anything else dropped every knock at the driver,
+// invisibly — the daemon sees no packets and says nothing. The port is now a
+// .rodata constant the loader rewrites from the daemon's own listen address, and
+// this is the test of that. The receiving socket is bound and never connected,
+// exactly the shape has_local_flow() refuses, so the datagram can only arrive
+// through the knock-port branch.
+func TestServerFilterKnocksOnTheConfiguredPort(t *testing.T) {
+	objPath := serverObjPath(t)
+
+	const (
+		knockPort = 40206 // deliberately not the object's compiled-in default
+		otherPort = 40207
+		floor     = 240
+	)
+
+	_, err := EngineLoad(EngineLoadParams{
+		Variant:          VariantServer,
+		IfaceName:        "lo",
+		ProgObjPath:      objPath,
+		ComponentId:      "test",
+		LogDirPath:       t.TempDir(),
+		LogLevel:         1,
+		NhpPort:          knockPort,
+		NhpMinFrameBytes: floor,
+	})
+	if err != nil {
+		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+	}
+	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
+
+	tests := []struct {
+		name     string
+		dstPort  int
+		payload  int
+		wantPass bool
+	}{
+		// A full-length knock on the configured port: this is the case that
+		// fails outright if the rewrite did not happen.
+		{"knock on the configured port", knockPort, 300, true},
+		// Same datagram, ordinary port: still dropped, so the pass above is the
+		// knock branch and not something that admits any bound port.
+		{"knock-sized datagram on another port", otherPort, 300, false},
+		// The floor still applies on the configured port.
+		{"short datagram on the configured port", knockPort, 8, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			lo := net.IPv4(127, 0, 0, 1)
+
+			rx, err := net.ListenUDP("udp4", &net.UDPAddr{IP: lo, Port: tc.dstPort})
+			if err != nil {
+				t.Skipf("cannot bind udp/%d: %v", tc.dstPort, err)
+			}
+			defer rx.Close()
+
+			tx, err := net.DialUDP("udp4", nil, &net.UDPAddr{IP: lo, Port: tc.dstPort})
+			if err != nil {
+				t.Skipf("cannot dial udp/%d: %v", tc.dstPort, err)
+			}
+			defer tx.Close()
+
+			if _, err := tx.Write(make([]byte, tc.payload)); err != nil {
+				t.Fatalf("send: %v", err)
+			}
+
+			buf := make([]byte, 1024)
+			_ = rx.SetReadDeadline(time.Now().Add(2 * time.Second))
+			n, readErr := rx.Read(buf)
+
+			if tc.wantPass {
+				if readErr != nil {
+					t.Errorf("a %d-byte datagram to udp/%d was dropped (%v); the filter is not using the configured knock port",
+						tc.payload, tc.dstPort, readErr)
+				}
+				return
+			}
+			if readErr == nil {
+				t.Errorf("a %d-byte datagram to udp/%d arrived (%d bytes), want it dropped",
+					tc.payload, tc.dstPort, n)
+			}
+		})
+	}
+}
+
+// A failed load must leave nothing behind.
+//
+// The caller treats an error as "fail-open, no ingress filter" and logs it that
+// way, and it never receives an EngineHandle — so any pin or link surviving the
+// error is state nothing owns. For the server that is the worst case there is:
+// a filter enforcing an empty SSH whitelist on a host whose only way in is that
+// whitelist, while the log says the filter is off. This drives the failure
+// through resolveInterface, which runs after the maps and the program have
+// already been pinned.
+func TestServerEngineLoadLeavesNothingBehindOnFailure(t *testing.T) {
+	objPath := serverObjPath(t)
+
+	// Probe first: without CAP_BPF the load fails before it has pinned
+	// anything, so the test would pass without proving anything.
+	h, err := EngineLoad(EngineLoadParams{
+		Variant:          VariantServer,
+		IfaceName:        "lo",
+		ProgObjPath:      objPath,
+		ComponentId:      "test",
+		LogDirPath:       t.TempDir(),
+		LogLevel:         1,
+		NhpPort:          62206,
+		NhpMinFrameBytes: 240,
+	})
+	if err != nil {
+		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+	}
+	_ = h
+	CleanupBPFFiles(VariantServer)
+
+	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
+	if _, err := EngineLoad(EngineLoadParams{
+		Variant:          VariantServer,
+		IfaceName:        "nhp-no-such-iface",
+		ProgObjPath:      objPath,
+		ComponentId:      "test",
+		LogDirPath:       t.TempDir(),
+		LogLevel:         1,
+		NhpPort:          62206,
+		NhpMinFrameBytes: 240,
+	}); err == nil {
+		t.Fatal("EngineLoad on a nonexistent interface returned nil, want an error")
+	}
+
+	for _, pin := range serverPinnedFiles {
+		if _, err := os.Stat(pin); !os.IsNotExist(err) {
+			t.Errorf("pin %s survived a failed load (err=%v); the daemon believes it is fail-open", pin, err)
+		}
+	}
+	if serverXdpLink != nil {
+		t.Error("serverXdpLink is set after a failed load; the filter is attached with no handle to drive it")
+	}
+}
+
+// The loader refuses rather than attaching an object it cannot configure: a
+// filter whose knock port is not the daemon's drops every knock at the driver
+// with nothing in user space to say so, which is strictly worse than the
+// fail-open state the daemon already handles.
+func TestSetServerConstantsRefusesAnObjectWithoutThem(t *testing.T) {
+	spec := &ebpf.CollectionSpec{}
+
+	err := setServerConstants(spec, EngineLoadParams{NhpPort: 62206, NhpMinFrameBytes: 240})
+	if err == nil {
+		t.Fatal("setServerConstants on an object with no constants returned nil, want an error")
+	}
+	if !strings.Contains(err.Error(), varNhpListenPort) {
+		t.Errorf("error %q does not name the missing constant %q", err, varNhpListenPort)
+	}
+
+	// Nothing asked for, nothing to rewrite: the object's own defaults stand.
+	if err := setServerConstants(spec, EngineLoadParams{}); err != nil {
+		t.Errorf("setServerConstants with no overrides: %v", err)
+	}
+}
+
+// The compiled object must actually expose the constants the loader rewrites;
+// a rename on either side would otherwise only show up as a refused load on a
+// real host.
+func TestServerObjectExposesTheRewritableConstants(t *testing.T) {
+	spec, err := ebpf.LoadCollectionSpec(serverObjPath(t))
+	if err != nil {
+		t.Fatalf("load collection spec: %v", err)
+	}
+
+	for _, name := range []string{varNhpListenPort, varNhpMinUdpLen} {
+		v, ok := spec.Variables[name]
+		if !ok {
+			t.Errorf("object has no %q variable", name)
+			continue
+		}
+		if !v.Constant() {
+			t.Errorf("%q is not in .rodata; the verifier will not fold it", name)
+		}
+		if v.Size() != 2 {
+			t.Errorf("%q is %d bytes, want 2 (__u16)", name, v.Size())
+		}
 	}
 }
 

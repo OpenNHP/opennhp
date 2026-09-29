@@ -57,7 +57,6 @@
 #define ICMP_FRAG_NEEDED   4
 
 #define SSH_PORT 22
-#define NHP_PORT 62206
 
 /* Client protocols whose answers arrive on a socket the kernel cannot tell
  * apart from a listener, so has_local_flow() cannot admit them. See the DHCP
@@ -67,13 +66,26 @@
 #define DHCP_PORT_CLIENT 68
 #define NTP_PORT         123
 
-/* Shortest NHP datagram on the wire: the 240-byte NHP_KPL header of the
- * curve25519 cipher suite (nhp/core/packet.go). The gmsm suite's 304 bytes
- * clears it too, so one threshold covers both. Anything shorter cannot be a
- * knock no matter what it decrypts to, so it is dropped without touching the
- * payload. The length compared is the UDP header's own length field, i.e.
- * header + payload. */
-#define NHP_MIN_UDP_LEN 240
+/* The knock port and the length floor are .rodata constants, not #defines,
+ * because both are user-space configuration: ListenPort in etc/config.toml and
+ * NhpMinFrameBytes in etc/xdp.toml. The loader rewrites them from those two
+ * files before the program is verified (loadServerEngine in
+ * nhp/utils/ebpf/engine_linux.go), so a server that listens anywhere other
+ * than 62206 filters for the port it actually listens on instead of dropping
+ * every knock it receives. The values below are only the fallback a bare
+ * `bpftool prog load` of this object would get.
+ *
+ * Read as `volatile const` so the verifier still treats them as constants
+ * after the rewrite (dead branches get folded away) while the compiler cannot
+ * bake the initialiser into the instruction stream.
+ *
+ * nhp_min_udp_len defaults to the 240-byte NHP_KPL header of the curve25519
+ * cipher suite (nhp/core/packet.go); the gmsm suite's 304 bytes clears it too,
+ * so one threshold covers both. Anything shorter cannot be a knock no matter
+ * what it decrypts to, so it is dropped without touching the payload. The
+ * length compared is the UDP header's own length field, i.e. header+payload. */
+volatile const __u16 nhp_listen_port = 62206;
+volatile const __u16 nhp_min_udp_len = 240;
 
 /* action codes reported to user space; see serverActionName() in
  * nhp/utils/ebpf/engine_linux.go, which formats them, and the decision table
@@ -94,20 +106,35 @@
 #define ACT_DROP_UDP_SHORT      14
 #define ACT_DROP_NONUDP         15
 
-/* Source addresses allowed to reach SSH, and allowed to reach the knock port
+/* Source prefixes allowed to reach SSH, and allowed to reach the knock port
  * without meeting the length floor. Driven from user space by
  * endpoints/server/ebpf/serverengine.go::UpdateRelayIPs, which mirrors
  * etc/xdp.toml into it on every reload.
  *
- * Keys are __be32, i.e. wire order, so they compare directly against
- * iph->saddr with no byte swapping in the hot path. LRU rather than plain hash
- * only so that a wedged user space can never make an insert fail; the map is
- * always far below max_entries in practice. */
+ * An LPM trie rather than a hash of host addresses, because the whitelist has
+ * to survive the relay being *replaced*. The relay's private address is not
+ * pinned by Terraform (aws_instance.relay takes whatever the subnet hands it),
+ * so any rebuild gives it a new one -- and a whitelist naming only the old
+ * address drops SSH from the new relay, which is the one path CI has for
+ * pushing a corrected whitelist. Listing the relay's subnet as a prefix closes
+ * that trap: a replacement lands in the same subnet and is still allowed in.
+ * A bare address is simply a /32, so the host-address form still works.
+ *
+ * The address half of the key is __be32, i.e. wire order, which is also the
+ * order an LPM trie matches prefixes in, so iph->saddr is looked up with no
+ * byte swapping in the hot path. */
+struct relay_prefix_key {
+    __u32  prefixlen;
+    __be32 addr;
+};
+
 struct {
-    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(type, BPF_MAP_TYPE_LPM_TRIE);
     __uint(max_entries, 4096);
+    /* LPM tries are only creatable with BPF_F_NO_PREALLOC. */
+    __uint(map_flags, BPF_F_NO_PREALLOC);
     __uint(pinning, LIBBPF_PIN_BY_NAME);
-    __type(key, __be32);
+    __type(key, struct relay_prefix_key);
     __type(value, __u8);
 } nhp_relay_ips SEC(".maps");
 
@@ -255,7 +282,13 @@ static __always_inline void record_packet(void *ctx, __u8 action, struct iphdr *
 }
 
 static __always_inline bool is_relay_src(__be32 saddr) {
-    return bpf_map_lookup_elem(&nhp_relay_ips, &saddr) != NULL;
+    /* A full-length key: the trie matches it against the longest stored
+     * prefix, so this hits a /32 host entry and a /24 subnet entry alike. */
+    struct relay_prefix_key key = {
+        .prefixlen = 32,
+        .addr      = saddr,
+    };
+    return bpf_map_lookup_elem(&nhp_relay_ips, &key) != NULL;
 }
 
 /* Does this packet belong to a flow the host itself already has a socket for?
@@ -367,7 +400,7 @@ int xdp_server_prog(struct xdp_md *ctx) {
         /* NHP is UDP-only, so a TCP connect to the knock port is a scanner
          * fingerprinting the host. Reported under its own action so that
          * traffic is countable separately from ordinary port scans. */
-        if (tcp->dest == bpf_htons(NHP_PORT)) {
+        if (bpf_ntohs(tcp->dest) == nhp_listen_port) {
             record_packet(ctx, ACT_DROP_TCP_NHP, iph, tcp->source, tcp->dest, 0, true);
             return XDP_DROP;
         }
@@ -390,7 +423,7 @@ int xdp_server_prog(struct xdp_md *ctx) {
         if ((void *)(udp + 1) > data_end)
             return XDP_DROP;
 
-        if (udp->dest != bpf_htons(NHP_PORT)) {
+        if (bpf_ntohs(udp->dest) != nhp_listen_port) {
             /* DHCP: the host's own address depends on this getting in, and
              * has_local_flow() cannot let it.
              *
@@ -462,7 +495,7 @@ int xdp_server_prog(struct xdp_md *ctx) {
             record_packet(ctx, ACT_NHP_RELAY, iph, udp->source, udp->dest, 1, true);
             return XDP_PASS;
         }
-        if (bpf_ntohs(udp->len) < NHP_MIN_UDP_LEN) {
+        if (bpf_ntohs(udp->len) < nhp_min_udp_len) {
             record_packet(ctx, ACT_DROP_UDP_SHORT, iph, udp->source, udp->dest, 0, true);
             return XDP_DROP;
         }

@@ -58,8 +58,10 @@ RelayIPs = ["1.2.3.4", "5.6.7.8"]
 	}
 }
 
-// A missing xdp.toml is the fail-open case: loadXdpConfig reports it and
-// installs no watch, rather than applying an empty whitelist.
+// A missing xdp.toml is the un-opted-in case: loadXdpConfig reports it,
+// attaches nothing and installs no watch. The filter must never appear on a
+// host whose operator never asked for it — it drops every inbound TCP service
+// and leaves no way back in but the whitelist.
 func TestLoadXdpConfigMissingFileIsNotFatal(t *testing.T) {
 	originalExeDir := ExeDirPath
 	ExeDirPath = t.TempDir()
@@ -69,7 +71,7 @@ func TestLoadXdpConfigMissingFileIsNotFatal(t *testing.T) {
 	})
 
 	s := &UdpServer{config: &Config{}}
-	if err := s.loadXdpConfig(); err == nil {
+	if err := s.loadXdpConfig(1); err == nil {
 		t.Error("loadXdpConfig on a missing file returned nil, want an error")
 	}
 	if xdpConfigWatch != nil {
@@ -96,7 +98,7 @@ func TestLoadXdpConfigRejectsUnparsableFile(t *testing.T) {
 	}
 
 	s := &UdpServer{config: &Config{}}
-	if err := s.loadXdpConfig(); err == nil {
+	if err := s.loadXdpConfig(1); err == nil {
 		t.Error("loadXdpConfig on a truncated file returned nil, want an error")
 	}
 	if xdpConfigWatch != nil {
@@ -104,9 +106,104 @@ func TestLoadXdpConfigRejectsUnparsableFile(t *testing.T) {
 	}
 }
 
-// The happy path: a well-formed file parses, applies (a no-op with no engine
-// attached) and leaves a watch behind for hot reload.
-func TestLoadXdpConfigInstallsWatch(t *testing.T) {
+// Nothing is attached when the file itself does not ask for it, and nothing is
+// watched either: with no filter running there is no map for a reload to write
+// into, and a watch would only suggest otherwise.
+//
+// The empty-RelayIPs case is the one that matters most. It is what an unset
+// RELAY_IPS in the deploy pipeline renders, and attaching with it would close
+// tcp/22 for every source on a host with no break-glass path.
+func TestStartXdpFilterRefusesUnlessTheFileAsksForIt(t *testing.T) {
+	originalExeDir := ExeDirPath
+	ExeDirPath = t.TempDir()
+	t.Cleanup(func() { ExeDirPath = originalExeDir })
+
+	tests := []struct {
+		name string
+		conf XdpTomlConfig
+	}{
+		{"disabled", XdpTomlConfig{Enabled: false, RelayIPs: []string{"1.2.3.4"}}},
+		{"no relay ips", XdpTomlConfig{Enabled: true}},
+		{"empty relay ips", XdpTomlConfig{Enabled: true, RelayIPs: []string{}}},
+		{"floor out of range", XdpTomlConfig{Enabled: true, RelayIPs: []string{"1.2.3.4"}, NhpMinFrameBytes: 70000}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &UdpServer{config: &Config{ListenPort: 62206}}
+			conf := tc.conf
+			if s.startXdpFilter(&conf, 1) {
+				t.Error("startXdpFilter attached the filter, want a refusal")
+			}
+		})
+	}
+}
+
+// The filter drops every inbound TCP flow it was not told about, so attaching
+// it in front of one of the daemon's own listeners would silently take that
+// service off the air. Loopback binds are not reachable through the filtered
+// interface at all, so they are not a conflict.
+func TestXdpServiceConflictNamesListenersTheFilterWouldBlackHole(t *testing.T) {
+	tests := []struct {
+		name         string
+		http         *HttpConfig
+		metrics      MetricsConfig
+		wantConflict bool
+	}{
+		{name: "no listeners", wantConflict: false},
+		{
+			name:         "http on all interfaces",
+			http:         &HttpConfig{EnableHttp: true, HttpListenIp: "0.0.0.0", HttpListenPort: 443},
+			wantConflict: true,
+		},
+		{
+			name:         "http with an unset bind address is a wildcard bind",
+			http:         &HttpConfig{EnableHttp: true, HttpListenPort: 443},
+			wantConflict: true,
+		},
+		{
+			name:         "http on loopback only",
+			http:         &HttpConfig{EnableHttp: true, HttpListenIp: "127.0.0.1", HttpListenPort: 8443},
+			wantConflict: false,
+		},
+		{
+			name:         "http disabled",
+			http:         &HttpConfig{EnableHttp: false, HttpListenIp: "0.0.0.0", HttpListenPort: 443},
+			wantConflict: false,
+		},
+		{
+			name:         "metrics off-host",
+			metrics:      MetricsConfig{Enabled: true, ListenIp: "0.0.0.0", ListenPort: 9100},
+			wantConflict: true,
+		},
+		{
+			name:         "metrics on loopback (the default)",
+			metrics:      MetricsConfig{Enabled: true, ListenIp: "127.0.0.1"},
+			wantConflict: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &UdpServer{
+				config:     &Config{ListenPort: 62206, Metrics: tc.metrics},
+				httpConfig: tc.http,
+			}
+			got := s.xdpServiceConflict()
+			if tc.wantConflict && got == "" {
+				t.Error("xdpServiceConflict = \"\", want a conflict")
+			}
+			if !tc.wantConflict && got != "" {
+				t.Errorf("xdpServiceConflict = %q, want no conflict", got)
+			}
+		})
+	}
+}
+
+// An opted-in file on a host with no compiled object is the fail-open path: the
+// load fails, the daemon carries on unfiltered, and — because there is no map
+// to mirror the whitelist into — no watch is left behind.
+func TestLoadXdpConfigFailsOpenWithoutTheObject(t *testing.T) {
 	originalExeDir := ExeDirPath
 	ExeDirPath = t.TempDir()
 	t.Cleanup(func() {
@@ -121,16 +218,16 @@ func TestLoadXdpConfigInstallsWatch(t *testing.T) {
 	if err := os.MkdirAll(etcDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := "Enabled = true\nNhpMinFrameBytes = 240\nRelayIPs = [\"1.2.3.4\"]\n"
+	body := "Enabled = true\nNhpMinFrameBytes = 240\nRelayIPs = [\"1.2.3.4\", \"10.0.1.0/24\"]\n"
 	if err := os.WriteFile(filepath.Join(etcDir, "xdp.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	s := &UdpServer{config: &Config{}}
-	if err := s.loadXdpConfig(); err != nil {
+	s := &UdpServer{config: &Config{ListenPort: 62206}}
+	if err := s.loadXdpConfig(1); err != nil {
 		t.Fatalf("loadXdpConfig: %v", err)
 	}
-	if xdpConfigWatch == nil {
-		t.Error("no watch installed for a valid xdp.toml")
+	if xdpConfigWatch != nil {
+		t.Error("a watch was installed although no filter is attached")
 	}
 }

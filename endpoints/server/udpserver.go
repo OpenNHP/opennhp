@@ -72,6 +72,13 @@ type UdpServer struct {
 	allowPrivateRelaySource atomic.Bool
 	forceOverload           atomic.Bool
 
+	// xdpActiveMinFrameBytes is the datagram floor the attached XDP program is
+	// enforcing, written into its .rodata at load time. Kept so a later
+	// xdp.toml reload can tell the operator that an edit to NhpMinFrameBytes
+	// needs a restart, instead of silently doing nothing. Zero when no filter
+	// is attached.
+	xdpActiveMinFrameBytes atomic.Int32
+
 	// connection and remote transaction management
 
 	remoteConnectionMapMutex sync.Mutex
@@ -334,18 +341,12 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 	tuneUDPRecvBuffer(s.listenConn, recvBufferTarget)
 
-	// Attach the XDP ingress filter, which narrows the host down to the knock
-	// port plus SSH from the relay. Deliberately fail-open: a kernel too old
-	// for XDP, a missing CAP_BPF, an unreadable object file or an unmounted
-	// bpffs must not take the gateway off the air, so a failure is logged and
-	// the daemon runs with no ingress filter — the same exposure it had before
-	// this existed. The whitelist itself is loaded later, by loadXdpConfig();
-	// until then the map is empty, which closes SSH rather than opening it.
-	if ebpfErr := ebpflocal.EngineLoad(ExeDirPath, logLevel, s.config.Hostname); ebpfErr != nil {
-		log.Warning("server eBPF engine load failed, fail-open (no XDP ingress filter): %v", ebpfErr)
-	} else {
-		log.Info("server XDP engine loaded")
-	}
+	// The XDP ingress filter is attached further down, by loadXdpConfig(), and
+	// only for a host whose etc/xdp.toml asks for it. It cannot be attached
+	// here: it needs the whitelist, the datagram floor and the daemon's own
+	// service ports, none of which are known until the configs below are
+	// loaded — and attaching first would mean a window in which the host
+	// filters with an empty SSH whitelist.
 
 	// retrieve local port
 	laddr := s.listenConn.LocalAddr()
@@ -486,12 +487,15 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		_ = s.loadResources()
 	}
 
-	// Load the XDP ingress policy (etc/xdp.toml). Outside the etcd branch on
-	// purpose: the XDP program is attached on both paths, and etcd does not
-	// carry this file. Skipping it here would leave an etcd-configured server
-	// enforcing an empty SSH whitelist — filtering with nobody allowed in.
-	// Optional, and a no-op when the engine above did not attach.
-	_ = s.loadXdpConfig()
+	// Load the XDP ingress policy (etc/xdp.toml) and, if it asks for one,
+	// attach the filter. Outside the etcd branch on purpose: etcd does not
+	// carry this file, and an etcd-configured server must reach the same
+	// decision from the same file as any other.
+	//
+	// Deliberately after loadHttpConfig(): the filter drops every listening TCP
+	// service on the host, so whether the HTTP knock listener is running is
+	// part of deciding whether it may attach at all.
+	_ = s.loadXdpConfig(logLevel)
 
 	// Initialize agent key store (SQLite).
 	ks, err := NewAgentKeyStore(s.config.DatabasePath)

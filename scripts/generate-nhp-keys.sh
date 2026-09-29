@@ -334,21 +334,28 @@ export DOMAIN="$DOMAIN"
 #
 # RELAY_IPS is accepted as a comma / space separated list (the pipeline passes
 # the relay's VPC private address, which is what SSH into the server actually
-# arrives from, plus its public address) and rendered into the template as a
-# TOML array via RELAY_IPS_TOML. Quoting here rather than in the template keeps
-# the template a plain `RelayIPs = [${RELAY_IPS_TOML}]` for any number of
-# addresses, and gives one place to reject malformed input.
+# arrives from, its public address, and the VPC subnet as a prefix so that a
+# replaced relay with a new private address is still admitted) and rendered
+# into the template as a TOML array via RELAY_IPS_TOML. Quoting here rather
+# than in the template keeps the template a plain
+# `RelayIPs = [${RELAY_IPS_TOML}]` for any number of entries, and gives one
+# place to reject malformed input.
 export XDP_ENABLED="${XDP_ENABLED:-true}"
-# Keep in sync with NHP_MIN_UDP_LEN in nhp/ebpf/xdp/nhp_server_xdp.c.
+# Keep in sync with the nhp_min_udp_len default in
+# nhp/ebpf/xdp/nhp_server_xdp.c. The daemon writes this value into the object's
+# .rodata at startup, so it is applied rather than merely recorded.
 export XDP_NHP_MIN_FRAME_BYTES="${XDP_NHP_MIN_FRAME_BYTES:-240}"
 export RELAY_IPS="${RELAY_IPS:-}"
 
 RELAY_IPS_TOML=""
 for relay_ip in $(printf '%s' "$RELAY_IPS" | tr ',;' '  '); do
-  if ! printf '%s' "$relay_ip" | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'; then
-    echo "  ERROR: RELAY_IPS contains '$relay_ip', which is not an IPv4 address." >&2
-    echo "         nhp-server's whitelist is IPv4-only; refusing to render a" >&2
-    echo "         whitelist the kernel would silently drop that entry from." >&2
+  # Host addresses and CIDR prefixes both; the daemon parses either
+  # (ParseRelayPrefix in nhp/utils/ebpf) and matches by longest prefix.
+  if ! printf '%s' "$relay_ip" | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(/[0-9]{1,2})?$'; then
+    echo "  ERROR: RELAY_IPS contains '$relay_ip', which is not an IPv4 address" >&2
+    echo "         or prefix. nhp-server's whitelist is IPv4-only; refusing to" >&2
+    echo "         render a whitelist the kernel would silently drop that entry" >&2
+    echo "         from." >&2
     exit 1
   fi
   # Dedupe so passing the same address twice (e.g. a host whose public and

@@ -317,6 +317,7 @@ jobs:
           AC_PRIV=$(terraform output -raw ac_private_ip)
           RELAY_PUB=$(terraform output -raw relay_public_ip)
           RELAY_PRIV=$(terraform output -raw relay_private_ip)
+          SUBNET_CIDR=$(terraform output -raw subnet_cidr)
 
           echo "server_public_ip=$SERVER_PUB"     >> $GITHUB_OUTPUT
           echo "server_private_ip=$SERVER_PRIV"   >> $GITHUB_OUTPUT
@@ -324,10 +325,12 @@ jobs:
           echo "ac_private_ip=$AC_PRIV"           >> $GITHUB_OUTPUT
           echo "relay_public_ip=$RELAY_PUB"       >> $GITHUB_OUTPUT
           echo "relay_private_ip=$RELAY_PRIV"     >> $GITHUB_OUTPUT
+          echo "subnet_cidr=$SUBNET_CIDR"         >> $GITHUB_OUTPUT
 
           echo "Server public/private:   $SERVER_PUB / $SERVER_PRIV"
           echo "AC public/private:       $AC_PUB / $AC_PRIV"
           echo "Relay public/private:    $RELAY_PUB / $RELAY_PRIV"
+          echo "VPC subnet:              $SUBNET_CIDR"
 
       - name: Download build artifact
         uses: actions/download-artifact@v8
@@ -360,6 +363,16 @@ jobs:
         # Both are cheap to allow and the private one is not guessable from
         # outside the VPC, so the whitelist carries the pair rather than
         # betting on one path.
+        #
+        # It also carries the VPC subnet as a prefix, and that one is not
+        # redundant: the relay's private address is not pinned in Terraform, so
+        # any replacement of that instance (an AMI change, a taint, an AZ move)
+        # brings it back with a different one. The server's live whitelist would
+        # still name the old address, SSH from the new relay would be dropped,
+        # and this job — which reaches the server *through* the relay — could
+        # never push the correction. That is a root-volume-detach recovery. The
+        # subnet prefix covers the replacement instead. See the subnet_cidr
+        # output in terraform/demo/outputs.tf.
         #
         # This is a hard gate, placed BEFORE the configs are rendered and
         # therefore before anything is scp'd or restarted: a missing Terraform
@@ -399,15 +412,28 @@ jobs:
             exit 1
           fi
 
+          SUBNET_CIDR='${{ steps.tf_outputs.outputs.subnet_cidr }}'
+          if ! printf '%s' "$SUBNET_CIDR" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$'; then
+            echo "[!] subnet_cidr from Terraform is not an IPv4 prefix: '$SUBNET_CIDR'"
+            echo "    That prefix is what keeps SSH working after the relay is"
+            echo "    replaced with a new private address; refusing to render a"
+            echo "    whitelist without it."
+            exit 1
+          fi
+
           echo "Relay source addresses for the nhp-server XDP whitelist:"
           echo "  $RELAY_PRIV (VPC / SSH jump path)"
           echo "  $RESOLVED (public, via $RELAY_FQDN)"
+          echo "  $SUBNET_CIDR (VPC subnet; survives a relay replacement)"
           # generate-nhp-keys.sh splits this on commas and renders it as a TOML
           # array, so extra addresses can be appended here without touching the
-          # template.
-          echo "RELAY_IPS=$RELAY_PRIV,$RESOLVED" >> $GITHUB_ENV
+          # template. Entries are host addresses or CIDR prefixes.
+          echo "RELAY_IPS=$RELAY_PRIV,$RESOLVED,$SUBNET_CIDR" >> $GITHUB_ENV
           echo "XDP_ENABLED=true" >> $GITHUB_ENV
-          # Keep in sync with NHP_MIN_UDP_LEN in nhp/ebpf/xdp/nhp_server_xdp.c.
+          # Keep in sync with the nhp_min_udp_len default in
+          # nhp/ebpf/xdp/nhp_server_xdp.c. Unlike the port, this value is
+          # applied from the TOML — the loader writes it into the object's
+          # .rodata at startup — so it is a real knob, not documentation.
           echo "XDP_NHP_MIN_FRAME_BYTES=240" >> $GITHUB_ENV
 
       - name: Generate keys and render configs
@@ -696,14 +722,45 @@ jobs:
           echo "Server sees this job's SSH connection from: $PEER"
           echo "Whitelist about to be deployed:             ${WHITELIST:-(none)}"
 
-          if ! printf '%s' "$WHITELIST" | grep -qF "\"$PEER\""; then
+          # Entries may be host addresses or CIDR prefixes (the VPC subnet is
+          # one, so that a replaced relay keeps its way in), and the daemon
+          # matches by longest prefix — so this is a containment test, not a
+          # string match: a whitelist that covers $PEER only through its subnet
+          # is correct and must not fail this gate.
+          ip2int() {
+            local rest="$1" o1 o2 o3 o4
+            o1=${rest%%.*}; rest=${rest#*.}
+            o2=${rest%%.*}; rest=${rest#*.}
+            o3=${rest%%.*}; rest=${rest#*.}
+            o4=$rest
+            echo $(( (o1 << 24) + (o2 << 16) + (o3 << 8) + o4 ))
+          }
+
+          PEER_INT=$(ip2int "$PEER")
+          COVERED=""
+          for ENTRY in $(printf '%s' "$WHITELIST" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?'); do
+            ENTRY_ADDR=${ENTRY%%/*}
+            ENTRY_LEN=${ENTRY#*/}
+            [ "$ENTRY_LEN" = "$ENTRY" ] && ENTRY_LEN=32
+            [ "$ENTRY_LEN" -ge 0 ] && [ "$ENTRY_LEN" -le 32 ] || continue
+            if [ "$ENTRY_LEN" -eq 0 ]; then MASK=0; else MASK=$(( 0xFFFFFFFF << (32 - ENTRY_LEN) & 0xFFFFFFFF )); fi
+            if [ $(( PEER_INT & MASK )) -eq $(( $(ip2int "$ENTRY_ADDR") & MASK )) ]; then
+              COVERED="$ENTRY"
+              break
+            fi
+          done
+
+          if [ -n "$COVERED" ]; then
+            echo "Covered by whitelist entry:                 $COVERED"
+          else
             echo "ERROR: the xdp.toml about to be deployed does not whitelist $PEER," >&2
             echo "       the address this job's SSH sessions arrive from. Restarting" >&2
             echo "       nhp-serverd with it would drop tcp/22 for this host with no" >&2
             echo "       way back in short of rebuilding the instance, so nothing has" >&2
             echo "       been uploaded and the live whitelist is untouched." >&2
             echo "       Fix RELAY_IPS in the configure job (it should carry the" >&2
-            echo "       relay's private and public addresses) and re-run." >&2
+            echo "       relay's private and public addresses plus the VPC subnet)" >&2
+            echo "       and re-run." >&2
             exit 1
           fi
 

@@ -17,6 +17,15 @@
 | 配置模板 | `deploy/config-templates/server/xdp.toml` |
 | 流水线 | `.github/workflows/deploy-demo-v2.yml`（`configure` / `build` / `deploy-server`） |
 
+> **过滤器是 opt-in 的。** 只有当 `etc/xdp.toml` 存在、能解析、`Enabled = true`
+> 且 `RelayIPs` 非空时，`nhp-serverd` 才会 attach；此外，HTTP knock 监听或对外
+> 暴露的 metrics 端点开着时它会拒绝 attach（过滤器会把这些监听端口的入站 TCP
+> 全丢掉）。没有 `xdp.toml` 的主机行为与过滤器上线前完全一致。
+>
+> 表中的 62206 只是本文示例：knock 端口来自守护进程自己的 `ListenPort`，
+> 长度下限来自 `xdp.toml` 的 `NhpMinFrameBytes`，两者在 attach 前被写进对象的
+> `.rodata`（`nhp_listen_port` / `nhp_min_udp_len`），不是编译期常量。
+
 决策树与 action 编码（`nhp_server_xdp.c`，日志里的 `REASON=`）：
 
 | 条件 | 结果 | 日志 REASON | 逐包写日志？ |
@@ -197,11 +206,15 @@ sudo ip netns exec nhpxdp sh -c '
 期望日志（`/tmp/nhpsrv/logs/server-<date>.log`）：
 
 ```
-udpserver.go:347:  [Info] server XDP engine loaded
+engine_linux.go:   [Info] server XDP filter configured for udp/62206 with a 240-byte datagram floor (0 = the object's own default)
+config.go:         [Info] server XDP engine loaded: filtering udp/62206 with a 240-byte floor
 engine_linux.go:   [Info] Start listening for server eBPF events (PERF BUFFER)
 config.go:         [Info] xdp relay whitelist applied: [10.99.0.9]
 file.go:           [Info] start watching file /tmp/nhpsrv/etc/xdp.toml
 ```
+
+> 没有这几行、而是 `no .../etc/xdp.toml: the XDP ingress filter is not attached`
+> 或 `Enabled = false ...`，说明这台机器根本没有 opt-in——这是预期行为，不是故障。
 
 另开一个终端，确认已 attach：
 
@@ -350,21 +363,32 @@ python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.se
 ```bash
 PID=$(pgrep -x nhp-serverd)
 sudo nsenter -t $PID -m -n bpftool map dump pinned /sys/fs/bpf/nhp_relay_ips
-# [{"key": 16802570,"value": 1}]     ← key 是 __be32，按小端解读才是 10.99.0.1
+```
 
-# 按 IP 精确查一条（key 的 hex 就是点分四段的十六进制）
+> `nhp_relay_ips` 是 **LPM trie**（不再是 hash）：key 为 8 字节
+> `struct relay_prefix_key { __u32 prefixlen; __be32 addr; }` —— 前 4 字节是
+> 主机序的前缀长度，后 4 字节是网络序地址。白名单条目既可以是主机地址
+> （即 `/32`），也可以是 CIDR 前缀；线上会下发 VPC 子网前缀，这样 relay 被
+> 重建、换了私网地址后 SSH 仍然进得来（见 CLAUDE.md）。
+
+```bash
+# 按 IP 精确查一条：prefixlen=32（小端 20 00 00 00）+ 点分四段的十六进制
 IP=10.99.0.1
 sudo nsenter -t $PID -m -n bpftool map lookup pinned /sys/fs/bpf/nhp_relay_ips \
-  key hex $(echo $IP | tr '.' ' ' | xargs printf '%02x %02x %02x %02x')
+  key hex 20 00 00 00 $(echo $IP | tr '.' ' ' | xargs printf '%02x %02x %02x %02x')
 ```
 
 改 `xdp.toml` 后守护进程日志应出现（实测）：
 
 ```
 config.go:625:      [Info] xdp config: /tmp/nhpsrv/etc/xdp.toml has been updated
-engine_linux.go:656:[Info] relay whitelist applied: 2 address(es) active, 0 removed
+engine_linux.go:656:[Info] relay whitelist applied: 2 prefix(es) active, 0 removed
 config.go:668:      [Info] xdp relay whitelist applied: [10.99.0.1 192.0.2.7]
 ```
+
+> 只有 `RelayIPs` 支持热更新。`Enabled` 与 `NhpMinFrameBytes` 只在启动时读一次
+> （长度下限会被写进对象的 `.rodata`），改完要重启才生效；改了但没重启时日志里
+> 会有一条 `Warning` 说明这一点。
 
 **退出与清理**（顺带验证 `Stop()` 会摘掉 XDP）：
 

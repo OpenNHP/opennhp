@@ -233,6 +233,29 @@ decided by the Noise handshake in user space. The AC's per-knock XDP program
 and the shared loader (`nhp/utils/ebpf/engine_linux.go`) are the same code
 path selected by `EngineLoadParams.Variant`.
 
+**Attaching is opt-in, and `etc/xdp.toml` is the opt-in.** This filter is not a
+hardening tweak that is safe to turn on everywhere: it drops every inbound TCP
+flow the host did not initiate, including SYNs to services this daemon listens
+on, and on a host reachable only through the whitelist one bad list makes it
+unreachable for good. So `loadXdpConfig` (`endpoints/server/config.go`) attaches
+only when the file exists, parses, has `Enabled = true` **and** a non-empty
+`RelayIPs` — a server with no `xdp.toml` keeps exactly the exposure it had
+before the filter existed, even though `make ebpf` puts the object in
+`release/nhp-server/etc/` and many operators run the daemon as root. It also
+refuses when the HTTP knock listener or an off-host metrics endpoint is enabled
+(the shipped `endpoints/server/main/etc/http.toml` has `EnableHttp = true` on
+443), because attaching in front of a listener would take that service off the
+air with nothing in user space to say so. Loopback binds are not a conflict —
+the program is on the default-route interface.
+
+`NhpMinFrameBytes` and the knock port are *applied*, not documentation: the
+loader rewrites `nhp_min_udp_len` and `nhp_listen_port` in the object's
+`.rodata` before the verifier runs (`setServerConstants`). The port comes from
+the daemon's own `ListenPort`, never from the TOML, so the filter and the
+listener cannot disagree — a hard-coded 62206 would have dropped every knock on
+any server configured elsewhere. An object too old to carry those constants is
+refused rather than attached with its own defaults.
+
 **The filter also has to let the host's own replies back in**, and this was
 missed at first: the daemon is a client too (DNS, the auth plugin's SMTP
 submission to SES, package mirrors), and dropping those answers broke OTP
@@ -287,30 +310,44 @@ never today's file.
 
 The whitelist lives in `etc/xdp.toml` (`deploy/config-templates/server/xdp.toml`),
 rendered from `$RELAY_IPS` (comma-separated; `scripts/generate-nhp-keys.sh`
-quotes it into the TOML array) and hot-reloaded. It must carry **both** of the
-relay's addresses: the VPC **private** one, which is what SSH arrives from
-because CI jumps through the relay to the server's private address, and the
-**public** one for traffic that reaches the host through the internet gateway.
-Whitelisting only the public address closes tcp/22 the moment the daemon
-restarts.
+quotes it into the TOML array) and hot-reloaded. Entries are host addresses or
+CIDR prefixes, matched by longest prefix — `nhp_relay_ips` is an LPM trie. CI
+renders three, and each is load-bearing:
 
-**There is no break-glass SSH path**: if the list is rendered empty or without
-the private address and the daemon restarts, the only way back in is to detach
-the root volume or rebuild the instance. Two gates protect against that, both
+- the relay's VPC **private** address, which is what SSH arrives from because CI
+  jumps through the relay to the server's private address;
+- the relay's **public** address, for traffic that reaches the host through the
+  internet gateway. Whitelisting only the public address closes tcp/22 the moment
+  the daemon restarts;
+- **the VPC subnet**, because `aws_instance.relay` has no pinned `private_ip`.
+  Replacing the relay for any reason (AMI or instance-type change, taint, AZ
+  move) brings it back with a different private address. The server's live
+  whitelist would still name the old one, SSH from the new relay would be
+  dropped, and `deploy-server` — which reaches the server *through* the relay —
+  could never push the correction. The dead-man watchdog does not fire either:
+  the host still has its address. That is a root-volume-detach recovery, and the
+  subnet prefix is what prevents it. The cost is that the AC and server share
+  that subnet and are covered too.
+
+**There is no break-glass SSH path**: if the list is rendered empty or without a
+covering entry and the daemon restarts, the only way back in is to detach the
+root volume or rebuild the instance. Several gates protect against that, all
 before anything is scp'd or restarted:
 
-- the `configure` job reads `relay_private_ip` from Terraform and resolves
-  `relay.opennhp.org`, failing the whole run unless it gets an IPv4 address and
-  exactly one A record;
+- the `configure` job reads `relay_private_ip` and `subnet_cidr` from Terraform
+  and resolves `relay.opennhp.org`, failing the whole run unless it gets an IPv4
+  address, an IPv4 prefix, and exactly one A record;
 - `deploy-server`'s `Check this job's own SSH source is in the XDP whitelist`
   step asks the host what peer address it sees for the live connection
-  (`$SSH_CONNECTION`) and fails if the rendered `xdp.toml` does not list it;
-- `applyXdpConfig` refuses a parsed file with no `RelayIPs` and keeps the
-  active whitelist — an unset `RELAY_IPS`, or a file caught half-written by the
+  (`$SSH_CONNECTION`) and fails unless some entry in the rendered `xdp.toml`
+  *contains* it (a containment test, since entries may be prefixes);
+- `startXdpFilter` refuses to attach at all for a file with no `RelayIPs`, and
+  `applyXdpConfig` refuses to apply one on reload and keeps the active
+  whitelist — an unset `RELAY_IPS`, or a file caught half-written by the
   watcher, parses to valid TOML with an empty list, and applying that closes
   tcp/22 for every source.
 
-A red run with the demo still up is the intended outcome of either.
+A red run with the demo still up is the intended outcome of any of them.
 
 If the host is already unreachable, **reboot the instance before anything
 else** (`aws ec2 reboot-instances`, no SSH needed): DHCP runs before
@@ -323,7 +360,11 @@ when the filter is attached and the host does have its address.
 Loading is **fail-open**: a missing object, an old kernel or a missing
 capability leaves the daemon running with no filter and a `Warning` in the log.
 The `Verify the XDP ingress filter attached` step in `deploy-server` is what
-turns that silent loss of protection into a failed deploy. Capabilities
+turns that silent loss of protection into a failed deploy. Fail-open only means
+anything if it is true, so `loadServerEngine` does every fallible step *before*
+`link.AttachXDP` and detaches on any error after it: a filter left attached
+behind a returned error would be enforcing with an empty SSH whitelist that
+user space no longer holds a handle to fix, while the log says "fail-open". Capabilities
 (`CAP_BPF CAP_NET_ADMIN CAP_PERFMON`) plus a root `ExecStartPre` that prepares
 `/sys/fs/bpf` come from `terraform/demo/userdata/server.sh` on new hosts and
 from a systemd drop-in installed by `deploy-server` on existing ones — keep the

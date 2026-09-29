@@ -28,6 +28,25 @@ output "relay_private_ip" {
   value       = aws_instance.relay.private_ip
 }
 
+# The relay's private address is not pinned: aws_instance.relay takes whatever
+# the subnet hands it, so replacing the instance (an AMI or instance-type
+# change, a taint, an AZ move) gives it a new one. That address is the source of
+# every SSH session into the nhp-server host, and the server's XDP whitelist is
+# what admits it — so a whitelist naming only the old address drops SSH from the
+# new relay, and the one path CI has for pushing a corrected whitelist is the
+# path that just closed. Recovery would mean detaching the server's root volume.
+#
+# So the whitelist carries this prefix as well as the two host addresses (see
+# "Resolve the relay addresses for the nhp-server XDP whitelist" in
+# .github/workflows/deploy-demo-v2.yml). A replacement relay comes back inside
+# it and is still allowed in. The cost is that the other demo hosts share this
+# subnet and are covered too, which is a far smaller problem than a server that
+# cannot be reached at all.
+output "subnet_cidr" {
+  description = "Public subnet CIDR (the nhp-server XDP whitelist allows SSH from it, so a replaced relay keeps its way in)"
+  value       = aws_subnet.public.cidr_block
+}
+
 output "dns_records" {
   description = "DNS records created"
   value = {

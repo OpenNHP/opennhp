@@ -235,7 +235,7 @@ path selected by `EngineLoadParams.Variant`.
 
 **The filter also has to let the host's own replies back in**, and this was
 missed at first: the daemon is a client too (DNS, the auth plugin's SMTP
-submission to SES, package mirrors, NTP), and dropping those answers broke OTP
+submission to SES, package mirrors), and dropping those answers broke OTP
 email with a DNS `i/o timeout` while every knock still worked. `has_local_flow()`
 answers it with `bpf_sk_lookup_{tcp,udp}` against the kernel's socket table —
 an established TCP socket or a *connected* UDP socket admits the packet, a
@@ -244,6 +244,33 @@ conn_track/TC-egress machinery and keeps no state that can drift. ICMP
 fragmentation-needed (type 3 code 4) passes for the same reason; the rest of
 ICMP stays dropped. `deploy-server` probes udp/53 and tcp/587 from the host
 after every restart so this cannot regress silently again.
+
+**Two clients the socket table cannot vouch for are passed by port pair, and
+DHCP is the one that matters.** `has_local_flow()` only admits *connected*
+sockets, and a DHCP client receives its lease on a raw `AF_PACKET` socket or on
+one merely bound to udp/68 — so the renewal answer (udp/67 → udp/68) was
+dropped. EC2 leases the primary private IPv4 for a finite time and
+systemd-networkd renews it at half the lease; with the answer dropped the lease
+expired, networkd removed the address, and roughly an hour after a deploy that
+had verified perfectly the host went dark on **every** port at once — SSH, the
+knock port, and with them every recovery path except a reboot. The knock port
+staying open is what makes this look like "the filter closed the whole host"
+rather than a filter bug. chronyd has the same shape one layer up (its poll
+answer comes back to its own udp/123) and costs the clock instead of the
+address, so it is passed too; nothing else is, because the alternative — admit
+anything addressed to a bound port — is the "no unsolicited packet gets in"
+property thrown away. The AC's program has always had the DHCP short-circuit
+(`DHCP_PORT_R || DHCP_PORT_O`); the server's fork dropped it.
+
+`deploy-server`'s `Verify the host can still renew its DHCP lease` step is the
+standing gate: it runs `networkctl renew` and fails unless a new
+`REASON=DHCP_CLIENT` line shows the answer crossed the filter. No other probe
+can see this, because everything works for as long as the lease lasts. The
+loader's second line of defence is a watchdog in
+`endpoints/server/ebpf/serverengine.go`: if the filtered interface has no
+routable IPv4 address for two minutes it logs `Critical` and detaches, so the
+next DHCP exchange can restore the host instead of needing volume surgery. It
+can only fire in a state where the host answers nothing anyway.
 
 **The event log is bounded on purpose**, because every line in it is a packet
 somebody else chose to send and `nhp/log` rotates by date without ever pruning:
@@ -277,9 +304,21 @@ before anything is scp'd or restarted:
   exactly one A record;
 - `deploy-server`'s `Check this job's own SSH source is in the XDP whitelist`
   step asks the host what peer address it sees for the live connection
-  (`$SSH_CONNECTION`) and fails if the rendered `xdp.toml` does not list it.
+  (`$SSH_CONNECTION`) and fails if the rendered `xdp.toml` does not list it;
+- `applyXdpConfig` refuses a parsed file with no `RelayIPs` and keeps the
+  active whitelist — an unset `RELAY_IPS`, or a file caught half-written by the
+  watcher, parses to valid TOML with an empty list, and applying that closes
+  tcp/22 for every source.
 
 A red run with the demo still up is the intended outcome of either.
+
+If the host is already unreachable, **reboot the instance before anything
+else** (`aws ec2 reboot-instances`, no SSH needed): DHCP runs before
+`nhp-serverd` starts, so the address comes back and tcp/22 is open for the
+window before the daemon attaches the filter again. Use that window to either
+`systemctl stop nhp-serverd` (filter detached, host stays reachable) or re-run
+the deploy. Volume surgery is only needed when the *whitelist* is wrong, i.e.
+when the filter is attached and the host does have its address.
 
 Loading is **fail-open**: a missing object, an old kernel or a missing
 capability leaves the daemon running with no filter and a `Warning` in the log.

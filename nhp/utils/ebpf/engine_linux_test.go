@@ -207,6 +207,99 @@ func TestServerEngineLoadAttachesToLoopback(t *testing.T) {
 	}
 }
 
+// Functional proof of the two port-pair exceptions, and of the property they
+// must not break.
+//
+// The regex test above guards the shape of the C; this one asks the kernel.
+// The receiving socket in each case is *bound and not connected* — the exact
+// shape has_local_flow() refuses, and the shape every DHCP client and chronyd
+// use — so a datagram only arrives if the program's own branch passed it. The
+// last case is the control: the same unconnected-receiver setup on an ordinary
+// port must still be dropped, or the exceptions would have been widened into
+// "anything addressed to a bound port gets in", which is the whole filter
+// given away.
+//
+// Runs on loopback so it cannot disturb the host's real traffic, and skips
+// without CAP_BPF + CAP_NET_ADMIN (binding udp/68 and udp/123 needs privilege
+// too).
+func TestServerFilterPassesClientRepliesAndDropsUnsolicited(t *testing.T) {
+	objPath := serverObjPath(t)
+
+	_, err := EngineLoad(EngineLoadParams{
+		Variant:     VariantServer,
+		IfaceName:   "lo",
+		ProgObjPath: objPath,
+		ComponentId: "test",
+		LogDirPath:  t.TempDir(),
+		LogLevel:    1,
+	})
+	if err != nil {
+		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+	}
+	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
+
+	tests := []struct {
+		name       string
+		serverPort int // the source port of the "reply"
+		clientPort int // the port the host's client has bound
+		wantPass   bool
+	}{
+		{"dhcp lease renewal", 67, 68, true},
+		{"ntp poll answer", 123, 123, true},
+		{"unsolicited datagram to a bound port", 40000, 40001, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			lo := net.IPv4(127, 0, 0, 1)
+
+			// Bound, never connected: the kernel's socket table cannot tell
+			// this from a listener, which is why has_local_flow() says no.
+			rx, err := net.ListenUDP("udp4", &net.UDPAddr{IP: lo, Port: tc.clientPort})
+			if err != nil {
+				t.Skipf("cannot bind udp/%d: %v", tc.clientPort, err)
+			}
+			defer rx.Close()
+
+			// NTP answers arrive on the very socket the poll went out of
+			// (chronyd binds udp/123 and both sends and receives on it), so
+			// that case sends from `rx` itself rather than opening a second
+			// socket on a port already taken.
+			if tc.serverPort == tc.clientPort {
+				if _, err := rx.WriteToUDP([]byte("reply"), &net.UDPAddr{IP: lo, Port: tc.clientPort}); err != nil {
+					t.Fatalf("send: %v", err)
+				}
+			} else {
+				tx, err := net.DialUDP("udp4", &net.UDPAddr{IP: lo, Port: tc.serverPort}, &net.UDPAddr{IP: lo, Port: tc.clientPort})
+				if err != nil {
+					t.Skipf("cannot send from udp/%d: %v", tc.serverPort, err)
+				}
+				defer tx.Close()
+
+				if _, err := tx.Write([]byte("reply")); err != nil {
+					t.Fatalf("send: %v", err)
+				}
+			}
+
+			buf := make([]byte, 64)
+			_ = rx.SetReadDeadline(time.Now().Add(2 * time.Second))
+			n, readErr := rx.Read(buf)
+
+			if tc.wantPass {
+				if readErr != nil {
+					t.Errorf("%d -> %d was dropped (%v); the host's client traffic must get in",
+						tc.serverPort, tc.clientPort, readErr)
+				}
+				return
+			}
+			if readErr == nil {
+				t.Errorf("%d -> %d arrived (%d bytes); unsolicited datagrams must stay dropped",
+					tc.serverPort, tc.clientPort, n)
+			}
+		})
+	}
+}
+
 // The action codes are a wire format between nhp_server_xdp.c and
 // serverActionName(): the C side puts a bare byte on the perf ring and this
 // side is the only thing that gives it a meaning. Parse the constants out of
@@ -294,6 +387,23 @@ func TestBulkPassClassesAreCountedNotLogged(t *testing.T) {
 		t.Errorf("ACT_SSH_RELAY is reported with report=%s; want the SYN-only guard is_syn", got)
 	}
 
+	// A lease renewal is a couple of datagrams an hour and the host's address
+	// depends on it, so it stays on the ring: after the outage it caused, the
+	// DHCP_CLIENT line is the one an operator greps for to see the exception
+	// working.
+	if got, ok := report["ACT_DHCP_CLIENT"]; !ok {
+		t.Error("ACT_DHCP_CLIENT is not recorded; DHCP replies must be admitted and visible")
+	} else if got != "true" {
+		t.Errorf("ACT_DHCP_CLIENT is reported with report=%s; want true", got)
+	}
+	// chrony polls every 32-64s, so this one belongs in the summary, not the
+	// per-packet log.
+	if got, ok := report["ACT_NTP_CLIENT"]; !ok {
+		t.Error("ACT_NTP_CLIENT is no longer recorded at all")
+	} else if got != "false" {
+		t.Errorf("ACT_NTP_CLIENT is reported with report=%s; a periodic poll should be counted only", got)
+	}
+
 	// Every drop stays on the ring (the token bucket, not the call site, is
 	// what bounds those) -- a silent drop class is a blind spot.
 	for action, got := range report {
@@ -306,6 +416,41 @@ func TestBulkPassClassesAreCountedNotLogged(t *testing.T) {
 	// would bypass the counters entirely.
 	if strings.Contains(string(src), "submit_event(") {
 		t.Error("submit_event() still present; all call sites should go through record_packet()")
+	}
+}
+
+// The two client protocols the socket table cannot vouch for must be PASSed,
+// by port pair.
+//
+// This is the regression with the highest blast radius in the whole program:
+// the DHCP reply (67 -> 68) arrives on a raw or merely-bound socket, so
+// has_local_flow() cannot admit it, and dropping it costs the host its IPv4
+// address one lease later — every port dark, no SSH, no knock, no way in. The
+// NTP pair (123 -> 123) is the same shape one layer up and costs the clock.
+// Both are three lines of C that look removable in a cleanup, so the verdict
+// is asserted here.
+func TestClientProtocolsWithoutAConnectedSocketArePassed(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_server_xdp.c"))
+	if err != nil {
+		t.Fatalf("read nhp_server_xdp.c: %v", err)
+	}
+
+	for _, tc := range []struct {
+		action string
+		guard  string
+	}{
+		{"ACT_DHCP_CLIENT", `udp->source == bpf_htons\(DHCP_PORT_SERVER\)`},
+		{"ACT_NTP_CLIENT", `udp->source == bpf_htons\(NTP_PORT\)`},
+	} {
+		re := regexp.MustCompile(`(?s)` + tc.guard + `.*?record_packet\(ctx, ` + tc.action + `.*?return (XDP_\w+);`)
+		m := re.FindStringSubmatch(string(src))
+		if m == nil {
+			t.Errorf("no branch guarded by the %s port pair reporting %s; the host's own client traffic would be dropped", tc.action, tc.action)
+			continue
+		}
+		if m[1] != "XDP_PASS" {
+			t.Errorf("the %s branch returns %s, want XDP_PASS", tc.action, m[1])
+		}
 	}
 }
 

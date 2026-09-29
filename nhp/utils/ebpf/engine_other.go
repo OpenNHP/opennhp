@@ -35,6 +35,7 @@ type EngineLoadParams struct {
 type EngineHandle struct {
 	Variant     EngineVariant
 	Objs        any
+	IfaceName   string
 	EventsMap   *ebpf.Map
 	RelayIPsMap *ebpf.Map
 

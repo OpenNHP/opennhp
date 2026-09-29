@@ -639,7 +639,8 @@ func (s *UdpServer) loadXdpConfig() error {
 	return nil
 }
 
-// applyXdpConfig pushes a parsed xdp.toml into the kernel-side maps.
+// applyXdpConfig pushes a parsed xdp.toml into the kernel-side maps. An empty
+// whitelist is refused — see the comment on that branch.
 func (s *UdpServer) applyXdpConfig(conf *XdpTomlConfig) {
 	minBytes := conf.NhpMinFrameBytes
 	if minBytes == 0 {
@@ -658,6 +659,21 @@ func (s *UdpServer) applyXdpConfig(conf *XdpTomlConfig) {
 		// needs to know it is still enforcing.
 		log.Warning("xdp config: Enabled=false has no effect — the XDP program is attached at startup; remove %s and restart to run unfiltered",
 			s.xdpConfigFileName())
+	}
+
+	// An empty list is never a policy anyone wants: the whitelist is the only
+	// thing that reaches tcp/22 on this host, so applying it closes SSH for
+	// everybody with no break-glass path. It is, on the other hand, exactly
+	// what a config rendered with an unset RELAY_IPS produces, and what a
+	// truncated or half-written file parses to (TOML with no RelayIPs key is
+	// valid TOML). loadXdpConfig already refuses to apply a file that fails to
+	// parse; this refuses the one that parses to nothing. Keeping the active
+	// list is always the safer of the two outcomes — the filter carries on
+	// enforcing the last list an operator actually chose.
+	if len(conf.RelayIPs) == 0 {
+		log.Critical("xdp config: %s lists no RelayIPs — keeping the active whitelist rather than closing tcp/22 for every source. Fix RELAY_IPS in the deploy pipeline",
+			s.xdpConfigFileName())
+		return
 	}
 
 	if err := ebpflocal.UpdateRelayIPs(conf.RelayIPs); err != nil {

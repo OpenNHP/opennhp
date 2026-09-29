@@ -89,8 +89,16 @@ type EngineLoadParams struct {
 // struct, held so the collection is not garbage collected out from under the
 // pins; nothing outside this package reads it.
 type EngineHandle struct {
-	Variant     EngineVariant
-	Objs        any
+	Variant EngineVariant
+	Objs    any
+
+	// IfaceName is the interface the XDP program was actually attached to,
+	// resolved from the default route when the caller did not name one. The
+	// server's watchdog needs it to tell whether the host still has the IPv4
+	// configuration the filter is written in terms of (see
+	// endpoints/server/ebpf).
+	IfaceName string
+
 	EventsMap   *ebpf.Map
 	RelayIPsMap *ebpf.Map
 	XdpLink     link.Link
@@ -325,6 +333,7 @@ func loadAcEngine(params EngineLoadParams, pinDir string) (*EngineHandle, error)
 	h := &EngineHandle{
 		Variant:   VariantAC,
 		Objs:      &objs,
+		IfaceName: iface.Name,
 		EventsMap: eventsMap,
 		XdpLink:   acXdpLink,
 		TcLink:    acTcLink,
@@ -470,6 +479,7 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (*EngineHandle, er
 	h := &EngineHandle{
 		Variant:     VariantServer,
 		Objs:        &objs,
+		IfaceName:   iface.Name,
 		EventsMap:   objs.NhpEvents,
 		RelayIPsMap: objs.RelayIPs,
 		XdpLink:     serverXdpLink,
@@ -510,6 +520,8 @@ const (
 	ActTcpEstablished   uint8 = 4
 	ActUdpEstablished   uint8 = 5
 	ActIcmpFragNeeded   uint8 = 6
+	ActDhcpClient       uint8 = 7
+	ActNtpClient        uint8 = 8
 	ActDropTcpSshOther  uint8 = 10
 	ActDropTcpNhp       uint8 = 11
 	ActDropTcpOther     uint8 = 12
@@ -536,6 +548,10 @@ func serverActionName(action uint8) (verdict, reason string) {
 		return "PASS", "UDP_ESTABLISHED"
 	case ActIcmpFragNeeded:
 		return "PASS", "ICMP_FRAG_NEEDED"
+	case ActDhcpClient:
+		return "PASS", "DHCP_CLIENT"
+	case ActNtpClient:
+		return "PASS", "NTP_CLIENT"
 	case ActDropTcpSshOther:
 		return "DROP", "TCP_SSH_OTHER"
 	case ActDropTcpNhp:

@@ -996,6 +996,94 @@ jobs:
             echo "SMTP not configured for this deploy; skipping the tcp/587 probe."
           fi
 
+      - name: Verify the host can still renew its DHCP lease
+        # The probe for the worst failure this filter can cause, and the one
+        # that took the demo down: the host losing its own IP address.
+        #
+        # EC2 leases the primary private IPv4 for a finite time and
+        # systemd-networkd renews it at half the lease. The renewal answer is a
+        # datagram from udp/67 to udp/68 received on a raw or merely-bound
+        # socket, so has_local_flow() cannot admit it — the first version of
+        # the filter dropped it, the lease expired about an hour after a deploy
+        # that had verified perfectly, networkd removed the address, and the
+        # host went dark on every port at once. SSH, the knock port, and
+        # therefore every recovery path short of a reboot.
+        #
+        # None of the other probes can see this: the daemon serves knocks and
+        # opens outbound flows exactly as it should for as long as the lease
+        # lasts. So this step forces the renewal now, while CI is still
+        # connected, and asserts the answer actually crossed the filter — the
+        # program logs an admitted lease renewal as REASON=DHCP_CLIENT, so a
+        # new line is proof, and the count is taken before the renew because
+        # the event log spans the whole day.
+        run: |
+          set -euo pipefail
+
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-server"
+          EVENT_LOG="$REMOTE_DIR/logs/nhp_server_xdp-\$(date +%F).log"
+
+          IFACE=$(ssh nhp-server "ip -4 -o route show default | awk '{print \$5; exit}'")
+          if [ -z "$IFACE" ]; then
+            echo "ERROR: the server host has no default route; cannot tell which" >&2
+            echo "       interface the filter is attached to." >&2
+            exit 1
+          fi
+          ADDR_BEFORE=$(ssh nhp-server "ip -4 -o addr show dev $IFACE scope global | awk '{print \$4; exit}'")
+          echo "Interface $IFACE, address ${ADDR_BEFORE:-(none)}"
+
+          if ! ssh nhp-server "command -v networkctl >/dev/null 2>&1"; then
+            echo "ERROR: networkctl is not present on the server host, so this" >&2
+            echo "       job cannot force a DHCP renewal. The AMI's DHCP client" >&2
+            echo "       has changed: add the equivalent probe for it rather" >&2
+            echo "       than dropping this gate — an unrenewable lease takes" >&2
+            echo "       the whole host off the network one lease later." >&2
+            exit 1
+          fi
+
+          BEFORE=$(ssh nhp-server "grep -c 'REASON=DHCP_CLIENT' $EVENT_LOG 2>/dev/null || true")
+          BEFORE=${BEFORE:-0}
+
+          echo "Forcing a DHCP renewal on $IFACE..."
+          if ! ssh nhp-server "sudo networkctl renew $IFACE"; then
+            echo "ERROR: 'networkctl renew $IFACE' failed — is systemd-networkd" >&2
+            echo "       still the DHCP client for this link?" >&2
+            ssh nhp-server "networkctl status $IFACE" || true
+            exit 1
+          fi
+
+          SEEN=no
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            AFTER=$(ssh nhp-server "grep -c 'REASON=DHCP_CLIENT' $EVENT_LOG 2>/dev/null || true")
+            AFTER=${AFTER:-0}
+            if [ "$AFTER" -gt "$BEFORE" ]; then
+              SEEN=yes
+              break
+            fi
+            sleep 3
+          done
+
+          if [ "$SEEN" != "yes" ]; then
+            echo "ERROR: the DHCP lease renewal answer did not reach the host." >&2
+            echo "       udp/67 -> udp/68 is being dropped at the driver, which" >&2
+            echo "       means this host loses its IPv4 address (and every way" >&2
+            echo "       in, including SSH) when the current lease expires." >&2
+            echo "       Check the DHCP branch in nhp/ebpf/xdp/nhp_server_xdp.c" >&2
+            echo "       is present in the deployed .o, then look for" >&2
+            echo "       REASON=UDP_OTHER with SPT=67 in the event log:" >&2
+            ssh nhp-server "grep -E 'SPT=(67|68)' $EVENT_LOG 2>/dev/null | tail -n 10" || true
+            exit 1
+          fi
+          echo "  ok — lease renewal admitted (REASON=DHCP_CLIENT)"
+
+          ADDR_AFTER=$(ssh nhp-server "ip -4 -o addr show dev $IFACE scope global | awk '{print \$4; exit}'")
+          if [ -z "$ADDR_AFTER" ] || [ "$ADDR_AFTER" != "$ADDR_BEFORE" ]; then
+            echo "ERROR: $IFACE address changed across the renewal:" >&2
+            echo "       before='$ADDR_BEFORE' after='$ADDR_AFTER'" >&2
+            echo "       The XDP whitelist and this job's SSH path are written" >&2
+            echo "       in terms of that address; stop and investigate." >&2
+            exit 1
+          fi
+
       - name: Verify no HTTP/HTTPS listener remains on server
         # Fail the deploy loudly if the retired HTTP surface came back: nginx
         # holding :80/:443, or nhp-serverd binding :8443 because http.toml was

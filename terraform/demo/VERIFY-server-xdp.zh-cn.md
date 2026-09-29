@@ -29,6 +29,8 @@
 | UDP/62206，src ∈ 白名单 | PASS（跳过长度校验） | `NHP_RELAY` | 是（限速） |
 | UDP/62206，长度 ≥ 240 | PASS | `NHP_DEFAULT` | 是（限速） |
 | UDP/62206，长度 < 240 | DROP | `UDP_SHORT` | 是（限速） |
+| UDP 67 → 68（DHCP 续租应答） | PASS | `DHCP_CLIENT` | 是（限速） |
+| UDP 123 → 123（NTP 应答） | PASS | `NTP_CLIENT` | **否，只计数** |
 | UDP 其它端口，本机有 **connected** socket | PASS | `UDP_ESTABLISHED` | **否，只计数** |
 | UDP 其它端口 | DROP | `UDP_OTHER` | 是（限速） |
 | ICMP type 3 code 4（需要分片） | PASS | `ICMP_FRAG_NEEDED` | 是（限速） |
@@ -66,6 +68,32 @@ TC egress + `conn_track` 做这件事，server 不需要：内核的 socket 表�
 > 响应 —— 线上表现是 OTP 邮件发不出，日志里是 `lookup
 > email-smtp.us-east-2.amazonaws.com on 10.0.0.2:53: i/o timeout`（DNS **应答**
 > 被丢）。验证时 §1.4 的「回包矩阵」和 §4.5 的 DNS/SMTP 探测必须都过。
+
+`DHCP_CLIENT` / `NTP_CLIENT` 两行是 socket 表**答不了**的那两类客户端，只能按
+端口对放行：
+
+> **这一段也是补 bug，而且是本特性造成过的最严重的一次故障。** DHCP 客户端
+> （AL2023 = systemd-networkd）收租约用的是 raw `AF_PACKET` socket 或只
+> `bind()` 到 udp/68 的 socket，两者在内核 socket 表里都不是「已连接」，
+> `has_local_flow()` 必然拒绝 —— 于是 **67 → 68 的续租应答被 XDP 丢掉**。EC2 的
+> 主私网 IPv4 是有租期的，networkd 在半个租期时续租，续不上就在租期到点时把地址
+> （连同默认路由）从网卡上摘掉：**部署当时一切正常、约一个租期之后整台主机在所有
+> 端口上同时失联** —— SSH、敲门端口、以及除重启之外的所有恢复通道。注意故障现象
+> 不像「过滤器写错了」，因为敲门端口在地址消失前一直是好的。chronyd 的形状一样
+> （应答回到它自己的 udp/123），代价是时钟而不是地址，所以一并放行。
+>
+> **这张放行名单就到此为止。** 「某个守护进程的回包被丢了」本身不构成加一条的
+> 理由：把「凡是发给已 bind 端口的包都放进来」写进去，等于把整个过滤器的前提
+> 扔掉。AC 端的程序一直有 DHCP 短路（`DHCP_PORT_R || DHCP_PORT_O`），是 server
+> 这份 fork 把它删掉了。
+>
+> 回归防线有三层：`nhp/utils/ebpf/engine_linux_test.go` 的
+> `TestServerFilterPassesClientRepliesAndDropsUnsolicited`（在 lo 上真发包，未
+> connected 的 socket 收到 = 分支生效，普通端口收不到 = 没有放宽）、
+> `deploy-server` 的 `Verify the host can still renew its DHCP lease`
+> （`networkctl renew` 后必须出现新的 `REASON=DHCP_CLIENT`），以及
+> `endpoints/server/ebpf/serverengine.go` 里的看门狗（网卡上连续两分钟没有可路由
+> 的 IPv4 地址就打 `Critical` 并摘掉 XDP，让 DHCP 能自己恢复）。
 
 ---
 
@@ -267,6 +295,36 @@ import socket; s=socket.socket(); s.bind(('10.99.0.2',8080)); s.listen(5); s.acc
 timeout 3 bash -c 'exec 3<>/dev/tcp/10.99.0.2/8080'; echo $?   # 期望：124（超时=被丢）
 ```
 
+**未 connected 的客户端 socket（DHCP / NTP）**——上面那条「只认 connected」的
+性质有两个必须开口子的例外，而 DHCP 那个曾经把整台主机弄下线（见开头的说明）。
+在 netns 里用**只 bind、不 connect** 的 socket 收，才是真实形状：
+
+```bash
+# 67 → 68：DHCP 续租应答。收端只 bind
+sudo ip netns exec nhpxdp python3 - <<'PY' &
+import socket
+s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(5)
+s.bind(('10.99.0.2',68)); print("dhcp:", s.recvfrom(64))    # 期望收到；修复前：timeout
+PY
+sleep 1
+sudo python3 - <<'PY'
+import socket
+s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.bind(('10.99.0.1',67))
+s.sendto(b'DHCPACK',('10.99.0.2',68))
+PY
+wait
+# 123 → 123：NTP 应答（chronyd 的收发是同一个 bind 在 123 的 socket）
+# 同上，把两个端口都换成 123 即可
+```
+
+事件日志里对应 `[NHP-PASS] REASON=DHCP_CLIENT ... SPT=67 DPT=68`；`NTP_CLIENT`
+只计数，看 `[NHP-STAT]`。同一组断言（含「普通端口的未 connected socket 仍然收
+不到」这条反向确认）已经写成单元测试，有 CAP_BPF 时直接跑：
+
+```bash
+sudo -E env "PATH=$PATH" go test -run TestServerFilterPassesClientReplies -v ./utils/ebpf/   # 在 nhp/ 下
+```
+
 **白名单两条分支**（把 10.99.0.1 加进白名单后重测）：
 
 ```bash
@@ -454,6 +512,7 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV \
 | `deploy-server` → `Deploy nhp-serverd and plugins` | scp `.o` + `xdp.toml`，安装 `/etc/systemd/system/nhp-serverd.service.d/10-ebpf.conf`（`CAP_BPF CAP_NET_ADMIN CAP_PERFMON` + 准备 `/sys/fs/bpf`），重启 | — |
 | `deploy-server` → `Verify the XDP ingress filter attached` | `ip -details link show \| grep -q xdpgeneric`，没挂上就红 | 这是把「fail-open 静默失效」变成「部署失败」的唯一关卡 |
 | `deploy-server` → `Verify the server's own outbound flows still get their replies` | 在 server 上 `getent ahostsv4 <SMTP_HOST>`（udp/53 应答）+ `/dev/tcp/<SMTP_HOST>/587`（SYN-ACK），各重试 3 次 | 红；这是把「回包被丢 → OTP 邮件发不出」变成「部署失败」的关卡。DNS 失败看 `REASON=UDP_OTHER`，SMTP 失败看 `REASON=TCP_OTHER` |
+| `deploy-server` → `Verify the host can still renew its DHCP lease` | `sudo networkctl renew <iface>`，然后事件日志里 `REASON=DHCP_CLIENT` 的行数必须增加，且网卡地址不变 | 红；这是把「续租应答被丢 → 一个租期后整机失联」变成「部署失败」的关卡。失败时看 `REASON=UDP_OTHER ... SPT=67`。**其它任何探测都看不见这个故障**，因为租期没到之前一切正常 |
 
 本地复现 DNS 关卡：
 
@@ -507,6 +566,9 @@ sudo bpftool map lookup pinned /sys/fs/bpf/nhp_relay_ips \
 
 cat /home/ec2-user/nhp-server/etc/xdp.toml
 grep 'xdp relay whitelist applied' /home/ec2-user/nhp-server/logs/server-$(date +%F).log | tail -1
+# 另一条要确认「没出现」的日志：写了个没有 RelayIPs 的 xdp.toml 时会打这行，
+# 并且保留原有白名单（不会把 tcp/22 全关掉）
+grep 'lists no RelayIPs' /home/ec2-user/nhp-server/logs/server-$(date +%F).log | tail -1
 ```
 
 ### 4.4 事件日志（判决可观测）
@@ -566,6 +628,36 @@ SMTP 挂了则是 `REASON=TCP_OTHER ... SPT=587`。两者都说明 `has_local_fl
 没有生效 —— 通常是 `.o` 是旧的（未重新 `make ebpf-objs`），或内核太老不支持
 `bpf_sk_lookup_*`（那种情况下整个程序装载失败，是 fail-open，见 §6.1）。
 
+### 4.6b DHCP 续租（★ 这条决定主机还能不能被找到）
+
+等价于 CI 的 `Verify the host can still renew its DHCP lease`。**这一条不过就
+不要走开**：主机会在当前租期到点时丢掉自己的 IPv4 地址，届时所有端口一起失联，
+只能重启实例。
+
+```bash
+ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
+  IFACE=$(ip -4 -o route show default | awk "{print \$5; exit}")
+  LOG=~/nhp-server/logs/nhp_server_xdp-$(date +%F).log
+  ip -4 -o addr show dev $IFACE scope global          # 记住地址
+  BEFORE=$(grep -c REASON=DHCP_CLIENT $LOG 2>/dev/null || true)
+  sudo networkctl renew $IFACE
+  sleep 5
+  echo "DHCP_CLIENT 行数: ${BEFORE:-0} -> $(grep -c REASON=DHCP_CLIENT $LOG 2>/dev/null || true)"
+  grep -E "SPT=(67|68)" $LOG | tail -3
+  ip -4 -o addr show dev $IFACE scope global          # 地址必须没变'
+```
+
+期望：`DHCP_CLIENT` 行数增加，地址不变。若看到的是
+`REASON=UDP_OTHER ... SPT=67 DPT=68`，说明部署的 `.o` 是不带 DHCP 放行分支的
+旧版本，立刻回到 §6.2 的恢复流程，不要等租期到点。
+
+顺便看一眼时钟（`NTP_CLIENT` 被丢的表现是时钟慢慢漂，NHP 的时间戳窗口最终会
+拒掉敲门）：
+
+```bash
+ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV 'chronyc -n tracking | head -4'
+```
+
 ### 4.7 业务回归（最重要的一条）
 
 ```bash
@@ -602,6 +694,8 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$(cd terraform/demo && terraform output -raw
 | 公网 → UDP/62206 <240B | 进 user space 由 `RecvPrecheck` 丢 | 内核丢（`UDP_SHORT`），不消耗用户态 |
 | 公网 → UDP/62206 ≥240B | 通 | 通（`NHP_DEFAULT`）——NHP 语义不变 |
 | server 自己的 DNS 查询 | 通 | 通（应答 `UDP_ESTABLISHED`，见 `[NHP-STAT]`）——**这一条曾经是坏的** |
+| server 自己的 DHCP 续租 | 通 | 通（`DHCP_CLIENT`）——**这一条曾经是坏的，代价是整台主机失联** |
+| server 自己的 NTP 对时 | 通 | 通（`NTP_CLIENT`，见 `[NHP-STAT]`）——**这一条曾经是坏的** |
 | server 自己的 SMTP/HTTPS 出站 | 通 | 通（`TCP_ESTABLISHED`，见 `[NHP-STAT]`） |
 | 公网 → server 上任意 LISTEN 端口 | 由安全组决定 | 一律丢（socket 是 LISTEN，不构成回包） |
 | `nmap` 公网扫描结果 | — | 基本不变（安全组本就挡住 TCP） |
@@ -627,15 +721,41 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
 期望日志：`server eBPF engine load failed, fail-open (no XDP ingress filter): ...`。
 注意这时主机重新「裸奔」，只在需要验证 CI 关卡（§3 最后一行）时做，做完立刻恢复。
 
-### 6.2 白名单写错 → 失联后的恢复
+### 6.2 失联后的恢复
 
-**没有破玻璃通道。** 按代价从低到高：
+**没有破玻璃通道。** 先分清是哪一类失联，两类的代价差一个数量级：
+
+**(a) 主机丢了自己的 IPv4 地址**（DHCP 续租被丢，或任何同类问题）——现象是
+**所有**端口一起超时，敲门端口也不通。**直接重启实例**即可，不用碰磁盘：
+
+```bash
+aws ec2 reboot-instances --instance-ids <server-instance-id> --region us-east-2
+```
+
+DHCP 在 `nhp-serverd` 启动之前跑完，所以地址会回来，并且在守护进程重新挂上过滤
+器之前有一段 tcp/22 敞开的窗口。抓住这个窗口做二选一：
+
+```bash
+# 要么把过滤器停掉（链接句柄在进程里，进程停 = 过滤器摘掉），慢慢排查
+ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV 'sudo systemctl stop nhp-serverd'
+# 要么直接重跑带修复的流水线
+```
+
+从此之后这一类会自愈：`serverengine.go` 的看门狗发现网卡连续两分钟没有可路由的
+IPv4 地址就会打 `Critical` 并摘掉 XDP（日志里 `xdp watchdog:`），下一次 DHCP
+交互就能把地址拿回来。它只在「主机反正什么都答不了」的状态下才会触发。
+
+**(b) 白名单写错**（过滤器挂着、地址也在，只是 tcp/22 的源地址不在名单里）——
+重启没用，重启后同一份 `xdp.toml` 会再次生效。按代价从低到高：
 
 1. **摘盘改文件**（保状态）：停实例 → detach 根卷 → 挂到另一台实例 →
    改 `/home/ec2-user/nhp-server/etc/xdp.toml`（或 `systemctl disable nhp-serverd`）→
    挂回 → 启动。EIP 由 `aws_eip` 关联保留。
 2. **重建实例**：`terraform apply -replace=aws_instance.server`。新实例上
    `nhp-serverd` 尚未部署、XDP 未挂载，SSH 暂时开放，CI 重新部署后才上锁。
+
+分辨 (a) / (b) 的办法：(a) 连敲门都不通（浏览器 demo 整条链路挂），(b) 敲门
+正常、只有 SSH 不通。
 
 **演练时的自保**：改白名单前先在 relay 上开一个持续 ping 与一个 `while` 循环连
 tcp/22 的观测窗口，一旦 `SSH_RELAY` 消失立刻把 `xdp.toml` 改回（热更新，无需重启）。
@@ -674,13 +794,22 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
    socket 还在就一直放行，与 `xdp.toml` 无关。
 4. **`Enabled` / `NhpMinFrameBytes` 只是记录值** —— 前者不会阻止 attach，后者编译进
    `.o`（`NHP_MIN_UDP_LEN`）。改长度下界要重新 `make ebpf-objs` 并重发 `.o`。
-5. **事件日志有速率限制** —— 每个 action 每 CPU 每秒 64 条（`NHP_EVENT_BURST`），大流量
-   扫描下日志条数少于真实丢包数，计数请用 `bpf_stats` 的 `run_cnt`。
+5. **事件日志有速率限制** —— 每个 action 每 CPU 每秒 16 条（`NHP_EVENT_BURST`），大流量
+   扫描下日志条数少于真实丢包数；准确数字看每分钟的 `[NHP-STAT]` 行（`nhp_action_stats`
+   对每个包计数，与限速无关），或 `bpf_stats` 的 `run_cnt`。
 6. **回包放行依赖 `bpf_sk_lookup_{tcp,udp}`** —— 内核 ≥4.20 才有。太老的内核上整个
    程序装载失败（fail-open，见风险 2），而不是「只丢回包」；升级 `.o` 时如果只换了
    `.o` 没换二进制也没关系，两者之间没有新增接口。另外它只认 IPv4：IPv6 一律
    `XDP_PASS`，本来也不在过滤范围内。
-7. **出站回包不覆盖 unconnected UDP socket** —— 放行条件是 socket 已 `connect()`
-   （Go 的 resolver、`net/smtp`、chrony 都是）。若将来有组件用未连接的 UDP socket
-   收外部响应（某些 NTP/SNMP 实现），它的回包会被丢；届时看事件日志
-   `REASON=UDP_OTHER`，不要靠把整段端口区间放开来修。
+7. **出站回包不覆盖 unconnected UDP socket** —— `has_local_flow()` 的放行条件是
+   socket 已 `connect()`（glibc/Go 的 resolver、`net/smtp` 都是）。**已经踩过两次**：
+   DHCP 客户端（raw / 只 bind 在 68）导致主机丢地址整机失联，chronyd（收发都在
+   bind 的 123 上）导致时钟漂移；这两类现在按端口对显式放行，各有 `DHCP_CLIENT` /
+   `NTP_CLIENT` 一个 action。若将来又有组件用未连接的 UDP socket 收外部响应
+   （SNMP trap、某些服务发现），表现同样是 `REASON=UDP_OTHER`，而且**可能延迟到
+   下一个租期/超时才暴露**。加放行分支时要写清楚「为什么 socket 表答不了」，
+   不要靠把整段端口区间放开来修，更不要把「凡发给已 bind 端口的包都放行」写进去
+   —— 那等于取消这个过滤器。
+8. **这类故障会延迟暴露，部署当时的绿灯不算数** —— DHCP 那次是部署后约一个租期
+   才失联。凡是动 `nhp_server_xdp.c` 的改动，除了 §4.6 / §4.6b 的探测，还要
+   在改完的**一小时后**再回来看一眼主机是否还在（`ip -4 addr`、敲一次门）。

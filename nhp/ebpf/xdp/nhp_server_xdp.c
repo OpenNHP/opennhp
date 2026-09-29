@@ -11,7 +11,7 @@
  * What it does need is the other half of any ingress filter: the replies to
  * connections the *host itself* opened. nhp-serverd is a client as well as a
  * server -- it resolves names, its auth plugin submits OTP mail to SES, the
- * host talks to package mirrors and NTP -- and without a way back in, every one
+ * host talks to package mirrors -- and without a way back in, every one
  * of those hangs until it times out (the first symptom was the resolver: "read
  * udp 10.0.1.78:58655->10.0.0.2:53: i/o timeout", i.e. the DNS *answer* dropped
  * here, and with it the OTP mail behind it). The AC pays for that with a TC
@@ -20,6 +20,15 @@
  * own socket table instead -- see has_local_flow(). That keeps the "no
  * unsolicited packet gets in" property exactly: a listening socket is never an
  * answer, only an established or connected one is.
+ *
+ * The socket table cannot answer for every client, though, and the two it
+ * cannot answer for are named explicitly in the UDP branch below: DHCP, whose
+ * reply lands on a raw or merely-bound socket and whose loss costs the host
+ * its IP address one lease later, and NTP, whose reply comes back to chronyd's
+ * own udp/123. Both are admitted by port pair, and that is the entire list --
+ * "some daemon's replies are being dropped" is not on its own a reason to
+ * extend it, because the alternative (admit anything addressed to a bound
+ * port) is the property above thrown away.
  *
  * It deliberately does NOT parse the NHP protocol. Identity is still decided in
  * user space by the Noise handshake (nhp/core/packet.go::RecvPrecheck); the
@@ -50,6 +59,14 @@
 #define SSH_PORT 22
 #define NHP_PORT 62206
 
+/* Client protocols whose answers arrive on a socket the kernel cannot tell
+ * apart from a listener, so has_local_flow() cannot admit them. See the DHCP
+ * and NTP branches below for why each one is here; nothing may be added to
+ * this list without the same kind of argument. */
+#define DHCP_PORT_SERVER 67
+#define DHCP_PORT_CLIENT 68
+#define NTP_PORT         123
+
 /* Shortest NHP datagram on the wire: the 240-byte NHP_KPL header of the
  * curve25519 cipher suite (nhp/core/packet.go). The gmsm suite's 304 bytes
  * clears it too, so one threshold covers both. Anything shorter cannot be a
@@ -68,6 +85,8 @@
 #define ACT_TCP_ESTABLISHED     4
 #define ACT_UDP_ESTABLISHED     5
 #define ACT_ICMP_FRAG_NEEDED    6
+#define ACT_DHCP_CLIENT         7
+#define ACT_NTP_CLIENT          8
 #define ACT_DROP_TCP_SSH_OTHER  10
 #define ACT_DROP_TCP_NHP        11
 #define ACT_DROP_TCP_OTHER      12
@@ -372,6 +391,61 @@ int xdp_server_prog(struct xdp_md *ctx) {
             return XDP_DROP;
 
         if (udp->dest != bpf_htons(NHP_PORT)) {
+            /* DHCP: the host's own address depends on this getting in, and
+             * has_local_flow() cannot let it.
+             *
+             * This is the outage that made the filter look like it was
+             * "closing the whole host an hour after every deploy". EC2 hands
+             * out the primary private IPv4 by DHCP on a finite lease;
+             * systemd-networkd renews it at half the lease and drops the
+             * address (and the default route with it) when a renewal never
+             * completes. The renewal answer is a datagram from udp/67 to
+             * udp/68, and the client receives it either on a raw AF_PACKET
+             * socket or on a UDP socket that is *bound* to port 68 and never
+             * connected -- so bpf_sk_lookup_udp() either finds nothing at all
+             * or finds something indistinguishable from a listener, and
+             * has_local_flow() correctly refuses both. XDP_DROP here is
+             * therefore terminal for the lease: nothing later in the stack
+             * ever sees the packet, and once the lease expires the host is
+             * dark on every port, SSH and the knock port alike, with no way
+             * back in short of a reboot.
+             *
+             * So DHCP replies are admitted by port pair, the same way the AC's
+             * program has always done it (`DHCP_PORT_R || DHCP_PORT_O` in
+             * nhp/ebpf/xdp/nhp_ebpf_xdp.c). The pair is narrow on purpose: a
+             * neighbour's broadcast DHCPDISCOVER is addressed to udp/67 and
+             * still dropped, and the only thing this lets an attacker reach is
+             * the host's DHCP client with a forged lease -- which is bounded
+             * by that client's own xid/server checks, and is the same exposure
+             * every unfiltered host on the subnet has.
+             *
+             * Reported per packet: a lease renewal is a handful of datagrams
+             * an hour, and after the outage above it is precisely the line an
+             * operator wants to see in the log. */
+            if (udp->source == bpf_htons(DHCP_PORT_SERVER) &&
+                udp->dest == bpf_htons(DHCP_PORT_CLIENT)) {
+                record_packet(ctx, ACT_DHCP_CLIENT, iph, udp->source, udp->dest, 0, true);
+                return XDP_PASS;
+            }
+            /* NTP, for the same reason one layer up: unless it is configured
+             * client-only (`port 0`), chronyd polls its servers from the
+             * socket it has bound to udp/123 rather than from a connected
+             * ephemeral one, and the answer (123 -> 123) then looks exactly
+             * like an unsolicited query to has_local_flow(). Dropping it does
+             * not take the host off the air, it lets its clock drift -- which
+             * NHP notices on its own, because knock packets carry a timestamp
+             * the server checks against a window. (A connected client socket
+             * would be admitted by has_local_flow anyway, so this branch costs
+             * nothing on a host configured that way.)
+             *
+             * Counted, not reported: chrony polls every 32-64s, so this would
+             * be a steady trickle of lines saying the same thing. The
+             * per-window [NHP-STAT] summary is where it belongs, and a clock
+             * that stops being served shows up there as PKTS=0. */
+            if (udp->source == bpf_htons(NTP_PORT) && udp->dest == bpf_htons(NTP_PORT)) {
+                record_packet(ctx, ACT_NTP_CLIENT, iph, udp->source, udp->dest, 0, false);
+                return XDP_PASS;
+            }
             /* The datagram answer to something the host asked for -- a DNS
              * reply above all, which is what nhp-serverd needs before it can
              * reach SES at all. Connected sockets only, see has_local_flow(). */

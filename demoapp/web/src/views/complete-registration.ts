@@ -14,7 +14,7 @@
 
 import { api, ApiError, type ServerInfo } from '../api.js';
 import { escapeHtml } from '../escape.js';
-import { t, renderLangSwitcher } from '../i18n.js';
+import { t, appHeaderHtml, renderLangSwitcher } from '../i18n.js';
 import { mountNhpRegPanel } from '../nhp-reg-panel.js';
 
 export interface CompleteRegistrationViewProps {
@@ -26,12 +26,12 @@ export interface CompleteRegistrationViewProps {
 
 export function renderCompleteRegistration(root: HTMLElement, props: CompleteRegistrationViewProps): void {
   root.innerHTML = `
-    <div class="container">
+    <div class="container">${appHeaderHtml()}
       <div class="toolbar">
         <div class="user">${t('common.signedInAs')} <span>${escapeHtml(props.username)}</span></div>
         <button id="signout-btn" class="btn btn-secondary">${t('common.signOut')}</button>
       </div>
-      <h1>${t('cr.title')}</h1>
+      <h2>${t('cr.title')}</h2>
       <p class="subtitle">${t('cr.subtitle')}</p>
 
       <div id="alert"></div>

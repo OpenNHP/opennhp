@@ -257,6 +257,14 @@ export function t(key: string, vars?: Record<string, string | number>): string {
   );
 }
 
+// Shared page header (app title + subtitle). Every view renders this so
+// the header stays identical before and after login.
+export function appHeaderHtml(): string {
+  return `
+      <h1>${t('login.title')}</h1>
+      <p class="subtitle">${t('common.subtitle')}</p>`;
+}
+
 // Render the globe-icon language dropdown (EN ▾ / 中文 ▾) into `container`
 // (a view's .container). Mirrors the switcher on agent.opennhp.org.
 // Picking a language persists it and reloads so every view re-renders in

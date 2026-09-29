@@ -493,6 +493,9 @@ const (
 	ActSshRelay         uint8 = 1
 	ActNhpRelay         uint8 = 2
 	ActNhpDefault       uint8 = 3
+	ActTcpEstablished   uint8 = 4
+	ActUdpEstablished   uint8 = 5
+	ActIcmpFragNeeded   uint8 = 6
 	ActDropTcpSshOther  uint8 = 10
 	ActDropTcpNhp       uint8 = 11
 	ActDropTcpOther     uint8 = 12
@@ -510,6 +513,12 @@ func serverActionName(action uint8) (verdict, reason string) {
 		return "PASS", "NHP_RELAY"
 	case ActNhpDefault:
 		return "PASS", "NHP_DEFAULT"
+	case ActTcpEstablished:
+		return "PASS", "TCP_ESTABLISHED"
+	case ActUdpEstablished:
+		return "PASS", "UDP_ESTABLISHED"
+	case ActIcmpFragNeeded:
+		return "PASS", "ICMP_FRAG_NEEDED"
 	case ActDropTcpSshOther:
 		return "DROP", "TCP_SSH_OTHER"
 	case ActDropTcpNhp:

@@ -1,12 +1,25 @@
 /* Ingress filter for the nhp-server host.
  *
  * Unlike the AC's nhp_ebpf_xdp.c, which opens ports per knock, the server's
- * exposure is fixed and tiny: the NHP UDP knock port, and SSH from the relay
- * jump host. Everything else is dropped at the driver, before the kernel's
- * network stack sees it. There are therefore no whitelist maps, no conn_track
- * and no TC egress program here -- the decision is a pure function of
- * (src ip, l4 proto, dst port, udp length), which is why this program can stay
- * a few dozen lines and share nothing with the AC's schema.
+ * *listening* exposure is fixed and tiny: the NHP UDP knock port, and SSH from
+ * the relay jump host. Everything else that would start a new flow is dropped
+ * at the driver, before the kernel's network stack sees it. There are therefore
+ * no whitelist maps here beyond the relay list, and no AC-style conn_track /
+ * TC egress pair, which is why this program can stay short and share nothing
+ * with the AC's schema.
+ *
+ * What it does need is the other half of any ingress filter: the replies to
+ * connections the *host itself* opened. nhp-serverd is a client as well as a
+ * server -- it resolves names, its auth plugin submits OTP mail to SES, the
+ * host talks to package mirrors and NTP -- and without a way back in, every one
+ * of those hangs until it times out (the first symptom was the resolver: "read
+ * udp 10.0.1.78:58655->10.0.0.2:53: i/o timeout", i.e. the DNS *answer* dropped
+ * here, and with it the OTP mail behind it). The AC pays for that with a TC
+ * egress program and a conn_track map because it must reason about flows a
+ * knock authorised; the server has no such ambiguity, so it asks the kernel's
+ * own socket table instead -- see has_local_flow(). That keeps the "no
+ * unsolicited packet gets in" property exactly: a listening socket is never an
+ * answer, only an established or connected one is.
  *
  * It deliberately does NOT parse the NHP protocol. Identity is still decided in
  * user space by the Noise handshake (nhp/core/packet.go::RecvPrecheck); the
@@ -25,8 +38,14 @@
 #define ETH_P_ARP    0x0806
 #define ETH_P_IP     0x0800
 #define ETH_P_IPV6   0x86DD
+#define IPPROTO_ICMP 1
 #define IPPROTO_TCP  6
 #define IPPROTO_UDP  17
+
+/* ICMP destination-unreachable / fragmentation-needed, i.e. the one ICMP
+ * message a host that opens outbound TCP connections cannot do without. */
+#define ICMP_DEST_UNREACH  3
+#define ICMP_FRAG_NEEDED   4
 
 #define SSH_PORT 22
 #define NHP_PORT 62206
@@ -45,6 +64,9 @@
 #define ACT_SSH_RELAY           1
 #define ACT_NHP_RELAY           2
 #define ACT_NHP_DEFAULT         3
+#define ACT_TCP_ESTABLISHED     4
+#define ACT_UDP_ESTABLISHED     5
+#define ACT_ICMP_FRAG_NEEDED    6
 #define ACT_DROP_TCP_SSH_OTHER  10
 #define ACT_DROP_TCP_NHP        11
 #define ACT_DROP_TCP_OTHER      12
@@ -162,6 +184,68 @@ static __always_inline bool is_relay_src(__be32 saddr) {
     return bpf_map_lookup_elem(&nhp_relay_ips, &saddr) != NULL;
 }
 
+/* Does this packet belong to a flow the host itself already has a socket for?
+ *
+ * This is the equivalent of netfilter's `--ctstate ESTABLISHED,RELATED
+ * -j ACCEPT`, and the AC solves it with tc_egress.c writing a conn_track entry
+ * for every outbound flow. The server does not need any of that machinery: the
+ * kernel is already keeping the only table that matters -- its socket table --
+ * and bpf_sk_lookup_{tcp,udp}() can be asked about it from XDP. No map, no TTL,
+ * no heuristic about which source ports are "client" ports, and nothing to get
+ * out of step with reality; the entry appears when the socket is created and is
+ * gone the moment it closes.
+ *
+ * The tuple is filled straight from the packet (source = the remote end), which
+ * is how the helper is defined for an ingress hook: it returns the socket that
+ * *would receive* this packet. So the answer is exactly "is there a local
+ * socket expecting this", and the caller turns that into a verdict:
+ *
+ *   TCP  -- any state but BPF_TCP_LISTEN. A listener matches every SYN sent to
+ *           a port the host serves, so admitting it would silently undo this
+ *           whole filter the day something binds tcp/8080 on the box. Every
+ *           other state (SYN_SENT waiting for a SYN-ACK, ESTABLISHED, the
+ *           closing states) belongs to a connection this host opened or already
+ *           accepted through the branches above.
+ *   UDP  -- connected sockets only (`dst_port != 0`). A resolver, an NTP client
+ *           or net/smtp's dialer connect(2) their socket, so the kernel's
+ *           lookup only matches them for datagrams from the peer they are
+ *           talking to; an unconnected socket bound to some port is a listener
+ *           by another name and gets nothing from here.
+ *
+ * Cost: one hash lookup for packets that are about to be dropped anyway, i.e.
+ * scan traffic. That is the same lookup the network stack would do had XDP
+ * passed the packet, so a flood is no more expensive than it was before this
+ * program existed -- and still cheaper, because the verdict stops here.
+ *
+ * Note this is per-netns: BPF_F_CURRENT_NETNS resolves to the namespace of the
+ * device the program is attached to, which is where nhp-serverd's sockets live.
+ */
+static __always_inline bool has_local_flow(struct xdp_md *ctx, struct iphdr *iph,
+                                           __be16 sport, __be16 dport, bool is_tcp) {
+    struct bpf_sock_tuple tuple = {};
+    struct bpf_sock *sk;
+    bool owned;
+
+    tuple.ipv4.saddr = iph->saddr;
+    tuple.ipv4.daddr = iph->daddr;
+    tuple.ipv4.sport = sport;
+    tuple.ipv4.dport = dport;
+
+    if (is_tcp)
+        sk = bpf_sk_lookup_tcp(ctx, &tuple, sizeof(tuple.ipv4),
+                               BPF_F_CURRENT_NETNS, 0);
+    else
+        sk = bpf_sk_lookup_udp(ctx, &tuple, sizeof(tuple.ipv4),
+                               BPF_F_CURRENT_NETNS, 0);
+    if (!sk)
+        return false;
+
+    owned = is_tcp ? sk->state != BPF_TCP_LISTEN : sk->dst_port != 0;
+
+    bpf_sk_release(sk);
+    return owned;
+}
+
 SEC("xdp")
 int xdp_server_prog(struct xdp_md *ctx) {
     void *data = (void *)(long)ctx->data;
@@ -209,6 +293,16 @@ int xdp_server_prog(struct xdp_md *ctx) {
             submit_event(ctx, ACT_DROP_TCP_NHP, iph, tcp->source, tcp->dest, 0);
             return XDP_DROP;
         }
+        /* Anything left is either the reply side of a connection this host
+         * opened (the plugin's SMTP submission to SES, certbot, dnf) or an
+         * unsolicited packet. Only the socket table can tell them apart, and
+         * it is asked after the two service ports above so that the policy on
+         * those stays a pure function of the address -- a socket can never
+         * re-open tcp/22 to a non-relay source. */
+        if (has_local_flow(ctx, iph, tcp->source, tcp->dest, true)) {
+            submit_event(ctx, ACT_TCP_ESTABLISHED, iph, tcp->source, tcp->dest, 0);
+            return XDP_PASS;
+        }
         submit_event(ctx, ACT_DROP_TCP_OTHER, iph, tcp->source, tcp->dest, 0);
         return XDP_DROP;
     }
@@ -219,6 +313,13 @@ int xdp_server_prog(struct xdp_md *ctx) {
             return XDP_DROP;
 
         if (udp->dest != bpf_htons(NHP_PORT)) {
+            /* The datagram answer to something the host asked for -- a DNS
+             * reply above all, which is what nhp-serverd needs before it can
+             * reach SES at all. Connected sockets only, see has_local_flow(). */
+            if (has_local_flow(ctx, iph, udp->source, udp->dest, false)) {
+                submit_event(ctx, ACT_UDP_ESTABLISHED, iph, udp->source, udp->dest, 0);
+                return XDP_PASS;
+            }
             submit_event(ctx, ACT_DROP_UDP_OTHER, iph, udp->source, udp->dest, 0);
             return XDP_DROP;
         }
@@ -236,8 +337,34 @@ int xdp_server_prog(struct xdp_md *ctx) {
         return XDP_PASS;
     }
 
-    /* ICMP included: the server answers no pings from the internet, and an
-     * operator who needs one reaches the host over the relay's SSH path. */
+    /* ICMP is dropped -- the server answers no pings from the internet, and an
+     * operator who needs one reaches the host over the relay's SSH path --
+     * with exactly one exception: "fragmentation needed" (type 3 code 4).
+     *
+     * That is the signalling half of path-MTU discovery, and the host now has
+     * outbound TCP connections worth protecting from a black hole: its
+     * interface MTU is the VPC's 9001 while anything reached through the
+     * internet gateway is 1500, so a large send on a path that has not
+     * advertised a small enough MSS stalls silently, retransmitting full-size
+     * segments forever. It is the failure mode that looks exactly like the DNS
+     * one this program already caused, one layer up.
+     *
+     * The rest of type 3 stays dropped: those only turn a timeout into a
+     * faster error, which is not worth handing an off-path attacker a way to
+     * tear down flows. A spoofed frag-needed can lower a flow's PMTU (the
+     * kernel floors it at 552 and matches it to a socket by the quoted header)
+     * and nothing else. */
+    if (iph->protocol == IPPROTO_ICMP) {
+        struct icmphdr *icmp = (void *)iph + (iph->ihl * 4);
+        if ((void *)(icmp + 1) > data_end)
+            return XDP_DROP;
+
+        if (icmp->type == ICMP_DEST_UNREACH && icmp->code == ICMP_FRAG_NEEDED) {
+            submit_event(ctx, ACT_ICMP_FRAG_NEEDED, iph, 0, 0, 0);
+            return XDP_PASS;
+        }
+    }
+
     submit_event(ctx, ACT_DROP_NONUDP, iph, 0, 0, 0);
     return XDP_DROP;
 }

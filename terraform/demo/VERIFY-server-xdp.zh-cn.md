@@ -24,13 +24,28 @@
 | TCP/22，src ∈ 白名单 | PASS | `SSH_RELAY` |
 | TCP/22，src ∉ 白名单 | DROP | `TCP_SSH_OTHER` |
 | TCP/62206 | DROP | `TCP_NHP_PORT` |
+| TCP 其它端口，本机有**非 LISTEN** 的 socket | PASS | `TCP_ESTABLISHED` |
 | TCP 其它端口 | DROP | `TCP_OTHER` |
 | UDP/62206，src ∈ 白名单 | PASS（跳过长度校验） | `NHP_RELAY` |
 | UDP/62206，长度 ≥ 240 | PASS | `NHP_DEFAULT` |
 | UDP/62206，长度 < 240 | DROP | `UDP_SHORT` |
+| UDP 其它端口，本机有 **connected** socket | PASS | `UDP_ESTABLISHED` |
 | UDP 其它端口 | DROP | `UDP_OTHER` |
-| 非 TCP/UDP（含 ICMP） | DROP | `NON_TCP_UDP` |
+| ICMP type 3 code 4（需要分片） | PASS | `ICMP_FRAG_NEEDED` |
+| 非 TCP/UDP（含其余 ICMP） | DROP | `NON_TCP_UDP` |
 | ARP / IPv6 | PASS | 不上报（避免邻居流量刷屏） |
+
+`TCP_ESTABLISHED` / `UDP_ESTABLISHED` 两行是**本机自己发起的连接的回包**
+（`has_local_flow()`，用 `bpf_sk_lookup_{tcp,udp}` 查内核 socket 表）。AC 用
+TC egress + `conn_track` 做这件事，server 不需要：内核的 socket 表就是权威的
+连接状态，socket 在就放行、socket 没了就不放行，没有 TTL、没有 map 会写错。
+**LISTEN 状态的 socket 永远不算数**，未连接的 UDP socket 同理，所以「只有敲门
+端口和 relay 的 SSH 对外可见」这个性质没有被放宽。
+
+> 这一段是补 bug：第一版没有回包通路，`nhp-serverd` 自己发起的连接全部收不到
+> 响应 —— 线上表现是 OTP 邮件发不出，日志里是 `lookup
+> email-smtp.us-east-2.amazonaws.com on 10.0.0.2:53: i/o timeout`（DNS **应答**
+> 被丢）。验证时 §1.4 的「回包矩阵」和 §4.5 的 DNS/SMTP 探测必须都过。
 
 ---
 
@@ -169,6 +184,63 @@ python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.se
 20:24:39 test-server [NHP-DROP] REASON=UDP_SHORT     SRC=10.99.0.1 DST=10.99.0.2 LEN=128 PROTO=UDP  SPT=49355 DPT=62206 RELAY=0
 20:24:39 test-server [NHP-PASS] REASON=NHP_DEFAULT   SRC=10.99.0.1 DST=10.99.0.2 LEN=328 PROTO=UDP  SPT=38438 DPT=62206 RELAY=0
 20:24:39 test-server [NHP-DROP] REASON=UDP_OTHER     SRC=10.99.0.1 DST=10.99.0.2 LEN=328 PROTO=UDP  SPT=57077 DPT=53    RELAY=0
+```
+
+**回包矩阵**（被保护主机**自己发起**的连接，必须能收到响应 —— 这就是 OTP 邮件
+发不出去那个 bug 的最小复现）。先在 host 侧起两个「外部服务」：
+
+```bash
+# UDP 回显（冒充 DNS），以及一个 TCP 服务（冒充 SES 的 tcp/587）
+python3 - <<'PY' & 
+import socket
+s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.bind(('10.99.0.1',5353))
+while True:
+    d,a=s.recvfrom(2048); s.sendto(b'PONG:'+d,a)
+PY
+python3 - <<'PY' &
+import socket
+s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+s.bind(('10.99.0.1',8080)); s.listen(5)
+while True:
+    c,_=s.accept(); c.sendall(b'HELLO\n'); c.close()
+PY
+```
+
+再从 netns 里（= 被保护主机）当客户端打出去：
+
+```bash
+sudo ip netns exec nhpxdp python3 - <<'PY'
+import socket
+s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(3)
+s.connect(('10.99.0.1',5353)); s.send(b'PING')
+print("A udp-reply:", s.recv(100))          # 期望 b'PONG:PING'；修复前：timed out
+t=socket.socket(); t.settimeout(3)
+t.connect(('10.99.0.1',8080))
+print("B tcp-connect:", t.recv(100))        # 期望 b'HELLO\n'；修复前：timed out
+PY
+```
+
+```
+A udp-reply: b'PONG:PING'
+B tcp-connect: b'HELLO\n'
+```
+
+判决日志里应出现对应的两类 PASS，形如（`SPT` 是外部服务端口，`DPT` 是本机的
+临时端口，与上面 DROP 分支里 `DPT` 恒为服务端口正好相反）：
+
+```
+<时间> test-server [NHP-PASS] REASON=UDP_ESTABLISHED SRC=10.99.0.1 DST=10.99.0.2 ... SPT=5353 DPT=<ephemeral>
+<时间> test-server [NHP-PASS] REASON=TCP_ESTABLISHED SRC=10.99.0.1 DST=10.99.0.2 ... SPT=8080 DPT=<ephemeral>
+```
+
+**反向确认（最重要的一条）**：回包通路不等于开放端口。在 netns 里 `bind` 一个
+tcp/8080 的 **listener**，从 host 侧连它，必须仍然被丢 —— 放行只认
+established/connected，不认 LISTEN：
+
+```bash
+sudo ip netns exec nhpxdp python3 -c "
+import socket; s=socket.socket(); s.bind(('10.99.0.2',8080)); s.listen(5); s.accept()" &
+timeout 3 bash -c 'exec 3<>/dev/tcp/10.99.0.2/8080'; echo $?   # 期望：124（超时=被丢）
 ```
 
 **白名单两条分支**（把 10.99.0.1 加进白名单后重测）：
@@ -354,6 +426,7 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV \
 | `build` → `test -s release/nhp-server/etc/nhp_server_xdp.o` | 目标文件必须编出来 | 红；避免 `.o` 缺失导致线上静默 fail-open |
 | `deploy-server` → `Deploy nhp-serverd and plugins` | scp `.o` + `xdp.toml`，安装 `/etc/systemd/system/nhp-serverd.service.d/10-ebpf.conf`（`CAP_BPF CAP_NET_ADMIN CAP_PERFMON` + 准备 `/sys/fs/bpf`），重启 | — |
 | `deploy-server` → `Verify the XDP ingress filter attached` | `ip -details link show \| grep -q xdpgeneric`，没挂上就红 | 这是把「fail-open 静默失效」变成「部署失败」的唯一关卡 |
+| `deploy-server` → `Verify the server's own outbound flows still get their replies` | 在 server 上 `getent ahostsv4 <SMTP_HOST>`（udp/53 应答）+ `/dev/tcp/<SMTP_HOST>/587`（SYN-ACK），各重试 3 次 | 红；这是把「回包被丢 → OTP 邮件发不出」变成「部署失败」的关卡。DNS 失败看 `REASON=UDP_OTHER`，SMTP 失败看 `REASON=TCP_OTHER` |
 
 本地复现 DNS 关卡：
 
@@ -444,7 +517,24 @@ import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*30
 # server 侧事件日志：REASON=NHP_DEFAULT ... [NHP-PASS]
 ```
 
-### 4.6 业务回归（最重要的一条）
+### 4.6 出站回包（OTP 邮件依赖这条）
+
+在 server 上跑，等价于 CI 的 `Verify the server's own outbound flows still get
+their replies`；两条都必须过，否则 OTP 邮件一定发不出去：
+
+```bash
+ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
+  getent ahostsv4 email-smtp.us-east-2.amazonaws.com | head -1   # udp/53 应答回得来
+  timeout 8 bash -c "exec 3<>/dev/tcp/email-smtp.us-east-2.amazonaws.com/587" && echo "smtp ok"
+  grep -c "REASON=UDP_ESTABLISHED" ~/nhp-server/logs/nhp_server_xdp-$(date +%F).log'
+```
+
+DNS 挂了会在事件日志里表现为 `REASON=UDP_OTHER ... SPT=53`（应答被丢），
+SMTP 挂了则是 `REASON=TCP_OTHER ... SPT=587`。两者都说明 `has_local_flow()`
+没有生效 —— 通常是 `.o` 是旧的（未重新 `make ebpf-objs`），或内核太老不支持
+`bpf_sk_lookup_*`（那种情况下整个程序装载失败，是 fail-open，见 §6.1）。
+
+### 4.7 业务回归（最重要的一条）
 
 ```bash
 # 浏览器 demo 全链路敲门一次，确认 relay → server → ac 正常
@@ -479,6 +569,9 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$(cd terraform/demo && terraform output -raw
 | relay → server tcp/22 | 连上 | 连上（`SSH_RELAY`，前提：白名单正确） |
 | 公网 → UDP/62206 <240B | 进 user space 由 `RecvPrecheck` 丢 | 内核丢（`UDP_SHORT`），不消耗用户态 |
 | 公网 → UDP/62206 ≥240B | 通 | 通（`NHP_DEFAULT`）——NHP 语义不变 |
+| server 自己的 DNS 查询 | 通 | 通（应答 `UDP_ESTABLISHED`）——**这一条曾经是坏的** |
+| server 自己的 SMTP/HTTPS 出站 | 通 | 通（`TCP_ESTABLISHED`） |
+| 公网 → server 上任意 LISTEN 端口 | 由安全组决定 | 一律丢（socket 是 LISTEN，不构成回包） |
 | `nmap` 公网扫描结果 | — | 基本不变（安全组本就挡住 TCP） |
 
 ---
@@ -543,8 +636,19 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
 2. **fail-open 是静默的** —— 内核旧、能力缺失、`.o` 丢失都只打一行 warning。日常巡检
    请把 `ip -details link show | grep -q xdpgeneric` 纳入告警，而不是只看
    `systemctl is-active`。
-3. **XDP 无连接跟踪** —— 白名单变更对已建立连接同样生效，改 `xdp.toml` 等同于改防火墙。
+3. **入站方向没有连接跟踪** —— 白名单变更对已建立的入站连接同样生效（每个包都要
+   重新过一遍白名单），改 `xdp.toml` 等同于改防火墙，SSH 会话会当场断。
+   出站方向相反：本机发起的连接由内核 socket 表决定（`has_local_flow()`），
+   socket 还在就一直放行，与 `xdp.toml` 无关。
 4. **`Enabled` / `NhpMinFrameBytes` 只是记录值** —— 前者不会阻止 attach，后者编译进
    `.o`（`NHP_MIN_UDP_LEN`）。改长度下界要重新 `make ebpf-objs` 并重发 `.o`。
 5. **事件日志有速率限制** —— 每个 action 每 CPU 每秒 64 条（`NHP_EVENT_BURST`），大流量
    扫描下日志条数少于真实丢包数，计数请用 `bpf_stats` 的 `run_cnt`。
+6. **回包放行依赖 `bpf_sk_lookup_{tcp,udp}`** —— 内核 ≥4.20 才有。太老的内核上整个
+   程序装载失败（fail-open，见风险 2），而不是「只丢回包」；升级 `.o` 时如果只换了
+   `.o` 没换二进制也没关系，两者之间没有新增接口。另外它只认 IPv4：IPv6 一律
+   `XDP_PASS`，本来也不在过滤范围内。
+7. **出站回包不覆盖 unconnected UDP socket** —— 放行条件是 socket 已 `connect()`
+   （Go 的 resolver、`net/smtp`、chrony 都是）。若将来有组件用未连接的 UDP socket
+   收外部响应（某些 NTP/SNMP 实现），它的回包会被丢；届时看事件日志
+   `REASON=UDP_OTHER`，不要靠把整段端口区间放开来修。

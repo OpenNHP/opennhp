@@ -945,6 +945,57 @@ jobs:
           ssh nhp-server "grep -h 'xdp relay whitelist applied' $REMOTE_DIR/logs/server-[0-9]*.log 2>/dev/null | tail -n 1" || \
             echo "  (no whitelist line yet)"
 
+      - name: Verify the server's own outbound flows still get their replies
+        # The XDP filter governs ingress for the whole host, so it also decides
+        # whether the *answers* to connections nhp-serverd opens get back in.
+        # Its first version did not: every reply was dropped, and because the
+        # daemon serves knocks over its listening socket, nothing in the deploy
+        # noticed. The failure surfaced only when a user asked for an OTP —
+        # "lookup email-smtp.us-east-2.amazonaws.com on 10.0.0.2:53: i/o
+        # timeout" in the server log, i.e. the DNS answer never came back, and
+        # the mail with it. Those two probes are the cheap standing check that
+        # the reply path (has_local_flow() in nhp_server_xdp.c) is open:
+        #
+        #   udp/53  — getent uses glibc's resolver, so this is the real reply
+        #             path, not a library that could fall back to TCP;
+        #   tcp/587 — the SMTP submission the OTP mail actually rides on, i.e.
+        #             a SYN-ACK arriving at an ephemeral port.
+        #
+        # Retried, because a red deploy on one lost datagram would be noise;
+        # three consecutive failures is the filter, not the network.
+        run: |
+          set -euo pipefail
+
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-server"
+          SMTP_HOST='${{ env.SMTP_HOST }}'
+          SMTP_PORT='${{ env.SMTP_PORT }}'
+          DNS_NAME="${SMTP_HOST:-amazonaws.com}"
+
+          echo "Resolving $DNS_NAME from the server host..."
+          if ! ssh nhp-server "for i in 1 2 3; do getent ahostsv4 '$DNS_NAME' >/dev/null 2>&1 && exit 0; sleep 2; done; exit 1"; then
+            echo "ERROR: the nhp-server host cannot resolve $DNS_NAME." >&2
+            echo "       DNS answers are inbound udp/53 packets: if the XDP filter drops" >&2
+            echo "       them, every outbound flow the daemon opens dies here — OTP mail" >&2
+            echo "       included. Check REASON=UDP_OTHER in the event log." >&2
+            ssh nhp-server "tail -n 20 $REMOTE_DIR/logs/nhp_server_xdp-\$(date +%F).log" 2>/dev/null || true
+            exit 1
+          fi
+          echo "  ok"
+
+          if [ -n "$SMTP_HOST" ]; then
+            echo "Connecting to $SMTP_HOST:${SMTP_PORT:-587} from the server host..."
+            if ! ssh nhp-server "for i in 1 2 3; do timeout 8 bash -c 'exec 3<>/dev/tcp/$SMTP_HOST/${SMTP_PORT:-587}' 2>/dev/null && exit 0; sleep 2; done; exit 1"; then
+              echo "ERROR: the nhp-server host cannot reach $SMTP_HOST:${SMTP_PORT:-587}." >&2
+              echo "       The OTP email will fail. If DNS above passed, this is the" >&2
+              echo "       inbound SYN-ACK being dropped — check REASON=TCP_OTHER." >&2
+              ssh nhp-server "tail -n 20 $REMOTE_DIR/logs/nhp_server_xdp-\$(date +%F).log" 2>/dev/null || true
+              exit 1
+            fi
+            echo "  ok"
+          else
+            echo "SMTP not configured for this deploy; skipping the tcp/587 probe."
+          fi
+
       - name: Verify no HTTP/HTTPS listener remains on server
         # Fail the deploy loudly if the retired HTTP surface came back: nginx
         # holding :80/:443, or nhp-serverd binding :8443 because http.toml was

@@ -7,7 +7,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/cilium/ebpf"
@@ -199,6 +202,48 @@ func TestServerEngineLoadAttachesToLoopback(t *testing.T) {
 	for _, pin := range serverPinnedFiles {
 		if _, err := os.Stat(pin); !os.IsNotExist(err) {
 			t.Errorf("pin %s survived cleanup (err=%v)", pin, err)
+		}
+	}
+}
+
+// The action codes are a wire format between nhp_server_xdp.c and
+// serverActionName(): the C side puts a bare byte on the perf ring and this
+// side is the only thing that gives it a meaning. Parse the constants out of
+// the source rather than restating them, so a new branch in the program that
+// nobody mirrored here shows up as a failing test instead of as
+// "REASON=UNKNOWN-7" in an event log months later.
+func TestServerActionNamesCoverTheProgramsActionCodes(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_server_xdp.c"))
+	if err != nil {
+		t.Fatalf("read nhp_server_xdp.c: %v", err)
+	}
+
+	re := regexp.MustCompile(`(?m)^#define\s+(ACT_\w+)\s+(\d+)`)
+	matches := re.FindAllStringSubmatch(string(src), -1)
+	if len(matches) == 0 {
+		t.Fatal("no ACT_* constants found; has the program been renamed?")
+	}
+
+	seen := make(map[uint8]string, len(matches))
+	for _, m := range matches {
+		code, err := strconv.ParseUint(m[2], 10, 8)
+		if err != nil {
+			t.Fatalf("%s = %q: %v", m[1], m[2], err)
+		}
+		if other, dup := seen[uint8(code)]; dup {
+			t.Errorf("%s and %s share action code %d", other, m[1], code)
+		}
+		seen[uint8(code)] = m[1]
+
+		verdict, reason := serverActionName(uint8(code))
+		if strings.HasPrefix(reason, "UNKNOWN-") {
+			t.Errorf("%s (%d) has no name in serverActionName", m[1], code)
+		}
+		// A DROP_* constant that logs as PASS (or the reverse) would make the
+		// event log say the opposite of what the kernel did.
+		wantDrop := strings.HasPrefix(m[1], "ACT_DROP_")
+		if got := verdict == "DROP"; got != wantDrop {
+			t.Errorf("%s (%d) logs verdict %q", m[1], code, verdict)
 		}
 	}
 }

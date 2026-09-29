@@ -881,11 +881,25 @@ sudo /usr/local/sbin/nhp-ac-backstop.sh flush-guard-down
 ## nhp-server ingress filter (XDP)
 
 `nhp-serverd` attaches `nhp_server_xdp.o` at startup and drops everything at
-the driver except UDP on the knock port and SSH from the addresses in
-`etc/xdp.toml`. Unlike the AC's filter there is no fail-closed backstop and no
-break-glass SSH path, so the whitelist is the one config on these hosts that
-locks you out when it is wrong — including out of the SSH session doing the
-change, since XDP has no connection tracking.
+the driver except UDP on the knock port, SSH from the addresses in
+`etc/xdp.toml`, and the replies to connections the host itself opened. Unlike
+the AC's filter there is no fail-closed backstop and no break-glass SSH path,
+so the whitelist is the one config on these hosts that locks you out when it
+is wrong — including out of the SSH session doing the change, since an inbound
+SSH connection is admitted by the whitelist on every packet, not by any
+connection state.
+
+That third clause is not a convenience. The host is a client as well as a
+server — it resolves names, submits OTP mail to SES, pulls packages, syncs
+time — and the first version of this filter dropped every answer to those,
+which showed up as `i/o timeout` on the *DNS lookup* of the SES endpoint and
+OTP mail that never arrived. Where the AC needs a TC egress program and a
+conn_track map to decide that question, the server asks the kernel's socket
+table directly (`bpf_sk_lookup_{tcp,udp}` in `has_local_flow()`): an
+established or connected socket admits the packet, a *listening* one never
+does, so nothing unsolicited gets in and no state of our own can go stale.
+`deploy-server` probes udp/53 and tcp/587 from the host after every restart so
+a regression here fails the deploy instead of the next OTP request.
 
 The list carries the relay's **private and public** addresses. CI (and any
 operator following this runbook) reaches the server with

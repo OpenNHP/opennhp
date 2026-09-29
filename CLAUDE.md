@@ -233,6 +233,18 @@ decided by the Noise handshake in user space. The AC's per-knock XDP program
 and the shared loader (`nhp/utils/ebpf/engine_linux.go`) are the same code
 path selected by `EngineLoadParams.Variant`.
 
+**The filter also has to let the host's own replies back in**, and this was
+missed at first: the daemon is a client too (DNS, the auth plugin's SMTP
+submission to SES, package mirrors, NTP), and dropping those answers broke OTP
+email with a DNS `i/o timeout` while every knock still worked. `has_local_flow()`
+answers it with `bpf_sk_lookup_{tcp,udp}` against the kernel's socket table —
+an established TCP socket or a *connected* UDP socket admits the packet, a
+listening socket never does — so the server needs none of the AC's
+conn_track/TC-egress machinery and keeps no state that can drift. ICMP
+fragmentation-needed (type 3 code 4) passes for the same reason; the rest of
+ICMP stays dropped. `deploy-server` probes udp/53 and tcp/587 from the host
+after every restart so this cannot regress silently again.
+
 The whitelist lives in `etc/xdp.toml` (`deploy/config-templates/server/xdp.toml`),
 rendered from `$RELAY_IPS` (comma-separated; `scripts/generate-nhp-keys.sh`
 quotes it into the TOML array) and hot-reloaded. It must carry **both** of the

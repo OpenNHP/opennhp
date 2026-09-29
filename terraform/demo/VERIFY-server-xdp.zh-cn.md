@@ -233,14 +233,14 @@ sudo ip netns del nhpxdp; sudo ip link del veth-h; sudo rm -rf /tmp/nhpsrv
   自己的会话同样会断）；
 * 恢复手段只有「重建实例」或「摘盘改文件」（§6.2）。
 
-流水线写进 `xdp.toml` 的是 `dig nhp-relay.opennhp.org` 的解析结果，也就是 relay 的
+流水线写进 `xdp.toml` 的是 `dig relay.opennhp.org` 的解析结果，也就是 relay 的
 **公网 EIP**；而 CI 是 `ProxyJump` 经 relay 连 **server 私网地址**的（
 `.github/workflows/deploy-demo-v2.yml` 里 `Host nhp-server → HostName <server_private_ip>`），
 同一 VPC 内走私网路径，server 看到的源地址是 relay 的**私网地址**。两者必须对上：
 
 ```bash
 # a) 流水线将写入白名单的地址
-dig +short nhp-relay.opennhp.org @1.1.1.1          # = $RELAY_PUB
+dig +short relay.opennhp.org @1.1.1.1               # = $RELAY_PUB
 
 # b) server 实际看到的 SSH 源地址（在 server 上执行，保持另一个 SSH 会话在线）
 ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV \
@@ -339,7 +339,7 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV \
 
 | Job / Step | 作用 | 失败表现 |
 | --- | --- | --- |
-| `configure` → `Resolve relay IPs via DNS` | `dig +short nhp-relay.opennhp.org @1.1.1.1` 必须**恰好一条** A 记录，否则 `exit 1` | 整个流水线红，**不渲染 / 不 scp / 不重启**，线上继续用旧白名单 |
+| `configure` → `Resolve relay IPs via DNS` | `dig +short relay.opennhp.org @1.1.1.1` 必须**恰好一条** A 记录，否则 `exit 1` | 整个流水线红，**不渲染 / 不 scp / 不重启**，线上继续用旧白名单 |
 | `build` → `test -s release/nhp-server/etc/nhp_server_xdp.o` | 目标文件必须编出来 | 红；避免 `.o` 缺失导致线上静默 fail-open |
 | `deploy-server` → `Deploy nhp-serverd and plugins` | scp `.o` + `xdp.toml`，安装 `/etc/systemd/system/nhp-serverd.service.d/10-ebpf.conf`（`CAP_BPF CAP_NET_ADMIN CAP_PERFMON` + 准备 `/sys/fs/bpf`），重启 | — |
 | `deploy-server` → `Verify the XDP ingress filter attached` | `ip -details link show \| grep -q xdpgeneric`，没挂上就红 | 这是把「fail-open 静默失效」变成「部署失败」的唯一关卡 |
@@ -347,7 +347,7 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV \
 本地复现 DNS 关卡：
 
 ```bash
-dig +short nhp-relay.opennhp.org @1.1.1.1 | grep -E '^[0-9.]+$' | wc -l   # 必须是 1
+dig +short relay.opennhp.org @1.1.1.1 | grep -E '^[0-9.]+$' | wc -l        # 必须是 1
 ```
 
 ---
@@ -522,7 +522,7 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
 
 ## 7. 已知风险清单（验证时重点看）
 
-1. **白名单是公网 IP、实际源地址是私网 IP** —— 流水线用 `dig nhp-relay.opennhp.org`
+1. **白名单是公网 IP、实际源地址是私网 IP** —— 流水线用 `dig relay.opennhp.org`
    取的是 relay 的公网 EIP，而 CI/relay 经 VPC 内网连 server 私网地址，server 看到的
    是 relay 的**私网** IP。若两者不一致，第一次 `systemctl restart nhp-serverd` 之后
    SSH（含正在跑的那条会话）立即被丢。**首次部署前必须做 §2.1，必要时把

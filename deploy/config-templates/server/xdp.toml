@@ -6,7 +6,7 @@
 # nothing else in it is hot-reloadable.
 #
 # RelayIPs is the ONLY field that reaches the kernel. It is rendered from
-# ${RELAY_IPS}, resolved from nhp-relay.opennhp.org by the deploy pipeline. If
+# ${RELAY_IPS}, resolved from relay.opennhp.org by the deploy pipeline. If
 # that resolution fails the pipeline stops before this file is written and
 # before nhp-serverd is restarted, so the running host keeps the whitelist it
 # already has — an empty list here would lock every operator out of SSH, and

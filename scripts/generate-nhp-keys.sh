@@ -328,7 +328,7 @@ export DOMAIN="$DOMAIN"
 
 # nhp-server eBPF/XDP ingress policy (server/xdp.toml). RELAY_IPS is the
 # whitelist that decides who may reach tcp/22 on the server host, so an empty
-# render is a lockout: the deploy pipeline resolves nhp-relay.opennhp.org and
+# render is a lockout: the deploy pipeline resolves relay.opennhp.org and
 # fails the run before reaching this script if it gets no answer. Warn here
 # too, because this script is also run by hand.
 export XDP_ENABLED="${XDP_ENABLED:-true}"

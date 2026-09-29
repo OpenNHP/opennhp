@@ -351,7 +351,7 @@ jobs:
 
           command -v dig >/dev/null || sudo apt-get install -y --no-install-recommends dnsutils
 
-          RELAY_FQDN="nhp-relay.opennhp.org"
+          RELAY_FQDN='${{ env.DOMAIN_RELAY }}'
           RESOLVED=$(dig +short "$RELAY_FQDN" @1.1.1.1 \
             | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || true)
 
@@ -774,7 +774,7 @@ jobs:
 
           echo "Uploading server configs..."
           # Includes xdp.toml, rendered in the configure job from the DNS
-          # lookup of nhp-relay.opennhp.org. That job is a hard gate: if it
+          # lookup of relay.opennhp.org. That job is a hard gate: if it
           # could not resolve a single A record, this job never runs and the
           # whitelist already on the host is left alone.
           scp ./configs/server/*.toml nhp-server:$REMOTE_DIR/etc/

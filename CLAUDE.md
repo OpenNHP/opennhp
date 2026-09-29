@@ -237,7 +237,7 @@ The whitelist lives in `etc/xdp.toml` (`deploy/config-templates/server/xdp.toml`
 rendered from `$RELAY_IPS` and hot-reloaded. **There is no break-glass SSH
 path**: if the list is rendered empty and the daemon restarts, the only way
 back in is to rebuild the instance. The `configure` job therefore resolves
-`nhp-relay.opennhp.org` and fails the whole run before anything is rendered,
+`relay.opennhp.org` and fails the whole run before anything is rendered,
 scp'd or restarted if it does not get exactly one A record — a red run with the
 demo still up is the intended outcome.
 

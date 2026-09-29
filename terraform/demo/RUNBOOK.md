@@ -877,3 +877,18 @@ so the eBPF cutover path clears it before starting the daemon; by hand:
 sudo /usr/local/sbin/nhp-ac-backstop.sh status            # reports the raw guard too
 sudo /usr/local/sbin/nhp-ac-backstop.sh flush-guard-down
 ```
+
+## nhp-server ingress filter (XDP)
+
+`nhp-serverd` attaches `nhp_server_xdp.o` at startup and drops everything at
+the driver except UDP on the knock port and SSH from the addresses in
+`etc/xdp.toml`. Unlike the AC's filter there is no fail-closed backstop and no
+break-glass SSH path, so the whitelist is the one config on these hosts that
+locks you out when it is wrong — including out of the SSH session doing the
+change, since XDP has no connection tracking.
+
+Hands-on verification — a netns rehearsal that exercises every branch of the
+decision tree, the baseline to capture before the first deploy (including the
+check that the whitelisted address is the one the host actually sees SSH
+arrive from), the same commands to re-run afterwards, and the recovery paths
+if it does go wrong — is in **[VERIFY-server-xdp.zh-cn.md](VERIFY-server-xdp.zh-cn.md)** (Chinese).

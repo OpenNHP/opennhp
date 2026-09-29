@@ -250,6 +250,10 @@ turns that silent loss of protection into a failed deploy. Capabilities
 from a systemd drop-in installed by `deploy-server` on existing ones — keep the
 two in sync.
 
+Verification procedure (netns rehearsal, pre-deploy baseline, the same
+commands after the deploy, recovery paths):
+`terraform/demo/VERIFY-server-xdp.zh-cn.md`.
+
 ### `opennhp/demo` schema
 
 The secret is JSON; fields are added idempotently by scripts and workflows.

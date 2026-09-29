@@ -233,14 +233,19 @@ sudo ip netns del nhpxdp; sudo ip link del veth-h; sudo rm -rf /tmp/nhpsrv
   自己的会话同样会断）；
 * 恢复手段只有「重建实例」或「摘盘改文件」（§6.2）。
 
-流水线写进 `xdp.toml` 的是 `dig relay.opennhp.org` 的解析结果，也就是 relay 的
-**公网 EIP**；而 CI 是 `ProxyJump` 经 relay 连 **server 私网地址**的（
+CI 是 `ProxyJump` 经 relay 连 **server 私网地址**的（
 `.github/workflows/deploy-demo-v2.yml` 里 `Host nhp-server → HostName <server_private_ip>`），
-同一 VPC 内走私网路径，server 看到的源地址是 relay 的**私网地址**。两者必须对上：
+同一 VPC 内走私网路径，server 看到的源地址是 relay 的**私网地址**。第一版流水线
+只把 `dig relay.opennhp.org` 的结果（relay 的**公网 EIP**）写进白名单，于是
+`deploy-server` 在 `Starting nhp-serverd...` 之后的每一条 ssh 都被驱动层丢掉
+（`channel 0: open failed: connect failed: Connection timed out`）。现在 `configure`
+把 `relay_private_ip` 和公网 EIP **两条**都写进 `RELAY_IPS`，白名单与真实源地址仍
+必须对上：
 
 ```bash
-# a) 流水线将写入白名单的地址
-dig +short relay.opennhp.org @1.1.1.1               # = $RELAY_PUB
+# a) 流水线将写入白名单的两个地址
+cd terraform/demo && terraform output -raw relay_private_ip   # = $RELAY_PRIV，SSH 真正的源地址
+dig +short relay.opennhp.org @1.1.1.1                         # = $RELAY_PUB，公网路径
 
 # b) server 实际看到的 SSH 源地址（在 server 上执行，保持另一个 SSH 会话在线）
 ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV \
@@ -256,15 +261,20 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV \
   "sudo timeout 20 tcpdump -ni any 'udp port 62206' -c 5"
 ```
 
-**判定**：若 (b)/(c) 显示的地址不在 (a) 的结果里（例如是 `10.x.x.x` 而 (a) 是公网
-EIP），**先不要部署**，先让 `RELAY_IPS` 同时包含私网地址：
+**判定**：(b)/(c) 显示的地址必须出现在 (a) 的结果里。期望的 `xdp.toml` 内容：
 
 ```bash
-# 期望的 xdp.toml 内容（RelayIPs 是数组，可以多元素）
-RelayIPs = ["<relay 公网 EIP>", "<relay 私网 IP>"]
+# RelayIPs 是数组，可以多元素；RELAY_IPS 里用逗号分隔，
+# scripts/generate-nhp-keys.sh 负责加引号、去重、校验是否 IPv4
+RelayIPs = ["<relay 私网 IP>", "<relay 公网 EIP>"]
 ```
 
-（`terraform output -raw relay_private_ip` 即可拿到，见 §7 风险 1。）
+若 (b)/(c) 的地址两条都不是（例如 relay 重建换了私网地址、或 `ProxyJump` 拓扑改了），
+**先不要部署**，先把该地址加进 `configure` 的 `RELAY_IPS`。`deploy-server` 的
+`Check this job's own SSH source is in the XDP whitelist` 这一步会用
+`$SSH_CONNECTION` 向主机反问「你看到的对端地址是多少」，对不上就在第一次 scp 之前
+失败，所以忘了这条也是红流水线而不是失联——但预检仍值得做，它能在跑流水线之前
+就发现问题（见 §7 风险 1）。
 
 ### 2.2 主机内基线（在 server 上执行，输出存档）
 
@@ -339,7 +349,8 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV \
 
 | Job / Step | 作用 | 失败表现 |
 | --- | --- | --- |
-| `configure` → `Resolve relay IPs via DNS` | `dig +short relay.opennhp.org @1.1.1.1` 必须**恰好一条** A 记录，否则 `exit 1` | 整个流水线红，**不渲染 / 不 scp / 不重启**，线上继续用旧白名单 |
+| `configure` → `Resolve the relay addresses for the nhp-server XDP whitelist` | `terraform output -raw relay_private_ip` 必须是 IPv4，且 `dig +short relay.opennhp.org @1.1.1.1` 必须**恰好一条** A 记录，否则 `exit 1` | 整个流水线红，**不渲染 / 不 scp / 不重启**，线上继续用旧白名单 |
+| `deploy-server` → `Check this job's own SSH source is in the XDP whitelist` | `ssh nhp-server 'printf "%s" "${SSH_CONNECTION%% *}"'` 拿到主机看到的对端地址，必须出现在待部署的 `xdp.toml` 的 `RelayIPs` 里 | 红；在**第一次 scp 之前**失败，线上白名单未被触碰。这是把「白名单写错 → 永久失联」变成「部署失败」的关卡 |
 | `build` → `test -s release/nhp-server/etc/nhp_server_xdp.o` | 目标文件必须编出来 | 红；避免 `.o` 缺失导致线上静默 fail-open |
 | `deploy-server` → `Deploy nhp-serverd and plugins` | scp `.o` + `xdp.toml`，安装 `/etc/systemd/system/nhp-serverd.service.d/10-ebpf.conf`（`CAP_BPF CAP_NET_ADMIN CAP_PERFMON` + 准备 `/sys/fs/bpf`），重启 | — |
 | `deploy-server` → `Verify the XDP ingress filter attached` | `ip -details link show \| grep -q xdpgeneric`，没挂上就红 | 这是把「fail-open 静默失效」变成「部署失败」的唯一关卡 |
@@ -522,11 +533,13 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
 
 ## 7. 已知风险清单（验证时重点看）
 
-1. **白名单是公网 IP、实际源地址是私网 IP** —— 流水线用 `dig relay.opennhp.org`
-   取的是 relay 的公网 EIP，而 CI/relay 经 VPC 内网连 server 私网地址，server 看到的
-   是 relay 的**私网** IP。若两者不一致，第一次 `systemctl restart nhp-serverd` 之后
-   SSH（含正在跑的那条会话）立即被丢。**首次部署前必须做 §2.1，必要时把
-   `RELAY_IPS` 写成「公网 EIP + 私网 IP」两条。**
+1. **白名单是公网 IP、实际源地址是私网 IP** —— 已发生过一次：第一版流水线只写
+   `dig relay.opennhp.org` 的公网 EIP，而 CI/relay 经 VPC 内网连 server 私网地址，
+   server 看到的是 relay 的**私网** IP，`deploy-server` 在重启 `nhp-serverd` 之后
+   所有 ssh 全部超时。现在 `RELAY_IPS` = 「私网 IP + 公网 EIP」两条，且
+   `deploy-server` 增加了用 `$SSH_CONNECTION` 反查源地址的预检关卡（§3）。
+   **仍要注意**：relay 重建、`ProxyJump` 拓扑变化、多加一台跳板机都会引入新的源
+   地址，届时必须同步 `RELAY_IPS`；改白名单前先做 §2.1。
 2. **fail-open 是静默的** —— 内核旧、能力缺失、`.o` 丢失都只打一行 warning。日常巡检
    请把 `ip -details link show | grep -q xdpgeneric` 纳入告警，而不是只看
    `systemctl is-active`。

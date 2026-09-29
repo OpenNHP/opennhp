@@ -281,6 +281,7 @@ jobs:
       ac_public_ip: ${{ steps.tf_outputs.outputs.ac_public_ip }}
       ac_private_ip: ${{ steps.tf_outputs.outputs.ac_private_ip }}
       relay_public_ip: ${{ steps.tf_outputs.outputs.relay_public_ip }}
+      relay_private_ip: ${{ steps.tf_outputs.outputs.relay_private_ip }}
 
     steps:
       - name: Checkout code
@@ -315,16 +316,18 @@ jobs:
           AC_PUB=$(terraform output -raw ac_public_ip)
           AC_PRIV=$(terraform output -raw ac_private_ip)
           RELAY_PUB=$(terraform output -raw relay_public_ip)
+          RELAY_PRIV=$(terraform output -raw relay_private_ip)
 
           echo "server_public_ip=$SERVER_PUB"     >> $GITHUB_OUTPUT
           echo "server_private_ip=$SERVER_PRIV"   >> $GITHUB_OUTPUT
           echo "ac_public_ip=$AC_PUB"             >> $GITHUB_OUTPUT
           echo "ac_private_ip=$AC_PRIV"           >> $GITHUB_OUTPUT
           echo "relay_public_ip=$RELAY_PUB"       >> $GITHUB_OUTPUT
+          echo "relay_private_ip=$RELAY_PRIV"     >> $GITHUB_OUTPUT
 
           echo "Server public/private:   $SERVER_PUB / $SERVER_PRIV"
           echo "AC public/private:       $AC_PUB / $AC_PRIV"
-          echo "Relay public:            $RELAY_PUB"
+          echo "Relay public/private:    $RELAY_PUB / $RELAY_PRIV"
 
       - name: Download build artifact
         uses: actions/download-artifact@v8
@@ -332,24 +335,51 @@ jobs:
           name: nhp-demo-build
           path: ./artifact
 
-      - name: Resolve relay IPs via DNS
+      - name: Resolve the relay addresses for the nhp-server XDP whitelist
         # RELAY_IPS becomes the nhp-server's XDP whitelist: the only source
         # addresses allowed to reach tcp/22 on that host. There is no
         # break-glass SSH path by design, so rendering an empty or wrong list
         # and restarting the daemon would lock every operator out and leave
         # rebuilding the instance as the only recovery.
         #
-        # So this is a hard gate, placed BEFORE the configs are rendered and
-        # therefore before anything is scp'd or restarted: an empty answer, a
-        # SERVFAIL, or more than one A record all fail the job here. The
-        # deploy-* jobs depend on this one, so they never run, the live
-        # nhp-serverd is not touched, and the xdp.toml already on the host
-        # keeps working. A red run with the demo still up is the intended
-        # outcome; investigate Cloudflare, then re-run.
+        # The list needs BOTH of the relay's addresses, because which one the
+        # server sees depends on the path:
+        #
+        #   * the relay's VPC private address is what SSH arrives from. The
+        #     deploy-server job ProxyJumps through the relay to the server's
+        #     private address, so those packets never leave the VPC and
+        #     keep the relay's private source address. Whitelisting only the
+        #     public address is what made deploy-server hang at "Starting
+        #     nhp-serverd..." and then time out: every ssh after the daemon
+        #     attached the filter was dropped at the driver.
+        #   * the relay's public address covers anything that reaches the
+        #     server through the internet gateway instead (traffic addressed
+        #     to the server's EIP hairpins out and back, arriving with the
+        #     relay's public source address).
+        #
+        # Both are cheap to allow and the private one is not guessable from
+        # outside the VPC, so the whitelist carries the pair rather than
+        # betting on one path.
+        #
+        # This is a hard gate, placed BEFORE the configs are rendered and
+        # therefore before anything is scp'd or restarted: a missing Terraform
+        # output, an empty DNS answer, a SERVFAIL, or more than one A record
+        # all fail the job here. The deploy-* jobs depend on this one, so they
+        # never run, the live nhp-serverd is not touched, and the xdp.toml
+        # already on the host keeps working. A red run with the demo still up
+        # is the intended outcome; investigate, then re-run.
         run: |
           set -euo pipefail
 
           command -v dig >/dev/null || sudo apt-get install -y --no-install-recommends dnsutils
+
+          RELAY_PRIV='${{ steps.tf_outputs.outputs.relay_private_ip }}'
+          if ! printf '%s' "$RELAY_PRIV" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "[!] relay_private_ip from Terraform is not an IPv4 address: '$RELAY_PRIV'"
+            echo "    That address is the source of every SSH session into the"
+            echo "    nhp-server host; refusing to render a whitelist without it."
+            exit 1
+          fi
 
           RELAY_FQDN='${{ env.DOMAIN_RELAY }}'
           RESOLVED=$(dig +short "$RELAY_FQDN" @1.1.1.1 \
@@ -357,7 +387,7 @@ jobs:
 
           if [ -z "$RESOLVED" ]; then
             echo "[!] DNS resolution returned no records for $RELAY_FQDN"
-            echo "    Refusing to render an empty SSH whitelist for nhp-server."
+            echo "    Refusing to render a partial SSH whitelist for nhp-server."
             exit 1
           fi
 
@@ -365,12 +395,17 @@ jobs:
           if [ "$COUNT" -ne 1 ]; then
             echo "[!] Expected exactly one A record for $RELAY_FQDN, got $COUNT:"
             printf '      %s\n' $RESOLVED
-            echo "    The whitelist template renders a single address; fix DNS first."
+            echo "    The relay has a single EIP; fix DNS first."
             exit 1
           fi
 
-          echo "Relay source address for the nhp-server XDP whitelist: $RESOLVED"
-          echo "RELAY_IPS=$RESOLVED" >> $GITHUB_ENV
+          echo "Relay source addresses for the nhp-server XDP whitelist:"
+          echo "  $RELAY_PRIV (VPC / SSH jump path)"
+          echo "  $RESOLVED (public, via $RELAY_FQDN)"
+          # generate-nhp-keys.sh splits this on commas and renders it as a TOML
+          # array, so extra addresses can be appended here without touching the
+          # template.
+          echo "RELAY_IPS=$RELAY_PRIV,$RESOLVED" >> $GITHUB_ENV
           echo "XDP_ENABLED=true" >> $GITHUB_ENV
           # Keep in sync with NHP_MIN_UDP_LEN in nhp/ebpf/xdp/nhp_server_xdp.c.
           echo "XDP_NHP_MIN_FRAME_BYTES=240" >> $GITHUB_ENV
@@ -619,6 +654,58 @@ jobs:
       # No repo checkout here: the server host no longer receives an nginx
       # vhost or the bootstrap-tls.sh certificate script, so there is nothing
       # to render from the working tree in this job.
+
+      - name: Check this job's own SSH source is in the XDP whitelist
+        # The whitelist about to be uploaded decides who may reach tcp/22 on
+        # the server host, and the XDP program keeps no connection state: the
+        # moment nhp-serverd restarts with a list that omits the address this
+        # job connects from, every later ssh in this job — and every future
+        # deploy — is dropped at the driver. There is no break-glass path, so
+        # recovery is detaching the root volume or replacing the instance
+        # (terraform/demo/VERIFY-server-xdp.zh-cn.md §6.2).
+        #
+        # So don't infer the source address, ask the host: sshd exports
+        # SSH_CONNECTION, whose first field is the peer address the server
+        # actually sees for this very connection. Comparing that against the
+        # rendered file catches the whole class of mismatches — the public/
+        # private mix-up that broke this job before, a ProxyJump topology
+        # change, a relay rebuild with a new private address, a stale
+        # Terraform output — without this step having to know which one it is.
+        #
+        # Placed before the first scp and before the restart, so a failure
+        # here leaves the host running its previous, working whitelist.
+        run: |
+          set -euo pipefail
+
+          XDP_TOML=./configs/server/xdp.toml
+          if [ ! -s "$XDP_TOML" ]; then
+            echo "ERROR: $XDP_TOML is missing or empty in the configs artifact." >&2
+            exit 1
+          fi
+
+          # ${SSH_CONNECTION%% *} is expanded by the remote shell: client
+          # address, client port, server address, server port.
+          PEER=$(ssh nhp-server 'printf "%s" "${SSH_CONNECTION%% *}"')
+          if ! printf '%s' "$PEER" | grep -qE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$'; then
+            echo "ERROR: could not determine this job's SSH source address as seen" >&2
+            echo "       by the server host (got '$PEER')." >&2
+            exit 1
+          fi
+
+          WHITELIST=$(grep -E '^[[:space:]]*RelayIPs' "$XDP_TOML" || true)
+          echo "Server sees this job's SSH connection from: $PEER"
+          echo "Whitelist about to be deployed:             ${WHITELIST:-(none)}"
+
+          if ! printf '%s' "$WHITELIST" | grep -qF "\"$PEER\""; then
+            echo "ERROR: the xdp.toml about to be deployed does not whitelist $PEER," >&2
+            echo "       the address this job's SSH sessions arrive from. Restarting" >&2
+            echo "       nhp-serverd with it would drop tcp/22 for this host with no" >&2
+            echo "       way back in short of rebuilding the instance, so nothing has" >&2
+            echo "       been uploaded and the live whitelist is untouched." >&2
+            echo "       Fix RELAY_IPS in the configure job (it should carry the" >&2
+            echo "       relay's private and public addresses) and re-run." >&2
+            exit 1
+          fi
 
       - name: Tear down nginx HTTP/HTTPS surface on server
         # The nhp-server's public HTTP surface (the demo login page at

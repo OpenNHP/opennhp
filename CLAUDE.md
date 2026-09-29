@@ -228,18 +228,33 @@ All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 `nhp-serverd` attaches `nhp/ebpf/xdp/nhp_server_xdp.c` at startup and enforces
 that same shape at the driver: UDP on the knock port (≥240 bytes, the curve
 `NHP_KPL` header size — gmsm's 304 clears it too), SSH only from the relay's
-address, everything else dropped. It parses no NHP protocol; identity is still
+addresses, everything else dropped. It parses no NHP protocol; identity is still
 decided by the Noise handshake in user space. The AC's per-knock XDP program
 and the shared loader (`nhp/utils/ebpf/engine_linux.go`) are the same code
 path selected by `EngineLoadParams.Variant`.
 
 The whitelist lives in `etc/xdp.toml` (`deploy/config-templates/server/xdp.toml`),
-rendered from `$RELAY_IPS` and hot-reloaded. **There is no break-glass SSH
-path**: if the list is rendered empty and the daemon restarts, the only way
-back in is to rebuild the instance. The `configure` job therefore resolves
-`relay.opennhp.org` and fails the whole run before anything is rendered,
-scp'd or restarted if it does not get exactly one A record — a red run with the
-demo still up is the intended outcome.
+rendered from `$RELAY_IPS` (comma-separated; `scripts/generate-nhp-keys.sh`
+quotes it into the TOML array) and hot-reloaded. It must carry **both** of the
+relay's addresses: the VPC **private** one, which is what SSH arrives from
+because CI jumps through the relay to the server's private address, and the
+**public** one for traffic that reaches the host through the internet gateway.
+Whitelisting only the public address closes tcp/22 the moment the daemon
+restarts.
+
+**There is no break-glass SSH path**: if the list is rendered empty or without
+the private address and the daemon restarts, the only way back in is to detach
+the root volume or rebuild the instance. Two gates protect against that, both
+before anything is scp'd or restarted:
+
+- the `configure` job reads `relay_private_ip` from Terraform and resolves
+  `relay.opennhp.org`, failing the whole run unless it gets an IPv4 address and
+  exactly one A record;
+- `deploy-server`'s `Check this job's own SSH source is in the XDP whitelist`
+  step asks the host what peer address it sees for the live connection
+  (`$SSH_CONNECTION`) and fails if the rendered `xdp.toml` does not list it.
+
+A red run with the demo still up is the intended outcome of either.
 
 Loading is **fail-open**: a missing object, an old kernel or a missing
 capability leaves the daemon running with no filter and a `Warning` in the log.

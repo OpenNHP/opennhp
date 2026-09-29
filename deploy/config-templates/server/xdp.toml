@@ -5,13 +5,18 @@
 # addresses listed here. The whitelist is reloaded whenever this file changes;
 # nothing else in it is hot-reloadable.
 #
-# RelayIPs is the ONLY field that reaches the kernel. It is rendered from
-# ${RELAY_IPS}, resolved from relay.opennhp.org by the deploy pipeline. If
-# that resolution fails the pipeline stops before this file is written and
+# RelayIPs is the ONLY field that reaches the kernel. It is rendered from the
+# RELAY_IPS environment variable (a comma-separated list, quoted into a TOML
+# array by scripts/generate-nhp-keys.sh): the relay's VPC private address,
+# which is what SSH into this host arrives from because CI jumps through the
+# relay to the server's private address, plus the public address of
+# relay.opennhp.org for anything that reaches this host through the internet
+# gateway instead.
+# If either lookup fails the pipeline stops before this file is written and
 # before nhp-serverd is restarted, so the running host keeps the whitelist it
-# already has — an empty list here would lock every operator out of SSH, and
-# the only way back in is to rebuild the instance (there is no break-glass
-# path by design).
+# already has — an empty or private-address-less list here would lock every
+# operator out of SSH, and the only way back in is to rebuild the instance
+# (there is no break-glass path by design).
 #
 # Enabled and NhpMinFrameBytes are recorded for the operator's benefit and are
 # reported, not applied: the program is attached whenever the object loads, and
@@ -27,4 +32,4 @@ NhpMinFrameBytes = ${XDP_NHP_MIN_FRAME_BYTES}
 
 # Sources allowed to reach tcp/22, and allowed to reach the knock port without
 # meeting the length floor (the relay forwards short handshake packets).
-RelayIPs = ["${RELAY_IPS}"]
+RelayIPs = [${RELAY_IPS_TOML}]

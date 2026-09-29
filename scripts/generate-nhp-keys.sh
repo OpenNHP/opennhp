@@ -328,17 +328,48 @@ export DOMAIN="$DOMAIN"
 
 # nhp-server eBPF/XDP ingress policy (server/xdp.toml). RELAY_IPS is the
 # whitelist that decides who may reach tcp/22 on the server host, so an empty
-# render is a lockout: the deploy pipeline resolves relay.opennhp.org and
-# fails the run before reaching this script if it gets no answer. Warn here
-# too, because this script is also run by hand.
+# render is a lockout: the deploy pipeline resolves the relay's addresses and
+# fails the run before reaching this script if it cannot. Warn here too,
+# because this script is also run by hand.
+#
+# RELAY_IPS is accepted as a comma / space separated list (the pipeline passes
+# the relay's VPC private address, which is what SSH into the server actually
+# arrives from, plus its public address) and rendered into the template as a
+# TOML array via RELAY_IPS_TOML. Quoting here rather than in the template keeps
+# the template a plain `RelayIPs = [${RELAY_IPS_TOML}]` for any number of
+# addresses, and gives one place to reject malformed input.
 export XDP_ENABLED="${XDP_ENABLED:-true}"
 # Keep in sync with NHP_MIN_UDP_LEN in nhp/ebpf/xdp/nhp_server_xdp.c.
 export XDP_NHP_MIN_FRAME_BYTES="${XDP_NHP_MIN_FRAME_BYTES:-240}"
 export RELAY_IPS="${RELAY_IPS:-}"
-if [ -z "$RELAY_IPS" ]; then
+
+RELAY_IPS_TOML=""
+for relay_ip in $(printf '%s' "$RELAY_IPS" | tr ',;' '  '); do
+  if ! printf '%s' "$relay_ip" | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'; then
+    echo "  ERROR: RELAY_IPS contains '$relay_ip', which is not an IPv4 address." >&2
+    echo "         nhp-server's whitelist is IPv4-only; refusing to render a" >&2
+    echo "         whitelist the kernel would silently drop that entry from." >&2
+    exit 1
+  fi
+  # Dedupe so passing the same address twice (e.g. a host whose public and
+  # private addresses coincide) does not render a duplicated array.
+  case "$RELAY_IPS_TOML" in
+    *"\"$relay_ip\""*) continue ;;
+  esac
+  if [ -n "$RELAY_IPS_TOML" ]; then
+    RELAY_IPS_TOML="$RELAY_IPS_TOML, \"$relay_ip\""
+  else
+    RELAY_IPS_TOML="\"$relay_ip\""
+  fi
+done
+export RELAY_IPS_TOML
+
+if [ -z "$RELAY_IPS_TOML" ]; then
   echo "  WARNING: RELAY_IPS is empty — server/xdp.toml will render an empty" >&2
   echo "           SSH whitelist. Deploying it would close tcp/22 on the" >&2
   echo "           nhp-server host with no way back in short of rebuilding it." >&2
+else
+  echo "  server/xdp.toml SSH whitelist: $RELAY_IPS_TOML"
 fi
 
 # GitHub OAuth (application-side login). These come from GitHub Actions

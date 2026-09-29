@@ -887,6 +887,15 @@ break-glass SSH path, so the whitelist is the one config on these hosts that
 locks you out when it is wrong — including out of the SSH session doing the
 change, since XDP has no connection tracking.
 
+The list carries the relay's **private and public** addresses. CI (and any
+operator following this runbook) reaches the server with
+`ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV`, so the packets stay inside
+the VPC and the server sees the relay's *private* address as the source; the
+public address covers the hairpin path through the internet gateway. The
+`deploy-server` job refuses to upload a whitelist that omits the address the
+host reports for its own SSH connection, which is the check that turns this
+mistake into a red run instead of a lockout.
+
 Hands-on verification — a netns rehearsal that exercises every branch of the
 decision tree, the baseline to capture before the first deploy (including the
 check that the whitelisted address is the one the host actually sees SSH

@@ -35,6 +35,28 @@
  * only NHP-shaped test here is a minimum datagram length, which costs nothing
  * and turns the knock port into a non-answer for ordinary scanners.
  *
+ * Two shapes that are not a plain unfragmented IPv4 datagram get an explicit
+ * answer here rather than being waved through, because a filter that says it
+ * drops everything but X must not have a hole the size of an address family:
+ *
+ *   IPv4 fragments -- only the first fragment carries the L4 header, so the
+ *   port-based tree above can only judge that one. Later fragments are PASSed
+ *   (see the IP_OFFSET branch): they cannot reach a socket on their own, since
+ *   reassembly needs the first fragment, and that one went through the full
+ *   policy. Dropping them instead would break every datagram larger than the
+ *   path MTU, knocks included -- and reading "ports" out of a fragment's
+ *   payload, which is what this program used to do, is worse than either. An
+ *   IPv6 fragment header gets the same answer, in handle_ipv6().
+ *
+ *   IPv6 -- filtered with the same tree as IPv4, minus the whitelist: the relay
+ *   list is IPv4 prefixes (see nhp_relay_ips), so nothing gets to SSH over v6.
+ *   It used to be an unconditional XDP_PASS on the grounds that the demo hosts
+ *   have no v6 address, which left sshd's [::]:22 -- and every other listener --
+ *   reachable unfiltered the day a v6 CIDR is added to the VPC, with the
+ *   deploy's "filter attached" check still green. ICMPv6 neighbour discovery
+ *   and MLD are passed so a host on a v6 subnet still works, and replies to the
+ *   host's own v6 flows are admitted by the same socket-table lookup as v4.
+ *
  * Map names carry an `nhp_` prefix so a host that somehow ran both this and the
  * AC object would not collide on LIBBPF_PIN_BY_NAME pins in /sys/fs/bpf.
  */
@@ -51,10 +73,37 @@
 #define IPPROTO_TCP  6
 #define IPPROTO_UDP  17
 
+/* IPv6 next-header values: the three extension headers that may sit in front of
+ * the L4 header on ordinary traffic (an MLD report carries a hop-by-hop router
+ * alert), and ICMPv6. */
+#define IPPROTO_HOPOPTS  0
+#define IPPROTO_ROUTING  43
+#define IPPROTO_DSTOPTS  60
+#define IPPROTO_ICMPV6   58
+#define IPPROTO_FRAGMENT 44
+
 /* ICMP destination-unreachable / fragmentation-needed, i.e. the one ICMP
  * message a host that opens outbound TCP connections cannot do without. */
 #define ICMP_DEST_UNREACH  3
 #define ICMP_FRAG_NEEDED   4
+
+/* iph->frag_off, network order. MF says "more fragments follow"; OFFSET is
+ * non-zero on every fragment but the first, which is the one that has no L4
+ * header behind the IP header. IP6_FRAG_OFFSET is the same field in an IPv6
+ * fragment header (13 bits, the low 3 being reserved + M). */
+#define IP_MF            0x2000
+#define IP_OFFSET        0x1FFF
+#define IP6_FRAG_OFFSET  0xFFF8
+
+/* ICMPv6 types that keep a host working on an IPv6 subnet: "packet too big"
+ * (the frag-needed of v6, see the ICMP branch at the bottom of the program) and
+ * the contiguous MLD/ND block 130..137 -- multicast listener query/report/done,
+ * router and neighbour solicitation/advertisement, redirect. Neighbour
+ * discovery *is* v6's ARP, so dropping it would take the host off its own
+ * subnet; everything else, echo request included, stays dropped. */
+#define ICMPV6_PKT_TOOBIG  2
+#define ICMPV6_MLD_FIRST   130
+#define ICMPV6_ND_LAST     137
 
 #define SSH_PORT 22
 
@@ -65,6 +114,12 @@
 #define DHCP_PORT_SERVER 67
 #define DHCP_PORT_CLIENT 68
 #define NTP_PORT         123
+
+/* The v6 spelling of the DHCP pair, for the same reason: a host that gets its
+ * v6 address from DHCPv6 rather than from SLAAC loses it at lease expiry if the
+ * reply (547 -> 546) is dropped. */
+#define DHCP6_PORT_SERVER 547
+#define DHCP6_PORT_CLIENT 546
 
 /* The knock port and the length floor are .rodata constants, not #defines,
  * because both are user-space configuration: ListenPort in etc/config.toml and
@@ -105,6 +160,11 @@ volatile const __u16 nhp_min_udp_len = 240;
 #define ACT_DROP_UDP_OTHER      13
 #define ACT_DROP_UDP_SHORT      14
 #define ACT_DROP_NONUDP         15
+#define ACT_IPV4_FRAGMENT       16
+#define ACT_V6_ICMP_CONTROL     17
+#define ACT_V6_ESTABLISHED      18
+#define ACT_V6_FRAGMENT         19
+#define ACT_DROP_V6_OTHER       20
 
 /* Source prefixes allowed to reach SSH, and allowed to reach the knock port
  * without meeting the length floor. Driven from user space by
@@ -138,6 +198,11 @@ struct {
     __type(value, __u8);
 } nhp_relay_ips SEC(".maps");
 
+/* NHP_FAMILY_* is the `family` field of nhp_event_t, not AF_INET: it says which
+ * of the two address pairs below carries this event's addresses. */
+#define NHP_FAMILY_V4 4
+#define NHP_FAMILY_V6 6
+
 struct nhp_event_t {
     __u64  timestamp;
     __u8   action;
@@ -148,6 +213,16 @@ struct nhp_event_t {
     __u8   protocol;
     __be16 pkt_len;
     __u8   relay_hit;
+    /* Which pair holds the addresses: NHP_FAMILY_V4 means src_ip/dst_ip and
+     * the v6 fields are zero, NHP_FAMILY_V6 the reverse. The v6 fields were
+     * added when IPv6 stopped being an unconditional pass -- a drop class whose
+     * log lines have no source address is a blind spot, and a __be32 cannot
+     * hold a v6 address. Parsed by readServerEvents in
+     * nhp/utils/ebpf/engine_linux.go; serverEventByteSize there is sizeof this
+     * struct, so a field added here has to be added there too. */
+    __u8   family;
+    __u8   src_ip6[16];
+    __u8   dst_ip6[16];
 } __attribute__((packed));
 
 struct {
@@ -169,8 +244,14 @@ struct {
  * cannot starve out the records of another (an SSH attempt from a non-relay
  * address, or a knock that passed). Per-CPU so the counter needs no atomics;
  * the effective ceiling is NHP_EVENT_BURST * nr_cpus per second per class,
- * which is ample for diagnosis and bounded regardless of offered load. */
-#define NHP_EVENT_ACTIONS 16
+ * which is ample for diagnosis and bounded regardless of offered load.
+ *
+ * NHP_EVENT_ACTIONS sizes this array and the counter array, so it must stay
+ * above the highest ACT_* code (a code at or past it is still judged, just
+ * neither counted nor rate limited). It carries a little headroom over the
+ * codes in use; serverEventActions in nhp/utils/ebpf/engine_linux.go mirrors
+ * it, and a test fails if the two drift apart. */
+#define NHP_EVENT_ACTIONS 24
 #define NHP_EVENT_WINDOW_NS 1000000000ULL
 #define NHP_EVENT_BURST 16
 
@@ -232,25 +313,10 @@ static __always_inline bool event_budget_available(__u8 action, __u64 now) {
     return true;
 }
 
-/* Count the packet against its action, and put an event on the perf ring if
- * the class is worth a line and has budget left.
- *
- * `report` is what keeps the log readable. A verdict is worth a line when it
- * says something the previous lines did not: a knock admitted, an SSH attempt
- * from an address that is not the relay, a scan. It is worth nothing when it is
- * the four-thousandth data segment of a connection whose one real decision --
- * "the host opened this flow" -- was already logged, or was never a decision at
- * all because the kernel's socket table answered it. Those bulk classes
- * (TCP_ESTABLISHED, UDP_ESTABLISHED, and every SSH_RELAY packet after the SYN)
- * are passed report=false: they scale with *bytes transferred*, not with
- * events, so one `dnf update` or one CI scp of the release tarball would
- * otherwise write more log than a month of knocks. They are still counted, and
- * the per-window summary reports them.
- *
- * The verdict never depends on this argument -- only the telemetry does. */
-static __always_inline void record_packet(void *ctx, __u8 action, struct iphdr *iph,
-                                          __be16 src_port, __be16 dst_port,
-                                          __u8 relay_hit, bool report) {
+/* Tick this action's total, which happens for every packet whatever the
+ * reporting decision below is, and hand the caller the slot so it can tick
+ * `logged` too if the event reaches the ring. */
+static __always_inline struct nhp_action_stat *count_packet(__u8 action) {
     __u32 slot = action;
     struct nhp_action_stat *stat = NULL;
 
@@ -258,17 +324,52 @@ static __always_inline void record_packet(void *ctx, __u8 action, struct iphdr *
         stat = bpf_map_lookup_elem(&nhp_action_stats, &slot);
     if (stat)
         stat->packets++;
+    return stat;
+}
+
+/* Shared tail of the two recorders: stamp the event, spend a token, emit. */
+static __always_inline void emit_event(void *ctx, struct nhp_event_t *ev,
+                                       struct nhp_action_stat *stat) {
+    __u64 now = bpf_ktime_get_ns();
+    if (!event_budget_available(ev->action, now))
+        return;
+    ev->timestamp = now;
+
+    if (bpf_perf_event_output(ctx, &nhp_events, BPF_F_CURRENT_CPU, ev, sizeof(*ev)) == 0 && stat)
+        stat->logged++;
+}
+
+/* Count the packet against its action, and put an event on the perf ring if
+ * the class is worth a line and has budget left. record_packet is the IPv4
+ * entry point and record_v6_packet below the IPv6 one; both count through
+ * count_packet and emit through emit_event, so neither family can end up
+ * outside the accounting or outside the budget.
+ *
+ * `report` is what keeps the log readable. A verdict is worth a line when it
+ * says something the previous lines did not: a knock admitted, an SSH attempt
+ * from an address that is not the relay, a scan. It is worth nothing when it is
+ * the four-thousandth data segment of a connection whose one real decision --
+ * "the host opened this flow" -- was already logged, or was never a decision at
+ * all because the kernel's socket table answered it. Those bulk classes
+ * (TCP_ESTABLISHED, UDP_ESTABLISHED, V6_ESTABLISHED, ICMPV6_CONTROL and every
+ * SSH_RELAY packet after the SYN) are passed report=false: they scale with
+ * *bytes transferred* or with a subnet's background chatter, not with events,
+ * so one `dnf update` or one CI scp of the release tarball would otherwise
+ * write more log than a month of knocks. They are still counted, and the
+ * per-window summary reports them.
+ *
+ * The verdict never depends on this argument -- only the telemetry does. */
+static __always_inline void record_packet(void *ctx, __u8 action, struct iphdr *iph,
+                                          __be16 src_port, __be16 dst_port,
+                                          __u8 relay_hit, bool report) {
+    struct nhp_action_stat *stat = count_packet(action);
 
     if (!report)
         return;
 
-    __u64 now = bpf_ktime_get_ns();
-    if (!event_budget_available(action, now))
-        return;
-
     struct nhp_event_t ev = {};
-    ev.timestamp = now;
     ev.action = action;
+    ev.family = NHP_FAMILY_V4;
     ev.src_ip = iph->saddr;
     ev.dst_ip = iph->daddr;
     ev.src_port = src_port;
@@ -277,8 +378,32 @@ static __always_inline void record_packet(void *ctx, __u8 action, struct iphdr *
     ev.pkt_len = iph->tot_len;
     ev.relay_hit = relay_hit;
 
-    if (bpf_perf_event_output(ctx, &nhp_events, BPF_F_CURRENT_CPU, &ev, sizeof(ev)) == 0 && stat)
-        stat->logged++;
+    emit_event(ctx, &ev, stat);
+}
+
+/* The IPv6 recorder. `proto` is the next-header value the extension-header walk
+ * arrived at, i.e. the actual L4 protocol, rather than ip6h->nexthdr, which is
+ * the first extension header whenever there is one. relay_hit is not a
+ * parameter: the whitelist is IPv4-only, so no v6 packet can ever hit it. */
+static __always_inline void record_v6_packet(void *ctx, __u8 action, struct ipv6hdr *ip6h,
+                                             __u8 proto, __be16 src_port, __be16 dst_port,
+                                             bool report) {
+    struct nhp_action_stat *stat = count_packet(action);
+
+    if (!report)
+        return;
+
+    struct nhp_event_t ev = {};
+    ev.action = action;
+    ev.family = NHP_FAMILY_V6;
+    __builtin_memcpy(ev.src_ip6, ip6h->saddr.in6_u.u6_addr8, sizeof(ev.src_ip6));
+    __builtin_memcpy(ev.dst_ip6, ip6h->daddr.in6_u.u6_addr8, sizeof(ev.dst_ip6));
+    ev.src_port = src_port;
+    ev.dst_port = dst_port;
+    ev.protocol = proto;
+    ev.pkt_len = ip6h->payload_len;
+
+    emit_event(ctx, &ev, stat);
 }
 
 static __always_inline bool is_relay_src(__be32 saddr) {
@@ -353,6 +478,160 @@ static __always_inline bool has_local_flow(struct xdp_md *ctx, struct iphdr *iph
     return owned;
 }
 
+/* has_local_flow() for IPv6. Same helper, same verdict rule, only the tuple
+ * differs -- and it has to exist, because the v6 branch below drops everything
+ * it cannot account for: without this, the host's own v6 client traffic (a
+ * resolver reachable over v6, a package mirror with an AAAA record) would hang
+ * exactly the way the v4 DNS answers did before has_local_flow() was added. */
+static __always_inline bool has_local_flow6(struct xdp_md *ctx, struct ipv6hdr *ip6h,
+                                            __be16 sport, __be16 dport, bool is_tcp) {
+    struct bpf_sock_tuple tuple = {};
+    struct bpf_sock *sk;
+    bool owned;
+
+    __builtin_memcpy(tuple.ipv6.saddr, ip6h->saddr.in6_u.u6_addr32, sizeof(tuple.ipv6.saddr));
+    __builtin_memcpy(tuple.ipv6.daddr, ip6h->daddr.in6_u.u6_addr32, sizeof(tuple.ipv6.daddr));
+    tuple.ipv6.sport = sport;
+    tuple.ipv6.dport = dport;
+
+    if (is_tcp)
+        sk = bpf_sk_lookup_tcp(ctx, &tuple, sizeof(tuple.ipv6),
+                               BPF_F_CURRENT_NETNS, 0);
+    else
+        sk = bpf_sk_lookup_udp(ctx, &tuple, sizeof(tuple.ipv6),
+                               BPF_F_CURRENT_NETNS, 0);
+    if (!sk)
+        return false;
+
+    owned = is_tcp ? sk->state != BPF_TCP_LISTEN : sk->dst_port != 0;
+
+    bpf_sk_release(sk);
+    return owned;
+}
+
+/* The IPv6 half of the decision tree.
+ *
+ * Deliberately *not* symmetrical with IPv4 in one respect: there is no service
+ * exception. The relay whitelist is a trie of IPv4 prefixes, so this program
+ * cannot tell the relay's v6 address from anyone else's, and "SSH from the
+ * relay" is a policy it can only express over v4. Nothing therefore reaches
+ * tcp/22 or the knock port over v6; what gets in is neighbour discovery, the
+ * two address/clock-keeping client protocols, and replies to flows the host
+ * itself opened. Operators must keep reaching this host over IPv4 -- the
+ * loader logs a Warning when the filtered interface has a global v6 address,
+ * and deploy-server's "$SSH_CONNECTION is in the whitelist" gate fails outright
+ * for a v6 peer address, since no entry can contain it.
+ */
+static __always_inline int handle_ipv6(struct xdp_md *ctx, void *l3, void *data_end) {
+    struct ipv6hdr *ip6h = l3;
+    if ((void *)(ip6h + 1) > data_end)
+        return XDP_DROP;
+
+    /* Walk the extension-header chain to the L4 header. Two hops is enough for
+     * what a host on a v6 subnet actually receives (an MLD report is a
+     * hop-by-hop router alert followed by ICMPv6, and a fragment header may
+     * follow one of those); a longer chain falls through to the drop at the
+     * bottom rather than being guessed at. */
+    __u8 nexthdr = ip6h->nexthdr;
+    void *cur = (void *)(ip6h + 1);
+
+#pragma unroll
+    for (int i = 0; i < 2; i++) {
+        /* A fragment header is where v6 keeps the offset that makes IPv4's
+         * non-first fragments unreadable, so it gets the same answer as the
+         * IP_OFFSET branch in the main program: a fragment with a non-zero
+         * offset has no L4 header to judge and is passed as inert (the first
+         * fragment carries the ports and takes the full tree), while the first
+         * fragment simply continues down the chain. */
+        if (nexthdr == IPPROTO_FRAGMENT) {
+            struct frag_hdr *frag = cur;
+            if ((void *)(frag + 1) > data_end)
+                return XDP_DROP;
+
+            if (bpf_ntohs(frag->frag_off) & IP6_FRAG_OFFSET) {
+                record_v6_packet(ctx, ACT_V6_FRAGMENT, ip6h, nexthdr, 0, 0, true);
+                return XDP_PASS;
+            }
+            nexthdr = frag->nexthdr;
+            cur = (void *)(frag + 1);
+            continue;
+        }
+
+        if (nexthdr != IPPROTO_HOPOPTS && nexthdr != IPPROTO_ROUTING &&
+            nexthdr != IPPROTO_DSTOPTS)
+            break;
+
+        struct ipv6_opt_hdr *ext = cur;
+        if ((void *)(ext + 1) > data_end)
+            return XDP_DROP;
+        nexthdr = ext->nexthdr;
+        cur += ((__u32)ext->hdrlen + 1) * 8;
+        if (cur > data_end)
+            return XDP_DROP;
+    }
+
+    if (nexthdr == IPPROTO_ICMPV6) {
+        struct icmp6hdr *icmp6 = cur;
+        if ((void *)(icmp6 + 1) > data_end)
+            return XDP_DROP;
+
+        /* Counted, not reported: ND and MLD are steady background chatter on
+         * any v6 subnet, which is exactly what the old unconditional pass was
+         * trying to keep out of the log. The per-window summary has the
+         * numbers. */
+        __u8 type = icmp6->icmp6_type;
+        if (type == ICMPV6_PKT_TOOBIG ||
+            (type >= ICMPV6_MLD_FIRST && type <= ICMPV6_ND_LAST)) {
+            record_v6_packet(ctx, ACT_V6_ICMP_CONTROL, ip6h, nexthdr, 0, 0, false);
+            return XDP_PASS;
+        }
+        record_v6_packet(ctx, ACT_DROP_V6_OTHER, ip6h, nexthdr, 0, 0, true);
+        return XDP_DROP;
+    }
+
+    if (nexthdr == IPPROTO_TCP) {
+        struct tcphdr *tcp = cur;
+        if ((void *)(tcp + 1) > data_end)
+            return XDP_DROP;
+
+        if (has_local_flow6(ctx, ip6h, tcp->source, tcp->dest, true)) {
+            record_v6_packet(ctx, ACT_V6_ESTABLISHED, ip6h, nexthdr, tcp->source, tcp->dest, false);
+            return XDP_PASS;
+        }
+        record_v6_packet(ctx, ACT_DROP_V6_OTHER, ip6h, nexthdr, tcp->source, tcp->dest, true);
+        return XDP_DROP;
+    }
+
+    if (nexthdr == IPPROTO_UDP) {
+        struct udphdr *udp = cur;
+        if ((void *)(udp + 1) > data_end)
+            return XDP_DROP;
+
+        /* The v6 spellings of the two exceptions the socket table cannot
+         * answer for, reported under the same action codes as their v4
+         * counterparts: same client, same reason, same thing an operator
+         * greps for. */
+        if (udp->source == bpf_htons(DHCP6_PORT_SERVER) &&
+            udp->dest == bpf_htons(DHCP6_PORT_CLIENT)) {
+            record_v6_packet(ctx, ACT_DHCP_CLIENT, ip6h, nexthdr, udp->source, udp->dest, true);
+            return XDP_PASS;
+        }
+        if (udp->source == bpf_htons(NTP_PORT) && udp->dest == bpf_htons(NTP_PORT)) {
+            record_v6_packet(ctx, ACT_NTP_CLIENT, ip6h, nexthdr, udp->source, udp->dest, false);
+            return XDP_PASS;
+        }
+        if (has_local_flow6(ctx, ip6h, udp->source, udp->dest, false)) {
+            record_v6_packet(ctx, ACT_V6_ESTABLISHED, ip6h, nexthdr, udp->source, udp->dest, false);
+            return XDP_PASS;
+        }
+        record_v6_packet(ctx, ACT_DROP_V6_OTHER, ip6h, nexthdr, udp->source, udp->dest, true);
+        return XDP_DROP;
+    }
+
+    record_v6_packet(ctx, ACT_DROP_V6_OTHER, ip6h, nexthdr, 0, 0, true);
+    return XDP_DROP;
+}
+
 SEC("xdp")
 int xdp_server_prog(struct xdp_md *ctx) {
     void *data = (void *)(long)ctx->data;
@@ -363,11 +642,10 @@ int xdp_server_prog(struct xdp_md *ctx) {
         return XDP_DROP;
 
     switch (bpf_ntohs(eth->h_proto)) {
-        /* ARP and IPv6 pass unreported: ARP keeps the host on its subnet, and
-         * the demo hosts have no IPv6 service to filter -- reporting either
-         * would drown the perf ring in neighbour traffic. */
+        /* ARP passes unreported: it keeps the host on its subnet, and
+         * reporting it would drown the perf ring in neighbour traffic. */
         case ETH_P_ARP:  return XDP_PASS;
-        case ETH_P_IPV6: return XDP_PASS;
+        case ETH_P_IPV6: return handle_ipv6(ctx, (void *)(eth + 1), data_end);
         case ETH_P_IP:   break;
         default:         return XDP_DROP;
     }
@@ -377,6 +655,35 @@ int xdp_server_prog(struct xdp_md *ctx) {
         return XDP_DROP;
     if (iph->ihl < 5)
         return XDP_DROP;
+
+    /* Fragments other than the first have no L4 header: the bytes at ihl * 4
+     * are payload, and reading them as one is how this program used to hand
+     * itself a garbage source and destination port. It then dropped the
+     * fragment as UDP_OTHER, so every datagram over the path MTU -- a knock
+     * forwarded from the internet gateway's 1500 while this interface is at
+     * 9001, a large EDNS0 answer from outside the VPC -- lost its tail and
+     * timed out in reassembly, with nothing in user space to say why. Worse,
+     * a crafted fragment whose payload happened to read 67 -> 68 or 123 -> 123
+     * was passed by the exception branches below.
+     *
+     * So they are separated out and passed, under their own action code. A
+     * non-first fragment is inert on its own: the kernel cannot deliver
+     * anything to a socket until the *first* fragment arrives, and that one
+     * carries the ports and goes through the full tree below. The cost is the
+     * reassembly buffer an attacker can occupy with fragments whose first
+     * never comes, which the kernel already bounds
+     * (net.ipv4.ipfrag_high_thresh) and which is the same exposure any host
+     * without a fragment-dropping firewall has. Dropping them instead would
+     * make this filter, and not the network, the reason large knocks fail.
+     *
+     * First fragments (MF set, offset 0) fall through unchanged. udp->len is
+     * the length of the whole datagram, not of the fragment, so the length
+     * floor below still judges the knock and not the piece of it that
+     * arrived. */
+    if (bpf_ntohs(iph->frag_off) & IP_OFFSET) {
+        record_packet(ctx, ACT_IPV4_FRAGMENT, iph, 0, 0, 0, true);
+        return XDP_PASS;
+    }
 
     /* L4 starts after the IP options, i.e. at ihl * 4 -- not at iph + 1, which
      * is only the same when there are none. */

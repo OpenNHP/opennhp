@@ -189,29 +189,35 @@ const cfgEphemeralPortMin uint32 = 0
 // program uses when the slot is unset.
 const defaultEphemeralPortMin uint32 = 32768
 
-// Pin paths each variant owns. CleanupBPFFiles removes only its own variant's
-// list, so the two objects could coexist on one host without one tearing down
-// the other's maps.
-var acPinnedFiles = []string{
-	"/sys/fs/bpf/xdp_white_prog",
-	"/sys/fs/bpf/conn_track",
-	"/sys/fs/bpf/icmpwhitelist",
-	"/sys/fs/bpf/port_list",
-	"/sys/fs/bpf/protocol_port",
-	"/sys/fs/bpf/sdwhitelist",
-	"/sys/fs/bpf/src_port",
-	"/sys/fs/bpf/spp",
-	"/sys/fs/bpf/knock_peers",
-	"/sys/fs/bpf/nhp_config",
-	"/sys/fs/bpf/tc_egress_prog",
+// Pin names each variant owns, relative to the directory it pinned into.
+// CleanupBPFFiles removes only its own variant's list, so the two objects could
+// coexist on one host without one tearing down the other's maps.
+//
+// Names, not absolute paths: the pin directory is EngineLoadParams.PinDir, and
+// a cleanup that went to a hard-coded /sys/fs/bpf would both leak the pins of a
+// load that used another directory — the next LoadAndAssign then fails against
+// a stale map, which is the failure this cleanup exists to prevent — and delete
+// the live host's pins from under it.
+var acPinnedNames = []string{
+	"xdp_white_prog",
+	"conn_track",
+	"icmpwhitelist",
+	"port_list",
+	"protocol_port",
+	"sdwhitelist",
+	"src_port",
+	"spp",
+	"knock_peers",
+	"nhp_config",
+	"tc_egress_prog",
 }
 
 // `nhp_events` is absent on purpose: it is a perf event array read only by
 // this process, so nhp_server_xdp.c does not mark it LIBBPF_PIN_BY_NAME and
 // there is no pin to remove. Same as the AC's `events`.
-var serverPinnedFiles = []string{
-	"/sys/fs/bpf/xdp_server_prog",
-	"/sys/fs/bpf/nhp_relay_ips",
+var serverPinnedNames = []string{
+	"xdp_server_prog",
+	"nhp_relay_ips",
 }
 
 var (
@@ -219,7 +225,45 @@ var (
 	acTcLink      link.Link
 	serverXdpLink link.Link
 	bootTime      time.Time
+
+	// Where each variant last pinned, so the exported CleanupBPFFiles(variant)
+	// — which takes no directory, and is called from daemon shutdown paths and
+	// from the server's watchdog — removes the pins this process actually
+	// created. DefaultPinDir until a load says otherwise, which is also the
+	// right guess for the pre-load sweep of a previous run's leftovers.
+	// Unsynchronised, like the links above: callers serialise their own loads
+	// (see endpoints/server/ebpf, which holds a mutex over both).
+	acPinDir     = DefaultPinDir
+	serverPinDir = DefaultPinDir
 )
+
+// pinnedFiles is the variant's pin list under dir.
+func pinnedFiles(variant EngineVariant, dir string) []string {
+	names := acPinnedNames
+	if variant == VariantServer {
+		names = serverPinnedNames
+	}
+	paths := make([]string, 0, len(names))
+	for _, name := range names {
+		paths = append(paths, filepath.Join(dir, name))
+	}
+	return paths
+}
+
+func activePinDir(variant EngineVariant) string {
+	if variant == VariantServer {
+		return serverPinDir
+	}
+	return acPinDir
+}
+
+func recordPinDir(variant EngineVariant, dir string) {
+	if variant == VariantServer {
+		serverPinDir = dir
+		return
+	}
+	acPinDir = dir
+}
 
 func init() {
 	var info syscall.Sysinfo_t
@@ -237,15 +281,18 @@ func init() {
 // returned error leaves nothing attached, which is what lets the server treat a
 // failure as fail-open.
 func EngineLoad(params EngineLoadParams) (*EngineHandle, error) {
+	pinDir := params.PinDir
+	if pinDir == "" {
+		pinDir = DefaultPinDir
+	}
+	// Recorded before the sweep below, so that both it and every later
+	// CleanupBPFFiles(variant) — including the deferred unwind inside the two
+	// loaders — act on the directory this load pins into.
+	recordPinDir(params.Variant, pinDir)
 	CleanupBPFFiles(params.Variant)
 
 	if err := rlimit.RemoveMemlock(); err != nil {
 		log.Error("Failed to remove memlock limit")
-	}
-
-	pinDir := params.PinDir
-	if pinDir == "" {
-		pinDir = DefaultPinDir
 	}
 
 	switch params.Variant {
@@ -567,6 +614,7 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 	if err != nil {
 		return nil, err
 	}
+	warnOnGlobalIPv6(iface)
 
 	serverXdpLink, err = link.AttachXDP(link.XDPOptions{
 		Program:   objs.XdpProg,
@@ -608,6 +656,40 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 	return h, nil
 }
 
+// warnOnGlobalIPv6 says so in the log when the interface about to be filtered
+// has a global IPv6 address.
+//
+// The filter's policy is expressed in IPv4: the relay whitelist is a trie of
+// IPv4 prefixes, so handle_ipv6() in nhp_server_xdp.c has no way to recognise
+// the relay and admits no inbound v6 connection at all — including one to
+// sshd's [::]:22. On a host reached over IPv4 (every demo host) that is the
+// point of the branch; on a host whose only SSH path is v6 it would be a
+// lockout, so it gets a line naming the address rather than a silent change of
+// exposure. Not a refusal: refusing would leave the host with no filter at all,
+// which is the hole the v6 branch was written to close.
+func warnOnGlobalIPv6(iface *net.Interface) {
+	addrs, err := iface.Addrs()
+	if err != nil {
+		log.Warning("cannot list the addresses of %s to check for IPv6: %v", iface.Name, err)
+		return
+	}
+	for _, addr := range addrs {
+		var ip net.IP
+		switch v := addr.(type) {
+		case *net.IPNet:
+			ip = v.IP
+		case *net.IPAddr:
+			ip = v.IP
+		}
+		if ip == nil || ip.To4() != nil || !ip.IsGlobalUnicast() {
+			continue
+		}
+		log.Warning("%s has the global IPv6 address %s: the XDP ingress filter admits no inbound IPv6 connection, tcp/22 included, because the relay whitelist holds IPv4 prefixes only. Make sure SSH to this host arrives over IPv4.",
+			iface.Name, ip)
+		return
+	}
+}
+
 // serverEventLogName is the log.Logger name, i.e. the file is
 // <logdir>/nhp_server_xdp-<date>.log. pruneServerEventLogs deletes by the same
 // prefix, so the two must not drift apart.
@@ -615,25 +697,40 @@ const serverEventLogName = "nhp_server_xdp"
 
 // Action codes reported by nhp/ebpf/xdp/nhp_server_xdp.c. Keep in sync.
 const (
-	ActDropOther        uint8 = 0
-	ActSshRelay         uint8 = 1
-	ActNhpRelay         uint8 = 2
-	ActNhpDefault       uint8 = 3
-	ActTcpEstablished   uint8 = 4
-	ActUdpEstablished   uint8 = 5
-	ActIcmpFragNeeded   uint8 = 6
-	ActDhcpClient       uint8 = 7
-	ActNtpClient        uint8 = 8
-	ActDropTcpSshOther  uint8 = 10
-	ActDropTcpNhp       uint8 = 11
-	ActDropTcpOther     uint8 = 12
-	ActDropUdpOther     uint8 = 13
-	ActDropUdpShort     uint8 = 14
-	ActDropNonUdp       uint8 = 15
-	serverEventByteSize       = 25
+	ActDropOther       uint8 = 0
+	ActSshRelay        uint8 = 1
+	ActNhpRelay        uint8 = 2
+	ActNhpDefault      uint8 = 3
+	ActTcpEstablished  uint8 = 4
+	ActUdpEstablished  uint8 = 5
+	ActIcmpFragNeeded  uint8 = 6
+	ActDhcpClient      uint8 = 7
+	ActNtpClient       uint8 = 8
+	ActDropTcpSshOther uint8 = 10
+	ActDropTcpNhp      uint8 = 11
+	ActDropTcpOther    uint8 = 12
+	ActDropUdpOther    uint8 = 13
+	ActDropUdpShort    uint8 = 14
+	ActDropNonUdp      uint8 = 15
+	ActIpv4Fragment    uint8 = 16
+	ActV6IcmpControl   uint8 = 17
+	ActV6Established   uint8 = 18
+	ActV6Fragment      uint8 = 19
+	ActDropV6Other     uint8 = 20
+	// serverEventByteSize is sizeof(struct nhp_event_t), which is packed: 25
+	// bytes of IPv4-shaped event plus the address family and the two 16-byte
+	// IPv6 addresses the v6 branch reports in.
+	serverEventByteSize = 58
 	// serverEventActions mirrors NHP_EVENT_ACTIONS, the size of the
 	// per-action counter and rate-limit arrays.
-	serverEventActions = 16
+	serverEventActions = 24
+)
+
+// Address families in the event's `family` field. Not syscall.AF_*: the C side
+// writes 4 or 6 to say which of the two address pairs it filled in.
+const (
+	eventFamilyV4 uint8 = 4
+	eventFamilyV6 uint8 = 6
 )
 
 func serverActionName(action uint8) (verdict, reason string) {
@@ -654,6 +751,16 @@ func serverActionName(action uint8) (verdict, reason string) {
 		return "PASS", "DHCP_CLIENT"
 	case ActNtpClient:
 		return "PASS", "NTP_CLIENT"
+	case ActIpv4Fragment:
+		return "PASS", "IPV4_FRAGMENT"
+	case ActV6IcmpControl:
+		return "PASS", "ICMPV6_CONTROL"
+	case ActV6Established:
+		return "PASS", "V6_ESTABLISHED"
+	case ActV6Fragment:
+		return "PASS", "IPV6_FRAGMENT"
+	case ActDropV6Other:
+		return "DROP", "V6_OTHER"
 	case ActDropTcpSshOther:
 		return "DROP", "TCP_SSH_OTHER"
 	case ActDropTcpNhp:
@@ -695,13 +802,24 @@ func readServerEvents(eventsMap *ebpf.Map, serverId string, logger *log.Logger) 
 		}
 		timestamp := binary.LittleEndian.Uint64(record.RawSample[0:8])
 		action := record.RawSample[8]
-		srcIP := binary.BigEndian.Uint32(record.RawSample[9:13])
-		dstIP := binary.BigEndian.Uint32(record.RawSample[13:17])
 		srcPort := binary.BigEndian.Uint16(record.RawSample[17:19])
 		dstPort := binary.BigEndian.Uint16(record.RawSample[19:21])
 		protocol := record.RawSample[21]
 		pktLen := binary.BigEndian.Uint16(record.RawSample[22:24])
 		relayHit := record.RawSample[24]
+		family := record.RawSample[25]
+
+		// One of the two address pairs is filled in and the other is zero; the
+		// family says which. Formatting the wrong one would print 0.0.0.0 for
+		// every IPv6 event, which is the address a drop line exists to carry.
+		srcStr, dstStr := "", ""
+		if family == eventFamilyV6 {
+			srcStr = net.IP(record.RawSample[26:42]).String()
+			dstStr = net.IP(record.RawSample[42:58]).String()
+		} else {
+			srcStr = uint32ToIPv4(binary.BigEndian.Uint32(record.RawSample[9:13]))
+			dstStr = uint32ToIPv4(binary.BigEndian.Uint32(record.RawSample[13:17]))
+		}
 
 		verdict, reason := serverActionName(action)
 		eventTime := bootTime.Add(time.Duration(timestamp))
@@ -711,8 +829,8 @@ func readServerEvents(eventsMap *ebpf.Map, serverId string, logger *log.Logger) 
 			serverId,
 			verdict,
 			reason,
-			uint32ToIPv4(srcIP),
-			uint32ToIPv4(dstIP),
+			srcStr,
+			dstStr,
 			pktLen,
 			protoToString(protocol),
 			srcPort,
@@ -1056,17 +1174,18 @@ func getDefaultRouteInterface() (string, error) {
 
 // CleanupBPFFiles removes the pins the given variant owns and detaches its
 // links. Only that variant's list is touched, so the AC and the server can
-// never tear each other's maps down.
+// never tear each other's maps down, and only the directory this process last
+// loaded into (EngineLoadParams.PinDir, DefaultPinDir until then) is swept.
 func CleanupBPFFiles(variant EngineVariant) {
-	var bpfFiles []string
-	switch variant {
-	case VariantServer:
-		bpfFiles = serverPinnedFiles
-	default:
-		bpfFiles = acPinnedFiles
-	}
+	cleanupPins(variant, activePinDir(variant))
+}
 
-	for _, file := range bpfFiles {
+// cleanupPins is CleanupBPFFiles with the pin directory spelled out, for
+// callers that know it without having gone through EngineLoad — the privileged
+// tests, which must not reach into /sys/fs/bpf and delete the pins of a filter
+// running on the same host.
+func cleanupPins(variant EngineVariant, pinDir string) {
+	for _, file := range pinnedFiles(variant, pinDir) {
 		if err := os.Remove(file); err != nil {
 			if !os.IsNotExist(err) {
 				log.Error("Failed to remove BPF file %s: %v", file, err)
@@ -1118,6 +1237,8 @@ func protoToString(proto uint8) string {
 		return "ESP"
 	case 51:
 		return "AH"
+	case 58:
+		return "ICMPv6"
 	case 88:
 		return "EIGRP"
 	case 89:

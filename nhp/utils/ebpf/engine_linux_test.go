@@ -304,14 +304,14 @@ func TestServerEngineLoadAttachesToLoopback(t *testing.T) {
 
 	// Pins land where CleanupBPFFiles looks for them; a mismatch would leave
 	// stale maps behind and fail the next start.
-	for _, pin := range serverPinnedFiles {
+	for _, pin := range pinnedFiles(VariantServer, DefaultPinDir) {
 		if _, err := os.Stat(pin); err != nil {
 			t.Errorf("expected pin %s: %v", pin, err)
 		}
 	}
 
 	CleanupBPFFiles(VariantServer)
-	for _, pin := range serverPinnedFiles {
+	for _, pin := range pinnedFiles(VariantServer, DefaultPinDir) {
 		if _, err := os.Stat(pin); !os.IsNotExist(err) {
 			t.Errorf("pin %s survived cleanup (err=%v)", pin, err)
 		}
@@ -410,6 +410,237 @@ func TestServerFilterPassesClientRepliesAndDropsUnsolicited(t *testing.T) {
 					tc.serverPort, tc.clientPort, n)
 			}
 		})
+	}
+}
+
+// IPv6 is filtered, not waved through.
+//
+// The first version of the program answered `case ETH_P_IPV6: return XDP_PASS`,
+// on the grounds that the demo hosts have no v6 service. sshd binds [::]:22 by
+// default, though, so on any host with a routable v6 address — or on the demo
+// the day a v6 CIDR is added to the VPC — that one line made tcp/22 and every
+// other port reachable with no whitelist at all, while the deploy's "filter
+// attached" check stayed green. Both halves of the replacement are asserted
+// here: an unsolicited v6 datagram to a bound-but-unconnected socket must be
+// dropped (the hole), and the reply to a connected one must still arrive (the
+// v6 spelling of the DNS outage this filter caused over v4).
+func TestServerFilterFiltersIPv6(t *testing.T) {
+	objPath := serverObjPath(t)
+	logDirPath := t.TempDir()
+
+	_, err := EngineLoad(EngineLoadParams{
+		Variant:     VariantServer,
+		IfaceName:   "lo",
+		ProgObjPath: objPath,
+		ComponentId: "test",
+		LogDirPath:  logDirPath,
+		// LogLevelInfo, unlike the other tests here: the event lines are
+		// Info, and this one reads them back.
+		LogLevel:         2,
+		NhpPort:          62206,
+		NhpMinFrameBytes: 240,
+	})
+	if err != nil {
+		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+	}
+	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
+
+	lo6 := &net.UDPAddr{IP: net.IPv6loopback}
+
+	t.Run("unsolicited datagram to a bound port", func(t *testing.T) {
+		rx, err := net.ListenUDP("udp6", lo6)
+		if err != nil {
+			t.Skipf("cannot bind an IPv6 socket on ::1: %v", err)
+		}
+		defer rx.Close()
+
+		tx, err := net.DialUDP("udp6", nil, rx.LocalAddr().(*net.UDPAddr))
+		if err != nil {
+			t.Skipf("cannot dial ::1: %v", err)
+		}
+		defer tx.Close()
+
+		if _, err := tx.Write([]byte("scan")); err != nil {
+			t.Fatalf("send: %v", err)
+		}
+
+		_ = rx.SetReadDeadline(time.Now().Add(2 * time.Second))
+		if n, err := rx.Read(make([]byte, 64)); err == nil {
+			t.Errorf("an unsolicited IPv6 datagram arrived (%d bytes); IPv6 is bypassing the filter", n)
+		}
+	})
+
+	t.Run("reply to a connected socket", func(t *testing.T) {
+		peer, err := net.ListenUDP("udp6", lo6)
+		if err != nil {
+			t.Skipf("cannot bind an IPv6 socket on ::1: %v", err)
+		}
+		defer peer.Close()
+
+		// Connected, i.e. what a resolver or an SMTP dialer holds: the kernel's
+		// socket table can vouch for this one, and has_local_flow6() is what
+		// asks it. Only the inbound direction is asserted — `peer` stands in
+		// for the remote server, and on loopback its own socket is subject to
+		// the same filter, which drops datagrams to an unconnected socket by
+		// design (the case above).
+		client, err := net.DialUDP("udp6", lo6, peer.LocalAddr().(*net.UDPAddr))
+		if err != nil {
+			t.Skipf("cannot dial ::1: %v", err)
+		}
+		defer client.Close()
+
+		if _, err := peer.WriteToUDP([]byte("answer"), client.LocalAddr().(*net.UDPAddr)); err != nil {
+			t.Fatalf("reply: %v", err)
+		}
+		_ = client.SetReadDeadline(time.Now().Add(2 * time.Second))
+		if _, err := client.Read(make([]byte, 64)); err != nil {
+			t.Errorf("the reply to the host's own IPv6 flow was dropped (%v); v6 client traffic must get in", err)
+		}
+	})
+
+	// The event record is a packed struct read by offset (serverEventByteSize),
+	// and carrying v6 addresses is what made it grow past the IPv4-shaped 25
+	// bytes. A mismatch between the two sides would not fail any of the
+	// verdict tests above — it would just print the wrong bytes in the log
+	// nobody reads until an incident — so a dropped v6 datagram is read back
+	// out of the event log here.
+	t.Run("the drop is logged with its IPv6 source", func(t *testing.T) {
+		rx, err := net.ListenUDP("udp6", lo6)
+		if err != nil {
+			t.Skipf("cannot bind an IPv6 socket on ::1: %v", err)
+		}
+		defer rx.Close()
+
+		tx, err := net.DialUDP("udp6", nil, rx.LocalAddr().(*net.UDPAddr))
+		if err != nil {
+			t.Skipf("cannot dial ::1: %v", err)
+		}
+		defer tx.Close()
+
+		// Re-sent on every pass rather than relying on the drop from the first
+		// subtest: the perf reader is started in a goroutine by EngineLoad, and
+		// bpf_perf_event_output() has nowhere to put an event until it is up.
+		var last string
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if _, err := tx.Write([]byte("scan")); err != nil {
+				t.Fatalf("send: %v", err)
+			}
+			time.Sleep(100 * time.Millisecond)
+
+			matches, _ := filepath.Glob(filepath.Join(logDirPath, "logs", serverEventLogName+"-*.log"))
+			for _, path := range matches {
+				body, err := os.ReadFile(path)
+				if err != nil {
+					continue
+				}
+				last = string(body)
+				if strings.Contains(last, "REASON=V6_OTHER") && strings.Contains(last, "SRC=::1") {
+					return
+				}
+			}
+		}
+		t.Fatalf("no 'REASON=V6_OTHER ... SRC=::1' line in the event log; the event record and its parser disagree. Log was:\n%s", last)
+	})
+}
+
+// A non-first fragment has no L4 header, and the program must not read one out
+// of it.
+//
+// It used to: the TCP and UDP branches took the header at ihl*4 unconditionally,
+// so a later fragment yielded garbage ports. The visible effect was that any
+// datagram over the path MTU lost its tail (the first fragment passed, the rest
+// were dropped as UDP_OTHER, reassembly timed out, the knock vanished); the
+// invisible one was that a crafted fragment whose payload read 67 -> 68 took the
+// DHCP exception. The source is asserted rather than the packets because
+// fragmenting on loopback means an MTU change on a shared interface.
+func TestNonFirstFragmentsAreSeparatedFromTheL4Tree(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_server_xdp.c"))
+	if err != nil {
+		t.Fatalf("read nhp_server_xdp.c: %v", err)
+	}
+
+	fragIdx := strings.Index(string(src), "IP_OFFSET)")
+	if fragIdx < 0 {
+		t.Fatal("no IP_OFFSET test; fragments are being parsed as if they carried an L4 header")
+	}
+	// The guard has to come before the branches that dereference the L4
+	// header, or it decides nothing.
+	for _, marker := range []string{"struct tcphdr *tcp = (void *)iph", "struct udphdr *udp = (void *)iph"} {
+		l4Idx := strings.Index(string(src), marker)
+		if l4Idx < 0 {
+			t.Fatalf("%q not found; has the program been restructured?", marker)
+		}
+		if fragIdx > l4Idx {
+			t.Errorf("the IP_OFFSET test comes after %q, so fragments still reach it", marker)
+		}
+	}
+
+	// And IPv6 must not be an unconditional pass any more.
+	if regexp.MustCompile(`case ETH_P_IPV6:\s*return XDP_PASS`).Match(src) {
+		t.Error("IPv6 is passed unconditionally; every port on a v6-addressed host is unfiltered")
+	}
+}
+
+// The pin directory is EngineLoadParams.PinDir, and the cleanup has to use the
+// same one.
+//
+// It used to delete a hard-coded list of /sys/fs/bpf paths whatever the load
+// had used, which is wrong in both directions: a load with another PinDir
+// leaked its pins (and its next LoadAndAssign then fails against a stale map,
+// the exact failure this cleanup exists to prevent), while the sweep reached
+// into /sys/fs/bpf and removed the pins of whatever filter was running on the
+// host — including from a test, or from an operator's netns rehearsal on a live
+// server.
+func TestCleanupRemovesThePinsOfTheDirectoryItWasGiven(t *testing.T) {
+	for _, variant := range []EngineVariant{VariantServer, VariantAC} {
+		mine := t.TempDir()
+		theirs := t.TempDir()
+
+		// Stand-ins for the pins: cleanup only ever os.Remove()s these paths,
+		// so plain files exercise it without bpffs or privilege.
+		for _, dir := range []string{mine, theirs} {
+			for _, path := range pinnedFiles(variant, dir) {
+				if err := os.WriteFile(path, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		keep := filepath.Join(mine, "not_ours")
+		if err := os.WriteFile(keep, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		// The exported entry point takes no directory: it must use the one the
+		// load recorded, not the default.
+		restore := activePinDir(variant)
+		t.Cleanup(func() { recordPinDir(variant, restore) })
+		recordPinDir(variant, mine)
+		CleanupBPFFiles(variant)
+
+		for _, path := range pinnedFiles(variant, mine) {
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				t.Errorf("variant %d: %s survived cleanup (err=%v)", variant, path, err)
+			}
+		}
+		for _, path := range pinnedFiles(variant, theirs) {
+			if _, err := os.Stat(path); err != nil {
+				t.Errorf("variant %d: cleanup reached outside its own pin directory and removed %s", variant, path)
+			}
+		}
+		if _, err := os.Stat(keep); err != nil {
+			t.Errorf("variant %d: cleanup removed a file it does not own: %v", variant, err)
+		}
+
+		// And the same thing with the directory spelled out, which is how a
+		// caller that pinned somewhere without going through EngineLoad cleans
+		// up after itself.
+		cleanupPins(variant, theirs)
+		for _, path := range pinnedFiles(variant, theirs) {
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				t.Errorf("variant %d: %s survived cleanupPins (err=%v)", variant, path, err)
+			}
+		}
 	}
 }
 
@@ -545,7 +776,7 @@ func TestServerEngineLoadLeavesNothingBehindOnFailure(t *testing.T) {
 		t.Fatal("EngineLoad on a nonexistent interface returned nil, want an error")
 	}
 
-	for _, pin := range serverPinnedFiles {
+	for _, pin := range pinnedFiles(VariantServer, DefaultPinDir) {
 		if _, err := os.Stat(pin); !os.IsNotExist(err) {
 			t.Errorf("pin %s survived a failed load (err=%v); the daemon believes it is fail-open", pin, err)
 		}
@@ -658,8 +889,11 @@ func TestBulkPassClassesAreCountedNotLogged(t *testing.T) {
 		t.Fatalf("read nhp_server_xdp.c: %v", err)
 	}
 
-	// The last argument of each record_packet() call, by action.
-	re := regexp.MustCompile(`record_packet\(ctx,\s*(ACT_\w+),[^;]*?,\s*([a-z_]+)\);`)
+	// The last argument of each record_packet() / record_v6_packet() call, by
+	// action. Both recorders are matched: the v6 branch reports through its own
+	// entry point, and a drop class that goes unlogged is a blind spot whichever
+	// family it is in.
+	re := regexp.MustCompile(`record(?:_v6)?_packet\(ctx,\s*(ACT_\w+),[^;]*?,\s*([a-z_]+)\);`)
 	matches := re.FindAllStringSubmatch(string(src), -1)
 	if len(matches) == 0 {
 		t.Fatal("no record_packet() call sites found; has the program been restructured?")
@@ -670,8 +904,14 @@ func TestBulkPassClassesAreCountedNotLogged(t *testing.T) {
 		report[m[1]] = m[2]
 	}
 
-	// Counted only, never a line per packet.
-	for _, action := range []string{"ACT_TCP_ESTABLISHED", "ACT_UDP_ESTABLISHED"} {
+	// Counted only, never a line per packet. ACT_V6_ICMP_CONTROL is on the
+	// list for a second reason: neighbour discovery and MLD are constant
+	// background chatter on a v6 subnet, and drowning the ring in it is what
+	// the old unconditional IPv6 pass was avoiding.
+	for _, action := range []string{
+		"ACT_TCP_ESTABLISHED", "ACT_UDP_ESTABLISHED",
+		"ACT_V6_ESTABLISHED", "ACT_V6_ICMP_CONTROL",
+	} {
 		got, ok := report[action]
 		if !ok {
 			t.Errorf("%s is no longer recorded at all", action)

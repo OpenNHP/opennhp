@@ -50,7 +50,14 @@
 | UDP 其它端口 | DROP | `UDP_OTHER` | 是（限速） |
 | ICMP type 3 code 4（需要分片） | PASS | `ICMP_FRAG_NEEDED` | 是（限速） |
 | 非 TCP/UDP（含其余 ICMP） | DROP | `NON_TCP_UDP` | 是（限速） |
-| ARP / IPv6 | PASS | 不上报（避免邻居流量刷屏） | 否，也不计数 |
+| IPv4 非首片（`frag_off & IP_OFFSET`） | PASS | `IPV4_FRAGMENT` | 是（限速） |
+| IPv6 ICMPv6 type 2 / 130–137（PTB、MLD、ND） | PASS | `ICMPV6_CONTROL` | **否，只计数** |
+| IPv6 UDP 547 → 546（DHCPv6） | PASS | `DHCP_CLIENT` | 是（限速） |
+| IPv6 UDP 123 → 123（NTP） | PASS | `NTP_CLIENT` | **否，只计数** |
+| IPv6 TCP/UDP，本机有非 LISTEN / connected socket | PASS | `V6_ESTABLISHED` | **否，只计数** |
+| IPv6 分片头 offset≠0（非首片） | PASS | `IPV6_FRAGMENT` | 是（限速） |
+| 其余 IPv6（含 tcp/22、knock 端口、>2 层扩展头） | DROP | `V6_OTHER` | 是（限速） |
+| ARP | PASS | 不上报（避免邻居流量刷屏） | 否，也不计数 |
 
 **日志体量是有上界的**，这一列就是上界的来源（`record_packet()` 的 `report`
 参数）。事件日志里每一行都对应一个「别人决定发过来」的包，所以无节制地写就等于
@@ -109,6 +116,36 @@ TC egress + `conn_track` 做这件事，server 不需要：内核的 socket 表�
 > （`networkctl renew` 后必须出现新的 `REASON=DHCP_CLIENT`），以及
 > `endpoints/server/ebpf/serverengine.go` 里的看门狗（网卡上连续两分钟没有可路由
 > 的 IPv4 地址就打 `Critical` 并摘掉 XDP，让 DHCP 能自己恢复）。
+
+`IPV4_FRAGMENT` 与 `V6_OTHER` 两类是「不是一个普通的未分片 IPv4 报文」时的**显式**
+答案，两者都曾是漏洞：
+
+> **IPv4 非首片**：只有首片带 L4 头，而 TCP/UDP 分支过去无条件把 `ihl * 4` 处当
+> 成 L4 头读 —— 非首片读出来的「端口」是载荷字节。后果一是**任何超过路径 MTU 的
+> 报文只有首片能过**（IGW 侧 1500，本机网卡 9001），其余片按 `UDP_OTHER` 丢，内核
+> 重组超时，一次 knock 就这么消失且用户态什么都看不到；后果二是构造一个载荷恰好
+> 读成 `67 → 68` 或 `123 → 123` 的非首片可以走 DHCP/NTP 短路。现在在协议分派**之
+> 前**单独判 `frag_off & IP_OFFSET` 并 PASS：非首片单独到达是惰性的，内核没有首片
+> 就交付不到任何 socket，而首片走的是完整决策树。代价是重组缓冲区可被占用
+> （`net.ipv4.ipfrag_high_thresh` 已有上界，和任何没做分片过滤的主机一样）；反过来
+> 全丢分片就等于「过滤器本身」成了大 knock 失败的原因。首片（MF=1、offset=0）行为
+> 不变，`udp->len` 是整个数据报的长度，所以长度下限判的仍是 knock 而不是碎片。v6 的
+> 分片头（`IPPROTO_FRAGMENT`）同理：offset≠0 的片按 `IPV6_FRAGMENT` 放行，首片继续
+> 沿扩展头链往下判。
+>
+> **IPv6**：第一版是一行 `case ETH_P_IPV6: return XDP_PASS`，理由是 demo 主机没有
+> v6 服务。但 sshd 默认监听 `[::]:22` —— 哪天 VPC 加上 v6 CIDR（或这个对象被别的
+> 主机复用），tcp/22 和其它所有端口就在 v6 上完全无白名单地暴露，而 `deploy-server`
+> 的「XDP 已 attach」检查照样是绿的。现在 `handle_ipv6()` 跑同一棵树，**只少了白名
+> 单**：LPM trie 里放的是 IPv4 前缀，任何 v6 来源都无法被识别成 relay，所以 v6 上
+> 没有 SSH、也没有 knock 端口。放行的只有 ICMPv6 的 ND/MLD 和 PTB（否则主机在 v6
+> 子网上活不下去）、DHCPv6/NTP（与 v4 同理）、以及本机自己发起的流的回包
+> （`has_local_flow6()`）。**因此 SSH 必须走 IPv4**：网卡上有全局 v6 地址时
+> `warnOnGlobalIPv6` 会打一条带地址的 `Warning`，而 `deploy-server` 的
+> `$SSH_CONNECTION` 包含性检查对 v6 对端地址会直接失败（没有 IPv4 条目能包含它），
+> 所以这不会变成一次静默锁死。事件记录里为此加了地址族字段和一对 v6 地址，v6 的
+> DROP 行打的是真实源地址；`serverEventByteSize` 就是这个结构体的 `sizeof`，改结构
+> 体必须同时改它（回归：`TestServerFilterFiltersIPv6` 会把日志行读回来比对）。
 
 ---
 
@@ -730,6 +767,8 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$(cd terraform/demo && terraform output -raw
 | server 自己的 NTP 对时 | 通 | 通（`NTP_CLIENT`，见 `[NHP-STAT]`）——**这一条曾经是坏的** |
 | server 自己的 SMTP/HTTPS 出站 | 通 | 通（`TCP_ESTABLISHED`，见 `[NHP-STAT]`） |
 | 公网 → server 上任意 LISTEN 端口 | 由安全组决定 | 一律丢（socket 是 LISTEN，不构成回包） |
+| 任何来源 → server 的 v6 端口（主机有 v6 地址时） | 由安全组决定 | 一律丢（`V6_OTHER`）——**SSH 必须走 IPv4** |
+| 超过路径 MTU 的 knock（分片） | 通 | 通（首片走决策树，其余片 `IPV4_FRAGMENT`）——**这一条曾经是坏的** |
 | `nmap` 公网扫描结果 | — | 基本不变（安全组本就挡住 TCP） |
 
 ---
@@ -831,8 +870,8 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV '
    对每个包计数，与限速无关），或 `bpf_stats` 的 `run_cnt`。
 6. **回包放行依赖 `bpf_sk_lookup_{tcp,udp}`** —— 内核 ≥4.20 才有。太老的内核上整个
    程序装载失败（fail-open，见风险 2），而不是「只丢回包」；升级 `.o` 时如果只换了
-   `.o` 没换二进制也没关系，两者之间没有新增接口。另外它只认 IPv4：IPv6 一律
-   `XDP_PASS`，本来也不在过滤范围内。
+   `.o` 没换二进制也没关系，两者之间没有新增接口。IPv6 用的是同一个 helper 的 v6
+   元组（`has_local_flow6()`），不是放行 —— v6 现在也在过滤范围内，见决策表。
 7. **出站回包不覆盖 unconnected UDP socket** —— `has_local_flow()` 的放行条件是
    socket 已 `connect()`（glibc/Go 的 resolver、`net/smtp` 都是）。**已经踩过两次**：
    DHCP 客户端（raw / 只 bind 在 68）导致主机丢地址整机失联，chronyd（收发都在

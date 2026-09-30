@@ -233,6 +233,32 @@ decided by the Noise handshake in user space. The AC's per-knock XDP program
 and the shared loader (`nhp/utils/ebpf/engine_linux.go`) are the same code
 path selected by `EngineLoadParams.Variant`.
 
+**"Everything else" includes IPv6 and fragments**, and neither was true at
+first. IPv6 was one `case ETH_P_IPV6: return XDP_PASS` justified by the demo
+hosts having no v6 service — but sshd binds `[::]:22` by default, so the day a
+v6 CIDR reaches the VPC every port would have been open over v6 with the
+deploy's "filter attached" check still green. `handle_ipv6()` now runs the same
+tree minus the whitelist (the LPM trie holds IPv4 prefixes, so no v6 source can
+be recognised as the relay): ICMPv6 ND/MLD and "packet too big" pass so the host
+stays on its subnet, DHCPv6 (547 → 546) and NTP pass for the same reasons as
+their v4 spellings, replies to the host's own v6 flows pass via
+`has_local_flow6()`, everything else is `V6_OTHER`. **SSH must therefore reach
+the host over IPv4**; `warnOnGlobalIPv6` logs a `Warning` naming the address
+when the filtered interface has a global v6 address, and `deploy-server`'s
+`$SSH_CONNECTION` containment gate fails outright for a v6 peer address since no
+IPv4 entry can contain it. Non-first IPv4 fragments have no L4 header, and the
+TCP/UDP branches used to read one anyway at `ihl * 4`: every datagram over the
+path MTU lost its tail to `UDP_OTHER` and died in reassembly, while a crafted
+fragment whose payload read `67 → 68` took the DHCP exception. They are now
+split out before the protocol dispatch and passed as `IPV4_FRAGMENT` — inert
+without the first fragment, which carries the ports and takes the full tree. An
+IPv6 fragment header with a non-zero offset gets the same answer
+(`IPV6_FRAGMENT`).
+
+The event record (`struct nhp_event_t`) carries an address family and both
+address pairs, so a v6 drop logs its real source; `serverEventByteSize` in the
+loader is `sizeof` that struct and has to move with it.
+
 **Attaching is opt-in, and `etc/xdp.toml` is the opt-in.** This filter is not a
 hardening tweak that is safe to turn on everywhere: it drops every inbound TCP
 flow the host did not initiate, including SYNs to services this daemon listens

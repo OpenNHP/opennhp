@@ -18,7 +18,13 @@
 | 流水线 | `.github/workflows/deploy-demo-v2.yml`（`configure` / `build` / `deploy-server`） |
 
 > **过滤器是 opt-in 的。** 只有当 `etc/xdp.toml` 存在、能解析、`Enabled = true`
-> 且 `RelayIPs` 非空时，`nhp-serverd` 才会 attach；此外，HTTP knock 监听或对外
+> 且 `RelayIPs` 的每一项都能解析成 IPv4 地址或 CIDR 前缀时，`nhp-serverd` 才会
+> attach。注意判断的是「解析得出的前缀」而不是「字符串条数」：
+> `["relay.opennhp.org"]`、`[""]`、纯 IPv6 列表、或者 `["10.0.1.300"]` 这种笔误
+> 都是非空列表，却一个前缀也进不了 LPM trie——按条数放行就等于 attach 一张空
+> 白名单，tcp/22 对所有来源关闭。只要有一项解析失败就整张列表作废（不会只跳过
+> 坏的那项：解析失败的那条可能正是 SSH 实际来源）；热更新同理，此时保留正在
+> 生效的白名单。此外，HTTP knock 监听或对外
 > 暴露的 metrics 端点开着时它会拒绝 attach（过滤器会把这些监听端口的入站 TCP
 > 全丢掉）。没有 `xdp.toml` 的主机行为与过滤器上线前完全一致。
 >
@@ -590,9 +596,11 @@ sudo bpftool map lookup pinned /sys/fs/bpf/nhp_relay_ips \
 
 cat /home/ec2-user/nhp-server/etc/xdp.toml
 grep 'xdp relay whitelist applied' /home/ec2-user/nhp-server/logs/server-$(date +%F).log | tail -1
-# 另一条要确认「没出现」的日志：写了个没有 RelayIPs 的 xdp.toml 时会打这行，
-# 并且保留原有白名单（不会把 tcp/22 全关掉）
+# 另外两条要确认「没出现」的日志：写了个没有 RelayIPs 的 xdp.toml 会打第一行，
+# 写了个每项都解析不了（主机名 / IPv6 / 笔误 / 带行内注释）的会打第二行。
+# 两种情况都保留原有白名单，不会把 tcp/22 全关掉
 grep 'lists no RelayIPs' /home/ec2-user/nhp-server/logs/server-$(date +%F).log | tail -1
+grep 'unusable RelayIPs entry' /home/ec2-user/nhp-server/logs/server-$(date +%F).log | tail -1
 ```
 
 ### 4.4 事件日志（判决可观测）

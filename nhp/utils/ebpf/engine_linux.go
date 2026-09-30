@@ -870,56 +870,6 @@ func sweepServerEventLogs(logDir string, now time.Time, retainDays int, maxBytes
 	}
 }
 
-// RelayPrefixKey is the key of the `nhp_relay_ips` LPM trie in
-// nhp/ebpf/xdp/nhp_server_xdp.c: struct relay_prefix_key.
-//
-// PrefixLen is a plain __u32 the kernel reads in host order; Addr is the
-// network-order address, which is also the order an LPM trie compares prefixes
-// in, so the eBPF side looks iph->saddr up with no byte swapping.
-type RelayPrefixKey struct {
-	PrefixLen uint32
-	Addr      [4]byte
-}
-
-func (k RelayPrefixKey) String() string {
-	return fmt.Sprintf("%s/%d", uint32ToIPv4(binary.BigEndian.Uint32(k.Addr[:])), k.PrefixLen)
-}
-
-// ParseRelayPrefix turns one xdp.toml whitelist entry into a trie key. A bare
-// address is a /32; "10.0.1.0/24" is the subnet form that lets the whitelist
-// survive the relay being replaced with a new private address.
-//
-// Host bits below the prefix are masked off so the key is canonical: the trie
-// ignores them when matching, but a key that kept them would not compare equal
-// to the same prefix written differently, and the stale-entry sweep below would
-// then never recognise its own entries.
-func ParseRelayPrefix(s string) (RelayPrefixKey, error) {
-	s = strings.TrimSpace(s)
-
-	if strings.Contains(s, "/") {
-		_, ipNet, err := net.ParseCIDR(s)
-		if err != nil {
-			return RelayPrefixKey{}, fmt.Errorf("invalid CIDR %q: %w", s, err)
-		}
-		ip4 := ipNet.IP.To4()
-		if ip4 == nil {
-			return RelayPrefixKey{}, fmt.Errorf("only IPv4 prefixes are supported, got %q", s)
-		}
-		ones, _ := ipNet.Mask.Size()
-		return RelayPrefixKey{PrefixLen: uint32(ones), Addr: [4]byte(ip4)}, nil
-	}
-
-	ip := net.ParseIP(s)
-	if ip == nil {
-		return RelayPrefixKey{}, fmt.Errorf("invalid IP address %q", s)
-	}
-	ip4 := ip.To4()
-	if ip4 == nil {
-		return RelayPrefixKey{}, fmt.Errorf("only IPv4 addresses are supported, got %q", s)
-	}
-	return RelayPrefixKey{PrefixLen: 32, Addr: [4]byte(ip4)}, nil
-}
-
 // ReplaceRelayIPs makes the pinned `nhp_relay_ips` map hold exactly ipStrs.
 //
 // Entries are host addresses ("10.0.1.4") or prefixes ("10.0.1.0/24"); see
@@ -932,24 +882,28 @@ func ParseRelayPrefix(s string) (RelayPrefixKey, error) {
 // are dropped by the very reload that was meant to keep them working. Callers
 // serialise their own calls (see endpoints/server/ebpf).
 //
-// Unparsable and non-IPv4 entries are reported and skipped rather than
-// aborting: one typo in xdp.toml should not leave the map holding a list nobody
-// intended.
+// Two refusals, both made before a single map write, keep a bad list from
+// becoming a lockout. An entry that does not parse fails the whole call
+// (ParseRelayPrefixes says why all-or-nothing is the safe reading), and a list
+// that names no prefix at all is rejected rather than applied: emptying this
+// map closes tcp/22 for every source on a host whose only way in is this map.
+// Callers are expected to have refused such a list already — this is the last
+// place that can still tell, and it does not rely on them.
 func ReplaceRelayIPs(relayMap *ebpf.Map, ipStrs []string) error {
 	if relayMap == nil {
 		return fmt.Errorf("relay ip map is not loaded")
 	}
 
-	want := make(map[RelayPrefixKey]struct{}, len(ipStrs))
-	for _, s := range ipStrs {
-		if strings.TrimSpace(s) == "" {
-			continue
-		}
-		key, err := ParseRelayPrefix(s)
-		if err != nil {
-			log.Error("relay whitelist: %v, skipped", err)
-			continue
-		}
+	keys, err := ParseRelayPrefixes(ipStrs)
+	if err != nil {
+		return fmt.Errorf("refusing to apply the relay whitelist: %w", err)
+	}
+	if len(keys) == 0 {
+		return fmt.Errorf("refusing to empty the relay whitelist: the new list names no prefix, and a map with no prefix drops SSH from every source")
+	}
+
+	want := make(map[RelayPrefixKey]struct{}, len(keys))
+	for _, key := range keys {
 		want[key] = struct{}{}
 	}
 

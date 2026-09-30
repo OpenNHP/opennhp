@@ -126,6 +126,17 @@ func TestStartXdpFilterRefusesUnlessTheFileAsksForIt(t *testing.T) {
 		{"no relay ips", XdpTomlConfig{Enabled: true}},
 		{"empty relay ips", XdpTomlConfig{Enabled: true, RelayIPs: []string{}}},
 		{"floor out of range", XdpTomlConfig{Enabled: true, RelayIPs: []string{"1.2.3.4"}, NhpMinFrameBytes: 70000}},
+		// A list that is non-empty as strings but names nothing the kernel can
+		// hold is the same lockout as an empty one, and it is what the obvious
+		// mistakes render to.
+		{"an unset RELAY_IPS", XdpTomlConfig{Enabled: true, RelayIPs: []string{""}}},
+		{"a hostname", XdpTomlConfig{Enabled: true, RelayIPs: []string{"relay.opennhp.org"}}},
+		{"an inline comment", XdpTomlConfig{Enabled: true, RelayIPs: []string{"10.0.1.4 # relay"}}},
+		{"a typo", XdpTomlConfig{Enabled: true, RelayIPs: []string{"10.0.1.300"}}},
+		{"IPv6 only", XdpTomlConfig{Enabled: true, RelayIPs: []string{"2001:db8::1"}}},
+		// Half a whitelist is refused too: the entry that failed to parse may
+		// be the one SSH arrives from, and attaching decides that blind.
+		{"one bad entry among good ones", XdpTomlConfig{Enabled: true, RelayIPs: []string{"10.0.1.0/24", "not-an-ip"}}},
 	}
 
 	for _, tc := range tests {
@@ -195,6 +206,43 @@ func TestXdpServiceConflictNamesListenersTheFilterWouldBlackHole(t *testing.T) {
 			}
 			if !tc.wantConflict && got != "" {
 				t.Errorf("xdpServiceConflict = %q, want no conflict", got)
+			}
+		})
+	}
+}
+
+// The reload path has the same decision to make as startup with a worse
+// failure mode: applying a list that parses as TOML but not as addresses does
+// not merely refuse to attach, it sweeps the working whitelist out of a filter
+// that is already enforcing — closing tcp/22 on an operator who is holding the
+// only session that could fix it. So a reload only overwrites the live map when
+// every entry in the file is a usable prefix.
+func TestApplyXdpConfigKeepsTheActiveWhitelistOnAnUnusableList(t *testing.T) {
+	originalExeDir := ExeDirPath
+	ExeDirPath = t.TempDir()
+	t.Cleanup(func() { ExeDirPath = originalExeDir })
+
+	tests := []struct {
+		name  string
+		ips   []string
+		apply bool
+	}{
+		{name: "a working list", ips: []string{"10.0.1.0/24", "203.0.113.7"}, apply: true},
+		{name: "no relay ips", ips: nil},
+		{name: "an unset RELAY_IPS", ips: []string{""}},
+		{name: "a hostname", ips: []string{"relay.opennhp.org"}},
+		{name: "an inline comment", ips: []string{"10.0.1.4 # relay"}},
+		{name: "a typo", ips: []string{"10.0.1.300"}},
+		{name: "IPv6 only", ips: []string{"2001:db8::1"}},
+		{name: "one bad entry among good ones", ips: []string{"10.0.1.0/24", "not-an-ip"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &UdpServer{config: &Config{ListenPort: 62206}}
+			conf := XdpTomlConfig{Enabled: true, RelayIPs: tc.ips}
+			if got := s.applyXdpConfig(&conf); got != tc.apply {
+				t.Errorf("applyXdpConfig(%v) = %v, want %v", tc.ips, got, tc.apply)
 			}
 		})
 	}

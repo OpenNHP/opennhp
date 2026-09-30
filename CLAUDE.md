@@ -238,8 +238,9 @@ hardening tweak that is safe to turn on everywhere: it drops every inbound TCP
 flow the host did not initiate, including SYNs to services this daemon listens
 on, and on a host reachable only through the whitelist one bad list makes it
 unreachable for good. So `loadXdpConfig` (`endpoints/server/config.go`) attaches
-only when the file exists, parses, has `Enabled = true` **and** a non-empty
-`RelayIPs` — a server with no `xdp.toml` keeps exactly the exposure it had
+only when the file exists, parses, has `Enabled = true` **and** a `RelayIPs`
+whose every entry parses as an IPv4 address or prefix (see the whitelist gates
+below) — a server with no `xdp.toml` keeps exactly the exposure it had
 before the filter existed, even though `make ebpf` puts the object in
 `release/nhp-server/etc/` and many operators run the daemon as root. It also
 refuses when the HTTP knock listener or an off-host metrics endpoint is enabled
@@ -341,11 +342,20 @@ before anything is scp'd or restarted:
   step asks the host what peer address it sees for the live connection
   (`$SSH_CONNECTION`) and fails unless some entry in the rendered `xdp.toml`
   *contains* it (a containment test, since entries may be prefixes);
-- `startXdpFilter` refuses to attach at all for a file with no `RelayIPs`, and
-  `applyXdpConfig` refuses to apply one on reload and keeps the active
-  whitelist — an unset `RELAY_IPS`, or a file caught half-written by the
-  watcher, parses to valid TOML with an empty list, and applying that closes
-  tcp/22 for every source.
+- `startXdpFilter` refuses to attach at all for a file whose `RelayIPs` does not
+  name at least one usable prefix, and `applyXdpConfig` refuses to apply one on
+  reload and keeps the active whitelist — an unset `RELAY_IPS`, or a file caught
+  half-written by the watcher, parses to valid TOML with an empty list, and
+  applying that closes tcp/22 for every source. "Usable" is decided by
+  `ParseRelayPrefixes` (`nhp/utils/ebpf/relayips.go`), not by counting strings:
+  `["relay.opennhp.org"]`, `[""]`, an IPv6-only list or a typo like
+  `["10.0.1.300"]` is a non-empty *list* that names not one address the LPM trie
+  can hold, so a count-the-strings guard would attach with an empty map, or let
+  a reload sweep a working whitelist away. One bad entry fails the whole list
+  rather than being skipped — the entry that did not parse may be the one SSH
+  arrives from, and nothing in user space can tell. `ReplaceRelayIPs` repeats
+  both refusals before its first map write, so the contract does not depend on
+  its callers.
 
 A red run with the demo still up is the intended outcome of any of them.
 

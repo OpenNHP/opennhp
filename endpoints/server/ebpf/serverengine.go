@@ -190,7 +190,10 @@ func Loaded() bool {
 	return handle != nil
 }
 
-// UpdateRelayIPs makes the kernel-side whitelist hold exactly ips.
+// UpdateRelayIPs makes the kernel-side whitelist hold exactly ips, or changes
+// nothing and returns an error: a list with an entry the trie cannot hold, or
+// one that names no prefix at all, is refused before the first map write (see
+// utilsebpf.ReplaceRelayIPs). The caller keeps enforcing the list it had.
 //
 // Serialised under the package mutex so two overlapping xdp.toml reloads cannot
 // interleave their writes and leave the map holding a mix of both lists. With

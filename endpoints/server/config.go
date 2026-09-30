@@ -20,6 +20,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/plugins"
 	"github.com/OpenNHP/opennhp/nhp/utils"
+	utilsebpf "github.com/OpenNHP/opennhp/nhp/utils/ebpf"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
@@ -676,15 +677,17 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 		log.Info("xdp config: %s has Enabled = false; the XDP ingress filter is not attached", fileName)
 		return false
 	}
-	// An empty list is never a policy anyone wants: the whitelist is the only
-	// thing that reaches tcp/22 on a filtered host, so attaching with one
-	// closes SSH for everybody with no break-glass path. It is, on the other
-	// hand, exactly what a config rendered with an unset RELAY_IPS produces,
-	// and what a truncated or half-written file parses to (TOML with no
-	// RelayIPs key is valid TOML).
-	if len(conf.RelayIPs) == 0 {
-		log.Critical("xdp config: %s lists no RelayIPs — refusing to attach the XDP ingress filter rather than closing tcp/22 for every source. Fix RELAY_IPS in the deploy pipeline",
-			fileName)
+	// A list that names no usable prefix is never a policy anyone wants: the
+	// whitelist is the only thing that reaches tcp/22 on a filtered host, so
+	// attaching with one closes SSH for everybody with no break-glass path. It
+	// is, on the other hand, exactly what a config rendered with an unset
+	// RELAY_IPS produces, and what a truncated or half-written file parses to
+	// (TOML with no RelayIPs key is valid TOML).
+	//
+	// "No usable prefix" is decided by parsing, not by counting strings: a
+	// hostname, an IPv6 address or a typo like 10.0.1.300 all leave a list that
+	// looks populated here and reaches the kernel empty.
+	if _, ok := xdpRelayPrefixes(conf, fileName, "refusing to attach the XDP ingress filter rather than closing tcp/22 for every source"); !ok {
 		return false
 	}
 
@@ -780,9 +783,36 @@ func listenAddrForLog(addr string) string {
 	return addr
 }
 
+// xdpRelayPrefixes validates a whitelist as the kernel will see it and reports
+// whether it may be used at all, logging refusalWhat when it may not.
+//
+// The check that matters is not "are there entries" but "does every entry
+// parse". The two differ exactly where it hurts: RelayIPs = ["relay.opennhp.org"]
+// or ["10.0.1.300"] is a non-empty list of strings that names not one address
+// the LPM trie can hold, so a count-the-strings guard waves it through and the
+// filter attaches — or a reload sweeps a working whitelist away — with a map
+// that drops SSH from every source. A partly valid list is refused for the same
+// reason: the entry that failed to parse may be the one the operator's own
+// session arrives from, and nothing here can tell.
+func xdpRelayPrefixes(conf *XdpTomlConfig, fileName string, refusalWhat string) ([]utilsebpf.RelayPrefixKey, bool) {
+	prefixes, err := utilsebpf.ParseRelayPrefixes(conf.RelayIPs)
+	if err != nil {
+		log.Critical("xdp config: %s has an unusable RelayIPs entry (%v) — %s. Entries must be IPv4 addresses or CIDR prefixes; fix RELAY_IPS in the deploy pipeline",
+			fileName, err, refusalWhat)
+		return nil, false
+	}
+	if len(prefixes) == 0 {
+		log.Critical("xdp config: %s lists no RelayIPs — %s. Fix RELAY_IPS in the deploy pipeline",
+			fileName, refusalWhat)
+		return nil, false
+	}
+	return prefixes, true
+}
+
 // applyXdpConfig mirrors a parsed xdp.toml's whitelist into the kernel-side map.
-// Only ever called with the filter attached (see loadXdpConfig).
-func (s *UdpServer) applyXdpConfig(conf *XdpTomlConfig) {
+// Only ever called with the filter attached (see loadXdpConfig). It reports
+// whether the whitelist in conf is now the one the filter is enforcing.
+func (s *UdpServer) applyXdpConfig(conf *XdpTomlConfig) bool {
 	if !conf.Enabled {
 		// Attachment is decided once, at startup; the flag cannot turn a live
 		// filter off. Say so rather than leave an operator believing an edit
@@ -796,23 +826,26 @@ func (s *UdpServer) applyXdpConfig(conf *XdpTomlConfig) {
 			conf.NhpMinFrameBytes, s.xdpMinFrameBytes())
 	}
 
-	// See the same guard in startXdpFilter: an empty list closes tcp/22 for
-	// every source. Here it is a *reload* refusing to overwrite a working
-	// whitelist, which is always the safer of the two outcomes — the filter
-	// carries on enforcing the last list an operator actually chose.
-	if len(conf.RelayIPs) == 0 {
-		log.Critical("xdp config: %s lists no RelayIPs — keeping the active whitelist rather than closing tcp/22 for every source. Fix RELAY_IPS in the deploy pipeline",
-			s.xdpConfigFileName())
-		return
+	// See the same guard in startXdpFilter: a whitelist the kernel would end up
+	// holding no prefix for closes tcp/22 for every source. Here it is a
+	// *reload* refusing to overwrite a working whitelist, which is always the
+	// safer of the two outcomes — the filter carries on enforcing the last list
+	// an operator actually chose. Validating before the call is what makes that
+	// promise true: UpdateRelayIPs removes every entry that is not on the new
+	// list, so a file that parses as TOML but not as addresses would otherwise
+	// sweep the live whitelist away.
+	if _, ok := xdpRelayPrefixes(conf, s.xdpConfigFileName(), "keeping the active whitelist rather than closing tcp/22 for every source"); !ok {
+		return false
 	}
 
 	if err := ebpflocal.UpdateRelayIPs(conf.RelayIPs); err != nil {
-		log.Error("failed to apply xdp relay whitelist: %v", err)
-		return
+		log.Error("failed to apply xdp relay whitelist, keeping the active whitelist: %v", err)
+		return false
 	}
 	if ebpflocal.Loaded() {
 		log.Info("xdp relay whitelist applied: %v", conf.RelayIPs)
 	}
+	return true
 }
 
 // xdpMinFrameBytes is the floor the attached program is enforcing, i.e. the

@@ -133,11 +133,46 @@ func TestReplaceRelayIPsIsAFullReplacement(t *testing.T) {
 		t.Errorf("carried-over address is missing: %v", err)
 	}
 
-	if err := ReplaceRelayIPs(m, nil); err != nil {
-		t.Fatalf("clear: %v", err)
+	// Replacing with nothing is the one replacement that is refused: an empty
+	// map drops SSH from every source, and the host has no other way in.
+	if err := ReplaceRelayIPs(m, nil); err == nil {
+		t.Error("ReplaceRelayIPs(m, nil) returned nil, want a refusal to empty the map")
 	}
-	if got := relayMapContents(t, m); len(got) != 0 {
-		t.Errorf("after clear = %v, want empty", got)
+	if got, want := relayMapContents(t, m), []string{"10.0.0.2/32", "10.0.0.9/32"}; !equal(got, want) {
+		t.Errorf("after the refused clear = %v, want the previous list %v", got, want)
+	}
+}
+
+// A whitelist that reaches the kernel empty is the lockout this whole path
+// exists to prevent, and a list of strings is not the same thing as a list of
+// prefixes: ["relay.opennhp.org"], [""] or ["10.0.1.300"] all count as
+// non-empty to a caller that only measures len(). The map keeps what it had.
+func TestReplaceRelayIPsRefusesToEmptyTheMap(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ips  []string
+	}{
+		{"nil", nil},
+		{"empty slice", []string{}},
+		{"one empty string", []string{""}},
+		{"whitespace", []string{"   "}},
+		{"a hostname", []string{"relay.opennhp.org"}},
+		{"a typo", []string{"10.0.1.300"}},
+		{"IPv6 only", []string{"2001:db8::1", "2001:db8::/32"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newRelayMap(t)
+			if err := ReplaceRelayIPs(m, []string{"10.0.1.0/24"}); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+
+			if err := ReplaceRelayIPs(m, tc.ips); err == nil {
+				t.Errorf("ReplaceRelayIPs(%v) returned nil, want an error", tc.ips)
+			}
+			if got, want := relayMapContents(t, m), []string{"10.0.1.0/24"}; !equal(got, want) {
+				t.Errorf("contents = %v, want the seeded %v", got, want)
+			}
+		})
 	}
 }
 
@@ -178,52 +213,40 @@ func TestReplaceRelayIPsAcceptsPrefixes(t *testing.T) {
 	}
 }
 
-// A malformed entry is skipped, not fatal — one typo in xdp.toml should not
-// decide the whole whitelist.
-func TestReplaceRelayIPsSkipsInvalidEntries(t *testing.T) {
+// A malformed entry fails the whole call and writes nothing. Applying the rest
+// would be the more forgiving reading and the wrong one: the entry that did not
+// parse may be the only one the operator's SSH arrives from, and the map cannot
+// be corrected from anywhere the map itself does not admit.
+func TestReplaceRelayIPsRejectsInvalidEntries(t *testing.T) {
 	m := newRelayMap(t)
 
-	if err := ReplaceRelayIPs(m, []string{"10.0.0.1", "", "  ", "not-an-ip", "2001:db8::1", "10.0.0.0/33", "2001:db8::/32", " 10.0.0.2 "}); err != nil {
+	if err := ReplaceRelayIPs(m, []string{"10.0.1.0/24"}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	for _, ips := range [][]string{
+		{"10.0.0.1", "not-an-ip"},
+		{"10.0.0.1", ""},
+		{"10.0.0.1", "  "},
+		{"10.0.0.1", "2001:db8::1"},
+		{"10.0.0.1", "10.0.0.0/33"},
+		{"10.0.0.1", "2001:db8::/32"},
+		{"10.0.0.1", "10.0.1.4 # relay"},
+	} {
+		if err := ReplaceRelayIPs(m, ips); err == nil {
+			t.Errorf("ReplaceRelayIPs(%v) returned nil, want an error", ips)
+		}
+		if got, want := relayMapContents(t, m), []string{"10.0.1.0/24"}; !equal(got, want) {
+			t.Fatalf("after %v the map = %v, want the seeded %v", ips, got, want)
+		}
+	}
+
+	// Surrounding whitespace is not a typo, and duplicates are not either.
+	if err := ReplaceRelayIPs(m, []string{" 10.0.0.1 ", "10.0.0.2", "10.0.0.1"}); err != nil {
 		t.Fatalf("ReplaceRelayIPs: %v", err)
 	}
 	if got, want := relayMapContents(t, m), []string{"10.0.0.1/32", "10.0.0.2/32"}; !equal(got, want) {
 		t.Errorf("contents = %v, want %v", got, want)
-	}
-}
-
-func TestParseRelayPrefix(t *testing.T) {
-	tests := []struct {
-		in      string
-		want    RelayPrefixKey
-		wantErr bool
-	}{
-		{in: "1.2.3.4", want: RelayPrefixKey{PrefixLen: 32, Addr: [4]byte{1, 2, 3, 4}}},
-		{in: " 10.0.1.7 ", want: RelayPrefixKey{PrefixLen: 32, Addr: [4]byte{10, 0, 1, 7}}},
-		{in: "10.0.1.0/24", want: RelayPrefixKey{PrefixLen: 24, Addr: [4]byte{10, 0, 1, 0}}},
-		{in: "10.0.1.200/24", want: RelayPrefixKey{PrefixLen: 24, Addr: [4]byte{10, 0, 1, 0}}},
-		{in: "0.0.0.0/0", want: RelayPrefixKey{PrefixLen: 0, Addr: [4]byte{0, 0, 0, 0}}},
-		{in: "not-an-ip", wantErr: true},
-		{in: "2001:db8::1", wantErr: true},
-		{in: "2001:db8::/32", wantErr: true},
-		{in: "10.0.0.0/33", wantErr: true},
-		{in: "", wantErr: true},
-	}
-
-	for _, tc := range tests {
-		got, err := ParseRelayPrefix(tc.in)
-		if tc.wantErr {
-			if err == nil {
-				t.Errorf("ParseRelayPrefix(%q) = %v, want an error", tc.in, got)
-			}
-			continue
-		}
-		if err != nil {
-			t.Errorf("ParseRelayPrefix(%q): %v", tc.in, err)
-			continue
-		}
-		if got != tc.want {
-			t.Errorf("ParseRelayPrefix(%q) = %+v, want %+v", tc.in, got, tc.want)
-		}
 	}
 }
 

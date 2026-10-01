@@ -302,6 +302,8 @@ jobs:
         id: tf_outputs
         working-directory: terraform/demo
         run: |
+          set -euo pipefail
+
           if [ -z "${{ vars.TF_STATE_BUCKET }}" ]; then
             echo "ERROR: repo variable TF_STATE_BUCKET is not set."
             echo "Configure it under Settings -> Variables -> Actions before running this workflow."
@@ -317,7 +319,39 @@ jobs:
           AC_PRIV=$(terraform output -raw ac_private_ip)
           RELAY_PUB=$(terraform output -raw relay_public_ip)
           RELAY_PRIV=$(terraform output -raw relay_private_ip)
-          SUBNET_CIDR=$(terraform output -raw subnet_cidr)
+
+          # `terraform output` can only see outputs that an apply has written
+          # into the state, so an output added to outputs.tf after the last
+          # infra-demo apply makes this job fail with
+          #   Error: Output "subnet_cidr" not found
+          # even though the subnet it merely forwards is sitting in that same
+          # state. This job never applies (it only reads, so that a deploy
+          # cannot mutate infrastructure), which would mean the deploy pipeline
+          # stays red until somebody runs infra-demo by hand.
+          #
+          # Reading the resource attribute straight out of the state is the
+          # same value from the same source of truth and needs no apply, so it
+          # is the fallback. A failure here is still fatal — the XDP whitelist
+          # gate below refuses to render a server config without this prefix.
+          SUBNET_CIDR=$(terraform output -raw subnet_cidr 2>/dev/null || true)
+          if [ -z "$SUBNET_CIDR" ]; then
+            SUBNET_CIDR=$(terraform show -json | jq -r '
+              [ .values.root_module.resources[]?
+                | select(.address == "aws_subnet.public")
+                | .values.cidr_block ][0] // ""')
+            if [ -z "$SUBNET_CIDR" ]; then
+              echo "ERROR: neither the subnet_cidr output nor aws_subnet.public is in" >&2
+              echo "       the Terraform state. The nhp-server XDP whitelist needs the" >&2
+              echo "       VPC subnet prefix (it is what keeps SSH working after the" >&2
+              echo "       relay is replaced), so this job refuses to render configs." >&2
+              echo "       Run the infra-demo workflow with action=apply, then re-run." >&2
+              exit 1
+            fi
+            echo "note: the subnet_cidr output is not in the state yet (it was added to"
+            echo "      terraform/demo/outputs.tf after the last infra-demo apply). Read"
+            echo "      aws_subnet.public.cidr_block from the state instead; run"
+            echo "      infra-demo apply to refresh the outputs."
+          fi
 
           echo "server_public_ip=$SERVER_PUB"     >> $GITHUB_OUTPUT
           echo "server_private_ip=$SERVER_PRIV"   >> $GITHUB_OUTPUT
@@ -418,6 +452,40 @@ jobs:
             echo "    That prefix is what keeps SSH working after the relay is"
             echo "    replaced with a new private address; refusing to render a"
             echo "    whitelist without it."
+            exit 1
+          fi
+
+          # The prefix only does its job — admitting a replacement relay that
+          # came back with a different private address — if the relay lives
+          # inside it. Check that rather than trusting the plumbing: the value
+          # may have been read from aws_subnet.public in the state rather than
+          # from the subnet_cidr output, and a multi-subnet or multi-AZ layout
+          # would hand back a prefix the relay is not in. Same containment test
+          # the deploy-server job runs against the live SSH peer address.
+          ip2int() {
+            local rest="$1" o1 o2 o3 o4
+            o1=${rest%%.*}; rest=${rest#*.}
+            o2=${rest%%.*}; rest=${rest#*.}
+            o3=${rest%%.*}; rest=${rest#*.}
+            o4=$rest
+            echo $(( (o1 << 24) + (o2 << 16) + (o3 << 8) + o4 ))
+          }
+
+          PREFIX_LEN=$(( 10#${SUBNET_CIDR#*/} ))
+          if [ "$PREFIX_LEN" -gt 32 ]; then
+            echo "[!] subnet_cidr has an out-of-range prefix length: '$SUBNET_CIDR'"
+            exit 1
+          fi
+          if [ "$PREFIX_LEN" -eq 0 ]; then
+            MASK=0
+          else
+            MASK=$(( 0xFFFFFFFF << (32 - PREFIX_LEN) & 0xFFFFFFFF ))
+          fi
+          if [ $(( $(ip2int "$RELAY_PRIV") & MASK )) -ne $(( $(ip2int "${SUBNET_CIDR%%/*}") & MASK )) ]; then
+            echo "[!] the relay's private address $RELAY_PRIV is not inside $SUBNET_CIDR."
+            echo "    Then this is not the subnet the relay comes back in, and"
+            echo "    whitelisting it would not survive a relay replacement."
+            echo "    Refusing to render a whitelist that only looks complete."
             exit 1
           fi
 

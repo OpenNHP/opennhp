@@ -363,7 +363,13 @@ before anything is scp'd or restarted:
 
 - the `configure` job reads `relay_private_ip` and `subnet_cidr` from Terraform
   and resolves `relay.opennhp.org`, failing the whole run unless it gets an IPv4
-  address, an IPv4 prefix, and exactly one A record;
+  address, an IPv4 prefix, and exactly one A record, and unless the prefix
+  *contains* the relay's private address — a prefix the relay is not in would
+  not cover its replacement either. `terraform output` only sees outputs an
+  apply has written into the state, so `subnet_cidr` falls back to
+  `aws_subnet.public.cidr_block` read out of the state when the output is not
+  there yet (this job never applies; without the fallback, adding an output
+  leaves every deploy red until someone runs `infra-demo` by hand);
 - `deploy-server`'s `Check this job's own SSH source is in the XDP whitelist`
   step asks the host what peer address it sees for the live connection
   (`$SSH_CONNECTION`) and fails unless some entry in the rendered `xdp.toml`

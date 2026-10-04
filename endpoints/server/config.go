@@ -641,8 +641,13 @@ func (s *UdpServer) loadXdpConfig(logLevel int) error {
 		return nil
 	}
 
-	s.applyXdpConfig(&xdpConf)
-
+	// No apply here: startXdpFilter returning true already means the kernel map
+	// holds this file's whitelist, because the loader writes it before it
+	// attaches the program. Re-applying it would be a second chance to fail at
+	// the one moment a failure cannot be acted on — the filter is live, so
+	// "keeping the active whitelist" would mean keeping whatever that write
+	// left behind, with tcp/22 the thing at stake. From here the map only ever
+	// changes through a reload, which has a working whitelist to fall back on.
 	xdpConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("xdp config: %s has been updated", fileName)
 		content, err := s.loadConfigFile(fileName)
@@ -727,18 +732,24 @@ func (s *UdpServer) startXdpFilter(conf *XdpTomlConfig, logLevel int) bool {
 	if s.config != nil {
 		serverId = s.config.Hostname
 	}
+	// RelayIPs travels with the load rather than being written afterwards: the
+	// loader installs it before it attaches anything, so the filter is never
+	// live holding an empty whitelist — not for the window between attaching
+	// and the first map write, and not permanently because that write failed.
+	// Either the filter is on and enforcing this list, or it is not on.
 	if err := ebpflocal.EngineLoad(ebpflocal.LoadParams{
 		DirPath:       ExeDirPath,
 		LogLevel:      logLevel,
 		ServerId:      serverId,
 		NhpPort:       uint16(listenPort),
 		MinFrameBytes: uint16(minBytes),
+		RelayIPs:      conf.RelayIPs,
 	}); err != nil {
 		log.Warning("server eBPF engine load failed, fail-open (no XDP ingress filter): %v", err)
 		return false
 	}
 	s.xdpActiveMinFrameBytes.Store(int32(minBytes))
-	log.Info("server XDP engine loaded: filtering udp/%d with a %d-byte floor", listenPort, minBytes)
+	log.Info("server XDP engine loaded: filtering udp/%d with a %d-byte floor, SSH from %v", listenPort, minBytes, conf.RelayIPs)
 	return true
 }
 
@@ -810,8 +821,11 @@ func xdpRelayPrefixes(conf *XdpTomlConfig, fileName string, refusalWhat string) 
 }
 
 // applyXdpConfig mirrors a parsed xdp.toml's whitelist into the kernel-side map.
-// Only ever called with the filter attached (see loadXdpConfig). It reports
-// whether the whitelist in conf is now the one the filter is enforcing.
+// This is the *reload* path only: the whitelist a filter starts with is written
+// by the loader before the program is attached (see startXdpFilter), so by the
+// time anything here runs there is a live filter enforcing a list an operator
+// chose, and refusing is always an option. It reports whether the whitelist in
+// conf is now the one the filter is enforcing.
 func (s *UdpServer) applyXdpConfig(conf *XdpTomlConfig) bool {
 	if !conf.Enabled {
 		// Attachment is decided once, at startup; the flag cannot turn a live

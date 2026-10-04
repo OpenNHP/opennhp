@@ -1066,8 +1066,12 @@ jobs:
 
           echo "XDP ingress filter attached:"
           ssh nhp-server "ip -details link show | grep -B2 xdpgeneric" || true
+          # Two spellings, because the whitelist reaches the kernel two ways:
+          # at startup it travels with the load (the program is never attached
+          # without it), and a later edit of xdp.toml is applied by the config
+          # watcher. The most recent of either is the list in force.
           echo "Active relay whitelist (last applied):"
-          ssh nhp-server "grep -h 'xdp relay whitelist applied' $REMOTE_DIR/logs/server-[0-9]*.log 2>/dev/null | tail -n 1" || \
+          ssh nhp-server "grep -hE 'xdp relay whitelist applied|server XDP engine loaded' $REMOTE_DIR/logs/server-[0-9]*.log 2>/dev/null | tail -n 1" || \
             echo "  (no whitelist line yet)"
 
       - name: Verify the server's own outbound flows still get their replies

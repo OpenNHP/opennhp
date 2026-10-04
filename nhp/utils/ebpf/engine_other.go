@@ -32,6 +32,7 @@ type EngineLoadParams struct {
 	LogLevel         int
 	NhpPort          uint16
 	NhpMinFrameBytes uint16
+	RelayIPs         []string
 }
 
 type EngineHandle struct {

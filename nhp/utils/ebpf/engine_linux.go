@@ -92,6 +92,20 @@ type EngineLoadParams struct {
 	// defaults in place. Ignored by VariantAC, which opens ports per knock.
 	NhpPort          uint16
 	NhpMinFrameBytes uint16
+
+	// RelayIPs is the SSH whitelist the filter starts life enforcing, in the
+	// same spelling as etc/xdp.toml (host addresses or CIDR prefixes). Required
+	// by VariantServer, ignored by VariantAC.
+	//
+	// It is a load parameter rather than something the caller writes afterwards
+	// because the map must hold the whitelist *before* the program is attached.
+	// Attaching first filters the host with an empty trie, which drops tcp/22
+	// from every source: harmless for the microseconds until the write lands,
+	// unrecoverable if that write then fails — the caller would be left with an
+	// attached filter, no SSH and nothing to correct but a map it could not
+	// write a moment ago. Passed in here, a failure happens before the attach
+	// and unwinds to fail-open like every other pre-attach error.
+	RelayIPs []string
 }
 
 // Names of the .rodata constants in nhp/ebpf/xdp/nhp_server_xdp.c that
@@ -553,6 +567,11 @@ func setServerConstants(spec *ebpf.CollectionSpec, params EngineLoadParams) erro
 // no longer has a handle to fix. On a host whose only way in is that whitelist
 // that is unrecoverable, so the deferred cleanup below detaches and unpins on
 // every error path past the load.
+//
+// Installing params.RelayIPs is part of "everything that can fail": the filter
+// is never attached for one moment holding a whitelist other than the one the
+// caller asked for, so there is no window in which SSH from the relay is
+// dropped and no way for a failed map write to leave a live filter behind.
 func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retErr error) {
 	specPath := params.ProgObjPath
 	if _, err := os.Stat(specPath); err != nil {
@@ -608,6 +627,21 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 	if pinErr := objs.XdpProg.Pin(filepath.Join(pinDir, "xdp_server_prog")); pinErr != nil {
 		log.Error("failed to pin XDP program xdp_server_prog to %s: %v", pinDir, pinErr)
 		return nil, pinErr
+	}
+
+	// The whitelist goes in before the program goes on. Everything the filter
+	// admits that is not a knock arrives on tcp/22 from one of these prefixes,
+	// so a program attached with an empty trie is a host with no way in — and
+	// if this write is what failed, user space has just proved it cannot fix
+	// the map it would have to fix. Here it is only an error like any other:
+	// the deferred cleanup unpins, nothing is attached, and the daemon runs
+	// with the exposure it had before the filter existed.
+	//
+	// ReplaceRelayIPs re-validates (all-or-nothing parsing, and a refusal to
+	// leave the map empty) rather than trusting that the caller already did.
+	if relayErr := ReplaceRelayIPs(objs.RelayIPs, params.RelayIPs); relayErr != nil {
+		log.Error("refusing to attach the server XDP program: the relay whitelist could not be installed: %v", relayErr)
+		return nil, relayErr
 	}
 
 	iface, err := resolveInterface(params.IfaceName)

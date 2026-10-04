@@ -391,6 +391,21 @@ before anything is scp'd or restarted:
 
 A red run with the demo still up is the intended outcome of any of them.
 
+**The whitelist is installed before the program is attached**, not after: it
+travels with the load as `EngineLoadParams.RelayIPs`, and `loadServerEngine`
+writes it into `nhp_relay_ips` inside the deferred-cleanup region, before
+`link.AttachXDP`. Writing it afterwards — which is what the first version did —
+leaves two holes that no gate above can see, because both are on the host rather
+than in the pipeline: a window after every restart in which SSH from the relay
+is dropped, and, if that one write fails (an LPM-trie `Update` error, ENOMEM),
+a filter left attached enforcing an *empty* whitelist, i.e. tcp/22 closed to
+every source with no break-glass path — at the one moment user space has just
+proved it cannot write the map it would need to fix. As a load parameter a bad
+whitelist is an ordinary pre-attach error: nothing is attached, the pins are
+swept, and the daemon runs fail-open. Startup therefore does not call
+`applyXdpConfig` at all; that path exists for the config watcher, which always
+has a live filter and a working list to fall back on.
+
 If the host is already unreachable, **reboot the instance before anything
 else** (`aws ec2 reboot-instances`, no SSH needed): DHCP runs before
 `nhp-serverd` starts, so the address comes back and tcp/22 is open for the

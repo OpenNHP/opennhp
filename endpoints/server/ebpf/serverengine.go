@@ -47,13 +47,23 @@ type LoadParams struct {
 	// datagram accepted on it (xdp.toml's NhpMinFrameBytes).
 	NhpPort       uint16
 	MinFrameBytes uint16
+
+	// RelayIPs is xdp.toml's whitelist, the only thing that reaches tcp/22 once
+	// the filter is on. The loader writes it into the map before it attaches
+	// anything, so the filter never enforces an empty one — see
+	// utilsebpf.EngineLoadParams.RelayIPs. A list the trie cannot hold fails the
+	// load, which the caller takes as fail-open.
+	RelayIPs []string
 }
 
 // EngineLoad attaches the server's XDP filter.
 //
 // Callers must have decided to filter before getting here — see
 // (*UdpServer).loadXdpConfig, which attaches only for a host whose etc/xdp.toml
-// asks for it. This function does not second-guess that; it only loads.
+// asks for it. This function does not second-guess that; it only loads — with
+// p.RelayIPs already in the kernel map by the time anything is attached, so a
+// successful return means the filter is enforcing that whitelist and a failed
+// one means no filter at all.
 func EngineLoad(p LoadParams) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -67,6 +77,7 @@ func EngineLoad(p LoadParams) error {
 		LogLevel:         p.LogLevel,
 		NhpPort:          p.NhpPort,
 		NhpMinFrameBytes: p.MinFrameBytes,
+		RelayIPs:         p.RelayIPs,
 	})
 	if err != nil {
 		return err

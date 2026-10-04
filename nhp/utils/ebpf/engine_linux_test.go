@@ -272,6 +272,10 @@ func TestServerEngineLoadAttachesToLoopback(t *testing.T) {
 		LogLevel:         1,
 		NhpPort:          62206,
 		NhpMinFrameBytes: 240,
+		// The loader installs the whitelist before it attaches anything, so a
+		// load with no usable prefix fails outright (see
+		// TestServerEngineLoadRefusesAnUnusableWhitelist).
+		RelayIPs: []string{"127.0.0.1"},
 	})
 	if err != nil {
 		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
@@ -345,6 +349,7 @@ func TestServerFilterPassesClientRepliesAndDropsUnsolicited(t *testing.T) {
 		LogLevel:         1,
 		NhpPort:          62206,
 		NhpMinFrameBytes: 240,
+		RelayIPs:         []string{"127.0.0.1"},
 	})
 	if err != nil {
 		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
@@ -439,6 +444,7 @@ func TestServerFilterFiltersIPv6(t *testing.T) {
 		LogLevel:         2,
 		NhpPort:          62206,
 		NhpMinFrameBytes: 240,
+		RelayIPs:         []string{"127.0.0.1"},
 	})
 	if err != nil {
 		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
@@ -671,6 +677,7 @@ func TestServerFilterKnocksOnTheConfiguredPort(t *testing.T) {
 		LogLevel:         1,
 		NhpPort:          knockPort,
 		NhpMinFrameBytes: floor,
+		RelayIPs:         []string{"127.0.0.1"},
 	})
 	if err != nil {
 		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
@@ -755,6 +762,7 @@ func TestServerEngineLoadLeavesNothingBehindOnFailure(t *testing.T) {
 		LogLevel:         1,
 		NhpPort:          62206,
 		NhpMinFrameBytes: 240,
+		RelayIPs:         []string{"127.0.0.1"},
 	})
 	if err != nil {
 		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
@@ -772,6 +780,7 @@ func TestServerEngineLoadLeavesNothingBehindOnFailure(t *testing.T) {
 		LogLevel:         1,
 		NhpPort:          62206,
 		NhpMinFrameBytes: 240,
+		RelayIPs:         []string{"127.0.0.1"},
 	}); err == nil {
 		t.Fatal("EngineLoad on a nonexistent interface returned nil, want an error")
 	}
@@ -783,6 +792,76 @@ func TestServerEngineLoadLeavesNothingBehindOnFailure(t *testing.T) {
 	}
 	if serverXdpLink != nil {
 		t.Error("serverXdpLink is set after a failed load; the filter is attached with no handle to drive it")
+	}
+}
+
+// The whitelist is installed before the program is attached, and a whitelist
+// that cannot be installed fails the load.
+//
+// This is the ordering the whole filter rests on. The alternative — attach,
+// then write the map — has two bad outcomes on a host whose only way in is that
+// whitelist: a window after every restart in which SSH from the relay is
+// dropped, and, if the write fails, a filter left attached enforcing an empty
+// trie, i.e. tcp/22 closed to every source for good. Asserted the only way user
+// space can: a load whose RelayIPs names no prefix the trie can hold must come
+// back as an error with nothing pinned and nothing attached, exactly like the
+// pre-attach failures above.
+func TestServerEngineLoadRefusesAnUnusableWhitelist(t *testing.T) {
+	objPath := serverObjPath(t)
+
+	// Probe first, for the same reason as the test above: an unprivileged load
+	// fails before it ever reaches the whitelist, which would prove nothing.
+	if _, err := EngineLoad(EngineLoadParams{
+		Variant:          VariantServer,
+		IfaceName:        "lo",
+		ProgObjPath:      objPath,
+		ComponentId:      "test",
+		LogDirPath:       t.TempDir(),
+		LogLevel:         1,
+		NhpPort:          62206,
+		NhpMinFrameBytes: 240,
+		RelayIPs:         []string{"127.0.0.1"},
+	}); err != nil {
+		t.Skipf("cannot load/attach the server XDP program (needs CAP_BPF + CAP_NET_ADMIN): %v", err)
+	}
+	CleanupBPFFiles(VariantServer)
+
+	t.Cleanup(func() { CleanupBPFFiles(VariantServer) })
+
+	for _, tc := range []struct {
+		name     string
+		relayIPs []string
+	}{
+		{"no whitelist at all", nil},
+		{"an unset RELAY_IPS", []string{""}},
+		{"a hostname", []string{"relay.opennhp.org"}},
+		{"one bad entry among good ones", []string{"127.0.0.1", "not-an-ip"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := EngineLoad(EngineLoadParams{
+				Variant:          VariantServer,
+				IfaceName:        "lo",
+				ProgObjPath:      objPath,
+				ComponentId:      "test",
+				LogDirPath:       t.TempDir(),
+				LogLevel:         1,
+				NhpPort:          62206,
+				NhpMinFrameBytes: 240,
+				RelayIPs:         tc.relayIPs,
+			}); err == nil {
+				CleanupBPFFiles(VariantServer)
+				t.Fatalf("EngineLoad with RelayIPs=%v returned nil, want a refusal", tc.relayIPs)
+			}
+
+			for _, pin := range pinnedFiles(VariantServer, DefaultPinDir) {
+				if _, err := os.Stat(pin); !os.IsNotExist(err) {
+					t.Errorf("pin %s survived the refusal (err=%v); the daemon believes it is fail-open", pin, err)
+				}
+			}
+			if serverXdpLink != nil {
+				t.Error("serverXdpLink is set; the filter is attached with an empty SSH whitelist")
+			}
+		})
 	}
 }
 

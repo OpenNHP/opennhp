@@ -250,11 +250,16 @@ sudo ip netns exec nhpxdp sh -c '
 
 ```
 engine_linux.go:   [Info] server XDP filter configured for udp/62206 with a 240-byte datagram floor (0 = the object's own default)
-config.go:         [Info] server XDP engine loaded: filtering udp/62206 with a 240-byte floor
+engine_linux.go:   [Info] relay whitelist applied: 1 prefix(es) active, 0 removed
+config.go:         [Info] server XDP engine loaded: filtering udp/62206 with a 240-byte floor, SSH from [10.99.0.9]
 engine_linux.go:   [Info] Start listening for server eBPF events (PERF BUFFER)
-config.go:         [Info] xdp relay whitelist applied: [10.99.0.9]
 file.go:           [Info] start watching file /tmp/nhpsrv/etc/xdp.toml
 ```
+
+> 注意顺序：`relay whitelist applied` 在 `server XDP engine loaded` **之前**。
+> 白名单是随 load 一起写进 map 的，写不进去就整个 load 失败（fail-open，什么都不挂）。
+> 所以不存在「程序已挂上、白名单还是空的」这个窗口——那个状态下 tcp/22 对所有来源
+> 都是关的，而且恰恰是在没法再去修 map 的时候发生。
 
 > 没有这几行、而是 `no .../etc/xdp.toml: the XDP ingress filter is not attached`
 > 或 `Enabled = false ...`，说明这台机器根本没有 opt-in——这是预期行为，不是故障。
@@ -632,7 +637,10 @@ sudo bpftool map lookup pinned /sys/fs/bpf/nhp_relay_ips \
 # 命中：{"key": ..., "value": 1}；未命中：Error: ... No such file or directory
 
 cat /home/ec2-user/nhp-server/etc/xdp.toml
-grep 'xdp relay whitelist applied' /home/ec2-user/nhp-server/logs/server-$(date +%F).log | tail -1
+# 启动时的白名单在 `server XDP engine loaded ... SSH from [...]` 这一行里；
+# `xdp relay whitelist applied` 只有热更新（改 xdp.toml）才会打
+grep -E 'xdp relay whitelist applied|server XDP engine loaded' \
+  /home/ec2-user/nhp-server/logs/server-$(date +%F).log | tail -1
 # 另外两条要确认「没出现」的日志：写了个没有 RelayIPs 的 xdp.toml 会打第一行，
 # 写了个每项都解析不了（主机名 / IPv6 / 笔误 / 带行内注释）的会打第二行。
 # 两种情况都保留原有白名单，不会把 tcp/22 全关掉
@@ -755,7 +763,7 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$(cd terraform/demo && terraform output -raw
 | `/sys/fs/bpf/` | 无 server 相关 pin | `xdp_server_prog`、`nhp_relay_ips` |
 | `etc/` | 无 `xdp.toml` / `nhp_server_xdp.o` | 两者都在 |
 | unit 能力集 | 无 `AmbientCapabilities` | `CAP_BPF CAP_NET_ADMIN CAP_PERFMON` + `ExecStartPre` 挂 bpffs |
-| server 日志 | 无 eBPF 相关行 | `server XDP engine loaded`、`xdp relay whitelist applied: [...]` |
+| server 日志 | 无 eBPF 相关行 | `relay whitelist applied: N prefix(es) active`、紧接着 `server XDP engine loaded: ... SSH from [...]` |
 | `logs/nhp_server_xdp-*.log` | 不存在 | 持续写入 PASS/DROP 判决（限速）+ 每分钟 `[NHP-STAT]` 汇总；>14 天或 >256 MiB 自动清理 |
 | relay → server ICMP | 通 | 全丢（`NON_TCP_UDP`） |
 | relay → server tcp/443 | 立即 refused（rc=1） | 超时（rc=124，`TCP_OTHER`） |

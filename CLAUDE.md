@@ -268,13 +268,19 @@ filter (XDP)*.
   clients have no connected socket. Dropping the DHCP answer costs the host its
   address and every port with it, about an hour after a deploy that verified
   clean.
-- **The loader gives its capabilities back.** `dropLoaderPrivileges`
-  (`nhp/utils/ebpf/caps_linux.go`) clears the ambient set and empties permitted
-  and effective — keeping CAP_BPF only where `kernel.unprivileged_bpf_disabled`
-  makes bpf(2) privileged and the reload path still needs to write the map —
-  process-wide, on every path out of the load. A load that *failed* keeps
-  nothing, CAP_BPF included: there is no map to reload, and fail-open is the
-  state the daemon then stays in for the life of the process.
+- **The capabilities go back on every path, including the ones that never
+  load.** `dropLoaderPrivileges` (`nhp/utils/ebpf/caps_linux.go`) clears the
+  ambient set and empties permitted and effective — keeping CAP_BPF only where
+  `kernel.unprivileged_bpf_disabled` makes bpf(2) privileged and the reload path
+  still needs to write the map — process-wide, not just on the calling thread.
+  The unit grants all three as *ambient* capabilities before any of this code
+  runs, so a host that declines to filter is holding them too: `loadXdpConfig`
+  therefore defers `DropLoaderPrivileges` across all of its returns, not just
+  the loader's. A load that *failed*, and every refusal that never reached the
+  loader, keeps nothing, CAP_BPF included — there is no map to reload, and that
+  is the state the daemon stays in for the life of the process. The drop is
+  once-guarded and the loader goes first, so the attach path's answer is the one
+  that decides CAP_BPF.
 - **The event log is bounded**, because every line in it is a packet someone
   else chose to send: per-class and global token buckets in the C, bulk classes
   counted but never written per packet, a daily byte budget in the writer, exact

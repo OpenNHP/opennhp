@@ -596,7 +596,12 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 	// Registered first so that LIFO runs it last: the cleanup defer below and
 	// everything after it still hold what they were granted, and nothing added
 	// to this function later can land after the drop by accident.
-	defer func() { dropLoaderPrivilegesOrWarn(retErr == nil) }()
+	//
+	// Through DropLoaderPrivileges, not the raw drop, so that this and the
+	// caller's unconditional drop (which covers the paths that never reach this
+	// function) are one event rather than two. This one runs first whenever it
+	// runs at all, so it is this `retErr == nil` that decides CAP_BPF.
+	defer func() { DropLoaderPrivileges(retErr == nil) }()
 
 	specPath := params.ProgObjPath
 	if _, err := os.Stat(specPath); err != nil {

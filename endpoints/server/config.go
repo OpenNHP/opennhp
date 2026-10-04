@@ -602,6 +602,14 @@ func (s *UdpServer) xdpConfigFileName() string {
 	return filepath.Join(ExeDirPath, path)
 }
 
+// dropXdpLoaderPrivileges is ebpflocal.DropLoaderPrivileges behind a variable,
+// so a test can assert what no comment can: that every return in loadXdpConfig
+// reaches it. Missing one is the whole bug this indirection guards — the drop
+// used to live only inside the loader, which the refusal paths never call, so a
+// host that declined to filter kept CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON for
+// the life of the process. Never reassigned outside tests.
+var dropXdpLoaderPrivileges = ebpflocal.DropLoaderPrivileges
+
 // loadXdpConfig reads etc/xdp.toml, attaches the XDP ingress filter if the file
 // asks for one, and keeps watching the file for whitelist changes.
 //
@@ -621,6 +629,23 @@ func (s *UdpServer) xdpConfigFileName() string {
 func (s *UdpServer) loadXdpConfig(logLevel int) error {
 	fileName := s.xdpConfigFileName()
 
+	// Give the loader's capabilities back on the way out, whatever is decided
+	// below. The unit grants CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON as ambient
+	// capabilities before this function gets a say, so the daemon is holding
+	// them right now on every host — including the ones that are about to
+	// decline to filter. Those are the states that hold them longest and use
+	// them least: no object loaded, no filter to detach, no whitelist map to
+	// reload, and the same untrusted UDP and dlopen'd plugins in the address
+	// space for the life of the process.
+	//
+	// The loader drops on its own way out too, and gets there first on the
+	// attach path, which is what decides whether CAP_BPF survives for the
+	// reload path (ebpflocal.DropLoaderPrivileges is once-guarded, first call
+	// wins). So `attached` only ever decides the question on the paths where
+	// the loader never ran — and there the answer is "keep nothing".
+	attached := false
+	defer func() { dropXdpLoaderPrivileges(attached) }()
+
 	content, err := s.loadConfigFile(fileName)
 	if err != nil {
 		log.Info("no %s: the XDP ingress filter is not attached (%v)", fileName, err)
@@ -633,7 +658,8 @@ func (s *UdpServer) loadXdpConfig(logLevel int) error {
 		return unmarshalErr
 	}
 
-	if !s.startXdpFilter(&xdpConf, logLevel) {
+	attached = s.startXdpFilter(&xdpConf, logLevel)
+	if !attached {
 		// Not attached: there is no map to mirror the file into, and no point
 		// watching a file whose only effect is on a filter that is not running.
 		// A later edit takes effect on the next restart, which is also when the

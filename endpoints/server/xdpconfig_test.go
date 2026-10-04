@@ -280,6 +280,123 @@ func TestLoadXdpConfigFailsOpenWithoutTheObject(t *testing.T) {
 	}
 }
 
+// The unit grants CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON as *ambient*
+// capabilities, so nhp-serverd is holding all three by the time loadXdpConfig
+// is reached — on every host, including the ones that are about to decline to
+// filter. Giving them back only inside the loader covered just the paths that
+// got as far as loading something; a host with no xdp.toml, or Enabled = false,
+// or a whitelist that does not parse, never calls the loader at all and used to
+// keep the full set for the life of the process, having never used it once.
+//
+// That is the longest-lived version of the grant and the least justified: no
+// filter to detach, no whitelist map to reload, and the same untrusted UDP and
+// dlopen'd auth plugins in the address space. So every return in loadXdpConfig
+// has to reach the drop, which is a property about paths rather than about any
+// one of them — hence a table that walks them all.
+func TestLoadXdpConfigAlwaysDropsLoaderPrivileges(t *testing.T) {
+	tests := []struct {
+		name string
+		// body is the etc/xdp.toml to write; "" writes no file at all.
+		body string
+	}{
+		{"no xdp.toml at all", ""},
+		{"unparsable toml", "RelayIPs = [\"1.2.3.4\""},
+		{"Enabled = false", "Enabled = false\nRelayIPs = [\"1.2.3.4\"]\n"},
+		{"no RelayIPs key", "Enabled = true\n"},
+		{"empty RelayIPs", "Enabled = true\nRelayIPs = []\n"},
+		{"a RelayIPs entry that does not parse", "Enabled = true\nRelayIPs = [\"not-an-ip\"]\n"},
+		{"NhpMinFrameBytes out of range", "Enabled = true\nRelayIPs = [\"1.2.3.4\"]\nNhpMinFrameBytes = 70000\n"},
+		// Opted in and well-formed, but there is no compiled object on this
+		// machine, so the load fails and the daemon fails open. The loader did
+		// run here, and on a real host its own deferred drop fires first — but
+		// it has to be dropped either way, and with the same answer.
+		{"opted in but the load fails", "Enabled = true\nNhpMinFrameBytes = 240\nRelayIPs = [\"10.0.1.0/24\"]\n"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			originalExeDir := ExeDirPath
+			ExeDirPath = t.TempDir()
+			originalDrop := dropXdpLoaderPrivileges
+			t.Cleanup(func() {
+				if xdpConfigWatch != nil {
+					xdpConfigWatch.Close()
+					xdpConfigWatch = nil
+				}
+				dropXdpLoaderPrivileges = originalDrop
+				ExeDirPath = originalExeDir
+			})
+
+			var calls []bool
+			dropXdpLoaderPrivileges = func(attached bool) { calls = append(calls, attached) }
+
+			if tc.body != "" {
+				etcDir := filepath.Join(ExeDirPath, "etc")
+				if err := os.MkdirAll(etcDir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(etcDir, "xdp.toml"), []byte(tc.body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			s := &UdpServer{config: &Config{ListenPort: 62206}}
+			_ = s.loadXdpConfig(1)
+
+			if len(calls) != 1 {
+				t.Fatalf("dropped %d times, want exactly 1 (calls=%v)", len(calls), calls)
+			}
+			// Nothing is attached on any of these paths, so there is no
+			// whitelist map and the CAP_BPF exemption has nothing to protect.
+			if calls[0] {
+				t.Error("dropped with attached=true although no filter is running; CAP_BPF would be kept for a map that does not exist")
+			}
+		})
+	}
+}
+
+// The refusal that does not come from the file: a listener the filter would
+// black-hole. It returns before the loader like the others, so it needs the
+// same guarantee.
+func TestLoadXdpConfigDropsPrivilegesOnAListenerConflict(t *testing.T) {
+	originalExeDir := ExeDirPath
+	ExeDirPath = t.TempDir()
+	originalDrop := dropXdpLoaderPrivileges
+	t.Cleanup(func() {
+		dropXdpLoaderPrivileges = originalDrop
+		ExeDirPath = originalExeDir
+	})
+
+	etcDir := filepath.Join(ExeDirPath, "etc")
+	if err := os.MkdirAll(etcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "Enabled = true\nNhpMinFrameBytes = 240\nRelayIPs = [\"10.0.1.0/24\"]\n"
+	if err := os.WriteFile(filepath.Join(etcDir, "xdp.toml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var calls []bool
+	dropXdpLoaderPrivileges = func(attached bool) { calls = append(calls, attached) }
+
+	s := &UdpServer{
+		config:     &Config{ListenPort: 62206},
+		httpConfig: &HttpConfig{EnableHttp: true, HttpListenIp: "0.0.0.0", HttpListenPort: 443},
+	}
+	if s.startXdpFilter(&XdpTomlConfig{Enabled: true, RelayIPs: []string{"10.0.1.0/24"}}, 1) {
+		t.Fatal("startXdpFilter attached in front of a wildcard HTTP listener")
+	}
+
+	_ = s.loadXdpConfig(1)
+
+	if len(calls) != 1 {
+		t.Fatalf("dropped %d times, want exactly 1 (calls=%v)", len(calls), calls)
+	}
+	if calls[0] {
+		t.Error("dropped with attached=true although the filter was refused")
+	}
+}
+
 // xdpServiceConflict guards the startup direction (do not attach in front of a
 // listener); this guards the reload direction (do not start a listener in front
 // of a filter). http.toml is hot-reloaded and etcd can push the same change, so

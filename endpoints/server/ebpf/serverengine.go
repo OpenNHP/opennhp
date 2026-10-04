@@ -201,6 +201,24 @@ func hasRoutableIPv4(addrs []net.Addr) bool {
 	return false
 }
 
+// DropLoaderPrivileges gives back the CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON
+// the unit grants as ambient capabilities, at most once per process.
+//
+// EngineLoad already drops on its way out, so the call that matters here is the
+// other one: the daemon has to reach this on the paths where it decided *not*
+// to filter and so never called EngineLoad at all — no etc/xdp.toml, Enabled =
+// false, a whitelist that does not parse, a listener in the way. The unit hands
+// out the capabilities either way, and a host that is not filtering has the
+// least use for them and the longest time to hold them. Pass attached=false
+// there: with no filter there is no whitelist map, so the CAP_BPF exemption for
+// the reload path has nothing to protect.
+//
+// See (*UdpServer).loadXdpConfig, which defers this across every one of its
+// returns.
+func DropLoaderPrivileges(attached bool) {
+	utilsebpf.DropLoaderPrivileges(attached)
+}
+
 // Loaded reports whether the XDP filter is attached. The config path uses it to
 // tell "no engine, nothing to apply" apart from a genuine map error.
 func Loaded() bool {

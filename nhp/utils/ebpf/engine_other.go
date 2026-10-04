@@ -62,3 +62,8 @@ func ReplaceRelayIPs(relayMap *ebpf.Map, ipStrs []string) error {
 func CleanupBPFFiles(variant EngineVariant) {
 	log.Info("ebpf func must be compile based linux os")
 }
+
+// DropLoaderPrivileges is a no-op off Linux: there is no ambient capability set
+// to clear, and nothing here ever held CAP_BPF to give back. Declared so the
+// caller can drop unconditionally without a build tag of its own.
+func DropLoaderPrivileges(allowKeepBpf bool) {}

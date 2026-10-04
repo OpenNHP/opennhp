@@ -5,6 +5,7 @@ package ebpf
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -63,5 +64,59 @@ func TestDropLoaderPrivilegesIsIdempotent(t *testing.T) {
 	// call from an unprivileged process as the other one.
 	if err := dropLoaderPrivileges(false); err != nil {
 		t.Fatalf("drop without the CAP_BPF exemption: %v", err)
+	}
+}
+
+// withDropRecorder swaps the drop for a recorder and resets the once-guard, so
+// the exported wrapper can be exercised without actually disarming the test
+// binary and without one test consuming the guard for the next.
+func withDropRecorder(t *testing.T) *[]bool {
+	t.Helper()
+
+	origFn := dropLoaderPrivilegesFn
+	t.Cleanup(func() {
+		dropLoaderPrivilegesFn = origFn
+		dropOnce = sync.Once{}
+	})
+
+	dropOnce = sync.Once{}
+	var calls []bool
+	dropLoaderPrivilegesFn = func(allowKeepBpf bool) { calls = append(calls, allowKeepBpf) }
+	return &calls
+}
+
+// The loader and the caller both drop, and on the attach path both of them run.
+// The loader goes first and is the one that knows there is a live map behind
+// the CAP_BPF exemption, so its answer has to be the one that sticks: a second
+// drop taking CAP_BPF away would leave the reload path returning EPERM on every
+// distro that ships unprivileged_bpf_disabled non-zero, which is the one way a
+// replaced relay's address reaches a live whitelist.
+func TestDropLoaderPrivilegesHappensOnceFirstCallWins(t *testing.T) {
+	calls := withDropRecorder(t)
+
+	DropLoaderPrivileges(true)  // the loader, after a successful attach
+	DropLoaderPrivileges(false) // the caller's unconditional defer
+
+	if len(*calls) != 1 {
+		t.Fatalf("dropped %d times, want exactly 1 (calls=%v)", len(*calls), *calls)
+	}
+	if !(*calls)[0] {
+		t.Error("the surviving call was allowKeepBpf=false; the loader's answer must win on the attach path")
+	}
+}
+
+// On every path that declines to filter, the caller's defer is the only drop
+// there is — and it must keep nothing, because without a filter there is no
+// whitelist map for the CAP_BPF exemption to protect.
+func TestDropLoaderPrivilegesWithoutLoaderKeepsNothing(t *testing.T) {
+	calls := withDropRecorder(t)
+
+	DropLoaderPrivileges(false)
+
+	if len(*calls) != 1 {
+		t.Fatalf("dropped %d times, want exactly 1 (calls=%v)", len(*calls), *calls)
+	}
+	if (*calls)[0] {
+		t.Error("allowKeepBpf=true on a path that never attached a filter")
 	}
 }

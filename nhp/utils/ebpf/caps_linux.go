@@ -40,6 +40,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"kernel.org/pub/linux/libs/security/libcap/cap"
 
@@ -162,4 +163,37 @@ func dropLoaderPrivilegesOrWarn(allowKeepBpf bool) {
 	if err := dropLoaderPrivileges(allowKeepBpf); err != nil {
 		log.Error("could not drop the XDP loader's capabilities; nhp-serverd keeps CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON for the rest of its life: %v", err)
 	}
+}
+
+var (
+	dropOnce sync.Once
+	// dropLoaderPrivilegesFn is the drop itself, behind a variable so a test
+	// can observe the once-guard without disarming the rest of the test
+	// binary. Never reassigned outside tests.
+	dropLoaderPrivilegesFn = dropLoaderPrivilegesOrWarn
+)
+
+// DropLoaderPrivileges gives the loader's capabilities back, at most once per
+// process, and is the call every path out of the decision to filter has to
+// reach — not just the paths that got as far as loading something.
+//
+// The loader drops on its own way out, but it is only one of the outcomes. A
+// host with no etc/xdp.toml, an unparsable one, Enabled = false, a RelayIPs the
+// trie cannot hold, an out-of-range NhpMinFrameBytes or a listener the filter
+// would black-hole never reaches the loader at all — and the unit grants the
+// three capabilities as *ambient* regardless, so each of those states used to
+// mean a daemon holding CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON for its whole
+// life having never once used them. That is the same grant the loader is
+// careful to give back after a failed load, held for the same reason (there is
+// no filter) by a process in the same position (untrusted UDP, dlopen'd
+// plugins) — so the caller drops on those paths too, with allowKeepBpf false
+// because a host that is not filtering has no whitelist map to reload.
+//
+// Once, because the two callers overlap on the attach path: the loader's own
+// deferred drop runs first and settles the CAP_BPF question with the answer
+// that has a live map behind it, and the caller's later unconditional call must
+// not then take CAP_BPF away from a filter whose reload path needs it. First
+// call wins, and on every non-attach path the first call is the caller's.
+func DropLoaderPrivileges(allowKeepBpf bool) {
+	dropOnce.Do(func() { dropLoaderPrivilegesFn(allowKeepBpf) })
 }

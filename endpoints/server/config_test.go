@@ -363,7 +363,7 @@ func TestUpdateBaseConfig_ToggleValidationKeepsDeviceHooks(t *testing.T) {
 // "operator removes AttestationScheme = 'test' from config.toml and the
 // server keeps accepting self-asserted evidence" regression.
 //
-// Pre-fix, loadBaseConfig's file-watch branch re-to unmarshalled into the
+// Pre-fix, loadBaseConfig's file-watch branch re-unmarshalled into the
 // same outer `config` variable. go-toml v2 does not zero fields that
 // are absent from the new file, so the removed `AttestationScheme`
 // key stayed "test" in memory, `s.config.AttestationScheme != conf.AttestationScheme`

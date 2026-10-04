@@ -269,10 +269,17 @@ filter (XDP)*.
   address and every port with it, about an hour after a deploy that verified
   clean.
 - **The capabilities go back on every path, including the ones that never
-  load.** `dropLoaderPrivileges` (`nhp/utils/ebpf/caps_linux.go`) clears the
-  ambient set and empties permitted and effective — keeping CAP_BPF only where
+  load.** `dropLoaderPrivileges` (`nhp/utils/ebpf/caps_linux.go`) subtracts
+  `CAP_BPF`, `CAP_NET_ADMIN` and `CAP_PERFMON` from ambient, permitted,
+  effective and inheritable — keeping CAP_BPF only where
   `kernel.unprivileged_bpf_disabled` makes bpf(2) privileged and the reload path
   still needs to write the map — process-wide, not just on the calling thread.
+  A subtraction, never an assignment of a fixed set: on the demo unit those
+  three *are* the whole grant, so what is left is nothing, but nhp-serverd also
+  runs as root in `docker/Dockerfile.server`, where resetting to the empty set
+  would silently and irreversibly take away CAP_DAC_OVERRIDE (volume-mounted
+  config owned by another uid) and CAP_NET_BIND_SERVICE (an `http.toml` reload
+  rebinding 80/443) on a host that never opted into filtering at all.
   The unit grants all three as *ambient* capabilities before any of this code
   runs, so a host that declines to filter is holding them too: `loadXdpConfig`
   therefore defers `DropLoaderPrivileges` across all of its returns, not just
@@ -300,7 +307,11 @@ outcome of any of them.
 Capabilities (`CAP_BPF CAP_NET_ADMIN CAP_PERFMON`) plus a root `ExecStartPre`
 that prepares `/sys/fs/bpf` come from `terraform/demo/userdata/server.sh` on new
 hosts and from a systemd drop-in installed by `deploy-server` on existing
-ones — keep the two in sync.
+ones — keep the two in sync. `aws_instance.server` carries
+`lifecycle { ignore_changes = [user_data] }` for the same reason
+`aws_instance.ac` does: an in-place `user_data` update stops and starts the
+instance, and cloud-init would not re-run the script anyway, so a userdata edit
+would cost an nhp-server outage and change nothing on the host.
 
 Verification procedure (netns rehearsal, pre-deploy baseline, the same commands
 after the deploy, recovery paths):

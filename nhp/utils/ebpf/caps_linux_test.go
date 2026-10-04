@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"kernel.org/pub/linux/libs/security/libcap/cap"
 )
 
 // The sysctl decides whether the loader may give CAP_BPF back or has to keep
@@ -43,6 +45,89 @@ func TestBpfSyscallNeedsCapabilityFrom(t *testing.T) {
 				t.Fatalf("bpfSyscallNeedsCapabilityFrom(%q) = %v, want %v", tc.content, got, tc.want)
 			}
 		})
+	}
+}
+
+// The drop subtracts the loader's three capabilities; it must never assign a
+// fixed set. nhp-serverd also runs as root in docker/Dockerfile.server, where
+// the process holds the full root set for reasons that have nothing to do with
+// this loader — CAP_DAC_OVERRIDE for volume-mounted config owned by another
+// uid, CAP_NET_BIND_SERVICE for an http.toml reload that rebinds 80/443 — and
+// loadXdpConfig reaches the drop on every path, including a host with no
+// etc/xdp.toml that never asked to filter anything. Resetting to empty there
+// would be a silent, irreversible privilege change outside the opt-in.
+func TestReduceLoaderCapsOnlyTakesTheLoadersThree(t *testing.T) {
+	// A stand-in for the root container: the loader's three plus two the
+	// loader knows nothing about.
+	held := cap.NewSet()
+	for _, vec := range []cap.Flag{cap.Effective, cap.Permitted, cap.Inheritable} {
+		if err := held.SetFlag(vec, true, cap.BPF, cap.NET_ADMIN, cap.PERFMON, cap.DAC_OVERRIDE, cap.NET_BIND_SERVICE); err != nil {
+			t.Fatalf("build held set: %v", err)
+		}
+	}
+
+	for _, tc := range []struct {
+		name        string
+		keepBpf     bool
+		wantKeptBpf bool
+		gone        []cap.Value
+		kept        []cap.Value
+	}{
+		{
+			name: "bpf given back too",
+			gone: []cap.Value{cap.BPF, cap.NET_ADMIN, cap.PERFMON},
+			kept: []cap.Value{cap.DAC_OVERRIDE, cap.NET_BIND_SERVICE},
+		},
+		{
+			name:        "bpf kept for the reload path",
+			keepBpf:     true,
+			wantKeptBpf: true,
+			gone:        []cap.Value{cap.NET_ADMIN, cap.PERFMON},
+			kept:        []cap.Value{cap.BPF, cap.DAC_OVERRIDE, cap.NET_BIND_SERVICE},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			want, keptBpf, err := reduceLoaderCaps(held, tc.keepBpf)
+			if err != nil {
+				t.Fatalf("reduceLoaderCaps: %v", err)
+			}
+			if keptBpf != tc.wantKeptBpf {
+				t.Errorf("keptBpf = %v, want %v", keptBpf, tc.wantKeptBpf)
+			}
+			for _, vec := range []cap.Flag{cap.Effective, cap.Permitted, cap.Inheritable} {
+				for _, val := range tc.gone {
+					if has, err := want.GetFlag(vec, val); err != nil || has {
+						t.Errorf("%v still holds %v (err=%v)", vec, val, err)
+					}
+				}
+				for _, val := range tc.kept {
+					if has, err := want.GetFlag(vec, val); err != nil || !has {
+						t.Errorf("%v lost %v, which the loader never asked for (err=%v)", vec, val, err)
+					}
+				}
+			}
+		})
+	}
+}
+
+// On the demo unit the grant *is* the loader's three (AmbientCapabilities= on
+// an otherwise unprivileged user), so subtracting them has to leave a process
+// holding nothing — that is what deploy-server's "Verify the XDP loader gave
+// its capabilities back" reads out of /proc/<pid>/task/*/status.
+func TestReduceLoaderCapsLeavesTheDemoUnitWithNothing(t *testing.T) {
+	held := cap.NewSet()
+	for _, vec := range []cap.Flag{cap.Effective, cap.Permitted, cap.Inheritable} {
+		if err := held.SetFlag(vec, true, cap.BPF, cap.NET_ADMIN, cap.PERFMON); err != nil {
+			t.Fatalf("build held set: %v", err)
+		}
+	}
+
+	want, _, err := reduceLoaderCaps(held, false)
+	if err != nil {
+		t.Fatalf("reduceLoaderCaps: %v", err)
+	}
+	if got := want.String(); got != cap.NewSet().String() {
+		t.Errorf("reduced set is %q, want the empty set %q", got, cap.NewSet())
 	}
 }
 

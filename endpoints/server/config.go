@@ -618,8 +618,11 @@ var dropXdpLoaderPrivileges = ebpflocal.DropLoaderPrivileges
 // listed sources, which on a host with no other way in is one bad whitelist away
 // from being unreachable for good. So a server that has not been configured for
 // it — no xdp.toml, an unparsable one, Enabled = false, or an empty RelayIPs —
-// runs exactly as it did before the filter existed. Only a file that says all
-// three things (present, Enabled, non-empty whitelist) attaches anything.
+// filters nothing and keeps the ingress exposure it had before the filter
+// existed. Only a file that says all three things (present, Enabled, non-empty
+// whitelist) attaches anything. The one thing such a host does not keep is the
+// loader's own three capabilities (see the defer below), which it was granted
+// for a load that never happened.
 //
 // If the file is missing or unparsable on a *reload*, nothing is applied and the
 // kernel keeps the whitelist it already had. Overwriting a working whitelist
@@ -642,7 +645,14 @@ func (s *UdpServer) loadXdpConfig(logLevel int) error {
 	// attach path, which is what decides whether CAP_BPF survives for the
 	// reload path (ebpflocal.DropLoaderPrivileges is once-guarded, first call
 	// wins). So `attached` only ever decides the question on the paths where
-	// the loader never ran — and there the answer is "keep nothing".
+	// the loader never ran — and there the answer is "keep none of the three".
+	//
+	// Those three and nothing else: the drop subtracts CAP_BPF, CAP_NET_ADMIN
+	// and CAP_PERFMON from whatever the process holds rather than resetting it,
+	// so a deployment that runs nhp-serverd as root (docker/Dockerfile.server)
+	// keeps the unrelated capabilities it was started with. A host with no
+	// xdp.toml still runs as it did before this filter existed, except for
+	// three capabilities it had no way to use.
 	attached := false
 	defer func() { dropXdpLoaderPrivileges(attached) }()
 

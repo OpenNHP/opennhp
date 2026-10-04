@@ -990,8 +990,14 @@ can only fire in a state where the host answers nothing anyway.
 
 **The capabilities are given back after the attach.** systemd grants CAP_BPF,
 CAP_NET_ADMIN and CAP_PERFMON ambiently; `dropLoaderPrivileges`
-(`nhp/utils/ebpf/caps_linux.go`) clears the ambient set and empties permitted
-and effective when `loadServerEngine` returns, on every path out of it. That
+(`nhp/utils/ebpf/caps_linux.go`) subtracts exactly those three from the
+ambient, permitted, effective and inheritable sets when `loadServerEngine`
+returns, on every path out of it. Those three are this unit's whole grant, so
+on this host the daemon is left holding nothing — but the code takes them away
+rather than assigning an empty set, because nhp-serverd also runs as root in
+`docker/Dockerfile.server`, where a blanket reset would quietly cost unrelated
+capabilities (CAP_DAC_OVERRIDE, CAP_NET_BIND_SERVICE) on a deployment that
+never opted into filtering. That
 includes the ones that never reach the attach — a missing object file, a
 verifier rejection, a map that will not pin — and those matter most, because
 each of them is a daemon that then runs fail-open for days with three
@@ -1015,6 +1021,21 @@ is process-wide rather than per-thread (libcap's psx; `syscall.AllThreadsSyscall
 returns ENOTSUP in any binary linking cgo, which this one does by way of
 `plugin`), and `deploy-server`'s `Verify the XDP loader gave its capabilities
 back` reads `/proc/<pid>/task/*/status` to keep it honest.
+
+**The unit settings reach a running server only through the deploy job.**
+`AmbientCapabilities=`, `CapabilityBoundingSet=`, `NoNewPrivileges=` and the
+root `ExecStartPre` that prepares `/sys/fs/bpf` are written in
+`terraform/demo/userdata/server.sh` *and* installed as a systemd drop-in by
+`deploy-server` — keep the two in sync. `aws_instance.server` is pinned the
+same way `aws_instance.ac` is (`lifecycle { ignore_changes = [user_data] }`,
+`user_data_replace_on_change` left at `false`), so an edit to `server.sh`
+reaches new instances only. Without that pin the AWS provider applies a
+`user_data` change in place, which stops and starts the instance: an unplanned
+nhp-server outage — the whole demo, since every knock goes through it — in
+exchange for nothing, because cloud-init does not re-run userdata on an
+existing instance. To roll a userdata change onto this host deliberately,
+replace the instance (`-replace`) and be ready to re-associate the EIP,
+re-deploy, and re-check that the whitelist admits the new host's SSH source.
 
 **The event log is bounded on purpose.** Every line in it is a packet somebody
 else chose to send, and `nhp/log` rotates by date without ever pruning: letting

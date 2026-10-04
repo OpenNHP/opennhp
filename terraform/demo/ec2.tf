@@ -25,6 +25,15 @@ resource "aws_instance" "server" {
   vpc_security_group_ids = [aws_security_group.server.id]
   key_name               = aws_key_pair.deploy.key_name
 
+  # Same reasoning as the AC below, and for the same reason it is needed here
+  # now: the XDP ingress filter's unit settings (AmbientCapabilities=, the
+  # bpffs ExecStartPre) were added to userdata/server.sh, and without
+  # ignore_changes the AWS provider would apply that edit in place on the next
+  # apply - which stops and starts this instance. The reboot would buy nothing
+  # (cloud-init runs userdata once per instance, so the new settings would not
+  # be applied by it anyway; the deploy-server drop-in is what installs them on
+  # a running host) and would cost an unplanned nhp-server outage, taking the
+  # whole demo down with it.
   user_data = templatefile("${path.module}/userdata/server.sh", {
     deploy_path = "/home/ec2-user/nhp-server"
   })
@@ -35,6 +44,15 @@ resource "aws_instance" "server" {
   }
 
   tags = { Name = "opennhp-demo-server" }
+
+  lifecycle {
+    # See the user_data comment above. To roll a userdata change onto this
+    # host deliberately, replace the instance (taint / -replace) rather than
+    # removing this - and be ready to re-associate the EIP, re-deploy, and
+    # re-check that the XDP whitelist admits the new host's SSH source before
+    # the filter attaches.
+    ignore_changes = [user_data]
+  }
 }
 
 resource "aws_eip_association" "server" {

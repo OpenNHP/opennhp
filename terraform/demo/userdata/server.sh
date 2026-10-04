@@ -34,22 +34,26 @@ dnf install -y certbot
 #
 # The three that are granted are not held for long. nhp-serverd gives them
 # back as the last step of attaching the filter (dropLoaderPrivileges in
-# nhp/utils/ebpf/caps_linux.go): ambient cleared, permitted and effective
-# emptied — or reduced to CAP_BPF alone where kernel.unprivileged_bpf_disabled
-# makes bpf(2) privileged and the xdp.toml reload path still has a map to
-# write. That matters because this process parses untrusted UDP from the whole
-# internet and dlopens auth plugins into its own address space, and CAP_BPF
-# with CAP_PERFMON loads tracing programs that can read arbitrary kernel
-# memory. systemd grants what the load needs; the daemon decides what it keeps.
-# The deploy job asserts the drop actually happened by reading
-# /proc/<pid>/status.
+# nhp/utils/ebpf/caps_linux.go): those three subtracted from ambient,
+# permitted, effective and inheritable — all but CAP_BPF where
+# kernel.unprivileged_bpf_disabled makes bpf(2) privileged and the xdp.toml
+# reload path still has a map to write. Since these three are the whole grant
+# here, what is left on this host is nothing at all. That matters because this
+# process parses untrusted UDP from the whole internet and dlopens auth plugins
+# into its own address space, and CAP_BPF with CAP_PERFMON loads tracing
+# programs that can read arbitrary kernel memory. systemd grants what the load
+# needs; the daemon decides what it keeps. The deploy job asserts the drop
+# actually happened by reading /proc/<pid>/status.
 #
 # Missing any of this is not fatal: the daemon logs a warning and runs with no
 # ingress filter (fail-open), which keeps a kernel or permission problem from
 # taking the gateway off the air. The deploy-server job in
 # .github/workflows/deploy-demo-v2.yml installs the same settings as a drop-in
 # for hosts created before this file changed, and then fails the run if no XDP
-# program ended up attached — keep the two in sync.
+# program ended up attached — keep the two in sync. That drop-in is not a
+# convenience: aws_instance.server has lifecycle { ignore_changes = [user_data] }
+# (terraform/demo/ec2.tf), so edits to this file only ever reach a *new*
+# instance. Everything a running host needs has to come from the deploy job.
 cat > /etc/systemd/system/nhp-serverd.service <<'EOF'
 [Unit]
 Description=NHP Server Daemon

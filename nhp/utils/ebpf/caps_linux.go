@@ -34,6 +34,20 @@ package ebpf
 // failed. Only the server variant does this: the AC's loader has the same
 // lifetime question but a different answer (it rewrites its maps on every
 // knock) and this change deliberately leaves its behavior alone.
+//
+// What it gives back is those three and nothing else. On the demo unit that is
+// the whole set the process has — AmbientCapabilities= grants exactly these
+// three to an otherwise unprivileged user — so the drop still leaves a daemon
+// holding nothing at all, which is what the deploy job asserts. But nhp-serverd
+// also ships as a container that runs as root (docker/Dockerfile.server), and
+// there the process holds the full root set for reasons that have nothing to do
+// with this loader: CAP_DAC_OVERRIDE for volume-mounted config owned by another
+// uid, CAP_NET_BIND_SERVICE for an http.toml reload that rebinds 80/443, and
+// whatever a dlopen'd plugin was built to expect. Resetting to the empty set
+// there — on every path, including a host with no etc/xdp.toml that never asked
+// for any of this — is an irreversible, silent and entirely unrelated privilege
+// change, so the drop is written as a subtraction of the loader's three from
+// whatever the process already holds, never as an assignment of a fixed set.
 
 import (
 	"fmt"
@@ -87,9 +101,57 @@ func bpfSyscallNeedsCapabilityFrom(path string) bool {
 	return v != 0
 }
 
-// dropLoaderPrivileges clears the ambient set and reduces the permitted,
-// effective and inheritable sets to the minimum the daemon still needs — empty
-// where the kernel allows it, CAP_BPF alone where bpf(2) itself is privileged.
+// loaderCaps are the three capabilities the unit grants for the load, and the
+// only three this file ever takes away. Anything else the process happens to
+// hold was granted for some other reason and is not the loader's to give back —
+// see the "subtraction, never an assignment" note at the top of this file.
+var loaderCaps = []cap.Value{cap.BPF, cap.NET_ADMIN, cap.PERFMON}
+
+// reduceLoaderCaps builds the set the process should hold once the loader is
+// done: held, minus CAP_NET_ADMIN and CAP_PERFMON, minus CAP_BPF unless the
+// reload path still needs it. It reports whether CAP_BPF survived.
+//
+// Split out from the drop itself so a test can check the arithmetic on a set it
+// constructs — the part that decides whether an unrelated capability such as
+// CAP_DAC_OVERRIDE comes out the other side — without a privileged process to
+// drop from.
+func reduceLoaderCaps(held *cap.Set, keepBpf bool) (want *cap.Set, keptBpf bool, err error) {
+	// A strict reduction of what the process already holds, never a wish list:
+	// capset(2) refuses to raise a bit that is not in the current permitted
+	// set, so a set built from scratch that named CAP_BPF on a host where the
+	// unit's AmbientCapabilities= never took would fail the whole call with
+	// EPERM and leave the capabilities — all of them — in place.
+	want, err = held.Dup()
+	if err != nil {
+		return nil, false, fmt.Errorf("cannot copy the current capability set: %w", err)
+	}
+
+	drop := []cap.Value{cap.NET_ADMIN, cap.PERFMON}
+	if keepBpf {
+		has, getErr := held.GetFlag(cap.Permitted, cap.BPF)
+		keptBpf = getErr == nil && has
+	}
+	if !keptBpf {
+		drop = append(drop, cap.BPF)
+	}
+
+	for _, vec := range []cap.Flag{cap.Effective, cap.Permitted, cap.Inheritable} {
+		if setErr := want.SetFlag(vec, false, drop...); setErr != nil {
+			return nil, false, fmt.Errorf("cannot build the reduced capability set: %w", setErr)
+		}
+	}
+	return want, keptBpf, nil
+}
+
+// dropLoaderPrivileges takes CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON out of the
+// ambient, permitted, effective and inheritable sets — all three where the
+// kernel allows it, CAP_BPF kept where bpf(2) itself is privileged.
+//
+// It subtracts those three; it does not assign a fixed set. On the demo unit
+// the two are the same thing (the grant is exactly these three, so what is left
+// is empty), and everywhere else the difference is the point: a root container
+// keeps CAP_DAC_OVERRIDE and CAP_NET_BIND_SERVICE, which it was given for
+// reasons this loader knows nothing about and cannot get back once dropped.
 //
 // allowKeepBpf is the caller's answer to "is there still a map to write?".
 // Only a load that produced a live filter has one: on a failed load there is no
@@ -109,50 +171,38 @@ func bpfSyscallNeedsCapabilityFrom(path string) bool {
 //
 // The bounding set is left alone: dropping from it needs CAP_SETPCAP, which
 // this daemon is deliberately not granted. It is already narrowed to these
-// three by CapabilityBoundingSet= in the unit, and with an empty permitted set
-// and NoNewPrivileges=true a bounding bit grants nothing on its own.
+// three by CapabilityBoundingSet= in the unit, and with the loader's bits gone
+// from the permitted set and NoNewPrivileges=true a bounding bit grants nothing
+// on its own.
 func dropLoaderPrivileges(allowKeepBpf bool) error {
 	keepBpf := allowKeepBpf && bpfSyscallNeedsCapability()
 
 	// Ambient first. It is what survives an exec, so it is the one set that
 	// could hand these capabilities to something that is not this program at
-	// all. Clearing permitted and inheritable below forces it empty anyway —
-	// the kernel holds no ambient bit that is not in both — but doing it
-	// explicitly means a failure here is reported as itself.
-	if err := cap.ResetAmbient(); err != nil {
-		return fmt.Errorf("cannot clear the ambient capability set: %w", err)
+	// all. Clearing permitted and inheritable below forces the loader's three
+	// out of it anyway — the kernel holds no ambient bit that is not in both —
+	// but doing it explicitly means a failure here is reported as itself. Only
+	// the three are lowered, and all three even when CAP_BPF is kept below: an
+	// exec'd child has no map of ours to write, so nothing needs to survive one.
+	if err := cap.SetAmbient(false, loaderCaps...); err != nil {
+		return fmt.Errorf("cannot clear the loader's ambient capabilities: %w", err)
 	}
 
-	// Built as a strict reduction of what the process already holds, never as
-	// a wish list: capset(2) refuses to raise a bit that is not in the current
-	// permitted set, so asking for CAP_BPF on a host where the unit's
-	// AmbientCapabilities= never took would fail the whole call with EPERM and
-	// leave the capabilities — all of them — in place.
 	held := cap.GetProc()
-	keptBpf := false
-	want := cap.NewSet()
-	if keepBpf {
-		has, getErr := held.GetFlag(cap.Permitted, cap.BPF)
-		if getErr == nil && has {
-			if setErr := want.SetFlag(cap.Permitted, true, cap.BPF); setErr != nil {
-				return fmt.Errorf("cannot build the reduced capability set: %w", setErr)
-			}
-			if setErr := want.SetFlag(cap.Effective, true, cap.BPF); setErr != nil {
-				return fmt.Errorf("cannot build the reduced capability set: %w", setErr)
-			}
-			keptBpf = true
-		}
+	want, keptBpf, err := reduceLoaderCaps(held, keepBpf)
+	if err != nil {
+		return err
 	}
 	if err := want.SetProc(); err != nil {
 		return fmt.Errorf("cannot reduce the capability set from %q to %q: %w", held, want, err)
 	}
 
 	if keptBpf {
-		log.Info("XDP loader privileges dropped: CAP_NET_ADMIN and CAP_PERFMON released, CAP_BPF kept because %s is non-zero (bpf(2) is privileged on this kernel, and the xdp.toml reload path writes the relay whitelist map)",
-			unprivilegedBpfSysctl)
+		log.Info("XDP loader privileges dropped: CAP_NET_ADMIN and CAP_PERFMON released, CAP_BPF kept because %s is non-zero (bpf(2) is privileged on this kernel, and the xdp.toml reload path writes the relay whitelist map). The daemon now holds %q",
+			unprivilegedBpfSysctl, want)
 		return nil
 	}
-	log.Info("XDP loader privileges dropped: the daemon now runs with no capabilities at all")
+	log.Info("XDP loader privileges dropped: CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON released. The daemon now holds %q", want)
 	return nil
 }
 

@@ -351,6 +351,13 @@ jobs:
           # "subnet_cidr ... is not an IPv4 prefix: '::error::Terraform exited
           # with code 1.'". Anything that is not a prefix means the read did
           # not produce one; treat it as missing and let the fallback run.
+          #
+          # This asks only "did the read produce something prefix-shaped" — it
+          # is a filter against stdout noise, not validation. 999.0.0.0/99
+          # passes it. What a prefix has to *be* is decided downstream, by the
+          # containment check in "Resolve the relay addresses" and by
+          # ParseRelayPrefixes on the host; do not start treating a value as
+          # validated because it got past here.
           if ! printf '%s' "$SUBNET_CIDR" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$'; then
             SUBNET_CIDR=""
           fi
@@ -1478,19 +1485,55 @@ jobs:
             -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
             -backend-config="region=${{ env.AWS_REGION }}"
 
-          # Keep "read false" and "the read failed" apart: `|| true` would turn
-          # a terraform failure into whatever it printed on stdout, which is
-          # simply not "true" and so reads as "CA disabled". Only the two
-          # booleans are values; anything else means the read produced nothing.
-          if ! STEALTH_CA_ENABLED=$(terraform output -raw stealth_ca_enabled 2>/dev/null); then
-            STEALTH_CA_ENABLED=""
+          # Three outcomes, and they must stay apart: the output says false, the
+          # output is not in the state, or the terraform invocation failed.
+          # Unlike relay_private_ip_pinned above, false is not the safe guess
+          # here — "Ensure TLS certificate + nginx on ac" below deletes the
+          # demo.nhp certificate and nginx config from the AC on it, so a
+          # transient terraform or backend failure would take down a working
+          # demo.nhp TLS setup and still leave this job green. (`|| true` makes
+          # that worse still: it leaves whatever the failing command printed on
+          # stdout in the variable, so even an emptiness test waves it through.)
+          #
+          # `terraform output -json` tells the three apart: a non-zero exit is
+          # the invocation itself failing, `{}` or a missing key is an output no
+          # apply has written into the state yet, and only then is the value a
+          # value. The third state is passed on as `unknown`, which deploys
+          # nothing and deletes nothing.
+          #
+          # $TF_OUTPUTS holds every output including the sensitive cert and key,
+          # so it is only ever fed to jq, never echoed.
+          if ! TF_OUTPUTS=$(terraform output -json 2>/dev/null); then
+            echo "ERROR: 'terraform output -json' failed in terraform/demo." >&2
+            echo "       Refusing to guess at stealth_ca_enabled: treating a failed" >&2
+            echo "       read as 'false' would delete the demo.nhp certificate and" >&2
+            echo "       nginx config from the AC." >&2
+            exit 1
           fi
+          STEALTH_CA_ENABLED=$(printf '%s' "$TF_OUTPUTS" | jq -r '
+            if has("stealth_ca_enabled")
+            then (.stealth_ca_enabled.value | tostring)
+            else "absent" end')
           case "$STEALTH_CA_ENABLED" in
             true|false) ;;
-            *) STEALTH_CA_ENABLED=false ;;
+            absent)
+              echo "note: stealth_ca_enabled is not in the Terraform state (it was added"
+              echo "      to terraform/demo/outputs.tf after the last infra-demo apply)."
+              echo "      Skipping the demo.nhp certificate without touching anything on"
+              echo "      the AC; run infra-demo with action=apply to refresh the outputs."
+              echo "stealth_ca_enabled=unknown" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+            *)
+              echo "ERROR: the stealth_ca_enabled output is not a boolean" >&2
+              echo "       (got: '$STEALTH_CA_ENABLED'). Refusing to guess: 'false'" >&2
+              echo "       would delete the demo.nhp certificate and nginx config" >&2
+              echo "       from the AC." >&2
+              exit 1
+              ;;
           esac
 
-          if [ "$STEALTH_CA_ENABLED" != "true" ]; then
+          if [ "$STEALTH_CA_ENABLED" = "false" ]; then
             echo "stealth CA not configured, skipping demo.nhp certificate deployment"
             echo "stealth_ca_enabled=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -1528,7 +1571,10 @@ jobs:
              /tmp/bootstrap-tls.sh"
 
           # When stealth CA is disabled, clean up any stale demo.nhp artifacts.
-          if [ "${{ steps.demo_nhp_cert.outputs.stealth_ca_enabled }}" != "true" ]; then
+          # Only a literal false does this: the step above exits non-zero if it
+          # could not read the output and emits `unknown` if no apply has
+          # written it yet, so this deletes on an answer and never on a guess.
+          if [ "${{ steps.demo_nhp_cert.outputs.stealth_ca_enabled }}" = "false" ]; then
             ssh nhp-ac \
               "set -e
                if sudo test -f /etc/nginx/conf.d/ac-demo-nhp.conf || \

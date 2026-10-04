@@ -1085,11 +1085,13 @@ from `aws_subnet.public` and was added to `outputs.tf` after the last
 the same value from the same source of truth. The fallback prints a `note:` and
 the right fix is still an `infra-demo` apply; the gate at the end of *Resolve
 the relay addresses* refuses either way if neither produced an IPv4 prefix.
-This is why all four workflows set `terraform_wrapper: false` on
-`hashicorp/setup-terraform`: the wrapper runs terraform with
-`ignoreReturnCode` and, on a non-zero exit, writes `::error::Terraform exited
-with code N.` to **stdout**, so a `$(terraform output ... 2>/dev/null || true)`
-captures the annotation — `2>/dev/null` does not hide it and `|| true` discards
+This is why every `hashicorp/setup-terraform` step in the pipeline — four of
+them, across three workflows (`deploy-demo-v2` twice, `infra-demo`,
+`renew-demo-nhp-cert`) — sets `terraform_wrapper: false`: the wrapper runs
+terraform with `ignoreReturnCode` and, on a non-zero exit, writes
+`::error::Terraform exited with code N.` to **stdout**, so a
+`$(terraform output ... 2>/dev/null || true)` captures the annotation —
+`2>/dev/null` does not hide it and `|| true` discards
 the exit code that would have given it away. Every `[ -z ... ]` fallback behind
 such a capture then silently stops working. Seeing
 `subnet_cidr from Terraform is not an IPv4 prefix: '::error::Terraform exited
@@ -1098,6 +1100,20 @@ subnet is misconfigured; re-read it without `2>/dev/null` to see why. The read
 sites now also check the shape of what came back (an IPv4 prefix, a PEM header,
 `true`/`false`) rather than merely that it is non-empty, so a future source of
 stdout noise cannot slip past them either.
+
+A shape check is enough only where the fallback answer is the *wide* one:
+`relay_private_ip_pinned` falls back to `false`, which just keeps the subnet
+prefix in the whitelist. For `stealth_ca_enabled` the fallback would be the
+*destructive* one — `false` is what makes `deploy-demo-v2` and
+`renew-demo-nhp-cert` delete `ac-demo-nhp.conf`, `demo.nhp.pem` and
+`demo.nhp-key.pem` from the AC and reload nginx, so a transient terraform or
+backend failure would take down a working demo.nhp TLS setup on a green run.
+Those two sites therefore read `terraform output -json` once and split the three
+cases it can distinguish: a non-zero exit is the invocation failing and is
+fatal, a missing key is an output no apply has written yet and skips the
+demo.nhp step while touching nothing (`deploy-demo-v2` passes it on as
+`stealth_ca_enabled=unknown`), and only a literal `false` takes the cleanup
+branch.
 
 **The whitelist is installed before the program is attached**, as
 `EngineLoadParams.RelayIPs`. Writing it afterwards — the first version — leaves

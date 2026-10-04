@@ -92,6 +92,14 @@ jobs:
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "~1.10"
+          # The wrapper writes `::error::Terraform exited with code N.` to
+          # stdout on failure (core.setFailed), so a `$(terraform output ...
+          # || true)` captures that annotation instead of an empty string.
+          # Here that would make a failed read of stealth_ca_enabled look like
+          # a value that is simply not "true" — i.e. the branch that deletes
+          # the demo.nhp certificate and nginx config from the AC. Nothing
+          # consumes the wrapper's stdout/stderr/exitcode step outputs.
+          terraform_wrapper: false
 
       - name: Renew and deploy demo.nhp certificate
         working-directory: terraform/demo
@@ -119,7 +127,19 @@ jobs:
 
           terraform apply -auto-approve renew.tfplan
 
-          STEALTH_CA_ENABLED=$(terraform output -raw stealth_ca_enabled 2>/dev/null || true)
+          # Keep "read false" and "the read failed" apart. `|| true` would put
+          # whatever a failing terraform printed on stdout into the variable,
+          # and anything that is not "true" sends this job into the branch that
+          # deletes the demo.nhp certificate and nginx config from the AC. Only
+          # the two booleans count as a value.
+          if ! STEALTH_CA_ENABLED=$(terraform output -raw stealth_ca_enabled 2>/dev/null); then
+            STEALTH_CA_ENABLED=""
+          fi
+          case "$STEALTH_CA_ENABLED" in
+            true|false) ;;
+            *) STEALTH_CA_ENABLED=false ;;
+          esac
+
           RELAY_PUBLIC_IP=$(terraform output -raw relay_public_ip)
           AC_PRIVATE_IP=$(terraform output -raw ac_private_ip)
 

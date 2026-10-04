@@ -1077,6 +1077,28 @@ that subnet and are covered too; pinning the address removes the prefix and
 leaves the XDP layer saying exactly what `aws_security_group.server` says
 (SSH from the relay's security group only).
 
+**Where that prefix comes from, and what `'::error::...'` in the gate means.**
+The `configure` job never applies, so it can only read: `terraform output -raw
+subnet_cidr` first, and if that output is not in the state — it is forwarded
+from `aws_subnet.public` and was added to `outputs.tf` after the last
+`infra-demo` apply — `terraform show -json` for `aws_subnet.public.cidr_block`,
+the same value from the same source of truth. The fallback prints a `note:` and
+the right fix is still an `infra-demo` apply; the gate at the end of *Resolve
+the relay addresses* refuses either way if neither produced an IPv4 prefix.
+This is why all four workflows set `terraform_wrapper: false` on
+`hashicorp/setup-terraform`: the wrapper runs terraform with
+`ignoreReturnCode` and, on a non-zero exit, writes `::error::Terraform exited
+with code N.` to **stdout**, so a `$(terraform output ... 2>/dev/null || true)`
+captures the annotation — `2>/dev/null` does not hide it and `|| true` discards
+the exit code that would have given it away. Every `[ -z ... ]` fallback behind
+such a capture then silently stops working. Seeing
+`subnet_cidr from Terraform is not an IPv4 prefix: '::error::Terraform exited
+with code 1.'` therefore means *that terraform invocation failed*, not that the
+subnet is misconfigured; re-read it without `2>/dev/null` to see why. The read
+sites now also check the shape of what came back (an IPv4 prefix, a PEM header,
+`true`/`false`) rather than merely that it is non-empty, so a future source of
+stdout noise cannot slip past them either.
+
 **The whitelist is installed before the program is attached**, as
 `EngineLoadParams.RelayIPs`. Writing it afterwards — the first version — leaves
 two holes no CI gate can see, because both are on the host rather than in the

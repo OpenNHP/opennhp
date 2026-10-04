@@ -297,6 +297,16 @@ jobs:
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "~1.10"
+          # The wrapper runs terraform with ignoreReturnCode and, on a non-zero
+          # exit, writes `::error::Terraform exited with code N.` to *stdout*
+          # (core.setFailed). A `$(terraform output ... 2>/dev/null || true)`
+          # therefore captures that annotation instead of an empty string, and
+          # every `[ -z ... ]` fallback below silently stops working — that is
+          # how a failed `terraform output -raw subnet_cidr` reached the XDP
+          # whitelist gate as "subnet_cidr ... is not an IPv4 prefix:
+          # '::error::Terraform exited with code 1.'". Nothing in this repo
+          # consumes the wrapper's stdout/stderr/exitcode step outputs.
+          terraform_wrapper: false
 
       - name: Read Terraform outputs (get IPs)
         id: tf_outputs
@@ -334,16 +344,28 @@ jobs:
           # is the fallback. A failure here is still fatal — the XDP whitelist
           # gate below refuses to render a server config without this prefix.
           SUBNET_CIDR=$(terraform output -raw subnet_cidr 2>/dev/null || true)
+          # Only an IPv4 prefix counts as "read it". `|| true` swallows the
+          # exit code, and whatever the failing command left on stdout lands in
+          # the variable instead — that is how a non-empty non-value slipped
+          # past an emptiness test here and reached the whitelist gate below as
+          # "subnet_cidr ... is not an IPv4 prefix: '::error::Terraform exited
+          # with code 1.'". Anything that is not a prefix means the read did
+          # not produce one; treat it as missing and let the fallback run.
+          if ! printf '%s' "$SUBNET_CIDR" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$'; then
+            SUBNET_CIDR=""
+          fi
           if [ -z "$SUBNET_CIDR" ]; then
             SUBNET_CIDR=$(terraform show -json | jq -r '
               [ .values.root_module.resources[]?
                 | select(.address == "aws_subnet.public")
                 | .values.cidr_block ][0] // ""')
-            if [ -z "$SUBNET_CIDR" ]; then
-              echo "ERROR: neither the subnet_cidr output nor aws_subnet.public is in" >&2
-              echo "       the Terraform state. The nhp-server XDP whitelist needs the" >&2
-              echo "       VPC subnet prefix (it is what keeps SSH working after the" >&2
-              echo "       relay is replaced), so this job refuses to render configs." >&2
+            if ! printf '%s' "$SUBNET_CIDR" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$'; then
+              echo "ERROR: neither the subnet_cidr output nor aws_subnet.public gave" >&2
+              echo "       an IPv4 prefix (got: '$SUBNET_CIDR'). Either they are not in" >&2
+              echo "       the Terraform state, or this terraform invocation failed." >&2
+              echo "       The nhp-server XDP whitelist needs the VPC subnet prefix (it" >&2
+              echo "       is what keeps SSH working after the relay is replaced), so" >&2
+              echo "       this job refuses to render configs." >&2
               echo "       Run the infra-demo workflow with action=apply, then re-run." >&2
               exit 1
             fi
@@ -361,10 +383,17 @@ jobs:
           # subnet_cidr above) reads as "not pinned", which is the wider and
           # therefore safe answer — the narrow one is the one that can lock the
           # server away.
+          #
+          # Normalize explicitly rather than relying on `!= "true"` to catch
+          # everything: a failed read leaves whatever the command printed to
+          # stdout in the variable (see subnet_cidr above), and it is worth
+          # being deliberate that such a value lands on the wide answer by
+          # design and not by accident.
           RELAY_IP_PINNED=$(terraform output -raw relay_private_ip_pinned 2>/dev/null || true)
-          if [ "$RELAY_IP_PINNED" != "true" ]; then
-            RELAY_IP_PINNED=false
-          fi
+          case "$RELAY_IP_PINNED" in
+            true|false) ;;
+            *) RELAY_IP_PINNED=false ;;
+          esac
 
           echo "server_public_ip=$SERVER_PUB"     >> $GITHUB_OUTPUT
           echo "server_private_ip=$SERVER_PRIV"   >> $GITHUB_OUTPUT
@@ -1433,6 +1462,12 @@ jobs:
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "~1.10"
+          # Off for the same reason as in the configure job: the wrapper writes
+          # `::error::Terraform exited with code N.` to stdout on failure, which
+          # a `$(terraform output ... || true)` would capture and hand on as if
+          # it were the output's value — here, as a certificate to scp onto the
+          # AC. Nothing consumes the wrapper's step outputs.
+          terraform_wrapper: false
 
       - name: Check stealth CA status
         id: demo_nhp_cert
@@ -1443,7 +1478,18 @@ jobs:
             -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
             -backend-config="region=${{ env.AWS_REGION }}"
 
-          STEALTH_CA_ENABLED=$(terraform output -raw stealth_ca_enabled 2>/dev/null || true)
+          # Keep "read false" and "the read failed" apart: `|| true` would turn
+          # a terraform failure into whatever it printed on stdout, which is
+          # simply not "true" and so reads as "CA disabled". Only the two
+          # booleans are values; anything else means the read produced nothing.
+          if ! STEALTH_CA_ENABLED=$(terraform output -raw stealth_ca_enabled 2>/dev/null); then
+            STEALTH_CA_ENABLED=""
+          fi
+          case "$STEALTH_CA_ENABLED" in
+            true|false) ;;
+            *) STEALTH_CA_ENABLED=false ;;
+          esac
+
           if [ "$STEALTH_CA_ENABLED" != "true" ]; then
             echo "stealth CA not configured, skipping demo.nhp certificate deployment"
             echo "stealth_ca_enabled=false" >> "$GITHUB_OUTPUT"
@@ -1508,15 +1554,30 @@ jobs:
           DEMO_NHP_CERT=$(terraform output -raw demo_nhp_cert 2>/dev/null || true)
           DEMO_NHP_KEY=$(terraform output -raw demo_nhp_key 2>/dev/null || true)
 
-          # Validate outputs are non-empty. If terraform apply hasn't run yet
-          # with tls.tf, these will be empty and we should fail early with a
-          # clear error rather than deploying empty cert files.
-          if [ -z "$DEMO_NHP_CERT" ] || [ -z "$DEMO_NHP_KEY" ]; then
-            echo "ERROR: demo_nhp_cert or demo_nhp_key output is empty."
-            echo "Ensure 'infra-demo' workflow has been run with action=apply"
-            echo "and STEALTH_CA_CERT/STEALTH_CA_KEY GitHub Secrets are configured."
-            exit 1
-          fi
+          # Validate that both outputs actually look like PEM. If terraform
+          # apply hasn't run yet with tls.tf they will be empty; if the
+          # terraform invocation itself failed, `|| true` leaves whatever it
+          # printed on stdout in the variable, which an emptiness test would
+          # wave through and this step would scp onto the AC as a certificate.
+          # Fail early with a clear error either way.
+          case "$DEMO_NHP_CERT" in
+            "-----BEGIN "*) ;;
+            *)
+              echo "ERROR: demo_nhp_cert output is not a PEM document."
+              echo "Ensure 'infra-demo' workflow has been run with action=apply"
+              echo "and STEALTH_CA_CERT/STEALTH_CA_KEY GitHub Secrets are configured."
+              exit 1
+              ;;
+          esac
+          case "$DEMO_NHP_KEY" in
+            "-----BEGIN "*) ;;
+            *)
+              echo "ERROR: demo_nhp_key output is not a PEM document."
+              echo "Ensure 'infra-demo' workflow has been run with action=apply"
+              echo "and STEALTH_CA_CERT/STEALTH_CA_KEY GitHub Secrets are configured."
+              exit 1
+              ;;
+          esac
 
           # Mask each line of the private key separately.
           # GitHub Actions ::add-mask:: only works on single-line strings;

@@ -190,6 +190,19 @@ type Config struct {
 	// optional: without it the XDP filter keeps whatever whitelist it was
 	// loaded with, which on a fresh start is none.
 	XdpConfigPath string `json:"xdpConfigPath"`
+
+	// AttestationScheme selects the TEE evidence format this server accepts
+	// on the DHP knock path. "csv" (default, and the result of any
+	// unrecognized value) requires a real Hygon CSV attestation report and
+	// runs the full Hygon certificate-chain check. "test" accepts
+	// self-asserted evidence with NO cryptographic assurance — it exists
+	// only for the non-TEE container walkthrough in docs/dhp_quick_start.md
+	// and must never be set on anything reachable by an untrusted agent.
+	//
+	// This is deliberately a server-side choice: before it existed, the
+	// verifier was picked from a "test_purpose" key inside the evidence
+	// itself, so any agent could opt the server into the no-op verifier.
+	AttestationScheme string `json:"attestationScheme"`
 }
 
 // XdpTomlConfig is etc/xdp.toml, the ingress policy the XDP program enforces.
@@ -436,8 +449,21 @@ func (s *UdpServer) loadBaseConfig() error {
 	baseConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("base config: %s has been updated", fileName)
 		if content, err = s.loadConfigFile(fileName); err == nil {
-			if err = toml.Unmarshal(content, &config); err == nil {
-				_ = s.updateBaseConfig(config)
+			// Unmarshal into a fresh Config on each reload. go-toml v2 does
+			// not zero fields that are absent from the new file, so reusing
+			// the outer `config` variable would let a removed security switch
+			// (e.g. AttestationScheme = "test") stick at the old value until
+			// a restart. For most base-config fields this is harmless — a
+			// cleared LogLevel still has a sensible default — but AttestationScheme
+			// gates the DHP attestation path: a missing key MUST resolve to
+			// SchemeCSV through ResolveScheme, otherwise the server keeps
+			// accepting self-asserted evidence after the operator turned the
+			// demo switch off. The same shape applies to ForceOverload and
+			// AllowPrivateRelaySource below; rebuilding here keeps every
+			// "key absent" reset consistent.
+			var newConf Config
+			if err = toml.Unmarshal(content, &newConf); err == nil {
+				_ = s.updateBaseConfig(newConf)
 			}
 
 		}
@@ -1185,6 +1211,23 @@ func (s *UdpServer) updateBaseConfig(conf Config) (err error) {
 		s.forceOverload.Store(conf.ForceOverload)
 	}
 
+	if s.config.AttestationScheme != conf.AttestationScheme {
+		resolved := verifier.ResolveScheme(conf.AttestationScheme)
+		if resolved == verifier.SchemeTest {
+			// Critical (not Warning): SchemeTest disables a real attestation
+			// safeguard, and Warning is filtered out of default journalctl
+			// views — exactly where an operator who flipped this on for a
+			// quick demo would forget to flip it back. Match the demo-cookie
+			// and ForceOverload Criticals so all three "you are running with
+			// a guard off" signals share one severity.
+			log.Critical("AttestationScheme=%q: DHP knock path accepts self-asserted evidence with NO cryptographic assurance — for non-TEE demos only, never on a production-facing host", conf.AttestationScheme)
+		} else {
+			log.Info("AttestationScheme set to %q (csv: Hygon attestation chain verified)", conf.AttestationScheme)
+		}
+		s.config.AttestationScheme = conf.AttestationScheme
+		s.attestationScheme.Store(string(resolved))
+	}
+
 	// [Audit]: the ledger handle is opened once at startup (initAuditLedger)
 	// and never re-opened on reload — changing FilePath, SigningKeyBase64,
 	// Fsync, FailClosed or MaxSizeBytes at runtime does nothing until a
@@ -1526,6 +1569,13 @@ func (s *UdpServer) updateTee(file string) (err error) {
 		log.Error("failed to unmarshal device peer config: %v", unmarshalErr)
 	}
 	for _, tee := range tees.TEEs {
+		// Skip empty Measure entries: a successful Verify() that
+		// produced an empty measure would otherwise match this entry
+		// and silently approve any knock.
+		if tee.Measure == "" {
+			log.Warning("tee.toml entry %q skipped: Measure must not be empty", tee.SerialNumber)
+			continue
+		}
 		teeMap[tee.Measure] = tee
 	}
 
@@ -1536,30 +1586,53 @@ func (s *UdpServer) updateTee(file string) (err error) {
 }
 
 func (s *UdpServer) AppraiseEvidence(evidenceBase64 string) bool {
-	var measure string
-	var sn string
+	scheme := s.currentAttestationScheme()
 
-	attestationVerifier, err := verifier.NewVerifier(evidenceBase64)
+	attestationVerifier, err := verifier.NewVerifier(evidenceBase64, scheme)
 	if err != nil {
-		log.Error("failed to create attestation verifier: %v", err)
+		log.Error("failed to create attestation verifier (scheme=%s): %v", scheme, err)
 		return false
 	}
 
 	if err := attestationVerifier.Verify(); err != nil {
-		log.Error("failed to verify attestation: %v", err)
+		log.Error("failed to verify attestation (scheme=%s): %v", scheme, err)
 		return false
 	}
 
-	measure = attestationVerifier.GetMeasure()
-	sn = attestationVerifier.GetSerialNumber()
+	measure := attestationVerifier.GetMeasure()
+	sn := attestationVerifier.GetSerialNumber()
+	if measure == "" {
+		// A successful Verify() that produces an empty measure would
+		// otherwise match a misconfigured tee.toml entry with Measure=""
+		// and silently approve the knock.
+		log.Error("attestation produced an empty measure (scheme=%s)", scheme)
+		return false
+	}
 
 	s.teeMapMutex.Lock()
 	defer s.teeMapMutex.Unlock()
 
-	if _, exist := s.teeMap[measure]; exist {
-		s.teeMap[measure].Verified = true
-		return s.teeMap[measure].SerialNumber == sn
+	tee, exist := s.teeMap[measure]
+	if !exist || tee.SerialNumber != sn {
+		// Only an appraisal that actually matched may mark the entry
+		// verified; setting the flag before the serial-number comparison
+		// caused failed appraisals to flip Verified=true and corrupt the
+		// operator view.
+		return false
 	}
+	tee.Verified = true
+	return true
+}
 
-	return false
+// currentAttestationScheme returns the active verifier.Scheme for this
+// server. The value is read from an atomic mirror populated at startup
+// (and on every config reload) so the per-knock handler does not race
+// with the file-watch goroutine writing s.config.
+func (s *UdpServer) currentAttestationScheme() verifier.Scheme {
+	if v := s.attestationScheme.Load(); v != nil {
+		if str, ok := v.(string); ok {
+			return verifier.Scheme(str)
+		}
+	}
+	return verifier.SchemeCSV
 }

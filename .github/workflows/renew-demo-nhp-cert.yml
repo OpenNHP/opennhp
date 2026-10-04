@@ -218,6 +218,26 @@ jobs:
           DEMO_NHP_CERT=$(terraform output -raw demo_nhp_cert)
           DEMO_NHP_KEY=$(terraform output -raw demo_nhp_key)
 
+          # Validate that both outputs actually look like PEM. With
+          # terraform_wrapper off (see Setup Terraform) the only way either is
+          # empty is a missing output from the apply, but a missed future
+          # source of stdout noise is worth catching here too: scp'ing a
+          # wrapper annotation onto the AC would be a quiet outage.
+          case "$DEMO_NHP_CERT" in
+            "-----BEGIN "*) ;;
+            *)
+              echo "ERROR: demo_nhp_cert output is not a PEM document."
+              exit 1
+              ;;
+          esac
+          case "$DEMO_NHP_KEY" in
+            "-----BEGIN "*) ;;
+            *)
+              echo "ERROR: demo_nhp_key output is not a PEM document."
+              exit 1
+              ;;
+          esac
+
           # Mask each line of the private key separately.
           # GitHub Actions ::add-mask:: only works on single-line strings;
           # multiline URL-encoding doesn't actually mask anything.

@@ -465,6 +465,9 @@ jobs:
                 | select(.address == "aws_subnet.public")
                 | .values.cidr_block ][0] // ""')
             if ! printf '%s' "$SUBNET_CIDR" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$'; then
+              SUBNET_CIDR=""
+            fi
+            if [ -z "$SUBNET_CIDR" ]; then
               echo "ERROR: neither the subnet_cidr output nor aws_subnet.public gave" >&2
               echo "       an IPv4 prefix (got: '$SUBNET_CIDR'). Either they are not in" >&2
               echo "       the Terraform state, or this terraform invocation failed." >&2
@@ -495,6 +498,7 @@ jobs:
           # being deliberate that such a value lands on the wide answer by
           # design and not by accident.
           RELAY_IP_PINNED=$(terraform output -raw relay_private_ip_pinned 2>/dev/null || true)
+
           case "$RELAY_IP_PINNED" in
             true|false) ;;
             *) RELAY_IP_PINNED=false ;;

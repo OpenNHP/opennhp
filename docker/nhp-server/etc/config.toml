@@ -88,6 +88,28 @@ CookieSigningKeyBase64 = "w62S2G1P5GOG66Y5tIv3WlfBv8CNBdDe2JJDFr9Q+h0="
 CookieTimeWindowSeconds = 60
 
 
+# AttestationScheme selects the TEE evidence format this server accepts on
+# the DHP knock path.
+#   "csv" (default — also the result of any unrecognised or missing value)
+#         requires a real Hygon CSV attestation report and runs the full
+#         Hygon certificate-chain check.
+#   "test" accepts self-asserted evidence with NO cryptographic assurance.
+#         This exists ONLY for the non-TEE walkthrough in
+#         docs/dhp_quick_start.md §3.4.2 — when the nhp-db / nhp-server
+#         container is running on a machine without a Hygon CSV card, the
+#         attestation report it produces is not a real CSV report, and the
+#         csv verifier would reject it. Setting AttestationScheme = "test"
+#         lets the rest of the quick start complete.
+#
+# NEVER set this to "test" on a host reachable from outside the trust
+# boundary. With "test", any agent that knows the server's public key can
+# knock with self-asserted evidence — there is no hardware-rooted proof
+# of who is on the other end. The server logs Critical at startup and on
+# every reload where the resolved scheme is "test"; treat that line as
+# "you are running with a guard off".
+# AttestationScheme = "test"
+
+
 # [Audit]: tamper-evident, hash-chained security audit ledger. Off by
 # default; see endpoints/server/main/etc/config.toml for the full field
 # docs (Fsync, Async, MaxSizeBytes, MaxSegments, SigningKeyBase64, FailClosed)

@@ -1182,6 +1182,7 @@ sites now also check the shape of what came back (an IPv4 prefix, a PEM header,
 `true`/`false`) rather than merely that it is non-empty, so a future source of
 stdout noise cannot slip past them either.
 
+
 A shape check is enough only where the fallback answer is the *wide* one:
 `relay_private_ip_pinned` falls back to `false`, which just keeps the subnet
 prefix in the whitelist. For `stealth_ca_enabled` the fallback would be the
@@ -1195,6 +1196,7 @@ fatal, a missing key is an output no apply has written yet and skips the
 demo.nhp step while touching nothing (`deploy-demo-v2` passes it on as
 `stealth_ca_enabled=unknown`), and only a literal `false` takes the cleanup
 branch.
+
 
 **The whitelist is installed before the program is attached**, as
 `EngineLoadParams.RelayIPs`. Writing it afterwards — the first version — leaves

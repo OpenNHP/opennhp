@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/core/verifier"
 )
 
 // newServerForReloadTest builds the minimum UdpServer state needed to
@@ -355,5 +356,84 @@ func TestUpdateBaseConfig_ToggleValidationKeepsDeviceHooks(t *testing.T) {
 	got.OnPacketDropped("decrypt")
 	if dropped != 1 {
 		t.Fatalf("surviving hook did not fire: dropped=%d", dropped)
+	}
+}
+
+// TestUpdateBaseConfig_AttestationSchemeReloadResetsToCSV fences the
+// "operator removes AttestationScheme = 'test' from config.toml and the
+// server keeps accepting self-asserted evidence" regression.
+//
+// Pre-fix, loadBaseConfig's file-watch branch re-unmarshalled into the
+// same outer `config` variable. go-toml v2 does not zero fields that
+// are absent from the new file, so the removed `AttestationScheme`
+// key stayed "test" in memory, `s.config.AttestationScheme != conf.AttestationScheme`
+// was false on every subsequent reload, and the resolved scheme stayed
+// SchemeTest until a restart. The fix unmarshals each reload into a fresh
+// Config struct, so a removed key arrives in updateBaseConfig as "" —
+// which equals the s.config slot only when the value already matches, and
+// in this scenario it does not.
+//
+// Invariant under test: a server that booted with AttestationScheme =
+// "test" must adopt SchemeCSV when the next config.toml drops the key.
+// This is the only behavior change from the fresh-struct fix that the
+// existing tests do not already pin.
+func TestUpdateBaseConfig_AttestationSchemeReloadResetsToCSV(t *testing.T) {
+	s := &UdpServer{
+		config: &Config{AttestationScheme: "test"},
+	}
+	// Mirror what udpserver.Start stores at boot so we can observe the
+	// resolved-scheme transition end-to-end (not just the raw field).
+	s.attestationScheme.Store(string(verifier.SchemeTest))
+
+	// The reload callback now builds `newConf` itself, so simulate that
+	// path: conf.AttestationScheme is absent (empty string) because the
+	// operator deleted the line from config.toml.
+	if err := s.updateBaseConfig(Config{AttestationScheme: ""}); err != nil {
+		t.Fatalf("reload after AttestationScheme removed: %v", err)
+	}
+
+	if s.config.AttestationScheme != "" {
+		t.Fatalf("removed AttestationScheme key must clear s.config.AttestationScheme; got %q, want \"\"",
+			s.config.AttestationScheme)
+	}
+	got, _ := s.attestationScheme.Load().(string)
+	if got != string(verifier.SchemeCSV) {
+		t.Fatalf("removed AttestationScheme key must resolve to SchemeCSV; got %q, want %q",
+			got, verifier.SchemeCSV)
+	}
+}
+
+// TestUpdateBaseConfig_AttestationSchemeReloadSticksToCSV guards the
+// follow-up reload — after the first transition off "test", a second
+// reload of the same empty file must NOT flip the resolved scheme back
+// to "test". This is what makes the removal stick: the previous fix's
+// failure mode was "reload to empty state key, then any further reload
+// still says AttestationScheme != conf is true", which would have
+// produced a steady stream of misleading "AttestationScheme set to"
+// Info logs after the operator removed the demo switch. The fresh-struct
+// reload path lands the empty AttestationScheme in both s.config and
+// conf, so the second reload computes `s.config.AttestationScheme ==
+// conf.AttestationScheme` and does not re-enter the log/store branch.
+func TestUpdateBaseConfig_AttestationSchemeReloadSticksToCSV(t *testing.T) {
+	s := &UdpServer{
+		config: &Config{AttestationScheme: "test"},
+	}
+	s.attestationScheme.Store(string(verifier.SchemeTest))
+
+	if err := s.updateBaseConfig(Config{AttestationScheme: ""}); err != nil {
+		t.Fatalf("first reload: %v", err)
+	}
+	// Second reload — same empty AttestationScheme — must be a true no-op.
+	if err := s.updateBaseConfig(Config{AttestationScheme: ""}); err != nil {
+		t.Fatalf("second reload: %v", err)
+	}
+
+	if s.config.AttestationScheme != "" {
+		t.Fatalf("AttestationScheme must stay cleared after a follow-up reload; got %q", s.config.AttestationScheme)
+	}
+	got, _ := s.attestationScheme.Load().(string)
+	if got != string(verifier.SchemeCSV) {
+		t.Fatalf("resolved scheme must stay at SchemeCSV after a follow-up reload; got %q, want %q",
+			got, verifier.SchemeCSV)
 	}
 }

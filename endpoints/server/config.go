@@ -819,7 +819,7 @@ func (s *UdpServer) applyXdpConfig(conf *XdpTomlConfig) bool {
 		// they made took effect.
 		log.Warning("xdp config: Enabled=false has no effect on a running filter — the XDP program is attached at startup; set it before a restart to run unfiltered")
 	}
-	if conf.NhpMinFrameBytes != 0 && conf.NhpMinFrameBytes != int(s.xdpMinFrameBytes()) {
+	if conf.NhpMinFrameBytes != 0 && conf.NhpMinFrameBytes != s.xdpMinFrameBytes() {
 		// The floor is written into the object at load time, so an edit after
 		// that is not enforced until the next restart.
 		log.Warning("xdp config: NhpMinFrameBytes=%d is not applied — the attached program is enforcing %d bytes; restart nhp-serverd to change it",

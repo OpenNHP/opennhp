@@ -195,7 +195,7 @@ func Loaded() bool {
 // one that names no prefix at all, is refused before the first map write (see
 // utilsebpf.ReplaceRelayIPs). The caller keeps enforcing the list it had.
 //
-// Serialised under the package mutex so two overlapping xdp.toml reloads cannot
+// Serialized under the package mutex so two overlapping xdp.toml reloads cannot
 // interleave their writes and leave the map holding a mix of both lists. With
 // no engine loaded this is a no-op: the filter is not enforcing anything, so
 // there is no whitelist to keep in step, and returning an error here would turn

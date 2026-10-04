@@ -193,7 +193,7 @@ type Config struct {
 
 	// AttestationScheme selects the TEE evidence format this server accepts
 	// on the DHP knock path. "csv" (default, and the result of any
-	// unrecognised value) requires a real Hygon CSV attestation report and
+	// unrecognized value) requires a real Hygon CSV attestation report and
 	// runs the full Hygon certificate-chain check. "test" accepts
 	// self-asserted evidence with NO cryptographic assurance — it exists
 	// only for the non-TEE container walkthrough in docs/dhp_quick_start.md

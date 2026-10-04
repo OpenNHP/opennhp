@@ -19,8 +19,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/OpenNHP/opennhp/nhp/core/verifier"
 	"github.com/tetratelabs/wazero/api"
+
+	"github.com/OpenNHP/opennhp/nhp/core/verifier"
 )
 
 var (

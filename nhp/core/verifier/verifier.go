@@ -38,7 +38,7 @@ var ErrTestEvidenceRejected = errors.New(
 	"evidence carries test_purpose but this verifier is configured for scheme csv")
 
 // ResolveScheme maps an operator-supplied string onto a Scheme, failing
-// closed: anything unrecognised (including "") is SchemeCSV.
+// closed: anything unrecognized (including "") is SchemeCSV.
 func ResolveScheme(s string) Scheme {
 	if Scheme(strings.ToLower(strings.TrimSpace(s))) == SchemeTest {
 		return SchemeTest

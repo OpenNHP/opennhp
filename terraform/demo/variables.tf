@@ -39,6 +39,40 @@ variable "subnet_cidr" {
   default     = "10.0.1.0/24"
 }
 
+# Pinning the relay's private address narrows the nhp-server XDP whitelist.
+#
+# That whitelist is the only thing that reaches tcp/22 on the server host. It
+# carries the relay's private address (SSH arrives from there, because CI jumps
+# through the relay), the relay's public address, and — because
+# aws_instance.relay normally takes whatever the subnet hands it — the whole
+# public subnet, so that a replaced relay coming back on a different address is
+# still let in. Without that prefix a replacement is a root-volume-detach
+# recovery: the live whitelist names the old address, SSH from the new relay is
+# dropped, and the deploy job that would push the correction reaches the server
+# *through* the relay.
+#
+# The cost is that the AC and the server share that subnet and are covered too,
+# which is wider than the policy anyone would write down. Pinning the address
+# here removes the reason for the prefix: a replaced relay comes back on the
+# same address, so the deploy renders the two host addresses alone and the XDP
+# layer matches the security group (SSH from the relay's SG and nothing else).
+#
+# Left empty by default, which keeps today's behaviour exactly. Set it to the
+# address the relay *already has* — `terraform output relay_private_ip` — and
+# apply: Terraform sees no change, because the attribute already holds that
+# value. Setting it to any other address replaces the instance, so do not
+# invent one.
+variable "relay_private_ip" {
+  description = "Pin the relay's private IPv4 (must be the address it already has, or the instance is replaced). Empty lets AWS choose, and the deploy then whitelists the whole subnet so a replaced relay keeps SSH to nhp-server."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.relay_private_ip == "" || can(cidrnetmask("${var.relay_private_ip}/32"))
+    error_message = "relay_private_ip must be empty or a single IPv4 address."
+  }
+}
+
 variable "nhp_listen_port" {
   description = "NHP protocol UDP port"
   type        = number

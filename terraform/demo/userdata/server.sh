@@ -32,6 +32,18 @@ dnf install -y certbot
 # to make /sys/fs/bpf group-writable for just this user — systemd's
 # sys-fs-bpf.mount leaves it 0700 root:root, which the daemon cannot pin into.
 #
+# The three that are granted are not held for long. nhp-serverd gives them
+# back as the last step of attaching the filter (dropLoaderPrivileges in
+# nhp/utils/ebpf/caps_linux.go): ambient cleared, permitted and effective
+# emptied — or reduced to CAP_BPF alone where kernel.unprivileged_bpf_disabled
+# makes bpf(2) privileged and the xdp.toml reload path still has a map to
+# write. That matters because this process parses untrusted UDP from the whole
+# internet and dlopens auth plugins into its own address space, and CAP_BPF
+# with CAP_PERFMON loads tracing programs that can read arbitrary kernel
+# memory. systemd grants what the load needs; the daemon decides what it keeps.
+# The deploy job asserts the drop actually happened by reading
+# /proc/<pid>/status.
+#
 # Missing any of this is not fatal: the daemon logs a warning and runs with no
 # ingress filter (fail-open), which keeps a kernel or permission problem from
 # taking the gateway off the air. The deploy-server job in

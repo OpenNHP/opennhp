@@ -226,221 +226,76 @@ All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 #### nhp-server eBPF/XDP ingress filter
 
 `nhp-serverd` attaches `nhp/ebpf/xdp/nhp_server_xdp.c` at startup and enforces
-that same shape at the driver: UDP on the knock port (≥240 bytes, the curve
-`NHP_KPL` header size — gmsm's 304 clears it too), SSH only from the relay's
-addresses, everything else dropped. It parses no NHP protocol; identity is still
-decided by the Noise handshake in user space. The AC's per-knock XDP program
-and the shared loader (`nhp/utils/ebpf/engine_linux.go`) are the same code
-path selected by `EngineLoadParams.Variant`.
+the same shape at the driver: UDP on the knock port (≥ `NhpMinFrameBytes`), SSH
+only from the addresses in `etc/xdp.toml`, the replies to flows the host itself
+opened, and nothing else — IPv6 and non-first fragments included. It parses no
+NHP protocol; identity is still decided by the Noise handshake in user space.
+The AC's per-knock program and the shared loader
+(`nhp/utils/ebpf/engine_linux.go`) are the same code path, selected by
+`EngineLoadParams.Variant`.
 
-**"Everything else" includes IPv6 and fragments**, and neither was true at
-first. IPv6 was one `case ETH_P_IPV6: return XDP_PASS` justified by the demo
-hosts having no v6 service — but sshd binds `[::]:22` by default, so the day a
-v6 CIDR reaches the VPC every port would have been open over v6 with the
-deploy's "filter attached" check still green. `handle_ipv6()` now runs the same
-tree minus the whitelist (the LPM trie holds IPv4 prefixes, so no v6 source can
-be recognised as the relay): ICMPv6 ND/MLD and "packet too big" pass so the host
-stays on its subnet, DHCPv6 (547 → 546) and NTP pass for the same reasons as
-their v4 spellings, replies to the host's own v6 flows pass via
-`has_local_flow6()`, everything else is `V6_OTHER`. **SSH must therefore reach
-the host over IPv4**; `warnOnGlobalIPv6` logs a `Warning` naming the address
-when the filtered interface has a global v6 address, and `deploy-server`'s
-`$SSH_CONNECTION` containment gate fails outright for a v6 peer address since no
-IPv4 entry can contain it. Non-first IPv4 fragments have no L4 header, and the
-TCP/UDP branches used to read one anyway at `ihl * 4`: every datagram over the
-path MTU lost its tail to `UDP_OTHER` and died in reassembly, while a crafted
-fragment whose payload read `67 → 68` took the DHCP exception. They are now
-split out before the protocol dispatch and passed as `IPV4_FRAGMENT` — inert
-without the first fragment, which carries the ports and takes the full tree. An
-IPv6 fragment header with a non-zero offset gets the same answer
-(`IPV6_FRAGMENT`).
+Invariants. Each one is load-bearing and most were paid for once already; the
+reasoning, and the incident behind each, is in
+[terraform/demo/RUNBOOK.md](terraform/demo/RUNBOOK.md) under *nhp-server ingress
+filter (XDP)*.
 
-The event record (`struct nhp_event_t`) carries an address family and both
-address pairs, so a v6 drop logs its real source; `serverEventByteSize` in the
-loader is `sizeof` that struct and has to move with it.
+- **Attaching is opt-in; `etc/xdp.toml` is the opt-in.** No file, an unparsable
+  one, `Enabled = false`, or a `RelayIPs` whose entries do not all parse as IPv4
+  addresses or prefixes ⇒ nothing is attached and the host keeps the exposure it
+  had before the filter existed. `loadXdpConfig`/`startXdpFilter` in
+  `endpoints/server/config.go` also refuse in front of a non-loopback HTTP or
+  metrics listener, and `updateHttpConfig` refuses the mirror case — starting
+  such a listener while the filter is attached.
+- **The whitelist must cover the SSH source, and there is no break-glass path.**
+  A list rendered empty, or without an entry containing the address the host
+  sees SSH arrive from, means detaching the root volume or rebuilding the
+  instance. Entries are host addresses or CIDR prefixes in an LPM trie; one
+  unparsable entry fails the whole list rather than being skipped.
+- **The whitelist is installed before the program is attached**, as
+  `EngineLoadParams.RelayIPs`, never written afterwards. Startup therefore never
+  calls `applyXdpConfig`; that path is the config watcher's, and it always has a
+  live filter and a working list to fall back on.
+- **A reload never weakens a working whitelist.** `applyXdpConfig` keeps the
+  active list on any refusal, and `ReplaceRelayIPs` is all-or-nothing against
+  the map as well as the file: it adds before it sweeps, rolls back its own adds
+  on a failed `Update`, and refuses a map it cannot read.
+- **Loading is fail-open**, and `deploy-server`'s `Verify the XDP ingress filter
+  attached` is what stops that from being a silent loss of protection. Every
+  fallible step happens before `link.AttachXDP`, and any error after it detaches.
+- **The filter must let the host's own traffic back in.** Replies to the
+  daemon's own flows via `bpf_sk_lookup_{tcp,udp}` (connected sockets only,
+  never listening ones); DHCP (67→68) and NTP by port pair, because their
+  clients have no connected socket. Dropping the DHCP answer costs the host its
+  address and every port with it, about an hour after a deploy that verified
+  clean.
+- **The loader gives its capabilities back.** `dropLoaderPrivileges`
+  (`nhp/utils/ebpf/caps_linux.go`) clears the ambient set and empties permitted
+  and effective — keeping CAP_BPF only where `kernel.unprivileged_bpf_disabled`
+  makes bpf(2) privileged and the reload path still needs to write the map —
+  process-wide, as the last step of the attach.
+- **The event log is bounded**, because every line in it is a packet someone
+  else chose to send: per-class and global token buckets in the C, bulk classes
+  counted but never written per packet, a daily byte budget in the writer, exact
+  `[NHP-STAT]` totals regardless, and 14-day / 256 MiB retention.
+- **Recovery starts with a reboot** (`aws ec2 reboot-instances`, no SSH needed):
+  DHCP runs before `nhp-serverd`, so tcp/22 is open for the window before the
+  filter is re-attached. Volume surgery is only for a wrong *whitelist* on a
+  host that does have its address.
 
-**Attaching is opt-in, and `etc/xdp.toml` is the opt-in.** This filter is not a
-hardening tweak that is safe to turn on everywhere: it drops every inbound TCP
-flow the host did not initiate, including SYNs to services this daemon listens
-on, and on a host reachable only through the whitelist one bad list makes it
-unreachable for good. So `loadXdpConfig` (`endpoints/server/config.go`) attaches
-only when the file exists, parses, has `Enabled = true` **and** a `RelayIPs`
-whose every entry parses as an IPv4 address or prefix (see the whitelist gates
-below) — a server with no `xdp.toml` keeps exactly the exposure it had
-before the filter existed, even though `make ebpf` puts the object in
-`release/nhp-server/etc/` and many operators run the daemon as root. It also
-refuses when the HTTP knock listener or an off-host metrics endpoint is enabled
-(the shipped `endpoints/server/main/etc/http.toml` has `EnableHttp = true` on
-443), because attaching in front of a listener would take that service off the
-air with nothing in user space to say so. Loopback binds are not a conflict —
-the program is on the default-route interface.
+The gates run before anything is scp'd or restarted — the `configure` job's
+Terraform/DNS resolution and containment check, `deploy-server`'s
+`Check this job's own SSH source is in the XDP whitelist`, and the refusals in
+`startXdpFilter`, `applyXdpConfig` and `ParseRelayPrefixes`
+(`nhp/utils/ebpf/relayips.go`). A red run with the demo still up is the intended
+outcome of any of them.
 
-`NhpMinFrameBytes` and the knock port are *applied*, not documentation: the
-loader rewrites `nhp_min_udp_len` and `nhp_listen_port` in the object's
-`.rodata` before the verifier runs (`setServerConstants`). The port comes from
-the daemon's own `ListenPort`, never from the TOML, so the filter and the
-listener cannot disagree — a hard-coded 62206 would have dropped every knock on
-any server configured elsewhere. An object too old to carry those constants is
-refused rather than attached with its own defaults.
+Capabilities (`CAP_BPF CAP_NET_ADMIN CAP_PERFMON`) plus a root `ExecStartPre`
+that prepares `/sys/fs/bpf` come from `terraform/demo/userdata/server.sh` on new
+hosts and from a systemd drop-in installed by `deploy-server` on existing
+ones — keep the two in sync.
 
-**The filter also has to let the host's own replies back in**, and this was
-missed at first: the daemon is a client too (DNS, the auth plugin's SMTP
-submission to SES, package mirrors), and dropping those answers broke OTP
-email with a DNS `i/o timeout` while every knock still worked. `has_local_flow()`
-answers it with `bpf_sk_lookup_{tcp,udp}` against the kernel's socket table —
-an established TCP socket or a *connected* UDP socket admits the packet, a
-listening socket never does — so the server needs none of the AC's
-conn_track/TC-egress machinery and keeps no state that can drift. ICMP
-fragmentation-needed (type 3 code 4) passes for the same reason; the rest of
-ICMP stays dropped. `deploy-server` probes udp/53 and tcp/587 from the host
-after every restart so this cannot regress silently again.
-
-**Two clients the socket table cannot vouch for are passed by port pair, and
-DHCP is the one that matters.** `has_local_flow()` only admits *connected*
-sockets, and a DHCP client receives its lease on a raw `AF_PACKET` socket or on
-one merely bound to udp/68 — so the renewal answer (udp/67 → udp/68) was
-dropped. EC2 leases the primary private IPv4 for a finite time and
-systemd-networkd renews it at half the lease; with the answer dropped the lease
-expired, networkd removed the address, and roughly an hour after a deploy that
-had verified perfectly the host went dark on **every** port at once — SSH, the
-knock port, and with them every recovery path except a reboot. The knock port
-staying open is what makes this look like "the filter closed the whole host"
-rather than a filter bug. chronyd has the same shape one layer up (its poll
-answer comes back to its own udp/123) and costs the clock instead of the
-address, so it is passed too; nothing else is, because the alternative — admit
-anything addressed to a bound port — is the "no unsolicited packet gets in"
-property thrown away. The AC's program has always had the DHCP short-circuit
-(`DHCP_PORT_R || DHCP_PORT_O`); the server's fork dropped it.
-
-`deploy-server`'s `Verify the host can still renew its DHCP lease` step is the
-standing gate: it runs `networkctl renew` and fails unless a new
-`REASON=DHCP_CLIENT` line shows the answer crossed the filter. No other probe
-can see this, because everything works for as long as the lease lasts. The
-loader's second line of defence is a watchdog in
-`endpoints/server/ebpf/serverengine.go`: if the filtered interface has no
-routable IPv4 address for two minutes it logs `Critical` and detaches, so the
-next DHCP exchange can restore the host instead of needing volume surgery. It
-can only fire in a state where the host answers nothing anyway.
-
-**The event log is bounded on purpose**, because every line in it is a packet
-somebody else chose to send and `nhp/log` rotates by date without ever pruning:
-letting it grow hands a scanner the ability to fill the root volume and kill
-the daemon the filter protects. Three limits, in `record_packet()` and
-`reportServerStats`: a per-action per-CPU token bucket (`NHP_EVENT_BURST`);
-bulk classes that are counted but never written per packet — `TCP_ESTABLISHED`,
-`UDP_ESTABLISHED` and every `SSH_RELAY` packet after the SYN, whose rate is the
-host's throughput rather than its event rate; and a `[NHP-STAT]` summary line
-per action per minute, fed by the `nhp_action_stats` counters that tick for
-*every* packet, so the totals stay exact however much reporting was dropped.
-`pruneServerEventLogs` then caps retention at 14 days / 256 MiB, oldest first,
-never today's file.
-
-The whitelist lives in `etc/xdp.toml` (`deploy/config-templates/server/xdp.toml`),
-rendered from `$RELAY_IPS` (comma-separated; `scripts/generate-nhp-keys.sh`
-quotes it into the TOML array) and hot-reloaded. Entries are host addresses or
-CIDR prefixes, matched by longest prefix — `nhp_relay_ips` is an LPM trie. CI
-renders three, and each is load-bearing:
-
-- the relay's VPC **private** address, which is what SSH arrives from because CI
-  jumps through the relay to the server's private address;
-- the relay's **public** address, for traffic that reaches the host through the
-  internet gateway. Whitelisting only the public address closes tcp/22 the moment
-  the daemon restarts;
-- **the VPC subnet**, because `aws_instance.relay` has no pinned `private_ip`.
-  Replacing the relay for any reason (AMI or instance-type change, taint, AZ
-  move) brings it back with a different private address. The server's live
-  whitelist would still name the old one, SSH from the new relay would be
-  dropped, and `deploy-server` — which reaches the server *through* the relay —
-  could never push the correction. The dead-man watchdog does not fire either:
-  the host still has its address. That is a root-volume-detach recovery, and the
-  subnet prefix is what prevents it. The cost is that the AC and server share
-  that subnet and are covered too.
-
-**There is no break-glass SSH path**: if the list is rendered empty or without a
-covering entry and the daemon restarts, the only way back in is to detach the
-root volume or rebuild the instance. Several gates protect against that, all
-before anything is scp'd or restarted:
-
-- the `configure` job reads `relay_private_ip` and `subnet_cidr` from Terraform
-  and resolves `relay.opennhp.org`, failing the whole run unless it gets an IPv4
-  address, an IPv4 prefix, and exactly one A record, and unless the prefix
-  *contains* the relay's private address — a prefix the relay is not in would
-  not cover its replacement either. `terraform output` only sees outputs an
-  apply has written into the state, so `subnet_cidr` falls back to
-  `aws_subnet.public.cidr_block` read out of the state when the output is not
-  there yet (this job never applies; without the fallback, adding an output
-  leaves every deploy red until someone runs `infra-demo` by hand);
-- `deploy-server`'s `Check this job's own SSH source is in the XDP whitelist`
-  step asks the host what peer address it sees for the live connection
-  (`$SSH_CONNECTION`) and fails unless some entry in the rendered `xdp.toml`
-  *contains* it (a containment test, since entries may be prefixes);
-- `startXdpFilter` refuses to attach at all for a file whose `RelayIPs` does not
-  name at least one usable prefix, and `applyXdpConfig` refuses to apply one on
-  reload and keeps the active whitelist — an unset `RELAY_IPS`, or a file caught
-  half-written by the watcher, parses to valid TOML with an empty list, and
-  applying that closes tcp/22 for every source. "Usable" is decided by
-  `ParseRelayPrefixes` (`nhp/utils/ebpf/relayips.go`), not by counting strings:
-  `["relay.opennhp.org"]`, `[""]`, an IPv6-only list or a typo like
-  `["10.0.1.300"]` is a non-empty *list* that names not one address the LPM trie
-  can hold, so a count-the-strings guard would attach with an empty map, or let
-  a reload sweep a working whitelist away. One bad entry fails the whole list
-  rather than being skipped — the entry that did not parse may be the one SSH
-  arrives from, and nothing in user space can tell. An IPv4-mapped IPv6 prefix
-  (`::ffff:10.0.1.0/120`) is refused for the same reason and is the one spelling
-  that gets past a check written against `net`: `To4()` is non-nil for it while
-  `Mask.Size()` is 120, a prefix length above the trie's `max_prefixlen` of 32
-  that the kernel answers with `EINVAL` — an entry validation called usable and
-  the map will not take. `ReplaceRelayIPs` repeats both refusals before its first
-  map write, so the contract does not depend on its callers.
-- `ReplaceRelayIPs` is also all-or-nothing against the *map*, not only against
-  the file: it reads the live whitelist first, and a failed `Update` (ENOMEM on
-  the no-prealloc trie, a key the kernel will not hold) rolls back the keys that
-  call added and skips the stale sweep, so the map is left holding exactly the
-  list it held before. Sweeping anyway is how a reload that merely failed to add
-  the relay's *new* address removes its *old* one too — a map holding neither,
-  i.e. tcp/22 closed to every source, while `applyXdpConfig` logs that it kept
-  the active whitelist. A map it cannot even read is one it refuses to touch.
-
-A red run with the demo still up is the intended outcome of any of them.
-
-**The whitelist is installed before the program is attached**, not after: it
-travels with the load as `EngineLoadParams.RelayIPs`, and `loadServerEngine`
-writes it into `nhp_relay_ips` inside the deferred-cleanup region, before
-`link.AttachXDP`. Writing it afterwards — which is what the first version did —
-leaves two holes that no gate above can see, because both are on the host rather
-than in the pipeline: a window after every restart in which SSH from the relay
-is dropped, and, if that one write fails (an LPM-trie `Update` error, ENOMEM),
-a filter left attached enforcing an *empty* whitelist, i.e. tcp/22 closed to
-every source with no break-glass path — at the one moment user space has just
-proved it cannot write the map it would need to fix. As a load parameter a bad
-whitelist is an ordinary pre-attach error: nothing is attached, the pins are
-swept, and the daemon runs fail-open. Startup therefore does not call
-`applyXdpConfig` at all; that path exists for the config watcher, which always
-has a live filter and a working list to fall back on.
-
-If the host is already unreachable, **reboot the instance before anything
-else** (`aws ec2 reboot-instances`, no SSH needed): DHCP runs before
-`nhp-serverd` starts, so the address comes back and tcp/22 is open for the
-window before the daemon attaches the filter again. Use that window to either
-`systemctl stop nhp-serverd` (filter detached, host stays reachable) or re-run
-the deploy. Volume surgery is only needed when the *whitelist* is wrong, i.e.
-when the filter is attached and the host does have its address.
-
-Loading is **fail-open**: a missing object, an old kernel or a missing
-capability leaves the daemon running with no filter and a `Warning` in the log.
-The `Verify the XDP ingress filter attached` step in `deploy-server` is what
-turns that silent loss of protection into a failed deploy. Fail-open only means
-anything if it is true, so `loadServerEngine` does every fallible step *before*
-`link.AttachXDP` and detaches on any error after it: a filter left attached
-behind a returned error would be enforcing with an empty SSH whitelist that
-user space no longer holds a handle to fix, while the log says "fail-open". Capabilities
-(`CAP_BPF CAP_NET_ADMIN CAP_PERFMON`) plus a root `ExecStartPre` that prepares
-`/sys/fs/bpf` come from `terraform/demo/userdata/server.sh` on new hosts and
-from a systemd drop-in installed by `deploy-server` on existing ones — keep the
-two in sync.
-
-Verification procedure (netns rehearsal, pre-deploy baseline, the same
-commands after the deploy, recovery paths):
+Verification procedure (netns rehearsal, pre-deploy baseline, the same commands
+after the deploy, recovery paths):
 `terraform/demo/VERIFY-server-xdp.zh-cn.md`.
 
 ### `opennhp/demo` schema

@@ -776,6 +776,30 @@ func (s *UdpServer) xdpServiceConflict() string {
 	return ""
 }
 
+// xdpBlackHolesHttpListener names the listener an http.toml (or etcd) change
+// would start behind the attached ingress filter, or "" when there is none.
+//
+// The counterpart of xdpServiceConflict, for the other direction: that one asks
+// "may the filter attach in front of what is already running", this one asks
+// "may this listener start in front of a filter that is already attached".
+// Both answer the same question — a TCP service on this host that is not SSH
+// from RelayIPs cannot be reached — and both have to exist, because either side
+// can change without the other: xdpServiceConflict runs once, at startup, and
+// http.toml is hot-reloaded.
+//
+// filterAttached is a parameter rather than an ebpflocal.Loaded() call inside,
+// so the decision can be exercised in both states by a test on any host.
+func xdpBlackHolesHttpListener(conf *HttpConfig, filterAttached bool) string {
+	if conf == nil || !conf.EnableHttp || !filterAttached {
+		return ""
+	}
+	if isLoopbackListenAddr(conf.HttpListenIp) {
+		return ""
+	}
+	return fmt.Sprintf("etc/http.toml asks for the HTTP knock listener on %s:%d",
+		listenAddrForLog(conf.HttpListenIp), conf.HttpListenPort)
+}
+
 // isLoopbackListenAddr reports whether a bind address reaches only this host.
 // An empty address is a wildcard bind (all interfaces), not loopback.
 func isLoopbackListenAddr(addr string) bool {
@@ -1237,6 +1261,20 @@ func (s *UdpServer) updateHttpConfig(httpConf HttpConfig) (err error) {
 
 	// update
 	if httpConf.EnableHttp {
+		// The startup refusal in startXdpFilter only sees the http.toml the
+		// daemon booted with, and this config is hot — the file watcher and the
+		// etcd watcher both land here. Turning EnableHttp on under a live
+		// filter would bind a listener the XDP program drops at the driver: the
+		// service answers nothing, nothing in user space says why, and that is
+		// the exact failure the startup check exists to prevent. Refusing is
+		// the lesser outcome of the two, and the only one that leaves a reason
+		// behind. Detaching the filter instead is not on the table: it would
+		// re-open tcp/22 to the internet on the strength of an http.toml edit.
+		if reason := xdpBlackHolesHttpListener(&httpConf, ebpflocal.Loaded()); reason != "" {
+			log.Critical("refusing to start the HTTP knock listener: %s. The XDP ingress filter is attached and drops inbound TCP other than SSH from RelayIPs, so the listener would be unreachable with nothing to say so. Bind it to 127.0.0.1, or set Enabled = false in etc/xdp.toml and restart nhp-serverd.",
+				reason)
+			return fmt.Errorf("http listener conflicts with the attached XDP ingress filter: %s", reason)
+		}
 		// start http server
 		if s.httpServer == nil || !s.httpServer.IsRunning() {
 			if s.httpServer != nil {

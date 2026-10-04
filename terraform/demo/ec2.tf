@@ -97,6 +97,16 @@ resource "aws_instance" "relay" {
   vpc_security_group_ids = [aws_security_group.relay.id]
   key_name               = aws_key_pair.deploy.key_name
 
+  # Unpinned by default (null = let AWS choose), which is what makes the
+  # nhp-server XDP whitelist carry the whole public subnet: a replacement of
+  # this instance would otherwise come back on an address the server does not
+  # admit, and the deploy that would fix it reaches the server through this
+  # host. Set var.relay_private_ip to the address this instance already has and
+  # the deploy narrows the whitelist to the two relay addresses instead. See
+  # the variable's comment in variables.tf — a *different* address here forces
+  # a replacement.
+  private_ip = var.relay_private_ip != "" ? var.relay_private_ip : null
+
   user_data = templatefile("${path.module}/userdata/relay.sh", {
     deploy_path = "/home/ec2-user/nhp-relay"
   })

@@ -16,6 +16,8 @@ import (
 
 	"github.com/cilium/ebpf"
 	"golang.org/x/sys/unix"
+
+	"github.com/OpenNHP/opennhp/nhp/log"
 )
 
 // serverObjPath is where `make ebpf-objs` puts the server's XDP object.
@@ -1200,6 +1202,85 @@ func TestSweepServerEventLogsEnforcesTheByteBudget(t *testing.T) {
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("%s is inside the budget once the oldest is gone: %v", filepath.Base(path), err)
 		}
+	}
+}
+
+// log.NewLoggerDefine starts three writers per logger — the main file plus
+// "-evaluate" and "-audit" siblings — and the retention glob matches all three.
+// Each one is open for append, so each one's current-day file has to be exempt;
+// the first version exempted only the main file and would have deleted a
+// sibling out from under its writer.
+func TestSweepServerEventLogsExemptsEverySiblingsCurrentFile(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+
+	todayMain := writeLogFile(t, dir, "nhp_server_xdp-2026-09-29.log", now, 10)
+	todayEval := writeLogFile(t, dir, "nhp_server_xdp-evaluate-2026-09-29.log", now, 10)
+	todayAudit := writeLogFile(t, dir, "nhp_server_xdp-audit-2026-09-29.log", now, 10)
+	staleEval := writeLogFile(t, dir, "nhp_server_xdp-evaluate-2026-09-01.log", now.AddDate(0, 0, -28), 10)
+
+	sweepServerEventLogs(dir, now, 14, 1<<30)
+
+	for _, path := range []string{todayMain, todayEval, todayAudit} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("%s is today's file for one of the writers and must survive: %v", filepath.Base(path), err)
+		}
+	}
+	if _, err := os.Stat(staleEval); !os.IsNotExist(err) {
+		t.Errorf("an aged-out sibling is still ours to prune (err=%v)", err)
+	}
+}
+
+// Today's files cannot be deleted, but leaving them out of the total made the
+// size bound describe something other than the directory: one flooded day could
+// outgrow the whole budget while the sweep reported itself satisfied.
+func TestSweepServerEventLogsCountsTodayAgainstTheBudget(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+
+	today := writeLogFile(t, dir, "nhp_server_xdp-2026-09-29.log", now, 240)
+	yesterday := writeLogFile(t, dir, "nhp_server_xdp-2026-09-28.log", now.AddDate(0, 0, -1), 100)
+
+	// 340 bytes on disk against a 250-byte budget, all of the overage in a
+	// file that cannot be removed. Everything that *can* go, goes.
+	sweepServerEventLogs(dir, now, 14, 250)
+
+	if _, err := os.Stat(yesterday); !os.IsNotExist(err) {
+		t.Errorf("history should be pruned while the directory is over budget (err=%v)", err)
+	}
+	if _, err := os.Stat(today); err != nil {
+		t.Errorf("today's file is open for append and must never be removed: %v", err)
+	}
+}
+
+// The kernel-side buckets bound the event *rate*; this bounds the size of what
+// one day can write, which is the part the sweep cannot reach because the file
+// it would have to delete is the one being appended to.
+func TestEventLogBudgetStopsAtTheDailyLimitAndResetsOnTheNextDay(t *testing.T) {
+	logger := log.NewLoggerDefine("", 0, t.TempDir(), "budget_test")
+	t.Cleanup(logger.Close)
+
+	b := &eventLogBudget{limit: 100}
+	day1 := time.Date(2026, 9, 29, 23, 0, 0, 0, time.UTC)
+
+	if !b.spend(day1, 60, logger) {
+		t.Fatal("the first line is inside the budget")
+	}
+	if !b.spend(day1, 40, logger) {
+		t.Fatal("a line that exactly fills the budget is still written")
+	}
+	if b.spend(day1, 1, logger) {
+		t.Fatal("the budget is spent; further lines must be suppressed")
+	}
+	if b.spend(day1.Add(30*time.Minute), 1, logger) {
+		t.Fatal("suppression lasts for the rest of the day, not for one call")
+	}
+
+	// The logger opens a new file at the date rollover, so the allowance
+	// starts again with it.
+	day2 := day1.Add(2 * time.Hour)
+	if !b.spend(day2, 60, logger) {
+		t.Fatalf("a new day (%s) gets a new budget", day2.Format("2006-01-02"))
 	}
 }
 

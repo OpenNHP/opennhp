@@ -279,3 +279,66 @@ func TestLoadXdpConfigFailsOpenWithoutTheObject(t *testing.T) {
 		t.Error("a watch was installed although no filter is attached")
 	}
 }
+
+// xdpServiceConflict guards the startup direction (do not attach in front of a
+// listener); this guards the reload direction (do not start a listener in front
+// of a filter). http.toml is hot-reloaded and etcd can push the same change, so
+// without this an operator flipping EnableHttp on a filtered host gets a
+// listener the driver drops — a service that is up, bound, and unreachable,
+// with nothing in user space saying why.
+func TestXdpBlackHolesHttpListener(t *testing.T) {
+	cases := []struct {
+		name     string
+		conf     *HttpConfig
+		attached bool
+		want     bool
+	}{
+		{
+			name:     "wildcard bind behind an attached filter",
+			conf:     &HttpConfig{EnableHttp: true, HttpListenPort: 443},
+			attached: true,
+			want:     true,
+		},
+		{
+			name:     "explicit public bind behind an attached filter",
+			conf:     &HttpConfig{EnableHttp: true, HttpListenIp: "0.0.0.0", HttpListenPort: 8443},
+			attached: true,
+			want:     true,
+		},
+		{
+			// The program is on the default-route interface, so nothing
+			// addressed to 127.0.0.1 ever reaches it.
+			name:     "loopback bind is reachable either way",
+			conf:     &HttpConfig{EnableHttp: true, HttpListenIp: "127.0.0.1", HttpListenPort: 8443},
+			attached: true,
+			want:     false,
+		},
+		{
+			name:     "no filter attached, no conflict",
+			conf:     &HttpConfig{EnableHttp: true, HttpListenPort: 443},
+			attached: false,
+			want:     false,
+		},
+		{
+			name:     "http disabled",
+			conf:     &HttpConfig{EnableHttp: false, HttpListenPort: 443},
+			attached: true,
+			want:     false,
+		},
+		{
+			name:     "no http config at all",
+			conf:     nil,
+			attached: true,
+			want:     false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reason := xdpBlackHolesHttpListener(tc.conf, tc.attached)
+			if got := reason != ""; got != tc.want {
+				t.Fatalf("xdpBlackHolesHttpListener() = %q, want conflict=%v", reason, tc.want)
+			}
+		})
+	}
+}

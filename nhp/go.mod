@@ -14,6 +14,7 @@ require (
 	go.etcd.io/etcd/client/v3 v3.7.2
 	golang.org/x/crypto v0.57.0
 	golang.org/x/sys v0.48.0
+	kernel.org/pub/linux/libs/security/libcap/cap v1.2.76
 )
 
 require (
@@ -55,4 +56,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
+	kernel.org/pub/linux/libs/security/libcap/psx v1.2.76 // indirect
 )

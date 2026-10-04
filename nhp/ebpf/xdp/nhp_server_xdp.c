@@ -242,18 +242,35 @@ struct {
  *
  * The budget is per action code, so a flood of one class (a port scan, say)
  * cannot starve out the records of another (an SSH attempt from a non-relay
- * address, or a knock that passed). Per-CPU so the counter needs no atomics;
- * the effective ceiling is NHP_EVENT_BURST * nr_cpus per second per class,
- * which is ample for diagnosis and bounded regardless of offered load.
+ * address, or a knock that passed). Per-CPU so the counter needs no atomics.
  *
- * NHP_EVENT_ACTIONS sizes this array and the counter array, so it must stay
- * above the highest ACT_* code (a code at or past it is still judged, just
- * neither counted nor rate limited). It carries a little headroom over the
- * codes in use; serverEventActions in nhp/utils/ebpf/engine_linux.go mirrors
- * it, and a test fails if the two drift apart. */
+ * A per-class budget alone is not a bound on the log, though, and that was the
+ * first version's mistake. A remote sender picks the class: over IPv4 it can
+ * reach about eleven reportable ones (TCP_SSH_OTHER, TCP_NHP_PORT, TCP_OTHER,
+ * UDP_OTHER, UDP_SHORT, NON_TCP_UDP, IPV4_FRAGMENT, NHP_DEFAULT,
+ * ICMP_FRAG_NEEDED, a spoofed 67->68 DHCP_CLIENT, NHP_RELAY from the subnet),
+ * and spreading the flows across RSS queues fills every CPU's bucket. Eleven
+ * classes x 16 x nr_cpus is hundreds of lines a second, i.e. gigabytes a day,
+ * on a host whose whole event-log budget is 256 MiB. So a second bucket sits
+ * across all of them: NHP_EVENT_GLOBAL_BURST caps the total, whatever mix of
+ * classes it is made of, while the per-class bucket keeps that total from
+ * being spent entirely on one. The per-CPU multiplier still applies to both --
+ * what makes the *size* bound hard is serverLogDailyEventBytes on the writing
+ * side (nhp/utils/ebpf/engine_linux.go); this is what keeps the ring and the
+ * CPU cost of reporting bounded.
+ *
+ * NHP_EVENT_ACTIONS sizes the counter array and the per-class part of this
+ * one, so it must stay above the highest ACT_* code (a code at or past it is
+ * still judged, just neither counted nor rate limited). It carries a little
+ * headroom over the codes in use; serverEventActions in
+ * nhp/utils/ebpf/engine_linux.go mirrors it, and a test fails if the two drift
+ * apart. The global bucket lives in one extra slot past the end. */
 #define NHP_EVENT_ACTIONS 24
 #define NHP_EVENT_WINDOW_NS 1000000000ULL
 #define NHP_EVENT_BURST 16
+#define NHP_EVENT_GLOBAL_BURST 8
+#define NHP_EVENT_GLOBAL_SLOT NHP_EVENT_ACTIONS
+#define NHP_EVENT_RATE_SLOTS (NHP_EVENT_ACTIONS + 1)
 
 struct nhp_rate_state {
     __u64 window_start;
@@ -262,7 +279,7 @@ struct nhp_rate_state {
 
 struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-    __uint(max_entries, NHP_EVENT_ACTIONS);
+    __uint(max_entries, NHP_EVENT_RATE_SLOTS);
     __type(key, __u32);
     __type(value, struct nhp_rate_state);
 } nhp_event_rate SEC(".maps");
@@ -292,11 +309,11 @@ struct {
     __type(value, struct nhp_action_stat);
 } nhp_action_stats SEC(".maps");
 
-static __always_inline bool event_budget_available(__u8 action, __u64 now) {
-    __u32 slot = action;
-    if (slot >= NHP_EVENT_ACTIONS)
-        return true;
-
+/* Take one token from the bucket in `slot`, or report that it is empty for the
+ * rest of this window. A slot the map cannot hand back is treated as having
+ * budget: the rate limit is telemetry policy, never a verdict, so a map failure
+ * must not start silently hiding packets. */
+static __always_inline bool spend_token(__u32 slot, __u32 burst, __u64 now) {
     struct nhp_rate_state *st = bpf_map_lookup_elem(&nhp_event_rate, &slot);
     if (!st)
         return true;
@@ -306,11 +323,26 @@ static __always_inline bool event_budget_available(__u8 action, __u64 now) {
         st->count = 1;
         return true;
     }
-    if (st->count >= NHP_EVENT_BURST)
+    if (st->count >= burst)
         return false;
 
     st->count++;
     return true;
+}
+
+/* Per class first, then across all classes. An event that clears its class but
+ * not the global cap has spent a class token it did not use; that only makes
+ * the class slightly stingier in a window the global cap has already closed,
+ * and it keeps the common path to a single lookup. */
+static __always_inline bool event_budget_available(__u8 action, __u64 now) {
+    __u32 slot = action;
+    if (slot >= NHP_EVENT_ACTIONS)
+        return true;
+
+    if (!spend_token(slot, NHP_EVENT_BURST, now))
+        return false;
+
+    return spend_token(NHP_EVENT_GLOBAL_SLOT, NHP_EVENT_GLOBAL_BURST, now);
 }
 
 /* Tick this action's total, which happens for every packet whatever the
@@ -732,36 +764,18 @@ int xdp_server_prog(struct xdp_md *ctx) {
 
         if (bpf_ntohs(udp->dest) != nhp_listen_port) {
             /* DHCP: the host's own address depends on this getting in, and
-             * has_local_flow() cannot let it.
-             *
-             * This is the outage that made the filter look like it was
-             * "closing the whole host an hour after every deploy". EC2 hands
-             * out the primary private IPv4 by DHCP on a finite lease;
-             * systemd-networkd renews it at half the lease and drops the
-             * address (and the default route with it) when a renewal never
-             * completes. The renewal answer is a datagram from udp/67 to
-             * udp/68, and the client receives it either on a raw AF_PACKET
-             * socket or on a UDP socket that is *bound* to port 68 and never
-             * connected -- so bpf_sk_lookup_udp() either finds nothing at all
-             * or finds something indistinguishable from a listener, and
-             * has_local_flow() correctly refuses both. XDP_DROP here is
-             * therefore terminal for the lease: nothing later in the stack
-             * ever sees the packet, and once the lease expires the host is
-             * dark on every port, SSH and the knock port alike, with no way
-             * back in short of a reboot.
-             *
-             * So DHCP replies are admitted by port pair, the same way the AC's
-             * program has always done it (`DHCP_PORT_R || DHCP_PORT_O` in
-             * nhp/ebpf/xdp/nhp_ebpf_xdp.c). The pair is narrow on purpose: a
-             * neighbour's broadcast DHCPDISCOVER is addressed to udp/67 and
-             * still dropped, and the only thing this lets an attacker reach is
-             * the host's DHCP client with a forged lease -- which is bounded
-             * by that client's own xid/server checks, and is the same exposure
-             * every unfiltered host on the subnet has.
-             *
-             * Reported per packet: a lease renewal is a handful of datagrams
-             * an hour, and after the outage above it is precisely the line an
-             * operator wants to see in the log. */
+             * has_local_flow() cannot let it -- the client receives the lease
+             * on a raw AF_PACKET socket or on one merely *bound* to udp/68, so
+             * the socket lookup finds nothing, or finds something
+             * indistinguishable from a listener. Dropping it is terminal for
+             * the lease and takes the host off every port once the lease
+             * expires. Admitted by port pair instead, as the AC's program has
+             * always done it (`DHCP_PORT_R || DHCP_PORT_O` in
+             * nhp/ebpf/xdp/nhp_ebpf_xdp.c); the pair is narrow enough that a
+             * neighbour's broadcast DHCPDISCOVER to udp/67 is still dropped.
+             * Reported per packet -- a renewal is a few datagrams an hour, and
+             * it is the line an operator wants. See "Why each rule is there"
+             * in terraform/demo/RUNBOOK.md for the outage behind this. */
             if (udp->source == bpf_htons(DHCP_PORT_SERVER) &&
                 udp->dest == bpf_htons(DHCP_PORT_CLIENT)) {
                 record_packet(ctx, ACT_DHCP_CLIENT, iph, udp->source, udp->dest, 0, true);

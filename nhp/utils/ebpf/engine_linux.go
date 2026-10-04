@@ -240,6 +240,15 @@ var (
 	serverXdpLink link.Link
 	bootTime      time.Time
 
+	// Closed by cleanupPins(VariantServer) to stop the three goroutines the
+	// server load starts (the perf reader, the stats reporter, the log
+	// sweeper). They would otherwise outlive the filter they report on and
+	// keep writing to a log.Logger the caller has closed. EngineLoad runs once
+	// per process today, so this is about not leaving a trap for the day it
+	// does not — and about a watchdog detach being a real stop rather than a
+	// detach with the telemetry still running.
+	serverStop chan struct{}
+
 	// Where each variant last pinned, so the exported CleanupBPFFiles(variant)
 	// — which takes no directory, and is called from daemon shutdown paths and
 	// from the server's watchdog — removes the pins this process actually
@@ -650,6 +659,25 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 	}
 	warnOnGlobalIPv6(iface)
 
+	// Opened here rather than inside the reader goroutine because
+	// perf_event_open(2) is the last thing that needs CAP_PERFMON, and the
+	// capabilities are given back a few lines below. Not fatal if it fails: the
+	// event log is diagnostics, and losing it is no reason to leave the host
+	// unfiltered. The filter runs on without it, saying so.
+	perfReader, perfErr := perf.NewReader(objs.NhpEvents, os.Getpagesize())
+	if perfErr != nil {
+		log.Error("failed to create server perf reader; the XDP filter will run without an event log: %v", perfErr)
+		perfReader = nil
+	}
+
+	// Registered before the attach, so it runs on every path out of this
+	// function from here on — attached or not. It is deferred rather than
+	// called inline so that nothing added later can slip in between the attach
+	// and the drop. LIFO puts it ahead of the cleanup defer above, which needs
+	// no capability of its own: closing a link fd and unlinking a bpffs pin are
+	// ordinary file operations.
+	defer dropLoaderPrivilegesOrWarn()
+
 	serverXdpLink, err = link.AttachXDP(link.XDPOptions{
 		Program:   objs.XdpProg,
 		Interface: iface.Index,
@@ -657,6 +685,9 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 	})
 	if err != nil {
 		log.Error("failed to attach server XDP program to interface %s: %v", iface.Name, err)
+		if perfReader != nil {
+			perfReader.Close()
+		}
 		return nil, err
 	}
 
@@ -681,11 +712,14 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 	)
 	h.ServerLogger.SetFlags(stdlog.Lmsgprefix)
 
-	go readServerEvents(objs.NhpEvents, params.ComponentId, h.ServerLogger)
-	if objs.ActionStats != nil {
-		go reportServerStats(objs.ActionStats, params.ComponentId, h.ServerLogger)
+	serverStop = make(chan struct{})
+	if perfReader != nil {
+		go readServerEvents(perfReader, serverStop, params.ComponentId, h.ServerLogger)
 	}
-	go pruneServerEventLogs(logDir)
+	if objs.ActionStats != nil {
+		go reportServerStats(objs.ActionStats, serverStop, params.ComponentId, h.ServerLogger)
+	}
+	go pruneServerEventLogs(logDir, serverStop)
 
 	return h, nil
 }
@@ -814,19 +848,92 @@ func serverActionName(action uint8) (verdict, reason string) {
 	}
 }
 
-func readServerEvents(eventsMap *ebpf.Map, serverId string, logger *log.Logger) {
-	perfReader, err := perf.NewReader(eventsMap, os.Getpagesize())
-	if err != nil {
-		log.Error("failed to create server perf reader: %v", err)
-		return
+// serverLogDailyEventBytes is how much per-packet event text the filter may
+// append in one calendar day.
+//
+// The kernel-side buckets bound the *rate*, and they have to be generous enough
+// to diagnose with, but a rate is not a size: a sender who spreads traffic over
+// every reportable class and every RSS queue sits just under the buckets
+// forever, and a few hundred lines a second is gigabytes a day. The retention
+// sweep could not answer that either, because the file being written is the one
+// file it must never delete. So the writer carries its own budget and stops
+// adding lines when the day's is spent; the counter resets at the date rollover
+// that opens a new file.
+//
+// Nothing about the filter changes when the budget runs out, and the accounting
+// does not become wrong: the [NHP-STAT] summaries (one line per active class
+// per minute, bounded by construction) keep reporting exact totals, which is
+// precisely what they exist for.
+const serverLogDailyEventBytes = 64 << 20 // 64 MiB
+
+// eventLogBudget is the writer's side of the size bound: a byte allowance for
+// one calendar day, reset when the date changes because that is when the
+// logger starts a new file.
+type eventLogBudget struct {
+	day       string
+	written   int64
+	limit     int64
+	exhausted bool
+}
+
+// spend reports whether a line of n bytes may still be written today, and
+// logs the transition the first time it says no.
+func (b *eventLogBudget) spend(now time.Time, n int, logger *log.Logger) bool {
+	day := now.Format("2006-01-02")
+	if day != b.day {
+		b.day = day
+		b.written = 0
+		b.exhausted = false
 	}
+	if b.exhausted {
+		return false
+	}
+
+	b.written += int64(n)
+	if b.written <= b.limit {
+		return true
+	}
+
+	b.exhausted = true
+	log.Warning("xdp event log: %d MiB of per-packet lines written today; suppressing further ones until tomorrow. Per-minute [NHP-STAT] totals continue and stay exact.",
+		b.limit>>20)
+	logger.Info("%s [NHP-STAT] EVENT_LOG_BUDGET_EXHAUSTED BYTES=%d: per-packet lines suppressed for the rest of the day; totals continue below",
+		now.Format("15:04:05"), b.written)
+	return false
+}
+
+func readServerEvents(perfReader *perf.Reader, stop <-chan struct{}, serverId string, logger *log.Logger) {
 	defer perfReader.Close()
+
+	// Unblocks the Read below on shutdown; the loop then sees the closed ring
+	// and the closed channel and returns rather than spinning on the error.
+	// `done` is what keeps this watcher from outliving the reader it watches
+	// when the loop leaves for some other reason.
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-stop:
+			perfReader.Close()
+		case <-done:
+		}
+	}()
+
+	budget := &eventLogBudget{limit: serverLogDailyEventBytes}
 
 	log.Info("Start listening for server eBPF events (PERF BUFFER)")
 
 	for {
 		record, err := perfReader.Read()
 		if err != nil {
+			if errors.Is(err, perf.ErrClosed) {
+				return
+			}
+			select {
+			case <-stop:
+				return
+			default:
+			}
 			log.Error("Error reading server eBPF event: %v", err)
 			continue
 		}
@@ -858,7 +965,7 @@ func readServerEvents(eventsMap *ebpf.Map, serverId string, logger *log.Logger) 
 		verdict, reason := serverActionName(action)
 		eventTime := bootTime.Add(time.Duration(timestamp))
 
-		logger.Info("%s %s [NHP-%s] REASON=%s SRC=%s DST=%s LEN=%d PROTO=%s SPT=%d DPT=%d RELAY=%d",
+		line := fmt.Sprintf("%s %s [NHP-%s] REASON=%s SRC=%s DST=%s LEN=%d PROTO=%s SPT=%d DPT=%d RELAY=%d",
 			eventTime.Format("15:04:05"),
 			serverId,
 			verdict,
@@ -871,6 +978,13 @@ func readServerEvents(eventsMap *ebpf.Map, serverId string, logger *log.Logger) 
 			dstPort,
 			relayHit,
 		)
+		// Charged against today's budget by the wall clock, not by the event's
+		// own (boot-relative) timestamp: the budget is about the file being
+		// appended to, and the logger picks that file by time.Now().
+		if !budget.spend(time.Now(), len(line), logger) {
+			continue
+		}
+		logger.Info("%s", line)
 	}
 }
 
@@ -904,13 +1018,19 @@ type serverActionStat struct {
 // event stream (0 for the bulk classes, less than PKTS whenever the bucket
 // ran dry), TOTAL the count since the filter was attached. Actions that saw
 // nothing print nothing: a quiet host writes a quiet log.
-func reportServerStats(statsMap *ebpf.Map, serverId string, logger *log.Logger) {
+func reportServerStats(statsMap *ebpf.Map, stop <-chan struct{}, serverId string, logger *log.Logger) {
 	prev := make([]serverActionStat, serverEventActions)
 
 	ticker := time.NewTicker(serverStatsInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+		}
+
 		for action := 0; action < serverEventActions; action++ {
 			var perCPU []serverActionStat
 			key := uint32(action)
@@ -966,16 +1086,40 @@ const (
 	serverLogSweepInterval  = time.Hour
 )
 
-func pruneServerEventLogs(logDir string) {
+func pruneServerEventLogs(logDir string, stop <-chan struct{}) {
+	ticker := time.NewTicker(serverLogSweepInterval)
+	defer ticker.Stop()
+
 	for {
 		sweepServerEventLogs(logDir, time.Now(), serverLogRetentionDays, serverLogRetentionBytes)
-		time.Sleep(serverLogSweepInterval)
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+		}
 	}
 }
+
+// serverEventLogWriters are the log.Logger file families the event logger
+// creates. log.NewLoggerDefine starts three AsyncLogWriters per logger — the
+// main one plus "-evaluate" and "-audit" siblings — and all three land in this
+// directory under this prefix. The glob below matches all of them on purpose
+// (they are this filter's files and nothing else's), so the "never today's
+// file" exclusion has to cover all three: each is open for append, and the
+// sibling writers reopen theirs by name the moment a line is routed to them.
+var serverEventLogWriters = []string{serverEventLogName, serverEventLogName + "-evaluate", serverEventLogName + "-audit"}
 
 // sweepServerEventLogs is the body of one sweep. The bounds are arguments
 // rather than the constants above so a test can exercise the size path without
 // writing a quarter of a gigabyte.
+//
+// Today's files are never deleted but they *are* counted. Leaving them out of
+// the total let a single day outgrow the whole budget while the sweep reported
+// itself satisfied; counting them means the day's own volume is what pushes the
+// history out, which is the behavior "cap the directory at maxBytes" was
+// always meant to describe. The day's growth itself is bounded by
+// serverLogDailyEventBytes on the writing side — the sweep cannot bound it,
+// because it must not touch the file being appended to.
 func sweepServerEventLogs(logDir string, now time.Time, retainDays int, maxBytes int64) {
 	matches, err := filepath.Glob(filepath.Join(logDir, serverEventLogName+"-*.log"))
 	if err != nil {
@@ -989,19 +1133,24 @@ func sweepServerEventLogs(logDir string, now time.Time, retainDays int, maxBytes
 		size int64
 	}
 
-	current := filepath.Join(logDir, fmt.Sprintf("%s-%s.log", serverEventLogName, now.Format("2006-01-02")))
+	today := now.Format("2006-01-02")
+	current := make(map[string]struct{}, len(serverEventLogWriters))
+	for _, name := range serverEventLogWriters {
+		current[filepath.Join(logDir, fmt.Sprintf("%s-%s.log", name, today))] = struct{}{}
+	}
+
 	files := make([]logFile, 0, len(matches))
 	var totalBytes int64
 	for _, path := range matches {
-		if path == current {
-			continue
-		}
 		info, statErr := os.Stat(path)
 		if statErr != nil {
 			continue
 		}
-		files = append(files, logFile{path: path, mod: info.ModTime(), size: info.Size()})
 		totalBytes += info.Size()
+		if _, open := current[path]; open {
+			continue
+		}
+		files = append(files, logFile{path: path, mod: info.ModTime(), size: info.Size()})
 	}
 
 	sort.Slice(files, func(i, j int) bool { return files[i].mod.Before(files[j].mod) })
@@ -1273,6 +1422,12 @@ func cleanupPins(variant EngineVariant, pinDir string) {
 	}
 
 	if variant == VariantServer {
+		// Nil-and-close, like the links below: this runs twice on the error
+		// paths inside loadServerEngine and again from the caller's shutdown.
+		if serverStop != nil {
+			close(serverStop)
+			serverStop = nil
+		}
 		if serverXdpLink != nil {
 			serverXdpLink.Close()
 			serverXdpLink = nil

@@ -353,6 +353,19 @@ jobs:
             echo "      infra-demo apply to refresh the outputs."
           fi
 
+          # Whether var.relay_private_ip pins the relay's private address. When
+          # it does, a replaced relay comes back on the same address and the
+          # XDP whitelist needs only the two relay addresses; when it does not,
+          # the whitelist has to carry the subnet prefix so a replacement is
+          # still let in. Absent output (added after the last apply, same as
+          # subnet_cidr above) reads as "not pinned", which is the wider and
+          # therefore safe answer — the narrow one is the one that can lock the
+          # server away.
+          RELAY_IP_PINNED=$(terraform output -raw relay_private_ip_pinned 2>/dev/null || true)
+          if [ "$RELAY_IP_PINNED" != "true" ]; then
+            RELAY_IP_PINNED=false
+          fi
+
           echo "server_public_ip=$SERVER_PUB"     >> $GITHUB_OUTPUT
           echo "server_private_ip=$SERVER_PRIV"   >> $GITHUB_OUTPUT
           echo "ac_public_ip=$AC_PUB"             >> $GITHUB_OUTPUT
@@ -360,11 +373,13 @@ jobs:
           echo "relay_public_ip=$RELAY_PUB"       >> $GITHUB_OUTPUT
           echo "relay_private_ip=$RELAY_PRIV"     >> $GITHUB_OUTPUT
           echo "subnet_cidr=$SUBNET_CIDR"         >> $GITHUB_OUTPUT
+          echo "relay_private_ip_pinned=$RELAY_IP_PINNED" >> $GITHUB_OUTPUT
 
           echo "Server public/private:   $SERVER_PUB / $SERVER_PRIV"
           echo "AC public/private:       $AC_PUB / $AC_PRIV"
           echo "Relay public/private:    $RELAY_PUB / $RELAY_PRIV"
           echo "VPC subnet:              $SUBNET_CIDR"
+          echo "Relay private IP pinned: $RELAY_IP_PINNED"
 
       - name: Download build artifact
         uses: actions/download-artifact@v8
@@ -398,15 +413,23 @@ jobs:
         # outside the VPC, so the whitelist carries the pair rather than
         # betting on one path.
         #
-        # It also carries the VPC subnet as a prefix, and that one is not
-        # redundant: the relay's private address is not pinned in Terraform, so
-        # any replacement of that instance (an AMI change, a taint, an AZ move)
-        # brings it back with a different one. The server's live whitelist would
-        # still name the old address, SSH from the new relay would be dropped,
-        # and this job — which reaches the server *through* the relay — could
-        # never push the correction. That is a root-volume-detach recovery. The
-        # subnet prefix covers the replacement instead. See the subnet_cidr
-        # output in terraform/demo/outputs.tf.
+        # It also carries the VPC subnet as a prefix *unless the relay's private
+        # address is pinned*, and when it is unpinned that entry is not
+        # redundant: any replacement of that instance (an AMI change, a taint,
+        # an AZ move) brings it back with a different private address. The
+        # server's live whitelist would still name the old one, SSH from the new
+        # relay would be dropped, and this job — which reaches the server
+        # *through* the relay — could never push the correction. That is a
+        # root-volume-detach recovery, and the subnet prefix is what covers it.
+        #
+        # The cost is real and is why the pin exists: the prefix admits every
+        # instance in the public subnet to tcp/22 on the server, the AC
+        # included, and exempts them all from the knock-length floor. The
+        # security group is still the narrower control (SSH from the relay's SG
+        # only), so this is defence-in-depth that is wider than the policy it
+        # defends — not a hole. Set var.relay_private_ip (see
+        # terraform/demo/variables.tf) and the prefix is dropped from the list,
+        # leaving an XDP layer that says exactly what the security group says.
         #
         # This is a hard gate, placed BEFORE the configs are rendered and
         # therefore before anything is scp'd or restarted: a missing Terraform
@@ -462,6 +485,11 @@ jobs:
           # from the subnet_cidr output, and a multi-subnet or multi-AZ layout
           # would hand back a prefix the relay is not in. Same containment test
           # the deploy-server job runs against the live SSH peer address.
+          #
+          # Checked even when the address is pinned and the prefix will not be
+          # rendered: a relay outside the declared subnet means something about
+          # this layout is not what the rest of the pipeline assumes, and that
+          # is worth a red run either way.
           ip2int() {
             local rest="$1" o1 o2 o3 o4
             o1=${rest%%.*}; rest=${rest#*.}
@@ -492,11 +520,18 @@ jobs:
           echo "Relay source addresses for the nhp-server XDP whitelist:"
           echo "  $RELAY_PRIV (VPC / SSH jump path)"
           echo "  $RESOLVED (public, via $RELAY_FQDN)"
-          echo "  $SUBNET_CIDR (VPC subnet; survives a relay replacement)"
+          RELAY_IPS="$RELAY_PRIV,$RESOLVED"
+          if [ '${{ steps.tf_outputs.outputs.relay_private_ip_pinned }}' = 'true' ]; then
+            echo "  (no subnet prefix: var.relay_private_ip pins $RELAY_PRIV, so a"
+            echo "   replaced relay comes back on it and the two entries above suffice)"
+          else
+            echo "  $SUBNET_CIDR (VPC subnet; survives a relay replacement)"
+            RELAY_IPS="$RELAY_IPS,$SUBNET_CIDR"
+          fi
           # generate-nhp-keys.sh splits this on commas and renders it as a TOML
           # array, so extra addresses can be appended here without touching the
           # template. Entries are host addresses or CIDR prefixes.
-          echo "RELAY_IPS=$RELAY_PRIV,$RESOLVED,$SUBNET_CIDR" >> $GITHUB_ENV
+          echo "RELAY_IPS=$RELAY_IPS" >> $GITHUB_ENV
           echo "XDP_ENABLED=true" >> $GITHUB_ENV
           # Keep in sync with the nhp_min_udp_len default in
           # nhp/ebpf/xdp/nhp_server_xdp.c. Unlike the port, this value is
@@ -1006,7 +1041,17 @@ jobs:
           # CAP_BPF loads the program and maps, CAP_NET_ADMIN attaches it to
           # the interface, CAP_PERFMON opens the perf ring the event log
           # reads. No CAP_SYS_ADMIN and no CAP_DAC_OVERRIDE — as ambient caps
-          # on an internet-facing daemon both are effectively root.
+          # on an internet-facing daemon both are effectively root. The daemon
+          # gives the three back once the filter is attached; the "Verify the
+          # XDP loader gave its capabilities back" step below is the check that
+          # it did.
+          #
+          # NoNewPrivileges=true is here because the shipped unit sets it and
+          # this file has to be the same unit. A drop-in that omits a setting
+          # does not inherit it from anywhere — it simply leaves whatever the
+          # base unit says — so on a host created before that unit shipped it
+          # would be absent entirely, and "keep the two in sync" would be
+          # untrue in the one direction nobody looks at.
           echo "Installing eBPF capability drop-in..."
           BPFFS_PREP="mountpoint -q /sys/fs/bpf || mount -t bpf bpf /sys/fs/bpf; chgrp ${{ env.DEPLOY_USER }} /sys/fs/bpf; chmod 0770 /sys/fs/bpf"
           {
@@ -1014,6 +1059,7 @@ jobs:
             echo "ExecStartPre=+/bin/sh -c '$BPFFS_PREP'"
             echo "AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
             echo "CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
+            echo "NoNewPrivileges=true"
           } > /tmp/10-ebpf.conf
           scp /tmp/10-ebpf.conf nhp-server:/tmp/10-ebpf.conf
           ssh nhp-server "sudo mkdir -p /etc/systemd/system/nhp-serverd.service.d && \
@@ -1073,6 +1119,91 @@ jobs:
           echo "Active relay whitelist (last applied):"
           ssh nhp-server "grep -hE 'xdp relay whitelist applied|server XDP engine loaded' $REMOTE_DIR/logs/server-[0-9]*.log 2>/dev/null | tail -n 1" || \
             echo "  (no whitelist line yet)"
+
+      - name: Verify the XDP loader gave its capabilities back
+        # The unit grants CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON so the filter
+        # can be loaded and attached. Holding them afterwards would be a much
+        # larger grant than the job needs: CAP_BPF with CAP_PERFMON loads
+        # kprobe/tracing programs, which read arbitrary kernel memory
+        # (bpf_probe_read_kernel) — other processes' credentials, and this
+        # daemon's own Noise private key; CAP_NET_ADMIN detaches this filter and
+        # rewrites routes and netfilter rules. nhp-serverd parses untrusted UDP
+        # from the whole internet and dlopens third-party auth plugins into the
+        # same address space, so a memory-safety bug or a hostile plugin would
+        # inherit whatever is left.
+        #
+        # So the loader drops them as its last act (dropLoaderPrivileges in
+        # nhp/utils/ebpf/caps_linux.go), and this step is what keeps that true:
+        # a drop that silently stopped working looks exactly like one that
+        # works. CAP_BPF alone is tolerated because on a kernel with
+        # kernel.unprivileged_bpf_disabled set — Amazon Linux 2023 is one —
+        # bpf(2) is privileged wholesale and giving it up would break the
+        # xdp.toml reload path, i.e. the only remote way to correct a whitelist.
+        # CAP_NET_ADMIN and CAP_PERFMON are never tolerated.
+        #
+        # Every thread is checked, not just /proc/<pid>/status: capabilities are
+        # per-thread, and a drop applied to one thread would leave the thread
+        # group leader's status reading zero while the runtime's other threads
+        # still held the full set — a green check over a guarantee that does not
+        # hold. (libcap's psx is what makes the process-wide drop real.)
+        run: |
+          set -euo pipefail
+
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-server"
+
+          PID=$(ssh nhp-server "systemctl show -p MainPID --value nhp-serverd")
+          if [ -z "$PID" ] || [ "$PID" = "0" ]; then
+            echo "ERROR: nhp-serverd has no main PID; cannot check its capabilities." >&2
+            exit 1
+          fi
+
+          CAPS=$(ssh nhp-server "sudo grep -H -E '^Cap(Prm|Eff|Amb):' /proc/$PID/task/*/status")
+          echo "$CAPS"
+
+          # Bit numbers from <linux/capability.h>. Plain shell arithmetic
+          # rather than awk: the runner's awk is mawk, which has none of
+          # and()/lshift()/strtonum().
+          NET_ADMIN=$(( 1 << 12 ))
+          PERFMON=$(( 1 << 38 ))
+          BPF=$(( 1 << 39 ))
+
+          BAD=$(mktemp)
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            # "/proc/<pid>/task/<tid>/status:CapEff:\t000001ffffffffff"
+            field=${line##*status:}
+            name=${field%%:*}
+            value=${field##*:}
+            value=$(printf '%s' "$value" | tr -d '[:space:]')
+            v=$(( 0x$value ))
+            if [ "$name" = "CapAmb" ] && [ "$v" -ne 0 ]; then
+              echo "ambient set is not empty: $line" >> "$BAD"
+            fi
+            if [ "$name" = "CapPrm" ] || [ "$name" = "CapEff" ]; then
+              if [ $(( v & NET_ADMIN )) -ne 0 ]; then
+                echo "CAP_NET_ADMIN still held: $line" >> "$BAD"
+              fi
+              if [ $(( v & PERFMON )) -ne 0 ]; then
+                echo "CAP_PERFMON still held: $line" >> "$BAD"
+              fi
+              if [ $(( v & ~BPF )) -ne 0 ]; then
+                echo "capabilities beyond CAP_BPF still held: $line" >> "$BAD"
+              fi
+            fi
+          done <<< "$CAPS"
+
+          if [ -s "$BAD" ]; then
+            echo "ERROR: nhp-serverd did not give its loader capabilities back:" >&2
+            sed 's/^/  /' "$BAD" >&2
+            ssh nhp-server "grep -h 'XDP loader privileges' $REMOTE_DIR/logs/server-[0-9]*.log 2>/dev/null | tail -n 5" >&2 || true
+            rm -f "$BAD"
+            exit 1
+          fi
+          rm -f "$BAD"
+
+          echo "XDP loader capabilities dropped (CAP_NET_ADMIN and CAP_PERFMON gone on every thread):"
+          ssh nhp-server "grep -h 'XDP loader privileges' $REMOTE_DIR/logs/server-[0-9]*.log 2>/dev/null | tail -n 1" || \
+            echo "  (no drop line in the log yet)"
 
       - name: Verify the server's own outbound flows still get their replies
         # The XDP filter governs ingress for the whole host, so it also decides

@@ -583,6 +583,7 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV \
 | `build` → `test -s release/nhp-server/etc/nhp_server_xdp.o` | 目标文件必须编出来 | 红；避免 `.o` 缺失导致线上静默 fail-open |
 | `deploy-server` → `Deploy nhp-serverd and plugins` | scp `.o` + `xdp.toml`，安装 `/etc/systemd/system/nhp-serverd.service.d/10-ebpf.conf`（`CAP_BPF CAP_NET_ADMIN CAP_PERFMON` + 准备 `/sys/fs/bpf`），重启 | — |
 | `deploy-server` → `Verify the XDP ingress filter attached` | `ip -details link show \| grep -q xdpgeneric`，没挂上就红 | 这是把「fail-open 静默失效」变成「部署失败」的唯一关卡 |
+| `deploy-server` → `Verify the XDP loader gave its capabilities back` | 读 `/proc/<pid>/task/*/status`，每个线程的 `CapAmb` 必须为 0，`CapPrm`/`CapEff` 不得含 `CAP_NET_ADMIN`(12) / `CAP_PERFMON`(38)；只允许剩 `CAP_BPF`(39) | 红；挂载完成后 `dropLoaderPrivileges` 会交还能力，这一步保证「交还」没有悄悄失效。`kernel.unprivileged_bpf_disabled` 非 0 时保留 `CAP_BPF`（否则 `xdp.toml` 热加载写不了 map） |
 | `deploy-server` → `Verify the server's own outbound flows still get their replies` | 在 server 上 `getent ahostsv4 <SMTP_HOST>`（udp/53 应答）+ `/dev/tcp/<SMTP_HOST>/587`（SYN-ACK），各重试 3 次 | 红；这是把「回包被丢 → OTP 邮件发不出」变成「部署失败」的关卡。DNS 失败看 `REASON=UDP_OTHER`，SMTP 失败看 `REASON=TCP_OTHER` |
 | `deploy-server` → `Verify the host can still renew its DHCP lease` | `sudo networkctl renew <iface>`，然后事件日志里 `REASON=DHCP_CLIENT` 的行数必须增加，且网卡地址不变 | 红；这是把「续租应答被丢 → 一个租期后整机失联」变成「部署失败」的关卡。失败时看 `REASON=UDP_OTHER ... SPT=67`。**其它任何探测都看不见这个故障**，因为租期没到之前一切正常 |
 

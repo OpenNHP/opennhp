@@ -910,6 +910,180 @@ public address covers the hairpin path through the internet gateway. The
 host reports for its own SSH connection, which is the check that turns this
 mistake into a red run instead of a lockout.
 
+### Why each rule is there
+
+The invariants are listed in `CLAUDE.md`; this is the reasoning, and in most
+cases the incident, behind them.
+
+**"Everything else" includes IPv6 and fragments**, and neither was true at
+first. IPv6 was one `case ETH_P_IPV6: return XDP_PASS`, justified by the demo
+hosts having no v6 service — but sshd binds `[::]:22` by default, so the day a
+v6 CIDR reached the VPC every port would have been open over v6 with the
+deploy's "filter attached" check still green. `handle_ipv6()` now runs the same
+tree minus the whitelist (the LPM trie holds IPv4 prefixes, so no v6 source can
+be recognised as the relay): ICMPv6 ND/MLD and "packet too big" pass so the
+host stays on its subnet, DHCPv6 (547 → 546) and NTP pass for the same reasons
+as their v4 spellings, replies to the host's own v6 flows pass via
+`has_local_flow6()`, everything else is `V6_OTHER`. **SSH must therefore reach
+the host over IPv4**; `warnOnGlobalIPv6` logs a `Warning` naming the address
+when the filtered interface has a global v6 address, and `deploy-server`'s
+`$SSH_CONNECTION` containment gate fails outright for a v6 peer address, since
+no IPv4 entry can contain it.
+
+Non-first IPv4 fragments have no L4 header, and the TCP/UDP branches used to
+read one anyway at `ihl * 4`: every datagram over the path MTU lost its tail to
+`UDP_OTHER` and died in reassembly, while a crafted fragment whose payload read
+`67 → 68` took the DHCP exception. They are now split out before the protocol
+dispatch and passed as `IPV4_FRAGMENT` — inert without the first fragment,
+which carries the ports and takes the full tree. An IPv6 fragment header with a
+non-zero offset gets the same answer (`IPV6_FRAGMENT`). The event record
+(`struct nhp_event_t`) carries an address family and both address pairs so a v6
+drop logs its real source; `serverEventByteSize` in the loader is `sizeof` that
+struct and has to move with it.
+
+**Attaching is opt-in because this is not a hardening tweak.** It drops every
+inbound TCP flow the host did not initiate, SYNs to services this daemon
+listens on included, and on a host reachable only through the whitelist one bad
+list makes it unreachable for good. So a server with no `xdp.toml` keeps
+exactly the exposure it had before the filter existed, even though `make ebpf`
+puts the object in `release/nhp-server/etc/` and many operators run the daemon
+as root. The refusal in front of a listener exists for the same reason:
+attaching there would take that service off the air with nothing in user space
+to say so (the shipped `endpoints/server/main/etc/http.toml` has
+`EnableHttp = true` on 443). Loopback binds are not a conflict — the program is
+on the default-route interface. `http.toml` is hot-reloaded, so
+`updateHttpConfig` refuses the same conflict arriving from the other direction.
+
+`NhpMinFrameBytes` and the knock port are *applied*, not documentation: the
+loader rewrites `nhp_min_udp_len` and `nhp_listen_port` in the object's
+`.rodata` before the verifier runs (`setServerConstants`). The port comes from
+the daemon's own `ListenPort`, never from the TOML, so the filter and the
+listener cannot disagree — a hard-coded 62206 would have dropped every knock on
+any server configured elsewhere. An object too old to carry those constants is
+refused rather than attached with its own defaults.
+
+**DHCP is the exception that matters.** `has_local_flow()` only admits
+*connected* sockets, and a DHCP client receives its lease on a raw `AF_PACKET`
+socket or on one merely bound to udp/68 — so the renewal answer (udp/67 →
+udp/68) was dropped. EC2 leases the primary private IPv4 for a finite time and
+systemd-networkd renews it at half the lease; with the answer dropped the lease
+expired, networkd removed the address, and roughly an hour after a deploy that
+had verified perfectly the host went dark on **every** port at once — SSH, the
+knock port, and with them every recovery path except a reboot. The knock port
+staying open is what makes this look like "the filter closed the whole host"
+rather than a filter bug. chronyd has the same shape one layer up (its poll
+answer comes back to its own udp/123) and costs the clock instead of the
+address, so it is passed too; nothing else is, because the alternative — admit
+anything addressed to a bound port — throws away the "no unsolicited packet
+gets in" property entirely. The AC's program has always had the DHCP
+short-circuit (`DHCP_PORT_R || DHCP_PORT_O`); the server's fork dropped it.
+
+`deploy-server`'s `Verify the host can still renew its DHCP lease` step is the
+standing gate: it runs `networkctl renew` and fails unless a new
+`REASON=DHCP_CLIENT` line shows the answer crossed the filter. No other probe
+can see this, because everything works for as long as the lease lasts. The
+second line of defence is the watchdog in
+`endpoints/server/ebpf/serverengine.go`: if the filtered interface has no
+routable IPv4 address for two minutes it logs `Critical` and detaches, so the
+next DHCP exchange can restore the host instead of needing volume surgery. It
+can only fire in a state where the host answers nothing anyway.
+
+**The capabilities are given back after the attach.** systemd grants CAP_BPF,
+CAP_NET_ADMIN and CAP_PERFMON ambiently; `dropLoaderPrivileges`
+(`nhp/utils/ebpf/caps_linux.go`) clears the ambient set and empties permitted
+and effective as the last step of `loadServerEngine`, on the failure path as
+well as the success one. Holding them for the life of the process would be far
+more than the job needs: CAP_BPF with CAP_PERFMON loads kprobe and tracing
+programs, i.e. `bpf_probe_read_kernel()` over arbitrary kernel memory —
+other processes' credentials, this daemon's own Noise private key — and
+CAP_NET_ADMIN detaches this filter and rewrites routes and netfilter rules. The
+process parses untrusted UDP from the internet and `dlopen`s third-party auth
+plugins into the same address space, so whatever it keeps, they inherit.
+
+Nothing after the attach needs them: map updates go through an fd the process
+already holds, the perf reader is opened before the drop, and detaching is
+`close(2)`. The one exception is `kernel.unprivileged_bpf_disabled`, which
+Amazon Linux 2023 ships non-zero: there bpf(2) is privileged wholesale, so
+CAP_BPF is kept — giving it up would make every `xdp.toml` reload fail with
+EPERM, and that reload is the only remote way to correct a whitelist. The drop
+is process-wide rather than per-thread (libcap's psx; `syscall.AllThreadsSyscall`
+returns ENOTSUP in any binary linking cgo, which this one does by way of
+`plugin`), and `deploy-server`'s `Verify the XDP loader gave its capabilities
+back` reads `/proc/<pid>/task/*/status` to keep it honest.
+
+**The event log is bounded on purpose.** Every line in it is a packet somebody
+else chose to send, and `nhp/log` rotates by date without ever pruning: letting
+it grow hands a scanner the ability to fill the root volume and kill the daemon
+the filter protects. Four limits, because the first three bound a *rate* and
+not a size:
+
+- a per-action per-CPU token bucket (`NHP_EVENT_BURST`), so a flood of one
+  class cannot starve out another's records;
+- a global per-CPU bucket across all classes (`NHP_EVENT_GLOBAL_BURST`) —
+  without it a sender picks the class, and about eleven reachable classes times
+  the per-class budget times the CPU count is hundreds of lines a second;
+- bulk classes counted but never written per packet (`TCP_ESTABLISHED`,
+  `UDP_ESTABLISHED`, `V6_ESTABLISHED`, `ICMPV6_CONTROL`, and every `SSH_RELAY`
+  packet after the SYN), whose rate is the host's throughput rather than its
+  event rate;
+- a daily byte budget in the writer (`serverLogDailyEventBytes`), which is the
+  only one of the four that bounds the file the retention sweep must never
+  delete — today's.
+
+Throughout, the `[NHP-STAT]` summary (one line per active class per minute, fed
+by `nhp_action_stats` counters that tick for *every* packet) keeps the totals
+exact however much reporting was dropped. `pruneServerEventLogs` then caps
+retention at 14 days / 256 MiB, oldest first, counting today's files against
+the budget but never removing them.
+
+**The whitelist entries, and why there may be a subnet prefix.** `etc/xdp.toml`
+(`deploy/config-templates/server/xdp.toml`) is rendered from `$RELAY_IPS` and
+hot-reloaded. CI renders the relay's private address (SSH arrives from there),
+its public address (the hairpin path; whitelisting only this one closes tcp/22
+the moment the daemon restarts), and — unless `var.relay_private_ip` pins the
+relay's address — the VPC subnet. That prefix is what covers a *replaced*
+relay: a new instance comes back on a different private address, the server's
+live whitelist still names the old one, and `deploy-server` reaches the server
+*through* the relay, so it could never push the correction. The dead-man
+watchdog does not fire either — the host still has its address — which makes it
+a root-volume-detach recovery. The cost is that the AC and the server share
+that subnet and are covered too; pinning the address removes the prefix and
+leaves the XDP layer saying exactly what `aws_security_group.server` says
+(SSH from the relay's security group only).
+
+**The whitelist is installed before the program is attached**, as
+`EngineLoadParams.RelayIPs`. Writing it afterwards — the first version — leaves
+two holes no CI gate can see, because both are on the host rather than in the
+pipeline: a window after every restart in which SSH from the relay is dropped,
+and, if that one write fails (an LPM-trie `Update` error, ENOMEM), a filter left
+attached enforcing an *empty* whitelist — tcp/22 closed to every source, with no
+break-glass path, at the one moment user space has just proved it cannot write
+the map it would need to fix. As a load parameter a bad whitelist is an ordinary
+pre-attach error: nothing is attached, the pins are swept, the daemon runs
+fail-open.
+
+The same reasoning makes `ReplaceRelayIPs` all-or-nothing against the map and
+not only against the file. It reads the live whitelist first, so it knows which
+keys are its own; a failed `Update` rolls those back and skips the stale sweep,
+leaving the map holding exactly the list it held before. Sweeping anyway is how
+a reload that merely failed to add the relay's *new* address removes its *old*
+one too, under a caller logging that it kept the active whitelist. "Usable" is
+decided by `ParseRelayPrefixes` (`nhp/utils/ebpf/relayips.go`), not by counting
+strings: `["relay.opennhp.org"]`, `[""]`, an IPv6-only list or a typo like
+`["10.0.1.300"]` is a non-empty *list* naming not one address the trie can hold.
+An IPv4-mapped IPv6 prefix (`::ffff:10.0.1.0/120`) is the spelling that gets
+past a check written against `net`: `To4()` is non-nil for it while
+`Mask.Size()` is 120, above the trie's `max_prefixlen` of 32, which the kernel
+answers with `EINVAL` — validated as usable, and the map will not take it.
+
+**If the host is already unreachable, reboot the instance before anything else**
+(`aws ec2 reboot-instances`, no SSH needed): DHCP runs before `nhp-serverd`
+starts, so the address comes back and tcp/22 is open for the window before the
+daemon attaches the filter again. Use that window to either
+`systemctl stop nhp-serverd` (filter detached, host stays reachable) or re-run
+the deploy. Volume surgery is only needed when the *whitelist* is wrong, i.e.
+when the filter is attached and the host does have its address.
+
 Hands-on verification — a netns rehearsal that exercises every branch of the
 decision tree, the baseline to capture before the first deploy (including the
 check that the whitelisted address is the one the host actually sees SSH

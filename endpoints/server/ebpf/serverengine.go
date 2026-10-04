@@ -64,6 +64,12 @@ type LoadParams struct {
 // p.RelayIPs already in the kernel map by the time anything is attached, so a
 // successful return means the filter is enforcing that whitelist and a failed
 // one means no filter at all.
+//
+// Call it once per process. The loader gives the unit's CAP_BPF, CAP_NET_ADMIN
+// and CAP_PERFMON back as its last step (dropLoaderPrivileges in
+// nhp/utils/ebpf), so a second load would find itself unprivileged — on
+// purpose: nothing after the attach needs them, and this daemon parses
+// untrusted UDP and dlopens plugins for the rest of its life.
 func EngineLoad(p LoadParams) error {
 	mu.Lock()
 	defer mu.Unlock()

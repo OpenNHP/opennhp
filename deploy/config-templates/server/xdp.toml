@@ -44,15 +44,17 @@ NhpMinFrameBytes = ${XDP_NHP_MIN_FRAME_BYTES}
 # a typo like 10.0.1.300 fails the whole list, and nhp-serverd then refuses to
 # attach (at startup) or keeps the whitelist it is already enforcing (on
 # reload). A single bad entry is not skipped — it could be the one this host's
-# SSH actually arrives from. CI
-# renders three: the relay's VPC private address, which is what SSH into this
-# host arrives from because CI jumps through the relay to the server's private
-# address; the public address of relay.opennhp.org, for anything that reaches
-# this host through the internet gateway instead; and the VPC subnet.
+# SSH actually arrives from. CI always renders two: the relay's VPC private
+# address, which is what SSH into this host arrives from because CI jumps
+# through the relay to the server's private address, and the public address of
+# relay.opennhp.org, for anything that reaches this host through the internet
+# gateway instead.
 #
-# The subnet entry is the one that is not obvious. The relay's private address
-# is not pinned in Terraform, so replacing that instance gives it a new one —
-# and a whitelist naming only the old address drops SSH from the new relay,
-# which is the only path CI has for pushing a corrected whitelist. The subnet
-# covers the replacement.
+# It renders a third, the VPC subnet, only while the relay's private address is
+# unpinned (var.relay_private_ip is empty). Replacing that instance then gives
+# it a new address, and a whitelist naming only the old one drops SSH from the
+# new relay — which is the only path CI has for pushing a corrected whitelist.
+# The subnet prefix covers the replacement, at the cost of admitting every other
+# instance in that subnet to tcp/22 here; the security group is still the
+# narrower control. Pin the address and this entry goes away.
 RelayIPs = [${RELAY_IPS_TOML}]

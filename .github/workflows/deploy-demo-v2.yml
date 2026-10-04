@@ -49,6 +49,16 @@ env:
   AWS_REGION: us-east-2
   GO_VERSION: '1.26'
   GOMODULE: github.com/OpenNHP/opennhp/nhp
+  # glibc on the deploy targets. All three hosts run the AMI selected by
+  # terraform/demo/ami.tf (al2023-ami-2023.*-x86_64), i.e. Amazon Linux 2023,
+  # whose glibc is 2.34. The daemons are cgo builds, so a binary compiled
+  # against anything newer than this dies at exec on the host with
+  # "/lib64/libc.so.6: version `GLIBC_2.xx' not found" — after the deploy has
+  # already stopped the daemon that was working. The build therefore runs
+  # inside an AL2023 container (docker/Dockerfile.al2023-builder) and the
+  # result is re-checked against this number before anything is uploaded.
+  # Raise it only when the demo AMI itself moves.
+  TARGET_GLIBC: '2.34'
   DEPLOY_USER: ec2-user
   CONFIRM: ${{ github.event.inputs.confirm }}
   DEPLOY_BINARIES: ${{ github.event.inputs.deploy_binaries }}
@@ -139,15 +149,62 @@ jobs:
           sudo apt-get install -y clang llvm libbpf-dev
           clang --version
 
+      # The daemons are compiled inside Amazon Linux 2023 — the distribution
+      # the demo hosts run — rather than on the runner. They are cgo builds
+      # (nhp-serverd has to be: plugin.Open is a stub without cgo, and the
+      # auth plugins are loaded that way), so the glibc they are linked
+      # against is a floor on the glibc they will run on. When ubuntu-latest
+      # moved past the hosts' glibc 2.34 this stopped being academic: the
+      # deploy stopped the running daemons, uploaded binaries that exec'd into
+      # "version `GLIBC_2.38' not found", and left nhp-serverd and nhp-acd
+      # down — the AC's backstop holding its ports closed — with no binary on
+      # the hosts to roll back to, since the deploy had already overwritten it.
+      #
+      # The Dockerfile COPYs nothing from the context, so it is fed on stdin
+      # rather than shipping the whole repo to the Docker daemon.
+      - name: Build the Amazon Linux 2023 builder image
+        run: |
+          docker build \
+            --build-arg GO_VERSION='${{ env.GO_VERSION }}' \
+            -t opennhp-al2023-builder:ci \
+            - < docker/Dockerfile.al2023-builder
+
       - name: Build serverd, acd, relayd, and plugins
         env:
           CUSTOM_LD_FLAGS: ${{ steps.version.outputs.ldflags }}
         run: |
-          echo "Building all NHP daemons..."
-          make init
-          make serverd acd relayd plugins
+          set -euo pipefail
+
+          # Reuse the module/build caches actions/setup-go restored for this
+          # job. Both are content-addressed and path-independent, so mounting
+          # them at different paths inside the container is safe, and the
+          # cache the post-job step saves stays usable for the next run.
+          GOMODCACHE_HOST=$(go env GOMODCACHE)
+          GOCACHE_HOST=$(go env GOCACHE)
+          mkdir -p "$GOMODCACHE_HOST" "$GOCACHE_HOST"
+
+          echo "Building all NHP daemons (inside amazonlinux:2023)..."
+          # --user keeps everything the build writes — release/, go.sum
+          # updates from `make init`, the mounted caches — owned by the runner
+          # user, so the later steps and the cache save are not blocked by
+          # root-owned files. HOME has to point somewhere writable for that
+          # uid, hence /tmp.
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$PWD":/src -w /src \
+            -v "$GOMODCACHE_HOST":/gomodcache \
+            -v "$GOCACHE_HOST":/gocache \
+            -e HOME=/tmp \
+            -e GOMODCACHE=/gomodcache \
+            -e GOCACHE=/gocache \
+            -e CUSTOM_LD_FLAGS \
+            opennhp-al2023-builder:ci \
+            sh -c 'make init && make serverd acd relayd plugins'
 
           # Compile the two eBPF objects the AC loads at startup in FilterMode=1.
+          # These are BPF bytecode, not host code: no libc is linked into them,
+          # so they are built on the runner with the clang installed above and
+          # are unaffected by the container the daemons come out of.
           # `ebpf-objs` (not `ebpf`) so we don't trigger the full
           # generate-version-and-build rebuild of agentd/db/kgc/SDKs. Must run
           # from the repo root: CLANG_OPTS carries -I. and vmlinux.h is resolved
@@ -234,6 +291,47 @@ jobs:
 
           echo "demoapp binary:"
           ls -la artifact/demoapp/
+
+      # The gate for the glibc floor. It asks the artifact what it needs
+      # rather than trusting how it was produced, so it holds for every ELF
+      # this job ships no matter which image or runner built it: the three
+      # cgo daemons, the plugin .so files nhp-serverd dlopens (a plugin that
+      # cannot be loaded costs authentication, not just a feature), and the
+      # demoapp binary that comes out of a different Dockerfile entirely.
+      #
+      # This runs before the upload, so a mismatch fails the build job and
+      # no deploy job starts — the daemons on the hosts are never stopped.
+      - name: Check the binaries run on the demo hosts' glibc
+        run: |
+          set -euo pipefail
+          # Fail rather than silently check nothing if the plugin build
+          # produced no .so (the `if [ -d ... ]` above tolerates that).
+          plugin_sos=$(find artifact/plugins -name '*.so' | sort)
+          if [ -z "$plugin_sos" ]; then
+            echo "ERROR: no plugin .so in artifact/plugins — nhp-serverd needs them" >&2
+            exit 1
+          fi
+          ./scripts/check-glibc-compat.sh '${{ env.TARGET_GLIBC }}' \
+            artifact/server/nhp-serverd \
+            artifact/ac/nhp-acd \
+            artifact/relay/nhp-relayd \
+            artifact/demoapp/demoapp \
+            $plugin_sos
+
+          # The other half of the trade-off. Dropping cgo is the obvious way
+          # to make the check above pass, and for nhp-serverd it is the wrong
+          # one: without cgo Go's plugin package compiles to a stub, every
+          # plugin.Open returns "plugin: not implemented", and the server
+          # comes up healthy with no authentication plugins at all. A cgo
+          # build is dynamically linked against libc; a CGO_ENABLED=0 one has
+          # no dynamic section to find it in.
+          if ! readelf -d artifact/server/nhp-serverd 2>/dev/null | grep -q 'NEEDED.*libc\.so'; then
+            echo "ERROR: nhp-serverd is not dynamically linked against libc, which means" >&2
+            echo "       it was built without cgo. It would start, then fail to load every" >&2
+            echo "       auth plugin with 'plugin: not implemented'. Build it with cgo" >&2
+            echo "       (inside the AL2023 image) instead of disabling cgo." >&2
+            exit 1
+          fi
 
       - name: Inject plugin secrets
         env:
@@ -344,14 +442,20 @@ jobs:
           # is the fallback. A failure here is still fatal — the XDP whitelist
           # gate below refuses to render a server config without this prefix.
           SUBNET_CIDR=$(terraform output -raw subnet_cidr 2>/dev/null || true)
-          # setup-terraform@v4 defaults to terraform_wrapper=true, which wraps
-          # the binary and writes its failure marker to STDOUT — a GitHub
-          # workflow command of the form "::error::Terraform exited with code
-          # N." 2>/dev/null only discards terraform's own stderr; the marker
-          # stays in the captured variable and looks like a non-empty success.
-          # Treat anything that doesn't parse as a CIDR as the missing case so
-          # the fallback below can take over instead of shipping the wrapper's
-          # error string to the next job.
+          # Only an IPv4 prefix counts as "read it". `|| true` swallows the
+          # exit code, and whatever the failing command left on stdout lands in
+          # the variable instead — that is how a non-empty non-value slipped
+          # past an emptiness test here and reached the whitelist gate below as
+          # "subnet_cidr ... is not an IPv4 prefix: '::error::Terraform exited
+          # with code 1.'". Anything that is not a prefix means the read did
+          # not produce one; treat it as missing and let the fallback run.
+          #
+          # This asks only "did the read produce something prefix-shaped" — it
+          # is a filter against stdout noise, not validation. 999.0.0.0/99
+          # passes it. What a prefix has to *be* is decided downstream, by the
+          # containment check in "Resolve the relay addresses" and by
+          # ParseRelayPrefixes on the host; do not start treating a value as
+          # validated because it got past here.
           if ! printf '%s' "$SUBNET_CIDR" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$'; then
             SUBNET_CIDR=""
           fi
@@ -361,8 +465,6 @@ jobs:
                 | select(.address == "aws_subnet.public")
                 | .values.cidr_block ][0] // ""')
             if ! printf '%s' "$SUBNET_CIDR" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$'; then
-              SUBNET_CIDR=""
-            fi
             if [ -z "$SUBNET_CIDR" ]; then
               echo "ERROR: neither the subnet_cidr output nor aws_subnet.public gave" >&2
               echo "       an IPv4 prefix (got: '$SUBNET_CIDR'). Either they are not in" >&2
@@ -387,12 +489,14 @@ jobs:
           # subnet_cidr above) reads as "not pinned", which is the wider and
           # therefore safe answer — the narrow one is the one that can lock the
           # server away.
-          RELAY_IP_PINNED=$(terraform output -raw relay_private_ip_pinned 2>/dev/null || true)
+          #
           # Normalize explicitly rather than relying on `!= "true"` to catch
           # everything: a failed read leaves whatever the command printed to
           # stdout in the variable (see subnet_cidr above), and it is worth
           # being deliberate that such a value lands on the wide answer by
           # design and not by accident.
+          RELAY_IP_PINNED=$(terraform output -raw relay_private_ip_pinned 2>/dev/null || true)
+
           case "$RELAY_IP_PINNED" in
             true|false) ;;
             *) RELAY_IP_PINNED=false ;;
@@ -1481,19 +1585,55 @@ jobs:
             -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
             -backend-config="region=${{ env.AWS_REGION }}"
 
-          # Keep "read false" and "the read failed" apart: `|| true` would turn
-          # a terraform failure into whatever it printed on stdout, which is
-          # simply not "true" and so reads as "CA disabled". Only the two
-          # booleans are values; anything else means the read produced nothing.
-          if ! STEALTH_CA_ENABLED=$(terraform output -raw stealth_ca_enabled 2>/dev/null); then
-            STEALTH_CA_ENABLED=""
+          # Three outcomes, and they must stay apart: the output says false, the
+          # output is not in the state, or the terraform invocation failed.
+          # Unlike relay_private_ip_pinned above, false is not the safe guess
+          # here — "Ensure TLS certificate + nginx on ac" below deletes the
+          # demo.nhp certificate and nginx config from the AC on it, so a
+          # transient terraform or backend failure would take down a working
+          # demo.nhp TLS setup and still leave this job green. (`|| true` makes
+          # that worse still: it leaves whatever the failing command printed on
+          # stdout in the variable, so even an emptiness test waves it through.)
+          #
+          # `terraform output -json` tells the three apart: a non-zero exit is
+          # the invocation itself failing, `{}` or a missing key is an output no
+          # apply has written into the state yet, and only then is the value a
+          # value. The third state is passed on as `unknown`, which deploys
+          # nothing and deletes nothing.
+          #
+          # $TF_OUTPUTS holds every output including the sensitive cert and key,
+          # so it is only ever fed to jq, never echoed.
+          if ! TF_OUTPUTS=$(terraform output -json 2>/dev/null); then
+            echo "ERROR: 'terraform output -json' failed in terraform/demo." >&2
+            echo "       Refusing to guess at stealth_ca_enabled: treating a failed" >&2
+            echo "       read as 'false' would delete the demo.nhp certificate and" >&2
+            echo "       nginx config from the AC." >&2
+            exit 1
           fi
+          STEALTH_CA_ENABLED=$(printf '%s' "$TF_OUTPUTS" | jq -r '
+            if has("stealth_ca_enabled")
+            then (.stealth_ca_enabled.value | tostring)
+            else "absent" end')
           case "$STEALTH_CA_ENABLED" in
             true|false) ;;
-            *) STEALTH_CA_ENABLED=false ;;
+            absent)
+              echo "note: stealth_ca_enabled is not in the Terraform state (it was added"
+              echo "      to terraform/demo/outputs.tf after the last infra-demo apply)."
+              echo "      Skipping the demo.nhp certificate without touching anything on"
+              echo "      the AC; run infra-demo with action=apply to refresh the outputs."
+              echo "stealth_ca_enabled=unknown" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+            *)
+              echo "ERROR: the stealth_ca_enabled output is not a boolean" >&2
+              echo "       (got: '$STEALTH_CA_ENABLED'). Refusing to guess: 'false'" >&2
+              echo "       would delete the demo.nhp certificate and nginx config" >&2
+              echo "       from the AC." >&2
+              exit 1
+              ;;
           esac
 
-          if [ "$STEALTH_CA_ENABLED" != "true" ]; then
+          if [ "$STEALTH_CA_ENABLED" = "false" ]; then
             echo "stealth CA not configured, skipping demo.nhp certificate deployment"
             echo "stealth_ca_enabled=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -1531,7 +1671,10 @@ jobs:
              /tmp/bootstrap-tls.sh"
 
           # When stealth CA is disabled, clean up any stale demo.nhp artifacts.
-          if [ "${{ steps.demo_nhp_cert.outputs.stealth_ca_enabled }}" != "true" ]; then
+          # Only a literal false does this: the step above exits non-zero if it
+          # could not read the output and emits `unknown` if no apply has
+          # written it yet, so this deletes on an answer and never on a guess.
+          if [ "${{ steps.demo_nhp_cert.outputs.stealth_ca_enabled }}" = "false" ]; then
             ssh nhp-ac \
               "set -e
                if sudo test -f /etc/nginx/conf.d/ac-demo-nhp.conf || \

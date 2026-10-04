@@ -223,6 +223,38 @@ All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 > reference but is no longer deployed. Re-enabling the login page requires
 > undoing all of these together.
 
+#### Deploy binaries are built in an Amazon Linux 2023 container
+
+The three demo hosts run the AMI selected by `terraform/demo/ami.tf`
+(`al2023-ami-2023.*-x86_64`), whose glibc is **2.34**. `deploy-demo-v2` builds
+`nhp-serverd` / `nhp-acd` / `nhp-relayd` and the server plugins inside
+`docker/Dockerfile.al2023-builder` — an `amazonlinux:2023` image carrying the
+`GO_VERSION` toolchain — not on the runner, because the daemons are **cgo**
+builds and the glibc they link against is a floor on the glibc they can run on.
+
+Both halves of that are load-bearing:
+
+- **cgo cannot be dropped**, at least for `nhp-serverd`. It loads its auth
+  plugins with `plugin.Open` (`nhp/plugins/serverpluginhandler.go`), and Go's
+  `plugin` package is a stub without cgo: the daemon starts clean and then
+  fails every plugin load with `plugin: not implemented`, which is the loss of
+  authentication, not of a feature. Host and `.so` are built in one container
+  for the same reason `scripts/check-plugin-deps.sh` exists.
+- **The builder cannot be newer than the target.** When `ubuntu-latest` moved
+  past glibc 2.34 the deploy stopped the running daemons, uploaded binaries
+  that exec'd into ``/lib64/libc.so.6: version `GLIBC_2.38' not found``, and
+  left nhp-serverd and nhp-acd down — the AC's fail-closed backstop holding
+  tcp/443 shut — on a run whose only symptom was a red `systemctl is-active`.
+
+`scripts/check-glibc-compat.sh` re-checks every ELF the job ships (the three
+daemons, every plugin `.so`, the `demoapp` binary from `Dockerfile.demoapp`)
+against `TARGET_GLIBC` in the workflow env, and the same step asserts
+`nhp-serverd` is still dynamically linked against libc so that "make the glibc
+check pass" cannot be answered with `CGO_ENABLED=0`. It runs before the upload,
+so a mismatch fails `build` and no deploy job stops anything. The eBPF objects
+are BPF bytecode with no libc in them and are still compiled on the runner.
+Raise `TARGET_GLIBC` only when the demo AMI itself moves.
+
 #### nhp-server eBPF/XDP ingress filter
 
 `nhp-serverd` attaches `nhp/ebpf/xdp/nhp_server_xdp.c` at startup and enforces

@@ -37,7 +37,7 @@ func (k RelayPrefixKey) String() string {
 // Host bits below the prefix are masked off so the key is canonical: the trie
 // ignores them when matching, but a key that kept them would not compare equal
 // to the same prefix written differently, and ReplaceRelayIPs' stale-entry
-// sweep would then never recognise its own entries.
+// sweep would then never recognize its own entries.
 func ParseRelayPrefix(s string) (RelayPrefixKey, error) {
 	s = strings.TrimSpace(s)
 
@@ -70,9 +70,9 @@ func ParseRelayPrefix(s string) (RelayPrefixKey, error) {
 // same prefix) collapse into one key.
 //
 // All-or-nothing is the point. Skipping bad entries looks forgiving but is the
-// dangerous reading of a typo: a list of one misspelt address parses to no
+// dangerous reading of a typo: a list of one misspelled address parses to no
 // prefixes at all, and a list where only the entry SSH really arrives from is
-// misspelt parses to a whitelist that excludes the operator. Both are
+// misspelled parses to a whitelist that excludes the operator. Both are
 // indistinguishable from a deliberate list at the map level, and on a host
 // whose only way in is the whitelist the mistake cannot be corrected remotely.
 // So a caller gets either every prefix the file asked for or an error to refuse

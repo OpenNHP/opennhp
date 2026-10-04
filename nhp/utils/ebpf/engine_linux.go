@@ -47,7 +47,7 @@ import (
 
 // EngineVariant selects which object file, map set and attachment points a load
 // uses. VariantAC is iota so that a zero-value EngineLoadParams keeps the AC
-// behaviour it had before this package existed.
+// behavior it had before this package existed.
 type EngineVariant int
 
 const (
@@ -231,7 +231,7 @@ var (
 	// from the server's watchdog — removes the pins this process actually
 	// created. DefaultPinDir until a load says otherwise, which is also the
 	// right guess for the pre-load sweep of a previous run's leftovers.
-	// Unsynchronised, like the links above: callers serialise their own loads
+	// Unsynchronized, like the links above: callers serialize their own loads
 	// (see endpoints/server/ebpf, which holds a mutex over both).
 	acPinDir     = DefaultPinDir
 	serverPinDir = DefaultPinDir
@@ -569,8 +569,8 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 	// Rewrite the .rodata constants before LoadAndAssign: after the collection
 	// is loaded the verifier has already folded them, so this is the only
 	// moment the knock port and the length floor can still be set.
-	if err := setServerConstants(spec, params); err != nil {
-		return nil, err
+	if constErr := setServerConstants(spec, params); constErr != nil {
+		return nil, constErr
 	}
 
 	var objs serverBpfObjects
@@ -660,7 +660,7 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 // has a global IPv6 address.
 //
 // The filter's policy is expressed in IPv4: the relay whitelist is a trie of
-// IPv4 prefixes, so handle_ipv6() in nhp_server_xdp.c has no way to recognise
+// IPv4 prefixes, so handle_ipv6() in nhp_server_xdp.c has no way to recognize
 // the relay and admits no inbound v6 connection at all — including one to
 // sshd's [::]:22. On a host reached over IPv4 (every demo host) that is the
 // point of the branch; on a host whose only SSH path is v6 it would be a
@@ -840,8 +840,8 @@ func readServerEvents(eventsMap *ebpf.Map, serverId string, logger *log.Logger) 
 	}
 }
 
-// serverStatsInterval is how often the per-action counters are summarised into
-// the event log. A minute is short enough to localise an incident to the right
+// serverStatsInterval is how often the per-action counters are summarized into
+// the event log. A minute is short enough to localize an incident to the right
 // window and long enough that a permanently scanned host writes one line per
 // class per minute -- a few kB a day -- instead of one per packet.
 const serverStatsInterval = time.Minute
@@ -919,7 +919,7 @@ func reportServerStats(statsMap *ebpf.Map, serverId string, logger *log.Logger) 
 // without this the directory grows for as long as the host lives -- slowly on a
 // quiet host, and fastest exactly when the filter matters most, because every
 // line is a packet somebody else chose to send. The daemon filling its own root
-// volume would be a denial of service delivered through the defence.
+// volume would be a denial of service delivered through the defense.
 //
 // Both bounds apply, whichever bites first: age for the ordinary case (a
 // fortnight is more history than any incident review here has wanted), size for
@@ -998,7 +998,7 @@ func sweepServerEventLogs(logDir string, now time.Time, retainDays int, maxBytes
 // the old and the new list is never momentarily absent: a delete-then-insert
 // would open a window in which the relay's own SSH session and forwarded knocks
 // are dropped by the very reload that was meant to keep them working. Callers
-// serialise their own calls (see endpoints/server/ebpf).
+// serialize their own calls (see endpoints/server/ebpf).
 //
 // Two refusals, both made before a single map write, keep a bad list from
 // becoming a lockout. An entry that does not parse fails the whole call

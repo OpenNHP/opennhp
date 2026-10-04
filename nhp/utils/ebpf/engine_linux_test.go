@@ -199,11 +199,11 @@ func TestReplaceRelayIPsAcceptsPrefixes(t *testing.T) {
 	// The prefix must not reach beyond itself.
 	outside := hostKey(10, 0, 2, 4)
 	if err := m.Lookup(&outside, &value); err == nil {
-		t.Error("10.0.2.4 matched 10.0.1.0/24; the prefix length is not being honoured")
+		t.Error("10.0.2.4 matched 10.0.1.0/24; the prefix length is not being honored")
 	}
 
 	// Host bits below the prefix are masked off, so a prefix written with them
-	// set is the same entry — otherwise the stale sweep would not recognise its
+	// set is the same entry — otherwise the stale sweep would not recognize its
 	// own keys and a reload would leave both behind.
 	if err := ReplaceRelayIPs(m, []string{"10.0.1.99/24", "203.0.113.7"}); err != nil {
 		t.Fatalf("re-apply: %v", err)
@@ -288,7 +288,7 @@ func TestServerEngineLoadAttachesToLoopback(t *testing.T) {
 		t.Error("XdpLink is nil")
 	}
 	// The server attaches no TC program: an egress hook here would be a
-	// behaviour change borrowed from the AC.
+	// behavior change borrowed from the AC.
 	if h.TcLink != nil {
 		t.Error("TcLink is set; the server must not attach a TC egress program")
 	}
@@ -905,7 +905,7 @@ func TestBulkPassClassesAreCountedNotLogged(t *testing.T) {
 	}
 
 	// Counted only, never a line per packet. ACT_V6_ICMP_CONTROL is on the
-	// list for a second reason: neighbour discovery and MLD are constant
+	// list for a second reason: neighbor discovery and MLD are constant
 	// background chatter on a v6 subnet, and drowning the ring in it is what
 	// the old unconditional IPv6 pass was avoiding.
 	for _, action := range []string{
@@ -996,7 +996,7 @@ func TestClientProtocolsWithoutAConnectedSocketArePassed(t *testing.T) {
 
 // NHP_EVENT_ACTIONS sizes the per-action arrays on the C side and the summary
 // loop on this one. If the C grew a slot and this did not, the extra classes
-// would simply never be summarised.
+// would simply never be summarized.
 func TestServerEventActionsMatchesTheProgram(t *testing.T) {
 	src, err := os.ReadFile(filepath.Join("..", "..", "ebpf", "xdp", "nhp_server_xdp.c"))
 	if err != nil {

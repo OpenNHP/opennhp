@@ -590,7 +590,7 @@ func (s *UdpServer) loadPeers() error {
 }
 
 // xdpConfigFileName resolves the configured xdp.toml path against the exe
-// directory. An absolute XdpConfigPath is honoured as-is.
+// directory. An absolute XdpConfigPath is honored as-is.
 func (s *UdpServer) xdpConfigFileName() string {
 	path := "etc/xdp.toml"
 	if s.config != nil && s.config.XdpConfigPath != "" {

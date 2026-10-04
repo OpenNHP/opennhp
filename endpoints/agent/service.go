@@ -321,13 +321,13 @@ func (a *UdpAgent) getTeeStatus(c *gin.Context) {
 }
 
 func (a *UdpAgent) getTeeAttestation(c *gin.Context) {
-	evidence, err := wasmEngine.GetEvidence()
+	evidence, scheme, err := wasmEngine.GetEvidence()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	attestationVerifier, err := verifier.NewVerifier(evidence)
+	attestationVerifier, err := verifier.NewVerifier(evidence, scheme)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -339,6 +339,7 @@ func (a *UdpAgent) getTeeAttestation(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"measure": measure,
 		"sn":      sn,
+		"scheme":  string(scheme),
 	})
 }
 

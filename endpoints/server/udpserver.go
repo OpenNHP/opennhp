@@ -21,6 +21,7 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
+	"github.com/OpenNHP/opennhp/nhp/core/verifier"
 	"github.com/OpenNHP/opennhp/nhp/keystore"
 	"github.com/OpenNHP/opennhp/nhp/log"
 	"github.com/OpenNHP/opennhp/nhp/plugins"
@@ -71,6 +72,15 @@ type UdpServer struct {
 	// trips and operator-visible state.
 	allowPrivateRelaySource atomic.Bool
 	forceOverload           atomic.Bool
+
+	// attestationScheme holds the currently-active verifier.Scheme as a
+	// string (verifier.Scheme is a string type, so atomic.Value stores the
+	// underlying string). Read on every DHP knock (AppraiseEvidence) and
+	// written from updateBaseConfig; mirroring it avoids the same race
+	// documented above for allowPrivateRelaySource. Storing the string
+	// directly (rather than the typed alias) keeps atomic.Value happy with
+	// its any-typed slots without needing a wrapper struct.
+	attestationScheme atomic.Value // string
 
 	// xdpActiveMinFrameBytes is the datagram floor the attached XDP program is
 	// enforcing, written into its .rodata at load time. Kept so a later
@@ -451,6 +461,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	// trigger may also be active and we don't want to fight it.
 	s.forceOverload.Store(s.config.ForceOverload)
 	s.allowPrivateRelaySource.Store(s.config.AllowPrivateRelaySource)
+	s.attestationScheme.Store(string(verifier.ResolveScheme(s.config.AttestationScheme)))
 	if s.config.ForceOverload {
 		// Critical (not Warning): each of these flags disables a real
 		// production safeguard, and Warning is filtered out of default

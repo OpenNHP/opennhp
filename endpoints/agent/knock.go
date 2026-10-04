@@ -506,7 +506,7 @@ func (a *UdpAgent) KnockDHP() (ackMsg *common.ServerDHPKnockAckMsg, err error) {
 	}
 	addrStr := sendAddr.String()
 
-	evidence, err := wasmEngine.GetEvidence()
+	evidence, _, err := wasmEngine.GetEvidence()
 	if err != nil {
 		log.Error("agent(%s)[KnockDHP] cannot get evidence: %s", a.knockUser.UserId, err)
 		return nil, common.ErrEvidenceGetFailed

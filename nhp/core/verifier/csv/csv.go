@@ -10,6 +10,8 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/emmansun/gmsm/sm2"
@@ -17,13 +19,29 @@ import (
 )
 
 var (
-	SM2A                  = "fffffffeffffffffffffffffffffffffffffffff00000000fffffffffffffffc"
-	SM2B                  = "28e9fa9e9d9f5e344d5a9e4bcf6509a7f39789f515ab8f92ddbcbd414d940e93"
-	SM2GX                 = "32c4ae2c1f1981195f9904466a39c9948fe30bbff2660be1715a4589334c74c7"
-	SM2GY                 = "bc3736a2f4f6779c59bdcee36b692153d0a9877cc62a474002df32e52139f0a0"
-	ECKEY                 = SM2A + SM2B + SM2GX + SM2GY
-	Verifier *Attestation = nil
+	SM2A  = "fffffffeffffffffffffffffffffffffffffffff00000000fffffffffffffffc"
+	SM2B  = "28e9fa9e9d9f5e344d5a9e4bcf6509a7f39789f515ab8f92ddbcbd414d940e93"
+	SM2GX = "32c4ae2c1f1981195f9904466a39c9948fe30bbff2660be1715a4589334c74c7"
+	SM2GY = "bc3736a2f4f6779c59bdcee36b692153d0a9877cc62a474002df32e52139f0a0"
+	ECKEY = SM2A + SM2B + SM2GX + SM2GY
 )
+
+// hrkCache holds the Hygon HRK certificate across NewAttestation calls so
+// it is downloaded at most once per process. It replaces the previous
+// package-level *Attestation singleton (the "Verifier" global), which
+// serialized all attestations onto a single instance and let concurrent
+// DHP knocks overwrite each other's evidence mid-verification.
+var hrkCache struct {
+	sync.Mutex
+	data []byte
+}
+
+// httpClient is the shared client used for HTTPS fetches against
+// cert.hygon.cn. The Timeout caps the impact of a stalled remote (or a
+// hostile one, now that an attacker-controlled evidence can no longer
+// choose a different verifier): without it, a single DHP knock could
+// pin a goroutine indefinitely.
+var httpClient = &http.Client{Timeout: 10 * time.Second}
 
 type AttestationBody struct {
 	UserPubKeyDigest [32]byte `json:"user_pubkey_digest"`
@@ -132,7 +150,6 @@ type CsvEvidence struct {
 
 type Attestation struct {
 	evidence *CsvEvidence
-	hrk      []byte
 	hskCek   map[string][]byte
 }
 
@@ -290,28 +307,34 @@ func (a *Attestation) verifySm2SignatureWithId(qx, qy, r, s []byte, id []byte, m
 }
 
 func (a *Attestation) verifyCertChain(chipId string) error {
-	// Download HRK from Hygon's certificate server
-	if a.hrk == nil {
-		resp, err := http.Get("https://cert.hygon.cn/hrk")
+	// Resolve HRK from the process-wide cache, downloading it on first
+	// use. The previous implementation stored HRK on the package-level
+	// Attestation singleton; we now keep it on a mutex-guarded package
+	// variable so concurrent NewAttestation callers no longer race.
+	hrkCache.Lock()
+	if hrkCache.data == nil {
+		resp, err := httpClient.Get("https://cert.hygon.cn/hrk")
 		if err != nil {
+			hrkCache.Unlock()
 			return fmt.Errorf("failed to download HRK: %v", err)
 		}
-		defer resp.Body.Close()
-
 		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			hrkCache.Unlock()
 			return fmt.Errorf("unexpected status code when download HRK: %d", resp.StatusCode)
 		}
-
-		// Read the response body (HRK content)
 		hrkData, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
+			hrkCache.Unlock()
 			return fmt.Errorf("failed to read HRK data: %v", err)
 		}
-
-		a.hrk = hrkData
+		hrkCache.data = hrkData
 	}
+	hrk := hrkCache.data
+	hrkCache.Unlock()
 
-	digest, err := Sm3Digest(a.hrk)
+	digest, err := Sm3Digest(hrk)
 	if err != nil {
 		return err
 	}
@@ -321,32 +344,31 @@ func (a *Attestation) verifyCertChain(chipId string) error {
 		return fmt.Errorf("HRK digest verification failed: got %x, want %x", digest, expectedDigest)
 	}
 
-	if err := a.verifyHygonCertInfo(a.hrk, 0x03, 0, a.hrk[0x04:0x14]); err != nil {
+	if err := a.verifyHygonCertInfo(hrk, 0x03, 0, hrk[0x04:0x14]); err != nil {
 		return err
 	}
 
 	// verify hrk cert signature (self-signed)
-	hrkIdLen := int(binary.LittleEndian.Uint16(a.hrk[0xd4:0xd6]))
+	hrkIdLen := int(binary.LittleEndian.Uint16(hrk[0xd4:0xd6]))
 	if err := a.verifySm2SignatureWithId(
-		a.hrk[0x44:0x64], a.hrk[0x8c:0xac],
-		a.hrk[0x240:0x260], a.hrk[0x288:0x2a8],
-		a.hrk[0xd6:0xd6+hrkIdLen], a.hrk[:0x240],
+		hrk[0x44:0x64], hrk[0x8c:0xac],
+		hrk[0x240:0x260], hrk[0x288:0x2a8],
+		hrk[0xd6:0xd6+hrkIdLen], hrk[:0x240],
 	); err != nil {
 		return err
 	}
 
 	if _, ok := a.hskCek[chipId]; !ok {
-		resp, err := http.Get(fmt.Sprintf("https://cert.hygon.cn/hsk_cek?snumber=%s", chipId))
+		resp, err := httpClient.Get(fmt.Sprintf("https://cert.hygon.cn/hsk_cek?snumber=%s", chipId))
 		if err != nil {
 			return fmt.Errorf("failed to download hsk_cek: %v", err)
 		}
-		defer resp.Body.Close()
-
 		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
 			return fmt.Errorf("unexpected status code when download hsk_cek: %d", resp.StatusCode)
 		}
-
 		hskCekData, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
 			return fmt.Errorf("failed to read hsk_cek data: %v", err)
 		}
@@ -358,15 +380,15 @@ func (a *Attestation) verifyCertChain(chipId string) error {
 	cekData := a.hskCek[chipId][0x340:]
 
 	// verify hsk cert info
-	if err := a.verifyHygonCertInfo(hskData, 0x03, 0x13, a.hrk[0x04:0x14]); err != nil {
+	if err := a.verifyHygonCertInfo(hskData, 0x03, 0x13, hrk[0x04:0x14]); err != nil {
 		return err
 	}
 
 	// verify hsk cert signature (self-signed)
 	if err := a.verifySm2SignatureWithId(
-		a.hrk[0x44:0x64], a.hrk[0x8c:0xac],
+		hrk[0x44:0x64], hrk[0x8c:0xac],
 		a.hskCek[chipId][0x240:0x260], a.hskCek[chipId][0x288:0x2a8],
-		a.hrk[0xd6:0xd6+hrkIdLen], a.hskCek[chipId][:0x240],
+		hrk[0xd6:0xd6+hrkIdLen], a.hskCek[chipId][:0x240],
 	); err != nil {
 		return err
 	}
@@ -528,23 +550,14 @@ func (a *Attestation) GetMeasure() string {
 }
 
 func NewAttestation(attestationJsonStr string) (*Attestation, error) {
-	var attestation *Attestation
 	var evidence *CsvEvidence
-
-	if Verifier == nil {
-		attestation = &Attestation{}
-		Verifier = attestation
-	} else {
-		attestation = Verifier
-	}
 
 	if err := json.Unmarshal([]byte(attestationJsonStr), &evidence); err != nil {
 		return nil, err
 	}
 
-	attestation.hskCek = make(map[string][]byte)
-
-	attestation.evidence = evidence
-
-	return attestation, nil
+	return &Attestation{
+		evidence: evidence,
+		hskCek:  make(map[string][]byte),
+	}, nil
 }

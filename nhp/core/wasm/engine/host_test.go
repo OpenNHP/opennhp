@@ -5,11 +5,11 @@ import (
 )
 
 func TestGetEvidence(t *testing.T) {
-	evidence, err := GetEvidence()
+	evidence, scheme, err := GetEvidence()
 	if err != nil {
 		t.Errorf("GetEvidence() error = %v", err)
 		return
 	}
 
-	t.Logf("GetEvidence() = %v", evidence)
+	t.Logf("GetEvidence() = %v scheme=%s", evidence, scheme)
 }

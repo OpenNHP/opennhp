@@ -19,6 +19,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/OpenNHP/opennhp/nhp/core/verifier"
 	"github.com/tetratelabs/wazero/api"
 )
 
@@ -94,16 +95,28 @@ func GetEvidenceWithAgentUuid() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func GetEvidence() (string, error) {
+// GetEvidence returns attestation evidence plus the verifier.Scheme that
+// produced it. The scheme is sourced locally — the agent never lets the
+// evidence pick its own verifier — so the relying party can route the
+// evidence through the matching local policy.
+//
+//   - CC endpoint succeeded: scheme = verifier.SchemeCSV.
+//   - Fell back to a container fingerprint: scheme = verifier.SchemeTest.
+//
+// The string return is the same base64(zlib(json)) blob that
+// nhp-server expects on the DHP knock path.
+func GetEvidence() (string, verifier.Scheme, error) {
 	evidence, err := GetEvidenceWithCCUrl()
-	if err != nil {
-		evidence, err = GetEvidenceWithAgentUuid()
-		if err != nil {
-			return "", fmt.Errorf("failed to get evidence from CC or agent uuid")
-		}
+	if err == nil {
+		return base64.StdEncoding.EncodeToString(evidence), verifier.SchemeCSV, nil
 	}
 
-	return base64.StdEncoding.EncodeToString(evidence), nil
+	evidence, err = GetEvidenceWithAgentUuid()
+	if err != nil {
+		return "", verifier.SchemeCSV, fmt.Errorf("failed to get evidence from CC or agent uuid")
+	}
+
+	return base64.StdEncoding.EncodeToString(evidence), verifier.SchemeTest, nil
 }
 
 func CalculateAgentUniqueId() (string, error) {

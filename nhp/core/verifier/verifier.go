@@ -48,6 +48,13 @@ func ResolveScheme(s string) Scheme {
 
 // decompressEvidence reverses the on-the-wire framing used by nhp-agent:
 // base64(zlib(json)).
+//
+// The decoded payload is attacker-controlled (any peer that completes the
+// Noise handshake can pick its length), so the read is bounded by a hard
+// cap; anything past it is rejected to keep a single knock from expanding
+// a few KB into tens of MB in memory.
+const maxEvidenceBytes = 512 * 1024
+
 func decompressEvidence(b64 string) ([]byte, error) {
 	compressed, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
@@ -59,9 +66,12 @@ func decompressEvidence(b64 string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to create zlib reader: %v", err)
 	}
 	defer r.Close()
-	evidenceBytes, err := io.ReadAll(r)
+	evidenceBytes, err := io.ReadAll(io.LimitReader(r, maxEvidenceBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read evidence: %v", err)
+	}
+	if len(evidenceBytes) > maxEvidenceBytes {
+		return nil, fmt.Errorf("evidence exceeds %d bytes after decompression", maxEvidenceBytes)
 	}
 	return evidenceBytes, nil
 }

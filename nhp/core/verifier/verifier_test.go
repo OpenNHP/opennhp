@@ -134,8 +134,12 @@ func TestNewVerifier_BadInputs(t *testing.T) {
 	arrJSON := []byte(`[1,2,3]`)
 	var arrBuf bytes.Buffer
 	zw := zlib.NewWriter(&arrBuf)
-	zw.Write(arrJSON)
-	zw.Close()
+	if _, err := zw.Write(arrJSON); err != nil {
+		t.Fatalf("zlib write: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("zlib close: %v", err)
+	}
 	arrB64 := base64.StdEncoding.EncodeToString(arrBuf.Bytes())
 	if _, err := NewVerifier(arrB64, SchemeCSV); err == nil {
 		t.Errorf("expected error for JSON array root, got nil")

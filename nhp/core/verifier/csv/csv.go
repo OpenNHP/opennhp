@@ -10,6 +10,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 	"unsafe"
@@ -310,38 +311,44 @@ func (a *Attestation) verifyCertChain(chipId string) error {
 	// Resolve HRK from the process-wide cache, downloading it on first
 	// use. The previous implementation stored HRK on the package-level
 	// Attestation singleton; we now keep it on a mutex-guarded package
-	// variable so concurrent NewAttestation callers no longer race.
+	// variable so concurrent NewAttestation callers no longer race. The
+	// double-checked fetch keeps the mutex off the network I/O path so a
+	// stalled cert.hygon.cn doesn't serialize every concurrent DHP knock,
+	// and the SM3 digest is verified before caching so a 200 with a
+	// forged body can't poison the cache for the life of the process.
 	hrkCache.Lock()
-	if hrkCache.data == nil {
+	hrk := hrkCache.data
+	hrkCache.Unlock()
+	if hrk == nil {
 		resp, err := httpClient.Get("https://cert.hygon.cn/hrk")
 		if err != nil {
-			hrkCache.Unlock()
 			return fmt.Errorf("failed to download HRK: %v", err)
 		}
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
-			hrkCache.Unlock()
 			return fmt.Errorf("unexpected status code when download HRK: %d", resp.StatusCode)
 		}
 		hrkData, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			hrkCache.Unlock()
 			return fmt.Errorf("failed to read HRK data: %v", err)
 		}
-		hrkCache.data = hrkData
-	}
-	hrk := hrkCache.data
-	hrkCache.Unlock()
 
-	digest, err := Sm3Digest(hrk)
-	if err != nil {
-		return err
-	}
+		digest, err := Sm3Digest(hrkData)
+		if err != nil {
+			return err
+		}
+		expectedDigest, _ := hex.DecodeString("f5a46663059fdb4cdd06d097ed21782142923bb3430b3b938f23d54292094e3a")
+		if !bytes.Equal(digest, expectedDigest) {
+			return fmt.Errorf("HRK digest verification failed: got %x, want %x", digest, expectedDigest)
+		}
 
-	expectedDigest, _ := hex.DecodeString("f5a46663059fdb4cdd06d097ed21782142923bb3430b3b938f23d54292094e3a")
-	if !bytes.Equal(digest, expectedDigest) {
-		return fmt.Errorf("HRK digest verification failed: got %x, want %x", digest, expectedDigest)
+		hrkCache.Lock()
+		if hrkCache.data == nil {
+			hrkCache.data = hrkData
+		}
+		hrk = hrkCache.data
+		hrkCache.Unlock()
 	}
 
 	if err := a.verifyHygonCertInfo(hrk, 0x03, 0, hrk[0x04:0x14]); err != nil {
@@ -359,7 +366,9 @@ func (a *Attestation) verifyCertChain(chipId string) error {
 	}
 
 	if _, ok := a.hskCek[chipId]; !ok {
-		resp, err := httpClient.Get(fmt.Sprintf("https://cert.hygon.cn/hsk_cek?snumber=%s", chipId))
+		// chipId is attacker-controlled evidence; escape it so a peer
+		// can't tack on extra query parameters to the Hygon request.
+		resp, err := httpClient.Get(fmt.Sprintf("https://cert.hygon.cn/hsk_cek?snumber=%s", url.QueryEscape(chipId)))
 		if err != nil {
 			return fmt.Errorf("failed to download hsk_cek: %v", err)
 		}
@@ -371,6 +380,11 @@ func (a *Attestation) verifyCertChain(chipId string) error {
 		resp.Body.Close()
 		if err != nil {
 			return fmt.Errorf("failed to read hsk_cek data: %v", err)
+		}
+		// The hsk_cek blob is split at 0x340; a short response would
+		// panic on the slice below.
+		if len(hskCekData) < 0x340 {
+			return fmt.Errorf("hsk_cek response too short: got %d bytes, want >= %d", len(hskCekData), 0x340)
 		}
 
 		a.hskCek[chipId] = hskCekData

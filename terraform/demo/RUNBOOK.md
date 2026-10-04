@@ -991,8 +991,13 @@ can only fire in a state where the host answers nothing anyway.
 **The capabilities are given back after the attach.** systemd grants CAP_BPF,
 CAP_NET_ADMIN and CAP_PERFMON ambiently; `dropLoaderPrivileges`
 (`nhp/utils/ebpf/caps_linux.go`) clears the ambient set and empties permitted
-and effective as the last step of `loadServerEngine`, on the failure path as
-well as the success one. Holding them for the life of the process would be far
+and effective when `loadServerEngine` returns, on every path out of it. That
+includes the ones that never reach the attach — a missing object file, a
+verifier rejection, a map that will not pin — and those matter most, because
+each of them is a daemon that then runs fail-open for days with three
+capabilities it will never use again. On a failed load nothing is kept, CAP_BPF
+included: the exemption below exists for the reload path, and a load with no
+handle has none. Holding them for the life of the process would be far
 more than the job needs: CAP_BPF with CAP_PERFMON loads kprobe and tracing
 programs, i.e. `bpf_probe_read_kernel()` over arbitrary kernel memory —
 other processes' credentials, this daemon's own Noise private key — and

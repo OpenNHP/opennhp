@@ -53,10 +53,15 @@ func TestDropLoaderPrivilegesIsIdempotent(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("running as root: dropping here would disarm the rest of the test binary")
 	}
-	if err := dropLoaderPrivileges(); err != nil {
+	if err := dropLoaderPrivileges(true); err != nil {
 		t.Fatalf("first drop: %v", err)
 	}
-	if err := dropLoaderPrivileges(); err != nil {
+	if err := dropLoaderPrivileges(true); err != nil {
 		t.Fatalf("second drop: %v", err)
+	}
+	// The failed-load form, which keeps nothing at all, has to be as safe to
+	// call from an unprivileged process as the other one.
+	if err := dropLoaderPrivileges(false); err != nil {
+		t.Fatalf("drop without the CAP_BPF exemption: %v", err)
 	}
 }

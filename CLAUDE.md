@@ -272,7 +272,9 @@ filter (XDP)*.
   (`nhp/utils/ebpf/caps_linux.go`) clears the ambient set and empties permitted
   and effective — keeping CAP_BPF only where `kernel.unprivileged_bpf_disabled`
   makes bpf(2) privileged and the reload path still needs to write the map —
-  process-wide, as the last step of the attach.
+  process-wide, on every path out of the load. A load that *failed* keeps
+  nothing, CAP_BPF included: there is no map to reload, and fail-open is the
+  state the daemon then stays in for the life of the process.
 - **The event log is bounded**, because every line in it is a packet someone
   else chose to send: per-class and global token buckets in the C, bulk classes
   counted but never written per packet, a daily byte budget in the writer, exact

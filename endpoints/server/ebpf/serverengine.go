@@ -66,10 +66,12 @@ type LoadParams struct {
 // one means no filter at all.
 //
 // Call it once per process. The loader gives the unit's CAP_BPF, CAP_NET_ADMIN
-// and CAP_PERFMON back as its last step (dropLoaderPrivileges in
-// nhp/utils/ebpf), so a second load would find itself unprivileged — on
+// and CAP_PERFMON back before it returns (dropLoaderPrivileges in
+// nhp/utils/ebpf) — on every path, a failed load included, and on that one it
+// keeps nothing at all. So a second load would find itself unprivileged, on
 // purpose: nothing after the attach needs them, and this daemon parses
-// untrusted UDP and dlopens plugins for the rest of its life.
+// untrusted UDP and dlopens plugins for the rest of its life. A retry after a
+// failure is not a supported recovery either; restart the unit.
 func EngineLoad(p LoadParams) error {
 	mu.Lock()
 	defer mu.Unlock()

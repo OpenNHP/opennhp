@@ -582,6 +582,22 @@ func setServerConstants(spec *ebpf.CollectionSpec, params EngineLoadParams) erro
 // caller asked for, so there is no window in which SSH from the relay is
 // dropped and no way for a failed map write to leave a live filter behind.
 func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, retErr error) {
+	// The capabilities go back on every path out of this function, not just the
+	// ones that reach the attach. An object file that is missing, a verifier
+	// rejection, a map that will not pin — each of those returns an error the
+	// caller reads as "fail-open, no ingress filter", and the daemon then runs
+	// for days with CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON it will never use
+	// again. That is the longest-lived and least justified version of the grant:
+	// no filter to detach, no whitelist to reload, and the same untrusted UDP
+	// and dlopen'd plugins in the address space. Hence `retErr == nil` — a
+	// failed load keeps nothing, CAP_BPF included, because the reload path the
+	// exemption exists for does not exist without a handle.
+	//
+	// Registered first so that LIFO runs it last: the cleanup defer below and
+	// everything after it still hold what they were granted, and nothing added
+	// to this function later can land after the drop by accident.
+	defer func() { dropLoaderPrivilegesOrWarn(retErr == nil) }()
+
 	specPath := params.ProgObjPath
 	if _, err := os.Stat(specPath); err != nil {
 		log.Error("server eBPF object file not found: %s", specPath)
@@ -661,22 +677,14 @@ func loadServerEngine(params EngineLoadParams, pinDir string) (h *EngineHandle, 
 
 	// Opened here rather than inside the reader goroutine because
 	// perf_event_open(2) is the last thing that needs CAP_PERFMON, and the
-	// capabilities are given back a few lines below. Not fatal if it fails: the
-	// event log is diagnostics, and losing it is no reason to leave the host
-	// unfiltered. The filter runs on without it, saying so.
+	// capabilities are given back when this function returns. Not fatal if it
+	// fails: the event log is diagnostics, and losing it is no reason to leave
+	// the host unfiltered. The filter runs on without it, saying so.
 	perfReader, perfErr := perf.NewReader(objs.NhpEvents, os.Getpagesize())
 	if perfErr != nil {
 		log.Error("failed to create server perf reader; the XDP filter will run without an event log: %v", perfErr)
 		perfReader = nil
 	}
-
-	// Registered before the attach, so it runs on every path out of this
-	// function from here on — attached or not. It is deferred rather than
-	// called inline so that nothing added later can slip in between the attach
-	// and the drop. LIFO puts it ahead of the cleanup defer above, which needs
-	// no capability of its own: closing a link fd and unlinking a bpffs pin are
-	// ordinary file operations.
-	defer dropLoaderPrivilegesOrWarn()
 
 	serverXdpLink, err = link.AttachXDP(link.XDPOptions{
 		Program:   objs.XdpProg,

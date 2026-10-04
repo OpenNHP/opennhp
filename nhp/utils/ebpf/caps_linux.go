@@ -90,6 +90,13 @@ func bpfSyscallNeedsCapabilityFrom(path string) bool {
 // effective and inheritable sets to the minimum the daemon still needs — empty
 // where the kernel allows it, CAP_BPF alone where bpf(2) itself is privileged.
 //
+// allowKeepBpf is the caller's answer to "is there still a map to write?".
+// Only a load that produced a live filter has one: on a failed load there is no
+// handle, no whitelist and no reload path, so the CAP_BPF exemption below has
+// nothing left to protect and the drop is unconditional. That is the case the
+// daemon runs in for the longest — a load that fails is fail-open for the life
+// of the process — so it is the one that least deserves a capability.
+//
 // Both steps are process-wide, not just this goroutine's thread: libcap's cap
 // package routes prctl(2) and capset(2) through psx, which applies them to
 // every thread of the process. A per-thread drop would be worse than none —
@@ -103,8 +110,8 @@ func bpfSyscallNeedsCapabilityFrom(path string) bool {
 // this daemon is deliberately not granted. It is already narrowed to these
 // three by CapabilityBoundingSet= in the unit, and with an empty permitted set
 // and NoNewPrivileges=true a bounding bit grants nothing on its own.
-func dropLoaderPrivileges() error {
-	keepBpf := bpfSyscallNeedsCapability()
+func dropLoaderPrivileges(allowKeepBpf bool) error {
+	keepBpf := allowKeepBpf && bpfSyscallNeedsCapability()
 
 	// Ambient first. It is what survives an exec, so it is the one set that
 	// could hand these capabilities to something that is not this program at
@@ -151,8 +158,8 @@ func dropLoaderPrivileges() error {
 // dropLoaderPrivilegesOrWarn is the form the loader calls: a failure to drop is
 // not a reason to unwind a filter that is working, so it is logged loudly and
 // the daemon carries on with the capabilities it was given.
-func dropLoaderPrivilegesOrWarn() {
-	if err := dropLoaderPrivileges(); err != nil {
+func dropLoaderPrivilegesOrWarn(allowKeepBpf bool) {
+	if err := dropLoaderPrivileges(allowKeepBpf); err != nil {
 		log.Error("could not drop the XDP loader's capabilities; nhp-serverd keeps CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON for the rest of its life: %v", err)
 	}
 }

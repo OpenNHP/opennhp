@@ -28,6 +28,35 @@ output "relay_private_ip" {
   value       = aws_instance.relay.private_ip
 }
 
+# Unless var.relay_private_ip pins it, the relay's private address is whatever
+# the subnet hands aws_instance.relay, so replacing the instance (an AMI or
+# instance-type change, a taint, an AZ move) gives it a new one. That address is
+# the source of every SSH session into the nhp-server host, and the server's XDP
+# whitelist is what admits it — so a whitelist naming only the old address drops
+# SSH from the new relay, and the one path CI has for pushing a corrected
+# whitelist is the path that just closed. Recovery would mean detaching the
+# server's root volume.
+#
+# So an unpinned relay makes the whitelist carry this prefix as well as the two
+# host addresses (see "Resolve the relay addresses for the nhp-server XDP
+# whitelist" in .github/workflows/deploy-demo-v2.yml). A replacement relay comes
+# back inside it and is still allowed in. The cost is that the other demo hosts
+# share this subnet and are covered too, which is a far smaller problem than a
+# server that cannot be reached at all — and which pinning the address removes.
+output "subnet_cidr" {
+  description = "Public subnet CIDR (an unpinned relay makes the nhp-server XDP whitelist allow SSH from it, so a replaced relay keeps its way in)"
+  value       = aws_subnet.public.cidr_block
+}
+
+# Read by the deploy pipeline to decide whether the subnet prefix above has to
+# be in the whitelist at all. A pinned relay comes back on the same address, so
+# the two host entries cover every case and the whitelist can say exactly what
+# the policy says: SSH from the relay.
+output "relay_private_ip_pinned" {
+  description = "Whether var.relay_private_ip pins the relay's private address (if so, the nhp-server XDP whitelist omits the subnet prefix)"
+  value       = var.relay_private_ip != ""
+}
+
 output "dns_records" {
   description = "DNS records created"
   value = {

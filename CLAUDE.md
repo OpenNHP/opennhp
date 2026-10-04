@@ -223,6 +223,100 @@ All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 > reference but is no longer deployed. Re-enabling the login page requires
 > undoing all of these together.
 
+#### nhp-server eBPF/XDP ingress filter
+
+`nhp-serverd` attaches `nhp/ebpf/xdp/nhp_server_xdp.c` at startup and enforces
+the same shape at the driver: UDP on the knock port (≥ `NhpMinFrameBytes`), SSH
+only from the addresses in `etc/xdp.toml`, the replies to flows the host itself
+opened, and nothing else — IPv6 and non-first fragments included. It parses no
+NHP protocol; identity is still decided by the Noise handshake in user space.
+The AC's per-knock program and the shared loader
+(`nhp/utils/ebpf/engine_linux.go`) are the same code path, selected by
+`EngineLoadParams.Variant`.
+
+Invariants. Each one is load-bearing and most were paid for once already; the
+reasoning, and the incident behind each, is in
+[terraform/demo/RUNBOOK.md](terraform/demo/RUNBOOK.md) under *nhp-server ingress
+filter (XDP)*.
+
+- **Attaching is opt-in; `etc/xdp.toml` is the opt-in.** No file, an unparsable
+  one, `Enabled = false`, or a `RelayIPs` whose entries do not all parse as IPv4
+  addresses or prefixes ⇒ nothing is attached and the host keeps the exposure it
+  had before the filter existed. `loadXdpConfig`/`startXdpFilter` in
+  `endpoints/server/config.go` also refuse in front of a non-loopback HTTP or
+  metrics listener, and `updateHttpConfig` refuses the mirror case — starting
+  such a listener while the filter is attached.
+- **The whitelist must cover the SSH source, and there is no break-glass path.**
+  A list rendered empty, or without an entry containing the address the host
+  sees SSH arrive from, means detaching the root volume or rebuilding the
+  instance. Entries are host addresses or CIDR prefixes in an LPM trie; one
+  unparsable entry fails the whole list rather than being skipped.
+- **The whitelist is installed before the program is attached**, as
+  `EngineLoadParams.RelayIPs`, never written afterwards. Startup therefore never
+  calls `applyXdpConfig`; that path is the config watcher's, and it always has a
+  live filter and a working list to fall back on.
+- **A reload never weakens a working whitelist.** `applyXdpConfig` keeps the
+  active list on any refusal, and `ReplaceRelayIPs` is all-or-nothing against
+  the map as well as the file: it adds before it sweeps, rolls back its own adds
+  on a failed `Update`, and refuses a map it cannot read.
+- **Loading is fail-open**, and `deploy-server`'s `Verify the XDP ingress filter
+  attached` is what stops that from being a silent loss of protection. Every
+  fallible step happens before `link.AttachXDP`, and any error after it detaches.
+- **The filter must let the host's own traffic back in.** Replies to the
+  daemon's own flows via `bpf_sk_lookup_{tcp,udp}` (connected sockets only,
+  never listening ones); DHCP (67→68) and NTP by port pair, because their
+  clients have no connected socket. Dropping the DHCP answer costs the host its
+  address and every port with it, about an hour after a deploy that verified
+  clean.
+- **The capabilities go back on every path, including the ones that never
+  load.** `dropLoaderPrivileges` (`nhp/utils/ebpf/caps_linux.go`) subtracts
+  `CAP_BPF`, `CAP_NET_ADMIN` and `CAP_PERFMON` from ambient, permitted,
+  effective and inheritable — keeping CAP_BPF only where
+  `kernel.unprivileged_bpf_disabled` makes bpf(2) privileged and the reload path
+  still needs to write the map — process-wide, not just on the calling thread.
+  A subtraction, never an assignment of a fixed set: on the demo unit those
+  three *are* the whole grant, so what is left is nothing, but nhp-serverd also
+  runs as root in `docker/Dockerfile.server`, where resetting to the empty set
+  would silently and irreversibly take away CAP_DAC_OVERRIDE (volume-mounted
+  config owned by another uid) and CAP_NET_BIND_SERVICE (an `http.toml` reload
+  rebinding 80/443) on a host that never opted into filtering at all.
+  The unit grants all three as *ambient* capabilities before any of this code
+  runs, so a host that declines to filter is holding them too: `loadXdpConfig`
+  therefore defers `DropLoaderPrivileges` across all of its returns, not just
+  the loader's. A load that *failed*, and every refusal that never reached the
+  loader, keeps nothing, CAP_BPF included — there is no map to reload, and that
+  is the state the daemon stays in for the life of the process. The drop is
+  once-guarded and the loader goes first, so the attach path's answer is the one
+  that decides CAP_BPF.
+- **The event log is bounded**, because every line in it is a packet someone
+  else chose to send: per-class and global token buckets in the C, bulk classes
+  counted but never written per packet, a daily byte budget in the writer, exact
+  `[NHP-STAT]` totals regardless, and 14-day / 256 MiB retention.
+- **Recovery starts with a reboot** (`aws ec2 reboot-instances`, no SSH needed):
+  DHCP runs before `nhp-serverd`, so tcp/22 is open for the window before the
+  filter is re-attached. Volume surgery is only for a wrong *whitelist* on a
+  host that does have its address.
+
+The gates run before anything is scp'd or restarted — the `configure` job's
+Terraform/DNS resolution and containment check, `deploy-server`'s
+`Check this job's own SSH source is in the XDP whitelist`, and the refusals in
+`startXdpFilter`, `applyXdpConfig` and `ParseRelayPrefixes`
+(`nhp/utils/ebpf/relayips.go`). A red run with the demo still up is the intended
+outcome of any of them.
+
+Capabilities (`CAP_BPF CAP_NET_ADMIN CAP_PERFMON`) plus a root `ExecStartPre`
+that prepares `/sys/fs/bpf` come from `terraform/demo/userdata/server.sh` on new
+hosts and from a systemd drop-in installed by `deploy-server` on existing
+ones — keep the two in sync. `aws_instance.server` carries
+`lifecycle { ignore_changes = [user_data] }` for the same reason
+`aws_instance.ac` does: an in-place `user_data` update stops and starts the
+instance, and cloud-init would not re-run the script anyway, so a userdata edit
+would cost an nhp-server outage and change nothing on the host.
+
+Verification procedure (netns rehearsal, pre-deploy baseline, the same commands
+after the deploy, recovery paths):
+`terraform/demo/VERIFY-server-xdp.zh-cn.md`.
+
 ### `opennhp/demo` schema
 
 The secret is JSON; fields are added idempotently by scripts and workflows.

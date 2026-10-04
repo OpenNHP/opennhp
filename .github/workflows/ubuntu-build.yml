@@ -37,8 +37,8 @@ jobs:
       run: make
 
     # `make` does not touch the eBPF C sources, so without this step a
-    # compile error in nhp_ebpf_xdp.c / tc_egress.c only surfaces when
-    # deploy-demo-v2 runs `make ebpf-objs` at deploy time.
+    # compile error in nhp_ebpf_xdp.c / tc_egress.c / nhp_server_xdp.c only
+    # surfaces when deploy-demo-v2 runs `make ebpf-objs` at deploy time.
     - name: Build eBPF objects
       run: |
         sudo apt-get update
@@ -46,6 +46,7 @@ jobs:
         make ebpf-objs
         test -s release/nhp-ac/etc/nhp_ebpf_xdp.o
         test -s release/nhp-ac/etc/tc_egress.o
+        test -s release/nhp-server/etc/nhp_server_xdp.o
 
     # The demoapp module is not built by `make` (it ships via the docker
     # image), so gate it explicitly: a compile / vet / gofmt failure here

@@ -160,6 +160,10 @@ jobs:
           # build here rather than at deploy time on the live host.
           test -s release/nhp-ac/etc/nhp_ebpf_xdp.o
           test -s release/nhp-ac/etc/tc_egress.o
+          # nhp-serverd falls open (no ingress filter) if its object is
+          # missing, which is a silent loss of protection rather than a
+          # startup failure — so it has to be caught here.
+          test -s release/nhp-server/etc/nhp_server_xdp.o
 
           echo ""
           echo "Build output:"
@@ -169,9 +173,12 @@ jobs:
         run: |
           mkdir -p artifact/server artifact/ac artifact/relay artifact/plugins
 
-          # Server
+          # Server (binary + the XDP ingress filter it attaches at startup,
+          # which must land in etc/ next to the binary on the server host).
           cp release/nhp-server/nhp-serverd artifact/server/
           chmod +x artifact/server/nhp-serverd
+          mkdir -p artifact/server/etc
+          cp release/nhp-server/etc/nhp_server_xdp.o artifact/server/etc/
 
           # AC (binary + firewall bootstrap script)
           cp release/nhp-ac/nhp-acd artifact/ac/
@@ -274,6 +281,7 @@ jobs:
       ac_public_ip: ${{ steps.tf_outputs.outputs.ac_public_ip }}
       ac_private_ip: ${{ steps.tf_outputs.outputs.ac_private_ip }}
       relay_public_ip: ${{ steps.tf_outputs.outputs.relay_public_ip }}
+      relay_private_ip: ${{ steps.tf_outputs.outputs.relay_private_ip }}
 
     steps:
       - name: Checkout code
@@ -294,6 +302,8 @@ jobs:
         id: tf_outputs
         working-directory: terraform/demo
         run: |
+          set -euo pipefail
+
           if [ -z "${{ vars.TF_STATE_BUCKET }}" ]; then
             echo "ERROR: repo variable TF_STATE_BUCKET is not set."
             echo "Configure it under Settings -> Variables -> Actions before running this workflow."
@@ -308,22 +318,226 @@ jobs:
           AC_PUB=$(terraform output -raw ac_public_ip)
           AC_PRIV=$(terraform output -raw ac_private_ip)
           RELAY_PUB=$(terraform output -raw relay_public_ip)
+          RELAY_PRIV=$(terraform output -raw relay_private_ip)
+
+          # `terraform output` can only see outputs that an apply has written
+          # into the state, so an output added to outputs.tf after the last
+          # infra-demo apply makes this job fail with
+          #   Error: Output "subnet_cidr" not found
+          # even though the subnet it merely forwards is sitting in that same
+          # state. This job never applies (it only reads, so that a deploy
+          # cannot mutate infrastructure), which would mean the deploy pipeline
+          # stays red until somebody runs infra-demo by hand.
+          #
+          # Reading the resource attribute straight out of the state is the
+          # same value from the same source of truth and needs no apply, so it
+          # is the fallback. A failure here is still fatal — the XDP whitelist
+          # gate below refuses to render a server config without this prefix.
+          SUBNET_CIDR=$(terraform output -raw subnet_cidr 2>/dev/null || true)
+          if [ -z "$SUBNET_CIDR" ]; then
+            SUBNET_CIDR=$(terraform show -json | jq -r '
+              [ .values.root_module.resources[]?
+                | select(.address == "aws_subnet.public")
+                | .values.cidr_block ][0] // ""')
+            if [ -z "$SUBNET_CIDR" ]; then
+              echo "ERROR: neither the subnet_cidr output nor aws_subnet.public is in" >&2
+              echo "       the Terraform state. The nhp-server XDP whitelist needs the" >&2
+              echo "       VPC subnet prefix (it is what keeps SSH working after the" >&2
+              echo "       relay is replaced), so this job refuses to render configs." >&2
+              echo "       Run the infra-demo workflow with action=apply, then re-run." >&2
+              exit 1
+            fi
+            echo "note: the subnet_cidr output is not in the state yet (it was added to"
+            echo "      terraform/demo/outputs.tf after the last infra-demo apply). Read"
+            echo "      aws_subnet.public.cidr_block from the state instead; run"
+            echo "      infra-demo apply to refresh the outputs."
+          fi
+
+          # Whether var.relay_private_ip pins the relay's private address. When
+          # it does, a replaced relay comes back on the same address and the
+          # XDP whitelist needs only the two relay addresses; when it does not,
+          # the whitelist has to carry the subnet prefix so a replacement is
+          # still let in. Absent output (added after the last apply, same as
+          # subnet_cidr above) reads as "not pinned", which is the wider and
+          # therefore safe answer — the narrow one is the one that can lock the
+          # server away.
+          RELAY_IP_PINNED=$(terraform output -raw relay_private_ip_pinned 2>/dev/null || true)
+          if [ "$RELAY_IP_PINNED" != "true" ]; then
+            RELAY_IP_PINNED=false
+          fi
 
           echo "server_public_ip=$SERVER_PUB"     >> $GITHUB_OUTPUT
           echo "server_private_ip=$SERVER_PRIV"   >> $GITHUB_OUTPUT
           echo "ac_public_ip=$AC_PUB"             >> $GITHUB_OUTPUT
           echo "ac_private_ip=$AC_PRIV"           >> $GITHUB_OUTPUT
           echo "relay_public_ip=$RELAY_PUB"       >> $GITHUB_OUTPUT
+          echo "relay_private_ip=$RELAY_PRIV"     >> $GITHUB_OUTPUT
+          echo "subnet_cidr=$SUBNET_CIDR"         >> $GITHUB_OUTPUT
+          echo "relay_private_ip_pinned=$RELAY_IP_PINNED" >> $GITHUB_OUTPUT
 
           echo "Server public/private:   $SERVER_PUB / $SERVER_PRIV"
           echo "AC public/private:       $AC_PUB / $AC_PRIV"
-          echo "Relay public:            $RELAY_PUB"
+          echo "Relay public/private:    $RELAY_PUB / $RELAY_PRIV"
+          echo "VPC subnet:              $SUBNET_CIDR"
+          echo "Relay private IP pinned: $RELAY_IP_PINNED"
 
       - name: Download build artifact
         uses: actions/download-artifact@v8
         with:
           name: nhp-demo-build
           path: ./artifact
+
+      - name: Resolve the relay addresses for the nhp-server XDP whitelist
+        # RELAY_IPS becomes the nhp-server's XDP whitelist: the only source
+        # addresses allowed to reach tcp/22 on that host. There is no
+        # break-glass SSH path by design, so rendering an empty or wrong list
+        # and restarting the daemon would lock every operator out and leave
+        # rebuilding the instance as the only recovery.
+        #
+        # The list needs BOTH of the relay's addresses, because which one the
+        # server sees depends on the path:
+        #
+        #   * the relay's VPC private address is what SSH arrives from. The
+        #     deploy-server job ProxyJumps through the relay to the server's
+        #     private address, so those packets never leave the VPC and
+        #     keep the relay's private source address. Whitelisting only the
+        #     public address is what made deploy-server hang at "Starting
+        #     nhp-serverd..." and then time out: every ssh after the daemon
+        #     attached the filter was dropped at the driver.
+        #   * the relay's public address covers anything that reaches the
+        #     server through the internet gateway instead (traffic addressed
+        #     to the server's EIP hairpins out and back, arriving with the
+        #     relay's public source address).
+        #
+        # Both are cheap to allow and the private one is not guessable from
+        # outside the VPC, so the whitelist carries the pair rather than
+        # betting on one path.
+        #
+        # It also carries the VPC subnet as a prefix *unless the relay's private
+        # address is pinned*, and when it is unpinned that entry is not
+        # redundant: any replacement of that instance (an AMI change, a taint,
+        # an AZ move) brings it back with a different private address. The
+        # server's live whitelist would still name the old one, SSH from the new
+        # relay would be dropped, and this job — which reaches the server
+        # *through* the relay — could never push the correction. That is a
+        # root-volume-detach recovery, and the subnet prefix is what covers it.
+        #
+        # The cost is real and is why the pin exists: the prefix admits every
+        # instance in the public subnet to tcp/22 on the server, the AC
+        # included, and exempts them all from the knock-length floor. The
+        # security group is still the narrower control (SSH from the relay's SG
+        # only), so this is defence-in-depth that is wider than the policy it
+        # defends — not a hole. Set var.relay_private_ip (see
+        # terraform/demo/variables.tf) and the prefix is dropped from the list,
+        # leaving an XDP layer that says exactly what the security group says.
+        #
+        # This is a hard gate, placed BEFORE the configs are rendered and
+        # therefore before anything is scp'd or restarted: a missing Terraform
+        # output, an empty DNS answer, a SERVFAIL, or more than one A record
+        # all fail the job here. The deploy-* jobs depend on this one, so they
+        # never run, the live nhp-serverd is not touched, and the xdp.toml
+        # already on the host keeps working. A red run with the demo still up
+        # is the intended outcome; investigate, then re-run.
+        run: |
+          set -euo pipefail
+
+          command -v dig >/dev/null || sudo apt-get install -y --no-install-recommends dnsutils
+
+          RELAY_PRIV='${{ steps.tf_outputs.outputs.relay_private_ip }}'
+          if ! printf '%s' "$RELAY_PRIV" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "[!] relay_private_ip from Terraform is not an IPv4 address: '$RELAY_PRIV'"
+            echo "    That address is the source of every SSH session into the"
+            echo "    nhp-server host; refusing to render a whitelist without it."
+            exit 1
+          fi
+
+          RELAY_FQDN='${{ env.DOMAIN_RELAY }}'
+          RESOLVED=$(dig +short "$RELAY_FQDN" @1.1.1.1 \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || true)
+
+          if [ -z "$RESOLVED" ]; then
+            echo "[!] DNS resolution returned no records for $RELAY_FQDN"
+            echo "    Refusing to render a partial SSH whitelist for nhp-server."
+            exit 1
+          fi
+
+          COUNT=$(printf '%s\n' "$RESOLVED" | wc -l)
+          if [ "$COUNT" -ne 1 ]; then
+            echo "[!] Expected exactly one A record for $RELAY_FQDN, got $COUNT:"
+            printf '      %s\n' $RESOLVED
+            echo "    The relay has a single EIP; fix DNS first."
+            exit 1
+          fi
+
+          SUBNET_CIDR='${{ steps.tf_outputs.outputs.subnet_cidr }}'
+          if ! printf '%s' "$SUBNET_CIDR" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$'; then
+            echo "[!] subnet_cidr from Terraform is not an IPv4 prefix: '$SUBNET_CIDR'"
+            echo "    That prefix is what keeps SSH working after the relay is"
+            echo "    replaced with a new private address; refusing to render a"
+            echo "    whitelist without it."
+            exit 1
+          fi
+
+          # The prefix only does its job — admitting a replacement relay that
+          # came back with a different private address — if the relay lives
+          # inside it. Check that rather than trusting the plumbing: the value
+          # may have been read from aws_subnet.public in the state rather than
+          # from the subnet_cidr output, and a multi-subnet or multi-AZ layout
+          # would hand back a prefix the relay is not in. Same containment test
+          # the deploy-server job runs against the live SSH peer address.
+          #
+          # Checked even when the address is pinned and the prefix will not be
+          # rendered: a relay outside the declared subnet means something about
+          # this layout is not what the rest of the pipeline assumes, and that
+          # is worth a red run either way.
+          ip2int() {
+            local rest="$1" o1 o2 o3 o4
+            o1=${rest%%.*}; rest=${rest#*.}
+            o2=${rest%%.*}; rest=${rest#*.}
+            o3=${rest%%.*}; rest=${rest#*.}
+            o4=$rest
+            echo $(( (o1 << 24) + (o2 << 16) + (o3 << 8) + o4 ))
+          }
+
+          PREFIX_LEN=$(( 10#${SUBNET_CIDR#*/} ))
+          if [ "$PREFIX_LEN" -gt 32 ]; then
+            echo "[!] subnet_cidr has an out-of-range prefix length: '$SUBNET_CIDR'"
+            exit 1
+          fi
+          if [ "$PREFIX_LEN" -eq 0 ]; then
+            MASK=0
+          else
+            MASK=$(( 0xFFFFFFFF << (32 - PREFIX_LEN) & 0xFFFFFFFF ))
+          fi
+          if [ $(( $(ip2int "$RELAY_PRIV") & MASK )) -ne $(( $(ip2int "${SUBNET_CIDR%%/*}") & MASK )) ]; then
+            echo "[!] the relay's private address $RELAY_PRIV is not inside $SUBNET_CIDR."
+            echo "    Then this is not the subnet the relay comes back in, and"
+            echo "    whitelisting it would not survive a relay replacement."
+            echo "    Refusing to render a whitelist that only looks complete."
+            exit 1
+          fi
+
+          echo "Relay source addresses for the nhp-server XDP whitelist:"
+          echo "  $RELAY_PRIV (VPC / SSH jump path)"
+          echo "  $RESOLVED (public, via $RELAY_FQDN)"
+          RELAY_IPS="$RELAY_PRIV,$RESOLVED"
+          if [ '${{ steps.tf_outputs.outputs.relay_private_ip_pinned }}' = 'true' ]; then
+            echo "  (no subnet prefix: var.relay_private_ip pins $RELAY_PRIV, so a"
+            echo "   replaced relay comes back on it and the two entries above suffice)"
+          else
+            echo "  $SUBNET_CIDR (VPC subnet; survives a relay replacement)"
+            RELAY_IPS="$RELAY_IPS,$SUBNET_CIDR"
+          fi
+          # generate-nhp-keys.sh splits this on commas and renders it as a TOML
+          # array, so extra addresses can be appended here without touching the
+          # template. Entries are host addresses or CIDR prefixes.
+          echo "RELAY_IPS=$RELAY_IPS" >> $GITHUB_ENV
+          echo "XDP_ENABLED=true" >> $GITHUB_ENV
+          # Keep in sync with the nhp_min_udp_len default in
+          # nhp/ebpf/xdp/nhp_server_xdp.c. Unlike the port, this value is
+          # applied from the TOML — the loader writes it into the object's
+          # .rodata at startup — so it is a real knob, not documentation.
+          echo "XDP_NHP_MIN_FRAME_BYTES=240" >> $GITHUB_ENV
 
       - name: Generate keys and render configs
         env:
@@ -570,6 +784,89 @@ jobs:
       # vhost or the bootstrap-tls.sh certificate script, so there is nothing
       # to render from the working tree in this job.
 
+      - name: Check this job's own SSH source is in the XDP whitelist
+        # The whitelist about to be uploaded decides who may reach tcp/22 on
+        # the server host, and the XDP program keeps no connection state: the
+        # moment nhp-serverd restarts with a list that omits the address this
+        # job connects from, every later ssh in this job — and every future
+        # deploy — is dropped at the driver. There is no break-glass path, so
+        # recovery is detaching the root volume or replacing the instance
+        # (terraform/demo/VERIFY-server-xdp.zh-cn.md §6.2).
+        #
+        # So don't infer the source address, ask the host: sshd exports
+        # SSH_CONNECTION, whose first field is the peer address the server
+        # actually sees for this very connection. Comparing that against the
+        # rendered file catches the whole class of mismatches — the public/
+        # private mix-up that broke this job before, a ProxyJump topology
+        # change, a relay rebuild with a new private address, a stale
+        # Terraform output — without this step having to know which one it is.
+        #
+        # Placed before the first scp and before the restart, so a failure
+        # here leaves the host running its previous, working whitelist.
+        run: |
+          set -euo pipefail
+
+          XDP_TOML=./configs/server/xdp.toml
+          if [ ! -s "$XDP_TOML" ]; then
+            echo "ERROR: $XDP_TOML is missing or empty in the configs artifact." >&2
+            exit 1
+          fi
+
+          # ${SSH_CONNECTION%% *} is expanded by the remote shell: client
+          # address, client port, server address, server port.
+          PEER=$(ssh nhp-server 'printf "%s" "${SSH_CONNECTION%% *}"')
+          if ! printf '%s' "$PEER" | grep -qE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$'; then
+            echo "ERROR: could not determine this job's SSH source address as seen" >&2
+            echo "       by the server host (got '$PEER')." >&2
+            exit 1
+          fi
+
+          WHITELIST=$(grep -E '^[[:space:]]*RelayIPs' "$XDP_TOML" || true)
+          echo "Server sees this job's SSH connection from: $PEER"
+          echo "Whitelist about to be deployed:             ${WHITELIST:-(none)}"
+
+          # Entries may be host addresses or CIDR prefixes (the VPC subnet is
+          # one, so that a replaced relay keeps its way in), and the daemon
+          # matches by longest prefix — so this is a containment test, not a
+          # string match: a whitelist that covers $PEER only through its subnet
+          # is correct and must not fail this gate.
+          ip2int() {
+            local rest="$1" o1 o2 o3 o4
+            o1=${rest%%.*}; rest=${rest#*.}
+            o2=${rest%%.*}; rest=${rest#*.}
+            o3=${rest%%.*}; rest=${rest#*.}
+            o4=$rest
+            echo $(( (o1 << 24) + (o2 << 16) + (o3 << 8) + o4 ))
+          }
+
+          PEER_INT=$(ip2int "$PEER")
+          COVERED=""
+          for ENTRY in $(printf '%s' "$WHITELIST" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?'); do
+            ENTRY_ADDR=${ENTRY%%/*}
+            ENTRY_LEN=${ENTRY#*/}
+            [ "$ENTRY_LEN" = "$ENTRY" ] && ENTRY_LEN=32
+            [ "$ENTRY_LEN" -ge 0 ] && [ "$ENTRY_LEN" -le 32 ] || continue
+            if [ "$ENTRY_LEN" -eq 0 ]; then MASK=0; else MASK=$(( 0xFFFFFFFF << (32 - ENTRY_LEN) & 0xFFFFFFFF )); fi
+            if [ $(( PEER_INT & MASK )) -eq $(( $(ip2int "$ENTRY_ADDR") & MASK )) ]; then
+              COVERED="$ENTRY"
+              break
+            fi
+          done
+
+          if [ -n "$COVERED" ]; then
+            echo "Covered by whitelist entry:                 $COVERED"
+          else
+            echo "ERROR: the xdp.toml about to be deployed does not whitelist $PEER," >&2
+            echo "       the address this job's SSH sessions arrive from. Restarting" >&2
+            echo "       nhp-serverd with it would drop tcp/22 for this host with no" >&2
+            echo "       way back in short of rebuilding the instance, so nothing has" >&2
+            echo "       been uploaded and the live whitelist is untouched." >&2
+            echo "       Fix RELAY_IPS in the configure job (it should carry the" >&2
+            echo "       relay's private and public addresses plus the VPC subnet)" >&2
+            echo "       and re-run." >&2
+            exit 1
+          fi
+
       - name: Tear down nginx HTTP/HTTPS surface on server
         # The nhp-server's public HTTP surface (the demo login page at
         # /plugins/example?action=login&resid=demo, served on 443 as
@@ -719,8 +1016,58 @@ jobs:
             fi
           done
 
+          echo "Uploading server eBPF object..."
+          scp ./artifact/server/etc/nhp_server_xdp.o nhp-server:$REMOTE_DIR/etc/
+
           echo "Uploading server configs..."
+          # Includes xdp.toml, rendered in the configure job from the DNS
+          # lookup of relay.opennhp.org. That job is a hard gate: if it
+          # could not resolve a single A record, this job never runs and the
+          # whitelist already on the host is left alone.
           scp ./configs/server/*.toml nhp-server:$REMOTE_DIR/etc/
+
+          # Capabilities and bpffs for the XDP filter. userdata only runs at
+          # instance creation, so already-running hosts are patched here; keep
+          # in sync with terraform/demo/userdata/server.sh.
+          #
+          # A drop-in rather than a sed over the unit: the shipped
+          # nhp-serverd.service has no AmbientCapabilities= line to rewrite,
+          # so a substitution would silently do nothing and the daemon would
+          # fail to attach and fall open — protection lost with a green
+          # deploy. The ExecStartPre carries systemd's "+" prefix so it runs
+          # as root: systemd's sys-fs-bpf.mount leaves /sys/fs/bpf 0700
+          # root:root, which the unprivileged daemon cannot pin into.
+          #
+          # CAP_BPF loads the program and maps, CAP_NET_ADMIN attaches it to
+          # the interface, CAP_PERFMON opens the perf ring the event log
+          # reads. No CAP_SYS_ADMIN and no CAP_DAC_OVERRIDE — as ambient caps
+          # on an internet-facing daemon both are effectively root. The daemon
+          # gives the three back once the filter is attached; the "Verify the
+          # XDP loader gave its capabilities back" step below is the check that
+          # it did.
+          #
+          # NoNewPrivileges=true is here because the shipped unit sets it and
+          # this file has to be the same unit. A drop-in that omits a setting
+          # does not inherit it from anywhere — it simply leaves whatever the
+          # base unit says — so on a host created before that unit shipped it
+          # would be absent entirely, and "keep the two in sync" would be
+          # untrue in the one direction nobody looks at.
+          echo "Installing eBPF capability drop-in..."
+          BPFFS_PREP="mountpoint -q /sys/fs/bpf || mount -t bpf bpf /sys/fs/bpf; chgrp ${{ env.DEPLOY_USER }} /sys/fs/bpf; chmod 0770 /sys/fs/bpf"
+          {
+            echo "[Service]"
+            echo "ExecStartPre=+/bin/sh -c '$BPFFS_PREP'"
+            echo "AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
+            echo "CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
+            echo "NoNewPrivileges=true"
+          } > /tmp/10-ebpf.conf
+          scp /tmp/10-ebpf.conf nhp-server:/tmp/10-ebpf.conf
+          ssh nhp-server "sudo mkdir -p /etc/systemd/system/nhp-serverd.service.d && \
+            sudo mv /tmp/10-ebpf.conf /etc/systemd/system/nhp-serverd.service.d/10-ebpf.conf && \
+            sudo chown root:root /etc/systemd/system/nhp-serverd.service.d/10-ebpf.conf && \
+            sudo chmod 0644 /etc/systemd/system/nhp-serverd.service.d/10-ebpf.conf && \
+            sudo systemctl daemon-reload"
+          rm -f /tmp/10-ebpf.conf
 
           # nhp-serverd writes to $REMOTE_DIR/logs (plural). Ensure it exists and
           # is owned by the service user; older userdata created "log" (singular).
@@ -736,6 +1083,266 @@ jobs:
             exit 1
           fi
           echo "nhp-serverd deployed successfully"
+
+      - name: Verify the XDP ingress filter attached
+        # nhp-serverd falls open when the engine cannot load: it logs a
+        # warning and serves on with no ingress filter. That is the right
+        # runtime behaviour — a kernel or capability problem must not take
+        # the gateway down — but it means a broken deploy looks identical to
+        # a healthy one from `systemctl is-active`, and the host silently
+        # goes back to having SSH and the knock port open to the internet.
+        # So the CI check is the thing that has to be strict.
+        #
+        # Asks the kernel rather than the log: the daemon appends to one file
+        # across restarts, so a "loaded" line from an earlier deploy would
+        # make a broken one look fine. An attached generic-mode XDP program
+        # shows up on the interface itself. The log is only read for
+        # diagnostics when the check fails.
+        run: |
+          set -euo pipefail
+
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-server"
+
+          if ! ssh nhp-server "ip -details link show | grep -q xdpgeneric"; then
+            echo "ERROR: no XDP program attached — nhp-serverd is running fail-open," >&2
+            echo "       i.e. SSH and the knock port are open to the internet again." >&2
+            ssh nhp-server "grep -h -i 'ebpf\|xdp' $REMOTE_DIR/logs/server-[0-9]*.log 2>/dev/null | tail -n 30" || true
+            exit 1
+          fi
+
+          echo "XDP ingress filter attached:"
+          ssh nhp-server "ip -details link show | grep -B2 xdpgeneric" || true
+          # Two spellings, because the whitelist reaches the kernel two ways:
+          # at startup it travels with the load (the program is never attached
+          # without it), and a later edit of xdp.toml is applied by the config
+          # watcher. The most recent of either is the list in force.
+          echo "Active relay whitelist (last applied):"
+          ssh nhp-server "grep -hE 'xdp relay whitelist applied|server XDP engine loaded' $REMOTE_DIR/logs/server-[0-9]*.log 2>/dev/null | tail -n 1" || \
+            echo "  (no whitelist line yet)"
+
+      - name: Verify the XDP loader gave its capabilities back
+        # The unit grants CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON so the filter
+        # can be loaded and attached. Holding them afterwards would be a much
+        # larger grant than the job needs: CAP_BPF with CAP_PERFMON loads
+        # kprobe/tracing programs, which read arbitrary kernel memory
+        # (bpf_probe_read_kernel) — other processes' credentials, and this
+        # daemon's own Noise private key; CAP_NET_ADMIN detaches this filter and
+        # rewrites routes and netfilter rules. nhp-serverd parses untrusted UDP
+        # from the whole internet and dlopens third-party auth plugins into the
+        # same address space, so a memory-safety bug or a hostile plugin would
+        # inherit whatever is left.
+        #
+        # So the loader drops them as its last act (dropLoaderPrivileges in
+        # nhp/utils/ebpf/caps_linux.go), and this step is what keeps that true:
+        # a drop that silently stopped working looks exactly like one that
+        # works. CAP_BPF alone is tolerated because on a kernel with
+        # kernel.unprivileged_bpf_disabled set — Amazon Linux 2023 is one —
+        # bpf(2) is privileged wholesale and giving it up would break the
+        # xdp.toml reload path, i.e. the only remote way to correct a whitelist.
+        # CAP_NET_ADMIN and CAP_PERFMON are never tolerated.
+        #
+        # Every thread is checked, not just /proc/<pid>/status: capabilities are
+        # per-thread, and a drop applied to one thread would leave the thread
+        # group leader's status reading zero while the runtime's other threads
+        # still held the full set — a green check over a guarantee that does not
+        # hold. (libcap's psx is what makes the process-wide drop real.)
+        run: |
+          set -euo pipefail
+
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-server"
+
+          PID=$(ssh nhp-server "systemctl show -p MainPID --value nhp-serverd")
+          if [ -z "$PID" ] || [ "$PID" = "0" ]; then
+            echo "ERROR: nhp-serverd has no main PID; cannot check its capabilities." >&2
+            exit 1
+          fi
+
+          CAPS=$(ssh nhp-server "sudo grep -H -E '^Cap(Prm|Eff|Amb):' /proc/$PID/task/*/status")
+          echo "$CAPS"
+
+          # Bit numbers from <linux/capability.h>. Plain shell arithmetic
+          # rather than awk: the runner's awk is mawk, which has none of
+          # and()/lshift()/strtonum().
+          NET_ADMIN=$(( 1 << 12 ))
+          PERFMON=$(( 1 << 38 ))
+          BPF=$(( 1 << 39 ))
+
+          BAD=$(mktemp)
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            # "/proc/<pid>/task/<tid>/status:CapEff:\t000001ffffffffff"
+            field=${line##*status:}
+            name=${field%%:*}
+            value=${field##*:}
+            value=$(printf '%s' "$value" | tr -d '[:space:]')
+            v=$(( 0x$value ))
+            if [ "$name" = "CapAmb" ] && [ "$v" -ne 0 ]; then
+              echo "ambient set is not empty: $line" >> "$BAD"
+            fi
+            if [ "$name" = "CapPrm" ] || [ "$name" = "CapEff" ]; then
+              if [ $(( v & NET_ADMIN )) -ne 0 ]; then
+                echo "CAP_NET_ADMIN still held: $line" >> "$BAD"
+              fi
+              if [ $(( v & PERFMON )) -ne 0 ]; then
+                echo "CAP_PERFMON still held: $line" >> "$BAD"
+              fi
+              if [ $(( v & ~BPF )) -ne 0 ]; then
+                echo "capabilities beyond CAP_BPF still held: $line" >> "$BAD"
+              fi
+            fi
+          done <<< "$CAPS"
+
+          if [ -s "$BAD" ]; then
+            echo "ERROR: nhp-serverd did not give its loader capabilities back:" >&2
+            sed 's/^/  /' "$BAD" >&2
+            ssh nhp-server "grep -h 'XDP loader privileges' $REMOTE_DIR/logs/server-[0-9]*.log 2>/dev/null | tail -n 5" >&2 || true
+            rm -f "$BAD"
+            exit 1
+          fi
+          rm -f "$BAD"
+
+          echo "XDP loader capabilities dropped (CAP_NET_ADMIN and CAP_PERFMON gone on every thread):"
+          ssh nhp-server "grep -h 'XDP loader privileges' $REMOTE_DIR/logs/server-[0-9]*.log 2>/dev/null | tail -n 1" || \
+            echo "  (no drop line in the log yet)"
+
+      - name: Verify the server's own outbound flows still get their replies
+        # The XDP filter governs ingress for the whole host, so it also decides
+        # whether the *answers* to connections nhp-serverd opens get back in.
+        # Its first version did not: every reply was dropped, and because the
+        # daemon serves knocks over its listening socket, nothing in the deploy
+        # noticed. The failure surfaced only when a user asked for an OTP —
+        # "lookup email-smtp.us-east-2.amazonaws.com on 10.0.0.2:53: i/o
+        # timeout" in the server log, i.e. the DNS answer never came back, and
+        # the mail with it. Those two probes are the cheap standing check that
+        # the reply path (has_local_flow() in nhp_server_xdp.c) is open:
+        #
+        #   udp/53  — getent uses glibc's resolver, so this is the real reply
+        #             path, not a library that could fall back to TCP;
+        #   tcp/587 — the SMTP submission the OTP mail actually rides on, i.e.
+        #             a SYN-ACK arriving at an ephemeral port.
+        #
+        # Retried, because a red deploy on one lost datagram would be noise;
+        # three consecutive failures is the filter, not the network.
+        run: |
+          set -euo pipefail
+
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-server"
+          SMTP_HOST='${{ env.SMTP_HOST }}'
+          SMTP_PORT='${{ env.SMTP_PORT }}'
+          DNS_NAME="${SMTP_HOST:-amazonaws.com}"
+
+          echo "Resolving $DNS_NAME from the server host..."
+          if ! ssh nhp-server "for i in 1 2 3; do getent ahostsv4 '$DNS_NAME' >/dev/null 2>&1 && exit 0; sleep 2; done; exit 1"; then
+            echo "ERROR: the nhp-server host cannot resolve $DNS_NAME." >&2
+            echo "       DNS answers are inbound udp/53 packets: if the XDP filter drops" >&2
+            echo "       them, every outbound flow the daemon opens dies here — OTP mail" >&2
+            echo "       included. Check REASON=UDP_OTHER in the event log." >&2
+            ssh nhp-server "tail -n 20 $REMOTE_DIR/logs/nhp_server_xdp-\$(date +%F).log" 2>/dev/null || true
+            exit 1
+          fi
+          echo "  ok"
+
+          if [ -n "$SMTP_HOST" ]; then
+            echo "Connecting to $SMTP_HOST:${SMTP_PORT:-587} from the server host..."
+            if ! ssh nhp-server "for i in 1 2 3; do timeout 8 bash -c 'exec 3<>/dev/tcp/$SMTP_HOST/${SMTP_PORT:-587}' 2>/dev/null && exit 0; sleep 2; done; exit 1"; then
+              echo "ERROR: the nhp-server host cannot reach $SMTP_HOST:${SMTP_PORT:-587}." >&2
+              echo "       The OTP email will fail. If DNS above passed, this is the" >&2
+              echo "       inbound SYN-ACK being dropped — check REASON=TCP_OTHER." >&2
+              ssh nhp-server "tail -n 20 $REMOTE_DIR/logs/nhp_server_xdp-\$(date +%F).log" 2>/dev/null || true
+              exit 1
+            fi
+            echo "  ok"
+          else
+            echo "SMTP not configured for this deploy; skipping the tcp/587 probe."
+          fi
+
+      - name: Verify the host can still renew its DHCP lease
+        # The probe for the worst failure this filter can cause, and the one
+        # that took the demo down: the host losing its own IP address.
+        #
+        # EC2 leases the primary private IPv4 for a finite time and
+        # systemd-networkd renews it at half the lease. The renewal answer is a
+        # datagram from udp/67 to udp/68 received on a raw or merely-bound
+        # socket, so has_local_flow() cannot admit it — the first version of
+        # the filter dropped it, the lease expired about an hour after a deploy
+        # that had verified perfectly, networkd removed the address, and the
+        # host went dark on every port at once. SSH, the knock port, and
+        # therefore every recovery path short of a reboot.
+        #
+        # None of the other probes can see this: the daemon serves knocks and
+        # opens outbound flows exactly as it should for as long as the lease
+        # lasts. So this step forces the renewal now, while CI is still
+        # connected, and asserts the answer actually crossed the filter — the
+        # program logs an admitted lease renewal as REASON=DHCP_CLIENT, so a
+        # new line is proof, and the count is taken before the renew because
+        # the event log spans the whole day.
+        run: |
+          set -euo pipefail
+
+          REMOTE_DIR="/home/${{ env.DEPLOY_USER }}/nhp-server"
+          EVENT_LOG="$REMOTE_DIR/logs/nhp_server_xdp-\$(date +%F).log"
+
+          IFACE=$(ssh nhp-server "ip -4 -o route show default | awk '{print \$5; exit}'")
+          if [ -z "$IFACE" ]; then
+            echo "ERROR: the server host has no default route; cannot tell which" >&2
+            echo "       interface the filter is attached to." >&2
+            exit 1
+          fi
+          ADDR_BEFORE=$(ssh nhp-server "ip -4 -o addr show dev $IFACE scope global | awk '{print \$4; exit}'")
+          echo "Interface $IFACE, address ${ADDR_BEFORE:-(none)}"
+
+          if ! ssh nhp-server "command -v networkctl >/dev/null 2>&1"; then
+            echo "ERROR: networkctl is not present on the server host, so this" >&2
+            echo "       job cannot force a DHCP renewal. The AMI's DHCP client" >&2
+            echo "       has changed: add the equivalent probe for it rather" >&2
+            echo "       than dropping this gate — an unrenewable lease takes" >&2
+            echo "       the whole host off the network one lease later." >&2
+            exit 1
+          fi
+
+          BEFORE=$(ssh nhp-server "grep -c 'REASON=DHCP_CLIENT' $EVENT_LOG 2>/dev/null || true")
+          BEFORE=${BEFORE:-0}
+
+          echo "Forcing a DHCP renewal on $IFACE..."
+          if ! ssh nhp-server "sudo networkctl renew $IFACE"; then
+            echo "ERROR: 'networkctl renew $IFACE' failed — is systemd-networkd" >&2
+            echo "       still the DHCP client for this link?" >&2
+            ssh nhp-server "networkctl status $IFACE" || true
+            exit 1
+          fi
+
+          SEEN=no
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            AFTER=$(ssh nhp-server "grep -c 'REASON=DHCP_CLIENT' $EVENT_LOG 2>/dev/null || true")
+            AFTER=${AFTER:-0}
+            if [ "$AFTER" -gt "$BEFORE" ]; then
+              SEEN=yes
+              break
+            fi
+            sleep 3
+          done
+
+          if [ "$SEEN" != "yes" ]; then
+            echo "ERROR: the DHCP lease renewal answer did not reach the host." >&2
+            echo "       udp/67 -> udp/68 is being dropped at the driver, which" >&2
+            echo "       means this host loses its IPv4 address (and every way" >&2
+            echo "       in, including SSH) when the current lease expires." >&2
+            echo "       Check the DHCP branch in nhp/ebpf/xdp/nhp_server_xdp.c" >&2
+            echo "       is present in the deployed .o, then look for" >&2
+            echo "       REASON=UDP_OTHER with SPT=67 in the event log:" >&2
+            ssh nhp-server "grep -E 'SPT=(67|68)' $EVENT_LOG 2>/dev/null | tail -n 10" || true
+            exit 1
+          fi
+          echo "  ok — lease renewal admitted (REASON=DHCP_CLIENT)"
+
+          ADDR_AFTER=$(ssh nhp-server "ip -4 -o addr show dev $IFACE scope global | awk '{print \$4; exit}'")
+          if [ -z "$ADDR_AFTER" ] || [ "$ADDR_AFTER" != "$ADDR_BEFORE" ]; then
+            echo "ERROR: $IFACE address changed across the renewal:" >&2
+            echo "       before='$ADDR_BEFORE' after='$ADDR_AFTER'" >&2
+            echo "       The XDP whitelist and this job's SSH path are written" >&2
+            echo "       in terms of that address; stop and investigate." >&2
+            exit 1
+          fi
 
       - name: Verify no HTTP/HTTPS listener remains on server
         # Fail the deploy loudly if the retired HTTP surface came back: nginx

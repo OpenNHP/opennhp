@@ -1,0 +1,165 @@
+//go:build linux
+
+package ebpf
+
+// Giving back the capabilities the load needed.
+//
+// nhp-serverd is granted CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON as *ambient*
+// capabilities (terraform/demo/userdata/server.sh, and the drop-in the
+// deploy-server job installs on existing hosts). It needs all three for about
+// a second at startup: CAP_BPF to load the program and create its maps,
+// CAP_NET_ADMIN to attach an XDP program to the interface, CAP_PERFMON to open
+// the perf ring the event log reads.
+//
+// Keeping them for the life of the process is a much bigger grant than it
+// looks. CAP_BPF together with CAP_PERFMON loads kprobe and tracing programs,
+// which may call bpf_probe_read_kernel() — arbitrary kernel memory, including
+// other processes' credentials and this daemon's own Noise private key.
+// CAP_NET_ADMIN detaches this very filter, rewrites routes and rewrites
+// netfilter rules. And this is a process that parses untrusted UDP from the
+// whole internet and dlopens third-party auth plugins into its own address
+// space, so any memory-safety bug or hostile plugin inherits whatever the
+// process still holds.
+//
+// Nothing after the attach needs them:
+//   - ReplaceRelayIPs drives the whitelist through a map fd the process already
+//     holds (but see bpfSyscallNeedsCapability below);
+//   - the perf reader is opened before the drop, and reading it is read(2) on
+//     an fd;
+//   - detaching — the watchdog, Stop() — is close(2) on the link fd, and
+//     removing a bpffs pin is unlink(2) under a directory the service user
+//     already owns.
+//
+// So the loader drops them as its last act, whether the attach succeeded or
+// failed. Only the server variant does this: the AC's loader has the same
+// lifetime question but a different answer (it rewrites its maps on every
+// knock) and this change deliberately leaves its behavior alone.
+
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+
+	"kernel.org/pub/linux/libs/security/libcap/cap"
+
+	"github.com/OpenNHP/opennhp/nhp/log"
+)
+
+// unprivilegedBpfSysctl is the kernel's switch for whether bpf(2) may be called
+// at all without CAP_BPF. 0 allows unprivileged calls; 1 and 2 ("disabled" and
+// "disabled without recourse") make *every* command privileged, map updates on
+// an fd this process already owns included.
+const unprivilegedBpfSysctl = "/proc/sys/kernel/unprivileged_bpf_disabled"
+
+// bpfSyscallNeedsCapability reports whether this kernel will still let the
+// process write its own maps after the capabilities are gone.
+//
+// The hope is "yes": the fd is the capability, and a daemon that loaded its
+// program while privileged should be able to keep its maps in step afterwards.
+// That is true only while kernel.unprivileged_bpf_disabled is 0. Distros that
+// build with CONFIG_BPF_UNPRIV_DEFAULT_OFF (Amazon Linux 2023, Ubuntu, Debian)
+// ship it as 1 or 2, and there bpf(2) is gated wholesale — a dropped CAP_BPF
+// would turn every later `ReplaceRelayIPs` into EPERM.
+//
+// That matters more than the capability does. The xdp.toml reload path is how a
+// replaced relay's new address reaches the live whitelist, and it is the only
+// remote way to correct a whitelist on a host whose only way in is that
+// whitelist. Breaking it to drop one capability trades a hardening win for a
+// lockout, so on such a kernel CAP_BPF is kept and said so in the log.
+//
+// An unreadable sysctl is read as "needs the capability": the conservative
+// answer keeps the daemon working rather than quietly breaking reloads.
+func bpfSyscallNeedsCapability() bool {
+	return bpfSyscallNeedsCapabilityFrom(unprivilegedBpfSysctl)
+}
+
+func bpfSyscallNeedsCapabilityFrom(path string) bool {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return true
+	}
+	v, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		return true
+	}
+	return v != 0
+}
+
+// dropLoaderPrivileges clears the ambient set and reduces the permitted,
+// effective and inheritable sets to the minimum the daemon still needs — empty
+// where the kernel allows it, CAP_BPF alone where bpf(2) itself is privileged.
+//
+// allowKeepBpf is the caller's answer to "is there still a map to write?".
+// Only a load that produced a live filter has one: on a failed load there is no
+// handle, no whitelist and no reload path, so the CAP_BPF exemption below has
+// nothing left to protect and the drop is unconditional. That is the case the
+// daemon runs in for the longest — a load that fails is fail-open for the life
+// of the process — so it is the one that least deserves a capability.
+//
+// Both steps are process-wide, not just this goroutine's thread: libcap's cap
+// package routes prctl(2) and capset(2) through psx, which applies them to
+// every thread of the process. A per-thread drop would be worse than none —
+// /proc/<pid>/status would show CapEff: 0 for the thread group leader while the
+// runtime's other threads carried the full set, i.e. a check that passes and a
+// guarantee that does not hold. (The pure-Go syscall.AllThreadsSyscall cannot
+// be used here: nhp-serverd links cgo, by way of the plugin package, and that
+// function returns ENOTSUP in any binary that does.)
+//
+// The bounding set is left alone: dropping from it needs CAP_SETPCAP, which
+// this daemon is deliberately not granted. It is already narrowed to these
+// three by CapabilityBoundingSet= in the unit, and with an empty permitted set
+// and NoNewPrivileges=true a bounding bit grants nothing on its own.
+func dropLoaderPrivileges(allowKeepBpf bool) error {
+	keepBpf := allowKeepBpf && bpfSyscallNeedsCapability()
+
+	// Ambient first. It is what survives an exec, so it is the one set that
+	// could hand these capabilities to something that is not this program at
+	// all. Clearing permitted and inheritable below forces it empty anyway —
+	// the kernel holds no ambient bit that is not in both — but doing it
+	// explicitly means a failure here is reported as itself.
+	if err := cap.ResetAmbient(); err != nil {
+		return fmt.Errorf("cannot clear the ambient capability set: %w", err)
+	}
+
+	// Built as a strict reduction of what the process already holds, never as
+	// a wish list: capset(2) refuses to raise a bit that is not in the current
+	// permitted set, so asking for CAP_BPF on a host where the unit's
+	// AmbientCapabilities= never took would fail the whole call with EPERM and
+	// leave the capabilities — all of them — in place.
+	held := cap.GetProc()
+	keptBpf := false
+	want := cap.NewSet()
+	if keepBpf {
+		has, getErr := held.GetFlag(cap.Permitted, cap.BPF)
+		if getErr == nil && has {
+			if setErr := want.SetFlag(cap.Permitted, true, cap.BPF); setErr != nil {
+				return fmt.Errorf("cannot build the reduced capability set: %w", setErr)
+			}
+			if setErr := want.SetFlag(cap.Effective, true, cap.BPF); setErr != nil {
+				return fmt.Errorf("cannot build the reduced capability set: %w", setErr)
+			}
+			keptBpf = true
+		}
+	}
+	if err := want.SetProc(); err != nil {
+		return fmt.Errorf("cannot reduce the capability set from %q to %q: %w", held, want, err)
+	}
+
+	if keptBpf {
+		log.Info("XDP loader privileges dropped: CAP_NET_ADMIN and CAP_PERFMON released, CAP_BPF kept because %s is non-zero (bpf(2) is privileged on this kernel, and the xdp.toml reload path writes the relay whitelist map)",
+			unprivilegedBpfSysctl)
+		return nil
+	}
+	log.Info("XDP loader privileges dropped: the daemon now runs with no capabilities at all")
+	return nil
+}
+
+// dropLoaderPrivilegesOrWarn is the form the loader calls: a failure to drop is
+// not a reason to unwind a filter that is working, so it is logged loudly and
+// the daemon carries on with the capabilities it was given.
+func dropLoaderPrivilegesOrWarn(allowKeepBpf bool) {
+	if err := dropLoaderPrivileges(allowKeepBpf); err != nil {
+		log.Error("could not drop the XDP loader's capabilities; nhp-serverd keeps CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON for the rest of its life: %v", err)
+	}
+}

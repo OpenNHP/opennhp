@@ -16,6 +16,8 @@ import (
 
 	"github.com/OpenNHP/opennhp/nhp/etcd"
 
+	ebpflocal "github.com/OpenNHP/opennhp/endpoints/server/ebpf"
+
 	"github.com/OpenNHP/opennhp/nhp/audit"
 	"github.com/OpenNHP/opennhp/nhp/common"
 	"github.com/OpenNHP/opennhp/nhp/core"
@@ -69,6 +71,13 @@ type UdpServer struct {
 	// trips and operator-visible state.
 	allowPrivateRelaySource atomic.Bool
 	forceOverload           atomic.Bool
+
+	// xdpActiveMinFrameBytes is the datagram floor the attached XDP program is
+	// enforcing, written into its .rodata at load time. Kept so a later
+	// xdp.toml reload can tell the operator that an edit to NhpMinFrameBytes
+	// needs a restart, instead of silently doing nothing. Zero when no filter
+	// is attached.
+	xdpActiveMinFrameBytes atomic.Int32
 
 	// connection and remote transaction management
 
@@ -332,6 +341,13 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	}
 	tuneUDPRecvBuffer(s.listenConn, recvBufferTarget)
 
+	// The XDP ingress filter is attached further down, by loadXdpConfig(), and
+	// only for a host whose etc/xdp.toml asks for it. It cannot be attached
+	// here: it needs the whitelist, the datagram floor and the daemon's own
+	// service ports, none of which are known until the configs below are
+	// loaded — and attaching first would mean a window in which the host
+	// filters with an empty SSH whitelist.
+
 	// retrieve local port
 	laddr := s.listenConn.LocalAddr()
 	s.listenAddr, err = net.ResolveUDPAddr(laddr.Network(), laddr.String())
@@ -470,6 +486,16 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 
 		_ = s.loadResources()
 	}
+
+	// Load the XDP ingress policy (etc/xdp.toml) and, if it asks for one,
+	// attach the filter. Outside the etcd branch on purpose: etcd does not
+	// carry this file, and an etcd-configured server must reach the same
+	// decision from the same file as any other.
+	//
+	// Deliberately after loadHttpConfig(): the filter drops every listening TCP
+	// service on the host, so whether the HTTP knock listener is running is
+	// part of deciding whether it may attach at all.
+	_ = s.loadXdpConfig(logLevel)
 
 	// Initialize agent key store (SQLite).
 	ks, err := NewAgentKeyStore(s.config.DatabasePath)
@@ -612,6 +638,11 @@ func (s *UdpServer) Stop() {
 	}
 
 	s.closeAuditLedger()
+
+	// Detach XDP and remove the pins. The links die with the process anyway,
+	// but leaving the pins behind makes the next start's LoadAndAssign fail
+	// against a stale map if the object ever changes shape.
+	ebpflocal.CleanupBPFFiles()
 
 	log.Info("==========================")
 	log.Info("=== NHP-Server stopped ===")

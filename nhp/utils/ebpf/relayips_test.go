@@ -24,6 +24,16 @@ func TestParseRelayPrefix(t *testing.T) {
 		{in: "10.0.0.0/33", wantErr: true},
 		{in: "", wantErr: true},
 		{in: "   ", wantErr: true},
+		// IPv4-mapped IPv6. net.ParseCIDR hands these back as a 16-byte IP
+		// whose To4() is non-nil, so an "IPv4 only" check written against net
+		// passes them — and then Mask.Size() is 120, a PrefixLen above the
+		// trie's max_prefixlen of 32 that the kernel answers with EINVAL. An
+		// entry that validates here and cannot be written is the one shape
+		// that defeats validating the whole list before the first map write.
+		{in: "::ffff:10.0.1.0/120", wantErr: true},
+		{in: "::ffff:10.0.1.0/104", wantErr: true},
+		{in: "::ffff:10.0.1.4", wantErr: true},
+		{in: "::ffff:10.0.1.4/128", wantErr: true},
 	}
 
 	for _, tc := range tests {
@@ -71,6 +81,7 @@ func TestParseRelayPrefixesIsAllOrNothing(t *testing.T) {
 		{name: "an inline comment", in: []string{"10.0.1.4 # relay"}, wantErr: true},
 		{name: "a typo", in: []string{"10.0.1.300"}, wantErr: true},
 		{name: "IPv6 only", in: []string{"2001:db8::1"}, wantErr: true},
+		{name: "an IPv4-mapped IPv6 prefix", in: []string{"10.0.1.0/24", "::ffff:203.0.113.0/120"}, wantErr: true},
 		{name: "an unset RELAY_IPS", in: []string{""}, wantErr: true},
 		// The dangerous half-valid case: everything parses but the one entry
 		// SSH actually arrives from.

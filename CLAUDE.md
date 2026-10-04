@@ -385,9 +385,21 @@ before anything is scp'd or restarted:
   can hold, so a count-the-strings guard would attach with an empty map, or let
   a reload sweep a working whitelist away. One bad entry fails the whole list
   rather than being skipped — the entry that did not parse may be the one SSH
-  arrives from, and nothing in user space can tell. `ReplaceRelayIPs` repeats
-  both refusals before its first map write, so the contract does not depend on
-  its callers.
+  arrives from, and nothing in user space can tell. An IPv4-mapped IPv6 prefix
+  (`::ffff:10.0.1.0/120`) is refused for the same reason and is the one spelling
+  that gets past a check written against `net`: `To4()` is non-nil for it while
+  `Mask.Size()` is 120, a prefix length above the trie's `max_prefixlen` of 32
+  that the kernel answers with `EINVAL` — an entry validation called usable and
+  the map will not take. `ReplaceRelayIPs` repeats both refusals before its first
+  map write, so the contract does not depend on its callers.
+- `ReplaceRelayIPs` is also all-or-nothing against the *map*, not only against
+  the file: it reads the live whitelist first, and a failed `Update` (ENOMEM on
+  the no-prealloc trie, a key the kernel will not hold) rolls back the keys that
+  call added and skips the stale sweep, so the map is left holding exactly the
+  list it held before. Sweeping anyway is how a reload that merely failed to add
+  the relay's *new* address removes its *old* one too — a map holding neither,
+  i.e. tcp/22 closed to every source, while `applyXdpConfig` logs that it kept
+  the active whitelist. A map it cannot even read is one it refuses to touch.
 
 A red run with the demo still up is the intended outcome of any of them.
 

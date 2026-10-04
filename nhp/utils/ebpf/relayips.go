@@ -12,6 +12,7 @@ package ebpf
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"strings"
 )
 
@@ -38,31 +39,40 @@ func (k RelayPrefixKey) String() string {
 // ignores them when matching, but a key that kept them would not compare equal
 // to the same prefix written differently, and ReplaceRelayIPs' stale-entry
 // sweep would then never recognize its own entries.
+//
+// Parsing goes through net/netip rather than net.ParseCIDR/net.ParseIP because
+// only netip tells a real IPv4 address from an IPv4-mapped IPv6 one. net's
+// To4() is non-nil for "::ffff:10.0.1.0/120", so the "IPv4 only" check passed
+// while Mask.Size() reported 120 — a PrefixLen the trie cannot hold, since the
+// map's max_prefixlen is 32. The kernel answers that key with EINVAL, so an
+// entry this function had just called valid would fail at the map write: at
+// startup the whole load fails (fail-open, no filter), and on reload one entry
+// of a list validated as all-or-nothing is missing from the map. Is4() is false
+// for the mapped form, so both spellings are now refused where every other
+// unusable entry is, before anything is written.
 func ParseRelayPrefix(s string) (RelayPrefixKey, error) {
 	s = strings.TrimSpace(s)
 
 	if strings.Contains(s, "/") {
-		_, ipNet, err := net.ParseCIDR(s)
+		prefix, err := netip.ParsePrefix(s)
 		if err != nil {
 			return RelayPrefixKey{}, fmt.Errorf("invalid CIDR %q: %w", s, err)
 		}
-		ip4 := ipNet.IP.To4()
-		if ip4 == nil {
+		if !prefix.Addr().Is4() {
 			return RelayPrefixKey{}, fmt.Errorf("only IPv4 prefixes are supported, got %q", s)
 		}
-		ones, _ := ipNet.Mask.Size()
-		return RelayPrefixKey{PrefixLen: uint32(ones), Addr: [4]byte(ip4)}, nil
+		masked := prefix.Masked()
+		return RelayPrefixKey{PrefixLen: uint32(masked.Bits()), Addr: masked.Addr().As4()}, nil
 	}
 
-	ip := net.ParseIP(s)
-	if ip == nil {
-		return RelayPrefixKey{}, fmt.Errorf("invalid IP address %q", s)
+	addr, err := netip.ParseAddr(s)
+	if err != nil {
+		return RelayPrefixKey{}, fmt.Errorf("invalid IP address %q: %w", s, err)
 	}
-	ip4 := ip.To4()
-	if ip4 == nil {
+	if !addr.Is4() {
 		return RelayPrefixKey{}, fmt.Errorf("only IPv4 addresses are supported, got %q", s)
 	}
-	return RelayPrefixKey{PrefixLen: 32, Addr: [4]byte(ip4)}, nil
+	return RelayPrefixKey{PrefixLen: 32, Addr: addr.As4()}, nil
 }
 
 // ParseRelayPrefixes parses a whole whitelist and fails on the first entry it

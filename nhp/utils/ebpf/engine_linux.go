@@ -1041,6 +1041,18 @@ func sweepServerEventLogs(logDir string, now time.Time, retainDays int, maxBytes
 // map closes tcp/22 for every source on a host whose only way in is this map.
 // Callers are expected to have refused such a list already — this is the last
 // place that can still tell, and it does not rely on them.
+//
+// A failed write is the third way a reload can weaken a working whitelist, and
+// it is handled the same way: the call is all-or-nothing against the map, not
+// only against the file. The map is read before anything is written so this
+// call knows which keys are its own; if an Update fails — an ENOMEM on the
+// trie, an EINVAL from a key the kernel will not hold — the keys this call
+// added are taken back out and the stale sweep never runs, so the map is left
+// holding exactly the list it held before. Deleting stale entries anyway, which
+// is what the first version did, is how a reload that merely failed to add the
+// relay's new address ends up removing its old one too: a map holding neither,
+// i.e. tcp/22 closed to every source, under a caller logging that it kept the
+// active whitelist.
 func ReplaceRelayIPs(relayMap *ebpf.Map, ipStrs []string) error {
 	if relayMap == nil {
 		return fmt.Errorf("relay ip map is not loaded")
@@ -1059,33 +1071,46 @@ func ReplaceRelayIPs(relayMap *ebpf.Map, ipStrs []string) error {
 		want[key] = struct{}{}
 	}
 
-	var firstErr error
+	// Read the active map first. Rolling back needs to know which keys this
+	// call introduced, and a snapshot taken after the adds cannot tell them
+	// from entries that were already there. A map this call cannot read is a
+	// map it cannot change safely, so it writes nothing at all: the live
+	// whitelist stays exactly as it is, which is the direction that keeps a
+	// reachable host reachable.
+	present := make(map[RelayPrefixKey]struct{})
+	var iterKey RelayPrefixKey
+	var iterValue uint8
+	iter := relayMap.Iterate()
+	for iter.Next(&iterKey, &iterValue) {
+		present[iterKey] = struct{}{}
+	}
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("refusing to apply the relay whitelist: cannot read the active map: %w", err)
+	}
+
+	var added []RelayPrefixKey
 	allowed := uint8(1)
 	for key := range want {
 		k := key
+		if _, old := present[k]; old {
+			continue // already allowed; leave it untouched so it is never momentarily absent
+		}
 		if err := relayMap.Update(&k, &allowed, ebpf.UpdateAny); err != nil {
 			log.Error("relay whitelist: failed to add %s: %v", k, err)
-			if firstErr == nil {
-				firstErr = err
-			}
+			rollbackRelayIPs(relayMap, added)
+			return fmt.Errorf("refusing to apply the relay whitelist: failed to add %s: %w", k, err)
 		}
+		added = append(added, k)
 	}
 
 	var stale []RelayPrefixKey
-	var key RelayPrefixKey
-	var value uint8
-	iter := relayMap.Iterate()
-	for iter.Next(&key, &value) {
+	for key := range present {
 		if _, keep := want[key]; !keep {
 			stale = append(stale, key)
 		}
 	}
-	if err := iter.Err(); err != nil {
-		log.Error("relay whitelist: failed to iterate map: %v", err)
-		if firstErr == nil {
-			firstErr = err
-		}
-	}
+
+	var firstErr error
 	for _, k := range stale {
 		key := k
 		if err := relayMap.Delete(&key); err != nil && !errors.Is(err, ebpf.ErrKeyNotExist) {
@@ -1096,8 +1121,26 @@ func ReplaceRelayIPs(relayMap *ebpf.Map, ipStrs []string) error {
 		}
 	}
 
-	log.Info("relay whitelist applied: %d prefix(es) active, %d removed", len(want), len(stale))
+	log.Info("relay whitelist applied: %d prefix(es) active, %d added, %d removed", len(want), len(added), len(stale))
 	return firstErr
+}
+
+// rollbackRelayIPs removes the keys a failed ReplaceRelayIPs had already added,
+// restoring the whitelist the map held when that call started.
+//
+// A delete that fails here leaves the map holding more prefixes than the old
+// list, never fewer — the error path widens the whitelist rather than closing
+// tcp/22 — so it is logged and the rest are still attempted.
+func rollbackRelayIPs(relayMap *ebpf.Map, added []RelayPrefixKey) {
+	for _, k := range added {
+		key := k
+		if err := relayMap.Delete(&key); err != nil && !errors.Is(err, ebpf.ErrKeyNotExist) {
+			log.Error("relay whitelist: failed to roll back %s after a failed update: %v", key, err)
+		}
+	}
+	if len(added) > 0 {
+		log.Info("relay whitelist unchanged: rolled back %d prefix(es) added before the failure", len(added))
+	}
 }
 
 // setEbpfConfig fills the `nhp_config` map the TC egress program reads.

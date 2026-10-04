@@ -38,12 +38,20 @@ func serverObjPath(t *testing.T) string {
 // any BPF map still needs privilege, so this skips when unprivileged.
 func newRelayMap(t *testing.T) *ebpf.Map {
 	t.Helper()
+	return newRelayMapSized(t, 4096)
+}
+
+// newRelayMapSized is newRelayMap with a chosen max_entries, so a test can make
+// the kernel refuse an insert (E2BIG) on demand and exercise what ReplaceRelayIPs
+// does to a live whitelist when a map write fails.
+func newRelayMapSized(t *testing.T, maxEntries uint32) *ebpf.Map {
+	t.Helper()
 	m, err := ebpf.NewMap(&ebpf.MapSpec{
 		Name:       "test_relay_ips",
 		Type:       ebpf.LPMTrie,
 		KeySize:    8, // __u32 prefixlen + __be32 addr
 		ValueSize:  1,
-		MaxEntries: 4096,
+		MaxEntries: maxEntries,
 		Flags:      unix.BPF_F_NO_PREALLOC,
 	})
 	if err != nil {
@@ -247,6 +255,54 @@ func TestReplaceRelayIPsRejectsInvalidEntries(t *testing.T) {
 	}
 	if got, want := relayMapContents(t, m), []string{"10.0.0.1/32", "10.0.0.2/32"}; !equal(got, want) {
 		t.Errorf("contents = %v, want %v", got, want)
+	}
+}
+
+// A map write that fails must leave the previous whitelist whole. This is the
+// lockout the parse-time gates cannot see: the list is valid, the file is
+// right, and the kernel simply will not take an entry (E2BIG here, ENOMEM on a
+// no-prealloc trie in the field). Sweeping stale entries anyway turns "failed
+// to add the relay's new address" into "removed its old one too" — a map
+// holding neither, i.e. tcp/22 closed to every source, while applyXdpConfig
+// logs that it kept the active whitelist.
+func TestReplaceRelayIPsKeepsTheOldListWhenAnAddFails(t *testing.T) {
+	// Room for the two seeded entries plus exactly one of the two new ones,
+	// so whichever is attempted second is refused by the kernel.
+	m := newRelayMapSized(t, 3)
+
+	seeded := []string{"10.0.0.1/32", "10.0.0.2/32"}
+	if err := ReplaceRelayIPs(m, []string{"10.0.0.1", "10.0.0.2"}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	if err := ReplaceRelayIPs(m, []string{"10.0.0.3", "10.0.0.4"}); err == nil {
+		t.Error("ReplaceRelayIPs returned nil, want the failed insert reported")
+	}
+	if got := relayMapContents(t, m); !equal(got, seeded) {
+		t.Errorf("after the failed replace the map = %v, want the previous list %v", got, seeded)
+	}
+
+	// The addresses the old list named are still matched, which is the
+	// property that actually keeps SSH working.
+	var value uint8
+	for _, host := range [][4]byte{{10, 0, 0, 1}, {10, 0, 0, 2}} {
+		key := RelayPrefixKey{PrefixLen: 32, Addr: host}
+		if err := m.Lookup(&key, &value); err != nil {
+			t.Errorf("%v was dropped from the whitelist by a failed reload: %v", net.IP(host[:]), err)
+		}
+	}
+
+	// A list the map has no room for at all fails the same way, with nothing
+	// added to roll back.
+	full := newRelayMapSized(t, 1)
+	if err := ReplaceRelayIPs(full, []string{"10.0.0.1"}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := ReplaceRelayIPs(full, []string{"10.0.0.2"}); err == nil {
+		t.Error("ReplaceRelayIPs returned nil, want the failed insert reported")
+	}
+	if got, want := relayMapContents(t, full), []string{"10.0.0.1/32"}; !equal(got, want) {
+		t.Errorf("after the failed replace the map = %v, want the previous list %v", got, want)
 	}
 }
 

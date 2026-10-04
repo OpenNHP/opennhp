@@ -449,8 +449,21 @@ func (s *UdpServer) loadBaseConfig() error {
 	baseConfigWatch = utils.WatchFile(fileName, func() {
 		log.Info("base config: %s has been updated", fileName)
 		if content, err = s.loadConfigFile(fileName); err == nil {
-			if err = toml.Unmarshal(content, &config); err == nil {
-				_ = s.updateBaseConfig(config)
+			// Unmarshal into a fresh Config on each reload. go-toml v2 does
+			// not zero fields that are absent from the new file, so reusing
+			// the outer `config` variable would let a removed security switch
+			// (e.g. AttestationScheme = "test") stick at the old value until
+			// a restart. For most base-config fields this is harmless — a
+			// cleared LogLevel still has a sensible default — but AttestationScheme
+			// gates the DHP attestation path: a missing key MUST resolve to
+			// SchemeCSV through ResolveScheme, otherwise the server keeps
+			// accepting self-asserted evidence after the operator turned the
+			// demo switch off. The same shape applies to ForceOverload and
+			// AllowPrivateRelaySource below; rebuilding here keeps every
+			// "key absent" reset consistent.
+			var newConf Config
+			if err = toml.Unmarshal(content, &newConf); err == nil {
+				_ = s.updateBaseConfig(newConf)
 			}
 
 		}

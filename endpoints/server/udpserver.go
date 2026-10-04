@@ -476,6 +476,15 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		log.Critical("AllowPrivateRelaySource=true: relay SourceAddr public-routability check is DISABLED — " +
 			"a relay can claim private/loopback/link-local client IPs. Intended for local/test only.")
 	}
+	// Same rationale as ForceOverload / AllowPrivateRelaySource above: the
+	// reload path's Critical only fires after a subsequent edit, so a server
+	// that booted with AttestationScheme = "test" silently accepts
+	// self-asserted evidence on the DHP knock path with nothing in the log.
+	// ResolveScheme here so the startup path and the reload path agree on
+	// what "test" means (case-insensitive, trimmed) before either logs.
+	if verifier.ResolveScheme(s.config.AttestationScheme) == verifier.SchemeTest {
+		log.Critical("AttestationScheme=%q: DHP knock path accepts self-asserted evidence with NO cryptographic assurance — for non-TEE demos only, never on a production-facing host", s.config.AttestationScheme)
+	}
 
 	// retrieve local ip and mac
 	s.localIp = utils.GetLocalOutboundAddress().String()

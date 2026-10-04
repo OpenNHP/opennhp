@@ -112,6 +112,19 @@ curl --insecure https://localhost:8443/api/v1/attestation/tee
 接下来，你需要在nhp-server中配置远程证明信息。
 ```shell
 docker exec -it nhp-server /bin/bash
+vi /nhp-server/etc/config.toml
+```
+
+如果运行本演示栈的主机没有 Hygon CSV 卡，那么上面的远程证明报告并不是一份合法的 CSV 报告，nhp-server 上的 csv 校验器会拒绝它（你将看到 `attestationVerified:false`，以及服务端的一条 Error 日志）。要让 nhp-server 接受容器生成的证据，请在 `config.toml` 中加入下面这一行：
+
+```toml
+AttestationScheme = "test"
+```
+
+默认值（key 缺失，或任何不等于 `"test"` 的值）为 `"csv"`，这要求一份真实的 Hygon CSV 远程证明报告。`"test"` 接受自声明的证据，**没有任何加密保证** —— 服务端在启动时以及每次重载且解析后的 scheme 仍为 `"test"` 时，都会输出一条 `Critical: AttestationScheme="test": ...` 日志。请把这条日志视作 **"你正在缺少一道安全护栏的情况下运行"**。切勿在信任边界之外可达的主机上设置 `AttestationScheme = "test"`。
+
+然后再配置 TEE 白名单：
+```shell
 vi /nhp-server/etc/tee.toml
 # list trusted execution environments under [[TEEs]] table
 

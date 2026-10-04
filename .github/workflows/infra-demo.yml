@@ -201,6 +201,11 @@ jobs:
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "~1.10"
+          # The wrapper writes `::error::Terraform exited with code N.` to
+          # stdout on failure (core.setFailed), which any `$(terraform ...)`
+          # capture would pick up as if it were a value. Nothing here consumes
+          # the wrapper's stdout/stderr/exitcode step outputs.
+          terraform_wrapper: false
 
       - name: Terraform Init
         working-directory: ${{ env.TF_WORKING_DIR }}

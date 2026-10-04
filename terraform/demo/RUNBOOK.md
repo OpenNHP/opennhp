@@ -878,6 +878,87 @@ sudo /usr/local/sbin/nhp-ac-backstop.sh status            # reports the raw guar
 sudo /usr/local/sbin/nhp-ac-backstop.sh flush-guard-down
 ```
 
+## Deploy binaries and the hosts' glibc
+
+### The failure
+
+A deploy that has already stopped the daemons, uploaded the new binaries and
+started them again, and then fails on `systemctl is-active`, with this in the
+journal:
+
+```
+nhp-serverd[226129]: /home/ec2-user/nhp-server/nhp-serverd: /lib64/libc.so.6: version `GLIBC_2.38' not found (required by /home/ec2-user/nhp-server/nhp-serverd)
+systemd[1]: nhp-serverd.service: Main process exited, code=exited, status=1/FAILURE
+```
+
+On the AC the same exec failure takes the daemon down *and* leaves the
+fail-closed backstop in place, since `nhp-acd` never gets far enough to attach
+the XDP program:
+
+```
+nhp-acd[231148]: /home/ec2-user/nhp-ac/nhp-acd: /lib64/libc.so.6: version `GLIBC_2.38' not found
+nhp-ac-backstop.sh[231149]: timed out after 30s waiting for the XDP program on ens5
+nhp-ac-backstop.sh[231149]: keeping the backstop in place - the protected ports stay closed
+```
+
+Nothing is wrong with the configs, the keys or the eBPF objects. The binary
+cannot be exec'd at all: it was linked against a newer glibc than the host has.
+
+### Why it happens
+
+The daemons are **cgo** builds, so they carry versioned references to glibc
+symbols and run only where glibc is at least as new as the builder's. The demo
+hosts are Amazon Linux 2023 (`al2023-ami-2023.*-x86_64` — see `ami.tf`), glibc
+**2.34**. The build used to run straight on `ubuntu-latest`, so the day that
+image moved to a distribution with glibc 2.38 every demo host got a binary it
+could not start — with no code change and nothing in the build log to show it.
+
+cgo is not optional here: `nhp-serverd` loads its auth plugins with
+`plugin.Open`, and Go's `plugin` package is a stub without cgo. A
+`CGO_ENABLED=0` server starts, reports healthy, and fails every plugin load
+with `plugin: not implemented` — no authentication. So the build has to move to
+the target's glibc rather than away from cgo.
+
+### What is in place now
+
+- `deploy-demo-v2`'s build job compiles the daemons and the plugins inside
+  `docker/Dockerfile.al2023-builder` (`amazonlinux:2023` + the `GO_VERSION`
+  Go toolchain). The eBPF objects are BPF bytecode with no libc in them and
+  are still built on the runner with its clang.
+- `scripts/check-glibc-compat.sh` reads the version-needs section of every ELF
+  the job ships — the three daemons, every plugin `.so`, the `demoapp` binary
+  out of `Dockerfile.demoapp` — and fails the job if any needs more than
+  `TARGET_GLIBC` (2.34). It is a check on the artifact, not on how it was
+  produced, so it survives a change of runner, image or toolchain.
+- The same step asserts `nhp-serverd` is still dynamically linked against
+  libc, because `CGO_ENABLED=0` is the obvious way to make the glibc check
+  pass and the one that quietly disables plugin loading.
+- All of this runs **before** the upload, so the failure mode is a red `build`
+  job with every host still running the binary it had.
+
+### Recovery, if it happens again on a host
+
+The hosts keep nothing but the single binary, so roll forward rather than back:
+re-run `deploy-demo-v2` from a commit whose build job is green. If the demo
+needs to come back before that, the previous binary is whatever is still in the
+instance's `/home/ec2-user/nhp-{server,ac,relay}/` only if the deploy did not
+overwrite it — it does, so there is no local rollback. The AC's ports stay
+closed while it is down, which is the intended direction; the nhp-server host
+stays reachable over SSH (it never attached its filter).
+
+Checking a binary by hand, before or after a deploy:
+
+```bash
+# on the host: what glibc is actually here
+ldd --version | head -1
+
+# anywhere, against an artifact: what the binary demands
+readelf --version-info ./nhp-serverd | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1
+
+# or just run the gate
+./scripts/check-glibc-compat.sh 2.34 ./nhp-serverd
+```
+
 ## nhp-server ingress filter (XDP)
 
 `nhp-serverd` attaches `nhp_server_xdp.o` at startup and drops everything at
@@ -1076,6 +1157,44 @@ a root-volume-detach recovery. The cost is that the AC and the server share
 that subnet and are covered too; pinning the address removes the prefix and
 leaves the XDP layer saying exactly what `aws_security_group.server` says
 (SSH from the relay's security group only).
+
+**Where that prefix comes from, and what `'::error::...'` in the gate means.**
+The `configure` job never applies, so it can only read: `terraform output -raw
+subnet_cidr` first, and if that output is not in the state — it is forwarded
+from `aws_subnet.public` and was added to `outputs.tf` after the last
+`infra-demo` apply — `terraform show -json` for `aws_subnet.public.cidr_block`,
+the same value from the same source of truth. The fallback prints a `note:` and
+the right fix is still an `infra-demo` apply; the gate at the end of *Resolve
+the relay addresses* refuses either way if neither produced an IPv4 prefix.
+This is why every `hashicorp/setup-terraform` step in the pipeline — four of
+them, across three workflows (`deploy-demo-v2` twice, `infra-demo`,
+`renew-demo-nhp-cert`) — sets `terraform_wrapper: false`: the wrapper runs
+terraform with `ignoreReturnCode` and, on a non-zero exit, writes
+`::error::Terraform exited with code N.` to **stdout**, so a
+`$(terraform output ... 2>/dev/null || true)` captures the annotation —
+`2>/dev/null` does not hide it and `|| true` discards
+the exit code that would have given it away. Every `[ -z ... ]` fallback behind
+such a capture then silently stops working. Seeing
+`subnet_cidr from Terraform is not an IPv4 prefix: '::error::Terraform exited
+with code 1.'` therefore means *that terraform invocation failed*, not that the
+subnet is misconfigured; re-read it without `2>/dev/null` to see why. The read
+sites now also check the shape of what came back (an IPv4 prefix, a PEM header,
+`true`/`false`) rather than merely that it is non-empty, so a future source of
+stdout noise cannot slip past them either.
+
+A shape check is enough only where the fallback answer is the *wide* one:
+`relay_private_ip_pinned` falls back to `false`, which just keeps the subnet
+prefix in the whitelist. For `stealth_ca_enabled` the fallback would be the
+*destructive* one — `false` is what makes `deploy-demo-v2` and
+`renew-demo-nhp-cert` delete `ac-demo-nhp.conf`, `demo.nhp.pem` and
+`demo.nhp-key.pem` from the AC and reload nginx, so a transient terraform or
+backend failure would take down a working demo.nhp TLS setup on a green run.
+Those two sites therefore read `terraform output -json` once and split the three
+cases it can distinguish: a non-zero exit is the invocation failing and is
+fatal, a missing key is an output no apply has written yet and skips the
+demo.nhp step while touching nothing (`deploy-demo-v2` passes it on as
+`stealth_ca_enabled=unknown`), and only a literal `false` takes the cleanup
+branch.
 
 **The whitelist is installed before the program is attached**, as
 `EngineLoadParams.RelayIPs`. Writing it afterwards — the first version — leaves

@@ -92,6 +92,14 @@ jobs:
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "~1.10"
+          # The wrapper writes `::error::Terraform exited with code N.` to
+          # stdout on failure (core.setFailed), so a `$(terraform output ...
+          # || true)` captures that annotation instead of an empty string.
+          # Here that would make a failed read of stealth_ca_enabled look like
+          # a value that is simply not "true" — i.e. the branch that deletes
+          # the demo.nhp certificate and nginx config from the AC. Nothing
+          # consumes the wrapper's stdout/stderr/exitcode step outputs.
+          terraform_wrapper: false
 
       - name: Renew and deploy demo.nhp certificate
         working-directory: terraform/demo
@@ -119,7 +127,53 @@ jobs:
 
           terraform apply -auto-approve renew.tfplan
 
-          STEALTH_CA_ENABLED=$(terraform output -raw stealth_ca_enabled 2>/dev/null || true)
+          # Three outcomes, and they must stay apart: the output says false,
+          # the output is not in the state, or the terraform invocation failed.
+          # Collapsing them onto "not true" is destructive here — "not true"
+          # selects the branch below that deletes the demo.nhp certificate and
+          # nginx config from the AC, so a transient terraform or backend
+          # failure would take down a working demo.nhp TLS setup and still
+          # finish the job green. (`|| true` makes that worse still: it leaves
+          # whatever the failing command printed on stdout in the variable, so
+          # even an emptiness test waves it through.)
+          #
+          # `terraform output -json` tells the three apart: a non-zero exit is
+          # the invocation itself failing, `{}` or a missing key is an output no
+          # apply has written into the state yet, and only then is the value a
+          # value. Deleting anything is reserved for a literal false.
+          #
+          # $TF_OUTPUTS holds every output including the sensitive cert and key,
+          # so it is only ever fed to jq, never echoed.
+          if ! TF_OUTPUTS=$(terraform output -json 2>/dev/null); then
+            echo "ERROR: 'terraform output -json' failed in terraform/demo." >&2
+            echo "       Refusing to guess at stealth_ca_enabled: treating a failed" >&2
+            echo "       read as 'false' would delete the demo.nhp certificate and" >&2
+            echo "       nginx config from the AC." >&2
+            exit 1
+          fi
+          STEALTH_CA_ENABLED=$(printf '%s' "$TF_OUTPUTS" | jq -r '
+            if has("stealth_ca_enabled")
+            then (.stealth_ca_enabled.value | tostring)
+            else "absent" end')
+          case "$STEALTH_CA_ENABLED" in
+            true|false|absent) ;;
+            *)
+              echo "ERROR: the stealth_ca_enabled output is not a boolean" >&2
+              echo "       (got: '$STEALTH_CA_ENABLED'). Refusing to guess: 'false'" >&2
+              echo "       would delete the demo.nhp certificate and nginx config" >&2
+              echo "       from the AC." >&2
+              exit 1
+              ;;
+          esac
+
+          if [ "$STEALTH_CA_ENABLED" = "absent" ]; then
+            echo "note: stealth_ca_enabled is not in the Terraform state (it was added"
+            echo "      to terraform/demo/outputs.tf after the last infra-demo apply)."
+            echo "      Skipping the demo.nhp certificate without touching anything on"
+            echo "      the AC; run infra-demo with action=apply, then re-run this."
+            exit 0
+          fi
+
           RELAY_PUBLIC_IP=$(terraform output -raw relay_public_ip)
           AC_PRIVATE_IP=$(terraform output -raw ac_private_ip)
 
@@ -141,7 +195,9 @@ jobs:
           EOF
           chmod 600 ~/.ssh/config
 
-          if [ "$STEALTH_CA_ENABLED" != "true" ]; then
+          # Only a literal false gets here: "absent" exited above and anything
+          # else was fatal, so this deletes on an answer and never on a guess.
+          if [ "$STEALTH_CA_ENABLED" = "false" ]; then
             echo "stealth CA not configured, removing any stale demo.nhp nginx config and certificates"
             ssh nhp-ac \
               "set -e

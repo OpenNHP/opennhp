@@ -1,0 +1,58 @@
+# Build image for the demo deploy pipeline (.github/workflows/deploy-demo-v2.yml).
+#
+# Why this exists: nhp-serverd, nhp-acd and nhp-relayd are built WITH cgo and
+# therefore carry versioned glibc symbol references, which makes a binary
+# runnable only on a host whose glibc is at least as new as the builder's.
+# The demo hosts are Amazon Linux 2023 (glibc 2.34, see terraform/demo/ami.tf);
+# the ubuntu-latest runner moved to a newer glibc and the deploy started
+# putting binaries on those hosts that die at exec with
+#
+#   /lib64/libc.so.6: version `GLIBC_2.38' not found (required by .../nhp-serverd)
+#
+# taking nhp-serverd and nhp-acd down on a run that had already stopped the
+# running daemons. Building inside the target distribution removes the
+# question: the binaries link against exactly the glibc they will run on.
+#
+# Dropping cgo instead is not an option for nhp-serverd. It loads its auth
+# plugins through plugin.Open() (nhp/plugins/serverpluginhandler.go), and Go's
+# plugin package compiles to a stub returning "plugin: not implemented" unless
+# the host binary is cgo-linked. The plugins are built here too so that host
+# and .so come out of one toolchain, which is also what their package
+# fingerprints require.
+#
+# The build is re-checked afterwards by scripts/check-glibc-compat.sh, so a
+# regression — here, or in the workflow step that uses this image — is caught
+# in CI instead of on the live demo.
+#
+# This Dockerfile needs no build context; the workflow feeds it on stdin.
+
+ARG GO_VERSION=1.26
+
+# Source of the Go toolchain. The upstream linux/amd64 distribution is built
+# for broad compatibility and runs on AL2023's glibc; only the code it
+# compiles picks up this image's glibc. Taking it from the official image
+# keeps the version pinned to the workflow's GO_VERSION rather than to
+# whatever golang package AL2023 happens to ship.
+FROM golang:${GO_VERSION} AS gotoolchain
+
+FROM amazonlinux:2023
+
+# gcc      - cgo and -buildmode=plugin both shell out to the host C toolchain
+# git      - the Makefile stamps the commit id/time into the binaries
+# make     - the build targets
+# tar/gzip - go mod download unpacking, artifact handling
+# findutils/diffutils/gawk/which - used by the Makefile and
+#            scripts/check-plugin-deps.sh, none of which are in the base image
+RUN dnf -y install gcc git make tar gzip findutils diffutils gawk which \
+    && dnf clean all
+
+COPY --from=gotoolchain /usr/local/go /usr/local/go
+ENV PATH=/usr/local/go/bin:$PATH
+
+# Prove the toolchain actually executes under this image's glibc, at image
+# build time. If a future Go distribution stops running on AL2023 the failure
+# belongs here, with "go: version ... not found" in the build log, rather than
+# in the middle of `make` looking like a broken Makefile.
+RUN go version
+
+WORKDIR /src

@@ -1235,14 +1235,20 @@ jobs:
           {
             echo "[Service]"
             echo "ExecStartPre=+/bin/sh -c '$BPFFS_PREP'"
-            # nhp-serverd binds udp/443 (the NHP knock port) as the unprivileged
-            # service user, so it cannot take CAP_NET_BIND_SERVICE without
-            # breaking the cap-given-back invariant checked below. Instead, lower
-            # the kernel's "first non-root-bindable port" floor so udp/443 is
-            # bindable by ec2-user. Runs as root via the "+" prefix so it is in
-            # effect before the daemon's net.ListenUDP fires. The sysctl.d drop
-            # below persists it across reboots.
-            echo "ExecStartPre=+/sbin/sysctl -q -w net.ipv4.ip_unprivileged_port_start=443"
+            # nhp-serverd binds the NHP knock port as the unprivileged service
+            # user. When that port is below 1024 it cannot take
+            # CAP_NET_BIND_SERVICE without breaking the cap-given-back
+            # invariant checked below, so lower the kernel's "first
+            # non-root-bindable port" floor to exactly that port. Derived from
+            # NHP_LISTEN_PORT (single source of truth: terraform/demo's
+            # var.nhp_listen_port, surfaced as the `nhp_listen_port` output
+            # and read in the configure job) — never hard-coded — so editing
+            # the variable in variables.tf is the only knob. When the port
+            # is already >= 1024 no kernel change is needed and the
+            # ExecStartPre is omitted entirely.
+            if [ "$NHP_LISTEN_PORT" -lt 1024 ]; then
+              echo "ExecStartPre=+/sbin/sysctl -q -w net.ipv4.ip_unprivileged_port_start=$NHP_LISTEN_PORT"
+            fi
             echo "AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
             echo "CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
             echo "NoNewPrivileges=true"
@@ -1270,14 +1276,30 @@ jobs:
           fi
           echo "nhp-serverd deployed successfully"
 
-      - name: Persist ip_unprivileged_port_start=443 for nhp-server host
+      - name: Sync ip_unprivileged_port_start with the configured knock port
         # The drop-in's ExecStartPre applies the sysctl on every boot, but
-        # also write it into /etc/sysctl.d so the value survives reboots
-        # even before systemd reads the drop-in (and so an operator running
-        # `sysctl --system` manually gets the right value). The file is
-        # named to sort after the distribution defaults.
+        # also write it into /etc/sysctl.d so the value survives reboots even
+        # before systemd reads the drop-in (and so an operator running
+        # `sysctl --system` manually gets the right value). The file is named
+        # to sort after the distribution defaults.
+        #
+        # Two paths, both driven by the same NHP_LISTEN_PORT the drop-in was
+        # rendered against:
+        #   * port < 1024 — write the file, since the unprivileged service
+        #     user needs the kernel floor lowered to bind the knock port.
+        #   * port >= 1024 — actively REMOVE the file (and restore 1024),
+        #     so a rollback that moves the port out of the privileged range
+        #     does not leave the previous unprivileged-bindable range in
+        #     effect on this host. The previous "always write" version left
+        #     ports 443-1023 bindable by any unprivileged user on the
+        #     server even when the daemon no longer needed it.
         run: |
-          ssh nhp-server "echo 'net.ipv4.ip_unprivileged_port_start=443' | sudo tee /etc/sysctl.d/99-nhp-server.conf && sudo sysctl -q -p /etc/sysctl.d/99-nhp-server.conf"
+          set -euo pipefail
+          if [ "$NHP_LISTEN_PORT" -lt 1024 ]; then
+            ssh nhp-server "echo 'net.ipv4.ip_unprivileged_port_start=$NHP_LISTEN_PORT' | sudo tee /etc/sysctl.d/99-nhp-server.conf && sudo sysctl -q -p /etc/sysctl.d/99-nhp-server.conf"
+          else
+            ssh nhp-server "sudo rm -f /etc/sysctl.d/99-nhp-server.conf && sudo sysctl -q -w net.ipv4.ip_unprivileged_port_start=1024"
+          fi
 
       - name: Verify the XDP ingress filter attached
         # nhp-serverd falls open when the engine cannot load: it logs a

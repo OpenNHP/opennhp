@@ -244,9 +244,15 @@ net.ipv4.ip_unprivileged_port_start=443` to the drop-in, and writes
 `/etc/sysctl.d/99-nhp-server.conf` for persistence. The same line is in
 `terraform/demo/userdata/server.sh` so new hosts start the same way; the two
 must stay in sync (see the note above about `ignore_changes = [user_data]`).
-The XDP filter continues to allow only the knock port and whitelisted SSH, so
-relaxing `ip_unprivileged_port_start` to 443 does not broaden the host's
-exposure beyond what the filter already permits.
+Relaxing that floor widens the range any unprivileged process on the host
+may bind to, but the controls that actually limit the host's inbound
+exposure are the security group (UDP/443 + SSH from the relay's SG only,
+in `aws_security_group.server` / `.ac`) and the fact that this host runs
+a single service — the XDP filter is fail-open by design and is not the
+thing you'd rely on here. A rollback that moves the port out of the
+privileged range must therefore remove `/etc/sysctl.d/99-nhp-server.conf`
+and restore the kernel default (1024); the deploy job does this
+automatically when `NHP_LISTEN_PORT >= 1024`.
 
 #### Deploy binaries are built in an Amazon Linux 2023 container
 

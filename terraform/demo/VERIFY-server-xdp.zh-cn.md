@@ -165,8 +165,10 @@ export RELAY_PUB=$(terraform output -raw relay_public_ip)
 export RELAY_PRIV=$(terraform output -raw relay_private_ip)
 export SERVER_PUB=$(terraform output -raw server_public_ip)
 export SERVER_PRIV=$(terraform output -raw server_private_ip)
+export NHP_PORT=$(terraform output -raw nhp_listen_port)
 echo "relay  pub=$RELAY_PUB  priv=$RELAY_PRIV"
 echo "server pub=$SERVER_PUB priv=$SERVER_PRIV"
+echo "knock  port=$NHP_PORT"
 ```
 
 登录 server（只能经 relay 跳板，server 安全组只放行来自 relay 安全组的 22）：
@@ -282,11 +284,11 @@ sudo ip netns exec nhpxdp ip -details link show veth-n | tail -1
 ```bash
 ping -c1 -W2 10.99.0.2                                        # 期望：100% 丢包
 timeout 3 bash -c 'exec 3<>/dev/tcp/10.99.0.2/22'   ; echo $? # 期望：124（超时=被丢）
-timeout 3 bash -c 'exec 3<>/dev/tcp/10.99.0.2/${NHP_PORT}'; echo $? # 期望：124
-timeout 3 bash -c 'exec 3<>/dev/tcp/10.99.0.2/443'  ; echo $? # 期望：124
-python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*100,('10.99.0.2',${NHP_PORT}))"  # <240，丢
-python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*300,('10.99.0.2',${NHP_PORT}))"  # ≥240，放行
-python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*300,('10.99.0.2',53))"     # 非 ${NHP_PORT}，丢
+timeout 3 bash -c "exec 3<>/dev/tcp/10.99.0.2/\$NHP_PORT"; echo $? # 期望：124
+timeout 3 bash -c 'exec 3<>/dev/tcp/10.99.0.2/443'  ; echo $? # 期望：124（与 NHP_PORT 撞到就改成 NHP_DEFAULT / TCP_NHP_PORT）
+python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*100,('10.99.0.2',\$NHP_PORT))"  # <240，丢
+python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*300,('10.99.0.2',\$NHP_PORT))"  # ≥240，放行
+python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*300,('10.99.0.2',53))"     # 非 \$NHP_PORT，丢
 ```
 
 判决日志 `/tmp/nhpsrv/logs/nhp_server_xdp-<date>.log`（实测输出）：
@@ -295,7 +297,7 @@ python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.se
 20:24:31 test-server [NHP-DROP] REASON=NON_TCP_UDP   SRC=10.99.0.1 DST=10.99.0.2 LEN=84  PROTO=ICMP SPT=0     DPT=0     RELAY=0
 20:24:33 test-server [NHP-DROP] REASON=TCP_SSH_OTHER SRC=10.99.0.1 DST=10.99.0.2 LEN=60  PROTO=TCP  SPT=58350 DPT=22    RELAY=0
 20:24:36 test-server [NHP-DROP] REASON=TCP_NHP_PORT  SRC=10.99.0.1 DST=10.99.0.2 LEN=60  PROTO=TCP  SPT=46220 DPT=${NHP_PORT} RELAY=0
-20:25:26 test-server [NHP-DROP] REASON=TCP_OTHER     SRC=10.99.0.1 DST=10.99.0.2 LEN=60  PROTO=TCP  SPT=53458 DPT=443   RELAY=0
+20:25:26 test-server [NHP-DROP] REASON=TCP_OTHER     SRC=10.99.0.1 DST=10.99.0.2 LEN=60  PROTO=TCP  SPT=53458 DPT=80    RELAY=0
 20:24:39 test-server [NHP-DROP] REASON=UDP_SHORT     SRC=10.99.0.1 DST=10.99.0.2 LEN=128 PROTO=UDP  SPT=49355 DPT=${NHP_PORT} RELAY=0
 20:24:39 test-server [NHP-PASS] REASON=NHP_DEFAULT   SRC=10.99.0.1 DST=10.99.0.2 LEN=328 PROTO=UDP  SPT=38438 DPT=${NHP_PORT} RELAY=0
 20:24:39 test-server [NHP-DROP] REASON=UDP_OTHER     SRC=10.99.0.1 DST=10.99.0.2 LEN=328 PROTO=UDP  SPT=57077 DPT=53    RELAY=0
@@ -514,8 +516,9 @@ RelayIPs = ["<relay 私网 IP>", "<relay 公网 EIP>"]
 ### 2.2 主机内基线（在 server 上执行，输出存档）
 
 ```bash
-ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV 'bash -s' <<'EOS' | tee before-host.txt
+ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV "bash -s $NHP_PORT" <<'EOS' | tee before-host.txt
 set +e
+NHP_PORT=$1
 echo "== uname ==";            uname -r
 echo "== xdp attached ==";     ip -details link show | grep -A3 xdpgeneric || echo "(none)"
 echo "== bpf pins ==";         sudo ls -l /sys/fs/bpf/ 2>&1
@@ -524,7 +527,7 @@ echo "== unit caps ==";        systemctl cat nhp-serverd | grep -iE 'capab|ExecS
 echo "== bpffs mounted ==";    mountpoint /sys/fs/bpf 2>&1
 echo "== etc ==";              ls -l /home/ec2-user/nhp-server/etc/ | grep -E 'xdp' || echo "(no xdp.toml / .o)"
 echo "== service ==";          systemctl is-active nhp-serverd
-echo "== listening ==";        sudo ss -lunp | grep ${NHP_PORT}
+echo "== listening ==";        sudo ss -lunp | grep ":${NHP_PORT}[[:space:]]"
 echo "== ebpf log lines ==";   grep -icE 'ebpf|xdp' /home/ec2-user/nhp-server/logs/server-$(date +%F).log 2>/dev/null
 EOS
 ```
@@ -538,27 +541,31 @@ EOS
 XDP 的行为变化主要体现在 VPC 内侧，所以对比要从 relay 上打：
 
 ```bash
-ssh ec2-user@$RELAY_PUB "bash -s $SERVER_PRIV" <<'EOS' | tee before-from-relay.txt
+ssh ec2-user@$RELAY_PUB "bash -s $SERVER_PRIV $NHP_PORT" <<'EOS' | tee before-from-relay.txt
 set +e
 SRV=$1
+NHP_PORT=$2
 echo "== ping ==";        ping -c2 -W2 $SRV | tail -2
 echo "== tcp/22 ==";      timeout 3 bash -c "exec 3<>/dev/tcp/$SRV/22";      echo "rc=$?"
-echo "== tcp/443 ==";     timeout 3 bash -c "exec 3<>/dev/tcp/$SRV/443";     echo "rc=$?"
+echo "== tcp/443 ==";     timeout 3 bash -c "exec 3<>/dev/tcp/$SRV/443";     echo "rc=$?  (NHP_PORT=443 时是 knock 端口；rc=124 = 过滤；rc=0/1 = 真的有人听)"
 echo "== tcp/${NHP_PORT} ==";   timeout 3 bash -c "exec 3<>/dev/tcp/$SRV/${NHP_PORT}";   echo "rc=$?"
 echo "== udp/${NHP_PORT} 短包 ==" ; python3 -c "
-import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*64,('$SRV',${NHP_PORT}));print('sent')"
+import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*64,('$SRV',int('${NHP_PORT}')));print('sent')"
 EOS
 ```
 
 部署前期望：ping 通；tcp/22 `rc=0`（连上）；tcp/443、tcp/${NHP_PORT} 是**立即** refused
-（`rc=1`，安全组内部互通、端口没人听）；短 UDP 包直达 user space。
+（`rc=1`，安全组内部互通、端口没人听）。注意 NHP_PORT=443 时 tcp/443 本身就是 knock
+端口（`nmap` 列表里要去重，避免同一个端口扫两次）。短 UDP 包直达 user space。
 
 ### 2.4 从公网看的基线
 
 ```bash
-nmap -Pn -n -p 22,80,443,${NHP_PORT} $SERVER_PUB      | tee before-from-internet.txt
-sudo nmap -Pn -n -sU -p ${NHP_PORT} $SERVER_PUB       | tee -a before-from-internet.txt
-ping -c3 $SERVER_PUB                            | tee -a before-from-internet.txt
+# 注意 NHP_PORT=443 时与 tcp/443 撞到；显式去重再交给 nmap
+SCAN_PORTS=$(echo "22,80,443,${NHP_PORT}" | tr ',' '\n' | sort -u | paste -sd ,)
+nmap -Pn -n -p "$SCAN_PORTS" $SERVER_PUB               | tee before-from-internet.txt
+sudo nmap -Pn -n -sU -p ${NHP_PORT} $SERVER_PUB        | tee -a before-from-internet.txt
+ping -c3 $SERVER_PUB                                   | tee -a before-from-internet.txt
 ```
 
 > 公网视角在部署前后**基本不会变**，这是预期的：安全组早就只放行 UDP/${NHP_PORT}（22 只对
@@ -773,7 +780,7 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$(cd terraform/demo && terraform output -raw
 | server 日志 | 无 eBPF 相关行 | `relay whitelist applied: N prefix(es) active`、紧接着 `server XDP engine loaded: ... SSH from [...]` |
 | `logs/nhp_server_xdp-*.log` | 不存在 | 持续写入 PASS/DROP 判决（限速）+ 每分钟 `[NHP-STAT]` 汇总；>14 天或 >256 MiB 自动清理 |
 | relay → server ICMP | 通 | 全丢（`NON_TCP_UDP`） |
-| relay → server tcp/443 | 立即 refused（rc=1） | 超时（rc=124，`TCP_OTHER`） |
+| relay → server tcp/443 | 立即 refused（rc=1） | 超时（rc=124，`TCP_OTHER`）——**NHP_PORT=443 时与 knock 端口撞到，变成 `TCP_NHP_PORT` / `NHP_DEFAULT`** |
 | relay → server tcp/22 | 连上 | 连上（`SSH_RELAY`，前提：白名单正确） |
 | 公网 → UDP/${NHP_PORT} <240B | 进 user space 由 `RecvPrecheck` 丢 | 内核丢（`UDP_SHORT`），不消耗用户态 |
 | 公网 → UDP/${NHP_PORT} ≥240B | 通 | 通（`NHP_DEFAULT`）——NHP 语义不变 |

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 DEPLOY_PATH="${deploy_path}"
+NHP_LISTEN_PORT="${nhp_listen_port}"
 
 # Create deploy directory
 mkdir -p "$DEPLOY_PATH/etc"
@@ -54,7 +55,7 @@ dnf install -y certbot
 # convenience: aws_instance.server has lifecycle { ignore_changes = [user_data] }
 # (terraform/demo/ec2.tf), so edits to this file only ever reach a *new*
 # instance. Everything a running host needs has to come from the deploy job.
-cat > /etc/systemd/system/nhp-serverd.service <<'EOF'
+cat > /etc/systemd/system/nhp-serverd.service <<EOF
 [Unit]
 Description=NHP Server Daemon
 After=network-online.target
@@ -65,7 +66,7 @@ Type=simple
 User=ec2-user
 WorkingDirectory=/home/ec2-user/nhp-server
 ExecStartPre=+/bin/sh -c 'mountpoint -q /sys/fs/bpf || mount -t bpf bpf /sys/fs/bpf; chgrp ec2-user /sys/fs/bpf; chmod 0770 /sys/fs/bpf'
-ExecStartPre=+/sbin/sysctl -q -w net.ipv4.ip_unprivileged_port_start=443
+$([ "$NHP_LISTEN_PORT" -lt 1024 ] && echo "ExecStartPre=+/sbin/sysctl -q -w net.ipv4.ip_unprivileged_port_start=$NHP_LISTEN_PORT")
 ExecStart=/home/ec2-user/nhp-server/nhp-serverd run
 Restart=on-failure
 RestartSec=5
@@ -81,14 +82,19 @@ EOF
 systemctl daemon-reload
 systemctl enable nhp-serverd
 
-# Allow nhp-serverd (running as ec2-user) to bind udp/443 without granting
-# CAP_NET_BIND_SERVICE — which would persist past the XDP loader's
+# Allow nhp-serverd (running as ec2-user) to bind the NHP knock port without
+# granting CAP_NET_BIND_SERVICE — which would persist past the XDP loader's
 # dropLoaderPrivileges (nhp/utils/ebpf/caps_linux.go) and break the
 # deploy-server cap-returned assertion that CapAmb must be 0 and
-# CapPrm/CapEff must be v & ~BPF == 0. Setting ip_unprivileged_port_start=443
-# means any unprivileged socket may bind ports >= 443; the XDP filter still
-# drops everything except the configured knock port and SSH from the relay,
-# so the wider reach is moot. Persist across reboots via sysctl.d so the
-# setting is restored without depending on nhp-serverd running.
-echo 'net.ipv4.ip_unprivileged_port_start=443' > /etc/sysctl.d/99-nhp-server.conf
-sysctl -q -p /etc/sysctl.d/99-nhp-server.conf
+# CapPrm/CapEff must be v & ~BPF == 0. The floor we set is
+# min(NHP_LISTEN_PORT, 1024): when the port is below 1024 we have to lower
+# the kernel's "first non-root-bindable port" to that exact value; when it
+# is already >= 1024 no kernel change is needed and we leave the file
+# absent so a subsequent rollback to a non-privileged port does not leave
+# the old range in effect on the host. The single source of truth for the
+# port is terraform/demo's var.nhp_listen_port, passed in via templatefile
+# from terraform/demo/ec2.tf.
+if [ "$NHP_LISTEN_PORT" -lt 1024 ]; then
+  echo "net.ipv4.ip_unprivileged_port_start=$NHP_LISTEN_PORT" > /etc/sysctl.d/99-nhp-server.conf
+  sysctl -q -p /etc/sysctl.d/99-nhp-server.conf
+fi

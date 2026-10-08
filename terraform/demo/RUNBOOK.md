@@ -1265,13 +1265,19 @@ CAP_NET_ADMIN CAP_PERFMON`。直接授予 `CAP_NET_BIND_SERVICE` 会让
 capabilities back`（要求 `v & ~BPF == 0`）会失败，而且 `nhp-serverd` 同时
 跑在 `docker/Dockerfile.server` 的 root 上下文中，没了收紧就静默拿走
 `CAP_DAC_OVERRIDE` 和 `CAP_NET_BIND_SERVICE`（CLAUDE.md 的 capability 不
-变量）。改用 `net.ipv4.ip_unprivileged_port_start=443`：drop-in 加
-`ExecStartPre=+/sbin/sysctl -q -w net.ipv4.ip_unprivileged_port_start=443`，
-并写 `/etc/sysctl.d/99-nhp-server.conf` 持久化；
+变量）。改用 `net.ipv4.ip_unprivileged_port_start=$NHP_LISTEN_PORT`（且仅当
+端口 < 1024）：drop-in 视情况加
+`ExecStartPre=+/sbin/sysctl -q -w net.ipv4.ip_unprivileged_port_start=$NHP_LISTEN_PORT`，
+端口 < 1024 时也写 `/etc/sysctl.d/99-nhp-server.conf` 持久化；
 `terraform/demo/userdata/server.sh` 同步同样一行（新机路径）。两处必须一
-致——存量机只看 drop-in，新机只看 userdata，缺一就出意外。XDP 过滤器只
-放行 knock 端口和白名单 SSH，所以放宽 `ip_unprivileged_port_start` 到
-443 并不扩大主机的实际入站暴露面。
+致——存量机只看 drop-in，新机只看 userdata，缺一就出意外。**放宽这个 floor
+只是放宽本机任意非特权进程可绑定的端口范围**，并不直接改变入站暴露面；真正
+约束主机入站的是安全组（`aws_security_group.server` / `.ac`，只放 UDP/
+${NHP_LISTEN_PORT} + 仅来自 relay 安全组的 22）和「这台主机只跑一个服务」
+的事实，XDP 过滤器是 fail-open 设计，**不能**当成这个约束来读。回滚时如
+果新端口 ≥ 1024，`deploy-demo-v2` 会主动 `rm` 掉 `99-nhp-server.conf` 并把
+内核 floor 恢复到 1024，避免旧的「任何非特权用户可绑 443-1023」的状态留
+在主机上。
 
 **如果新端口 daemon 起不来且 SSH 也被 XDP 挡住**：走上面
 "If the host is already unreachable, reboot the instance" 同一条路径：

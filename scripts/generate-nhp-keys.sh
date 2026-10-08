@@ -345,6 +345,18 @@ export XDP_ENABLED="${XDP_ENABLED:-true}"
 # nhp/ebpf/xdp/nhp_server_xdp.c. The daemon writes this value into the object's
 # .rodata at startup, so it is applied rather than merely recorded.
 export XDP_NHP_MIN_FRAME_BYTES="${XDP_NHP_MIN_FRAME_BYTES:-240}"
+# NHP knock 端口。单一真源是 terraform/demo 的 var.nhp_listen_port，由 configure
+# job 从 `terraform output -raw nhp_listen_port` 读出后传进来。这里必须兜底 + 校验：
+# envsubst 不带 SHELL-FORMAT，未导出的变量会渲染成空串，`ListenPort = ` 不是合法 TOML，
+# nhp-serverd 会起不来——而那时三台机器的配置已经 scp 上去了。
+export NHP_SERVER_PORT="${NHP_SERVER_PORT:-62206}"
+case "$NHP_SERVER_PORT" in
+  ''|*[!0-9]*) echo "  ERROR: NHP_SERVER_PORT='$NHP_SERVER_PORT' 不是整数" >&2; exit 1 ;;
+esac
+if [ "$NHP_SERVER_PORT" -lt 1 ] || [ "$NHP_SERVER_PORT" -gt 65535 ]; then
+  echo "  ERROR: NHP_SERVER_PORT=$NHP_SERVER_PORT 超出 1-65535" >&2; exit 1
+fi
+echo "  NHP knock port: $NHP_SERVER_PORT"
 export RELAY_IPS="${RELAY_IPS:-}"
 
 RELAY_IPS_TOML=""

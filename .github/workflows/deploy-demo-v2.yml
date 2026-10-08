@@ -902,6 +902,14 @@ jobs:
       id-token: write
       contents: read
 
+    env:
+      # NHP knock port as read by configure from `terraform output -raw
+      # nhp_listen_port`. Empty/missing fails the configure job rather than
+      # silently falling back, so any binding here is the same value the
+      # rendered server/ac/relay configs already carry — the drop-in (XDP
+      # engine) and the bind assertion below both key off this.
+      NHP_LISTEN_PORT: ${{ needs.configure.outputs.nhp_listen_port }}
+
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -1227,6 +1235,14 @@ jobs:
           {
             echo "[Service]"
             echo "ExecStartPre=+/bin/sh -c '$BPFFS_PREP'"
+            # nhp-serverd binds udp/443 (the NHP knock port) as the unprivileged
+            # service user, so it cannot take CAP_NET_BIND_SERVICE without
+            # breaking the cap-given-back invariant checked below. Instead, lower
+            # the kernel's "first non-root-bindable port" floor so udp/443 is
+            # bindable by ec2-user. Runs as root via the "+" prefix so it is in
+            # effect before the daemon's net.ListenUDP fires. The sysctl.d drop
+            # below persists it across reboots.
+            echo "ExecStartPre=+/sbin/sysctl -q -w net.ipv4.ip_unprivileged_port_start=443"
             echo "AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
             echo "CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
             echo "NoNewPrivileges=true"
@@ -1253,6 +1269,15 @@ jobs:
             exit 1
           fi
           echo "nhp-serverd deployed successfully"
+
+      - name: Persist ip_unprivileged_port_start=443 for nhp-server host
+        # The drop-in's ExecStartPre applies the sysctl on every boot, but
+        # also write it into /etc/sysctl.d so the value survives reboots
+        # even before systemd reads the drop-in (and so an operator running
+        # `sysctl --system` manually gets the right value). The file is
+        # named to sort after the distribution defaults.
+        run: |
+          ssh nhp-server "echo 'net.ipv4.ip_unprivileged_port_start=443' | sudo tee /etc/sysctl.d/99-nhp-server.conf && sudo sysctl -q -p /etc/sysctl.d/99-nhp-server.conf"
 
       - name: Verify the XDP ingress filter attached
         # nhp-serverd falls open when the engine cannot load: it logs a

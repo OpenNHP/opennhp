@@ -284,11 +284,11 @@ sudo ip netns exec nhpxdp ip -details link show veth-n | tail -1
 ```bash
 ping -c1 -W2 10.99.0.2                                        # 期望：100% 丢包
 timeout 3 bash -c 'exec 3<>/dev/tcp/10.99.0.2/22'   ; echo $? # 期望：124（超时=被丢）
-timeout 3 bash -c "exec 3<>/dev/tcp/10.99.0.2/\$NHP_PORT"; echo $? # 期望：124
+timeout 3 bash -c "exec 3<>/dev/tcp/10.99.0.2/$NHP_PORT"; echo $? # 期望：124
 timeout 3 bash -c 'exec 3<>/dev/tcp/10.99.0.2/443'  ; echo $? # 期望：124（与 NHP_PORT 撞到就改成 NHP_DEFAULT / TCP_NHP_PORT）
-python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*100,('10.99.0.2',\$NHP_PORT))"  # <240，丢
-python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*300,('10.99.0.2',\$NHP_PORT))"  # ≥240，放行
-python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*300,('10.99.0.2',53))"     # 非 \$NHP_PORT，丢
+python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*100,('10.99.0.2',$NHP_PORT))"  # <240，丢
+python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*300,('10.99.0.2',$NHP_PORT))"  # ≥240，放行
+python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*300,('10.99.0.2',53))"     # 非 $NHP_PORT，丢
 ```
 
 判决日志 `/tmp/nhpsrv/logs/nhp_server_xdp-<date>.log`（实测输出）：

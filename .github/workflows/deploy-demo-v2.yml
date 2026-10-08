@@ -2659,6 +2659,12 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    # NHP knock port (single source of truth: terraform/demo's var.nhp_listen_port,
+    # surfaced as the `nhp_listen_port` output of the configure job). Rendered
+    # into config.json so reg.html can hand out server.toml blocks that match the
+    # port the daemon actually listens on.
+    env:
+      NHP_LISTEN_PORT: ${{ needs.configure.outputs.nhp_listen_port }}
 
     steps:
       - name: Checkout opennhp (sources, nginx + bootstrap scripts)
@@ -2784,7 +2790,7 @@ jobs:
             "relayUrl":        "https://${{ env.DOMAIN_RELAY }}/relay",
             "serverHost":      "${{ env.DOMAIN_SERVER_ALIAS }}",
             "acHost":          "${{ env.DOMAIN_AC }}",
-            "serverPort":      443,
+            "serverPort":      ${{ env.NHP_LISTEN_PORT }},
             "serverPublicKey": "${{ steps.secrets.outputs.server_pub }}",
             "serverPublicKeySM2": "${{ steps.secrets.outputs.server_sm2_pub }}",
             "agentPrivateKey": "${{ steps.secrets.outputs.js_priv }}",
@@ -2799,6 +2805,7 @@ jobs:
                 "name":               "Cluster 1",
                 "serverHost":         "${{ env.DOMAIN_SERVER_ALIAS }}",
                 "acHost":             "${{ env.DOMAIN_AC }}",
+                "serverUdpPort":      ${{ env.NHP_LISTEN_PORT }},
                 "serverPublicKey":    "${{ steps.secrets.outputs.server_pub }}",
                 "serverPublicKeySM2": "${{ steps.secrets.outputs.server_sm2_pub }}",
                 "agentPrivateKey":    "${{ steps.secrets.outputs.js_priv }}",

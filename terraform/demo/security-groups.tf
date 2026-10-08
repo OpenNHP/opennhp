@@ -60,7 +60,13 @@ resource "aws_security_group" "server" {
   description = "NHP Server - UDP knocking + HTTPS auth"
   vpc_id      = aws_vpc.demo.id
 
-  # NHP protocol (UDP) from anywhere
+  # NHP knock (UDP/443) from anywhere.
+  #
+  # udp/443 is the NHP protocol knock port -- it MUST stay open. The value is
+  # driven by var.nhp_listen_port (the single source of truth for the knock
+  # port across Terraform, the deploy-demo-v2 templates, and the runtime
+  # configuration). Native nhp-agent clients reach this host directly on this
+  # UDP port; the browser demo reaches it through the relay (HTTPS -> UDP).
   ingress {
     description = "NHP UDP"
     from_port   = var.nhp_listen_port
@@ -80,8 +86,10 @@ resource "aws_security_group" "server" {
   # the authoritative, internet-facing control -- do not re-add it without
   # also re-enabling those two layers.
   #
-  # The UDP rule above is the NHP protocol itself and must stay open. The
-  # browser knock demo reaches this host through the relay (HTTPS -> UDP),
+  # Do not confuse the two 443s:
+  #   - udp/443 (above) -- NHP knock, MUST stay open
+  #   - tcp/443         -- retired demo login page, MUST stay closed
+  # The browser knock demo reaches this host through the relay (HTTPS -> UDP),
   # not through any TCP port on this security group.
 
   # SSH only from relay (jump host)
@@ -123,7 +131,13 @@ resource "aws_security_group" "ac" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # NHP AOP from server (UDP)
+  # Historical: nhp-acd has no fixed UDP listen port. It dials server with
+  # net.DialUDP from an ephemeral source port (endpoints/ac/msghandler.go:525)
+  # and opens a short-lived UDP socket per authorization (the actual listen
+  # on AC's side). This rule is kept for documentation and is effectively a
+  # no-op on top of AWS SG's stateful return-traffic allowance. Do not
+  # remove it as part of the knock-port change -- deleting SG rules is an
+  # independent cleanup task and must not be bundled here.
   ingress {
     description     = "NHP UDP from server"
     from_port       = var.nhp_listen_port

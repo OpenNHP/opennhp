@@ -102,3 +102,8 @@ output "stealth_ca_enabled" {
   # the CA secrets exist - it doesn't expose any actual secret values.
   value = nonsensitive(local.stealth_ca_enabled)
 }
+
+output "nhp_listen_port" {
+  description = "已 apply 的 NHP knock 端口。deploy-demo-v2 读它来渲染 server/ac/relay 配置，所以配置不会先于安全组切换。"
+  value       = var.nhp_listen_port
+}

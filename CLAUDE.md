@@ -223,6 +223,31 @@ All secrets live in a single AWS Secrets Manager secret: **`opennhp/demo`**.
 > reference but is no longer deployed. Re-enabling the login page requires
 > undoing all of these together.
 
+**NHP knock port.** The UDP port `nhp-serverd` listens on for knocks is
+`var.nhp_listen_port` in `terraform/demo/variables.tf` — that variable is the
+single source of truth. `terraform/demo/security-groups.tf` derives both
+`aws_security_group.server` and `aws_security_group.ac` from it, and the
+`deploy-demo-v2` `configure` job reads it via `terraform output` and renders it
+into `server/config.toml`, `ac/server.toml`, and `relay/config.toml` via
+`${NHP_SERVER_PORT}`. To change the port: edit `var.nhp_listen_port`, run
+`infra-demo apply` first (so the security group rule is in place), then run
+`deploy-demo-v2` — the order matters, because the rendered config tracks the
+applied state, never the source-default.
+
+**Binding a privileged port from `User=ec2-user`.** Because `nhp-serverd` runs
+unprivileged on the demo host and `443 < 1024`, the unit cannot rely on
+`CAP_NET_BIND_SERVICE` — granting it would leave the daemon with a non-empty
+ambient cap set, breaking the `Verify the XDP loader gave its capabilities back`
+gate (`CapAmb` must be 0, `CapPrm/CapEff` must be `v & ~BPF == 0`). Instead,
+`deploy-server` adds an `ExecStartPre=+/sbin/sysctl -q -w
+net.ipv4.ip_unprivileged_port_start=443` to the drop-in, and writes
+`/etc/sysctl.d/99-nhp-server.conf` for persistence. The same line is in
+`terraform/demo/userdata/server.sh` so new hosts start the same way; the two
+must stay in sync (see the note above about `ignore_changes = [user_data]`).
+The XDP filter continues to allow only the knock port and whitelisted SSH, so
+relaxing `ip_unprivileged_port_start` to 443 does not broaden the host's
+exposure beyond what the filter already permits.
+
 #### Deploy binaries are built in an Amazon Linux 2023 container
 
 The three demo hosts run the AMI selected by `terraform/demo/ami.tf`

@@ -28,9 +28,15 @@
 > 暴露的 metrics 端点开着时它会拒绝 attach（过滤器会把这些监听端口的入站 TCP
 > 全丢掉）。没有 `xdp.toml` 的主机行为与过滤器上线前完全一致。
 >
-> 表中的 62206 只是本文示例：knock 端口来自守护进程自己的 `ListenPort`，
-> 长度下限来自 `xdp.toml` 的 `NhpMinFrameBytes`，两者在 attach 前被写进对象的
+> 本文示例中的端口全部以 `$NHP_PORT` 表示，请按本机实际端口替换（demo 当前
+> `$NHP_PORT=443`，由 `terraform/demo/variables.tf` 的 `var.nhp_listen_port`
+> 控制）。knock 端口来自守护进程自己的 `ListenPort`，长度下限来自
+> `xdp.toml` 的 `NhpMinFrameBytes`，两者在 attach 前被写进对象的
 > `.rodata`（`nhp_listen_port` / `nhp_min_udp_len`），不是编译期常量。
+>
+> ```sh
+> NHP_PORT=443
+> ```
 
 决策树与 action 编码（`nhp_server_xdp.c`，日志里的 `REASON=`）：
 
@@ -38,12 +44,12 @@
 | --- | --- | --- | --- |
 | TCP/22，src ∈ 白名单 | PASS | `SSH_RELAY` | 仅 SYN（每会话一行） |
 | TCP/22，src ∉ 白名单 | DROP | `TCP_SSH_OTHER` | 是（限速） |
-| TCP/62206 | DROP | `TCP_NHP_PORT` | 是（限速） |
+| TCP/${NHP_PORT} | DROP | `TCP_NHP_PORT` | 是（限速） |
 | TCP 其它端口，本机有**非 LISTEN** 的 socket | PASS | `TCP_ESTABLISHED` | **否，只计数** |
 | TCP 其它端口 | DROP | `TCP_OTHER` | 是（限速） |
-| UDP/62206，src ∈ 白名单 | PASS（跳过长度校验） | `NHP_RELAY` | 是（限速） |
-| UDP/62206，长度 ≥ 240 | PASS | `NHP_DEFAULT` | 是（限速） |
-| UDP/62206，长度 < 240 | DROP | `UDP_SHORT` | 是（限速） |
+| UDP/${NHP_PORT}，src ∈ 白名单 | PASS（跳过长度校验） | `NHP_RELAY` | 是（限速） |
+| UDP/${NHP_PORT}，长度 ≥ 240 | PASS | `NHP_DEFAULT` | 是（限速） |
+| UDP/${NHP_PORT}，长度 < 240 | DROP | `UDP_SHORT` | 是（限速） |
 | UDP 67 → 68（DHCP 续租应答） | PASS | `DHCP_CLIENT` | 是（限速） |
 | UDP 123 → 123（NTP 应答） | PASS | `NTP_CLIENT` | **否，只计数** |
 | UDP 其它端口，本机有 **connected** socket | PASS | `UDP_ESTABLISHED` | **否，只计数** |
@@ -219,7 +225,7 @@ cd endpoints && go test ./server/...     && cd ..
 ### 1.4 netns 内的全链路实测（推荐）
 
 > ⚠️ **不要在开发机上直接 `./nhp-serverd run`。** `resolveInterface("")` 会取
-> **默认路由网卡**并把过滤器挂上去，结果是本机除 22（白名单内）与 UDP/62206 外
+> **默认路由网卡**并把过滤器挂上去，结果是本机除 22（白名单内）与 UDP/${NHP_PORT} 外
 > 全部被丢弃——包括你当前的 SSH 会话。务必在 netns 或一次性虚拟机里做。
 
 建环境（veth 对，10.99.0.1 = 外部，10.99.0.2 = 被保护主机）：
@@ -249,9 +255,9 @@ sudo ip netns exec nhpxdp sh -c '
 期望日志（`/tmp/nhpsrv/logs/server-<date>.log`）：
 
 ```
-engine_linux.go:   [Info] server XDP filter configured for udp/62206 with a 240-byte datagram floor (0 = the object's own default)
+engine_linux.go:   [Info] server XDP filter configured for udp/${NHP_PORT} with a 240-byte datagram floor (0 = the object's own default)
 engine_linux.go:   [Info] relay whitelist applied: 1 prefix(es) active, 0 removed
-config.go:         [Info] server XDP engine loaded: filtering udp/62206 with a 240-byte floor, SSH from [10.99.0.9]
+config.go:         [Info] server XDP engine loaded: filtering udp/${NHP_PORT} with a 240-byte floor, SSH from [10.99.0.9]
 engine_linux.go:   [Info] Start listening for server eBPF events (PERF BUFFER)
 file.go:           [Info] start watching file /tmp/nhpsrv/etc/xdp.toml
 ```
@@ -276,11 +282,11 @@ sudo ip netns exec nhpxdp ip -details link show veth-n | tail -1
 ```bash
 ping -c1 -W2 10.99.0.2                                        # 期望：100% 丢包
 timeout 3 bash -c 'exec 3<>/dev/tcp/10.99.0.2/22'   ; echo $? # 期望：124（超时=被丢）
-timeout 3 bash -c 'exec 3<>/dev/tcp/10.99.0.2/62206'; echo $? # 期望：124
+timeout 3 bash -c 'exec 3<>/dev/tcp/10.99.0.2/${NHP_PORT}'; echo $? # 期望：124
 timeout 3 bash -c 'exec 3<>/dev/tcp/10.99.0.2/443'  ; echo $? # 期望：124
-python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*100,('10.99.0.2',62206))"  # <240，丢
-python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*300,('10.99.0.2',62206))"  # ≥240，放行
-python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*300,('10.99.0.2',53))"     # 非 62206，丢
+python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*100,('10.99.0.2',${NHP_PORT}))"  # <240，丢
+python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*300,('10.99.0.2',${NHP_PORT}))"  # ≥240，放行
+python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*300,('10.99.0.2',53))"     # 非 ${NHP_PORT}，丢
 ```
 
 判决日志 `/tmp/nhpsrv/logs/nhp_server_xdp-<date>.log`（实测输出）：
@@ -288,10 +294,10 @@ python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.se
 ```
 20:24:31 test-server [NHP-DROP] REASON=NON_TCP_UDP   SRC=10.99.0.1 DST=10.99.0.2 LEN=84  PROTO=ICMP SPT=0     DPT=0     RELAY=0
 20:24:33 test-server [NHP-DROP] REASON=TCP_SSH_OTHER SRC=10.99.0.1 DST=10.99.0.2 LEN=60  PROTO=TCP  SPT=58350 DPT=22    RELAY=0
-20:24:36 test-server [NHP-DROP] REASON=TCP_NHP_PORT  SRC=10.99.0.1 DST=10.99.0.2 LEN=60  PROTO=TCP  SPT=46220 DPT=62206 RELAY=0
+20:24:36 test-server [NHP-DROP] REASON=TCP_NHP_PORT  SRC=10.99.0.1 DST=10.99.0.2 LEN=60  PROTO=TCP  SPT=46220 DPT=${NHP_PORT} RELAY=0
 20:25:26 test-server [NHP-DROP] REASON=TCP_OTHER     SRC=10.99.0.1 DST=10.99.0.2 LEN=60  PROTO=TCP  SPT=53458 DPT=443   RELAY=0
-20:24:39 test-server [NHP-DROP] REASON=UDP_SHORT     SRC=10.99.0.1 DST=10.99.0.2 LEN=128 PROTO=UDP  SPT=49355 DPT=62206 RELAY=0
-20:24:39 test-server [NHP-PASS] REASON=NHP_DEFAULT   SRC=10.99.0.1 DST=10.99.0.2 LEN=328 PROTO=UDP  SPT=38438 DPT=62206 RELAY=0
+20:24:39 test-server [NHP-DROP] REASON=UDP_SHORT     SRC=10.99.0.1 DST=10.99.0.2 LEN=128 PROTO=UDP  SPT=49355 DPT=${NHP_PORT} RELAY=0
+20:24:39 test-server [NHP-PASS] REASON=NHP_DEFAULT   SRC=10.99.0.1 DST=10.99.0.2 LEN=328 PROTO=UDP  SPT=38438 DPT=${NHP_PORT} RELAY=0
 20:24:39 test-server [NHP-DROP] REASON=UDP_OTHER     SRC=10.99.0.1 DST=10.99.0.2 LEN=328 PROTO=UDP  SPT=57077 DPT=53    RELAY=0
 ```
 
@@ -392,12 +398,12 @@ sudo -E env "PATH=$PATH" go test -run TestServerFilterPassesClientReplies -v ./u
 sed -i 's/10.99.0.9/10.99.0.1/' /tmp/nhpsrv/etc/xdp.toml     # 热更新，无需重启
 sleep 1
 timeout 3 bash -c 'exec 3<>/dev/tcp/10.99.0.2/22'            # 期望：Connection refused（瞬时）——包被放行，内核回 RST
-python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*40,('10.99.0.2',62206))"  # 40 字节也放行
+python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*40,('10.99.0.2',${NHP_PORT}))"  # 40 字节也放行
 ```
 
 ```
 20:25:13 test-server [NHP-PASS] REASON=SSH_RELAY SRC=10.99.0.1 ... DPT=22    RELAY=1
-20:25:13 test-server [NHP-PASS] REASON=NHP_RELAY SRC=10.99.0.1 ... DPT=62206 RELAY=1
+20:25:13 test-server [NHP-PASS] REASON=NHP_RELAY SRC=10.99.0.1 ... DPT=${NHP_PORT} RELAY=1
 ```
 
 `SSH_RELAY` 只在 SYN 上出现一行；这条连接后续的包（scp 的数据段等）只进计数
@@ -487,7 +493,7 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV \
 
 # d) relay 转发过来的 NHP 流量源地址
 ssh -J ec2-user@$RELAY_PUB ec2-user@$SERVER_PRIV \
-  "sudo timeout 20 tcpdump -ni any 'udp port 62206' -c 5"
+  "sudo timeout 20 tcpdump -ni any 'udp port ${NHP_PORT}' -c 5"
 ```
 
 **判定**：(b)/(c) 显示的地址必须出现在 (a) 的结果里。期望的 `xdp.toml` 内容：
@@ -518,14 +524,14 @@ echo "== unit caps ==";        systemctl cat nhp-serverd | grep -iE 'capab|ExecS
 echo "== bpffs mounted ==";    mountpoint /sys/fs/bpf 2>&1
 echo "== etc ==";              ls -l /home/ec2-user/nhp-server/etc/ | grep -E 'xdp' || echo "(no xdp.toml / .o)"
 echo "== service ==";          systemctl is-active nhp-serverd
-echo "== listening ==";        sudo ss -lunp | grep 62206
+echo "== listening ==";        sudo ss -lunp | grep ${NHP_PORT}
 echo "== ebpf log lines ==";   grep -icE 'ebpf|xdp' /home/ec2-user/nhp-server/logs/server-$(date +%F).log 2>/dev/null
 EOS
 ```
 
 部署前期望：`xdp attached` 为 `(none)`，`/sys/fs/bpf/` 里没有 `xdp_server_prog` /
 `nhp_relay_ips`，unit 没有 `AmbientCapabilities`，`etc/` 下没有 `xdp.toml` 和
-`nhp_server_xdp.o`，`nhp-serverd` 正在监听 UDP/62206。
+`nhp_server_xdp.o`，`nhp-serverd` 正在监听 UDP/${NHP_PORT}。
 
 ### 2.3 从 relay（VPC 内）看的基线
 
@@ -538,26 +544,26 @@ SRV=$1
 echo "== ping ==";        ping -c2 -W2 $SRV | tail -2
 echo "== tcp/22 ==";      timeout 3 bash -c "exec 3<>/dev/tcp/$SRV/22";      echo "rc=$?"
 echo "== tcp/443 ==";     timeout 3 bash -c "exec 3<>/dev/tcp/$SRV/443";     echo "rc=$?"
-echo "== tcp/62206 ==";   timeout 3 bash -c "exec 3<>/dev/tcp/$SRV/62206";   echo "rc=$?"
-echo "== udp/62206 短包 ==" ; python3 -c "
-import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*64,('$SRV',62206));print('sent')"
+echo "== tcp/${NHP_PORT} ==";   timeout 3 bash -c "exec 3<>/dev/tcp/$SRV/${NHP_PORT}";   echo "rc=$?"
+echo "== udp/${NHP_PORT} 短包 ==" ; python3 -c "
+import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*64,('$SRV',${NHP_PORT}));print('sent')"
 EOS
 ```
 
-部署前期望：ping 通；tcp/22 `rc=0`（连上）；tcp/443、tcp/62206 是**立即** refused
+部署前期望：ping 通；tcp/22 `rc=0`（连上）；tcp/443、tcp/${NHP_PORT} 是**立即** refused
 （`rc=1`，安全组内部互通、端口没人听）；短 UDP 包直达 user space。
 
 ### 2.4 从公网看的基线
 
 ```bash
-nmap -Pn -n -p 22,80,443,62206 $SERVER_PUB      | tee before-from-internet.txt
-sudo nmap -Pn -n -sU -p 62206 $SERVER_PUB       | tee -a before-from-internet.txt
+nmap -Pn -n -p 22,80,443,${NHP_PORT} $SERVER_PUB      | tee before-from-internet.txt
+sudo nmap -Pn -n -sU -p ${NHP_PORT} $SERVER_PUB       | tee -a before-from-internet.txt
 ping -c3 $SERVER_PUB                            | tee -a before-from-internet.txt
 ```
 
-> 公网视角在部署前后**基本不会变**，这是预期的：安全组早就只放行 UDP/62206（22 只对
+> 公网视角在部署前后**基本不会变**，这是预期的：安全组早就只放行 UDP/${NHP_PORT}（22 只对
 > relay 安全组开）。XDP 的增量在于 VPC 内侧、以及公网上那些能穿过安全组的
-> UDP/62206 噪声包（`nmap -sU` 的空包会从「进 user space」变成「内核丢弃」，外部看
+> UDP/${NHP_PORT} 噪声包（`nmap -sU` 的空包会从「进 user space」变成「内核丢弃」，外部看
 > 都是 `open|filtered`，只能在 §4.3 的事件日志里看出差别）。
 
 ### 2.5 业务基线（确认 NHP 本身可用）
@@ -676,15 +682,15 @@ du -sh $(dirname $LOG) && ls -lt $(dirname $LOG)/nhp_server_xdp-*.log | head
 ping        →  100% packet loss        （之前：通）
 tcp/22      →  rc=0                    （不变；relay 在白名单内，否则就是 §7 风险 1）
 tcp/443     →  rc=124 超时              （之前：rc=1 立即 refused）
-tcp/62206   →  rc=124 超时              （之前：rc=1 立即 refused）
-udp/62206 64B → 事件日志 UDP_SHORT DROP（若 relay 在白名单则是 NHP_RELAY PASS）
+tcp/${NHP_PORT}   →  rc=124 超时              （之前：rc=1 立即 refused）
+udp/${NHP_PORT} 64B → 事件日志 UDP_SHORT DROP（若 relay 在白名单则是 NHP_RELAY PASS）
 ```
 
 从公网侧另找一台机器（不在白名单内）打一发合法长度的 UDP，确认 NHP 仍然可达：
 
 ```bash
 python3 -c "
-import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*300,('$SERVER_PUB',62206))"
+import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'A'*300,('$SERVER_PUB',${NHP_PORT}))"
 # server 侧事件日志：REASON=NHP_DEFAULT ... [NHP-PASS]
 ```
 
@@ -769,8 +775,8 @@ ssh -J ec2-user@$RELAY_PUB ec2-user@$(cd terraform/demo && terraform output -raw
 | relay → server ICMP | 通 | 全丢（`NON_TCP_UDP`） |
 | relay → server tcp/443 | 立即 refused（rc=1） | 超时（rc=124，`TCP_OTHER`） |
 | relay → server tcp/22 | 连上 | 连上（`SSH_RELAY`，前提：白名单正确） |
-| 公网 → UDP/62206 <240B | 进 user space 由 `RecvPrecheck` 丢 | 内核丢（`UDP_SHORT`），不消耗用户态 |
-| 公网 → UDP/62206 ≥240B | 通 | 通（`NHP_DEFAULT`）——NHP 语义不变 |
+| 公网 → UDP/${NHP_PORT} <240B | 进 user space 由 `RecvPrecheck` 丢 | 内核丢（`UDP_SHORT`），不消耗用户态 |
+| 公网 → UDP/${NHP_PORT} ≥240B | 通 | 通（`NHP_DEFAULT`）——NHP 语义不变 |
 | server 自己的 DNS 查询 | 通 | 通（应答 `UDP_ESTABLISHED`，见 `[NHP-STAT]`）——**这一条曾经是坏的** |
 | server 自己的 DHCP 续租 | 通 | 通（`DHCP_CLIENT`）——**这一条曾经是坏的，代价是整台主机失联** |
 | server 自己的 NTP 对时 | 通 | 通（`NTP_CLIENT`，见 `[NHP-STAT]`）——**这一条曾经是坏的** |

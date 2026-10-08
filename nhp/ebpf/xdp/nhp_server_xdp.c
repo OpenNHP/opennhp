@@ -125,10 +125,10 @@
  * because both are user-space configuration: ListenPort in etc/config.toml and
  * NhpMinFrameBytes in etc/xdp.toml. The loader rewrites them from those two
  * files before the program is verified (loadServerEngine in
- * nhp/utils/ebpf/engine_linux.go), so a server that listens anywhere other
- * than 62206 filters for the port it actually listens on instead of dropping
- * every knock it receives. The values below are only the fallback a bare
- * `bpftool prog load` of this object would get.
+ * nhp/utils/ebpf/engine_linux.go), so a server that listens on any configured
+ * knock port filters for that port instead of dropping every knock it receives.
+ * The values below are only the fallback a bare `bpftool prog load` of this
+ * object would get.
  *
  * Read as `volatile const` so the verifier still treats them as constants
  * after the rewrite (dead branches get folded away) while the compiler cannot

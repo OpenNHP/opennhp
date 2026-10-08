@@ -1231,6 +1231,53 @@ daemon attaches the filter again. Use that window to either
 the deploy. Volume surgery is only needed when the *whitelist* is wrong, i.e.
 when the filter is attached and the host does have its address.
 
+### Knock 端口怎么改
+
+`var.nhp_listen_port`（`terraform/demo/variables.tf`）是 NHP knock 端口的**唯
+一**真源。`aws_security_group.server` 的 "NHP UDP" 入站规则、
+`aws_security_group.ac` 的对端 UDP 规则、`server/config.toml` 的
+`ListenPort`、`ac/server.toml` 和 `relay/config.toml` 里 server peer 的
+`Port`，四份全部从此变量派生。三份 TOML 在 `deploy-demo-v2` 的
+`configure` job 里被 `scripts/generate-nhp-keys.sh` 用 `${NHP_SERVER_PORT}`
+渲染（来源是 `terraform output -raw nhp_listen_port`），所以**渲染出的端口
+总是等于已 apply 的状态**，配置永远不会先于安全组切换。
+
+**灰度顺序（缺一步就要预演一次再下）**：
+
+1. 编辑 `terraform/demo/variables.tf`，把 `var.nhp_listen_port.default`
+   改成目标端口（demo 当前为 `443`）。这一步**只改源码**，不立即生效。
+2. 跑 `infra-demo` workflow 的 `apply`。这一步把 SG 规则切到新端口——**此时
+   server 上的 daemon 还在听旧端口**（配置没改），中间会有数十秒到数分钟
+   的 knock 中断，demo 性质下可接受。
+3. 跑 `deploy-demo-v2` workflow。`configure` job 读到的就是新端口，
+   三份 TOML 渲染出新端口 → server SG 已经在新端口上 → drop-in 调整
+   `ip_unprivileged_port_start`（见下）→ daemon 重启监听新端口 → 敲
+   门恢复。
+
+**回滚**：把 `var.nhp_listen_port.default` 改回旧端口（demo 之前为
+`62206`）→ 跑 `infra-demo apply` → 跑 `deploy-demo-v2`。两步顺序对了就不
+会出现「配置与 SG 不一致」的中间态。
+
+**为什么不用 `CAP_NET_BIND_SERVICE`**：demo 上 `nhp-serverd` 以
+`User=ec2-user` 运行，unit 的 `CapabilityBoundingSet` 只有 `CAP_BPF
+CAP_NET_ADMIN CAP_PERFMON`。直接授予 `CAP_NET_BIND_SERVICE` 会让
+`CapAmb` 不为 0，`deploy-server` 的 `Verify the XDP loader gave its
+capabilities back`（要求 `v & ~BPF == 0`）会失败，而且 `nhp-serverd` 同时
+跑在 `docker/Dockerfile.server` 的 root 上下文中，没了收紧就静默拿走
+`CAP_DAC_OVERRIDE` 和 `CAP_NET_BIND_SERVICE`（CLAUDE.md 的 capability 不
+变量）。改用 `net.ipv4.ip_unprivileged_port_start=443`：drop-in 加
+`ExecStartPre=+/sbin/sysctl -q -w net.ipv4.ip_unprivileged_port_start=443`，
+并写 `/etc/sysctl.d/99-nhp-server.conf` 持久化；
+`terraform/demo/userdata/server.sh` 同步同样一行（新机路径）。两处必须一
+致——存量机只看 drop-in，新机只看 userdata，缺一就出意外。XDP 过滤器只
+放行 knock 端口和白名单 SSH，所以放宽 `ip_unprivileged_port_start` 到
+443 并不扩大主机的实际入站暴露面。
+
+**如果新端口 daemon 起不来且 SSH 也被 XDP 挡住**：走上面
+"If the host is already unreachable, reboot the instance" 同一条路径：
+`aws ec2 reboot-instances`（无需 SSH），DHCP 先于 `nhp-serverd` 起来，主
+机地址回来、tcp/22 在 XDP 重新挂上之前有一个窗口可用。
+
 Hands-on verification — a netns rehearsal that exercises every branch of the
 decision tree, the baseline to capture before the first deploy (including the
 check that the whitelisted address is the one the host actually sees SSH

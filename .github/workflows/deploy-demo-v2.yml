@@ -380,6 +380,7 @@ jobs:
       ac_private_ip: ${{ steps.tf_outputs.outputs.ac_private_ip }}
       relay_public_ip: ${{ steps.tf_outputs.outputs.relay_public_ip }}
       relay_private_ip: ${{ steps.tf_outputs.outputs.relay_private_ip }}
+      nhp_listen_port: ${{ steps.nhp_port.outputs.NHP_LISTEN_PORT }}
 
     steps:
       - name: Checkout code
@@ -518,6 +519,37 @@ jobs:
           echo "Relay public/private:    $RELAY_PUB / $RELAY_PRIV"
           echo "VPC subnet:              $SUBNET_CIDR"
           echo "Relay private IP pinned: $RELAY_IP_PINNED"
+
+      - name: Read NHP knock port from Terraform
+        # Source of truth is terraform/demo's var.nhp_listen_port (default 443),
+        # exposed by an output added to outputs.tf and rendered by this job into
+        # the three daemon configs and the XDP whitelist. Reading the value from
+        # `terraform output` here — instead of hard-coding it — is what makes
+        # the deploy track the SG rule: an output only exists once infra-demo
+        # has applied it, so the rendered configs cannot land on a host whose
+        # security group does not yet allow this port.
+        #
+        # Empty output must FAIL, not silently fall back. configure already
+        # runs with terraform_wrapper: false specifically to keep `terraform
+        # output ... 2>/dev/null || true` from swallowing the real exit code —
+        # see the comment on the Setup Terraform step above. A future change
+        # that "tolerates" an empty port would undo that on this exact job,
+        # and that is the same class of bug the wrapper workaround prevents
+        # for subnet_cidr below.
+        id: nhp_port
+        working-directory: terraform/demo
+        run: |
+          PORT=$(terraform output -raw nhp_listen_port)
+          if [ -z "$PORT" ]; then
+            echo "::error::terraform output nhp_listen_port is empty" >&2
+            echo "Either infra-demo has not been applied since var.nhp_listen_port" >&2
+            echo "and output nhp_listen_port were added, or the state is otherwise" >&2
+            echo "missing this value. Run infra-demo with action=apply and re-run." >&2
+            exit 1
+          fi
+          echo "NHP_LISTEN_PORT=$PORT" >> "$GITHUB_OUTPUT"
+          echo "NHP_SERVER_PORT=$PORT" >> "$GITHUB_ENV"
+          echo "NHP knock port from terraform output: $PORT"
 
       - name: Download build artifact
         uses: actions/download-artifact@v8

@@ -1258,6 +1258,23 @@ jobs:
           ssh nhp-server "grep -hE 'xdp relay whitelist applied|server XDP engine loaded' $REMOTE_DIR/logs/server-[0-9]*.log 2>/dev/null | tail -n 1" || \
             echo "  (no whitelist line yet)"
 
+      - name: Verify nhp-serverd is listening on the configured knock port
+        # The mirror of the XDP-attached check above: even with the filter on,
+        # nhp-serverd still has to actually have its UDP socket bound, and
+        # systemd's `is-active` will lie while Restart=on-failure is still in
+        # its retry window. udp/443 is privileged, so the bind step is also
+        # where a misconfigured unit (or a kernel that refused the sysctl in
+        # /etc/sysctl.d/99-nhp-server.conf) shows up as silent loss of the
+        # service. Ask the kernel, the same way the XDP check does.
+        env:
+          NHP_PORT: ${{ needs.configure.outputs.nhp_listen_port }}
+        run: |
+          set -euo pipefail
+          if ! ssh nhp-server "sudo ss -lunp | grep -E ':${NHP_PORT}[[:space:]].*nhp-serverd'"; then
+            echo "::error::nhp-serverd is not bound to udp/${NHP_PORT} — bind failure?"
+            exit 1
+          fi
+
       - name: Verify the XDP loader gave its capabilities back
         # The unit grants CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON so the filter
         # can be loaded and attached. Holding them afterwards would be a much

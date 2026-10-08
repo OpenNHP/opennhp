@@ -3211,9 +3211,11 @@ jobs:
   # Job 7: Summary
   # ─────────────────────────────────────────────────────────────
   summary:
-    needs: [deploy-relay, deploy-server, deploy-ac, deploy-jsagent, deploy-demoapp]
+    needs: [configure, deploy-relay, deploy-server, deploy-ac, deploy-jsagent, deploy-demoapp]
     if: always()
     runs-on: ubuntu-latest
+    env:
+      NHP_LISTEN_PORT: ${{ needs.configure.outputs.nhp_listen_port }}
     steps:
       - name: Summary
         run: |
@@ -3228,5 +3230,6 @@ jobs:
           echo "| demoapp      | ${{ needs.deploy-demoapp.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Binaries?    | ${{ env.DEPLOY_BINARIES }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Regen keys?  | ${{ env.REGENERATE_KEYS }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| NHP knock port | ${{ env.NHP_LISTEN_PORT }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Branch       | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Actor        | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY

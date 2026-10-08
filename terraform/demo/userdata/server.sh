@@ -65,6 +65,7 @@ Type=simple
 User=ec2-user
 WorkingDirectory=/home/ec2-user/nhp-server
 ExecStartPre=+/bin/sh -c 'mountpoint -q /sys/fs/bpf || mount -t bpf bpf /sys/fs/bpf; chgrp ec2-user /sys/fs/bpf; chmod 0770 /sys/fs/bpf'
+ExecStartPre=+/sbin/sysctl -q -w net.ipv4.ip_unprivileged_port_start=443
 ExecStart=/home/ec2-user/nhp-server/nhp-serverd run
 Restart=on-failure
 RestartSec=5
@@ -79,3 +80,15 @@ EOF
 
 systemctl daemon-reload
 systemctl enable nhp-serverd
+
+# Allow nhp-serverd (running as ec2-user) to bind udp/443 without granting
+# CAP_NET_BIND_SERVICE — which would persist past the XDP loader's
+# dropLoaderPrivileges (nhp/utils/ebpf/caps_linux.go) and break the
+# deploy-server cap-returned assertion that CapAmb must be 0 and
+# CapPrm/CapEff must be v & ~BPF == 0. Setting ip_unprivileged_port_start=443
+# means any unprivileged socket may bind ports >= 443; the XDP filter still
+# drops everything except the configured knock port and SSH from the relay,
+# so the wider reach is moot. Persist across reboots via sysctl.d so the
+# setting is restored without depending on nhp-serverd running.
+echo 'net.ipv4.ip_unprivileged_port_start=443' > /etc/sysctl.d/99-nhp-server.conf
+sysctl -q -p /etc/sysctl.d/99-nhp-server.conf

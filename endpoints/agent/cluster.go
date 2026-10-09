@@ -38,6 +38,11 @@ func (si *ServerInstance) Peer() *core.UdpPeer { return si.peer }
 // safe and returns this instance's address.
 func (si *ServerInstance) SendAddr() net.Addr { return si.peer.SendAddr() }
 
+// SendAddrErr is SendAddr with the failure cause, so a DNS failure for a
+// Host-only instance is reported as such rather than as an unparseable
+// IP. See core.UdpPeer.SendAddrErr.
+func (si *ServerInstance) SendAddrErr() (net.Addr, error) { return si.peer.SendAddrErr() }
+
 // HostPort returns "host:port" (or "ip:port") suitable for logs and
 // sticky-instance lookup. Stable for the lifetime of the instance.
 func (si *ServerInstance) HostPort() string { return si.hostPort }

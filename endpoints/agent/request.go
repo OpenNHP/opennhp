@@ -34,9 +34,9 @@ func (a *UdpAgent) RequestOtp(target *KnockTarget) error {
 		log.Critical("agent(%s)[RequestOtp] no instance available", otpMsg.UserId)
 		return common.ErrKnockServerNotFound
 	}
-	sendAddr := inst.SendAddr()
-	if sendAddr == nil {
-		log.Critical("agent(%s)[RequestOtp] server IP cannot be parsed (instance %s)", otpMsg.UserId, inst.HostPort())
+	sendAddr, addrErr := inst.SendAddrErr()
+	if addrErr != nil {
+		log.Critical("agent(%s)[RequestOtp] cannot reach server (instance %s): %v", otpMsg.UserId, inst.HostPort(), addrErr)
 		return common.ErrKnockServerNotFound
 	}
 
@@ -99,9 +99,9 @@ func (a *UdpAgent) RegisterPublicKey(otp string, target *KnockTarget) (rakMsg *c
 		log.Critical("agent(%s)[RegisterPublicKey] no instance available", regMsg.UserId)
 		return nil, common.ErrKnockServerNotFound
 	}
-	sendAddr := inst.SendAddr()
-	if sendAddr == nil {
-		log.Critical("agent(%s)[RegisterPublicKey] server IP cannot be parsed (instance %s)", regMsg.UserId, inst.HostPort())
+	sendAddr, addrErr := inst.SendAddrErr()
+	if addrErr != nil {
+		log.Critical("agent(%s)[RegisterPublicKey] cannot reach server (instance %s): %v", regMsg.UserId, inst.HostPort(), addrErr)
 		return nil, common.ErrKnockServerNotFound
 	}
 	addrStr := sendAddr.String()
@@ -186,9 +186,9 @@ func (a *UdpAgent) ListResource(target *KnockTarget) (lrtMsg *common.ServerListR
 		log.Critical("agent(%s)[ListResource] no instance available", lstMsg.UserId)
 		return nil, common.ErrKnockServerNotFound
 	}
-	sendAddr := inst.SendAddr()
-	if sendAddr == nil {
-		log.Critical("agent(%s)[ListResource] server IP cannot be parsed (instance %s)", lstMsg.UserId, inst.HostPort())
+	sendAddr, addrErr := inst.SendAddrErr()
+	if addrErr != nil {
+		log.Critical("agent(%s)[ListResource] cannot reach server (instance %s): %v", lstMsg.UserId, inst.HostPort(), addrErr)
 		return nil, common.ErrKnockServerNotFound
 	}
 	addrStr := sendAddr.String()

@@ -2,10 +2,25 @@ package core
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
 	"time"
+)
+
+// Sentinel causes returned (wrapped) by UdpPeer.SendAddrErr so callers can
+// tell a name-resolution failure apart from an unparseable literal IP.
+// These are deliberately plain errors rather than entries in the numbered
+// core.Error registry: that registry's SetExtraError mutates a shared
+// singleton, which cannot safely carry a per-call DNS cause.
+var (
+	// ErrPeerHostResolve: the peer is configured by Host (DNS name), the
+	// lookup failed, and no usable static Ip fallback exists.
+	ErrPeerHostResolve = errors.New("peer host resolution failed")
+	// ErrPeerInvalidIp: no Host is configured (or none is needed) and the
+	// literal Ip cannot be parsed.
+	ErrPeerInvalidIp = errors.New("peer ip cannot be parsed")
 )
 
 type Peer interface {
@@ -48,6 +63,7 @@ type UdpPeer struct {
 	lastSendTime                     int64
 	lastRecvTime                     int64
 	lastNSLookupTime                 int64
+	lastNSLookupErr                  error // most recent net.LookupHost failure; nil once a lookup succeeds
 	resolvedIpArr                    []string
 	primaryResolvedIp                string
 	teePublicKeyBase64               string
@@ -101,10 +117,20 @@ func (p *UdpPeer) ResolveHost() string {
 	currTime := time.Now().UnixNano()
 	if currTime-p.lastNSLookupTime > MinimalNSLookupInterval*int64(time.Second) {
 		addrs, err := net.LookupHost(p.Hostname)
-		if err == nil {
+		if err == nil && len(addrs) > 0 {
 			p.lastNSLookupTime = currTime
+			p.lastNSLookupErr = nil
 			p.resolvedIpArr = addrs
 			p.primaryResolvedIp = addrs[0]
+		} else {
+			// Remember the cause so SendAddrErr can report a DNS failure
+			// instead of a misleading "IP cannot be parsed". The lookup
+			// timer is intentionally NOT advanced on failure, preserving
+			// the existing retry-on-next-send behavior.
+			if err == nil {
+				err = fmt.Errorf("lookup %s: no addresses returned", p.Hostname)
+			}
+			p.lastNSLookupErr = err
 		}
 	}
 
@@ -125,17 +151,43 @@ func (p *UdpPeer) Host() string {
 	return fmt.Sprintf("%s:%d", hostAddr, p.Port)
 }
 
-func (p *UdpPeer) SendAddr() net.Addr {
-	resolvedIp := p.ResolveHost() // happens only when MinimalNSLookupInterval has passed
-	ip := net.ParseIP(resolvedIp)
+// lastResolveErr returns the most recent DNS lookup failure for this
+// peer's Hostname, or nil if the last lookup succeeded.
+func (p *UdpPeer) lastResolveErr() error {
+	p.Lock()
+	defer p.Unlock()
 
-	if ip == nil {
-		return nil
+	return p.lastNSLookupErr
+}
+
+// SendAddrErr is SendAddr with the failure cause. When the peer is
+// configured by Host and the name cannot be resolved (with no usable
+// static Ip to fall back on), the error wraps ErrPeerHostResolve and
+// names the host; an unparseable literal Ip wraps ErrPeerInvalidIp.
+// Callers that log or surface the failure should prefer this over
+// SendAddr so a DNS problem is never reported as an IP-parsing one.
+func (p *UdpPeer) SendAddrErr() (net.Addr, error) {
+	resolvedIp := p.ResolveHost() // happens only when MinimalNSLookupInterval has passed
+	if ip := net.ParseIP(resolvedIp); ip != nil {
+		return &net.UDPAddr{
+			IP:   ip,
+			Port: p.Port,
+		}, nil
 	}
-	return &net.UDPAddr{
-		IP:   ip,
-		Port: p.Port,
+
+	if len(p.Hostname) > 0 {
+		if err := p.lastResolveErr(); err != nil {
+			return nil, fmt.Errorf("%w: cannot resolve host %q: %v", ErrPeerHostResolve, p.Hostname, err)
+		}
 	}
+	return nil, fmt.Errorf("%w: %q", ErrPeerInvalidIp, resolvedIp)
+}
+
+// SendAddr returns the peer's UDP destination, or nil if it cannot be
+// determined. See SendAddrErr for the reason.
+func (p *UdpPeer) SendAddr() net.Addr {
+	addr, _ := p.SendAddrErr()
+	return addr
 }
 
 func (p *UdpPeer) ResolvedIps() []string {

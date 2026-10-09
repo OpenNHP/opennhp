@@ -89,10 +89,10 @@ func (a *UdpAgent) knockRequest(res *KnockTarget, useCookie bool) (ackMsg *commo
 			a.knockUser.UserId, serverPeer.PublicKeyBase64())
 		return nil, common.ErrKnockServerNotFound
 	}
-	sendAddr := inst.SendAddr()
-	if sendAddr == nil {
-		log.Critical("agent(%s)[KnockRequest] knock server IP cannot be parsed (instance %s)",
-			a.knockUser.UserId, inst.HostPort())
+	sendAddr, addrErr := inst.SendAddrErr()
+	if addrErr != nil {
+		log.Critical("agent(%s)[KnockRequest] cannot reach knock server (instance %s): %v",
+			a.knockUser.UserId, inst.HostPort(), addrErr)
 		// Drop the sticky pin so the next retry tries a sibling.
 		res.ResetInstancePin()
 		return nil, common.ErrKnockServerNotFound
@@ -238,10 +238,10 @@ func (a *UdpAgent) ExitKnockRequest(res *KnockTarget) (ackMsg *common.ServerKnoc
 			a.knockUser.UserId, serverPeer.PublicKeyBase64())
 		return nil, common.ErrKnockServerNotFound
 	}
-	sendAddr := inst.SendAddr()
-	if sendAddr == nil {
-		log.Critical("agent(%s)[ExitKnockRequest] knock server IP cannot be parsed (instance %s)",
-			a.knockUser.UserId, inst.HostPort())
+	sendAddr, addrErr := inst.SendAddrErr()
+	if addrErr != nil {
+		log.Critical("agent(%s)[ExitKnockRequest] cannot reach knock server (instance %s): %v",
+			a.knockUser.UserId, inst.HostPort(), addrErr)
 		return nil, common.ErrKnockServerNotFound
 	}
 	addrStr := sendAddr.String()
@@ -498,10 +498,10 @@ func (a *UdpAgent) KnockDHP() (ackMsg *common.ServerDHPKnockAckMsg, err error) {
 			a.knockUser.UserId, serverPeer.PublicKeyBase64())
 		return nil, common.ErrKnockServerNotFound
 	}
-	sendAddr := inst.SendAddr()
-	if sendAddr == nil {
-		log.Critical("agent(%s)[KnockDHP] knock server IP cannot be parsed (instance %s)",
-			a.knockUser.UserId, inst.HostPort())
+	sendAddr, addrErr := inst.SendAddrErr()
+	if addrErr != nil {
+		log.Critical("agent(%s)[KnockDHP] cannot reach knock server (instance %s): %v",
+			a.knockUser.UserId, inst.HostPort(), addrErr)
 		return nil, common.ErrKnockServerNotFound
 	}
 	addrStr := sendAddr.String()

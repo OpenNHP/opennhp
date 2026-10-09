@@ -35,7 +35,8 @@ resource "aws_instance" "server" {
   # a running host) and would cost an unplanned nhp-server outage, taking the
   # whole demo down with it.
   user_data = templatefile("${path.module}/userdata/server.sh", {
-    deploy_path = "/home/ec2-user/nhp-server"
+    deploy_path     = "/home/ec2-user/nhp-server"
+    nhp_listen_port = var.nhp_listen_port
   })
 
   root_block_device {

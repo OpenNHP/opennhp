@@ -59,6 +59,29 @@ echo "  Domain:         $DOMAIN"
 echo "  Regenerate:     $REGENERATE"
 echo ""
 
+# --- Validate NHP knock port BEFORE any AWS / file work ---
+#
+# The configure job in .github/workflows/deploy-demo-v2.yml reads the port from
+# `terraform output -raw nhp_listen_port` and exports it as NHP_SERVER_PORT,
+# so a missing value here is always an error: a default would silently render
+# configs that disagree with the security group already applied by `infra-demo`.
+# This check has to happen before the put-secret-value below — otherwise a
+# manual run without NHP_SERVER_PORT would rotate the keys in opennhp/demo
+# (the lockstep failure CLAUDE.md warns about under --regenerate) and then
+# exit before writing deploy/configs/, leaving peers out of sync.
+if [ -z "${NHP_SERVER_PORT:-}" ]; then
+  echo "  ERROR: NHP_SERVER_PORT 未设置。configure job 应当从" >&2
+  echo "         'terraform output -raw nhp_listen_port' 读取并 export；手动跑" >&2
+  echo "         请显式赋值（例如 NHP_SERVER_PORT=443 ./scripts/generate-nhp-keys.sh ...）。" >&2
+  exit 1
+fi
+case "$NHP_SERVER_PORT" in
+  ''|*[!0-9]*) echo "  ERROR: NHP_SERVER_PORT='$NHP_SERVER_PORT' 不是整数" >&2; exit 1 ;;
+esac
+if [ "$NHP_SERVER_PORT" -lt 1 ] || [ "$NHP_SERVER_PORT" -gt 65535 ]; then
+  echo "  ERROR: NHP_SERVER_PORT=$NHP_SERVER_PORT 超出 1-65535" >&2; exit 1
+fi
+
 # --- Create output directories ---
 mkdir -p "$OUTPUT_DIR/server"
 mkdir -p "$OUTPUT_DIR/ac"
@@ -345,6 +368,18 @@ export XDP_ENABLED="${XDP_ENABLED:-true}"
 # nhp/ebpf/xdp/nhp_server_xdp.c. The daemon writes this value into the object's
 # .rodata at startup, so it is applied rather than merely recorded.
 export XDP_NHP_MIN_FRAME_BYTES="${XDP_NHP_MIN_FRAME_BYTES:-240}"
+# NHP knock 端口。单一真源是 terraform/demo 的 var.nhp_listen_port，由 configure
+# job 从 `terraform output -raw nhp_listen_port` 读出后传进来；这个脚本在没有
+# `var.nhp_listen_port` 输出的状态上不会跑 configure，所以「未设置」一定意味着
+# 错误——不允许退回任何默认值（包括历史端口 62206），因为那会让一份与 SG 不
+# 一致的安全组悄悄上线。手动跑也请显式 `NHP_SERVER_PORT=...`。
+#
+# Validation (empty / non-integer / out-of-range) lives at the top of this
+# script, BEFORE the AWS SM put-secret-value call, so a missing port fails
+# before any secret rotation. The render/export happens here, near the
+# other envsubst inputs.
+export NHP_SERVER_PORT
+echo "  NHP knock port: $NHP_SERVER_PORT"
 export RELAY_IPS="${RELAY_IPS:-}"
 
 RELAY_IPS_TOML=""

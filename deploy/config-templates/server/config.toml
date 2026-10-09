@@ -7,7 +7,7 @@
 PrivateKeyBase64 = "${NHP_SERVER_PRIVATE_KEY}"
 DefaultCipherScheme = 0
 ListenIp = ""
-ListenPort = 62206
+ListenPort = ${NHP_SERVER_PORT}
 Hostname = "auth-plugin.${DOMAIN}"
 LogLevel = 3
 DisableAgentValidation = false

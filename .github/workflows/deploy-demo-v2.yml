@@ -380,6 +380,7 @@ jobs:
       ac_private_ip: ${{ steps.tf_outputs.outputs.ac_private_ip }}
       relay_public_ip: ${{ steps.tf_outputs.outputs.relay_public_ip }}
       relay_private_ip: ${{ steps.tf_outputs.outputs.relay_private_ip }}
+      nhp_listen_port: ${{ steps.nhp_port.outputs.NHP_LISTEN_PORT }}
 
     steps:
       - name: Checkout code
@@ -518,6 +519,37 @@ jobs:
           echo "Relay public/private:    $RELAY_PUB / $RELAY_PRIV"
           echo "VPC subnet:              $SUBNET_CIDR"
           echo "Relay private IP pinned: $RELAY_IP_PINNED"
+
+      - name: Read NHP knock port from Terraform
+        # Source of truth is terraform/demo's var.nhp_listen_port (default 443),
+        # exposed by an output added to outputs.tf and rendered by this job into
+        # the three daemon configs and the XDP whitelist. Reading the value from
+        # `terraform output` here — instead of hard-coding it — is what makes
+        # the deploy track the SG rule: an output only exists once infra-demo
+        # has applied it, so the rendered configs cannot land on a host whose
+        # security group does not yet allow this port.
+        #
+        # Empty output must FAIL, not silently fall back. configure already
+        # runs with terraform_wrapper: false specifically to keep `terraform
+        # output ... 2>/dev/null || true` from swallowing the real exit code —
+        # see the comment on the Setup Terraform step above. A future change
+        # that "tolerates" an empty port would undo that on this exact job,
+        # and that is the same class of bug the wrapper workaround prevents
+        # for subnet_cidr below.
+        id: nhp_port
+        working-directory: terraform/demo
+        run: |
+          PORT=$(terraform output -raw nhp_listen_port)
+          if [ -z "$PORT" ]; then
+            echo "::error::terraform output nhp_listen_port is empty" >&2
+            echo "Either infra-demo has not been applied since var.nhp_listen_port" >&2
+            echo "and output nhp_listen_port were added, or the state is otherwise" >&2
+            echo "missing this value. Run infra-demo with action=apply and re-run." >&2
+            exit 1
+          fi
+          echo "NHP_LISTEN_PORT=$PORT" >> "$GITHUB_OUTPUT"
+          echo "NHP_SERVER_PORT=$PORT" >> "$GITHUB_ENV"
+          echo "NHP knock port from terraform output: $PORT"
 
       - name: Download build artifact
         uses: actions/download-artifact@v8
@@ -870,6 +902,14 @@ jobs:
       id-token: write
       contents: read
 
+    env:
+      # NHP knock port as read by configure from `terraform output -raw
+      # nhp_listen_port`. Empty/missing fails the configure job rather than
+      # silently falling back, so any binding here is the same value the
+      # rendered server/ac/relay configs already carry — the drop-in (XDP
+      # engine) and the bind assertion below both key off this.
+      NHP_LISTEN_PORT: ${{ needs.configure.outputs.nhp_listen_port }}
+
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -1195,6 +1235,20 @@ jobs:
           {
             echo "[Service]"
             echo "ExecStartPre=+/bin/sh -c '$BPFFS_PREP'"
+            # nhp-serverd binds the NHP knock port as the unprivileged service
+            # user. When that port is below 1024 it cannot take
+            # CAP_NET_BIND_SERVICE without breaking the cap-given-back
+            # invariant checked below, so lower the kernel's "first
+            # non-root-bindable port" floor to exactly that port. Derived from
+            # NHP_LISTEN_PORT (single source of truth: terraform/demo's
+            # var.nhp_listen_port, surfaced as the `nhp_listen_port` output
+            # and read in the configure job) — never hard-coded — so editing
+            # the variable in variables.tf is the only knob. When the port
+            # is already >= 1024 no kernel change is needed and the
+            # ExecStartPre is omitted entirely.
+            if [ "$NHP_LISTEN_PORT" -lt 1024 ]; then
+              echo "ExecStartPre=+/sbin/sysctl -q -w net.ipv4.ip_unprivileged_port_start=$NHP_LISTEN_PORT"
+            fi
             echo "AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
             echo "CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
             echo "NoNewPrivileges=true"
@@ -1221,6 +1275,31 @@ jobs:
             exit 1
           fi
           echo "nhp-serverd deployed successfully"
+
+      - name: Sync ip_unprivileged_port_start with the configured knock port
+        # The drop-in's ExecStartPre applies the sysctl on every boot, but
+        # also write it into /etc/sysctl.d so the value survives reboots even
+        # before systemd reads the drop-in (and so an operator running
+        # `sysctl --system` manually gets the right value). The file is named
+        # to sort after the distribution defaults.
+        #
+        # Two paths, both driven by the same NHP_LISTEN_PORT the drop-in was
+        # rendered against:
+        #   * port < 1024 — write the file, since the unprivileged service
+        #     user needs the kernel floor lowered to bind the knock port.
+        #   * port >= 1024 — actively REMOVE the file (and restore 1024),
+        #     so a rollback that moves the port out of the privileged range
+        #     does not leave the previous unprivileged-bindable range in
+        #     effect on this host. The previous "always write" version left
+        #     ports 443-1023 bindable by any unprivileged user on the
+        #     server even when the daemon no longer needed it.
+        run: |
+          set -euo pipefail
+          if [ "$NHP_LISTEN_PORT" -lt 1024 ]; then
+            ssh nhp-server "echo 'net.ipv4.ip_unprivileged_port_start=$NHP_LISTEN_PORT' | sudo tee /etc/sysctl.d/99-nhp-server.conf && sudo sysctl -q -p /etc/sysctl.d/99-nhp-server.conf"
+          else
+            ssh nhp-server "sudo rm -f /etc/sysctl.d/99-nhp-server.conf && sudo sysctl -q -w net.ipv4.ip_unprivileged_port_start=1024"
+          fi
 
       - name: Verify the XDP ingress filter attached
         # nhp-serverd falls open when the engine cannot load: it logs a
@@ -1257,6 +1336,23 @@ jobs:
           echo "Active relay whitelist (last applied):"
           ssh nhp-server "grep -hE 'xdp relay whitelist applied|server XDP engine loaded' $REMOTE_DIR/logs/server-[0-9]*.log 2>/dev/null | tail -n 1" || \
             echo "  (no whitelist line yet)"
+
+      - name: Verify nhp-serverd is listening on the configured knock port
+        # The mirror of the XDP-attached check above: even with the filter on,
+        # nhp-serverd still has to actually have its UDP socket bound, and
+        # systemd's `is-active` will lie while Restart=on-failure is still in
+        # its retry window. udp/443 is privileged, so the bind step is also
+        # where a misconfigured unit (or a kernel that refused the sysctl in
+        # /etc/sysctl.d/99-nhp-server.conf) shows up as silent loss of the
+        # service. Ask the kernel, the same way the XDP check does.
+        env:
+          NHP_PORT: ${{ needs.configure.outputs.nhp_listen_port }}
+        run: |
+          set -euo pipefail
+          if ! ssh nhp-server "sudo ss -lunp | grep -E ':${NHP_PORT}[[:space:]].*nhp-serverd'"; then
+            echo "::error::nhp-serverd is not bound to udp/${NHP_PORT} — bind failure?"
+            exit 1
+          fi
 
       - name: Verify the XDP loader gave its capabilities back
         # The unit grants CAP_BPF, CAP_NET_ADMIN and CAP_PERFMON so the filter
@@ -2563,6 +2659,12 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    # NHP knock port (single source of truth: terraform/demo's var.nhp_listen_port,
+    # surfaced as the `nhp_listen_port` output of the configure job). Rendered
+    # into config.json so reg.html can hand out server.toml blocks that match the
+    # port the daemon actually listens on.
+    env:
+      NHP_LISTEN_PORT: ${{ needs.configure.outputs.nhp_listen_port }}
 
     steps:
       - name: Checkout opennhp (sources, nginx + bootstrap scripts)
@@ -2688,7 +2790,7 @@ jobs:
             "relayUrl":        "https://${{ env.DOMAIN_RELAY }}/relay",
             "serverHost":      "${{ env.DOMAIN_SERVER_ALIAS }}",
             "acHost":          "${{ env.DOMAIN_AC }}",
-            "serverPort":      443,
+            "serverPort":      ${{ env.NHP_LISTEN_PORT }},
             "serverPublicKey": "${{ steps.secrets.outputs.server_pub }}",
             "serverPublicKeySM2": "${{ steps.secrets.outputs.server_sm2_pub }}",
             "agentPrivateKey": "${{ steps.secrets.outputs.js_priv }}",
@@ -2703,6 +2805,7 @@ jobs:
                 "name":               "Cluster 1",
                 "serverHost":         "${{ env.DOMAIN_SERVER_ALIAS }}",
                 "acHost":             "${{ env.DOMAIN_AC }}",
+                "serverUdpPort":      ${{ env.NHP_LISTEN_PORT }},
                 "serverPublicKey":    "${{ steps.secrets.outputs.server_pub }}",
                 "serverPublicKeySM2": "${{ steps.secrets.outputs.server_sm2_pub }}",
                 "agentPrivateKey":    "${{ steps.secrets.outputs.js_priv }}",
@@ -3137,9 +3240,11 @@ jobs:
   # Job 7: Summary
   # ─────────────────────────────────────────────────────────────
   summary:
-    needs: [deploy-relay, deploy-server, deploy-ac, deploy-jsagent, deploy-demoapp]
+    needs: [configure, deploy-relay, deploy-server, deploy-ac, deploy-jsagent, deploy-demoapp]
     if: always()
     runs-on: ubuntu-latest
+    env:
+      NHP_LISTEN_PORT: ${{ needs.configure.outputs.nhp_listen_port }}
     steps:
       - name: Summary
         run: |
@@ -3154,5 +3259,6 @@ jobs:
           echo "| demoapp      | ${{ needs.deploy-demoapp.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Binaries?    | ${{ env.DEPLOY_BINARIES }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Regen keys?  | ${{ env.REGENERATE_KEYS }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| NHP knock port | ${{ env.NHP_LISTEN_PORT }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Branch       | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Actor        | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY

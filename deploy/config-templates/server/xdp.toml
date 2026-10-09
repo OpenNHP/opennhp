@@ -58,3 +58,9 @@ NhpMinFrameBytes = ${XDP_NHP_MIN_FRAME_BYTES}
 # instance in that subnet to tcp/22 here; the security group is still the
 # narrower control. Pin the address and this entry goes away.
 RelayIPs = [${RELAY_IPS_TOML}]
+
+# The knock port itself is not configured here — the daemon takes it from its
+# own ListenPort (rendered from $NHP_SERVER_PORT in server/config.toml). The
+# single source of truth for that port is terraform/demo's var.nhp_listen_port;
+# the security group rule for udp/<port> is rendered from the same variable,
+# so configuration cannot run ahead of the security group.

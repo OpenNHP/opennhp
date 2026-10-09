@@ -1231,6 +1231,59 @@ daemon attaches the filter again. Use that window to either
 the deploy. Volume surgery is only needed when the *whitelist* is wrong, i.e.
 when the filter is attached and the host does have its address.
 
+### Knock 端口怎么改
+
+`var.nhp_listen_port`（`terraform/demo/variables.tf`）是 NHP knock 端口的**唯
+一**真源。`aws_security_group.server` 的 "NHP UDP" 入站规则、
+`aws_security_group.ac` 的对端 UDP 规则、`server/config.toml` 的
+`ListenPort`、`ac/server.toml` 和 `relay/config.toml` 里 server peer 的
+`Port`，四份全部从此变量派生。三份 TOML 在 `deploy-demo-v2` 的
+`configure` job 里被 `scripts/generate-nhp-keys.sh` 用 `${NHP_SERVER_PORT}`
+渲染（来源是 `terraform output -raw nhp_listen_port`），所以**渲染出的端口
+总是等于已 apply 的状态**，配置永远不会先于安全组切换。
+
+**灰度顺序（缺一步就要预演一次再下）**：
+
+1. 编辑 `terraform/demo/variables.tf`，把 `var.nhp_listen_port.default`
+   改成目标端口（demo 当前为 `443`）。这一步**只改源码**，不立即生效。
+2. 跑 `infra-demo` workflow 的 `apply`。这一步把 SG 规则切到新端口——**此时
+   server 上的 daemon 还在听旧端口**（配置没改），中间会有数十秒到数分钟
+   的 knock 中断，demo 性质下可接受。
+3. 跑 `deploy-demo-v2` workflow。`configure` job 读到的就是新端口，
+   三份 TOML 渲染出新端口 → server SG 已经在新端口上 → drop-in 调整
+   `ip_unprivileged_port_start`（见下）→ daemon 重启监听新端口 → 敲
+   门恢复。
+
+**回滚**：把 `var.nhp_listen_port.default` 改回旧端口（demo 之前为
+`62206`）→ 跑 `infra-demo apply` → 跑 `deploy-demo-v2`。两步顺序对了就不
+会出现「配置与 SG 不一致」的中间态。
+
+**为什么不用 `CAP_NET_BIND_SERVICE`**：demo 上 `nhp-serverd` 以
+`User=ec2-user` 运行，unit 的 `CapabilityBoundingSet` 只有 `CAP_BPF
+CAP_NET_ADMIN CAP_PERFMON`。直接授予 `CAP_NET_BIND_SERVICE` 会让
+`CapAmb` 不为 0，`deploy-server` 的 `Verify the XDP loader gave its
+capabilities back`（要求 `v & ~BPF == 0`）会失败，而且 `nhp-serverd` 同时
+跑在 `docker/Dockerfile.server` 的 root 上下文中，没了收紧就静默拿走
+`CAP_DAC_OVERRIDE` 和 `CAP_NET_BIND_SERVICE`（CLAUDE.md 的 capability 不
+变量）。改用 `net.ipv4.ip_unprivileged_port_start=$NHP_LISTEN_PORT`（且仅当
+端口 < 1024）：drop-in 视情况加
+`ExecStartPre=+/sbin/sysctl -q -w net.ipv4.ip_unprivileged_port_start=$NHP_LISTEN_PORT`，
+端口 < 1024 时也写 `/etc/sysctl.d/99-nhp-server.conf` 持久化；
+`terraform/demo/userdata/server.sh` 同步同样一行（新机路径）。两处必须一
+致——存量机只看 drop-in，新机只看 userdata，缺一就出意外。**放宽这个 floor
+只是放宽本机任意非特权进程可绑定的端口范围**，并不直接改变入站暴露面；真正
+约束主机入站的是安全组（`aws_security_group.server` / `.ac`，只放 UDP/
+${NHP_LISTEN_PORT} + 仅来自 relay 安全组的 22）和「这台主机只跑一个服务」
+的事实，XDP 过滤器是 fail-open 设计，**不能**当成这个约束来读。回滚时如
+果新端口 ≥ 1024，`deploy-demo-v2` 会主动 `rm` 掉 `99-nhp-server.conf` 并把
+内核 floor 恢复到 1024，避免旧的「任何非特权用户可绑 443-1023」的状态留
+在主机上。
+
+**如果新端口 daemon 起不来且 SSH 也被 XDP 挡住**：走上面
+"If the host is already unreachable, reboot the instance" 同一条路径：
+`aws ec2 reboot-instances`（无需 SSH），DHCP 先于 `nhp-serverd` 起来，主
+机地址回来、tcp/22 在 XDP 重新挂上之前有一个窗口可用。
+
 Hands-on verification — a netns rehearsal that exercises every branch of the
 decision tree, the baseline to capture before the first deploy (including the
 check that the whitelisted address is the one the host actually sees SSH

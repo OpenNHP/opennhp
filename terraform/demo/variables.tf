@@ -73,10 +73,14 @@ variable "relay_private_ip" {
   }
 }
 
+# NHP knock 端口的唯一真源：server SG 入站放行 + 渲染 deploy/config-templates 下的
+# server/ac/relay 模板均取自此值。改这里必须先跑 infra-demo（apply）再跑
+# deploy-demo-v2，否则后者 `terraform output -raw nhp_listen_port` 仍读到旧值，
+# 渲染出的配置不会先于 SG 切换（这是设计上天然的安全序）。
 variable "nhp_listen_port" {
-  description = "NHP protocol UDP port"
+  description = "NHP protocol UDP port (knock listener)"
   type        = number
-  default     = 62206
+  default     = 443
 }
 
 variable "cloudflare_zone_id" {

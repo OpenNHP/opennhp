@@ -126,7 +126,7 @@ func (p *UdpPeer) ResolveHost() string {
 			// Remember the cause so SendAddrErr can report a DNS failure
 			// instead of a misleading "IP cannot be parsed". The lookup
 			// timer is intentionally NOT advanced on failure, preserving
-			// the existing retry-on-next-send behaviour.
+			// the existing retry-on-next-send behavior.
 			if err == nil {
 				err = fmt.Errorf("lookup %s: no addresses returned", p.Hostname)
 			}

@@ -10,7 +10,7 @@ import (
 // These tests pin the contract fixed in OpenNHP/opennhp#1681: a DNS failure
 // for a Host-only peer must be reported as a resolution problem that names
 // the host, never as "IP cannot be parsed", while a literal Ip keeps its
-// existing behaviour.
+// existing behavior.
 
 // unresolvableHost uses the reserved .invalid TLD (RFC 2606), which is
 // guaranteed never to resolve, so the lookup fails deterministically with

@@ -58,6 +58,15 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 		"Total UDP payload bytes sent.",
 		func() float64 { return float64(atomic.LoadUint64(&s.stats.totalSendBytes)) })
 
+	reg.NewCounterFunc("nhp_server_packet_rate_cache_evictions_total",
+		"Drained source budgets evicted under table pressure; per-source rate coverage is reduced.",
+		func() float64 {
+			if s.packetLimiter == nil {
+				return 0
+			}
+			return float64(s.packetLimiter.capacityEvictions.Load())
+    })
+  
 	reg.NewCounterFunc("nhp_server_art_replay_cache_evictions_total",
 		"Unexpired ART replay entries removed by capacity pressure; replay coverage is reduced.",
 		func() float64 {

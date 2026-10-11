@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -12,7 +13,281 @@ import (
 	"github.com/OpenNHP/opennhp/nhp/core"
 )
 
-// TestConnectionRoutine_BlockSignalDoesNotBlockRelayAddress pins the fix
+// TestConnectionRoutine_BlockSignalBlocksRelayForwardedClient pins the
+// follow-up to GHSA-674q-j8fh-972c: when the relay-aware BlockSignal
+// branch closes a per-client conn because the inner client's
+// RecvThreatCount crossed the threshold, the connection routine must
+// record a per-(relay, real-client) block so the very next forward
+// from the same real client is dropped before reaching the
+// connection-table lookup. Pre-fix this branch was `return`-only — the
+// relay address stayed reachable (correct, per the GHSA) but the
+// offending real client had no penalty at all and could re-instantiate
+// a fresh per-client conn with LastRemoteSendTime == 0 on every
+// inbound forward, getting ~one accepted replay/flood per three
+// packets it sent.
+//
+// The fix pairs with the IsRelayForwardBlocked gate at the top of
+// HandleRelayForward: this test pins the producer side (the
+// BlockSignal branch populates the block map), the next test pins the
+// consumer side (HandleRelayForward honours it).
+func TestConnectionRoutine_BlockSignalBlocksRelayForwardedClient(t *testing.T) {
+	s := &UdpServer{
+		remoteConnectionMap:       make(map[string]*UdpConn),
+		blockAddrMap:              make(map[string]*BlockAddr),
+		relayForwardBlockMap:      make(map[string]time.Time),
+		wg:                        sync.WaitGroup{},
+		relayForwardBlockMapMutex: sync.Mutex{},
+	}
+	// Skip the deferred SetOverload branch in connectionRoutine:
+	// the fixture doesn't have a real *Device, and the path under
+	// test is the relay-aware BlockSignal branch, not the overload
+	// bookkeeping.
+	s.forceOverload.Store(true)
+
+	const relayAddrStr = "198.51.100.10:62206"
+	const clientAddrStr = "203.0.113.42:51234"
+	relayUDP, _ := net.ResolveUDPAddr("udp", relayAddrStr)
+	clientUDP, _ := net.ResolveUDPAddr("udp", clientAddrStr)
+
+	const mapKey = relayConnKeyPrefix + relayAddrStr + relayConnKeySep + clientAddrStr
+	conn := &UdpConn{
+		mapKey: mapKey,
+		ConnData: &core.ConnectionData{
+			RemoteAddr:       relayUDP,
+			RealRemoteAddr:   clientUDP,
+			TimeoutMs:        5000,
+			BlockSignal:      make(chan struct{}, 1),
+			SetTimeoutSignal: make(chan struct{}, 1),
+			StopSignal:       make(chan struct{}),
+			SendQueue:        make(chan *core.Packet, 1),
+			RecvQueue:        make(chan *core.Packet, 1),
+		},
+	}
+
+	s.wg.Add(1)
+	go s.connectionRoutine(conn)
+	time.Sleep(20 * time.Millisecond)
+
+	// Pre-condition: the (relay, real-client) pair is NOT blocked yet.
+	if s.IsRelayForwardBlocked(mapKey) {
+		t.Fatalf("relay-forward block map pre-populated for %s", mapKey)
+	}
+
+	conn.ConnData.SendBlockSignal()
+
+	// Wait for the routine to exit.
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("connectionRoutine did not exit after BlockSignal")
+	}
+
+	// The (relay, real-client) pair MUST now be on the relay-forward
+	// block list. Without this, HandleRelayForward would never learn
+	// to drop subsequent forwards and the penalty-free round-trip
+	// regression re-opens.
+	if !s.IsRelayForwardBlocked(mapKey) {
+		t.Fatalf("relay-forward block missing for %s after inner threat signal — "+
+			"real client gets a fresh per-client conn (LastRemoteSendTime == 0) on every forward, no penalty", mapKey)
+	}
+
+	// As before: blockAddrMap stays untouched (relay address must
+	// remain reachable for other clients behind the relay).
+	s.blockAddrMapMutex.Lock()
+	_, blocked := s.blockAddrMap[relayAddrStr]
+	s.blockAddrMapMutex.Unlock()
+	if blocked {
+		t.Fatalf("relay address %s was block-listed after inner client threat — every other client behind the relay would be unreachable", relayAddrStr)
+	}
+}
+
+// TestRelayForwardBlockDoesNotAffectOtherClients makes the corollary
+// explicit: blocking one real client behind a relay must not leak
+// onto a different real client behind the same relay, nor onto the
+// relay itself. The block map is keyed on the (relay, real-client)
+// composite, so two distinct real-client segments resolve to two
+// independent entries.
+func TestRelayForwardBlockDoesNotAffectOtherClients(t *testing.T) {
+	s := &UdpServer{
+		relayForwardBlockMap:      make(map[string]time.Time),
+		relayForwardBlockMapMutex: sync.Mutex{},
+	}
+
+	const relayAddrStr = "198.51.100.10:62206"
+	const blockedClientStr = "203.0.113.42:51234"
+	const otherClientStr = "203.0.113.43:51235"
+	const blockedKey = relayConnKeyPrefix + relayAddrStr + relayConnKeySep + blockedClientStr
+	const otherKey = relayConnKeyPrefix + relayAddrStr + relayConnKeySep + otherClientStr
+	// Same real client, different relay — also independent.
+	const otherRelayKey = relayConnKeyPrefix + "198.51.100.11:62207" + relayConnKeySep + blockedClientStr
+
+	s.AddRelayForwardBlock(blockedKey)
+
+	if !s.IsRelayForwardBlocked(blockedKey) {
+		t.Fatalf("blockedKey %s not blocked", blockedKey)
+	}
+	if s.IsRelayForwardBlocked(otherKey) {
+		t.Fatalf("otherKey %s incorrectly blocked — block must scope to (relay, real-client) pair only", otherKey)
+	}
+	if s.IsRelayForwardBlocked(otherRelayKey) {
+		t.Fatalf("otherRelayKey %s incorrectly blocked — same real client under a different relay must not inherit the block", otherRelayKey)
+	}
+	if s.IsRelayForwardBlocked(relayAddrStr) {
+		t.Fatalf("relay address %s flagged as relay-forward blocked — block key has no relayConnKeyPrefix, gate must return false", relayAddrStr)
+	}
+}
+
+// TestAddRelayForwardBlockIgnoresNonRelayKeys guards the producer
+// side: the only legitimate caller is connectionRoutine's
+// RealRemoteAddr != nil branch, which always has a relay-prefixed
+// mapKey (or the fallback we synthesise in that branch). Passing a
+// non-relay key would silently corrupt the block map with arbitrary
+// caller strings — log a Critical and refuse rather than record.
+func TestAddRelayForwardBlockIgnoresNonRelayKeys(t *testing.T) {
+	s := &UdpServer{
+		relayForwardBlockMap:      make(map[string]time.Time),
+		relayForwardBlockMapMutex: sync.Mutex{},
+	}
+
+	for _, key := range []string{
+		"198.51.100.10:62206",       // direct UDP key (no prefix)
+		"relay",                     // prefix only, no body
+		"relay|198.51.100.10:62206", // missing real-client segment
+		"",                          // empty
+	} {
+		if s.AddRelayForwardBlock(key) {
+			t.Fatalf("AddRelayForwardBlock(%q) accepted non-relay key", key)
+		}
+	}
+	s.relayForwardBlockMapMutex.Lock()
+	n := len(s.relayForwardBlockMap)
+	s.relayForwardBlockMapMutex.Unlock()
+	if n != 0 {
+		t.Fatalf("block map populated with non-relay keys (n=%d)", n)
+	}
+}
+
+// TestAddRelayForwardBlockNewVsRefreshReturn pins the return-value
+// contract of AddRelayForwardBlock so a future recordBlockedAddr-style
+// counter keyed on the return value counts the right events. The
+// producer is called from connectionRoutine's relay-aware BlockSignal
+// branch, which today ignores the return; if a future change adds a
+// counter for "fresh blocks added" the inverted return value would
+// silently count refreshes instead and the metric would always read
+// zero on a long-running server (every violation that hits an
+// already-blocked pair would log false instead of the new-block signal).
+//
+// First insert of a brand-new key returns true; a repeat insert
+// of the same key (refresh path) returns false.
+func TestAddRelayForwardBlockNewVsRefreshReturn(t *testing.T) {
+	s := &UdpServer{
+		relayForwardBlockMap:      make(map[string]time.Time),
+		relayForwardBlockMapMutex: sync.Mutex{},
+	}
+
+	const relayAddrStr = "198.51.100.10:62206"
+	const clientAddrStr = "203.0.113.42:51234"
+	key := relayConnKeyPrefix + relayAddrStr + relayConnKeySep + clientAddrStr
+
+	if !s.AddRelayForwardBlock(key) {
+		t.Fatalf("first AddRelayForwardBlock(%q) returned false, want true (fresh block)", key)
+	}
+	if s.AddRelayForwardBlock(key) {
+		t.Fatalf("second AddRelayForwardBlock(%q) returned true, want false (refresh)", key)
+	}
+
+	// Same shape, different real-client segment. Counts as a fresh
+	// block even though the relay segment is reused.
+	otherClient := relayConnKeyPrefix + relayAddrStr + relayConnKeySep + "203.0.113.99:51234"
+	if !s.AddRelayForwardBlock(otherClient) {
+		t.Fatalf("AddRelayForwardBlock for fresh real-client returned false, want true")
+	}
+}
+
+// TestAddRelayForwardBlockEnforcesCap pins the size cap: once the
+// map holds MaxConcurrentConnection entries, an insert for a key
+// that is NOT already on the list must be refused (return false,
+// no map growth, "relay-forward block pool is full" warning). A
+// refresh of an existing entry at the cap is still allowed — it
+// doesn't grow the map.
+//
+// Without this cap, a client behind a relay can drive memory growth
+// by rotating source ports (each port = a new (relay, realClient)
+// key) at the rate the per-client conn closes; the 90s TTL is the
+// only thing pruning, and the cap stops the worst-case scenario.
+func TestAddRelayForwardBlockEnforcesCap(t *testing.T) {
+	s := &UdpServer{
+		relayForwardBlockMap:      make(map[string]time.Time),
+		relayForwardBlockMapMutex: sync.Mutex{},
+	}
+
+	// Pre-fill with MaxConcurrentConnection-1 entries (one short
+	// of the cap) so a single AddRelayForwardBlock hits it without
+	// needing 20k+ test fixtures.
+	cap := MaxConcurrentConnection
+	for i := 0; i < cap-1; i++ {
+		// Each key has to be unique AND valid; embed the index in
+		// the real-client segment so the composite parses.
+		key := relayConnKeyPrefix + "198.51.100.10:62206" + relayConnKeySep +
+			"203.0.113.1:" + strconv.Itoa(1024+i)
+		if !s.AddRelayForwardBlock(key) {
+			t.Fatalf("prefill insert #%d rejected unexpectedly", i)
+		}
+	}
+
+	s.relayForwardBlockMapMutex.Lock()
+	if n := len(s.relayForwardBlockMap); n != cap-1 {
+		s.relayForwardBlockMapMutex.Unlock()
+		t.Fatalf("prefill produced %d entries, want %d", n, cap-1)
+	}
+	s.relayForwardBlockMapMutex.Unlock()
+
+	// One more fresh key: must be accepted (still under cap).
+	lastFreshKey := relayConnKeyPrefix + "198.51.100.10:62206" + relayConnKeySep + "203.0.113.99:51234"
+	if !s.AddRelayForwardBlock(lastFreshKey) {
+		t.Fatalf("AddRelayForwardBlock under cap returned false, want true")
+	}
+	s.relayForwardBlockMapMutex.Lock()
+	if n := len(s.relayForwardBlockMap); n != cap {
+		s.relayForwardBlockMapMutex.Unlock()
+		t.Fatalf("map size after fill = %d, want %d", n, cap)
+	}
+	s.relayForwardBlockMapMutex.Unlock()
+
+	// Cap is hit. Another brand-new key must be refused; map size
+	// must not grow.
+	overCapKey := relayConnKeyPrefix + "198.51.100.10:62206" + relayConnKeySep + "203.0.113.100:51234"
+	if s.AddRelayForwardBlock(overCapKey) {
+		t.Fatalf("AddRelayForwardBlock over cap returned true, want false (no map growth)")
+	}
+	s.relayForwardBlockMapMutex.Lock()
+	if n := len(s.relayForwardBlockMap); n != cap {
+		s.relayForwardBlockMapMutex.Unlock()
+		t.Fatalf("map size after over-cap insert = %d, want %d (refused insert must not grow map)", n, cap)
+	}
+	s.relayForwardBlockMapMutex.Unlock()
+
+	// Refresh of an existing entry at the cap is still allowed —
+	// it doesn't grow the map, and it's how we keep already-blocked
+	// clients blocked after another violation. The return value is
+	// false (no fresh block added) so a recordBlockedAddr-style
+	// counter keyed on it correctly skips the refresh.
+	if s.AddRelayForwardBlock(lastFreshKey) {
+		t.Fatalf("AddRelayForwardBlock refresh at cap returned true, want false")
+	}
+	s.relayForwardBlockMapMutex.Lock()
+	if n := len(s.relayForwardBlockMap); n != cap {
+		s.relayForwardBlockMapMutex.Unlock()
+		t.Fatalf("map size after refresh at cap = %d, want %d", n, cap)
+	}
+	s.relayForwardBlockMapMutex.Unlock()
+}
+
 // for GHSA-674q-j8fh-972c follow-up: when the inner client's
 // RecvThreatCount gate fires on a relay-forwarded connection, the
 // per-connection BlockSignal triggers connectionRoutine, and the
@@ -21,21 +296,29 @@ import (
 // flood (or replay) twice over ThreatCountBeforeBlock (=1) was therefore
 // enough to drop every other client behind that relay for
 // BlockAddrExpireTime (~90s). Today the BlockSignal branch checks
-// RealRemoteAddr and, when set, simply returns — the per-client conn
-// tears down (real-client isolation is preserved by the
-// remoteConnectionMap keyed on "relay|..."), and the relay address
-// stays reachable.
+// RealRemoteAddr and, when set, closes the per-client conn AND records
+// a per-(relay, real-client) block on the relay-forward map (so the
+// offending real client gets the same penalty the direct-UDP path has,
+// without dragging the relay's other clients down). blockAddrMap is
+// deliberately untouched.
 //
 // The test wires up a UdpServer with a minimal relay-forwarded conn and
-// fires a BlockSignal. After the routine exits the blockAddrMap must
-// be empty (relay NOT blocked) and the conn must be torn down (so the
-// caller cannot continue to use it).
+// fires a BlockSignal. After the routine exits: blockAddrMap must be
+// empty (relay NOT blocked), the (relay, real-client) pair MUST be on
+// the relay-forward block list (the new behaviour), and the conn must
+// be torn down (so the caller cannot continue to use it).
 func TestConnectionRoutine_BlockSignalDoesNotBlockRelayAddress(t *testing.T) {
 	s := &UdpServer{
-		remoteConnectionMap: make(map[string]*UdpConn),
-		blockAddrMap:        make(map[string]*BlockAddr),
-		wg:                  sync.WaitGroup{},
+		remoteConnectionMap:       make(map[string]*UdpConn),
+		blockAddrMap:              make(map[string]*BlockAddr),
+		relayForwardBlockMap:      make(map[string]time.Time),
+		relayForwardBlockMapMutex: sync.Mutex{},
+		wg:                        sync.WaitGroup{},
 	}
+	// Skip the deferred SetOverload branch in connectionRoutine:
+	// the fixture doesn't have a real *Device. The path under test
+	// is the relay-aware BlockSignal branch, not overload bookkeeping.
+	s.forceOverload.Store(true)
 
 	const relayAddrStr = "198.51.100.10:62206"
 	const clientAddrStr = "203.0.113.42:51234"
@@ -97,6 +380,18 @@ func TestConnectionRoutine_BlockSignalDoesNotBlockRelayAddress(t *testing.T) {
 			relayAddrStr)
 	}
 
+	// Per the follow-up review on top of #1780: the relay-aware
+	// BlockSignal branch must ALSO record a relay-forward block on
+	// the (relay, real-client) composite, otherwise the very next
+	// forward from the offending real client lands on a fresh
+	// per-client conn with LastRemoteSendTime == 0 and is not stopped.
+	// This single assertion is the producer-side pin for the new
+	// IsRelayForwardBlocked gate at the top of HandleRelayForward.
+	if !s.IsRelayForwardBlocked(conn.mapKey) {
+		t.Fatalf("relay-forward block missing for %s after BlockSignal — offending real client gets no penalty on next forward",
+			conn.mapKey)
+	}
+
 	// The per-client conn must have torn down — that's the alternative
 	// "drop only the offending client" outcome the fix promises. We
 	// verify via IsClosed() rather than the map (the test doesn't insert
@@ -120,6 +415,12 @@ func TestConnectionRoutine_BlockSignalStillBlocksDirectClient(t *testing.T) {
 		blockAddrMap:        make(map[string]*BlockAddr),
 		wg:                  sync.WaitGroup{},
 	}
+	// Skip the deferred SetOverload branch in connectionRoutine:
+	// the fixture doesn't have a real *Device. Pre-existing test
+	// from #1780; the fixture was panicking on connectionRoutine's
+	// teardown defer in CI too, the Store(false) here makes the
+	// test runnable without spinning up a full Device.
+	s.forceOverload.Store(true)
 
 	const directAddrStr = "203.0.113.5:54321"
 	directUDP, _ := net.ResolveUDPAddr("udp", directAddrStr)

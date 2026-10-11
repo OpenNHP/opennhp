@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -141,6 +142,28 @@ type UdpServer struct {
 	// block address management
 	blockAddrMapMutex sync.Mutex
 	blockAddrMap      map[string]*BlockAddr // indexed by remote UDP address, need lock for dynamic change
+
+	// relayForwardBlockMap tracks (relay UDP address, real client UDP
+	// address) pairs whose per-client connection was closed by the
+	// relay-aware BlockSignal branch. The relay→server conn itself is
+	// NOT block-listed here — that's the GHSA-674q-j8fh-972c invariant
+	// the relay-aware branch exists to enforce — but without a penalty
+	// for the offending real client, a misbehaving browser would just
+	// land on a fresh per-client conn (LastRemoteSendTime == 0) every
+	// time, getting ~one accepted replay/flood per three it sends. The
+	// per-client block on the relay-forward key gives the same penalty
+	// the direct-UDP path already enjoys (AddBlockAddr on a UDP
+	// address), scoped to "this real client behind this relay only".
+	//
+	// Separate map (not reuse of blockAddrMap): blockAddrMap is keyed
+	// by a single UDPAddr string; the relay-forward key is a
+	// compound "relay|<relayAddr>|<realClientAddr>" that blockAddrMap
+	// has no business knowing about. Sharing the map would either
+	// require every existing IsBlockAddr call to learn the new shape
+	// or push the relay-key awareness into the wire-level block
+	// check, neither of which is desirable.
+	relayForwardBlockMapMutex sync.Mutex
+	relayForwardBlockMap      map[string]time.Time // indexed by relay-forward mapKey, value is expiry
 
 	// rknLimiter gates the cookie-verify ECDH for RKN-under-overload per
 	// source IP. Shared (internally locked) between the direct-UDP receive
@@ -573,6 +596,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	s.relayPeerMap = make(map[string]*core.UdpPeer)
 	s.tokenStore = common.NewTokenStore[*ACTokenEntry]()
 	s.blockAddrMap = make(map[string]*BlockAddr)
+	s.relayForwardBlockMap = make(map[string]time.Time)
 	s.rknLimiter = newRknRateLimiter(
 		OverloadRknRatePerSecondPerIP,
 		OverloadRknBurstPerIP,
@@ -1076,9 +1100,33 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			// preserved because the relay conn itself is in a separate
 			// remoteConnectionMap entry), and the relay stays reachable so
 			// the next legitimate client's RKN can still be answered.
+			//
+			// BUT a returning () closes the per-client conn and penalises
+			// nobody — the next HandleRelayForward for the same real
+			// client just lands on a fresh per-client conn with
+			// LastRemoteSendTime == 0 and the replayed or flooded inner
+			// packet is accepted. So: drop the relay-aware branch's
+			// blockAddrMap.AddBlockAddr (would hit the wrong target) and
+			// instead record a relay-scoped, real-client-scoped block on
+			// the connKey. HandleRelayForward checks that map first and
+			// drops forwards for BlockAddrExpireTime, giving the
+			// offending real client the same penalty the direct-UDP path
+			// has — scoped to "this real client behind this relay", not
+			// "every client behind this relay".
 			if conn.ConnData.RealRemoteAddr != nil {
-				log.Critical("connection routine closing relay-forwarded client %s (relay %s) after inner threat signal; relay address NOT block-listed",
-					conn.ConnData.RealRemoteAddr.String(), conn.ConnData.RemoteAddr.String())
+				mapKey := conn.mapKey
+				if mapKey == "" {
+					// mapKey is empty only when the conn was never
+					// inserted into remoteConnectionMap (e.g. a test
+					// fixture that drives BlockSignal directly without
+					// going through HandleRelayForward). Fall back to
+					// the relay-prefixed composite so the block still
+					// has a stable key.
+					mapKey = relayConnKeyPrefix + conn.ConnData.RemoteAddr.String() + relayConnKeySep + conn.ConnData.RealRemoteAddr.String()
+				}
+				s.AddRelayForwardBlock(mapKey)
+				log.Critical("connection routine closing relay-forwarded client %s (relay %s) after inner threat signal; per-client block on %s, relay address NOT block-listed",
+					conn.ConnData.RealRemoteAddr.String(), conn.ConnData.RemoteAddr.String(), mapKey)
 				return
 			}
 			s.AddBlockAddr(conn.ConnData.RemoteAddr)
@@ -1148,6 +1196,7 @@ func (s *UdpServer) BlockAddrRefreshRoutine() {
 
 		case <-time.After(BlockAddrRefreshRate * time.Second):
 			s.RefreshBlockAddr()
+			s.RefreshRelayForwardBlocks()
 		}
 	}
 }
@@ -1188,6 +1237,119 @@ func (s *UdpServer) RefreshBlockAddr() {
 	for k, v := range s.blockAddrMap {
 		if v.expireTime.Before(now) {
 			delete(s.blockAddrMap, k)
+		}
+	}
+}
+
+// IsRelayForwardBlocked reports whether the (relay, real-client) pair
+// identified by connKey is currently block-listed from the relay-forward
+// path. Returns false if connKey is not a relay-forward key (no
+// relayConnKeyPrefix) or the block has expired. Lookups are O(1) and
+// happen on every inbound NHP_RLY packet — keep them cheap and lock
+// contention-free from any other relay path.
+func (s *UdpServer) IsRelayForwardBlocked(connKey string) bool {
+	if !strings.HasPrefix(connKey, relayConnKeyPrefix) {
+		return false
+	}
+	s.relayForwardBlockMapMutex.Lock()
+	defer s.relayForwardBlockMapMutex.Unlock()
+
+	expire, ok := s.relayForwardBlockMap[connKey]
+	if !ok {
+		return false
+	}
+	if time.Now().After(expire) {
+		delete(s.relayForwardBlockMap, connKey)
+		return false
+	}
+	return true
+}
+
+// AddRelayForwardBlock block-lists a (relay, real-client) pair for
+// BlockAddrExpireTime so subsequent HandleRelayForward calls carrying
+// the same mapKey drop the forwarded packet before reaching the
+// connection-table lookup. The relay's outer UDP address is unaffected;
+// only this one real client behind this one relay is penalised —
+// other clients behind the same relay keep their forward path
+// working.
+//
+// Called from connectionRoutine's relay-aware BlockSignal branch,
+// which used to just `return` and leave the offending real client
+// with no penalty. Without this hook the per-client conn is closed
+// but the very next inbound forward from the same real client lands
+// on a fresh per-client conn (LastRemoteSendTime == 0) and the
+// replayed / flooded inner packet is accepted, giving the client
+// ~one accepted replay or flood packet per three it sends.
+//
+// Capacity: relayForwardBlockMap is capped at MaxConcurrentConnection,
+// matching blockAddrMap's cap. The relay supplies the key's real-
+// client segment, and that segment includes the source port the
+// remote client chose freely — each new port is a new key, and a
+// client looping with fresh ports can otherwise drive the map
+// unbounded until the 90 s TTL expires. The per-client conn is
+// already closed by the time AddRelayForwardBlock runs, so neither
+// MaxConcurrentConnection (UDP table) nor MaxConnectionsPerRelay
+// (per-relay conn table) bounds this map; the explicit cap does.
+// A flooding client that exceeds it simply fails to register a new
+// block — its existing block (if any) is refreshed, no further
+// memory is allocated, and the periodic sweep reclaims expired
+// entries so steady state stays bounded.
+//
+// Note on the same port-rotation vector: a client that changes its
+// source port between offence rounds gets a fresh key and a fresh
+// conn, and therefore bypasses the block. That's the same exposure
+// blockAddrMap has (also keyed on addr.String()), so the relay-
+// forward block is the same penalty the direct-UDP path has, not a
+// stronger one. Documented here so a future reader doesn't assume
+// the relay-forward block alone closes the replay/flood vector.
+//
+// Returns true if the pair was newly added (a fresh block — a future
+// recordBlockedAddr-style counter should increment on this), false
+// otherwise (refresh of an existing expiry, the cap was hit for a
+// brand-new key, or the key wasn't a valid
+// "relay|<relayAddr>|<realClientAddr>" composite).
+func (s *UdpServer) AddRelayForwardBlock(connKey string) bool {
+	if !isValidRelayConnKey(connKey) {
+		// Direct-UDP conn keys (and malformed prefixes) don't
+		// belong in the relay-forward block map; the relay-aware
+		// BlockSignal branch is the only caller and is gated on
+		// RealRemoteAddr != nil, so this should be unreachable.
+		// Log and no-op rather than silently corrupt the block map.
+		log.Critical("AddRelayForwardBlock called with non-relay conn key %q", connKey)
+		return false
+	}
+	s.relayForwardBlockMapMutex.Lock()
+	defer s.relayForwardBlockMapMutex.Unlock()
+
+	_, already := s.relayForwardBlockMap[connKey]
+	if !already && len(s.relayForwardBlockMap) >= MaxConcurrentConnection {
+		// Cap reached; the offending client's per-client conn is
+		// already gone and the relay's slot is free, so dropping
+		// the block here just means a brand-new key doesn't get
+		// tracked. The client still can't bring up a fresh conn
+		// from the same (relay, realClient) tuple until the
+		// existing entry expires — and the cap puts a hard bound
+		// on memory growth regardless. Match AddBlockAddr's log
+		// line so operators see one signal style across both
+		// block maps.
+		log.Warning("relay-forward block pool is full")
+		return false
+	}
+	s.relayForwardBlockMap[connKey] = time.Now().Add(BlockAddrExpireTime * time.Second)
+	return !already
+}
+
+// RefreshRelayForwardBlocks drops expired (relay, real-client) block
+// entries. Cheap to run; piggy-backs on BlockAddrRefreshRoutine's tick
+// so there's only one goroutine owning the expiry sweep.
+func (s *UdpServer) RefreshRelayForwardBlocks() {
+	s.relayForwardBlockMapMutex.Lock()
+	defer s.relayForwardBlockMapMutex.Unlock()
+
+	now := time.Now()
+	for k, expire := range s.relayForwardBlockMap {
+		if now.After(expire) {
+			delete(s.relayForwardBlockMap, k)
 		}
 	}
 }

@@ -1281,10 +1281,33 @@ func (s *UdpServer) IsRelayForwardBlocked(connKey string) bool {
 // replayed / flooded inner packet is accepted, giving the client
 // ~one accepted replay or flood packet per three it sends.
 //
-// Returns true if the pair was newly added (a fresh block), false if
-// it was already on the list (refresh of an existing expiry, no
-// metric increment) OR if the key isn't a valid
-// "relay|<relayAddr>|<realClientAddr>" composite.
+// Capacity: relayForwardBlockMap is capped at MaxConcurrentConnection,
+// matching blockAddrMap's cap. The relay supplies the key's real-
+// client segment, and that segment includes the source port the
+// remote client chose freely — each new port is a new key, and a
+// client looping with fresh ports can otherwise drive the map
+// unbounded until the 90 s TTL expires. The per-client conn is
+// already closed by the time AddRelayForwardBlock runs, so neither
+// MaxConcurrentConnection (UDP table) nor MaxConnectionsPerRelay
+// (per-relay conn table) bounds this map; the explicit cap does.
+// A flooding client that exceeds it simply fails to register a new
+// block — its existing block (if any) is refreshed, no further
+// memory is allocated, and the periodic sweep reclaims expired
+// entries so steady state stays bounded.
+//
+// Note on the same port-rotation vector: a client that changes its
+// source port between offence rounds gets a fresh key and a fresh
+// conn, and therefore bypasses the block. That's the same exposure
+// blockAddrMap has (also keyed on addr.String()), so the relay-
+// forward block is the same penalty the direct-UDP path has, not a
+// stronger one. Documented here so a future reader doesn't assume
+// the relay-forward block alone closes the replay/flood vector.
+//
+// Returns true if the pair was newly added (a fresh block — a future
+// recordBlockedAddr-style counter should increment on this), false
+// otherwise (refresh of an existing expiry, the cap was hit for a
+// brand-new key, or the key wasn't a valid
+// "relay|<relayAddr>|<realClientAddr>" composite).
 func (s *UdpServer) AddRelayForwardBlock(connKey string) bool {
 	if !isValidRelayConnKey(connKey) {
 		// Direct-UDP conn keys (and malformed prefixes) don't
@@ -1298,10 +1321,22 @@ func (s *UdpServer) AddRelayForwardBlock(connKey string) bool {
 	s.relayForwardBlockMapMutex.Lock()
 	defer s.relayForwardBlockMapMutex.Unlock()
 
-	expire := time.Now().Add(BlockAddrExpireTime * time.Second)
 	_, already := s.relayForwardBlockMap[connKey]
-	s.relayForwardBlockMap[connKey] = expire
-	return already
+	if !already && len(s.relayForwardBlockMap) >= MaxConcurrentConnection {
+		// Cap reached; the offending client's per-client conn is
+		// already gone and the relay's slot is free, so dropping
+		// the block here just means a brand-new key doesn't get
+		// tracked. The client still can't bring up a fresh conn
+		// from the same (relay, realClient) tuple until the
+		// existing entry expires — and the cap puts a hard bound
+		// on memory growth regardless. Match AddBlockAddr's log
+		// line so operators see one signal style across both
+		// block maps.
+		log.Warning("relay-forward block pool is full")
+		return false
+	}
+	s.relayForwardBlockMap[connKey] = time.Now().Add(BlockAddrExpireTime * time.Second)
+	return !already
 }
 
 // RefreshRelayForwardBlocks drops expired (relay, real-client) block

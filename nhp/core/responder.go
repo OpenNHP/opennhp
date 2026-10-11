@@ -630,6 +630,27 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 	if remoteSendTime < (ppd.LocalInitTime - DefaultRecvStalenessFloorSeconds*int64(time.Second)) {
 		// send remote timestamp is too old than receive local time, drop
 		// note there might be time calibration error between remote and local devices
+		//
+		// Registered relay peers share one long-lived UDP conn with the
+		// server (the multiplexed RLY path; see shouldCheckRecvAttack).
+		// Their NHP_RLY envelopes are exempted from the per-connection
+		// monotonic/flood gates for the same reason, but the staleness
+		// floor still applies to any other packet they might emit on the
+		// same conn — two such stale envelopes are enough to drive
+		// RecvThreatCount past ThreatCountBeforeBlock (=1) and call
+		// AddBlockAddr on the RELAY's ip:port, dropping every agent
+		// behind that relay for BlockAddrExpireTime. The relay is
+		// authenticated, so this is not a vector for unauthenticated
+		// abuse; silently drop the packet and keep the relay's block
+		// budget intact. The per-inner-client replay/flood check inside
+		// HandleRelayForward still fires on the decoded inner packet
+		// (relayConn is a separate conn keyed on the real client).
+		if peerDeviceType == NHP_RELAY {
+			log.Critical("received stale %s envelope from registered relay %s, drop without block",
+				HeaderTypeToString(ppd.HeaderType), ppd.ConnData.RemoteAddr.String())
+			err = ErrStalePacketReceived
+			return err
+		}
 		log.Critical("received stale packet from %s, drop packet", ppd.ConnData.RemoteAddr.String())
 		threat := atomic.AddInt32(&ppd.ConnData.RecvThreatCount, 1)
 		if threat > ThreatCountBeforeBlock && !ppd.ConnData.IsClosed() {

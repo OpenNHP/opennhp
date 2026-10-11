@@ -1,0 +1,264 @@
+package server
+
+import (
+	"encoding/base64"
+	"errors"
+	"net"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/OpenNHP/opennhp/nhp/common"
+	"github.com/OpenNHP/opennhp/nhp/core"
+)
+
+// TestConnectionRoutine_BlockSignalDoesNotBlockRelayAddress pins the fix
+// for GHSA-674q-j8fh-972c follow-up: when the inner client's
+// RecvThreatCount gate fires on a relay-forwarded connection, the
+// per-connection BlockSignal triggers connectionRoutine, and the
+// previous code unconditionally called AddBlockAddr(RemoteAddr) — which
+// is the RELAY's address, not the offending inner client's. One inner
+// flood (or replay) twice over ThreatCountBeforeBlock (=1) was therefore
+// enough to drop every other client behind that relay for
+// BlockAddrExpireTime (~90s). Today the BlockSignal branch checks
+// RealRemoteAddr and, when set, simply returns — the per-client conn
+// tears down (real-client isolation is preserved by the
+// remoteConnectionMap keyed on "relay|..."), and the relay address
+// stays reachable.
+//
+// The test wires up a UdpServer with a minimal relay-forwarded conn and
+// fires a BlockSignal. After the routine exits the blockAddrMap must
+// be empty (relay NOT blocked) and the conn must be torn down (so the
+// caller cannot continue to use it).
+func TestConnectionRoutine_BlockSignalDoesNotBlockRelayAddress(t *testing.T) {
+	s := &UdpServer{
+		remoteConnectionMap: make(map[string]*UdpConn),
+		blockAddrMap:        make(map[string]*BlockAddr),
+		wg:                  sync.WaitGroup{},
+	}
+
+	const relayAddrStr = "198.51.100.10:62206"
+	const clientAddrStr = "203.0.113.42:51234"
+	relayUDP, _ := net.ResolveUDPAddr("udp", relayAddrStr)
+	clientUDP, _ := net.ResolveUDPAddr("udp", clientAddrStr)
+
+	conn := &UdpConn{
+		mapKey: relayConnKeyPrefix + relayAddrStr + relayConnKeySep + clientAddrStr,
+		ConnData: &core.ConnectionData{
+			RemoteAddr:     relayUDP,
+			RealRemoteAddr: clientUDP,
+			TimeoutMs:      5000,
+			// ConnectionData.beginChannelSend requires that the
+			// channel-based teardown plumbing exists, even when the
+			// routine exits via the BlockSignal branch — Close() runs
+			// in the deferred teardown of connectionRoutine and
+			// flushes/closes these queues. Pre-create them so the
+			// defer does not panic on a fixture that never used them.
+			BlockSignal:      make(chan struct{}, 1),
+			SetTimeoutSignal: make(chan struct{}, 1),
+			StopSignal:       make(chan struct{}),
+			SendQueue:        make(chan *core.Packet, 1),
+			RecvQueue:        make(chan *core.Packet, 1),
+		},
+	}
+
+	s.wg.Add(1)
+	go s.connectionRoutine(conn)
+
+	// Give the routine a moment to enter its select loop, then fire the
+	// signal that previously would have block-listed the relay address.
+	time.Sleep(20 * time.Millisecond)
+	conn.ConnData.SendBlockSignal()
+
+	// Wait up to a second for the routine to exit. If it never does the
+	// relay-address block would also be silently absent, so a hang here
+	// is a meaningful failure (it means our fix returned without
+	// actually exiting the loop, or the relay was added to blockAddrMap
+	// before the routine exited).
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("connectionRoutine did not exit after BlockSignal — relay fix did not return")
+	}
+
+	// The relay address must NOT be in blockAddrMap. Pre-fix this test
+	// would have observed relayUDP.String() present and the assertion
+	// would fail.
+	s.blockAddrMapMutex.Lock()
+	_, blocked := s.blockAddrMap[relayAddrStr]
+	s.blockAddrMapMutex.Unlock()
+	if blocked {
+		t.Fatalf("relay address %s was block-listed after inner client threat; every other client behind the relay would now be unreachable for BlockAddrExpireTime",
+			relayAddrStr)
+	}
+
+	// The per-client conn must have torn down — that's the alternative
+	// "drop only the offending client" outcome the fix promises. We
+	// verify via IsClosed() rather than the map (the test doesn't insert
+	// the conn into remoteConnectionMap, but the routine's deferred
+	// teardown still runs Close() which flips IsClosed).
+	if !conn.ConnData.IsClosed() {
+		t.Fatal("relay-forwarded per-client conn was not closed after BlockSignal")
+	}
+}
+
+// TestConnectionRoutine_BlockSignalStillBlocksDirectClient is the
+// negative-direction check on the same code path: for a DIRECT UDP
+// client (RealRemoteAddr == nil), the BlockSignal branch must still
+// block-list the source so we don't lose the existing protection for
+// agents that connect without a relay. This guards against an
+// over-broad fix that would silently neuter the threat gate for the
+// common case.
+func TestConnectionRoutine_BlockSignalStillBlocksDirectClient(t *testing.T) {
+	s := &UdpServer{
+		remoteConnectionMap: make(map[string]*UdpConn),
+		blockAddrMap:        make(map[string]*BlockAddr),
+		wg:                  sync.WaitGroup{},
+	}
+
+	const directAddrStr = "203.0.113.5:54321"
+	directUDP, _ := net.ResolveUDPAddr("udp", directAddrStr)
+
+	conn := &UdpConn{
+		ConnData: &core.ConnectionData{
+			RemoteAddr:       directUDP,
+			RealRemoteAddr:   nil, // direct UDP — RealRemoteAddr deliberately unset
+			TimeoutMs:        5000,
+			BlockSignal:      make(chan struct{}, 1),
+			SetTimeoutSignal: make(chan struct{}, 1),
+			StopSignal:       make(chan struct{}),
+			SendQueue:        make(chan *core.Packet, 1),
+			RecvQueue:        make(chan *core.Packet, 1),
+		},
+	}
+
+	s.wg.Add(1)
+	go s.connectionRoutine(conn)
+
+	time.Sleep(20 * time.Millisecond)
+	conn.ConnData.SendBlockSignal()
+
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("connectionRoutine did not exit after BlockSignal for direct UDP")
+	}
+
+	s.blockAddrMapMutex.Lock()
+	_, blocked := s.blockAddrMap[directAddrStr]
+	s.blockAddrMapMutex.Unlock()
+	if !blocked {
+		t.Fatalf("direct UDP source %s was NOT block-listed after BlockSignal; the relay-fix branch must not leak into the direct-UDP path",
+			directAddrStr)
+	}
+}
+
+// TestDedupeRecvRLY_RegisteredRelay pins the third leg of the
+// GHSA-674q-j8fh-972c follow-up: dedupe captured-and-replayed NHP_RLY
+// envelopes on (relay pubkey, SenderTrxId, RemoteSendTime). NHP_RLY is
+// exempted from the per-connection monotonic/flood gates, and the
+// per-inner-client conn the decoded packet is re-injected on idles out
+// after DefaultAgentConnectionTimeoutMs — without this hook, an
+// on-path observer could replay a captured relay→server UDP datagram
+// indefinitely and the server would re-authenticate it as fresh.
+//
+// The hook short-circuits on non-RLY headers and on packets whose
+// decrypted peer pubkey isn't in s.relayPeerMap — both paths return
+// nil so the chain in udpserver.go continues to ART's own dedupe. Only
+// NHP_RLY from a registered relay peer is checked.
+func TestDedupeRecvRLY_RegisteredRelay(t *testing.T) {
+	s := &UdpServer{
+		relayReplay:  newARTReplayCache(),
+		relayPeerMap: make(map[string]*core.UdpPeer),
+	}
+
+	// Non-RLY header must not consume a slot.
+	if err := s.dedupeRecvRLY(&core.PacketParserData{HeaderType: core.NHP_KNK, RemotePubKey: artTestPubkey(1), SenderTrxId: 1, RemoteSendTime: 1}); err != nil {
+		t.Fatalf("non-RLY header rejected: %v", err)
+	}
+	if len(s.relayReplay.entries) != 0 {
+		t.Fatal("non-RLY populated cache")
+	}
+
+	// RLY with no registered relay peer must also short-circuit
+	// (validatePeer already rejected an unauthenticated NHP_RLY upstream;
+	// reaching the hook without a registered peer is a programmer error,
+	// not a path the server needs to block).
+	if err := s.dedupeRecvRLY(&core.PacketParserData{HeaderType: core.NHP_RLY, RemotePubKey: artTestPubkey(2), SenderTrxId: 1, RemoteSendTime: 1}); err != nil {
+		t.Fatalf("unregistered RLY peer rejected: %v", err)
+	}
+	if len(s.relayReplay.entries) != 0 {
+		t.Fatal("unregistered relay populated cache")
+	}
+
+	// Now register a relay peer and exercise the cache.
+	for _, size := range []int{core.PublicKeySize, core.PublicKeySizeEx} {
+		key := artTestPubkey(3, size)
+		s.relayPeerMap[base64.StdEncoding.EncodeToString(key)] = &core.UdpPeer{Type: core.NHP_RELAY}
+
+		packet := &core.PacketParserData{
+			HeaderType:     core.NHP_RLY,
+			SenderTrxId:    uint64(size),
+			RemotePubKey:   key,
+			RemoteSendTime: 42,
+		}
+		if err := s.dedupeRecvRLY(packet); err != nil {
+			t.Fatalf("first NHP_RLY with %d-byte key rejected: %v", size, err)
+		}
+		if err := s.dedupeRecvRLY(packet); !errors.Is(err, common.ErrServerDuplicateTransaction) {
+			t.Fatalf("duplicate NHP_RLY with %d-byte key error = %v", size, err)
+		}
+
+		// A different send time / txid / peer key must not be rejected —
+		// out-of-order envelopes from concurrent web agents are valid, and
+		// the cache must scope by (pubkey, txid, sendTime) like artReplay.
+		other := &core.PacketParserData{
+			HeaderType:     core.NHP_RLY,
+			SenderTrxId:    uint64(size) + 1,
+			RemotePubKey:   key,
+			RemoteSendTime: 43,
+		}
+		if err := s.dedupeRecvRLY(other); err != nil {
+			t.Fatalf("fresh NHP_RLY envelope rejected: %v", err)
+		}
+	}
+}
+
+// TestDedupeRecvRLY_RejectsNonRelayBeforeCaching mirrors the
+// ART-dedupe sanity check: a packet that walks through the cache
+// because its msgType matches but whose decrypted peer is not the
+// expected role must not consume a slot. Pre-cache rejection is the
+// property that prevents a single forged peer key from filling the
+// capacity and starving legitimate relays.
+func TestDedupeRecvRLY_RejectsNonRelayBeforeCaching(t *testing.T) {
+	key := artTestPubkey(7, core.PublicKeySize)
+	for _, role := range []int{core.NHP_AGENT, core.NHP_AC, core.NHP_DB} {
+		s := &UdpServer{
+			relayReplay:  newARTReplayCache(),
+			relayPeerMap: map[string]*core.UdpPeer{base64.StdEncoding.EncodeToString(key): {Type: role}},
+		}
+		p := &core.PacketParserData{HeaderType: core.NHP_RLY, RemotePubKey: key, SenderTrxId: 1, RemoteSendTime: 1}
+		if err := s.dedupeRecvRLY(p); err != nil {
+			t.Fatalf("role %d rejected before caching (hook must short-circuit on non-RLY header types): %v", role, err)
+		}
+		// Even though dedupeRecvRLY returned nil for a non-relay peer,
+		// the cache MUST stay empty: returning nil here just means
+		// "pass through to the next hook" (art dedupe, body decryption).
+		// If the cache ended up populated for a peer that isn't a relay,
+		// an attacker could pre-fill it to deny legitimate replay
+		// protection.
+		if len(s.relayReplay.entries) != 0 {
+			t.Fatalf("role %d populated cache without being a registered relay", role)
+		}
+	}
+}

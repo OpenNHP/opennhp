@@ -123,6 +123,21 @@ type UdpServer struct {
 	// connection. It is installed as a post-validation core hook in Start.
 	artReplay *artReplayCache
 
+	// relayReplay rejects an authenticated NHP_RLY envelope that has been
+	// seen on an earlier UDP connection. NHP_RLY packets are exempted from
+	// the per-connection monotonic / 20ms flood gates (see
+	// nhp/core.responder.shouldCheckRecvAttack / shouldCheckFlood), so
+	// without this hook an on-path attacker who captured one relay→server
+	// datagram could replay it indefinitely: the relay conn is a single
+	// shared UDP socket, and the per-inner-client conn the decoded packet
+	// is re-injected on idles out after DefaultAgentConnectionTimeoutMs
+	// (30s), giving the replayed envelope a fresh per-client conn with
+	// LastRemoteSendTime == 0 every time. The hook keys on (relay pubkey,
+	// SenderTrxId, RemoteSendTime) — the same shape artReplay uses — and
+	// retains entries for the staleness window so a duplicate envelope
+	// older than the floor is already rejected by the staleness check.
+	relayReplay *artReplayCache
+
 	// block address management
 	blockAddrMapMutex sync.Mutex
 	blockAddrMap      map[string]*BlockAddr // indexed by remote UDP address, need lock for dynamic change
@@ -404,7 +419,18 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		entries = artReplayCacheSize
 	}
 	s.artReplay = newARTReplayCacheWithParams(entries, artReplayCacheTTL, time.Now)
-	s.device.SetRecvReplayDedupe(s.dedupeRecvART)
+	s.relayReplay = newARTReplayCacheWithParams(entries, artReplayCacheTTL, time.Now)
+	// The dedupe hook is a single core hook; chain the per-type
+	// dedupe functions here so callers don't need to know which message
+	// types each cache guards. Each dedupe function returns nil for
+	// unrelated types, so the chain is short-circuited in practice
+	// (a packet only walks the chain until the first match).
+	s.device.SetRecvReplayDedupe(func(ppd *core.PacketParserData) error {
+		if err := s.dedupeRecvART(ppd); err != nil {
+			return err
+		}
+		return s.dedupeRecvRLY(ppd)
+	})
 
 	// Stateless cookie signing key. In a multi-instance cluster all
 	// nhp-server replicas must share the same value so any of them can
@@ -1026,6 +1052,20 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			if !ok {
 				return
 			}
+			// For a relay-forwarded connection the inner client's
+			// RecvThreatCount gates fire on this conn, but its
+			// ConnData.RemoteAddr is the RELAY's UDP address — block-listing
+			// it would drop every other client behind that relay, not just
+			// the offending one (GHSA-674q-j8fh-972c). The right action is
+			// to tear down this per-client conn (real-client isolation is
+			// preserved because the relay conn itself is in a separate
+			// remoteConnectionMap entry), and the relay stays reachable so
+			// the next legitimate client's RKN can still be answered.
+			if conn.ConnData.RealRemoteAddr != nil {
+				log.Critical("connection routine closing relay-forwarded client %s (relay %s) after inner threat signal; relay address NOT block-listed",
+					conn.ConnData.RealRemoteAddr.String(), conn.ConnData.RemoteAddr.String())
+				return
+			}
 			s.AddBlockAddr(conn.ConnData.RemoteAddr)
 			return
 
@@ -1441,6 +1481,55 @@ func (s *UdpServer) dedupeRecvART(ppd *core.PacketParserData) error {
 		last := lastARTReplayWarn.Load()
 		if now-last >= int64(time.Minute) && lastARTReplayWarn.CompareAndSwap(last, now) {
 			log.Warning("server[dedupeRecvART] dropped replayed ART (txid=%d, pubkey=%s, sendTime=%d)", ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
+		}
+		return common.ErrServerDuplicateTransaction
+	}
+	return nil
+}
+
+var lastRelayReplayWarn atomic.Int64
+
+// dedupeRecvRLY rejects a captured-and-replayed NHP_RLY envelope. The packet
+// has already passed peer validation, so the decrypted ppd.RemotePubKey is
+// the relay's authenticated static key — a successful lookup in
+// s.relayPeerMap is what makes this hook safe to gate duplicates by (pubkey,
+// txid, sendTime). For any non-RLY header type, or when the publisher is not
+// a registered relay peer, this returns nil so the chain continues.
+//
+// Why this is needed (see relayReplay field comment): NHP_RLY is exempted
+// from the per-connection monotonic and 20ms flood gates in
+// nhp/core.responder, so without this hook a captured UDP datagram can be
+// replayed indefinitely. The relay conn is a single shared UDP socket, and
+// the per-inner-client conn the decoded packet is re-injected on idles out
+// after DefaultAgentConnectionTimeoutMs (30s) — each replay therefore lands
+// on a fresh per-client conn with LastRemoteSendTime == 0 and passes every
+// other gate. The hook's TTL is the staleness window
+// (DefaultRecvStalenessFloorSeconds + safety margin), so a replayed
+// envelope older than the floor is already rejected by the staleness
+// check; for fresher ones this is the only line of defense.
+func (s *UdpServer) dedupeRecvRLY(ppd *core.PacketParserData) error {
+	if ppd.HeaderType != core.NHP_RLY {
+		return nil
+	}
+	if l := len(ppd.RemotePubKey); l != core.PublicKeySize && l != core.PublicKeySizeEx {
+		log.Critical("server[dedupeRecvRLY] invalid peer pubkey length %d for txid=%d (want %d or %d)", l, ppd.SenderTrxId, core.PublicKeySize, core.PublicKeySizeEx)
+		return common.ErrServerMissingPeerPubkey
+	}
+	s.relayPeerMapMutex.Lock()
+	peer := s.relayPeerMap[base64.StdEncoding.EncodeToString(ppd.RemotePubKey)]
+	s.relayPeerMapMutex.Unlock()
+	if peer == nil || peer.DeviceType() != core.NHP_RELAY {
+		// Not from a registered relay — fall through. validatePeer would
+		// have already rejected an unauthenticated NHP_RLY at this point,
+		// so reaching here without a relay peer entry is a programming
+		// error, not an attack vector.
+		return nil
+	}
+	if !s.relayReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime) {
+		now := time.Now().UnixNano()
+		last := lastRelayReplayWarn.Load()
+		if now-last >= int64(time.Minute) && lastRelayReplayWarn.CompareAndSwap(last, now) {
+			log.Warning("server[dedupeRecvRLY] dropped replayed NHP_RLY envelope (txid=%d, pubkey=%s, sendTime=%d)", ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
 		}
 		return common.ErrServerDuplicateTransaction
 	}

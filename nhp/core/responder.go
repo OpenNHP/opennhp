@@ -389,16 +389,35 @@ func shouldCheckRecvAttack(deviceType int, peerType int, msgType int) bool {
 		(deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP) {
 		return false
 	}
+	// NHP_RLY is a single, authenticated relay→server UDP connection that
+	// multiplexes independently-timed traffic from many web agents. Their
+	// outer-envelope timestamps are not monotonic across clients, so the
+	// per-connection replay gate false-positives and block-lists the shared
+	// relay path — taking out every agent behind that relay, not just one
+	// (GHSA-674q-j8fh-972c). Anti-replay for the real client is enforced on
+	// the decoded inner packet, which HandleRelayForward re-injects on a
+	// connection keyed by the real client address (isolated per-client
+	// replay state); the relay envelope itself is still authenticated by the
+	// relay's Noise static key, so this does not admit unauthenticated peers.
+	if deviceType == NHP_SERVER && peerType == NHP_RELAY && msgType == NHP_RLY {
+		return false
+	}
 	return true
 }
 
 // shouldCheckFlood uses the same exemptions as the monotonic gate: AOP/ART
-// bursts and reordered responses are valid. Packet dedupe handles ART replays.
+// bursts and reordered responses are valid, and the multiplexed NHP_RLY
+// connection carries legitimate concurrent bursts from many clients (see
+// shouldCheckRecvAttack; GHSA-674q-j8fh-972c). Packet dedupe handles ART
+// replays; per-client flood limiting is applied to the inner relayed packet.
 func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
 	if deviceType == NHP_AC && peerType == NHP_SERVER && msgType == NHP_AOP {
 		return false
 	}
 	if deviceType == NHP_SERVER && peerType == NHP_AC && msgType == NHP_ART {
+		return false
+	}
+	if deviceType == NHP_SERVER && peerType == NHP_RELAY && msgType == NHP_RLY {
 		return false
 	}
 	return true

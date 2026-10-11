@@ -11,8 +11,29 @@ import (
 )
 
 const (
+	// artReplayCacheSize is sized for the AC↔server ART channel —
+	// answer-result traffic is a few entries per agent access, so even a
+	// 10k-RPS server stays well under the 100k default.
 	artReplayCacheSize = 100_000
-	artReplayCacheTTL  = (core.DefaultRecvStalenessFloorSeconds + core.ARTRecvFutureSkewSeconds + 60) * time.Second
+	// relayReplayCacheSize is sized for relay throughput, not ART
+	// throughput. NHP_RLY envelopes carry every web-agent KNK/RKN/EXT
+	// behind every registered relay — one envelope per real agent
+	// knock — so the cache needs to absorb a sustained relay+agent RPS
+	// across its 16-minute TTL without capacity eviction (which would
+	// shorten the replay window for every live entry evicted under
+	// pressure). 500k entries over a 16min TTL is ~520 envelopes/s
+	// sustained; the past failure mode (copying the 100k ART size) was
+	// a per-second sustained ceiling roughly five times too low.
+	relayReplayCacheSize = 500_000
+	// artReplayCacheTTL pairs with validatePeer's future-skew gate:
+	// entries must outlive every envelope the staleness floor accepts,
+	// plus the future-skew bound (so a forward-stamped replay doesn't
+	// outlive its cache entry), plus a small safety margin. Today this
+	// is the same value for both caches; kept as separate constants so
+	// the two caches can be tuned independently if the relay path ever
+	// needs a different reconciliation window.
+	artReplayCacheTTL   = (core.DefaultRecvStalenessFloorSeconds + core.ARTRecvFutureSkewSeconds + 60) * time.Second
+	relayReplayCacheTTL = artReplayCacheTTL
 )
 
 // artReplayKey identifies one authenticated ART packet. The sender timestamp
@@ -33,6 +54,7 @@ type artReplayEntry struct {
 // artReplayCache is a bounded, concurrency-safe TTL set. Entries are appended
 // in expiry order, so expiration and capacity eviction are O(1).
 type artReplayCache struct {
+	name              string
 	mu                sync.Mutex
 	capacityEvictions uint64
 	lastWarning       time.Time
@@ -44,11 +66,20 @@ type artReplayCache struct {
 }
 
 func newARTReplayCache() *artReplayCache {
-	return newARTReplayCacheWithParams(artReplayCacheSize, artReplayCacheTTL, time.Now)
+	return newARTReplayCacheWithParams(artReplayCacheSize, artReplayCacheTTL, "ART", time.Now)
 }
 
-func newARTReplayCacheWithParams(maxEntries int, ttl time.Duration, now func() time.Time) *artReplayCache {
+// newRelayReplayCache builds the same cache struct with relay-throughput
+// sizing. Keeping the cache struct generic instead of forking it means every
+// future improvement to eviction / expiry order lands on both caches
+// automatically.
+func newRelayReplayCache() *artReplayCache {
+	return newARTReplayCacheWithParams(relayReplayCacheSize, relayReplayCacheTTL, "NHP_RLY", time.Now)
+}
+
+func newARTReplayCacheWithParams(maxEntries int, ttl time.Duration, name string, now func() time.Time) *artReplayCache {
 	return &artReplayCache{
+		name:       name,
 		entries:    make(map[artReplayKey]struct{}),
 		order:      list.New(),
 		maxEntries: maxEntries,
@@ -80,7 +111,12 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 	defer func() {
 		c.mu.Unlock()
 		if warn {
-			log.Warning("ART replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.maxEntries, evictions)
+			// Name is required so an overflow on the relay path
+			// doesn't masquerade as ART (and vice versa) in the
+			// log — operators reading "ART replay cache capacity
+			// exceeded" would otherwise look in the wrong
+			// subsystem to find the QPS ceiling.
+			log.Warning("%s replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.name, c.maxEntries, evictions)
 		}
 	}()
 

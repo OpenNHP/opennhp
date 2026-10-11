@@ -404,6 +404,28 @@ func shouldCheckFlood(deviceType int, peerType int, msgType int) bool {
 	return true
 }
 
+// futureSkewCached reports whether the (deviceType, peerType, msgType) tuple
+// matches a message whose replay is rejected from an endpoint-owned cache
+// keyed on remoteSendTime. The skew check in validatePeer keys off this
+// predicate so adding a new cached envelope type means extending the
+// predicate here too — otherwise the new cache is left with the
+// staleness-only check and a forward-stamped replay can outlive its cache
+// entry.
+func futureSkewCached(deviceType int, peerType int, msgType int) bool {
+	// ART (server ← AC) and RLY (server ← relay). Defensive on
+	// peerType even though the cache lookup itself is the
+	// authoritative gate — we want the warning to read "X from Y" and
+	// a stale envelope claiming a role it cannot legitimately publish
+	// should not poison the logs.
+	if deviceType == NHP_SERVER && peerType == NHP_AC && msgType == NHP_ART {
+		return true
+	}
+	if deviceType == NHP_SERVER && peerType == NHP_RELAY && msgType == NHP_RLY {
+		return true
+	}
+	return false
+}
+
 func (ppd *PacketParserData) validatePeer() (err error) {
 	// evolve chain hash ChainHash0 -> ChainHash1
 	ppd.chainHash.Write(ppd.deviceEcdh.PublicKey())
@@ -600,11 +622,29 @@ func (ppd *PacketParserData) validatePeer() (err error) {
 			return err
 		}
 	}
-	// Bound ART clock skew so cache entries outlive every accepted replay.
-	if ppd.device.deviceType == NHP_SERVER && peerDeviceType == NHP_AC && ppd.HeaderType == NHP_ART &&
+	// Bound clock skew for every message type whose replay is rejected
+	// from a post-validation endpoint-owned replay cache (dedupeRecvART /
+	// dedupeRecvRLY). The TTL of that cache is
+	//   DefaultRecvStalenessFloorSeconds + safety margin
+	// and without this bound an envelope stamped ahead of local time by
+	// more than ARTRecvFutureSkewSeconds can outlive its own cache entry:
+	// the staleness floor only rejects packets *behind* local time, so a
+	// forward-stamped replay sent after the cache entry expires lands on
+	// a fresh conn, misses the cache, and goes through.
+	//
+	// The ART skew check predates the relay RLY hook — it used to be
+	// specific to NHP_ART ("Bound ART clock skew so cache entries
+	// outlive every accepted replay"); the same property is required for
+	// any path that caches by remoteSendTime, which today means ART and
+	// NHP_RLY. Adding a new cached type means extending futureSkewCached
+	// here too, otherwise the new cache is left with the staleness-only
+	// check and inherits this exact hole.
+	if futureSkewCached(ppd.device.deviceType, peerDeviceType, ppd.HeaderType) &&
 		remoteSendTime > ppd.LocalInitTime+ARTRecvFutureSkewSeconds*int64(time.Second) {
+		msgType := HeaderTypeToString(ppd.HeaderType)
 		if artSkewWarnAllowed(time.Now().UnixNano()) {
-			log.Critical("ART from %s is %v ahead of local time (limit %d seconds); check AC/server clock synchronization", ppd.ConnData.RemoteAddr.String(), time.Duration(remoteSendTime-ppd.LocalInitTime), ARTRecvFutureSkewSeconds)
+			log.Critical("%s from %s is %v ahead of local time (limit %d seconds); check peer clock synchronization",
+				msgType, ppd.ConnData.RemoteAddr.String(), time.Duration(remoteSendTime-ppd.LocalInitTime), ARTRecvFutureSkewSeconds)
 		}
 		return ErrStalePacketReceived
 	}

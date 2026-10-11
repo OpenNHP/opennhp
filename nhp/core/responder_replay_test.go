@@ -153,3 +153,109 @@ func TestRelayStaleEnvelopeDoesNotBlockRelay(t *testing.T) {
 func atomicLoadInt32(p *int32) int32 {
 	return atomic.LoadInt32(p)
 }
+
+// TestRLYFutureTimestampBound pins the second half of the ART skew
+// check after it was generalized to any (deviceType, peerType, msgType)
+// tuple whose replay is cached via dedupeRecvART/dedupeRecvRLY. Without
+// this bound, an NHP_RLY envelope stamped ahead of local time by more
+// than ARTRecvFutureSkewSeconds can outlive its cache entry: the
+// staleness floor only rejects envelopes BEHIND local time, so a
+// forward-stamped replay sent after the entry expires lands on a
+// fresh conn, misses the cache, and goes through HandleRelayForward
+// again. Before this generalization the only line of defense was the
+// per-connection monotonic gate — and the prior PR exempted RLY from
+// that gate.
+//
+// The fixture mirrors TestARTFutureTimestampBound: pull a real NHP_RLY
+// packet off a NHP_RELAY↔NHP_SERVER Noise handshake, then drive the
+// receiver's initTime so the remote timestamp appears to be ahead by
+// (a) exactly the limit (accepted), (b) one nanosecond past it
+// (rejected), and (c) far past it (rejected).
+func TestRLYFutureTimestampBound(t *testing.T) {
+	sender := NewDevice(NHP_RELAY, sentinelPrivateKey(3), nil)
+	receiver := NewDevice(NHP_SERVER, sentinelPrivateKey(35), nil)
+	if sender == nil || receiver == nil {
+		t.Fatal("failed to create relay/server devices")
+	}
+	t.Cleanup(sender.Stop)
+	t.Cleanup(receiver.Stop)
+
+	receiverPeer := &UdpPeer{
+		PubKeyBase64: receiver.PublicKeyBase64(),
+		Ip:           "127.0.0.1",
+		Port:         12349,
+		Type:         NHP_SERVER,
+	}
+	sender.AddPeer(receiverPeer)
+	senderPeer := &UdpPeer{
+		PubKeyBase64: sender.PublicKeyBase64(),
+		Ip:           "127.0.0.1",
+		Port:         12348,
+		Type:         NHP_RELAY,
+	}
+	receiver.AddPeer(senderPeer)
+
+	senderConn := sentinelConnection(sender, 12348, 12349)
+	mad, err := sender.MsgToPacket(&MsgData{
+		ConnData:      senderConn,
+		PeerPk:        receiverPeer.PublicKey(),
+		HeaderType:    NHP_RLY,
+		TransactionId: 1,
+	})
+	if err != nil {
+		t.Fatalf("MsgToPacket failed: %v", err)
+	}
+
+	for _, delta := range []time.Duration{
+		ARTRecvFutureSkewSeconds * time.Second,
+		ARTRecvFutureSkewSeconds*time.Second + 1,
+		10 * time.Minute,
+	} {
+		// initTime is the receiver's notion of "now". Driving it
+		// *behind* the sender's RemoteSendTime by `delta` makes the
+		// envelope look forward-stamped by delta.
+		receiverConn := sentinelConnection(receiver, 12349, 12348)
+		initTimeBehind := mad.LocalInitTime - int64(delta)
+		packet := &Packet{Content: append([]byte(nil), mad.BasePacket.Content...), HeaderType: NHP_RLY}
+		ppd, err := receiver.createPacketParserData(&PacketData{
+			BasePacket: packet,
+			ConnData:   receiverConn,
+			InitTime:   initTimeBehind,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := ppd.validatePeer()
+		ppd.Destroy()
+		if delta > ARTRecvFutureSkewSeconds*time.Second && got != ErrStalePacketReceived {
+			t.Fatalf("RLY skew %v accepted: got %v, want ErrStalePacketReceived", delta, got)
+		}
+		if delta == ARTRecvFutureSkewSeconds*time.Second && got != nil {
+			t.Fatalf("RLY allowed skew rejected: got %v", got)
+		}
+	}
+}
+
+// TestFutureSkewCachedPredicate pins the predicate that drives the
+// generalized skew check. The check exists for every tuple that
+// matches a post-validation replay cache (NHP_ART and NHP_RLY today);
+// future cache types must extend this predicate or they inherit the
+// staleness-only check and the original replay hole.
+func TestFutureSkewCachedPredicate(t *testing.T) {
+	cases := []struct {
+		name              string
+		device, peer, msg int
+		want              bool
+	}{
+		{"ART cached", NHP_SERVER, NHP_AC, NHP_ART, true},
+		{"RLY cached", NHP_SERVER, NHP_RELAY, NHP_RLY, true},
+		{"AOP not cached", NHP_AC, NHP_SERVER, NHP_AOP, false},
+		{"KNK not cached", NHP_SERVER, NHP_AGENT, NHP_KNK, false},
+		{"ART on wrong receiver", NHP_AC, NHP_SERVER, NHP_AOP, false},
+	}
+	for _, c := range cases {
+		if got := futureSkewCached(c.device, c.peer, c.msg); got != c.want {
+			t.Fatalf("%s: futureSkewCached(%d,%d,%d)=%v, want %v", c.name, c.device, c.peer, c.msg, got, c.want)
+		}
+	}
+}

@@ -49,7 +49,7 @@ func TestARTReplayCacheAcceptsOutOfOrderFreshPackets(t *testing.T) {
 
 func TestARTReplayCacheScopesAndRejectsDuplicates(t *testing.T) {
 	now := time.Unix(100, 0)
-	cache := newARTReplayCacheWithParams(8, time.Minute, func() time.Time { return now })
+	cache := newARTReplayCacheWithParams(8, time.Minute, "test", func() time.Time { return now })
 	keyA, keyB := artTestPubkey(1), artTestPubkey(2)
 
 	if !cache.MarkSeen(keyA, 7, 1000) {
@@ -71,7 +71,7 @@ func TestARTReplayCacheScopesAndRejectsDuplicates(t *testing.T) {
 
 func TestARTReplayCacheExpiresAndEvicts(t *testing.T) {
 	now := time.Unix(100, 0)
-	cache := newARTReplayCacheWithParams(2, time.Second, func() time.Time { return now })
+	cache := newARTReplayCacheWithParams(2, time.Second, "test", func() time.Time { return now })
 	key := artTestPubkey(1)
 
 	cache.MarkSeen(key, 1, 1)

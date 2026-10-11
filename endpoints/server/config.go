@@ -85,14 +85,15 @@ type SrcIpMap struct {
 }
 
 type Config struct {
-	ARTReplayCacheEntries  int    `json:"artReplayCacheEntries"` // Restart-only; zero selects 100000.
-	PrivateKeyBase64       string `json:"privateKey"`
-	Hostname               string `json:"hostname"`
-	ListenIp               string `json:"listenIp"`
-	ListenPort             int    `json:"listenPort"`
-	LogLevel               int    `json:"logLevel"`
-	DefaultCipherScheme    int    `json:"defaultCipherScheme"`
-	DisableAgentValidation bool   `json:"disableAgentValidation"`
+	ARTReplayCacheEntries   int    `json:"artReplayCacheEntries"`   // Restart-only; zero selects 100000.
+	RelayReplayCacheEntries int    `json:"relayReplayCacheEntries"` // Restart-only; zero selects 500000. Size for NHP_RLY envelopes (every web-agent KNK/RKN/EXT behind every registered relay); raise it for sustained relay throughput above ~520 envelopes/s.
+	PrivateKeyBase64        string `json:"privateKey"`
+	Hostname                string `json:"hostname"`
+	ListenIp                string `json:"listenIp"`
+	ListenPort              int    `json:"listenPort"`
+	LogLevel                int    `json:"logLevel"`
+	DefaultCipherScheme     int    `json:"defaultCipherScheme"`
+	DisableAgentValidation  bool   `json:"disableAgentValidation"`
 
 	// AllowPrivateRelaySource relaxes the SourceAddr public-routability check
 	// that HandleRelayForward applies to inner KNK packets arriving via a
@@ -1436,17 +1437,30 @@ func (s *UdpServer) updateRelayPeers(peers []*core.UdpPeer) (err error) {
 	relayPeerMap := make(map[string]*core.UdpPeer)
 	for _, p := range peers {
 		p.Type = core.NHP_RELAY
-		s.device.AddPeer(p)
 		relayPeerMap[p.PublicKeyBase64()] = p
 	}
 
-	// remove old peers from device
+	// Swap relayPeerMap BEFORE adding peers to the device. The dedupe
+	// hook (dedupeRecvRLY) keys on relayPeerMap, but validatePeer keys
+	// on the device's internal peer pool — those two can briefly disagree
+	// during a reload if a new relay is added to the device pool while
+	// relayPeerMap still points at the old set. The previous order
+	// (AddPeer → swap map) opened a window in which validatePeer
+	// accepted a freshly-registered relay envelope but the dedupe hook
+	// had no relay record and returned nil — i.e. no replay protection
+	// at all for that one packet. Swapping the map first ensures the
+	// hook sees the new relay from the moment it is reachable; if a
+	// packet races the AddPeer (validatePeer rejects for peer-not-
+	// found) the cost is a single RLY rejection, not a replay hole.
 	s.relayPeerMapMutex.Lock()
 	defer s.relayPeerMapMutex.Unlock()
 	for pubKey := range s.relayPeerMap {
 		if _, found := relayPeerMap[pubKey]; !found {
 			s.device.RemovePeer(pubKey)
 		}
+	}
+	for _, p := range peers {
+		s.device.AddPeer(p)
 	}
 	s.relayPeerMap = relayPeerMap
 

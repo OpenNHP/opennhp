@@ -418,8 +418,23 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	if entries == 0 {
 		entries = artReplayCacheSize
 	}
-	s.artReplay = newARTReplayCacheWithParams(entries, artReplayCacheTTL, time.Now)
-	s.relayReplay = newARTReplayCacheWithParams(entries, artReplayCacheTTL, time.Now)
+	s.artReplay = newARTReplayCacheWithParams(entries, artReplayCacheTTL, "ART", time.Now)
+	// relayReplay is sized for relay throughput, NOT ART throughput:
+	// NHP_RLY envelopes carry every web-agent KNK/RKN/EXT behind every
+	// registered relay, so the cache must absorb sustained
+	// relay+agent-RPS without capacity eviction (each eviction
+	// shortens the replay window for every live entry below it).
+	// relayReplayCacheSize defaults to 5× the ART size for that reason.
+	// Operators with higher relay throughput can raise it via
+	// RelayReplayCacheEntries (also restart-only, like ART's).
+	relayEntries := s.config.RelayReplayCacheEntries
+	if relayEntries <= 0 {
+		relayEntries = relayReplayCacheSize
+	}
+	if relayEntries > 5_000_000 {
+		return fmt.Errorf("RelayReplayCacheEntries must be between 0 and 5000000")
+	}
+	s.relayReplay = newARTReplayCacheWithParams(relayEntries, relayReplayCacheTTL, "NHP_RLY", time.Now)
 	// The dedupe hook is a single core hook; chain the per-type
 	// dedupe functions here so callers don't need to know which message
 	// types each cache guards. Each dedupe function returns nil for
@@ -1493,8 +1508,13 @@ var lastRelayReplayWarn atomic.Int64
 // has already passed peer validation, so the decrypted ppd.RemotePubKey is
 // the relay's authenticated static key — a successful lookup in
 // s.relayPeerMap is what makes this hook safe to gate duplicates by (pubkey,
-// txid, sendTime). For any non-RLY header type, or when the publisher is not
-// a registered relay peer, this returns nil so the chain continues.
+// txid, sendTime). For any non-RLY header type this returns nil so the
+// chain continues; any other code path returns ErrServerMissingPeerPubkey
+// and FAILS CLOSED. The fail-closed branch is the load-bearing piece: the
+// monotonic / flood exemption in core.responder skips both gate paths for
+// NHP_RLY, so the relay→server attack surface is this hook alone — leaving
+// the peer-not-registered case as a pass-through would replay-protect
+// nothing.
 //
 // Why this is needed (see relayReplay field comment): NHP_RLY is exempted
 // from the per-connection monotonic and 20ms flood gates in
@@ -1504,9 +1524,10 @@ var lastRelayReplayWarn atomic.Int64
 // after DefaultAgentConnectionTimeoutMs (30s) — each replay therefore lands
 // on a fresh per-client conn with LastRemoteSendTime == 0 and passes every
 // other gate. The hook's TTL is the staleness window
-// (DefaultRecvStalenessFloorSeconds + safety margin), so a replayed
-// envelope older than the floor is already rejected by the staleness
-// check; for fresher ones this is the only line of defense.
+// (DefaultRecvStalenessFloorSeconds + ARTRecvFutureSkewSeconds + safety
+// margin — see art_replay_cache.go), so a replayed envelope older than the
+// floor is already rejected by validatePeer's staleness check; for fresher
+// ones this is the only line of defense.
 func (s *UdpServer) dedupeRecvRLY(ppd *core.PacketParserData) error {
 	if ppd.HeaderType != core.NHP_RLY {
 		return nil
@@ -1519,11 +1540,19 @@ func (s *UdpServer) dedupeRecvRLY(ppd *core.PacketParserData) error {
 	peer := s.relayPeerMap[base64.StdEncoding.EncodeToString(ppd.RemotePubKey)]
 	s.relayPeerMapMutex.Unlock()
 	if peer == nil || peer.DeviceType() != core.NHP_RELAY {
-		// Not from a registered relay — fall through. validatePeer would
-		// have already rejected an unauthenticated NHP_RLY at this point,
-		// so reaching here without a relay peer entry is a programming
-		// error, not an attack vector.
-		return nil
+		// FAIL CLOSED. validatePeer and the dedupe hook key on
+		// different maps (the device peer pool vs relayPeerMap),
+		// and updateRelayPeers used to install a new relay peer
+		// into the device pool before swapping relayPeerMap —
+		// briefly leaving validatePeer accepting an envelope that
+		// the dedupe hook had no record of. That window is closed
+		// by updateRelayPeers now swapping the map before calling
+		// AddPeer, but the dedupe hook still cannot tell the
+		// difference between "registered relay" and "peer pool
+		// just accepted an unrecognised pubkey", so the only safe
+		// answer to "I don't see this peer as a relay" is to
+		// refuse the envelope.
+		return common.ErrServerMissingPeerPubkey
 	}
 	if !s.relayReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime) {
 		now := time.Now().UnixNano()

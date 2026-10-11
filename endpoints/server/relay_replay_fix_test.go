@@ -172,13 +172,18 @@ func TestConnectionRoutine_BlockSignalStillBlocksDirectClient(t *testing.T) {
 // on-path observer could replay a captured relay→server UDP datagram
 // indefinitely and the server would re-authenticate it as fresh.
 //
-// The hook short-circuits on non-RLY headers and on packets whose
-// decrypted peer pubkey isn't in s.relayPeerMap — both paths return
-// nil so the chain in udpserver.go continues to ART's own dedupe. Only
-// NHP_RLY from a registered relay peer is checked.
+// The hook short-circuits on non-RLY headers so the chain can continue
+// to ART's own dedupe — but for any RLY envelope whose decrypted peer
+// pubkey is not in s.relayPeerMap (whether the peer is unregistered at
+// all or registered under a non-relay role), the hook now FAILS CLOSED
+// with ErrServerMissingPeerPubkey. The earlier pass-through was a
+// replay hole during config reloads (a newly-registered relay was
+// visible to the device peer pool that validatePeer uses before the
+// relayPeerMap swap landed), and the fail-closed behaviour matches
+// dedupeRecvART's "peer not registered as an AC" path.
 func TestDedupeRecvRLY_RegisteredRelay(t *testing.T) {
 	s := &UdpServer{
-		relayReplay:  newARTReplayCache(),
+		relayReplay:  newRelayReplayCache(),
 		relayPeerMap: make(map[string]*core.UdpPeer),
 	}
 
@@ -190,12 +195,16 @@ func TestDedupeRecvRLY_RegisteredRelay(t *testing.T) {
 		t.Fatal("non-RLY populated cache")
 	}
 
-	// RLY with no registered relay peer must also short-circuit
-	// (validatePeer already rejected an unauthenticated NHP_RLY upstream;
-	// reaching the hook without a registered peer is a programmer error,
-	// not a path the server needs to block).
-	if err := s.dedupeRecvRLY(&core.PacketParserData{HeaderType: core.NHP_RLY, RemotePubKey: artTestPubkey(2), SenderTrxId: 1, RemoteSendTime: 1}); err != nil {
-		t.Fatalf("unregistered RLY peer rejected: %v", err)
+	// RLY with no registered relay peer must FAIL CLOSED, not
+	// short-circuit. The previous behaviour returned nil and left the
+	// envelope un-replay-protected; under the new policy the only
+	// safe answer to "I don't see this peer as a relay" is to refuse
+	// the envelope. validatePeer would normally have rejected it
+	// before reaching the hook, but a config-reload race could
+	// produce a freshly-validated envelope for a peer the hook has
+	// not yet seen — that race is why the policy lives here.
+	if err := s.dedupeRecvRLY(&core.PacketParserData{HeaderType: core.NHP_RLY, RemotePubKey: artTestPubkey(2), SenderTrxId: 1, RemoteSendTime: 1}); !errors.Is(err, common.ErrServerMissingPeerPubkey) {
+		t.Fatalf("unregistered RLY peer must fail closed with ErrServerMissingPeerPubkey, got %v", err)
 	}
 	if len(s.relayReplay.entries) != 0 {
 		t.Fatal("unregistered relay populated cache")
@@ -237,26 +246,27 @@ func TestDedupeRecvRLY_RegisteredRelay(t *testing.T) {
 // TestDedupeRecvRLY_RejectsNonRelayBeforeCaching mirrors the
 // ART-dedupe sanity check: a packet that walks through the cache
 // because its msgType matches but whose decrypted peer is not the
-// expected role must not consume a slot. Pre-cache rejection is the
-// property that prevents a single forged peer key from filling the
-// capacity and starving legitimate relays.
+// expected role must not consume a slot. Under the new fail-closed
+// policy, "registered in relayPeerMap with a non-relay role" is just
+// another way of saying "I have no record of this pubkey as a relay",
+// and the hook returns ErrServerMissingPeerPubkey instead of nil —
+// which is also the property that prevents a single forged peer key
+// from filling the capacity and starving legitimate relays.
 func TestDedupeRecvRLY_RejectsNonRelayBeforeCaching(t *testing.T) {
 	key := artTestPubkey(7, core.PublicKeySize)
 	for _, role := range []int{core.NHP_AGENT, core.NHP_AC, core.NHP_DB} {
 		s := &UdpServer{
-			relayReplay:  newARTReplayCache(),
+			relayReplay:  newRelayReplayCache(),
 			relayPeerMap: map[string]*core.UdpPeer{base64.StdEncoding.EncodeToString(key): {Type: role}},
 		}
 		p := &core.PacketParserData{HeaderType: core.NHP_RLY, RemotePubKey: key, SenderTrxId: 1, RemoteSendTime: 1}
-		if err := s.dedupeRecvRLY(p); err != nil {
-			t.Fatalf("role %d rejected before caching (hook must short-circuit on non-RLY header types): %v", role, err)
+		if err := s.dedupeRecvRLY(p); !errors.Is(err, common.ErrServerMissingPeerPubkey) {
+			t.Fatalf("role %d must fail closed with ErrServerMissingPeerPubkey, got %v", role, err)
 		}
-		// Even though dedupeRecvRLY returned nil for a non-relay peer,
-		// the cache MUST stay empty: returning nil here just means
-		// "pass through to the next hook" (art dedupe, body decryption).
-		// If the cache ended up populated for a peer that isn't a relay,
-		// an attacker could pre-fill it to deny legitimate replay
-		// protection.
+		// The cache MUST stay empty for an envelope the hook rejected:
+		// a fail-closed branch that nonetheless wrote a (pubkey,txid,
+		// sendTime) entry would let a forger with one valid pubkey
+		// starve every legitimate relay off the tail of the cache.
 		if len(s.relayReplay.entries) != 0 {
 			t.Fatalf("role %d populated cache without being a registered relay", role)
 		}

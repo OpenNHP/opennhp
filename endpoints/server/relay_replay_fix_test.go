@@ -29,7 +29,7 @@ import (
 // The fix pairs with the IsRelayForwardBlocked gate at the top of
 // HandleRelayForward: this test pins the producer side (the
 // BlockSignal branch populates the block map), the next test pins the
-// consumer side (HandleRelayForward honours it).
+// consumer side (HandleRelayForward honors it).
 func TestConnectionRoutine_BlockSignalBlocksRelayForwardedClient(t *testing.T) {
 	s := &UdpServer{
 		remoteConnectionMap:       make(map[string]*UdpConn),
@@ -145,7 +145,7 @@ func TestRelayForwardBlockDoesNotAffectOtherClients(t *testing.T) {
 // TestAddRelayForwardBlockIgnoresNonRelayKeys guards the producer
 // side: the only legitimate caller is connectionRoutine's
 // RealRemoteAddr != nil branch, which always has a relay-prefixed
-// mapKey (or the fallback we synthesise in that branch). Passing a
+// mapKey (or the fallback we synthesize in that branch). Passing a
 // non-relay key would silently corrupt the block map with arbitrary
 // caller strings — log a Critical and refuse rather than record.
 func TestAddRelayForwardBlockIgnoresNonRelayKeys(t *testing.T) {
@@ -305,7 +305,7 @@ func TestAddRelayForwardBlockEnforcesCap(t *testing.T) {
 // The test wires up a UdpServer with a minimal relay-forwarded conn and
 // fires a BlockSignal. After the routine exits: blockAddrMap must be
 // empty (relay NOT blocked), the (relay, real-client) pair MUST be on
-// the relay-forward block list (the new behaviour), and the conn must
+// the relay-forward block list (the new behavior), and the conn must
 // be torn down (so the caller cannot continue to use it).
 func TestConnectionRoutine_BlockSignalDoesNotBlockRelayAddress(t *testing.T) {
 	s := &UdpServer{
@@ -480,7 +480,7 @@ func TestConnectionRoutine_BlockSignalStillBlocksDirectClient(t *testing.T) {
 // with ErrServerMissingPeerPubkey. The earlier pass-through was a
 // replay hole during config reloads (a newly-registered relay was
 // visible to the device peer pool that validatePeer uses before the
-// relayPeerMap swap landed), and the fail-closed behaviour matches
+// relayPeerMap swap landed), and the fail-closed behavior matches
 // dedupeRecvART's "peer not registered as an AC" path.
 func TestDedupeRecvRLY_RegisteredRelay(t *testing.T) {
 	s := &UdpServer{
@@ -497,7 +497,7 @@ func TestDedupeRecvRLY_RegisteredRelay(t *testing.T) {
 	}
 
 	// RLY with no registered relay peer must FAIL CLOSED, not
-	// short-circuit. The previous behaviour returned nil and left the
+	// short-circuit. The previous behavior returned nil and left the
 	// envelope un-replay-protected; under the new policy the only
 	// safe answer to "I don't see this peer as a relay" is to refuse
 	// the envelope. validatePeer would normally have rejected it

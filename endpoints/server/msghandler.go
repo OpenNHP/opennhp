@@ -953,7 +953,7 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 
 	// Per-(relay, real-client) block check. connectionRoutine's
 	// relay-aware BlockSignal branch (the one that drops the
-	// relay's UDP address from AddBlockAddr's target to honour
+	// relay's UDP address from AddBlockAddr's target to honor
 	// GHSA-674q-j8fh-972c) records the penalty here on the
 	// composite mapKey so subsequent forwards from the same real
 	// client hit this gate and are dropped silently — same

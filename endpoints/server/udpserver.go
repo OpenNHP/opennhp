@@ -464,8 +464,8 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	// unrelated types, so the chain is short-circuited in practice
 	// (a packet only walks the chain until the first match).
 	s.device.SetRecvReplayDedupe(func(ppd *core.PacketParserData) error {
-		if err := s.dedupeRecvART(ppd); err != nil {
-			return err
+		if dedupeErr := s.dedupeRecvART(ppd); dedupeErr != nil {
+			return dedupeErr
 		}
 		return s.dedupeRecvRLY(ppd)
 	})
@@ -1101,7 +1101,7 @@ func (s *UdpServer) connectionRoutine(conn *UdpConn) {
 			// remoteConnectionMap entry), and the relay stays reachable so
 			// the next legitimate client's RKN can still be answered.
 			//
-			// BUT a returning () closes the per-client conn and penalises
+			// BUT a returning () closes the per-client conn and penalizes
 			// nobody — the next HandleRelayForward for the same real
 			// client just lands on a fresh per-client conn with
 			// LastRemoteSendTime == 0 and the replayed or flooded inner
@@ -1269,7 +1269,7 @@ func (s *UdpServer) IsRelayForwardBlocked(connKey string) bool {
 // BlockAddrExpireTime so subsequent HandleRelayForward calls carrying
 // the same mapKey drop the forwarded packet before reaching the
 // connection-table lookup. The relay's outer UDP address is unaffected;
-// only this one real client behind this one relay is penalised —
+// only this one real client behind this one relay is penalized —
 // other clients behind the same relay keep their forward path
 // working.
 //
@@ -1296,7 +1296,7 @@ func (s *UdpServer) IsRelayForwardBlocked(connKey string) bool {
 // entries so steady state stays bounded.
 //
 // Note on the same port-rotation vector: a client that changes its
-// source port between offence rounds gets a fresh key and a fresh
+// source port between offense rounds gets a fresh key and a fresh
 // conn, and therefore bypasses the block. That's the same exposure
 // blockAddrMap has (also keyed on addr.String()), so the relay-
 // forward block is the same penalty the direct-UDP path has, not a
@@ -1711,7 +1711,7 @@ func (s *UdpServer) dedupeRecvRLY(ppd *core.PacketParserData) error {
 		// by updateRelayPeers now swapping the map before calling
 		// AddPeer, but the dedupe hook still cannot tell the
 		// difference between "registered relay" and "peer pool
-		// just accepted an unrecognised pubkey", so the only safe
+		// just accepted an unrecognized pubkey", so the only safe
 		// answer to "I don't see this peer as a relay" is to
 		// refuse the envelope.
 		return common.ErrServerMissingPeerPubkey

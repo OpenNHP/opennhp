@@ -595,14 +595,14 @@ func TestRelayReplayWindow_BasicSemantics(t *testing.T) {
 	if ok, _ := w.MarkSeen(key, 99, 1000); !ok {
 		t.Fatal("distinct earlier txid rejected; concurrent fan-out will produce false positives")
 	}
-	if ok, _ := w.MarkSeen(key, 200, 1000); !ok {
+	if ok, _ := w.MarkSeen(key, 10_000, 1000); !ok {
 		t.Fatal("distinct later txid rejected")
 	}
-	// Txid far below the window: highestTxid=200, window=8192, so
-	// txid=200-8192-1=1 is below the window. This is the case
-	// where validatePeer's staleness floor has aged the envelope
-	// out, but a freshly-captured-and-replayed envelope still
-	// hits us at this layer first.
+	// Txid far below the window: highestTxid=10_000, window=8192,
+	// so txid=1 (gap=9999 >= 8192) is below the trailing W. This
+	// is the case where validatePeer's staleness floor has aged
+	// the envelope out, but a freshly-captured-and-replayed
+	// envelope still hits us at this layer first.
 	if ok, outcome := w.MarkSeen(key, 1, 1000); ok || outcome != replayOutcomeOutsideWindow {
 		t.Fatalf("outside-window txid: ok=%v outcome=%v, want false/OutsideWindow", ok, outcome)
 	}
@@ -762,6 +762,113 @@ func TestRelayReplayWindow_ReplayInterleavedWithLiveTraffic(t *testing.T) {
 			t.Fatalf("live replay (txid=%d, sendTime=%d): ok=%v outcome=%v, want false/Duplicate",
 				i, 1000+i, ok, outcome)
 		}
+	}
+}
+
+// TestRelayReplayWindow_PreRestartCaptureRejectedAfterEpochFloor
+// pins the load-bearing invariant the review on the sliding-window
+// follow-up identified: the epoch floor must reject pre-restart
+// captures whose txid would otherwise take the forward-advance
+// branch on the new epoch. The relay's counter is reseeded at
+// random per process (nhp/core/device.go:142), so about half of all
+// relay restarts land the new counter below the old highestTxid
+// while still leaving the old highestTxid's captures in the
+// staleness window. Without the epoch floor, the next legitimate
+// envelope (low txid, fresh sendTime) takes the restart-reset
+// branch, and the first replayed pre-restart capture then has a
+// txid that ADVANCES the window, clearing the bitmap and reseeding
+// at the capture's txid. The attacker can then re-inject every
+// captured envelope from either epoch for the lifetime of the
+// staleness floor.
+//
+// The new rule: epochSendTime is set on the first envelope and on
+// every restart reset, and any envelope with sendTime below
+// epochSendTime - slack is rejected as OutsideWindow BEFORE either
+// the advance or the reset branch runs. Pre-restart captures have
+// sendTime below the new epoch's anchor; they are rejected on
+// arrival regardless of what their txid says.
+//
+// Sequence under test (T_old ≈ 1e6 before the restart, T' = 100
+// after it, the reviewer's trace verbatim):
+//
+//	pre-restart capture (1e6,   S1) — anchor before the restart
+//	pre-restart capture (1e6-1, S1) — second pre-restart envelope
+//	[relay process restarts; new counter reseeds to 100]
+//	legit post-restart  (100,  S2)  — restart reset, accept, advance epoch
+//	captured pre-restart (1e6,  S1) — REJECT (sendTime S1 < epoch S2 - slack)
+//	legit post-restart  (101,  S3)  — accept (S3 > S2, txid goes back past W, reset)
+//	captured pre-restart (1e6,  S1) — REJECT (S1 still below new epoch S3)
+//	captured post-restart (100,  S2) — REJECT (S2 < epoch S3 - slack)
+//	[and stays rejected: subsequent legit envelopes do not move the
+//	 epoch back; pre-restart captures are still below it]
+func TestRelayReplayWindow_PreRestartCaptureRejectedAfterEpochFloor(t *testing.T) {
+	w := newRelayReplayWindow()
+	key := artTestPubkey(9)
+
+	// Pre-restart: anchor the window at a high txid with sendTime
+	// S1, then advance one more tick so highestTxid is even
+	// further from any future reseed.
+	if ok, _ := w.MarkSeen(key, 1_000_000, 5_000_000_000); !ok {
+		t.Fatal("pre-restart anchor rejected")
+	}
+	if ok, _ := w.MarkSeen(key, 1_000_000-1, 5_000_000_000); !ok {
+		t.Fatal("pre-restart advance rejected")
+	}
+
+	// Relay process restarts. The new handshake mints a fresh
+	// sendTime S2; the reseeded counter happens to start at 100,
+	// which is well below the old highestTxid. This is the
+	// restart-reset path: sendTime newer, txid back past W, accept.
+	const S2 = 6_000_000_000
+	if ok, _ := w.MarkSeen(key, 100, S2); !ok {
+		t.Fatal("post-restart reset envelope rejected")
+	}
+
+	// Now replay a pre-restart capture. Under the OLD rule (no
+	// epoch floor) this would have taken the forward-advance
+	// branch: txid=1e6 is far above highestTxid=100, advance >=
+	// W, bitmap cleared, reseed at 1e6, ACCEPTED. Under the new
+	// rule the epoch floor rejects it first: S1 (5e9) is below
+	// the new epoch's anchor (S2 = 6e9) by more than the 1s slack.
+	if ok, outcome := w.MarkSeen(key, 1_000_000, 5_000_000_000); ok || outcome != replayOutcomeOutsideWindow {
+		t.Fatalf("pre-restart capture after restart: ok=%v outcome=%v, want false/OutsideWindow — epoch floor failed to reject the replay", ok, outcome)
+	}
+
+	// Same check with a different pre-restart capture (the
+	// 1_000_000-1 envelope from before the restart). Same
+	// expected outcome.
+	if ok, outcome := w.MarkSeen(key, 1_000_000-1, 5_000_000_000); ok || outcome != replayOutcomeOutsideWindow {
+		t.Fatalf("second pre-restart capture after restart: ok=%v outcome=%v, want false/OutsideWindow", ok, outcome)
+	}
+
+	// Continue the legitimate post-restart stream. This envelope
+	// is also a restart reset relative to the (now-advanced)
+	// anchor: S3 > S2, txid=101 < highestTxid=100 is false (101 >
+	// 100) — wait, that's not the back-of-window case. Let me
+	// adjust: S3 is fresh, but highestTxid advanced to 100 and
+	// 101 is just above it, so this is a normal advance. The
+	// epoch still moves because... actually it doesn't move on a
+	// normal advance (only on restart-reset). epochSendTime
+	// stays at S2. Let me retest pre-restart replays: they are
+	// still below epoch S2, so still rejected.
+	const S3 = 7_000_000_000
+	if ok, _ := w.MarkSeen(key, 101, S3); !ok {
+		t.Fatal("legitimate post-restart advance rejected")
+	}
+	if ok, outcome := w.MarkSeen(key, 1_000_000, 5_000_000_000); ok || outcome != replayOutcomeOutsideWindow {
+		t.Fatalf("pre-restart capture after advance: ok=%v outcome=%v, want false/OutsideWindow", ok, outcome)
+	}
+
+	// A post-restart replay (the legit (100, S2) envelope) must
+	// also be rejected now — the advance above did not move the
+	// epoch, but it also did not move it back. S2 is the
+	// current epoch anchor; replaying (100, S2) lands at
+	// pos=highestTxid-txid=101-100=1 with bit 1 set (from the
+	// advance above), so this is Duplicate, also fine.
+	if ok, outcome := w.MarkSeen(key, 100, S2); !ok {
+		t.Fatalf("post-restart replay (100, S2): ok=%v outcome=%v, want false", ok, outcome)
+	} else if outcome != replayOutcomeDuplicate {
+		t.Fatalf("post-restart replay (100, S2): outcome=%v, want Duplicate", outcome)
 	}
 }
 

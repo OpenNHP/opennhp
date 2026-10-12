@@ -124,20 +124,28 @@ type UdpServer struct {
 	// connection. It is installed as a post-validation core hook in Start.
 	artReplay *artReplayCache
 
-	// relayReplay rejects an authenticated NHP_RLY envelope that has been
-	// seen on an earlier UDP connection. NHP_RLY packets are exempted from
-	// the per-connection monotonic / 20ms flood gates (see
-	// nhp/core.responder.shouldCheckRecvAttack / shouldCheckFlood), so
-	// without this hook an on-path attacker who captured one relay→server
-	// datagram could replay it indefinitely: the relay conn is a single
-	// shared UDP socket, and the per-inner-client conn the decoded packet
-	// is re-injected on idles out after DefaultAgentConnectionTimeoutMs
-	// (30s), giving the replayed envelope a fresh per-client conn with
-	// LastRemoteSendTime == 0 every time. The hook keys on (relay pubkey,
-	// SenderTrxId, RemoteSendTime) — the same shape artReplay uses — and
-	// retains entries for the staleness window so a duplicate envelope
-	// older than the floor is already rejected by the staleness check.
-	relayReplay *artReplayCache
+	// relayReplay rejects a captured-and-replayed NHP_RLY envelope.
+	// NHP_RLY packets are exempted from the per-connection monotonic /
+	// 20ms flood gates (see nhp/core.responder.shouldCheckRecvAttack /
+	// shouldCheckFlood) because the relay→server conn is a single
+	// shared UDP socket — those gates only catch one-conn-one-sender
+	// patterns. So replay protection on the RLY path is THIS hook.
+	//
+	// It is intentionally NOT a TTL-keyed set keyed on
+	// (pubkey, txid, sendTime): a relay fan-outs a fresh envelope per
+	// inner-client knock, so each relay contributes traffic linearly
+	// with concurrent clients. A TTL set large enough to cover
+	// realistic relay+agent RPS was either evicting live entries (which
+	// let captured envelopes re-pass dedupe) or filling on demand and
+	// rejecting-on-full (which let one hostile client with a valid
+	// relay's inner traffic fill the cache and break every relay in
+	// the system). See relay_replay_window.go for the sliding-window
+	// replacement that has no global capacity to fill and no
+	// fail-closed mode.
+	//
+	// Field name is kept as `relayReplay` for call-site stability; the
+	// type is what changed.
+	relayReplay *relayReplayWindow
 
 	// block address management
 	blockAddrMapMutex sync.Mutex
@@ -442,27 +450,17 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 		entries = artReplayCacheSize
 	}
 	s.artReplay = newARTReplayCacheWithParams(entries, artReplayCacheTTL, "ART", time.Now)
-	// relayReplay is sized for relay throughput, NOT ART throughput:
-	// NHP_RLY envelopes carry every web-agent KNK/RKN/EXT behind every
-	// registered relay, so the cache must absorb sustained
-	// relay+agent-RPS without capacity eviction (each eviction
-	// shortens the replay window for every live entry below it).
-	// relayReplayCacheSize defaults to 5× the ART size for that reason.
-	// Operators with higher relay throughput can raise it via
-	// RelayReplayCacheEntries (also restart-only, like ART's).
-	relayEntries := s.config.RelayReplayCacheEntries
-	if relayEntries <= 0 {
-		relayEntries = relayReplayCacheSize
+	// relayReplay is a per-relay sliding window (WireGuard/IPsec-
+	// style). It has no global capacity to fill and no eviction
+	// policy, so there is no operator-tunable size. The historical
+	// RelayReplayCacheEntries config field is preserved (a non-zero
+	// value logs a deprecation warning) so existing configurations
+	// keep loading after an upgrade. See relay_replay_window.go.
+	if s.config.RelayReplayCacheEntries > 0 {
+		log.Warning("RelayReplayCacheEntries is no longer used; the per-relay sliding window has a fixed size. " +
+			"Please remove the field from your config.")
 	}
-	if relayEntries > 5_000_000 {
-		return fmt.Errorf("RelayReplayCacheEntries must be between 0 and 5000000")
-	}
-	// newRelayReplayCache applies the noEvict policy. Constructing the
-	// cache through the underlying factory would silently keep the
-	// evicting-then-shrinking path here — which is the bug the noEvict
-	// commit was meant to remove. Always go through the relay-specific
-	// constructor so tests and production share the same wiring.
-	s.relayReplay = newRelayReplayCache(relayEntries)
+	s.relayReplay = newRelayReplayWindow()
 	// The dedupe hook is a single core hook; chain the per-type
 	// dedupe functions here so callers don't need to know which message
 	// types each cache guards. Each dedupe function returns nil for
@@ -1674,8 +1672,8 @@ var lastRelayReplayWarn atomic.Int64
 // dedupeRecvRLY rejects a captured-and-replayed NHP_RLY envelope. The packet
 // has already passed peer validation, so the decrypted ppd.RemotePubKey is
 // the relay's authenticated static key — a successful lookup in
-// s.relayPeerMap is what makes this hook safe to gate duplicates by (pubkey,
-// txid, sendTime). For any non-RLY header type this returns nil so the
+// s.relayPeerMap is what makes this hook safe to gate duplicates by
+// (pubkey, txid). For any non-RLY header type this returns nil so the
 // chain continues; any other code path returns ErrServerMissingPeerPubkey
 // and FAILS CLOSED. The fail-closed branch is the load-bearing piece: the
 // monotonic / flood exemption in core.responder skips both gate paths for
@@ -1690,11 +1688,17 @@ var lastRelayReplayWarn atomic.Int64
 // the per-inner-client conn the decoded packet is re-injected on idles out
 // after DefaultAgentConnectionTimeoutMs (30s) — each replay therefore lands
 // on a fresh per-client conn with LastRemoteSendTime == 0 and passes every
-// other gate. The hook's TTL is the staleness window
-// (DefaultRecvStalenessFloorSeconds + ARTRecvFutureSkewSeconds + safety
-// margin — see art_replay_cache.go), so a replayed envelope older than the
-// floor is already rejected by validatePeer's staleness check; for fresher
-// ones this is the only line of defense.
+// other gate.
+//
+// The dedupe state itself is a per-relay sliding window (see
+// relay_replay_window.go). Its invariants are: out-of-order distinct txids
+// within the window are all accepted (concurrent-clients fan-out case);
+// the same txid seen twice is rejected; a txid far below the window is
+// rejected regardless of sendTime; a freshly-anchored sendTime from the
+// same relay after a restart resets the window so the new low-txid
+// envelopes are accepted. The signature over RemoteSendTime makes the
+// "attacker bumps sendTime to reset and bypass" path impossible — only
+// the relay's own key produces envelopes that pass validatePeer.
 func (s *UdpServer) dedupeRecvRLY(ppd *core.PacketParserData) error {
 	if ppd.HeaderType != core.NHP_RLY {
 		return nil
@@ -1721,11 +1725,16 @@ func (s *UdpServer) dedupeRecvRLY(ppd *core.PacketParserData) error {
 		// refuse the envelope.
 		return common.ErrServerMissingPeerPubkey
 	}
-	if !s.relayReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime) {
+	if ok, outcome := s.relayReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime); !ok {
+		// bitmap caught a duplicate or an outside-window txid. Both
+		// are "this isn't a fresh envelope", so the dedupe verdict
+		// is the same. The window has no global capacity to fail-
+		// close on, so we never see the "all envelopes rejected"
+		// failure mode here that the previous TTL-set fallback had.
 		now := time.Now().UnixNano()
 		last := lastRelayReplayWarn.Load()
 		if now-last >= int64(time.Minute) && lastRelayReplayWarn.CompareAndSwap(last, now) {
-			log.Warning("server[dedupeRecvRLY] dropped replayed NHP_RLY envelope (txid=%d, pubkey=%s, sendTime=%d)", ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
+			log.Warning("server[dedupeRecvRLY] dropped NHP_RLY envelope (txid=%d, pubkey=%s, sendTime=%d, reason=%v)", ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime, outcome)
 		}
 		return common.ErrServerDuplicateTransaction
 	}

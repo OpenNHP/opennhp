@@ -464,282 +464,399 @@ func TestConnectionRoutine_BlockSignalStillBlocksDirectClient(t *testing.T) {
 	}
 }
 
-// TestDedupeRecvRLY_RegisteredRelay pins the third leg of the
-// GHSA-674q-j8fh-972c follow-up: dedupe captured-and-replayed NHP_RLY
-// envelopes on (relay pubkey, SenderTrxId, RemoteSendTime). NHP_RLY is
-// exempted from the per-connection monotonic/flood gates, and the
-// per-inner-client conn the decoded packet is re-injected on idles out
-// after DefaultAgentConnectionTimeoutMs — without this hook, an
-// on-path observer could replay a captured relay→server UDP datagram
-// indefinitely and the server would re-authenticate it as fresh.
+// --- sliding-window dedupe (relay_replay_window.go) tests ---
 //
-// The hook short-circuits on non-RLY headers so the chain can continue
-// to ART's own dedupe — but for any RLY envelope whose decrypted peer
-// pubkey is not in s.relayPeerMap (whether the peer is unregistered at
-// all or registered under a non-relay role), the hook now FAILS CLOSED
-// with ErrServerMissingPeerPubkey. The earlier pass-through was a
-// replay hole during config reloads (a newly-registered relay was
-// visible to the device peer pool that validatePeer uses before the
-// relayPeerMap swap landed), and the fail-closed behavior matches
-// dedupeRecvART's "peer not registered as an AC" path.
+// These tests pin the per-relay sliding-window anti-replay state that
+// replaced the previous TTL-keyed dedup set on the NHP_RLY path. The
+// motivation for the replacement is the GHSA-674q-j8fh-972c follow-up
+// review: a global capacity (evict-or-reject) can be filled by a single
+// attacker to fail closed across every relay in the system, while
+// live-eviction silently weakens the replay window. A per-relay sliding
+// window has none of these failure modes (see relay_replay_window.go
+// for the full invariant argument).
+
+// TestDedupeRecvRLY_RegisteredRelay pins the producer-side wiring: a
+// fresh NHP_RLY envelope from a registered relay is accepted, a
+// duplicate is rejected with ErrServerDuplicateTransaction, distinct
+// envelopes with distinct txids all flow through (concurrent-clients
+// fan-out case), and unrelated header types short-circuit without
+// consuming a window slot. The non-RLY short-circuit is important
+// because the dedupe chain is shared with ART and we must not pay the
+// window cost for non-RLY frames.
 func TestDedupeRecvRLY_RegisteredRelay(t *testing.T) {
 	s := &UdpServer{
-		relayReplay:  newRelayReplayCache(relayReplayCacheSize),
+		relayReplay:  newRelayReplayWindow(),
 		relayPeerMap: make(map[string]*core.UdpPeer),
 	}
 
-	// Non-RLY header must not consume a slot.
+	// Non-RLY header must short-circuit without touching the window.
 	if err := s.dedupeRecvRLY(&core.PacketParserData{HeaderType: core.NHP_KNK, RemotePubKey: artTestPubkey(1), SenderTrxId: 1, RemoteSendTime: 1}); err != nil {
 		t.Fatalf("non-RLY header rejected: %v", err)
 	}
-	if len(s.relayReplay.entries) != 0 {
-		t.Fatal("non-RLY populated cache")
+	if len(s.relayReplay.windows) != 0 {
+		t.Fatal("non-RLY populated window")
 	}
 
 	// RLY with no registered relay peer must FAIL CLOSED, not
-	// short-circuit. The previous behavior returned nil and left the
-	// envelope un-replay-protected; under the new policy the only
-	// safe answer to "I don't see this peer as a relay" is to refuse
-	// the envelope. validatePeer would normally have rejected it
-	// before reaching the hook, but a config-reload race could
-	// produce a freshly-validated envelope for a peer the hook has
-	// not yet seen — that race is why the policy lives here.
+	// short-circuit. validatePeer normally rejects these before
+	// reaching here, but a config-reload race (newly-registered
+	// peer visible to the device pool before the relayPeerMap
+	// swap) could let one through, so the dedupe hook's only safe
+	// answer is to refuse.
 	if err := s.dedupeRecvRLY(&core.PacketParserData{HeaderType: core.NHP_RLY, RemotePubKey: artTestPubkey(2), SenderTrxId: 1, RemoteSendTime: 1}); !errors.Is(err, common.ErrServerMissingPeerPubkey) {
 		t.Fatalf("unregistered RLY peer must fail closed with ErrServerMissingPeerPubkey, got %v", err)
 	}
-	if len(s.relayReplay.entries) != 0 {
-		t.Fatal("unregistered relay populated cache")
+	if len(s.relayReplay.windows) != 0 {
+		t.Fatal("unregistered relay populated window")
 	}
 
-	// Now register a relay peer and exercise the cache.
+	// Now register a relay peer and exercise the window.
 	for _, size := range []int{core.PublicKeySize, core.PublicKeySizeEx} {
 		key := artTestPubkey(3, size)
-		s.relayPeerMap[base64.StdEncoding.EncodeToString(key)] = &core.UdpPeer{Type: core.NHP_RELAY}
+		s := &UdpServer{
+			relayReplay:  newRelayReplayWindow(),
+			relayPeerMap: map[string]*core.UdpPeer{base64.StdEncoding.EncodeToString(key): {Type: core.NHP_RELAY}},
+		}
 
 		packet := &core.PacketParserData{
 			HeaderType:     core.NHP_RLY,
-			SenderTrxId:    uint64(size),
+			SenderTrxId:    100,
 			RemotePubKey:   key,
-			RemoteSendTime: 42,
+			RemoteSendTime: 1000,
 		}
 		if err := s.dedupeRecvRLY(packet); err != nil {
 			t.Fatalf("first NHP_RLY with %d-byte key rejected: %v", size, err)
 		}
+		// Duplicate (same txid, same sendTime): the relay's
+		// signature covers sendTime, so a captured-envelope replay
+		// reuses both fields.
 		if err := s.dedupeRecvRLY(packet); !errors.Is(err, common.ErrServerDuplicateTransaction) {
 			t.Fatalf("duplicate NHP_RLY with %d-byte key error = %v", size, err)
 		}
 
-		// A different send time / txid / peer key must not be rejected —
-		// out-of-order envelopes from concurrent web agents are valid, and
-		// the cache must scope by (pubkey, txid, sendTime) like artReplay.
+		// Distinct txid (concurrent inner-client fan-out): accepted.
 		other := &core.PacketParserData{
 			HeaderType:     core.NHP_RLY,
-			SenderTrxId:    uint64(size) + 1,
+			SenderTrxId:    101,
 			RemotePubKey:   key,
-			RemoteSendTime: 43,
+			RemoteSendTime: 1000,
 		}
 		if err := s.dedupeRecvRLY(other); err != nil {
-			t.Fatalf("fresh NHP_RLY envelope rejected: %v", err)
+			t.Fatalf("fresh NHP_RLY envelope (different txid) rejected: %v", err)
 		}
 	}
 }
 
-// TestDedupeRecvRLY_RejectsNonRelayBeforeCaching mirrors the
-// ART-dedupe sanity check: a packet that walks through the cache
-// because its msgType matches but whose decrypted peer is not the
-// expected role must not consume a slot. Under the new fail-closed
-// policy, "registered in relayPeerMap with a non-relay role" is just
-// another way of saying "I have no record of this pubkey as a relay",
-// and the hook returns ErrServerMissingPeerPubkey instead of nil —
-// which is also the property that prevents a single forged peer key
-// from filling the capacity and starving legitimate relays.
+// TestDedupeRecvRLY_RejectsNonRelayBeforeCaching: relayPeerMap has
+// the peer's pubkey but registered under a non-relay role
+// (agent / ac / db). The hook returns ErrServerMissingPeerPubkey
+// and must NOT consume a window slot — otherwise a forged-relay
+// attack that gets through validatePeer could fill the per-relay
+// window and start failing legitimate envelopes from a real relay.
 func TestDedupeRecvRLY_RejectsNonRelayBeforeCaching(t *testing.T) {
 	key := artTestPubkey(7, core.PublicKeySize)
 	for _, role := range []int{core.NHP_AGENT, core.NHP_AC, core.NHP_DB} {
 		s := &UdpServer{
-			relayReplay:  newRelayReplayCache(relayReplayCacheSize),
+			relayReplay:  newRelayReplayWindow(),
 			relayPeerMap: map[string]*core.UdpPeer{base64.StdEncoding.EncodeToString(key): {Type: role}},
 		}
 		p := &core.PacketParserData{HeaderType: core.NHP_RLY, RemotePubKey: key, SenderTrxId: 1, RemoteSendTime: 1}
 		if err := s.dedupeRecvRLY(p); !errors.Is(err, common.ErrServerMissingPeerPubkey) {
 			t.Fatalf("role %d must fail closed with ErrServerMissingPeerPubkey, got %v", role, err)
 		}
-		// The cache MUST stay empty for an envelope the hook rejected:
-		// a fail-closed branch that nonetheless wrote a (pubkey,txid,
-		// sendTime) entry would let a forger with one valid pubkey
-		// starve every legitimate relay off the tail of the cache.
-		if len(s.relayReplay.entries) != 0 {
-			t.Fatalf("role %d populated cache without being a registered relay", role)
+		// The window MUST stay empty for a refused envelope: a
+		// fail-closed branch that nonetheless wrote a slot would
+		// let a forger with one valid pubkey starve legitimate
+		// relays off the window.
+		if len(s.relayReplay.windows) != 0 {
+			t.Fatalf("role %d populated window without being a registered relay", role)
 		}
 	}
 }
 
-// TestRelayReplayCache_RejectsWhenFull_PreservesExistingEntries pins the
-// noEvict behavior of newRelayReplayCache: under sustained NHP_RLY
-// throughput the default 500k-entry capacity covers less than the
-// 600-second acceptance window, so evicting live entries would silently
-// shrink the replay window and let a captured envelope repopulate a
-// fresh inner connection. The fix is for the cache to reject NEW
-// envelopes when full instead — at the cost of a warning + a counter,
-// the existing entries (and therefore the relay→server replay window)
-// stay intact.
-//
-// The test uses a small noEvict capacity (size 4) so it can be filled
-// quickly. It records a sentinel envelope, drives the cache to full
-// with fresh tuples, then confirms:
-//
-//   - the sentinel envelope is still in the cache after the cache is
-//     pushed past capacity (MarkSeen returns false on its duplicate,
-//     NOT true — which would mean noEvict had evicted and the call
-//     re-inserted);
-//
-//   - envelopes past capacity are being rejected by the noEvict
-//     branch (capacityRejections advances, capacityEvictions does not).
-func TestRelayReplayCache_RejectsWhenFull_PreservesExistingEntries(t *testing.T) {
-	now := time.Unix(100, 0)
-	cache := newARTReplayCacheWithParams(4, time.Hour, "test", func() time.Time { return now }).withNoEvict()
-	if !cache.noEvict {
-		t.Fatal("withNoEvict() did not toggle the cache")
-	}
+// TestRelayReplayWindow_BasicSemantics pins the MarkSeen contract on
+// the sliding-window primitive directly: first observation accepted,
+// duplicate rejected, out-of-order-but-distinct txids accepted, and
+// an outside-window txid rejected even though validatePeer's
+// staleness floor would normally have caught it earlier.
+func TestRelayReplayWindow_BasicSemantics(t *testing.T) {
+	w := newRelayReplayWindow()
+	key := artTestPubkey(1)
 
-	// Different pubkeys so the duplicate-detection short-circuit does
-	// not mask the noEvict branch.
-	keyA := artTestPubkey(1) // sentinel — we expect to retain this one
-	keyB := artTestPubkey(2) // filler — entries to push the cache to and past capacity
-
-	// 1. Record the sentinel envelope.
-	if !cache.MarkSeen(keyA, 1, 100) {
-		t.Fatal("sentinel envelope rejected on first observation")
+	if ok, outcome := w.MarkSeen(key, 100, 1000); !ok || outcome != replayOutcomeAccepted {
+		t.Fatalf("first observation: ok=%v outcome=%v, want true/Accepted", ok, outcome)
 	}
-
-	// 2. Fill the cache to capacity. We already hold 1 entry (the
-	//    sentinel); three more fit. All must be accepted.
-	for i := uint64(1); i <= 3; i++ {
-		if !cache.MarkSeen(keyB, i, int64(i)) {
-			t.Fatalf("fill entry %d rejected before capacity; cache should still have room", i)
-		}
+	if ok, _ := w.MarkSeen(key, 100, 1000); ok {
+		t.Fatal("duplicate observation accepted; sliding window did not catch it")
 	}
-
-	// 3. The cache is now full. The next MarkSeen MUST be rejected
-	//    by the noEvict branch (capacityRejections++); the sentinel
-	//    must remain in the cache.
-	var sentinelKey artReplayKey
-	copy(sentinelKey.peerPubkey[:], keyA)
-	sentinelKey.peerPubkeyLen = uint8(len(keyA))
-	sentinelKey.txid = 1
-	sentinelKey.sendTime = 100
-	if cache.MarkSeen(keyB, 99, 99) {
-		t.Fatal("post-fill envelope accepted; noEvict failed to reject at capacity")
+	// Out-of-order distinct txid: the original concurrent-clients
+	// fan-out case. Both legs of the parallel pair must be
+	// accepted.
+	if ok, _ := w.MarkSeen(key, 99, 1000); !ok {
+		t.Fatal("distinct earlier txid rejected; concurrent fan-out will produce false positives")
 	}
-
-	cache.mu.Lock()
-	rejections := cache.capacityRejections
-	entries := len(cache.entries)
-	evictions := cache.capacityEvictions
-	_, sentinelPresent := cache.entries[sentinelKey]
-	cache.mu.Unlock()
-
-	if entries != 4 {
-		t.Fatalf("cache size after fill = %d, want 4 (noEvict must not shrink the cache)", entries)
+	if ok, _ := w.MarkSeen(key, 200, 1000); !ok {
+		t.Fatal("distinct later txid rejected")
 	}
-	if rejections != 1 {
-		t.Fatalf("capacityRejections = %d, want 1 (one over-capacity push)", rejections)
-	}
-	if evictions != 0 {
-		t.Fatalf("capacityEvictions = %d, want 0 (noEvict cache must never evict)", evictions)
-	}
-	if !sentinelPresent {
-		t.Fatal("sentinel envelope is missing from the cache after fill; noEvict silently evicted it")
-	}
-
-	// 4. The sentinel MarkSeen call must return FALSE (cache hit).
-	//    If noEvict had silently evicted and the call were re-
-	//    inserting, it would return true — that is the exact pre-
-	//    fix failure mode the test pins: a captured envelope can
-	//    repopulate a fresh inner connection after eviction.
-	if cache.MarkSeen(keyA, 1, 100) {
-		t.Fatal("sentinel envelope MarkSeen returned true; entry was evicted and the call re-inserted it " +
-			"— captured envelope can repopulate a fresh inner connection after eviction")
-	}
-
-	// 5. And a second post-fill push must also be rejected, so the
-	//    test guards against a regression that disabled both noEvict
-	//    and the counter.
-	if cache.MarkSeen(keyB, 100, 100) {
-		t.Fatal("second post-fill envelope accepted; noEvict regressed")
-	}
-	cache.mu.Lock()
-	rejections = cache.capacityRejections
-	entries = len(cache.entries)
-	cache.mu.Unlock()
-	if rejections != 2 || entries != 4 {
-		t.Fatalf("after second push: rejections=%d entries=%d, want rejections=2 entries=4", rejections, entries)
+	// Txid far below the window: highestTxid=200, window=8192, so
+	// txid=200-8192-1=1 is below the window. This is the case
+	// where validatePeer's staleness floor has aged the envelope
+	// out, but a freshly-captured-and-replayed envelope still
+	// hits us at this layer first.
+	if ok, outcome := w.MarkSeen(key, 1, 1000); ok || outcome != replayOutcomeOutsideWindow {
+		t.Fatalf("outside-window txid: ok=%v outcome=%v, want false/OutsideWindow", ok, outcome)
 	}
 }
 
-// TestRelayReplayCache_ProductionConstructorAppliesNoEvict pins the
-// production-side wiring of the noEvict policy. The earlier fix added
-// a private withNoEvict hook and chained it from a constructor called by
-// tests, but the production path in Start was building the cache
-// through the lower-level newARTReplayCacheWithParams directly and never
-// got noEvict=true — silently leaving the cache with the evicting
-// policy the commit message described as the bug. The shared-constructor
-// fix (newRelayReplayCache takes a size arg and is the only constructor
-// Start is allowed to use) is what closes that hole, and this test
-// exercises the *production* factory so a future refactor that
-// reintroduces the two-constructor split is caught here, not by a
-// monitoring alert at 3am.
-//
-// The constructor must set noEvict on the returned cache. size is a
-// runtime argument (caller-tunable via RelayReplayCacheEntries), but
-// the noEvict policy is non-negotiable and must not depend on it.
-func TestRelayReplayCache_ProductionConstructorAppliesNoEvict(t *testing.T) {
-	for _, size := range []int{1, 4, relayReplayCacheSize} {
-		cache := newRelayReplayCache(size)
-		if cache == nil {
-			t.Fatalf("newRelayReplayCache(%d) returned nil", size)
-		}
-		if !cache.noEvict {
-			t.Fatalf("newRelayReplayCache(%d) returned a cache with noEvict=false; production cache must reject (not evict) when full",
-				size)
-		}
-		if cache.name != "NHP_RLY" {
-			t.Fatalf("cache.name = %q, want %q (operator-facing subsystem tag)", cache.name, "NHP_RLY")
-		}
-		if cache.maxEntries != size {
-			t.Fatalf("cache.maxEntries = %d, want %d (size parameter must flow through)", cache.maxEntries, size)
-		}
-		if cache.ttl != relayReplayCacheTTL {
-			t.Fatalf("cache.ttl = %v, want %v (TTL constant must not be overridable through this constructor)",
-				cache.ttl, relayReplayCacheTTL)
-		}
-	}
+// TestRelayReplayWindow_RejectsReplayWithinWindow pins the
+// load-bearing case: a captured NHP_RLY envelope whose txid is still
+// inside the trailing W is rejected. Without this property the hook
+// does literally nothing — every captured envelope older than the
+// TTL would slip through.
+func TestRelayReplayWindow_RejectsReplayWithinWindow(t *testing.T) {
+	w := newRelayReplayWindow()
+	key := artTestPubkey(2)
 
-	// ART for contrast — must keep evicting.
-	artCache := newARTReplayCache()
-	if artCache.noEvict {
-		t.Fatal("newARTReplayCache() applied noEvict; ART must keep the evicting policy")
+	// Anchor the window at txid 1000 with sendTime 5000.
+	if ok, _ := w.MarkSeen(key, 1000, 5000); !ok {
+		t.Fatal("anchor envelope rejected")
+	}
+	// Same envelope again — exact replay.
+	if ok, outcome := w.MarkSeen(key, 1000, 5000); ok || outcome != replayOutcomeDuplicate {
+		t.Fatalf("exact replay: ok=%v outcome=%v, want false/Duplicate", ok, outcome)
+	}
+	// Same txid, but new sendTime further in the future — this
+	// would normally fall in the fresh-sendTime branch (reset),
+	// but the signature covers sendTime so this can only happen
+	// for a legitimate relay. Here we test the reset path
+	// independently below; for now the duplicate-with-stale-
+	// sendTime case is what catches a replay attempt that
+	// replays without changing sendTime.
+	if ok, outcome := w.MarkSeen(key, 1000, 4999); ok || outcome != replayOutcomeDuplicate {
+		t.Fatalf("same-txid stale-sendTime replay: ok=%v outcome=%v, want false/Duplicate", ok, outcome)
 	}
 }
 
-// TestUdpServer_Start_WiresRelayCacheWithNoEvict drives the same
-// constructor Start uses — newRelayReplayCache — through a minimal
-// fixture so a regression that swaps the production path back to
-// newARTReplayCacheWithParams fails here. The test does not boot a full
-// Start (which requires a Device and config); it routes through the
-// factory Start calls (newRelayReplayCache) and assigns the result to
-// s.relayReplay, then asserts the noEvict flag. That is the failure
-// shape the previous version had: production built the cache through
-// the wrong factory and never picked up the policy.
-func TestUdpServer_Start_WiresRelayCacheWithNoEvict(t *testing.T) {
-	// Match the sizing logic in Start so the test exercises the same
-	// factory + size-flow combination — if Start grows a different
-	// sizer, this test gets updated with it, but the constructor stays.
+// TestRelayReplayWindow_RestartAccepted pins the relay-process
+// restart case: after a flood of envelopes that pushes highestTxid
+// arbitrarily high, a fresh sendTime from the same relay with a
+// small txid must be accepted (and reset the window). The reload
+// signature on RemoteSendTime means an attacker cannot fake a
+// fresh sendTime on a captured envelope, so the reset here is
+// unforgeable.
+func TestRelayReplayWindow_RestartAccepted(t *testing.T) {
+	w := newRelayReplayWindow()
+	key := artTestPubkey(3)
+
+	// Anchor high.
+	if ok, _ := w.MarkSeen(key, 10_000_000, 5000); !ok {
+		t.Fatal("high anchor rejected")
+	}
+	// Many legitimate envelopes advance highestTxid further; we
+	// do not need to walk all the way to the window edge here.
+	for i := uint64(10_000_001); i <= 10_000_010; i++ {
+		if ok, _ := w.MarkSeen(key, i, 5000); !ok {
+			t.Fatalf("advance %d rejected", i)
+		}
+	}
+	// Restart: a fresh sendTime with a low txid. Without the
+	// reset-on-fresh-sendTime branch, the low txid lands at
+	// position (highestTxid - txid) far past the window edge and
+	// gets rejected — every legitimate post-restart envelope
+	// would fail until the relay sent W envelopes, breaking
+	// service for several seconds. The reset rule recognizes
+	// that only the relay's own static key can sign a fresh
+	// sendTime.
+	if ok, outcome := w.MarkSeen(key, 1, 6000); !ok || outcome != replayOutcomeAccepted {
+		t.Fatalf("restart envelope (fresh sendTime, low txid): ok=%v outcome=%v, want true/Accepted", ok, outcome)
+	}
+	// After the reset, the anchor shifted; the next legitimate
+	// envelope at a slightly higher txid is accepted normally.
+	if ok, _ := w.MarkSeen(key, 2, 6000); !ok {
+		t.Fatal("post-restart envelope rejected after fresh-start accepted")
+	}
+}
+
+// TestRelayReplayWindow_BurstDoesNotBlockLegitimate is the test the
+// reviewer specifically asked for: a burst of capacity + 1 distinct,
+// valid envelopes does not block the next legitimate envelope. The
+// previous TTL-set design could not satisfy this (any sustained
+// burst would either evict live entries or fill the cache and
+// fail closed); the sliding window has no global capacity and so
+// the property holds trivially. The test pushes well past the
+// window size and confirms the next envelope is still accepted.
+func TestRelayReplayWindow_BurstDoesNotBlockLegitimate(t *testing.T) {
+	w := newRelayReplayWindow()
+	key := artTestPubkey(4)
+
+	// Anchor + a burst of relayReplayWindowSize envelopes
+	// (relayReplayWindowSize + 1 total distinct txids). This is
+	// the maximum the previous TTL-set would have absorbed
+	// without rejecting on full, and an order of magnitude past
+	// it.
+	const burst = relayReplayWindowSize + 1
+	if ok, _ := w.MarkSeen(key, 1, 1000); !ok {
+		t.Fatal("anchor rejected")
+	}
+	for i := uint64(2); i <= burst+1; i++ {
+		if ok, _ := w.MarkSeen(key, i, 1000); !ok {
+			t.Fatalf("burst envelope %d rejected; sliding window cannot absorb sustained traffic", i)
+		}
+	}
+
+	// The "next legitimate envelope" after the burst.
+	if ok, outcome := w.MarkSeen(key, burst+2, 1000); !ok || outcome != replayOutcomeAccepted {
+		t.Fatalf("post-burst legitimate envelope: ok=%v outcome=%v, want true/Accepted — sliding window failed to provide the property the reviewer asked for", ok, outcome)
+	}
+
+	// Memory check: the window map has exactly one entry (one
+	// relay), regardless of burst size. This is the property
+	// the TTL-set could not offer — its per-relay footprint
+	// grew with traffic, so an attacker could raise it.
+	if got := len(w.windows); got != 1 {
+		t.Fatalf("window map size = %d, want 1 (per-relay state must NOT grow with traffic volume)", got)
+	}
+}
+
+// TestRelayReplayWindow_PerRelayIsolation pins the per-relay
+// independence rule: one relay's window state does not affect
+// another's. A captured envelope from relay A replayed against
+// relay B (different pubkey) must be accepted — they're distinct
+// senders even if their txid and sendTime happen to match. The
+// previous design also had per-pubkey isolation but via a flat
+// (pubkey,txid,sendTime) key, which could be confused with
+// reordering between different senders under high concurrency.
+func TestRelayReplayWindow_PerRelayIsolation(t *testing.T) {
+	w := newRelayReplayWindow()
+	keyA := artTestPubkey(5)
+	keyB := artTestPubkey(6)
+
+	if ok, _ := w.MarkSeen(keyA, 1, 1000); !ok {
+		t.Fatal("relay A anchor rejected")
+	}
+	// Same txid, same sendTime, but a DIFFERENT relay: must be
+	// accepted, this is relay B's first observation.
+	if ok, outcome := w.MarkSeen(keyB, 1, 1000); !ok || outcome != replayOutcomeAccepted {
+		t.Fatalf("relay B's first envelope: ok=%v outcome=%v, want true/Accepted — per-relay isolation failed", ok, outcome)
+	}
+	if got := len(w.windows); got != 2 {
+		t.Fatalf("window map size = %d, want 2 (one entry per distinct relay)", got)
+	}
+
+	// The replayed-from-A case: relay A's same envelope again.
+	if ok, outcome := w.MarkSeen(keyA, 1, 1000); ok || outcome != replayOutcomeDuplicate {
+		t.Fatalf("relay A replay: ok=%v outcome=%v, want false/Duplicate", ok, outcome)
+	}
+	// Relay B's tuple is still accepted a second time.
+	if ok, _ := w.MarkSeen(keyB, 2, 1000); !ok {
+		t.Fatal("relay B distinct-txid envelope rejected")
+	}
+}
+
+// TestRelayReplayWindow_InvalidKeyFailsClosed ensures the same
+// input-validation contract the TTL-set had: an unusable pubkey
+// (nil / too-short / too-long) is reported as InvalidKey, not
+// silently accepted. dedupeRecvRLY runs validation up front, so
+// this branch is defense-in-depth, but it pins the contract so a
+// future tweak to MarkSeen cannot start silently dropping invalid
+// keys.
+func TestRelayReplayWindow_InvalidKeyFailsClosed(t *testing.T) {
+	w := newRelayReplayWindow()
+	for _, k := range [][]byte{
+		nil,
+		make([]byte, core.PublicKeySize-1),
+		make([]byte, core.PublicKeySizeEx+1),
+	} {
+		if ok, outcome := w.MarkSeen(k, 1, 1000); ok || outcome != replayOutcomeInvalidKey {
+			t.Fatalf("MarkSeen on invalid key: ok=%v outcome=%v, want false/InvalidKey", ok, outcome)
+		}
+	}
+}
+
+// TestRelayReplayWindow_SlideBitmapForward exercises the bitmap
+// shift helper directly for a few representative shifts, including
+// word-aligned, bit-misaligned, and the >window clear case. The
+// helper has a single in-tree caller (MarkSeen on txid advance)
+// where shift always equals (newTxid - highestTxid), so the table
+// here covers the cases the caller cannot cheaply produce at full
+// width (multi-word shifts, bit-misaligned shifts).
+func TestRelayReplayWindow_SlideBitmapForward(t *testing.T) {
+	makeBitmap := func(setBits ...int) [relayReplayBitmapWords]uint64 {
+		var b [relayReplayBitmapWords]uint64
+		for _, pos := range setBits {
+			b[pos/64] |= uint64(1) << (pos % 64)
+		}
+		return b
+	}
+	gatherBits := func(b [relayReplayBitmapWords]uint64) []int {
+		var bits []int
+		for i := 0; i < relayReplayBitmapWords*64; i++ {
+			if b[i/64]&(uint64(1)<<(i%64)) != 0 {
+				bits = append(bits, i)
+			}
+		}
+		return bits
+	}
+
+	// shift 0: identity.
+	b := makeBitmap(0, 5, 100)
+	orig := b
+	slideBitmapForward(&b, 0)
+	if b != orig {
+		t.Fatalf("shift 0 changed bitmap: got %v want %v", gatherBits(b), gatherBits(orig))
+	}
+
+	// shift 1: bits 0,5,100 -> 1,6,101.
+	b = makeBitmap(0, 5, 100)
+	slideBitmapForward(&b, 1)
+	if got := gatherBits(b); len(got) != 3 || got[0] != 1 || got[1] != 6 || got[2] != 101 {
+		t.Fatalf("shift 1: got %v want [1 6 101]", got)
+	}
+
+	// Bit-misaligned shift that crosses a word boundary: bits
+	// 60,61,62 (last word 0) -> (60+shift, ...). With shift=70,
+	// expected positions are 130,131,132. 130 = word 2 bit 2.
+	b = makeBitmap(60, 61, 62)
+	slideBitmapForward(&b, 70)
+	if got := gatherBits(b); len(got) != 3 || got[0] != 130 || got[1] != 131 || got[2] != 132 {
+		t.Fatalf("shift 70 across boundary: got %v want [130 131 132]", got)
+	}
+
+	// Word-aligned shift: bits in word 0 -> word sw.
+	b = makeBitmap(0, 7, 63)
+	slideBitmapForward(&b, 64) // one whole word
+	got := gatherBits(b)
+	if len(got) != 3 || got[0] != 64 || got[1] != 71 || got[2] != 127 {
+		t.Fatalf("shift 64 (word-aligned): got %v want [64 71 127]", got)
+	}
+
+	// shift >= window: clear.
+	b = makeBitmap(0, 1, 2)
+	slideBitmapForward(&b, relayReplayWindowSize)
+	if got := gatherBits(b); len(got) != 0 {
+		t.Fatalf("shift >= window: got %v want []", got)
+	}
+	slideBitmapForward(&b, relayReplayWindowSize+1)
+	if got := gatherBits(b); len(got) != 0 {
+		t.Fatalf("shift > window: got %v want []", got)
+	}
+}
+
+// TestUdpServer_Start_WiresRelayReplayWindow pins the production
+// constructor: Start calls newRelayReplayWindow and assigns the
+// result to s.relayReplay. The previous version of this test asserted
+// a noEvict flag on the cache struct; with the sliding window that
+// concept does not exist (the window has no global capacity to fail
+// closed on). What we still want to pin is that the type is a
+// relayReplayWindow, and that dedupeRecvRLY routes through it.
+func TestUdpServer_Start_WiresRelayReplayWindow(t *testing.T) {
 	s := &UdpServer{}
-	s.relayReplay = newRelayReplayCache(relayReplayCacheSize)
+	s.relayReplay = newRelayReplayWindow()
 
-	if !s.relayReplay.noEvict {
-		t.Fatal("s.relayReplay is not noEvict after Start-style wiring; " +
-			"production replay protection is silently running the evicting policy the noEvict commit was meant to remove")
+	if s.relayReplay == nil {
+		t.Fatal("newRelayReplayWindow() returned nil; relay-side dedupe path would crash")
+	}
+	if got := len(s.relayReplay.windows); got != 0 {
+		t.Fatalf("fresh window map size = %d, want 0 (no relay has spoken yet)", got)
 	}
 }

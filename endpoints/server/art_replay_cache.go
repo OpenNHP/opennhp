@@ -12,28 +12,22 @@ import (
 
 const (
 	// artReplayCacheSize is sized for the AC↔server ART channel —
-	// answer-result traffic is a few entries per agent access, so even a
-	// 10k-RPS server stays well under the 100k default.
+	// answer-result traffic is a few entries per agent access, so even
+	// a 10k-RPS server stays well under the 100k default.
 	artReplayCacheSize = 100_000
-	// relayReplayCacheSize is sized for relay throughput, not ART
-	// throughput. NHP_RLY envelopes carry every web-agent KNK/RKN/EXT
-	// behind every registered relay — one envelope per real agent
-	// knock — so the cache needs to absorb a sustained relay+agent RPS
-	// across its 16-minute TTL without capacity eviction (which would
-	// shorten the replay window for every live entry evicted under
-	// pressure). 500k entries over a 16min TTL is ~520 envelopes/s
-	// sustained; the past failure mode (copying the 100k ART size) was
-	// a per-second sustained ceiling roughly five times too low.
-	relayReplayCacheSize = 500_000
 	// artReplayCacheTTL pairs with validatePeer's future-skew gate:
 	// entries must outlive every envelope the staleness floor accepts,
 	// plus the future-skew bound (so a forward-stamped replay doesn't
-	// outlive its cache entry), plus a small safety margin. Today this
-	// is the same value for both caches; kept as separate constants so
-	// the two caches can be tuned independently if the relay path ever
-	// needs a different reconciliation window.
-	artReplayCacheTTL   = (core.DefaultRecvStalenessFloorSeconds + core.ARTRecvFutureSkewSeconds + 60) * time.Second
-	relayReplayCacheTTL = artReplayCacheTTL
+	// outlive its cache entry), plus a small safety margin. The NHP_RLY
+	// (relay) path no longer shares this cache — it uses a per-relay
+	// sliding window (see relay_replay_window.go) because the
+	// timestamp-keyed set was forced to evict live entries under
+	// sustained relay throughput, and a strict noEvict variant
+	// traded that for a DoS surface. Keeping the two caches' TTLs
+	// separate-by-constant in this file even when they happen to
+	// match keeps the ART cache readable without dragging relay
+	// concerns into it.
+	artReplayCacheTTL = (core.DefaultRecvStalenessFloorSeconds + core.ARTRecvFutureSkewSeconds + 60) * time.Second
 )
 
 // artReplayKey identifies one authenticated ART packet. The sender timestamp
@@ -51,64 +45,29 @@ type artReplayEntry struct {
 	expiresAt time.Time
 }
 
-// artReplayCache is a bounded, concurrency-safe TTL set. Entries are appended
-// in expiry order, so expiration and capacity eviction are O(1).
-//
-// noEvict toggles two policies at the capacity boundary: when false (the
-// ART default), a full cache evicts the oldest entry to make room for the
-// new one — the answer-result traffic is low-volume enough that an
-// occasional live eviction shortens the replay window in a way the
-// staleness check still absorbs. When true (the relay cache), a full cache
-// rejects the new envelope: under sustained relay+agent RPS the default
-// 500k-entry capacity covers only capacity/TTL ≈ ~520 envelopes/s for the
-// ~960s relay-replay TTL, so live eviction would silently shrink the
-// replay window below the staleness acceptance floor and let a captured
-// envelope repopulate a fresh inner connection. Rejecting new envelopes
-// is the only policy that keeps the window intact when capacity saturates
-// — the operator-facing consequence is a per-minute warning plus a
-// counter, and a sustained under-pressure run degrades the cache (the
-// right answer) instead of silently weakening protection.
+// artReplayCache is a bounded, concurrency-safe TTL set for the
+// ART (AC→server answer-result) replay-protection path. Entries are
+// appended in expiry order, so expiration and capacity eviction are
+// O(1). On capacity pressure the cache evicts the oldest entry; the
+// ART traffic profile (a few entries per agent access) keeps live
+// eviction rare, so the window-shortening effect is absorbed by the
+// staleness check. The NHP_RLY path uses a different mechanism
+// (relay_replay_window.go) that does not have a global capacity to
+// fill and does not need eviction at all.
 type artReplayCache struct {
-	name               string
-	mu                 sync.Mutex
-	capacityEvictions  uint64
-	capacityRejections uint64
-	lastWarning        time.Time
-	entries            map[artReplayKey]struct{}
-	order              *list.List
-	maxEntries         int
-	ttl                time.Duration
-	now                func() time.Time
-	noEvict            bool
+	name              string
+	mu                sync.Mutex
+	capacityEvictions uint64
+	lastWarning       time.Time
+	entries           map[artReplayKey]struct{}
+	order             *list.List
+	maxEntries        int
+	ttl               time.Duration
+	now               func() time.Time
 }
 
 func newARTReplayCache() *artReplayCache {
 	return newARTReplayCacheWithParams(artReplayCacheSize, artReplayCacheTTL, "ART", time.Now)
-}
-
-// newRelayReplayCache builds the cache struct with relay-throughput sizing
-// and the noEvict policy. Keeping the cache struct generic instead of
-// forking it means every future improvement to eviction / expiry order
-// lands on both caches automatically; the policy difference lives on the
-// cache instance, not a parallel type.
-//
-// The size parameter is required (no default) so the production caller
-// (Start) must pass it explicitly — an earlier version defaulted it
-// internally, but the production path in Start was constructing the
-// cache through the lower-level factory instead, silently dropping the
-// noEvict policy and leaving NHP_RLY replay protection to the
-// evicting-then-shrinking path the commit was meant to remove.
-func newRelayReplayCache(size int) *artReplayCache {
-	return newARTReplayCacheWithParams(size, relayReplayCacheTTL, "NHP_RLY", time.Now).withNoEvict()
-}
-
-// withNoEvict toggles the cache to reject (not evict) when full. Returns
-// the receiver so the constructor can chain it on. Tests use the same hook
-// to construct a small noEvict cache — the test for "retained envelope
-// is still rejected" cannot use the production 500k capacity.
-func (c *artReplayCache) withNoEvict() *artReplayCache {
-	c.noEvict = true
-	return c
 }
 
 func newARTReplayCacheWithParams(maxEntries int, ttl time.Duration, name string, now func() time.Time) *artReplayCache {
@@ -139,18 +98,17 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 	key.txid = txid
 	key.sendTime = sendTime
 
-	var warnEvict, warnReject bool
+	var warn bool
 	c.mu.Lock()
 	defer func() {
 		c.mu.Unlock()
-		// Name is required so an overflow on the relay path doesn't
-		// masquerade as ART (and vice versa) in the log — operators
-		// reading "ART replay cache capacity exceeded" would otherwise
-		// look in the wrong subsystem to find the QPS ceiling.
-		if warnEvict {
+		// "ART replay cache capacity exceeded" — the warning names the
+		// subsystem so an operator reading it knows where to look. There
+		// is no NHP_RLY variant of this log; the relay path uses a
+		// different mechanism entirely and lives in
+		// relay_replay_window.go.
+		if warn {
 			log.Warning("%s replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.name, c.maxEntries, c.capacityEvictions)
-		} else if warnReject {
-			log.Warning("%s replay cache at capacity %d; new envelopes rejected without eviction (%d rejected since start), replay window preserved", c.name, c.maxEntries, c.capacityRejections)
 		}
 	}()
 
@@ -160,17 +118,9 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 		return false
 	}
 	if len(c.entries) >= c.maxEntries {
-		if c.noEvict {
-			c.capacityRejections++
-			if c.lastWarning.IsZero() || now.Sub(c.lastWarning) >= time.Minute {
-				warnReject = true
-				c.lastWarning = now
-			}
-			return false
-		}
 		c.capacityEvictions++
 		if c.lastWarning.IsZero() || now.Sub(c.lastWarning) >= time.Minute {
-			warnEvict = true
+			warn = true
 			c.lastWarning = now
 		}
 		c.removeOldest()

@@ -69,6 +69,28 @@ func newServerMetrics(s *UdpServer, startTime time.Time) *serverMetrics {
 			return float64(s.artReplay.capacityEvictions)
 		})
 
+	// nhp_server_relay_replay_cache_rejects_total is the relay-cache
+	// counterpart of the ART evictions counter above. The relay
+	// cache is fail-closed (see art_replay_cache.go's MarkSeen and
+	// FailClosedFull), so capacity pressure produces REJECTS rather
+	// than evictions — and an operator alerting on
+	// packets_dropped_total{stage="relay_replay_cache_full"} plus
+	// this counter together gives a fuller picture: how many new
+	// envelopes the cache is dropping, AND at what rate the
+	// underlying rejects are happening (independent of the dedupe
+	// hook's per-call metric, which is a counter on a different
+	// mutex).
+	reg.NewCounterFunc("nhp_server_relay_replay_cache_rejects_total",
+		"New NHP_RLY envelopes refused at the relay replay cache because the cache (or this peer's per-peer quota) is at capacity.",
+		func() float64 {
+			if s.relayReplay == nil {
+				return 0
+			}
+			s.relayReplay.mu.Lock()
+			defer s.relayReplay.mu.Unlock()
+			return float64(s.relayReplay.capacityRejects)
+		})
+
 	sm := &serverMetrics{
 		registry: reg,
 		messagesReceived: reg.NewCounter("nhp_server_messages_received_total",

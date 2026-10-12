@@ -441,7 +441,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	if entries == 0 {
 		entries = artReplayCacheSize
 	}
-	s.artReplay = newARTReplayCacheWithParams(entries, artReplayCacheTTL, "ART", false, time.Now)
+	s.artReplay = newARTReplayCacheWithParams(entries, artReplayCacheTTL, "ART", false, false, time.Now)
 	// relayReplay is sized for relay throughput, NOT ART throughput:
 	// NHP_RLY envelopes carry every web-agent KNK/RKN/EXT behind every
 	// registered relay, so the cache must absorb sustained
@@ -457,7 +457,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	if relayEntries > 5_000_000 {
 		return fmt.Errorf("RelayReplayCacheEntries must be between 0 and 5000000")
 	}
-	s.relayReplay = newARTReplayCacheWithParams(relayEntries, relayReplayCacheTTL, "NHP_RLY", true, time.Now)
+	s.relayReplay = newARTReplayCacheWithParams(relayEntries, relayReplayCacheTTL, "NHP_RLY", true, true, time.Now)
 	// The dedupe hook is a single core hook; chain the per-type
 	// dedupe functions here so callers don't need to know which message
 	// types each cache guards. Each dedupe function returns nil for
@@ -1653,18 +1653,56 @@ func (s *UdpServer) dedupeRecvART(ppd *core.PacketParserData) error {
 	if peer == nil || peer.DeviceType() != core.NHP_AC {
 		return common.ErrServerMissingPeerPubkey
 	}
-	if !s.artReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime) {
+	// MarkSeen returns a typed error so the dedupe hook can route the
+	// drop to the right packets_dropped_total stage. duplicate and
+	// full surface the same high-severity ErrServerDuplicateTransaction
+	// to the protocol layer (the wire protocol has no need to
+	// distinguish them — both are "don't process this envelope
+	// again"), but the metric stage differs so a real replay attack
+	// is visible separately from a cache-overload rejection.
+	switch err := s.artReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime); {
+	case err == nil:
+		return nil
+	case errors.Is(err, ErrReplayCacheDuplicate):
+		s.metrics.recordDroppedPacket("replay")
 		now := time.Now().UnixNano()
 		last := lastARTReplayWarn.Load()
 		if now-last >= int64(time.Minute) && lastARTReplayWarn.CompareAndSwap(last, now) {
 			log.Warning("server[dedupeRecvART] dropped replayed ART (txid=%d, pubkey=%s, sendTime=%d)", ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
 		}
 		return common.ErrServerDuplicateTransaction
+	case errors.Is(err, ErrReplayCacheFull):
+		// ART cache is configured to evict (not fail-closed), so this
+		// should be unreachable today. The metrics stage is recorded
+		// distinctly anyway so a future flip to fail-closed does not
+		// silently start counting as replays.
+		s.metrics.recordDroppedPacket("art_replay_cache_full")
+		now := time.Now().UnixNano()
+		last := lastARTReplayWarn.Load()
+		if now-last >= int64(time.Minute) && lastARTReplayWarn.CompareAndSwap(last, now) {
+			log.Warning("server[dedupeRecvART] dropped ART (txid=%d, pubkey=%s, sendTime=%d): cache full",
+				ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
+		}
+		return common.ErrServerDuplicateTransaction
+	default:
+		// ErrReplayCacheInvalid or any future reason. The dedupe hook
+		// has already validated the key length, so this branch is
+		// defensive: treat as duplicate to surface via the existing
+		// protocol-level drop path.
+		s.metrics.recordDroppedPacket("replay")
+		return common.ErrServerDuplicateTransaction
 	}
-	return nil
 }
 
 var lastRelayReplayWarn atomic.Int64
+
+// lastRelayReplayCacheFullWarn is the rate-limit gate on the "relay
+// replay cache at capacity" warning specifically. Kept distinct from
+// lastRelayReplayWarn so a real replay storm and a cache-full
+// overload don't suppress each other — the two conditions can
+// coexist, and operators want to see both signals on their own
+// cadence.
+var lastRelayReplayCacheFullWarn atomic.Int64
 
 // dedupeRecvRLY rejects a captured-and-replayed NHP_RLY envelope. The packet
 // has already passed peer validation, so the decrypted ppd.RemotePubKey is
@@ -1716,15 +1754,53 @@ func (s *UdpServer) dedupeRecvRLY(ppd *core.PacketParserData) error {
 		// refuse the envelope.
 		return common.ErrServerMissingPeerPubkey
 	}
-	if !s.relayReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime) {
+	// MarkSeen returns a typed error so the dedupe hook can route the
+	// drop to the right packets_dropped_total stage. The two
+	// reasons matter: "duplicate" means a captured envelope is being
+	// re-sent (security signal); "full" means the relay cache is at
+	// capacity (operational signal). Operators investigating a
+	// spike of either would, today, see only one number that
+	// conflates the two — and a fix that turns "replay attack" into
+	// "cache full" would otherwise be invisible. The protocol-layer
+	// outcome (ErrServerDuplicateTransaction) is the same, the
+	// surface signal differs.
+	switch err := s.relayReplay.MarkSeen(ppd.RemotePubKey, ppd.SenderTrxId, ppd.RemoteSendTime); {
+	case err == nil:
+		return nil
+	case errors.Is(err, ErrReplayCacheDuplicate):
+		s.metrics.recordDroppedPacket("replay")
 		now := time.Now().UnixNano()
 		last := lastRelayReplayWarn.Load()
 		if now-last >= int64(time.Minute) && lastRelayReplayWarn.CompareAndSwap(last, now) {
 			log.Warning("server[dedupeRecvRLY] dropped replayed NHP_RLY envelope (txid=%d, pubkey=%s, sendTime=%d)", ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
 		}
 		return common.ErrServerDuplicateTransaction
+	case errors.Is(err, ErrReplayCacheFull):
+		// Cache at capacity OR per-peer quota exceeded. Fail-closed
+		// is the load-bearing security property here; the
+		// distinguishability is operational: full means the relay
+		// (or all of them together) is sending faster than the
+		// cache can absorb at this TTL, per-peer means a single
+		// authenticated relay is over its fair share. The metric
+		// stage is the same — operators alerting on either case
+		// use the same dashboard series — but the relay's
+		// capacity-rejects counter (mirroring the ART eviction
+		// counter in metrics.go) lets a finer-grained alert
+		// separate legitimate-scale growth from a single-peer
+		// misbehaving.
+		s.metrics.recordDroppedPacket("relay_replay_cache_full")
+		now := time.Now().UnixNano()
+		last := lastRelayReplayCacheFullWarn.Load()
+		if now-last >= int64(time.Minute) && lastRelayReplayCacheFullWarn.CompareAndSwap(last, now) {
+			log.Warning("server[dedupeRecvRLY] dropped NHP_RLY envelope (txid=%d, pubkey=%s, sendTime=%d): relay replay cache at capacity (raise RelayReplayCacheEntries in config.toml to absorb sustained relay load — see packets_dropped_total{stage=relay_replay_cache_full})",
+				ppd.SenderTrxId, artPubkeyFingerprint(ppd.RemotePubKey), ppd.RemoteSendTime)
+		}
+		return common.ErrServerDuplicateTransaction
+	default:
+		// ErrReplayCacheInvalid or any future reason.
+		s.metrics.recordDroppedPacket("replay")
+		return common.ErrServerDuplicateTransaction
 	}
-	return nil
 }
 
 func (s *UdpServer) processACOperation(knkMsg *common.AgentKnockMsg, conn *ACConn, srcAddr *common.NetAddress, dstAddrs []*common.NetAddress, openTime uint32) (artMsg *common.ACOpsResultMsg, err error) {

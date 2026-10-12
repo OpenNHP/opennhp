@@ -23,6 +23,19 @@ import (
 var (
 	errReadConfigFailed = errors.New("ztdo config read failed")
 	errSaveConfigFailed = errors.New("ztdo config save failed")
+
+	// lastRelayForwardBlockLog rate-limits the per-packet Critical
+	// emitted by HandleRelayForward when the (relay, real-client)
+	// pair is on the relay-forward block list. The first time that
+	// path fires it is genuinely Critical — an on-path attacker is
+	// replaying captures from a real client already on the block list
+	// — but a sustained flood from the same client would otherwise
+	// emit one Critical line per refused packet, dominating the log
+	// volume an operator relies on to spot other failures. The
+	// dropped-packet counter (packetsDropped{"relay_forward_blocked"})
+	// is preserved so the actual rate is still observable via
+	// metrics; the throttle applies only to the log line.
+	lastRelayForwardBlockLog atomic.Int64
 )
 
 // relayConnKeyPrefix is what every relay-forwarded connection's mapKey
@@ -971,8 +984,19 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		// drop where it actually happens (relay-forward gate,
 		// not the per-conn inner path it never reaches).
 		s.metrics.recordDroppedPacket("relay_forward_blocked")
-		log.Critical("server-relay[HandleRelayForward] dropping forward from real client %s (relay %s): per-client block active",
-			realAddr, relayAddrStr)
+		// Rate-limit the Critical to once per minute. The dropped-
+		// packet counter above still records every refused packet,
+		// so the rate is observable via metrics; the throttle
+		// stops a controlled flood (a client CAN fire one NHP_RLY
+		// per round-trip until the relay's anti-replay blocks it,
+		// but cannot sustain >120/min at the relay→server link)
+		// from dominating log volume and masking other failures.
+		now := time.Now().UnixNano()
+		last := lastRelayForwardBlockLog.Load()
+		if now-last >= int64(time.Minute) && lastRelayForwardBlockLog.CompareAndSwap(last, now) {
+			log.Critical("server-relay[HandleRelayForward] dropping forward from real client %s (relay %s): per-client block active",
+				realAddr, relayAddrStr)
+		}
 		return fmt.Errorf("relay forward blocked for %s", realAddr)
 	}
 

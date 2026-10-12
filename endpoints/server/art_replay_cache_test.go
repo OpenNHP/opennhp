@@ -49,7 +49,7 @@ func TestARTReplayCacheAcceptsOutOfOrderFreshPackets(t *testing.T) {
 
 func TestARTReplayCacheScopesAndRejectsDuplicates(t *testing.T) {
 	now := time.Unix(100, 0)
-	cache := newARTReplayCacheWithParams(8, time.Minute, "test", func() time.Time { return now })
+	cache := newARTReplayCacheWithParams(8, time.Minute, "test", false, func() time.Time { return now })
 	keyA, keyB := artTestPubkey(1), artTestPubkey(2)
 
 	if !cache.MarkSeen(keyA, 7, 1000) {
@@ -71,7 +71,7 @@ func TestARTReplayCacheScopesAndRejectsDuplicates(t *testing.T) {
 
 func TestARTReplayCacheExpiresAndEvicts(t *testing.T) {
 	now := time.Unix(100, 0)
-	cache := newARTReplayCacheWithParams(2, time.Second, "test", func() time.Time { return now })
+	cache := newARTReplayCacheWithParams(2, time.Second, "test", false, func() time.Time { return now })
 	key := artTestPubkey(1)
 
 	cache.MarkSeen(key, 1, 1)
@@ -118,5 +118,93 @@ func TestARTReplayCacheConcurrentDuplicate(t *testing.T) {
 	close(accepted)
 	if got := len(accepted); got != 1 {
 		t.Fatalf("accepted %d concurrent copies, want 1", got)
+	}
+}
+
+// TestRelayReplayCacheFailsClosedWhenFull pins the policy chosen for
+// the relay replay cache: when the cache is at capacity and a genuinely
+// new envelope arrives, MarkSeen returns false (reject) instead of
+// evicting the oldest live entry.
+//
+// Why the relay cache has to fail closed: NHP_RLY carries every
+// web-agent KNK/RKN/EXT behind every registered relay, and the
+// per-connection monotonic / 20ms flood gates are exempted for it (see
+// nhp/core.responder.shouldCheckRecvAttack / shouldCheckFlood and
+// GHSA-674q-j8fh-972c). Without this hook an on-path attacker can
+// replay any captured relay→server datagram indefinitely; the cache is
+// the only line of defense. Evicting the oldest live entry under
+// sustained pressure re-opens a replay hole for every envelope still
+// inside its 600s acceptance window. Failing closed (rejecting the
+// new envelope, leaving every retained entry untouched) is the safer
+// direction: the new envelope is genuinely new so the rejection rate is
+// bounded by the legitimate relay rate, and the captured-replay window
+// stays intact.
+//
+// Pre-fix this test would have observed:
+//   - the third MarkSeen returning true (eviction accepted the new
+//     envelope)
+//   - capacityEvictions == 1
+//   - the originally-second MarkSeen key, when re-presented, accepted
+//     (because eviction freed a slot)
+//
+// All three are wrong for the relay cache. ART keeps the eviction
+// policy — its traffic is low-volume and the staleness window is
+// forgiving — so we exercise the eviction path under failClosedFull ==
+// false in TestARTReplayCacheExpiresAndEvicts above.
+func TestRelayReplayCacheFailsClosedWhenFull(t *testing.T) {
+	now := time.Unix(100, 0)
+	cache := newARTReplayCacheWithParams(2, time.Hour, "NHP_RLY", true, func() time.Time { return now })
+	keyA := artTestPubkey(1)
+	keyB := artTestPubkey(2)
+	keyC := artTestPubkey(3)
+
+	// Fill the cache to capacity with live entries.
+	if !cache.MarkSeen(keyA, 1, 1) {
+		t.Fatal("first key rejected")
+	}
+	if !cache.MarkSeen(keyB, 1, 1) {
+		t.Fatal("second key rejected")
+	}
+	if got := len(cache.entries); got != 2 {
+		t.Fatalf("cache size after fill = %d, want 2", got)
+	}
+
+	// A genuinely new key at full capacity must be REJECTED, not
+	// admitted by evicting the oldest live entry.
+	if cache.MarkSeen(keyC, 1, 1) {
+		t.Fatal("new key accepted under fail-closed-full policy")
+	}
+	if got := len(cache.entries); got != 2 {
+		t.Fatalf("fail-closed path mutated cache size = %d, want 2 (no eviction)", got)
+	}
+	if cache.capacityEvictions != 0 {
+		t.Fatalf("fail-closed path recorded %d evictions, want 0", cache.capacityEvictions)
+	}
+	if cache.capacityRejects != 1 {
+		t.Fatalf("fail-closed path recorded %d rejects, want 1", cache.capacityRejects)
+	}
+
+	// The two retained keys must still be present and still be
+	// detected as duplicates — the whole point of the policy is
+	// that a captured envelope held by the cache stays rejected
+	// even after a flood of new envelopes has pushed the cache
+	// past capacity.
+	if cache.MarkSeen(keyA, 1, 1) {
+		t.Fatal("retained keyA no longer detected as duplicate — replay hole re-opened")
+	}
+	if cache.MarkSeen(keyB, 1, 1) {
+		t.Fatal("retained keyB no longer detected as duplicate — replay hole re-opened")
+	}
+
+	// After expiry (advance the clock past the TTL), the oldest
+	// entries fall off the front of the order list, the cache
+	// shrinks back below capacity, and a new envelope is admitted
+	// again. This is the property the eviction-based path ALSO
+	// had; both policies converge on "capacity pressure eases once
+	// the entries expire" — they differ only on what happens
+	// while pressure is sustained.
+	now = now.Add(2 * time.Hour)
+	if !cache.MarkSeen(keyC, 1, 1) {
+		t.Fatal("post-expiry new key still rejected — eviction path didn't free slots after entries expired")
 	}
 }

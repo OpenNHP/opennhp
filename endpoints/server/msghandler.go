@@ -39,6 +39,31 @@ const relayConnKeyPrefix = "relay|"
 // host:port serialization Go produces, so a single split is enough.
 const relayConnKeySep = "|"
 
+// lastRelayForwardBlockLogNano tracks the last time we emitted the
+// "per-client block active" Critical log line for a refused
+// relay-forward packet. The line was previously emitted on EVERY
+// refused packet, which meant a flooding real client (the very kind
+// of attacker the relay-forward block exists to throttle) could push
+// the server into a Critical-log flood from the operator's journalctl
+// perspective. Rate-limit to once per minute and let the dropped-
+// packet counter carry the per-event signal; the Critical stays
+// useful as an "operator, this is happening" beacon without becoming
+// the dominant noise source during an attack.
+var lastRelayForwardBlockLogNano atomic.Int64
+
+// relayForwardBlockLogAllowed is the gate the Hot path consults before
+// emitting the Critical line. Returns true at most once per minute.
+// Follows the same shape as artSkewWarnAllowed in nhp/core/responder so
+// the project's other "once-per-minute-then-stop" warnings share one
+// idiom.
+func relayForwardBlockLogAllowed(nowNano int64) bool {
+	last := lastRelayForwardBlockLogNano.Load()
+	if nowNano-last < int64(time.Minute) {
+		return false
+	}
+	return lastRelayForwardBlockLogNano.CompareAndSwap(last, nowNano)
+}
+
 // relayAddrFromConnKey extracts the relay's address (the
 // "<relayHost>:<relayPort>" segment) from a relay-forwarded mapKey of
 // the form "relay|<relayAddr>|<realClientAddr>". Returns "" if the key
@@ -969,10 +994,18 @@ func (s *UdpServer) HandleRelayForward(ppd *core.PacketParserData) error {
 		// Use the precheck drop stage so an operator looking at
 		// the per-stage "packets_dropped_total" series sees the
 		// drop where it actually happens (relay-forward gate,
-		// not the per-conn inner path it never reaches).
+		// not the per-conn inner path it never reaches). The
+		// dropped-packet counter is the per-event signal the
+		// operator relies on; the Critical log line is the
+		// "operator, this is happening" beacon, gated through
+		// relayForwardBlockLogAllowed so a flooding real client
+		// (the very kind of attacker this block exists to
+		// throttle) cannot drive the log volume.
 		s.metrics.recordDroppedPacket("relay_forward_blocked")
-		log.Critical("server-relay[HandleRelayForward] dropping forward from real client %s (relay %s): per-client block active",
-			realAddr, relayAddrStr)
+		if relayForwardBlockLogAllowed(time.Now().UnixNano()) {
+			log.Critical("server-relay[HandleRelayForward] dropping forward from real client %s (relay %s): per-client block active (further messages within the same minute are suppressed — see packets_dropped_total{stage=relay_forward_blocked})",
+				realAddr, relayAddrStr)
+		}
 		return fmt.Errorf("relay forward blocked for %s", realAddr)
 	}
 

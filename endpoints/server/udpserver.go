@@ -441,7 +441,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	if entries == 0 {
 		entries = artReplayCacheSize
 	}
-	s.artReplay = newARTReplayCacheWithParams(entries, artReplayCacheTTL, "ART", time.Now)
+	s.artReplay = newARTReplayCacheWithParams(entries, artReplayCacheTTL, "ART", false, time.Now)
 	// relayReplay is sized for relay throughput, NOT ART throughput:
 	// NHP_RLY envelopes carry every web-agent KNK/RKN/EXT behind every
 	// registered relay, so the cache must absorb sustained
@@ -457,7 +457,7 @@ func (s *UdpServer) Start(dirPath string, logLevel int) (err error) {
 	if relayEntries > 5_000_000 {
 		return fmt.Errorf("RelayReplayCacheEntries must be between 0 and 5000000")
 	}
-	s.relayReplay = newARTReplayCacheWithParams(relayEntries, relayReplayCacheTTL, "NHP_RLY", time.Now)
+	s.relayReplay = newARTReplayCacheWithParams(relayEntries, relayReplayCacheTTL, "NHP_RLY", true, time.Now)
 	// The dedupe hook is a single core hook; chain the per-type
 	// dedupe functions here so callers don't need to know which message
 	// types each cache guards. Each dedupe function returns nil for

@@ -57,40 +57,75 @@ type artReplayCache struct {
 	name              string
 	mu                sync.Mutex
 	capacityEvictions uint64
+	capacityRejects   uint64
 	lastWarning       time.Time
 	entries           map[artReplayKey]struct{}
 	order             *list.List
 	maxEntries        int
 	ttl               time.Duration
 	now               func() time.Time
+	// failClosedFull switches the capacity-exhaustion policy. ART traffic
+	// is low-volume and benign, so the cache historically evicts the
+	// oldest live entry under pressure (a controlled weakening of the
+	// replay window, with a warning log). NHP_RLY carries every
+	// web-agent knock behind every registered relay, and the only line
+	// of defense for captured-and-replayed envelopes is this cache:
+	// evicting a live entry under sustained pressure re-opens a replay
+	// hole for every envelope still inside its 600s acceptance window,
+	// so the relay cache must FAIL CLOSED — return false from
+	// MarkSeen when the cache is at capacity and the new key has not
+	// been seen before.
+	failClosedFull bool
 }
 
 func newARTReplayCache() *artReplayCache {
-	return newARTReplayCacheWithParams(artReplayCacheSize, artReplayCacheTTL, "ART", time.Now)
+	return newARTReplayCacheWithParams(artReplayCacheSize, artReplayCacheTTL, "ART", false, time.Now)
 }
 
 // newRelayReplayCache builds the same cache struct with relay-throughput
-// sizing. Keeping the cache struct generic instead of forking it means every
-// future improvement to eviction / expiry order lands on both caches
-// automatically.
+// sizing AND the fail-closed capacity policy. Keeping the cache struct
+// generic instead of forking it means every future improvement to
+// eviction / expiry order lands on both caches automatically, while the
+// failClosedFull flag lets the two policies diverge on the one decision
+// that matters.
 func newRelayReplayCache() *artReplayCache {
-	return newARTReplayCacheWithParams(relayReplayCacheSize, relayReplayCacheTTL, "NHP_RLY", time.Now)
+	return newARTReplayCacheWithParams(relayReplayCacheSize, relayReplayCacheTTL, "NHP_RLY", true, time.Now)
 }
 
-func newARTReplayCacheWithParams(maxEntries int, ttl time.Duration, name string, now func() time.Time) *artReplayCache {
+func newARTReplayCacheWithParams(maxEntries int, ttl time.Duration, name string, failClosedFull bool, now func() time.Time) *artReplayCache {
 	return &artReplayCache{
-		name:       name,
-		entries:    make(map[artReplayKey]struct{}),
-		order:      list.New(),
-		maxEntries: maxEntries,
-		ttl:        ttl,
-		now:        now,
+		name:           name,
+		entries:        make(map[artReplayKey]struct{}),
+		order:          list.New(),
+		maxEntries:     maxEntries,
+		ttl:            ttl,
+		now:            now,
+		failClosedFull: failClosedFull,
 	}
 }
 
 // MarkSeen records an authenticated (peer pubkey, transaction ID, send time)
 // tuple. It returns true on first observation and false for a duplicate or an
 // invalid peer key. Callers must distinguish invalid input before calling.
+//
+// When the cache is at capacity and the key has not been seen before,
+// behaviour depends on failClosedFull:
+//   - false (ART): the oldest live entry is evicted, the warning fires
+//     (rate-limited), and the new entry is admitted. Replay coverage is
+//     reduced; this is acceptable for ART because ART traffic is
+//     low-volume and the staleness window is generous enough that the
+//     evicted entry's remaining replay risk is small.
+//   - true (NHP_RLY): the duplicate check happens first; if it's a
+//     duplicate of a retained entry we still return false (replay
+//     detected, correct behaviour). For a genuinely new key at
+//     capacity we ALSO return false and DO NOT evict. The warning
+//     still fires so operators see the pressure; do not regress.
+//     Failing closed here means a flooding relay sees its new
+//     envelopes rejected at the cache boundary instead of replaying
+//     captured ones from the just-evicted tail of the window — the
+//     safer direction, because the per-connection monotonic / flood
+//     gates are exempted for relay envelopes (see nhp/core.responder)
+//     and the cache is the only line of defense.
 func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64) bool {
 	if c == nil || c.maxEntries <= 0 || c.ttl <= 0 {
 		return false
@@ -105,18 +140,22 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 	key.txid = txid
 	key.sendTime = sendTime
 
-	var warn bool
-	var evictions uint64
+	var warn string // "evictions" | "rejects" | ""
 	c.mu.Lock()
 	defer func() {
 		c.mu.Unlock()
-		if warn {
+		if warn != "" {
 			// Name is required so an overflow on the relay path
 			// doesn't masquerade as ART (and vice versa) in the
 			// log — operators reading "ART replay cache capacity
 			// exceeded" would otherwise look in the wrong
 			// subsystem to find the QPS ceiling.
-			log.Warning("%s replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.name, c.maxEntries, evictions)
+			switch warn {
+			case "evictions":
+				log.Warning("%s replay cache capacity %d exceeded; live entries evicted (%d total), replay window shortened", c.name, c.maxEntries, c.capacityEvictions)
+			case "rejects":
+				log.Warning("%s replay cache capacity %d exceeded; new entries rejected (%d total) — fail closed", c.name, c.maxEntries, c.capacityRejects)
+			}
 		}
 	}()
 
@@ -126,10 +165,17 @@ func (c *artReplayCache) MarkSeen(peerPubkey []byte, txid uint64, sendTime int64
 		return false
 	}
 	if len(c.entries) >= c.maxEntries {
+		if c.failClosedFull {
+			c.capacityRejects++
+			if c.lastWarning.IsZero() || now.Sub(c.lastWarning) >= time.Minute {
+				warn = "rejects"
+				c.lastWarning = now
+			}
+			return false
+		}
 		c.capacityEvictions++
 		if c.lastWarning.IsZero() || now.Sub(c.lastWarning) >= time.Minute {
-			warn = true
-			evictions = c.capacityEvictions
+			warn = "evictions"
 			c.lastWarning = now
 		}
 		c.removeOldest()

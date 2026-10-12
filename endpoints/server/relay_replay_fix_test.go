@@ -573,3 +573,40 @@ func TestDedupeRecvRLY_RejectsNonRelayBeforeCaching(t *testing.T) {
 		}
 	}
 }
+
+// TestRelayForwardBlockLogRateLimit pins the rate-limit guard on the
+// Critical log line emitted when HandleRelayForward drops a packet
+// from a (relay, real-client) pair that connectionRoutine has already
+// block-listed. The line was previously emitted on every refused
+// packet — a flooding real client could push the server's log volume
+// past useful signal-to-noise. The guard is a package-level atomic
+// timestamp; reset it before the test so prior calls in the test
+// suite (or previous tests in the same binary) don't pre-arm it.
+func TestRelayForwardBlockLogRateLimit(t *testing.T) {
+	lastRelayForwardBlockLogNano.Store(0)
+
+	// First call within any one-minute window must be admitted.
+	if !relayForwardBlockLogAllowed(time.Unix(1_000_000, 0).UnixNano()) {
+		t.Fatal("first call in a fresh window was suppressed")
+	}
+	// Subsequent calls inside the same minute must be suppressed,
+	// no matter how many refusals the attacker produces.
+	for i := 0; i < 1000; i++ {
+		if relayForwardBlockLogAllowed(time.Unix(1_000_030, 0).UnixNano()) {
+			t.Fatalf("call %d inside the rate-limit window was admitted", i)
+		}
+	}
+	// Once a full minute has elapsed since the last logged event,
+	// the next refusal is allowed through — this is what makes the
+	// Critical useful as a "still happening" beacon rather than a
+	// one-shot startup message.
+	if !relayForwardBlockLogAllowed(time.Unix(1_000_000+61, 0).UnixNano()) {
+		t.Fatal("call after the 60-second gate was suppressed")
+	}
+	// And the suppression resets cleanly: the *next* refusal in
+	// the same window after a beacon is suppressed again, exactly
+	// the property the gate has to deliver.
+	if relayForwardBlockLogAllowed(time.Unix(1_000_000+62, 0).UnixNano()) {
+		t.Fatal("call immediately after a beacon was admitted — gate did not re-arm")
+	}
+}

@@ -86,7 +86,7 @@ type SrcIpMap struct {
 
 type Config struct {
 	ARTReplayCacheEntries   int    `json:"artReplayCacheEntries"`   // Restart-only; zero selects 100000.
-	RelayReplayCacheEntries int    `json:"relayReplayCacheEntries"` // Restart-only; zero selects 500000. Size for NHP_RLY envelopes (every web-agent KNK/RKN/EXT behind every registered relay); raise it for sustained relay throughput above ~520 envelopes/s.
+	RelayReplayCacheEntries int    `json:"relayReplayCacheEntries"` // Restart-only; zero selects 500000. Size for NHP_RLY envelopes (every web-agent KNK/RKN/EXT behind every registered relay); raise it for sustained relay throughput above ~520 envelopes/s. NOTE: the relay replay cache is FAIL-CLOSED — when this pool (or any single relay's fair share) is at capacity, NEW envelopes from registered relays are rejected rather than admitted at the expense of older entries. Sustained aggregate relay throughput above ~520 envelopes/s therefore starts dropping legitimate knocks, not just shortening the replay window. Alert on packets_dropped_total{stage="relay_replay_cache_full"} or nhp_server_relay_replay_cache_rejects_total and raise this value before users notice.
 	PrivateKeyBase64        string `json:"privateKey"`
 	Hostname                string `json:"hostname"`
 	ListenIp                string `json:"listenIp"`
